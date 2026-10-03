@@ -7,6 +7,7 @@
 // ctx is the kernel's summary of the chain (wire.chainCtx). This process trusts the kernel for who is in the chain and checks the rest itself.
 // `approver` (use and deliver) is the chain of the person who approved: the act may run under an assistant's or a Flow's chain, but the proof
 // must come from exactly one person, and the process verifies it against that chain.
+import { Leases } from "./leases.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import net from "node:net";
@@ -34,7 +35,7 @@ export class Sealer {
   /** @param {{ dir: string, master: Buffer, sinks?: Record<string,string>, now?: () => number }} o */
   constructor({ dir, master, sinks = {}, now = Date.now, verifiers = {}, allowUnattested = false }) {
     this.store = new SealStore(dir, master); this.sinks = sinks; this.now = now; this.presence = new Presence(now, { verifiers, allowUnattested, file: path.join(dir, "presence.json"), custody: this.store }); this.allowUnattested = allowUnattested;
-    this.sessions = new Map(); this.lookups = new Map();
+    this.sessions = new Map(); this.lookups = new Map(); this.leases = new Leases(this.store, now);
     // Filled text does not last: swept at start and every hour (a day at most, ten minutes after a delivery), so a restart loses no deadline.
     const sweep = () => { this.store.sweep("derived", 86_400_000); this.store.sweepDelivered(600_000); };
     sweep(); setInterval(sweep, 3_600_000).unref();
@@ -196,7 +197,14 @@ export class Sealer {
         const k = this.spaceKey(ctx);
         return { key_id: k.key_id, signature: crypto.sign(null, bytes, k.priv).toString("base64url") };
       }
-      case "health": return { ok: true, pid: process.pid, unattested_allowed: this.allowUnattested, presence: this.presence.recovery ? "recovery" : "ok" };
+      case "presence.sync": { const r = await this.presence.sync({ ...req, ctx: this.ctxOf(req.ctx) }); if (r.refused) throw err(r.refused); return { ...r, events: r.pruned.map(key_id => ({ type: "presence.revoked", key_id, why: "device_removed" })) }; }
+      case "presence.recover": { const r = await this.presence.recover({ ...req, ctx: this.ctxOf(req.ctx) }); if (r.refused) throw err(r.refused); return { recovered: true, attested: r.attested, event: { type: "presence.recovered", person: req.person, key_id: req.key_id, device: r.device, newcomer_for_ms: 24 * 3_600_000 } }; }
+      case "lease.issue": { const c = this.ctxOf(req.ctx); need(c.one_person && !c.model_originated, "human_only"); return this.leases.issue(req); }
+      case "lease.renew": { const c = this.ctxOf(req.ctx); need(c.one_person && !c.model_originated, "human_only"); return this.leases.renew({ id: req.lease, allowed: req.allowed }); }
+      case "lease.revoke": { const c = this.ctxOf(req.ctx); need(c.one_person && !c.model_originated, "human_only"); return this.leases.revoke(req); }
+      case "lease.reinstate": { const c = this.ctxOf(req.ctx); const why = this.presence.refuse(req.proof, { op: "lease.reinstate", space: c.space, fields: { device: req.device }, ctx: c }); if (why) throw err(why === "no_proof" ? "needs_presence" : why); return this.leases.reinstate({ space: c.space, device: req.device }); }
+      case "lease.check": this.ctxOf(req.ctx); return this.leases.check({ id: req.lease });
+      case "health": return { ok: true, pid: process.pid, unattested_allowed: this.allowUnattested, presence: this.presence.recovery ? "recovery" : "ok", needs_recovery: [...this.presence.ever].filter(p => !this.presence.have(p)) };
       default: throw err("bad_op");
     }
   }

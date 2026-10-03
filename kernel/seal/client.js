@@ -49,12 +49,23 @@ export function startSealer({ dir, sinks = {}, timeoutMs = 20_000, execPath = pr
     drop: i => withCtx("drop", i, { ref: i.ref }),
     /** The enrolment ceremony: `begin` gives a one-time token, `enrol` needs it, the person's chain, a platform attestation (or an unattested-allowed process) and, for a second device, a proof from the first. */
     begin: i => withCtx("presence.begin", i, { person: i.person, key_id: i.key_id, spki: i.spki }),
-    enrol: i => withCtx("presence.enrol", i, { person: i.person, key_id: i.key_id, spki: i.spki, signer: i.signer, token: i.token, attestation: i.attestation, proof: i.proof }),
+    enrol: i => withCtx("presence.enrol", i, { person: i.person, key_id: i.key_id, spki: i.spki, signer: i.signer, token: i.token, attestation: i.attestation, proof: i.proof, bind: i.bind }),
+    /** R-8: `sync` hands the process the person's identity chain (ops) and device-to-key binds; `recover` gives a person with no key left a new first key from chain evidence. */
+    sync: i => withCtx("presence.sync", i, { person: i.person, ops: i.ops, binds: i.binds }),
+    recover: i => withCtx("presence.recover", i, { person: i.person, ops: i.ops, bind: i.bind, key_id: i.key_id, spki: i.spki, signer: i.signer, token: i.token, attestation: i.attestation }),
     revoke: i => withCtx("presence.revoke", i, { key_id: i.key_id, proof: i.proof }),
     /** Does this proof stand for this kernel act (a task op) by the one person in the chain? Uses the proof up. Resolves null when it stands, else the reason. */
     presenceCheck: i => withCtx("presence.check", i, { act: i.op, fields: i.fields, proof: i.proof }).then(() => null, e => (e instanceof SealError ? e.code : "failed")),
     /** The Space's checkpoint key, held in the sealing process: its public half, and a signature over a checkpoint of this Space (nothing else is signed). */
     spaceKey: { pub: i => withCtx("spacekey.pub", i), sign: i => withCtx("spacekey.sign", i, { bytes: Buffer.from(i.bytes).toString("base64") }) },
+    /** Key leases for a lent computer's workspace. `allowed` is the kernel's answer that both Offer grants hold. */
+    lease: {
+      issue: i => withCtx("lease.issue", i, { space: i.space, device: i.device, allowed: i.allowed }),
+      renew: i => withCtx("lease.renew", i, { lease: i.id, allowed: i.allowed }),
+      revoke: i => withCtx("lease.revoke", i, { space: i.space, device: i.device }),
+      reinstate: i => withCtx("lease.reinstate", i, { device: i.device, proof: i.proof }),
+      check: i => withCtx("lease.check", i, { lease: i.id }),
+    },
     health: () => call("health"),
     close: () => new Promise(res => { if (closed) return res(); child.once("exit", () => res()); child.stdin.end(); setTimeout(() => child.kill(), 2000).unref(); }),
   };
