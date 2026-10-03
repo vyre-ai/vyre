@@ -20,7 +20,7 @@ export function chainCtx(chain) {
   const hops = chain.hops, first = hops[0];
   return {
     space: chain.space, chain_hash: sha256b64(canonical(hops.map(h => [h.actor.kind, h.actor.id, h.actor.space]))),
-    one_person: hops.length === 1 && first.actor.kind === "person", person: first.actor.kind === "person" ? first.actor.id : null,
+    one_person: chain.viewer !== true && hops.length === 1 && first.actor.kind === "person", person: first.actor.kind === "person" ? first.actor.id : null,
     model_originated: hops.some(h => h.actor.kind === "agent"), surface: first.via?.surface ?? null,
   };
 }

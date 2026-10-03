@@ -41,14 +41,21 @@ export function createSurfaces(cfg) {
       }
       revoked.add(String(session));
     },
-    /** The chain for a presented token, or a refusal that says nothing about why. @param {string} token */
-    async chainFor(token) {
+    /** The verified facts of a presented token, or a refusal that says nothing about why. @param {string} token */
+    async verify(token) {
       const refuse = () => { throw new KernelError("not_a_member", "no chain for this session"); };
       if (typeof token !== "string") return refuse();
       const [body, mac] = token.split(".");
       if (!body || !mac || (await cfg.chains.checkToken(body, mac)) !== true) return refuse();
       let t; try { t = JSON.parse(Buffer.from(body, "base64url").toString()); } catch { return refuse(); }
       if (t.v !== 1 || t.space !== cfg.space || !(t.exp > clock()) || revoked.has(t.session)) return refuse();
+      return t;
+    },
+    /** The session a presented token is for (checked like `chainFor`): what a chat binding and a room are keyed by, never a name a caller says. @param {string} token */
+    async sessionOf(token) { return (await api.verify(token)).session; },
+    /** The chain for a presented token, or a refusal that says nothing about why. @param {string} token */
+    async chainFor(token) {
+      const t = await api.verify(token);
       return t.agent
         ? cfg.chains.fromFacts({ kind: "agent_session", agent: t.agent, session: t.session, thread: t.thread || t.session, person: t.person, vouched: true })
         : cfg.chains.fromFacts({ kind: "session_person", person: t.person, session: t.session, vouched: true });

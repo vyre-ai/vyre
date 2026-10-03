@@ -82,11 +82,28 @@ export async function createKernel(cfg) {
       /** Any Space by id: this one, another this home hosts, or a remote client with the same gateway API (the chain argument carries no authority across). */
       for: (/** @type {string} */ id) => (id === cfg.space ? Object.freeze({ space: cfg.space, hosted: true, gateway, surfaces }) : spaces ? spaces.for(id) : (() => { throw new KernelError("unavailable", "this kernel has no Spaces registry"); })()),
       proofFrom, proofRequest: (/** @type {string} */ call, /** @type {any[]} */ ...a) => proofRequest(cfg.space, call, ...a),
-      leases: gateway.leases, drive: gateway.drive,
+      leases: gateway.leases, drive: gateway.drive, chats: gateway.grants && gateway.grants.chats,
       // Only the pool's own module may record the index head; a head any module could write would make the rollback check worthless.
       ...(m.name === "wink-storage" ? { storageIndex: Object.freeze({ record: recordStorageIndex, head: storageIndexHead }) } : {}),
       /** The runner's ports from the kernel's own pieces (see kernel/gateway/runner-ports.js): allowed, revocation and the device key are the kernel's. */
       runnerPorts: (/** @type {any} */ o) => runnerPorts({ leases: gateway.leases, offers: gateway.grants && gateway.grants.offers }, o),
+      /**
+       * The room the running turn answers in, derived from the session behind the call's own token (`extra.token`, checked by the Surfaces door) and the chat the asker
+       * bound that session to: `{ group: false }` when the chat has one person, else `{ group: true, chains }` with a read-only viewer chain (kernel-built; authorize
+       * refuses every act above read for it) for every person in the chat, the asker first, and always at least two. The room is never an argument and a module cannot name,
+       * supply or shorten it. Throws `no_audience` when it cannot be built (no token, a session in no chat the kernel knows, an asker who left), never answers one to one.
+       */
+      audienceFor: async (/** @type {any} */ extra) => {
+        if (!grantsStore || typeof grantsStore.chatAudience !== "function") throw new KernelError("unavailable", "this kernel keeps no chats");
+        if (!extra || typeof extra.token !== "string") throw new KernelError("no_audience", "this call carries no session, so there is no room to write for");
+        let session;
+        try { session = await surfaces.sessionOf(extra.token); } catch { throw new KernelError("no_audience", "this call's session is not valid, so there is no room to write for"); }
+        const people = grantsStore.chatAudience(session);
+        if (people.length < 2) return Object.freeze({ group: false });
+        return Object.freeze({ group: true, chains: Object.freeze(people.map((/** @type {string} */ person) => chains.fromFacts({ kind: "viewer", person, vouched: true }))) });
+      },
+      /** May this chain (a viewer of one person in the room, or any) read this resource? A probe: no row predicates, nothing counted or logged. For the harness to answer each viewer from what THAT person may read. */
+      canRead: async (/** @type {any} */ chain, /** @type {string} */ resource, /** @type {string} */ action = "records.read") => (await gateway.authorize({ chain, action, resource, probe: true })).effect === "allow",
       serviceChain: () => gateway.serviceChain(m.name),
       chain: async (/** @type {any} */ meta) => (meta && typeof meta.token === "string" ? surfaces.chainFor(meta.token) : (await ready, gateway.serviceChain(m.name))),
     };

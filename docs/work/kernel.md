@@ -132,3 +132,5 @@ The planner, goals, watchers and waiting cannot move onto the gateway until the 
 - Done (3 Oct): W-5 offers port. `ctx.kernel.offersPort()` over `grants.offers` (new `find`), used by the wink module when `inject.offers` is absent; caller chain and proof come from the tool call's meta. Spec for wink in CHAT.md.
 
 - Done (3 Oct): gate a148d874e fixes. F-1 session-defined credential routes in leases (runner names no ref), F-2 drive.restore admin action, M-1 minimums in the sealed log, M-3 dev switches only in a development tree. Open for the packaging team: a release must lay down SHA256SUMS (or SHA256SUMS.sig) at the package root, since that is what marks it packaged.
+
+- Done (3 Oct): chats owned by the kernel (grants log): read/change/bind, `ctx.kernel.audienceFor(session)` (viewer chains), `ctx.kernel.chats`. Chat read for `stream.open` is `chats.read(chain, id)`; shape to be agreed with chat.
