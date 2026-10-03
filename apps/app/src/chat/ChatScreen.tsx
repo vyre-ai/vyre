@@ -64,7 +64,7 @@ function JumpPill({ go, count, base, bottom }: { go: () => void; count: number; 
   const { color } = useUiTheme();
   const s = follow(follow(createFollow(), { type: "scroll", atBottom: false }), { type: "rows", added: count - base });
   return (
-    <View pointerEvents="box-none" style={{ position: "absolute", left: 0, right: 0, bottom, alignItems: "center" }}>
+    <View pointerEvents="box-none" style={{ position: "absolute", left: 0, right: 0, bottom, alignItems: "center", zIndex: 10, elevation: 10 }}>
       <Pressable accessibilityRole="button" accessibilityLabel={pillLabel(s.unread)} onPress={go} style={{ minHeight: 40, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, borderRadius: 20, backgroundColor: color["surface-3"], borderWidth: 1, borderColor: color["edge-strong"] }}>
         <Text strong size="caption">{pillLabel(s.unread)}</Text>
         <Icon name="download" />
@@ -181,7 +181,7 @@ export function ChatScreen(p: ChatScreenProps) {
             hasMore={false}
             onNearTop={() => {}}
             head={<View style={{ height: 12 }} />}
-            jump={(go) => <JumpPill go={go} count={rows.length} base={base.current} bottom={12} />}
+            jump={(go) => <JumpPill go={go} count={rows.length} base={base.current} bottom={16} />}
           />
         )}
       </View>
@@ -192,7 +192,7 @@ export function ChatScreen(p: ChatScreenProps) {
             <View key={q.key} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 36, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: color.edge, backgroundColor: color["surface-2"] }}>
               <View style={{ alignSelf: "center" }}><Chip icon="clock">Queued</Chip></View>
               <Text numberOfLines={1} style={{ flex: 1 }}>{q.text}</Text>
-              <Text size="caption" tone="label">after this step</Text>
+              <Text size="caption" tone="label">waiting for the current reply</Text>
             </View>
           ))}
         </View>

@@ -6,7 +6,7 @@
 import { memo, useEffect, useRef, useSyncExternalStore } from "react";
 import { Animated, Pressable, View, StyleSheet } from "react-native";
 import { Chip, Icon, Text, useUiTheme } from "@vyre/ui";
-import { ChatAvatar } from "./ChatAvatar";
+import { Face } from "./Face";
 import { normalizeBlock, type Block } from "./blocks.js";
 import { BlockView, type BlockCtx } from "./Blocks";
 import type { ChatStore } from "./store";
@@ -62,8 +62,6 @@ function Who({ name, family, meta, sub }: { name: string; family: "person" | "as
   );
 }
 
-const avFam = (f: "person" | "assistant" | "model") => (f === "model" ? "agent" : f);
-
 type Dress = { mentioned?: boolean; divider?: number | null; pinned?: boolean; replies?: number; reply?: boolean; cut?: string | null };
 
 function Message({ who, family, meta, sub, dress, children, wide }: { who: string; family: "person" | "assistant" | "model"; meta?: string; sub?: string | null; dress?: Dress; children: React.ReactNode; wide: boolean }) {
@@ -72,7 +70,7 @@ function Message({ who, family, meta, sub, dress, children, wide }: { who: strin
     <View style={{ width: "100%", maxWidth: MAX, alignSelf: "center", marginLeft: "auto", marginRight: "auto" }}>
       {dress?.divider ? <View style={{ paddingHorizontal: wide ? 24 : 16 }}><UnreadDivider count={dress.divider} /></View> : null}
       <View style={{ paddingHorizontal: wide ? 24 : 16, paddingVertical: 8, flexDirection: "row", gap: 12, ...(dress?.mentioned ? { backgroundColor: color["accent-wash"], borderLeftWidth: 2, borderLeftColor: color.accent, paddingLeft: wide ? 22 : 14 } : {}) }}>
-        <ChatAvatar name={who} family={avFam(family)} size="md" />
+        <Face name={who} family={family} size={32} />
         <View style={S.s3}>
           <Who name={who} family={family} meta={dress?.pinned ? (meta ? meta + " · pinned" : "pinned") : meta} sub={sub} />
           {dress?.reply ? <Text size="caption" tone="label">in a thread</Text> : null}
@@ -92,7 +90,7 @@ function HighlightAction({ from, text, ctx }: { from: string; text: string; ctx:
   if (!ctx.onHighlight) return null;
   return (
     <View style={S.s4}>
-      <Pressable accessibilityRole="button" accessibilityLabel="Highlight to assistant" onPressIn={() => { picked.current = readSelection(); }} onPress={() => ctx.onHighlight?.({ from, text, selected: picked.current })} style={({ pressed, hovered }: any) => ({ minHeight: ctx.wide ? 28 : 44, justifyContent: "center", paddingHorizontal: 8, marginLeft: -8, borderRadius: 8, backgroundColor: pressed ? color.press : hovered ? color.hover : "transparent" })}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Highlight to assistant" onPressIn={() => { picked.current = readSelection(); }} onPress={() => ctx.onHighlight?.({ from, text, selected: picked.current })} style={{ minHeight: ctx.wide ? 28 : 44, justifyContent: "center", paddingHorizontal: 8, marginLeft: -8, borderRadius: 8 }}>
         <Text size="caption" tone="label">Highlight to assistant</Text>
       </Pressable>
     </View>
@@ -104,7 +102,7 @@ function MessageActions({ uuid, text, ctx }: { uuid: string; text: string; ctx: 
   if (!ctx.onRetryMessage && !ctx.onEditMessage && !ctx.onBranchFrom) return null;
   const h = ctx.wide ? 28 : 44;
   const act = (label: string, run?: () => void) => run ? (
-    <Pressable key={label} accessibilityRole="button" accessibilityLabel={`${label} this message`} onPress={run} style={({ pressed, hovered }: any) => ({ minHeight: h, justifyContent: "center", paddingHorizontal: 8, marginLeft: -8, borderRadius: 8, backgroundColor: pressed ? color.press : hovered ? color.hover : "transparent" })}>
+    <Pressable key={label} accessibilityRole="button" accessibilityLabel={`${label} this message`} onPress={run} style={{ minHeight: h, justifyContent: "center", paddingHorizontal: 8, marginLeft: -8, borderRadius: 8 }}>
       <Text size="caption" tone="label">{label}</Text>
     </Pressable>
   ) : null;
