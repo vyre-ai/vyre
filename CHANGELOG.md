@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### ui: one UI codebase, @vyre/ui in the Expo app (user ruling, 3 Oct 2026)
+
+- `apps/app/ui` is `@vyre/ui`: the one design system for iOS, Android and web (the Mac and Windows shells load the web build). Tokens come from `lib/theme/tokens.json` only: `tailwind.config.cjs` maps each name to a CSS custom property and `ui/theme.tsx` writes them (defaults, then the space, then the person) with NativeWind `vars()`. Components are cva and NativeWind on `@rn-primitives` (Switch, Tabs, Sheet, Menu), TanStack Table (wide tables) and `@dnd-kit` (web board). New dependencies and why: nativewind, tailwindcss, class-variance-authority, clsx, tailwind-merge (the shadcn-style component stack); @rn-primitives/* (accessible primitives); @tanstack/react-table (tables); @dnd-kit/core (board drag); babel-preset-expo (NativeWind's JSX transform).
+- One card, no coloured strip on any side. The space tint shows on the avatar badge and the space chip, not as a row edge.
+- `npm run lint:ui` (`scripts/check-ui-imports.mjs`, also a test) fails if anything outside `ui/` imports a UI library.
+- The domain is shared with the Deck, not copied: `@vyre/deck-ui/*` (deck/ui) and `@vyre/kernel/*` (kernel/contracts) resolve in Metro; `ui/store.ts` gives `useStore` and `useStoreQuery` over the one mock or gateway switch.
+- Screens under `/u/*`: Now, task, Projects, project, records (list, board, calendar, record page, all 15 field kinds with sealed), install flow, Devices and Wink, Spaces and members, Customize, Settings, Memory, Vault, Drive, Sites, Flows with the canvas and Kits. `scripts/shots.mjs` takes screenshots of the exported web build.
+- Domain fixes: `deck/ui/scenario.js` on the current Store; the stale deck/ui tests moved to the kernel API.
+
 #### ui: the project page
 
 - `deck/views/ui-project.js` (/u/project/:id): the record page (stage strip, You or Your assistant sees, fields, timeline, linked records, chats, files) with the work around it. Each stage is a list of its tasks (title, doer, checker, state), the current stage open and the others collapsed with "n of m done"; a task opens its card sheet in place, which leads to /u/task/:id. When the last required task of a stage is done the record moves on by itself: the strip advances, the new stage opens and a toast says so. A "Created by Vyre from the Kit ..." line comes from the first event.
