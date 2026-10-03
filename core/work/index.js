@@ -33,6 +33,8 @@ export default {
     /** The kernel and the chain for this call. Both come from platform; a refusal to build a chain is the caller's, not ours. */
     const kernelOf = () => { const k = ctx.kernel; if (!k || typeof k.chainFor !== "function") throw unavailable(); return k; };
     const chainOf = (/** @type {any} */ extra) => kernelOf().chainFor(extra || {});
+    /** The kernel-built chain of every person in the chat (the asker included), or none when it is not a group chat. A tool never names a chain itself. */
+    const audienceOf = async (/** @type {any} */ extra, /** @type {any} */ chat) => (typeof chat === "string" && chat && kernelOf().audienceFor ? await kernelOf().audienceFor(extra || {}, chat) : []);
     const surfaceOf = () => surface || (surface = createToolSurface({ kernel: kernelOf(), space: kernelOf().space, types: async c => (kernelOf().definitions ? kernelOf().definitions(c) : []), actions: () => (kernelOf().actions ? kernelOf().actions() : []) }));
     const engineOf = () => {
       if (engine) return engine;
@@ -66,13 +68,13 @@ export default {
     });
     ctx.tool("work.situation", {
       description: "Where the caller is, in a few hundred tokens: the Space, their role, the project or record in scope, the team, open tasks, what waits on them, and what is sealed and why.",
-      input: obj({ project: { type: "string" }, record: { type: "string" } }),
+      input: obj({ project: { type: "string" }, record: { type: "string" }, chat: { type: "string", description: "the chat this is for; with more than one person in it the situation is built for the whole audience" } }),
       run: async (input, extra) => {
         const k = kernelOf();
         const ref = (/** @type {any} */ u) => { if (!urnOk(u)) return undefined; const [, , , type, id] = u.split("/"); return { type, id }; };
         const project = ref(input.project), record = ref(input.record);
         const lines = Object.fromEntries([...doing.values()].flatMap(d => [...(d.lines || [])]));
-        return buildSituation(k, await chainOf(extra), { space: k.space, ...(project ? { project } : {}), ...(record ? { record } : {}), doing: lines });
+        return buildSituation(k, await chainOf(extra), { space: k.space, ...(project ? { project } : {}), ...(record ? { record } : {}), doing: lines, audience: await audienceOf(extra, input.chat) });
       },
     });
 
@@ -122,15 +124,15 @@ export default {
 
     ctx.tool("work.know.search", {
       description: "Search the Space's records, events and session lines by meaning. Only sources the caller may read come back, each with its address.",
-      input: obj({ query: { type: "string" }, k: { type: "integer" } }, ["query"]),
-      run: async (input, extra) => ({ hits: await engineOf().search(await chainOf(extra), String(input.query), Math.min(Number(input.k) || 6, 12)) }),
+      input: obj({ query: { type: "string" }, k: { type: "integer" }, chat: { type: "string" } }, ["query"]),
+      run: async (input, extra) => { const hits = await engineOf().search(await chainOf(extra), String(input.query), Math.min(Number(input.k) || 6, 12), { audience: await audienceOf(extra, input.chat) }); return { hits, withheld: /** @type {any} */ (hits).withheld || 0 }; },
     });
     ctx.tool("work.know.answer", {
       description: "Answer a question from the Space's own records and history. Every claim cites a source the caller may read; with none to cite it says so.",
-      input: obj({ question: { type: "string" } }, ["question"]),
+      input: obj({ question: { type: "string" }, chat: { type: "string" } }, ["question"]),
       run: async (input, extra) => {
         const chain = await chainOf(extra);
-        const result = await engineOf().answer(chain, String(input.question));
+        const result = await engineOf().answer(chain, String(input.question), { audience: await audienceOf(extra, input.chat) });
         return { result, component: toComponent("work.know.answer", result) };
       },
     });

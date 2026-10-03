@@ -17,18 +17,18 @@ import { createToolSurface } from "../kernel/tools/surface.js";
 import { generateKeyPairSync } from "node:crypto";
 
 /**
- * @param {{ space?: string, owner?: string, defs?: any[], actions?: any[], agents?: Record<string, string[]>, ownerActions?: string[], services?: Record<string, string[]>, grantList?: any[], model?: (call: any) => any }} [o]
+ * @param {{ space?: string, owner?: string, defs?: any[], actions?: any[], agents?: Record<string, string[]>, ownerActions?: string[], services?: Record<string, string[]>, people?: Record<string, { actions: string[], fields?: string[] }>, grantList?: any[], model?: (call: any) => any }} [o]
  *   agents: agent name to the actions its grant holds on everything in the Space.
  */
-export async function createRealKernel({ space = "spc_aaaaaaaaaaaa", owner = "alex", defs = [], actions = [], agents = {}, ownerActions = ["records.*", "records.define", "events.read", "tasks.*"], services = {}, model = () => ({ content: "" }) } = {}) {
+export async function createRealKernel({ space = "spc_aaaaaaaaaaaa", owner = "alex", defs = [], actions = [], agents = {}, ownerActions = ["records.*", "records.define", "events.read", "tasks.*"], services = {}, people = {}, model = () => ({ content: "" }) } = {}) {
   let T = 1_800_000_000_000;
   const clock = () => ++T;
   const chains = createChainBuilder({ space, owner, owner_uid: 501, key: Buffer.alloc(32, 3), clock, is_person: () => true });
   const actor = (/** @type {string} */ kind, /** @type {string} */ id) => ({ kind, id, space });
   let n = 0;
   const grant = (/** @type {any} */ a, /** @type {string[]} */ acts) => ({ id: `gr_${String(++n).padStart(4, "0")}`, space, subject: { kind: "actor", actor: a }, actions: acts, action_set_version: 9, resource: { prefix: `vyre://${space}/*/*` }, conditions: {}, issuer: actor("person", owner), source: "test", status: "active", created_at: 0 });
-  /** @type {any[]} */ const grants = [grant(actor("person", owner), [...ownerActions, ...actions.filter(a => String(a.risk).startsWith("outward.")).map(a => a.action)]), ...Object.entries(agents).map(([name, acts]) => grant(actor("agent", name), acts)), ...Object.entries(services).map(([name, acts]) => grant(actor("service", name), acts))];
-  const members = new Set([`person:${owner}`, "service:tasks", ...Object.keys(agents).map(a => `agent:${a}`), ...Object.keys(services).map(a => `service:${a}`)]);
+  /** @type {any[]} */ const grants = [grant(actor("person", owner), [...ownerActions, ...actions.filter(a => String(a.risk).startsWith("outward.")).map(a => a.action)]), ...Object.entries(agents).map(([name, acts]) => grant(actor("agent", name), acts)), ...Object.entries(services).map(([name, acts]) => grant(actor("service", name), acts)), ...Object.entries(people).map(([name, p]) => { const g = grant(actor("person", name), p.actions); if (p.fields) g.resource = { ...g.resource, fields: p.fields }; return g; })];
+  const members = new Set([`person:${owner}`, "service:tasks", ...Object.keys(agents).map(a => `agent:${a}`), ...Object.keys(services).map(a => `service:${a}`), ...Object.keys(people).map(a => `person:${a}`)]);
   const log = createEventLog({ space, clock });
   const registry = [...TASK_ACTIONS, ...actions];
   const gw = createGateway({ expr: { parseExpr, evalExpr }, space, store: createMemoryStore({ clock }), log, chains, clock, actions: registry, grants: { forSubject: (/** @type {any} */ a) => grants.filter(g => g.subject.actor.kind === a.kind && g.subject.actor.id === a.id), get: () => undefined }, members: { has: (/** @type {any} */ a) => members.has(`${a.kind}:${a.id}`) }, hasPresenceSession: () => true });
@@ -40,7 +40,7 @@ export async function createRealKernel({ space = "spc_aaaaaaaaaaaa", owner = "al
   // Tasks reads the registry from the authorizer itself (a send must name an outward action), so it gets the real one over the same grants.
   const authorizer = createAuthorizer({ space, actions: [...registry, ...(await import("../kernel/gateway/records.js")).RECORD_ACTIONS], clock, grants: { forSubject: (/** @type {any} */ a) => grants.filter(g => g.subject.actor.kind === a.kind && g.subject.actor.id === a.id), get: () => undefined }, members: { has: (/** @type {any} */ a) => members.has(`${a.kind}:${a.id}`) }, hasPresenceSession: () => true });
   const tasks = createTasks({ space, authorizer, log, presence, chains, clock, members: { has: (/** @type {any} */ a) => members.has(`${a.kind}:${a.id}`) }, approver: () => actor("person", owner) });
-  const person = () => chains.fromFacts({ kind: "device", device_key_id: `d-${owner}`, person: owner, path: "direct" });
+  const person = (/** @type {string} */ who = owner) => chains.fromFacts({ kind: "device", device_key_id: `d-${who}`, person: who, path: "direct" });
   const agent = (/** @type {string} */ name) => chains.fromFacts({ kind: "agent_session", agent: name, session: "s", thread: "t", vouched: true });
   /** @type {any[]} */ const current = [];
   if (defs.length) { await gw.records.define(person(), { add_types: defs }); current.push(...defs); }
