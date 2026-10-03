@@ -34,7 +34,8 @@ export async function main(argv, env, say) {
   if (!env.ANTHROPIC_API_KEY && !viaOpenRouter) { say("Not run: ANTHROPIC_API_KEY (or OPENROUTER_EVAL_KEY) is not set. This eval calls a real model and spends money."); return 2; }
   if (a.yes !== true) { say("Not run: pass --yes to spend up to the budget (default $5) on real model calls."); return 2; }
   const budgetUsd = a.budget && a.budget !== true ? Number(a.budget) : 5;
-  if (!(budgetUsd > 0 && budgetUsd <= 20)) { say("Not run: the budget must be above 0 and at most 20 dollars."); return 2; }
+  const cap = env.GITHUB_ACTIONS ? 5 : 20;
+  if (!(budgetUsd > 0 && budgetUsd <= cap)) { say(`Not run: the budget must be above 0 and at most ${cap} dollars.`); return 2; }
   const r = await evaluateModel({ adapter: viaOpenRouter ? openrouterAdapter({ apiKey: String(env.OPENROUTER_EVAL_KEY), model: String(a.model) }) : claudeAdapter({ apiKey: String(env.ANTHROPIC_API_KEY), model: String(a.model) }), budgetUsd, prices: PRICES });
   say(formatFit(r));
   if (a.out && a.out !== true) {
