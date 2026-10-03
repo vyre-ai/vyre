@@ -92,7 +92,7 @@ export function installCard(kit, cat) {
   const merged = checked.cat;
   const flows = parts.filter(p => p.kind === "flow").map(p => {
     const c = compileFlow({ ...p.def, authorship: "kit" }, merged);
-    return { name: p.name, label: p.def.label || p.name, trigger: p.def.trigger.on, writes: c.effects.writes, outward: c.effects.outward, http: c.effects.http, code: c.effects.code, sealed_uses: c.effects.sealed_uses, asks: c.effects.asks, caps: c.caps, ok: c.ok };
+    return { name: p.name, label: p.def.label || p.name, trigger: p.def.trigger.on, writes: c.effects.writes, outward: c.effects.outward, services: c.effects.services, code: c.effects.code, sealed_uses: c.effects.sealed_uses, asks: c.effects.asks, caps: c.caps, ok: c.ok };
   });
   const types = parts.filter(p => p.kind === "type").map(p => ({
     name: p.name, label: p.def.label, fields: (p.def.fields || []).length, sealed: (p.def.fields || []).filter((/** @type {any} */ f) => f.kind === "sealed").map((/** @type {any} */ f) => f.name),
@@ -148,8 +148,9 @@ export function diffKits(oldKit, newKit, cat) {
       for (const c of nf.caps) if (!oldCaps.has(`${c.action} ${c.resource}`)) widenings.push({ part: label, what: `may now ${c.action} on ${c.resource}` });
       const oldOut = new Set((of ? of.effects.outward : []).map(o => o.action + (o.destination_constant ? "" : "*")));
       for (const o of nf.effects.outward) if (!oldOut.has(o.action + (o.destination_constant ? "" : "*"))) widenings.push({ part: label, what: `now ${o.action}${o.destination_constant ? "" : " to an address read from records"}` });
-      const oldHttp = new Set((of ? of.effects.http : []).map(h => h.url));
-      for (const h of nf.effects.http) if (!oldHttp.has(h.url)) widenings.push({ part: label, what: `now calls ${h.url}` });
+      const svcKey = (/** @type {any} */ h) => `${h.connector} ${h.method} ${h.path}`;
+      const oldSvc = new Set((of ? of.effects.services : []).map(svcKey));
+      for (const h of nf.effects.services) if (!oldSvc.has(svcKey(h))) widenings.push({ part: label, what: `now calls ${h.connector}: ${h.method} ${h.path}${h.outward ? " (held for a yes)" : ""}` });
       const oldCode = new Set((of ? of.effects.code : []).map(c => c.hash));
       for (const c of nf.effects.code) if (!oldCode.has(c.hash)) widenings.push({ part: label, what: `runs new code in the sandbox (${c.step})` });
       const oldSealed = new Set((of ? of.effects.sealed_uses : []).map(s => s.field));

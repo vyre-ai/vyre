@@ -3,6 +3,8 @@
 // unknown types, fields, stages and actions are errors, expression names are checked, the Flow's caps must cover what its steps do,
 // and an effects summary says what the Flow reads, writes, sends and runs, for the approval card and for the simulation.
 
+import { nextCronZoned } from "./zone.js";
+import { triggerScopeNames } from "./triggers.js";
 import { checkFlow, walkSteps, canonical } from "./schema.js";
 import { parse, roots, stepRefs } from "./expr.js";
 
@@ -15,6 +17,7 @@ import { parse, roots, stepRefs } from "./expr.js";
  *   roles?: readonly string[],
  *   teammates?: readonly string[],
  *   templates?: readonly string[],
+ *   connectors?: Record<string, { allow?: { method?: string, path: string }[], deny?: { method?: string, path: string }[] }>,
  * }} Catalog
  */
 
@@ -22,7 +25,7 @@ import { parse, roots, stepRefs } from "./expr.js";
 export const STEP_ACTIONS = Object.freeze({
   find: "records.read", pick: "records.read", create: "records.create", update: "records.update", upsert: "records.update",
   remove: "records.remove", stage: "records.update", ask: "ask.request", assign: "ask.request", agent: "ask.request",
-  classify: "model.call", http: "http.request", fn: "fn.run",
+  classify: "model.call", service: "service.call", fn: "fn.run",
 });
 
 const OUTWARD = new Set(["outward.send", "outward.pay", "outward.publish", "outward.delete", "outward.share"]);
@@ -59,15 +62,37 @@ export function needs(flow, cat) {
     const action = /** @type {Record<string, string>} */ (STEP_ACTIONS)[s.kind];
     if (!action) return;
     if (["find", "pick", "create", "update", "upsert", "remove", "stage"].includes(s.kind)) out.push({ step: s.id, path, action, resource: typeUrn(cat.space, String(s.type)) });
-    else if (s.kind === "http") out.push({ step: s.id, path, action, resource: `vyre://${cat.space}/http/${hostOf(s.url)}` });
+    else if (s.kind === "service") out.push({ step: s.id, path, action: serviceAction(s.method), resource: serviceResource(cat.space, s.connector) });
     else out.push({ step: s.id, path, action, resource: `vyre://${cat.space}/${action === "ask.request" ? "task" : action.split(".")[0]}/*` });
     if (s.kind === "upsert") out.push({ step: s.id, path, action: "records.create", resource: typeUrn(cat.space, String(s.type)) });
   });
   return out;
 }
 
-/** @param {any} url */
-const hostOf = url => { try { return new URL(String(url)).host; } catch { return "unknown"; } };
+/** A read (GET or HEAD) is `service.read`; anything else sends, posts, pays or changes, and is `service.call`, an outward act the vault holds for the ask-first task. @param {string} method */
+export const serviceAction = method => (method === "GET" || method === "HEAD" ? "service.read" : "service.call");
+/** `vyre://<space>/service/<connector>` @param {string} space @param {string} connector */
+export const serviceResource = (space, connector) => `vyre://${space}/service/${connector}`;
+
+/** Does `pattern` match `s`? `*` stands for one whole path segment, a trailing `/*` for the rest. @param {string} pattern @param {string} s */
+function pathMatches(pattern, s) {
+  const a = pattern.split("/"), b = s.split("/");
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] === "*" && i === a.length - 1) return b.length > i;
+    if (i >= b.length) return false;
+    if (a[i] !== "*" && a[i] !== b[i]) return false;
+  }
+  return a.length === b.length;
+}
+/**
+ * The vault route's rule, mirrored for the compiler (the vault checks again at the call): deny wins, the default is no. A rule is { method?, path }.
+ * @param {{ allow?: { method?: string, path: string }[], deny?: { method?: string, path: string }[] }} route @param {string} method @param {string} path
+ */
+export function routeAllows(route, method, path) {
+  const hit = (/** @type {{ method?: string, path: string }} */ r) => (!r.method || r.method === "*" || r.method.toUpperCase() === method) && pathMatches(r.path, path);
+  if ((route.deny || []).some(hit)) return false;
+  return (route.allow || []).some(hit);
+}
 
 /** The narrowest caps that let the Flow's steps run: one per distinct (action, resource). @param {any} flow @param {Catalog} cat */
 export function deriveCaps(flow, cat) {
@@ -90,7 +115,7 @@ export function compileFlow(flow, cat) {
   /** @type {{ path: string, message: string }[]} */
   const warnings = [];
   /** @type {Effects} */
-  const effects = { reads: [], writes: [], outward: [], http: [], code: [], asks: 0, assigns: [], sealed_uses: [], destinations: [], model_steps: [], needs_run_ask: false };
+  const effects = { reads: [], writes: [], outward: [], services: [], code: [], asks: 0, assigns: [], sealed_uses: [], destinations: [], model_steps: [], needs_run_ask: false };
   if (errors.length) return { ok: false, errors, warnings, effects, caps: [] };
 
   const type = (/** @type {string} */ name, /** @type {string} */ path) => {
@@ -110,7 +135,7 @@ export function compileFlow(flow, cat) {
   if (tr.on === "time" && tr.cron !== undefined) { const c = parseCron(tr.cron); if (!c.ok) errors.push({ path: "trigger.cron", message: c.message }); }
 
   /** scope names an expression may read at a given point */
-  const triggerScope = tr.on === "event" ? ["trigger", "event"] : ["trigger"];
+  const triggerScope = triggerScopeNames(tr);
   const baseScope = new Set([...triggerScope, "steps", "run", "now"]);
 
   /** @param {string|undefined} src @param {string} path @param {Set<string>} scope @param {Set<string>} done */
@@ -158,7 +183,16 @@ export function compileFlow(flow, cat) {
         effects.assigns.push({ step: s.id, to: who, checker: s.checker || null, output: s.output && s.output.kind });
       }
       if (s.kind === "ask") effects.asks++;
-      if (s.kind === "http") { effects.http.push({ step: s.id, method: s.method, url: s.url }); effects.outward.push({ step: s.id, action: "http.request", risk: "outward.send", destination_constant: true }); }
+      if (s.kind === "service") {
+        const route = cat.connectors && cat.connectors[s.connector];
+        const read = serviceAction(s.method) === "service.read";
+        if (!route) errors.push({ path: `${p}.connector`, message: `there is no connector ${s.connector}: a firm adds the credential and its route first` });
+        else if (!routeAllows(route, s.method, s.path)) errors.push({ path: `${p}.path`, message: `the ${s.connector} connector does not allow ${s.method} ${s.path}` });
+        const files = s.drive ? [...(s.drive.upload ? [{ way: "send", path: s.drive.upload.path, version: s.drive.upload.version ?? null }] : []), ...(s.drive.saveTo ? [{ way: "save", path: s.drive.saveTo, version: null }] : [])] : [];
+        effects.services.push({ step: s.id, connector: s.connector, method: s.method, path: s.path, outward: !read, files });
+        // A read runs at once; anything else is held for the ask-first task, so the approval card lists the connector, the method, the path and the Drive files.
+        if (!read) effects.outward.push({ step: s.id, action: "service.call", risk: "outward.send", destination_constant: true });
+      }
       if (s.kind === "fn") effects.code.push({ step: s.id, hash: s.hash || null, needs: s.needs || [], outputs: s.outputs });
       if (s.kind === "classify" || s.kind === "agent") effects.model_steps.push(s.id);
       if (s.kind === "find" || s.kind === "pick") { if (t && !effects.reads.includes(s.type)) effects.reads.push(s.type); }
@@ -181,7 +215,7 @@ export function compileFlow(flow, cat) {
         case "agent": nm(s.title, "title"); nm(s.instructions, "instructions"); nm(s.record, "record"); break;
         case "call": nm(s.input, "input"); break;
         case "classify": nm(s.input, "input"); break;
-        case "http": nm(s.headers, "headers"); nm(s.body, "body"); if (s.body !== undefined && !isConst(s.body)) effects.destinations.push({ step: s.id, note: "the body is read from records" }); break;
+        case "service": nm(s.query, "query"); nm(s.headers, "headers"); nm(s.body, "body"); if (s.body !== undefined && !isConst(s.body) && serviceAction(s.method) === "service.call") effects.destinations.push({ step: s.id, note: "the body is read from records" }); break;
         case "fn": nm(s.inputs, "inputs"); break;
         default: break;
       }
@@ -197,14 +231,14 @@ export function compileFlow(flow, cat) {
     });
   }
   visit(flow.steps, "steps", baseScope, new Set());
-  if (tr.on === "event" && tr.where) checkExprNames(tr.where, "trigger.where", new Set(triggerScope), new Set());
+  if ((tr.on === "event" || tr.on === "watcher") && tr.where) checkExprNames(tr.where, "trigger.where", new Set(triggerScope), new Set());
 
   // caps
   const derived = deriveCaps(flow, cat);
   const caps = Array.isArray(flow.caps) ? flow.caps : derived;
   if (Array.isArray(flow.caps)) {
     for (const n of needs(flow, cat)) if (!caps.some((/** @type {any} */ c) => capCovers(c, n.action, n.resource))) errors.push({ path: n.path, message: `the Flow's caps do not cover ${n.action} on ${n.resource}` });
-    for (const c of caps) if (c.action !== "*.*" && !cat.actions[c.action] && !/^(?:records|ask|model|http|fn)\./.test(c.action)) warnings.push({ path: "caps", message: `the cap names an unknown action ${c.action}` });
+    for (const c of caps) if (c.action !== "*.*" && !cat.actions[c.action] && !/^(?:records|ask|model|service|fn)\./.test(c.action)) warnings.push({ path: "caps", message: `the cap names an unknown action ${c.action}` });
   } else if (derived.length) warnings.push({ path: "caps", message: "no caps are declared, so the Flow's own steps set them" });
 
   if (flow.authorship === "model" && (effects.sealed_uses.length || effects.outward.some(o => !o.destination_constant))) {
@@ -219,7 +253,7 @@ export function compileFlow(flow, cat) {
  * @typedef {{
  *   reads: string[], writes: string[],
  *   outward: { step: string, action: string, risk: string, destination_constant: boolean }[],
- *   http: { step: string, method: string, url: string }[],
+ *   services: { step: string, connector: string, method: string, path: string, outward: boolean, files: { way: string, path: string, version: string|null }[] }[],
  *   code: { step: string, hash: string|null, needs: string[], outputs: string[] }[],
  *   asks: number, assigns: { step: string, to: string, checker: string|null, output: string }[],
  *   sealed_uses: { path: string, field: string }[], destinations: { step: string, note: string }[],
@@ -257,14 +291,16 @@ export function parseCron(src) {
 }
 
 /**
- * The first time strictly after `after` (ms, UTC) that a cron expression matches. Looks at most four years ahead.
- * @param {string} src @param {number} after @returns {number|null}
+ * The first time strictly after `after` (ms) that a cron expression matches, in UTC or, with `tz`, in that IANA zone (the Space's; kernel/flows/zone.js says what a daylight-saving
+ * gap or overlap means). Looks at most four years ahead.
+ * @param {string} src @param {number} after @param {string} [tz] @returns {number|null}
  */
-export function nextCron(src, after) {
+export function nextCron(src, after, tz) {
   const c = parseCron(src);
   if (!c.ok) return null;
   const [mi, ho, dom, mo, dow] = c.sets;
   const domStar = String(src).trim().split(/\s+/)[2] === "*", dowStar = String(src).trim().split(/\s+/)[4] === "*";
+  if (tz && tz !== "UTC") return nextCronZoned(c.sets, domStar, dowStar, after, tz);
   const d = new Date(Math.floor(after / 60_000) * 60_000 + 60_000);
   const end = after + 4 * 366 * 86_400_000;
   while (d.getTime() <= end) {

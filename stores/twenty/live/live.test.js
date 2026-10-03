@@ -49,6 +49,9 @@ if (!URL_ || !KEY_FILE) {
     if (d.objects.edges.some((e) => e.node.nameSingular === "contact")) {
       await client.gql("graphql", "mutation Purge($f: ContactFilterInput) { destroyContacts(filter: $f) { id } }", { f: { or: [{ deletedAt: { is: "NULL" } }, { deletedAt: { is: "NOT_NULL" } }] } });
     }
+    if (d.objects.edges.some((e) => e.node.nameSingular === "account")) {
+      await client.gql("graphql", "mutation PurgeA($f: AccountFilterInput) { destroyAccounts(filter: $f) { id } }", { f: { or: [{ deletedAt: { is: "NULL" } }, { deletedAt: { is: "NOT_NULL" } }] } });
+    }
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tw-live-"));
     const store = createTwentyStore({ client, space: "live", dir, webhookSecret: SECRET, graceMs: 250 });
     await store.define({ add_types: [CONTACT] });

@@ -29,7 +29,7 @@ export const step: {
   call(id: string, p: { action: string; resource: string; input?: Value; label?: string }): Step;
   stage(id: string, p: { type: string; record: Value; to: string; label?: string }): Step;
   classify(id: string, p: { input: Value; labels: readonly string[]; label?: string }): Step;
-  http(id: string, p: { method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'; url: string; headers?: Value; body?: Value; label?: string }): Step;
+  service(id: string, p: { connector: string; method: 'GET' | 'HEAD' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'; path: string; query?: { readonly [name: string]: Value }; headers?: Value; body?: Value; drive?: { upload?: { path: string; version?: string; contentType?: string } } | { saveTo: string }; label?: string }): Step;
   fn(id: string, p: { language: 'js'; source: string; inputs: { readonly [name: string]: Value }; outputs: readonly string[]; needs?: readonly string[]; label?: string }): Step;
 };
 

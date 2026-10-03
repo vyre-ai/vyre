@@ -24,7 +24,7 @@ import { twentyGet } from "./client.js";
 import { planType, pascal, selection, checkData, toInput, fromRow, toFilter, toOrderBy, PlanError, VERSION_FIELD } from "./plan.js";
 
 /** The conformance suite revision this store last passed (kernel/conformance/suite.js SUITE_REVISION). */
-export const CONFORMANCE_REVISION = 3;
+export const CONFORMANCE_REVISION = 4;
 const MAX_PAGE = 200;
 const MAX_SCAN = 50_000;
 const EITHER = { or: [{ deletedAt: { is: "NULL" } }, { deletedAt: { is: "NOT_NULL" } }] };
@@ -38,7 +38,7 @@ function asStoreError(e) {
   if (e instanceof StoreError) return e;
   if (e instanceof PlanError) return new StoreError(e.code, e.message);
   const c = /** @type {any} */ (e)?.code;
-  const code = c === "not_found" ? "not_found" : c === "id_exists" || c === "invalid" ? "invalid" : c === "rate_limited" || c === "unavailable" ? "unavailable" : "unavailable";
+  const code = c === "not_found" ? "not_found" : c === "unique_violation" ? "unique_violation" : c === "id_exists" || c === "invalid" ? "invalid" : c === "rate_limited" || c === "unavailable" ? "unavailable" : "unavailable";
   return new StoreError(code, String(/** @type {any} */ (e)?.message ?? e));
 }
 
@@ -153,7 +153,7 @@ export class TwentyStore {
   /** @param {{ add_types?: any[], change_types?: any[], remove_types?: string[] }} diff */
   async define(diff) {
     const changes = [];
-    const cur = await this.#t(() => this.client.gql("metadata", "query Objs { objects(paging: { first: 200 }) { edges { node { id nameSingular namePlural labelSingular icon fields(paging: { first: 200 }) { edges { node { id name type options } } } } } } }"));
+    const cur = await this.#t(() => this.client.gql("metadata", "query Objs { objects(paging: { first: 200 }) { edges { node { id nameSingular namePlural labelSingular icon fields(paging: { first: 200 }) { edges { node { id name type options isUnique } } } } } } }"));
     /** @type {Map<string, any>} */ const objs = new Map(cur.objects.edges.map((/** @type {any} */ e) => [e.node.nameSingular, e.node]));
     /** @param {any} def @param {boolean} mustExist */
     const apply = async (def, mustExist) => {
@@ -175,12 +175,14 @@ export class TwentyStore {
       for (const f of wanted) {
         const ex = have.get(f.twenty);
         if (!ex) {
-          const field = { objectMetadataId: obj.id, type: f.type, name: f.twenty, label: f.def.label ?? f.vyre, isNullable: true, ...(f.options ? { options: f.options } : {}), ...(f.settings ? { settings: f.settings } : {}) };
+          const field = { objectMetadataId: obj.id, type: f.type, name: f.twenty, label: f.def.label ?? f.vyre, isNullable: true, ...(f.def.unique === true ? { isUnique: true } : {}), ...(f.options ? { options: f.options } : {}), ...(f.settings ? { settings: f.settings } : {}) };
           await this.client.gql("metadata", "mutation CreateField($i: CreateOneFieldMetadataInput!) { createOneField(input: $i) { id name } }", { i: { field } });
           if (f.twenty !== VERSION_FIELD) changes.push(`added field ${def.name}.${f.vyre}`);
           continue;
         }
         if (ex.type !== f.type) throw new StoreError("unsupported", `Field ${f.vyre} of ${def.name} changed kind: that is a migration, not a define`);
+        // `unique` on or off: Twenty builds or drops the index; over existing duplicates it refuses, which the client reports as unique_violation
+        if (f.vyre !== VERSION_FIELD && Boolean(ex.isUnique) !== (f.def.unique === true)) { await this.client.gql("metadata", "mutation UpdUnique($i: UpdateOneFieldMetadataInput!) { updateOneField(input: $i) { id } }", { i: { id: ex.id, update: { isUnique: f.def.unique === true } } }); changes.push(`changed field ${def.name}.${f.vyre}`); }
         if (f.options) {
           const exVals = new Set((ex.options ?? []).map((/** @type {any} */ o) => o.value));
           for (const v of exVals) if (!f.options.some((o) => o.value === v)) throw new StoreError("unsupported", `An option of ${def.name}.${f.vyre} was removed: that is a migration, not a define`);

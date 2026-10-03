@@ -16,7 +16,7 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 import { createTwentyStore } from "./store.js";
 import { TwentyClient } from "./client.js";
-import { provisionSpace, spaceDir, realRunner, firewallRules, MEMORY_PROFILES } from "./provision.js";
+import { provisionSpace, spaceDir, realRunner, MEMORY_PROFILES, keyHealth, rotateApiKey, KEY_WARN_DAYS } from "./provision.js";
 import { CORE_TYPES } from "../../records/core-types.js";
 
 /** What a Space's Twenty needs on the box, in MB: the sum of the `small` profile plus headroom for the gateway and the OS. */
@@ -72,13 +72,20 @@ export async function planStore(o) {
 }
 
 /**
- * @param {{ mode?: string, log?: (line: string) => void, runner?: any, memory?: any, preflight?: typeof preflight, provision?: typeof provisionSpace, reach?: "alias" | "ip" }} [cfg]
- * @returns {(space: string, dir: string, opts?: { requireConfirm?: boolean }) => Promise<any | undefined>}
+ * The kernel's `storeFor(spaceId, meta)` seam (kernel/boot.js, kernel/home.js, kernel/spaces): `meta` is the Space's own record (`personal: true` for the home's first
+ * Space; for a hosted one its space.json, which carries `accept_builtin_store` when the person agreed to the built-in store). Returns a store, or undefined for SQLite.
+ * Options, all with defaults: `home` (the daemon's root; a Space's state lives under <home>/kernel), `reach` ("ip", or "alias" with `gatewayContainer` attached to the
+ * Space's network), `memory` ("small"), `runner` (docker through the box's proxy), `mode` (VYRE_STORE).
+ * @param {{ home: string, mode?: string, log?: (line: string) => void, runner?: any, memory?: any, preflight?: typeof preflight, provision?: typeof provisionSpace, reach?: "alias" | "ip", gatewayContainer?: string | null, rotate?: typeof rotateApiKey, keyCheckEveryMs?: number }} cfg
+ * @returns {(space: string, meta?: any) => Promise<any | undefined>}
  */
-export function createStoreFor(cfg = {}) {
+export function createStoreFor(cfg) {
   const mode = cfg.mode ?? process.env.VYRE_STORE ?? "sqlite";
   const log = cfg.log ?? (() => {});
-  return async function storeFor(space, dir, opts = {}) {
+  /** @type {any} */
+  const storeFor = async function (/** @type {string} */ space, /** @type {any} */ meta = {}) {
+    const dir = meta.personal ? path.join(cfg.home, "kernel") : path.join(cfg.home, "kernel", "spaces", space);
+    const opts = { requireConfirm: !meta.personal && meta.accept_builtin_store !== true };
     if (!["sqlite", "auto", "twenty"].includes(mode)) throw new Error(`VYRE_STORE is sqlite, auto or twenty, not ${mode}`);
     const choiceFile = path.join(dir, "store.json");
     /** @type {{ kind?: string } | null} */ let chosen = null;
@@ -98,15 +105,34 @@ export function createStoreFor(cfg = {}) {
     }
     const name = nameOf(space), twentyHome = path.join(dir, "twenty-home");
     log(`store for ${space}: provisioning Twenty`);
-    const p = await (cfg.provision ?? provisionSpace)({ home: twentyHome, space: name, runner: cfg.runner ?? realRunner(), reach: cfg.reach ?? "ip", memory: cfg.memory ?? "small", log });
+    const p = await (cfg.provision ?? provisionSpace)({ home: twentyHome, space: name, runner: cfg.runner ?? realRunner(), reach: cfg.reach ?? (cfg.gatewayContainer ? "alias" : "ip"), memory: cfg.memory ?? "small", gatewayContainer: cfg.gatewayContainer ?? null, log });
+    // the Space's key lives a year: checked now and every day, rotated well before the end, and a failure to rotate is loud (never a quiet countdown)
+    const checkKey = async () => {
+      const h = keyHealth({ home: twentyHome, space: name });
+      if (!h.rotate) { try { fs.rmSync(path.join(dir, "key-warning.json"), { force: true }); } catch { /* none */ } return h; }
+      try { await (cfg.rotate ?? rotateApiKey)({ home: twentyHome, space: name, runner: cfg.runner ?? realRunner(), reach: cfg.reach ?? (cfg.gatewayContainer ? "alias" : "ip"), log }); try { fs.rmSync(path.join(dir, "key-warning.json"), { force: true }); } catch { /* none */ } }
+      catch (e) {
+        const msg = `WARNING: the API key for ${space}'s Twenty could not be rotated (${/** @type {Error} */ (e).message}); it ${h.daysLeft === null ? "cannot be read" : h.daysLeft <= 0 ? "has expired" : `expires in ${h.daysLeft} days`}. Records will stop being readable when it does.`;
+        log(msg);
+        fs.writeFileSync(path.join(dir, "key-warning.json"), JSON.stringify({ at: new Date().toISOString(), daysLeft: h.daysLeft, expiresAt: h.expiresAt, error: String(/** @type {Error} */ (e).message) }), { mode: 0o600 });
+        if (!h.ok) throw Object.assign(new Error(msg), { code: "unavailable" });
+      }
+      return keyHealth({ home: twentyHome, space: name });
+    };
+    await checkKey();
+    const timer = setInterval(() => { checkKey().catch((e) => log(`the daily key check failed: ${e.message}`)); }, (cfg.keyCheckEveryMs ?? 24 * 3600 * 1000)); timer.unref();
     const sdir = path.join(spaceDir(twentyHome, name), "state");
     fs.mkdirSync(sdir, { recursive: true, mode: 0o700 });
     const store = createTwentyStore({ space: name, client: new TwentyClient({ url: p.url, key: () => fs.readFileSync(p.keyFile, "utf8").trim() }), dir: sdir, webhookSecret: fs.readFileSync(p.webhookSecretFile, "utf8").trim() });
     // the kernel's own types are a kernel act at start (idempotent), like a module's `needs.types`
-    await store.define({ add_types: [...CORE_TYPES] });
-    fs.writeFileSync(path.join(dir, "firewall.rules"), firewallRules({ space: name, subnet: "172.30.0.0/16" }), { mode: 0o600 });
+    const tc = Date.now(); await store.define({ add_types: [...CORE_TYPES] }); log(`phase core types: ${((Date.now() - tc) / 1000).toFixed(1)}s`);
+    // the firewall rules are the root helper's to derive from the Space's real network (docs/work/records.md, "Root helper"); a guessed subnet written here would be wrong
     fs.writeFileSync(choiceFile, JSON.stringify({ kind: "twenty", name }), { mode: 0o600 });
     log(`store for ${space}: Twenty ready`);
+    /** @type {any} */ (store).keyCheck = checkKey;
+    /** @type {any} */ (store).stopKeyCheck = () => clearInterval(timer);
     return store;
   };
+  storeFor.plan = () => planStore({ dir: path.join(cfg.home, "kernel"), mode, ...(cfg.preflight ? { preflight: cfg.preflight } : {}) });
+  return storeFor;
 }
