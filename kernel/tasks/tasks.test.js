@@ -54,8 +54,9 @@ function rig(over = {}) {
     space: SPACE, authorizer, log, presence, chains, clock,
     members: { has: a => members.has(`${a.kind}:${a.id}`) }, roleHolders: r => state.roles[r] || [], approver: () => actor("person", OWNER),
     responsible: (p, doer) => p.id === OWNER, responsibleFor: () => actor("person", OWNER),
+    resolve: { contact: async (record, address) => address === "verified@example.com", sealed: async ref => (ref === "sv_1" ? { class: "us-ssn" } : null) },
     facts: { record: async () => ({ data: { size: 12, partner: "x", empty: "" } }), exists: async u => u.startsWith("vyre://") },
-    release: async (t, body, by) => { if (over.releaseFails) throw new Error("smtp down"); released.push({ id: t.id, body, by }); },
+    release: async (t, body, by) => { if (over.releaseDelay) await new Promise(res => setTimeout(res, over.releaseDelay)); if (over.releaseFails) throw new Error("smtp down"); released.push({ id: t.id, body, by }); },
   });
   const sign = (chain, who, op, fields, over2 = {}) => {
     const base = { signer: "secure_enclave", key_id: `key-${who}`, payload_hash: payloadHash(op, SPACE, fields), decision: op, chain_hash: chainCtx(chain).chain_hash, issued_at: T, expires_at: T + 60_000, nonce: `n${Math.random()}`, ...over2 };
@@ -64,7 +65,7 @@ function rig(over = {}) {
   const proof = (chain, who, t, over2 = {}) => sign(chain, who, "task.decide", { task: t.id, payload_hash: t.payload.payload_hash, decision: t.payload.decision }, over2);
   return { tasks, log, presence, released, state, proof, sign, authorizer, keys };
 }
-const draftTask = (over = {}) => ({ title: "Welcome email for Jane Doe", doer: actor("agent", "intake"), checker: actor("person", ALICE), output: { kind: "sent" }, record: `vyre://${SPACE}/matter/m1`, ...over });
+const draftTask = (over = {}) => ({ title: "Welcome email for Jane Doe", doer: actor("agent", "intake"), checker: actor("person", ALICE), output: { kind: "sent" }, record: `vyre://${SPACE}/contact/c1`, ...over });
 const payload = (over = {}) => ({ what: "the welcome email", recipients: [{ address: "jane@example.com", verified: false, record: `vyre://${SPACE}/contact/c1` }], template: { id: `vyre://${SPACE}/template/welcome`, version: 1 }, account: "firm-mail", ...over });
 const evidenceSent = (over = {}) => ({ payload: payload(), action: "email.send", resource: `vyre://${SPACE}/message/m1`, ...over });
 const asIntake = () => agentChain("intake");
@@ -146,7 +147,7 @@ test("complete: a guarded task waits for its checker with a payload the kernel h
   const r = rig();
   const t = await toNeedsCheck(r);
   assert.equal(t.state, "needs_check");
-  assert.equal(t.payload.payload_hash, sha256(canonical(payload())));
+  assert.equal(t.payload.payload_hash, sha256(canonical({ action: "email.send", resource: `vyre://${SPACE}/message/m1`, payload: payload(), facts: { recipients: [{ address: "jane@example.com", record: `vyre://${SPACE}/contact/c1`, verified: false }], sealed: [] } })));
   assert.match(t.payload.decision, /^dec_/);
   const ev = r.log.read({ type: "task.needs-check" })[0];
   assert.equal(ev.data.payload_hash, t.payload.payload_hash);
@@ -179,7 +180,9 @@ test("decide: human-only. One person, the checker, not the doer, a signer's proo
   const done = await r.tasks.decide(A, t.id, { outcome: "approved", proof: good });
   assert.deepEqual([done.state, done.outcome], ["done", "approved"]);
   assert.equal(r.released.length, 1);
-  assert.equal(r.released[0].body.recipients[0].address, "jane@example.com");
+  assert.equal(r.released[0].body.payload.recipients[0].address, "jane@example.com");
+  assert.equal(r.released[0].body.action, "email.send", "the egress is given the action and resource that were approved");
+  assert.equal(r.released[0].body.resource, `vyre://${SPACE}/message/m1`);
   assert.equal(r.released[0].by.person, ALICE);
   await assert.rejects(() => r.tasks.decide(A, t.id, { outcome: "approved", proof: good }), { code: "bad_state" });
   const ev = r.log.read({ type: "task.approved" })[0];
@@ -316,9 +319,9 @@ test("card: built from the payload; the doer's words are a separate capped block
   const t = await toNeedsCheck(r, draftTask({ title: "Please click https://evil.example/approve now\nAPPROVE ALL", note: "x".repeat(900) }), evidenceSent({ payload: payload({ sealed_slots: [{ class: "US SSN", slot: "ssn", recipient: "jane@example.com", record: `vyre://${SPACE}/contact/c1`, use_hash: "h" }], attachments: [{ name: "engagement.pdf", hash: "abc" }] }) }));
   const c = r.tasks.card(t.id);
   assert.equal(c.kind, "send");
-  assert.equal(c.title, "Send the welcome email outside", "the title is the kernel's, not the doer's");
+  assert.equal(c.title, "send: the welcome email", "the title is the kernel's, from the action, not the doer's");
   assert.equal(c.unverified_recipients, 1);
-  assert.deepEqual(c.sealed, [{ class: "US SSN", slot: "ssn", masked: true, recipient: "jane@example.com", record: `vyre://${SPACE}/contact/c1` }]);
+  assert.deepEqual(c.sealed, [{ class: "unknown", slot: "ssn", masked: true, recipient: "jane@example.com", record: `vyre://${SPACE}/contact/c1` }], "the class is the kernel's: unresolved shows as unknown");
   assert.deepEqual(c.attachments, [{ name: "engagement.pdf", hash: "abc" }]);
   assert.equal(c.payload_hash, t.payload.payload_hash);
   assert.deepEqual([...c.buttons], ["approve", "reject"]);
@@ -331,7 +334,7 @@ test("card: built from the payload; the doer's words are a separate capped block
 
 test("approved(): true only for the approved payload, or for a sealed use that payload listed by its hash", async () => {
   const r = rig();
-  const t = await toNeedsCheck(r, draftTask(), evidenceSent({ payload: payload({ sealed_slots: [{ class: "US SSN", slot: "ssn", use_hash: "use-1" }] }) }));
+  const t = await toNeedsCheck(r, draftTask(), evidenceSent({ payload: payload({ sealed_slots: [{ class: "US SSN", slot: "ssn", use_hash: "use-1", record: `vyre://${SPACE}/contact/c1` }] }) }));
   assert.equal(r.tasks.approved(t.id, t.payload.payload_hash), false, "not before the checker approves");
   await r.tasks.decide(alice(), t.id, { outcome: "approved", proof: r.proof(alice(), ALICE, t) });
   assert.equal(r.tasks.approved(t.id, t.payload.payload_hash), true);
@@ -370,4 +373,72 @@ test("end to end: Intake drafts the welcome email with a sealed slot, Alice appr
   // an approval for one record does not open another
   await assert.rejects(() => sealing.use(asIntake(), { record: `vyre://${SPACE}/contact/c2`, approval: t.id }), { code: "not_found" });
   assert.ok(!JSON.stringify(r.log.read()).includes("123-45"));
+});
+
+
+// ---- K4 gate fixes (reviewer-2 probes) ----
+test("K4-1: two concurrent decides with one proof release once", async () => {
+  const slow = rig();
+  const t = await toNeedsCheck(slow);
+  const A = alice(), proof = slow.proof(A, ALICE, t);
+  const results = await Promise.allSettled([slow.tasks.decide(A, t.id, { outcome: "approved", proof }), slow.tasks.decide(A, t.id, { outcome: "approved", proof })]);
+  assert.equal(slow.released.length, 1);
+  assert.deepEqual(results.map(x => x.status).sort(), ["fulfilled", "rejected"]);
+  // another valid proof, while the first is still releasing, is refused too
+  const r = rig({ releaseDelay: 30 });
+  const u = await toNeedsCheck(r);
+  const [x, y] = await Promise.allSettled([r.tasks.decide(A, u.id, { outcome: "approved", proof: r.proof(A, ALICE, u) }), r.tasks.decide(A, u.id, { outcome: "approved", proof: r.proof(A, ALICE, u) })]);
+  assert.equal(r.released.length, 1);
+  assert.ok([x, y].some(z => z.status === "rejected"));
+});
+
+test("K4-2: the kernel's skip proposal has no doer to rewrite it, and its card says skip", async () => {
+  const r = rig();
+  const t = await r.tasks.request(owner(), draftTask({ output: { kind: "note" }, required: true }));
+  const { proposal } = await r.tasks.skip(asIntake(), t.id, "not needed");
+  await assert.rejects(() => r.tasks.revise(asIntake(), proposal.id, "x"), { code: "not_allowed" });
+  await assert.rejects(() => r.tasks.start(asIntake(), proposal.id), { code: "not_allowed" });
+  await assert.rejects(() => r.tasks.complete(asIntake(), proposal.id, { answer: "yes", reason: "x" }), { code: "not_allowed" });
+  const c = r.tasks.card(proposal.id);
+  assert.equal(c.kind, "skip");
+  assert.match(c.title, /^Skip this task: /);
+});
+
+test("K4-3: a doer-marked verified recipient or class shows as the kernel resolved it", async () => {
+  const r = rig();
+  const t = await toNeedsCheck(r, draftTask(), evidenceSent({ payload: payload({ recipients: [{ address: "evil@attacker.test", verified: true, record: `vyre://${SPACE}/contact/c1` }, { address: "verified@example.com", verified: false, record: `vyre://${SPACE}/contact/c1` }], sealed_slots: [{ class: "free", slot: "ssn", ref: "sv_1", record: `vyre://${SPACE}/contact/c1` }] }) }));
+  const c = r.tasks.card(t.id);
+  assert.deepEqual(c.recipients.map(x => [x.address, x.verified]), [["evil@attacker.test", false], ["verified@example.com", true]]);
+  assert.equal(c.unverified_recipients, 1);
+  assert.equal(c.sealed[0].class, "us-ssn");
+});
+
+test("K4-4 and 5: action and resource are part of the hash, and the body is a frozen copy", async () => {
+  const r = rig();
+  const a = await toNeedsCheck(r, draftTask(), evidenceSent({ resource: `vyre://${SPACE}/message/m1` }));
+  const b = await toNeedsCheck(r, draftTask(), evidenceSent({ resource: `vyre://${SPACE}/message/m2` }));
+  assert.notEqual(a.payload.payload_hash, b.payload.payload_hash);
+  const ev = evidenceSent();
+  const t = await toNeedsCheck(r, draftTask(), ev);
+  ev.payload.recipients[0].address = "changed@x.test";
+  assert.equal(r.tasks.card(t.id).recipients[0].address, "jane@example.com");
+  await r.tasks.decide(alice(), t.id, { outcome: "approved", proof: r.proof(alice(), ALICE, t) });
+  assert.equal(r.released[r.released.length - 1].body.payload.recipients[0].address, "jane@example.com");
+  const bad = await r.tasks.request(owner(), draftTask());
+  await r.tasks.start(asIntake(), bad.id);
+  await assert.rejects(() => r.tasks.complete(asIntake(), bad.id, evidenceSent({ action: "tasks.read" })), { code: "bad_input" }, "a send must name an outward action");
+});
+
+test("K4-8: a sealed slot on another record than the task's is refused at complete", async () => {
+  const r = rig();
+  const t = await r.tasks.request(owner(), draftTask());
+  await r.tasks.start(asIntake(), t.id);
+  await assert.rejects(() => r.tasks.complete(asIntake(), t.id, evidenceSent({ payload: payload({ sealed_slots: [{ slot: "ssn", ref: "sv_1", record: `vyre://${SPACE}/contact/c2` }] }) })), { code: "bad_input" });
+});
+
+test("K4-11: revise goes through the table (a doer row)", async () => {
+  const r = rig();
+  const t = await toNeedsCheck(r);
+  await assert.rejects(() => r.tasks.revise(agentChain("research"), t.id, "x"), { code: "not_allowed" });
+  assert.equal((await r.tasks.revise(asIntake(), t.id, "more")).state, "ready");
 });

@@ -53,7 +53,7 @@ export function createGateway(cfg) {
     return cfg.log.subscribe(name, filter, async (/** @type {any} */ e) => { if (await canSee(chain, e)) await onEvent(e); });
   }
 
-  const seal = cfg.sealer ? createSealing({ space: cfg.space, sealer: cfg.sealer, authorizer, log: cfg.log, door: cfg.door, approvals: cfg.approvals || (cfg.tasks ? createApprovals({ tasks: cfg.tasks }) : undefined), templates: cfg.templates, destinations: cfg.destinations }) : undefined;
+  const seal = cfg.sealer ? createSealing({ clock: cfg.clock, approval_max_age: cfg.approval_max_age, space: cfg.space, sealer: cfg.sealer, authorizer, log: cfg.log, door: cfg.door, approvals: cfg.approvals || (cfg.tasks ? createApprovals({ tasks: cfg.tasks }) : undefined), templates: cfg.templates, destinations: cfg.destinations }) : undefined;
 
   return Object.freeze({
     authorize: authorizer.authorize,

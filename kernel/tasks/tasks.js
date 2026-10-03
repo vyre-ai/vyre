@@ -30,6 +30,9 @@ const urnOf = (/** @type {string} */ space, /** @type {string} */ id) => `vyre:/
 const same = (/** @type {any} */ a, /** @type {any} */ b) => Boolean(a && b) && a.kind === b.kind && a.id === b.id;
 const acting = (/** @type {any} */ chain) => chain.hops[chain.hops.length - 1].actor;
 const freeze = (/** @type {any} */ o) => Object.freeze(o);
+const deepFreeze = (/** @type {any} */ o) => { if (o && typeof o === "object" && !Object.isFrozen(o)) { Object.freeze(o); for (const v of Object.values(o)) deepFreeze(v); } return o; };
+const SYSTEM = freeze({ kind: "service", id: "kernel" });
+const APPROVAL_MAX_AGE = 24 * 3600_000;
 
 /**
  * The kernel's output check: the declared kind decides what evidence is enough (contract 9.4 table). These are format
@@ -59,6 +62,7 @@ export async function checkOutput(task, evidence, facts) {
  * @param {{ space: string, authorizer: any, log: any, presence: import("../core/presence.js").PresenceVerifier,
  *   members: { has(actor: any): boolean }, roleHolders?: (role: string) => any[], approver?: (chain: any) => any,
  *   responsible?: (person: any, doer: any) => boolean, responsibleFor?: (doer: any) => any,
+ *   resolve?: { contact?: (record: string, address: string) => Promise<boolean>, sealed?: (ref: string) => Promise<{ class: string } | null> },
  *   facts?: { record?: (urn: string) => Promise<any>, exists?: (urn: string) => Promise<boolean> },
  *   release?: (task: any, payload: any, by: { person: string, key_id: string }) => void | Promise<void>, chains: any, clock?: () => number }} cfg
  *   chains: the kernel's chain builder (for events the kernel itself writes, such as stuck detection); release: the held act's egress, run only after a verified approval.
@@ -72,11 +76,28 @@ export function createTasks(cfg) {
   /** @type {Map<string, { approver_chain: any, use_proof: any }>} who approved a task and the sealed-use proof they signed with it (the sealing process verifies that proof itself) */ const approvedBy = new Map();
   /** @type {Map<string, string>} proposal id -> the task it proposes to skip */ const proposals = new Map();
   /** @type {Map<string, number>} */ const denials = new Map();
+  /** @type {Set<string>} tasks being decided right now: a second decide on one is refused before it can release again */ const deciding = new Set();
   /** @type {Map<string, number>} */ const coolDown = new Map();
 
   const get_ = (/** @type {string} */ id) => { const t = tasks.get(id); if (!t) throw new KernelError("not_found", "no such task"); return t; };
   const put = (/** @type {any} */ t, /** @type {any} */ patch) => { const n = freeze({ ...t, ...patch, updated_at: clock() }); tasks.set(n.id, n); return n; };
   const outward = (/** @type {any} */ t) => t.output.kind === "sent";
+  /** @param {any} ev */
+  async function resolveFacts(ev) {
+    const recipients = [];
+    for (const r of Array.isArray(ev.payload.recipients) ? ev.payload.recipients : []) {
+      let verified = false;
+      try { verified = cfg.resolve && cfg.resolve.contact ? (await cfg.resolve.contact(r.record, String(r.address))) === true : false; } catch { verified = false; }
+      recipients.push({ address: String(r.address), record: r.record || null, verified });
+    }
+    const sealed = [];
+    for (const s of Array.isArray(ev.payload.sealed_slots) ? ev.payload.sealed_slots : []) {
+      let meta = null;
+      try { meta = cfg.resolve && cfg.resolve.sealed ? await cfg.resolve.sealed(s.ref) : null; } catch { meta = null; }
+      sealed.push({ slot: String(s.slot), ref: String(s.ref), record: s.record || null, class: meta && typeof meta.class === "string" ? meta.class : "unknown" });
+    }
+    return { recipients, sealed };
+  }
   const guarded = (/** @type {any} */ t) => Boolean(t.checker) || outward(t) || Boolean(t.required);
   const note = (/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ t, /** @type {any} */ data, /** @type {any} */ decision) =>
     cfg.log.append(chain, { type, sv: 1, subject: urnOf(cfg.space, t.id), data: { ...data, state: t.state } }, decision ? { decision } : {});
@@ -84,9 +105,10 @@ export function createTasks(cfg) {
   /** The transition table is the one source: ask it which rule applies, and check the caller's role is the rule's. */
   function rule(/** @type {any} */ t, /** @type {string} */ to, /** @type {string} */ by) {
     const g = guarded(t);
-    const r = TASK_TRANSITIONS.find(x => x.from === t.state && x.to === to && (x.guarded === undefined || x.guarded === g));
-    if (!r) throw new KernelError("bad_state", `a task that is ${t.state} cannot go to ${to}`);
-    if (r.by !== by) throw new KernelError("not_allowed", `${to} is not ${by}'s to do`);
+    const rows = TASK_TRANSITIONS.filter(x => x.from === t.state && x.to === to && (x.guarded === undefined || x.guarded === g));
+    if (!rows.length) throw new KernelError("bad_state", `a task that is ${t.state} cannot go to ${to}`);
+    const r = rows.find(x => x.by === by);
+    if (!r) throw new KernelError("not_allowed", `${to} is not ${by}'s to do`);
     return r;
   }
   const isDoer = (/** @type {any} */ chain, /** @type {any} */ t) => {
@@ -113,7 +135,9 @@ export function createTasks(cfg) {
     }
   };
 
-  return Object.freeze({
+  /** @type {any} */ let api;
+  const decideOnce = (/** @type {any} */ c, /** @type {string} */ i, /** @type {any} */ a) => api._decideOnce(c, i, a);
+  api = {
     async request(/** @type {any} */ chain, /** @type {any} */ spec) {
       if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
       await gate(chain, "tasks.request", urnOf(cfg.space, "new"));
@@ -158,7 +182,7 @@ export function createTasks(cfg) {
     async start(/** @type {any} */ chain, /** @type {string} */ id) {
       await gate(chain, "tasks.work", urnOf(cfg.space, id));
       const t = get_(id);
-      if (!isDoer(chain, t)) throw new KernelError("not_allowed", "only the doer starts a task");
+      if (t.kernel || !isDoer(chain, t)) throw new KernelError("not_allowed", "only the doer starts a task");
       rule(t, "working", "doer");
       const n = put(t, { state: "working" });
       note(chain, "task.started", n, {});
@@ -168,7 +192,7 @@ export function createTasks(cfg) {
     async complete(/** @type {any} */ chain, /** @type {string} */ id, /** @type {any} */ evidence) {
       const d = await gate(chain, "tasks.work", urnOf(cfg.space, id));
       const t = get_(id);
-      if (!isDoer(chain, t)) throw new KernelError("not_allowed", "only the doer finishes a task");
+      if (t.kernel || !isDoer(chain, t)) throw new KernelError("not_allowed", "only the doer finishes a task");
       // The kernel checks the declared output before anything moves: an assistant cannot mark a task done while the check fails.
       const to = guarded(t) ? "needs_check" : "done";
       rule(t, to, "kernel_after_output_check");
@@ -181,13 +205,21 @@ export function createTasks(cfg) {
         return n;
       }
       // Guarded: build what the approval will cover. The decision it binds to is the outward action's own, when there is one.
-      const body = outward(t) ? evidence.payload : { task: id, kind: t.output.kind, evidence };
+      let body;
       let decision = d.decision;
       if (outward(t)) {
-        const o = await cfg.authorizer.authorize({ chain, action: evidence.action, resource: evidence.resource });
+        // Cloned and frozen now: what is hashed is exactly what the checker will see and what is released (K4 item 5).
+        const ev = deepFreeze(structuredClone(evidence));
+        const risk = cfg.authorizer.actions && cfg.authorizer.actions.get(ev.action) && cfg.authorizer.actions.get(ev.action).risk;
+        if (!risk || !String(risk).startsWith("outward")) throw new KernelError("bad_input", "a send must name an outward action");
+        for (const s of ev.payload.sealed_slots || []) if (t.record && s.record !== t.record) throw new KernelError("bad_input", "a sealed slot names a record other than the task's");
+        const o = await cfg.authorizer.authorize({ chain, action: ev.action, resource: ev.resource });
         if (o.effect === "deny") throw new KernelError("not_found", "no such action", o.reason);
         decision = o.decision;
-      }
+        // The facts the card shows are the kernel's: recipients checked against the record's own contact points, slot classes read from the vault. Whatever cannot be resolved shows as unverified.
+        const facts = await resolveFacts(ev);
+        body = deepFreeze({ action: ev.action, resource: ev.resource, payload: ev.payload, facts });
+      } else body = deepFreeze({ task: id, kind: t.output.kind, evidence: deepFreeze(structuredClone(evidence)) });
       const payload = freeze({ payload_hash: sha256(canonical(body)), decision, draft_hash: sha256(canonical(evidence)) });
       bodies.set(id, body);
       const n = put(t, { state: "needs_check", payload });
@@ -199,8 +231,9 @@ export function createTasks(cfg) {
     async revise(/** @type {any} */ chain, /** @type {string} */ id, /** @type {string} */ reason) {
       await gate(chain, "tasks.work", urnOf(cfg.space, id));
       const t = get_(id);
-      if (!isDoer(chain, t)) throw new KernelError("not_allowed", "only the doer changes a draft");
+      if (t.kernel || !isDoer(chain, t)) throw new KernelError("not_allowed", "only the doer changes a draft");
       if (t.state !== "needs_check") throw new KernelError("bad_state", "there is nothing waiting for a check");
+      rule(t, "ready", "doer");
       bodies.delete(id);
       const { payload: _p, ...rest } = t;
       tasks.set(id, freeze({ ...rest, state: "ready", updated_at: clock() }));
@@ -210,6 +243,13 @@ export function createTasks(cfg) {
 
     /** Human-only: exactly one person, a checker of this task and not its doer, with a signer's proof over this payload, once. */
     async decide(/** @type {any} */ chain, /** @type {string} */ id, /** @type {{ outcome: "approved" | "rejected", reason?: string, proof?: any, proofs?: { use?: any } }} */ a) {
+      // Taken before any await: a second decide on this task, with the same proof or another, is refused while one is running (K4 item 1).
+      if (deciding.has(id)) throw new KernelError("bad_state", "that task is being decided");
+      deciding.add(id);
+      try { return await decideOnce(chain, id, a); } finally { deciding.delete(id); }
+    },
+
+    async _decideOnce(/** @type {any} */ chain, /** @type {string} */ id, /** @type {any} */ a) {
       if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
       if (!isExactlyPerson(chain)) throw new KernelError("chain_not_person", "only a person on their own can decide a task");
       const person = chain.hops[0].actor;
@@ -324,11 +364,11 @@ export function createTasks(cfg) {
       rule(t, "skipped", "proposal_for_person_with_presence");
       const who = cfg.responsibleFor ? cfg.responsibleFor(t.doer) : t.assigned_by;
       if (!who || who.kind !== "person") throw new KernelError("no_checker", "no person to decide a skip");
-      const body = { op: "skip", task: id, reason: String(reason || "").slice(0, 200) };
+      const body = deepFreeze({ op: "skip", task: id, title: t.title.slice(0, 80), reason: String(reason || "").slice(0, 200) });
       const pid = mintUuid(clock());
       const decision = (await cfg.authorizer.authorize({ chain, action: "tasks.work", resource: urnOf(cfg.space, id) })).decision;
       const proposal = freeze({
-        id: pid, space: cfg.space, title: `Skip "${t.title.slice(0, 80)}"?`, source: "manual", doer: freeze({ ...t.doer }), checker: freeze({ ...who }),
+        id: pid, space: cfg.space, title: `Skip "${t.title.slice(0, 80)}"?`, source: "manual", kernel: true, doer: SYSTEM, checker: freeze({ ...who }),
         output: freeze({ kind: "decision" }), state: "needs_check", assigned_by: freeze({ ...chain.hops[0].actor }),
         payload: freeze({ payload_hash: sha256(canonical(body)), decision }), labels: freeze({ trust: chain.labels.trust, red: chain.labels.red, source_spaces: freeze([...chain.labels.source_spaces]) }), created_at: clock(), updated_at: clock(),
       });
@@ -350,7 +390,8 @@ export function createTasks(cfg) {
     /** The card the checker sees, built from the canonical payload. */
     card(/** @type {string} */ id) {
       const t = get_(id);
-      return buildCard(t, bodies.get(id));
+      const b = bodies.get(id);
+      return buildCard(t, b, { action_label: b && b.action && cfg.authorizer.actions && cfg.authorizer.actions.get(b.action) ? cfg.authorizer.actions.get(b.action).label : undefined });
     },
 
     /**
@@ -360,7 +401,7 @@ export function createTasks(cfg) {
     approvalFor(/** @type {string} */ id) {
       const t = tasks.get(id), who = approvedBy.get(id), body = bodies.get(id);
       if (!t || t.state !== "done" || t.outcome !== "approved" || !who || !body || sha256(canonical(body)) !== t.payload.payload_hash) return null;
-      return { approver_chain: who.approver_chain, use_proof: who.use_proof, body, payload_hash: t.payload.payload_hash };
+      return { approver_chain: who.approver_chain, use_proof: who.use_proof, body, payload_hash: t.payload.payload_hash, doer: t.doer, approved_at: t.updated_at };
     },
 
     /** Did a checker approve exactly this payload? Also true for a sealed use the approved payload listed by its hash. */
@@ -369,7 +410,9 @@ export function createTasks(cfg) {
       if (!t || t.state !== "done" || t.outcome !== "approved" || !t.payload) return false;
       if (t.payload.payload_hash === payload_hash) return true;
       const b = bodies.get(id);
-      return Boolean(b && Array.isArray(b.sealed_slots) && b.sealed_slots.some((/** @type {any} */ s) => s.use_hash === payload_hash));
+      return Boolean(b && b.payload && Array.isArray(b.payload.sealed_slots) && b.payload.sealed_slots.some((/** @type {any} */ s) => s.use_hash === payload_hash));
     },
-  });
+  };
+  const { _decideOnce, ...pub } = api;
+  return Object.freeze(pub);
 }
