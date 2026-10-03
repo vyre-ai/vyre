@@ -169,7 +169,7 @@ export function createRelay(o = {}) {
   // per box). A typing device POSTs a PAKE message under that rendezvous; the relay forwards it to the
   // control socket of the route that allocated it and returns the box's answer, and nowhere else. It
   // keeps no state for a rendezvous that is not live and nothing derived from a password: a message is
-  // an opaque string it passes along. Limits are per address, never global: every session (step 1)
+  // an opaque string it passes along. A hit also names the route (the typist needs it for the transcript, see relay/client/code.js). Limits are per address, never global: every session (step 1)
   // costs `sessionPerMin`, every later step `stepPerMin`, and a miss (no live rendezvous) `missPerMin`
   // more. An unknown, closed or expired rendezvous, a refusal and a silent box all give one answer.
   const codeCfg = { ...CODE, ...(o.code || {}) };
@@ -248,7 +248,7 @@ export function createRelay(o = {}) {
       const q = crypto.randomBytes(9).toString("base64url");
       const timer = setTimeout(() => { codePending.delete(q); refused(res); }, codeCfg.waitMs);
       timer.unref?.();
-      codePending.set(q, { route: slot.route, timer, done: out => { if (out) reply(res, 200, { m: out }); else refused(res); } });
+      codePending.set(q, { route: slot.route, timer, done: out => { if (out) reply(res, 200, { m: out, route: slot.route }); else refused(res); } });
       control.json({ t: "code.msg", q, rv, s, n, m: msg });
     });
     req.on("error", () => {});

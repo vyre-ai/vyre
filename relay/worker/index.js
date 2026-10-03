@@ -268,7 +268,7 @@ async function onCodeStep(request, env) {
   for (;;) {
     const res = await relay.fetch("https://route/code/take", { method: "POST", body: JSON.stringify({ q }) });
     const out = res.status === 200 ? /** @type {any} */ (await res.json()) : { state: "gone" };
-    if (out.state === "answer") return out.m ? json(200, { m: out.m }) : refused();
+    if (out.state === "answer") return out.m ? json(200, { m: out.m, route }) : refused();
     if (out.state === "gone") return refused();
     if (Date.now() + tick > deadline) { await relay.fetch("https://route/code/drop", { method: "POST", body: JSON.stringify({ q }) }); return refused(); }
     await new Promise(r => setTimeout(r, tick));

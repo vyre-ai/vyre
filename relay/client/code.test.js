@@ -70,9 +70,9 @@ test("cpace: an identity or undecodable point is refused", () => {
 
 /** Runs the four messages between two ends. */
 function run(pwTyped, pwShown, route = "r".repeat(26)) {
-  const t = C.typistStart({ pw: pwTyped, rv: "K7", route });
+  const t = C.typistStart({ pw: pwTyped, rv: "K7" });
   const s = C.showingStart({ pw: pwShown, rv: "K7", route, s: t.s, first: t.first });
-  const m3 = t.second(s.second);
+  const m3 = t.second(s.second, route);
   const c = s.confirm(m3);
   const f = c.ok ? t.finish(c.tag) : { ok: false };
   return { t, s, c, f };
@@ -101,40 +101,42 @@ test("pake: a wrong password fails the typist's confirmation, and the showing de
 
 test("pake: a different route, rendezvous or session nonce is a different session (no replay across them)", () => {
   const route = "r".repeat(26);
-  for (const other of [{ rv: "K8", route }, { rv: "K7", route: "q".repeat(26) }]) {
-    const t = C.typistStart({ pw: "QM4P2X", rv: "K7", route });
-    const s = C.showingStart({ pw: "QM4P2X", ...other, s: t.s, first: t.first });
-    assert.equal(s.confirm(t.second(s.second)).ok, false);
+  // The typist is told another route, or the box sits on another rendezvous: the confirmation fails.
+  for (const other of [{ rv: "K8", route, told: route }, { rv: "K7", route: "q".repeat(26), told: route }, { rv: "K7", route, told: "q".repeat(26) }]) {
+    const t = C.typistStart({ pw: "QM4P2X", rv: "K7" });
+    const s = C.showingStart({ pw: "QM4P2X", rv: other.rv, route: other.route, s: t.s, first: t.first });
+    assert.equal(s.confirm(t.second(s.second, other.told)).ok, false);
   }
-  const t2 = C.typistStart({ pw: "QM4P2X", rv: "K7", route });
+  const t2 = C.typistStart({ pw: "QM4P2X", rv: "K7" });
   const s2 = C.showingStart({ pw: "QM4P2X", rv: "K7", route, s: C.b64url(new Uint8Array(16)), first: t2.first });
-  assert.equal(s2.confirm(t2.second(s2.second)).ok, false);
+  assert.equal(s2.confirm(t2.second(s2.second, route)).ok, false);
 });
 
 test("pake: roles are bound, so a reflected message does not complete", () => {
   const route = "r".repeat(26);
-  const t = C.typistStart({ pw: "QM4P2X", rv: "K7", route });
+  const t = C.typistStart({ pw: "QM4P2X", rv: "K7" });
   // An attacker reflects the typist's own Ya as the showing device's Yb.
-  const m3 = t.second(t.first);
+  const m3 = t.second(t.first, route);
   const s = C.showingStart({ pw: "QM4P2X", rv: "K7", route, s: t.s, first: t.first });
   assert.equal(s.confirm(m3).ok, false);
 });
 
 test("pake: a confirmation answers once; a replayed correct tag after a wrong one does not pass", () => {
-  const t = C.typistStart({ pw: "QM4P2X", rv: "K7", route: "r".repeat(26) });
-  const s = C.showingStart({ pw: "QM4P2X", rv: "K7", route: "r".repeat(26), s: t.s, first: t.first });
-  const good = t.second(s.second);
+  const route = "r".repeat(26);
+  const t = C.typistStart({ pw: "QM4P2X", rv: "K7" });
+  const s = C.showingStart({ pw: "QM4P2X", rv: "K7", route, s: t.s, first: t.first });
+  const good = t.second(s.second, route);
   assert.equal(s.confirm(new Uint8Array(32)).ok, false);
   assert.equal(s.confirm(good).ok, false);
 });
 
 test("pake: bad inputs are refused", () => {
-  assert.throws(() => C.typistStart({ pw: "QM4P2", rv: "K7", route: "x" }));
-  assert.throws(() => C.typistStart({ pw: "QM4P2X", rv: "UU", route: "x" }));
-  const t = C.typistStart({ pw: "QM4P2X", rv: "K7", route: "x" });
+  assert.throws(() => C.typistStart({ pw: "QM4P2", rv: "K7" }));
+  assert.throws(() => C.typistStart({ pw: "QM4P2X", rv: "UU" }));
+  const t = C.typistStart({ pw: "QM4P2X", rv: "K7" });
   assert.throws(() => C.showingStart({ pw: "QM4P2X", rv: "K7", route: "x", s: "short", first: t.first }));
   assert.throws(() => C.showingStart({ pw: "QM4P2X", rv: "K7", route: "x", s: t.s, first: new Uint8Array(32) }), /bad point/);
-  assert.throws(() => t.second(new Uint8Array(32)), /bad point/);
+  assert.throws(() => t.second(new Uint8Array(32), "x"), /bad point/);
 });
 
 test("number choices hold the right number once, are distinct, and have the asked size", () => {

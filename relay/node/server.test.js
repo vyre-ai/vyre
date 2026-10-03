@@ -406,7 +406,7 @@ test("code: the relay forwards a typist's message only to the route that holds t
   a.s.ws.send(JSON.stringify({ t: "code.reply", q: got.q, m: "Ysecond" }));
   const res = await p;
   assert.equal(res.status, 200);
-  assert.deepEqual(await res.json(), { m: "Ysecond" });
+  assert.deepEqual(await res.json(), { m: "Ysecond", route: a.route }, "the typist is told the route, for the transcript");
   assert.equal(relay.stats().codeRequests, 0);
   const none = await Promise.race([b.s.next(), new Promise(r => setTimeout(() => r("quiet"), 50))]);
   assert.equal(none, "quiet", "the other box was never told");

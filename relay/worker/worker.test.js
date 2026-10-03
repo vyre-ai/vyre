@@ -760,7 +760,7 @@ for (const hibernateEveryEvent of [false, true]) {
     a.s.ws.send(JSON.stringify({ t: "code.reply", q: got.q, m: "Ysecond" }));
     const res = await p;
     assert.equal(res.status, 200);
-    assert.deepEqual(await res.json(), { m: "Ysecond" });
+    assert.deepEqual(await res.json(), { m: "Ysecond", route: a.route }, "the typist is told the route, for the transcript");
     await rt.settle();
     assert.equal((await rt.object(a.route).ctx.storage.list({ prefix: "code/q/" })).size, 0, "nothing left waiting");
     assert.equal(b.s.queued(), 0, "the other box was never told");

@@ -14,8 +14,11 @@
 // number, the sealing key) is Vyre's own HMAC-SHA-512 construction, not part of the draft.
 //
 // Roles are bound: the TYPIST is the CPace initiator (idA) and the SHOWING device the responder
-// (idB), so a message cannot be reflected back. The session id carries the typist's random bytes,
-// the rendezvous and the route, so a session cannot be replayed under another rendezvous or box.
+// (idB), so a message cannot be reflected back. The session id carries the typist's random bytes and
+// the rendezvous, and the showing device's route id is in its transcript term (ADb), so a session
+// cannot be replayed under another rendezvous or box. The typist cannot know the route before it
+// has sent message 1 (the generator depends on the session id), so the relay tells it the route in
+// the reply to message 1; a wrong route only makes the confirmation fail.
 //
 // Order. The showing device never sends anything derived from the shared key before it has
 // verified the typist's confirmation (spec 6.5):
@@ -198,11 +201,13 @@ export function hmac512(key, msg) {
 
 // ---- the session ----
 
-const AD_TYPIST = utf8(`${LABEL}/typist`), AD_SHOWING = utf8(`${LABEL}/showing`);
+const AD_TYPIST = utf8(`${LABEL}/typist`);
+/** The showing device's transcript term: its label and its route id. @param {string} route */
+const adShowing = route => lvCat(utf8(`${LABEL}/showing`), utf8(String(route)));
 const CI = lvCat(utf8(ID_TYPIST), utf8(ID_SHOWING));
 
-/** The typist's 16 random bytes, bound to the rendezvous and the route. @param {Uint8Array} nonce @param {string} rv @param {string} route */
-const sessionId = (nonce, rv, route) => lvCat(utf8(LABEL), nonce, utf8(rv), utf8(route));
+/** The typist's 16 random bytes, bound to the rendezvous. @param {Uint8Array} nonce @param {string} rv */
+const sessionId = (nonce, rv) => lvCat(utf8(LABEL), nonce, utf8(rv));
 
 /** What both ends derive once the ISK is known. @param {Uint8Array} sid @param {Uint8Array} ISK @param {Uint8Array} transcript */
 function derive(sid, ISK, transcript) {
@@ -219,16 +224,17 @@ function derive(sid, ISK, transcript) {
 
 /**
  * The typing device's side. `s` is the session nonce (base64url) the relay carries as the session
- * id; `first` is message 1 (Ya, 32 bytes); `second(Yb)` takes the showing device's reply and
- * returns the typist's confirmation (message 3), or throws on a bad point; `finish(tagS)` checks
+ * id; `first` is message 1 (Ya, 32 bytes); `second(Yb, route)` takes the showing device's reply and
+ * the route id the relay named (it is in the showing device's transcript term, so a wrong one only makes
+ * the confirmation fail) and returns the typist's confirmation (message 3), or throws on a bad point; `finish(tagS)` checks
  * the showing device's confirmation (message 4) and yields the number and key.
- * @param {{ pw: string, rv: string, route: string, rng?: (n: number) => Uint8Array, scalar?: bigint, nonce?: Uint8Array }} o
+ * @param {{ pw: string, rv: string, rng?: (n: number) => Uint8Array, scalar?: bigint, nonce?: Uint8Array }} o
  */
 export function typistStart(o) {
   if (!isRendezvous(o.rv) || !isPassword(o.pw)) throw new Error("bad code");
   const rng = o.rng || defaultRng;
   const nonce = o.nonce || rng(16);
-  const sid = sessionId(nonce, o.rv, o.route);
+  const sid = sessionId(nonce, o.rv);
   const g = calculateGenerator(utf8(o.pw), CI, sid);
   const y = o.scalar ?? sampleScalar(rng);
   const Ya = g.multiply(y).toBytes();
@@ -238,11 +244,11 @@ export function typistStart(o) {
   return {
     s: b64url(nonce),
     first: Ya,
-    /** @param {Uint8Array} Yb @returns {Uint8Array} */
-    second(Yb) {
+    /** @param {Uint8Array} Yb @param {string} route @returns {Uint8Array} */
+    second(Yb, route) {
       if (d) throw new Error("already answered");
       const K = sharedPoint(y, Yb);
-      const tr = transcriptIr(Ya, AD_TYPIST, Yb, AD_SHOWING);
+      const tr = transcriptIr(Ya, AD_TYPIST, Yb, adShowing(route));
       d = derive(sid, isk(sid, K, tr), tr);
       return d.tagT;
     },
@@ -267,13 +273,13 @@ export function showingStart(o) {
   const rng = o.rng || defaultRng;
   const nonce = unb64url(o.s);
   if (!isRendezvous(o.rv) || !isPassword(o.pw) || !nonce || nonce.length !== 16) throw new Error("bad session");
-  const sid = sessionId(nonce, o.rv, o.route);
+  const sid = sessionId(nonce, o.rv);
   const g = calculateGenerator(utf8(o.pw), CI, sid);
   const y = o.scalar ?? sampleScalar(rng);
   const Ya = o.first;
   const Yb = g.multiply(y).toBytes();
   const K = sharedPoint(y, Ya);
-  const tr = transcriptIr(Ya, AD_TYPIST, Yb, AD_SHOWING);
+  const tr = transcriptIr(Ya, AD_TYPIST, Yb, adShowing(o.route));
   const d = derive(sid, isk(sid, K, tr), tr);
   let used = false;
   return {
@@ -302,4 +308,42 @@ export function numberChoices(number, count, rng = defaultRng) {
   const out = [...set];
   for (let i = out.length - 1; i > 0; i--) { const j = below(i + 1); [out[i], out[j]] = [out[j], out[i]]; }
   return out;
+}
+
+/**
+ * The typing device's whole exchange over the relay's `POST /v1/wink/code`: parse what was typed,
+ * send message 1, answer with the confirmation, check the showing device's. Resolves
+ * `{ ok: true, number, key, route }` (the number to show; the key opens the sealed record), or
+ * `{ ok: false, reason }` with one of: `format` (not a code), `busy` (this address is over its
+ * limit), `offline` (no answer from the relay) and `refused`, which is the single answer for every
+ * other failure (an unknown, closed or expired code, a wrong code, a refusal): it never says which.
+ * @param {{ base: string, input: string, fetch?: typeof fetch, rng?: (n: number) => Uint8Array }} o
+ * @returns {Promise<{ ok: true, number: string, key: Uint8Array, route: string } | { ok: false, reason: "format" | "busy" | "offline" | "refused" }>}
+ */
+export async function enterCode(o) {
+  const parsed = parseCode(o.input);
+  if (!parsed) return { ok: false, reason: "format" };
+  const f = o.fetch || globalThis.fetch;
+  const url = `${o.base.replace(/\/+$/, "")}/v1/wink/code`;
+  /** @param {object} body @returns {Promise<{ m: Uint8Array, route: string } | "busy" | "offline" | "refused">} */
+  const post = async body => {
+    let res;
+    try { res = await f(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }); } catch { return "offline"; }
+    if (res.status === 429) return "busy";
+    if (res.status !== 200) return "refused";
+    try {
+      const j = await res.json();
+      const m = unb64url(String(j.m));
+      return m && m.length === 32 && typeof j.route === "string" ? { m, route: j.route } : "refused";
+    } catch { return "refused"; }
+  };
+  const t = typistStart({ pw: parsed.pw, rv: parsed.rv, rng: o.rng });
+  const one = await post({ rv: parsed.rv, s: t.s, n: 1, m: b64url(t.first) });
+  if (typeof one === "string") return { ok: false, reason: one };
+  let confirmation;
+  try { confirmation = t.second(one.m, one.route); } catch { return { ok: false, reason: "refused" }; }
+  const three = await post({ rv: parsed.rv, s: t.s, n: 3, m: b64url(confirmation) });
+  if (typeof three === "string") return { ok: false, reason: three };
+  const fin = t.finish(three.m);
+  return fin.ok ? { ok: true, number: fin.number, key: fin.key, route: one.route } : { ok: false, reason: "refused" };
 }
