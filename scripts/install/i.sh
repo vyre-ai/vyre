@@ -50,11 +50,17 @@ fetch() {
 # vyre_call TOOL JSON: run a Vyre tool on this server; sudo only if this account cannot reach Docker. The answer goes to stdout; what the
 # command said when it failed is kept in $TMP/err, so the person is told the real reason and not only "did not answer".
 vyre_call() {
+  # The wrapper prints a refusal ("unavailable: ...") on stdout, other failures on stderr: keep whichever said something in $TMP/err.
   if out=$("$WRAPPER" call "$1" "$2" 2>"$TMP/err"); then printf '%s' "$out"; return 0; fi
+  [ -s "$TMP/err" ] || printf '%s\n' "$out" >"$TMP/err"
   if command -v sudo >/dev/null 2>&1; then
     if out=$(sudo "$WRAPPER" call "$1" "$2" 2>"$TMP/err2"); then printf '%s' "$out"; return 0; fi
-    # sudo's own complaint (no terminal, no password) says nothing about Vyre: keep the first answer then.
-    grep -q '^sudo:' "$TMP/err2" 2>/dev/null || cat "$TMP/err2" >"$TMP/err" 2>/dev/null || true
+    [ -s "$TMP/err2" ] || printf '%s\n' "$out" >"$TMP/err2"
+    # The first answer is the real reason unless it was only that this account cannot reach Docker (then sudo's answer is the real one). Sudo's
+    # own complaint (no terminal, no password) says nothing about Vyre, and neither does the wrapper's refusal to update a build from a folder.
+    if grep -qi 'permission denied\|cannot connect to the docker\|got permission' "$TMP/err" 2>/dev/null || ! grep -q '[^[:space:]]' "$TMP/err" 2>/dev/null; then
+      grep -q '^sudo:' "$TMP/err2" 2>/dev/null || cat "$TMP/err2" >"$TMP/err" 2>/dev/null || true
+    fi
   fi
   return 1
 }
