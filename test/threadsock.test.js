@@ -10,6 +10,7 @@ import { spawn } from "node:child_process";
 import { start } from "../core/daemon/index.js";
 import { openThreadSocket, belongs } from "../core/daemon/threadsock.js";
 import { tempHome } from "./helpers.js";
+const realManifest = JSON.parse(fs.readFileSync(new URL("../core/switchboard/module.json", import.meta.url), "utf8"));
 import { SCRATCH } from "./scratch.mjs";
 
 /** A client process that makes one call on the socket and prints the answer. */
@@ -36,7 +37,7 @@ test("threadsock: the session's own processes, as the caller vyred bound, and ne
     run: async (_, meta) => ({ caller: meta.caller, thread: meta.thread || null, agent: meta.agent || null }) });
   const dir = fs.mkdtempSync(path.join(SCRATCH, "ts-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  const ctx = d.registry.context({ name: "switchboard", version: "0.1.0", does: { tools: [] } });
+  const ctx = d.registry.context(realManifest);
   /** @type {number[]} */ const inThread = [];
   const sock = await openThreadSocket({ handler: ctx.handler, thread: "t1", agent: "kit", dir, pids: async () => ({ pids: inThread }) });
   assert.equal(fs.statSync(sock.path).mode & 0o777, 0o600, "a private folder: the socket is the person's user alone");
@@ -86,7 +87,7 @@ test("threadsock: a session's call id reaches the tool; other callers' and malfo
   d.registry.tools.set("threads.vouch", { ...tool, internal: true, run: async ({ session, key }) => (session === "s1" && key === "k1" ? { thread: "t9" } : {}) });
   const dir = fs.mkdtempSync(path.join(SCRATCH, "ts-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  const ctx = d.registry.context({ name: "switchboard", version: "0.1.0", does: { tools: [] } });
+  const ctx = d.registry.context(realManifest);
   /** @type {number[]} */ const inThread = [];
   const sock = await openThreadSocket({ handler: ctx.handler, thread: "t1", dir, pids: async () => ({ pids: inThread }) });
   t.after(() => sock.close());
@@ -116,13 +117,13 @@ test("threadsock: a real session's call arrives with its own kernel token, in it
     export default { async start(ctx) { ctx.tool("zz-room.peek", { run: async (i, meta) => ({ caller: meta.caller, token: meta.token || null, room: await ctx.kernel.audienceFor({}).catch(e => ({ error: e.code })) }) }); return {}; } };`);
   const d = await start({ root, log: () => {}, kernel: true, firstPartyRoots: [fp] });
   t.after(() => d.stop());
-  const ctx = d.registry.context({ name: "switchboard", version: "0.1.0", does: { tools: [] } });
+  const ctx = d.registry.context(realManifest);
   assert.equal(typeof ctx.kernelSession, "function", "the Switchboard is handed the session credential maker");
   assert.equal(typeof d.registry.context({ name: "other", version: "0.1.0", does: { tools: [] } }).kernelSession, "undefined", "and nobody else");
   // the confined spawner for its sessions is composed here too, for the Switchboard alone
   const sbx = ctx.sandbox;
   assert.ok(sbx && typeof sbx.sandbox.planHome === "function" && typeof sbx.sandbox.selfTest === "function" && typeof sbx.sandbox.launch === "function", "the runner's home sandbox");
-  assert.equal(sbx.probes.personSocket.length > 0, true);
+  assert.equal(typeof sbx.probes, "function");
   assert.equal(typeof d.registry.context({ name: "other", version: "0.1.0", does: { tools: [] } }).sandbox, "undefined");
   const owner = d.kernel.id.owner;
   const person = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct" });
@@ -162,7 +163,7 @@ test("R-1: on the person's own socket no thread or agent label proves anything; 
   // through a session's own socket the daemon bound the thread: open tools answer, ask-first tools are held, person-only tools are refused
   const dir = fs.mkdtempSync(path.join(SCRATCH, "ts-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  const ctx = d.registry.context({ name: "switchboard", version: "0.1.0", does: { tools: [] } });
+  const ctx = d.registry.context(realManifest);
   /** @type {number[]} */ const inThread = [];
   const sock = await openThreadSocket({ handler: ctx.handler, thread: "t1", agent: "kit", dir, pids: async () => ({ pids: inThread }) });
   t.after(() => sock.close());
@@ -181,4 +182,42 @@ test("R-1: on the person's own socket no thread or agent label proves anything; 
   const only = client(sock.path, "relay.pair.ticket", {});
   inThread.push(only.pid);
   assert.notEqual((await only.done).status, 200, "a person-only tool stays the person's");
+});
+
+test("a REAL daemon boot hands the Switchboard (the module named in its own manifest, `threads`) its kernel session maker and its sandbox by declaration, nobody else, and a missing sandbox is a refusal", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {}, kernel: true });
+  t.after(() => d.stop());
+  assert.equal(realManifest.name, "threads", "the real manifest name");
+  assert.deepEqual(realManifest.needs.daemon, ["kernelSession", "sandbox"], "it declares what it needs from the daemon");
+  const row = d.registry.status().find(m => m.name === "threads");
+  assert.equal(row && row.state, "running", JSON.stringify(row));
+  const real = d.registry.context(realManifest);
+  assert.equal(typeof real.kernelSession, "function");
+  assert.equal(typeof real.sandbox.sandbox.selfTest, "function");
+  // E-5: the probe targets are REAL, made for each self-test and torn down after it
+  assert.equal(typeof real.sandbox.probes, "function");
+  const probes = await real.sandbox.probes();
+  const net = await import("node:net");
+  const reach = (/** @type {any} */ o) => new Promise(r => { const c = net.connect(o); c.once("connect", () => { c.destroy(); r("connected"); }); c.once("error", () => r("refused")); });
+  assert.equal(await reach({ path: probes.otherSocket }), "connected", "another session's socket stand-in is a real listening socket");
+  assert.equal(await reach({ port: probes.daemonPorts[0], host: "127.0.0.1" }), "connected", "the loopback port is a real listener");
+  await probes.release();
+  assert.equal(await reach({ path: probes.otherSocket }), "refused", "torn down afterwards");
+  assert.equal(await reach({ port: probes.daemonPorts[0], host: "127.0.0.1" }), "refused");
+  // a module that does not declare it gets neither, whatever its name
+  for (const name of ["switchboard", "other"]) { const c = d.registry.context({ name, version: "0.1.0", does: { tools: [] } }); assert.equal(c.kernelSession, undefined, name); assert.equal(c.sandbox, undefined, name); }
+  // the Switchboard itself: with no sandbox dep and a session credential maker on macOS or Linux, a session is refused, not started unconfined
+  const { Switchboard } = await import("../core/switchboard/index.js");
+  const sb = Object.create(Switchboard.prototype);
+  sb.deps = { kernelSession: async () => null, sandbox: null };
+  sb.socks = new Map();
+  if (process.platform !== "win32") await assert.rejects(() => sb.sandboxFor("t1", { cwd: root }, {}), { code: "sandbox_failed" });
+  sb.deps = { sandbox: null };
+  assert.equal(await sb.sandboxFor("t1", { cwd: root }, {}), undefined, "with the kernel off nothing changes");
+  sb.deps = { kernelSession: async () => null, sandbox: { off: true } };
+  assert.equal(await sb.sandboxFor("t1", { cwd: root }, {}), undefined, "a development opt-out is explicit");
 });

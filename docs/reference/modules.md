@@ -279,6 +279,7 @@ Flows and Kits: write, approve and run a Flow, with its triggers, waits and task
 - Tools: [19](tools.md#flows)
 - Emits: no events
 - Shows on: no surface
+- Needs daemon: `flowsHost`
 
 ## gate
 
@@ -767,6 +768,7 @@ Project teammates (ADR 0031): a named, persistent agent per role per project, a 
 - Tools: [56](tools.md#threads), 19 of them only for other modules
 - Emits: [36 events](events.md#threads)
 - Shows on: cli
+- Needs daemon: `kernelSession`, `sandbox`
 - Needs vault: `claude-setup-token`, `anthropic-api-key`, `per-account`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 

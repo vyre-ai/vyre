@@ -228,11 +228,24 @@ async function startLocked(opts, root, p, release) {
     // reason.
     // On macOS and Linux a Vyre-started session is always confined: a sandbox that cannot be built is a refusal to start the session (with the reason), never a silent unconfined start
     // (reviewer-3 E-2). Only a development build can opt out (VYRE_SESSION_SANDBOX_OFF=1). Windows starts unsandboxed in 0.3, with the notice the user approved.
-    if ((process.platform === "darwin" || process.platform === "linux") && !devSwitch(process.env.VYRE_SESSION_SANDBOX_OFF)) {
+    if ((process.platform === "darwin" || process.platform === "linux") && devSwitch(process.env.VYRE_SESSION_SANDBOX_OFF)) registry.deps.sandbox = { off: true };
+    else if (process.platform === "darwin" || process.platform === "linux") {
       try {
         const [{ planHome, selfTest }, { launch }] = await Promise.all([import("../runner/homesandbox.js"), import("../runner/sandbox.js")]);
         registry.deps.sandbox = { sandbox: { planHome, selfTest, launch }, platform: process.platform, home: os.homedir(), vyreHome: root,
-          probes: { personSocket: p.socket, otherSocket: path.join(root, "run", "sessions", "other.sock"), daemonPorts: [], keyFile: path.join(root, "kernel", "space.json") },
+          // Real targets, made for each self-test and torn down after it: a unix socket standing in for another session's, and a loopback listener standing in for a daemon port. The
+          // sandboxed probe must fail to connect to every one of them, and a probe target that does not exist is refused by the runner's own check.
+          probes: async () => {
+            const net = await import("node:net");
+            const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-probe-"));
+            const other = path.join(dir, "other.sock");
+            const servers = /** @type {import("node:net").Server[]} */ ([net.createServer(c => c.destroy()), net.createServer(c => c.destroy())]);
+            await new Promise(r => servers[0].listen(other, () => r(undefined)));
+            await new Promise(r => servers[1].listen(0, "127.0.0.1", () => r(undefined)));
+            const port = /** @type {any} */ (servers[1].address()).port;
+            return { personSocket: p.socket, otherSocket: other, daemonPorts: [port], keyFile: path.join(root, "kernel", "space.json"),
+              release: async () => { for (const s of servers) await new Promise(r => s.close(() => r(undefined))); fs.rmSync(dir, { recursive: true, force: true }); } };
+          },
           temp: os.tmpdir() };
       } catch (e) {
         registry.deps.sandbox = { unavailable: `Vyre could not set up the sandbox for sessions on this computer (${/** @type {Error} */ (e).message}), so it does not start them.` };
