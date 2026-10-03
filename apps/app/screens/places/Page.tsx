@@ -11,15 +11,16 @@ export function usePhone(): boolean {
 /** The one page frame for a place: a title, a line under it, actions, the space bar, then the content. */
 export function Page({ title, sub, actions, scope = true, back, children }: { title: string; sub?: string; actions?: React.ReactNode; scope?: boolean; back?: { label: string; to: string }; children: React.ReactNode }) {
   const router = useRouter();
+  const phone = usePhone();
   return (
     <ScrollView contentContainerClassName="w-full max-w-page gap-s4 self-center p-s4 pb-s12">
       {back ? <View className="self-start"><Button kind="ghost" size="sm" icon="chev-l" label={back.label} onPress={() => router.push(back.to as never)} /></View> : null}
-      <View className="flex-row flex-wrap items-start gap-s3">
+      <View className={phone ? "gap-s3" : "flex-row items-start gap-s3"}>
         <View className="min-w-0 flex-1 gap-s1">
           <Text size="page" strong accessibilityRole="header">{title}</Text>
           {sub ? <Text tone="muted">{sub}</Text> : null}
         </View>
-        {actions}
+        {actions ? <View className={phone ? "flex-row flex-wrap gap-s2" : "flex-none"}>{actions}</View> : null}
       </View>
       {scope ? <ScopeBar /> : null}
       {children}
@@ -85,10 +86,11 @@ export function DiffBlock({ lines }: { lines: { t: "a" | "d" | "c"; s: string }[
 }
 
 /** Face ID, as a Sheet with one button. The platform prompt replaces the button on a real device; the screen only learns "approved". */
-export function FaceIdSheet({ open, onClose, title, body, confirm, onConfirm }: { open: boolean; onClose: () => void; title: string; body: string; confirm: string; onConfirm: () => void }) {
+export function FaceIdSheet({ open, onClose, title, body, confirm, onConfirm, children }: { open: boolean; onClose: () => void; title: string; body: string; confirm: string; onConfirm: () => void; children?: React.ReactNode }) {
   return (
     <Sheet open={open} onClose={onClose} title={title}>
       <Text tone="muted">{body}</Text>
+      {children}
       <Button kind="primary" icon="faceid" label={confirm} onPress={() => { onClose(); onConfirm(); }} />
       <Button kind="ghost" label="Not now" onPress={onClose} />
     </Sheet>
