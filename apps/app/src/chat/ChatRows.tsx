@@ -5,7 +5,7 @@
 
 import { memo, useEffect, useRef, useSyncExternalStore } from "react";
 import { Animated, Pressable, View, StyleSheet } from "react-native";
-import { Chip, Icon, Text, useUiTheme } from "@vyre/ui";
+import { Icon, Text, useUiTheme } from "@vyre/ui";
 import { Face } from "./Face";
 import { normalizeBlock, type Block } from "./blocks.js";
 import { BlockView, type BlockCtx } from "./Blocks";
