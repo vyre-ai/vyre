@@ -208,3 +208,23 @@ test("SG-5: the release also lists the kernel and lib trees; a build whose kerne
   assert.equal(k.log.read({ type: "kernel.modules-list" }).length, 0);
   await k.stop();
 });
+
+test("build time: the repo's own modules make an unambiguous list; a name shared by two folders must be for different machines, and both folders pass the check", t => {
+  const repo = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..");
+  const text = buildModuleList(repo, { counter: 1, release: "test" });
+  const list = JSON.parse(text);
+  assert.ok(list.modules.chrome && Array.isArray(list.modules.chrome.also) && list.modules.chrome.also.length === 1, "the box's chrome and the Mac's chrome are one name with two entries");
+  // two folders, one name, overlapping roles: the build fails
+  const r = release(t, { mods: [["alpha", "1.0.0"]] });
+  mod(r.root, "local", "alpha-two", "1.0.0"); fs.writeFileSync(path.join(r.root, "local", "alpha-two", "module.json"), JSON.stringify({ name: "alpha", version: "1.0.0", roles: ["box", "local"] }));
+  assert.throws(() => buildModuleList(r.root, { counter: 1, release: "x" }), /two modules are named alpha and their roles overlap/);
+  // disjoint roles: both pass
+  fs.writeFileSync(path.join(r.root, "core", "alpha", "module.json"), JSON.stringify({ name: "alpha", version: "1.0.0", roles: ["box"] }));
+  fs.writeFileSync(path.join(r.root, "local", "alpha-two", "module.json"), JSON.stringify({ name: "alpha", version: "1.0.0", roles: ["local"] }));
+  const built = JSON.parse(buildModuleList(r.root, { counter: 1, release: "x" }));
+  const check = createListCheck(built);
+  assert.equal(check(path.join(r.root, "core", "alpha")), true);
+  assert.equal(check(path.join(r.root, "local", "alpha-two")), true);
+  fs.appendFileSync(path.join(r.root, "local", "alpha-two", "index.js"), "// x");
+  assert.equal(check(path.join(r.root, "local", "alpha-two")), false, "a changed copy still fails");
+});
