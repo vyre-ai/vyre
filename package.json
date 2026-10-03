@@ -37,6 +37,8 @@
     "core",
     "harness",
     "lib",
+    "kernel",
+    "names/worker/chain.js",
     "relay/client",
     "packages/module-sdk",
     "local",
