@@ -19,7 +19,7 @@ import { createFakeKernel } from "./fake-reply-port.js";
 const PORTS = ["fake appendOpen port", "stand-in port"];
 
 /** A group rig: a fake kernel, a stream log registry, the groups, and a thread per assistant that the test speaks for. @param {any} t @param {string} which @param {() => number} [now] */
-function rig(t, which, now = () => Date.now()) {
+function rig(t, which, now = () => Date.now(), extra = /** @type {any} */ ({})) {
   const p = config.ensure(tempHome(t));
   const db = open(p.db);
   const fk = createFakeKernel();
@@ -27,14 +27,14 @@ function rig(t, which, now = () => Date.now()) {
   let n = 0;
   /** @type {any[]} */ const started = [];
   const ctx = {
-    log: () => {}, kernel: fk.kernel,
+    log: () => {}, kernel: fk.kernel, ...(extra.config ? { config: extra.config } : {}),
     call: async (/** @type {string} */ tool, /** @type {any} */ i) => {
       if (tool === "threads.start") { const id = `thr_${++n}`; started.push({ id, ...i }); return { data: { id } }; }
       if (tool === "threads.get") return { data: { events: [] } };
       return { data: {} };
     },
   };
-  const groups = createGroups({ ctx, logs, db, now, ...(which === PORTS[0] ? { replyPort: fk.port } : {}) });
+  const groups = createGroups({ ctx, logs, db, now, ...(extra.timers ? { timers: extra.timers } : {}), ...(which === PORTS[0] ? { replyPort: extra.wrapPort ? extra.wrapPort(fk.port) : fk.port } : {}) });
   t.after(() => { groups.stop(); logs.close(); db.close(); });
   let eid = 0;
   /** A call from `who` (a kernel person such as "bob"): the kernel's list is mirrored first, as stream.open and every stream tool do. @param {string} grp @param {string} who */
@@ -52,6 +52,8 @@ function rig(t, which, now = () => Date.now()) {
   };
   const threadOf = (/** @type {string} */ grp, /** @type {string} */ bot) => String(/** @type {any} */ (groups.member(grp, bot)).thread);
   /** One thing a thread says, the way the switchboard emits it. */
+  /** Any switchboard event of a thread (thinking, a tool, a status). */
+  const ev = (/** @type {string} */ thread, /** @type {string} */ type, /** @type {any} */ payload) => groups.onEvent({ id: ++eid, type, thread, payload });
   const say = (/** @type {string} */ thread, /** @type {string} */ message, /** @type {{ delta?: string, done?: boolean, kind?: string }} */ p) => groups.onEvent({ id: ++eid, type: p.kind || "thread.text", thread, payload: { message, block: 0, ...(p.delta !== undefined ? { delta: p.delta } : {}), ...(p.done ? { done: true } : {}) } });
   /** What a person's connection receives (direct serve, no transport). @param {string} grp @param {string} who @param {number} [from] */
   const watch = (grp, who, from = 0) => {
@@ -61,7 +63,7 @@ function rig(t, which, now = () => Date.now()) {
     const s = serve(logs.get(grp), { send: f => frames.push(f), onClose: cb => cs.push(cb) }, { from, viewer });
     return { frames, close: () => s.close(), viewer };
   };
-  return { fk, logs, groups, call, send, say, threadOf, watch, started };
+  return { fk, logs, groups, call, send, say, ev, threadOf, watch, started };
 }
 /** The text a viewer received per message id, and what else it saw of a message (any frame naming it). @param {any[]} frames */
 const textsOf = frames => {
@@ -254,3 +256,181 @@ for (const which of PORTS) {
     assert.ok(shut >= 20 && whole >= 1, `the join landed mid-stream often enough to mean something (${shut} iterations kept replies from her, ${whole} did not)`);
   });
 }
+
+// ---- task Q: everything an assistant puts into a room goes through the reply handle ----------------------------------
+
+/** The frames an assistant wrote into a room, in order, as [type, rid?, message?]. @param {any[]} frames */
+const shape = frames => frames.filter(f => f.author === "assistant:kit").map(f => [f.type.replace("session.", ""), f.data.rid || null, f.data.state || f.data.text || f.data.note || null]);
+
+test("a reasoning-only turn in a two-person room writes nothing to it (no frame, no handle, no kernel message); thinking that goes with a reply is written through the handle, stamped, to the people entitled at its version", async t => {
+  const r = rig(t, PORTS[0]);
+  r.fk.create("q1", ["bob", "ada", "dan"], ["kit"]);
+  const bob = r.watch("q1", "bob"), ada = r.watch("q1", "ada"), dan = r.watch("q1", "dan");
+  const base = bob.frames.length;
+  await r.send("q1", "bob", "m1", "think about it", ["assistant:kit"]);
+  const kit = r.threadOf("q1", "assistant:kit");
+  const before = r.fk.appended.length;
+  r.ev(kit, "thread.status", { status: "working", turn: "t1" });
+  r.ev(kit, "thread.thinking", { message: "mr", delta: "weighing the fee " });
+  r.ev(kit, "thread.thinking", { message: "mr", delta: "and the date" });
+  r.ev(kit, "thread.thinking", { message: "mr", done: true });
+  r.ev(kit, "thread.status", { status: "idle", turn: "t1" });
+  await r.groups.idle();
+  for (const v of [bob, ada, dan]) assert.deepEqual(shape(v.frames), [], "no frame by the assistant, not even a state word");
+  assert.equal(r.fk.replies.length, 0, "no handle was opened");
+  assert.equal(r.fk.appended.length, before, "and the kernel took no message");
+  assert.ok(!JSON.stringify(bob.frames.slice(base)).includes("weighing"), "the thinking is nowhere in what a viewer received");
+  const buffered = /** @type {any} */ (r.groups.member("q1", "assistant:kit")).buf;
+  assert.equal(buffered.size, 0, "and nothing is left waiting");
+  // thinking that goes with a reply
+  r.ev(kit, "thread.thinking", { message: "m2", delta: "weighing " });
+  r.say(kit, "m2", { delta: "The fee is set." });
+  await r.groups.idle();
+  r.fk.change("q1", { remove: ["dan"] }); // leaves while the reply streams
+  r.say(kit, "m2", { delta: " Done." });
+  r.say(kit, "m2", { done: true });
+  await r.groups.idle();
+  assert.equal(r.fk.replies.length, 1);
+  assert.deepEqual(r.fk.replies[0].deltas, ["weighing ", "The fee is set.", " Done."], "the thinking reached the room only by being written to the handle, first");
+  const got = shape(bob.frames);
+  const rid = got[0][1];
+  assert.ok(rid);
+  assert.deepEqual(got, [["text-delta", rid, "weighing "], ["text-delta", rid, "The fee is set."], ["text-delta", rid, " Done."], ["text-done", rid, null]]);
+  assert.ok(bob.frames.filter(f => f.data && f.data.reasoning).every(f => f.data.rid === rid && f.data.ver === 1), "stamped with the room's version at the handle's open");
+  assert.deepEqual(shape(ada.frames), got, "ada, in the room at that version, has the same");
+  assert.deepEqual(shape(dan.frames), [["text-delta", rid, "weighing "], ["text-delta", rid, "The fee is set."]], "dan left mid-reply: what he had stays, nothing after the leave reaches him");
+  r.fk.change("q1", { add: ["eve"] });
+  await r.call("q1", "eve");
+  const eve = r.watch("q1", "eve");
+  assert.ok(!eve.frames.some(f => f.data && f.data.rid), "someone who joins afterwards never receives any of it");
+});
+
+test("a field value in what an assistant thinks, runs or says is dropped in a room of more than one person, whichever kind of frame carries it", async t => {
+  const r = rig(t, PORTS[0]);
+  r.fk.create("q2", ["bob", "ada"], ["kit"]);
+  const ada = r.watch("q2", "ada");
+  await r.send("q2", "bob", "m1", "go", ["assistant:kit"]);
+  const kitM = /** @type {any} */ (r.groups.member("q2", "assistant:kit"));
+  const FEE = { block: "field", label: "Fee", kind: "money", value: "4200" };
+  kitM.ad = { event: () => [
+    { kind: "text-delta", data: { message: "mr", text: "the fee is 4200", reasoning: true, ...FEE } },
+    { kind: "tool-finished", data: { tool_id: "c1", ok: true, result: FEE } },
+    { kind: "tool-progress", data: { tool_id: "c1", text: "ok" } },
+  ] };
+  r.say(r.threadOf("q2", "assistant:kit"), "x", { delta: "x" });
+  await r.groups.idle();
+  assert.ok(!JSON.stringify(ada.frames).includes("4200"));
+  assert.ok(!JSON.stringify(r.fk.replies).includes("4200"), "and it never reached the handle");
+  assert.ok(JSON.stringify(ada.frames).includes("progress") || ada.frames.some(f => f.type === "session.tool-progress"), "the rest of the turn is shown");
+});
+
+test("no frame of a kernel group chat reaches the log by any path but the reply handle (a content-free status aside)", async t => {
+  /** @type {{ ev: string, rid?: string }[]} */ const seq = [];
+  /** @type {any} */ let port0;
+  const wrapPort = (/** @type {any} */ p) => { port0 = p; return { ...p, open: async (/** @type {any} */ o) => { const h = await p.open(o); return { ...h, write: async (/** @type {any} */ d) => { seq.push({ ev: "write", rid: h.id }); return h.write(d); }, close: async (/** @type {any} */ f) => { seq.push({ ev: "close", rid: h.id }); return h.close(f); } }; } }; };
+  const r = rig(t, PORTS[0], undefined, { wrapPort });
+  r.fk.create("q3", ["bob", "ada"], ["kit"]);
+  const log = r.logs.get("q3");
+  const real = log.append.bind(log);
+  /** @type {any[]} */ const bypass = [];
+  /** @type {any[]} */ const all = [];
+  log.append = (/** @type {string} */ kind, /** @type {any} */ data, /** @type {any} */ o) => {
+    if (o && typeof o.author === "string" && o.author.startsWith("assistant:")) {
+      all.push(kind);
+      const last = seq[seq.length - 1];
+      const plainStatus = kind === "status" && !Object.keys(data).some(k => !["state", "turn", "stopping"].includes(k));
+      const viaHandle = last && data.rid === last.rid && (kind === "text-done" ? last.ev === "close" : last.ev === "write");
+      if (!plainStatus && !viaHandle) bypass.push({ kind, data });
+    }
+    return real(kind, data, o);
+  };
+  await r.send("q3", "bob", "m1", "run it", ["assistant:kit"]);
+  const kit = r.threadOf("q3", "assistant:kit");
+  r.ev(kit, "thread.status", { status: "working", turn: "t1" });
+  r.ev(kit, "thread.thinking", { message: "m1a", delta: "hm" });
+  r.ev(kit, "thread.tool", { call: "c1", tool: "Bash", input: { command: "ls" }, text: "listing" });
+  r.ev(kit, "thread.tool", { call: "c1", tool: "Bash", input: { command: "ls" }, phase: "done", output: "a\nb" });
+  r.ev(kit, "thread.tool", { call: "c2", tool: "Edit", input: { file_path: "/tmp/x", old_string: "a", new_string: "b" }, phase: "done", output: "ok" });
+  r.ev(kit, "ask.raised", { ask: "a1", kind: "permission", tool: "Bash", summary: "run it" });
+  r.say(kit, "m1a", { delta: "Done " });
+  r.say(kit, "m1a", { delta: "now." });
+  r.say(kit, "m1a", { done: true });
+  r.ev(kit, "thread.status", { status: "idle", turn: "t1" });
+  await r.groups.idle();
+  assert.deepEqual(bypass, [], "every assistant frame was written to a handle first");
+  for (const k of ["text-delta", "tool-started", "tool-progress", "tool-finished", "ask", "file-changed", "text-done"]) assert.ok(all.includes(k), `the turn produced a ${k} frame`);
+  assert.ok(port0 && r.fk.replies.length >= 2, "a reply handle for the message and one for the turn's own tools");
+  assert.ok(r.fk.replies.every(x => x.final), "and both were closed");
+});
+
+test("the room says its blocks are public: a terminal, diff or files block in a room of more than one person carries the note, in a chat of one it never does", async t => {
+  const r = rig(t, PORTS[0]);
+  r.fk.create("n2", ["bob", "ada"], ["kit"]);
+  r.fk.create("n1", ["bob"], ["kit"]);
+  const ada = r.watch("n2", "ada"), solo = r.watch("n1", "bob");
+  for (const grp of ["n2", "n1"]) {
+    await r.send(grp, "bob", `m-${grp}`, "go", ["assistant:kit"]);
+    const kit = r.threadOf(grp, "assistant:kit");
+    r.ev(kit, "thread.tool", { call: "c1", tool: "Bash", input: { command: "ls" }, phase: "done", output: "a" });
+    r.ev(kit, "thread.tool", { call: "c2", tool: "Glob", input: { pattern: "*.md" }, phase: "done", output: "a.md\nb.md" });
+    r.ev(kit, "thread.tool", { call: "c3", tool: "Edit", input: { file_path: "/tmp/x", old_string: "a", new_string: "b" }, phase: "done", output: "ok" });
+    await r.groups.idle();
+  }
+  const results = (/** @type {any[]} */ fs) => fs.filter(f => f.type === "session.tool-finished").map(f => f.data.result);
+  const room = results(ada.frames);
+  assert.deepEqual(room.map(b => b.block), ["terminal", "files", "diff"]);
+  assert.ok(room.every(b => b.note === "visible to everyone in this chat"), "every one carries the line, as the viewer receives it");
+  assert.equal(room[1].detail, "2 found for *.md", "a files block's own note moved to detail");
+  const one = results(solo.frames);
+  assert.equal(one.length, 3);
+  assert.ok(one.every(b => b.note !== "visible to everyone in this chat"), "a chat of one never says it");
+});
+
+test("no assistant session within the deadline: the pending reply is dropped, the room gets a plain failed status, nothing waits forever, a late session does not bring the reply back", async t => {
+  /** @type {{ fn: () => void, ms: number, live: boolean }[]} */ const timers = [];
+  const fake = { set: (/** @type {() => void} */ fn, /** @type {number} */ ms) => { const x = { fn, ms, live: true }; timers.push(x); return x; }, clear: (/** @type {any} */ x) => { x.live = false; } };
+  const r = rig(t, PORTS[0], undefined, { timers: fake });
+  r.fk.create("d1", ["bob", "ada"], ["kit"]);
+  const ada = r.watch("d1", "ada");
+  await r.send("d1", "bob", "m1", "go", ["assistant:kit"]);
+  const kit = r.threadOf("d1", "assistant:kit");
+  /** @type {any} */ (r.groups.member("d1", "assistant:kit")).tokens = new Map(); // what a restart forgets
+  r.say(kit, "ma", { delta: "late words" });
+  r.say(kit, "ma", { done: true });
+  await new Promise(x => setTimeout(x, 40));
+  const wait = timers.filter(x => x.live);
+  assert.equal(wait.length, 1, "one wait is pending");
+  assert.equal(wait[0].ms, 60_000, "60 seconds by default");
+  assert.ok(!ada.frames.some(f => f.author === "assistant:kit"), "nothing is shown while it waits");
+  wait[0].fn(); // the deadline passes
+  await r.groups.idle(); // would hang if anything still waited
+  const mine = shape(ada.frames);
+  assert.deepEqual(mine, [["status", null, "failed"]]);
+  assert.equal(ada.frames.find(f => f.type === "session.status").data.note, "couldn't resume, ask again");
+  assert.equal(r.fk.replies.length, 0, "no handle was opened");
+  // the asker acts: a session arrives, late. The dropped reply stays dropped.
+  await r.call("d1", "bob");
+  r.say(kit, "ma", { delta: "more late words" });
+  r.say(kit, "ma", { done: true });
+  await r.groups.idle();
+  assert.deepEqual(shape(ada.frames), mine);
+  assert.equal(r.fk.replies.length, 0);
+  // and a new question gets a new answer
+  await r.send("d1", "bob", "m2", "again", ["assistant:kit"]);
+  r.say(kit, "mb", { delta: "fresh" });
+  r.say(kit, "mb", { done: true });
+  await r.groups.idle();
+  assert.ok(ada.frames.some(f => f.type === "session.text-done" && f.author === "assistant:kit"));
+});
+
+test("the wait for an assistant session is stream.resumeWaitSeconds", async t => {
+  /** @type {number[]} */ const ms = [];
+  const fake = { set: (/** @type {() => void} */ _fn, /** @type {number} */ m) => { ms.push(m); return {}; }, clear: () => {} };
+  const r = rig(t, PORTS[0], undefined, { timers: fake, config: { stream: { resumeWaitSeconds: 7 } } });
+  r.fk.create("d2", ["bob"], ["kit"]);
+  await r.send("d2", "bob", "m1", "go", ["assistant:kit"]);
+  /** @type {any} */ (r.groups.member("d2", "assistant:kit")).tokens = new Map();
+  r.say(r.threadOf("d2", "assistant:kit"), "ma", { delta: "x" });
+  await new Promise(x => setTimeout(x, 40));
+  assert.deepEqual(ms, [7000]);
+});

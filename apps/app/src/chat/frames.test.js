@@ -83,6 +83,15 @@ test("status sets the header state and leaves a line only for the ones that end 
   assert.equal(f.rows[0].kind, "notice");
 });
 
+test("a failed status that says it could not resume shows \"Couldn't resume. Ask again.\"; an unknown note changes nothing", () => {
+  cur = 0;
+  const f = createFolder();
+  f.apply(fr("status", { state: "failed", note: "couldn't resume, ask again" }));
+  assert.equal(f.item(f.rows[0].key)?.text, "Couldn't resume. Ask again.");
+  f.apply(fr("status", { state: "failed", note: "something else" }));
+  assert.equal(f.item(f.rows[1].key)?.text, "The session failed.");
+});
+
 test("a reset clears the rows and takes its cursor", () => {
   cur = 0;
   const f = createFolder();

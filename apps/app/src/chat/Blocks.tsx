@@ -71,6 +71,16 @@ const copy = async (text: string, ctx: BlockCtx) => {
   try { await Clipboard.setStringAsync(text); } catch {}
 };
 
+/** The quiet line the server puts under a block shown to a room of more than one person: who can see it. */
+function RoomNote({ note, dark }: { note?: string; dark?: boolean }) {
+  if (!note) return null;
+  return (
+    <View style={dark ? { paddingHorizontal: 14, paddingBottom: 8 } : { paddingHorizontal: 12, paddingVertical: 6 }}>
+      <Text size="caption" tone="label" style={dark ? { color: "#6B665D" } : undefined}>{note}</Text>
+    </View>
+  );
+}
+
 /** The shell every block shares: a hairline card on surface-2, a header line, a body. */
 function Shell({ icon, title, sub, right, children, flush, tint }: { icon: "terminal" | "file" | "key" | "todo" | "chat" | "refresh" | "globe" | "link" | "check"; title: ReactNode; sub?: string; right?: ReactNode; children?: ReactNode; flush?: boolean; tint?: "accent" }) {
   const { color } = useUiTheme();
@@ -148,6 +158,7 @@ export function TerminalBlock({ block, ctx, output, running }: { block: Extract<
           </Pressable>
         ) : null}
       </View>
+      <RoomNote note={block.note} dark />
     </View>
   );
 }
@@ -227,6 +238,7 @@ export function DiffBlock({ block, ctx }: { block: Extract<Block, { block: "diff
             <DiffLines file={f} wide={ctx.wide} />
           </View>
         ))}
+        <RoomNote note={block.note} />
       </View>
     );
   }
@@ -264,6 +276,7 @@ export function DiffBlock({ block, ctx }: { block: Extract<Block, { block: "diff
           })}
         </View>
       ))}
+      <RoomNote note={block.note} />
     </View>
   );
 }
