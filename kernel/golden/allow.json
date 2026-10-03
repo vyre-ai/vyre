@@ -1,526 +1,522 @@
 [
  {
+  "tool": "agents.delete",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; agents.delete is open but held for a one-tap task (agent-reach.js ASK_FIRST): destructive"
+ },
+ {
   "tool": "artifacts.activity.log",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; artifacts.activity.log is open to the person's assistant (agent-reach.js OPEN): record that an interactive artifact navigated away"
  },
  {
   "tool": "artifacts.mention.search",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; artifacts.mention.search is open to the person's assistant (agent-reach.js OPEN): the # picker's artifact results"
  },
  {
-  "tool": "chrome.plan.edit",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "chrome.voice",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "computers.egress.status",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "computers.handback.status",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "computers.rename",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "computers.tailnet.status",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "files.drive.access",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "files.drive.address",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "files.drive.mount",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "files.drive.open",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "files.drive.unmount",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "files.drive.unshare",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "files.mentions.search",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "files.receive",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "github.mcp.sync",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "github.project",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "github.project.add-repo",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "github.project.detect",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "github.star",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "github.star.status",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "glass.close",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "glass.open",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "glass.release",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "glass.take",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "glass.targets",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "link.companion.list",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "link.rename",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "mentions.kinds",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "mentions.search",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "names.domain.check",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "network.funnel.status",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "network.guests.check",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "network.guests.list",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "planner.settings",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "presence.person.status",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "projects.add-threads",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "projects.move",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "projects.remove-threads",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "projects.watchers.add",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "projects.watchers.remove",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "relay.devices.list",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "relay.devices.path",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "relay.devices.rename",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "sessions.mention.search",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "stream.keep",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "stream.mark-read",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "stream.open",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "stream.pin",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "stream.react",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "stream.send",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "system.rename",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "team.duties.run-now",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "term.list",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "threads.branch",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "threads.continue-here",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "threads.edit",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "threads.edit-retry",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "threads.kill-task",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "threads.mode",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "threads.remember",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "threads.retry",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "threads.unqueue",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "vault.emergency.status",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "voice.listen",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "voice.settings",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "voice.speak",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "voice.status",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "watchers.delete",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "watchers.resume",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "watchers.run",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "wink.card",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "wink.code.status",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "wink.offers",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "wink.pair.status",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "wink.storage.card",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "wink.storage.discover",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "wink.storage.offers",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "wink.storage.status",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "work.engineer.revise",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "work.engineer.talk",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "work.team.add",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "flows.define",
-  "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
- },
- {
-  "tool": "flows.card",
-  "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
- },
- {
-  "tool": "flows.get",
-  "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
- },
- {
-  "tool": "flows.list",
-  "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
- },
- {
-  "tool": "flows.code",
-  "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
- },
- {
-  "tool": "flows.compile-text",
-  "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
- },
- {
-  "tool": "flows.graph",
-  "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
- },
- {
-  "tool": "flows.simulate",
-  "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
- },
- {
-  "tool": "flows.start",
-  "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
- },
- {
-  "tool": "flows.runs",
-  "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
- },
- {
-  "tool": "flows.run",
-  "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
- },
- {
-  "tool": "flows.retry",
-  "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
- },
- {
-  "tool": "flows.kit.card",
-  "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
- },
- {
-  "tool": "flows.kit.propose",
-  "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
- },
- {
-  "tool": "flows.kit.list",
-  "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
- },
- {
-  "tool": "flows.approve",
-  "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
- },
- {
-  "tool": "flows.pause",
-  "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
- },
- {
-  "tool": "flows.resume",
-  "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
- },
- {
-  "tool": "flows.kit.remove",
-  "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
- },
- {
-  "tool": "vault.provider.status",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; provider status is a read, open to the person's assistant (a proven session claim only)"
- },
- {
-  "tool": "bridges.continue",
-  "reason": "declared reach anyone by its module (spaces or bridges, merged 4 Oct 2026): runs for a guest or a plain mcp caller by the owner's design (a code or invite or link carries its own proof); not a platform change; named for reviewer-2 to confirm"
- },
- {
-  "tool": "bridges.copy",
-  "reason": "declared reach anyone by its module (spaces or bridges, merged 4 Oct 2026): runs for a guest or a plain mcp caller by the owner's design (a code or invite or link carries its own proof); not a platform change; named for reviewer-2 to confirm"
+  "tool": "artifacts.public.set",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; artifacts.public.set is open but held for a one-tap task (agent-reach.js ASK_FIRST): leaves the Space: publishes an artifact"
  },
  {
   "tool": "bridges.get",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; bridges.get is open to the person's assistant (agent-reach.js OPEN): One share a Space is part of."
+ },
+ {
+  "tool": "bridges.kit.export",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; bridges.kit.export is open but held for a one-tap task (agent-reach.js ASK_FIRST): leaves the Space"
+ },
+ {
+  "tool": "bridges.kit.install",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; bridges.kit.install is open but held for a one-tap task (agent-reach.js ASK_FIRST): changes the Space's shape"
  },
  {
   "tool": "bridges.kit.plan",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; bridges.kit.plan is open to the person's assistant (agent-reach.js OPEN): List everything a Kit would add to a Space."
  },
  {
   "tool": "bridges.list",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; bridges.list is open to the person's assistant (agent-reach.js OPEN): The shares a Space is part of, on both sides."
  },
  {
   "tool": "bridges.merge.links",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; bridges.merge.links is open to the person's assistant (agent-reach.js OPEN): One link per Space a person belongs to, for a device to read and merge itself."
  },
  {
   "tool": "bridges.propose-projection",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; bridges.propose-projection is open to the person's assistant (agent-reach.js OPEN): Send chosen fields of chosen events to another Space."
  },
  {
   "tool": "bridges.propose-reference",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; bridges.propose-reference is open to the person's assistant (agent-reach.js OPEN): Let another Space show the names of chosen records."
  },
  {
   "tool": "bridges.propose-view",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; bridges.propose-view is open to the person's assistant (agent-reach.js OPEN): Offer another Space a live, read-only view of chosen fields."
  },
  {
-  "tool": "bridges.resolve",
-  "reason": "declared reach anyone by its module (spaces or bridges, merged 4 Oct 2026): runs for a guest or a plain mcp caller by the owner's design (a code or invite or link carries its own proof); not a platform change; named for reviewer-2 to confirm"
+  "tool": "chrome.plan.edit",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; chrome.plan.edit is open to the person's assistant (agent-reach.js OPEN): a chrome tool (Deep control of your own Chrome through the Vyre extension: read a page in one call, fill and act on it, run a batch with no round trips, look at DevTools (DOM, styles, scripts, console, network) and learn an app's API.)"
  },
  {
-  "tool": "bridges.view.read",
-  "reason": "declared reach anyone by its module (spaces or bridges, merged 4 Oct 2026): runs for a guest or a plain mcp caller by the owner's design (a code or invite or link carries its own proof); not a platform change; named for reviewer-2 to confirm"
+  "tool": "chrome.voice",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; chrome.voice is open to the person's assistant (agent-reach.js OPEN): a chrome tool (Deep control of your own Chrome through the Vyre extension: read a page in one call, fill and act on it, run a batch with no round trips, look at DevTools (DOM, styles, scripts, console, network) and learn an app's API.)"
+ },
+ {
+  "tool": "computers.egress.status",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; computers.egress.status is open to the person's assistant (agent-reach.js OPEN): a computers tool (computers)"
+ },
+ {
+  "tool": "computers.handback.status",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; computers.handback.status is open to the person's assistant (agent-reach.js OPEN): a computers tool (computers)"
+ },
+ {
+  "tool": "computers.rename",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; computers.rename is open to the person's assistant (agent-reach.js OPEN): a computers tool (computers)"
+ },
+ {
+  "tool": "computers.tailnet.status",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; computers.tailnet.status is open to the person's assistant (agent-reach.js OPEN): a computers tool (computers)"
+ },
+ {
+  "tool": "files.deliver",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; files.deliver is open but held for a one-tap task (agent-reach.js ASK_FIRST): leaves the Space: delivers a file"
+ },
+ {
+  "tool": "files.drive.address",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; files.drive.address is open to the person's assistant (agent-reach.js OPEN): a files tool (Find, look at and bring over files on this machine and the box, inside the folders the user chose and never anywhere secret.)"
+ },
+ {
+  "tool": "files.drive.mount",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; files.drive.mount is open to the person's assistant (agent-reach.js OPEN): a files tool (Find, look at and bring over files on this machine and the box, inside the folders the user chose and never anywhere secret.)"
+ },
+ {
+  "tool": "files.drive.offer",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; files.drive.offer is open but held for a one-tap task (agent-reach.js ASK_FIRST): leaves the Space: offers a file"
+ },
+ {
+  "tool": "files.drive.open",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; files.drive.open is open to the person's assistant (agent-reach.js OPEN): a files tool (Find, look at and bring over files on this machine and the box, inside the folders the user chose and never anywhere secret.)"
+ },
+ {
+  "tool": "files.drive.share",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; files.drive.share is open but held for a one-tap task (agent-reach.js ASK_FIRST): leaves the Space: shares a file"
+ },
+ {
+  "tool": "files.drive.unmount",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; files.drive.unmount is open to the person's assistant (agent-reach.js OPEN): a files tool (Find, look at and bring over files on this machine and the box, inside the folders the user chose and never anywhere secret.)"
+ },
+ {
+  "tool": "files.drive.unshare",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; files.drive.unshare is open to the person's assistant (agent-reach.js OPEN): a files tool (Find, look at and bring over files on this machine and the box, inside the folders the user chose and never anywhere secret.)"
+ },
+ {
+  "tool": "files.drive.url",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; files.drive.url is open but held for a one-tap task (agent-reach.js ASK_FIRST): leaves the Space: makes a link"
+ },
+ {
+  "tool": "files.mentions.search",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; files.mentions.search is open to the person's assistant (agent-reach.js OPEN): a files tool (Find, look at and bring over files on this machine and the box, inside the folders the user chose and never anywhere secret.)"
+ },
+ {
+  "tool": "files.receive",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; files.receive is open to the person's assistant (agent-reach.js OPEN): a files tool (Find, look at and bring over files on this machine and the box, inside the folders the user chose and never anywhere secret.)"
+ },
+ {
+  "tool": "files.send",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; files.send is open but held for a one-tap task (agent-reach.js ASK_FIRST): leaves the Space: sends a file"
+ },
+ {
+  "tool": "flows.card",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; flows.card is declared reach anyone and open to the person's assistant (agent-reach.js ANYONE_OPEN): reads a Flow's card"
+ },
+ {
+  "tool": "flows.code",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; flows.code is declared reach anyone and open to the person's assistant (agent-reach.js ANYONE_OPEN): reads a Flow as code"
+ },
+ {
+  "tool": "flows.compile-text",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; flows.compile-text is declared reach anyone and open to the person's assistant (agent-reach.js ANYONE_OPEN): turns text into a draft Flow; nothing is saved"
+ },
+ {
+  "tool": "flows.define",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; flows.define is declared reach anyone and open to the person's assistant (agent-reach.js ANYONE_OPEN): writes a Flow definition; a definition does nothing until a person approves it"
+ },
+ {
+  "tool": "flows.get",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; flows.get is declared reach anyone and open to the person's assistant (agent-reach.js ANYONE_OPEN): reads a Flow"
+ },
+ {
+  "tool": "flows.graph",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; flows.graph is declared reach anyone and open to the person's assistant (agent-reach.js ANYONE_OPEN): reads a Flow as a graph"
+ },
+ {
+  "tool": "flows.kit.card",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; flows.kit.card is declared reach anyone and open to the person's assistant (agent-reach.js ANYONE_OPEN): reads a Kit's card"
+ },
+ {
+  "tool": "flows.kit.list",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; flows.kit.list is declared reach anyone and open to the person's assistant (agent-reach.js ANYONE_OPEN): lists Kits"
+ },
+ {
+  "tool": "flows.kit.propose",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; flows.kit.propose is declared reach anyone and open to the person's assistant (agent-reach.js ANYONE_OPEN): proposes a Kit; it takes effect only when an owner accepts it"
+ },
+ {
+  "tool": "flows.list",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; flows.list is declared reach anyone and open to the person's assistant (agent-reach.js ANYONE_OPEN): lists Flows"
+ },
+ {
+  "tool": "flows.retry",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; flows.retry is declared reach anyone and open to the person's assistant (agent-reach.js ANYONE_OPEN): retries a failed run under the person's own narrowed grants"
+ },
+ {
+  "tool": "flows.run",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; flows.run is declared reach anyone and open to the person's assistant (agent-reach.js ANYONE_OPEN): reads one run"
+ },
+ {
+  "tool": "flows.runs",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; flows.runs is declared reach anyone and open to the person's assistant (agent-reach.js ANYONE_OPEN): lists a Flow's runs"
+ },
+ {
+  "tool": "flows.simulate",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; flows.simulate is declared reach anyone and open to the person's assistant (agent-reach.js ANYONE_OPEN): dry-runs a Flow; nothing is sent"
+ },
+ {
+  "tool": "flows.start",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; flows.start is declared reach anyone and open to the person's assistant (agent-reach.js ANYONE_OPEN): starts an approved Flow under the person's own narrowed grants; its outward steps still ask"
+ },
+ {
+  "tool": "github.mcp.sync",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; github.mcp.sync is open to the person's assistant (agent-reach.js OPEN): a github tool (github)"
+ },
+ {
+  "tool": "github.project",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; github.project is open to the person's assistant (agent-reach.js OPEN): a github tool (github)"
+ },
+ {
+  "tool": "github.project.add-repo",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; github.project.add-repo is open to the person's assistant (agent-reach.js OPEN): a github tool (github)"
+ },
+ {
+  "tool": "github.project.detect",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; github.project.detect is open to the person's assistant (agent-reach.js OPEN): a github tool (github)"
+ },
+ {
+  "tool": "github.star",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; github.star is open to the person's assistant (agent-reach.js OPEN): a github tool (github)"
+ },
+ {
+  "tool": "github.star.status",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; github.star.status is open to the person's assistant (agent-reach.js OPEN): a github tool (github)"
+ },
+ {
+  "tool": "glass.close",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; glass.close is open to the person's assistant (agent-reach.js OPEN): a glass tool (glass)"
+ },
+ {
+  "tool": "glass.open",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; glass.open is open to the person's assistant (agent-reach.js OPEN): a glass tool (glass)"
+ },
+ {
+  "tool": "glass.release",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; glass.release is open to the person's assistant (agent-reach.js OPEN): a glass tool (glass)"
+ },
+ {
+  "tool": "glass.take",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; glass.take is open to the person's assistant (agent-reach.js OPEN): a glass tool (glass)"
+ },
+ {
+  "tool": "glass.targets",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; glass.targets is open to the person's assistant (agent-reach.js OPEN): a glass tool (glass)"
+ },
+ {
+  "tool": "hooks.close",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; hooks.close is open but held for a one-tap task (agent-reach.js ASK_FIRST): changes what reaches the Space from outside"
+ },
+ {
+  "tool": "hooks.open",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; hooks.open is open but held for a one-tap task (agent-reach.js ASK_FIRST): opens the Space to the outside"
+ },
+ {
+  "tool": "link.companion.list",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; link.companion.list is open to the person's assistant (agent-reach.js OPEN): a link tool (Makes the Mac and the box one system: pairing, box tools from the Mac, box events on the Mac, and the Mac's sessions read from the box.)"
+ },
+ {
+  "tool": "link.rename",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; link.rename is open to the person's assistant (agent-reach.js OPEN): a link tool (Makes the Mac and the box one system: pairing, box tools from the Mac, box events on the Mac, and the Mac's sessions read from the box.)"
+ },
+ {
+  "tool": "mentions.kinds",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; mentions.kinds is open to the person's assistant (agent-reach.js OPEN): a mentions tool (The # tag: one picker over everything the person may mention, from the modules that offer a kind.)"
+ },
+ {
+  "tool": "mentions.search",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; mentions.search is open to the person's assistant (agent-reach.js OPEN): a mentions tool (The # tag: one picker over everything the person may mention, from the modules that offer a kind.)"
+ },
+ {
+  "tool": "names.domain.check",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; names.domain.check is open to the person's assistant (agent-reach.js OPEN): a names tool (names)"
+ },
+ {
+  "tool": "network.funnel.status",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; network.funnel.status is open to the person's assistant (agent-reach.js OPEN): a network tool (Who besides the owner the box's tailnet listener serves: guests from other tailnets, each limited to view-only tools.)"
+ },
+ {
+  "tool": "network.guests.check",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; network.guests.check is open to the person's assistant (agent-reach.js OPEN): a network tool (Who besides the owner the box's tailnet listener serves: guests from other tailnets, each limited to view-only tools.)"
+ },
+ {
+  "tool": "network.guests.list",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; network.guests.list is open to the person's assistant (agent-reach.js OPEN): a network tool (Who besides the owner the box's tailnet listener serves: guests from other tailnets, each limited to view-only tools.)"
+ },
+ {
+  "tool": "planner.settings",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; planner.settings is open to the person's assistant (agent-reach.js OPEN): a planner tool (Alarms, timers, reminders, todos, notes and a calendar, kept on the box so something rings when the Mac is shut.)"
+ },
+ {
+  "tool": "presence.person.status",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; presence.person.status is open to the person's assistant (agent-reach.js OPEN): a presence tool (presence)"
+ },
+ {
+  "tool": "projects.add-threads",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; projects.add-threads is open to the person's assistant (agent-reach.js OPEN): a projects tool (projects)"
+ },
+ {
+  "tool": "projects.move",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; projects.move is open to the person's assistant (agent-reach.js OPEN): a projects tool (projects)"
+ },
+ {
+  "tool": "projects.remove-threads",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; projects.remove-threads is open to the person's assistant (agent-reach.js OPEN): a projects tool (projects)"
+ },
+ {
+  "tool": "projects.watchers.add",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; projects.watchers.add is open to the person's assistant (agent-reach.js OPEN): a projects tool (projects)"
+ },
+ {
+  "tool": "projects.watchers.remove",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; projects.watchers.remove is open to the person's assistant (agent-reach.js OPEN): a projects tool (projects)"
+ },
+ {
+  "tool": "relay.devices.list",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; relay.devices.list is open to the person's assistant (agent-reach.js OPEN): a relay tool (A second way to reach the box besides Tailscale: the box dials out to a relay, and devices paired by QR code reach it over an end-to-end encrypted channel.)"
+ },
+ {
+  "tool": "relay.devices.path",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; relay.devices.path is open to the person's assistant (agent-reach.js OPEN): a relay tool (A second way to reach the box besides Tailscale: the box dials out to a relay, and devices paired by QR code reach it over an end-to-end encrypted channel.)"
+ },
+ {
+  "tool": "relay.devices.rename",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; relay.devices.rename is open to the person's assistant (agent-reach.js OPEN): a relay tool (A second way to reach the box besides Tailscale: the box dials out to a relay, and devices paired by QR code reach it over an end-to-end encrypted channel.)"
+ },
+ {
+  "tool": "sessions.mention.search",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; sessions.mention.search is open to the person's assistant (agent-reach.js OPEN): a sessions tool (How the sessions Vyre starts run (ADR 0030): the Claude Agent SDK driver's status and install, and the system prompt at three levels, versioned.)"
  },
  {
   "tool": "spaces.assess-computer",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "spaces.code.submit",
-  "reason": "declared reach anyone by its module (spaces or bridges, merged 4 Oct 2026): runs for a guest or a plain mcp caller by the owner's design (a code or invite or link carries its own proof); not a platform change; named for reviewer-2 to confirm"
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; spaces.assess-computer is open to the person's assistant (agent-reach.js OPEN): a spaces tool (Identity, spaces, members and invites: your Vyre name, a space with a home you choose, the five roles with temp access, and join links.)"
  },
  {
   "tool": "spaces.compute.status",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; spaces.compute.status is open to the person's assistant (agent-reach.js OPEN): a spaces tool (Identity, spaces, members and invites: your Vyre name, a space with a home you choose, the five roles with temp access, and join links.)"
  },
  {
   "tool": "spaces.get",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; spaces.get is open to the person's assistant (agent-reach.js OPEN): a spaces tool (Identity, spaces, members and invites: your Vyre name, a space with a home you choose, the five roles with temp access, and join links.)"
  },
  {
   "tool": "spaces.identity.contact.key",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; spaces.identity.contact.key is open to the person's assistant (agent-reach.js OPEN): a spaces tool (Identity, spaces, members and invites: your Vyre name, a space with a home you choose, the five roles with temp access, and join links.)"
  },
  {
   "tool": "spaces.identity.entries",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; spaces.identity.entries is open to the person's assistant (agent-reach.js OPEN): a spaces tool (Identity, spaces, members and invites: your Vyre name, a space with a home you choose, the five roles with temp access, and join links.)"
  },
  {
   "tool": "spaces.identity.resolve",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; spaces.identity.resolve is open to the person's assistant (agent-reach.js OPEN): a spaces tool (Identity, spaces, members and invites: your Vyre name, a space with a home you choose, the five roles with temp access, and join links.)"
  },
  {
   "tool": "spaces.identity.status",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; spaces.identity.status is open to the person's assistant (agent-reach.js OPEN): a spaces tool (Identity, spaces, members and invites: your Vyre name, a space with a home you choose, the five roles with temp access, and join links.)"
  },
  {
   "tool": "spaces.identity.sync",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; spaces.identity.sync is open to the person's assistant (agent-reach.js OPEN): a spaces tool (Identity, spaces, members and invites: your Vyre name, a space with a home you choose, the five roles with temp access, and join links.)"
  },
  {
   "tool": "spaces.invites.list",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; spaces.invites.list is open to the person's assistant (agent-reach.js OPEN): a spaces tool (Identity, spaces, members and invites: your Vyre name, a space with a home you choose, the five roles with temp access, and join links.)"
  },
  {
   "tool": "spaces.invites.preview",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
- },
- {
-  "tool": "spaces.invites.redeem",
-  "reason": "declared reach anyone by its module (spaces or bridges, merged 4 Oct 2026): runs for a guest or a plain mcp caller by the owner's design (a code or invite or link carries its own proof); not a platform change; named for reviewer-2 to confirm"
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; spaces.invites.preview is open to the person's assistant (agent-reach.js OPEN): a spaces tool (Identity, spaces, members and invites: your Vyre name, a space with a home you choose, the five roles with temp access, and join links.)"
  },
  {
   "tool": "spaces.list",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; spaces.list is open to the person's assistant (agent-reach.js OPEN): a spaces tool (Identity, spaces, members and invites: your Vyre name, a space with a home you choose, the five roles with temp access, and join links.)"
  },
  {
   "tool": "spaces.members.list",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; spaces.members.list is open to the person's assistant (agent-reach.js OPEN): a spaces tool (Identity, spaces, members and invites: your Vyre name, a space with a home you choose, the five roles with temp access, and join links.)"
  },
  {
   "tool": "spaces.move.plan",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; spaces.move.plan is open to the person's assistant (agent-reach.js OPEN): a spaces tool (Identity, spaces, members and invites: your Vyre name, a space with a home you choose, the five roles with temp access, and join links.)"
  },
  {
   "tool": "spaces.roles.names",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; spaces.roles.names is open to the person's assistant (agent-reach.js OPEN): a spaces tool (Identity, spaces, members and invites: your Vyre name, a space with a home you choose, the five roles with temp access, and join links.)"
  },
  {
   "tool": "spaces.status",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; spaces.status is open to the person's assistant (agent-reach.js OPEN): a spaces tool (Identity, spaces, members and invites: your Vyre name, a space with a home you choose, the five roles with temp access, and join links.)"
+ },
+ {
+  "tool": "stream.keep",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; stream.keep is open to the person's assistant (agent-reach.js OPEN): a stream tool (stream)"
+ },
+ {
+  "tool": "stream.mark-read",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; stream.mark-read is open to the person's assistant (agent-reach.js OPEN): a stream tool (stream)"
+ },
+ {
+  "tool": "stream.open",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; stream.open is open to the person's assistant (agent-reach.js OPEN): a stream tool (stream)"
+ },
+ {
+  "tool": "stream.pin",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; stream.pin is open to the person's assistant (agent-reach.js OPEN): a stream tool (stream)"
+ },
+ {
+  "tool": "stream.react",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; stream.react is open to the person's assistant (agent-reach.js OPEN): a stream tool (stream)"
+ },
+ {
+  "tool": "stream.send",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; stream.send is open to the person's assistant (agent-reach.js OPEN): a stream tool (stream)"
+ },
+ {
+  "tool": "system.rename",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; system.rename is open to the person's assistant (agent-reach.js OPEN): a system tool (system)"
+ },
+ {
+  "tool": "team.duties.run-now",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; team.duties.run-now is open to the person's assistant (agent-reach.js OPEN): a team tool (Project teammates (ADR 0031): a named, persistent agent per role per project, a notes file that is its memory of record, and a serial inbox any session in the project summons it through.)"
+ },
+ {
+  "tool": "term.list",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; term.list is open to the person's assistant (agent-reach.js OPEN): a term tool (term)"
+ },
+ {
+  "tool": "threads.branch",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; threads.branch is open to the person's assistant (agent-reach.js OPEN): a threads tool (threads)"
+ },
+ {
+  "tool": "threads.continue-here",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; threads.continue-here is open to the person's assistant (agent-reach.js OPEN): a threads tool (threads)"
+ },
+ {
+  "tool": "threads.edit",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; threads.edit is open to the person's assistant (agent-reach.js OPEN): a threads tool (threads)"
+ },
+ {
+  "tool": "threads.edit-retry",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; threads.edit-retry is open to the person's assistant (agent-reach.js OPEN): a threads tool (threads)"
+ },
+ {
+  "tool": "threads.kill-task",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; threads.kill-task is open to the person's assistant (agent-reach.js OPEN): a threads tool (threads)"
+ },
+ {
+  "tool": "threads.remember",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; threads.remember is open to the person's assistant (agent-reach.js OPEN): a threads tool (threads)"
+ },
+ {
+  "tool": "threads.retry",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; threads.retry is open to the person's assistant (agent-reach.js OPEN): a threads tool (threads)"
+ },
+ {
+  "tool": "threads.unqueue",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; threads.unqueue is open to the person's assistant (agent-reach.js OPEN): a threads tool (threads)"
+ },
+ {
+  "tool": "vault.emergency.status",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; vault.emergency.status is open to the person's assistant (agent-reach.js OPEN): a vault tool (vault)"
+ },
+ {
+  "tool": "vault.provider.status",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; vault.provider.status is open to the person's assistant (agent-reach.js OPEN): a vault tool (vault)"
+ },
+ {
+  "tool": "voice.listen",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; voice.listen is open to the person's assistant (agent-reach.js OPEN): a voice tool (Push-to-talk for the Capsule: streams the mic to a speech provider and relays the words back, with optional spoken replies.)"
+ },
+ {
+  "tool": "voice.settings",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; voice.settings is open to the person's assistant (agent-reach.js OPEN): a voice tool (Push-to-talk for the Capsule: streams the mic to a speech provider and relays the words back, with optional spoken replies.)"
+ },
+ {
+  "tool": "voice.speak",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; voice.speak is open to the person's assistant (agent-reach.js OPEN): a voice tool (Push-to-talk for the Capsule: streams the mic to a speech provider and relays the words back, with optional spoken replies.)"
+ },
+ {
+  "tool": "voice.status",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; voice.status is open to the person's assistant (agent-reach.js OPEN): a voice tool (Push-to-talk for the Capsule: streams the mic to a speech provider and relays the words back, with optional spoken replies.)"
+ },
+ {
+  "tool": "watchers.delete",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; watchers.delete is open to the person's assistant (agent-reach.js OPEN): a watchers tool (watchers)"
+ },
+ {
+  "tool": "watchers.resume",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; watchers.resume is open to the person's assistant (agent-reach.js OPEN): a watchers tool (watchers)"
+ },
+ {
+  "tool": "watchers.run",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; watchers.run is open to the person's assistant (agent-reach.js OPEN): a watchers tool (watchers)"
+ },
+ {
+  "tool": "wink.card",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; wink.card is open to the person's assistant (agent-reach.js OPEN): a wink tool (Pairing as grants: every way in is a Wink (scan a code, or type two-sided codes).)"
+ },
+ {
+  "tool": "wink.code.status",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; wink.code.status is open to the person's assistant (agent-reach.js OPEN): a wink tool (Pairing as grants: every way in is a Wink (scan a code, or type two-sided codes).)"
+ },
+ {
+  "tool": "wink.offers",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; wink.offers is open to the person's assistant (agent-reach.js OPEN): a wink tool (Pairing as grants: every way in is a Wink (scan a code, or type two-sided codes).)"
+ },
+ {
+  "tool": "wink.pair.status",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; wink.pair.status is open to the person's assistant (agent-reach.js OPEN): a wink tool (Pairing as grants: every way in is a Wink (scan a code, or type two-sided codes).)"
+ },
+ {
+  "tool": "wink.storage.card",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; wink.storage.card is open to the person's assistant (agent-reach.js OPEN): a wink tool (Pairing as grants: every way in is a Wink (scan a code, or type two-sided codes).)"
+ },
+ {
+  "tool": "wink.storage.discover",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; wink.storage.discover is open to the person's assistant (agent-reach.js OPEN): a wink tool (Pairing as grants: every way in is a Wink (scan a code, or type two-sided codes).)"
+ },
+ {
+  "tool": "wink.storage.offers",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; wink.storage.offers is open to the person's assistant (agent-reach.js OPEN): a wink tool (Pairing as grants: every way in is a Wink (scan a code, or type two-sided codes).)"
+ },
+ {
+  "tool": "wink.storage.status",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; wink.storage.status is open to the person's assistant (agent-reach.js OPEN): a wink tool (Pairing as grants: every way in is a Wink (scan a code, or type two-sided codes).)"
+ },
+ {
+  "tool": "work.engineer.revise",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; work.engineer.revise is open to the person's assistant (agent-reach.js OPEN): edit the Engineer's proposed definition yourself; the earlier approval is void"
+ },
+ {
+  "tool": "work.engineer.talk",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; work.engineer.talk is open to the person's assistant (agent-reach.js OPEN): ask the Engineer to explain or change this Space's definitions; admins only"
+ },
+ {
+  "tool": "work.team.add",
+  "reason": "user ruling 4 Oct 2026, an assistant can do what its person can; work.team.add is open to the person's assistant (agent-reach.js OPEN): add an assistant teammate from a Kit role, with grants no wider than the adder's"
  }
 ]

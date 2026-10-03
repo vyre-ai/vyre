@@ -302,3 +302,26 @@ export const ASK_FIRST = new Map([
   ["hooks.close", "changes what reaches the Space from outside"],
   ["hooks.open", "opens the Space to the outside"],
 ]);
+
+/**
+ * Tools declared `reach: anyone` that are deliberately open to the person's assistant (a proven session) and that the golden set would otherwise show as newly open to a model caller.
+ * One reason each; the allow file is generated from this and the other two lists (kernel/golden/allow-gen.js), never written by hand.
+ * @type {ReadonlyMap<string, string>}
+ */
+export const ANYONE_OPEN = new Map([
+  ["flows.define", "writes a Flow definition; a definition does nothing until a person approves it"],
+  ["flows.card", "reads a Flow's card"],
+  ["flows.get", "reads a Flow"],
+  ["flows.list", "lists Flows"],
+  ["flows.code", "reads a Flow as code"],
+  ["flows.compile-text", "turns text into a draft Flow; nothing is saved"],
+  ["flows.graph", "reads a Flow as a graph"],
+  ["flows.simulate", "dry-runs a Flow; nothing is sent"],
+  ["flows.start", "starts an approved Flow under the person's own narrowed grants; its outward steps still ask"],
+  ["flows.runs", "lists a Flow's runs"],
+  ["flows.run", "reads one run"],
+  ["flows.retry", "retries a failed run under the person's own narrowed grants"],
+  ["flows.kit.card", "reads a Kit's card"],
+  ["flows.kit.propose", "proposes a Kit; it takes effect only when an owner accepts it"],
+  ["flows.kit.list", "lists Kits"],
+]);

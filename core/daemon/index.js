@@ -19,7 +19,7 @@ import { assertDaemonHost } from "./host-guard.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { Registry, discover, ownerDevice, currentCall } from "../modules/index.js";
-import { devSwitch } from "../../kernel/devbuild.js";
+import { devSwitch, isPackaged } from "../../kernel/devbuild.js";
 import { build, swWithBuild, htmlWithBuild } from "./build.js";
 import { serveApp } from "./app.js";
 import { acquire } from "./lock.js";
@@ -198,7 +198,11 @@ async function startLocked(opts, root, p, release) {
   /** @type {(() => Promise<void>) | null} */ let closeKernelSessions = null;
   /** @type {(() => void) | null} */ let reopenLater = null;
   /** @type {(() => void) | null} */ let closeFlowsHost = null;
-  if (opts.kernel === true || (opts.kernel === undefined && process.env.VYRE_KERNEL === "1")) {
+  // A packaged Vyre runs only with its kernel on: no switch, option or environment variable turns it off (the kernel decides what every call may do). A development checkout keeps
+  // VYRE_KERNEL as it was, so the suites that start a daemon without one still do.
+  const packaged = isPackaged(opts.packageRoot);
+  if (packaged && (opts.kernel === false || process.env.VYRE_KERNEL === "0")) throw new Error("this build runs only with its kernel on; it will not start with the kernel off");
+  if (opts.kernel === true || (opts.kernel === undefined && (process.env.VYRE_KERNEL === "1" || packaged))) {
     const { bootHomeKernel } = await import("../../kernel/home.js");
     // The record store: VYRE_STORE=sqlite (the default), auto or twenty (stores/twenty/space-store.js). With auto or twenty each Space's records live in its own Twenty, provisioned
     // on first use, when the box can run it; auto falls back to SQLite on a box that cannot (and a new hosted Space asks first), twenty refuses to start instead. The reach, memory

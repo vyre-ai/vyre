@@ -2,6 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { record, load, diff, added, weakened, addedRuns, risky } from "./index.js";
 import { CALLERS, WORLDS } from "./matrix.js";
+import fs from "node:fs";
+import { generateAllow, ALLOW_PATH } from "./allow-gen.js";
+import { OPEN, ASK_FIRST, ANYONE_OPEN } from "../../core/modules/agent-reach.js";
 
 let fresh = null;
 const now = () => (fresh ||= record());
@@ -90,4 +93,11 @@ test("a refresh lists the callers each added tool runs for and refuses one that 
   assert.equal(addedRuns(hidden, set({ old: "RaaR", runner: "RRRR" }))[0].risky.length, 2);
   assert.equal(risky("cli"), false);
   assert.equal(risky("harness"), true);
+});
+
+test("the allow file is generated from agent-reach.js: every entry is in OPEN, ASK_FIRST or ANYONE_OPEN with its own reason, and a hand-written entry fails", () => {
+  const stored = JSON.parse(fs.readFileSync(ALLOW_PATH, "utf8"));
+  assert.deepEqual(stored, generateAllow(), "allow.json differs from the generator's output; run: node kernel/golden/allow-gen.js --write");
+  assert.equal(new Set(stored.map(x => x.reason)).size, stored.length, "every entry has its own reason");
+  for (const x of stored) assert.ok(OPEN.has(x.tool) || ASK_FIRST.has(x.tool) || ANYONE_OPEN.has(x.tool), `${x.tool} is on none of the three lists`);
 });

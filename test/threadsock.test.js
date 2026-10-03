@@ -349,3 +349,19 @@ test("PH-1 end to end: the daemon's own relay row decides what a device is (rela
   for (const k of ["web", "setup", "gone"]) assert.equal(await facts(ids[k]), null, k);
   assert.equal(await facts("eeeeeeeeeeeeeeee"), null, "never paired");
 });
+
+test("a packaged daemon refuses to start with the kernel off (the option and VYRE_KERNEL=0), and a development one is unchanged", async t => {
+  const fs2 = await import("node:fs"), os = await import("node:os");
+  const pkg = fs2.mkdtempSync(path.join(os.tmpdir(), "pkg-"));
+  t.after(() => fs2.rmSync(pkg, { recursive: true, force: true }));
+  fs2.mkdirSync(path.join(pkg, "lib"), { recursive: true });
+  fs2.writeFileSync(path.join(pkg, "lib", "build-kind.js"), 'export const BUILD_KIND = "release";\n');
+  const root = tempHome(t);
+  await assert.rejects(() => start({ root, log: () => {}, kernel: false, packageRoot: pkg }), /only with its kernel on/);
+  process.env.VYRE_KERNEL = "0";
+  t.after(() => { delete process.env.VYRE_KERNEL; });
+  await assert.rejects(() => start({ root: tempHome(t), log: () => {}, packageRoot: pkg }), /only with its kernel on/);
+  // a development checkout starts kernel-off as before
+  const d = await start({ root: tempHome(t), log: () => {}, kernel: false });
+  await d.stop();
+});
