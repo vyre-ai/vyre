@@ -660,7 +660,7 @@ export function register({ vault, tool, internal, call, said, deps = {}, log }) 
   internal("vault.forward", "The kernel's lease module forwards one request from a lent computer's program: { credential, method, url, query?, headers?, body?, session }. It runs here, at the home, through the same checks as vault.request, and returns { status, headers, body (base64) } or { held } for an outward call. Never returns a credential value.",
     obj({ credential: str, method: { type: "string", enum: METHODS }, url: str, headers: { type: "object" }, query: { type: "object" }, body: { anyOf: [str, { type: "object" }, { type: "array" }] }, session: str }, ["credential", "method", "url", "session"]),
     async (input, { caller }) => {
-      if (caller !== "kernel:leases") throw bad("only the kernel's lease module forwards a lent computer's request", "denied");
+      if (caller !== "kernel:leases" && caller !== "module:leases") throw bad("only the kernel's lease module forwards a lent computer's request", "denied");
       const r = await api.forward(input, { caller: `runner:${String(input.session).slice(0, 80)}` });
       return r.held ? r : { ...r, body: r.body.toString("base64") };
     });
