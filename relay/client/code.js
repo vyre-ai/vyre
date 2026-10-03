@@ -295,22 +295,6 @@ export function showingStart(o) {
 }
 
 /**
- * The picks on an approver's card: the right number among `count - 1` other distinct 3-digit
- * numbers, in random order. `count` is 3 at W0 to W2 and 5 or more above W2 (spec 6.5).
- * @param {string} number @param {number} count @param {(n: number) => Uint8Array} [rng]
- */
-export function numberChoices(number, count, rng = defaultRng) {
-  if (!Number.isInteger(count) || count < 2 || count > 1000) throw new Error("bad count");
-  const set = new Set([number]);
-  /** @param {number} n */
-  const below = n => { const b = rng(4); return (((b[0] << 24) | (b[1] << 16) | (b[2] << 8) | b[3]) >>> 0) % n; };
-  while (set.size < count) set.add(String(below(1000)).padStart(3, "0"));
-  const out = [...set];
-  for (let i = out.length - 1; i > 0; i--) { const j = below(i + 1); [out[i], out[j]] = [out[j], out[i]]; }
-  return out;
-}
-
-/**
  * The typing device's whole exchange over the relay's `POST /v1/wink/code`: parse what was typed,
  * send message 1, answer with the confirmation, check the showing device's. Resolves
  * `{ ok: true, number, key, route }` (the number to show; the key opens the sealed record), or

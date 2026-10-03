@@ -139,17 +139,8 @@ test("pake: bad inputs are refused", () => {
   assert.throws(() => t.second(new Uint8Array(32), "x"), /bad point/);
 });
 
-test("number choices hold the right number once, are distinct, and have the asked size", () => {
-  for (const count of [3, 5, 8]) {
-    for (let i = 0; i < 20; i++) {
-      const c = C.numberChoices("047", count);
-      assert.equal(c.length, count);
-      assert.equal(new Set(c).size, count);
-      assert.equal(c.filter(x => x === "047").length, 1);
-      for (const x of c) assert.match(x, /^\d{3}$/);
-    }
-  }
-  assert.throws(() => C.numberChoices("047", 1));
+test("there is no pick-a-number helper: pairing is two-sided only", () => {
+  assert.equal("numberChoices" in C, false);
 });
 
 test("the number is spread over 000 to 999", () => {

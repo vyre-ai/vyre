@@ -1,7 +1,7 @@
 {
   "name": "wink",
   "version": "0.1.0",
-  "description": "Pairing as grants: every way into a space is a Wink (a code or a scan, a card, then one grant and a few events). Add a device, invite a person, share a computer, see and remove what was given.",
+  "description": "Pairing as grants: every way in is a Wink (scan a code, or type two-sided codes). Devices (phone, computer, server, storage) belong to the identity, never to a space. Add a device, pair a server or a phone, invite a person, offer compute, see and remove what was given.",
   "roles": [
     "box"
   ],
@@ -57,6 +57,42 @@
       {
         "name": "wink.card",
         "reach": "person"
+      },
+      {
+        "name": "wink.pair.targets",
+        "reach": "person"
+      },
+      {
+        "name": "wink.pair.server",
+        "reach": "person"
+      },
+      {
+        "name": "wink.pair.status",
+        "reach": "person"
+      },
+      {
+        "name": "wink.server.code",
+        "reach": "person"
+      },
+      {
+        "name": "wink.server.confirm",
+        "reach": "person"
+      },
+      {
+        "name": "wink.server.adopt",
+        "reach": "person"
+      },
+      {
+        "name": "wink.phone.open",
+        "reach": "person"
+      },
+      {
+        "name": "wink.phone.scan",
+        "reach": "person"
+      },
+      {
+        "name": "wink.offer.set",
+        "reach": "person"
       }
     ]
   },
@@ -78,7 +114,12 @@
       "wink.code-done",
       "wink.code-unavailable",
       "grant.created",
-      "grant.revoked"
+      "grant.revoked",
+      "wink.pair-waiting",
+      "wink.pair-done",
+      "wink.pair-failed",
+      "wink.server-adopted",
+      "wink.offer-changed"
     ],
     "on": [
       "relay.code-asked",

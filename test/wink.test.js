@@ -77,13 +77,15 @@ test("wink: a typed code is two-sided, ends in one device grant and events, and 
   const r = await done;
   assert.equal(r.ok, true, JSON.stringify(r));
   assert.ok(r.paired.device, "the device is paired");
-  const grants = (await w.call("wink.access")).data.grants;
-  assert.equal(grants.length, 1);
-  assert.equal(grants[0].source, "wink:W2");
-  assert.equal(grants[0].subject.actor.kind, "device");
-  assert.equal(grants[0].subject.actor.id, r.paired.device);
+  const access = (await w.call("wink.access")).data;
+  assert.equal(access.grants.length, 0, "no grant in any space: a device belongs to the identity");
+  assert.equal(access.devices.length, 1);
+  assert.equal(access.devices[0].id, r.paired.device);
+  assert.equal(access.devices[0].kind, "computer");
+  assert.deepEqual(access.devices[0].owner, { kind: "identity", id: access.devices[0].identity });
   const kinds = w.events.map(e => e[0]);
-  for (const k of ["wink.offered", "wink.found", "wink.confirmed", "wink.joined", "grant.created"]) assert.ok(kinds.includes(k), `${k} was emitted`);
+  for (const k of ["wink.offered", "wink.found", "wink.confirmed", "wink.joined"]) assert.ok(kinds.includes(k), `${k} was emitted`);
+  assert.ok(!kinds.includes("grant.created"), "no space grant is written for a device");
   assert.equal((await w.call("wink.offers")).data.offers.length, 0, "a used offer is no longer waiting");
 });
 
@@ -169,7 +171,7 @@ test("wink: sharing a computer is a node.host grant with limits, and only for a 
   assert.ok(w.events.some(e => e[0] === "wink.shared"));
 });
 
-test("wink: removing a grant revokes it and takes the device with it, and removing the device revokes its grant", async t => {
+test("wink: removing a device takes it from the identity with its connections, and removing it at the relay takes it from the registry", async t => {
   const w = await world(t);
   const open = await w.call("wink.code.open", { flow: "W2" });
   const { states, done } = typeCode(t, w, open.data.code);
@@ -177,26 +179,61 @@ test("wink: removing a grant revokes it and takes the device with it, and removi
   await until(() => w.events.find(e => e[0] === "wink.found"));
   await w.call("wink.code.ack", { offer: open.data.offer, typed: ack.code });
   const r = await done;
-  const g = (await w.call("wink.access")).data.grants[0];
-  const out = await w.call("wink.remove", { grant: g.id });
+  const dev = (await w.call("wink.access")).data.devices[0];
+  const out = await w.call("wink.remove", { device: dev.id });
   assert.ok(out.data?.removed, JSON.stringify(out.error));
   assert.match(out.data.prompt, /stop reaching your server at once/);
-  assert.equal((await w.call("wink.access")).data.grants.length, 0);
+  assert.equal((await w.call("wink.access")).data.devices.length, 0);
+  assert.equal(typeof out.data.closed, "boolean", "it says whether the connections were closed");
+  assert.ok(w.events.some(e => e[0] === "wink.removed" && e[1].device === r.paired.device));
+  assert.equal((await w.call("wink.remove", { device: dev.id })).error?.code, "not_found");
+  // relay.devices.remove is the person's own tool: the surface that asked closes the connections with it.
+  if (!out.data.closed) await w.d.registry.call("relay.devices.remove", { id: dev.id }, "cli", PROOF);
   const left = (await w.d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices.find(d => d.id === r.paired.device);
   assert.ok(!left, "the device is gone");
-  assert.ok(w.events.some(e => e[0] === "wink.removed" && e[1].device === r.paired.device));
-  assert.ok(w.events.some(e => e[0] === "grant.revoked"));
 });
 
-test("wink: a ring pairing (the existing path) also gets its grant, and removing the device revokes it", async t => {
+test("wink: a ring pairing (the existing path) registers a phone under the identity, and removing the device at the relay clears it", async t => {
   const w = await world(t);
   const minted = await w.d.registry.call("relay.pair.ticket", {}, "cli", PROOF);
   const paired = await pairTicket(fromBase64url(minted.data.ticket), { relay: w.status.url, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: keystore(t) });
-  await until(async () => (await w.call("wink.access")).data.grants.length === 1);
-  assert.equal((await w.call("wink.access")).data.grants[0].source, "wink:W1");
+  await until(async () => (await w.call("wink.access")).data.devices.length === 1);
+  const a = (await w.call("wink.access")).data;
+  assert.equal(a.devices[0].kind, "phone");
+  assert.equal(a.grants.length, 0);
   await w.d.registry.call("relay.devices.remove", { id: paired.device }, "cli", PROOF);
-  await until(async () => (await w.call("wink.access")).data.grants.length === 0);
-  assert.ok(w.events.some(e => e[0] === "grant.revoked"));
+  await until(async () => (await w.call("wink.access")).data.devices.length === 0);
+});
+
+test("wink: Add a phone shows a QR and a code, a phone never takes a space target, and the phone's typed-back code adds it as a phone", async t => {
+  const w = await world(t);
+  assert.equal((await w.call("wink.phone.open", { space: "spc_aaaaaaaaaaaa" })).error?.code, "identity_only");
+  const open = await w.call("wink.phone.open", {});
+  assert.ok(open.data?.code, JSON.stringify(open.error));
+  assert.match(open.data.qr, /^vyre:\/\/wink\/1\?c=WINK-[0-9A-Z]{4}-[0-9A-Z]{4}&r=/);
+  const { states, done } = typeCode(t, w, open.data.code);
+  const ack = await until(() => states.find(s => s.state === "ack"));
+  await until(() => w.events.find(e => e[0] === "wink.found"));
+  assert.equal((await w.call("wink.code.ack", { offer: open.data.offer, typed: ack.code })).data.ok, true);
+  assert.equal((await done).ok, true);
+  const dev = (await w.call("wink.access")).data.devices[0];
+  assert.equal(dev.kind, "phone");
+  assert.deepEqual(dev.offers, { access: true });
+  const scan = await w.call("wink.phone.scan", { payload: open.data.qr, target: { kind: "space", id: "spc_aaaaaaaaaaaa" } });
+  assert.equal(scan.error?.code, "identity_only", "a phone is refused a space");
+  assert.match(scan.error.message, /not to a space/);
+});
+
+test("wink: the server's own code and typed-back confirmation use the same two-sided path, and a pick-a-number tool does not exist", async t => {
+  const w = await world(t);
+  const open = await w.call("wink.server.code", {});
+  assert.match(open.data.code, /^WINK-[0-9A-Z]{4}-[0-9A-Z]{4}$/);
+  const { states, done } = typeCode(t, w, open.data.code);
+  const ack = await until(() => states.find(s => s.state === "ack"));
+  await until(() => w.events.find(e => e[0] === "wink.found"));
+  assert.equal((await w.call("wink.server.confirm", { offer: open.data.offer, typed: "WINK-0000-0000" })).data.ok, false);
+  assert.equal((await done).ok, false);
+  for (const gone of ["wink.code.pick", "wink.pick"]) assert.equal((await w.call(gone, {})).error?.code, "no_such_tool", `${gone} is gone`);
 });
 
 test("wink cards: every card and prompt is in the words of wink-copy.md and never names a network, a key or a ticket", () => {

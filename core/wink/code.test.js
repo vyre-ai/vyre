@@ -77,34 +77,28 @@ test("a code opens on a rendezvous the relay gave, lives 5 minutes, and is repla
   assert.equal(w.code.handle({ rv: shown.rv, s: client.b64url(new Uint8Array(16)), n: 1, m: client.b64url(new Uint8Array(32)) }), null);
 });
 
-test("the right code, then the right number: both sides agree, the code is used up, and nothing replaces it", async () => {
-  const w = world({ opts: { level: 1 } });
+test("the right code, then the code typed back: both sides agree, the code is used up, and nothing replaces it", async () => {
+  const w = world();
   const shown = /** @type {any} */ (await w.code.open());
   const f = first(w, shown);
   assert.ok(f.reply, "message 2 comes back");
   const m4 = confirmMsg(w, shown, f);
   assert.ok(m4, "message 4 comes back once the typist's confirmation verified");
-  const fin = f.t.finish(/** @type {Uint8Array} */ (client.unb64url(/** @type {any} */ (m4).m)));
+  const fin = /** @type {any} */ (f.t.finish(/** @type {Uint8Array} */ (client.unb64url(/** @type {any} */ (m4).m))));
   assert.equal(fin.ok, true);
-  const pick = w.last("wink.code.pick");
-  assert.equal(pick.choices.length, 3, "three choices at W0 to W2");
-  assert.ok(pick.choices.includes(/** @type {any} */ (fin).number), "the typist's number is among them");
-  const r = await w.code.pick(pick.id, /** @type {any} */ (fin).number);
+  const ack = w.last("wink.code.ack");
+  assert.ok(ack.id, "the person is asked to type back the typing device's code");
+  assert.equal(w.names().includes("wink.code.pick"), false, "there is no pick-a-number step");
+  assert.equal("pick" in w.code, false, "and no way to call one");
+  const typed = client.ackCode(fin.key);
+  const r = await w.code.ack(ack.id, typed.toLowerCase().replace(/-/g, " "));
   assert.equal(r.ok, true);
-  assert.equal(client.toHex(/** @type {any} */ (r).key), client.toHex(/** @type {any} */ (fin).key), "the sealing key is shared");
+  assert.equal(client.toHex(/** @type {any} */ (r).key), client.toHex(fin.key), "the sealing key is shared");
   assert.deepEqual(w.names().slice(-2), ["wink.code.closed", "wink.code.done"]);
   assert.equal(w.last("wink.code.closed").reason, "used");
   assert.equal(w.code.status(), null, "single use: no code is showing, none was made");
   assert.equal(first(w, shown).reply, null);
-  assert.deepEqual(await w.code.pick(pick.id, /** @type {any} */ (fin).number), { ok: false });
-});
-
-test("above W2 the approver gets five or more choices", async () => {
-  const w = world({ opts: { level: 3 } });
-  const shown = /** @type {any} */ (await w.code.open());
-  const f = first(w, shown);
-  assert.ok(confirmMsg(w, shown, f));
-  assert.equal(w.last("wink.code.pick").choices.length, 5);
+  assert.deepEqual(await w.code.ack(ack.id, typed), { ok: false });
 });
 
 test("the typist confirms first: a bad confirmation gets nothing derived from the key, and no number is offered", async () => {
@@ -117,7 +111,7 @@ test("the typist confirms first: a bad confirmation gets nothing derived from th
   const out = confirmMsg(w, shown, f);
   assert.equal(out, null);
   assert.deepEqual(w.evals.confirms, [{ ok: false }], "the verdict carries no tag, key or number");
-  assert.equal(w.names().includes("wink.code.pick"), false);
+  assert.equal(w.names().includes("wink.code.ack"), false);
   // Message 3 before message 1, and message 3 from a session nobody started, are refused.
   assert.equal(w.code.handle({ rv: shown.rv, s: client.b64url(new Uint8Array(16).fill(5)), n: 3, m: client.b64url(new Uint8Array(32)) }), null);
   // Everything this device put on the wire in the failed session is message 2 (Yb), which depends on the password only through g.
@@ -177,24 +171,23 @@ test("50 parallel first messages give at most 10 key evaluations, then the code 
   assert.equal(w.evals.n, MAX_ATTEMPTS);
 });
 
-test("one try for the number: a wrong pick closes the code, a fresh one replaces it, and the old pick is dead", async () => {
+test("one try for the typed-back code: a wrong one closes the code, a fresh one replaces it, and the old one is dead", async () => {
   const w = world();
   const shown = /** @type {any} */ (await w.code.open());
   const f = first(w, shown);
   const m4 = confirmMsg(w, shown, f);
   const fin = /** @type {any} */ (f.t.finish(/** @type {Uint8Array} */ (client.unb64url(/** @type {any} */ (m4).m))));
-  const pick = w.last("wink.code.pick");
-  const wrong = pick.choices.find(/** @param {string} c */ c => c !== fin.number);
-  assert.deepEqual(await w.code.pick(pick.id, wrong), { ok: false });
+  const ack = w.last("wink.code.ack");
+  assert.deepEqual(await w.code.ack(ack.id, "WINK-0000-0000"), { ok: false });
   assert.equal(w.last("wink.code.closed").reason, "wrong_number");
   const next = w.last("wink.code.replaced");
   assert.equal(next.reason, "wrong_number");
   assert.notEqual(next.rv, shown.rv);
-  // The right number now is too late: one try per code.
-  assert.deepEqual(await w.code.pick(pick.id, fin.number), { ok: false });
+  // The right code now is too late: one try per code.
+  assert.deepEqual(await w.code.ack(ack.id, client.ackCode(fin.key)), { ok: false });
   assert.equal(w.names().includes("wink.code.done"), false);
   // And a made-up id never works.
-  assert.deepEqual(await w.code.pick("nonsense", fin.number), { ok: false });
+  assert.deepEqual(await w.code.ack("nonsense", client.ackCode(fin.key)), { ok: false });
 });
 
 test("once a session completed the PAKE, the code is spoken for and nobody else is evaluated", async () => {

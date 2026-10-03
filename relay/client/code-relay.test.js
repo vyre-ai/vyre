@@ -9,7 +9,7 @@ import { relayLink } from "../../core/relay/link.js";
 import { newRouteKey, routeId } from "../../core/relay/wire.js";
 import { keyPair } from "../../core/relay/noise.js";
 import { createWinkCode } from "../../core/wink/code.js";
-import { enterCode, toHex } from "./code.js";
+import { enterCode, toHex, ackCode } from "./code.js";
 
 async function world(t, relayOpts = {}) {
   const relay = createRelay({ clientAddress: req => String(req.headers["x-test-ip"] || "127.0.0.1"), ...relayOpts });
@@ -31,17 +31,15 @@ async function world(t, relayOpts = {}) {
   return { relay, base: base.replace(/^ws/, "http"), route, wink, events, shown, link };
 }
 
-test("typed code end to end: the typist enters the code, both see the number, the approver picks it, the keys match", async t => {
+test("typed code end to end: the typist enters the code, the person types back the typist's code, the keys match", async t => {
   const w = await world(t);
   const typed = w.shown.code.toLowerCase().replace(/-/g, " ");
   const r = await enterCode({ base: w.base, input: typed });
   assert.equal(r.ok, true);
   const ok = /** @type {any} */ (r);
   assert.equal(ok.route, w.route);
-  const pick = /** @type {any} */ (w.events.find(e => e[0] === "wink.code.pick"))[1];
-  assert.equal(pick.choices.length, 3);
-  assert.ok(pick.choices.includes(ok.number));
-  const done = await w.wink.pick(pick.id, ok.number);
+  const ack = /** @type {any} */ (w.events.find(e => e[0] === "wink.code.ack"))[1];
+  const done = await w.wink.ack(ack.id, ackCode(ok.key));
   assert.equal(done.ok, true);
   assert.equal(toHex(/** @type {any} */ (done).key), toHex(ok.key));
   // Single use: the same code again answers like any dead code.

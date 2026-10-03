@@ -86,6 +86,26 @@ Taildrive per-share access and the secrets scan (ea158df, 27 Sep 2026):
 
 ## Doing
 
+### Wink 3 Oct 2026 (work/wink: pairing, devices belong to the identity)
+
+Scope: pairing exactly as DESIGN-wink section 4, with devices owned by the identity and never by a space.
+
+Done:
+- Two ways in only: scan a code, or two-sided typed codes. The pick-a-number path is removed, not hidden: `createWinkCode` has no `pick`, `numberChoices` is gone from relay/client/code.js, `wink.code.pick` is no longer an event, and join.js is two halves (`typeWinkCode`, `finishJoin`) around the ack code.
+- Device registry (core/wink/pairing.js, new migration after the grants one): `wink_devices` keyed by identity with a kind (phone, computer, server, storage), an owner (the identity, or an administered space for a server or storage device) and per-device offers. No per-space device column and no device grant in any space. Grants an older build wrote for devices are adopted into the registry once and revoked.
+- Tools: `wink.pair.targets` ("Pair to:" = you plus the spaces you administer), `wink.pair.server` and `wink.pair.status` (the app types the server's code, returns the code to type back, finishes by itself), `wink.server.code` / `wink.server.confirm` / `wink.server.adopt` (the server's side), `wink.phone.open` (QR payload and code) / `wink.phone.scan`, `wink.offer.set`, and `computeAllowed` (compute needs the space's grant and the member's grant). A phone is refused any space target with a plain reason.
+- `wink.access` returns `{ devices, grants }`; `wink.remove` takes `device` as well as `grant`.
+- scripts/install/i.sh (`curl -fsSL vyre.run/i | sh`): checks system and CPU, runs the signed release installer (which installs Docker if missing), prints a WINK code, takes the app's code back. assemble-site.sh serves it at /i when the release tag has it.
+- Directory port (`ownDirectory`, or `createWink({ directory })`): until the kernel's membership table is merged, a box answers for its own space with the owner as owner. Tests use a fake.
+
+Doing: nothing open.
+
+Next: wire the real directory (kernel memberships) and the app's pairing UI to `wink.pair.targets`; make the app call `wink.server.adopt` on the new server over the paired channel (today `ports.adopt` is a hook with no default); storage devices on a network drive (discovery) and the vault step for bucket details.
+
+Needs: the relay module to let module callers close a device's connections (`relay.devices.remove` is reach person, so `wink.remove { device }` answers `closed: false` and the surface calls it itself); the lead's decision on where the target travels from the app to the server (see open questions in the report). test/wink.test.js "an invitation is sealed into a ticket" already failed at b98a229e7 (a second ticket lookup answers ticket_gone); not touched here.
+
+Changed contracts: none outside core/wink, relay/client/code.js and join.js (their tests moved with them) and scripts/assemble-site.sh (/i).
+
 1 Oct 2026, the gated deploy of the three Workers (.github/workflows/relay-deploy.yml, prepared and never run): dispatch with a stage sha and which Workers; the dry run (no credentials) prints the bindings, then the `deploy` environment's reviewer approves and wrangler 4.145.0 deploys. relay/worker and names/worker deploy from the commit; relay/app needs the signed `app-out` artifact of a release run (`app_out_run`), because its build needs the release signing key, which stays in the `release` environment. Guards (reviewer-2): both jobs fail unless the workflow runs from main or work/stage-0.2 (the `deploy` environment's branch rule is to match); the sha must be on stage; `app_out_run` must be the `release` workflow's own run for that exact commit, not a pull request's, and successful, and `scripts/deploy/verify-app-out.mjs` checks every sealed folder against the pinned RELEASE_KEY (and refuses the placeholder) before anything is deployed; wrangler comes from tools/wrangler/package-lock.json with `npm ci --ignore-scripts` and the Cloudflare token exists only in the steps that deploy; checkout and setup-node are pinned by commit. The release workflow does not yet upload an `app-out` artifact, so the app step stays unusable until pwa's web export is built there. The names Worker's two runtime secrets can be set on the first deploy from the environment secrets NAMES_CF_API_TOKEN and NAMES_CF_ZONE_ID.
 
 ### Cloudflare token (for the `deploy` environment's CLOUDFLARE_API_TOKEN)

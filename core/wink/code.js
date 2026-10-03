@@ -17,9 +17,9 @@
 //      events say so: `wink.code.closed { reason }` then `wink.code.replaced { code, rv, expires,
 //      reason }`. Reasons that replace: expired, too_many, wrong_number (and wrong_code, only when
 //      `rotateOnWrong` is set). Reasons that do not: used (the code worked), cancelled.
-//   e. AFTER THE PAKE a 3-digit number derived from the transcript is known on both sides. The typing
-//      side shows one number; this side offers 3 choices at W0 to W2 and 5 above W2
-//      (`wink.code.pick { id, choices }`). ONE TRY PER CODE: one wrong pick closes the code.
+//   e. PAIRING IS TWO-SIDED (DESIGN-wink.md section 4). AFTER THE PAKE the typing device shows a code of its own
+//      (`ackCode` of the shared key) and the person types it back here (`ack`). ONE TRY PER CODE: one wrong
+//      code closes it. There is no pick-a-number step: it was removed, not hidden.
 //   f. A CODE IS SINGLE USE AND LASTS 5 MINUTES.
 //
 // Events (all through `emit(name, data)`; `opened`, `replaced` carry the code to display, which is a
@@ -28,9 +28,8 @@
 //   wink.code.replaced { code, rv, expires, reason }        a fresh code took the place of a closed one
 //   wink.code.closed   { reason }                           expired | too_many | wrong_number | wrong_code | used | cancelled
 //   wink.code.wrong    { attempts }                         a typist's confirmation failed (a wrong code was tried)
-//   wink.code.pick     { id, choices }                      the PAKE completed; the approver picks the number
-//   wink.code.ack      { id }                               (two-sided) the PAKE completed; the person types back the code the other device shows
-//   wink.code.done     { id }                               the right number was picked
+//   wink.code.ack      { id }                               the PAKE completed; the person types back the code the other device shows
+//   wink.code.done     { id }                               the right code was typed back
 //   wink.code.unavailable { reason }                        no rendezvous could be had (the relay is away or full)
 
 import * as client from "../../relay/client/code.js";
@@ -47,17 +46,14 @@ const REPLACING = new Set(["expired", "too_many", "wrong_number", "wrong_code"])
  *   release?: () => void,
  *   emit?: (name: string, data: any) => void,
  *   now?: () => number,
- *   level?: number,
  *   rotateOnWrong?: boolean,
- *   twoSided?: boolean,
  *   maxAttempts?: number,
  *   ttlMs?: number,
- *   crypto?: Pick<typeof client, "newCode" | "showingStart" | "numberChoices" | "unb64url" | "b64url">,
+ *   crypto?: Pick<typeof client, "newCode" | "showingStart" | "unb64url" | "b64url">,
  *   rng?: (n: number) => Uint8Array,
  * }} Options
  *   route: this box's route id (it is in the transcript). allocate: ask the relay for a free
- *   rendezvous (link.codeAlloc). release: give it back. level: the W level of the flow, 0 to 2 gives
- *   3 choices and above gives 5.
+ *   rendezvous (link.codeAlloc). release: give it back.
  */
 
 /** @param {Options} o */
@@ -67,12 +63,11 @@ export function createWinkCode(o) {
   const cx = o.crypto || client;
   const max = o.maxAttempts || MAX_ATTEMPTS;
   const ttl = o.ttlMs || CODE_TTL_MS;
-  const count = (o.level || 0) <= 2 ? 3 : 5;
 
   /**
    * @typedef {{ code: string, rv: string, pw: string, expires: number, attempts: number, closed: boolean, matched: boolean,
    *   sessions: Map<string, { eval: any, done: boolean }>,
-   *   pick: null | { id: string, number: string, key: Uint8Array } }} Live
+   *   pick: null | { id: string, key: Uint8Array } }} Live
    * @type {Live | null}
    */
   let live = null;
@@ -193,17 +188,16 @@ export function createWinkCode(o) {
         }
         l.matched = true;
         const id = cx.b64url(o.rng ? o.rng(9) : globalThis.crypto.getRandomValues(new Uint8Array(9)));
-        l.pick = { id, number: r.number, key: r.key };
-        if (o.twoSided) emit("wink.code.ack", { id });
-        else emit("wink.code.pick", { id, choices: cx.numberChoices(r.number, count, o.rng) });
+        l.pick = { id, key: r.key };
+        emit("wink.code.ack", { id });
         return { m: cx.b64url(r.tag) };
       }
       return null;
     },
 
     /**
-     * Two-sided pairing (DESIGN-wink.md, section 4): the person types back the code the typing device shows (`ackCode` of the shared key).
-     * One try per code, like the pick: the right code uses the code up, a wrong one closes it (and a fresh one replaces it).
+     * The person types back the code the typing device shows (`ackCode` of the shared key).
+     * One try per code: the right code uses the code up, a wrong one closes it (and a fresh one replaces it).
      * @param {string} id @param {string} typed
      * @returns {Promise<{ ok: true, key: Uint8Array } | { ok: false }>}
      */
@@ -216,24 +210,6 @@ export function createWinkCode(o) {
       const want = client.normaliseAck(client.ackCode(p.key));
       const got = client.normaliseAck(String(typed));
       if (!got || !want || !client.equalBytes(new TextEncoder().encode(got), new TextEncoder().encode(want))) { await end("wrong_number"); return { ok: false }; }
-      close("used");
-      emit("wink.code.done", { id });
-      return { ok: true, key: p.key };
-    },
-
-    /**
-     * The approver's pick. One try per code: the right number uses the code up, a wrong one closes it
-     * (and a fresh one replaces it). Resolves { ok: true, key } on success; the key seals the record.
-     * @param {string} id @param {string} number
-     * @returns {Promise<{ ok: true, key: Uint8Array } | { ok: false }>}
-     */
-    async pick(id, number) {
-      if (expired()) return { ok: false };
-      const l = live;
-      if (!l || l.closed || !l.pick || l.pick.id !== id) return { ok: false };
-      const p = l.pick;
-      l.pick = null;
-      if (typeof number !== "string" || number !== p.number) { await end("wrong_number"); return { ok: false }; }
       close("used");
       emit("wink.code.done", { id });
       return { ok: true, key: p.key };

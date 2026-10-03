@@ -13,7 +13,7 @@ const clean = (/** @type {unknown} */ s, /** @type {string} */ d) => String(s ??
 
 /**
  * @typedef {{ name?: string, fingerprint?: string, os?: string }} Party
- * @typedef {{ kind: "phone" | "computer" | "server" | "share" | "invite" | "lend", receiver: Party, approver?: Party, space?: string,
+ * @typedef {{ kind: "phone" | "computer" | "server" | "storage" | "share" | "invite" | "lend", receiver: Party, approver?: Party, space?: string,
  *   inviter?: Party, level?: number, server?: string, quota?: string, days?: number|null }} CardInput
  */
 
@@ -32,7 +32,7 @@ export function card(i) {
   const out = (/** @type {object} */ c) => /** @type {any} */ ({ kind: i.kind, who, ...(you ? { you } : {}), forHowLong: until, sensitive: false, ...c });
   switch (i.kind) {
     case "phone":
-      return out({ title: "Add this phone to Personal?", goesInto: "Goes into: Personal",
+      return out({ title: `Add this phone to ${space}?`, goesInto: `Goes into: ${space}`,
         allows: "It can open your projects and your vault, and use your computers.",
         primary: "Add with Face ID", secondary: "Not me", sensitive: true });
     case "computer": {
@@ -40,9 +40,13 @@ export function card(i) {
       return out({ title: `Add this ${label} to your server?`, goesInto: "Goes into: Personal",
         allows: "It can open your projects and your vault, and use your computers.", primary: "Add with Face ID", secondary: "Not me", sensitive: true });
     }
+    case "storage":
+      return out({ title: `Add ${name} to ${space}`, goesInto: `Goes into: ${space}`,
+        allows: `${name} is a drive you own. It will hold files for you. It can: keep encrypted copies. It cannot: read them.`,
+        primary: `Add ${name}`, secondary: "Cancel", sensitive: true });
     case "server":
-      return out({ title: `Add ${name} to Personal`, goesInto: "Goes into: Personal",
-        allows: `${name} is a server you own. It will do heavy work for you. It can: run your sessions when you ask. It cannot: see your vault or your memory. It gets sealed logins per run.`,
+      return out({ title: `Add ${name} to ${space}`, goesInto: `Goes into: ${space}`,
+        allows: `${name} is a server ${space === "Personal" ? "you own" : `for ${space}`}. It will do heavy work${space === "Personal" ? " for you" : ""}. It can: run your sessions when you ask. It cannot: see your vault or your memory. It gets sealed logins per run.`,
         primary: `Add ${name}`, secondary: "Cancel", sensitive: true });
     case "invite":
       return out({ title: `Join ${space}`, from: clean(i.inviter && i.inviter.name, "someone") + (i.inviter && i.inviter.fingerprint ? `, ${clean(i.inviter.fingerprint, "")}` : ""),
@@ -64,6 +68,25 @@ export function card(i) {
       throw Object.assign(new Error("no such card"), { code: "bad_input" });
   }
 }
+
+/** Plain-word lines for the pairing flows (DESIGN-wink section 4). Never a network, key or ticket word on screen. */
+const WORDS = {
+  chooseTarget: () => "Choose where to add it: you, or a space you administer.",
+  phoneIdentityOnly: () => "A phone is added to you, not to a space. It reaches every space you belong to by itself.",
+  computerIdentityOnly: () => "A computer is added to you, not to a space. It reaches every space you belong to by itself.",
+  notAdmin: (/** @type {any} */ v) => `You are not an admin of ${clean(v && v.space, "that space")}, so you cannot add a server there.`,
+  wrongCode: () => "That is not a Vyre code. Check it on the other screen and try again.",
+  notACode: () => "That is not a Vyre code. Scan the code on your computer's screen.",
+  offline: () => "Can't connect. Check your internet connection. Nothing was lost.",
+  busy: () => "Too many tries just now. Wait a minute and try again.",
+  typeBack: () => "Type this code on the other device. Good for 5 minutes.",
+  typeHere: () => "Type the code the other device is showing. Good for 5 minutes.",
+  kindCannotOffer: (/** @type {any} */ v) => `${v && v.kind === "phone" ? "A phone" : v && v.kind === "storage" ? "A storage device" : `A ${clean(v && v.kind, "device")}`} cannot offer ${clean(v && v.offer, "that")}.`,
+  onlyComputeToSpace: () => "Only a computer can lend its compute to a space.",
+  notYourDevice: () => "That device is not yours.",
+};
+/** @param {keyof typeof WORDS} key @param {any} [vars] */
+export const words = (key, vars) => WORDS[key](vars);
 
 /**
  * The confirm prompts for removal (wink-copy.md, section 7). The prompt always says what happens.

@@ -20,6 +20,7 @@ import crypto from "node:crypto";
 import { createWinkCode } from "./code.js";
 import { createGrants, MIGRATIONS as GRANT_MIGRATIONS, spaceIdOf, timeId, base32 } from "./grants.js";
 import { card, removal, removed } from "./cards.js";
+import { createPairing, MIGRATIONS as DEVICE_MIGRATIONS, FLOW_KIND, ownDirectory } from "./pairing.js";
 import { seedFromKey } from "../../relay/client/join.js";
 
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
@@ -38,8 +39,9 @@ function owner(meta, what) {
     throw fail("denied", `${what} is the owner's`);
 }
 
-/** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
-export default {
+/** @param {{ ports?: import("./pairing.js").Ports, directory?: import("./pairing.js").Directory }} [inject] @returns {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
+export function createWink(inject = {}) {
+  return {
   async start(ctx) {
     if (ctx.config.role !== "box") return { async stop() {} };
     const now = () => Date.now();
@@ -47,6 +49,7 @@ export default {
       `CREATE TABLE wink_offers (id TEXT PRIMARY KEY, flow TEXT NOT NULL, via TEXT NOT NULL, state TEXT NOT NULL, created INTEGER NOT NULL, expires INTEGER NOT NULL, body TEXT NOT NULL)`,
       `CREATE INDEX wink_offers_state ON wink_offers (state, expires)`,
       ...GRANT_MIGRATIONS,
+      ...DEVICE_MIGRATIONS,
     ]);
     const db = ctx.store.db;
     let routeId = "";
@@ -128,23 +131,40 @@ export default {
       await ctx.call("relay.code.reply", { q: String(m.q), ...(out ? { m: out.m } : {}) });
     });
 
+    /** Opens (or replaces) the showing code for one flow. @param {"W1" | "W2" | "W3"} flow */
+    const openCode = async flow => {
+      sweep();
+      const c = await ensureCode();
+      if (codeOffer) { const prev = readOffer(codeOffer); if (prev && ["offered", "found"].includes(prev.state)) writeOffer(codeOffer, "closed", {}); }
+      codeOffer = newOffer(flow, "code", {});
+      const made = await c.open();
+      if (!made) { writeOffer(codeOffer, "closed", {}); throw fail("unavailable", "Can't connect. Check your internet connection. Nothing was lost."); }
+      shown = { code: made.code, expires: made.expires };
+      writeOffer(codeOffer, "offered", {});
+      ctx.events.emit("wink.offered", { offer: codeOffer, flow, via: "code", expires: made.expires });
+      return { offer: codeOffer, code: made.code, expires: made.expires };
+    };
+    /** The person typed back the code the other device shows. @param {string} offerId @param {string} typed */
+    const ackOffer = async (offerId, typed) => {
+      sweep();
+      const o = readOffer(String(offerId));
+      if (!o || o.via !== "code" || o.state !== "found" || !o.pick || !code) throw fail("not_found", "no device is waiting to be added with that offer");
+      const r = await code.ack(o.pick, String(typed));
+      if (!r.ok) { writeOffer(o.id, "closed", { why: "wrong_code" }); ctx.events.emit("wink.declined", { offer: o.id, why: "wrong_code" }); return { ok: false }; }
+      // Both ends hold the same key: the ticket's seed is derived from it, so the relay never sees it and nothing else is carried.
+      const seed = Buffer.from(seedFromKey(r.key)).toString("base64url");
+      const t = /** @type {any} */ (await ctx.call("relay.ticket.mint", { seed }));
+      if (!t || t.error) { writeOffer(o.id, "closed", { why: "relay" }); throw fail("unavailable", "Can't connect. Check your internet connection. Nothing was lost."); }
+      writeOffer(o.id, "joining", { pick: null });
+      ctx.events.emit("wink.confirmed", { offer: o.id });
+      return { ok: true };
+    };
+
     ctx.tool("wink.code.open", {
       description: "Show a Wink code for a new computer or server to type (two-sided: the new device then shows a code to type back here, wink.code.ack). Answers { offer, code, expires }. The code is a secret: it is returned here and never put on the event bus.",
       input: obj({ flow: { type: "string", enum: ["W1", "W2", "W3"] } }),
       presence: { summary: async () => "Show a code to add a new device to this server" },
-      run: async (input, meta = {}) => {
-        owner(meta, "adding a device");
-        sweep();
-        const c = await ensureCode();
-        if (codeOffer) { const prev = readOffer(codeOffer); if (prev && ["offered", "found"].includes(prev.state)) writeOffer(codeOffer, "closed", {}); }
-        codeOffer = newOffer(input.flow || "W2", "code", {});
-        const made = await c.open();
-        if (!made) { writeOffer(codeOffer, "closed", {}); throw fail("unavailable", "Can't connect. Check your internet connection. Nothing was lost."); }
-        shown = { code: made.code, expires: made.expires };
-        writeOffer(codeOffer, "offered", {});
-        ctx.events.emit("wink.offered", { offer: codeOffer, flow: input.flow || "W2", via: "code", expires: made.expires });
-        return { offer: codeOffer, code: made.code, expires: made.expires };
-      },
+      run: async (input, meta = {}) => { owner(meta, "adding a device"); return openCode(input.flow || "W2"); },
     });
 
     ctx.tool("wink.code.status", {
@@ -162,21 +182,7 @@ export default {
       description: "Type back the code the new device is showing. One try per code: the right one adds the device and uses the code up, a wrong one closes the code and a new one is showing. Answers { ok }.",
       input: obj({ offer: str, typed: str }, ["offer", "typed"]),
       presence: { summary: async () => "Add this device to your server" },
-      run: async (input, meta = {}) => {
-        owner(meta, "adding a device");
-        sweep();
-        const o = readOffer(String(input.offer));
-        if (!o || o.via !== "code" || o.state !== "found" || !o.pick || !code) throw fail("not_found", "no device is waiting to be added with that offer");
-        const r = await code.ack(o.pick, String(input.typed));
-        if (!r.ok) { writeOffer(o.id, "closed", { why: "wrong_code" }); ctx.events.emit("wink.declined", { offer: o.id, why: "wrong_code" }); return { ok: false }; }
-        // Both ends hold the same key: the ticket's seed is derived from it, so the relay never sees it and nothing else is carried.
-        const seed = Buffer.from(seedFromKey(r.key)).toString("base64url");
-        const t = /** @type {any} */ (await ctx.call("relay.ticket.mint", { seed }));
-        if (!t || t.error) { writeOffer(o.id, "closed", { why: "relay" }); throw fail("unavailable", "Can't connect. Check your internet connection. Nothing was lost."); }
-        writeOffer(o.id, "joining", { pick: null });
-        ctx.events.emit("wink.confirmed", { offer: o.id });
-        return { ok: true };
-      },
+      run: async (input, meta = {}) => { owner(meta, "adding a device"); return ackOffer(input.offer, input.typed); },
     });
 
     ctx.tool("wink.cancel", {
@@ -194,36 +200,51 @@ export default {
       },
     });
 
-    // ---- the ring: the existing pairing window and ticket paths, now writing grants and events ----
-    const deviceGrant = async (/** @type {any} */ p) => {
-      const g = await grants();
-      const space = await spaceId();
-      const existing = (await g.list({ status: "active", subject: { kind: "actor", actor: { kind: "device", id: String(p.id), space } } })).find((/** @type {any} */ x) => x.source.startsWith("wink:"));
-      if (existing) return existing;
-      // A typed-code join says which flow made it; a ring (QR) pairing is W1 for a phone or the hosted app, W2 for a desktop app.
+    // ---- pairing: devices belong to the identity (pairing.js) ----
+    const owner1 = async () => (await owner0()).id;
+    const pairing = createPairing({
+      ctx, now, identity: owner1, space: spaceId, openCode, ack: ackOffer, owner,
+      directory: inject.directory || ownDirectory({ identity: owner1, space: spaceId, name: () => String(ctx.config.name || "this space") }),
+      ports: inject.ports,
+      relayUrl: async () => { const r = /** @type {any} */ (await ctx.call("relay.status", {})); return String((r && r.data && r.data.url) || (ctx.config.relay && ctx.config.relay.url) || ""); },
+    });
+    pairing.tools();
+    // A device that paired (a typed code, or the ring) is registered under the identity with its kind. No grant is written in any space.
+    const registerDevice = async (/** @type {any} */ p) => {
+      const identity = await owner1();
       const open = /** @type {any} */ (db.prepare("SELECT id FROM wink_offers WHERE via = 'code' AND state = 'joining' ORDER BY created DESC LIMIT 1").get());
       const o = open ? readOffer(open.id) : null;
-      const flow = o ? o.flow : p.kind === "app" ? "W2" : "W1";
-      const grant = await g.create({
-        subject: { kind: "actor", actor: await actor("device", String(p.id)) }, actions: ["space.act"], resource: { prefix: `vyre://${space}/` }, conditions: {},
-        source: `wink:${flow}`,
-        reason: `${String(p.name || "a device")}, ${String(p.fingerprint || "")}`.trim(),
-      }, await owner0());
-      if (o) { writeOffer(o.id, "done", { grant: grant.id, receiver: { name: p.name, fingerprint: p.fingerprint, device: p.id } }); ctx.events.emit("wink.joined", { offer: o.id, grant: grant.id, device: p.id, flow }); }
-      else ctx.events.emit("wink.joined", { grant: grant.id, device: p.id, flow });
-      return grant;
+      // A typed-code join says which flow made it; a ring (QR) pairing is Add a phone (W1).
+      const flow = o ? o.flow : "W1";
+      const kind = /** @type {any} */ (FLOW_KIND)[flow] || "computer";
+      const existing = pairing.devices.get(String(p.id));
+      if (existing && !existing.removed) return existing;
+      const dev = pairing.devices.add({ id: String(p.id), identity, kind, name: String(p.name || "a device"), fingerprint: String(p.fingerprint || ""), target: { kind: "identity", id: identity } });
+      if (o) { writeOffer(o.id, "done", { device: dev.id, receiver: { name: p.name, fingerprint: p.fingerprint, device: p.id } }); ctx.events.emit("wink.joined", { offer: o.id, device: p.id, flow, kind }); }
+      else ctx.events.emit("wink.joined", { device: p.id, flow, kind });
+      return dev;
     };
-    const offPaired = ctx.events.on("device.paired", async (/** @type {any} */ e) => { try { await deviceGrant(e.payload || e); } catch (err) { ctx.log(`wink: device grant failed: ${/** @type {Error} */ (err).message}`); } });
+    // Grants an older build wrote for devices become registry rows once, and the grants are revoked: a device is never a member of a space.
+    let adopted = false;
+    const adoptLegacy = async () => {
+      if (adopted) return;
+      adopted = true;
+      const g = await grants();
+      const identity = await owner1();
+      for (const x of await g.list({ status: "active", source: "wink:W" })) {
+        const sub = x.subject.kind === "actor" ? x.subject.actor : null;
+        if (!sub || sub.kind !== "device" || !x.actions.includes("space.act")) continue;
+        const who = String(x.reason || "").split(", ");
+        if (!pairing.devices.get(sub.id)) pairing.devices.add({ id: sub.id, identity, kind: /** @type {any} */ (FLOW_KIND)[String(x.source).slice(5)] || "computer", name: who[0], fingerprint: who[1], target: { kind: "identity", id: identity } });
+        await g.revoke(x.id, "devices belong to your identity now");
+      }
+    };
+    const offPaired = ctx.events.on("device.paired", async (/** @type {any} */ e) => { try { await adoptLegacy(); await registerDevice(e.payload || e); } catch (err) { ctx.log(`wink: device registration failed: ${/** @type {Error} */ (err).message}`); } });
     const offRemoved = ctx.events.on("device.removed", async (/** @type {any} */ e) => {
       const p = e.payload || e;
       try {
-        const g = await grants();
-        const space = await spaceId();
-        for (const x of await g.list({ status: "active", subject: { kind: "actor", actor: { kind: "device", id: String(p.id), space } } })) {
-          await g.revoke(x.id, "the device was removed");
-          ctx.events.emit("wink.removed", { grant: x.id, device: p.id });
-        }
-      } catch (err) { ctx.log(`wink: device grant revoke failed: ${/** @type {Error} */ (err).message}`); }
+        if (pairing.devices.get(String(p.id))) { pairing.devices.remove(String(p.id)); ctx.events.emit("wink.removed", { device: p.id }); }
+      } catch (err) { ctx.log(`wink: device removal failed: ${/** @type {Error} */ (err).message}`); }
     });
 
     // ---- invite a person (W5) ----
@@ -334,18 +355,20 @@ export default {
     // ---- access: every grant as a card, and one way to take it back ----
     const cardOf = async (/** @type {any} */ g) => {
       const who = String(g.reason || "").split(", ");
-      const kind = g.source === "wink:W5" ? "invite" : g.source === "wink:W4" ? "share" : g.source === "wink:W3" ? "server" : g.source === "wink:W2" ? "computer" : "phone";
+      const kind = g.source === "wink:W5" ? "invite" : g.source === "wink:W4" ? "share" : "share";
       const c = card({ kind: /** @type {any} */ (kind), receiver: { name: who[0], fingerprint: who[1] }, space: "Personal", inviter: { name: String(ctx.config.name || "") } });
       return { id: g.id, source: g.source, since: g.created_at, status: g.status, subject: g.subject, resource: g.resource.prefix, lastUsed: g.last_used || null, card: c };
     };
     ctx.tool("wink.access", {
-      description: "Every grant this space has given, as a card: who, where it goes, what it allows, since when. Answers { grants }.",
+      description: "What you have added with a Wink: your devices (a phone, a computer, a server, a storage device, each with its kind, who it belongs to and what it offers) and the grants given to people, as cards. Devices belong to you, not to a space. Answers { devices, grants }.",
       input: obj({ status: { type: "string", enum: ["active", "revoked"] } }),
       run: async (input, meta = {}) => {
         owner(meta, "the access list");
         const g = await grants();
+        await adoptLegacy();
         const list = await g.list({ ...(input.status ? { status: input.status } : { status: "active" }), source: "wink:" });
-        return { grants: await Promise.all(list.map(cardOf)) };
+        const devices = pairing.devices.list(await owner1()).map(d => ({ ...d, card: card({ kind: /** @type {any} */ (d.kind), receiver: { name: d.name, fingerprint: d.fingerprint }, space: d.owner.kind === "space" ? d.owner.id : "Personal" }) }));
+        return { devices, grants: await Promise.all(list.map(cardOf)) };
       },
     });
     ctx.tool("wink.offers", {
@@ -359,11 +382,23 @@ export default {
       },
     });
     ctx.tool("wink.remove", {
-      description: "Take a grant back: the grant is revoked, the device it names is removed with its connections closed, and a line is written. Answers { removed, prompt } where prompt is the words the screen showed before asking.",
-      input: obj({ grant: str }, ["grant"]),
+      description: "Take something back: a grant (a member, a share) is revoked, or a device (give `device`) is removed with its connections closed, and a line is written. Answers { removed, prompt } where prompt is the words the screen showed before asking.",
+      input: obj({ grant: str, device: str }),
       presence: { summary: async () => "Remove something you added with a Wink" },
       run: async (input, meta = {}) => {
         owner(meta, "removing a grant");
+        if (input.device) {
+          const d = pairing.devices.get(String(input.device));
+          if (!d || d.removed || d.identity !== await owner1()) throw fail("not_found", "no such device");
+          pairing.devices.remove(d.id);
+          // Its relay connections close at once when relay.devices.remove accepts this caller (today it is the person's own tool: `closed`
+          // says what happened, and the surface that asked then calls relay.devices.remove itself).
+          let closed = false;
+          if (d.kind !== "server" && d.kind !== "storage") { const rr = /** @type {any} */ (await ctx.call("relay.devices.remove", { id: d.id })); closed = !rr.error; }
+          ctx.events.emit("wink.removed", { device: d.id });
+          return { removed: d.id, closed, prompt: removal({ what: "device", name: d.name }).prompt, done: removed({ what: "device", name: d.name }) };
+        }
+        if (!input.grant) throw fail("bad_input", "say which grant or which device");
         const g = await grants();
         const gr = await g.get(String(input.grant));
         if (!gr || gr.status !== "active") throw fail("not_found", "no such grant");
@@ -401,4 +436,7 @@ export default {
       },
     };
   },
-};
+  };
+}
+
+export default createWink();
