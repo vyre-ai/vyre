@@ -464,6 +464,7 @@ export default {
       vault,
       connections: conns.connections,
       async stop() {
+        if (typeof ctx.provide === "function") ctx.provide("credentialsPort", null); // a stopped vault has no port: the launcher sees none and says so, never a stale answer
         requests.stop();
         reminders.stop();
         await conns.stop();

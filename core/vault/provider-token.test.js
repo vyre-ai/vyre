@@ -55,6 +55,7 @@ test("the credentials port: the vault provided it once, the launcher gets the to
   // VP-4: the vault may provide again after a restart and the new port replaces the old one; nobody else can provide at all.
   const before = d.registry.deps.credentialsPort, fresh = Object.freeze({ credentials: async () => "fresh" });
   provideOnce(d.registry.deps, "vault", "credentialsPort", fresh); assert.equal(d.registry.deps.credentialsPort, fresh, "the restarted vault's port replaced the old one");
+  provideOnce(d.registry.deps, "vault", "credentialsPort", null); assert.equal(d.registry.deps.credentialsPort, null, "a stopped vault clears its port");
   provideOnce(d.registry.deps, "vault", "credentialsPort", before); assert.equal(d.registry.deps.credentialsPort, before);
   for (const [mod, name] of [["sessions", "credentialsPort"], ["agents", "credentialsPort"], ["vault", "sandbox"], ["mcp", "credentialsPort"]]) assert.throws(() => provideOnce({}, mod, name, {}), /may not provide/, `${mod} ${name}`);
   assert.equal(await port.credentials("claude"), tok); assert.equal(await port.credentials("anthropic"), key);
