@@ -25,7 +25,8 @@ const FLOW_ACTIONS = [
   { action: "kits.install", resource_type: "kit", risk: "admin", label: "install a Kit", gloss: "Install a Kit." },
   { action: "kits.remove", resource_type: "kit", risk: "admin", label: "remove a Kit", gloss: "Remove a Kit." },
   { action: "ask.request", resource_type: "task", risk: "write", label: "ask someone", gloss: "Give a person or an assistant a task." },
-  { action: "http.request", resource_type: "http", risk: "outward.send", label: "call a web address", gloss: "Call a web address." },
+  { action: "service.read", resource_type: "service", risk: "read", label: "read from a connected service", gloss: "Read from a connected service." },
+  { action: "service.call", resource_type: "service", risk: "outward.send", label: "call a connected service", gloss: "Send, post or change something in a connected service." },
   { action: "fn.run", resource_type: "fn", risk: "write", label: "run a Code step", gloss: "Run a Code step." },
   { action: "model.call", resource_type: "space", risk: "read", label: "ask a model", gloss: "Send text to an AI model." },
 ];
@@ -65,7 +66,7 @@ export class RealKernel {
 
     this.chains = createChainBuilder({ space: this.space, owner: this.owner, owner_uid: 501, key: KEY, clock: this.clock, is_person: p => self.members.has(`person:${p}`) });
     this.actions = [...TASK_ACTIONS, ...FLOW_ACTIONS, ...Object.entries({ "email.send": { risk: "outward.send", label: "Send an email" }, ...(o.actions || {}) }).map(([action, d]) => ({ action, resource_type: "external", risk: d.risk, label: d.label || action, gloss: d.label || action }))];
-    this.grantActions = ["records.*", "records.define", "events.read", "tasks.request", "tasks.read", "tasks.work", "tasks.decide", "flows.run", "kits.install", "kits.remove", "model.call", "ask.request", "http.request", "fn.run", ...this.actions.filter(a => /^outward\./.test(a.risk)).map(a => a.action)];
+    this.grantActions = ["records.*", "records.define", "events.read", "tasks.request", "tasks.read", "tasks.work", "tasks.decide", "flows.run", "kits.install", "kits.remove", "model.call", "ask.request", "service.read", "service.call", "fn.run", ...this.actions.filter(a => /^outward\./.test(a.risk)).map(a => a.action)];
 
     this.store = createMemoryStore({ clock: this.clock });
     this.gw = createGateway({

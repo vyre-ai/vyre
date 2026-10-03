@@ -11,10 +11,12 @@
 //   Loop control   depth of the `corr` chain (default 8), a per-Flow rate limit, a step cap per run. A runaway pauses the Flow and raises a card.
 //   Versioned      a run is pinned to the version it started on.
 
+import crypto from "node:crypto";
 import { parse, evaluate, truthy, roots } from "./expr.js";
 import { compileFlow, deriveCaps, needs as flowNeeds, urnCovers, nextCron, STEP_ACTIONS } from "./compile.js";
-import { BLOCK_KINDS, LIMITS as SCHEMA_LIMITS } from "./schema.js";
+import { BLOCK_KINDS, LIMITS as SCHEMA_LIMITS, canonical as canonicalOf } from "./schema.js";
 import { runIdFor, newId } from "./store.js";
+import { recordTrigger } from "./triggers.js";
 import { taskIdOf } from "./stages.js";
 
 export const LIMITS = Object.freeze({ depth: 8, rate_per_minute: 60, steps_per_run: 500, scan: 2000, wait_max_ms: 366 * 86_400_000 });
@@ -44,7 +46,7 @@ class PauseFlow extends Error {
  *   emit?: (type: string, data: any, o: { chain: any, subject: string, corr: string }) => void,
  *   ports?: {
  *     call?: (chain: any, action: string, resource: string, input: any, o: { idem: string }) => Promise<any>,
- *     http?: (chain: any, req: { method: string, url: string, headers?: any, body?: any }, o: { idem: string }) => Promise<{ status: number, body?: any }>,
+ *     service?: (q: { chain: any, connector: string, request: { method: string, path: string, query?: any, headers?: any, body?: any, upload?: { drive: { path: string, version?: string, contentType?: string } }, saveTo?: string }, idem: string, approval?: string }) => Promise<{ status: number, ok?: boolean, headers?: Record<string, string>, body?: string } | { saved: { path: string, version: string|number, size: number, sha256: string } } | { held: boolean, kind?: string, summary?: string }>,
  *     sandbox?: (req: { language: string, source: string, hash: string, inputs: any, outputs: string[], needs: string[] }) => Promise<{ outputs: Record<string, any> }>,
  *     roles?: (space: string, role: string) => Promise<ActorRef[]> | ActorRef[],
  *     model?: { provider: string, model: string },
@@ -120,22 +122,51 @@ export class FlowRunner {
     return Promise.all(work);
   }
 
-  /** Time: start due time-triggered Flows once each, and wake runs whose wait has ended. Call from one timer set to nextWake(). */
+  /**
+   * The Space's time zone for schedules: the catalog's `tz`, or UTC. A trigger may name its own (a branch office). @param {any} t @param {any} cat
+   * @returns {string}
+   */
+  #zone(t, cat) { return (t && t.tz) || (cat && cat.tz) || "UTC"; }
+
+  /**
+   * When a schedule last ran, from memory or from the store (so a restart remembers). A schedule never seen before starts counting from now: nothing runs retroactively for a Flow
+   * that did not exist yet. @param {string} id @param {number} now @returns {Promise<number>}
+   */
+  async #lastFire(id, now) {
+    if (this.lastFire.has(id)) return /** @type {number} */ (this.lastFire.get(id));
+    const saved = this.store.getSchedule ? await this.store.getSchedule(id) : null;
+    const last = saved ?? now;
+    this.lastFire.set(id, last);
+    if (saved === null && this.store.putSchedule) await this.store.putSchedule(id, last);
+    return last;
+  }
+
+  /**
+   * Time: start due scheduled Flows, and wake runs whose wait has ended. Call from one timer set to nextWake() (nothing needs it faster than a minute). A schedule that fell due while
+   * the server was off runs ONCE when it comes back, with `caught_up` and how many times it skipped; never once per missed tick.
+   */
   async tick() {
     const now = this.now();
+    const cat = await this.catalogFn();
     const work = [];
     for (const f of await this.#activeFlows()) {
       const t = f.flow.trigger;
       if (t.on !== "time") continue;
-      if (!this.lastFire.has(f.id) && t.at === undefined) this.lastFire.set(f.id, now);
-      const last = this.lastFire.get(f.id) ?? now;
-      let due = null;
-      if (t.cron !== undefined) { const n = nextCron(t.cron, last); if (n !== null && n <= now) due = n; }
-      else if (t.every_ms !== undefined) { if (last + t.every_ms <= now) due = last + t.every_ms; }
-      else if (t.at !== undefined) { if (t.at <= now && !(await this.store.getRun(runIdFor(f.id, `${f.id}@${t.at}`)))) due = t.at; }
+      const tz = this.#zone(t, cat);
+      const last = await this.#lastFire(f.id, now);
+      let due = null, missed = 0;
+      if (t.cron !== undefined) {
+        due = nextCron(t.cron, last, tz);
+        if (due !== null && due > now) due = null;
+        else if (due !== null) { let n = due, count = 1; for (let i = 0; i < 1000; i++) { n = nextCron(t.cron, n, tz) ?? Infinity; if (n > now) break; count++; } missed = count - 1; }
+      } else if (t.every_ms !== undefined) {
+        if (last + t.every_ms <= now) { due = last + t.every_ms; missed = Math.floor((now - last) / t.every_ms) - 1; }
+      } else if (t.at !== undefined) { if (t.at <= now && !(await this.store.getRun(runIdFor(f.id, `${f.id}@${t.at}`)))) due = t.at; }
       if (due === null) continue;
-      this.lastFire.set(f.id, t.cron !== undefined || t.every_ms !== undefined ? now : due);
-      work.push(this.#start(f, { kind: "time", key: `${f.id}@${due}`, at: due }, null));
+      const late = now - due >= 120_000 || missed > 0;
+      const fires = t.cron !== undefined || t.every_ms !== undefined;
+      if (fires) { this.lastFire.set(f.id, now); if (this.store.putSchedule) await this.store.putSchedule(f.id, now); }
+      work.push(this.#start(f, { kind: "time", key: `${f.id}@${due}`, at: due, ...(t.cron !== undefined ? { tz } : {}), ...(fires && late ? { caught_up: true, missed } : {}) }, null));
     }
     for (const r of await this.store.listRuns({ state: "waiting", limit: 1000 })) {
       const w = r.waiting;
@@ -149,16 +180,42 @@ export class FlowRunner {
   /** The earliest time anything needs waking, so the host sets one timer and never polls. @returns {Promise<number|null>} */
   async nextWake() {
     let best = null;
+    const now = this.now();
+    const cat = await this.catalogFn();
     const take = (/** @type {number|null|undefined} */ n) => { if (n !== null && n !== undefined && (best === null || n < best)) best = n; };
     for (const f of await this.#activeFlows()) {
       const t = f.flow.trigger;
       if (t.on !== "time") continue;
-      if (t.cron !== undefined) take(nextCron(t.cron, this.lastFire.get(f.id) ?? this.now()));
-      else if (t.every_ms !== undefined) take((this.lastFire.get(f.id) ?? this.now()) + t.every_ms);
-      else if (t.at !== undefined && t.at > this.now()) take(t.at);
+      const last = await this.#lastFire(f.id, now);
+      if (t.cron !== undefined) take(nextCron(t.cron, last, this.#zone(t, cat)));
+      else if (t.every_ms !== undefined) take(last + t.every_ms);
+      else if (t.at !== undefined && t.at > now) take(t.at);
     }
     for (const r of await this.store.listRuns({ state: "waiting", limit: 1000 })) if (r.waiting) take(r.waiting.kind === "time" ? r.waiting.wake_at : r.waiting.deadline);
     return best;
+  }
+
+  /**
+   * A watcher found something new. The host that runs watchers (the daemon's watchers module, through kernel/flows/watcher-bridge.js) calls this with each item; every active Flow
+   * armed on that watcher starts once per item. The item is data from outside: the run is tainted (`external`), so its outward steps need an Ask naming the source, and it runs under
+   * the chain of the person who owns the Flow, narrowed, like any other run. The same item delivered twice is the same run.
+   * @param {{ watcher: string, item: any, trust?: 'member'|'external'|'untrusted', key?: string }} w
+   * @returns {Promise<{ flow: string, run: string|null, duplicate?: boolean }[]>}
+   */
+  async watcherItem(w) {
+    if (!w || typeof w.watcher !== "string" || w.item === null || typeof w.item !== "object") throw Object.assign(new Error("a watcher item needs the watcher's name and the item"), { code: "bad_input" });
+    const trust = w.trust || "external";
+    const itemKey = w.key || (w.item.id !== undefined ? `${w.watcher}/${String(w.item.id)}` : `${w.watcher}/${crypto.createHash("sha256").update(canonicalOf(w.item)).digest("hex").slice(0, 24)}`);
+    const out = [];
+    for (const f of await this.#activeFlows()) {
+      const t = f.flow.trigger;
+      if (t.on !== "watcher" || t.watcher !== w.watcher) continue;
+      const scope = { trigger: { watcher: w.watcher, item: w.item, at: this.now() } };
+      if (t.where) { try { if (!truthy(evaluate(parse(t.where), scope))) continue; } catch { continue; } }
+      const r = await this.#start(f, { kind: "watcher", key: itemKey, input: w.item, at: this.now() }, { trust, data: scope.trigger });
+      out.push({ flow: f.id, run: r.run, ...(r.duplicate ? { duplicate: true } : {}) });
+    }
+    return out;
   }
 
   /**
@@ -201,7 +258,7 @@ export class FlowRunner {
 
   // ------------------------------------------------------------------ starting a run
 
-  /** @param {any} f @param {{ kind: string, key: string, event?: any, input?: any, path?: string, at?: number }} trig @param {any} src where the data came from (an event envelope, or { trust, data }) */
+  /** @param {any} f @param {{ kind: string, key: string, event?: any, input?: any, path?: string, at?: number, caught_up?: boolean, missed?: number, tz?: string }} trig @param {any} src where the data came from (an event envelope, or { trust, data }) */
   async #start(f, trig, src) {
     const id = runIdFor(f.id, trig.key);
     return this.#locked(id, () => this.#startLocked(id, f, trig, src));
@@ -223,10 +280,10 @@ export class FlowRunner {
     const sourceSpaces = (src && src.source_spaces) || [f.space];
     const tainted = trust === "external" || trust === "untrusted" || sourceSpaces.length > 1;
     /** @type {Run} */
-    const run = { id, flow: f.id, version: f.version, hash: f.hash, space: f.space, trigger: { kind: trig.kind, key: trig.key, ...(trig.event ? { event: slim(trig.event) } : {}), ...(trig.input !== undefined ? { input: trig.input } : {}), ...(trig.path ? { path: trig.path } : {}), ...(trig.at !== undefined ? { at: trig.at } : {}) },
+    const run = { id, flow: f.id, version: f.version, hash: f.hash, space: f.space, trigger: recordTrigger(f.flow.trigger, trig, slim),
       tainted, source_spaces: sourceSpaces, depth, state: "running", started_at: now, updated_at: now, steps: {}, approver: f.approver };
     await this.store.putRun(run);
-    this.#emit("flow.started", { run: id, flow: f.id, version: f.version, trigger: trig.kind, tainted }, run, `vyre://${f.space}/flow_run/${id}`);
+    this.#emit("flow.started", { run: id, flow: f.id, version: f.version, trigger: trig.kind, source: run.trigger.source, tainted }, run, `vyre://${f.space}/flow_run/${id}`);
     await this.#execLocked(id);
     return { run: id };
   }
@@ -353,7 +410,7 @@ export class FlowRunner {
   /** @param {any} ctx */
   #scope(ctx, locals) {
     const run = ctx.run, t = run.trigger;
-    const trigger = t.event ? (t.event.data ?? {}) : t.input !== undefined ? t.input : t.at !== undefined ? { at: t.at } : {};
+    const trigger = t.kind === "watcher" ? { watcher: String(t.source || "").replace(/^watcher:/, ""), item: t.input ?? {}, at: t.at } : t.event ? (t.event.data ?? {}) : t.input !== undefined ? t.input : t.at !== undefined ? { at: t.at } : {};
     return { trigger, event: t.event || null, steps: outputs(run), run: { id: run.id, depth: run.depth, tainted: run.tainted, flow: run.flow }, now: this.now(), ...locals };
   }
 
@@ -400,19 +457,17 @@ export class FlowRunner {
       case "create": case "update": case "upsert": case "remove": case "stage": out = await this.#write(ctx, s, key, scope(), val); break;
       case "wait": out = await this.#wait(ctx, s, key, val); break;
       case "ask": case "assign": case "agent": out = await this.#task(ctx, s, key, scope(), val); break;
-      case "call": out = await this.#effect(ctx, s, key, { action: s.action, resource: s.resource }, async idem => {
+      case "call": out = await this.#effect(ctx, s, key, { action: s.action, resource: s.resource }, async (idem, _approval, rules) => {
         if (ctx.dry) return { dry: true };
         if (!this.ports.call) throw new StepFail("unavailable", "this Space has no way to run actions yet");
-        return this.ports.call(this.#chain(ctx), s.action, s.resource, val(s.input), { idem });
+        // Draft only: the catalog says which action prepares a draft instead of sending (`draft_as`); without one the send does not happen at all.
+        const draftAs = rules && rules.draftOnly ? (ctx.cat.actions[s.action] || {}).draft_as : null;
+        if (rules && rules.draftOnly && !draftAs) throw new StepFail("draft_only", `a rule of this space allows drafts only${rules.draftOnly.label ? ` (${rules.draftOnly.label})` : ""}, and ${labelOf(ctx.cat, s.action)} has no way to prepare a draft, so nothing was sent`);
+        const r = await this.ports.call(this.#chain(ctx), draftAs || s.action, s.resource, val(s.input), { idem: draftAs ? `${idem}:draft` : idem });
+        return draftAs ? { draft: true, via: draftAs, result: r } : r;
       }, { input: val(s.input) }); break;
       case "classify": out = await this.#classify(ctx, s, key, val); break;
-      case "http": out = await this.#effect(ctx, s, key, needOf(s, ctx.cat), async idem => {
-        if (ctx.dry) return { dry: true, status: 0 };
-        if (!this.ports.http) throw new StepFail("unavailable", "this Space has no outbound web access yet");
-        const r = await this.ports.http(this.#chain(ctx), { method: s.method, url: s.url, headers: s.headers === undefined ? undefined : val(s.headers), body: s.body === undefined ? undefined : val(s.body) }, { idem });
-        run.tainted = true; // what came back is external content
-        return r;
-      }, { input: s.body === undefined ? null : val(s.body) }); break;
+      case "service": out = await this.#service(ctx, s, key, val); break;
       case "fn": out = await this.#fn(ctx, s, key, val); break;
       default: throw new StepFail("bad_step", `unknown step kind ${s.kind}`);
     }
@@ -432,12 +487,12 @@ export class FlowRunner {
    * Check the caps, ask the kernel, and handle ask and deny. Runs `act(idem)` only when the step may go ahead. The ledger records "started" before
    * the act and the caller records "done" after, so a crash in between replays the act with the same idempotency key.
    * @param {any} ctx @param {any} s @param {string} key @param {{ action: string, resource: string }} need
-   * @param {(idem: string) => Promise<any>} act @param {{ input?: any, input_class?: string }} [info]
+   * @param {(idem: string, approval?: string, rules?: { draftOnly?: { rule?: string, label?: string } }) => Promise<any>} act @param {{ input?: any, input_class?: string }} [info]
    */
   async #effect(ctx, s, key, need, act, info = {}) {
     const run = ctx.run;
     if (!ctx.caps.some((/** @type {any} */ c) => (c.action === need.action || c.action === "*.*") && urnCovers(c.resource, need.resource))) throw new StepFail("outside_caps", `step ${s.id} is outside the Flow's declared powers (${need.action})`);
-    const risk = (ctx.cat.actions[need.action] || {}).risk || (need.action === "http.request" ? "outward.send" : need.action.startsWith("records.") ? "write" : "write");
+    const risk = (ctx.cat.actions[need.action] || {}).risk || (need.action === "service.call" ? "outward.send" : need.action === "service.read" ? "read" : "write");
     const chain = this.#chain(ctx);
     const askKey = key + "?ask";
     const asked = run.steps[askKey];
@@ -452,10 +507,15 @@ export class FlowRunner {
     const approvedTask = run.steps[askKey] && run.steps[askKey].status === "done" ? run.steps[askKey].task : undefined;
     const d = await this.k.authorize({ chain, action: need.action, resource: need.resource, ...(info.input_class ? { input_class: info.input_class } : {}), ...(approvedTask ? { approval: approvedTask } : {}) });
     let effect = d.effect;
+    // Standing rules for the space (DESIGN-flows-joints 5a, enforced in the kernel's authorize): a rule only tightens, and its refusal names itself.
+    const obl = Array.isArray(d.obligations) ? d.obligations : [];
+    const draftOnly = obl.find((/** @type {any} */ o) => o && o.type === "draft_only");
+    const alwaysAsk = obl.find((/** @type {any} */ o) => o && o.type === "ask" && o.waivable === false);
     const forced = !approvedTask && effect === "allow" && ((run.tainted && (OUTWARD.has(risk) || risk === "grant")) || (ctx.flow.authorship === "model" && ctx.view && (flowUsesComputedOutward(ctx) && OUTWARD.has(risk))));
     if (forced) effect = "ask";
     if (effect === "deny") {
-      this.#note(ctx, s, `denied: ${d.reason}`);
+      this.#note(ctx, s, `denied: ${d.rule && d.rule.label ? d.rule.label : d.reason}`);
+      if (d.rule && d.reason === "rule_never") throw new StepFail("rule_never", `a rule of this space does not allow this: ${d.rule.label || "never"}`);
       if (PAUSE_REASONS.has(d.reason)) throw new PauseFlow(`${nameOf(run.approver)} can no longer ${labelOf(ctx.cat, need.action)} (${d.reason.replace(/_/g, " ")}); the Flow is paused until that is fixed`);
       throw new StepFail(d.reason || "denied", `not allowed: ${d.reason}`);
     }
@@ -463,8 +523,11 @@ export class FlowRunner {
       if (ctx.dry) { ctx.dryAsks = (ctx.dryAsks || 0) + 1; }
       else {
         const why = forced ? (run.tainted ? "it started from content outside this Space" : "a model drafted this Flow") : "it needs a person's yes";
-        const task = await this.k.ask.request(chain, { title: `${ctx.view.flow.label || ctx.view.flow.name}: ${labelOf(ctx.cat, need.action)}?`, doer: run.approver, output: { kind: "decision" }, source: "flow_step",
-          form: { kind: "held_act", flow: run.flow, run: run.id, step: s.id, action: need.action, resource: need.resource, why, trigger_source: run.trigger.kind, input: info.input ?? null } }, { idem: `${run.id}:${askKey}` });
+        // An always-ask rule is answered BY the person or role it names, every time, with no "don't ask again": the task says so and carries the rule.
+        const named = alwaysAsk && alwaysAsk.approver && alwaysAsk.approver.person ? { kind: "person", id: alwaysAsk.approver.person, space: run.space } : null;
+        const task = await this.k.ask.request(chain, { title: `${ctx.view.flow.label || ctx.view.flow.name}: ${labelOf(ctx.cat, need.action)}?`, doer: named || run.approver, output: { kind: "decision" }, source: "flow_step",
+          form: { kind: "held_act", flow: run.flow, run: run.id, step: s.id, action: need.action, resource: need.resource, why: alwaysAsk ? (d.rule && d.rule.label) || "a rule of this space asks every time" : why, trigger_source: run.trigger.kind, input: info.input ?? null,
+            ...(alwaysAsk ? { rule: alwaysAsk.rule, waivable: false, ...(alwaysAsk.approver && alwaysAsk.approver.role ? { approver_role: alwaysAsk.approver.role } : {}) } : {}) } }, { idem: `${run.id}:${askKey}` });
         await this.#mark(ctx, askKey, { status: "waiting", task: task.id, wait: { kind: "task", task: task.id } });
         run.waiting = { step: askKey, kind: "task", task: task.id };
         this.#emit("step.waiting", { run: run.id, step: key, task: task.id, why }, run, `vyre://${run.space}/flow_run/${run.id}`);
@@ -473,11 +536,54 @@ export class FlowRunner {
     }
     if (!ctx.dry) await this.#mark(ctx, key, { status: "started" });
     if (ctx.dry) ctx.dryEffects = [...(ctx.dryEffects || []), { step: s.id, action: need.action, resource: need.resource, risk, effect }];
-    return act(`${run.id}:${key}`);
+    // Draft only: the action is prepared as a draft in the outside system and NEVER sent, even with an approval in hand.
+    return act(`${run.id}:${key}`, approvedTask, draftOnly ? { draftOnly: { rule: draftOnly.rule, label: d.rule && d.rule.label } } : undefined);
   }
 
   /** @param {any} ctx @param {any} s @param {string} text */
   #note(ctx, s, text) { ctx.run.error = { step: s.id, code: "note", message: text }; }
+
+  // ------------------------------------------------------------------ outside services
+
+  /**
+   * Call a service: the Flow names a connector (a vault credential and its route) and a request; the vault at the home makes the call. The credential is never seen here. A read (GET or
+   * HEAD) runs at once; anything else is outward and held for the ask-first task by `#effect`, then runs once with that approval. A file goes by Drive reference, never as bytes. The
+   * response is data from outside: the run is tainted, headers that carry credentials are dropped, and the stored body is capped.
+   * @param {any} ctx @param {any} s @param {string} key @param {(v: any) => any} val
+   */
+  async #service(ctx, s, key, val) {
+    const need = needOf(s, ctx.cat);
+    const request = {
+      method: s.method, path: s.path,
+      ...(s.query === undefined ? {} : { query: val(s.query) }),
+      ...(s.headers === undefined ? {} : { headers: val(s.headers) }),
+      ...(s.body === undefined ? {} : { body: val(s.body) }),
+      ...(s.drive && s.drive.upload ? { upload: { drive: { path: s.drive.upload.path, ...(s.drive.upload.version ? { version: s.drive.upload.version } : {}), ...(s.drive.upload.contentType ? { contentType: s.drive.upload.contentType } : {}) } } } : {}),
+      ...(s.drive && s.drive.saveTo ? { saveTo: s.drive.saveTo } : {}),
+    };
+    const files = [...(request.upload ? [{ way: "send", path: request.upload.drive.path }] : []), ...(request.saveTo ? [{ way: "save", path: request.saveTo }] : [])];
+    return this.#effect(ctx, s, key, need, async (idem, approval, rules) => {
+      if (ctx.dry) return { dry: true, response: { status: 0 } };
+      if (!this.ports.service) throw new StepFail("unavailable", "this Space has no connectors yet");
+      // Draft only: the connector's own draft operation (`draft: { method, path }` on the connector in the catalog) replaces the send, with the same body; no draft operation, no call.
+      let req = request, asDraft = false;
+      if (rules && rules.draftOnly) {
+        const dr = ctx.cat.connectors && ctx.cat.connectors[s.connector] && /** @type {any} */ (ctx.cat.connectors[s.connector]).draft;
+        if (!dr || typeof dr.path !== "string") throw new StepFail("draft_only", `a rule of this space allows drafts only${rules.draftOnly.label ? ` (${rules.draftOnly.label})` : ""}, and ${s.connector} has no way to prepare a draft, so nothing was sent`);
+        req = { ...request, method: dr.method || "POST", path: dr.path }; asDraft = true;
+      }
+      const r = /** @type {any} */ (await this.ports.service({ chain: this.#chain(ctx), connector: s.connector, request: req, idem: asDraft ? `${idem}:draft` : idem, ...(asDraft ? { draft: true } : {}), ...(approval && !asDraft ? { approval } : {}) }));
+      if (r && r.held) throw new StepFail("held", `the vault is holding the call to ${s.connector} for a person's yes${r.summary ? ` (${String(r.summary).slice(0, 120)})` : ""}`);
+      ctx.run.tainted = true; // what came back is content from outside
+      if (r && r.saved) return { saved: { path: String(r.saved.path), version: r.saved.version, size: r.saved.size, sha256: r.saved.sha256 } };
+      const headers = Object.fromEntries(Object.entries((r && r.headers) || {}).filter(([k]) => !/^(set-cookie|authorization|proxy-authenticate|www-authenticate|x-api-key)$/i.test(k)).map(([k, v]) => [k.toLowerCase(), String(v)]));
+      const raw = r && typeof r.body === "string" ? Buffer.from(r.body, "base64").toString("utf8") : "";
+      const text = raw.length > SERVICE_BODY_CAP ? raw.slice(0, SERVICE_BODY_CAP) : raw;
+      let json = null;
+      if (/json/i.test(headers["content-type"] || "") && raw.length <= SERVICE_BODY_CAP) { try { json = JSON.parse(raw); } catch { json = null; } }
+      return { ...(asDraft ? { draft: true } : {}), response: { status: Number(r && r.status) || 0, ok: Boolean(r && (r.ok ?? (r.status >= 200 && r.status < 300))), headers, body: text, json, truncated: raw.length > SERVICE_BODY_CAP }, ...(files.length ? { files } : {}) };
+    }, { input: request.body === undefined ? null : request.body });
+  }
 
   // ------------------------------------------------------------------ record steps
 
@@ -801,6 +907,9 @@ const plain = r => (r ? { id: r.id, type: r.type, version: r.version, data: r.da
 
 /** A trimmed event kept in the run (the body is not copied wholesale). @param {any} e */
 const slim = e => ({ id: e.id, seq: e.seq, type: e.type, subject: e.subject, actor: e.actor, time: e.time, trust: e.trust, corr: e.corr, data: e.data });
+
+/** How much of a service's response a run keeps (a Flow reads data, it does not store documents; a big file goes by Drive reference). */
+const SERVICE_BODY_CAP = 64 * 1024;
 
 /** @param {any} step @param {import('./compile.js').Catalog} cat */
 function needOf(step, cat) { return flowNeeds({ steps: [step] }, cat)[0]; }

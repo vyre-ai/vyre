@@ -90,6 +90,10 @@ export function seatbeltProfile(o) {
     // The system programs and libraries a shell and node need. Never /Users, /Volumes or /private/var/folders.
     '(allow file-read* (subpath "/usr") (subpath "/bin") (subpath "/sbin") (subpath "/System") (subpath "/Library/Frameworks") (subpath "/private/etc/ssl") (subpath "/private/var/db/timezone") (literal "/private/etc/passwd") (literal "/private/etc/hosts") (literal "/private/etc/resolv.conf"))',
     '(allow process-exec (subpath "/usr/bin") (subpath "/bin") (subpath "/usr/sbin") (subpath "/sbin"))',
+    // /usr/bin/git and the other developer tools are shims that read the selected toolchain and run it from the Command Line Tools or Xcode
+    // (without these, a clone fails with "xcode-select: error", measured on a hosted Mac). Read and run only; nothing is writable.
+    '(allow file-read* (subpath "/private/var/select") (subpath "/Library/Developer/CommandLineTools") (subpath "/Applications/Xcode.app/Contents/Developer"))',
+    '(allow process-exec (subpath "/Library/Developer/CommandLineTools") (subpath "/Applications/Xcode.app/Contents/Developer"))',
     `(allow file-read* file-write* (subpath ${q(ws)}))`,
     `(allow process-exec (subpath ${q(ws)}))`,
     ...ro.map(d => `(allow file-read* (subpath ${q(d)}))\n(allow process-exec (subpath ${q(d)}))`),

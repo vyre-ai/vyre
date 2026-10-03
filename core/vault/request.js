@@ -31,6 +31,7 @@
 
 import crypto from "node:crypto";
 import https from "node:https";
+import { forwardFile, sendFile } from "./forward-file.js";
 import { defaultField } from "../../lib/vault-kinds/kinds.js";
 import { rowMac, same } from "./crypto.js";
 import {
@@ -53,6 +54,15 @@ const CONCEALED = "<concealed by vyre>";
 /** Response headers worth handing back. Never a cookie, never anything that authenticates. */
 const KEEP_HEADERS = ["content-type", "content-length", "etag", "last-modified", "retry-after", "x-request-id", "request-id", "x-ms-request-id", "x-goog-request-id", "ratelimit-remaining"];
 
+/** The request headers a lent computer's program may send through the home: content negotiation, validators and the vendor's own x- headers. Anything else is dropped; the credential's own headers (and Authorization, Cookie, Host) are never the program's to set. */
+const FORWARD_OK = /^(content-type|accept|accept-language|if-match|if-none-match|if-modified-since|if-unmodified-since|range|idempotency-key|x-(?!vyre-)[a-z0-9-]{1,60})$/;
+export function forwardHeaders(h) {
+  if (!isObj(h)) return {};
+  const out = {};
+  for (const [k, v] of Object.entries(h)) { const n = k.toLowerCase(); if (FORWARD_OK.test(n) && !/^x-(api-key|auth|token|csrf)/.test(n) && typeof v === "string") out[n] = v; }
+  return out;
+}
+
 const isObj = v => Boolean(v) && typeof v === "object" && !Array.isArray(v);
 const isStr = v => typeof v === "string";
 const bad = (msg, code = "bad_input") => Object.assign(new Error(msg), { code });
@@ -62,7 +72,7 @@ const b64url = s => Buffer.from(s).toString("base64url");
 // ---- scrubbing (the connectors' own copy: modules never import each other's files) ----
 
 /** @param {unknown} text @param {string[]} values */
-function scrub(text, values) {
+export function scrub(text, values) {
   let out = String(text ?? "");
   const forms = new Set();
   for (const v of values) {
@@ -366,7 +376,7 @@ export class ApiRequests {
    * same host, and returns the response scrubbed and cut.
    * @param {any} plan @param {{ who: string, said?: string|null, released?: string|null }} o
    */
-  async execute(plan, { who, said = null, released = null }) {
+  async execute(plan, { who, said = null, released = null, raw = false }) {
     let known = [];
     const tag = `${plan.method} ${plan.url.hostname} ${plan.kind}${said ? ` said:${said}` : ""}${released ? ` released:${released}` : ""}`;
     try {
@@ -391,12 +401,47 @@ export class ApiRequests {
         break;
       }
       this.vault.audit("api-request", plan.name, who, reply.status < 500, `${tag} ${reply.status}`);
-      return this.shape(reply, known);
+      return raw ? this.rawShape(reply, known) : this.shape(reply, known);
     } catch (e) {
       const msg = scrub(String(/** @type {Error} */ (e)?.message || e), known);
       this.vault.audit("api-request", plan.name, who, false, `${tag}: ${printable(msg, 160)}`);
       throw Object.assign(new Error(msg), { code: /** @type {any} */ (e)?.code || "failed" });
     }
+  }
+
+  /**
+   * A reply for the forward path (a lent computer's program): kept headers and the body as bytes, up to the transport's 2 MB (more is refused, never cut). Text is scrubbed of every
+   * value the credential touched; bytes that carry one are withheld rather than altered.
+   */
+  rawShape(reply, known) {
+    if (reply.truncated) throw bad("the response is larger than 2 MB, which is not sent to a lent computer; fetch it at the home", "too_large");
+    const type = String(reply.headers["content-type"] || ""), heads = {};
+    for (const k of [...KEEP_HEADERS, "content-disposition"]) if (reply.headers[k] !== undefined) heads[k] = scrub(String(reply.headers[k]), known);
+    const textual = /json|text|xml|javascript|x-www-form-urlencoded|csv|yaml|html/i.test(type) || (!type && !reply.body.includes(0));
+    let body = reply.body;
+    if (textual) body = Buffer.from(scrub(body.toString("utf8"), known));
+    else if (known.some(k => isStr(k) && k.length >= 8 && body.includes(k))) throw bad("the response carries a credential value and is withheld", "withheld");
+    return { status: reply.status, ok: reply.status >= 200 && reply.status < 300, headers: heads, body };
+  }
+
+  /**
+   * One request from a lent computer's program, run here at the home (the one mechanism: a credentialed call is never made on the lent machine and no header value,
+   * key or token ever goes to it). The kernel has already matched the request to a route the session holds and allowed its method and path; this adds what the
+   * credential itself says (hosts, the SSRF guard, read or outward). A read runs and its response comes back as bytes; anything outward is held for the ask-first task
+   * exactly as vault.request holds it, whoever asked, and what comes back is `{ held }`, not a response. Request bodies are text, JSON or form only, up to 1 MB.
+   * @param {any} input { credential, method, url, query?, headers?, body? } @param {{ caller: string, thread?: string }} meta
+   */
+  async forward(input, meta) {
+    const caller = String(meta.caller), name = String(input.credential || "");
+    if (isStr(input.body) === false && input.body !== undefined && input.body !== null && !isObj(input.body) && !Array.isArray(input.body)) throw bad("a request body is text, JSON or form fields; a binary or multipart upload is not carried to the home in this release", "binary_body");
+    const audit = (ok, why) => this.vault.audit("api-request", name || null, caller, ok, why);
+    const clean = { ...input, headers: forwardHeaders(input.headers) };
+    let plan;
+    try { plan = await this.plan(clean, name); } catch (e) { audit(false, printable(/** @type {Error} */ (e).message, 160)); throw e; }
+    if (plan.kind === "read") return { ...(await this.execute(plan, { who: caller, raw: true })), kind: "read" };
+    const r = await this.request(clean, { caller, ...(meta.thread ? { thread: meta.thread } : {}) });
+    if (r && r.held) return { held: r.held, kind: r.kind, summary: r.summary, message: r.message };
+    return { status: Number(r.status) || 200, ok: !!r.ok, headers: r.headers || {}, body: Buffer.from(typeof r.body === "string" ? r.body : JSON.stringify(r.body ?? "")), kind: r.kind, ...(r.said ? { said: r.said } : {}) };
   }
 
   /** A reply as a caller may see it: kept headers, the body as JSON or text, scrubbed of everything the credential touched, cut. */
@@ -577,6 +622,7 @@ export class ApiRequests {
     let sealOk = false;
     try { sealOk = isStr(c.seal) && same(c.seal, this.seal(c)); } catch { /* locked: not sent */ }
     if (!sealOk) throw bad("this card was not made by the vault, or its words were changed, so it is not sent", "denied");
+    if (isObj(held.file)) { if (!this.deps.files) throw bad("the Drive is not wired, so a held file request cannot be sent", "failed"); return sendFile(this, { files: this.deps.files }, c, held, it, caller); }
     const plan = await this.plan({ credential: c.credential, method: c.method, url: c.url, headers: held.headers, body: held.body }, c.credential);
     if (plan.hash !== c.hash) throw bad("the request was changed after it was held, so it is not sent; ask again", "denied");
     if (plan.kind !== c.kind) throw bad(`this credential now classifies the request as a ${plan.kind}, not a ${c.kind}; ask again`, "denied");
@@ -612,6 +658,23 @@ const obj = (properties, required = []) => ({ type: "object", properties, requir
  */
 export function register({ vault, tool, internal, call, said, deps = {}, log }) {
   const api = new ApiRequests(vault, { call, said, log, ...deps });
+
+  internal("vault.forward", "The kernel's lease module forwards one request from a lent computer's program: { credential, method, url, query?, headers?, body?, session }. It runs here, at the home, through the same checks as vault.request, and returns { status, headers, body (base64) } or { held } for an outward call. Never returns a credential value.",
+    obj({ credential: str, method: { type: "string", enum: METHODS }, url: str, headers: { type: "object" }, query: { type: "object" }, body: { anyOf: [str, { type: "object" }, { type: "array" }] }, session: str }, ["credential", "method", "url", "session"]),
+    async (input, { caller }) => {
+      if (caller !== "kernel:leases" && caller !== "module:leases") throw bad("only the kernel's lease module forwards a lent computer's request", "denied");
+      const r = await api.forward(input, { caller: `runner:${String(input.session).slice(0, 80)}` });
+      return r.held ? r : { ...r, body: r.body.toString("base64") };
+    });
+
+  internal("vault.forward.file", "The kernel's lease module forwards one request that moves a file for a lent computer's program: { credential, method, url, query?, headers?, session, upload?: { drive: { path, version?, contentType } } or { multipart: [ { name, value } | { name, filename, contentType, drive: { path, version? } } ] }, saveTo?, stream?, limits?: { maxBytes, contentTypes }, drive?: { read, write } }. The file is read from, or saved to, the Space's Drive by reference at the home and moves a chunk at a time; an outward call is held for a person. Returns the response, { saved }, a stream or { held }; never a credential value.",
+    obj({ credential: str, method: { type: "string", enum: METHODS }, url: str, headers: { type: "object" }, query: { type: "object" }, upload: { type: "object" }, saveTo: str, stream: { type: "boolean" }, limits: { type: "object" }, drive: { type: "object" }, session: str }, ["credential", "method", "url", "session"]),
+    async (input, { caller }) => {
+      if (caller !== "kernel:leases" && caller !== "module:leases") throw bad("only the kernel's lease module forwards a lent computer's request", "denied");
+      if (!api.deps.files) throw bad("the Drive is not wired to this vault", "failed");
+      const r = await forwardFile(api, { files: api.deps.files }, input, { caller: `runner:${String(input.session).slice(0, 80)}` });
+      return r.held || r.stream ? r : { ...r, ...(r.body ? { body: r.body.toString("base64") } : {}) };
+    });
 
   tool("vault.request", ["cli", "local", "deck", "capsule", "mcp", "module"],
     "One HTTP call to a vendor API with an api-credential from the vault, which adds the key and never shows it. A read runs at once. A send, payment or deletion runs at once only if you asked for exactly it; otherwise it is held at the Gate with a card Vyre builds from the request's parsed fields. The response has every value the credential touched removed.",

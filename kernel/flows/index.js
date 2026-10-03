@@ -6,6 +6,7 @@
 //   flows.tools["flows.define"](chain, { text })       every tool takes the caller's chain first, then its input
 //   kernel events -> flows.onEvent(event)              one subscription feeds triggers, waits and Kit approvals
 //   one timer     -> flows.tick(), at flows.nextWake()  time triggers and waits (nothing polls faster than a minute)
+//   a watcher     -> flows.watcherItem({ watcher, item }) a watcher's new item (bridgeWatchers adapts the watchers module's events)
 
 import { FlowRunner } from "./runner.js";
 import { KitManager, MemoryKitStore, installCard, diffKits } from "./kits.js";
@@ -19,6 +20,8 @@ export { createStages, taskIdOf };
 export { FlowRunner, KitManager, MemoryKitStore, MemoryFlowStore, installCard, diffKits };
 export * as language from "./schema.js";
 export { compileFlow, nextCron, parseCron, deriveCaps } from "./compile.js";
+export { TRIGGER_REGISTRY, TRIGGER_ONS, kindOf, whyRan } from "./triggers.js";
+export { bridgeWatchers } from "./watcher-bridge.js";
 export { printFlow, parseFlowText, parseFlowTextBounded, normalizeFlow, sameFlow } from "./text.js";
 export { defineFlow, step, expr } from "./sdk.js";
 export { RecordsFlowStore, FLOW_TYPES } from "./store.js";
@@ -117,6 +120,8 @@ export function createFlows(o) {
     /** One subscription feeds triggers, waits and Kit approvals. @param {any} env */
     onEvent: async env => { await runner.onEvent(env); await kits.onEvent(env); if (stages) await stages.onEvent(env); },
     tick: () => runner.tick(),
+    /** A watcher found something new (see watcher-bridge.js): starts the Flows armed on it, once per item. */
+    watcherItem: w => runner.watcherItem(w),
     nextWake: () => runner.nextWake(),
     recover: () => runner.recover(),
     text: printFlow,

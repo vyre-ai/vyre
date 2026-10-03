@@ -27,6 +27,8 @@ import { PASSWORD_MIN } from "./recovery.js";
 import { WORDS } from "../../relay/client/words.js";
 import { createCompute } from "../../lib/spaces/compute.js";
 import { createKernelMembers } from "./kernel-members-compat.js";
+import { kernelMembers } from "./kernel-members.js";
+import { acceptProofRequest } from "../../kernel/remote/proof.js";
 import {
   MIGRATIONS, kvStore, seenStore, membershipStore, roleNames, inviteStore, pairingService, spaceTable,
 } from "./store.js";
@@ -118,7 +120,7 @@ export default {
     };
     /** The fingerprint of a space as its inviter saw it: its permanent id and its root key. 32 hex characters; four words show the first 44 bits on the card. */
     const spaceFingerprint = (/** @type {string} */ chainId, /** @type {string} */ rootPublic) => crypto.createHash("sha256").update(`vyre-space-fingerprint-v1\n${chainId}\n${rootPublic}`).digest("hex").slice(0, 32);
-    const wordList = String(WORDS).split(/\s+/).filter(Boolean);
+    const wordList = Array.isArray(WORDS) ? WORDS : String(WORDS).split(/\s+/).filter(Boolean);
     const fingerprintWords = (/** @type {string|null|undefined} */ hex) => {
       if (!hex) return null;
       const bits = BigInt("0x" + hex.slice(0, 11)); // 44 bits, four words
@@ -688,12 +690,26 @@ export default {
     };
     tool("spaces.invites.create", "Make a join link (https://<space>.vyre.run/join/...) for a role. A temp or member invite can name projects. Owners and admins only, unless the space lets managers invite.",
       obj({ space: str, role: { type: "string", enum: ROLE_IDS }, scope: { type: "array", items: str }, expires: { type: "number" }, uses: { type: "number" }, ttlDays: { type: "number" }, alias: str, to: str }, ["space", "role"]),
-      async i => {
+      async (i, meta) => {
         const row = spaceOf(i.space);
-        const s = await gate(row.id);
+        const s = await gate(row.id, undefined, meta);
+        if (kernelHandle(row.id)) {
+          // The Space's kernel makes the invite (a grant act under the admin's own proof) and holds it; the link carries only its id and this device's pin.
+          const k = await kctxOf(meta);
+          const rec = await kernelMembers({ handle: kernelHandle(row.id), now }).invites.create(k, { role: i.role, ...(i.scope ? { scope: i.scope } : {}), ...(i.expires ? { expires: i.expires } : {}), ...(i.to ? { invitee: await personRef(i.to) } : {}), ...(i.ttlDays ? { valid_ms: Number(i.ttlDays) * DAY } : {}) });
+          const pin = await invitePin(row);
+          const token = `${rec.id}.${b64u(Buffer.from(JSON.stringify(pin)))}`;
+          return { id: rec.id, link: `https://${row.name}/join/${token}`, token, needs_confirm: rec.needs_confirm === true, valid_until: rec.valid_until };
+        }
         const r = await invitesFor(row).createInvite({ creator: s.id, role: i.role, scope: i.scope, expires: i.expires, uses: i.uses, ttl: i.ttlDays === undefined ? undefined : Number(i.ttlDays) * DAY, alias: i.alias, to: i.to ? await personRef(i.to) : undefined, ...(await invitePin(row)) });
         return { id: r.id, link: r.link, token: r.token };
       });
+    tool("spaces.invites.confirm", "As the inviter of an admin or owner: confirm the fingerprint words the invitee reads to you. Their invite waits for this.", obj({ space: str, id: str, words: str }, ["space", "id", "words"]), async (i, meta) => {
+      const row = spaceOf(i.space);
+      await gate(row.id, undefined, meta);
+      if (!kernelHandle(row.id)) throw refuse("Only an invite made through the space's kernel waits for confirmation.", "not_kernel");
+      return out(await kernelMembers({ handle: kernelHandle(row.id), now }).invites.confirm(await kctxOf(meta), String(i.id), String(i.words)));
+    });
     tool("spaces.invites.revoke", "Cancel an invite so its link stops working.", obj({ space: str, id: str }, ["space", "id"]), async i => {
       const row = spaceOf(i.space);
       const s = await gate(row.id);
@@ -747,15 +763,46 @@ export default {
       });
       return { p, res, local };
     };
+    const isKernelToken = (/** @type {string} */ t) => /^inv_[0-9a-f]{32}\.[A-Za-z0-9_-]+$/.test(String(t));
+    /** The card for a kernel invite, from the Space's own kernel, after the link's pin and fingerprint are checked against the identity list. @param {any} i @param {any} p @param {any} meta */
+    const kernelCard = async (i, p, meta) => {
+      const [invId, blob] = String(p.token).split(".");
+      let carried = {};
+      try { carried = JSON.parse(Buffer.from(blob, "base64url").toString("utf8")); } catch { /* checked below */ }
+      const pin = parsePin(i.pin) || (carried.chain && { id: carried.chain.id, seq: carried.chain.seq, head: carried.chain.head }) || undefined;
+      if (!pin) throw refuse("This invite does not say which version of the space it was made for. Ask for a new one.", "unpinned");
+      const label = String(p.name).replace(/\.vyre\.run$/, "");
+      let r;
+      try { r = await dir.resolve(label, { pin, resolve: ownerLookup }); } catch (e) { throw refuse(plainDirectory(e), "not_found"); }
+      if (!r.ok || r.kind !== "space" || !r.payload) throw refuse("That space could not be verified. Ask for a new invite.", "wrong_space");
+      if (carried.rk && spaceFingerprint(r.id, r.payload.rootPublic) !== carried.rk) throw refuse("This invite could not be verified. Ask for a new one.", "forged");
+      const h = kernelHandle(r.payload.id);
+      if (!h) throw refuse("This device cannot reach that space yet.", "unreachable");
+      const k = await kctxOf(meta);
+      const card = await kernelMembers({ handle: h, now }).invites.get(k, invId);
+      return { card, invId, spaceId: r.payload.id, handle: h, k, fingerprint: carried.rk || null };
+    };
     tool("spaces.invites.preview", "What a join link offers, before joining: the space, the role, what you will see and the button. Checks the link's signature against the space's pinned key. Shows nothing else.",
-      obj({ link: str, pin: str }, ["link"]), async i => {
+      obj({ link: str, pin: str }, ["link"]), async (i, meta) => {
+        if (K) { const p0 = await parseLink(i.link); if (isKernelToken(p0.token)) { const c = await kernelCard(i, p0, meta); return { ...c.card, fingerprint: c.fingerprint, fingerprint_words: fingerprintWords(c.fingerprint) }; } }
         const { res } = await previewLink(i);
         if (!res.ok) throw refuse(res.message, res.code);
         return { ...res.card, fingerprint_words: fingerprintWords(res.card.fingerprint) };
       });
     tool("spaces.invites.accept", "Join a space from its link, signing with this device's person key. When this device is the space's home the membership is made at once; otherwise the signed acceptance is returned for the home to redeem.",
-      obj({ link: str, pin: str }, ["link"]), async i => {
+      obj({ link: str, pin: str }, ["link"]), async (i, meta) => {
         const s = me();
+        if (K) {
+          const p0 = await parseLink(i.link);
+          if (isKernelToken(p0.token)) {
+            const c = await kernelCard(i, p0, meta);
+            // What the invitee signs on their own device: the kernel's accept request over exactly this card. The surface sends the signed proof beside the next call.
+            const req = acceptProofRequest(c.handle.space || c.card.space.id, c.card, /** @type {string} */ (s.id));
+            if (!meta || !meta.kernel_proof) return { joined: false, needs_proof: true, request: req, card: c.card, fingerprint_words: fingerprintWords(c.fingerprint) };
+            const got = await kernelMembers({ handle: c.handle, now }).invites.accept(c.k, c.invId, req.seen);
+            return { joined: true, space: c.spaceId, membership: out(got.membership) };
+          }
+        }
         const { p, res, local } = await previewLink(i);
         if (!res.ok) throw refuse(res.message, res.code);
         const payload = JSON.parse(Buffer.from(p.token.split(".")[0], "base64url").toString("utf8"));
@@ -787,8 +834,8 @@ export default {
 
     // 5a'. for the transport: which person a proven device is. `spaces.identity.state` is the live, verified list of a person's entries (read from the directory on every
     // call, never cached: a device the person removed is gone at its next call), and `spaces.people` the candidates to look at. kernel/remote/person-of.js asks both.
-    tool("spaces.identity.state", "A person's identity list as verified now: their entry ids and kinds. Read live each call. For the transport's personOf.", obj({ person: str }, ["person"]), async i => {
-      const id = String(i.person);
+    /** A person's identity list as verified now, read live from the directory (pinned to what this device saw first). @param {string} id */
+    const stateOfPerson = async id => {
       const mineId = identity.status();
       const name = mineId.exists && mineId.id === id ? mineId.name : /** @type {string|null} */ (await kv.get(`person-name/${id}`));
       if (!name) return { entries: [] };
@@ -797,12 +844,57 @@ export default {
       try { r = await dir.resolve(String(name), { pin: /** @type {any} */ (await kv.get(pinKey)) || undefined }); } catch { return { entries: [] }; }
       if (!r.ok || r.kind !== "person" || r.id !== id) return { entries: [] };
       await kv.put(pinKey, r.pin);
-      return { entries: r.state.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind })) };
+      return { entries: r.state.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, pub: e.pub })) };
+    };
+    tool("spaces.identity.state", "A person's identity list as verified now: their entry ids and kinds. Read live each call. For the transport's personOf.", obj({ person: str }, ["person"]), async i => stateOfPerson(String(i.person)), { internal: true });
+    /** Is this person a member of this space, by the place that decides it (the kernel's membership read when it offers one, else the local table)? @param {string} space @param {string} person */
+    const isMember = async (space, person) => {
+      if (K && typeof K.membership === "function" && kernelHandle(space)) { try { return (await K.membership(person, space)).member === true; } catch { return false; } }
+      return Boolean(mstore.get(space, person));
+    };
+    /** The people this device knows an identity name for (it has resolved them), the candidates for a proven device. */
+    const knownPeople = () => {
+      const rows = /** @type {any[]} */ (db.prepare("SELECT key FROM spaces_kv WHERE key LIKE 'person-name/%'").all());
+      const mine = identity.status();
+      return [...new Set([...(mine.exists && mine.id ? [mine.id] : []), ...rows.map(r => String(r.key).slice("person-name/".length))])];
+    };
+    // The port the transport asks before EVERY call from a device (team/0.3 tailnet CHAT): is this entry a device on the identity list of a person in this space, now?
+    // Read live from the directory (never cached): a device its person removed answers null at its very next call. A device on two people's lists is no one's.
+    tool("spaces.identity.entry", "A device entry as the identity list holds it now, if it belongs to a member of the space: { eid, kind, pub }, else null. Read live every call. For the transport.", obj({ space: str, eid: str }, ["space", "eid"]), async i => {
+      const row = spaceOf(i.space);
+      const eid = String(i.eid);
+      /** @type {any} */ let found = null;
+      for (const person of knownPeople()) {
+        if (!(await isMember(row.id, person))) continue;
+        const st = await stateOfPerson(person);
+        const e = (st.entries || []).find((/** @type {any} */ x) => x.kind === "device" && x.eid === eid);
+        if (e) { if (found) return null; found = { eid, kind: "device", pub: e.pub }; }
+      }
+      return found;
+    }, { internal: true });
+    // Pairing's last step: the device that was just confirmed (three words on both sides) becomes an entry on the person's list, signed by an entry already on it.
+    tool("spaces.identity.enrol", "Put a newly paired device on this person's identity list. Signed by this device's entry; the device is a newcomer for 24 hours. For pairing.", obj({ publicKey: str, label: str }, ["publicKey"]), async i => {
+      me();
+      try { return await idops.addEntry({ kind: "device", publicKey: String(i.publicKey), label: i.label }); } catch (e) { throw idFail(e); }
+    }, { internal: true });
+    // The device's own signer for the transport's proof: only the transport's own message, never anything else.
+    tool("spaces.identity.sign", "Sign the transport's device proof (a message that starts with vyre-wink-peer-v2) with this device's key. Refuses anything else.", obj({ message: str }, ["message"]), async i => {
+      const s0 = me();
+      const msg = Buffer.from(String(i.message), "base64url");
+      if (msg.subarray(0, 18).toString() !== "vyre-wink-peer-v2\n") throw refuse("This key signs only the transport's device proof.", "forbidden");
+      return { eid: s0.eid, sig: b64u(await identity.sign(msg)) };
     }, { internal: true });
     tool("spaces.people", "The people of a space that hold an identity this device knows: its members and the person of a pending invite. For the transport's personOf.", obj({ space: str }, ["space"]), async (i, meta) => {
       const row = spaceOf(i.space);
       const list = await (await members(row.id, meta)).list().catch(() => []);
       return { people: [...new Set(list.map((/** @type {any} */ m) => m.person))] };
+    }, { internal: true });
+
+    tool("spaces.label", "What a join card shows for a space the kernel hosts: its name and the four fingerprint words of its identity list and root key. The kernel reads this on every invite card.", obj({ space: str }, ["space"]), async i => {
+      const row = spaceOf(i.space);
+      const c = await chainOf(row.id);
+      const k = files.keys.load(row.id);
+      return { name: row.name, words: c && c.pin && k ? fingerprintWords(spaceFingerprint(c.pin.id, k.publicKey)) : null };
     }, { internal: true });
 
     // 5b. the compute grant pair: the space allows its work on members' computers, the member accepts, and it covers only their own sessions on their own machine

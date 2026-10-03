@@ -36,6 +36,22 @@ Scope: `records/` (the language, the Kits, the Stripe connector, the stand-in ga
 - Stage tasks: entering a stage creates its tasks as `task` records (the kernel's tasks module owns approval truth, the record is the projection the Now view reads).
 - Native group-by for aggregate (Twenty has `<plural>GroupBy`); views to Twenty views; Kit diff on update; conformance run wired into `upgradeSpace`'s `verify`.
 
+## Root helper for a real box (spec; launch owns the installer side)
+
+The daemon runs in a container behind a docker-api proxy and has no root. Two things in `stores/twenty/provision.js` need more than the daemon has, so a small root-owned helper does them on the daemon's request over a 0600 socket owned by the daemon's user.
+
+1. **Provisioning through the proxy.** `provisionSpace` takes a `runner` (`exec(cmd, args, { cwd, input })`, `fetch`, `sleep`). On a real box the runner talks to the helper or the proxy instead of local `docker`. The helper must run only: `docker compose -f compose.yml --env-file .env <up -d --wait | stop | exec -T db pg_dump/psql | down>`, `docker network connect --alias vyre-<name> <network> <gateway container>`, `docker inspect` of Vyre's own containers and networks, and `docker run --rm -v <vyre volume>:/data[:ro] -v <backup dir>:/out alpine tar ...` for backup and restore.
+2. **Three firewall rules per Space** (`firewallRules()`): agent uids cannot reach the Space's network (OUTPUT reject), nothing on the Space's network can leave it (DOCKER-USER drop), and agent uids cannot reach it through the bridge (DOCKER-USER reject). Today they are not applied anywhere.
+
+What the helper must refuse (everything else is a refusal, not a warning):
+- A compose project whose name is not `vyre-<name>-twenty` with `<name>` matching `^[a-z][a-z0-9-]{0,30}$`, or whose directory is not `<home>/kernel/twenty-home/spaces/<name>/twenty` (and, for the home's own Space, the same path under the home's kernel directory). No `-f` file from anywhere else, no other compose verbs, no `--project-directory` or `--env-file` outside that directory.
+- A compose file that is not what `composeFile()` generates: any `ports:`, `privileged`, `network_mode`, `cap_add`, `devices`, `pid`, `ipc`, `volumes` other than the Space's own two named volumes and `./empty-front`, an image other than `twentycrm/twenty`, `postgres:16` or `redis:7` at a tag the build tested, or a network that is not `internal: true`. The helper regenerates the expected file from the Space name, tag and memory profile and compares it byte for byte.
+- Any container, network or volume whose name does not start with `vyre-<name>-twenty`. Never `/srv/vyre`, never the daemon's own container, never `docker run` of any other image or with any other mount.
+- Firewall rules of any shape but those three, in `OUTPUT` and `DOCKER-USER` only, each carrying the comment `vyre:<name>`. The subnet is read by the helper from `docker network inspect vyre-<name>-twenty_store`, never taken from the caller. The agent uid range is the one the installer configured (default 2000 and up). Applying twice changes nothing (check with `-C` first); removing a Space removes exactly its three rules. No other table, chain, target or flag.
+- Anything on behalf of a caller that is not the daemon's own user.
+
+Until the helper exists, a box that runs the daemon as a user in the docker group works without it (the preflight checks that Docker answers), but agents on that box are not firewalled from a Space's Twenty. They would still need the Space's service key (0600, owned by the daemon's user) to read it.
+
 ## Needs from others
 
 - platform: where the Stripe webhook route mounts (the handler is `createStripeHandler({secret, gateway, kit})` returning `{status, body}`), and the Space-level wiring that calls `provisionSpace`, hands the webhook target host to Twenty (`OUTBOUND_HTTP_ALLOWED_INTERNAL_HOSTS`) and attaches the gateway container to the Space network under the alias `vyre-<space>`.

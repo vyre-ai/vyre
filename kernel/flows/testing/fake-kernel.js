@@ -37,7 +37,8 @@ export class FakeKernel {
       const approver = input.chain.hops[input.chain.hops.length - 1].actor;
       if (!rule && self.denied.has(approver.id)) return { effect: "deny", reason: "revoked", grants: [], obligations: [], decision: "dec_" + uuid(), policy_version: 1 };
       const effect = rule ? rule.effect : "allow";
-      return { effect, reason: rule ? rule.reason : "ok", grants: [], obligations: [], decision: "dec_" + uuid(), policy_version: 1 };
+      // a standing rule (kernel-2's shape): obligations (draft_only, ask with waivable false) and the rule that refused, as `authorize` returns them
+      return { effect, reason: rule ? rule.reason : "ok", grants: [], obligations: (rule && rule.obligations) || [], ...(rule && rule.rule ? { rule: rule.rule } : {}), decision: "dec_" + uuid(), policy_version: 1 };
     };
 
     this.records = {

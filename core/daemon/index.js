@@ -176,10 +176,18 @@ async function startLocked(opts, root, p, release) {
   /** @type {(() => Promise<void>) | null} */ let closeKernelSessions = null;
   if (opts.kernel === true || (opts.kernel === undefined && process.env.VYRE_KERNEL === "1")) {
     const { bootHomeKernel } = await import("../../kernel/home.js");
+    // The record store: VYRE_STORE=sqlite (the default), auto or twenty (stores/twenty/space-store.js). With auto or twenty each Space's records live in its own Twenty, provisioned
+    // on first use, when the box can run it; auto falls back to SQLite on a box that cannot (and a new hosted Space asks first), twenty refuses to start instead. The reach, memory
+    // profile and gateway container are options of that factory with defaults, not settings.
+    /** @type {((space: string, meta?: any) => Promise<any>) | undefined} */ let storeFor;
+    if ((process.env.VYRE_STORE || "sqlite") !== "sqlite") {
+      const { createStoreFor } = await import("../../stores/twenty/space-store.js");
+      storeFor = createStoreFor({ home: root, log });
+    }
     // Stages made of tasks (kernel/flows/stages.js): entering a stage makes its tasks in the kernel's own task store, and finished tasks move the record on. The gateway calls the two
     // hooks, which are bound late because the module needs the booted kernel. Tasks live only in the kernel store (no task record in Twenty).
     /** @type {any} */ let stages = null;
-    kernel = await bootHomeKernel({ db, root, log, isFirstParty: dir => registry.isFirstParty(dir),
+    kernel = await bootHomeKernel({ db, root, log, isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
       onStageEnter: (/** @type {any} */ e) => (stages ? stages.onStageEnter(e) : Promise.resolve()), stageTasks: (/** @type {string} */ u, /** @type {string} */ st) => (stages ? stages.stageTasks(u, st) : []) });
     {
       const { createStages } = await import("../../kernel/flows/stages.js");
@@ -191,10 +199,10 @@ async function startLocked(opts, root, p, release) {
       kernel.log.subscribe("stages", {}, (/** @type {any} */ e) => stages.onEvent(e));
     }
     if (typeof kernel.bindCalls === "function") kernel.bindCalls(currentCall);
-    // The session credential of a session vyred starts (core/sessions/kernel-session.js): the kernel opens a token for the owner this home runs as, with the thread's chat written
+    // The session credential of a session vyred starts (lib/kernel-session.js): the kernel opens a token for the owner this home runs as, with the thread's chat written
     // in by the kernel after it checks the owner is in it; vyred holds it and the thread's own socket stamps it on every call, so the session never sees it. An unnamed thread
     // runs as the default assistant. A thread with no chat of its own gets a session of no chat. Only the Switchboard is handed this (core/modules/index.js context).
-    const { createKernelSessions } = await import("../sessions/kernel-session.js");
+    const { createKernelSessions } = await import("../../lib/kernel-session.js");
     const kernelSessions = createKernelSessions({ kernel });
     closeKernelSessions = () => kernelSessions.closeAll();
     registry.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any }} */ q) => {
