@@ -440,3 +440,14 @@ test("service credentials: a kernel module's key is sealed in the process, read 
   const file = path.join(dir, "..", `adopt-${Date.now()}.key`); fs.writeFileSync(file, key + "\n", { mode: 0o600 });
   assert.equal((await s.service.adopt({ name: "twenty.spc_adopted.key", file })).adopted, true); assert.equal(fs.existsSync(file), false); assert.equal(await s.service.get({ name: "twenty.spc_adopted.key" }), key);
 });
+
+test("found against the real chains: a member on a paired device reveals with a hardware proof, a daemon speaking for them in a session does not", async t => {
+  const { s } = await setup(t), bob = signer("per_bob"); await enrolDevice(s, bob);
+  const dev = person("per_bob"), { ref } = await s.api.put({ chain: dev, record: REC, field: "ssn", class: "us-ssn", value: "123-45-6789" });
+  assert.equal(dev.hops[0].via.device, "device:d_per_bob", "the kernel's device chain has a device and no surface"); assert.equal(dev.hops[0].via.surface, undefined);
+  assert.equal((await s.api.reveal({ chain: dev, ref: ref.ref, purpose: "p", proof: bob.proof(dev, "seal.reveal", { ref: ref.ref, purpose: "p" }) })).value, "123-45-6789");
+  // SHIM(session-person-chain): the kernel's `session_person` door (a daemon speaking for a person, no passkey shown) is built here by hand-made facts through chain(); a person's own chain from it must not reveal.
+  const { createChainBuilder } = await import("../core/chain.js"), { createKernelSeal } = await import("../core/seal.js");
+  const sp = createChainBuilder({ space: SPACE, owner: "per_alex", owner_uid: 501, seal: createKernelSeal({ key: Buffer.alloc(32, 3) }), clock: Date.now, is_person: () => true }).fromFacts({ kind: "session_person", person: "per_bob", session: "x", vouched: true });
+  assert.equal(await code(s.api.reveal({ chain: sp, ref: ref.ref, purpose: "p", proof: bob.proof(sp, "seal.reveal", { ref: ref.ref, purpose: "p" }) })), "human_only");
+});

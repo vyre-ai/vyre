@@ -116,7 +116,8 @@ export class Sealer {
   reveal(r, derived = false) {
     const ctx = this.ctxOf(r.ctx);
     need(typeof r.purpose === "string" && r.purpose.length > 0 && r.purpose.length <= 200, "bad_input");
-    need(ctx.one_person && !ctx.model_originated && HUMAN_SURFACES.has(ctx.surface), "human_only");
+    // A person at the deck, the capsule or the mobile app, or a member on a paired device (the kernel's device chain carries `via.device` and no surface): the hardware-signed proof below is what proves the person.
+    need(ctx.one_person && !ctx.model_originated && (HUMAN_SURFACES.has(ctx.surface) || ctx.device), "human_only");
     const op = derived ? "seal.reveal_derived" : "seal.reveal";
     const why = this.presence.refuse(r.proof, { op, space: ctx.space, fields: { ref: r.ref, purpose: r.purpose }, ctx });
     if (why) throw err(why === "no_proof" ? "needs_presence" : why);
