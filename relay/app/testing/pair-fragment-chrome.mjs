@@ -58,6 +58,8 @@ ws.addEventListener("message", e => {
   if (m.id && waits.has(m.id)) { waits.get(m.id)(m); waits.delete(m.id); }
   if (m.method === "Fetch.requestPaused") paused.push(m.params);
 });
+// Page.navigate answers only once the navigation commits, and the page's own request is held by Fetch until pump() lets it go, so it is
+// never awaited (newer Chrome deadlocked here); pump() runs right after it.
 const send = (method, params = {}) => new Promise(r => { const i = ++id; waits.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
 const evalIn = async expression => (await send("Runtime.evaluate", { expression, returnByValue: true })).result.result.value;
 
@@ -87,17 +89,19 @@ async function pump(ms) {
   }
 }
 
+/** Each link opens from a blank page with the origin's storage cleared: from the page the last link left (its fragment cleared) a new #pair= is a same-document change and nothing reloads, and a worker the loader left would carry the next lookup past the interception. */
+const openLink = async ticket => { await send("Page.navigate", { url: "about:blank" }); await send("Storage.clearDataForOrigin", { origin: `http://localhost:${port}`, storageTypes: "all" }); void send("Page.navigate", { url: `http://localhost:${port}/#pair=${ticket}` }); };
 const failures = [];
 const note = (ok, why) => { if (!ok) failures.push(why); };
 const resolveDirect = loc => fetch(`${relay.url}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc }) });
 
 // 1. A hostile link: someone else's ticket. One lookup, the card, and nothing paired without the tap.
 const t1 = await registerTicket(relay.url);
-await send("Page.navigate", { url: `http://localhost:${port}/#pair=${t1.ticket}` });
+await openLink(t1.ticket);
 await pump(8000);
 const card = String(await loaderText());
 const addressAfter = String(await evalIn("location.href"));
-const asks = outbound.filter(o => /^https:\/\/relay\.vyre\.run\/v1\/pair$/.test(o.url));
+const asks = outbound.filter(o => o.method === "POST" && /^https:\/\/relay\.vyre\.run\/v1\/pair$/.test(o.url));
 note(/says it is alex\.vyre\.run/.test(card), `the confirm card did not say who it claims to be: ${card.slice(0, 160)}`);
 note(/fingerprint is [a-z2-7 ]{9}/.test(card), "the confirm card shows no key fingerprint");
 note(!addressAfter.includes("#") && !addressAfter.includes(t1.ticket), `the ticket is still in the address: ${addressAfter}`);
@@ -116,18 +120,18 @@ note(!(await keyDatabases()).includes("vyre-relay"), "a device key store exists 
 // 2. Only the tap on Pair makes the key and opens the pairing channel.
 const t2 = await registerTicket(relay.url);
 outbound.length = 0;
-await send("Page.navigate", { url: `http://localhost:${port}/#pair=${t2.ticket}` });
+await openLink(t2.ticket);
 await pump(6000);
 note(sockets.length === 0, "a socket opened before the tap on Pair");
 note(await clickButton("Pair this device"), "no Pair button on the card");
 await pump(6000);
-note(outbound.filter(o => /\/v1\/pair$/.test(o.url)).length === 1, "pairing must use the record already held, not a second lookup");
+note(outbound.filter(o => o.method === "POST" && /\/v1\/pair$/.test(o.url)).length === 1, "pairing must use the record already held, not a second lookup");
 note(sockets.some(u => /^wss:\/\/relay\.vyre\.run\//.test(u)), `the tap on Pair did not start pairing over the relay (sockets: ${sockets})`);
 
 // 3. A record that names another relay is refused with no card and no socket.
 sockets.length = 0;
 const t3 = await registerTicket(relay.url, { relay: "wss://evil.example" });
-await send("Page.navigate", { url: `http://localhost:${port}/#pair=${t3.ticket}` });
+await openLink(t3.ticket);
 await pump(6000);
 const refused = String(await loaderText());
 note(!/Pair this device/.test(refused), `a record naming another relay still showed a card: ${refused.slice(0, 160)}`);
