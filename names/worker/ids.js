@@ -115,9 +115,7 @@ export const idOps = {
     let key;
     try { key = await C.signerKey(state, String(act.by), act.via ? String(act.via) : undefined, this.now(), this.idCtx()); } catch (e) { throw err(403, "not_yours", "that name is not held by this entry"); }
     if (!await C.verifyWith(key.pub, actMessage({ action, name: rec.name, domain, ts: act.ts }), act.sig)) throw err(403, "bad_signature", "the signature does not check out");
-    // The first device of a person is the identity itself, not a newcomer: it may undo a claim made minutes ago.
-    const first = rec.kind === "person" && rec.ops[0].entry && rec.ops[0].entry.eid === key.entry.eid;
-    if (fresh && key.young && !first) throw err(403, "newcomer", "a sign-in under 24 hours old cannot do that");
+    if (fresh && key.young) throw err(403, "newcomer", "a sign-in under 24 hours old cannot do that");
     return state;
   },
 

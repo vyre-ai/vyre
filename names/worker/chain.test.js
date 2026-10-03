@@ -201,3 +201,18 @@ test("chain: a space's list holds its owners, signed through the owner's own dev
   // history verifies again from scratch, using the owners' chains as they stood at each time
   assert.equal((await C.verifyChain(space.ops, ctx)).head, space.state.head);
 });
+
+test("chain: the first device and the recovery code made with it are founders, never newcomers", async () => {
+  const phone = await key("phone"), code = await key("code"), mac = await key("mac"), friend = await key("friend");
+  const g = await C.makeGenesis({ kind: "person", entry: phone.entry("device"), code: code.entry("code"), nonce: "founder-nonce", ts: T0, sign: phone.sign });
+  let w = { ops: [g], state: await C.verifyChain([g], { now: T0 }) };
+  assert.deepEqual(w.state.entries.map(e => e.kind), ["device", "code"]);
+  // minutes in, the founder sets up a contact and adds a laptop; a recovery code made at setup works at once
+  w = await step(w, { type: "add", entry: friend.entry("contact") }, phone, T0 + 60_000);
+  w = await step(w, { type: "add", entry: mac.entry("device") }, code, T0 + 120_000);
+  // the laptop is a newcomer: it cannot remove the founder
+  await refused(step(w, { type: "remove", target: phone.eid }, mac, T0 + 180_000), "newcomer");
+  // a genesis may not smuggle in anything but a code
+  const bad = await C.makeGenesis({ kind: "person", entry: phone.entry("device"), code: mac.entry("device"), nonce: "founder-nonce2", ts: T0, sign: phone.sign });
+  await refused(C.verifyChain([bad], { now: T0 }), "bad_entry");
+});

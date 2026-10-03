@@ -7,7 +7,8 @@
 // contacts. A space's list holds its owners, each one a person identity (`subject`) acting through one of that person's devices
 // (`via`), checked against that person's own chain as it stood at the op's time.
 //
-//   genesis  seq 0, makes the id: the id is the kind prefix plus the hash of the genesis body, so nobody can claim another's id.
+//   genesis  seq 0, makes the id: the id is the kind prefix plus the hash of the genesis body, so nobody can claim another's id. It holds the
+//            first device and, optionally, the recovery code's entry; both are founders and never count as newcomers.
 //   add      one entry (device, code, contact; owner for a space)
 //   remove   one entry by eid
 //   replace-code   the recovery code is replaced; the new entry keeps the old one's age, so a replaced code is not "new"
@@ -77,7 +78,7 @@ async function verifySig(pubText, message, sigText) {
 }
 
 /**
- * @typedef {{ eid: string, kind: "device"|"code"|"contact"|"owner", pub?: string, subject?: string, label?: string, since: number, addedBy: string|null }} Entry
+ * @typedef {{ eid: string, kind: "device"|"code"|"contact"|"owner", pub?: string, subject?: string, label?: string, since: number, addedBy: string|null, founder?: boolean }} Entry
  * @typedef {{ id: string, kind: "person"|"space", seq: number, head: string, ts: number, entries: Entry[] }} State
  * @typedef {{ resolve?: (id: string, ts: number) => Promise<State|null>, now?: number, skewMs?: number }} Ctx
  */
@@ -97,7 +98,8 @@ async function shapeOfEntry(e, kind) {
 }
 const cleanLabel = (/** @type {unknown} */ l) => (typeof l === "string" ? l.replace(/[\u0000-\u001f]/g, " ").slice(0, 60) : undefined) || undefined;
 
-export const youngAt = (/** @type {Entry} */ e, /** @type {number} */ ts) => ts - e.since < NEWCOMER_MS;
+/** The founder entries (a person's first device, and the recovery code made with it) are never newcomers: nothing older exists to protect from them. */
+export const youngAt = (/** @type {Entry} */ e, /** @type {number} */ ts) => !e.founder && ts - e.since < NEWCOMER_MS;
 const find = (/** @type {State} */ s, /** @type {string} */ eid) => s.entries.find(e => e.eid === eid);
 
 /** The id a genesis body makes. @param {any} body */
@@ -124,7 +126,14 @@ export async function applyOp(state, op, ctx = {}) {
     if (op.kind === "person") {
       if (entry.kind !== "device" || op.by !== entry.eid || !await verifySig(entry.pub, msg, op.sig)) throw chainError("bad_signature", "the first device signs its own genesis");
     } else await verifyOwnerSig(op, entry.eid, /** @type {Entry} */ ({ ...entry, since: op.ts, addedBy: null }), msg, op.ts, ctx);
-    return { id: op.id, kind: op.kind, seq: 0, head: await hashOf(op), ts: op.ts, entries: [{ ...entry, since: op.ts, addedBy: null }] };
+    /** @type {Entry[]} */
+    const entries = [{ ...entry, since: op.ts, addedBy: null, founder: true }];
+    if (op.code !== undefined) {
+      const code = await shapeOfEntry(op.code, op.kind);
+      if (op.kind !== "person" || code.kind !== "code") throw chainError("bad_entry", "a genesis may carry a recovery code entry for a person");
+      entries.push({ ...code, since: op.ts, addedBy: null, founder: true });
+    }
+    return { id: op.id, kind: op.kind, seq: 0, head: await hashOf(op), ts: op.ts, entries };
   }
 
   if (!state) throw chainError("bad_op", "a chain starts with its genesis");
@@ -258,9 +267,9 @@ export async function stateAt(ops, ts, ctx = {}) {
   return upto.length ? verifyChain(upto, ctx) : null;
 }
 
-/** Build and sign the genesis. `sign(bytes)` is the first entry's key (a person), or an owner's device (a space, with `via`). @param {{ kind: "person"|"space", entry: any, nonce: string, ts: number, via?: string, sign: (m: Uint8Array) => Promise<Uint8Array>|Uint8Array }} o */
-export async function makeGenesis({ kind, entry, nonce, ts, via, sign }) {
-  const op = { v: 1, type: "genesis", kind, seq: 0, prev: null, ts, nonce, entry, by: entry.eid, ...(via ? { via } : {}) };
+/** Build and sign the genesis. `sign(bytes)` is the first entry's key (a person), or an owner's device (a space, with `via`). @param {{ kind: "person"|"space", entry: any, code?: any, nonce: string, ts: number, via?: string, sign: (m: Uint8Array) => Promise<Uint8Array>|Uint8Array }} o */
+export async function makeGenesis({ kind, entry, code, nonce, ts, via, sign }) {
+  const op = { v: 1, type: "genesis", kind, seq: 0, prev: null, ts, nonce, entry, ...(code ? { code } : {}), by: entry.eid, ...(via ? { via } : {}) };
   /** @type {any} */ (op).id = await idOfGenesis(op);
   /** @type {any} */ (op).sig = b64u(await sign(messageOf(op)));
   return op;
