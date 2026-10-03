@@ -19,7 +19,12 @@ import { ackCode } from "../relay/client/code.js";
 import { tempHome } from "./helpers.js";
 import { macCore } from "./fake-core-keys.js";
 import { card, removal, FORBIDDEN } from "../core/wink/cards.js";
-import { peerDoor } from "../core/wink/index.js";
+import { peerDoor, composeWinkHome } from "../core/wink/index.js";
+import { parseServerQr } from "../core/wink/pairing.js";
+import { pairWords } from "../relay/client/pairwords.js";
+
+// The short typed code is off in a release build; these tests exercise it, so they turn the development flag on (the daemon reads it at call time).
+process.env.VYRE_WINK_TYPED_CODE = "1";
 
 /** Takes any presence proof: refusals below are about who calls and what the module decides. */
 const lenient = {
@@ -212,7 +217,12 @@ test("wink: a release drops the adopter's relay device and a refused adopt drops
   const as = id => `device:${id}`;
   const me = (await w.call("wink.pair.targets", {})).data.targets[0];
   const adopt = (id, extra = {}) => w.call("wink.server.adopt", { owner: { kind: "identity", id: me.id }, identity: me.id }, as(id), { ...extra });
-  assert.ok((await adopt(app)).data?.owner, "the first caller adopts");
+  // Q-1: the first adoption waits for a yes from the person at the server (a local screen), then the same device completes it
+  const first = adopt(app);
+  const asked = await until(async () => { const q = (await w.call("wink.server.pairing", {}, "cli", PROOF)).data; return q && q.asking ? q : null; });
+  assert.match(asked.words, /^[a-z]+ [a-z]+ [a-z]+$/, "the server shows three words");
+  assert.equal((await w.call("wink.server.pair.answer", { yes: true }, "cli", PROOF)).data.answered, true);
+  assert.ok((await first).data?.owner, JSON.stringify((await first).error));
   // a second device is refused (naming the owner) and nothing of it is left on the box
   const stranger = await pairDevice(t, w);
   const refused = await adopt(stranger);
@@ -392,4 +402,86 @@ test("peerDoor: allow answers from the wink module's registry and accept is the 
   assert.equal(door.allow("x"), false);
   door.accept({}, { deviceId: "srv1" });
   assert.deepEqual(accepted, [["harlow", { deviceId: "srv1" }]]);
+});
+
+test("Q-1 and typed code OFF, real daemon: the box makes a QR and a long code with no typed code; a scan only pairs the device, the server asks, and its three words equal what the scanning side derives from its own keys", async t => {
+  const w = await world(t);
+  const saved = process.env.VYRE_WINK_TYPED_CODE;
+  delete process.env.VYRE_WINK_TYPED_CODE;
+  t.after(() => { if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
+  // the typed paths are refused with a plain reason
+  assert.equal((await w.call("wink.code.open", { flow: "W2" })).error?.code, "typed_code_off");
+  assert.equal((await w.call("wink.server.code", { typed: true }, "cli", PROOF)).error?.code, "typed_code_off");
+  assert.equal((await w.call("wink.pair.server", { code: "WINK-K7QM-4P2X", target: { kind: "identity", id: (await w.call("wink.pair.targets", {})).data.targets[0].id } })).error?.code, "typed_code_off");
+  const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
+  assert.ok(made.qr && made.art, "the QR and the long code");
+  assert.equal(made.code, undefined, "no short code");
+  const scan = parseServerQr(made.qr);
+  assert.ok(scan);
+  // a scan pairs the device with the box and nothing more: the box has no owner yet
+  const paired = await pairTicket(scan.seed, { relay: w.status.url, name: "Sam's phone", crypto: nodeCrypto(), keyStore: keystore(t) });
+  const me = (await w.call("wink.pair.targets", {})).data.targets[0];
+  const adopt = w.call("wink.server.adopt", { owner: { kind: "identity", id: me.id, name: "Alex" }, identity: me.id }, `device:${paired.device}`, {});
+  const asked = await until(async () => { const q = (await w.call("wink.server.pairing", {}, "cli", PROOF)).data; return q && q.asking ? q : null; });
+  assert.equal(asked.name, "Alex");
+  assert.equal(asked.words, await pairWords(paired.box, paired.device), "both sides derive the same words from the two keys");
+  assert.ok(!(await w.call("wink.access")).data.devices.some(d => d.id === "self"), "no owner while the question is open");
+  // a stranger cannot answer, a person at the server can
+  assert.equal((await w.call("wink.server.pair.answer", { yes: true }, `device:${paired.device}`, {})).error?.code, "denied");
+  assert.equal((await w.call("wink.server.pair.answer", { yes: true }, "cli", PROOF)).data.answered, true);
+  assert.ok((await adopt).data?.owner, JSON.stringify((await adopt).error));
+});
+
+test("H-1, real daemon: wink.server.handover answers no module but wink, no device and no empty caller (reviewer-3 probe: module:evil got home, authKey and peerSecret)", async t => {
+  const w = await world(t);
+  for (const caller of ["module:evil", "module:platform", "module:relay", "device:abcdefghijklmnop", "cli", "deck", "tailnet:owner", "anonymous"]) {
+    const r = await w.d.registry.call("wink.server.handover", {}, caller, PROOF);
+    assert.ok(r.error, `refused for ${caller}`);
+    assert.equal(r.data?.handover, undefined, "no secret in the answer");
+  }
+  const own = await w.d.registry.call("wink.server.handover", {}, "module:wink", {});
+  assert.deepEqual(own.data, { handover: null }, "the Wink module itself is answered (nothing handed over yet)");
+});
+
+test("composeWinkHome: sets ctx.peerDoor, builds the serve wrapper with the host's pathOf, hands the held connections to Wink, and gives the app side its handover seam", async () => {
+  const accepted = [], served = [], hosted = [];
+  const wink = { peers: { allow: d => d === "srv1" }, holds: { onSession: (c, s) => accepted.push([c, s]) }, ownHandover: () => ({ home: "100.64.0.1:8443", authKey: "KEY", peerSecret: "SECRET" }) };
+  const host = { acceptRelay: space => (s, who) => accepted.push([space, who]), pathOf: c => (c === "device:wink1" ? "wink" : "relay"), serveHome: async (space, o) => { hosted.push([space, o]); } };
+  const wrapped = [];
+  const kernel = { serverFor: () => null, personOf: () => "per_x", withKernelCall: (next, o) => { wrapped.push(o); return (c, t, i) => next(c, t, i); } };
+  const registryServe = async (c, t, i) => { served.push([c, t]); return "ok"; };
+  const ctx = {};
+  const identity = { entry: async () => null };
+  const w = composeWinkHome({ ctx, host, kernel, wink, space: "harlow", serve: registryServe, identity, handoverSource: async q => ({ home: "h", controlUrl: "http://c", device: q.device }) });
+  // the relay module's door
+  const door = ctx.peerDoor();
+  assert.equal(door.space, "harlow");
+  assert.equal(door.allow("srv1"), true);
+  assert.equal(door.allow("x"), false);
+  door.accept({}, { deviceId: "srv1" });
+  assert.deepEqual(accepted.pop(), ["harlow", { deviceId: "srv1" }]);
+  // the kernel wrapper got the host's own path report
+  assert.equal(wrapped.length, 1);
+  assert.equal(wrapped[0].pathOf("device:wink1"), "wink");
+  assert.equal(wrapped[0].pathOf("device:relay1"), "relay");
+  assert.equal(w.pathOf("device:wink1"), "wink");
+  assert.equal(await w.serve("device:a", "about.text", {}), "ok");
+  // serveHome passes the identity port, the serve wrapper for both doors and the holds hook
+  await w.serveHome();
+  assert.equal(hosted.length, 1);
+  assert.equal(hosted[0][0], "harlow");
+  assert.equal(hosted[0][1].identity, identity);
+  assert.equal(typeof hosted[0][1].serve, "function");
+  assert.equal(typeof hosted[0][1].relayServe, "function");
+  hosted[0][1].onSession("device:srv2", { session: 1 });
+  assert.deepEqual(accepted.pop(), ["device:srv2", { session: 1 }]);
+  // the app side's seam and the server's own hand-over (in-process, never a tool)
+  assert.deepEqual(await w.handover({ target: { kind: "space", id: "harlow" }, device: "srv_a" }), { home: "h", controlUrl: "http://c", device: "srv_a" });
+  assert.equal(w.own().authKey, "KEY");
+  const none = composeWinkHome({ host, wink, space: "harlow" });
+  assert.equal(await none.handover({ target: { kind: "identity", id: "p" }, device: "d" }), null, "with no source the pairing hands over only the device id");
+  await assert.rejects(() => none.serveHome(), e => e.code === "bad_input");
+  assert.throws(() => composeWinkHome({ host, space: "harlow" }), /wink module/);
+  w.stop();
+  assert.equal(ctx.peerDoor, undefined);
 });

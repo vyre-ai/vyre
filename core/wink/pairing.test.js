@@ -6,7 +6,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { createPairing, MIGRATIONS, PEER_MIGRATIONS, POLL_MS, KIND_OFFERS, parseQr, qrPayload, parseServerQr, serverQrPayload } from "./pairing.js";
-import { FORBIDDEN, words } from "./cards.js";
+import { FORBIDDEN, words, removed } from "./cards.js";
+import { pairWords } from "../../relay/client/pairwords.js";
 
 const ME = "per_aaaaaaaaaaaaaaaaaaaaaaaaaa";
 const HARLOW = "spc_harlowharlo";   // admin
@@ -28,12 +29,14 @@ function world(o = {}) {
     mint: async seed => { minted.push(seed); return o.mintFails ? { error: "no relay" } : { data: { expiresAt: 1 } }; },
     callServer: o.callServer || (async (paired, tool, input) => ({ owner: input.owner })),
     typist: async a => { typed.push(a); return o.typistFails ? { ok: false, reason: o.typistFails } : { ok: true, ack: "WINK-AB12-CD34", seed: new Uint8Array(16), route: "rt" }; },
-    finish: async a => { finishes.push(a); return { ok: true, paired: { route: "route-juno", name: "juno" } }; },
+    finish: async a => { finishes.push(a); return { ok: true, paired: o.paired || { route: "route-juno", name: "juno" } }; },
   };
   const p = createPairing({
     ctx, now: o.now || (() => 1_000_000), offers: o.offers, identity: async () => ME, space: async () => HARLOW, directory, ports,
     openCode: async flow => ({ offer: `wo_${flow}`, code: "WINK-ZZZZ-ZZZZ", expires: 1 }), ack: async () => ({ ok: true }),
-    owner: (m, what) => { if (m && (m.agent || String(m.caller).startsWith("agent:"))) throw Object.assign(new Error(what), { code: "denied" }); }, dropMs: 0, relayUrl: async () => "ws://relay.test", keyFile: o.keyFile, spaceNow: () => HARLOW,
+    owner: (m, what) => { if (m && (m.agent || String(m.caller).startsWith("agent:"))) throw Object.assign(new Error(what), { code: "denied" }); }, dropMs: 0, relayUrl: async () => "ws://relay.test", keyFile: o.keyFile,
+    // existing tests adopt in one step and type codes; the Q-1 tests below turn the confirmation on and the typed code off, as a release build has them
+    confirmAdopt: o.confirm === true, typedCode: o.typedCode ?? true, askHoldMs: o.askHoldMs ?? 0, askMs: o.askMs, askPollMs: 1, releaseMaxMs: o.releaseMaxMs, pairWordsFor: o.pairWordsFor || (async d => `amber coral ${d}`), spaceNow: () => HARLOW,
   });
   p.tools();
   const call = (name, input = {}, meta = {}) => tools.get(name).run(input, { caller: "device:x", ...meta });
@@ -306,7 +309,7 @@ test("W-5: with an offers port the kernel's store is the only one and wink_compu
   assert.equal(store.size, 1, "removing the device leaves the kernel's store to the kernel");
 });
 
-test("peer admission: a paired server of this space or identity only; the node key the host proved binds, and no other key gets the secret", async () => {
+test("peer admission: a paired server of this space or identity only; the claim path and its tool are gone (reviewer-3: dead code)", async () => {
   const w = world();
   const add = (id, kind, target) => w.p.devices.add({ id, identity: ME, kind, name: id, target });
   add("srvMe", "server", { kind: "identity", id: ME });
@@ -316,34 +319,9 @@ test("peer admission: a paired server of this space or identity only; the node k
   assert.deepEqual(["srvMe", "srvHarlow", "srvElse", "phone1", "ghost"].map(d => w.p.peers.allow(d)), [true, true, false, false, false]);
   const call = async (t, input) => (await w.tools.get(t).run(input, { caller: "module:relay" }));
   assert.equal((await call("wink.peer.allow", { device: "srvHarlow" })).allow, true);
-  assert.equal(w.p.peers.shared("phone1", "nodekey:a"), null);
-  const NK = "nodekey:" + "aa".repeat(32), EVIL = "nodekey:" + "ee".repeat(32);
-  const served = [];
-  const serve = w.p.peers.serve(async (c, t) => { served.push([c, t]); return "ok"; });
-  w.p.peers.shared("srvMe", NK, "stable1");
-  await serve("device:srvMe", "x", {}, { nodeKey: NK });
-  assert.equal(w.p.devices.get("srvMe").nodeKey, NK);
-  assert.equal(w.p.devices.get("srvMe").stableId, "stable1");
-  assert.ok(w.events.some(e => e[0] === "wink.peer-bound"));
-  // bound: only that key, and a later proof cannot rebind
-  assert.equal(w.p.peers.shared("srvMe", EVIL), null);
-  assert.ok(w.p.peers.shared("srvMe", NK));
-  await serve("device:srvMe", "x", {}, { nodeKey: EVIL });
-  assert.equal(w.p.devices.get("srvMe").nodeKey, NK);
-  // W-4b: an unproven claim binds nothing, and cannot lock the real server out
-  w.p.peers.shared("srvHarlow", EVIL, "stableX");
-  await serve("device:srvHarlow", "x", {});
-  assert.equal(w.p.devices.get("srvHarlow").nodeKey, null, "a call with no proven key binds nothing");
-  w.p.peers.shared("srvHarlow", NK, "stableY");
-  await serve("device:srvHarlow", "x", {}, { nodeKey: "nodekey:" + "cc".repeat(32) });
-  assert.equal(w.p.devices.get("srvHarlow").nodeKey, null, "a proven key nobody claimed binds nothing");
-  w.p.peers.shared("srvHarlow", EVIL, "stableX");
-  await serve("device:srvHarlow", "x", {}, { nodeKey: NK });
-  assert.equal(w.p.devices.get("srvHarlow").nodeKey, NK, "the key that proved itself binds, whatever else was claimed");
-  assert.equal(w.p.peers.shared("srvHarlow", EVIL), null);
-  // the module tool says the same, and a removed server is out
-  assert.equal((await call("wink.peer.shared", { device: "srvMe", nodeKey: EVIL })).secret, null);
-  assert.ok((await call("wink.peer.shared", { device: "srvMe", nodeKey: NK })).secret);
+  assert.equal(w.tools.has("wink.peer.shared"), false, "a module call can no longer note a node-key claim");
+  assert.equal(typeof w.p.peers.shared, "undefined");
+  assert.equal(typeof w.p.peers.serve, "undefined");
   w.p.devices.remove("srvMe");
   assert.equal(w.p.peers.allow("srvMe"), false);
 });
@@ -458,24 +436,18 @@ test("adopt hands over what the device needs, only inside the channel: stored on
   // the server side stores it and gives it to modules only
   const srv = world();
   await srv.tools.get("wink.server.adopt").run(sent, { caller: "device:app" });
-  const h = await srv.tools.get("wink.server.handover").run({}, { caller: "module:platform" });
+  const h = await srv.tools.get("wink.server.handover").run({}, { caller: "module:wink" });
   assert.equal(h.handover.authKey, SECRET);
   assert.equal(h.handover.peerSecret, sent.peerSecret);
-  await assert.rejects(() => srv.tools.get("wink.server.handover").run({}, { caller: "device:app" }), e => e.code === "denied");
+  assert.equal(srv.p.ownHandover().authKey, SECRET, "the module's own code reads it without a tool");
+  // H-1 (reviewer-3 probe: module:evil got home, authKey and peerSecret): nobody but the Wink module, and an empty caller is refused
+  for (const caller of ["module:evil", "module:platform", "module:relay", "device:app", "cli", "deck", "tailnet", "anonymous", "", undefined]) {
+    await assert.rejects(() => srv.tools.get("wink.server.handover").run({}, caller === undefined ? {} : { caller }), e => e.code === "denied", `refused for ${JSON.stringify(caller)}`);
+  }
+  await assert.rejects(() => srv.tools.get("wink.server.handover").run({}), e => e.code === "denied", "no meta at all is refused too");
   assert.ok(!JSON.stringify(srv.events).includes(SECRET));
   const dump = JSON.stringify([...srv.tools.keys()]) + JSON.stringify(srv.p.devices.list(ME));
   assert.ok(!dump.includes(SECRET), "not in the device rows");
-});
-
-test("W-4b: a claim that no call proves lapses after a minute", async () => {
-  let t = 1_000_000;
-  const w = world({ now: () => t });
-  w.p.devices.add({ id: "srvA", identity: ME, kind: "server", name: "a", target: { kind: "identity", id: ME } });
-  const NK = "nodekey:" + "aa".repeat(32);
-  w.p.peers.shared("srvA", NK);
-  t += 61_000;
-  await w.p.peers.serve(async () => "ok")("device:srvA", "x", {}, { nodeKey: NK });
-  assert.equal(w.p.devices.get("srvA").nodeKey, null);
 });
 
 // ---- the server's QR: a long secret, so no PAKE and nothing typed back ----
@@ -743,4 +715,195 @@ test("W-4 N-2: a different device with the same owner and peer secret cannot rew
   // the adopter itself may only change the handover with the owner's presence too
   await assert.rejects(() => adopt({ owner: { kind: "identity", id: ME }, identity: ME, peerSecret: SECRET, handover: { home: "other", authKey: "K2" } }, "device:home1"), e => e.code === "presence_required");
   assert.equal(w.p.meta.get("handover").authKey, "REALKEY");
+});
+
+test("S-1: a removed device's signing key is cleared, and a re-added row never inherits one", () => {
+  const w = world();
+  const add = () => w.p.devices.add({ id: "pc1", identity: ME, kind: "computer", name: "pc", target: { kind: "identity", id: ME } });
+  add();
+  w.p.devices.setSignKey("pc1", "OLDKEY");
+  assert.equal(w.p.devices.get("pc1").signKey, "OLDKEY");
+  w.p.devices.remove("pc1");
+  assert.equal(w.p.devices.get("pc1").signKey, null, "cleared on removal");
+  w.p.devices.setSignKey("pc1", "LATE");
+  assert.equal(w.p.devices.get("pc1").signKey, null, "a removed row takes no key");
+  add();
+  assert.equal(w.p.devices.get("pc1").removed, false);
+  assert.equal(w.p.devices.get("pc1").signKey, null, "the re-added row starts with no signing key");
+  // a refresh of a live row keeps its key
+  w.p.devices.setSignKey("pc1", "NEWKEY");
+  add();
+  assert.equal(w.p.devices.get("pc1").signKey, "NEWKEY");
+});
+
+// ---- Q-1: a scan or a paste is CONFIRMED at the server (ruling, 4 Oct 2026) ----
+
+const ASKED = { owner: { kind: "identity", id: ME, name: "Alex" }, identity: ME };
+const atServer = (w, tool, input = {}, caller = "cli") => w.tools.get(tool).run(input, { caller });
+const adoptAs = (w, caller, input = ASKED) => w.tools.get("wink.server.adopt").run(input, { caller });
+
+test("Q-1: a first adoption by a paired device is a question at the server: who asks, three words, and nobody is owner until a person says yes there", async () => {
+  const w = world({ confirm: true });
+  const first = await adoptAs(w, "device:app1");
+  assert.equal(first.pending, true);
+  assert.equal(first.words, "amber coral app1", "the words come from the server's keys and this device");
+  assert.equal(w.p.meta.get("owner"), null, "asking does not own");
+  const q = await atServer(w, "wink.server.pairing");
+  assert.deepEqual({ asking: q.asking, name: q.name, words: q.words }, { asking: true, name: "Alex", words: "amber coral app1" });
+  assert.match(q.line, /^Pair this server to Alex\? Words: amber coral app1\.$/);
+  assert.ok(w.events.some(e => e[0] === "wink.pair-asked" && e[1].words === "amber coral app1"));
+  // asking again is the same ask, not a second owner
+  assert.equal((await adoptAs(w, "device:app1")).pending, true);
+  assert.equal(w.p.meta.get("owner"), null);
+  // a person at the server says yes: the same device completes, and is recorded as the adopter
+  assert.equal((await atServer(w, "wink.server.pair.answer", { yes: true })).answered, true);
+  const done = await adoptAs(w, "device:app1");
+  assert.deepEqual(done.owner, { kind: "identity", id: ME });
+  assert.equal(w.p.meta.get("owner").identity, ME);
+  assert.equal(w.p.meta.get("adopter"), "device:app1");
+  assert.equal((await atServer(w, "wink.server.pairing")).asking, false, "the question is closed");
+});
+
+test("Q-1: a second scanner is refused while one is asking, and cannot ride the first one's yes", async () => {
+  const w = world({ confirm: true });
+  await adoptAs(w, "device:app1");
+  await assert.rejects(() => adoptAs(w, "device:evil"), e => e.code === "busy" && /already asking/.test(e.message));
+  assert.ok(w.drops.some(d => d[0] === "relay.devices.drop" && d[1].id === "evil"), "the second device's relay row goes");
+  await atServer(w, "wink.server.pair.answer", { yes: true });
+  await assert.rejects(() => adoptAs(w, "device:evil"), e => e.code === "busy", "the yes belongs to the device that asked");
+  assert.equal(w.p.meta.get("owner"), null);
+  assert.deepEqual((await adoptAs(w, "device:app1")).owner, { kind: "identity", id: ME });
+  // once there is an owner the old rules stand: a stranger needs the owner's presence
+  await assert.rejects(() => adoptAs(w, "device:evil"), e => e.code === "presence_required");
+});
+
+test("Q-1: no answer in the window pairs nothing; a no pairs nothing; only a person at the server may answer", async () => {
+  let t = 5_000_000;
+  const w = world({ confirm: true, now: () => t, askMs: 60_000 });
+  await adoptAs(w, "device:app1");
+  t += 61_000;
+  await assert.rejects(() => adoptAs(w, "device:app1"), e => e.code === "expired" && /Nobody said yes/.test(e.message));
+  assert.equal(w.p.meta.get("owner"), null, "no confirmation means no owner");
+  assert.equal((await atServer(w, "wink.server.pair.answer", { yes: true })).answered, false, "a late yes answers nothing");
+  assert.equal((await atServer(w, "wink.server.pairing")).asking, false);
+  // a no
+  await adoptAs(w, "device:app1");
+  assert.equal((await atServer(w, "wink.server.pair.answer", { yes: false })).yes, false);
+  await assert.rejects(() => adoptAs(w, "device:app1"), e => e.code === "denied" && /said no/.test(e.message));
+  assert.equal(w.p.meta.get("owner"), null);
+  // the question and the answer are for a screen at the server only
+  await adoptAs(w, "device:app1");
+  for (const caller of ["device:app1", "device:other", "tailnet", "tailnet:owner", "relay", "module:evil", "cli:agent:kit", "anonymous", ""]) {
+    for (const tool of ["wink.server.pairing", "wink.server.pair.answer"]) {
+      await assert.rejects(() => w.tools.get(tool).run({ yes: true }, caller ? { caller } : {}), e => e.code === "denied", `${tool} refused for ${JSON.stringify(caller)}`);
+    }
+  }
+  assert.equal(w.p.meta.get("owner"), null, "nobody but the screen at the server decided");
+});
+
+test("Q-1: --pair-to names the identity up front: only that identity completes, with no question; another is refused", async () => {
+  const w = world({ confirm: true, typedCode: false });
+  const code = await atServer(w, "wink.server.code", { qr: true, pairTo: "alex" });
+  assert.match(code.qr, /^vyre:\/\/wink\/2\?t=/);
+  assert.equal(w.minted.length, 1);
+  assert.equal(w.p.meta.get("pair_to"), "alex");
+  await assert.rejects(() => adoptAs(w, "device:evil", { owner: { kind: "identity", id: "per_evil", name: "Mallory" }, identity: "per_evil" }), e => e.code === "denied" && /waiting to pair to alex/.test(e.message));
+  assert.equal(w.p.meta.get("owner"), null, "the wrong identity pairs nothing");
+  assert.ok(w.drops.some(d => d[0] === "relay.devices.drop" && d[1].id === "evil"));
+  assert.equal((await atServer(w, "wink.server.pairing")).asking, false, "no question was raised for the stranger");
+  // the named identity (by name, or by id) completes at once, nobody answers
+  const ok = await adoptAs(w, "device:app1", ASKED);
+  assert.deepEqual(ok.owner, { kind: "identity", id: ME });
+  assert.equal(w.p.meta.get("pair_to"), null, "the name is used up");
+  const w2 = world({ confirm: true, typedCode: false });
+  await atServer(w2, "wink.server.code", { pairTo: ME });
+  assert.deepEqual((await adoptAs(w2, "device:app1", { owner: { kind: "space", id: HARLOW, name: "Harlow Legal" }, identity: ME })).owner, { kind: "space", id: HARLOW }, "matched by the identity's id");
+  // a bad name is refused
+  for (const bad of ["", "x".repeat(70), 'a"b']) await assert.rejects(() => atServer(world({ typedCode: false }), "wink.server.code", { pairTo: bad }), e => e.code === "bad_input");
+});
+
+test("Q-1, app side: the app shows the same three words from its own keys while the server asks, and a server that shows other words is refused", async () => {
+  const BOX = "Qm94S2V5", DEV = "app1dev";
+  const good = await pairWords(BOX, DEV);
+  assert.match(good, /^[a-z]+ [a-z]+ [a-z]+$/);
+  assert.notEqual(good, await pairWords(BOX, "app2dev"), "another device, other words");
+  assert.notEqual(good, await pairWords("T3RoZXI", DEV), "another server key, other words");
+  const run = async (serverWords, confirm) => {
+    let n = 0;
+    const w = world({ typedCode: false, paired: { route: "route-juno", name: "juno", box: BOX, device: DEV },
+      callServer: async (paired, tool, input) => { n++; if (n < 3) return { pending: true, words: serverWords, until: 9e12 }; return { owner: input.owner }; } });
+    const payload = serverQrPayload(new Uint8Array(16).fill(7), "ws://relay.test");
+    const r = await w.call("wink.pair.server", { payload, target: { kind: "identity", id: ME } });
+    assert.equal(r.ack, null);
+    return { w, r };
+  };
+  // the server shows the same words: the app goes through `confirm` (with the words) and finishes when the server says it is owned
+  const ok = await run(good);
+  await new Promise(r => setTimeout(r, 40));
+  assert.equal((await ok.w.call("wink.pair.status", { pairing: ok.r.pairing })).state, "done");
+  assert.ok(ok.w.events.some(e => e[0] === "wink.pair-confirm" && e[1].words === good), "the words were shown to the app's person");
+  // other words from the server: nothing is paired and the person is told not to say yes
+  const bad = await run("wrong words here");
+  await new Promise(r => setTimeout(r, 40));
+  const st = await bad.w.call("wink.pair.status", { pairing: bad.r.pairing });
+  assert.equal(st.state, "failed");
+  assert.match(st.reason, /Do not say yes/);
+  assert.equal(bad.w.p.devices.list(ME).filter(d => d.kind === "server").length, 0, "the half-added row is taken back");
+  // while the server is asking, the status carries the words and what to do
+  const w3 = world({ typedCode: false, paired: { route: "r", name: "juno", box: BOX, device: DEV }, callServer: (() => { let n = 0; return async (p, t, input) => { n++; if (n < 40) return { pending: true, words: good, until: 9e12 }; return { owner: input.owner }; }; })() });
+  const r3 = await w3.call("wink.pair.server", { payload: serverQrPayload(new Uint8Array(16).fill(8), "ws://relay.test"), target: { kind: "identity", id: ME } });
+  await new Promise(r => setTimeout(r, 15));
+  const mid = await w3.call("wink.pair.status", { pairing: r3.pairing });
+  assert.equal(mid.state, "confirm");
+  assert.equal(mid.words, good);
+  assert.match(mid.message, /Say yes there only if they match/);
+  assert.ok(!FORBIDDEN.test(mid.message), "no forbidden word on screen");
+});
+
+test("typed code OFF (ruling, 4 Oct 2026): the typed paths are refused with a plain reason unless the development flag is set; scan and paste always work", async () => {
+  const w = world({ typedCode: false });
+  const target = { kind: "identity", id: ME };
+  await assert.rejects(() => w.call("wink.server.code", { typed: true }), e => e.code === "typed_code_off" && /switched off/.test(e.message));
+  await assert.rejects(() => w.call("wink.pair.server", { code: "WINK-K7QM-4P2X", target }), e => e.code === "typed_code_off");
+  // even the plain call makes no typed code: it makes the QR and the long code
+  const made = await w.call("wink.server.code", {});
+  assert.match(made.qr, /^vyre:\/\/wink\/2\?t=/);
+  assert.equal(made.code, undefined);
+  assert.equal(made.offer, undefined);
+  const scan = await w.call("wink.pair.server", { payload: made.qr, target });
+  assert.equal(scan.ack, null, "a scan or a paste has nothing to type");
+  assert.equal(w.typed.length, 0, "no typing port was used");
+  // the flag brings the old behaviour back, tests and development only
+  const dev = world({ typedCode: true });
+  assert.equal((await dev.call("wink.server.code", {})).code, "WINK-ZZZZ-ZZZZ");
+  assert.equal((await dev.call("wink.pair.server", { code: "WINK-K7QM-4P2X", target })).ack, "WINK-AB12-CD34");
+  // the words say scan or paste, never type
+  for (const k of ["typedCodeOff", "wrongCode", "notACode", "relayNoCode"]) assert.doesNotMatch(words(k), /\btyp(e|ed|ing)\b/i, k);
+  assert.ok(!FORBIDDEN.test(words("typedCodeOff")));
+});
+
+test("reviewer-3 LOW: an unowned server answers `already` to a paired device only, and a release the server never confirmed is given up after 30 days and the person is told", async () => {
+  const w = world();
+  const rel = c => w.tools.get("wink.server.release").run({}, { caller: c });
+  assert.deepEqual(await rel("device:app1"), { released: true, already: true });
+  for (const c of ["cli", "anonymous", "tailnet", "relay", "module:evil", "deck"]) await assert.rejects(() => rel(c), e => e.code === "denied", `${JSON.stringify(c)} learns nothing`);
+  await assert.rejects(() => w.tools.get("wink.server.release").run({}, {}), e => e.code === "denied");
+  // the app's side: a pending release is kept, then dropped with a card after the age limit
+  let t = 10_000_000;
+  const app = world({ now: () => t, releaseMaxMs: 30 * 86_400_000, callServer: async () => { throw Object.assign(new Error("no answer"), { remote: "" }); } });
+  app.p.devices.add({ id: "srv_old", identity: ME, kind: "server", name: "juno", target: { kind: "identity", id: ME } });
+  app.p.meta.set("channel:srv_old", { relay: "ws://relay.test", route: "r1", box: "b1" });
+  assert.equal(await app.p.releaseServer("srv_old"), "pending");
+  t += 29 * 86_400_000;
+  await app.p.retryReleases();
+  assert.ok(app.p.meta.get("release:srv_old"), "still kept at 29 days");
+  t += 2 * 86_400_000;
+  await app.p.retryReleases();
+  assert.equal(app.p.meta.get("release:srv_old"), null, "given up after 30 days");
+  const gave = app.events.find(e => e[0] === "wink.server-release" && e[1].state === "gaveup");
+  assert.ok(gave, "the person is told");
+  assert.match(gave[1].message, /never confirmed/);
+  assert.match(gave[1].message, /wink\.server\.reset/);
+  assert.match(removed({ what: "device", name: "juno", release: "gaveup" }), /Removed juno\. The server never confirmed/);
+  assert.ok(!FORBIDDEN.test(gave[1].message));
 });

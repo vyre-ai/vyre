@@ -34,7 +34,7 @@ test("the device holds a session open and the home calls back on it, a big frame
 });
 
 test("a connection a NAT dropped quietly: the call that finds no pong closes it and goes down the next session; a slow call with a pong is left alone", async () => {
-  const holds = createHolds({ waitMs: 300, raceMs: 20, probeMs: 20, beatMs: 0 });
+  const holds = createHolds({ waitMs: 300, raceMs: 20, probeMs: 20, quietMs: 3_600_000 });
   const dead = { closed: false, onclose: () => {}, call: () => new Promise(() => {}), ping: async () => null, close(why) { this.closed = true; this.onclose(why); } };
   holds.onSession("device:dev_mini", dead);
   const live = { closed: false, onclose: () => {}, call: async () => ({ status: 200 }), ping: async () => 1, close() { this.closed = true; } };
@@ -42,11 +42,12 @@ test("a connection a NAT dropped quietly: the call that finds no pong closes it 
   assert.deepEqual(await holds.linkTo("dev_mini").call("wink.storage.bridge", {}), { status: 200 });
   assert.equal(dead.closed, true, "the dead session was closed");
   const slow = { closed: false, onclose: () => {}, call: () => new Promise(r => setTimeout(() => r({ status: 200, slow: true }), 120)), ping: async () => 2, close() { this.closed = true; } };
-  const h2 = createHolds({ waitMs: 300, raceMs: 20, probeMs: 20, beatMs: 0 }); h2.onSession("device:dev_x", slow);
+  const h2 = createHolds({ waitMs: 300, raceMs: 20, probeMs: 20, quietMs: 3_600_000 }); h2.onSession("device:dev_x", slow);
   assert.deepEqual(await h2.linkTo("dev_x").call("t", {}), { status: 200, slow: true });
   assert.equal(slow.closed, false, "a slow call with a pong keeps its session");
   const quiet = { closed: false, onclose: () => {}, call: async () => ({}), ping: async () => null, close(why) { this.closed = true; this.onclose(why); } };
-  const h3 = createHolds({ waitMs: 300, raceMs: 20, probeMs: 20, beatMs: 30 }); h3.onSession("device:dev_y", quiet);
-  await new Promise(r => setTimeout(r, 120));
-  assert.equal(quiet.closed, true, "the heartbeat closes a session that stopped answering");
+  const h3 = createHolds({ waitMs: 300, raceMs: 20, probeMs: 20, quietMs: 10 }); h3.onSession("device:dev_y", quiet);
+  await new Promise(r => setTimeout(r, 30));
+  await assert.rejects(() => h3.linkTo("dev_y").call("t", {}), { code: "unreachable" });
+  assert.equal(quiet.closed, true, "a quiet session is pinged before a call and closed when it does not answer; nothing pings on a timer");
 });

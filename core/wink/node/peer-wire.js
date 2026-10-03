@@ -258,9 +258,22 @@ export function verifyDevice(pub, msg, sig) {
 }
 
 /**
+ * D-1 (ruling, 4 Oct 2026): a storage device's session may call only `wink.storage.*` on the home, and never speaks for an identity. The kind is read from the
+ * entry the port answers (`kind: "storage"`, or `deviceKind: "storage"` beside the chain's `kind: "device"`) on every call, so it cannot be changed from the session.
+ * @param {{ kind?: string, deviceKind?: string } | null | undefined} e @param {string} tool
+ */
+export function toolAllowed(e, tool) {
+  if (!e) return false;
+  const storage = e.kind === "storage" || e.deviceKind === "storage";
+  return !storage || /^wink\.storage\.[A-Za-z0-9_.-]+$/.test(String(tool));
+}
+/** An entry a peer may be: a device of the identity list, or a storage device (only wink.storage.* is then allowed, toolAllowed). @param {{ kind?: string } | null | undefined} e */
+export const peerKindOk = e => Boolean(e) && (e?.kind === "device" || e?.kind === "storage");
+
+/**
  * The identity list entry for a device id, read live from the chain of a person who is a member of this Space; null when no such entry is on any such list
  * (removed, revoked, never added, or another owner's). The port reads current state on every call: this module adds no cache.
- * @typedef {(eid: string) => Promise<{ eid: string, kind: string, pub: string } | null | undefined> | { eid: string, kind: string, pub: string } | null | undefined} EntryPort
+ * @typedef {(eid: string) => Promise<{ eid: string, kind: string, pub: string, deviceKind?: string } | null | undefined> | { eid: string, kind: string, pub: string, deviceKind?: string } | null | undefined} EntryPort
  */
 
 /**
@@ -285,7 +298,8 @@ export function admitPeer(pipe, o) {
       serve: async (tool, input) => {
         if (!caller) throw err("denied", "not proven");
         const e = await o.entry(eid);
-        if (!e || e.eid !== eid || e.kind !== "device" || e.pub !== pubSeen) { session.close("device removed"); throw err("denied", "this device is no longer on the identity list"); }
+        if (!e || e.eid !== eid || !peerKindOk(e) || e.pub !== pubSeen) { session.close("device removed"); throw err("denied", "this device is no longer on the identity list"); }
+        if (!toolAllowed(e, tool)) throw err("denied", "a storage device may only call storage functions");
         return o.serve(caller, tool, input, { nodeKey: o.id.nodeKey });
       },
       onframe: f => {
@@ -295,7 +309,7 @@ export function admitPeer(pipe, o) {
           if (!j || typeof j.device !== "string" || !/^[a-z2-7]{1,64}$|^[A-Za-z0-9_-]{1,64}$/.test(j.device) || typeof j.proof !== "string") return fail("bad proof");
           eid = j.device; // one proof per connection: a second proof frame is not an answer to anything
           const e = await o.entry(eid);
-          if (!e || e.eid !== eid || e.kind !== "device" || typeof e.pub !== "string") return fail("unknown device");
+          if (!e || e.eid !== eid || !peerKindOk(e) || typeof e.pub !== "string") return fail("unknown device");
           if (!verifyDevice(e.pub, authMessage(nonce, o.id.nodeKey, o.box, eid), j.proof)) return fail("proof does not match");
           if (settled) return;
           settled = true; clearTimeout(timer);
