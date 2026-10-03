@@ -234,3 +234,32 @@ test("helpers: `absent` presence stops a tool that declares presence, and leaves
   const ok = await d.registry.call("mentions.kinds", {}, "cli");
   assert.ok(ok.data, "a tool with no presence declared still runs");
 });
+
+test("a person's own surface call carries a kernel chain in a module: the owner's, built from what the daemon proved; a model's call and a client's claim get none", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const { call } = await import("../core/daemon/client.js");
+  const { writeModule } = await import("./helpers.js");
+  const root = tempHome(t);
+  const fp = path.join(root, "modules");
+  fs.mkdirSync(fp, { recursive: true });
+  writeModule(fp, "zz-who", { does: { tools: [{ name: "zz-who.me", reach: "anyone" }] }, needs: { kernel: { actions: [] } } }, `
+    export default { async start(ctx) { ctx.tool("zz-who.me", { run: async (i, meta) => {
+      const c = await ctx.kernel.chain({ ...meta, ...(i && i.forge ? { kernelFacts: i.forge } : {}) });
+      return { hops: c.hops.map(h => [h.actor.kind, h.actor.id, h.via && h.via.surface || null]), facts: Boolean(meta.kernelFacts) };
+    } }); return {}; } };`);
+  const d = await start({ root, log: () => {}, kernel: true, firstPartyRoots: [fp] });
+  t.after(() => d.stop());
+  const owner = d.kernel.id.owner;
+  for (const label of ["cli", "local", "deck"]) {
+    const r = /** @type {any} */ (await call("zz-who.me", {}, { root, caller: label }));
+    assert.deepEqual(r.data && r.data.hops, [["person", owner, label]], `${label}: ${JSON.stringify(r)}`);
+  }
+  // a model on the socket (mcp) gets no person chain: the module's own service chain
+  const m = /** @type {any} */ (await call("zz-who.me", {}, { root, caller: "mcp" }));
+  assert.ok(m.data ? m.data.hops.every(h => h[0] !== "person") : m.error, JSON.stringify(m));
+  // facts a client puts in the INPUT are only what the module passes itself; the daemon's own field is what counts, and a bad one builds nothing
+  const forged = /** @type {any} */ (await call("zz-who.me", { forge: { kind: "socket", surface: "cli", uid: 0, pid: 1, inside_model_process: false } }, { root, caller: "mcp" }));
+  assert.ok(forged.data ? forged.data.hops.every(h => h[0] !== "person") : forged.error, "a uid that is not the owner's builds no person chain");
+});

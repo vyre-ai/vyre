@@ -131,7 +131,17 @@ export async function createKernel(cfg) {
         recover: (/** @type {any} */ i) => cfg.sealer.recover(i),
       }) } : {}),
       serviceChain: () => gateway.serviceChain(m.name),
-      chain: async (/** @type {any} */ meta) => (meta && typeof meta.token === "string" ? surfaces.chainFor(meta.token) : (await ready, gateway.serviceChain(m.name))),
+      /**
+       * The chain of the call itself: a session token's (an assistant acting for its person), else the person's own chain built from the facts the daemon proved about the connection
+       * (`meta.kernelFacts`, set only by the daemon: a person's surface on the socket, a paired or signed-in owner device), else the module's own service chain. The kernel's builder
+       * refuses facts that do not hold (a uid that is not the owner's, an unverified Capsule); then the call has no person chain, never a wider one.
+       */
+      chain: async (/** @type {any} */ meta) => {
+        if (meta && typeof meta.token === "string") return surfaces.chainFor(meta.token);
+        if (meta && meta.kernelFacts && typeof meta.kernelFacts === "object") { try { return chains.fromFacts(meta.kernelFacts); } catch { /* no person chain for this connection */ } }
+        await ready;
+        return gateway.serviceChain(m.name);
+      },
     };
     /** Wink's `offers` port over this Space's grants.offers (kernel/remote/offers-port.js): the caller's chain and proof come from the call's meta. */
     handle.offersPort = () => createOffersPort(handle);
