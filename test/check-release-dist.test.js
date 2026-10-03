@@ -64,15 +64,13 @@ test("release dist: an unstripped wrapper, a missing or wrong signature, a tampe
 
 test("pin-release-compose: makes every image line literal from the real compose.yml, refuses what it cannot, and the result passes the checker", t => {
   const source = fs.readFileSync(path.join(REPO, "box/compose.yml"), "utf8");
-  const tsDefault = /\$\{VYRE_TAILSCALE_IMAGE:-([^}]*)\}/.exec(source)?.[1] || "";
-  const real = /@sha256:[0-9a-f]{64}$/.test(tsDefault) ? source : source.replace(/\$\{VYRE_TAILSCALE_IMAGE:-[^}]*\}/, `\${VYRE_TAILSCALE_IMAGE:-${TS}}`);
-  const tsPinned = /@sha256:[0-9a-f]{64}$/.test(tsDefault) ? tsDefault : TS;
-  const pinned = pin(real, BOX, COMPUTER);
+  const pinned = pin(source, BOX, COMPUTER);
   assert.ok(!/image:.*\$/.test(pinned), "no image line keeps a variable");
-  assert.ok(pinned.includes(`image: ${BOX}`) && pinned.includes(`image: ${tsPinned}`) && pinned.includes(`\${VYRE_COMPUTERS_IMAGE:-${COMPUTER}}`));
-  // A third-party default that is still a tag, and a ref that is not a digest, stop the build.
-  assert.throws(() => pin(source.replace(/\$\{VYRE_TAILSCALE_IMAGE:-[^}]*\}/, "${VYRE_TAILSCALE_IMAGE:-tailscale/tailscale:stable}"), BOX, COMPUTER), /is not pinned by digest in the source/);
-  assert.throws(() => pin(real, "ghcr.io/vyre-ai/vyre:latest", COMPUTER), /must be ghcr\.io\/vyre-ai/);
+  assert.ok(pinned.includes(`image: ${BOX}`) && pinned.includes(`\${VYRE_COMPUTERS_IMAGE:-${COMPUTER}}`));
+  assert.ok(!/tailscale/i.test(source.replace(/^\s*#.*$/gm, "")), "the box compose has no tailscale service or image");
+  // A third-party default that is still a tag stops the build.
+  assert.throws(() => pin(source.replace("services:", "services:\n  extra:\n    image: ${VYRE_EXTRA_IMAGE:-someone/else:stable}"), BOX, COMPUTER), /is not pinned by digest in the source/);
+  assert.throws(() => pin(source, "ghcr.io/vyre-ai/vyre:latest", COMPUTER), /must be ghcr\.io\/vyre-ai/);
   assert.throws(() => pin("services: {}\n", BOX, COMPUTER), /no `image: \$\{VYRE_IMAGE/);
 });
 

@@ -959,18 +959,18 @@ test("publish-release: modules.json is published when the signed list has it, th
   // A modules.json that is not the file the signed list has is not published (the other files still are).
   release(3004200, " ");
   const bad = /** @type {any} */ (await b.run(["publish-release", src], {}));
-  assert.match(bad.out, /modules\\.json is not the file the signed SHA256SUMS lists/);
+  assert.match(bad.out, /modules\.json is not the file the signed SHA256SUMS lists/);
   assert.ok(!fs.existsSync(path.join(rel, "modules.json")) || counterOf() !== 3004200, "the unlisted list was not published");
   // A newer release replaces the folder as a whole and the old one is set aside, whole.
   release(3004200);
   await b.run(["publish-release", src], {});
   assert.equal(counterOf(), 3004200);
   assert.equal(JSON.parse(fs.readFileSync(path.join(b.U, "status", "release.prev", "modules.json"), "utf8")).counter, 3004100, "the release before is kept whole beside it");
-  assert.deepEqual(fs.readdirSync(path.join(b.U, "status")).filter(n => /^release\\.new/.test(n)), [], "no temp folder left");
+  assert.deepEqual(fs.readdirSync(path.join(b.U, "status")).filter(n => /^release\.new/.test(n)), [], "no temp folder left");
   // The counter only goes up: a signed older list is refused, nothing changes.
   release(3004100);
   const old = /** @type {any} */ (await b.run(["publish-release", src], {}));
-  assert.match(old.out, /older \\(counter 3004100\\) than the one already published \\(counter 3004200\\)/);
+  assert.match(old.out, /older \(counter 3004100\) than the one already published \(counter 3004200\)/);
   assert.equal(counterOf(), 3004200);
   // The same counter again is not a rollback (a re-run of the same release).
   release(3004200);
