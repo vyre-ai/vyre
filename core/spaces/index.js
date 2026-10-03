@@ -894,7 +894,8 @@ export default {
     tool("spaces.identity.sign", "Sign the transport's device proof (a message that starts with vyre-wink-peer-v2) with this device's key. Refuses anything else.", obj({ message: str }, ["message"]), async i => {
       const s0 = me();
       const msg = Buffer.from(String(i.message), "base64url");
-      if (msg.subarray(0, 18).toString() !== "vyre-wink-peer-v2\n") throw refuse("This key signs only the transport's device proof.", "forbidden");
+      // Two messages only: the transport's device proof, and Wink's proof that this app is the identity a server was installed to pair to (`vyre-wink-pair-to-v1`, over that pairing's box and device).
+      if (msg.subarray(0, 18).toString() !== "vyre-wink-peer-v2\n" && msg.subarray(0, 21).toString() !== "vyre-wink-pair-to-v1\n") throw refuse("This key signs only the transport's device proof and a pairing's proof of who is asking.", "forbidden");
       return { eid: s0.eid, sig: b64u(await identity.sign(msg)) };
     }, { internal: true });
     tool("spaces.people", "The people of a space that hold an identity this device knows: its members and the person of a pending invite. For the transport's personOf.", obj({ space: str }, ["space"]), async (i, meta) => {
