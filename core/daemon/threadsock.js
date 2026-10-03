@@ -49,7 +49,11 @@ export async function openThreadSocket(o) {
   if (!/^[\w-]{1,64}$/.test(String(o.thread))) throw new Error("thread must be a thread id");
   if (o.agent != null && !/^[a-z0-9][a-z0-9-]{0,39}$/.test(String(o.agent))) throw new Error("agent must be an agent name");
   const dir = o.dir || DIR;
-  fs.mkdirSync(dir, { recursive: true, mode: 0o710 });
+  // The box's shared folder is passed through by a group (the agent runs as another user): 0710 and 0660. A private folder of the person's own user (a Mac, the sandboxed
+  // sessions there) is theirs alone: 0700 and 0600, so nothing else of that user can even list it (reviewer-2 D-5).
+  const shared = dir === DIR;
+  fs.mkdirSync(dir, { recursive: true, mode: shared ? 0o710 : 0o700 });
+  if (!shared) { try { fs.chmodSync(dir, 0o700); } catch { /* not ours to change */ } }
   const file = path.join(dir, `${crypto.randomBytes(16).toString("base64url")}.sock`);
   const who = o.agent ? `agent:${o.agent}` : `thread:${o.thread}`;
   const route = o.handler({ thread: o.thread, ...(o.agent ? { agent: o.agent } : {}) });
@@ -75,7 +79,7 @@ export async function openThreadSocket(o) {
     } catch (e) { if (!res.headersSent) send(res, 500, { error: { code: "internal", message: /** @type {Error} */ (e).message } }); }
   });
   await new Promise((resolve, reject) => { server.once("error", reject); server.listen(file, () => resolve(undefined)); });
-  fs.chmodSync(file, o.mode ?? 0o660);
+  fs.chmodSync(file, o.mode ?? (shared ? 0o660 : 0o600));
   return {
     path: file,
     close: () => new Promise(r => { server.closeAllConnections(); server.close(() => { try { fs.rmSync(file, { force: true }); } catch {} r(undefined); }); }),

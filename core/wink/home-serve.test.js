@@ -55,6 +55,7 @@ test("homeServe: a peer's call reaches the registry as device:<id>, kernel.call 
   const serve = homeServe(p.peers, k.withKernelCall(registry, {
     serverFor: space => (space === "harlow" ? { serve: async (req, peer) => { served.push([req, peer]); return { v: 1, id: req.id, ok: true, result: { members: ["alex"] } }; } } : null),
     personOf: (device, space) => (device === "srv1" ? "per_alex" : null),
+    pathOf: () => "wink", // the kernel records how the call arrived: here, a direct Wink peer
   }));
   // the host's own composition: direct peers pass the node key the connection proved
   const home = admitPeer(socketPipe(b), { id: { nodeKey: NK }, box: "box1", shared: (d, nk) => p.peers.shared(d, nk, "stable-x"), serve: (c, tool, input) => serve(c, tool, input, { nodeKey: NK, stableId: "stable-x" }) });
