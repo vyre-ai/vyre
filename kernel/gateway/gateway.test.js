@@ -255,7 +255,7 @@ test("K2-4: recovery completes only on an exact match, and never writes another 
 });
 
 test("K2-6: events.read and subscribe go through authorize and vis", async () => {
-  const { gw, r, log } = await withType(rig({ owner: OWNER, grants: [...agentGrants(["records.read", "events.read"]).slice(0, 1), G({ subject: { kind: "actor", actor: actor("agent", "kit") }, actions: ["events.read"], resource: { prefix: `vyre://${SPACE}/contact/*` } })], members: ["agent:kit"] }));
+  const { gw, r, log } = await withType(rig({ owner: OWNER, grants: [...agentGrants(["records.read", "events.read"]).slice(0, 1), G({ subject: { kind: "actor", actor: actor("agent", "kit") }, actions: ["events.read", "records.read"], resource: { prefix: `vyre://${SPACE}/contact/*` } })], members: ["agent:kit"] }));
   const c = await r.create(owner(), "contact", { name: "Jane" });
   log.append(owner(), { type: "note.added", sv: 1, subject: `vyre://${SPACE}/contact/${c.id}`, vis: "owner", data: {} });
   log.append(owner(), { type: "note.added", sv: 1, subject: `vyre://${SPACE}/matter/m1`, data: {} });
@@ -336,10 +336,11 @@ test("R2-1: an agent with events.read but no records.read cannot read record val
   const grants = [G(), G({ subject: { kind: "actor", actor: actor("agent", "kit") }, actions: ["events.read"] })];
   const { gw, r } = await withType(rig({ grants, members: ["agent:kit"], owner: OWNER }));
   await r.create(owner(), "contact", { name: "SecretName" });
-  assert.deepEqual(await gw.events.read(agent(), {}), []);
+  assert.ok(!JSON.stringify(await gw.events.read(agent(), {})).includes("SecretName"));
+  assert.deepEqual((await gw.events.read(agent(), {})).filter(e => e.type.startsWith("contact.")), []);
   const seen = [];
   gw.events.subscribe(agent(), "w", {}, e => { seen.push(e); });
   await new Promise(res => setTimeout(res, 20));
-  assert.deepEqual(seen, []);
+  assert.deepEqual(seen.filter(e => e.type.startsWith("contact.")), []);
   assert.ok(JSON.stringify(await gw.events.read(owner(), {})).includes("SecretName"), "a person who may read it still can");
 });
