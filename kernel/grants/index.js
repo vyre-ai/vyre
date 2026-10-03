@@ -12,7 +12,7 @@ import { isChain, isExactlyPerson } from "../core/chain.js";
 import { createGate } from "../core/gate.js";
 import { KernelError } from "../core/errors.js";
 import { segments, containedPrefix, spaceOf } from "../core/urn.js";
-import { contains, patternCovers } from "../core/authorize.js";
+import { contains, containsDims, clampTo, patternCovers } from "../core/authorize.js";
 import { ROLE_IDS } from "../contracts/index.js";
 import { ROLE_ACTIONS, MAY_SET } from "./roles.js";
 
@@ -61,6 +61,21 @@ function checkRule(r) {
   } else if (r.approver !== undefined) throw bad("only an always-ask rule has an approver");
   if (typeof r.label !== "string" || !r.label.trim() || r.label.length > 120) throw bad("a rule has a plain label of up to 120 characters");
   return { kind: r.kind, binds: [...new Set(r.binds)].sort(), covers: { actions: [...new Set(c.actions)].sort(), ...(c.resource ? { resource: c.resource } : {}) }, ...(r.kind === "always_ask" ? { approver: "person" in r.approver ? { person: r.approver.person } : { role: r.approver.role } } : {}), label: r.label.trim() };
+}
+
+/** A rule in plain words, from its structured fields only. @param {any} r */
+export function describeRule(r) {
+  const who = r.binds.join(" and ");
+  const what = r.covers.actions.join(", ") + (r.covers.resource ? ` on ${r.covers.resource}` : "");
+  const kind = r.kind === "never" ? `Never, for ${who}: ${what}` : r.kind === "draft_only" ? `Draft only, for ${who}: ${what}` : `Always ask ${r.approver && r.approver.person ? `person ${r.approver.person}` : `the ${r.approver && r.approver.role}`}, for ${who}: ${what}`;
+  return kind;
+}
+
+/** @param {any} rule @param {(a: string) => any} def */
+function checkDraftable(rule, def) {
+  if (rule.kind !== "draft_only") return;
+  // A draft-only rule is only as good as the door that enforces it: it may cover only actions whose door says it prepares a draft instead of sending (`draftable`), never one that would just run.
+  for (const a of rule.covers.actions) if (!def(a) || def(a).draftable !== true) throw new KernelError("bad_input", `${a} cannot be made draft only: its door does not prepare a draft instead of sending`);
 }
 
 /** The default assistant's id: the one agent that acts as a delegate of the person it works for (kernel/core/authorize.js). */
@@ -271,7 +286,7 @@ export function createGrantsStore(cfg) {
         && (g.resource.where || []).every((/** @type {any} */ p) => (next.resource.where || []).some((/** @type {any} */ q) => q.attr === p.attr && q.op === p.op && canonical(q.value) === canonical(p.value)))
         && (g.conditions.when?.expires === undefined || (next.conditions.when?.expires !== undefined && next.conditions.when.expires <= g.conditions.when.expires))
         && (!g.resource.fields || (next.resource.fields && next.resource.fields.every((/** @type {string} */ f) => g.resource.fields.includes(f))));
-      if (!inside) throw new KernelError("not_contained", "narrowing may only make a grant smaller");
+      if (!inside || !containsDims(g, next, since, riskOf)) throw new KernelError("not_contained", "narrowing may only make a grant smaller");
       const n = freeze(next);
       grants.set(id, n);
       await note(chain, "grant.narrowed", urn("grant", id), { grant: n }, d.decision);
@@ -572,19 +587,25 @@ export function createGrantsStore(cfg) {
     /** The rules that bind this chain for this action and resource, in the order they were made. @param {any} chain @param {string} action @param {string} resource */
     rulesFor(chain, action, resource) {
       if (!rules.size || !isChain(chain)) return [];
+      // A chain with a person in it is bound by the rules that name members; a chain with an assistant (an agent or an automation) in it by the rules that name assistants; an
+      // assistant acting for a person is both, so it is bound by whichever of the two is stricter, never by the weaker only.
       const assistant = chain.hops.some((/** @type {any} */ h) => h.actor.kind === "agent" || h.actor.kind === "automation");
-      return [...rules.values()].filter(r => r.status === "active" && r.binds.includes(assistant ? "assistants" : "members") && r.covers.actions.includes(action) && (!r.covers.resource || urnMatches(r.covers.resource, resource)));
+      const member = chain.hops.some((/** @type {any} */ h) => h.actor.kind === "person");
+      return [...rules.values()].filter(r => r.status === "active" && ((member && r.binds.includes("members")) || (assistant && r.binds.includes("assistants"))) && r.covers.actions.includes(action) && (!r.covers.resource || urnMatches(r.covers.resource, resource)));
     },
     /** The rules and the proposals, for a manager and above. @param {any} chain */
     async rulesList(chain) {
       reader(chain);
       await bound.gate(chain, "rules.list", urn("rule", "*"));
-      return { rules: [...rules.values()].filter(r => r.status === "active"), proposals: [...proposals.values()] };
+      // The view an owner reads is built from the rule's structured fields (kind, who it binds, the actions, the resource, the approver), never from the label a proposer wrote.
+      const viewed = (/** @type {any} */ r) => ({ ...r, view: describeRule(r) });
+      return { rules: [...rules.values()].filter(r => r.status === "active").map(viewed), proposals: [...proposals.values()].map(viewed) };
     },
     /** @param {any} chain @param {any} r @param {{ presence?: any }} [o] */
     async ruleSet(chain, r, o = {}) {
       const issuer = person(chain);
       const rule = checkRule(r);
+      checkDraftable(rule, a => reg().get(a));
       const d = await gate(chain, "rules.set", urn("rule"), rule, o.presence);
       if (roleOf(issuer) !== "owner") throw new KernelError("not_allowed", "only an owner sets a standing rule");
       const rec = freeze({ id: `rule_${mintUuid(clock())}`, space: cfg.space, ...rule, status: "active", by: issuer.id, at: clock() });
@@ -607,9 +628,12 @@ export function createGrantsStore(cfg) {
       if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
       if (!bound) throw new KernelError("unavailable", "the grants store is not bound to an authorizer");
       const rule = checkRule(r);
+      checkDraftable(rule, a => reg().get(a));
       const d = await bound.gate(chain, "rules.propose", urn("rule", "new"));
       if (proposals.size >= 200) throw new KernelError("bad_input", "too many proposals wait for an owner");
       const last = chain.hops[chain.hops.length - 1].actor;
+      // One proposer cannot fill the queue: a Kit or a person may have a few waiting at once.
+      if ([...proposals.values()].filter(x => x.by.kind === last.kind && x.by.id === last.id).length >= 20) throw new KernelError("bad_input", "this proposer already has 20 proposals waiting for an owner");
       const rec = freeze({ id: `prop_${mintUuid(clock())}`, space: cfg.space, ...rule, by: { kind: last.kind, id: last.id }, at: clock() });
       proposals.set(rec.id, rec);
       await note(chain, "rule.proposed", urn("rule", rec.id), { proposal: rec }, d.decision);
@@ -721,6 +745,34 @@ export function createGrantsStore(cfg) {
     },
     /** The chat's assistants, for the append check. @param {string} id @returns {string[] | null} */
     chatAssistants(id) { const c = chats.get(String(id)); return c ? [...c.assistants] : null; },
+    /**
+     * Check every stored delegated grant against its parent on every dimension, and cut down any that is wider (made before containment compared every dimension, or by a bug): it keeps
+     * what it was inside, the cut is written to the log as a `grant.narrowed` event saying why, and one that cannot be brought inside is revoked. Never trusts what is on disk. Run at
+     * boot, once the actions are registered. @returns {Promise<{ clamped: number, revoked: number }>}
+     */
+    async containmentPass() {
+      let clamped = 0, revoked = 0;
+      const depthOf2 = (/** @type {any} */ g) => { let d = 0; for (let p = g; p && p.parent && d < 10; p = grants.get(p.parent)) d++; return d; };
+      for (const g of [...grants.values()].filter(x => x.status === "active" && x.parent).sort((a, b) => depthOf2(a) - depthOf2(b))) {
+        const parent = grants.get(g.parent);
+        if (!parent || parent.status !== "active") continue;
+        if (contains(parent, g, since, riskOf)) continue;
+        const cut = clampTo(parent, g, since, riskOf);
+        const k = kernelChain();
+        if (cut && contains(parent, cut, since, riskOf)) {
+          const n = freeze({ ...cut, reason: "cut to its parent's limits" });
+          grants.set(g.id, n);
+          await note(k, "grant.narrowed", urn("grant", g.id), { grant: n, why: "wider than its parent" });
+          clamped++;
+        } else {
+          const n = freeze({ ...g, status: "revoked", revoked_at: clock(), reason: "wider than its parent and cannot be cut down" });
+          grants.set(g.id, n);
+          await note(k, "grant.revoked", urn("grant", g.id), { id: g.id, reason: n.reason });
+          revoked++;
+        }
+      }
+      return { clamped, revoked };
+    },
     /**
      * The whole state as one sealed event: what a migration from an older key writes, and what rebuild can start from. Kernel-only.
      * A snapshot is a point the log can be read from: events before it are not needed once it exists.

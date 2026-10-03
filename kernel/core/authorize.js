@@ -30,13 +30,30 @@ export function patternCovers(pattern, action, since = 0, version = undefined, r
   return "covered";
 }
 
+// The dimensions a grant has, and the keys each may carry. A dimension or a key this file does not list is NOT known, and an unknown one makes containment fail: a field added to
+// grants later refuses delegation until `contains` and `clampTo` learn it, never passes by being ignored.
+const GRANT_KEYS = new Set(["id", "space", "subject", "actions", "action_set_version", "resource", "conditions", "issuer", "source", "parent", "status", "created_at", "revoked_at", "reason"]);
+const RESOURCE_KEYS = new Set(["prefix", "where", "fields"]);
+const COND_KEYS = new Set(["where", "when", "how", "audience", "delegate", "budget", "rate", "once"]);
+const sameJson = (/** @type {any} */ a, /** @type {any} */ b) => JSON.stringify(a) === JSON.stringify(b);
+/** Is every member of `child` in `parent`? An absent child list is "no limit", which is wider than any parent list. @param {any[] | undefined} parent @param {any[] | undefined} child */
+const subsetOf = (parent, child) => parent === undefined || (Array.isArray(child) && Array.isArray(parent) && child.every(x => parent.includes(x)));
+const onlyKeys = (/** @type {any} */ o, /** @type {Set<string>} */ allowed) => !o || (typeof o === "object" && Object.keys(o).every(k => allowed.has(k)));
+
 /**
- * Structural containment (6.3 step 4): can `child` be proven to grant no more than `parent`? Anything the engine
- * cannot prove is "not contained", which fails closed.
+ * Structural containment (6.3 step 4): can `child` be proven to grant no more than `parent`, on EVERY dimension a grant has: actions, the resource prefix, row predicates, the field
+ * list, where it may be used (surfaces, nodes, residency), when (start, expiry, schedule), how (presence, approval), budget, rate, once, who may use it (audience), and the
+ * delegation depth. For each, equal passes, tighter passes, looser fails, and anything this function cannot compare fails. This is the part that does not depend on delegation
+ * (a grant narrowed in place is held to it too); `contains` adds the delegation rule.
  * @param {any} parent @param {any} child @param {(a: string) => number} [since]
  */
-export function contains(parent, child, since = () => 0, riskOf = () => undefined) {
-  if (parent.space !== child.space) return false;
+export function containsDims(parent, child, since = () => 0, riskOf = () => undefined) {
+  if (!parent || !child || parent.space !== child.space) return false;
+  if (!onlyKeys(parent, GRANT_KEYS) || !onlyKeys(child, GRANT_KEYS)) return false;
+  if (!onlyKeys(parent.resource, RESOURCE_KEYS) || !onlyKeys(child.resource, RESOURCE_KEYS)) return false;
+  const pc = parent.conditions || {}, cc = child.conditions || {};
+  if (!onlyKeys(pc, COND_KEYS) || !onlyKeys(cc, COND_KEYS)) return false;
+  // actions
   for (const ca of child.actions) {
     const ok = parent.actions.some((/** @type {string} */ pa) => pa === ca
       || (!ca.includes("*") && patternCovers(pa, ca, since(ca), parent.action_set_version, riskOf(ca)) === "covered")
@@ -44,17 +61,93 @@ export function contains(parent, child, since = () => 0, riskOf = () => undefine
       || (ca.includes("*") && Number.isInteger(parent.action_set_version) && Number.isInteger(child.action_set_version) && child.action_set_version >= parent.action_set_version && (pa === "*" || (pa.endsWith(".*") && ca.startsWith(pa.slice(0, -1))))));
     if (!ok) return false;
   }
+  // resource: prefix, row predicates (every one of the parent's, unchanged), the field list
   if (!containedPrefix(child.resource.prefix, parent.resource.prefix)) return false;
-  for (const pp of parent.resource.where || []) {
-    if (!(child.resource.where || []).some((/** @type {any} */ cp) => cp.attr === pp.attr && cp.op === pp.op && JSON.stringify(cp.value) === JSON.stringify(pp.value))) return false;
+  for (const pp of parent.resource.where || []) if (!(child.resource.where || []).some((/** @type {any} */ cp) => cp.attr === pp.attr && cp.op === pp.op && sameJson(cp.value, pp.value))) return false;
+  if (parent.resource.fields !== undefined && !subsetOf(parent.resource.fields, child.resource.fields)) return false;
+  // where it may be used
+  if (!onlyKeys(pc.where, new Set(["nodes", "residency", "surfaces"])) || !onlyKeys(cc.where, new Set(["nodes", "residency", "surfaces"]))) return false;
+  for (const k of ["nodes", "residency", "surfaces"]) if (pc.where && pc.where[k] !== undefined && !subsetOf(pc.where[k], cc.where && cc.where[k])) return false;
+  // when: start no earlier, expiry no later, the schedule unchanged (a schedule is opaque here: only the same one is provably inside itself)
+  if (!onlyKeys(pc.when, new Set(["not_before", "expires", "schedule"])) || !onlyKeys(cc.when, new Set(["not_before", "expires", "schedule"]))) return false;
+  const pw = pc.when || {}, cw = cc.when || {};
+  if (pw.not_before !== undefined && (cw.not_before === undefined || cw.not_before < pw.not_before)) return false;
+  if (pw.expires !== undefined && (cw.expires === undefined || cw.expires > pw.expires)) return false;
+  if (pw.schedule !== undefined && cw.schedule !== pw.schedule) return false;
+  // how: presence at least as strict, the same approver and, if the parent says once, once
+  if (!onlyKeys(pc.how, new Set(["presence", "approval"])) || !onlyKeys(cc.how, new Set(["presence", "approval"]))) return false;
+  const rank = (/** @type {any} */ x) => (x === undefined ? 0 : PRESENCE_RANK[/** @type {'none'} */ (x)]);
+  const pPres = pc.how && pc.how.presence, cPres = cc.how && cc.how.presence;
+  if (pPres !== undefined && !(pPres in PRESENCE_RANK)) return false;
+  if (cPres !== undefined && !(cPres in PRESENCE_RANK)) return false;
+  if (rank(cPres) < rank(pPres)) return false;
+  const pa = pc.how && pc.how.approval, ca = cc.how && cc.how.approval;
+  if (pa) {
+    if (!ca || typeof pa !== "object" || typeof ca !== "object" || !onlyKeys(pa, new Set(["by", "once"])) || !onlyKeys(ca, new Set(["by", "once"]))) return false;
+    if (ca.by !== pa.by) return false;
+    if (pa.once === true && ca.once !== true) return false;
   }
-  const pe = parent.conditions?.when?.expires, ce = child.conditions?.when?.expires;
-  if (pe !== undefined && (ce === undefined || ce > pe)) return false;
-  const pd = parent.conditions?.delegate;
-  if (!pd || !pd.allowed) return false;
-  const cd = child.conditions?.delegate;
-  if (cd && cd.allowed && cd.max_depth >= pd.max_depth) return false;
+  if (pc.once === true && cc.once !== true) return false;
+  // budget and rate: the child's limit no larger than the parent's, over a window no shorter
+  if (pc.budget) {
+    if (!cc.budget || cc.budget.meter !== pc.budget.meter || !(cc.budget.limit <= pc.budget.limit) || !onlyKeys(pc.budget, new Set(["meter", "limit"])) || !onlyKeys(cc.budget, new Set(["meter", "limit"]))) return false;
+  }
+  if (pc.rate) {
+    if (!cc.rate || !(cc.rate.n <= pc.rate.n) || !(cc.rate.per_seconds >= pc.rate.per_seconds) || !onlyKeys(pc.rate, new Set(["n", "per_seconds"])) || !onlyKeys(cc.rate, new Set(["n", "per_seconds"]))) return false;
+  }
+  // who may use it
+  if (pc.audience !== undefined && !subsetOf(pc.audience, cc.audience)) return false;
   return true;
+}
+
+/**
+ * Containment for a DELEGATED grant: every dimension (`containsDims`) and the delegation rule: the parent may delegate, and the child may delegate only to a shallower depth.
+ * @param {any} parent @param {any} child @param {(a: string) => number} [since]
+ */
+export function contains(parent, child, since = () => 0, riskOf = () => undefined) {
+  if (!containsDims(parent, child, since, riskOf)) return false;
+  const pd = parent.conditions?.delegate;
+  if (!pd || !pd.allowed || !onlyKeys(pd, new Set(["allowed", "max_depth"]))) return false;
+  const cd = child.conditions?.delegate;
+  if (cd && (!onlyKeys(cd, new Set(["allowed", "max_depth"])) || (cd.allowed && !(cd.max_depth < pd.max_depth)))) return false;
+  return true;
+}
+
+/**
+ * The most a stored child may hold under its parent: the child's own grant cut down, dimension by dimension, to what `containsDims` accepts. Used when a grant already on disk is
+ * found wider than its parent (it was made before containment checked every dimension): it keeps what it was inside and loses the rest. Returns null if it cannot be brought inside.
+ * @param {any} parent @param {any} child @param {(a: string) => number} [since]
+ */
+export function clampTo(parent, child, since = () => 0, riskOf = () => undefined) {
+  const pc = parent.conditions || {}, cc = child.conditions || {};
+  const pw = pc.when || {}, cw = cc.when || {};
+  /** @type {any} */ const cond = {};
+  const where = {};
+  for (const k of ["nodes", "residency", "surfaces"]) {
+    const p = pc.where && pc.where[k], c = cc.where && cc.where[k];
+    if (p !== undefined) /** @type {any} */ (where)[k] = Array.isArray(c) ? c.filter((/** @type {any} */ x) => p.includes(x)) : [...p];
+    else if (c !== undefined) /** @type {any} */ (where)[k] = c;
+  }
+  if (Object.keys(where).length) cond.where = where;
+  const when = { ...(cw.not_before !== undefined || pw.not_before !== undefined ? { not_before: Math.max(cw.not_before ?? -Infinity, pw.not_before ?? -Infinity) } : {}), ...(cw.expires !== undefined || pw.expires !== undefined ? { expires: Math.min(cw.expires ?? Infinity, pw.expires ?? Infinity) } : {}), ...(pw.schedule !== undefined ? { schedule: pw.schedule } : cw.schedule !== undefined ? { schedule: cw.schedule } : {}) };
+  if (Object.keys(when).length) cond.when = when;
+  const pPres = pc.how && pc.how.presence, cPres = cc.how && cc.how.presence;
+  const how = { ...(pPres || cPres ? { presence: (PRESENCE_RANK[/** @type {'none'} */ (cPres || "none")] ?? 2) >= (PRESENCE_RANK[/** @type {'none'} */ (pPres || "none")] ?? 2) ? (cPres || "none") : pPres } : {}), ...(pc.how && pc.how.approval ? { approval: { ...pc.how.approval } } : cc.how && cc.how.approval ? { approval: { ...cc.how.approval } } : {}) };
+  if (Object.keys(how).length) cond.how = how;
+  if (pc.budget) cond.budget = { meter: pc.budget.meter, limit: Math.min(cc.budget && cc.budget.meter === pc.budget.meter ? cc.budget.limit : Infinity, pc.budget.limit) }; else if (cc.budget) cond.budget = { ...cc.budget };
+  if (pc.rate) cond.rate = cc.rate && cc.rate.n <= pc.rate.n && cc.rate.per_seconds >= pc.rate.per_seconds ? { ...cc.rate } : { ...pc.rate }; else if (cc.rate) cond.rate = { ...cc.rate };
+  if (pc.audience !== undefined) cond.audience = Array.isArray(cc.audience) ? cc.audience.filter((/** @type {any} */ x) => pc.audience.includes(x)) : [...pc.audience]; else if (cc.audience !== undefined) cond.audience = cc.audience;
+  if (pc.once === true || cc.once === true) cond.once = true;
+  if (cc.delegate || pc.delegate) { const pd = pc.delegate; cond.delegate = cc.delegate && cc.delegate.allowed && pd && pd.allowed && cc.delegate.max_depth < pd.max_depth ? { allowed: true, max_depth: cc.delegate.max_depth } : { allowed: false, max_depth: 0 }; }
+  const resource = {
+    prefix: containedPrefix(child.resource.prefix, parent.resource.prefix) ? child.resource.prefix : parent.resource.prefix,
+    where: [...(parent.resource.where || []), ...(child.resource.where || []).filter((/** @type {any} */ cp) => !(parent.resource.where || []).some((/** @type {any} */ pp) => pp.attr === cp.attr && pp.op === cp.op && sameJson(pp.value, cp.value)))],
+    ...(parent.resource.fields !== undefined ? { fields: Array.isArray(child.resource.fields) ? child.resource.fields.filter((/** @type {any} */ f) => parent.resource.fields.includes(f)) : [...parent.resource.fields] } : child.resource.fields !== undefined ? { fields: child.resource.fields } : {}),
+  };
+  if (!resource.where.length) delete /** @type {any} */ (resource).where;
+  const actions = child.actions.filter((/** @type {string} */ ca) => containsDims(parent, { ...child, actions: [ca], resource: parent.resource, conditions: pc }, since, riskOf));
+  const out = { ...child, actions, resource, conditions: cond };
+  return actions.length && containsDims(parent, out, since, riskOf) ? out : null;
 }
 
 /**
@@ -121,6 +214,8 @@ export function createAuthorizer(cfg) {
       if (neverRule) { ruleOf = neverRule; return deny("rule_never"); }
       const askRule = ruled.find(r => r.kind === "always_ask"), draftRule = ruled.find(r => r.kind === "draft_only");
       ruleOf = askRule || draftRule || null;
+      // Fail closed: a draft-only rule on an action whose door does not prepare a draft would be a rule that does nothing, so the act is refused instead.
+      if (draftRule && !def.draftable) { ruleOf = draftRule; return deny("rule_draft_unsupported"); }
 
       // 2 and 3. Candidates and the effective grant per hop; the chain's authority is the intersection.
       const used = [];
@@ -234,6 +329,9 @@ export function createAuthorizer(cfg) {
       if (!hit) return { ok: false, reason: "no_grant" };
     }
     const c = g.conditions || {};
+    let obsUnknownSchedule = false;
+    // A schedule is stored but not evaluated here: a grant that carries one cannot be proven to apply now, so it is never met silently (it makes the effect an ask).
+    if (c.when && c.when.schedule !== undefined) obsUnknownSchedule = true;
     if (c.when) {
       if (c.when.expires !== undefined && c.when.expires <= now) return { ok: false, reason: "expired" };
       if (c.when.not_before !== undefined && now < c.when.not_before) return { ok: false, reason: "no_grant" };
@@ -253,6 +351,7 @@ export function createAuthorizer(cfg) {
     if (c.rate) obs.push({ type: "rate", n: c.rate.n, per_seconds: c.rate.per_seconds, grant: g.id });
     if (c.once === true || (c.how && c.how.approval && c.how.approval.once === true)) obs.push({ type: "once", grant: g.id });
     for (const k of Object.keys(c)) if (!["when", "where", "how", "audience", "delegate", "budget", "rate", "once"].includes(k)) obs.push({ type: `unknown:${k}` });
+    if (obsUnknownSchedule) obs.push({ type: "unknown:schedule" });
     // Narrowing: a delegated grant is contained in its parent, the parent is rechecked now, and its presence and
     // approval conditions come along as obligations (R6-8); revoking a parent kills every child.
     if (g.parent) {
