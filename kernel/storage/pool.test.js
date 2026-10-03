@@ -239,3 +239,34 @@ test("review S-11: the pool key is derived from the home's master for that purpo
   assert.equal(a.length, 32); assert.notDeepEqual(a, b); assert.deepEqual(a, await s.poolKey({ owner: "per_alexalexalexalex" }));
   assert.equal(await code(s.poolKey({ owner: "nobody" })), "bad_input");
 });
+
+test("scrub scales with the pool to a two-week cycle, and when no copy opens it keeps every pointer and raises an alert instead of deleting", async t => {
+  const { pool, b } = world(t, { home: 50, nas: 50, cloud: 50 });
+  for (let i = 0; i < 12; i++) await pool.put(rand(MB / 4), { class: "cold" });
+  const first = await pool.scrub({ cycleMs: 14 * 86_400_000, tickMs: 60_000 }); assert.equal(first.checked, 5, "a small pool still checks a few a tick");
+  const big = Object.keys(pool.ix.chunks).length; for (let i = 0; i < 20_000 * 3; i++) pool.ix.chunks["x" + i] = { size: 1, nodes: [], refs: { m: "cold" } };
+  const many = await pool.scrub({ cycleMs: 14 * 86_400_000, tickMs: 60_000 }); assert.ok(many.checked >= 3 && many.checked <= 5 + Math.ceil((big + 60_000) / 20_160), "scaled: " + many.checked);
+  for (let i = 0; i < 20_000 * 3; i++) delete pool.ix.chunks["x" + i];
+  // A wrong key (or a failing store) makes every copy fail to open: the pointers stay and an alert says so.
+  const cid = Object.keys(pool.ix.chunks)[0], nodes = [...pool.ix.chunks[cid].nodes];
+  for (const n of nodes) { const x = Buffer.from(b[n].m.get(`c/${cid}`)); x[40] ^= 1; b[n].m.set(`c/${cid}`, x); }
+  const s = await pool.scrub({ limit: 1000 }); assert.ok(s.alerts >= 1); assert.deepEqual(pool.ix.chunks[cid].nodes, nodes, "no pointer was deleted");
+  assert.ok(pool.alerts.has(cid)); assert.equal(pool.ix.chunks[cid].dropped, undefined);
+  const events = [], { createController } = await import("./controller.js"), c = createController({ pool, emit: e => events.push(e), setTimer: () => ({}), clearTimer: () => {}, loaded: () => false }); await c.tick();
+  assert.ok(events.some(e => e.type === "storage.alert"));
+  // One bad copy beside a good one is dropped, and the drop is remembered for the cycle.
+  const w = world(t, { home: 10, nas: 10, cloud: 10 }), r = await w.pool.put(rand(1000), { class: "cold" }), id = w.pool.ix.manifests[r.id].chunks[0], bad = w.pool.ix.chunks[id].nodes[0];
+  const y = Buffer.from(w.b[bad].m.get(`c/${id}`)); y[40] ^= 1; w.b[bad].m.set(`c/${id}`, y);
+  await w.pool.scrub({ limit: 100 }); assert.ok(w.pool.ix.chunks[id].dropped.some(d => d.node === bad), "the dropped copy is on the list for the cycle");
+});
+
+test("bridge: a frame signed before the bridge started is refused, so a restart does not reopen the replay window", async t => {
+  const { createBridge, sign } = await import("./bridge.js"), root = tmp("epoch"); t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const secret = "bridge-secret-0123456789"; let clock = 9_000_000;
+  const frame = (ts, nonce) => ({ op: "ping", key: "", ts, nonce, sig: sign(secret, { op: "ping", key: "", ts, nonce }) });
+  const first = createBridge({ dir: root + "/a", secret, now: () => clock }), captured = frame(clock, "captured-nonce-1");
+  assert.equal((await first.handle(captured)).status, 200);
+  clock += 10_000; const restarted = createBridge({ dir: root + "/a", secret, now: () => clock });
+  assert.equal((await restarted.handle(captured)).status, 401, "the nonce table is gone but the frame predates this start");
+  assert.equal((await restarted.handle(frame(clock, "fresh-nonce-0001"))).status, 200);
+});

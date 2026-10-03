@@ -24,7 +24,7 @@ export class Pool {
   /** @param {{ dir: string, key: Buffer, now?: () => number, graceMs?: number, chunk?: number, policy?: { ownedOnly?: boolean, regions?: string[] }, quotas?: Record<string, number> }} o */
   constructor({ dir, key, now = Date.now, graceMs = GRACE_MS, chunk = CHUNK, policy = {}, quotas = {} }) {
     if (!Buffer.isBuffer(key) || key.length !== 32) throw err("bad_key", "the pool key is 32 bytes");
-    this.dir = dir; this.dirty = 0; this.locks = new Map(); this.cursor = 0; this.now = now; this.graceMs = graceMs; this.chunk = chunk; this.policy = policy; this.quotas = quotas; this.nodes = new Map();
+    this.dir = dir; this.alerts = new Set(); this.dirty = 0; this.locks = new Map(); this.cursor = 0; this.now = now; this.graceMs = graceMs; this.chunk = chunk; this.policy = policy; this.quotas = quotas; this.nodes = new Map();
     this.enc = Buffer.from(crypto.hkdfSync("sha256", key, "vyre-pool", "chunk-enc", 32)); this.mac = Buffer.from(crypto.hkdfSync("sha256", key, "vyre-pool", "chunk-id", 32));
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     this.file = path.join(dir, "index.json");
@@ -103,26 +103,37 @@ export class Pool {
   /** The first copy that opens. A copy that is missing or fails to open is dropped from the chunk's nodes (S-3), so it is no longer counted and heal makes another. */
   async fetch(id) {
     const c = this.ix.chunks[id], order = c.nodes.map(i => this.nodes.get(i)).filter(Boolean).sort((a, b) => (b.online - a.online) || (b.home - a.home));
+    const bad = [];
     for (const n of order) {
       if (!n.online) continue;
-      try { const b = await n.backend.get(`c/${id}`); if (b && this.open(id, b)) return b; c.nodes = c.nodes.filter(i => i !== n.id); } catch { n.online = false; n.offlineSince ??= this.now(); }
+      try { const b = await n.backend.get(`c/${id}`); if (b && this.open(id, b)) { this.forgetCopies(c, bad); this.alerts.delete(id); return b; } bad.push(n.id); } catch { n.online = false; n.offlineSince ??= this.now(); }
     }
+    // Every reachable copy failed: that is a wrong key or a failing store as much as a lost chunk, so the pointers stay and an alert is raised (never delete on that evidence).
+    if (bad.length) this.alerts.add(id);
     return null;
   }
+  /** Drop copies that failed while a good one was found; the dropped list is kept for one scrub cycle so the pointers can be audited or restored. */
+  forgetCopies(c, bad) { if (!bad.length) return; c.nodes = c.nodes.filter(i => !bad.includes(i)); c.dropped = [...(c.dropped ?? []), ...bad.map(node => ({ node, at: this.now() }))]; }
   /** Check that nodes still hold what they accepted: a few chunks a call, every copy read and opened; one that is missing or does not open is dropped, then heal. */
-  async scrub({ limit = 20 } = {}) {
-    const ids = Object.keys(this.ix.chunks); let checked = 0, dropped = 0;
+  async scrub({ limit = 20, cycleMs = null, tickMs = 60_000 } = {}) {
+    const ids = Object.keys(this.ix.chunks);
+    // Scaled to the pool: a full cycle in `cycleMs` (two weeks by default in the controller), never fewer than 5 a call.
+    if (cycleMs) limit = Math.max(5, Math.ceil(ids.length / Math.max(1, cycleMs / tickMs)));
+    let checked = 0, dropped = 0;
     for (let i = 0; i < ids.length && checked < limit; i++) {
       const id = ids[(this.cursor + i) % ids.length], c = this.ix.chunks[id]; if (!c) continue; checked++;
+      const bad = []; let good = 0;
       for (const nid of [...c.nodes]) {
         const n = this.nodes.get(nid); if (!n || !n.online) continue;
-        let good = false; try { const b = await n.backend.get(`c/${id}`); good = !!b && !!this.open(id, b); } catch { continue; }
-        if (!good) { c.nodes = c.nodes.filter(x => x !== nid); dropped++; }
+        try { const b = await n.backend.get(`c/${id}`); if (b && this.open(id, b)) good++; else bad.push(nid); } catch { /* unreachable: not evidence */ }
       }
+      if (good) { this.forgetCopies(c, bad); dropped += bad.length; this.alerts.delete(id); }
+      else if (bad.length) this.alerts.add(id); // no copy opened: keep every pointer, alert
+      if (c.dropped?.length) c.dropped = c.dropped.filter(d => this.now() - d.at < (cycleMs ?? 14 * 86_400_000));
     }
     this.cursor = ids.length ? (this.cursor + checked) % ids.length : 0;
     if (dropped) { await this.heal(); this.save(); }
-    return { checked, dropped };
+    return { checked, dropped, alerts: this.alerts.size };
   }
 
   /** Store bytes as one object in a class. @returns {Promise<{ id: string, size: number, atRisk: boolean }>} atRisk: not every copy the class wants could be placed yet. */

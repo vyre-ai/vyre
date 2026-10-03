@@ -27,7 +27,7 @@ export const sign = (secret, { op, key, ts, nonce = "", body }) => crypto.create
 
 export function createBridge({ dir, secret, capacity = Infinity, now = Date.now }) {
   if (!secret || String(secret).length < 16) throw Object.assign(new Error("bridge needs a secret"), { code: "bad_secret" });
-  const store = dirBackend(dir);
+  const store = dirBackend(dir), startedAt = now(); // a frame signed before this process started may have been seen by the last one: refused (the nonce table is memory only)
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   const sizes = new Map(), seen = new Map(); let used = 0;
   for (const f of fs.readdirSync(dir, { recursive: true })) { const p = path.join(dir, String(f)); try { const st = fs.statSync(p); if (st.isFile() && !p.endsWith(".tmp")) { sizes.set(String(f), st.size); used += st.size; } } catch { /* a file that vanished */ } }
@@ -36,7 +36,7 @@ export function createBridge({ dir, secret, capacity = Infinity, now = Date.now 
     get used() { return used; },
     async handle(f) {
       if (!f || !["put", "get", "del", "ping"].includes(f.op) || !Number.isFinite(f.ts) || typeof f.sig !== "string" || typeof f.nonce !== "string" || f.nonce.length < 8 || f.nonce.length > 64) return ok(400);
-      if (Math.abs(now() - f.ts) > WINDOW_MS) return ok(401);
+      if (Math.abs(now() - f.ts) > WINDOW_MS || f.ts < startedAt) return ok(401);
       const want = Buffer.from(sign(secret, { op: f.op, key: f.key ?? "", ts: f.ts, nonce: f.nonce, body: f.body })), got = Buffer.from(f.sig);
       if (want.length !== got.length || !crypto.timingSafeEqual(want, got)) return ok(401);
       for (const [n, t] of seen) if (t < now()) seen.delete(n);
