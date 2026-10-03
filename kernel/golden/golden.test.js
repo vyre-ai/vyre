@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { record, load, diff } from "./index.js";
+import { record, load, diff, added } from "./index.js";
 import { CALLERS, WORLDS } from "./matrix.js";
 
 let fresh = null;
@@ -51,4 +51,15 @@ test("K2-9: generated callers outside the matrix get the same decisions from the
   assert.ok(was.callers.length > 100);
   const d = diff(was, now_);
   assert.deepEqual(d.slice(0, 20), [], `${d.length} decisions differ for generated callers`);
+});
+
+test("diff: a new tool is recorded, not judged; a changed cell or a vanished tool is a difference", () => {
+  const base = { callers: ["c"], worlds: ["w"], legend: { R: "would run", a: "denied" }, roles: { box: { rows: { "a.x": "R" }, emptyBad: {} } } };
+  const withNew = { ...base, roles: { box: { rows: { "a.x": "R", "b.new": "a" }, emptyBad: {} } } };
+  assert.deepEqual(diff(base, withNew), []);
+  assert.deepEqual(added(base, withNew), { box: ["b.new"] });
+  const changed = { ...base, roles: { box: { rows: { "a.x": "a" }, emptyBad: {} } } };
+  assert.equal(diff(base, changed).length, 1);
+  const gone = { ...base, roles: { box: { rows: {}, emptyBad: {} } } };
+  assert.equal(diff(base, gone)[0].now, "absent");
 });
