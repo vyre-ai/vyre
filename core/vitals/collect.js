@@ -252,6 +252,9 @@ export function batteryNow(platform = process.platform) {
 
 // ---- GPU ----------------------------------------------------------------------------------
 
+const GPU_RECHECK_MS = 3_600_000;
+const gpuState = { none: 0 };
+
 /**
  * Pure: one `nvidia-smi --query-gpu=utilization.gpu,memory.used,memory.total
  * --format=csv,noheader,nounits` line ("23, 512, 8192") to a percentage. Several GPUs average.
@@ -264,15 +267,19 @@ export function parseNvidiaSmi(text) {
 }
 
 /**
- * @param {{ platform?: string, exec?: typeof execFile }} [o]
+ * A machine with no nvidia-smi is not asked again for an hour: the failed spawn forks the whole daemon once a minute, which was the idle CPU blip of #71.
+ * @param {{ platform?: string, exec?: typeof execFile, state?: { none: number }, now?: () => number }} [o]
  * @returns {Promise<{ gpu: number|null, why?: string }>}
  */
 export async function gpuNow(o = {}) {
   const platform = o.platform || process.platform;
   const exec = o.exec || execFile;
+  const state = o.state || gpuState, now = (o.now || Date.now)();
   if (platform === "linux") {
+    if (state.none && now - state.none < GPU_RECHECK_MS) return { gpu: null, why: "no GPU" };
     return new Promise(resolve => {
       exec("nvidia-smi", ["--query-gpu=utilization.gpu,memory.used,memory.total", "--format=csv,noheader,nounits"], { timeout: 5000 }, (err, stdout) => {
+        if (err && err.code === "ENOENT") state.none = now;
         if (err) return resolve({ gpu: null, why: err.code === "ENOENT" ? "no GPU" : `nvidia-smi: ${err.message}` });
         resolve({ gpu: parseNvidiaSmi(String(stdout)) });
       });
