@@ -4,6 +4,8 @@
 // this data; the text form is a projection of it (print.js). Nothing here runs author code.
 
 import { LanguageError } from "./errors.js";
+import { defineFlow as flowsDefineFlow, step as flowsStep, expr as flowsExpr } from "../../kernel/flows/sdk.js";
+import { STEP_KINDS } from "../../kernel/flows/schema.js";
 import { parseExpr } from "./expr.js";
 
 export const SDK_VERSION = 1;
@@ -13,6 +15,7 @@ const KIT_ID_RE = /^[a-z][a-z0-9-]*$/;
 import { FIELD_KINDS as KERNEL_KINDS, SEAL_CLASSES as KERNEL_SEAL_CLASSES, TASK_HOW as KERNEL_TASK_HOW, TASK_OUTPUT_KINDS as KERNEL_OUTPUT_KINDS } from "../../kernel/contracts/index.js";
 
 /** The kinds a definition file may call, one per kernel field kind. `stage` is made with defineStage. */
+export const KERNEL_LINK_KIND = "link";
 export const FIELD_KINDS = KERNEL_KINDS.filter((k) => k !== "stage");
 export const SEAL_CLASSES = KERNEL_SEAL_CLASSES;
 export const SEAL_LEVELS = ["ai", "human"];
@@ -24,7 +27,7 @@ export const TEMPLATE_KINDS = ["email", "letter", "document", "message"];
 export const VIEW_TYPES = ["list", "board", "calendar", "page", "dashboard"];
 const COMMON = ["label", "description", "required"];
 /** Options each field kind takes besides the common ones. Exactly what the kernel's FieldDefinition can say. */
-const FIELD_OPTS = { choice: [], multi_choice: [], ref: ["to"], sealed: ["class", "level", "reveal_roles", "hint_allowed"] };
+const FIELD_OPTS = { choice: [], multi_choice: [], link: ["to"], sealed: ["class", "level", "reveal_roles", "hint_allowed"] };
 
 /** @param {string} path @param {string} msg */
 const bad = (path, msg) => { throw new LanguageError("invalid_definition", msg, { path }); };
@@ -59,11 +62,10 @@ function fieldBuilder(kind) {
     let main, opts;
     if (kind === "choice" || kind === "multi_choice") { main = args[0]; opts = args[1] ?? {}; if (!Array.isArray(main)) bad(`defineField.${kind}`, "Give the list of options first"); }
     else { opts = args[0] ?? {}; }
-    if (kind === "link" && opts.to !== undefined) bad("defineField.link", "A link is a web address. A link to another record is defineField.ref({ to: \"type\" })");
     onlyKeys(opts, [...COMMON, ...(FIELD_OPTS[kind] ?? [])], `defineField.${kind}`);
     /** @type {Record<string, any>} */ const f = { kind, label: opts.label === undefined ? undefined : str(opts.label, `defineField.${kind}.label`, { max: 120 }), description: opts.description === undefined ? undefined : str(opts.description, `defineField.${kind}.description`), required: opts.required === undefined ? undefined : bool(opts.required, `defineField.${kind}.required`) };
     if (kind === "choice" || kind === "multi_choice") { f.options = strList(main, `defineField.${kind} options`, 200); if (!f.options.length) bad(`defineField.${kind}`, "Needs at least one option"); if (new Set(f.options).size !== f.options.length) bad(`defineField.${kind}`, "Options must be different"); }
-    if (kind === "ref") f.to = name(opts.to, "defineField.ref.to");
+    if (kind === "link") f.to = name(opts.to, "defineField.link.to");
     if (kind === "sealed") {
       if (!SEAL_CLASSES.includes(opts.class)) bad("defineField.sealed.class", `Class must be one of ${SEAL_CLASSES.join(", ")}`);
       const level = opts.level ?? "ai"; if (!SEAL_LEVELS.includes(level)) bad("defineField.sealed.level", `Level must be one of ${SEAL_LEVELS.join(", ")}`);
@@ -166,32 +168,12 @@ function defineRole(r) {
   return { $: "role", ...ordered(out, ["name", "kind", "label", "description", "instructions", "grants"]) };
 }
 
-function defineFlow(f) {
-  onlyKeys(f, ["name", "on", "steps", "description"], "defineFlow");
-  const out = { name: str(f.name, "defineFlow.name", { max: 120 }), description: f.description === undefined ? undefined : str(f.description, "defineFlow.description"), on: f.on, steps: f.steps };
-  onlyKeys(out.on, ["event", "schedule", "manual", "where"], "defineFlow.on");
-  const kinds = ["event", "schedule", "manual"].filter((k) => out.on[k] !== undefined);
-  if (kinds.length !== 1) bad("defineFlow.on", "A flow starts from exactly one of event, schedule or manual");
-  if (out.on.event !== undefined && !/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/.test(out.on.event)) bad("defineFlow.on.event", 'An event looks like "payment.received" or "matter.stage_changed"');
-  if (out.on.schedule !== undefined && (typeof out.on.schedule !== "string" || out.on.schedule.split(/\s+/).length !== 5)) bad("defineFlow.on.schedule", "A schedule is five cron fields");
-  if (out.on.where !== undefined) expr(out.on.where, "defineFlow.on.where");
-  if (!Array.isArray(out.steps) || !out.steps.length || out.steps.length > 100) bad("defineFlow.steps", "A flow has 1 to 100 steps");
-  out.steps.forEach((/** @type {any} */ s, /** @type {number} */ i) => {
-    if (!isObj(s)) bad(`defineFlow.steps[${i}]`, "A step is an object");
-    const verbs = Object.keys(s).filter((k) => FLOW_VERBS.includes(k));
-    if (verbs.length !== 1) bad(`defineFlow.steps[${i}]`, `A step has exactly one verb of ${FLOW_VERBS.join(", ")}`);
-    assertPlain(s, `defineFlow.steps[${i}]`, 0);
-  });
-  return { $: "flow", ...ordered(out, ["name", "description", "on", "steps"]) };
+/** Flows are sessions' (kernel/flows): the stored form, the checks and the runner are theirs. */
+function defineFlow(def) {
+  try { return { $: "flow", ...flowsDefineFlow({ authorship: "kit", ...def }) }; }
+  catch (e) { bad("defineFlow", String(/** @type {Error} */ (e).message).replace(/^defineFlow: /, "")); }
 }
-/** JSON-safe data only, bounded. @param {any} v @param {string} path @param {number} depth */
-function assertPlain(v, path, depth) {
-  if (depth > 12) bad(path, "Nested too deeply");
-  if (v === null || ["string", "number", "boolean"].includes(typeof v)) { if (typeof v === "string" && v.length > 20000) bad(path, "Text too long"); return; }
-  if (Array.isArray(v)) { if (v.length > 500) bad(path, "List too long"); v.forEach((x, i) => assertPlain(x, `${path}[${i}]`, depth + 1)); return; }
-  if (isObj(v)) { if (v.$ !== undefined) bad(path, "A definition cannot be nested inside a step"); for (const [k, x] of Object.entries(v)) { if (k === "__proto__") bad(path, "Not allowed"); assertPlain(x, `${path}.${k}`, depth + 1); } return; }
-  bad(path, "Unsupported value");
-}
+const stepBuilders = Object.fromEntries(STEP_KINDS.map((k) => [`step.${k}`, (/** @type {string} */ id, /** @type {any} */ props) => flowsStep[k](id, props)]));
 
 function defineView(v) {
   onlyKeys(v, ["name", "type", "of", "label", "groupBy", "dateField", "columns", "filter", "sort"], "defineView");
@@ -224,5 +206,7 @@ function defineKit(k) {
 export const SDK = Object.freeze({
   defineKit, defineType, defineStage, defineTask, defineTemplate, defineRule, defineRole, defineFlow, defineView, defineCodeStep,
   ...Object.fromEntries(FIELD_KINDS.map((k) => [`defineField.${k}`, defineField[k]])),
+  ...stepBuilders,
+  expr: (/** @type {string} */ src) => flowsExpr(src),
 });
 export { NAME_RE };

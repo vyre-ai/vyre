@@ -34,6 +34,21 @@ export const WORLDS = Object.freeze([
   { id: "named", person: true, proof: true, said: true, named: true },
 ]);
 
+/**
+ * K2-9: callers outside the golden matrix, for the generated differential test (old inline rules against the gates). Case,
+ * spacing, unicode and odd names are the strings where a re-reading `parseCaller` could differ from the registry's own helpers.
+ */
+export const GENERATED_CALLERS = Object.freeze((() => {
+  const base = ["cli", "local", "deck", "capsule", "mobile", "mcp", "harness", "hook", "onboard", "link", "relay", "anonymous"];
+  const out = new Set();
+  for (const b of base) for (const v of [b, b.toUpperCase(), ` ${b}`, `${b} `, `${b}:`, `${b}:agent:kit`, `${b}:agent:`, `${b}:agent: kit`, `${b}\n`, `${b}\u0000`, `${b}\u212a`, `${b}:x`, `${b}@x`]) out.add(v);
+  for (const m of ["module:", "module:x", "module: x", "module:X", "module:a:b", "module:\u00e9", "module:zz-added", "Module:x", "module:../x"]) out.add(m);
+  for (const t of ["tailnet-guest:", "tailnet-guest:a", "tailnet-guest:a@b", "Tailnet-Guest:a", "tailnet-guest: a", "tailnet:", "tailnet:a", "tailnet:agent:", "tailnet:agent:kit", "tailnet:agent:kit:x", "tailnet:owner@example.com"]) out.add(t);
+  for (const d of ["device:", "device:abcdefghijklmnop", "device:ABCDEFGHIJKLMNOP", "device:abc", "device:abcdefghijklmnopq", "device: abcdefghijklmnop", "device:abcdefghijklmnop:x", "Device:abcdefghijklmnop"]) out.add(d);
+  for (const a of ["cli:agent:Kit", "mcp:agent:k\u00efit", "harness:agent:a b", "agent:kit", ":agent:kit", "cli:agent:kit:more", "cli:AGENT:kit"]) out.add(a);
+  return [...out].map((c, i) => ({ id: `g${i}:${JSON.stringify(c)}`, caller: () => c }));
+})());
+
 let fp = null;
 function firstPartyName(reg) {
   if (fp) return fp;

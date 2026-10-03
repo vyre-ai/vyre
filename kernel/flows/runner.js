@@ -269,12 +269,12 @@ export class FlowRunner {
     });
   }
 
-  /** Put a paused run back to work after its Flow's cause was fixed. @param {string} runId */
+  /** Put a paused or failed run back to work after its cause was fixed; finished steps are not repeated. @param {string} runId */
   async retry(runId) {
     return this.#locked(runId, async () => {
       const run = await this.store.getRun(runId);
-      if (!run || run.state !== "paused") return;
-      run.state = "running"; run.error = undefined; run.updated_at = this.now();
+      if (!run || (run.state !== "paused" && run.state !== "failed")) return;
+      run.state = "running"; run.error = undefined; run.finished_at = undefined; run.updated_at = this.now();
       await this.store.putRun(run);
       await this.#execLocked(runId);
     });

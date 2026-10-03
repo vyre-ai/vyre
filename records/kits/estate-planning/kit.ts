@@ -3,7 +3,7 @@
 // an assistant or a person does, and the matter advances when the required tasks are done.
 //
 // The sample people and firm in this file are made up. A Kit carries definitions, never data.
-import { defineKit, defineType, defineField, defineStage, defineTask, defineRule, defineRole, defineTemplate, defineView, defineFlow } from "@vyre/sdk";
+import { defineKit, defineType, defineField, defineStage, defineTask, defineRule, defineRole, defineTemplate, defineView, defineFlow, step, expr } from "@vyre/sdk";
 
 export const Contact = defineType({
   name: "contact",
@@ -26,7 +26,7 @@ export const Matter = defineType({
   icon: "IconBriefcase",
   fields: {
     title: defineField.text({ label: "Title", required: true }),
-    client: defineField.ref({ to: "contact", label: "Client" }),
+    client: defineField.link({ to: "contact", label: "Client" }),
     plan: defineField.choice(["Will", "Trust", "Both"], { label: "Plan" }),
     fee: defineField.money({ label: "Fee" }),
     engagement_signed: defineField.boolean({ label: "Engagement letter signed" }),
@@ -120,12 +120,13 @@ export const Attorney = defineRole({
 export const MattersBoard = defineView({ name: "matters_board", type: "board", of: "matter", label: "Matters by stage", groupBy: "stage", columns: ["title", "client", "plan", "fee"] });
 
 export const OnPayment = defineFlow({
-  name: "On payment",
+  name: "on_payment",
+  label: "On payment",
   description: "A Stripe payment starts a matter: find or create the contact, find or create the matter, then it begins at Intake.",
-  on: { event: "payment.received" },
+  trigger: { on: "event", event: "payment.received" },
   steps: [
-    { find: "contact", by: { stripe_customer: "{{event.customer}}" }, createIfMissing: true, set: { full_name: "{{event.name}}", email: "{{event.email}}", stripe_customer: "{{event.customer}}" }, as: "client" },
-    { find: "matter", by: { stripe_payment: "{{event.payment}}" }, createIfMissing: true, set: { title: "Estate plan for {{client.full_name}}", client: "{{client.urn}}", stripe_payment: "{{event.payment}}", fee: "{{event.amount}}", stage: "Intake" }, as: "matter" },
+    step.upsert("client", { type: "contact", match: { stripe_customer: expr("trigger.customer") }, set: { full_name: expr("trigger.display"), email: expr("trigger.email") } }),
+    step.upsert("matter", { type: "matter", match: { stripe_payment: expr("trigger.payment") }, set: { title: expr("\"Estate plan for \" + trigger.display"), client: { urn: expr("steps.client.record.urn") }, fee: expr("trigger.amount"), stage: "Intake" } }),
   ],
 });
 

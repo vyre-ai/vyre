@@ -1,84 +1,61 @@
-// kernel/seal/client.js: the kernel's side of the sealing process. It spawns the process with the Node permission model
-// on (no network, no child processes, no workers, reads only its own folder, writes only the vault and egress folders),
-// speaks the line protocol of serve.js, and mints a ticket for each sensitive call. The vault key and the ticket key are
-// handed over once on stdin and never put in an argument or the environment.
+// kernel/seal/client.js: the kernel's side of the sealing process: spawns it with a bare environment, talks NDJSON over the pipes only this
+// process holds, and implements the SealApi stud from kernel/contracts/seal.d.ts plus the calls the inference door and the gateway need.
+// Plaintext crosses here once (put, as the person types it) and on a human reveal (it is passed through to the reveal view and never kept).
 import { spawn } from "node:child_process";
-import { createHmac, randomBytes } from "node:crypto";
-import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 import { fileURLToPath } from "node:url";
-import { canonical } from "../core/canonical.js";
-import { KernelError } from "../core/errors.js";
+import { chainCtx } from "./wire.js";
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
+const PROCESS = path.join(path.dirname(fileURLToPath(import.meta.url)), "process.js");
 
-/** The Node permission flags the sealing process runs under: no network, no child processes, no workers; it reads its own code and vault, writes the vault and egress folders. */
-export function sealFlags(/** @type {{ dir?: string, egress_dir?: string }} */ cfg) {
-  const base = path.resolve(HERE, "..", "..");
-  return ["--permission", `--allow-fs-read=${path.join(base, "kernel")}`, ...(cfg.dir ? [`--allow-fs-read=${cfg.dir}`, `--allow-fs-write=${cfg.dir}`] : []), ...(cfg.egress_dir ? [`--allow-fs-write=${cfg.egress_dir}`] : [])];
-}
+export class SealError extends Error { constructor(code) { super(code); this.code = code; } }
 
-/**
- * @param {{ vault_key: Buffer, dir?: string, egress_dir?: string, command?: string[], clock?: () => number, ticket_ttl_ms?: number, timeout_ms?: number }} cfg
- *   command: the process to run (default: this folder's serve.js under `node --permission`); any program that speaks the protocol works.
- */
-export function createSealClient(cfg) {
-  const clock = cfg.clock || Date.now;
-  const ticketKey = randomBytes(32);
-  const ttl = cfg.ticket_ttl_ms ?? 10_000;
-  const timeout = cfg.timeout_ms ?? 15_000;
-  for (const d of [cfg.dir, cfg.egress_dir]) if (d) fs.mkdirSync(d, { recursive: true });
-  const flags = sealFlags(cfg);
-  const command = cfg.command || [process.execPath, ...flags, path.join(HERE, "serve.js")];
-  const child = spawn(command[0], command.slice(1), { stdio: ["pipe", "pipe", "pipe"], env: { PATH: process.env.PATH || "" } });
-  let stderr = "";
-  child.stderr.on("data", d => { stderr = (stderr + d).slice(-400); });
-  /** @type {Map<number, { resolve: (v: any) => void, reject: (e: any) => void, timer: NodeJS.Timeout }>} */ const pending = new Map();
-  let seq = 0, dead = null;
-  const fail = (/** @type {any} */ why) => { dead = dead || why; for (const [, p] of pending) { clearTimeout(p.timer); p.reject(new KernelError("unavailable", "the sealing process is not running", String(why))); } pending.clear(); };
+/** @param {{ dir: string, sinks?: Record<string,string>, timeoutMs?: number, execPath?: string }} o */
+export function startSealer({ dir, sinks = {}, timeoutMs = 20_000, execPath = process.execPath, profile, dev = false, unattested = false, verifiers = null }) {
+  const env = { VYRE_SEAL_DIR: dir, VYRE_SEAL_SINKS: JSON.stringify(sinks), PATH: process.env.PATH || "", ...(profile ? { VYRE_SEAL_PROFILE: profile } : {}), ...(dev ? { VYRE_SEAL_DEV: "1" } : {}), ...(unattested ? { VYRE_SEAL_UNATTESTED: "1" } : {}), ...(verifiers ? { VYRE_SEAL_VERIFIERS: verifiers } : {}), ...(process.env.VYRE_AGENT_UIDS ? { VYRE_AGENT_UIDS: process.env.VYRE_AGENT_UIDS } : {}) };
+  const child = spawn(execPath, [PROCESS], { stdio: ["pipe", "pipe", "inherit"], env });
+  const pending = new Map(); let n = 0, closed = false;
   readline.createInterface({ input: child.stdout }).on("line", line => {
     let m; try { m = JSON.parse(line); } catch { return; }
-    const p = pending.get(m.id);
-    if (!p) return;
-    pending.delete(m.id); clearTimeout(p.timer);
-    if (m.ok) p.resolve(m.result); else p.reject(new KernelError(m.error.code, m.error.message));
+    const p = pending.get(m.id); if (!p) return;
+    pending.delete(m.id); clearTimeout(p.t);
+    m.ok ? p.res(m.result) : p.rej(new SealError(m.error?.code || "failed"));
   });
-  child.on("exit", code => fail(`exited ${code}: ${stderr.trim()}`));
-  child.on("error", e => fail(e.message));
+  const fail = code => { for (const p of pending.values()) { clearTimeout(p.t); p.rej(new SealError(code)); } pending.clear(); };
+  child.on("exit", () => { closed = true; fail("sealer_down"); });
   child.stdin.on("error", () => {});
-
-  const send = (/** @type {string} */ op, /** @type {any} */ args, /** @type {any} */ ticket) => new Promise((resolve, reject) => {
-    if (dead) return reject(new KernelError("unavailable", "the sealing process is not running", String(dead)));
-    const id = ++seq;
-    const timer = setTimeout(() => { pending.delete(id); reject(new KernelError("unavailable", "the sealing process did not answer")); }, timeout);
-    pending.set(id, { resolve, reject, timer });
-    child.stdin.write(JSON.stringify({ id, op, args, ...(ticket ? { ticket } : {}) }) + "\n");
+  const call = (op, body = {}) => new Promise((res, rej) => {
+    if (closed) return rej(new SealError("sealer_down"));
+    const id = ++n, t = setTimeout(() => { pending.delete(id); rej(new SealError("timeout")); }, timeoutMs);
+    pending.set(id, { res, rej, t });
+    child.stdin.write(JSON.stringify({ id, op, ...body }) + "\n");
   });
-  const ticket = (/** @type {string} */ op, /** @type {any} */ args) => {
-    const nonce = randomBytes(16).toString("base64url"), exp = clock() + ttl;
-    return { nonce, exp, mac: createHmac("sha256", ticketKey).update(canonical({ op, args, nonce, exp })).digest("base64url") };
-  };
-  const ready = send("init", { key: cfg.vault_key.toString("base64url"), ticket_key: ticketKey.toString("base64url"), ...(cfg.dir ? { dir: cfg.dir } : {}), ...(cfg.egress_dir ? { egress_dir: cfg.egress_dir } : {}) });
-
-  return Object.freeze({
-    ready,
-    put: async (/** @type {any} */ a) => { await ready; return send("put", a); },
-    meta: async (/** @type {any} */ a) => { await ready; return send("meta", a); },
-    use: async (/** @type {any} */ a) => { await ready; return send("use", a, ticket("use", a)); },
-    reveal: async (/** @type {any} */ a) => { await ready; return send("reveal", a, ticket("reveal", a)); },
-    check: async (/** @type {any} */ a) => { await ready; return send("check", a); },
-    stash: async (/** @type {any} */ a) => { await ready; return send("stash", a); },
-    stashed: async (/** @type {any} */ a) => { await ready; return send("stashed", a); },
-    endSession: async (/** @type {any} */ a) => { await ready; return send("endSession", a); },
-    forget: async (/** @type {any} */ a) => { await ready; return send("forget", a); },
-    stats: async () => { await ready; return send("stats", {}); },
-    /** Send a raw request, with an optional hand-made ticket. For tests of the process's own refusals. */
-    raw: async (/** @type {string} */ op, /** @type {any} */ args, /** @type {any} */ t) => { await ready; return send(op, args, t); },
-    /** Mint a ticket for a call (kernel-internal). */
-    ticket,
-    close: () => new Promise(res => { if (dead) return res(undefined); child.once("exit", () => res(undefined)); child.stdin.end(); setTimeout(() => child.kill("SIGKILL"), 2000).unref(); }),
-    kill: () => child.kill("SIGKILL"),
+  const withCtx = (op, i, extra = {}) => call(op, { ctx: chainCtx(i.chain), ...(i.approver_chain ? { approver: chainCtx(i.approver_chain) } : {}), ...extra });
+  return {
     pid: child.pid,
-  });
+    /** SealApi (contracts/seal.d.ts). `use` takes the template body and the slot bindings, which the kernel read from the Template record. */
+    api: {
+      put: i => withCtx("put", i, { record: i.record, field: i.field, class: i.class, value: i.value, hint_allowed: i.hint_allowed, unique: i.unique }),
+      use: i => withCtx("use", i, { body: i.body, bindings: i.bindings ?? [{ slot: i.slot, ref: i.ref }], destination: i.destination, template: i.template, template_version: i.template_version, proof: i.proof }),
+      reveal: i => withCtx("reveal", i, { ref: i.ref, purpose: i.purpose, proof: i.proof, ledger_key: i.ledger_key }),
+    },
+    deliver: i => withCtx("deliver", i, { output_ref: i.output_ref, sink: i.sink, envelope: i.envelope, proof: i.proof }),
+    revealDerived: i => withCtx("derived.read", i, { ref: i.output_ref, purpose: i.purpose, proof: i.proof, ledger_key: i.ledger_key }),
+    detect: i => withCtx("detect", i, { session: i.session, text: i.text, ledger_key: i.ledger_key }),
+    save: i => withCtx("save", i, { session: i.session, class: i.class, n: i.n, record: i.record, field: i.field, hint_allowed: i.hint_allowed }),
+    endSession: (chain, session) => withCtx("session.end", { chain }, { session }),
+    lookup: i => withCtx("lookup", i, { class: i.class, field: i.field, value: i.value }),
+    drop: i => withCtx("drop", i, { ref: i.ref }),
+    /** The enrolment ceremony: `begin` gives a one-time token, `enrol` needs it, the person's chain, a platform attestation (or an unattested-allowed process) and, for a second device, a proof from the first. */
+    begin: i => withCtx("presence.begin", i, { person: i.person, key_id: i.key_id, spki: i.spki }),
+    enrol: i => withCtx("presence.enrol", i, { person: i.person, key_id: i.key_id, spki: i.spki, signer: i.signer, token: i.token, attestation: i.attestation, proof: i.proof }),
+    revoke: i => withCtx("presence.revoke", i, { key_id: i.key_id, proof: i.proof }),
+    /** Does this proof stand for this kernel act (a task op) by the one person in the chain? Uses the proof up. Resolves null when it stands, else the reason. */
+    presenceCheck: i => withCtx("presence.check", i, { act: i.op, fields: i.fields, proof: i.proof }).then(() => null, e => (e instanceof SealError ? e.code : "failed")),
+    /** The Space's checkpoint key, held in the sealing process: its public half, and a signature over a checkpoint of this Space (nothing else is signed). */
+    spaceKey: { pub: i => withCtx("spacekey.pub", i), sign: i => withCtx("spacekey.sign", i, { bytes: Buffer.from(i.bytes).toString("base64") }) },
+    health: () => call("health"),
+    close: () => new Promise(res => { if (closed) return res(); child.once("exit", () => res()); child.stdin.end(); setTimeout(() => child.kill(), 2000).unref(); }),
+  };
 }

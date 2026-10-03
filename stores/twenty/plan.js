@@ -14,7 +14,7 @@ export class PlanError extends Error {
   constructor(code, message) { super(message); this.code = code; }
 }
 
-export const camel = (/** @type {string} */ s) => s.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
+export const camel = (/** @type {string} */ s) => s.replace(/[_-]([a-z0-9])/g, (_, c) => c.toUpperCase());
 export const pascal = (/** @type {string} */ s) => { const c = camel(s); return c[0].toUpperCase() + c.slice(1); };
 export const optionValue = (/** @type {string} */ c) => c.toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
 
@@ -39,7 +39,7 @@ export const VERSION_FIELD = "vyreVersion";
 function twentyKind(f) {
   const opts = () => (f.options ?? []).map((/** @type {string} */ o, /** @type {number} */ i) => ({ value: optionValue(o), label: o, position: i, color: COLORS[i % COLORS.length] }));
   switch (f.kind) {
-    case "text": case "rich_text": case "link": case "ref": return { type: "TEXT" };
+    case "text": case "rich_text": case "url": case "link": return { type: "TEXT" };
     case "number": return { type: "NUMBER", settings: { dataType: "float", decimals: 4, type: "number" } };
     case "money": return { type: "CURRENCY" };
     case "boolean": return { type: "BOOLEAN" };
@@ -58,10 +58,11 @@ function plural(n) { return /(s|x|z|ch|sh)$/.test(n) ? n + "es" : /[^aeiou]y$/.t
 
 /** @param {any} def a kernel TypeDefinition @param {{ plural?: string }} [hint] @returns {TypePlan} */
 export function planType(def, hint = {}) {
-  if (!def || typeof def.name !== "string" || !/^[a-z][a-z0-9_]*$/.test(def.name)) throw new PlanError("invalid", "A type name is lowercase letters, digits and underscores");
-  const singular = safe(camel(def.name));
-  const pl = safe(hint.plural ?? camel(plural(def.name)));
-  if (STANDARD_OBJECTS.has(singular) || STANDARD_OBJECTS.has(pl)) throw new PlanError("invalid", `"${def.name}" is a name Twenty uses for a standard object`);
+  if (!def || typeof def.name !== "string" || !/^[a-z][a-z0-9_-]*$/.test(def.name)) throw new PlanError("invalid", "A type name is lowercase letters, digits, hyphens and underscores");
+  let singular = safe(camel(def.name));
+  let pl = safe(hint.plural ?? camel(plural(def.name)));
+  // A Vyre type may share a name with a standard Twenty object (task, note, person): it is stored under a vyre prefix and mapped back by `planBySingular`
+  if (STANDARD_OBJECTS.has(singular) || STANDARD_OBJECTS.has(pl)) { const up = (/** @type {string} */ n) => "vyre" + n[0].toUpperCase() + n.slice(1); if (!hint.plural) { singular = up(singular); pl = up(pl); } else singular = up(singular); }
   if (singular === pl) throw new PlanError("invalid", `Type "${def.name}" needs a plural that differs from its name`);
   const title = def.fields.find((/** @type {any} */ f) => f.kind === "text")?.name ?? null;
   /** @type {FieldPlan[]} */ const fields = [];
@@ -111,7 +112,7 @@ function toTwenty(f, v) {
     case "multi_choice": return v.map(optionValue);
     case "datetime": return new Date(v).toISOString();
     case "rating": return `RATING_${v}`;
-    case "ref": return v.urn;
+    case "link": return v.urn;
     default: return v;
   }
 }
@@ -123,11 +124,11 @@ function fromTwenty(f, v) {
     case "choice": case "stage": return f.def.options?.find((/** @type {string} */ o) => optionValue(o) === v);
     case "multi_choice": return Array.isArray(v) && v.length ? v.map((x) => f.def.options?.find((/** @type {string} */ o) => optionValue(o) === x)).filter((x) => x !== undefined) : undefined;
     case "rating": return Number(String(v).replace("RATING_", ""));
-    case "ref": return { urn: v };
+    case "link": return { urn: v };
     case "number": return typeof v === "string" ? Number(v) : v;
     case "date": return String(v).slice(0, 10);
     case "datetime": return new Date(v).toISOString();
-    case "phones": case "emails": case "urls": return Array.isArray(v) && v.length ? v : undefined;
+    case "phones": case "emails": case "urls": return Array.isArray(v) ? v : undefined; // stored as JSON, so an empty list stays an empty list
     default: return v;
   }
 }

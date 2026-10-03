@@ -300,9 +300,11 @@ test("authorize: a model in the chain gets placeholders for sealed fields; a per
 test("authorize: a standing service reads without a person and never writes; audience limits who may use a grant", async () => {
   const b = builder();
   const svc = b.fromFacts({ kind: "module", module: "search", first_party: true });
-  const az = world({ standing: s => s === "search" });
+  const az = world({ standing: (s, a, r) => s === "search" && r.includes("/contact/") });
   assert.equal((await ask(az, svc, "crm.read")).effect, "allow");
   assert.equal((await ask(az, svc, "crm.update")).effect, "deny");
+  assert.equal((await ask(az, svc, "crm.read", `vyre://${SPACE}/matter/1`)).effect, "deny", "K1-6: a standing read is limited to what the service declared");
+  assert.equal((await ask(world({ standing: () => false }), svc, "crm.read")).effect, "deny", "no declaration, no read");
   const viaSvc = b.fromFacts({ kind: "module", module: "email", first_party: true, inbound: person() });
   const aud = world({ grants: [grant({ conditions: { audience: ["crm"] } })], members: ["service:email"] });
   assert.equal((await ask(aud, viaSvc, "crm.read")).effect, "deny");
@@ -477,4 +479,59 @@ test("urn: dot segments and encoded or control forms are refused at parse", () =
   }
   assert.equal(covers(`vyre://${SPACE}/file/proj`, `vyre://${SPACE}/file/proj/../../credential/x`), false);
   assert.ok(segments(`vyre://${SPACE}/file/proj/a.pdf`));
+});
+
+test("K1-8a and 9: non-plain data is refused by canonical, via comes from the chain, subject_prefix matches whole segments", () => {
+  assert.throws(() => canonical({ d: new Date(0) }), TypeError);
+  assert.throws(() => canonical({ m: new Map() }), TypeError);
+  const log = createEventLog({ space: SPACE, clock });
+  const c = person();
+  log.append(c, { type: "crm.created", sv: 1, subject: R(1), data: {} }, { via: { surface: "relay" } });
+  assert.equal(log.read()[0].via.surface, "deck", "a caller cannot override the chain's via");
+  log.append(c, { type: "crm.created", sv: 1, subject: R(10), data: {} });
+  assert.equal(log.read({ subject_prefix: R(1) }).length, 1, ".../1 does not match .../10");
+});
+
+test("K1-7 and 8c: a presence session never stands for an assistant on admin or grant; an unknown condition or obligation asks; rate is an obligation", async () => {
+  const b = builder();
+  const withAgent = b.fromFacts({ kind: "agent_session", agent: "kit", session: "s", thread: "t", vouched: true });
+  const adm = grant({ actions: ["space.set"], resource: { prefix: `vyre://${SPACE}/space/*` } });
+  const sp = `vyre://${SPACE}/space/x`;
+  const az = world({ grants: [adm, { ...adm, id: "gr_kit", subject: { kind: "actor", actor: actorOf("agent", "kit") } }], members: ["agent:kit"], hasPresenceSession: () => true });
+  assert.equal((await ask(az, person(), "space.set", sp)).effect, "allow", "a person's own chain with a session");
+  assert.equal((await ask(az, withAgent, "space.set", sp)).reason, "needs_presence", "an assistant in the chain does not inherit it");
+  const odd = world({ grants: [grant({ conditions: { telepathy: true } })] });
+  assert.equal((await ask(odd, person(), "crm.read")).effect, "ask");
+  const rate = world({ grants: [grant({ conditions: { rate: { per: "hour", max: 5 } } })] });
+  const r = await ask(rate, person(), "crm.read");
+  assert.equal(r.effect, "allow");
+  assert.ok(r.obligations.some(o => o.type === "rate"));
+});
+
+test("K1-8b and 9f: a stored job chain expires; a poison event is retried, then set aside, and the consumer goes on", async () => {
+  const b = builder({ job_max_age: 1000 });
+  const stored = JSON.parse(JSON.stringify(b.serialize(person())));
+  const keep = T; T += 5000;
+  assert.throws(() => b.restore(stored), { code: "not_a_member" });
+  T = keep;
+  assert.ok(isChain(b.restore(stored)));
+  const log = createEventLog({ space: SPACE, clock });
+  const got = [];
+  log.subscribe("c1", {}, e => { if (e.subject === R(1)) throw new Error("poison"); got.push(e.subject); });
+  log.append(person(), { type: "crm.created", sv: 1, subject: R(1), data: {} });
+  log.append(person(), { type: "crm.created", sv: 1, subject: R(2), data: {} });
+  for (let i = 0; i < 12 && !log.deadLetters().length; i++) { await new Promise(r => setTimeout(r, 5)); await log.pump(); }
+  assert.equal(log.deadLetters().length, 1, "after enough attempts the poison event is set aside");
+  for (let i = 0; i < 4 && !got.length; i++) { await new Promise(r => setTimeout(r, 5)); await log.pump(); }
+  assert.deepEqual(got, [R(2)]);
+});
+
+test("grant-risk acts are denied outright for a chain holding a model, and a field allow-list is an obligation the narrowest hop sets", async () => {
+  const withAgent = builder().fromFacts({ kind: "agent_session", agent: "kit", session: "s", thread: "t", vouched: true });
+  const adm = grant({ actions: ["grants.create"], resource: { prefix: `vyre://${SPACE}/grant/*` } });
+  const az = world({ grants: [adm, { ...adm, id: "gr_kit", subject: { kind: "actor", actor: actorOf("agent", "kit") } }], members: ["agent:kit"], hasPresenceSession: () => true, verifyPresence: () => true });
+  assert.equal((await ask(az, withAgent, "grants.create", `vyre://${SPACE}/grant/new`)).reason, "model_chain");
+  const f = world({ grants: [grant({ actions: ["crm.read"], resource: { prefix: `vyre://${SPACE}/contact/*`, fields: ["name"] } })] });
+  const r = await ask(f, person(), "crm.read");
+  assert.deepEqual(r.obligations.find(o => o.type === "fields").allow, ["name"]);
 });

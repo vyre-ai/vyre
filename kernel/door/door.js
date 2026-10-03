@@ -19,7 +19,7 @@ export class DoorRefusal extends Error {
  *           budget?: { reserve(i: any): string | null, settle?(i: any, usage: any): void },
  *           emit?: (type: string, payload: any) => void }} o
  */
-export function createDoor({ sealer, drivers, sinks, residency = () => null, budget = { reserve: () => null }, emit = () => {} }) {
+export function createDoor({ sealer, drivers, sinks, residency = () => null, budget = { reserve: () => null }, emit = () => {}, isChain: kernelIsChain }) {
   const sinkSet = new Set(sinks), ledgers = new Map();
   const refuse = (r, input, extra = {}) => { emit("model.refused", { code: r.code, class: r.class, purpose: input.purpose, session: input.session, ...extra }); throw new DoorRefusal(r); };
 
@@ -29,7 +29,8 @@ export function createDoor({ sealer, drivers, sinks, residency = () => null, bud
     if (!ledgers.has(k)) ledgers.set(k, parent && ledgers.has(pk) ? ledgers.get(pk).derive() : new Ledger());
     return ledgers.get(k);
   }
-  const isChain = c => c && typeof c.space === "string" && Array.isArray(c.hops) && c.hops.length > 0 && c.hops.every(h => h?.actor?.kind && h.actor.id);
+  // At wiring the kernel passes its own `isChain`: the `not_a_sink` test reads the last hop of a chain only the kernel could have built (K3 R-4).
+  const isChain = kernelIsChain || (c => c && typeof c.space === "string" && Array.isArray(c.hops) && c.hops.length > 0 && c.hops.every(h => h?.actor?.kind && h.actor.id));
   const keyOf = l => l.key.toString("base64");
 
   /** Scan one text: placeholders in place of sealed-looking values, ledger entries recorded, then the ledger check. */
@@ -46,6 +47,8 @@ export function createDoor({ sealer, drivers, sinks, residency = () => null, bud
   }
 
   return {
+    /** True when the door was built with the kernel's own `isChain`: the gateway refuses a door that was not (K3 R-4). */
+    usesKernelChain: Boolean(kernelIsChain),
     /** The session's ledger key for the sealing process's reveal and detect calls; entries it returns are added with `note`. A session is (Space, id). */
     ledgerKey: (chain, session, parent) => keyOf(ledger(chain.space, session, parent)),
     note: (chain, session, entries) => { ledger(chain.space, session).add(entries); },

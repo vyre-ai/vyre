@@ -241,7 +241,7 @@ const promptSafe = (s, fallback, max = 64) => { const t = String(s || "").replac
  * the MAC key that authenticates it), nor read the record (sealed under the "enc" key, opened here).
  * @param {Uint8Array} ticket 8 random bytes, scanned from the Vyre code
  * @param {{ relay: string, fetch?: typeof fetch, crypto?: import("./noise.js").CryptoProvider }} o
- * @returns {Promise<{ offer: { relay: string, route: string, box: Uint8Array, secret: string }, name: string, fingerprint: string, handle: string|null, identity: string|null }>}
+ * @returns {Promise<{ offer: { relay: string, route: string, box: Uint8Array, secret: string }, name: string, fingerprint: string, handle: string|null, identity: string|null, invite: object|null }>}
  */
 export async function resolveTicket(ticket, o) {
   if (!o || !/^wss?:\/\/[^\s/]+/.test(String(o.relay))) throw fail("bad_input", "resolveTicket needs the relay this ticket's box registered with");
@@ -292,6 +292,9 @@ export async function resolveTicket(ticket, o) {
   try { if (typeof record.address === "string") { const u = new URL(record.address); if (u.protocol === "https:" && u.origin === record.address) address = u.origin; } } catch {}
   let identity = null;
   try { const b = fromBase64url(String(record.identity || "")); if (b.length === 8) identity = base64url(b); } catch {}
+  // An invitation rides inside the sealed record (core/wink): plain JSON of at most 2 KB, never executed, shown on a card after a person looks at it.
+  let invite = null;
+  try { if (record.offer && typeof record.offer === "object" && JSON.stringify(record.offer).length <= 2048) invite = JSON.parse(JSON.stringify(record.offer)); } catch {}
   return {
     offer: { relay: record.relay, route: record.route, box, secret: base64url(secret) },
     name: promptSafe(record.name, "a Vyre box"),
@@ -299,6 +302,7 @@ export async function resolveTicket(ticket, o) {
     handle,
     address,
     identity,
+    invite,
   };
 }
 

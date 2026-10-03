@@ -47,7 +47,7 @@ export function mergeLabels(/** @type {any} */ a, /** @type {any} */ b) {
 
 /**
  * @param {{ space: string, owner: string, owner_uid: number, key: Uint8Array | string, clock?: () => number,
- *   is_person?: (person: string) => boolean }} cfg
+ *   is_person?: (person: string) => boolean, job_max_age?: number }} cfg
  *   owner: the person id of the Space's owner on this machine; owner_uid: the OS user the kernel treats as them;
  *   key: the secret that seals a stored chain; is_person: whether a person id is a member of this Space.
  */
@@ -127,6 +127,8 @@ export function createChainBuilder(cfg) {
     if (!stored || typeof stored.body !== "string" || typeof stored.mac !== "string" || !sameMac(hmac(cfg.key, stored.body), stored.mac)) return refuse("stored chain failed its seal");
     const o = JSON.parse(stored.body);
     if (o.space !== space) return refuse("stored chain is for another space");
+    // A leaked record replays for a bounded time only; authorize still rechecks every grant on use (invariant 3, K1 item 8b).
+    if (!Number.isFinite(o.built_at) || clock() - o.built_at > (cfg.job_max_age ?? 30 * 24 * 3600 * 1000)) return refuse("stored chain is too old");
     try { checkLabels(o.labels); } catch { return refuse("stored chain has unknown labels"); }
     if (!Array.isArray(o.hops) || !o.hops.length) return refuse("stored chain has no hops");
     const c = deepFreeze({ space, hops: o.hops, labels: o.labels, built_at: o.built_at, job: o.job });

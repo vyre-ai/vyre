@@ -5,7 +5,7 @@
 import { mintUuid } from "../core/ids.js";
 import { canonical, sha256 } from "../core/canonical.js";
 
-export const SUITE_REVISION = 2;
+export const SUITE_REVISION = 3;
 
 export const CONTACT = Object.freeze({
   name: "contact", label: "Contact",
@@ -195,6 +195,11 @@ export function conformance(make, { test, assert }, label = "store") {
     assert.equal(d.fields.find((/** @type {any} */ f) => f.name === "ssn").kind, "sealed");
     assert.equal(d.fields.length, CONTACT.fields.length);
     assert.equal(await s.describe("nope"), null);
+  });
+
+  T("types lists every definition the store holds", async s => {
+    await s.define({ add_types: [CONTACT] });
+    assert.deepEqual((await s.types()).map((/** @type {any} */ t) => t.name), ["contact"]);
   });
 
   T("health, version and features are honest", async s => {

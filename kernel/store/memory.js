@@ -7,7 +7,7 @@ import { checkValue } from "./values.js";
 import { page, aggregate as agg, fieldOf } from "./query.js";
 
 /** The conformance suite revision this store last passed. Bump with the suite. */
-export const CONFORMANCE_REVISION = 2;
+export const CONFORMANCE_REVISION = 3;
 
 const clone = (/** @type {any} */ v) => structuredClone(v);
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
@@ -59,6 +59,8 @@ export function createMemoryStore(cfg = {}) {
       }
       return { applied: changesMade.length > 0, changes: changesMade };
     },
+    /** Every type definition, as defined. */
+    async types() { touch("types", []); return [...types.values()].map(t => clone(t)); },
     /** The field names and kinds of a type, or null when there is no such type (the gateway reads sealed fields from here). */
     async describe(type) {
       touch("describe", [type]);

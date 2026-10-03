@@ -7,9 +7,10 @@ import { SDK, SDK_VERSION } from "./sdk.js";
 import { LanguageError } from "./errors.js";
 import { parseExpr, exprNames } from "./expr.js";
 import { print } from "./print.js";
+import { compileFlow } from "../../kernel/flows/compile.js";
 
 /** Types a Kit may link to without defining them: the core record types every Space has. */
-export const CORE_TYPES = Object.freeze(["person", "task", "note", "file"]);
+export const CORE_TYPES = Object.freeze(["person", "task", "note", "file", "template", "playbook", "team-member"]);
 /** Roles every Space has. */
 export const CORE_ROLES = Object.freeze(["owner", "admin", "member"]);
 
@@ -85,7 +86,7 @@ export function checkKit(kit) {
     for (const f of t.fields) {
       if (fieldNames.has(f.name)) err(`type ${t.name}`, `Field "${f.name}" appears twice`);
       fieldNames.add(f.name);
-      if (f.kind === "ref" && !typeNames.has(f.to) && !CORE_TYPES.includes(f.to)) err(`type ${t.name}.${f.name}`, `Refers to "${f.to}", which is neither defined in this kit nor a core type (${CORE_TYPES.join(", ")})`);
+      if (f.kind === "link" && !typeNames.has(f.to) && !CORE_TYPES.includes(f.to)) err(`type ${t.name}.${f.name}`, `Refers to "${f.to}", which is neither defined in this kit nor a core type (${CORE_TYPES.join(", ")})`);
     }
     for (const [i, r] of (t.rules ?? []).entries()) checkExpr(`type ${t.name}.rules[${i}]`, r.require, t);
     const stageField = t.fields.find((/** @type {any} */ f) => f.kind === "stage");
@@ -120,10 +121,14 @@ export function checkKit(kit) {
     if (v.dateField) { const f = t.fields.find((/** @type {any} */ x) => x.name === v.dateField); if (!f || !["date", "datetime"].includes(f.kind)) err(`view ${v.name}`, "dateField must be a date field"); }
     if (v.filter) checkExpr(`view ${v.name}`, v.filter, t);
   }
-  for (const fl of kit.flows) {
-    const walk = (/** @type {any} */ o) => { if (o && typeof o === "object") for (const [k, x] of Object.entries(o)) { if ((k === "create" || k === "find" || k === "update" || k === "remove") && typeof x === "string" && !typeNames.has(x) && !CORE_TYPES.includes(x)) err(`flow ${fl.name}`, `Step uses type "${x}", which is not in this kit or a core type`); if (k === "template" && typeof x === "string" && !templateNames.has(x)) err(`flow ${fl.name}`, `Step uses template "${x}", which is not in this kit`); walk(x); } };
-    walk(fl.steps);
-  }
+  const catalog = {
+    space: "kit", types: Object.fromEntries(kit.types.map((t) => [t.name, t])),
+    actions: { "records.read": { risk: "read" }, "records.create": { risk: "write" }, "records.update": { risk: "write" }, "records.remove": { risk: "outward.delete" }, "ask.request": { risk: "write" }, "model.call": { risk: "read" }, "http.request": { risk: "outward.send" }, "fn.run": { risk: "write" }, "email.send": { risk: "outward.send" }, "email.draft": { risk: "write" } },
+    roles: [...CORE_ROLES, ...kit.roles.filter((r) => r.kind === "role").map((r) => r.name)],
+    teammates: kit.roles.filter((r) => r.kind === "teammate").map((r) => r.name),
+    templates: kit.templates.map((t) => t.name),
+  };
+  for (const fl of kit.flows) { const r = compileFlow(fl, catalog); if (!r.ok) err(`flow ${fl.name}`, r.errors.map((e) => `${e.path || "flow"}: ${e.message}`).join("; ")); }
   return kit;
 }
 

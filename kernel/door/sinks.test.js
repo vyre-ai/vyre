@@ -13,7 +13,7 @@ const reg = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(impo
 const ROOTS = ["core", "harness", "local", "lib", "modules", "relay", "names", "apps/app/src", "apps/app/app", "box", "deck", "packages", "tools"];
 // Only the repo's own test roots are skipped, so a provider call hidden in a folder that happens to be named `build` or `testing` is still seen.
 const SKIP = /(^|\/)node_modules\/|^(deck\/test|apps\/test|test)\//;
-const allowed = new Set([...reg.door_clients, ...reg.retrofit_pending, ...Object.keys(reg.not_inference), ...Object.keys(reg.audio_only || {})]);
+const allowed = new Set([...reg.door_clients, ...reg.retrofit_pending, ...Object.keys(reg.not_inference)]);
 
 function* walk(d) {
   let es; try { es = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
