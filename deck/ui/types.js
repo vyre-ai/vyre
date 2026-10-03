@@ -1,132 +1,135 @@
 // @ts-check
-// deck/ui/types: the sample type definitions, as data (contracts.js TypeDef). Every list, board, calendar, dashboard and record page in the Deck is
-// drawn from one of these and nothing else (ui/views.js): a new type is a new entry here, never a new screen. The mock store serves them from types().
+// deck/ui/types: the sample type definitions, as the kernel's own TypeDefinition values (kernel/contracts/fields.d.ts): a name, a label, an icon, fields of the
+// kernel's FieldKind set, and stages that carry task templates. Every list, board, calendar, dashboard and record page in the Deck is drawn from one of these plus
+// its ViewDefinition (view-defs.js), and nothing else (ui/views.js): a new type is a new entry here, never a new screen. The mock store serves them from types().
 // They follow the approved prototype (team/0.2.2/prototype-src/p3a.js) and ui-primitives.md section 5. Sample names come from the made-up world.
+//
+// Mapping from the Deck's first sketch: email, phone and richText became emails, phones and rich_text (a person has more than one number); link became link or ref
+// (both name a record type in `to`); a field's key became its `name`; a stage field's list became its `options`; sealed became a `seal` config on a sealed field
+// (level "human": only the reveal roles, each reveal with fresh presence; level "ai": no model ever, people per grant).
 
-/** @typedef {import("./contracts.js").TypeDef} TypeDef */
-/** @typedef {import("./contracts.js").FieldDef} FieldDef */
+/** @typedef {import("./contracts.js").TypeDefinition} TypeDefinition */
+/** @typedef {import("./contracts.js").FieldDefinition} FieldDefinition */
+/** @typedef {import("./contracts.js").StageDef} StageDef */
+/** @typedef {import("./contracts.js").TaskTemplateDef} TaskTemplateDef */
 
 export const MATTER_STAGES = ["Intake", "Engagement", "Drafting", "Signing", "Funding", "Closed"];
 export const PROJECT_STAGES = ["Plan", "Build", "Review", "Ship"];
 export const TRIP_STAGES = ["Dreaming", "Booked", "Packing", "Away", "Back"];
 
-/** @type {TypeDef & { initials?: boolean }} */
+const DAY = 86_400_000;
+
+/**
+ * The Kit "Estate planning matter": the tasks each stage makes (DESIGN-tasks.md, idea 5), as the kernel's TaskTemplateDef. A doer is a reference ("teammate:research",
+ * "person:alex"); the title may hold {client}; depends_on names tasks of the same stage by title; the template is a Template record's name.
+ * @type {Record<string, TaskTemplateDef[]>}
+ */
+export const ESTATE_KIT_TASKS = {
+  Intake: [
+    { title: "Research the client", doer: "teammate:research", output: { kind: "fields", target: "situation,assets,pressure,research" }, how: "assistant" },
+    { title: "Welcome email for {client}", doer: "teammate:intake", checker: "person:alex", output: { kind: "sent", target: "Email to {client}" }, how: "tailor", template: "Welcome",
+      depends_on: ["Research the client"] },
+  ],
+  Engagement: [
+    { title: "Engagement letter", doer: "teammate:drafting", checker: "person:alex", output: { kind: "sent", target: "Letter for signature" }, how: "tailor", template: "Engagement letter", due_offset_ms: DAY },
+    { title: "Review the draft with {client}", doer: "person:alex", output: { kind: "decision", target: "Approved or changes" }, how: "person", depends_on: ["Engagement letter"], due_offset_ms: 3 * DAY },
+  ],
+  Drafting: [{ title: "Draft the trust and will", doer: "teammate:drafting", checker: "person:chris", output: { kind: "file", target: "Trust and will" }, how: "assistant", due_offset_ms: 5 * DAY }],
+  Signing: [
+    { title: "Signing date", doer: "person:alex", output: { kind: "fields", target: "signing" }, how: "person" },
+    { title: "Collect signatures", doer: "person:alex", output: { kind: "file", target: "Signed documents" }, how: "person", depends_on: ["Signing date"] },
+  ],
+  Funding: [{ title: "Fund the trust and record the deed", doer: "agent:rev", checker: "person:chris", output: { kind: "file", target: "Recorded deed" }, how: "assistant" }],
+};
+
+/** @type {TypeDefinition} */
 export const contact = {
-  id: "contact", name: "Contact", plural: "Contacts", icon: "users", space: "harlow", titleKey: "name", initials: true,
+  name: "contact", label: "Contact", icon: "users",
   fields: [
-    { key: "name", label: "Name", kind: "text", required: true },
-    { key: "role", label: "Role", kind: "choice", options: ["Client", "Referrer", "Vendor", "Friend", "Family"] },
-    { key: "email", label: "Email", kind: "email" },
-    { key: "phone", label: "Phone", kind: "phone" },
-    { key: "rating", label: "Fit", kind: "rating" },
-    { key: "address", label: "Address", kind: "address" },
-    { key: "dob", label: "Date of birth", kind: "date" },
-    { key: "ssn", label: "SSN", kind: "sealed" },
-    { key: "acct", label: "Account number", kind: "sealed" },
-    { key: "notes", label: "Notes", kind: "richText" },
-    { key: "matter", label: "Matter", kind: "link", link: "matter" },
+    { name: "name", label: "Name", kind: "text", required: true },
+    { name: "role", label: "Role", kind: "choice", options: ["Client", "Referrer", "Vendor", "Friend", "Family"] },
+    { name: "email", label: "Email", kind: "emails" },
+    { name: "phone", label: "Phone", kind: "phones" },
+    { name: "rating", label: "Fit", kind: "rating" },
+    { name: "address", label: "Address", kind: "address" },
+    { name: "dob", label: "Date of birth", kind: "date" },
+    { name: "ssn", label: "SSN", kind: "sealed", seal: { level: "human", class: "us-ssn" } },
+    { name: "acct", label: "Account number", kind: "sealed", seal: { level: "human", class: "bank-account" } },
+    { name: "notes", label: "Notes", kind: "rich_text" },
+    { name: "matter", label: "Matter", kind: "ref", to: "matter" },
   ],
-  views: {
-    list: { columns: ["role", "email", "phone", "rating"], sort: "name" },
-    board: { groupBy: "role", card: ["email", "rating"] },
-  },
 };
 
-/** @type {TypeDef} */
+/** @type {TypeDefinition} */
 export const matter = {
-  id: "matter", name: "Matter", plural: "Matters", icon: "records", space: "harlow", titleKey: "title", holdsWork: true,
+  name: "matter", label: "Matter", icon: "records",
   fields: [
-    { key: "title", label: "Title", kind: "text", required: true },
-    { key: "client", label: "Client", kind: "link", link: "contact" },
-    { key: "plan", label: "Plan", kind: "choice", options: ["Will", "Trust", "Both"] },
-    { key: "situation", label: "Family situation", kind: "text" },
-    { key: "assets", label: "Assets in play", kind: "text" },
-    { key: "pressure", label: "Time pressure", kind: "text" },
-    { key: "fee", label: "Fee", kind: "money", currency: "USD" },
-    { key: "stage", label: "Stage", kind: "stage", stages: MATTER_STAGES },
-    { key: "owner", label: "Owner", kind: "actor" },
-    { key: "opened", label: "Opened", kind: "date" },
-    { key: "closing", label: "Closing", kind: "date" },
-    { key: "docs", label: "Main document", kind: "file" },
+    { name: "title", label: "Title", kind: "text", required: true },
+    { name: "client", label: "Client", kind: "link", to: "contact" },
+    { name: "plan", label: "Plan", kind: "choice", options: ["Will", "Trust", "Both"] },
+    { name: "situation", label: "Family situation", kind: "text" },
+    { name: "assets", label: "Assets in play", kind: "text" },
+    { name: "pressure", label: "Time pressure", kind: "text" },
+    { name: "fee", label: "Fee", kind: "money" },
+    { name: "stage", label: "Stage", kind: "stage", options: MATTER_STAGES },
+    { name: "owner", label: "Owner", kind: "actor" },
+    { name: "opened", label: "Opened", kind: "date" },
+    { name: "closing", label: "Closing", kind: "date" },
+    { name: "docs", label: "Main document", kind: "file" },
   ],
-  views: {
-    list: { columns: ["client", "stage", "fee", "owner"], sort: "closing" },
-    board: { groupBy: "stage", card: ["title", "client", "fee", "owner"] },
-    calendar: { date: "closing" },
-    dashboard: { widgets: [
-      { kind: "sum", field: "fee", where: "stage != Closed" },
-      { kind: "countBy", field: "stage" },
-      { kind: "funnel", field: "stage", where: "Intake..Signing" },
-      { kind: "recent" },
-    ] },
-  },
+  stages: MATTER_STAGES.map(name => ({ name, ...(ESTATE_KIT_TASKS[name] ? { tasks: ESTATE_KIT_TASKS[name] } : {}) })),
 };
 
-/** @type {TypeDef} */
+/** @type {TypeDefinition} */
 export const project = {
-  id: "project", name: "Project", plural: "Projects", icon: "projects", space: "mine", titleKey: "title", holdsWork: true,
+  name: "project", label: "Project", icon: "projects",
   fields: [
-    { key: "title", label: "Title", kind: "text", required: true },
-    { key: "stage", label: "Phase", kind: "stage", stages: PROJECT_STAGES },
-    { key: "owner", label: "Owner", kind: "actor" },
-    { key: "priority", label: "Priority", kind: "choice", options: ["Low", "Normal", "High"] },
-    { key: "budget", label: "Budget", kind: "money", currency: "USD" },
-    { key: "due", label: "Due", kind: "date" },
-    { key: "brief", label: "Brief", kind: "file" },
-    { key: "notes", label: "Notes", kind: "richText" },
+    { name: "title", label: "Title", kind: "text", required: true },
+    { name: "stage", label: "Phase", kind: "stage", options: PROJECT_STAGES },
+    { name: "owner", label: "Owner", kind: "actor" },
+    { name: "priority", label: "Priority", kind: "choice", options: ["Low", "Normal", "High"] },
+    { name: "budget", label: "Budget", kind: "money" },
+    { name: "due", label: "Due", kind: "date" },
+    { name: "brief", label: "Brief", kind: "file" },
+    { name: "notes", label: "Notes", kind: "rich_text" },
   ],
-  views: {
-    list: { columns: ["stage", "owner", "priority", "due"], sort: "due" },
-    board: { groupBy: "stage", card: ["title", "owner", "due"] },
-    calendar: { date: "due" },
-    dashboard: { widgets: [{ kind: "countBy", field: "stage" }, { kind: "sum", field: "budget", where: "stage != Ship" }, { kind: "recent" }] },
-  },
 };
 
-/** @type {TypeDef} */
+/** @type {TypeDefinition} */
 export const trip = {
-  id: "trip", name: "Trip", plural: "Trips", icon: "planner", space: "mine", titleKey: "title", holdsWork: true,
+  name: "trip", label: "Trip", icon: "planner",
   fields: [
-    { key: "title", label: "Title", kind: "text", required: true },
-    { key: "stage", label: "Status", kind: "stage", stages: TRIP_STAGES },
-    { key: "where", label: "Destination", kind: "address" },
-    { key: "leaves", label: "Leaves", kind: "date" },
-    { key: "returns", label: "Returns", kind: "date" },
-    { key: "budget", label: "Budget", kind: "money", currency: "USD" },
-    { key: "with", label: "Travelling with", kind: "actor" },
-    { key: "booking", label: "Booking code", kind: "sealed", showLast4: true },
-    { key: "plan", label: "Itinerary", kind: "file" },
-    { key: "notes", label: "Notes", kind: "richText" },
+    { name: "title", label: "Title", kind: "text", required: true },
+    { name: "stage", label: "Status", kind: "stage", options: TRIP_STAGES },
+    { name: "where", label: "Destination", kind: "address" },
+    { name: "leaves", label: "Leaves", kind: "date" },
+    { name: "returns", label: "Returns", kind: "date" },
+    { name: "budget", label: "Budget", kind: "money" },
+    { name: "with", label: "Travelling with", kind: "actor" },
+    { name: "booking", label: "Booking code", kind: "sealed", seal: { level: "ai", class: "free", hint_allowed: true } },
+    { name: "plan", label: "Itinerary", kind: "file" },
+    { name: "notes", label: "Notes", kind: "rich_text" },
   ],
-  views: {
-    list: { columns: ["stage", "where", "leaves", "budget"], sort: "leaves" },
-    board: { groupBy: "stage", card: ["title", "leaves", "budget"] },
-    calendar: { date: "leaves" },
-  },
 };
 
-/** @type {TypeDef} */
+/** @type {TypeDefinition} */
 export const template = {
-  id: "template", name: "Template", plural: "Templates", icon: "lines", space: "harlow", titleKey: "name",
+  name: "template", label: "Template", icon: "lines",
   fields: [
-    { key: "name", label: "Name", kind: "text", required: true },
-    { key: "kind", label: "Kind", kind: "choice", options: ["Email", "Letter", "Form"] },
-    { key: "body", label: "Body", kind: "richText" },
-    { key: "owner", label: "Owner", kind: "actor" },
-    { key: "uses", label: "Times used", kind: "number" },
-    { key: "updated", label: "Updated", kind: "date" },
-    { key: "source", label: "Source file", kind: "file" },
+    { name: "name", label: "Name", kind: "text", required: true },
+    { name: "kind", label: "Kind", kind: "choice", options: ["Email", "Letter", "Form"] },
+    { name: "body", label: "Body", kind: "rich_text" },
+    { name: "owner", label: "Owner", kind: "actor" },
+    { name: "uses", label: "Times used", kind: "number" },
+    { name: "updated", label: "Updated", kind: "date" },
+    { name: "source", label: "Source file", kind: "file" },
   ],
-  views: {
-    list: { columns: ["kind", "owner", "uses", "updated"], sort: "name" },
-    board: { groupBy: "kind", card: ["owner", "uses"] },
-  },
 };
 
-/** @type {TypeDef[]} */
+/** @type {TypeDefinition[]} */
 export const types = [contact, matter, project, trip, template];
 export const TYPES = types;
 export default types;
 
-/** @param {string} id @returns {TypeDef | undefined} */
-export const typeById = id => types.find(t => t.id === id);
+/** @param {string} name @returns {TypeDefinition | undefined} */
+export const typeByName = name => types.find(t => t.name === name);
