@@ -27,7 +27,8 @@ export const actorString = a => `${a.kind}:${a.id}@${a.space}`;
 export const chainHash = (/** @type {any} */ chain) => sha256(canonical({ space: chain.space, hops: chain.hops.map((/** @type {any} */ h) => ({ actor: h.actor, via: h.via, entered_by: h.entered_by })) }));
 
 /** Approval is accepted only from a chain that is exactly one person (invariant 4). */
-export const isExactlyPerson = (/** @type {any} */ chain) => isChain(chain) && chain.hops.length === 1 && chain.hops[0].actor.kind === "person";
+/** One person acting for themselves. A viewer chain (a person in the room an assistant writes for) is NOT: it is the kernel's read-only view of them, never their own act. */
+export const isExactlyPerson = (/** @type {any} */ chain) => isChain(chain) && chain.viewer !== true && chain.hops.length === 1 && chain.hops[0].actor.kind === "person";
 
 export const hasKind = (/** @type {any} */ chain, /** @type {string} */ kind) => chain.hops.some((/** @type {any} */ h) => h.actor.kind === kind);
 

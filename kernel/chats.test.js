@@ -111,3 +111,43 @@ test("chats survive a rebuild from the sealed log, with their sessions", async (
   assert.deepEqual([...C.read(bob, c.id).people].sort(), [BOB, CAROL]);
   assert.equal((await stream.audienceFor({ token: t.token })).chains.length, 2);
 });
+
+test("V-1: a viewer chain is never a person acting for themselves: every person-only call refuses it", async () => {
+  const { k, bob, C, g } = await rig();
+  const { isExactlyPerson } = await import("./core/chain.js");
+  const { chainCtx } = await import("./seal/wire.js");
+  const stream = k.kernelFor({ name: "stream", needs: { kernel: { actions: [] } } });
+  const c = await C.create(bob, { people: [CAROL] });
+  const t = await k.surfaces.open(bob);
+  await C.bind(bob, t.session, c.id);
+  const [v] = (await stream.audienceFor({ token: t.token })).chains;
+  assert.equal(v.viewer, true);
+  assert.equal(isExactlyPerson(v), false);
+  assert.equal(chainCtx(v).one_person, false, "the sealing process sees no single person");
+  // the probe from the gate: a token for a viewer chain must not be made, so it cannot become a full session chain
+  await assert.rejects(() => k.surfaces.open(v), { code: "chain_not_person" });
+  const refused = { code: "chain_not_person" };
+  await assert.rejects(() => C.create(v, {}), refused);
+  await assert.rejects(() => C.change(v, c.id, { add_people: [ADA] }), refused);
+  await assert.rejects(() => C.bind(v, "s-v", c.id), refused);
+  const role = { person: ADA, role: "member" };
+  await assert.rejects(() => g.setRole(v, role, { presence: proof("grants.role", role, `vyre://${SPACE}/member/${ADA}`) }), refused);
+  await assert.rejects(() => g.offers.offer(v, { side: "space_allows", member: BOB }, {}), refused);
+  for (const call of ["decide", "declineFix", "unblock"]) if (typeof k.gateway.ask?.[call] === "function") await assert.rejects(() => k.gateway.ask[call](v, "task_x", {}), e => e.code === "chain_not_person" || e.code === "not_found" || e.code === "bad_input", call);
+});
+
+test("V-2: canRead answers per viewer, so a reply is built from what each person in the room may read", async () => {
+  const { k, bob, C } = await rig();
+  const stream = k.kernelFor({ name: "stream", needs: { kernel: { actions: [] } } });
+  const c = await C.create(bob, { people: [OWNER] });
+  const t = await k.surfaces.open(bob);
+  await C.bind(bob, t.session, c.id);
+  const { chains } = await stream.audienceFor({ token: t.token });
+  const res = `vyre://${SPACE}/contact/x`;
+  const can = await Promise.all(chains.map(v => stream.canRead(v, res)));
+  const by = Object.fromEntries(chains.map((v, i) => [v.hops[0].actor.id, can[i]]));
+  assert.deepEqual(by, { [BOB]: true, [OWNER]: true }, "members read a contact by default");
+  const other = `vyre://spc_bbbbbbbbbbbb/contact/x`;
+  assert.deepEqual(await Promise.all(chains.map(v => stream.canRead(v, other))), [false, false], "another Space is never readable");
+  assert.equal(await stream.canRead(chains[0], res, "no.such.action"), false, "an unknown action is a no");
+});

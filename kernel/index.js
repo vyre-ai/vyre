@@ -102,6 +102,8 @@ export async function createKernel(cfg) {
         if (people.length < 2) return Object.freeze({ group: false });
         return Object.freeze({ group: true, chains: Object.freeze(people.map((/** @type {string} */ person) => chains.fromFacts({ kind: "viewer", person, vouched: true }))) });
       },
+      /** May this chain (a viewer of one person in the room, or any) read this resource? A probe: no row predicates, nothing counted or logged. For the harness to answer each viewer from what THAT person may read. */
+      canRead: async (/** @type {any} */ chain, /** @type {string} */ resource, /** @type {string} */ action = "records.read") => (await gateway.authorize({ chain, action, resource, probe: true })).effect === "allow",
       serviceChain: () => gateway.serviceChain(m.name),
       chain: async (/** @type {any} */ meta) => (meta && typeof meta.token === "string" ? surfaces.chainFor(meta.token) : (await ready, gateway.serviceChain(m.name))),
     };
