@@ -46,6 +46,8 @@ export function createGrantsStore(cfg) {
   /** @type {Set<string>} agent, service and automation actors that belong to the Space */ const actors = new Set();
   /** @type {Map<string, any>} pending, single-use invitations an admin approved */ const invites = new Map();
   /** @type {Map<string, any>} compute offers: the two grants a member's computer runs a Space's work under */ const offers = new Map();
+  /** @type {Map<string, any>} chats: the people (and assistants) in a room, which is the audience a turn in it writes for and the readers of its stream */ const chats = new Map();
+  /** @type {Map<string, any>} session -> { chat, asker }: the chat a session's turn answers in, bound once by the asker and never changed */ const chatSessions = new Map();
   /** @type {Set<(e: { id: string, side: string, member: string, device: string | null, reason: string }) => void>} */ const revokeListeners = new Set();
   const tell = (/** @type {any} */ o, /** @type {string} */ reason, /** @type {any} */ by) => { for (const f of revokeListeners) { try { f({ id: o.id, side: o.side, member: o.member, device: o.device, reason }, by); } catch { /* a listener never blocks a change */ } } };
   /** @type {{ gate: any, allowed: any, registry: () => Map<string, any> } | null} */ let bound = null;
@@ -57,7 +59,7 @@ export function createGrantsStore(cfg) {
   const kernelChain = () => cfg.chains.fromFacts({ kind: "module", module: "grants", first_party: true });
   // K-3: the seal is the sealing process (or, for a development kernel with no sealing process, a local key). The store holds no key of its own.
   const seal = cfg.seal || createKernelSeal({ sealer: cfg.sealer, key: cfg.key });
-  const LEGACY_RE = /^(grant|member|actor|offer|invite)\./;
+  const LEGACY_RE = /^(grant|member|actor|offer|invite|chat)\./;
   // Every event this store writes is sealed (one `kernel.mac` per event) and numbered on THIS store's own chain: `gseq` counts its events and `gprev` is the hash of the
   // seal of the one before. A genuine event copied and appended again later has an old `gseq`, so rebuild skips it: a revoked grant or a removed member cannot be replayed
   // back. (The log's own position cannot be the number: another writer appends between the MAC and the append now that the MAC is a round trip to the sealing process.)
@@ -489,12 +491,89 @@ export function createGrantsStore(cfg) {
       return membership;
     },
 
+    // ---- chats: who is in a room (the kernel's own list, never a module's) ----
+    // A chat is a list of people and assistants. The kernel keeps it because three decisions depend on it and none may be a module's word: who may READ the chat's stream
+    // (its participants only: an owner or admin outside it is refused; an assistant reads only chats the person it acts for is in), who is in the AUDIENCE of a turn an
+    // assistant writes (every person in the room, asker included), and who may change the list (a person in it). Every call here takes a kernel-built chain.
+    /** @param {any} chain @param {{ people?: string[], assistants?: string[], id?: string }} [o] */
+    async chatCreate(chain, o = {}) {
+      const p = person(chain);
+      if (!memberOk(p)) throw new KernelError("not_a_member", "only a member starts a chat");
+      const people = [...new Set([p.id, ...(Array.isArray(o.people) ? o.people.map(String) : [])])];
+      for (const x of people) if (!memberOk({ kind: "person", id: x, space: cfg.space })) throw new KernelError("bad_input", "everyone in a chat is a member of the Space");
+      const assistants = [...new Set((Array.isArray(o.assistants) ? o.assistants : []).map(String))];
+      for (const a of assistants) if (!memberOk({ kind: "agent", id: a, space: cfg.space })) throw new KernelError("bad_input", "an assistant in a chat belongs to the Space");
+      if (people.length > 100 || assistants.length > 20) throw new KernelError("bad_input", "too many in one chat");
+      const id = o.id === undefined ? `chat_${mintUuid(clock())}` : String(o.id);
+      if (!/^chat_[A-Za-z0-9_-]{4,64}$/.test(id) || chats.has(id)) throw new KernelError("bad_input", "a chat id is new and shaped chat_...");
+      const rec = freeze({ id, space: cfg.space, people, assistants, made_by: p.id, at: clock() });
+      chats.set(id, rec);
+      await note(chain, "chat.created", urn("chat", id), { chat: rec }, null);
+      return rec;
+    },
+    /** Add or remove people and assistants. Only a person in the chat does it; nobody else, an owner or admin included. @param {any} chain @param {string} id @param {{ add_people?: string[], remove_people?: string[], add_assistants?: string[], remove_assistants?: string[] }} change */
+    async chatChange(chain, id, change = {}) {
+      const p = person(chain);
+      const c = chats.get(String(id));
+      if (!c || !c.people.includes(p.id) || !memberOk(p)) throw new KernelError("not_found", "no such chat");
+      const people = new Set(c.people), assistants = new Set(c.assistants);
+      for (const x of change.add_people || []) { if (!memberOk({ kind: "person", id: String(x), space: cfg.space })) throw new KernelError("bad_input", "everyone in a chat is a member of the Space"); people.add(String(x)); }
+      for (const x of change.remove_people || []) people.delete(String(x));
+      for (const x of change.add_assistants || []) { if (!memberOk({ kind: "agent", id: String(x), space: cfg.space })) throw new KernelError("bad_input", "an assistant in a chat belongs to the Space"); assistants.add(String(x)); }
+      for (const x of change.remove_assistants || []) assistants.delete(String(x));
+      if (!people.size || people.size > 100 || assistants.size > 20) throw new KernelError("bad_input", "a chat keeps at least one person");
+      const n = freeze({ ...c, people: [...people], assistants: [...assistants] });
+      chats.set(c.id, n);
+      await note(chain, "chat.changed", urn("chat", c.id), { id: c.id, people: n.people, assistants: n.assistants }, null);
+      return n;
+    },
+    /**
+     * The read decision for a chat's stream: its participants only. A person reads when they are in the chat. An assistant (a chain of a person and an agent) reads when the
+     * PERSON it acts for is in the chat and the assistant is a participant. An owner or admin who is not in the chat is refused, and a refusal looks like absence.
+     * @param {any} chain @param {string} id @returns {any} the chat's people and assistants
+     */
+    chatRead(chain, id) {
+      const c = chats.get(String(id));
+      const hops = isChain(chain) ? chain.hops : [];
+      const who = hops[0] && hops[0].actor.kind === "person" ? hops[0].actor : null;
+      const agent = hops.length === 2 && hops[1].actor.kind === "agent" ? hops[1].actor : null;
+      const shape = hops.length === 1 ? Boolean(who) : Boolean(who && agent);
+      if (!c || !shape || !memberOk(who) || !c.people.includes(who.id) || (agent && !c.assistants.includes(agent.id))) throw new KernelError("not_found", "no such chat");
+      return c;
+    },
+    /**
+     * Bind a session to the chat its turn answers in. The asker (a person chain, in the chat) does it once; the binding never changes, and a module cannot make or
+     * move one. `chatAudience(session)` then names the room from this, never from an argument.
+     * @param {any} chain @param {string} session @param {string} chat
+     */
+    async chatBind(chain, session, chat) {
+      const p = person(chain);
+      const s = String(session);
+      if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(s)) throw new KernelError("bad_input", "a session id is a short plain string");
+      const c = chats.get(String(chat));
+      if (!c || !c.people.includes(p.id) || !memberOk(p)) throw new KernelError("not_found", "no such chat");
+      const have = chatSessions.get(s);
+      if (have) { if (have.chat === c.id) return have; throw new KernelError("bad_input", "that session already belongs to another chat"); }
+      const rec = freeze({ chat: c.id, asker: p.id, at: clock() });
+      chatSessions.set(s, rec);
+      await note(chain, "chat.session", urn("chat", c.id), { session: s, chat: c.id, asker: p.id }, null);
+      return rec;
+    },
+    /** The people a session's turn writes for: every person in the session's chat, the asker first. Never from an argument; throws when it cannot be built. @param {string} session @returns {string[]} */
+    chatAudience(session) {
+      const b = chatSessions.get(String(session));
+      const c = b && chats.get(b.chat);
+      if (!b || !c) throw new KernelError("no_audience", "this session is not in a chat the kernel knows, so there is no room to write for");
+      if (!memberOk({ kind: "person", id: b.asker, space: cfg.space })) throw new KernelError("no_audience", "the person this turn is for is no longer a member");
+      return [b.asker, ...c.people.filter((/** @type {string} */ x) => x !== b.asker && memberOk({ kind: "person", id: x, space: cfg.space }))];
+    },
+
     /**
      * The whole state as one sealed event: what a migration from an older key writes, and what rebuild can start from. Kernel-only.
      * A snapshot is a point the log can be read from: events before it are not needed once it exists.
      */
     async snapshot() {
-      const state = { grants: [...grants.values()], memberships: [...memberships.values()], actors: [...actors], offers: [...offers.values()], invites: [...invites.values()] };
+      const state = { grants: [...grants.values()], memberships: [...memberships.values()], actors: [...actors], offers: [...offers.values()], invites: [...invites.values()], chats: [...chats.values()], chat_sessions: [...chatSessions].map(([session, v]) => ({ session, ...v })) };
       await note(kernelChain(), "grants.snapshot", urn("grant", "snapshot"), { state });
       return { grants: state.grants.length, memberships: state.memberships.length };
     },
@@ -507,7 +586,7 @@ export function createGrantsStore(cfg) {
      * @returns {Promise<{ legacy: number, migrated: boolean }>}
      */
     async rebuild() {
-      grants.clear(); memberships.clear(); actors.clear(); offers.clear(); invites.clear();
+      grants.clear(); memberships.clear(); actors.clear(); offers.clear(); invites.clear(); chats.clear(); chatSessions.clear();
       gseq = 0; gprev = "genesis";
       const evs = cfg.log.read({}).filter((/** @type {any} */ e) => e.data && typeof e.data === "object" && (LEGACY_RE.test(e.type) || e.type === "owner.changed" || e.type === "grants.snapshot"));
       /** @type {{ e: any, mac: any, n: number | undefined, prev: any, core: any, legacy: boolean }[]} */
@@ -536,6 +615,9 @@ export function createGrantsStore(cfg) {
         else if (e.type === "actor.added") actors.add(actorKey(d.actor));
         else if (e.type === "offer.created") offers.set(d.offer.id, freeze(structuredClone(d.offer)));
         else if (e.type === "offer.revoked") { const o = offers.get(d.id); if (o) offers.set(d.id, freeze({ ...o, status: "revoked", revoked_at: e.time })); }
+        else if (e.type === "chat.created") { if (!chats.has(d.chat.id)) chats.set(d.chat.id, freeze(structuredClone(d.chat))); }
+        else if (e.type === "chat.changed") { const c = chats.get(d.id); if (c) chats.set(d.id, freeze({ ...c, people: [...d.people], assistants: [...d.assistants] })); }
+        else if (e.type === "chat.session") { if (!chatSessions.has(d.session) && chats.has(d.chat)) chatSessions.set(d.session, freeze({ chat: d.chat, asker: d.asker, at: e.time })); }
       };
       if (snap) {
         const st = snap.core.state;
@@ -544,6 +626,8 @@ export function createGrantsStore(cfg) {
         for (const a of st.actors) actors.add(a);
         for (const o of st.offers) offers.set(o.id, freeze(structuredClone(o)));
         for (const v of st.invites) invites.set(v.id, freeze(structuredClone(v)));
+        for (const c of st.chats || []) chats.set(c.id, freeze(structuredClone(c)));
+        for (const { session, ...v } of st.chat_sessions || []) chatSessions.set(session, freeze(structuredClone(v)));
         nextN = /** @type {number} */ (snap.n) + 1; nextPrev = sha256(snap.mac);
       } else {
         // 3a. Events an older key sealed, in log order, each position-bound under a legacy key.

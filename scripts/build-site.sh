@@ -121,6 +121,13 @@ else
 fi
 # The web app at /app/ (apps/app/dist), which vyre.tgz ships; nothing when --src has no apps/app.
 sh "$here/scripts/build-app.sh" --src "$src"
+# The build kind is part of what is signed: the package says "release", so its daemon ignores the developer switches (kernel/devbuild.js). The checkout keeps "development".
+if [ -f "$src/lib/build-kind.js" ]; then
+  kind_keep=$(mktemp)
+  cp "$src/lib/build-kind.js" "$kind_keep"
+  sed -i.bak 's/BUILD_KIND = "development"/BUILD_KIND = "release"/' "$src/lib/build-kind.js" && rm -f "$src/lib/build-kind.js.bak"
+  trap 'cp -f "$kind_keep" "$src/lib/build-kind.js" 2>/dev/null; rm -f "$kind_keep"' EXIT
+fi
 # npm pack writes the tarball's name on its last line of stdout.
 name=$(cd "$src" && npm pack --silent --pack-destination "$out" | tail -n 1)
 mv "$out/$name" "$out/vyre.tgz"

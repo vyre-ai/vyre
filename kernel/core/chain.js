@@ -111,6 +111,13 @@ export function createChainBuilder(cfg) {
         if (f.person !== cfg.owner && !isMember(f.person)) return refuse("the session's person is not a member");
         return make([hop("person", f.person, "session", { node: `session:${f.session}` })], base());
       }
+      case "viewer": {
+        // One person in the room an assistant writes for. Built by the kernel from the chat's own list (kernel/index.js audienceFor), never from a module's word. It reads
+        // what that person may read and can do nothing else: authorize refuses every act above read for it, and it holds no session, so it never stands for presence.
+        if (!f.vouched || typeof f.person !== "string" || !f.person) return refuse("viewer not vouched by the kernel");
+        if (f.person !== cfg.owner && !isMember(f.person)) return refuse("the viewer is not a member");
+        return make([hop("person", f.person, "surface", { surface: "viewer" })], base(), { viewer: true });
+      }
       case "module": return appendService(f.inbound, f.module, f.first_party);
       case "job": return restore(f.stored);
       default: return refuse("unknown facts");

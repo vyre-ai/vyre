@@ -107,6 +107,8 @@ export function createAuthorizer(cfg) {
       // An unknown trust value is the most restrictive, never trusted (invariant 9).
       const trust = TRUST_ORDER.includes(chain.labels.trust) ? chain.labels.trust : "untrusted";
       if (trust === "untrusted" && risk !== "read") return deny("tainted");
+      // A viewer chain (one person in the room an assistant writes for) reads and does nothing else.
+      if (chain.viewer === true && risk !== "read") return deny("viewer_chain");
       // A grant is a person's act: never from a chain that holds a model, whatever it was lent (invariants 2 and 4).
       if (risk === "grant" && hasKind(chain, "agent")) return deny("model_chain");
 
