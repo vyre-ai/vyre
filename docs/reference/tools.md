@@ -2030,7 +2030,7 @@ Approve one version of a Flow, by its hash: a person, in their own name, and onl
 
 - Input:
   - `space` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
 - Needs a person present.
 
 ### `flows.card`
@@ -2039,7 +2039,7 @@ The approval card for a Flow version: what it can do, what it needs, what change
 
 - Input:
   - `space` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
 
 ### `flows.code`
 
@@ -2047,7 +2047,7 @@ A Flow as code you can read and edit.
 
 - Input:
   - `space` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
 
 ### `flows.compile-text`
 
@@ -2055,7 +2055,7 @@ Check text as a Flow without storing it.
 
 - Input:
   - `space` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
 
 ### `flows.define`
 
@@ -2063,7 +2063,7 @@ Write a Flow, as text or in its stored form. Nothing runs until a person approve
 
 - Input:
   - `space` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
 
 ### `flows.get`
 
@@ -2071,7 +2071,7 @@ One Flow version as stored.
 
 - Input:
   - `space` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
 
 ### `flows.graph`
 
@@ -2079,7 +2079,7 @@ A Flow as a graph for the canvas.
 
 - Input:
   - `space` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
 
 ### `flows.kit.card`
 
@@ -2087,7 +2087,7 @@ The install card for a Kit.
 
 - Input:
   - `space` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
 
 ### `flows.kit.list`
 
@@ -2095,7 +2095,7 @@ The Kits of a Space.
 
 - Input:
   - `space` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
 
 ### `flows.kit.propose`
 
@@ -2103,7 +2103,7 @@ Propose a Kit for approval: its types, templates, roles and Flows. A person's ow
 
 - Input:
   - `space` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
 
 ### `flows.kit.remove`
 
@@ -2111,7 +2111,7 @@ Remove a Kit. A person's own.
 
 - Input:
   - `space` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
 
 ### `flows.list`
 
@@ -2119,7 +2119,7 @@ The Flows of a Space.
 
 - Input:
   - `space` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
 
 ### `flows.pause`
 
@@ -2127,7 +2127,7 @@ Pause a Flow. A person's own.
 
 - Input:
   - `space` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
 
 ### `flows.resume`
 
@@ -2135,7 +2135,7 @@ Resume a paused Flow. A person's own.
 
 - Input:
   - `space` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
 
 ### `flows.retry`
 
@@ -2143,7 +2143,7 @@ Retry a failed run. A person's own.
 
 - Input:
   - `space` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
 
 ### `flows.run`
 
@@ -2151,7 +2151,7 @@ One run: its trigger, its steps, what it did.
 
 - Input:
   - `space` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
 
 ### `flows.runs`
 
@@ -2159,7 +2159,7 @@ Recent runs of a Flow, newest first.
 
 - Input:
   - `space` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
 
 ### `flows.simulate`
 
@@ -2167,7 +2167,7 @@ Replay recent events through a Flow without doing anything.
 
 - Input:
   - `space` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
 
 ### `flows.start`
 
@@ -2175,7 +2175,7 @@ Start a Flow now, with an input.
 
 - Input:
   - `space` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
 
 ## gate
 

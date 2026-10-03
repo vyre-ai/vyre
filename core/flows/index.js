@@ -55,7 +55,7 @@ export default {
     };
     for (const [name, description] of Object.entries(WHAT)) {
       ctx.tool(name, {
-        description, input: open,
+        description, input: open, callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "mcp", "harness"],
         ...(name === "flows.approve" ? { presence: { summary: async (/** @type {any} */ i) => `Approve Flow ${String(i && i.id || "")} version ${String(i && i.version || "")}` } } : {}),
         run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
           const f = hostOf(input || {});
