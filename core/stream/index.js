@@ -12,13 +12,15 @@ import crypto from "node:crypto";
 import { Logs } from "./log.js";
 import { createAdapter, pipe } from "./adapter.js";
 import { serveWS } from "./server.js";
+import { createGroups } from "./group.js";
 
 export { SessionLog, Logs } from "./log.js";
 export { serve, serveSSE, serveWS, HEARTBEAT_MS } from "./server.js";
 export { connect, wsDuplex, sseDuplex, trim } from "./client.js";
 export { createAdapter, pipe } from "./adapter.js";
 export * from "./protocol.js";
-export { whoAnswers } from "./routing.js";
+export { whoAnswers, mentionedIn } from "./routing.js";
+export { createGroups } from "./group.js";
 export { render, assertAskerCanRead, canRead, placeholder, cutData } from "./viewer.js";
 export { createPresence, presenceFor, PRESENCE_MS } from "./presence.js";
 export { createReadMarkers } from "./readmarks.js";
@@ -41,7 +43,7 @@ export default {
     const logs = new Logs({ db: ctx.store && ctx.store.db, maxFrames: cfg.maxFrames, maxBytes: cfg.maxBytes });
     /** @type {Map<string, ReturnType<typeof createAdapter>>} */
     const adapters = new Map();
-    /** @type {Map<string, { session: string, expires: number, from: number|null }>} */
+    /** @type {Map<string, { session: string, expires: number, from: number|null, person: string }>} */
     const tickets = new Map();
     const sockets = new Set();
 
@@ -82,8 +84,11 @@ export default {
       return p;
     };
 
+    const groups = ctx.store && ctx.store.db ? createGroups({ ctx, logs, db: ctx.store.db }) : null;
+
     const off = ctx.events.on("*", (/** @type {any} */ e) => {
       if (!e || !e.thread || !EVENTS.test(e.type)) return;
+      if (groups) groups.onEvent(e);
       const waiting = held.get(e.thread);
       if (waiting) { waiting.push(e); return; }
       if (!seen.has(e.thread)) {
@@ -95,9 +100,9 @@ export default {
 
     ctx.tool("stream.open", {
       description: "A one-use ticket (30 s) for the session stream at path, resuming after cursor from (0 for everything the log holds). Also the log's head and floor: a from below floor will be sent a reset.",
-      input: obj({ session: str, from: int }, ["session"]),
+      input: obj({ session: str, from: int, as: str }, ["session"]),
       callers: PEOPLE,
-      run: async (/** @type {any} */ i) => {
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const session = String(i.session || "");
         if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(session)) { const e = /** @type {any} */ (new Error("session must be a thread id")); e.code = "bad_input"; throw e; }
         if (!seen.has(session)) { seen.add(session); if (logs.get(session).head === 0) await seed(session); }
@@ -105,7 +110,7 @@ export default {
         for (const [k, v] of tickets) if (v.expires <= now()) tickets.delete(k);
         const ticket = crypto.randomBytes(24).toString("base64url");
         const from = Number.isInteger(i.from) && i.from >= 0 ? i.from : null;
-        tickets.set(ticket, { session, expires: now() + ticketMs, from });
+        tickets.set(ticket, { session, expires: now() + ticketMs, from, person: groups ? groups.person(meta, i) : "person:owner" });
         const log = logs.get(session);
         return { session, ticket, path: `/v1/streams/stream/session?ticket=${encodeURIComponent(ticket)}${from === null ? "" : `&from=${from}`}`, head: log.head, floor: log.floor };
       },
@@ -123,14 +128,30 @@ export default {
         const from = Number.isInteger(n) && n >= 0 ? n : held.from ?? undefined;
         sockets.add(socket);
         socket.on("close", () => sockets.delete(socket));
-        serveWS(logs.get(held.session), req, socket, head, from === undefined ? {} : { from });
+        serveWS(logs.get(held.session), req, socket, head, { ...(from === undefined ? {} : { from }), ...(groups ? { also: send => groups.hear(held.person, f => { if (f.session === held.session) send(f); }) } : {}) });
       } catch { reject(socket, 400, "Bad Request"); }
     });
 
+    const tool = (/** @type {string} */ name, /** @type {string} */ description, /** @type {any} */ input, /** @type {string} */ method) => ctx.tool(name, {
+      description, input, callers: PEOPLE,
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => { if (!groups) throw Object.assign(new Error("the stream has no store here"), { code: "unavailable" }); return /** @type {any} */ (groups)[method](i, meta); },
+    });
+    const bool = { type: "boolean" };
+    tool("stream.send", "Say something in a group chat (a stream session with several people and assistants). The words are the caller's, appended first; then routing decides who answers (an @mention, the default assistant when no person is talking to a person, or the assistants named in to) and each gets the words in its own thread; its replies appear in the group with that assistant as author and the caller as acts_for. Two or more answering assistants make a fan-out set. People and assistants join by being named in people and assistants (an assistant needs a cwd to work in). Retry with the same message id and nothing is said twice.",
+      obj({ session: str, text: str, message: str, mentions: { type: "array", items: str }, to: { type: "array", items: str }, people: { type: "array", items: {} }, assistants: { type: "array", items: {} }, default: str, cwd: str, group: str, surface: str, as: str, name: str }, ["session", "text"]), "send");
+    tool("stream.react", "React to a message in a group chat with an emoji (on: false takes it back).", obj({ session: str, message: str, emoji: str, on: bool, as: str }, ["session", "message", "emoji"]), "react");
+    tool("stream.pin", "Pin a message in a group chat (on: false unpins it).", obj({ session: str, message: str, on: bool, as: str }, ["session", "message"]), "pin");
+    tool("stream.keep", "Keep one answer of a fan-out set; the others stay, quieter.", obj({ session: str, group: str, keep: str, as: str }, ["session", "group", "keep"]), "keep");
+    tool("stream.mark-read", "Move the caller's read marker in a session forward to a cursor. The caller's other open connections hear it; nobody else does.", obj({ session: str, upto: int, as: str }, ["session", "upto"]), "markRead");
+
+    if (groups) await groups.start();
+
     return {
       logs,
+      groups,
       async stop() {
         off();
+        if (groups) groups.stop();
         for (const s of sockets) { try { s.destroy(); } catch {} }
         sockets.clear(); tickets.clear();
         logs.close();

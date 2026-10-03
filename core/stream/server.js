@@ -25,6 +25,7 @@ export const MAX_BUFFERED = 1024 * 1024;
  * @typedef {{ send: (f: any) => void, onClose: (cb: () => void) => void, close?: () => void,
  *   onMessage?: (cb: (m: any) => void) => void, buffered?: () => number, onDrain?: (cb: () => void) => void }} Conn
  * @typedef {{ from?: number, heartbeatMs?: number, maxBuffered?: number,
+ *   also?: (send: (f: any) => void) => (() => void) | void,
  *   timers?: { setInterval: Function, clearInterval: Function } }} ServeOptions
  */
 
@@ -40,6 +41,7 @@ export function serve(log, conn, opts = {}) {
   const maxBuffered = opts.maxBuffered ?? MAX_BUFFERED;
   let sent = 0, paused = false, closed = false, subscribed = false;
   /** @type {null | (() => void)} */ let off = null;
+  /** @type {null | (() => void)} */ let alsoOff = null;
   /** @type {any} */ let hb = null;
 
   const send = (/** @type {any} */ f) => { try { conn.send(f); } catch { shut(); } };
@@ -47,6 +49,7 @@ export function serve(log, conn, opts = {}) {
     if (closed) return;
     closed = true;
     if (off) { off(); off = null; }
+    if (alsoOff) { alsoOff(); alsoOff = null; }
     if (hb) { timers.clearInterval(hb); hb = null; }
     try { conn.close?.(); } catch {}
   };
@@ -91,6 +94,8 @@ export function serve(log, conn, opts = {}) {
     // One synchronous step: replay, then join. Nothing can append in between.
     if (!catchUp()) return;
     off = log.subscribe(onLive);
+    // Frames for this connection only (a person's read markers): no cursor, sent as they come.
+    if (opts.also) { const r = opts.also(f => { if (!closed) send(f); }); if (typeof r === "function") alsoOff = r; }
     send(heartbeatFrame(log.session, sent));
     hb = timers.setInterval(() => {
       if (closed) return;
