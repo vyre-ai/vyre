@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createKernel } from "./index.js";
 import { canonical, sha256 } from "./core/canonical.js";
+import { CONTACT } from "./conformance/suite.js";
 
 const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner", BOB = "per_bob", CAROL = "per_carol", ADA = "per_ada";
 const proof = (action, input, resource) => ({ op: `grant.${action.split(".")[1]}`, fields: { resource, input_hash: sha256(canonical({ action, input })) }, n: Math.random() });
@@ -34,11 +35,14 @@ test("chat read: participants only; an owner or admin outside the chat is refuse
   assert.throws(() => C.read(bob, "chat_nonesuch0"), { code: "not_found" });
 });
 
-test("chat change: only a person in the chat changes it, and everyone in it is a member", async () => {
-  const { owner, bob, carol, ada, C } = await rig();
+test("CH-2: only a person in the chat changes it: never a viewer chain, an assistant, or someone outside; each change is an event", async () => {
+  const { k, owner, bob, carol, ada, asst, C } = await rig();
   const c = await C.create(bob, {});
-  await assert.rejects(() => C.change(owner, c.id, { add_people: [ADA] }), { code: "not_found" }, "the owner is not in it");
-  await assert.rejects(() => C.change(carol, c.id, { add_people: [ADA] }), { code: "not_found" });
+  const viewer = k.chains.fromFacts({ kind: "viewer", person: BOB, vouched: true });
+  for (const who of [viewer, asst(BOB, "s-a"), owner, carol]) {
+    await assert.rejects(() => C.change(who, c.id, { add_people: [ADA] }), e => ["chain_not_person", "not_found"].includes(e.code));
+  }
+  await assert.rejects(() => C.create(viewer, {}), { code: "chain_not_person" });
   await assert.rejects(() => C.change(bob, c.id, { add_people: ["per_stranger"] }), { code: "bad_input" });
   const n = await C.change(bob, c.id, { add_people: [ADA] });
   assert.deepEqual([...n.people].sort(), [ADA, BOB]);
@@ -46,108 +50,132 @@ test("chat change: only a person in the chat changes it, and everyone in it is a
   await C.change(ada, c.id, { remove_people: [BOB] });
   assert.throws(() => C.read(bob, c.id), { code: "not_found" });
   await assert.rejects(() => C.change(ada, c.id, { remove_people: [ADA] }), { code: "bad_input" }, "a chat keeps a person");
+  assert.ok(k.log.read({ type: "chat.changed" }).length >= 2, "each change is an event");
 });
 
-test("audienceFor(extra): the room comes from the session behind the token and the chat it was bound to, never an argument; group chains are read-only viewers, asker first; anything unknown throws", async () => {
+test("CH-1: the chat is in the token from birth, checked at open: no bind step, no first come, a session cannot be pointed at another chat", async () => {
+  const { k, bob, carol, ada, C } = await rig();
+  assert.equal(C.bind, undefined, "there is no bind");
+  assert.equal(k.kernelFor({ name: "stream", needs: { kernel: { actions: [] } } }).chats.bind, undefined);
+  const group = await C.create(bob, { people: [CAROL] });
+  const priv = await C.create(bob, {});
+  await assert.rejects(() => k.surfaces.open(ada, { chat: group.id }), { code: "not_found" }, "an admin outside the chat cannot open a session for it");
+  await assert.rejects(() => k.surfaces.open(carol, { chat: priv.id }), { code: "not_found" });
+  await assert.rejects(() => k.surfaces.open(bob, { chat: "chat_nonesuch0" }), { code: "not_found" });
+  const t = await k.surfaces.open(bob, { chat: group.id });
+  assert.equal((await k.surfaces.verify(t.token)).chat, group.id);
+  // the chat cannot be edited in the token: a changed body no longer verifies
+  const [body, mac] = t.token.split(".");
+  const forged = Buffer.from(JSON.stringify({ ...JSON.parse(Buffer.from(body, "base64url").toString()), chat: priv.id })).toString("base64url");
+  await assert.rejects(() => k.surfaces.verify(`${forged}.${mac}`), { code: "not_a_member" });
+});
+
+test("audienceFor: the room is the running turn's own token; a handle, no chains; solo is not a group; unknown is refused; an opener who left has no room", async () => {
   const { k, bob, carol, C } = await rig();
   const stream = k.kernelFor({ name: "stream", needs: { kernel: { actions: [] } } });
-  const c = await C.create(bob, { people: [CAROL, OWNER] });
-  const t = await k.surfaces.open(bob);
-  await assert.rejects(() => stream.audienceFor({ token: t.token }), { code: "no_audience" }, "a session bound to no chat");
-  await assert.rejects(() => stream.audienceFor({}), { code: "no_audience" }, "no token");
-  await assert.rejects(() => stream.audienceFor({ token: "x.y", session: t.session, chat: c.id }), { code: "no_audience" }, "a named session or chat is not a token");
-  await assert.rejects(() => stream.audienceFor(undefined), { code: "no_audience" });
-  await assert.rejects(() => C.bind(k.chains.fromFacts({ kind: "device", device_key_id: "d-x", person: ADA, path: "direct" }), t.session, c.id), { code: "not_found" }, "only someone in the chat binds");
-  await C.bind(bob, t.session, c.id);
-  const room = await stream.audienceFor({ token: t.token });
-  assert.equal(room.group, true);
-  assert.equal(room.chains.length, 3);
-  assert.equal(room.chains[0].hops[0].actor.id, BOB, "asker first");
-  assert.deepEqual(room.chains.map(x => x.hops[0].actor.id).sort(), [BOB, CAROL, OWNER].sort());
-  for (const v of room.chains) assert.equal(v.viewer, true);
-  // a binding never moves, and someone else cannot take the session over
-  const other = await C.create(bob, {});
-  await assert.rejects(() => C.bind(bob, t.session, other.id), { code: "bad_input" });
-  await C.bind(carol, t.session, c.id);
-  assert.equal((await stream.audienceFor({ token: t.token })).chains[0].hops[0].actor.id, BOB, "the asker stays bob");
-  // a person who left the room is not in the audience of a later turn
-  await C.change(bob, c.id, { remove_people: [CAROL] });
-  assert.equal((await stream.audienceFor({ token: t.token })).chains.some(x => x.hops[0].actor.id === CAROL), false);
-  // a chat of one person is not a group
+  const group = await C.create(bob, { people: [CAROL, OWNER] });
   const solo = await C.create(bob, {});
-  const t2 = await k.surfaces.open(bob);
-  await C.bind(bob, t2.session, solo.id);
-  assert.deepEqual(await stream.audienceFor({ token: t2.token }), { group: false });
-  // a revoked session has no room
-  k.surfaces.revoke(t2.session);
-  await assert.rejects(() => stream.audienceFor({ token: t2.token }), { code: "no_audience" });
+  const tg = await k.surfaces.open(bob, { chat: group.id }), ts = await k.surfaces.open(bob, { chat: solo.id }), tn = await k.surfaces.open(bob);
+  const on = token => k.bindCalls(() => (token ? { token } : null));
+  on(null);
+  await assert.rejects(() => stream.audienceFor({ token: tg.token }), { code: "no_audience" }, "no running call: a token a module passes is nothing");
+  on(tn.token);
+  await assert.rejects(() => stream.audienceFor({}), { code: "no_audience" }, "a session with no chat is not a chat session");
+  on(tg.token);
+  const room = await stream.audienceFor({ token: ts.token });
+  assert.equal(room.group, true);
+  assert.equal(room.size, 3, "the running call's own token decides, whatever a module passes");
+  assert.deepEqual(Object.keys(room).sort(), ["canRead", "group", "read", "size"], "no chains, no names");
+  on(ts.token);
+  assert.deepEqual(await stream.audienceFor({ token: tg.token }), { group: false });
+  // CH-5: the opener leaves the chat: no room, and no write
+  on(tg.token);
+  await C.change(carol, group.id, { remove_people: [BOB] });
+  await assert.rejects(() => stream.audienceFor({}), { code: "no_audience" });
+  await assert.rejects(() => stream.chats.append(tg.token, { body: "hi" }), { code: "not_found" });
 });
 
-test("a viewer chain reads and does nothing else", async () => {
-  const { k, bob, carol, C } = await rig();
+test("CH-3: a reply lands only in its own chat: one-to-one cannot write into a group, another chat is refused, an unlisted assistant is refused", async () => {
+  const { k, bob, C } = await rig();
   const stream = k.kernelFor({ name: "stream", needs: { kernel: { actions: [] } } });
-  const c = await C.create(bob, { people: [CAROL] });
-  const t = await k.surfaces.open(bob);
-  await C.bind(bob, t.session, c.id);
-  const [v] = (await stream.audienceFor({ token: t.token })).chains;
-  const w = await k.gateway.authorize({ chain: v, action: "records.update", resource: `vyre://${SPACE}/contact/x` });
-  assert.equal(w.effect, "deny");
-  assert.equal(w.reason, "viewer_chain");
-  assert.ok(carol);
+  const group = await C.create(bob, { people: [CAROL], assistants: ["kit"] });
+  const solo = await C.create(bob, {});
+  const tg = await k.surfaces.open(bob, { chat: group.id }), ts = await k.surfaces.open(bob, { chat: solo.id });
+  const m = await stream.chats.append(tg.token, { body: { text: "the fee is 4321" } });
+  assert.equal(m.chat, group.id);
+  assert.ok(m.id && m.hash);
+  await assert.rejects(() => stream.chats.append(ts.token, { chat: group.id, body: "x" }), { code: "not_found" }, "a session opened one-to-one cannot name the group");
+  await assert.rejects(() => stream.chats.append(tg.token, { chat: solo.id, body: "x" }), { code: "not_found" }, "another chat");
+  assert.equal((await stream.chats.append(ts.token, { body: "mine" })).chat, solo.id, "the destination is the token's chat");
+  await assert.rejects(() => stream.chats.append(tg.token, { body: "x".repeat(70_000) }), { code: "bad_input" });
+  await assert.rejects(() => stream.chats.append("not.a-token", { body: "x" }), { code: "not_found" });
+  const ev = k.log.read({ type: "message.added" });
+  assert.equal(ev.length, 2);
+  assert.ok(!JSON.stringify(ev).includes("4321"), "the log names who wrote where and a hash, never the text");
+  // an assistant's session writes only where it is listed
+  const ta = await k.surfaces.open(bob, { chat: group.id, agent: "kit" });
+  assert.equal((await stream.chats.append(ta.token, { body: "from kit" })).chat, group.id);
+  const tb = await k.surfaces.open(bob, { chat: solo.id, agent: "kit" });
+  await assert.rejects(() => stream.chats.append(tb.token, { body: "x" }), { code: "not_found" }, "kit is not in the one-to-one chat");
 });
 
-test("chats survive a rebuild from the sealed log, with their sessions", async () => {
-  const { k, bob, C, g } = await rig();
+test("room read: a field is a value only when everyone may read it and holds the same value; sealed is always restricted; unreadable or missing is null", async () => {
+  const { k, owner, bob, C } = await rig();
   const stream = k.kernelFor({ name: "stream", needs: { kernel: { actions: [] } } });
-  const c = await C.create(bob, { assistants: ["kit"] });
-  const t = await k.surfaces.open(bob);
-  await C.bind(bob, t.session, c.id);
-  await C.change(bob, c.id, { add_people: [CAROL] });
-  await g.rebuild();
-  assert.deepEqual([...C.read(bob, c.id).people].sort(), [BOB, CAROL]);
-  assert.equal((await stream.audienceFor({ token: t.token })).chains.length, 2);
-  await k.grants.snapshot();
-  await g.rebuild();
-  assert.deepEqual([...C.read(bob, c.id).people].sort(), [BOB, CAROL]);
-  assert.equal((await stream.audienceFor({ token: t.token })).chains.length, 2);
+  const R = k.gateway.records;
+  await R.define(owner, { add_types: [CONTACT] });
+  const c = await R.create(owner, "contact", { name: "Jane", age: 40, ssn: { sealed: "ssn", ref: "sv_1", present: true, valid_format: true, set_at: 1 } });
+  const group = await C.create(bob, { people: [OWNER] });
+  const t = await k.surfaces.open(bob, { chat: group.id });
+  k.bindCalls(() => ({ token: t.token }));
+  const room = await stream.audienceFor({});
+  const got = await room.read(c.urn);
+  assert.equal(got.values.name, "Jane");
+  assert.equal(got.values.age, 40);
+  assert.ok(got.restricted.includes("ssn") && !("ssn" in got.values), "a sealed field is a placeholder for everyone");
+  assert.deepEqual((await room.read(c.urn, ["name"])).values, { name: "Jane" });
+  assert.equal(await room.read(`vyre://${SPACE}/contact/nonesuch0000`), null);
+  assert.equal(await room.read("vyre://spc_bbbbbbbbbbbb/contact/x"), null);
+  assert.equal(await room.read("not a urn"), null);
+  assert.equal(await room.canRead(c.urn), true);
+  assert.equal(await room.canRead("vyre://spc_bbbbbbbbbbbb/contact/x"), false);
+  assert.equal(await room.canRead("nonsense"), false);
 });
 
-test("V-1: a viewer chain is never a person acting for themselves: every person-only call refuses it", async () => {
+test("a viewer chain is never a person acting for themselves, and a model's session cannot become one: every person-only call refuses it", async () => {
   const { k, bob, C, g } = await rig();
   const { isExactlyPerson } = await import("./core/chain.js");
   const { chainCtx } = await import("./seal/wire.js");
-  const stream = k.kernelFor({ name: "stream", needs: { kernel: { actions: [] } } });
-  const c = await C.create(bob, { people: [CAROL] });
-  const t = await k.surfaces.open(bob);
-  await C.bind(bob, t.session, c.id);
-  const [v] = (await stream.audienceFor({ token: t.token })).chains;
+  const v = k.chains.fromFacts({ kind: "viewer", person: BOB, vouched: true });
   assert.equal(v.viewer, true);
   assert.equal(isExactlyPerson(v), false);
   assert.equal(chainCtx(v).one_person, false, "the sealing process sees no single person");
-  // the probe from the gate: a token for a viewer chain must not be made, so it cannot become a full session chain
   await assert.rejects(() => k.surfaces.open(v), { code: "chain_not_person" });
   const refused = { code: "chain_not_person" };
+  const c = await C.create(bob, {});
   await assert.rejects(() => C.create(v, {}), refused);
   await assert.rejects(() => C.change(v, c.id, { add_people: [ADA] }), refused);
-  await assert.rejects(() => C.bind(v, "s-v", c.id), refused);
+  assert.throws(() => C.read(v, c.id), { code: "not_found" });
   const role = { person: ADA, role: "member" };
   await assert.rejects(() => g.setRole(v, role, { presence: proof("grants.role", role, `vyre://${SPACE}/member/${ADA}`) }), refused);
   await assert.rejects(() => g.offers.offer(v, { side: "space_allows", member: BOB }, {}), refused);
-  for (const call of ["decide", "declineFix", "unblock"]) if (typeof k.gateway.ask?.[call] === "function") await assert.rejects(() => k.gateway.ask[call](v, "task_x", {}), e => e.code === "chain_not_person" || e.code === "not_found" || e.code === "bad_input", call);
+  const w = await k.gateway.authorize({ chain: v, action: "records.update", resource: `vyre://${SPACE}/contact/x` });
+  assert.deepEqual([w.effect, w.reason], ["deny", "viewer_chain"]);
+  for (const call of ["decide", "declineFix", "unblock"]) if (typeof k.gateway.ask?.[call] === "function") await assert.rejects(() => k.gateway.ask[call](v, "task_x", {}), e => ["chain_not_person", "not_found", "bad_input"].includes(e.code), call);
 });
 
-test("V-2: canRead answers per viewer, so a reply is built from what each person in the room may read", async () => {
-  const { k, bob, C } = await rig();
+test("chats and their changes survive a rebuild from the sealed log, and a token still names its chat", async () => {
+  const { k, bob, C, g } = await rig();
   const stream = k.kernelFor({ name: "stream", needs: { kernel: { actions: [] } } });
-  const c = await C.create(bob, { people: [OWNER] });
-  const t = await k.surfaces.open(bob);
-  await C.bind(bob, t.session, c.id);
-  const { chains } = await stream.audienceFor({ token: t.token });
-  const res = `vyre://${SPACE}/contact/x`;
-  const can = await Promise.all(chains.map(v => stream.canRead(v, res)));
-  const by = Object.fromEntries(chains.map((v, i) => [v.hops[0].actor.id, can[i]]));
-  assert.deepEqual(by, { [BOB]: true, [OWNER]: true }, "members read a contact by default");
-  const other = `vyre://spc_bbbbbbbbbbbb/contact/x`;
-  assert.deepEqual(await Promise.all(chains.map(v => stream.canRead(v, other))), [false, false], "another Space is never readable");
-  assert.equal(await stream.canRead(chains[0], res, "no.such.action"), false, "an unknown action is a no");
+  const c = await C.create(bob, { assistants: ["kit"] });
+  const t = await k.surfaces.open(bob, { chat: c.id });
+  await C.change(bob, c.id, { add_people: [CAROL] });
+  await g.rebuild();
+  assert.deepEqual([...C.read(bob, c.id).people].sort(), [BOB, CAROL]);
+  k.bindCalls(() => ({ token: t.token }));
+  assert.equal((await stream.audienceFor({})).size, 2);
+  await k.grants.snapshot();
+  await g.rebuild();
+  assert.deepEqual([...C.read(bob, c.id).people].sort(), [BOB, CAROL]);
+  assert.equal((await stream.audienceFor({})).size, 2);
 });

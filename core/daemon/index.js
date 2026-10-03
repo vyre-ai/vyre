@@ -17,7 +17,7 @@ import { isRealHome } from "../config/dialogs.js";
 import { assertDaemonHost } from "./host-guard.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
-import { Registry, discover, ownerDevice } from "../modules/index.js";
+import { Registry, discover, ownerDevice, currentCall } from "../modules/index.js";
 import { build, swWithBuild, htmlWithBuild } from "./build.js";
 import { serveApp } from "./app.js";
 import { acquire } from "./lock.js";
@@ -159,6 +159,7 @@ async function startLocked(opts, root, p, release) {
   if (opts.kernel === true || (opts.kernel === undefined && process.env.VYRE_KERNEL === "1")) {
     const { bootHomeKernel } = await import("../../kernel/home.js");
     kernel = await bootHomeKernel({ db, root, log, isFirstParty: dir => registry.isFirstParty(dir) });
+    if (typeof kernel.bindCalls === "function") kernel.bindCalls(currentCall);
     registry.deps.moduleHost = kernel.moduleHost;
     registry.deps.kernelFor = kernel.kernelFor;
     if (kernel.firstPartyCheck) registry.deps.firstPartyCheck = kernel.firstPartyCheck;
