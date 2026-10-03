@@ -52,7 +52,7 @@ function rig(over = {}) {
   const state = { roles };
   const tasks = createTasks({
     space: SPACE, authorizer, log, presence, chains, clock,
-    members: { has: a => members.has(`${a.kind}:${a.id}`) }, roleHolders: r => state.roles[r] || [], approver: () => actor("person", OWNER),
+    members: { has: a => members.has(`${a.kind}:${a.id}`), roleOf: a => (over.roleOf ? over.roleOf(a) : null) }, roleHolders: r => state.roles[r] || [], approver: () => actor("person", OWNER),
     responsible: (p, doer) => p.id === OWNER, responsibleFor: () => actor("person", OWNER),
     resolve: { template: async (id, v) => (v === 1 ? { body: "Hello {{sealed:ssn}}" } : null), contact: async (record, address) => address === "verified@example.com", sealed: async ref => (ref === "sv_1" ? { class: "us-ssn", record: `vyre://${SPACE}/contact/c1` } : null) },
     facts: { record: async () => ({ data: { size: 12, partner: "x", empty: "" } }), exists: async u => u.startsWith("vyre://") },
@@ -543,4 +543,30 @@ test("approval on authorize: an approved held-act task allows exactly that act b
   await r.tasks.decide(alice(), t2.id, { outcome: "approved", proof: r.proof(alice(), ALICE, t2) });
   T += 25 * 3600_000;
   assert.equal(r.tasks.useApproval({ id: t2.id, ...act }), false, "an approval older than 24 hours is no approval");
+});
+
+test("approval under an always-ask rule: only the named approver's approval stands", async () => {
+  const r = rig();
+  const t = await toNeedsCheck(r);
+  await r.tasks.decide(alice(), t.id, { outcome: "approved", proof: r.proof(alice(), ALICE, t) });
+  const act = { chain: asIntake(), action: "email.send", resource: `vyre://${SPACE}/message/m1` };
+  assert.equal(r.tasks.approvedAct({ id: t.id, ...act, rule: { id: "r1", approver: { person: ALICE } } }), true, "approved by the named person");
+  assert.equal(r.tasks.approvedAct({ id: t.id, ...act, rule: { id: "r1", approver: { person: "per_someone_else" } } }), false, "approved by someone else");
+  assert.equal(r.tasks.approvedAct({ id: t.id, ...act, rule: { id: "r1", approver: { role: "owner" } } }), false, "no role lookup wired here: a role approver cannot be confirmed, so it fails closed");
+  assert.equal(r.tasks.approvedAct({ id: t.id, ...act }), true, "no rule: any approval stands");
+});
+
+test("approval under an always-ask rule that names a ROLE: it stands only when the approver holds that role now", async () => {
+  let roles = { [ALICE]: "owner" };
+  const r = rig({ roleOf: a => roles[a.id] ?? null });
+  const t = await toNeedsCheck(r);
+  await r.tasks.decide(alice(), t.id, { outcome: "approved", proof: r.proof(alice(), ALICE, t) });
+  const act = { chain: asIntake(), action: "email.send", resource: `vyre://${SPACE}/message/m1` };
+  assert.equal(r.tasks.approvedAct({ id: t.id, ...act, rule: { id: "r1", approver: { role: "owner" } } }), true, "the approver is an owner");
+  assert.equal(r.tasks.approvedAct({ id: t.id, ...act, rule: { id: "r1", approver: { role: "admin" } } }), false, "another role");
+  roles = { [ALICE]: "member" };                                    // the role is read when the act is checked: she is no longer an owner
+  assert.equal(r.tasks.approvedAct({ id: t.id, ...act, rule: { id: "r1", approver: { role: "owner" } } }), false, "a role the approver no longer holds");
+  roles = { [ALICE]: "owner" };
+  assert.equal(r.tasks.useApproval({ id: t.id, ...act, rule: { id: "r1", approver: { role: "owner" } } }), true);
+  assert.equal(r.tasks.useApproval({ id: t.id, ...act, rule: { id: "r1", approver: { role: "owner" } } }), false, "once");
 });

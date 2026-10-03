@@ -14,7 +14,7 @@ const OUTWARD = new Set(["outward.send", "outward.pay", "outward.publish", "outw
 const PRESENCE_RANK = { none: 0, session: 1, fresh: 2 };
 const maxPresence = (/** @type {string} */ a, /** @type {string} */ b) => (PRESENCE_RANK[/** @type {'none'} */ (a)] >= PRESENCE_RANK[/** @type {'none'} */ (b)] ? a : b);
 // An obligation the kernel cannot recognise is never silently met: it makes the effect an ask (K1 item 8c).
-const KNOWN_OBLIGATIONS = new Set(["audit", "presence", "ask", "meter", "rate", "placeholders", "fields", "once"]);
+const KNOWN_OBLIGATIONS = new Set(["audit", "presence", "ask", "meter", "rate", "placeholders", "fields", "once", "draft_only"]);
 const REASON_RANK = ["no_grant", "wrong_node", "pattern_not_covered", "not_contained", "revoked", "expired"];
 
 /** Does an action pattern (`crm.update`, `crm.*`, `*.read`, `*`) cover `action`, for a grant made against action-set `version`? */
@@ -67,6 +67,7 @@ export function contains(parent, child, since = () => 0, riskOf = () => undefine
  * @property {(urn: string) => string[]} [sealedFields]
  * @property {(service: string, action: string, resource: string) => boolean} [standing] whether a service declared a standing read of this family of resources; a service with no declaration gets nothing
  * @property {(i: { id: string, chain: any, action: string, resource: string }) => boolean | Promise<boolean>} [approvedAct] does this approval (an approved held-act task) cover exactly this act by this chain? It is USED here: the hook marks it spent atomically as it answers yes, so an approval is one decision, whoever calls `authorize` (the gate or a Flow runner), and cannot be replayed for a second act.
+ * @property {{ match(i: { chain: any, action: string, resource: string }): any[] | Promise<any[]> }} [rules] the Space's standing rules (kernel/grants): asked BEFORE grants; a rule only tightens (never, always ask, draft only) and never allows
  * @property {(proof: any, ctx: any) => boolean | Promise<boolean>} [verifyPresence] the hardware-signer check (core/presence.js); default none
  * @property {(chain: any) => boolean} [hasPresenceSession]
  * @property {number} [policy_version]
@@ -85,12 +86,13 @@ export function createAuthorizer(cfg) {
   async function authorize(input) {
     const now = clock();
     const decision = mintId("dec", now);
+    /** @type {any} */ let ruleOf = null;
     const done = (/** @type {string} */ effect, /** @type {string} */ reason, grants = [], obligations = []) => {
       const obs = [...obligations];
       if (effect === "deny") obs.push({ type: "audit", class: "deny" });
       else if (effect === "ask") obs.push({ type: "audit", class: OUTWARD.has(reg.get(input?.action)?.risk) ? "outward" : "ask" });
       else if (OUTWARD.has(reg.get(input?.action)?.risk)) obs.push({ type: "audit", class: "outward" });
-      return Object.freeze({ effect, reason, grants: Object.freeze([...grants]), obligations: Object.freeze(obs.map(o => Object.freeze(o))), decision, policy_version: policyVersion });
+      return Object.freeze({ effect, reason, grants: Object.freeze([...grants]), obligations: Object.freeze(obs.map(o => Object.freeze(o))), decision, policy_version: policyVersion, ...(ruleOf ? { rule: Object.freeze({ id: ruleOf.id, kind: ruleOf.kind, label: ruleOf.label }) } : {}) });
     };
     const deny = (/** @type {string} */ reason) => done("deny", reason);
     try {
@@ -112,6 +114,15 @@ export function createAuthorizer(cfg) {
       if (chain.viewer === true && risk !== "read") return deny("viewer_chain");
       // A grant is a person's act: never from a chain that holds a model, whatever it was lent (invariants 2 and 4).
       if (risk === "grant" && hasKind(chain, "agent")) return deny("model_chain");
+
+      // Standing rules of the Space, BEFORE any grant: a rule's refusal wins, and a rule can only tighten. `never` refuses here; `always_ask` and `draft_only` shape the decision below.
+      /** @type {any[]} */ const ruled = cfg.rules ? await cfg.rules.match({ chain, action, resource }) : [];
+      const neverRule = ruled.find(r => r.kind === "never");
+      if (neverRule) { ruleOf = neverRule; return deny("rule_never"); }
+      const askRule = ruled.find(r => r.kind === "always_ask"), draftRule = ruled.find(r => r.kind === "draft_only");
+      ruleOf = askRule || draftRule || null;
+      // Fail closed: a draft-only rule on an action whose door does not prepare a draft would be a rule that does nothing, so the act is refused instead.
+      if (draftRule && !def.draftable) { ruleOf = draftRule; return deny("rule_draft_unsupported"); }
 
       // 2 and 3. Candidates and the effective grant per hop; the chain's authority is the intersection.
       const used = [];
@@ -166,6 +177,10 @@ export function createAuthorizer(cfg) {
       if (trust === "external" && (risk === "grant" || risk === "admin")) tainted = true;
       if (chain.labels.source_spaces.length > 1 && risk !== "read") tainted = true;
       if (tainted && !ask) ask = { kind: risk, approver: "owner" };
+      // An always-ask rule: approval every time by the named person or role, whatever any grant says (no grant can waive it; nothing here lowers it).
+      if (askRule) ask = { kind: risk, approver: askRule.approver, rule: askRule.id };
+      // A draft-only rule: the act may be done only as a draft in the outside system; the executor must never send, even after an approval.
+      if (draftRule) obligations.push({ type: "draft_only", rule: draftRule.id });
       if (unknownObligation && !ask) ask = { kind: risk, approver: "owner" };
 
       // 6. Sealed fields go to a model as placeholders; a property of the destination and the chain.
@@ -176,7 +191,7 @@ export function createAuthorizer(cfg) {
 
       // A held act the person approved (a task, by id) is the evidence that satisfies the outward ask for exactly that act by exactly that chain, once. The
       // approval stands in for the person's confirmation too: they gave it when they approved. Nothing else is waived (a deny stays a deny).
-      if (ask && OUTWARD.has(risk) && typeof input.approval === "string" && cfg.approvedAct && await cfg.approvedAct({ id: input.approval, chain, action, resource }) === true) {
+      if (ask && (OUTWARD.has(risk) || askRule) && typeof input.approval === "string" && cfg.approvedAct && await cfg.approvedAct({ id: input.approval, chain, action, resource, ...(askRule ? { rule: { id: askRule.id, approver: askRule.approver } } : {}) }) === true) {
         ask = null; presence = "none";
       }
 
@@ -189,7 +204,7 @@ export function createAuthorizer(cfg) {
         || (input.presence && cfg.verifyPresence ? await cfg.verifyPresence(input.presence, ctxEvidence) === true : false);
       const out = [...obligations];
       if (presence !== "none") out.push({ type: "presence", method: presence });
-      if (ask) out.push({ type: "ask", kind: ask.kind, approver: ask.approver, checker_must_be_person: true });
+      if (ask) out.push({ type: "ask", kind: ask.kind, approver: ask.approver, checker_must_be_person: true, ...(askRule ? { rule: askRule.id, waivable: false } : {}) });
       // 7. Return. Approvals are K4's: an ask stays an ask until the kernel's task machinery records the approval.
       if (ask) return done("ask", tainted && !OUTWARD.has(risk) ? "tainted" : "needs_approval", used, out);
       if (!presenceMet) return done("ask", "needs_presence", used, out);
