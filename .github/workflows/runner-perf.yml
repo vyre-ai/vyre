@@ -15,6 +15,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: sandbox tests (the home sandbox and the lent sandbox, on a macOS runner)
+        env:
+          VYRE_NO_WATCHDOG: ""
+        run: node --test --test-force-exit --test-reporter=spec core/runner/homesandbox.test.js core/runner/runner.test.js core/runner/hardening.test.js
       - name: measure
         env:
           VYRE_NO_WATCHDOG: "1"
