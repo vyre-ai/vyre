@@ -46,10 +46,14 @@ export function createRoom(cfg) {
     return Object.freeze({
       group: true,
       size: viewers.length,
-      /** True only when every person in the room may read it. */
+      /** True only when every person in the room may read it: a record, a task, a team member or a playbook, by its urn. */
       canRead: async (/** @type {string} */ resource) => {
         if (typeof resource !== "string" || !segments(resource)) return false;
-        try { return await everyone(async v => (await cfg.gateway.authorize({ chain: v, action: "records.read", resource, probe: true })).effect === "allow"); } catch { return false; }
+        // A task lives in the kernel's task store or as a record, so a task counts as readable only when BOTH reads allow it (the narrower of the two); team members, playbooks and
+        // every other record are `records.read` on their urn.
+        const type = segments(resource)[1];
+        const actions = type === "task" ? ["records.read", "tasks.read"] : ["records.read"];
+        try { return await everyone(async v => { for (const action of actions) if ((await cfg.gateway.authorize({ chain: v, action, resource, probe: true })).effect !== "allow") return false; return true; }); } catch { return false; }
       },
       /**
        * A record as the whole room may see it: `{ values, restricted }`, where a field is a value only when every person may read it and holds the same value. Any other
