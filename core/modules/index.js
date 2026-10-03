@@ -385,7 +385,15 @@ export function checkInput(schema, value, where = "input") {
  * module cannot hand it another turn's token: whatever it passes, the room is the one of the call the registry is running for it.
  */
 const callStore = new AsyncLocalStorage();
-export const currentCall = () => callStore.getStore() ?? null;
+/** The running call's meta, or null: once the call has returned, work it started (a timer, a floating promise) no longer sees it, so a turn's token cannot outlive the turn. */
+export const currentCall = () => { const b = callStore.getStore(); return b && b.live ? b.meta : null; };
+const runInTurn = async (/** @type {any} */ meta, /** @type {() => Promise<any>} */ f) => {
+  // A module the running turn calls (ctx.call) is still in that turn: it inherits the outer turn's token unless the call brought its own from the daemon.
+  const outer = callStore.getStore();
+  const inherited = outer && outer.live && typeof outer.meta.token === "string" && typeof meta.token !== "string" ? { ...meta, token: outer.meta.token } : meta;
+  const box = { meta: inherited, live: true };
+  try { return await callStore.run(box, f); } finally { box.live = false; }
+};
 
 export const SURFACE_LABELS = Object.freeze(["cli", "local", "deck", "capsule", "mobile"]);
 
@@ -1242,7 +1250,7 @@ export class Registry {
   /** @param {any} def @param {any} input @param {any} meta */
   async run(def, input, meta) {
     // The caller is passed on, so a tool like vault.release can check which module is asking.
-    try { return { data: await callStore.run(meta, () => def.run(input, meta)) }; }
+    try { return { data: await runInTurn(meta, () => def.run(input, meta)) }; }
     catch (e) {
       // A tool may throw an error carrying a code the caller can act on (a presence refusal, a
       // conflict, a missing grant). Pass a short lowercase code through; anything else is "failed".

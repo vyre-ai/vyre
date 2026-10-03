@@ -193,3 +193,35 @@ test("the daemon opens the Spaces registry at boot: a second hosted Space has it
   assert.deepEqual(d.kernel.spaces.list().sort(), [d.kernel.id.space, second.space].sort());
   assert.equal(d.kernel.spaces.for(second.space).kernel.grants.roleOf({ kind: "person", id: owner2, space: second.space }), "owner", "reopened from its own store and log");
 });
+
+test("R1/R2: the daemon sets meta.token only from a session token the kernel's own door verified; input and other headers never do; the running turn's token does not outlive the turn", { timeout: 60_000 }, async t => {
+  const { call } = await import("../core/daemon/client.js");
+  const { currentCall } = await import("../core/modules/index.js");
+  const root = tempHome(t);
+  globalThis.__vyreLate = [];
+  globalThis.__vyreCC = currentCall;
+  const fp = path.join(root, "modules");
+  fs.mkdirSync(fp, { recursive: true });
+  writeModule(fp, "zz-tok", { does: { tools: [{ name: "zz-tok.peek", reach: "anyone" }] } }, `
+    export default { async start(ctx) { ctx.tool("zz-tok.peek", { run: async (i, meta) => {
+      const cc = globalThis.__vyreCC, inside = cc() && cc().token || null;
+      setTimeout(() => { globalThis.__vyreLate.push(cc() && cc().token || null); }, 20);
+      return { meta: meta.token ?? null, inside };
+    } }); return {}; } };`);
+  const d = await start({ root, log: () => {}, kernel: true, firstPartyRoots: [fp] });
+  t.after(() => d.stop());
+  const person = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct" });
+  const ses = await d.kernel.surfaces.open(person);
+  const first = await call("zz-tok.peek", {}, { root, headers: { "x-vyre-kernel-session": ses.token } });
+  assert.ok(first.data, JSON.stringify(first));
+  const got = first.data;
+  assert.equal(got.meta, ses.token, "from the verified header");
+  assert.equal(got.inside, ses.token, "the running call sees it");
+  assert.equal((await call("zz-tok.peek", { token: ses.token }, { root })).data.meta, null, "never from the input");
+  const [body] = ses.token.split(".");
+  for (const bad of [`${body}.AAAA`, "x.y", "a".repeat(3000), `${body}.${"b".repeat(60)}`]) assert.equal((await call("zz-tok.peek", {}, { root, headers: { "x-vyre-kernel-session": bad } })).data.meta, null, "an invalid token is absent");
+  assert.equal((await call("zz-tok.peek", {}, { root, headers: { authorization: `Bearer ${ses.token}` } })).data.meta, null, "no other header");
+  await new Promise(r => setTimeout(r, 100));
+  assert.ok(globalThis.__vyreLate.length >= 1 && globalThis.__vyreLate.every(x => x === null), "work started in a turn no longer sees its token once the turn is over");
+  assert.equal(currentCall(), null);
+});
