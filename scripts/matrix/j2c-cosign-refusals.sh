@@ -145,7 +145,7 @@ updrefused B4-update-wrong-identity upd-wrongid "$R2" 'identit'
 updrefused B5-update-key-signature upd-key "$R3" 'no matching signatures|certificate'
 updrefused B6-update-digest-not-held upd-missing "$R4" 'no signatures|manifest|not found'
 # A release that is not pinned by digest at all (tailscale left on its tag) is refused before cosign runs.
-mkupd upd-tag "$R1"; sed -i "s|tailscale/tailscale@sha256:a*|tailscale/tailscale:stable|" "$WORK/upd-tag/compose.yml"
+mkupd upd-tag "$R1"; sed -i 's|^\([[:space:]]*image: \)tailscale/tailscale:.*$|\1tailscale/tailscale:stable|' "$WORK/upd-tag/compose.yml"
 (cd "$WORK/upd-tag" && fl=$(awk '{print $2}' SHA256SUMS | sort -u) && for f in $fl; do sha256sum "$f"; done >SHA256SUMS.new && mv SHA256SUMS.new SHA256SUMS)
 node -e 'const c=require("crypto"),fs=require("fs");const d=process.argv[1];const sums=fs.readFileSync(d+"/SHA256SUMS");fs.writeFileSync(d+"/SHA256SUMS.sig",c.sign(null,Buffer.concat([Buffer.from("vyre-release-sums\n"),sums]),c.createPrivateKey(fs.readFileSync(process.argv[2]))).toString("base64")+"\n");' "$WORK/upd-tag" "$WORK/good.pem"
 askupd upd-tag; ready; v=$(hv)
