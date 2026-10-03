@@ -25,7 +25,7 @@ export * from "./protocol.js";
 export { whoAnswers, mentionedIn } from "./routing.js";
 export { createDoorAdapter, pipeDoor, drainDoor } from "./door-adapter.js";
 export { createGroups } from "./group.js";
-export { render, forViewer, forViewerAsync, resolveRefs, hasRefs, mayView, assertAskerCanRead, canRead, placeholder, cutData } from "./viewer.js";
+export { render, forViewer, forViewerAsync, hiddenFrame, resolveRefs, hasRefs, mayView, assertAskerCanRead, canRead, placeholder, cutData } from "./viewer.js";
 export { createPresence, presenceFor, PRESENCE_MS } from "./presence.js";
 export { createReadMarkers } from "./readmarks.js";
 
@@ -48,7 +48,7 @@ export default {
     const logs = new Logs({ db: ctx.store && ctx.store.db, maxFrames: cfg.maxFrames, maxBytes: cfg.maxBytes, ...(cfg.retainHours !== undefined ? { retainMs: Number(cfg.retainHours) * 3600_000 } : {}) });
     /** @type {Map<string, ReturnType<typeof createAdapter>>} */
     const adapters = new Map();
-    /** @type {Map<string, { session: string, expires: number, from: number|null, person: string, caller: string, device: string, viewer: { id: string, roles: string[] } }>} */
+    /** @type {Map<string, { session: string, expires: number, from: number|null, person: string, caller: string, device: string, viewer: import("./viewer.js").Viewer & { id: string, roles: string[] } }>} */
     const tickets = new Map();
     const sockets = new Set();
 
@@ -137,7 +137,8 @@ export default {
         const { viewer: who0, chain, chat: kchat } = await access.read(session, meta, i);
         // A person who opens a chat after a restart gives the assistants answering them a session again; the group's list follows the kernel's.
         if (kchat && groups) await groups.mirror(session, { people: [...kchat.people], assistants: [...(kchat.assistants || [])] }, meta, who0.id, chain);
-        const who = { ...who0, resolve: resolverFor(who0, chain) };
+        // A chat of the kernel's: the viewer receives a reply only if they were in the chat at its membership version (asked of the reply port, never decided here), and sees the chat from their own join.
+        const who = { ...who0, resolve: resolverFor(who0, chain), ...(kchat && groups && groups.known(session) ? groups.viewerFor(session, who0.id) : {}) };
         if (!seen.has(session)) { seen.add(session); if (logs.get(session).head === 0) await seed(session); }
         else if (seeding.has(session)) await seeding.get(session);
         for (const [k, v] of tickets) if (v.expires <= now()) tickets.delete(k);

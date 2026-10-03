@@ -111,10 +111,13 @@ test("every message goes through chats.append under a token that carries the cha
   const sentFrame = w.frames(chat.id).find((/** @type {any} */ f) => f.type === "session.user-message");
   assert.ok(sentFrame.data.kid, "the stream stores the text under the kernel's id");
   assert.equal(sentFrame.data.kid, first[0].data.id);
-  // kit answers: nothing is shown until the message is whole and the kernel took it
+  // kit answers: the reply streams (the first delta opens it, stamped with the room's membership version); the kernel takes the whole text when it closes
   w.events.emit("threads", "thread.text", { message: "m1", block: 0, delta: "The fee is " }, { thread });
   await w.idle();
-  assert.equal(w.frames(chat.id).filter((/** @type {any} */ f) => f.type === "session.text-delta").length, 0, "no partial text before the kernel took the reply");
+  const partial = w.frames(chat.id).filter((/** @type {any} */ f) => f.type === "session.text-delta");
+  assert.equal(partial.length, 1, "the first delta is shown at once, not held until the message is whole");
+  assert.ok(Number.isInteger(partial[0].data.ver), "and it is stamped with the membership version it was opened at");
+  assert.equal(w.kernelMsgs().length, 1, "the kernel writes the reply when it closes");
   w.events.emit("threads", "thread.text", { message: "m1", block: 0, delta: "the usual one." }, { thread });
   w.events.emit("threads", "thread.text", { message: "m1", block: 0, done: true }, { thread });
   await w.idle();
@@ -129,12 +132,11 @@ test("every message goes through chats.append under a token that carries the cha
   assert.equal(all[1].data.chat, chat.id);
 });
 
-test("a reply the kernel refuses is shown nowhere: no delta, no frame, nothing in the log (the assistant was removed)", async t => {
+test("a reply the kernel refuses at open is shown nowhere (the assistant was removed before it spoke); one taken back mid-reply is cut where it is", async t => {
   const w = await world(t);
   const { chat, thread } = await asked(w);
-  w.events.emit("threads", "thread.text", { message: "m1", block: 0, delta: "SECRET-PARTIAL " }, { thread });
-  await w.idle();
   await w.C.change(w.chains.bob, chat.id, { remove_assistants: ["kit"] });
+  w.events.emit("threads", "thread.text", { message: "m1", block: 0, delta: "SECRET-PARTIAL " }, { thread });
   w.events.emit("threads", "thread.text", { message: "m1", block: 0, delta: "more words" }, { thread });
   w.events.emit("threads", "thread.text", { message: "m1", block: 0, done: true }, { thread });
   await w.idle();
@@ -148,6 +150,21 @@ test("a reply the kernel refuses is shown nowhere: no delta, no frame, nothing i
   t.after(() => c.close());
   await tick(150);
   assert.ok(!JSON.stringify(got).includes("SECRET-PARTIAL"));
+});
+
+test("a reply the kernel takes back while it streams: the words already sent stay, then it is cut and the kernel wrote none", async t => {
+  const w = await world(t);
+  const { chat, thread } = await asked(w);
+  w.events.emit("threads", "thread.text", { message: "m1", block: 0, delta: "first words " }, { thread });
+  await w.idle();
+  await w.C.change(w.chains.bob, chat.id, { remove_assistants: ["kit"] });
+  w.events.emit("threads", "thread.text", { message: "m1", block: 0, done: true }, { thread });
+  await w.idle();
+  const mine = w.frames(chat.id).filter((/** @type {any} */ f) => f.author === "assistant:kit");
+  assert.ok(mine.some((/** @type {any} */ f) => f.type === "session.text-delta"), "what streamed before stays");
+  assert.ok(mine.some((/** @type {any} */ f) => f.type === "session.text-cut"), "and it is cut");
+  assert.ok(!mine.some((/** @type {any} */ f) => f.type === "session.text-done"));
+  assert.equal(w.kernelMsgs().length, 1, "the kernel wrote no reply");
 });
 
 test("the token's chat is fixed: a turn in chat A cannot be redirected into chat B by anything the model emits", async t => {
