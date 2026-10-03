@@ -52,6 +52,9 @@ const P = {
   // The Connections board's own Lumen surface glyph (docs/design/one-app/project/
   // Connections.dc.html): not yet in icons.md's table, added here so the chip has one.
   capsule: '<rect x="2" y="6" width="12" height="4" rx="2"/>',
+  // The banner's two marks (ui/components): a quiet note, and a thing to look at.
+  info: '<circle cx="8" cy="8" r="5.8"/><path d="M8 7.2v3.6"/><circle cx="8" cy="5.2" r=".6" fill="currentColor" stroke="none"/>',
+  alert: '<path d="M8 2.6l5.6 9.8H2.4z"/><path d="M8 6.6v2.8"/><circle cx="8" cy="11" r=".6" fill="currentColor" stroke="none"/>',
 };
 
 const parser = new DOMParser();
