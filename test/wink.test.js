@@ -260,6 +260,23 @@ test("wink: the app's side carries the proof: pair.server without presence is re
   assert.equal((await w.call("wink.server.confirm", { offer: open.data.offer, typed: "WINK-0000-0000" }, SCREEN, bare)).error?.code, "not_found", "reaches the module with no proof");
 });
 
+test("wink: a new server code always replaces the old one: the abandoned code stops working and the offer closes", async t => {
+  const w = await world(t);
+  const first = (await w.call("wink.server.code", {})).data;
+  const second = (await w.call("wink.server.code", {})).data;
+  assert.ok(second.code && second.code !== first.code, "a different code, not the abandoned one");
+  assert.notEqual(second.offer, first.offer);
+  const offers = (await w.call("wink.offers")).data.offers;
+  assert.ok(!offers.some(o => o.id === first.offer), "the old offer is no longer waiting");
+  const old = typeCode(t, w, first.code);
+  assert.equal((await old.done).ok, false, "typing the abandoned code fails");
+  const { states, done } = typeCode(t, w, second.code);
+  await until(() => states.find(s => s.state === "ack"));
+  await until(() => w.events.find(e => e[0] === "wink.found"));
+  assert.equal((await w.call("wink.server.confirm", { offer: second.offer, typed: "WINK-0000-0000" })).data.ok, false);
+  await done;
+});
+
 test("wink cards: every card and prompt is in the words of wink-copy.md and never names a network, a key or a ticket", () => {
   const kinds = ["phone", "computer", "server", "invite", "lend", "share"];
   for (const kind of kinds) {
