@@ -58,7 +58,7 @@ test("each caller class does exactly what its label did: the table's rows, by th
   const rows = [
     ["the person at this machine (deck)", await on.can("deck", { kernelFacts: socket("deck") }), await off.can("deck"), YES],
     ["the person at this machine (cli)", await on.can("cli", { kernelFacts: socket("cli") }), await off.can("cli"), YES],
-    ["the Capsule (named exception)", await on.can("capsule"), await off.can("capsule"), YES],
+    ["the Capsule (pinned-binary proof)", await on.can("capsule", { kernelFacts: socket("capsule") }), await off.can("capsule"), YES],
     ["the person on another device over Wink (was tailnet:), signed in", await on.can("tailnet:alex@example.com", { kernelFacts: device("s1") }), await off.can("tailnet:alex@example.com", { person: { id: "s1" } }), YES],
     ["the same device, not signed in (CHANGED by the ruling: no personal reads)", await on.can("tailnet:alex@example.com", { kernelFacts: device() }), null, UNSIGNED],
     ["the person's device over the relay, signed in (CHANGED by the ruling: it reads as the owner)", await on.can("device:abcdefghijklmnop", { kernelFacts: device("s1", "relay") }), null, YES],

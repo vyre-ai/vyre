@@ -13,7 +13,6 @@ import { createRig } from "../../test/kernel-rig.js";
 import { MIGRATIONS } from "./schema.js";
 import { scrubIn, scanRows } from "./sealed.js";
 import memory from "./index.js";
-import { CAPSULE_EXCEPTION } from "./kernel-gate.js";
 
 const AGENTS = [{ name: "kit", kind: "assistant", projects: "*" }];
 const SSN = "123-45-6789";
@@ -101,10 +100,11 @@ test("c. a call with no kernel chain is refused: the caller label decides nothin
   assert.equal((await w.call("memory.stats", {}, "cli", undefined, surface("cli", 0))).code, "denied");
   // a person's own surface, proven by the daemon, is the owner
   for (const label of ["cli", "local", "deck"]) assert.ok(!(await w.call("memory.stats", {}, label, undefined, surface(label))).error, label);
-  // the named exceptions: a first-party module's own call (the registry's flag), and the Capsule until platform wires it
+  // the named exception: a first-party module's own call (the registry's flag). The Capsule is a surface like the rest: its chain needs the daemon's proof, and without it the call is refused.
   assert.ok(!(await w.call("memory.stats", {}, "module:assistant", undefined, { firstParty: true })).error);
   assert.equal((await w.call("memory.stats", {}, "module:assistant")).code, "denied", "a module that is not flagged first-party is no exception");
-  assert.ok(!(await w.call("memory.stats", {}, CAPSULE_EXCEPTION)).error, "the Capsule exception");
+  assert.ok(!(await w.call("memory.stats", {}, "capsule", undefined, surface("capsule"))).error, "the Capsule with the pinned-binary proof");
+  assert.equal((await w.call("memory.stats", {}, "capsule")).code, "denied", "the Capsule label alone is no proof");
 });
 
 test("c. with no kernel on the daemon nothing changes: the 0.2 rules stand alone", async t => {

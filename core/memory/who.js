@@ -64,5 +64,3 @@ export function whoOfChain(chain, surface = null) {
 
 /** A first-party module's own call: not a person, not an agent. @param {string} caller @returns {Who} */
 export const whoOfModule = caller => ({ ownerSurface: false, device: false, nodeDevice: false, signedIn: false, ownSession: false, agent: null, acting: null, module: { name: String(caller).slice(7), firstParty: true } });
-/** The Capsule, the named exception until platform wires its signature check into the daemon's facts: the owner's own surface. @returns {Who} */
-export const whoOfCapsule = () => ({ ownerSurface: true, device: false, nodeDevice: false, signedIn: false, ownSession: false, agent: null, acting: null, module: null, capsule: true });
