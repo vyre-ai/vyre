@@ -116,3 +116,18 @@ test("code step bodies are opaque strings, size capped and round-trip byte for b
   assert.equal(compile(print(kit)).codeSteps[0].body, body);
   fails(src.replace(JSON.stringify(body), "`a${1}`"), "forbidden_syntax");
 });
+
+test("the checked-in stored kit is what the source compiles to, and its text is a fixed point", () => {
+  const stored = JSON.parse(fs.readFileSync(new URL("../kits/estate-planning/kit.json", import.meta.url), "utf8"));
+  assert.deepEqual(stored, compile(KIT_SRC), "regenerate with: node records/language/cli.js compile records/kits/estate-planning/kit.ts > records/kits/estate-planning/kit.json");
+  assert.deepEqual(validateStored(stored), stored);
+});
+
+test("the kit's types are the kernel's TypeDefinition: every field has a label, the stage field and the stages agree, kinds are kernel kinds", async () => {
+  const { FIELD_KINDS } = await import("../../kernel/contracts/index.js");
+  const kit = compile(KIT_SRC);
+  for (const t of kit.types) {
+    assert.ok(t.label);
+    for (const f of t.fields) { assert.ok(f.label, `${t.name}.${f.name} has a label`); assert.ok(FIELD_KINDS.includes(f.kind)); if (f.kind === "sealed") assert.ok(f.seal.class && f.seal.level); }
+  }
+});
