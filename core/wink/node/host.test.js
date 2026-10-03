@@ -10,22 +10,29 @@ import { createHost } from "./host.js";
 import { peerSession } from "./peer-wire.js";
 
 const FWD = path.join(path.dirname(fileURLToPath(import.meta.url)), "testing", "fake-forwarder.js");
-const shared = crypto.randomBytes(32);
+const b64u = b => Buffer.from(b).toString("base64url");
+/** A device key as the identity list holds it: an Ed25519 key, `pub` raw base64url. */
+function deviceKey() {
+  const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
+  return { pub: b64u(publicKey.export({ format: "der", type: "spki" }).subarray(-32)), sign: m => b64u(crypto.sign(null, m, privateKey)) };
+}
 const HOME_NK = "nodekey:" + "11".repeat(32), SRV_NK = "nodekey:" + "22".repeat(32);
 
 function scratch(name) { return fs.mkdtempSync(path.join(SCRATCH, `h-${name}-`)); }
 
 /** A home host and a server host wired through the fake forwarder, the way two machines would be. */
-async function world(t, { blackhole = false, graceMs = 150, retryMs = 60_000, peers = null, hostOpts = {}, relayServe = null } = {}) {
+async function world(t, { entries = new Map(), key = deviceKey(), listed = true,  blackhole = false, graceMs = 150, retryMs = 60_000, peers = null, hostOpts = {}, relayServe = null, serveWith = null } = {}) {
   const homeRoot = scratch("home"), srvRoot = scratch("srv");
   const calls = /** @type {any[]} */ ([]);
+  if (listed) entries.set("srv1", { eid: "srv1", kind: "device", pub: key.pub });
+  const identity = { entry: async eid => entries.get(eid) || null };
   const home = createHost({ root: homeRoot, forwarderBin: FWD, spawn: (bin, args, o) => spawnFake(bin, args, { ...o.env, FAKE_NODEKEY: HOME_NK }) });
   home.addSpace({ id: "harlow", controlUrl: "http://127.0.0.1:1", hostname: "home", box: "box1", peerPort: 8443 });
   const routes = { "100.64.0.1:8443": home.peerSock("harlow") };
   const relayHooks = { opened: 0, fail: false };
   const server = createHost({ root: srvRoot, forwarderBin: FWD, graceMs, retryMs, ...hostOpts,
     spawn: (bin, args, o) => spawnFake(bin, args, { ...o.env, FAKE_NODEKEY: SRV_NK, FAKE_ROUTES: JSON.stringify(routes), ...(blackhole ? { FAKE_BLACKHOLE: "1" } : {}) }),
-    device: { id: "srv1", shared: () => (peers ? Buffer.from(peers.secretFor("srv1"), "base64url") : shared) },
+    device: { id: "srv1", sign: key.sign },
     relayPeer: async () => {
       relayHooks.opened++;
       if (relayHooks.fail) throw new Error("relay is down");
@@ -39,10 +46,10 @@ async function world(t, { blackhole = false, graceMs = 150, retryMs = 60_000, pe
   server.addSpace({ id: "harlow", controlUrl: "http://127.0.0.1:1", hostname: "srv", box: "box1", peerAddr: "100.64.0.1:8443" });
   await home.start("harlow");
   await server.start("harlow");
-  const serveFn = async (caller, tool, input) => { calls.push({ caller, tool, input }); return { tool, input, caller }; };
-  await home.serveHome("harlow", peers ? { peers, serve: serveFn, ...(relayServe ? { relayServe } : {}) } : { shared: (d, nk) => (d === "srv1" && nk === SRV_NK ? shared : null), serve: async (caller, tool, input) => { calls.push({ caller, tool, input }); return { tool, input, caller }; } });
+  const serveFn = async (caller, tool, input) => { calls.push({ caller, tool, input }); if (serveWith) serveWith(caller); return { tool, input, caller }; };
+  await home.serveHome("harlow", { identity, ...(peers ? { peers } : {}), serve: serveFn, ...(relayServe ? { relayServe } : {}) });
   t.after(async () => { await server.stopAll(); await home.stopAll(); });
-  return { home, server, calls, relayHooks };
+  return { home, server, calls, relayHooks, entries, key };
 }
 
 import { spawn } from "node:child_process";
@@ -121,17 +128,39 @@ test("host: a failed direct dial starts the relay at once, and the direct path i
   l2.close();
 });
 
-test("host: an unknown device or a node that is not the device's is not admitted on the direct path", async t => {
-  const w = await world(t, { graceMs: 100 });
-  const bad = createHost({ root: scratch("bad"), forwarderBin: FWD, graceMs: 100,
-    spawn: (bin, args, o) => spawnFake(bin, args, { ...o.env, FAKE_NODEKEY: "nodekey:" + "33".repeat(32), FAKE_ROUTES: JSON.stringify({ "100.64.0.1:8443": w.home.peerSock("harlow") }) }),
-    device: { id: "srv1", shared: () => shared } });
-  bad.addSpace({ id: "harlow", controlUrl: "http://127.0.0.1:1", hostname: "bad", box: "box1", peerAddr: "100.64.0.1:8443" });
-  await bad.start("harlow");
-  t.after(() => bad.stopAll());
-  const link = bad.connect("harlow");
+test("host: a device that is not on the identity list, or whose key is not the entry's, is not admitted on the direct path, and a removed one is refused at its next call", async t => {
+  // no entry for the device: refused, nothing served
+  const w = await world(t, { graceMs: 100, listed: false });
+  const link = w.server.connect("harlow", { dial: undefined });
   await assert.rejects(link.call("about.text", {}, { timeoutMs: 1500 }), e => e.code === "unreachable");
-  assert.equal(w.calls.length, 0, "nothing was served to a node that is not enrolled for the device");
+  assert.equal(w.calls.length, 0, "nothing was served to a device with no entry");
+  link.close();
+  // an entry holding another key: the device's signature does not verify
+  const w2 = await world(t, { graceMs: 100, listed: false, entries: new Map([["srv1", { eid: "srv1", kind: "device", pub: deviceKey().pub }]]) });
+  const l2 = w2.server.connect("harlow");
+  // the relay stream is admitted by the channel's own proof of the same eid (the entry exists), so the call may be served there; direct is never up
+  await l2.call("about.text", {}).catch(() => {});
+  assert.notEqual(l2.status().direct, "up", "a key that is not the entry's proves nothing on the direct path");
+  assert.ok(w2.calls.every(c => c.caller === "device:srv1"));
+  l2.close();
+});
+
+test("host: a device removed from the list after admission is refused at its very next call, direct and relay", async t => {
+  const w = await world(t, { graceMs: 5000 });
+  const link = w.server.connect("harlow");
+  assert.equal((await link.call("about.text", {})).caller, "device:srv1");
+  assert.equal(link.status().path, "direct");
+  w.entries.delete("srv1");
+  await assert.rejects(link.call("about.text", {}, { timeoutMs: 1500 }), e => e.code === "denied" || e.code === "unreachable");
+  const n = w.calls.length;
+  // the relay door reads the entry on each call as well
+  const stream = (await import("node:net"));
+  const [x, y] = await pairSockets(stream);
+  const { socketPipe } = await import("./peer-wire.js");
+  w.home.acceptRelay("harlow")(streamOver(y), { deviceId: "srv1" });
+  const c = peerSession(socketPipe(x), { first: 1 });
+  await assert.rejects(c.call("about.text", {}), e => e.code === "denied" || e.code === "unreachable");
+  assert.equal(w.calls.length, n, "a removed device is served nothing on either path");
   link.close();
 });
 
@@ -152,7 +181,7 @@ test("host: the dial socket is private (0600 in a 0700 directory)", async t => {
   assert.equal(fs.statSync(path.dirname(sock)).mode & 0o777, 0o700);
 });
 
-test("host: with the Wink module's peers, the home binds the node key the connection proved, and an unproven claim cannot take its place", async t => {
+test("host: with the Wink module's peers, the wrapper serves the proven device and the pairing record no longer binds a node key", async t => {
   const { DatabaseSync } = await import("node:sqlite");
   const { createPairing, MIGRATIONS, PEER_MIGRATIONS } = await import("../pairing.js");
   const db = new DatabaseSync(":memory:");
@@ -160,17 +189,12 @@ test("host: with the Wink module's peers, the home binds the node key the connec
   const ME = "per_aaaaaaaaaaaaaaaaaaaaaaaaaa";
   const pairing = createPairing({ ctx: { store: { db }, config: {}, log() {}, events: { emit() {} }, tool() {} }, now: Date.now, identity: async () => ME, space: async () => "harlow", directory: { memberships: async () => [] }, ports: {}, openCode: async () => ({}), ack: async () => ({ ok: true }), owner: () => {}, relayUrl: async () => "", spaceNow: () => "harlow" });
   pairing.devices.add({ id: "srv1", identity: ME, kind: "server", name: "juno", target: { kind: "identity", id: ME } });
-  // an attacker's unproven claim lands first
-  pairing.peers.shared("srv1", "nodekey:" + "99".repeat(32), "attacker");
   const w = await world(t, { peers: pairing.peers });
   const link = w.server.connect("harlow");
   const r = await link.call("about.text", { q: 1 });
   assert.equal(r.caller, "device:srv1");
   const row = pairing.devices.get("srv1");
-  assert.equal(row.nodeKey, SRV_NK, "the key the home saw on the proven connection is the one bound");
-  assert.notEqual(row.stableId, "attacker");
-  assert.ok(pairing.peers.shared("srv1", SRV_NK), "the real server is not locked out");
-  assert.equal(pairing.peers.shared("srv1", "nodekey:" + "99".repeat(32)), null);
+  assert.equal(row.nodeKey, null, "the node key is signed into the proof now; the pairing record binds nothing");
   link.close();
 });
 
@@ -256,5 +280,34 @@ test("host: the relay door has its own dispatcher, so the chain can record the p
   const r = await link.call("about.text", {});
   assert.equal(r.path, "relay");
   assert.equal(w.calls.length, 0, "the direct dispatcher was not used for the relay peer");
+  link.close();
+});
+
+test("host.pathOf: the leg a call really arrived on, taken from the door: direct is wink, the relay stream is relay, outside any door is relay", async t => {
+  const seen = [];
+  let h;
+  const relayServe = async (c, tool) => { seen.push(["relay-door", h.pathOf(c)]); return { tool, caller: c }; };
+  const peers = { serve: inner => async (c, tool, input) => inner(c, tool, input) };
+  const w = await world(t, { peers, relayServe, blackhole: true, graceMs: 100 });
+  h = w.home;
+  assert.equal(h.pathOf("device:srv1"), "relay", "no door around it: unknown is relay");
+  assert.equal(w.home.pathOf(), "relay");
+  const link = w.server.connect("harlow");
+  await link.call("about.text", {});
+  assert.equal(link.status().path, "relay");
+  assert.deepEqual(seen, [["relay-door", "relay"]]);
+  link.close();
+});
+
+test("host.pathOf: a call over the direct door reports wink", async t => {
+  const seen = [];
+  let h;
+  const peers = { serve: inner => async (c, tool, input) => inner(c, tool, input) };
+  const w = await world(t, { peers, serveWith: c => seen.push(h.pathOf(c)) });
+  h = w.home;
+  const link = w.server.connect("harlow");
+  await link.call("about.text", {});
+  assert.equal(link.status().path, "direct");
+  assert.deepEqual(seen, ["wink"]);
   link.close();
 });

@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import net from "node:net";
 import crypto from "node:crypto";
-import { peerSession, socketPipe, admitPeer, joinPeer, authProof, Frames, SLICE, T } from "./peer-wire.js";
+import { peerSession, socketPipe, admitPeer, joinPeer, authMessage, verifyDevice, Frames, SLICE, T } from "./peer-wire.js";
 
 /** Two connected sockets on loopback. */
 async function sockets(t) {
@@ -77,45 +77,92 @@ test("peer-wire: the frame parser refuses an oversize frame and handles split in
   assert.ok(SLICE >= 1024);
 });
 
-// ---- auth on the direct path ----
+// ---- auth on the direct path: the device key is the key on its identity entry ----
 
-const shared = crypto.randomBytes(32);
 const NK = "nodekey:" + "cd".repeat(32);
+const b64u = b => Buffer.from(b).toString("base64url");
+function keyPair() {
+  const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
+  return { pub: b64u(publicKey.export({ format: "der", type: "spki" }).subarray(-32)), sign: m => b64u(crypto.sign(null, m, privateKey)) };
+}
+/** A fake identity port: entries by eid, with an owner each; `entry` answers only for this Space's owner, as the chain port does. */
+function list(rows) {
+  const m = new Map(Object.entries(rows));
+  return { m, entry: async eid => { const r = m.get(eid); return r && r.owner === "alex" ? { eid, kind: r.kind || "device", pub: r.pub } : null; } };
+}
+const K = keyPair();
 
-test("peer-wire auth: a device with the shared key is admitted as device:<id> and calls run as that caller", async t => {
+test("peer-wire auth: a device that proves the key on its entry is admitted as device:<eid> and calls run as that caller", async t => {
   const { a, b } = await sockets(t);
   const seen = [];
-  const home = admitPeer(socketPipe(b), { id: { nodeKey: NK }, box: "box1", shared: async (d, nk) => (d === "srv1" && nk === NK ? shared : null),
-    serve: async (caller, tool, input) => { seen.push({ caller, tool }); return { hi: input }; } });
-  const dev = await joinPeer(socketPipe(a), { device: "srv1", nodeKey: NK, shared: () => shared });
+  const ids = list({ srv1: { owner: "alex", pub: K.pub } });
+  const home = admitPeer(socketPipe(b), { id: { nodeKey: NK }, box: "box1", entry: ids.entry,
+    serve: async (caller, tool, input, proven) => { seen.push({ caller, tool, proven }); return { hi: input }; } });
+  const dev = await joinPeer(socketPipe(a), { device: "srv1", nodeKey: NK, sign: K.sign });
   const { caller } = await home;
   assert.equal(caller, "device:srv1");
   assert.deepEqual(await dev.call("about.text", 5), { hi: 5 });
-  assert.deepEqual(seen, [{ caller: "device:srv1", tool: "about.text" }]);
+  assert.deepEqual(seen, [{ caller: "device:srv1", tool: "about.text", proven: { nodeKey: NK } }]);
   dev.close();
 });
 
-test("peer-wire auth: a wrong key, an unknown device, a node key that is not the device's and silence are all refused, and nothing is served", async t => {
+/** One admission attempt; resolves to what the home did. */
+async function attempt(t, { ids, device = "srv1", sign = K.sign, nodeKey = NK, homeNode = nodeKey, box = "box1" }) {
+  const { a, b } = await sockets(t);
+  let served = 0;
+  const home = admitPeer(socketPipe(b), { id: { nodeKey: homeNode }, box, timeoutMs: 800, entry: ids.entry, serve: async () => { served++; return {}; } });
+  const dev = joinPeer(socketPipe(a), { device, nodeKey, sign, timeoutMs: 800 });
+  return { home, dev, served: () => served };
+}
+
+test("peer-wire auth probes: a removed entry, a wrong key, an entry of another owner, a node the proof did not name and a replayed proof are all refused, and nothing is served", async t => {
   const cases = [
-    { name: "wrong key", device: "srv1", key: crypto.randomBytes(32), nodeKey: NK },
-    { name: "unknown device", device: "ghost", key: shared, nodeKey: NK },
-    { name: "someone else's node", device: "srv1", key: shared, nodeKey: "nodekey:" + "ee".repeat(32), homeNode: NK },
+    { name: "removed entry", ids: list({}) },
+    { name: "wrong key", ids: list({ srv1: { owner: "alex", pub: K.pub } }), sign: keyPair().sign },
+    { name: "another owner's entry", ids: list({ srv1: { owner: "bob", pub: K.pub } }) },
+    { name: "an entry that is not a device", ids: list({ srv1: { owner: "alex", kind: "contact", pub: K.pub } }) },
+    { name: "someone else's node key", ids: list({ srv1: { owner: "alex", pub: K.pub } }), nodeKey: "nodekey:" + "ee".repeat(32), homeNode: NK, sign: m => K.sign(authMessage("x", "nodekey:" + "ee".repeat(32), "box1", "srv1")) },
+    { name: "another home's box", ids: list({ srv1: { owner: "alex", pub: K.pub } }), sign: m => K.sign(authMessage("x", NK, "otherbox", "srv1")) },
   ];
   for (const c of cases) {
-    const { a, b } = await sockets(t);
-    let served = 0;
-    const home = admitPeer(socketPipe(b), { id: { nodeKey: c.homeNode || c.nodeKey }, box: "box1", timeoutMs: 800,
-      shared: async (d, nk) => (d === "srv1" && nk === NK ? shared : null), serve: async () => { served++; return {}; } });
-    const dev = joinPeer(socketPipe(a), { device: c.device, nodeKey: c.nodeKey, shared: () => c.key, timeoutMs: 800 });
-    await assert.rejects(home, /denied|proof|unknown|no proof/, c.name);
-    await assert.rejects(dev, undefined, c.name);
-    assert.equal(served, 0, c.name);
+    const r = await attempt(t, c);
+    await assert.rejects(r.home, /denied|proof|unknown|no proof/, c.name);
+    await assert.rejects(r.dev, undefined, c.name);
+    assert.equal(r.served(), 0, c.name);
   }
+  // a replayed proof: capture a good proof from one connection, send it to a fresh challenge
+  let captured = null;
+  const ids = list({ srv1: { owner: "alex", pub: K.pub } });
+  const first = await sockets(t);
+  const h1 = admitPeer(socketPipe(first.b), { id: { nodeKey: NK }, box: "box1", entry: ids.entry, serve: async () => ({}) });
+  const d1 = await joinPeer(socketPipe(first.a), { device: "srv1", nodeKey: NK, sign: m => (captured = K.sign(m)) });
+  await h1; d1.close();
+  const second = await sockets(t);
+  let served = 0;
+  const h2 = admitPeer(socketPipe(second.b), { id: { nodeKey: NK }, box: "box1", timeoutMs: 800, entry: ids.entry, serve: async () => { served++; return {}; } });
+  const d2 = joinPeer(socketPipe(second.a), { device: "srv1", nodeKey: NK, sign: () => captured, timeoutMs: 800 });
+  await assert.rejects(h2, /proof/, "replay");
+  await assert.rejects(d2);
+  assert.equal(served, 0);
   // silence: a peer that connects and says nothing
   const { a, b } = await sockets(t);
-  await assert.rejects(admitPeer(socketPipe(b), { id: { nodeKey: NK }, box: "box1", timeoutMs: 300, shared: () => shared, serve: async () => ({}) }), /no proof/);
+  await assert.rejects(admitPeer(socketPipe(b), { id: { nodeKey: NK }, box: "box1", timeoutMs: 300, entry: ids.entry, serve: async () => ({}) }), /no proof/);
   a.destroy();
-  // a call before the proof is refused by the session and never served
-  assert.equal(authProof(shared, "n", NK, "b"), authProof(shared, "n", NK, "b"));
-  assert.notEqual(authProof(shared, "n", NK, "b"), authProof(shared, "n2", NK, "b"));
+});
+
+test("peer-wire auth: an entry removed after admission is refused at the very next call, with no cache", async t => {
+  const { a, b } = await sockets(t);
+  const ids = list({ srv1: { owner: "alex", pub: K.pub } });
+  let served = 0;
+  const home = admitPeer(socketPipe(b), { id: { nodeKey: NK }, box: "box1", entry: ids.entry, serve: async () => { served++; return { ok: 1 }; } });
+  const dev = await joinPeer(socketPipe(a), { device: "srv1", nodeKey: NK, sign: K.sign });
+  await home;
+  assert.deepEqual(await dev.call("about.text"), { ok: 1 });
+  ids.m.delete("srv1");
+  await assert.rejects(dev.call("about.text"), e => e.code === "denied" || e.code === "unreachable");
+  assert.equal(served, 1);
+  // a key rotated on the same eid is not the key that was admitted
+  assert.equal(verifyDevice(K.pub, Buffer.from("m"), K.sign(Buffer.from("m"))), true);
+  assert.equal(verifyDevice(keyPair().pub, Buffer.from("m"), K.sign(Buffer.from("m"))), false);
+  assert.equal(verifyDevice("short", Buffer.from("m"), "x"), false);
 });

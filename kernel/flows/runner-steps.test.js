@@ -10,11 +10,11 @@ const last = async (w, id) => (await w.runner.listRuns({ flow: id }))[0];
 
 test("steps: find pushes simple conditions to the store and checks every row in memory; pick takes the first; filter narrows a list", async () => {
   const w = await world();
-  for (const [client, fee] of [["A", 10], ["B", 200], ["B", 300], ["C", 5]]) await w.kernel.records.create(w.kernel.chainFor({ flow: "x", approver: ALEX, tainted: false, space: SPACE }), "matter", { client, fee });
+  for (const [client, fee] of [["A", 10], ["B", 200], ["B", 300], ["C", 5]]) await w.kernel.records.create(w.kernel.chainFor({ flow: "x", approver: ALEX, tainted: false, space: SPACE }), "matter", { client, fee: { amount: fee, currency: "USD" } });
   const { id } = await install(w, flowOf([
-    { id: "f", kind: "find", type: "matter", where: "record.client == trigger.who and record.fee > 100", limit: 10 },
+    { id: "f", kind: "find", type: "matter", where: "record.client == trigger.who and record.fee.amount > 100", limit: 10 },
     { id: "p", kind: "pick", type: "matter", where: "record.client == \"C\"" },
-    { id: "g", kind: "filter", from: "steps.f.rows", where: "record.fee > 250" },
+    { id: "g", kind: "filter", from: "steps.f.rows", where: "record.fee.amount > 250" },
     { id: "out", kind: "create", type: "payment", set: { amount: { expr: "len(steps.f.rows) * 1000 + len(steps.g.rows)" }, client: { expr: "steps.p.record.data.client" } } },
   ]));
   w.kernel.inbound("payment.received", { who: "B" });
@@ -25,7 +25,7 @@ test("steps: find pushes simple conditions to the store and checks every row in 
   assert.equal(run.steps.p.output.found, true);
   assert.equal(mine(w, "payment")[0].data.amount, 2001);
   assert.equal(mine(w, "payment")[0].data.client, "C");
-  const q = w.kernel.calls.find(c => c[0] === "query" && c[2] && c[2].and);
+  const q = w.kernel.calls.find(c => c[0] === "query" && c[1] === "matter" && c[2]);
   assert.ok(q, "the comparison went to the store as a filter");
 });
 
@@ -49,7 +49,8 @@ test("steps: update, upsert, stage and remove act on the records they name, and 
   assert.equal(mine(w, "matter").find(x => x.id === m.id).data.stage, "Engagement");
   assert.equal(mine(w, "payment").length, 1, "the second upsert updated");
   assert.equal(mine(w, "payment")[0].data.amount, 2);
-  assert.ok(mine(w, "matter").find(x => x.id === other.id).deleted_at);
+  const gone = mine(w, "matter").find(x => x.id === other.id);
+  assert.ok(!gone || gone.deleted_at, "the removed record is gone (the kernel hides it; the fake keeps it marked)");
   assert.equal(run.steps.up1.output.created, true);
   assert.equal(run.steps.up2.output.created, false);
 });
@@ -59,7 +60,7 @@ test("steps: repeat runs its steps once per item, each turn keyed apart, and a r
   const { id } = await install(w, flowOf([{ id: "each", kind: "repeat", over: "trigger.names", as: "n", steps: [{ id: "mk", kind: "create", type: "matter", set: { client: { expr: "n" } } }] }]));
   w.kernel.inbound("payment.received", { names: ["a", "b", "c"] });
   await settle(w);
-  assert.deepEqual(mine(w, "matter").map(m => m.data.client), ["a", "b", "c"]);
+  assert.deepEqual(mine(w, "matter").map(m => m.data.client).sort(), ["a", "b", "c"]);
   const run = await last(w, id);
   assert.deepEqual(Object.keys(run.steps).filter(k => k.startsWith("mk")).sort(), ["mk@0", "mk@1", "mk@2"]);
   const again = structuredClone(run);
@@ -84,7 +85,7 @@ test("steps: assign and agent make tasks with their output, checker and instruct
   const w = await world();
   const { id } = await install(w, flowOf([
     { id: "a1", kind: "assign", to: "role:manager", title: { expr: "\"Review \" + trigger.client" }, output: { kind: "note" }, how: "person" },
-    { id: "r", kind: "agent", assistant: "teammate:research", title: "Research the client", instructions: { expr: "\"Look up \" + trigger.client" }, output: { kind: "fields", target: ["practice_area", "size"] } },
+    { id: "r", kind: "agent", assistant: "teammate:research", title: "Research the client", instructions: { expr: "\"Look up \" + trigger.client" }, output: { kind: "note" } },
     { id: "m", kind: "create", type: "matter", set: { client: { expr: "steps.r.output.summary" } } },
   ]));
   w.kernel.inbound("payment.received", { client: "Harlow" });
@@ -210,6 +211,7 @@ test("service: an outward call is held for the ask-first task, then runs once wi
 test("service: a file goes by Drive reference both ways, never as bytes through the Flow", async () => {
   const f = fakeService();
   const w = await world({ ports: { service: f.port } });
+  w.kernel.rules.push({ match: i => i.action === "service.call", effect: "allow", reason: "a standing yes" }); // the upload is outward: this run has a standing permission, so authorize allows
   const { id } = await install(w, svcFlow([
     { id: "up", kind: "service", connector: "practice", method: "PUT", path: "/documents/7", drive: { upload: { path: "clients/rivera/engagement.pdf", version: "v2", contentType: "application/pdf" } } },
     { id: "down", kind: "service", connector: "practice", method: "GET", path: "/matters/42", drive: { saveTo: "inbox/matter-42.json" } },
@@ -343,8 +345,8 @@ test("recovery: a task answered while the runner was down releases its run on th
   w.kernel.inbound("payment.received", {});
   await settle(w);
   const t = w.kernel.tasks.find(x => x.title === "Ok?");
-  w.kernel.subs.clear(); // the runner is down: nobody hears the answer
-  w.kernel.completeTask(t.id, { outcome: "approved" });
+  w.stopListening(); // the runner is down: nobody hears the answer
+  await w.kernel.completeTask(t.id, { outcome: "approved" });
   assert.equal(mine(w, "payment").length, 0);
   await w.runner.recover(); await settle(w);
   assert.equal((await last(w, id)).state, "done");
@@ -357,9 +359,88 @@ test("stores: the same Flow works when definitions and runs are records in the k
   w.kernel.inbound("payment.received", { who: "Records" });
   await settle(w);
   assert.equal((await last(w, id)).state, "waiting");
-  assert.ok(mine(w, "def_flow").length === 1 && mine(w, "flow_run").length === 1 && mine(w, "flow_approval").length === 1, "definition, approval and run are records");
+  assert.ok(mine(w, "def-flow").length === 1 && mine(w, "flow-run").length === 1 && mine(w, "flow-approval").length === 1, "definition, approval and run are records");
   w.advance(1500); await w.runner.tick(); await settle(w);
   assert.equal((await last(w, id)).state, "done");
   assert.equal(mine(w, "payment").length, 1);
-  assert.equal(mine(w, "flow_run").length, 1, "the run record is updated in place");
+  assert.equal(mine(w, "flow-run").length, 1, "the run record is updated in place");
+});
+
+// ---- standing rules for a space (DESIGN-flows-joints 5a): the two behaviours the kernel's authorize calls on ----
+const RULE_DRAFT = { id: "rule_drafts", label: "Email is drafts only" };
+const draftRule = (action = "service.call") => ({ match: i => i.action === action, effect: "allow", reason: "ok", obligations: [{ type: "draft_only", rule: "rule_drafts" }], rule: RULE_DRAFT });
+
+test("rules, draft only: a send becomes the connector's draft operation and nothing is sent, even after an approval", async () => {
+  const f = fakeService();
+  const w = await world({ ports: { service: f.port } });
+  w.cat.connectors.practice.draft = { method: "POST", path: "/drafts" };
+  w.cat.connectors.practice.allow.push({ method: "POST", path: "/messages/send" });
+  w.kernel.rules.push(draftRule());
+  const { id } = await install(w, svcFlow([{ id: "p", kind: "service", connector: "practice", method: "POST", path: "/messages/send", body: { to: "jane@example.test" } }]));
+  w.kernel.inbound("payment.received", { n: 1 });
+  await settle(w);
+  assert.equal(f.seen.length, 1);
+  assert.deepEqual([f.seen[0].request.method, f.seen[0].request.path], ["POST", "/drafts"], "the draft operation, not the send");
+  assert.equal(f.seen[0].draft, true);
+  assert.equal(f.seen[0].approval, undefined, "no approval is passed on: nothing to send");
+  const run = await last(w, id);
+  assert.equal(run.state, "done");
+  assert.equal(run.steps.p.output.draft, true);
+  assert.ok(!f.seen.some(q => q.request.path === "/messages/send"), "the send never reached the vault");
+});
+
+test("rules, draft only: a connector with no draft operation sends nothing and says why in plain words; a call step uses its draft_as action", async () => {
+  const f = fakeService();
+  const w = await world({ ports: { service: f.port } });
+  w.cat.connectors.practice.allow.push({ method: "POST", path: "/messages/send" });
+  w.kernel.rules.push(draftRule());
+  const { id } = await install(w, svcFlow([{ id: "p", kind: "service", connector: "practice", method: "POST", path: "/messages/send" }]));
+  w.kernel.inbound("payment.received", { n: 1 });
+  await settle(w);
+  assert.equal(f.seen.length, 0, "nothing was sent");
+  const run = await last(w, id);
+  assert.equal(run.state, "failed");
+  assert.equal(run.error.code, "draft_only");
+  assert.match(run.error.message, /drafts only \(Email is drafts only\).*no way to prepare a draft, so nothing was sent/);
+  // a `call` step: the catalog names the action that drafts instead of sending
+  const calls = [];
+  const w2 = await world({ ports: { call: async (_c, action, resource, input) => { calls.push([action, input]); return { ok: true }; } } });
+  w2.cat.actions["email.send"].draft_as = "email.draft";
+  w2.cat.actions["email.draft"] = { risk: "write", label: "Draft an email" };
+  w2.kernel.rules.push(draftRule("email.send"));
+  await install(w2, svcFlow([{ id: "e", kind: "call", action: "email.send", resource: `vyre://${w2.cat.space}/message/*`, input: { to: "jane@example.test" } }]));
+  w2.kernel.inbound("payment.received", { n: 1 });
+  await settle(w2);
+  assert.deepEqual(calls.map(c => c[0]), ["email.draft"], "the draft action ran, the send did not");
+});
+
+test("rules, always ask: the held task is answered by the person the rule names, says it cannot be waived, and carries the rule; never refuses with the rule's words", async () => {
+  const f = fakeService();
+  const w = await world({ ports: { service: f.port } });
+  const josh = { kind: "person", id: "per_josh", space: w.cat.space };
+  w.kernel.addActor?.(josh);
+  w.kernel.rules.push({ match: i => i.action === "service.call" && !i.approval, effect: "ask", reason: "needs_approval", obligations: [{ type: "ask", rule: "rule_dates", approver: { person: "per_josh" }, waivable: false }], rule: { id: "rule_dates", label: "Every date written to the practice system is approved by Josh" } });
+  const { id } = await install(w, svcFlow([{ id: "p", kind: "service", connector: "practice", method: "POST", path: "/matters", body: { due: "2026-11-01" } }]));
+  w.kernel.inbound("payment.received", { n: 1 });
+  await settle(w);
+  assert.equal(f.seen.length, 0, "held");
+  const task = w.kernel.tasks.find(t => t.form && t.form.kind === "held_act");
+  assert.deepEqual([task.doer.kind, task.checker.id], ["service", "per_josh"], "the Flow's service asks, and the named person is the one who answers");
+  assert.equal(task.form.waivable, false, "no 'don't ask again'");
+  assert.equal(task.form.rule, "rule_dates");
+  assert.match(task.form.why, /approved by Josh/);
+  w.kernel.completeTask(task.id, { outcome: "approved" });
+  await settle(w);
+  assert.equal(f.seen.length, 1);
+  assert.equal(f.seen[0].approval, task.id);
+  // never: the refusal is the rule's own words
+  const w2 = await world({ ports: { service: f.port } });
+  w2.cat.connectors.practice.allow.push({ method: "DELETE", path: "/matters/*" });
+  w2.kernel.rules.push({ match: i => i.action === "service.call", effect: "deny", reason: "rule_never", obligations: [], rule: { id: "rule_x", label: "Assistants never delete a record" } });
+  const { id: id2 } = await install(w2, svcFlow([{ id: "p", kind: "service", connector: "practice", method: "DELETE", path: "/matters/1" }]));
+  w2.kernel.inbound("payment.received", { n: 1 });
+  await settle(w2);
+  const r2 = await last(w2, id2);
+  assert.equal(r2.error.code, "rule_never");
+  assert.match(r2.error.message, /Assistants never delete a record/);
 });

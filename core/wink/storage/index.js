@@ -69,11 +69,11 @@ export const realReach = {
 /**
  * @param {{ ctx: any, grants: { create(i: any, issuer: any): Promise<any>, revoke(id: string, why: string): Promise<any>, get?(id: string): Promise<any> }, vault: VaultPort,
  *   scanners?: any[], s3?: { probe(c: any): Promise<any> }, admin: AdminPort, space: () => string | Promise<string>, reach?: typeof realReach,
- *   now?: () => number, from?: () => string, probeEveryMs?: number }} o
+ *   now?: () => number, from?: () => string, fromDevice?: () => string | undefined, probeEveryMs?: number }} o
  */
-export function createStorageDevices({ ctx, grants, vault, scanners, s3 = createS3(), admin, space, reach = realReach, now = Date.now, from = () => String((ctx.config && ctx.config.name) || "this device"), probeEveryMs = SLOWEST_PROBE_MS }) {
+export function createStorageDevices({ ctx, grants, vault, scanners, s3 = createS3(), admin, space, reach = realReach, now = Date.now, from = () => String((ctx.config && ctx.config.name) || "this device"), fromDevice = () => undefined, probeEveryMs = SLOWEST_PROBE_MS }) {
   const db = ctx.store.db;
-  const discovery = createDiscovery({ scanners: scanners || realScanners(), from, now });
+  const discovery = createDiscovery({ scanners: scanners || realScanners(), from, fromDevice, now });
   const log = (/** @type {string} */ m) => { try { ctx.log(m); } catch { /* no log */ } };
   const ownerKey = (/** @type {Owner} */ o) => `${o.kind}:${o.id}`;
 
@@ -110,13 +110,15 @@ export function createStorageDevices({ ctx, grants, vault, scanners, s3 = create
   // ---- rows and what leaves this module ----
   const readRow = (/** @type {string} */ id) => /** @type {any} */ (db.prepare("SELECT * FROM wink_storage_devices WHERE id = ?").get(String(id))) || null;
   const liveRows = () => /** @type {any[]} */ (db.prepare("SELECT * FROM wink_storage_devices WHERE removed IS NULL ORDER BY created, id").all());
+  /** The id of the device that serves a bridged drive, kept in the location beside the label `seen_from`. @param {any} r */
+  const viaOf = r => { try { const v = JSON.parse(r.loc).via; return typeof v === "string" ? v : undefined; } catch { return undefined; } };
   /** The offer, without anything a tool result must not carry. @param {any} r */
   const offerOf = r => ({
     id: r.id, name: r.name, kind: r.kind, owner: { kind: r.owner_kind, id: r.owner_id },
     storage: { capacity: r.capacity, used: r.used, class: JSON.parse(r.classes), ...(r.schedule ? { schedule: r.schedule } : {}), ...(r.expires ? { expires: r.expires } : {}), residency: r.residency || "not stated" },
     ciphertextOnly: true,
     state: r.drain ? "draining" : r.expires && r.expires <= now() ? "expired" : r.state,
-    ...(r.reason ? { reason: r.reason } : {}), ...(r.seen_from ? { seenFrom: r.seen_from } : {}),
+    ...(r.reason ? { reason: r.reason } : {}), ...(r.seen_from ? { seenFrom: r.seen_from } : {}), ...(viaOf(r) ? { seenFromDevice: viaOf(r) } : {}),
     lastChecked: r.last_probe || null, lastReachable: r.last_ok || null, drain: Boolean(r.drain),
   });
   const eventBody = (/** @type {any} */ r) => ({ id: r.id, kind: r.kind, name: r.name, owner: { kind: r.owner_kind, id: r.owner_id } });
@@ -182,7 +184,7 @@ export function createStorageDevices({ ctx, grants, vault, scanners, s3 = create
       if (!up.ok) throw fail("unreachable", up.reason);
       /** @type {Record<string, string> | undefined} */
       const secrets = input.username || input.password ? { username: String(input.username || ""), password: String(input.password || "") } : undefined;
-      const row = await save({ owner, self, kind: c.kind, name: input.name ? String(input.name) : c.name, loc: { host: c.host, share: c.share, path: c.path }, capacity, ...t, secrets, seenFrom: c.seenFrom });
+      const row = await save({ owner, self, kind: c.kind, name: input.name ? String(input.name) : c.name, loc: { host: c.host, share: c.share, path: c.path, ...(c.seenFromDevice ? { via: c.seenFromDevice } : {}) }, capacity, ...t, secrets, seenFrom: c.seenFrom });
       return { device: offerOf(row), card: storageCard({ how: "discovery", name: row.name, owner: await ownerLabel(owner), capacity, seenFrom: c.seenFrom, classes: t.classes, residency: t.residency }) };
     },
 
