@@ -256,6 +256,9 @@ test("a person's own surface call carries a kernel chain in a module: the owner'
     const r = /** @type {any} */ (await call("zz-who.me", {}, { root, caller: label }));
     assert.deepEqual(r.data && r.data.hops, [["person", owner, label]], `${label}: ${JSON.stringify(r)}`);
   }
+  // the Capsule label with no pinned binary behind it gets no person chain (a label is not a proof)
+  const cap = /** @type {any} */ (await call("zz-who.me", {}, { root, caller: "capsule" }));
+  assert.ok(cap.data ? cap.data.hops.every(h => h[0] !== "person") : cap.error, JSON.stringify(cap));
   // a model on the socket (mcp) gets no person chain: the module's own service chain
   const m = /** @type {any} */ (await call("zz-who.me", {}, { root, caller: "mcp" }));
   assert.ok(m.data ? m.data.hops.every(h => h[0] !== "person") : m.error, JSON.stringify(m));
@@ -282,15 +285,61 @@ test("an outward action with a placeholder: refused when the person the turn is 
   const ses = await d.kernel.surfaces.open(owner, { agent: "assistant" });
   const meta = { token: ses.token, thread: "t1", agent: "assistant" };
   const call = (input, m = meta) => d.registry.call("zz-out.send", input, "mcp:agent:assistant", m);
+  /** @type {any[]} */ const cards = [];
+  d.registry.deps.held = async x => { cards.push(x); };
   const held = await call({ body: `Hi {{field:${c.urn}#name}}` });
   assert.equal(held.error.code, "held_unavailable", "an outward act by an assistant is held");
-  assert.deepEqual(held.error.resolved, [{ urn: c.urn, field: "name" }], "the approver is told which field fills in, not its value");
-  assert.ok(!JSON.stringify(held).includes("Jane"), "no value in the held answer");
+  assert.equal(held.error.resolved, undefined, "RF-2: the model's answer carries no field names");
+  assert.equal(held.error.slots, undefined, "RF-2: nor the sealed slots");
+  assert.deepEqual(cards.map(x => x.resolved), [[{ urn: c.urn, field: "name" }]], "the approver (the held card) is told which field fills in, not its value");
+  assert.match(cards[0].bound, /^[A-Za-z0-9_-]{20,}$/, "RF-3: and the hash of what was resolved");
+  assert.ok(!JSON.stringify(held).includes("Jane") && !JSON.stringify(cards).includes("Jane"), "no value in the held answer or the card");
+  const typo = await call({ body: `Hi {{field:${c.urn}#name}} and {{field:oops}}` });
+  assert.equal(typo.error.code, "placeholder_unreadable", "a malformed placeholder is refused, not sent as text");
+  assert.equal(JSON.stringify((await call({ body: `Hi {{field:vyre://${d.kernel.id.space}/contact/nonesuch0000#name}}` })).error), JSON.stringify(typo.error), "one refusal for every reason");
   const gone = await call({ body: `Hi {{field:vyre://${d.kernel.id.space}/contact/nonesuch0000#name}}` });
   assert.equal(gone.error.code, "placeholder_unreadable", "a record the asker cannot read refuses the whole action");
   const noSession = await call({ body: `Hi {{field:${c.urn}#name}}` }, { thread: "t1", agent: "assistant" });
   assert.equal(noSession.error.code, "placeholder_unreadable", "no session, no resolution, nothing sent as text");
   assert.equal((await call({ body: "plain" })).error.code, "held_unavailable", "a plain outward call is held as before");
+});
+
+test("RF-1: a placeholder resolves under the turn token's own chain, not the person's: an agent granted one project is refused a field of another, and a field of its own project is held", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const { writeModule } = await import("./helpers.js");
+  const { CONTACT } = await import("../kernel/conformance/suite.js");
+  const { canonical, sha256 } = await import("../kernel/core/canonical.js");
+  const root = tempHome(t);
+  const fp = path.join(root, "modules");
+  fs.mkdirSync(fp, { recursive: true });
+  writeModule(fp, "zz-out", { does: { tools: [{ name: "zz-out.send", reach: "anyone", outward: "send" }] } }, `export default { async start(ctx) { ctx.tool("zz-out.send", { run: async i => ({ sent: i }) }); return {}; } };`);
+  // the kernel's presence check accepts a proof built for exactly this operation (a headless test has no hardware signer)
+  const used = new Set();
+  const kernelPresence = { check: async ({ chain, op, fields, proof }) => (chain && proof && proof.op === op && canonical(proof.fields) === canonical(fields) && !used.has(proof.n) && (used.add(proof.n), true) ? null : "wrong_proof") };
+  const d = await start({ root, log: () => {}, kernel: true, kernelPresence, firstPartyRoots: [fp] });
+  t.after(() => d.stop());
+  const space = d.kernel.id.space;
+  const owner = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
+  const G = d.kernel.gateway.grants;
+  const pr = (action, input, resource) => ({ op: `grant.${action.split(".")[1]}`, fields: { resource, input_hash: sha256(canonical({ action, input })) }, n: Math.random() });
+  const kit = { kind: "agent", id: "kit", space };
+  await G.addActor(owner, kit, { presence: pr("grants.role", { actor: kit }, `vyre://${space}/member/kit`) });
+  const grant = { subject: { kind: "actor", actor: kit }, actions: ["records.read"], resource: { prefix: `vyre://${space}/contact/*`, where: [{ attr: "project", op: "eq", value: "p1" }] }, conditions: {}, source: "test" };
+  await G.create(owner, grant, { presence: pr("grants.create", grant, `vyre://${space}/grant/new`) });
+  await d.kernel.gateway.records.define(owner, { add_types: [CONTACT] });
+  const mine = await d.kernel.gateway.records.create(owner, "contact", { name: "Jane", age: 40 }, { attrs: { project: "p1" } });
+  const other = await d.kernel.gateway.records.create(owner, "contact", { name: "Mallory", age: 51 }, { attrs: { project: "p2" } });
+  assert.equal((await d.kernel.gateway.records.get(owner, "contact", other.urn.split("/").pop())).data.name, "Mallory", "the person reads both");
+  const ses = await d.kernel.surfaces.open(owner, { agent: "kit" });
+  const meta = { token: ses.token, thread: "t1", agent: "kit" };
+  const call = input => d.registry.call("zz-out.send", input, "mcp:agent:kit", meta);
+  const ok = await call({ body: `Hi {{field:${mine.urn}#name}}` });
+  assert.equal(ok.error.code, "held_unavailable", "a field in its own project is resolved and the act is held");
+  const no = await call({ body: `Hi {{field:${other.urn}#name}}` });
+  assert.equal(no.error.code, "placeholder_unreadable", "a field in another project is refused, though the person could read it");
+  assert.ok(!JSON.stringify(no).includes("Mallory"));
 });
 
 test("the phone's chain: a device connection (relay device:<id>, a tailnet owner node, a paired owner device) builds the owner's chain; a guest, an agent node and an unknown listener build none", async t => {
@@ -304,10 +353,45 @@ test("the phone's chain: a device connection (relay device:<id>, a tailnet owner
   const k = d.kernel, owner = k.id.owner;
   const hops = f => { const c = f && k.chains.fromFacts(f); return c ? c.hops.map(h => [h.actor.kind, h.actor.id]) : null; };
   const dev = "abcdefghijklmnop";
-  assert.deepEqual(hops(callerFacts(`device:${dev}`, { caller: `device:${dev}` }, {}, k)), [["person", owner]], "a phone through the relay");
+  const row = o => ({ kind: "app", removed: false, ...o });
+  assert.deepEqual(hops(callerFacts(`device:${dev}`, { caller: `device:${dev}` }, {}, k, false, row({}))), [["person", owner]], "a paired app device the home holds");
+  // PH-1: no row, a removed one, a web browser (trusted or not), a setup page: no person facts, whatever the relay says
+  const dpol = { caller: `device:${dev}` };
+  assert.equal(callerFacts(`device:${dev}`, dpol, {}, k), null, "an arbitrary id");
+  assert.equal(callerFacts(`device:${dev}`, dpol, {}, k, false, null), null, "no row");
+  assert.equal(callerFacts(`device:${dev}`, dpol, {}, k, false, row({ removed: true })), null, "a removed device");
+  assert.equal(callerFacts(`device:${dev}`, dpol, {}, k, false, row({ kind: "web" })), null, "a web browser");
+  assert.equal(callerFacts(`device:${dev}`, dpol, {}, k, false, row({ kind: "web", trusted: true })), null, "a trusted web browser");
+  assert.equal(callerFacts(`device:${dev}`, dpol, {}, k, false, row({ kind: "setup" })), null, "a setup page");
+  // a confirmed device with no person session is the owner's device but carries no presence session
+  assert.equal(callerFacts(`device:${dev}`, dpol, {}, k, false, row({})).session, undefined, "no person session, no session fact");
+  assert.equal(callerFacts(`device:${dev}`, dpol, { person: { id: "ps1" } }, k, false, row({})).session, "ps1", "a person session is carried");
   assert.deepEqual(hops(callerFacts("tailnet:phone", { caller: "tailnet:phone", peer: { node: "n1" } }, {}, k)), [["person", owner]], "a phone on the tailnet");
   assert.equal(callerFacts("tailnet:agent:x", { caller: "tailnet:agent:x" }, {}, k), null, "an agent node");
   assert.equal(callerFacts("tailnet-guest:g", { caller: "tailnet-guest:g" }, {}, k), null, "a guest");
   assert.equal(callerFacts("mobile", { caller: "tailnet:phone" }, {}, k) && callerFacts("mobile", { caller: "evil" }, {}, k), null, "an unrecognised listener identity");
   assert.equal(callerFacts("mobile", {}, {}, null), null, "no kernel, no facts");
+  // the Capsule: its chain only with the pinned-binary proof; the label alone builds nothing
+  assert.equal(callerFacts("capsule", {}, {}, k), null, "a capsule label with no proof");
+  assert.equal(callerFacts("capsule", {}, {}, k, false), null);
+  assert.deepEqual(hops(callerFacts("capsule", {}, {}, k, true)), [["person", owner]], "the pinned Capsule is the owner");
+  assert.equal(callerFacts("capsule", { caller: "tailnet:agent:x" }, {}, k, true), null, "a listener's identity is never a Capsule");
+});
+
+test("PH-1 end to end: the daemon's own relay row decides what a device is (relay.device.info for a paired, a web, a setup and a removed device and one never paired)", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {}, kernel: true });
+  t.after(() => d.stop());
+  const db = d.registry.deps.db;
+  const ins = db.prepare("INSERT INTO relay_devices (id, name, pub, paired_at, kind, trusted, removed_at) VALUES (?, ?, 'p', 1, ?, ?, ?)");
+  const ids = { app: "aaaaaaaaaaaaaaaa", web: "bbbbbbbbbbbbbbbb", setup: "cccccccccccccccc", gone: "dddddddddddddddd" };
+  ins.run(ids.app, "phone", "app", 0, null); ins.run(ids.web, "browser", "web", 1, null); ins.run(ids.setup, "setup page", "setup", 0, null); ins.run(ids.gone, "old", "app", 0, 5);
+  const { callerFacts } = await import("../core/daemon/index.js");
+  const facts = async id => { const r = await d.registry.call("relay.device.info", { id }, "module:vyred"); return callerFacts(`device:${id}`, { caller: `device:${id}` }, {}, d.kernel, false, r.data || null); };
+  assert.equal((await facts(ids.app)).kind, "device");
+  for (const k of ["web", "setup", "gone"]) assert.equal(await facts(ids[k]), null, k);
+  assert.equal(await facts("eeeeeeeeeeeeeeee"), null, "never paired");
 });

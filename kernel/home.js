@@ -111,11 +111,15 @@ export async function bootHomeKernel(cfg) {
       const cur = readReleaseList(root, relKey);
       let active = accepted;
       if (cur.ok) {
-        if (!accepted || cur.counter >= accepted.counter) {
+        // SG-5: at EVERY boot (not only when the counter advances), this build's kernel and lib trees are checked against the hashes the release signed. When either differs, the kernel's own
+        // code is not the release's, so NO first-party list is in force (not even the last accepted one): only a module carrying its own signature is first party, and the build says why.
+        const t = verifyTrees(root, cur);
+        const codeChanged = !t.ok && t.bad.some((/** @type {string} */ n) => n === "kernel" || n === "lib");
+        if (codeChanged) { log(`kernel: the kernel or lib tree differs from the release's signed hashes (${t.bad.join(", ")}); no first-party module list is in force`); active = null; }
+        else if (!accepted || cur.counter >= accepted.counter) {
           active = { counter: cur.counter, modules: cur.modules };
           // SG-3: the counter moves up only after this build's own listed modules verify against the list; a build whose folders were changed never raises it.
           if (!accepted || cur.counter > accepted.counter) {
-            const t = verifyTrees(root, cur);
             if (t.ok) await k.log.append(k.chains.fromFacts({ kind: "module", module: "home", first_party: true }), { type: "kernel.modules-list", sv: 1, subject: `vyre://${id.space}/kernel/modules-list`, data: { counter: cur.counter, raw: cur.raw }, vis: "owner", red: "internal" });
             else log(`kernel: this build's modules do not all match its signed list (${t.bad.join(", ")}); the list counter is not advanced`);
           }

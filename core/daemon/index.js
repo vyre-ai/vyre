@@ -62,14 +62,19 @@ function kernelProof(req) {
  * connect, so the uid is the daemon's own; Capsule calls wait for the code-signature check to be wired and get none), or a paired device or a signed-in owner device on a listener
  * (the listener established who it is; the person is the home's owner while a home has one). Set here only, never from anything a client sends; `ctx.kernel.chain(meta)` builds the chain
  * from it with the kernel's own builder, which refuses what does not hold. Null when there is nothing to prove.
- * @param {string} caller @param {any} policy @param {any} via @param {any} k the kernel
+ * @param {string} caller @param {any} policy @param {any} via @param {any} k the kernel @param {boolean} [capsuleVerified] the peer on this socket is the pinned Capsule binary @param {{ kind: string, removed: boolean } | null} [device] the home's OWN row for a `device:<id>` caller (relay.device.info), never what the relay says about it
  */
-export function callerFacts(caller, policy, via, k) {
+export function callerFacts(caller, policy, via, k, capsuleVerified = false, device = null) {
   if (!k || !k.id) return null;
+  // The Capsule is the person only when its own binary is the pinned one (`verifiedCapsule`: the cdhash the person pinned, checked per connection and bound to the pid's start time). An unproven one gets no chain.
+  if (!policy.caller && caller === "capsule") return capsuleVerified === true ? { kind: "socket", surface: "capsule", uid: typeof process.getuid === "function" ? process.getuid() : 0, pid: 0, inside_model_process: false, capsule_verified: true } : null;
   if (!policy.caller && ["cli", "local", "deck", "mobile"].includes(caller)) return { kind: "socket", surface: caller, uid: typeof process.getuid === "function" ? process.getuid() : 0, pid: 0, inside_model_process: false, capsule_verified: false };
+  // PH-1: a `device:<id>` is the owner's only if THIS home holds a row for it: paired (a gated pairing makes no row before its confirm), not removed, and an app device. A web browser (trusted or
+  // not), a setup page, an id the home never paired and a removed device get no person facts; the relay's say-so is never enough. (tailnet nodes are the tailnet listener's own identity, X-1.)
+  if (policy.caller && String(policy.caller).startsWith("device:") && !(device && device.kind === "app" && device.removed === false)) return null;
   if (policy.caller && ownerDevice(policy.caller)) {
-    const device = String(policy.caller).startsWith("device:") ? String(policy.caller).slice(7) : String((policy.peer && (policy.peer.stableId || policy.peer.node)) || "owner");
-    return { kind: "device", device_key_id: device, person: k.id.owner, path: String(policy.caller).startsWith("device:") ? "relay" : "wink", ...(via && via.person ? { session: String(via.person.id) } : {}) };
+    const deviceId = String(policy.caller).startsWith("device:") ? String(policy.caller).slice(7) : String((policy.peer && (policy.peer.stableId || policy.peer.node)) || "owner");
+    return { kind: "device", device_key_id: deviceId, person: k.id.owner, path: String(policy.caller).startsWith("device:") ? "relay" : "wink", ...(via && via.person ? { session: String(via.person.id) } : {}) };
   }
   return null;
 }
@@ -214,8 +219,9 @@ async function startLocked(opts, root, p, release) {
     // `{{field:...}}` in an outward action: resolved from the record under the person the session's turn is for (their own grants, not the room's view), by the kernel's resolveFields.
     const { resolveFields } = await import("../../kernel/core/fields.js");
     registry.deps.resolveFields = async (/** @type {{ input: any, meta: any }} */ q) => {
-      const t = await kernel.surfaces.verify(q.meta.token);
-      const asker = kernel.chains.fromFacts({ kind: "device", device_key_id: "vyred", person: t.person, path: "direct" });
+      // RF-1: under the turn token's OWN chain (its agent, its grants: an agent narrowed to one project reads only that project), with the chat left out so it is the person's reading and
+      // not the room's. Never a full person chain: a field the session itself cannot read refuses the whole action.
+      const asker = await kernel.surfaces.chainFor(q.meta.token, { noChat: true });
       return resolveFields({ input: q.input, read: async (/** @type {string} */ urn) => { const [, type, id] = urn.replace("vyre://", "").split("/"); return kernel.gateway.records.get(asker, type, id); } });
     };
     closeFlowsHost = () => flowsHost.stop();
@@ -224,7 +230,12 @@ async function startLocked(opts, root, p, release) {
       forwardCredential: async (/** @type {any} */ q) => {
         if (!q.route) throw Object.assign(new Error("that connector's route table is the vault's and is not exposed to the kernel yet"), { code: "unavailable" });
         const r = q.request;
-        const out = await registry.call("vault.forward", { credential: q.ref, method: r.method, url: `https://${q.route}${r.path}`, ...(r.query ? { query: r.query } : {}), ...(r.headers ? { headers: r.headers } : {}), ...(r.body !== undefined ? { body: r.body } : {}), session: q.session || q.idem || "home" }, "module:leases");
+        // A file request goes to vault.forward.file with the route's limits and Drive lists, and the Drive is this call's own door (q.files: the kernel's Drive under the caller's chain, FW-2),
+        // handed in-process as meta, never as data a module could name. A plain request carries the route's header names.
+        const base = { credential: q.ref, method: r.method, url: `https://${q.route}${r.path}`, ...(r.query ? { query: r.query } : {}), ...(r.headers ? { headers: r.headers } : {}), ...(q.allow_headers ? { allow_headers: q.allow_headers } : {}), session: q.session || q.idem || "home" };
+        const out = q.file
+          ? await registry.call("vault.forward.file", { ...base, ...(r.upload ? { upload: r.upload } : {}), ...(r.saveTo ? { saveTo: r.saveTo } : {}), ...(q.limits ? { limits: q.limits } : {}), ...(q.drive ? { drive: q.drive } : {}) }, "module:leases", { files: q.files })
+          : await registry.call("vault.forward", { ...base, ...(r.body !== undefined ? { body: r.body } : {}) }, "module:leases");
         if (out.error) throw Object.assign(new Error(out.error.message), { code: out.error.code });
         return out.data;
       },
@@ -256,7 +267,7 @@ async function startLocked(opts, root, p, release) {
     });
     reopenLater = () => { if (!reopenCalled) void kernelSessions.reopenPending(reopenOpts({ timeoutMs: 10_000, onGiveUp: (/** @type {string} */ thread, /** @type {string} */ why) => log(`sessions: could not resume ${thread.slice(0, 8)} (${why})`) })).catch(() => {}); };
     closeKernelSessions = () => kernelSessions.closeAll();
-    registry.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any, chat?: string, asker?: string }} */ q) => {
+    registry.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any, chat?: string, asker?: string, probe?: boolean }} */ q) => {
       // A chat turn: the Switchboard passes `chat` and `asker` only from module:stream (threads.start and threads.send), so the session is the asker's, in that chat, and the kernel checks they are in it.
       // Anything else is the home owner's own thread, as before.
       const person = await personChainFor(q.asker || kernel.id.owner);
@@ -942,7 +953,17 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     }
     const sessionToken = await kernelSession(req, kernelOf);
     if (sessionToken === null) return send(res, 401, { error: { code: "no_session", message: "this call carries a session credential that is not valid, so it was not made" } });
-    const facts = callerFacts(caller, policy, via, kernelOf ? kernelOf() : null);
+    // The Capsule's chain needs its own proof (the pinned binary on this connection), asked only for a Capsule label on the socket and only when a kernel is on.
+    let capsuleOk = false;
+    if (socket && !policy.caller && caller === "capsule" && kernelOf && kernelOf() && registry.deps.presence && typeof registry.deps.presence.capsulePin === "function") {
+      try { capsuleOk = (await verifiedCapsule(req.socket, await peerPid(req.socket).catch(() => null), registry.deps.presence.capsulePin(), registry.deps.capsuleSeam)) === true; } catch { capsuleOk = false; }
+    }
+    // The home's own row for a relay device, asked of the relay module's internal tool; null when none, removed, or the relay is off.
+    let deviceRow = null;
+    if (policy.caller && String(policy.caller).startsWith("device:") && kernelOf && kernelOf()) {
+      try { const r = await registry.call("relay.device.info", { id: String(policy.caller).slice(7) }, "module:vyred"); deviceRow = r && r.data ? r.data : null; } catch { deviceRow = null; }
+    }
+    const facts = callerFacts(caller, policy, via, kernelOf ? kernelOf() : null, capsuleOk, deviceRow);
     const result = await registry.call(name, input, caller, { ...via, ...(facts ? { kernelFacts: facts } : {}), proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
       keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req), ...(kernelProof(req) ? { kernel_proof: kernelProof(req) } : {}), ...(sessionToken ? { token: sessionToken } : {}) });
     // A new person session for the Deck goes in the cookie, never in the body a script could read.

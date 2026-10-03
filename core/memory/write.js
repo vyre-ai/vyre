@@ -288,7 +288,7 @@ export function register(ctx, { store, reach, personWrites, ownSession, reader, 
     return { r, slugs: r.all ? null : new Set(r.slugs || []), you: r.all ? person : Boolean(r.assistant) };
   };
   const tag = w => `${w.from_kind}:${w.from_name}`;
-  const WHO = ["cli", "local", "deck", "capsule", "mcp", "harness", "module", "tailnet"];
+  const WHO = ["cli", "local", "deck", "capsule", "mcp", "harness", "module", "tailnet", "device", "space", "agent"];
 
   const writeDef = {
     callers: WHO,

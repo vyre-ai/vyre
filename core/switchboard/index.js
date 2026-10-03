@@ -3516,7 +3516,7 @@ export default {
       // harness floor refuses a model's Bash that names this tool (core/presence PERSON_ONLY).
       // "link:box" is the person at the paired box, on a Mac: core/link runs it only after checking
       // the box's signed assertion for this ask and this answer (docs/adr/0021, "v2").
-      ["cli", "local", "module", "deck", "capsule", "tailnet", "link:box"],
+      ["cli", "local", "module", "deck", "capsule", "tailnet", "device", "link:box"],
       // On a box, an answer that goes to a Mac and approves a floor tool there needs a fresh proof
       // (gatedOnMac). Every other answer asks nothing (the no-nag rule). A Mac declares no rule.
       ctx.config && ctx.config.role === "box" ? { presence: { when: i => Boolean(i && i.ask) && gatedOnMac(i), summary: () => "Answer a protected request on your Mac" } } : {});
