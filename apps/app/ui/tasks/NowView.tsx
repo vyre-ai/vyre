@@ -34,7 +34,7 @@ export const emblemOf = (world: World, rec: any): AvatarRef => ({ kind: "project
 /** An accent text row that opens more: "4 more waiting", "Show fewer". */
 function MoreRow({ label, onPress, up }: { label: string; onPress: () => void; up?: boolean }) {
   return (
-    <PressableScale depth={0.985} accessibilityRole="button" accessibilityLabel={label} onPress={onPress} className="min-h-touch flex-row items-center gap-s1 self-start px-s1">
+    <PressableScale depth={0.985} accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={{ minHeight: 44, flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", paddingHorizontal: 4 }}>
       <Text medium tone="accent" style={{ fontSize: 15, lineHeight: 20 }}>{label}</Text>
       <Icon name={up ? "chevron-up" : "chevron-down"} size={16} tone="accent" />
     </PressableScale>
@@ -134,7 +134,7 @@ export function NowView({ world, onAction, onOpen, onEdit, onMore, notice }: Pro
 
   const done = m.doneToday.length ? (
     <View className="min-w-0 gap-s2 pt-s6">
-      <PressableScale depth={0.985} accessibilityRole="button" accessibilityState={{ expanded: doneOpen }} onPress={() => setDoneOpen(!doneOpen)} className="min-h-touch flex-row items-center gap-s2 self-start px-s1">
+      <PressableScale depth={0.985} accessibilityRole="button" accessibilityState={{ expanded: doneOpen }} onPress={() => setDoneOpen(!doneOpen)} style={{ minHeight: 44, flexDirection: "row", alignItems: "center", gap: 8, alignSelf: "flex-start", paddingHorizontal: 4 }}>
         <Text tone="muted" medium style={{ fontSize: 15, lineHeight: 20 }}>{`${m.doneToday.length} done today`}</Text>
         <Icon name={doneOpen ? "chevron-up" : "chevron-down"} size={16} tone="label" />
       </PressableScale>

@@ -889,6 +889,14 @@
    "module": "network",
    "reason": "the positive callers check allowed() in the tool (the person's own surfaces, devices and session); read-only"
   },
+  "network.wink.status": {
+   "module": "network",
+   "reason": "read-only; readers() in the tool refuses a guest and an anonymous caller; the work is the Wink module's wink.network.status, reach modules and callable only as module:network (core/network/wink.test.js)"
+  },
+  "network.wink.whois": {
+   "module": "network",
+   "reason": "read-only; readers() in the tool refuses a guest and an anonymous caller; the answer comes from the identity list and the connections the node host admitted, never from a tag or host name a peer sets (core/network/wink.test.js)"
+  },
   "planner.add": {
    "module": "planner",
    "reason": "guard: the item's source is stamped from the verified caller, an agent's task needs its own thread or a project it can reach (agentProjects), and an agent later changes only what it added (owns())"

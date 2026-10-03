@@ -703,3 +703,25 @@ On origin/work/022-native-android, the release list must match apps/app/android-
 ```
 Also: the release workflow should run scripts/check-apk-nothing-central.mjs --apk on the unsigned release APK.
 USE_FINGERPRINT stays: androidx.biometric adds it with maxSdkVersion 27 and the app's minSdk is 24 (Expo SDK 54), so Android 7 and 8 phones need it for a fingerprint. ACCESS_NETWORK_STATE is on the list as asked but no library in the build requests it today (the merged manifest of the debug APK has CAMERA, INTERNET, POST_NOTIFICATIONS, SYSTEM_ALERT_WINDOW (debug only), USE_BIOMETRIC, USE_FINGERPRINT, VIBRATE); the line is harmless and keeps the list ready for the day the app reads network state.
+
+## Haptics on approval
+`haptic.approve` is the success notification (ui/motion/haptic-map.js: notification, Success). Every approval path, with where it fires (apps/app):
+| Path | Fires at |
+|---|---|
+| Mark done on a task card, and the swipe action Mark done | ui/tasks/TaskActions.tsx:52; swipe: ui/motion/SwipeActions.tsx:34 (the action's own haptic, logic.js:66) |
+| Send, Approve, Yes with Face ID on a task card and the task page (store.decide) | ui/tasks/TaskActions.tsx:72 (yes) and :78 (send, approve); the stage haptic follows at :79 when the record moved |
+| Task card ask that is not a proof (edit, fix, file) | ui/tasks/TaskActions.tsx:59 |
+| Approve in Flows (Ask card, FlowScreen), Engineer (Flow goes live), Go live and Roll back (Sites), Create link and Open (Drive), Install a Kit (Kits), Reveal in Vault (Vault) | all five screens use the places Face ID sheet: screens/places/Page.tsx:94 (added now) |
+| Join a space, Create your identity, Create a server (install), Allow with Face ID (devices), Extend access and Make a recovery code (Spaces, Account) | the shell Face ID sheet: screens/shell/FaceIdSheet.tsx:13 (added now) |
+| Reveal a sealed field | ui/fields/Sealed.tsx:36 (added now, after the reveal succeeded) |
+| Space role change (Save) | screens/spaces/SpacesScreen.tsx:88 (added now; this one has no Face ID sheet today) |
+| Approve a task card in the chat | src/chat/Blocks.tsx:315 (added now, after Face ID passed; the hunk is two lines in chat's file) |
+Also firing: haptic.stage on a board move (ui/views/BoardView.tsx:24) and after an approval that moved a record (TaskActions.tsx:79); haptic.selection on Switch (ui/components/Switch.tsx:22), a swipe opening (SwipeActions.tsx:57) and Decline (TaskActions.tsx:53); haptic.warn when a held press completes (ui/components/Button.tsx:80).
+Not wired on purpose: Seal on a record page (screens: ui/views/RecordPage.tsx, no Face ID, a plain save) and the gallery demo sheet.
+Caveat: the Face ID sheets are still the prototype's single button, so the haptic fires on the tap, not on the platform prompt returning. When the real prompt replaces the button, move the call into its success branch.
+
+## iOS notices
+A closed iPhone app can receive nothing without Apple's push service (APNs). What it can do: local notices scheduled while the app runs (UNUserNotificationCenter), and background app refresh, which iOS grants when it chooses and does not guarantee. It cannot keep a socket open in the background: iOS suspends it within seconds. A silent push, or any wake-up from a relay, travels through APNs.
+What adding it costs: an Apple Developer Program account (99 USD a year), an APNs key, a Vyre-owned push relay that forwards an opaque wake-up with no content (the phone wakes, asks the person's own box what is new and makes the notice itself), the Push Notifications capability and entitlement in app.json, and registering for a device token. No third-party service would see message content; Apple sees that a wake-up happened.
+What Vyre ships today: local notices while the app is open or recently active. On Android the notice is made by modules/vyre-notify (NotificationManager). On iOS notify.ts show() returned false because the module had no iOS side (src/native/notify.ts read Platform.OS === "android"). Now added: modules/vyre-notify/ios/VyreNotifyModule.swift (about 70 lines: permission, show now with a one second trigger, banner while open, tap opens vyre://route?notice=1) and its podspec; notify.ts calls it on iOS. No APNs call, no push token, no entitlement. Not yet seen on a device: the iOS capture workflow compiles it (run id in the report), and a real notice needs a person to grant permission on a phone.
+Sources read: apps/app/src/native/notify.ts, apps/app/modules/vyre-notify (Android Kotlin and index.ts), the section above "Notices when the app is closed (Android)".

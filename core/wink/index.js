@@ -23,10 +23,12 @@ import path from "node:path";
 import { createWinkCode } from "./code.js";
 import { createGrants, MIGRATIONS as GRANT_MIGRATIONS, spaceIdOf, timeId, base32 } from "./grants.js";
 import { card, removal, removed, words } from "./cards.js";
+import { registerReset } from "./reset.js";
 import { createPairing, MIGRATIONS as DEVICE_MIGRATIONS, PEER_MIGRATIONS, FLOW_KIND, ADMIN_ROLES, ownDirectory, kernelDirectory, kernelHasRoles } from "./pairing.js";
 import { createStorageDevices, registerStorageTools, MIGRATIONS as STORAGE_MIGRATIONS } from "./storage/index.js";
 import { storageGrants } from "./storage/grants.js";
 import { attachPool } from "./storage/pool.js";
+import { registerNetwork } from "./network.js";
 import { createBridgeSecrets, createBridgeEndpoint, acceptDrive, bridgeServe, bridgeMakeBackend, pairFromHome, BRIDGE_TOOL, ACCEPT_TOOL, DRIVE_TOOL } from "./storage/bridge.js";
 import { createHolds } from "./storage/hold.js";
 import { seedFromKey } from "../../relay/client/join.js";
@@ -57,7 +59,9 @@ function owner(meta, what) {
  *   typedCode   true switches the short typed code on (development; also VYRE_WINK_TYPED_CODE=1 or config wink.typedCode); off in a release build
  *   confirmAdopt false skips the person-at-the-server confirmation of a first adoption (a test seam; always on in a real box)
  *   releaseMaxMs how long a release the server never confirmed is retried before it is given up and the person is told (default 30 days)
- * @param {{ ports?: import("./pairing.js").Ports, directory?: import("./pairing.js").Directory, pool?: any, poolBackend?: (c: any, offer: any) => any, bridge?: { createBridge: any, backendFor: any, home?: () => string | null, roots?: string[] }, offers?: any, handover?: import("./pairing.js").Handover }} [inject]
+ *   identityEntry (identity, eid) => the entry on that identity's list ({ eid, kind, pub, identity? }) or null: proves the app for a server installed with --pair-to (Q-3)
+ *   signIdentity (message) => { eid, sig }: this app's signature with a key on its own identity list, sent when it adopts a server (Q-3)
+ * @param {{ ports?: import("./pairing.js").Ports, directory?: import("./pairing.js").Directory, pool?: any, poolBackend?: (c: any, offer: any) => any, bridge?: { createBridge: any, backendFor: any, home?: () => string | null, roots?: string[] }, offers?: any, network?: Parameters<typeof registerNetwork>[1], handover?: import("./pairing.js").Handover }} [inject]
  * @returns {{ start(ctx: any): Promise<{ stop(): Promise<void>, peers: any, homeServe(inner: any): any }>, readonly peers: any, homeServe(inner: any): any }} */
 export function createWink(inject = {}) {
   /** @type {any} */
@@ -252,6 +256,9 @@ export function createWink(inject = {}) {
     const pairing = createPairing({
       ctx, now, identity: owner1, space: spaceId, openCode, ack: ackOffer, owner, typedCode: typedCodeOn, confirmAdopt: inject.confirmAdopt,
       releaseMaxMs: inject.releaseMaxMs,
+      // Q-3: the identity port (the entry on an identity's list, read live) that checks the proof of a server installed to pair to one identity, and the app's own signer for that proof. A box given
+      // neither refuses every unattended pairing ("cannot check who is asking"): naming an identity is never enough.
+      identityEntry: inject.identityEntry, signIdentity: inject.signIdentity,
       // Who may pair to a space: the kernel's grants store when ctx.kernel offers it (work/kernel), else a fake that makes the box owner the owner of its own space.
       directory,
       ports: inject.ports,
@@ -262,6 +269,7 @@ export function createWink(inject = {}) {
       relayUrl: async () => { const r = /** @type {any} */ (await ctx.call("relay.status", {})); return String((r && r.data && r.data.url) || (ctx.config.relay && ctx.config.relay.url) || ""); },
     });
     pairing.tools();
+    registerReset({ ctx, pairing, now, identity: owner1, dropMs: inject.dropMs });
     live = pairing.peers;
     /** A space's own name for a card, never its id. */
     const spaceName = async (/** @type {string} */ id) => {
@@ -271,21 +279,22 @@ export function createWink(inject = {}) {
       if (om && om.kind === "space" && om.id === id && om.name) return String(om.name);
       return "your space";
     };
-    // A device that paired (a typed code, or the ring) is registered under the identity with its kind. No grant is written in any space.
-    /** Devices a pairing window already confirmed on a screen (relay `pairing.requested` then yes): not held again for the words. @type {Set<string>} */
-    const windowConfirmed = new Set();
-    const offWindow = ctx.events.on("pairing.requested", (/** @type {any} */ e) => { const d = String((e && (e.payload || e).device) || ""); if (d) { windowConfirmed.add(d); if (windowConfirmed.size > 50) windowConfirmed.delete(windowConfirmed.values().next().value); } });
-    /** The old ring: a device that paired with none of this module's own tickets (a phone's QR, a box's QR, a typed-code offer) and not through a confirmed pairing window. A box QR still open hides a ring pairing (the relay does not say which ticket was used). @param {any} p */
-    const isRing = p => {
-      if (windowConfirmed.delete(String(p.id))) return false;
-      if (pairing.phone.boxTicketLive()) return false;
-      return !db.prepare("SELECT id FROM wink_offers WHERE via = 'code' AND state = 'joining' LIMIT 1").get();
-    };
+    // A device that paired (a typed code, or a confirmed pairing) is registered under the identity with its kind. No grant is written in any space.
+    // The relay marks how a device came (`via` in device.paired, `gate` too for a gated ticket) and a gated ticket makes no device until the person has picked the right words
+    // (X-1): its redeemer is a waiting pairing (`pairing.pending`), held for the question below; this module confirms it to the relay only after that answer.
+    const offPending = ctx.events.on("pairing.pending", async (/** @type {any} */ e) => {
+      const p = e.payload || e;
+      try {
+        const w = { id: String(p.device), name: p.name, fingerprint: p.fingerprint };
+        if (p.gate === "phone") { if (!(await pairing.phone.hold(w))) await pairing.dropPending(w.id); }
+        else if (p.gate === "ring") await pairing.phone.holdRing(w);
+        // gate "server": the scanner completes its own adoption (wink.server.adopt), and the person at the server answers there
+      } catch (err) { ctx.log(`wink: a waiting pairing could not be held: ${/** @type {Error} */ (err).message}`); await pairing.dropPending(String(p.device)).catch(() => {}); }
+    });
     const registerDevice = async (/** @type {any} */ p) => {
-      // A phone that scanned the QR on show is held for the person's yes (wink.phone.pair.answer): nothing is registered until then.
-      if (await pairing.phone.hold(p)) return null;
-      // Neither a phone's QR, a box ticket, a typed-code offer nor a screen-confirmed pairing window: the old ring. Held until the same three words are confirmed on this computer.
-      if (isRing(p)) { await pairing.phone.holdRing(p); return null; }
+      // A ring ticket the relay did not gate (only under the test switch VYRE_TEST_UNGATED_RING, which a packaged daemon ignores) is held for the words after the fact; every gated pairing has been
+      // confirmed already, a window ticket was confirmed on a screen, a typed code by its ack.
+      if (p.via === "ring" && !p.gate) { await pairing.phone.holdRing({ ...p, id: p.id }); return null; }
       const identity = await owner1();
       const open = /** @type {any} */ (db.prepare("SELECT id FROM wink_offers WHERE via = 'code' AND state = 'joining' ORDER BY created DESC LIMIT 1").get());
       const o = open ? readOffer(open.id) : null;
@@ -580,6 +589,7 @@ export function createWink(inject = {}) {
     };
     const storage = createStorageDevices({ ctx, grants: storageGrants({ ctx, space: () => spaceCache }), vault: storageVault, admin: storageAdmin, space: spaceId });
     registerStorageTools(ctx, storage, "wink.storage");
+    registerNetwork(ctx, { ...(inject.network || {}), storage });
     const stopStorage = storage.startTimer();
     // The pool engine (work/sealing kernel/storage) is a library, not a module: a box that runs it passes the Pool and a backend factory (inject.pool,
     // inject.poolBackend; PORT until it is merged). Devices join the pool, usage and drains flow back, on every pairing and removal and once a minute.
@@ -642,7 +652,7 @@ export function createWink(inject = {}) {
         try { stopStorage(); } catch {}
         if (poolTimer) clearInterval(poolTimer);
         for (const off of offStorage) { try { off(); } catch {} }
-        for (const off of [offCode, offPaired, offRemoved, offInvite, offWindow]) { try { off(); } catch {} }
+        for (const off of [offCode, offPaired, offRemoved, offInvite, offPending]) { try { off(); } catch {} }
         try { code?.cancel(); } catch {}
         try { pairing.stop(); } catch {}
       },

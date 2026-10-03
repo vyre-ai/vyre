@@ -29,23 +29,25 @@ export class Drive {
   async put(p, bytes, { by = null, base = null, meter = null } = {}) {
     const k = this.path(p), sha256 = crypto.createHash("sha256").update(bytes).digest("hex"), r = await this.pool.put(bytes, { class: "working", meter });
     // The head, the version number and the conflict are decided inside the path's turn, after the bytes are stored (S-1): two writers at once get two versions.
-    return this.turn(k, async () => {
-      const f = (this.ix.files[k] ??= { versions: [] }), h = f.versions.at(-1), conflict = !!h && base !== h.ver, ver = (h?.ver ?? 0) + 1;
-      f.versions.push({ ver, id: r.id, size: r.size, sha256, at: this.now(), by, base, ...(conflict ? { conflict: true } : {}) });
+    return this.turn(k, () => this.addVersion(k, r, { sha256, by, base })).then(({ version, conflict, atRisk }) => ({ version, conflict, atRisk }));
+  }
+  /** Record a stored object as the next version of a path. If any step fails the version is taken back out and the stored object is removed: a refused or failed write leaves nothing behind. */
+  async addVersion(k, r, { sha256, by, base }) {
+    const f = (this.ix.files[k] ??= { versions: [] }), h = f.versions.at(-1), conflict = !!h && base !== h.ver, ver = (h?.ver ?? 0) + 1, entry = { ver, id: r.id, size: r.size, sha256, at: this.now(), by, base, ...(conflict ? { conflict: true } : {}) };
+    f.versions.push(entry);
+    try {
       // The version before is no longer the newest: it becomes cold. A conflicting write leaves the head's own class alone only until a person picks, so both stay working.
       if (h && !h.deleted && !conflict) await this.pool.reclass(h.id, "cold");
-      this.save(); return { version: ver, conflict, atRisk: r.atRisk };
-    });
+      this.save(); return { version: ver, size: r.size, sha256, conflict, atRisk: r.atRisk };
+    } catch (e) {
+      f.versions = f.versions.filter(x => x !== entry); if (!f.versions.length) delete this.ix.files[k];
+      await this.pool.remove(r.id).catch(() => {}); throw e;
+    }
   }
   /** Like `put`, for a stream of bytes (a download saved to the Drive): never more than one chunk in memory, `maxBytes` stops it, and nothing is kept if it fails. */
   async putStream(p, source, { by = null, base = null, meter = null, maxBytes = Infinity } = {}) {
     const k = this.path(p), r = await this.pool.putStream(source, { class: "working", meter, maxBytes });
-    return this.turn(k, async () => {
-      const f = (this.ix.files[k] ??= { versions: [] }), h = f.versions.at(-1), conflict = !!h && base !== h.ver, ver = (h?.ver ?? 0) + 1;
-      f.versions.push({ ver, id: r.id, size: r.size, sha256: r.sha256, at: this.now(), by, base, ...(conflict ? { conflict: true } : {}) });
-      if (h && !h.deleted && !conflict) await this.pool.reclass(h.id, "cold");
-      this.save(); return { version: ver, size: r.size, sha256: r.sha256, conflict, atRisk: r.atRisk };
-    });
+    return this.turn(k, () => this.addVersion(k, r, { sha256: r.sha256, by, base }));
   }
   /** What a version is, without reading it: its number, size and content hash (a version never changes). */
   stat(p, { version = null } = {}) {

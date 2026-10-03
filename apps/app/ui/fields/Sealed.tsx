@@ -4,6 +4,7 @@ import { Text } from "../components/Text";
 import { Chip } from "../components/Chip";
 import { Button } from "../components/Button";
 import { Sheet } from "../components/Sheet";
+import { haptic } from "../motion/haptics";
 import { Field } from "../components/Field";
 import { REVEAL_MS, REVEAL_PURPOSE, isEmpty, isRevealable, maskText, sealedPhrase } from "./logic.js";
 import type { EditProps, ViewProps } from "./types";
@@ -32,6 +33,7 @@ export function SealedView({ p }: ViewProps) {
     try {
       const got = await p.reveal(REVEAL_PURPOSE);
       setAsk(false);
+      haptic.approve();
       if (typeof got === "string") {
         setShown(got);
         if (timer.current) clearTimeout(timer.current);
