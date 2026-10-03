@@ -1,3 +1,4 @@
+import "./testing/hosted-guard.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

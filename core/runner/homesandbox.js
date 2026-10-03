@@ -104,7 +104,7 @@ export function homeSeatbelt(o) {
     ...[v, ...SECRET_DIRS.map(d => path.join(h, d))].map(d => `(deny file* (subpath ${q(d)}))`),
     // The way into other processes of the same user: their arguments and environment, signals, and the services that hold the
     // pasteboard, the keychain, Apple events and the window server (the same list the lent-computer profile denies).
-    "(deny signal (target others))", "(deny process-info* (target others))", '(deny sysctl-read (sysctl-name "kern.procargs2"))',
+    "(deny signal)", "(allow signal (target self) (target children))", "(deny process-info* (target others))", '(deny sysctl-read (sysctl-name "kern.procargs2"))',
     '(deny mach-lookup (global-name "com.apple.dnssd.service") (global-name "com.apple.SystemConfiguration.DNSConfiguration") (global-name "com.apple.coreservices.appleevents") (global-name "com.apple.pasteboard.1") (global-name "com.apple.SecurityServer") (global-name "com.apple.securityd.xpc") (global-name "com.apple.secd") (global-name "com.apple.windowserver.active") (global-name "com.apple.lsd.open") (global-name "com.apple.coreservices.launchservicesd"))',
     `(allow network-outbound (remote unix-socket (path-literal ${q(sock)})))`,
     `(allow file-read-metadata (literal ${q(sock)}))`,
@@ -157,12 +157,21 @@ export function planHome(o) {
   throw new Error("sessions on this system are not sandboxed yet (Windows needs the AppContainer pipe rule), so they do not start");
 }
 
+/** Throw the session's private config folder away when the session ends (the copy of the credential goes with it). @param {HomeOpts} o */
+export function discardConfig(o) {
+  if (!o.temp) return false;
+  const dir = path.join(real(o.temp), "agent-config");
+  try { fs.rmSync(dir, { recursive: true, force: true }); } catch { return false; }
+  return !fs.existsSync(dir);
+}
+
 const PROBE = `
 const net=require("net"),fs=require("fs");const P=JSON.parse(process.argv[1]);const out={};
-const conn=(t)=>new Promise(res=>{const s=typeof t==="number"?net.connect(t,"127.0.0.1"):net.connect(t);let d=false;const f=v=>{if(!d){d=true;try{s.destroy()}catch{}res(v)}};s.on("connect",()=>f("connected"));s.on("error",e=>f(e.code||"error"));setTimeout(()=>f("timeout"),2500)});
+const conn=(t)=>new Promise(res=>{const s=typeof t==="number"?net.connect(t,"127.0.0.1"):net.connect(t);let d=false;const f=v=>{if(!d){d=true;try{s.destroy()}catch{}res(v)}};s.on("connect",()=>f("connected"));s.on("error",e=>f(e.code||"error"));setTimeout(()=>f("timeout"),800)});
 (async()=>{
- out.personSocket=await conn(P.personSocket); out.otherSocket=await conn(P.otherSocket); out.ownSocket=await conn(P.ownSocket);
- out.daemonPorts=[];for(const p of P.daemonPorts)out.daemonPorts.push(await conn(p));
+ // The connects run together: a refusal is instant, and a connect that would succeed does so at once, so a short timeout loses nothing.
+ const [a,b,c,...ports]=await Promise.all([conn(P.personSocket),conn(P.otherSocket),conn(P.ownSocket),...P.daemonPorts.map(conn)]);
+ out.personSocket=a;out.otherSocket=b;out.ownSocket=c;out.daemonPorts=ports;
  out.writes=[];for(const d of P.writable){try{fs.mkdirSync(d,{recursive:true});const f=d+"/.vyre-selftest";fs.writeFileSync(f,"x");fs.readFileSync(f);fs.rmSync(f);out.writes.push("ok")}catch(e){out.writes.push(e.code||"error")}}
  out.hosts=[];for(const h of P.hosts){const [host,port]=h.split(":");if(P.proxyPort){out.hosts.push(await new Promise(res=>{const s=net.connect(P.proxyPort,"127.0.0.1");let d=false,b="";const f=v=>{if(!d){d=true;try{s.destroy()}catch{}res(v)}};s.on("connect",()=>s.write("CONNECT "+host+":"+(port||443)+" HTTP/1.1\\r\\nHost: "+host+"\\r\\nProxy-Authorization: Basic "+Buffer.from("vyre:"+P.proxyToken).toString("base64")+"\\r\\n\\r\\n"));s.on("data",x=>{b+=x;if(b.includes("\\r\\n"))f(/ 200 /.test(b.split("\\r\\n")[0])?"connected":"refused")});s.on("error",e=>f(e.code||"error"));setTimeout(()=>f("timeout"),4000)}));continue}out.hosts.push(await new Promise(res=>{const s=net.connect(Number(port||443),host);let d=false;const f=v=>{if(!d){d=true;try{s.destroy()}catch{}res(v)}};s.on("connect",()=>f("connected"));s.on("error",e=>f(e.code||"error"));setTimeout(()=>f("timeout"),4000)}))}
  if(P.daemonPid){try{process.kill(P.daemonPid,"SIGCONT");out.signal="ok"}catch(e){out.signal=e.code}try{const r=require("child_process").execFileSync("/bin/ps",["eww","-p",String(P.daemonPid)],{encoding:"utf8",stdio:["ignore","pipe","ignore"]});out.psEnv=r.includes(String(P.daemonPid))?"READ":"empty"}catch(e){out.psEnv="refused"}}
@@ -199,16 +208,28 @@ async function stale(o) {
 
 export async function selfTest(o) {
   const node = o.node || process.execPath;
+  const ts = Date.now();
   const old = await stale(o);
+  const staleMs = Date.now() - ts;
   if (old.length) return { ok: false, failures: ["the self-test is stale: " + old.join("; ")], results: null };
   const base = planHome({ ...o, command: node, args: [], readOnly: [...(o.readOnly || []), path.dirname(node)] });
   // The session reaches its socket at the path the sandbox gives it (VYRE_SOCKET), which is not the host path on Linux.
   const probes = { ...o.probes, ownSocket: base.socket, vyreHome: o.vyreHome || path.join(o.home, ".vyre"), writable: [...(o.agent?.settingsPaths || []), ...(o.temp ? [o.temp] : []), ...(o.workdirs || [])], hosts: o.agent?.hosts || [], proxyPort: o.platform === "linux" && o.proxy ? 18443 : 0, proxyToken: o.proxy?.token || "" };
   const p = planHome({ ...o, command: node, args: ["-e", PROBE, JSON.stringify(probes)], readOnly: [...(o.readOnly || []), path.dirname(node)] });
+  // The agent check and the probes run at the same time; the stale check ran first because a stale probe makes the rest meaningless.
+  const t0 = Date.now();
+  const agentCheck = !o.agent?.command ? Promise.resolve(null) : (async () => {
+    const a = planHome({ ...o, command: o.agent.command, args: o.agent.versionArgs || ["--version"], readOnly: [...(o.readOnly || []), path.dirname(o.agent.command)] });
+    const c = launch(a); let e2 = ""; c.stderr.on("data", d => e2 += d); c.stdout.resume();
+    const code = await new Promise(r => { const t = setTimeout(() => { c.kill("SIGKILL"); r(-1); }, 20000); c.on("close", x => { clearTimeout(t); r(x); }); });
+    return { code, e2 };
+  })();
   const child = launch(p);
   let out = "", err = "";
   child.stdout.on("data", d => out += d); child.stderr.on("data", d => err += d);
   await new Promise(r => child.on("close", r));
+  const agent = await agentCheck;
+  const probeMs = Date.now() - t0;
   let res; try { res = JSON.parse(out.trim().split("\n").pop() || ""); } catch { return { ok: false, failures: ["the self-test did not run: " + err.trim().slice(0, 200)], results: null }; }
   const failures = [];
   if (res.personSocket === "connected") failures.push("the person's own socket is reachable");
@@ -223,11 +244,6 @@ export async function selfTest(o) {
   // The other half of the proof: the provider's agent can still start and sign in.
   (res.writes || []).forEach((w, i) => { if (w !== "ok") failures.push(`the agent cannot use ${probes.writable[i]} (${w})`); });
   (res.hosts || []).forEach((h, i) => { if (h !== "connected") failures.push(`the agent cannot reach ${probes.hosts[i]} (${h})`); });
-  if (o.agent?.command) {
-    const a = planHome({ ...o, command: o.agent.command, args: o.agent.versionArgs || ["--version"], readOnly: [...(o.readOnly || []), path.dirname(o.agent.command)] });
-    const c = launch(a); let e2 = ""; c.stderr.on("data", d => e2 += d); c.stdout.resume();
-    const code = await new Promise(r => { const t = setTimeout(() => { c.kill("SIGKILL"); r(-1); }, 20000); c.on("close", x => { clearTimeout(t); r(x); }); });
-    if (code !== 0) failures.push(`the agent does not start inside the sandbox (exit ${code}${e2 ? ": " + e2.trim().slice(0, 120) : ""})`);
-  }
-  return { ok: failures.length === 0, failures, results: res };
+  if (agent && agent.code !== 0) failures.push(`the agent does not start inside the sandbox (exit ${agent.code}${agent.e2 ? ": " + agent.e2.trim().slice(0, 120) : ""})`);
+  return { ok: failures.length === 0, failures, results: res, timings: { staleMs, probeMs } };
 }
