@@ -135,6 +135,12 @@ export function createGroups({ ctx, logs, db, now = Date.now }) {
     if (typeof i.as === "string" && /^person:[^\s]{1,120}$/.test(i.as)) return i.as;
     return "person:owner";
   }
+  /** Only a person already in a group may speak in it, react, pin, keep or move a marker (a new group has no people yet: its first speaker founds it). @param {string} grp @param {string} who */
+  const mustBeIn = (grp, who) => {
+    if (!(groups.has(grp) || logs.known(grp))) return;
+    const g = group(grp);
+    if (g.people.size > 0 && !g.people.has(who)) throw fail("not_found", "no such session");
+  };
   const sessionOf = (/** @type {any} */ i) => { const s = String(i.session || ""); if (!ID.test(s)) throw fail("bad_input", "session must be a group id"); return s; };
 
   // ---- projection: a thread's events into the group's log ---------------------------------------
@@ -236,11 +242,16 @@ export function createGroups({ ctx, logs, db, now = Date.now }) {
   return {
     markers,
     person: personOf,
+    /** Does a group by this id exist here (in memory or stored)? Creates nothing. @param {string} grp */
+    known: grp => groups.has(grp) || logs.known(grp),
+    /** The people in a group, from its log. Call only for a known group. @param {string} grp */
+    people: grp => new Set(group(grp).people),
 
     /** @param {any} i @param {any} meta */
     async send(i, meta) {
       const grp = sessionOf(i);
       const author = personOf(meta, i);
+      mustBeIn(grp, author);
       const text = String(i.text ?? "").trim();
       if (!text) throw fail("bad_input", "text is empty");
       if (text.length > 20000) throw fail("bad_input", "text is too long");
@@ -304,6 +315,7 @@ export function createGroups({ ctx, logs, db, now = Date.now }) {
       const emoji = String(i.emoji || "");
       if (!emoji || emoji.length > 32) throw fail("bad_input", "emoji is required (up to 32 characters)");
       const author = personOf(meta, i);
+      mustBeIn(grp, author);
       join(grp, author);
       const f = logs.get(grp).append("reaction", { message: i.message, emoji, on: i.on !== false }, { author, message: i.message });
       return { session: grp, cur: f.cur };
@@ -314,6 +326,7 @@ export function createGroups({ ctx, logs, db, now = Date.now }) {
       const grp = sessionOf(i);
       if (typeof i.message !== "string" || !ID.test(i.message)) throw fail("bad_input", "message is required");
       const author = personOf(meta, i);
+      mustBeIn(grp, author);
       join(grp, author);
       const f = logs.get(grp).append("pin", { message: i.message, on: i.on !== false }, { author, message: i.message });
       return { session: grp, cur: f.cur };
@@ -327,6 +340,7 @@ export function createGroups({ ctx, logs, db, now = Date.now }) {
       if (!fo) throw fail("not_found", "no fan-out with that group id");
       if (!fo.data.members.some((/** @type {any} */ x) => x.message === i.keep)) throw fail("bad_input", "keep is one of the group's answers");
       const author = personOf(meta, i);
+      mustBeIn(grp, author);
       join(grp, author);
       const f = out.append("fanout-keep", { group: i.group, keep: i.keep }, { author, message: i.keep });
       return { session: grp, cur: f.cur, keep: i.keep };
@@ -336,6 +350,7 @@ export function createGroups({ ctx, logs, db, now = Date.now }) {
     markRead(i, meta) {
       const grp = sessionOf(i);
       const person = personOf(meta, i);
+      mustBeIn(grp, person);
       const upto = Number(i.upto);
       if (!Number.isInteger(upto) || upto < 0) throw fail("bad_input", "upto is a cursor");
       const f = markers.set(person, grp, upto);

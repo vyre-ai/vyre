@@ -67,7 +67,9 @@ const CALL_AS = { agents: (/** @type {string} */ as) => isPerson(as), link: ["li
   // capsule runs a view's declared tool as the asking person (first party modules) or as the added module itself, never as anyone else.
   capsule: (/** @type {string} */ as) => isPerson(as) || /^module:[a-z][a-z0-9-]*$/.test(as),
   // connectors relays the person who asked to one thing: writing an api-credential (a module cannot write one on its own); checked per call below.
-  connectors: (/** @type {string} */ as) => isPerson(as) };
+  connectors: (/** @type {string} */ as) => isPerson(as),
+  // stream asks threads.get as the very caller of stream.open (a person's surface or device, or an assistant), so a session's read is decided under that caller's own authority, never the module's.
+  stream: (/** @type {string} */ as) => isPerson(as) || agentClaim(as) !== null };
 /**
  * A manifest still says `"roles": ["box"]` or `["local"]` (forty-plus modules across every
  * team; ADR 0039 keeps that vocabulary rather than renaming it everywhere). `start()` is called

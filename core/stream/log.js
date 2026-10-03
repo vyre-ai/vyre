@@ -233,6 +233,13 @@ export class Logs {
   }
   /** @param {string} session */
   has(session) { return this.logs.has(session); }
+  /** Does this session have a log here, in memory or stored? Creates nothing. @param {string} session */
+  known(session) {
+    if (this.logs.has(session)) return true;
+    const db = this.opts.db;
+    if (!db) return false;
+    try { return Boolean(db.prepare("SELECT 1 AS x FROM stream_frames WHERE session = ? LIMIT 1").get(session)); } catch { return false; }
+  }
   /** @param {string} session */
   drop(session) { const l = this.logs.get(session); if (l) { l.close(); this.logs.delete(session); } }
   close() { for (const l of this.logs.values()) l.close(); this.logs.clear(); }

@@ -2,17 +2,20 @@
 // stream: the session stream as a module (ADR 0052). It listens to the switchboard's thread.* and
 // ask.* events, maps them to frames (adapter.js), keeps one gapless log per session (log.js) in
 // memory and in the module's own table, and serves them on the WebSocket
-// /v1/streams/stream/session. One tool, stream.open, hands the screen a one-use ticket (30 s) and
+// /v1/streams/stream/session. One tool, stream.open, hands the screen a one-use ticket (15 s) and
 // the log's head and floor, the same shape as term.open and Glass. Nothing polls: frames are sent
 // the moment an event lands.
 //
-// The ticket is the whole authority, as for term: it is spent before the handshake completes.
+// The ticket is the whole authority, as for term: it is spent before the handshake completes. It is
+// made only after access.js says the caller may read the session, and it is bound to that caller: the
+// upgrade must come from the same caller (and device, where the router names one) or it is refused.
 
 import crypto from "node:crypto";
 import { Logs } from "./log.js";
 import { createAdapter, pipe } from "./adapter.js";
 import { serveWS } from "./server.js";
 import { createGroups } from "./group.js";
+import { createAccess } from "./access.js";
 
 export { SessionLog, Logs } from "./log.js";
 export { serve, serveSSE, serveWS, HEARTBEAT_MS } from "./server.js";
@@ -39,12 +42,12 @@ const reject = (socket, status, reason) => { try { socket.end(`HTTP/1.1 ${status
 export default {
   async start(ctx) {
     const cfg = (ctx.config && ctx.config.stream) || {};
-    const ticketMs = Number(cfg.ticketMs ?? 30_000);
+    const ticketMs = Number(cfg.ticketMs ?? 15_000);
     const now = () => Date.now();
     const logs = new Logs({ db: ctx.store && ctx.store.db, maxFrames: cfg.maxFrames, maxBytes: cfg.maxBytes });
     /** @type {Map<string, ReturnType<typeof createAdapter>>} */
     const adapters = new Map();
-    /** @type {Map<string, { session: string, expires: number, from: number|null, person: string }>} */
+    /** @type {Map<string, { session: string, expires: number, from: number|null, person: string, caller: string, device: string, viewer: { id: string, roles: string[] } }>} */
     const tickets = new Map();
     const sockets = new Set();
 
@@ -86,6 +89,7 @@ export default {
     };
 
     const groups = ctx.store && ctx.store.db ? createGroups({ ctx, logs, db: ctx.store.db }) : null;
+    const access = createAccess({ ctx, groups, logs });
 
     const off = ctx.events.on("*", (/** @type {any} */ e) => {
       if (!e || !e.thread || !EVENTS.test(e.type)) return;
@@ -100,19 +104,23 @@ export default {
     });
 
     ctx.tool("stream.open", {
-      description: "A one-use ticket (30 s) for the session stream at path, resuming after cursor from (0 for everything the log holds). Also the log's head and floor: a from below floor will be sent a reset.",
+      description: "A one-use ticket (15 s) for the session stream at path, resuming after cursor from (0 for everything the log holds). Also the log's head and floor: a from below floor will be sent a reset.",
       input: obj({ session: str, from: int, as: str }, ["session"]),
       callers: PEOPLE,
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const session = String(i.session || "");
         if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(session)) { const e = /** @type {any} */ (new Error("session must be a thread id")); e.code = "bad_input"; throw e; }
+        // Who may read it comes first: nothing below runs, and no log or set entry is made, for a session the caller may not read.
+        const { viewer: who } = await access.read(session, meta, i);
         if (!seen.has(session)) { seen.add(session); if (logs.get(session).head === 0) await seed(session); }
         else if (seeding.has(session)) await seeding.get(session);
         for (const [k, v] of tickets) if (v.expires <= now()) tickets.delete(k);
         const ticket = crypto.randomBytes(24).toString("base64url");
         const from = Number.isInteger(i.from) && i.from >= 0 ? i.from : null;
-        const viewer = groups ? groups.person(meta, i) : "person:owner";
-        tickets.set(ticket, { session, expires: now() + ticketMs, from, person: viewer });
+        const viewer = who.id;
+        const peer = meta && meta.peer;
+        const device = peer && (peer.stableId || peer.node) ? String(peer.stableId || peer.node) : "";
+        tickets.set(ticket, { session, expires: now() + ticketMs, from, person: viewer, caller: String((meta && meta.caller) || ""), device, viewer: who });
         const log = logs.get(session);
         return { session, ticket, viewer, path: `/v1/streams/stream/session?ticket=${encodeURIComponent(ticket)}${from === null ? "" : `&from=${from}`}`, head: log.head, floor: log.floor };
       },
@@ -125,6 +133,8 @@ export default {
         const held = tickets.get(tk);
         tickets.delete(tk);
         if (!held || held.expires <= now()) { reject(socket, 403, "Forbidden"); return; }
+        // Bound to who asked: a ticket from a URL, a proxy log or a screenshot is no use to another caller or device.
+        if (String((info && info.caller) || "") !== held.caller || (info && info.peer && (info.peer.stableId || info.peer.node) && String(info.peer.stableId || info.peer.node) !== held.device)) { reject(socket, 403, "Forbidden"); return; }
         const q = url.searchParams.get("from");
         const n = q === null || q === "" ? NaN : Number(q);
         const from = Number.isInteger(n) && n >= 0 ? n : held.from ?? undefined;

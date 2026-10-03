@@ -35,11 +35,12 @@ async function serve(t, w) {
 }
 
 /** A resumable client over the box: a fresh ticket per attempt, from its own cursor. */
-function client(t, w, port, session) {
+function client(t, w, port, session, person) {
   /** @type {any[]} */ const frames = [];
   const c = connect({
     open: async ({ from }) => {
-      const o = (await w.tool("stream.open", { session, from }, "deck")).data;
+      // open as a person in the chat: the stream is read by its participants only
+      const o = (await w.tool("stream.open", { session, from, ...(person ? { as: person } : {}) }, "deck")).data;
       return wsDuplex(`ws://127.0.0.1:${port}${o.path}`);
     },
     onFrame: f => frames.push(f),
@@ -87,7 +88,7 @@ async function world(t) {
   const w = await own(t);
   const { port, kill } = await serve(t, w);
   const as = (person) => (tool, input) => w.tool(tool, { session: GROUP, ...input, as: person }, "deck");
-  const view = client(t, w, port, GROUP);
+  const view = client(t, w, port, GROUP, ALEX);
   const say = (person, text, extra = {}) => as(person)("stream.send", { text, ...extra });
   return { w, port, view, as, say, kill };
 }
@@ -166,7 +167,7 @@ test("group: a stop and start in the middle of a fan-out loses nothing and repea
   delete process.env.VYRE_STREAM_TEST_HOLD;
   await w.restart();
   const { port: p2 } = await serve(t, w);
-  const again = client(t, w, p2, GROUP);
+  const again = client(t, w, p2, GROUP, ALEX);
   await until(() => done(again.frames).has(juno.message), "juno's reply after the restart", 20000);
   const a = answers(again.frames);
   assert.equal(a.size, 2, "two answers, none extra");
@@ -186,6 +187,8 @@ test("group: a stop and start in the middle of a fan-out loses nothing and repea
 
 test("group: a read marker reaches the same person's other connection and nobody else's", async t => {
   const { w, port, as } = await world(t);
+  // the chat exists, with alex and chris in it, before anyone opens it: only its participants may
+  await as(ALEX)("stream.send", { text: "hi chris", people: [CHRIS] });
   const open = async person => {
     const frames = []; let live = false;
     const c = connect({ onState: st => { if (st === "live") live = true; }, open: async ({ from }) => { const o = (await w.tool("stream.open", { session: GROUP, from, as: person }, "deck")).data; return wsDuplex(`ws://127.0.0.1:${port}${o.path}`); }, onFrame: f => frames.push(f), backoff: { base: 5, cap: 40 } });

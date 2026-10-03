@@ -13,6 +13,9 @@ import { Events } from "../events/index.js";
 import * as config from "../config/index.js";
 import { tempHome } from "../../test/helpers.js";
 import { connect, wsDuplex } from "./client.js";
+import { fakeThreads } from "./fake-threads.js";
+import { SCRATCH } from "../../test/scratch.mjs";
+import fs from "node:fs";
 
 const CORE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -21,8 +24,13 @@ async function world(t) {
   const db = open(p.db);
   const events = new Events(db);
   const reg = new Registry({ db, events, config: { role: "box" }, paths: p, log: () => {} });
-  await reg.start(discover([CORE]).filter(f => f.manifest && f.manifest.name === "stream"), { role: "box" });
+  // threads.get is the switchboard's: a stand-in answers it (as the caller), so stream.open can tell a thread from no thread.
+  const fake = fs.mkdtempSync(path.join(SCRATCH, "vyre-stream-fake-"));
+  t.after(() => fs.rmSync(fake, { recursive: true, force: true }));
+  fakeThreads(fake);
+  await reg.start([...discover([CORE]).filter(f => f.manifest && f.manifest.name === "stream"), ...discover([fake], { firstPartyRoots: [fake] })], { role: "box" });
   assert.equal(reg.modules.get("stream")?.state, "running", reg.modules.get("stream")?.error);
+  assert.equal(reg.modules.get("threads")?.state, "running", reg.modules.get("threads")?.error);
   const s = http.createServer((_q, r) => { r.writeHead(404); r.end(); });
   s.on("upgrade", (req, socket, head) => {
     const url = new URL(req.url || "/", "http://vyred");
