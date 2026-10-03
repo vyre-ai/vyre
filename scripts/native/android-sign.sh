@@ -39,7 +39,7 @@ apk_out="$OUT_DIR/${OUT_NAME:-$(basename "$APK_IN" | sed 's/-unsigned//')}"
 rm -f "$OUT_DIR/aligned.tmp" "$apk_out.idsig"
 report=$("$bt/apksigner" verify --verbose --print-certs --min-sdk-version 24 "$apk_out" 2>&1) || { printf '%s\n' "$report"; echo "apksigner does not verify the signed APK"; exit 1; }
 printf '%s\n' "$report" | grep -E '^(Verifies|Verified using v[23] scheme|Number of signers)'
-apk_cert=$(printf '%s\n' "$report" | sed -n 's/^Signer.* certificate SHA-256 digest: //p' | head -1 | tr 'A-F' 'a-f' || true)
+apk_cert=$(printf '%s\n' "$report" | sed -n 's/^.*Signer.* certificate SHA-256 digest: //p' | head -1 | tr 'A-F' 'a-f' || true)
 [ -n "$apk_cert" ] || { echo "could not read the APK's signing certificate; apksigner said:"; printf '%s\n' "$report" | grep -i 'signer\|certificate' | cut -c1-120 || true; exit 1; }
 [ "$apk_cert" = "$key_cert" ] || { echo "the APK's certificate is not the keystore's ($apk_cert vs $key_cert)"; exit 1; }
 
