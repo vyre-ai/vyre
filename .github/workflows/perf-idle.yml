@@ -1,6 +1,9 @@
 # Idle CPU of vyred on a quiet hosted runner, three runs per Node major, for setting scripts/perf-check's budgets (#71). Dispatch only.
 name: perf-idle
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+  push:
+    branches: ["work/launch-perf-idle"]
 permissions:
   contents: read
 jobs:
