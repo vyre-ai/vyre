@@ -530,7 +530,8 @@ publish_release() {
     fi
     if [ -f "$rt/modules.json" ] && [ ! -L "$rt/modules.json" ]; then
       want=$(awk '$2 == "modules.json" || $2 == "*modules.json" { print $1; exit }' "$rt/SHA256SUMS")
-      if [ -z "$want" ] || [ "$want" != "$(sha256 "$rt/modules.json")" ]; then echo "vyre: modules.json is not the file the signed SHA256SUMS lists; it was not published" >&2; rm -f "$rt/modules.json"; fi
+      # Fail closed: a release whose module list is not the signed one publishes nothing, so the folder never holds a release without its list.
+      if [ -z "$want" ] || [ "$want" != "$(sha256 "$rt/modules.json")" ]; then echo "vyre: modules.json is not the file the signed SHA256SUMS lists; nothing was published" >&2; rm -rf "$rt"; return 0; fi
     fi
     # The counter only goes up (a signed older release must not roll the module list back).
     newc=$(tr -d '\n' <"$rt/modules.json" 2>/dev/null | sed -n 's/.*"counter": *\([0-9][0-9]*\).*/\1/p')

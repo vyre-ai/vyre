@@ -956,11 +956,11 @@ test("publish-release: modules.json is published when the signed list has it, th
   await b.run(["publish-release", src], {});
   assert.deepEqual(fs.readdirSync(rel).sort(), ["SHA256SUMS", "SHA256SUMS.sig", "modules.json", "shell.json"]);
   assert.equal(counterOf(), 3004100);
-  // A modules.json that is not the file the signed list has is not published (the other files still are).
+  // A modules.json that is not the file the signed list has publishes nothing: the folder keeps the release it had, with its list.
   release(3004200, " ");
   const bad = /** @type {any} */ (await b.run(["publish-release", src], {}));
-  assert.match(bad.out, /modules\.json is not the file the signed SHA256SUMS lists/);
-  assert.ok(!fs.existsSync(path.join(rel, "modules.json")) || counterOf() !== 3004200, "the unlisted list was not published");
+  assert.match(bad.out, /modules\.json is not the file the signed SHA256SUMS lists; nothing was published/);
+  assert.equal(counterOf(), 3004100, "the folder still holds the release before, whole");
   // A newer release replaces the folder as a whole and the old one is set aside, whole.
   release(3004200);
   await b.run(["publish-release", src], {});
