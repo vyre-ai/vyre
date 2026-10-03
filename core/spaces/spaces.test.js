@@ -747,7 +747,7 @@ test("kernel mode: roles and members are the Space kernel's, through the tools, 
   const presenceK = { check: async ({ chain, op, fields, proof }) => (chain && proof && proof.payload_hash === payloadHash(op, chain.space, fields) && !used.has(proof.nonce) && (used.add(proof.nonce), true) ? null : "bad_proof") };
   // The module reaches the one real kernel for any space id it asks about (the routing is the only fake: the kernel itself is real).
   const real = m => (handle ||= K.kernelFor(m));
-  const kernelFor = m => ({ for: () => real(m).for(KSPACE), chain: meta => real(m).chain(meta), proofFrom: meta => real(m).proofFrom(meta), serviceChain: () => real(m).serviceChain(), acceptProofRequest: (c, p) => real(m).acceptProofRequest(c, p) });
+  const kernelFor = m => ({ for: () => real(m).for(KSPACE), chain: meta => real(m).chain(meta), proofFrom: meta => real(m).proofFrom(meta), serviceChain: () => real(m).serviceChain(), acceptProofRequest: (c, p) => real(m).acceptProofRequest(c, p), membership: p => real(m).membership(p, KSPACE) });
   const d = await device(t, { kernelFor });
   const alex = await d.ok("spaces.identity.create", { name: "alex" });
   K = await createKernel({ space: KSPACE, owner: alex.id, owner_uid: 501, key: Buffer.alloc(32, 9), clock: () => w.clock.t, presence: presenceK, hasPresenceSession: () => true });
@@ -776,6 +776,10 @@ test("kernel mode: roles and members are the Space kernel's, through the tools, 
   // the last owner stays: the kernel's rule, as last_owner
   const last = await d.call("spaces.members.remove", { space, person: alex.id }, "cli", { token, kernel_proof: sign("removeMember", { person: alex.id }) });
   assert.equal(last.error?.code, "last_owner", JSON.stringify(last.error));
+  // the modules' reads (bridges, publish) are the kernel's answer for this one person, not a local table
+  assert.deepEqual(await d.ok("spaces.membership", { space, person: alex.id }, "module:bridges"), { space, person: alex.id, role: "owner", scope: null, expires: null });
+  assert.equal(await d.ok("spaces.membership", { space, person: KIT }, "module:bridges"), null, "removed: not a member");
+  assert.deepEqual((await d.ok("spaces.merge-list", { person: alex.id }, "module:bridges")).spaces.map(x => x.space), [space]);
   // spaces.get and spaces.list read the role from the kernel
   assert.equal((await d.ok("spaces.get", { space }, "cli", { token })).role, "owner");
   assert.equal((await d.ok("spaces.list", {}, "cli", { token })).find(x => x.id === space).role, "owner");
@@ -793,7 +797,7 @@ test("kernel mode: an invite is the Space kernel's: the link carries its id and 
   const used = new Set();
   const presenceK = { check: async ({ chain, op, fields, proof }) => (chain && proof && proof.payload_hash === payloadHash(op, chain.space, fields) && !used.has(proof.nonce) && (used.add(proof.nonce), true) ? null : "bad_proof") };
   const real = m => { if (!handles.has(m.name)) handles.set(m.name, K.kernelFor(m)); return handles.get(m.name); };
-  const kernelFor = m => ({ for: () => real(m).for(KSPACE), chain: meta => real(m).chain(meta), proofFrom: meta => real(m).proofFrom(meta), serviceChain: () => real(m).serviceChain(), acceptProofRequest: (c, p) => real(m).acceptProofRequest(c, p) });
+  const kernelFor = m => ({ for: () => real(m).for(KSPACE), chain: meta => real(m).chain(meta), proofFrom: meta => real(m).proofFrom(meta), serviceChain: () => real(m).serviceChain(), acceptProofRequest: (c, p) => real(m).acceptProofRequest(c, p), membership: p => real(m).membership(p, KSPACE) });
   const d = await device(t, { kernelFor }), kitDev = await device(t, { kernelFor });
   const alex = await d.ok("spaces.identity.create", { name: "alex" });
   const kit = await kitDev.ok("spaces.identity.create", { name: "kit" });
