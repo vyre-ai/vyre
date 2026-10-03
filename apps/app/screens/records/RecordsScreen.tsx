@@ -1,0 +1,46 @@
+import { useCallback, useState } from "react";
+import { ScrollView, View } from "react-native";
+import { useRouter } from "expo-router";
+import { BoardView, CalendarView, EmptyState, ErrorState, ListView, Segmented, Tabs, Text, showToast, useFieldEnv, useRecordsWorld, useStore, viewDefOf, viewsOf } from "@vyre/ui";
+
+type ViewKind = "list" | "board" | "calendar";
+const LABEL: Record<ViewKind, string> = { list: "List", board: "Board", calendar: "Calendar" };
+
+/** /u/records/<type>: every record of one type, as a list, a board or a calendar, drawn from the type's definition. Nothing here knows Contact or Matter. */
+export function RecordsScreen({ type }: { type: string }) {
+  const router = useRouter();
+  const store = useStore();
+  const { data: world, loading, error, reload } = useRecordsWorld();
+  const [view, setView] = useState<ViewKind>("list");
+  const open = useCallback((urn: string) => router.push(`/u/record/${urn.split("/").pop()}` as never), [router]);
+  const env = useFieldEnv(world, open);
+  if (error && !world) return <ErrorState title="Could not load the records" reason={error.message} retry={reload} />;
+  if (loading && !world) return <View className="p-s6"><Text tone="label">Loading</Text></View>;
+  const def = world?.types.find((t) => t.name === type);
+  if (!world || !def) return <EmptyState title="No such record type" body={`This space has no type called "${type}".`} action={{ label: "Go to Contacts", onPress: () => router.replace("/u/records/contact" as never) }} />;
+  const vd = viewDefOf(def);
+  const views = viewsOf(def, vd) as ViewKind[];
+  const shown: ViewKind = views.includes(view) ? view : "list";
+  const rows = world.byType[def.name] || [];
+  const move = async (rec: any, to: string) => {
+    const g = vd.board?.groupBy;
+    if (!g) return;
+    try { await store.update(rec.urn, { [g]: to || null } as any, rec.version); } catch (e) { showToast(e instanceof Error ? e.message : String(e)); }
+  };
+  const openRec = (rec: any) => router.push(`/u/record/${rec.id}` as never);
+  return (
+    <ScrollView contentContainerClassName="gap-s4 p-s4 max-w-page w-full self-center">
+      <View className="flex-row items-center gap-s3">
+        <View className="min-w-0 flex-1">
+          <Text size="page" strong>{vd.plural}</Text>
+          <Text size="caption" tone="label">{rows.length} {rows.length === 1 ? def.label.toLowerCase() : vd.plural.toLowerCase()}</Text>
+        </View>
+      </View>
+      <Tabs value={type} onChange={(t) => router.replace(`/u/records/${t}` as never)} items={world.types.map((t) => [t.name, viewDefOf(t).plural] as [string, string])} />
+      {views.length > 1 ? <Segmented<ViewKind> label="View" value={shown} onChange={setView} options={views.map((v) => [v, LABEL[v]] as [ViewKind, string])} /> : null}
+      {shown === "list" ? <ListView def={def} rows={rows} env={env} onOpen={openRec} /> : null}
+      {shown === "board" ? <BoardView def={def} rows={rows} env={env} onOpen={openRec} onMove={move} /> : null}
+      {shown === "calendar" ? <CalendarView def={def} rows={rows} env={env} onOpen={openRec} /> : null}
+    </ScrollView>
+  );
+}

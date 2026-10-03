@@ -6,8 +6,8 @@ import { faces } from "../../src/theme/fonts";
 import { useUiTheme } from "../theme";
 
 /** One-line input shell, label above. `kind` picks the keyboard and the mask; the value is always a string at this layer. */
-export function Field({ label, value, onChangeText, placeholder, kind = "text", error, help, disabled, multiline, mono, className }: {
-  label?: string; value: string; onChangeText?: (v: string) => void; placeholder?: string; kind?: "text" | "number" | "email" | "phone" | "password" | "url" | "date";
+export function Field({ label, name, value, onChangeText, placeholder, kind = "text", error, help, disabled, multiline, mono, className }: {
+  label?: string; value: string; onChangeText?: (v: string) => void; placeholder?: string; kind?: "text" | "number" | "email" | "phone" | "password" | "url" | "date"; /** The accessible name when there is no visible label. */ name?: string;
   error?: string; help?: string; disabled?: boolean; multiline?: boolean; mono?: boolean; className?: string;
 }) {
   const [focus, setFocus] = useState(false);
@@ -27,7 +27,7 @@ export function Field({ label, value, onChangeText, placeholder, kind = "text", 
         keyboardType={kb}
         secureTextEntry={kind === "password"}
         autoCapitalize="none"
-        accessibilityLabel={label ?? placeholder}
+        accessibilityLabel={label ?? name ?? placeholder}
         onFocus={() => setFocus(true)}
         onBlur={() => setFocus(false)}
         style={[mono ? faces.mono : faces.regular, { outlineStyle: "none" } as any]}
