@@ -144,3 +144,24 @@ Order of value; a branch lands only when its own head is green on hosted node an
 - rc = main = 38a6f58fc. Fixed on the rc: matrix J2 and J2b built the stripped wrapper (it ignores the local release URL, so the tamper and refusal cases reached the real network and installed 0.2.2): both jobs now build with VYRE_TEST_UNSTRIPPED_WRAPPER=1; the matrix `on` input is quoted (YAML read it as true, so dispatch could not pass it); app-boot's #pair= test deadlocked on Chrome 154 (Page.navigate awaited while Fetch held the request), counted OPTIONS preflights as lookups, and reused the page between links.
 - Green on 38a6f58fc: app-boot 37134387001 (also 37134359808), release-dist 37134359796, matrix-j1 37134359868, matrix-j1-variants 37134359770, matrix-cosign-refusals 37134359781, matrix-j6j7 37134359831, box-image 37134359835, node (22) green, capsule-win 37134363186, capsule-mac 37134363159 (rerun), app 37134363188, vault-mac, design, sessions-sdk.
 - Red, named: matrix 37134359797 only in mac (iOS Safari simulator, NSPOSIXErrorDomain 60) and the report that follows it; node (24) 37134363221 all 7343 tests pass, only `npm run perf-check` red (probe, #71). capsule-mac's first run failed one Swift stream-timing test, green on rerun.
+
+## What a 0.3 relay and site deploy needs (launch, 3 Oct; nothing deployed)
+
+Why both are dark today: relay.vyre.run runs the 0.2 Worker, which has no `/v1/wink/code` (the typed-code rendezvous exists only on the 0.3 branches, from wink-code 5e43f1815 on: work/kernel, flows, records, spaces and others carry it; neither rc-0.2.2 nor main does). vyre.run/i is `/i /install.sh 200` in assemble-site.sh, and that file only reaches the live site when site-deploy assembles a STABLE release, so the live site (a pre-0.2 deploy) has no /i until one stable tag is published.
+
+Relay (relay.vyre.run, `relay/worker`):
+1. The 0.3 commit must be on `work/stage-0.2`. relay-deploy.yml refuses a sha that is not an ancestor of origin/work/stage-0.2 and must be dispatched from main or stage. So the green 0.3 branch is merged into stage-0.2 first (or the workflow's two checks are widened by an approved change).
+2. wrangler.toml changes that ship with it: Durable Object binding `CODES` -> class `CodeSlot`; migration tag `v3` with `new_sqlite_classes = ["CodeSlot"]` (a new tag, as v2 was for PairTicket; it runs once, in order after v1 and v2); three rate-limit bindings CODE_LIMITER 26010, CODE_STEP_LIMITER 26011, CODE_MISS_LIMITER 26012. The namespace ids must stay unique in the account; 26010 to 26012 are free next to 26001, 26002, 26004, 26005, 26007.
+3. `relay/worker/dev-entry.js` must export CodeSlot too (the dev entry is only for the local runs; the deployed entry is index.js).
+4. The per-address cap at the edge (`scripts/deploy/relay-edge-rule.mjs`, input `relay_edge_rule`) covers only /v1/pair and /v1/setup/mbx. /v1/wink/code needs adding to its expression, or it has only the Worker's own limiters (cf-connecting-ip must reach the Worker). Needs CLOUDFLARE_WAF_TOKEN (Zone WAF Edit on vyre.run) and NAMES_CF_ZONE_ID.
+5. Environment: the `deploy` environment's reviewer approves after the dry run is read; CLOUDFLARE_API_TOKEN secret and CLOUDFLARE_ACCOUNT_ID variable are already what the 0.2 deploy used. Observability stays off (#70).
+6. Dispatch: `gh workflow run relay-deploy.yml --ref main -f sha=<40 hex on stage> -f relay=true`. After: `curl -i -X POST https://relay.vyre.run/v1/wink/code` must answer something other than 426 (a 4xx from the Worker's own refusal for an empty body is the pass), and /v1/pair and /v1/setup/mbx must still answer as before (a v1/v2 DO is untouched by a v3 migration).
+7. The hosted app (app.vyre.run) needs its own deploy only if the 0.3 loader changed (`app=true`, plus `app_out_run` = the release run that uploaded the signed `app-out`). Names Worker: untouched unless 0.3 changes names/.
+8. Old boxes keep working: they never call /v1/wink/code. A 0.3 box against a not-yet-deployed relay gets the 426 tailnet saw, so deploy the relay BEFORE any 0.3 box or capsule ships.
+
+Site (vyre.run/i):
+1. site-deploy.yml runs from main only, on a published stable tag matching ^vX.Y.Z$ (not a prerelease): an rc tag deploys nothing. Either publish the next stable release, or dispatch `gh workflow run site-deploy.yml --ref main -f tag=v0.1.1` to put the existing stable's signed files plus main's pages and `/i` live now (v0.1.1's install.sh is the old installer; the install-box.sh fixes only arrive with the next stable).
+2. Both paths wait for the `deploy` environment's reviewer. After: `curl -sI https://vyre.run/i` is 200, and `curl -s https://vyre.run/i | cmp - install.sh` against the tag's file.
+3. main already carries the v2 pages, so nothing is merged for the site itself.
+
+Open on my side: install-box.sh `--from` fix is on work/launch-from-start dac87d5bc (not on the rc until you say).
