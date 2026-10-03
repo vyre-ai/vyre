@@ -603,7 +603,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     if (viaKs() && m.thread) await beginTurn(m);
     const surface = row.surface ? String(row.surface) : "deck";
     // On the seam the Switchboard opens this turn's kernel session for the asker in this chat, from these two inputs (it honours them from module:stream alone); the kernel checks the asker is in the chat.
-    const turn = viaKs() ? { chat: String(row.grp), asker: String(row.asker) } : {};
+    const turn = viaKs() ? { chat: String(row.grp), asker: String(row.asker).replace(/^person:/, "") } : {};
     if (!m.thread) {
       if (!m.cwd) throw fail("bad_input", `${m.who} has no folder to work in: name its cwd when it joins`);
       const r = await ctx.call("threads.start", { cwd: m.cwd, prompt: String(row.text), surface, ...turn });
