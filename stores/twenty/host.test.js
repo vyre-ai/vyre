@@ -79,7 +79,7 @@ test("a sealed field holds only a reference in Twenty and in the log", async () 
   assert.deepEqual((await store.get("contact", rec.id)).data.ssn, ref);
 });
 
-test("task, template, playbook and team_member records round trip, with actors and lists", async () => {
+test("task, template, playbook and team-member records round trip, with actors and lists", async () => {
   const { host } = await boot();
   await host.defineCore(); await host.installKit(kit);
   const c = host.ownerChain();
@@ -93,7 +93,7 @@ test("task, template, playbook and team_member records round trip, with actors a
   assert.equal(back.data.state, "ready");
   assert.deepEqual(back.data.template, { urn: tpl.urn });
   await host.kernel.records.create(c, "playbook", { name: "Intake", applies_to: "matter", body: "Ask about the household first." });
-  await host.kernel.records.create(c, "team_member", { name: "Research", actor: bot, kind: "assistant", role: "research", project: { urn: matter.urn }, doing: "reading harlowlegal.example" });
+  await host.kernel.records.create(c, "team-member", { name: "Research", actor: bot, kind: "assistant", role: "research", project: { urn: matter.urn }, doing: "reading harlowlegal.example" });
   const open = await host.kernel.records.query(c, "task", { filter: { field: "state", op: "eq", value: "ready" }, page: { limit: 10 } });
   assert.equal(open.rows.length, 1);
 });

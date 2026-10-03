@@ -130,3 +130,18 @@ test("a failing store makes Stripe retry (500), and the retry then finishes the 
   assert.equal((await q(store, "contact")).rows.length, 1, "the contact from the first try is reused");
   assert.equal((await q(store, "matter")).rows.length, 1);
 });
+
+test("fail the first run, redeliver: one event, one run, one matter", async () => {
+  const { store, host, send, events } = await setup();
+  const real = store.create.bind(store);
+  let fail = true;
+  store.create = async (t, id, d) => { if (t === "matter" && fail) { fail = false; throw Object.assign(new Error("store down"), { code: "unavailable" }); } return real(t, id, d); };
+  assert.equal((await send(checkout())).status, 500);
+  const r = await send(checkout());
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal((await send(intent())).status, 200);
+  assert.equal(events("payment.received").length, 1);
+  assert.equal((await host.flows.runner.listRuns({ limit: 100 })).length, 1);
+  assert.equal((await q(store, "matter")).rows.length, 1);
+  assert.equal((await q(store, "contact")).rows.length, 1);
+});

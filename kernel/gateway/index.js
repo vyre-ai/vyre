@@ -14,8 +14,11 @@ import { KernelError } from "../core/errors.js";
  *   sinks?: Set<string>, standing?: any, verifyPresence?: any, hasPresenceSession?: any, clock?: () => number, policy_version?: number }} cfg
  */
 export function createGateway(cfg) {
-  const authorizer = createAuthorizer({ ...cfg, actions: [...RECORD_ACTIONS, ...SEAL_ACTIONS, ...TASK_ACTIONS, ...(cfg.actions || [])] });
-  const records = createRecords({ space: cfg.space, store: cfg.store, authorizer, log: cfg.log, chains: cfg.chains, clock: cfg.clock, sinks: cfg.sinks });
+  /** @type {any} */ let records;
+  // Kernel attributes come from the gateway's own index (K2-7); a caller-supplied resolver only fills what the gateway does not hold.
+  const attrs = (/** @type {string} */ u) => ({ ...((cfg.attrs && cfg.attrs(u)) || {}), ...((records && records.attrsOf(u)) || {}) });
+  const authorizer = createAuthorizer({ ...cfg, attrs, actions: [...RECORD_ACTIONS, ...SEAL_ACTIONS, ...TASK_ACTIONS, ...(cfg.actions || [])] });
+  records = createRecords({ space: cfg.space, store: cfg.store, authorizer, log: cfg.log, chains: cfg.chains, clock: cfg.clock, sinks: cfg.sinks });
   const { allowed } = createGate({ authorizer, log: cfg.log });
 
   /** May this chain see this event? `events.read` on the subject, then the event's own `vis` (contract 7.4). Anything unknown is no. */
@@ -58,7 +61,14 @@ export function createGateway(cfg) {
     records,
     events: Object.freeze({ read, latestSeq: cfg.log.latestSeq, subscribe }),
     audit: Object.freeze({
-      verify: async () => { const v = cfg.log.verify(); return { ok: v.ok, events: cfg.log.latestSeq(), open_intents: records.openIntents(), ...(v.ok ? {} : { detail: v.why }) }; },
+      verify: async () => {
+        const v = cfg.log.verify();
+        // Every event that still holds its data must also match its salted commitment (K1 item 9b); an erased event keeps only its envelope.
+        let bad = null;
+        if (v.ok) for (const e of cfg.log.read()) if (!(e.data && e.data.erased === true) && !cfg.log.proves(e.seq)) { bad = e.seq; break; }
+        const ok = v.ok && bad === null;
+        return { ok, events: cfg.log.latestSeq(), open_intents: records.openIntents(), ...(ok ? {} : { detail: v.ok ? `event ${bad} does not match its commitment` : v.why }) };
+      },
     }),
     async health() {
       const h = await cfg.store.health().catch((/** @type {any} */ e) => ({ ok: false, detail: String(e && e.message) }));

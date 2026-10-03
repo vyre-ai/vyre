@@ -69,7 +69,7 @@ export const PLAYBOOK = {
 
 /** A team member on a project: a person or an assistant teammate, with the role it plays there. */
 export const TEAM_MEMBER = {
-  name: "team_member", label: "Team member", icon: "IconUsers",
+  name: "team-member", label: "Team member", icon: "IconUsers",
   fields: [
     text("name", "Name", { required: true }),
     f("actor", "actor", "Person or assistant", { required: true }),

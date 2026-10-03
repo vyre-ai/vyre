@@ -9,7 +9,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { CALLERS, WORLDS } from "./matrix.js";
+import { CALLERS as GOLDEN_CALLERS, GENERATED_CALLERS, WORLDS } from "./matrix.js";
+const CALLERS = process.argv.includes("--generated") ? GENERATED_CALLERS : GOLDEN_CALLERS;
 
 const root0 = fs.mkdtempSync(path.join(os.tmpdir(), "kernel-golden-"));
 process.env.VYRE_NO_DIALOGS = "1";

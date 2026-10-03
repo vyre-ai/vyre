@@ -1,12 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
-import { createPresence, signProof } from "./presence.js";
+import crypto from "node:crypto";
+import { Presence } from "../seal/proof.js";
+import { payloadHash, proofBytes, chainCtx } from "../seal/wire.js";
 import { createTasks, TASK_ACTIONS, checkOutput } from "./tasks.js";
 import { buildCard } from "./card.js";
 import { createAuthorizer } from "../core/authorize.js";
 import { createEventLog } from "../core/events.js";
-import { createChainBuilder, chainHash } from "../core/chain.js";
+import { createChainBuilder } from "../core/chain.js";
 import { canonical, sha256 } from "../core/canonical.js";
 import { ACTIONS as SEAL_ACTIONS } from "../seal/uses.js";
 import { createApprovals } from "./approvals.js";
@@ -16,36 +18,6 @@ const SPACE = "spc_aaaaaaaaaaaa";
 let T = 1_800_000_000_000;
 const clock = () => ++T;
 const kp = () => generateKeyPairSync("ec", { namedCurve: "P-256" });
-
-// ---- presence ----
-test("presence: a hardware signer's signature over this payload, this decision and this chain is accepted, once", () => {
-  const presence = createPresence({ clock });
-  const { publicKey, privateKey } = kp();
-  presence.enroll("k1", { person: "per_alice", signer: "secure_enclave", public_key: publicKey });
-  const f = (over = {}) => ({ signer: "secure_enclave", key_id: "k1", payload_hash: "ph", decision: "dec_1", chain_hash: "ch", issued_at: T, expires_at: T + 60_000, nonce: `n${Math.random()}`, ...over });
-  const ctx = { person: "per_alice", payload_hash: "ph", decision: "dec_1", chain_hash: "ch" };
-  const p = signProof(privateKey, f());
-  assert.equal(presence.verify(p, ctx), true);
-  assert.equal(presence.verify(p, { ...ctx, person: "per_bob" }), false, "another person's key");
-  assert.equal(presence.verify(p, { ...ctx, payload_hash: "other" }), false);
-  assert.equal(presence.verify(p, { ...ctx, decision: "dec_2" }), false);
-  assert.equal(presence.verify(p, { ...ctx, chain_hash: "x" }), false);
-  assert.equal(presence.verify({ ...p, payload_hash: "other" }, { ...ctx, payload_hash: "other" }), false, "a changed field breaks the signature");
-  assert.equal(presence.verify(signProof(privateKey, f({ expires_at: T - 1 })), ctx), false, "expired");
-  assert.equal(presence.verify(signProof(privateKey, f({ issued_at: T + 10 * 60_000, expires_at: T + 11 * 60_000 })), ctx), false, "from the future");
-  assert.equal(presence.verify(signProof(privateKey, f({ expires_at: T + 3_600_000 })), ctx), false, "a long-lived proof");
-  assert.equal(presence.verify(signProof(kp().privateKey, f()), ctx), false, "signed by a key that is not the enrolled one");
-  assert.equal(presence.verify(signProof(privateKey, f({ signer: "tpm" })), ctx), false, "the signer type is the one attested at enrolment");
-  assert.equal(presence.verify(signProof(privateKey, f({ key_id: "nope" })), ctx), false);
-  assert.equal(presence.verify(p, ctx), true, "verify consumes nothing");
-  assert.equal(presence.consume(p), true);
-  assert.equal(presence.consume(p), false);
-  assert.equal(presence.verify(p, ctx), false, "a used proof is no longer good");
-  const q = signProof(privateKey, f());
-  presence.revoke("k1");
-  assert.equal(presence.verify(q, ctx), false, "a revoked key");
-  assert.throws(() => presence.enroll("k2", { person: "per_alice", signer: "software", public_key: publicKey }));
-});
 
 // ---- tasks ----
 const key = Buffer.alloc(32, 5);
@@ -64,8 +36,10 @@ function rig(over = {}) {
   const grants = [...people.map(p => G(actor("person", p), ["tasks.*", "seal.put", "seal.use", "seal.deliver"])), ...agents.map(a => G(actor("agent", a), ["tasks.work", "tasks.read", "seal.use", "email.send"]))];
   const members = new Set([...people.map(p => `person:${p}`), ...agents.map(a => `agent:${a}`), "service:tasks"]);
   const keys = {};
-  const presence = createPresence({ clock });
-  for (const p of people) { const k = kp(); keys[p] = k.privateKey; presence.enroll(`key-${p}`, { person: p, signer: "secure_enclave", public_key: k.publicKey }); }
+  // The one verifier is vault's Presence class (what the sealing process runs); the rig wraps it the way the process's presence.check does.
+  const pr = new Presence(clock, { allowUnattested: true });
+  for (const p of people) { const k = kp(); keys[p] = k.privateKey; pr.keys.set(`key-${p}`, { person: p, signer: "secure_enclave", attested: true, key: k.publicKey }); }
+  const presence = { check: async ({ chain, op, fields, proof }) => (chain && proof ? pr.refuse(proof, { op, space: SPACE, fields, ctx: chainCtx(chain) }) : "no_proof") };
   const log = createEventLog({ space: SPACE, clock });
   const authorizer = createAuthorizer({
     space: SPACE, actions: [...TASK_ACTIONS, ...SEAL_ACTIONS, { action: "email.send", resource_type: "message", risk: "outward.send", label: "send", gloss: "" }], clock,
@@ -83,8 +57,12 @@ function rig(over = {}) {
     facts: { record: async () => ({ data: { size: 12, partner: "x", empty: "" } }), exists: async u => u.startsWith("vyre://") },
     release: async (t, body, by) => { if (over.releaseFails) throw new Error("smtp down"); released.push({ id: t.id, body, by }); },
   });
-  const proof = (chain, who, t, over2 = {}) => signProof(keys[who], { signer: "secure_enclave", key_id: `key-${who}`, payload_hash: t.payload.payload_hash, decision: t.payload.decision, chain_hash: chainHash(chain), issued_at: T, expires_at: T + 60_000, nonce: `n${Math.random()}`, ...over2 });
-  return { tasks, log, presence, released, state, proof, authorizer, keys };
+  const sign = (chain, who, op, fields, over2 = {}) => {
+    const base = { signer: "secure_enclave", key_id: `key-${who}`, payload_hash: payloadHash(op, SPACE, fields), decision: op, chain_hash: chainCtx(chain).chain_hash, issued_at: T, expires_at: T + 60_000, nonce: `n${Math.random()}`, ...over2 };
+    return { ...base, signature: crypto.sign("sha256", proofBytes(base), { key: keys[who], dsaEncoding: "ieee-p1363" }).toString("base64url") };
+  };
+  const proof = (chain, who, t, over2 = {}) => sign(chain, who, "task.decide", { task: t.id, payload_hash: t.payload.payload_hash, decision: t.payload.decision }, over2);
+  return { tasks, log, presence, released, state, proof, sign, authorizer, keys };
 }
 const draftTask = (over = {}) => ({ title: "Welcome email for Jane Doe", doer: actor("agent", "intake"), checker: actor("person", ALICE), output: { kind: "sent" }, record: `vyre://${SPACE}/matter/m1`, ...over });
 const payload = (over = {}) => ({ what: "the welcome email", recipients: [{ address: "jane@example.com", verified: false, record: `vyre://${SPACE}/contact/c1` }], template: { id: `vyre://${SPACE}/template/welcome`, version: 1 }, account: "firm-mail", ...over });
@@ -286,8 +264,7 @@ test("unblock: never the doer; the responsible person may, anyone else needs a p
   const t = await mk();
   await assert.rejects(() => r.tasks.unblock(agentChain("research"), t.id, {}), { code: "chain_not_person" });
   await assert.rejects(() => r.tasks.unblock(bob(), t.id, {}), { code: "needs_presence" });
-  const want = sha256(canonical({ op: "unblock", task: t.id, reassign_to: null }));
-  const p = signProof(r.keys[BOB], { signer: "secure_enclave", key_id: `key-${BOB}`, payload_hash: want, decision: "d", chain_hash: chainHash(bob()), issued_at: T, expires_at: T + 60_000, nonce: "u1" });
+  const p = r.sign(bob(), BOB, "task.unblock", { task: t.id, reassign_to: null });
   assert.equal((await r.tasks.unblock(bob(), t.id, { proof: p })).state, "ready");
   const t2 = await mk();
   await assert.rejects(() => r.tasks.unblock(owner(), t2.id, { reassign_to: actor("person", ALICE) }), { code: "same_actor" });

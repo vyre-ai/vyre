@@ -375,3 +375,25 @@ test("R-7: a file edited to add a key fails its MAC, a rolled-back file is older
     assert.equal(await code(enrolDevice(s, signer("per_alex"))), "needs_recovery", name);
   }
 });
+
+test("presence.check: the one verifier checks a task proof for the kernel, once, for task ops only", async t => {
+  const { s, alex } = await setup(t);
+  const ch = person("per_alex"), fields = { task: "t1", payload_hash: "ph", decision: "dec_1" };
+  assert.equal(await s.presenceCheck({ chain: ch, op: "task.decide", fields, proof: alex.proof(ch, "task.decide", fields) }), null);
+  const used = alex.proof(ch, "task.decide", fields);
+  assert.equal(await s.presenceCheck({ chain: ch, op: "task.decide", fields, proof: used }), null);
+  assert.equal(await s.presenceCheck({ chain: ch, op: "task.decide", fields, proof: used }), "replayed");
+  assert.equal(await s.presenceCheck({ chain: ch, op: "task.decide", fields: { ...fields, payload_hash: "other" }, proof: alex.proof(ch, "task.decide", fields) }), "wrong_payload");
+  assert.equal(await s.presenceCheck({ chain: withAgent(), op: "task.decide", fields, proof: alex.proof(withAgent(), "task.decide", fields) }), "chain_not_person", "an assistant in the chain");
+  assert.equal(await s.presenceCheck({ chain: ch, op: "seal.reveal", fields, proof: alex.proof(ch, "seal.reveal", fields) }), "bad_input", "not a task op: no path to a seal op");
+});
+
+test("teardown: closing the client ends the sealing process, and a parent that dies takes it with it", async () => {
+  const s = startSealer({ dir: tmp("tear"), timeoutMs: 8000, dev: true });
+  await s.health();
+  const pid = s.pid;
+  assert.doesNotThrow(() => process.kill(pid, 0));
+  await s.close();
+  await new Promise(r => setTimeout(r, 100));
+  assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
+});

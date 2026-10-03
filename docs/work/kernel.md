@@ -66,4 +66,4 @@ Done, pushed to origin/work/kernel (f43c4e570 and later):
 - kernel/tasks (tasks, presence, card, approvals). Tests: 18 in kernel/tasks, run on the test box. The old end-to-end test that used the platform's own seal was replaced by one through `createSealing` and `createApprovals`.
 - Approval and sealed use: decide takes the main proof plus an optional `proofs.use` (the person's signature over the `seal.use` payload, which the sealing process verifies itself). The `seal.deliver` proof is made after the merge, by the approver, at deliver time.
 - Known: tasks use their own presence verifier (kernel/tasks/presence.js); vault's `seal/proof.js` has a second one for the sealing process. One enrolment should feed both before release (Needs from vault).
-- Next: K1 items 6, 7, 8b, 8c, 9b, 9e, 9f; K2-5, K2-7, K2-9, K2-10; then the tool surface and the node.d.ts stud.
+- Done: K1 items 6 to 9 and K2-5, K2-7, K2-9 (generated differential, kernel/golden), K2-10. Next: reviewer-2 re-gate, then the tool surface.

@@ -128,7 +128,7 @@ function fromTwenty(f, v) {
     case "number": return typeof v === "string" ? Number(v) : v;
     case "date": return String(v).slice(0, 10);
     case "datetime": return new Date(v).toISOString();
-    case "phones": case "emails": case "urls": return Array.isArray(v) && v.length ? v : undefined;
+    case "phones": case "emails": case "urls": return Array.isArray(v) ? v : undefined; // stored as JSON, so an empty list stays an empty list
     default: return v;
   }
 }

@@ -15,6 +15,7 @@ import { parse, evaluate, truthy, roots } from "./expr.js";
 import { compileFlow, deriveCaps, needs as flowNeeds, urnCovers, nextCron, STEP_ACTIONS } from "./compile.js";
 import { BLOCK_KINDS, LIMITS as SCHEMA_LIMITS } from "./schema.js";
 import { runIdFor, newId } from "./store.js";
+import { taskIdOf } from "./stages.js";
 
 export const LIMITS = Object.freeze({ depth: 8, rate_per_minute: 60, steps_per_run: 500, scan: 2000, wait_max_ms: 366 * 86_400_000 });
 /** Denials that mean the approver can no longer do this: the Flow pauses and says why. */
@@ -245,7 +246,7 @@ export class FlowRunner {
     for (const r of await this.store.listRuns({ state: "waiting", limit: 1000 })) {
       const w = r.waiting;
       if (!w) continue;
-      if (w.kind === "task" && /^task\./.test(env.type) && env.data && (env.data.task === w.task || env.data.id === w.task) && ["done", "skipped"].includes(env.data.state)) work.push(this.#resume(r.id, { task: env.data }));
+      if (w.kind === "task" && /^task\./.test(env.type) && env.data && taskIdOf(env) === w.task && ["done", "skipped"].includes(env.data.state)) work.push(this.#resume(r.id, { task: env.data }));
       else if (w.kind === "event" && w.event && typeMatches(w.event, env.type)) {
         if (w.where) { try { if (!truthy(evaluate(parse(w.where), { event: env, trigger: r.trigger.event ? r.trigger.event.data : r.trigger.input ?? {}, steps: outputs(r) }))) continue; } catch { continue; } }
         work.push(this.#resume(r.id, { event: slim(env) }));
@@ -268,12 +269,12 @@ export class FlowRunner {
     });
   }
 
-  /** Put a paused run back to work after its Flow's cause was fixed. @param {string} runId */
+  /** Put a paused or failed run back to work after its cause was fixed; finished steps are not repeated. @param {string} runId */
   async retry(runId) {
     return this.#locked(runId, async () => {
       const run = await this.store.getRun(runId);
-      if (!run || run.state !== "paused") return;
-      run.state = "running"; run.error = undefined; run.updated_at = this.now();
+      if (!run || (run.state !== "paused" && run.state !== "failed")) return;
+      run.state = "running"; run.error = undefined; run.finished_at = undefined; run.updated_at = this.now();
       await this.store.putRun(run);
       await this.#execLocked(runId);
     });

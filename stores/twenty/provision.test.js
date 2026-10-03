@@ -99,3 +99,46 @@ test("upgrade backs up first, verifies before reopening, and rolls back with the
   assert.ok(calls.some((c) => c.includes("DROP DATABASE")) && calls.some((c) => c.includes("psql") && c.includes("ON_ERROR_STOP")));
   await fake.stop();
 });
+
+test("the small memory profile caps all four containers and sets a Node heap below the cap; no profile caps nothing", () => {
+  const y = composeFile({ space: "harlow", memory: "small" });
+  assert.equal((y.match(/mem_limit: \d+m/g) ?? []).length, 4);
+  assert.match(y, /mem_limit: 640m\n    memswap_limit: 640m/);
+  assert.match(y, /--max-old-space-size=448/);
+  assert.match(y, /shared_buffers=64MB/);
+  assert.match(y, /--maxmemory", "48mb"/);
+  assert.ok(!/mem_limit/.test(composeFile({ space: "harlow" })));
+  assert.ok(!/mem_limit/.test(composeFile({ space: "harlow", memory: "standard" })));
+  assert.match(composeFile({ space: "harlow", memory: { server: 500, worker: 300, db: 200, redis: 50 } }), /mem_limit: 300m/);
+  assert.throws(() => composeFile({ space: "harlow", memory: "huge" }), /memory is one of/);
+  assert.throws(() => composeFile({ space: "harlow", memory: { server: 5, worker: 300, db: 200, redis: 50 } }), /at least 32/);
+});
+
+test("a backup holds the database, the files and the Space folder with checksums, and a restore as another name keeps the secrets", async () => {
+  const { backupSpace, restoreSpace } = await import("./provision.js");
+  const fake = await new FakeTwenty().start();
+  try {
+    const home = tmp(), calls = [];
+    const runner = fakeRunner(fake, calls);
+    const ex = runner.exec;
+    runner.exec = async (cmd, args, opts = {}) => { const r = await ex(cmd, args, opts); const out = args.find((a) => a.endsWith(":/out"))?.split(":")[0]; if (args[0] === "run" && out) { fs.writeFileSync(path.join(out, "files.tgz"), "tgz"); } return r; };
+    const p = await provisionSpace({ home, space: "harlow", runner, reach: "ip", memory: "small" });
+    fs.writeFileSync(path.join(p.dir, "state", "types.json"), "[]");
+    const b = await backupSpace({ home, space: "harlow", runner });
+    assert.deepEqual(Object.keys(b.manifest.parts), ["db.sql", "files.tgz", "space.json"]);
+    assert.equal((fs.statSync(path.join(b.dir, "db.sql")).mode & 0o777).toString(8), "600");
+    const home2 = tmp();
+    const r = await restoreSpace({ home: home2, space: "harlow-2", from: b.dir, runner, reach: "ip" });
+    assert.equal(fs.readFileSync(r.keyFile, "utf8"), fs.readFileSync(p.keyFile, "utf8"), "the same key still works");
+    assert.equal(fs.readFileSync(path.join(r.dir, ".env"), "utf8"), fs.readFileSync(path.join(p.dir, ".env"), "utf8"), "secrets kept");
+    assert.match(fs.readFileSync(path.join(r.dir, "compose.yml"), "utf8"), /name: vyre-harlow-2-twenty/);
+    assert.match(fs.readFileSync(path.join(r.dir, "compose.yml"), "utf8"), /mem_limit: 640m/, "the memory profile moves with the Space");
+    assert.ok(fs.existsSync(path.join(r.dir, "state", "types.json")));
+    // a flipped byte in a part is refused before anything starts
+    const before = calls.length;
+    fs.appendFileSync(path.join(b.dir, "db.sql"), "x");
+    await assert.rejects(() => restoreSpace({ home: tmp(), space: "harlow-3", from: b.dir, runner, reach: "ip" }), /damaged/);
+    assert.equal(calls.length, before, "nothing started");
+    await assert.rejects(() => restoreSpace({ home: home2, space: "harlow-2", from: b.dir, runner }), /damaged|already provisioned/);
+  } finally { await fake.stop(); }
+});

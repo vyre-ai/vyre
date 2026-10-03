@@ -91,7 +91,7 @@ test("plan: names, reserved words, filters, order and values", () => {
   assert.equal(planType({ name: "thing", label: "T", fields: [{ name: "t", kind: "text", label: "T" }, { name: "address", kind: "address", label: "A" }] }).byVyre.get("address").twenty, "addressCustom");
   assert.equal(planType({ name: "person", label: "P", fields: [] }).singular, "vyrePerson", "a name Twenty uses for a standard object is stored under a vyre prefix");
   assert.equal(planType({ name: "task", label: "T", fields: [] }).plural, "vyreTasks");
-  assert.equal(planType({ name: "team_member", label: "T", fields: [] }).singular, "teamMember");
+  assert.equal(planType({ name: "team-member", label: "T", fields: [] }).singular, "teamMember");
   assert.throws(() => planType({ name: "thing", label: "T", fields: [{ name: "t", kind: "text", label: "T" }, { name: "position", kind: "number", label: "P" }] }), /collides/);
   assert.throws(() => planType({ name: "thing", label: "T", fields: [{ name: "t", kind: "text", label: "T" }, { name: "c", kind: "choice", label: "C", options: ["a b", "A-B"] }] }), /distinct/);
   assert.deepEqual(toFilter(p, { and: [{ field: "status", op: "eq", value: "open" }, { field: "age", op: "gt", value: 20 }] }), { and: [{ status: { eq: "OPEN" } }, { age: { gt: 20 } }] });

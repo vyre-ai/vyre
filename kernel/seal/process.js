@@ -3,7 +3,7 @@
 // other local user can reach it. Request { id, op, ctx, ... } gets { id, ok, result } or { id, ok: false, error: { code } }. An error carries a
 // stable code and nothing from the input, so no value reaches a log or a stack trace. The language is Node for now: the protocol in this file
 // (ops, fields, codes) is the interface a Rust process can implement later.
-//   ops: init, put, use, deliver, reveal, derived.read, detect, save, session.end, lookup, drop, presence.enrol, presence.revoke, health
+//   ops: init, put, use, deliver, reveal, derived.read, detect, save, session.end, lookup, drop, presence.enrol, presence.revoke, presence.check, health
 // ctx is the kernel's summary of the chain (wire.chainCtx). This process trusts the kernel for who is in the chain and checks the rest itself.
 // `approver` (use and deliver) is the chain of the person who approved: the act may run under an assistant's or a Flow's chain, but the proof
 // must come from exactly one person, and the process verifies it against that chain.
@@ -164,6 +164,9 @@ export class Sealer {
       case "presence.begin": { const ctx = this.ctxOf(req.ctx); need(ctx.one_person && !ctx.model_originated && ctx.person === req.person, "chain_not_person"); return this.presence.begin(req); }
       case "presence.enrol": { const r = this.presence.enrol({ ...req, ctx: this.ctxOf(req.ctx) }); if (r.refused) throw err(r.refused); return { enrolled: true, attested: r.attested, event: { type: "presence.enrolled", person: req.person, key_id: req.key_id, signer: req.signer, attested: r.attested } }; }
       case "presence.revoke": { const why = this.presence.revoke(req.key_id, this.ctxOf(req.ctx), req.proof); if (why) throw err(why); return { revoked: true, event: { type: "presence.revoked", key_id: req.key_id } }; }
+      // The one verifier for the kernel: a task approval (or any kernel act the person signs) is checked here, against the keys enrolled here,
+      // and the proof is used up. The kernel supplies who is in the chain; only task ops are accepted, so this is not a path to a seal op.
+      case "presence.check": { const ctx = this.ctxOf(req.ctx); need(typeof req.act === "string" && /^task\.[a-z_]+$/.test(req.act) && req.fields && typeof req.fields === "object", "bad_input"); const why = this.presence.refuse(req.proof, { op: req.act, space: ctx.space, fields: req.fields, ctx }); if (why) throw err(why === "no_proof" ? "needs_presence" : why); return { ok: true }; }
       case "health": return { ok: true, pid: process.pid, unattested_allowed: this.allowUnattested, presence: this.presence.recovery ? "recovery" : "ok" };
       default: throw err("bad_op");
     }
@@ -209,6 +212,8 @@ if (process.argv[1] && process.argv[1].endsWith("kernel/seal/process.js") && pro
   // A crash must not print the exception: its message or stack could hold a value.
   process.on("uncaughtException", () => { process.stderr.write("seal: internal error\n"); process.exit(70); });
   process.on("unhandledRejection", () => { process.stderr.write("seal: internal error\n"); process.exit(70); });
+  // The pipe is the only way in: when the kernel closes it or dies, this process ends, so no test or crash leaves one running.
+  process.stdin.on("end", () => process.exit(0)); process.stdin.on("close", () => process.exit(0));
   let verifiers = {};
   if (process.env.VYRE_SEAL_VERIFIERS) verifiers = (await import(process.env.VYRE_SEAL_VERIFIERS)).default;
   try { serve({ dir: process.env.VYRE_SEAL_DIR, sinks: JSON.parse(process.env.VYRE_SEAL_SINKS || "{}"), verifiers, allowUnattested: process.env.VYRE_SEAL_UNATTESTED === "1" }); }

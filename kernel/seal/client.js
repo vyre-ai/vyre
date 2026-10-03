@@ -51,6 +51,8 @@ export function startSealer({ dir, sinks = {}, timeoutMs = 20_000, execPath = pr
     begin: i => withCtx("presence.begin", i, { person: i.person, key_id: i.key_id, spki: i.spki }),
     enrol: i => withCtx("presence.enrol", i, { person: i.person, key_id: i.key_id, spki: i.spki, signer: i.signer, token: i.token, attestation: i.attestation, proof: i.proof }),
     revoke: i => withCtx("presence.revoke", i, { key_id: i.key_id, proof: i.proof }),
+    /** Does this proof stand for this kernel act (a task op) by the one person in the chain? Uses the proof up. Resolves null when it stands, else the reason. */
+    presenceCheck: i => withCtx("presence.check", i, { act: i.op, fields: i.fields, proof: i.proof }).then(() => null, e => (e instanceof SealError ? e.code : "failed")),
     health: () => call("health"),
     close: () => new Promise(res => { if (closed) return res(); child.once("exit", () => res()); child.stdin.end(); setTimeout(() => child.kill(), 2000).unref(); }),
   };

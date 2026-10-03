@@ -1,0 +1,137 @@
+{
+  "name": "wink",
+  "version": "0.1.0",
+  "description": "Pairing as grants: every way in is a Wink (scan a code, or type two-sided codes). Devices (phone, computer, server, storage) belong to the identity, never to a space. Add a device, pair a server or a phone, invite a person, offer compute, see and remove what was given.",
+  "roles": [
+    "box"
+  ],
+  "requires": [
+    "relay"
+  ],
+  "does": {
+    "tools": [
+      {
+        "name": "wink.code.open",
+        "reach": "person"
+      },
+      {
+        "name": "wink.code.status",
+        "reach": "person"
+      },
+      {
+        "name": "wink.code.ack",
+        "reach": "person"
+      },
+      {
+        "name": "wink.cancel",
+        "reach": "person"
+      },
+      {
+        "name": "wink.invite",
+        "reach": "person"
+      },
+      {
+        "name": "wink.approve",
+        "reach": "person"
+      },
+      {
+        "name": "wink.decline",
+        "reach": "person"
+      },
+      {
+        "name": "wink.share",
+        "reach": "person"
+      },
+      {
+        "name": "wink.access",
+        "reach": "person"
+      },
+      {
+        "name": "wink.offers",
+        "reach": "person"
+      },
+      {
+        "name": "wink.remove",
+        "reach": "person"
+      },
+      {
+        "name": "wink.card",
+        "reach": "person"
+      },
+      {
+        "name": "wink.pair.targets",
+        "reach": "person"
+      },
+      {
+        "name": "wink.pair.server",
+        "reach": "person"
+      },
+      {
+        "name": "wink.pair.status",
+        "reach": "person"
+      },
+      {
+        "name": "wink.server.code",
+        "reach": "person"
+      },
+      {
+        "name": "wink.server.confirm",
+        "reach": "person"
+      },
+      {
+        "name": "wink.server.adopt",
+        "reach": "person"
+      },
+      {
+        "name": "wink.phone.open",
+        "reach": "person"
+      },
+      {
+        "name": "wink.phone.scan",
+        "reach": "person"
+      },
+      {
+        "name": "wink.offer.set",
+        "reach": "person"
+      }
+    ]
+  },
+  "watches": {
+    "emits": [
+      "wink.offered",
+      "wink.found",
+      "wink.confirmed",
+      "wink.joined",
+      "wink.declined",
+      "wink.expired",
+      "wink.removed",
+      "wink.shared",
+      "wink.code-opened",
+      "wink.code-replaced",
+      "wink.code-closed",
+      "wink.code-wrong",
+      "wink.code-ack",
+      "wink.code-done",
+      "wink.code-unavailable",
+      "grant.created",
+      "grant.revoked",
+      "wink.pair-waiting",
+      "wink.pair-done",
+      "wink.pair-failed",
+      "wink.server-adopted",
+      "wink.offer-changed"
+    ],
+    "on": [
+      "relay.code-asked",
+      "relay.invite-redeemed",
+      "device.paired",
+      "device.removed"
+    ]
+  },
+  "shows": {
+    "deck": [],
+    "capsule": [],
+    "cli": []
+  },
+  "needs": {}
+}

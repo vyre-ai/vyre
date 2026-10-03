@@ -11,7 +11,7 @@
 #   --check URL   afterwards, fetch DIR's installer paths from URL (a deployed copy) and compare byte for byte.
 #
 # What it writes beside site/ (all of it generated, none of it committed; site/ itself is never changed):
-#   install.sh, i, box, w          the install line, /box, and the Windows installer script (_redirects and a copy of the script)
+#   install.sh, i, i.sh, box, w    the install line (/i is i.sh: install, then a pairing code), /box, and the Windows installer script (_redirects and copies)
 #   box/*                          the release's box files, checked against its SHA256SUMS
 #   box/install-mac-server.sh      the Mac server installer; install-box.sh fetches it from the same site on a Mac (not in the release assets)
 #   setup/relay, deck, fonts, tokens.css, signin-hosts.json   the files the setup page loads, copied from the tag
@@ -38,7 +38,7 @@ say "pages"
 VYRE_SITE_VERSION=${tag#v} node scripts/gen-site.mjs >/dev/null
 rm -rf "$out"; mkdir -p "$out"
 cp -R site/. "$out/"
-for f in w i install.sh box _redirects; do [ ! -e "$out/$f" ] || { echo "assemble-site: site/ already has $f; it must stay generated" >&2; exit 1; }; done
+for f in w i i.sh install.sh box _redirects; do [ ! -e "$out/$f" ] || { echo "assemble-site: site/ already has $f; it must stay generated" >&2; exit 1; }; done
 
 say "release assets $tag"
 mkdir -p "$out/box"
@@ -51,7 +51,12 @@ cp "$out/box/install-box.sh" "$out/install.sh"
 say "from the tag's source"
 git show "$tag:scripts/install-windows.ps1" >"$out/w"
 git show "$tag:scripts/install-mac-server.sh" >"$out/box/install-mac-server.sh"
-printf '/box /box/install-box.sh 200\n/i /install.sh 200\n/download/mac /start#mac 302\n' >"$out/_redirects"
+# /i is the server install line (scripts/install/i.sh: installs, then prints a pairing code), when the tag has it; /box stays the release installer.
+if git cat-file -e "$tag:scripts/install/i.sh" 2>/dev/null; then
+  git show "$tag:scripts/install/i.sh" >"$out/i.sh"
+  ipath=/i.sh
+else ipath=/install.sh; fi
+printf '/box /box/install-box.sh 200\n/i %s 200\n/download/mac /start#mac 302\n' "$ipath" >"$out/_redirects"
 mkdir -p "$out/setup/relay" "$out/setup/deck/js" "$out/setup/deck/vendor/vyrecode" "$out/setup/fonts"
 for f in $(git ls-tree --name-only "$tag" relay/client/ | grep '\.js$' | grep -v '\.test\.js$'); do git show "$tag:$f" >"$out/setup/relay/$(basename "$f")"; done
 git show "$tag:deck/css/tokens.css" >"$out/setup/tokens.css"
@@ -77,8 +82,9 @@ if [ -n "$check" ]; then
     if cmp -s "$f" "$out/$p"; then echo "same    $p"; else echo "DIFFERS $p"; bad=1; fi; rm -f "$f"
   done
   for p in i box; do
+    want="$out/install.sh"; [ "$p" = i ] && [ -f "$out/i.sh" ] && want="$out/i.sh"
     n=$(curl -fsSL "$check/$p" | wc -c | tr -d ' ')
-    [ "$n" = "$(wc -c <"$out/install.sh" | tr -d ' ')" ] && echo "same    /$p serves install.sh" || { echo "DIFFERS /$p"; bad=1; }
+    [ "$n" = "$(wc -c <"$want" | tr -d ' ')" ] && echo "same    /$p serves $(basename "$want")" || { echo "DIFFERS /$p"; bad=1; }
   done
   [ "$bad" = 0 ] || exit 1
 fi
