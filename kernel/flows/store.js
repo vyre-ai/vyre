@@ -16,7 +16,7 @@ import { flowHash, canonical } from "./schema.js";
  * @typedef {{ id: string, name: string, space: string, versions: { version: number, hash: string, flow: any, authorship: string, at: number, by: ActorRef }[], approvals: Approval[], active: number|null, status: 'active'|'paused'|'disabled', paused?: { reason: string, since: number } }} FlowRow
  * @typedef {{
  *   id: string, flow: string, version: number, hash: string, space: string,
- *   trigger: { kind: string, key: string, event?: any, input?: any, path?: string, at?: number },
+ *   trigger: { kind: string, key: string, source?: string, event?: any, input?: any, path?: string, at?: number, caught_up?: boolean, missed?: number, tz?: string },
  *   tainted: boolean, source_spaces: string[], depth: number,
  *   state: 'running'|'waiting'|'paused'|'done'|'failed'|'cancelled',
  *   started_at: number, updated_at: number, finished_at?: number,
@@ -37,7 +37,13 @@ export class MemoryFlowStore {
   constructor() {
     /** @type {Map<string, FlowRow>} */ this.flows = new Map();
     /** @type {Map<string, Run>} */ this.runs = new Map();
+    /** @type {Map<string, number>} flow id -> when its schedule last ran (so a restart catches up once instead of forgetting) */ this.schedules = new Map();
   }
+
+  /** @param {string} flow @returns {Promise<number|null>} */
+  async getSchedule(flow) { return this.schedules.has(flow) ? /** @type {number} */ (this.schedules.get(flow)) : null; }
+  /** @param {string} flow @param {number} lastFire */
+  async putSchedule(flow, lastFire) { this.schedules.set(flow, lastFire); }
 
   /** Store a new version of a Flow (creating the Flow on its first). Returns the version and hash. @param {string|null} id @param {any} flow @param {ActorRef} by @param {number} at @param {string} space */
   async putVersion(id, flow, by, at, space) {
@@ -133,6 +139,8 @@ export const FLOW_TYPES = Object.freeze([
   { name: "flow_state", label: "Flow state", fields: [
     { name: "flow_id", kind: "text", label: "Flow" }, { name: "status", kind: "text", label: "Status" }, { name: "active", kind: "number", label: "Active version" },
     { name: "reason", kind: "text", label: "Reason" }, { name: "since", kind: "number", label: "Since" } ] },
+  { name: "flow_schedule", label: "Flow schedule", fields: [
+    { name: "flow_id", kind: "text", label: "Flow" }, { name: "last_fire", kind: "number", label: "Last ran" } ] },
   { name: "flow_run", label: "Flow run", icon: "run", fields: [
     { name: "run_id", kind: "text", label: "Id" }, { name: "flow_id", kind: "text", label: "Flow" }, { name: "state", kind: "text", label: "State" },
     { name: "started_at", kind: "number", label: "Started" }, { name: "body", kind: "text", label: "Run" } ] },
@@ -214,6 +222,15 @@ export class RecordsFlowStore {
   async list() {
     const r = await this.k.records.query(this.chain, "flow_state", { page: { limit: 1000 } });
     return r.rows.map((/** @type {any} */ s) => ({ id: s.data.flow_id, status: s.data.status, active: s.data.active }));
+  }
+
+  /** @param {string} flow @returns {Promise<number|null>} */
+  async getSchedule(flow) { const r = (await this.#find("flow_schedule", "flow_id", flow))[0]; return r ? Number(r.data.last_fire) : null; }
+  /** @param {string} flow @param {number} lastFire */
+  async putSchedule(flow, lastFire) {
+    const r = (await this.#find("flow_schedule", "flow_id", flow))[0];
+    if (r) await this.k.records.update(this.chain, "flow_schedule", r.id, { last_fire: lastFire }, r.version);
+    else await this.k.records.create(this.chain, "flow_schedule", { flow_id: flow, last_fire: lastFire });
   }
 
   /** @param {Run} run */

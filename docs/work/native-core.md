@@ -696,8 +696,10 @@ On origin/work/022-native-android, the release list must match apps/app/android-
 "android.permission.POST_NOTIFICATIONS"     Tells you when something needs you. Vyre makes each notice itself; nothing is sent through a push service.
 "android.permission.ACCESS_NETWORK_STATE"   Knows whether the phone is online, so Vyre can say so and reconnect to your box.
 "android.permission.USE_BIOMETRIC"          Asks for your fingerprint or face before the phone signs an approval or opens the vault.
+"android.permission.USE_FINGERPRINT"       Asks for your fingerprint on phones older than Android 9, which the system library needs this older permission for.
 "android.permission.INTERNET"               Talks to your own box. Nothing else.
 "android.permission.VIBRATE"                A short tap when you press a control, if the phone's settings allow it.
 "{package}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"   Added by the system library so only Vyre can receive its own broadcasts.
 ```
 Also: the release workflow should run scripts/check-apk-nothing-central.mjs --apk on the unsigned release APK.
+USE_FINGERPRINT stays: androidx.biometric adds it with maxSdkVersion 27 and the app's minSdk is 24 (Expo SDK 54), so Android 7 and 8 phones need it for a fingerprint. ACCESS_NETWORK_STATE is on the list as asked but no library in the build requests it today (the merged manifest of the debug APK has CAMERA, INTERNET, POST_NOTIFICATIONS, SYSTEM_ALERT_WINDOW (debug only), USE_BIOMETRIC, USE_FINGERPRINT, VIBRATE); the line is harmless and keeps the list ready for the day the app reads network state.
