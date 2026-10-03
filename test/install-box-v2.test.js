@@ -128,6 +128,16 @@ test("install-box.sh v2: when the box is running after the start, the installer 
   assert.ok(b.calls().includes("--filter name=vyre-vyre-1 --filter status=running"), b.calls());
 });
 
+test("install-box.sh v2: --from as an account outside the docker group stops early with the command to run, and lays nothing out", t => {
+  // docker only answers `info` under sudo (the account is not in the docker group)
+  const b = box(t, { docker: 'case "$1 $2" in "compose version") echo 2.29.1 ;; esac; if [ "$1" = info ] && [ -z "${STUB_SUDO:-}" ]; then exit 1; fi; exit 0' });
+  fs.writeFileSync(path.join(b.base, "bin", "sudo"), `#!/bin/sh\necho "sudo $*" >>"${b.log}"\nSTUB_SUDO=1 exec "$@"\n`, { mode: 0o755 });
+  const r = run({ ...b.env, VYRE_NO_UP: "0" }, ["--yes", "--from", REPO]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /sudo usermod -aG docker alex/);
+  assert.ok(!fs.existsSync(path.join(b.dir, "compose.yml")), "nothing was laid out");
+});
+
 test("install-box.sh v2: a release with digests is cosign-checked against the workflow identity, then pulled by digest", t => {
   const b = box(t);
   const r = run({ ...b.env, VYRE_BOX_URL: site(b.base) }, ["--yes"]);
