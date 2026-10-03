@@ -21,3 +21,8 @@ Branch: work/kernel · Worktree: ../vyre-kernel · Owner session: platform
 ## K0 done
 
 - kernel/golden: recorder (dump.mjs, matrix.js, index.js), golden.json, golden.test.js. Decisions only; no tool body runs. The schema check is recorded apart (`emptyBad`) so it does not mask the gates after it.
+
+## K1 done (awaiting reviewer-2)
+
+- kernel/core: ids, canonical, urn, errors, chain, authorize, events, core.test.js (31 tests).
+- Decisions: unknown action is `deny unknown_action` (fail closed, no grant can name it). Outward and approver asks stay `ask` until K4 records an approval. Presence is met only by a held session or a verifier the K4 signer supplies; without one a claim counts for nothing. Rate limits and residency conditions are not evaluated yet (K2 meters, K3 residency).
