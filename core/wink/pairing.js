@@ -22,6 +22,8 @@ import { qrArt } from "../../relay/client/qr.js";
 import { pairWords, nonceCommit, ticketTag, newNonce } from "../../relay/client/pairwords.js";
 import { connect as relayConnect } from "../../relay/client/client.js";
 import { nodeCrypto, fileKeyStore } from "../../relay/client/nodecrypto.js";
+import { WORDS as WORDLIST } from "../../relay/client/words.js";
+import { verifyDevice } from "./node/peer-wire.js";
 import { base32 } from "./grants.js";
 import { words, removed } from "./cards.js";
 
@@ -31,6 +33,10 @@ const str = { type: "string" };
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 
 export const KINDS = Object.freeze(["phone", "computer", "server", "storage"]);
+/** The callers that are a person at this machine: the question of an unowned server is shown and answered on these only (Q-2). */
+export const PERSON_SURFACES = Object.freeze(["cli", "local", "deck", "capsule"]);
+/** What the app signs to prove it is the identity an unattended server was installed for (Q-3): this pairing's box and device, nothing a stranger could reuse. @param {string} box @param {string} device */
+export const pairToMessage = (box, device) => Buffer.from(`vyre-wink-pair-to-v1\n${box}\n${device}`, "utf8");
 /** What each kind of device may offer (DESIGN-wink section 3). */
 export const KIND_OFFERS = Object.freeze({ phone: ["access"], computer: ["access", "compute"], server: ["access", "compute", "storage"], storage: ["storage"] });
 /** The kind each typed-code flow adds (W1 a phone, W2 a computer, W3 a server). */
@@ -81,6 +87,9 @@ export const POLL_MS = 1500;
  *   openCode: (flow: "W1" | "W2" | "W3") => Promise<{ offer: string, code: string, expires: number }>,
  *   ack: (offer: string, typed: string) => Promise<{ ok: boolean }>, owner: (meta: any, what: string) => void, relayUrl: () => Promise<string>, keyFile?: string, spaceNow?: () => string,
  *   handover?: Handover, releaseMs?: number, dropMs?: number, releaseRetryMs?: number, releaseMaxMs?: number,
+ *   signIdentity?: (message: Buffer) => Promise<{ eid: string, sig: string } | null> | { eid: string, sig: string } | null,
+ *   identityEntry?: (identity: string, eid: string) => Promise<{ eid: string, kind?: string, pub: string, identity?: string } | null | undefined> | { eid: string, kind?: string, pub: string, identity?: string } | null | undefined,
+ *   confirmPending?: (device: string) => Promise<any>,
  *   typedCode?: boolean | (() => boolean), confirmAdopt?: boolean, askMs?: number, askHoldMs?: number, askPollMs?: number, pairWordsFor?: (device: string) => Promise<string>,
  *   offers?: { get(space: string, device: string): { space_allows: number | boolean, member_accepts: number | boolean } | Promise<any>, set(space: string, device: string, side: "space" | "member", on: boolean): void | Promise<void> } }} o
  */
@@ -98,6 +107,8 @@ export function createPairing(o) {
   /** Pairings this device is typing for (secret seeds stay in memory). @type {Map<string, any>} */
   const pending = new Map();
   /** The phone flow's hold, set when the tools are registered: the module's device.paired handler asks it first. `holdRing` holds a ring (relay.pair.ticket) phone for the words, `boxTicketLive` says a QR this box printed is still open. @type {{ hold: (p: any) => Promise<boolean>, holdRing: (p: any) => Promise<boolean>, boxTicketLive: () => boolean }} */
+  /** Set when the tools are registered: what reset.js calls to free the server. @type {() => void} */
+  let clearOwnerHook = () => { throw fail("not_ready", "the pairing tools are not registered"); };
   const phone = { hold: async () => false, holdRing: async () => false, boxTicketLive: () => false };
 
   const rowOf = (/** @type {any} */ r) => r ? { id: r.id, identity: r.identity, kind: r.kind, name: r.name, fingerprint: r.fingerprint, owner: { kind: r.owner_kind, id: r.owner_id }, offers: JSON.parse(r.offers || "{}"), created: r.created, removed: r.removed_at != null, nodeKey: r.node_key || null, stableId: r.stable_id || null, signKey: r.sign_key || null } : null;
@@ -141,6 +152,40 @@ export function createPairing(o) {
       db.prepare("UPDATE wink_devices SET removed_at = ?, sign_key = NULL WHERE id = ? AND removed_at IS NULL").run(now(), String(id));
       if (!o.offers) db.prepare("DELETE FROM wink_compute WHERE device = ?").run(String(id));
     },
+  };
+
+  // ---- the words check (ruling, 4 Oct 2026): a bare yes says yes to anyone, so the person picks the right three words from the right set and two decoys ----
+  const normWords = (/** @type {unknown} */ x) => String(x ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+  /**
+   * The right words hidden among two decoys from the same list, in an order made fresh for this pairing from the system's random source (never from the words, so the right
+   * place cannot be guessed). No decoy shares a first word with the right set or with the other decoy, so typing a first word cannot match two of them.
+   * @param {string} right @returns {string[]}
+   */
+  const makeChoices = right => {
+    const first = (/** @type {string} */ x) => x.split(" ")[0];
+    const used = new Set([first(right)]);
+    /** @type {string[]} */
+    const decoys = [];
+    while (decoys.length < 2) {
+      const d = [0, 1, 2].map(() => WORDLIST[crypto.randomInt(WORDLIST.length)]).join(" ");
+      if (used.has(first(d))) continue;
+      used.add(first(d)); decoys.push(d);
+    }
+    decoys.splice(crypto.randomInt(3), 0, right);
+    return decoys;
+  };
+  /** Sets the right words on a question and shuffles its choices. @param {any} a @param {string} w */
+  const setWords = (a, w) => { a.words = w; a.choices = makeChoices(w); };
+  /**
+   * What the person said about the words: `right` (a pick of the right choice, its first word, or all three words typed), `wrong`, or `bare` (a yes with nothing to check).
+   * @param {{ words: string, choices?: string[] }} a @param {any} input @returns {"right" | "wrong" | "bare"}
+   */
+  const judgeWords = (a, input) => {
+    const i = input || {};
+    if (i.words !== undefined) return normWords(i.words) === normWords(a.words) ? "right" : "wrong";
+    if (i.pick !== undefined) { const n = Number(i.pick); return Number.isInteger(n) && n >= 1 && n <= 3 && (a.choices || [])[n - 1] === a.words ? "right" : "wrong"; }
+    if (i.first !== undefined) return normWords(i.first) === a.words.split(" ")[0] ? "right" : "wrong";
+    return "bare";
   };
 
   // ---- targets: where a server or a storage device may be paired ----
@@ -221,6 +266,11 @@ export function createPairing(o) {
     if (ports.adopt) return ports.adopt(paired, target, x);
     const hand = x.handover && typeof x.handover === "object" ? { ...x.handover, device: x.device } : { device: x.device };
     const input = { owner: { ...target, ...(x.ownerName ? { name: String(x.ownerName).slice(0, 64) } : {}) }, identity: x.identity, peerSecret: x.peerSecret, handover: hand };
+    // A server installed to pair to one identity asks for proof that this app IS that identity: a signature by a key on its list over this pairing's box and device (Q-3).
+    if (typeof o.signIdentity === "function" && paired && paired.box && paired.device) {
+      const sig = await Promise.resolve(o.signIdentity(pairToMessage(String(paired.box), String(paired.device)))).catch(() => null);
+      if (sig && sig.eid && sig.sig) /** @type {any} */ (input).proof = { eid: String(sig.eid), sig: String(sig.sig) };
+    }
     // The three words are made from this pairing's own material (pairwords.js): the ticket secret, both keys and two fresh nonces. Commit then reveal: this app sends
     // sha256(its nonce) first, the server answers with its own nonce, then this app reveals its nonce, so neither side can pick a nonce after seeing the other's.
     const seed = x.seed ? b64url(x.seed) : "";
@@ -450,8 +500,25 @@ export function createPairing(o) {
     return { pairing: id, ack: t.ack, expires: p.expires };
   };
 
-  /** Puts a ticket from a seed at the relay (relay.ticket.mint, modules only). @param {Buffer} seed */
-  const mint = ports.mint || (async (/** @type {Buffer} */ seed) => ctx.call("relay.ticket.mint", { seed: seed.toString("base64url") }));
+  /** Tells the relay this module gates pairings (set by the module, retried until the relay answers). @type {() => Promise<void>} */
+  let ensureGate = async () => {};
+  /**
+   * Puts a ticket from a seed at the relay (relay.ticket.mint, modules only). A `gate` (phone or server) makes its redemption a waiting pairing: nothing is paired, no device or
+   * presence key made, until this module confirms (confirmPending) after the person has picked the right words (X-1).
+   * @param {Buffer} seed @param {"phone" | "server"} [gate]
+   */
+  const mint = ports.mint || (async (/** @type {Buffer} */ seed, /** @type {string | undefined} */ gate) => { await ensureGate(); return ctx.call("relay.ticket.mint", { seed: seed.toString("base64url"), ...(gate ? { gate } : {}) }); });
+  /**
+   * The yes, to the relay: the waiting pairing of this device becomes a paired device now. `not_found` is fine (a pairing the relay never held, a typed code or an ungated ring); any
+   * other refusal is an error the caller must not turn into a yes. @param {string} device
+   */
+  const confirmPending = async device => {
+    if (o.confirmPending) return o.confirmPending(device);
+    if (typeof ctx.call !== "function") return null;
+    const r = /** @type {any} */ (await ctx.call("relay.pair.pending.confirm", { id: String(device) }));
+    if (r && r.error && r.error.code !== "not_found") throw fail("unavailable", String(r.error.message || "the relay would not pair this device"));
+    return r && r.data;
+  };
 
   /** Registers this box's own tools. */
   function tools() {
@@ -504,7 +571,7 @@ export function createPairing(o) {
     const mintQr = async (/** @type {any} */ made) => {
       const seed = crypto.randomBytes(16);
       try {
-        const t = /** @type {any} */ (await mint(seed));
+        const t = /** @type {any} */ (await mint(seed, "server"));
         if (!t || t.error) return { ...made, qr: null };
         const qr = serverQrPayload(seed, await o.relayUrl());
         await rememberTicket(b64url(seed));
@@ -512,13 +579,14 @@ export function createPairing(o) {
       } catch { return { ...made, qr: null }; }
     };
     ctx.tool("wink.server.code", {
-      description: "On the new server: make a pairing ticket good for 5 minutes and answer { qr, art, expires }: `qr` is the text to paste into the Vyre app on a computer (the long code), and the same text drawn as a QR for a phone to scan is `art`; qr is null when the relay could not take the ticket. Scanning or pasting only gets the app talking to this server. The person at the server then confirms who is asking (wink.server.pairing shows it and the three words, wink.server.pair.answer says yes or no); no answer pairs nothing. `pairTo` (an identity id or name) is for an unattended install: only that identity can complete the pairing and no yes is asked. A short typed code is switched off in this release; `typed: true` is refused unless the development flag VYRE_WINK_TYPED_CODE=1 is set.",
+      description: "On the new server: make a pairing ticket good for 5 minutes and answer { qr, art, expires }: `qr` is the text to paste into the Vyre app on a computer (the long code), and the same text drawn as a QR for a phone to scan is `art`; qr is null when the relay could not take the ticket. Scanning or pasting only gets the app talking to this server. The person at the server then confirms who is asking (wink.server.pairing shows it and the three words, wink.server.pair.answer says yes or no); no answer pairs nothing. `pairTo` (an identity id or name) is for an unattended install and is set only from this server's own command line (cli or local) at install time: only that identity can complete the pairing, no yes is asked, and the app must PROVE it is that identity with a signature by a key on that identity's list (naming it is not enough). A short typed code is switched off in this release; `typed: true` is refused unless the development flag VYRE_WINK_TYPED_CODE=1 is set.",
       input: obj({ qr: { type: "boolean" }, typed: { type: "boolean" }, pairTo: str }),
       run: async (input, meta = {}) => {
         owner(meta, "adding this server");
         const i = input || {};
         if (i.typed === true && !typedOn()) throw fail("typed_code_off", words("typedCodeOff"));
         if (i.pairTo !== undefined) {
+          if (!["cli", "local"].includes(String((meta && meta.caller) || ""))) throw fail("denied", "Who a server pairs to is set at install time, on the server itself.");
           const to = String(i.pairTo).trim();
           if (!to || to.length > 64 || /[\u0000-\u001f"\\]/.test(to)) throw fail("bad_input", "Name the identity to pair to by its id or its name.");
           meta0Set(to);
@@ -536,19 +604,19 @@ export function createPairing(o) {
       run: async (input, meta = {}) => { owner(meta, "adding this server"); const r = await o.ack(String(input.offer), String(input.typed)); return r && r.ok ? { ...r, message: words("codeMatched") } : r; },
     });
     ctx.tool("wink.server.pairing", {
-      description: "At the server: is a device asking to pair this server right now? Answers { asking: false } or { asking: true, name, words, until, line }: `name` is who is asking, `words` the three words the app shows too, and `line` the question to put to the person (answer with wink.server.pair.answer). Only a screen or terminal at this server sees it, never a paired device, the tailnet, the relay or an agent.",
+      description: "At the server: is a device asking to pair this server right now? Answers { asking: false } or { asking: true, name, choices, until, line }: `name` is who is asking, `choices` three sets of three words (one is what the app shows, two are decoys, in an order made fresh for this pairing), and `line` the question to put to the person (answer with wink.server.pair.answer). Only this server's own screen or terminal (the command line, the local console, the deck or the capsule) sees it: never a paired device, the tailnet, the relay, a module, a session, a hook or an agent, and never a model client (mcp or harness).",
       input: obj(),
       run: async (_, meta0 = {}) => {
         owner(meta0, "the pairing question");
         atServer(meta0);
         const a = askLive();
         if (!a || a.state !== "waiting" || !a.words) return { asking: false, ...(meta.get("pair_to") ? { pairTo: meta.get("pair_to") } : {}) };
-        return { asking: true, name: a.name, words: a.words, until: a.until, line: words("pairAsk", { name: a.name, words: a.words }) };
+        return { asking: true, name: a.name, choices: a.choices, until: a.until, line: words("pairAsk", { name: a.name, choices: a.choices }) };
       },
     });
     ctx.tool("wink.server.pair.answer", {
-      description: "At the server: answer the pairing question. { yes: true } lets the asking device become this server's owner, { yes: false } refuses it. Say yes only if the words match the ones the app shows. Only a screen or terminal at this server may answer, never a paired device, the tailnet, the relay or an agent. Answers { answered, name } or { answered: false } when nobody is asking (or the time ran out).",
-      input: obj({ yes: { type: "boolean" } }, ["yes"]),
+      description: "At the server: answer the pairing question. { yes: false } refuses it. { yes: true } needs the words check: give `pick` (1, 2 or 3, the choice that matches the three words the app shows) or `first` (the first of those words, typed); a bare yes is refused and adds nothing, and a wrong pick or first word is a no. Only this server's own screen or terminal may answer (cli, local, deck, capsule): never a paired device, the tailnet, the relay, a module, a session, a hook, a model client or an agent. Answers { answered, yes, name } or { answered: false } when nobody is asking (or the time ran out).",
+      input: obj({ yes: { type: "boolean" }, pick: { type: "integer" }, first: str }, ["yes"]),
       run: async (input, meta0 = {}) => {
         owner(meta0, "the pairing answer");
         atServer(meta0);
@@ -556,11 +624,17 @@ export function createPairing(o) {
         if (!a || a.state !== "waiting") return { answered: false };
         // a yes needs the words on screen (the app has revealed its nonce); a no always works, so a person can close an ask that never shows words
         if (!a.words && input && input.yes === true) return { answered: false };
-        a.state = input && input.yes === true ? "yes" : "no";
+        let wrong = false;
+        if (input && input.yes === true) {
+          const j = judgeWords(a, input);
+          if (j === "bare") throw fail("words_needed", words("pairPick"));
+          wrong = j === "wrong";
+        }
+        a.state = input && input.yes === true && !wrong ? "yes" : "no";
         if (a.state === "no") dropLater(a.caller);
         answered();
         ctx.events.emit("wink.pair-answered", { yes: a.state === "yes" });
-        return { answered: true, yes: a.state === "yes", name: a.name };
+        return { answered: true, yes: a.state === "yes", name: a.name, ...(wrong ? { reason: words("pairPickWrong") } : {}) };
       },
     });
     // W-4: adoption happens once, at the first pairing. The adopter is recorded for every caller kind (a cli adoption too). After an owner exists nothing
@@ -590,13 +664,26 @@ export function createPairing(o) {
     // only that identity completes, and no yes is asked. One ask at a time: a second device is refused while one is pending.
     const ASK_MS = o.askMs ?? 5 * 60_000, HOLD_MS = o.askHoldMs ?? 15_000;
     const confirmAdopt = o.confirmAdopt !== false;
-    /** @type {null | { caller: string, input: any, name: string, words: string, until: number, state: "waiting" | "yes" | "no", wake: Array<() => void>, nb: string, commit: string, ticket: string }} */
+    /** @type {null | { caller: string, input: any, name: string, words: string, choices: string[], until: number, state: "waiting" | "yes" | "no", wake: Array<() => void>, nb: string, commit: string, ticket: string, proven?: string }} */
     let ask = null;
     const norm = (/** @type {unknown} */ x) => String(x ?? "").trim().toLowerCase();
     /** The name the person sees for who is asking: the target's own name from the app, else the identity's id. @param {any} input */
     const askName = (input) => String((input.owner && input.owner.name) || input.identity || (input.owner && input.owner.id) || "someone").replace(/[^\p{L}\p{N} ._@:-]/gu, "").slice(0, 64) || "someone";
-    /** Does the identity that asks match the one an unattended install named? @param {string} to @param {any} input */
-    const isPairTo = (to, input) => [input.identity, input.owner && input.owner.id, input.owner && input.owner.name].some(v => v && norm(v) === norm(to));
+    /**
+     * Q-3: an unattended install named one identity (`pairTo`), and completing the pairing needs PROOF that the one asking is that identity, never a claim. Everything the caller
+     * supplies about itself (identity, owner.id, owner.name) is a claim and is ignored here. The proof is a signature by a key on that identity's list over this pairing's box and
+     * relay device (pairToMessage), checked against the entry the identity port reads live. Answers the identity the proof speaks for.
+     * @param {string} to @param {any} input @param {string} caller @returns {Promise<string>}
+     */
+    const proveIdentity = async (to, input, caller) => {
+      const pr = input && input.proof && typeof input.proof === "object" ? input.proof : null;
+      if (!pr || typeof pr.eid !== "string" || typeof pr.sig !== "string" || pr.eid.length > 64 || pr.sig.length > 200) throw fail("denied", words("pairNeedsProof"));
+      if (typeof o.identityEntry !== "function") throw fail("denied", words("pairCannotProve"));
+      const e = await Promise.resolve(o.identityEntry(to, pr.eid)).catch(() => null);
+      if (!e || e.eid !== pr.eid || typeof e.pub !== "string") throw fail("denied", words("pairWrongIdentity", { name: to }));
+      if (!verifyDevice(e.pub, pairToMessage(await boxKey(), caller.slice(7)), pr.sig)) throw fail("denied", words("pairWrongIdentity", { name: to }));
+      return String(e.identity || to);
+    };
     const boxKey = async () => {
       const r = /** @type {any} */ (await ctx.call("relay.route.id", {}));
       const box = r && r.data && r.data.box;
@@ -630,7 +717,8 @@ export function createPairing(o) {
       if (a && pr.cancel === true) { ask = null; for (const w of a.wake) w(); dropLater(caller); throw fail("denied", words("pairCancelled")); }
       try {
         if (!a) {
-          if (to && !isPairTo(to, input)) { dropLater(caller); throw fail("denied", words("pairWrongIdentity", { name: to })); }
+          let proven = "";
+          if (to) { try { proven = await proveIdentity(to, input, caller); } catch (e) { dropLater(caller); throw e; } }
           const fresh = !to && !o.pairWordsFor;
           if (pr.cancel === true) throw fail("denied", words("pairCancelled"));
           if (fresh && !/^[0-9a-f]{64}$/.test(String(pr.commit || ""))) throw fail("bad_input", words("pairNeedsFresh"));
@@ -643,25 +731,29 @@ export function createPairing(o) {
           const nb = newNonce();
           const w = fresh || to ? "" : await wordsFor(caller.slice(7), { ticket, na: "", nb });
           const until = now() + ASK_MS;
-          const mine = ask = a = { caller, input, name: askName(input), words: w, until, state: to ? "yes" : "waiting", wake: [], nb, commit: String(pr.commit || ""), ticket };
+          const mine = ask = a = { caller, input, name: askName(input), words: "", choices: [], until, state: to ? "yes" : "waiting", wake: [], nb, commit: String(pr.commit || ""), ticket, ...(proven ? { proven } : {}) };
+          if (w) setWords(mine, w);
           // no answer, no yes: the ask ends by itself and lets the app's relay device go, even when the app never calls again
           const timer = setTimeout(() => { if (ask === mine) askLive(); }, ASK_MS + 5);
           if (timer.unref) timer.unref();
-          if (!to && !fresh) ctx.events.emit("wink.pair-asked", { device: caller.slice(7), name: mine.name, words: mine.words, until: mine.until });
+          if (!to && !fresh) ctx.events.emit("wink.pair-asked", { device: caller.slice(7), name: mine.name, choices: mine.choices, until: mine.until });
         }
         if (a.state === "waiting" && !a.words) {
           // not revealed yet: answer with the server's nonce; the words appear when the app reveals its own
           if (typeof pr.reveal !== "string" || !pr.reveal) return { pending: true, nb: a.nb, until: a.until };
           if (!/^[0-9a-f]{32}$/.test(pr.reveal) || (await nonceCommit(pr.reveal)) !== a.commit) { ask = null; for (const w of a.wake) w(); throw fail("denied", words("pairMismatch")); }
-          a.words = await wordsFor(caller.slice(7), { ticket: a.ticket, na: pr.reveal, nb: a.nb });
-          ctx.events.emit("wink.pair-asked", { device: caller.slice(7), name: a.name, words: a.words, until: a.until });
+          setWords(a, await wordsFor(caller.slice(7), { ticket: a.ticket, na: pr.reveal, nb: a.nb }));
+          ctx.events.emit("wink.pair-asked", { device: caller.slice(7), name: a.name, choices: a.choices, until: a.until });
         } else if (a.state === "waiting" && a.words && HOLD_MS > 0) await new Promise(res => { const t = setTimeout(res, HOLD_MS); if (t.unref) t.unref(); a && a.wake.push(() => { clearTimeout(t); res(undefined); }); });
         a = askLive();
         if (!a) throw fail("expired", words("pairExpired"));
         if (a.state === "waiting") return { pending: true, nb: a.nb, words: a.words, until: a.until };
         const mine = a; ask = null;
         if (mine.state === "no") throw fail("denied", words("pairRefused"));
-        return await applyAdopt(mine.input, caller);
+        // the relay makes the app's device only now, after the person's check (X-1); the answer to this call still reaches the app over the waiting channel
+        await confirmPending(caller.slice(7));
+        // a proven identity is the owner's identity; what the caller said about itself is not
+        return await applyAdopt(mine.proven ? { ...mine.input, identity: mine.proven } : mine.input, caller);
       } catch (e) {
         // an error, a refusal or a no: nothing stays behind (a pending return above never gets here)
         if (ask && ask.caller === caller && !/** @type {any} */ (e).keepAsk) ask = null;
@@ -669,8 +761,12 @@ export function createPairing(o) {
         throw e;
       }
     };
-    /** The local callers that may see and answer an ask: a screen or terminal at this server, never a paired device, the tailnet, the relay or an agent. @param {any} m0 */
-    const atServer = (m0) => { const c = String((m0 && m0.caller) || ""); if (!c || /^(device:|tailnet|relay|module:|anonymous$|hook$|agent:|space:|org:)/.test(c) || c.includes(":agent:")) throw fail("denied", words("resetOnServer")); };
+    /**
+     * The callers that may see and answer an ask (Q-2): an allow list of this server's own person surfaces, never a deny list. A model client (`mcp`, `harness`), a hook, a
+     * module, a session, an agent, the tailnet, a paired device and an anonymous caller are all refused, and so is any name not listed.
+     * @param {any} m0
+     */
+    const atServer = (m0) => { const c = String((m0 && m0.caller) || ""); if (!PERSON_SURFACES.includes(c) || (m0 && m0.agent)) throw fail("denied", words("pairOnServer")); };
     const applyAdopt = async (/** @type {any} */ input, /** @type {string} */ caller) => {
       const t = { kind: String(input.owner.kind), id: String(input.owner.id) };
       const ident = String(input.identity || (t.kind === "identity" ? t.id : "") || await o.identity());
@@ -727,6 +823,7 @@ export function createPairing(o) {
       db.prepare("UPDATE wink_devices SET removed_at = ?, sign_key = NULL WHERE id = 'self' AND removed_at IS NULL").run(now());
       ctx.events.emit("wink.server-released", {});
     };
+    clearOwnerHook = clearOwner;
     ctx.tool("wink.server.release", {
       description: "On a server: let go of its owner. The app that adopted it calls this over the paired channel when the person removes the server there (the app has the owner's presence for the removal). Only the app that adopted this server may; anyone else is refused, and a person at this server uses wink.server.reset. Clears the owner, the adopter and the hand-over and keeps the server's own keys, so it can be paired again. Answers { released }.",
       input: obj(),
@@ -738,43 +835,6 @@ export function createPairing(o) {
         if (!caller.startsWith("device:") || meta.get("adopter") !== caller) throw fail("denied", words("releaseDenied", { owner: await ownerWords(meta.get("owner")) }));
         clearOwner();
         return { released: true };
-      },
-    });
-    /** The short fingerprint of this server, which the person types to free it: eight characters from its own name and route, shown by wink.server.fingerprint. */
-    const serverFingerprint = async () => {
-      let route = "";
-      try { const r = /** @type {any} */ (typeof ctx.call === "function" ? await ctx.call("relay.status", {}) : null); route = String((r && r.data && r.data.route) || ""); } catch { /* the relay may be off */ }
-      const h = crypto.createHash("sha256").update(`wink-server\n${String(ctx.config.name || "")}\n${route}`).digest("hex").slice(0, 8).toUpperCase();
-      return `${h.slice(0, 4)}-${h.slice(4)}`;
-    };
-    ctx.tool("wink.server.fingerprint", {
-      description: "On the server itself: its short fingerprint (like AB12-CD34), the code a person types to free it with wink.server.reset when the server has no passkey. Not a secret. Answers { fingerprint, owned }.",
-      input: obj(),
-      run: async (_, meta0 = {}) => {
-        owner(meta0, "the server's fingerprint");
-        const c = String((meta0 && meta0.caller) || "");
-        if (/^(device:|tailnet|relay)/.test(c)) throw fail("denied", words("resetOnServer"));
-        return { fingerprint: await serverFingerprint(), owned: Boolean(meta.get("owner")) };
-      },
-    });
-    ctx.tool("wink.server.reset", {
-      description: "On the server itself: forget who owns it so it can be paired again, when the app that owned it cannot tell it to let go (the app was lost, or the server was unreachable when it was removed). Two ways, both only at the server: the person's presence, or, on a box with no passkey, the local command line (`vyre wink reset`) with the server's fingerprint typed in `fingerprint` (see wink.server.fingerprint). Never callable over a paired channel, the tailnet or the relay, and never by an agent. Keeps the server's own keys; the app that owned it loses its device here. Answers { reset }.",
-      input: obj({ fingerprint: str }),
-      // Presence is asked unless the caller brought the fingerprint; run() decides whether that is allowed for this caller.
-      presence: { summary: async () => "Free this server so it can be added again", when: (/** @type {any} */ i) => !(i && i.fingerprint) },
-      run: async (input, meta0 = {}) => {
-        owner(meta0, "resetting a server");
-        const caller = String((meta0 && meta0.caller) || "anonymous");
-        if (/^(device:|tailnet|relay|module:relay)/.test(caller)) throw fail("denied", words("resetOnServer"));
-        if (!meta0.presence) {
-          if (!input || !input.fingerprint) throw fail("presence_required", words("resetNeedsYou"));
-          if (caller !== "cli") throw fail("denied", words("resetOnServer"));
-          const want = await serverFingerprint();
-          if (String(input.fingerprint).trim().toUpperCase().replace(/[^A-Z0-9]/g, "") !== want.replace("-", "")) throw fail("fingerprint_mismatch", words("resetFingerprint"));
-        }
-        const had = Boolean(meta.get("owner"));
-        clearOwner();
-        return { reset: true, had };
       },
     });
     ctx.tool("wink.server.handover", {
@@ -812,7 +872,7 @@ export function createPairing(o) {
     // The typed code stays behind the development flag only.
     /** @type {null | { qr: string, art: string, until: number, claimed: boolean, seed: string }} the QR on show */
     let phoneTicket = null;
-    /** @type {null | { device: string, name: string, fingerprint: string, words: string, until: number, state: "waiting" | "yes" | "no" | "expired", nb: string, commit: string, ticket: string, named: boolean }} the phone asking to be added */
+    /** @type {null | { device: string, name: string, fingerprint: string, words: string, choices: string[], until: number, state: "waiting" | "yes" | "no" | "expired", nb: string, commit: string, ticket: string, named: boolean }} the phone asking to be added */
     let phoneAsk = null;
     const phoneLive = () => {
       if (phoneAsk && phoneAsk.state === "waiting" && phoneAsk.until <= now()) { phoneAsk.state = "expired"; dropLater(`device:${phoneAsk.device}`); }
@@ -826,8 +886,8 @@ export function createPairing(o) {
       const live = phoneLive();
       if (live && live.state === "waiting") { dropLater(`device:${id}`); return true; } // one phone at a time; the other is let go
       const until = now() + ASK_MS;
-      const mine = phoneAsk = { device: id, name: cleanPhoneName(p.name) || "A phone", fingerprint: String(p.fingerprint || ""), words: "", until, state: "waiting", nb: newNonce(), commit: "", ticket, named: false };
-      if (o.pairWordsFor) { mine.words = await o.pairWordsFor(id); ctx.events.emit("wink.pair-asked", { device: id, name: mine.name, words: mine.words, until, kind: "phone" }); }
+      const mine = phoneAsk = { device: id, name: cleanPhoneName(p.name) || "A phone", fingerprint: String(p.fingerprint || ""), words: "", choices: [], until, state: "waiting", nb: newNonce(), commit: "", ticket, named: false };
+      if (o.pairWordsFor) { setWords(mine, await o.pairWordsFor(id)); ctx.events.emit("wink.pair-asked", { device: id, name: mine.name, choices: mine.choices, until, kind: "phone" }); }
       const t = setTimeout(() => { if (phoneAsk === mine) phoneLive(); }, Math.max(0, until - now()) + 5);
       if (t.unref) t.unref();
       return true;
@@ -854,7 +914,7 @@ export function createPairing(o) {
         }
         if (phoneTicket && !phoneTicket.claimed && phoneTicket.until > now()) return { qr: phoneTicket.qr, link: phoneTicket.qr, art: phoneTicket.art, expires: phoneTicket.until };
         const seed = crypto.randomBytes(16);
-        const t = /** @type {any} */ (await mint(seed));
+        const t = /** @type {any} */ (await mint(seed, "phone"));
         if (!t || t.error) throw fail("unavailable", words("offline"));
         const qr = phoneQrPayload(seed, await o.relayUrl());
         phoneTicket = { qr, art: qrArt(qr), until: now() + 5 * 60_000, claimed: false, seed: b64url(seed) };
@@ -885,25 +945,29 @@ export function createPairing(o) {
       },
     });
     ctx.tool("wink.phone.pairing", {
-      description: "On the computer showing the QR: is a phone asking to be added right now? Answers { asking: false } or { asking: true, name, words, until, line }: `words` are the three words the phone shows too, `line` the question to put to the person (answer with wink.phone.pair.answer).",
+      description: "On the computer showing the QR: is a phone asking to be added right now? Answers { asking: false } or { asking: true, name, choices, until, line }: `choices` are three sets of three words, one of them what the phone shows and two decoys in an order made fresh for this pairing, and `line` the question to put to the person (answer with wink.phone.pair.answer).",
       input: obj(),
       run: async (_, meta = {}) => {
         owner(meta, "the phone question");
         const a = phoneLive();
         if (!a || a.state !== "waiting" || !a.words) return { asking: false };
-        return { asking: true, name: a.name, words: a.words, until: a.until, line: words("phoneAsk", { name: a.name, words: a.words }) };
+        return { asking: true, name: a.name, choices: a.choices, until: a.until, line: words("phoneAsk", { name: a.name, choices: a.choices }) };
       },
     });
     ctx.tool("wink.phone.pair.answer", {
-      description: "On the computer: answer the phone question. { yes: true } adds the phone to you, { yes: false } sends it away and adds nothing. Say yes only if the words match the ones the phone shows: give `words` (the three words as read on the phone) to have them checked, and anything else is a no. Answers { answered, yes, name, device? } or { answered: false } when nobody is asking (or the time ran out).",
-      input: obj({ yes: { type: "boolean" }, words: str }, ["yes"]),
+      description: "On the computer: answer the phone question. { yes: false } sends it away and adds nothing. { yes: true } needs the words check: give `pick` (1, 2 or 3, the choice that matches the three words the phone shows), `first` (the first of those words, typed) or `words` (all three, typed). A bare yes is refused and adds nothing; a wrong pick or words is a no. Answers { answered, yes, name, device? } or { answered: false } when nobody is asking (or the time ran out).",
+      input: obj({ yes: { type: "boolean" }, pick: { type: "integer" }, first: str, words: str }, ["yes"]),
       presence: { summary: async () => "Add a phone to you" },
       run: async (input, meta = {}) => {
         owner(meta, "the phone answer");
         const a = phoneLive();
         if (!a || a.state !== "waiting" || (!a.words && input.yes === true)) return { answered: false };
-        const norm = (/** @type {unknown} */ x) => String(x ?? "").trim().toLowerCase().replace(/\s+/g, " ");
-        const wrong = input.words !== undefined && norm(input.words) !== norm(a.words);
+        let wrong = false;
+        if (input.yes === true) {
+          const j = judgeWords(a, input);
+          if (j === "bare") throw fail("words_needed", words("pairPick"));
+          wrong = j === "wrong";
+        }
         if (input.yes !== true || wrong) {
           a.state = "no";
           dropLater(`device:${a.device}`);
@@ -912,6 +976,9 @@ export function createPairing(o) {
         }
         const identity = await o.identity();
         const dev = devices.add({ id: a.device, identity, kind: "phone", name: a.name, fingerprint: a.fingerprint, target: { kind: "identity", id: identity } });
+        // the relay makes the device only now (X-1); if it will not, nothing stays here either
+        try { await confirmPending(a.device); }
+        catch (e) { devices.remove(a.device); a.state = "no"; dropLater(`device:${a.device}`); throw e; }
         a.state = "yes";
         ctx.events.emit("wink.pair-answered", { yes: true, kind: "phone" });
         ctx.events.emit("wink.joined", { device: dev.id, flow: "W1", kind: "phone" });
@@ -931,8 +998,8 @@ export function createPairing(o) {
           if (!a.commit && /^[0-9a-f]{64}$/.test(String(i.commit || ""))) a.commit = String(i.commit);
           if (a.commit && typeof i.reveal === "string" && i.reveal) {
             if (!/^[0-9a-f]{32}$/.test(i.reveal) || (await nonceCommit(i.reveal)) !== a.commit) { a.state = "no"; dropLater(`device:${a.device}`); throw fail("denied", words("phoneMismatch")); }
-            a.words = await pairWords(await boxKey(), a.device, { ticket: a.ticket, nonceA: i.reveal, nonceB: a.nb });
-            ctx.events.emit("wink.pair-asked", { device: a.device, name: a.name, words: a.words, until: a.until, kind: "phone" });
+            setWords(a, await pairWords(await boxKey(), a.device, { ticket: a.ticket, nonceA: i.reveal, nonceB: a.nb }));
+            ctx.events.emit("wink.pair-asked", { device: a.device, name: a.name, choices: a.choices, until: a.until, kind: "phone" });
           }
         }
         return { state: a.state, nb: a.nb, ...(a.words ? { words: a.words } : {}), until: a.until };
@@ -970,7 +1037,9 @@ export function createPairing(o) {
     });
   }
 
-  return { devices, targets, checkTarget, phone, computeAllowed, compute, tools: () => { tools(); startRetries(); }, startTyping, pending, peers, meta, releaseServer, retryReleases, stop, ownHandover: () => ownHandover() };
+  /** Lets a waiting pairing go: the relay closes its channels and forgets it (relay.devices.drop answers for a device that never existed). @param {string} device */
+  const dropPending = async device => { if (typeof ctx.call === "function") await ctx.call("relay.devices.drop", { id: String(device) }); };
+  return { devices, targets, checkTarget, phone, computeAllowed, compute, dropPending, setGate: (/** @type {() => Promise<void>} */ f) => { ensureGate = f; }, tools: () => { tools(); startRetries(); }, startTyping, pending, peers, meta, clearOwner: () => clearOwnerHook(), releaseServer, retryReleases, stop, ownHandover: () => ownHandover() };
 }
 
 /** The QR a computer shows for a phone: the code and where to meet. @param {string} code @param {string} relay */

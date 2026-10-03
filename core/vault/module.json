@@ -146,6 +146,7 @@
       "vault.item-added",
       "vault.item-changed",
       "vault.item-deleted",
+      "vault.refused",
       "vault.granted",
       "vault.revoked",
       "vault.released",

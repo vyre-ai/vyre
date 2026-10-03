@@ -155,7 +155,9 @@ export async function pairOffer(offer, o = {}) {
   return {
     relay: offer.relay, route: offer.route, box: base64url(offer.box),
     name: promptSafe((reply && reply.box && reply.box.name) || offer.name, "a Vyre box"),
-    device: reply && reply.device, presence: (reply && reply.presence) || null,
+    // A gated ticket (the box's QR for a phone or a server) makes no device until its person confirms: the reply then names the id this device WILL have (`pending`), `pending: true` here,
+    // and the wink calls that finish the pairing run over a channel that can reach only the one tool they need. Once confirmed, an ordinary connect is a paired device.
+    device: reply && (reply.device || reply.pending), ...(reply && reply.pending ? { pending: true } : {}), presence: (reply && reply.presence) || null,
     // Only when asked (o.enroll) and the box has an address: the one-time grant to enroll this
     // device's own passkey there (core/relay), { grant, expires, rpId }; null otherwise.
     enroll: o.enroll ? enrollOf(reply && reply.enroll) : null,

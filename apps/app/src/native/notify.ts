@@ -43,7 +43,7 @@ export async function requestNotify(): Promise<{ state: NotifyState; say: string
 export async function showLocal(n: Notice): Promise<boolean> {
   const c = cleanNotice(n);
   if (!c || (await notifyState()).state !== "granted") return false;
-  return Platform.OS === "android" && Notify ? Notify.show(c.id, c.title, c.body ?? null, c.route ?? null) : false;
+  return (Platform.OS === "android" || Platform.OS === "ios") && Notify ? Notify.show(c.id, c.title, c.body ?? null, c.route ?? null) : false;
 }
 
 /** Calls `go(route)` when the person taps a notice. Returns the unsubscribe. A tap opens vyre://<route>?notice=1. */

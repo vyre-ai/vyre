@@ -74,7 +74,7 @@ const tailnetLogin = caller => {
  *   the clock, how long link.serve holds a request, the tools the box may ask a Mac for, and the
  *   health check. Production passes nothing.
  */
-export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, health = createHealth() } = {}) {
+export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, health = createHealth({ ctx }) } = {}) {
   const db = ctx.store.db;
   ctx.store.migrate([
     `CREATE TABLE link_peers (id TEXT PRIMARY KEY, name TEXT NOT NULL, login TEXT, node TEXT, stable_id TEXT,
@@ -275,7 +275,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
       // whatever Tailscale said.
       if (tailnetLogin(caller) && own && own.stableId === asked && h.reach === "none") {
         const { fix, ...rest } = h;
-        return { ...rest, reach: "direct", why: "Connected over your Tailscale network.", since: reachSince.at(asked, "direct") };
+        return { ...rest, reach: "direct", why: "Connected to your server.", since: reachSince.at(asked, "direct") };
       }
       return h;
     },

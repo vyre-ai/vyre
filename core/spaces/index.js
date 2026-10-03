@@ -516,11 +516,24 @@ export default {
 
     // 2. spaces
     tool("spaces.create", "Create a space and say where it will live: a server you have (the one command, then a code), a new server (DigitalOcean) or this computer. Runs step by step and can be resumed or cancelled.",
-      obj({ name: str, displayName: str, home: HOME, headscale: { type: "boolean" } }, ["name", "home"]), async i => {
+      obj({ name: str, displayName: str, home: HOME, headscale: { type: "boolean" }, storeChoice: { type: "string", enum: ["create", "cancel"] } }, ["name", "home"]), async i => {
         const s = me();
         const label = String(i.name || "").trim().toLowerCase().replace(/\.vyre\.run$/, "");
         if (!label) throw refuse("Give the space a name.", "bad_name");
-        const spaceId = `spc_${crypto.randomBytes(8).toString("hex")}`;
+        let spaceId = `spc_${crypto.randomBytes(8).toString("hex")}`;
+        // A Space the kernel hosts here is made by the kernel (its own id, store and key). The kernel says first what store it would use: on a server too small for the larger one
+        // it needs the person's confirmation, in the kernel's own words, and only on "create" is the Space made, with the flag that says they accepted the built-in store.
+        const KS = K && K.spaces && typeof K.spaces.host === "function" ? K.spaces : null;
+        if (KS) {
+          const plan = typeof KS.storePlan === "function" ? await KS.storePlan() : null;
+          const confirm = plan && plan.confirm ? plan.confirm : null;
+          if (confirm) {
+            if (i.storeChoice === "cancel") return { status: "cancelled", reason: "You chose not to create it on this server." };
+            if (i.storeChoice !== "create") return { status: "needs_confirmation", confirm: { text: confirm.text, choices: ["create", "cancel"] } };
+          }
+          const hosted = await KS.host({ owner: s.id, name: label, ...(confirm ? { accept_builtin_store: true } : {}) });
+          spaceId = hosted.space || hosted.id;
+        }
         const home = { ...i.home };
         if (home.kind === "this-computer" && !home.device) home.device = { id: s.keyId, name: "this computer", alwaysOn: false };
         spaces.insert({ id: spaceId, name: `${label}.vyre.run`, label, displayName: i.displayName ? String(i.displayName).slice(0, 80) : null, createdBy: /** @type {string} */ (s.id), status: "running", now: now() });

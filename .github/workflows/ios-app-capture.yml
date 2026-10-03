@@ -73,6 +73,11 @@ jobs:
           shot record "vyre://u/record/01a05a43-fc00-4f98-ad05-d023d68e45fe" 10
           shot chat "vyre://chat-demo?at=4200&hold=1" 10
           shot now-again "vyre://u/now" 8
+          # The other theme: the app follows the system appearance.
+          xcrun simctl ui "$udid" appearance dark; sleep 3
+          shot now-dark "vyre://u/now" 8
+          shot chat-dark "vyre://chat-demo?at=4200&hold=1" 8
+          xcrun simctl ui "$udid" appearance light; sleep 3
           xcrun simctl io "$udid" recordVideo --codec h264 "$out/now.mov" & rec=$!
           sleep 8
           kill -INT "$rec"; wait "$rec" || true

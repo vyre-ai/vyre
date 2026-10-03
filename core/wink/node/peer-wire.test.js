@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import net from "node:net";
 import crypto from "node:crypto";
-import { peerSession, socketPipe, admitPeer, joinPeer, authMessage, verifyDevice, Frames, SLICE, T } from "./peer-wire.js";
+import { peerSession, socketPipe, admitPeer, joinPeer, authMessage, verifyDevice, toolAllowed, STORAGE_DEVICE_TOOLS, Frames, SLICE, T } from "./peer-wire.js";
 
 /** Two connected sockets on loopback. */
 async function sockets(t) {
@@ -165,4 +165,16 @@ test("peer-wire auth: an entry removed after admission is refused at the very ne
   assert.equal(verifyDevice(K.pub, Buffer.from("m"), K.sign(Buffer.from("m"))), true);
   assert.equal(verifyDevice(keyPair().pub, Buffer.from("m"), K.sign(Buffer.from("m"))), false);
   assert.equal(verifyDevice("short", Buffer.from("m"), "x"), false);
+});
+
+test("D-1b: a storage device may call exactly the bridge tools; every other wink.storage tool, a prefix trick and a person's device is judged by the entry's kind", () => {
+  const drive = { kind: "device", deviceKind: "storage" };
+  assert.deepEqual([...STORAGE_DEVICE_TOOLS], ["wink.storage.bridge", "wink.storage.bridge.accept"]);
+  for (const t of STORAGE_DEVICE_TOOLS) assert.equal(toolAllowed(drive, t), true, t);
+  for (const t of ["wink.storage.remove", "wink.storage.pick", "wink.storage.pair", "wink.storage.card", "wink.storage.offers", "wink.storage.status", "wink.storage.discover", "wink.storage.bridge.drive", "wink.storage.bridge.", "wink.storage.bridgex", "wink.storage.bridge.accept.x", "wink.offer.set", "wink.server.adopt", "relay.devices.list", ""]) {
+    assert.equal(toolAllowed(drive, t), false, `${t} is refused`);
+    assert.equal(toolAllowed({ kind: "storage" }, t), false, `${t} is refused for kind storage`);
+  }
+  assert.equal(toolAllowed({ kind: "device" }, "wink.storage.remove"), true, "a person's device is not narrowed here");
+  assert.equal(toolAllowed(null, "wink.storage.bridge"), false);
 });
