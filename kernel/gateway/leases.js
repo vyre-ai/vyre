@@ -10,7 +10,7 @@
 // Every call takes a kernel-built chain that is exactly one person (the process also refuses a model's chain).
 import { isChain, isExactlyPerson } from "../core/chain.js";
 import { KernelError } from "../core/errors.js";
-import { leasedUse } from "../seal/uses.js";
+import { leasedUse, credentialAction, safePath } from "../seal/uses.js";
 
 /**
  * @param {{ space: string, sealer: any, grantsStore: any, authorize: (i: any) => Promise<any>, log: any, chains: any,
@@ -21,6 +21,7 @@ export function createLeases(cfg) {
   const { sealer, grantsStore } = cfg;
   /** @type {Map<string, { member: string, device: string, device_key?: string }>} */ const info = new Map();
   /** @type {Map<string, string>} session -> lease id (the platform's mapping, bound by `bind`) */ const sessions = new Map();
+  /** @type {Map<string, { route: string, ref: string, methods: string[], paths: string[] }[]>} session -> the credentials its definition may use, held here at the home and never sent by the runner */ const defs = new Map();
   const person = (/** @type {any} */ chain) => { if (!isChain(chain) || !isExactlyPerson(chain)) throw new KernelError("chain_not_person", "a lease is a person's, on their own"); return chain.hops[0].actor; };
   const allowedFor = (/** @type {string} */ member, /** @type {string} */ device, /** @type {string | undefined} */ device_key) => { const a = typeof grantsStore.active === "function" ? grantsStore.active({ member, device, device_key }) : { spaceAllows: false, memberAccepts: false }; return a.spaceAllows === true && a.memberAccepts === true; };
   const kernelChain = () => cfg.chains.fromFacts({ kind: "module", module: "leases", first_party: true });
@@ -64,28 +65,50 @@ export function createLeases(cfg) {
       if (!grantsStore.isAdmin(p)) throw new KernelError("not_allowed", "only an owner or an admin reinstates a revoked computer");
       return run(() => sealer.lease.reinstate({ chain, member: i.member, device: i.device, proof: i.proof }));
     },
-    /** The platform maps a session to the lease it runs under. */
-    bind(/** @type {string} */ session, /** @type {string} */ id) { sessions.set(String(session), String(id)); },
-    unbind(/** @type {string} */ session) { sessions.delete(String(session)); },
     /**
-     * Use a credential on a route from inside a lent workspace: the session must hold a live lease, the chain must be allowed the credential's action, the vault
-     * resolves it for that route per request (nothing cached), and one `vault.used` event names the use, never the value.
+     * The platform maps a session to the lease it runs under AND to what its definition lets it use: `routes` is `[{ route (host), ref, methods?, paths? }]`, set at
+     * the home from the session's or tool's definition. A session bound without routes can use no credential. `methods` default to GET and HEAD; `paths` are exact or
+     * end in `/*`, and have no default (a route with no paths matches nothing).
      */
-    async use(chain, /** @type {{ ref: string, session: string, route: string }} */ i) {
+    bind(/** @type {string} */ session, /** @type {string} */ id, /** @type {{ routes?: any[] }} */ def = {}) {
+      const routes = [];
+      for (const r of Array.isArray(def.routes) ? def.routes : []) {
+        if (!r || typeof r.route !== "string" || !r.route || typeof r.ref !== "string" || !r.ref) throw new KernelError("bad_input", "a credential route names a host and a credential");
+        const methods = (Array.isArray(r.methods) && r.methods.length ? r.methods : ["GET", "HEAD"]).map((/** @type {any} */ m) => String(m).toUpperCase());
+        const paths = (Array.isArray(r.paths) ? r.paths : []).map(String);
+        if (paths.some(x => !x.startsWith("/") || x.slice(0, -2).includes("*") || (x.includes("*") && !x.endsWith("/*")))) throw new KernelError("bad_input", "a path is exact or ends in /*");
+        routes.push(Object.freeze({ route: r.route.toLowerCase(), ref: r.ref, methods, paths }));
+      }
+      sessions.set(String(session), String(id));
+      defs.set(String(session), routes);
+    },
+    unbind(/** @type {string} */ session) { sessions.delete(String(session)); defs.delete(String(session)); },
+    /**
+     * Use a credential for one request from inside a lent workspace. The runner names only the session and the request (host, method, path); the credential is looked
+     * up here from the session's definition, and a request the definition does not map is refused as absent. A GET or HEAD is a read; any other method is an outward
+     * call (`vault.call`) and goes through the outward check, so it asks. The session must hold a live lease, the vault resolves per request (nothing cached), and one
+     * `vault.used` event names the use (host, method, path), never the value.
+     */
+    async use(chain, /** @type {{ session: string, route: string, method: string, path: string }} */ i) {
       person(chain);
-      if (!i || typeof i.ref !== "string" || typeof i.route !== "string" || typeof i.session !== "string") throw new KernelError("bad_input", "a use names a credential, a session and a route");
+      if (!i || typeof i.route !== "string" || typeof i.session !== "string" || typeof i.method !== "string" || typeof i.path !== "string") throw new KernelError("bad_input", "a use names a session, a host, a method and a path");
       if (!cfg.resolve) throw new KernelError("unavailable", "no vault is wired to resolve credentials");
-      const action = cfg.routeAction ? cfg.routeAction(i.route) : "vault.read";
-      const d = await cfg.authorize({ chain, action, resource: `vyre://${cfg.space}/credential/${encodeURIComponent(i.ref)}` });
+      const method = i.method.toUpperCase(), route = i.route.toLowerCase();
+      const path = i.path.split(/[?#]/)[0];
+      try { if (!path.startsWith("/")) throw new Error("path"); if (path !== "/") safePath(path.slice(1)); } catch { throw new KernelError("not_found", "that credential is not open to this session"); }
+      const hit = (defs.get(i.session) || []).find(r => r.route === route && r.methods.includes(method) && r.paths.some(x => (x.endsWith("/*") ? path === x.slice(0, -2) || path.startsWith(x.slice(0, -1)) : path === x)));
+      if (!hit) throw new KernelError("not_found", "that credential is not open to this session");
+      const action = credentialAction("api", method);
+      const d = await cfg.authorize({ chain, action, resource: `vyre://${cfg.space}/credential/${encodeURIComponent(hit.ref)}` });
       if (d.effect !== "allow") throw new KernelError(d.effect === "ask" ? d.reason : "not_found", "that credential is not open to this chain");
       const go = leasedUse({
         leaseOf: s => sessions.get(s) ?? null,
         check: ({ chain: c, id }) => sealer.lease.check({ chain: c, id }),
         resolve: cfg.resolve,
-        emit: e => { try { cfg.log.append(kernelChain(), { type: e.type, sv: 1, subject: `vyre://${cfg.space}/credential/${encodeURIComponent(e.ref)}`, data: { device: e.device, route: e.route, session: e.session }, vis: "owner", red: "internal" }); } catch { /* a note never opens the door */ } },
+        emit: e => { try { cfg.log.append(kernelChain(), { type: e.type, sv: 1, subject: `vyre://${cfg.space}/credential/${encodeURIComponent(e.ref)}`, data: { device: e.device, route: e.route, method, path, session: e.session }, vis: "owner", red: "internal" }); } catch { /* the use already happened; the log is best effort here */ } },
         chain,
       });
-      return run(() => go({ ref: i.ref, session: i.session, route: i.route }));
+      return run(() => go({ ref: hit.ref, session: i.session, route, method, path }));
     },
   };
   return Object.freeze(api);

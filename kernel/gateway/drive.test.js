@@ -56,3 +56,29 @@ test("drive: every call asks authorize first, the version's author is the chain'
   assert.ok(ev.length >= 2 && ev.every(e => !JSON.stringify(e.data).includes("hello")));
   assert.deepEqual(k.log.read({ type: "file.accessed" })[0].data.path, "proj/a.txt");
 });
+
+test("F-2: restore and restoreBackup are their own admin act: a drive.write grant (a member's or an assistant's) does not reach them, and a version must be a positive integer", async () => {
+  const drive = fakeDrive();
+  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 3), presence, drive });
+  const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
+  const bob = k.chains.fromFacts({ kind: "device", device_key_id: "d-b", person: BOB, path: "direct" });
+  const g = k.gateway.grants, D = k.gateway.drive;
+  const role = { person: BOB, role: "member" };
+  await g.setRole(owner, role, { presence: proof("grants.role", role, `vyre://${SPACE}/member/${BOB}`) });
+  const gi = { subject: { kind: "actor", actor: { kind: "person", id: BOB, space: SPACE } }, actions: ["drive.read", "drive.write"], resource: { prefix: `vyre://${SPACE}/file/*` }, conditions: {}, source: "test" };
+  await g.create(owner, gi, { presence: proof("grants.create", gi, `vyre://${SPACE}/grant/new`) });
+  await D.put(bob, "proj/a.txt", new Uint8Array([1]));
+  await D.put(bob, "proj/a.txt", new Uint8Array([2]));
+  const before = drive.calls.length;
+  await assert.rejects(() => D.restore(bob, "proj/a.txt", 1), { code: "not_found" }, "write is not restore");
+  await assert.rejects(() => D.restoreBackup(bob, "nightly"), { code: "not_found" });
+  assert.equal(drive.calls.length, before, "the drive was never touched");
+  // the owner needs to be present: a chain with no session asks, one with a live session restores
+  const away = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct" });
+  await assert.rejects(() => D.restore(away, "proj/a.txt", 1), e => e.code === "needs_presence");
+  assert.equal(drive.calls.length, before);
+  assert.deepEqual(await D.restore(owner, "proj/a.txt", 1), { version: 3 });
+  for (const bad of [0, -1, 1.5, "1", NaN]) await assert.rejects(() => D.restore(owner, "proj/a.txt", bad), { code: "bad_input" }, String(bad));
+  await assert.rejects(() => D.get(bob, "proj/a.txt", { version: 1.5 }), { code: "bad_input" });
+  await assert.rejects(() => D.put(bob, "proj/a.txt", "text"), { code: "bad_input" });
+});

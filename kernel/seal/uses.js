@@ -17,6 +17,7 @@ export const ACTIONS = Object.freeze([
   { action: "vault.rotate", resource_type: "credential", risk: "admin", label: "Rotate a key", gloss: "Replaces a key at the service that issued it." },
   { action: "drive.read", resource_type: "file", risk: "read", label: "Read a file", gloss: "Opens a file in a project or a Drive share." },
   { action: "drive.write", resource_type: "file", risk: "write", label: "Change a file", gloss: "Saves or edits a file." },
+  { action: "drive.restore", resource_type: "file", risk: "admin", label: "Restore an older file or backup", gloss: "Replaces what is there now with an older version or a whole backup." },
   { action: "drive.share", resource_type: "file", risk: "outward.share", label: "Share a file", gloss: "Gives someone outside the Space access to a file." },
   { action: "drive.delete", resource_type: "file", risk: "outward.delete", label: "Delete a file", gloss: "Removes a file for good." },
   { action: "seal.put", resource_type: "record", risk: "write", label: "Seal a value", gloss: "Moves a value into the sealed store." },
@@ -108,10 +109,10 @@ export function grantFromAgent(g, space) {
  * @param {{ leaseOf: (session: string) => string | null, check: (i: { chain: any, id: string }) => Promise<{ space: string, device: string }>, resolve: (i: { space: string, ref: string, route: string }) => Promise<string>, emit?: (e: any) => void, chain: any }} o
  */
 export function leasedUse({ leaseOf, check, resolve, emit = () => {}, chain }) {
-  return async ({ ref, session, route }) => {
+  return async ({ ref, session, route, method, path }) => {
     const id = leaseOf(session); if (!id) throw Object.assign(new Error("no_lease"), { code: "no_lease" });
     const { space, member, device } = await check({ chain, id });
-    const value = await resolve({ space, ref, route });
+    const value = await resolve({ space, ref, route, ...(method ? { method, path } : {}) });
     emit({ type: "vault.used", space, member, device, ref, route, session });
     return value;
   };
