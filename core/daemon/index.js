@@ -17,7 +17,7 @@ import { isRealHome } from "../config/dialogs.js";
 import { assertDaemonHost } from "./host-guard.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
-import { Registry, discover, ownerDevice } from "../modules/index.js";
+import { Registry, discover, ownerDevice, currentCall } from "../modules/index.js";
 import { build, swWithBuild, htmlWithBuild } from "./build.js";
 import { serveApp } from "./app.js";
 import { acquire } from "./lock.js";
@@ -54,6 +54,19 @@ function kernelProof(req) {
   const h = String(req.headers["x-vyre-kernel-proof"] || "");
   if (!h || h.length > 5500 || !/^[A-Za-z0-9_-]+$/.test(h)) return undefined;
   try { const o = JSON.parse(Buffer.from(h, "base64url").toString("utf8")); return o && typeof o === "object" && !Array.isArray(o) ? o : undefined; } catch { return undefined; }
+}
+/**
+ * The session token a request carries (`x-vyre-kernel-session`), which the registry hands the tool as `meta.token` and nowhere else. It is set here only: the daemon checks the
+ * token with the kernel's own Surfaces door, and a tool's input, a module's `ctx.call` and every other header never supply one. A missing, malformed or invalid token is simply
+ * absent (the call is then not in any chat). The kernel re-checks it when it is used, so expiry and revocation hold for a long turn.
+ * @param {import("node:http").IncomingMessage} req @param {(() => any) | null} kernelOf
+ */
+async function kernelSession(req, kernelOf) {
+  const h = String(req.headers["x-vyre-kernel-session"] || "");
+  if (!h || h.length > 2048 || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(h)) return undefined;
+  const k = kernelOf ? kernelOf() : null;
+  if (!k || !k.surfaces || typeof k.surfaces.verify !== "function") return undefined;
+  try { await k.surfaces.verify(h); return h; } catch { return undefined; }
 }
 export const REPO = path.resolve(HERE, "..", "..");
 export const VERSION = JSON.parse(fs.readFileSync(path.join(REPO, "package.json"), "utf8")).version;
@@ -127,7 +140,7 @@ async function startLocked(opts, root, p, release) {
   // Modules that open listeners of their own (the tailnet, the onboarding page) establish who is
   // calling themselves, then hand the request to this same router with that caller and a policy
   // limiting what it may reach. The router never reads a caller from their headers.
-  const handler = (policy = {}) => (req, res, caller, peer) => route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, people }, { ...policy, caller, ...(peer ? { peer } : {}) })
+  const handler = (policy = {}) => (req, res, caller, peer) => route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, people, kernelOf: () => kernel }, { ...policy, caller, ...(peer ? { peer } : {}) })
     .catch(e => fail(res, e));
   // WebSockets a module registered with ctx.upgrade, at /v1/streams/<module>/<name>. Upgraded
   // sockets leave the HTTP server's hands, so they are tracked here and ended on stop, or
@@ -159,6 +172,7 @@ async function startLocked(opts, root, p, release) {
   if (opts.kernel === true || (opts.kernel === undefined && process.env.VYRE_KERNEL === "1")) {
     const { bootHomeKernel } = await import("../../kernel/home.js");
     kernel = await bootHomeKernel({ db, root, log, isFirstParty: dir => registry.isFirstParty(dir) });
+    if (typeof kernel.bindCalls === "function") kernel.bindCalls(currentCall);
     registry.deps.moduleHost = kernel.moduleHost;
     registry.deps.kernelFor = kernel.kernelFor;
     if (kernel.firstPartyCheck) registry.deps.firstPartyCheck = kernel.firstPartyCheck;
@@ -168,6 +182,23 @@ async function startLocked(opts, root, p, release) {
   // The eight box-only modules gate on cfg.machine (ADR 0039: solo/server/device), not the
   // legacy cfg.role -- that's what lets a Mac chosen as the server run them.
   await registry.start(discover(moduleRoots(root), { firstPartyRoots }), { role: cfg.machine, ...cfg.modules });
+  // The join card shows the Space's name and fingerprint words. The module that holds the Space's identity (spaces) answers them through `spaces.label` once it has the Space's
+  // root key; until then the card has none. Asked at start, then every 30 s until it answers, then every 10 minutes (a rename shows up), never keeping the daemon alive.
+  let stopped = false;
+  /** @type {NodeJS.Timeout | null} */ let labelTimer = null;
+  if (kernel && typeof kernel.setLabel === "function") {
+    /** @type {{ name?: string, words?: string } | null} */ let label = null;
+    kernel.setLabel(() => label || {});
+    const ask = async () => {
+      try {
+        const r = await registry.call("spaces.label", {}, "module:vyred");
+        const d = r && r.data;
+        if (d && (typeof d.name === "string" || typeof d.words === "string")) label = { ...(typeof d.name === "string" ? { name: d.name.slice(0, 80) } : {}), ...(typeof d.words === "string" ? { words: d.words.slice(0, 80) } : {}) };
+      } catch { /* the module is not there yet */ }
+      if (!stopped) { labelTimer = setTimeout(ask, label ? 600_000 : 30_000); labelTimer.unref(); }
+    };
+    void ask();
+  }
 
   // A stale socket from a crash would make listen() fail with EADDRINUSE. If nothing answers on
   // it, it is safe to remove; if something does, another vyred is running and this one stops.
@@ -178,7 +209,7 @@ async function startLocked(opts, root, p, release) {
   }
 
   const terminalOf = opts.person || (sock => atTerminal(sock, registry, presence));
-  const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, socket: true, terminalOf }).catch(e => fail(res, e)));
+  const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, socket: true, terminalOf, kernelOf: () => kernel }).catch(e => fail(res, e)));
   server.on("upgrade", async (req, socket, head) => {
     try { upgrade(req, socket, head, (await asTaken(socketCaller(req), /** @type {any} */ (socket), registry)).caller); }
     catch { socket.destroy(); }
@@ -190,9 +221,9 @@ async function startLocked(opts, root, p, release) {
   fs.writeFileSync(p.pid, String(process.pid));
   log(`vyred ${VERSION} up · role ${cfg.role} · ${registry.status().filter(m => m.state === "running").length} modules`);
 
-  let stopped = false;
   const stop = async () => {
     if (stopped) return; stopped = true;
+    if (labelTimer) clearTimeout(labelTimer);
     // Stop taking calls, and give the ones running up to DRAIN_MS to finish: a write cut off
     // mid-way looks to its client like a failure it will retry (ADR 0029, R7).
     drain.on = true;
@@ -514,7 +545,7 @@ async function atTerminal(socket, registry, presence) {
   return { key: "tmux:" + [...new Set(keys)].sort().join("+"), tty: controllingTty(pid) };
 }
 
-async function route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, people = null, socket = false, terminalOf = null }, /** @type {Policy} */ policy = {}) {
+async function route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, people = null, socket = false, terminalOf = null, kernelOf = null }, /** @type {Policy} */ policy = {}) {
   const url = new URL(req.url || "/", "http://vyred");
   // On the socket the header is only a label, and anything on the box can send it (Claude's own
   // processes included). "module:*" is what the registry uses between modules, "hook" is what the
@@ -776,8 +807,9 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
         if (!ok) return send(res, 403, { error: { code: "denied", message: "a session binds only its own process or one vyred started, not another's" } });
       }
     }
+    const sessionToken = await kernelSession(req, kernelOf);
     const result = await registry.call(name, input, caller, { ...via, proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
-      keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req), ...(kernelProof(req) ? { kernel_proof: kernelProof(req) } : {}) });
+      keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req), ...(kernelProof(req) ? { kernel_proof: kernelProof(req) } : {}), ...(sessionToken ? { token: sessionToken } : {}) });
     // A new person session for the Deck goes in the cookie, never in the body a script could read.
     if (name === "presence.person.start" && result.data && result.data.kind === "cookie" && result.data.token) {
       res.setHeader("set-cookie", `${COOKIE}=${result.data.token}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=${Math.floor(PERSON_MAX / 1000)}`);
@@ -865,6 +897,9 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   // through a real vyred the way a phone does.
   const resRelay = req.method === "GET" && /^\/relay\/client\/(client|channel|bytes|response|sse|webcrypto|noise|seedwords|words)\.js$/.exec(url.pathname);
   if (resRelay) return serveFile(res, path.join(REPO, "relay", "client", resRelay[1] + ".js"), cfg);
+  // The kernel's contracts, which the Deck imports as ../../kernel/contracts/index.js (deck/ui/tasks.js, deck/ui/fields.js): constant tables only, data and no logic, so the
+  // Deck and the kernel load the one copy and nothing drifts. This file and nothing else under kernel/.
+  if (req.method === "GET" && url.pathname === "/kernel/contracts/index.js") return serveFile(res, path.join(REPO, "kernel", "contracts", "index.js"), cfg);
   // The pure libs the Deck shares with Node, so both load the one copy: lib/avatar-seed (ADR 0043
   // section 6, a project tile's bytes) and lib/caps-flags (PLAN.md C14b, provider capabilities).
   // Exact paths only, nothing else in lib/.
