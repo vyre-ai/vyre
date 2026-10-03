@@ -26,6 +26,7 @@ import { createIdentityOps } from "./identity-ops.js";
 import { PASSWORD_MIN } from "./recovery.js";
 import { WORDS } from "../../relay/client/words.js";
 import { createCompute } from "../../lib/spaces/compute.js";
+import { isPerson, agentName } from "../../lib/caller.js";
 import { createKernelMembers } from "./kernel-members-compat.js";
 import { kernelMembers } from "./kernel-members.js";
 import { acceptProofRequest } from "../../kernel/remote/proof.js";
@@ -47,6 +48,8 @@ export const hooks = {
 };
 
 const DAY = 24 * 60 * 60 * 1000;
+/** Before membership exists the only callers are the relay and the person's devices: a local anonymous or model caller cannot spend a use count or burn the five tries. */
+const RELAY_DEVICE_CALLERS = Object.freeze(["tailnet", "relay", "device"]);
 const b64u = (/** @type {Buffer|Uint8Array} */ b) => Buffer.from(b).toString("base64url");
 const PERSON_RE = /^per_[a-z2-7]{26}$/;
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
@@ -596,7 +599,7 @@ export default {
         const r = await flow.submitCode(row.id, String(i.code), i.vpsToken ? { vpsToken: String(i.vpsToken) } : {});
         const { pairing: p, ...view } = /** @type {any} */ (r);
         return { pairing: p, ...(await sync(row.id, view)), ...(r.message ? { message: r.message } : {}) };
-      }, {});
+      }, { callers: RELAY_DEVICE_CALLERS });
 
     tool("spaces.server.install", "The one command to run on a server, the prompt it will show, and the code to type there. For a space still being created it shows the current code; for a finished space it starts adding a server (as compute, or as the new home with moveHome).",
       obj({ space: str, moveHome: { type: "boolean" } }, ["space"]), async i => {
@@ -837,11 +840,12 @@ export default {
         const row = payload && typeof payload.sid === "string" ? spaces.get(payload.sid) : null;
         if (!row || row.name !== payload.space) throw refuse("This invite is for a different space than the one it points to.", "wrong_space");
         return out(await invitesFor(row).acceptInvite({ token: String(i.token), person: i.person, proof: String(i.proof) }));
-      });
+      }, { callers: RELAY_DEVICE_CALLERS });
 
     // 5a. what other modules (bridges, publish) ask of spaces: who is a member, who is acting, which spaces a person is in. Modules only, never a person or a model.
-    tool("spaces.self", "The person acting on this device and the space a call is for (the one named, or the only one this person is in). For modules.", obj({ caller: str, space: str }), async i => {
+    tool("spaces.self", "The person acting and the space a call is for (the one named, or the only one this person is in). The person is this device's own: only for the person's own surface or device, or their own assistant (an agent claim); any other caller (a plain model session, a guest, a hook, an anonymous or module caller) is nobody. For modules.", obj({ caller: str, space: str }), async i => {
       const s = me();
+      if (i.caller !== undefined && !(isPerson(String(i.caller)) || agentName(String(i.caller)) !== null)) return { person: null, space: null };
       const mine = [];
       for (const r of spaces.all()) if (r.status === "done" && (r.createdBy === s.id || await membershipRow(r.id, /** @type {string} */ (s.id)))) mine.push(r);
       const row = i.space ? mine.find(r => r.id === i.space || r.name === i.space || r.label === i.space) : mine.length === 1 ? mine[0] : null;

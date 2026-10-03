@@ -265,17 +265,17 @@ test("a server home: the one command and the typed code, wrong codes counted, th
   assert.equal(inst.code, s.waiting.code);
   assert.equal(inst.installCommand, "curl -fsSL vyre.run/i | sh");
   // The server calls code.submit: it is not a person surface, so it is the one tool a relay caller may use.
-  const wrong = await d.ok("spaces.code.submit", { space: s.space, code: s.waiting.code === "000000" ? "111111" : "000000" }, "tailnet:server");
+  const wrong = await d.ok("spaces.code.submit", { space: s.space, code: s.waiting.code === "000000" ? "111111" : "000000" }, "device:aaaaaaaaaaaaaaaa");
   assert.equal(wrong.pairing, "wrong_code");
   assert.match(wrong.message, /4 tries left/);
   assert.equal((await d.ok("spaces.status", { space: s.space })).status, "waiting");
-  const right = await d.ok("spaces.code.submit", { space: s.space, code: s.waiting.code }, "tailnet:server");
+  const right = await d.ok("spaces.code.submit", { space: s.space, code: s.waiting.code }, "device:aaaaaaaaaaaaaaaa");
   assert.equal(right.pairing, "matched");
   assert.equal(right.status, "done");
   assert.deepEqual(d.of("space.pairing-state").map(e => e.state), ["waiting_for_code", "waiting_for_code", "matched", "home_ready"]);
   // The code is shown to the person, and never sent in an event or a log. (The pending space record keeps it until the ten minutes end, so a status call can show it again; the pairing table keeps only its hash.)
   assert.ok(!JSON.stringify(d.seen).includes(s.waiting.code) && !d.logs.join("\n").includes(s.waiting.code));
-  const again = await d.call("spaces.code.submit", { space: s.space, code: s.waiting.code }, "tailnet:server");
+  const again = await d.call("spaces.code.submit", { space: s.space, code: s.waiting.code }, "device:aaaaaaaaaaaaaaaa");
   assert.equal(again.error?.code, "not_waiting");
   void w;
 });
@@ -287,17 +287,17 @@ test("a server home: five wrong codes lock it, and resume gives a new code; a co
   const s = await d.ok("spaces.create", { name: "harlow", home: { kind: "server" } });
   const wrongCode = s.waiting.code === "123456" ? "654321" : "123456";
   let last;
-  for (let i = 0; i < 5; i++) last = await d.ok("spaces.code.submit", { space: s.space, code: wrongCode }, "tailnet:server");
+  for (let i = 0; i < 5; i++) last = await d.ok("spaces.code.submit", { space: s.space, code: wrongCode }, "device:aaaaaaaaaaaaaaaa");
   assert.equal(last.pairing, "locked");
   assert.equal(last.failed.step, "home");
   const again = await d.ok("spaces.resume", { space: s.space });
   assert.equal(again.status, "waiting");
   w.clock.t += 11 * 60 * 1000;
-  const late = await d.ok("spaces.code.submit", { space: s.space, code: again.waiting.code }, "tailnet:server");
+  const late = await d.ok("spaces.code.submit", { space: s.space, code: again.waiting.code }, "device:aaaaaaaaaaaaaaaa");
   assert.equal(late.pairing, "timed_out");
   const fresh = await d.ok("spaces.resume", { space: s.space });
   assert.equal(fresh.status, "waiting");
-  assert.equal((await d.ok("spaces.code.submit", { space: s.space, code: fresh.waiting.code }, "tailnet:server")).status, "done");
+  assert.equal((await d.ok("spaces.code.submit", { space: s.space, code: fresh.waiting.code }, "device:aaaaaaaaaaaaaaaa")).status, "done");
 });
 
 test("a new VPS: the fake provider is called, the token is never stored, evented or returned", async t => {
@@ -311,7 +311,7 @@ test("a new VPS: the fake provider is called, the token is never stored, evented
   assert.equal(s.address, "203.0.113.20");
   assert.equal(s.estimate.usdPerMonth, 24);
   assert.equal(w.do_.droplets, 1);
-  const done = await d.ok("spaces.code.submit", { space: s.space, code: s.waiting.code }, "tailnet:server");
+  const done = await d.ok("spaces.code.submit", { space: s.space, code: s.waiting.code }, "device:aaaaaaaaaaaaaaaa");
   assert.equal(done.status, "done");
   assert.ok(d.of("space.vps-created").length === 1);
   const hay = everything(d, [noToken, s, done]);
@@ -370,7 +370,7 @@ test("a second server and a move plan are owner actions", async t => {
   assert.equal(add.role, "compute");
   assert.match(add.code, /^\d{6}$/);
   assert.equal(add.installCommand, "curl -fsSL vyre.run/i | sh");
-  const joined = await d.ok("spaces.code.submit", { space, code: add.code, join: add.joinId }, "tailnet:server");
+  const joined = await d.ok("spaces.code.submit", { space, code: add.code, join: add.joinId }, "device:aaaaaaaaaaaaaaaa");
   assert.equal(joined.state, "joined");
   const plan = await d.ok("spaces.move.plan", { space, to: { kind: "server", host: "host.example" } });
   assert.equal(plan.oneAction, true);
@@ -527,14 +527,14 @@ test("invites: each role, a stranger sees only the card, the join is signed by t
   const acc = await kit.ok("spaces.invites.accept", { link: made.member.link });
   assert.equal(acc.joined, false);
   assert.equal(acc.redeem.person.id, kitId.id);
-  const joined = await d.call("spaces.invites.redeem", acc.redeem, "tailnet:kit");
+  const joined = await d.call("spaces.invites.redeem", acc.redeem, "device:bbbbbbbbbbbbbbbb");
   assert.ok(!joined.error, JSON.stringify(joined.error));
   assert.deepEqual([joined.data.membership.person, joined.data.membership.role], [kitId.id, "member"]);
   assert.deepEqual(joined.data.projects, scope);
   assert.ok(d.of("invite.accepted").some(e => e.person === kitId.id));
   assert.ok((await d.ok("spaces.members.list", { space })).members.some(m => m.person === kitId.id && m.role === "member"));
   // A replay of the same acceptance, and another person on a used link.
-  assert.equal((await d.call("spaces.invites.redeem", acc.redeem, "tailnet:kit")).error?.code, "used_up");
+  assert.equal((await d.call("spaces.invites.redeem", acc.redeem, "device:bbbbbbbbbbbbbbbb")).error?.code, "used_up");
   const other = person();
   const otherProof = crypto.sign(null, Buffer.from(`vyre-invite-accept-v1\n${JSON.parse(Buffer.from(t2[0], "base64url")).id}\nharlow.vyre.run\n${other.id}`), crypto.createPrivateKey({ key: Buffer.from(other.privateKey, "base64url"), format: "der", type: "pkcs8" })).toString("base64url");
   assert.equal((await d.call("spaces.invites.redeem", { token: made.member.token, person: { id: other.id, publicKey: other.publicKey }, proof: otherProof }, "tailnet:x")).error?.code, "used_up");
@@ -708,10 +708,10 @@ test("a space's list of owners follows its owners, and an invite made to an iden
   await stranger.ok("spaces.identity.create", { name: "stranger" });
   const inv = await d.ok("spaces.invites.create", { space, role: "member", to: kitId.id });
   const wrong = await stranger.ok("spaces.invites.accept", { link: inv.link });
-  const refused = await d.call("spaces.invites.redeem", wrong.redeem, "tailnet:stranger");
+  const refused = await d.call("spaces.invites.redeem", wrong.redeem, "device:cccccccccccccccc");
   assert.equal(refused.error?.code, "forbidden");
   const right = await kit.ok("spaces.invites.accept", { link: inv.link });
-  const joined = await d.call("spaces.invites.redeem", right.redeem, "tailnet:kit");
+  const joined = await d.call("spaces.invites.redeem", right.redeem, "device:bbbbbbbbbbbbbbbb");
   assert.ok(!joined.error, JSON.stringify(joined.error));
   assert.equal(joined.data.membership.person, kitId.id);
   void alex;
@@ -897,4 +897,15 @@ test("space creation asks the kernel which store it would use: a server too smal
   assert.equal(big.status, "done", JSON.stringify(big));
   assert.equal(hosts[1].accept_builtin_store, undefined);
   void w;
+});
+
+
+test("spaces.code.submit and spaces.invites.redeem take only the relay and the devices: a local anonymous or model caller cannot spend a use count or burn the five tries", async t => {
+  const w = world(t);
+  const { d, space } = await harlow(t, w);
+  for (const caller of ["cli", "mcp", "mcp:agent:juno", "harness", "tailnet-guest:mallory@example.com", "hook"]) {
+    const a = await d.call("spaces.code.submit", { space, code: "000000" }, caller);
+    const b = await d.call("spaces.invites.redeem", { token: "x.y", person: { id: "per_" + "a".repeat(26) }, proof: "z" }, caller);
+    for (const r of [a, b]) assert.ok(["denied", "no_such_tool"].includes(r.error?.code), `${caller}: ${JSON.stringify(r.error)}`);
+  }
 });
