@@ -98,3 +98,46 @@ test("a source the member may not read is withheld from a group answer, never gu
   assert.equal(a.withheld, 1);
   assert.equal((await engine.search(manager, "Doe", 6)).withheld, 0, "alone with the manager nothing is withheld");
 });
+
+// ---- the switch-on: the room comes from the running session, never from the tool's input ----
+import mod from "../index.js";
+async function booted(room) {
+  const w = await world();
+  const tools = {};
+  const kernel = { ...w.rk.kernel, chainFor: () => w.manager, ...(room ? { roomOf: async () => room(w) } : {}) };
+  await mod.start({ tool: (n, d) => { tools[n] = d; }, store: {}, kernel });
+  return { ...w, call: (n, i = {}) => tools[n].run(i, { caller: "deck" }), tools };
+}
+
+test("work.situation in a group chat narrows to the audience, and a `chat` argument changes nothing", async () => {
+  const w = await booted(x => ({ group: true, chains: [x.manager, x.member] }));
+  for (const input of [{ project: w.m.urn }, { project: w.m.urn, chat: "some-other-chat" }, { project: w.m.urn, chat: "" }]) {
+    const s = await w.call("work.situation", input);
+    assert.doesNotMatch(s.text, /4321/);
+    assert.match(s.text, /restricted here/);
+  }
+  assert.ok(!("chat" in w.tools["work.situation"].input.properties), "the model is given nothing to leave out");
+});
+
+test("a one to one room, from the session, gets the full view", async () => {
+  const w = await booted(() => ({ group: false }));
+  assert.match((await w.call("work.situation", { project: w.m.urn })).text, /fee: 4321 USD/);
+});
+
+test("the room is unknown, or a group with no audience: refused, never the one to one view", async () => {
+  for (const room of [undefined, () => undefined, () => ({}), () => ({ group: true }), () => ({ group: true, chains: [] }), x => ({ group: true, chains: [x.manager] })]) {
+    const w = await booted(room);
+    await assert.rejects(() => w.call("work.situation", { project: w.m.urn }), { code: "unavailable" });
+    await assert.rejects(() => w.call("work.know.search", { query: "Doe" }), { code: "unavailable" });
+    await assert.rejects(() => w.call("work.know.answer", { question: "Doe" }), { code: "unavailable" });
+  }
+});
+
+test("an address that does not parse cannot be checked per viewer: its source is withheld", async t => {
+  const { rk, manager, member } = await world();
+  const db = open(path.join(tempHome(t), "engine3.db"));
+  const engine = createMemoryEngine({ kernel: rk.kernel, db, space: rk.space, serviceChain: rk.kernel.serviceChain("memory"), chainFor: () => manager });
+  db.prepare("INSERT INTO memory_engine_index (source, kind, resource, text, vec, trust, red, spaces) VALUES (?, 'record', ?, ?, NULL, 'member', 'internal', ?)").run("odd", "vyre://" + rk.space + "/matter", "Doe estate plan, fee 4321", JSON.stringify([rk.space]));
+  const hits = await engine.search(manager, "Doe estate", 6, { audience: [manager, member] });
+  assert.ok(hits.every(h => !/4321/.test(h.snippet)));
+});

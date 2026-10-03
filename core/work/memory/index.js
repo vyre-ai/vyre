@@ -65,12 +65,12 @@ export function createMemoryEngine({ kernel, db, space, serviceChain, chainFor, 
   /**
    * A record source as text for everyone in `room`: each viewer reads it through the gateway under their own chain, a field is a value only when every viewer
    * holds it and holds the same value, and any other field is a token that can be cited as `{{field:<urn>#<name>}}` and nothing more. Falls back to `fallback`
-   * (already scrubbed) when the record cannot be read back.
+   * (already scrubbed) never: an address that does not parse returns null and the caller withholds the source.
    * @param {any[]} room @param {string} resource @param {string} fallback
    */
   async function roomText(room, resource, fallback) {
     const p = parseUrn(resource);
-    if (!p) return fallback;
+    if (!p) return null; // an address that does not parse cannot be checked per viewer: it counts as withheld
     const views = [];
     for (const c of room) { const v = await kernel.records.get(c, p.type, p.id).catch(() => null); if (!v) return `${p.type} ${p.id}: not readable by everyone here`; views.push(v); }
     const data = {};
@@ -138,14 +138,18 @@ export function createMemoryEngine({ kernel, db, space, serviceChain, chainFor, 
         if (!inSpace(r.resource) || r.labels.source_spaces.some(s => s !== space)) continue;
         if (!(await mayRead(chain, r.resource))) continue;
         if (!(await mayAll(r.resource))) { held.add(r.resource); continue; }
-        out.set(r.source, { source: r.source, kind: r.kind, resource: r.resource, snippet: (r.kind === "record" ? await roomText(room, r.resource, r.text) : r.text).slice(0, 240), score: r.score, labels: r.labels });
+        const snip = r.kind === "record" ? await roomText(room, r.resource, r.text) : r.text;
+        if (snip === null) { held.add(r.resource); continue; }
+        out.set(r.source, { source: r.source, kind: r.kind, resource: r.resource, snippet: snip.slice(0, 240), score: r.score, labels: r.labels });
       }
       const merged = await kernel.records.search(chain, { text, page: { limit: k } }).catch(() => ({ rows: [] }));
       for (const h of merged.rows) {
         const u = `vyre://${space}/${h.type}/${h.id}`;
         if (out.has(u) || !(await mayRead(chain, u))) continue;
         if (!(await mayAll(u))) { held.add(u); continue; }
-        out.set(u, { source: u, kind: "record", resource: u, snippet: await roomText(room, u, scrub(String(h.snippet || ""), redactors).text), score: h.score, labels: memberLabels(space) });
+        const snip = await roomText(room, u, scrub(String(h.snippet || ""), redactors).text);
+        if (snip === null) { held.add(u); continue; }
+        out.set(u, { source: u, kind: "record", resource: u, snippet: snip, score: h.score, labels: memberLabels(space) });
       }
       const hits = [...out.values()].sort((a, b) => b.score - a.score).slice(0, k);
       Object.defineProperty(hits, "withheld", { value: held.size, enumerable: false });
