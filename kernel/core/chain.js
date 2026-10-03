@@ -205,7 +205,7 @@ export function createLegacyChainBuilder(cfg) {
     /** @param {{ kind: "person" | "agent" | "service", id: string, legacy: string, person_session?: boolean, device?: string }} p */
     fromLegacy(p) {
       if (!["person", "agent", "service"].includes(p.kind) || typeof p.id !== "string" || !p.id) throw new KernelError("not_a_member", "no chain for this connection", "bad legacy caller");
-      const hop = { actor: { kind: p.kind, id: p.id, space: LEGACY_SPACE }, entered_by: "registry", via: { legacy: p.legacy, ...(p.person_session ? { session: "person" } : {}), ...(p.device ? { device: p.device } : {}) } };
+      const hop = { actor: { kind: p.kind, id: p.id, space: LEGACY_SPACE }, entered_by: "registry", via: { legacy: p.legacy, ...(p.person_session ? { session: "person" } : {}), ...(p.device ? { device: p.device } : {}), ...(p.thread ? { thread: p.thread } : {}) } };
       const c = deepFreeze({ space: LEGACY_SPACE, hops: [hop], labels: { trust: "member", red: "public", source_spaces: [LEGACY_SPACE] }, built_at: clock() });
       BUILT.add(c);
       return /** @type {any} */ (c);

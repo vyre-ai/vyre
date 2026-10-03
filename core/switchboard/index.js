@@ -917,6 +917,7 @@ export class Switchboard {
   async sandboxFor(id, rec, o) {
     const cfg = this.deps.sandbox;
     if (!cfg) return undefined;
+    if (cfg.unavailable) throw Object.assign(new Error(String(cfg.unavailable)), { code: "sandbox_failed" });
     const sock = this.socks.get(id);
     if (!sock) throw Object.assign(new Error("Vyre did not start this session because it has no socket of its own to reach Vyre through."), { code: "sandbox_failed" });
     const provider = rec.provider || o.provider || "claude";

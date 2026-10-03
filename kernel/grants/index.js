@@ -354,6 +354,22 @@ export function createGrantsStore(cfg) {
     },
 
     /**
+     * Take an actor (an assistant, a service) out of the Space: an owner's or admin's act with the person's presence. It stops being a member, so nothing it holds is honoured and
+     * a chain that carries it is refused. For the default assistant this is the Space's off switch: unnamed chats then say plainly that no assistant is available.
+     * @param {any} chain @param {{ kind: string, id: string, space: string }} actor @param {{ presence?: any }} [o]
+     */
+    async removeActor(chain, actor, o = {}) {
+      const issuer = person(chain);
+      if (!actor || !["agent", "service", "automation"].includes(actor.kind) || actor.space !== cfg.space || typeof actor.id !== "string") throw new KernelError("bad_input", "an actor needs a kind, an id and this Space");
+      const d = await gate(chain, "grants.role", urn("member", actor.id), { remove_actor: actor }, o.presence);
+      if (!isAdmin(issuer)) throw new KernelError("not_allowed", "only an owner or an admin removes an actor");
+      if (!actors.has(actorKey(actor))) throw new KernelError("not_found", "no such actor");
+      actors.delete(actorKey(actor));
+      await note(chain, "actor.removed", urn("member", actor.id), { actor }, d.decision);
+      return true;
+    },
+
+    /**
      * One side of the compute pair (DESIGN-wink 7): the Space allows its work to run on a member's computer (an owner or admin, for a member of this
      * Space; `device` null covers any of that member's computers), or the member accepts it for one of their own computers (the member's own act).
      * Both must be active for `offers.active` to say yes, and it covers only that member's own sessions on that member's own machine.
@@ -635,6 +651,7 @@ export function createGrantsStore(cfg) {
         else if (e.type === "invite.used") { const v = invites.get(d.id); if (v) invites.set(d.id, freeze({ ...v, status: "used", used_by: d.by })); }
         else if (e.type === "invite.confirmed") { const v = invites.get(d.id); if (v) invites.set(d.id, freeze({ ...v, confirmed: true })); }
         else if (e.type === "actor.added") actors.add(actorKey(d.actor));
+        else if (e.type === "actor.removed") actors.delete(actorKey(d.actor));
         else if (e.type === "offer.created") offers.set(d.offer.id, freeze(structuredClone(d.offer)));
         else if (e.type === "offer.revoked") { const o = offers.get(d.id); if (o) offers.set(d.id, freeze({ ...o, status: "revoked", revoked_at: e.time })); }
         else if (e.type === "chat.created") { if (!chats.has(d.chat.id)) chats.set(d.chat.id, freeze(structuredClone(d.chat))); }
