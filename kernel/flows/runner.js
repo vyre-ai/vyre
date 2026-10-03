@@ -11,10 +11,12 @@
 //   Loop control   depth of the `corr` chain (default 8), a per-Flow rate limit, a step cap per run. A runaway pauses the Flow and raises a card.
 //   Versioned      a run is pinned to the version it started on.
 
+import crypto from "node:crypto";
 import { parse, evaluate, truthy, roots } from "./expr.js";
 import { compileFlow, deriveCaps, needs as flowNeeds, urnCovers, nextCron, STEP_ACTIONS } from "./compile.js";
-import { BLOCK_KINDS, LIMITS as SCHEMA_LIMITS } from "./schema.js";
+import { BLOCK_KINDS, LIMITS as SCHEMA_LIMITS, canonical as canonicalOf } from "./schema.js";
 import { runIdFor, newId } from "./store.js";
+import { recordTrigger } from "./triggers.js";
 import { taskIdOf } from "./stages.js";
 
 export const LIMITS = Object.freeze({ depth: 8, rate_per_minute: 60, steps_per_run: 500, scan: 2000, wait_max_ms: 366 * 86_400_000 });
@@ -120,22 +122,51 @@ export class FlowRunner {
     return Promise.all(work);
   }
 
-  /** Time: start due time-triggered Flows once each, and wake runs whose wait has ended. Call from one timer set to nextWake(). */
+  /**
+   * The Space's time zone for schedules: the catalog's `tz`, or UTC. A trigger may name its own (a branch office). @param {any} t @param {any} cat
+   * @returns {string}
+   */
+  #zone(t, cat) { return (t && t.tz) || (cat && cat.tz) || "UTC"; }
+
+  /**
+   * When a schedule last ran, from memory or from the store (so a restart remembers). A schedule never seen before starts counting from now: nothing runs retroactively for a Flow
+   * that did not exist yet. @param {string} id @param {number} now @returns {Promise<number>}
+   */
+  async #lastFire(id, now) {
+    if (this.lastFire.has(id)) return /** @type {number} */ (this.lastFire.get(id));
+    const saved = this.store.getSchedule ? await this.store.getSchedule(id) : null;
+    const last = saved ?? now;
+    this.lastFire.set(id, last);
+    if (saved === null && this.store.putSchedule) await this.store.putSchedule(id, last);
+    return last;
+  }
+
+  /**
+   * Time: start due scheduled Flows, and wake runs whose wait has ended. Call from one timer set to nextWake() (nothing needs it faster than a minute). A schedule that fell due while
+   * the server was off runs ONCE when it comes back, with `caught_up` and how many times it skipped; never once per missed tick.
+   */
   async tick() {
     const now = this.now();
+    const cat = await this.catalogFn();
     const work = [];
     for (const f of await this.#activeFlows()) {
       const t = f.flow.trigger;
       if (t.on !== "time") continue;
-      if (!this.lastFire.has(f.id) && t.at === undefined) this.lastFire.set(f.id, now);
-      const last = this.lastFire.get(f.id) ?? now;
-      let due = null;
-      if (t.cron !== undefined) { const n = nextCron(t.cron, last); if (n !== null && n <= now) due = n; }
-      else if (t.every_ms !== undefined) { if (last + t.every_ms <= now) due = last + t.every_ms; }
-      else if (t.at !== undefined) { if (t.at <= now && !(await this.store.getRun(runIdFor(f.id, `${f.id}@${t.at}`)))) due = t.at; }
+      const tz = this.#zone(t, cat);
+      const last = await this.#lastFire(f.id, now);
+      let due = null, missed = 0;
+      if (t.cron !== undefined) {
+        due = nextCron(t.cron, last, tz);
+        if (due !== null && due > now) due = null;
+        else if (due !== null) { let n = due, count = 1; for (let i = 0; i < 1000; i++) { n = nextCron(t.cron, n, tz) ?? Infinity; if (n > now) break; count++; } missed = count - 1; }
+      } else if (t.every_ms !== undefined) {
+        if (last + t.every_ms <= now) { due = last + t.every_ms; missed = Math.floor((now - last) / t.every_ms) - 1; }
+      } else if (t.at !== undefined) { if (t.at <= now && !(await this.store.getRun(runIdFor(f.id, `${f.id}@${t.at}`)))) due = t.at; }
       if (due === null) continue;
-      this.lastFire.set(f.id, t.cron !== undefined || t.every_ms !== undefined ? now : due);
-      work.push(this.#start(f, { kind: "time", key: `${f.id}@${due}`, at: due }, null));
+      const late = now - due >= 120_000 || missed > 0;
+      const fires = t.cron !== undefined || t.every_ms !== undefined;
+      if (fires) { this.lastFire.set(f.id, now); if (this.store.putSchedule) await this.store.putSchedule(f.id, now); }
+      work.push(this.#start(f, { kind: "time", key: `${f.id}@${due}`, at: due, ...(t.cron !== undefined ? { tz } : {}), ...(fires && late ? { caught_up: true, missed } : {}) }, null));
     }
     for (const r of await this.store.listRuns({ state: "waiting", limit: 1000 })) {
       const w = r.waiting;
@@ -149,16 +180,42 @@ export class FlowRunner {
   /** The earliest time anything needs waking, so the host sets one timer and never polls. @returns {Promise<number|null>} */
   async nextWake() {
     let best = null;
+    const now = this.now();
+    const cat = await this.catalogFn();
     const take = (/** @type {number|null|undefined} */ n) => { if (n !== null && n !== undefined && (best === null || n < best)) best = n; };
     for (const f of await this.#activeFlows()) {
       const t = f.flow.trigger;
       if (t.on !== "time") continue;
-      if (t.cron !== undefined) take(nextCron(t.cron, this.lastFire.get(f.id) ?? this.now()));
-      else if (t.every_ms !== undefined) take((this.lastFire.get(f.id) ?? this.now()) + t.every_ms);
-      else if (t.at !== undefined && t.at > this.now()) take(t.at);
+      const last = await this.#lastFire(f.id, now);
+      if (t.cron !== undefined) take(nextCron(t.cron, last, this.#zone(t, cat)));
+      else if (t.every_ms !== undefined) take(last + t.every_ms);
+      else if (t.at !== undefined && t.at > now) take(t.at);
     }
     for (const r of await this.store.listRuns({ state: "waiting", limit: 1000 })) if (r.waiting) take(r.waiting.kind === "time" ? r.waiting.wake_at : r.waiting.deadline);
     return best;
+  }
+
+  /**
+   * A watcher found something new. The host that runs watchers (the daemon's watchers module, through kernel/flows/watcher-bridge.js) calls this with each item; every active Flow
+   * armed on that watcher starts once per item. The item is data from outside: the run is tainted (`external`), so its outward steps need an Ask naming the source, and it runs under
+   * the chain of the person who owns the Flow, narrowed, like any other run. The same item delivered twice is the same run.
+   * @param {{ watcher: string, item: any, trust?: 'member'|'external'|'untrusted', key?: string }} w
+   * @returns {Promise<{ flow: string, run: string|null, duplicate?: boolean }[]>}
+   */
+  async watcherItem(w) {
+    if (!w || typeof w.watcher !== "string" || w.item === null || typeof w.item !== "object") throw Object.assign(new Error("a watcher item needs the watcher's name and the item"), { code: "bad_input" });
+    const trust = w.trust || "external";
+    const itemKey = w.key || (w.item.id !== undefined ? `${w.watcher}/${String(w.item.id)}` : `${w.watcher}/${crypto.createHash("sha256").update(canonicalOf(w.item)).digest("hex").slice(0, 24)}`);
+    const out = [];
+    for (const f of await this.#activeFlows()) {
+      const t = f.flow.trigger;
+      if (t.on !== "watcher" || t.watcher !== w.watcher) continue;
+      const scope = { trigger: { watcher: w.watcher, item: w.item, at: this.now() } };
+      if (t.where) { try { if (!truthy(evaluate(parse(t.where), scope))) continue; } catch { continue; } }
+      const r = await this.#start(f, { kind: "watcher", key: itemKey, input: w.item, at: this.now() }, { trust, data: scope.trigger });
+      out.push({ flow: f.id, run: r.run, ...(r.duplicate ? { duplicate: true } : {}) });
+    }
+    return out;
   }
 
   /**
@@ -201,7 +258,7 @@ export class FlowRunner {
 
   // ------------------------------------------------------------------ starting a run
 
-  /** @param {any} f @param {{ kind: string, key: string, event?: any, input?: any, path?: string, at?: number }} trig @param {any} src where the data came from (an event envelope, or { trust, data }) */
+  /** @param {any} f @param {{ kind: string, key: string, event?: any, input?: any, path?: string, at?: number, caught_up?: boolean, missed?: number, tz?: string }} trig @param {any} src where the data came from (an event envelope, or { trust, data }) */
   async #start(f, trig, src) {
     const id = runIdFor(f.id, trig.key);
     return this.#locked(id, () => this.#startLocked(id, f, trig, src));
@@ -223,10 +280,10 @@ export class FlowRunner {
     const sourceSpaces = (src && src.source_spaces) || [f.space];
     const tainted = trust === "external" || trust === "untrusted" || sourceSpaces.length > 1;
     /** @type {Run} */
-    const run = { id, flow: f.id, version: f.version, hash: f.hash, space: f.space, trigger: { kind: trig.kind, key: trig.key, ...(trig.event ? { event: slim(trig.event) } : {}), ...(trig.input !== undefined ? { input: trig.input } : {}), ...(trig.path ? { path: trig.path } : {}), ...(trig.at !== undefined ? { at: trig.at } : {}) },
+    const run = { id, flow: f.id, version: f.version, hash: f.hash, space: f.space, trigger: recordTrigger(f.flow.trigger, trig, slim),
       tainted, source_spaces: sourceSpaces, depth, state: "running", started_at: now, updated_at: now, steps: {}, approver: f.approver };
     await this.store.putRun(run);
-    this.#emit("flow.started", { run: id, flow: f.id, version: f.version, trigger: trig.kind, tainted }, run, `vyre://${f.space}/flow_run/${id}`);
+    this.#emit("flow.started", { run: id, flow: f.id, version: f.version, trigger: trig.kind, source: run.trigger.source, tainted }, run, `vyre://${f.space}/flow_run/${id}`);
     await this.#execLocked(id);
     return { run: id };
   }
@@ -353,7 +410,7 @@ export class FlowRunner {
   /** @param {any} ctx */
   #scope(ctx, locals) {
     const run = ctx.run, t = run.trigger;
-    const trigger = t.event ? (t.event.data ?? {}) : t.input !== undefined ? t.input : t.at !== undefined ? { at: t.at } : {};
+    const trigger = t.kind === "watcher" ? { watcher: String(t.source || "").replace(/^watcher:/, ""), item: t.input ?? {}, at: t.at } : t.event ? (t.event.data ?? {}) : t.input !== undefined ? t.input : t.at !== undefined ? { at: t.at } : {};
     return { trigger, event: t.event || null, steps: outputs(run), run: { id: run.id, depth: run.depth, tainted: run.tainted, flow: run.flow }, now: this.now(), ...locals };
   }
 
