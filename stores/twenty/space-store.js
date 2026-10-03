@@ -22,6 +22,12 @@ import { CORE_TYPES } from "../../records/core-types.js";
 /** What a Space's Twenty needs on the box, in MB: the sum of the `small` profile plus headroom for the gateway and the OS. */
 export const REQUIRE = Object.freeze({ memoryMb: Object.values(/** @type {any} */ (MEMORY_PROFILES.small)).reduce((/** @type {number} */ a, /** @type {number} */ b) => a + b, 0) + 300, diskMb: 6144 });
 
+/** The one plain line the person is told when a new Space is created on a box too small for Twenty. */
+export const SMALL_BOX_NOTE = "This server is small, so this space uses the built-in store. Everything works; very large record sets will be slower.";
+
+/** How many more Spaces' Twenty this box can take now: what is free beyond one Space's measured need, plus headroom, divided by the need. @param {number} availableMb */
+export const spacesThatFit = (availableMb) => Math.max(0, Math.floor((availableMb - 300) / (REQUIRE.memoryMb - 300)));
+
 /** `spc_abcdefghijkl` -> `spc-abcdefghijkl` (a compose project name has no underscore). @param {string} space */
 export const nameOf = (space) => space.replace(/_/g, "-");
 
@@ -66,8 +72,8 @@ export function createStoreFor(cfg = {}) {
       if (chosen?.kind === "twenty" || mode === "twenty") throw Object.assign(new Error(`the Twenty store for ${space} cannot start here: ${pf.reasons.join("; ")}`), { code: "unavailable", reasons: pf.reasons });
       fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
       fs.writeFileSync(path.join(dir, "twenty-unavailable.json"), JSON.stringify({ at: new Date().toISOString(), reasons: pf.reasons, facts: pf.facts }, null, 2), { mode: 0o600 });
-      fs.writeFileSync(choiceFile, JSON.stringify({ kind: "sqlite", why: pf.reasons }), { mode: 0o600 });
-      log(`store for ${space}: SQLite (${pf.reasons.join("; ")})`);
+      fs.writeFileSync(choiceFile, JSON.stringify({ kind: "sqlite", why: pf.reasons, note: SMALL_BOX_NOTE }), { mode: 0o600 });
+      log(`store for ${space}: SQLite (${pf.reasons.join("; ")}). ${SMALL_BOX_NOTE}`);
       return undefined;
     }
     const name = nameOf(space), twentyHome = path.join(dir, "twenty-home");

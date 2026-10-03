@@ -36,9 +36,19 @@ try {
   const log = JSON.stringify(k.log ? k.log.read({}) : []);
   console.log("plaintext in the event log:", log.includes("123-45-6789"), "| audit:", JSON.stringify(await k.gateway.audit.verify()));
   console.log("types in this Space's Twenty:", (await k.store.types()).map((t) => t.name).join(", "));
+  // a restart: the same Space, the same Twenty, the same record, the sealed field still a reference
+  await d.stop();
+  const d2 = await start({ root, log: lap, kernel: true });
+  const k2 = d2.kernel;
+  const o2 = k2.chains.fromFacts({ kind: "socket", surface: "deck", uid: process.getuid(), pid: process.pid, inside_model_process: false, capsule_verified: true });
+  const m2 = k2.chains.fromFacts({ kind: "socket", surface: "mcp", uid: process.getuid(), pid: process.pid, inside_model_process: true });
+  const again = await k2.gateway.records.get(o2, "contact", c.id);
+  const againModel = await k2.gateway.records.get(m2, "contact", c.id).catch((e) => ({ refused: e.code }));
+  console.log("after restart: same Space", k2.id.space === id.space, "| owner reads", JSON.stringify(again.data.ssn), "| model reads", JSON.stringify(againModel.data ? againModel.data.ssn : againModel), "| audit", JSON.stringify(await k2.gateway.audit.verify()));
+  await d2.stop();
   lap("done");
 } finally {
-  await d.stop();
+  await d.stop().catch(() => {});
   if (process.argv[2] !== "keep") {
     const dir = path.join(root, "kernel");
     execFileSync("docker", ["compose", "-p", names(nameOf(id.space)).project, "down", "-v"], { cwd: path.join(dir, "twenty-home", "spaces", nameOf(id.space), "twenty") });

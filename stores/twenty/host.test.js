@@ -40,6 +40,7 @@ test("the Kit's types and the core types are defined through the gateway, and th
   assert.equal(r.flows.length, 1);
   const defined = host.log.read({ type: "types.defined" });
   assert.equal(defined.length, 2);
+  assert.equal(CORE_TYPES.some((t) => t.name === "task"), false, "tasks live in the kernel, not in Twenty");
   for (const t of CORE_TYPES) assert.ok(host.catalog().types[t.name], `${t.name} is in the catalog`);
   assert.equal((await host.kernel.health()).ok, true);
 });
@@ -79,7 +80,7 @@ test("a sealed field holds only a reference in Twenty and in the log", async () 
   assert.deepEqual((await store.get("contact", rec.id)).data.ssn, ref);
 });
 
-test("task, template, playbook and team-member records round trip, with actors and lists", async () => {
+test("template, playbook and team-member records round trip, with actors and links", async () => {
   const { host } = await boot();
   await host.defineCore(); await host.installKit(kit);
   const c = host.ownerChain();
@@ -87,15 +88,14 @@ test("task, template, playbook and team-member records round trip, with actors a
   const bot = { actor: { kind: "agent", id: "research", space: SPACE } };
   const matter = await host.kernel.records.create(c, "matter", { title: "Estate plan for Sam" });
   const tpl = await host.kernel.records.create(c, "template", { name: "welcome", kind: "email", body: "Dear {{client.full_name}}" });
-  const task = await host.kernel.records.create(c, "task", { title: "Research the client", record: { urn: matter.urn }, doer: bot, checker: owner, output_kind: "fields", output_target: "practice_area", how: "assistant", template: { urn: tpl.urn }, depends_on: [], state: "ready", assigned_by: owner });
-  const back = await host.kernel.records.get(c, "task", task.id);
-  assert.deepEqual(back.data.doer, bot);
-  assert.equal(back.data.state, "ready");
-  assert.deepEqual(back.data.template, { urn: tpl.urn });
+  const back = await host.kernel.records.get(c, "team-member", (await host.kernel.records.create(c, "team-member", { name: "Alex", actor: owner, kind: "person", role: "attorney", project: { urn: matter.urn } })).id);
+  assert.deepEqual(back.data.actor, owner);
+  assert.deepEqual(back.data.project, { urn: matter.urn });
   await host.kernel.records.create(c, "playbook", { name: "Intake", applies_to: "matter", body: "Ask about the household first." });
   await host.kernel.records.create(c, "team-member", { name: "Research", actor: bot, kind: "assistant", role: "research", project: { urn: matter.urn }, doing: "reading harlowlegal.example" });
-  const open = await host.kernel.records.query(c, "task", { filter: { field: "state", op: "eq", value: "ready" }, page: { limit: 10 } });
-  assert.equal(open.rows.length, 1);
+  const found = await host.kernel.records.query(c, "template", { filter: { field: "kind", op: "eq", value: "email" }, page: { limit: 10 } });
+  assert.equal(found.rows.length, 1);
+  assert.equal(tpl.data.name, "welcome");
 });
 
 test("a payment through the Stripe handler runs the Kit's Flow on the runner and writes the contact and matter in Twenty", async () => {
