@@ -92,7 +92,16 @@ export function createChainBuilder(cfg) {
       }
       case "agent_session": {
         if (!f.vouched) return refuse("agent claim not vouched by the kernel's own session");
-        return make([hop("person", cfg.owner, "session", { session: f.session }), hop("agent", f.agent, "session", { session: f.session })], base());
+        const who = f.person ?? cfg.owner;
+        if (who !== cfg.owner && !isMember(who)) return refuse("the session's person is not a member");
+        return make([hop("person", who, "session", { session: f.session }), hop("agent", f.agent, "session", { session: f.session })], base());
+      }
+      case "session_person": {
+        // A daemon speaking for a person in a session it holds a token for (kernel/core/surfaces.js verified it). It is the person's chain, but not a
+        // presence session: no passkey was shown, so an admin act still needs the person's own proof.
+        if (!f.vouched) return refuse("session not vouched by the kernel's own token");
+        if (f.person !== cfg.owner && !isMember(f.person)) return refuse("the session's person is not a member");
+        return make([hop("person", f.person, "session", { node: `session:${f.session}` })], base());
       }
       case "module": return appendService(f.inbound, f.module, f.first_party);
       case "job": return restore(f.stored);
@@ -107,6 +116,21 @@ export function createChainBuilder(cfg) {
     const labels = inbound ? inbound.labels : base();
     return make([...(inbound ? inbound.hops : []), h], firstParty ? labels : mergeLabels(labels, { trust: "external", red: "public", source_spaces: [space] }));
   }
+
+  /**
+   * The chain a Flow run acts under: the approver's own chain with the automation appended (the approver stays the assigner of what the run makes), the run
+   * id as its job, and taint carried: a run that read foreign content is external for good. `approver` must be a kernel chain that is exactly one person.
+   * @param {{ flow: string, approver: any, run: string, tainted?: boolean }} o
+   */
+  function forFlow(o) {
+    if (!isChain(o.approver) || o.approver.hops.length !== 1 || o.approver.hops[0].actor.kind !== "person") return refuse("a Flow runs under one person's approval");
+    if (typeof o.flow !== "string" || !o.flow || typeof o.run !== "string" || !o.run) return refuse("a Flow run needs its flow and its run id");
+    const labels = o.tainted ? mergeLabels(o.approver.labels, { trust: "external", red: "public", source_spaces: [space] }) : o.approver.labels;
+    return make([...o.approver.hops, hop("automation", o.flow, "job")], labels, { job: o.run });
+  }
+
+  /** A module acting for an approver: [approver, service:module], so what the module assigns carries the approver as its assigner. @param {{ module: string, approver: any, first_party?: boolean }} o */
+  function forModule(o) { return appendService(o.approver, o.module, o.first_party !== false); }
 
   /** A derived chain whose label is weaker or equal: taint is sticky and only grows. */
   function weaken(/** @type {any} */ chain, /** @type {any} */ labels) {
@@ -136,7 +160,7 @@ export function createChainBuilder(cfg) {
     return /** @type {any} */ (c);
   }
 
-  return Object.freeze({ fromFacts, appendService, weaken, serialize, restore });
+  return Object.freeze({ fromFacts, appendService, forFlow, forModule, weaken, serialize, restore });
 }
 
 /** The one Space the retrofit's throwaway chains live in. No production authorizer evaluates it, so no chain minted for it is ever accepted by a real Space. */

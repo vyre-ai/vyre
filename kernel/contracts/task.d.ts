@@ -61,6 +61,8 @@ export interface Task {
   readonly outcome?: 'approved' | 'rejected' | 'answered' | 'cancelled' | 'expired';
   readonly answer?: unknown;
   readonly form?: unknown;
+  /** A Flow reference sent with a held-act or paused task: opaque, kernel-quoted. */
+  readonly flow?: string;
   /** For a held outward act: the canonical outbound payload hash, the decision it is bound to, the final draft hash. */
   readonly payload?: { readonly payload_hash: string; readonly decision: string; readonly draft_hash?: string };
   /** Who assigned it: part of the chain a teammate works under, so an assigner cannot borrow a broader teammate. */
