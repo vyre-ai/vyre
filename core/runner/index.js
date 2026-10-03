@@ -16,7 +16,7 @@ const str = { type: "string" };
 export default {
   async start(ctx) {
     const seam = (ctx.paths && seams.get(ctx.paths.root)) || {};
-    const ports = () => seam.ports || null;
+    const ports = () => seam.ports || ctx.kernel?.runnerPorts?.() || null;
     // A workspace left open by a runner that died must not stay readable: close any nobody holds a lease for.
     try { await reconcile({ base: ctx.paths.root + "/runner", platform: seam.platform }); } catch {}
     /** @type {Map<string, any>} one runner per space */
@@ -55,7 +55,7 @@ export default {
         const spec = await p.spec({ space, session });
         if (!spec || !spec.command || !Array.isArray(spec.routes)) throw Object.assign(new Error("the space has no definition for that session"), { code: "not_found" });
         const h = await r.start({ session, resume: Boolean(resume), command: spec.command, args: spec.args, env: spec.env, routes: spec.routes, readOnly: spec.readOnly, labels: spec.labels });
-        return { session, pid: h.pid };
+        return { session, pid: h.pid, resumed: h.resumed ? { turn: h.resumed.turn, seq: h.resumed.seq, state: h.resumed.state } : null };
       },
     });
     ctx.tool("runner.stop", { description: "Stop a session running here.", input: obj({ space: str, session: str }, ["space", "session"]),

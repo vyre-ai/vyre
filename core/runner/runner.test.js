@@ -274,7 +274,7 @@ async function rig(t, over = {}) {
   const sp = over.space || fakeSpace({ ttlMs: over.ttlMs || 3_600_000 });
   const grants = over.grants || { spaceAllows: true, memberAccepts: true };
   const server = { starts: 0 };
-  const mk = (b = base) => createRunner({ base: b, space: "harlow", device: "kit", vault: sp.vault, sync: sp.sync, grants: () => grants, requestServer: () => { server.starts++; }, retryMs: 50 });
+  const mk = (b = base) => createRunner({ base: b, space: "harlow", device: "kit", vault: sp.vault, sync: sp.sync, grants: () => grants, requestServer: () => { server.starts++; }, retryMs: 50, sessionState: s => ({ v: 1, session: s, taint: "external" }) });
   const runner = mk();
   const routes = [{ prefix: "/provider", upstream: `http://127.0.0.1:${up.port}`, credential: { ref: "vault://provider", header: "x-api-key" }, allow: [{ method: "GET", path: "/v1/messages" }, { method: "POST", path: "/v1/messages" }] },
     { prefix: "/space", upstream: `http://127.0.0.1:${up.port}/api`, credential: { ref: "vault://gmail", header: "authorization", prefix: "Bearer " }, allow: [{ method: "GET", path: "/gmail/*" }] }];
@@ -369,7 +369,7 @@ test("runner: a machine that was offline at revoke deletes its workspace on next
 });
 
 test("runner: when the lease ends the workspace locks, the session stops, and the data is unreadable", { skip: SKIP || false, timeout: 90_000 }, async t => {
-  const r = await rig(t, { ttlMs: 1500 });
+  const r = await rig(t, { ttlMs: 6000 });
   const h = await r.launch(r.runner, "s1");
   h.send("turn before expiry");
   await waitFor(() => r.sp.state.checkpoints.get("s1")?.turn === 1);
@@ -407,6 +407,8 @@ test("runner: a stopped machine's session resumes on another machine from the la
   h2.child.stdout.on("data", d => { for (const l of String(d).split("\n").filter(Boolean)) ev2.push(JSON.parse(l)); });
   const resumed = await waitFor(() => ev2.find(e => e.type === "resumed"));
   assert.equal(resumed.turn, 2);
+  assert.equal(h2.resumed.turn, 2);
+  assert.deepEqual(h2.resumed.state.session, { v: 1, session: "s1", taint: "external" }, "the session state comes back to the caller");
   assert.equal(resumed.notes, "one\ntwo\n");
   assert.ok(!resumed.files.includes("half.txt"), "the unfinished turn's change did not carry over");
   assert.ok(resumed.files.includes("notes.txt"));

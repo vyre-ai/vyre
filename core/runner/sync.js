@@ -40,21 +40,20 @@ const MAX_FILE = 100 * 1024 * 1024;
 
 const sha = buf => crypto.createHash("sha256").update(buf).digest("hex");
 
-/** @typedef {(req: { roots: typeof ROOTS, have: Record<string, string>, maxBytes: number }) => Promise<{ rel: string, hash: string, size: number, bytes: Buffer|null }[]>} Reader */
+/** @typedef {(req: { roots: typeof ROOTS, have: Record<string, string>, maxBytes?: number }, onFile: (f: { rel: string, hash: string, size: number, bytes: Buffer|null }) => Promise<void>) => Promise<{ truncated: boolean }>} Reader */
 
 /**
  * A reader that runs in THIS process, for tests of a workspace nobody else writes to. Production uses readerhost.js, which reads from
  * inside the sandbox so a link or a race can never reach a host file.
  * @param {string} work @returns {Reader}
  */
-export const localReaderFor = work => async ({ roots, have, maxBytes }) => {
-  const out = [];
+export const localReaderFor = work => async ({ roots, have, maxBytes = 1e8 }, onFile) => {
   for (const root of roots) for (const rel of listInside(work, root.dir)) {
     const bytes = readInside(work, rel, maxBytes); if (!bytes) continue;
     const hash = sha(bytes), same = have[rel] === hash;
-    out.push({ rel, hash, size: same ? 0 : bytes.length, bytes: same ? null : bytes });
+    await onFile({ rel, hash, size: same ? 0 : bytes.length, bytes: same ? null : bytes });
   }
-  return out;
+  return { truncated: false };
 };
 
 /**
@@ -92,22 +91,24 @@ export function createSessionSync(o) {
   }
 
   async function syncFiles() {
-    // The files are read by a reader running inside the session's own sandbox (reader.js), never by this process.
+    // The files are read by a reader running inside the session's own sandbox (reader.js), never by this process, and handled one at a
+    // time as each arrives. Total bytes, file count and time are capped by the reader host.
     const have = {};
     for (const [remote, m] of Object.entries(manifest)) { const root = roots.find(r => remote.startsWith(r.remote + "/")); if (root && m.hash !== "deleted") have[root.dir + "/" + remote.slice(root.remote.length + 1)] = m.hash; }
-    const found = await o.reader({ roots, have, maxBytes: MAX_FILE });
     const seen = new Set();
-    for (const f of found) {
+    const { truncated } = await o.reader({ roots, have, maxBytes: MAX_FILE }, async f => {
       const root = roots.find(r => f.rel.startsWith(r.dir + "/"));
-      if (!root) continue;
+      if (!root) return;
       const remote = `${root.remote}/${f.rel.slice(root.dir.length + 1)}`;
       seen.add(remote);
-      if (!f.bytes) continue;
+      if (!f.bytes) return;
       const have0 = manifest[remote];
-      if (have0 && have0.hash === f.hash) continue;
+      if (have0 && have0.hash === f.hash) return;
       const r = await o.space.putFile(o.session, remote, f.bytes, { base: have0 ? have0.version : 0 });
       manifest[remote] = { hash: f.hash, version: r.version };
-    }
+    });
+    // Over the caps the checkpoint is refused rather than recorded with files missing (a half-read tree would tombstone real files).
+    if (truncated) throw new Error("the workspace is over the checkpoint limits");
     // A file removed here is recorded as removed in the space (a tombstone version), not silently kept.
     for (const remote of Object.keys(manifest)) {
       if (!seen.has(remote) && manifest[remote].hash !== "deleted") {
