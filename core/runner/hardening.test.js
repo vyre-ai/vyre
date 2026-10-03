@@ -247,3 +247,28 @@ test("S-1b: the sandboxed reader returns plain files, skips links, and sends onl
   assert.equal(again.find(f => f.rel === "files/a.txt").bytes, null);
   assert.equal(again.find(f => f.rel === "files/sub/b.txt").bytes.toString(), "beta");
 });
+
+// ---- seccomp (Linux) --------------------------------------------------------------------------------------------------
+
+import { launch } from "./sandbox.js";
+import { filter } from "./seccomp.js";
+test("seccomp: the filter is a well-formed BPF program, and refuses keyctl, ptrace and bpf inside the sandbox but not ordinary calls", { skip: process.platform !== "linux" || unavailable() !== "", timeout: 30_000 }, async t => {
+  const f = filter(); assert.ok(f && f.length % 8 === 0);
+  const ws = tmp(); t.after(() => rm(ws));
+  fs.mkdirSync(path.join(ws, "files"), { recursive: true });
+  const code = `import ctypes,os
+l=ctypes.CDLL(None,use_errno=True)
+nr={"x86_64":{"keyctl":250,"ptrace":101,"bpf":321,"getpid":39},"aarch64":{"keyctl":219,"ptrace":117,"bpf":280,"getpid":172}}[os.uname().machine]
+out={}
+for k,v in nr.items():
+    r=l.syscall(v,0,0,0,0,0); out[k]=(r,ctypes.get_errno() if r==-1 else 0)
+print(out)`;
+  const p = plan({ platform: "linux", workspace: ws, command: "/usr/bin/python3", args: ["-c", code], proxy: { port: 1, socket: "" }, env: {} });
+  const child = launch(p);
+  let out = ""; child.stdout.on("data", d => out += d); child.stderr.on("data", d => out += d);
+  await new Promise(r => child.on("close", r));
+  assert.match(out, /'keyctl': \(-1, 1\)/, out);
+  assert.match(out, /'ptrace': \(-1, 1\)/, out);
+  assert.match(out, /'bpf': \(-1, 1\)/, out);
+  assert.doesNotMatch(out, /'getpid': \(-1/, out);
+});

@@ -14,6 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { planWin } from "./sandbox-win.js";
+import { filter as seccompFilter } from "./seccomp.js";
 
 export const SHIM = path.join(path.dirname(fileURLToPath(import.meta.url)), "shim.js");
 
@@ -141,7 +142,21 @@ function planLinux(o) {
     ...Object.entries(env).flatMap(([k, v]) => ["--setenv", k, v]),
     node, "/opt/vyre-shim.js", "--listen", String(inner), "--to", "/run/egress.sock", "--", o.command, ...(o.args || []),
   ];
-  return { argv, env: {}, cwd: undefined, cleanup() {}, profile: argv.join(" ") };
+  // The deny-list filter goes in over fd 3 (see launch()).
+  const sc = seccompFilter();
+  if (sc) argv.splice(1, 0, "--seccomp", "3");
+  return { argv, env: {}, cwd: undefined, cleanup() {}, profile: argv.join(" "), fd3: sc || undefined };
+}
+
+/**
+ * Start a planned sandbox process. Writes the plan's fd 3 payload (the seccomp filter) into a pipe the sandbox reads at start.
+ * @param {ReturnType<typeof plan>} p @param {import("node:child_process").SpawnOptions} [opts]
+ */
+export function launch(p, opts = {}) {
+  const stdio = p.fd3 ? ["pipe", "pipe", "pipe", "pipe"] : ["pipe", "pipe", "pipe"];
+  const child = spawn(p.argv[0], p.argv.slice(1), { env: p.env, cwd: p.cwd, ...opts, stdio: /** @type {any} */ (stdio) });
+  if (p.fd3 && child.stdio[3]) { const w = /** @type {any} */ (child.stdio[3]); w.on("error", () => {}); w.end(p.fd3); }
+  return child;
 }
 
 const proxyUrl = port => `http://127.0.0.1:${port}`;
@@ -150,7 +165,7 @@ const proxyEnv = base => ({ ANTHROPIC_BASE_URL: `${base}/provider`, VYRE_SPACE_U
 
 /**
  * @param {PlanOpts} o
- * @returns {{ argv: string[], env: Record<string, string>, cwd?: string, cleanup(): void, profile: string }}
+ * @returns {{ argv: string[], env: Record<string, string>, cwd?: string, cleanup(): void, profile: string, fd3?: Buffer }}
  */
 export function plan(o) {
   if (!path.isAbsolute(o.command)) throw new Error("the sandbox runs an absolute program path");
@@ -173,7 +188,7 @@ export function unavailable(platform = process.platform, run = spawnProbe) {
   return "no sandbox for this system yet";
 }
 
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 function spawnProbe(cmd, args) {
   const r = spawnSync(cmd, args, { encoding: "utf8", timeout: 5000 });
   return { status: r.status, stderr: String(r.stderr || ""), error: r.error };

@@ -17,7 +17,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { createLease } from "./lease.js";
 import { driverFor } from "./workspace.js";
-import { plan, unavailable } from "./sandbox.js";
+import { plan, launch, unavailable } from "./sandbox.js";
 import { ensureLauncher, prepare as prepareWin } from "./sandbox-win.js";
 import { createEgress } from "./egress.js";
 import { createSessionSync, restore } from "./sync.js";
@@ -185,7 +185,7 @@ export function createRunner(o) {
     }
     const p = plan({ platform, space: o.space, launcher, workspace: work, command: s.command, args: s.args, readOnly: s.readOnly,
       proxy: where, env: { ...(s.env || {}), ANTHROPIC_API_KEY: token, VYRE_SPACE_TOKEN: token, VYRE_SESSION: s.session, ...(resumed ? { VYRE_RESUME_TURN: String(resumed.turn) } : {}) } });
-    const child = spawn(p.argv[0], p.argv.slice(1), { env: p.env, cwd: p.cwd, stdio: ["pipe", "pipe", "pipe"], detached: true });
+    const child = launch(p, { detached: true });
     const h = { session: s.session, child, eg, sock, sy, labels, routes, queue: Promise.resolve(), stopped: false, exit: null, done: null };
     live.set(s.session, h);
     const group = sig => { if (process.platform === "win32") return; try { process.kill(-Number(child.pid), sig); } catch {} };

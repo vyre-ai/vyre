@@ -2,9 +2,8 @@
 // Runs reader.js inside the session's sandbox and parses what it hands out (see reader.js for why).
 
 import path from "node:path";
-import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { plan } from "./sandbox.js";
+import { plan, launch } from "./sandbox.js";
 import { ensureLauncher, prepare as prepareWin } from "./sandbox-win.js";
 
 const READER = path.join(path.dirname(fileURLToPath(import.meta.url)), "reader.js");
@@ -19,7 +18,7 @@ export function sandboxReader(o) {
     let launcher;
     if (o.platform === "win32") { launcher = ensureLauncher(path.join(o.base, "bin")); prepareWin({ launcher, space: o.space, workspace: o.work, readOnly: [path.dirname(node), path.dirname(READER)] }); }
     const p = plan({ platform: o.platform, space: o.space, launcher, workspace: o.work, command: node, args: [READER], readOnly: [path.dirname(node), path.dirname(READER)], proxy: { port: 1, socket: "" }, home: o.home, env: {} });
-    const child = spawn(p.argv[0], p.argv.slice(1), { env: p.env, cwd: p.cwd, stdio: ["pipe", "pipe", "pipe"] });
+    const child = launch(p);
     /** @type {Buffer[]} */ const chunks = []; let err = "";
     child.stdout.on("data", d => chunks.push(d)); child.stderr.on("data", d => { err += d; });
     child.on("error", reject);
