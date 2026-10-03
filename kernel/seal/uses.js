@@ -3,6 +3,8 @@
 // what happened ("used for Gmail, 3 times today") without any value. The ActionDefs below are the vault, Drive and sealing entries of the
 // action registry; the adapters register them with the kernel at install. Contract 6.1, 7.7; invariants 1 and 7.
 
+import crypto from "node:crypto";
+
 /** Registry entries (kernel/contracts/authorize.d.ts ActionDef). `sealed_ok` only where the sealing process runs the step model-free. */
 export const ACTIONS = Object.freeze([
   // A credential's effect is not the vault's risk (R5-4): filling a login is bound to the origin it was lent for, a read-only API call is a read,
@@ -62,6 +64,15 @@ export function canonicalPath(raw) {
   let back; try { back = decodeURIComponent(seen); } catch { throw bad(); }
   if (back !== d) throw bad();
   return d;
+}
+/**
+ * The binding of an approval to ONE request (SV-2): a hash of the connector, the method, the canonical path, the query and the body. The held decision carries it, the retry with an
+ * approval passes it back, and the vault recomputes it from the request it is about to send, so an approved id cannot release a different call. Throws `bad_input` on a path that is not canonical.
+ * @param {{ connector: string, method: string, path: string, query?: any, body?: any }} r @returns {string}
+ */
+export function requestBind(r) {
+  const canon = v => (v === null || typeof v !== "object" ? JSON.stringify(v) : Array.isArray(v) ? `[${v.map(canon).join(",")}]` : `{${Object.keys(v).filter(k => v[k] !== undefined).sort().map(k => `${JSON.stringify(k)}:${canon(v[k])}`).join(",")}}`);
+  return crypto.createHash("sha256").update(canon({ c: String(r.connector), m: String(r.method).toUpperCase(), p: canonicalPath(String(r.path).split(/[?#]/)[0]), q: r.query ?? null, b: r.body === undefined ? null : r.body })).digest("base64url");
 }
 /** One URN segment (a credential name): no slash, dot segment, encoding or control character. */
 export function segment(x) { const s = String(x ?? ""); if (!s || /[/\\%]|^\.+$|[\u0000-\u001f\u007f]/.test(s)) throw Object.assign(new Error("bad_input"), { code: "bad_input" }); return s; }

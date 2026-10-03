@@ -12,12 +12,13 @@ import * as saidTools from "./said.js";
 import { register } from "./request.js";
 import { pathMatches, routeAllowed } from "./service.js";
 import { normalize } from "./api-request.js";
+import { requestBind } from "../../kernel/seal/uses.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 
 const fake = label => `fixture-${label}-${crypto.randomBytes(12).toString("hex")}`;
 const json = (status, body) => ({ status, headers: { "content-type": "application/json" }, body: Buffer.from(JSON.stringify(body)) });
 
-async function mk(t) {
+async function mk(t, files = undefined) {
   const home = fs.mkdtempSync(path.join(SCRATCH, "vyre-svc-")), db = open(path.join(home, "vyre.db"));
   migrate(db, "vault", MIGRATIONS);
   const v = new Vault({ db, dir: path.join(home, "vault"), config: { name: "harlow-box", vault: { keystore: "file" } }, emit: () => {}, log: () => {} });
@@ -26,7 +27,7 @@ async function mk(t) {
   const transport = async r => { net.calls.push({ host: r.url.hostname, path: r.url.pathname, method: r.method, headers: r.headers }); return json(200, { ok: true }); };
   const tools = new Map(), tool = (n, c, d, i, run) => tools.set(n, { run }), internal = (n, d, i, run) => tools.set(n, { run });
   const said = saidTools.register({ vault: v, internal });
-  register({ vault: v, tool, internal, call: async () => ({ error: { code: "no_such_tool", message: "no gate" } }), said, deps: { lookup: async () => [{ address: "203.0.113.10", family: 4 }], transport, now: () => 1_800_000_000_000 } });
+  register({ vault: v, tool, internal, call: async () => ({ error: { code: "no_such_tool", message: "no gate" } }), said, deps: { lookup: async () => [{ address: "203.0.113.10", family: 4 }], transport, now: () => 1_800_000_000_000, ...(files ? { files } : {}) } });
   const run = (n, i, caller = "module:leases") => tools.get(n).run(i, { caller });
   return { v, net, run, db };
 }
@@ -78,14 +79,36 @@ test("forward: an allowed read runs with the key added and the base64 body comes
   assert.equal(m.net.calls[1].headers.authorization, `Bearer ${SECRET}`, "the Flow's own Authorization header is dropped");
 });
 
-test("forward: an approved outward call runs once per idem key, with the approval in the audit and no secret anywhere", async t => {
-  const m = await mk(t); await put(m, { allow: [{ method: "POST", path: "/v4/notes" }] }, { endpoints: [{ method: "POST", path: "/v4/notes", kind: "send" }] });
-  const q = { connector: "clio", request: { method: "POST", path: "/v4/notes", body: { text: "hello" } }, idem: "run9:step2", approval: "tsk_approved1" };
-  const a = await m.run("vault.service.forward", q), b = await m.run("vault.service.forward", q);
-  assert.equal(a.status, 200); assert.deepEqual(b, a);
-  assert.equal(m.net.calls.length, 1, "the retry returned the first answer and sent nothing");
+test("SV-2: an approval releases one request only: it needs the bind from the held decision, a different call is refused, and an id is spent once (a replay of the same idem returns the first answer)", async t => {
+  const m = await mk(t); await put(m, { allow: [{ method: "POST", path: "/v4/notes" }, { method: "DELETE", path: "/v4/matters/*" }] }, { endpoints: [{ method: "POST", path: "/v4/notes", kind: "send" }, { method: "DELETE", path: "/v4/matters/*", kind: "delete" }] });
+  const req = { method: "POST", path: "/v4/notes", body: { text: "hello" } };
+  const bind = requestBind({ connector: "clio", ...req }), refusal = "not_found: that request is not open to this caller";
+  const go = (q, over = {}) => m.run("vault.service.forward", { connector: "clio", request: q, idem: "run9:step2", approval: "tsk_approved1", bind, ...over }).then(x => x, e => `${e.code}: ${e.message}`);
+  assert.equal(await go(req, { bind: undefined }), refusal, "no bind");
+  assert.equal(await go({ ...req, body: { text: "other" } }), refusal, "a different body");
+  assert.equal(await go({ method: "DELETE", path: "/v4/matters/1" }), refusal, "a different call");
+  assert.equal(await go({ ...req, path: "/v4/notes/../users/1" }), refusal);
+  assert.equal(m.net.calls.length, 0);
+  const a = await go(req), b = await go(req);
+  assert.equal(a.status, 200); assert.deepEqual(b, a, "the same idem replays the first answer"); assert.equal(m.net.calls.length, 1);
+  assert.equal(await go(req, { idem: "run9:step3" }), refusal, "the id is spent");
+  assert.equal(m.net.calls.length, 1);
   const audit = JSON.stringify(m.db.prepare("SELECT * FROM vault_audit").all());
-  assert.ok(audit.includes("released:tsk_approved1")); assert.ok(!audit.includes(SECRET));
+  assert.ok(audit.includes("released:tsk_approved1")); assert.ok(audit.includes("approval was already used")); assert.ok(!audit.includes(SECRET));
+});
+
+test("Drive paths get the one-form refusal at the vault entry: dot segments, backslash, absolute, empty segments and encoded dots or slashes never reach the Drive", async t => {
+  const touched = [], files = { read: async p => { touched.push(p); throw new Error("no drive here"); }, save: async p => { touched.push(p); throw new Error("no drive here"); } };
+  const m = await mk(t, files); await put(m, { allow: [{ method: "POST", path: "/v4/documents" }, { method: "GET", path: "/v4/documents/*" }] }, { endpoints: [{ method: "POST", path: "/v4/documents", kind: "send" }] });
+  const bad = ["Clients/A/../B/x", "Clients/A/./x", "Clients\\A\\x", "/Clients/A/x", "Clients//A/x", "Clients/%2e%2e/B", "Clients/A%2fB", "Clients/A\u0000/x", "Clients/A\t/x"];
+  const out = [];
+  for (const p of bad) {
+    out.push(await m.run("vault.service.forward", { connector: "clio", request: { method: "POST", path: "/v4/documents", upload: { drive: { path: p } } } }).then(() => "sent", e => `${e.code}: ${e.message}`));
+    out.push(await m.run("vault.service.forward", { connector: "clio", request: { method: "GET", path: "/v4/documents/1", saveTo: p } }).then(() => "sent", e => `${e.code}: ${e.message}`));
+    out.push(await m.run("vault.service.forward", { connector: "clio", request: { method: "POST", path: "/v4/documents", upload: { multipart: [{ name: "f", filename: "f", contentType: "text/plain", drive: { path: p } }] } } }).then(() => "sent", e => `${e.code}: ${e.message}`));
+  }
+  assert.deepEqual([...new Set(out)], ["not_found: that file is not open to this caller"]);
+  assert.deepEqual(touched, [], "the Drive was never touched"); assert.equal(m.net.calls.length, 0);
 });
 
 test("SV-1: one canonical path form: every way of writing a path the parser or a server could read differently is refused alike, and an allowed path is sent exactly as matched", async t => {

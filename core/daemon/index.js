@@ -226,7 +226,7 @@ async function startLocked(opts, root, p, release) {
         const r = q.request;
         // A Flow's named connector: the vault holds the connector's route rules and host (vault.service.forward); the kernel has authorized the chain.
         if (!q.route) {
-          const via = await registry.call("vault.service.forward", { connector: q.connector, request: r, ...(q.idem ? { idem: q.idem } : {}), ...(q.approval ? { approval: q.approval } : {}) }, "module:leases");
+          const via = await registry.call("vault.service.forward", { connector: q.connector, request: r, ...(q.idem ? { idem: q.idem } : {}), ...(q.approval ? { approval: q.approval } : {}), ...(q.bind ? { bind: q.bind } : {}) }, "module:leases");
           if (via.error) throw Object.assign(new Error(via.error.message), { code: via.error.code });
           return via.data;
         }

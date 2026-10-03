@@ -10,7 +10,7 @@
 // Every call takes a kernel-built chain that is exactly one person (the process also refuses a model's chain).
 import { isChain, isExactlyPerson } from "../core/chain.js";
 import { KernelError } from "../core/errors.js";
-import { leasedUse, credentialAction, safePath, canonicalPath } from "../seal/uses.js";
+import { leasedUse, credentialAction, safePath, canonicalPath, requestBind } from "../seal/uses.js";
 
 /**
  * @param {{ space: string, sealer: any, grantsStore: any, authorize: (i: any) => Promise<any>, log: any, chains: any,
@@ -136,7 +136,7 @@ export function createLeases(cfg) {
       else throw new KernelError("bad_input", "name a session or a connector");
       const action = ["GET", "HEAD"].includes(method) ? "service.read" : "service.call";
       const d = await cfg.authorize({ chain, action, resource: `vyre://${cfg.space}/service/${encodeURIComponent(connector)}`, ...(i.approval ? { approval: String(i.approval) } : {}) });
-      if (d.effect === "ask") return { held: true, kind: action, summary: `${method} ${connector}${path}`, decision: d.decision };
+      if (d.effect === "ask") return { held: true, kind: action, summary: `${method} ${connector}${path}`, decision: d.decision, ...(typeof i.session !== "string" ? { bind: requestBind({ connector, method, path, query: i.query, body: i.body }) } : {}) };
       if (d.effect !== "allow") throw new KernelError("not_found", "that request is not open to this caller");
       const files = [[i.upload && i.upload.drive && i.upload.drive.path, "drive.read"], [i.saveTo, "drive.write"]];
       for (const [fp, act] of files) {
@@ -144,7 +144,7 @@ export function createLeases(cfg) {
         let u; try { u = `vyre://${cfg.space}/file/${safePath(fp)}`; } catch { throw new KernelError("not_found", "that file is not open to this caller"); }
         if ((await cfg.authorize({ chain, action: act, resource: u })).effect !== "allow") throw new KernelError("not_found", "that file is not open to this caller");
       }
-      const r = await run(() => cfg.forward({ space: cfg.space, connector, ...(ref ? { ref, route } : {}), request: { method, path, ...(i.query ? { query: i.query } : {}), ...(i.headers ? { headers: i.headers } : {}), ...(i.body !== undefined ? { body: i.body } : {}), ...(i.upload ? { upload: i.upload } : {}), ...(i.saveTo ? { saveTo: i.saveTo } : {}) }, ...(typeof i.session === "string" ? { session: i.session } : {}), ...(i.idem ? { idem: String(i.idem) } : {}), ...(i.approval ? { approval: String(i.approval) } : {}) }));
+      const r = await run(() => cfg.forward({ space: cfg.space, connector, ...(ref ? { ref, route } : {}), request: { method, path, ...(i.query ? { query: i.query } : {}), ...(i.headers ? { headers: i.headers } : {}), ...(i.body !== undefined ? { body: i.body } : {}), ...(i.upload ? { upload: i.upload } : {}), ...(i.saveTo ? { saveTo: i.saveTo } : {}) }, ...(typeof i.session === "string" ? { session: i.session } : {}), ...(i.idem ? { idem: String(i.idem) } : {}), ...(i.approval ? { approval: String(i.approval) } : {}), ...(i.bind ? { bind: String(i.bind) } : {}) }));
       try { cfg.log.append(kernelChain(), { type: "vault.forwarded", sv: 1, subject: `vyre://${cfg.space}/service/${encodeURIComponent(connector)}`, data: { method, path, status: r && r.status !== undefined ? r.status : null, ...(typeof i.session === "string" ? { session: i.session } : {}) }, vis: "owner", red: "internal" }); } catch { /* the call was made; the log is best effort here */ }
       return r;
     },

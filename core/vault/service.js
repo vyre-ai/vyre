@@ -5,11 +5,12 @@
 // (`service.read` or `service.call`, and the Drive paths a file moves); this adds the connector's own rules, then the same checks as every vault request (hosts, the SSRF guard,
 // read or outward). Two internal tools, callable only by the kernel's lease module: `vault.service.catalog` (the rules, never a secret or a host) and `vault.service.forward`.
 
-import { canonicalPath } from "../../kernel/seal/uses.js";
+import { canonicalPath, requestBind, safePath } from "../../kernel/seal/uses.js";
 
 const bad = (msg, code = "bad_input") => Object.assign(new Error(msg), { code });
 const isObj = v => Boolean(v) && typeof v === "object" && !Array.isArray(v);
 const CONNECTOR = /^[A-Za-z0-9_.-]{1,64}$/;
+const APPROVAL_TTL_MS = 24 * 60 * 60_000;
 const IDEM_TTL_MS = 60 * 60_000, IDEM_MAX = 2000;
 const METHODS = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"];
 
@@ -39,6 +40,8 @@ export function registerService({ api, vault, internal, forwardFile, obj, str })
     if (done.size >= IDEM_MAX) done.delete(done.keys().next().value);
     done.set(k, { at: t, result });
   };
+  /** approval id -> the request it was spent on (SV-2): single use, and only for the request the held decision bound it to. In memory; a restart forgets, and the kernel's own approval still expires. */
+  const spent = new Map();
   const callerOk = c => c === "kernel:leases" || c === "module:leases";
 
   internal("vault.service.catalog", "The connectors a Flow may call: { connectors: { <name>: { allow: [{ method?, path }], deny: [{ method?, path }] } } }, the credential's own `service` rules. No host, no secret. Only the kernel's lease module asks.",
@@ -70,6 +73,19 @@ export function registerService({ api, vault, internal, forwardFile, obj, str })
       if (path === null || !routeAllowed(config.service, method, path)) { audit(false, `${method} refused by the connector's rules`); throw bad("that request is not open to this caller", "not_found"); }
       const host = config.hosts.find(h => !h.startsWith("*."));
       if (!host) throw bad("this connector names no exact host, so a Flow cannot reach it", "not_found");
+      // SV-2: an approval releases ONE request. The held decision carried `bind` (connector, method, canonical path, query, body hash); the retry must pass it back, the vault recomputes it
+      // from what it is about to send, and an approval id is spent once (a replay of the same idem returns the first answer below).
+      let approval = null;
+      if (input.approval) {
+        let mine; try { mine = requestBind({ connector: name, method, path, query: r.query, body: r.body }); } catch { mine = null; }
+        const id = String(input.approval).slice(0, 80), t = Date.now();
+        for (const [k, v] of spent) if (v.at < t - APPROVAL_TTL_MS) spent.delete(k);
+        if (!mine || typeof input.bind !== "string" || input.bind !== mine) { audit(false, `${method} refused: the approval is not bound to this request`); throw bad("that request is not open to this caller", "not_found"); }
+        const prior = spent.get(id);
+        if (prior && !(input.idem && prior.idem === String(input.idem))) { audit(false, `${method} refused: the approval was already used`); throw bad("that request is not open to this caller", "not_found"); }
+        if (!prior) spent.set(id, { at: t, idem: input.idem ? String(input.idem) : null, bind: mine });
+        approval = id;
+      }
       const key = input.idem ? `${name}\0${String(input.idem)}` : null;
       if (key && done.has(key) && method !== "GET" && method !== "HEAD") return done.get(key).result;
       const base = { credential: name, method, url: `https://${host}${path}`, ...(r.query ? { query: r.query } : {}), ...(r.headers ? { headers: r.headers } : {}), ...(r.body !== undefined ? { body: r.body } : {}) };
@@ -77,13 +93,19 @@ export function registerService({ api, vault, internal, forwardFile, obj, str })
       let out;
       if (r.upload || r.saveTo) {
         if (!api.deps.files) throw bad("the Drive is not wired to this vault", "unavailable");
-        const drive = { read: r.upload?.drive?.path ? [String(r.upload.drive.path)] : [], write: r.saveTo ? [String(r.saveTo)] : [] };
+        // Drive paths get the same one-form refusal as request paths (dot segments, backslash, encoded slash, control characters, empty segments): `/Clients/A/../B/x` must not pass as under `Clients/A`.
+        const fileRefused = () => bad("that file is not open to this caller", "not_found");
+        const dp = x => { try { return safePath(String(x)); } catch { throw fileRefused(); } };
+        if (r.upload?.drive?.path !== undefined) r.upload.drive.path = dp(r.upload.drive.path);
+        if (Array.isArray(r.upload?.multipart)) for (const p of r.upload.multipart) if (p && p.drive && p.drive.path !== undefined) p.drive.path = dp(p.drive.path);
+        if (r.saveTo !== undefined) r.saveTo = dp(r.saveTo);
+        const drive = { read: [r.upload?.drive?.path, ...(Array.isArray(r.upload?.multipart) ? r.upload.multipart.map(p => p?.drive?.path) : [])].filter(x => typeof x === "string"), write: r.saveTo ? [String(r.saveTo)] : [] };
         const x = await forwardFile(api, { files: api.deps.files }, { ...base, ...(r.upload ? { upload: r.upload } : {}), ...(r.saveTo ? { saveTo: r.saveTo } : {}), drive }, { caller: who });
         out = x.held ? x : { ...x, ...(x.body ? { body: x.body.toString("base64") } : {}) };
-      } else if (input.approval && method !== "GET" && method !== "HEAD") {
+      } else if (approval && method !== "GET" && method !== "HEAD") {
         // The kernel saw the ask-first task approved, so the person is asked once: run exactly this request, re-checked, with the approval named in the audit row.
         const plan = await api.plan({ ...base, headers: (await import("./request.js")).forwardHeaders(r.headers) }, name);
-        const x = await api.execute(plan, { who, released: String(input.approval).slice(0, 80), raw: true });
+        const x = await api.execute(plan, { who, released: approval, raw: true });
         out = { ...x, body: x.body.toString("base64"), kind: plan.kind };
       } else {
         const x = await api.forward(base, { caller: who });
