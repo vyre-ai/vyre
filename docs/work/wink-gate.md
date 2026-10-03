@@ -20,3 +20,6 @@ W-9 waits for team-lead (see Needs).
 ## Needs
 - W-9: no PAKE library for Node suits as a drop-in. CPace packages (cpace-ts 0.1.4, @cipherman/pake-js 0.1.1) are one-person, unreviewed. The reviewed options are OPAQUE (@cloudflare/opaque-ts, @serenity-kit/opaque), an asymmetric PAKE: the showing device would register the code against itself and the typist log in, which changes the message flow in relay/client/code.js, join.js and the relay's code rendezvous. Decision needed from team-lead.
 - W-5: platform to write the kernel adapter for the `offers` port (get/set over grants.offers with a chain and presence); the seam is in core/wink/pairing.js.
+
+## Changing a server's owner (W-4 consequence)
+Once a server has an owner, `wink.server.adopt` cannot be repeated over the paired channel: that call carries no presence proof. To change who a server belongs to, the person works on the box itself (a local screen or the CLI, `vyre call wink.server.adopt` with the new owner) and approves with their own presence (passkey or Touch ID). A paired device other than the one that first adopted it is refused even with presence. The screen and the CLI should say: "This server already belongs to <owner>. To move it, do it on this server and approve with your passkey."
