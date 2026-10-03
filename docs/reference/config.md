@@ -118,6 +118,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_GEMINI_HOME` | Not described yet. | `core/import/formats/index.js` |
 | `VYRE_HANDS_BIN` | Another build of the Mac hands helper. | `local/hands-mac/index.js` |
 | `VYRE_HARNESS_DIR` | The Harness plugin folder threads load. Default the one beside this install. | `core/cli/commands/projects.js`, `core/switchboard/index.js` |
+| `VYRE_HEADSCALE_BIN` | The `headscale` binary a space's network control plane runs. Under node --test there is none unless `VYRE_WINK_REAL=1`. | `core/wink/control/headscale.js` |
 | `VYRE_HOME` | Where Vyre keeps its data. Default `~/.vyre`. | `core/agents/index.js`, `core/config/dialogs.js`, `core/config/index.js`, `core/daemon/peer.js`, `core/harness/rules.js`, `core/learn/checks.js`, `core/sessions/index.js`, `core/sessions/spawn.js`, `core/switchboard/index.js`, `harness/lib/vyre.js`, `local/hands-chrome-mac/native-host/host.js`, `local/hands-chrome-mac/native-host/install.js` |
 | `VYRE_HOST_USER` | The user name in the `ssh -L` line `vyre up` prints for reaching the box. | `core/cli/commands/up.js` |
 | `VYRE_MODULE_SDK` | A folder holding the module SDK's testing.js, for a module's own tests made by `vyre module new` before the SDK is on npm. | `core/cli/commands/module.js` |
@@ -168,6 +169,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_WATCH_UID_MAX` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_WATCH_UID_MIN` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_WATCH_WORK` | Not described yet. | `core/watchers/spawner-wall.js` |
+| `VYRE_WINK_REAL` | `1`: let a test run the real Headscale and tailscaled (test server only). | `core/wink/control/headscale.js` |
 | `VYRE_WORK` | Not described yet. | `core/spawner/main.js`, `core/switchboard/index.js` |
 | `VYRE_WORK_DIR` | Not described yet. | `core/config/index.js` |
 | `VYRE_WORK_GID` | Not described yet. | `bin/vyre`, `core/spawner/main.js` |
