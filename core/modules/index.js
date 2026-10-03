@@ -417,6 +417,37 @@ export const agentClaim = caller => {
 };
 
 /**
+ * Person reach is the person's: a caller that carries an agent claim ("cli:agent:kit", "deck:agent:kit") is an agent on every surface and never passes it, whatever surface
+ * label it wears. A person-reach tool an assistant legitimately needs is listed here with the reason, and nowhere else; the default for any other is person only
+ * (team/0.3/reviews/cli-agent-reach.md).
+ * @type {ReadonlyMap<string, string>}
+ */
+export const AGENT_REACH = new Map([
+  ["artifacts.activity.log", "an assistant records what it did on an artifact"],
+  ["artifacts.mention.search", "@-mention lookup while an assistant writes"],
+  ["bridges.propose-projection", "an assistant proposes a projection; a person accepts it"],
+  ["bridges.propose-reference", "an assistant proposes a reference; a person accepts it"],
+  ["bridges.propose-view", "an assistant proposes a bridge view; a person accepts it"],
+  ["computers.egress.status", "read-only status an assistant checks before it acts"],
+  ["computers.handback.status", "read-only status an assistant checks before it acts"],
+  ["computers.tailnet.status", "read-only status an assistant checks before it acts"],
+  ["files.mentions.search", "@-mention lookup while an assistant writes"],
+  ["github.star.status", "read-only status an assistant checks before it acts"],
+  ["mentions.kinds", "@-mention lookup while an assistant writes"],
+  ["mentions.search", "@-mention lookup while an assistant writes"],
+  ["network.funnel.status", "read-only status an assistant checks before it acts"],
+  ["sessions.mention.search", "@-mention lookup while an assistant writes"],
+  ["threads.remember", "an assistant saves a note to its own thread's memory"],
+  ["voice.status", "read-only status an assistant checks before it acts"],
+  ["wink.code.status", "read-only status an assistant checks before it acts"],
+  ["wink.pair.status", "read-only status an assistant checks before it acts"],
+  ["wink.storage.status", "read-only status an assistant checks before it acts"],
+  ["work.engineer.revise", "an assistant revises its own @Engineer request"],
+  ["work.engineer.talk", "an assistant talks to the @Engineer teammate"],
+]);
+export const personRefusesAgent = (/** @type {string} */ tool, /** @type {any} */ d, /** @type {any} */ caller) => d.reach === "person" && !AGENT_REACH.has(tool) && (agentClaim(caller) !== null || /(?:^|[\s:])thread:/.test(String(caller ?? "")));
+
+/**
  * May this caller use a tool with this callers list? On a box the Deck is served at the tailnet
  * address, where the names listener admits only the owner and labels the call "tailnet:<login>"
  * (ADR 0002). That is the owner's own Deck, so a tool open to "deck" is open to it; an agent's own
@@ -1067,7 +1098,7 @@ export class Registry {
       }
       if (def.internal && !String(caller).startsWith("module:")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
       if (Boolean(def.hook) !== (caller === "hook")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
-      if (!callerAllowed(def.callers, caller)) return { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
+      if (!callerAllowed(def.callers, caller) || personRefusesAgent(tool, def, caller)) return { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
       // A guest from another tailnet is never a person proving they are here, whatever proof it
       // carries: presence is the owner's (ADR 0014 part 8), and so is the keyboard of an agent's
       // computer, which needs no proof (PERSON_ONLY). The router already hides these tools.
@@ -1304,7 +1335,7 @@ export class Registry {
   /** Tools the given caller may use. Without a caller, every tool that is neither internal nor a hook. */
   listTools(caller) {
     const needs = (name, d) => (this.deps.presence ? this.deps.presence.required(name, d) : Boolean(d.presence));
-    return [...this.tools.entries()].filter(([, d]) => !d.internal && !d.hook && (!caller || callerAllowed(d.callers, caller)))
+    return [...this.tools.entries()].filter(([name, d]) => !d.internal && !d.hook && (!caller || (callerAllowed(d.callers, caller) && !personRefusesAgent(name, d, caller))))
       .map(([name, d]) => ({ name, module: d.module, description: d.description, input: d.input, ...(needs(name, d) ? { presence: true } : {}),
         // Module API 1: what an object entry declared, for the capability manifest.
         ...(d.declaredReach ? { reach: d.reach } : {}), ...(d.outward ? { outward: d.outward } : {}) }));
