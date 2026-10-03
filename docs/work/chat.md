@@ -163,14 +163,13 @@ Server (core/term): `term.open` takes `session` (cwd optional: with a session an
 - platform: `roomFor` is `unsupported` until the daemon declares `needs.room` for the kernel handle it gives createKernelSessions (not used by the stream).
 
 ### Doing
-Nothing running. Tasks E, G, I, J, T, U and V are committed on work/chat-03.
+Item 5 of the 4 Oct resume list: `VYRE_E2E=1 node --test --test-concurrency=1 core/stream/*.test.js core/switchboard/chat-steer.test.js core/switchboard/kernel-turn.test.js` on testbox3 from ~/chat-run (slow, shared box; rerun on testbox if it stalls). Branch work/chat-03 at 19d177985, pushed; kernel 90bbaa725 and flows 33cb2a62b merged.
 
 ### Next
-0. Done by tasks U and V (chat and asker landed; the call wrapper and the test-only start options are gone; a person's Deck call carries the person's chain on a real vyred).
-1. Lead: approve the three boundary edges (or say to move sanitize.js and ws.js into lib/ and I do it), merge work/chat-03.
-2. First step: scroll.hard misses 57 fps on the software-raster box (see task J). Move the inline `style={{...}}` objects in ChatRows.tsx and Blocks.tsx to `StyleSheet.create` (RN-web then caches the class), rerun `node perf/chat-perf.mjs --only scroll` three times when load1 < 4, and keep it only if the mean is above 57. Then a real fan-out proof in the browser (two assistants side by side at 1280, snap cards at 390, Keep this) on the same harness.
-3. Done by task J for a group session (send, mention, drop the network, restore). Still unproven on the real stream: steer, stop, edit-retry and branch on a one-to-one thread session.
-3. Then: terminal over the relay (the iframe opens its own socket on the box origin), a message-actions overflow menu on a phone, and the model and people/records pickers fed from the kernel instead of the static samples.
+1. Read the run: e2e-asker, e2e-sigterm, e2e-step7 must pass on a real vyred. Then tell the integrator the sha and write the commands under step 7 in team/0.3/E2E-RUN.md. Delete ~/chat-run on the box.
+2. Done 4 Oct: queue (W1), per_ asker, kernelThreads declared, docs render fix, UI items (Face over @vyre/ui Avatar, Sheet About, header back, no assistant chip, sealed note in list head, shorter placeholder). tsc clean. UI not yet looked at in a browser.
+3. Open for sessions: V2 todo (a reply cut by the next turn); queued_id map is in memory only.
+4. Older: scroll.hard perf item, steer/stop/edit-retry/branch on a real one-to-one thread, terminal over the relay.
 
 ### Needs from others
 native-core owns @vyre/ui (apps/app/ui): chat-only components go under apps/app/src/chat, anything shared is asked for in team/0.2/CHAT.md.
