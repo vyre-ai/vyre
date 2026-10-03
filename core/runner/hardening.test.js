@@ -431,3 +431,14 @@ test("fscrypt setup plan: ext4 needs one tune2fs, other filesystems fall back to
   assert.equal(fscryptSetupPlan("/x", fake("", 1), no).state, "unsupported");
   assert.equal(fscryptSetupPlan("/x", fake("ext4 /dev/vda1\n"), yes).state, "ready");
 });
+
+test("lent network: provider-and-space only by default; the Space can allow the internet through the proxy (HTTPS_PROXY with the session token)", () => {
+  const ws = tmp(); try {
+    const platform = process.platform === "darwin" ? "darwin" : "linux";
+    const opts = { platform, workspace: ws, command: process.execPath, readOnly: [path.dirname(process.execPath)], proxy: { port: 4567, socket: path.join(ws, "e.sock") } };
+    const off = plan(opts), on = plan({ ...opts, internet: { token: "tok" } });
+    const env = p => (platform === "linux" ? Object.fromEntries(p.argv.reduce((a, x, i) => (x === "--setenv" ? a.concat([[p.argv[i + 1], p.argv[i + 2]]]) : a), [])) : p.env);
+    assert.equal(env(off).HTTPS_PROXY, undefined);
+    assert.match(env(on).HTTPS_PROXY, /^http:\/\/vyre:tok@127\.0\.0\.1:\d+$/);
+  } finally { rm(ws); }
+});
