@@ -10,7 +10,17 @@ xcrun simctl boot "$dev" && xcrun simctl bootstatus "$dev" -b >/dev/null
 xcrun simctl spawn "$dev" defaults write -g AppleLanguages -array en
 xcrun simctl spawn "$dev" defaults write -g AppleLocale en_US
 xcrun simctl shutdown "$dev" && xcrun simctl boot "$dev" && xcrun simctl bootstatus "$dev" -b >/dev/null
-xcrun simctl openurl "$dev" "$(cat "$1")"
+# A booted simulator is not yet ready for Safari: on a hosted runner the first openurl timed out (NSPOSIXErrorDomain 60) and the screenshot was the
+# home screen. Let the springboard settle, start Safari itself, then open the link, again if it times out, and check Safari is in front.
+sleep 20
+xcrun simctl launch "$dev" com.apple.mobilesafari >/dev/null 2>&1 || true
+sleep 5
+opened=0
+for i in 1 2 3 4; do
+  if perl -e 'alarm 90; exec @ARGV' xcrun simctl openurl "$dev" "$(cat "$1")"; then opened=1; break; fi
+  echo "ios-j0: openurl try $i failed; again" >&2; sleep 10
+done
+[ "$opened" = 1 ] || echo "ios-j0: openurl never succeeded" >&2
 sleep 15
 mkdir -p "$RUNNER_TEMP/ios"
 xcrun simctl io "$dev" screenshot "$RUNNER_TEMP/ios/shot.png" >/dev/null 2>&1
