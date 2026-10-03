@@ -10596,11 +10596,10 @@ Add a phone. From a computer already signed in to you: show a QR and a long code
 
 ### `wink.phone.pair.answer`
 
-On the computer: answer the phone question. { yes: false } sends it away and adds nothing. { yes: true } needs the words check: give `pick` (1, 2 or 3, the choice that matches the three words the phone shows), `first` (the first of those words, typed) or `words` (all three, typed). A bare yes is refused and adds nothing; a wrong pick or words is a no. Answers { answered, yes, name, device? } or { answered: false } when nobody is asking (or the time ran out).
+On the computer: answer the phone question. { yes: false } sends it away and adds nothing. { yes: true } needs the words check: give `pick` (1, 2 or 3, the choice that matches the three words the phone shows) or `words` (all three, typed). A bare yes is refused and adds nothing; a wrong pick or words is a no. Answers { answered, yes, name, device? } or { answered: false } when nobody is asking (or the time ran out).
 
 - Input:
   - `yes` boolean, required
-  - `first` string
   - `pick` integer
   - `words` string
 - Callers: any caller
@@ -10715,12 +10714,12 @@ What this server was handed when it was adopted, to reach its home: { home, box,
 
 ### `wink.server.pair.answer`
 
-At the server: answer the pairing question. { yes: false } refuses it. { yes: true } needs the words check: give `pick` (1, 2 or 3, the choice that matches the three words the app shows) or `first` (the first of those words, typed); a bare yes is refused and adds nothing, and a wrong pick or first word is a no. Only this server's own screen or terminal may answer (cli, local, deck, capsule): never a paired device, the tailnet, the relay, a module, a session, a hook, a model client or an agent. Answers { answered, yes, name } or { answered: false } when nobody is asking (or the time ran out).
+At the server: answer the pairing question. { yes: false } refuses it. { yes: true } needs the words check: give `pick` (1, 2 or 3, the choice that matches the three words the app shows) or `words` (all three, typed); a bare yes is refused and adds nothing, and a wrong pick or words is a no. Only this server's own screen or terminal may answer (cli, local, deck, capsule): never a paired device, the tailnet, the relay, a module, a session, a hook, a model client or an agent. Answers { answered, yes, name } or { answered: false } when nobody is asking (or the time ran out).
 
 - Input:
   - `yes` boolean, required
-  - `first` string
   - `pick` integer
+  - `words` string
 - Callers: any caller
 
 ### `wink.server.pairing`
