@@ -16,7 +16,7 @@ const fail = (/** @type {string} */ code, /** @type {string} */ message) => Obje
  * One type's rows. The reference store keeps them in a Map; a durable store (kernel/store/sqlite.js) pages them from its database behind a small LRU, so the rows it holds in
  * memory are the hot ones, not all of them. `candidates` and `searchCandidates` may return a SUPERSET of what a query or a search needs (the database narrows by an equality
  * filter or a word); the same code then applies the exact rules, so an answer is the same either way.
- * @typedef {{ get(id: string): any, has(id: string): boolean, set(id: string, r: any): void, values(): Iterable<any>, pageQuery?(spec: any): any, candidates(spec: any): Iterable<any>, searchCandidates(words: string[]): Iterable<any> }} Table
+ * @typedef {{ get(id: string): any, has(id: string): boolean, set(id: string, r: any): void, values(): Iterable<any>, pageQuery?(spec: any): any, aggregateQuery?(spec: any): any, candidates(spec: any): Iterable<any>, searchCandidates(words: string[]): Iterable<any> }} Table
  */
 /** @returns {Table} */
 function mapTable() {
@@ -116,6 +116,12 @@ export function createMemoryStore(cfg = {}) {
     },
     async aggregate(type, spec) {
       touch("aggregate", [type, spec]);
+      // A sealed field is never grouped or measured: there is no value to group by.
+      const sealedField = (/** @type {any} */ f) => typeof f === "string" && types.get(type).fields.some((/** @type {any} */ d) => d.name === f && d.kind === "sealed");
+      for (const g of spec.group_by || []) if (sealedField(g)) throw fail("invalid", `${g} is sealed: it cannot be grouped by`);
+      for (const m of spec.measures || []) if (m && sealedField(m.field)) throw fail("invalid", `${m.field} is sealed: it cannot be measured`);
+      const fast = table(type).aggregateQuery ? table(type).aggregateQuery(spec) : null;
+      if (fast) return clone(fast);
       return clone(agg((function* (/** @type {Iterable<any>} */ it) { for (const r of it) if (!r.deleted_at) yield r; })(table(type).candidates(spec)), spec));
     },
     async create(type, id, data) {

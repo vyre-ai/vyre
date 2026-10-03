@@ -175,4 +175,42 @@ function indexFor(/** @type {string} */ type, /** @type {any} */ def, /** @type 
   return { name, sql: `CREATE INDEX IF NOT EXISTS ${name} ON kernel_records (${cols.join(", ")}) WHERE type = '${type}'` };
 }
 
+/**
+ * Plan an aggregate as one GROUP BY statement, or null when it cannot be pushed down exactly. Group fields are top-level scalar fields (or the row's own columns); a measure
+ * is a count (of rows, or of a field's non-null values) or sum, min, max or avg over a number field (any other `fn` is an average, as in the reference). The groups come back
+ * unsorted: the reference orders them by their canonical text, and the caller does the same.
+ * @param {{ type: string, def: any, spec: any, ascii: (field: string) => boolean }} q
+ * @returns {{ sql: string, args: any[], groups: { field: string, bool: boolean }[], measures: { name: string, fn: string, field?: string }[] } | null}
+ */
+export function planAggregate(q) {
+  const { type, def, spec } = q;
+  if (!TYPE_NAME.test(type) || !def || !Array.isArray(spec.measures)) return null;
+  try {
+    /** @type {any[]} */ const args = [];
+    const where = [`type = '${type}'`, "deleted_at IS NULL", filterSql(spec.filter, def, q.ascii, args)];
+    const gInfo = (spec.group_by || []).map((/** @type {any} */ f) => { const i = typeof f === "string" ? fieldInfo(def, f) : null; if (!i || i.cls === "object" || i.cls === "array") no(); return i; });
+    const select = [], measures = [];
+    gInfo.forEach((/** @type {any} */ i, /** @type {number} */ k) => select.push(`${i.expr} AS g${k}`));
+    spec.measures.forEach((/** @type {any} */ m, /** @type {number} */ k) => {
+      const name = m.field ? `${m.fn}:${m.field}` : m.fn;
+      if (m.fn === "count") {
+        if (!m.field) select.push(`COUNT(*) AS m${k}`);
+        else { const i = typeof m.field === "string" ? fieldInfo(def, m.field) : null; if (!i) no(); select.push(`COUNT(${i.expr}) AS m${k}`); }
+      } else {
+        const i = typeof m.field === "string" ? fieldInfo(def, m.field) : null;
+        if (!i || (i.cls !== "number" && i.cls !== "int")) no();
+        const fn = m.fn === "sum" ? "SUM" : m.fn === "min" ? "MIN" : m.fn === "max" ? "MAX" : "AVG";
+        select.push(`${fn}(${i.expr}) AS m${k}`);
+      }
+      measures.push({ name, fn: m.fn, field: m.field });
+    });
+    if (!select.length) no();
+    const sql = `SELECT ${select.join(", ")} FROM kernel_records WHERE ${where.join(" AND ")}${gInfo.length ? ` GROUP BY ${gInfo.map((/** @type {any} */ i) => i.expr).join(", ")}` : ""}`;
+    return { sql, args, groups: gInfo.map((/** @type {any} */ i, /** @type {number} */ k) => ({ field: spec.group_by[k], bool: i.cls === "boolean" })), measures };
+  } catch (e) {
+    if (e instanceof NotPushable) return null;
+    throw e;
+  }
+}
+
 export { NotPushable, fieldInfo as _fieldInfo };

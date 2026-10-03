@@ -105,3 +105,15 @@ test("planner: a bad cursor is the same refusal on both stores, and a text sort 
   const a = await mem.query("person", { sort: [{ field: "bio", dir: "asc" }], page: { limit: 30 } }), b = await sql.query("person", { sort: [{ field: "bio", dir: "asc" }], page: { limit: 30 } });
   assert.deepEqual(b.rows.map(x => x.id), a.rows.map(x => x.id));
 });
+
+test("planner: 400 random aggregates equal the reference, group for group", async () => {
+  const { mem, sql, r, pick } = await world(260, 21, {});
+  const GROUPS = ["city", "ok", "stars", "name", "born", "score", "version"];
+  const MEAS = [{ fn: "count" }, { fn: "count", field: "city" }, { fn: "sum", field: "score" }, { fn: "min", field: "score" }, { fn: "max", field: "stars" }, { fn: "avg", field: "score" }, { fn: "sum", field: "version" }];
+  for (let q = 0; q < 400; q++) {
+    const spec = { filter: r() < 0.7 ? randFilter(r, pick) : undefined, group_by: Array.from({ length: Math.floor(r() * 3) }, () => pick(GROUPS)), measures: Array.from({ length: 1 + Math.floor(r() * 3) }, () => pick(MEAS)) };
+    const a = await mem.aggregate("person", spec).catch(e => ({ error: e.code })), b = await sql.aggregate("person", spec).catch(e => ({ error: e.code }));
+    assert.deepEqual(b, a, JSON.stringify(spec));
+  }
+  assert.ok(sql.stats().query_pushed > 50);
+});

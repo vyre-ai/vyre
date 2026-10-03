@@ -8,7 +8,8 @@
 // that field made the first time it is used) before the same page and aggregate code applies the exact rules, and a search is narrowed by its words. So memory follows the
 // working set, not the history and not the number of records.
 import { createMemoryStore } from "./memory.js";
-import { planPage, fieldInfo } from "./sqlite-query.js";
+import { planPage, planAggregate, fieldInfo } from "./sqlite-query.js";
+import { canonical } from "../core/canonical.js";
 import { encodeCursor } from "./query.js";
 
 const MIGRATION = `
@@ -110,6 +111,17 @@ export function createSqliteStore(cfg) {
         const got = /** @type {any[]} */ (db.prepare(plan.sql).all(...plan.args));
         const mine = got.slice(0, plan.limit).map(r => cache.get(r.id) ?? parse(r));
         return { rows: mine, ...(got.length > plan.limit && mine.length ? { next_cursor: encodeCursor(mine[mine.length - 1], spec.sort) } : {}) };
+      },
+      /** An aggregate as one GROUP BY statement (rows come back grouped; the groups are ordered here as the reference orders them), or null to stream the rows instead. */
+      aggregateQuery(spec) {
+        const plan = planAggregate({ type, def: defs.get(type), spec, ascii: field => isAscii(type, field) });
+        if (!plan) { counts.fell++; return null; }
+        counts.pushed++;
+        const got = /** @type {any[]} */ (db.prepare(plan.sql).all(...plan.args));
+        return got.map(row => ({
+          group: Object.fromEntries(plan.groups.map((g, k) => [g.field, row[`g${k}`] === null || row[`g${k}`] === undefined ? null : g.bool ? row[`g${k}`] === 1 : row[`g${k}`]])),
+          values: Object.fromEntries(plan.measures.map((m, k) => [m.name, row[`m${k}`] === undefined ? null : row[`m${k}`]])),
+        })).sort((a, b) => (canonical(a.group) < canonical(b.group) ? -1 : 1));
       },
       candidates(spec) {
         const eq = equalities(spec && spec.filter).filter(([f]) => ensureIndex(f));
