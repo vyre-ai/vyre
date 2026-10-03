@@ -442,6 +442,7 @@ export class Switchboard {
     /** A thread running one turn on another provider (threads.send {provider}): where it goes back to, and what was said meanwhile. @type {Map<string, any>} */
     this.once = new Map();
     /** @type {Map<string, { token: () => any, end: () => Promise<any>, turn: boolean, asker: string | null }>} each thread's current kernel session (its own, or the current chat turn's) */ this.ksCur = new Map();
+    /** @type {Map<string, Promise<any>>} the tail of each thread's chat sends, so they run one at a time */ this.sendChain = new Map();
     /** @type {Map<string, string | null>} who asked the chat turn now running on a thread, whether or not the kernel let their session open: nobody else's message joins it */ this.turnAsker = new Map();
     /** Words that go in front of a thread's next turn, once (what happened while its provider was away). @type {Map<string, string>} */
     this.carry = new Map();
@@ -1773,16 +1774,16 @@ export class Switchboard {
   async send(id, text, surface, opts = {}) {
     // A chat turn's check (whose turn is running), its kernel-session swap and its write must not interleave with another chat send to the same thread: two askers sending at once to an idle thread
     // would both pass the check and the second would end the first's session. One promise chain per thread, for chat sends only; everything else goes straight through as before.
-    if (!opts || !opts.kernelTurn) return this.sendNow(id, text, surface, opts);
+    if (!opts || !opts.kernelTurn) return this.sendOne(id, text, surface, opts);
     const prev = this.sendChain.get(id) || Promise.resolve();
-    const run = prev.then(() => this.sendNow(id, text, surface, opts), () => this.sendNow(id, text, surface, opts));
+    const run = prev.then(() => this.sendOne(id, text, surface, opts), () => this.sendOne(id, text, surface, opts));
     const tail = run.catch(() => {});
     this.sendChain.set(id, tail);
     tail.then(() => { if (this.sendChain.get(id) === tail) this.sendChain.delete(id); });
     return run;
   }
 
-  async sendNow(id, text, surface, { queue = true, wait = false, mode = "steer", uuid = undefined, kind = undefined, images = null, note = "", author = undefined, kernelTurn = null } = {}) {
+  async sendOne(id, text, surface, { queue = true, wait = false, mode = "steer", uuid = undefined, kind = undefined, images = null, note = "", author = undefined, kernelTurn = null } = {}) {
     // First-party chat turn (core/stream): open this turn's kernel session for the person who asked, in the chat it belongs to, before any word reaches the session.
     if (kernelTurn && this.record(id)) {
       // A turn keeps its asker for its whole run. Another person's message while it runs is not folded into it (it would run under the first asker's token: a member's refused act would succeed once an
