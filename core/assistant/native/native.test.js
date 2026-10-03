@@ -15,7 +15,7 @@ async function world() {
   const f = createFakeKernel();
   const alex = f.person("alex"), juno = f.agent("juno"), chris = f.person("chris");
   f.makeAdmin("alex");
-  for (const a of [alex, juno]) f.grant(a, ["record.read", "record.write", "task.request", "record.define"]);
+  for (const a of [alex, juno]) f.grant(a, ["records.read", "records.update", "tasks.request", "records.define"]);
   f.grant(alex, ["email.send"]); f.grant(juno, ["email.send"]);
   const matter = f.seed("matter", { name: "Doe estate", stage: "Intake", plan: "Trust", ssn: SSN });
   await f.kernel.records.define(f.chain([alex]), { add_types: [{ name: "matter", label: "Matter", fields: [{ name: "stage", kind: "stage", label: "Stage" }], stages: [{ name: "Intake" }] }] });
@@ -139,7 +139,7 @@ test("the tool list is generated from the definitions and follows them", async (
 test("the tool list is cut by the chain's grants, and a tool the chain cannot use is refused as absent", async () => {
   const w = await world();
   const reader = w.f.agent("reader");
-  w.f.grant(reader, ["record.read"]);
+  w.f.grant(reader, ["records.read"]);
   const tools = fakeToolSurface(w.f);
   const names = (await tools.list(w.f.chain([w.alex, reader]))).map(t => t.name);
   assert.ok(names.includes("matters.find"));

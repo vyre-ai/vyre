@@ -10,8 +10,8 @@ import { modelView, sealedFields, isSealedValue } from "../lib/sealed.js";
 test("authority is the intersection of every hop: an agent in a person's session cannot exceed either", async () => {
   const f = createFakeKernel();
   const alex = f.person("alex"), juno = f.agent("juno");
-  f.grant(alex, ["record.read", "record.write"]);
-  f.grant(juno, ["record.read"]);
+  f.grant(alex, ["records.read", "records.update"]);
+  f.grant(juno, ["records.read"]);
   const both = f.chain([alex, juno]);
   assert.ok(await f.kernel.records.query(both, "note", { page: { limit: 5 } }));
   await assert.rejects(f.kernel.records.create(both, "note", { text: "x" }), { code: "not_found" });
@@ -22,7 +22,7 @@ test("authority is the intersection of every hop: an agent in a person's session
 test("an agent's read of a sealed field is the placeholder, never the reference", async () => {
   const f = createFakeKernel();
   const alex = f.person("alex"), juno = f.agent("juno");
-  f.grant(alex, ["record.read", "record.write"]); f.grant(juno, ["record.read"]);
+  f.grant(alex, ["records.read", "records.update"]); f.grant(juno, ["records.read"]);
   const { id } = f.seed("matter", { name: "Doe", ssn: { sealed: "us-ssn", ref: "seal_1", present: true, valid_format: true, set_at: 1 } });
   const person = await f.kernel.records.get(f.chain([alex]), "matter", id);
   const model = await f.kernel.records.get(f.chain([alex, juno]), "matter", id);
@@ -43,7 +43,7 @@ test("the inference door refuses a prompt with a sealed value in it", async () =
 test("tasks: only a chain of exactly one person with a proof over the payload approves, and not the doer", async () => {
   const f = createFakeKernel();
   const alex = f.person("alex"), chris = f.person("chris"), kit = f.agent("intake");
-  f.grant(alex, ["task.request", "task.decide"]); f.grant(kit, ["task.request"]); f.grant(chris, ["task.decide"]);
+  f.grant(alex, ["tasks.request", "tasks.decide"]); f.grant(kit, ["tasks.request"]); f.grant(chris, ["tasks.decide"]);
   const t = await f.kernel.ask.request(f.chain([alex]), { title: "Welcome email", doer: kit, checker: chris, output: { kind: "sent" } });
   assert.equal(t.state, "ready");
   await f.kernel.tasks.move(f.chain([alex, kit]), t.id, "working");
@@ -58,7 +58,7 @@ test("tasks: only a chain of exactly one person with a proof over the payload ap
 test("a doer cannot move a task to stuck by hand without being an assistant, and a guarded skip is refused", async () => {
   const f = createFakeKernel();
   const alex = f.person("alex"), kit = f.agent("intake");
-  f.grant(alex, ["task.request"]);
+  f.grant(alex, ["tasks.request"]);
   const t = await f.kernel.ask.request(f.chain([alex]), { title: "Letter", doer: kit, checker: alex, output: { kind: "draft" } });
   await assert.rejects(f.kernel.tasks.move(f.chain([alex]), t.id, "stuck"), { code: "bad_input" });
   await f.kernel.tasks.move(f.chain([alex, kit]), t.id, "stuck", { stuck: { reason: "x", since: 1 } });
@@ -69,9 +69,9 @@ test("a delegated grant is contained in its parent and takes the parent's condit
   const f = createFakeKernel();
   const alex = f.person("alex"), kit = f.agent("research");
   f.grant(alex, ["grant.create"]);
-  const parent = f.grant(alex, ["record.read", "record.write"], "vyre://spc_test/project/p1", { how: { presence: "fresh" } });
+  const parent = f.grant(alex, ["records.read", "records.update"], "vyre://spc_test/project/p1", { how: { presence: "fresh" } });
   const c = f.chain([alex]);
-  const child = await f.kernel.grants.create(c, { subject: { kind: "actor", actor: kit }, actions: ["record.read"], resource: { prefix: "vyre://spc_test/project/p1" }, conditions: {}, source: "team", parent: parent.id });
+  const child = await f.kernel.grants.create(c, { subject: { kind: "actor", actor: kit }, actions: ["records.read"], resource: { prefix: "vyre://spc_test/project/p1" }, conditions: {}, source: "team", parent: parent.id });
   assert.equal(child.conditions.how.presence, "fresh");
   await assert.rejects(f.kernel.grants.create(c, { subject: { kind: "actor", actor: kit }, actions: ["email.send"], resource: { prefix: "vyre://spc_test/project/p1" }, conditions: {}, source: "team", parent: parent.id }), { code: "not_contained" });
   await f.kernel.grants.revoke(c, parent.id, "left");

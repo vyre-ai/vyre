@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { teammateFromRole, markReviewed, checkAdd, addCardData, teamCard, MAX_ASSISTANT_ADDED, isOutward } from "./roles.js";
 
-const research = { name: "Research", instructions: "Read about the client and write what you find on the project, with sources.", templates: [{ name: "Welcome", body: "Dear {{client.name}}" }], wanted: [{ actions: ["record.read", "record.write"] }] };
+const research = { name: "Research", instructions: "Read about the client and write what you find on the project, with sources.", templates: [{ name: "Welcome", body: "Dear {{client.name}}" }], wanted: [{ actions: ["records.read", "records.update"] }] };
 const spec = () => teammateFromRole(research, { project: "vyre://spc_test/project/p1", space: "spc_test" });
 
 test("Kit text is external and unreviewed until a person reviews it, and the card says so", () => {
@@ -27,7 +27,7 @@ test("an assistant adder is capped at five per project", () => {
 });
 
 test("an assistant cannot add a teammate with outward powers without a person, and an unknown action counts as outward", () => {
-  const outward = teammateFromRole({ name: "Intake", wanted: [{ actions: ["record.read", "email.send"] }] }, { project: "vyre://spc_test/project/p1", space: "spc_test" });
+  const outward = teammateFromRole({ name: "Intake", wanted: [{ actions: ["records.read", "email.send"] }] }, { project: "vyre://spc_test/project/p1", space: "spc_test" });
   assert.deepEqual(outward.outward, ["email.send"]);
   const juno = { kind: "agent", id: "juno" };
   assert.equal(checkAdd({ spec: outward, adder: juno, count: 0 }).reason, "needs_human");
@@ -43,7 +43,7 @@ test("a Kit role cannot smuggle control characters into its name or text", () =>
 });
 
 test("the team card says in plain words what each teammate may do and why", () => {
-  const card = teamCard([{ name: "research", role: "Research", adder: { id: "alice" }, grants: [{ actions: ["record.read", "record.write"] }] },
+  const card = teamCard([{ name: "research", role: "Research", adder: { id: "alice" }, grants: [{ actions: ["records.read", "records.update"] }] },
     { name: "intake", role: "Intake", adder: { id: "alex" }, paused: true, grants: [{ actions: ["email.send"], conditions: { how: { presence: "fresh" } } }] }]);
   assert.equal(card[0].line, "Research can read this project and write notes and fill fields, because Alice added it.");
   assert.match(card[1].line, /send email \(each send is approved by a person\), because Alex added it\./);

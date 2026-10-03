@@ -19,8 +19,8 @@ export const engineerActor = space => ({ kind: /** @type {const} */ ("agent"), i
 export function engineerGrants(space) {
   const subject = { kind: /** @type {const} */ ("actor"), actor: engineerActor(space) };
   return [
-    { subject, actions: ["record.read", "record.define"], resource: { prefix: `vyre://${space}/def` }, conditions: {}, source: "builtin:engineer", reason: "change definitions" },
-    { subject, actions: ["task.request"], resource: { prefix: `vyre://${space}/task` }, conditions: {}, source: "builtin:engineer", reason: "ask an admin to approve" },
+    { subject, actions: ["records.read", "records.define"], resource: { prefix: `vyre://${space}/def` }, conditions: {}, source: "builtin:engineer", reason: "change definitions" },
+    { subject, actions: ["tasks.request"], resource: { prefix: `vyre://${space}/task` }, conditions: {}, source: "builtin:engineer", reason: "ask an admin to approve" },
     { subject, actions: ["model.use"], resource: { prefix: `vyre://${space}/` }, conditions: {}, source: "builtin:engineer", reason: "write drafts" },
   ];
 }

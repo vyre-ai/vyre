@@ -16,10 +16,10 @@ const SEALED = { sealed: "us-ssn", ref: "seal_1", present: true, valid_format: t
 function world(t, opts = {}) {
   const f = createFakeKernel(opts.kernel);
   const alex = f.person("alex"), bob = f.person("bob"), mem = f.service("memory"), model = f.agent("juno");
-  f.grant(alex, ["record.read", "record.write", "task.request"]);
-  f.grant(bob, ["record.read"], `vyre://${f.space}/matter`);
-  f.grant(mem, ["record.read", "event.read", "memory.read", "record.write", "task.request"]);
-  f.grant(model, ["record.read", "model.use"]);
+  f.grant(alex, ["records.read", "records.update", "tasks.request"]);
+  f.grant(bob, ["records.read"], `vyre://${f.space}/matter`);
+  f.grant(mem, ["records.read", "events.read", "memory.read", "records.update", "tasks.request"]);
+  f.grant(model, ["records.read", "model.use"]);
   const db = open(path.join(tempHome(t), "engine.db"));
   let now = 1_000_000;
   const engine = createMemoryEngine({
@@ -39,7 +39,7 @@ test("lines: kept exactly, scrubbed on the way in, windowed, authorized by the s
     { seq: 1, role: "user", text: "client ssn is 123-45-6789", at: 1 }, { seq: 2, role: "user", text: "or 123 45 6789 or 123456789", at: 2 },
     { seq: 3, role: "assistant", text: "noted", at: 3 }, { seq: 4, role: "user", text: "the court portal changed", at: 4 }]);
   assert.equal(n, 4);
-  w.f.grant(w.alex, ["record.read"], `vyre://${w.f.space}/session`);
+  w.f.grant(w.alex, ["records.read"], `vyre://${w.f.space}/session`);
   const got = await w.engine.lines.recall(w.f.chain([w.alex]), "s1", 1, 3);
   assert.equal(got.length, 3);
   assert.doesNotMatch(JSON.stringify(got), /123-45-6789|123 45 6789|123456789/);
@@ -156,7 +156,7 @@ test("search and answer: authorized per source for the caller; citations are onl
   const secret = w.f.seed("matter", { name: "Northwind Bakery sale", note: "bakery sale terms" });
   const open_ = w.f.seed("matter", { name: "Harlow Legal intake", note: "bakery intake form" }, externalLabels(w.f.space));
   w.f.grants.length = 0;
-  w.f.grant(w.mem, ["record.read"]); w.f.grant(w.f.person("alex"), ["record.read"]); w.f.grant(w.f.person("bob"), ["record.read"], open_.urn);
+  w.f.grant(w.mem, ["records.read"]); w.f.grant(w.f.person("alex"), ["records.read"]); w.f.grant(w.f.person("bob"), ["records.read"], open_.urn);
   await w.engine.index({ kind: "record", type: "matter", id: secret.id });
   await w.engine.index({ kind: "record", type: "matter", id: open_.id });
   const bobHits = await w.engine.search(w.f.chain([w.bob]), "bakery");

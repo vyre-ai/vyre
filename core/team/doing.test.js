@@ -50,7 +50,7 @@ test("a finished session clears the line", () => {
 test("attach follows the project's events through the kernel for agent actors only, and stops when asked", async () => {
   const f = createFakeKernel();
   const alex = f.person("alex"), research = f.agent("research");
-  f.grant(alex, ["record.write"]); f.grant(research, ["record.write"]);
+  f.grant(alex, ["records.update"]); f.grant(research, ["records.update"]);
   const out = [];
   const d = createDoingLine(f.kernel, { project: "vyre://spc_test/project/p1", onLine: (t, l) => out.push([t, l]) });
   const off = d.attach(f.chain([alex]));

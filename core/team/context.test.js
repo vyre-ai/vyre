@@ -8,7 +8,7 @@ import { externalLabels, memberLabels } from "../../lib/labels.js";
 function world() {
   const f = createFakeKernel();
   const alex = f.person("alex"), research = f.agent("research");
-  f.grant(alex, ["record.read", "record.write"]); f.grant(research, ["record.read"]);
+  f.grant(alex, ["records.read", "records.update"]); f.grant(research, ["records.read"]);
   const client = f.seed("client", { name: "Jane Doe", ssn: { sealed: "us-ssn", ref: "seal_9", present: true, valid_format: true, set_at: 1 } }, externalLabels("spc_test"));
   const project = f.seed("project", { name: "Estate plan for Jane Doe", client: { urn: client.urn }, bank: { sealed: "bank-account", ref: "seal_7", present: true, valid_format: true, set_at: 1, hint: "1234" } });
   return { f, alex, research, client, project };
@@ -46,7 +46,7 @@ test("a person-chain read still never puts a reference in the text", async () =>
 test("a linked record the teammate may not read, or in another Space, is skipped and named", async () => {
   const f = createFakeKernel();
   const alex = f.person("alex"), research = f.agent("research");
-  f.grant(alex, ["record.read"]); f.grant(research, ["record.read"], "vyre://spc_test/project");
+  f.grant(alex, ["records.read"]); f.grant(research, ["records.read"], "vyre://spc_test/project");
   const secret = f.seed("matter", { name: "Privileged" });
   const project = f.seed("project", { name: "P", links: [{ urn: secret.urn }, { urn: "vyre://spc_other/client/abc" }] });
   const ctx = await teammateContext(f.kernel, f.chain([alex, research]), { project: project.urn, space: "spc_test" });

@@ -9,7 +9,7 @@ export const MAX_ASSISTANT_ADDED = 5;
 
 /** Risk of the actions teammates are usually given. An action not listed reads as `outward.share` (invariant 1). */
 const KNOWN = Object.freeze({
-  "record.read": "read", "record.write": "write", "memory.read": "read", "task.request": "write", "event.read": "read", "model.use": "read",
+  "records.read": "read", "records.update": "write", "memory.read": "read", "tasks.request": "write", "events.read": "read", "model.use": "read",
   "email.send": "outward.send", "payment.make": "outward.pay", "page.publish": "outward.publish", "record.share": "outward.share", "record.delete": "outward.delete",
 });
 
@@ -82,8 +82,8 @@ export function addCardData(spec) {
 
 /** Plain words for the actions a teammate is usually given. */
 const WORDS = Object.freeze({
-  "record.read": "read this project", "record.write": "write notes and fill fields", "memory.read": "recall what the project knows", "task.request": "hand out tasks",
-  "event.read": "read the project's history", "model.use": "think with an AI model", "email.send": "send email (each send is approved by a person)",
+  "records.read": "read this project", "records.update": "write notes and fill fields", "memory.read": "recall what the project knows", "tasks.request": "hand out tasks",
+  "events.read": "read the project's history", "model.use": "think with an AI model", "email.send": "send email (each send is approved by a person)",
   "payment.make": "make payments (each one is approved by a person)", "page.publish": "publish pages (each one is approved by a person)",
 });
 

@@ -20,7 +20,7 @@ export function buildFixture() { return world(); }
 function world() {
   const f = createFakeKernel();
   const alex = f.person("alex"), juno = f.agent("juno");
-  f.grant(alex, ["*"]); f.grant(juno, ["record.read", "record.write", "task.request"]);
+  f.grant(alex, ["*"]); f.grant(juno, ["records.read", "records.update", "tasks.request"]);
   f.sealValue(CANARIES[0]); f.sealValue(CANARIES[1]);
   const chain = f.chain([alex, juno]);
   const matter = f.seed("matter", { name: "Doe estate plan", client: "Jane Doe", email: "jane@example.com", stage: "Intake", fee: { amount: 1200, currency: "USD" },

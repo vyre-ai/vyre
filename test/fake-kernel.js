@@ -18,8 +18,8 @@ export const uid = (p = "") => `${p}${Date.now().toString(16).padStart(12, "0")}
 
 /** The actions the fake knows and their risk (the real registry is the kernel's). Unknown reads as outward.share (invariant 1). */
 export const ACTIONS = Object.freeze({
-  "record.read": "read", "record.write": "write", "record.define": "admin", "grant.create": "grant", "task.request": "write", "task.decide": "grant",
-  "email.send": "outward.send", "model.use": "read", "event.read": "read", "memory.read": "read", "team.add": "admin", "engineer.talk": "admin",
+  "records.read": "read", "records.update": "write", "records.define": "admin", "grant.create": "grant", "tasks.request": "write", "tasks.decide": "grant",
+  "email.send": "outward.send", "model.use": "read", "events.read": "read", "memory.read": "read", "team.add": "admin", "engineer.talk": "admin",
 });
 
 /** @param {string} kind @param {string} id @param {string} space */
@@ -108,14 +108,14 @@ export function createFakeKernel({ space = "spc_test", now = () => Date.now() } 
   }
   const records_api = {
     async define(/** @type {any} */ c, /** @type {any} */ diff) {
-      await need(c, "record.define", `vyre://${space}/def`);
+      await need(c, "records.define", `vyre://${space}/def`);
       for (const t of [...(diff.add_types || []), ...(diff.change_types || [])]) types.set(t.name, t);
       for (const n of diff.remove_types || []) types.delete(n);
       event(c, "definition.changed", `vyre://${space}/def`, { diff });
       return { applied: true, changes: [...(diff.add_types || []).map((/** @type {any} */ t) => `added ${t.name}`), ...(diff.change_types || []).map((/** @type {any} */ t) => `changed ${t.name}`)] };
     },
     async get(/** @type {any} */ c, /** @type {string} */ type, /** @type {string} */ id) {
-      await need(c, "record.read", urn(type, id));
+      await need(c, "records.read", urn(type, id));
       const r = table(type).get(id);
       return r && !r.deleted_at ? shape(c, r) : null;
     },
@@ -123,7 +123,7 @@ export function createFakeKernel({ space = "spc_test", now = () => Date.now() } 
       const rows = [];
       for (const r of table(type).values()) {
         if (r.deleted_at && !spec.include_deleted) continue;
-        if ((await authorize({ chain: c, action: "record.read", resource: urn(type, r.id) })).effect === "deny") continue;
+        if ((await authorize({ chain: c, action: "records.read", resource: urn(type, r.id) })).effect === "deny") continue;
         if (spec.filter && !filterOk(spec.filter, r.data)) continue;
         rows.push(shape(c, r));
       }
@@ -135,7 +135,7 @@ export function createFakeKernel({ space = "spc_test", now = () => Date.now() } 
       const q = String(spec.text || "").toLowerCase();
       for (const [type, tab] of records) for (const r of tab.values()) {
         if (r.deleted_at || (spec.types && !spec.types.includes(type))) continue;
-        if ((await authorize({ chain: c, action: "record.read", resource: urn(type, r.id) })).effect === "deny") continue;
+        if ((await authorize({ chain: c, action: "records.read", resource: urn(type, r.id) })).effect === "deny") continue;
         const text = Object.values(r.data).filter(v => typeof v === "string").join(" ").toLowerCase();
         if (q && text.includes(q)) hits.push({ type, id: r.id, score: 1, snippet: text.slice(0, 80) });
       }
@@ -143,7 +143,7 @@ export function createFakeKernel({ space = "spc_test", now = () => Date.now() } 
     },
     async create(/** @type {any} */ c, /** @type {string} */ type, /** @type {any} */ data) {
       const id = uid("r");
-      await need(c, "record.write", urn(type, id));
+      await need(c, "records.update", urn(type, id));
       const rec = { type, id, version: 1, data: { ...data }, created_at: now(), updated_at: now() };
       table(type).set(id, rec);
       labelsOf.set(id, c.labels);
@@ -151,7 +151,7 @@ export function createFakeKernel({ space = "spc_test", now = () => Date.now() } 
       return shape(c, rec);
     },
     async update(/** @type {any} */ c, /** @type {string} */ type, /** @type {string} */ id, /** @type {any} */ patch, /** @type {number} */ base) {
-      await need(c, "record.write", urn(type, id));
+      await need(c, "records.update", urn(type, id));
       const rec = table(type).get(id);
       if (!rec) throw Object.assign(new Error("not found"), { code: "not_found" });
       if (rec.version !== base) throw Object.assign(new Error("version conflict"), { code: "version_conflict" });
@@ -163,13 +163,13 @@ export function createFakeKernel({ space = "spc_test", now = () => Date.now() } 
       return shape(c, rec);
     },
     async remove(/** @type {any} */ c, /** @type {string} */ type, /** @type {string} */ id) {
-      await need(c, "record.write", urn(type, id));
+      await need(c, "records.update", urn(type, id));
       const rec = table(type).get(id); rec.deleted_at = now(); rec.version++;
       event(c, "record.removed", urn(type, id), { changed: [] });
       return shape(c, rec);
     },
     async restore(/** @type {any} */ c, /** @type {string} */ type, /** @type {string} */ id) {
-      await need(c, "record.write", urn(type, id));
+      await need(c, "records.update", urn(type, id));
       const rec = table(type).get(id); delete rec.deleted_at; rec.version++;
       return shape(c, rec);
     },
@@ -220,7 +220,7 @@ export function createFakeKernel({ space = "spc_test", now = () => Date.now() } 
   const guardedTask = (/** @type {any} */ t) => Boolean(t.checker) || ["sent"].includes(t.output?.kind) || t.required === true;
   const ask = {
     async request(/** @type {any} */ c, /** @type {any} */ t) {
-      await need(c, "task.request", `vyre://${space}/task`);
+      await need(c, "tasks.request", `vyre://${space}/task`);
       const output = t.output || { kind: "decision" };
       if (output.kind === "sent" && !t.checker) t = { ...t, checker: person("owner") };
       const task = { id: uid("t"), space, ...t, output, state: t.state || (t.depends_on?.length ? "waiting" : "ready"), assigned_by: c.hops[0].actor, labels: c.labels, created_at: now(), updated_at: now() };

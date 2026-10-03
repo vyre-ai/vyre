@@ -7,7 +7,7 @@ import { createStuckWatch } from "./stuck.js";
 async function world({ checker = false, kind = "draft" } = {}) {
   const f = createFakeKernel();
   const alex = f.person("alex"), kit = f.agent("intake");
-  f.grant(alex, ["task.request"]);
+  f.grant(alex, ["tasks.request"]);
   const task = await f.kernel.ask.request(f.chain([alex]), { title: "Welcome email", doer: kit, ...(checker ? { checker: alex } : {}), output: { kind } });
   let now = 1_000_000;
   const w = createStuckWatch({ kernel: f.kernel, chain: f.chain([f.service("kernel")]), clock: () => now, whoIsResponsible: () => "alex" });
@@ -30,24 +30,24 @@ test("1. the assistant says so: its words are quoted and give no one-tap power",
 
 test("2. a permission refused three times makes it stuck, with a grant request built from the observed denial, scoped to the task", async () => {
   const { f, task, w } = await world();
-  assert.equal((await w.denied(task.id, { action: "record.read", resource: "vyre://s/billing" })).moved, false);
-  assert.equal((await w.denied(task.id, { action: "record.read", resource: "vyre://s/other" })).moved, false, "a different resource counts apart");
-  await w.denied(task.id, { action: "record.read", resource: "vyre://s/billing" });
+  assert.equal((await w.denied(task.id, { action: "records.read", resource: "vyre://s/billing" })).moved, false);
+  assert.equal((await w.denied(task.id, { action: "records.read", resource: "vyre://s/other" })).moved, false, "a different resource counts apart");
+  await w.denied(task.id, { action: "records.read", resource: "vyre://s/billing" });
   assert.equal(state(f, task.id), "ready", "two of one, one of another");
-  const r = await w.denied(task.id, { action: "record.read", resource: "vyre://s/billing" });
+  const r = await w.denied(task.id, { action: "records.read", resource: "vyre://s/billing" });
   assert.equal(r.moved, true);
   const s = f.tasks.get(task.id).stuck;
-  assert.deepEqual(s.suggested_fix.action, { kind: "grant_request", resource: "vyre://s/billing", action_name: "record.read", scope: { task: task.id } });
-  assert.match(s.reason, /refused record.read on vyre:\/\/s\/billing 3 times/);
+  assert.deepEqual(s.suggested_fix.action, { kind: "grant_request", resource: "vyre://s/billing", action_name: "records.read", scope: { task: task.id } });
+  assert.match(s.reason, /refused records.read on vyre:\/\/s\/billing 3 times/);
 });
 
 test("the same request is offered once, then not again for the cool-down; a declined fix starts the cool-down", async () => {
   const { f, alex, kit, task, w, advance } = await world();
-  const deny = id => Promise.all([1, 2, 3].map(() => w.denied(id, { action: "record.read", resource: "vyre://s/billing" }))).then(r => r.at(-1));
+  const deny = id => Promise.all([1, 2, 3].map(() => w.denied(id, { action: "records.read", resource: "vyre://s/billing" }))).then(r => r.at(-1));
   await deny(task.id);
   assert.ok(f.tasks.get(task.id).stuck.suggested_fix.action);
   // 50 more denials while it is stuck: one card, then silence (no second move)
-  for (let i = 0; i < 50; i++) assert.equal((await w.denied(task.id, { action: "record.read", resource: "vyre://s/billing" })).moved, false);
+  for (let i = 0; i < 50; i++) assert.equal((await w.denied(task.id, { action: "records.read", resource: "vyre://s/billing" })).moved, false);
   assert.equal(f.events.filter(e => e.type === "task.stuck").length, 1);
   // unblocked, and refused again inside the cool-down: stuck again, but no fix is offered
   await f.kernel.tasks.move(f.chain([alex]), task.id, "ready", {});

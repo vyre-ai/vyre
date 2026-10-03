@@ -1,0 +1,26 @@
+{
+  "name": "work",
+  "version": "0.1.0",
+  "description": "The work layer on the kernel: the native assistant's tool surface and situation, teammates, the three-layer memory and the Engineer. Every call goes through the kernel with the chain the kernel builds for the caller; nothing here holds authority.",
+  "roles": ["box", "local"],
+  "requires": [],
+  "does": { "tools": [
+    {"name": "native.tools", "summary": "the tools this caller may use in this Space, generated from its definitions", "reach": "anyone"},
+    {"name": "native.call", "summary": "run one of those tools; an outward act comes back held for approval", "reach": "anyone"},
+    {"name": "native.situation", "summary": "where the caller is: the Space, role, record, team, open tasks, what waits and what is sealed", "reach": "anyone"},
+    {"name": "teammates.context", "summary": "what a teammate starts with for a project, minus sealed fields", "reach": "anyone"},
+    {"name": "teammates.add", "summary": "add an assistant teammate from a Kit role, with grants no wider than the adder's", "reach": "person"},
+    {"name": "teammates.doing", "summary": "what each teammate is doing right now", "reach": "anyone"},
+    {"name": "recall.search", "summary": "search records, events and session lines by meaning, only what the caller may read", "reach": "anyone"},
+    {"name": "recall.answer", "summary": "answer a question from the Space's own records and history, with citations", "reach": "anyone"},
+    {"name": "recall.suggestions", "summary": "facts memory proposes for a record, with the lines they came from", "reach": "anyone"},
+    {"name": "recall.accept", "summary": "accept a proposed fact onto its record", "reach": "person"},
+    {"name": "engineer.talk", "summary": "ask the Engineer to explain or change this Space's definitions; admins only", "reach": "person"},
+    {"name": "engineer.revise", "summary": "edit the Engineer's proposed definition yourself; the earlier approval is void", "reach": "person"},
+    {"name": "engineer.approve", "summary": "approve or reject the Engineer's change with your own presence proof", "reach": "person"}
+  ] },
+  "watches": { "emits": [] },
+  "shows": { "cli": [] },
+  "needs": {},
+  "teaches": {}
+}

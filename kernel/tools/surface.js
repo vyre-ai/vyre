@@ -94,6 +94,8 @@ export function createToolSurface({ kernel, space, types, actions = () => [], ta
         const ob = a.obligations.find((/** @type {any} */ o) => o.type === "ask");
         const approver = String(ob?.approver || "owner");
         const summary = cap(`${d.name}: ${input.summary || input.title || "held act"}`, 160);
+        // A person's own act needs their own presence (Face ID) at the surface, not a task: a person cannot check their own work.
+        if (acting(chain).kind === "person") return { needs_presence: { action: d.action, summary } };
         try {
           const task = await kernel.ask.request(chain, { title: summary, doer: acting(chain), output: { kind: "sent" }, ...(typeof input.record === "string" ? { record: input.record } : {}), source: "assistant_request" });
           return { held: { task: task.id, summary, approver } };

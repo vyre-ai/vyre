@@ -26,7 +26,7 @@ function world({ compile = compiler(), simulate = okSim, reply = "```typescript\
   const f = createFakeKernel();
   const alex = f.person("alex"), eng = engineerActor(f.space);
   f.makeAdmin("alex");
-  f.grant(alex, ["record.read", "record.define", "task.request", "task.decide", "model.use"], "vyre://");
+  f.grant(alex, ["records.read", "records.define", "tasks.request", "tasks.decide", "model.use"], "vyre://");
   for (const g of engineerGrants(f.space)) f.grant(eng, [...g.actions], g.resource.prefix);
   f.script(() => ({ content: reply }));
   const engineer = createEngineer({ kernel: /** @type {any} */ (f.kernel), compile, simulate, engineerChain: c => f.chain([c.hops[0].actor, eng]) });
@@ -47,7 +47,7 @@ test("only an admin can talk to the Engineer, and a refusal looks like absence",
 
 test("the Engineer's grants hold no outward action and nothing on the vault", () => {
   assert.deepEqual(forbiddenInGrants(engineerGrants("spc_test")), []);
-  assert.deepEqual(forbiddenInGrants([{ actions: ["email.send", "vault.read", "*", "seal.reveal", "record.read", "pay.pay", "site.publish"] }]), ["email.send", "vault.read", "*", "seal.reveal", "pay.pay", "site.publish"]);
+  assert.deepEqual(forbiddenInGrants([{ actions: ["email.send", "vault.read", "*", "seal.reveal", "records.read", "pay.pay", "site.publish"] }]), ["email.send", "vault.read", "*", "seal.reveal", "pay.pay", "site.publish"]);
 });
 
 test("a request becomes a proposal with a card and a task, and nothing is applied", async () => {
@@ -132,9 +132,9 @@ test("a role in the draft cannot give what the admin does not hold (narrowing)",
   const roles = [{ name: "closer", grants: [{ actions: ["email.send"], resource_prefix: "vyre://spc_test/" }] }];
   const w = world({ compile: compiler({ roles }) });
   await assert.rejects(w.engineer.propose(w.as(w.alex), "x"), (/** @type {any} */ e) => e.code === "exceeds_admin" && e.exceeding[0].action === "email.send");
-  const ok = world({ compile: compiler({ roles: [{ name: "reader", grants: [{ actions: ["record.read"], resource_prefix: "vyre://spc_test/project" }] }] }) });
+  const ok = world({ compile: compiler({ roles: [{ name: "reader", grants: [{ actions: ["records.read"], resource_prefix: "vyre://spc_test/project" }] }] }) });
   const r = await ok.engineer.propose(ok.as(ok.alex), "x");
-  assert.match(r.card.changes.join("\n"), /Adds the role reader, which may record.read\./);
+  assert.match(r.card.changes.join("\n"), /Adds the role reader, which may records.read\./);
 });
 
 test("an outward Flow step is flagged on the card, and each use still needs a person", async () => {

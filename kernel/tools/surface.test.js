@@ -94,3 +94,10 @@ test("a bad call is a structured error, never a throw", async () => {
   assert.equal(out.error.code, "not_found");
   await assert.rejects(() => r.surface.list({}), { code: "bad_input" });
 });
+
+test("a person's own outward act needs their presence, not a task they would check themselves", async () => {
+  const r = await rig();
+  const out = await r.surface.call(person(OWNER), "email.send", { summary: "x" });
+  assert.equal(out.needs_presence.action, "email.send");
+  assert.equal(out.held, undefined);
+});

@@ -113,7 +113,7 @@ export function createFacts({ kernel, db, clock, space, chainFor, redactors = []
       return { outcome: "task", fact: f, ...(await raiseTask(wc, f, "changes an existing value", false)) };
     }
     // An empty field. Without write on the record the fact stays the person's own suggestion.
-    const can = (await kernel.authorize({ chain: wc, action: "record.write", resource: f.record })).effect !== "deny";
+    const can = (await kernel.authorize({ chain: wc, action: "records.update", resource: f.record })).effect !== "deny";
     if (!can) return { outcome: "private_suggestion", fact: f, suggestion: keepSuggestion(f, true) };
     if (auto) {
       try { await kernel.records.update(wc, p.type, p.id, { [f.field]: f.value }, rec.version); return { outcome: "applied", fact: f }; }
@@ -161,7 +161,7 @@ export function createFacts({ kernel, db, clock, space, chainFor, redactors = []
       const out = [];
       for (const s of rows) {
         if (s.private) { if (s.person === personId(chain)) out.push(s); continue; }
-        if ((await kernel.authorize({ chain, action: "record.read", resource: s.record })).effect !== "deny") out.push(s);
+        if ((await kernel.authorize({ chain, action: "records.read", resource: s.record })).effect !== "deny") out.push(s);
       }
       return out;
     },

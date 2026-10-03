@@ -34,7 +34,7 @@ const SCHEMA = [`
   CREATE TABLE memory_engine_proposals (key TEXT PRIMARY KEY, record TEXT NOT NULL, task TEXT NOT NULL, at INTEGER NOT NULL);
 `];
 
-const READ = "record.read";
+const READ = "records.read";
 
 /**
  * @param {{ kernel: any, db: any, space: string, serviceChain: any, chainFor: (person: any) => any, embed?: (texts: string[]) => Promise<number[][]>,

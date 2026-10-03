@@ -54,18 +54,18 @@ export function fakeToolSurface(fake, _chain = null) {
     const defs = [];
     for (const t of fake.types.values()) {
       const nm = plural(t.name), stageField = (t.fields || []).find((/** @type {any} */ f) => f.kind === "stage")?.name || (t.stages ? "stage" : null);
-      defs.push({ name: `${nm}.find`, description: `Find ${t.label || t.name} records, optionally by a field value.`, schema: { type: "object", properties: { where: { type: "object" } } }, risk: "read", action: "record.read", resource: res(t.name),
+      defs.push({ name: `${nm}.find`, description: `Find ${t.label || t.name} records, optionally by a field value.`, schema: { type: "object", properties: { where: { type: "object" } } }, risk: "read", action: "records.read", resource: res(t.name),
         run: async (/** @type {any} */ c, /** @type {any} */ i) => ({ ok: true, records: (await kernel.records.query(c, t.name, { filter: i.where ? { and: Object.entries(i.where).map(([field, value]) => ({ field, op: "eq", value })) } : undefined, page: { limit: 25 } })).rows }) });
-      defs.push({ name: `${nm}.update`, description: `Change fields on a ${t.label || t.name}.`, schema: { type: "object", required: ["id", "patch"], properties: { id: { type: "string" }, patch: { type: "object" } } }, risk: "write", action: "record.write", resource: res(t.name),
+      defs.push({ name: `${nm}.update`, description: `Change fields on a ${t.label || t.name}.`, schema: { type: "object", required: ["id", "patch"], properties: { id: { type: "string" }, patch: { type: "object" } } }, risk: "write", action: "records.update", resource: res(t.name),
         run: async (/** @type {any} */ c, /** @type {any} */ i) => { const r = await kernel.records.get(c, t.name, i.id); return { ok: true, record: await kernel.records.update(c, t.name, i.id, i.patch, r.version) }; } });
-      if (stageField) defs.push({ name: `${nm}.move_stage`, description: `Move a ${t.label || t.name} to another stage.`, schema: { type: "object", required: ["id", "stage"], properties: { id: { type: "string" }, stage: { type: "string" } } }, risk: "write", action: "record.write", resource: res(t.name),
+      if (stageField) defs.push({ name: `${nm}.move_stage`, description: `Move a ${t.label || t.name} to another stage.`, schema: { type: "object", required: ["id", "stage"], properties: { id: { type: "string" }, stage: { type: "string" } } }, risk: "write", action: "records.update", resource: res(t.name),
         run: async (/** @type {any} */ c, /** @type {any} */ i) => { const r = await kernel.records.get(c, t.name, i.id); return { ok: true, record: await kernel.records.update(c, t.name, i.id, { [stageField]: i.stage }, r.version) }; } });
     }
-    defs.push({ name: "tasks.assign", description: "Give a task to a person or an assistant, with an optional checker.", schema: { type: "object", required: ["title", "doer"], properties: { title: { type: "string" }, doer: { type: "object" }, checker: { type: "object" } } }, risk: "write", action: "task.request", resource: res("task"),
+    defs.push({ name: "tasks.assign", description: "Give a task to a person or an assistant, with an optional checker.", schema: { type: "object", required: ["title", "doer"], properties: { title: { type: "string" }, doer: { type: "object" }, checker: { type: "object" } } }, risk: "write", action: "tasks.request", resource: res("task"),
       run: async (/** @type {any} */ c, /** @type {any} */ i) => ({ ok: true, task: await kernel.ask.request(c, { title: i.title, doer: i.doer, ...(i.checker ? { checker: i.checker } : {}), output: i.output || { kind: "decision" }, source: "manual" }) }) });
-    defs.push({ name: "templates.draft", description: "Draft a message from a template; sealed slots stay placeholders.", schema: { type: "object", required: ["template"], properties: { template: { type: "string" }, record: { type: "string" } } }, risk: "write", action: "record.write", resource: res("draft"),
+    defs.push({ name: "templates.draft", description: "Draft a message from a template; sealed slots stay placeholders.", schema: { type: "object", required: ["template"], properties: { template: { type: "string" }, record: { type: "string" } } }, risk: "write", action: "records.update", resource: res("draft"),
       run: async (/** @type {any} */ c, /** @type {any} */ i) => ({ ok: true, draft: await kernel.records.create(c, "draft", { template: i.template, record: i.record || null, state: "draft" }) }) });
-    defs.push({ name: "flows.propose", description: "Propose a Flow for an admin to approve; nothing runs until they do.", schema: { type: "object", required: ["summary"], properties: { summary: { type: "string" } } }, risk: "write", action: "task.request", resource: res("task"),
+    defs.push({ name: "flows.propose", description: "Propose a Flow for an admin to approve; nothing runs until they do.", schema: { type: "object", required: ["summary"], properties: { summary: { type: "string" } } }, risk: "write", action: "tasks.request", resource: res("task"),
       run: async (/** @type {any} */ c, /** @type {any} */ i) => ({ ok: true, task: await kernel.ask.request(c, { title: `Flow proposal: ${i.summary}`, doer: c.hops.at(-1).actor, output: { kind: "decision" }, source: "assistant_request" }) }) });
     defs.push({ name: "mail.send", description: "Send an email. It is held for approval; you will be told when it is.", schema: { type: "object", required: ["to", "subject"], properties: { to: { type: "string" }, subject: { type: "string" } } }, risk: "outward.send", action: "email.send", resource: res("mail"), run: async () => { throw new Error("an outward act is held, never run here"); } });
     return defs;
@@ -88,7 +88,7 @@ export function fakeToolSurface(fake, _chain = null) {
       if (isOutward(d.risk) || a.effect === "ask" && a.obligations.some((/** @type {any} */ o) => o.type === "ask")) {
         const approver = String((a.obligations.find((/** @type {any} */ o) => o.type === "ask") || {}).approver || "owner");
         const summary = `${d.name}: ${String(input.subject || input.title || "held act").slice(0, 80)}`;
-        const task = await kernel.ask.request(chain, { title: summary, doer: chain.hops.at(-1).actor, output: { kind: "sent" }, source: "gate_hold" });
+        const task = await kernel.ask.request(chain, { title: summary, doer: chain.hops.at(-1).actor, output: { kind: "sent" }, source: "assistant_request" });
         return { held: { task: task.id, summary, approver } };
       }
       return d.run(chain, input);
