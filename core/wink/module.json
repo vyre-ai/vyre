@@ -135,6 +135,18 @@
         "reach": "person"
       },
       {
+        "name": "wink.storage.bridge",
+        "reach": "person"
+      },
+      {
+        "name": "wink.storage.bridge.accept",
+        "reach": "person"
+      },
+      {
+        "name": "wink.storage.bridge.drive",
+        "reach": "person"
+      },
+      {
         "name": "wink.server.handover",
         "reach": "modules"
       },

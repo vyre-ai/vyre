@@ -26,6 +26,8 @@ import { createPairing, MIGRATIONS as DEVICE_MIGRATIONS, PEER_MIGRATIONS, FLOW_K
 import { createStorageDevices, registerStorageTools, MIGRATIONS as STORAGE_MIGRATIONS } from "./storage/index.js";
 import { storageGrants } from "./storage/grants.js";
 import { attachPool } from "./storage/pool.js";
+import { createBridgeSecrets, createBridgeEndpoint, acceptDrive, bridgeServe, bridgeMakeBackend, pairFromHome, BRIDGE_TOOL, ACCEPT_TOOL, DRIVE_TOOL } from "./storage/bridge.js";
+import { createHolds } from "./storage/hold.js";
 import { seedFromKey } from "../../relay/client/join.js";
 
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
@@ -48,9 +50,10 @@ function owner(meta, what) {
  * The Wink module. `inject` is the composition root's side (the platform's createKernel passes these; every one is optional and a box without one says so plainly):
  *   directory   { memberships(identity) -> [{ space, name?, role }], label?(identity) }   who holds which role (kernelDirectory over ctx.kernel when absent)
  *   offers      { get(space, device, x), set(space, device, side, on, x) }   the ONLY store of compute offers (W-5); the kernel's grants.offers behind a port
+ *   bridge      { createBridge, backendFor, home?, roots? } the pool engine'S bridge (kernel/storage/bridge.js, devices.js): a drive reached through another device (core/wink/storage/bridge.js)
  *   pool        the storage Pool engine (kernel/storage/pool.js) and poolBackend(credentials, offer) -> backend (kernel/storage/devices.js backendFor)
  *   ports       { typist, finish, adopt, callServer }   test seams for the typing flows
- * @param {{ ports?: import("./pairing.js").Ports, directory?: import("./pairing.js").Directory, pool?: any, poolBackend?: (c: any, offer: any) => any, offers?: any, handover?: import("./pairing.js").Handover }} [inject]
+ * @param {{ ports?: import("./pairing.js").Ports, directory?: import("./pairing.js").Directory, pool?: any, poolBackend?: (c: any, offer: any) => any, bridge?: { createBridge: any, backendFor: any, home?: () => string | null, roots?: string[] }, offers?: any, handover?: import("./pairing.js").Handover }} [inject]
  * @returns {{ start(ctx: any): Promise<{ stop(): Promise<void>, peers: any, homeServe(inner: any): any }>, readonly peers: any, homeServe(inner: any): any }} */
 export function createWink(inject = {}) {
   /** @type {any} */
@@ -543,7 +546,46 @@ export function createWink(inject = {}) {
     const stopStorage = storage.startTimer();
     // The pool engine (work/sealing kernel/storage) is a library, not a module: a box that runs it passes the Pool and a backend factory (inject.pool,
     // inject.poolBackend; PORT until it is merged). Devices join the pool, usage and drains flow back, on every pairing and removal and once a minute.
-    const poolLink = inject.pool && inject.poolBackend ? attachPool({ storage, pool: inject.pool, by: owner0, makeBackend: inject.poolBackend, log: m => ctx.log(m) }) : null;
+    // A drive reached through another device (core/wink/storage/bridge.js, hold.js). The DEVICE holds one connection open to this home and the home calls back
+    // on it: the host's `serveHome({ onSession: wink.holds.onSession })` hands each admitted session to `holds`, and `linkTo(device)` is the channel the pool's
+    // backend sends frames down. The device side answers with `wink.bridgeServe` (the `serve` of `host.connect(space, { serve })`).
+    const holds = createHolds({ log: m => ctx.log(m) });
+    const bsecrets = createBridgeSecrets({ vault: storageVault });
+    const br = inject.bridge || null;
+    const noEngine = () => fail("unavailable", "This server has no storage engine to share a drive with.");
+    const endpoint = createBridgeEndpoint({ createBridge: br ? br.createBridge : () => { throw noEngine(); }, secrets: bsecrets,
+      live: offer => storage.poolOffers().some((/** @type {any} */ o) => o.id === offer && o.state !== "expired" && o.state !== "removed"), log: m => ctx.log(m) });
+    const drive = acceptDrive({ endpoint, secrets: bsecrets, home: () => (br && br.home ? br.home() : null), ...(br && br.roots ? { roots: br.roots } : {}) });
+    const serveBridge = bridgeServe({ endpoint, drive, home: () => (br && br.home ? br.home() : null) });
+    const bridgeMake = br ? bridgeMakeBackend({ backendFor: br.backendFor, secrets: bsecrets, linkTo: d => holds.linkTo(d) }) : null;
+    const makeBackend = inject.poolBackend || bridgeMake ? async (/** @type {any} */ c, /** @type {any} */ offer) => (offer.seenFromDevice && bridgeMake ? bridgeMake(c, offer) : inject.poolBackend ? inject.poolBackend(c, offer) : null) : null;
+    const frameOf = (/** @type {any} */ meta) => String((meta && meta.caller) || "");
+    ctx.tool(BRIDGE_TOOL, {
+      description: "A storage frame for a drive this device serves, from the space's home (a put, get, delete or ping of one encrypted chunk, signed with the drive's secret). Answers { status, body? }. Only the home this device is paired to may ask.",
+      input: obj({ offer: str, op: { type: "string", enum: ["put", "get", "del", "ping"] }, key: str, ts: { type: "number" }, sig: str, body: str }, ["offer", "op", "ts", "sig"]),
+      run: (/** @type {any} */ input, /** @type {any} */ meta) => endpoint.handle(frameOf(meta), input),
+    });
+    ctx.tool(ACCEPT_TOOL, {
+      description: "The device that has a drive accepts it from its home: step open answers a one-time key, step seal takes the drive's secret sealed to that key. The secret is never an input in the clear. Answers { pub } or { ok }.",
+      input: obj({ offer: str, step: { type: "string", enum: ["open", "seal"] }, kind: str, location: { type: "object" }, capacity: { type: "number" }, epk: str, box: str }, ["offer", "step", "capacity"]),
+      run: (/** @type {any} */ input, /** @type {any} */ meta) => drive(frameOf(meta), input),
+    });
+    ctx.tool(DRIVE_TOOL, {
+      description: "Use a drive that only another device can reach: the home picks the drive (an offer from wink.storage.pick) and names the device that has it. That device is asked to open, the home makes the drive's secret and hands it over sealed, and the device starts serving. Answers { ok }. The device must be connected to this home.",
+      input: obj({ offer: str, device: str }, ["offer", "device"]),
+      presence: { summary: async () => "Use a drive through another device" },
+      run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
+        owner(meta, "using a drive through another device");
+        if (!br) throw noEngine();
+        const o = /** @type {any} */ (storage.poolOffers()).find((/** @type {any} */ x) => x.id === String(input.offer));
+        if (!o) throw fail("not_found", "No such storage offer.");
+        await pairFromHome({ secrets: bsecrets, linkTo: d => holds.linkTo(d) }, { offer: o.id, device: String(input.device), kind: o.kind, location: o.location, capacity: o.storage.capacity });
+        poolSyncSoon();
+        return { ok: true };
+      },
+    });
+    const poolLink = inject.pool && makeBackend ? attachPool({ storage, pool: inject.pool, by: owner0, makeBackend, log: m => ctx.log(m) }) : null;
+    const poolSyncSoon = () => poolSync();
     const poolSync = () => { if (poolLink) poolLink.sync().catch(err => ctx.log(`wink storage: pool sync failed: ${/** @type {Error} */ (err).message}`)); };
     const offStorage = [ctx.events.on("storage.paired", poolSync), ctx.events.on("storage.removed", poolSync)];
     const poolTimer = poolLink ? setInterval(poolSync, 60_000) : null;
@@ -553,6 +595,8 @@ export function createWink(inject = {}) {
     timer.unref();
     return {
       peers: pairing.peers,
+      holds,
+      bridgeServe: serveBridge,
       homeServe: (/** @type {any} */ inner) => homeServe(pairing.peers, inner),
       async stop() {
         live = null;
@@ -568,6 +612,9 @@ export function createWink(inject = {}) {
   };
   // Non-enumerable, so the module loader sees only `start`: the home's peer admission (set after start) and its door dispatcher (see `homeServe` below).
   Object.defineProperty(mod, "peers", { enumerable: false, get() { if (!live) throw fail("unavailable", "the wink module has not started"); return live; } });
+  // The home's held connections (`wink.holds.onSession` is the host's serveHome onSession) and the device's answer to the home's storage calls (`wink.bridgeServe`).
+  Object.defineProperty(mod, "holds", { enumerable: false, get() { if (!live) throw fail("unavailable", "the wink module has not started"); return live.holds; } });
+  Object.defineProperty(mod, "bridgeServe", { enumerable: false, get() { if (!live) throw fail("unavailable", "the wink module has not started"); return live.bridgeServe; } });
   Object.defineProperty(mod, "homeServe", { enumerable: false, value: (/** @type {any} */ inner) => { if (!live) throw fail("unavailable", "the wink module has not started"); return homeServe(live, inner); } });
   return mod;
 }
