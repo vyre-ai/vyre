@@ -14,9 +14,9 @@ export async function world(o = {}) {
   const clock = { t: Date.UTC(2026, 9, 3, 12, 0, 0) };
   const which = o.kernel || process.env.FLOWS_KERNEL || "fake";
   const kernel = which === "real" ? new RealKernel({ now: () => clock.t, actions: { "email.send": { risk: "outward.send" }, "email.draft": { risk: "write" } } }) : new FakeKernel({ now: () => clock.t });
-  if (which === "real") { kernel.setRole("attorney", [ALEX, BOB]); kernel.setRole("manager", [BOB]); kernel.addActor({ kind: "agent", id: "research" }); kernel.addActor({ kind: "agent", id: "intake" }); }
+  if (which === "real") { kernel.setRole("attorney", [ALEX, BOB]); kernel.setRole("manager", [BOB]); kernel.addActor({ kind: "agent", id: "research" }); kernel.addActor({ kind: "agent", id: "intake" }); kernel.addActor({ kind: "service", id: "flows" }); }
   const emitted = [];
-  const chains = { forFlow: x => kernel.chainFor(x), forModule: x => kernel.moduleChain(x) };
+  const chains = { forFlow: x => kernel.chainFor(x), forModule: x => kernel.moduleChain(x), forDoer: x => kernel.moduleChain({ module: "flows", approver: x.approver }) };
   const sysChain = kernel.chainFor({ flow: "system", approver: { kind: "service", id: "flows", space: SPACE }, tainted: false, space: SPACE });
   const store = o.store === "records" ? new RecordsFlowStore({ kernel, chain: sysChain, space: SPACE }) : new MemoryFlowStore();
   if (o.store === "records") await store.define();
@@ -36,11 +36,12 @@ export async function world(o = {}) {
   const stageEvents = [];
   const stages = createStages({ kernel, catalog: () => cat, chain: () => kernel.moduleChain({ module: "stages", approver: ALEX }), clock: () => clock.t, hook: which === "real", emit: (type, data) => stageEvents.push({ type, data }),
     ports: { roles: (space, role) => (role === "attorney" ? [ALEX, BOB] : role === "manager" ? [BOB] : []) } });
-  kernel.onEvent(e => stages.onEvent(e), "stages");
+  /** @type {Array<() => void>} */ const offs = [];
+  offs.push(kernel.onEvent(e => stages.onEvent(e), "stages"));
   if (which === "real") kernel.hooks = { onStageEnter: e => stages.onStageEnter(e), stageTasks: (u, s) => stages.stageTasks(u, s) };
   // the kernel's own event stream feeds the runner, as the real gateway's does
-  kernel.onEvent(e => runner.onEvent(e), "flows");
-  return { which, stages, stageEvents, clock, kernel, store, runner, emitted, cat, advance: ms => { clock.t += ms; } };
+  offs.push(kernel.onEvent(e => runner.onEvent(e), "flows"));
+  return { which, offs, stopListening: () => { for (const o of offs.splice(0)) { try { if (typeof o === "function") o(); } catch { /* already off */ } } }, stages, stageEvents, clock, kernel, store, runner, emitted, cat, advance: ms => { clock.t += ms; } };
 }
 
 /** Define and approve a Flow in one go; returns its id. */
@@ -52,4 +53,7 @@ export async function install(w, flow, approver = ALEX) {
 }
 
 /** Let the event-driven runs settle. */
-export async function settle(w) { await w.kernel.pump(); await new Promise(r => setImmediate(r)); await w.runner.drain(); await new Promise(r => setImmediate(r)); await w.runner.drain(); await w.kernel.pump(); await w.stages.idle(); await w.kernel.pump(); }
+export async function settle(w) {
+  const idle = async () => { await w.kernel.pump(); if (w.kernel.idle) await w.kernel.idle(); };
+  await idle(); await new Promise(r => setImmediate(r)); await w.runner.drain(); await new Promise(r => setImmediate(r)); await w.runner.drain(); await idle(); await w.stages.idle(); await idle();
+}

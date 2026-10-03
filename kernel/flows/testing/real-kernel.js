@@ -46,6 +46,10 @@ export class RealKernel {
     /** @type {any[]} */ this.released = [];
     /** @type {{ match: (i: any) => boolean, effect: string, reason: string }[]} */ this.rules = [];
     this.denied = new Set();
+    /** @type {Map<string, any>} the `form` and `flow` a task was asked with: the kernel's task keeps neither (SHIM ask-flow-form), so the harness holds them and hands them back */ this.extras = new Map();
+    /** @type {Promise<any>[]} work a test started without awaiting it (completeTask): `idle()` waits for it */ this.pending = [];
+    /** @type {any[]} */ this._tasks = [];
+    /** @type {Map<string, Map<string, any>>} */ this._tables = new Map();
     this.modelLabel = "normal";
     /** @type {Map<string, any>} */ this.idem = new Map();
     /** @type {Map<string, any>} */ this.gatewayGrants = new Map();
@@ -94,7 +98,7 @@ export class RealKernel {
     this.authorize = async input => {
       this.authorizeCalls.push({ action: input.action, resource: input.resource, chain: input.chain });
       const rule = this.rules.find(r => r.match(input));
-      if (rule) return { effect: rule.effect, reason: rule.reason, grants: [], obligations: [], decision: "dec_" + mintUuid(), policy_version: 1 };
+      if (rule) return { effect: rule.effect, reason: rule.reason, grants: [], obligations: rule.obligations || [], ...(rule.rule ? { rule: rule.rule } : {}), decision: "dec_" + mintUuid(), policy_version: 1 };
       const approver = input.chain.hops[input.chain.hops.length - 1].actor;
       if (this.denied.has(approver.id)) return { effect: "deny", reason: "revoked", grants: [], obligations: [], decision: "dec_" + mintUuid(), policy_version: 1 };
       return this.gw.authorize(input);
@@ -129,9 +133,9 @@ export class RealKernel {
     };
     this.ask = {
       // SHIM(ask-idem, ask-flow-form): ask.request takes no idem key and refuses the `flow` and `form` keys the runner sends; the harness drops them.
-      request: idemWrap(async (chain, spec) => { const { flow: _f, form: _o, ...rest } = spec; return this.tasksApi.request(chain, rest); }),
+      request: idemWrap(async (chain, spec) => { const { flow, form, ...rest } = spec; const t = await this.tasksApi.request(chain, rest); this.extras.set(t.id, { ...(form ? { form } : {}), ...(flow ? { flow } : {}) }); return { ...t, ...(this.extras.get(t.id) || {}) }; }),
       decide: (c, id, a) => this.tasksApi.decide(c, id, a),
-      get: (c, id) => this.tasksApi.get(c, id),
+      get: async (c, id) => { const t = await this.tasksApi.get(c, id); return t ? { ...t, ...(this.extras.get(t.id) || {}) } : t; },
       start: (c, id) => this.tasksApi.start(c, id),
       complete: (c, id, e) => this.tasksApi.complete(c, id, e),
       stuck: (c, id, i) => this.tasksApi.stuck(c, id, i),
@@ -234,15 +238,19 @@ export class RealKernel {
   }
 
   /** Move a task along as its doer and (when it needs one) its checker would, with evidence made to fit the output kind. Real transitions, real presence proof. @param {string} id @param {{ outcome?: string, answer?: any, state?: string, evidence?: any }} [r] */
-  async completeTask(id, r = {}) {
+  completeTask(id, r = {}) { const p = this.#completeTask(id, r); this.pending.push(p.catch(() => {})); return p; }
+  async #completeTask(id, r = {}) {
     let t = await this.tasksApi.get(this.sysChain(), id);
     if (!t) throw new Error("no task");
-    const doer = this.as(t.doer);
+    // An assistant works a task under the chain of whoever assigned it ([assigner, assistant]): an assigner cannot borrow a broader teammate (kernel R6-9).
+    const doer = t.doer.kind === "agent" ? this.#sealed([{ actor: t.assigned_by, entered_by: "assignment" }, { actor: this.addActor(t.doer), entered_by: "assignment" }], { trust: "member", red: "internal", source_spaces: [this.space] }, `agent_${t.doer.id}`) : this.as(t.doer);
     if (t.state === "ready") t = await this.tasksApi.start(doer, id);
     if (t.state === "working") {
       const e = r.evidence || this.#evidence(t, r);
       t = await this.tasksApi.complete(doer, id, e);
     }
+    // SHIM(task-answer): the kernel keeps no answer and no outcome for a task its doer finishes with no checker, so the harness (standing in for the person's surface) holds them; ask.get hands them back.
+    if (t.state === "done" && !t.outcome) this.extras.set(id, { ...(this.extras.get(id) || {}), outcome: r.outcome === "rejected" ? "rejected" : "approved", ...(r.answer !== undefined ? { answer: r.answer } : {}) });
     if (t.state === "needs_check") t = await this.approve(id, { outcome: r.outcome === "rejected" ? "rejected" : "approved" });
     await this.pump();
     return t;
@@ -276,4 +284,29 @@ export class RealKernel {
 
   /** Every task made so far, as the kernel holds them (what the Fake exposes as .tasks). */
   async allTasks() { const out = []; for (const e of this.rawLog.read({ type: "task.created" })) out.push(await this.tasksApi.get(this.sysChain(), e.subject.split("/").pop())); return out; }
+
+  // ---- what the Fake exposed as plain fields, answered from the real kernel's own reads (so tests that look inside look at the product) ----
+
+  /** Wait for work a test started and did not await, deliver the log, and refresh the synchronous views below. */
+  async idle() {
+    for (let i = 0; i < 6; i++) { const p = this.pending.splice(0); await Promise.all(p); await this.pump(); if (!this.pending.length) break; }
+    this._tasks = (await this.allTasks()).map(t => ({ ...t, ...(this.extras.get(t.id) || {}) }));
+    const chain = this.sysChain();
+    const names = new Set(this.defines.flatMap(d => (d.add_types || []).map((/** @type {any} */ t) => t.name)));
+    const tables = new Map();
+    for (const name of names) {
+      const m = new Map();
+      try { for (let cursor; ;) { const page = await this.records.query(chain, name, { page: { limit: 200, ...(cursor ? { cursor } : {}) } }); for (const r of page.rows) m.set(r.id, r); cursor = page.next_cursor; if (!cursor) break; } } catch { /* a type the kernel does not hold */ }
+      tables.set(name, m);
+    }
+    this._tables = tables;
+  }
+  /** The tasks as of the last `idle()`. */
+  get tasks() { return this._tasks; }
+  /** The records by type as of the last `idle()`: type to Map(id to record). */
+  get tables() { return this._tables; }
+  /** The event log as envelopes (type, data, subject, ...). */
+  get log() { return this.rawLog.read({}); }
+  /** Write an event as the system. @param {string} type @param {any} data @param {any} [chain] @param {string} [subject] */
+  emit(type, data, chain, subject) { return this.logw.append(chain || this.sysChain(), { type, sv: 1, subject: subject || `vyre://${this.space}/event/${mintUuid(this.now())}`, data, red: "internal" }); }
 }
