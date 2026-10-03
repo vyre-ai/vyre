@@ -3,11 +3,12 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import { proofBytes, payloadHash, sha256b64, bindBytes } from "./wire.js";
-// The identity chain (a pure WebCrypto file, no imports of its own) is the one outside file the process reads: reviewer-2 to sign off on this import.
-import { verifyChain, checkAnswer, pinOf, verifyWith } from "../../names/worker/chain.js";
+// The identity chain verifier lives in kernel/identity (windows authors it, its hash is pinned there): the root of trust for devices.
+import { verifyChain, checkAnswer, pinOf, verifyWith } from "../identity/chain.js";
 
 export const SIGNERS = new Set(["secure_enclave", "tpm", "windows_hello", "strongbox", "webauthn_platform"]);
 export const MAX_PROOF_LIFE_MS = 120_000;
+const SPKI_ED25519 = Buffer.from("302a300506032b6570032100", "hex");
 export const NEWCOMER_MS = 24 * 3_600_000;
 
 export class Presence {
@@ -28,7 +29,7 @@ export class Presence {
       if (raw.mac !== this.custody.mac(raw.body) || anchor === "bad") return this.fail(anchor);
       const j = JSON.parse(raw.body);
       if (!anchor || anchor.v !== j.v || j.v < 1) return this.fail(anchor);
-      for (const [id, k] of Object.entries(j.keys)) this.keys.set(id, { person: k.person, signer: k.signer, attested: k.attested, spki: k.spki, device: k.device, since: k.since, founder: k.founder, key: crypto.createPublicKey({ key: Buffer.from(k.spki, "base64"), format: "der", type: "spki" }) });
+      for (const [id, k] of Object.entries(j.keys)) this.keys.set(id, { person: k.person, signer: k.signer, attested: k.attested, spki: k.spki, device: k.device, since: k.since ?? 0, founder: k.founder ?? true, key: crypto.createPublicKey({ key: Buffer.from(k.spki, "base64"), format: "der", type: "spki" }) });
       for (const p of j.ever) this.ever.add(p);
       for (const [p, x] of Object.entries(j.pins || {})) this.pins.set(p, x);
       for (const d of j.barred || []) this.barred.add(d);
@@ -59,7 +60,7 @@ export class Presence {
    * must have been started to allow unattested keys (development, and a platform where no attestation exists, said plainly in the card).
    * @returns {{ attested: boolean } | { refused: string }}
    */
-  enrol({ person, key_id, spki, signer, token, attestation, proof, ctx }) {
+  enrol({ person, key_id, spki, signer, token, attestation, proof, bind, ctx }) {
     if (!SIGNERS.has(signer)) return { refused: "bad_signer" };
     if (!ctx?.one_person || ctx.model_originated || ctx.person !== person) return { refused: "chain_not_person" };
     const t = this.tokens.get(token); this.tokens.delete(token);
@@ -72,12 +73,15 @@ export class Presence {
       const why = this.refuse(proof, { op: "presence.enrol", space: ctx.space, fields: { key_id, spki: t.spki, signer }, ctx });
       if (why) return { refused: why === "no_proof" ? "needs_presence" : why };
     }
+    // Once a chain is pinned for the person, every key is vouched for by a listed device (item R8-3): no bind, no key.
+    const pin = this.pins.get(person);
+    if (pin && !this.bindPinned(pin, person, bind, key_id, spki)) return { refused: "needs_bind" };
     let attested = false;
     if (attestation && this.verifiers[attestation.format]) {
       if (this.verifiers[attestation.format](attestation, Buffer.from(spki, "base64")) !== signer) return { refused: "bad_attestation" };
       attested = true;
     } else if (!this.allowUnattested) return { refused: "unattested" };
-    this.keys.set(key_id, { person, signer, attested, spki, since: this.now(), founder: !this.have(person), key: crypto.createPublicKey({ key: Buffer.from(spki, "base64"), format: "der", type: "spki" }) });
+    this.keys.set(key_id, { person, signer, attested, spki, device: pin ? bind.eid : undefined, since: this.now(), founder: !this.have(person), key: crypto.createPublicKey({ key: Buffer.from(spki, "base64"), format: "der", type: "spki" }) });
     this.ever.add(person); this.save();
     return { attested };
   }
@@ -95,6 +99,11 @@ export class Presence {
     if (why) return why === "no_proof" ? "needs_presence" : why;
     this.keys.delete(key_id); if (k.device) this.barred.add(k.device); this.save(); return null;
   }
+  /** Check a bind against the devices of the pinned chain, synchronously (Ed25519 through node:crypto). */
+  bindPinned(pin, person, b, key_id, spki) {
+    const raw = pin.devices?.[b?.eid]; if (!raw || this.barred.has(b.eid)) return false;
+    try { return crypto.verify(null, bindBytes(person, key_id, spki), crypto.createPublicKey({ key: Buffer.concat([SPKI_ED25519, Buffer.from(raw, "base64url")]), format: "der", type: "spki" }), Buffer.from(b.sig, "base64url")); } catch { return false; }
+  }
   young(k) { return !k.founder && this.now() - k.since < NEWCOMER_MS; }
   /**
    * R-8, the way back. Verify a person's identity chain here (the process does not take the kernel's word): it must be that person's own chain, must
@@ -107,7 +116,7 @@ export class Presence {
     if (st.id !== person) throw Object.assign(new Error("other_id"), { code: "bad_chain" });
     const a = await checkAnswer(this.pins.get(person), ops);
     if (!a.ok) throw Object.assign(new Error(a.code), { code: a.code === "fork" ? "chain_fork" : "chain_stale" });
-    return { st, pin: pinOf(st) };
+    return { st, pin: { ...pinOf(st), devices: Object.fromEntries(st.entries.filter(e => e.kind === "device").map(e => [e.eid, e.pub])) } };
   }
   async bindOk(st, person, b, key_id, spki) {
     const e = st.entries.find(x => x.eid === b?.eid && x.kind === "device");
@@ -118,8 +127,9 @@ export class Presence {
     if (!ctx?.one_person || ctx.model_originated || ctx.person !== person) return { refused: "chain_not_person" };
     const { st, pin } = await this.evidence(person, ops);
     for (const b of binds) { const k = this.keys.get(b?.key_id); if (k && k.person === person && !k.device && await this.bindOk(st, person, b, b.key_id, k.spki)) k.device = b.eid; }
-    const pruned = [...this.keys].filter(([, k]) => k.person === person && k.device && !st.entries.some(e => e.eid === k.device)).map(([id]) => id);
-    for (const id of pruned) this.keys.delete(id);
+    // A key the list no longer vouches for goes, and so does a key nobody ever bound (it would outlive its device's removal); their devices are barred.
+    const pruned = [...this.keys].filter(([, k]) => k.person === person && !(k.device && st.entries.some(e => e.eid === k.device))).map(([id]) => id);
+    for (const id of pruned) { const k = this.keys.get(id); if (k.device) this.barred.add(k.device); this.keys.delete(id); }
     this.pins.set(person, pin); this.save();
     return { pinned: pin.seq, pruned };
   }
@@ -144,7 +154,7 @@ export class Presence {
     const { st, pin } = await this.evidence(person, ops);
     if (!await this.bindOk(st, person, bind, key_id, spki)) return { refused: "bad_bind" };
     this.keys.set(key_id, { person, signer, attested, spki, device: bind.eid, since: this.now(), founder: false, key: crypto.createPublicKey({ key: Buffer.from(spki, "base64"), format: "der", type: "spki" }) });
-    this.pins.set(person, pin); this.recovery = false; this.save();
+    this.pins.set(person, pin); this.recovery = [...this.ever].some(p => !this.have(p)); this.save();
     return { attested, device: bind.eid };
   }
   /** @returns {string|null} the reason a proof is refused, or null when it stands. */

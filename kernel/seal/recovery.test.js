@@ -7,9 +7,10 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { startSealer } from "./client.js";
-import { bindBytes } from "./wire.js";
+import { bindBytes, chainCtx, sha256b64 } from "./wire.js";
+import { Presence } from "./proof.js";
 import { person, signer, tmp } from "./testing.js";
-import { makeGenesis, makeOp, verifyChain, eidOf, b64u } from "../../names/worker/chain.js";
+import { makeGenesis, makeOp, verifyChain, eidOf, b64u } from "../identity/chain.js";
 
 const code = p => p.then(() => null, e => e.code);
 const edKey = async () => {
@@ -115,4 +116,35 @@ test("R-8: a process whose key list was lost recovers each person from the chain
   assert.equal((await s2.health()).presence, "ok");
   assert.equal((await reveal(s2, I.id, p2)).value, "123-45-6789");
   const z = signer("per_zoe"); assert.equal(await code(enrolled(s2, "per_zoe", z)), null, "an unrelated person's first device is still ordinary");
+});
+
+test("R-8 item 3: once a chain is pinned every key needs a bind, and a key nobody bound does not outlive its device", async t => {
+  const { s } = await start(t), I = await identity(), p1 = signer(I.id), ch = person(I.id);
+  await enrolled(s, I.id, p1);
+  const p2 = signer(I.id); await enrolled(s, I.id, p2, p1); // before any pin: allowed, but unbound
+  assert.deepEqual((await s.sync({ chain: ch, person: I.id, ops: I.ops, binds: [bind(I.d1, I.id, p1)] })).pruned, [p2.key_id], "the unbound key is dropped at the first sync");
+  // Pinned now: a further key needs a bind from a listed device.
+  const p3 = signer(I.id), e3 = p3.enrolment, f3 = { key_id: e3.key_id, spki: sha256b64(e3.spki), signer: e3.signer };
+  const attempt = async b => s.enrol({ chain: ch, person: I.id, ...e3, token: (await s.begin({ chain: ch, person: I.id, key_id: e3.key_id, spki: e3.spki })).token, proof: p1.proof(ch, "presence.enrol", f3), bind: b });
+  assert.equal(await code(attempt(undefined)), "needs_bind");
+  assert.equal(await code(attempt({ eid: (await edKey()).eid, key_id: e3.key_id, sig: "AAAA" })), "needs_bind", "a device the list does not hold cannot vouch");
+  assert.equal((await attempt(bind(I.d1, I.id, p3))).enrolled, true);
+  // The device is removed from the chain: both keys it vouched for go, and it is barred.
+  const d2 = await edKey(); await I.add(I.rc, { type: "add", entry: d2.entry("device") }, I.t0 + 3600_000); await I.add(I.rc, { type: "remove", target: I.d1.eid }, I.t0 + 7200_000);
+  assert.deepEqual((await s.sync({ chain: ch, person: I.id, ops: I.ops })).pruned.sort(), [p1.key_id, p3.key_id].sort());
+  const p4 = signer(I.id); assert.equal(await code(s.recover(await recoverArgs(s, I.id, p4, I.ops, bind(I.d1, I.id, p4)))), "bad_bind");
+  assert.deepEqual((await s.health()).needs_recovery, [I.id]);
+});
+
+test("R-8 item 4: a key saved before the age field existed counts as the oldest, so a newcomer cannot remove it", async t => {
+  const dir = tmp("legacy"); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const legacy = signer("per_alex"), file = path.join(dir, "presence.json");
+  const custody = { mac: x => "m" + crypto.createHash("sha256").update(x).digest("hex"), anchorRead: () => ({ v: 1, ever: ["per_alex"] }), anchorWrite: () => {} };
+  const body = JSON.stringify({ v: 1, keys: { [legacy.key_id]: { person: "per_alex", signer: "secure_enclave", attested: false, spki: legacy.enrolment.spki } }, ever: ["per_alex"] });
+  fs.writeFileSync(file, JSON.stringify({ body, mac: custody.mac(body) }));
+  const p = new Presence(Date.now, { allowUnattested: true, file, custody }), ch = person("per_alex"), ctx = chainCtx(ch);
+  assert.equal(p.recovery, false); assert.equal(p.keys.get(legacy.key_id).founder, true); assert.equal(p.keys.get(legacy.key_id).since, 0);
+  const n = signer("per_alex"), tk = p.begin({ person: "per_alex", key_id: n.key_id, spki: n.enrolment.spki }).token;
+  assert.deepEqual(p.enrol({ person: "per_alex", ...n.enrolment, token: tk, proof: legacy.proof(ch, "presence.enrol", { key_id: n.key_id, spki: sha256b64(n.enrolment.spki), signer: n.enrolment.signer }), ctx }), { attested: false });
+  assert.equal(p.revoke(legacy.key_id, ctx, n.proof(ch, "presence.revoke", { key_id: legacy.key_id })), "newcomer");
 });

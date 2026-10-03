@@ -172,7 +172,7 @@ export class Sealer {
       case "lease.revoke": { const c = this.ctxOf(req.ctx); need(c.one_person && !c.model_originated, "human_only"); return this.leases.revoke(req); }
       case "lease.reinstate": { const c = this.ctxOf(req.ctx); const why = this.presence.refuse(req.proof, { op: "lease.reinstate", space: c.space, fields: { device: req.device }, ctx: c }); if (why) throw err(why === "no_proof" ? "needs_presence" : why); return this.leases.reinstate({ space: c.space, device: req.device }); }
       case "lease.check": this.ctxOf(req.ctx); return this.leases.check({ id: req.lease });
-      case "health": return { ok: true, pid: process.pid, unattested_allowed: this.allowUnattested, presence: this.presence.recovery ? "recovery" : "ok" };
+      case "health": return { ok: true, pid: process.pid, unattested_allowed: this.allowUnattested, presence: this.presence.recovery ? "recovery" : "ok", needs_recovery: [...this.presence.ever].filter(p => !this.presence.have(p)) };
       default: throw err("bad_op");
     }
   }

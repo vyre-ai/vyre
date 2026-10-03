@@ -28,7 +28,7 @@ test("kernel/seal and kernel/door import only node built-ins and each other", ()
   for (const f of [...nonTest("seal"), ...nonTest("door")]) for (const m of fs.readFileSync(path.join(KERNEL, f), "utf8").matchAll(/from "([^"]+)"/g)) {
     const spec = m[1];
     if (spec.startsWith("node:")) continue;
-    if (spec === "../../names/worker/chain.js") continue; // the identity chain: pure WebCrypto, reviewer-2 to sign off (R-8)
+    if (spec === "../identity/chain.js") continue; // the identity chain verifier: pure WebCrypto, hash pinned in kernel/identity (R-8)
     assert.ok(spec.startsWith("./") || spec.startsWith("../seal/") || spec.startsWith("../door/"), `${f} imports ${spec}`);
   }
 });
