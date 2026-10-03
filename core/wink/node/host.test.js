@@ -312,13 +312,15 @@ test("host.pathOf: a call over the direct door reports wink", async t => {
   link.close();
 });
 
-test("host D-1: a storage device's session may call only wink.storage.* on the home, on the direct door and on the relay door; nothing else reaches the registry", async t => {
+test("host D-1 and D-1b: a storage device's session may call only the exact bridge tools on the home, on the direct door and on the relay door; nothing else reaches the registry", async t => {
   const w = await world(t, { listed: false });
   w.entries.set("srv1", { eid: "srv1", kind: "device", deviceKind: "storage", pub: w.key.pub });
   const link = w.server.connect("harlow");
   assert.equal((await link.call("wink.storage.bridge", { x: 1 })).caller, "device:srv1", "a storage call is served");
   assert.equal(link.status().path, "direct");
-  for (const tool of ["about.text", "identity.sign", "wink.server.handover", "wink.pair.server", "wink.storagex.bridge", "chat.send"]) {
+  for (const tool of ["about.text", "identity.sign", "wink.server.handover", "wink.pair.server", "wink.storagex.bridge", "chat.send",
+    // D-1b: the rest of the wink.storage.* namespace is a person's
+    "wink.storage.remove", "wink.storage.pick", "wink.storage.pair", "wink.storage.card", "wink.storage.offers", "wink.storage.status", "wink.storage.discover", "wink.storage.bridge.drive", "wink.storage.bridge.x", "wink.storage.bridge/../remove"]) {
     await assert.rejects(link.call(tool, {}, { timeoutMs: 1500 }), e => e.code === "denied", `${tool} is refused for a storage device`);
   }
   assert.deepEqual(w.calls.map(c => c.tool), ["wink.storage.bridge"], "only the storage call reached the registry");
@@ -330,6 +332,7 @@ test("host D-1: a storage device's session may call only wink.storage.* on the h
   assert.equal((await c.call("wink.storage.bridge", {})).caller, "device:srv1");
   await assert.rejects(c.call("about.text", {}), e => e.code === "denied");
   await assert.rejects(c.call("chat.send", {}), e => e.code === "denied");
+  for (const tool of ["wink.storage.remove", "wink.storage.pick", "wink.storage.pair", "wink.storage.bridge.drive"]) await assert.rejects(c.call(tool, {}), e => e.code === "denied", `${tool} is refused on the relay door too`);
   assert.deepEqual(w.calls.map(c => c.tool), ["wink.storage.bridge", "wink.storage.bridge"]);
   // the kind comes from the entry on every call: the same session, a person's device entry, may call anything
   w.entries.set("srv1", { eid: "srv1", kind: "device", pub: w.key.pub });
@@ -352,4 +355,23 @@ test("host P-1: a link that is up creates no recurring timer under 60 s, and a c
     assert.equal((await link.call("about.text", { again: true })).caller, "device:srv1");
     link.close();
   } finally { globalThis.setInterval = realSet; }
+});
+
+test("host.status and host.whois: the home sees an admitted peer by id and by address, the server sees its link, and a closed peer is gone", async t => {
+  const w = await world(t);
+  const link = w.server.connect("harlow");
+  await link.call("about.text", {});
+  const hs = w.home.status();
+  assert.deepEqual([hs[0].id, hs[0].node, hs[0].door], ["harlow", "up", "listening"]);
+  assert.deepEqual(hs[0].peers.map(p => [p.eid, p.via]), [["srv1", "direct"]]);
+  const who = w.home.whois({ eid: "srv1" });
+  assert.deepEqual([who?.eid, who?.space, who?.via], ["srv1", "harlow", "direct"]);
+  if (who?.addr) assert.equal(w.home.whois({ addr: `${who.addr}:12345` })?.eid, "srv1", "a port on the address is ignored");
+  assert.equal(w.home.whois({ eid: "nobody" }), null);
+  assert.equal(w.home.whois({}), null);
+  const ss = w.server.status();
+  assert.equal(ss[0].links.length, 1);
+  assert.equal(ss[0].links[0].path, "direct");
+  link.close();
+  assert.equal(w.server.status()[0].links.length, 0, "a closed link is not listed");
 });
