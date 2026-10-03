@@ -91,19 +91,32 @@ test("leases: a credential is used by route only from a session with a live leas
   await r.g.create(r.owner, gi, { presence: proof("grants.create", gi, `vyre://${SPACE}/grant/new`) });
   const lease = await r.k.gateway.leases.issue(r.bob, { device: "dev_laptop", device_key: "KEY_LAPTOP" });
   const L = r.k.gateway.leases;
-  await assert.rejects(() => L.use(r.bob, { ref: "gh", session: "s1", route: "api.github.com" }), { code: "no_lease" }, "no session bound to a lease");
-  L.bind("s1", lease.id);
-  const v = await L.use(r.bob, { ref: "gh", session: "s1", route: "api.github.com" });
+  const req = { session: "s1", route: "api.github.com", method: "GET", path: "/repos/x/y" };
+  await assert.rejects(() => L.use(r.bob, req), { code: "not_found" }, "no definition bound");
+  L.bind("s1", lease.id, { routes: [{ route: "api.github.com", ref: "gh", paths: ["/repos/*"] }] });
+  const v = await L.use(r.bob, req);
   assert.deepEqual(v, { secret: "v" });
-  assert.deepEqual(r.released, [{ space: SPACE, ref: "gh", route: "api.github.com" }]);
+  assert.deepEqual(r.released, [{ space: SPACE, ref: "gh", route: "api.github.com", method: "GET", path: "/repos/x/y" }]);
   const ev = r.k.log.read({ type: "vault.used" });
   assert.equal(ev.length, 1);
   assert.ok(!JSON.stringify(ev).includes("secret"));
+  // F-1: the runner cannot name a credential, however many it may read; only what the session's definition maps for this host, method and path is released
+  r.released.length = 0;
+  assert.deepEqual(await L.use(r.bob, { ...req, ref: "other" }), { secret: "v" }, "a ref the runner sends is ignored");
+  assert.equal(r.released[0].ref, "gh");
+  for (const bad of [{ route: "evil.example" }, { path: "/user/keys" }, { path: "/repos/../user" }, { path: "/repos/%2e%2e/user" }, { path: "repos/x" }, { method: "HEAD", path: "/other" }, { session: "s2" }]) {
+    await assert.rejects(() => L.use(r.bob, { ...req, ...bad }), { code: "not_found" }, JSON.stringify(bad));
+  }
+  assert.equal(r.released.length, 1, "nothing mapped nothing released");
+  // a write method is an outward call, not a read: even where the definition names it, the outward check asks and nothing is released
+  L.bind("s1", lease.id, { routes: [{ route: "api.github.com", ref: "gh", methods: ["GET", "POST"], paths: ["/repos/*"] }] });
+  r.released.length = 0;
+  await assert.rejects(() => L.use(r.bob, { ...req, method: "POST", path: "/repos/x/refunds" }), e => typeof e.code === "string");
+  assert.equal(r.released.length, 0, "a POST was not released on a read grant");
   // after the lease is gone the session can no longer use it
   r.sealer.st.live.clear();
-  await assert.rejects(() => L.use(r.bob, { ref: "gh", session: "s1", route: "api.github.com" }), { code: "no_lease" });
+  await assert.rejects(() => L.use(r.bob, req), { code: "no_lease" });
 });
-
 
 test("L-5: another member naming the same device id cannot revoke, refuse-and-revoke or reinstate this member's lease", async () => {
   const r = await rig();

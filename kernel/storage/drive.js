@@ -15,21 +15,26 @@ const MAX_PATH = 1024;
 export class Drive {
   /** @param {import("./pool.js").Pool} pool @param {{ now?: () => number }} [o] */
   constructor(pool, { now = pool.now } = {}) {
-    this.pool = pool; this.now = now; this.file = path.join(pool.dir, "drive.json");
+    this.pool = pool; this.chain = new Map(); this.now = now; this.file = path.join(pool.dir, "drive.json");
     this.ix = fs.existsSync(this.file) ? JSON.parse(fs.readFileSync(this.file, "utf8")) : { v: 1, files: {}, backups: {} };
   }
   save() { const t = `${this.file}.tmp`; fs.writeFileSync(t, JSON.stringify(this.ix), { mode: 0o600 }); fs.renameSync(t, this.file); }
   path(p) { const s = String(p ?? ""); if (s.length > MAX_PATH) throw err("bad_path"); try { return safePath(s); } catch { throw err("bad_path"); } }
+  /** One change to a path at a time. */
+  turn(k, fn) { const prev = this.chain.get(k) ?? Promise.resolve(), run = prev.then(fn, fn), tail = run.catch(() => {}); this.chain.set(k, tail); return run.finally(() => { if (this.chain.get(k) === tail) this.chain.delete(k); }); }
   head(f) { return f.versions.at(-1); }
 
   /** @returns {Promise<{ version: number, conflict: boolean, atRisk: boolean }>} `base` is the version the writer started from (omit for a new file). */
   async put(p, bytes, { by = null, base = null, meter = null } = {}) {
-    const k = this.path(p), f = (this.ix.files[k] ??= { versions: [] }), h = f.versions.at(-1);
-    const conflict = !!h && base !== h.ver, r = await this.pool.put(bytes, { class: "working", meter }), ver = (h?.ver ?? 0) + 1;
-    f.versions.push({ ver, id: r.id, size: r.size, at: this.now(), by, base, ...(conflict ? { conflict: true } : {}) });
-    // The version before is no longer the newest: it becomes cold. A conflicting write leaves the head's own class alone only until a person picks, so both stay working.
-    if (h && !h.deleted && !conflict) await this.pool.reclass(h.id, "cold");
-    this.save(); return { version: ver, conflict, atRisk: r.atRisk };
+    const k = this.path(p), r = await this.pool.put(bytes, { class: "working", meter });
+    // The head, the version number and the conflict are decided inside the path's turn, after the bytes are stored (S-1): two writers at once get two versions.
+    return this.turn(k, async () => {
+      const f = (this.ix.files[k] ??= { versions: [] }), h = f.versions.at(-1), conflict = !!h && base !== h.ver, ver = (h?.ver ?? 0) + 1;
+      f.versions.push({ ver, id: r.id, size: r.size, at: this.now(), by, base, ...(conflict ? { conflict: true } : {}) });
+      // The version before is no longer the newest: it becomes cold. A conflicting write leaves the head's own class alone only until a person picks, so both stay working.
+      if (h && !h.deleted && !conflict) await this.pool.reclass(h.id, "cold");
+      this.save(); return { version: ver, conflict, atRisk: r.atRisk };
+    });
   }
   /** The head, or a named version. A deleted file is not found unless a version is asked for. */
   async get(p, { version = null } = {}) {
@@ -45,19 +50,25 @@ export class Drive {
     return Object.entries(this.ix.files).filter(([k, f]) => k.startsWith(pre) && !this.head(f).deleted).map(([k, f]) => ({ path: k, size: this.head(f).size, version: this.head(f).ver, at: this.head(f).at, conflicts: f.versions.filter(v => v.conflict && !v.resolved).length })).sort((a, b) => (a.path < b.path ? -1 : 1));
   }
   history(p) { const f = this.ix.files[this.path(p)]; if (!f) throw err("not_found"); return f.versions.map(({ ver, size, at, by, base, deleted, conflict }) => ({ ver, size, at, by, base, deleted: !!deleted, conflict: !!conflict })); }
-  async delete(p, { by = null } = {}) {
-    const f = this.ix.files[this.path(p)]; if (!f || this.head(f).deleted) throw err("not_found");
-    const h = this.head(f); f.versions.push({ ver: h.ver + 1, id: null, size: 0, at: this.now(), by, base: h.ver, deleted: true });
-    await this.pool.reclass(h.id, "cold"); this.save(); return { version: h.ver + 1 };
+  delete(p, { by = null } = {}) {
+    const k = this.path(p);
+    return this.turn(k, async () => {
+      const f = this.ix.files[k]; if (!f || this.head(f).deleted) throw err("not_found");
+      const h = this.head(f); f.versions.push({ ver: h.ver + 1, id: null, size: 0, at: this.now(), by, base: h.ver, deleted: true });
+      await this.pool.reclass(h.id, "cold"); this.save(); return { version: h.ver + 1 };
+    });
   }
   /** Make an older version the newest again (a restore is a new version, so nothing is lost), which also settles a conflict. */
-  async restore(p, version, { by = null } = {}) {
-    const k = this.path(p), f = this.ix.files[k], v = f?.versions.find(x => x.ver === version); if (!v || v.deleted) throw err("not_found");
-    const h = this.head(f), r = await this.pool.put(await this.pool.get(v.id), { class: "working" }), ver = h.ver + 1;
-    f.versions.push({ ver, id: r.id, size: r.size, at: this.now(), by, base: h.ver, restored_from: version });
-    for (const x of f.versions) if (x.conflict) x.resolved = true;
-    for (const x of f.versions) if (x.id && x.ver !== ver && !x.deleted && x.class !== "cold") { x.class = "cold"; await this.pool.reclass(x.id, "cold"); }
-    this.save(); return { version: ver };
+  restore(p, version, { by = null } = {}) {
+    const k = this.path(p);
+    return this.turn(k, async () => {
+      const f = this.ix.files[k], v = f?.versions.find(x => x.ver === version); if (!v || v.deleted) throw err("not_found");
+      const h = this.head(f), r = await this.pool.put(await this.pool.get(v.id), { class: "working" }), ver = h.ver + 1;
+      f.versions.push({ ver, id: r.id, size: r.size, at: this.now(), by, base: h.ver, restored_from: version });
+      for (const x of f.versions) if (x.conflict) x.resolved = true;
+      for (const x of f.versions) if (x.id && x.ver !== ver && !x.deleted && x.class !== "cold") { x.class = "cold"; await this.pool.reclass(x.id, "cold"); }
+      this.save(); return { version: ver };
+    });
   }
   /** Let old versions go: keep the newest `keep` of each file and anything younger than `olderThanMs`. Returns bytes freed. */
   async prune({ keep = 10, olderThanMs = 30 * 86_400_000 } = {}) {

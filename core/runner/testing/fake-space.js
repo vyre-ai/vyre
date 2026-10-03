@@ -8,14 +8,14 @@ export function fakeSpace(o = {}) {
     revoked: false, offline: false, leases: 0, renews: 0, uses: [],
     transcript: new Map(), files: new Map(), checkpoints: new Map(),
     key: o.key || crypto.randomBytes(32),
-    secrets: o.secrets || { "vault://provider": "tk-REAL-PROVIDER-SECRET-0001", "vault://gmail": "ya29.REAL-GMAIL-SECRET" },
+    secrets: o.secrets || { "/provider": "tk-REAL-PROVIDER-SECRET-0001", "/space": "ya29.REAL-GMAIL-SECRET", "/pay": "ya29.REAL-GMAIL-SECRET" },
     ttlMs: o.ttlMs || 3_600_000,
   };
   const guard = () => { if (st.offline) throw new Error("offline"); };
   const vault = {
     async lease() { guard(); if (st.revoked) return { revoked: true }; st.leases++; return { id: "lease-" + st.leases, key: st.key.toString("base64"), ttlMs: st.ttlMs }; },
     async renew() { guard(); st.renews++; if (st.revoked) return { revoked: true }; return { ttlMs: st.ttlMs }; },
-    async credential({ ref, session, route, lease, method, path }) { guard(); if (!lease) throw new Error("no_lease"); if (method && method !== "GET" && /gmail|stripe/.test(ref)) throw new Error("held_for_approval"); if (st.revoked) throw new Error("revoked"); st.uses.push({ ref, session, route, method, path }); const v = st.secrets[ref]; if (!v) throw new Error("no such credential"); return v; },
+    async credential({ session, route, lease, method, path }) { guard(); if (!lease) throw new Error("no_lease"); if (method && method !== "GET" && method !== "HEAD" && route !== "/provider") throw new Error("held_for_approval"); if (st.revoked) throw new Error("revoked"); st.uses.push({ session, route, method, path }); const v = st.secrets[route]; if (!v) throw new Error("no such credential"); return v; },
   };
   const sync = {
     async appendTranscript(s, entries) { guard(); const t = st.transcript.get(s) || []; for (const e of entries) if (!t.some(x => x.seq === e.seq)) t.push(e); st.transcript.set(s, t); return { acked: t.length ? Math.max(...t.map(x => x.seq)) : 0 }; },

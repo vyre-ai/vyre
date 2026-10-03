@@ -26,7 +26,7 @@ test("runner module: loads with its tools and says plainly that it is not connec
   const tools = s.d.registry.modules.get("runner").manifest.does.tools.map(x => x.name);
   assert.deepEqual(tools.sort(), ["runner.lock", "runner.move", "runner.place", "runner.start", "runner.status", "runner.stop"]);
   const visible = s.d.registry.listTools().map(x => x.name).filter(n => n.startsWith("runner."));
-  assert.deepEqual(visible.sort(), ["runner.lock", "runner.move", "runner.place", "runner.status"], "start and stop are for other modules only; revoke is no tool at all");
+  assert.deepEqual(visible.sort(), ["runner.lock", "runner.move", "runner.place", "runner.start", "runner.status", "runner.stop"], "start and stop are the person's; revoke is no tool at all");
   const st = await s.call("runner.status");
   assert.equal(st.data.ready, false);
   assert.match(st.data.why, /not connected|installed|blocks|missing/);
@@ -41,4 +41,33 @@ test("runner module: place answers from the grants and the server's room", async
   const r = await s.call("runner.place", { space: "harlow" });
   assert.equal(r.data.where, "server");
   assert.match(r.data.reason, /has not allowed members/);
+});
+
+test("runner module: a module cannot start or stop a session, and status shows no host path", async t => {
+  const sp = fakeSpace();
+  const s = await boot(t, { device: "dev_kit", vault: sp.vault, sync: sp.sync, grants: () => ({ spaceAllows: true, memberAccepts: true }), spec: async () => ({}) });
+  for (const tool of ["runner.start", "runner.stop"]) {
+    const r = await s.d.registry.call(tool, { space: "harlow", session: "s1" }, "module:rogue");
+    assert.ok(!r.data, `${tool} refused for a module caller`);
+  }
+  const st = await s.call("runner.status");
+  assert.ok(!JSON.stringify(st).includes("spaces/"), "no host path in status");
+});
+
+test("runner module: ports without a device key are refused", async t => {
+  const sp = fakeSpace();
+  const s = await boot(t, { vault: sp.vault, sync: sp.sync, grants: () => ({ spaceAllows: true, memberAccepts: true }) });
+  const r = await s.call("runner.place", { space: "harlow" });
+  assert.match(JSON.stringify(r), /device key/);
+});
+
+test("runner module: an assistant's claim on the CLI is refused for start, stop, lock and move, and the person's own CLI is not", async t => {
+  const sp = fakeSpace();
+  const s = await boot(t, { device: "dev_kit", vault: sp.vault, sync: sp.sync, grants: () => ({ spaceAllows: true, memberAccepts: true }), spec: async () => ({}) });
+  for (const [tool, input] of [["runner.start", { space: "harlow", session: "s1" }], ["runner.stop", { space: "harlow", session: "s1" }], ["runner.lock", { space: "harlow" }], ["runner.move", { space: "harlow", session: "s1" }]]) {
+    const agent = await s.d.registry.call(tool, input, "cli:agent:kit");
+    assert.match(JSON.stringify(agent), /not the person|denied/, `${tool} refused for an assistant's CLI claim`);
+    const own = await s.d.registry.call(tool, input, "cli");
+    assert.ok(!/not the person/.test(JSON.stringify(own)), `${tool} is not refused for the person's own CLI`);
+  }
 });

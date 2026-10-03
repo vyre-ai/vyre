@@ -211,6 +211,7 @@ export class Sealer {
       // The kernel's own channel only: this process's pipes belong to the kernel, and a call that says a model started it is refused. The key never leaves.
       case "kernel.mac": { need(!req.ctx?.model_originated && /^[a-z0-9_.-]{1,40}$/.test(req.purpose) && typeof req.data === "string" && req.data.length <= 2_000_000, "bad_input"); return { mac: this.store.kernelMac(req.purpose, req.data) }; }
       case "kernel.verify": { need(!req.ctx?.model_originated && /^[a-z0-9_.-]{1,40}$/.test(req.purpose) && typeof req.data === "string" && req.data.length <= 2_000_000 && typeof req.mac === "string", "bad_input"); const a = Buffer.from(this.store.kernelMac(req.purpose, req.data)), b = Buffer.from(req.mac); return { ok: a.length === b.length && crypto.timingSafeEqual(a, b) }; }
+      case "pool.key": { need(!req.ctx?.model_originated && /^(per|spc)_[a-z0-9]{8,40}$/.test(req.owner), "bad_input"); return { key: this.store.poolKey(req.owner).toString("base64") }; }
       case "health": return { ok: true, pid: process.pid, unattested_allowed: this.allowUnattested, presence: this.presence.recovery ? "recovery" : "ok", needs_recovery: [...this.presence.ever].filter(p => !this.presence.have(p)) };
       default: throw err("bad_op");
     }

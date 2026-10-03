@@ -5,15 +5,18 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { bootKernel } from "./boot.js";
 import { startSealer } from "./seal/client.js";
 import { fileKernelKey } from "./keys.js";
+import { createSpaceKernels } from "./spaces/index.js";
 import { KernelError } from "./core/errors.js";
 import { createSupervisor } from "./modules/supervisor.js";
 import { createModuleHost } from "./modules/host.js";
 import { createEgress } from "./modules/egress.js";
 import { createFirstPartyCheck, acceptMinimums } from "./modules/firstparty.js";
 import { RELEASE_KEY } from "../lib/release-sig.js";
+import { devSwitch } from "./devbuild.js";
 
 const B32 = "abcdefghijklmnopqrstuvwxyz234567";
 const rand32 = (/** @type {number} */ n) => Array.from(crypto.randomBytes(n), b => B32[b & 31]).join("");
@@ -42,7 +45,9 @@ export async function bootHomeKernel(cfg) {
   // host the kernel does not start (a developer may opt into a file key with VYRE_KERNEL_FILE_KEY=1).
   const log = cfg.log || (() => {});
   let sealer = cfg.sealer, ownSealer = false, key, legacyKeys = [];
-  if (!sealer && cfg.fileKey !== true && process.env.VYRE_KERNEL_FILE_KEY !== "1") {
+  const devFileKey = cfg.fileKey === true || devSwitch(process.env.VYRE_KERNEL_FILE_KEY);
+  if (process.env.VYRE_KERNEL_FILE_KEY === "1" && !devFileKey) log("kernel: VYRE_KERNEL_FILE_KEY ignored (this is a packaged daemon)");
+  if (!sealer && !devFileKey) {
     try { sealer = startSealer({ dir: path.join(id.dir, "seal"), dev: process.env.VYRE_SEAL_DEV === "1", ...(process.env.VYRE_SEAL_PROFILE ? { profile: process.env.VYRE_SEAL_PROFILE } : {}) }); ownSealer = true; await sealer.health(); }
     catch (e) { if (sealer) await sealer.close().catch(() => {}); throw new KernelError("key_custody", "the kernel will not start here: its key must live in the sealing process, and the sealing process cannot run safely on this machine (a server with its own OS user, or the OS keystore)", String(e && /** @type {any} */ (e).code || e)); }
   }
@@ -59,10 +64,20 @@ export async function bootHomeKernel(cfg) {
   // not signed (development) must say so with VYRE_KERNEL_PATH_RULE=1, which is loud and never the default. A production kernel without a signature check does not start.
   /** @type {((dir: string) => boolean) | null} */ let firstPartyCheck = cfg.firstPartyCheck || null;
   if (!firstPartyCheck) {
-    if (cfg.pathRule === true || process.env.VYRE_KERNEL_PATH_RULE === "1") (cfg.log || (() => {}))("kernel: DEVELOPER path rule for first-party modules (VYRE_KERNEL_PATH_RULE=1); never the default, never for a real home");
+    if (process.env.VYRE_KERNEL_PATH_RULE === "1" && !devSwitch("1")) log("kernel: VYRE_KERNEL_PATH_RULE ignored (this is a packaged daemon)");
+    if (cfg.pathRule === true || devSwitch(process.env.VYRE_KERNEL_PATH_RULE)) (cfg.log || (() => {}))("kernel: DEVELOPER path rule for first-party modules (VYRE_KERNEL_PATH_RULE=1); never the default, never for a real home");
     else {
-      let minimums = null;
-      try { const doc = JSON.parse(fs.readFileSync(path.join(id.dir, "minimums.json"), "utf8")); const last = Number(fs.readFileSync(path.join(id.dir, "minimums.counter"), "utf8")) || 0; const d = acceptMinimums(doc, cfg.releaseKey || RELEASE_KEY, last); if (d) { minimums = d.minimums; fs.writeFileSync(path.join(id.dir, "minimums.counter"), String(d.counter), { mode: 0o600 }); } } catch { /* no document: first party needs a signature only */ }
+      // M-1: the highest counter accepted, and the minimums that came with it, live in the kernel's own sealed log (`kernel.minimums` events), not in a file the user can
+      // write. A missing, unsigned, older or unreadable document never relaxes: the last accepted minimums stay in force. A fresh home (nothing accepted yet) needs a signature only.
+      const note = /** @type {any} */ ({ type: "kernel.minimums", sv: 1, subject: `vyre://${id.space}/kernel/minimums`, vis: "owner", red: "internal" });
+      const seen = k.log.read({ type: "kernel.minimums" }).map((/** @type {any} */ e) => e.data).filter((/** @type {any} */ d) => d && Number.isInteger(d.counter) && d.minimums && typeof d.minimums === "object").sort((/** @type {any} */ x, /** @type {any} */ y) => x.counter - y.counter).pop() || null;
+      let minimums = seen ? seen.minimums : null;
+      try {
+        const doc = JSON.parse(fs.readFileSync(path.join(id.dir, "minimums.json"), "utf8"));
+        const d = acceptMinimums(doc, cfg.releaseKey || RELEASE_KEY, seen ? seen.counter : 0);
+        if (d) { minimums = d.minimums; if (!seen || d.counter > seen.counter) await k.log.append(k.chains.fromFacts({ kind: "module", module: "home", first_party: true }), { ...note, data: { counter: d.counter, minimums: d.minimums } }); }
+        else if (seen) log("kernel: the minimum-versions document is older than one already accepted, or does not verify; the last accepted one stays in force");
+      } catch { if (seen) log("kernel: no readable minimum-versions document; the last accepted one stays in force"); }
       firstPartyCheck = createFirstPartyCheck({ releaseKey: cfg.releaseKey || RELEASE_KEY, minimums });
     }
   }
@@ -75,5 +90,10 @@ export async function bootHomeKernel(cfg) {
   const approvalsFile = path.join(id.dir, "module-approvals.json");
   /** The hosts a person approved on a module's install card, kept by name. */
   const approvals = cfg.approvals || ((/** @type {string} */ name) => { try { return JSON.parse(fs.readFileSync(approvalsFile, "utf8"))[name] || []; } catch { return []; } });
-  return Object.freeze({ ...k, id: { space: id.space, owner: id.owner }, kernelFor: k.kernelFor, firstPartyCheck, moduleHost: host, supervisor, moduleApprovals: approvals, stop: async () => { await supervisor.stopAll(); if (ownSealer && sealer) await sealer.close(); } });
+  // The Spaces this home hosts (kernel/spaces): the personal one is this kernel; every other has its own store, log and sealing namespace, opened once here. Each takes the
+  // home's sealing client namespaced per Space (kernel.mac and verify cover "<space>\n<data>"), so no key file exists for any of them; without a sealing process the registry
+  // refuses a hosted Space unless this boot is the developer file-key one.
+  const spaces = createSpaceKernels({ root: cfg.root, personal: { space: id.space, kernel: k }, openDb: (/** @type {string} */ f) => new DatabaseSync(f), ...(sealer ? { sealer } : { fileKey: true }), ...(cfg.door ? { doorFor: () => cfg.door } : {}) });
+  await spaces.start();
+  return Object.freeze({ ...k, spaces, id: { space: id.space, owner: id.owner }, kernelFor: k.kernelFor, firstPartyCheck, moduleHost: host, supervisor, moduleApprovals: approvals, stop: async () => { await spaces.stop(); await supervisor.stopAll(); if (ownSealer && sealer) await sealer.close(); } });
 }

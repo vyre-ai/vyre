@@ -19,7 +19,8 @@ export function runnerPorts(k, o) {
     vault: {
       lease: (/** @type {{ space?: string }} */ _a) => k.leases.issue(o.chain(), { device, device_key }),
       renew: (/** @type {{ id: string }} */ a) => k.leases.renew(o.chain(), { id: a.id }),
-      credential: (/** @type {{ ref: string, session: string, route: string }} */ req) => k.leases.use(o.chain(), req),
+      // The runner names the session and the request only; the Space maps it to a credential (leases.bind) and refuses what the session's definition does not map.
+      credential: (/** @type {{ session: string, route: string, method: string, path: string }} */ req) => k.leases.use(o.chain(), { session: req.session, route: req.route, method: req.method, path: req.path }),
     },
     sync: o.sync,
     grants: () => active(),

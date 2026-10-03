@@ -25,7 +25,7 @@ export function dirBackend(root) {
     async put(k, v) { const f = at(k), t = `${f}.${crypto.randomBytes(4).toString("hex")}.tmp`; fs.mkdirSync(path.dirname(f), { recursive: true, mode: 0o700 }); fs.writeFileSync(t, v, { mode: 0o600 }); fs.renameSync(t, f); },
     async get(k) { try { return fs.readFileSync(at(k)); } catch (e) { if (e.code === "ENOENT") return null; throw e; } },
     async del(k) { fs.rmSync(at(k), { force: true }); },
-    async ping() { fs.accessSync(root, fs.constants.W_OK); const s = fs.statfsSync(root); return Number(s.bavail) * Number(s.bsize); },
+    async ping() { fs.mkdirSync(root, { recursive: true, mode: 0o700 }); fs.accessSync(root, fs.constants.W_OK); const s = fs.statfsSync(root); return Number(s.bavail) * Number(s.bsize); },
   };
 }
 
@@ -43,12 +43,12 @@ export function signV4({ method, host, path: p, query = "", headers = {}, payloa
   h.authorization = `AWS4-HMAC-SHA256 Credential=${key}/${scope}, SignedHeaders=${names.join(";")}, Signature=${crypto.createHmac("sha256", sk).update(sts).digest("hex")}`;
   return h;
 }
-export function s3Backend({ endpoint, bucket, key, secret, region = "us-east-1", prefix = "", timeoutMs = 30_000 }) {
+export function s3Backend({ endpoint, bucket, key, secret, region = "us-east-1", prefix = "", timeoutMs = 30_000, maxBytes = 8 * 1024 * 1024 }) {
   const u = new URL(endpoint), lib = u.protocol === "https:" ? https : http;
   const call = (method, objKey, body) => new Promise((resolve, reject) => {
     const p = `/${bucket}${objKey ? `/${prefix}${objKey}` : ""}`, ph = sha(body ?? ""), hd = signV4({ method, host: u.host, path: p, payloadHash: ph, region, key, secret, headers: body ? { "content-length": body.length } : {} });
     const r = lib.request({ method, hostname: u.hostname, port: u.port || undefined, path: p.split("/").map(enc).join("/"), headers: hd, timeout: timeoutMs }, res => {
-      const parts = []; res.on("data", d => parts.push(d)); res.on("end", () => resolve({ status: res.statusCode, body: Buffer.concat(parts) }));
+      const parts = []; let n = 0; res.on("data", d => { n += d.length; if (n > maxBytes) r.destroy(new Error("too big")); else parts.push(d); }); res.on("end", () => resolve({ status: res.statusCode, body: Buffer.concat(parts) }));
     });
     r.on("timeout", () => r.destroy(new Error("timeout"))); r.on("error", reject); r.end(body);
   });

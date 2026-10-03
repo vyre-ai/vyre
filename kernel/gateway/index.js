@@ -81,7 +81,7 @@ export function createGateway(cfg) {
     registry: authorizer.actions,
     limits,
     ...(seal ? { seal } : {}),
-    ...(gs ? { grants: Object.freeze({ create: gs.create, revoke: gs.revoke, narrow: gs.narrow, list: gs.list, setRole: gs.setRole, removeMember: gs.removeMember, transferOwner: gs.transferOwner, addActor: gs.addActor, sweep: gs.sweep, members: Object.freeze({ list: gs.membersList, get: gs.membersGet }), invites: Object.freeze({ create: gs.inviteCreate, confirm: gs.inviteConfirm, accept: gs.inviteAccept, get: gs.invitesGet }), rebuild: gs.rebuild, offers: Object.freeze({ offer: gs.offer, unoffer: gs.unoffer, active: gs.active, onRevoke: gs.onRevoke }) }) } : {}),
+    ...(gs ? { grants: Object.freeze({ create: gs.create, revoke: gs.revoke, narrow: gs.narrow, list: gs.list, setRole: gs.setRole, removeMember: gs.removeMember, addActor: gs.addActor, sweep: gs.sweep, members: Object.freeze({ list: gs.membersList, get: gs.membersGet }), invites: Object.freeze({ create: gs.inviteCreate, confirm: gs.inviteConfirm, accept: gs.inviteAccept, get: gs.invitesGet }), rebuild: gs.rebuild, offers: Object.freeze({ offer: gs.offer, unoffer: gs.unoffer, active: gs.active, find: gs.find, onRevoke: gs.onRevoke }) }) } : {}),
     /** The Space's type definitions, read through authorize like any record read (the tool surface and Customize list from here). */
     async definitions(chain) {
       await gate(chain, "records.read", `vyre://${cfg.space}/definition/types`);

@@ -167,3 +167,17 @@ test("R-8 with the new chain rules: the code can only add a device, a new device
   assert.deepEqual((await s.sync({ chain: ch, person: I.id, ops: I.ops })).pruned, [p1.key_id]);
   assert.equal(await code(reveal(s, I.id, p1)), "unknown_key"); assert.equal((await reveal(s, I.id, p3)).value, "123-45-6789");
 });
+
+test("R-8 V-3: a key from before the first pin that is never bound stops proving a day after the pin", async t => {
+  const dir = tmp("v3"); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const I = await identity(), k = signer(I.id), file = path.join(dir, "presence.json"), ch = person(I.id);
+  const custody = { mac: x => "m" + crypto.createHash("sha256").update(x).digest("hex"), anchorRead: () => ({ v: 1, ever: [I.id] }), anchorWrite: () => {} };
+  const body = JSON.stringify({ v: 1, keys: { [k.key_id]: { person: I.id, signer: "secure_enclave", attested: false, spki: k.enrolment.spki, since: 0, founder: true } }, ever: [I.id] });
+  fs.writeFileSync(file, JSON.stringify({ body, mac: custody.mac(body) }));
+  let now = Date.now(); const p = new Presence(() => now, { allowUnattested: true, file, custody }), ctx = chainCtx(ch);
+  await p.sync({ person: I.id, ops: I.ops, binds: [], ctx }); // pins; the key stays, unbound
+  const prove = () => p.refuse(k.proof(ch, "seal.reveal", { ref: "r", purpose: "p" }, { issued: now }), { op: "seal.reveal", space: ch.space, fields: { ref: "r", purpose: "p" }, ctx });
+  assert.equal(prove(), null, "inside the day it still works");
+  now += 25 * 3600_000; assert.equal(prove(), "needs_bind", "after the day an unbound key proves nothing");
+  assert.equal((await p.sync({ person: I.id, ops: I.ops, binds: [bind(I.d1, I.id, k)], ctx })).pinned, 0); assert.equal(prove(), null, "a bind brings it back");
+});

@@ -161,6 +161,7 @@ export function relayLink(o) {
     ws.binaryType = "arraybuffer";
     data.set(c, ws);
     const side = boxSide({
+      get bufferedAmount() { return ws.bufferedAmount; },
       send: bytes => { try { ws.send(bytes); } catch {} },
       close: (code, reason) => { try { ws.close(closeCode(code), String(reason || "").slice(0, 120)); } catch {} },
     }, { s: o.boxKey, route: o.route, admit: o.admit });

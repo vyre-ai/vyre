@@ -76,7 +76,7 @@ test("ctx.kernel: a first-party module gets the kernel handle with exactly the a
   const made = await d.registry.call("zz-fp.make", { name: "From a module" });
   assert.ok(made.data && made.data.id, JSON.stringify(made));
   assert.equal((await d.kernel.gateway.records.get(owner, "contact", made.data.id)).data.name, "From a module");
-  assert.deepEqual((await d.registry.call("zz-fp.peek", {})).data.has, ["acceptProofRequest", "audit", "authorize", "chain", "drive", "events", "for", "grants", "leases", "limits", "model", "proofChainHash", "proofFrom", "proofRequest", "records", "runnerPorts", "serviceChain", "space", "tasks"]);
+  assert.deepEqual((await d.registry.call("zz-fp.peek", {})).data.has, ["audit", "authorize", "chain", "drive", "events", "for", "grants", "leases", "limits", "model", "offersPort", "proofFrom", "proofRequest", "records", "runnerPorts", "serviceChain", "space", "tasks"]);
 });
 
 test("ctx.kernel: a module that is not first party has no kernel handle", { timeout: 60_000, skip: !linux }, async t => {
@@ -172,4 +172,24 @@ test("the daemon's edge carries x-vyre-kernel-proof to the tool as meta.kernel_p
   assert.equal((await call("zz-edge.peek", {}, { root })).data.kernel_proof, null, "absent when not sent");
   for (const bad of ["not base64 !!", Buffer.from("[1,2]").toString("base64url"), Buffer.from("nope").toString("base64url"), "A".repeat(6000)]) assert.equal((await call("zz-edge.peek", {}, { root, headers: { "x-vyre-kernel-proof": bad } })).data.kernel_proof, null, "malformed is simply absent");
   assert.equal((await call("zz-edge.peek", {}, { root, headers: { "x-vyre-presence": "device abc" } })).data.kernel_proof, null, "the legacy presence header is not a kernel proof");
+});
+
+test("the daemon opens the Spaces registry at boot: a second hosted Space has its own kernel under the home's sealing process, no key file, and survives a restart", { timeout: 90_000 }, async t => {
+  const root = tempHome(t);
+  let d = await start({ root, log: () => {}, kernel: true });
+  assert.deepEqual(d.kernel.spaces.list(), [d.kernel.id.space], "the personal Space is the first");
+  const owner2 = "per_" + "b".repeat(26);
+  const second = await d.kernel.spaces.host({ owner: owner2 });
+  assert.notEqual(second.space, d.kernel.id.space);
+  assert.equal(d.kernel.spaces.for(second.space).hosted, true);
+  assert.equal(fs.existsSync(path.join(root, "kernel", "spaces", second.space, "kernel.key")), false, "no key file for a hosted Space");
+  const o1 = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d", person: d.kernel.id.owner, path: "direct" });
+  const tok1 = (await d.kernel.surfaces.open(o1, {})).token;
+  await assert.rejects(() => second.surfaces.chainFor(tok1), { code: "not_a_member" }, "a token of one Space opens nothing in another");
+  assert.equal(second.kernel.grants.roleOf({ kind: "person", id: owner2, space: second.space }), "owner");
+  await d.stop();
+  d = await start({ root, log: () => {}, kernel: true });
+  t.after(() => d.stop());
+  assert.deepEqual(d.kernel.spaces.list().sort(), [d.kernel.id.space, second.space].sort());
+  assert.equal(d.kernel.spaces.for(second.space).kernel.grants.roleOf({ kind: "person", id: owner2, space: second.space }), "owner", "reopened from its own store and log");
 });

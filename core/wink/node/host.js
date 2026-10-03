@@ -135,7 +135,7 @@ export function createHost(deps) {
    * must prove the device key; relay peers come from the bridge's peer stream (acceptRelay) already
    * authenticated by the channel. `serve(caller, tool, input)` is the registry (ctx.call as that caller).
    * @param {string} id
-   * @param {{ shared: (deviceId: string, nodeKey: string) => Promise<Buffer | null> | Buffer | null, serve: (caller: string, tool: string, input: any) => Promise<any> }} o
+   * @param {{ shared: (deviceId: string, nodeKey: string) => Promise<Buffer | null> | Buffer | null, serve: (caller: string, tool: string, input: any, proven?: { nodeKey: string }) => Promise<any> }} o
    */
   async function serveHome(id, o) {
     const sp = spaces.get(id);

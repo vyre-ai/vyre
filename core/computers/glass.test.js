@@ -5,7 +5,7 @@ import net from "node:net";
 import crypto from "node:crypto";
 import { Glass, Pacer } from "./glass.js";
 import { STOPPED } from "./pool.js";
-import { encodeClientFrame } from "./ws.js";
+import { encodeClientFrame } from "../../lib/ws.js";
 import { fakeXvnc } from "../../test/fixtures/fake-xvnc.js";
 
 const PASSWORD = "s3cr3t8!";

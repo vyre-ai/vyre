@@ -14,6 +14,9 @@ import { createSessionSync, restore, localReaderFor } from "./sync.js";
 import { createRunner } from "./runner.js";
 import { fakeSpace } from "./testing/fake-space.js";
 
+const hmac = s => crypto.createHmac("sha256", "test-seal-key").update(s).digest("hex");
+const seal = st => ({ ...st, mac: hmac(JSON.stringify(st)) });
+const unseal = st => { const { mac, ...rest } = st || {}; return Boolean(mac) && mac === hmac(JSON.stringify(rest)); };
 const tmp = () => fs.mkdtempSync(path.join(SCRATCH, "rn-"));
 const rm = d => fs.rmSync(d, { recursive: true, force: true });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -124,8 +127,8 @@ const get = (port, p, headers = {}, method = "GET") => new Promise(res => { cons
 
 test("egress: the vault is asked per request, the secret goes only into the outgoing header, the token never leaves", async () => {
   const up = await upstream(); const sp = fakeSpace();
-  const routes = [{ prefix: "/provider", upstream: `http://127.0.0.1:${up.port}`, credential: { ref: "vault://provider", header: "x-api-key" }, allow: [{ method: "GET", path: "/v1/messages" }, { method: "POST", path: "/v1/messages" }] },
-    { prefix: "/space", upstream: `http://127.0.0.1:${up.port}/api`, credential: { ref: "vault://gmail", header: "authorization", prefix: "Bearer " }, allow: [{ method: "GET", path: "/gmail/*" }] }];
+  const routes = [{ prefix: "/provider", upstream: `http://127.0.0.1:${up.port}`, credential: { header: "x-api-key" }, allow: [{ method: "GET", path: "/v1/messages" }, { method: "POST", path: "/v1/messages" }] },
+    { prefix: "/space", upstream: `http://127.0.0.1:${up.port}/api`, credential: { header: "authorization", prefix: "Bearer " }, allow: [{ method: "GET", path: "/gmail/*" }] }];
   const eg = createEgress({ routes, vault: sp.vault, session: "s1", token: "tok-abc", lease: () => "lease-1" });
   const { port } = await eg.listen();
   try {
@@ -146,7 +149,7 @@ test("egress: the vault is asked per request, the secret goes only into the outg
 
 test("egress: no token, a wrong token, an unlisted path and CONNECT are all refused, and nothing is fetched", async () => {
   const up = await upstream(); const sp = fakeSpace();
-  const eg = createEgress({ routes: [{ prefix: "/provider", upstream: `http://127.0.0.1:${up.port}`, credential: { ref: "vault://provider", header: "x-api-key" }, allow: [{ method: "GET", path: "/v1/messages" }, { method: "POST", path: "/v1/messages" }] }], vault: sp.vault, session: "s1", token: "tok-abc", lease: () => "lease-1" });
+  const eg = createEgress({ routes: [{ prefix: "/provider", upstream: `http://127.0.0.1:${up.port}`, credential: { header: "x-api-key" }, allow: [{ method: "GET", path: "/v1/messages" }, { method: "POST", path: "/v1/messages" }] }], vault: sp.vault, session: "s1", token: "tok-abc", lease: () => "lease-1" });
   const { port } = await eg.listen();
   try {
     assert.equal((await get(port, "/provider/x")).status, 401);
@@ -165,7 +168,7 @@ function net_connect(port) { const s = net.connect(port, "127.0.0.1"); s.write("
 
 test("egress: when the vault fails the request fails plainly and nothing goes upstream", async () => {
   const up = await upstream(); const sp = fakeSpace(); sp.state.offline = true;
-  const eg = createEgress({ routes: [{ prefix: "/provider", upstream: `http://127.0.0.1:${up.port}`, credential: { ref: "vault://provider", header: "x-api-key" }, allow: [{ method: "GET", path: "/v1/messages" }, { method: "POST", path: "/v1/messages" }] }], vault: sp.vault, session: "s1", token: "t", lease: () => "lease-1" });
+  const eg = createEgress({ routes: [{ prefix: "/provider", upstream: `http://127.0.0.1:${up.port}`, credential: { header: "x-api-key" }, allow: [{ method: "GET", path: "/v1/messages" }, { method: "POST", path: "/v1/messages" }] }], vault: sp.vault, session: "s1", token: "t", lease: () => "lease-1" });
   const { port } = await eg.listen();
   try {
     const r = await get(port, "/provider/v1/messages", { "x-api-key": "t" });
@@ -219,7 +222,7 @@ test("sync: a checkpoint records the transcript and changed files as versions, a
   const sp = fakeSpace(); const a = tmp(), b = tmp();
   try {
     for (const d of ["work/files", "work/home/.claude", "state"]) fs.mkdirSync(path.join(a, d), { recursive: true });
-    const sy = createSessionSync({ space: sp.sync, session: "s1", work: path.join(a, "work"), state: path.join(a, "state"), reader: localReaderFor(path.join(a, "work")) });
+    const sy = createSessionSync({ space: sp.sync, session: "s1", work: path.join(a, "work"), state: path.join(a, "state"), reader: localReaderFor(path.join(a, "work")), seal: s => s });
     fs.writeFileSync(path.join(a, "work", "files", "doc.txt"), "v1");
     await sy.line('{"type":"assistant"}'); await sy.line('{"type":"result"}');
     assert.equal(await sy.checkpoint({ note: 1 }), true);
@@ -230,7 +233,7 @@ test("sync: a checkpoint records the transcript and changed files as versions, a
     assert.equal(sy.turn, 2);
     // A different machine restores from the space.
     fs.mkdirSync(path.join(b, "work", "files"), { recursive: true });
-    const r = await restore({ space: sp.sync, session: "s1", work: path.join(b, "work"), state: path.join(b, "state") });
+    const r = await restore({ space: sp.sync, session: "s1", work: path.join(b, "work"), state: path.join(b, "state"), verify: () => true });
     assert.equal(r.turn, 2);
     assert.equal(fs.readFileSync(path.join(b, "work", "files", "doc.txt"), "utf8"), "v2");
     assert.equal(fs.readFileSync(path.join(b, "state", "s1", "transcript.jsonl"), "utf8").split("\n").filter(Boolean).length, 3);
@@ -241,7 +244,7 @@ test("sync: when the space is unreachable the checkpoint is not claimed, and the
   const sp = fakeSpace(); const a = tmp();
   try {
     fs.mkdirSync(path.join(a, "work", "files"), { recursive: true });
-    const sy = createSessionSync({ space: sp.sync, session: "s1", work: path.join(a, "work"), state: path.join(a, "state"), reader: localReaderFor(path.join(a, "work")) });
+    const sy = createSessionSync({ space: sp.sync, session: "s1", work: path.join(a, "work"), state: path.join(a, "state"), reader: localReaderFor(path.join(a, "work")), seal: s => s });
     sp.state.offline = true;
     await sy.line('{"type":"assistant"}');
     assert.equal(await sy.checkpoint(), false);
@@ -274,10 +277,10 @@ async function rig(t, over = {}) {
   const sp = over.space || fakeSpace({ ttlMs: over.ttlMs || 3_600_000 });
   const grants = over.grants || { spaceAllows: true, memberAccepts: true };
   const server = { starts: 0 };
-  const mk = (b = base) => createRunner({ base: b, space: "harlow", device: "kit", vault: sp.vault, sync: sp.sync, grants: () => grants, requestServer: () => { server.starts++; }, retryMs: 50, sessionState: s => ({ v: 1, session: s, taint: "external" }) });
+  const mk = (b = base) => createRunner({ base: b, space: "harlow", device: "kit", vault: sp.vault, sync: sp.sync, grants: () => grants, requestServer: () => { server.starts++; }, retryMs: 50, sealState: seal, verifyState: unseal, sessionState: s => ({ v: 1, session: s, taint: "external" }) });
   const runner = mk();
-  const routes = [{ prefix: "/provider", upstream: `http://127.0.0.1:${up.port}`, credential: { ref: "vault://provider", header: "x-api-key" }, allow: [{ method: "GET", path: "/v1/messages" }, { method: "POST", path: "/v1/messages" }] },
-    { prefix: "/space", upstream: `http://127.0.0.1:${up.port}/api`, credential: { ref: "vault://gmail", header: "authorization", prefix: "Bearer " }, allow: [{ method: "GET", path: "/gmail/*" }] }];
+  const routes = [{ prefix: "/provider", upstream: `http://127.0.0.1:${up.port}`, credential: { header: "x-api-key" }, allow: [{ method: "GET", path: "/v1/messages" }, { method: "POST", path: "/v1/messages" }] },
+    { prefix: "/space", upstream: `http://127.0.0.1:${up.port}/api`, credential: { header: "authorization", prefix: "Bearer " }, allow: [{ method: "GET", path: "/gmail/*" }] }];
   const launch = (r, session, extra = {}) => r.start({ session, command: process.execPath, args: [path.join(agentDir, "agent.js")], readOnly: [agentDir, path.dirname(process.execPath)], routes,
     env: { VYRE_PROBE_FILE: path.join(outsideDir, "private.txt"), VYRE_PROBE_HOME: process.env.HOME || process.env.USERPROFILE || "/root", VYRE_PROBE_PORT: String(up.port) }, ...extra });
   t.after(async () => { try { await runner.stopAll(); await runner.lock(); } catch {} await up.close(); for (const d of [base, agentDir, outsideDir]) rm(d); });
