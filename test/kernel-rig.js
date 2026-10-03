@@ -12,14 +12,14 @@ const SPACE = "spc_aaaaaaaaaaaa";
 let n = 0;
 
 /**
- * @param {{ space?: string, owner?: string, people?: Record<string, "admin"|"manager"|"member">, agents?: string[], defs?: any[], clock?: () => number }} [o]
+ * @param {{ space?: string, owner?: string, people?: Record<string, "admin"|"manager"|"member">, agents?: string[], defs?: any[], actions?: any[], clock?: () => number }} [o]
  *   people: person id (`per_...`) to role. The owner is always there and is an owner.
  */
-export async function createRig({ space = SPACE, owner = "per_alex", people = {}, agents = [], defs = [], clock } = {}) {
+export async function createRig({ space = SPACE, owner = "per_alex", people = {}, agents = [], defs = [], actions = [], clock } = {}) {
   const used = new Set();
   // SHIM(presence)
   const presence = { check: async (/** @type {any} */ { chain, op, fields, proof }) => (chain && proof && proof.op === op && canonical(proof.fields) === canonical(fields) && !used.has(proof.n) && (used.add(proof.n), true) ? null : "wrong_proof") };
-  const k = await createKernel({ space, owner, owner_uid: 501, key: Buffer.alloc(32, 9), presence, ...(clock ? { clock } : {}) });
+  const k = await createKernel({ space, owner, owner_uid: 501, key: Buffer.alloc(32, 9), presence, ...(actions.length ? { actions } : {}), ...(clock ? { clock } : {}) });
   const proof = (/** @type {string} */ action, /** @type {any} */ input, /** @type {string} */ resource) => ({ op: `grant.${action.split(".")[1]}`, fields: { resource, input_hash: sha256(canonical({ action, input })) }, n: ++n + Math.random() });
   const ownerChain = k.chains.fromFacts({ kind: "device", device_key_id: `d-${owner}`, person: owner, path: "direct", session: "s" });
   const G = k.gateway.grants;
