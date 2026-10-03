@@ -61,3 +61,20 @@ export const estateKit = (version = 1) => ({
     ],
   },
 });
+
+/** The sample catalog with the matter's stages made of tasks, as an Estate planning Kit defines them. */
+export const stagedCatalog = () => {
+  const c = catalog();
+  c.types.matter = { ...c.types.matter, fields: [...c.types.matter.fields.filter(f => f.name !== "stage"), { name: "practice_area", kind: "text", label: "Practice area" }, { name: "stage", kind: "stage", label: "Stage", options: ["Intake", "Engagement", "Drafting", "Review", "Closed"] }],
+    stages: [
+      { name: "Intake", tasks: [
+        { title: "Research the client", doer: "teammate:research", output: { kind: "fields", target: ["practice_area"] }, how: "assistant", due_offset_ms: 86_400_000 },
+        { title: "Welcome email", doer: "teammate:intake", checker: "role:attorney", output: { kind: "sent", target: "email" }, how: "tailor", template: "welcome", depends_on: ["Research the client"] },
+      ] },
+      { name: "Engagement", tasks: [{ title: "Engagement letter signed", doer: "role:attorney", output: { kind: "decision" } }] },
+      { name: "Drafting" },
+      { name: "Review", tasks: [{ title: "Optional polish", doer: "role:manager", output: { kind: "note" }, required: false }] },
+      { name: "Closed" },
+    ] };
+  return c;
+};

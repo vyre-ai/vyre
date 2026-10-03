@@ -61,6 +61,7 @@ export class FakeKernel {
         this.#t(type).set(id, rec);
         if (opts && opts.idem) this.idem.set(opts.idem, rec);
         this.emit(`${type}.created`, { id, type, data }, chain, rec.urn);
+        if (data.stage) this.emit("record.stage-entered", { type, id, stage: data.stage }, chain, rec.urn);
         return rec;
       },
       update: async (/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id, /** @type {any} */ patch, /** @type {number} */ base, /** @type {any} */ opts) => {
@@ -91,12 +92,14 @@ export class FakeKernel {
     this.ask = {
       request: async (/** @type {any} */ chain, /** @type {any} */ task, /** @type {any} */ opts) => {
         if (opts && opts.idem) { const had = this.tasks.find(t => t.idem === opts.idem); if (had) return had; }
-        const t = { id: uuid(), state: task.state || "ready", created_at: this.now(), updated_at: this.now(), assigned_by: chain.hops[chain.hops.length - 1].actor, labels: chain.labels, idem: opts && opts.idem, ...task };
+        const waiting = (task.depends_on || []).some((/** @type {string} */ d) => { const x = this.tasks.find(y => y.id === d); return !x || !["done", "skipped"].includes(x.state); });
+        const t = { id: uuid(), state: task.state || (waiting ? "waiting" : "ready"), created_at: this.now(), updated_at: this.now(), assigned_by: chain.hops[chain.hops.length - 1].actor, labels: chain.labels, idem: opts && opts.idem, ...task };
         this.tasks.push(t);
         this.emit("task.created", { id: t.id, title: t.title }, chain, `vyre://${this.space}/task/${t.id}`);
         return t;
       },
       decide: async () => { throw new Error("not used: tests complete tasks through completeTask"); },
+      get: async (/** @type {any} */ _c, /** @type {string} */ id) => this.tasks.find(t => t.id === id) || null,
     };
 
     this.model = {
@@ -109,6 +112,16 @@ export class FakeKernel {
       latestSeq: async () => this.seq,
     };
   }
+
+  /** Subscribe to every event. @param {(e: any) => any} cb */
+  onEvent(cb) { this.subs.add(cb); return () => this.subs.delete(cb); }
+  async pump() { await new Promise(r => setImmediate(r)); }
+  /** The chain a module (stages) works under: [the installing person, service:module]. @param {{ module: string, approver: any, tainted?: boolean }} o */
+  moduleChain(o) { return { space: this.space, hops: [{ actor: o.approver, entered_by: "assignment" }, { actor: { kind: "service", id: o.module, space: this.space }, entered_by: "registry" }], labels: { trust: "member", red: "internal", source_spaces: [this.space] }, built_at: this.now() }; }
+  /** Fake roles, set by tests. */
+  setRole() {}
+  addActor(/** @type {any} */ a) { return a; }
+  async allTasks() { return this.tasks; }
 
   /** @param {string} type */
   #t(type) { let t = this.tables.get(type); if (!t) { t = new Map(); this.tables.set(type, t); } return t; }
@@ -147,7 +160,10 @@ export class FakeKernel {
     const t = this.tasks.find(x => x.id === id);
     if (!t) throw new Error("no task");
     t.state = r.state || "done"; t.outcome = r.outcome || "approved"; t.answer = r.answer; t.updated_at = this.now();
-    return this.emit("task.completed", { id, task: id, state: t.state, outcome: t.outcome, answer: t.answer }, { hops: [{ actor: { kind: "service", id: "kernel", space: this.space } }], labels: { trust: "system", red: "internal", source_spaces: [this.space] } });
+    const sys = { hops: [{ actor: { kind: "service", id: "kernel", space: this.space } }], labels: { trust: "system", red: "internal", source_spaces: [this.space] } };
+    const ev = this.emit("task.completed", { id, task: id, state: t.state, outcome: t.outcome, answer: t.answer }, sys, `vyre://${this.space}/task/${id}`);
+    for (const w of this.tasks) if (w.state === "waiting" && w.depends_on.every((/** @type {string} */ d) => ["done", "skipped"].includes(this.tasks.find(y => y.id === d).state))) { w.state = "ready"; this.emit("task.readied", { id: w.id, state: "ready" }, sys, `vyre://${this.space}/task/${w.id}`); }
+    return ev;
   }
 
   /** The chain the runner would be given for a Flow run. @param {{ flow: string, approver: any, tainted: boolean, run?: string, space: string, source_spaces?: string[] }} o */
