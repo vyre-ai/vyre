@@ -108,7 +108,8 @@ function PhoneShell(p: ShellProps) {
   const inMore = rest.some((r) => r.id === cur);
   return (
     <View className="flex-1 bg-bg" style={{ paddingTop: inset.top + 8 }}>
-      {isTopLevel(p.current, all) ? (
+      {/* The switcher shows on the tab bar's own places only; a page opened from More (Vault, Drive, Settings, Spaces) is pushed and has its own title row. */}
+      {isTopLevel(p.current, all) && !inMore ? (
         <View className="flex-row items-center px-s4">
           <SpaceSwitcher spaces={p.spaces} space={p.space} onSpace={p.onSpace} compact />
         </View>
