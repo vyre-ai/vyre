@@ -195,7 +195,7 @@ export async function register({ ctx, vault }) {
       }
       if (i.fields && Object.values(i.fields).some(v => typeof v !== "string")) throw new Error("field values must be text");
       // Grants are carried to a renamed item after the old one is gone: refuse up front what grant would refuse then (a provider sign-in token takes none), so nothing is left half done.
-      if (i.rename !== undefined && i.rename !== i.name && launcherItem(i.rename) && vault.launcherOnly && (listed(i.name).grants || []).length) throw new Error(`${i.rename} is a provider sign-in token; no module is granted it, so ${i.name} cannot be renamed to it while it has grants`);
+      if (i.rename !== undefined && i.rename !== i.name && launcherItem(i.rename) && vault.launcherOnly && (listed(i.name).grants || []).length) { const why = `${i.rename} is a provider sign-in token; no module is granted it, so ${i.name} cannot be renamed to it while it has grants`; vault.refuse("edit", i.name, caller, why); throw new Error(why); }
       const f = await open(r);
       const fields = { ...f, ...(i.fields || {}) };
       for (const k of i.removeFields || []) delete fields[k];

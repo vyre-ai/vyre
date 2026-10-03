@@ -103,3 +103,18 @@ test("VP-6: a packaged build keeps launcherOnly on whatever config.json says; a 
   assert.equal(mk("development", { launcherOnly: false }).launcherOnly, false, "a development tree honours it");
   assert.equal(mk("development", {}).launcherOnly, true); assert.equal(mk("release", {}).launcherOnly, true);
 });
+
+test("a refused attempt to attach a grant to a provider sign-in token is a record of its own: who, which item, why, never a value", async t => {
+  const { d, reg } = await daemon(t), tok = fake("claude");
+  await reg("vault.provider.set", { provider: "claude", token: tok }, "cli");
+  const since = d.events.since(0, { limit: 1000 }).length;
+  assert.ok((await reg("vault.grant", { name: "claude-setup-token", module: "agents" }, "cli")).error);
+  assert.ok((await reg("vault.put", { name: "claude-setup-token", kind: "secret", value: fake("evil"), grants: ["agents"] }, "module:onboard")).error);
+  const refused = d.events.since(0, { limit: 1000 }).slice(since).filter(e => e.type === "vault.refused");
+  assert.equal(refused.length, 2, "one event per refusal, not one per write");
+  const [grant, put] = refused.map(e => e.data ?? e.payload ?? e); assert.deepEqual([grant.action, grant.name, grant.who], ["grant", "claude-setup-token", "cli"]); assert.deepEqual([put.action, put.name, put.who], ["put", "claude-setup-token", "module:onboard"]);
+  for (const e of refused) { assert.match(JSON.stringify(e), /provider sign-in token/); assert.equal(JSON.stringify(e).includes(tok) || JSON.stringify(e).includes("evil"), false, "never a value"); }
+  const trail = (await reg("vault.audit", { name: "claude-setup-token", limit: 10 }, "cli")).data.entries.filter(e => /^refused:/.test(String(e.why)));
+  assert.equal(trail.length, 2); assert.ok(trail.every(e => e.ok === false));
+  assert.equal(await d.registry.deps.credentialsPort.credentials("claude"), tok, "and the token is unchanged");
+});

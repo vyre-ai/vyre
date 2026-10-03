@@ -172,7 +172,7 @@ export default {
         if (!mod && grants) throw new Error("grants on put are for modules; people use vault.grant");
         // Every grant is checked BEFORE the item is written: a refused grant must not leave a changed value behind (reviewer-2 VP-5).
         if (grants !== undefined && (!Array.isArray(grants) || grants.length > 32)) throw new Error("grants is a short list of module names");
-        const refuse = msg => { vault.audit("put", String(input.name ?? "").slice(0, 128) || null, caller, false, `refused: ${msg}`.slice(0, 200)); throw new Error(msg); };
+        const refuse = msg => { vault.refuse("put", input.name, caller, msg); throw new Error(msg); };
         for (const g of grants || []) if (!validModuleName(g)) refuse(`"${String(g).slice(0, 60)}" is not a module name`);
         // A provider sign-in token takes no module grant once the launcher reads it through the credentials port: refuse before anything is written, never after.
         if (grants && launcherItem(String(input.name)) && vault.launcherOnly) refuse(`${input.name} is a provider sign-in token; no module is granted it, the session launcher is handed it by vyred itself`);

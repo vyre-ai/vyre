@@ -1032,6 +1032,17 @@ export class Vault {
       .run(now(), action, name ?? null, String(who), ok ? 1 : 0, why, where.origin ?? null, where.surface ?? null);
   }
 
+  /**
+   * A refused attempt, as a record of its own (distinct from a write): who tried, what, which item and why, never a value. One audit row (ok false, "refused: ...") and one `vault.refused` event, so an
+   * owner can see that something tried, for instance, to attach a module grant to a provider sign-in token.
+   * @param {string} action @param {string | null} name @param {string} who @param {string} why
+   */
+  refuse(action, name, who, why) {
+    const w = String(why).slice(0, 200), n = name === null || name === undefined ? null : String(name).slice(0, 128);
+    this.audit(action, n, who, false, `refused: ${w}`);
+    this.emit("vault.refused", { action, name: n, who: String(who).slice(0, 80), why: w });
+  }
+
   auditTrail({ name, limit = 100 } = {}) {
     const rows = name
       ? this.db.prepare("SELECT * FROM vault_audit WHERE name = ? ORDER BY id DESC LIMIT ?").all(name, Math.min(1000, limit))
@@ -1321,7 +1332,7 @@ export class Vault {
   async grant({ name, module, watcher = "", project = "" }, caller) {
     await this.key();
     const item = this.mustRow(name);
-    if (launcherItem(String(name)) && this.launcherOnly) throw new Error(`${name} is a provider sign-in token; no module is granted it, the session launcher is handed it by vyred itself`);
+    if (launcherItem(String(name)) && this.launcherOnly) { const why = `${name} is a provider sign-in token; no module is granted it, the session launcher is handed it by vyred itself`; this.refuse("grant", name, caller, `${why} (module ${String(module).slice(0, 40)})`); throw new Error(why); }
     // A module grants only items it put itself (index.js lets it do so only through vault.put).
     if (kindOf(caller) === "module" && item.origin !== caller) throw new Error(`${moduleOf(caller)} may grant only items it put`);
     if (!MODULE.test(String(module))) throw new Error(`"${module}" is not a module name`);
