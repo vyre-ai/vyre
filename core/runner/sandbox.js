@@ -46,6 +46,9 @@ export function checkBind(dir, home = process.env.HOME || process.env.USERPROFIL
   return d;
 }
 
+/** The one line a Windows member sees. */
+export const WINDOWS_LINE = "Running a space's work on this computer isn't available on Windows yet. Your sessions run on the space's server.";
+
 const real = p => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
 const q = s => JSON.stringify(String(s));
 const ancestors = p => { const out = []; for (let d = path.dirname(p); d !== p; p = d, d = path.dirname(d)) out.push(d); out.push("/"); return out; };
@@ -186,7 +189,8 @@ export function unavailable(platform = process.platform, run = spawnProbe) {
     if (r.error) return "bubblewrap is not installed (apt install bubblewrap)";
     return /uid map|Permission denied|RTM_NEWADDR|Operation not permitted/.test(r.stderr) ? "this system blocks unprivileged user namespaces for bubblewrap (Ubuntu 24.04 needs the bwrap AppArmor profile, see docs/using/local-runner.md)" : `bubblewrap failed: ${r.stderr.trim().slice(0, 160)}`;
   }
-  if (platform === "win32") return fs.existsSync("C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe") ? "" : ".NET Framework 4 (csc.exe) is missing";
+  // Windows lending is out of 0.3 (ruled 4 Oct): the launcher and BitLocker code stay on the branch, unreachable until 0.3.1.
+  if (platform === "win32") return process.env.VYRE_WINDOWS_LENDING === "experimental" ? (fs.existsSync("C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe") ? "" : ".NET Framework 4 (csc.exe) is missing") : WINDOWS_LINE;
   return "no sandbox for this system yet";
 }
 
