@@ -7,7 +7,7 @@ import path from "node:path";
 import { open, migrate } from "../core/store/index.js";
 import { Vault, MIGRATIONS } from "../core/vault/vault.js";
 import { acquire } from "../core/daemon/lock.js";
-import { wipeHome, vaultHolds } from "../lib/vault-wipe.js";
+import { wipeHome, vaultHolds, homeKeystore } from "../lib/vault-wipe.js";
 import { startSealer } from "../kernel/seal/client.js";
 import { SCRATCH } from "./scratch.mjs";
 
@@ -28,7 +28,7 @@ async function rig(t) {
 
 test("wipeHome: keys destroyed, vault rows and folders emptied, counts returned, and a fresh vault is empty with a new key", async t => {
   const r = await rig(t);
-  const out = await wipeHome({ home: r.home });
+  const out = await wipeHome({ home: r.home, keystore: "file" });
   assert.equal(out.vault.key_files_destroyed, 1); assert.equal(out.seal.master_destroyed, true); assert.ok(out.vault.tables_emptied > 5);
   assert.deepEqual(fs.readdirSync(r.dir), []); assert.deepEqual(fs.readdirSync(r.seal), []);
   assert.ok(!fs.existsSync(path.join(r.home, "vyred.lock")), "the lock is released");
@@ -41,7 +41,7 @@ test("wipeHome: keys destroyed, vault rows and folders emptied, counts returned,
 test("wipeHome refuses while the daemon holds the home's lock, and destroys nothing", async t => {
   const r = await rig(t), release = acquire(r.home);
   try {
-    await assert.rejects(wipeHome({ home: r.home }), e => /** @type {any} */ (e).code === "daemon_running" && /stop it first/.test(e.message));
+    await assert.rejects(wipeHome({ home: r.home, keystore: "file" }), e => /** @type {any} */ (e).code === "daemon_running" && /stop it first/.test(e.message));
   } finally { release(); }
   assert.ok(fs.existsSync(path.join(r.dir, "key")) && fs.existsSync(path.join(r.seal, "master.key")));
 });
@@ -51,17 +51,17 @@ test("wipeHome refuses while a sealing process serves the folder, and destroys n
   const s = startSealer({ dir: r.seal, timeoutMs: 8000, dev: true, unattested: true }); let closed = false;
   t.after(async () => { if (!closed) await s.close(); });
   await s.api.put({ chain: (await import("../kernel/seal/testing.js")).person(), record: "vyre://spc_testspace0001/contact/c_jane", field: "ssn", class: "us-ssn", value: "123-45-6789" });
-  await assert.rejects(wipeHome({ home: r.home }), e => /** @type {any} */ (e).code === "sealer_running" && /stop it first/.test(e.message));
+  await assert.rejects(wipeHome({ home: r.home, keystore: "file" }), e => /** @type {any} */ (e).code === "sealer_running" && /stop it first/.test(e.message));
   assert.ok(fs.existsSync(path.join(r.dir, "key")) && fs.existsSync(path.join(r.seal, "master.key")));
   await s.close(); closed = true;
-  assert.equal((await wipeHome({ home: r.home })).seal.master_destroyed, true);
+  assert.equal((await wipeHome({ home: r.home, keystore: "file" })).seal.master_destroyed, true);
 });
 
 test("wipeHome never reports success while a key survives: a keychain keystore with no way to delete it, and a sealing master that is not a file, are refused by name", async t => {
   const r = await rig(t);
   await assert.rejects(wipeHome({ home: r.home, keystore: "keychain" }), e => /** @type {any} */ (e).code === "keystore_survives" && /keychain/.test(e.message));
   fs.rmSync(path.join(r.seal, "master.key")); fs.writeFileSync(path.join(r.seal, "values", "x.json"), "{}");
-  await assert.rejects(wipeHome({ home: r.home }), e => /** @type {any} */ (e).code === "keystore_survives" && /sealing master/.test(e.message));
+  await assert.rejects(wipeHome({ home: r.home, keystore: "file" }), e => /** @type {any} */ (e).code === "keystore_survives" && /sealing master/.test(e.message));
   assert.ok(fs.existsSync(path.join(r.dir, "key")), "nothing was destroyed");
   let called = 0; fs.rmSync(path.join(r.seal, "values", "x.json")); fs.writeFileSync(path.join(r.seal, "master.key"), "00".repeat(32));
   const out = await wipeHome({ home: r.home, keystore: "keychain", destroyKeychain: () => { called++; } });
@@ -71,7 +71,7 @@ test("wipeHome never reports success while a key survives: a keychain keystore w
 test("vaultHolds answers exactly false when the home is empty, true with an item or a sealed value, and true when it cannot tell", async t => {
   const r = await rig(t);
   assert.equal(vaultHolds({ home: r.home }), true, "a vault item");
-  await wipeHome({ home: r.home });
+  await wipeHome({ home: r.home, keystore: "file" });
   assert.equal(vaultHolds({ home: r.home }), false);
   fs.mkdirSync(path.join(r.seal, "values"), { recursive: true }); fs.writeFileSync(path.join(r.seal, "values", "seal_anchor0000000000000000.json"), "{}");
   assert.equal(vaultHolds({ home: r.home }), false, "bookkeeping is not data");
@@ -79,6 +79,30 @@ test("vaultHolds answers exactly false when the home is empty, true with an item
   assert.equal(vaultHolds({ home: r.home }), true, "a sealed value");
   fs.writeFileSync(r.dbp, "not a database");
   assert.equal(vaultHolds({ home: r.home }), true, "unreadable counts as holding");
+});
+
+test("WP-1 and WP-2: the keystore must be stated (a missing or unknown one refuses), homeKeystore reads it from config, every named backup is destroyed or named, and the notices say what remains", async t => {
+  const r = await rig(t);
+  await assert.rejects(wipeHome({ home: r.home }), e => /** @type {any} */ (e).code === "keystore_unknown");
+  await assert.rejects(wipeHome({ home: r.home, keystore: "plaintext" }), e => /** @type {any} */ (e).code === "keystore_unknown");
+  assert.ok(fs.existsSync(path.join(r.dir, "key")), "nothing destroyed by a refusal");
+  fs.writeFileSync(path.join(r.home, "config.json"), JSON.stringify({ vault: { keystore: "keychain" } })); assert.equal(homeKeystore(r.home), "keychain");
+  fs.writeFileSync(path.join(r.home, "config.json"), JSON.stringify({ vault: { keystore: "rot13" } })); assert.throws(() => homeKeystore(r.home), e => /** @type {any} */ (e).code === "keystore_unknown");
+  fs.writeFileSync(path.join(r.home, "config.json"), "{not json"); assert.throws(() => homeKeystore(r.home), e => /** @type {any} */ (e).code === "keystore_unknown");
+  fs.rmSync(path.join(r.home, "config.json")); assert.ok(["file", "keychain"].includes(homeKeystore(r.home)), "no config: the platform default");
+  const prev = path.join(r.home, "release.prev"), src = path.join(r.home, "src.prev", "deep");
+  fs.mkdirSync(path.join(prev, "vault"), { recursive: true }); fs.writeFileSync(path.join(prev, "vault", "key"), "k".repeat(64)); fs.mkdirSync(src, { recursive: true }); fs.writeFileSync(path.join(src, "x.db"), "data");
+  const out = await wipeHome({ home: r.home, keystore: "file", backups: [prev, path.join(r.home, "src.prev"), path.join(r.home, "not-there")] });
+  assert.equal(out.backups_removed, 2); assert.ok(!fs.existsSync(prev) && !fs.existsSync(path.join(r.home, "src.prev")));
+  assert.ok(out.notices.some(n => /backup string or export/.test(n)) && out.notices.some(n => /valid at the provider/.test(n)));
+});
+
+test("a backup that cannot be removed is named and the wipe reports no success", async t => {
+  const r = await rig(t), locked = path.join(r.home, "locked.prev");
+  fs.mkdirSync(locked); fs.writeFileSync(path.join(locked, "f"), "x"); fs.chmodSync(locked, 0o500);
+  if (process.getuid && process.getuid() === 0) return t.skip("root can remove anything");
+  try { await assert.rejects(wipeHome({ home: r.home, keystore: "file", backups: [locked] }), e => /** @type {any} */ (e).code === "backup_survives" && e.message.includes("locked.prev")); }
+  finally { fs.chmodSync(locked, 0o700); }
 });
 
 test("nothing in the daemon, a module, the kernel or a tool reaches the wipe: no file but the host CLI's imports it, and no tool is named wipe", () => {
