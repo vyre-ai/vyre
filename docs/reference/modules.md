@@ -80,6 +80,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 20 | 7 | capsule, cli, deck |
+| [`work`](#work) | `core/work` | `box`, `local` | 13 | 0 | cli |
 
 ## about
 
@@ -787,3 +788,14 @@ One list of what waits on the user: session asks, held drafts, ringing reminders
 - Needs vault: `per-watcher`
 - Teaches memory: `watcher.item`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
+
+## work
+
+The work layer on the kernel: the native assistant's tool surface and situation, teammates, the three-layer memory and the Engineer. Every call goes through the kernel with the chain the kernel builds for the caller; nothing here holds authority.
+
+- Folder: `core/work`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [13](tools.md#work)
+- Emits: no events
+- Shows on: cli
