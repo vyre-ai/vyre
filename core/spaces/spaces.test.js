@@ -859,3 +859,38 @@ test("the transport's ports: a paired device is an entry, the entry port answers
   assert.equal(ok.eid, alex.eid);
   assert.equal((await d.call("spaces.identity.sign", { message: Buffer.from("anything else").toString("base64url") }, "module:wink")).error?.code, "forbidden");
 });
+
+
+test("space creation asks the kernel which store it would use: a server too small for the larger one needs a confirmation in the kernel's words, and only 'create' makes the space, with the flag", async t => {
+  const w = world(t);
+  const TEXT = "This server has room for the built-in store only. Everything works, and very large record sets will be slower. A space can't be moved to the larger store yet, so add memory first if you expect this space to grow.";
+  const hosts = [];
+  let small = true;
+  const kernel = { for: () => ({ space: "spc_bbbbbbbbbbbb", hosted: true, gateway: {} }), chain: async () => ({}), proofFrom: () => ({}), serviceChain: () => ({}),
+    spaces: {
+      storePlan: async () => (small ? { store: "builtin", confirm: { text: TEXT, choices: ["create", "cancel"] } } : { store: "twenty" }),
+      host: async o => { if (small && !o.accept_builtin_store) throw Object.assign(new Error("needs confirmation"), { code: "needs_confirmation" }); hosts.push(o); return { space: `spc_${"b".repeat(12)}`.replace(/b/g, hosts.length === 1 ? "b" : "c") }; },
+    } };
+  const d = await device(t, { kernelFor: () => kernel });
+  await d.ok("spaces.identity.create", { name: "alex" });
+  const args = { name: "harlow", displayName: "Harlow Legal", home: { kind: "this-computer", confirmed: true } };
+  // too small: nothing is made, and the person is shown exactly the kernel's words and the two choices
+  const ask = await d.ok("spaces.create", args);
+  assert.equal(ask.status, "needs_confirmation");
+  assert.deepEqual(ask.confirm, { text: TEXT, choices: ["create", "cancel"] });
+  assert.equal(hosts.length, 0, "the Space is never made first and explained after");
+  assert.equal((await d.ok("spaces.list")).length, 0);
+  // cancel: still nothing
+  assert.equal((await d.ok("spaces.create", { ...args, storeChoice: "cancel" })).status, "cancelled");
+  assert.equal(hosts.length, 0);
+  // create: hosted with the flag
+  const made = await d.ok("spaces.create", { ...args, storeChoice: "create" });
+  assert.equal(made.status, "done", JSON.stringify(made));
+  assert.deepEqual(hosts.map(h => [h.name, h.accept_builtin_store === true]), [["harlow", true]]);
+  // a server with room for the larger store: no question, no flag
+  small = false;
+  const big = await d.ok("spaces.create", { name: "northwind", home: { kind: "this-computer", confirmed: true } });
+  assert.equal(big.status, "done", JSON.stringify(big));
+  assert.equal(hosts[1].accept_builtin_store, undefined);
+  void w;
+});

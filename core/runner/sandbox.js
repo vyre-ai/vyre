@@ -19,7 +19,7 @@ import { filter as seccompFilter } from "./seccomp.js";
 export const SHIM = path.join(path.dirname(fileURLToPath(import.meta.url)), "shim.js");
 
 /** The variables a sandboxed session may be given. Everything else is dropped (LD_PRELOAD, NODE_OPTIONS, tokens). */
-const ENV_KEYS = /^(PATH|LANG|LC_[A-Z]+|TERM|TZ|NO_COLOR|FORCE_COLOR|VYRE_[A-Z0-9_]+|CLAUDE_CODE_[A-Z0-9_]+|DISABLE_[A-Z0-9_]+|ANTHROPIC_[A-Z0-9_]+|OPENAI_[A-Z0-9_]+|HTTPS?_PROXY|NO_PROXY)$/;
+const ENV_KEYS = /^(DEVELOPER_DIR|PATH|LANG|LC_[A-Z]+|TERM|TZ|NO_COLOR|FORCE_COLOR|VYRE_[A-Z0-9_]+|CLAUDE_CODE_[A-Z0-9_]+|DISABLE_[A-Z0-9_]+|ANTHROPIC_[A-Z0-9_]+|OPENAI_[A-Z0-9_]+|HTTPS?_PROXY|NO_PROXY)$/;
 
 /** @param {Record<string, string|undefined>} env */
 export function cleanEnv(env = {}) {
@@ -92,7 +92,7 @@ export function seatbeltProfile(o) {
     '(allow process-exec (subpath "/usr/bin") (subpath "/bin") (subpath "/usr/sbin") (subpath "/sbin"))',
     // /usr/bin/git and the other developer tools are shims that read the selected toolchain and run it from the Command Line Tools or Xcode
     // (without these, a clone fails with "xcode-select: error", measured on a hosted Mac). Read and run only; nothing is writable.
-    '(allow file-read* (subpath "/private/var/select") (subpath "/Library/Developer/CommandLineTools") (subpath "/Applications/Xcode.app/Contents/Developer"))',
+    '(allow file-read* (subpath "/private/var/select") (literal "/private/var/db/xcode_select_link") (subpath "/Library/Developer/CommandLineTools") (subpath "/Applications/Xcode.app/Contents/Developer"))',
     '(allow process-exec (subpath "/Library/Developer/CommandLineTools") (subpath "/Applications/Xcode.app/Contents/Developer"))',
     `(allow file-read* file-write* (subpath ${q(ws)}))`,
     `(allow process-exec (subpath ${q(ws)}))`,
@@ -111,12 +111,16 @@ function needTool(command, granted, system) {
 }
 
 /** @param {PlanOpts} o */
+/** macOS: point the developer-tool shims (git, make, clang) straight at the installed toolchain, so they skip the lookup that reads the person's preferences (slow when the home is denied, and a failure when it is unreadable). */
+const developerDir = () => ["/Library/Developer/CommandLineTools", "/Applications/Xcode.app/Contents/Developer"].find(d => fs.existsSync(d));
+
 function planDarwin(o) {
   const ws = real(o.workspace);
   const home = path.join(ws, "home");
   const tmp = path.join(ws, "tmp");
   const base = proxyUrl(o.proxy.port);
-  const env = { ...cleanEnv(o.env), HOME: home, TMPDIR: tmp, PATH: "/usr/bin:/bin:" + [...(o.readOnly || [])].map(d => path.join(real(d), "bin")).join(":"), ...proxyEnv(base) };
+  const dd = developerDir();
+  const env = { ...cleanEnv(o.env), ...(dd ? { DEVELOPER_DIR: dd } : {}), HOME: home, TMPDIR: tmp, PATH: "/usr/bin:/bin:" + [...(o.readOnly || [])].map(d => path.join(real(d), "bin")).join(":"), ...proxyEnv(base) };
   return { argv: ["/usr/bin/sandbox-exec", "-p", seatbeltProfile(o), o.command, ...(o.args || [])], env, cwd: path.join(ws, "files"), cleanup() {}, profile: seatbeltProfile(o) };
 }
 

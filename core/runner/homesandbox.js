@@ -41,7 +41,7 @@ const SECRET_DIRS = [".ssh", ".aws", ".gnupg", ".kube", ".docker", ".netrc", ".g
  */
 
 /** What a session's environment may hold: the basics, Vyre's own thread variables, and only the credential names the caller lists. No token by default. */
-const HOME_ENV = /^(PATH|LANG|LC_[A-Z]+|TERM|TZ|NO_COLOR|FORCE_COLOR|USER|LOGNAME|SHELL|VYRE_[A-Z0-9_]+)$/;
+const HOME_ENV = /^(DEVELOPER_DIR|PATH|LANG|LC_[A-Z]+|TERM|TZ|NO_COLOR|FORCE_COLOR|USER|LOGNAME|SHELL|VYRE_[A-Z0-9_]+)$/;
 /** @param {Record<string, string|undefined>} env @param {string[]} [pass] */
 export function homeEnv(env = {}, pass = []) {
   const ok = new Set(pass);
@@ -129,7 +129,8 @@ export function homeSeatbelt(o) {
 function planDarwin(o) {
   const cfg = seedConfig(o);
   o = { ...o, workdirs: [...(o.workdirs || []), ...(cfg ? [cfg.dir] : [])] };
-  const env = { ...homeEnv(o.env, o.passEnv), ...(cfg ? cfg.env : {}), VYRE_SOCKET: o.sessionSocket };
+  const dd = ["/Library/Developer/CommandLineTools", "/Applications/Xcode.app/Contents/Developer"].find(d => fs.existsSync(d));
+  const env = { ...homeEnv(o.env, o.passEnv), ...(dd ? { DEVELOPER_DIR: dd } : {}), ...(cfg ? cfg.env : {}), VYRE_SOCKET: o.sessionSocket };
   return { argv: ["/usr/bin/sandbox-exec", "-p", homeSeatbelt(o), o.command, ...(o.args || [])], env: { ...env, HOME: o.home }, cwd: o.workdirs?.[0], cleanup() {}, profile: homeSeatbelt(o), fd3: undefined, socket: o.sessionSocket };
 }
 

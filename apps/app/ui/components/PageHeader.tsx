@@ -29,11 +29,11 @@ export function PageHeader({ title, context, faces = [], onBack, onPress }: { ti
   ) : null;
   return (
     <View style={{ minHeight: height }} className="flex-row items-center gap-s2 pr-s4">
-      <PressableScale accessibilityRole="button" accessibilityLabel="Back" onPress={onBack} className="h-touch w-touch flex-none items-center justify-center" depth={0.9}>
+      <PressableScale accessibilityRole="button" accessibilityLabel="Back" onPress={onBack} style={{ height: 44, width: 44, flex: 0, alignItems: "center", justifyContent: "center" }} depth={0.9}>
         <Icon name="chevron-left" size={24} tone="text" />
       </PressableScale>
       {onPress ? (
-        <PressableScale accessibilityRole="button" accessibilityLabel={`${title}. About this`} onPress={onPress} depth={0.99} className="min-w-0 flex-1 flex-row items-center gap-s3">
+        <PressableScale accessibilityRole="button" accessibilityLabel={`${title}. About this`} onPress={onPress} depth={0.99} style={{ minWidth: 0, flex: 1, flexDirection: "row", alignItems: "center", gap: 12 }}>
           {marks}{text}<Icon name="chevron" size={16} tone="faint" />
         </PressableScale>
       ) : (

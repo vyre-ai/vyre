@@ -7,7 +7,7 @@
 import { memo, useMemo, useRef, useState, type ReactNode } from "react";
 import { Image, Pressable, ScrollView, TextInput, View, StyleSheet } from "react-native";
 import * as Clipboard from "expo-clipboard";
-import { Button, Chip, Icon, IconButton, Text, useUiTheme } from "@vyre/ui";
+import { Button, Chip, Icon, IconButton, Text, haptic, useUiTheme } from "@vyre/ui";
 import { parseAnsi, stripAnsi } from "./ansi.js";
 import { readSelection } from "./highlight.js";
 import { countDiff, fileTree, parseUnified, sealedCount, sideBySide, TREE_AT, type Block, type DiffFile, type RecordField } from "./blocks.js";
@@ -334,6 +334,7 @@ export function TaskCard({ block, ctx, decided }: { block: Extract<Block, { bloc
     setBusy(true);
     try {
       if (block.face && ctx.onFaceId && !(await ctx.onFaceId())) return;
+      haptic.approve();
       ctx.onApprove?.(block.id);
     } finally { setBusy(false); }
   };
