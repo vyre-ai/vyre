@@ -200,10 +200,15 @@ install_app() {
     # SHA256SUMS is signed (SHA256SUMS.sig, the one signature Linux and Mac both use): verify_release
     # checks it here before sudo and root checks it again on its own copies.
     get vyre.tgz; get manifest.json; fetch SHA256SUMS.sig "$TMP/SHA256SUMS.sig"; cp "$TMP/SHA256SUMS" "$TMP/sums"
+    # The release's signed list of first-party modules (modules.json), when it has one: it is a line of the signed SHA256SUMS, checked by get like every file.
+    if awk '$2 == "modules.json" || $2 == "*modules.json" { x = 1 } END { exit !x }' "$TMP/SHA256SUMS"; then get modules.json; fi
     mkdir -p "$TMP/release"
     mv "$TMP/vyre.tgz" "$TMP/manifest.json" "$TMP/SHA256SUMS.sig" "$TMP/release/"; mv "$TMP/sums" "$TMP/release/SHA256SUMS"
+    [ ! -f "$TMP/modules.json" ] || mv "$TMP/modules.json" "$TMP/release/modules.json"
     verify_release
     tar -xzf "$TMP/release/vyre.tgz" -C "$APP.new" --strip-components=1 || die "vyre.tgz did not unpack"
+    # The three signed files go to the package root, where the kernel reads them (kernel/modules/release-list.js); verify_release has just checked the signature.
+    for f in SHA256SUMS SHA256SUMS.sig modules.json; do [ -f "$TMP/release/$f" ] && cp "$TMP/release/$f" "$APP.new/$f"; done
   elif [ -n "$FROM" ]; then
     (cd "$FROM" && tar --exclude .git --exclude node_modules -cf - .) | (cd "$APP.new" && tar -xf -)
   else

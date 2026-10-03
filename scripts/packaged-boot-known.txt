@@ -1,0 +1,3 @@
+# Folders left out of the packaged-boot proof's copy because of a known, open problem. One per line; the job says so out loud. Delete the line when the problem is fixed.
+# local/hands-chrome-mac and modules/hands-chrome both name themselves "chrome", which scripts/modules-manifest.mjs refuses ("two modules are named chrome"): platform to key the list by role or path.
+local/hands-chrome-mac

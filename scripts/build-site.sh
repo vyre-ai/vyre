@@ -135,6 +135,17 @@ mv "$out/$name" "$out/vyre.tgz"
 # The version the tarball carries, for the /start page and the installer's messages.
 node -e 'process.stdout.write(require(process.argv[1]).version + "\n")' "$src/package.json" >"$out/VERSION"
 
+# The signed list of first-party modules (kernel/modules/release-list.js): the hash of every module folder of the UNPACKED tarball, so the hashes are of what a box will hold,
+# made here with no key and listed in SHA256SUMS below, so the release key's one signature covers it. The counter is made from the version (scripts/release-counter.mjs):
+# it orders as semver does and so only ever goes up. A source without the kernel's list code (an older line) makes no list.
+if [ -f "$src/scripts/modules-manifest.mjs" ] && [ -f "$src/kernel/modules/release-list.js" ]; then
+  unpacked=$(mktemp -d)
+  tar -xzf "$out/vyre.tgz" -C "$unpacked" --strip-components=1
+  ver=$(cat "$out/VERSION")
+  node "$src/scripts/modules-manifest.mjs" "$unpacked" --counter "$(node "$src/scripts/release-counter.mjs" "$ver")" --release "$ver" --out "$out/modules.json" || exit 1
+  rm -rf "$unpacked"
+fi
+
 (
   cd "$out"
   find . -type f ! -name SHA256SUMS | sed 's|^\./||' | while read -r f; do sum "$f"; done | LC_ALL=C sort -k2 >SHA256SUMS

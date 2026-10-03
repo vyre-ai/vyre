@@ -53,7 +53,6 @@ DIR=${VYRE_DIR:-/srv/vyre}
 BASE=${VYRE_BOX_URL:-https://vyre.run/box/}
 # Overridable for tests only.
 WRAPPER=${VYRE_WRAPPER:-/usr/local/bin/vyre}
-TUN=${VYRE_TUN:-/dev/net/tun}
 DOCKER_SOCK=${VYRE_DOCKER_SOCK:-/var/run/docker.sock}
 # The cosign that checks our images, pinned by digest so a moved tag cannot swap it. The identity
 # is the release workflow of this repo on a version tag, and nothing else.
@@ -168,6 +167,8 @@ finish() {
     say "  $BOLD${BONE}Installed.$RESET Start it when you're ready: ${SIGNAL}vyre up$RESET"
   else
     say "  $BOLD${BONE}Your server is ready.$RESET"
+    # The custody notice the user approved (kernel/seal/process.js custodyNote, server profile): said where the install says what it set up.
+    say "  About your keys: $CUSTODY_NOTE"
     if [ "$LINK_ONLY" = 1 ]; then
       say "  The setup link went to stdout for the program that asked."
     else
@@ -274,14 +275,6 @@ need_docker() {
   elif [ -n "$SUDO" ] && sudo docker info >/dev/null 2>&1; then DOCKER_SUDO=sudo
   else die "Docker is installed but not running. Start it (sudo systemctl start docker) and run this again."
   fi
-}
-
-# Tailscale runs in its own container with kernel networking, which needs the TUN device.
-need_tun() {
-  [ -c "$TUN" ] && return 0
-  say "This server has no /dev/net/tun, which the Tailscale container needs."
-  say "Try: sudo modprobe tun. On a VPS or LXC container, enable TUN in the provider's panel."
-  exit 1
 }
 
 # fetch NAME DEST: a box file from BASE.
@@ -414,6 +407,12 @@ write_stack() {
       pick_build
       [ "$TGZ" = 1 ] && files="$files vyre.tgz"
       for f in $files; do [ -f "$TMP/$f" ] || get "$f"; done
+      # The signed list of first-party modules (and shell.json) the release carries: checked against SHA256SUMS like every file, and placed for the box by
+      # publish_signed_files once the wrapper is installed.
+      for f in modules.json shell.json; do
+        if awk -v p="$f" '$2 == p || $2 == "*" p { x = 1 } END { exit !x }' "$TMP/SHA256SUMS"; then get "$f"; fi
+      done
+      fetch SHA256SUMS.sig "$TMP/SHA256SUMS.sig" 2>/dev/null || rm -f "$TMP/SHA256SUMS.sig"
       done_step "every file matches SHA256SUMS"
       verify_images
     fi
@@ -485,6 +484,16 @@ write_env() {
 }
 
 # /usr/local/bin/vyre: ours, or ask before replacing whatever is there.
+# publish_signed_files: the release's SHA256SUMS, its signature, modules.json and shell.json go where the box reads them (the wrapper's publish-release checks the
+# signature with the pinned release key and publishes nothing for an unsigned release). Not for an install from a checkout, which has none of them.
+publish_signed_files() {
+  [ "$DRY" != 1 ] && [ -z "$FROM" ] && [ -s "$TMP/SHA256SUMS.sig" ] || return 0
+  if ! priv env "VYRE_DIR=$DIR" "$WRAPPER" publish-release "$TMP"; then
+    # A release with a signed module list that cannot be placed would start a box whose modules the kernel refuses: stop here, plainly.
+    [ ! -f "$TMP/modules.json" ] || die "the release's signed files could not be placed, so the box would start with no modules; nothing was started. See the line above, then run this again."
+    say "note: could not place the release's signed files; vyre update will"
+  fi
+}
 install_wrapper() {
   if [ -e "$WRAPPER" ] && ! grep -q "$MARK" "$WRAPPER" 2>/dev/null; then
     ask "$WRAPPER exists and is not the box wrapper. Replace it?" \
@@ -502,12 +511,28 @@ install_wrapper() {
 
 # Start the stack. VYRE_DIR and SSH_CONNECTION are passed on because sudo drops them, and the
 # wrapper needs SSH_CONNECTION to print the ssh -L line.
+# verify_up: the installer says it is done only when the vyre container is running. `vyre up` can end without starting it (a root run
+# refuses a box built from a checkout, see box/vyre prepare_run), and an exit status alone must not read as an installed box.
+verify_up() {
+  i=0
+  until [ -n "$(dk_quiet ps -q --filter name=vyre-vyre-1 --filter status=running 2>/dev/null | head -n 1)" ]; do
+    i=$((i + 1))
+    [ $i -lt "${VYRE_VERIFY_TRIES:-30}" ] || die "the install finished but Vyre is not running; see: docker compose -p vyre ps (in $DIR), then run: vyre up"
+    sleep 2
+  done
+}
 start() {
   say ""
-  if [ "$LINK_ONLY" = 1 ]; then
-    dk env "VYRE_DIR=$DIR" "SSH_CONNECTION=${SSH_CONNECTION:-}" "$WRAPPER" up --print-link
+  # A root run of `vyre up` refuses a box built from a checkout (--from) once the updater has recorded it, so when the installer runs as
+  # root for someone else's account, the first start is that account's own.
+  as_owner=0
+  if [ "$(id -u)" = 0 ] && [ -n "$FROM" ] && [ -n "$OWNER" ] && [ "$OWNER" != root ] && sudo -n -u "$OWNER" docker info >/dev/null 2>&1; then as_owner=1; fi
+  upflag=""
+  [ "$LINK_ONLY" = 1 ] && upflag="--print-link"
+  if [ "$as_owner" = 1 ]; then
+    dk sudo -n -u "$OWNER" env "VYRE_DIR=$DIR" "SSH_CONNECTION=${SSH_CONNECTION:-}" "$WRAPPER" up ${upflag:+"$upflag"}
   else
-    dk env "VYRE_DIR=$DIR" "SSH_CONNECTION=${SSH_CONNECTION:-}" "$WRAPPER" up
+    dk env "VYRE_DIR=$DIR" "SSH_CONNECTION=${SSH_CONNECTION:-}" "$WRAPPER" up ${upflag:+"$upflag"}
   fi
   if [ -n "$DOCKER_SUDO" ]; then
     say ""
@@ -629,6 +654,23 @@ intake_code() {
 # was written so `vyre` can remove both lines once the hour is over (the box reads the code once, at
 # start, and never keeps it). The rest of the file is kept as it is, and put installs from a temp file
 # so the code is never an argument.
+# write_kernel_env: the 0.3 settings, put into vyre.env once on a fresh install: the kernel on, and each Space on the larger store when this server has
+# room for it, else the built-in one. Never touches a vyre.env that already names either (a person's choice stays), and never the setup code lines.
+write_kernel_env() {
+  [ "$DRY" = 1 ] && { say "would turn the kernel on in $DIR/vyre.env"; return 0; }
+  TMP=${TMP:-$(mktemp -d)}
+  : >"$TMP/vyre.kernel"
+  if [ -e "$DIR/vyre.env" ]; then
+    # shellcheck disable=SC2024
+    if [ -r "$DIR/vyre.env" ] || [ -z "$SUDO" ]; then cat "$DIR/vyre.env" >"$TMP/vyre.kernel"; else sudo cat "$DIR/vyre.env" >"$TMP/vyre.kernel"; fi
+    [ ! -s "$TMP/vyre.kernel" ] || [ -z "$(tail -c 1 "$TMP/vyre.kernel")" ] || printf '\n' >>"$TMP/vyre.kernel"
+  fi
+  chmod 600 "$TMP/vyre.kernel"
+  grep -q '^VYRE_KERNEL=' "$TMP/vyre.kernel" || printf 'VYRE_KERNEL=1\n' >>"$TMP/vyre.kernel"
+  grep -q '^VYRE_STORE=' "$TMP/vyre.kernel" || printf 'VYRE_STORE=auto\n' >>"$TMP/vyre.kernel"
+  put "$TMP/vyre.kernel" "$DIR/vyre.env" 0600
+}
+
 write_code() {
   [ -n "$CODE" ] || return 0
   if [ "$DRY" = 1 ]; then say "would put the setup code in $DIR/vyre.env (0600); it is never shown"; return 0; fi
@@ -672,18 +714,43 @@ early_one_install() {
   DOCKER_SUDO=""
 }
 
+# The memory one Space's larger (Twenty) store needs on this server, in MB: the same number as stores/twenty/space-store.js REQUIRE.memoryMb
+# (test/install-box-v2.test.js keeps the two equal; records sets it). Disk is the images and one Space's volumes.
+# The sealing key's custody on a server, word for word as kernel/seal/process.js custodyNote("server") says it (test/install-box-v2.test.js keeps them equal).
+CUSTODY_NOTE="The sealing key is a file owned by the sealing process's own user. Root on this server, or a stolen disk, can read it."
+SPACE_MEM_MB=${VYRE_SPACE_MEM_MB:-3212}
+SPACE_DISK_MB=${VYRE_SPACE_DISK_MB:-6144}
+# preflight: say plainly what this server can host. A box too small for the larger store runs on the built-in one, which is a choice the person
+# should hear before installing, not after. Reads MemAvailable and the free disk under $DIR; never fails the install.
+preflight() {
+  mem=""; disk=""
+  if [ -r /proc/meminfo ]; then mem=$(awk '/^MemAvailable:/ {print int($2 / 1024)}' /proc/meminfo); fi
+  d="$DIR"; [ -d "$d" ] || d=$(dirname "$DIR")
+  [ -d "$d" ] || d=/
+  disk=$(df -Pk "$d" 2>/dev/null | awk 'NR == 2 {print int($4 / 1024)}')
+  if [ -z "$mem" ]; then say "  memory: unknown on this system; Vyre will use the built-in store unless it finds room."; return 0; fi
+  fit=$(( (mem - 300) / (SPACE_MEM_MB - 300) )); [ "$fit" -ge 0 ] || fit=0
+  if [ -n "$disk" ] && [ "$disk" -lt "$SPACE_DISK_MB" ]; then
+    say "  This server has $((mem / 1024)).$(( (mem % 1024) * 10 / 1024 )) GB of memory free but only $disk MB of disk, and the larger store needs $SPACE_DISK_MB MB: Vyre will use the built-in store."
+  elif [ "$fit" -ge 1 ]; then
+    say "  This server has $((mem / 1024)).$(( (mem % 1024) * 10 / 1024 )) GB of memory free: room for $fit space(s) on the larger store (each needs about $((SPACE_MEM_MB / 1024)).$(( (SPACE_MEM_MB % 1024) * 10 / 1024 )) GB)."
+  else
+    say "  This server has $((mem / 1024)).$(( (mem % 1024) * 10 / 1024 )) GB of memory free. The larger store needs about $((SPACE_MEM_MB / 1024)).$(( (SPACE_MEM_MB % 1024) * 10 / 1024 )) GB per space, so Vyre will use the built-in store. Everything works; very large record sets are slower."
+  fi
+}
+
 # docker_flavor: the Docker this installer knows. Snap, rootless and Podman each break something
-# specific (the TUN device, the socket group, compose.yml itself), so they stop here in plain words.
+# specific (the socket group, compose.yml itself), so they stop here in plain words.
 docker_flavor() {
   command -v docker >/dev/null 2>&1 || return 0
   case "$(command -v docker)" in
-    /snap/*|*/snap/bin/*) die "this Docker came from snap, which cannot give the Tailscale container a TUN device. Install Docker Engine from docker.com instead: curl -fsSL https://get.docker.com | sh" ;;
+    /snap/*|*/snap/bin/*) die "this Docker came from snap, whose confinement keeps the box from its Docker socket group. Install Docker Engine from docker.com instead: curl -fsSL https://get.docker.com | sh" ;;
   esac
   if docker --version 2>/dev/null | grep -qi podman; then
     die "this is Podman answering as docker. Vyre needs Docker Engine with Compose v2: curl -fsSL https://get.docker.com | sh"
   fi
   if dk_quiet info --format '{{.SecurityOptions}}' 2>/dev/null | grep -qi rootless; then
-    die "this Docker runs rootless, which cannot run the Tailscale container's network. Install the regular Docker Engine: curl -fsSL https://get.docker.com | sh"
+    die "this Docker runs rootless, which cannot give the box's Docker proxy the socket group it needs. Install the regular Docker Engine: curl -fsSL https://get.docker.com | sh"
   fi
 }
 
@@ -850,26 +917,33 @@ main() {
   step "Checking Docker"
   pick_owner
   need_docker
-  need_tun
   docker_flavor
   one_install
-  if command -v docker >/dev/null 2>&1; then done_step "Docker, Compose and the TUN device are there"
+  preflight
+  # An install from a checkout (--from) starts as the person, never as root (a root `vyre up` refuses a box built from a checkout), so that person
+  # must reach Docker themselves. Say what to do now, before anything is laid out, instead of stopping later with the box half installed.
+  if [ -n "$FROM" ] && [ "$DRY" != 1 ] && [ "$(id -u)" != 0 ] && [ -n "$DOCKER_SUDO" ]; then
+    die "this account cannot reach Docker without sudo, and an install from a checkout starts as you. Run: sudo usermod -aG docker $(id -un), sign in again, then run this installer again (the docker group is root-equivalent on this server)."
+  fi
+  if command -v docker >/dev/null 2>&1; then done_step "Docker and Compose are there"
   else done_step "Docker would be installed first (dry run)"
   fi
   if [ -n "$FROM" ]; then step "Reading the box files"; else step "Downloading and verifying"; fi
   write_stack
   write_env
+  write_kernel_env
   write_code
   if [ "$DRY" = 1 ]; then done_step "nothing written (dry run)"; else done_step "$DIR is laid out"; fi
   step "Installing the vyre command"
   install_wrapper
+  publish_signed_files
   if [ "$DRY" = 1 ]; then done_step "nothing installed (dry run)"; else done_step "vyre is at $WRAPPER"; fi
   # VYRE_NO_UP=1: everything but starting it, for `vyre box move`, which streams the volumes in first.
   if [ "${VYRE_NO_UP:-0}" = 1 ]; then say "installed in $DIR; not started (VYRE_NO_UP=1). Start it with: vyre up"
   else
     step "Starting Vyre"
     start
-    if [ "$DRY" = 1 ]; then done_step "nothing started (dry run)"; else done_step "Vyre is up"; fi
+    if [ "$DRY" = 1 ]; then done_step "nothing started (dry run)"; else verify_up; done_step "Vyre is up"; fi
     show_words
   fi
   finish
