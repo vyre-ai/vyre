@@ -219,6 +219,7 @@ export default {
       if (!r.ok) throw refuse(`That name could not be verified: ${r.why}.`, r.code || "unverified");
       if (r.kind !== "person") throw refuse("That name does not belong to a person.", "not_found");
       await kv.put(pinKey, r.pin);
+      await kv.put(`person-name/${r.id}`, label);
       return r.id;
     };
 
@@ -782,6 +783,26 @@ export default {
     tool("spaces.merge-list", "The spaces a person is in, one entry each: { space, name, color, link }, for a device that merges spaces itself. For modules.", obj({ person: str }, ["person"]), async i => {
       const p = String(i.person);
       return { spaces: spaces.all().filter(r => r.status === "done" && (mstore.get(r.id, p) || r.createdBy === p)).map(r => ({ space: r.id, name: r.name, color: null, link: `https://${r.name}` })) };
+    }, { internal: true });
+
+    // 5a'. for the transport: which person a proven device is. `spaces.identity.state` is the live, verified list of a person's entries (read from the directory on every
+    // call, never cached: a device the person removed is gone at its next call), and `spaces.people` the candidates to look at. kernel/remote/person-of.js asks both.
+    tool("spaces.identity.state", "A person's identity list as verified now: their entry ids and kinds. Read live each call. For the transport's personOf.", obj({ person: str }, ["person"]), async i => {
+      const id = String(i.person);
+      const mineId = identity.status();
+      const name = mineId.exists && mineId.id === id ? mineId.name : /** @type {string|null} */ (await kv.get(`person-name/${id}`));
+      if (!name) return { entries: [] };
+      const pinKey = `person-pin/${name}`;
+      let r;
+      try { r = await dir.resolve(String(name), { pin: /** @type {any} */ (await kv.get(pinKey)) || undefined }); } catch { return { entries: [] }; }
+      if (!r.ok || r.kind !== "person" || r.id !== id) return { entries: [] };
+      await kv.put(pinKey, r.pin);
+      return { entries: r.state.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind })) };
+    }, { internal: true });
+    tool("spaces.people", "The people of a space that hold an identity this device knows: its members and the person of a pending invite. For the transport's personOf.", obj({ space: str }, ["space"]), async (i, meta) => {
+      const row = spaceOf(i.space);
+      const list = await (await members(row.id, meta)).list().catch(() => []);
+      return { people: [...new Set(list.map((/** @type {any} */ m) => m.person))] };
     }, { internal: true });
 
     // 5b. the compute grant pair: the space allows its work on members' computers, the member accepts, and it covers only their own sessions on their own machine
