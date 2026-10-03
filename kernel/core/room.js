@@ -64,7 +64,12 @@ export function createRoom(cfg) {
         const s = typeof resource === "string" ? segments(resource) : null;
         if (!s || s.length !== 3 || s[0] !== cfg.space) return null;
         let rows;
-        try { rows = await Promise.all(viewers.map(v => cfg.gateway.records.get(v, s[1], s[2]))); } catch { return null; }
+        try {
+          // A kernel task is held by the task store, read under each person's own `tasks.read`; every other type is a record under `records.read`.
+          rows = s[1] === "task" && cfg.gateway.ask && typeof cfg.gateway.ask.get === "function"
+            ? (await Promise.all(viewers.map(v => cfg.gateway.ask.get(v, s[2])))).map(t => (t && typeof t === "object" ? { data: t } : null))
+            : await Promise.all(viewers.map(v => cfg.gateway.records.get(v, s[1], s[2])));
+        } catch { return null; }
         if (rows.some(r => !r || typeof r.data !== "object")) return null;
         const want = Array.isArray(fields) ? new Set(fields.map(String)) : null;
         const names = [...new Set(rows.flatMap(r => Object.keys(r.data)))].filter(n => !want || want.has(n)).sort();

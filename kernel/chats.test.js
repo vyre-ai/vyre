@@ -206,3 +206,19 @@ test("room canRead: records, tasks, team members and playbooks are judged by eve
   assert.equal(JSON.stringify(Object.keys(r).sort()), JSON.stringify(["canRead", "group", "read", "size"]));
   void carol;
 });
+
+test("room read of a kernel task: the fields everyone may read with the same value; null when anyone cannot read it or it does not exist", async () => {
+  const { k, owner, bob, C } = await rig();
+  await k.gateway.records.define(owner, { add_types: [CONTACT] });
+  const contact = await k.gateway.records.create(owner, "contact", { name: "Jane" });
+  const svc = k.kernelFor({ name: "work", needs: { kernel: { actions: ["tasks.request", "tasks.read", "records.read"], prefixes: ["task/*", "contact/*"] } } });
+  const t = await svc.tasks.request(owner, { title: "Welcome email for Jane", doer: { kind: "agent", id: "kit", space: SPACE }, checker: { kind: "person", id: BOB, space: SPACE }, output: { kind: "sent" }, record: contact.urn });
+  const group = await C.create(bob, { people: [OWNER] });
+  const ses = await k.surfaces.open(bob, { chat: group.id });
+  k.bindCalls(() => ({ token: ses.token }));
+  const room = await svc.audienceFor({});
+  const got = await room.read(`vyre://${SPACE}/task/${t.id}`);
+  assert.ok(got, "the task is readable by both");
+  assert.equal(got.values.title, "Welcome email for Jane");
+  assert.equal(await room.read(`vyre://${SPACE}/task/task_nonesuch00`), null);
+});

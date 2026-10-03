@@ -182,6 +182,23 @@ async function startLocked(opts, root, p, release) {
   // The eight box-only modules gate on cfg.machine (ADR 0039: solo/server/device), not the
   // legacy cfg.role -- that's what lets a Mac chosen as the server run them.
   await registry.start(discover(moduleRoots(root), { firstPartyRoots }), { role: cfg.machine, ...cfg.modules });
+  // The join card shows the Space's name and fingerprint words. The module that holds the Space's identity (spaces) answers them through `spaces.label` once it has the Space's
+  // root key; until then the card has none. Asked at start, then every 30 s until it answers, then every 10 minutes (a rename shows up), never keeping the daemon alive.
+  let stopped = false;
+  /** @type {NodeJS.Timeout | null} */ let labelTimer = null;
+  if (kernel && typeof kernel.setLabel === "function") {
+    /** @type {{ name?: string, words?: string } | null} */ let label = null;
+    kernel.setLabel(() => label || {});
+    const ask = async () => {
+      try {
+        const r = await registry.call("spaces.label", {}, "module:vyred");
+        const d = r && r.data;
+        if (d && (typeof d.name === "string" || typeof d.words === "string")) label = { ...(typeof d.name === "string" ? { name: d.name.slice(0, 80) } : {}), ...(typeof d.words === "string" ? { words: d.words.slice(0, 80) } : {}) };
+      } catch { /* the module is not there yet */ }
+      if (!stopped) { labelTimer = setTimeout(ask, label ? 600_000 : 30_000); labelTimer.unref(); }
+    };
+    void ask();
+  }
 
   // A stale socket from a crash would make listen() fail with EADDRINUSE. If nothing answers on
   // it, it is safe to remove; if something does, another vyred is running and this one stops.
@@ -204,9 +221,9 @@ async function startLocked(opts, root, p, release) {
   fs.writeFileSync(p.pid, String(process.pid));
   log(`vyred ${VERSION} up · role ${cfg.role} · ${registry.status().filter(m => m.state === "running").length} modules`);
 
-  let stopped = false;
   const stop = async () => {
     if (stopped) return; stopped = true;
+    if (labelTimer) clearTimeout(labelTimer);
     // Stop taking calls, and give the ones running up to DRAIN_MS to finish: a write cut off
     // mid-way looks to its client like a failure it will retry (ADR 0029, R7).
     drain.on = true;
