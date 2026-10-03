@@ -14,7 +14,7 @@ import { out, dim, bold } from "../style.js";
 import { json, emit, fail, failTool, usage, EXIT } from "../kit.js";
 import { newCode, beginInput } from "../../../lib/wink-reset.js";
 
-const USAGE = "vyre wink reset --begin [--wipe] | --confirm <code> | vyre wink confirm [--no] [--json]";
+const USAGE = "vyre wink reset --begin | --confirm <code> | vyre wink confirm [--no] [--json]";
 
 /** @returns {{ call: typeof call, ensureUp: typeof ensureUp, isTTY: boolean, write: (s: string) => void, ask: (q: string) => Promise<string>, newCode: () => string }} */
 export const realDeps = () => ({
@@ -27,38 +27,29 @@ export const realDeps = () => ({
 /** @param {string[]} args @param {ReturnType<typeof realDeps>} [deps] */
 export async function run(args, deps = realDeps()) {
   if (args[0] === "confirm") return confirmPairing(args.slice(1), deps);
-  const wipe = args.includes("--wipe");
-  const flags = args.filter(a => a.startsWith("--") && a !== "--json" && a !== "--wipe");
+  const flags = args.filter(a => a.startsWith("--") && a !== "--json");
   const pos = args.filter(a => !a.startsWith("--"));
   const begin = flags.includes("--begin"), confirm = flags.includes("--confirm");
-  if (wipe && !begin) return usage("--wipe goes with --begin", USAGE);
   if (pos[0] !== "reset" || begin === confirm || pos.length > 2 || (begin && pos.length > 1) || flags.length > 1) return usage("vyre wink reset takes --begin or --confirm <code>", USAGE);
   if (!deps.isTTY) return fail("this needs a person at a terminal on the server", { code: "no_terminal", exit: EXIT.PRESENCE, next: "run it in your own terminal on the server" });
   const r0 = await deps.ensureUp();
   if (!r0.ok) return fail("vyred did not start", { code: "unreachable", exit: 5, next: `its output is in ${r0.log}` });
   if (begin) {
     const code = deps.newCode();
-    const r = await deps.call("wink.server.reset.begin", { ...beginInput(code), ...(wipe ? { wipe: true } : {}) });
+    const r = await deps.call("wink.server.reset.begin", beginInput(code));
     if (r.error) return failTool(r.error);
     // The code goes to this terminal and nowhere else: not to --json, not to the daemon, not to a log.
     deps.write(`\n  Reset code: ${code}\n\n`);
     if (json()) return emit({ begun: true, until: r.data.until }, { kind: "card", title: "Reset started", state: "ok", fields: [{ label: "Valid for", value: "5 minutes" }] });
     out(`  Valid for 5 minutes, once. Finish with: ${bold("vyre wink reset --confirm <code>")}`);
-    if (wipe) out(`  ${bold("This will erase everything stored on this server")} (its vault, sealed values and files) and start it as a new Space. The confirm step asks you to type: wipe`);
     out(dim("  This frees the server from its owner. Its keys stay, and so does everything stored on it (its vault and sealed values): the next owner can reach that. Reset a server you mean to hand over empty."));
     return 0;
   }
   let code = pos[1] ? String(pos[1]) : "";
   if (!code) code = await deps.ask("  Type the reset code: ");
-  let r = await deps.call("wink.server.reset.confirm", { code });
-  // a wipe also needs the typed word; a slip here does not spend the code
-  if (r.error && r.error.code === "wipe_needs_typed") {
-    const typed = (await deps.ask("  This erases everything stored on this server. Type wipe to go on: ")).trim();
-    r = await deps.call("wink.server.reset.confirm", { code, typed });
-  }
+  const r = await deps.call("wink.server.reset.confirm", { code });
   if (r.error) return failTool(r.error);
   if (json()) return emit(r.data, { kind: "card", title: "Server freed", state: "ok", fields: [{ label: "Had an owner", value: r.data.had ? "yes" : "no" }] });
-  if (r.data.wiped) out("  Everything stored on this server was erased, and it started a new Space.");
   out(r.data.had ? "  This server let go of its owner. It can be added again." : "  This server had no owner. It can be added.");
   out(dim("  Add it from the app with its code."));
   return 0;

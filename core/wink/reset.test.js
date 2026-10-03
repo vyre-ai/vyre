@@ -257,42 +257,19 @@ test("a box with data refuses a reset that does not wipe, names the stores, and 
   assert.equal((await unowned.begin()).r.begun, true);
 });
 
-test("the wipe: begin takes wipe, confirm needs the code AND the typed word, the old owner's card goes first, every store is wiped and checked empty, a new Space identity is made, then the box is unowned", async () => {
+test("no daemon path destroys data: a begin that asks to wipe still refuses on a box with data, stores are never wiped, and the owner stays", async () => {
   const vault = store("the vault"), seal = store("sealed values");
-  /** @type {string[]} */ const order = [];
-  const b = box({ dataStores: async () => [vault, seal], newSpace: async () => { order.push("newSpace"); } });
+  const b = box({ dataStores: async () => [vault, seal] });
   b.own();
-  const code = newCode();
-  const begun = await b.call("wink.server.reset.begin", { ...beginInput(code), wipe: true });
-  assert.equal(begun.wipe, true);
-  await assert.rejects(() => b.call("wink.server.reset.confirm", { code }), e => e.code === "wipe_needs_typed");
-  await assert.rejects(() => b.call("wink.server.reset.confirm", { code, typed: "yes" }), e => e.code === "wipe_needs_typed");
-  assert.equal(b.p.meta.get("reset_guard"), null, "a slip with the word does not count as a wrong code");
-  assert.equal(vault.wiped, 0);
-  b.events.length = 0;
-  const r = await b.call("wink.server.reset.confirm", { code, typed: " Wipe " });
-  assert.deepEqual(r, { reset: true, had: true, wiped: true });
-  assert.equal(vault.wiped + seal.wiped, 2);
-  assert.equal(vault.full || seal.full, false, "verified empty");
-  assert.deepEqual(order, ["newSpace"]);
-  assert.equal(b.p.meta.get("owner"), null);
-  assert.ok(b.events.some(e => e[0] === "wink.server-reset"), "the previous owner's card");
-  await assert.rejects(() => b.call("wink.server.reset.confirm", { code, typed: "wipe" }), e => e.code === "no_code", "the code was single use");
-});
-
-test("a wipe that does not empty a store, or has no new-Space maker, or no list, fails closed: the owner stays and the reason is said", async () => {
-  const stuck = store("the vault", { stuck: true });
-  let made = 0;
-  const b = box({ dataStores: async () => [stuck], newSpace: async () => { made++; } });
-  b.own();
-  const code = newCode();
-  await b.call("wink.server.reset.begin", { ...beginInput(code), wipe: true });
-  await assert.rejects(() => b.call("wink.server.reset.confirm", { code, typed: "wipe" }), e => e.code === "wipe_failed" && /the vault/.test(e.message));
+  await assert.rejects(() => b.call("wink.server.reset.begin", { ...beginInput(newCode()), wipe: true }), e => e.code === "holds_data" && /sudo vyre admin wipe/.test(e.message));
+  assert.equal(vault.wiped + seal.wiped, 0);
   assert.ok(b.p.meta.get("owner"), "still owned");
-  assert.equal(made, 0, "no new Space until the stores are empty");
-  assert.ok(b.events.some(e => e[0] === "wink.server-reset-failed"));
-  const noSpace = box({ dataStores: async () => [store("the vault")] }); noSpace.own();
-  await assert.rejects(() => noSpace.call("wink.server.reset.begin", { ...beginInput(newCode()), wipe: true }), e => e.code === "wipe_unavailable" && /new Space/.test(e.message));
-  const noList = box({ dataStores: null }); noList.own();
-  await assert.rejects(() => noList.call("wink.server.reset.begin", { ...beginInput(newCode()), wipe: true }), e => e.code === "wipe_unavailable" && /list/.test(e.message));
+  // data that appears between begin and confirm stops the confirm
+  const late = store("memory"); late.full = false;
+  const c = box({ dataStores: async () => [late] }); c.own();
+  const { code } = await c.begin();
+  late.full = true;
+  await assert.rejects(() => c.call("wink.server.reset.confirm", { code }), e => e.code === "holds_data");
+  assert.ok(c.p.meta.get("owner"));
+  assert.equal(late.wiped, 0);
 });

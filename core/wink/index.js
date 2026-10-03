@@ -50,7 +50,7 @@ function owner(meta, what) {
 }
 
 /**
- * The Wink module. `inject.dataStores` / `inject.newSpace` are the kernel's list of data stores and its new-Space maker (core/wink/reset.js); without them a reset of an owned box refuses. `inject` is the composition root's side (the platform's createKernel passes these; every one is optional and a box without one says so plainly):
+ * The Wink module. `inject.dataStores` is the kernel's list of data stores (core/wink/reset.js); without it a reset of an owned box refuses. `inject` is the composition root's side (the platform's createKernel passes these; every one is optional and a box without one says so plainly):
  *   directory   { memberships(identity) -> [{ space, name?, role }], label?(identity) }   who holds which role (kernelDirectory over ctx.kernel when absent)
  *   offers      { get(space, device, x), set(space, device, side, on, x) }   the ONLY store of compute offers (W-5); the kernel's grants.offers behind a port
  *   bridge      { createBridge, backendFor, home?, roots? } the pool engine'S bridge (kernel/storage/bridge.js, devices.js): a drive reached through another device (core/wink/storage/bridge.js)
@@ -269,7 +269,7 @@ export function createWink(inject = {}) {
       relayUrl: async () => { const r = /** @type {any} */ (await ctx.call("relay.status", {})); return String((r && r.data && r.data.url) || (ctx.config.relay && ctx.config.relay.url) || ""); },
     });
     pairing.tools();
-    registerReset({ ctx, pairing, now, identity: owner1, dropMs: inject.dropMs, dataStores: inject.dataStores, newSpace: inject.newSpace, wipeDelayMs: inject.wipeDelayMs });
+    registerReset({ ctx, pairing, now, identity: owner1, dropMs: inject.dropMs, dataStores: inject.dataStores });
     live = pairing.peers;
     /** A space's own name for a card, never its id. */
     const spaceName = async (/** @type {string} */ id) => {

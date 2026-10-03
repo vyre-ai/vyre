@@ -10794,7 +10794,6 @@ On the server's own console only: start a reset. The command line (vyre wink res
 - Input:
   - `hash` string, required
   - `salt` string, required
-  - `wipe` boolean
 - Callers: `cli`
 
 ### `wink.server.reset.confirm`
@@ -10803,7 +10802,6 @@ On the server's own console only: finish a reset with the code that vyre wink re
 
 - Input:
   - `code` string, required
-  - `typed` string
 - Callers: `cli`
 
 ### `wink.server.retarget`

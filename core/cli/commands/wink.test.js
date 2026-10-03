@@ -106,20 +106,3 @@ test("confirm: shows the choices and sends the pick; nothing asking says so; no 
   assert.equal(rx.code, 0);
   assert.deepEqual(x.calls[1], ["wink.server.pair.answer", { yes: false }]);
 });
-
-test("--begin --wipe sends wipe and warns; confirm asks for the typed word when the daemon says so and retries with it, and --wipe alone is a usage error", async () => {
-  const { d, calls, wrote } = deps({ replies: { "wink.server.reset.confirm": (/** @type {any} */ i) => i.typed ? { data: { reset: true, had: true, wiped: true } } : { error: { code: "wipe_needs_typed", message: "type wipe" } } } });
-  const b = await capture(() => run(["reset", "--begin", "--wipe"], /** @type {any} */ (d)));
-  assert.equal(b.code, 0);
-  assert.equal(calls[0][1].wipe, true);
-  assert.match(b.out, /erase everything/);
-  const asked = /** @type {string[]} */ ([]);
-  /** @type {any} */ (d).ask = async (/** @type {string} */ q) => { asked.push(q); return /Type wipe/.test(q) ? "wipe" : "K7QM-4P2X"; };
-  const c = await capture(() => run(["reset", "--confirm"], /** @type {any} */ (d)));
-  assert.equal(c.code, 0);
-  assert.equal(calls.filter(x => x[0].endsWith("confirm")).length, 2);
-  assert.equal(calls.at(-1)[1].typed, "wipe");
-  assert.match(c.out, /erased/);
-  const u = await capture(() => run(["reset", "--confirm", "--wipe"], /** @type {any} */ (d)));
-  assert.notEqual(u.code, 0);
-});
