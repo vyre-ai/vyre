@@ -58,6 +58,22 @@ function kernelProof(req) {
   try { const o = JSON.parse(Buffer.from(h, "base64url").toString("utf8")); return o && typeof o === "object" && !Array.isArray(o) ? o : undefined; } catch { return undefined; }
 }
 /**
+ * What the kernel may build a person's own chain from, for a call that arrived on a connection the daemon itself proved: a person's surface on the 0600 socket (only the owner can
+ * connect, so the uid is the daemon's own; Capsule calls wait for the code-signature check to be wired and get none), or a paired device or a signed-in owner device on a listener
+ * (the listener established who it is; the person is the home's owner while a home has one). Set here only, never from anything a client sends; `ctx.kernel.chain(meta)` builds the chain
+ * from it with the kernel's own builder, which refuses what does not hold. Null when there is nothing to prove.
+ * @param {string} caller @param {any} policy @param {any} via @param {any} k the kernel
+ */
+function callerFacts(caller, policy, via, k) {
+  if (!k || !k.id) return null;
+  if (!policy.caller && ["cli", "local", "deck", "mobile"].includes(caller)) return { kind: "socket", surface: caller, uid: typeof process.getuid === "function" ? process.getuid() : 0, pid: 0, inside_model_process: false, capsule_verified: false };
+  if (policy.caller && ownerDevice(policy.caller)) {
+    const device = String(policy.caller).startsWith("device:") ? String(policy.caller).slice(7) : String((policy.peer && (policy.peer.stableId || policy.peer.node)) || "owner");
+    return { kind: "device", device_key_id: device, person: k.id.owner, path: String(policy.caller).startsWith("device:") ? "relay" : "wink", ...(via && via.person ? { session: String(via.person.id) } : {}) };
+  }
+  return null;
+}
+/**
  * The session token a request carries (`x-vyre-kernel-session`), which the registry hands the tool as `meta.token` and nowhere else. It is set here only: the daemon checks the
  * token with the kernel's own Surfaces door, and a tool's input, a module's `ctx.call` and every other header never supply one. No header is simply no session
  * (`undefined`). A header that is present but malformed, invalid, expired or revoked is `null`: the call is REFUSED, never run as if it carried none (reviewer-2 KS-4). The
@@ -194,6 +210,13 @@ async function startLocked(opts, root, p, release) {
     const { createFlowsHost } = await import("./flows-host.js");
     const flowsHost = createFlowsHost({ log, tzFor: () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" });
     registry.deps.flowsHost = flowsHost;
+    // `{{field:...}}` in an outward action: resolved from the record under the person the session's turn is for (their own grants, not the room's view), by the kernel's resolveFields.
+    const { resolveFields } = await import("../../kernel/core/fields.js");
+    registry.deps.resolveFields = async (/** @type {{ input: any, meta: any }} */ q) => {
+      const t = await kernel.surfaces.verify(q.meta.token);
+      const asker = kernel.chains.fromFacts({ kind: "device", device_key_id: "vyred", person: t.person, path: "direct" });
+      return resolveFields({ input: q.input, read: async (/** @type {string} */ urn) => { const [, type, id] = urn.replace("vyre://", "").split("/"); return kernel.gateway.records.get(asker, type, id); } });
+    };
     closeFlowsHost = () => flowsHost.stop();
     kernel = await bootHomeKernel({ db, root, log, isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
       // A credentialed request run at the home: the vault's own forward (an internal tool only the lease module may call), under the Space's credential; the kernel has already authorized it.
@@ -224,9 +247,12 @@ async function startLocked(opts, root, p, release) {
     const personChainFor = async (/** @type {string} */ person) => kernel.chains.fromFacts({ kind: "device", device_key_id: "vyred", person, path: "direct" });
     void kernelSessions.reopenPending({ personChainFor, timeoutMs: 10_000, onGiveUp: (/** @type {string} */ thread, /** @type {string} */ why) => log(`sessions: could not resume ${thread.slice(0, 8)} (${why})`) }).catch(() => {});
     closeKernelSessions = () => kernelSessions.closeAll();
-    registry.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any }} */ q) => {
-      const person = kernel.chains.fromFacts({ kind: "device", device_key_id: "vyred", person: kernel.id.owner, path: "direct" });
-      const s = await kernelSessions.open({ chain: person, ...(q.rec && typeof q.rec.chat === "string" ? { chat: q.rec.chat } : {}), ...(q.agent ? { agent: q.agent } : {}), thread: q.thread });
+    registry.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any, chat?: string, asker?: string }} */ q) => {
+      // A chat turn: the Switchboard passes `chat` and `asker` only from module:stream (threads.start and threads.send), so the session is the asker's, in that chat, and the kernel checks they are in it.
+      // Anything else is the home owner's own thread, as before.
+      const person = await personChainFor(q.asker || kernel.id.owner);
+      const chat = q.chat || (q.rec && typeof q.rec.chat === "string" ? q.rec.chat : undefined);
+      const s = await kernelSessions.open({ chain: person, ...(chat ? { chat } : {}), ...(q.agent ? { agent: q.agent } : {}), thread: q.thread });
       return { token: kernelSessions.tokenFor(s.id), end: () => kernelSessions.end(s.id) };
     };
     // The sandbox every Vyre-started session's agent runs in on this computer (the runner's home sandbox: planHome, selfTest, launch; core/sessions/ cannot import core/runner, so the
@@ -266,6 +292,9 @@ async function startLocked(opts, root, p, release) {
   }
   // The eight box-only modules gate on cfg.machine (ADR 0039: solo/server/device), not the
   // legacy cfg.role -- that's what lets a Mac chosen as the server run them.
+  // The provider sign-in token for the launcher modules (threads, agents), by declaration (needs.daemon: credentials): from the credentials port taken below, never a module grant on the vault
+  // items. Late-bound, because the port is taken after the vault starts; until then it answers undefined and the caller keeps its old grant-based read.
+  registry.deps.credentials = (/** @type {string} */ provider) => (registry.deps.credentialsPort ? registry.deps.credentialsPort.credentials(provider) : Promise.resolve(undefined));
   await registry.start(discover(moduleRoots(root), { firstPartyRoots }), { role: cfg.machine, ...cfg.modules });
   // The session launcher's way to a provider sign-in token: the vault provided it to the registry once, at its own start (`ctx.provide`, core/modules/index.js), so no import of the vault is needed here.
   // It goes to the sandbox the Switchboard reads per session (`lib/agent-sandbox.js` calls `credentials(provider)`). Where the vault did not start (a Mac whose vault is vyre-core's) there is none.
@@ -900,7 +929,8 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     }
     const sessionToken = await kernelSession(req, kernelOf);
     if (sessionToken === null) return send(res, 401, { error: { code: "no_session", message: "this call carries a session credential that is not valid, so it was not made" } });
-    const result = await registry.call(name, input, caller, { ...via, proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
+    const facts = callerFacts(caller, policy, via, kernelOf ? kernelOf() : null);
+    const result = await registry.call(name, input, caller, { ...via, ...(facts ? { kernelFacts: facts } : {}), proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
       keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req), ...(kernelProof(req) ? { kernel_proof: kernelProof(req) } : {}), ...(sessionToken ? { token: sessionToken } : {}) });
     // A new person session for the Deck goes in the cookie, never in the body a script could read.
     if (name === "presence.person.start" && result.data && result.data.kind === "cookie" && result.data.token) {

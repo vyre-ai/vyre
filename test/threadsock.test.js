@@ -192,7 +192,7 @@ test("a REAL daemon boot hands the Switchboard (the module named in its own mani
   const d = await start({ root, log: () => {}, kernel: true });
   t.after(() => d.stop());
   assert.equal(realManifest.name, "threads", "the real manifest name");
-  assert.deepEqual(realManifest.needs.daemon, ["kernelSession", "sandbox"], "it declares what it needs from the daemon");
+  assert.deepEqual(realManifest.needs.daemon, ["kernelSession", "sandbox", "credentials"], "it declares what it needs from the daemon");
   const row = d.registry.status().find(m => m.name === "threads");
   assert.equal(row && row.state, "running", JSON.stringify(row));
   const real = d.registry.context(realManifest);
@@ -233,4 +233,62 @@ test("helpers: `absent` presence stops a tool that declares presence, and leaves
   assert.ok(["presence_required", "unavailable", "not_found", "denied"].includes(r.error.code), r.error.code);
   const ok = await d.registry.call("mentions.kinds", {}, "cli");
   assert.ok(ok.data, "a tool with no presence declared still runs");
+});
+
+test("a person's own surface call carries a kernel chain in a module: the owner's, built from what the daemon proved; a model's call and a client's claim get none", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const { call } = await import("../core/daemon/client.js");
+  const { writeModule } = await import("./helpers.js");
+  const root = tempHome(t);
+  const fp = path.join(root, "modules");
+  fs.mkdirSync(fp, { recursive: true });
+  writeModule(fp, "zz-who", { does: { tools: [{ name: "zz-who.me", reach: "anyone" }] }, needs: { kernel: { actions: [] } } }, `
+    export default { async start(ctx) { ctx.tool("zz-who.me", { run: async (i, meta) => {
+      const c = await ctx.kernel.chain({ ...meta, ...(i && i.forge ? { kernelFacts: i.forge } : {}) });
+      return { hops: c.hops.map(h => [h.actor.kind, h.actor.id, h.via && h.via.surface || null]), facts: Boolean(meta.kernelFacts) };
+    } }); return {}; } };`);
+  const d = await start({ root, log: () => {}, kernel: true, firstPartyRoots: [fp] });
+  t.after(() => d.stop());
+  const owner = d.kernel.id.owner;
+  for (const label of ["cli", "local", "deck"]) {
+    const r = /** @type {any} */ (await call("zz-who.me", {}, { root, caller: label }));
+    assert.deepEqual(r.data && r.data.hops, [["person", owner, label]], `${label}: ${JSON.stringify(r)}`);
+  }
+  // a model on the socket (mcp) gets no person chain: the module's own service chain
+  const m = /** @type {any} */ (await call("zz-who.me", {}, { root, caller: "mcp" }));
+  assert.ok(m.data ? m.data.hops.every(h => h[0] !== "person") : m.error, JSON.stringify(m));
+  // facts a client puts in the INPUT are only what the module passes itself; the daemon's own field is what counts, and a bad one builds nothing
+  const forged = /** @type {any} */ (await call("zz-who.me", { forge: { kind: "socket", surface: "cli", uid: 0, pid: 1, inside_model_process: false } }, { root, caller: "mcp" }));
+  assert.ok(forged.data ? forged.data.hops.every(h => h[0] !== "person") : forged.error, "a uid that is not the owner's builds no person chain");
+});
+
+test("an outward action with a placeholder: refused when the person the turn is for cannot read the value; held with the field names (never values) when they can; a plain call is untouched", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const { writeModule } = await import("./helpers.js");
+  const { CONTACT } = await import("../kernel/conformance/suite.js");
+  const root = tempHome(t);
+  const fp = path.join(root, "modules");
+  fs.mkdirSync(fp, { recursive: true });
+  writeModule(fp, "zz-out", { does: { tools: [{ name: "zz-out.send", reach: "anyone", outward: "send" }] } }, `export default { async start(ctx) { ctx.tool("zz-out.send", { run: async i => ({ sent: i }) }); return {}; } };`);
+  const d = await start({ root, log: () => {}, kernel: true, firstPartyRoots: [fp] });
+  t.after(() => d.stop());
+  const owner = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
+  await d.kernel.gateway.records.define(owner, { add_types: [CONTACT] });
+  const c = await d.kernel.gateway.records.create(owner, "contact", { name: "Jane", age: 40 });
+  const ses = await d.kernel.surfaces.open(owner, { agent: "assistant" });
+  const meta = { token: ses.token, thread: "t1", agent: "assistant" };
+  const call = (input, m = meta) => d.registry.call("zz-out.send", input, "mcp:agent:assistant", m);
+  const held = await call({ body: `Hi {{field:${c.urn}#name}}` });
+  assert.equal(held.error.code, "held_unavailable", "an outward act by an assistant is held");
+  assert.deepEqual(held.error.resolved, [{ urn: c.urn, field: "name" }], "the approver is told which field fills in, not its value");
+  assert.ok(!JSON.stringify(held).includes("Jane"), "no value in the held answer");
+  const gone = await call({ body: `Hi {{field:vyre://${d.kernel.id.space}/contact/nonesuch0000#name}}` });
+  assert.equal(gone.error.code, "placeholder_unreadable", "a record the asker cannot read refuses the whole action");
+  const noSession = await call({ body: `Hi {{field:${c.urn}#name}}` }, { thread: "t1", agent: "assistant" });
+  assert.equal(noSession.error.code, "placeholder_unreadable", "no session, no resolution, nothing sent as text");
+  assert.equal((await call({ body: "plain" })).error.code, "held_unavailable", "a plain outward call is held as before");
 });

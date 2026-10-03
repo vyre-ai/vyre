@@ -7,6 +7,12 @@
 //      only that person's own assistants (agent hops) may stand beside them. A chain with no person (a module or the daemon calling) is not decided here: the legacy rules stand.
 // With no kernel on the daemon (`ctx.kernel` absent) nothing changes. The 0.2 reach rules (projects.reach, agent project grants) still run after this, and only narrow.
 
+/**
+ * The ONE named exception while platform wires the Capsule's code-signature check into the daemon's proven facts: a Capsule call still reaches a module with no kernel chain, so for
+ * that caller alone the 0.2 rules decide. core/memory/capsule-exception.test.js FAILS the day a Capsule call carries a person chain, so this line gets deleted and not forgotten.
+ */
+export const CAPSULE_EXCEPTION = "capsule";
+
 /** Tools a person asks the ONE Ask door through: in a room they are answered from the Space's memory alone, not refused. */
 export const ROOM_ANSWERS = new Set(["memory.ask"]);
 
@@ -31,11 +37,15 @@ export function createKernelGate(ctx, { denied }) {
       }
     }
     // c. whose memory
-    // SHIM(surface chain): a call from the person's own surface (CLI, Deck) reaches a module with no kernel chain today (only session tokens build one), so there is no person
-    // here to check and the 0.2 caller label decides alone. Delete this branch when the kernel hands a module the call's chain (K6); the `tailnet:` labels go with it.
-    if (!chain || !Array.isArray(chain.hops) || !chain.hops.length) return;
+    // No person chain on this call. The daemon builds one for every person surface it proved (CLI, local, Deck, mobile, a paired or signed-in owner device) and for every session
+    // token; a model on the socket, a client's claim and an unproven caller get none, and a caller LABEL decides nothing. Two named exceptions, both set by the daemon and never by a
+    // client: a first-party module's own call (the registry's `firstParty` flag; its authority is the module's reach rules), and the Capsule (CAPSULE_EXCEPTION above).
+    if (!chain || !Array.isArray(chain.hops) || !chain.hops.length || chain.hops.every((/** @type {any} */ h) => h.actor.kind === "service")) {
+      if (extra && extra.firstParty === true && String(extra.caller || "").startsWith("module:")) return;
+      if (extra && extra.caller === CAPSULE_EXCEPTION) return;
+      throw denied(`${tool}: this call carries no kernel chain, so personal memory is not read`);
+    }
     const hops = chain.hops.map((/** @type {any} */ h) => h.actor);
-    if (hops.every((/** @type {any} */ a) => a.kind === "service")) return; // SHIM(surface chain): the module's own service chain stands for "no chain for this call"
     const first = hops[0];
     if (first.kind !== "person" || hops.slice(1).some((/** @type {any} */ a) => a.kind === "person")) throw denied(`${tool}: personal memory is read only by its person and that person's own assistant`);
     let m = null;
