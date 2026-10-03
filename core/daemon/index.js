@@ -19,7 +19,7 @@ import { assertDaemonHost } from "./host-guard.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { Registry, discover, ownerDevice, currentCall } from "../modules/index.js";
-import { devSwitch } from "../../kernel/devbuild.js";
+import { devSwitch, kernelWanted, kernelOffRefusal } from "../../kernel/devbuild.js";
 import { build, swWithBuild, htmlWithBuild } from "./build.js";
 import { serveApp } from "./app.js";
 import { acquire } from "./lock.js";
@@ -105,6 +105,10 @@ export function moduleRoots(root) {
  *   kernel?: boolean, coreKeys?: any, person?: (socket: import("node:net").Socket) => Promise<string|{ key: string, tty: string|null }|null> }} [opts] person: a test's stand-in for atTerminal
  */
 export async function start(opts = {}) {
+  // A packaged build starts only with the kernel on (MA-5): refused before the home, the lock or the store is touched. A development checkout starts as it always has.
+  const kernelOn = kernelWanted(opts);
+  const refused = kernelOffRefusal(kernelOn);
+  if (refused) throw Object.assign(new Error(refused), { code: "kernel_required" });
   const root = opts.root || config.home();
   // A test daemon never boots on the person's Mac (host-guard.js): one place, every boot passes it.
   assertDaemonHost({ root, real: isRealHome(root) });
@@ -195,7 +199,7 @@ async function startLocked(opts, root, p, release) {
   /** @type {(() => Promise<void>) | null} */ let closeKernelSessions = null;
   /** @type {(() => void) | null} */ let reopenLater = null;
   /** @type {(() => void) | null} */ let closeFlowsHost = null;
-  if (opts.kernel === true || (opts.kernel === undefined && process.env.VYRE_KERNEL === "1")) {
+  if (kernelWanted(opts)) {
     const { bootHomeKernel } = await import("../../kernel/home.js");
     // The record store: VYRE_STORE=sqlite (the default), auto or twenty (stores/twenty/space-store.js). With auto or twenty each Space's records live in its own Twenty, provisioned
     // on first use, when the box can run it; auto falls back to SQLite on a box that cannot (and a new hosted Space asks first), twenty refuses to start instead. The reach, memory
