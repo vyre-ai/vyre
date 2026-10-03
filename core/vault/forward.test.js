@@ -43,7 +43,7 @@ async function mk(t, { gate = null } = {}) {
   const bound = new Map([[SESSION, lease.id]]), routes = new Map();
   const audits = () => /** @type {any[]} */ (db.prepare("SELECT * FROM vault_audit").all());
   const go = (chain = who) => leasedForward({ chain, leaseOf: s => bound.get(s) ?? null, check: ({ id }) => sealer.lease.check({ chain: who, id }), routesOf: s => routes.get(s) ?? [],
-    forward: async i => { const r = await run("vault.forward", { credential: i.ref, method: i.method, url: `https://${i.route}${i.path}`, query: i.query, headers: i.headers, body: i.body, session: i.session }, "kernel:leases"); return r; }, emit: () => {} });
+    forward: async i => { const r = await run("vault.forward", { credential: i.ref, method: i.method, url: `https://${i.route}${i.path}`, query: i.query, headers: i.headers, allow_headers: i.allow_headers, body: i.body, session: i.session }, "kernel:leases"); return r; }, emit: () => {} });
   const call = (o, session = SESSION) => go()({ session, route: o.route, method: o.method ?? "GET", path: o.path, query: o.query, headers: o.headers, body: o.body });
   const wire = async (o, session) => { const r = await call(o, session); return r.body === undefined || r.held ? r : { ...r, body: Buffer.from(r.body, "base64") }; };
   return { v, net, run, tick: ms => { clock += ms; }, leases, lease, bound, routes, call: wire, audits, db };
@@ -54,7 +54,7 @@ async function addKey(m, S) { await m.v.put({ name: "dropsign", kind: "api-crede
 
 test("a plain API key: the read runs at the home with the key added, the device gets the response only, and nothing leaks into it or the audit", async t => {
   const m = await mk(t), S = fake("dropsign"); await addKey(m, S);
-  m.routes.set(SESSION, [normalizeRoute({ route: "api.hellosign.test", ref: "dropsign", allow: [{ method: "GET", path: "/v3/*" }] })]);
+  m.routes.set(SESSION, [normalizeRoute({ route: "api.hellosign.test", ref: "dropsign", allow: [{ method: "GET", path: "/v3/*" }], headers: ["x-matter-id"] })]);
   m.net.script = r => json(200, { requests: [1, 2] }, { "set-cookie": "sid=abc", "x-request-id": "r1" });
   const out = await m.call({ route: "api.hellosign.test", path: "/v3/signature_request/list", query: { page: "1" }, headers: { accept: "application/json", authorization: "Bearer attacker", "x-api-key": "attacker", "x-matter-id": "m42" } });
   assert.equal(out.status, 200); assert.deepEqual(JSON.parse(out.body.toString()), JSON.parse('{"requests":[1,2]}')); assert.equal(out.headers["set-cookie"], undefined);
@@ -131,4 +131,29 @@ test("routeAllows: exact pairs, prefix paths, deny wins, the default is no, and 
   assert.equal(routeAllows(normalizeRoute({ route: "a.test", ref: "c" }), "GET", "/a"), false, "no paths, no access");
   const old = normalizeRoute({ route: "a.test", ref: "c", paths: ["/v1/*", "/me"] }); assert.equal(routeAllows(old, "GET", "/v1/x"), true); assert.equal(routeAllows(old, "HEAD", "/me"), true); assert.equal(routeAllows(old, "POST", "/me"), false);
   assert.throws(() => normalizeRoute({ route: "a.test", ref: "c", allow: [{ method: "GET", path: "/a*b" }] }), { code: "bad_input" });
+});
+
+test("FW-1: request headers are an allow-list: a safe default plus the route's own named headers, and the rewrite, override, forwarding and credential families never pass, whatever the route says", async t => {
+  const m = await mk(t), S = fake("dropsign"); await addKey(m, S);
+  const probe = { accept: "application/json", "content-type": "application/json", "if-none-match": "abc", "x-matter-id": "m42", "x-custom": "1",
+    "x-http-method-override": "DELETE", "x-http-method": "DELETE", "x-method-override": "DELETE", "x-original-url": "/v3/admin", "x-rewrite-url": "/v3/admin", "x-forwarded-host": "evil.test", "x-forwarded-for": "1.2.3.4",
+    "x-real-ip": "1.2.3.4", "x-host": "evil.test", "x-goog-iam-authorization-token": "tok", "x-amz-security-token": "tok", "x-ms-authorization-auxiliary": "tok", authorization: "Bearer attacker", cookie: "sid=1",
+    host: "evil.test", "x-api-key": "attacker", "proxy-authorization": "x", "sec-fetch-mode": "cors", "x-vyre-token": "t", forwarded: "for=1.2.3.4", "content-length": "9", "transfer-encoding": "chunked" };
+  const seen = async routeHeaders => { m.routes.set(SESSION, [normalizeRoute({ route: "api.hellosign.test", ref: "dropsign", allow: [{ method: "GET", path: "/v3/*" }], ...(routeHeaders ? { headers: routeHeaders } : {}) })]); m.net.calls.length = 0; await m.call({ route: "api.hellosign.test", path: "/v3/x", headers: probe }); const h = { ...m.net.calls[0].headers }; delete h.authorization; delete h.host; return Object.keys(h).filter(k => !["accept", "content-type", "if-none-match"].includes(k)).sort(); };
+  assert.deepEqual(await seen(null), ["content-type"].filter(() => false), "by default only the safe set reaches the vendor (the credential's own authorization is the home's)");
+  assert.equal(m.net.calls[0].headers.authorization, `Bearer ${S}`, "the home added the key, not the program");
+  assert.deepEqual(await seen(["x-matter-id"]), ["x-matter-id"], "a header the route names passes");
+  const naming = ["x-matter-id", "x-http-method-override", "x-original-url", "x-forwarded-host", "x-amz-security-token", "authorization", "cookie", "x-rewrite-url", "x-goog-iam-authorization-token"];
+  assert.deepEqual(await seen(naming), ["x-matter-id"], "naming a dangerous header on the route does not let it through");
+  assert.throws(() => normalizeRoute({ route: "a.test", ref: "c", headers: ["bad name"] }), { code: "bad_input" });
+});
+
+test("FW-3: the route, its limits, its Drive lists and its header names come from the home's record only; what the program adds to the request is ignored", async t => {
+  const m = await mk(t), S = fake("dropsign"); await addKey(m, S);
+  m.routes.set(SESSION, [normalizeRoute({ route: "api.hellosign.test", ref: "dropsign", allow: [{ method: "GET", path: "/v3/*" }] })]);
+  await m.v.put({ name: "other", kind: "api-credential", fields: { config: JSON.stringify({ auth: { type: "bearer" }, hosts: ["api.hellosign.test"] }), secret: fake("other") } }, "cli");
+  m.net.calls.length = 0;
+  await m.call({ route: "api.hellosign.test", path: "/v3/x", ref: "other", credential: "other", allow_headers: ["x-anything"], headers: { "x-anything": "1" }, limits: { maxBytes: 1e9 }, drive: { read: ["*"], write: ["*"] }, allow: [{ method: "DELETE", path: "/*" }] });
+  assert.equal(m.net.calls.length, 1); assert.equal(m.net.calls[0].headers.authorization, `Bearer ${S}`, "the route's own credential, not the one the program named"); assert.equal(m.net.calls[0].headers["x-anything"], undefined);
+  await assert.rejects(m.call({ route: "api.hellosign.test", method: "DELETE", path: "/v3/x", allow: [{ method: "DELETE", path: "/*" }] }), { code: "not_found" }, "a program cannot widen the route");
 });

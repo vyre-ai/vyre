@@ -71,7 +71,7 @@ export async function forwardFile(api, io, input, meta) {
   const types = Array.isArray(input.limits?.contentTypes) && input.limits.contentTypes.length ? input.limits.contentTypes.map(x => String(x).toLowerCase()) : DEFAULT_TYPES;
   const driveRead = (input.drive?.read ?? []).map(String), driveWrite = (input.drive?.write ?? []).map(String);
   const audit = (ok, why) => api.vault.audit("api-request", name || null, caller, ok, why);
-  const headers = forwardHeaders(input.headers);
+  const headers = forwardHeaders(input.headers, input.allow_headers);
 
   // The upload, resolved to Drive versions now so the card and the send agree on exactly which bytes.
   const resolveFile = async ref => {
@@ -108,7 +108,7 @@ export async function forwardFile(api, io, input, meta) {
 
   let plan;
   try { plan = await api.plan({ credential: name, method: input.method, url: input.url, query: input.query, headers }, name); } catch (e) { audit(false, String(/** @type {Error} */ (e).message).slice(0, 160)); throw e; }
-  const desc = { upload, saveTo: input.saveTo ?? null, limits: { maxBytes, contentTypes: types } };
+  const desc = { upload, saveTo: input.saveTo ?? null, limits: { maxBytes, contentTypes: types }, session: isStr(input.session) ? input.session.slice(0, 80) : null };
   const hash = approvalHash({ credential: plan.name, method: plan.method, url: plan.href, headers: plan.headers, body: { file: desc } });
 
   const go = () => run(api, io, { plan, headers, body, length, input, desc, types, maxBytes, caller, name, audit });
@@ -139,7 +139,7 @@ export async function sendFile(api, io, c, held, it, caller) {
     const parts = []; for (const p of desc.upload.parts) parts.push(p.file ? { name: p.name, filename: p.filename, contentType: p.contentType, file: await resolveFile(p.file) } : { name: p.name, value: p.value });
     const m = multipart(parts); headers["content-type"] = m.contentType; body = m.iterable; length = m.length;
   }
-  const plan = await api.plan({ credential: name, method: c.method, url: c.url, headers: forwardHeaders(held.headers) }, name);
+  const plan = await api.plan({ credential: name, method: c.method, url: c.url, headers: isObj(held.headers) ? held.headers : {} }, name);
   if (approvalHash({ credential: plan.name, method: plan.method, url: plan.href, headers: plan.headers, body: { file: desc } }) !== c.hash) throw bad("the request was changed after it was held, so it is not sent; ask again", "denied");
   if (plan.kind !== c.kind) throw bad(`this credential now classifies the request as a ${plan.kind}, not a ${c.kind}; ask again`, "denied");
   const audit = (ok, why) => api.vault.audit("api-request", name, `${caller} for ${it.by || "the user"}`, ok, why);

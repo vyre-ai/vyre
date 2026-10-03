@@ -56,15 +56,24 @@ const CONCEALED = "<concealed by vyre>";
 /** Response headers worth handing back. Never a cookie, never anything that authenticates. */
 const KEEP_HEADERS = ["content-type", "content-length", "etag", "last-modified", "retry-after", "x-request-id", "request-id", "x-ms-request-id", "x-goog-request-id", "ratelimit-remaining"];
 
-/** The request headers a lent computer's program may send through the home: content negotiation, validators and the vendor's own x- headers. Anything else is dropped; the credential's own headers (and Authorization, Cookie, Host) are never the program's to set. */
-const FORWARD_OK = /^(content-type|accept|accept-language|if-match|if-none-match|if-modified-since|if-unmodified-since|range|idempotency-key|x-(?!vyre-)[a-z0-9-]{1,60})$/;
-export function forwardHeaders(h) {
+/**
+ * The request headers a lent computer's program may send through the home. An allow-list, not a pattern (reviewer-2 FW-1): a small safe default (content negotiation, validators), plus
+ * exactly the names the ROUTE's own record lists (`allow_headers`, set at the home, never by the program). Every other header, every `x-` header that is not named, is dropped. Some are
+ * dropped even when a route names them, because they change what the vendor does with the request or who it thinks sent it: authorization, cookies, host, the forwarding and rewrite families
+ * (x-forwarded-*, x-real-ip, x-original-url, x-rewrite-url, x-host), method overrides (x-http-method*, x-method-override), proxy and sec- headers, and the credential-carrying `x-*` names.
+ * @param {any} h the program's headers @param {string[]} [named] the route's own exact names
+ */
+const FORWARD_DEFAULT = new Set(["accept", "accept-language", "content-type", "content-language", "if-match", "if-none-match"]);
+const FORWARD_NEVER = /^(authorization|proxy-authorization|cookie|set-cookie|host|connection|keep-alive|content-length|transfer-encoding|te|trailer|upgrade|expect|forwarded|via|origin|referer|sec-.*|proxy-.*|x-forwarded-.*|x-real-ip|x-client-ip|x-cluster-client-ip|true-client-ip|x-original-url|x-original-uri|x-rewrite-url|x-host|x-http-method.*|x-method-override|x-vyre-.*|x-api-key|x-auth.*|x-token.*|x-csrf.*|x-xsrf.*|x-goog-iam-.*|x-goog-authenticated-user.*|x-amz-security-token|x-amz-.*authorization.*|x-ms-authorization.*|.*authorization.*)$/;
+export function forwardHeaders(h, named = []) {
   if (!isObj(h)) return {};
+  const ok = new Set([...FORWARD_DEFAULT, ...(Array.isArray(named) ? named.map(x => String(x).toLowerCase()).filter(x => /^[a-z0-9-]{1,64}$/.test(x)) : [])]);
   const out = {};
-  for (const [k, v] of Object.entries(h)) { const n = k.toLowerCase(); if (FORWARD_OK.test(n) && !/^x-(api-key|auth|token|csrf)/.test(n) && typeof v === "string") out[n] = v; }
+  for (const [k, v] of Object.entries(h)) { const n = k.toLowerCase(); if (ok.has(n) && !FORWARD_NEVER.test(n) && typeof v === "string") out[n] = v; }
   return out;
 }
 
+const strs = { type: "array", items: { type: "string" } };
 const isObj = v => Boolean(v) && typeof v === "object" && !Array.isArray(v);
 const isStr = v => typeof v === "string";
 const bad = (msg, code = "bad_input") => Object.assign(new Error(msg), { code });
@@ -469,7 +478,7 @@ export class ApiRequests {
     const caller = String(meta.caller), name = String(input.credential || "");
     if (isStr(input.body) === false && input.body !== undefined && input.body !== null && !isObj(input.body) && !Array.isArray(input.body)) throw bad("a request body is text, JSON or form fields; a binary or multipart upload is not carried to the home in this release", "binary_body");
     const audit = (ok, why) => this.vault.audit("api-request", name || null, caller, ok, why);
-    const clean = { ...input, headers: forwardHeaders(input.headers) };
+    const clean = { ...input, headers: forwardHeaders(input.headers, input.allow_headers) };
     let plan;
     try { plan = await this.plan(clean, name); } catch (e) { audit(false, printable(/** @type {Error} */ (e).message, 160)); throw e; }
     if (plan.kind === "read") return { ...(await this.execute(plan, { who: caller, raw: true })), kind: "read" };
@@ -656,7 +665,11 @@ export class ApiRequests {
     let sealOk = false;
     try { sealOk = isStr(c.seal) && same(c.seal, this.seal(c)); } catch { /* locked: not sent */ }
     if (!sealOk) throw bad("this card was not made by the vault, or its words were changed, so it is not sent", "denied");
-    if (isObj(held.file)) { if (!this.deps.files) throw bad("the Drive is not wired, so a held file request cannot be sent", "failed"); return sendFile(this, { files: this.deps.files }, c, held, it, caller); }
+    if (isObj(held.file)) {
+      const files = this.deps.filesFor ? this.deps.filesFor({ session: String(held.file.session ?? "") }) : this.deps.files;
+      if (!files) throw bad("the Drive is not wired, so a held file request cannot be sent", "failed");
+      return sendFile(this, { files }, c, held, it, caller);
+    }
     const plan = await this.plan({ credential: c.credential, method: c.method, url: c.url, headers: held.headers, body: held.body }, c.credential);
     if (plan.hash !== c.hash) throw bad("the request was changed after it was held, so it is not sent; ask again", "denied");
     if (plan.kind !== c.kind) throw bad(`this credential now classifies the request as a ${plan.kind}, not a ${c.kind}; ask again`, "denied");
@@ -694,7 +707,7 @@ export function register({ vault, tool, internal, call, said, deps = {}, log }) 
   const api = new ApiRequests(vault, { call, said, log, ...deps });
 
   internal("vault.forward", "The kernel's lease module forwards one request from a lent computer's program: { credential, method, url, query?, headers?, body?, session }. It runs here, at the home, through the same checks as vault.request, and returns { status, headers, body (base64) } or { held } for an outward call. Never returns a credential value.",
-    obj({ credential: str, method: { type: "string", enum: METHODS }, url: str, headers: { type: "object" }, query: { type: "object" }, body: { anyOf: [str, { type: "object" }, { type: "array" }] }, session: str }, ["credential", "method", "url", "session"]),
+    obj({ credential: str, method: { type: "string", enum: METHODS }, url: str, headers: { type: "object" }, allow_headers: strs, query: { type: "object" }, body: { anyOf: [str, { type: "object" }, { type: "array" }] }, session: str }, ["credential", "method", "url", "session"]),
     async (input, { caller }) => {
       if (caller !== "kernel:leases" && caller !== "module:leases") throw bad("only the kernel's lease module forwards a lent computer's request", "denied");
       const r = await api.forward(input, { caller: `runner:${String(input.session).slice(0, 80)}` });
@@ -702,11 +715,13 @@ export function register({ vault, tool, internal, call, said, deps = {}, log }) 
     });
 
   internal("vault.forward.file", "The kernel's lease module forwards one request that moves a file for a lent computer's program: { credential, method, url, query?, headers?, session, upload?: { drive: { path, version?, contentType } } or { multipart: [ { name, value } | { name, filename, contentType, drive: { path, version? } } ] }, saveTo?, stream?, limits?: { maxBytes, contentTypes }, drive?: { read, write } }. The file is read from, or saved to, the Space's Drive by reference at the home and moves a chunk at a time; an outward call is held for a person. Returns the response, { saved }, a stream or { held }; never a credential value.",
-    obj({ credential: str, method: { type: "string", enum: METHODS }, url: str, headers: { type: "object" }, query: { type: "object" }, upload: { type: "object" }, saveTo: str, stream: { type: "boolean" }, limits: { type: "object" }, drive: { type: "object" }, session: str }, ["credential", "method", "url", "session"]),
+    obj({ credential: str, method: { type: "string", enum: METHODS }, url: str, headers: { type: "object" }, allow_headers: strs, query: { type: "object" }, upload: { type: "object" }, saveTo: str, stream: { type: "boolean" }, limits: { type: "object" }, drive: { type: "object" }, session: str }, ["credential", "method", "url", "session"]),
     async (input, { caller }) => {
       if (caller !== "kernel:leases" && caller !== "module:leases") throw bad("only the kernel's lease module forwards a lent computer's request", "denied");
-      if (!api.deps.files) throw bad("the Drive is not wired to this vault", "failed");
-      const r = await forwardFile(api, { files: api.deps.files }, input, { caller: `runner:${String(input.session).slice(0, 80)}` });
+      // FW-2: the Drive is reached AS THE LENT MEMBER. `deps.filesFor({ session })` is the kernel's Drive door under that session's member chain (so a route's Drive lists only ever narrow what the member may do); `deps.files` is the home's own handle for a rig with no kernel.
+      const files = api.deps.filesFor ? api.deps.filesFor({ session: String(input.session) }) : api.deps.files;
+      if (!files) throw bad("the Drive is not wired to this vault", "failed");
+      const r = await forwardFile(api, { files }, input, { caller: `runner:${String(input.session).slice(0, 80)}` });
       return r.held || r.stream ? r : { ...r, ...(r.body ? { body: r.body.toString("base64") } : {}) };
     });
 
