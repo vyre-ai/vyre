@@ -80,3 +80,15 @@ Done, pushed to origin/work/kernel (f43c4e570 and later):
 ## Round 5 (3 Oct, after the grants store)
 - Done: once, rate and meter enforcement (kernel/core/limits.js); field limits fail closed under row predicates; stage gates (entry rules and required tasks, expr injected); K4 items 10, 12, template immutability, door isChain.
 - Open: the stage-entry task creation is `onStageEnter` (records or tasks wires it); `rate` windows are not durable; K2-9 and default-on gates stay a reviewer-2 gate.
+
+## Full suite and K5, K6 (3 Oct)
+- Full `kernel/**` run on the test box at 58453fda4: 218 tests, 218 pass, 0 fail, 0 cancelled, exit 0 by itself in 389 s, no sealing process left running.
+- K5 (kernel/audit, 5 tests plus one gateway test): signed checkpoints every 1,000 events or 10 minutes, `verifyLog`, device checkpoints (rollback, rewrite and split detection), `compareCheckpoints`. The Space's signing key is the caller's `sign` function; who holds it (owners' signer) is the open design item for the home.
+- K6 (kernel/modules, 6 tests): supervisor, sandbox, egress proxy, host. The Linux path is proved by the self-test on the test box. The macOS profile is written and not run in tests (Mac is shared and the lead has not freed it): run `createSupervisor().selfTest()` there before relying on it. Windows: refused.
+- Next: wire the registry's install path to `createModuleHost` (core/modules/index.js), the Space key custody for checkpoints, default-on gates after reviewer-2 reads K2-9.
+
+## The Space signing key (3 Oct, per DESIGN-wink 2)
+- A Space is an identity whose list holds its owners (names/worker/chain.js). The checkpoint key is a **Space key**: an Ed25519 key made and held by the sealing process on the Space's home (`spacekey.pub`, `spacekey.sign` in kernel/seal/process.js; one per Space; the private half never leaves). It signs one thing: a checkpoint of that Space's log (`vyre-checkpoint-v1` bytes whose `space` equals the caller's; anything else is refused).
+- **Endorsement:** an owner's device signs `{ space, key_id, pub, ts }` (`endorse`, kernel/audit/key.js). The endorsement is kept as an event; a device accepts the key only after `verifyEndorsement` checks it against the Space's own identity chain: the owner is on the Space's list at that time, the signing device is on that owner's own list as it stood then, and the signature covers exactly this key. The home cannot swap the key under the devices.
+- **Holding:** the owners' devices hold the checkpoints (`createDeviceCheckpoints`, `compareCheckpoints`). `gateway.audit.verify` takes the endorsed public key.
+- Not built here: the owners' signer UI that produces the endorsement (windows or native), and rotation (a new endorsement with a later ts supersedes; old checkpoints stay valid under their own key id).

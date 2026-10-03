@@ -54,7 +54,7 @@ export function createGateway(cfg) {
     if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
     const { limit, ...rest } = filter;
     const out = [];
-    for (const e of cfg.log.read(rest)) { if (await canSee(chain, e)) out.push(e); if (limit && out.length >= limit) break; }
+    for (const e of cfg.log.read(rest)) { if (await canSee(chain, e)) out.push(await records.viewEvent(chain, e)); if (limit && out.length >= limit) break; }
     return out;
   }
 
@@ -62,7 +62,7 @@ export function createGateway(cfg) {
   function subscribe(/** @type {any} */ chain, /** @type {string} */ consumer, /** @type {any} */ filter, /** @type {(e: any) => any} */ onEvent) {
     if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
     const name = `${actorString(chain.hops[chain.hops.length - 1].actor)}:${consumer}`;
-    return cfg.log.subscribe(name, filter, async (/** @type {any} */ e) => { if (await canSee(chain, e)) await onEvent(e); });
+    return cfg.log.subscribe(name, filter, async (/** @type {any} */ e) => { if (await canSee(chain, e)) await onEvent(await records.viewEvent(chain, e)); });
   }
 
   const seal = cfg.sealer ? createSealing({ enforce, clock: cfg.clock, approval_max_age: cfg.approval_max_age, space: cfg.space, sealer: cfg.sealer, authorizer, log: cfg.log, door: cfg.door, approvals: cfg.approvals || (cfg.tasks ? createApprovals({ tasks: cfg.tasks }) : undefined), templates: cfg.templates, destinations: cfg.destinations }) : undefined;
@@ -71,7 +71,7 @@ export function createGateway(cfg) {
     authorize: authorizer.authorize,
     limits,
     ...(seal ? { seal } : {}),
-    ...(gs ? { grants: Object.freeze({ create: gs.create, revoke: gs.revoke, narrow: gs.narrow, list: gs.list, setRole: gs.setRole, addActor: gs.addActor, rebuild: gs.rebuild, offers: Object.freeze({ offer: gs.offer, unoffer: gs.unoffer, active: gs.active, onRevoke: gs.onRevoke }) }) } : {}),
+    ...(gs ? { grants: Object.freeze({ create: gs.create, revoke: gs.revoke, narrow: gs.narrow, list: gs.list, setRole: gs.setRole, removeMember: gs.removeMember, addActor: gs.addActor, rebuild: gs.rebuild, offers: Object.freeze({ offer: gs.offer, unoffer: gs.unoffer, active: gs.active, onRevoke: gs.onRevoke }) }) } : {}),
     /** The Space's type definitions, read through authorize like any record read (the tool surface and Customize list from here). */
     async definitions(chain) {
       await gate(chain, "records.read", `vyre://${cfg.space}/definition/types`);
