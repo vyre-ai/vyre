@@ -3,7 +3,7 @@
 // other local user can reach it. Request { id, op, ctx, ... } gets { id, ok, result } or { id, ok: false, error: { code } }. An error carries a
 // stable code and nothing from the input, so no value reaches a log or a stack trace. The language is Node for now: the protocol in this file
 // (ops, fields, codes) is the interface a Rust process can implement later.
-//   ops: init, put, use, deliver, reveal, derived.read, detect, save, session.end, lookup, match, drop, presence.enrol, presence.revoke, presence.check, wipe, spacekey.pub, spacekey.sign, health
+//   ops: init, put, use, deliver, reveal, derived.read, detect, save, session.end, lookup, match, drop, presence.enrol, presence.revoke, presence.check, spacekey.pub, spacekey.sign, health
 // ctx is the kernel's summary of the chain (wire.chainCtx). This process trusts the kernel for who is in the chain and checks the rest itself.
 // `approver` (use and deliver) is the chain of the person who approved: the act may run under an assistant's or a Flow's chain, but the proof
 // must come from exactly one person, and the process verifies it against that chain.
@@ -182,19 +182,6 @@ export class Sealer {
     for (const pr of pairs) { const [field, cls] = pr.split("\0"); if (blinds.has(this.store.blind(ctx.space, field, cls, cv))) yes = true; }
     return { match: yes, event: { type: "seal.detect", module: c.module, count: mod.count } };
   }
-  wipe(r) {
-    need(r.host === true && r.confirm === "destroy sealed state", "host_only");
-    const dir = this.store.dir, mk = path.join(dir, "master.key");
-    try { const n = fs.statSync(mk).size; const fd = fs.openSync(mk, "r+"); fs.writeSync(fd, crypto.randomBytes(Math.max(n, 32))); fs.fsyncSync(fd); fs.closeSync(fd); } catch { /* the master was not a file here */ }
-    fs.rmSync(mk, { force: true });
-    this.store.master.fill(0); this.sessions.clear(); this.lookups.clear();
-    let removed = 0;
-    for (const e of fs.readdirSync(dir, { withFileTypes: true })) { fs.rmSync(path.join(dir, e.name), { recursive: true, force: true }); removed++; }
-    // Nothing is served after this: the reply goes out and the process ends, so the next start makes a new master and a new Space key.
-    setTimeout(() => process.exit(0), 50).unref?.();
-    this.wiped = true;
-    return { wiped: true, removed, event: { type: "seal.wiped" } };
-  }
   drop(r) { const ctx = this.ctxOf(r.ctx); this.open(ctx, r.ref); return { dropped: this.store.drop("values", r.ref) }; }
 
   /**
@@ -216,7 +203,6 @@ export class Sealer {
   }
 
   async handle(req) {
-    if (this.wiped) throw err("wiped");
     switch (req.op) {
       case "put": return this.put(req); case "use": return this.use(req); case "deliver": return this.deliver(req);
       case "reveal": return this.reveal(req); case "derived.read": return this.reveal(req, true);
@@ -260,9 +246,6 @@ export class Sealer {
       case "service.get": { need(!req.ctx?.model_originated && SERVICE_NAME.test(req.name), "bad_input"); const r = this.store.read("values", serviceMeta(req.name).ref, "_service"); need(r, "not_found"); return { value: r.plaintext }; }
       case "service.delete": { need(!req.ctx?.model_originated && SERVICE_NAME.test(req.name), "bad_input"); return { deleted: this.store.drop("values", serviceMeta(req.name).ref), event: { type: "service.deleted", name: req.name } }; }
       case "service.list": { need(!req.ctx?.model_originated, "bad_input"); return { names: this.store.metas("values", "_service").map(m => m.record).sort() }; }
-      // Reset with wipe: the host's own call (the client keeps `wipe` off the SealApi, so no gateway tool, module or session can reach it). The master key is destroyed first, so every file left
-      // behind (values, derived, presence, the Space checkpoint key, the anchor) opens for no one even if a later step fails; then the folders go, memory is zeroed and the process exits.
-      case "wipe": return this.wipe(req);
       case "health": return { ok: true, pid: process.pid, unattested_allowed: this.allowUnattested, custody: { master: "file", profile: process.env.VYRE_SEAL_PROFILE || "desktop", platform: process.platform, note: custodyNote() }, presence: this.presence.recovery ? "recovery" : "ok", needs_recovery: [...this.presence.ever].filter(p => !this.presence.have(p)) };
       default: throw err("bad_op");
     }

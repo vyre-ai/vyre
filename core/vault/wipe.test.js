@@ -7,6 +7,7 @@ import path from "node:path";
 import { open, migrate } from "../store/index.js";
 import { Vault, MIGRATIONS } from "./vault.js";
 import { SCRATCH } from "../../test/scratch.mjs";
+import { wipeHome } from "./wipe-host.js";
 
 test("Vault.wipe: key gone first, rows and files gone, the old key file's bytes are not left, and a fresh vault is empty", async t => {
   const home = fs.mkdtempSync(path.join(SCRATCH, "vyre-wipe-")), db = open(path.join(home, "vyre.db"));
@@ -28,4 +29,18 @@ test("Vault.wipe: key gone first, rows and files gone, the old key file's bytes 
   await v.key();
   assert.notEqual(fs.readFileSync(path.join(dir, "key"), "utf8"), keyBefore, "a new key");
   await v.stop();
+});
+
+test("wipeHome: vault and sealing folder both destroyed, keys first, counts returned", async t => {
+  const home = fs.mkdtempSync(path.join(SCRATCH, "vyre-wipeh-")), dbp = path.join(home, "vyre.db"), db = open(dbp);
+  migrate(db, "vault", MIGRATIONS);
+  const config = { name: "harlow-box", vault: { keystore: "file" } }, dir = path.join(home, "vault"), seal = path.join(home, "seal");
+  t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+  const v = new Vault({ db, dir, config, emit: () => {}, log: () => {} });
+  await v.put({ name: "note", kind: "secret", fields: { value: "fixture-wipe-value-bbbb2222" } }, "cli");
+  await v.stop(); db.close();
+  fs.mkdirSync(seal, { recursive: true }); fs.writeFileSync(path.join(seal, "master.key"), "00".repeat(32)); fs.mkdirSync(path.join(seal, "values"));
+  const r = await wipeHome({ db: dbp, vaultDir: dir, sealDir: seal, config });
+  assert.equal(r.vault.keys_destroyed, true); assert.equal(r.seal.master_destroyed, true);
+  assert.deepEqual(fs.readdirSync(dir), []); assert.deepEqual(fs.readdirSync(seal), []);
 });

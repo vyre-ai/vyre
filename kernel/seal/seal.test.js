@@ -8,6 +8,7 @@ import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { startSealer } from "./client.js";
+import { wipeSealDir } from "./wipe.js";
 import { person, withAgent, chain, signer, tmp, property, randomSsn, luhnCard, enrolDevice, SPACE } from "./testing.js";
 
 const REC = "vyre://spc_testspace0001/contact/c_jane";
@@ -473,21 +474,17 @@ test("seal.detect: yes or no for one candidate, first-party modules only, rate l
   assert.equal(await code(ask("111-22-3336")), "rate_limited");
 });
 
-test("reset with wipe: the master key goes first, the folder is emptied, the process ends, and a fresh start opens none of the old values and makes a new Space key", async t => {
+test("reset with wipe (host, daemon stopped): the master key goes first, the folder is emptied, and a fresh start opens none of the old values and makes a new Space key", async t => {
   const dir = tmp("seal"), mk = () => startSealer({ dir, timeoutMs: 8000, dev: true, unattested: true });
   let s = mk(); t.after(async () => { await s.close(); fs.rmSync(dir, { recursive: true, force: true }); });
   await enrolDevice(s, signer("per_alex"));
-  await s.api.put({ chain: person(), record: REC, field: "ssn", class: "us-ssn", value: "123-45-6789" });
+  await put(s, "123-45-6789");
   const pub1 = (await s.spaceKey.pub({ chain: person() })).pub;
   assert.ok(fs.existsSync(path.join(dir, "master.key")));
-  // Nothing on the SealApi can wipe.
-  assert.equal(typeof s.api.wipe, "undefined");
-  const r = await s.wipe();
-  assert.equal(r.wiped, true);
-  assert.equal(await code(s.api.put({ chain: person(), record: REC, field: "ssn", class: "us-ssn", value: "321-54-9876" })), "wiped");
-  await new Promise(res => setTimeout(res, 400));
-  assert.deepEqual(fs.readdirSync(dir), [], "the folder is empty");
   await s.close();
+  const r = wipeSealDir(dir);
+  assert.equal(r.master_destroyed, true); assert.ok(r.removed > 0);
+  assert.deepEqual(fs.readdirSync(dir), [], "the folder is empty");
   s = mk();
   await enrolDevice(s, signer("per_alex"));
   assert.notEqual((await s.spaceKey.pub({ chain: person() })).pub, pub1, "a new Space checkpoint key");

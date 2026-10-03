@@ -441,15 +441,6 @@ export default {
     // A vendor API call with an api-credential: reads run, asked-for sends run, the rest hold at the Gate.
     const requests = requestTools.register({ vault, tool, internal, said, call: ctx.call ? (name, input) => ctx.call(name, input) : undefined, log: ctx.log });
 
-    // Reset with wipe (the Wink module's one call before a box becomes unowned; the human step is the host CLI's, `vyre reset --wipe`): destroys the vault's keys, then every row and file.
-    internal("vault.wipe", "Destroy this vault: its device key and Secret Key first, then every vault row and file. { confirm: \"wipe this vault\" }. Only the Wink module calls it, after the host's own confirmation. Returns counts only.",
-      obj({ confirm: str }, ["confirm"]),
-      async (input, { caller }) => {
-        if (caller !== "module:wink") throw Object.assign(new Error("only the host's reset wipes the vault"), { code: "denied" });
-        if (input.confirm !== "wipe this vault") throw Object.assign(new Error("a wipe needs its confirmation"), { code: "bad_input" });
-        return vault.wipe();
-      });
-
     tool("vault.offboard", [...SURFACES, "mcp"], "Someone left: revoke every pass they hold and list what must be rotated.",
       obj({ person: str }, ["person"]), (input, { caller }) => vault.offboard(input, caller),
       presence("Offboard someone", ({ person }) => `Revoke every pass ${String(person).slice(0, 64)} holds and forget their card`));
