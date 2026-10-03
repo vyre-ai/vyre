@@ -132,3 +132,38 @@ test("a stored child found wider than its parent at boot is cut to its parent's 
   assert.ok(k.log.read({ type: "grant.narrowed" }).some(e => e.data.why === "wider than its parent" && e.data.grant.id === c.id), "the cut is a logged event");
   assert.deepEqual(await k.grants.containmentPass(), { clamped: 0, revoked: 0 }, "and it is not cut twice");
 });
+
+test("CN-1: a schedule is compared by value, not by identity: a value-equal clone is contained, and a boot pass does not re-cut it", async () => {
+  const sched = () => ({ days: ["mon"], from: "09:00", to: "10:00" });
+  const parent = grant({}, { when: { schedule: sched() } });
+  const same = child(parent, {}, { when: { schedule: sched() } });
+  assert.equal(containsDims(parent, same, () => 0, riskOf), true, "a clone with the same fields");
+  assert.equal(containsDims(parent, child(parent, {}, { when: { schedule: { ...sched(), to: "10:30" } } }), () => 0, riskOf), false, "a different one");
+  const cut = clampTo(parent, child(parent, { actions: ["records.read", "records.remove"] }, { when: { schedule: sched() } }), () => 0, riskOf);
+  assert.deepEqual(cut.conditions.when.schedule, sched());
+  assert.equal(containsDims(parent, cut, () => 0, riskOf), true);
+});
+
+test("CN-1 on the real kernel: a delegate with an object schedule survives a rebuild from the log untouched, and still decides as its parent's equal", async () => {
+  const { k, owner, g, kit } = await (async () => {
+    const k = await createKernel({ space: S, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 9), presence });
+    const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
+    const g = k.gateway.grants;
+    const kit = { kind: "agent", id: "kit", space: S };
+    await g.addActor(owner, kit, { presence: proof("grants.role", { actor: kit }, `vyre://${S}/member/kit`) });
+    return { k, owner, g, kit };
+  })();
+  const sched = () => ({ days: ["mon", "tue"], from: "09:00", to: "17:00" });
+  const mk = i => g.create(owner, i, { presence: proof("grants.create", i, `vyre://${S}/grant/new`) });
+  const parent = await mk({ subject: { kind: "actor", actor: { kind: "person", id: OWNER, space: S } }, actions: ["records.read"], resource: { prefix: `vyre://${S}/contact/*` }, conditions: { delegate: { allowed: true, max_depth: 2 }, when: { schedule: sched() } }, source: "t" });
+  const kid = await mk({ subject: { kind: "actor", actor: kit }, actions: ["records.read"], resource: { prefix: `vyre://${S}/contact/*` }, conditions: { delegate: { allowed: false, max_depth: 0 }, when: { schedule: sched() } }, source: "t", parent: parent.id });
+  await g.rebuild();                                         // the grants are now separate objects, read back from the sealed log
+  assert.deepEqual(await k.grants.containmentPass(), { clamped: 0, revoked: 0 }, "nothing is re-cut");
+  const after = (await g.list(owner)).find(x => x.id === kid.id);
+  assert.deepEqual(after.conditions.when.schedule, sched());
+  assert.equal(after.status, "active");
+  const chain = k.chains.fromFacts({ kind: "agent_session", agent: "kit", session: "s", thread: "t", person: OWNER, vouched: true });
+  const d = await k.gateway.authorize({ chain, action: "records.read", resource: `vyre://${S}/contact/c1` });
+  assert.notEqual(d.reason, "not_contained", "the child is still inside its parent");
+  assert.ok(d.obligations.some(o => o.type === "unknown:schedule"), "and the schedule it carries is never met silently");
+});
