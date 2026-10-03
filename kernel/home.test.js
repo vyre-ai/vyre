@@ -158,3 +158,18 @@ test("K-3: events an older key sealed (position-bound, before custody moved) ver
   assert.equal(kern.migrated, false);
   await kern.stop();
 });
+
+test("the daemon's edge carries x-vyre-kernel-proof to the tool as meta.kernel_proof, and the legacy proof header never becomes one", { timeout: 30_000 }, async t => {
+  const { call } = await import("../core/daemon/client.js");
+  const root = tempHome(t);
+  writeModule(path.join(root, "modules"), "zz-edge", { does: { tools: [{ name: "zz-edge.peek", reach: "anyone" }] } }, `
+    export default { async start(ctx) { ctx.tool("zz-edge.peek", { run: async (i, meta) => ({ kernel_proof: meta.kernel_proof ?? null, proof: meta.proof ?? null }) }); return {}; } };`);
+  const d = await start({ root, log: () => {}, kernel: false });
+  t.after(() => d.stop());
+  const proof = { op: "grant.create", signer: "secure_enclave", key_id: "k1", payload_hash: "ph", signature: "sig" };
+  const enc = Buffer.from(JSON.stringify(proof)).toString("base64url");
+  assert.deepEqual((await call("zz-edge.peek", {}, { root, headers: { "x-vyre-kernel-proof": enc } })).data.kernel_proof, proof);
+  assert.equal((await call("zz-edge.peek", {}, { root })).data.kernel_proof, null, "absent when not sent");
+  for (const bad of ["not base64 !!", Buffer.from("[1,2]").toString("base64url"), Buffer.from("nope").toString("base64url"), "A".repeat(6000)]) assert.equal((await call("zz-edge.peek", {}, { root, headers: { "x-vyre-kernel-proof": bad } })).data.kernel_proof, null, "malformed is simply absent");
+  assert.equal((await call("zz-edge.peek", {}, { root, headers: { "x-vyre-presence": "device abc" } })).data.kernel_proof, null, "the legacy presence header is not a kernel proof");
+});
