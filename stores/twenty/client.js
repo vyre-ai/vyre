@@ -4,7 +4,7 @@
 
 /** An error from talking to Twenty. The store turns these into the kernel's store errors. */
 export class StoreError extends Error {
-  /** @param {"not_found" | "invalid" | "id_exists" | "unavailable" | "rate_limited"} code @param {string} message @param {Record<string, any>} [detail] */
+  /** @param {"not_found" | "invalid" | "id_exists" | "unique_violation" | "unavailable" | "rate_limited"} code @param {string} message @param {Record<string, any>} [detail] */
   constructor(code, message, detail = {}) { super(message); this.name = "StoreError"; this.code = code; this.detail = detail; }
 }
 
@@ -54,7 +54,9 @@ function mapError(e, data) {
   const msg = String(e.message ?? "error");
   const sub = e.extensions?.subCode ?? e.extensions?.code ?? "";
   if (sub === "RECORD_NOT_FOUND" || /^Record not found/i.test(msg)) return new StoreError("not_found", "No such record", { twenty: msg });
-  if (/duplicate|unique|already exists|violates/i.test(msg) || sub === "RECORD_ALREADY_EXISTS") return new StoreError("id_exists", "A record with that id or unique value already exists", { twenty: msg });
+  // a clash on the id (the primary key) is `id_exists`; a clash on a unique field the Space asked for is `unique_violation`
+  if (/pkey|primary key/i.test(msg)) return new StoreError("id_exists", "A record with that id already exists", { twenty: msg });
+  if (/duplicate|unique|already exists|violates/i.test(msg) || sub === "RECORD_ALREADY_EXISTS") return new StoreError("unique_violation", "Another record already has that unique value", { twenty: msg });
   if (/not a valid UUID|Invalid UUID/i.test(msg)) return new StoreError("invalid", "The id is not a valid id", { twenty: msg });
   if (e.extensions?.code === "BAD_USER_INPUT" || /cannot query field|unknown argument|Variable/i.test(msg)) return new StoreError("invalid", `Twenty rejected the request: ${msg.slice(0, 200)}`, { twenty: msg });
   const ext = e.extensions ? JSON.stringify(e.extensions).slice(0, 700) : "";

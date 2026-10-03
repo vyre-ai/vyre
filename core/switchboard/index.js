@@ -921,7 +921,8 @@ export class Switchboard {
     const sock = this.socks.get(id);
     if (!sock) throw Object.assign(new Error("Vyre did not start this session because it has no socket of its own to reach Vyre through."), { code: "sandbox_failed" });
     const provider = rec.provider || o.provider || "claude";
-    const r = await prepareSandbox(cfg, { provider, command: cfg.binFor ? cfg.binFor(provider) : this.bin, sessionSocket: sock.path, workdirs: [rec.cwd] });
+    const pickEnv = (/** @type {string[]} */ names) => Object.fromEntries(names.filter(n => o.env && o.env[n]).map(n => [n, o.env[n]]));
+    const r = await prepareSandbox({ ...cfg, credentials: cfg.credentials || (() => pickEnv(["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"])) }, { provider, command: cfg.binFor ? cfg.binFor(provider) : this.bin, sessionSocket: sock.path, workdirs: [rec.cwd] });
     if (r.sandboxed) {
       // Partly sandboxed (a provider that cannot move its settings folder keeps its own): said on this session's log, and once per machine and provider in words.
       if (r.partial) {

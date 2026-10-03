@@ -112,3 +112,14 @@ test("a payment through the Stripe handler runs the Kit's Flow on the runner and
   assert.equal(host.log.read({ type: "payment.received" }).length, 1);
   assert.equal(host.log.read({ type: "matter.created" })[0].actor.startsWith("service:flows"), true);
 });
+
+test("a unique field: the gateway refuses the second record cleanly, writes no event for it, and a Stripe redelivery cannot make a second contact", async () => {
+  const { host } = await boot();
+  await host.defineTypes([{ name: "account", label: "Account", fields: [{ name: "name", kind: "text", label: "Name", required: true }, { name: "handle", kind: "text", label: "Handle", unique: true }] }]);
+  const c = host.ownerChain();
+  const results = await Promise.allSettled([1, 2, 3].map(() => host.kernel.records.create(c, "account", { name: "Harlow", handle: "harlow" })).flat());
+  assert.equal(results.filter((r) => r.status === "fulfilled").length, 1);
+  for (const r of results.filter((r) => r.status === "rejected")) assert.equal(r.reason.code, "unique_violation");
+  assert.equal(host.log.read({ type: "account.created" }).length, 1, "a refused write writes no event");
+  assert.equal(host.log.verify().ok, true);
+});

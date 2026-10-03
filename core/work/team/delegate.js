@@ -40,14 +40,19 @@ export function obligationsFrom(parent) {
  * Create the teammate's grants as narrowings of the adder's. One grant per wanted entry, each under the adder grant that covers it; a wanted entry no
  * grant of the adder covers refuses the whole add (nothing is created for the others).
  * @param {any} kernel @param {any} chain the adder's chain (the kernel built it)
- * @param {{ adder: ActorRef, teammate: ActorRef, wanted: readonly { actions: readonly string[], prefix: string, conditions?: any }[], source?: string }} o
+ * `presence(input)` gives the adder's own presence proof for exactly that grant (the kernel binds a proof to its input, and `grants.create` always needs one).
+ * @param {{ presence?: ((input: any) => any) | null, adder: ActorRef, teammate: ActorRef, wanted: readonly { actions: readonly string[], prefix: string, conditions?: any }[], source?: string }} o
  * @returns {Promise<{ grants: any[], obligations: { grant: string, obligations: any[] }[] }>}
  */
-export async function delegateGrants(kernel, chain, { adder, teammate, wanted, source = "team" }) {
+export async function delegateGrants(kernel, chain, { adder, teammate, wanted, source = "team", presence = null }) {
   const mine = await kernel.grants.list(chain, { subject: { kind: "actor", actor: adder }, status: "active" });
   const plan = [];
   for (const w of wanted) {
-    const parent = mine.find((/** @type {any} */ g) => covers(g, [...w.actions], w.prefix));
+    // Only a grant that may be delegated can be a parent (the kernel refuses any other); of those that cover, the most conditioned one, so the teammate inherits the
+    // strictest path rather than the widest one the adder happens to hold.
+    const strict = (/** @type {any} */ g) => ["how", "when", "where", "budget"].filter(k => g.conditions && g.conditions[k] && Object.keys(g.conditions[k]).length).length;
+    const parent = mine.filter((/** @type {any} */ g) => g.status !== "revoked" && (!g.conditions || !g.conditions.delegate || g.conditions.delegate.allowed !== false) && covers(g, [...w.actions], w.prefix))
+      .sort((/** @type {any} */ a, /** @type {any} */ b) => strict(b) - strict(a) || String(b.resource.prefix).length - String(a.resource.prefix).length)[0];
     if (!parent) throw Object.assign(new Error(`${adder.id} cannot give ${w.actions.join(", ")} on ${w.prefix}: no grant of theirs covers it`), { code: "not_contained", actions: w.actions, prefix: w.prefix });
     plan.push({ w, parent });
   }
@@ -62,7 +67,8 @@ export async function delegateGrants(kernel, chain, { adder, teammate, wanted, s
       ...(parent.conditions?.budget ? { budget: parent.conditions.budget } : {}),
     };
     if (!conditions.when.expires && !conditions.when.not_before && !conditions.when.schedule) delete conditions.when;
-    const g = await kernel.grants.create(chain, { subject: { kind: "actor", actor: teammate }, actions: [...w.actions], resource: { prefix: w.prefix }, conditions, source, parent: parent.id, reason: `added by ${adder.id}` });
+    const input = { subject: { kind: "actor", actor: teammate }, actions: [...w.actions], resource: { prefix: w.prefix }, conditions, source, parent: parent.id, reason: `added by ${adder.id}` };
+    const g = await kernel.grants.create(chain, input, presence ? { presence: await presence(input) } : {});
     grants.push(g);
     obligations.push({ grant: g.id, obligations: obligationsFrom(parent) });
   }

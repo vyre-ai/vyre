@@ -16,7 +16,7 @@ import { encodeTicket, encodeCard } from "./relay.js";
 import { newIdentity } from "./crypto.js";
 
 export const NEEDS_PRESENCE = [
-  "vault.put", "vault.delete", "vault.import", "vault.import.preview", "vault.grant", "vault.approve", "vault.inject", "vault.totp",
+  "vault.put", "vault.delete", "vault.provider.set", "vault.provider.remove", "vault.import", "vault.import.preview", "vault.grant", "vault.approve", "vault.inject", "vault.totp",
   "vault.backup", "vault.restore", "vault.pass.create", "vault.pass.accept", "vault.offboard", "vault.unlock",
   "vault.unlock-passphrase", "vault.device.code", "vault.device.unlock", "vault.account.create", "vault.account.unlock", "vault.account.enroll-touchid", "vault.revert", "vault.migrate-key",
   "vault.resolve", "vault.render", "vault.edit", "vault.git", "vault.ssh.add", "vault.ssh.approve",
@@ -27,7 +27,7 @@ export const NEEDS_PRESENCE = [
   "vault.connect", "vault.connections.grant", "vault.connections.update",
 ];
 /** Taking access away, reading names and asking for pending things never needs a person. */
-const NO_PRESENCE = ["vault.list", "vault.revoke", "vault.pending", "vault.audit", "vault.lock", "vault.identity",
+const NO_PRESENCE = ["vault.provider.status", "vault.list", "vault.revoke", "vault.pending", "vault.audit", "vault.lock", "vault.identity",
   "vault.pass.list", "vault.pass.revoke", "vault.grants.status", "vault.devices", "vault.device.revoke", "vault.account.lock", "vault.account.status", "vault.history",
   "vault.people", "vault.fingerprint", "vault.vaults.create", "vault.vaults.list", "vault.vaults.sync",
   "vault.device.join", "vault.device.list", "vault.device.sync",
@@ -52,7 +52,9 @@ test("presence: every value-out or access-giving tool declares it, with a summar
     // P17 and vault-routed API access: internal tools other modules call, and a request the Gate holds when nothing the person said covers it.
     "vault.said.record", "vault.said.add", "vault.env.scan", "vault.items.names", "vault.mention.search", "vault.mention.resolve", "vault.use.check", "vault.use.note", "vault.said.match", "vault.said.list", "vault.said.revoke", "vault.request", "vault.api.send",
     // Connectors stores a finished sign-in in an oauth api-credential: internal (only module:connectors, and only from the token endpoint the person's own config names), it takes tokens in and gives nothing out, and it runs right after the sign-in the person just did, so it asks for no presence.
-    "vault.credential.tokens"]);
+    "vault.credential.tokens",
+    // The kernel's lease module forwards a lent computer's request (or file) to the home: internal, only kernel:leases, and an outward call is held for a person like vault.request.
+    "vault.forward", "vault.forward.file"]);
   for (const n of tools.keys()) assert.ok(known.has(n) || tools.get(n).presence, `${n} is new: decide whether it needs presence`);
 });
 

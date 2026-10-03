@@ -15,9 +15,14 @@ const RULES = [
   { name: "google play services (c2dm)", re: /com\.google\.android\.c2dm/i },
 ];
 
-// Two intent names inside androidx.activity's photo picker (PickVisualMedia). They are text, not a
-// dependency: no Play services class is loaded and nothing calls out. Anything else with gms in it fails.
-const TEXT_ONLY = new Set(["com.google.android.gms.provider.action.PICK_IMAGES", "com.google.android.gms.provider.extra.PICK_IMAGES_MAX"]);
+// Three names that are text, not a dependency: two intent names inside androidx.activity's photo picker
+// (PickVisualMedia), and the name of a TLS provider that OkHttp looks for and does not find. No Play
+// services class is loaded and nothing calls out. Anything else with gms in it fails.
+const TEXT_ONLY = new Set([
+  "com.google.android.gms.provider.action.PICK_IMAGES",
+  "com.google.android.gms.provider.extra.PICK_IMAGES_MAX",
+  "com.google.android.gms.org.conscrypt",
+]);
 // A string in a dex or a manifest dump is the name with a length byte or a few characters of syntax around it.
 const isTextOnly = (s) => [...TEXT_ONLY].some((t) => s.endsWith(t) && s.length - t.length <= 2);
 

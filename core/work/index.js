@@ -45,7 +45,7 @@ export default {
       const room = await k.audienceFor(extra || {});
       if (!room || typeof room.group !== "boolean") throw unknown("the room this runs in is not known, so nothing is built for it");
       if (!room.group) return null;
-      if (!(room.size >= 2) || typeof room.read !== "function" || typeof room.canRead !== "function") throw unknown("this is a group chat and its audience is not known, so nothing is built for it");
+      if (typeof room.read !== "function" || typeof room.canRead !== "function") throw unknown("this is a group chat and its audience is not known, so nothing is built for it");
       return room;
     };
     const surfaceOf = () => surface || (surface = createToolSurface({ kernel: kernelOf(), space: kernelOf().space, types: async c => (kernelOf().definitions ? kernelOf().definitions(c) : []), actions: () => (kernelOf().actions ? kernelOf().actions() : []) }));

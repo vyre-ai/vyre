@@ -131,7 +131,8 @@ test("watcher: an item starts the Flows armed on that watcher, once per item, ta
   assert.equal(run.tainted, true, "an item from outside is data: the run is tainted");
   assert.deepEqual([run.trigger.kind, run.trigger.source], ["watcher", "watcher:harlow-mail"]);
   assert.equal(run.trigger.input.title, "Court: hearing moved");
-  assert.equal(w.kernel.calls.some(c => c[0] === "create" && c[1] === "payment" && c[2].client === "court"), true, "the item reached the step as trigger.item");
+  await settle(w);
+  assert.equal([...(w.kernel.tables.get("payment") || new Map()).values()].some(r => r.data.client === "court"), true, "the item reached the step as trigger.item");
   assert.equal((await w.runner.watcherItem({ watcher: "harlow-mail", item }))[0].duplicate, true, "the same item twice is the same run");
   assert.deepEqual(await w.runner.watcherItem({ watcher: "harlow-mail", item: { id: "m2", about: "newsletter" } }), [], "the where filter holds");
   await assert.rejects(() => w.runner.watcherItem({ watcher: "x", item: null }), { code: "bad_input" });
@@ -167,7 +168,7 @@ test("every kind records which trigger fired and with what, and paintRun answers
   const event = (await w.store.listRuns({ flow: ids.event }))[0];
   assert.deepEqual([event.trigger.kind, event.trigger.source], ["event", "record:payment.received"]);
   assert.equal(event.trigger.event.type, "payment.received");
-  w.kernel.emit("record.stage-entered", { type: "matter", id: "m1", stage: "Intake" }, w.kernel.chainFor({ flow: "x", approver: ALEX, tainted: false, space: w.cat.space }), "vyre://s/matter/m1");
+  w.kernel.emit("record.stage-entered", { type: "matter", id: "m1", stage: "Intake" }, w.kernel.chainFor({ flow: "x", approver: ALEX, tainted: false, space: w.cat.space }), `vyre://${w.cat.space}/matter/m1`);
   await settle(w);
   const stage = (await w.store.listRuns({ flow: ids.stage }))[0];
   assert.deepEqual([stage.trigger.kind, stage.trigger.source], ["stage", "record:matter enters Intake"]);

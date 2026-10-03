@@ -178,6 +178,14 @@ async function startLocked(opts, root, p, release) {
   /** @type {(() => void) | null} */ let closeFlowsHost = null;
   if (opts.kernel === true || (opts.kernel === undefined && process.env.VYRE_KERNEL === "1")) {
     const { bootHomeKernel } = await import("../../kernel/home.js");
+    // The record store: VYRE_STORE=sqlite (the default), auto or twenty (stores/twenty/space-store.js). With auto or twenty each Space's records live in its own Twenty, provisioned
+    // on first use, when the box can run it; auto falls back to SQLite on a box that cannot (and a new hosted Space asks first), twenty refuses to start instead. The reach, memory
+    // profile and gateway container are options of that factory with defaults, not settings.
+    /** @type {((space: string, meta?: any) => Promise<any>) | undefined} */ let storeFor;
+    if ((process.env.VYRE_STORE || "sqlite") !== "sqlite") {
+      const { createStoreFor } = await import("../../stores/twenty/space-store.js");
+      storeFor = createStoreFor({ home: root, log });
+    }
     // Stages made of tasks (kernel/flows/stages.js): entering a stage makes its tasks in the kernel's own task store, and finished tasks move the record on. The gateway calls the two
     // hooks, which are bound late because the module needs the booted kernel. Tasks live only in the kernel store (no task record in Twenty).
     /** @type {any} */ let stages = null;
@@ -188,7 +196,7 @@ async function startLocked(opts, root, p, release) {
       service: async (/** @type {any} */ q) => { const r = await registry.call("vault.forward", { connector: q.connector, ...q.request, ...(q.idem ? { idem: q.idem } : {}), ...(q.approval ? { approval: q.approval } : {}), space: q.space }, "module:flows"); if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; } });
     registry.deps.flowsHost = flowsHost;
     closeFlowsHost = () => flowsHost.stop();
-    kernel = await bootHomeKernel({ db, root, log, isFirstParty: dir => registry.isFirstParty(dir),
+    kernel = await bootHomeKernel({ db, root, log, isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
       onStageEnter: (/** @type {any} */ e) => (stages ? stages.onStageEnter(e) : Promise.resolve()), stageTasks: (/** @type {string} */ u, /** @type {string} */ st) => (stages ? stages.stageTasks(u, st) : []),
       stageFactory: async (/** @type {string} */ space, /** @type {any} */ k, /** @type {any} */ meta) => (await flowsHost.attach(space, k, meta.owner)).stages });
     stages = (await flowsHost.attach(kernel.id.space, kernel, kernel.id.owner)).stages;

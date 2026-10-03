@@ -970,11 +970,9 @@ export default {
       description: "Close a paired device's connections and refuse it from now on, for a module that has just removed it for the owner.",
       input: obj({ id: str }, ["id"]),
       run: async (input, meta = {}) => {
-        // Only the first-party Wink module may cut a device off; the device must be paired to this box and not already removed.
-        if (meta.caller !== "module:wink") throw fail("denied", "relay.devices.drop is for the wink module");
+        if (meta.caller !== "module:wink") throw Object.assign(new Error("only the Wink module closes a paired device's connections"), { code: "denied" });
         const id = String(input.id);
-        if (!forget(id, "removed")) throw fail("not_found", `no paired device ${id}`);
-        return { closed: true, id };
+        return { closed: forget(id, "removed"), id };
       },
     });
 
@@ -1239,9 +1237,9 @@ export default {
     // does not begin that way).
     ctx.tool("relay.route.id", {
       internal: true,
-      description: "This box's route id and route public key (base64url), for signing into the name directory. Modules only.",
+      description: "This box's route id and route public key (base64url), for signing into the name directory, and the box's own public key (`box`), which the Wink module hashes into the words a pairing shows. Modules only.",
       input: obj(),
-      run: async (_, meta) => { only(meta, ["names", "wink"], "the route id"); await keys.ready(); return { route: route(), pub: Buffer.from(k().route.pub).toString("base64url") }; },
+      run: async (_, meta) => { only(meta, ["names", "wink"], "the route id"); await keys.ready(); return { route: route(), pub: Buffer.from(k().route.pub).toString("base64url"), box: Buffer.from(k().box.pub).toString("base64url") }; },
     });
 
     ctx.tool("relay.route.sign", {

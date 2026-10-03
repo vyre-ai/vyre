@@ -68,7 +68,6 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`settings`](#settings) | `core/settings` | `box`, `local` | 10 | 2 | cli, deck |
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
-| [`space-sessions`](#space-sessions) | `core/space-sessions` | `box`, `local` | 0 | 3 | cli |
 | [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 54 | 29 | capsule, cli, deck |
 | [`spend`](#spend) | `core/spend` | `box`, `local` | 4 | 2 | cli |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
@@ -82,12 +81,12 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 3 | 2 | cli |
-| [`vault`](#vault) | `core/vault` | `box`, `local` | 124 | 43 | capsule, cli, deck |
+| [`vault`](#vault) | `core/vault` | `box`, `local` | 129 | 43 | capsule, cli, deck |
 | [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 20 | 7 | capsule, cli, deck |
-| [`wink`](#wink) | `core/wink` | `box` | 34 | 27 | capsule, cli, deck |
+| [`wink`](#wink) | `core/wink` | `box` | 44 | 31 | capsule, cli, deck |
 | [`work`](#work) | `core/work` | `box`, `local` | 13 | 0 | cli |
 
 ## about
@@ -659,17 +658,6 @@ One screen service for the user's Mac and every agent's computer: what is on it,
 - Emits: [1 events](events.md#sight)
 - Shows on: no surface
 
-## space-sessions
-
-The session engine for a Space (Wink design sections 5 and 7): one Space per session, the checkpoint state that carries taint and permissions, resume, Continue in another space, and the hours and spend budgets. The runner owns the sandbox, workspace, sync, lease and placement.
-
-- Folder: `core/space-sessions`, version 0.1.0
-- Runs on: `box`, `local`
-- Requires: none
-- Tools: none
-- Emits: [3 events](events.md#space-sessions)
-- Shows on: cli
-
 ## spaces
 
 Identity, spaces, members and invites: your Vyre name, a space with a home you choose, the five roles with temp access, and join links.
@@ -821,7 +809,7 @@ Is a newer Vyre out: one daily look at the releases, one answer every surface dr
 - Folder: `core/vault`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [124](tools.md#vault), 11 of them only for other modules
+- Tools: [129](tools.md#vault), 13 of them only for other modules
 - Emits: [43 events](events.md#vault)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -883,8 +871,8 @@ Pairing as grants: every way in is a Wink (scan a code, or type two-sided codes)
 - Folder: `core/wink`, version 0.1.0
 - Runs on: `box`
 - Requires: `relay`
-- Tools: [34](tools.md#wink), 1 of them only for other modules
-- Emits: [27 events](events.md#wink)
+- Tools: [44](tools.md#wink), 1 of them only for other modules
+- Emits: [31 events](events.md#wink)
 - Listens for: `relay.code-asked`, `relay.invite-redeemed`, `device.paired`, `device.removed`
 - Shows on: capsule, cli, deck
 - Needs vault: `per-storage`

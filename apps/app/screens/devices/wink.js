@@ -1,6 +1,6 @@
 // @ts-check
 // Wink, as the user sees it (DESIGN-wink.md section 4): one way anything joins. Reverse scan is the default: the new device shows a ring and the phone scans it.
-// A computer can fall back to a typed code, two-sided. Pure, so Node tests it.
+// A computer can fall back to pasting the long code instead of scanning; both are confirmed by the same three words. Pure, so Node tests it.
 
 /** @typedef {"phone"|"computer"|"server"} DeviceKind */
 
@@ -26,15 +26,15 @@ export function stepWords(/** @type {DeviceKind} */ kind, /** @type {number} */ 
   const noun = kind === "server" ? "server" : kind === "phone" ? "phone" : "computer";
   if (fallback) {
     return [
-      "The fallback, for a phone that cannot see the screen. The code is a one-time password.",
-      "One try per code. A wrong tap closes the code and a new one shows.",
+      "The fallback, for a device that cannot scan. Paste the long code the screen shows: it is the same secret as the ring, good for one use.",
+      "Both screens show the same three words. Say yes only if they match; a no closes the code and a new one shows.",
       "Both screens say done.",
     ][step];
   }
   return [
     `The new ${noun} shows its ring and its name. The phone is already trusted.`,
     "The camera opens already pointed at the ring. It reads in about a second.",
-    "The phone says what it is adding, and the fingerprint matches the other screen. Face ID is the approval.",
+    "Both screens show the same three words. The phone says what it is adding, and Face ID is the approval.",
     "Both screens say done. Nothing was typed and nothing was configured.",
   ][step];
 }
