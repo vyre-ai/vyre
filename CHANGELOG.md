@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- test(vault): a completed `vault.move` by a member, a refused move for a read-only member, role refusals and a rotate, on the existing two-member shared-vault rig in core/vault/shared.test.js. docs/work/vault.md corrected: the rig existed.
 - fix(vault): `members.invite` builds the invite and the key wrap before the member is added, so a failure there no longer leaves a member with no invite. The rest of the shared-vault member paths, the .env rewrite and the connectors writes were swept and are listed in team/0.2/CHAT.md.
 - fix(vault): a provider sign-in token is never put or moved into a shared vault (`vault.put` to `<vault>/claude-setup-token`, `vault.move`): both are refused and recorded as `vault.refused` (reviewer-2 low).
 - feat(vault): a refused attempt is a record of its own. `Vault.refuse(action, name, who, why)` writes one audit row (ok false, "refused: ...") and emits one `vault.refused` event (who, which item, why; never a value), used when a put or a grant tries to attach a module grant to a provider sign-in token, an invalid grant is put, a move meets a live pass, or an edit rename would strand grants. Also: a Drive write that cannot be recorded (the pool step fails) takes its version back out and removes the stored object, leaving no orphan.
