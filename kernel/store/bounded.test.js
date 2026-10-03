@@ -109,3 +109,36 @@ test("the built-in store keeps hot rows and no change feed in memory, and still 
   assert.deepEqual(again.meta.get("vyre://x/contact/1"), { owner: "per_a" }, "they survive a restart");
   assert.equal((await again.get("contact", ids[700])).data.name, "Client 700");
 });
+
+test("a boot reads the newest snapshot and the grants events after it, not the history: the grants store snapshots as it goes and the state comes back whole", async () => {
+  const { createKernel } = await import("../index.js");
+  const { canonical, sha256 } = await import("../core/canonical.js");
+  const proof = (action, input, resource) => ({ op: `grant.${action.split(".")[1]}`, fields: { resource, input_hash: sha256(canonical({ action, input })) }, n: Math.random() });
+  const used = new Set();
+  const presence = { check: async ({ chain, op, fields, proof: p }) => (chain && p && p.op === op && canonical(p.fields) === canonical(fields) && !used.has(p.n) && (used.add(p.n), true) ? null : "wrong_proof") };
+  const db = new DatabaseSync(":memory:");
+  const read = { events: 0 };
+  const open = async () => {
+    const log = createSqliteEventLog({ db, space: SPACE, clock, window: { events: 20 } });
+    const counting = { ...log, iterate: (f, o) => (function* () { for (const e of log.iterate(f, o)) { read.events++; yield e; } })() };
+    return createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 9), clock, presence, log: counting, store: createSqliteStore({ db, clock }), snapshot_every: 6 });
+  };
+  const k = await open();
+  const ow = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
+  for (let i = 0; i < 25; i++) { const r = { person: `per_p${i}`, role: "member" }; await k.gateway.grants.setRole(ow, r, { presence: proof("grants.role", r, `vyre://${SPACE}/member/per_p${i}`) }); }
+  const snaps = k.log.read({ type: "grants.snapshot" });
+  assert.ok(snaps.length >= 3, `snapshots were written as it went (${snaps.length})`);
+  const total = k.log.latestSeq();
+  const members = (await k.gateway.grants.members.list(ow)).length;
+  read.events = 0;
+  const k2 = await open();
+  assert.ok(read.events < total / 2, `the boot read ${read.events} events of ${total}, not the history`);
+  const ow2 = k2.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
+  assert.equal((await k2.gateway.grants.members.list(ow2)).length, members, "the whole state came back from the snapshot and the tail");
+  assert.equal(k2.log.verify().ok, true);
+  // and it keeps working: a new change after the reboot is a member after another reboot
+  const r = { person: "per_late", role: "admin" };
+  await k2.gateway.grants.setRole(ow2, r, { presence: proof("grants.role", r, `vyre://${SPACE}/member/per_late`) });
+  const k3 = await open();
+  assert.equal((await k3.gateway.grants.members.list(k3.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" }))).some(m => m.person === "per_late"), true);
+});
