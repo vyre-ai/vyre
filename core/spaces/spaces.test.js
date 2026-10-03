@@ -19,7 +19,7 @@ import { fakeDns } from "../../names/worker/fake-dns.js";
 import spacesModule, { hooks } from "./index.js";
 import { newKeyPair, personIdOf, fileIdentityStore } from "./identity.js";
 import { createIdentityOps } from "./identity-ops.js";
-import { idDirectory } from "../../lib/identity/directory.js";
+import { idDirectory, memorySeen } from "../../lib/identity/directory.js";
 
 const CORE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const T0 = Date.UTC(2026, 9, 3, 12, 0, 0);
@@ -100,8 +100,9 @@ async function actAs(d, label) {
   fs.mkdirSync(d.space, { recursive: true });
   fs.rmSync(path.join(d.space, "identity.json"), { force: true });
   const store = fileIdentityStore(d.space);
-  const dir = idDirectory({ base: "http://127.0.0.1:1", fetch: hooks.fetch, now: () => hooks.now() });
-  const ops = createIdentityOps({ store, dir, now: () => hooks.now(), stretch: { memoryKiB: 64, passes: 1 } });
+  const seen = memorySeen();
+  const dir = idDirectory({ base: "http://127.0.0.1:1", fetch: hooks.fetch, now: () => hooks.now(), seen });
+  const ops = createIdentityOps({ store, dir, seen, now: () => hooks.now(), stretch: { memoryKiB: 64, passes: 1 } });
   await ops.create({ name: label, deviceLabel: label });
   return { id: store.status().id, publicKey: store.status().publicKey };
 }

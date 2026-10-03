@@ -98,14 +98,6 @@ export function fileIdentityStore(dir) {
     ops() { const r = read(); return r && Array.isArray(r.ops) ? r.ops : []; },
     pin() { const r = read(); return r ? r.pin || null : null; },
     setChain(/** @type {any[]} */ ops, /** @type {any} */ pin) { const r = read(); if (!r) throw Object.assign(new Error("no identity"), { code: "no_identity" }); write({ ...r, ops, pin }); },
-    /** When THIS device first saw each op of the chain (seq -> ms): an entry's age counts from there if that is later than the time its adder wrote. */
-    seen() { const r = read(); return r && r.seen ? r.seen : {}; },
-    markSeen(/** @type {number} */ from, /** @type {number} */ to, /** @type {number} */ ts) {
-      const r = read(); if (!r) return;
-      const seen = { ...(r.seen || {}) };
-      for (let q = from; q <= to; q++) if (seen[q] === undefined) seen[q] = ts;
-      write({ ...r, seen });
-    },
     /** The alerts a device has already shown, as a sequence number. */
     alerted() { const r = read(); return r ? Number(r.alerted || 0) : 0; },
     setAlerted(/** @type {number} */ seq) { const r = read(); if (r) write({ ...r, alerted: seq }); },

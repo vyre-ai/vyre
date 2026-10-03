@@ -9,7 +9,7 @@ import worker, * as W from "../../names/worker/index.js";
 import { createRuntime } from "../../relay/worker/fake-cf.js";
 import { fakeDns } from "../../names/worker/fake-dns.js";
 import * as C from "../../kernel/identity/chain.js";
-import { idDirectory } from "../../lib/identity/directory.js";
+import { idDirectory, memorySeen } from "../../lib/identity/directory.js";
 import { fileIdentityStore } from "./identity.js";
 import { createIdentityOps } from "./identity-ops.js";
 import { newCode, codeKey, normalizeCode, codeLooksRight } from "./recovery.js";
@@ -31,13 +31,15 @@ function world(t) {
     if (tamper.resolve && String(url).includes("/v1/ids/resolve")) { const j = await res.json(); return new Response(JSON.stringify({ data: tamper.resolve(j.data) }), { status: 200, headers: { "content-type": "application/json" } }); }
     return res;
   };
-  const dir = idDirectory({ base: "http://127.0.0.1:1", fetch, now: () => clock.t });
+  const mkDir = () => { const seen = memorySeen(); return { seen, dir: idDirectory({ base: "http://127.0.0.1:1", fetch, now: () => clock.t, seen }) }; };
+  const { dir } = mkDir();
   /** A device: its own home, its own store, and the ops over them. */
   const device = label => {
     const home = tempHome(t);
     const store = fileIdentityStore(path.join(home, "spaces"));
     const events = [];
-    const ops = createIdentityOps({ store, dir, now: () => clock.t, emit: (type, p) => events.push([type, p]), stretch: FAST });
+    const own = mkDir();
+    const ops = createIdentityOps({ store, dir: own.dir, seen: own.seen, now: () => clock.t, emit: (type, p) => events.push([type, p]), stretch: FAST });
     return { label, home, store, ops, events, file: path.join(home, "spaces", "identity.json") };
   };
   /** Pairing hands a new device the chain: it makes its key, the signed-in device adds it, then the new one keeps the chain. */

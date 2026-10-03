@@ -27,7 +27,7 @@ import { PASSWORD_MIN } from "./recovery.js";
 import { WORDS } from "../../relay/client/words.js";
 import { createCompute } from "../../lib/spaces/compute.js";
 import {
-  MIGRATIONS, kvStore, membershipStore, roleNames, inviteStore, pairingService, spaceTable,
+  MIGRATIONS, kvStore, seenStore, membershipStore, roleNames, inviteStore, pairingService, spaceTable,
 } from "./store.js";
 import { fileIdentityStore, signerOf, personIdOf } from "./identity.js";
 import { spaceFiles } from "./host.js";
@@ -74,10 +74,11 @@ export default {
     let lastTs = 0;
     const mono = () => (lastTs = Math.max(now(), lastTs + 1));
     const base = (ctx.config && ctx.config.names && ctx.config.names.directory) || DEFAULT_BASE;
-    const dir = idDirectory({ base, fetch: hooks.fetch || globalThis.fetch, now: mono });
+    const seen = seenStore(db);
+    const dir = idDirectory({ base, fetch: hooks.fetch || globalThis.fetch, now: mono, seen });
 
     const identity = fileIdentityStore(root);
-    const idops = createIdentityOps({ store: identity, dir, now, emit: (t, p) => emit(t, p), stretch: hooks.stretch || undefined });
+    const idops = createIdentityOps({ store: identity, dir, seen, now, emit: (t, p) => emit(t, p), stretch: hooks.stretch || undefined });
     const files = spaceFiles(root);
     const kv = kvStore(db);
     const mstore = membershipStore(db);
