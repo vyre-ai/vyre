@@ -289,3 +289,13 @@ test("a group chat has no status frames: it is working while any reply is open, 
   f.apply(gf("text-done", { message: "zz" }));
   assert.equal(f.status.state, "asking");
 });
+
+test("frames: a private message (enc) is a row that says Private message, never its ciphertext", () => {
+  cur = 0;
+  const f = createFolder();
+  const fp = fr("user-message", { message: "p1", enc: { alg: "mls-x", kid: "dev:a#1", ct: "SECRETCT" }, state: "sent" });
+  f.apply(fp);
+  assert.equal(f.item("u:p1")?.text, "Private message");
+  assert.equal(f.item("u:p1")?.private, true);
+  assert.ok(!JSON.stringify(f.item("u:p1")).includes("SECRETCT"));
+});

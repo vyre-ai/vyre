@@ -48,6 +48,22 @@ const isObj = (/** @type {unknown} */ v) => !!v && typeof v === "object" && !Arr
 export const isAuthor = (/** @type {unknown} */ v) => isStr(v) && /^(person|assistant|model):[^\s]{1,200}$/.test(/** @type {string} */ (v));
 const idStr = (/** @type {unknown} */ v) => isStr(v) && /** @type {string} */ (v).length > 0 && /** @type {string} */ (v).length <= 256;
 
+/**
+ * An opaque encrypted message (private mode, DESIGN-chat "Who can read a chat, and private mode"): the algorithm and key names and
+ * the ciphertext, all strings. The home stores and relays it without parsing it, and never holds the plaintext. No crypto here:
+ * the shape only. @param {unknown} e
+ */
+export const validEnc = e => isObj(e) && Object.keys(e).every(k => ["alg", "kid", "ct"].includes(k))
+  && isStr(/** @type {any} */ (e).alg) && /** @type {any} */ (e).alg.length > 0 && /** @type {any} */ (e).alg.length <= 64
+  && isStr(/** @type {any} */ (e).kid) && /** @type {any} */ (e).kid.length > 0 && /** @type {any} */ (e).kid.length <= 256
+  && isStr(/** @type {any} */ (e).ct) && /** @type {any} */ (e).ct.length > 0 && /** @type {any} */ (e).ct.length <= 256 * 1024;
+
+/**
+ * Is this frame an opaque encrypted message? Search, memory, export and anything an assistant is given must skip it.
+ * @param {any} f
+ */
+export const isEncrypted = f => Boolean(f && f.data && typeof f.data === "object" && f.data.enc !== undefined);
+
 /** @type {Record<string, (d: any) => string|null>} */
 const CHECK = {
   "text-delta": d => (idStr(d.message) && isInt(d.index) && isStr(d.text) && (d.parent === undefined || idStr(d.parent)) ? null : "text-delta needs message, index and text"),
@@ -60,7 +76,7 @@ const CHECK = {
   "file-changed": d => (isStr(d.path) && ["create", "edit", "delete"].includes(d.op) ? null : "file-changed needs path and op create, edit or delete"),
   "ask": d => (idStr(d.ask_id) && ["permission", "question", "approval"].includes(d.kind) ? null : "ask needs ask_id and kind permission, question or approval"),
   "ask-answered": d => (idStr(d.ask_id) ? null : "ask-answered needs ask_id"),
-  "user-message": d => (idStr(d.message) && isStr(d.text) && (d.parent === undefined || idStr(d.parent)) && ["sent", "queued", "picked-up", "cancelled"].includes(d.state) ? null : "user-message needs message, text and state sent, queued, picked-up or cancelled"),
+  "user-message": d => (idStr(d.message) && (d.parent === undefined || idStr(d.parent)) && ["sent", "queued", "picked-up", "cancelled"].includes(d.state) && (d.enc !== undefined ? d.text === undefined && validEnc(d.enc) : isStr(d.text)) ? null : "user-message needs message and state sent, queued, picked-up or cancelled, and text (or, in private mode, enc { alg, kid, ct } and no text)"),
   "status": d => (STATES.includes(d.state) ? null : `status needs state, one of ${STATES.join(", ")}`),
   "participant-joined": d => (isAuthor(d.who) && (d.role === undefined || isStr(d.role)) ? null : "participant-joined needs who, person:<id>, assistant:<id> or model:<id>"),
   "participant-left": d => (isAuthor(d.who) ? null : "participant-left needs who"),
@@ -188,7 +204,8 @@ export function toEnvelope(f, ctx = {}) {
     source_spaces: [space],
     vis: ctx.vis || "space",
     red: ctx.red || "internal",
-    data: f.data,
+    // A private message goes into the kernel log as the fact that it passed, never what it said: no ct, no key name.
+    data: isEncrypted(f) ? { message: f.data.message, state: f.data.state, enc: true } : f.data,
     commit: "",
     prev: "",
     hash: "",

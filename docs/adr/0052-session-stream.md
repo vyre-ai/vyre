@@ -141,6 +141,15 @@ additively (old frames stay valid):
 - **Edit and retry** check that the send will be accepted before they rewind, record the author on the message, and allow
   editing only one's own (the owner's own surface, with no verified peer, may edit any).
 
+## Room for private mode (shape only, no crypto)
+
+`user-message { message, enc: { alg, kid, ct }, state }` carries an opaque encrypted message, with no `text`. The home stores and
+relays it without parsing it (`stream.send` takes `enc` in place of `text`; the same message id is stored once), the validators
+accept it, `render` and `forViewer` pass it through untouched, `whoAnswers` never routes it to an assistant, `toEnvelope` logs
+that a private message passed and never its ciphertext or key name (`data { message, state, enc: true }`), and `isEncrypted(frame)`
+is what search, memory and export must call to skip it. The app draws such a row as "Private message". Not built: the group-messaging
+library, key handling on devices, the lock gesture, the space setting, on-device search, disappearing messages.
+
 ## Numbers (testbox, Node 22, loopback)
 
 Emit to client over a real WebSocket, 3000 frames: p50 0.34 ms, p95 0.77 ms, p99 1.85 ms, max

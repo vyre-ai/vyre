@@ -17,6 +17,7 @@ import crypto from "node:crypto";
 import { migrate } from "../store/index.js";
 import { createAdapter } from "./adapter.js";
 import { whoAnswers, mentionedIn } from "./routing.js";
+import { validEnc } from "./protocol.js";
 import { createReadMarkers } from "./readmarks.js";
 
 const MIGRATIONS = [`
@@ -252,6 +253,18 @@ export function createGroups({ ctx, logs, db, now = Date.now }) {
       const grp = sessionOf(i);
       const author = personOf(meta, i);
       mustBeIn(grp, author);
+      // A private message (enc, an opaque ciphertext made on the person's device): stored and relayed as it is, never parsed, routed to
+      // no assistant, mentioned to nobody. The home does not hold its words.
+      if (i.enc !== undefined) {
+        if (i.text !== undefined && String(i.text) !== "") throw fail("bad_input", "a private message carries enc and no text");
+        if (!validEnc(i.enc)) throw fail("bad_input", "enc is { alg, kid, ct }, three strings");
+        const message = typeof i.message === "string" && ID.test(i.message) ? i.message : crypto.randomUUID();
+        const out = logs.get(grp);
+        join(grp, author, { name: typeof i.name === "string" ? i.name : undefined });
+        const had = out.read(0).find(f => f.type === "session.user-message" && f.data.message === message);
+        if (!had) { out.append("user-message", { message, enc: { alg: i.enc.alg, kid: i.enc.kid, ct: i.enc.ct }, state: "sent" }, { author, message }); group(grp).previous = author; }
+        return { session: grp, message, private: true, routed: [], answers: [], ...(had ? { duplicate: true } : {}) };
+      }
       const text = String(i.text ?? "").trim();
       if (!text) throw fail("bad_input", "text is empty");
       if (text.length > 20000) throw fail("bad_input", "text is too long");

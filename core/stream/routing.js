@@ -8,14 +8,17 @@
 //     no other person talking to a person. If the previous speaker was another person, or the message
 //     mentions a person, no assistant answers. With no `previous` given, other people in the chat mean no.
 //  4. An assistant's own message never wakes the default assistant, and nobody wakes themselves.
+//  0. (before all) A private message (`enc`) wakes no assistant at all.
 
 /**
  * @typedef {{ id: string, name?: string }} Participant  id is "person:<id>", "assistant:<id>" or "model:<id>"
  * @param {{ participants: readonly Participant[], defaultAssistant?: string|null, text?: string, mentions?: readonly string[],
- *   assigned?: string|readonly string[]|null, author: string, previous?: string|null }} a
+ *   assigned?: string|readonly string[]|null, author: string, previous?: string|null, enc?: unknown }} a
  * @returns {string[]} the assistants (and models) that answer, in the order they were asked
  */
 export function whoAnswers(a) {
+  // A private (encrypted) message is for the people in the chat and nobody else: no assistant is ever asked, whatever it mentions or assigns.
+  if (a.enc !== undefined && a.enc !== null && a.enc !== false) return [];
   const parts = a.participants || [];
   const isBot = (/** @type {string} */ id) => id.startsWith("assistant:") || id.startsWith("model:");
   /** @type {Map<string, string>} */ const byToken = new Map();

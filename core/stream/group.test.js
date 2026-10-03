@@ -2,7 +2,7 @@
 // Group chats on the stream: frames, routing, per-viewer rendering, presence, read markers, concurrent streams.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { validate, frame, toEnvelope, whoAnswers, render, assertAskerCanRead, createPresence, presenceFor, createReadMarkers, settle, HOLDBACK, cutData } from "./index.js";
+import { validate, frame, toEnvelope, whoAnswers, render, assertAskerCanRead, createPresence, presenceFor, createReadMarkers, settle, HOLDBACK, cutData, forViewer, isEncrypted } from "./index.js";
 import { SessionLog } from "./log.js";
 import { connect } from "./client.js";
 import { prng, Sched, makeLink } from "./testkit.js";
@@ -271,4 +271,39 @@ test("two or three assistants streaming at once, random interleavings and kills 
   }
   assert.ok(kills > 100, `the faults really happened (${kills})`);
   console.log(JSON.stringify({ test: "concurrent-streams", iterations: 200, kills }));
+});
+
+// ---- private mode: the room for an opaque encrypted message (DESIGN-chat, "Who can read a chat, and private mode") ------------------
+
+const ENC = { alg: "mls-x", kid: "dev:alex#7", ct: "q83vEjRWeJq83vEjRWeJ" };
+
+test("private: user-message { enc } validates, text and enc are exclusive, and a malformed enc is refused", () => {
+  const f = mk("user-message", { message: "p1", enc: ENC, state: "sent" }, { author: "person:alex" });
+  assert.deepEqual(validate(f), { ok: true });
+  assert.equal(isEncrypted(f), true);
+  assert.equal(isEncrypted(mk("user-message", { message: "p2", text: "hi", state: "sent" })), false);
+  assert.equal(validate({ ...f, data: { ...f.data, text: "hello" } }).ok, false, "the home never holds the words beside the ciphertext");
+  assert.equal(validate({ ...f, data: { message: "p1", enc: { ...ENC, ct: "" }, state: "sent" } }).ok, false);
+  assert.equal(validate({ ...f, data: { message: "p1", enc: { ...ENC, extra: 1 }, state: "sent" } }).ok, false);
+  assert.equal(validate({ ...f, data: { message: "p1", state: "sent" } }).ok, false, "neither text nor enc");
+});
+
+test("private: viewer.render and forViewer pass an encrypted message through untouched, for any viewer", () => {
+  const f = mk("user-message", { message: "p1", enc: ENC, state: "sent" }, { author: "person:alex" });
+  for (const v of [V.owner, V.admin, V.member]) { assert.equal(render(f, v), f, "render returns the very frame"); assert.equal(forViewer(f, v), f); }
+});
+
+test("private: routing never wakes an assistant for an encrypted message, whoever it mentions", () => {
+  const participants = [{ id: "person:alex" }, { id: "assistant:kit", name: "kit" }];
+  assert.deepEqual(whoAnswers({ participants, defaultAssistant: "assistant:kit", author: "person:alex", text: "hi" }), ["assistant:kit"], "control: a plain message wakes the default");
+  for (const extra of [{}, { text: "@kit do it" }, { mentions: ["assistant:kit"] }, { assigned: "assistant:kit" }]) {
+    assert.deepEqual(whoAnswers({ participants, defaultAssistant: "assistant:kit", author: "person:alex", enc: ENC, ...extra }), [], JSON.stringify(extra));
+  }
+});
+
+test("private: toEnvelope records that a private message passed, never what it said", () => {
+  const f = mk("user-message", { message: "p1", enc: ENC, state: "sent" }, { author: "person:alex" });
+  const env = toEnvelope(f, { space: "sp" });
+  assert.deepEqual(env.data, { message: "p1", state: "sent", enc: true });
+  assert.ok(!JSON.stringify(env).includes(ENC.ct) && !JSON.stringify(env).includes(ENC.kid));
 });

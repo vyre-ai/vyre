@@ -149,3 +149,19 @@ test("C-3: over the real socket the ticket's viewer is drawn for: a sealed field
   assert.equal(rec.data.result.fields[0].placeholder, true);
   assert.ok(!JSON.stringify(got).includes("seal:abc-9f31"));
 });
+
+test("private: stream.send with enc is stored and relayed as it is, routed to no assistant, and the home holds no words", async t => {
+  const w = await world(t);
+  const session = await group(w);
+  const enc = { alg: "mls-x", kid: "dev:carol#1", ct: "q83vEjRWeJq83vEjRWeJ" };
+  const r = ok(await w.as(CAROL)("stream.send", { session, enc, message: "p1", assistants: [{ id: "assistant:kit", cwd: "/tmp" }], default: "assistant:kit" }));
+  assert.deepEqual([r.private, r.routed, r.answers], [true, [], []]);
+  const frame = w.stream().logs.get(session).read(0).find(f => f.data.message === "p1");
+  assert.deepEqual(frame.data, { message: "p1", enc, state: "sent" });
+  assert.equal(frame.author, `person:${CAROL}`);
+  assert.equal(codeOf(await w.as(CAROL)("stream.send", { session, enc, text: "and words" })), "bad_input");
+  assert.equal(codeOf(await w.as(CAROL)("stream.send", { session, enc: { alg: "x" } })), "bad_input");
+  assert.equal(ok(await w.as(CAROL)("stream.send", { session, enc, message: "p1" })).duplicate, true, "the same message id is not stored twice");
+  // nobody outside the chat reads it
+  assert.equal(codeOf(await w.as(BOB)("stream.open", { session })), "not_found");
+});
