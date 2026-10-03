@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { openrouterProvider, openrouterDoorDriver } from "./drivers/openrouter.js";
-import { throughDoor, route, doorMessage, _resetWarned } from "./door-bridge.js";
+import { throughDoor, route, doorMessage, _resetWarned } from "../../lib/door-bridge.js";
 
 const CHAIN = { space: "spc_aaaaaaaaaaaa", hops: [{ actor: { kind: "person", id: "per_a", space: "spc_aaaaaaaaaaaa" } }] };
 const SECRET = "123-45-6789";
