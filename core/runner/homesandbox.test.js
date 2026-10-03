@@ -21,14 +21,15 @@ async function rig(t) {
   fs.mkdirSync(path.join(home, ".vyre", "keys"), { recursive: true }); fs.writeFileSync(path.join(home, ".vyre", "keys", "device.key"), "SECRET-DEVICE-KEY");
   const own = path.join(run, "s1.sock"), other = path.join(run, "s2.sock"), person = path.join(home, ".vyre", "vyred.sock");
   const daemon = spawn(process.execPath, ["-e", "setInterval(()=>{},1000)"], { env: { ...process.env, DAEMON_TOKEN: "SECRET-DAEMON-TOKEN" }, stdio: "ignore" }); t.after(() => daemon.kill("SIGKILL"));
-  const servers = await Promise.all([listen(own), listen(other), listen(person), listen({ port: 0, host: "127.0.0.1" })]);
+  const servers = await Promise.all([listen(own), listen(other), listen(person), listen({ port: 0, host: "127.0.0.1" }), listen({ port: 0, host: "::" })]);
+  const outside = path.join(path.dirname(home), "outside-" + path.basename(home)); fs.mkdirSync(outside, { recursive: true }); t.after(() => rm(outside));
   t.after(() => servers.forEach(s => { s.close(); }));
-  const port = servers[3].address().port;
+  const port = servers[3].address().port, portAll = servers[4].address().port;
   fs.mkdirSync(path.join(home, "Documents"), { recursive: true }); fs.writeFileSync(path.join(home, "Documents", "private.txt"), "PERSONAL");
   const proj = path.join(home, "proj"), settings = path.join(home, ".agentcfg"), temp = path.join(home, "tmp-session"); for (const d of [proj, settings, temp]) fs.mkdirSync(d, { recursive: true });
   const real = path.join(home, ".agentreal"); fs.mkdirSync(real, { recursive: true }); fs.writeFileSync(path.join(real, ".credentials.json"), "{}");
   const agent = { command: process.execPath, versionArgs: ["-v"], hosts: [], private: { from: real, env: "AGENT_CONFIG_DIR", credentialFiles: [".credentials.json"] } };
-  return { home, own, other, person, port, proj, settings, temp, agent, probes: { personSocket: person, otherSocket: other, daemonPorts: [port], keyFile: path.join(home, ".vyre", "keys", "device.key"), homeFile: path.join(home, "Documents", "private.txt"), daemonPid: daemon.pid } };
+  return { home, own, other, person, port, proj, settings, temp, agent, probes: { personSocket: person, otherSocket: other, daemonPorts: [port, portAll], mustNotWrite: [outside], keyFile: path.join(home, ".vyre", "keys", "device.key"), homeFile: path.join(home, "Documents", "private.txt"), daemonPid: daemon.pid } };
 }
 
 test("home sandbox: the person's socket, another session's socket, the daemon's loopback port and the Vyre home are all out of reach; the session's own socket works", { skip: SKIP, timeout: 60_000 }, async t => {
@@ -56,6 +57,17 @@ test("home sandbox: the self-test fails when a hole is left (the person's socket
   const res = await selfTest({ platform: process.platform, command: process.execPath, home: r.home, vyreHome: path.join(r.home, ".vyre"), sessionSocket: r.person, workdirs: [r.proj], temp: r.temp, agent: r.agent, probes: process.platform === "linux" ? { ...r.probes, personSocket: "/run/vyre-session.sock" } : r.probes });
   assert.equal(res.ok, false);
   assert.ok(res.failures.some(f => /person's own socket is reachable/.test(f)), res.failures.join("; "));
+});
+
+test("ES-1: the seatbelt profile denies all writes first and allows them back only to the project and the temp folder; read-only folders are read-only", () => {
+  const home = tmp(); try {
+    const proj = path.join(home, "proj"), tools = path.join(home, "tools"), temp = path.join(home, "t"); for (const d of [proj, tools, temp]) fs.mkdirSync(d, { recursive: true });
+    const p = homeSeatbelt({ platform: "darwin", command: "/bin/sh", home, sessionSocket: path.join(home, ".vyre", "run", "s.sock"), workdirs: [proj], temp, readOnly: [tools] });
+    assert.ok(p.indexOf("(deny file-write*)") > 0 && p.indexOf("(deny file-write*)") < p.indexOf("(allow file* (subpath"), "all writes are denied before anything is allowed");
+    assert.match(p, /\(allow file-write\* \(subpath "\/dev"\)\)/);
+    assert.ok(p.includes(`(allow file* (subpath "${fs.realpathSync(proj)}"))`) && p.includes(`(allow file* (subpath "${fs.realpathSync(temp)}"))`));
+    assert.ok(p.includes(`(allow file-read* (subpath "${fs.realpathSync(tools)}"))`) && !p.includes(`(allow file* (subpath "${fs.realpathSync(tools)}"))`), "a read-only folder is not writable");
+  } finally { rm(home); }
 });
 
 test("home sandbox: the seatbelt profile denies every unix socket and loopback connection, and the Vyre home, before the one allow", () => {
