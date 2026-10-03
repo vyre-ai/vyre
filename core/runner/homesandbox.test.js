@@ -92,8 +92,8 @@ test("egress CONNECT: only the listed hosts are tunnelled, and only with the ses
   const { port } = await eg.listen(); t.after(() => eg.close());
   const ask = (host, auth) => new Promise(res => { const s = net.connect(port, "127.0.0.1"); let b = ""; s.on("connect", () => s.write(`CONNECT ${host} HTTP/1.1\r\nHost: ${host}\r\n${auth ? "Proxy-Authorization: Basic " + Buffer.from("vyre:" + auth).toString("base64") + "\r\n" : ""}\r\n`)); s.on("data", d => { b += d; if (b.includes("\r\n")) { s.destroy(); res(b.split("\r\n")[0]); } }); s.on("error", () => res("error")); setTimeout(() => res("timeout"), 3000); });
   assert.match(await ask(`127.0.0.1:${tp}`, "tok"), / 200 /);
-  assert.match(await ask(`127.0.0.1:${tp}`, "wrong"), / 403 /);
-  assert.match(await ask(`127.0.0.1:${tp}`, ""), / 403 /);
+  assert.match(await ask(`127.0.0.1:${tp}`, "wrong"), / 407 /);
+  assert.match(await ask(`127.0.0.1:${tp}`, ""), / 407 /);
   assert.match(await ask("example.com:443", "tok"), / 403 /);
 });
 

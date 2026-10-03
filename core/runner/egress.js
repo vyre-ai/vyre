@@ -51,7 +51,7 @@ export function createEgress(o) {
       if (o.internet && req.url && /^http:\/\//i.test(req.url) && req.method !== "CONNECT") {
         const pm = /^Basic\s+(.+)$/i.exec(String(req.headers["proxy-authorization"] || ""));
         const ppass = pm ? Buffer.from(pm[1], "base64").toString().split(":").slice(1).join(":") : "";
-        if (!same(ppass, o.token)) return refuse(407, "unknown session");
+        if (!same(ppass, o.token)) { res.writeHead(407, { "proxy-authenticate": 'Basic realm="vyre"' }); return res.end("unknown session\n"); }
         const pu = new URL(req.url); const pport = Number(pu.port || 80);
         if (pport === 25) return refuse(403, "not allowed");
         let ip; try { ip = await resolvePublic(pu.hostname.replace(/^\[|\]$/g, ""), { lookup: o.lookup }); } catch { return refuse(403, "that address is not public"); }
@@ -114,7 +114,9 @@ export function createEgress(o) {
     const pass = m ? Buffer.from(m[1], "base64").toString().split(":").slice(1).join(":") : "";
     const target = String(req.url || "").toLowerCase();
     const [host, port] = [target.slice(0, target.lastIndexOf(":")), Number(target.slice(target.lastIndexOf(":") + 1))];
-    if (!same(pass, o.token) || !(port > 0 && port < 65536)) return deny();
+    // Clients such as libcurl (git, npm) send the proxy password only after a 407: ask for it.
+    if (!same(pass, o.token)) return sock.end('HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm="vyre"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n');
+    if (!(port > 0 && port < 65536)) return deny();
     if (!o.internet && !tunnel.has(target)) return deny();
     if (o.internet && (port === 25 || port === 465 || port === 587)) return deny();   // no mail relay
     if (tunnels >= MAX_TUNNELS) return deny();
