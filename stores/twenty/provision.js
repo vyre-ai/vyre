@@ -199,8 +199,11 @@ export async function provisionSpace(o) {
   writePrivate(path.join(dir, "compose.yml"), composeFile({ space: o.space, tag, memory: o.memory }));
   if (o.memory !== undefined) writePrivate(path.join(dir, "memory.json"), JSON.stringify(o.memory));
   writePrivate(path.join(dir, "webhook.secret"), secret(24));
-  log("starting Twenty");
-  await runner.exec("docker", ["compose", "-f", "compose.yml", "--env-file", ".env", "up", "-d", "--wait"], { cwd: dir });
+  // Each phase is timed and logged, so a slow create says which part is slow (the screen that waits on this shows the same phases).
+  const phase = async (/** @type {string} */ name, /** @type {() => Promise<any>} */ fn) => { const t = Date.now(); const r = await fn(); log(`phase ${name}: ${((Date.now() - t) / 1000).toFixed(1)}s`); return r; };
+  await phase("pull images", () => runner.exec("docker", ["compose", "-f", "compose.yml", "--env-file", ".env", "pull", "--quiet"], { cwd: dir }));
+  await phase("start database and cache", () => runner.exec("docker", ["compose", "-f", "compose.yml", "--env-file", ".env", "up", "-d", "--wait", "db", "redis"], { cwd: dir }));
+  await phase("start Twenty (migrations, first healthy answer)", () => runner.exec("docker", ["compose", "-f", "compose.yml", "--env-file", ".env", "up", "-d", "--wait"], { cwd: dir }));
   if (o.gatewayContainer) await runner.exec("docker", ["network", "connect", "--alias", n.gatewayAlias, n.network, o.gatewayContainer]).catch((e) => { if (!/already exists/i.test(String(e.message))) throw e; });
   const url = await reachUrl(o, runner, n, origin);
   await waitHealthy(runner, url);
@@ -208,8 +211,9 @@ export async function provisionSpace(o) {
   const adminPass = secret(24);
   const adminEmail = `service@${o.space}.vyre.invalid`;
   writePrivate(path.join(dir, "admin.secret"), JSON.stringify({ email: adminEmail, password: adminPass }));
-  const r = await bootstrap({ runner, url, origin, email: adminEmail, password: adminPass, displayName: o.space });
+  const r = await phase("workspace and key", () => bootstrap({ runner, url, origin, email: adminEmail, password: adminPass, displayName: o.space }));
   writePrivate(keyFile, r.apiKey);
+  writePrivate(path.join(dir, "key.json"), JSON.stringify({ apiKeyId: r.apiKeyId, expiresAt: r.expiresAt, createdAt: new Date().toISOString() }));
   writePrivate(path.join(dir, "workspace.id"), r.workspaceId);
   return { ...base, url, workspaceId: r.workspaceId };
 }
@@ -259,7 +263,7 @@ export async function bootstrap(o) {
   const ak = await gq(`mutation Boot_key { createApiKey(input: { name: "vyre-gateway", expiresAt: ${q(exp)}, roleId: ${q(role.id)} }) { id } }`, access);
   const tok = await gq(`mutation Boot_token { generateApiKeyToken(apiKeyId: ${q(ak.createApiKey.id)}, expiresAt: ${q(exp)}) { token } }`, access);
   await gq("mutation Boot_close { updateWorkspace(data: { isPasswordAuthEnabled: false }) { id } }", access).catch(() => {});
-  return { workspaceId: nw.workspace.id, apiKey: tok.generateApiKeyToken.token, apiKeyId: ak.createApiKey.id };
+  return { workspaceId: nw.workspace.id, apiKey: tok.generateApiKeyToken.token, apiKeyId: ak.createApiKey.id, expiresAt: exp };
 }
 
 /**
@@ -371,3 +375,69 @@ export async function restoreSpace(o) {
   const base = { space: o.space, dir, origin, keyFile: path.join(dir, "service.key"), network: n.network, serverAlias: n.serverAlias, gatewayAlias: n.gatewayAlias, webhookSecretFile: path.join(dir, "webhook.secret"), tag: manifest.tag };
   return { ...base, url, workspaceId: fs.readFileSync(path.join(dir, "workspace.id"), "utf8").trim(), seconds: Math.round((Date.now() - t0) / 100) / 10 };
 }
+
+
+// ---- the Space's API key: one year of life, rotated well before it ends --------------------------------------------------------------------------------
+export const KEY_LIFE_DAYS = 365;
+/** Rotate when fewer than this many days are left; warn loudly when fewer than WARN_DAYS are left and rotation has not worked. */
+export const KEY_ROTATE_WITHIN_DAYS = 90;
+export const KEY_WARN_DAYS = 30;
+
+/** The expiry of a JWT-shaped key, in ms, or null. @param {string} token */
+export function keyExpiry(token) {
+  try { const exp = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString("utf8")).exp; return typeof exp === "number" ? exp * 1000 : null; } catch { return null; }
+}
+
+/**
+ * Where a Space's key stands. `ok` is false when it has expired or cannot be read, `rotate` when it is inside the rotation window.
+ * @param {{ home: string, space: string, now?: () => number }} o
+ */
+export function keyHealth(o) {
+  const dir = spaceDir(o.home, o.space); const now = (o.now ?? Date.now)();
+  let token = ""; try { token = fs.readFileSync(path.join(dir, "service.key"), "utf8").trim(); } catch { return { ok: false, rotate: true, daysLeft: null, expiresAt: null, why: "the Space's key file cannot be read" }; }
+  const exp = keyExpiry(token);
+  if (exp === null) return { ok: true, rotate: false, daysLeft: null, expiresAt: null, why: "the key carries no expiry" };
+  const daysLeft = Math.floor((exp - now) / 864e5);
+  return { ok: exp > now, rotate: daysLeft < KEY_ROTATE_WITHIN_DAYS, daysLeft, expiresAt: new Date(exp).toISOString(), ...(exp <= now ? { why: "the Space's key has expired" } : {}) };
+}
+
+/**
+ * Make a new key for the Space, check it works, write it over the old one (0600, in one rename so a reader never sees half a key), then revoke the old.
+ * Uses the instance admin credential kept for provisioning (admin.secret), never the running key. The store reads the key file on every call, so nothing restarts.
+ * @param {{ home: string, space: string, runner?: Runner, now?: () => number, force?: boolean, url?: string, reach?: "alias" | "ip", log?: (line: string) => void }} o
+ * @returns {Promise<{ rotated: boolean, expiresAt?: string, why?: string }>}
+ */
+export async function rotateApiKey(o) {
+  const n = names(o.space); const runner = o.runner ?? realRunner(); const dir = spaceDir(o.home, o.space); const log = o.log ?? (() => {}); const now = (o.now ?? Date.now)();
+  const h = keyHealth({ home: o.home, space: o.space, now: () => now });
+  if (!o.force && !h.rotate) return { rotated: false, why: `${h.daysLeft} days left` };
+  const admin = JSON.parse(fs.readFileSync(path.join(dir, "admin.secret"), "utf8"));
+  const origin = `http://${n.serverAlias}:3000`;
+  const url = o.url ?? await reachUrl({ home: o.home, space: o.space, reach: o.reach ?? "ip" }, runner, n, origin);
+  const gq = async (/** @type {string} */ query, /** @type {string | undefined} */ token, /** @type {string | undefined} */ useKey) => {
+    const res = await runner.fetch(`${url}/metadata`, { method: "POST", headers: { "content-type": "application/json", origin, ...(token || useKey ? { authorization: `Bearer ${token ?? useKey}` } : {}) }, body: JSON.stringify({ query }) });
+    const j = /** @type {any} */ (await res.json());
+    if (j.errors) throw new Error(`Twenty key rotation failed: ${String(j.errors[0]?.message).slice(0, 200)}`);
+    return j.data;
+  };
+  const q = (/** @type {string} */ x) => JSON.stringify(x);
+  const lt = await gq(`mutation Rot_loginToken { getLoginTokenFromCredentials(email: ${q(admin.email)}, password: ${q(admin.password)}, origin: ${q(origin)}) { loginToken { token } } }`, undefined, undefined);
+  const tk = await gq(`mutation Rot_login { getAuthTokensFromLoginToken(loginToken: ${q(lt.getLoginTokenFromCredentials.loginToken.token)}, origin: ${q(origin)}) { tokens { accessOrWorkspaceAgnosticToken { token } } } }`, undefined, undefined);
+  const access = tk.getAuthTokensFromLoginToken.tokens.accessOrWorkspaceAgnosticToken.token;
+  const roles = await gq("query Rot_roles { getRoles { id label } }", access, undefined);
+  const role = roles.getRoles.find((/** @type {any} */ r) => r.label === KEY_ROLE) ?? roles.getRoles.find((/** @type {any} */ r) => r.label === "Admin") ?? roles.getRoles[0];
+  const exp = new Date(now + KEY_LIFE_DAYS * 864e5).toISOString();
+  const ak = await gq(`mutation Rot_key { createApiKey(input: { name: "vyre-gateway", expiresAt: ${q(exp)}, roleId: ${q(role.id)} }) { id } }`, access, undefined);
+  const tok = await gq(`mutation Rot_token { generateApiKeyToken(apiKeyId: ${q(ak.createApiKey.id)}, expiresAt: ${q(exp)}) { token } }`, access, undefined);
+  const fresh = tok.generateApiKeyToken.token;
+  await gq("query Rot_check { objects(paging: { first: 1 }) { edges { node { id } } } }", undefined, fresh); // the new key must work before it replaces the old
+  const keyFile = path.join(dir, "service.key"); const prev = (() => { try { return JSON.parse(fs.readFileSync(path.join(dir, "key.json"), "utf8")); } catch { return {}; } })();
+  fs.writeFileSync(`${keyFile}.new`, fresh, { mode: 0o600 }); fs.renameSync(`${keyFile}.new`, keyFile); fs.chmodSync(keyFile, 0o600);
+  writePrivate(path.join(dir, "key.json"), JSON.stringify({ apiKeyId: ak.createApiKey.id, expiresAt: exp, rotatedAt: new Date(now).toISOString(), previous: prev.apiKeyId ?? null }));
+  if (prev.apiKeyId) { try { await gq(`mutation Rot_revoke { revokeApiKey(input: { id: ${q(prev.apiKeyId)} }) { id } }`, access, undefined); } catch (e) { log(`the old key could not be revoked (it will expire on its own): ${/** @type {Error} */ (e).message}`); } }
+  log(`key rotated; new expiry ${exp}`);
+  return { rotated: true, expiresAt: exp };
+}
+
+/** The role the gateway's key takes. Admin until the narrowest role that works has been researched (docs/work/records.md). */
+export const KEY_ROLE = "Admin";

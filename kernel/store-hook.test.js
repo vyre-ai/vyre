@@ -15,9 +15,9 @@ test("the Space's record store is the one the caller brings (the per-Space Twent
   const inner = createMemoryStore({});
   const store = new Proxy(inner, { get: (o, k) => (typeof o[k] === "function" ? (...a) => { seen.push(String(k)); return o[k](...a); } : o[k]) });
   const asked = [];
-  const k = await bootHomeKernel({ db: new DatabaseSync(path.join(root, "k.db")), root, log: () => {}, isFirstParty: () => false, storeFor: async (space, dir) => { asked.push([space, typeof dir]); return store; } });
+  const k = await bootHomeKernel({ db: new DatabaseSync(path.join(root, "k.db")), root, log: () => {}, isFirstParty: () => false, storeFor: async (space, meta) => { asked.push([space, typeof meta]); return store; } });
   t.after(() => k.stop());
-  assert.deepEqual(asked, [[k.id.space, "string"]], "asked once, for the home's own Space");
+  assert.deepEqual(asked, [[k.id.space, "object"]], "asked once, for the home's own Space");
   const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: k.id.owner, path: "direct", session: "s" });
   await k.gateway.records.define(owner, { add_types: [CONTACT] });
   const c = await k.gateway.records.create(owner, "contact", { name: "Jane" });
