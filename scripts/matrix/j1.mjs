@@ -38,7 +38,7 @@ try {
 
   // 1.2 start: the page makes its key and shows one install line
   await click("A Linux server");
-  const shown = await sees(/Run this on your server/);
+  const shown = await sees(/Run the line on your server/);
   const line = String(await page.evaluate(`(document.querySelector("pre code")||{}).textContent||""`)).trim();
   const okLine = shown && /^curl -fsSL http:\/\/127\.0\.0\.1:\d+\/i \| VYRE_CODE=\S+ sh$/.test(line);
   r.step("1.2-install-line", okLine, { why: okLine ? undefined : hide(line).slice(0, 200), shot: await shot("setup-install") });
@@ -92,13 +92,13 @@ try {
     // Someone else's server used the same code first, so the mailbox holds lines this page cannot trust. Safe is: the
     // page stops with a plain "Start again" and never offers the other server's words. (A holder of the code can stop
     // a setup this way; they cannot become the server.)
-    const seen = await page.waitText(/Setup stopped|Found your server/i, 90000);
+    const seen = await page.waitText(/Setup stopped|Check the four words/i, 90000);
     const stopped = /Setup stopped/i.test(seen) && /Start again/i.test(seen);
     r.step("1.4h-hostile-box-stops-the-page", stopped, { shot: await shot("setup-hostile"), why: stopped ? "plain Start again, no words offered" : "the page showed: " + seen.replace(/\s+/g, " ").slice(0, 160) });
     throw Object.assign(new Error("done"), { expected: true });
   }
   // 1.4 the page finds the box
-  const found = await sees(/Found your server/i, 90000);
+  const found = await sees(/Check the four words/i, 90000);
   r.step("1.4-page-found-box", found, { shot: await shot("setup-found") });
   if (!found) throw new Error("box not found");
   const onPage = String(await page.evaluate(`[...document.querySelectorAll('ol[aria-label="Check words"] li')].map(l => l.textContent.trim()).join(" ")`));
@@ -118,35 +118,6 @@ try {
   if (!claimed) throw new Error("name not claimed");
   await click("I saved it");
   await sleep(500);
-  await click("Continue");
-
-  // 1.8 AI: Claude signs in through the page. FAKE: `claude auth login` on the box is a stand-in, since
-  // a real sign-in needs a person and a real account. The box's own account handling is real.
-  await sees(/Sign in with Claude/i, 30000);
-  await click("Sign in with Claude");
-  let paste = await sees(/the sign-in page/i, 45000);
-  if (!paste) {
-    // What the box said, straight from its tool (the page only shows a generic line).
-    const said = spawnSync("docker", ["exec", "-u", "vyre", "vyre-vyre-1", "vyre", "call", "sessions.accounts.signin", '{"provider":"claude","label":"diag"}'], { encoding: "utf8" });
-    const msg = ((said.stdout || "").match(/"message":\s*"([^"]+)"/) || [])[1] || "no message";
-    r.step("1.8a-claude-signin-offered", false, { shot: await shot("setup-ai-fail"), why: `the box said: ${msg}` });
-    // Known bug B1 (sessions): a fresh box has no /home/acct/<uid>. Provision it as root so the later stages run, and say so.
-    const uid = (msg.match(/account (\d+) has no home/) || [])[1];
-    if (!uid) throw new Error("sign-in failed: " + msg);
-    const mk = spawnSync("docker", ["exec", "--privileged", "-u", "root", "vyre-vyre-1", "sh", "-c", `for u in $(seq ${uid} $((${uid} + 9))); do mkdir -p /home/acct/$u && chown $u:$u /home/acct/$u && chmod 700 /home/acct/$u; done; id; grep Cap /proc/self/status`], { encoding: "utf8" });
-    fs.writeFileSync(out + "/acct-mk.txt", (mk.stdout || "") + (mk.stderr || ""));
-    await click("Sign in with Claude");
-    paste = await sees(/the sign-in page/i, 45000);
-    let why2 = "home made by the harness, fake claude auth login";
-    if (!paste) { const again = spawnSync("docker", ["exec", "-u", "vyre", "vyre-vyre-1", "vyre", "call", "sessions.accounts.signin", '{"provider":"claude","label":"diag2"}'], { encoding: "utf8" }); why2 = "the box said: " + (((again.stdout || "").match(/"message":\s*"([^"]+)"/) || [])[1] || (again.stdout || again.stderr || "").slice(0, 200)); const ls = spawnSync("docker", ["exec", "vyre-vyre-1", "ls", "-ln", "/home/acct"], { encoding: "utf8" }); fs.writeFileSync(out + "/acct-ls.txt", ls.stdout + ls.stderr); }
-    r.step("1.8a2-claude-signin-after-workaround", paste ? "fake" : false, { shot: await shot("setup-ai-link"), why: why2 });
-    if (!paste) throw new Error("no sign-in link even with the home made");
-  } else r.step("1.8a-claude-signin-offered", "fake", { shot: await shot("setup-ai-link"), why: "fake claude auth login" });
-  await page.evaluate(`(() => { const i = document.querySelector('input[name="code"]'); i.focus(); i.value = "good-code"; i.dispatchEvent(new Event("input", { bubbles: true })); })()`);
-  await click("Finish");
-  const signed = await sees(/Claude is signed in/i, 60000);
-  r.step("1.8b-claude-signed-in", signed ? "fake" : false, { shot: await shot("setup-ai-done"), why: "fake claude auth login" });
-  if (!signed) throw new Error("claude sign-in did not finish");
   await click("Continue");
 
   // 1.9 Tailscale. STAND-IN: a headscale on the runner. The person's "sign in on Tailscale's page" is the register command.
@@ -178,6 +149,36 @@ try {
     throw new Error("address never went live");
   }
   await click("Continue");
+
+  // 1.8 AI (after Tailscale since #11): Claude signs in through the page. FAKE: `claude auth login` on the box is a stand-in, since
+  // a real sign-in needs a person and a real account. The box's own account handling is real.
+  await sees(/Sign in with Claude/i, 30000);
+  await click("Sign in with Claude");
+  let paste = await sees(/the sign-in page/i, 45000);
+  if (!paste) {
+    // What the box said, straight from its tool (the page only shows a generic line).
+    const said = spawnSync("docker", ["exec", "-u", "vyre", "vyre-vyre-1", "vyre", "call", "sessions.accounts.signin", '{"provider":"claude","label":"diag"}'], { encoding: "utf8" });
+    const msg = ((said.stdout || "").match(/"message":\s*"([^"]+)"/) || [])[1] || "no message";
+    r.step("1.8a-claude-signin-offered", false, { shot: await shot("setup-ai-fail"), why: `the box said: ${msg}` });
+    // Known bug B1 (sessions): a fresh box has no /home/acct/<uid>. Provision it as root so the later stages run, and say so.
+    const uid = (msg.match(/account (\d+) has no home/) || [])[1];
+    if (!uid) throw new Error("sign-in failed: " + msg);
+    const mk = spawnSync("docker", ["exec", "--privileged", "-u", "root", "vyre-vyre-1", "sh", "-c", `for u in $(seq ${uid} $((${uid} + 9))); do mkdir -p /home/acct/$u && chown $u:$u /home/acct/$u && chmod 700 /home/acct/$u; done; id; grep Cap /proc/self/status`], { encoding: "utf8" });
+    fs.writeFileSync(out + "/acct-mk.txt", (mk.stdout || "") + (mk.stderr || ""));
+    await click("Sign in with Claude");
+    paste = await sees(/the sign-in page/i, 45000);
+    let why2 = "home made by the harness, fake claude auth login";
+    if (!paste) { const again = spawnSync("docker", ["exec", "-u", "vyre", "vyre-vyre-1", "vyre", "call", "sessions.accounts.signin", '{"provider":"claude","label":"diag2"}'], { encoding: "utf8" }); why2 = "the box said: " + (((again.stdout || "").match(/"message":\s*"([^"]+)"/) || [])[1] || (again.stdout || again.stderr || "").slice(0, 200)); const ls = spawnSync("docker", ["exec", "vyre-vyre-1", "ls", "-ln", "/home/acct"], { encoding: "utf8" }); fs.writeFileSync(out + "/acct-ls.txt", ls.stdout + ls.stderr); }
+    r.step("1.8a2-claude-signin-after-workaround", paste ? "fake" : false, { shot: await shot("setup-ai-link"), why: why2 });
+    if (!paste) throw new Error("no sign-in link even with the home made");
+  } else r.step("1.8a-claude-signin-offered", "fake", { shot: await shot("setup-ai-link"), why: "fake claude auth login" });
+  await page.evaluate(`(() => { const i = document.querySelector('input[name="code"]'); i.focus(); i.value = "good-code"; i.dispatchEvent(new Event("input", { bubbles: true })); })()`);
+  await click("Finish");
+  const signed = await sees(/Claude is signed in/i, 60000);
+  r.step("1.8b-claude-signed-in", signed ? "fake" : false, { shot: await shot("setup-ai-done"), why: "fake claude auth login" });
+  if (!signed) throw new Error("claude sign-in did not finish");
+  await click("Continue");
+
 
   // 1.10 devices: the ring is scanned by a person's phone. By hand; here the page is walked past it.
   await sees(/Add my phone|Skip for now/i, 30000);
