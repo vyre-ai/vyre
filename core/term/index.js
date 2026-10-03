@@ -340,7 +340,8 @@ export default {
         let want = i.cwd ? String(i.cwd) : "";
         if (!want && session) {
           const r = await ctx.call("threads.get", { thread: session }).catch(() => null);
-          const found = r && r.data && typeof r.data.cwd === "string" ? r.data.cwd : "";
+          const rec = r && r.data && (r.data.thread || r.data);
+          const found = rec && typeof rec.cwd === "string" ? rec.cwd : "";
           if (!found) throw fail("not_found", "no such session, or it has no folder");
           want = found;
         }

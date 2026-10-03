@@ -6,7 +6,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
-import { boot, until } from "../sessions/testing/boot.js";
+import path from "node:path";
+import { SCRATCH } from "../../test/scratch.mjs";
+import fs from "node:fs";
+import { DatabaseSync } from "node:sqlite";
+import { start } from "../daemon/index.js";
+import { call } from "../daemon/client.js";
+import * as config from "../config/index.js";
+import { tempHome, present } from "../../test/helpers.js";
+import { boot, until, FAKE } from "../sessions/testing/boot.js";
 import { connect, wsDuplex } from "./client.js";
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -17,7 +25,8 @@ async function serve(t, w) {
   const s = http.createServer((_q, r) => { r.writeHead(404); r.end(); });
   s.on("upgrade", (req, socket, head) => {
     const url = new URL(req.url || "/", "http://vyred");
-    const u = w.d.registry.upgrades.get("stream/session");
+    const m = /^\/v1\/streams\/([a-z-]+)\/([a-z-]+)$/.exec(url.pathname);
+    const u = m && w.d.registry.upgrades.get(`${m[1]}/${m[2]}`);
     if (!u) { socket.end("HTTP/1.1 404 Not Found\r\n\r\n"); return; }
     sockets.add(socket);
     socket.on("close", () => sockets.delete(socket));
@@ -63,6 +72,25 @@ function fold(frames) {
     }
   }
   return { text: [...text], tools: [...tools], messages: [...messages], asks, commands, status };
+}
+
+
+/** A vyred over a temp home with the fake claude, restartable, with the work folder allowed to the files guard (term opens there). */
+async function own(t) {
+  let daemon = null;
+  const root = tempHome(t, { stop: () => daemon && daemon.stop() });
+  const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, FAKE_CLAUDE_TRANSCRIPTS: process.env.FAKE_CLAUDE_TRANSCRIPTS };
+  const transcripts = path.join(root, "transcripts");
+  Object.assign(process.env, { VYRE_CLAUDE_BIN: FAKE, VYRE_SESSIONS_DRIVER: "cli", FAKE_CLAUDE_TRANSCRIPTS: transcripts });
+  t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+  fs.mkdirSync(transcripts);
+  const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
+  t.after(() => fs.rmSync(work, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false }, files: { roots: [work] }, term: { shell: "/bin/sh" } }));
+  daemon = await start({ root, presence: present, log: () => {} });
+  const tool = (name, input, caller = "cli") => call(name, input, { root, caller, timeout: 20_000 });
+  const finished = id => until(async () => (await tool("threads.get", { thread: id, limit: 500 })).data.events.some(e => e.type === "thread.finished"), "the turn to finish");
+  return { root, work, tool, finished, get d() { return daemon; }, restart: async () => { await daemon.stop(); daemon = await start({ root, presence: present, log: () => {} }); } };
 }
 
 test("live: a running session streams, a steer is queued then picked up, and a socket killed mid-reply resumes to the same transcript", async t => {
@@ -135,4 +163,43 @@ test("live: a queued message taken back is a cancelled frame, and a stop says st
   await until(() => live.frames.some(f => f.type === "session.status" && f.data.stopping === true), "stopping status", 8000);
   await sleep(20);
   assert.equal(fold(live.frames).status, "stopped");
+});
+
+test("live: a session that began before the stream (an empty log) is seeded from its stored events when a screen opens it", async t => {
+  const w = await own(t);
+  const id = (await w.tool("threads.start", { cwd: w.work, prompt: "hello there", surface: "deck" })).data.id;
+  await w.finished(id);
+  await w.d.stop();
+  // A vyred from before the stream existed: the thread and its events are there, the frames are not.
+  const db = new DatabaseSync(config.paths(w.root).db);
+  try { db.exec("DELETE FROM stream_frames"); } finally { db.close(); }
+  await w.restart();
+  const o = (await w.tool("stream.open", { session: id, from: 0 }, "deck")).data;
+  assert.ok(o.head > 0, "the log was seeded");
+  const { port } = await serve(t, w);
+  const seen = client(t, w, port, id);
+  await until(() => seen.c.last === o.head, "the seeded frames", 8000);
+  const f = fold(seen.frames);
+  assert.deepEqual(f.messages.map(([, v]) => v.text), ["hello there"]);
+  assert.ok(f.text.some(([, v]) => /hello there/.test(v)), "its reply is there");
+  assert.deepEqual(seen.frames.map(x => x.cur), seen.frames.map((_, i) => i + 1));
+});
+
+test("live: term.open for a session opens in the session's folder and a typed line reaches the session's stream", { skip: process.platform !== "linux" && "the pty runs on the box" }, async t => {
+  const w = await own(t);
+  const { port } = await serve(t, w);
+  const id = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data.id;
+  await w.finished(id);
+  const live = client(t, w, port, id);
+  const r = await w.tool("term.open", { session: id, surface: "deck:abc123" }, "deck");
+  assert.ok(!r.error, r.error && r.error.message);
+  assert.equal(fs.realpathSync(r.data.cwd), fs.realpathSync(w.work));
+  const ws = new WebSocket(`ws://127.0.0.1:${port}${r.data.path}`);
+  t.after(async () => { try { ws.close(); } catch {} await w.tool("term.close", { term: r.data.term }, "deck"); });
+  await new Promise((ok, no) => { ws.onopen = ok; ws.onerror = () => no(new Error("term socket")); });
+  await sleep(300);
+  ws.send(JSON.stringify({ t: "in", d: "echo " }));
+  await sleep(200);
+  ws.send(JSON.stringify({ t: "in", d: "typed-in-the-pane\r" }));
+  await until(() => live.frames.some(f => f.type === "session.term-command" && f.data.command === "echo typed-in-the-pane"), "the term-command frame", 8000);
 });

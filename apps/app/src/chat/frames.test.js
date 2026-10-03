@@ -131,3 +131,12 @@ test("a long history folds fast", () => {
   assert.equal(r.layout, true);
   assert.ok(Date.now() - t < 2000);
 });
+
+test("a queued message taken back leaves the queue and draws no row", () => {
+  const f = createFolder();
+  f.apply(fr("user-message", { message: "m9", text: "never mind", state: "queued" }));
+  assert.equal(f.queue().length, 1);
+  f.apply(fr("user-message", { message: "m9", text: "", state: "cancelled" }));
+  assert.equal(f.queue().length, 0);
+  assert.equal(f.rows.some((r) => r.key === "u:m9"), false);
+});

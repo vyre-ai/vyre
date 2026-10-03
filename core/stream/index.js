@@ -41,12 +41,52 @@ export default {
     const tickets = new Map();
     const sockets = new Set();
 
-    const off = ctx.events.on("*", (/** @type {any} */ e) => {
-      if (!e || !e.thread || !EVENTS.test(e.type)) return;
+    /** Pipe one event into its session's log, through that session's adapter. @param {any} e */
+    const feed = e => {
       let ad = adapters.get(e.thread);
       if (!ad) { ad = createAdapter(); adapters.set(e.thread, ad); }
       try { pipe(logs.get(e.thread), ad, e); } catch (err) { ctx.log(`stream: ${e.type} for ${e.thread}: ${/** @type {Error} */ (err).message}`); }
       if (e.type === "thread.stopped") adapters.delete(e.thread);
+    };
+
+    // A session whose log is empty (it began before this vyred, or before the stream module) is
+    // seeded from the switchboard's stored events, oldest first, so a screen that opens it sees its
+    // history. Live events for it wait in `held` until the seed is in, then go in after it (an id
+    // already seeded is skipped), so the cursor stays gapless and nothing is out of order.
+    /** @type {Set<string>} */ const seen = new Set();
+    /** @type {Map<string, Promise<void>>} */ const seeding = new Map();
+    /** @type {Map<string, any[]>} */ const held = new Map();
+    /** @param {string} session @param {any[]} [first] */
+    const seed = (session, first = []) => {
+      const running = seeding.get(session);
+      if (running) return running;
+      held.set(session, first);
+      const p = (async () => {
+        let events = [];
+        try {
+          const r = await ctx.call("threads.get", { thread: session, limit: 1000 });
+          events = r && r.data && Array.isArray(r.data.events) ? r.data.events : [];
+        } catch {}
+        let top = 0;
+        for (const ev of events) {
+          top = Math.max(top, Number(ev.id) || 0);
+          if (EVENTS.test(ev.type)) feed({ ...ev, thread: session });
+        }
+        for (const e of held.get(session) || []) if (!(Number(e.id) <= top)) feed(e);
+      })().finally(() => { held.delete(session); seeding.delete(session); });
+      seeding.set(session, p);
+      return p;
+    };
+
+    const off = ctx.events.on("*", (/** @type {any} */ e) => {
+      if (!e || !e.thread || !EVENTS.test(e.type)) return;
+      const waiting = held.get(e.thread);
+      if (waiting) { waiting.push(e); return; }
+      if (!seen.has(e.thread)) {
+        seen.add(e.thread);
+        if (logs.get(e.thread).head === 0 && e.type !== "thread.started") { void seed(e.thread, [e]); return; }
+      }
+      feed(e);
     });
 
     ctx.tool("stream.open", {
@@ -56,6 +96,8 @@ export default {
       run: async (/** @type {any} */ i) => {
         const session = String(i.session || "");
         if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(session)) { const e = /** @type {any} */ (new Error("session must be a thread id")); e.code = "bad_input"; throw e; }
+        if (!seen.has(session)) { seen.add(session); if (logs.get(session).head === 0) await seed(session); }
+        else if (seeding.has(session)) await seeding.get(session);
         for (const [k, v] of tickets) if (v.expires <= now()) tickets.delete(k);
         const ticket = crypto.randomBytes(24).toString("base64url");
         const from = Number.isInteger(i.from) && i.from >= 0 ? i.from : null;
