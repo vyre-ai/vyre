@@ -134,3 +134,16 @@ test("budget: a call that failed before the provider answered gives its reservat
   await assert.rejects(() => hostile.call({ chain, purpose: "t", provider: "fake", model: "m", messages: [{ role: "user", content: "hi" }] }));
   assert.deepEqual(L.used(chain.hops[0].actor.id, "ai_spend"), { settled: 350, reserved: 0 }, "charged the 100 the provider reported");
 });
+
+test("D-1: a provider that reports no usage is charged what was reserved", async () => {
+  const { createLimits } = await import("../core/limits.js");
+  const { createEventLog } = await import("../core/events.js");
+  const { createDoor } = await import("./door.js");
+  const SPACE = "spc_testspace0001";
+  const L = createLimits({ space: SPACE, log: createEventLog({ space: SPACE }) });
+  const budget = L.doorBudget({ limitOf: () => 10_000, estimate: () => 600 });
+  const chain = person();
+  const door = createDoor({ sealer: { detect: async ({ text }) => ({ text, found: [], ledger: [] }), endSession: async () => {} }, sinks: [], budget, drivers: { fake: { call: async () => ({ content: "no usage reported" }) } } });
+  await door.call({ chain, purpose: "t", provider: "fake", model: "m", messages: [{ role: "user", content: "hi" }] });
+  assert.deepEqual(L.used(chain.hops[0].actor.id, "ai_spend"), { settled: 600, reserved: 0 });
+});

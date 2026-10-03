@@ -32,9 +32,10 @@ All code under `kernel/flows/` (pure ES modules, built on kernel/contracts types
 - kernel/flows/e2e/estate.e2e.test.js: Estate planning kit (records' kit.ts compiled by their compiler) from a Stripe payment to the next stage on the real kernel. 93 of 93 on testbox.
 
 ## Doing
-Waiting on the kernel for the real gateway; flows are built against kernel/contracts and the fake kernel in kernel/flows/testing.
+All six relaunch items have a first cut (4 Oct): real-kernel harness + stages + Estate e2e (kernel/flows), sessions under Wink (core/space-sessions, docs/work/sessions-spaces.md), door retrofit (docs/work/door-retrofit.md). Waiting on platform for the gateway gaps listed in team/0.2/CHAT.md (sessions -> platform, 3 Oct).
 
 ## Next
+00. Open: confirm with lead plaintext-over-Wink for working copy sync; platform to allow continue_in_space source, ctx.model/ctx.chainFor, door.stream; vault release({purpose:"workcopy"}); kernel bug: required task with no checker waits forever; records kit.ts uses defineField.ref (now link). Native-core canvas data on request (kernel/flows/canvas.js).
 0. Drop each SHIM in real-kernel.js as platform lands it; run the whole flows suite on the real kernel once tests stop reading the Fake's internals (kernel.tables, kernel.tasks).
 1. Wire createFlows into the module host once platform's gateway lands (tools to manifest, reach, docs:ref). Until then nothing registers in today's registry.
 2. Canvas component for the Deck if native-core asks (the data API is canvas.js).

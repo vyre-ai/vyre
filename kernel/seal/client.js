@@ -62,8 +62,8 @@ export function startSealer({ dir, sinks = {}, timeoutMs = 20_000, execPath = pr
     lease: {
       issue: i => withCtx("lease.issue", i, { space: i.space, device: i.device, allowed: i.allowed }),
       renew: i => withCtx("lease.renew", i, { lease: i.id, allowed: i.allowed }),
-      revoke: i => withCtx("lease.revoke", i, { space: i.space, device: i.device }),
-      reinstate: i => withCtx("lease.reinstate", i, { device: i.device, proof: i.proof }),
+      revoke: i => withCtx("lease.revoke", i, { space: i.space, member: i.member, device: i.device }),
+      reinstate: i => withCtx("lease.reinstate", i, { member: i.member, device: i.device, proof: i.proof }),
       check: i => withCtx("lease.check", i, { lease: i.id }),
     },
     health: () => call("health"),

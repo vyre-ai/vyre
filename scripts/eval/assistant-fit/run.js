@@ -1,5 +1,5 @@
 // @ts-check
-// `node core/assistant/native/eval/run.js --model <id> --yes --out <dir> [--budget 5]`
+// `node scripts/eval/assistant-fit/run.js --model <id> --yes --out <dir> [--budget 5]`
 // Runs the fit eval against the real Claude API: five short conversations, about five dollars at the most. It refuses to run without ANTHROPIC_API_KEY
 // in the environment and an explicit --yes, because it spends money. Tests never run this file.
 

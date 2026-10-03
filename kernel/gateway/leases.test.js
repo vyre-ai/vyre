@@ -11,14 +11,15 @@ const presence = { check: async ({ chain, op, fields, proof: p }) => (chain && p
 /** A sealer whose lease.* behaves like vault's Leases (revocation memory, epoch) without the process, so the kernel's wiring is what is tested. */
 function fakeSealer() {
   const st = { revoked: new Set(), live: new Map(), calls: [] };
+  const slot = (m, d) => `${m}|${d}`;
   let n = 0;
   const one = c => { if (!c || c.hops.length !== 1 || c.hops[0].actor.kind !== "person") throw Object.assign(new Error("human_only"), { code: "human_only" }); };
   return { st, lease: {
-    issue: async i => { one(i.chain); st.calls.push(["issue", i.device, i.allowed]); if (!i.allowed) { st.revoked.add(i.device); return { revoked: true }; } if (st.revoked.has(i.device)) return { revoked: true }; const id = `lease_${++n}`; st.live.set(id, i.device); return { id, key: "k", ttlMs: 3600000 }; },
+    issue: async i => { one(i.chain); const m = i.chain.hops[0].actor.id; st.calls.push(["issue", i.device, i.allowed]); if (!i.allowed) return { revoked: true }; if (st.revoked.has(slot(m, i.device))) return { revoked: true }; const id = `lease_${++n}`; st.live.set(id, slot(m, i.device)); return { id, key: "k", ttlMs: 3600000 }; },
     renew: async i => { one(i.chain); st.calls.push(["renew", i.id, i.allowed]); if (!i.allowed) { st.revoked.add(st.live.get(i.id)); st.live.delete(i.id); return { revoked: true }; } return { ttlMs: 3600000 }; },
-    revoke: async i => { one(i.chain); st.calls.push(["revoke", i.device]); st.revoked.add(i.device); for (const [id, d] of st.live) if (d === i.device) st.live.delete(id); return { revoked: true }; },
-    reinstate: async i => { st.calls.push(["reinstate", i.device]); st.revoked.delete(i.device); return { reinstated: true }; },
-    check: async i => { if (!st.live.has(i.id)) throw Object.assign(new Error("no_lease"), { code: "no_lease" }); return { space: SPACE, device: st.live.get(i.id) }; },
+    revoke: async i => { one(i.chain); st.calls.push(["revoke", i.member, i.device]); st.revoked.add(slot(i.member, i.device)); for (const [id, d] of st.live) if (d === slot(i.member, i.device)) st.live.delete(id); return { revoked: true }; },
+    reinstate: async i => { st.calls.push(["reinstate", i.member, i.device]); st.revoked.delete(slot(i.member, i.device)); return { reinstated: true }; },
+    check: async i => { if (!st.live.has(i.id)) throw Object.assign(new Error("no_lease"), { code: "no_lease" }); const [member, device] = st.live.get(i.id).split("|"); return { space: SPACE, member, device }; },
   }, presenceCheck: presence.check };
 }
 
@@ -38,15 +39,15 @@ async function rig() {
 test("leases: `allowed` is the kernel's answer from the two Offers, on every issue and renew, never the caller's", async () => {
   const r = await rig();
   const L = r.k.gateway.leases;
-  assert.deepEqual(await L.issue(r.bob, { device: "dev_laptop" }), { revoked: true }, "no Offer at all: refused, and the process is told allowed is false");
+  assert.deepEqual(await L.issue(r.bob, { device: "dev_laptop", device_key: "KEY_LAPTOP" }), { revoked: true }, "no Offer at all: refused, and the process is told allowed is false");
   assert.deepEqual(r.sealer.st.calls.at(-1), ["issue", "dev_laptop", false]);
   const r2 = await rig();
   await r2.mk(r2.owner, { side: "space_allows", member: BOB });
-  assert.deepEqual((await r2.k.gateway.leases.issue(r2.bob, { device: "dev_laptop" })), { revoked: true }, "one side is not enough");
+  assert.deepEqual((await r2.k.gateway.leases.issue(r2.bob, { device: "dev_laptop", device_key: "KEY_LAPTOP" })), { revoked: true }, "one side is not enough");
   const r3 = await rig();
   await r3.mk(r3.owner, { side: "space_allows", member: BOB });
-  await r3.mk(r3.bob, { side: "member_accepts", member: BOB, device: "dev_laptop" });
-  const lease = await r3.k.gateway.leases.issue(r3.bob, { device: "dev_laptop" });
+  await r3.mk(r3.bob, { side: "member_accepts", member: BOB, device: "dev_laptop", device_key: "KEY_LAPTOP" });
+  const lease = await r3.k.gateway.leases.issue(r3.bob, { device: "dev_laptop", device_key: "KEY_LAPTOP" });
   assert.ok(lease.id);
   assert.deepEqual(r3.sealer.st.calls.at(-1), ["issue", "dev_laptop", true]);
   assert.deepEqual(await r3.k.gateway.leases.renew(r3.bob, { id: lease.id }), { ttlMs: 3600000 });
@@ -55,25 +56,25 @@ test("leases: `allowed` is the kernel's answer from the two Offers, on every iss
   const alice = r3.k.chains.fromFacts({ kind: "device", device_key_id: "d-a", person: "per_alice", path: "direct" });
   await assert.rejects(() => r3.k.gateway.leases.renew(alice, { id: lease.id }), { code: "unknown_lease" });
   const agent = r3.k.chains.fromFacts({ kind: "agent_session", agent: "kit", session: "s", thread: "t", vouched: true });
-  await assert.rejects(() => r3.k.gateway.leases.issue(agent, { device: "dev_laptop" }), { code: "chain_not_person" });
+  await assert.rejects(() => r3.k.gateway.leases.issue(agent, { device: "dev_laptop", device_key: "KEY_LAPTOP" }), { code: "chain_not_person" });
 });
 
 test("leases: withdrawing either Offer, or removing the member, revokes the lease at once through the person whose act it was; reinstating is an admin's", async () => {
   const r = await rig();
   const allow = await r.mk(r.owner, { side: "space_allows", member: BOB });
-  const accept = await r.mk(r.bob, { side: "member_accepts", member: BOB, device: "dev_laptop" });
-  const lease = await r.k.gateway.leases.issue(r.bob, { device: "dev_laptop" });
+  const accept = await r.mk(r.bob, { side: "member_accepts", member: BOB, device: "dev_laptop", device_key: "KEY_LAPTOP" });
+  const lease = await r.k.gateway.leases.issue(r.bob, { device: "dev_laptop", device_key: "KEY_LAPTOP" });
   assert.ok(r.sealer.st.live.has(lease.id));
   await r.un(r.bob, accept.id);
   await new Promise(res => setTimeout(res, 10));
   assert.ok(!r.sealer.st.live.has(lease.id), "the member withdrew: revoked in the process now, not at the next renewal");
-  assert.ok(r.sealer.st.revoked.has("dev_laptop"));
+  assert.ok(r.sealer.st.revoked.has(`${BOB}|dev_laptop`));
   // nothing is issued again, even with both Offers back, until an admin reinstates
-  await r.mk(r.bob, { side: "member_accepts", member: BOB, device: "dev_laptop" });
-  assert.deepEqual(await r.k.gateway.leases.issue(r.bob, { device: "dev_laptop" }), { revoked: true });
-  await assert.rejects(() => r.k.gateway.leases.reinstate(r.bob, { device: "dev_laptop", proof: {} }), { code: "not_allowed" }, "a member does not reinstate");
-  await r.k.gateway.leases.reinstate(r.owner, { device: "dev_laptop", proof: { sig: "admin" } });
-  assert.ok((await r.k.gateway.leases.issue(r.bob, { device: "dev_laptop" })).id);
+  await r.mk(r.bob, { side: "member_accepts", member: BOB, device: "dev_laptop", device_key: "KEY_LAPTOP" });
+  assert.deepEqual(await r.k.gateway.leases.issue(r.bob, { device: "dev_laptop", device_key: "KEY_LAPTOP" }), { revoked: true });
+  await assert.rejects(() => r.k.gateway.leases.reinstate(r.bob, { member: BOB, device: "dev_laptop", proof: {} }), { code: "not_allowed" }, "a member does not reinstate");
+  await r.k.gateway.leases.reinstate(r.owner, { member: BOB, device: "dev_laptop", proof: { sig: "admin" } });
+  assert.ok((await r.k.gateway.leases.issue(r.bob, { device: "dev_laptop", device_key: "KEY_LAPTOP" })).id);
   // removing the member revokes whatever they hold
   const live = [...r.sealer.st.live.keys()][0];
   await r.k.gateway.grants.removeMember(r.owner, { person: BOB }, { presence: proof("grants.role", { remove: BOB }, `vyre://${SPACE}/member/${BOB}`) });
@@ -85,10 +86,10 @@ test("leases: withdrawing either Offer, or removing the member, revokes the leas
 test("leases: a credential is used by route only from a session with a live lease, per request, and the event carries no value", async () => {
   const r = await rig();
   await r.mk(r.owner, { side: "space_allows", member: BOB });
-  await r.mk(r.bob, { side: "member_accepts", member: BOB, device: "dev_laptop" });
+  await r.mk(r.bob, { side: "member_accepts", member: BOB, device: "dev_laptop", device_key: "KEY_LAPTOP" });
   const gi = { subject: { kind: "actor", actor: { kind: "person", id: BOB, space: SPACE } }, actions: ["vault.read"], resource: { prefix: `vyre://${SPACE}/credential/*` }, conditions: {}, source: "test" };
   await r.g.create(r.owner, gi, { presence: proof("grants.create", gi, `vyre://${SPACE}/grant/new`) });
-  const lease = await r.k.gateway.leases.issue(r.bob, { device: "dev_laptop" });
+  const lease = await r.k.gateway.leases.issue(r.bob, { device: "dev_laptop", device_key: "KEY_LAPTOP" });
   const L = r.k.gateway.leases;
   await assert.rejects(() => L.use(r.bob, { ref: "gh", session: "s1", route: "api.github.com" }), { code: "no_lease" }, "no session bound to a lease");
   L.bind("s1", lease.id);
@@ -101,4 +102,24 @@ test("leases: a credential is used by route only from a session with a live leas
   // after the lease is gone the session can no longer use it
   r.sealer.st.live.clear();
   await assert.rejects(() => L.use(r.bob, { ref: "gh", session: "s1", route: "api.github.com" }), { code: "no_lease" });
+});
+
+
+test("L-5: another member naming the same device id cannot revoke, refuse-and-revoke or reinstate this member's lease", async () => {
+  const r = await rig();
+  await r.mk(r.owner, { side: "space_allows", member: BOB });
+  await r.mk(r.bob, { side: "member_accepts", member: BOB, device: "dev_laptop", device_key: "KEY_LAPTOP" });
+  const lease = await r.k.gateway.leases.issue(r.bob, { device: "dev_laptop", device_key: "KEY_LAPTOP" });
+  const carol = r.k.chains.fromFacts({ kind: "device", device_key_id: "d-c", person: "per_carol", path: "direct" });
+  const g = r.g, role = { person: "per_carol", role: "member" };
+  await g.setRole(r.owner, role, { presence: proof("grants.role", role, `vyre://${SPACE}/member/per_carol`) });
+  // carol, who holds no offers, asks for a lease on bob's device id: refused, and bob's lease is untouched
+  assert.deepEqual(await r.k.gateway.leases.issue(carol, { device: "dev_laptop" }), { revoked: true });
+  assert.ok(r.sealer.st.live.has(lease.id), "a refused issue revoked nothing");
+  await assert.rejects(() => r.k.gateway.leases.revoke(carol, { member: BOB, device: "dev_laptop" }), { code: "not_allowed" });
+  assert.ok(r.sealer.st.live.has(lease.id));
+  // bob himself, or an admin, may
+  await r.k.gateway.leases.revoke(r.bob, { member: BOB, device: "dev_laptop" });
+  assert.ok(!r.sealer.st.live.has(lease.id));
+  await r.mk(r.bob, { side: "member_accepts", member: BOB, device: "dev_laptop", device_key: "KEY_LAPTOP" }).catch(() => {});
 });

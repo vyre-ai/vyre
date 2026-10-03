@@ -2,7 +2,7 @@
 // A Kit's role template becomes a teammate spec (contract 9.4, "Teammates", R6-10). Pure: no kernel call, so the add card can be drawn from it
 // before anything is created. Text that came with a Kit (instructions, templates) is `external` until a person reviewed it, and says so on the card.
 
-import { externalLabels, memberLabels } from "../../lib/labels.js";
+import { externalLabels, memberLabels } from "../../../lib/labels.js";
 
 /** An assistant that can add teammates may add at most this many to one project (R6-10). */
 export const MAX_ASSISTANT_ADDED = 5;
@@ -26,8 +26,8 @@ const cap = (s, n) => String(s ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").sli
 
 /**
  * @typedef {{ name: string, instructions?: string, templates?: readonly { name: string, kind?: string, body: string }[], wanted?: readonly { actions: readonly string[], prefix?: string }[] }} KitRole
- * @typedef {{ name: string, role: string, project: string, space: string, instructions: { text: string, labels: import("../../lib/labels.js").Labels, reviewed: boolean, reviewed_by?: string },
- *   templates: { name: string, kind: string, body: string, labels: import("../../lib/labels.js").Labels, reviewed: boolean }[], wanted: { actions: string[], prefix: string }[], outward: string[] }} TeammateSpec
+ * @typedef {{ name: string, role: string, project: string, space: string, instructions: { text: string, labels: import("../../../lib/labels.js").Labels, reviewed: boolean, reviewed_by?: string },
+ *   templates: { name: string, kind: string, body: string, labels: import("../../../lib/labels.js").Labels, reviewed: boolean }[], wanted: { actions: string[], prefix: string }[], outward: string[] }} TeammateSpec
  */
 
 const KIT_VERBS = { read: "records.read", write: "records.update", create: "records.create" };

@@ -15,6 +15,7 @@ import { createLimits } from "./core/limits.js";
 import { createTasks } from "./tasks/tasks.js";
 import { sealerPresence } from "./core/presence.js";
 import { expr as defaultExpr } from "./expr/index.js";
+import { createSurfaces } from "./core/surfaces.js";
 
 /**
  * @param {{ space: string, owner: string, owner_uid: number, key: Uint8Array | string, clock?: () => number,
@@ -29,7 +30,7 @@ export function createKernel(cfg) {
   const store = cfg.store || createMemoryStore({ clock });
   const chains = cfg.chains || createChainBuilder({ space: cfg.space, owner: cfg.owner, owner_uid: cfg.owner_uid, key: cfg.key, clock, is_person: () => true });
   const own = Boolean(cfg.grants && cfg.members);
-  const grantsStore = own ? undefined : cfg.grantsStore || createGrantsStore({ space: cfg.space, log, chains, key: cfg.key, clock });
+  const grantsStore = own ? undefined : cfg.grantsStore || createGrantsStore({ space: cfg.space, log, chains, key: cfg.key, clock, presence: cfg.presence || (cfg.sealer ? sealerPresence(cfg.sealer) : undefined) });
   const presence = cfg.presence || (cfg.sealer ? sealerPresence(cfg.sealer) : undefined);
   const limits = createLimits({ space: cfg.space, log, clock });
   let fresh = false;
@@ -44,10 +45,11 @@ export function createKernel(cfg) {
     approver: () => ({ kind: "person", id: cfg.owner, space: cfg.space }), resolve: cfg.resolve, enforce: (/** @type {any} */ c, /** @type {any} */ d) => limits.enforce(c, d),
   });
   gateway = createGateway({
-    space: cfg.space, store, log, chains, clock, limits, tasks, owner: cfg.owner, presence, hasPresenceSession, expr: cfg.expr === undefined ? defaultExpr : cfg.expr,
+    space: cfg.space, store, log, chains, clock, limits, tasks, approvedAct: (/** @type {any} */ q) => tasks.approvedAct(q), owner: cfg.owner, presence, hasPresenceSession, expr: cfg.expr === undefined ? defaultExpr : cfg.expr,
     ...(grantsStore ? { grantsStore } : { grants: cfg.grants, members: cfg.members }),
     sealer: cfg.sealer, door: cfg.door, onStageEnter: cfg.onStageEnter, stageTasks: cfg.stageTasks, checkpointKey: cfg.checkpointKey, templates: cfg.templates, destinations: cfg.destinations,
     actions: cfg.actions, attrs: cfg.attrs, sinks: cfg.sinks, resolveCredential: cfg.resolveCredential, routeAction: cfg.routeAction,
   });
-  return Object.freeze({ gateway, log, store, chains, grants: grantsStore, limits, tasks, fresh });
+  const surfaces = createSurfaces({ space: cfg.space, chains, key: cfg.key, door: cfg.door, clock });
+  return Object.freeze({ gateway, log, store, chains, grants: grantsStore, limits, tasks, surfaces, fresh });
 }

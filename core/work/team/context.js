@@ -3,8 +3,8 @@
 // templates. Records are read through the gateway under the teammate's own chain, so a model-facing read already carries placeholders; the view is
 // applied again here because a store or a caller may hand over the reference form. The text is labelled by what it drew on.
 
-import { joinLabels, externalLabels } from "../../lib/labels.js";
-import { modelView, isSealedValue, sealedText } from "../../lib/sealed.js";
+import { joinLabels, externalLabels } from "../../../lib/labels.js";
+import { modelView, isSealedValue, sealedText } from "../../../lib/sealed.js";
 
 const URN = /^vyre:\/\/([^/]+)\/([^/]+)\/([^/]+)$/;
 /** @param {string} u @returns {{ space: string, type: string, id: string }|null} */
@@ -24,7 +24,7 @@ function line(k, v) {
 /**
  * @param {any} kernel @param {any} chain the teammate's chain (the kernel built it)
  * @param {{ project: string, role?: { instructions?: { text: string, labels?: any, reviewed?: boolean }|string, name?: string }, templates?: readonly { name: string, body: string, labels?: any }[], maxLinked?: number, space: string }} o
- * @returns {Promise<{ text: string, urns: string[], labels: import("../../lib/labels.js").Labels, skipped: string[] }>}
+ * @returns {Promise<{ text: string, urns: string[], labels: import("../../../lib/labels.js").Labels, skipped: string[] }>}
  */
 export async function teammateContext(kernel, chain, { project, role, templates = [], maxLinked = 12, space }) {
   const p = parseUrn(project);

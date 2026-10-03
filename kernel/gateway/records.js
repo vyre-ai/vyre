@@ -10,6 +10,7 @@ import { createGate } from "../core/gate.js";
 import { aggregate as aggregateRows } from "../store/query.js";
 import { isSealedShape } from "../store/values.js";
 import { expr as defaultExpr } from "../expr/index.js";
+import { createIdem } from "../core/idem.js";
 
 /** The actions the gateway registers with the authorizer (contract 6.1). */
 export const RECORD_ACTIONS = Object.freeze([
@@ -78,6 +79,7 @@ export function createRecords(cfg) {
   /** A read through query, aggregate or search is one act on the type: counted once against the type-level decision, never per row. */
   const countRead = async (/** @type {any} */ chain, /** @type {string} */ type) => { const d = await check(chain, "records.read", urn(type, "*"), { probe: true }); if (d && cfg.enforce) cfg.enforce(chain, d); };
   const members = cfg.members;
+  const idem = createIdem({ clock });
 
   /** A field allow-list from a decision's obligations: every hop's grant may narrow it, so the result is their intersection. null means no limit. */
   const allowList = (/** @type {any} */ d) => {
@@ -212,6 +214,8 @@ export function createRecords(cfg) {
       throw new KernelError("store_disagreed", "the store's answer does not match what was asked, so nothing was recorded as done");
     }
     emit(chain, intent, rec, before, d.decision, false);
+    // The stage was entered: one event says so (Flow triggers `enters-stage` read it), then the tasks side is told (below).
+    if (/** @type {any} */ (stage).entered) { try { log.append(chain, { type: "record.stage-entered", sv: 1, subject: u, data: { type, id, stage: /** @type {any} */ (stage).entered.stage }, vis: "subject", red: "internal" }, { decision: d.decision }); } catch { /* the write stands; the entry is also reported to onStageEnter */ } }
     // The stage was entered: tell the tasks side to create the stage's task templates for this record (best effort; the write stands).
     if (/** @type {any} */ (stage).entered && cfg.onStageEnter) { try { await cfg.onStageEnter({ record: u, ...(/** @type {any} */ (stage).entered), chain }); } catch { /* the stage rule retries on the next move */ } }
     return shape(chain, rec, lim);
@@ -232,6 +236,16 @@ export function createRecords(cfg) {
     }, { decision });
     index.set(intent.record, { version: rec.version, hash });
     intent.state = "completed";
+  }
+
+  async function createOnce(/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ data, /** @type {any} */ opts) {
+    const id = mintUuid(clock());
+    const a = opts.attrs || {};
+    for (const k of Object.keys(a)) if (!["owner", "project", "sensitivity"].includes(k)) throw new KernelError("bad_input", `${k} is not a kernel attribute`);
+    const rec = await write(chain, "create", type, id, data, null, () => store.create(type, id, data), null);
+    const last = chain.hops[chain.hops.length - 1].actor;
+    kattrs.set(urn(type, id), { space, created_by: `${last.kind}:${last.id}`, ...a });
+    return rec;
   }
 
   return {
@@ -335,13 +349,16 @@ export function createRecords(cfg) {
     },
 
     async create(chain, type, data, opts = {}) {
-      const id = mintUuid(clock());
-      const a = opts.attrs || {};
-      for (const k of Object.keys(a)) if (!["owner", "project", "sensitivity"].includes(k)) throw new KernelError("bad_input", `${k} is not a kernel attribute`);
-      const rec = await write(chain, "create", type, id, data, null, () => store.create(type, id, data), null);
-      const last = chain.hops[chain.hops.length - 1].actor;
-      kattrs.set(urn(type, id), { space, created_by: `${last.kind}:${last.id}`, ...a });
-      return rec;
+      return idem.once(chain, "create", opts.idem, { type, data, attrs: opts.attrs }, () => createOnce(chain, type, data, opts));
+    },
+    async update(chain, type, id, patch, base, opts = {}) {
+      return idem.once(chain, "update", opts.idem, { type, id, patch, base }, () => write(chain, "update", type, id, patch, base, () => store.update(type, id, patch, base), () => store.get(type, id)));
+    },
+    async remove(chain, type, id, base, opts = {}) {
+      return idem.once(chain, "remove", opts.idem, { type, id, base }, () => write(chain, "remove", type, id, {}, base, () => store.remove(type, id, base), () => store.get(type, id)));
+    },
+    async restore(chain, type, id, opts = {}) {
+      return idem.once(chain, "restore", opts.idem, { type, id }, () => write(chain, "restore", type, id, {}, null, () => store.restore(type, id), () => store.get(type, id, { include_deleted: true })));
     },
     /** Kernel attributes of a record, from the gateway's own index. A record it did not write has none, so a policy predicate on it never matches. */
     /**
@@ -362,17 +379,6 @@ export function createRecords(cfg) {
     },
     attrsOf: (/** @type {string} */ u) => kattrs.get(u),
 
-    async update(chain, type, id, patch, base) {
-      return write(chain, "update", type, id, patch, base, () => store.update(type, id, patch, base), () => store.get(type, id));
-    },
-
-    async remove(chain, type, id, base) {
-      return write(chain, "remove", type, id, {}, base, () => store.remove(type, id, base), () => store.get(type, id));
-    },
-
-    async restore(chain, type, id) {
-      return write(chain, "restore", type, id, {}, null, () => store.restore(type, id), () => store.get(type, id, { include_deleted: true }));
-    },
 
     /**
      * Close intents a crash left open. An intent completes only when the store shows exactly the data this intent

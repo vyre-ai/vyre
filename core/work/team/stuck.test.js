@@ -1,7 +1,7 @@
 // @ts-check
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createFakeKernel } from "../../test/fake-kernel.js";
+import { createFakeKernel } from "../../../test/fake-kernel.js";
 import { createStuckWatch } from "./stuck.js";
 
 async function world({ checker = false, kind = "draft" } = {}) {

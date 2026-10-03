@@ -490,6 +490,8 @@ export class Registry {
 
   /** Vyre's own: shipped in the repo, or in a firstPartyRoots folder an in-process caller named. @param {string} dir */
   isFirstParty(dir) {
+    // With a signed-release check wired (kernel/modules/firstparty.js, from the kernel boot) a module is first party only by signature: not by where it sits and not by its name.
+    if (this.deps.firstPartyCheck) return this.deps.firstPartyCheck(dir) === true;
     return firstParty(dir) || inRoots(dir, this.firstPartyRoots);
   }
 
@@ -646,6 +648,8 @@ export class Registry {
   /** What a module gets. It sees only what its manifest declared. */
   context(m) {
     const { db, events, config, log, paths } = this.deps;
+    // The kernel handle (kernel/home.js `kernelFor`): only for a first-party module, and only when the daemon runs with the kernel on.
+    const kernelHandle = (() => { const r = this.modules.get(m.name); return this.deps.kernelFor && r && this.isFirstParty(r.dir) ? this.deps.kernelFor(m) : undefined; })();
     // Tool names from either form of does.tools, with the reach and outward an object entry declares.
     const entries = new Map(toolEntries(m).map(e => [e.name, e]));
     const objectForm = new Set(((m.does && m.does.tools) || []).filter(e => e && typeof e === "object").map(e => e.name));
@@ -949,6 +953,7 @@ export class Registry {
         get: name => { const p = this.providers.get(String(name)); return p ? p.driver : null; },
         list: () => [...this.providers.keys()],
       },
+      ...(kernelHandle ? { kernel: kernelHandle } : {}),
       tool: (name, def) => {
         if (!declared.has(name)) throw new Error(`${m.name} registered tool ${name}, which its manifest does not declare under does.tools`);
         if (this.tools.has(name)) throw new Error(`tool ${name} is already registered`);

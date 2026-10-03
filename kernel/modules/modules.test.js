@@ -189,3 +189,24 @@ test("first party is a signature over the folder's contents by the pinned releas
   assert.equal(check(dir), false, "a symlink is refused outright");
   assert.ok(treeHash);
 });
+
+test("K-1: a release-signed minimum version makes an older signed copy not first party; first party is judged at every load", async () => {
+  const { signMinimums, verifyMinimums } = await import("./firstparty.js");
+  const release = crypto.generateKeyPairSync("ed25519");
+  const mk = version => { const dir = tmp("fpv"); fs.writeFileSync(path.join(dir, "module.json"), JSON.stringify({ name: "email", version })); fs.writeFileSync(path.join(dir, "index.js"), "export default {};"); signModule(dir, release.privateKey); return dir; };
+  const doc = signMinimums({ email: "0.3.0" }, release.privateKey);
+  const minimums = verifyMinimums(doc, release.publicKey);
+  assert.deepEqual(minimums, { email: "0.3.0" });
+  assert.equal(verifyMinimums({ ...doc, body: JSON.stringify({ email: "0.0.1" }) }, release.publicKey), null, "edited minimums do not verify");
+  const check = createFirstPartyCheck({ releaseKey: release.publicKey, minimums });
+  assert.equal(check(mk("0.3.0")), true);
+  assert.equal(check(mk("0.4.2")), true);
+  assert.equal(check(mk("0.2.9")), false, "validly signed, but older than the minimum");
+  const unlisted = tmp("fpu"); fs.writeFileSync(path.join(unlisted, "module.json"), JSON.stringify({ name: "other", version: "9.0.0" })); signModule(unlisted, release.privateKey);
+  assert.equal(check(unlisted), false, "a module the release did not list is not first party");
+  // judged at every load: edit the folder after install and the next load says no
+  const d = mk("0.5.0");
+  assert.equal(check(d), true);
+  fs.appendFileSync(path.join(d, "index.js"), "\n// tampered");
+  assert.equal(check(d), false);
+});

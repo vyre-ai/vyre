@@ -1,9 +1,9 @@
 // @ts-check
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createFakeKernel } from "../../test/fake-kernel.js";
+import { createFakeKernel } from "../../../test/fake-kernel.js";
 import { teammateContext, parseUrn } from "./context.js";
-import { externalLabels, memberLabels } from "../../lib/labels.js";
+import { externalLabels, memberLabels } from "../../../lib/labels.js";
 
 function world() {
   const f = createFakeKernel();

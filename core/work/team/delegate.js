@@ -4,7 +4,7 @@
 // decision so the teammate pauses when the adder loses the grant, leaves or is limited (it fails closed).
 
 import { isOutward } from "./roles.js";
-import { segments, containedPrefix } from "../../kernel/core/urn.js";
+import { segments, containedPrefix } from "../../../kernel/core/urn.js";
 
 /** @typedef {{ kind: string, id: string, space: string }} ActorRef */
 

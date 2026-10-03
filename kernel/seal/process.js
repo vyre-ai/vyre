@@ -199,10 +199,10 @@ export class Sealer {
       }
       case "presence.sync": { const r = await this.presence.sync({ ...req, ctx: this.ctxOf(req.ctx) }); if (r.refused) throw err(r.refused); return { ...r, events: r.pruned.map(key_id => ({ type: "presence.revoked", key_id, why: "device_removed" })) }; }
       case "presence.recover": { const r = await this.presence.recover({ ...req, ctx: this.ctxOf(req.ctx) }); if (r.refused) throw err(r.refused); return { recovered: true, attested: r.attested, event: { type: "presence.recovered", person: req.person, key_id: req.key_id, device: r.device, newcomer_for_ms: 24 * 3_600_000 } }; }
-      case "lease.issue": { const c = this.ctxOf(req.ctx); need(c.one_person && !c.model_originated, "human_only"); return this.leases.issue(req); }
+      case "lease.issue": { const c = this.ctxOf(req.ctx); need(c.one_person && !c.model_originated, "human_only"); return this.leases.issue({ space: req.space, member: c.person, device: req.device, allowed: req.allowed }); }
       case "lease.renew": { const c = this.ctxOf(req.ctx); need(c.one_person && !c.model_originated, "human_only"); return this.leases.renew({ id: req.lease, allowed: req.allowed }); }
-      case "lease.revoke": { const c = this.ctxOf(req.ctx); need(c.one_person && !c.model_originated, "human_only"); return this.leases.revoke(req); }
-      case "lease.reinstate": { const c = this.ctxOf(req.ctx); const why = this.presence.refuse(req.proof, { op: "lease.reinstate", space: c.space, fields: { device: req.device }, ctx: c }); if (why) throw err(why === "no_proof" ? "needs_presence" : why); return this.leases.reinstate({ space: c.space, device: req.device }); }
+      case "lease.revoke": { const c = this.ctxOf(req.ctx); need(c.one_person && !c.model_originated, "human_only"); need(typeof req.member === "string" && req.member, "bad_input"); return this.leases.revoke({ space: req.space, member: req.member, device: req.device }); }
+      case "lease.reinstate": { const c = this.ctxOf(req.ctx); const why = this.presence.refuse(req.proof, { op: "lease.reinstate", space: c.space, fields: { member: req.member, device: req.device }, ctx: c }); if (why) throw err(why === "no_proof" ? "needs_presence" : why); need(typeof req.member === "string" && req.member, "bad_input"); return this.leases.reinstate({ space: c.space, member: req.member, device: req.device }); }
       case "lease.check": this.ctxOf(req.ctx); return this.leases.check({ id: req.lease });
       case "health": return { ok: true, pid: process.pid, unattested_allowed: this.allowUnattested, presence: this.presence.recovery ? "recovery" : "ok", needs_recovery: [...this.presence.ever].filter(p => !this.presence.have(p)) };
       default: throw err("bad_op");

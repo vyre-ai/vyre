@@ -100,3 +100,19 @@ test("a person's own outward act needs their presence, not a task they would che
   assert.equal(out.needs_presence.action, "email.send");
   assert.equal(out.held, undefined);
 });
+
+test("T-1 and T-2: a duplicate tool name is dropped, and the schema names only the fields the chain's grant allows", async () => {
+  const dup = { ...SEND, action: "matters.update", resource_type: "message" };
+  const r = await rig({ grants: [G(actor("agent", "intake"), ["records.read"], `vyre://${SPACE}/matter/*`)] });
+  const surf = createToolSurface({ kernel: r.kernel, space: SPACE, types: () => r.current, actions: () => [SEND, dup] });
+  const names = (await surf.list(person(OWNER))).map(t => t.name);
+  assert.equal(names.filter(n => n === "matters.update").length, 1, "the outward action does not shadow the record tool");
+  assert.equal((await surf.list(person(OWNER))).find(t => t.name === "matters.update").risk, "write");
+  // a field allow-list hides names too
+  const limited = G(actor("agent", "intake"), ["records.read"], `vyre://${SPACE}/matter/*`);
+  limited.resource = { prefix: `vyre://${SPACE}/matter/*`, fields: ["title"] };
+  const r2 = await rig({ grants: [limited] });
+  const find = (await r2.surface.list(agent("intake"))).find(t => t.name === "matters.find");
+  assert.match(find.schema.properties.where.description, /Fields: title\./);
+  assert.ok(!/stage/.test(find.schema.properties.where.description));
+});
