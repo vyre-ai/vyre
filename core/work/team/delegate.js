@@ -15,6 +15,8 @@ const covers = (/** @type {any} */ g, /** @type {string[]} */ actions, /** @type
 
 const loosens = (/** @type {string} */ what) => Object.assign(new Error(`a teammate's grant cannot loosen the adder's: ${what}`), { code: "loosens", what });
 const PRESENCE = { none: 0, session: 1, fresh: 2 };
+const KNOWN = new Set(["when", "where", "how", "audience", "delegate", "budget", "rate", "once"]);
+const cron = (/** @type {any} */ x) => (typeof x === "string" ? x.trim().split(/\s+/).join(" ") : x);
 const same = (/** @type {any} */ a, /** @type {any} */ b) => JSON.stringify(a) === JSON.stringify(b);
 
 /**
@@ -22,10 +24,12 @@ const same = (/** @type {any} */ a, /** @type {any} */ b) => JSON.stringify(a) =
  * and depth stays as the parent has it or gets stricter; a wanted value that would make it looser refuses the whole add (`loosens`). The kernel's `grants.create` also checks
  * containment, but this is the helper's own rule and does not lean on it.
  * @param {any} parent @param {any} want a wanted entry: { conditions?, fields? }
- * @returns {{ conditions: any, fields?: string[] }}
+ * @returns {{ conditions: any, fields?: string[], where?: any[] }}
  */
 export function tighten(parent, want) {
   const pc = parent.conditions || {}, wc = want.conditions || {};
+  // A condition we do not know cannot be carried and so cannot be kept: refuse rather than drop it (the kernel's own check will refuse a child missing it).
+  for (const k of Object.keys(pc)) if (!KNOWN.has(k)) throw loosens(`unknown condition ${k}`);
   /** @type {any} */ const out = {};
   // presence: never lower
   const pp = pc.how?.presence ?? "none", wp = wc.how?.presence;
@@ -44,8 +48,8 @@ export function tighten(parent, want) {
   // time: never later, never earlier; a schedule is kept exactly (a cron's containment is not ours to judge) unless the parent has none
   const pw = pc.when || {}, ww = wc.when || {};
   const expires = [pw.expires, ww.expires].filter(x => typeof x === "number"), starts = [pw.not_before, ww.not_before].filter(x => typeof x === "number");
-  if (pw.schedule !== undefined && ww.schedule !== undefined && ww.schedule !== pw.schedule) throw loosens("schedule");
-  const schedule = pw.schedule ?? ww.schedule;
+  if (pw.schedule !== undefined && ww.schedule !== undefined && cron(ww.schedule) !== cron(pw.schedule)) throw loosens("schedule");
+  const schedule = pw.schedule !== undefined ? pw.schedule : ww.schedule;
   const when = { ...(starts.length ? { not_before: Math.max(...starts) } : {}), ...(expires.length ? { expires: Math.min(...expires) } : {}), ...(schedule !== undefined ? { schedule } : {}) };
   if (Object.keys(when).length) out.when = when;
   // where: the parent's, with nothing overridden; a list (surfaces) may only shrink
@@ -66,8 +70,16 @@ export function tighten(parent, want) {
   }
   // rate: no faster than the parent
   if (pc.rate || wc.rate) {
-    if (pc.rate && wc.rate && wc.rate.n / wc.rate.per_seconds > pc.rate.n / pc.rate.per_seconds) throw loosens("rate");
+    // the kernel's rule: a count no larger and a window no shorter
+    if (pc.rate && wc.rate && !(wc.rate.n <= pc.rate.n && wc.rate.per_seconds >= pc.rate.per_seconds)) throw loosens("rate");
     out.rate = pc.rate && wc.rate ? wc.rate : pc.rate || wc.rate;
+  }
+  // once: a single-use grant stays single-use
+  if (pc.once === true) { if (wc.once === false) throw loosens("once"); out.once = true; } else if (wc.once === true) out.once = true;
+  // audience: the services that may use it, only ever fewer
+  if (pc.audience || wc.audience) {
+    if (pc.audience && wc.audience && !wc.audience.every((/** @type {string} */ a) => pc.audience.includes(a))) throw loosens("audience");
+    out.audience = [...(wc.audience || pc.audience)];
   }
   // depth: a child is never delegable as far as its parent
   const pd = pc.delegate, wd = wc.delegate;
@@ -77,7 +89,10 @@ export function tighten(parent, want) {
   const pf = parent.resource?.fields;
   /** @type {string[]|undefined} */ let fields = want.fields;
   if (pf) { if (fields && !fields.every((/** @type {string} */ f) => pf.includes(f))) throw loosens("fields"); if (!fields) fields = [...pf]; }
-  return { conditions: out, ...(fields ? { fields } : {}) };
+  // the selector's own predicates: every one of the parent's is kept as it is, and the teammate may add more
+  const pwhere = parent.resource?.where || [];
+  const rwhere = [...pwhere, ...(want.resource_where || []).filter((/** @type {any} */ x) => !pwhere.some((/** @type {any} */ y) => same(x, y)))];
+  return { conditions: out, ...(fields ? { fields } : {}), ...(rwhere.length ? { where: rwhere } : {}) };
 }
 
 /**
@@ -114,8 +129,8 @@ export async function delegateGrants(kernel, chain, { adder, teammate, wanted, s
   }
   const grants = [], obligations = [];
   for (const { w, parent } of plan) {
-    const { conditions, fields } = tighten(parent, w);
-    const input = { subject: { kind: "actor", actor: teammate }, actions: [...w.actions], resource: { prefix: w.prefix, ...(fields ? { fields } : {}) }, conditions, source, parent: parent.id, reason: `added by ${adder.id}` };
+    const { conditions, fields, where } = tighten(parent, w);
+    const input = { subject: { kind: "actor", actor: teammate }, actions: [...w.actions], resource: { prefix: w.prefix, ...(where ? { where } : {}), ...(fields ? { fields } : {}) }, conditions, source, parent: parent.id, reason: `added by ${adder.id}` };
     const g = await kernel.grants.create(chain, input, presence ? { presence: await presence(input) } : {});
     grants.push(g);
     obligations.push({ grant: g.id, obligations: obligationsFrom(parent) });

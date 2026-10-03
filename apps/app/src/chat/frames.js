@@ -16,6 +16,8 @@
 
 const STATES = ["starting", "working", "asking", "waiting", "paused", "stopped", "finished", "failed"];
 /** Status changes that leave a quiet line in the transcript. */
+/** A failed status whose note is one of these says it in the app's own words (the stream's plain frame for a reply that could not resume after a restart). */
+const FAILED_NOTES = { "couldn't resume, ask again": "Couldn't resume. Ask again." };
 const NOTICE_STATES = { paused: "Paused. Your next message resumes it.", stopped: "Stopped.", finished: "Finished.", failed: "The session failed." };
 
 /** The states in which a message you send is queued, not taken. @param {string} state */
@@ -190,6 +192,9 @@ export function createFolder() {
         if (typeof d.name === "string" && d.name) names.set(String(d.who), d.name);
         if (kind === "participant-joined") participants.set(String(d.who), { ...(d.role ? { role: d.role } : {}) }); else participants.delete(String(d.who));
         bump("@participants");
+        // A person who joins sees the chat from their own join: the server sends who was there before as `quiet` (the roster, no marker), and the join itself is the one
+        // marker a new participant sees, drawn as a quiet line ("Chris joined") with nothing above it.
+        if (d.quiet) break;
         const key = "p:" + f.cur;
         put(key, "notice", { key, kind: "notice", text: `${nameOf(String(d.who))} ${kind === "participant-joined" ? "joined" : "left"}` });
         out.layout = true;
@@ -309,7 +314,7 @@ export function createFolder() {
         status.turn = d.turn ?? status.turn;
         status.stopping = Boolean(d.stopping);
         bump("@status");
-        const notice = /** @type {Record<string, string>} */ (NOTICE_STATES)[state];
+        const notice = (state === "failed" && typeof d.note === "string" && /** @type {Record<string, string>} */ (FAILED_NOTES)[d.note]) || /** @type {Record<string, string>} */ (NOTICE_STATES)[state];
         if (notice) {
           const key = "s:" + f.cur;
           put(key, "notice", { key, kind: "notice", text: notice });

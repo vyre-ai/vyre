@@ -272,9 +272,20 @@ export function createWink(inject = {}) {
       return "your space";
     };
     // A device that paired (a typed code, or the ring) is registered under the identity with its kind. No grant is written in any space.
+    /** Devices a pairing window already confirmed on a screen (relay `pairing.requested` then yes): not held again for the words. @type {Set<string>} */
+    const windowConfirmed = new Set();
+    const offWindow = ctx.events.on("pairing.requested", (/** @type {any} */ e) => { const d = String((e && (e.payload || e).device) || ""); if (d) { windowConfirmed.add(d); if (windowConfirmed.size > 50) windowConfirmed.delete(windowConfirmed.values().next().value); } });
+    /** The old ring: a device that paired with none of this module's own tickets (a phone's QR, a box's QR, a typed-code offer) and not through a confirmed pairing window. A box QR still open hides a ring pairing (the relay does not say which ticket was used). @param {any} p */
+    const isRing = p => {
+      if (windowConfirmed.delete(String(p.id))) return false;
+      if (pairing.phone.boxTicketLive()) return false;
+      return !db.prepare("SELECT id FROM wink_offers WHERE via = 'code' AND state = 'joining' LIMIT 1").get();
+    };
     const registerDevice = async (/** @type {any} */ p) => {
       // A phone that scanned the QR on show is held for the person's yes (wink.phone.pair.answer): nothing is registered until then.
       if (await pairing.phone.hold(p)) return null;
+      // Neither a phone's QR, a box ticket, a typed-code offer nor a screen-confirmed pairing window: the old ring. Held until the same three words are confirmed on this computer.
+      if (isRing(p)) { await pairing.phone.holdRing(p); return null; }
       const identity = await owner1();
       const open = /** @type {any} */ (db.prepare("SELECT id FROM wink_offers WHERE via = 'code' AND state = 'joining' ORDER BY created DESC LIMIT 1").get());
       const o = open ? readOffer(open.id) : null;
@@ -631,7 +642,7 @@ export function createWink(inject = {}) {
         try { stopStorage(); } catch {}
         if (poolTimer) clearInterval(poolTimer);
         for (const off of offStorage) { try { off(); } catch {} }
-        for (const off of [offCode, offPaired, offRemoved, offInvite]) { try { off(); } catch {} }
+        for (const off of [offCode, offPaired, offRemoved, offInvite, offWindow]) { try { off(); } catch {} }
         try { code?.cancel(); } catch {}
         try { pairing.stop(); } catch {}
       },
