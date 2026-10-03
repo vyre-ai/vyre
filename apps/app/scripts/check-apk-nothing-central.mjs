@@ -15,11 +15,18 @@ const RULES = [
   { name: "google play services (c2dm)", re: /com\.google\.android\.c2dm/i },
 ];
 
+// Two intent names inside androidx.activity's photo picker (PickVisualMedia). They are text, not a
+// dependency: no Play services class is loaded and nothing calls out. Anything else with gms in it fails.
+const TEXT_ONLY = new Set(["com.google.android.gms.provider.action.PICK_IMAGES", "com.google.android.gms.provider.extra.PICK_IMAGES_MAX"]);
+// A string in a dex or a manifest dump is the name with a length byte or a few characters of syntax around it.
+const isTextOnly = (s) => [...TEXT_ONLY].some((t) => s.endsWith(t) && s.length - t.length <= 2);
+
 /** Each string that names Firebase or Google Play services, once, with the rule that caught it. */
 export function central(strings) {
   const seen = new Set();
   const out = [];
   for (const s of strings) {
+    if (isTextOnly(s)) continue;
     for (const r of RULES) {
       if (r.re.test(s) && !seen.has(s)) {
         seen.add(s);
