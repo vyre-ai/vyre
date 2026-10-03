@@ -72,3 +72,28 @@ test("Flows run in a real daemon: an event trigger and a schedule, approved by a
   await until(async () => { const r = await d.kernel.gateway.records.get(admin2, "contact", sam.id); return r && r.data.status === "seen" ? r : null; }, "the event Flow after the restart");
   await d.stop();
 });
+
+test("Flows run in a hosted FIRM Space too: its own kernel, its own Flow records, its own owner: not only the home's personal Space", { timeout: 120_000 }, async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {}, kernel: true });
+  t.after(() => d.stop());
+  const ownerId = "per_" + "abcdefghijklmnopqrstuvwxyz";
+  const firm = await d.kernel.spaces.host({ owner: ownerId, name: "Harlow Legal" });
+  const space = firm.space;
+  const host = d.registry.deps.flowsHost.get(space);
+  assert.ok(host, "the Flows assembly is built for the hosted Space");
+  assert.notEqual(space, d.kernel.id.space);
+  const admin = firm.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-h", person: ownerId, path: "direct", session: "s" });
+  await firm.gateway.records.define(admin, { add_types: [CONTACT] });
+  const flow = { format: 1, name: "mark_seen", label: "Mark a new contact seen", authorship: "human", trigger: { on: "event", event: "contact.created" },
+    steps: [{ id: "u", kind: "update", type: "contact", record: { expr: "event.subject" }, set: { status: "seen" } }] };
+  const def = await d.registry.call("flows.define", { space, flow }, "cli");
+  assert.ok(def.data && def.data.ok, JSON.stringify(def));
+  await host.flows.tools["flows.approve"](host.personChain(), { id: def.data.id, version: def.data.version, hash: def.data.hash });
+  const jane = await firm.gateway.records.create(admin, "contact", { name: "Jane" });
+  await until(async () => { const r = await firm.gateway.records.get(admin, "contact", jane.id); return r && r.data.status === "seen" ? r : null; }, "the firm's Flow to mark the contact");
+  // the home's own Space does not see the firm's Flow
+  assert.deepEqual((await d.registry.call("flows.list", {}, "cli")).data, []);
+  assert.equal((await d.registry.call("flows.list", { space }, "cli")).data.length, 1);
+  assert.ok((await d.registry.call("flows.list", { space: "spc_zzzzzzzzzzzz" }, "cli")).error, "a Space this home does not host");
+});
