@@ -20,6 +20,7 @@ export { connect, wsDuplex, sseDuplex, trim } from "./client.js";
 export { createAdapter, pipe } from "./adapter.js";
 export * from "./protocol.js";
 export { whoAnswers, mentionedIn } from "./routing.js";
+export { createDoorAdapter, pipeDoor, drainDoor } from "./door-adapter.js";
 export { createGroups } from "./group.js";
 export { render, assertAskerCanRead, canRead, placeholder, cutData } from "./viewer.js";
 export { createPresence, presenceFor, PRESENCE_MS } from "./presence.js";

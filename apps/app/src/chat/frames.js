@@ -8,7 +8,8 @@
 // not become a row: it sits in `queue()` (shown above the composer) until it is picked up.
 
 /**
- * @typedef {{ v?: number, id?: string, cur: number, span?: number, session?: string, turn?: string, type: string, time?: number, corr?: string, t?: number, data: any }} Frame
+ * @typedef {{ v?: number, id?: string, cur: number, span?: number, session?: string, turn?: string|null, type: string, time?: number, corr?: string|null, t?: number,
+ *   author?: string, acts_for?: string, message?: string, data: any }} Frame
  * @typedef {{ key: string, kind: string, [k: string]: any }} Item
  * @typedef {{ type: "item", key: string, kind: string }} LayoutRow
  */
@@ -24,6 +25,11 @@ export const busyState = (state) => state === "working" || state === "asking" ||
 export const HOLDBACK = 40;
 /** Frames with no cursor: delivered as they come, never replayed. */
 const EPHEMERAL = ["presence", "read-marker"];
+/** A name a person can read for an id nobody named: "person:alex" is "Alex", "assistant:kit-2" is "Kit 2". @param {string} id */
+export const plainName = (id) => {
+  const s = String(id).slice(String(id).indexOf(":") + 1).replace(/[-_.]+/g, " ").trim();
+  return s ? s[0].toUpperCase() + s.slice(1) : String(id);
+};
 /** Who wrote a frame, for the row. @param {Frame} f */
 const who = (f) => ({ ...(f.author ? { author: f.author } : {}), ...(f.acts_for ? { actsFor: f.acts_for } : {}) });
 
@@ -51,6 +57,8 @@ export function createFolder() {
   let queueSnap = /** @type {Item[]} */ ([]);
   const status = { state: "starting", turn: /** @type {string|null} */ (null), stopping: false };
   /** @type {Map<string, { role?: string }>} */ const participants = new Map();
+  /** @type {Map<string, string>} who -> the name its participant frame gave */ const names = new Map();
+  const nameOf = (/** @type {string} */ id) => names.get(id) ?? plainName(id);
   /** @type {Map<string, { state: string, doing?: string, at: number }>} */ const presence = new Map();
   /** @type {Map<string, Map<string, Set<string>>>} message -> emoji -> who */ const reactions = new Map();
   /** @type {Set<string>} */ const pins = new Set();
@@ -157,10 +165,11 @@ export function createFolder() {
       }
       case "participant-joined":
       case "participant-left": {
+        if (typeof d.name === "string" && d.name) names.set(String(d.who), d.name);
         if (kind === "participant-joined") participants.set(String(d.who), { ...(d.role ? { role: d.role } : {}) }); else participants.delete(String(d.who));
         bump("@participants");
         const key = "p:" + f.cur;
-        put(key, "notice", { key, kind: "notice", text: `${d.who} ${kind === "participant-joined" ? "joined" : "left"}` });
+        put(key, "notice", { key, kind: "notice", text: `${nameOf(String(d.who))} ${kind === "participant-joined" ? "joined" : "left"}` });
         out.layout = true;
         touch(key);
         break;
@@ -288,7 +297,7 @@ export function createFolder() {
       }
       case "reset": {
         rows = []; items.clear(); queued.clear(); queueSnap = []; layoutRev++;
-        participants.clear(); presence.clear(); reactions.clear(); pins.clear(); mentions.clear(); groups.clear(); groupOf.clear();
+        participants.clear(); names.clear(); presence.clear(); reactions.clear(); pins.clear(); mentions.clear(); groups.clear(); groupOf.clear();
         last = typeof d.head === "number" ? d.head : f.cur;
         bump("@status");
         return { ...out, layout: true, reset: true };
@@ -329,6 +338,8 @@ export function createFolder() {
     rev: (key) => revs.get(key) ?? 0,
     /** Who is in the chat, from participant-joined and -left. */
     participants: () => [...participants.keys()],
+    /** A readable name for a participant id: the name its frame gave, else the id's own word, capitalised. */
+    name: nameOf,
     /** Who is typing or doing what right now (the caller expires entries older than a few seconds). */
     presence: () => [...presence].map(([who, p]) => ({ who, ...p })),
     /** Reactions on a message: [{ emoji, who: [...] }]. @param {string} message */

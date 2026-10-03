@@ -258,3 +258,15 @@ test("fanout: the answers are one group until one is kept", () => {
   assert.equal(f.group("g")?.keep, "a2");
   assert.equal(f.group("g")?.members.length, 2);
 });
+
+test("join notices carry display names, never the raw id", () => {
+  cur = 0;
+  const f = createFolder();
+  f.apply(gf("participant-joined", { who: "person:alex", name: "Alex Rivera" }));
+  f.apply(gf("participant-joined", { who: "assistant:kit-2" }));
+  f.apply(gf("participant-left", { who: "person:alex" }));
+  const texts = f.rows.filter((r) => r.kind === "notice").map((r) => f.item(r.key)?.text);
+  assert.deepEqual(texts, ["Alex Rivera joined", "Kit 2 joined", "Alex Rivera left"]);
+  assert.ok(!texts.join(" ").includes("person:"));
+  assert.equal(f.name("assistant:juno"), "Juno");
+});
