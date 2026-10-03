@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const hk = (master, info) => Buffer.from(crypto.hkdfSync("sha256", master, Buffer.alloc(0), info, 32));
+const ANCHOR = "seal_anchor0000000000000000";
 const REF = /^(seal|out)_[a-z0-9]{20,40}$/;
 
 export class SealStore {
@@ -16,6 +17,11 @@ export class SealStore {
     fs.chmodSync(dir, 0o700);
   }
   key(space) { return hk(this.master, `vyre seal v1 ${space}`); }
+  /** A keyed MAC for the sealing process's own state files (the presence key list): a file edited without the master key does not verify. */
+  mac(data) { return crypto.createHmac("sha256", hk(this.master, "vyre seal state mac v1")).update(data).digest("base64url"); }
+  /** A sealed marker in the encrypted store, beside the values: what the presence file must agree with, so deleting or rolling it back is detected. */
+  anchorRead() { const r = this.read("values", ANCHOR, "_system"); return r ? JSON.parse(r.plaintext) : null; }
+  anchorWrite(obj) { this.write("values", { ref: ANCHOR, space: "_system", record: "_", field: "anchor", class: "anchor" }, JSON.stringify(obj)); }
   /** A keyed index for the one allowed equality: a uniqueness check at write time and a rate-limited human lookup. */
   blind(space, field, cls, compactValue) { return crypto.createHmac("sha256", hk(this.master, `vyre seal index v1 ${space}`)).update(`${field}\0${cls}\0${compactValue}`).digest("base64url"); }
   newRef(kind) { return `${kind}_${crypto.randomBytes(15).toString("hex")}`; }

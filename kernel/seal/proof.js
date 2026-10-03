@@ -9,20 +9,36 @@ export const MAX_PROOF_LIFE_MS = 120_000;
 
 export class Presence {
   /** @param {() => number} [now] @param {{ verifiers?: Record<string, (att: any, spki: Buffer) => string | null>, allowUnattested?: boolean }} [o] a verifier checks a platform attestation (App Attest, Android key attestation, a TPM quote, WebAuthn) and returns the signer class it proves, or null */
-  constructor(now = Date.now, { verifiers = {}, allowUnattested = false, file = null } = {}) {
+  constructor(now = Date.now, { verifiers = {}, allowUnattested = false, file = null, custody = null } = {}) {
     this.keys = new Map(); this.used = new Map(); this.tokens = new Map(); this.now = now; this.since = now(); this.verifiers = verifiers; this.allowUnattested = allowUnattested;
-    this.file = file; this.ever = new Set();
-    // Enrolled keys and the persons who ever enrolled one live in the sealing folder (public keys only), so a restart keeps them and "first device" is a fact, not a state.
-    if (file && fs.existsSync(file)) {
-      const j = JSON.parse(fs.readFileSync(file, "utf8"));
+    this.file = file; this.ever = new Set(); this.v = 0; this.recovery = false; this.custody = custody;
+    // Enrolled keys, and the persons who ever enrolled one, live in the sealing folder (public keys only), MACed under a key derived from the master and
+    // anchored by a sealed marker (a version counter and the persons) in the encrypted store. A file that is missing while the anchor exists, fails its
+    // MAC, is older than the anchor or cannot be read puts the whole process in recovery: no key is known and no enrolment is accepted (R-7).
+    if (file && custody) this.load();
+  }
+  load() {
+    const anchor = (() => { try { return this.custody.anchorRead(); } catch { return "bad"; } })();
+    if (!fs.existsSync(this.file)) { if (anchor) this.fail(anchor); return; }
+    try {
+      const raw = JSON.parse(fs.readFileSync(this.file, "utf8"));
+      if (raw.mac !== this.custody.mac(raw.body) || anchor === "bad") return this.fail(anchor);
+      const j = JSON.parse(raw.body);
+      if (!anchor || anchor.v !== j.v || j.v < 1) return this.fail(anchor);
       for (const [id, k] of Object.entries(j.keys)) this.keys.set(id, { person: k.person, signer: k.signer, attested: k.attested, spki: k.spki, key: crypto.createPublicKey({ key: Buffer.from(k.spki, "base64"), format: "der", type: "spki" }) });
       for (const p of j.ever) this.ever.add(p);
-    }
+      this.v = j.v;
+    } catch { this.fail(anchor); }
   }
+  fail(anchor) { this.recovery = true; this.keys.clear(); if (anchor && anchor !== "bad") for (const p of anchor.ever) this.ever.add(p); }
   save() {
     if (!this.file) return;
+    this.v++;
     const keys = Object.fromEntries([...this.keys].map(([id, k]) => [id, { person: k.person, signer: k.signer, attested: k.attested, spki: k.spki }]));
-    fs.writeFileSync(`${this.file}.tmp`, JSON.stringify({ keys, ever: [...this.ever] }), { mode: 0o600 }); fs.renameSync(`${this.file}.tmp`, this.file);
+    const body = JSON.stringify({ v: this.v, keys, ever: [...this.ever] });
+    // The anchor goes first: a crash between the two leaves the file one version behind, which reads as recovery (fail closed), never as a reset.
+    this.custody.anchorWrite({ v: this.v, ever: [...this.ever] });
+    fs.writeFileSync(`${this.file}.tmp`, JSON.stringify({ body, mac: this.custody.mac(body) }), { mode: 0o600 }); fs.renameSync(`${this.file}.tmp`, this.file);
   }
   have(person) { return [...this.keys.values()].some(k => k.person === person); }
   /** Step 1 of the ceremony: a one-time token for this person and this key, minutes long. The kernel shows it through the pairing flow. */
@@ -42,6 +58,7 @@ export class Presence {
     if (!ctx?.one_person || ctx.model_originated || ctx.person !== person) return { refused: "chain_not_person" };
     const t = this.tokens.get(token); this.tokens.delete(token);
     if (!t || t.exp < this.now() || t.person !== person || t.key_id !== key_id || t.spki !== sha256b64(spki)) return { refused: "no_ceremony" };
+    if (this.recovery) return { refused: "needs_recovery" };
     if (this.keys.has(key_id)) return { refused: "exists" };
     // Someone who enrolled before and has no key left has lost every device: no proof can exist, so this is a recovery, never a first device.
     if (!this.have(person) && this.ever.has(person)) return { refused: "needs_recovery" };

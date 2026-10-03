@@ -340,3 +340,38 @@ test("R-3: a delivered output is swept ten minutes later by anyone who starts th
   fs.writeFileSync(path.join(dir, "derived", `${meta.ref}.done`), String(Date.now() - 700_000));
   st.sweepDelivered(600_000); assert.deepEqual(fs.readdirSync(path.join(dir, "derived")), []);
 });
+
+test("R-7: the key list is MACed and anchored, so a deleted, edited, truncated or rolled-back file means recovery, never a first device", async t => {
+  const dir = tmp("r7"), opts = { dir, timeoutMs: 8000, dev: true, unattested: true }, file = path.join(dir, "presence.json");
+  let s = startSealer(opts); t.after(async () => { await s.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+  assert.equal((await s.health()).presence, "ok");
+  const a = signer("per_alex"), ch = person(); await enrolDevice(s, a);
+  const second = signer("per_alex"); await enrolDevice(s, second, { existing: a });
+  const older = fs.readFileSync(file, "utf8");
+  await s.close();
+  // The owner's list is intact after a restart.
+  s = startSealer(opts); assert.equal((await s.health()).presence, "ok");
+  // 1. deleted
+  await s.close(); fs.rmSync(file); s = startSealer(opts);
+  assert.equal((await s.health()).presence, "recovery");
+  assert.equal(await code(enrolDevice(s, signer("per_alex"))), "needs_recovery");
+  assert.equal(await code(enrolDevice(s, signer("per_zoe"))), "needs_recovery", "while in recovery nothing is a first device");
+});
+
+test("R-7: a file edited to add a key fails its MAC, a rolled-back file is older than the anchor, a truncated file does not parse", async t => {
+  for (const [name, mutate] of [
+    ["edited", (f, other) => { const raw = JSON.parse(fs.readFileSync(f, "utf8")), b = JSON.parse(raw.body); b.keys.dk_evil = { person: "per_alex", signer: "secure_enclave", attested: true, spki: other }; fs.writeFileSync(f, JSON.stringify({ body: JSON.stringify(b), mac: raw.mac })); }],
+    ["rolled back", (f, _o, older) => fs.writeFileSync(f, older)],
+    ["truncated", f => fs.writeFileSync(f, fs.readFileSync(f, "utf8").slice(0, 40))],
+    ["emptied", f => fs.writeFileSync(f, "")],
+  ]) {
+    const dir = tmp("r7b"), opts = { dir, timeoutMs: 8000, dev: true, unattested: true }, file = path.join(dir, "presence.json");
+    let s = startSealer(opts); t.after(async () => { await s.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+    const a = signer("per_alex"); await enrolDevice(s, a);
+    const older = fs.readFileSync(file, "utf8");
+    await enrolDevice(s, signer("per_alex"), { existing: a });
+    await s.close(); mutate(file, signer("per_alex").enrolment.spki, older); s = startSealer(opts);
+    assert.equal((await s.health()).presence, "recovery", name);
+    assert.equal(await code(enrolDevice(s, signer("per_alex"))), "needs_recovery", name);
+  }
+});
