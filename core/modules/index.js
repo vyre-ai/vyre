@@ -1138,10 +1138,15 @@ export class Registry {
           try {
             if (!this.deps.resolveFields || typeof meta.token !== "string") throw Object.assign(new Error("a placeholder in an outward action needs the session it came from"), { code: "placeholder_unreadable" });
             const r = await this.deps.resolveFields({ tool, input, meta });
-            held = { resolved: r.resolved, slots: r.slots };
-          } catch (e) { return { error: { code: "placeholder_unreadable", message: String(/** @type {any} */ (e).message || e) } }; }
+            held = { resolved: r.resolved, slots: r.slots, bound: r.bound };
+          } catch (e) {
+            // One refusal for every reason (RF-2): the model must not learn that a record exists, that a field is readable or which ones are sealed.
+            return { error: { code: "placeholder_unreadable", message: "a value this action names is not readable by the person it is for, so nothing was sent" } };
+          }
+          // The field names, the sealed slots and the hash of what was resolved reach the approver through the held card only (the Gate's `held` hook), never through the model's answer.
+          if (typeof this.deps.held === "function") { try { await this.deps.held({ tool, caller, thread: meta.thread, ...held }); } catch { /* the hold is the same either way */ } }
         }
-        return { error: { code: "held_unavailable", message: `${tool} acts as you outside. A call from anyone but you is held at the Gate, and that routing lands with the Gate wiring; until then it runs only from your own surface.`, ...held } };
+        return { error: { code: "held_unavailable", message: `${tool} acts as you outside. A call from anyone but you is held at the Gate, and that routing lands with the Gate wiring; until then it runs only from your own surface.` } };
       }
       if (def.internal && !String(caller).startsWith("module:")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
       if (Boolean(def.hook) !== (caller === "hook")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
@@ -1275,8 +1280,8 @@ export class Registry {
         try {
           if (!this.deps.resolveFields || typeof meta.token !== "string") throw Object.assign(new Error("a placeholder in an outward action needs the session it came from"), { code: "placeholder_unreadable" });
           const r = await this.deps.resolveFields({ tool, input, meta });
-          toInput = r.input; resolvedMeta = { resolved: r.resolved, slots: r.slots };
-        } catch (e) { return { error: { code: /** @type {any} */ (e).code === "placeholder_unreadable" ? "placeholder_unreadable" : "failed", message: String(/** @type {any} */ (e).message || e) } }; }
+          toInput = r.input; resolvedMeta = { resolved: r.resolved, slots: r.slots, bound: r.bound };
+        } catch (e) { return { error: { code: "placeholder_unreadable", message: "a value this action names is not readable by the person it is for, so nothing was sent" } }; }
       }
       try { return await this.run(def, toInput, { ...meta, ...resolvedMeta, caller, firstParty: fp, ...(idempotencyKey ? { idempotencyKey } : {}) }); }
       finally { if (counted) this.countUse(def.module); }
