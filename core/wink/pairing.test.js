@@ -625,3 +625,26 @@ test("adopt hands over what the device needs, only inside the channel: stored on
   const dump = JSON.stringify([...srv.tools.keys()]) + JSON.stringify(srv.p.devices.list(ME));
   assert.ok(!dump.includes(SECRET), "not in the device rows");
 });
+test("W-4 N-1: a second device naming the owner's identity as a space admin, with no presence, cannot take the server over", async () => {
+  const w = world();
+  const adopt = (input, caller, extra = {}) => w.tools.get("wink.server.adopt").run(input, { caller, ...extra });
+  await adopt({ owner: { kind: "identity", id: ME }, identity: ME, peerSecret: "A".repeat(43) }, "device:home1");
+  // ME administers HARLOW in the directory, and the input says so: that proves nothing about the caller
+  await assert.rejects(() => adopt({ owner: { kind: "space", id: HARLOW }, identity: ME }, "device:other"), e => ["denied", "presence_required"].includes(e.code));
+  await assert.rejects(() => adopt({ owner: { kind: "space", id: HARLOW }, identity: ME }, "device:home1"), e => e.code === "presence_required", "not even the adopter, without presence");
+  assert.deepEqual(w.p.meta.get("owner"), { kind: "identity", id: ME, identity: ME });
+  assert.equal(w.p.meta.get("adopter"), "device:home1");
+});
+
+test("W-4 N-2: a different device with the same owner and peer secret cannot rewrite the handover or the adopter", async () => {
+  const w = world();
+  const adopt = (input, caller, extra = {}) => w.tools.get("wink.server.adopt").run(input, { caller, ...extra });
+  const SECRET = "A".repeat(43);
+  await adopt({ owner: { kind: "identity", id: ME }, identity: ME, peerSecret: SECRET, handover: { home: "100.64.0.1:8443", authKey: "REALKEY" } }, "device:home1");
+  await assert.rejects(() => adopt({ owner: { kind: "identity", id: ME }, identity: ME, peerSecret: SECRET, handover: { home: "EVIL", authKey: "EVILKEY" } }, "device:other"), e => ["denied", "presence_required"].includes(e.code));
+  assert.equal(w.p.meta.get("handover").authKey, "REALKEY");
+  assert.equal(w.p.meta.get("adopter"), "device:home1");
+  // the adopter itself may only change the handover with the owner's presence too
+  await assert.rejects(() => adopt({ owner: { kind: "identity", id: ME }, identity: ME, peerSecret: SECRET, handover: { home: "other", authKey: "K2" } }, "device:home1"), e => e.code === "presence_required");
+  assert.equal(w.p.meta.get("handover").authKey, "REALKEY");
+});

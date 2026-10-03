@@ -452,7 +452,10 @@ export function createPairing(o) {
       const t = { kind: String(input.owner.kind), id: String(input.owner.id) };
       const ident = String(input.identity || (t.kind === "identity" ? t.id : "") || cur.identity);
       if (!sameOwner(cur, { ...t, identity: ident })) return true;
-      return Boolean(input.peerSecret && meta.get("peer_secret") && String(input.peerSecret) !== meta.get("peer_secret"));
+      if (input.peerSecret && meta.get("peer_secret") && String(input.peerSecret) !== meta.get("peer_secret")) return true;
+      // the handover is part of what the owner decided: a different one is a change too (N-2)
+      const h = cleanHandover(input.handover);
+      return Boolean(h && JSON.stringify(h) !== JSON.stringify(meta.get("handover") || null));
     };
     /** W-4: once there is an owner, a change needs the owner's presence, from the one that adopted it or from a screen on this box. @param {any} m @param {string} caller */
     const mayChange = async (m, caller) => {
