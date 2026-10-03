@@ -200,11 +200,14 @@ const fail = e => reply(e.status, { error: { code: e.code, message: e.message } 
 
 // ---- the Worker ----
 
+import { idOps, ID_ROUTES } from "./ids.js";
+
 const ROUTES = {
   "POST /v1/names/claim": "claim", "POST /v1/names/point": "point", "POST /v1/names/acme": "acme", "DELETE /v1/names/acme": "acmeClear",
   "POST /v1/names/recover": "recover", "POST /v1/names/recover/cancel": "cancel", "POST /v1/names/code": "code", "POST /v1/names/release": "release",
   "GET /v1/names/mine": "mine", "GET /v1/names/check": "check",
   "POST /v1/names/admin/rebind": "adminRebind",
+  ...ID_ROUTES,
 };
 
 export default {
@@ -245,7 +248,7 @@ export default {
       if (!env.ADMIN_SECRET || String(env.ADMIN_SECRET).length < 32) return fail(err(404, "not_found", "not available"));
       if (!given || !same(await sha256(given), await sha256(String(env.ADMIN_SECRET)))) return fail(err(401, "unauthorized", "not authorised"));
       auth = { admin: true };
-    } else if (op !== "check" || request.headers.has("x-vyre-sig")) {
+    } else if ((op !== "check" && op !== "idResolve") || request.headers.has("x-vyre-sig")) {
       auth = await authenticate(request, url, text, Number(env.NOW ? env.NOW() : Date.now()));
       if (!auth) return fail(err(401, "unauthorized", "sign the request with the route key"));
     }
@@ -468,7 +471,13 @@ export class Directory {
     const v = verdict(q.name);
     if (v.status !== "ok") return { name: v.name, status: v.status, why: v.why };
     const rec = await this.load(v.name);
-    if (!rec) return { name: v.name, status: "ok", why: null };
+    if (!rec) {
+      // One namespace: a name an identity holds is taken here too.
+      const id = await this.idLoad(v.name);
+      if (!id) return { name: v.name, status: "ok", why: null };
+      if (auth && id.route === auth.route) return { name: v.name, status: "mine", why: null };
+      return { name: v.name, status: "taken", why: "someone else has that name" };
+    }
     if (auth && rec.route === auth.route) return { name: v.name, status: "mine", why: null };
     return { name: v.name, status: "taken", why: "someone else has that name" };
   }
@@ -489,7 +498,7 @@ export class Directory {
       throw e;
     });
     if (total === max) console.warn(`names: ALERT the daily claim ceiling (${max}) is now reached`);
-    if (await this.load(v.name)) throw err(409, "taken", "someone else has that name");
+    if (await this.load(v.name) || await this.idLoad(v.name)) throw err(409, "taken", "someone else has that name");
     const raw = new Uint8Array(16);
     crypto.getRandomValues(raw);
     const code = base32(raw).slice(0, 26).replace(/(.{4})(?=.)/g, "$1-");
@@ -652,3 +661,5 @@ export class Directory {
     for (let i = 0; i < stale.length; i += 100) await this.store.delete(stale.slice(i, i + 100));
   }
 }
+
+Object.assign(Directory.prototype, idOps);
