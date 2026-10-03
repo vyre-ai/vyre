@@ -79,6 +79,7 @@ export function createLease(o) {
     },
     /** The key while the lease holds, else null. A copy is not made: callers write it straight to a pipe. */
     key() { return state === "open" && now() < expiresAt ? key : null; },
+    get id() { return id; },
     get state() { return state; },
     get expiresAt() { return expiresAt; },
     /** Close the workspace now (the member stops using it); the key is zeroed and the data stays. */

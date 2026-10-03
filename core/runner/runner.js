@@ -88,7 +88,7 @@ export function createRunner(o) {
     if (s.resume) resumed = await restore({ space: o.sync, session: s.session, mnt: ws });
     const sy = createSessionSync({ space: o.sync, session: s.session, mnt: ws, log: m => emit({ type: "sync", session: s.session, m }) });
     const token = crypto.randomBytes(24).toString("base64url");
-    const eg = createEgress({ routes: s.routes, vault: o.vault, session: s.session, token, onEvent: e => emit({ type: "egress", session: s.session, ...e }) });
+    const eg = createEgress({ routes: s.routes, vault: o.vault, session: s.session, token, lease: () => lease.id, onEvent: e => emit({ type: "egress", session: s.session, ...e }) });
     const runDir = path.join(o.base, "run");
     fs.mkdirSync(runDir, { recursive: true, mode: 0o700 });
     const sock = platform === "linux" ? path.join(runDir, crypto.randomBytes(6).toString("hex") + ".sock") : undefined;

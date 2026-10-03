@@ -26,7 +26,7 @@ const same = (a, b) => { const x = Buffer.from(String(a)), y = Buffer.from(Strin
 /**
  * @param {{ routes: { prefix: string, upstream: string, credential?: { ref: string, header: string, prefix?: string } }[],
  *   vault: { credential(o: { ref: string, session: string, route: string }): Promise<string> },
- *   session: string, token: string, onEvent?: (e: { route: string, status: number, ms: number, error?: string }) => void,
+ *   session: string, token: string, lease?: () => string, onEvent?: (e: { route: string, status: number, ms: number, error?: string }) => void,
  *   request?: typeof http.request }} o
  */
 export function createEgress(o) {
@@ -53,7 +53,7 @@ export function createEgress(o) {
       }
       if (route.credential) {
         let secret;
-        try { secret = await o.vault.credential({ ref: route.credential.ref, session: o.session, route: route.prefix }); } catch { return refuse(502, "the space's vault did not give the credential", route.prefix); }
+        try { secret = await o.vault.credential({ ref: route.credential.ref, session: o.session, route: route.prefix, lease: o.lease?.() }); } catch { return refuse(502, "the space's vault did not give the credential", route.prefix); }
         if (typeof secret !== "string" || !secret) return refuse(502, "the space's vault did not give the credential", route.prefix);
         headers[route.credential.header] = (route.credential.prefix || "") + secret;
         secret = "";

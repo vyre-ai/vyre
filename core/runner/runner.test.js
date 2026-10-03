@@ -126,7 +126,7 @@ test("egress: the vault is asked per request, the secret goes only into the outg
   const up = await upstream(); const sp = fakeSpace();
   const routes = [{ prefix: "/provider", upstream: `http://127.0.0.1:${up.port}`, credential: { ref: "vault://provider", header: "x-api-key" } },
     { prefix: "/space", upstream: `http://127.0.0.1:${up.port}/api`, credential: { ref: "vault://gmail", header: "authorization", prefix: "Bearer " } }];
-  const eg = createEgress({ routes, vault: sp.vault, session: "s1", token: "tok-abc" });
+  const eg = createEgress({ routes, vault: sp.vault, session: "s1", token: "tok-abc", lease: () => "lease-1" });
   const { port } = await eg.listen();
   try {
     const a = await get(port, "/provider/v1/messages?x=1", { "x-api-key": "tok-abc", "x-vyre-extra": "keep" });
@@ -146,7 +146,7 @@ test("egress: the vault is asked per request, the secret goes only into the outg
 
 test("egress: no token, a wrong token, an unlisted path and CONNECT are all refused, and nothing is fetched", async () => {
   const up = await upstream(); const sp = fakeSpace();
-  const eg = createEgress({ routes: [{ prefix: "/provider", upstream: `http://127.0.0.1:${up.port}`, credential: { ref: "vault://provider", header: "x-api-key" } }], vault: sp.vault, session: "s1", token: "tok-abc" });
+  const eg = createEgress({ routes: [{ prefix: "/provider", upstream: `http://127.0.0.1:${up.port}`, credential: { ref: "vault://provider", header: "x-api-key" } }], vault: sp.vault, session: "s1", token: "tok-abc", lease: () => "lease-1" });
   const { port } = await eg.listen();
   try {
     assert.equal((await get(port, "/provider/x")).status, 401);
@@ -165,7 +165,7 @@ function net_connect(port) { const s = net.connect(port, "127.0.0.1"); s.write("
 
 test("egress: when the vault fails the request fails plainly and nothing goes upstream", async () => {
   const up = await upstream(); const sp = fakeSpace(); sp.state.offline = true;
-  const eg = createEgress({ routes: [{ prefix: "/provider", upstream: `http://127.0.0.1:${up.port}`, credential: { ref: "vault://provider", header: "x-api-key" } }], vault: sp.vault, session: "s1", token: "t" });
+  const eg = createEgress({ routes: [{ prefix: "/provider", upstream: `http://127.0.0.1:${up.port}`, credential: { ref: "vault://provider", header: "x-api-key" } }], vault: sp.vault, session: "s1", token: "t", lease: () => "lease-1" });
   const { port } = await eg.listen();
   try {
     const r = await get(port, "/provider/x", { "x-api-key": "t" });
