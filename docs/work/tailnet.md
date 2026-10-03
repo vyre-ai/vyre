@@ -1202,3 +1202,25 @@ await s.completeDrain(id)            // call when a draining device is empty: gr
 ### Tests
 
 `core/wink/storage/*.test.js` (node:test, fakes only): the SigV4 signer against the published AWS example, a fake S3 server that verifies every signature, fake scanners and a fake shell, a fake vault.
+
+## Wink network (embedded node host)
+
+Done (work/wink, 3 Oct 2026):
+- `core/wink/node/host.js`: one wink-forwarder per space (a box and a desktop alike: one crash domain per space), `connect(space)` with `call`, `ping`, `status`; direct dial first, relay `peer` stream after 3 s, direct preferred once up, dead direct retried once a minute.
+- `core/wink/node/peer-wire.js`: the call protocol on both paths, fair queueing, and the device-key proof on the node path. `core/wink/node/relay-peer.js`: the paired server's relay client. `core/relay/bridge.js`: the `peer` stream (gate request in team/0.3/reviewer-2-ask-wink-relay-peer.md). `wink/forwarder`: `-dial-sock`.
+- Proved on two real machines (test server and a second droplet, one headscale, plain http, no DERP), a real vyred registry call (`appearance.presets`; `about.text` is correctly refused to a `device:` caller):
+
+| path | ping p50 / p95 | kernel call p50 / p95 | 8 MB result | ping during bulk | small call during bulk |
+|---|---|---|---|---|---|
+| direct (WireGuard) | 1.67 / 4.27 ms | 2.09 / 4.50 ms | 227 Mbit/s | 84 ms | 24 ms |
+| relay peer stream, UDP blocked | 2.2 / 7.0 ms | 2.86 / 7.16 ms | 130 Mbit/s | 126 ms | 17 ms |
+
+  Direct needed 15.6 s after connect to establish (the first call, at 3.1 s, rode the relay); node join 3.8 to 5.1 s. UDP was blocked with an iptables owner rule for a dedicated user on one machine only, removed afterwards. Relay figures are over a relay on the home's VPC address, so they say nothing about Cloudflare.
+
+Doing: nothing in flight.
+
+Next:
+- `core/relay/link.js` needs one line (transport `get bufferedAmount() { return ws.bufferedAmount; }`) so the box side can pace bulk results: without it a ping behind 8 MB waited 267 ms, with it 126 ms (spike: 390 ms). Not my file; owner to apply.
+- The Wink module wires `host.addSpace/start/serveHome`, passes `peers: { space, allow, accept: host.acceptRelay(id) }` to the bridge and binds the node key to the device row in `shared()`; the proof harness binds the first node key it sees.
+- The proof ran the control URL straight to headscale, not through the pinning shim, and used the nodes' public addresses (tsnet binds to the default-route interface, so a control URL on a VPC address hangs).
+- Cloudflare Worker numbers, iOS in-app node (still the five device tests) and Windows firewall prompt stay unverified.
