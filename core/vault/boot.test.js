@@ -14,5 +14,5 @@ test("a real vyred starts the vault module, and the manifest declares everything
   assert.equal(vault?.state, "running", JSON.stringify(vault));
   const manifest = JSON.parse(fs.readFileSync(new URL("./module.json", import.meta.url), "utf8")), declared = new Set(manifest.does.tools.map(x => x.name));
   for (const n of ["vault.forward", "vault.forward.file", "vault.provider.set", "vault.provider.remove", "vault.provider.status"]) assert.ok(declared.has(n), `${n} is declared`);
-  for (const n of ["vault.forward", "vault.forward.file"]) assert.equal((await d.registry.call(n, { credential: "x", method: "GET", url: "https://x.test/", session: "s" }, "cli", {})).error?.code ?? "refused", (await d.registry.call(n, { credential: "x", method: "GET", url: "https://x.test/", session: "s" }, "cli", {})).error?.code ?? "refused", "a person's surface cannot call the kernel's forward");
+  for (const n of ["vault.forward", "vault.forward.file"]) { const r = await d.registry.call(n, { credential: "x", method: "GET", url: "https://x.test/", session: "s" }, "cli", {}); assert.ok(r.error, `${n}: a person's surface cannot call the kernel's forward`); }
 });
