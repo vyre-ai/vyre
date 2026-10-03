@@ -53,7 +53,6 @@ DIR=${VYRE_DIR:-/srv/vyre}
 BASE=${VYRE_BOX_URL:-https://vyre.run/box/}
 # Overridable for tests only.
 WRAPPER=${VYRE_WRAPPER:-/usr/local/bin/vyre}
-TUN=${VYRE_TUN:-/dev/net/tun}
 DOCKER_SOCK=${VYRE_DOCKER_SOCK:-/var/run/docker.sock}
 # The cosign that checks our images, pinned by digest so a moved tag cannot swap it. The identity
 # is the release workflow of this repo on a version tag, and nothing else.
@@ -274,14 +273,6 @@ need_docker() {
   elif [ -n "$SUDO" ] && sudo docker info >/dev/null 2>&1; then DOCKER_SUDO=sudo
   else die "Docker is installed but not running. Start it (sudo systemctl start docker) and run this again."
   fi
-}
-
-# Tailscale runs in its own container with kernel networking, which needs the TUN device.
-need_tun() {
-  [ -c "$TUN" ] && return 0
-  say "This server has no /dev/net/tun, which the Tailscale container needs."
-  say "Try: sudo modprobe tun. On a VPS or LXC container, enable TUN in the provider's panel."
-  exit 1
 }
 
 # fetch NAME DEST: a box file from BASE.
@@ -645,6 +636,23 @@ intake_code() {
 # was written so `vyre` can remove both lines once the hour is over (the box reads the code once, at
 # start, and never keeps it). The rest of the file is kept as it is, and put installs from a temp file
 # so the code is never an argument.
+# write_kernel_env: the 0.3 settings, put into vyre.env once on a fresh install: the kernel on, and each Space on the larger store when this server has
+# room for it, else the built-in one. Never touches a vyre.env that already names either (a person's choice stays), and never the setup code lines.
+write_kernel_env() {
+  [ "$DRY" = 1 ] && { say "would turn the kernel on in $DIR/vyre.env"; return 0; }
+  TMP=${TMP:-$(mktemp -d)}
+  : >"$TMP/vyre.kernel"
+  if [ -e "$DIR/vyre.env" ]; then
+    # shellcheck disable=SC2024
+    if [ -r "$DIR/vyre.env" ] || [ -z "$SUDO" ]; then cat "$DIR/vyre.env" >"$TMP/vyre.kernel"; else sudo cat "$DIR/vyre.env" >"$TMP/vyre.kernel"; fi
+    [ ! -s "$TMP/vyre.kernel" ] || [ -z "$(tail -c 1 "$TMP/vyre.kernel")" ] || printf '\n' >>"$TMP/vyre.kernel"
+  fi
+  chmod 600 "$TMP/vyre.kernel"
+  grep -q '^VYRE_KERNEL=' "$TMP/vyre.kernel" || printf 'VYRE_KERNEL=1\n' >>"$TMP/vyre.kernel"
+  grep -q '^VYRE_STORE=' "$TMP/vyre.kernel" || printf 'VYRE_STORE=auto\n' >>"$TMP/vyre.kernel"
+  put "$TMP/vyre.kernel" "$DIR/vyre.env" 0600
+}
+
 write_code() {
   [ -n "$CODE" ] || return 0
   if [ "$DRY" = 1 ]; then say "would put the setup code in $DIR/vyre.env (0600); it is never shown"; return 0; fi
@@ -688,18 +696,41 @@ early_one_install() {
   DOCKER_SUDO=""
 }
 
+# The memory one Space's larger (Twenty) store needs on this server, in MB: the same number as stores/twenty/space-store.js REQUIRE.memoryMb
+# (test/install-box-v2.test.js keeps the two equal; records sets it). Disk is the images and one Space's volumes.
+SPACE_MEM_MB=${VYRE_SPACE_MEM_MB:-3212}
+SPACE_DISK_MB=${VYRE_SPACE_DISK_MB:-6144}
+# preflight: say plainly what this server can host. A box too small for the larger store runs on the built-in one, which is a choice the person
+# should hear before installing, not after. Reads MemAvailable and the free disk under $DIR; never fails the install.
+preflight() {
+  mem=""; disk=""
+  if [ -r /proc/meminfo ]; then mem=$(awk '/^MemAvailable:/ {print int($2 / 1024)}' /proc/meminfo); fi
+  d="$DIR"; [ -d "$d" ] || d=$(dirname "$DIR")
+  [ -d "$d" ] || d=/
+  disk=$(df -Pk "$d" 2>/dev/null | awk 'NR == 2 {print int($4 / 1024)}')
+  if [ -z "$mem" ]; then say "  memory: unknown on this system; Vyre will use the built-in store unless it finds room."; return 0; fi
+  fit=$(( (mem - 300) / (SPACE_MEM_MB - 300) )); [ "$fit" -ge 0 ] || fit=0
+  if [ -n "$disk" ] && [ "$disk" -lt "$SPACE_DISK_MB" ]; then
+    say "  This server has $((mem / 1024)).$(( (mem % 1024) * 10 / 1024 )) GB of memory free but only $disk MB of disk, and the larger store needs $SPACE_DISK_MB MB: Vyre will use the built-in store."
+  elif [ "$fit" -ge 1 ]; then
+    say "  This server has $((mem / 1024)).$(( (mem % 1024) * 10 / 1024 )) GB of memory free: room for $fit space(s) on the larger store (each needs about $((SPACE_MEM_MB / 1024)).$(( (SPACE_MEM_MB % 1024) * 10 / 1024 )) GB)."
+  else
+    say "  This server has $((mem / 1024)).$(( (mem % 1024) * 10 / 1024 )) GB of memory free. The larger store needs about $((SPACE_MEM_MB / 1024)).$(( (SPACE_MEM_MB % 1024) * 10 / 1024 )) GB per space, so Vyre will use the built-in store. Everything works; very large record sets are slower."
+  fi
+}
+
 # docker_flavor: the Docker this installer knows. Snap, rootless and Podman each break something
-# specific (the TUN device, the socket group, compose.yml itself), so they stop here in plain words.
+# specific (the socket group, compose.yml itself), so they stop here in plain words.
 docker_flavor() {
   command -v docker >/dev/null 2>&1 || return 0
   case "$(command -v docker)" in
-    /snap/*|*/snap/bin/*) die "this Docker came from snap, which cannot give the Tailscale container a TUN device. Install Docker Engine from docker.com instead: curl -fsSL https://get.docker.com | sh" ;;
+    /snap/*|*/snap/bin/*) die "this Docker came from snap, whose confinement keeps the box from its Docker socket group. Install Docker Engine from docker.com instead: curl -fsSL https://get.docker.com | sh" ;;
   esac
   if docker --version 2>/dev/null | grep -qi podman; then
     die "this is Podman answering as docker. Vyre needs Docker Engine with Compose v2: curl -fsSL https://get.docker.com | sh"
   fi
   if dk_quiet info --format '{{.SecurityOptions}}' 2>/dev/null | grep -qi rootless; then
-    die "this Docker runs rootless, which cannot run the Tailscale container's network. Install the regular Docker Engine: curl -fsSL https://get.docker.com | sh"
+    die "this Docker runs rootless, which cannot give the box's Docker proxy the socket group it needs. Install the regular Docker Engine: curl -fsSL https://get.docker.com | sh"
   fi
 }
 
@@ -866,20 +897,21 @@ main() {
   step "Checking Docker"
   pick_owner
   need_docker
-  need_tun
   docker_flavor
   one_install
+  preflight
   # An install from a checkout (--from) starts as the person, never as root (a root `vyre up` refuses a box built from a checkout), so that person
   # must reach Docker themselves. Say what to do now, before anything is laid out, instead of stopping later with the box half installed.
   if [ -n "$FROM" ] && [ "$DRY" != 1 ] && [ "$(id -u)" != 0 ] && [ -n "$DOCKER_SUDO" ]; then
     die "this account cannot reach Docker without sudo, and an install from a checkout starts as you. Run: sudo usermod -aG docker $(id -un), sign in again, then run this installer again (the docker group is root-equivalent on this server)."
   fi
-  if command -v docker >/dev/null 2>&1; then done_step "Docker, Compose and the TUN device are there"
+  if command -v docker >/dev/null 2>&1; then done_step "Docker and Compose are there"
   else done_step "Docker would be installed first (dry run)"
   fi
   if [ -n "$FROM" ]; then step "Reading the box files"; else step "Downloading and verifying"; fi
   write_stack
   write_env
+  write_kernel_env
   write_code
   if [ "$DRY" = 1 ]; then done_step "nothing written (dry run)"; else done_step "$DIR is laid out"; fi
   step "Installing the vyre command"

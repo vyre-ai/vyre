@@ -37,7 +37,7 @@
 #                  stop Vyre and take it off this server. It lists every volume with what is in it and asks
 #                  once whether to delete them too (default: keep); saying yes IS the approval, so there
 #                  is no second confirm. --delete-data or --keep-data answer for a script. Your own
-#                  Docker, Tailscale install and this folder's .env are never touched.
+#                  Docker and this folder's .env are never touched.
 #   vyre logs      follow vyred's output
 #   vyre ...       anything else goes to the vyre CLI in the container
 
@@ -602,8 +602,8 @@ verify_release_images() {
     cdef=$(grep -v '^[[:space:]]*#' "$tmp/compose.yml" | sed -n 's/.*VYRE_COMPUTERS_IMAGE:-\([^}[:space:]]*\)}.*/\1/p')
     if [ -z "$cdef" ] || printf '%s\n' "$cdef" | grep -qvxF "$computer_ref"; then die "every default of VYRE_COMPUTERS_IMAGE in the release's compose.yml must be $computer_ref, which release.json names; nothing was changed"; fi
   fi
-  # Every ghcr.io/vyre-ai image line of the released compose.yml is checked, not only the two release.json names (a third-party image such as
-  # tailscale rests on the signed digest of the release that pins it).
+  # Every ghcr.io/vyre-ai image line of the released compose.yml is checked, not only the two release.json names (a third-party image
+  # added to the compose file later rests on the signed digest of the release that pins it).
   all_refs=$( { printf '%s\n' "$imgs" | sed -n 's/^[[:space:]]*image:[[:space:]]*\(ghcr\.io\/vyre-ai\/[^[:space:]]*\)$/\1/p'; printf '%s\n' "$box_ref" "$computer_ref"; } | grep -v '^$' | sort -u)
   stage verifying-images
   for ref in $all_refs; do
@@ -962,8 +962,7 @@ vol_says() {
     *vyre-work) echo "your projects and files (/work)" ;;
     *vyre-agent-home) echo "your agents' own sign-in state and transcripts" ;;
     *vyre-accounts) echo "each AI account's sign-in" ;;
-    *tailscale-state) echo "this server's Tailscale identity" ;;
-    *docker-api-bearer|*tailscale-sock) echo "internal, nothing of yours" ;;
+    *docker-api-bearer) echo "internal, nothing of yours" ;;
     *) echo "Vyre data" ;;
   esac
 }
@@ -1002,7 +1001,7 @@ uninstall() {
   [ -z "$comp" ] || docker rm -f $comp >/dev/null
   compose --profile computers down --remove-orphans
   # Vyre's own images (the box and the computers, and the one kept for a rollback) are not data: a
-  # gigabyte of layers with no use once Vyre is gone. Docker itself and the Tailscale sidecar's image stay.
+  # gigabyte of layers with no use once Vyre is gone. Docker itself stays.
   imgs=$(docker image ls -q --filter 'reference=ghcr.io/vyre-ai/*' --filter 'reference=vyre:*' 2>/dev/null | sort -u || true)
   # shellcheck disable=SC2086 # one image id per word
   [ -z "$imgs" ] || docker image rm -f $imgs >/dev/null 2>&1 || true
@@ -1016,7 +1015,6 @@ uninstall() {
   updater remove || say "The update units are still on this server (see above); the wrapper stays so you can remove them with: sudo $WRAPPER updater remove"
   if [ -e "$WRAPPER" ] && [ ! -f "$SYSTEMD_DIR/$UPDATER_NAME.path" ] && grep -q "$MARK" "$WRAPPER" 2>/dev/null; then rm -f "$WRAPPER" 2>/dev/null || sudo rm -f "$WRAPPER"; fi
   say "Vyre is off this server. $DIR stays with its .env; remove it with: sudo rm -rf $DIR"
-  say "One thing is left in your own hands: this server still shows in your Tailscale machines list. Remove it there."
 }
 
 # expire_code: the setup code install-box.sh left in vyre.env (VYRE_SETUP_CODE, with the time it was written)
@@ -1049,10 +1047,9 @@ case "${1:-}" in
     for a in "$@"; do [ "$a" != --print-link ] || link=1; done
     if [ "$link" = 1 ]; then
       # stdout is for the two lines only.
-      { compose up -d --wait tailscale >/dev/null 2>&1 || compose up -d tailscale; compose up -d; ready; } >&2
+      { compose up -d; ready; } >&2
       print_link
     else
-      compose up -d --wait tailscale >/dev/null 2>&1 || compose up -d tailscale
       compose up -d
       ready
       cli up "$@"

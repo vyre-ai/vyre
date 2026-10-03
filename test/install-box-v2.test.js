@@ -36,7 +36,7 @@ function box(t, opts = {}) {
   for (const [name, body] of Object.entries(stubs)) fs.writeFileSync(path.join(bin, name), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
   const env = {
     PATH: `${bin}:/usr/bin:/bin`, HOME: base, VYRE_DIR: path.join(base, "srv", "vyre"),
-    VYRE_WRAPPER: path.join(base, "bin-out", "vyre"), VYRE_TUN: "/dev/null", VYRE_DOCKER_SOCK: path.join(base, "none"),
+    VYRE_WRAPPER: path.join(base, "bin-out", "vyre"), VYRE_DOCKER_SOCK: path.join(base, "none"),
     VYRE_NO_UP: "1",
     // Never the real relay: a closed local port, so a code's progress lines go nowhere in tests.
     VYRE_RELAY: "http://127.0.0.1:9",
@@ -263,7 +263,7 @@ test("install-box.sh v2: Podman and rootless Docker stop with a plain line", t =
 // --- vyre uninstall (box/vyre): one flow, every volume named, asking is approving ---
 
 const BOXVYRE = path.join(REPO, "box", "vyre");
-const VOLS = ["vyre_vyre-home", "vyre_vyre-work", "vyre_vyre-accounts", "vyre_vyre-agent-home", "vyre_tailscale-state", "vyre_mystery"];
+const VOLS = ["vyre_vyre-home", "vyre_vyre-work", "vyre_vyre-accounts", "vyre_vyre-agent-home", "vyre_mystery"];
 
 /** A box with a stack folder, our wrapper installed, and a docker that knows the volumes. */
 function installed(t) {
@@ -292,7 +292,7 @@ test("vyre uninstall: with no answer the data is kept, every volume is listed in
   assert.ok(calls.includes("compose --profile computers down --remove-orphans"), calls);
   assert.ok(calls.includes("image rm -f img1 img2"), "Vyre's own images go, once each: " + calls);
   assert.ok(!fs.existsSync(b.env.VYRE_WRAPPER), "the vyre command is removed");
-  assert.match(r.stdout, /Tailscale machines list/);
+  assert.doesNotMatch(r.stdout, /Tailscale/i, "no Tailscale step: there is none");
   assert.match(r.stdout, /vyre backup/, "the export is offered beside it");
 });
 
