@@ -1,0 +1,24 @@
+{
+  "name": "wink-storage",
+  "version": "0.1.0",
+  "description": "Storage devices for Wink: find a network drive or a plugged-in disk from a device on the same network, or add a cloud volume or S3-compatible bucket by its access details (kept in the vault). A paired drive is a storage device under its owner that offers room for encrypted copies.",
+  "roles": ["box"],
+  "requires": ["relay"],
+  "does": {
+    "tools": [
+      { "name": "wink-storage.discover", "reach": "person" },
+      { "name": "wink-storage.pick", "reach": "person" },
+      { "name": "wink-storage.pair", "reach": "person" },
+      { "name": "wink-storage.card", "reach": "person" },
+      { "name": "wink-storage.offers", "reach": "person" },
+      { "name": "wink-storage.status", "reach": "person" },
+      { "name": "wink-storage.remove", "reach": "person" }
+    ]
+  },
+  "watches": {
+    "emits": ["storage.paired", "storage.removed", "storage.unreachable", "grant.created", "grant.revoked"],
+    "on": []
+  },
+  "shows": { "deck": [], "capsule": [], "cli": [] },
+  "needs": { "vault": ["per-storage"] }
+}

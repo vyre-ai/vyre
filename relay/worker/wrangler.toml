@@ -22,6 +22,12 @@ class_name = "RouteRelay"
 name = "TICKETS"
 class_name = "PairTicket"
 
+# One object per typed Wink code rendezvous (spec 6.5): `rv:XX`, 1024 of them. It records which
+# route holds the rendezvous and until when, and nothing about a password.
+[[durable_objects.bindings]]
+name = "CODES"
+class_name = "CodeSlot"
+
 # The free plan needs SQLite-backed Durable Objects. Cloudflare applies each migration tag once,
 # ever, on a given relay: a relay that already ran v1 (RouteRelay alone, before ADR 0045) never
 # re-runs it, so PairTicket needs its OWN tag, or /v1/pair 404s everything forever, fail-closed
@@ -32,6 +38,10 @@ new_sqlite_classes = ["RouteRelay"]
 [[migrations]]
 tag = "v2"
 new_sqlite_classes = ["PairTicket"]
+# CodeSlot needs its own tag for the same reason PairTicket did.
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["CodeSlot"]
 
 # Per-address limiting for /v1/device: the 256-bit route id and the DO's own per-route caps make
 # this safe without one, but it is real protection against cost and flooding, so it is on.
@@ -64,6 +74,22 @@ simple = { limit = 10, period = 60 }
 name = "SETUP_LOC_LIMITER"
 namespace_id = "26007"
 simple = { limit = 60, period = 60 }
+
+# The typed Wink code (spec 6.5), per address, never global (GHSA-25xh-w9j7-7v28): a session is charged
+# 10 a minute, any later step 30, and a miss on a rendezvous that is not live 30 more. The real client
+# address must reach the Worker (cf-connecting-ip); behind another forwarder the limits are weaker.
+[[ratelimits]]
+name = "CODE_LIMITER"
+namespace_id = "26010"
+simple = { limit = 10, period = 60 }
+[[ratelimits]]
+name = "CODE_STEP_LIMITER"
+namespace_id = "26011"
+simple = { limit = 30, period = 60 }
+[[ratelimits]]
+name = "CODE_MISS_LIMITER"
+namespace_id = "26012"
+simple = { limit = 30, period = 60 }
 
 # Cloudflare keeps request logs, with addresses, whenever this is on; Vyre needs none of them (#70). A specific failure may switch it on for a day, and the privacy page says so.
 [observability]

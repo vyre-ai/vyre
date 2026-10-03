@@ -1,0 +1,114 @@
+// The Estate planning Kit and the core types, through the real kernel gateway (authorize, events, versions) over the Twenty store.
+// Against the fake Twenty here; the same file runs against a real Twenty from stores/twenty/live (see host-live.mjs).
+import { test, after } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import crypto from "node:crypto";
+import { SCRATCH } from "../../test/scratch.mjs";
+import { createTwentyStore } from "./store.js";
+import { TwentyClient } from "./client.js";
+import { FakeTwenty } from "./testing/fake-twenty.js";
+import { compile } from "../../records/language/compile.js";
+import { createRecordsHost } from "../../records/host.js";
+import { createStripeHandler, signForTest } from "../../records/connectors/stripe/stripe.js";
+import { CORE_TYPES } from "../../records/core-types.js";
+
+const SPACE = "spc_harlow000001";
+const kit = compile(fs.readFileSync(new URL("../../records/kits/estate-planning/kit.ts", import.meta.url), "utf8"));
+const dirs = [];
+const fake = await new FakeTwenty().start();
+after(async () => { await fake.stop(); for (const d of dirs) fs.rmSync(d, { recursive: true, force: true }); });
+
+async function boot() {
+  fake.reset();
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "twh-")); dirs.push(dir);
+  const client = new TwentyClient({ url: fake.url, key: () => fake.key, sleep: async () => {} });
+  const secret = crypto.randomBytes(16).toString("hex");
+  const store = createTwentyStore({ client, space: "harlow", dir, webhookSecret: secret, graceMs: 0 });
+  fake.deliver = async (payload, headers, raw) => { await store.handleWebhook(Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])), raw); };
+  await store.registerWebhook("fn:store");
+  const host = createRecordsHost({ space: SPACE, owner: "per_owner", store });
+  return { host, store };
+}
+
+test("the Kit's types and the core types are defined through the gateway, and the log says so", async () => {
+  const { host } = await boot();
+  await host.defineCore();
+  const r = await host.installKit(kit);
+  assert.deepEqual(r.types, ["contact", "matter"]);
+  assert.equal(r.flows.length, 1);
+  const defined = host.log.read({ type: "types.defined" });
+  assert.equal(defined.length, 2);
+  for (const t of CORE_TYPES) assert.ok(host.catalog().types[t.name], `${t.name} is in the catalog`);
+  assert.equal((await host.kernel.health()).ok, true);
+});
+
+test("a record is created, read and updated through kernel.records with authorize and events", async () => {
+  const { host } = await boot();
+  await host.installKit(kit);
+  const c = host.ownerChain();
+  const rec = await host.kernel.records.create(c, "contact", { full_name: "Sam Rivera", email: "sam@example.test" });
+  assert.equal(rec.version, 1);
+  assert.equal(rec.urn, `vyre://${SPACE}/contact/${rec.id}`);
+  assert.equal((await host.kernel.records.get(c, "contact", rec.id)).data.full_name, "Sam Rivera");
+  const up = await host.kernel.records.update(c, "contact", rec.id, { phone: "555 0100" }, 1);
+  assert.equal(up.version, 2);
+  await assert.rejects(() => host.kernel.records.update(c, "contact", rec.id, { phone: "x" }, 1), { code: "version_conflict" });
+  assert.deepEqual(host.log.read().map((e) => e.type).filter((t) => t.startsWith("contact.")), ["contact.created", "contact.updated"]);
+  assert.equal(host.log.verify().ok, true);
+});
+
+test("a chain with no grant is refused and a model never holds the owner's authority", async () => {
+  const { host } = await boot();
+  await host.installKit(kit);
+  const agent = host.chains.fromFacts({ kind: "socket", surface: "mcp", uid: 1, pid: 1, inside_model_process: true });
+  const got = await host.kernel.records.query(agent, "contact", { page: { limit: 5 } }).then((p) => p.rows.length, (e) => e.code);
+  assert.ok(got === 0 || typeof got === "string", "an agent with no grant sees nothing");
+  await assert.rejects(() => host.kernel.records.create(agent, "contact", { full_name: "No" }), (e) => typeof e.code === "string");
+  assert.equal(host.log.read({ type: "contact.created" }).length, 0);
+});
+
+test("a sealed field holds only a reference in Twenty and in the log", async () => {
+  const { host, store } = await boot();
+  await host.installKit(kit);
+  const ref = { sealed: "us-ssn", ref: "sv_1", present: true, valid_format: true, set_at: 1 };
+  const rec = await host.kernel.records.create(host.ownerChain(), "contact", { full_name: "Pat", ssn: ref });
+  const ev = host.log.read({ type: "contact.created" })[0];
+  assert.deepEqual(ev.data.after.ssn, { sealed: true, changed: true });
+  assert.deepEqual((await store.get("contact", rec.id)).data.ssn, ref);
+});
+
+test("task, template, playbook and team-member records round trip, with actors and lists", async () => {
+  const { host } = await boot();
+  await host.defineCore(); await host.installKit(kit);
+  const c = host.ownerChain();
+  const owner = { actor: { kind: "person", id: "per_owner", space: SPACE } };
+  const bot = { actor: { kind: "agent", id: "research", space: SPACE } };
+  const matter = await host.kernel.records.create(c, "matter", { title: "Estate plan for Sam" });
+  const tpl = await host.kernel.records.create(c, "template", { name: "welcome", kind: "email", body: "Dear {{client.full_name}}" });
+  const task = await host.kernel.records.create(c, "task", { title: "Research the client", record: { urn: matter.urn }, doer: bot, checker: owner, output_kind: "fields", output_target: "practice_area", how: "assistant", template: { urn: tpl.urn }, depends_on: [], state: "ready", assigned_by: owner });
+  const back = await host.kernel.records.get(c, "task", task.id);
+  assert.deepEqual(back.data.doer, bot);
+  assert.equal(back.data.state, "ready");
+  assert.deepEqual(back.data.template, { urn: tpl.urn });
+  await host.kernel.records.create(c, "playbook", { name: "Intake", applies_to: "matter", body: "Ask about the household first." });
+  await host.kernel.records.create(c, "team-member", { name: "Research", actor: bot, kind: "assistant", role: "research", project: { urn: matter.urn }, doing: "reading harlowlegal.example" });
+  const open = await host.kernel.records.query(c, "task", { filter: { field: "state", op: "eq", value: "ready" }, page: { limit: 10 } });
+  assert.equal(open.rows.length, 1);
+});
+
+test("a payment through the Stripe handler runs the Kit's Flow on the runner and writes the contact and matter in Twenty", async () => {
+  const { host, store } = await boot();
+  await host.installKit(kit);
+  const handle = createStripeHandler({ secret: "whsec_test_x", host, now: () => 1791000100_000 });
+  const ev = { id: "evt_1", type: "checkout.session.completed", livemode: false, created: 1791000000, data: { object: { id: "cs_1", payment_status: "paid", payment_intent: "pi_1", amount_total: 350000, currency: "usd", customer: "cus_1", customer_details: { email: "sam@example.test", name: "Sam Rivera" } } } };
+  const raw = JSON.stringify(ev);
+  const rs = await Promise.all([1, 2, 3].map(() => handle({ "stripe-signature": signForTest(raw, "whsec_test_x", 1791000100_000) }, raw)));
+  assert.deepEqual(rs.map((r) => r.status), [200, 200, 200], JSON.stringify(rs[0].body));
+  const contacts = (await store.query("contact", { page: { limit: 10 } })).rows, matters = (await store.query("matter", { page: { limit: 10 } })).rows;
+  assert.equal(contacts.length, 1); assert.equal(matters.length, 1);
+  assert.deepEqual(matters[0].data.client, { urn: `vyre://${SPACE}/contact/${contacts[0].id}` });
+  assert.equal(host.log.read({ type: "payment.received" }).length, 1);
+  assert.equal(host.log.read({ type: "matter.created" })[0].actor.startsWith("service:flows"), true);
+});
