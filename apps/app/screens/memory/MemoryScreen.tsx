@@ -8,9 +8,8 @@ import { memoryRepo, SUBJECTS, type Fact } from "./data";
 import { answer, edit, forget, group, restore, visible } from "./logic.js";
 
 const SRC_ICON: Record<Fact["src"]["kind"], IconName> = { record: "records", file: "file", chat: "chat", email: "mail", flow: "flows" };
-const SUP = ["⁰", "¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸", "⁹"];
-/** A citation's number as a superscript: 12 mono, in the accent. */
-const sup = (n: number) => String(n).split("").map((d) => SUP[Number(d)]).join("");
+/** A citation: the number in brackets, 12 mono, in the accent, set small beside the 17 answer. */
+const sup = (n: number) => `[${n}]`;
 
 /** A group's header as a row: the person's 24 face (the project's or space's emblem for those), its name, how many facts. */
 function GroupHead({ mark, name, count }: { mark: ReturnType<typeof markRef>; name: string; count: number }) {
