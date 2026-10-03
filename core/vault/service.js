@@ -5,6 +5,8 @@
 // (`service.read` or `service.call`, and the Drive paths a file moves); this adds the connector's own rules, then the same checks as every vault request (hosts, the SSRF guard,
 // read or outward). Two internal tools, callable only by the kernel's lease module: `vault.service.catalog` (the rules, never a secret or a host) and `vault.service.forward`.
 
+import { canonicalPath } from "../../kernel/seal/uses.js";
+
 const bad = (msg, code = "bad_input") => Object.assign(new Error(msg), { code });
 const isObj = v => Boolean(v) && typeof v === "object" && !Array.isArray(v);
 const CONNECTOR = /^[A-Za-z0-9_.-]{1,64}$/;
@@ -56,18 +58,16 @@ export function registerService({ api, vault, internal, forwardFile, obj, str })
       if (!callerOk(String(caller))) throw bad("only the kernel's lease module forwards a Flow's call", "denied");
       const name = String(input.connector || ""), r = isObj(input.request) ? input.request : {};
       if (!CONNECTOR.test(name)) throw bad("name a connector");
-      const method = String(r.method || "GET").toUpperCase(), path = String(r.path || "/");
-      if (!METHODS.includes(method) || !path.startsWith("/") || path.includes("?") || path.includes("#")) throw bad("a request names a method and a path");
+      const method = String(r.method || "GET").toUpperCase(), rawPath = String(r.path || "/");
+      if (!METHODS.includes(method)) throw bad("a request names a method and a path");
       const audit = (ok, why) => vault.audit("api-request", name, `flow:${String(input.idem || "").slice(0, 80)}`, ok, why);
       let config;
       try { ({ config } = await vault.apiCredential(name)); } catch { throw bad("that request is not open to this caller", "not_found"); }
       // The same refusal for no such connector, a connector with no rules and a path the rules do not allow: nothing says which.
-      // The rules match the path the request will really have: the URL parser rewrites a backslash to a slash and drops tabs and line breaks, so a path that does not survive it unchanged
-      // is refused (SV-1), and so is any control character, backslash or space.
-      let seen = null;
-      try { seen = new URL(`https://x.invalid${path}`).pathname; } catch { /* refused below */ }
-      const clean = seen === path && !/[\\\s\u0000-\u001f\u007f]/.test(path);
-      if (!clean || !routeAllowed(config.service, method, path)) { audit(false, `${method} refused by the connector's rules`); throw bad("that request is not open to this caller", "not_found"); }
+      // ONE canonical form (kernel/seal/uses.js canonicalPath, shared with the lent-session route check): refused if the parser or a server could read it differently, decoded once,
+      // matched in that form and sent as exactly that form (SV-1).
+      let path; try { path = canonicalPath(rawPath); } catch { path = null; }
+      if (path === null || !routeAllowed(config.service, method, path)) { audit(false, `${method} refused by the connector's rules`); throw bad("that request is not open to this caller", "not_found"); }
       const host = config.hosts.find(h => !h.startsWith("*."));
       if (!host) throw bad("this connector names no exact host, so a Flow cannot reach it", "not_found");
       const key = input.idem ? `${name}\0${String(input.idem)}` : null;

@@ -10,7 +10,7 @@
 // Every call takes a kernel-built chain that is exactly one person (the process also refuses a model's chain).
 import { isChain, isExactlyPerson } from "../core/chain.js";
 import { KernelError } from "../core/errors.js";
-import { leasedUse, credentialAction, safePath } from "../seal/uses.js";
+import { leasedUse, credentialAction, safePath, canonicalPath } from "../seal/uses.js";
 
 /**
  * @param {{ space: string, sealer: any, grantsStore: any, authorize: (i: any) => Promise<any>, log: any, chains: any,
@@ -94,8 +94,8 @@ export function createLeases(cfg) {
       if (!i || typeof i.route !== "string" || typeof i.session !== "string" || typeof i.method !== "string" || typeof i.path !== "string") throw new KernelError("bad_input", "a use names a session, a host, a method and a path");
       if (!cfg.resolve) throw new KernelError("unavailable", "no vault is wired to resolve credentials");
       const method = i.method.toUpperCase(), route = i.route.toLowerCase();
-      const path = i.path.split(/[?#]/)[0];
-      try { if (!path.startsWith("/")) throw new Error("path"); if (path !== "/") safePath(path.slice(1)); } catch { throw new KernelError("not_found", "that credential is not open to this session"); }
+      let path;
+      try { path = canonicalPath(i.path.split(/[?#]/)[0]); } catch { throw new KernelError("not_found", "that credential is not open to this session"); }
       const hit = (defs.get(i.session) || []).find(r => r.route === route && r.methods.includes(method) && r.paths.some(x => (x.endsWith("/*") ? path === x.slice(0, -2) || path.startsWith(x.slice(0, -1)) : path === x)));
       if (!hit) throw new KernelError("not_found", "that credential is not open to this session");
       const action = credentialAction("api", method);
@@ -124,7 +124,7 @@ export function createLeases(cfg) {
       if (!i || typeof i.method !== "string" || typeof i.path !== "string" || !i.path.startsWith("/")) throw new KernelError("bad_input", "a forward names a method and a path");
       const method = i.method.toUpperCase();
       let path;
-      try { const bare = i.path.split(/[?#]/)[0]; if (bare !== "/") safePath(bare.slice(1)); path = bare; } catch { throw new KernelError("not_found", "that request is not open to this caller"); }
+      try { path = canonicalPath(i.path.split(/[?#]/)[0]); } catch { throw new KernelError("not_found", "that request is not open to this caller"); }
       /** @type {string} */ let connector, ref = null, route = null;
       if (typeof i.session === "string") {
         // the lent computer's form: the session's own definition (held at the home) says which credential, never the caller

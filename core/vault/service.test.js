@@ -88,14 +88,36 @@ test("forward: an approved outward call runs once per idem key, with the approva
   assert.ok(audit.includes("released:tsk_approved1")); assert.ok(!audit.includes(SECRET));
 });
 
-test("SV-1: a path the URL parser would rewrite (backslash, tab, line break) cannot walk around a deny rule", async t => {
-  const m = await mk(t); await put(m, { allow: [{ method: "GET", path: "/v4/matters/*/notes" }], deny: [{ path: "/v4/users/*" }] });
-  const same = [];
-  for (const path of ["/v4/matters/x\\..\\..\\users\\9/notes", "/v4/matters/x/..%2f..%2fusers/9/notes", "/v4/us\ters/9", "/v4/users\t/9", "/v4/matters/x\n/notes", "/v4/matters/x /notes", "/v4/matters/x/../../users/9/notes"]) {
-    same.push(await m.run("vault.service.forward", { connector: "clio", request: { method: "GET", path } }).then(() => `sent ${path}`, e => `${e.code}: ${e.message}`));
-  }
-  assert.deepEqual([...new Set(same)], ["not_found: that request is not open to this caller"]);
+test("SV-1: one canonical path form: every way of writing a path the parser or a server could read differently is refused alike, and an allowed path is sent exactly as matched", async t => {
+  const m = await mk(t); await put(m, { allow: [{ method: "GET", path: "/v4/matters/*/notes" }, { method: "GET", path: "/v4/files/*" }], deny: [{ path: "/v4/users/*" }, { path: "/v4/files/secret" }] });
+  const probes = [
+    "/v4/matters/x\\..\\..\\users\\9/notes",           // the reviewer's probe
+    "/v4/matters/x/..%2f..%2fusers/9/notes", "/v4/matters/x/..%2F..%2Fusers/9/notes", "/v4/matters/x%5c..%5cusers/9/notes", "/v4/matters/x%5C/notes",
+    "/v4/us\ters/9", "/v4/users\t/9", "/v4/matters/x\n/notes", "/v4/matters/x\r/notes", "/v4/matters/x /notes", "/v4/matters/x%20/notes", "/v4/matters/x%09/notes", "/v4/matters/x%0a/notes",
+    "/v4/matters/x\u0000/notes", "/v4/matters/x%00/notes", "/v4/matters/x\u007f/notes",
+    "/v4/matters/x/../../users/9/notes", "/v4/matters/x/%2e%2e/%2e%2e/users/9/notes", "/v4/matters/x/.%2e/users/9/notes", "/v4/matters/x/%2E%2e/users/9",
+    "/v4/matters//x/notes", "/v4//users/9", "/v4/matters/%252e%252e/users/9/notes", "/v4/matters/x%25/notes",
+    "/v4/matters/x?y=/notes", "/v4/matters/x#/notes", "/v4/%75sers/9", "/v4/us%65rs/9", "/v4/%55sers/9",   // %75 is u: decoded once, the deny rule matches
+    "/v4/matters/x/notes/..", "/v4/matters/./x/notes", "v4/matters/x/notes", "",
+  ];
+  const outcomes = [];
+  for (const path of probes) outcomes.push(await m.run("vault.service.forward", { connector: "clio", request: { method: "GET", path } }).then(() => `sent ${JSON.stringify(path)}`, e => `${e.code}: ${e.message}`));
+  assert.deepEqual([...new Set(outcomes)], ["not_found: that request is not open to this caller"]);
   assert.equal(m.net.calls.length, 0, "nothing reached the transport");
+  // Allowed paths: decoded once, matched and sent in that form. %61 is a, so it matches the allow rule and is sent as the decoded form.
   const ok = await m.run("vault.service.forward", { connector: "clio", request: { method: "GET", path: "/v4/matters/12/notes" } });
-  assert.equal(ok.status, 200);
+  assert.equal(ok.status, 200); assert.equal(m.net.calls[0].path, "/v4/matters/12/notes");
+  await m.run("vault.service.forward", { connector: "clio", request: { method: "GET", path: "/v4/files/%61bc" } });
+  assert.equal(m.net.calls[1].path, "/v4/files/abc", "sent exactly the form that was matched");
+  await assert.rejects(m.run("vault.service.forward", { connector: "clio", request: { method: "GET", path: "/v4/files/%73ecret" } }), /not open/, "a deny rule sees the decoded form");
+  assert.equal(m.net.calls.length, 2);
+});
+
+test("canonicalPath is the one matcher: the lent-session route rule and the Flow connector rule both use it", async () => {
+  const { canonicalPath, routeAllows, normalizeRoute } = await import("../../kernel/seal/uses.js");
+  assert.equal(canonicalPath("/v4/%61bc"), "/v4/abc"); assert.equal(canonicalPath("/"), "/");
+  for (const p of ["/a\\b", "/a\tb", "/a b", "/a%2fb", "/a%5cb", "/a%2eb", "/a/../b", "/a/%2e%2e/b", "/a%00", "/a%25", "/a//b", "/a?b", "x", "/a%zz"]) assert.throws(() => canonicalPath(p), /bad_input/, JSON.stringify(p));
+  const def = normalizeRoute({ route: "api.clio.test", ref: "clio", allow: [{ method: "GET", path: "/v4/*" }], deny: [{ path: "/v4/users/*" }] });
+  assert.equal(routeAllows(def, "GET", "/v4/matters"), true);
+  for (const p of ["/v4/users/9", "/v4/%75sers/9", "/v4/x\\..\\users\\9", "/v4/x%09/y", "/v4/x/..%2fusers/9"]) assert.equal(routeAllows(def, "GET", p), false, p);
 });

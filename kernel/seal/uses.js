@@ -44,6 +44,25 @@ export function safePath(p) {
   if (!s || s.startsWith("/") || BAD.test(s) || s.normalize("NFKC") !== s || winBad) throw Object.assign(new Error("bad_input"), { code: "bad_input" });
   return s;
 }
+/**
+ * The ONE canonical form of a request path, for every route check (a lent session's route, a Flow's connector, the vault's own rules): parse it as the URL parser will, refuse anything the
+ * parser or a server could read differently (a backslash, a tab, a space or any control character or NUL, an encoded slash, backslash, dot or NUL, an empty segment, dot segments before
+ * or after decoding, a double-encoded percent, a query or fragment, a form NFKC would change), decode percent-encoding exactly ONCE, and return the decoded path. Rules match this form and the
+ * request is sent as exactly this form. Throws `bad_input`; callers answer every refusal alike.
+ * @param {string} raw @returns {string}
+ */
+export function canonicalPath(raw) {
+  const bad = () => Object.assign(new Error("bad_input"), { code: "bad_input" });
+  const s = String(raw ?? "");
+  if (!s.startsWith("/") || /[?#\\\s\u0000-\u001f\u007f]|%(2e|2f|5c|00|25)|\/\//i.test(s)) throw bad();
+  let d;
+  try { d = decodeURIComponent(s); } catch { throw bad(); }
+  if (/[?#\\\s%\u0000-\u001f\u007f]|\/\//.test(d) || d.split("/").some(x => x === "." || x === "..") || d.normalize("NFKC") !== d) throw bad();
+  let seen; try { seen = new URL(`https://x.invalid${s}`).pathname; } catch { throw bad(); }
+  let back; try { back = decodeURIComponent(seen); } catch { throw bad(); }
+  if (back !== d) throw bad();
+  return d;
+}
 /** One URN segment (a credential name): no slash, dot segment, encoding or control character. */
 export function segment(x) { const s = String(x ?? ""); if (!s || /[/\\%]|^\.+$|[\u0000-\u001f\u007f]/.test(s)) throw Object.assign(new Error("bad_input"), { code: "bad_input" }); return s; }
 const EVENTS = { allow: { vault: "vault.used", drive: "file.accessed" }, deny: "access.refused" };
@@ -151,8 +170,8 @@ export function normalizeRoute(r) {
 }
 /** May this route do this? The path is checked as the kernel checks every path (no dot segments, encoded dots or slashes, backslashes). Deny wins, and the default is no. */
 export function routeAllows(def, method, path) {
-  const p = String(path ?? "").split(/[?#]/)[0], m = String(method ?? "").toUpperCase();
-  try { if (!p.startsWith("/")) return false; if (p !== "/") safePath(p.slice(1)); } catch { return false; }
+  const m = String(method ?? "").toUpperCase();
+  let p; try { p = canonicalPath(String(path ?? "").split(/[?#]/)[0]); } catch { return false; }
   if (def.deny.some(d => (d.method === "*" || d.method === m) && atPath(d.path, p))) return false;
   return def.allow.some(a => a.method === m && atPath(a.path, p));
 }
