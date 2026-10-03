@@ -44,7 +44,8 @@ export default {
     const cfg = (ctx.config && ctx.config.stream) || {};
     const ticketMs = Number(cfg.ticketMs ?? 15_000);
     const now = () => Date.now();
-    const logs = new Logs({ db: ctx.store && ctx.store.db, maxFrames: cfg.maxFrames, maxBytes: cfg.maxBytes });
+    // A thread session's assistant text and any shell output stay for stream.retainHours (24 by default); a group chat's words stay (log.js expire).
+    const logs = new Logs({ db: ctx.store && ctx.store.db, maxFrames: cfg.maxFrames, maxBytes: cfg.maxBytes, ...(cfg.retainHours !== undefined ? { retainMs: Number(cfg.retainHours) * 3600_000 } : {}) });
     /** @type {Map<string, ReturnType<typeof createAdapter>>} */
     const adapters = new Map();
     /** @type {Map<string, { session: string, expires: number, from: number|null, person: string, caller: string, device: string, viewer: { id: string, roles: string[] } }>} */

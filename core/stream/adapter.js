@@ -158,7 +158,8 @@ export function createAdapter() {
           if (!m) return [];
           if (m.text) words.set(uuid, m.text);
           const state = e.type === "thread.sent" && m.state === "picked-up" && !p.via ? "sent" : m.state;
-          return [spec("user-message", { message: m.message, text: m.text || words.get(uuid) || "", state, ...(m.queued_at != null ? { queued_at: m.queued_at } : {}) })];
+          // Who wrote it rides on the frame (author), so a group or a person can tell their own words from another's.
+          return [{ ...spec("user-message", { message: m.message, text: m.text || words.get(uuid) || "", state, ...(m.queued_at != null ? { queued_at: m.queued_at } : {}) }), ...(typeof p.author === "string" && /^person:[^\s]{1,200}$/.test(p.author) ? { author: p.author } : {}) }];
         }
         case "thread.unqueued": {
           const uuid = String(p.uuid || (p.queued != null ? `q:${p.queued}` : ""));

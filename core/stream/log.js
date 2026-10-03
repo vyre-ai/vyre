@@ -15,13 +15,17 @@ import { migrate } from "../store/index.js";
 import { frame, kindOf, startOf, KINDS, EPHEMERAL } from "./protocol.js";
 import { assertAskerCanRead } from "./viewer.js";
 
-export const DEFAULTS = Object.freeze({ maxFrames: 4000, maxBytes: 8 * 1024 * 1024, maxStored: 50000, merge: 16 * 1024, flushMs: 100 });
+/** retainMs: how long the assistant's text deltas and a shell's output stay in this log (reviewer gate C-6): 24 hours. After that the frame stays, with its cursor, and its content is gone. */
+export const DEFAULTS = Object.freeze({ maxFrames: 4000, maxBytes: 8 * 1024 * 1024, maxStored: 50000, merge: 16 * 1024, flushMs: 100, retainMs: 24 * 3600_000 });
+/** The frame kinds whose content expires, and the field that holds it. */
+const EXPIRES = Object.freeze({ "text-delta": "text", "term-chunk": "b64" });
 
 /** @param {any} f */
 const sizeOf = f => JSON.stringify(f).length + 16;
 
 /**
  * @typedef {{ maxFrames?: number, maxBytes?: number, maxStored?: number, mergeChars?: number, coalesce?: boolean, flushMs?: number,
+ *   retainMs?: number, expireEveryMs?: number,
  *   db?: import("node:sqlite").DatabaseSync, now?: () => number }} LogOptions
  */
 
@@ -45,6 +49,9 @@ export class SessionLog {
     /** @type {Map<number, any>} merged or new frames not yet written */ this.dirty = new Map();
     /** @type {number[]} rows a merge made obsolete */ this.stale = [];
     this.flushMs = opts.flushMs ?? DEFAULTS.flushMs;
+    this.retainMs = opts.retainMs ?? DEFAULTS.retainMs;
+    this.expireEveryMs = opts.expireEveryMs ?? 600_000;
+    this.expiredAt = 0;
     /** @type {any} */ this.timer = null;
     if (this.db) this.load();
   }
@@ -61,6 +68,42 @@ export class SessionLog {
     const m = this.db.prepare("SELECT MAX(cur) AS m FROM stream_frames WHERE session = ?").get(this.session);
     this.head = m && m.m ? Number(m.m) : 0;
     this.trim();
+    this.expire();
+  }
+
+  /**
+   * Drop the content of text deltas and shell output older than retainMs. A text delta that carries an author is a group chat's
+   * words, and the log is that chat's record: those stay. A thread session's text is also in the switchboard, which a screen reseeds from.
+   * The frame stays with its cursor, `expired: true` and an empty text or b64, so a client's gapless check holds. In the ring and
+   * in the store. Runs when the log loads and at most every expireEveryMs while it is appended to; nothing polls.
+   * @param {number} [now]
+   * @returns {number} frames expired
+   */
+  expire(now = this.now()) {
+    this.expiredAt = now;
+    if (!(this.retainMs > 0)) return 0;
+    const cut = now - this.retainMs;
+    const kinds = Object.keys(EXPIRES);
+    const expires = (/** @type {any} */ f) => kinds.includes(kindOf(f)) && !(kindOf(f) === "text-delta" && f.author) && !(f.data && f.data.expired);
+    const field = (/** @type {string} */ k) => /** @type {Record<string,string>} */ (EXPIRES)[k];
+    const gone = (/** @type {any} */ f) => ({ ...f, data: { ...f.data, [field(kindOf(f))]: "", expired: true } });
+    let n = 0;
+    for (let i = 0; i < this.ring.length; i++) {
+      const f = this.ring[i];
+      if (f.time >= cut || !expires(f)) continue;
+      const g = gone(f);
+      this.bytes += sizeOf(g) - sizeOf(f);
+      this.ring[i] = g; n++;
+      this.persist(g);
+    }
+    if (this.db) {
+      const marks = kinds.map(() => "?").join(",");
+      let rows = [];
+      try { rows = this.db.prepare(`SELECT json FROM stream_frames WHERE session = ? AND json_extract(json, '$.time') < ? AND substr(json_extract(json, '$.type'), 9) IN (${marks}) AND json_extract(json, '$.data.expired') IS NULL`).all(this.session, cut, ...kinds); } catch {}
+      for (const r of rows) { const f = JSON.parse(r.json); if (!expires(f) || this.ring.some(x => x.cur === f.cur)) continue; this.dirty.set(f.cur, gone(f)); n++; }
+      if (this.dirty.size) { try { this.flush(); } catch {} }
+    }
+    return n;
   }
 
   /** The cursor before the oldest frame this log can still serve: a client at or past it can resume. */
@@ -109,6 +152,7 @@ export class SessionLog {
    */
   append(kind, data, ctx = {}) {
     if (this.closed) throw new Error("the log is closed");
+    if (this.expireEveryMs > 0 && this.now() - this.expiredAt > this.expireEveryMs) this.expire();
     if (!KINDS.includes(kind)) throw new Error(`${kind} is not a logged frame kind`);
     if (ctx.asker) assertAskerCanRead({ data }, ctx.asker);
     const f = frame(kind, data, { session: this.session, turn: ctx.turn ?? null, time: ctx.time ?? this.now(), id: ctx.id, cur: this.head + 1, author: ctx.author, acts_for: ctx.acts_for, message: ctx.message });

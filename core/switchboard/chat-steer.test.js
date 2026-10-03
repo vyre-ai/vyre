@@ -263,3 +263,68 @@ test("branch and edit-retry: a provider that cannot fork or go back says unsuppo
   assert.deepEqual(await w.said(th.id), ["echo: hello"]);
   assert.equal((await w.tool("threads.list", {})).data.length, 1, "no thread was made");
 });
+
+// ---- reviewer gate chat-03: C-5 (edit and retry check first, and are the author's) and the stop as a clean checkpoint ------------
+
+test("C-5: edit-retry whose send would be refused (the keyboard is held elsewhere) rewinds nothing and says so first", async t => {
+  const w = await boot(t);
+  const { th, turns, lines } = await threeTurns(w);
+  const before = lines().length;
+  const held = (await w.tool("threads.lease", { thread: th.id, surface: `cli:${process.pid}` })).data;
+  assert.ok(held, "another surface takes the keyboard");
+  for (const [tool, input] of [["threads.edit-retry", { thread: th.id, message: turns[1].uuid, text: "two, shorter", surface: "deck" }], ["threads.retry", { thread: th.id, message: turns[1].uuid, surface: "deck" }]]) {
+    const r = await write(tool, input, { root: w.root, caller: "deck", key: `k-${tool}` });
+    assert.equal(r.error && r.error.code, "lease_held", `${tool}: ${JSON.stringify(r)}`);
+    assert.match(r.error.message, /Nothing was changed/);
+  }
+  assert.equal((await w.events(th.id)).filter(e => e.type === "thread.rewound").length, 0, "nothing was rewound");
+  assert.equal(lines().length, before, "the transcript is as it was");
+  assert.deepEqual(await w.said(th.id), ["echo: one", "echo: two", "echo: three"]);
+});
+
+test("C-5: a message records its author, and only its author (or an admin) can edit and retry it", async t => {
+  const w = await boot(t);
+  const reg = w.d.registry;
+  const as = (login) => (tool, input) => reg.call(tool, input, "deck", { ...(login ? { peer: { login, stableId: `n_${login}` } } : {}) });
+  const th = (await w.tool("threads.start", { cwd: w.work, prompt: "one", surface: "deck" })).data;
+  await w.finished(th.id);
+  const sent = await as("carol@example.com")("threads.send", { thread: th.id, text: "carol says two", surface: "deck" });
+  assert.ok(!sent.error, JSON.stringify(sent.error));
+  await w.finished(th.id, 2);
+  const ev = (await w.events(th.id)).find(e => e.type === "thread.sent" && e.payload.text === "carol says two");
+  assert.equal(ev.payload.author, "person:carol@example.com", "the author is recorded on the message");
+  const turn = (await w.events(th.id)).filter(e => e.type === "thread.turn").map(e => e.payload).find(p => p.text === "carol says two");
+  const dave = await as("dave@example.com")("threads.edit-retry", { thread: th.id, message: turn.uuid, text: "dave rewrites", surface: "deck" });
+  assert.equal(dave.error && dave.error.code, "denied", JSON.stringify(dave));
+  assert.equal((await w.events(th.id)).filter(e => e.type === "thread.rewound").length, 0);
+  const carol = await as("carol@example.com")("threads.edit-retry", { thread: th.id, message: turn.uuid, text: "carol says two, again", surface: "deck" });
+  assert.ok(!carol.error && carol.data.retried, JSON.stringify(carol));
+  await w.finished(th.id, 3);
+  // an admin (the owner's own surface, no peer) may edit anyone's
+  const t2 = (await w.events(th.id)).filter(e => e.type === "thread.turn").map(e => e.payload).find(p => p.text === "carol says two, again");
+  const admin = await as(null)("threads.edit-retry", { thread: th.id, message: t2.uuid, text: "the owner's edit", surface: "deck" });
+  assert.ok(!admin.error && admin.data.retried, JSON.stringify(admin));
+});
+
+test("stop is a clean checkpoint: stopped mid-tool, then a new message resumes the session with the transcript intact and no open ask", async t => {
+  const w = await boot(t);
+  const { id } = await busyDemo(w); // the turn is blocked on a tool's permission ask
+  const file = path.join(w.transcripts, w.work.replace(/[^A-Za-z0-9]/g, "-"), `${id}.jsonl`);
+  const read = () => fs.readFileSync(file, "utf8").trim().split("\n").map(l => JSON.parse(l));
+  const prior = read().map(l => l.uuid).filter(Boolean);
+  assert.ok(prior.length >= 1);
+  assert.equal((await w.tool("threads.stop", { thread: id })).data.stopped, true);
+  await until(async () => (await w.tool("threads.get", { thread: id })).data.thread.status === "stopped", "stopped");
+  assert.deepEqual((await w.tool("threads.asks", { thread: id })).data, [], "no ask is left hanging");
+  const launches = w.launches().length;
+  const r = (await w.tool("threads.send", { thread: id, text: "after the stop", surface: "deck" }, "deck")).data;
+  assert.equal(r.sent, true);
+  await until(async () => (await w.said(id)).some(x => /after the stop/.test(x)), "the reply after the stop");
+  assert.ok(w.launches().length > launches, "the session was resumed");
+  assert.ok(w.launches().at(-1).argv.includes("--resume") || w.launches().at(-1).argv.some(a => /resume/.test(a)), "resumed, not restarted");
+  const now = read();
+  assert.deepEqual(now.map(l => l.uuid).filter(Boolean).slice(0, prior.length), prior, "every earlier line is still there, in order");
+  assert.ok(now.some(l => l.type === "user" && l.message && l.message.content === "after the stop"));
+  const log = (await w.tool("threads.get", { thread: id, limit: 500 })).data.events;
+  assert.ok(log.findIndex(e => e.type === "thread.stopped") < log.findIndex(e => e.type === "thread.sent" && e.payload.text === "after the stop"));
+});

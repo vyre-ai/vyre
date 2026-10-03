@@ -51,7 +51,7 @@ frame at or below it, treats a frame that starts after `last + 1` as a gap and a
 once the first time, then with capped backoff and jitter. Nothing is acked and nothing is
 retransmitted: the client only ever asks again from `last`.
 
-Every attempt calls `stream.open {session, from}`, which returns a one-use ticket (30 seconds) and
+Every attempt calls `stream.open {session, from}`, which returns a one-use ticket (15 seconds, bound to the caller) and
 the log's `head` and `floor`. A `from` below `floor` is sent a `reset`; the client reads a snapshot
 (the app resumes from `floor`, which is the oldest frame the log still holds) and carries on.
 Because the ticket is an ordinary tool call and the socket is "a WebSocket on whichever path
@@ -114,6 +114,32 @@ additively (old frames stay valid):
 - Concurrent streams: the cursor is per session; each message is its own row (`a:<message>`); the log merges only
   adjacent deltas of the same message and author. Door holdback: the client treats the last 40 characters of a
   streaming reply as provisional until `text-done`; `text-cut` drops them and shows the note.
+
+## Authority (the reviewer's gate, 3 Oct 2026)
+
+- **Who may open a session.** `stream.open` decides before it makes a ticket, a log or a set entry. A chat's readers are
+  its participants: an assistant acting for a person reads exactly what that person reads, and an owner or admin has no read
+  grant to a chat they are not in. A thread session is resolved with `threads.get` as the caller (`ctx.call` with `as`, which
+  `core/modules` allows the stream and term modules only for a person's or an assistant's own label); a refusal, denied or
+  not_found, is the answer. A group session is read by the people in its log. Which path runs: in a 0.2 daemon, only those two.
+  Where the kernel is wired and the call carries a session token, the kernel's `authorize` for `session.read` on
+  `vyre://<space>/session/<id>` is asked too, and a deny refuses; `unknown_action` (the action is not registered in the Space
+  yet) does not decide, so the participant rule still does. Unknown ids are refused before any log exists.
+- **The ticket** stores the caller, the device key and the viewer; the upgrade must come from the same caller (and device, where
+  the router names one), once, within 15 seconds.
+- **Per viewer, on the server.** The viewer is part of the connection. `serve` draws every frame, replayed or live, WebSocket or
+  SSE, through `forViewer` before `conn.send`: sealed and hidden fields are placeholders, and a record the viewer is not cleared
+  for (`read_roles`) becomes a `hidden` frame that keeps its cursor and holds nothing. The client draws what arrives and
+  decides nothing. `thread.shell` command and output are redacted before they are logged or sent.
+- **Terminal.** `term.open {session}` resolves the session as the caller and takes the event's thread only from that record;
+  `cwd` must be omitted or the session's own folder; `term.attach` re-checks. A typed command is recorded with its typist
+  (`author`, `via`, `surface`). A terminal is a full login shell: `session` only chooses where it starts, and nothing keeps it
+  there. A sandbox is the runner's job.
+- **Retention.** The stream log keeps assistant text deltas and shell output for 24 hours (`stream.retainHours`). After that the
+  frame stays, with its cursor, empty and marked `expired`. A group chat's words (text with an author) stay: the log is that
+  chat's record. User messages, tool results and asks are not touched by this.
+- **Edit and retry** check that the send will be accepted before they rewind, record the author on the message, and allow
+  editing only one's own (the owner's own surface, with no verified peer, may edit any).
 
 ## Numbers (testbox, Node 22, loopback)
 

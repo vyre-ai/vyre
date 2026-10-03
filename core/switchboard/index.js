@@ -34,7 +34,7 @@ import { heardActs } from "../../lib/said/hear.js";
 import { threadStatus, LIVE_STATUSES } from "../../lib/thread-status.js";
 import { normalizeCaps } from "../../lib/caps-flags/index.js";
 import { load as loadSdk, install as installSdk, installed as sdkInstalled, autoInstallAllowed, abortInstalls } from "../sessions/sdk.js";
-import { Leases, ownSurface } from "./lease.js";
+import { Leases, ownSurface, sameKeyboard } from "./lease.js";
 import { Asks } from "./asks.js";
 import { editChanges, pushDir, pushChanges } from "./changes.js";
 import { register as registerClaim } from "./claim.js";
@@ -1659,7 +1659,7 @@ export class Switchboard {
     }
   }
 
-  async send(id, text, surface, { queue = true, wait = false, mode = "steer", uuid = undefined, kind = undefined, images = null, note = "" } = {}) {
+  async send(id, text, surface, { queue = true, wait = false, mode = "steer", uuid = undefined, kind = undefined, images = null, note = "", author = undefined } = {}) {
     // The same message again (a retry whose first answer was lost): already handed over or queued.
     if (uuid) {
       const was = /** @type {any} */ (this.db.prepare("SELECT thread FROM threads_sent WHERE uuid = ?").get(uuid))
@@ -1669,12 +1669,12 @@ export class Switchboard {
     if (!this.live.has(id)) {
       if (!this.record(id)) await this.adopt(id);
       const why = this.elsewhere(id);
-      if (why && queue) return this.queue(id, text, surface, undefined, { ...(uuid ? { uuid } : {}), kind, note });
+      if (why && queue) return this.queue(id, text, surface, undefined, { ...(uuid ? { uuid } : {}), kind, note, author });
       if (why) return { sent: false, open_elsewhere: true, note: `This session is open somewhere else: ${why}. Only one keyboard can type into it, so close it there or type there.` };
     }
     const rec = this.must(id);
     const held = wait && this.leases.holder(id);
-    if (held && held.surface !== surface) return this.queue(id, text, surface, held.surface, { ...(uuid ? { uuid } : {}), note });
+    if (held && held.surface !== surface) return this.queue(id, text, surface, held.surface, { ...(uuid ? { uuid } : {}), note, author });
     const lease = this.leases.typing(id, surface);
     if (!lease.ok) return { sent: false, holder: lease.holder, note: `${lease.holder} has the keyboard; threads.lease takes it` };
     if (lease.took) this.emit("lease.changed", { holder: surface, previous: lease.took.previous, ...(lease.took.took ? { took: lease.took.took } : {}) }, id, rec.project);
@@ -1689,14 +1689,14 @@ export class Switchboard {
     // While a turn runs: steer into it (the default, as Claude Code does), or queue for after it.
     const st = this.live.get(id);
     const busy = Boolean(st && st.turn) && ["working", "waiting"].includes(String(this.must(id).status));
-    if (busy && mode === "queue") return this.queue(id, text, surface, null, { owned: true, uuid, kind, images, note });
+    if (busy && mode === "queue") return this.queue(id, text, surface, null, { owned: true, uuid, kind, images, note, author });
     if (busy) {
       const w = this.write(id, text, { steer: true, ...(uuid ? { uuid } : {}), images, note });
-      this.emit("thread.sent", { text: cut(text, 2000), surface, uuid: w.uuid, via: "steer", queued_at: w.at, step: st.steps || 0 }, id, rec.project);
+      this.emit("thread.sent", { text: cut(text, 2000), surface, uuid: w.uuid, via: "steer", queued_at: w.at, step: st.steps || 0, ...(author ? { author } : {}) }, id, rec.project);
       return { sent: true, steered: true, thread: id, uuid: w.uuid, turn: w.turn };
     }
     const w = this.write(id, text, { ...(uuid ? { uuid } : {}), images, note });
-    this.emit("thread.sent", { text: cut(text, 2000), surface, uuid: w.uuid, ...(kind ? { kind } : {}), ...(images ? { images: images.length } : {}) }, id, rec.project);
+    this.emit("thread.sent", { text: cut(text, 2000), surface, uuid: w.uuid, ...(kind ? { kind } : {}), ...(images ? { images: images.length } : {}), ...(author ? { author } : {}) }, id, rec.project);
     return { sent: true, thread: id };
   }
 
@@ -1944,14 +1944,14 @@ export class Switchboard {
    * the surface holding the keyboard when that is why (a send with `wait`).
    * @param {string} id @param {string} text @param {string} surface @param {string} [holder]
    */
-  queue(id, text, surface, holder, { owned = false, uuid = crypto.randomUUID(), kind = undefined, request = undefined, images = /** @type {any} */ (null), note = "" } = {}) {
+  queue(id, text, surface, holder, { owned = false, uuid = crypto.randomUUID(), kind = undefined, request = undefined, images = /** @type {any} */ (null), note = "", author = undefined } = {}) {
     const rec = this.must(id);
     // A session open elsewhere takes queued words through its hooks, which carry text only.
     if (images && images.length && !owned) throw Object.assign(new Error("images cannot wait for a session open in a terminal; send them when it is free here"), { code: "bad_input" });
     const r = this.db.prepare("INSERT INTO threads_inbox (thread, text, surface, at, uuid, kind, images, request, note) VALUES (?,?,?,?,?,?,?,?,?)").run(id, String(text), surface, Date.now(), uuid, kind || null, imagesJson(images), request || null, note || null);
     const queued = Number(r.lastInsertRowid);
     const live = this.live.get(id);
-    this.emit("thread.queued", { queued, uuid, text: cut(text, 2000), surface, queued_at: Date.now(), step: (live && live.steps) || 0, ...(kind ? { kind } : {}), ...(request ? { request } : {}), ...(images && images.length ? { images: images.length } : {}) }, id, rec.project);
+    this.emit("thread.queued", { queued, uuid, text: cut(text, 2000), surface, queued_at: Date.now(), step: (live && live.steps) || 0, ...(kind ? { kind } : {}), ...(request ? { request } : {}), ...(images && images.length ? { images: images.length } : {}), ...(author ? { author } : {}) }, id, rec.project);
     const name = rec.name || id.slice(0, 8);
     // A session Vyre runs is never called a terminal (it is working, and the words go in after).
     if (owned) return { sent: false, queued: true, queued_id: queued, uuid, thread: id, name, busy: "working",
@@ -2258,6 +2258,28 @@ export class Switchboard {
     if (!ok) throw Object.assign(new Error(`${providerName(provider)} can't ${words} yet: nothing was changed`), { code: "unsupported", provider, capability: what });
   }
 
+  /** Who wrote this message, from the event that sent or queued it (null when it was not recorded). @param {string} id @param {string} uuid */
+  authorOf(id, uuid) {
+    const rows = /** @type {any[]} */ (this.db.prepare("SELECT payload FROM events WHERE thread = ? AND type IN ('thread.sent', 'thread.queued') AND json_extract(payload, '$.uuid') = ? ORDER BY id LIMIT 1").all(id, uuid));
+    if (!rows.length) return null;
+    try { const a = JSON.parse(String(rows[0].payload)).author; return typeof a === "string" && a ? a : null; } catch { return null; }
+  }
+
+  /**
+   * Would a send from this surface be accepted now? Throws, in plain words and before anything changes, when it would not: the
+   * keyboard is held by another surface, or the session is open somewhere else that has it. (A spend cap holds agents and
+   * modules only; edit and retry are a person's.)
+   * @param {string} id @param {string} surface
+   */
+  willAccept(id, surface) {
+    const held = this.leases.holder(id);
+    if (held && !sameKeyboard(held.surface, surface)) throw Object.assign(new Error(`${held.surface} has the keyboard; take it first (threads.lease). Nothing was changed.`), { code: "lease_held" });
+    if (!this.live.has(id)) {
+      const why = this.elsewhere(id);
+      if (why) throw Object.assign(new Error(`This session is open somewhere else: ${why}. Close it there first. Nothing was changed.`), { code: "open_elsewhere" });
+    }
+  }
+
   /**
    * Edit and retry a message: the conversation goes back to just before it (restore: conversation,
    * code or both, as threads.rewind) and the new words are sent as the next turn. One call, and
@@ -2267,16 +2289,23 @@ export class Switchboard {
    * @param {string|null} text the new words; null sends the old ones again (threads.retry)
    * @param {{ restore?: string, surface?: string, uuid?: string, images?: any }} [o]
    */
-  async editRetry(id, message, text, { restore = "conversation", surface = "deck", uuid = crypto.randomUUID(), images = null } = {}) {
+  async editRetry(id, message, text, { restore = "conversation", surface = "deck", uuid = crypto.randomUUID(), images = null, author = undefined, admin = false } = {}) {
     if (this.sentBefore(uuid)) return { retried: true, already: true, thread: id, uuid };
     this.needCap(id, "rewind", "go back to an earlier message");
     const line = message ? this.findLine(id, String(message)) : this.lastUserLine(id);
     if (!line) throw Object.assign(new Error("there is no message here to retry"), { code: "bad_input" });
+    // Only one's own words (C-5): the author is recorded on the message when it is sent; an admin may edit any. A message that
+    // names no author (sent before this was recorded) is left as it was.
+    const wrote = this.authorOf(id, String(line.uuid));
+    if (wrote && author && wrote !== author && !admin) throw Object.assign(new Error("that message is someone else's: you can edit and retry only your own"), { code: "denied" });
     const words = text == null ? this.lineText(line) : String(text);
     if (!words.trim()) throw Object.assign(new Error("the words to send are empty"), { code: "bad_input" });
+    // The send must be accepted BEFORE anything is rewound: a refused send after a rewind leaves the conversation (and, with
+    // restore code or both, the files) put back with the old message gone.
+    this.willAccept(id, surface);
     const r = await this.rewind(id, String(line.uuid), restore);
     if (r.rewound === false) throw Object.assign(new Error(r.note || "could not go back to that message"), { code: "bad_input" });
-    const sent = await this.send(id, words, surface, { uuid, images });
+    const sent = await this.send(id, words, surface, { uuid, images, ...(author ? { author } : {}) });
     return { retried: true, thread: id, message: String(line.uuid), uuid, text: words, restore, ...(r.files ? { files: r.files } : {}), sent: Boolean(sent && sent.sent), ...(sent && sent.sent ? {} : { note: sent && sent.note }) };
   }
 
@@ -2887,6 +2916,9 @@ export async function spendCheck(ctx, caller, provider) {
 const spendDown = { day: "" };
 
 
+/** The person a call is from, for the author a sent message records: the verified peer, else the owner's own surface. */
+export const authorOf = (/** @type {any} */ peer) => { const raw = peer && (peer.login || peer.stableId || peer.node); return raw ? `person:${String(raw).replace(/\s+/g, "-").slice(0, 120)}` : "person:owner"; };
+
 export const queuesFor = caller => {
   const c = String(caller || "");
   if (fromLink(c)) return true;
@@ -3067,6 +3099,8 @@ export default {
     const tool = (name, description, input, run, callers, extra = {}) => { const inner = scoped(name, run); return ctx.tool(name, { description, input, run: (i, m, ...r) => calls.run(m, () => inner(i, m, ...r)), callers, ...extra }); };
 
     const spendGate = (caller, provider) => spendCheck(ctx, caller, provider);
+    /** An admin: the owner's own surface (no verified peer) or the peer signed in as the box's owner. */
+    const isAdminCall = (/** @type {any} */ peer) => !peer || !(peer.login || peer.stableId || peer.node) || String(peer.login || "") === String(((ctx.config && ctx.config.network) || {}).owner || "\u0000");
 
     tool("threads.start", "Start a headless Claude Code session in a folder or a project's home, owned by vyred so it outlives every surface. The calling surface gets the keyboard. Returns the thread; its id is the Claude Code session id.",
       { type: "object", properties: { project: str, cwd: str, prompt: str, name: str, model: str, surface: str, append: str,
@@ -3199,7 +3233,7 @@ export default {
         model: { type: "string", description: "Switch the thread to this model first (as threads.model): the Capsule's Cmd-Return, deeper. A person's surface only." },
         effort: { type: "string", enum: EFFORTS, description: "Set this effort first (as threads.effort). A person's surface only." } } },
       // Only a person's words are queued for a session open in a terminal: a model's are refused.
-      async (i, { caller, idempotencyKey, firstParty }) => {
+      async (i, { caller, idempotencyKey, firstParty, peer }) => {
         guard(caller, "type into sessions");
         { const rec = sb.record(i.thread); await spendGate(caller, rec && rec.provider); }
         // Only the person's own callers reach a Mac; agents, MCP, guests and modules get the box's answer.
@@ -3225,7 +3259,7 @@ export default {
         const heard = personTurn(caller) && sb.knows(i.thread) && !sb.sentBefore(uuid) ? await sb.ingress(i.thread, String(i.text), surfaceOf(i, caller), uuid, Array.isArray(i.mentions) ? i.mentions : [], Array.isArray(i.pasted) ? i.pasted.filter(x => typeof x === "string").slice(0, 20) : []) : [];
         const files = heard.length ? await sb.mediaFor(i.thread, heard) : [];
         const note = [heard.length ? tagNote(heard) : "", ...files].filter(Boolean).join("\n");
-        const opts = { queue: queuesFor(caller), wait: fromLink(caller), mode: i.mode === "queue" ? "queue" : "steer", images: imagesOf(i.images), uuid, ...(note ? { note } : {}) };
+        const opts = { queue: queuesFor(caller), wait: fromLink(caller), mode: i.mode === "queue" ? "queue" : "steer", images: imagesOf(i.images), uuid, ...(note ? { note } : {}), ...(personTurn(caller) ? { author: authorOf(peer) } : {}) };
         const once = over && !sb.sentBefore(uuid) ? await sb.sendOnce(i.thread, i.text, surfaceOf(i, caller), over, opts) : null;
         return once || sb.send(i.thread, i.text, surfaceOf(i, caller), opts);
       });
@@ -3405,18 +3439,18 @@ export default {
       restore: { type: "string", enum: ["conversation", "code", "both"], description: "As threads.rewind: the conversation (the default), the files its tools changed since (code), or both." } };
     tool("threads.edit-retry", "Edit and retry a message, one call: the conversation goes back to just before that message (and the files too with restore code or both), then the new text is sent as the next turn. Idempotent: the same Idempotency-Key neither rewinds nor sends twice. Refused with unsupported when the provider cannot go back; the first message of a session cannot be rewound past. A person's surface only.",
       { type: "object", required: ["thread", "text"], properties: { ...EDIT_SHAPE, text: str } },
-      async (i, { caller, idempotencyKey }) => {
+      async (i, { caller, idempotencyKey, peer }) => {
         guard(caller, "edit and retry messages");
         if (!queuesFor(caller)) throw Object.assign(new Error("only a person's surface can edit and retry a message"), { code: "denied" });
-        return sb.editRetry(i.thread, i.message || null, String(i.text), { restore: i.restore || "conversation", surface: surfaceOf(i, caller), ...(idempotencyKey ? { uuid: keyUuid(String(caller || ""), String(idempotencyKey)) } : {}) });
+        return sb.editRetry(i.thread, i.message || null, String(i.text), { restore: i.restore || "conversation", surface: surfaceOf(i, caller), author: authorOf(peer), admin: isAdminCall(peer), ...(idempotencyKey ? { uuid: keyUuid(String(caller || ""), String(idempotencyKey)) } : {}) });
       });
 
     tool("threads.retry", "Retry a message with the same words: as threads.edit-retry with the message's own text. Idempotent with an Idempotency-Key. A person's surface only.",
       { type: "object", required: ["thread"], properties: EDIT_SHAPE },
-      async (i, { caller, idempotencyKey }) => {
+      async (i, { caller, idempotencyKey, peer }) => {
         guard(caller, "retry messages");
         if (!queuesFor(caller)) throw Object.assign(new Error("only a person's surface can retry a message"), { code: "denied" });
-        return sb.editRetry(i.thread, i.message || null, null, { restore: i.restore || "conversation", surface: surfaceOf(i, caller), ...(idempotencyKey ? { uuid: keyUuid(String(caller || ""), String(idempotencyKey)) } : {}) });
+        return sb.editRetry(i.thread, i.message || null, null, { restore: i.restore || "conversation", surface: surfaceOf(i, caller), author: authorOf(peer), admin: isAdminCall(peer), ...(idempotencyKey ? { uuid: keyUuid(String(caller || ""), String(idempotencyKey)) } : {}) });
       });
 
     tool("threads.branch", "Branch from any point: a new thread with the conversation up to (not including) a message or a turn, named \"<name> (branch)\", in the same folder, that the original never sees; taint flags carry over as a fork's do. at: a message uuid or a turn id (thread.turn's turn); none branches from the live end. Refused with unsupported when the provider cannot fork or go back. A person's surface only.",
