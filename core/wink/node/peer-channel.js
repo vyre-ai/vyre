@@ -12,6 +12,9 @@
 //   magic   4 bytes  "WKH1"
 //   length  4 bytes  unsigned big endian, 1..4096
 //   header  length bytes of UTF-8 JSON: {"v":1,"nodeKey","stableId","tags","remoteAddr"}
+//           or, for a peer that arrived over the relay (SPIKE-wink.md verdict 5), {"v":1,"via":"relay",
+//           "deviceId","space"}: the identity is the paired device's Noise key, never a node key, and
+//           the relay never supplies it: the box's own bridge writes it from the authenticated channel.
 //   stream  the peer's bytes verbatim, both directions
 // A missing magic, a bad length, a header that is not exactly that JSON, a node key, id, tag or
 // address of the wrong shape, a loopback remote address, or no header within two seconds: the
@@ -35,6 +38,24 @@ export const HEADER_TIMEOUT_MS = 2000;
 const NODEKEY = /^nodekey:[0-9a-f]{64}$/;
 const STABLE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const TAG = /^tag:[a-z0-9][a-z0-9-]{0,62}$/;
+const SPACE_ID = /^[A-Za-z0-9_-]{1,64}$/;
+
+/** Who a relay peer is: built by the bridge from the authenticated channel, never from the stream. */
+export function relayIdentity(/** @type {string} */ deviceId, /** @type {string} */ space) {
+  if (!STABLE_ID.test(deviceId) || !SPACE_ID.test(space)) throw new Error("bad relay identity");
+  return /** @type {const} */ ({ via: "relay", deviceId, space });
+}
+
+/** Encode the relay form of the header (a relay hand-off process writes it, the same listener reads it). @param {{ deviceId: string, space: string }} id */
+export function encodeRelayHeader(id) {
+  const body = Buffer.from(JSON.stringify({ v: 1, via: "relay", deviceId: id.deviceId, space: id.space }), "utf8");
+  const head = Buffer.alloc(8);
+  MAGIC.copy(head, 0);
+  head.writeUInt32BE(body.length, 4);
+  return Buffer.concat([head, body]);
+}
+
+/** @typedef {{ via: "direct", nodeKey: string, stableId: string, tags: string[], remoteAddr: string } | { via: "relay", deviceId: string, space: string }} PeerId */
 
 /** True for an address inside the tailnet ranges (100.64.0.0/10, fd7a:115c:a1e0::/48). */
 function tailnetIp(ip) {
@@ -71,7 +92,7 @@ export function encodeHeader(id) {
 /**
  * Parse the 8-byte prefix and the body. Returns { need } while bytes are missing.
  * @param {Buffer} buf
- * @returns {{ need: number } | { error: string } | { id: { nodeKey: string, stableId: string, tags: string[], remoteAddr: string }, used: number }}
+ * @returns {{ need: number } | { error: string } | { id: PeerId, used: number }}
  */
 export function decodeHeader(buf) {
   if (buf.length >= 4 && !buf.subarray(0, 4).equals(MAGIC)) return { error: "bad magic" };
@@ -82,9 +103,16 @@ export function decodeHeader(buf) {
   let j;
   try { j = JSON.parse(buf.subarray(8, 8 + len).toString("utf8")); } catch { return { error: "header is not JSON" }; }
   if (!j || typeof j !== "object" || Array.isArray(j)) return { error: "header is not an object" };
+  if (j.v !== 1) return { error: "unsupported version" };
+  if (j.via !== undefined) {
+    if (j.via !== "relay") return { error: "unknown path" };
+    for (const k of Object.keys(j)) if (!["v", "via", "deviceId", "space"].includes(k)) return { error: `unknown header field ${k}` };
+    if (typeof j.deviceId !== "string" || !STABLE_ID.test(j.deviceId)) return { error: "bad device id" };
+    if (typeof j.space !== "string" || !SPACE_ID.test(j.space)) return { error: "bad space" };
+    return { id: { via: "relay", deviceId: j.deviceId, space: j.space }, used: 8 + len };
+  }
   const allowed = new Set(["v", "nodeKey", "stableId", "tags", "remoteAddr"]);
   for (const k of Object.keys(j)) if (!allowed.has(k)) return { error: `unknown header field ${k}` };
-  if (j.v !== 1) return { error: "unsupported version" };
   if (typeof j.nodeKey !== "string" || !NODEKEY.test(j.nodeKey)) return { error: "bad node key" };
   if (typeof j.stableId !== "string" || !STABLE_ID.test(j.stableId)) return { error: "bad stable id" };
   if (!Array.isArray(j.tags) || j.tags.length > 16 || j.tags.some(t => typeof t !== "string" || !TAG.test(t))) return { error: "bad tags" };
@@ -92,7 +120,7 @@ export function decodeHeader(buf) {
   const a = splitAddr(j.remoteAddr);
   if (!a) return { error: "bad remote address" };
   if (!tailnetIp(a.ip)) return { error: "remote address is not a tailnet address" };
-  return { id: { nodeKey: j.nodeKey, stableId: j.stableId, tags: j.tags, remoteAddr: j.remoteAddr }, used: 8 + len };
+  return { id: { via: "direct", nodeKey: j.nodeKey, stableId: j.stableId, tags: j.tags, remoteAddr: j.remoteAddr }, used: 8 + len };
 }
 
 /** @param {string} dir @param {string} sock @param {number | null} uid */
@@ -115,7 +143,7 @@ function pathProblem(dir, sock, uid) {
 /**
  * Listen for forwarded peers.
  * @param {{ path: string,
- *   onPeer: (conn: net.Socket, id: { nodeKey: string, stableId: string, tags: string[], remoteAddr: string }) => void,
+ *   onPeer: (conn: net.Socket, id: PeerId) => void,
  *   onRefuse?: (why: string) => void, uid?: number | null, headerTimeoutMs?: number }} opts
  * @returns {Promise<{ path: string, close: () => Promise<void>, stats: { accepted: number, refused: number } }>}
  */
