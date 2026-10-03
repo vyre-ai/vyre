@@ -1094,7 +1094,7 @@ export class Vault {
    * ones core/onboard already makes and sessions already chooses between (LAUNCHER_ITEMS); this reads whichever the provider has. @param {string} provider @returns {Promise<string | null>}
    */
   async providerToken(provider) {
-    const spec = LAUNCHER_ITEMS[String(provider)]; if (!spec) return null;
+    const spec = Object.hasOwn(LAUNCHER_ITEMS, String(provider)) ? LAUNCHER_ITEMS[String(provider)] : null; if (!spec) return null;
     await this.key();
     const row = this.row(spec.item); if (!row) return null;
     const f = await this.fields(row);

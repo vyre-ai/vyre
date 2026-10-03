@@ -9067,6 +9067,7 @@ The kernel's lease module forwards one request from a lent computer's program: {
   - `method` one of "GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", required
   - `session` string, required
   - `url` string, required
+  - `allow_headers` list of string
   - `body` string or object or list
   - `headers` object
   - `query` object
@@ -9081,6 +9082,7 @@ The kernel's lease module forwards one request that moves a file for a lent comp
   - `method` one of "GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", required
   - `session` string, required
   - `url` string, required
+  - `allow_headers` list of string
   - `drive` object
   - `headers` object
   - `limits` object

@@ -107,10 +107,18 @@ test("K-3: the kernel key is derived in the sealing process and never written to
 });
 
 test("K-3: where the sealing process cannot run safely the kernel refuses to start, unless a developer opts into a file key", { timeout: 60_000 }, async t => {
-  const saved = process.env.VYRE_SEAL_DEV;
+  const saved = { dev: process.env.VYRE_SEAL_DEV, profile: process.env.VYRE_SEAL_PROFILE, uids: process.env.VYRE_AGENT_UIDS };
   delete process.env.VYRE_SEAL_DEV;
-  t.after(() => { process.env.VYRE_SEAL_DEV = saved; });
+  t.after(() => { for (const [k, v] of [["VYRE_SEAL_DEV", saved.dev], ["VYRE_SEAL_PROFILE", saved.profile], ["VYRE_AGENT_UIDS", saved.uids]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+  // A server whose sealing process would share an agent's uid does not start (a desktop does: its master is a file inside the Vyre home, no development switch).
+  process.env.VYRE_SEAL_PROFILE = "server"; process.env.VYRE_AGENT_UIDS = String(process.getuid?.() ?? 0);
   await assert.rejects(() => start({ root: tempHome(t), log: () => {}, kernel: true }), { code: "key_custody" });
+  delete process.env.VYRE_SEAL_PROFILE; delete process.env.VYRE_AGENT_UIDS;
+  for (const profile of [undefined, "server"]) {
+    if (profile) process.env.VYRE_SEAL_PROFILE = profile; else delete process.env.VYRE_SEAL_PROFILE;
+    const ok = await start({ root: tempHome(t), log: () => {}, kernel: true }); t.after(() => ok.stop()); assert.ok(ok.kernel.fresh, `the kernel boots on the ${profile ?? "default (desktop)"} profile with no development variable`);
+  }
+  delete process.env.VYRE_SEAL_PROFILE;
   process.env.VYRE_KERNEL_FILE_KEY = "1";
   t.after(() => { delete process.env.VYRE_KERNEL_FILE_KEY; });
   const logs = [];
