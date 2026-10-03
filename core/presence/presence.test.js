@@ -687,3 +687,150 @@ test("presence: removing a key ends the sessions it opened, and only the holder 
   assert.equal(late.removed, undefined);
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM presence_removed").get().n, 0);
 });
+
+// ---- an owner-paired device's person session (ADR 0032 section 2d) ------------------------------
+
+async function pairedRig(t) {
+  const home = tempHome(t);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  let clock = 1_800_000_000_000;
+  const { PersonSessions, pairedStart, pairedRotate, signed } = await import("./person.js");
+  const people = new PersonSessions({ db, now: () => clock });
+  const kp = () => { const k = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }); return { priv: k.privateKey, jwk: k.publicKey.export({ format: "jwk" }) }; };
+  const sign = (k, text) => crypto.sign("sha256", Buffer.from(text), { key: k.priv, dsaEncoding: "ieee-p1363" }).toString("base64url");
+  let seq = 0;
+  const start = (device = "dev1") => ({ device, t: String(clock), n: `nonce${String(++seq).padStart(8, "0")}` });
+  const startWith = (k, device = "dev1") => { const o = start(device); return people.startPaired({ ...o, sig: sign(k, pairedStart(o)) }); };
+  const bearer = (s, k, method = "GET", p = "/") => {
+    const n = `req${String(++seq).padStart(10, "0")}`, tt = String(clock);
+    return { authorization: `Vyre ${s.token}`, "x-vyre-proof": `t=${tt} n=${n} sig=${sign(k, signed({ method, path: p, raw: "", t: tt, n }))}` };
+  };
+  return { db, people, kp, sign, startWith, start, bearer, tick: ms => { clock += ms; }, now: () => clock, pairedRotate, pairedStart };
+}
+const DAYMS = 86_400_000;
+
+test("paired: the owner's grant opens a session with no prompt, bound to the confirmed key, and it slides with no 90-day cap", async t => {
+  const r = await pairedRig(t), k = r.kp();
+  r.people.grant({ device: "dev1", keyId: "owner-key", deviceKey: k.jwk });
+  const s = /** @type {any} */ (r.startWith(k));
+  assert.ok(s.token, "the first start from the device with its key makes the session");
+  const first = /** @type {any} */ (r.people.check({ headers: r.bearer(s, k), node: "dev1" }));
+  assert.equal(first.ok, true, `memory reads with no further prompt: ${first && first.why}`);
+  for (let i = 0; i < 14; i++) {
+    r.tick(29 * DAYMS);
+    const c = /** @type {any} */ (r.people.check({ headers: r.bearer(s, k), node: "dev1" }));
+    assert.equal(c.ok, true, `use ${i}`);
+    assert.equal(c.paired, true);
+  }
+  assert.equal(r.people.list().find(x => x.id === s.id).paired, true);
+});
+
+test("paired: 31 days idle is refused with a sign-in hint; revoke and device removal refuse at once", async t => {
+  const r = await pairedRig(t), k = r.kp();
+  r.people.grant({ device: "dev1", keyId: "owner-key", deviceKey: k.jwk });
+  const s = /** @type {any} */ (r.startWith(k));
+  r.tick(31 * DAYMS);
+  const late = /** @type {any} */ (r.people.check({ headers: r.bearer(s, k), node: "dev1" }));
+  assert.equal(late.ok, false);
+  assert.match(late.why, /sign in again/);
+
+  r.people.grant({ device: "dev1", keyId: "owner-key", deviceKey: k.jwk });
+  const s2 = /** @type {any} */ (r.startWith(k));
+  assert.equal(r.people.revoke(s2.id), true);
+  assert.equal(/** @type {any} */ (r.people.check({ headers: r.bearer(s2, k), node: "dev1" })).ok, false, "revoked: refused at once");
+
+  r.people.grant({ device: "dev1", keyId: "owner-key", deviceKey: k.jwk });
+  const s3 = /** @type {any} */ (r.startWith(k));
+  assert.ok(r.people.endDevice("dev1") >= 1);
+  const gone = /** @type {any} */ (r.people.check({ headers: r.bearer(s3, k), node: "dev1" }));
+  assert.deepEqual([gone.ok, gone.removed], [false, true], "device removed: the holder is told");
+});
+
+test("paired: a different key, a replayed start, another device's channel and three wrong tries all get one refusal", async t => {
+  const r = await pairedRig(t), k = r.kp(), other = r.kp();
+  r.people.grant({ device: "dev1", keyId: "owner-key", deviceKey: k.jwk });
+  assert.deepEqual(r.startWith(k, "dev2"), { refused: true }, "another device's channel has no grant");
+  assert.equal(/** @type {any} */ (r.startWith(other, "dev1")).refused, true, "a different key from the right channel");
+  const o = r.start("dev1");
+  const sig = r.sign(k, r.pairedStart(o));
+  assert.ok(/** @type {any} */ (r.people.startPaired({ ...o, sig })).token, "the grant survived one wrong try; the right key works once");
+  assert.deepEqual(r.people.startPaired({ ...o, sig }), { refused: true }, "the same signed start again is used");
+  r.people.grant({ device: "dev3", keyId: "owner-key", deviceKey: k.jwk });
+  for (let i = 0; i < 3; i++) assert.equal(/** @type {any} */ (r.startWith(other, "dev3")).refused, true);
+  assert.equal(r.db.prepare("SELECT COUNT(*) AS n FROM presence_pair_grants WHERE device = 'dev3'").get().n, 0, "three wrong tries delete the row");
+  assert.deepEqual(r.startWith(k, "dev3"), { refused: true }, "even the right key finds no grant now");
+  r.people.grant({ device: "dev4", keyId: "owner-key", deviceKey: k.jwk });
+  r.tick(11 * 60_000);
+  assert.deepEqual(r.startWith(k, "dev4"), { refused: true });
+  assert.equal(r.db.prepare("SELECT COUNT(*) AS n FROM presence_pair_grants WHERE device = 'dev4'").get().n, 0, "an unused grant is deleted at expiry");
+  r.people.grant({ device: "dev5", keyId: "owner-key", deviceKey: k.jwk });
+  const old = { device: "dev5", t: String(r.now() - 5 * 60_000), n: "oldnonce0001" };
+  assert.equal(/** @type {any} */ (r.people.startPaired({ ...old, sig: r.sign(k, r.pairedStart(old)) })).refused, true, "a stale signature");
+});
+
+test("paired: a new grant replaces what the device held, and a session whose confirming key was removed is gone", async t => {
+  const r = await pairedRig(t), k = r.kp(), k2 = r.kp();
+  r.db.prepare("INSERT INTO presence_keys (id, kind, name, public_key, alg, sign_count, created) VALUES ('owner-key','passkey','alex-mac','x',-7,0,1)").run();
+  const p = new Presence({ db: r.db, platform: "linux", touchid: null, webauthn: null, who: async () => [], now: r.now });
+  r.people.grant({ device: "dev1", keyId: "owner-key", deviceKey: k.jwk });
+  const s = /** @type {any} */ (r.startWith(k));
+  r.people.grant({ device: "dev1", keyId: "owner-key", deviceKey: k2.jwk });
+  assert.equal(/** @type {any} */ (r.people.check({ headers: r.bearer(s, k), node: "dev1" })).ok, false, "the old session ended when the grant was replaced");
+  const s2 = /** @type {any} */ (r.startWith(k2));
+  assert.equal(/** @type {any} */ (r.people.check({ headers: r.bearer(s2, k2), node: "dev1" })).ok, true);
+  assert.equal(p.remove("owner-key"), true);
+  assert.equal(/** @type {any} */ (r.people.check({ headers: r.bearer(s2, k2), node: "dev1" })).ok, false, "the confirming key left the identity list");
+});
+
+test("paired: the secret is replaced by a rotation the device's key signs, and the old one stops at once", async t => {
+  const r = await pairedRig(t), k = r.kp(), other = r.kp();
+  r.people.grant({ device: "dev1", keyId: "owner-key", deviceKey: k.jwk });
+  const s = /** @type {any} */ (r.startWith(k));
+  r.tick(29 * DAYMS);
+  assert.equal(/** @type {any} */ (r.people.check({ headers: r.bearer(s, k), node: "dev1" })).rotateDue, false);
+  r.tick(2 * DAYMS);
+  r.people.check({ headers: r.bearer(s, k), node: "dev1" });
+  const c = /** @type {any} */ (r.people.check({ headers: r.bearer(s, k), node: "dev1" }));
+  assert.equal(c.rotateDue, true);
+  const o = { id: s.id, t: String(r.now()), n: "rotate000001" };
+  assert.equal(r.people.rotate({ ...o, sig: r.sign(other, r.pairedRotate(o)) }), null, "not signed by the device's key");
+  const fresh = /** @type {any} */ (r.people.rotate({ ...o, sig: r.sign(k, r.pairedRotate(o)) }));
+  assert.ok(fresh.token && fresh.token !== s.token);
+  assert.equal(/** @type {any} */ (r.people.check({ headers: r.bearer(s, k), node: "dev1" })).ok, false, "the old secret is dead");
+  assert.equal(/** @type {any} */ (r.people.check({ headers: r.bearer(fresh, k), node: "dev1" })).ok, true);
+});
+
+test("paired: a grant is made only through the tool, for the wink module, from a record the owner confirmed", async t => {
+  const { default: mod } = await import("./module.js");
+  const home = tempHome(t);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const tools = new Map(), events = [];
+  let rec = null;
+  const k = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "jwk" });
+  const ctx = /** @type {any} */ ({ store: { db }, config: {}, log() {}, events: { emit: (e, x) => events.push([e, x]) }, deps: {}, tool: (n, d) => tools.set(n, d),
+    call: async n => n === "wink.device.record" ? { data: rec } : { error: { message: "no" } } });
+  await mod.start(ctx);
+  const grant = (device, caller, meta = {}) => tools.get("presence.person.pairGrant").run({ device }, { caller, ...meta });
+  const good = { id: "dev1", kind: "phone", confirmed: true, owner: "id1", confirmedBy: "id1", hardware: true, key: k, confirmKeyId: "owner-key" };
+  rec = null; await assert.rejects(grant("dev1", "module:wink"), /not confirmed/);
+  rec = { ...good, confirmedBy: "someone-else" }; await assert.rejects(grant("dev1", "module:wink"), /not confirmed by its owner/);
+  rec = { ...good, confirmed: false }; await assert.rejects(grant("dev1", "module:wink"), /not confirmed/);
+  rec = { ...good, kind: "web" }; await assert.rejects(grant("dev1", "module:wink"), /phone or a computer/);
+  rec = { ...good, kind: "setup" }; await assert.rejects(grant("dev1", "module:wink"), /phone or a computer/);
+  rec = { ...good, hardware: false }; await assert.rejects(grant("dev1", "module:wink"), /secure hardware/);
+  rec = good;
+  await assert.rejects(grant("dev1", "module:relay"), /only the pairing/);
+  await assert.rejects(grant("dev1", "cli"), /only the pairing/);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM presence_pair_grants").get().n, 0, "no refusal wrote anything");
+  rec = { ...good, hardware: false, softwareAccepted: true };
+  assert.equal((await grant("dev1", "module:wink")).granted, true, "a software key the owner accepted at pairing");
+  rec = { ...good, id: "dev2" };
+  assert.equal((await grant("dev2", "module:wink", { presence: { keyId: "verified-key" } })).granted, true);
+  assert.equal(db.prepare("SELECT key_id FROM presence_pair_grants WHERE device = 'dev2'").get().key_id, "verified-key", "the key id is the one the presence layer verified in that call");
+  await assert.rejects(tools.get("presence.person.endPaired").run({ device: "dev1" }, { caller: "module:relay" }), /only the pairing/);
+  assert.equal((await tools.get("presence.person.endPaired").run({}, { caller: "module:wink" })).ended, 2);
+  // The device side: only a device channel, one refusal whatever the reason.
+  await assert.rejects(tools.get("presence.person.startPaired").run({ t: "1", n: "nonce0000001", sig: "x" }, { caller: "cli", peer: { kind: "tailnet" } }), /cannot sign in that way/);
+});

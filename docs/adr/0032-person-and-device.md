@@ -95,6 +95,41 @@ key, and proves HUMAN_ONLY with the same 30-minute presence session as the Mac's
 with a Secure Enclave key (core/link/se) made at `vyre link signin` and enrolled with that
 sign-in: link.call signs a human-only tool after Touch ID, for the person's callers only.
 
+### 2d. A device its owner paired opens its person session at pairing
+
+The user's rule is no nagging: Touch ID is for pairing, vault secrets and outbound sends, so a
+paired device must not need a second sign-in before it can read its owner's memory. There is one
+mechanism, the person session, and the pairing opens it.
+
+- When the owner confirms the pairing of their own phone or computer (the three words, with a
+  presence proof), the pairing module asks the presence module for one grant
+  (`presence.person.pairGrant`, wink only). The tool trusts none of its arguments: it reads the
+  pair record, and writes the grant only if the record says the owner's identity confirmed it,
+  the kind is phone or computer, and the key is in secure hardware (or the owner accepted a
+  software key at pairing). The confirming key id is the one the presence layer verified in that
+  call. A web or setup device, a device paired to a space by someone other than its owner and an
+  unconfirmed redeemer never get a grant. A device with a live grant or session is replaced, never
+  stacked.
+- The grant holds the public key the pairing confirmed and lives 10 minutes. The device's first
+  `presence.person.startPaired`, over its own channel, signs `paired-start`, its id, the time and
+  a nonce with that key; the grant is consumed in one transaction and becomes a session bound to
+  that key. A different key, a second use, another device's channel, a stale or expired grant all
+  get the same one refusal. Three wrong tries delete the grant.
+- The session slides: 30 days from last use, and it has **no maximum life**. That is safe only
+  because it is bound to the device's key and has these ways to end: `presence.person.revoke`
+  (at once), removal of the device, removal of its key from the identity list, removal of the
+  presence key that confirmed it, a recovery reset and sign-out everywhere (wink calls
+  `presence.person.endPaired`), and 30 days unused ("the session has lapsed; sign in again").
+- Its secret is replaced at least every 30 days by a rotation the device's key signs
+  (`presence.person.rotate`); the old secret stops at once. Last use is written at most hourly and
+  shown in the sessions list.
+- It unlocks reads and ordinary acts. Everything that needs presence (vault secrets, outbound
+  sends and payments, grants) still asks. A device fact alone never means the person: a script on
+  the phone is the device too.
+- `device:<id>` proves only "a device the relay accepted" until PH-1 (the relay bridges untrusted
+  web and setup devices under the same label); the grant row and the key proof carry the trust
+  here, and the caller check is a second check.
+
 ### 3. On the box, a model cannot reach the person's socket
 
 Vyre-owned sessions (ADR 0030) run their `claude` child as a second uid, `vyre-agent`, which
