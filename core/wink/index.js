@@ -21,7 +21,7 @@ import os from "node:os";
 import path from "node:path";
 import { createWinkCode } from "./code.js";
 import { createGrants, MIGRATIONS as GRANT_MIGRATIONS, spaceIdOf, timeId, base32 } from "./grants.js";
-import { card, removal, removed } from "./cards.js";
+import { card, removal, removed, words } from "./cards.js";
 import { createPairing, MIGRATIONS as DEVICE_MIGRATIONS, PEER_MIGRATIONS, FLOW_KIND, ADMIN_ROLES, ownDirectory, kernelDirectory, kernelHasRoles } from "./pairing.js";
 import { createStorageDevices, registerStorageTools, MIGRATIONS as STORAGE_MIGRATIONS } from "./storage/index.js";
 import { storageGrants } from "./storage/grants.js";
@@ -125,12 +125,21 @@ export function createWink(inject = {}) {
     /** The code on screen, only ever returned to the person who opened it. @type {{ code: string, expires: number } | null} */
     let shown = null;
     const busName = (/** @type {string} */ n) => (n.startsWith("wink.code.") ? `wink.code-${n.slice("wink.code.".length)}` : n);
+    /** What the relay said when it refused a code, for the words on the screen. @type {any} */
+    let allocFail = null;
+    /** Says what failed: the relay is out of date (426), the relay refused or did not answer, or it could not be reached. @param {any} err */
+    const relayWords = err => {
+      const m = String((err && (err.message || err.code)) || "");
+      if (/426|out of date|upgrade/i.test(m)) return words("relayOld");
+      if (/refus|did not confirm|already holds/i.test(m)) return `The relay would not take the code (${m.replace(/[.\s]+$/, "").slice(0, 160)}). Nothing was lost; try again in a minute.`;
+      return words("offline");
+    };
     const ensureCode = async () => {
       if (code) return code;
       const route = await ensureRoute();
       code = createWinkCode({
         route, twoSided: true, level: 2,
-        allocate: async () => { const r = /** @type {any} */ (await ctx.call("relay.code.alloc", {})); return r && r.data ? r.data : null; },
+        allocate: async () => { const r = /** @type {any} */ (await ctx.call("relay.code.alloc", {})); allocFail = r && r.error ? r.error : null; return r && r.data ? r.data : null; },
         release: () => { void ctx.call("relay.code.release", {}); },
         emit: (name, data) => {
           if (name === "wink.code.opened" || name === "wink.code.replaced") { shown = { code: data.code, expires: data.expires }; const { code: _c, rv: _r, ...rest } = data; ctx.events.emit(busName(name), { offer: codeOffer, ...rest }); return; }
@@ -159,7 +168,7 @@ export function createWink(inject = {}) {
       c.cancel();
       codeOffer = newOffer(flow, "code", {});
       const made = await c.open();
-      if (!made) { writeOffer(codeOffer, "closed", {}); throw fail("unavailable", "Can't connect. Check your internet connection. Nothing was lost."); }
+      if (!made) { writeOffer(codeOffer, "closed", {}); throw fail("unavailable", allocFail ? relayWords(allocFail) : words("relayNoCode")); }
       shown = { code: made.code, expires: made.expires };
       writeOffer(codeOffer, "offered", {});
       ctx.events.emit("wink.offered", { offer: codeOffer, flow, via: "code", expires: made.expires });
@@ -175,7 +184,7 @@ export function createWink(inject = {}) {
       // Both ends hold the same key: the ticket's seed is derived from it, so the relay never sees it and nothing else is carried.
       const seed = Buffer.from(seedFromKey(r.key)).toString("base64url");
       const t = /** @type {any} */ (await ctx.call("relay.ticket.mint", { seed }));
-      if (!t || t.error) { writeOffer(o.id, "closed", { why: "relay" }); throw fail("unavailable", "Can't connect. Check your internet connection. Nothing was lost."); }
+      if (!t || t.error) { writeOffer(o.id, "closed", { why: "relay" }); throw fail("unavailable", relayWords(t && t.error)); }
       writeOffer(o.id, "joining", { pick: null });
       ctx.events.emit("wink.confirmed", { offer: o.id });
       return { ok: true };
@@ -366,7 +375,7 @@ export function createWink(inject = {}) {
         const id = newOffer("W5", "ring", { role, projects, expires: offer.exp }, days * 86_400_000);
         offer.id = id;
         const t = /** @type {any} */ (await ctx.call("relay.ticket.mint", { offer }));
-        if (!t || !t.data) { writeOffer(id, "closed", { why: "relay" }); throw fail("unavailable", "Can't connect. Check your internet connection. Nothing was lost."); }
+        if (!t || !t.data) { writeOffer(id, "closed", { why: "relay" }); throw fail("unavailable", relayWords(t && t.error)); }
         ctx.events.emit("wink.offered", { offer: id, flow: "W5", via: "ring", role, expires: offer.exp });
         return { offer: id, ticket: t.data.ticket, expiresAt: t.data.expiresAt };
       },
@@ -491,12 +500,15 @@ export function createWink(inject = {}) {
         if (input.device) {
           const d = pairing.devices.get(String(input.device));
           if (!d || d.removed || d.identity !== await owner1()) throw fail("not_found", "no such device");
+          // A server or storage device is told to let go of its owner over the channel the app paired it on, so it can be paired again. The owner's
+          // presence was given for this remove. One that cannot be reached keeps a pending release, applied when it next answers or is paired again.
+          const release = d.kind === "server" || d.kind === "storage" ? await pairing.releaseServer(d.id) : undefined;
           pairing.devices.remove(d.id);
           // Its relay connections close at once through relay.devices.drop (a module's door to the relay's own removal); `closed` says what happened.
           let closed = false;
           if (d.kind !== "server" && d.kind !== "storage") { const rr = /** @type {any} */ (await ctx.call("relay.devices.drop", { id: d.id })); closed = !rr.error && Boolean(rr.data && rr.data.closed); }
           ctx.events.emit("wink.removed", { device: d.id });
-          return { removed: d.id, closed, prompt: removal({ what: "device", name: d.name }).prompt, done: removed({ what: "device", name: d.name }) };
+          return { removed: d.id, closed, ...(release ? { release } : {}), prompt: removal({ what: "device", name: d.name }).prompt, done: removed({ what: "device", name: d.name, release }) };
         }
         if (!input.grant) throw fail("bad_input", "say which grant or which device");
         const g = await grants();
@@ -606,6 +618,7 @@ export function createWink(inject = {}) {
         for (const off of offStorage) { try { off(); } catch {} }
         for (const off of [offCode, offPaired, offRemoved, offInvite]) { try { off(); } catch {} }
         try { code?.cancel(); } catch {}
+        try { pairing.stop(); } catch {}
       },
     };
   },

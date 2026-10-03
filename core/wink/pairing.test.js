@@ -105,7 +105,7 @@ test("a phone pairs only to the identity: any space target is refused", async ()
   const r = await w.call("wink.phone.scan", { payload: qr });
   assert.equal(r.ack, "WINK-AB12-CD34", "the phone shows a code for the person to type on the computer");
   assert.equal(w.typed[0].relay, "ws://relay.test", "the relay comes from the QR");
-  assert.deepEqual(r.target, { kind: "identity", id: ME, label: "alex" }, "the answer names who it is");
+  assert.deepEqual(r.target, { kind: "identity", label: "alex" }, "the answer names the identity it joins, not an id of the phone's own");
   const open = await w.call("wink.phone.open", {});
   assert.equal(open.offer, "wo_W1");
   assert.equal(parseQr(open.qr)?.code, "WINK-ZZZZ-ZZZZ");
@@ -379,9 +379,7 @@ test("a server that already has an owner says so plainly and names the tool to u
   const w = world({ callServer: async () => { throw Object.assign(new Error("This server already belongs to Personal. Remove it first: run wink.remove for it in the app, or change its owner on the server itself with wink.server.retarget."), { code: "unavailable" }); } });
   const { st } = await pairOnce(w, { kind: "space", id: HARLOW });
   assert.equal(st.state, "failed");
-  assert.match(st.reason, /already belongs to Personal/);
-  assert.match(st.reason, /wink\.remove/);
-  assert.match(st.reason, /wink\.server\.retarget/);
+  assert.equal(st.reason, "This server still belongs to Personal. Remove it from Personal first, or reset it on the server itself (wink.server.reset).");
   assert.equal(w.p.devices.list(ME).length, 0);
 });
 
@@ -535,4 +533,132 @@ test("a QR payload that is not a server's (short seed, wrong version, a typed co
   await assert.rejects(() => w.call("wink.pair.server", { target }), e => e.code === "bad_input");
   assert.equal(parseServerQr(serverQrPayload(new Uint8Array(15), "ws://x")), null);
   assert.equal(w.finishes.length + w.typed.length, 0);
+});
+
+// ---- removing a server tells it to let go (the app's wink.remove), so it can be paired again ----
+
+/** A server's own box: its tools, and the platform's gate in front of them (a device caller meets person_session_required where a person is asked for). */
+function box() {
+  const b = world();
+  const calls = /** @type {any[]} */ ([]);
+  b.reach = { up: true, caller: "device:app1" };
+  b.callServer = async (paired, tool, input) => {
+    calls.push(tool);
+    if (!b.reach.up) throw Object.assign(new Error("the server answered 503"), { code: "unavailable", remote: "" });
+    const def = b.tools.get(tool);
+    if (def.presence && (typeof def.presence.when !== "function" || def.presence.when(input)) && b.reach.caller.startsWith("device:")) {
+      throw Object.assign(new Error(`${tool} is the person's own action: sign in on this de`), { code: "unavailable", remote: "person_session_required" });
+    }
+    try { return await def.run(input, { caller: b.reach.caller }); }
+    catch (e) { throw Object.assign(new Error(e.message), { code: "unavailable", remote: e.code }); }
+  };
+  b.calls = calls;
+  return b;
+}
+const appWith = b => world({ callServer: b.callServer, releaseRetryMs: 0 });
+
+test("remove then pair the same server again: to the identity, to the same space, to another target, each succeeds with the release delivered", async () => {
+  for (const [first, second] of [[{ kind: "identity", id: ME }, { kind: "identity", id: ME }], [{ kind: "space", id: HARLOW }, { kind: "space", id: HARLOW }], [{ kind: "identity", id: ME }, { kind: "space", id: HARLOW }]]) {
+    const b = box();
+    const app = appWith(b);
+    assert.equal((await pairOnce(app, first)).st.state, "done");
+    assert.ok(b.p.meta.get("owner"), "the server has an owner");
+    const [d] = app.p.devices.list(ME);
+    const out = await app.p.releaseServer(d.id);
+    assert.equal(out, "released");
+    app.p.devices.remove(d.id);
+    assert.equal(b.p.meta.get("owner"), null, "the server let go");
+    assert.equal(b.p.meta.get("adopter"), null);
+    assert.equal(b.p.meta.get("handover"), null);
+    const again = await pairOnce(app, second);
+    assert.equal(again.st.state, "done", again.st.reason);
+    assert.deepEqual({ kind: b.p.meta.get("owner").kind, id: b.p.meta.get("owner").id }, second);
+  }
+});
+
+test("without the release, a second adopt over the paired channel still refuses, in plain words naming the owner", async () => {
+  const b = box();
+  const app = appWith(b);
+  assert.equal((await pairOnce(app, { kind: "space", id: HARLOW })).st.state, "done");
+  const [d] = app.p.devices.list(ME);
+  app.p.devices.remove(d.id);            // removed in the app, the server never told
+  const again = await pairOnce(app, { kind: "space", id: HARLOW });
+  assert.equal(again.st.state, "failed");
+  assert.equal(again.st.reason, "This server still belongs to someone. Remove it from that app first, or reset it on the server itself (wink.server.reset).");
+  assert.ok(!/de\)/.test(again.st.reason), "never the raw tool error cut short");
+  assert.equal(b.p.meta.get("owner").id, HARLOW, "the owner did not move");
+  // the real card when the box's own refusal names the owner
+  b.reach.up = true;
+  const direct = await b.tools.get("wink.server.adopt").run({ owner: { kind: "identity", id: ME }, identity: ME }, { caller: "device:app1", presence: { method: "passkey" } }).catch(e => e);
+  assert.equal(direct instanceof Error, false, "the adopter with the owner's presence still may change it (retarget path)");
+});
+
+test("an unreachable server keeps a pending release, applied when it next answers", async () => {
+  const b = box();
+  const app = appWith(b);
+  await pairOnce(app, { kind: "identity", id: ME });
+  const [d] = app.p.devices.list(ME);
+  b.reach.up = false;
+  assert.equal(await app.p.releaseServer(d.id), "pending");
+  assert.ok(b.p.meta.get("owner"), "still owned while it was away");
+  await app.p.retryReleases();
+  assert.ok(b.p.meta.get("owner"), "a try while it is still away changes nothing");
+  b.reach.up = true;
+  await app.p.retryReleases();
+  assert.equal(b.p.meta.get("owner"), null, "told when it came back");
+  assert.equal(app.db.prepare("SELECT COUNT(*) AS n FROM wink_meta WHERE k LIKE 'release:%'").get().n, 0, "nothing left pending");
+});
+
+test("a pending release is applied at the next pairing, before the adopt", async () => {
+  const b = box();
+  const app = appWith(b);
+  await pairOnce(app, { kind: "identity", id: ME });
+  const [d] = app.p.devices.list(ME);
+  b.reach.up = false;
+  assert.equal(await app.p.releaseServer(d.id), "pending");
+  app.p.devices.remove(d.id);
+  b.reach.up = true;
+  const again = await pairOnce(app, { kind: "space", id: HARLOW });
+  assert.equal(again.st.state, "done", again.st.reason);
+  assert.equal(b.p.meta.get("owner").kind, "space");
+});
+
+test("a stranger cannot make a server let go; only the app that adopted it", async () => {
+  const b = box();
+  const app = appWith(b);
+  await pairOnce(app, { kind: "identity", id: ME });
+  const release = (caller, extra = {}) => b.tools.get("wink.server.release").run({}, { caller, ...extra });
+  await assert.rejects(() => release("device:stranger"), e => e.code === "denied" && /Only the app that owns this server can let it go/.test(e.message));
+  await assert.rejects(() => release("device:stranger", { presence: { method: "passkey" } }), e => e.code === "denied", "presence does not make a stranger the owner");
+  await assert.rejects(() => release("cli"), e => e.code === "denied", "a screen on the server uses reset");
+  await assert.rejects(() => release("agent:x"), e => e.code === "denied");
+  assert.ok(b.p.meta.get("owner"), "nothing moved");
+  assert.deepEqual(await release("device:app1"), { released: true });
+  assert.deepEqual(await release("device:stranger"), { released: true, already: true }, "a server with no owner has nothing to refuse");
+});
+
+test("the person at the server frees it with wink.server.reset, with presence and never over a paired channel", async () => {
+  const b = box();
+  const app = appWith(b);
+  await pairOnce(app, { kind: "identity", id: ME });
+  const reset = (caller, presence) => b.tools.get("wink.server.reset").run({}, { caller, ...(presence ? { presence: { method: "passkey" } } : {}) });
+  assert.ok(b.tools.get("wink.server.reset").presence, "it declares presence");
+  await assert.rejects(() => reset("cli"), e => e.code === "presence_required");
+  await assert.rejects(() => reset("device:app1", true), e => e.code === "denied" && /from the server itself/.test(e.message));
+  assert.ok(b.p.meta.get("owner"));
+  assert.deepEqual(await reset("cli", true), { reset: true, had: true });
+  assert.equal(b.p.meta.get("owner"), null);
+  assert.equal(b.p.devices.get("self").removed, true, "its own row goes with it");
+  // and it pairs again at once
+  const [d] = app.p.devices.list(ME);
+  app.p.devices.remove(d.id);
+  assert.equal((await pairOnce(app, { kind: "identity", id: ME })).st.state, "done");
+});
+
+test("the server's confirm says the codes matched, not that it is paired", async () => {
+  const w = world();
+  const r = await w.call("wink.server.confirm", { offer: "wo_W3", typed: "WINK-AB12-CD34" });
+  assert.equal(r.ok, true);
+  assert.match(r.message, /The code matched\. The app is finishing/);
+  assert.ok(!/is paired|is added/.test(r.message));
 });

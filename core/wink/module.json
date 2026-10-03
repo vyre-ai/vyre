@@ -87,6 +87,14 @@
         "reach": "person"
       },
       {
+        "name": "wink.server.release",
+        "reach": "person"
+      },
+      {
+        "name": "wink.server.reset",
+        "reach": "person"
+      },
+      {
         "name": "wink.device.key",
         "reach": "person"
       },
@@ -183,6 +191,8 @@
       "wink.pair-done",
       "wink.pair-failed",
       "wink.server-adopted",
+      "wink.server-released",
+      "wink.server-release",
       "wink.offer-changed",
       "storage.paired",
       "storage.removed",

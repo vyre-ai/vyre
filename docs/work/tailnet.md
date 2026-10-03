@@ -1292,6 +1292,15 @@ Breaks.
 
 Cleaned. testbox2: container `wink3-nodocker`, its two volumes, the systemd image and `~/wink-install3` removed; Docker and the other containers, volumes and images untouched. testbox3: relay and app-side stopped by pid, ufw rule removed, `~/wink-install` deleted. Nothing is left running; the local scratch files were deleted.
 
+## Removing a server frees it (4 Oct, work/wink)
+
+Fix for "Third run, break 2". `wink.remove { device }` on a server or storage device now tells it to let go over the channel the app paired it on (`wink.server.release`, no presence of its own: the owner's presence was given for the remove). The box accepts it only from the device that adopted it (`meta.adopter`); a stranger, a screen on the server and an agent are refused, and a server with no owner answers `already`. It clears owner, adopter, hand-over, peer secret and its own row and keeps its own keys. The channel (relay, route, box) is kept in `wink_meta` as `channel:<id>`.
+- Unreachable at removal: the answer says `release: "pending"` and a `release:<id>` row keeps the channel. It is retried every 60 s (`pairing.stop()` ends the timer) and before the adopt of the next pairing of the same server. A refusal ("this app is not the owner") is not kept; the words then say to reset it on the server.
+- On the server itself: `wink.server.reset` (declares presence, refused from a `device:` caller). Use release (the app does it) when the app still has the server; use reset when the app was lost or the server was away.
+- Words: a refused adopt (presence_required, denied, conflict, or the platform's person_session_required) reads "This server still belongs to X. Remove it from X first, or reset it on the server itself"; any other adopt failure carries up to 400 characters and `wink.pair.status` holds the full reason. `wink.server.confirm` answers `message`: the code matched, the app is finishing (wink.pair.status on the app is the one place that says done or failed). A phone scan with no target answers the identity's name, not an id. A box that could not get a code or a ticket says the relay was out of date (426), refused (with its reason), or could not be reached.
+- The gate still holds: a re-adopt without a release is refused (tested); the owner changes on the box with presence.
+- Not proven on real machines yet: the release over a real relay channel after the first pairing (the app reuses `relayConnect` with the kept route and its own device key, as the adopt does).
+
 ## Wink bridged storage
 
 3 to 4 Oct 2026. A drive only one device can reach (a network drive in the office, a disk on a Mac mini) is offered to the space by that device, and the space's home uses it through Wink. Code: `core/wink/storage/bridge.js` (secret, frames, retry, sealed hand-over), `hold.js` (the held connection, both sides), `bridge-cards.js` (words); the engine (work/sealing `kernel/storage`) is only passed in (`createBridge`, `backendFor`), so core/wink gains no import edge.

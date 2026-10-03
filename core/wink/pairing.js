@@ -79,7 +79,7 @@ export const POLL_MS = 1500;
  * @param {{ ctx: any, now: () => number, identity: () => Promise<string>, space: () => Promise<string>, directory: Directory, ports?: Ports,
  *   openCode: (flow: "W1" | "W2" | "W3") => Promise<{ offer: string, code: string, expires: number }>,
  *   ack: (offer: string, typed: string) => Promise<{ ok: boolean }>, owner: (meta: any, what: string) => void, relayUrl: () => Promise<string>, keyFile?: string, spaceNow?: () => string,
- *   handover?: Handover,
+ *   handover?: Handover, releaseMs?: number, releaseRetryMs?: number,
  *   offers?: { get(space: string, device: string): { space_allows: number | boolean, member_accepts: number | boolean } | Promise<any>, set(space: string, device: string, side: "space" | "member", on: boolean): void | Promise<void> } }} o
  */
 export function createPairing(o) {
@@ -89,6 +89,7 @@ export function createPairing(o) {
   const meta = {
     get: (/** @type {string} */ k) => { const r = /** @type {any} */ (db.prepare("SELECT v FROM wink_meta WHERE k = ?").get(k)); return r ? JSON.parse(r.v) : null; },
     set: (/** @type {string} */ k, /** @type {any} */ v) => { db.prepare("INSERT INTO wink_meta (k, v) VALUES (?, ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v").run(k, JSON.stringify(v)); },
+    del: (/** @type {string} */ k) => { db.prepare("DELETE FROM wink_meta WHERE k = ?").run(k); },
   };
   /** Node's crypto and a key file under the box's home: the typing side has no IndexedDB. @type {any} */
   const pairOptions = o.keyFile ? { crypto: nodeCrypto(), keyStore: fileKeyStore(o.keyFile) } : {};
@@ -203,7 +204,7 @@ export function createPairing(o) {
     try {
       const r = await c.fetch(`/v1/tools/${tool}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) });
       const j = await r.json().catch(() => null);
-      if (r.status >= 300 || !j || j.error) throw fail("unavailable", String((j && j.error && j.error.message) || `the server answered ${r.status}`));
+      if (r.status >= 300 || !j || j.error) throw Object.assign(fail("unavailable", String((j && j.error && j.error.message) || `the server answered ${r.status}`)), { remote: String((j && j.error && j.error.code) || "") });
       return j.data;
     } finally { try { c.close(); } catch { /* closed */ } }
   });
@@ -289,12 +290,71 @@ export function createPairing(o) {
     },
   };
 
-  /** The words for a refusal from the server's own adopt, or for any other way the hand-over failed. @param {string} name @param {any} e */
+  /**
+   * The words for a refusal from the server's own adopt, or for any other way the hand-over failed. A refusal because the server still has an
+   * owner (presence_required, denied, conflict, or the platform's person_session_required) is a plain card naming that owner; anything else
+   * is the reason in full, never cut short.
+   * @param {string} name @param {any} e */
   const adoptReason = (name, e) => {
-    const m = String((e && e.message) || "");
-    if (/already belongs to|already has an owner/.test(m)) return m.replace(/^this server/, "This server").replace(/\.?$/, ".");
-    return words("adoptFailed", { name, why: m.replace(/[.\s]+$/, "").slice(0, 120) });
+    const m = String((e && e.message) || e || "no answer");
+    const remote = String((e && e.remote) || "");
+    if (/^(presence_required|denied|conflict|person_session_required)$/.test(remote) || /already belongs to|belongs to .+\. Remove|person's own action/.test(m)) {
+      const who = /belongs to (.+?)\. (?:Remove|Change)/.exec(m);
+      return words("stillOwned", { owner: who ? who[1] : "" });
+    }
+    return words("adoptFailed", { name, why: m.replace(/[.\s]+$/, "").slice(0, 400) });
   };
+
+  // ---- letting a server go: the app tells it, with the owner's presence already given for the remove ----
+  const RELEASE_MS = o.releaseMs ?? 20_000;
+  /** Calls the server's own release over a paired channel, bounded in time. @param {any} chan @returns {Promise<"released" | "refused" | "unreachable">} */
+  const callRelease = async chan => {
+    let timer;
+    try {
+      await Promise.race([callServer(chan, "wink.server.release", {}), new Promise((_, rej) => { timer = setTimeout(() => rej(Object.assign(new Error("no answer"), { remote: "" })), RELEASE_MS); })]);
+      return "released";
+    } catch (e) {
+      // the server says this app is not the one that owns it: trying again later changes nothing, and the person is told to reset it on the server
+      return /^(denied|presence_required|person_session_required)$/.test(String(/** @type {any} */ (e).remote || "")) ? "refused" : "unreachable";
+    } finally { if (timer) clearTimeout(timer); }
+  };
+  /** Where the app reached a server when it paired it: the three things a later call needs. @param {any} pd */
+  const channelOf = pd => (pd && pd.route ? { relay: String(pd.relay || ""), route: String(pd.route), box: String(pd.box || "") } : null);
+  /**
+   * Tell a removed server to free itself. The caller has already had the owner's presence for the removal. Answers "released", "pending" (it could not
+   * be reached: the release is kept and applied when it next answers, see retryReleases, or at its next pairing), "refused" (it answered that this app is
+   * not what owns it) or "unknown" (this app never kept a channel to it: an older pairing).
+   * @param {string} sid @returns {Promise<"released" | "pending" | "refused" | "unknown">}
+   */
+  const releaseServer = async sid => {
+    const chan = meta.get(`channel:${sid}`);
+    if (!chan) return "unknown";
+    const r = await callRelease(chan);
+    if (r === "released") { meta.del(`channel:${sid}`); meta.del(`release:${sid}`); ctx.events.emit("wink.server-release", { device: sid, state: "released" }); return "released"; }
+    meta.del(`channel:${sid}`);
+    if (r === "refused") { meta.del(`release:${sid}`); return "refused"; }
+    meta.set(`release:${sid}`, { ...chan, since: now() });
+    ctx.events.emit("wink.server-release", { device: sid, state: "pending" });
+    return "pending";
+  };
+  /** Applies every release that could not be delivered, one try each. Runs on a timer and whenever a server is paired again. */
+  const retryReleases = async () => {
+    const rows = /** @type {any[]} */ (db.prepare("SELECT k, v FROM wink_meta WHERE k LIKE 'release:%'").all());
+    for (const row of rows) {
+      let chan; try { chan = JSON.parse(row.v); } catch { meta.del(row.k); continue; }
+      const r = await callRelease(chan);
+      if (r === "unreachable") continue;
+      meta.del(row.k);
+      if (r === "released") ctx.events.emit("wink.server-release", { device: row.k.slice(8), state: "released" });
+    }
+  };
+  const retryEvery = o.releaseRetryMs ?? 60_000;
+  /** @type {any} */
+  let retryTimer = null;
+  /** The timer that applies pending releases; the module's stop() ends it. */
+  const startRetries = () => { if (retryTimer || !retryEvery) return; retryTimer = setInterval(() => { void retryReleases().catch(() => {}); }, retryEvery); if (retryTimer.unref) retryTimer.unref(); };
+  const stop = () => { if (retryTimer) clearInterval(retryTimer); retryTimer = null; };
+
   /** Keeps what the relay answered with, so a refusal can be told from a missing connection. */
   const watchFetch = () => {
     const f0 = globalThis.fetch;
@@ -347,9 +407,12 @@ export function createPairing(o) {
           const peerSecret = peers.secretFor(sid);
           const handover = o.handover ? await Promise.resolve(o.handover({ target: i.target, device: sid })).catch(() => null) : null;
           let ok = false, why = null;
+          // A release that could not be delivered when the person removed this server goes now, over the channel this pairing just made.
+          if (meta.get(`release:${sid}`)) { if ((await callRelease(channelOf(pd) || meta.get(`release:${sid}`))) !== "unreachable") meta.del(`release:${sid}`); }
           try { ok = await adopt(pd, i.target, { identity, peerSecret, device: sid, ownerName: i.label, handover }); }
           catch (e) { why = e; }
           p.adopted = ok === true;
+          if (p.adopted) { const ch = channelOf(pd); if (ch) meta.set(`channel:${sid}`, ch); }
           if (!p.adopted) {
             // the server was not told: nothing is half-added, and the person is told what to do
             if (fresh) { devices.remove(fresh); p.device = null; }
@@ -423,9 +486,9 @@ export function createPairing(o) {
       },
     });
     ctx.tool("wink.server.confirm", {
-      description: "On the new server: type back the code the app is showing. One try per code. Answers { ok }. The right code adds this server for whoever typed its code; the app then says where it goes (wink.server.adopt).",
+      description: "On the new server: type back the code the app is showing. One try per code. Answers { ok, message }. A right code means the codes matched, nothing more: the app finishes the pairing (wink.server.adopt) and wink.pair.status on the app is the one place that says it is done or that it failed and why.",
       input: obj({ offer: str, typed: str }, ["offer", "typed"]),
-      run: async (input, meta = {}) => { owner(meta, "adding this server"); return o.ack(String(input.offer), String(input.typed)); },
+      run: async (input, meta = {}) => { owner(meta, "adding this server"); const r = await o.ack(String(input.offer), String(input.typed)); return r && r.ok ? { ...r, message: words("codeMatched") } : r; },
     });
     // W-4: adoption happens once, at the first pairing. The adopter is recorded for every caller kind (a cli adoption too). After an owner exists nothing
     // changes without (a) fresh presence of the current owner on this box (wink.server.retarget, the owner's own screen), or (b) the target space's admin
@@ -477,6 +540,38 @@ export function createPairing(o) {
           if (caller.startsWith("device:") && adopter !== caller) throw fail("denied", words("serverOwned", { owner: await ownerWords(prior) }));
         }
         return applyAdopt(input, caller);
+      },
+    });
+    /** Clears who owns this server: owner, adopter, the hand-over and the peer secret, and its own row. Its own keys stay. */
+    const clearOwner = () => {
+      for (const k of ["owner", "adopter", "handover", "peer_secret"]) meta.del(k);
+      db.prepare("UPDATE wink_devices SET removed_at = ? WHERE id = 'self' AND removed_at IS NULL").run(now());
+      ctx.events.emit("wink.server-released", {});
+    };
+    ctx.tool("wink.server.release", {
+      description: "On a server: let go of its owner. The app that adopted it calls this over the paired channel when the person removes the server there (the app has the owner's presence for the removal). Only the app that adopted this server may; anyone else is refused, and a person at this server uses wink.server.reset. Clears the owner, the adopter and the hand-over and keeps the server's own keys, so it can be paired again. Answers { released }.",
+      input: obj(),
+      run: async (_, meta0 = {}) => {
+        owner(meta0, "letting a server go");
+        const caller = String((meta0 && meta0.caller) || "anonymous");
+        if (!meta.get("owner")) return { released: true, already: true };
+        if (!caller.startsWith("device:") || meta.get("adopter") !== caller) throw fail("denied", words("releaseDenied", { owner: await ownerWords(meta.get("owner")) }));
+        clearOwner();
+        return { released: true };
+      },
+    });
+    ctx.tool("wink.server.reset", {
+      description: "On the server itself, with the person's presence: forget who owns it so it can be paired again, when the app that owned it cannot tell it to let go (the app was lost, or the server was unreachable when it was removed). Not callable over a paired channel. Keeps the server's own keys. Answers { reset }.",
+      input: obj(),
+      presence: { summary: async () => "Free this server so it can be added again" },
+      run: async (_, meta0 = {}) => {
+        owner(meta0, "resetting a server");
+        const caller = String((meta0 && meta0.caller) || "anonymous");
+        if (caller.startsWith("device:")) throw fail("denied", words("resetOnServer"));
+        if (!meta0.presence) throw fail("presence_required", words("resetNeedsYou"));
+        const had = Boolean(meta.get("owner"));
+        clearOwner();
+        return { reset: true, had };
       },
     });
     ctx.tool("wink.server.handover", {
@@ -535,7 +630,9 @@ export function createPairing(o) {
         const identity = await o.identity();
         const target = await checkTarget(identity, "phone", input.target || { kind: "identity", id: identity });
         const label = (await targets(identity)).find(x => x.kind === target.kind && x.id === target.id)?.label;
-        return { ...(await startTyping({ code: q.code, kind: "phone", target, label, relay: q.relay })), target: { ...target, ...(label ? { label } : {}) } };
+        // With no target the phone joins the identity of whoever shows the code: say whose name that is, never the phone's own local identity.
+        const shown = input.target ? { ...target, ...(label ? { label } : {}) } : { kind: "identity", label: label || "you" };
+        return { ...(await startTyping({ code: q.code, kind: "phone", target, label, relay: q.relay })), target: shown };
       },
     });
 
@@ -570,7 +667,7 @@ export function createPairing(o) {
     });
   }
 
-  return { devices, targets, checkTarget, computeAllowed, compute, tools, startTyping, pending, peers, meta };
+  return { devices, targets, checkTarget, computeAllowed, compute, tools: () => { tools(); startRetries(); }, startTyping, pending, peers, meta, releaseServer, retryReleases, stop };
 }
 
 /** The QR a computer shows for a phone: the code and where to meet. @param {string} code @param {string} relay */
