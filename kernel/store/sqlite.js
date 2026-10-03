@@ -59,7 +59,7 @@ export function createSqliteStore(cfg) {
 
   /** @param {string} type @returns {import("./memory.js").Table} */
   /** @type {Map<string, any>[]} every type's hot rows, for `stats` */ const caches = [];
-  const counts = { pushed: 0, fell: 0 };
+  const counts = { pushed: 0, fell: 0, agg: 0 };
   /** Is every value of this text field printable ASCII? Asked once per field, by a scan; kept true only while every write agrees. */
   const isAscii = (/** @type {string} */ type, /** @type {string} */ field) => {
     const key = `${type}.${field}`;
@@ -116,7 +116,7 @@ export function createSqliteStore(cfg) {
       aggregateQuery(spec) {
         const plan = planAggregate({ type, def: defs.get(type), spec, ascii: field => isAscii(type, field) });
         if (!plan) { counts.fell++; return null; }
-        counts.pushed++;
+        counts.pushed++; counts.agg++;
         const got = /** @type {any[]} */ (db.prepare(plan.sql).all(...plan.args));
         return got.map(row => ({
           group: Object.fromEntries(plan.groups.map((g, k) => [g.field, row[`g${k}`] === null || row[`g${k}`] === undefined ? null : g.bool ? row[`g${k}`] === 1 : row[`g${k}`]])),
@@ -165,6 +165,8 @@ export function createSqliteStore(cfg) {
   /** @type {Map<string, any>} the kernel attributes of recently written records, in front of the table that keeps them all */ const attrCache = new Map();
   /** The gateway's kernel attributes per record (owner, created_by, project, sensitivity): on disk, a small LRU in front. */
   const meta = {
+    /** Does any record under this urn prefix have this attribute value? (a scan of that type's attribute rows) */
+    anyWith(/** @type {string} */ prefix, /** @type {string} */ key, /** @type {string} */ value) { return Boolean(db.prepare("SELECT 1 FROM kernel_attrs WHERE urn >= ? AND urn < ? AND json_extract(attrs, ?) = ? LIMIT 1").get(prefix, `${prefix.slice(0, -1)}0`, `$.${key}`, value)); },
     get(/** @type {string} */ u) {
       if (attrCache.has(u)) { const v = attrCache.get(u); attrCache.delete(u); attrCache.set(u, v); return v; }
       const r = /** @type {any} */ (getAttrs.get(u));
@@ -175,5 +177,5 @@ export function createSqliteStore(cfg) {
     },
     set(/** @type {string} */ u, /** @type {any} */ v) { putAttrs.run(u, JSON.stringify(v)); attrCache.set(u, v); if (attrCache.size > HOT_ATTRS) attrCache.delete(/** @type {string} */ (attrCache.keys().next().value)); },
   };
-  return { ...store, meta, /** What is held in memory: for the bound's tests and the load measurements. */ stats: () => ({ query_pushed: counts.pushed, query_streamed: counts.fell, hot_rows: caches.reduce((n, c) => n + c.size, 0), hot_attrs: attrCache.size, changes_in_memory: 0 }), async version() { return { store: "sqlite", version: "1", conformance: (await store.version()).conformance }; } };
+  return { ...store, meta, /** What is held in memory: for the bound's tests and the load measurements. */ stats: () => ({ aggregate_pushed: counts.agg, query_pushed: counts.pushed, query_streamed: counts.fell, hot_rows: caches.reduce((n, c) => n + c.size, 0), hot_attrs: attrCache.size, changes_in_memory: 0 }), async version() { return { store: "sqlite", version: "1", conformance: (await store.version()).conformance }; } };
 }

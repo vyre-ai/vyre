@@ -73,6 +73,14 @@ export function createRecords(cfg) {
   // Kernel attributes as the gateway wrote them (owner, created_by, project, sensitivity), never the store's. A store that keeps them on disk (`store.meta`, the built-in
   // SQLite store) answers from there with a small LRU in front; any other store leaves them in memory as before.
   const kattrs = store.meta ? store.meta : new Map();
+  /** Types known to hold no privileged record (a row's sensitivity is set once, when it is created, so a type found clean stays clean until a privileged record is created in it). */
+  const noPrivileged = new Set();
+  const hasPrivileged = (/** @type {string} */ type) => {
+    if (noPrivileged.has(type)) return false;
+    const found = kattrs.anyWith ? kattrs.anyWith(urn(type, ""), "sensitivity", "privileged") : [...(/** @type {Map<string, any>} */ (kattrs)).entries()].some(([u, a]) => u.startsWith(urn(type, "")) && a && a.sensitivity === "privileged");
+    if (!found) noPrivileged.add(type);
+    return found;
+  };
   /** The latest version hash the gateway wrote, per record. On a durable log it is found by an indexed lookup of the record's last event (with a small LRU in front), so nothing here
    * grows with the number of records; on the reference log it is a Map filled as the log is read. */
   const index = (() => {
@@ -101,7 +109,7 @@ export function createRecords(cfg) {
 
   const { gate, allowed, check } = createGate({ authorizer, log, enforce: cfg.enforce });
   /** A read through query, aggregate or search is one act on the type: counted once against the type-level decision, never per row. */
-  const countRead = async (/** @type {any} */ chain, /** @type {string} */ type) => { const d = await check(chain, "records.read", urn(type, "*"), { probe: true }); if (d && cfg.enforce) cfg.enforce(chain, d); };
+  const countRead = async (/** @type {any} */ chain, /** @type {string} */ type) => { const d = await check(chain, "records.read", urn(type, "*"), { probe: true }); if (d && cfg.enforce) cfg.enforce(chain, d); return d; };
   const members = cfg.members;
   const idem = createIdem({ clock });
 
@@ -300,6 +308,7 @@ export function createRecords(cfg) {
     for (const k of Object.keys(a)) if (!["owner", "project", "sensitivity"].includes(k)) throw new KernelError("bad_input", `${k} is not a kernel attribute`);
     const rec = await write(chain, "create", type, id, data, null, () => store.create(type, id, data), null);
     const last = chain.hops[chain.hops.length - 1].actor;
+    if (a.sensitivity === "privileged") noPrivileged.delete(type);
     kattrs.set(urn(type, id), { space, created_by: `${last.kind}:${last.id}`, ...a });
     return rec;
   }
@@ -367,11 +376,21 @@ export function createRecords(cfg) {
       checkType(type);
       const vs = await viewersOf(chain);
       await guardSealed(chain, type, spec, vs);
-      await countRead(chain, type);
-      // A store cannot hide rows from a total, so the gateway aggregates only the rows it has itself allowed.
+      const typeDec = await countRead(chain, type);
+      // The store totals the rows itself (one GROUP BY) only when every row of the type gets this chain's answer: no room, grants that cover the whole type with no row predicate, no
+      // rule on reading, no privileged record in the type, and every field it groups or measures is one the chain may see. Anything else is totalled below, row by row.
+      if (!vs && typeof store.aggregate === "function" && !hasPrivileged(type) && typeof authorizer.rowUniform === "function" && await authorizer.rowUniform({ chain, action: "records.read", type })) {
+        const lim = await limitsOf(chain, type, typeDec);
+        const used = [...(spec.group_by || []), ...(spec.measures || []).map((/** @type {any} */ m) => m && m.field).filter(Boolean)];
+        if (used.every((/** @type {string} */ k) => !lim.hidden.has(k) && (!lim.allow || lim.allow.has(k)))) {
+          try { return await store.aggregate(type, spec); } catch (e) { throw mapError(e); }
+        }
+      }
+      // A store cannot hide rows from a total, so the gateway aggregates only the rows it has itself allowed. Rows are cut to the fields the total uses and the loop yields at every row.
+      const need = new Set([...(spec.group_by || []), ...(spec.measures || []).map((/** @type {any} */ m) => m && m.field).filter(Boolean)]);
       const rows = [];
       let cursor;
-      for (let pages = 0; pages < 40; pages++) {
+      for (;;) {
         let p;
         try { p = await store.query(type, { filter: spec.filter, page: { limit: 500, ...(cursor ? { cursor } : {}) } }); } catch (e) { throw mapError(e); }
         const hiddenSet = await hiddenFields(chain, type);
@@ -382,13 +401,12 @@ export function createRecords(cfg) {
           const room = vs ? await roomLim(vs, type, urn(r.type, r.id)) : undefined;
           if (room === null) continue;
           const al = allowList(dec);
-          const cutRow = (/** @type {string} */ k) => !(hiddenSet && hiddenSet.has(k)) && (!al || al.has(k)) && !(room && (room.hidden.has(k) || (room.allow && !room.allow.has(k)) || isSealedShape(r.data[k])));
-          rows.push(al || (hiddenSet && hiddenSet.size) || room ? { ...r, data: Object.fromEntries(Object.entries(r.data).filter(([k]) => cutRow(k))) } : r);
+          const cutRow = (/** @type {string} */ k) => need.has(k) && !(hiddenSet && hiddenSet.has(k)) && (!al || al.has(k)) && !(room && (room.hidden.has(k) || (room.allow && !room.allow.has(k)) || isSealedShape(r.data[k])));
+          rows.push({ ...r, data: Object.fromEntries(Object.entries(r.data).filter(([k]) => cutRow(k))) });
         }
         if (!p.next_cursor) return aggregateRows(rows, spec);
         cursor = p.next_cursor;
       }
-      throw new KernelError("unsupported", "too many rows to total here");
     },
 
     async search(chain, spec) {
