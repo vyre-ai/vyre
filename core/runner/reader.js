@@ -50,12 +50,21 @@ process.stdin.on("end", () => {
         // Unchanged since the last checkpoint (same size and modification time): not read, not hashed, only listed.
         const known = req.have[rel];
         if (known && known.size === st.size && known.mtimeMs === st.mtimeMs) { w(Buffer.from("H " + JSON.stringify({ rel, hash: known.hash, size: 0, len: st.size, mtimeMs: st.mtimeMs, send: false }) + "\n")); continue; }
-        const buf = Buffer.alloc(st.size); let n = 0;
-        while (n < st.size) { const r = fs.readSync(fdn, buf, n, st.size - n, n); if (!r) break; n += r; }
+        // The session keeps running while this reads, so a file can change mid-read. Read it, check that its size and modification time
+        // are the same afterwards, and read again if not; a file that keeps changing is left for the next checkpoint (never uploaded torn).
+        let buf, n, tries = 0, stable = false, st2 = st;
+        while (tries++ < 3) {
+          buf = Buffer.alloc(st2.size); n = 0;
+          while (n < st2.size) { const r2 = fs.readSync(fdn, buf, n, st2.size - n, n); if (!r2) break; n += r2; }
+          const after = fs.fstatSync(fdn);
+          if (after.size === st2.size && after.mtimeMs === st2.mtimeMs) { stable = true; break; }
+          st2 = after;
+        }
+        if (!stable) { w(Buffer.from("H " + JSON.stringify({ rel, hash: "", size: 0, len: 0, mtimeMs: st2.mtimeMs, send: false, deferred: true }) + "\n")); continue; }
         const data = buf.subarray(0, n);
         const hash = crypto.createHash("sha256").update(data).digest("hex");
         const send = !known || known.hash !== hash;
-        w(Buffer.from("H " + JSON.stringify({ rel, hash, size: send ? data.length : 0, len: data.length, mtimeMs: st.mtimeMs, send }) + "\n"));
+        w(Buffer.from("H " + JSON.stringify({ rel, hash, size: send ? data.length : 0, len: data.length, mtimeMs: st2.mtimeMs, send }) + "\n"));
         if (send) w(data);
       } catch {} finally { if (fdn >= 0) try { fs.closeSync(fdn); } catch {} }
     }

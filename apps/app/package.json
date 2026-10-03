@@ -4,6 +4,15 @@
   "private": true,
   "type": "module",
   "main": "expo-router/entry",
+  "expo": {
+    "autolinking": {
+      "android": {
+        "exclude": [
+          "expo-camera"
+        ]
+      }
+    }
+  },
   "scripts": {
     "web": "expo start --web",
     "export:web": "node scripts/term-assets.mjs && expo export -p web && node scripts/precache.mjs",

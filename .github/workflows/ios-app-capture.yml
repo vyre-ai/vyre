@@ -32,7 +32,7 @@ jobs:
           [ -n "$x" ] && sudo xcode-select -s "$x"
           xcodebuild -version
       - run: npx expo prebuild -p ios --clean
-      - name: Build for the simulator (Release: the bundle is inside the app; no signing)
+      - name: "Build for the simulator, Release so the bundle is inside the app, no signing"
         run: |
           ws=$(ls -d ios/*.xcworkspace | head -1)
           scheme=$(basename "$ws" .xcworkspace)

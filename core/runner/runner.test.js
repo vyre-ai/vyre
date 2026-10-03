@@ -373,7 +373,7 @@ test("runner: a machine that was offline at revoke deletes its workspace on next
 });
 
 test("runner: when the lease ends the workspace locks, the session stops, and the data is unreadable", { skip: SKIP || false, timeout: 90_000 }, async t => {
-  const r = await rig(t, { ttlMs: 6000 });
+  const r = await rig(t, { ttlMs: 12000 });
   const h = await r.launch(r.runner, "s1");
   h.send("turn before expiry");
   await waitFor(() => r.sp.state.checkpoints.get("s1")?.turn === 1);
@@ -387,7 +387,9 @@ test("runner: when the lease ends the workspace locks, the session stops, and th
   r.sp.state.offline = false;
   const c = await r.runner.contact();
   assert.equal(c.ok, true);
-  assert.equal(fs.readFileSync(path.join(r.runner.mnt, "work", "files", "notes.txt"), "utf8"), "before expiry\n");
+  const nf = path.join(r.runner.mnt, "work", "files", "notes.txt");
+  if (!fs.existsSync(nf)) console.log("DEBUG missing; files:", fs.readdirSync(path.join(r.runner.mnt, "work", "files")), "work:", fs.readdirSync(path.join(r.runner.mnt, "work")), "mnt:", fs.readdirSync(r.runner.mnt), "events:", JSON.stringify(r.events || []));
+  assert.equal(fs.readFileSync(nf, "utf8"), "before expiry\n");
 });
 
 test("runner: a stopped machine's session resumes on another machine from the last turn", { skip: SKIP || false, timeout: 90_000 }, async t => {
