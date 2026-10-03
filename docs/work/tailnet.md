@@ -104,7 +104,7 @@ Next: wire the real directory (kernel memberships) and the app's pairing UI to `
 
 Needs: the relay module to let module callers close a device's connections (`relay.devices.remove` is reach person, so `wink.remove { device }` answers `closed: false` and the surface calls it itself); the lead's decision on where the target travels from the app to the server (see open questions in the report). test/wink.test.js "an invitation is sealed into a ticket" already failed at b98a229e7 (a second ticket lookup answers ticket_gone); not touched here.
 
-Spike and spec (3 Oct 2026): team/0.3/SPIKE-wink.md (copy in docs/work/spike-wink.md) and the rewritten team/0.3/SPEC-wink-network.md (section 8 and the fallback certificate removed). The forwarder sets TS_NO_LOGS_NO_SUPPORT. Storage devices are core/wink/storage and core/wink-storage (tools ship as `wink-storage.*`). Last targeted run on testbox: 275 tests, 273 pass, 0 fail, 2 skipped.
+Spike and spec (3 Oct 2026): team/0.3/SPIKE-wink.md (copy in docs/work/spike-wink.md) and the rewritten team/0.3/SPEC-wink-network.md (section 8 and the fallback certificate removed). The forwarder sets TS_NO_LOGS_NO_SUPPORT. Storage devices are core/wink/storage and core/wink-storage (tools ship as `wink.storage.*`). Last targeted run on testbox: 275 tests, 273 pass, 0 fail, 2 skipped.
 
 Next, in order: (1) the relay `peer` stream kind in core/relay/bridge.js plus `via: "relay"` in core/wink/node/peer-channel.js and fair queueing, so a blocked network still reaches a space (needs lead's yes); (2) wire the embedded-node host (one tsnet node per space, in process on phone and desktop, one forwarder per space on boxes) behind core/wink/node/core.js; (3) iOS: five device tests in SPIKE-wink.md on a real iPhone; (4) real Cloudflare Worker relay latency; (5) update wink-copy.md and SPEC html twin.
 
@@ -1164,7 +1164,7 @@ A storage device is a device of kind storage under its owner: a person, or a spa
 
 ### Tools
 
-The module is named `wink-storage`, and a module may only name tools after itself, so they ship as `wink-storage.discover | pick | pair | card | offers | status | remove` (all `reach: person`, owner surfaces only). The design names them `wink.storage.*`: the Wink module can mount the same set with `registerStorageTools(ctx, storage, "wink.storage")` and add the names to its `module.json` (or the module rule can allow a second segment). Open for the Wink owner.
+The module is named `wink-storage`, and a module may only name tools after itself, so they ship as `wink.storage.discover | pick | pair | card | offers | status | remove` (all `reach: person`, owner surfaces only). The design names them `wink.storage.*`: the Wink module can mount the same set with `registerStorageTools(ctx, storage, "wink.storage")` and add the names to its `module.json` (or the module rule can allow a second segment). Open for the Wink owner.
 
 ### Seam for the vault team's pool engine
 

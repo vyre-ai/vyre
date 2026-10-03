@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":336,"tool":993,"event":423,"config":244,"env":202,"screen":19,"concept":43},
+  "counts": {"command":336,"tool":994,"event":423,"config":244,"env":202,"screen":19,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -1027,6 +1027,7 @@
     {"kind":"tool","name":"relay.device.presence","definedIn":"core/relay/index.js","page":"reference/tools.md#relaydevicepresence","module":"relay","mentions":[]},
     {"kind":"tool","name":"relay.devices.ask-trust","definedIn":"core/relay/index.js","page":"reference/tools.md#relaydevicesask-trust","module":"relay","mentions":[]},
     {"kind":"tool","name":"relay.devices.bind","definedIn":"core/relay/index.js","page":"reference/tools.md#relaydevicesbind","module":"relay","mentions":[{"page":"adr/0046-relay-introduces-tailscale-carries.md","line":257,"anchor":"as-built-28-sep-2026-for-011"}]},
+    {"kind":"tool","name":"relay.devices.drop","definedIn":"core/relay/index.js","page":"reference/tools.md#relaydevicesdrop","module":"relay","mentions":[]},
     {"kind":"tool","name":"relay.devices.list","definedIn":"core/relay/index.js","page":"reference/tools.md#relaydeviceslist","module":"relay","mentions":[{"page":"adr/0026-relay.md","line":250,"anchor":"6-pairing"},{"page":"adr/0046-relay-introduces-tailscale-carries.md","line":274,"anchor":"as-built-28-sep-2026-for-011"},{"page":"design/system/teams.md","line":113,"anchor":"all-open-items"},{"page":"design/system/components/device-row.md","line":112,"anchor":"gaps"}]},
     {"kind":"tool","name":"relay.devices.node","definedIn":"core/relay/index.js","page":"reference/tools.md#relaydevicesnode","module":"relay","mentions":[]},
     {"kind":"tool","name":"relay.devices.path","definedIn":"core/relay/index.js","page":"reference/tools.md#relaydevicespath","module":"relay","mentions":[]},
@@ -1233,9 +1234,9 @@
     {"kind":"tool","name":"spend.record","definedIn":"core/spend/index.js","page":"reference/tools.md#spendrecord","module":"spend","mentions":[]},
     {"kind":"tool","name":"spend.summary","definedIn":"core/spend/index.js","page":"reference/tools.md#spendsummary","module":"spend","mentions":[]},
     {"kind":"tool","name":"statusline.line","definedIn":"core/statusline/index.js","page":"reference/tools.md#statuslineline","module":"statusline","mentions":[]},
-    {"kind":"event","name":"storage.paired","definedIn":"core/wink-storage/module.json","page":"reference/events.md#wink-storage","module":"wink-storage","mentions":[]},
-    {"kind":"event","name":"storage.removed","definedIn":"core/wink-storage/module.json","page":"reference/events.md#wink-storage","module":"wink-storage","mentions":[]},
-    {"kind":"event","name":"storage.unreachable","definedIn":"core/wink-storage/module.json","page":"reference/events.md#wink-storage","module":"wink-storage","mentions":[]},
+    {"kind":"event","name":"storage.paired","definedIn":"core/wink/storage/index.js","page":"reference/events.md#wink","module":"wink","mentions":[]},
+    {"kind":"event","name":"storage.removed","definedIn":"core/wink/storage/index.js","page":"reference/events.md#wink","module":"wink","mentions":[]},
+    {"kind":"event","name":"storage.unreachable","definedIn":"core/wink/storage/index.js","page":"reference/events.md#wink","module":"wink","mentions":[]},
     {"kind":"tool","name":"suggest.offer","definedIn":"core/suggest/index.js","page":"reference/tools.md#suggestoffer","module":"suggest","mentions":[{"page":"adr/0036-one-system.md","line":82,"anchor":"3-suggest-one-predictive-text-tool"},{"page":"design/cohesion.md","line":122,"anchor":"4-suggest"},{"page":"design/cohesion.md","line":334,"anchor":"cross-cutting-contracts"},{"page":"design/system/teams.md","line":703,"anchor":"other-teams"},{"page":"design/system/components/suggestions.md","line":177,"anchor":"gaps"}]},
     {"kind":"tool","name":"suggest.picked","definedIn":"core/suggest/index.js","page":"reference/tools.md#suggestpicked","module":"suggest","mentions":[{"page":"adr/0036-one-system.md","line":76,"anchor":"3-suggest-one-predictive-text-tool"},{"page":"adr/0036-one-system.md","line":85,"anchor":"3-suggest-one-predictive-text-tool"},{"page":"design/cohesion.md","line":123,"anchor":"4-suggest"},{"page":"design/cohesion.md","line":334,"anchor":"cross-cutting-contracts"},{"page":"design/system/teams.md","line":404,"anchor":"all-open-items-1"},{"page":"design/system/teams.md","line":485,"anchor":"all-open-items-2"},{"page":"design/system/teams.md","line":656,"anchor":"all-open-items-4"},{"page":"design/system/components/suggestions.md","line":116,"anchor":"states"},{"page":"design/system/components/suggestions.md","line":162,"anchor":"gaps"},{"page":"design/system/components/suggestions.md","line":170,"anchor":"gaps"}]},
     {"kind":"tool","name":"suggest.query","definedIn":"core/suggest/index.js","page":"reference/tools.md#suggestquery","module":"suggest","mentions":[{"page":"adr/0036-one-system.md","line":74,"anchor":"3-suggest-one-predictive-text-tool"},{"page":"adr/0037-windows.md","line":48,"anchor":"decision"},{"page":"design/cohesion.md","line":119,"anchor":"4-suggest"},{"page":"design/cohesion.md","line":334,"anchor":"cross-cutting-contracts"},{"page":"design/interaction.md","line":133,"anchor":"top-3-upgrades-by-team"},{"page":"design/windows-plan.md","line":74,"anchor":"2-tiers-cheapest-first"},{"page":"design/system/teams.md","line":402,"anchor":"all-open-items-1"},{"page":"design/system/teams.md","line":485,"anchor":"all-open-items-2"},{"page":"design/system/teams.md","line":656,"anchor":"all-open-items-4"},{"page":"design/system/components/suggestions.md","line":13,"anchor":"suggestions"},{"page":"design/system/components/suggestions.md","line":90,"anchor":"variants"},{"page":"design/system/components/suggestions.md","line":159,"anchor":"gaps"},{"page":"design/system/components/suggestions.md","line":168,"anchor":"gaps"}]},
@@ -2215,13 +2216,6 @@
     {"kind":"tool","name":"watchers.shown","definedIn":"core/watchers/index.js","page":"reference/tools.md#watchersshown","module":"watchers","mentions":[]},
     {"kind":"tool","name":"watchers.test","definedIn":"core/watchers/index.js","page":"reference/tools.md#watcherstest","module":"watchers","mentions":[{"page":"using/watchers.md","line":33,"anchor":"ask-for-a-watcher"},{"page":"using/watchers.md","line":155,"anchor":"which-surface-does-what"},{"page":"architecture/spec.md","line":415,"anchor":"76-watchers--workstream"}]},
     {"kind":"concept","name":"Watchtower","definedIn":null,"page":"using/vault.md#see-what-you-have","mentions":[{"page":"using/vault.md","line":87,"anchor":"store-an-item"},{"page":"using/vault.md","line":149,"anchor":"leaks-and-rotation"},{"page":"using/vault.md","line":180,"anchor":"see-what-you-have"},{"page":"adr/0006-vault-next.md","line":99,"anchor":"1-two-kinds-of-vault-and-a-key-hierarchy-under-them"},{"page":"adr/0006-vault-next.md","line":201,"anchor":"6-the-persons-surfaces"},{"page":"adr/0006-vault-next.md","line":206,"anchor":"6-the-persons-surfaces"},{"page":"adr/0028-vault-everywhere.md","line":18,"anchor":"why"},{"page":"adr/0028-vault-everywhere.md","line":33,"anchor":"what-already-exists"},{"page":"adr/0028-vault-everywhere.md","line":153,"anchor":"1b-typed-credentials"},{"page":"adr/0028-vault-everywhere.md","line":221,"anchor":"4-rotation-reminders-through-the-planner"},{"page":"adr/0028-vault-everywhere.md","line":222,"anchor":"4-rotation-reminders-through-the-planner"},{"page":"adr/0028-vault-everywhere.md","line":237,"anchor":"4-rotation-reminders-through-the-planner"}]},
-    {"kind":"tool","name":"wink-storage.card","definedIn":"core/wink-storage/module.json","page":"reference/tools.md#wink-storagecard","module":"wink-storage","mentions":[]},
-    {"kind":"tool","name":"wink-storage.discover","definedIn":"core/wink-storage/module.json","page":"reference/tools.md#wink-storagediscover","module":"wink-storage","mentions":[]},
-    {"kind":"tool","name":"wink-storage.offers","definedIn":"core/wink-storage/module.json","page":"reference/tools.md#wink-storageoffers","module":"wink-storage","mentions":[]},
-    {"kind":"tool","name":"wink-storage.pair","definedIn":"core/wink-storage/module.json","page":"reference/tools.md#wink-storagepair","module":"wink-storage","mentions":[]},
-    {"kind":"tool","name":"wink-storage.pick","definedIn":"core/wink-storage/module.json","page":"reference/tools.md#wink-storagepick","module":"wink-storage","mentions":[]},
-    {"kind":"tool","name":"wink-storage.remove","definedIn":"core/wink-storage/module.json","page":"reference/tools.md#wink-storageremove","module":"wink-storage","mentions":[]},
-    {"kind":"tool","name":"wink-storage.status","definedIn":"core/wink-storage/module.json","page":"reference/tools.md#wink-storagestatus","module":"wink-storage","mentions":[]},
     {"kind":"tool","name":"wink.access","definedIn":"core/wink/index.js","page":"reference/tools.md#winkaccess","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.approve","definedIn":"core/wink/index.js","page":"reference/tools.md#winkapprove","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.cancel","definedIn":"core/wink/index.js","page":"reference/tools.md#winkcancel","module":"wink","mentions":[]},
@@ -2262,6 +2256,13 @@
     {"kind":"tool","name":"wink.server.code","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkservercode","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.server.confirm","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkserverconfirm","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.share","definedIn":"core/wink/index.js","page":"reference/tools.md#winkshare","module":"wink","mentions":[]},
-    {"kind":"event","name":"wink.shared","definedIn":"core/wink/index.js","page":"reference/events.md#wink","module":"wink","mentions":[]}
+    {"kind":"event","name":"wink.shared","definedIn":"core/wink/index.js","page":"reference/events.md#wink","module":"wink","mentions":[]},
+    {"kind":"tool","name":"wink.storage.card","definedIn":"core/wink/module.json","page":"reference/tools.md#winkstoragecard","module":"wink","mentions":[]},
+    {"kind":"tool","name":"wink.storage.discover","definedIn":"core/wink/module.json","page":"reference/tools.md#winkstoragediscover","module":"wink","mentions":[]},
+    {"kind":"tool","name":"wink.storage.offers","definedIn":"core/wink/module.json","page":"reference/tools.md#winkstorageoffers","module":"wink","mentions":[]},
+    {"kind":"tool","name":"wink.storage.pair","definedIn":"core/wink/module.json","page":"reference/tools.md#winkstoragepair","module":"wink","mentions":[]},
+    {"kind":"tool","name":"wink.storage.pick","definedIn":"core/wink/module.json","page":"reference/tools.md#winkstoragepick","module":"wink","mentions":[]},
+    {"kind":"tool","name":"wink.storage.remove","definedIn":"core/wink/module.json","page":"reference/tools.md#winkstorageremove","module":"wink","mentions":[]},
+    {"kind":"tool","name":"wink.storage.status","definedIn":"core/wink/module.json","page":"reference/tools.md#winkstoragestatus","module":"wink","mentions":[]}
   ]
 }
