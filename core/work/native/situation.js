@@ -38,15 +38,15 @@ function fieldText(name, v) {
  * @param {{ space: string, project?: { type: string, id: string }, record?: { type: string, id: string }, doing?: Record<string, string>, playbooks?: boolean, budget?: number }} o
  *   `project` is the project record in scope, `record` a more specific one (a task's matter); `doing` maps a teammate's name to its live line.
  */
-export async function buildSituation(kernel, chain, { space, project, record, doing = {}, playbooks = true, budget = SITUATION_TOKENS, audience = [] }) {
+export async function buildSituation(kernel, chain, { space, project, record, doing = {}, playbooks = true, budget = SITUATION_TOKENS, room = null }) {
   // A chat with more than one person: the reply is the same words for everyone, so the situation is built for the audience (DESIGN-chat, "An assistant in a
   // group writes for the whole room"). A field every person in the chat may read arrives as a value; any other arrives as a token the model can only cite, drawn
   // per viewer by chat, exactly like a sealed field. Tool calls still run under the asker's own chain; only what the model SEES is narrowed.
-  const group = audience.length > 1;
+  // `room` is the kernel's handle for the chat (ctx.kernel.audienceFor): { group, size, read(resource) -> { values, restricted } | null, canRead(resource) }. The kernel
+  // does the "every viewer holds the same value" comparison; no chain for another person ever reaches this module.
+  const group = Boolean(room && room.group);
   /** @type {string[]} */ const restricted = [];
-  const sameValue = (/** @type {any} */ a, /** @type {any} */ b) => JSON.stringify(a) === JSON.stringify(b);
-  /** @type {(fn: (c: any) => Promise<any>) => Promise<any[]>} */
-  const eachViewer = fn => Promise.all(audience.map(c => fn(c).catch(() => null)));
+  const canRead = (/** @type {string} */ urn) => /** @type {any} */ (room).canRead(urn).then((/** @type {any} */ ok) => ok === true, () => false);
   const me = chain.hops[0].actor;
   const inputs = [chain.labels || memberLabels(space)];
   const urns = [];
@@ -60,22 +60,18 @@ export async function buildSituation(kernel, chain, { space, project, record, do
     rec = await kernel.records.get(chain, focus.type, focus.id).catch(() => null);
     if (rec) { urns.push(rec.urn); inputs.push(rec.labels); }
   }
-  const role = kernel.members && kernel.members.roleOf ? await kernel.members.roleOf(chain) : null;
+  const role = kernel.members && kernel.members.roleOf ? await kernel.members.roleOf(me) : null;
   const lines = [`Vyre. Space ${clean(space, 40)}. You act for ${clean(actorName(me), 40)}${role ? ` (${clean(role, 20)})` : ""}.`];
 
   // The record: its type, stage and fields. A tainted record's text is quoted, not stated.
   if (rec && group) {
-    const views = await eachViewer(c => kernel.records.get(c, rec.type, rec.id));
-    if (views.some(v => !v)) { lines.push(`In: a ${clean(rec.type, 30)} that not everyone in this chat may read. Nothing of it is shown to you.`); rec = null; focusHidden = true; }
+    const r = await /** @type {any} */ (room).read(rec.urn).catch(() => null);
+    if (!r || !r.values || !Array.isArray(r.restricted)) { lines.push(`In: a ${clean(rec.type, 30)} that not everyone in this chat may read. Nothing of it is shown to you.`); rec = null; focusHidden = true; }
     else {
-      // What every viewer holds as a value, exactly the same: anything else is a token.
-      const data = {};
-      for (const [k, v] of Object.entries(rec.data)) {
-        if (isSealedValue(v) || views.every(w => k in w.data && !isSealedValue(w.data[k]) && sameValue(w.data[k], v))) data[k] = v;
-        else { data[k] = { restricted: true, ref: `${rec.urn}#${k}` }; restricted.push(k); }
-      }
+      // What every viewer holds as a value is `values`; every other field is a token the model can only cite.
+      const data = { ...r.values };
+      for (const k of r.restricted) { data[String(k)] = { restricted: true, ref: `${rec.urn}#${k}` }; restricted.push(String(k)); }
       rec = { ...rec, data };
-      for (const w of views) inputs.push(w.labels);
     }
   }
   if (rec) {
@@ -92,11 +88,17 @@ export async function buildSituation(kernel, chain, { space, project, record, do
   if (sealedNames.length) lines.push(`Sealed (${sealedNames.sort().join(", ")}): the values are never shown to you; ask for what is on file, and the kernel fills a template slot only when a checked message is sent.`);
 
   // Tasks: what waits on the caller (any record), and the open tasks on this record.
-  let all = kernel.tasks && kernel.tasks.list ? await kernel.tasks.list(chain, {}) : [];
+  // What waits on the person (the kernel's own queue for them) and the tasks on this record (`kernel.tasks.forRecord`, a platform gap: the kernel lists only a person's queue).
+  /** @type {any[]} */ let all = kernel.tasks && kernel.tasks.list ? await kernel.tasks.list(chain, {}) : [];
+  if (rec && kernel.tasks && typeof kernel.tasks.forRecord === "function") {
+    const have = new Set(all.map((/** @type {any} */ t) => t.id));
+    for (const t of await kernel.tasks.forRecord(chain, rec.urn).catch(() => [])) if (!have.has(t.id)) all.push(t);
+  }
   if (group) {
     // Only tasks every viewer may see; what waits on the asker is the asker's own business and is left out of a shared room.
-    const seen = await eachViewer(c => (kernel.tasks && kernel.tasks.list ? kernel.tasks.list(c, {}) : Promise.resolve([])));
-    all = all.filter((/** @type {any} */ t) => seen.every(list => Array.isArray(list) && list.some((/** @type {any} */ x) => x.id === t.id)));
+    const keep = [];
+    for (const t of all) if (await canRead(`vyre://${space}/task/${t.id}`)) keep.push(t);
+    all = keep;
   }
   const mine = (/** @type {any} */ x) => x && x.kind === "person" && x.id === me.id;
   const waiting = group ? [] : all.filter((/** @type {any} */ t) => (t.state === "needs_check" && mine(t.checker)) || (t.state === "ready" && (mine(t.doer))) || (t.state === "stuck" && (mine(t.doer) || mine(t.assigned_by) || mine(t.checker))))
@@ -114,9 +116,9 @@ export async function buildSituation(kernel, chain, { space, project, record, do
 
   // The team: people and assistant teammates of the project, each with a live line when there is one.
   if (project) {
-    const teamQ = (/** @type {any} */ c) => kernel.records.query(c, "team_member", { filter: { field: "project", op: "eq", value: { urn: rec ? rec.urn : "" } }, page: { limit: 50 } }).then((/** @type {any} */ r) => r.rows);
+    const teamQ = (/** @type {any} */ c) => kernel.records.query(c, "team-member", { filter: { field: "project", op: "eq", value: { urn: rec ? rec.urn : "" } }, page: { limit: 50 } }).then((/** @type {any} */ r) => r.rows);
     let team = await teamQ(chain).catch(() => []);
-    if (group) { const seen = await eachViewer(teamQ); team = team.filter((/** @type {any} */ m) => seen.every(rows => Array.isArray(rows) && rows.some((/** @type {any} */ x) => x.id === m.id))); }
+    if (group) { const keep = []; for (const m of team) if (await canRead(m.urn || `vyre://${space}/team_member/${m.id}`)) keep.push(m); team = keep; }
     const items = team.map((/** @type {any} */ m) => {
       inputs.push(m.labels);
       const nm = clean(m.data.name || m.id, 40), kind = m.data.kind === "assistant" ? "assistant" : "person";
@@ -153,7 +155,7 @@ export async function buildSituation(kernel, chain, { space, project, record, do
   if (playbooks && rec) {
     const stage = typeof rec.data.stage === "string" ? rec.data.stage : undefined;
     pbs = await playbooksFor(kernel, chain, { type: rec.type, stage: typeof stage === "string" ? stage : undefined });
-    if (group) { const seen = await eachViewer(c => playbooksFor(kernel, c, { type: rec.type, stage: typeof stage === "string" ? stage : undefined })); pbs = pbs.filter(p => seen.every(list => Array.isArray(list) && list.some(x => x.urn === p.urn))); }
+    if (group) { const keep = []; for (const p of pbs) if (await canRead(p.urn)) keep.push(p); pbs = keep; }
     for (const p of pbs) { inputs.push(p.labels); urns.push(p.urn); quoted.push(`playbook "${p.title}" v${p.version}${p.reviewed ? "" : " (not yet reviewed)"}: ${p.text}`); }
   }
   if (quoted.length) {

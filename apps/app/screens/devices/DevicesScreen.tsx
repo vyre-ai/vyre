@@ -1,7 +1,7 @@
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Avatar, Button, Card, Chip, Divider, Row, Switch, Text, showToast } from "@vyre/ui";
-import { Group, Page } from "../shell/Page";
+import { Avatar, Button, Card, Divider, Row, Switch, Text, showToast, markRef } from "@vyre/ui";
+import { Group, Page } from "../places/Frame";
 import { SPACE_NAMES } from "./data";
 import { useDevices } from "./state";
 import { deviceLine } from "./wink.js";
@@ -18,16 +18,16 @@ export function DevicesScreen() {
         <Card flush>
           {devices.map((d, i) => (
             <View key={d.id}>
-              {i ? <Divider /> : null}
-              <Row lead={<Avatar name={d.name} family="device" size="lg" icon={d.device === "phone" ? "phone" : d.device === "server" ? "box" : "laptop"} />} title={deviceLine(d.name, (devSpaces[d.id] ?? []).map((s) => SPACE_NAMES[s] ?? s))}
-                sub={`Last used ${d.last}`} onPress={() => router.push(`/u/settings/device/${d.id}` as never)}
-                end={<Chip>{d.device === "phone" ? "Phone" : d.device === "server" ? "Server" : "Computer"}</Chip>} />
+              {i ? <Divider inset={68} /> : null}
+              <Row lead={<Avatar of={{ ...markRef("device", d.name, d.id), device: d.device }} size={40} />} title={deviceLine(d.name, (devSpaces[d.id] ?? []).map((s) => SPACE_NAMES[s] ?? s))}
+                sub={`${d.device === "phone" ? "Phone" : d.device === "server" ? "Server" : "Computer"}, last used ${d.last}`} onPress={() => router.push(`/u/settings/device/${d.id}` as never)}
+                chevron />
             </View>
           ))}
         </Card>
       ) : <Card><Text tone="muted">No devices. Add one to reach your spaces from it.</Text></Card>}
       <Group>
-        <Card><Row title="Make it faster" sub="Let your devices talk to each other directly when they can." end={<Switch label="Make it faster" on={faster} onChange={(v) => { setFaster(v); showToast(v ? "Direct connections are on." : "Direct connections are off."); }} />} /></Card>
+        <Card flush><Row dense title="Make it faster" sub="Let your devices talk to each other directly when they can." end={<Switch label="Make it faster" on={faster} onChange={(v) => { setFaster(v); showToast(v ? "Direct connections are on." : "Direct connections are off."); }} />} /></Card>
       </Group>
     </Page>
   );

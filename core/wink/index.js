@@ -3,9 +3,10 @@
 // or a scan on one device, a card on the other, and then exactly one grant (kernel/contracts/grant.d.ts) and a handful of events. There is no
 // hidden way in. This module owns the flows on a box:
 //
-//   Add a computer or phone   wink.code.open   a typed code (two-sided: the PAKE of relay/client/code.js, then the person types back the code
-//                                              the new device shows, wink.code.ack); the ring (QR) path is the existing pairing window and
-//                                              this module writes its grant and events too (device.paired, device.removed).
+//   Add a phone               wink.phone.open  a QR and a long code; the phone scans or pastes it, both sides show the same three words, the person says yes
+//                                              on the computer (wink.phone.pair.answer); no yes pairs nothing (core/wink/pairing.js). The ring (QR) path is the
+//                                              existing pairing window; this module registers its devices too (device.paired, device.removed).
+//   Typed code (development)  wink.code.open   a short typed code, two-sided (the PAKE of relay/client/code.js, wink.code.ack): off in a release build.
 //   Invite a person           wink.invite      a Wink ticket with the offer sealed into it; the invited person's redemption becomes a membership
 //                                              grant here (a sensitive role waits for the admin's approval).
 //   Share a computer          wink.share       lend one of my computers to my own space: a node.host grant with limits.
@@ -21,11 +22,13 @@ import os from "node:os";
 import path from "node:path";
 import { createWinkCode } from "./code.js";
 import { createGrants, MIGRATIONS as GRANT_MIGRATIONS, spaceIdOf, timeId, base32 } from "./grants.js";
-import { card, removal, removed } from "./cards.js";
+import { card, removal, removed, words } from "./cards.js";
 import { createPairing, MIGRATIONS as DEVICE_MIGRATIONS, PEER_MIGRATIONS, FLOW_KIND, ADMIN_ROLES, ownDirectory, kernelDirectory, kernelHasRoles } from "./pairing.js";
 import { createStorageDevices, registerStorageTools, MIGRATIONS as STORAGE_MIGRATIONS } from "./storage/index.js";
 import { storageGrants } from "./storage/grants.js";
 import { attachPool } from "./storage/pool.js";
+import { createBridgeSecrets, createBridgeEndpoint, acceptDrive, bridgeServe, bridgeMakeBackend, pairFromHome, BRIDGE_TOOL, ACCEPT_TOOL, DRIVE_TOOL } from "./storage/bridge.js";
+import { createHolds } from "./storage/hold.js";
 import { seedFromKey } from "../../relay/client/join.js";
 
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
@@ -44,9 +47,22 @@ function owner(meta, what) {
     throw fail("denied", `${what} is the owner's`);
 }
 
-/** @param {{ offers?: any, ports?: import("./pairing.js").Ports, directory?: import("./pairing.js").Directory, pool?: any, poolBackend?: (c: any, offer: any) => any }} [inject] @returns {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
+/**
+ * The Wink module. `inject` is the composition root's side (the platform's createKernel passes these; every one is optional and a box without one says so plainly):
+ *   directory   { memberships(identity) -> [{ space, name?, role }], label?(identity) }   who holds which role (kernelDirectory over ctx.kernel when absent)
+ *   offers      { get(space, device, x), set(space, device, side, on, x) }   the ONLY store of compute offers (W-5); the kernel's grants.offers behind a port
+ *   bridge      { createBridge, backendFor, home?, roots? } the pool engine'S bridge (kernel/storage/bridge.js, devices.js): a drive reached through another device (core/wink/storage/bridge.js)
+ *   pool        the storage Pool engine (kernel/storage/pool.js) and poolBackend(credentials, offer) -> backend (kernel/storage/devices.js backendFor)
+ *   ports       { typist, finish, adopt, callServer }   test seams for the typing flows
+ *   typedCode   true switches the short typed code on (development; also VYRE_WINK_TYPED_CODE=1 or config wink.typedCode); off in a release build
+ *   confirmAdopt false skips the person-at-the-server confirmation of a first adoption (a test seam; always on in a real box)
+ *   releaseMaxMs how long a release the server never confirmed is retried before it is given up and the person is told (default 30 days)
+ * @param {{ ports?: import("./pairing.js").Ports, directory?: import("./pairing.js").Directory, pool?: any, poolBackend?: (c: any, offer: any) => any, bridge?: { createBridge: any, backendFor: any, home?: () => string | null, roots?: string[] }, offers?: any, handover?: import("./pairing.js").Handover }} [inject]
+ * @returns {{ start(ctx: any): Promise<{ stop(): Promise<void>, peers: any, homeServe(inner: any): any }>, readonly peers: any, homeServe(inner: any): any }} */
 export function createWink(inject = {}) {
-  return {
+  /** @type {any} */
+  let live = null;
+  const mod = {
   async start(ctx) {
     if (ctx.config.role !== "box") return { async stop() {} };
     const now = () => Date.now();
@@ -113,12 +129,21 @@ export function createWink(inject = {}) {
     /** The code on screen, only ever returned to the person who opened it. @type {{ code: string, expires: number } | null} */
     let shown = null;
     const busName = (/** @type {string} */ n) => (n.startsWith("wink.code.") ? `wink.code-${n.slice("wink.code.".length)}` : n);
+    /** What the relay said when it refused a code, for the words on the screen. @type {any} */
+    let allocFail = null;
+    /** Says what failed: the relay is out of date (426), the relay refused or did not answer, or it could not be reached. @param {any} err */
+    const relayWords = err => {
+      const m = String((err && (err.message || err.code)) || "");
+      if (/426|out of date|upgrade/i.test(m)) return words("relayOld");
+      if (/refus|did not confirm|already holds/i.test(m)) return `The relay would not take the code (${m.replace(/[.\s]+$/, "").slice(0, 160)}). Nothing was lost; try again in a minute.`;
+      return words("offline");
+    };
     const ensureCode = async () => {
       if (code) return code;
       const route = await ensureRoute();
       code = createWinkCode({
         route, twoSided: true, level: 2,
-        allocate: async () => { const r = /** @type {any} */ (await ctx.call("relay.code.alloc", {})); return r && r.data ? r.data : null; },
+        allocate: async () => { const r = /** @type {any} */ (await ctx.call("relay.code.alloc", {})); allocFail = r && r.error ? r.error : null; return r && r.data ? r.data : null; },
         release: () => { void ctx.call("relay.code.release", {}); },
         emit: (name, data) => {
           if (name === "wink.code.opened" || name === "wink.code.replaced") { shown = { code: data.code, expires: data.expires }; const { code: _c, rv: _r, ...rest } = data; ctx.events.emit(busName(name), { offer: codeOffer, ...rest }); return; }
@@ -147,7 +172,7 @@ export function createWink(inject = {}) {
       c.cancel();
       codeOffer = newOffer(flow, "code", {});
       const made = await c.open();
-      if (!made) { writeOffer(codeOffer, "closed", {}); throw fail("unavailable", "Can't connect. Check your internet connection. Nothing was lost."); }
+      if (!made) { writeOffer(codeOffer, "closed", {}); throw fail("unavailable", allocFail ? relayWords(allocFail) : words("relayNoCode")); }
       shown = { code: made.code, expires: made.expires };
       writeOffer(codeOffer, "offered", {});
       ctx.events.emit("wink.offered", { offer: codeOffer, flow, via: "code", expires: made.expires });
@@ -163,17 +188,21 @@ export function createWink(inject = {}) {
       // Both ends hold the same key: the ticket's seed is derived from it, so the relay never sees it and nothing else is carried.
       const seed = Buffer.from(seedFromKey(r.key)).toString("base64url");
       const t = /** @type {any} */ (await ctx.call("relay.ticket.mint", { seed }));
-      if (!t || t.error) { writeOffer(o.id, "closed", { why: "relay" }); throw fail("unavailable", "Can't connect. Check your internet connection. Nothing was lost."); }
+      if (!t || t.error) { writeOffer(o.id, "closed", { why: "relay" }); throw fail("unavailable", relayWords(t && t.error)); }
       writeOffer(o.id, "joining", { pick: null });
       ctx.events.emit("wink.confirmed", { offer: o.id });
       return { ok: true };
     };
 
     ctx.tool("wink.code.open", {
-      description: "Show a Wink code for a new computer or server to type (two-sided: the new device then shows a code to type back here, wink.code.ack). Answers { offer, code, expires }. The code is a secret: it is returned here and never put on the event bus.",
+      description: "Development only: show a short typed Wink code for a new computer or server (two-sided: the new device then shows a code to type back here, wink.code.ack). Switched off in a release build: it is refused unless VYRE_WINK_TYPED_CODE=1 or the config wink.typedCode is set; scan the QR or paste the long code instead. Answers { offer, code, expires }. The code is a secret: it is returned here and never put on the event bus.",
       input: obj({ flow: { type: "string", enum: ["W1", "W2", "W3"] } }),
       presence: { summary: async () => "Show a code to add a new device to this server" },
-      run: async (input, meta = {}) => { owner(meta, "adding a device"); return openCode(input.flow || "W2"); },
+      run: async (input, meta = {}) => {
+        owner(meta, "adding a device");
+        if (!typedCodeOn()) throw fail("typed_code_off", words("typedCodeOff"));
+        return openCode(input.flow || "W2");
+      },
     });
 
     ctx.tool("wink.code.status", {
@@ -188,10 +217,10 @@ export function createWink(inject = {}) {
     });
 
     ctx.tool("wink.code.ack", {
-      description: "Type back the code the new device is showing. One try per code: the right one adds the device and uses the code up, a wrong one closes the code and a new one is showing. Answers { ok }.",
+      description: "Development only (the typed code is switched off in a release build; a phone, a computer and a server are added by scan or paste and three words, never this). Type back the code the new device is showing. One try per code: the right one adds the device and uses the code up, a wrong one closes the code and a new one is showing. Answers { ok }.",
       input: obj({ offer: str, typed: str }, ["offer", "typed"]),
       presence: { summary: async () => "Add this device to your server" },
-      run: async (input, meta = {}) => { owner(meta, "adding a device"); return ackOffer(input.offer, input.typed); },
+      run: async (input, meta = {}) => { owner(meta, "adding a device"); if (!typedCodeOn()) throw fail("typed_code_off", words("typedCodeOff")); return ackOffer(input.offer, input.typed); },
     });
 
     ctx.tool("wink.cancel", {
@@ -213,26 +242,50 @@ export function createWink(inject = {}) {
     const ownerMeta = () => { try { const r = /** @type {any} */ (db.prepare("SELECT v FROM wink_meta WHERE k = 'owner'").get()); return r ? JSON.parse(r.v) : null; } catch { return null; } };
     // The identity this box answers for: the one that adopted it (wink.server.adopt), else the one derived from its own route.
     const owner1 = async () => { const m = ownerMeta(); return m && m.identity ? String(m.identity) : (await owner0()).id; };
-    const directory = inject.directory || (kernelHasRoles(ctx.kernel) ? kernelDirectory({ kernel: ctx.kernel, space: spaceId, name: () => String(ctx.config.name || "this space") })
-      : ownDirectory({ identity: owner1, space: spaceId, name: () => String(ctx.config.name || "this space") }));
+    /** What this box calls its own space: its name, else the name the app gave the space that adopted it, never "this space". */
+    const boxName = () => { const om = ownerMeta(); return String(ctx.config.name || (om && om.kind === "space" && om.name) || "your space"); };
+    const directory = inject.directory || (kernelHasRoles(ctx.kernel) ? kernelDirectory({ kernel: ctx.kernel, space: spaceId, name: boxName })
+      : ownDirectory({ identity: owner1, space: spaceId, name: boxName }));
+    // The short typed code is switched off in a release build (ruling, 4 Oct 2026; its cryptography still needs an independent review, team/0.3/PAKE-choice.md). One flag
+    // for development: the env var VYRE_WINK_TYPED_CODE=1, or `wink.typedCode: true` in the config. Scan and paste always work.
+    const typedCodeOn = () => inject.typedCode !== undefined ? Boolean(inject.typedCode) : (process.env.VYRE_WINK_TYPED_CODE === "1" || Boolean(ctx.config && ctx.config.wink && ctx.config.wink.typedCode === true));
     const pairing = createPairing({
-      ctx, now, identity: owner1, space: spaceId, openCode, ack: ackOffer, owner,
+      ctx, now, identity: owner1, space: spaceId, openCode, ack: ackOffer, owner, typedCode: typedCodeOn, confirmAdopt: inject.confirmAdopt,
+      releaseMaxMs: inject.releaseMaxMs,
       // Who may pair to a space: the kernel's grants store when ctx.kernel offers it (work/kernel), else a fake that makes the box owner the owner of its own space.
       directory,
       ports: inject.ports,
       offers: inject.offers || (ctx.kernel && typeof ctx.kernel.offersPort === "function" ? ctx.kernel.offersPort() : undefined),
+      handover: inject.handover,
       keyFile: path.join(ctx.paths && ctx.paths.root ? ctx.paths.root : path.join(os.homedir(), ".vyre"), "wink-keys.json"),
       spaceNow: () => spaceCache,
       relayUrl: async () => { const r = /** @type {any} */ (await ctx.call("relay.status", {})); return String((r && r.data && r.data.url) || (ctx.config.relay && ctx.config.relay.url) || ""); },
     });
     pairing.tools();
+    live = pairing.peers;
     /** A space's own name for a card, never its id. */
     const spaceName = async (/** @type {string} */ id) => {
       try { const m = (await directory.memberships(await owner1())).find(x => x.space === id); if (m && m.name) return String(m.name); } catch {}
-      return "this space";
+      // the app named the space when it adopted this server (wink.server.adopt owner.name): a card says that name, never "this space"
+      const om = ownerMeta();
+      if (om && om.kind === "space" && om.id === id && om.name) return String(om.name);
+      return "your space";
     };
     // A device that paired (a typed code, or the ring) is registered under the identity with its kind. No grant is written in any space.
+    /** Devices a pairing window already confirmed on a screen (relay `pairing.requested` then yes): not held again for the words. @type {Set<string>} */
+    const windowConfirmed = new Set();
+    const offWindow = ctx.events.on("pairing.requested", (/** @type {any} */ e) => { const d = String((e && (e.payload || e).device) || ""); if (d) { windowConfirmed.add(d); if (windowConfirmed.size > 50) windowConfirmed.delete(windowConfirmed.values().next().value); } });
+    /** The old ring: a device that paired with none of this module's own tickets (a phone's QR, a box's QR, a typed-code offer) and not through a confirmed pairing window. A box QR still open hides a ring pairing (the relay does not say which ticket was used). @param {any} p */
+    const isRing = p => {
+      if (windowConfirmed.delete(String(p.id))) return false;
+      if (pairing.phone.boxTicketLive()) return false;
+      return !db.prepare("SELECT id FROM wink_offers WHERE via = 'code' AND state = 'joining' LIMIT 1").get();
+    };
     const registerDevice = async (/** @type {any} */ p) => {
+      // A phone that scanned the QR on show is held for the person's yes (wink.phone.pair.answer): nothing is registered until then.
+      if (await pairing.phone.hold(p)) return null;
+      // Neither a phone's QR, a box ticket, a typed-code offer nor a screen-confirmed pairing window: the old ring. Held until the same three words are confirmed on this computer.
+      if (isRing(p)) { await pairing.phone.holdRing(p); return null; }
       const identity = await owner1();
       const open = /** @type {any} */ (db.prepare("SELECT id FROM wink_offers WHERE via = 'code' AND state = 'joining' ORDER BY created DESC LIMIT 1").get());
       const o = open ? readOffer(open.id) : null;
@@ -269,6 +322,66 @@ export function createWink(inject = {}) {
       } catch (err) { ctx.log(`wink: device removal failed: ${/** @type {Error} */ (err).message}`); }
     });
 
+    // ---- a signed instruction to a headless box (lead ruling, 3 Oct): changing the relay is done from the owner's app WITH presence, and the box only
+    // receives and checks the SIGNED instruction. There is no headless presence path. Format (v1):
+    //   { v: 1, action: "relay.enable", url?, box, device, ts, nonce, sig }
+    //   sig = signature by the owner device's signing key over "vyre-wink-instruction-v1\n<box>\n<action>\n<url>\n<ts>\n<nonce>"
+    //         (Ed25519, or ECDSA P-256 with SHA-256 in the raw r||s form WebCrypto produces); `box` is this box's route id; `ts` within two minutes; a nonce is used once.
+    // The key is the SPKI the owner's device registered with wink.device.key (presence, the owner's own screen). MISSING: the app side that signs (it must
+    // enrol its key at pairing and sign after its own Touch ID), and a signing key bound to the identity chain; today the key is whatever the owner registered.
+    const INSTRUCTION_SKEW = 2 * 60_000;
+    const verifyInstruction = (/** @type {any} */ i, /** @type {any} */ dev, /** @type {string} */ box) => {
+      if (!dev || !dev.signKey) return false;
+      const msg = Buffer.from(`vyre-wink-instruction-v1\n${box}\n${i.action}\n${i.url || ""}\n${i.ts}\n${i.nonce}`);
+      let key;
+      try { key = crypto.createPublicKey({ key: Buffer.from(dev.signKey, "base64url"), format: "der", type: "spki" }); } catch { return false; }
+      const sig = Buffer.from(String(i.sig || ""), "base64url");
+      try {
+        if (key.asymmetricKeyType === "ed25519") return crypto.verify(null, msg, key, sig);
+        if (key.asymmetricKeyType === "ec") return crypto.verify("sha256", msg, { key, dsaEncoding: "ieee-p1363" }, sig);
+      } catch { /* a malformed signature is a no */ }
+      return false;
+    };
+    ctx.tool("wink.device.key", {
+      description: "Register the key an owner's device signs instructions with (SPKI, base64url: Ed25519 or P-256), so a headless box can take a signed instruction from it (wink.relay.apply). Needs the owner's presence. Answers { device }.",
+      input: obj({ device: str, key: str }, ["device", "key"]),
+      presence: { summary: async () => "Let this device send signed instructions to your server" },
+      run: async (input, meta = {}) => {
+        owner(meta, "registering a signing key");
+        const d = pairing.devices.get(String(input.device));
+        if (!d || d.removed || d.identity !== await owner1() || (d.kind !== "phone" && d.kind !== "computer")) throw fail("not_found", "no such device of yours");
+        let k;
+        try { k = crypto.createPublicKey({ key: Buffer.from(String(input.key), "base64url"), format: "der", type: "spki" }); } catch { throw fail("bad_input", "the key is not a public key (SPKI, base64url)"); }
+        if (k.asymmetricKeyType !== "ed25519" && k.asymmetricKeyType !== "ec") throw fail("bad_input", "the key is Ed25519 or P-256");
+        pairing.devices.setSignKey(d.id, String(input.key));
+        return { device: d.id };
+      },
+    });
+    ctx.tool("wink.relay.apply", {
+      description: "Apply a signed instruction from the owner's app to turn the relay on, or point it at another relay, on a box that has no screen. The app asks for presence and signs; this box checks the signature against the owner's registered device key, the box id, the time (two minutes) and a one-time nonce. Input is the instruction (see docs/work/tailnet.md). Answers { applied, url }.",
+      input: obj({ v: { type: "number" }, action: { type: "string", enum: ["relay.enable"] }, url: str, box: str, device: str, ts: { type: "number" }, nonce: str, sig: str }, ["v", "action", "box", "device", "ts", "nonce", "sig"]),
+      run: async (input, meta = {}) => {
+        owner(meta, "changing the relay");
+        const deny = (/** @type {string} */ why) => fail("denied", `the instruction was refused: ${why}`);
+        if (input.v !== 1 || input.action !== "relay.enable") throw deny("not an instruction this box takes");
+        const url = input.url ? String(input.url) : "";
+        if (url && !/^wss?:\/\/[^\s/]+/.test(url)) throw fail("bad_input", "url must be a ws:// or wss:// address");
+        if (!/^[A-Za-z0-9_-]{8,128}$/.test(String(input.nonce))) throw deny("bad nonce");
+        if (Math.abs(now() - Number(input.ts)) > INSTRUCTION_SKEW) throw deny("too old or from the future");
+        if (String(input.box) !== await ensureRoute()) throw deny("meant for another box");
+        const dev = pairing.devices.get(String(input.device));
+        if (!dev || dev.removed || dev.identity !== await owner1() || (dev.kind !== "phone" && dev.kind !== "computer")) throw deny("not a device of the owner");
+        if (!verifyInstruction({ ...input, url }, dev, String(input.box))) throw deny("the signature does not check out");
+        const used = (pairing.meta.get("instr_nonces") || []).filter((/** @type {any} */ n) => n.exp > now());
+        if (used.some((/** @type {any} */ n) => n.n === input.nonce)) throw deny("already used");
+        pairing.meta.set("instr_nonces", [...used.slice(-199), { n: String(input.nonce), exp: now() + 2 * INSTRUCTION_SKEW + 1000 }]);
+        const r = /** @type {any} */ (await ctx.call("relay.apply", url ? { url } : {}));
+        if (r && r.error) throw fail(r.error.code || "unavailable", String(r.error.message || "the relay did not change"));
+        ctx.events.emit("wink.relay-applied", { device: dev.id, ...(url ? { url } : {}) });
+        return { applied: true, url: (r && r.data && r.data.url) || url || null };
+      },
+    });
+
     // ---- invite a person (W5) ----
     ctx.tool("wink.invite", {
       description: "Invite a person into this space: a Wink with the offer sealed into it (role and projects). Answers { offer, ticket, expiresAt }: show the ticket as a ring or a link. The invited person's own device redeems it and a card asks them to join; a sensitive role (admin) waits for your approval (wink.approve).",
@@ -287,7 +400,7 @@ export function createWink(inject = {}) {
         const id = newOffer("W5", "ring", { role, projects, expires: offer.exp }, days * 86_400_000);
         offer.id = id;
         const t = /** @type {any} */ (await ctx.call("relay.ticket.mint", { offer }));
-        if (!t || !t.data) { writeOffer(id, "closed", { why: "relay" }); throw fail("unavailable", "Can't connect. Check your internet connection. Nothing was lost."); }
+        if (!t || !t.data) { writeOffer(id, "closed", { why: "relay" }); throw fail("unavailable", relayWords(t && t.error)); }
         ctx.events.emit("wink.offered", { offer: id, flow: "W5", via: "ring", role, expires: offer.exp });
         return { offer: id, ticket: t.data.ticket, expiresAt: t.data.expiresAt };
       },
@@ -412,12 +525,15 @@ export function createWink(inject = {}) {
         if (input.device) {
           const d = pairing.devices.get(String(input.device));
           if (!d || d.removed || d.identity !== await owner1()) throw fail("not_found", "no such device");
+          // A server or storage device is told to let go of its owner over the channel the app paired it on, so it can be paired again. The owner's
+          // presence was given for this remove. One that cannot be reached keeps a pending release, applied when it next answers or is paired again.
+          const release = d.kind === "server" || d.kind === "storage" ? await pairing.releaseServer(d.id) : undefined;
           pairing.devices.remove(d.id);
           // Its relay connections close at once through relay.devices.drop (a module's door to the relay's own removal); `closed` says what happened.
           let closed = false;
           if (d.kind !== "server" && d.kind !== "storage") { const rr = /** @type {any} */ (await ctx.call("relay.devices.drop", { id: d.id })); closed = !rr.error && Boolean(rr.data && rr.data.closed); }
           ctx.events.emit("wink.removed", { device: d.id });
-          return { removed: d.id, closed, prompt: removal({ what: "device", name: d.name }).prompt, done: removed({ what: "device", name: d.name }) };
+          return { removed: d.id, closed, ...(release ? { release } : {}), prompt: removal({ what: "device", name: d.name }).prompt, done: removed({ what: "device", name: d.name, release }) };
         }
         if (!input.grant) throw fail("bad_input", "say which grant or which device");
         const g = await grants();
@@ -460,14 +576,53 @@ export function createWink(inject = {}) {
         if (kernelHasRoles(ctx.kernel)) return (await kernelDirectory({ kernel: ctx.kernel, space: async () => sp, name: () => "" }).memberships(person)).some(m => ADMIN_ROLES.includes(m.role));
         return sp === (await spaceId());
       },
-      nameOf: async (/** @type {any} */ o) => (o.kind === "person" ? "Personal" : String((ctx.config && ctx.config.name) || "this space")),
+      nameOf: async (/** @type {any} */ o) => (o.kind === "person" ? "Personal" : boxName()),
     };
     const storage = createStorageDevices({ ctx, grants: storageGrants({ ctx, space: () => spaceCache }), vault: storageVault, admin: storageAdmin, space: spaceId });
     registerStorageTools(ctx, storage, "wink.storage");
     const stopStorage = storage.startTimer();
     // The pool engine (work/sealing kernel/storage) is a library, not a module: a box that runs it passes the Pool and a backend factory (inject.pool,
     // inject.poolBackend; PORT until it is merged). Devices join the pool, usage and drains flow back, on every pairing and removal and once a minute.
-    const poolLink = inject.pool && inject.poolBackend ? attachPool({ storage, pool: inject.pool, by: owner0, makeBackend: inject.poolBackend, log: m => ctx.log(m) }) : null;
+    // A drive reached through another device (core/wink/storage/bridge.js, hold.js). The DEVICE holds one connection open to this home and the home calls back
+    // on it: the host's `serveHome({ onSession: wink.holds.onSession })` hands each admitted session to `holds`, and `linkTo(device)` is the channel the pool's
+    // backend sends frames down. The device side answers with `wink.bridgeServe` (the `serve` of `host.connect(space, { serve })`).
+    const holds = createHolds({ log: m => ctx.log(m) });
+    const bsecrets = createBridgeSecrets({ vault: storageVault });
+    const br = inject.bridge || null;
+    const noEngine = () => fail("unavailable", "This server has no storage engine to share a drive with.");
+    const endpoint = createBridgeEndpoint({ createBridge: br ? br.createBridge : () => { throw noEngine(); }, secrets: bsecrets,
+      live: offer => storage.poolOffers().some((/** @type {any} */ o) => o.id === offer && o.state !== "expired" && o.state !== "removed"), log: m => ctx.log(m) });
+    const drive = acceptDrive({ endpoint, secrets: bsecrets, home: () => (br && br.home ? br.home() : null), ...(br && br.roots ? { roots: br.roots } : {}) });
+    const serveBridge = bridgeServe({ endpoint, drive, home: () => (br && br.home ? br.home() : null) });
+    const bridgeMake = br ? bridgeMakeBackend({ backendFor: br.backendFor, secrets: bsecrets, linkTo: d => holds.linkTo(d) }) : null;
+    const makeBackend = inject.poolBackend || bridgeMake ? async (/** @type {any} */ c, /** @type {any} */ offer) => (offer.seenFromDevice && bridgeMake ? bridgeMake(c, offer) : inject.poolBackend ? inject.poolBackend(c, offer) : null) : null;
+    const frameOf = (/** @type {any} */ meta) => String((meta && meta.caller) || "");
+    ctx.tool(BRIDGE_TOOL, {
+      description: "A storage frame for a drive this device serves, from the space's home (a put, get, delete or ping of one encrypted chunk, signed with the drive's secret). Answers { status, body? }. Only the home this device is paired to may ask.",
+      input: obj({ offer: str, op: { type: "string", enum: ["put", "get", "del", "ping"] }, key: str, ts: { type: "number" }, nonce: str, sig: str, body: str }, ["offer", "op", "ts", "sig"]),
+      run: (/** @type {any} */ input, /** @type {any} */ meta) => endpoint.handle(frameOf(meta), input),
+    });
+    ctx.tool(ACCEPT_TOOL, {
+      description: "The device that has a drive accepts it from its home: step open answers a one-time key, step seal takes the drive's secret sealed to that key. The secret is never an input in the clear. Answers { pub } or { ok }.",
+      input: obj({ offer: str, step: { type: "string", enum: ["open", "seal"] }, kind: str, location: { type: "object" }, capacity: { type: "number" }, epk: str, box: str }, ["offer", "step", "capacity"]),
+      run: (/** @type {any} */ input, /** @type {any} */ meta) => drive(frameOf(meta), input),
+    });
+    ctx.tool(DRIVE_TOOL, {
+      description: "Use a drive that only another device can reach: the home picks the drive (an offer from wink.storage.pick) and names the device that has it. That device is asked to open, the home makes the drive's secret and hands it over sealed, and the device starts serving. Answers { ok }. The device must be connected to this home.",
+      input: obj({ offer: str, device: str }, ["offer", "device"]),
+      presence: { summary: async () => "Use a drive through another device" },
+      run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
+        owner(meta, "using a drive through another device");
+        if (!br) throw noEngine();
+        const o = /** @type {any} */ (storage.poolOffers()).find((/** @type {any} */ x) => x.id === String(input.offer));
+        if (!o) throw fail("not_found", "No such storage offer.");
+        await pairFromHome({ secrets: bsecrets, linkTo: d => holds.linkTo(d) }, { offer: o.id, device: String(input.device), kind: o.kind, location: o.location, capacity: o.storage.capacity });
+        poolSyncSoon();
+        return { ok: true };
+      },
+    });
+    const poolLink = inject.pool && makeBackend ? attachPool({ storage, pool: inject.pool, by: owner0, makeBackend, log: m => ctx.log(m) }) : null;
+    const poolSyncSoon = () => poolSync();
     const poolSync = () => { if (poolLink) poolLink.sync().catch(err => ctx.log(`wink storage: pool sync failed: ${/** @type {Error} */ (err).message}`)); };
     const offStorage = [ctx.events.on("storage.paired", poolSync), ctx.events.on("storage.removed", poolSync)];
     const poolTimer = poolLink ? setInterval(poolSync, 60_000) : null;
@@ -476,17 +631,51 @@ export function createWink(inject = {}) {
     const timer = setInterval(sweep, 60_000);
     timer.unref();
     return {
+      peers: pairing.peers,
+      holds,
+      bridgeServe: serveBridge,
+      homeServe: (/** @type {any} */ inner) => homeServe(pairing.peers, inner),
+      ownHandover: () => pairing.ownHandover(),
       async stop() {
+        live = null;
         clearInterval(timer);
         try { stopStorage(); } catch {}
         if (poolTimer) clearInterval(poolTimer);
         for (const off of offStorage) { try { off(); } catch {} }
-        for (const off of [offCode, offPaired, offRemoved, offInvite]) { try { off(); } catch {} }
+        for (const off of [offCode, offPaired, offRemoved, offInvite, offWindow]) { try { off(); } catch {} }
         try { code?.cancel(); } catch {}
+        try { pairing.stop(); } catch {}
       },
     };
   },
   };
+  // Non-enumerable, so the module loader sees only `start`: the home's peer admission (set after start) and its door dispatcher (see `homeServe` below).
+  Object.defineProperty(mod, "peers", { enumerable: false, get() { if (!live) throw fail("unavailable", "the wink module has not started"); return live; } });
+  // The home's held connections (`wink.holds.onSession` is the host's serveHome onSession) and the device's answer to the home's storage calls (`wink.bridgeServe`).
+  Object.defineProperty(mod, "holds", { enumerable: false, get() { if (!live) throw fail("unavailable", "the wink module has not started"); return live.holds; } });
+  Object.defineProperty(mod, "bridgeServe", { enumerable: false, get() { if (!live) throw fail("unavailable", "the wink module has not started"); return live.bridgeServe; } });
+  // What this server was handed when it was adopted, WITH the secrets (auth key, peer secret), for core/wink/compose.js only: it is not a tool, so no other module can ask.
+  Object.defineProperty(mod, "ownHandover", { enumerable: false, value: () => { if (!live) throw fail("unavailable", "the wink module has not started"); return live.ownHandover(); } });
+  Object.defineProperty(mod, "homeServe", { enumerable: false, value: (/** @type {any} */ inner) => { if (!live) throw fail("unavailable", "the wink module has not started"); return homeServe(live, inner); } });
+  return mod;
 }
+
+/**
+ * The relay bridge's peer door for one space (core/relay/peers.js reads it as `ctx.peerDoor()`): `allow` from the Wink module's registry, `accept` from the node
+ * host's own relay door. The composition root sets `ctx.peerDoor = () => peerDoor({ wink, host, space })` for the relay module.
+ * @param {{ wink: { peers: { allow(deviceId: string): boolean } }, host: { acceptRelay(space: string): (stream: any, who: any) => void }, space: string }} o */
+export function peerDoor(o) {
+  return { space: o.space, allow: (/** @type {string} */ d) => o.wink.peers.allow(d), accept: o.host.acceptRelay(o.space) };
+}
+
+/**
+ * The home's peer door dispatcher (kernel-2's ask, withKernelCall). `inner(caller, tool, input)` is the registry's dispatcher: one call as that caller, where `caller`
+ * is `device:<id>` of a device that has just proved itself (a direct peer proved the key on its identity-list entry, a relay peer is authenticated by the relay
+ * channel). It is `inner` unchanged: the node-key claim binding is gone (admission never read it), so there is nothing for Wink to wrap. Kept so callers keep one shape.
+ *
+ * @param {any} peers @param {(caller: string, tool: string, input: any) => Promise<any>} inner */
+export function homeServe(peers, inner) { void peers; return inner; }
+
+export { composeWinkHome } from "./compose.js";
 
 export default createWink();

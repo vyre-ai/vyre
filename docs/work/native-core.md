@@ -16,7 +16,8 @@ One card: Card has no coloured strip on any side (user); AskCard is a Card with 
 Build and shots run on the test box (never on the Mac): rsync apps/app to a per-teammate folder there, `npx expo export -p web`, then `node scripts/shots.mjs <out> u/<route> --w 390,1280 --theme dark,paper` (needs playwright chromium). Hold one lock around exports.
 Done: foundation (NativeWind, tokens, theme, base components: Text Icon Button IconButton Chip Card Row Banner Field Switch Segmented Tabs Avatar AskCard Sheet Menu Toast Table Board StageSteps TimelineItem EmptyState ErrorState), lint, gallery at 390 and 1280 in both themes.
 Done (3 Oct, later): every place in the lead's list is built under /u/* on the mock store: fields (all kinds, sealed), generated list/board/calendar/record page, Now, task card, project page, install flow, Devices and Wink, Spaces and members, Customize, Settings, Memory, Vault, Drive, Sites, Flows with canvas and Kits. App tests 267/267, deck/ui tests 66/66 (kernel API), tsc clean, lint:ui clean. Shots at 390 and 1280 in both themes taken on the test box.
-Next: (1) click-path checks of board drag, calendar, Add a field, Reveal (shots only load routes; add a playwright interaction script); (2) real Avatar mark families and a merged icon set (no chevron, lock, flows, kits, sites icons today); (3) full side-by-side review against team/0.3/ui-ref for install, Devices, Spaces, Customize, Settings (no reference shots exist for them); (4) Team and Chats cards on the project page; (5) cutover from /u to the real routes and delete the Deck DOM screens (deck/views/ui-*.js, deck/ui/views.js, project.js, task-card.js, card-model.js); (6) gateway adapter when work/kernel lands; (7) native (iOS, Android) run of NativeWind: only web is proven so far.
+Done (3 Oct, evening): motion kit (ui/motion: token springs, reduced motion, PressableScale, Stagger, Skeleton), haptics, LargeTitleScreen, pull to refresh, swipe actions, native Sheet on reanimated and gesture-handler (web keeps the dialog), Table.tsx (Rows) and Table.web.tsx (TanStack), system font per platform; native modules in src/native (scan, presence on the existing vyre.human key, notify, tailnet slot with null link and relay fallback); .github/workflows/android-app.yml (prebuild + assembleDebug, aapt2 badging, permission allowlist); the Kotlin android.yml retired. expo export for web, ios and android all pass; assembleDebug built a 68 MB APK with package sh.vyre.app on the test box. tsc clean, 284 app tests, lint:ui clean. work/v0.3 merged, kernel/contracts identical to it.
+Next: (1) push and read the hosted android-app run; (2) release signing: the pin, sideload key and release-environment steps are on origin/work/022-native-android (native-android.yml, scripts/native, docs/native); after it merges add CAMERA, POST_NOTIFICATIONS, USE_FINGERPRINT, ACCESS_NETWORK_STATE to docs/native/permissions.json; (3) decide whether the Firebase messaging service must be stripped from the APK (ships unused without google-services.json); (4) device checks nobody has run: swipe, Sheet drag, haptics, pull to refresh, push transition, Keystore/StrongBox, camera scan, NativeWind on a real phone; shared-element transitions are not used (reanimated 4 experimental); (5) real Avatar marks and a merged icon set; Team and Chats cards on the project page; click-path checks (board drag, Reveal, Add a field); (6) cutover from /u and delete the Deck DOM screens; gateway adapter when it lands; (7) bundle Inter for the web system font if wanted.
 Needs from others: platform (gateway adapter), sessions (Flow canvas data API on origin/work/flows), app-design (confirm the row-tint decision).
 
 ## 2026-10-03: the UI build (branch work/ui, worktree ../vyre-ui, off work/rc-0.2.2)
@@ -682,3 +683,23 @@ Claude Code file sharing, the terminal comparison in the harness.
 - chat: align names (mode.changed, queued_id, threads.send-now); stream.reset; jank fixes.
 - app-design: tokens + design A frames for Settings (account/project).
 - polish-cli: `vyre config` verb shape agreed with me.
+
+## Notices when the app is closed (Android)
+No Firebase and no Google Play services in the APK; scripts/check-apk-nothing-central.mjs fails the build if either appears.
+While the app is open, notices come over Vyre's own connection and the app shows them itself (modules/vyre-notify).
+When the app is closed, the next step is a small foreground service holding that connection (an ongoing "Vyre is connected" notice), or a later UnifiedPush option the person chooses; FCM does not come back.
+
+## Needs from others (vault): docs/native/permissions.json
+On origin/work/022-native-android, the release list must match apps/app/android-permissions.json (the keys of the `allowed` list; `debugOnly` is debug builds only). Exact lines to add, each with its reason:
+```
+"android.permission.CAMERA"                 Reads the code on the screen of the device you are adding. Nothing is recorded or kept.
+"android.permission.POST_NOTIFICATIONS"     Tells you when something needs you. Vyre makes each notice itself; nothing is sent through a push service.
+"android.permission.ACCESS_NETWORK_STATE"   Knows whether the phone is online, so Vyre can say so and reconnect to your box.
+"android.permission.USE_BIOMETRIC"          Asks for your fingerprint or face before the phone signs an approval or opens the vault.
+"android.permission.USE_FINGERPRINT"       Asks for your fingerprint on phones older than Android 9, which the system library needs this older permission for.
+"android.permission.INTERNET"               Talks to your own box. Nothing else.
+"android.permission.VIBRATE"                A short tap when you press a control, if the phone's settings allow it.
+"{package}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"   Added by the system library so only Vyre can receive its own broadcasts.
+```
+Also: the release workflow should run scripts/check-apk-nothing-central.mjs --apk on the unsigned release APK.
+USE_FINGERPRINT stays: androidx.biometric adds it with maxSdkVersion 27 and the app's minSdk is 24 (Expo SDK 54), so Android 7 and 8 phones need it for a fingerprint. ACCESS_NETWORK_STATE is on the list as asked but no library in the build requests it today (the merged manifest of the debug APK has CAMERA, INTERNET, POST_NOTIFICATIONS, SYSTEM_ALERT_WINDOW (debug only), USE_BIOMETRIC, USE_FINGERPRINT, VIBRATE); the line is harmless and keeps the list ready for the day the app reads network state.

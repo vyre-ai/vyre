@@ -31,7 +31,8 @@ const ALIASES = [
   { prefix: "@vyre/kernel/", dir: path.resolve(here, "../../kernel/contracts") },
 ];
 // Folders the shared files import by relative path (deck/ui reaches ../../kernel/contracts and ../../lib/theme).
-const EXTRA_WATCH = [path.resolve(here, "../../kernel/contracts"), path.resolve(here, "../../lib/theme")];
+// ui/marks reaches the Deck's mark generators (deck/vendor/vyrecode) and the seed rule (lib/avatar-seed) by relative path.
+const EXTRA_WATCH = [path.resolve(here, "../../kernel/contracts"), path.resolve(here, "../../lib/theme"), path.resolve(here, "../../deck/vendor/vyrecode"), path.resolve(here, "../../lib/avatar-seed")];
 
 const config = getDefaultConfig(here);
 config.watchFolders = [...(config.watchFolders ?? []), ...ALIASES.map((a) => a.dir), ...EXTRA_WATCH];

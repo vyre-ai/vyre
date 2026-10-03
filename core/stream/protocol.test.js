@@ -138,7 +138,7 @@ test("blockFor: secrets are redacted in every block", () => {
 });
 
 test("validBlock: every block name is known, and a block needs its own props", () => {
-  assert.equal(BLOCKS.length, 10);
+  assert.equal(BLOCKS.length, 12);
   assert.equal(validBlock({ block: "text", text: "x" }), true);
   assert.equal(validBlock({ block: "text" }), false);
   assert.equal(validBlock({ block: "nonsense" }), false);
@@ -151,4 +151,14 @@ test("termChunks: bytes become consecutive offsets", () => {
   const cs = termChunks("t_1", 100, bytes, 16384);
   assert.deepEqual(cs.map(c => c.data.offset), [100, 100 + 16384, 100 + 32768]);
   assert.equal(Buffer.concat(cs.map(c => Buffer.from(c.data.b64, "base64"))).length, 40000);
+});
+
+test("a cited field is a field-ref block: record and field, never a value; a reply carries it in text-done blocks", () => {
+  const ref = { block: "field-ref", record: "vyre://spc/matter/1", field: "fee", label: "Fee" };
+  assert.equal(validBlock(ref), true);
+  assert.equal(validBlock({ ...ref, value: "4200" }), false, "a ref carries no value");
+  assert.equal(validBlock({ block: "field-ref", record: "r" }), false);
+  const f = { v: 1, id: "i", cur: 1, time: 1, turn: null, corr: null, session: "s", type: "session.text-done", author: "assistant:kit", data: { message: "m", blocks: [ref] } };
+  assert.equal(validate(f).ok, true);
+  assert.equal(validate({ ...f, data: { message: "m", blocks: [{ block: "nope" }] } }).ok, false);
 });

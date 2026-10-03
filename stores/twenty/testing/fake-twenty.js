@@ -45,8 +45,8 @@ export class FakeTwenty {
     if (req.url === "/client-config") return send(200, { appVersion: this.version });
     const { query, variables } = JSON.parse(body || "{}");
     const op = /^\s*(?:query|mutation)\s+(\w+)/.exec(query)?.[1] ?? "";
-    if (!op.startsWith("Boot_") && req.headers.authorization !== `Bearer ${this.key}`) return send(401, { errors: [{ message: "Unauthorized" }] });
-    if (!op.startsWith("Boot_") && ++this.served > this.limit) { this.served = 0; return send(429, { errors: [{ message: "Too many requests" }] }); }
+    if (!op.startsWith("Boot_") && !op.startsWith("Rot_") && req.headers.authorization !== `Bearer ${this.key}` && !(this.validKeys ?? new Set()).has(String(req.headers.authorization).slice(7))) return send(401, { errors: [{ message: "Unauthorized" }] });
+    if (!op.startsWith("Boot_") && !op.startsWith("Rot_") && ++this.served > this.limit) { this.served = 0; return send(429, { errors: [{ message: "Too many requests" }] }); }
     this.requests.push({ op, variables });
     try {
       const data = req.url === "/metadata" ? this.#metadata(op, variables, query) : req.url === "/graphql" ? await this.#core(op, variables) : (() => { throw new GqlError("not found"); })();
@@ -58,7 +58,7 @@ export class FakeTwenty {
   }
 
   #metadata(op, v, query = "") {
-    if (op.startsWith("Boot_")) return this.#boot(op, query);
+    if (op.startsWith("Boot_") || op.startsWith("Rot_")) return this.#boot(op, query);
     switch (op) {
       case "Health": return { objects: { totalCount: this.objects.size } };
       case "Objs": return { objects: { edges: [...this.objects.values()].map((o) => ({ node: { id: o.id, nameSingular: o.nameSingular, namePlural: o.namePlural, labelSingular: o.labelSingular, icon: o.icon, fields: { edges: [...o.fields.values()].map((f) => ({ node: f })) } } })) } };
@@ -74,11 +74,18 @@ export class FakeTwenty {
         const f = v.i.field; const obj = [...this.objects.values()].find((o) => o.id === f.objectMetadataId);
         if (!obj) throw new GqlError("Object not found", "NOT_FOUND");
         if (obj.fields.has(f.name)) throw new GqlError("Field already exists");
-        const field = { id: crypto.randomUUID(), name: f.name, type: f.type, options: f.options ?? null, isActive: true, defaultValue: f.defaultValue };
+        const field = { id: crypto.randomUUID(), name: f.name, type: f.type, options: f.options ?? null, isActive: true, defaultValue: f.defaultValue, isUnique: f.isUnique === true };
         obj.fields.set(f.name, field); return { createOneField: { id: field.id, name: field.name } };
       }
       case "UpdField": {
-        for (const o of this.objects.values()) for (const f of o.fields.values()) if (f.id === v.i.id) { f.options = v.i.update.options; return { updateOneField: { id: f.id } }; }
+        for (const o of this.objects.values()) for (const f of o.fields.values()) if (f.id === v.i.id) {
+          if (v.i.update.options !== undefined) f.options = v.i.update.options;
+          if (v.i.update.isUnique !== undefined) {
+            if (v.i.update.isUnique) { const seen = new Set(); for (const r of this.rows.get(o.nameSingular).values()) { if (r.deletedAt || r[f.name] == null) continue; const k = JSON.stringify(r[f.name]); if (seen.has(k)) throw new GqlError(`could not create unique index "IDX_UNIQUE_${f.name}": duplicate key value violates unique constraint`); seen.add(k); } }
+            f.isUnique = v.i.update.isUnique;
+          }
+          return { updateOneField: { id: f.id } };
+        }
         throw new GqlError("Field not found", "NOT_FOUND");
       }
       case "Hooks": return { webhooks: this.hooks.map((h) => ({ id: h.id, targetUrl: h.targetUrl, description: h.description })) };
@@ -101,6 +108,13 @@ export class FakeTwenty {
       case "Boot_roles": return { getRoles: [{ id: "role-member", label: "Member" }, { id: "role-admin", label: "Admin" }] };
       case "Boot_key": return { createApiKey: { id: "key-1" } };
       case "Boot_token": return { generateApiKeyToken: { token: this.key } };
+      case "Rot_loginToken": return { getLoginTokenFromCredentials: { loginToken: { token: "login" } } };
+      case "Rot_login": return { getAuthTokensFromLoginToken: { tokens: { accessOrWorkspaceAgnosticToken: { token: "access" } } } };
+      case "Rot_roles": return { getRoles: [{ id: "role-member", label: "Member" }, { id: "role-admin", label: "Admin" }] };
+      case "Rot_key": return { createApiKey: { id: `key-${this.boot.calls.length}` } };
+      case "Rot_token": { this.rotated = (this.rotated ?? 0) + 1; const t = this.nextKey ?? `rotated-${this.rotated}`; (this.validKeys ??= new Set()).add(t); return { generateApiKeyToken: { token: t } }; }
+      case "Rot_check": return { objects: { edges: [] } };
+      case "Rot_revoke": this.revoked = (this.revoked ?? 0) + 1; return { revokeApiKey: { id: "x" } };
       case "Boot_close": this.boot.closed = true; return { updateWorkspace: { id: this.workspaceId } };
       default: throw new GqlError(`Unknown bootstrap operation ${op}`);
     }
@@ -150,7 +164,8 @@ export class FakeTwenty {
     if (kind === "Create") {
       const { obj, rows } = this.#objBySingular(name); const d = v.d;
       this.#checkInput(obj, d);
-      if (rows.has(d.id)) throw new GqlError("duplicate key value violates unique constraint", "INTERNAL_SERVER_ERROR");
+      if (rows.has(d.id)) throw new GqlError("duplicate key value violates unique constraint \"PK_pkey\"", "INTERNAL_SERVER_ERROR");
+      this.#unique(obj, rows, d, null);
       const at = this.#now();
       const row = { name: null, position: 0, createdBy: { source: "API", name: "vyre-gateway" }, updatedBy: { source: "API", name: "vyre-gateway" }, searchVector: "", ...d, createdAt: at, updatedAt: at, deletedAt: null };
       rows.set(row.id, row); this.#emit(name, "created", row, Object.keys(d));
@@ -160,17 +175,26 @@ export class FakeTwenty {
       const { obj, rows } = this.#objByPlural(name); this.#checkInput(obj, v.d);
       const hit = [...rows.values()].filter((r) => this.#vis(v.f, r) && this.#match(r, v.f));
       const out = [];
+      for (const r of hit) this.#unique(obj, rows, { ...r, ...v.d }, r.id);
       for (const r of hit) { Object.assign(r, v.d, { updatedAt: this.#now(), updatedBy: { source: "API", name: "vyre-gateway" } }); this.#emit(obj.nameSingular, "updated", r, Object.keys(v.d)); out.push(r); }
       return { [`update${cap(name)}`]: out };
     }
     if (kind === "Delete" || kind === "Restore") {
-      const { rows } = this.#objBySingular(name); if (!UUID.test(v.id)) throw new GqlError(`Value "${v.id}" is not a valid UUID`);
+      const { obj, rows } = this.#objBySingular(name); if (!UUID.test(v.id)) throw new GqlError(`Value "${v.id}" is not a valid UUID`);
       const r = rows.get(v.id); if (!r) throw new GqlError("Record not found", "NOT_FOUND", "RECORD_NOT_FOUND");
+      if (kind === "Restore") this.#unique(obj, rows, r, r.id);
       r.deletedAt = kind === "Delete" ? this.#now() : null; r.updatedAt = this.#now();
       this.#emit(name, kind === "Delete" ? "deleted" : "restored", r, ["deletedAt"]);
       return { [`${kind.toLowerCase()}${cap(name)}`]: r };
     }
     throw new GqlError(`Unknown operation ${op}`);
+  }
+  /** the unique fields of an object, enforced among live rows like a partial unique index @param {any} obj @param {Map<string, any>} rows @param {any} cand @param {string | null} selfId */
+  #unique(obj, rows, cand, selfId) {
+    for (const f of obj.fields.values()) {
+      if (!f.isUnique || cand[f.name] == null) continue;
+      for (const r of rows.values()) if (r.id !== selfId && !r.deletedAt && JSON.stringify(r[f.name]) === JSON.stringify(cand[f.name])) throw new GqlError(`duplicate key value violates unique constraint "IDX_UNIQUE_${obj.nameSingular}_${f.name}"`, "INTERNAL_SERVER_ERROR");
+    }
   }
   #vis(filter, row) { return JSON.stringify(filter ?? {}).includes("deletedAt") ? true : !row.deletedAt; }
   #visible() {}

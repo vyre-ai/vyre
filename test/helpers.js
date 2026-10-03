@@ -138,6 +138,16 @@ export const present = {
 };
 
 /**
+ * A presence verifier that finds NO person at any call, for tests that a denied proof stops a tool that declares presence: every presence-guarded tool answers
+ * `presence_required` and nothing it would have done happens. Pass it as `start({ root, presence: absent })`. Tools that declare no presence are unaffected.
+ */
+export const absent = {
+  required: (/** @type {string} */ _tool, /** @type {any} */ def) => Boolean(def && def.presence),
+  verify: async () => ({ ok: false, code: "presence_required", message: "no person is here to approve this", methods: [] }),
+  challenge: async () => ({ error: { code: "presence_required", message: "no person is here to approve this" } }),
+};
+
+/**
  * Start vyred in a child process for a temp home, as `vyre up` would, but with `present` as its
  * verifier. `vyre down` stops it as usual.
  * @param {string} home

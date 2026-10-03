@@ -6,7 +6,8 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { SCRATCH } from "../../../test/scratch.mjs";
-import { createBridgeSecrets, createBridgeEndpoint, makeBridgeSend, bridgeMakeBackend, pairFromHome, acceptDrive, localDriveDir, BRIDGE_TOOL, DRIVE_TOOL } from "./bridge.js";
+import { createBridgeSecrets, createBridgeEndpoint, makeBridgeSend, bridgeMakeBackend, pairFromHome, acceptDrive, localDriveDir, bridgeServe, resilientBackend, sealSecret, BRIDGE_TOOL, ACCEPT_TOOL } from "./bridge.js";
+import { createHolds, holdDrive } from "./hold.js";
 import { bridgedCard, bridgeAwayWords } from "./bridge-cards.js";
 import { FORBIDDEN } from "../cards.js";
 import { attachPool } from "./pool.js";
@@ -42,7 +43,7 @@ function world() {
   let liveNow = true, engine;
   const endpoint = createBridgeEndpoint({ createBridge: o => (engine = fakeCreateBridge(o)), secrets: devSecrets, live: () => liveNow, log: m => logs.push(m) });
   const drive = acceptDrive({ endpoint, secrets: devSecrets, home: () => "dev_home", exists: p => p === "/Volumes/Office" || fs.existsSync(p), roots: [dirD, "/Volumes"] });
-  const callFrom = caller => ({ call: async (tool, input) => { wire.push({ tool, input: JSON.parse(JSON.stringify(input)) }); if (tool === BRIDGE_TOOL) return JSON.parse(JSON.stringify(await endpoint.handle(caller, input))); if (tool === DRIVE_TOOL) return drive(caller, input); throw new Error("no tool " + tool); } });
+  const callFrom = caller => ({ call: async (tool, input) => { wire.push({ tool, input: JSON.parse(JSON.stringify(input)) }); if (tool === BRIDGE_TOOL) return JSON.parse(JSON.stringify(await endpoint.handle(caller, input))); if (tool === ACCEPT_TOOL) return drive(caller, input); throw new Error("no tool " + tool); } });
   return { dirD, homeVault, devVault, homeSecrets, devSecrets, endpoint, logs, wire, callFrom, setLive: v => (liveNow = v), engine: () => engine };
 }
 const OFFER = { id: "sto_abc123", seenFrom: "dev_mini" };
@@ -116,9 +117,9 @@ test("the secret is nowhere but the two vaults: not in the wire frames, cards, l
   assert.deepEqual(nodes[0].classes, ["cold", "backup"], "the device's classes reach the pool");
   await nodes[0].backend.put("c/x", Buffer.from("scrambled"));
   const card = bridgedCard({ name: "Office drive", owner: "Harlow Legal", capacity: 1.5e12, via: "Alex's Mac mini", classes: ["cold", "backup"] });
-  const crossing = w.wire.filter(x => JSON.stringify(x).includes(secret));
-  assert.deepEqual(crossing.map(x => x.tool), [DRIVE_TOOL], "the secret crosses once, in the hand-over, and in no bridge frame");
-  const dump = JSON.stringify({ wire: w.wire.filter(x => x.tool !== DRIVE_TOOL), card, logs: [...w.logs, ...seen], sync, nodes: nodes.map(n => ({ ...n, backend: Object.keys(n.backend) })) });
+  assert.deepEqual(w.wire.filter(x => JSON.stringify(x).includes(secret)), [], "the secret is not in any call's input, not even the hand-over (it crosses sealed)");
+  assert.ok(w.wire.some(x => x.tool === ACCEPT_TOOL && x.input.step === "seal" && x.input.box), "the hand-over carried a sealed box");
+  const dump = JSON.stringify({ wire: w.wire, card, logs: [...w.logs, ...seen], sync, nodes: nodes.map(n => ({ ...n, backend: Object.keys(n.backend) })) });
   assert.ok(!dump.includes(secret), "no copy of the secret outside the vaults");
   assert.ok(!JSON.stringify([...w.homeVault.items].filter(([n]) => !n.startsWith("wink-bridge-"))).includes(secret));
 });
@@ -158,4 +159,179 @@ test("the card says in plain words which device the drive hangs off, and uses no
     assert.ok(!FORBIDDEN.test(s), s); assert.ok(!/[—–§]/.test(s), s);
   }
   assert.ok(c.sensitive && c.primary === "Add storage");
+});
+
+test("the hand-over is sealed to the device's one-time key: a plain secret is refused, the key opens once, a late or wrong box does not open", async () => {
+  const w = world();
+  const d = { offer: OFFER.id, kind: "usb-disk", location: { path: w.dirD }, capacity: 1e9 };
+  const drive = acceptDrive({ endpoint: w.endpoint, secrets: w.devSecrets, home: () => "dev_home", roots: [w.dirD] });
+  await assert.rejects(() => drive("device:dev_home", { ...d, step: "seal", secret: "s".repeat(43) }), { code: "bad_input" });
+  const { pub } = await drive("device:dev_home", { ...d, step: "open" });
+  const good = sealSecret(pub, OFFER.id, "k".repeat(43));
+  await assert.rejects(() => drive("device:dev_home", { ...d, step: "seal", ...sealSecret(pub, "sto_other", "k".repeat(43)) }), { code: "denied" }, "a box sealed for another offer does not open here");
+  await assert.rejects(() => drive("device:dev_home", { ...d, step: "seal", ...good }), { code: "denied" }, "the key is used once, even by a failed try");
+  const second = await drive("device:dev_home", { ...d, step: "open" });
+  assert.equal((await drive("device:dev_home", { ...d, step: "seal", ...sealSecret(second.pub, OFFER.id, "k".repeat(43)) })).ok, true);
+  assert.equal(await w.devSecrets.get(OFFER.id), "k".repeat(43));
+  let t = 0; const late = acceptDrive({ endpoint: w.endpoint, secrets: w.devSecrets, home: () => "dev_home", roots: [w.dirD], now: () => t, ttlMs: 1000 });
+  const o3 = await late("device:dev_home", { ...d, step: "open" }); t = 2000;
+  await assert.rejects(() => late("device:dev_home", { ...d, step: "seal", ...sealSecret(o3.pub, OFFER.id, "z".repeat(43)) }), { code: "denied" });
+});
+
+/** The engine's bridge backend behind a flaky wire: the first `drop` calls never get an answer. */
+function flaky(w, drop, how = "timeout") {
+  let n = 0, dropped = 0;
+  const link = { call: async (tool, input, opt) => { if (tool === BRIDGE_TOOL && input.op === "put" && n++ < drop) { dropped++; throw Object.assign(new Error("no answer to " + tool), { code: how }); } return w.callFrom("device:dev_home").call(tool, input, opt); } };
+  return { link, dropped: () => dropped };
+}
+
+test("a put that times out is tried again for the same chunk and lands once; the node is not lost after one failed put", async () => {
+  const w = world(); await pair(w);
+  const f = flaky(w, 2);
+  const make = bridgeMakeBackend({ backendFor: fakeBackendFor, secrets: w.homeSecrets, linkTo: () => f.link, retry: { baseMs: 1, sleep: async () => {} } });
+  const be = await make({ kind: "smb" }, OFFER);
+  const chunk = crypto.randomBytes(100_000);
+  await be.put("c/ab/one", chunk);
+  assert.equal(f.dropped(), 2); assert.equal(be.stats.retried, 2); assert.equal(be.stats.failedCalls, 0);
+  assert.deepEqual(w.engine().files.get("c/ab/one"), chunk);
+  assert.equal(w.engine().files.size, 1, "one chunk, however many tries");
+  assert.deepEqual(await be.get("c/ab/one"), chunk);
+});
+
+test("tries are bounded per chunk, a refusal is not retried, and a disconnect is retried like a timeout", async () => {
+  const w = world(); await pair(w);
+  const f = flaky(w, 99, "unreachable");
+  const be = resilientBackend((await bridgeMakeBackend({ backendFor: fakeBackendFor, secrets: w.homeSecrets, linkTo: () => f.link, retry: false })({ kind: "smb" }, OFFER)), { attempts: 3, baseMs: 1, sleep: async () => {} });
+  await assert.rejects(() => be.put("k", Buffer.from("x")), { code: "unreachable" });
+  assert.equal(f.dropped(), 3, "three tries, no more"); assert.equal(be.stats.failedCalls, 1);
+  const waits = []; let tries = 0;
+  const denied = resilientBackend({ put: async () => { tries++; throw Object.assign(new Error("no"), { code: "denied" }); }, get: async () => null, del: async () => {}, ping: async () => 1 }, { sleep: async ms => waits.push(ms) });
+  await assert.rejects(() => denied.put("k", "v"), { code: "denied" }); assert.equal(tries, 1); assert.deepEqual(waits, []);
+  const back = []; let k = 0;
+  const slow = resilientBackend({ put: async () => { if (k++ < 3) throw Object.assign(new Error("t"), { code: "timeout" }); }, get: async () => null, del: async () => {}, ping: async () => 1 }, { sleep: async ms => back.push(ms), baseMs: 100 });
+  await slow.put("k", "v"); assert.deepEqual(back, [100, 200, 400], "exponential backoff between tries");
+});
+
+test("ping keeps the last good answer through a short grace and a few misses, then says the drive is down", async () => {
+  let t = 0, up = true;
+  const be = resilientBackend({ put: async () => {}, get: async () => null, del: async () => {}, ping: async () => { if (!up) throw Object.assign(new Error("t"), { code: "timeout" }); return 7; } }, { now: () => t, grace: 10_000, failures: 3 });
+  assert.equal(await be.ping(), 7); up = false;
+  t = 1000; assert.equal(await be.ping(), 7); t = 2000; assert.equal(await be.ping(), 7);
+  t = 3000; await assert.rejects(() => be.ping(), { code: "timeout" }, "three misses in a row");
+  up = true; assert.equal(await be.ping(), 7); up = false; t = 20_000;
+  await assert.rejects(() => be.ping(), { code: "timeout" }, "past the grace the first miss is final");
+});
+
+/** A fake peer session: call goes to `serve` on the other side after a tick; closed ends it. */
+function fakeSession(serve) { const s = { closed: false, onclose: () => {}, call: async (tool, input) => { if (s.closed) throw Object.assign(new Error("closed"), { code: "unreachable" }); return JSON.parse(JSON.stringify(await serve(tool, JSON.parse(JSON.stringify(input))))); }, close(why) { if (!s.closed) { s.closed = true; s.onclose(why || "closed"); } } }; return s; }
+
+test("the home calls down the connection the device holds open: the newest open session wins, a drop waits for the reconnect, and none says unreachable", async () => {
+  const w = world(); await pair(w);
+  const device = bridgeServe({ endpoint: w.endpoint, drive: () => { throw new Error("no"); }, home: () => "dev_home" });
+  const holds = createHolds({ waitMs: 200 });
+  assert.equal(holds.has("device:dev_mini"), false);
+  await assert.rejects(() => holds.linkTo("dev_mini").call(BRIDGE_TOOL, {}), { code: "unreachable" });
+  const secret = await w.homeSecrets.get(OFFER.id);
+  const frame = () => { const ts = Date.now(); return { offer: OFFER.id, op: "ping", key: "", ts, sig: sign(secret, { op: "ping", key: "", ts }) }; };
+  const s1 = fakeSession(device); holds.onSession("device:dev_mini", s1);
+  assert.equal((await holds.linkTo("dev_mini").call(BRIDGE_TOOL, frame())).status, 200);
+  s1.close("lost");
+  const later = holds.linkTo("dev_mini").call(BRIDGE_TOOL, frame());           // made while the device is between connections
+  setTimeout(() => holds.onSession("device:dev_mini", fakeSession(device)), 30);
+  assert.equal((await later).status, 200, "the call waited for the device to come back");
+  const s3 = fakeSession(device); holds.onSession("device:dev_mini", s3); s3.close();
+  assert.equal(holds.has("dev_mini"), true, "an older open session still serves when the newest closed");
+  await assert.rejects(() => device("wink.something.else", {}), { code: "denied" });
+});
+
+test("holdDrive connects, serves, and when the link stays down it closes it and reconnects after a wait that doubles and resets", async () => {
+  const made = [], waits = []; let clock = 0;
+  const mk = state => { const l = { st: state, closed: false, status: () => ({ state: l.st }), close() { l.closed = true; }, ready: async () => {} }; made.push(l); return l; };
+  const states = ["connecting", "connecting", "connecting", "up"];
+  const h = holdDrive({ connect: (space, o) => { assert.equal(space, "harlow"); assert.equal(typeof o.serve, "function"); return mk(states.shift()); }, serve: async () => {}, space: "harlow", stuckMs: 100, minMs: 10, maxMs: 40, checkMs: 5, now: () => clock, log: m => waits.push(m) });
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  for (let i = 0; i < 80 && made.length < 4; i++) { clock += 50; await wait(8); }
+  assert.ok(made.length >= 4, "made " + made.length);
+  assert.ok(made[0].closed && made[1].closed && made[2].closed, "stuck links were closed");
+  assert.ok(waits.some(m => /10 ms|0\.0|0\.01/.test(m)) || waits.length >= 3);
+  for (let i = 0; i < 10; i++) { clock += 50; await wait(8); }
+  assert.equal(h.status().up, true); assert.equal(h.status().nextWaitMs, 10, "backoff resets once the link is up");
+  h.stop(); assert.ok(made[3].closed);
+});
+
+test("the frame's nonce reaches the engine (it refuses a replayed one), and a retry makes a fresh frame so it is never a replay", async () => {
+  const w = world(); await pair(w);
+  const seenNonces = [];
+  const real = w.engine().handle;
+  w.engine().handle = async f => { seenNonces.push(f.nonce); return real(f); };
+  const send = makeBridgeSend({ linkTo: () => w.callFrom("device:dev_home") })("dev_mini", OFFER);
+  const secret = await w.homeSecrets.get(OFFER.id), ts = Date.now();
+  await send({ op: "ping", key: "", ts, nonce: "n-abcdefgh", sig: sign(secret, { op: "ping", key: "", ts }) });
+  assert.deepEqual(seenNonces, ["n-abcdefgh"]);
+  let calls = 0; const sent = [];
+  const be = resilientBackend({ put: async () => { calls++; const f = { nonce: `n${calls}` }; sent.push(f.nonce); if (calls < 3) throw Object.assign(new Error("bridge put 409"), {}); }, get: async () => null, del: async () => {}, ping: async () => 1 }, { sleep: async () => {} });
+  await be.put("k", "v"); assert.deepEqual(sent, ["n1", "n2", "n3"], "each try is a new call, so a new frame and a new nonce");
+});
+
+// ---- Z-1: the roots check follows links (reviewer-3, 4 Oct 2026) ----
+const frame = async (w, op = "ping") => { const secret = await w.devSecrets.get(OFFER.id), ts = Date.now(); return w.endpoint.handle("device:dev_home", { offer: OFFER.id, op, key: "", ts, sig: sign(secret, { op, key: "", ts }) }); };
+async function offerVia(w, drive, location, kind = "usb-disk") {
+  const d = { offer: OFFER.id, kind, location, capacity: 1e9 };
+  const { pub } = await drive("device:dev_home", { ...d, step: "open" });
+  const secret = "k".repeat(43);
+  return drive("device:dev_home", { ...d, step: "seal", ...sealSecret(pub, OFFER.id, secret) });
+}
+
+test("Z-1: a link under a shared root that leaves the root is refused, and so is a root that is itself a link out; the folder served is the real one", async () => {
+  const w = world();
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "z1-root-")));
+  const outside = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "z1-out-")));
+  fs.symlinkSync(outside, path.join(root, "link"));
+  const drive = acceptDrive({ endpoint: w.endpoint, secrets: w.devSecrets, home: () => "dev_home", roots: [root] });
+  await assert.rejects(() => offerVia(w, drive, { path: path.join(root, "link") }), { code: "denied" }, "root/link -> outside is not served");
+  assert.equal(fs.readdirSync(outside).length, 0, "nothing was made outside the root");
+  // a mount the device reports through such a link
+  await assert.rejects(() => offerVia(w, drive, { mount: path.join(root, "link"), path: path.join(root, "link") }, "smb"), { code: "denied" });
+  // a root that is itself a link (like macOS /Volumes/Macintosh HD -> /): the check uses its real path, so a folder outside it is refused through the link
+  const rootLink = path.join(SCRATCH, `z1-rootlink-${crypto.randomBytes(3).toString("hex")}`);
+  fs.symlinkSync(root, rootLink);
+  const viaLinkRoot = acceptDrive({ endpoint: w.endpoint, secrets: w.devSecrets, home: () => "dev_home", roots: [rootLink] });
+  const good = path.join(root, "disk"); fs.mkdirSync(good);
+  assert.equal((await offerVia(w, viaLinkRoot, { path: path.join(rootLink, "disk") })).ok, true, "a folder really under a linked root is fine");
+  assert.equal(fs.realpathSync(path.join(good, `vyre-${OFFER.id}`)).startsWith(good), true);
+  const escapeViaRoot = acceptDrive({ endpoint: w.endpoint, secrets: w.devSecrets, home: () => "dev_home", roots: [rootLink] });
+  await assert.rejects(() => offerVia(w, escapeViaRoot, { path: outside }), { code: "denied" });
+  // a dangling link is refused too (a folder made through it would land wherever it points)
+  fs.symlinkSync(path.join(outside, "not-yet"), path.join(root, "dangling"));
+  await assert.rejects(() => offerVia(w, drive, { path: path.join(root, "dangling") }), { code: "denied" });
+  // the offer's own folder planted as a link
+  w.endpoint.stop(OFFER.id);
+  const plant = path.join(root, "plant"); fs.mkdirSync(plant);
+  fs.symlinkSync(outside, path.join(plant, `vyre-${OFFER.id}`));
+  await assert.rejects(() => offerVia(w, drive, { path: plant }), { code: "denied" }, "vyre-<offer> as a link out is refused");
+  assert.equal(fs.readdirSync(outside).length, 0);
+});
+
+test("Z-1: a folder swapped for a link after it was opened is refused on the next operation, and a swap between the check and the open is refused", async () => {
+  const w = world();
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "z1-race-")));
+  const outside = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "z1-raceout-")));
+  const disk = path.join(root, "disk"); fs.mkdirSync(disk);
+  const drive = acceptDrive({ endpoint: w.endpoint, secrets: w.devSecrets, home: () => "dev_home", roots: [root] });
+  assert.equal((await offerVia(w, drive, { path: disk })).ok, true);
+  assert.equal((await frame(w)).status, 200, "served while the folder is where it was");
+  const mine = path.join(disk, `vyre-${OFFER.id}`);
+  fs.rmSync(mine, { recursive: true }); fs.symlinkSync(outside, mine);
+  await assert.rejects(() => frame(w), { code: "denied" }, "the folder became a link: refused before the engine sees the frame");
+  // the same swap one level up (the disk folder itself)
+  fs.unlinkSync(mine); fs.mkdirSync(mine);
+  fs.renameSync(disk, path.join(root, "disk-old")); fs.symlinkSync(outside, disk);
+  await assert.rejects(() => frame(w), { code: "denied" }, "a parent swapped for a link: refused");
+  // a swap between the check and the open
+  const w2 = world();
+  const disk2 = path.join(root, "disk2"); fs.mkdirSync(disk2);
+  const swapper = acceptDrive({ endpoint: w2.endpoint, secrets: w2.devSecrets, home: () => "dev_home", roots: [root],
+    hooks: { afterCheck: () => { const m = path.join(disk2, `vyre-${OFFER.id}`); fs.rmSync(m, { recursive: true, force: true }); fs.symlinkSync(outside, m); } } });
+  await assert.rejects(() => offerVia(w2, swapper, { path: disk2 }), { code: "denied" }, "swapped for a link between check and open");
+  assert.equal(fs.readdirSync(outside).length, 0, "nothing was ever written outside the root");
 });

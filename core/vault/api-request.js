@@ -59,8 +59,9 @@ function normalizeAuth(a) {
     const client = checkRef(a.client, "auth.client");
     if (typeof a.authorize_uri !== "string" || !/^https:/.test(a.authorize_uri)) throw bad("auth.authorize_uri must be https");
     if (typeof a.token_uri !== "string" || !/^https:/.test(a.token_uri)) throw bad("auth.token_uri must be https");
-    if (!Array.isArray(a.scopes) || !a.scopes.length) throw bad("auth.scopes must be a non-empty list of strings");
-    return { type: "oauth", client, authorize_uri: a.authorize_uri, token_uri: a.token_uri, scopes: [...new Set(a.scopes.map(String))] };
+    // Scopes are optional: a provider that takes none (Clio Manage) leaves them out, and the refresh request then carries no `scope` at all.
+    if (a.scopes !== undefined && (!Array.isArray(a.scopes) || !a.scopes.every(s => typeof s === "string"))) throw bad("auth.scopes must be a list of strings, or left out");
+    return { type: "oauth", client, authorize_uri: a.authorize_uri, token_uri: a.token_uri, scopes: [...new Set((a.scopes ?? []).map(String))] };
   }
   const ref = optionalRef(a);
   const out = { type: a.type, ...ref };
@@ -114,7 +115,18 @@ export function normalize(i) {
   const endpoints = Array.isArray(i.endpoints) ? i.endpoints.map(normalizeEndpoint) : [];
   const readers = i.readers === undefined ? undefined : normalizeReaders(i.readers);
   const scope = i.scope === undefined ? undefined : normalizeScope(i.scope);
-  return { auth, hosts, endpoints, ...(readers ? { readers } : {}), ...(scope ? { scope } : {}) };
+  const rate = i.rate === undefined ? undefined : normalizeRate(i.rate);
+  return { auth, hosts, endpoints, ...(readers ? { readers } : {}), ...(scope ? { scope } : {}), ...(rate ? { rate } : {}) };
+}
+
+/**
+ * `rate: { per_minute }`: how many requests a minute this credential may make at its provider, for the whole Space (every Flow, session and forwarded program that uses it shares one
+ * allowance). Left out means no limit of ours; a provider that caps its callers (Clio Manage, about 50 a minute) gets its number here so one busy job cannot spend everyone's.
+ * @param {any} r
+ */
+function normalizeRate(r) {
+  if (!isObj(r) || !Number.isInteger(r.per_minute) || r.per_minute < 1 || r.per_minute > 6000) throw bad("rate is { per_minute: a whole number from 1 to 6000 }");
+  return { per_minute: r.per_minute };
 }
 
 /**

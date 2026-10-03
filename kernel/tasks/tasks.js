@@ -83,6 +83,14 @@ export function createTasks(cfg) {
   const roleHolders = cfg.roleHolders || (() => []);
   /** @type {Map<string, any>} */ const tasks = new Map();
   /** @type {Map<string, any>} */ const bodies = new Map();
+  /** A standing always-ask rule names who must approve: that person, or someone who holds that role now. No rule: any approval stands. @param {{ approver?: { person?: string, role?: string } } | undefined} rule @param {{ approver_chain: any } | undefined} by */
+  const approverOk = (rule, by) => {
+    if (!rule || !rule.approver) return true;
+    const h = by && by.approver_chain && by.approver_chain.hops && by.approver_chain.hops.length === 1 ? by.approver_chain.hops[0].actor : null;
+    if (!h || h.kind !== "person") return false;
+    if (rule.approver.person !== undefined) return h.id === rule.approver.person;
+    return Boolean(cfg.members && typeof cfg.members.roleOf === "function" && cfg.members.roleOf(h) === rule.approver.role);
+  };
   /** @type {Map<string, { approver_chain: any, use_proof: any }>} who approved a task and the sealed-use proof they signed with it (the sealing process verifies that proof itself) */ const approvedBy = new Map();
   /** @type {Map<string, string>} proposal id -> the task it proposes to skip */ const proposals = new Map();
   /** @type {Map<string, number>} */ const denials = new Map();
@@ -94,6 +102,13 @@ export function createTasks(cfg) {
   const get_ = (/** @type {string} */ id) => { const t = tasks.get(id); if (!t) throw new KernelError("not_found", "no such task"); return t; };
   const put = (/** @type {any} */ t, /** @type {any} */ patch) => { const n = freeze({ ...t, ...patch, updated_at: clock() }); tasks.set(n.id, n); return n; };
   const outward = (/** @type {any} */ t) => t.output.kind === "sent";
+  /** The doer's answer for the output kinds a waiter reads back (a decision's yes or no and why, the values of a `fields` output, a note): plain data of at most 8 KB, frozen, kept on the task and carried on `task.completed` (sealed values stay references). Anything else keeps none. */
+  const answerOf = (/** @type {any} */ t, /** @type {any} */ evidence) => {
+    if (!["decision", "fields", "note"].includes(t.output.kind) || evidence === undefined || evidence === null) return undefined;
+    let text; try { text = JSON.stringify(evidence); } catch { return undefined; }
+    if (text === undefined || text.length > 8192) throw new KernelError("bad_input", "an answer is plain data of at most 8 KB");
+    return deepFreeze(JSON.parse(text));
+  };
   /** @param {any} ev */
   async function resolveFacts(ev) {
     const recipients = [];
@@ -230,8 +245,9 @@ export function createTasks(cfg) {
       const check = await checkOutput(t, evidence, cfg.facts || {});
       if (!check.ok) throw new KernelError("output_check_failed", check.why || "the output is not there yet");
       if (to === "done") {
-        const n = put(t, { state: "done" });
-        note(chain, "task.completed", n, { output: t.output.kind });
+        const answer = answerOf(t, evidence);
+        const n = put(t, { state: "done", ...(answer !== undefined ? { answer } : {}) });
+        note(chain, "task.completed", n, { output: t.output.kind, ...(answer !== undefined ? { answer } : {}) });
         promote(chain);
         return n;
       }
@@ -320,9 +336,10 @@ export function createTasks(cfg) {
       if (outward(t) && cfg.release) {
         try { await cfg.release(t, body, { person: person.id, key_id: p.key_id }); } catch (e) { throw new KernelError("unavailable", "it could not be sent, so it was not approved as sent", String(e && /** @type {any} */ (e).message)); }
       }
-      const n = put(t, { state: "done", outcome: "approved" });
+      const answer = !outward(t) && body && body.evidence !== undefined ? answerOf(t, body.evidence) : undefined;
+      const n = put(t, { state: "done", outcome: "approved", ...(answer !== undefined ? { answer } : {}) });
       approvedBy.set(id, { approver_chain: chain, use_proof: a.proofs && a.proofs.use ? a.proofs.use : null });
-      note(chain, "task.approved", n, { payload_hash: t.payload.payload_hash, key_id: p.key_id }, d.decision);
+      note(chain, "task.approved", n, { payload_hash: t.payload.payload_hash, key_id: p.key_id, ...(n.answer !== undefined ? { answer: n.answer } : {}) }, d.decision);
       const proposed = proposals.get(id);
       if (proposed) { const pt = tasks.get(proposed); if (pt && (pt.state === "ready" || pt.state === "stuck")) { rule(pt, "skipped", "proposal_for_person_with_presence"); note(chain, "task.skipped", put(pt, { state: "skipped" }), { by: "approved proposal" }); } }
       promote(chain);
@@ -456,7 +473,7 @@ export function createTasks(cfg) {
      */
     approvedAct(q) {
       const a = api.approvalFor(q.id), t = tasks.get(q.id);
-      return Boolean(a && t && !usedApprovals.has(q.id) && clock() - t.updated_at <= APPROVAL_MAX_AGE && a.body.action === q.action && a.body.resource === q.resource && same(acting(q.chain), t.doer));
+      return Boolean(a && t && !usedApprovals.has(q.id) && clock() - t.updated_at <= APPROVAL_MAX_AGE && a.body.action === q.action && a.body.resource === q.resource && same(acting(q.chain), t.doer) && approverOk(q.rule, approvedBy.get(q.id)));
     },
     /** The same check, and when it holds the approval is spent in the same step: what `authorize` calls, so a held act is allowed once, within a day, by its doer. */
     useApproval(q) {

@@ -5,11 +5,22 @@
 // each streams on its own and the set never reflows another card's text.
 
 import { useRef, useState } from "react";
-import { ScrollView, View, useWindowDimensions } from "react-native";
-import { Avatar, Button, Chip, Text, useUiTheme } from "@vyre/ui";
+import { ScrollView, View, useWindowDimensions, StyleSheet } from "react-native";
+import { Button, Chip, Text, useUiTheme } from "@vyre/ui";
+import { ChatAvatar } from "./ChatAvatar";
 import { useSyncExternalStore } from "react";
 import type { ChatStore } from "./store";
 import type { Fanout } from "./group.js";
+
+const S = StyleSheet.create({
+  s1: { flexDirection: "row", alignItems: "center", gap: 8 },
+  s2: { flex: 1 },
+  s3: { flexDirection: "row" },
+  s4: { gap: 8 },
+  s5: { flexDirection: "row", gap: 12, alignItems: "stretch" },
+  s6: { flexDirection: "row", gap: 6, justifyContent: "center" },
+});
+
 
 function Card({ store, message, fanout, width, phone, renderText }: {
   store: ChatStore; message: string; fanout: Fanout; width?: number; phone: boolean;
@@ -33,15 +44,15 @@ function Card({ store, message, fanout, width, phone, renderText }: {
         ({ scrollSnapAlign: "start" } as any),
       ]}
     >
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-        <Avatar name={lab.name} family="agent" size="sm" />
-        <Text strong style={{ flex: 1 }} numberOfLines={1}>{lab.name}</Text>
+      <View style={S.s1}>
+        <ChatAvatar name={lab.name} family="agent" size="sm" />
+        <Text strong style={S.s2} numberOfLines={1}>{lab.name}</Text>
         {kept ? <Chip tone="ok" icon="check">Kept</Chip> : lost ? <Text size="caption" tone="label">Not kept</Text> : null}
       </View>
       <View style={{ flex: 1, minHeight: phone ? 96 : 120 }}>{it ? renderText(key) : null}</View>
       {g.cut(message) ? <Text size="caption" tone="warn">{g.cut(message)}</Text> : null}
       {fanout.kept ? null : done ? (
-        <View style={{ flexDirection: "row" }}>
+        <View style={S.s3}>
           <Button kind="secondary" size={phone ? "md" : "sm"} icon="check" label="Keep this" accessibilityLabel={`Keep the answer from ${lab.name}`} onPress={() => store.social.keep(fanout.group, message)} />
         </View>
       ) : (
@@ -60,10 +71,10 @@ export function FanoutSet({ store, fanout, wide, renderText }: { store: ChatStor
   const names = fanout.members.map((m) => store.group.label("a:" + m.message).name);
   const lastPage = useRef(0);
   return (
-    <View accessibilityLabel={`Answers from ${names.join(", ")}`} style={{ gap: 8 }}>
+    <View accessibilityLabel={`Answers from ${names.join(", ")}`} style={S.s4}>
       <Text size="caption" tone="label">{fanout.kept ? `Asked ${n}, kept one` : `Asked ${n} at once. Keep the one you want to carry on with.`}</Text>
       {wide ? (
-        <View style={{ flexDirection: "row", gap: 12, alignItems: "stretch" }}>
+        <View style={S.s5}>
           {fanout.members.map((m) => <Card key={m.message} store={store} message={m.message} fanout={fanout} phone={false} renderText={renderText} />)}
         </View>
       ) : (
@@ -83,7 +94,7 @@ export function FanoutSet({ store, fanout, wide, renderText }: { store: ChatStor
           >
             {fanout.members.map((m) => <Card key={m.message} store={store} message={m.message} fanout={fanout} width={cardW} phone renderText={renderText} />)}
           </ScrollView>
-          <View accessibilityLabel={`Answer ${page + 1} of ${n}`} style={{ flexDirection: "row", gap: 6, justifyContent: "center" }}>
+          <View accessibilityLabel={`Answer ${page + 1} of ${n}`} style={S.s6}>
             {fanout.members.map((m, i) => <View key={m.message} style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: i === page ? color.text : color["edge-strong"] }} />)}
           </View>
         </>

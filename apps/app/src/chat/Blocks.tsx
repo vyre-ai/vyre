@@ -5,11 +5,42 @@
 // take over) arrive in `ctx`: the screen decides what they do.
 
 import { memo, useMemo, useState, type ReactNode } from "react";
-import { Image, Pressable, ScrollView, TextInput, View } from "react-native";
+import { Image, Pressable, ScrollView, TextInput, View, StyleSheet } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { Button, Chip, Icon, IconButton, Text, useUiTheme } from "@vyre/ui";
 import { parseAnsi, stripAnsi } from "./ansi.js";
 import { countDiff, fileTree, parseUnified, sealedCount, sideBySide, TREE_AT, type Block, type DiffFile, type RecordField } from "./blocks.js";
+
+const S = StyleSheet.create({
+  s1: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, minHeight: 44, paddingVertical: 4 },
+  s2: { flex: 1, minWidth: 0 },
+  s3: { alignSelf: "center" },
+  s4: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, minHeight: 40, borderBottomWidth: 1, borderBottomColor: "#2A2825" },
+  s5: { flex: 1, minWidth: 0, minHeight: 40, justifyContent: "center" },
+  s6: { minHeight: 28, justifyContent: "center" },
+  s7: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 6, borderTopWidth: 1, borderTopColor: "#2A2825" },
+  s8: { minHeight: 40, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 8 },
+  s9: { flex: 1 },
+  s10: { minHeight: 40, justifyContent: "center", paddingHorizontal: 8 },
+  s11: { padding: 12 },
+  s12: { flexDirection: "row" },
+  s13: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 8, minHeight: 40 },
+  s14: { paddingVertical: 4 },
+  s15: { paddingHorizontal: 12, paddingVertical: 2 },
+  s16: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, minHeight: 36 },
+  s17: { padding: 8 },
+  s18: { gap: 6 },
+  s19: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 24 },
+  s20: { width: 88 },
+  s21: { flex: 1, minWidth: 0, flexDirection: "row" },
+  s22: { flexShrink: 1 },
+  s23: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  s24: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
+  s25: { flexDirection: "row", gap: 8 },
+  s26: { gap: 4 },
+  s27: { width: "100%", height: "100%" },
+});
+
 
 export type BlockCtx = {
   /** A wide screen shows diffs side by side. */
@@ -45,13 +76,13 @@ function Shell({ icon, title, sub, right, children, flush, tint }: { icon: "term
   const { color } = useUiTheme();
   return (
     <View style={{ borderWidth: 1, borderColor: tint ? color["edge-strong"] : color.edge, backgroundColor: tint ? color["accent-wash"] : color["surface-2"], borderRadius: 12, overflow: "hidden", minWidth: 0 }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, minHeight: 44, paddingVertical: 4 }}>
+      <View style={S.s1}>
         <Icon name={icon} />
-        <View style={{ flex: 1, minWidth: 0 }}>
+        <View style={S.s2}>
           {typeof title === "string" ? <Text strong numberOfLines={2}>{title}</Text> : title}
           {sub ? <Text size="caption" tone="label" numberOfLines={1}>{sub}</Text> : null}
         </View>
-        {right ? <View style={{ alignSelf: "center" }}>{right}</View> : null}
+        {right ? <View style={S.s3}>{right}</View> : null}
       </View>
       {children ? <View style={flush ? undefined : { paddingHorizontal: 12, paddingBottom: 12, gap: 8 }}>{children}</View> : null}
     </View>
@@ -76,18 +107,18 @@ export function TerminalBlock({ block, ctx, output, running }: { block: Extract<
   const exit = block.exit;
   return (
     <View style={{ borderWidth: 1, borderColor: "#2A2825", backgroundColor: TERM_BG, borderRadius: 12, overflow: "hidden", minWidth: 0 }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, minHeight: 40, borderBottomWidth: 1, borderBottomColor: "#2A2825" }}>
+      <View style={S.s4}>
         <Icon name="terminal" tone="label" />
-        <Pressable accessibilityRole="button" accessibilityLabel={open ? "Collapse output" : "Expand output"} accessibilityState={{ expanded: open }} onPress={() => setOpen((o) => !o)} style={{ flex: 1, minWidth: 0, minHeight: 40, justifyContent: "center" }}>
+        <Pressable accessibilityRole="button" accessibilityLabel={open ? "Collapse output" : "Expand output"} accessibilityState={{ expanded: open }} onPress={() => setOpen((o) => !o)} style={S.s5}>
           <Text mono size="caption" numberOfLines={1} style={{ color: TERM_INK }}>{block.command ? `$ ${block.command}` : "Terminal"}</Text>
         </Pressable>
-        <View style={{ alignSelf: "center" }}>
+        <View style={S.s3}>
           {live ? <Chip tone="accent">running</Chip> : exit != null ? <Chip tone={exit === 0 ? "ok" : "err"}>{exit === 0 ? "exit 0" : `exit ${exit}`}</Chip> : null}
         </View>
       </View>
       <ScrollView nestedScrollEnabled style={{ maxHeight: open ? 320 : undefined }} contentContainerStyle={{ paddingHorizontal: 14, paddingVertical: 10 }}>
         {hidden > 0 ? (
-          <Pressable accessibilityRole="button" onPress={() => setOpen(true)} style={{ minHeight: 28, justifyContent: "center" }}>
+          <Pressable accessibilityRole="button" onPress={() => setOpen(true)} style={S.s6}>
             <Text size="caption" style={{ color: ANSI.black }}>{hidden} earlier line{hidden === 1 ? "" : "s"}, show all</Text>
           </Pressable>
         ) : null}
@@ -101,18 +132,18 @@ export function TerminalBlock({ block, ctx, output, running }: { block: Extract<
         ))}
         {live ? <View style={{ width: 8, height: 15, backgroundColor: TERM_INK, marginTop: 2, opacity: 0.8 }} /> : null}
       </ScrollView>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 6, borderTopWidth: 1, borderTopColor: "#2A2825" }}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Copy output" onPress={() => copy(stripAnsi(text), ctx)} style={{ minHeight: 40, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 8 }}>
+      <View style={S.s7}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Copy output" onPress={() => copy(stripAnsi(text), ctx)} style={S.s8}>
           <Icon name="copy" tone="label" /><Text size="caption" style={{ color: ANSI.white }}>Copy</Text>
         </Pressable>
         {ctx.onOpenTerminal ? (
-          <Pressable accessibilityRole="button" accessibilityLabel="Open full terminal" onPress={() => ctx.onOpenTerminal?.(block.command)} style={{ minHeight: 40, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 8 }}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Open full terminal" onPress={() => ctx.onOpenTerminal?.(block.command)} style={S.s8}>
             <Icon name="terminal" tone="label" /><Text size="caption" style={{ color: ANSI.white }}>Open full terminal</Text>
           </Pressable>
         ) : null}
-        <View style={{ flex: 1 }} />
+        <View style={S.s9} />
         {lines.length > 5 ? (
-          <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} onPress={() => setOpen((o) => !o)} style={{ minHeight: 40, justifyContent: "center", paddingHorizontal: 8 }}>
+          <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} onPress={() => setOpen((o) => !o)} style={S.s10}>
             <Text size="caption" style={{ color: ANSI.white }}>{open ? "Collapse" : "Expand"}</Text>
           </Pressable>
         ) : null}
@@ -130,13 +161,13 @@ function DiffLines({ file, wide }: { file: DiffFile; wide: boolean }) {
   const lines = useMemo(() => parseUnified(file.diff), [file.diff]);
   const tone = (t: string) => (t === "add" ? { bg: color["ok-wash"], ink: color.ok } : t === "del" ? { bg: color["err-wash"], ink: color.err } : { bg: "transparent", ink: t === "hunk" ? color.faint : color.label });
   const sign = (t: string) => (t === "add" ? "+ " : t === "del" ? "- " : "  ");
-  if (!lines.length) return <Text size="caption" tone="label" style={{ padding: 12 }}>{file.op === "create" ? "New file" : file.op === "delete" ? "File removed" : "No line changes to show"}</Text>;
+  if (!lines.length) return <Text size="caption" tone="label" style={S.s11}>{file.op === "create" ? "New file" : file.op === "delete" ? "File removed" : "No line changes to show"}</Text>;
   if (wide) {
     const pairs = sideBySide(lines);
     return (
       <View>
         {pairs.map((p, i) => (
-          <View key={i} style={{ flexDirection: "row" }}>
+          <View key={i} style={S.s12}>
             {[p.left, p.right].map((l, k) => {
               const t = l ? tone(l.t) : { bg: "transparent", ink: color.label };
               return (
@@ -168,9 +199,9 @@ function FileHead({ file, ctx, onPress, open }: { file: DiffFile; ctx: BlockCtx;
   const { color } = useUiTheme();
   return (
     <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, minHeight: 40, borderBottomWidth: 1, borderBottomColor: color.edge }}>
-      <Pressable accessibilityRole={onPress ? "button" : undefined} accessibilityState={onPress ? { expanded: !!open } : undefined} onPress={onPress} style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 8, minHeight: 40 }}>
+      <Pressable accessibilityRole={onPress ? "button" : undefined} accessibilityState={onPress ? { expanded: !!open } : undefined} onPress={onPress} style={S.s13}>
         <Icon name="file" />
-        <Text mono size="caption" strong numberOfLines={1} style={{ flex: 1 }}>{file.path}</Text>
+        <Text mono size="caption" strong numberOfLines={1} style={S.s9}>{file.path}</Text>
       </Pressable>
       <Text size="caption" tone="ok" mono>+{file.add}</Text>
       <Text size="caption" tone="err" mono>-{file.del}</Text>
@@ -203,29 +234,29 @@ export function DiffBlock({ block, ctx }: { block: Extract<Block, { block: "diff
     <View style={frame}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, minHeight: 40, borderBottomWidth: 1, borderBottomColor: color.edge }}>
         <Icon name="file" />
-        <Text strong style={{ flex: 1 }}>{block.files.length} files changed</Text>
+        <Text strong style={S.s9}>{block.files.length} files changed</Text>
         <Text size="caption" tone="ok" mono>+{add}</Text>
         <Text size="caption" tone="err" mono>-{del}</Text>
       </View>
       {tree.map((g) => (
-        <View key={g.dir} style={{ paddingVertical: 4 }}>
-          <Text size="caption" tone="label" mono style={{ paddingHorizontal: 12, paddingVertical: 2 }}>{g.dir === "." ? "(root)" : g.dir + "/"}</Text>
+        <View key={g.dir} style={S.s14}>
+          <Text size="caption" tone="label" mono style={S.s15}>{g.dir === "." ? "(root)" : g.dir + "/"}</Text>
           {g.files.map((f) => {
             const path = g.dir === "." ? f.name : `${g.dir}/${f.name}`;
             const full = block.files.find((x) => x.path === path);
             const open = openFile === path;
             return (
               <View key={path}>
-                <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} onPress={() => setOpenFile(open ? null : path)} style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, minHeight: 36 }}>
+                <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} onPress={() => setOpenFile(open ? null : path)} style={S.s16}>
                   <Chip tone={f.op === "create" ? "ok" : f.op === "delete" ? "err" : "plain"}>{f.op === "create" ? "new" : f.op === "delete" ? "gone" : "edit"}</Chip>
-                  <Text mono size="caption" numberOfLines={1} style={{ flex: 1 }}>{f.name}</Text>
+                  <Text mono size="caption" numberOfLines={1} style={S.s9}>{f.name}</Text>
                   <Text size="caption" tone="ok" mono>+{f.add}</Text>
                   <Text size="caption" tone="err" mono>-{f.del}</Text>
                 </Pressable>
                 {open && full ? (
                   <View style={{ borderTopWidth: 1, borderTopColor: color.edge }}>
                     <DiffLines file={full} wide={ctx.wide} />
-                    {ctx.onOpenInDrive ? <View style={{ padding: 8 }}><Button size="sm" icon="drive" label="Open in Drive" onPress={() => ctx.onOpenInDrive?.(path)} /></View> : null}
+                    {ctx.onOpenInDrive ? <View style={S.s17}><Button size="sm" icon="drive" label="Open in Drive" onPress={() => ctx.onOpenInDrive?.(path)} /></View> : null}
                   </View>
                 ) : null}
               </View>
@@ -244,21 +275,28 @@ export function SealedChip({ f }: { f: Extract<RecordField, { sealed: true }> })
   return <Chip tone="sealed" icon="shield">{`${f.cls}: ${f.present ? "on file, sealed" : "not set, sealed"}`}</Chip>;
 }
 
+/** A cited field in a reply, drawn for this viewer: the value, or a chip that says something is there (sealed, or kept from their role). Never a value it was not sent. */
+export function FieldChip({ block }: { block: Extract<Block, { block: "field" }> }) {
+  if (block.state === "sealed") return <Chip tone="sealed" icon="shield">{`${block.label}: ${block.present ? "on file, sealed" : "not set, sealed"}`}</Chip>;
+  if (block.state === "hidden") return <Chip tone="sealed" icon="shield">{`${block.label}: ${block.present ? "on file, not shown to you" : "not shown to you"}`}</Chip>;
+  return <Chip>{`${block.label}: ${block.value}`}</Chip>;
+}
+
 export function RecordCard({ block, ctx }: { block: Extract<Block, { block: "record" }>; ctx: BlockCtx }) {
   const sealed = sealedCount(block);
   return (
     <Shell icon="file" title={block.title} sub={block.type} right={sealed ? <Chip tone="sealed" icon="shield">{`${sealed} sealed`}</Chip> : null}>
-      <View style={{ gap: 6 }}>
+      <View style={S.s18}>
         {block.fields.map((f) => (
-          <View key={f.label} style={{ flexDirection: "row", alignItems: "center", gap: 12, minHeight: 24 }}>
-            <Text size="caption" tone="label" style={{ width: 88 }} numberOfLines={1}>{f.label}</Text>
-            <View style={{ flex: 1, minWidth: 0, flexDirection: "row" }}>
-              {f.sealed ? <SealedChip f={f} /> : <Text numberOfLines={1} style={{ flexShrink: 1 }}>{f.value}</Text>}
+          <View key={f.label} style={S.s19}>
+            <Text size="caption" tone="label" style={S.s20} numberOfLines={1}>{f.label}</Text>
+            <View style={S.s21}>
+              {f.sealed ? <SealedChip f={f} /> : <Text numberOfLines={1} style={S.s22}>{f.value}</Text>}
             </View>
           </View>
         ))}
       </View>
-      {block.urn && ctx.onOpenRecord ? <View style={{ flexDirection: "row" }}><Button size="sm" label="Open record" onPress={() => ctx.onOpenRecord?.(block.urn!)} /></View> : null}
+      {block.urn && ctx.onOpenRecord ? <View style={S.s12}><Button size="sm" label="Open record" onPress={() => ctx.onOpenRecord?.(block.urn!)} /></View> : null}
     </Shell>
   );
 }
@@ -281,9 +319,9 @@ export function TaskCard({ block, ctx, decided }: { block: Extract<Block, { bloc
     <Shell icon="todo" tint={state === "needs-approval" ? "accent" : undefined} title={<Text strong>{block.title}</Text>} sub={block.doer ? `For ${block.doer}` : undefined}
       right={state === "needs-approval" ? <Chip tone="accent" icon="now">Needs you</Chip> : state === "done" ? <Chip tone="ok" icon="check">Approved</Chip> : state === "declined" ? <Chip icon="x">Declined</Chip> : null}>
       {block.why ? <Text tone="muted">{block.why}</Text> : null}
-      {block.tags.length ? <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>{block.tags.map((t) => <Chip key={t}>{t}</Chip>)}</View> : null}
+      {block.tags.length ? <View style={S.s23}>{block.tags.map((t) => <Chip key={t}>{t}</Chip>)}</View> : null}
       {state === "needs-approval" ? (
-        <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+        <View style={S.s24}>
           <Button kind="primary" icon={block.face ? "faceid" : "check"} label={block.approve} onPress={approve} />
           <Button kind="ghost" size="sm" label="Decline" onPress={() => ctx.onDecline?.(block.id)} />
         </View>
@@ -306,7 +344,7 @@ export function DraftBlock({ block, ctx }: { block: Extract<Block, { block: "dra
       ) : (
         <Text selectable>{body}</Text>
       )}
-      <View style={{ flexDirection: "row", gap: 8 }}>
+      <View style={S.s25}>
         <Button size="sm" label={editing ? "Done" : "Edit"} onPress={() => setEditing((e) => !e)} />
         <Button size="sm" kind="ghost" icon="copy" label="Copy" onPress={() => copy(body, ctx)} />
       </View>
@@ -321,18 +359,18 @@ export function FlowChange({ block, ctx }: { block: Extract<Block, { block: "flo
   const mark = (op: string) => (op === "add" ? { icon: "plus" as const, tone: color.ok, bg: color["ok-wash"] } : op === "remove" ? { icon: "minus" as const, tone: color.err, bg: color["err-wash"] } : { icon: "refresh" as const, tone: color["text-2"], bg: color.hover });
   return (
     <Shell icon="refresh" title={block.title} sub="Proposed change to a Flow">
-      <View style={{ gap: 4 }}>
+      <View style={S.s26}>
         {block.steps.map((s, i) => {
           const m = mark(s.op);
           return (
             <View key={i} style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: m.bg, borderRadius: 8, paddingHorizontal: 8, minHeight: 32 }}>
               <Icon name={m.icon} tone={s.op === "add" ? "ok" : s.op === "remove" ? "err" : "text-2"} />
-              <Text style={{ flex: 1 }}>{s.label}</Text>
+              <Text style={S.s9}>{s.label}</Text>
             </View>
           );
         })}
       </View>
-      {ctx.onOpenFlow ? <View style={{ flexDirection: "row" }}><Button size="sm" label="Review in Flows" onPress={ctx.onOpenFlow} /></View> : null}
+      {ctx.onOpenFlow ? <View style={S.s12}><Button size="sm" label="Review in Flows" onPress={ctx.onOpenFlow} /></View> : null}
     </Shell>
   );
 }
@@ -343,9 +381,9 @@ export function CitedAnswer({ block, ctx }: { block: Extract<Block, { block: "an
   return (
     <Shell icon="link" title="From memory" sub={`${block.sources.length} source${block.sources.length === 1 ? "" : "s"}`}>
       <Text selectable>{block.text}</Text>
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+      <View style={S.s23}>
         {block.sources.map((s, i) => (
-          <Pressable key={i} accessibilityRole="button" accessibilityLabel={`Source ${i + 1}: ${s.title}`} onPress={() => s.url && ctx.onOpenSource?.(s.url)} style={{ minHeight: 28, justifyContent: "center" }}>
+          <Pressable key={i} accessibilityRole="button" accessibilityLabel={`Source ${i + 1}: ${s.title}`} onPress={() => s.url && ctx.onOpenSource?.(s.url)} style={S.s6}>
             <Chip icon="link">{`${i + 1}  ${s.title}`}</Chip>
           </Pressable>
         ))}
@@ -362,9 +400,9 @@ export function ScreenFrames({ block, ctx }: { block: Extract<Block, { block: "s
   return (
     <Shell icon="globe" title={block.label || "Screen"} sub={block.live ? "Live" : "Last frame"} right={block.live ? <Chip tone="accent">live</Chip> : null}>
       <View style={{ aspectRatio: 16 / 10, borderRadius: 8, overflow: "hidden", backgroundColor: color["code-bg"], alignItems: "center", justifyContent: "center" }}>
-        {frame ? <Image accessibilityLabel="What the assistant sees" source={{ uri: frame }} style={{ width: "100%", height: "100%" }} resizeMode="cover" /> : <Text tone="label" size="caption">Waiting for the first frame</Text>}
+        {frame ? <Image accessibilityLabel="What the assistant sees" source={{ uri: frame }} style={S.s27} resizeMode="cover" /> : <Text tone="label" size="caption">Waiting for the first frame</Text>}
       </View>
-      {block.live && ctx.onTakeOver ? <View style={{ flexDirection: "row" }}><Button size="sm" kind="primary" icon="hand" label="Take over" onPress={ctx.onTakeOver} /></View> : null}
+      {block.live && ctx.onTakeOver ? <View style={S.s12}><Button size="sm" kind="primary" icon="hand" label="Take over" onPress={ctx.onTakeOver} /></View> : null}
     </Shell>
   );
 }
@@ -382,6 +420,7 @@ export function renderBlock(block: Block, ctx: BlockCtx, extra: { output?: strin
     case "diff": return <DiffBlock block={block} ctx={ctx} />;
     case "record": return <RecordCard block={block} ctx={ctx} />;
     case "task": return <TaskCard block={block} ctx={ctx} decided={extra.decided} />;
+    case "field": return <FieldChip block={block} />;
     case "draft": return <DraftBlock block={block} ctx={ctx} />;
     case "flow-change": return <FlowChange block={block} ctx={ctx} />;
     case "answer": return <CitedAnswer block={block} ctx={ctx} />;

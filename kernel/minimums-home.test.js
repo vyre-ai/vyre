@@ -54,16 +54,41 @@ test("M-1: the accepted minimums live in the sealed log; deleting or rolling bac
   assert.equal(k.firstPartyCheck(ok), false);
   assert.equal(k.firstPartyCheck(newer), true);
   assert.equal(k.log.read({ type: "kernel.minimums" }).length, 2);
+  // M-1b: events anyone who can write the log adds are not a document the release key signed: a bare high counter, a document another key signed, and a real one with its
+  // counter field changed all count for nothing, and the highest VERIFIED counter (6) still decides
+  const writer = k.chains.fromFacts({ kind: "module", module: "home", first_party: true });
+  const stranger = crypto.generateKeyPairSync("ed25519");
+  const forge = data => k.log.append(writer, { type: "kernel.minimums", sv: 2, subject: `vyre://${id.space}/kernel/minimums`, data, vis: "owner", red: "internal" });
+  await forge({ counter: 9999, minimums: { email: "0.0.1" } });
+  await forge({ counter: 9998, minimums: { email: "0.0.1" }, doc: signMinimums({ email: "0.0.1" }, stranger.privateKey, 9998) });
+  const real = signMinimums({ email: "0.4.0" }, release.privateKey, 6);
+  await forge({ counter: 9997, minimums: { email: "0.0.1" }, doc: real });
+  await k.stop();
+  const logs = [];
+  k = await bootHomeKernel({ db: new DatabaseSync(dbFile), root, log: m => logs.push(m), isFirstParty: () => false, releaseKey: release.publicKey });
+  assert.equal(k.firstPartyCheck(ok), false, "the forged weak minimums did not outrank the real one");
+  assert.equal(k.firstPartyCheck(newer), true);
+  assert.equal(logs.filter(m => /does not carry a document the release key signed/.test(m)).length, 2, "the two unsigned events are named");
+  await k.stop();
+  fs.rmSync(path.join(id.dir, "minimums.json"));
+  k = await boot();
+  assert.equal(k.firstPartyCheck(ok), false, "still in force with no file at all");
   await k.stop();
 });
 
-test("M-3: the developer switches count only in a development tree; a packaged one (it carries SHA256SUMS) ignores them", t => {
+test("M-3: the developer switches count only in a development build, decided at build time; a missing, edited-away or signed marker means packaged", t => {
   const root = tempHome(t);
+  fs.mkdirSync(path.join(root, "lib"));
+  assert.equal(isPackaged(root), true, "no marker at all is a packaged build");
+  assert.equal(devSwitch("1", root), false);
+  fs.writeFileSync(path.join(root, "lib", "build-kind.js"), 'export const BUILD_KIND = "release";\n');
+  assert.equal(isPackaged(root), true);
+  fs.writeFileSync(path.join(root, "lib", "build-kind.js"), 'export const BUILD_KIND = "development";\n');
   assert.equal(isPackaged(root), false);
   assert.equal(devSwitch("1", root), true);
   assert.equal(devSwitch("true", root), false);
   assert.equal(devSwitch(undefined, root), false);
   fs.writeFileSync(path.join(root, "SHA256SUMS.sig"), "x");
-  assert.equal(isPackaged(root), true);
-  assert.equal(devSwitch("1", root), false, "the switch is ignored in a packaged daemon");
+  assert.equal(devSwitch("1", root), false, "a carried release signature means packaged even if the marker says development");
+  assert.equal(isPackaged(), false, "this checkout is a development build");
 });

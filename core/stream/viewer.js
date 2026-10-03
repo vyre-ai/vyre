@@ -21,7 +21,11 @@ import { kindOf } from "./frame.js";
 /** Block kinds whose `fields` are drawn per viewer. */
 export const FIELD_BLOCKS = Object.freeze(["record", "draft", "answer"]);
 
-/** @typedef {{ id?: string, roles?: readonly string[] }} Viewer */
+/**
+ * A viewer is { id, roles }. `resolve(record, field)` (server side only, never from a client) answers a cited field with the
+ * spec the viewer's own authority yields: { label?, kind?, value, read_roles?, seal?, present? }, or null when it cannot be read or does not exist.
+ * @typedef {{ id?: string, roles?: readonly string[], resolve?: (record: string, field: string) => Promise<any>, resolveMs?: number }} Viewer
+ */
 
 const isObj = (/** @type {unknown} */ v) => !!v && typeof v === "object" && !Array.isArray(v);
 
@@ -60,22 +64,34 @@ const presentOf = f => (isObj(f.value) && typeof f.value.present === "boolean" ?
 
 /** The typed placeholder for a field this viewer cannot read. @param {any} f @param {Viewer} viewer */
 export function placeholder(f, viewer) {
-  const base = { ...(f.name !== undefined ? { name: f.name } : {}), ...(f.label !== undefined ? { label: f.label } : {}) };
+  const str = (/** @type {unknown} */ x) => (typeof x === "string" ? x.slice(0, 120) : undefined);
+  const base = { ...(str(f.name) !== undefined ? { name: str(f.name) } : {}), ...(str(f.label) !== undefined ? { label: str(f.label) } : {}) };
+  const kind = str(f.kind) ?? "text";
   if (isSealed(f)) {
     const v = isObj(f.value) ? f.value : {};
-    const cls = (typeof v.sealed === "string" && v.sealed) || (typeof f.sealed === "string" && f.sealed) || f.seal?.class || String(f.label ?? f.name ?? "sealed");
+    const cls = str(v.sealed) || str(f.sealed) || str(f.seal && f.seal.class) || str(f.label) || str(f.name) || "sealed";
     const reveal = Array.isArray(f.seal?.reveal_roles) ? f.seal.reveal_roles : [];
     const mine = viewer && Array.isArray(viewer.roles) ? viewer.roles : [];
     return { ...base, kind: "sealed", sealed: true, placeholder: true, value: { sealed: cls, present: presentOf(f), valid_format: typeof v.valid_format === "boolean" ? v.valid_format : true, can_reveal: reveal.some((/** @type {string} */ r) => mine.includes(r)) } };
   }
-  return { ...base, kind: f.kind ?? "text", placeholder: true, value: { hidden: "role", kind: f.kind ?? "text", present: presentOf(f) } };
+  return { ...base, kind, placeholder: true, value: { hidden: "role", kind, present: presentOf(f) } };
 }
 
-/** @param {any} f @param {Viewer} viewer */
-const drawField = (f, viewer) => (!isObj(f) || isPlaceholder(f) || canRead(f, viewer) ? f : placeholder(f, viewer));
+/**
+ * A field's own `placeholder: true` is never believed (reviewer V-1): a flagged field is rebuilt by placeholder() from a whitelist of
+ * keys, so a ref, hint, text, alt or any other key it carries is dropped, exactly like a field the viewer cannot read.
+ * @param {any} f @param {Viewer} viewer
+ */
+const drawField = (f, viewer) => (!isObj(f) || (f.placeholder !== true && canRead(f, viewer)) ? f : placeholder(f, viewer));
+
+/** The chip a cited field becomes when it cannot be read (or resolved): a typed placeholder, never a value. @param {any} b */
+const unreadable = b => ({ block: "field", ...placeholder({ label: typeof b.label === "string" ? b.label : typeof b.field === "string" ? b.field : undefined, name: typeof b.field === "string" ? b.field : undefined, kind: "text", present: false }, { roles: [] }) });
 
 /** @param {any} b @param {Viewer} viewer */
 function drawBlock(b, viewer) {
+  // A cited field the server did not resolve for this viewer is a chip, never a value. A `field` block is one field, drawn like a record's.
+  if (isObj(b) && b.block === "field-ref") return unreadable(b);
+  if (isObj(b) && b.block === "field") return b.placeholder !== true && canRead(b, viewer) ? b : { block: "field", ...placeholder(b, viewer) };
   if (!isObj(b) || !FIELD_BLOCKS.includes(b.block) || !Array.isArray(b.fields)) return b;
   let changed = false;
   const fields = b.fields.map((/** @type {any} */ f) => { const d = drawField(f, viewer); if (d !== f) changed = true; return d; });
@@ -92,6 +108,53 @@ function blocksOf(f) {
   else if (typeof d.block === "string") out.push([null, d]);
   if (Array.isArray(d.blocks)) d.blocks.forEach((/** @type {any} */ b, /** @type {number} */ i) => out.push([i, b]));
   return out;
+}
+
+const REF_MAX = 120;
+/** How long a viewer's resolver may take for one cited field before the chip is sent instead (reviewer F-1). */
+export const RESOLVE_MS = 3000;
+/** @param {any} b */
+const refOk = b => isObj(b) && b.block === "field-ref" && typeof b.record === "string" && b.record.length > 0 && b.record.length <= 400 && typeof b.field === "string" && b.field.length > 0 && b.field.length <= REF_MAX;
+
+/** Does the frame carry a cited field (a field-ref block)? @param {any} frame */
+export function hasRefs(frame) {
+  for (const [, b] of blocksOf(frame)) if (isObj(b) && b.block === "field-ref") return true;
+  return false;
+}
+
+/**
+ * Draw every field-ref in the frame for THIS viewer, from their own authority (viewer.resolve): the value as `{ block: "field", label, kind, value }`
+ * when they may read it, else the placeholder chip. The shared frame is not mutated. A ref that cannot be resolved, or resolves to nothing, is a chip.
+ * @param {any} frame @param {Viewer} viewer
+ */
+export async function resolveRefs(frame, viewer) {
+  if (!hasRefs(frame)) return frame;
+  const one = async (/** @type {any} */ b) => {
+    if (!isObj(b) || b.block !== "field-ref") return b;
+    if (!refOk(b) || !viewer || typeof viewer.resolve !== "function") return unreadable(b);
+    // F-1: a resolver that never answers must not stall the frames behind this one: after the deadline the cited field is the chip.
+    let spec = null;
+    const ms = Number.isFinite(viewer.resolveMs) && /** @type {number} */ (viewer.resolveMs) > 0 ? /** @type {number} */ (viewer.resolveMs) : RESOLVE_MS;
+    /** @type {any} */ let timer;
+    try { spec = await Promise.race([viewer.resolve(b.record, b.field), new Promise(res => { timer = setTimeout(() => res(null), ms); timer.unref?.(); })]); } catch { spec = null; }
+    finally { clearTimeout(timer); }
+    if (!isObj(spec) || spec.placeholder === true) return unreadable(b);
+    const f = { ...spec, name: b.field, label: typeof b.label === "string" ? b.label : typeof spec.label === "string" ? spec.label : b.field };
+    if (!canRead(f, viewer)) return { block: "field", ...placeholder(f, viewer) };
+    return { block: "field", name: String(b.field).slice(0, REF_MAX), label: String(f.label).slice(0, REF_MAX), kind: typeof spec.kind === "string" ? spec.kind.slice(0, 40) : "text", value: spec.value };
+  };
+  const d = frame.data;
+  const data = { ...d };
+  if (isObj(d.result)) data.result = await one(d.result);
+  if (isObj(d.block)) data.block = await one(d.block);
+  if (Array.isArray(d.blocks)) data.blocks = await Promise.all(d.blocks.map(one));
+  return { ...frame, data };
+}
+
+/** forViewer for a frame that may carry cited fields: they are resolved for the viewer first. A frame the viewer may not see is never resolved. @param {any} frame @param {Viewer} viewer */
+export async function forViewerAsync(frame, viewer) {
+  if (!viewer || !hasRefs(frame) || !(frame.cur >= 1) || !mayView(frame, viewer)) return forViewer(frame, viewer);
+  return forViewer(await resolveRefs(frame, viewer), viewer);
 }
 
 /**

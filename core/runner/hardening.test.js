@@ -1,4 +1,5 @@
 // Regression tests for reviewer-2's gate on the runner (team/0.3/reviews/runner.md): Z1 to Z8, the watchdog, resume taint.
+import "./testing/hosted-guard.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -80,10 +81,12 @@ test("Z3: after a sleep the lease is locked by the wall clock, not by a timer th
 test("Z3b: a gap between ticks means the machine slept: lock now and ask the vault again on wake", async () => {
   const sp = fakeSpace({ ttlMs: 3_600_000 });
   let t = 5_000; const locks = [];
-  const l = createLease({ vault: sp.vault, space: "harlow", device: "kit", now: () => t, tickMs: 1e9, sleepGapMs: 90_000, onLock: w => locks.push(w) });
+  let m = 0;
+  const l = createLease({ vault: sp.vault, space: "harlow", device: "kit", now: () => t, mono: () => m, tickMs: 1e9, sleepGapMs: 90_000, onLock: w => locks.push(w) });
   await l.acquire();
-  t += 30_000; await l.tick(); assert.deepEqual(locks, []);
-  t += 20 * 60_000; await l.tick();         // 20 minutes with no tick, still inside the lease
+  t += 30_000; m += 30_000; await l.tick(); assert.deepEqual(locks, []);
+  t += 20 * 60_000; m += 20 * 60_000; await l.tick(); assert.deepEqual(locks, [], "a blocked event loop moves both clocks: not a sleep");
+  t += 20 * 60_000; m += 5_000; await l.tick();         // 20 minutes of wall time, 5 s of monotonic time: the machine slept, still inside the lease
   assert.deepEqual(locks, ["slept"]);
   assert.equal(l.key(), null);
   assert.deepEqual(await l.acquire(), { ok: true });   // wake: a fresh lease, checked again by the vault
@@ -249,8 +252,10 @@ test("S-1b: the sandboxed reader returns plain files, skips links, and sends onl
   const first = await collect({});
   assert.deepEqual(first.map(f => f.rel).sort(), ["files/a.txt", "files/sub/b.txt"]);
   assert.equal(first.find(f => f.rel === "files/a.txt").bytes.toString(), "alpha");
-  const again = await collect({ "files/a.txt": first.find(f => f.rel === "files/a.txt").hash });
+  const a0 = first.find(f => f.rel === "files/a.txt");
+  const again = await collect({ "files/a.txt": { hash: a0.hash, size: a0.len, mtimeMs: a0.mtimeMs } });
   assert.equal(again.find(f => f.rel === "files/a.txt").bytes, null);
+  assert.equal(again.find(f => f.rel === "files/a.txt").hash, a0.hash, "an unchanged file (same size and mtime) is listed with its known hash, not re-read");
   assert.equal(again.find(f => f.rel === "files/sub/b.txt").bytes.toString(), "beta");
 });
 
@@ -369,3 +374,47 @@ test("X-3: a checkpoint is never resumed without a verifier, with a bad seal, or
   sp.state.transcript.get("s1")[0].line = '{"type":"result","forged":true}';
   await assert.rejects(() => restore({ space: sp.sync, session: "s1", ...dst(), verify }), /does not verify/);
 });
+
+// ---- Windows lending is out of 0.3 -------------------------------------------------------------------------------------
+
+import { WINDOWS_LINE } from "./sandbox.js";
+import { place } from "./placement.js";
+test("Windows: lending is refused with one plain line, placement never says here, and nothing is reachable by accident", () => {
+  const old = process.env.VYRE_WINDOWS_LENDING; delete process.env.VYRE_WINDOWS_LENDING;
+  try {
+    assert.equal(WINDOWS_LINE, "Running a space's work on this computer isn't available on Windows yet. Your sessions run on the space's server.");
+    assert.equal(unavailable("win32"), WINDOWS_LINE);
+    assert.equal(workspaceUnavailable("win32"), WINDOWS_LINE);
+    assert.throws(() => driverFor("win32"), /isn't available on Windows yet/);
+    const calm = { onPower: true, awake: true, cpuPct: 1, memPct: 1 };
+    const p = place({ spaceAllows: true, memberAccepts: true, state: calm, runnerReady: unavailable("win32"), server: { available: true, hasRoom: true } });
+    assert.equal(p.where, "server");
+    assert.equal(place({ spaceAllows: true, memberAccepts: true, state: calm, runnerReady: unavailable("win32") }).where, "wait");
+    assert.throws(() => createRunner({ platform: "win32", base: "/x", space: "s", device: "d", vault: {}, sync: {}, grants: () => ({}) }), /isn't available on Windows yet/);
+  } finally { if (old !== undefined) process.env.VYRE_WINDOWS_LENDING = old; }
+});
+
+// ---- fscrypt, the kernel-native Linux workspace ------------------------------------------------------------------------
+
+import { fscryptSupported } from "./workspace.js";
+const FSDIR = process.env.VYRE_FSCRYPT_DIR || "";
+test("fscrypt workspace: opens with the leased key, locks with no key, a wrong key never opens it", { skip: process.platform !== "linux" || !FSDIR || !fscryptSupported(FSDIR), timeout: 60_000 }, async t => {
+  const base = fs.mkdtempSync(path.join(FSDIR, "fsc-")); t.after(() => rm(base));
+  const drv = driverFor("linux", { prefer: "fscrypt" });
+  assert.equal(drv.name, "fscrypt");
+  const dir = path.join(base, "w"); const key = crypto_.randomBytes(32), wrong = crypto_.randomBytes(32);
+  await drv.create(dir, key);
+  const m = await drv.mount(dir, key);
+  assert.equal(drv.isMounted(dir), true);
+  fs.writeFileSync(path.join(m, "secret-name.txt"), "FSCRYPT-PLAINTEXT-4417");
+  await drv.unmount(dir);
+  assert.equal(drv.isMounted(dir), false);
+  assert.throws(() => fs.readFileSync(path.join(m, "secret-name.txt")), /Required key|ENOKEY|EACCES|ENOENT|-126/);
+  await assert.rejects(() => drv.mount(dir, wrong), /did not take|could not open/);
+  assert.equal(drv.isMounted(dir), false);
+  await drv.mount(dir, key);
+  assert.equal(fs.readFileSync(path.join(m, "secret-name.txt"), "utf8"), "FSCRYPT-PLAINTEXT-4417");
+  await drv.destroy(dir);
+  assert.equal(fs.existsSync(dir), false);
+});
+import crypto_ from "node:crypto";

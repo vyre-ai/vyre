@@ -162,6 +162,15 @@ export function createFolder() {
         const it = items.get(key);
         open.delete(String(f.message ?? d.message));
         if (it && patch(key, { done: true, settled: it.text.length })) touch(key);
+        // The reply's cited fields (field-ref, drawn per viewer by the server into field blocks): one block row each, after its text.
+        if (Array.isArray(d.blocks)) {
+          d.blocks.slice(0, 8).forEach((/** @type {any} */ b, /** @type {number} */ i) => {
+            const bk = "f:" + (f.message ?? d.message) + ":" + i;
+            if (items.has(bk)) patch(bk, { block: b }); else put(bk, "block", { key: bk, kind: "block", tool: "field", toolKind: null, summary: "", status: "done", output: "", pct: null, block: b, ...who(f) });
+            out.layout = true;
+            touch(bk);
+          });
+        }
         break;
       }
       case "text-cut": {

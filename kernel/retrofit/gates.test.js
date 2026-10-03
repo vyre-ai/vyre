@@ -97,3 +97,26 @@ test("K2-3: the production chain builder cannot mint a person from a string; the
   const c = createLegacyChainBuilder({ space: LEGACY_SPACE }).fromLegacy({ kind: "person", id: "owner", legacy: "cli" });
   assert.equal(c.space, LEGACY_SPACE);
 });
+
+test("person reach and the assistant: open for a PROVEN assistant unless a reason keeps it the person's; ask-first is held; unproven or unclassified is refused", async () => {
+  const { personRefusesAgent, agentOpensPerson, agentAskFirst } = await import("../../core/modules/index.js");
+  const { PERSON_ONLY, OPEN, ASK_FIRST } = await import("../../core/modules/agent-reach.js");
+  const person = { reach: "person" };
+  const proven = { thread: "t1" }, unproven = {};
+  const open = [...OPEN][0], only = [...PERSON_ONLY.keys()][0], ask = [...ASK_FIRST.keys()][0];
+  for (const c of ["cli:agent:kit", "mcp:agent:kit", "harness:agent:kit", "cli:thread:x"]) {
+    assert.equal(personRefusesAgent(open, person, c, proven), false, `${open} for a proven ${c}`);
+    assert.equal(agentOpensPerson(open, person, c, proven), true, `${open} reaches a proven ${c} on any of its surfaces`);
+    assert.equal(personRefusesAgent(open, person, c, unproven), true, `an unproven ${c} reaches nothing`);
+    assert.equal(agentOpensPerson(open, person, c, unproven), false);
+    assert.equal(personRefusesAgent(only, person, c, proven), true, `${only} stays the person's for a proven ${c}`);
+    assert.equal(personRefusesAgent("brand.new.tool", person, c, proven), true, "an unclassified tool is refused until it is classified");
+    assert.equal(agentAskFirst(ask, c), true, `${ask} is held for ${c}`);
+  }
+  for (const c of ["cli", "local", "deck", "capsule", "mobile", "tailnet:alex"]) { assert.equal(personRefusesAgent(only, person, c, unproven), false, c); assert.equal(agentAskFirst(ask, c), false, c); }
+  assert.equal(agentOpensPerson(open, person, "module:agent:kit", proven), false, "a module is not a surface");
+  assert.equal(personRefusesAgent(only, { reach: "anyone" }, "cli:agent:kit", unproven), false, "only person reach");
+  for (const [n, r] of [...PERSON_ONLY, ...ASK_FIRST]) assert.ok(typeof r === "string" && r.length > 8, `${n} carries its reason`);
+  const all = [...OPEN, ...PERSON_ONLY.keys(), ...ASK_FIRST.keys()];
+  assert.equal(new Set(all).size, all.length, "a tool is in exactly one list");
+});

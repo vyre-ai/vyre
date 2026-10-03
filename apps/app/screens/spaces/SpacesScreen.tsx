@@ -1,26 +1,25 @@
 import { useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Avatar, Banner, Button, Card, Chip, Divider, Field, Row, Segmented, Sheet, Text, showToast } from "@vyre/ui";
-import { Group, Page } from "../shell/Page";
+import { Avatar, Button, Card, Chip, Divider, Field, Row, Segmented, Sheet, Text, showToast, markRef, spaceRef } from "@vyre/ui";
+import { Footnote, Page, Sec } from "../places/Frame";
+import { usePhone } from "../places/Page";
 import { FaceIdSheet, type FaceAsk } from "../shell/FaceIdSheet";
 import { useSpaces } from "../shell/state";
-import { loadSpaces, loadTeammates, ME, TEMP_PROJECTS, type Member } from "./data";
+import { loadMembers, loadSpaces, loadTeammates, ME, TEMP_PROJECTS, type Member } from "./data";
 import { useMembers } from "./state";
-import { EXTENSIONS, ROLES, TEMP_ENDS, endDate as endDateOf, assignable, canManage, endingSoon, roleLabel, tempLine, type Role } from "./roles.js";
+import { EXTENSIONS, ROLES, TEMP_ENDS, endDate as endDateOf, assignable, canManage, ownerMoveLine, roleLabel, type Role } from "./roles.js";
 
 const SPACES = loadSpaces();
 const TEAM = loadTeammates();
 const MY_ROLE: Role = "admin";
-
-function RoleChip({ role }: { role: Role }) {
-  return <Chip tone={role === "owner" ? "accent" : role === "temp" ? "warn" : "plain"}>{roleLabel(role)}</Chip>;
-}
+const OWNER = loadMembers().find((m) => m.role === "owner")?.name ?? "its owner";
 
 type Sheetv = null | { kind: "role"; id: string; role: Role; scope: string; days: string } | { kind: "extend"; id: string } | { kind: "temp"; name: string; scope: string; days: string };
 
 export function SpacesScreen() {
   const router = useRouter();
+  const phone = usePhone();
   const { members, setRole, remove, extendBy, addTemp } = useMembers();
   const setShowing = useSpaces((s) => s.setShowing);
   const [sheet, setSheet] = useState<Sheetv>(null);
@@ -30,48 +29,53 @@ export function SpacesScreen() {
   const allowed = assignable(MY_ROLE);
 
   return (
-    <Page title="Spaces and members" sub="Where your things live, and who is in them."
-      actions={<><Button label="Join a space" onPress={() => router.push("/u/install/join" as never)} /><Button kind="primary" icon="plus" label="Create a space" onPress={() => router.push("/u/install/create" as never)} /></>}>
+    <Page title="Spaces and members" sub="Where your things live, and who is in them." back="/u/settings"
+      actions={<><Button kind="primary" icon="plus" label="Create a space" onPress={() => router.push("/u/install/create" as never)} /><Button kind="ghost" label="Join a space" onPress={() => router.push("/u/install/join" as never)} /></>}>
       <View className="flex-row flex-wrap gap-s3">
         {SPACES.map((s) => (
-          <Card key={s.id} className="min-w-menu flex-1 gap-s3">
-            <Row lead={<Avatar name={s.name} family="space" size="lg" tint />} title={s.name} sub={s.address} className="px-0" />
-            <Text tone="muted">{`You are ${s.role === "owner" ? "an owner" : "an admin"}. Lives on ${s.home}.`}</Text>
-            <View className="flex-row"><Button size="sm" label="Open" onPress={() => { setShowing(s.id); router.push("/u/now" as never); }} /></View>
+          <Card flush key={s.id} className="min-w-menu flex-1">
+            <Row lead={<Avatar of={spaceRef(s.name)} size={56} />} title={s.name} chevron className="py-s3"
+              sub={<View className="gap-s1"><Text mono tone="label" numberOfLines={1} style={{ fontSize: 13, lineHeight: 18 }}>{s.address}</Text><Text size="secondary" tone="label" numberOfLines={1}>{`${s.role === "owner" ? "Owner" : "Admin"}, lives on ${s.home}`}</Text></View>}
+              onPress={() => { setShowing(s.id); router.push("/u/now" as never); }} />
           </Card>
         ))}
       </View>
-      <Group title="Members of Harlow Legal">
+      <Sec title="Members of Harlow Legal">
         <Card flush>
           {members.map((m, i) => {
             const self = m.id === ME;
             const can = canManage(MY_ROLE, m.role, self);
+            const temp = m.role === "temp";
             return (
               <View key={m.id}>
-                {i ? <Divider /> : null}
-                <Row lead={<Avatar name={m.name} />} title={m.name}
-                  sub={m.role === "temp" ? tempLine(m) : roleLabel(m.role)}
-                  onPress={can ? () => open(m) : undefined}
-                  end={<>{m.role === "temp" ? <Button size="sm" kind={endingSoon(m) ? "primary" : "secondary"} label="Extend" onPress={() => setSheet({ kind: "extend", id: m.id })} /> : null}<RoleChip role={m.role} /></>} />
+                {i ? <Divider inset={68} /> : null}
+                <Row dense lead={<Avatar of={markRef("person", m.name, m.id)} size={40} />} title={m.name}
+                  sub={temp ? (
+                    <View className="gap-s1 pt-s1">
+                      <Text size="secondary" tone="label" numberOfLines={1} style={{ fontSize: 14, lineHeight: 18 }}>{`Only ${m.scope}`}</Text>
+                      <View className="flex-row items-center gap-s2"><Chip tone="warn">{`Temp, ends ${m.end}`}</Chip><Button kind="ghost" size="sm" label="Extend" onPress={() => setSheet({ kind: "extend", id: m.id })} /></View>
+                    </View>
+                  ) : roleLabel(m.role)}
+                  onPress={can ? () => open(m) : undefined} />
               </View>
             );
           })}
-          {TEAM.map((t) => <View key={t.id}><Divider /><Row lead={<Avatar name={t.name} family="assistant" />} title={t.name} sub={t.sub} /></View>)}
+          {TEAM.map((t) => <View key={t.id}><Divider inset={68} /><Row dense lead={<Avatar of={markRef(t.id === "juno" || t.name === "juno" ? "assistant" : "teammate", t.name, t.id)} size={40} />} title={t.name} sub={t.sub} /></View>)}
         </Card>
-        <View className="flex-row flex-wrap gap-s2">
-          <Button kind="primary" size="sm" icon="plus" label="Invite someone" onPress={() => router.push("/u/wink/invite" as never)} />
-          <Button size="sm" label="Add a temp member" onPress={() => setSheet({ kind: "temp", name: "", scope: TEMP_PROJECTS[0], days: "7" })} />
+        <View className="gap-s1 pt-s3">
+          <Button kind="primary" size="lg" className={phone ? undefined : "self-start"} icon="plus" label="Invite someone" onPress={() => router.push("/u/wink/invite" as never)} />
+          <Button kind="ghost" label="Add a temp member" onPress={() => setSheet({ kind: "temp", name: "", scope: TEMP_PROJECTS[0], days: "7" })} />
         </View>
-      </Group>
-      <Banner>Temp access ends on its date. One tap extends it, with Face ID.</Banner>
+      </Sec>
+      <Footnote>Temp access ends on its date. One tap extends it, with Face ID.</Footnote>
 
       <Sheet open={sheet?.kind === "role"} onClose={() => setSheet(null)} title={sheet?.kind === "role" ? member(sheet.id)?.name : undefined}>
         {sheet?.kind === "role" ? (
           <>
             <Text tone="muted">Role in Harlow Legal</Text>
             <View>
-              {ROLES.filter((r) => allowed.includes(r.id) || r.id === member(sheet.id)?.role).map((r) => (
-                <Row key={r.id} title={r.label} sub={r.line} selected={sheet.role === r.id} onPress={allowed.includes(r.id) ? () => setSheet({ ...sheet, role: r.id }) : undefined} />
+              {ROLES.filter((r) => allowed.includes(r.id) || r.id === "owner" || r.id === member(sheet.id)?.role).map((r) => (
+                <Row key={r.id} title={r.label} sub={<Text size="secondary" tone="label">{r.id === "owner" ? ownerMoveLine(OWNER) : r.line}</Text>} selected={sheet.role === r.id} onPress={allowed.includes(r.id) ? () => setSheet({ ...sheet, role: r.id }) : undefined} />
               ))}
             </View>
             {sheet.role === "temp" ? (

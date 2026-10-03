@@ -3,6 +3,13 @@
 // each assistant in it has its own switchboard thread, and that thread's frames are projected into
 // the group's log with the assistant as `author` and the asker as `acts_for`.
 //
+// With the kernel on (ctx.kernel), the chat is the kernel's (task N): the people and assistants of a chat are the kernel's list, mirrored INTO this
+// group (never the other way; a call cannot add one); every message is written through chats.append(token, message) under a token that carries the
+// chat from birth (surfaces.open with { chat }): a person's words under that person's own token, an assistant's reply under a token for that
+// assistant, opened from the asker's chain. The kernel's append comes BEFORE the stream stores or sends a word, so a reply the kernel refuses is
+// shown nowhere (not a delta, not a frame). Without ctx.kernel (a 0.2 daemon) the old paths run, kept apart below (project0, and the kernelOn()
+// branches in send).
+//
 // Tools (reach person): stream.send, stream.react, stream.pin, stream.keep, stream.mark-read.
 //
 // A person's message is appended first (author from the caller), then routing.js whoAnswers picks
@@ -47,12 +54,19 @@ function uuidOf(s) {
   const h = b.toString("hex");
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
 }
+/** Does a frame's data hold a `field` block that carries a value (not a placeholder)? @param {any} d */
+function carriesFieldValue(d) {
+  if (!d || typeof d !== "object") return false;
+  const one = (/** @type {any} */ b) => b && typeof b === "object" && b.block === "field" && b.placeholder !== true;
+  return one(d) || one(d.result) || one(d.block) || (Array.isArray(d.blocks) && d.blocks.some(one));
+}
 const shortOf = (/** @type {string} */ id) => id.slice(id.indexOf(":") + 1);
 const botId = (/** @type {string} */ id) => id.startsWith("assistant:") || id.startsWith("model:");
 
 /**
  * @typedef {{ who: string, name: string, thread: string|null, cwd: string|null, asker: string|null, answer: string|null, last: number,
- *   ad: ReturnType<typeof createAdapter>, msgs: Map<string, string>, held: any[]|null, q: Promise<any>, grp: string }} Member
+ *   ad: ReturnType<typeof createAdapter>, msgs: Map<string, string>, held: any[]|null, q: Promise<any>, grp: string,
+ *   tokens?: Map<string, { token: string, exp: number }>, tokenWaiters?: { asker: string|null, res: (t: any) => void }[], pq?: Promise<any>, buf?: Map<string, any>, refused?: Set<string> }} Member
  * @typedef {{ people: Set<string>, bots: Map<string, Member>, names: Map<string, string>, dflt: string|null, previous: string|null }} Group
  */
 
@@ -87,6 +101,44 @@ export function createGroups({ ctx, logs, db, now = Date.now }) {
   const memberOf = r => ({ grp: String(r.grp), who: String(r.who), name: String(r.name || shortOf(String(r.who))), thread: r.thread ? String(r.thread) : null, cwd: r.cwd ? String(r.cwd) : null,
     asker: r.asker ? String(r.asker) : null, answer: r.answer ? String(r.answer) : null, last: Number(r.last_event || 0), ad: createAdapter(), msgs: new Map(), held: null, q: Promise.resolve(), });
   const save = (/** @type {Member} */ m) => q.upsert.run(m.grp, m.who, m.thread, m.cwd, m.name, m.asker, m.answer, m.last);
+
+  // ---- the kernel's chat (ctx.kernel on): tokens with the chat in them, and chats.append ------------------
+
+  /** Is this daemon running with the kernel? Then every chat is the kernel's and the 0.2 paths are closed. */
+  const kernelOn = () => Boolean(ctx.kernel && ctx.kernel.chats && typeof ctx.kernel.chats.append === "function" && typeof ctx.kernel.for === "function");
+  const TOKEN_MS = 24 * 3600_000;
+  /** What a call's own chain gave mirror(): the person's chain (exactly one person) and who it is. @type {WeakMap<object, { chain: any, person: string }>} */
+  const kcalls = new WeakMap();
+  /** @type {Map<string, { token: string, exp: number }>} one open session per (chat, person, assistant) */ const sessions = new Map();
+  /**
+   * A session token with the chat in it, opened by the kernel for the person acting (the chain of a call that carried their own token). `agent` makes it an
+   * assistant's session for that person. The kernel checks the person is in the chat; the chat cannot be changed in the token afterwards.
+   * @param {any} chain @param {string} grp @param {string} person @param {string} [agent]
+   */
+  async function sessionFor(chain, grp, person, agent) {
+    const key = `${grp}|${person}|${agent || ""}`;
+    const had = sessions.get(key);
+    if (had && had.exp - 60_000 > now()) return had;
+    const surfaces = ctx.kernel.for(ctx.kernel.space).surfaces;
+    const o = await surfaces.open(chain, { chat: grp, ...(agent ? { agent } : {}), ttl_ms: TOKEN_MS });
+    const t = { token: String(o.token), exp: Number(o.expires) };
+    sessions.set(key, t);
+    return t;
+  }
+  /** The only way a word lands in a chat: the destination is the token's chat. @param {string} token @param {any} body @param {string} [kind] */
+  const append = (token, body, kind = "text") => ctx.kernel.chats.append(token, { kind, body });
+  /** A token for the member's turn: the one for the person it is answering, now, or when that person next acts (a restart forgets tokens). @param {Member} m */
+  const tokenOf = m => {
+    const t = m.asker ? (m.tokens || new Map()).get(m.asker) : null;
+    return t && t.exp - 5000 > now() ? Promise.resolve(t) : new Promise(res => { (m.tokenWaiters ||= []).push({ asker: m.asker, res }); });
+  };
+  /** @param {Member} m @param {string} asker @param {{ token: string, exp: number }} t */
+  function giveToken(m, asker, t) {
+    (m.tokens ||= new Map()).set(asker, t);
+    const w = m.tokenWaiters || [];
+    m.tokenWaiters = w.filter(x => x.asker !== asker);
+    for (const x of w) if (x.asker === asker) x.res(t);
+  }
 
   /** The group's state, read from its log (who is in, who spoke last) and the member table (threads). @param {string} grp */
   function group(grp) {
@@ -128,8 +180,12 @@ export function createGroups({ ctx, logs, db, now = Date.now }) {
     logs.get(grp).append("participant-joined", { who, ...(o.role ? { role: o.role } : {}), ...(o.name ? { name: o.name } : {}) });
   }
 
-  /** @param {any} meta @param {any} i the person a call is from: the verified peer, else a named one (local surfaces), else the owner */
+  /** The person a kernel-on call is from, set by mirror() from the caller's own chain (a call's meta object is the key). @type {WeakMap<object, string>} */
+  const kernelPerson = new WeakMap();
+  /** @param {any} meta @param {any} i the person a call is from: the kernel's chain when it spoke, else the verified peer, else a named one (local surfaces), else the owner */
   function personOf(meta, i) {
+    const kp = meta && typeof meta === "object" ? kernelPerson.get(meta) : undefined;
+    if (kp) return kp;
     const peer = meta && meta.peer;
     const raw = peer && (peer.login || peer.stableId || peer.node);
     if (raw) return `person:${String(raw).replace(/\s+/g, "-").slice(0, 120)}`;
@@ -146,28 +202,101 @@ export function createGroups({ ctx, logs, db, now = Date.now }) {
 
   // ---- projection: a thread's events into the group's log ---------------------------------------
 
-  /** @param {Member} m @param {any} e */
+  /**
+   * A thread's event into the group's log. 0.2 (no kernel): written straight away (project0). Kernel on: every word of a reply goes through
+   * chats.append first (projectKernel), one at a time per assistant so the order holds, and a refused reply is never shown.
+   * @param {Member} m @param {any} e
+   */
   function project(m, e) {
     const id = Number(e.id);
     if (!(id > m.last)) return;
     m.last = id;
-    const out = logs.get(m.grp);
     let specs = [];
     try { specs = m.ad.event(e); } catch (err) { log(`${e.type} for ${m.thread}: ${/** @type {Error} */ (err).message}`); }
-    for (const s of specs) {
-      if (SKIP.has(s.kind)) continue;
-      let data = s.data, message;
-      if ((s.kind === "text-delta" || s.kind === "text-done") && m.answer) {
-        const raw = String(data.message);
-        if (!m.msgs.has(raw)) m.msgs.set(raw, m.msgs.size === 0 ? m.answer : `${m.answer}.${m.msgs.size}`);
-        message = /** @type {string} */ (m.msgs.get(raw));
-        data = { ...data, message };
-      }
-      try { out.append(s.kind, data, { turn: s.turn ? `${m.name}/${s.turn}` : null, author: m.who, ...(m.asker ? { acts_for: m.asker } : {}), ...(message ? { message } : {}) }); }
-      catch (err) { log(`${s.kind} for ${m.who} in ${m.grp}: ${/** @type {Error} */ (err).message}`); }
-    }
+    if (kernelOn()) projectKernel(m, specs); else project0(m, specs);
     dirty.add(m);
     if (!timer && !stopped) { timer = setTimeout(flush, 100); timer.unref?.(); }
+  }
+
+  /** The id a reply's words go under in the group: the asker's answer id, `<answer>.<n>` for later messages of the same turn. @param {Member} m @param {string} raw */
+  function answerId(m, raw) {
+    if (!m.msgs.has(raw)) m.msgs.set(raw, m.msgs.size === 0 ? /** @type {string} */ (m.answer) : `${m.answer}.${m.msgs.size}`);
+    return /** @type {string} */ (m.msgs.get(raw));
+  }
+
+  /** One frame into the group's log with the assistant as author. @param {Member} m @param {any} s @param {any} data @param {string} [message] */
+  function write(m, s, data, message) {
+    try { logs.get(m.grp).append(s.kind, data, { turn: s.turn ? `${m.name}/${s.turn}` : null, author: m.who, ...(m.asker ? { acts_for: m.asker } : {}), ...(message ? { message } : {}) }); }
+    catch (err) { log(`${s.kind} for ${m.who} in ${m.grp}: ${/** @type {Error} */ (err).message}`); }
+  }
+
+  // ---- 0.2, no kernel: kept apart ------------------------------------------------------------------
+
+  /** The specs of a thread event written straight into the group's log. @param {Member} m @param {any[]} specs */
+  function project0(m, specs) {
+    const room = group(m.grp).people.size > 1;
+    for (const s of specs) {
+      if (SKIP.has(s.kind)) continue;
+      // In a room of more than one person an assistant's reply never carries a field value (it is the same words for everyone): a field is cited as a field-ref block, drawn per viewer.
+      if (room && carriesFieldValue(s.data)) { log(`${s.kind} for ${m.who} in ${m.grp}: dropped, it carried a field value (cite it as a field-ref)`); continue; }
+      let data = s.data, message;
+      if ((s.kind === "text-delta" || s.kind === "text-done") && m.answer) { message = answerId(m, String(data.message)); data = { ...data, message }; }
+      write(m, s, data, message);
+    }
+  }
+
+  // ---- kernel on: a reply is written once the kernel took it -----------------------------------------
+
+  /**
+   * Everything an assistant does goes through the member's queue. Its words (text-delta, text-done) wait in a buffer until the message is whole, then ONE
+   * chats.append under the assistant's token for the asker; only after the kernel took it are the buffered frames written. A refusal (the assistant was
+   * removed, the asker left, the chat is gone) shows nothing, and the message's later frames are dropped.
+   * @param {Member} m @param {any[]} specs
+   */
+  function projectKernel(m, specs) {
+    m.pq = (m.pq || Promise.resolve()).then(async () => {
+      for (const s of specs) {
+        if (SKIP.has(s.kind)) continue;
+        if (s.kind === "text-delta" || s.kind === "text-done") await reply(m, s); else activity(m, s);
+      }
+    }).catch(err => { log(`projecting ${m.who} in ${m.grp}: ${/** @type {Error} */ (err).message}`); });
+  }
+
+  /** Not a message: tools, asks, files, status. Written in order behind the replies before them. @param {Member} m @param {any} s */
+  function activity(m, s) {
+    // The turn is over for words that never became a reply (reasoning only): they are released as they were.
+    if (s.kind === "status" && m.buf && s.data && s.data.state !== "working") for (const [id, b] of [...m.buf]) { for (const it of b.items) write(m, it, it.data, id); m.buf.delete(id); }
+    if (carriesFieldValue(s.data) && group(m.grp).people.size > 1) { log(`${s.kind} for ${m.who} in ${m.grp}: dropped, it carried a field value (cite it as a field-ref)`); return; }
+    write(m, s, s.data);
+  }
+
+  /** @param {Member} m @param {any} s a text-delta or text-done */
+  async function reply(m, s) {
+    const m0 = m.buf || (m.buf = new Map()), refused = m.refused || (m.refused = new Set());
+    const message = m.answer ? answerId(m, String(s.data.message)) : String(s.data.message);
+    if (refused.has(message)) return;
+    let b = m0.get(message);
+    if (!b) { b = { items: [], reply: "" }; m0.set(message, b); }
+    if (s.kind === "text-delta") { b.items.push({ ...s, data: { ...s.data, message } }); if (!s.data.reasoning) b.reply += String(s.data.text); return; }
+    let blocks = Array.isArray(s.data.blocks) ? s.data.blocks : [];
+    if (!b.reply && blocks.length === 0) { b.items.push({ ...s, data: { ...s.data, message } }); return; } // reasoning so far: held until the reply is whole or the turn ends
+    // A room of more than one person (the kernel's own list, mirrored here): the reply never carries a field value, it cites it as a field-ref, drawn per viewer.
+    if (group(m.grp).people.size > 1 && blocks.some((/** @type {any} */ x) => x && x.block === "field" && x.placeholder !== true)) {
+      log(`text-done for ${m.who} in ${m.grp}: a field value was dropped (cite it as a field-ref)`);
+      blocks = blocks.filter((/** @type {any} */ x) => !(x && x.block === "field" && x.placeholder !== true));
+    }
+    const done = { ...s.data, message, ...(blocks.length ? { blocks } : {}) };
+    if (!blocks.length) delete done.blocks;
+    const t = await tokenOf(m);
+    try { await append(t.token, { text: b.reply, ...(blocks.length ? { blocks } : {}) }); }
+    catch (err) {
+      refused.add(message); m0.delete(message);
+      log(`${m.who} in ${m.grp}: the kernel refused the reply (${/** @type {any} */ (err).code || "error"}); nothing was shown`);
+      return;
+    }
+    for (const it of b.items) write(m, it, it.data, message);
+    write(m, s, done, message);
+    m0.delete(message);
   }
 
   /** The log first, then the cursor: a crash can repeat a moment of a thread's words, never lose them. */
@@ -240,16 +369,17 @@ export function createGroups({ ctx, logs, db, now = Date.now }) {
   const asJoin = spec => (typeof spec === "string" ? { id: spec } : spec && typeof spec === "object" ? spec : {});
   const validId = (/** @type {unknown} */ id) => typeof id === "string" && /^(person|assistant|model):[^\s]{1,120}$/.test(id);
 
-  return {
-    markers,
-    person: personOf,
-    /** Does a group by this id exist here (in memory or stored)? Creates nothing. @param {string} grp */
-    known: grp => groups.has(grp) || logs.known(grp),
-    /** The people in a group, from its log. Call only for a known group. @param {string} grp */
-    people: grp => new Set(group(grp).people),
+  /** @type {Map<string, Promise<any>>} */ const inflight = new Map();
+  /** The person's own session for this chat, from the chain of the call they made (mirror() recorded it). With no such chain the kernel's chat was not checked: refused. @param {any} meta @param {string} grp @param {string} person */
+  async function personSession(meta, grp, person) {
+    const k = meta && typeof meta === "object" ? kcalls.get(meta) : undefined;
+    if (!k || k.person !== person) throw fail("person_session_required", "this chat is the kernel's: a call needs the person's own session");
+    return sessionFor(k.chain, grp, person);
+  }
 
-    /** @param {any} i @param {any} meta */
-    async send(i, meta) {
+  /** @param {any} i @param {any} meta */
+  async function sendOnce(i, meta) {
+    {
       const grp = sessionOf(i);
       const author = personOf(meta, i);
       mustBeIn(grp, author);
@@ -262,6 +392,7 @@ export function createGroups({ ctx, logs, db, now = Date.now }) {
         const out = logs.get(grp);
         join(grp, author, { name: typeof i.name === "string" ? i.name : undefined });
         const had = out.read(0).find(f => f.type === "session.user-message" && f.data.message === message);
+        if (!had && kernelOn()) await append((await personSession(meta, grp, author)).token, { enc: { alg: i.enc.alg, kid: i.enc.kid, ct: i.enc.ct } }, "private");
         if (!had) { out.append("user-message", { message, enc: { alg: i.enc.alg, kid: i.enc.kid, ct: i.enc.ct }, state: "sent" }, { author, message }); group(grp).previous = author; }
         return { session: grp, message, private: true, routed: [], answers: [], ...(had ? { duplicate: true } : {}) };
       }
@@ -275,6 +406,10 @@ export function createGroups({ ctx, logs, db, now = Date.now }) {
       const had = out.read(0).find(f => f.type === "session.user-message" && f.data.message === message);
       const cwd = typeof i.cwd === "string" ? i.cwd : undefined;
       join(grp, author, { name: typeof i.name === "string" ? i.name : undefined });
+      // Kernel on: `default` only chooses among the assistants the kernel lists (routing, not membership).
+      if (kernelOn() && typeof i.default === "string" && group(grp).bots.has(i.default)) group(grp).dflt = i.default;
+      // Kernel on: people and assistants are the kernel's list (a person in the chat changes it, acting directly); a send adds nobody.
+      if (kernelOn() && ((Array.isArray(i.people) && i.people.length) || (Array.isArray(i.assistants) && i.assistants.length))) throw fail("bad_input", "people and assistants of a chat are added with the kernel's chat change, by a person in it");
       for (const spec of [...(i.people || []), ...(i.assistants || [])]) {
         const j = asJoin(spec);
         if (!validId(j.id)) throw fail("bad_input", "a participant is person:<id>, assistant:<id> or model:<id>");
@@ -304,7 +439,17 @@ export function createGroups({ ctx, logs, db, now = Date.now }) {
         if (m && !m.thread && !m.cwd && !cwd) throw fail("bad_input", `${id} has no folder to work in: pass cwd`);
       }
 
-      out.append("user-message", { message, text, state: "sent" }, { author, message });
+      // Kernel on: the kernel takes the words first (a person's own token, with the chat in it), and a session token for each assistant that will answer
+      // (its replies are appended under it). A refusal here is the send's refusal: nothing is stored.
+      /** @type {string|undefined} */ let kid;
+      if (kernelOn()) {
+        const mine = await personSession(meta, grp, author);
+        const bots = [];
+        for (const id of to) { const m = g.bots.get(id); const k = kcalls.get(meta); if (m && k) bots.push([m, await sessionFor(k.chain, grp, author, shortOf(id))]); }
+        kid = String((await append(mine.token, { text })).id);
+        for (const [m, t] of bots) giveToken(/** @type {Member} */ (m), author, /** @type {any} */ (t));
+      }
+      out.append("user-message", { message, text, state: "sent", ...(kid ? { kid } : {}) }, { author, message });
       if (mentions.length) out.append("mention", { message, who: mentions }, { author, message });
       g.previous = author;
       const answers = to.map(who => ({ who, message: `${message}.${g.names.get(who) || shortOf(who)}` }));
@@ -319,6 +464,48 @@ export function createGroups({ ctx, logs, db, now = Date.now }) {
       });
       for (const r of rows) void schedule(r);
       return { session: grp, message, routed: to, answers, ...(groupId ? { group: groupId } : {}) };
+    }
+  }
+
+  return {
+    markers,
+    person: personOf,
+    /** Does a group by this id exist here (in memory or stored)? Creates nothing. @param {string} grp */
+    known: grp => groups.has(grp) || logs.known(grp),
+    /** The people in a group, from its log. Call only for a known group. @param {string} grp */
+    people: grp => new Set(group(grp).people),
+
+    /**
+     * The kernel holds a chat's people and assistants (one store); this group mirrors that list, never the other way: whoever the kernel lists and the group
+     * lacks joins, whoever the group holds and the kernel no longer lists leaves (a participant-left frame). A call can add nobody. The caller's own person
+     * and chain come from the kernel's chain for their token; an assistant that acts for this person gets a session token for it (so its replies can be
+     * appended), also after a restart. @param {string} grp @param {{ people: string[], assistants?: string[] }} chat @param {any} meta @param {string} person @param {any} chain
+     */
+    async mirror(grp, chat, meta, person, chain) {
+      if (meta && typeof meta === "object") { kernelPerson.set(meta, person); kcalls.set(meta, { chain, person }); }
+      const g = group(grp);
+      const wantPeople = new Set(chat.people.map(p => `person:${p}`));
+      const wantBots = new Set((chat.assistants || []).map(a => `assistant:${a}`));
+      for (const p of wantPeople) if (!g.people.has(p)) join(grp, p);
+      for (const b of wantBots) if (!g.bots.has(b)) join(grp, b);
+      for (const p of [...g.people]) if (!wantPeople.has(p)) { g.people.delete(p); g.names.delete(p); logs.get(grp).append("participant-left", { who: p }); }
+      for (const [b, m] of [...g.bots]) if (!wantBots.has(b)) { g.bots.delete(b); g.names.delete(b); if (m.thread) byThread.delete(m.thread); m.tokens = new Map(); logs.get(grp).append("participant-left", { who: b }); }
+      if (g.dflt && !g.bots.has(g.dflt)) g.dflt = null;
+      // An assistant that is working for this person has no session token after a restart: open one now, so the replies waiting for it can be written.
+      for (const m of g.bots.values()) if (m.asker === person && ((m.tokens || new Map()).get(person) || { exp: 0 }).exp - 5000 <= now()) {
+        try { giveToken(m, person, await sessionFor(chain, grp, person, shortOf(m.who))); } catch (err) { log(`session for ${m.who} in ${grp}: ${/** @type {any} */ (err).code || "error"}`); }
+      }
+    },
+
+    /** One send at a time per message id: a retry that arrives while the first is still being written to the kernel waits and then finds it done. @param {any} i @param {any} meta */
+    async send(i, meta) {
+      const grp = sessionOf(i);
+      const key = typeof i.message === "string" && ID.test(i.message) ? `${grp}|${i.message}` : null;
+      if (!key) return sendOnce(i, meta);
+      const before = inflight.get(key) || Promise.resolve();
+      const run = before.catch(() => {}).then(() => sendOnce(i, meta));
+      inflight.set(key, run);
+      try { return await run; } finally { if (inflight.get(key) === run) inflight.delete(key); }
     },
 
     /** @param {any} i @param {any} meta */
@@ -382,8 +569,12 @@ export function createGroups({ ctx, logs, db, now = Date.now }) {
       await Promise.all(ms.map(catchUp));
       for (const row of q.outOpen.all()) void schedule(row);
     },
+    /** An assistant's member row, so a test can stand in for its adapter (tests only). @param {string} grp @param {string} who */
+    member: (grp, who) => group(grp).bots.get(who) || null,
     /** Wait for every delivery in flight (tests). */
-    async idle() { await Promise.all([...groups.values()].flatMap(g => [...g.bots.values()].map(m => m.q))); },
+    async idle() {
+      for (let n = 0; n < 3; n++) await Promise.all([...groups.values()].flatMap(g => [...g.bots.values()].flatMap(m => [m.q, m.pq || Promise.resolve()])));
+    },
     stop() { stopped = true; flush(); },
   };
 }

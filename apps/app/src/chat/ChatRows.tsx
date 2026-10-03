@@ -4,8 +4,9 @@
 // Each row subscribes to its own key and is memoized on what it draws.
 
 import { memo, useEffect, useRef, useSyncExternalStore } from "react";
-import { Animated, Pressable, View } from "react-native";
-import { Avatar, Chip, Icon, Text, useUiTheme } from "@vyre/ui";
+import { Animated, Pressable, View, StyleSheet } from "react-native";
+import { Chip, Icon, Text, useUiTheme } from "@vyre/ui";
+import { ChatAvatar } from "./ChatAvatar";
 import { normalizeBlock, type Block } from "./blocks.js";
 import { BlockView, type BlockCtx } from "./Blocks";
 import type { ChatStore } from "./store";
@@ -13,6 +14,20 @@ import type { LayoutRow } from "./frames.js";
 import { askAudience } from "./group.js";
 import { FanoutSet } from "./FanoutSet";
 import { MessageTools, Reactions, UnreadDivider, WaitingCard } from "./GroupParts";
+
+const S = StyleSheet.create({
+  s1: { marginBottom: 2 },
+  s2: { flexDirection: "row", alignItems: "center", gap: 8 },
+  s3: { flex: 1, minWidth: 0 },
+  s4: { flexDirection: "row", gap: 4, marginTop: 2 },
+  s5: { opacity: 0 },
+  s6: { paddingTop: 12 },
+  s7: { flexDirection: "row", gap: 12, paddingVertical: 8 },
+  s8: { flex: 1, gap: 8 },
+  s9: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 28 },
+  s10: { flex: 1 },
+});
+
 
 export const PERSON = "alex";
 export const ASSISTANT = "juno";
@@ -35,8 +50,8 @@ function Frame({ children, indent, wide }: { children: React.ReactNode; indent?:
 
 function Who({ name, family, meta, sub }: { name: string; family: "person" | "assistant" | "model"; meta?: string; sub?: string | null }) {
   return (
-    <View style={{ marginBottom: 2 }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+    <View style={S.s1}>
+      <View style={S.s2}>
         <Text strong>{name}</Text>
         {family === "assistant" ? <Chip>assistant</Chip> : null}
         {meta ? <Text size="caption" tone="label">{meta}</Text> : null}
@@ -56,8 +71,8 @@ function Message({ who, family, meta, sub, dress, children, wide }: { who: strin
     <View style={{ width: "100%", maxWidth: MAX, alignSelf: "center", marginLeft: "auto", marginRight: "auto" }}>
       {dress?.divider ? <View style={{ paddingHorizontal: wide ? 24 : 16 }}><UnreadDivider count={dress.divider} /></View> : null}
       <View style={{ paddingHorizontal: wide ? 24 : 16, paddingVertical: 8, flexDirection: "row", gap: 12, ...(dress?.mentioned ? { backgroundColor: color["accent-wash"], borderLeftWidth: 2, borderLeftColor: color.accent, paddingLeft: wide ? 22 : 14 } : {}) }}>
-        <Avatar name={who} family={avFam(family)} size="md" />
-        <View style={{ flex: 1, minWidth: 0 }}>
+        <ChatAvatar name={who} family={avFam(family)} size="md" />
+        <View style={S.s3}>
           <Who name={who} family={family} meta={dress?.pinned ? (meta ? meta + " · pinned" : "pinned") : meta} sub={sub} />
           {dress?.reply ? <Text size="caption" tone="label">in a thread</Text> : null}
           {children}
@@ -79,7 +94,7 @@ function MessageActions({ uuid, text, ctx }: { uuid: string; text: string; ctx: 
     </Pressable>
   ) : null;
   return (
-    <View style={{ flexDirection: "row", gap: 4, marginTop: 2 }}>
+    <View style={S.s4}>
       {act("Edit", ctx.onEditMessage && (() => ctx.onEditMessage?.(uuid, text)))}
       {act("Retry", ctx.onRetryMessage && (() => ctx.onRetryMessage?.(uuid)))}
       {act("Branch", ctx.onBranchFrom && (() => ctx.onBranchFrom?.(uuid)))}
@@ -95,7 +110,7 @@ function StreamText({ store, k, text, done }: { store: ChatStore; k: string; tex
   return (
     <Text size="read">
       {text.slice(0, cut)}
-      <Text size="read" style={{ opacity: 0 }}>{text.slice(cut)}</Text>
+      <Text size="read" style={S.s5}>{text.slice(cut)}</Text>
     </Text>
   );
 }
@@ -114,12 +129,12 @@ export function Skeleton({ w, h = 12, r = 6 }: { w: number | `${number}%`; h?: n
 /** The thread while it loads: the shape of what is coming, never a spinner. */
 export function SkeletonThread({ wide }: { wide: boolean }) {
   return (
-    <View accessibilityLabel="Loading the conversation" style={{ paddingTop: 12 }}>
+    <View accessibilityLabel="Loading the conversation" style={S.s6}>
       {[0, 1, 2].map((i) => (
         <Frame key={i} wide={wide}>
-          <View style={{ flexDirection: "row", gap: 12, paddingVertical: 8 }}>
+          <View style={S.s7}>
             <Skeleton w={32} h={32} r={16} />
-            <View style={{ flex: 1, gap: 8 }}>
+            <View style={S.s8}>
               <Skeleton w={96} h={12} />
               <Skeleton w="92%" h={14} />
               <Skeleton w={i === 1 ? "40%" : "70%"} h={14} />
@@ -133,9 +148,9 @@ export function SkeletonThread({ wide }: { wide: boolean }) {
 
 function ToolLine({ it, running }: { it: any; running: boolean }) {
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 28 }}>
+    <View style={S.s9}>
       <Icon name={running ? "refresh" : it.status === "failed" ? "failed" : "check"} tone={it.status === "failed" ? "err" : "text-2"} />
-      <Text size="caption" tone="muted" numberOfLines={1} style={{ flex: 1 }}>{it.tool} {it.summary}</Text>
+      <Text size="caption" tone="muted" numberOfLines={1} style={S.s10}>{it.tool} {it.summary}</Text>
       {running ? <Text size="caption" tone="label">running</Text> : null}
     </View>
   );

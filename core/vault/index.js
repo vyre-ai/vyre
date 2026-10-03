@@ -13,7 +13,7 @@
 import { closeToAddedModules } from "../../lib/first-party-door.js";
 import { core as coreHolder } from "../presence/index.js";
 import { startForwarder } from "./forward.js";
-import { Vault, MIGRATIONS, KINDS, parseExpiry, ensureMacColumns } from "./vault.js";
+import { Vault, MIGRATIONS, KINDS, parseExpiry, ensureMacColumns, LAUNCHER_ITEMS } from "./vault.js";
 import { DETAILS, defaultField } from "../../lib/vault-kinds/kinds.js";
 import { codes, importCodes } from "./codes.js";
 import { sweep } from "./sweep.js";
@@ -55,6 +55,15 @@ const SURFACES = [...PEOPLE, "deck", "capsule"];
 const str = { type: "string" };
 const strs = { type: "array", items: { type: "string" } };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
+// The credentials port (the session launcher's way to a provider sign-in token). Not a tool: a frozen function the vault hands to the registry ONCE, at its own start, through
+// `ctx.provide` (the registry refuses a second provider, and any module but the vault). The daemon and the launcher modules receive it from the registry's own dependencies, so no
+// module and no daemon import reaches into the vault for it, and nothing that imports this file can take it.
+/** @param {any} vault */
+const credentialsPort = vault => Object.freeze({
+  /** The sign-in token for a provider item: `claude` is the setup token (claude-setup-token), `anthropic` the API key (anthropic-api-key). The token, or null for nothing or an unknown name. The string shape sessions reads. @param {string} provider @returns {Promise<string | null>} */
+  credentials: async provider => (Object.hasOwn(LAUNCHER_ITEMS, String(provider)) ? vault.providerToken(provider) : null),
+});
+
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
   async start(ctx) {
@@ -79,6 +88,7 @@ export default {
       try { if (await vault.keys.exists()) await vault.key(); }
       catch (e) { ctx.log(`vault: not opened at start: ${/** @type {Error} */ (e).message}`); }
     }
+    if (typeof ctx.provide === "function") ctx.provide("credentialsPort", credentialsPort(vault));
     let listener = null;
     if (opts.relay && (opts.relay.port !== undefined || opts.relay.host)) {
       // With identity "whois" no header counts: the login is the one Tailscale gives the peer
@@ -192,6 +202,24 @@ export default {
         const mine = g => Boolean(project) && g.project === project;
         return { ...r, items: r.items.filter(i => (i.grants || []).some(mine)).map(i => ({ name: i.name, kind: i.kind })) };
       });
+
+    // A provider's sign-in token (`claude setup-token`, or an Anthropic key) lives in the items core/onboard already makes (claude-setup-token, anthropic-api-key; LAUNCHER_ITEMS).
+    // The person sets, replaces or removes one here with presence; the app learns only that one is stored and when. Nothing returns the value: the session launcher gets it through the
+    // credentials port above and sets it in the session's own process.
+    const provider = p => { const spec = Object.hasOwn(LAUNCHER_ITEMS, String(p)) ? LAUNCHER_ITEMS[String(p)] : null; if (!spec) throw new Error(`provider is one of ${Object.keys(LAUNCHER_ITEMS).join(", ")}`); return spec; };
+    tool("vault.provider.set", SURFACES, "Store or replace a provider's session sign-in token (for Claude, the one `claude setup-token` makes). Sealed, yours, never shown again; the session launcher is the only thing that receives it.",
+      obj({ provider: str, token: str }, ["provider", "token"]),
+      async ({ provider: p, token }, { caller }) => {
+        const spec = provider(p); if (/[\r\n\0\s]/.test(String(token))) throw new Error("a sign-in token is one line with no spaces");
+        await vault.put({ name: spec.item, kind: spec.kind, description: `${p} sign-in token`, fields: { value: String(token) } }, caller);
+        return { provider: p, stored: true };
+      },
+      presence("Store a provider sign-in token", ({ provider: p }) => `Store a ${String(p).slice(0, 32)} sign-in token in your vault`));
+    tool("vault.provider.remove", SURFACES, "Remove a stored provider sign-in token.", obj({ provider: str }, ["provider"]),
+      async ({ provider: p }, { caller }) => { vault.remove({ name: provider(p).item }, caller); return { provider: p, stored: false }; },
+      presence("Remove a provider sign-in token", ({ provider: p }) => `Remove the ${String(p).slice(0, 32)} sign-in token from your vault`));
+    tool("vault.provider.status", SURFACES, "Which provider sign-in tokens are stored and when each was added. Never the value.", obj({ provider: str }),
+      async ({ provider: p } = {}) => ({ tokens: vault.providerTokens().filter(t => !p || t.provider === p) }));
 
     tool("vault.delete", [...SURFACES, "module"], "Delete an item and its grants. A first-party module may delete only an item it made itself (its own origin).",
       obj({ name: str }, ["name"]), (input, { caller }) => {

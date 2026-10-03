@@ -2,7 +2,7 @@ import { useState } from "react";
 import { TextInput, View, type KeyboardTypeOptions } from "react-native";
 import { cn } from "../lib/cn";
 import { Text } from "./Text";
-import { faces } from "../../src/theme/fonts";
+import { facesFor } from "../../src/theme/fonts";
 import { useUiTheme } from "../theme";
 
 /** One-line input shell, label above. `kind` picks the keyboard and the mask; the value is always a string at this layer. */
@@ -11,7 +11,8 @@ export function Field({ label, name, value, onChangeText, placeholder, kind = "t
   error?: string; help?: string; disabled?: boolean; multiline?: boolean; /** Visible lines of a multiline field (default 3). */ lines?: number; mono?: boolean; className?: string;
 }) {
   const [focus, setFocus] = useState(false);
-  const { color } = useUiTheme();
+  const { color, resolved } = useUiTheme();
+  const faces = facesFor(resolved.font);
   const kb: KeyboardTypeOptions = kind === "number" ? "decimal-pad" : kind === "email" ? "email-address" : kind === "phone" ? "phone-pad" : kind === "url" ? "url" : "default";
   const note = error || help;
   return (

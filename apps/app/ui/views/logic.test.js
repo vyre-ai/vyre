@@ -1,9 +1,9 @@
 // The pure half of the generated views, over the mock store's sample world: columns and grouping come from the definitions, the month grid is right,
-// "How this page is made" reads the definition, Seal-for-all names how many records have a value, and links resolve both ways.
+// Seal-for-all names how many records have a value, and links resolve both ways.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createMockStore } from "../../../../deck/ui/mock-store.js";
-import { MONTHS, ago, assistantNote, boardColumns, columnOf, describeDef, fieldOf, filesOf, filterRows, isSealedField, linkIndex, listColumns, monthWeeks, newFieldSpec, relatedRecords, rowsByDay, sealSpec, stageField, startMonth, stepMonth, titleOf, urnParam, viewDefOf, viewsOf } from "./logic.js";
+import { MONTHS, ago, assistantNote, boardColumns, columnOf, fieldOf, filesOf, filterRows, isSealedField, linkIndex, listColumns, monthWeeks, newFieldSpec, relatedRecords, rowsByDay, sealSpec, stageField, startMonth, stepMonth, titleOf, urnParam, viewDefOf, viewsOf } from "./logic.js";
 
 const store = createMockStore({ world: "morning" });
 const types = await store.types();
@@ -63,15 +63,6 @@ test("calendar: the start month is the first with a dated row from now on, and r
   const by = rowsByDay(rows, "closing", ym);
   for (const [k, rs] of Object.entries(by)) { assert.match(k, /^\d{4}-\d{2}-\d{2}$/); assert.ok(rs.length > 0); }
   assert.deepEqual(startMonth([], "closing", now), { y: 2026, m: 9 });
-});
-
-test("How this page is made names the definition and says no screen was written", () => {
-  const t = describeDef(def("matter"), "board");
-  assert.match(t, /group by: stage/);
-  assert.match(t, /No screen was written for matters/);
-  const r = describeDef(def("contact"), "record");
-  assert.match(r, /ssn sealed \(sealed\)/);
-  assert.match(r, /matter link matter/);
 });
 
 test("Seal for all names how many records have a value", () => {

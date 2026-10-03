@@ -46,6 +46,9 @@ export function checkBind(dir, home = process.env.HOME || process.env.USERPROFIL
   return d;
 }
 
+/** The one line a Windows member sees. */
+export const WINDOWS_LINE = "Running a space's work on this computer isn't available on Windows yet. Your sessions run on the space's server.";
+
 const real = p => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
 const q = s => JSON.stringify(String(s));
 const ancestors = p => { const out = []; for (let d = path.dirname(p); d !== p; p = d, d = path.dirname(d)) out.push(d); out.push("/"); return out; };
@@ -87,6 +90,10 @@ export function seatbeltProfile(o) {
     // The system programs and libraries a shell and node need. Never /Users, /Volumes or /private/var/folders.
     '(allow file-read* (subpath "/usr") (subpath "/bin") (subpath "/sbin") (subpath "/System") (subpath "/Library/Frameworks") (subpath "/private/etc/ssl") (subpath "/private/var/db/timezone") (literal "/private/etc/passwd") (literal "/private/etc/hosts") (literal "/private/etc/resolv.conf"))',
     '(allow process-exec (subpath "/usr/bin") (subpath "/bin") (subpath "/usr/sbin") (subpath "/sbin"))',
+    // /usr/bin/git and the other developer tools are shims that read the selected toolchain and run it from the Command Line Tools or Xcode
+    // (without these, a clone fails with "xcode-select: error", measured on a hosted Mac). Read and run only; nothing is writable.
+    '(allow file-read* (subpath "/private/var/select") (subpath "/Library/Developer/CommandLineTools") (subpath "/Applications/Xcode.app/Contents/Developer"))',
+    '(allow process-exec (subpath "/Library/Developer/CommandLineTools") (subpath "/Applications/Xcode.app/Contents/Developer"))',
     `(allow file-read* file-write* (subpath ${q(ws)}))`,
     `(allow process-exec (subpath ${q(ws)}))`,
     ...ro.map(d => `(allow file-read* (subpath ${q(d)}))\n(allow process-exec (subpath ${q(d)}))`),
@@ -186,7 +193,8 @@ export function unavailable(platform = process.platform, run = spawnProbe) {
     if (r.error) return "bubblewrap is not installed (apt install bubblewrap)";
     return /uid map|Permission denied|RTM_NEWADDR|Operation not permitted/.test(r.stderr) ? "this system blocks unprivileged user namespaces for bubblewrap (Ubuntu 24.04 needs the bwrap AppArmor profile, see docs/using/local-runner.md)" : `bubblewrap failed: ${r.stderr.trim().slice(0, 160)}`;
   }
-  if (platform === "win32") return fs.existsSync("C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe") ? "" : ".NET Framework 4 (csc.exe) is missing";
+  // Windows lending is out of 0.3 (ruled 4 Oct): the launcher and BitLocker code stay on the branch, unreachable until 0.3.1.
+  if (platform === "win32") return process.env.VYRE_WINDOWS_LENDING === "experimental" ? (fs.existsSync("C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe") ? "" : ".NET Framework 4 (csc.exe) is missing") : WINDOWS_LINE;
   return "no sandbox for this system yet";
 }
 

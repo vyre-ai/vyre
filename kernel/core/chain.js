@@ -27,7 +27,8 @@ export const actorString = a => `${a.kind}:${a.id}@${a.space}`;
 export const chainHash = (/** @type {any} */ chain) => sha256(canonical({ space: chain.space, hops: chain.hops.map((/** @type {any} */ h) => ({ actor: h.actor, via: h.via, entered_by: h.entered_by })) }));
 
 /** Approval is accepted only from a chain that is exactly one person (invariant 4). */
-export const isExactlyPerson = (/** @type {any} */ chain) => isChain(chain) && chain.hops.length === 1 && chain.hops[0].actor.kind === "person";
+/** One person acting for themselves. A viewer chain (a person in the room an assistant writes for) is NOT: it is the kernel's read-only view of them, never their own act. */
+export const isExactlyPerson = (/** @type {any} */ chain) => isChain(chain) && chain.viewer !== true && chain.hops.length === 1 && chain.hops[0].actor.kind === "person";
 
 export const hasKind = (/** @type {any} */ chain, /** @type {string} */ kind) => chain.hops.some((/** @type {any} */ h) => h.actor.kind === kind);
 
@@ -67,6 +68,9 @@ export function createChainBuilder(cfg) {
   const base = () => ({ trust: "member", red: "public", source_spaces: [space] });
   const refuse = (/** @type {string} */ why) => { throw new KernelError("not_a_member", "no chain for this connection", why); };
 
+  /** The chat a session token names (the kernel wrote it into the token): a chain made from a session carries it, so the gateway can answer a group session with the room's view. */
+  const roomOf = (/** @type {any} */ f) => (f.from_token === true && typeof f.chat === "string" && f.chat && typeof f.session === "string" ? { chat: f.chat, session: f.session } : null);
+
   /** @param {any} f SurfaceFacts */
   function fromFacts(f) {
     if (!f || typeof f !== "object") return refuse("no facts");
@@ -96,7 +100,7 @@ export function createChainBuilder(cfg) {
         if (!f.vouched) return refuse("agent claim not vouched by the kernel's own session");
         const who = f.person ?? cfg.owner;
         if (who !== cfg.owner && !isMember(who)) return refuse("the session's person is not a member");
-        return make([hop("person", who, "session", { session: f.session }), hop("agent", f.agent, "session", { session: f.session })], base());
+        return make([hop("person", who, "session", { session: f.session }), hop("agent", f.agent, "session", { session: f.session })], base(), { ...(f.from_token === true ? { delegated: true } : {}), ...(roomOf(f) ? { room: roomOf(f) } : {}) });
       }
       case "invitee": {
         // Someone who holds an invite and is not a member yet: the Surfaces door verified who they are. Their chain can do one thing, accept the invite
@@ -109,7 +113,14 @@ export function createChainBuilder(cfg) {
         // presence session: no passkey was shown, so an admin act still needs the person's own proof.
         if (!f.vouched) return refuse("session not vouched by the kernel's own token");
         if (f.person !== cfg.owner && !isMember(f.person)) return refuse("the session's person is not a member");
-        return make([hop("person", f.person, "session", { node: `session:${f.session}` })], base());
+        return make([hop("person", f.person, "session", { node: `session:${f.session}` })], base(), { ...(f.from_token === true ? { delegated: true } : {}), ...(roomOf(f) ? { room: roomOf(f) } : {}) });
+      }
+      case "viewer": {
+        // One person in the room an assistant writes for. Built by the kernel from the chat's own list (kernel/index.js audienceFor), never from a module's word. It reads
+        // what that person may read and can do nothing else: authorize refuses every act above read for it, and it holds no session, so it never stands for presence.
+        if (!f.vouched || typeof f.person !== "string" || !f.person) return refuse("viewer not vouched by the kernel");
+        if (f.person !== cfg.owner && !isMember(f.person)) return refuse("the viewer is not a member");
+        return make([hop("person", f.person, "surface", { surface: "viewer" })], base(), { viewer: true });
       }
       case "module": return appendService(f.inbound, f.module, f.first_party);
       case "job": return restore(f.stored);
@@ -197,7 +208,7 @@ export function createLegacyChainBuilder(cfg) {
     /** @param {{ kind: "person" | "agent" | "service", id: string, legacy: string, person_session?: boolean, device?: string }} p */
     fromLegacy(p) {
       if (!["person", "agent", "service"].includes(p.kind) || typeof p.id !== "string" || !p.id) throw new KernelError("not_a_member", "no chain for this connection", "bad legacy caller");
-      const hop = { actor: { kind: p.kind, id: p.id, space: LEGACY_SPACE }, entered_by: "registry", via: { legacy: p.legacy, ...(p.person_session ? { session: "person" } : {}), ...(p.device ? { device: p.device } : {}) } };
+      const hop = { actor: { kind: p.kind, id: p.id, space: LEGACY_SPACE }, entered_by: "registry", via: { legacy: p.legacy, ...(p.person_session ? { session: "person" } : {}), ...(p.device ? { device: p.device } : {}), ...(p.thread ? { thread: p.thread } : {}) } };
       const c = deepFreeze({ space: LEGACY_SPACE, hops: [hop], labels: { trust: "member", red: "public", source_spaces: [LEGACY_SPACE] }, built_at: clock() });
       BUILT.add(c);
       return /** @type {any} */ (c);

@@ -73,3 +73,11 @@ export function SealedEdit({ p, emit }: EditProps) {
   const [text, setText] = useState("");
   return <Field kind="password" value={text} placeholder="Enter a new value" onChangeText={(t) => { setText(t); emit(t || undefined); }} />;
 }
+
+/**
+ * The mask of a sealed value that has no field definition (a Vault credential): 17 mono, 12 dots, fixed, so it says nothing about the value, not even
+ * its length. The fields' own mask (maskText) is for a sealed field of a record; this is the same idea at the Vault's size.
+ */
+export function SealedMask({ label }: { label: string }) {
+  return <Text mono size="headline" accessibilityLabel={`${label}, sealed`}>{"\u2022".repeat(12)}</Text>;
+}

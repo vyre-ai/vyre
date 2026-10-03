@@ -3,13 +3,22 @@
 // did not ask.
 
 import { useState } from "react";
-import { Pressable, View } from "react-native";
+import { Pressable, View, StyleSheet } from "react-native";
 import { Chip, Icon, Text, useUiTheme } from "@vyre/ui";
+
+const S = StyleSheet.create({
+  s1: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 6 },
+  s2: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 4 },
+  s3: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2, flexWrap: "wrap" },
+  s4: { flexDirection: "row", alignItems: "center", gap: 8 },
+  s5: { flex: 1 },
+});
+
 
 export function UnreadDivider({ count }: { count: number }) {
   const { color } = useUiTheme();
   return (
-    <View accessibilityRole="text" accessibilityLabel={`New, ${count} unread`} style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 6 }}>
+    <View accessibilityRole="text" accessibilityLabel={`New, ${count} unread`} style={S.s1}>
       <View style={{ flex: 1, height: 1, backgroundColor: color.accent, opacity: 0.6 }} />
       <Text size="caption" strong tone="accent">New</Text>
       <View style={{ flex: 1, height: 1, backgroundColor: color.accent, opacity: 0.6 }} />
@@ -21,7 +30,7 @@ export function Reactions({ items, onToggle, big }: { items: readonly { emoji: s
   const { color } = useUiTheme();
   if (!items.length) return null;
   return (
-    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
+    <View style={S.s2}>
       {items.map((r) => (
         <Pressable key={r.emoji} accessibilityRole="button" accessibilityState={{ selected: r.mine }} accessibilityLabel={`${r.emoji} ${r.count}`} onPress={() => onToggle(r.emoji, r.mine)} style={{ minHeight: big ? 36 : 26, flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, borderRadius: 13, borderWidth: 1, borderColor: r.mine ? color.accent : color.edge, backgroundColor: r.mine ? color["accent-wash"] : "transparent" }}>
           <Text size="caption">{r.emoji}</Text>
@@ -45,7 +54,7 @@ export function MessageTools({ big, pinned, onReply, onReact, onPin }: { big: bo
     </Pressable>
   ) : null;
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2, flexWrap: "wrap" }}>
+    <View style={S.s3}>
       {act("Reply", onReply)}
       {onReact ? (picking ? QUICK.map((e) => (
         <Pressable key={e} accessibilityRole="button" accessibilityLabel={`React ${e}`} onPress={() => { setPicking(false); onReact(e); }} style={{ minHeight: h, minWidth: h, alignItems: "center", justifyContent: "center" }}><Text>{e}</Text></Pressable>
@@ -60,9 +69,9 @@ export function WaitingCard({ title, who, by }: { title: string; who: string; by
   const { color } = useUiTheme();
   return (
     <View accessibilityLabel={`${title}, waiting for ${who}`} style={{ borderWidth: 1, borderColor: color.edge, backgroundColor: color["surface-2"], borderRadius: 12, padding: 12, gap: 6 }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+      <View style={S.s4}>
         <Icon name="todo" />
-        <Text strong numberOfLines={2} style={{ flex: 1 }}>{title}</Text>
+        <Text strong numberOfLines={2} style={S.s5}>{title}</Text>
         <Chip icon="clock">{`Waiting for ${who}`}</Chip>
       </View>
       <Text size="caption" tone="label">{by ? `${by} asked on ${who}'s behalf.` : `It goes to ${who}, who asked.`} You can read it; only they can approve it.</Text>

@@ -102,6 +102,7 @@ export const V3 = {
       "button",
       "row",
       "card",
+      "cardHero",
       "sheet"
     ]
   },

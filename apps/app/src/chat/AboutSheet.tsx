@@ -8,7 +8,8 @@
 // draws the same sheet with style props from the theme. Swap it for <Sheet> when that is fixed.
 
 import { Pressable, ScrollView, View, useWindowDimensions } from "react-native";
-import { Avatar, Button, Chip, Row, Switch, Text, useUiTheme } from "@vyre/ui";
+import { Button, Chip, Row, Switch, Text, useUiTheme } from "@vyre/ui";
+import { ChatAvatar } from "./ChatAvatar";
 import type { Participant } from "./group.js";
 
 export type AboutInfo = {
@@ -60,7 +61,7 @@ export function AboutSheet({ open, onClose, title, participants, viewer, info, m
           {participants.map((p) => (
             <Row
               key={p.id}
-              lead={<Avatar name={p.name} family={fam(p.family)} size="md" />}
+              lead={<ChatAvatar name={p.name} family={fam(p.family)} size="md" />}
               title={p.name}
               sub={p.id === viewer ? "You" : p.family === "assistant" ? `Assistant${p.role ? `, ${p.role}` : ""}` : p.role ?? "Person"}
               end={p.family === "assistant" ? <Chip tone="accent">assistant</Chip> : undefined}

@@ -1,16 +1,25 @@
-// kernel/devbuild.js: is this daemon a packaged release, or a development tree? A release carries its signed checksums (SHA256SUMS and SHA256SUMS.sig, lib/release-sig.js)
-// beside the code; a checkout or a copy made for tests does not. The developer switches that turn K-3 (a file key) and K-2 (the path rule for first-party modules) off are
-// honoured only when this says development: in a packaged daemon an environment variable that someone else can set must not weaken the kernel.
+// kernel/devbuild.js: is this daemon a packaged release, or a development tree? It is decided when the build is made, not by a file a user can delete: lib/build-kind.js
+// says "development" in a checkout, and scripts/build-site.sh stamps "release" into the package it signs. Anything but the exact word "development" (a missing,
+// unreadable or edited-away file included) means packaged. The developer switches that turn K-3 (a file key) and K-2 (the path rule for first-party modules) off are
+// honoured only in a development build: in a packaged daemon an environment variable that someone else can set must not weaken the kernel.
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const PKG_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+export const PKG_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+/** @type {unknown} */ let COMPILED = null;
+try { COMPILED = (await import("../lib/build-kind.js")).BUILD_KIND; } catch { COMPILED = null; }
 
-/** True when `root` (default: this package's own root) carries a release's signed checksums. @param {string} [root] */
-export function isPackaged(root = PKG_ROOT) {
-  return fs.existsSync(path.join(root, "SHA256SUMS.sig")) || fs.existsSync(path.join(root, "SHA256SUMS"));
+/**
+ * True unless the build says "development". With a `root` (tests) the kind is read from that folder's lib/build-kind.js text instead, so a fixture can be either kind;
+ * a carried release signature (SHA256SUMS.sig) also means packaged. @param {string} [root]
+ */
+export function isPackaged(root) {
+  if (root === undefined) return COMPILED !== "development" || fs.existsSync(path.join(PKG_ROOT, "SHA256SUMS.sig"));
+  let text = "";
+  try { text = fs.readFileSync(path.join(root, "lib", "build-kind.js"), "utf8"); } catch { return true; }
+  return !/export const BUILD_KIND = "development";/.test(text) || fs.existsSync(path.join(root, "SHA256SUMS.sig"));
 }
 
-/** Is an environment developer switch honoured here? Only in a development tree, and only when it is exactly "1". @param {string | undefined} value @param {string} [root] */
-export function devSwitch(value, root = PKG_ROOT) { return value === "1" && !isPackaged(root); }
+/** Is an environment developer switch honoured here? Only in a development build, and only when it is exactly "1". @param {string | undefined} value @param {string} [root] */
+export function devSwitch(value, root) { return value === "1" && !isPackaged(root); }

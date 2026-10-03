@@ -14,7 +14,7 @@ import { leasedUse, credentialAction, safePath } from "../seal/uses.js";
 
 /**
  * @param {{ space: string, sealer: any, grantsStore: any, authorize: (i: any) => Promise<any>, log: any, chains: any,
- *   resolve?: (i: { space: string, ref: string, route: string }) => Promise<any>, routeAction?: (route: string) => string, session_ttl_ms?: number }} cfg
+ *   resolve?: (i: { space: string, ref: string, route: string }) => Promise<any>, forward?: (q: any) => Promise<any>, routeAction?: (route: string) => string, session_ttl_ms?: number }} cfg
  *   resolve: the core vault's release for a credential on a route and host (the caller's; this never holds a value)
  */
 export function createLeases(cfg) {
@@ -77,7 +77,7 @@ export function createLeases(cfg) {
         const methods = (Array.isArray(r.methods) && r.methods.length ? r.methods : ["GET", "HEAD"]).map((/** @type {any} */ m) => String(m).toUpperCase());
         const paths = (Array.isArray(r.paths) ? r.paths : []).map(String);
         if (paths.some(x => !x.startsWith("/") || x.slice(0, -2).includes("*") || (x.includes("*") && !x.endsWith("/*")))) throw new KernelError("bad_input", "a path is exact or ends in /*");
-        routes.push(Object.freeze({ route: r.route.toLowerCase(), ref: r.ref, methods, paths }));
+        routes.push(Object.freeze({ route: r.route.toLowerCase(), ref: r.ref, ...(typeof r.connector === "string" ? { connector: r.connector } : {}), methods, paths }));
       }
       sessions.set(String(session), String(id));
       defs.set(String(session), routes);
@@ -109,6 +109,44 @@ export function createLeases(cfg) {
         chain,
       });
       return run(() => go({ ref: hit.ref, session: i.session, route, method, path }));
+    },
+    /**
+     * A credentialed request run at the home: the vault does it with the Space's own credential and the caller gets only the response (no secret ever leaves). Authorized HERE, before the
+     * vault is asked, for the CALLER's chain against the route: `service.read` for a GET or HEAD, `service.call` (outward: it asks) for anything else, on
+     * `vyre://<space>/service/<connector>`; a Drive file it reads or saves is `drive.read` or `drive.write` for the same chain, so the route's lists narrow what the caller may already do and
+     * never widen it (reviewer-2 FW-2). Two forms: a lent computer's session (`{ session, route, method, path }`, the credential and routes come from the Space's own session definition
+     * (`bind`), never from the caller: FW-3), and a named connector (`{ connector, method, path }`, a Flow's "Call a service"). The chain may be a person's or a Flow run's (a job under its
+     * approver): what authorizes it is the grants, not the shape. A request the kernel says must ask comes back as `{ held }` and nothing is sent; an approved held act passes `approval`.
+     */
+    async forward(chain, /** @type {any} */ i) {
+      if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
+      if (!cfg.forward) throw new KernelError("unavailable", "no vault is wired to forward requests");
+      if (!i || typeof i.method !== "string" || typeof i.path !== "string" || !i.path.startsWith("/")) throw new KernelError("bad_input", "a forward names a method and a path");
+      const method = i.method.toUpperCase();
+      let path;
+      try { const bare = i.path.split(/[?#]/)[0]; if (bare !== "/") safePath(bare.slice(1)); path = bare; } catch { throw new KernelError("not_found", "that request is not open to this caller"); }
+      /** @type {string} */ let connector, ref = null, route = null;
+      if (typeof i.session === "string") {
+        // the lent computer's form: the session's own definition (held at the home) says which credential, never the caller
+        if (typeof i.route !== "string") throw new KernelError("bad_input", "name the host");
+        const hit = (defs.get(i.session) || []).find(r => r.route === i.route.toLowerCase() && r.methods.includes(method) && r.paths.some(x => (x.endsWith("/*") ? path === x.slice(0, -2) || path.startsWith(x.slice(0, -1)) : path === x)));
+        if (!hit) throw new KernelError("not_found", "that request is not open to this session");
+        connector = hit.connector || hit.ref; ref = hit.ref; route = hit.route;
+      } else if (typeof i.connector === "string" && /^[A-Za-z0-9_.-]{1,64}$/.test(i.connector)) connector = i.connector;
+      else throw new KernelError("bad_input", "name a session or a connector");
+      const action = ["GET", "HEAD"].includes(method) ? "service.read" : "service.call";
+      const d = await cfg.authorize({ chain, action, resource: `vyre://${cfg.space}/service/${encodeURIComponent(connector)}`, ...(i.approval ? { approval: String(i.approval) } : {}) });
+      if (d.effect === "ask") return { held: true, kind: action, summary: `${method} ${connector}${path}`, decision: d.decision };
+      if (d.effect !== "allow") throw new KernelError("not_found", "that request is not open to this caller");
+      const files = [[i.upload && i.upload.drive && i.upload.drive.path, "drive.read"], [i.saveTo, "drive.write"]];
+      for (const [fp, act] of files) {
+        if (typeof fp !== "string") continue;
+        let u; try { u = `vyre://${cfg.space}/file/${safePath(fp)}`; } catch { throw new KernelError("not_found", "that file is not open to this caller"); }
+        if ((await cfg.authorize({ chain, action: act, resource: u })).effect !== "allow") throw new KernelError("not_found", "that file is not open to this caller");
+      }
+      const r = await run(() => cfg.forward({ space: cfg.space, connector, ...(ref ? { ref, route } : {}), request: { method, path, ...(i.query ? { query: i.query } : {}), ...(i.headers ? { headers: i.headers } : {}), ...(i.body !== undefined ? { body: i.body } : {}), ...(i.upload ? { upload: i.upload } : {}), ...(i.saveTo ? { saveTo: i.saveTo } : {}) }, ...(typeof i.session === "string" ? { session: i.session } : {}), ...(i.idem ? { idem: String(i.idem) } : {}), ...(i.approval ? { approval: String(i.approval) } : {}) }));
+      try { cfg.log.append(kernelChain(), { type: "vault.forwarded", sv: 1, subject: `vyre://${cfg.space}/service/${encodeURIComponent(connector)}`, data: { method, path, status: r && r.status !== undefined ? r.status : null, ...(typeof i.session === "string" ? { session: i.session } : {}) }, vis: "owner", red: "internal" }); } catch { /* the call was made; the log is best effort here */ }
+      return r;
     },
   };
   return Object.freeze(api);
