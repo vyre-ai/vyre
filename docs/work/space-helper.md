@@ -1,6 +1,6 @@
 # Space helper (launch, 4 Oct): the root side of a Space's Twenty store
 
-Needs: docs/work/records.md on work/records, "Root helper for a real box". Gate: reviewer-3, because this runs as root. Status: DESIGN for review; no code yet.
+Needs: docs/work/records.md on work/records, "Root helper for a real box". Gate: reviewer-3, because this runs as root. Status: CODE on work/launch-03 (box/vyre `space-helper`, `space-helper-run`, `admin`; test/space-helper.test.js). Design confirmed by reviewer-3 and reviewer-2 (by reading) before code.
 
 ## What it must do, and nothing else
 
@@ -20,7 +20,7 @@ On the host, as root, in the pattern the updater already uses (box/vyre `update-
 2. The only compose commands: `up -d --wait`, `stop`, `down` (and `down -v` only for a deleted Space). No `-f` of any other file, no `--project-directory`, no `--env-file` outside the root-owned copy, no `exec`, no `run`.
 3. Backup and restore (`docker run alpine tar` in records' list) are NOT in this first helper; they run as the daemon through the docker-api proxy once that policy allows exactly those volumes. If records insists they need root, they come as two more fixed verbs with the same regeneration rule.
 4. Names: every container, network and volume it touches must start with `vyre-<name>-twenty`. It never touches /srv/vyre, the daemon's own container or any other project.
-5. Firewall: exactly the three rules records' `firewallRules()` defines, in OUTPUT and DOCKER-USER only, each with the comment `vyre:<name>`. The subnet comes from `docker network inspect vyre-<name>-twenty_store`, never from the request. The agent uid range is the installer's (2000 to 2063). Each rule is checked with `-C` before `-A`, so applying twice changes nothing; `firewall-del` removes exactly the rules carrying `vyre:<name>`. No other table, chain, target or flag.
+5. Firewall: superseded by "Firewall (reviewer-3 2)" in the first revision below and by RH-3 and RH-4 in Revision 2. The rules live in the vyre container's own namespace; there is no host OUTPUT or DOCKER-USER rule.
 6. Every action and every refusal is appended to a root-owned log (`/var/log/vyre-space-helper.log`), and the daemon sees the one-line result.
 
 ## Open points for the review
@@ -91,3 +91,13 @@ The spool grammar is exactly: `^(up|stop|down|firewall-add|firewall-del) <name>$
 - Test on a real box: connect as uid 2000 and get refused, as uid 1000 and get through; recreate the vyre container and see the next `up` fail with no rule and pass after `firewall-add`; apply twice leaves one rule; a failed probe makes `up` fail.
 
 Code starts when reviewer-3 confirms the firewall side (RH-3 and open point 2).
+
+## Built (6 Oct, work/launch-03)
+
+Code lives in the box wrapper (box/vyre, the "Space helper" block), so the release build strips its test seams with the rest (scripts/strip-wrapper.mjs). `vyre space-helper install` records the image id the vyre container runs and the image names the generator may use, writes `vyre-spaces.path` (DirectoryNotEmpty on the spool, trigger limits off) and the oneshot service, and the installer runs it once the container is up (scripts/install-box.sh). The compose mounts `<root>/spool` (read-write) and `<root>/status` (read-only) into the daemon's container.
+- `up` order: secrets (root-only, once) -> regenerate and lint the compose in the recorded image -> `compose create` -> the vyre container joins `vyre-<name>-twenty_store` with alias `vyre-<name>` -> the rule goes into its namespace (fresh pid, `-C` then `-I OUTPUT 1`, verified) -> `compose up -d --wait` -> the probe (agent uid 2000 refused at once, control uid 1000 reaches the store, each address family) -> a failed probe stops the store and fails the request. The store never starts before the rule is in.
+- `down` leaves the data, the secrets and the rule; `firewall-del` removes exactly the rules carrying `vyre:<name>`, only while no container of the project runs.
+- After every healthy `vyre update` the wrapper re-records the image and runs `space_helper_reattach` (also `sudo vyre space-helper reattach`): each recorded Space that still runs is joined and firewalled again and proved; one that cannot be proved is stopped.
+- `sudo vyre admin purge <space>` and `sudo vyre admin fscrypt-enable` are the only destructive paths: a terminal, the plain consequence, an exact typed word. Neither is a spool verb.
+- Limits, said plainly: the images are checked against the names root recorded at install (a tag, not a digest: pinning needs the release to carry digests for twentycrm/twenty, postgres and redis, which it does not today); the bind mount `./empty-front` is the one bind, an empty folder root makes in its own copy; a request from another uid, and the real iptables owner match, are only proved on a real box (the unit tests use fakes for docker and nsenter). `lending-base` for fscrypt is a root-written file `private/lending-base` that nothing writes yet (runner owns that step).
+- Box test list still to run on a real box (testbox4, booked in CHAT.md): agent uid refused and daemon uid reaches the store; `docker rm -f` the vyre container, recreate it, `up` fails or re-applies and refuses the probe; a request from another uid ignored; the spool flood with the path unit still active afterwards.
