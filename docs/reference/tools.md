@@ -9268,7 +9268,7 @@ Remove a stored provider sign-in token.
 
 ### `vault.provider.set`
 
-Store a provider's session sign-in token (for Claude, the one `claude setup-token` makes). Sealed, yours, never shown again; the session launcher is the only thing that receives it.
+Store or replace a provider's session sign-in token (for Claude, the one `claude setup-token` makes). Sealed, yours, never shown again; the session launcher is the only thing that receives it.
 
 - Input:
   - `provider` string, required
@@ -9306,7 +9306,7 @@ Add or replace an item. Values come from `vyre vault put`'s hidden prompt or a m
   - `fields` object
   - `grants` list of string
   - `hosts` list of string
-  - `kind` one of "login", "authenticator", "passkey", "card", "address", "identity", "note", "api-key", "pat", "oauth", "cloud", "db-url", "secret", "env-set", "ssh-key", "cert", "recovery-codes", "wifi", "license", "file", "api-credential", "provider-token"
+  - `kind` one of "login", "authenticator", "passkey", "card", "address", "identity", "note", "api-key", "pat", "oauth", "cloud", "db-url", "secret", "env-set", "ssh-key", "cert", "recovery-codes", "wifi", "license", "file", "api-credential"
   - `relay` object
     - `body` boolean
   - `reprompt` boolean
@@ -9674,7 +9674,7 @@ Add or change an item by merging fields: only the fields given are replaced, `re
     - `symbols` boolean
     - `words` integer
   - `hosts` list of string
-  - `kind` one of "login", "authenticator", "passkey", "card", "address", "identity", "note", "api-key", "pat", "oauth", "cloud", "db-url", "secret", "env-set", "ssh-key", "cert", "recovery-codes", "wifi", "license", "file", "api-credential", "provider-token"
+  - `kind` one of "login", "authenticator", "passkey", "card", "address", "identity", "note", "api-key", "pat", "oauth", "cloud", "db-url", "secret", "env-set", "ssh-key", "cert", "recovery-codes", "wifi", "license", "file", "api-credential"
   - `remove` list of string
   - `url` string
 - Callers: `cli`, `deck`, `local`

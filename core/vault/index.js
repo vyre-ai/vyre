@@ -13,7 +13,7 @@
 import { closeToAddedModules } from "../../lib/first-party-door.js";
 import { core as coreHolder } from "../presence/index.js";
 import { startForwarder } from "./forward.js";
-import { Vault, MIGRATIONS, KINDS, parseExpiry, ensureMacColumns } from "./vault.js";
+import { Vault, MIGRATIONS, KINDS, parseExpiry, ensureMacColumns, LAUNCHER_ITEMS } from "./vault.js";
 import { DETAILS, defaultField } from "../../lib/vault-kinds/kinds.js";
 import { codes, importCodes } from "./codes.js";
 import { sweep } from "./sweep.js";
@@ -65,7 +65,7 @@ export function takeCredentialsPort() {
   const vault = portHolder.vault;
   return Object.freeze({
     /** The token for this provider, or null. @param {string} provider @returns {Promise<string | null>} */
-    credentials: async provider => (/^[a-z0-9][a-z0-9-]{1,31}$/.test(String(provider)) ? vault.providerToken(provider) : null),
+    credentials: async provider => (Object.hasOwn(LAUNCHER_ITEMS, String(provider)) ? vault.providerToken(provider) : null),
   });
 }
 
@@ -180,7 +180,6 @@ export default {
         if (slash > 0) {
           if (mod) throw new Error("modules cannot write to shared vaults");
           if (input.kind === "api-credential") throw new Error("an api-credential is never put in a shared vault; it is used only by this Vyre's vault.request");
-          if (input.kind === "provider-token") throw new Error("a provider sign-in token is the person's own and is never put in a shared vault");
           return vault.shared.put({ ...input, vault: String(input.name).slice(0, slash), name: String(input.name).slice(slash + 1) }, caller);
         }
         if (mod) {
@@ -209,20 +208,23 @@ export default {
         return { ...r, items: r.items.filter(i => (i.grants || []).some(mine)).map(i => ({ name: i.name, kind: i.kind })) };
       });
 
-    // A provider's session sign-in token (`claude setup-token`): the person adds, replaces or removes it, with presence; the app learns only that one is stored and when.
-    // Nothing returns the value. The session launcher gets it through the credentials port above and sets it in the session's own process.
-    tool("vault.provider.set", SURFACES, "Store a provider's session sign-in token (for Claude, the one `claude setup-token` makes). Sealed, yours, never shown again; the session launcher is the only thing that receives it.",
+    // A provider's sign-in token (`claude setup-token`, or an Anthropic key) lives in the items core/onboard already makes (claude-setup-token, anthropic-api-key; LAUNCHER_ITEMS).
+    // The person sets, replaces or removes one here with presence; the app learns only that one is stored and when. Nothing returns the value: the session launcher gets it through the
+    // credentials port above and sets it in the session's own process.
+    const provider = p => { const spec = LAUNCHER_ITEMS[String(p)]; if (!spec) throw new Error(`provider is one of ${Object.keys(LAUNCHER_ITEMS).join(", ")}`); return spec; };
+    tool("vault.provider.set", SURFACES, "Store or replace a provider's session sign-in token (for Claude, the one `claude setup-token` makes). Sealed, yours, never shown again; the session launcher is the only thing that receives it.",
       obj({ provider: str, token: str }, ["provider", "token"]),
-      async ({ provider, token }, { caller }) => {
-        await vault.put({ name: `provider-token.${provider}`, kind: "provider-token", description: `${provider} sign-in token`, fields: { provider: String(provider), token: String(token) } }, caller);
-        return { provider, stored: true };
+      async ({ provider: p, token }, { caller }) => {
+        const spec = provider(p); if (/[\r\n\0\s]/.test(String(token))) throw new Error("a sign-in token is one line with no spaces");
+        await vault.put({ name: spec.item, kind: spec.kind, description: `${p} sign-in token`, fields: { value: String(token) } }, caller);
+        return { provider: p, stored: true };
       },
-      presence("Store a provider sign-in token", ({ provider }) => `Store a ${String(provider).slice(0, 32)} sign-in token in your vault`));
+      presence("Store a provider sign-in token", ({ provider: p }) => `Store a ${String(p).slice(0, 32)} sign-in token in your vault`));
     tool("vault.provider.remove", SURFACES, "Remove a stored provider sign-in token.", obj({ provider: str }, ["provider"]),
-      async ({ provider }, { caller }) => { vault.remove({ name: `provider-token.${provider}` }, caller); return { provider, stored: false }; },
-      presence("Remove a provider sign-in token", ({ provider }) => `Remove the ${String(provider).slice(0, 32)} sign-in token from your vault`));
+      async ({ provider: p }, { caller }) => { vault.remove({ name: provider(p).item }, caller); return { provider: p, stored: false }; },
+      presence("Remove a provider sign-in token", ({ provider: p }) => `Remove the ${String(p).slice(0, 32)} sign-in token from your vault`));
     tool("vault.provider.status", SURFACES, "Which provider sign-in tokens are stored and when each was added. Never the value.", obj({ provider: str }),
-      async ({ provider } = {}) => ({ tokens: vault.providerTokens().filter(t => !provider || t.provider === provider) }));
+      async ({ provider: p } = {}) => ({ tokens: vault.providerTokens().filter(t => !p || t.provider === p) }));
 
     tool("vault.delete", [...SURFACES, "module"], "Delete an item and its grants. A first-party module may delete only an item it made itself (its own origin).",
       obj({ name: str }, ["name"]), (input, { caller }) => {
