@@ -21,6 +21,9 @@ jobs:
         env:
           VYRE_NO_WATCHDOG: "1"
         run: node scripts/runner-perf.mjs --reps 5 --out perf-mac.json
+      - name: image formats (which encrypted image is fastest for small files)
+        if: always()
+        run: node scripts/runner-fs-bench-mac.mjs | tee fs-formats.json
       - name: sandbox tests (the home sandbox and the lent sandbox, on a macOS runner)
         if: always()
         env:
@@ -39,5 +42,7 @@ jobs:
         if: always()
         with:
           name: runner-perf-mac
-          path: perf-mac.json
+          path: |
+            perf-mac.json
+            fs-formats.json
 
