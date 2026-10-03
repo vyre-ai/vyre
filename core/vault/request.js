@@ -31,6 +31,7 @@
 
 import crypto from "node:crypto";
 import https from "node:https";
+import { forwardFile, sendFile } from "./forward-file.js";
 import { defaultField } from "../../lib/vault-kinds/kinds.js";
 import { rowMac, same } from "./crypto.js";
 import {
@@ -55,7 +56,7 @@ const KEEP_HEADERS = ["content-type", "content-length", "etag", "last-modified",
 
 /** The request headers a lent computer's program may send through the home: content negotiation, validators and the vendor's own x- headers. Anything else is dropped; the credential's own headers (and Authorization, Cookie, Host) are never the program's to set. */
 const FORWARD_OK = /^(content-type|accept|accept-language|if-match|if-none-match|if-modified-since|if-unmodified-since|range|idempotency-key|x-(?!vyre-)[a-z0-9-]{1,60})$/;
-function forwardHeaders(h) {
+export function forwardHeaders(h) {
   if (!isObj(h)) return {};
   const out = {};
   for (const [k, v] of Object.entries(h)) { const n = k.toLowerCase(); if (FORWARD_OK.test(n) && !/^x-(api-key|auth|token|csrf)/.test(n) && typeof v === "string") out[n] = v; }
@@ -71,7 +72,7 @@ const b64url = s => Buffer.from(s).toString("base64url");
 // ---- scrubbing (the connectors' own copy: modules never import each other's files) ----
 
 /** @param {unknown} text @param {string[]} values */
-function scrub(text, values) {
+export function scrub(text, values) {
   let out = String(text ?? "");
   const forms = new Set();
   for (const v of values) {
@@ -621,6 +622,7 @@ export class ApiRequests {
     let sealOk = false;
     try { sealOk = isStr(c.seal) && same(c.seal, this.seal(c)); } catch { /* locked: not sent */ }
     if (!sealOk) throw bad("this card was not made by the vault, or its words were changed, so it is not sent", "denied");
+    if (isObj(held.file)) { if (!this.deps.files) throw bad("the Drive is not wired, so a held file request cannot be sent", "failed"); return sendFile(this, { files: this.deps.files }, c, held, it, caller); }
     const plan = await this.plan({ credential: c.credential, method: c.method, url: c.url, headers: held.headers, body: held.body }, c.credential);
     if (plan.hash !== c.hash) throw bad("the request was changed after it was held, so it is not sent; ask again", "denied");
     if (plan.kind !== c.kind) throw bad(`this credential now classifies the request as a ${plan.kind}, not a ${c.kind}; ask again`, "denied");
@@ -663,6 +665,15 @@ export function register({ vault, tool, internal, call, said, deps = {}, log }) 
       if (caller !== "kernel:leases" && caller !== "module:leases") throw bad("only the kernel's lease module forwards a lent computer's request", "denied");
       const r = await api.forward(input, { caller: `runner:${String(input.session).slice(0, 80)}` });
       return r.held ? r : { ...r, body: r.body.toString("base64") };
+    });
+
+  internal("vault.forward.file", "The kernel's lease module forwards one request that moves a file for a lent computer's program: { credential, method, url, query?, headers?, session, upload?: { drive: { path, version?, contentType } } or { multipart: [ { name, value } | { name, filename, contentType, drive: { path, version? } } ] }, saveTo?, stream?, limits?: { maxBytes, contentTypes }, drive?: { read, write } }. The file is read from, or saved to, the Space's Drive by reference at the home and moves a chunk at a time; an outward call is held for a person. Returns the response, { saved }, a stream or { held }; never a credential value.",
+    obj({ credential: str, method: { type: "string", enum: METHODS }, url: str, headers: { type: "object" }, query: { type: "object" }, upload: { type: "object" }, saveTo: str, stream: { type: "boolean" }, limits: { type: "object" }, drive: { type: "object" }, session: str }, ["credential", "method", "url", "session"]),
+    async (input, { caller }) => {
+      if (caller !== "kernel:leases" && caller !== "module:leases") throw bad("only the kernel's lease module forwards a lent computer's request", "denied");
+      if (!api.deps.files) throw bad("the Drive is not wired to this vault", "failed");
+      const r = await forwardFile(api, { files: api.deps.files }, input, { caller: `runner:${String(input.session).slice(0, 80)}` });
+      return r.held || r.stream ? r : { ...r, ...(r.body ? { body: r.body.toString("base64") } : {}) };
     });
 
   tool("vault.request", ["cli", "local", "deck", "capsule", "mcp", "module"],

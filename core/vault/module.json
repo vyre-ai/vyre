@@ -131,7 +131,8 @@
       { "name": "vault.request", "reach": "anyone" },
       { "name": "vault.api.send", "reach": "modules" },
       { "name": "vault.credential.tokens", "reach": "modules" },
-      { "name": "vault.forward", "reach": "modules" }
+      { "name": "vault.forward", "reach": "modules" },
+      { "name": "vault.forward.file", "reach": "modules" }
     ]
   },
   "mentions": [
