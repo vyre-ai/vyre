@@ -14,6 +14,10 @@ export const SEAL_ACTIONS = Object.freeze([
   { action: "seal.reveal", resource_type: "record", risk: "admin", label: "reveal a sealed value", gloss: "Show a sealed value to you, on your screen only." },
 ].map(a => Object.freeze(a)));
 
+/** The hash a checker's approval must have covered for a sealed use: the exact ref, template version, slot and destination. */
+export const sealUsePayloadHash = (/** @type {{ ref: string, template: string, template_version: number, slot: string, destination: any }} */ u) =>
+  sha256(canonical({ ref: u.ref, template: u.template, version: u.template_version, slot: u.slot, destination: u.destination }));
+
 export const sessionOf = (/** @type {any} */ chain) => { const h = chain.hops.find((/** @type {any} */ x) => x.via && x.via.session); return h ? h.via.session : "none"; };
 
 /**
@@ -52,7 +56,7 @@ export function createSeal(cfg) {
       const destination = { ...input.destination };
       // A use reached from a model is always an Ask with fresh presence; a checker's approval of this exact payload satisfies it
       // and is what verifies a contact point for this one use (8.5).
-      const payload_hash = sha256(canonical({ ref: input.ref, template: input.template, version: input.template_version, slot: input.slot, destination }));
+      const payload_hash = sealUsePayloadHash({ ref: input.ref, template: input.template, template_version: input.template_version, slot: input.slot, destination: input.destination });
       const approved = input.task && cfg.approvedTask ? await cfg.approvedTask(input.task, payload_hash) : false;
       if (hasKind(chain, "agent") && !approved) throw Object.assign(new KernelError("needs_approval", "a sealed value used from a plan a model made needs a person's approval", `class ${m.ref.sealed}`), { decision: d.decision, class: m.ref.sealed, recipient: destination });
       if (approved && destination.kind === "contact_point") destination.verified = true;
