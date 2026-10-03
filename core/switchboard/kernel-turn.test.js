@@ -35,6 +35,11 @@ test("threads.start and threads.send from module:stream open the asker's kernel 
   const turnOf = id => { const r = db.prepare("SELECT body FROM kernel_turns WHERE thread = ?").get(id); return r ? JSON.parse(r.body) : null; };
   const finished = async (id, n) => until(async () => (await d.registry.call("threads.get", { thread: id, limit: 500 }, "cli")).data.events.filter(e => e.type === "thread.finished").length >= n, `turn ${n}`);
 
+  // the stream with an asker in any other form (an actor string, a bare name): refused, never quietly rewritten
+  for (const bad of ["person:" + owner, "bob", "", owner.toUpperCase()]) {
+    const refused = await d.registry.call("threads.start", { cwd: work, prompt: "x", surface: "deck", chat: chat.id, asker: bad }, "module:stream");
+    assert.equal(refused.error && refused.error.code, "bad_input", `asker ${JSON.stringify(bad)}: ${JSON.stringify(refused)}`);
+  }
   // a person's own surface naming a chat and an asker: ignored
   const m0 = await d.registry.call("threads.start", { cwd: work, prompt: "hello", surface: "deck", chat: chat.id, asker: owner }, "cli");
   assert.ok(m0.data, JSON.stringify(m0.error));

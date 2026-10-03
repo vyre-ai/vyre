@@ -3229,7 +3229,7 @@ export default {
         provider: { type: "string", description: "The session provider: claude (the default), or one a module added." },
         effort: { type: "string", enum: EFFORTS, description: "Reasoning effort, as /effort: low, medium, high, xhigh or max. Default: the model's own." },
         lean: { type: "boolean", description: "A one-question thread: no Vyre plugin, no tools, no MCP servers, none of the user's settings. Cheap to start." },
-        chat: { type: "string", description: "First-party stream only: the chat this session's reply belongs to. Anyone else's is ignored." }, asker: { type: "string", description: "First-party stream only: the person who asked (the kernel session is opened for them, in `chat`). Anyone else's is ignored." },
+        chat: { type: "string", description: "First-party stream only: the chat this session's reply belongs to. Anyone else's is ignored." }, asker: { type: "string", description: "First-party stream only: the person id (per_...) of who asked (the kernel session is opened for them, in `chat`). Any other form is refused as bad_input. Anyone else's is ignored." },
         mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: str, id: str, name: str } }, description: "The # tags the composer picked ({kind, id}) for the first prompt, from a person's own surface only; as threads.send." },
         pasted: { type: "array", maxItems: 20, items: str, description: "The spans of the prompt the person pasted: a #Name inside one tags nothing. As threads.send." },
         parent: { type: "string", description: "First-party modules only: the thread this one is started for (a teammate's thread for a person's). A session starting one is its own parent, from what vyred verified." } } },
@@ -3254,7 +3254,13 @@ export default {
      * labelled { source: "mac", machine }, or null when no Mac has it, so the box answers as usual.
      */
     /** The chat and asker a turn carries, honoured only from the stream module (first party): never from a model's or a surface's input. @param {any} i @param {any} caller @param {boolean} firstParty */
-    const kernelTurnOf = (i, caller, firstParty) => (firstParty && String(caller || "") === "module:stream" && typeof i.chat === "string" && i.chat && typeof i.asker === "string" && i.asker ? { chat: i.chat, asker: i.asker.replace(/^person:/, "").replace(/@.*$/, "") } : null); // the stream names a person as an actor string (person:per_x) or an id
+    const kernelTurnOf = (i, caller, firstParty) => {
+      if (!(firstParty && String(caller || "") === "module:stream" && typeof i.chat === "string" && i.chat)) return null;
+      // ONE form at this boundary: the kernel's own person id (per_...). An actor string (person:per_x), a bare name or anything else is refused, never quietly rewritten: a mismatch between the stream
+      // and the Switchboard must show, because this id decides whose authority a turn runs under.
+      if (typeof i.asker !== "string" || !/^per_[a-z0-9]{3,64}$/.test(i.asker)) throw Object.assign(new Error("asker must be a person id (per_...), as the kernel names one"), { code: "bad_input" });
+      return { chat: i.chat, asker: i.asker };
+    };
     const sendToMac = async (i, caller) => {
       const r = await ctx.call("link.macs.call", { tool: "threads.send", as: "person", ...(i.machine ? { mac: i.machine } : {}),
         input: { thread: i.thread, text: i.text, surface: surfaceOf(i, caller) } });
