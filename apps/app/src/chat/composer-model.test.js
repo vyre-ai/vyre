@@ -44,3 +44,19 @@ test("runs-on labels", () => {
   assert.equal(runsOnLabel("mac"), "Runs on this Mac");
   assert.equal(runsOnLabel("server"), "Runs on the server");
 });
+
+import { mentionedAssistants, sendTargets } from "./composer-model.js";
+const CHAT = [{ name: "kit", family: "assistant" }, { name: "juno", family: "assistant" }, { name: "chris", family: "person" }];
+
+test("@mentions pick the assistants, once each, in order", () => {
+  assert.deepEqual(mentionedAssistants("@juno and @kit please, @kit again, @chris look", CHAT), ["juno", "kit"]);
+  assert.deepEqual(mentionedAssistants("mail kit@x.com", CHAT), []);
+  assert.deepEqual(mentionedAssistants("@kitchen", CHAT), []);
+});
+
+test("two assistants (or ask all) make a fan-out; one or none does not", () => {
+  assert.deepEqual(sendTargets({ text: "@kit @juno summarise", people: CHAT }), { to: ["kit", "juno"], fanout: true });
+  assert.deepEqual(sendTargets({ text: "@kit run it", people: CHAT }), { to: ["kit"], fanout: false });
+  assert.deepEqual(sendTargets({ text: "hello", people: CHAT }), { to: [], fanout: false });
+  assert.deepEqual(sendTargets({ text: "summarise", askAll: true, people: CHAT }), { to: ["kit", "juno"], fanout: true });
+});

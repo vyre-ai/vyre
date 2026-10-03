@@ -13,6 +13,7 @@ import { createReveal } from "../session/reveal.js";
 import { createFolder, headerState, type Frame as FoldFrame, type Item, type LayoutRow } from "./frames.js";
 import { createMockStream, type Frame, type StreamSource, type StreamState } from "./mock-stream";
 import { boxStream, type SessionActions } from "./box-stream";
+import { createGroup } from "./group.js";
 
 export type Meta = { state: string; turn: string | null; stopping: boolean; word: string; busy: boolean; canStop: boolean; queue: readonly Item[]; connection: StreamState; rev: number };
 export type PerfSink = (name: "paint.delta" | "paint.first", ms: number) => void;
@@ -33,6 +34,13 @@ export type ChatStore = {
   send(text: string): Promise<string | null>;
   interrupt(): Promise<string | null>;
   answer(ask: string, decision: "approve" | "deny"): Promise<string | null>;
+  /** The group side: authors, presence, reactions, pins, threads, the read marker, fan-out sets (group.js). */
+  readonly group: ReturnType<typeof createGroup>;
+  subscribeGroup(f: () => void): () => void;
+  /** Send to chosen assistants (two or more make a fan-out). Falls back to a plain send when the source cannot. */
+  sendTo(text: string, o: { to: string[]; fanout: boolean; parent?: string }): Promise<string | null>;
+  /** Social actions; each is a no-op when the source does not have it. */
+  social: { keep(group: string, message: string): void; react(message: string, emoji: string, remove?: boolean): void; pin(message: string, pinned: boolean): void; markRead(upto: number): void };
   /** Edit and retry, retry and branch: only a real session has them (the mock does not). */
   readonly actions: Partial<Pick<SessionActions, "editRetry" | "retry" | "branch">> | null;
 };
@@ -43,8 +51,10 @@ const nowMs = () => (typeof performance !== "undefined" ? performance.now() : Da
 const frameSoon = (fn: (t: number) => void) =>
   typeof requestAnimationFrame === "function" ? requestAnimationFrame(fn) : (setTimeout(() => fn(nowMs()), 16) as unknown as number);
 
-export function createChatStore(session: string, source: StreamSource, opts: { perf?: PerfSink } = {}): ChatStore {
+export function createChatStore(session: string, source: StreamSource, opts: { perf?: PerfSink; viewer?: string } = {}): ChatStore {
   const folder = createFolder();
+  const group = createGroup(opts.viewer ?? "person:alex");
+  const groupSubs = new Set<() => void>();
   const reveal = createReveal({ createPacer });
   const layoutSubs = new Set<() => void>();
   const metaSubs = new Set<() => void>();
@@ -103,7 +113,11 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
     let layout = false;
     let meta = false;
     let reset = false;
+    let groupChanged = false;
     for (const f of frames) {
+      const g = group.apply(f as never);
+      if (g.meta || g.touched.length) groupChanged = true;
+      for (const k of g.touched) touched.add(k);
       const r = folder.apply(f as FoldFrame);
       if (r.dup) continue;
       if (r.reset) { reset = true; layout = true; meta = true; continue; }
@@ -131,6 +145,7 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
     for (const k of touched) if (!appended.has(k) || wasReplay || finished.has(k)) notifyRow(k);
     // A reply that streams repaints at the frame clock; its first characters show on the next frame.
     if (meta || layout) bumpMeta();
+    if (groupChanged) for (const f of [...groupSubs]) f();
   }
   function onFrame(f: Frame) {
     buffer.push(f);
@@ -185,6 +200,19 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
       source.answer(ask, decision);
       return null;
     },
+    group,
+    subscribeGroup(f) { groupSubs.add(f); return () => void groupSubs.delete(f); },
+    async sendTo(text, o) {
+      if (!text.trim()) return null;
+      if (source.sendGroup && (o.to.length || o.fanout || o.parent)) { source.sendGroup(text, o); return null; }
+      return store.send(text);
+    },
+    social: {
+      keep: (g, m) => source.keep?.(g, m),
+      react: (m, e, r) => source.react?.(m, e, r),
+      pin: (m, p) => source.pin?.(m, p),
+      markRead: (u) => source.markRead?.(u),
+    },
     get actions() {
       const a = withActions(source);
       return a.editRetry && a.retry && a.branch ? { editRetry: a.editRetry, retry: a.retry, branch: a.branch } : null;
@@ -205,6 +233,7 @@ export function useSessionStream(sessionId: string, opts: { source?: StreamSourc
   const store = useMemo(() => createChatStore(sessionId, opts.source ?? sourceFor(sessionId), { perf: opts.perf }), [sessionId, opts.source]);
   useEffect(() => { store.start(); return () => store.stop(); }, [store]);
   const rows = useSyncExternalStore(store.subscribeLayout, store.rows, store.rows);
+  useSyncExternalStore(store.subscribeGroup, () => store.group.rev, () => store.group.rev);
   const meta = useSyncExternalStore(store.subscribeMeta, store.meta, store.meta);
   return { store, rows, meta, loading: rows.length === 0 && meta.connection !== "offline" && meta.state === "starting" };
 }

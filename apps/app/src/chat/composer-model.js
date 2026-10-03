@@ -52,3 +52,27 @@ export function sendIntent({ text, attachments = 0, state }) {
 export const runsOnLabel = (where) => (where === "mac" ? "Runs on this Mac" : "Runs on the server");
 
 export { rankCommands };
+
+/** The assistants @mentioned in a message, in the order they appear, each once. @param {string} text @param {readonly { name: string, family: string }[]} people */
+export function mentionedAssistants(text, people) {
+  const found = [];
+  for (const p of people) {
+    if (p.family !== "assistant") continue;
+    const esc = p.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const m = new RegExp(`(^|[^\\w])@${esc}(?![\\w])`, "i").exec(text);
+    if (m) found.push({ name: p.name, at: m.index });
+  }
+  return found.sort((a, b) => a.at - b.at).map((f) => f.name);
+}
+
+/**
+ * Who a send goes to. "Ask all" sends to every assistant in the chat; otherwise the @mentioned
+ * assistants (none: the chat's default assistant answers). Two or more targets make a fan-out:
+ * their answers come back as one set.
+ * @param {{ text: string, askAll?: boolean, people: readonly { name: string, family: string }[] }} o
+ */
+export function sendTargets({ text, askAll = false, people }) {
+  const all = people.filter((p) => p.family === "assistant").map((p) => p.name);
+  const to = askAll ? all : mentionedAssistants(text, people);
+  return { to, fanout: to.length > 1 };
+}

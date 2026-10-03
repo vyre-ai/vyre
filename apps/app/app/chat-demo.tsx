@@ -16,12 +16,13 @@ import { createMockStream, historyFrames } from "../src/chat/mock-stream";
 type Meter = { delta: number[]; first: number[]; keys: number[]; paints: number[]; mounted: number };
 
 export default function ChatDemo() {
-  const q = useLocalSearchParams<{ n?: string; at?: string; composer?: string; tps?: string; hold?: string }>();
+  const q = useLocalSearchParams<{ n?: string; at?: string; composer?: string; tps?: string; hold?: string; scenario?: string; about?: string; note?: string }>();
+  const group = q.scenario === "group";
   const n = Number(q.n) || 0;
   const at = Number(q.at) || 0;
   const source = useMemo(
-    () => createMockStream({ session: "demo", startAt: at, hold: q.hold === "1", tps: Number(q.tps) || 40, history: n ? historyFrames(n) : undefined }),
-    [n, at, q.tps, q.hold],
+    () => createMockStream({ session: "demo", scenario: group ? "group" : undefined, startAt: at, hold: q.hold === "1", tps: Number(q.tps) || (group ? 30 : 40), history: n ? historyFrames(n) : undefined }),
+    [n, at, q.tps, q.hold, group],
   );
   const meter = useMemo<Meter>(() => ({ delta: [], first: [], keys: [], paints: [], mounted: 0 }), []);
   useEffect(() => {
@@ -31,7 +32,10 @@ export default function ChatDemo() {
     <ThemeProvider>
       <ChatScreen
         sessionId="demo"
-        title="Fix the intake date check"
+        title={group ? "Northwind lease, before the 3 pm call" : "Fix the intake date check"}
+        about={group ? { record: { title: "Northwind Bakery, lease dispute", type: "Matter" }, space: "Harlow Legal", sealed: 2, runsOn: "server" } : undefined}
+        initialAbout={q.about === "1"}
+        showSealedNote={q.note === "0" ? false : undefined}
         source={source}
         autoFocusComposer={q.composer === "1"}
         perf={(name, ms) => (name === "paint.first" ? meter.first : meter.delta).push(ms)}

@@ -29,6 +29,8 @@ export type BlockCtx = {
   onEditMessage?: (uuid: string, text: string) => void;
   onRetryMessage?: (uuid: string) => void;
   onBranchFrom?: (uuid: string) => void;
+  /** Group chats: reply in a thread to a message (its id and its author's name). */
+  onReplyTo?: (message: string, name: string) => void;
   /** The tool is still running (live output, caret). */
   live?: boolean;
 };

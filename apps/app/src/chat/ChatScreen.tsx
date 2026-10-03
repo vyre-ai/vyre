@@ -10,10 +10,10 @@
 // It reads the stream through useSessionStream, so the real core/stream client and the mock plug
 // in the same way.
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Chip, Icon, IconButton, Text, useUiTheme } from "@vyre/ui";
+import { Chip, Icon, Text, useUiTheme } from "@vyre/ui";
 import { Transcript } from "../session/Transcript";
 import type { TranscriptRow } from "../session/model";
 import { ChatComposer, type ComposerProps } from "./ChatComposer";
@@ -22,6 +22,10 @@ import type { BlockCtx } from "./Blocks";
 import { createFollow, follow, pillLabel } from "./follow.js";
 import type { StreamSource } from "./mock-stream";
 import { useSessionStream, type PerfSink } from "./store";
+import { ChatHeader } from "./ChatHeader";
+import { AboutSheet, type AboutInfo } from "./AboutSheet";
+import { StatusLine } from "./StatusLine";
+import { markSealedNoteSeen, sealedNoteSeen, sealedNoteText } from "./group.js";
 
 export type ChatScreenProps = {
   sessionId: string;
@@ -39,7 +43,21 @@ export type ChatScreenProps = {
   handlers?: Partial<BlockCtx>;
   composer?: Partial<ComposerProps>;
   onKey?: (t: number) => void;
+  /** The person looking, as the stream names them ("person:alex"). */
+  viewer?: string;
+  /** What "About this chat" says besides the people: the record, the space, the sealed count, where it runs. */
+  about?: Partial<AboutInfo>;
+  /** Open "About this chat" at first (shots). */
+  initialAbout?: boolean;
+  /** Force the sealed note on or off (shots); by default it shows once per chat. */
+  showSealedNote?: boolean;
 };
+
+const storage = (): { getItem(k: string): string | null; setItem(k: string, v: string): void } | null => {
+  try { return typeof localStorage !== "undefined" ? localStorage : null; } catch { return null; }
+};
+
+const parseName = (id: string) => id.slice(id.indexOf(":") + 1);
 
 function JumpPill({ go, count, base, bottom }: { go: () => void; count: number; base: number; bottom: number }) {
   const { color } = useUiTheme();
@@ -58,7 +76,16 @@ export function ChatScreen(p: ChatScreenProps) {
   const { color, phone } = useUiTheme();
   const insets = useSafeAreaInsets();
   const { store, rows, meta, loading } = useSessionStream(p.sessionId, { source: p.source, perf: p.perf });
+  const viewer = p.viewer ?? "person:alex";
   const [note, setNote] = useState<string | null>(null);
+  const [aboutOpen, setAboutOpen] = useState(!!p.initialAbout);
+  const [muted, setMuted] = useState(false);
+  const [pinned, setPinned] = useState(false);
+  const [runsOn, setRunsOn] = useState<"mac" | "server">(p.about?.runsOn ?? "server");
+  const [replyTo, setReplyTo] = useState<{ message: string; name: string } | null>(null);
+  // The sealed note shows once per chat, on its first open. Storage can be missing or throw: then it shows again, never hides.
+  const [sealedNote, setSealedNote] = useState(() => p.showSealedNote ?? !sealedNoteSeen(storage(), p.sessionId));
+  useEffect(() => { if (sealedNote) markSealedNoteSeen(storage(), p.sessionId); }, [sealedNote, p.sessionId]);
   const [editing, setEditing] = useState<{ id: number; uuid: string; text: string } | null>(null);
   const actions = store.actions;
   const { onBranched } = p;
@@ -77,13 +104,14 @@ export function ChatScreen(p: ChatScreenProps) {
             },
           }
         : {}),
+      onReplyTo: (message: string, name: string) => setReplyTo({ message, name }),
       ...(p.onOpenTerminal ? { onOpenTerminal: () => p.onOpenTerminal?.() } : {}),
       ...p.handlers,
     }),
     [phone, p.handlers, p.onOpenTerminal, actions, onBranched],
   );
   const onSend = useCallback(
-    async (text: string) => {
+    async (text: string, o?: { to: string[]; fanout: boolean }) => {
       setNote(null);
       if (editing && actions) {
         const r = await actions.editRetry!(editing.uuid, text);
@@ -91,32 +119,49 @@ export function ChatScreen(p: ChatScreenProps) {
         else setEditing(null);
         return;
       }
-      const why = await store.send(text);
+      store.social.markRead(store.group.last); // sending says you have read everything above
+      const parent = replyTo?.message;
+      setReplyTo(null);
+      const why = o && (o.to.length || o.fanout || parent) ? await store.sendTo(text, { to: o.to, fanout: o.fanout, parent }) : await store.send(text);
       if (why) setNote(why);
     },
-    [store, editing, actions],
+    [store, editing, actions, replyTo],
   );
   const renderRow = useCallback((row: TranscriptRow) => <ChatRow store={store} row={row as never} ctx={ctx} />, [store, ctx]);
   const base = useRef(rows.length);
   base.current = Math.min(base.current, rows.length);
 
-  const tone = meta.state === "asking" ? "accent" : meta.busy ? "ok" : "plain";
+  const group = store.group;
+  const found = group.participants();
+  const faces = found.length ? found : [{ id: viewer, name: parseName(viewer), family: "person" as const }, { id: "assistant:juno", name: "juno", family: "assistant" as const }];
+  const info: AboutInfo = { record: null, sealed: 0, ...p.about, runsOn };
+  const line = [info.record?.title, info.space].filter(Boolean).join(" · ") + (muted ? (info.record || info.space ? " · muted" : "muted") : "");
+  const assistantsHere = faces.filter((f) => f.family === "assistant").length;
+  const people = found.length ? found.filter((f) => f.id !== viewer).map((f) => ({ name: f.name, family: f.family === "assistant" ? ("assistant" as const) : ("person" as const) })) : undefined;
   return (
     <View style={{ flex: 1, backgroundColor: color["surface-1"], paddingTop: insets.top }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 52, paddingHorizontal: phone ? 8 : 20, borderBottomWidth: 1, borderBottomColor: color.edge }}>
-        {p.onBack ? <IconButton icon="chat" label="Back to chats" touch onPress={p.onBack} /> : null}
-        <View style={{ flex: 1, minWidth: 0, paddingLeft: p.onBack ? 0 : 8 }}>
-          <Text strong numberOfLines={1}>{p.title ?? "Session"}</Text>
-          <Text size="caption" tone="label" numberOfLines={1}>{meta.connection === "offline" ? "Offline, showing what was saved" : meta.state === "asking" ? "Waiting for you" : meta.busy ? "Working" : "Ready"}</Text>
-        </View>
-        <View style={{ alignSelf: "center" }}><Chip tone={tone as never}>{meta.word}</Chip></View>
-        {p.onOpenTerminal ? <IconButton icon="terminal" label="Open full terminal" touch={phone} onPress={p.onOpenTerminal} /> : null}
-        {meta.canStop ? (
-          <Pressable accessibilityRole="button" accessibilityLabel="Stop" onPress={async () => { const why = await store.interrupt(); if (why) setNote(why); }} style={{ minHeight: phone ? 44 : 32, justifyContent: "center" }}>
-            <Chip icon="stop" tone="err">Stop</Chip>
-          </Pressable>
-        ) : meta.stopping ? <View style={{ alignSelf: "center" }}><Chip>Stopping</Chip></View> : null}
-      </View>
+      <ChatHeader title={p.title ?? "Session"} participants={faces} viewer={viewer} line={line} phone={phone} onBack={p.onBack} onOpen={() => setAboutOpen(true)} />
+      {sealedNote ? (
+        <Pressable accessibilityRole="button" accessibilityLabel="Dismiss the sealed note" onPress={() => setSealedNote(false)} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 40, paddingVertical: 6, paddingHorizontal: phone ? 16 : 24, backgroundColor: color["surface-2"], borderBottomWidth: 1, borderBottomColor: color.edge }}>
+          <Icon name="shield" />
+          <Text size="caption" tone="muted" style={{ flex: 1 }}>{sealedNoteText({ sealed: info.sealed, assistants: assistantsHere })}</Text>
+          <Text size="caption" tone="label" strong>Got it</Text>
+        </Pressable>
+      ) : null}
+      <AboutSheet
+        open={aboutOpen}
+        onClose={() => setAboutOpen(false)}
+        title={p.title ?? "Session"}
+        participants={found.length ? found : faces.map((f) => ({ ...f, family: f.family as "person" | "assistant" }))}
+        viewer={viewer}
+        info={info}
+        muted={muted}
+        pinned={pinned}
+        onMute={setMuted}
+        onPin={setPinned}
+        onMove={() => setRunsOn((w) => (w === "mac" ? "server" : "mac"))}
+        onOpenTerminal={p.onOpenTerminal}
+      />
 
       {p.belowHeader}
 
@@ -153,6 +198,25 @@ export function ChatScreen(p: ChatScreenProps) {
         </View>
       ) : null}
 
+      <StatusLine
+        presence={group.presenceLine()}
+        state={meta.state}
+        busy={meta.busy}
+        canStop={meta.canStop}
+        stopping={meta.stopping}
+        offline={meta.connection === "offline"}
+        phone={phone}
+        onStop={async () => { const why = await store.interrupt(); if (why) setNote(why); }}
+      />
+
+      {replyTo ? (
+        <View accessibilityLabel="Replying in a thread" style={{ width: "100%", maxWidth: 860, alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 8, minHeight: 36, paddingHorizontal: phone ? 16 : 24 }}>
+          <Icon name="chat" />
+          <Text size="caption" tone="muted" style={{ flex: 1 }} numberOfLines={1}>{`Replying in a thread to ${replyTo.name}`}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Cancel reply" onPress={() => setReplyTo(null)} style={{ minHeight: phone ? 44 : 32, justifyContent: "center", paddingHorizontal: 8 }}><Text size="caption" strong>Cancel</Text></Pressable>
+        </View>
+      ) : null}
+
       <View style={{ paddingBottom: insets.bottom }}>
         <ChatComposer
           state={meta.state}
@@ -162,11 +226,12 @@ export function ChatScreen(p: ChatScreenProps) {
           onSend={onSend}
           editing={editing}
           onCancelEdit={() => setEditing(null)}
-          people={[{ name: "juno", family: "assistant" }, { name: "kit", family: "assistant" }, { name: "alex", family: "person" }, { name: "Dana Okafor", family: "person" }]}
+          people={people ?? [{ name: "juno", family: "assistant" }, { name: "kit", family: "assistant" }, { name: "alex", family: "person" }, { name: "Dana Okafor", family: "person" }]}
           records={[{ name: "Northwind Bakery", type: "Matter", sealed: 1 }, { name: "Harlow Legal intake", type: "Project", sealed: 0 }, { name: "Okafor estate", type: "Matter", sealed: 2 }]}
           models={[{ id: "sonnet", label: "Sonnet", fit: 92 }, { id: "opus", label: "Opus", fit: 97 }, { id: "local", label: "Local model", fit: 61 }]}
           model="sonnet"
-          runsOn="server"
+          runsOn={runsOn}
+          onRunsOn={() => setRunsOn((w) => (w === "mac" ? "server" : "mac"))}
           {...p.composer}
         />
       </View>

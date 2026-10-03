@@ -11,6 +11,8 @@ export type Frame = {
   v: 1; id: string; cur: number; session: string; turn: string; type: string; time: number; corr: string;
   /** performance.now() at emit; the perf script reads it. Not part of the wire frame. */
   t?: number; data: any;
+  /** Group chats (task H): who wrote it, for whom, and which message. See group.js. */
+  author?: string; acts_for?: string; message?: string;
 };
 export type StreamState = "connecting" | "live" | "offline";
 export type StreamConnection = { close(): void };
@@ -21,9 +23,15 @@ export type StreamSource = {
   send(text: string): void;
   answer(ask: string, decision: "approve" | "deny"): void;
   stop(): void;
+  /** Group chats: send to chosen assistants (two or more make a fan-out), keep a fan-out answer, react, pin, mark read. */
+  sendGroup?(text: string, o: { to: string[]; fanout: boolean; parent?: string }): void;
+  keep?(group: string, message: string): void;
+  react?(message: string, emoji: string, remove?: boolean): void;
+  pin?(message: string, pinned: boolean): void;
+  markRead?(upto: number): void;
 };
 
-export type Step = { at: number; type: string; data: any };
+export type Step = { at: number; type: string; data: any; top?: Record<string, any> };
 export type Segment = { gate: string | null; steps: Step[] };
 
 /** Tokens are about four characters. @param text @param tps */
@@ -35,14 +43,14 @@ class Clock {
   t = 0;
   steps: Step[] = [];
   at(ms: number) { this.t = Math.max(this.t, ms); return this; }
-  push(type: string, data: any, wait = 0) { this.t += wait; this.steps.push({ at: Math.round(this.t), type, data }); return this; }
-  /** Streaming text at `tps` tokens a second. */
-  say(message: string, text: string, tps: number, gapBefore = 120) {
+  push(type: string, data: any, wait = 0, top?: Record<string, any>) { this.t += wait; this.steps.push({ at: Math.round(this.t), type, data, ...(top ? { top } : {}) }); return this; }
+  /** Streaming text at `tps` tokens a second. `top` is the frame's author, acts_for and message (group chats). */
+  say(message: string, text: string, tps: number, gapBefore = 120, top?: Record<string, any>) {
     this.t += gapBefore;
     const every = 1000 / tps;
     let i = 0;
-    for (const tok of tokens(text)) { this.push("text-delta", { message, index: i++, text: tok }); this.t += every; }
-    this.push("text-done", { message });
+    for (const tok of tokens(text)) { this.push("text-delta", { message, index: i++, text: tok }, 0, top); this.t += every; }
+    this.push("text-done", { message }, 0, top);
     return this;
   }
 }
@@ -132,7 +140,71 @@ export function script(o: { tps?: number } = {}): Segment[] {
   return [{ gate: null, steps: first }, { gate: "k1", steps: d.steps }];
 }
 
+const VIEWER = "person:alex";
+
+/**
+ * The group scenario (/chat-demo?scenario=group): alex (the viewer) and chris in a chat with two
+ * assistants, kit (asked by chris) and juno (asked by alex), who stream at the same moment; an
+ * approval that is chris's, not alex's; a reaction, a pin and a thread reply; then alex asks three
+ * models at once and the answers arrive as a set, one of them cut short. The viewer's read marker
+ * sits after chris's first message, so what follows is "New".
+ */
+export function groupScript(o: { tps?: number } = {}): Segment[] {
+  const tps = o.tps ?? 30;
+  const kit = { author: "assistant:kit", acts_for: "person:chris" };
+  const juno = { author: "assistant:juno", acts_for: VIEWER };
+  const chris = { author: "person:chris" };
+  const alex = { author: VIEWER };
+
+  const a = new Clock();
+  a.push("status", { state: "working", turn: "turn-g" });
+  for (const [who, name, role] of [[VIEWER, "alex", "You"], ["person:chris", "chris", "Associate"], ["assistant:kit", "kit", "Engineer"], ["assistant:juno", "juno", "Your assistant"]]) a.push("participant-joined", { who, name, role }, 5);
+  a.push("user-message", { message: "m1", text: "@alex can you look at the Northwind lease before the 3 pm call? @kit run the intake tests, @juno draft the note to the owner.", state: "sent" }, 40, { ...chris, message: "m1" });
+  a.push("mention", { who: VIEWER }, 5, { message: "m1" });
+  a.push("pin", {}, 5, { ...chris, message: "m1" });
+  a.push("read-marker", { upto: "@m1" }, 20, alex);
+  a.push("presence", { who: "assistant:kit", state: "doing", doing: "running the tests" }, 80);
+  a.push("presence", { who: "assistant:juno", state: "doing", doing: "drafting the note" }, 5);
+
+  // Two assistants stream at once; each keeps its own message.
+  const k = new Clock().at(a.t);
+  k.say("k1", "Running the intake tests. Two of the fourteen failed on the first pass, both on 29 February. The check uses a fixed month table, so I am switching it to the real month length and running them again.", tps, 250, { ...kit, message: "k1" });
+  k.push("presence", { who: "assistant:kit", state: "idle" }, 40);
+  const j = new Clock().at(a.t);
+  j.say("j1", "Draft for the owner: the demand letter went out on 2 October and the landlord has until 14 October to reply. I will write again that day either way, and you can call before then if you prefer.", tps, 300, { ...juno, message: "j1" });
+  j.push("presence", { who: "assistant:juno", state: "idle" }, 40);
+
+  // After kit finishes: an approval that is chris's, a reaction, a thread reply.
+  const kEnd = k.t;
+  const b = new Clock().at(kEnd);
+  b.push("ask", { ask_id: "g1", kind: "approval", title: "Send the fixed branch to review", task: { block: "task", id: "tg1", title: "Send the fixed branch to review", doer: "kit", state: "needs-approval", why: "It goes to the reviewer, so it waits for the person who asked.", approve: { label: "Send to review" }, tags: ["intake-form"] } }, 200, { ...kit });
+  b.push("reaction", { emoji: "\u{1F44D}" }, 300, { ...alex, message: "k1" });
+  b.push("reaction", { emoji: "\u{1F440}" }, 100, { ...chris, message: "j1" });
+  b.push("user-message", { message: "m3", text: "Can kit also cover the leap year in the form test?", state: "sent" }, 400, { ...alex, message: "m3" });
+  b.push("thread-reply", { parent: "k1" }, 5, { ...alex, message: "m3" });
+
+  // Alex asks three models at once. They stream together; the local one is cut short.
+  const f = new Clock().at(Math.max(j.t, b.t) + 800);
+  f.push("user-message", { message: "m5", text: "One line each: what is the biggest risk in the Northwind lease?", state: "sent" }, 0, { ...alex, message: "m5" });
+  f.push("fanout", { group: "f1", message: "m5", members: [{ message: "f1a", author: "model:sonnet" }, { message: "f1b", author: "model:opus" }, { message: "f1c", author: "model:local" }] }, 40);
+  const t0 = f.t;
+  const fa = new Clock().at(t0).say("f1a", "The landlord can end the lease on 60 days notice with no cause, so the bakery has no fixed term to rely on. Ask for 24 months with a renewal right.", tps * 1.3, 120, { author: "model:sonnet", message: "f1a" });
+  const fb = new Clock().at(t0).say("f1b", "Section 4 lets the landlord pass on any tax increase without a cap. That is the cost that can grow unseen, so ask for a cap tied to the first year.", tps * 1.1, 160, { author: "model:opus", message: "f1b" });
+  const fc = new Clock().at(t0).say("f1c", "The lease has no repair duty for the landlord. Check the roof and the oven vent before", tps * 1.6, 100, { author: "model:local", message: "f1c" });
+  fc.push("text-cut", { note: "Stopped at this model's reply limit" }, 0, { message: "f1c" });
+  const g = new Clock().at(Math.max(fa.t, fb.t, fc.t) + 100);
+  g.push("status", { state: "waiting", turn: "turn-g" }, 0);
+
+  const all = [a, k, j, b, f, fa, fb, fc, g].flatMap((c) => c.steps).sort((x, y) => x.at - y.at);
+  // The read marker names the cursor of a message; the first frame of m1 is its place in the log.
+  const idx = (m: string) => all.findIndex((s) => (s.top?.message ?? s.data.message) === m && (s.type === "user-message" || s.type === "text-delta")) + 1;
+  for (const s of all) if (s.type === "read-marker" && typeof s.data.upto === "string") s.data = { upto: idx(s.data.upto.slice(1)) };
+  return [{ gate: null, steps: all }];
+}
+
 export type MockOptions = {
+  /** "group": two people, two assistants, a fan-out (groupScript). */
+  scenario?: "group";
   session?: string;
   tps?: number;
   /** Fast-forward this many ms of the first segment at connect (shots). */
@@ -151,7 +223,7 @@ export function createMockStream(opts: MockOptions = {}): StreamSource & { log: 
   const now = opts.now ?? (() => (typeof performance !== "undefined" ? performance.now() : Date.now()));
   const setTimer = opts.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
   const clearTimer = opts.clearTimer ?? ((h) => clearTimeout(h as ReturnType<typeof setTimeout>));
-  const segments = script({ tps: opts.tps });
+  const segments = opts.scenario === "group" ? groupScript({ tps: opts.tps }) : script({ tps: opts.tps });
   const log: Frame[] = [...(opts.history ?? [])];
   let cur = log.length ? log[log.length - 1].cur : 0;
   const listeners = new Set<(f: Frame) => void>();
@@ -163,8 +235,8 @@ export function createMockStream(opts: MockOptions = {}): StreamSource & { log: 
   const queued: { message: string; text: string }[] = [];
   let nextMsg = 100;
 
-  function emit(type: string, data: any) {
-    const f: Frame = { v: 1, id: `${session}-${cur + 1}`, cur: ++cur, session, turn, type: `session.${type}`, time: Date.now(), corr: turn, t: now(), data };
+  function emit(type: string, data: any, top?: Record<string, any>) {
+    const f: Frame = { v: 1, id: `${session}-${cur + 1}`, cur: ++cur, session, turn, type: `session.${type}`, time: Date.now(), corr: turn, t: now(), data, ...top };
     if (type === "status") state = data.state;
     log.push(f);
     for (const l of [...listeners]) l(f);
@@ -189,7 +261,7 @@ export function createMockStream(opts: MockOptions = {}): StreamSource & { log: 
   }
   function run(s: Step) {
     if (s.type === "user-message" && s.data.state === "queued") queued.push({ message: s.data.message, text: s.data.text });
-    emit(s.type, s.data);
+    emit(s.type, s.data, s.top);
   }
   function begin() {
     if (started) return;
@@ -232,6 +304,34 @@ export function createMockStream(opts: MockOptions = {}): StreamSource & { log: 
       for (const s of steps) if (s.at <= 0) run(s);
       schedule(steps, 0);
     },
+    sendGroup(text, o) {
+      const message = `m${nextMsg++}`;
+      emit("user-message", { message, text, state: "sent" }, { author: VIEWER, message });
+      if (o.parent) emit("thread-reply", { parent: o.parent }, { author: VIEWER, message });
+      const c = new Clock();
+      const tps = opts.tps ?? 30;
+      const targets = o.to.length ? o.to : ["kit"];
+      if (o.fanout) {
+        const group = `f${nextMsg++}`;
+        const members = targets.map((t, i) => ({ message: `${group}${"abc"[i] ?? i}`, author: `assistant:${t}` }));
+        c.push("fanout", { group, message, members }, 40);
+        const merged: Step[] = [];
+        targets.forEach((t, i) => {
+          const cc = new Clock().at(c.t);
+          cc.say(members[i].message, `${t}: noted. This is the mock chat, so this is a sample answer number ${i + 1}.`, tps * (1 + i * 0.3), 100, { author: `assistant:${t}`, acts_for: VIEWER, message: members[i].message });
+          merged.push(...cc.steps);
+        });
+        schedule([...c.steps, ...merged].sort((x, y) => x.at - y.at), 0);
+        return;
+      }
+      const who = targets[0];
+      c.say(`a${nextMsg}`, `${who}: noted. This is the mock chat, so nothing else happens.`, tps, 150, { author: `assistant:${who}`, acts_for: VIEWER, message: `a${nextMsg}` });
+      schedule(c.steps, 0);
+    },
+    keep(group, message) { emit("fanout-keep", { group, keep: message }, { author: VIEWER }); },
+    react(message, emoji, remove) { emit("reaction", { emoji, ...(remove ? { remove: true } : {}) }, { author: VIEWER, message }); },
+    pin(message, pinned) { emit("pin", { pinned }, { author: VIEWER, message }); },
+    markRead(upto) { emit("read-marker", { upto }, { author: VIEWER }); },
     stop() {
       stopped = true;
       for (const h of timers) clearTimer(h);

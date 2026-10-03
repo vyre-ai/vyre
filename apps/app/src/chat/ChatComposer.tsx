@@ -9,7 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, TextInput, View, type NativeSyntheticEvent, type TextInputSelectionChangeEventData } from "react-native";
 import { Avatar, Chip, Icon, Text, useUiTheme } from "@vyre/ui";
 import { COMMANDS } from "../../../../deck/chat/core/commands.js";
-import { pick, rankByName, rankCommands, runsOnLabel, sealedChip, sendIntent, triggerAt } from "./composer-model.js";
+import { pick, rankByName, rankCommands, runsOnLabel, sealedChip, sendIntent, sendTargets, triggerAt } from "./composer-model.js";
 
 export type Person = { name: string; family: "person" | "assistant" };
 export type RecordPick = { name: string; type: string; sealed: number };
@@ -23,7 +23,8 @@ export type ComposerProps = {
   onModel?: (id: string) => void;
   runsOn?: "mac" | "server";
   onRunsOn?: () => void;
-  onSend: (text: string) => void;
+  /** `o` says who it goes to: the @mentioned assistants, or all of them with "Ask all"; two or more make a fan-out. */
+  onSend: (text: string, o?: { to: string[]; fanout: boolean }) => void;
   /** Edit and retry: the words to put in the box, once per `id`. Sending then replaces that message. */
   editing?: { id: number; text: string } | null;
   onCancelEdit?: () => void;
@@ -53,6 +54,8 @@ export function ChatComposer(p: ComposerProps) {
   const [caret, setCaret] = useState(0);
   const [focused, setFocused] = useState(false);
   const [models, setModels] = useState(false);
+  const [askAll, setAskAll] = useState(false);
+  const assistants = (p.people ?? []).filter((x) => x.family === "assistant").length;
   const input = useRef<TextInput>(null);
   const trig = useMemo(() => triggerAt(text, caret), [text, caret]);
   const editId = p.editing?.id;
@@ -84,10 +87,12 @@ export function ChatComposer(p: ComposerProps) {
   const send = useCallback(() => {
     const t = text.trim();
     if (!t) return;
-    p.onSend(t);
+    const to = sendTargets({ text: t, askAll, people: p.people ?? [] });
+    if (to.to.length) p.onSend(t, to); else p.onSend(t);
     setText("");
     setCaret(0);
-  }, [text, p]);
+    setAskAll(false);
+  }, [text, p, askAll]);
   const onSel = (e: NativeSyntheticEvent<TextInputSelectionChangeEventData>) => setCaret(e.nativeEvent.selection.end);
   const insert = (ch: string) => { const t = text.slice(0, caret) + ch + text.slice(caret); setText(t); setCaret(caret + 1); input.current?.focus(); };
   const current = (p.models ?? []).find((m) => m.id === p.model);
@@ -96,6 +101,11 @@ export function ChatComposer(p: ComposerProps) {
       {p.models?.length ? (
         <Pressable accessibilityRole="button" accessibilityLabel="Switch model" onPress={() => setModels((m) => !m)} style={{ minHeight: big ? T : 32, justifyContent: "center" }}>
           <Chip>{current ? `${current.label}${current.fit != null ? `, fit ${current.fit}` : ""}` : "Model"}</Chip>
+        </Pressable>
+      ) : null}
+      {assistants > 1 ? (
+        <Pressable accessibilityRole="button" accessibilityLabel="Ask all assistants at once" accessibilityState={{ selected: askAll }} onPress={() => setAskAll((a) => !a)} style={{ minHeight: big ? T : 32, justifyContent: "center" }}>
+          <Chip tone={askAll ? "accent" : "plain"} icon="agents">Ask all</Chip>
         </Pressable>
       ) : null}
       {p.runsOn ? (
@@ -151,7 +161,7 @@ export function ChatComposer(p: ComposerProps) {
           onBlur={() => setFocused(false)}
           autoFocus={p.autoFocus}
           multiline
-          placeholder={intent.queue || p.state === "working" ? "Say more. It queues until the next step." : "Message, @ people, # records, / commands"}
+          placeholder={askAll ? "Ask every assistant here at once" : intent.queue || p.state === "working" ? "Say more. It queues until the next step." : "Message, @ people, # records, / commands"}
           placeholderTextColor={color.label}
           accessibilityLabel="Message"
           onKeyPress={(e: any) => { if (!p.phone && e.nativeEvent.key === "Enter" && !e.nativeEvent.shiftKey && !trig) { e.preventDefault?.(); send(); } }}
