@@ -263,3 +263,24 @@ test("vault.move completes from a member's own vault: both members read it, the 
   await d.v.shared.sync({}, "cli");
   assert.equal(await value(d, "team/crm-login", "password"), pw);
 });
+
+test("vault.move into a real shared vault: a live pass and a provider sign-in token are refused, recorded, and leave the local item and the vault untouched", async t => {
+  const a = mk(t, "alex"), d = mk(t, "dana");
+  await know(a, d, "dana");
+  await a.v.shared.create({ name: "team" }, "cli");
+  await d.v.shared.accept({ invite: (await a.v.shared.invite({ vault: "team", person: "dana" }, "cli")).invite }, "cli");
+  await a.v.put({ name: "example-api", fields: { value: fake("api") }, hosts: ["https://api.example.com"] }, "cli");
+  await a.v.createPass({ holder: "Dana", card: (await d.v.card()).card, items: ["example-api"] }, "cli");
+  await assert.rejects(a.v.shared.move({ name: "example-api", to: "team" }, "cli"), /revoke the pass first/);
+  assert.ok(a.v.row("example-api"), "the local item stays");
+  assert.equal(a.v.shared.byName(a.v.shared.row("team").id, "example-api"), null, "nothing was written to the shared vault");
+
+  const tok = fake("claude");
+  await a.v.put({ name: "claude-setup-token", fields: { value: tok } }, "cli");
+  await assert.rejects(a.v.shared.move({ name: "claude-setup-token", to: "team" }, "cli"), /never moved into a shared vault/);
+  await d.v.shared.sync({}, "cli");
+  assert.equal(d.v.list().items.filter(i => i.name.startsWith("team/")).length, 0, "dana sees neither");
+  const refused = a.events.filter(e => e.type === "vault.refused");
+  assert.ok(refused.length >= 2 && refused.every(e => e.payload.action === "move"));
+  assert.ok(!JSON.stringify([a.events, a.logs]).includes(tok));
+});

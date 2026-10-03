@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(connectors): an api sign-in whose token store fails now takes back the credential it just made (`removeCredential`, as the person who started it), so none is left tokenless; a re-connect keeps its old credential. test(vault): a live-pass and a sign-in-token move into a real shared vault are refused with nothing written.
 - test(vault): a completed `vault.move` by a member, a refused move for a read-only member, role refusals and a rotate, on the existing two-member shared-vault rig in core/vault/shared.test.js. docs/work/vault.md corrected: the rig existed.
 - fix(vault): `members.invite` builds the invite and the key wrap before the member is added, so a failure there no longer leaves a member with no invite. The rest of the shared-vault member paths, the .env rewrite and the connectors writes were swept and are listed in team/0.2/CHAT.md.
 - fix(vault): a provider sign-in token is never put or moved into a shared vault (`vault.put` to `<vault>/claude-setup-token`, `vault.move`): both are refused and recorded as `vault.refused` (reviewer-2 low).
