@@ -47,6 +47,8 @@ export const hooks = {
 };
 
 const DAY = 24 * 60 * 60 * 1000;
+/** Before membership exists the only callers are the relay and the person's devices: a local anonymous or model caller cannot spend a use count or burn the five tries. */
+const RELAY_DEVICE_CALLERS = Object.freeze(["tailnet", "relay", "device"]);
 const b64u = (/** @type {Buffer|Uint8Array} */ b) => Buffer.from(b).toString("base64url");
 const PERSON_RE = /^per_[a-z2-7]{26}$/;
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
@@ -542,14 +544,74 @@ export default {
         return sync(spaceId, view);
       });
 
+    // ---- "setup in progress": the steps after the space has its home (look, members, connectors, the first Kit) are done on the device where the person started. The state is kept here, beside the
+    // space's row, and read with the space (spaces.get, spaces.list). No secret, code, key or token is ever in it: only the shape below is kept, and anything else is dropped. ----
+    const SETUP_STEPS = ["look", "members", "connectors", "kit"];
+    const SETUP_WHERE = ["server", "vps", "here"];
+    const text = (/** @type {any} */ v, /** @type {number} */ n) => (typeof v === "string" ? v.trim().slice(0, n) : null) || null;
+    /** The device a call comes from, as the person sees it. A paired device's name is the home's own row; this computer is "this computer". @param {any} meta */
+    const callerDevice = async meta => {
+      const f = meta && meta.kernelFacts;
+      if (f && f.kind === "device" && typeof f.device_key_id === "string") {
+        const r = await ctx.call("relay.device.info", { id: f.device_key_id }).catch(() => null);
+        return { id: f.device_key_id, name: text(r && r.data && r.data.name, 60) || "your device" };
+      }
+      const st = me();
+      return { id: /** @type {string} */ (st.keyId), name: "this computer" };
+    };
+    const setupOf = async (/** @type {string} */ id) => /** @type {any} */ (await kv.get(`setup/${id}`)) || null;
+    /** What the screens read. @param {any} row @param {any} s */
+    const setupView = async (row, s) => (ownsFlow(row, s) ? setupOf(row.id) : null);
+    /** @param {any} i the person's input @param {any} device @param {any} [prev] @param {number} at */
+    const cleanSetup = (i, device, prev, at) => {
+      if (!i || typeof i !== "object" || Array.isArray(i)) throw refuse("That is not a setup state.", "bad_input");
+      if (!SETUP_STEPS.includes(i.step)) throw refuse(`Setup is at one of: ${SETUP_STEPS.join(", ")}.`, "bad_input");
+      if (i.where !== undefined && i.where !== null && !SETUP_WHERE.includes(i.where)) throw refuse("Where is server, vps or here.", "bad_input");
+      const picks = i.picks && typeof i.picks === "object" ? i.picks : {};
+      const connectors = Array.isArray(picks.connectors) ? picks.connectors.filter((/** @type {any} */ c) => typeof c === "string" && /^[A-Za-z0-9._-]{1,64}$/.test(c)).slice(0, 50) : [];
+      const kit = typeof picks.kit === "string" && /^[A-Za-z0-9._-]{1,64}$/.test(picks.kit) ? picks.kit : null;
+      return { step: i.step, device, started: prev ? prev.started : at, updated: at, name: text(i.name, 80), address: text(i.address, 120), look: text(i.look, 80), where: i.where || null, picks: { connectors, kit } };
+    };
+    tool("spaces.setup.save", "Keep where setup has got to for a space you are setting up (one of look, members, connectors, kit), so another device can carry on. Send setup: null when the last step is done. Only the device setup is on may save; no secret, code or key is kept.",
+      obj({ space: str, setup: { type: ["object", "null"] } }, ["space", "setup"]), async (i, meta) => {
+        const { row } = mine(i.space);
+        const cur = await setupOf(row.id);
+        const device = await callerDevice(meta);
+        if (i.setup === null) {
+          if (cur && cur.device.id !== device.id) throw refuse(`Setup is in progress on your ${cur.device.name}.`, "setup_elsewhere");
+          if (cur) await kv.delete(`setup/${row.id}`);
+          return { space: row.id, setup: null };
+        }
+        if (cur && cur.device.id !== device.id) throw refuse(`Setup is in progress on your ${cur.device.name}. Continue here to take it over.`, "setup_elsewhere");
+        const next = cleanSetup(i.setup, cur ? cur.device : device, cur, now());
+        await kv.put(`setup/${row.id}`, next);
+        return { space: row.id, setup: next };
+      });
+    tool("spaces.setup.claim", "Continue setting up a space on this device: setup moves here from the device it was on, and the state comes back. Only the person who is setting it up can do this.",
+      obj({ space: str }, ["space"]), async (i, meta) => {
+        const { row } = mine(i.space);
+        const cur = await setupOf(row.id);
+        if (!cur) throw refuse("Nothing is being set up for that space.", "no_setup");
+        const device = await callerDevice(meta);
+        if (cur.device.id === device.id) return { space: row.id, setup: cur, moved: false };
+        const next = { ...cur, device, updated: now() };
+        await kv.put(`setup/${row.id}`, next);
+        emit("space.setup-moved", { space: row.id });
+        return { space: row.id, setup: next, moved: true, from: cur.device };
+      });
+
     tool("spaces.list", "Spaces on this device that you created or belong to, with your role in each. For a space with a kernel the role is the kernel's answer.", obj(), async (_i, meta) => {
       const s = me();
       const rows = [];
       for (const row of spaces.all()) rows.push({ row, m: await membershipOf(row.id, /** @type {string} */ (s.id), meta).catch(() => null) });
-      return rows.flatMap(({ row, m }) => {
-        if (!m && row.createdBy !== s.id) return [];
-        return [{ id: row.id, name: row.name, label: row.label, displayName: row.displayName, status: row.status, home: row.home, role: m ? m.role : null, aliases: row.aliases, workspaceId: row.workspaceId, warnings: row.warnings, createdAt: row.createdAt }];
-      });
+      const out = [];
+      for (const { row, m } of rows) {
+        if (!m && row.createdBy !== s.id) continue;
+        // A space is listed once it has its home. One still being made (or whose server step failed) is not a space yet: its steps are spaces.status and spaces.resume.
+        if (row.status !== "done") continue;
+        out.push({ id: row.id, name: row.name, label: row.label, displayName: row.displayName, status: row.status, home: row.home, role: m ? m.role : null, aliases: row.aliases, workspaceId: row.workspaceId, warnings: row.warnings, createdAt: row.createdAt, setup: await setupView(row, s) });
+      }
+      return out;
     });
 
     tool("spaces.get", "One space: its name, home, owners and warnings.", obj({ space: str }, ["space"]), async (i, meta) => {
@@ -561,7 +623,7 @@ export default {
       return {
         id: row.id, name: row.name, label: row.label, displayName: row.displayName, status: row.status, home: row.home, aliases: row.aliases, workspaceId: row.workspaceId,
         warnings: [...row.warnings, ...(await m.warnings())], members: all.length, owners: await m.ownerCount(), role: ((await membershipOf(row.id, /** @type {string} */ (s.id), meta)) || {}).role || null,
-        roleNames: m.getDisplayNames(), createdAt: row.createdAt,
+        roleNames: m.getDisplayNames(), createdAt: row.createdAt, setup: await setupView(row, s),
       };
     });
 
@@ -585,7 +647,7 @@ export default {
       obj({ space: str, vpsToken: str }, ["space"]), async i => {
         const { row } = mine(i.space);
         const r = await flow.cancel(row.id, i.vpsToken ? { vpsToken: String(i.vpsToken) } : {});
-        if (r.cancelled) spaces.patch(row.id, { status: "cancelled" }, now());
+        if (r.cancelled) { spaces.patch(row.id, { status: "cancelled" }, now()); await kv.delete(`setup/${row.id}`); }
         return { ...r, space: row.id };
       });
 
@@ -596,7 +658,7 @@ export default {
         const r = await flow.submitCode(row.id, String(i.code), i.vpsToken ? { vpsToken: String(i.vpsToken) } : {});
         const { pairing: p, ...view } = /** @type {any} */ (r);
         return { pairing: p, ...(await sync(row.id, view)), ...(r.message ? { message: r.message } : {}) };
-      }, {});
+      }, { callers: RELAY_DEVICE_CALLERS });
 
     tool("spaces.server.install", "The one command to run on a server, the prompt it will show, and the code to type there. For a space still being created it shows the current code; for a finished space it starts adding a server (as compute, or as the new home with moveHome).",
       obj({ space: str, moveHome: { type: "boolean" } }, ["space"]), async i => {
@@ -685,13 +747,19 @@ export default {
         }
         return { names: ROLE_IDS.map(id => ({ id, name: m.roleLabel(id) })) };
       });
-    tool("spaces.membership", "A person's membership in a space, or null. For other modules to decide who may do what.", obj({ space: str, person: str }, ["space", "person"]), async i => {
-      const m = mstore.get(String(i.space), String(i.person));
+    /** One person's membership in one space: the kernel's answer (member or not, and the role) when it hosts or reaches that space, else the local table's. @param {string} space @param {string} person */
+    const membershipRow = async (space, person) => {
+      if (K && typeof K.membership === "function" && kernelHandle(space)) {
+        let r; try { r = await K.membership(person, space); } catch { return null; }
+        return r && r.member ? { space, person, role: r.role, scope: null, expires: null } : null;
+      }
+      const m = mstore.get(space, person);
       return m ? out(m) : null;
-    }, { internal: true });
+    };
+    tool("spaces.membership", "A person's membership in a space, or null. For other modules to decide who may do what. For a space with a kernel it is the kernel's answer.", obj({ space: str, person: str }, ["space", "person"]), async i => membershipRow(String(i.space), String(i.person)), { internal: true });
     tool("spaces.abilities", "What a person may do in a space right now (a temp's access ends on time). For other modules.", obj({ space: str, person: str }, ["space", "person"]), async i => {
-      const m = mstore.get(String(i.space), String(i.person));
-      return { membership: m ? out(m) : null, abilities: m ? [...abilitiesOf(m, now())] : [] };
+      const m = await membershipRow(String(i.space), String(i.person));
+      return { membership: m, abilities: m ? [...abilitiesOf(/** @type {any} */ (m), now())] : [] };
     }, { internal: true });
 
     // 4. invites
@@ -831,18 +899,22 @@ export default {
         const row = payload && typeof payload.sid === "string" ? spaces.get(payload.sid) : null;
         if (!row || row.name !== payload.space) throw refuse("This invite is for a different space than the one it points to.", "wrong_space");
         return out(await invitesFor(row).acceptInvite({ token: String(i.token), person: i.person, proof: String(i.proof) }));
-      });
+      }, { callers: RELAY_DEVICE_CALLERS });
 
     // 5a. what other modules (bridges, publish) ask of spaces: who is a member, who is acting, which spaces a person is in. Modules only, never a person or a model.
-    tool("spaces.self", "The person acting on this device and the space a call is for (the one named, or the only one this person is in). For modules.", obj({ caller: str, space: str }), async i => {
+    tool("spaces.self", "This device's person and the space a call is for (the one named, or the only one this person is in), for a module that has already taken the person from the call's kernel chain (ctx.kernel.chain(meta)): `person` is that chain's person, and it is this device's own only when it is the home's own person; anyone else is nobody. For modules.", obj({ person: str, space: str }, ["person"]), async i => {
       const s = me();
-      const mine = spaces.all().filter(r => r.status === "done" && (mstore.get(r.id, /** @type {string} */ (s.id)) || r.createdBy === s.id));
+      if (!K || typeof K.owner !== "string" || String(i.person) !== K.owner) return { person: null, space: null };
+      const mine = [];
+      for (const r of spaces.all()) if (r.status === "done" && (r.createdBy === s.id || await membershipRow(r.id, /** @type {string} */ (s.id)))) mine.push(r);
       const row = i.space ? mine.find(r => r.id === i.space || r.name === i.space || r.label === i.space) : mine.length === 1 ? mine[0] : null;
       return row ? { person: s.id, space: { id: row.id, name: row.name } } : { person: s.id, space: null };
     }, { internal: true });
     tool("spaces.merge-list", "The spaces a person is in, one entry each: { space, name, color, link }, for a device that merges spaces itself. For modules.", obj({ person: str }, ["person"]), async i => {
       const p = String(i.person);
-      return { spaces: spaces.all().filter(r => r.status === "done" && (mstore.get(r.id, p) || r.createdBy === p)).map(r => ({ space: r.id, name: r.name, color: null, link: `https://${r.name}` })) };
+      const mineList = [];
+      for (const r of spaces.all()) if (r.status === "done" && (r.createdBy === p || await membershipRow(r.id, p))) mineList.push({ space: r.id, name: r.name, color: null, link: `https://${r.name}` });
+      return { spaces: mineList };
     }, { internal: true });
 
     // 5a'. for the transport: which person a proven device is. `spaces.identity.state` is the live, verified list of a person's entries (read from the directory on every
