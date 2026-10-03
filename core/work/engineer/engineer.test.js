@@ -4,7 +4,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { createFakeKernel } from "../../test/fake-kernel.js";
+import { createFakeKernel } from "../../../test/fake-kernel.js";
 import { createEngineer, engineerActor, engineerGrants, forbiddenInGrants } from "./index.js";
 import { diffCard, nameFlags, quoteModelText } from "./card.js";
 import { runSimulation, defaultScenarios } from "./simulate.js";

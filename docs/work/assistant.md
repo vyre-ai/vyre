@@ -105,7 +105,7 @@ Needs from others:
 - sessions: `flows.simulate(diff, scenarios) -> { ok, steps, failures[{scenario,msg}] }`; confirm the thread.tool event shape and subjects for the doing-now line.
 Changed contracts: none (new files only; lib/labels.js and lib/sealed.js are new).
 
-### Components for native-core (core/assistant/native/component-kinds.js, components.js)
+### Components for native-core (core/work/native/component-kinds.js, components.js)
 `toComponent(toolName, result, {types})` returns one plain, JSON-safe component; `assertComponent` is the closed validator (kinds closed, no functions, no sealed value or ref, no control or bidi characters, string caps). Anything unrecognised is a `text`. Every free-text field a doer or model wrote sits in a quoted block `{label, quoted:true, interactive:false, text}` with no links or buttons. Kinds and fields:
 - `record_card`: type, title, urn, stage|null, fields[{name,label,kind,display,sealed?}] (a sealed field reads "on file, sealed" or "empty", never a value), hidden (count), source{trust,red,source_spaces}.
 - `task_card`: id, title, record, doer, checker|null, state, output, tap{label,what}|null (what one tap does by state), payload_summary|null (the kernel's summary for a held act), from_doer|null (quoted block).
@@ -116,8 +116,8 @@ Changed contracts: none (new files only; lib/labels.js and lib/sealed.js are new
 - `group`: title, items[component] (several records). `text`: text.
 Needs from native-core: one renderer per kind. Needs from platform: the tool result shapes above (`held:true` with a task and summary for an outward act; records as gateway records with labels).
 
-### Fit eval (core/assistant/native/eval)
-`evaluateModel({adapter, kernelFixture, budgetUsd=5, tasks, prices})`: five tasks (find, gate, seal, approval, cite), 20 points each, deterministic checkers over a fresh fake-kernel world, hard budget stop (the next call's worst case must fit under the cap, else the score is partial). Adapter shape `{name, run(messages, tools, {task,max_tokens}) -> {content, tool_calls, usage}}`; `adapter-claude.js` is the Messages API one. Real run: `node core/assistant/native/eval/run.js --model <id> --yes --out <dir>` with ANTHROPIC_API_KEY set; never in tests. Needs: a per-model price table in run.js PRICES (unknown models use a high default); the model picker (native-core) reads the stored fit.
+### Fit eval (scripts/eval/assistant-fit)
+`evaluateModel({adapter, kernelFixture, budgetUsd=5, tasks, prices})`: five tasks (find, gate, seal, approval, cite), 20 points each, deterministic checkers over a fresh fake-kernel world, hard budget stop (the next call's worst case must fit under the cap, else the score is partial). Adapter shape `{name, run(messages, tools, {task,max_tokens}) -> {content, tool_calls, usage}}`; `adapter-claude.js` is the Messages API one. Real run: `node scripts/eval/assistant-fit/run.js --model <id> --yes --out <dir>` with ANTHROPIC_API_KEY set; never in tests. Needs: a per-model price table in run.js PRICES (unknown models use a high default); the model picker (native-core) reads the stored fit.
 
 ## 0.3 native assistant (3 Oct)
 Done: situation, playbooks, tools-port 83dc06920; components 431ac11b5 and ec22b3f10 (contract in the "Components for native-core" section); fit eval. 224 of 224 pass (1 skipped) with boundaries, docs and reach on the test box.
@@ -127,7 +127,7 @@ Needs: platform generates the tool list from definitions as documented in tools-
 Done:
 - Merged origin/work/kernel (K1 to K4). Action names in my code are the registry's (`records.read`, `records.update`, `records.define`, `tasks.request`, `events.read`); the fake kernel uses them too.
 - `kernel/tools/surface.js` (my branch, platform told so it lands once): the tool surface generated from the Space's definitions and the action registry, cut by the chain's grants. `<plural>.find|create|update`, `.move_stage` for a stage field, `tasks.assign`, and one tool per outward registry action. A tool the chain cannot use is not listed and a call to it is `not_found`. An outward act returns `{ held: { task, summary, approver } }` for an agent doer (the kernel makes the `sent` task with the approver as checker); a person's own act returns `{ needs_presence: { action, summary } }` (a person cannot check their own work, the kernel says `same_actor`). Sealed fields never appear in a tool schema. Tested on the REAL gateway and tasks (`test/real-kernel.js`).
-- `core/work` module (`module.json`, reach on every tool): `native.tools|call|situation`, `teammates.context|add|doing`, `know.search|answer|suggestions|accept` (not `recall.*`: that name is Recall's), `engineer.talk|revise|approve`. Reads `ctx.kernel`; every tool answers `unavailable` until platform wires it.
+- `core/work` module (`module.json`, reach on every tool): `work.tools|call|situation`, `work.team.context|add|doing`, `work.know.search|answer|suggestions|accept` (not `recall.*`: that name is Recall's), `work.engineer.talk|revise|approve`. Reads `ctx.kernel`; every tool answers `unavailable` until platform wires it.
 - The fit eval now runs on the real gateway and the generated surface, with the kernel-built situation as its system text. `adapter-openrouter.js` and `run.js` use OPENROUTER_EVAL_KEY when set (the protected `eval` environment has only that secret). `.github/workflows/assistant-fit-eval.yml`: manual, environment `eval`, hard stop $5, key usage printed before and after.
 
 Gaps for platform (what `ctx.kernel` must provide for core/work, all named in core/work/index.js):

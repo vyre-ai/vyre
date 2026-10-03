@@ -9927,93 +9927,117 @@ Is each storage device there? Looks again if the last look is over a minute old.
 
 ## work
 
-### `engineer.approve`
-
-Approve or reject the Engineer's change with your own presence proof over the card's hash. Only your own chain is accepted, and the change applies as you.
-
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
-
-### `engineer.revise`
-
-Edit the Engineer's proposed definition yourself. It is checked again, gets its own card and task, and the earlier approval is void.
-
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
-
-### `engineer.talk`
-
-Talk to the Engineer, which only admins can do: 'explain <type>' reads a definition back in plain words, anything else proposes a change and returns a card and a task. Nothing is applied until an admin approves the card.
-
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
-
-### `know.accept`
-
-Accept a proposed fact: it is written onto the record under the person's own chain, with its sources.
-
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
-
-### `know.answer`
-
-Answer a question from the Space's own records and history. Every claim cites a source the caller may read; with none to cite it says so.
-
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
-
-### `know.search`
-
-Search the Space's records, events and session lines by meaning. Only sources the caller may read come back, each with its address.
-
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
-
-### `know.suggestions`
-
-Facts memory proposes for a record, each with the lines they came from. Nothing is written until a person accepts one.
-
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
-
-### `native.call`
+### `work.call`
 
 Run one of the listed tools. Returns { result, component }: the component is what to show, a record card, a task card, a draft or a held-for-approval card. An outward act (send, pay, publish, share) is never run: it returns held with a task, and a person approves it.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `tool` string, required
+  - `input` object
 - Callers: any caller
 
-### `native.situation`
+### `work.engineer.approve`
+
+Approve or reject the Engineer's change with your own presence proof over the card's hash. Only your own chain is accepted, and the change applies as you.
+
+- Input:
+  - `id` string, required
+  - `proof` object, required
+  - `outcome` "approved" or "rejected"
+  - `reason` string
+- Callers: any caller
+
+### `work.engineer.revise`
+
+Edit the Engineer's proposed definition yourself. It is checked again, gets its own card and task, and the earlier approval is void.
+
+- Input:
+  - `id` string, required
+  - `source` string, required
+- Callers: any caller
+
+### `work.engineer.talk`
+
+Talk to the Engineer, which only admins can do: 'explain <type>' reads a definition back in plain words, anything else proposes a change and returns a card and a task. Nothing is applied until an admin approves the card.
+
+- Input:
+  - `text` string, required
+- Callers: any caller
+
+### `work.know.accept`
+
+Accept a proposed fact: it is written onto the record under the person's own chain, with its sources.
+
+- Input:
+  - `id` integer, required
+- Callers: any caller
+
+### `work.know.answer`
+
+Answer a question from the Space's own records and history. Every claim cites a source the caller may read; with none to cite it says so.
+
+- Input:
+  - `question` string, required
+- Callers: any caller
+
+### `work.know.search`
+
+Search the Space's records, events and session lines by meaning. Only sources the caller may read come back, each with its address.
+
+- Input:
+  - `query` string, required
+  - `k` integer
+- Callers: any caller
+
+### `work.know.suggestions`
+
+Facts memory proposes for a record, each with the lines they came from. Nothing is written until a person accepts one.
+
+- Input:
+  - `record` string, required
+- Callers: any caller
+
+### `work.situation`
 
 Where the caller is, in a few hundred tokens: the Space, their role, the project or record in scope, the team, open tasks, what waits on them, and what is sealed and why.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `project` string
+  - `record` string
 - Callers: any caller
 
-### `native.tools`
-
-The tools this caller may use in this Space, generated from its record definitions and the action registry and cut by what the caller may do. A tool the caller cannot use is not listed.
-
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
-
-### `teammates.add`
+### `work.team.add`
 
 Add an assistant teammate to a project from a Kit role. Its grants are narrowings of the adder's and never wider. Without { approved: true } this returns the card to show, and nothing is created.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `project` string, required
+  - `role` object, required
+  - `approved` boolean
+  - `count` integer
 - Callers: any caller
 
-### `teammates.context`
+### `work.team.context`
 
 What a teammate starts with on a project: its role instructions, the project and its linked records without sealed fields, and the Kit's templates.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `project` string, required
+  - `role` object
+  - `templates` list
 - Callers: any caller
 
-### `teammates.doing`
+### `work.team.doing`
 
 What each teammate on a project is doing right now, one plain line each, from the project's own events. Updates at most once a minute.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `project` string, required
+- Callers: any caller
+
+### `work.tools`
+
+The tools this caller may use in this Space, generated from its record definitions and the action registry and cut by what the caller may do. A tool the caller cannot use is not listed.
+
+- Input: none
 - Callers: any caller

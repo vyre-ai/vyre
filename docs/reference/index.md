@@ -334,9 +334,6 @@ generated: scripts/gen-docs-reference
 
 - `effort.switched` event, [explained](events.md#threads). No mentions.
 - `enforcement` concept, [explained](../using/learning.md#enforcement). 63 mentions: using/learning.md [11, 14](../using/learning.md#learning), [81](../using/learning.md#enforcement); concepts/floor.md [11, 13](../concepts/floor.md#the-security-floor), [26, 33](../concepts/floor.md#1-nothing-goes-out-as-you-until-you-have-seen-the-final-words), [37](../concepts/floor.md#2-you-always-see-where-something-is-going-before-it-goes), [41](../concepts/floor.md#3-a-thread-is-one-thing-wherever-it-is-viewed), [45](../concepts/floor.md#4-one-screen-types-into-a-thread-at-a-time), [51, 53](../concepts/floor.md#5-every-file-change-is-visible-including-changes-a-command-made-without-saying-so), [57](../concepts/floor.md#6-only-an-explicit-question-from-an-agent-asks-for-your-attention), [63](../concepts/floor.md#7-anything-vyre-tells-you-it-can-show-the-source-of), [69](../concepts/floor.md#8-no-vault-value-appears-on-any-screen-log-or-event), [80](../concepts/floor.md#9-lumen-works-offline-for-your-own-mac); build/module-contract.md [11](../build/module-contract.md#the-module-contract); build/tools-and-events.md [197](../build/tools-and-events.md#next); build/writing-a-module.md [91](../build/writing-a-module.md#the-rules-the-loader-enforces); build/first-module.md [487](../build/first-module.md#where-to-go-next); architecture/spec.md [450, 460](../architecture/spec.md#711-learning--workstream), [555](../architecture/spec.md#11-the-security-floor); adr/0005-glass.md [132](../adr/0005-glass.md#3-signing-in-a-private-take-over-shields-the-agents-eyes-as-well-as-its-hands), [192](../adr/0005-glass.md#5-ownership-through-the-module-contract); adr/0007-intelligence.md [31](../adr/0007-intelligence.md#the-problem), [220](../adr/0007-intelligence.md#11-enforcement-that-cannot-be-dodged), [297](../adr/0007-intelligence.md#consequences); adr/0014-tailnet.md [54](../adr/0014-tailnet.md#1-taildrive-the-boxs-folders-on-the-mac); adr/0030-sessions.md [419](../adr/0030-sessions.md#12-concurrency-slots); adr/0031-teammates.md [411](../adr/0031-teammates.md#14-concurrency-and-usage-limits); adr/0033-hackable-vyre.md [88](../adr/0033-hackable-vyre.md#1-a-stable-versioned-module-api), [120, 121](../adr/0033-hackable-vyre.md#2-extension-points-for-every-part), [371](../adr/0033-hackable-vyre.md#5-third-party-modules); adr/0035-settings-hub.md [65](../adr/0035-settings-hub.md#1-one-hub-one-list-four-levels); adr/0040-vyre-core.md [146, 148](../adr/0040-vyre-core.md#3-the-protocol-between-vyred-and-vyre-core); adr/0047-module-contract-v1.md [185, 209, 223](../adr/0047-module-contract-v1.md#2-modulejson-v1); adr/0043-identity-marks-and-vyre-code.md [493, 497](../adr/0043-identity-marks-and-vyre-code.md#consequences); security/index.md [11](../security/index.md#security), [15](../security/index.md#the-floor), [65](../security/index.md#vyre-for-chrome-what-a-script-run-in-your-page-can-reach); CONTRIBUTING-DOCS.md [320, 321](../CONTRIBUTING-DOCS.md#style); contributing/testing.md [85](../contributing/testing.md#fakes-for-outside-services); design/session-credentials.md [98, 99](../design/session-credentials.md#4-after-approval-env-var-or-a-placeholder-through-the-egress-proxy-l), [126](../design/session-credentials.md#the-project-column-on-grants-done-this-session-d-below-is-the-sha); design/interaction.md [174](../design/interaction.md#top-3-upgrades-by-team); design/drive-onboarding.md [40](../design/drive-onboarding.md#drive-onboarding); design/anywhere.md [138, 155](../design/anywhere.md#how-the-deck-reaches-a-solo-mac-day-to-day); design/glass-plan.md [46](../design/glass-plan.md#2-whats-outdated-on-this-branch), [65, 67](../design/glass-plan.md#3-true-module); design/agent-browsers.md [206](../design/agent-browsers.md#credentials), [286](../design/agent-browsers.md#slice-1-built-28-sep-chrome-gets-its-own-uid); design/teammates.md [51](../design/teammates.md#1-default-every-project-session-gets-team-tools); design/windows-plan.md [119](../design/windows-plan.md#4-modularity)
-- `engineer.approve` tool, [explained](tools.md#engineerapprove). No mentions.
-- `engineer.revise` tool, [explained](tools.md#engineerrevise). No mentions.
-- `engineer.talk` tool, [explained](tools.md#engineertalk). No mentions.
 - `escalation` concept, [explained](../using/learning.md#escalation). 9 mentions: using/learning.md [14](../using/learning.md#learning), [97](../using/learning.md#escalation); architecture/spec.md [466](../architecture/spec.md#711-learning--workstream); adr/0007-intelligence.md [186](../adr/0007-intelligence.md#9-escalation-and-measurement), [248](../adr/0007-intelligence.md#11-enforcement-that-cannot-be-dodged); adr/0025-planner.md [36, 50, 54](../adr/0025-planner.md#decision); design/settings-inventory.md [142](../design/settings-inventory.md#b-vyre-settings)
 - `event log` concept, [explained](../concepts/floor.md#where-the-floor-lives). 14 mentions: concepts/floor.md [22](../concepts/floor.md#where-the-floor-lives), [75](../concepts/floor.md#8-no-vault-value-appears-on-any-screen-log-or-event); concepts/modules.md [25](../concepts/modules.md#kinds-of-module); build/tools-and-events.md [11](../build/tools-and-events.md#tools-and-events); build/first-module.md [189](../build/first-module.md#4-write-indexjs); architecture/index.md [23](../architecture/index.md#the-three-layers); architecture/spec.md [237, 242](../architecture/spec.md#51-the-manifest-five-verbs); adr/0024-chat.md [25, 45](../adr/0024-chat.md#decision); adr/0029-resilience.md [22](../adr/0029-resilience.md#context); adr/0047-module-contract-v1.md [237](../adr/0047-module-contract-v1.md#3-the-ctx-a-module-gets); security/index.md [15](../security/index.md#the-floor); design/cohesion.md [189](../design/cohesion.md#11-tips-everywhere)
 - `events.catalog` tool, [explained](tools.md#eventscatalog). No mentions.
@@ -596,10 +593,6 @@ generated: scripts/gen-docs-reference
 ## K
 
 - `kit.installed` event, [explained](events.md#bridges). No mentions.
-- `know.accept` tool, [explained](tools.md#knowaccept). No mentions.
-- `know.answer` tool, [explained](tools.md#knowanswer). No mentions.
-- `know.search` tool, [explained](tools.md#knowsearch). No mentions.
-- `know.suggestions` tool, [explained](tools.md#knowsuggestions). No mentions.
 
 ## L
 
@@ -830,9 +823,6 @@ generated: scripts/gen-docs-reference
 - `names.recover.code` tool, [explained](tools.md#namesrecovercode). No mentions.
 - `names.release` tool, [explained](tools.md#namesrelease). No mentions.
 - `names.status` tool, [explained](tools.md#namesstatus). No mentions.
-- `native.call` tool, [explained](tools.md#nativecall). No mentions.
-- `native.situation` tool, [explained](tools.md#nativesituation). No mentions.
-- `native.tools` tool, [explained](tools.md#nativetools). No mentions.
 - `/needs/:id` screen, [explained](../using/deck.md#what-is-on-each-view). 1 mention: using/deck.md [77](../using/deck.md#approve-or-change-a-held-draft)
 - `network` config key, [explained](config.md#configjson). 1 mention: concepts/tailnet.md [73](../concepts/tailnet.md#the-network-settings)
 - `network.acme` config key, [explained](config.md#network). 1 mention: adr/0002-network-and-identity.md [182](../adr/0002-network-and-identity.md#certificates)
@@ -1373,9 +1363,6 @@ generated: scripts/gen-docs-reference
 - `teammate.default-changed` event, [explained](events.md#team). No mentions.
 - `teammate.duty-changed` event, [explained](events.md#team). No mentions.
 - `teammate.retired` event, [explained](events.md#team). No mentions.
-- `teammates.add` tool, [explained](tools.md#teammatesadd). No mentions.
-- `teammates.context` tool, [explained](tools.md#teammatescontext). No mentions.
-- `teammates.doing` tool, [explained](tools.md#teammatesdoing). No mentions.
 - `term` config key, [explained](config.md#configjson). No mentions.
 - `term.attach` tool, [explained](tools.md#termattach). 3 mentions: concepts/presence.md [36](../concepts/presence.md#which-tools-need-it); adr/0024-chat.md [56](../adr/0024-chat.md#decision); adr/0029-resilience.md [114](../adr/0029-resilience.md#r4-the-terminal-survives-like-mosh)
 - `term.close` tool, [explained](tools.md#termclose). 1 mention: adr/0024-chat.md [47](../adr/0024-chat.md#decision)
@@ -2340,3 +2327,16 @@ generated: scripts/gen-docs-reference
 - `wink.server.confirm` tool, [explained](tools.md#winkserverconfirm). No mentions.
 - `wink.share` tool, [explained](tools.md#winkshare). No mentions.
 - `wink.shared` event, [explained](events.md#wink). No mentions.
+- `work.call` tool, [explained](tools.md#workcall). No mentions.
+- `work.engineer.approve` tool, [explained](tools.md#workengineerapprove). No mentions.
+- `work.engineer.revise` tool, [explained](tools.md#workengineerrevise). No mentions.
+- `work.engineer.talk` tool, [explained](tools.md#workengineertalk). No mentions.
+- `work.know.accept` tool, [explained](tools.md#workknowaccept). No mentions.
+- `work.know.answer` tool, [explained](tools.md#workknowanswer). No mentions.
+- `work.know.search` tool, [explained](tools.md#workknowsearch). No mentions.
+- `work.know.suggestions` tool, [explained](tools.md#workknowsuggestions). No mentions.
+- `work.situation` tool, [explained](tools.md#worksituation). No mentions.
+- `work.team.add` tool, [explained](tools.md#workteamadd). No mentions.
+- `work.team.context` tool, [explained](tools.md#workteamcontext). No mentions.
+- `work.team.doing` tool, [explained](tools.md#workteamdoing). No mentions.
+- `work.tools` tool, [explained](tools.md#worktools). No mentions.

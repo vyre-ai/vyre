@@ -5,14 +5,14 @@
 // Tests only.
 import { createGateway } from "../kernel/gateway/index.js";
 import { createTasks, TASK_ACTIONS } from "../kernel/tasks/tasks.js";
-import { createPresence } from "../kernel/tasks/presence.js";
+import crypto from "node:crypto";
+import { Presence } from "../kernel/seal/proof.js";
+import { payloadHash, proofBytes, chainCtx } from "../kernel/seal/wire.js";
 import { createMemoryStore } from "../kernel/store/memory.js";
 import { createEventLog } from "../kernel/core/events.js";
 import { createChainBuilder } from "../kernel/core/chain.js";
 import { createToolSurface } from "../kernel/tools/surface.js";
 import { generateKeyPairSync } from "node:crypto";
-import { signProof } from "../kernel/tasks/presence.js";
-import { chainHash } from "../kernel/core/chain.js";
 
 /**
  * @param {{ space?: string, owner?: string, defs?: any[], actions?: any[], agents?: Record<string, string[]>, ownerActions?: string[], services?: Record<string, string[]>, grantList?: any[], model?: (call: any) => any }} [o]
@@ -30,16 +30,23 @@ export async function createRealKernel({ space = "spc_aaaaaaaaaaaa", owner = "al
   const log = createEventLog({ space, clock });
   const registry = [...TASK_ACTIONS, ...actions];
   const gw = createGateway({ space, store: createMemoryStore({ clock }), log, chains, clock, actions: registry, grants: { forSubject: (/** @type {any} */ a) => grants.filter(g => g.subject.actor.kind === a.kind && g.subject.actor.id === a.id), get: () => undefined }, members: { has: (/** @type {any} */ a) => members.has(`${a.kind}:${a.id}`) }, hasPresenceSession: () => true });
-  const presence = createPresence({ clock });
+  // The one verifier is the sealing process's Presence class; the rig wraps it the way the process's presence.check does (as kernel/tasks/tasks.test.js does).
+  const pr = new Presence(clock, { allowUnattested: true });
   const { publicKey, privateKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
-  presence.enroll(`key-${owner}`, { person: owner, signer: "secure_enclave", public_key: publicKey });
+  pr.keys.set(`key-${owner}`, { person: owner, signer: "secure_enclave", attested: true, key: publicKey });
+  const presence = { check: async (/** @type {any} */ { chain, op, fields, proof }) => (chain && proof ? pr.refuse(proof, { op, space, fields, ctx: chainCtx(chain) }) : "no_proof") };
   const tasks = createTasks({ space, authorizer: { authorize: gw.authorize }, log, presence, chains, clock, members: { has: (/** @type {any} */ a) => members.has(`${a.kind}:${a.id}`) }, approver: () => actor("person", owner) });
   const person = () => chains.fromFacts({ kind: "device", device_key_id: `d-${owner}`, person: owner, path: "direct" });
   const agent = (/** @type {string} */ name) => chains.fromFacts({ kind: "agent_session", agent: name, session: "s", thread: "t", vouched: true });
   /** @type {any[]} */ const current = [];
   if (defs.length) { await gw.records.define(person(), { add_types: defs }); current.push(...defs); }
   /** The owner's hardware-signed approval of a task waiting for a check, over the payload the kernel stored and the chain that is deciding. */
-  const proofFor = async (/** @type {any} */ chain, /** @type {string} */ id) => { const t = await tasks.get(chain, id); return signProof(privateKey, { signer: "secure_enclave", key_id: `key-${owner}`, payload_hash: t.payload.payload_hash, decision: t.payload.decision, chain_hash: chainHash(chain), issued_at: T, expires_at: T + 60_000, nonce: `n${Math.random()}` }); };
+  const proofFor = async (/** @type {any} */ chain, /** @type {string} */ id) => {
+    const t = await tasks.get(chain, id);
+    const fields = { task: id, payload_hash: t.payload.payload_hash, decision: t.payload.decision };
+    const base = { signer: "secure_enclave", key_id: `key-${owner}`, payload_hash: payloadHash("task.decide", space, fields), decision: "task.decide", chain_hash: chainCtx(chain).chain_hash, issued_at: T, expires_at: T + 60_000, nonce: `n${Math.random()}` };
+    return { ...base, signature: crypto.sign("sha256", proofBytes(base), { key: privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url") };
+  };
   const modelCalls = [];
   const kernel = { space, grants: { list: async (/** @type {any} */ _c, /** @type {any} */ f = {}) => grants.filter(g => (!f.subject || (g.subject.actor.kind === f.subject.actor.kind && g.subject.actor.id === f.subject.actor.id)) && (!f.status || g.status === f.status)), create: async (/** @type {any} */ _c, /** @type {any} */ g) => { const made = { id: `gr_${String(++n).padStart(4, "0")}`, space, status: "active", created_at: 0, action_set_version: 9, issuer: actor("person", owner), ...g }; grants.push(made); members.add(`${g.subject.actor.kind}:${g.subject.actor.id}`); return made; } },
     members: { roleOf: (/** @type {any} */ c) => (c.hops[0].actor.kind === "person" ? "owner" : null), isAdmin: (/** @type {any} */ c) => c.hops[0].actor.kind === "person" && c.hops[0].actor.id === owner },
