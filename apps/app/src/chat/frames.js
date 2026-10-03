@@ -20,6 +20,13 @@ const NOTICE_STATES = { paused: "Paused. Your next message resumes it.", stopped
 /** The states in which a message you send is queued, not taken. @param {string} state */
 export const busyState = (state) => state === "working" || state === "asking" || state === "starting";
 
+/** The last characters of streamed text the door may still cut: provisional until text-done. Same as core/stream HOLDBACK (frames.test.js checks). */
+export const HOLDBACK = 40;
+/** Frames with no cursor: delivered as they come, never replayed. */
+const EPHEMERAL = ["presence", "read-marker"];
+/** Who wrote a frame, for the row. @param {Frame} f */
+const who = (f) => ({ ...(f.author ? { author: f.author } : {}), ...(f.acts_for ? { actsFor: f.acts_for } : {}) });
+
 /** @param {string} b64 */
 function decode(b64) {
   try {
@@ -43,6 +50,14 @@ export function createFolder() {
   let layoutRev = 0;
   let queueSnap = /** @type {Item[]} */ ([]);
   const status = { state: "starting", turn: /** @type {string|null} */ (null), stopping: false };
+  /** @type {Map<string, { role?: string }>} */ const participants = new Map();
+  /** @type {Map<string, { state: string, doing?: string, at: number }>} */ const presence = new Map();
+  /** @type {Map<string, Map<string, Set<string>>>} message -> emoji -> who */ const reactions = new Map();
+  /** @type {Set<string>} */ const pins = new Set();
+  /** @type {Map<string, string[]>} message -> who was mentioned */ const mentions = new Map();
+  /** @type {Map<string, { group: string, question: string, members: { who: string, message: string }[], keep: string|null }>} */ const groups = new Map();
+  /** @type {Map<string, string>} answer message -> group */ const groupOf = new Map();
+  const read = { upto: 0 };
 
   /** @param {string} key @param {string} kind @param {Item} item */
   function put(key, kind, item) {
@@ -73,6 +88,12 @@ export function createFolder() {
     if (!f || typeof f.cur !== "number" || typeof f.type !== "string") return { ...out, dup: true };
     const d = f.data ?? {};
     const kind = f.type.replace(/^session\./, "");
+    // Ephemeral frames have no cursor: they never move `last`, and a repeat is harmless.
+    if (EPHEMERAL.includes(kind)) {
+      if (kind === "presence") { presence.set(String(d.who), { state: d.state, ...(d.doing ? { doing: d.doing } : {}), at: f.time ?? 0 }); bump("@presence"); }
+      else if (typeof d.upto === "number" && d.upto > read.upto) { read.upto = d.upto; bump("@read"); }
+      return { ...out, dup: true };
+    }
     // Control frames (cur 0): a heartbeat changes nothing; a reset clears and takes the log's head.
     if (kind === "heartbeat") return { ...out, dup: true };
     if (kind !== "reset") {
@@ -95,7 +116,7 @@ export function createFolder() {
           bump("@queue");
         } else {
           if (queued.delete(key)) { queueSnap = [...queued.values()]; bump("@queue"); }
-          const it = { key, kind: "user", text: String(d.text ?? items.get(key)?.text ?? ""), queued: false, pickedUp: d.state === "picked-up" };
+          const it = { key, kind: "user", text: String(d.text ?? items.get(key)?.text ?? ""), queued: false, pickedUp: d.state === "picked-up", ...who(f), ...(d.parent ? { parent: d.parent } : {}) };
           if (put(key, "user", it)) out.layout = true;
           else { items.set(key, it); }
           touch(key);
@@ -104,10 +125,13 @@ export function createFolder() {
       }
       case "text-delta": {
         if (d.reasoning) break; // thinking is not drawn as a reply
-        const key = "a:" + d.message;
+        const mid = f.message ?? d.message;
+        const key = "a:" + mid;
         const prev = items.get(key);
+        // One row per message: two assistants streaming at once never share text. A finished or cut row takes no more.
+        if (prev && prev.done) break;
         const text = (prev?.text ?? "") + String(d.text ?? "");
-        const it = { key, kind: "text", text, done: false };
+        const it = { key, kind: "text", text, done: false, settled: Math.max(0, text.length - HOLDBACK), ...(prev ? { author: prev.author, actsFor: prev.actsFor, parent: prev.parent } : { ...who(f), ...(d.parent ? { parent: d.parent } : {}) }), ...(groupOf.has(mid) ? { group: groupOf.get(mid) } : {}) };
         if (put(key, "text", it)) out.layout = true;
         else items.set(key, it);
         out.appended = { key, length: text.length };
@@ -115,8 +139,71 @@ export function createFolder() {
         break;
       }
       case "text-done": {
-        const key = "a:" + d.message;
-        if (patch(key, { done: true })) touch(key);
+        const key = "a:" + (f.message ?? d.message);
+        const it = items.get(key);
+        if (it && patch(key, { done: true, settled: it.text.length })) touch(key);
+        break;
+      }
+      case "text-cut": {
+        // The door caught a sealed value: the held-back tail was never final, so it goes.
+        const key = "a:" + (f.message ?? d.message);
+        const it = items.get(key);
+        if (it) {
+          const text = it.text.slice(0, it.settled ?? Math.max(0, it.text.length - HOLDBACK));
+          patch(key, { done: true, text, settled: text.length, cut: String(d.note ?? "") });
+          touch(key);
+        }
+        break;
+      }
+      case "participant-joined":
+      case "participant-left": {
+        if (kind === "participant-joined") participants.set(String(d.who), { ...(d.role ? { role: d.role } : {}) }); else participants.delete(String(d.who));
+        bump("@participants");
+        const key = "p:" + f.cur;
+        put(key, "notice", { key, kind: "notice", text: `${d.who} ${kind === "participant-joined" ? "joined" : "left"}` });
+        out.layout = true;
+        touch(key);
+        break;
+      }
+      case "reaction": {
+        const m = String(d.message);
+        let byEmoji = reactions.get(m);
+        if (!byEmoji) { byEmoji = new Map(); reactions.set(m, byEmoji); }
+        let set = byEmoji.get(d.emoji);
+        if (!set) { set = new Set(); byEmoji.set(d.emoji, set); }
+        const a = f.author ?? "";
+        if (d.on) set.add(a); else set.delete(a);
+        if (!set.size) byEmoji.delete(d.emoji);
+        bump("r:" + m);
+        out.touched.push("a:" + m, "u:" + m);
+        break;
+      }
+      case "pin": {
+        if (d.on) pins.add(String(d.message)); else pins.delete(String(d.message));
+        bump("@pins");
+        out.touched.push("a:" + d.message, "u:" + d.message);
+        break;
+      }
+      case "mention": {
+        mentions.set(String(d.message), Array.isArray(d.who) ? d.who.map(String) : []);
+        out.touched.push("a:" + d.message, "u:" + d.message);
+        break;
+      }
+      case "fanout": {
+        // One question to several assistants or models: their answers are one group until one is kept.
+        const g = { group: String(d.group), question: String(d.message), members: Array.isArray(d.members) ? d.members.map((/** @type {any} */ m) => ({ who: String(m.who), message: String(m.message) })) : [], keep: /** @type {string|null} */ (null) };
+        groups.set(g.group, g);
+        for (const m of g.members) {
+          groupOf.set(m.message, g.group);
+          const it = items.get("a:" + m.message);
+          if (it) { items.set("a:" + m.message, { ...it, group: g.group }); out.touched.push("a:" + m.message); }
+        }
+        bump("@groups");
+        break;
+      }
+      case "fanout-keep": {
+        const g = groups.get(String(d.group));
+        if (g && g.members.some((m) => m.message === d.keep)) { g.keep = String(d.keep); bump("@groups"); for (const m of g.members) out.touched.push("a:" + m.message); }
         break;
       }
       case "tool-started": {
@@ -201,6 +288,7 @@ export function createFolder() {
       }
       case "reset": {
         rows = []; items.clear(); queued.clear(); queueSnap = []; layoutRev++;
+        participants.clear(); presence.clear(); reactions.clear(); pins.clear(); mentions.clear(); groups.clear(); groupOf.clear();
         last = typeof d.head === "number" ? d.head : f.cur;
         bump("@status");
         return { ...out, layout: true, reset: true };
@@ -239,6 +327,20 @@ export function createFolder() {
     item: (key) => items.get(key) ?? null,
     /** @param {string} key */
     rev: (key) => revs.get(key) ?? 0,
+    /** Who is in the chat, from participant-joined and -left. */
+    participants: () => [...participants.keys()],
+    /** Who is typing or doing what right now (the caller expires entries older than a few seconds). */
+    presence: () => [...presence].map(([who, p]) => ({ who, ...p })),
+    /** Reactions on a message: [{ emoji, who: [...] }]. @param {string} message */
+    reactions: (message) => [...(reactions.get(message) ?? [])].map(([emoji, s]) => ({ emoji, who: [...s] })),
+    /** Pinned message ids. */
+    pinned: () => [...pins],
+    /** Who a message mentioned. @param {string} message */
+    mentioned: (message) => mentions.get(message) ?? [],
+    /** A fan-out group: its answers, and the one kept (null until a tap keeps one). @param {string} group */
+    group: (group) => { const g = groups.get(group); return g ? { ...g, members: g.members.slice() } : null; },
+    /** This person's read marker: the cursor they have read up to. */
+    get readUpto() { return read.upto; },
     /** Queued user messages, oldest first; they leave when picked up. */
     queue: () => queueSnap,
     size: () => items.size,

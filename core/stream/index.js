@@ -18,6 +18,10 @@ export { serve, serveSSE, serveWS, HEARTBEAT_MS } from "./server.js";
 export { connect, wsDuplex, sseDuplex, trim } from "./client.js";
 export { createAdapter, pipe } from "./adapter.js";
 export * from "./protocol.js";
+export { whoAnswers } from "./routing.js";
+export { render, assertAskerCanRead, canRead, placeholder, cutData } from "./viewer.js";
+export { createPresence, presenceFor, PRESENCE_MS } from "./presence.js";
+export { createReadMarkers } from "./readmarks.js";
 
 const str = { type: "string" };
 const int = { type: "integer" };

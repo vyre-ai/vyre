@@ -76,8 +76,14 @@ Server (core/term): `term.open` takes `session` (cwd optional: with a session an
 - Changed contracts (E): (1) core/stream protocol: `user-message.state` gains `cancelled` (additive). (2) core/stream: new core/stream/frame.js (kindOf, startOf), protocol.js re-exports them. (3) core/switchboard/queue-state.js and its test moved to lib/ (switchboard test imports updated). (4) core/term/index.js: the session folder lookup reads `data.thread.cwd`. (5) test/boundaries.test.js and docs/architecture/boundaries.md: three new frozen edges, `core/stream -> core/computers` (ws.js), `core/stream -> core/transcripts` and `core/term -> core/transcripts` (sanitize.js), all `next: lib`; NEEDS THE LEAD'S OK (the rule says no new exception without it). (6) apps/app: metro.config.js and tsconfig.json alias, src/api/wire.ts, box.web.ts, box.native.ts, box.d.ts gain socket and boxOrigin.
 - Not run: nothing on a real box, a phone or a simulator: the real stream was proven through core/stream tests and a real vyred, not through the exported app (the app needs a box serving /app and a person session). The native WebView terminal path, edit-retry and branch from the UI, and the relay path for the stream were not exercised. docs:ref was re-run: tools, events and modules pages already held chat's tools and events; only index.md and index.json differ, in mention counts from other teams' docs, so they were not committed.
 
+### Done: task G (group chats on the stream, 3 Oct 2026)
+- core/stream: `author`/`acts_for`/`message` on every frame; kinds participant-joined/left, reaction, pin, mention, fanout, fanout-keep, text-cut (logged), presence and read-marker (ephemeral, cur 0); `parent` field for thread replies; validators, index.d.ts, toEnvelope (author is actor, acts_for the chain's first hop). routing.js `whoAnswers`, viewer.js `render` + `assertAskerCanRead` (and `log.append({asker})`), presence.js (3 s throttle), readmarks.js (per person), log merge only same message and author, server sends cursor-less frames live, client passes them without moving `last`.
+- apps/app/src/chat/frames.js: rows keyed by message id with author and actsFor, provisional tail (40 chars) until text-done, text-cut, participants, presence, reactions, pins, mentions, thread parent, readUpto, fanout groups with keep.
+- Tests: core/stream/group.test.js, apps/app/src/chat/frames.test.js (new cases at the end).
+- Not done: the transport for read markers across a person's connections (the store and frames exist); whoAnswers is not yet called by the switchboard send path; the group UI is task H.
+
 ### Doing
-Nothing running. Task E is committed on work/chat-03.
+Nothing running. Tasks E and G are committed on work/chat-03.
 
 ### Next
 1. Lead: approve the three boundary edges (or say to move sanitize.js and ws.js into lib/ and I do it), merge work/chat-03.

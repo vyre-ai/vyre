@@ -13,7 +13,7 @@
 // duplex: { send(obj), onMessage(cb), onClose(cb), close() }. wsDuplex() wraps a WebSocket
 // (browser, React Native, Node 22+); sseDuplex() wraps an EventSource.
 
-import { startOf, kindOf } from "./frame.js";
+import { startOf, kindOf, isEphemeral } from "./frame.js";
 
 export const BACKOFF = Object.freeze({ base: 250, cap: 15_000, jitter: 0.4 });
 /** A connection silent this long (the server's heartbeat is 25 s) is treated as dead. */
@@ -118,6 +118,8 @@ export function connect(o) {
     const kind = kindOf(m);
     if (kind === "heartbeat") { if (m.data.head > last) drop("gap", true); return; }
     if (kind === "reset") { reset(d); return; }
+    // Presence and read markers have no cursor: hand them over as they come; `last` is untouched.
+    if (isEphemeral(m)) { try { o.onFrame(m); } catch {} return; }
     if (!kind || !Number.isInteger(m.cur) || m.cur < 1) return;
     if (m.cur <= last) return;
     const first = startOf(m);

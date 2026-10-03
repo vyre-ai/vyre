@@ -76,6 +76,8 @@ export function serve(log, conn, opts = {}) {
       catchUp();
       return;
     }
+    // Ephemeral (presence, read-marker): no cursor, sent as it comes, never replayed.
+    if (f.cur === 0) { send(f); return; }
     if (f.cur !== sent + 1) { catchUp(); return; }
     sent = f.cur; send(f);
     if (full()) paused = true;

@@ -18,7 +18,7 @@
 
 import crypto from "node:crypto";
 import { redact } from "../transcripts/sanitize.js";
-import { kindOf, startOf } from "./frame.js";
+import { kindOf, startOf, EPHEMERAL, isEphemeral, HOLDBACK, settle } from "./frame.js";
 
 export const V = 1;
 
@@ -26,7 +26,10 @@ export const V = 1;
 export const KINDS = Object.freeze([
   "text-delta", "text-done", "tool-started", "tool-progress", "tool-finished", "term-chunk", "term-command",
   "file-changed", "ask", "ask-answered", "user-message", "status",
+  // group chat (0.3): who is in it, what people do with a message, and a set of answers to one question
+  "participant-joined", "participant-left", "reaction", "pin", "mention", "fanout", "fanout-keep", "text-cut",
 ]);
+export { EPHEMERAL, isEphemeral, HOLDBACK, settle };
 /** Control kinds: never logged, no cursor. */
 export const CONTROL = Object.freeze(["reset", "heartbeat"]);
 export const BLOCKS = Object.freeze(["terminal", "diff", "files", "record", "task", "draft", "flow-change", "answer", "screen", "text"]);
@@ -39,11 +42,13 @@ const TERM_CHUNK_MAX = 64 * 1024;
 const isStr = (/** @type {unknown} */ v) => typeof v === "string";
 const isInt = (/** @type {unknown} */ v) => Number.isInteger(v) && /** @type {number} */ (v) >= 0;
 const isObj = (/** @type {unknown} */ v) => !!v && typeof v === "object" && !Array.isArray(v);
+/** An author: "person:<id>", "assistant:<id>" or "model:<id>". */
+export const isAuthor = (/** @type {unknown} */ v) => isStr(v) && /^(person|assistant|model):[^\s]{1,200}$/.test(/** @type {string} */ (v));
 const idStr = (/** @type {unknown} */ v) => isStr(v) && /** @type {string} */ (v).length > 0 && /** @type {string} */ (v).length <= 256;
 
 /** @type {Record<string, (d: any) => string|null>} */
 const CHECK = {
-  "text-delta": d => (idStr(d.message) && isInt(d.index) && isStr(d.text) ? null : "text-delta needs message, index and text"),
+  "text-delta": d => (idStr(d.message) && isInt(d.index) && isStr(d.text) && (d.parent === undefined || idStr(d.parent)) ? null : "text-delta needs message, index and text"),
   "text-done": d => (idStr(d.message) ? null : "text-done needs message"),
   "tool-started": d => (idStr(d.tool_id) && isStr(d.tool) && isStr(d.kind) && isStr(d.summary) ? null : "tool-started needs tool_id, tool, kind and summary"),
   "tool-progress": d => (idStr(d.tool_id) && (d.text === undefined || isStr(d.text)) && (d.pct === undefined || (typeof d.pct === "number" && d.pct >= 0 && d.pct <= 100)) ? null : "tool-progress needs tool_id and text or pct"),
@@ -53,8 +58,18 @@ const CHECK = {
   "file-changed": d => (isStr(d.path) && ["create", "edit", "delete"].includes(d.op) ? null : "file-changed needs path and op create, edit or delete"),
   "ask": d => (idStr(d.ask_id) && ["permission", "question", "approval"].includes(d.kind) ? null : "ask needs ask_id and kind permission, question or approval"),
   "ask-answered": d => (idStr(d.ask_id) ? null : "ask-answered needs ask_id"),
-  "user-message": d => (idStr(d.message) && isStr(d.text) && ["sent", "queued", "picked-up", "cancelled"].includes(d.state) ? null : "user-message needs message, text and state sent, queued, picked-up or cancelled"),
+  "user-message": d => (idStr(d.message) && isStr(d.text) && (d.parent === undefined || idStr(d.parent)) && ["sent", "queued", "picked-up", "cancelled"].includes(d.state) ? null : "user-message needs message, text and state sent, queued, picked-up or cancelled"),
   "status": d => (STATES.includes(d.state) ? null : `status needs state, one of ${STATES.join(", ")}`),
+  "participant-joined": d => (isAuthor(d.who) && (d.role === undefined || isStr(d.role)) ? null : "participant-joined needs who, person:<id>, assistant:<id> or model:<id>"),
+  "participant-left": d => (isAuthor(d.who) ? null : "participant-left needs who"),
+  "presence": d => (isAuthor(d.who) && ["typing", "doing"].includes(d.state) && (d.doing === undefined || (isStr(d.doing) && d.doing.length <= 120)) ? null : "presence needs who, state typing or doing, and doing (up to 120 characters) when doing"),
+  "reaction": d => (idStr(d.message) && isStr(d.emoji) && d.emoji.length > 0 && d.emoji.length <= 32 && typeof d.on === "boolean" ? null : "reaction needs message, emoji and on (true or false)"),
+  "pin": d => (idStr(d.message) && typeof d.on === "boolean" ? null : "pin needs message and on (true or false)"),
+  "mention": d => (idStr(d.message) && Array.isArray(d.who) && d.who.length > 0 && d.who.length <= 50 && d.who.every(isAuthor) ? null : "mention needs message and who, a list of authors"),
+  "read-marker": d => (isInt(d.upto) ? null : "read-marker needs upto, a cursor"),
+  "fanout": d => (idStr(d.group) && idStr(d.message) && Array.isArray(d.members) && d.members.length >= 2 && d.members.length <= 8 && d.members.every((/** @type {any} */ m) => isObj(m) && isAuthor(m.who) && idStr(m.message)) ? null : "fanout needs group, message and members, two or more of { who, message }"),
+  "fanout-keep": d => (idStr(d.group) && idStr(d.keep) ? null : "fanout-keep needs group and keep, a message id"),
+  "text-cut": d => (idStr(d.message) && isStr(d.note) ? null : "text-cut needs message and note"),
   "reset": d => (isStr(d.reason) ? null : "reset needs a reason"),
   "heartbeat": d => (isInt(d.head) ? null : "heartbeat needs head"),
 };
@@ -87,12 +102,18 @@ export function validate(f) {
   if (o.v !== V) return { ok: false, error: `v must be ${V}` };
   if (!isStr(o.type) || !o.type.startsWith("session.")) return { ok: false, error: "type must be session.<kind>" };
   const kind = o.type.slice(8);
-  const control = CONTROL.includes(kind);
+  const control = CONTROL.includes(kind) || EPHEMERAL.includes(kind);
   if (!control && !KINDS.includes(kind)) return { ok: false, error: `unknown kind ${kind}` };
   if (!idStr(o.id)) return { ok: false, error: "id is required" };
   if (!idStr(o.session)) return { ok: false, error: "session is required" };
   if (control ? o.cur !== 0 : !(Number.isInteger(o.cur) && o.cur >= 1)) return { ok: false, error: control ? "a control frame has cur 0" : "cur must be an integer from 1" };
   if (o.span !== undefined && !(Number.isInteger(o.span) && o.span >= 2 && o.span <= o.cur)) return { ok: false, error: "span must be an integer from 2 up to cur" };
+  if (o.author !== undefined && !isAuthor(o.author)) return { ok: false, error: "author must be person:<id>, assistant:<id> or model:<id>" };
+  if (o.acts_for !== undefined) {
+    if (!/^person:[^\s]{1,200}$/.test(String(o.acts_for))) return { ok: false, error: "acts_for must be person:<id>" };
+    if (!isStr(o.author) || o.author.startsWith("person:")) return { ok: false, error: "acts_for belongs to an assistant or model frame" };
+  }
+  if (o.message !== undefined && !idStr(o.message)) return { ok: false, error: "message must be a message id" };
   if (!Number.isFinite(o.time)) return { ok: false, error: "time must be a number" };
   if (!isStr(o.turn) && o.turn !== null) return { ok: false, error: "turn must be a string or null" };
   if (!isObj(o.data)) return { ok: false, error: "data must be an object" };
@@ -112,7 +133,7 @@ export { kindOf, startOf };
  * @param {{ session: string, turn?: string|null, cur?: number, time?: number, id?: string }} ctx
  */
 export function frame(kind, data, ctx) {
-  if (!KINDS.includes(kind) && !CONTROL.includes(kind)) throw new Error(`unknown frame kind ${kind}`);
+  if (!KINDS.includes(kind) && !CONTROL.includes(kind) && !EPHEMERAL.includes(kind)) throw new Error(`unknown frame kind ${kind}`);
   const turn = ctx.turn ?? null;
   return {
     v: V,
@@ -123,6 +144,9 @@ export function frame(kind, data, ctx) {
     type: `session.${kind}`,
     time: ctx.time ?? Date.now(),
     corr: turn,
+    ...(ctx.author ? { author: ctx.author } : {}),
+    ...(ctx.acts_for ? { acts_for: ctx.acts_for } : {}),
+    ...(ctx.message ? { message: ctx.message } : {}),
     data,
   };
 }
@@ -151,8 +175,9 @@ export function toEnvelope(f, ctx = {}) {
     sv: 1,
     time: f.time,
     received_at: f.time,
-    actor: ctx.actor || `agent:session@${space}`,
-    chain: [],
+    actor: ctx.actor || f.author || `agent:session@${space}`,
+    // The chain is [asker, assistant]: acts_for is the first hop, the author the second.
+    chain: f.acts_for && f.author ? [f.acts_for, f.author] : [],
     via: { session: f.session },
     subject: `urn:vyre:session:${f.session}`,
     ...(f.corr ? { corr: f.corr } : {}),
@@ -168,7 +193,8 @@ export function toEnvelope(f, ctx = {}) {
 }
 
 /** Frames that belong in the kernel log, not only the stream. */
-export const LOGGED = Object.freeze(["tool-finished", "ask", "ask-answered", "file-changed", "term-command", "user-message"]);
+export const LOGGED = Object.freeze(["tool-finished", "ask", "ask-answered", "file-changed", "term-command", "user-message",
+  "participant-joined", "participant-left", "reaction", "pin", "mention", "fanout", "fanout-keep"]);
 
 // ---- blocks ------------------------------------------------------------------------------------
 

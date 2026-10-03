@@ -140,3 +140,121 @@ test("a queued message taken back leaves the queue and draws no row", () => {
   assert.equal(f.queue().length, 0);
   assert.equal(f.rows.some((r) => r.key === "u:m9"), false);
 });
+
+// ---- group chats (task G) ----
+
+import { HOLDBACK } from "./frames.js";
+import { HOLDBACK as CORE_HOLDBACK } from "../../../../core/stream/frame.js";
+
+/** @param {string} type @param {any} data @param {any} [extra] */
+const gf = (type, data, extra = {}) => ({ ...fr(type, data), ...extra });
+
+test("holdback matches core/stream", () => assert.equal(HOLDBACK, CORE_HOLDBACK));
+
+test("two assistants streaming at once keep their own rows, authors and acts_for; text never mixes", () => {
+  cur = 0;
+  const f = createFolder();
+  const kit = { author: "assistant:kit", acts_for: "person:chris", message: "m1" };
+  const juno = { author: "assistant:juno", acts_for: "person:alex", message: "m2" };
+  f.apply(gf("text-delta", { message: "m1", index: 0, text: "one " }, kit));
+  f.apply(gf("text-delta", { message: "m2", index: 0, text: "two " }, juno));
+  f.apply(gf("text-delta", { message: "m1", index: 0, text: "more" }, kit));
+  f.apply(gf("text-delta", { message: "m2", index: 0, text: "more", parent: "q" }, juno));
+  assert.equal(f.item("a:m1")?.text, "one more");
+  assert.equal(f.item("a:m2")?.text, "two more");
+  assert.equal(f.item("a:m1")?.author, "assistant:kit");
+  assert.equal(f.item("a:m1")?.actsFor, "person:chris");
+  assert.equal(f.item("a:m2")?.actsFor, "person:alex");
+  assert.equal(f.rows.length, 2);
+  f.apply(gf("text-done", { message: "m1" }, kit));
+  assert.equal(f.item("a:m1")?.done, true);
+  assert.equal(f.item("a:m2")?.done, false);
+  f.apply(gf("text-delta", { message: "m1", index: 0, text: "late" }, kit));
+  assert.equal(f.item("a:m1")?.text, "one more", "a finished message takes no more text");
+});
+
+test("random interleavings of three streams fold to each message's exact text (seeded x200)", () => {
+  let s = 12345;
+  const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+  for (let it = 0; it < 200; it++) {
+    cur = 0;
+    const f = createFolder();
+    const m = ["m1", "m2", "m3"].map(id => ({ id, left: 5 + Math.floor(rnd() * 20), text: "" }));
+    while (m.some(x => x.left > 0)) {
+      const live = m.filter(x => x.left > 0);
+      const x = live[Math.floor(rnd() * live.length)];
+      const w = "w" + Math.floor(rnd() * 100) + " ";
+      x.text += w; x.left--;
+      f.apply(gf("text-delta", { message: x.id, index: 0, text: w }, { author: "assistant:" + x.id, message: x.id }));
+    }
+    for (const x of m) assert.equal(f.item("a:" + x.id)?.text, x.text);
+  }
+});
+
+test("the last 40 characters of a streaming reply are provisional until text-done", () => {
+  cur = 0;
+  const f = createFolder();
+  f.apply(gf("text-delta", { message: "a", index: 0, text: "x".repeat(100) }));
+  assert.equal(f.item("a:a")?.settled, 60);
+  f.apply(gf("text-delta", { message: "a", index: 0, text: "y".repeat(10) }));
+  assert.equal(f.item("a:a")?.settled, 70);
+  f.apply(gf("text-done", { message: "a" }));
+  assert.equal(f.item("a:a")?.settled, 110);
+});
+
+test("text-cut drops the provisional tail and leaves the note", () => {
+  cur = 0;
+  const f = createFolder();
+  f.apply(gf("text-delta", { message: "a", index: 0, text: "Your number is " + "1".repeat(60) }));
+  const before = f.item("a:a")?.text.length;
+  f.apply(gf("text-cut", { message: "a", note: "stopped: a sealed value was about to be shown" }));
+  const it = f.item("a:a");
+  assert.equal(it?.text.length, (before ?? 0) - HOLDBACK);
+  assert.equal(it?.done, true);
+  assert.equal(it?.cut, "stopped: a sealed value was about to be shown");
+  assert.equal(it?.settled, it?.text.length);
+});
+
+test("participants, presence, reactions, pins, mentions, thread replies, read marker", () => {
+  cur = 0;
+  const f = createFolder();
+  f.apply(gf("participant-joined", { who: "assistant:kit" }));
+  f.apply(gf("participant-joined", { who: "person:chris" }));
+  f.apply(gf("participant-left", { who: "person:chris" }));
+  assert.deepEqual(f.participants(), ["assistant:kit"]);
+  f.apply(gf("user-message", { message: "u1", text: "hi @kit", state: "sent" }, { author: "person:alex" }));
+  f.apply(gf("user-message", { message: "u2", text: "re", state: "sent", parent: "u1" }, { author: "person:chris" }));
+  assert.equal(f.item("u:u2")?.parent, "u1");
+  f.apply(gf("mention", { message: "u1", who: ["assistant:kit"] }));
+  assert.deepEqual(f.mentioned("u1"), ["assistant:kit"]);
+  f.apply(gf("reaction", { message: "u1", emoji: "👍", on: true }, { author: "person:chris" }));
+  f.apply(gf("reaction", { message: "u1", emoji: "👍", on: true }, { author: "person:alex" }));
+  f.apply(gf("reaction", { message: "u1", emoji: "👍", on: false }, { author: "person:chris" }));
+  assert.deepEqual(f.reactions("u1"), [{ emoji: "👍", who: ["person:alex"] }]);
+  f.apply(gf("pin", { message: "u1", on: true }));
+  assert.deepEqual(f.pinned(), ["u1"]);
+  const last = f.last;
+  f.apply({ v: 1, id: "p", cur: 0, session: "s", turn: null, type: "session.presence", time: 5, corr: null, data: { who: "assistant:kit", state: "doing", doing: "running the tests" } });
+  assert.deepEqual(f.presence(), [{ who: "assistant:kit", state: "doing", doing: "running the tests", at: 5 }]);
+  f.apply({ v: 1, id: "r", cur: 0, session: "s", turn: null, type: "session.read-marker", time: 5, corr: null, data: { upto: 9 } });
+  f.apply({ v: 1, id: "r", cur: 0, session: "s", turn: null, type: "session.read-marker", time: 5, corr: null, data: { upto: 4 } });
+  assert.equal(f.readUpto, 9);
+  assert.equal(f.last, last, "ephemeral frames never move the cursor");
+});
+
+test("fanout: the answers are one group until one is kept", () => {
+  cur = 0;
+  const f = createFolder();
+  f.apply(gf("user-message", { message: "q", text: "which?", state: "sent" }, { author: "person:alex" }));
+  f.apply(gf("text-delta", { message: "a1", index: 0, text: "A" }, { author: "model:one", message: "a1" }));
+  f.apply(gf("fanout", { group: "g", message: "q", members: [{ who: "model:one", message: "a1" }, { who: "model:two", message: "a2" }] }));
+  f.apply(gf("text-delta", { message: "a2", index: 0, text: "B" }, { author: "model:two", message: "a2" }));
+  assert.equal(f.item("a:a1")?.group, "g", "an answer that arrived first joins the group");
+  assert.equal(f.item("a:a2")?.group, "g");
+  assert.equal(f.group("g")?.keep, null);
+  f.apply(gf("fanout-keep", { group: "g", keep: "nope" }));
+  assert.equal(f.group("g")?.keep, null, "keep must be a member");
+  f.apply(gf("fanout-keep", { group: "g", keep: "a2" }));
+  assert.equal(f.group("g")?.keep, "a2");
+  assert.equal(f.group("g")?.members.length, 2);
+});

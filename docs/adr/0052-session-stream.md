@@ -88,6 +88,33 @@ A tool result is a **block**, never raw JSON: `terminal`, `diff`, `files`, `reco
 block. A record block carries a sealed field only as its typed placeholder (class and presence,
 never a value or a reference), and the app drops the rest at the door.
 
+### Group chats (0.3, task G)
+
+Every chat is a group chat; a one-to-one is a group of two. The frame stays one shape and gains,
+additively (old frames stay valid):
+
+- Envelope fields on any frame: `author` ("person:<id>", "assistant:<id>" or "model:<id>"), `acts_for`
+  ("person:<id>", the asker; only on an assistant or model frame; the chain is [asker, assistant]) and
+  `message` (the message the frame belongs to). `toEnvelope` makes the author the actor and `acts_for`
+  the first hop of the chain.
+- Logged kinds: `participant-joined`, `participant-left`, `reaction` { message, emoji, on },
+  `pin` { message, on }, `mention` { message, who[] }, `fanout` { group, message, members: [{ who, message }] },
+  `fanout-keep` { group, keep }, `text-cut` { message, note }. A thread reply is a field, `parent`, on
+  `user-message` and `text-delta`, not a kind.
+- Ephemeral kinds (cursor 0, never logged, never replayed, delivered as they come, they never move the
+  client's `last`): `presence` { who, state: typing|doing, doing? } (one per author every 3 s, presence.js) and
+  `read-marker` { upto } (per person, synced to that person's devices only, stored per person not per session,
+  readmarks.js; the transport that fans it to a person's other sessions' connections is not wired yet).
+- Who answers (routing.js, pure): mentioned assistants; the assigned one; else the default assistant, only when
+  no person is talking to a person (previous speaker another person, or a person is mentioned: nobody answers).
+- Per viewer (viewer.js, pure): `render(frame, viewer)` replaces fields the viewer cannot read in record, draft
+  and answer blocks with typed placeholders (`{ sealed, present, valid_format, can_reveal }` or `{ hidden: "role",
+  kind, present }`) without mutating the shared frame. `assertAskerCanRead(frame, asker)` throws when a reply
+  holds a value or ref the asker could not read; `log.append(..., { asker })` calls it where a reply is built.
+- Concurrent streams: the cursor is per session; each message is its own row (`a:<message>`); the log merges only
+  adjacent deltas of the same message and author. Door holdback: the client treats the last 40 characters of a
+  streaming reply as provisional until `text-done`; `text-cut` drops them and shows the note.
+
 ## Numbers (testbox, Node 22, loopback)
 
 Emit to client over a real WebSocket, 3000 frames: p50 0.34 ms, p95 0.77 ms, p99 1.85 ms, max

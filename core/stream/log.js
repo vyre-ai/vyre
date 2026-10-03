@@ -12,7 +12,8 @@
 // `data.parts` (protocol.js) so a client holding the first piece trims exactly.
 
 import { migrate } from "../store/index.js";
-import { frame, kindOf, startOf, KINDS } from "./protocol.js";
+import { frame, kindOf, startOf, KINDS, EPHEMERAL } from "./protocol.js";
+import { assertAskerCanRead } from "./viewer.js";
 
 export const DEFAULTS = Object.freeze({ maxFrames: 4000, maxBytes: 8 * 1024 * 1024, maxStored: 50000, merge: 16 * 1024, flushMs: 100 });
 
@@ -102,14 +103,30 @@ export class SessionLog {
 
   /**
    * Add a frame. Returns it, with its cursor. Live subscribers hear it before this returns.
-   * @param {string} kind @param {any} data @param {{ turn?: string|null, time?: number, id?: string }} [ctx]
+   * `author`, `acts_for` and `message` ride on the frame (protocol.js). `asker` (a viewer, viewer.js) is the
+   * person an assistant acts for: a reply is refused (throws) when it holds a field the asker cannot read.
+   * @param {string} kind @param {any} data @param {{ turn?: string|null, time?: number, id?: string, author?: string, acts_for?: string, message?: string, asker?: any }} [ctx]
    */
   append(kind, data, ctx = {}) {
     if (this.closed) throw new Error("the log is closed");
     if (!KINDS.includes(kind)) throw new Error(`${kind} is not a logged frame kind`);
-    const f = frame(kind, data, { session: this.session, turn: ctx.turn ?? null, time: ctx.time ?? this.now(), id: ctx.id, cur: this.head + 1 });
+    if (ctx.asker) assertAskerCanRead({ data }, ctx.asker);
+    const f = frame(kind, data, { session: this.session, turn: ctx.turn ?? null, time: ctx.time ?? this.now(), id: ctx.id, cur: this.head + 1, author: ctx.author, acts_for: ctx.acts_for, message: ctx.message });
     this.head = f.cur;
     this.store(f);
+    for (const fn of [...this.subs]) { try { fn(f); } catch {} }
+    return f;
+  }
+
+  /**
+   * Deliver an ephemeral frame (presence, read-marker) to every live subscriber: no cursor, never stored,
+   * never replayed. Returns it.
+   * @param {string} kind @param {any} data @param {{ time?: number, author?: string }} [ctx]
+   */
+  emit(kind, data, ctx = {}) {
+    if (this.closed) throw new Error("the log is closed");
+    if (!EPHEMERAL.includes(kind)) throw new Error(`${kind} is not an ephemeral frame kind`);
+    const f = frame(kind, data, { session: this.session, time: ctx.time ?? this.now(), cur: 0, author: ctx.author });
     for (const fn of [...this.subs]) { try { fn(f); } catch {} }
     return f;
   }
@@ -136,9 +153,11 @@ export class SessionLog {
   merged(a, b) {
     const k = kindOf(b);
     if (kindOf(a) !== k || a.turn !== b.turn) return null;
+    // Two assistants streaming at once: only the SAME message from the SAME author merges.
+    if (a.author !== b.author || a.acts_for !== b.acts_for || a.message !== b.message) return null;
     const A = a.data, B = b.data;
     if (k === "text-delta") {
-      if (A.message !== B.message || A.index !== B.index || !!A.reasoning !== !!B.reasoning) return null;
+      if (A.message !== B.message || A.index !== B.index || A.parent !== B.parent || !!A.reasoning !== !!B.reasoning) return null;
       const text = A.text + B.text;
       if (text.length > this.mergeChars) return null;
       const parts = (a.span ? A.parts : [A.text.length]).concat([B.text.length]);
