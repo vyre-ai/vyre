@@ -22,7 +22,7 @@ async function rig() {
     log: { ...log, append: (/** @type {any} */ c, /** @type {any} */ e, /** @type {any[]} */ ...r) => { if (killNext && e.type === "member.set" && ++sets === 2) throw new Error("killed"); return log.append(c, e, ...r); } } });
   const m = createKernelMembers({ space: SPACE, handle: { space: SPACE, hosted: true, gateway: kernel.gateway }, now: clock });
   const chain = (/** @type {string} */ who) => (who === OWNER ? kernel.chains.fromFacts({ kind: "socket", surface: "deck", uid: 501, pid: 1, inside_model_process: false, capsule_verified: true }) : kernel.chains.fromFacts({ kind: "device", device_key_id: `d-${who}`, person: who, path: "direct" }));
-  const as = (/** @type {string} */ who, /** @type {string} */ call, /** @type {any[]} */ ...a) => ({ kernel: { chain: chain(who), proof: sign(call, ...a) } });
+  const as = (/** @type {string} */ who, /** @type {string} */ call, /** @type {any[]} */ ...a) => ({ kernel: { chain: chain(who), proof: call ? sign(call, ...a) : {} } });
   return { m, as, chain, kill: () => { killNext = true; sets = 0; }, unkill: () => { killNext = false; } };
 }
 const code = (/** @type {Promise<any>} */ p) => p.then(() => "ok", e => e.code);
