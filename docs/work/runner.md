@@ -40,3 +40,9 @@ sessions, tailnet and platform teams plug in the real ones.
 
 ## Linux note
 Ubuntu 24.04 blocks unprivileged user namespaces for unconfined programs. bubblewrap needs an AppArmor profile that allows `userns` for /usr/bin/bwrap (the test box has one in /etc/apparmor.d/bwrap-vyre). The runner reports this as a plain reason through unavailable().
+
+## 4 Oct update
+- Reviewer-2 gate: items 1 to 10, R-11, R-12, S-1 fixed (S-1 at the root: the checkpoint reader runs inside the sandbox, reader.js and readerhost.js). Seccomp deny list added (seccomp.js, Linux x64 and arm64).
+- core/runner/ports.js: realPorts() builds the vault, grants and callbacks ports from the sealer client (sealer.lease.issue and renew), gateway.grants.offers (active, onRevoke), vault's leasedUse and the surfaces' device key (R-13: the lease and offer are for this computer, never a caller-supplied name). The module reads ports from a test seam or ctx.kernel.runnerPorts(); the integrator wires the host side.
+- sessions' checkpoint state: createRunner({ sessionState }) is stored in the checkpoint, and start({ resume: true }) returns { resumed: { turn, seq, state } }.
+- Open: macOS has no process containment (a double-forked helper survives a stop); the Windows run on the VM (mount point fix in progress) and reviewer-2's first Windows gate.

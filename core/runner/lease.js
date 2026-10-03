@@ -15,19 +15,24 @@
 // vault.renew({ id })            -> { ttlMs } | { revoked: true }   (a thrown error is a transient failure)
 
 export const DEFAULT_TTL_MS = 60 * 60_000;
+/** How often the wall clock is checked, and how long a gap between two checks means the machine slept (reviewer-2 R3). */
+export const TICK_MS = 30_000;
+export const SLEEP_GAP_MS = 90_000;
 
 /**
  * @param {{ vault: { lease(o: any): Promise<any>, renew(o: any): Promise<any> }, space: string, device: string,
- *   onLock?: (why: "expired"|"released"|"revoked") => Promise<void>|void, onRevoke?: () => Promise<void>|void,
- *   now?: () => number, setTimer?: typeof setTimeout, clearTimer?: typeof clearTimeout, retryMs?: number }} o
+ *   onLock?: (why: "expired"|"released"|"revoked"|"slept") => Promise<void>|void, onRevoke?: () => Promise<void>|void,
+ *   now?: () => number, setTimer?: typeof setTimeout, clearTimer?: typeof clearTimeout, retryMs?: number, onArm?: (expiresAt: number) => void, tickMs?: number, sleepGapMs?: number }} o
  */
 export function createLease(o) {
   const now = o.now || Date.now, set = o.setTimer || setTimeout, clear = o.clearTimer || clearTimeout;
   const retry = o.retryMs ?? 30_000;
   /** @type {Buffer|null} */ let key = null;
   let id = "", expiresAt = 0, timer = null, expiry = null, state = "none", ttl = DEFAULT_TTL_MS;
+  /** @type {any} */ let ticker = null; let lastTick = 0;
+  const tickMs = o.tickMs ?? TICK_MS, gapMs = o.sleepGapMs ?? SLEEP_GAP_MS;
 
-  const stopTimers = () => { if (timer) clear(timer); if (expiry) clear(expiry); timer = expiry = null; };
+  const stopTimers = () => { if (timer) clear(timer); if (expiry) clear(expiry); if (ticker) clearInterval(ticker); timer = expiry = ticker = null; };
   const zero = () => { if (key) { key.fill(0); key = null; } };
 
   async function end(why) {
@@ -44,8 +49,25 @@ export function createLease(o) {
     stopTimers();
     // Renew at half the lease, so a failed renewal has the other half to retry.
     timer = set(renew, Math.max(1, Math.floor(ttlMs / 2)));
+    lastTick = now();
+    try { o.onArm?.(expiresAt); } catch {}
+    if (!ticker) { ticker = setInterval(() => { tick(); }, tickMs); ticker.unref?.(); }
     expiry = set(() => { end("expired"); }, ttlMs);
     timer?.unref?.(); expiry?.unref?.();
+  }
+
+  /**
+   * The wall-clock check. Timers do not advance while a laptop sleeps, so this is what really enforces the lease: it locks when
+   * the lease is over by the wall clock, and when the gap since the last check shows the machine slept (a fresh lease is then
+   * required on wake, and the vault is asked again whether access still holds).
+   */
+  async function tick() {
+    if (state !== "open") return;
+    const t = now();
+    const slept = lastTick && t - lastTick > gapMs;
+    lastTick = t;
+    if (t >= expiresAt) return end("expired");
+    if (slept) return end("slept");
   }
 
   async function renew() {
@@ -77,6 +99,8 @@ export function createLease(o) {
       arm(Number(r.ttlMs) > 0 ? Number(r.ttlMs) : DEFAULT_TTL_MS);
       return { ok: true };
     },
+    /** The wall-clock check, exposed so a test or the OS resume event can run it now. */
+    tick,
     /** The key while the lease holds, else null. A copy is not made: callers write it straight to a pipe. */
     key() { return state === "open" && now() < expiresAt ? key : null; },
     get id() { return id; },

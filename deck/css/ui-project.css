@@ -1,0 +1,78 @@
+/* ui-project: the project page (/u/project/:id) and Projects (/u/projects). Tokens only (css/tokens-v2.css, css/tokens-v3.css, components in css/ui.css, the record
+   page in css/ui-views.css): no colour, no raw font size, no raw radius. Two columns from 1000 px; one column on a phone, in the same order. */
+
+.up-root { min-width: 0; }
+.up-hint { color: var(--label); font: 400 var(--fs-caption)/var(--lh-caption) var(--sans); }
+.up-pad { padding: var(--s-3) var(--s-4); }
+.up-headbox { display: flex; flex-direction: column; gap: var(--s-2); min-width: 0; }
+
+/* ---- the header: the type's emblem in the space's tint, then the title with its chips ---- */
+.up-head { gap: var(--s-4); }
+.up-em { display: inline-grid; place-items: center; flex: none; width: var(--s-10); height: var(--s-10); border-radius: var(--r-row);
+  background: color-mix(in srgb, var(--tint, var(--accent)) 20%, transparent); color: var(--tint, var(--accent)); }
+.up-em-sm { width: var(--s-8); height: var(--s-8); border-radius: var(--r-chip); }
+.up-created { margin: 0; color: var(--label); font: 400 var(--fs-caption)/var(--lh-caption) var(--sans); }
+
+/* ---- the record page, with the side column from 1000 px ---- */
+.up-page .uv-rec-grid { grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 1000px) {
+  .up-page .uv-rec-grid { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); }
+}
+.up-moved .is-current { animation: up-pop var(--dur-4) var(--spring) both; }
+@keyframes up-pop { from { transform: translateY(var(--s-1)) scale(.96); opacity: .4; } to { transform: none; opacity: 1; } }
+
+/* ---- the Tasks card: a list of tasks for each stage ---- */
+.uv-main > .ui-card.up-tasks { padding: 0; }
+.uv-main > .ui-card.up-tasks > .ui-card-h { margin: 0; padding: var(--s-3) var(--s-4); border-bottom: 1px solid var(--edge); }
+.up-stage { border-bottom: 1px solid var(--edge); }
+.up-stage:last-child { border-bottom: 0; }
+.up-stage-h { display: flex; align-items: center; gap: var(--s-2); width: 100%; min-height: var(--row-h); margin: 0; padding: var(--s-2) var(--s-4); border: 0; background: transparent; color: var(--text-2);
+  font: 400 var(--fs-body)/var(--lh-body) var(--sans); text-align: left; cursor: pointer; }
+.up-stage-h b { color: var(--text); font-weight: 600; }
+.up-stage.is-current .up-stage-h b { color: var(--accent); }
+.up-stage-n { margin-left: auto; color: var(--label); font: 400 var(--fs-caption)/var(--lh-caption) var(--sans); }
+.up-stage.is-complete .up-stage-n { color: var(--ok); }
+.up-chev { display: inline-flex; color: var(--label); }
+.up-chev svg { transform: rotate(-90deg); }
+.up-stage.is-open .up-chev svg { transform: none; }
+.up-stage-h:focus-visible, .up-task:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+@media (hover: hover) { .up-stage-h:hover, .up-task:hover { background: var(--hover); } }
+
+.up-task { box-sizing: border-box; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: var(--s-3); width: 100%; min-height: var(--row-h); margin: 0; padding: var(--s-2) var(--s-4);
+  border: 0; border-top: 1px solid var(--edge); background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.up-task:active { background: var(--press); }
+.up-task-t { display: flex; flex-direction: column; min-width: 0; }
+.up-task-t b { overflow-wrap: anywhere; font-weight: 500; }
+.up-task.is-done .up-task-t b { color: var(--label); }
+.up-task-who { display: inline-flex; align-items: center; gap: var(--s-2); min-width: 0; color: var(--text-2); font: 400 var(--fs-caption)/var(--lh-caption) var(--sans); }
+.up-dot { width: var(--s-2); height: var(--s-2); border-radius: 50%; background: var(--edge-strong); }
+.up-dot.is-ready, .up-dot.is-needs_check { background: var(--accent); }
+.up-dot.is-working { background: var(--ok); }
+.up-dot.is-stuck { background: var(--warn); }
+.up-dot.is-done { background: var(--ok); opacity: .5; }
+.up-live { display: inline-block; width: var(--s-2); height: var(--s-2); border-radius: 50%; background: var(--ok); flex: none; }
+.up-now, .up-why { display: inline-flex; align-items: center; gap: var(--s-2); margin-top: var(--s-1); color: var(--text-2); font: 400 var(--fs-caption)/var(--lh-caption) var(--sans); }
+.up-why { color: var(--warn); }
+.up-why svg { flex: none; }
+
+/* ---- Projects ---- */
+.up-pills { margin-bottom: 0; }
+.up-name { display: flex; align-items: center; gap: var(--s-3); min-width: 0; }
+.up-name b { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.up-name > :not(b) { flex: none; }
+.up-owner { display: inline-flex; align-items: center; gap: var(--s-2); }
+.up-page > .ui-table { --tpl: minmax(0, 2.4fr) repeat(4, minmax(0, 1fr)); }
+
+/* ---- phone: one column, rows as in the list ---- */
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
+  .up-head > .ui-ibtn { display: none; }
+  .up-head .up-em { width: var(--s-12); height: var(--s-12); }
+  .up-task { grid-template-columns: auto minmax(0, 1fr) auto; row-gap: var(--s-2); }
+  .up-task-who { grid-column: 2; grid-row: 2; }
+  .up-task > .ui-chip { grid-column: 3; grid-row: 1; }
+  .up-page > .ui-table .ui-td:not(:first-child)::before { content: none; }
+  .up-page > .ui-table .ui-td { overflow: visible; align-self: center; }
+}
+@media (min-width: 720px) and (min-height: 501px), (min-width: 720px) and (pointer: fine), (min-width: 720px) and (pointer: none) {
+  .up-page .page-head { margin-bottom: 0; }
+}

@@ -61,14 +61,14 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 12 | 4 | cli |
 | [`relay`](#relay) | `core/relay` | `box`, `local` | 39 | 21 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
-| [`runner`](#runner) | `core/runner` | `local` | 7 | 5 | capsule, cli, deck |
+| [`runner`](#runner) | `core/runner` | `local` | 6 | 5 | capsule, cli, deck |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
 | [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 38 | 8 | cli |
 | [`settings`](#settings) | `core/settings` | `box`, `local` | 10 | 2 | cli, deck |
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
-| [`space-sessions`](#space-sessions) | `core/space-sessions` | `box`, `local` | 0 | 4 | cli |
-| [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 47 | 29 | capsule, cli, deck |
+| [`space-sessions`](#space-sessions) | `core/space-sessions` | `box`, `local` | 0 | 3 | cli |
+| [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 45 | 29 | capsule, cli, deck |
 | [`spend`](#spend) | `core/spend` | `box`, `local` | 4 | 2 | cli |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
 | [`suggest`](#suggest) | `core/suggest` | `box`, `local` | 3 | 1 | cli |
@@ -311,6 +311,7 @@ A goal and an ordered milestone list, attached to a session or a project. An age
 - Tools: [5](tools.md#goals)
 - Emits: [5 events](events.md#goals)
 - Shows on: capsule, cli, deck
+- Needs kernel: `{"actions":["records.read","records.create","records.update"],"prefixes":["goal/*"],"types":[{"name":"goal","label":"Goal","fields":[{"name":"project","kind":"text","label":"Project"},{"name":"thread","kind":"text","label":"Thread"},{"name":"goal","kind":"text","label":"Goal","required":true},{"name":"state","kind":"choice","label":"State","options":["pending","active","done","cancelled"]},{"name":"created_by","kind":"text","label":"Created by"},{"name":"milestones","kind":"text","label":"Milestones"},{"name":"created_at","kind":"number","label":"Created"},{"name":"accepted_at","kind":"number","label":"Accepted"},{"name":"done_at","kind":"number","label":"Done"}]}]}`
 
 ## google
 
@@ -583,7 +584,7 @@ Runs a space's AI sessions on this computer: sandboxed, in an encrypted workspac
 - Folder: `core/runner`, version 0.1.0
 - Runs on: `local`
 - Requires: none
-- Tools: [7](tools.md#runner)
+- Tools: [6](tools.md#runner)
 - Emits: [5 events](events.md#runner)
 - Shows on: capsule, cli, deck
 
@@ -647,13 +648,13 @@ One screen service for the user's Mac and every agent's computer: what is on it,
 
 ## space-sessions
 
-Sessions that belong to one Space (Wink design, sections 5 and 7): where a session may run, its encrypted working copy and continuous sync, a checkpoint at every turn with a lease so it can move between machines, and Continue in another space.
+The session engine for a Space (Wink design sections 5 and 7): one Space per session, the checkpoint state that carries taint and permissions, resume, Continue in another space, and the hours and spend budgets. The runner owns the sandbox, workspace, sync, lease and placement.
 
 - Folder: `core/space-sessions`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
 - Tools: none
-- Emits: [4 events](events.md#space-sessions)
+- Emits: [3 events](events.md#space-sessions)
 - Shows on: cli
 
 ## spaces
@@ -663,7 +664,7 @@ Identity, spaces, members and invites: your Vyre name, a space with a home you c
 - Folder: `core/spaces`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [47](tools.md#spaces)
+- Tools: [45](tools.md#spaces)
 - Emits: [29 events](events.md#spaces)
 - Shows on: capsule, cli, deck
 

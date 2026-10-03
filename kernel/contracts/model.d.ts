@@ -44,6 +44,15 @@ export type ModelRefusal =
   | { readonly code: 'not_a_sink'; readonly detail: string }
   | { readonly code: 'budget'; readonly meter: string };
 
+/** What `stream` yields: text only once no value can still be forming in it; a tool call only after its whole input is scanned; `cut` ends the stream when the scan found a value (the turn is marked). */
+export type ModelStreamEvent =
+  | { readonly type: 'text'; readonly text: string }
+  | { readonly type: 'tool_call'; readonly id: string; readonly name: string; readonly input: unknown }
+  | { readonly type: 'cut'; readonly code: 'ledger_hit' | 'sealed_shape' | 'budget' | string; readonly class?: string }
+  | { readonly type: 'done'; readonly id: string; readonly usage?: ModelCallResult['usage'] };
+
 export interface ModelApi {
   call(input: ModelCallInput): Promise<ModelCallResult>;
+  /** The same request checks as `call` (a refusal is thrown on the first `next`), then the reply is scanned as it streams. */
+  stream(input: ModelCallInput): AsyncGenerator<ModelStreamEvent>;
 }

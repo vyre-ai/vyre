@@ -10,7 +10,7 @@ import { createLease } from "./lease.js";
 import { createEgress } from "./egress.js";
 import { plan, seatbeltProfile, cleanEnv, unavailable } from "./sandbox.js";
 import { workspaceUnavailable, driverFor } from "./workspace.js";
-import { createSessionSync, restore } from "./sync.js";
+import { createSessionSync, restore, localReaderFor } from "./sync.js";
 import { createRunner } from "./runner.js";
 import { fakeSpace } from "./testing/fake-space.js";
 
@@ -124,14 +124,14 @@ const get = (port, p, headers = {}, method = "GET") => new Promise(res => { cons
 
 test("egress: the vault is asked per request, the secret goes only into the outgoing header, the token never leaves", async () => {
   const up = await upstream(); const sp = fakeSpace();
-  const routes = [{ prefix: "/provider", upstream: `http://127.0.0.1:${up.port}`, credential: { ref: "vault://provider", header: "x-api-key" } },
-    { prefix: "/space", upstream: `http://127.0.0.1:${up.port}/api`, credential: { ref: "vault://gmail", header: "authorization", prefix: "Bearer " } }];
+  const routes = [{ prefix: "/provider", upstream: `http://127.0.0.1:${up.port}`, credential: { ref: "vault://provider", header: "x-api-key" }, allow: [{ method: "GET", path: "/v1/messages" }, { method: "POST", path: "/v1/messages" }] },
+    { prefix: "/space", upstream: `http://127.0.0.1:${up.port}/api`, credential: { ref: "vault://gmail", header: "authorization", prefix: "Bearer " }, allow: [{ method: "GET", path: "/gmail/*" }] }];
   const eg = createEgress({ routes, vault: sp.vault, session: "s1", token: "tok-abc", lease: () => "lease-1" });
   const { port } = await eg.listen();
   try {
     const a = await get(port, "/provider/v1/messages?x=1", { "x-api-key": "tok-abc", "x-vyre-extra": "keep" });
     assert.equal(a.status, 200);
-    assert.equal(up.seen[0].headers["x-api-key"], "sk-REAL-PROVIDER-SECRET-0001");
+    assert.equal(up.seen[0].headers["x-api-key"], "tk-REAL-PROVIDER-SECRET-0001");
     assert.equal(up.seen[0].url, "/v1/messages?x=1");
     assert.equal(up.seen[0].headers["x-vyre-extra"], "keep");
     await get(port, "/provider/v1/messages", { "x-api-key": "tok-abc" });
@@ -146,7 +146,7 @@ test("egress: the vault is asked per request, the secret goes only into the outg
 
 test("egress: no token, a wrong token, an unlisted path and CONNECT are all refused, and nothing is fetched", async () => {
   const up = await upstream(); const sp = fakeSpace();
-  const eg = createEgress({ routes: [{ prefix: "/provider", upstream: `http://127.0.0.1:${up.port}`, credential: { ref: "vault://provider", header: "x-api-key" } }], vault: sp.vault, session: "s1", token: "tok-abc", lease: () => "lease-1" });
+  const eg = createEgress({ routes: [{ prefix: "/provider", upstream: `http://127.0.0.1:${up.port}`, credential: { ref: "vault://provider", header: "x-api-key" }, allow: [{ method: "GET", path: "/v1/messages" }, { method: "POST", path: "/v1/messages" }] }], vault: sp.vault, session: "s1", token: "tok-abc", lease: () => "lease-1" });
   const { port } = await eg.listen();
   try {
     assert.equal((await get(port, "/provider/x")).status, 401);
@@ -165,10 +165,10 @@ function net_connect(port) { const s = net.connect(port, "127.0.0.1"); s.write("
 
 test("egress: when the vault fails the request fails plainly and nothing goes upstream", async () => {
   const up = await upstream(); const sp = fakeSpace(); sp.state.offline = true;
-  const eg = createEgress({ routes: [{ prefix: "/provider", upstream: `http://127.0.0.1:${up.port}`, credential: { ref: "vault://provider", header: "x-api-key" } }], vault: sp.vault, session: "s1", token: "t", lease: () => "lease-1" });
+  const eg = createEgress({ routes: [{ prefix: "/provider", upstream: `http://127.0.0.1:${up.port}`, credential: { ref: "vault://provider", header: "x-api-key" }, allow: [{ method: "GET", path: "/v1/messages" }, { method: "POST", path: "/v1/messages" }] }], vault: sp.vault, session: "s1", token: "t", lease: () => "lease-1" });
   const { port } = await eg.listen();
   try {
-    const r = await get(port, "/provider/x", { "x-api-key": "t" });
+    const r = await get(port, "/provider/v1/messages", { "x-api-key": "t" });
     assert.equal(r.status, 502);
     assert.equal(up.seen.length, 0);
     assert.ok(!r.body.includes("SECRET"));
@@ -190,7 +190,7 @@ test("sandbox: the environment is cut to known keys", () => {
 test("sandbox: the seatbelt profile denies by default and opens only the workspace and the proxy port", () => {
   const ws = tmp();
   try {
-    const p = seatbeltProfile({ platform: "darwin", workspace: ws, command: process.execPath, proxy: { port: 4567 } });
+    const p = seatbeltProfile({ platform: "darwin", workspace: ws, command: process.execPath, readOnly: [path.dirname(process.execPath)], proxy: { port: 4567 } });
     assert.match(p, /^\(version 1\)\n\(deny default\)/);
     assert.match(p, /network-outbound \(remote ip "localhost:4567"\)/);
     assert.ok(!/\/Users\b/.test(p.replace(/\(allow file-read-metadata[^\n]*\n/g, "").replace(path.dirname(process.execPath), "")) || process.execPath.startsWith("/Users"), "the profile never opens /Users as a whole");
@@ -218,29 +218,30 @@ test("sandbox: the bubblewrap plan unshares everything, mounts nothing of the ho
 test("sync: a checkpoint records the transcript and changed files as versions, and restore rebuilds them elsewhere", async () => {
   const sp = fakeSpace(); const a = tmp(), b = tmp();
   try {
-    for (const d of ["files", "home/.claude"]) fs.mkdirSync(path.join(a, d), { recursive: true });
-    const sy = createSessionSync({ space: sp.sync, session: "s1", mnt: a });
-    fs.writeFileSync(path.join(a, "files", "doc.txt"), "v1");
+    for (const d of ["work/files", "work/home/.claude", "state"]) fs.mkdirSync(path.join(a, d), { recursive: true });
+    const sy = createSessionSync({ space: sp.sync, session: "s1", work: path.join(a, "work"), state: path.join(a, "state"), reader: localReaderFor(path.join(a, "work")) });
+    fs.writeFileSync(path.join(a, "work", "files", "doc.txt"), "v1");
     await sy.line('{"type":"assistant"}'); await sy.line('{"type":"result"}');
     assert.equal(await sy.checkpoint({ note: 1 }), true);
-    fs.writeFileSync(path.join(a, "files", "doc.txt"), "v2");
+    fs.writeFileSync(path.join(a, "work", "files", "doc.txt"), "v2");
     await sy.line('{"type":"result"}');
     assert.equal(await sy.checkpoint(), true);
     assert.equal(sp.state.files.get("s1|files/doc.txt").length, 2, "two versions, no merge");
     assert.equal(sy.turn, 2);
     // A different machine restores from the space.
-    const r = await restore({ space: sp.sync, session: "s1", mnt: b });
+    fs.mkdirSync(path.join(b, "work", "files"), { recursive: true });
+    const r = await restore({ space: sp.sync, session: "s1", work: path.join(b, "work"), state: path.join(b, "state") });
     assert.equal(r.turn, 2);
-    assert.equal(fs.readFileSync(path.join(b, "files", "doc.txt"), "utf8"), "v2");
-    assert.equal(fs.readFileSync(path.join(b, ".vyre", "s1", "transcript.jsonl"), "utf8").split("\n").filter(Boolean).length, 3);
+    assert.equal(fs.readFileSync(path.join(b, "work", "files", "doc.txt"), "utf8"), "v2");
+    assert.equal(fs.readFileSync(path.join(b, "state", "s1", "transcript.jsonl"), "utf8").split("\n").filter(Boolean).length, 3);
   } finally { rm(a); rm(b); }
 });
 
 test("sync: when the space is unreachable the checkpoint is not claimed, and the lines wait in the outbox", async () => {
   const sp = fakeSpace(); const a = tmp();
   try {
-    fs.mkdirSync(path.join(a, "files"), { recursive: true });
-    const sy = createSessionSync({ space: sp.sync, session: "s1", mnt: a });
+    fs.mkdirSync(path.join(a, "work", "files"), { recursive: true });
+    const sy = createSessionSync({ space: sp.sync, session: "s1", work: path.join(a, "work"), state: path.join(a, "state"), reader: localReaderFor(path.join(a, "work")) });
     sp.state.offline = true;
     await sy.line('{"type":"assistant"}');
     assert.equal(await sy.checkpoint(), false);
@@ -253,7 +254,7 @@ test("sync: when the space is unreachable the checkpoint is not claimed, and the
 
 // ---- the real thing: sandbox + encrypted workspace + proxy + sync, on this machine --------------------------------
 
-const SKIP = process.platform === "win32" ? "windows has its own runner (pending the spike)" : (unavailable() || workspaceUnavailable() || "");
+const SKIP = unavailable() || workspaceUnavailable() || "";
 
 /** Every byte under a folder, except mounted workspace views, as one string-searchable list of [file, buffer]. */
 function* diskFiles(root) {
@@ -273,12 +274,12 @@ async function rig(t, over = {}) {
   const sp = over.space || fakeSpace({ ttlMs: over.ttlMs || 3_600_000 });
   const grants = over.grants || { spaceAllows: true, memberAccepts: true };
   const server = { starts: 0 };
-  const mk = (b = base) => createRunner({ base: b, space: "harlow", device: "kit", vault: sp.vault, sync: sp.sync, grants: () => grants, requestServer: () => { server.starts++; }, retryMs: 50 });
+  const mk = (b = base) => createRunner({ base: b, space: "harlow", device: "kit", vault: sp.vault, sync: sp.sync, grants: () => grants, requestServer: () => { server.starts++; }, retryMs: 50, sessionState: s => ({ v: 1, session: s, taint: "external" }) });
   const runner = mk();
-  const routes = [{ prefix: "/provider", upstream: `http://127.0.0.1:${up.port}`, credential: { ref: "vault://provider", header: "x-api-key" } },
-    { prefix: "/space", upstream: `http://127.0.0.1:${up.port}/api`, credential: { ref: "vault://gmail", header: "authorization", prefix: "Bearer " } }];
-  const launch = (r, session, extra = {}) => r.start({ session, command: process.execPath, args: [path.join(agentDir, "agent.js")], readOnly: [agentDir], routes,
-    env: { VYRE_PROBE_FILE: path.join(outsideDir, "private.txt"), VYRE_PROBE_HOME: process.env.HOME || "/root", VYRE_PROBE_PORT: String(up.port) }, ...extra });
+  const routes = [{ prefix: "/provider", upstream: `http://127.0.0.1:${up.port}`, credential: { ref: "vault://provider", header: "x-api-key" }, allow: [{ method: "GET", path: "/v1/messages" }, { method: "POST", path: "/v1/messages" }] },
+    { prefix: "/space", upstream: `http://127.0.0.1:${up.port}/api`, credential: { ref: "vault://gmail", header: "authorization", prefix: "Bearer " }, allow: [{ method: "GET", path: "/gmail/*" }] }];
+  const launch = (r, session, extra = {}) => r.start({ session, command: process.execPath, args: [path.join(agentDir, "agent.js")], readOnly: [agentDir, path.dirname(process.execPath)], routes,
+    env: { VYRE_PROBE_FILE: path.join(outsideDir, "private.txt"), VYRE_PROBE_HOME: process.env.HOME || process.env.USERPROFILE || "/root", VYRE_PROBE_PORT: String(up.port) }, ...extra });
   t.after(async () => { try { await runner.stopAll(); await runner.lock(); } catch {} await up.close(); for (const d of [base, agentDir, outsideDir]) rm(d); });
   return { base, runner, sp, up, routes, launch, server, mk };
 }
@@ -304,7 +305,7 @@ test("runner: a session runs on this computer, sees only its workspace, reaches 
   assert.equal(probe.noToken.status, 401);
   assert.equal(probe.space.status, 200);
   assert.equal(probe.other.status, 403);
-  assert.equal(r.up.seen.find(s => s.url === "/v1/messages").headers["x-api-key"], "sk-REAL-PROVIDER-SECRET-0001");
+  assert.equal(r.up.seen.find(s => s.url === "/v1/messages").headers["x-api-key"], "tk-REAL-PROVIDER-SECRET-0001");
   assert.ok(!JSON.stringify(events).includes("REAL-PROVIDER-SECRET"), "the secret is not in anything the session saw");
   // Transcript and files reached the space.
   const tr = r.sp.state.transcript.get("s1").map(e => JSON.parse(e.line));
@@ -368,7 +369,7 @@ test("runner: a machine that was offline at revoke deletes its workspace on next
 });
 
 test("runner: when the lease ends the workspace locks, the session stops, and the data is unreadable", { skip: SKIP || false, timeout: 90_000 }, async t => {
-  const r = await rig(t, { ttlMs: 1500 });
+  const r = await rig(t, { ttlMs: 6000 });
   const h = await r.launch(r.runner, "s1");
   h.send("turn before expiry");
   await waitFor(() => r.sp.state.checkpoints.get("s1")?.turn === 1);
@@ -382,7 +383,7 @@ test("runner: when the lease ends the workspace locks, the session stops, and th
   r.sp.state.offline = false;
   const c = await r.runner.contact();
   assert.equal(c.ok, true);
-  assert.equal(fs.readFileSync(path.join(r.runner.mnt, "files", "notes.txt"), "utf8"), "before expiry\n");
+  assert.equal(fs.readFileSync(path.join(r.runner.mnt, "work", "files", "notes.txt"), "utf8"), "before expiry\n");
 });
 
 test("runner: a stopped machine's session resumes on another machine from the last turn", { skip: SKIP || false, timeout: 90_000 }, async t => {
@@ -406,11 +407,13 @@ test("runner: a stopped machine's session resumes on another machine from the la
   h2.child.stdout.on("data", d => { for (const l of String(d).split("\n").filter(Boolean)) ev2.push(JSON.parse(l)); });
   const resumed = await waitFor(() => ev2.find(e => e.type === "resumed"));
   assert.equal(resumed.turn, 2);
+  assert.equal(h2.resumed.turn, 2);
+  assert.deepEqual(h2.resumed.state.session, { v: 1, session: "s1", taint: "external" }, "the session state comes back to the caller");
   assert.equal(resumed.notes, "one\ntwo\n");
   assert.ok(!resumed.files.includes("half.txt"), "the unfinished turn's change did not carry over");
   assert.ok(resumed.files.includes("notes.txt"));
   // The agent's own session files came along too.
-  assert.match(fs.readFileSync(path.join(other.mnt, "home", ".claude", "projects", "s.jsonl"), "utf8"), /"said":"two"/);
+  assert.match(fs.readFileSync(path.join(other.mnt, "work", "home", ".claude", "projects", "s.jsonl"), "utf8"), /"said":"two"/);
   h2.send("turn three");
   await waitFor(() => r.sp.state.checkpoints.get("s1")?.turn === 3);
   await h2.stop();

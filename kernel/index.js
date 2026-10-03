@@ -51,5 +51,26 @@ export function createKernel(cfg) {
     actions: cfg.actions, attrs: cfg.attrs, sinks: cfg.sinks, resolveCredential: cfg.resolveCredential, routeAction: cfg.routeAction,
   });
   const surfaces = createSurfaces({ space: cfg.space, chains, key: cfg.key, door: cfg.door, clock });
-  return Object.freeze({ gateway, log, store, chains, grants: grantsStore, limits, tasks, surfaces, fresh });
+  /**
+   * `ctx.kernel` for one first-party module (the registry calls this when it builds the module's context): the gateway's own surfaces, bound to this Space, and the
+   * module's own service chain. A module declares what it needs under `needs.kernel` ({ actions, prefixes, types }) and is given exactly that: grants whose source is
+   * `install:<module>`, and the record types it declared, defined by the kernel itself (a kernel act at install, not a call a module can make). With nothing declared it
+   * is a service of the Space that can do nothing. `chain(meta)` is the Surfaces door's chain for a call that carries a session token, else the module's own service
+   * chain: a module never builds a chain. Record calls wait for the module's types to be defined.
+   * @param {any} m the module's manifest
+   */
+  const kernelFor = (/** @type {any} */ m) => {
+    if (!grantsStore) throw new Error("ctx.kernel needs the kernel's own grants store");
+    const needs = (m.needs && m.needs.kernel) || { actions: [] };
+    grantsStore.installModule(m.name, { actions: Array.isArray(needs.actions) ? needs.actions : [], prefixes: Array.isArray(needs.prefixes) ? needs.prefixes : undefined });
+    const ready = Array.isArray(needs.types) && needs.types.length ? store.define({ add_types: needs.types }) : Promise.resolve();
+    const records = new Proxy(gateway.records, { get: (t, k) => (typeof t[k] === "function" ? async (/** @type {any[]} */ ...a) => { await ready; return t[k](...a); } : t[k]) });
+    return Object.freeze({
+      space: cfg.space, records, events: gateway.events, grants: gateway.grants, tasks: gateway.ask, audit: gateway.audit, authorize: gateway.authorize, limits: gateway.limits,
+      model: surfaces.model,
+      serviceChain: () => gateway.serviceChain(m.name),
+      chain: (/** @type {any} */ meta) => (meta && typeof meta.token === "string" ? surfaces.chainFor(meta.token) : gateway.serviceChain(m.name)),
+    });
+  };
+  return Object.freeze({ gateway, log, store, chains, grants: grantsStore, limits, tasks, surfaces, kernelFor, fresh });
 }

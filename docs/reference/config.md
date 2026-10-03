@@ -129,6 +129,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_NO_OPEN` | Never open a browser tab from the terminal. | `core/cli/commands/vault.js` |
 | `VYRE_NO_TIPS` | Not described yet. | `core/cli/index.js` |
 | `VYRE_NO_UP` | `vyre box add` installs Vyre without starting it. | `core/cli/commands/box.js` |
+| `VYRE_NO_WATCHDOG` | Not described yet. | `core/runner/runner.js` |
 | `VYRE_NPM_BIN` | The `npm` that `vyre update` installs a release with. Tests point it at a fake. | `core/cli/commands/update.js` |
 | `VYRE_OLD_PROJECTS_DIR` | Not described yet. | `core/config/index.js` |
 | `VYRE_ONBOARD_HOST` | The address onboarding listens on. Default `127.0.0.1`. | `core/onboard/loopback.js` |

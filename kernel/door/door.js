@@ -5,6 +5,7 @@
 // A refusal says which rule fired and the class, never the value. Events carry counts and classes only.
 import crypto from "node:crypto";
 import { Ledger } from "../seal/ledger.js";
+import { createStreamScanner } from "./stream.js";
 
 const MAX_MESSAGES = 2000, MAX_CHARS = 2_000_000;
 export class DoorRefusal extends Error {
@@ -46,6 +47,33 @@ export function createDoor({ sealer, drivers, sinks, residency = () => null, bud
     return r.text;
   }
 
+  /** A tool call's input goes to an executor as written, so it is not sanitised but judged: any sealed-looking shape or ledgered value in it is a hit. @returns {Promise<null | { code: string, class: string }>} */
+  async function scanTool(chain, session, toolInput, input) {
+    const text = JSON.stringify(toolInput ?? null), l = ledger(chain.space, session, input.parent_session);
+    const r = await sealer.detect({ chain, session, text, ledger_key: keyOf(l) }); l.add(r.ledger);
+    if (r.found.length) return { code: "sealed_shape", class: r.found[0].class };
+    const hit = l.check(text);
+    return hit?.too_big ? { code: "budget", class: "scan" } : hit?.hit ? { code: "ledger_hit", class: hit.hit } : null;
+  }
+  /** A call that never reached the provider spends nothing. */
+  const giveBack = input => { if (budget.release) budget.release(input); else budget.settle?.(input, { cost_micro: 0 }); };
+  /** The checks every model call passes before anything is sent: a real chain, a declared sink, bounds, residency, budget, and every message scanned. */
+  async function admit(input) {
+    const { chain } = input;
+    if (!isChain(chain)) throw new TypeError("not a kernel chain");
+    const last = chain.hops[chain.hops.length - 1];
+    if (last.actor.kind === "service" && !sinkSet.has(last.actor.id)) refuse({ code: "not_a_sink", detail: "service is not a declared model sink" }, input);
+    if (!Array.isArray(input.messages) || input.messages.length === 0 || input.messages.length > MAX_MESSAGES
+      || input.messages.reduce((n, m) => n + String(m.content).length, 0) > MAX_CHARS) refuse({ code: "budget", meter: "prompt_size" }, input);
+    const driver = drivers[input.provider];
+    const res = !driver ? "provider is not available" : residency({ provider: input.provider, model: input.model, chain });
+    if (res) refuse({ code: "residency", detail: res }, input);
+    const over = budget.reserve(input); if (over) refuse({ code: "budget", meter: over }, input);
+    const session = input.session ?? `call_${crypto.randomUUID()}`, messages = [];
+    try { for (const m of input.messages) messages.push({ role: m.role, content: await scan(chain, session, String(m.content), { ...input, session }) }); } catch (e) { giveBack(input); throw e; }
+    return { chain, session, messages, driver };
+  }
+
   return {
     /** True when the door was built with the kernel's own `isChain`: the gateway refuses a door that was not (K3 R-4). */
     usesKernelChain: Boolean(kernelIsChain),
@@ -58,32 +86,57 @@ export function createDoor({ sealer, drivers, sinks, residency = () => null, bud
     async result({ chain, session, text, purpose = "other" }) { return scan(chain, session, text, { purpose, session }); },
     async endSession(chain, session) { ledgers.delete(`${chain.space}\0${session}`); await sealer.endSession(chain, session); },
 
+    /**
+     * The streaming call. The request is checked exactly as `call` checks it (a refusal is thrown on the first `next`). The reply is scanned as it arrives
+     * (stream.js): text is released only once no value could still be forming in it, and on any hit the upstream is stopped and the stream ends with
+     * `{ type: "cut", code, class }` and a `model.cut` event, so the turn can be marked. A tool call is delivered only after its whole input is scanned.
+     * The driver's `stream(input)` yields `{ text }`, `{ tool: { id, name, input } }` or `{ tool_start }`, `{ tool_delta: { id, json } }`, `{ tool_end: { id } }`, and `{ done: { usage } }`.
+     * @param {import("../contracts/model.d.ts").ModelCallInput & { parent_session?: string }} input
+     * @returns {AsyncGenerator<{ type: "text", text: string } | { type: "tool_call", id: string, name: string, input: unknown } | { type: "cut", code: string, class?: string } | { type: "done", id: string, usage?: any }>}
+     */
+    async *stream(input) {
+      const { chain, session, messages, driver } = await admit(input);
+      if (typeof driver.stream !== "function") { giveBack(input); refuse({ code: "residency", detail: "provider does not stream" }, input); }
+      const l = ledger(chain.space, session, input.parent_session), sc = createStreamScanner({ ledger: l, detect: text => sealer.detect({ chain, session, text, ledger_key: keyOf(l) }) });
+      const it = driver.stream({ ...input, chain: undefined, messages })[Symbol.asyncIterator](), tools = new Map();
+      let usage, id = crypto.randomUUID(), cut = null;
+      const stop = async () => { try { await it.return?.(); } catch { /* the upstream is gone either way */ } };
+      let answered = false;
+      try {
+        for (;;) {
+          const { value: ev, done } = await it.next(); if (done) break; answered = true;
+          if (typeof ev.text === "string") { const r = await sc.push(ev.text); if (r.cut) { cut = r.cut; break; } if (r.text) yield { type: "text", text: r.text }; }
+          else if (ev.tool_start) tools.set(ev.tool_start.id, { name: ev.tool_start.name, json: "" });
+          else if (ev.tool_delta) { const t = tools.get(ev.tool_delta.id); if (t) t.json += String(ev.tool_delta.json); }
+          else if (ev.tool || ev.tool_end) {
+            const t = ev.tool ?? (() => { const x = tools.get(ev.tool_end.id); tools.delete(ev.tool_end.id); let inp = null; try { inp = x.json ? JSON.parse(x.json) : {}; } catch { inp = x.json; } return { id: ev.tool_end.id, name: x.name, input: inp }; })();
+            const bad = await scanTool(chain, session, t.input, input); if (bad) { cut = bad; break; }
+            yield { type: "tool_call", id: t.id, name: t.name, input: t.input };
+          } else if (ev.done) { usage = ev.done.usage; id = ev.done.id ?? id; }
+        }
+        if (!cut) { const r = await sc.end(); if (r.cut) cut = r.cut; else if (r.text) yield { type: "text", text: r.text }; }
+      } catch (e) {
+        // The same rule as `call`: nothing came back, nothing is spent; something did, and what it cost is settled.
+        if (answered) budget.settle?.(input, usage); else giveBack(input);
+        throw e;
+      } finally { if (cut) await stop(); }
+      if (cut) { emit("model.cut", { code: cut.code, class: cut.class, purpose: input.purpose, session }); budget.settle?.(input, usage); if (!input.session) await this.endSession(chain, session); yield { type: "cut", ...cut }; return; }
+      budget.settle?.(input, usage); if (!input.session) await this.endSession(chain, session);
+      yield { type: "done", id, usage };
+    },
+
     /** @param {import("../contracts/model.d.ts").ModelCallInput & { parent_session?: string }} input */
     async call(input) {
-      const { chain } = input;
-      if (!isChain(chain)) throw new TypeError("not a kernel chain");
-      const last = chain.hops[chain.hops.length - 1];
-      if (last.actor.kind === "service" && !sinkSet.has(last.actor.id)) refuse({ code: "not_a_sink", detail: "service is not a declared model sink" }, input);
-      if (!Array.isArray(input.messages) || input.messages.length === 0 || input.messages.length > MAX_MESSAGES
-        || input.messages.reduce((n, m) => n + String(m.content).length, 0) > MAX_CHARS) refuse({ code: "budget", meter: "prompt_size" }, input);
-      const driver = drivers[input.provider];
-      const res = !driver ? "provider is not available" : residency({ provider: input.provider, model: input.model, chain });
-      if (res) refuse({ code: "residency", detail: res }, input);
-      const over = budget.reserve(input); if (over) refuse({ code: "budget", meter: over }, input);
-
+      const { chain, session, messages, driver } = await admit(input);
       // Everything after the reservation gives it back when it fails: a refused or failed call spends nothing.
-      let out, content, session;
+      let out, content;
       try {
-        session = input.session ?? `call_${crypto.randomUUID()}`;
-        const messages = [];
-        for (const m of input.messages) messages.push({ role: m.role, content: await scan(chain, session, String(m.content), { ...input, session }) });
         out = await driver.call({ ...input, chain: undefined, messages });
         content = await scan(chain, session, String(out.content ?? ""), { ...input, session });
-        for (const t of out.tool_calls ?? []) await scan(chain, session, JSON.stringify(t.input ?? null), { ...input, session });
+        for (const t of out.tool_calls ?? []) { const bad = await scanTool(chain, session, t.input, input); if (bad) refuse(bad, input); }
       } catch (e) {
         // A call the provider never answered spends nothing; one it answered before a scan refused it cost what it cost (the usage it reported).
-        if (out) budget.settle?.(input, out.usage);
-        else if (budget.release) budget.release(input); else budget.settle?.(input, { cost_micro: 0 });
+        if (out) budget.settle?.(input, out.usage); else giveBack(input);
         throw e;
       }
       budget.settle?.(input, out.usage);
