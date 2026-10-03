@@ -13,9 +13,16 @@ Scope: `records/` (the language, the Kits, the Stripe connector, the stand-in ga
 - Provisioning (`stores/twenty/provision.js`): one Twenty per Space, compose with no published port and an internal network, per-Space secrets (0600), headless service user, workspace and key in about 8 s, instance admin credential kept out of the gateway's reach, empty front end mounted over the UI, firewall rules as text, upgrade with a database backup first, verify before reopening, rollback with the old image. Proven from nothing on testbox: 178 to 207 s to a provisioned Space on a loaded machine, kit types installed in 13 s.
 - The Stripe connector (`records/connectors/stripe`): signature check, test mode only, four event kinds, `payment.received` written once per payment, the Kit's flow finds or creates the contact then the matter. Six concurrent deliveries of three events for one payment made one contact and one matter against a real Twenty (340 ms).
 
+## Runs (testbox, 3 Oct 2026)
+
+- Live conformance: `stores/twenty/live/run-on-testbox.sh twspike` against Twenty v2.44.0, 24 of 24 (kernel suite 14, own suite 9, listener). Output kept in the session only; rerun to reproduce.
+- Provision from nothing: `node stores/twenty/live/provision-live.mjs livetest3` (191 s), then `stripe-live.mjs livetest3 <home>`; torn down with `docker compose -p vyre-livetest3-twenty down -v`.
+- Spike scripts and results now live in `stores/twenty/spike/`.
+- After merging work/kernel 97fe2a0d8: 156 of 161 pass on the Mac; the 4 failures are the kernel golden tests that refuse to run on a Mac (they pass on testbox).
+
 ## Doing
 
-- Nothing in flight. Waiting on the lead's merge and on the platform's gateway to replace `records/testing/gateway-lite.js`.
+- Nothing in flight. Waiting on the platform's gateway (replaces `records/testing/gateway-lite.js`). Coordinate in team/0.2/CHAT.md: sessions owns Flows and defineFlow (the runner and flow shape), assistant owns teammates and memory (the kit's teammate roles), windows provisions each Space's Twenty through `provisionSpace`.
 
 ## Next
 
