@@ -122,7 +122,7 @@ function planDarwin(o) {
   const base = proxyUrl(o.proxy.port);
   const dd = developerDir();
   const env = { ...cleanEnv(o.env), ...(dd ? { DEVELOPER_DIR: dd } : {}), HOME: home, TMPDIR: tmp, PATH: "/usr/bin:/bin:" + [...(o.readOnly || [])].map(d => path.join(real(d), "bin")).join(":"), ...proxyEnv(base, o.internet) };
-  return { argv: ["/usr/bin/sandbox-exec", "-p", seatbeltProfile(o), o.command, ...(o.args || [])], env, cwd: path.join(ws, "files"), cleanup() {}, profile: seatbeltProfile(o) };
+  return { argv: ["/usr/bin/sandbox-exec", "-p", seatbeltProfile(o), "/bin/sh", "-c", 'umask 077; exec "$0" "$@"', o.command, ...(o.args || [])], env, cwd: path.join(ws, "files"), cleanup() {}, profile: seatbeltProfile(o) };
 }
 
 /**
@@ -152,7 +152,7 @@ function planLinux(o) {
     "--bind", ws, "/work", "--chdir", "/work/files",
     ...(sock ? ["--ro-bind", sock, "/run/egress.sock"] : []),
     ...Object.entries(env).flatMap(([k, v]) => ["--setenv", k, v]),
-    node, "/opt/vyre-shim.js", "--listen", String(inner), "--to", "/run/egress.sock", "--", o.command, ...(o.args || []),
+    node, "/opt/vyre-shim.js", "--listen", String(inner), "--to", "/run/egress.sock", "--", "/bin/sh", "-c", 'umask 077; exec "$0" "$@"', o.command, ...(o.args || []),
   ];
   // The deny-list filter goes in over fd 3 (see launch()).
   const sc = seccompFilter();

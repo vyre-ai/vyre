@@ -16,7 +16,7 @@ import crypto from "node:crypto";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { createLease } from "./lease.js";
-import { driverFor, SLOWER_LINE } from "./workspace.js";
+import { driverFor, SLOWER_LINE, SWAP_LINE, SIZES_LINE, swapInfo } from "./workspace.js";
 import { plan, launch, unavailable } from "./sandbox.js";
 import { ensureLauncher, prepare as prepareWin, cleanup as cleanupWin } from "./sandbox-win.js";
 import { createEgress } from "./egress.js";
@@ -72,6 +72,7 @@ export function createRunner(o) {
   const deadlineFile = path.join(o.base, "run", crypto.createHash("sha256").update(o.space).digest("hex").slice(0, 16) + ".deadline");
   let gen = crypto.randomBytes(6).toString("hex");   // one per opening of the workspace; its watchdog belongs to it
   const winPrepFile = path.join(o.base, "run", crypto.createHash("sha256").update(o.space).digest("hex").slice(0, 16) + ".winprep");
+  /** @type {{ swap: boolean, hibernation: boolean, line: string }} */ let swap = { swap: false, hibernation: false, line: "" };
   let winPrep = null;   // what prepare() touched on Windows, for cleanup at revoke
   let pending = null;   // a retry timer while the workspace could not be closed yet
   const workOf = m => path.join(m, "work");
@@ -145,6 +146,8 @@ export function createRunner(o) {
     // A mount left by a runner that died is closed first, so this runner owns the one that is open.
     if (driver.isMounted(dir)) { try { await driver.unmount(dir); } catch {} }
     mnt = await driver.mount(dir, key);
+    swap = swapInfo();
+    if (swap.line) emit({ type: "swap-warning", line: swap.line, swap: swap.swap, hibernation: swap.hibernation });   // told once to the lender, kept in status
     startWatchdog();
     for (const d of ["work/files", "work/home", "work/tmp", "state"]) fs.mkdirSync(path.join(mnt, d), { recursive: true, mode: 0o700 });
     return mnt;
@@ -278,7 +281,7 @@ export function createRunner(o) {
       await o.requestServer?.(session);
       emit({ type: "moved", session, to: "server" });
     },
-    status() { return { workspace: driver.name, ...(driver.name === "gocryptfs" ? { notice: SLOWER_LINE } : {}), state: lease.state, expiresAt: lease.expiresAt, open: !!mnt && driver.isMounted(dir), mounted: driver.isMounted(dir), sessions: [...live.keys()], dir }; },
+    status() { return { workspace: driver.name, notices: [...(driver.name === "gocryptfs" ? [SLOWER_LINE] : []), ...(swap.line ? [SWAP_LINE] : []), SIZES_LINE], swap: swap.swap || swap.hibernation, state: lease.state, expiresAt: lease.expiresAt, open: !!mnt && driver.isMounted(dir), mounted: driver.isMounted(dir), sessions: [...live.keys()], dir }; },
     get lease() { return lease; },
     get dir() { return dir; },
     get mnt() { return mnt; },

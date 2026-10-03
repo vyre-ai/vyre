@@ -442,3 +442,39 @@ test("lent network: provider-and-space only by default; the Space can allow the 
     assert.match(env(on).HTTPS_PROXY, /^http:\/\/vyre:tok@127\.0\.0\.1:\d+$/);
   } finally { rm(ws); }
 });
+
+import { swapInfo, SWAP_LINE } from "./workspace.js";
+import { spawnSync } from "node:child_process";
+test("FS-1: swap or a hibernation image is detected and reported with one plain line", () => {
+  const files = { "/proc/swaps": "Filename Type Size Used Priority\n/swapfile file 1048572 0 -2\n", "/sys/power/resume": "0:0\n" };
+  const read = p => files[p] ?? "";
+  assert.deepEqual(swapInfo({ platform: "linux", read }), { swap: true, hibernation: false, line: SWAP_LINE });
+  assert.equal(swapInfo({ platform: "linux", read: p => (p === "/proc/swaps" ? "Filename Type Size Used Priority\n" : "0:0") }).line, "");
+  assert.equal(swapInfo({ platform: "linux", read: p => (p === "/sys/power/resume" ? "259:3\n" : "Filename\n") }).hibernation, true);
+  assert.equal(swapInfo({ platform: "darwin", read }).line, "", "macOS encrypts swap by default");
+});
+
+test("FS-2: the session starts with umask 077", { skip: SKIP_UMASK() , timeout: 30_000 }, async t => {
+  const ws = tmp(); t.after(() => rm(ws));
+  fs.mkdirSync(path.join(ws, "files"), { recursive: true });
+  const platform = process.platform === "darwin" ? "darwin" : "linux";
+  const p = plan({ platform, workspace: ws, command: process.execPath, args: ["-e", 'const fs=require("fs");fs.writeFileSync("u.txt","x");console.log((fs.statSync("u.txt").mode&0o777).toString(8))'], readOnly: [path.dirname(process.execPath)], proxy: { port: 4567, socket: "" } });
+  const c = launch(p, { cwd: p.cwd }); let out = ""; c.stdout.on("data", d => out += d); await new Promise(r => c.on("close", r));
+  assert.equal(out.trim(), "600");
+});
+function SKIP_UMASK() { return !["darwin", "linux"].includes(process.platform) || unavailable() !== ""; }
+
+test("FS-2: another user cannot read an fscrypt workspace, unlocked or locked, and the folders above it are 0700", { skip: process.platform !== "linux" || !FSDIR || !fscryptSupported(FSDIR) || spawnSync("sudo", ["-n", "true"]).status !== 0, timeout: 60_000 }, async t => {
+  const base = fs.mkdtempSync(path.join(FSDIR, "fs2-")); t.after(() => rm(base));
+  const drv = driverFor("linux", { prefer: "fscrypt" });
+  const dir = path.join(base, "spaces", "w"); const key = crypto_.randomBytes(32);
+  await drv.create(dir, key);
+  const m = await drv.mount(dir, key);
+  fs.writeFileSync(path.join(m, "a.txt"), "OWNER-ONLY");
+  for (const d of [m, dir, path.dirname(dir)]) assert.equal(fs.statSync(d).mode & 0o077, 0, `${d} is owner-only`);
+  const other = () => spawnSync("sudo", ["-n", "-u", "nobody", "cat", path.join(m, "a.txt")], { encoding: "utf8" });
+  assert.notEqual(other().status, 0, "another user cannot read it while unlocked");
+  await drv.unmount(dir);
+  assert.notEqual(other().status, 0, "nor while locked");
+  await drv.destroy(dir);
+});

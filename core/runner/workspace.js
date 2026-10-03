@@ -52,6 +52,20 @@ export function fscryptSupported(dir) {
   return r.status === 0;
 }
 
+/** What the lender is told once about swap (reviewer-2 FS-1): a workspace's decrypted pages can be written to swap or a hibernation image and outlive the lock. */
+export const SWAP_LINE = "This computer uses swap or hibernation, so the contents of an unlocked workspace can be written to disk outside it. Turn swap off or encrypt it to close that.";
+export const SIZES_LINE = "File names are encrypted but file sizes, counts and times are not hidden by this encryption.";
+
+/** Is there swap or a hibernation image on this machine? macOS encrypts swap by default, so it is reported only on Linux. @param {{ read?: (p: string) => string, platform?: string }} [o] */
+export function swapInfo(o = {}) {
+  const platform = o.platform || process.platform, read = o.read || (p => { try { return fs.readFileSync(p, "utf8"); } catch { return ""; } });
+  if (platform !== "linux") return { swap: false, hibernation: false, line: "" };
+  const swap = read("/proc/swaps").split("\n").slice(1).some(l => l.trim());
+  const resume = read("/sys/power/resume").trim();
+  const hibernation = Boolean(resume) && resume !== "0:0";
+  return { swap, hibernation, line: swap || hibernation ? SWAP_LINE : "" };
+}
+
 /** The line shown when this folder's filesystem cannot encrypt natively and the runner uses gocryptfs instead. */
 export const SLOWER_LINE = "Your files for this space are encrypted with a slower method on this computer's disk format (file-heavy work can take several times longer).";
 
@@ -235,6 +249,8 @@ function fscryptDriver() {
     isMounted: dir => fs.existsSync(enc(dir)) && status(dir) === "present",
     async create(dir, key) {
       fs.mkdirSync(enc(dir), { recursive: true, mode: 0o700 });
+      // Owner-only all the way down: only POSIX permissions protect an UNLOCKED workspace, so no folder above it is open to another user.
+      for (const d of [enc(dir), dir, path.dirname(dir), path.dirname(path.dirname(dir))]) { try { fs.chmodSync(d, 0o700); } catch {} }
       const r = await helper("policy", enc(dir), key);
       if (r.code !== 0) throw new Error("could not create the workspace: " + (r.err || "fscrypt refused").trim().slice(0, 200));
     },
