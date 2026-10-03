@@ -248,6 +248,13 @@ function confirmSheet(spec) {
   });
 }
 
+/** The confirm for "Seal this field for all <type>": it names how many records have a value. @param {TypeDef} def @param {FieldDef} f @param {RecordRow[]} pool */
+export function sealSpec(def, f, pool) {
+  const n = pool.filter(r => !isEmpty(val(def, r, f.key))).length, word = lc(def.plural);
+  return { title: `Seal ${f.label} for all ${word}?`, action: "Seal",
+    body: `${n} of ${pool.length} ${word} ${n === 1 ? "has a value" : "have a value"} for ${lc(f.label)}. Assistants will see "${f.label} on file, sealed" on each and will never get the value. You can still reveal it with Face ID.` };
+}
+
 /** One sample value per kind, for the Add a field panel. @param {FieldDef} f @param {any} o */
 function sampleFor(f, o) {
   const samples = { text: "Sample text", number: 42, money: 1250, date: isoDay(o.now ?? Date.now()), choice: (f.options || [])[0], stage: stagesOf(f)[0], actor: (o.actors || [])[0]?.id,
@@ -297,10 +304,8 @@ export function recordPage(def, row, o = {}) {
   }
 
   async function sealAll(/** @type {FieldDef} */ f) {
-    const pool = o.rows || [cur], n = pool.filter((/** @type {RecordRow} */ r) => !isEmpty(val(def, r, f.key))).length;
-    const word = lc(def.plural);
-    const ok = await confirm({ title: `Seal ${f.label} for all ${word}?`, action: "Seal",
-      body: `${n} of ${pool.length} ${word} ${n === 1 ? "has a value" : "have a value"} for ${lc(f.label)}. Assistants will see "${f.label} on file, sealed" on each and will never get the value. You can still reveal it with Face ID.` });
+    const spec = sealSpec(def, f, o.rows || [cur]);
+    const ok = await confirm(spec);
     if (!ok) return;
     await (o.onsealtype ? o.onsealtype(f.key) : sealField(def, f.key));
     draw();

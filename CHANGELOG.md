@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### ui: field renderers and generated views
+
+- `deck/ui/types.js`: the sample type definitions as data (Contact with sealed SSN and account number, Matter with Intake to Closed, Project, Trip, Template), copied from the approved prototype's fields, stages and views.
+- `deck/ui/fields.js`: the fifteen field kinds, each with one display renderer, one edit renderer, filter ops and a sort key. Sealed: the person sees a fixed mask (the last four only when the field says `showLast4`) and Reveal, which asks for Face ID, passes the proof to the store's reveal, shows the value for 30 seconds (injectable clock) and masks it again; an assistant gets "<Label> on file, sealed" and the value is never read. A field sealed on its type (`sealed: true`) is held back from assistants whatever its kind.
+- `deck/ui/views.js`: list (sort, filter chips, rows on a phone), board, calendar (a dot per day plus an agenda), dashboard (sum, count by, funnel, recent) and the record page (You or Your assistant sees, Add a field with all fifteen kinds and a live preview, stage steps, timeline, team, linked records, chats, files, a field menu with "Seal this field for all <type>" that names how many records have a value, and "How this page is made"). No view has code per record type; `addField` puts a custom field on every view at once.
+- `deck/views/ui-records.js` (/u/records/:type) and `deck/views/ui-record.js` (/u/record/:id) read the Store through `deck/ui/field-screens.js`; `deck/ui/fallback-store.js` and `deck/ui/sample-rows.js` keep the lab working without the store. `deck/css/ui-views.css` holds the styles, tokens only. Lab scenarios in `deck/ui/lab/lab-fields.js`; tests in `deck/ui/fields.test.js` and `deck/ui/views.test.js`.
+
+#### ui: the store, tasks, Now and the task card
+
+- `deck/ui/tasks.js`: the task model as pure functions (states and transitions, `needsYou`, declared outputs and `isComplete`, dependency unblocking, stage progression, stuck with a reason and fix, the checker's approval as the Gate approval). `deck/ui/mock-store.js` is an in-memory Store with sealed fields, Reveal for 30 seconds and approvals that only record an event; `deck/ui/store.js` is the one switch (`getStore`, `setStore`) for the gateway adapter.
+- `deck/ui/task-card.js`, `deck/views/ui-now.js` (/u/now, configurable sections kept in localStorage) and `deck/views/ui-task.js` (/u/task/:id), styled in `deck/css/ui-now.css`. `deck/ui/scenario.js` plays "a client pays" against any Store; lab scenarios now, now-paid, task, task-draft, task-stuck.
+
 #### ui: base components
 
 - `deck/ui/components/index.js` is final: button (primary, secondary, ghost, danger, hold with a 700 ms press-and-hold), icon button, chip (plus a `space` tone), field (text, number, date, email, phone, password, textarea, with help and error), switch, segmented (wraps, never scrolls, keeps focus), tabs (arrow keys, one tab stop), row (a link, a pressable row that may hold its own buttons, or plain; tone edges), card, ask card, banner, menu (keyboard, kept in the window, focus returns), table (becomes rows on a phone), stage steps, timeline item, and empty and error states drawn by `js/states.js`. Avatars, `skeleton` and `loading` are re-exported. Signatures are unchanged; the options added are optional.

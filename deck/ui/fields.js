@@ -84,7 +84,7 @@ export function isoDay(v) {
 export function fmtMoney(v, d) {
   const n = Number(v);
   const cur = d.currency || "USD";
-  try { return new Intl.NumberFormat("en-US", { style: "currency", currency: cur, minimumFractionDigits: 0, maximumFractionDigits: Number.isInteger(n) ? 0 : 2 }).format(n); }
+  try { return new Intl.NumberFormat("en-US", { style: "currency", currency: cur, minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: Number.isInteger(n) ? 0 : 2 }).format(n); }
   catch { return `${cur} ${n}`; }
 }
 const currencySymbol = (/** @type {FieldDef} */ d) => { try { return new Intl.NumberFormat("en-US", { style: "currency", currency: d.currency || "USD" }).formatToParts(0).find(p => p.type === "currency")?.value || ""; } catch { return ""; } };

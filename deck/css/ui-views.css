@@ -162,6 +162,7 @@ a.uv-rel { cursor: pointer; }
   .uv-sort { flex: 1 1 100%; }
   .uv-list .ui-table { --tpl: minmax(0, 1fr); }
   .uv-gal-r { grid-template-columns: minmax(0, 1fr); }
+  .uv-cal .uv-bar .uv-hint { flex: 1 1 100%; }
 }
 @media (min-width: 720px) and (min-height: 501px), (min-width: 720px) and (pointer: fine), (min-width: 720px) and (pointer: none) {
   .uv-page { padding: var(--s-6) var(--s-8); }
