@@ -5,13 +5,16 @@
 set -u
 apk=$1; out=$2; mkdir -p "$out"
 adb wait-for-device
-adb shell settings put global window_animation_scale 0 >/dev/null
+# Animations stay on: with them off the app reads "reduce motion" and a motion bug of the app (see the capture notes) hides everything else.
+sleep 45
 adb install -r -g "$apk" || { echo "install failed"; exit 1; }
 adb logcat -c
 
 open() { # name, url, seconds to wait
   adb shell am start -W -a android.intent.action.VIEW -p sh.vyre.app -d "$2" >"$out/$1.start.txt" 2>&1 || true
   sleep "$3"
+  adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1 || true
+  sleep 2
   adb exec-out screencap -p >"$out/$1.png"
   echo "$1: $2 ($(stat -c %s "$out/$1.png") bytes)"
 }
