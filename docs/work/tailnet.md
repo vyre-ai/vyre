@@ -1121,3 +1121,46 @@ What a companion may call: `link.companion.hello` and the five `sync.upload.*` t
 Changed contracts: core/sync (`peerOf` takes the token and asks `link.companion.verify`, an internal tool; the five upload tools accept `companion`), core/daemon (the chunk route forwards `x-vyre-companion`), core/link (`link.companion.hello`, `link.companion.verify`, `box` in the pair and approve answers).
 
 Tests: core/link/companion.test.js (token verifies once; another key, tool, input, box or time is refused; a chunk's bytes are signed as bytes; a limited, removed or revoked parent or companion stops it at once), core/sync/sync.test.js (a real registry: upload start, chunk and finish with tokens; a tampered input or byte, the wrong tool, no token and the parent removed all refused).
+
+## Wink storage (3 Oct 2026)
+
+Code: `core/wink/storage/` (the logic, no module of its own) and `core/wink-storage/` (the module that wires it). Design: DESIGN-wink.md sections 3, 4 and 6; DESIGN-space-storage.md.
+
+### Storage devices
+
+A storage device is a device of kind storage under its owner: a person, or a space that person administers (checked through an admin port; the module's default is "the space this server runs"). Paired, it offers one `storage` offer: `{ capacity, used, class: ["cold","backup"] (cold, backup, working allowed; cold and backup by default), schedule?, expires?, residency }`. Everything stored is ciphertext by contract: the space encrypts before anything is written, and the card says so.
+
+- Find: `discover` asks the scanners on this device: mDNS or DNS-SD for `_smb._tcp`, `_nfs._tcp`, `_afpovertcp._tcp` and `_adisk._tcp` (avahi-browse, else dns-sd), SMB shares (`smbclient -L`), NFS exports (`showmount -e`) and disks plugged in (mount points under /Volumes, /media, /mnt). A missing tool is named in `notes` in plain words. Scans run on demand only, at most once a minute (a second ask inside the minute returns the last answer, `cached: true`), and two asks at once share one scan. Each candidate is `{ id, name, kind (smb, nfs, usb-disk, afp, adisk), size?, seenFrom, label }`.
+- Pick: `pick` pairs a candidate (capacity is needed unless the drive reports its size, and cannot exceed it). A drive that needs a login takes `username` and `password`, which go to the vault.
+- Pair a bucket: `pair { kind: "s3" | "volume", endpoint, bucket, region, accessKey, secretKey, owner, capacity, ... }`. The login is tried first with one signed request (SigV4 over node:crypto, no SDK: ListObjectsV2, max-keys 1, path style). A failure says why in plain words (unknown access ID, wrong secret, no such bucket, wrong region, not allowed to list) and saves nothing. Plain http is refused unless the host is on a private network.
+- Where the secret goes: into the vault as an item `wink-storage-<id>` (fields `accessKey`, `secretKey`, grant to the module). The table row holds `vault://wink-storage-<id>` and nothing else; events, logs, cards and tool results never carry a value. The tests dump every table, event, log and result and look for the secret.
+- Grant: one per device, source `wink:W3`, action `storage.hold`, resource `vyre://<space>/storage/<id>/`, with an expiry when the offer has one. Revoked on removal.
+- Watching: `status` looks again if the last look is over a minute old; a timer checks every 5 minutes. A device going from reachable to not emits `storage.unreachable` once, with the reason. Other events: `storage.paired`, `storage.removed` (`final: false` when a drain starts, `final: true` when it is gone).
+- Remove: `remove { id }` revokes the grant and deletes the saved login now. `remove { id, drain: true }` only records the intent: the device stays listed as draining with its grant and login until the pool engine calls `completeDrain(id)`.
+
+### Tools
+
+The module is named `wink-storage`, and a module may only name tools after itself, so they ship as `wink-storage.discover | pick | pair | card | offers | status | remove` (all `reach: person`, owner surfaces only). The design names them `wink.storage.*`: the Wink module can mount the same set with `registerStorageTools(ctx, storage, "wink.storage")` and add the names to its `module.json` (or the module rule can allow a second segment). Open for the Wink owner.
+
+### Seam for the vault team's pool engine
+
+```js
+import { createStorageDevices } from "core/wink/storage/index.js";
+const s = createStorageDevices({ ctx, grants, vault, scanners, s3, admin, space });
+s.poolOffers()                       // every live offer, with credentialRef, location, class, capacity, used, state (internal, never a tool)
+await s.getCredentials(ref, { by })  // { kind, location, accessKey, secretKey } for s3 and volume; { kind, location } for a drive
+                                     // refused unless by = { kind: "person", id } is the owner, or an admin of the owning space; refused once the grant is revoked or the device removed
+s.setUsed(id, bytes)                 // the engine reports what it has written
+s.drainRequests()                    // devices a person asked to drain
+await s.completeDrain(id)            // call when a draining device is empty: grant revoked, login deleted, storage.removed final
+```
+
+`vault` is `{ put({ name, fields, description }), fetch(name, field), remove(name) }`; the module wires it to `vault.put`, `ctx.vault.fetch` (declared as `needs.vault: ["per-storage"]`) and `vault.delete`. `admin` is `{ self(), isAdmin(personId, spaceId), nameOf(owner) }`.
+
+### Cards
+
+"Lets Harlow Legal keep encrypted copies here, up to 1.5 TB. It holds old versions and archives and backups. Only scrambled files are written here, so the drive cannot read them." Credentials pairing adds "The login you pasted goes into your vault and is never shown again." Words are checked against the Wink copy rules (`FORBIDDEN` in core/wink/cards.js). The card kind is marked `open: true` until app-design words it.
+
+### Tests
+
+`core/wink/storage/*.test.js` (node:test, fakes only): the SigV4 signer against the published AWS example, a fake S3 server that verifies every signature, fake scanners and a fake shell, a fake vault.

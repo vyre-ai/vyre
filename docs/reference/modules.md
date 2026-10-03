@@ -80,7 +80,8 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 20 | 7 | capsule, cli, deck |
-| [`wink`](#wink) | `core/wink` | `box` | 12 | 17 | capsule, cli, deck |
+| [`wink`](#wink) | `core/wink` | `box` | 21 | 22 | capsule, cli, deck |
+| [`wink-storage`](#wink-storage) | `core/wink-storage` | `box` | 7 | 5 | capsule, cli, deck |
 
 ## about
 
@@ -791,12 +792,24 @@ One list of what waits on the user: session asks, held drafts, ringing reminders
 
 ## wink
 
-Pairing as grants: every way into a space is a Wink (a code or a scan, a card, then one grant and a few events). Add a device, invite a person, share a computer, see and remove what was given.
+Pairing as grants: every way in is a Wink (scan a code, or type two-sided codes). Devices (phone, computer, server, storage) belong to the identity, never to a space. Add a device, pair a server or a phone, invite a person, offer compute, see and remove what was given.
 
 - Folder: `core/wink`, version 0.1.0
 - Runs on: `box`
 - Requires: `relay`
-- Tools: [12](tools.md#wink)
-- Emits: [17 events](events.md#wink)
+- Tools: [21](tools.md#wink)
+- Emits: [22 events](events.md#wink)
 - Listens for: `relay.code-asked`, `relay.invite-redeemed`, `device.paired`, `device.removed`
 - Shows on: capsule, cli, deck
+
+## wink-storage
+
+Storage devices for Wink: find a network drive or a plugged-in disk from a device on the same network, or add a cloud volume or S3-compatible bucket by its access details (kept in the vault). A paired drive is a storage device under its owner that offers room for encrypted copies.
+
+- Folder: `core/wink-storage`, version 0.1.0
+- Runs on: `box`
+- Requires: `relay`
+- Tools: [7](tools.md#wink-storage)
+- Emits: [5 events](events.md#wink-storage)
+- Shows on: capsule, cli, deck
+- Needs vault: `per-storage`
