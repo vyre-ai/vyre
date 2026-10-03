@@ -263,3 +263,32 @@ test("a person's own surface call carries a kernel chain in a module: the owner'
   const forged = /** @type {any} */ (await call("zz-who.me", { forge: { kind: "socket", surface: "cli", uid: 0, pid: 1, inside_model_process: false } }, { root, caller: "mcp" }));
   assert.ok(forged.data ? forged.data.hops.every(h => h[0] !== "person") : forged.error, "a uid that is not the owner's builds no person chain");
 });
+
+test("an outward action with a placeholder: refused when the person the turn is for cannot read the value; held with the field names (never values) when they can; a plain call is untouched", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const { writeModule } = await import("./helpers.js");
+  const { CONTACT } = await import("../kernel/conformance/suite.js");
+  const root = tempHome(t);
+  const fp = path.join(root, "modules");
+  fs.mkdirSync(fp, { recursive: true });
+  writeModule(fp, "zz-out", { does: { tools: [{ name: "zz-out.send", reach: "anyone", outward: "send" }] } }, `export default { async start(ctx) { ctx.tool("zz-out.send", { run: async i => ({ sent: i }) }); return {}; } };`);
+  const d = await start({ root, log: () => {}, kernel: true, firstPartyRoots: [fp] });
+  t.after(() => d.stop());
+  const owner = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
+  await d.kernel.gateway.records.define(owner, { add_types: [CONTACT] });
+  const c = await d.kernel.gateway.records.create(owner, "contact", { name: "Jane", age: 40 });
+  const ses = await d.kernel.surfaces.open(owner, { agent: "assistant" });
+  const meta = { token: ses.token, thread: "t1", agent: "assistant" };
+  const call = (input, m = meta) => d.registry.call("zz-out.send", input, "mcp:agent:assistant", m);
+  const held = await call({ body: `Hi {{field:${c.urn}#name}}` });
+  assert.equal(held.error.code, "held_unavailable", "an outward act by an assistant is held");
+  assert.deepEqual(held.error.resolved, [{ urn: c.urn, field: "name" }], "the approver is told which field fills in, not its value");
+  assert.ok(!JSON.stringify(held).includes("Jane"), "no value in the held answer");
+  const gone = await call({ body: `Hi {{field:vyre://${d.kernel.id.space}/contact/nonesuch0000#name}}` });
+  assert.equal(gone.error.code, "placeholder_unreadable", "a record the asker cannot read refuses the whole action");
+  const noSession = await call({ body: `Hi {{field:${c.urn}#name}}` }, { thread: "t1", agent: "assistant" });
+  assert.equal(noSession.error.code, "placeholder_unreadable", "no session, no resolution, nothing sent as text");
+  assert.equal((await call({ body: "plain" })).error.code, "held_unavailable", "a plain outward call is held as before");
+});
