@@ -203,13 +203,13 @@ export function createSqliteStore(cfg) {
        * The best `n` records for these words by the reference ranking (score, then id), ranked in SQL from the full-text index so a word every record holds does not mean reading every
        * record. Null when the index cannot answer (a word under three characters, an index still being built): the caller takes `searchCandidates`.
        */
-      searchTop(words, /** @type {number} */ n) {
+      searchTop(words, /** @type {number} */ n, /** @type {{ score: number, id: string } | undefined} */ after) {
         if (!(ftsOk && ftsBuilt && words.length && words.every(w => !/\s/.test(w)))) return null;
         // A word of three or more characters narrows by the index; with a shorter word the index cannot, so every document's text is scored (still without reading a record).
         const indexed = words.every(w => [...w].length >= 3);
         const inner = indexed ? "SELECT rowid AS rid, vyre_score(doc, ?) AS sc FROM kernel_fts WHERE kernel_fts MATCH ?" : "SELECT rowid AS rid, vyre_score(doc, ?) AS sc FROM kernel_fts";
         const args = indexed ? [words.join("\t"), words.map(w => `"${w.replace(/"/g, '""')}"`).join(" OR ")] : [words.join("\t")];
-        return rows(db.prepare(`SELECT k.* FROM (${inner}) h CROSS JOIN kernel_records k ON k.rowid = h.rid WHERE h.sc > 0 AND k.type = ? AND k.deleted_at IS NULL ORDER BY h.sc DESC, k.id LIMIT ?`).all(...args, type, n));
+        return rows(db.prepare(`SELECT k.* FROM (${inner}) h CROSS JOIN kernel_records k ON k.rowid = h.rid WHERE h.sc > 0 AND k.type = ? AND k.deleted_at IS NULL${after ? " AND (h.sc < ? OR (h.sc = ? AND k.id > ?))" : ""} ORDER BY h.sc DESC, k.id LIMIT ?`).all(...args, type, ...(after ? [after.score, after.score, after.id] : []), n));
       },
       searchCandidates(words) {
         if (!words.length) return this.values();

@@ -151,3 +151,13 @@ test("search: a sealed field is never in the full-text index, and an index built
   assert.equal((await s2.search({ text: "harlow", page: { limit: 100 } })).rows.length, 59);
   assert.equal(db.prepare(`SELECT count(*) n FROM kernel_fts`).get().n, 59);
 });
+
+test("search: every page of a ranked search, by cursor, equals the reference's, and a cursor whose record is gone does too", async () => {
+  const { mem, sql, r, pick } = await world(220, 9, { nonAscii: true });
+  await sql.ftsReady;
+  const pages = async (s, text, limit) => { const out = []; let cursor; for (let i = 0; i < 80; i++) { const p = await s.search({ text, page: { limit, ...(cursor ? { cursor } : {}) } }); out.push(p.rows.map(h => `${h.id}:${h.score}:${h.snippet ?? ""}`), p.next_cursor ?? null); if (!p.next_cursor) break; cursor = p.next_cursor; } return out; };
+  for (let q = 0; q < 60; q++) { const text = Array.from({ length: 1 + Math.floor(r() * 2) }, () => pick(WORDS)).join(" "), limit = 1 + Math.floor(r() * 12); assert.deepEqual(await pages(sql, text, limit), await pages(mem, text, limit), `${text} / ${limit}`); }
+  const first = await mem.search({ text: "ann bob", page: { limit: 3 } });
+  for (const s of [mem, sql]) { const cur = await s.get("person", first.rows[2].id); await s.remove("person", cur.id, cur.version); }
+  assert.deepEqual(await sql.search({ text: "ann bob", page: { limit: 3, cursor: first.rows[2].id } }), await mem.search({ text: "ann bob", page: { limit: 3, cursor: first.rows[2].id } }));
+});

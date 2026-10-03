@@ -16,7 +16,7 @@ const fail = (/** @type {string} */ code, /** @type {string} */ message) => Obje
  * One type's rows. The reference store keeps them in a Map; a durable store (kernel/store/sqlite.js) pages them from its database behind a small LRU, so the rows it holds in
  * memory are the hot ones, not all of them. `candidates` and `searchCandidates` may return a SUPERSET of what a query or a search needs (the database narrows by an equality
  * filter or a word); the same code then applies the exact rules, so an answer is the same either way.
- * @typedef {{ get(id: string): any, has(id: string): boolean, set(id: string, r: any): void, values(): Iterable<any>, searchTop?(words: string[], n: number): Iterable<any> | null, pageQuery?(spec: any): any, aggregateQuery?(spec: any): any, candidates(spec: any): Iterable<any>, searchCandidates(words: string[]): Iterable<any> }} Table
+ * @typedef {{ get(id: string): any, has(id: string): boolean, set(id: string, r: any): void, values(): Iterable<any>, searchTop?(words: string[], n: number, after?: { score: number, id: string }): Iterable<any> | null, pageQuery?(spec: any): any, aggregateQuery?(spec: any): any, candidates(spec: any): Iterable<any>, searchCandidates(words: string[]): Iterable<any> }} Table
  */
 /** @returns {Table} */
 function mapTable() {
@@ -182,20 +182,44 @@ export function createMemoryStore(cfg = {}) {
         hits.splice(lo, 0, h);
         if (hits.length > spec.page.limit) hits.pop();
       };
-      for (const [type, t] of rows) {
-        if (spec.types && !spec.types.includes(type)) continue;
+      const hitOf = (/** @type {string} */ type, /** @type {any} */ def, /** @type {any} */ r) => {
+        let score = 0, snippet;
+        for (const f of def.fields) {
+          if (f.kind === "sealed") continue;
+          const v = fieldOf(r, f.name);
+          const text = typeof v === "string" ? v : Array.isArray(v) && v.every(x => typeof x === "string") ? v.join(" ") : "";
+          const low = text.toLowerCase();
+          for (const w of words) if (low.includes(w)) { score += 1; snippet = snippet || text.slice(0, 80); }
+        }
+        return score ? { type, id: r.id, score, ...(snippet ? { snippet } : {}) } : null;
+      };
+      const scope = [...rows].filter(([type]) => !spec.types || spec.types.includes(type));
+      // A later page of a ranked search, when the store can rank by itself: the hits strictly after the cursor's hit in (score, id) order, `limit + 1` of them, ranked by the store. The
+      // cursor's own hit is found and scored here; if it is gone (changed, removed) the whole list is used, as before.
+      if (!top && scope.length && scope.every(([, t]) => t.searchTop)) {
+        let cur = null;
+        for (const [type, t] of scope) { const r = t.get(spec.page.cursor); if (r && !r.deleted_at) { cur = hitOf(type, types.get(type), r); if (cur) break; } }
+        if (cur) {
+          /** @type {any[]} */ const got = [];
+          let ok = true;
+          for (const [type, t] of scope) {
+            const list = t.searchTop(words, spec.page.limit + 1, { score: cur.score, id: cur.id });
+            if (!list) { ok = false; break; }
+            for (const r of list) { if (r.deleted_at) continue; const h = hitOf(type, types.get(type), r); if (h) got.push(h); }
+          }
+          if (ok) {
+            got.sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : 1));
+            const slice = got.slice(0, spec.page.limit);
+            return { rows: slice, ...(got.length > spec.page.limit && slice.length ? { next_cursor: slice[slice.length - 1].id } : {}) };
+          }
+        }
+      }
+      for (const [type, t] of scope) {
         const def = types.get(type);
         for (const r of (top && t.searchTop && t.searchTop(words, spec.page.limit + 1)) || t.searchCandidates(words)) {
           if (r.deleted_at) continue;
-          let score = 0, snippet;
-          for (const f of def.fields) {
-            if (f.kind === "sealed") continue;
-            const v = fieldOf(r, f.name);
-            const text = typeof v === "string" ? v : Array.isArray(v) && v.every(x => typeof x === "string") ? v.join(" ") : "";
-            const low = text.toLowerCase();
-            for (const w of words) if (low.includes(w)) { score += 1; snippet = snippet || text.slice(0, 80); }
-          }
-          if (score) add({ type, id: r.id, score, ...(snippet ? { snippet } : {}) });
+          const h = hitOf(type, def, r);
+          if (h) add(h);
         }
       }
       if (top) return { rows: hits, ...(counted > spec.page.limit && hits.length ? { next_cursor: hits[hits.length - 1].id } : {}) };
