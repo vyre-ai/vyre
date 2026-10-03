@@ -80,3 +80,9 @@ Done, pushed to origin/work/kernel (f43c4e570 and later):
 ## Round 5 (3 Oct, after the grants store)
 - Done: once, rate and meter enforcement (kernel/core/limits.js); field limits fail closed under row predicates; stage gates (entry rules and required tasks, expr injected); K4 items 10, 12, template immutability, door isChain.
 - Open: the stage-entry task creation is `onStageEnter` (records or tasks wires it); `rate` windows are not durable; K2-9 and default-on gates stay a reviewer-2 gate.
+
+## Full suite and K5, K6 (3 Oct)
+- Full `kernel/**` run on the test box at 58453fda4: 218 tests, 218 pass, 0 fail, 0 cancelled, exit 0 by itself in 389 s, no sealing process left running.
+- K5 (kernel/audit, 5 tests plus one gateway test): signed checkpoints every 1,000 events or 10 minutes, `verifyLog`, device checkpoints (rollback, rewrite and split detection), `compareCheckpoints`. The Space's signing key is the caller's `sign` function; who holds it (owners' signer) is the open design item for the home.
+- K6 (kernel/modules, 6 tests): supervisor, sandbox, egress proxy, host. The Linux path is proved by the self-test on the test box. The macOS profile is written and not run in tests (Mac is shared and the lead has not freed it): run `createSupervisor().selfTest()` there before relying on it. Windows: refused.
+- Next: wire the registry's install path to `createModuleHost` (core/modules/index.js), the Space key custody for checkpoints, default-on gates after reviewer-2 reads K2-9.
