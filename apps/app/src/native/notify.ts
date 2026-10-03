@@ -1,9 +1,12 @@
-// Local notifications on the phone (expo-notifications). The permission flow and showing a notice
-// are here; no push token is requested, stored or sent anywhere. See notify-model.ts for the
-// transport interface that a person-owned push path would implement.
+// Local notices on the phone, made by the app itself (modules/vyre-notify on Android: the
+// platform NotificationManager, no push service, no Google Play services). The permission flow and
+// showing a notice are here; no push token is requested, stored or sent anywhere. See
+// notify-model.ts for the transport interface that a person-owned push path would implement.
+// On Android a notice while the app is closed comes over Vyre's own connection (see
+// docs/work/native-core.md, "Notices when the app is closed").
 
-import { Platform } from "react-native";
-import * as Notifications from "expo-notifications";
+import { Linking, Platform } from "react-native";
+import Notify, { type PermissionState } from "../../modules/vyre-notify";
 import { cleanNotice, nullTransport, SAY, type Notice, type NotifyState, type PushTransport } from "./notify-model.ts";
 
 export type { Notice, NotifyState, PushTransport } from "./notify-model.ts";
@@ -14,26 +17,12 @@ let transport: PushTransport = nullTransport;
 export const setTransport = (t: PushTransport) => void (transport = t);
 export const activeTransport = () => transport;
 
-const CHANNEL = "needs-you";
-let ready = false;
-
-async function setup() {
-  if (ready) return;
-  ready = true;
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: false, shouldSetBadge: false }),
-  });
-  if (Platform.OS === "android") {
-    await Notifications.setNotificationChannelAsync(CHANNEL, { name: "Needs you", importance: Notifications.AndroidImportance.DEFAULT });
-  }
-}
-
-const stateOf = (p: { granted: boolean; canAskAgain: boolean; status: string }): NotifyState =>
+const stateOf = (p: PermissionState): NotifyState =>
   p.granted ? "granted" : p.status === "undetermined" || p.canAskAgain ? "ask" : "denied";
 
 export async function notifyState(): Promise<{ state: NotifyState; say: string }> {
   try {
-    const state = stateOf(await Notifications.getPermissionsAsync());
+    const state = stateOf(await Notify!.getPermission());
     return { state, say: SAY[state] };
   } catch {
     return { state: "unavailable", say: SAY.unavailable };
@@ -43,8 +32,7 @@ export async function notifyState(): Promise<{ state: NotifyState; say: string }
 /** Ask for permission (the system prompt shows only when the person has not decided). */
 export async function requestNotify(): Promise<{ state: NotifyState; say: string }> {
   try {
-    await setup();
-    const state = stateOf(await Notifications.requestPermissionsAsync());
+    const state = stateOf(await Notify!.requestPermission());
     return { state, say: SAY[state] };
   } catch {
     return { state: "unavailable", say: SAY.unavailable };
@@ -55,20 +43,14 @@ export async function requestNotify(): Promise<{ state: NotifyState; say: string
 export async function showLocal(n: Notice): Promise<boolean> {
   const c = cleanNotice(n);
   if (!c || (await notifyState()).state !== "granted") return false;
-  await setup();
-  await Notifications.scheduleNotificationAsync({
-    identifier: c.id,
-    content: { title: c.title, body: c.body, data: c.route ? { route: c.route } : {} },
-    trigger: Platform.OS === "android" ? { channelId: CHANNEL } : null,
-  });
-  return true;
+  return Platform.OS === "android" && Notify ? Notify.show(c.id, c.title, c.body ?? null, c.route ?? null) : false;
 }
 
-/** Calls `go(route)` when the person taps a notice. Returns the unsubscribe. */
+/** Calls `go(route)` when the person taps a notice. Returns the unsubscribe. A tap opens vyre://<route>?notice=1. */
 export function onTap(go: (route: string) => void): () => void {
-  const sub = Notifications.addNotificationResponseReceivedListener((r) => {
-    const route = (r.notification.request.content.data as { route?: unknown } | undefined)?.route;
-    if (typeof route === "string" && route.startsWith("/")) go(route);
+  const sub = Linking.addEventListener("url", ({ url }) => {
+    const m = /^vyre:\/\/([^?#]*)\?(?:[^#]*&)?notice=1/.exec(url);
+    if (m) go("/" + m[1].replace(/^\/+/, ""));
   });
   return () => sub.remove();
 }
