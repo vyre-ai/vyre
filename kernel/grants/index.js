@@ -104,6 +104,9 @@ export function createGrantsStore(cfg) {
   // seal of the one before. A genuine event copied and appended again later has an old `gseq`, so rebuild skips it: a revoked grant or a removed member cannot be replayed
   // back. (The log's own position cannot be the number: another writer appends between the MAC and the append now that the MAC is a round trip to the sealing process.)
   let gseq = 0, gprev = "genesis", queue = Promise.resolve();
+  /** The number of the newest snapshot: a new one is written every SNAP_EVERY events so a boot reads a snapshot and a short tail, never the whole history. */
+  let snapAt = 0;
+  const SNAP_EVERY = cfg.snapshot_every ?? 500;
   const sealed = (/** @type {string} */ type, /** @type {string} */ subject, /** @type {any} */ core, /** @type {number} */ n, /** @type {string} */ prev) => canonical({ type, subject, data: core, gseq: n, gprev: prev });
   const note = (/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ subject, /** @type {any} */ data, /** @type {any} */ decision, /** @type {string} */ vis = "owner") => {
     const run = async () => {
@@ -725,6 +728,7 @@ export function createGrantsStore(cfg) {
     async snapshot() {
       const state = { grants: [...grants.values()], memberships: [...memberships.values()], actors: [...actors], offers: [...offers.values()], invites: [...invites.values()], chats: [...chats.values()], rules: [...rules.values()], proposals: [...proposals.values()] };
       await note(kernelChain(), "grants.snapshot", urn("grant", "snapshot"), { state });
+      snapAt = gseq;
       return { grants: state.grants.length, memberships: state.memberships.length };
     },
 
@@ -742,10 +746,21 @@ export function createGrantsStore(cfg) {
     async rebuildFromLog() {
       grants.clear(); memberships.clear(); actors.clear(); offers.clear(); invites.clear(); chats.clear(); rules.clear(); proposals.clear();
       gseq = 0; gprev = "genesis";
-      const evs = cfg.log.read({}).filter((/** @type {any} */ e) => e.data && typeof e.data === "object" && (LEGACY_RE.test(e.type) || e.type === "owner.changed" || e.type === "grants.snapshot"));
-      /** @type {{ e: any, mac: any, n: number | undefined, prev: any, core: any, legacy: boolean }[]} */
-      const items = evs.map((/** @type {any} */ e) => { const { mac, gseq: n, gprev: pv, ...core } = e.data; return { e, mac, n, prev: pv, core, legacy: n === undefined }; });
-      // 1. Verify the new-style events, in pipelined batches.
+      // Boot reads what it needs, not the whole log: the newest snapshot that verifies is the starting state, and only the grants events written after it are read, by type
+      // (an index scan on a durable log). A log with no snapshot reads every grants event once, and the migration below writes one.
+      const rd = (/** @type {any} */ f) => (cfg.log.iterate ? [...cfg.log.iterate(f)] : cfg.log.read(f));
+      /** @param {any} e */ const toItem = (e) => { const { mac, gseq: n, gprev: pv, ...core } = e.data; return { e, mac, n, prev: pv, core, legacy: n === undefined }; };
+      const snapItems = rd({ type: "grants.snapshot" }).filter((/** @type {any} */ e) => e.data && typeof e.data === "object").map(toItem).filter((/** @type {any} */ i) => !i.legacy && typeof i.mac === "string" && Number.isInteger(i.n)).sort((/** @type {any} */ a, /** @type {any} */ b) => b.n - a.n);
+      /** @type {any} */ let snap = null;
+      for (const c of snapItems) { // newest by its own number first (a replayed old one is older); the first that verifies is the start
+        if (await seal.verify("grants-event-v1", sealed(c.e.type, c.e.subject, c.core, c.n, c.prev), c.mac)) { snap = c; break; }
+      }
+      const since = snap ? snap.e.seq : 0;
+      /** @type {any[]} */ const tail = [];
+      for (const t of ["grant.*", "member.*", "actor.*", "offer.*", "invite.*", "chat.*", "rule.*", "owner.changed"]) for (const e of rd({ type: t, since })) if (e.data && typeof e.data === "object") tail.push(e);
+      tail.sort((a, b) => a.seq - b.seq);
+      const items = tail.map(toItem);
+      // 1. Verify the new-style events after the snapshot, in pipelined batches.
       const fresh = items.filter(i => !i.legacy && typeof i.mac === "string" && Number.isInteger(i.n));
       const ok = new Set();
       for (let i = 0; i < fresh.length; i += 128) {
@@ -753,9 +768,6 @@ export function createGrantsStore(cfg) {
         const res = await seal.verifyMany(part.map(x => ({ purpose: "grants-event-v1", data: sealed(x.e.type, x.e.subject, x.core, /** @type {number} */ (x.n), x.prev), mac: x.mac })));
         part.forEach((x, k) => { if (res[k]) ok.add(x); });
       }
-      // 2. The newest verified snapshot (by its own number, not its place in the log: a replayed old one is older) is the starting state.
-      const snaps = fresh.filter(i => ok.has(i) && i.e.type === "grants.snapshot").sort((a, b) => /** @type {number} */ (b.n) - /** @type {number} */ (a.n));
-      const snap = snaps[0];
       let nextN = 1, nextPrev = "genesis", legacyCount = 0;
       const apply = (/** @type {any} */ e, /** @type {any} */ d) => {
         if (e.type === "grant.created" && grants.has(d.grant.id)) return; // an id is made once: a second creation of it is never a resurrection
@@ -790,19 +802,19 @@ export function createGrantsStore(cfg) {
       } else {
         // 3a. Events an older key sealed, in log order, each position-bound under a legacy key.
         for (const it of items) {
-          if (!it.legacy || typeof it.mac !== "string" || it.e.type === "grants.snapshot") continue;
+          if (!it.legacy || typeof it.mac !== "string") continue;
           const good = (cfg.legacyKeys || []).some((/** @type {any} */ k) => sameMac(hmac(k, canonical({ type: it.e.type, subject: it.e.subject, data: it.core, seq: it.e.seq, prev: it.e.prev })), it.mac));
           if (good) { apply(it.e, it.core); legacyCount++; }
         }
       }
       // 3b. The new chain: only the event that is exactly next (its number, and the hash of the seal before it) is taken; replays and gaps are skipped.
-      const started = items.indexOf(snap);
-      for (const it of items.slice(snap ? started + 1 : 0)) {
-        if (!ok.has(it) || it.e.type === "grants.snapshot" || it.n !== nextN || it.prev !== nextPrev) continue;
+      for (const it of items) {
+        if (!ok.has(it) || it.n !== nextN || it.prev !== nextPrev) continue;
         apply(it.e, it.core);
         nextN++; nextPrev = sha256(it.mac);
       }
       gseq = nextN - 1; gprev = nextPrev;
+      snapAt = snap ? snap.n : 0;
       // 4. Migration: legacy events were read, so write the state under the new seal; the old key is not needed again.
       let migrated = false;
       if (legacyCount > 0 && !snap) { await api.snapshot(); migrated = true; }
@@ -832,7 +844,7 @@ export function createGrantsStore(cfg) {
     /** @type {any} */ (api)[name] = (/** @type {any[]} */ ...a) => {
       const run = async () => {
         const before = capture();
-        try { return await f(...a); } catch (e) {
+        try { const r = await f(...a); if (gseq - snapAt >= SNAP_EVERY) { try { await api.snapshot(); } catch { /* the next call tries again */ } } return r; } catch (e) {
           // A failure while writing: put the store back from the log; if the log cannot be read either, put back the state this call started from, never an empty store.
           if (!(e instanceof KernelError)) { try { await api.rebuild(); } catch { restore(before); } }
           throw e;

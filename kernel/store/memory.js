@@ -13,8 +13,21 @@ const clone = (/** @type {any} */ v) => structuredClone(v);
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 
 /**
+ * One type's rows. The reference store keeps them in a Map; a durable store (kernel/store/sqlite.js) pages them from its database behind a small LRU, so the rows it holds in
+ * memory are the hot ones, not all of them. `candidates` and `searchCandidates` may return a SUPERSET of what a query or a search needs (the database narrows by an equality
+ * filter or a word); the same code then applies the exact rules, so an answer is the same either way.
+ * @typedef {{ get(id: string): any, has(id: string): boolean, set(id: string, r: any): void, values(): any[], candidates(spec: any): any[], searchCandidates(words: string[]): any[] }} Table
+ */
+/** @returns {Table} */
+function mapTable() {
+  /** @type {Map<string, any>} */ const m = new Map();
+  return { get: id => m.get(id), has: id => m.has(id), set: (id, r) => { m.set(id, r); }, values: () => [...m.values()], candidates: () => [...m.values()], searchCandidates: () => [...m.values()] };
+}
+
+/**
  * @param {{ clock?: () => number, hook?: (op: string, args: any[]) => void,
  *   initial?: { types: any[], records: any[], changes: any[] },
+ *   backing?: { table(type: string): Table, changes: { readonly length: number, push(e: any): void, slice(from: number, to: number): any[] } },
  *   persist?: { type(name: string, def: any | null): void, record(r: any): void, change(e: any): void } }} [cfg]
  *   hook: tests throw from it to simulate a crash or an outage. initial and persist make the store durable (kernel/store/sqlite.js): the state it starts from, and a
  *   write-through for every change, called after the in-memory change is made.
@@ -22,12 +35,14 @@ const fail = (/** @type {string} */ code, /** @type {string} */ message) => Obje
 export function createMemoryStore(cfg = {}) {
   const clock = cfg.clock || Date.now;
   /** @type {Map<string, any>} */ const types = new Map();
-  /** @type {Map<string, Map<string, any>>} */ const rows = new Map();
-  /** @type {any[]} */ const changes = [];
+  /** @type {Map<string, Table>} */ const rows = new Map();
+  const makeTable = (/** @type {string} */ name) => (cfg.backing ? cfg.backing.table(name) : mapTable());
+  /** @type {{ readonly length: number, push(e: any): void, slice(from: number, to: number): any[] }} */
+  const changes = cfg.backing ? cfg.backing.changes : (() => { /** @type {any[]} */ const a = []; return { get length() { return a.length; }, push: (/** @type {any} */ e) => { a.push(e); }, slice: (/** @type {number} */ f, /** @type {number} */ t) => a.slice(f, t) }; })();
   if (cfg.initial) {
-    for (const t of cfg.initial.types) { types.set(t.name, t); rows.set(t.name, new Map()); }
+    for (const t of cfg.initial.types) { types.set(t.name, t); rows.set(t.name, makeTable(t.name)); }
     for (const r of cfg.initial.records) rows.get(r.type)?.set(r.id, r);
-    changes.push(...cfg.initial.changes);
+    if (!cfg.backing) for (const e of cfg.initial.changes) changes.push(e);
   }
   const touch = (/** @type {string} */ op, /** @type {any[]} */ args) => cfg.hook && cfg.hook(op, args);
   const table = (/** @type {string} */ t) => { if (!types.has(t)) throw fail("unknown_type", `no type ${t}`); return rows.get(t); };
@@ -57,7 +72,7 @@ export function createMemoryStore(cfg = {}) {
         if (had && canonical(had) === canonical(t)) continue;
         types.set(t.name, clone(t));
         if (cfg.persist) cfg.persist.type(t.name, clone(t));
-        if (!rows.has(t.name)) rows.set(t.name, new Map());
+        if (!rows.has(t.name)) rows.set(t.name, makeTable(t.name));
         changesMade.push(had ? `changed type ${t.name}` : `added type ${t.name}`);
       }
       for (const t of diff.change_types || []) {
@@ -69,7 +84,7 @@ export function createMemoryStore(cfg = {}) {
       }
       for (const name of diff.remove_types || []) {
         if (!types.has(name)) continue;
-        if ([...rows.get(name).values()].some(r => !r.deleted_at)) throw fail("invalid", `type ${name} still has records`);
+        if (/** @type {Table} */ (rows.get(name)).values().some((/** @type {any} */ r) => !r.deleted_at)) throw fail("invalid", `type ${name} still has records`);
         types.delete(name); rows.delete(name);
         if (cfg.persist) cfg.persist.type(name, null);
         changesMade.push(`removed type ${name}`);
@@ -91,14 +106,14 @@ export function createMemoryStore(cfg = {}) {
     },
     async query(type, spec) {
       touch("query", [type, spec]);
-      const all = [...table(type).values()].filter(r => spec.include_deleted || !r.deleted_at);
+      const all = table(type).candidates(spec).filter((/** @type {any} */ r) => spec.include_deleted || !r.deleted_at);
       const p = page(all, spec);
       if (p.error) throw fail("invalid", p.error);
       return clone(p);
     },
     async aggregate(type, spec) {
       touch("aggregate", [type, spec]);
-      return clone(agg([...table(type).values()].filter(r => !r.deleted_at), spec));
+      return clone(agg(table(type).candidates(spec).filter((/** @type {any} */ r) => !r.deleted_at), spec));
     },
     async create(type, id, data) {
       touch("create", [type, id, data]);
@@ -148,7 +163,7 @@ export function createMemoryStore(cfg = {}) {
       for (const [type, t] of rows) {
         if (spec.types && !spec.types.includes(type)) continue;
         const def = types.get(type);
-        for (const r of t.values()) {
+        for (const r of t.searchCandidates(words)) {
           if (r.deleted_at) continue;
           let score = 0, snippet;
           for (const f of def.fields) {

@@ -66,8 +66,28 @@ export function createRecords(cfg) {
   const sinks = cfg.sinks || new Set();
   const urn = (/** @type {string} */ type, /** @type {string} */ id) => `vyre://${space}/${type}/${id}`;
   /** @type {Map<string, any>} */ const intents = new Map();
-  /** @type {Map<string, Record<string, any>>} kernel attributes as the gateway wrote them (owner, created_by, project, sensitivity), never the store's */ const kattrs = new Map();
-  /** @type {Map<string, { version: number, hash: string }>} the latest version hash the gateway wrote, per record */ const index = new Map();
+  // Kernel attributes as the gateway wrote them (owner, created_by, project, sensitivity), never the store's. A store that keeps them on disk (`store.meta`, the built-in
+  // SQLite store) answers from there with a small LRU in front; any other store leaves them in memory as before.
+  const kattrs = store.meta ? store.meta : new Map();
+  /** The latest version hash the gateway wrote, per record. On a durable log it is found by an indexed lookup of the record's last event (with a small LRU in front), so nothing here
+   * grows with the number of records; on the reference log it is a Map filled as the log is read. */
+  const index = (() => {
+    /** @type {Map<string, { version: number, hash: string }>} */ const m = new Map();
+    return {
+      get(/** @type {string} */ u) {
+        const hit = m.get(u);
+        // Only a durable log answers by lookup; on the reference log the Map is the whole index (it is filled as records are written and by `rebuild`).
+        if (hit || log.durable !== true) return hit;
+        const e = log.latestFor(u);
+        if (!e) return undefined;
+        const v = { version: e.data.version, hash: e.data.version_hash };
+        m.set(u, v); if (m.size > 10_000) m.delete(m.keys().next().value);
+        return v;
+      },
+      set(/** @type {string} */ u, /** @type {{ version: number, hash: string }} */ v) { m.set(u, v); if (m.size > 10_000) m.delete(m.keys().next().value); },
+      clear() { m.clear(); },
+    };
+  })();
 
   function mapError(/** @type {any} */ e) {
     if (e instanceof KernelError) return e;
@@ -466,7 +486,9 @@ export function createRecords(cfg) {
     /** Rebuild the version-hash index from the log (after a restart). */
     rebuild() {
       index.clear();
-      for (const e of log.read()) {
+      // A durable log answers by lookup (`latestFor`), so there is nothing to read back: the index fills as records are touched.
+      if (log.durable === true) return;
+      for (const e of (log.iterate ? log.iterate({}) : log.read())) {
         const d = e.data;
         if (d && typeof d === "object" && typeof d.version_hash === "string" && typeof d.version === "number") index.set(e.subject, { version: d.version, hash: d.version_hash });
       }

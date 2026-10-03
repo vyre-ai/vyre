@@ -116,7 +116,7 @@ export function createLimits(cfg) {
     /** Replay the durable counters after a restart: `once` marks and settled meter totals. */
     rebuild() {
       onceUsed.clear(); meters.clear(); reservations.clear(); windows.clear();
-      for (const e of cfg.log.read({})) {
+      for (const e of cfg.log.iterate ? cfg.log.iterate({}) : cfg.log.read({})) {
         if (e.type === "grant.used" && e.data && e.data.grant) onceUsed.add(e.data.grant);
         else if (e.type === "meter.settled" && e.data) slot(`${e.data.key}|${e.data.meter}`).settled += e.data.actual;
         else if (e.type === "rate.used" && e.data && e.data.at > clock() - e.data.per_seconds * 1000) { const k = `${e.data.grant}|${e.data.actor}`; windows.set(k, [...(windows.get(k) || []), e.data.at]); }

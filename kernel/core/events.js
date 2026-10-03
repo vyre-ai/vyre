@@ -41,20 +41,48 @@ export function verifyEvents(/** @type {string} */ space, /** @type {readonly an
 
 const deepFreezeEarly = (/** @type {any} */ o) => { if (o && typeof o === "object" && !Object.isFrozen(o)) { Object.freeze(o); for (const v of Object.values(o)) deepFreezeEarly(v); } return o; };
 
+const deepFreeze = (/** @type {any} */ o) => { if (o && typeof o === "object" && !Object.isFrozen(o)) { Object.freeze(o); for (const v of Object.values(o)) deepFreeze(v); } return o; };
+const WINDOW = Object.freeze({ events: 2000, bytes: 4 * 1024 * 1024 });
+const BATCH = 500;
+
 /**
  * @param {{ space: string, clock?: () => number, rand?: (n: number) => Uint8Array,
- *   initial?: { events: any[], salts: [number, string][], cursors: [string, number][] },
- *   persist?: { append(e: any, salt: string): void, erase(seq: number, e: any): void, cursor(name: string, seq: number): void } }} cfg
- *   initial and persist make the log durable (kernel/store/sqlite-log.js): the history it starts from, and a write-through done BEFORE the event is
- *   taken as appended, so an event that could not be written is not in the log.
+ *   initial?: { count?: number, head?: string, window?: any[], salts?: [number, string][], cursors?: [string, number][], events?: any[] },
+ *   persist?: { append(e: any, salt: string): number | void, erase(seq: number, e: any): void, cursor(name: string, seq: number): void,
+ *     get?(seq: number): { event: any, salt: string | null } | null, range?(q: { after: number, before?: number, filter?: any, limit: number }): any[], latest?(subject: string, before: number): any },
+ *   window?: { events?: number, bytes?: number } }} cfg
+ *   Without `persist` the whole log is kept (the reference log). With it (kernel/store/sqlite-log.js) the log is durable and BOUNDED in memory: only a recent window of events
+ *   (by count and by bytes) is kept, an older event is read back from the database when asked for, and a full scan walks the log in batches (`iterate`) instead of holding it.
+ *   `initial` is the state a durable log starts from: how many events there are, the hash of the last, the recent window, its salts and the consumers' cursors.
  */
 export function createEventLog(cfg) {
   const clock = cfg.clock || Date.now;
   const rand = cfg.rand || (n => randomBytes(n));
-  /** @type {any[]} */ const log = [];
-  /** @type {Map<number, string>} the salt kept beside the data, erased with it */ const salts = new Map();
-  if (cfg.initial) { log.push(...cfg.initial.events.map((/** @type {any} */ e) => deepFreezeEarly(e))); for (const [s, v] of cfg.initial.salts) salts.set(s, v); }
+  const durable = Boolean(cfg.persist && cfg.persist.get && cfg.persist.range);
+  const limits = { events: cfg.window?.events ?? WINDOW.events, bytes: cfg.window?.bytes ?? WINDOW.bytes };
+  /** @type {any[]} the events kept in memory: the whole log for the reference log, the recent window for a durable one */ const log = [];
+  /** @type {number[]} the size of each kept event on disk, to bound the window by bytes */ const sizes = [];
+  let weight = 0;
+  /** @type {Map<number, string>} the salt kept beside the data, erased with it (the window's; older ones are on disk) */ const salts = new Map();
+  let count = 0, headHash = genesis(cfg.space);
+  if (cfg.initial) {
+    const w = cfg.initial.window || cfg.initial.events || [];
+    for (const e of w) { log.push(deepFreeze(e)); sizes.push(0); }
+    for (const [s, v] of cfg.initial.salts || []) salts.set(s, v);
+    count = cfg.initial.count ?? (w.length ? w[w.length - 1].seq : 0);
+    headHash = cfg.initial.head ?? (w.length ? w[w.length - 1].hash : headHash);
+  }
+  /** The seq of the first event kept in memory (everything before it is on disk). */
+  const base = () => (log.length ? log[0].seq : count + 1);
   /** @type {Map<string, { filter: any, cursor: number, onEvent: any, busy: boolean, fails?: { seq: number, n: number } }>} */ const consumers = new Map();
+
+  /** One event by seq: from the window, else from the database. */
+  function get(/** @type {number} */ seq) {
+    if (!Number.isInteger(seq) || seq < 1 || seq > count) return null;
+    if (seq >= base()) return log[seq - base()] || null;
+    const r = cfg.persist && cfg.persist.get ? cfg.persist.get(seq) : null;
+    return r ? deepFreeze(r.event) : null;
+  }
 
   /**
    * Append one event. `chain` must be kernel-built; `ev` is a NewEvent. Throws a KernelError for a refusal.
@@ -74,7 +102,7 @@ export function createEventLog(cfg) {
     if (labels.red === "secret") throw new KernelError("secret_refused", "a secret is never written to the log");
     const last = chain.hops[chain.hops.length - 1];
     const salt = Buffer.from(rand(16)).toString("base64url");
-    const seq = log.length + 1;
+    const seq = count + 1;
     const now = clock();
     /** @type {any} */
     const e = {
@@ -91,51 +119,108 @@ export function createEventLog(cfg) {
       vis: ev.vis || "space", red: labels.red,
       data: ev.data === undefined ? null : ev.data,
       commit: sha256(salt + canonical(ev.data === undefined ? null : ev.data)),
-      prev: seq === 1 ? genesis(cfg.space) : log[seq - 2].hash,
+      prev: headHash,
     };
     e.hash = hashOf(e);
     deepFreeze(e);
-    if (cfg.persist) cfg.persist.append(e, salt);
-    log.push(e);
+    const size = (cfg.persist && cfg.persist.append(e, salt)) || 0;
+    log.push(e); sizes.push(size || 0); weight += size || 0;
+    count = seq; headHash = e.hash;
     salts.set(seq, salt);
+    // The window is bounded (a durable log only): the oldest events leave memory, and stay on disk.
+    if (durable) while (log.length > 1 && (log.length > limits.events || weight > limits.bytes)) { const old = log.shift(); weight -= sizes.shift() || 0; salts.delete(old.seq); }
     queueMicrotask(pump);
     return e;
   }
 
-  const deepFreeze = (/** @type {any} */ o) => { if (o && typeof o === "object" && !Object.isFrozen(o)) { Object.freeze(o); for (const v of Object.values(o)) deepFreeze(v); } return o; };
 
-  /** Raw read, no permission check: the gateway authorizes `events.read` and filters by `vis` before calling this. */
-  function read(/** @type {any} */ filter = {}) {
-    const out = [];
-    for (const e of log) {
-      if (filter.since !== undefined && e.seq <= filter.since) continue;
-      if (!typeMatches(filter.type, e.type)) continue;
-      if (filter.subject_prefix && !(e.subject === filter.subject_prefix || e.subject.startsWith(filter.subject_prefix.replace(/\/$/, "") + "/"))) continue;
-      if (filter.corr && e.corr !== filter.corr) continue;
-      if (filter.actor && e.actor !== filter.actor) continue;
-      out.push(e);
-      if (filter.limit && out.length >= filter.limit) break;
+  const matches = (/** @type {any} */ filter, /** @type {any} */ e) => {
+    if (filter.since !== undefined && e.seq <= filter.since) return false;
+    if (!typeMatches(filter.type, e.type)) return false;
+    if (filter.subject_prefix && !(e.subject === filter.subject_prefix || e.subject.startsWith(filter.subject_prefix.replace(/\/$/, "") + "/"))) return false;
+    if (filter.corr && e.corr !== filter.corr) return false;
+    if (filter.actor && e.actor !== filter.actor) return false;
+    if (filter.ref && !(e.data && e.data.id === filter.ref)) return false;
+    return true;
+  };
+
+  /**
+   * Walk the log in order, oldest first, in batches: the part on disk first (the database does the filtering by indexed columns), then the window. It holds one batch, never the
+   * log, so a rebuild, an audit or a chain check over a million events needs no more memory than over a hundred. `limit` stops it; `since` starts after a seq.
+   * @param {any} [filter] @param {{ from?: number }} [o]
+   * @returns {Generator<any, void, undefined>}
+   */
+  function* iterate(filter = {}, o = {}) {
+    let after = Math.max(filter.since ?? 0, o.from ?? 0);
+    let given = 0;
+    const cap = filter.limit || Infinity;
+    const first = base();
+    if (durable && after < first - 1) {
+      while (after < first - 1) {
+        const rows = /** @type {any} */ (cfg.persist).range({ after, before: first, filter, limit: BATCH });
+        if (!rows.length) { after = first - 1; break; }
+        for (const raw of rows) { yield deepFreeze(raw); if (++given >= cap) return; }
+        after = rows[rows.length - 1].seq;
+      }
     }
-    return out;
+    for (let i = 0; i < log.length; i++) {
+      const e = log[i];
+      if (e.seq <= after || !matches(filter, e)) continue;
+      yield e;
+      if (++given >= cap) return;
+    }
   }
 
-  /** Walk the chain from the genesis. Returns { ok: true, head } or { ok: false, at, why }. */
-  const verify = () => verifyEvents(cfg.space, log);
+  /**
+   * The newest event about one subject whose data carries a version hash (a record's last write), or undefined. On a durable log this is one indexed lookup, so the gateway
+   * need not hold a version index for every record it has ever written.
+   * @param {string} subject
+   */
+  function latestFor(subject) {
+    for (let i = log.length - 1; i >= 0; i--) { const e = log[i]; if (e.subject === subject && e.data && typeof e.data.version_hash === "string") return e; }
+    if (durable && base() > 1 && cfg.persist && cfg.persist.latest) { const raw = cfg.persist.latest(subject, base()); return raw ? deepFreeze(raw) : undefined; }
+    return undefined;
+  }
+
+  /** Raw read, no permission check: the gateway authorizes `events.read` and filters by `vis` before calling this. Holds the matches: a scan of the whole log uses `iterate`. */
+  function read(/** @type {any} */ filter = {}) { return [...iterate(filter)]; }
+
+  /**
+   * Walk the chain and say whether it holds. By default from the genesis; `{ from, prev }` starts after the event `from` whose hash is `prev` (a checkpoint the caller already
+   * trusts), so a restart checks only what was written since. Returns { ok: true, head, seq } or { ok: false, at, why }.
+   * @param {{ from?: number, prev?: string }} [o]
+   */
+  function verify(o = {}) {
+    let prev = o.from ? o.prev : genesis(cfg.space);
+    if (o.from && typeof prev !== "string") return { ok: false, at: o.from, why: "a start point needs the hash of the event before it" };
+    let n = o.from || 0;
+    for (const e of iterate({}, { from: o.from || 0 })) {
+      n++;
+      if (e.seq !== n) return { ok: false, at: e.seq, why: "seq is not contiguous" };
+      if (e.prev !== prev) return { ok: false, at: e.seq, why: "prev does not match the event before" };
+      if (hashOf(e) !== e.hash) return { ok: false, at: e.seq, why: "hash does not match the envelope" };
+      prev = e.hash;
+    }
+    if (n !== count) return { ok: false, at: n + 1, why: "the log is shorter than it says" };
+    return { ok: true, head: prev, seq: n };
+  }
 
   /** Does the kept data (and salt) still match the commitment? False once erased. */
   function proves(/** @type {number} */ seq) {
-    const e = log[seq - 1], s = salts.get(seq);
+    const e = get(seq);
+    let s = salts.get(seq);
+    if (s === undefined && cfg.persist && cfg.persist.get && seq < base()) { const r = cfg.persist.get(seq); s = r && r.salt ? r.salt : undefined; }
     return Boolean(e && s && e.data !== undefined && !e.__erased && sha256(s + canonical(e.data)) === e.commit);
   }
 
   /** Erase an event's data and its salt. The envelope, commit and hash stay, so the chain still verifies and no dictionary oracle is left. */
   function erase(/** @type {number} */ seq) {
-    const e = log[seq - 1];
+    const e = get(seq);
     if (!e) throw new KernelError("not_found", "no such event");
     const erased = deepFreeze({ ...e, data: { erased: true } });
     if (cfg.persist) cfg.persist.erase(seq, erased);
     salts.delete(seq);
-    log[seq - 1] = erased;
+    if (seq >= base()) log[seq - base()] = erased;
   }
 
   /** At-least-once with a durable named cursor: a handler that throws is retried, never skipped. @returns {() => void} */
@@ -147,17 +232,18 @@ export function createEventLog(cfg) {
     return () => { if (consumers.get(consumer) === c) consumers.delete(consumer); };
   }
 
-  const cursors = new Map(cfg.initial ? cfg.initial.cursors : []);
+  const cursors = new Map(cfg.initial ? cfg.initial.cursors || [] : []);
   /** @type {{ consumer: string, seq: number, at: number }[]} */ const dead = [];
   const MAX_ATTEMPTS = 8;
+  const nextFor = (/** @type {any} */ c) => { for (const e of iterate({ since: c.cursor, ...(c.filter && c.filter.type ? { type: c.filter.type } : {}), limit: 1 })) return e; return undefined; };
   async function pump() {
     for (const [name, c] of consumers) {
       if (c.busy) continue;
       c.busy = true;
       try {
         for (;;) {
-          const next = log.find(e => e.seq > c.cursor && typeMatches(c.filter && c.filter.type, e.type));
-          const upto = log.length;
+          const upto = count;
+          const next = nextFor(c);
           if (!next) { c.cursor = Math.max(c.cursor, upto); break; }
           await c.onEvent(next);
           c.cursor = next.seq;
@@ -167,7 +253,7 @@ export function createEventLog(cfg) {
       } catch {
         // The cursor did not move: retry the same event with a growing delay, and after MAX_ATTEMPTS set it aside (dead letter) so one
         // poison event cannot stall the consumer for ever (K1 item 9f).
-        const next = log.find(e => e.seq > c.cursor && typeMatches(c.filter && c.filter.type, e.type));
+        const next = nextFor(c);
         if (next) {
           c.fails = c.fails && c.fails.seq === next.seq ? { seq: next.seq, n: c.fails.n + 1 } : { seq: next.seq, n: 1 };
           if (c.fails.n >= MAX_ATTEMPTS) { dead.push({ consumer: name, seq: next.seq, at: clock() }); c.cursor = next.seq; cursors.set(name, c.cursor); c.fails = undefined; queueMicrotask(pump); }
@@ -179,10 +265,13 @@ export function createEventLog(cfg) {
   }
 
   return Object.freeze({
-    append, read, verify, proves, erase, subscribe, pump,
+    append, read, iterate, get, latestFor, verify, proves, erase, subscribe, pump,
     cursor: (/** @type {string} */ n) => (consumers.get(n) ? /** @type {any} */ (consumers.get(n)).cursor : cursors.get(n) ?? 0),
-    latestSeq: () => log.length,
+    latestSeq: () => count,
     deadLetters: () => [...dead],
-    head: () => (log.length ? log[log.length - 1].hash : genesis(cfg.space)),
+    head: () => headHash,
+    /** What is held in memory now: for the bound's tests and the load measurements. */
+    durable,
+    stats: () => ({ count, in_memory: log.length, bytes: weight, first_in_memory: base() }),
   });
 }
