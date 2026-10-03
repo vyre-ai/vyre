@@ -28,7 +28,7 @@ test("only you, or the setup page for you, add, replace or remove the token; a m
     assert.ok((await reg("vault.put", { name: "claude-setup-token", kind: "secret", fields: { value: tok } }, caller, meta)).error, `${who} must be refused through vault.put`);
   }
   // The setup page (core/onboard) keeps making the item the way it does today; the person can then replace it.
-  assert.ok(!(await reg("vault.put", { name: "claude-setup-token", kind: "secret", description: "from setup", value: fake("viaonboard"), grants: ["agents", "threads"] }, "module:onboard")).error, "onboard still stores it");
+  assert.ok(!(await reg("vault.put", { name: "claude-setup-token", kind: "secret", description: "from setup", value: fake("viaonboard") }, "module:onboard")).error, "onboard still stores it");
   assert.equal((await reg("vault.provider.set", { provider: "claude", token: tok }, "cli")).data.stored, true, "replaced by the person");
   for (const caller of ["module:sessions", "mcp", "module:watchers"]) assert.ok((await reg("vault.provider.remove", { provider: "claude" }, caller)).error, `${caller} may not remove`);
   assert.ok((await reg("vault.delete", { name: "claude-setup-token" }, "module:sessions")).error, "nor through vault.delete");
@@ -48,7 +48,7 @@ test("the app learns that one is stored and when, never the value; the logs, the
 
 test("the credentials port: the vault provided it once, the launcher gets the token for a provider item, or null, and each use leaves an audit row without the value", async t => {
   const { d, reg, logs } = await daemon(t), tok = fake("claude"), key = fake("api");
-  await reg("vault.put", { name: "claude-setup-token", kind: "secret", value: tok, grants: ["agents", "threads"] }, "module:onboard"); // as core/onboard makes it
+  await reg("vault.put", { name: "claude-setup-token", kind: "secret", value: tok }, "module:onboard"); // as core/onboard makes it
   await reg("vault.provider.set", { provider: "anthropic", token: key }, "cli");
   // VP-2: the vault provided the port to the registry once, at its own start, and the daemon gave it to the sandbox; no import of the vault is involved, and nothing can take it later.
   const port = d.registry.deps.credentialsPort; assert.ok(port, "the registry holds the credentials port the vault provided");
@@ -65,10 +65,14 @@ test("the credentials port: the vault provided it once, the launcher gets the to
   await reg("vault.provider.remove", { provider: "claude" }, "cli"); assert.equal(await port.credentials("claude"), null, "removed means gone"); assert.equal(await port.credentials("anthropic"), key);
 });
 
-test("launcherOnly: once it is on, no module is granted the token, and the person's own reveal still needs presence like any item", async t => {
-  const { d, reg } = await daemon(t, { launcherOnly: true }), tok = fake("claude");
+test("launcherOnly (on by default): onboard stores the token without grants, no module is granted it, and `vault.launcherOnly: false` turns it off", async t => {
+  const { d, reg } = await daemon(t), tok = fake("claude");
+  assert.ok(!(await reg("vault.put", { name: "claude-setup-token", kind: "secret", value: fake("y") }, "module:onboard")).error, "onboard stores it without grants");
   await reg("vault.provider.set", { provider: "claude", token: tok }, "cli");
   for (const m of ["agents", "threads", "sessions"]) assert.ok((await reg("vault.grant", { name: "claude-setup-token", module: m }, "cli")).error, `${m} is not granted it`);
-  assert.ok((await reg("vault.put", { name: "claude-setup-token", kind: "secret", value: fake("x"), grants: ["agents"] }, "module:onboard")).error, "onboard must stop attaching grants before this is switched on");
+  assert.ok((await reg("vault.put", { name: "claude-setup-token", kind: "secret", value: fake("x"), grants: ["agents"] }, "module:onboard")).error, "a grant attached on put is refused");
   assert.equal(await d.registry.deps.credentialsPort.credentials("claude"), tok);
+  const off = await daemon(t, { launcherOnly: false });
+  await off.reg("vault.provider.set", { provider: "claude", token: tok }, "cli");
+  assert.ok(!(await off.reg("vault.grant", { name: "claude-setup-token", module: "agents" }, "cli")).error, "with launcherOnly false a grant is allowed again");
 });

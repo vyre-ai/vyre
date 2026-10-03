@@ -367,8 +367,8 @@ export class Vault {
     // "require": a relayed request also needs the tailnet policy to grant the calling peer
     // vyre.run/cap/vault for the item (ADR 0014, part 7). Only whois carries caps, so under any
     // other identity every relayed request is refused. The grant narrows; it never stands in for a pass.
-    // vault.launcherOnly: once the session launcher reads the sign-in tokens through the credentials port, no module may be granted them. Off until sessions has switched over.
-    this.launcherOnly = opts.launcherOnly === true;
+    // vault.launcherOnly: once the session launcher reads the sign-in tokens through the credentials port, no module may be granted them. On by default now that sessions reads through the port and onboard no longer attaches grants (`vault.launcherOnly: false` turns it off).
+    this.launcherOnly = opts.launcherOnly !== false;
     this.relayGrants = opts.relay && opts.relay.grants === "require" ? "require" : "off";
     /** What each login's node carried at its last relay contact since start: { caps, node, at }. Never decides access. */
     /** @type {Map<string, { caps: Record<string, any[]>, node: string, at: number }>} */ this.seenCaps = new Map();

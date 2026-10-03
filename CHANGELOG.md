@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(vault): VP-1 closed: `vault.launcherOnly` is on by default. The two provider sign-in items (claude-setup-token, anthropic-api-key) take no module grant and no module can release or inject them, so only the session launcher reads them, through the credentials port. core/onboard stores the token without `grants`; a put that carries grants for those items is refused before anything is written (it used to write, then fail). `vault.launcherOnly: false` turns it off. sessions' core/switchboard/launcher-only.test.js now reads the port from the registry (the vault provides it).
 - fix(vault,daemon): the vault clears `credentialsPort` when it stops (`ctx.provide(name, null)`), and the daemon's sandbox then says the vault is not running instead of reading a stopped instance (reviewer-2 note on VP-4).
 - feat(0.3, memory): the surface-chain fallback in core/memory's kernel gate is deleted. With the kernel on, a memory call with no kernel chain is refused whatever caller label it wears; the CLI, local and Deck get the owner's chain from the daemon's proven facts. Two named exceptions: a first-party module's own call (registry flag) and the Capsule, with a test that runs a real daemon and fails when the Capsule no longer needs it.
 
