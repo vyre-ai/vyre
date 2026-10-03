@@ -7,6 +7,7 @@ KEY=$(docker exec g1 /garage key info spike --show-secret 2>/dev/null | awk '/Ke
 L="$HOME/spike-venv/bin/python load.py http://127.0.0.1:3900 $KEY $SEC pool"
 mem() { docker stats --no-stream --format '{{.Name}} {{.MemUsage}}' g1 g2 g3 | tr '\n' ' '; echo; }
 du_() { for n in 1 2 3; do printf "g$n=%sM " $(du -sm $HOME/spike/garage/n$n/data | cut -f1); done; echo; }
+for n in 1 2 3; do docker exec g$n /garage worker set resync-worker-count 4 >/dev/null 2>&1; docker exec g$n /garage worker set resync-tranquility 0 >/dev/null 2>&1; done
 echo "== idle memory"; mem
 echo "== write 150 x 4 MiB"; $L put 150 4; mem; echo -n "disk per node: "; du_
 echo "== read all 150"; $L get 150 4

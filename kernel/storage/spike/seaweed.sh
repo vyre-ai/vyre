@@ -11,6 +11,6 @@ cat > $D/s3.json <<JSON
 {"identities":[{"name":"spike","credentials":[{"accessKey":"spikekey","secretKey":"spikesecret"}],"actions":["Admin","Read","Write","List","Tagging"]}]}
 JSON
 mkdir -p $D/f
-docker run -d --name sf --network spike-s --memory 768m -p 127.0.0.1:8333:8333 -v $D/s3.json:/etc/s3.json -v $D/f:/data $IMG filer -master=sm:9333 -s3 -s3.config=/etc/s3.json -defaultReplicaPlacement=010 -dir=/data >/dev/null
+docker run -d --name sf --network spike-s --memory 768m -p 127.0.0.1:8333:8333 -v $D/s3.json:/etc/s3.json -v $D/f:/data $IMG filer -master=sm:9333 -s3 -s3.config=/etc/s3.json -defaultReplicaPlacement=010 -defaultStoreDir=/data >/dev/null
 sleep 8
 docker exec sf sh -c 'echo "s3.bucket.create -name pool" | weed shell -master=sm:9333' 2>&1 | tail -2

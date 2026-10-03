@@ -62,6 +62,9 @@ export class Presence {
   revoke(key_id, ctx, proof) {
     const k = this.keys.get(key_id);
     if (!k || !ctx?.one_person || ctx.person !== k.person) return "not_found";
+    // Another enrolled key vouches, so a stolen device cannot sign away the person's others; the only key may sign its own removal (then recovery, not enrolment).
+    const others = [...this.keys].filter(([id, x]) => x.person === k.person && id !== key_id).length;
+    if (others > 0 && proof?.key_id === key_id) return "needs_other_key";
     const why = this.refuse(proof, { op: "presence.revoke", space: ctx.space, fields: { key_id }, ctx });
     if (why) return why === "no_proof" ? "needs_presence" : why;
     this.keys.delete(key_id); this.save(); return null;

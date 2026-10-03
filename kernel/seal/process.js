@@ -19,6 +19,14 @@ import { SealStore } from "./store.js";
 
 export const HUMAN_SURFACES = new Set(["deck", "capsule", "mobile"]);
 const REVEAL_MS = 30_000, LOOKUP_PER_MIN = 10, MAX_VALUE = 8192, MAX_BODY = 1 << 20;
+/** Every address an envelope names: to, cc and bcc, a string or a list, case and spacing folded. */
+export const recipientsOf = env => ["to", "cc", "bcc"].flatMap(k => (Array.isArray(env[k]) ? env[k] : env[k] == null ? [] : [env[k]])).map(x => String(x).trim().toLowerCase());
+/** True only when the whole recipient set is the one verified contact the value was merged for. A document destination has no recipient, so any recipient is unverified. */
+export function recipientsVerified(meta, env) {
+  const r = recipientsOf(env);
+  if (meta.dest_kind === "contact_point") return r.length > 0 && r.every(x => x === String(meta.dest_contact).trim().toLowerCase());
+  return r.length === 0;
+}
 const err = (code) => Object.assign(new Error(code), { code });
 const need = (c, m) => { if (!c) throw err(m); };
 
@@ -27,6 +35,9 @@ export class Sealer {
   constructor({ dir, master, sinks = {}, now = Date.now, verifiers = {}, allowUnattested = false }) {
     this.store = new SealStore(dir, master); this.sinks = sinks; this.now = now; this.presence = new Presence(now, { verifiers, allowUnattested, file: path.join(dir, "presence.json") }); this.allowUnattested = allowUnattested;
     this.sessions = new Map(); this.lookups = new Map();
+    // Filled text does not last: swept at start and every hour (a day at most, ten minutes after a delivery), so a restart loses no deadline.
+    const sweep = () => { this.store.sweep("derived", 86_400_000); this.store.sweepDelivered(600_000); };
+    sweep(); setInterval(sweep, 3_600_000).unref();
   }
   ctxOf(ctx) { need(ctx && typeof ctx.space === "string" && ctx.space, "bad_input"); return ctx; }
   /** A session belongs to one Space: the key is (space, session), so another Space's id is simply absent (invariants 6 and 8). */
@@ -73,7 +84,7 @@ export class Sealer {
     const body = r.body.replace(/\{\{sealed:([a-z][a-z0-9_]*)\}\}/g, (_, k) => by.get(k));
     const out = this.store.newRef("out");
     this.store.sweep("derived", 86_400_000);
-    this.store.write("derived", { ref: out, space: ctx.space, record: dest.record, field: "output", class: "derived", from: vals.map(v => v.meta.ref), dest_contact: dest.kind === "contact_point" ? dest.contact : null, set_at: this.now() }, body);
+    this.store.write("derived", { ref: out, space: ctx.space, record: dest.record, field: "output", class: "derived", from: vals.map(v => v.meta.ref), dest_kind: dest.kind, dest_contact: dest.kind === "contact_point" ? dest.contact : null, set_at: this.now() }, body);
     return { merged: true, output_ref: `vyre://${ctx.space}/sealed-output/${out}`, sealed_slots: vals.map(v => ({ slot: v.slot, class: v.meta.class })) };
   }
   outRef(ctx, ref) { const m = /^vyre:\/\/([^/]+)\/sealed-output\/(out_[a-z0-9]+)$/.exec(String(ref)); need(m && m[1] === ctx.space, "not_found"); return m[2]; }
@@ -94,8 +105,8 @@ export class Sealer {
     // A sink that echoes the value back is not trusted to say so politely: only its status leaves this process.
     const ok = reply && reply.ok === true;
     // The filled text has no business lasting: a day at most, ten minutes after a delivery. A recipient other than the verified contact is said so.
-    if (ok) setTimeout(() => this.store.drop("derived", id), 600_000).unref();
-    return { delivered: ok, status: typeof reply?.status === "number" ? reply.status : null, recipient_verified: !d.meta.dest_contact || r.envelope.to === d.meta.dest_contact };
+    if (ok) this.store.markDelivered(id);
+    return { delivered: ok, status: typeof reply?.status === "number" ? reply.status : null, recipient_verified: recipientsVerified(d.meta, r.envelope) };
   }
 
   /** Human-only. The value goes to the person's blind reveal view, once, and `field.revealed` goes to the log without it. */

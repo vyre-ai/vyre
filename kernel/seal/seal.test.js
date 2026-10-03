@@ -279,6 +279,7 @@ test("K3 item 5: a device key is enrolled only through the ceremony, and a secon
   // Revoking needs the owner's chain.
   assert.equal(await code(s2.revoke({ chain: person("per_bob"), key_id: eb.key_id })), "not_found");
   assert.equal(await code(s2.revoke({ chain: person("per_alex"), key_id: eb.key_id })), "needs_presence", "a chain alone cannot revoke");
+  assert.equal(await code(s2.revoke({ chain: person("per_alex"), key_id: eb.key_id, proof: b.proof(person("per_alex"), "presence.revoke", { key_id: eb.key_id }) })), "needs_other_key", "a device cannot sign away the person's others by vouching for itself");
   assert.equal((await s2.revoke({ chain: person("per_alex"), key_id: eb.key_id, proof: a.proof(person("per_alex"), "presence.revoke", { key_id: eb.key_id }) })).revoked, true);
 });
 
@@ -316,4 +317,26 @@ test("R-1: revoking every key leaves the person in recovery, never a first devic
   const evil = signer("per_alex");
   assert.equal(await code(enrolDevice(s, evil)), "needs_recovery");
   const stranger = signer("per_zoe"); assert.equal((await enrolDevice(s, stranger)).enrolled, true);
+});
+
+test("R-2: recipient_verified covers to, cc and bcc, and a document destination has no recipient", async () => {
+  const { recipientsVerified: ok } = await import("./process.js");
+  const contact = { dest_kind: "contact_point", dest_contact: "Jane@Harlow.test" }, doc = { dest_kind: "document", dest_contact: null };
+  assert.equal(ok(contact, { to: "jane@harlow.test" }), true);
+  assert.equal(ok(contact, { to: ["jane@harlow.test"], cc: [], bcc: null }), true);
+  assert.equal(ok(contact, { to: "jane@harlow.test", cc: "evil@x.test" }), false);
+  assert.equal(ok(contact, { to: "jane@harlow.test", bcc: ["jane@harlow.test", "evil@x.test"] }), false);
+  assert.equal(ok(contact, { subject: "no recipient at all" }), false);
+  assert.equal(ok(doc, { subject: "a document, nobody to send to" }), true);
+  assert.equal(ok(doc, { to: "jane@harlow.test" }), false);
+  assert.equal(ok(doc, { bcc: "jane@harlow.test" }), false);
+});
+
+test("R-3: a delivered output is swept ten minutes later by anyone who starts the folder, not by a timer that a restart loses", async () => {
+  const { SealStore } = await import("./store.js"), crypto = await import("node:crypto"), dir = tmp("sweep"), st = new SealStore(dir, crypto.randomBytes(32));
+  const meta = { ref: st.newRef("out"), space: SPACE, record: REC, field: "output", class: "derived" };
+  st.write("derived", meta, "text with a value"); st.markDelivered(meta.ref);
+  st.sweepDelivered(600_000); assert.equal(fs.existsSync(path.join(dir, "derived", `${meta.ref}.json`)), true, "not yet");
+  fs.writeFileSync(path.join(dir, "derived", `${meta.ref}.done`), String(Date.now() - 700_000));
+  st.sweepDelivered(600_000); assert.deepEqual(fs.readdirSync(path.join(dir, "derived")), []);
 });

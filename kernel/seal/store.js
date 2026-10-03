@@ -49,7 +49,13 @@ export class SealStore {
     return out;
   }
   /** Remove files of a kind older than `maxAgeMs`. */
-  sweep(kind, maxAgeMs) { const d = path.join(this.dir, kind), t = Date.now(); for (const f of fs.readdirSync(d)) { try { if (t - fs.statSync(path.join(d, f)).mtimeMs > maxAgeMs) fs.unlinkSync(path.join(d, f)); } catch { /* gone already */ } } }
+  sweep(kind, maxAgeMs) { const d = path.join(this.dir, kind), t = Date.now(); for (const f of fs.readdirSync(d)) { try { if (!f.endsWith(".done") && t - fs.statSync(path.join(d, f)).mtimeMs > maxAgeMs) fs.unlinkSync(path.join(d, f)); } catch { /* gone already */ } } }
+  markDelivered(id) { fs.writeFileSync(path.join(this.dir, "derived", `${id}.done`), String(Date.now()), { mode: 0o600 }); }
+  /** Remove derived outputs whose delivery marker is older than `maxAgeMs`, and the marker. */
+  sweepDelivered(maxAgeMs) {
+    const d = path.join(this.dir, "derived"), t = Date.now();
+    for (const f of fs.readdirSync(d)) if (f.endsWith(".done")) { try { if (t - Number(fs.readFileSync(path.join(d, f), "utf8")) > maxAgeMs) { fs.rmSync(path.join(d, f.replace(".done", ".json")), { force: true }); fs.unlinkSync(path.join(d, f)); } } catch { /* gone already */ } }
+  }
   /** Crypto-shred of one value: the file is overwritten, then removed. */
   drop(kind, ref) { const f = this.file(kind, ref); try { fs.writeFileSync(f, crypto.randomBytes(fs.statSync(f).size)); fs.unlinkSync(f); return true; } catch { return false; } }
 }

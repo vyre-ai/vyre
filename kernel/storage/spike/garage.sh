@@ -11,6 +11,7 @@ metadata_dir = "/data/meta"
 data_dir = "/data/data"
 db_engine = "lmdb"
 replication_factor = $RF
+consistency_mode = "${CM:-consistent}"
 rpc_bind_addr = "[::]:3901"
 rpc_public_addr = "g$n:3901"
 rpc_secret = "$SECRET"

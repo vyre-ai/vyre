@@ -110,3 +110,8 @@ test("K3 item 3: dot segments, encoded dots and slashes, backslashes and control
   await assert.rejects(g.useCredential(person(), { item: "../x", service: "s", run: async () => 1 }), /bad_input/);
   assert.equal(k.asked.length, 0, "nothing was authorised or run for a refused path");
 });
+
+test("R-5: Windows reserved names and trailing dots or spaces are refused in a path", () => {
+  for (const bad of ["a/CON", "a/nul.txt", "a/b.", "a/b ", "COM1", "lpt9.log", "x/Aux"]) assert.throws(() => safePath(bad), /bad_input/, bad);
+  for (const ok of ["a/console.txt", "a/comma", "a/b.c"]) assert.equal(safePath(ok), ok);
+});

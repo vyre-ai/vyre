@@ -37,7 +37,8 @@ const BAD = /(^|\/)\.{1,2}(\/|$)|%2e|%2f|%5c|%00|\\|[\u0000-\u001f\u007f]|\/\//i
 /** A file path under a project or Drive root: no dot segments, no encoded dots or slashes, no backslash, NUL or control characters, no empty segment. A grant for a folder must not reach outside it. */
 export function safePath(p) {
   const s = String(p ?? "");
-  if (!s || s.startsWith("/") || BAD.test(s) || s.normalize("NFKC") !== s) throw Object.assign(new Error("bad_input"), { code: "bad_input" });
+  const winBad = s.split("/").some(x => /[. ]$/.test(x) || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i.test(x));
+  if (!s || s.startsWith("/") || BAD.test(s) || s.normalize("NFKC") !== s || winBad) throw Object.assign(new Error("bad_input"), { code: "bad_input" });
   return s;
 }
 /** One URN segment (a credential name): no slash, dot segment, encoding or control character. */
