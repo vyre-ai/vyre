@@ -23,7 +23,7 @@ export const RECORD_ACTIONS = Object.freeze([
   { action: "records.define", resource_type: "definition", risk: "admin", label: "change types", gloss: "Add or change the kinds of record and their fields." },
 ].map(a => Object.freeze(a)));
 
-const TYPE_NAME = /^[a-z][a-z0-9-]*$/;
+const TYPE_NAME = /^[a-z][a-z0-9_-]*$/;
 /** Intents older than this are not replayed: they close as `unresolved` for a person to look at (K1 item 8b, K2-11). */
 const INTENT_MAX_AGE = 24 * 3600 * 1000;
 const checkType = (/** @type {any} */ t) => { if (typeof t !== "string" || !TYPE_NAME.test(t)) throw new KernelError("bad_input", "bad type name"); };
