@@ -26,10 +26,16 @@ All code under `kernel/flows/` (pure ES modules, built on kernel/contracts types
 - kits.js: card, diff with widenings and risks, install through a task, update, remove. canvas.js: graph, paintRun, seeAsCode, fromCode, flowChanges, ops. index.js: createFlows and the tools.
 - 76 tests in kernel/flows (fake kernel in testing/). Pushed: work/flows.
 
+## Done (3 Oct, relaunch)
+- Merged work/kernel and work/records. kernel/flows/testing/real-kernel.js: the real gateway, tasks, presence and chain builder behind the Fake's surface; every missing piece is a SHIM(name) block, listed in team/0.2/CHAT.md. world.js takes `kernel: "real"`; real.test.js runs the runner on it.
+- kernel/flows/stages.js: stages made of tasks, a module over record.stage-entered and task state events (tasks made once per entry, depends_on wired, advance once when required tasks are done, hand-moved records left alone, re-entry makes new tasks). Registered in createFlows (`stages: { approver }`). stages.test.js runs on both kernels.
+- kernel/flows/e2e/estate.e2e.test.js: Estate planning kit (records' kit.ts compiled by their compiler) from a Stripe payment to the next stage on the real kernel. 93 of 93 on testbox.
+
 ## Doing
 Waiting on the kernel for the real gateway; flows are built against kernel/contracts and the fake kernel in kernel/flows/testing.
 
 ## Next
+0. Drop each SHIM in real-kernel.js as platform lands it; run the whole flows suite on the real kernel once tests stop reading the Fake's internals (kernel.tables, kernel.tasks).
 1. Wire createFlows into the module host once platform's gateway lands (tools to manifest, reach, docs:ref). Until then nothing registers in today's registry.
 2. Canvas component for the Deck if native-core asks (the data API is canvas.js).
 3. Merge sdk.js into @vyre/sdk with records (language compiler is theirs).
