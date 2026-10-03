@@ -36,6 +36,7 @@ if (a[0] === "inspect") {
   if (name === "srv1") out(fmt.includes("Global") ? "" : (fmt.includes("IPAddress") ? "172.30.4.2" : ""));
   process.exit(1);
 }
+if (a[0] === "events") { if (has("events")) { fs.rmSync(F + "/events"); out("abc"); } process.exit(0); }
 if (a[0] === "ps") { const n = nameOf(a.join(" ")); out(n && has("running-" + n) ? "srv1" : ""); }
 if (a[0] === "network") {
   if (a[1] === "inspect") {
@@ -156,6 +157,7 @@ function rig(t) {
   return { root, F, SP, UNITS, WRAPPER, run, prime, ask, status, calls, flag, rules, helper, spool, hex, env };
 }
 
+const UID = process.getuid();
 const opts = { skip: !LINUX && "the helper's stat -c and the fakes are Linux only" };
 
 test("space helper: up makes root-only secrets, a linted compose, the join and the rule BEFORE the store starts, and proves the firewall", opts, async t => {
@@ -171,8 +173,9 @@ test("space helper: up makes root-only secrets, a linted compose, the join and t
   assert.equal(fs.statSync(path.join(d, "secrets.env")).mode & 0o777, 0o600, "secrets are root-only");
   assert.match(fs.readFileSync(path.join(d, "secrets.env"), "utf8"), /^PG_PASSWORD=[0-9a-f]{64}\nREDIS_PASSWORD=[0-9a-f]{64}\nAPP_SECRET=[0-9a-f]{64}\nENCRYPTION_KEY=[0-9a-f]{64}\n$/);
   const compose = fs.readFileSync(path.join(d, "compose.yml"), "utf8");
-  assert.ok(!/env_file|privileged|ports:|network_mode/.test(compose));
-  assert.deepEqual(r.rules(), ["-d 172.30.4.0/24 -m owner --uid-owner 2000-2063 -m comment --comment vyre:harlow -j REJECT"]);
+  assert.ok(!/env_file|privileged|ports:|network_mode|unless-stopped/.test(compose));
+  assert.match(compose, /^    restart: "no"$/m, "RH-7: a store never starts by itself");
+  assert.deepEqual(r.rules(), [`-d 172.30.4.0/24 -m owner ! --uid-owner ${UID} -m comment --comment vyre:harlow -j REJECT`]);
   const calls = r.calls();
   // The order: create, join, then the store starts; the proof comes after.
   const at = (/** @type {RegExp} */ re) => calls.search(re);
@@ -196,7 +199,7 @@ test("space helper: every request that is not exactly `<verb> <name>` is refused
   const r = rig(t);
   await r.prime();
   const bad = {
-    "an extra word": "up harlow now\n", "a path in the name": "up ../etc\n", "a name with a dot": "up har.low\n", "an unknown verb": "purge harlow\n",
+    "an extra word": "up harlow now\n", "a path in the name": "up ../etc\n", "a name with a dot": "up har.low\n", "an unknown verb": "purge-space harlow\n",
     "fscrypt-enable is not a verb": "fscrypt-enable harlow\n", "a capital verb": "UP harlow\n", "two lines": "up harlow\nup northwind\n", "a CR": "up harlow\r\n",
     "a NUL": Buffer.from("up harlow\0\n"), "a trailing space": "up harlow \n", "a leading space": " up harlow\n", "no newline": "up harlow",
     "a name of 32 characters": "up a" + "b".repeat(31) + "\n", "a name that collides by prefix": "up foo-twenty-bar\n", "a digit first": "up 9harlow\n",
@@ -315,7 +318,7 @@ test("space helper: firewall-del is refused while the project runs, then removes
   assert.equal(r.rules().length, 2, "the rule stays until firewall-del");
   const del = r.ask("firewall-del harlow\n"); await r.helper();
   assert.equal(r.status(del).state, "ok");
-  assert.deepEqual(r.rules(), ["-d 172.30.4.0/24 -m owner --uid-owner 2000-2063 -m comment --comment vyre:northwind -j REJECT"], "only harlow's rule is gone");
+  assert.deepEqual(r.rules(), [`-d 172.30.4.0/24 -m owner ! --uid-owner ${UID} -m comment --comment vyre:northwind -j REJECT`], "only harlow's rule is gone");
 });
 
 test("space helper RH-3: a recreated vyre container has no join and no rule; up re-applies with a fresh pid and proves it; a rule that does not block fails the up and stops the store", opts, async t => {
@@ -333,7 +336,7 @@ test("space helper RH-3: a recreated vyre container has no join and no rule; up 
   // The rule is accepted but does not block (RH-4): the probe sees the agent connect, so the up fails and the store is stopped.
   r.flag("ctr-pid", "6262"); fs.writeFileSync(path.join(r.F, "joined"), ""); r.flag("fw-ineffective");
   const bad = r.ask("up harlow\n"); await r.helper();
-  assert.equal(r.status(bad).state, "failed"); assert.match(r.status(bad).message, /agent uid can reach/);
+  assert.equal(r.status(bad).state, "failed"); assert.match(r.status(bad).message, /uid 2000 can reach/);
   assert.ok(!fs.existsSync(path.join(r.F, "running-harlow")), "stopped, not left running unfirewalled");
   fs.rmSync(path.join(r.F, "fw-ineffective"));
   // A dead store (RH-4 control): the agent probe times out, and the control fails first, so it does not read as a pass.
@@ -421,19 +424,19 @@ test("space helper RH-2: purge and fscrypt-enable are only `vyre admin`, which n
   r.ask("up harlow\n"); await r.helper();
   r.ask("down harlow\n"); await r.helper();
   // A pipe is not a terminal.
-  let a = /** @type {any} */ (await r.run(["admin", "purge", "harlow"], {}, "purge harlow\n"));
+  let a = /** @type {any} */ (await r.run(["admin", "purge-space", "harlow"], {}, "purge-space harlow\n"));
   assert.notEqual(a.code, 0); assert.match(a.out, /needs a terminal/);
   assert.ok(!fs.existsSync(path.join(r.F, "purged")));
   // The test seam stands in for the terminal: a wrong word does nothing, the exact one purges and removes the record and the secrets.
-  a = /** @type {any} */ (await r.run(["admin", "purge", "harlow"], { VYRE_ADMIN_NO_TTY: "1" }, "y\n"));
+  a = /** @type {any} */ (await r.run(["admin", "purge-space", "harlow"], { VYRE_ADMIN_NO_TTY: "1" }, "y\n"));
   assert.notEqual(a.code, 0); assert.match(a.out, /not the word/);
   assert.ok(fs.existsSync(path.join(r.SP, "private", "spaces", "harlow", "record")));
-  a = /** @type {any} */ (await r.run(["admin", "purge", "harlow"], { VYRE_ADMIN_NO_TTY: "1" }, "purge harlow\n"));
+  a = /** @type {any} */ (await r.run(["admin", "purge-space", "harlow"], { VYRE_ADMIN_NO_TTY: "1" }, "purge-space harlow\n"));
   assert.equal(a.code, 0, a.out); assert.match(a.out, /It cannot be undone/);
   assert.equal(fs.readFileSync(path.join(r.F, "purged"), "utf8").trim(), "harlow");
   assert.ok(!fs.existsSync(path.join(r.SP, "private", "spaces", "harlow")));
   assert.equal(r.rules().length, 0, "its firewall rule is removed with it");
-  a = /** @type {any} */ (await r.run(["admin", "purge", "ghost"], { VYRE_ADMIN_NO_TTY: "1" }, "purge ghost\n"));
+  a = /** @type {any} */ (await r.run(["admin", "purge-space", "ghost"], { VYRE_ADMIN_NO_TTY: "1" }, "purge-space ghost\n"));
   assert.match(a.out, /no Space named ghost/);
   // fscrypt: only on ext4 with a block device, skipped when the feature is already there, exactly tune2fs -O encrypt.
   fs.writeFileSync(path.join(r.SP, "private", "lending-base"), path.join(r.root, "lend") + "\n");
@@ -448,6 +451,42 @@ test("space helper RH-2: purge and fscrypt-enable are only `vyre admin`, which n
   a = /** @type {any} */ (await r.run(["admin", "fscrypt-enable"], { VYRE_ADMIN_NO_TTY: "1" }, "fscrypt\n"));
   assert.notEqual(a.code, 0); assert.match(a.out, /not ext4/);
   // And nothing in the spool grammar can ask for either.
-  const ids = [r.ask("purge harlow\n"), r.ask("fscrypt-enable\n")]; await r.helper();
+  const ids = [r.ask("purge-space harlow\n"), r.ask("fscrypt-enable\n")]; await r.helper();
   for (const id of ids) assert.equal(r.status(id).state, "failed");
+});
+
+test("space helper RH-6: the rule refuses every uid but the daemon's, so nothing else can reach Twenty's first-user signup", opts, async t => {
+  const r = rig(t);
+  await r.prime();
+  r.ask("up harlow\n"); await r.helper();
+  assert.match(r.rules()[0], new RegExp(`-m owner ! --uid-owner ${UID} `));
+  // The sessions uid connecting is a failure of the proof, like an agent's.
+  assert.match(r.calls(), new RegExp(`--reuid=${UID + 1} `));
+});
+
+test("space helper RH-7: `space-helper watch` reattaches after the vyre container starts again outside the wrapper, and stops a Space it cannot prove", opts, async t => {
+  const r = rig(t);
+  await r.prime();
+  r.ask("up harlow\n"); await r.helper();
+  // docker restart vyre-vyre-1: a new pid, no joins, an empty namespace; the watcher sees the start event.
+  r.flag("ctr-pid", "3131"); fs.writeFileSync(path.join(r.F, "joined"), ""); r.flag("events");
+  const ok = /** @type {any} */ (await r.run(["space-helper", "watch"], { VYRE_SPACES_WATCH_ONCE: "1" }));
+  assert.equal(ok.code, 0, ok.out);
+  assert.equal(r.rules("3131").length, 1, "the rule is back in the new namespace");
+  assert.match(r.calls(), /events --filter container=vyre-vyre-1 --filter event=start/);
+  r.flag("ctr-pid", "3232"); fs.writeFileSync(path.join(r.F, "joined"), ""); r.flag("fw-add-fails");
+  const bad = /** @type {any} */ (await r.run(["space-helper", "watch"], { VYRE_SPACES_WATCH_ONCE: "1" }));
+  assert.match(bad.out, /the Space harlow was stopped/);
+  assert.ok(!fs.existsSync(path.join(r.F, "running-harlow")), "stopped, not left running with no rule");
+  assert.match(fs.readFileSync(path.join(r.UNITS, "vyre-spaces-watch.service"), "utf8"), /ExecStart=.*space-helper watch\nRestart=always/);
+});
+
+test("space helper: `admin wipe` needs a terminal and the typed word, and says what it destroys, before it touches anything", opts, async t => {
+  const r = rig(t);
+  await r.prime();
+  let a = /** @type {any} */ (await r.run(["admin", "wipe"], {}, "wipe\n"));
+  assert.notEqual(a.code, 0); assert.match(a.out, /needs a terminal/);
+  a = /** @type {any} */ (await r.run(["admin", "wipe"], { VYRE_ADMIN_NO_TTY: "1" }, "yes\n"));
+  assert.notEqual(a.code, 0); assert.match(a.out, /destroys everything on this server/); assert.match(a.out, /not the word/);
+  assert.ok(!/compose/.test(r.calls()), "no word, no docker call");
 });

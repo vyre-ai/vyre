@@ -8,13 +8,10 @@
 name: vault-mac
 on:
   push:
-    paths: ["core/vault/**", "lib/connectors/**", "core/mcp/**", "core/google/**", "core/modules/**",
-      "core/cli/commands/vault*.js", "core/cli/commands/connect.js", "local/voice/**", "test/docs-*.js",
-      "test/hygiene*.js", ".github/workflows/vault-mac.yml"]
+    branches-ignore: ["work/*-draft*"]
+    paths: ["core/vault/**", "kernel/seal/**", "lib/vault-wipe*", ".github/workflows/vault-mac.yml"]
   pull_request:
-    paths: ["core/vault/**", "lib/connectors/**", "core/mcp/**", "core/google/**", "core/modules/**",
-      "core/cli/commands/vault*.js", "core/cli/commands/connect.js", "local/voice/**", "test/docs-*.js",
-      "test/hygiene*.js"]
+    paths: ["core/vault/**", "kernel/seal/**", "lib/vault-wipe*"]
   workflow_dispatch:
 permissions:
   contents: read

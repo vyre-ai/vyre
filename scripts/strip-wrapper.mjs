@@ -60,6 +60,7 @@ SPACES_CAP=16
 SPACES_UP_PER_MIN=6
 SPACES_SPOOL_CAP=64
 ADMIN_NOTTY=0
+SPACES_WATCH_ONCE=0
 # The stack folder: a person's or a model's run takes it from VYRE_DIR (their own choice, no trust in it). A root run never does: it
 # reads the folder root recorded when it installed the updater (only \`vyre updater\`, which the installer runs, takes it from the
 # environment, once, to record it).
@@ -88,7 +89,7 @@ root_guard() {
 /** The overrides that must not survive into the release build (the build-clean test uses the same list). */
 export const SEAMS = ["VYRE_RELEASE_KEY", "VYRE_COSIGN_IMAGE", "VYRE_BOX_URL", "VYRE_RELEASES_API", "VYRE_RELEASES_REPO", "VYRE_UPDATE_ROOT", "VYRE_ROOT_UID",
   "VYRE_CHAIN_TOP", "VYRE_WRAPPER", "VYRE_UPDATE_WAIT", "VYRE_UPDATE_MIN_GAP", "VYRE_SYSTEMD_DIR", "VYRE_UPDATER_NAME", "VYRE_CONTAINER_HOME",
-  "VYRE_SPACES_ROOT", "VYRE_SPACES_UNIT", "VYRE_CTR_NAME", "VYRE_DAEMON_UID", "VYRE_SPACES_CAP", "VYRE_SPACES_UP_PER_MIN", "VYRE_SPACES_SPOOL_CAP", "VYRE_ADMIN_NO_TTY"];
+  "VYRE_SPACES_ROOT", "VYRE_SPACES_UNIT", "VYRE_CTR_NAME", "VYRE_DAEMON_UID", "VYRE_SPACES_CAP", "VYRE_SPACES_UP_PER_MIN", "VYRE_SPACES_SPOOL_CAP", "VYRE_ADMIN_NO_TTY", "VYRE_SPACES_WATCH_ONCE"];
 
 if (process.argv[1] && process.argv[1].endsWith("strip-wrapper.mjs")) {
   const file = process.argv[2];

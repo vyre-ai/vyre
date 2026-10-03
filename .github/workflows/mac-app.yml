@@ -24,6 +24,7 @@ on:
         default: false
   workflow_dispatch:
   push:
+    branches-ignore: ["work/*-draft*"]
     paths: ["local/capsule/native/**", "scripts/mac-app-package.sh", ".github/workflows/mac-app.yml"]
 permissions:
   contents: read
