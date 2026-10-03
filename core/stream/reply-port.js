@@ -16,7 +16,7 @@
 /**
  * @typedef {{ id: string, ver: number, write: (delta: string) => void | Promise<void>, close: (final: { text: string, blocks?: any[] }) => void | Promise<void> }} OpenReply
  * @typedef {{
- *   open: (o: { grp: string, token: string, message: string }) => Promise<OpenReply>,
+ *   open: (o: { grp: string, token: string, message: string, thread?: string }) => Promise<OpenReply>,
  *   mayReceive: (grp: string, person: string, reply: { kid: string, ver: number, cur: number }, chain: any) => boolean,
  *   follow?: boolean,
  * }} ReplyPort

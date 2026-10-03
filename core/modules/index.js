@@ -998,6 +998,8 @@ export class Registry {
       ...(kernelHandle ? { kernel: kernelHandle } : {}),
       // The session credential maker is the Switchboard's alone (vyred's own sessions): no other module is handed the way to open a kernel session for a thread.
       ...(m.name === "switchboard" && this.deps.kernelSession ? { kernelSession: this.deps.kernelSession } : {}),
+      // The stream's view of the sessions' kernel credentials (lib/kernel-session.js): calls on a thread's session and the restart's reopening, never a token and never a way to open one.
+      ...(m.name === "stream" && this.deps.kernelThreads ? { kernelSession: this.deps.kernelThreads } : {}),
       // The confined spawner for the sessions it starts (the runner's home sandbox, composed by the daemon because core/sessions cannot import core/runner): the Switchboard's alone.
       ...(m.name === "switchboard" && this.deps.sandbox ? { sandbox: this.deps.sandbox } : {}),
       tool: (name, def) => {

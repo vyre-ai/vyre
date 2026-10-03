@@ -72,14 +72,19 @@ const botId = (/** @type {string} */ id) => id.startsWith("assistant:") || id.st
 /**
  * @typedef {{ who: string, name: string, thread: string|null, cwd: string|null, asker: string|null, answer: string|null, last: number,
  *   ad: ReturnType<typeof createAdapter>, msgs: Map<string, string>, held: any[]|null, q: Promise<any>, grp: string,
- *   tokens?: Map<string, { token: string, exp: number }>, tokenWaiters?: { asker: string|null, res: (t: any) => void, timer?: any }[], dead?: boolean, pq?: Promise<any>, buf?: Map<string, any>, refused?: Set<string>, turnAt?: number|null }} Member
+ *   tokens?: Map<string, { token: string, exp: number }>, tokenWaiters?: { asker: string|null, res: (t: any) => void, timer?: any }[], dead?: boolean, turn?: "ok" | "refused" | null, pq?: Promise<any>, buf?: Map<string, any>, refused?: Set<string>, turnAt?: number|null }} Member
  * @typedef {{ people: Set<string>, bots: Map<string, Member>, names: Map<string, string>, dflt: string|null, previous: string|null, spans: Map<string, { from: number, to: number|null }[]> }} Group
  */
 
+/** @typedef {{ forThread(thread: string): { appendOpen(m?: any): Promise<any>, append(m: any): Promise<any>, beginTurn(): Promise<any> }, reopenPending(o: { timeoutMs?: number, onGiveUp?: (thread: string, why: string) => any }): Promise<{ resumed: string[], gaveUp: string[] }> }} KernelThreads */
+
 /**
- * @param {{ ctx: any, logs: import("./log.js").Logs, db: any, now?: () => number, replyPort?: import("./reply-port.js").ReplyPort, standIn?: boolean, timers?: { set: (fn: () => void, ms: number) => any, clear: (t: any) => void } }} o
+ * @param {{ ctx: any, logs: import("./log.js").Logs, db: any, now?: () => number, replyPort?: import("./reply-port.js").ReplyPort, standIn?: boolean, timers?: { set: (fn: () => void, ms: number) => any, clear: (t: any) => void },
+ *   ks?: KernelThreads }} o
+ *   ks: the kernel-session seam (lib/kernel-session.js, handed to the stream by the daemon as ctx.kernelSession, or injected by a test): the assistant's kernel session is opened by vyred from the person's own send,
+ *   and the stream only asks for calls on a thread's session (`forThread(thread)`), never a token. With it the stream opens no session of its own for an assistant; without it (a test with no daemon) the older path runs.
  */
-export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn = false, timers }) {
+export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn = false, timers, ks: ksOpt }) {
   const setT = (timers && timers.set) || ((/** @type {() => void} */ fn, /** @type {number} */ ms) => { const t = setTimeout(fn, ms); t.unref?.(); return t; });
   const clearT = (timers && timers.clear) || ((/** @type {any} */ t) => clearTimeout(t));
   /** How long a reply waits for an assistant session after a restart (stream.resumeWaitSeconds, 60 by default). */
@@ -93,6 +98,9 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
   /** @type {any} */ let timer = null;
   let stopped = false;
   const log = (/** @type {string} */ m) => { try { ctx.log(`stream: ${m}`); } catch {} };
+  /** The kernel-session seam: handed by the daemon, injected by a test, or none. */
+  const ks = /** @type {KernelThreads | null} */ (ksOpt || ctx.kernelSession || null);
+  /** @type {Promise<any> | null} the restart's reopening of the open turns, while it runs */ let reopening = null;
   const holdWho = () => process.env.VYRE_STREAM_TEST_HOLD || ""; // tests only: a delivery to this member waits for the next start
 
   const q = {
@@ -116,6 +124,8 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
 
   /** Is this daemon running with the kernel? Then every chat is the kernel's and the 0.2 paths are closed. */
   const kernelOn = () => Boolean(ctx.kernel && ctx.kernel.chats && typeof ctx.kernel.chats.append === "function" && typeof ctx.kernel.for === "function");
+  /** The daemon path: the assistant's kernel session is vyred's, reached through the seam (`ks`). */
+  const viaKs = () => ks !== null && kernelOn();
   const TOKEN_MS = 24 * 3600_000;
   /** What a call's own chain gave mirror(): the person's chain (exactly one person) and who it is. @type {WeakMap<object, { chain: any, person: string }>} */
   const kcalls = new WeakMap();
@@ -208,8 +218,21 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     open: async () => { throw Object.assign(new Error("this kernel's chats cannot stream or gate a reply (appendOpen and mayReceive are missing)"), { code: "unavailable" }); },
     mayReceive: () => false,
   };
+  /**
+   * The seam's reply port (the daemon path): the reply is opened through `ks.forThread(thread).appendOpen`, so the stream never holds the thread's token. Delivery is asked of the
+   * kernel the same way as the kernel port's. A thread with no session is `no_session`.
+   * @type {import("./reply-port.js").ReplyPort}
+   */
+  const ksPort = {
+    open: async ({ thread }) => {
+      if (!ks || !thread) throw Object.assign(new Error("this reply has no session of its own"), { code: "no_session" });
+      const h = await ks.forThread(thread).appendOpen({ kind: "text" });
+      return { id: String(h.id), ver: Number(h.ver), write: d => h.write(d), close: f => h.close(f).then(() => {}) };
+    },
+    mayReceive: (_grp, _person, r, chain) => { try { return ctx.kernel.chats.mayReceive(chain, r.kid) === true; } catch { return false; } },
+  };
   const kernelChats = ctx.kernel && ctx.kernel.chats;
-  const port = replyPort || (standIn || !kernelChats ? mirrorPort : (typeof kernelChats.appendOpen === "function" && typeof kernelChats.mayReceive === "function" ? kernelPort : unavailablePort));
+  const port = replyPort || (ks && kernelChats && typeof kernelChats.mayReceive === "function" ? ksPort : null) || (standIn || !kernelChats ? mirrorPort : (typeof kernelChats.appendOpen === "function" && typeof kernelChats.mayReceive === "function" ? kernelPort : unavailablePort));
   /** How often a reply on the stand-in port reads the kernel's list again while it streams (a kernel port follows the room itself). */
   const SYNC_MS = 500;
   /** The group log's cursor now: what a tool frame or a held thought is stamped with (`data.at`), asked of the group's own list. @param {string} grp */
@@ -420,6 +443,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
   async function begin(m, b, message) {
     const refuse = () => { /** @type {Set<string>} */ (m.refused).add(message); /** @type {Map<string, any>} */ (m.buf).delete(message); };
     if (m.dead) { refuse(); return false; }
+    if (viaKs()) return beginViaKs(m, b, message, refuse);
     const t = await tokenOf(m);
     if (!t) {
       // No session came in time (a restart forgot it and the asker did not act): the wait ends, the pending reply is dropped and the room is told, in words with no content.
@@ -435,10 +459,61 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       return false;
     }
     b.token = t.token; b.lastSync = now();
+    return flushHeld(m, b, message);
+  }
+
+  /** The reasoning that waited for the reply to open is written through its handle now. @param {Member} m @param {any} b @param {string} message */
+  async function flushHeld(m, b, message) {
     const shown = message === ACT ? undefined : message;
     const items = b.items; b.items = [];
     for (const it of items) if (!(await put(m, b, it, it.data, shown))) return false;
     return true;
+  }
+
+  /**
+   * Begin the turn at the kernel (CH-10), once per turn: the room's membership version is fixed before anything is read, and the reply opens under it. `unsupported` (the kernel has
+   * no turn-begin yet) is no refusal: the reply opens before the first read, as it did. A thread with no session yet (`no_session`) is not begun here: it is tried again when the reply
+   * opens. Any other failure is a refused turn. Returns "ok", "later" (no session yet) or "refused".
+   * @param {Member} m
+   */
+  async function beginTurn(m) {
+    if (!viaKs() || !m.thread) return "later";
+    if (m.turn === "ok" || m.turn === "refused") return m.turn;
+    try { await /** @type {KernelThreads} */ (ks).forThread(m.thread).beginTurn(); m.turn = "ok"; }
+    catch (err) {
+      const code = /** @type {any} */ (err).code;
+      if (code === "unsupported") m.turn = "ok";
+      else if (code === "no_session") return "later";
+      else { m.turn = "refused"; log(`${m.who} in ${m.grp}: the kernel refused the turn (${code || "error"}); nothing will be shown`); }
+    }
+    return m.turn || "later";
+  }
+
+  /** The daemon path of begin: the turn is begun, then the reply opens through the seam. No token, no list read of our own, no wait of our own for a session: a restart's reopening is the kernel session's (reopenPending). */
+  async function beginViaKs(m, b, message, /** @type {() => void} */ refuse) {
+    // A restart is still reopening the open turns: this reply waits for that, and then goes on or is dropped with the others.
+    if (reopening) { try { await reopening; } catch { /* the outcome is each turn's own */ } }
+    if (m.dead) { refuse(); return false; }
+    if ((await beginTurn(m)) === "refused") { refuse(); return false; }
+    try { b.h = await port.open({ grp: m.grp, token: "", thread: m.thread || "", message }); }
+    catch (err) {
+      refuse();
+      if (/** @type {any} */ (err).code === "no_session") {
+        // The session did not come back (reopenPending gave it up, or never had it): the pending reply is dropped and the room is told, with no content.
+        m.dead = true; giveUpNote(m);
+        return false;
+      }
+      log(`${m.who} in ${m.grp}: the kernel refused the reply (${/** @type {any} */ (err).code || "error"}); nothing was shown`);
+      return false;
+    }
+    b.lastSync = now();
+    return flushHeld(m, b, message);
+  }
+
+  /** The room is told, in words with no content, that a pending reply could not be resumed. @param {Member} m */
+  function giveUpNote(m) {
+    log(`${m.who} in ${m.grp}: no session came back; the reply was dropped`);
+    write(m, { kind: "status", turn: null }, { state: "failed", note: RESUME_NOTE });
   }
 
   /** The kernel took its word back while the reply streamed: it stops where it is, the people who had it see it cut. @param {Member} m @param {any} b @param {string} message @param {any} s @param {any} err */
@@ -522,8 +597,10 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     const m = g.bots.get(String(row.who));
     if (!m) { q.outDone.run(row.uuid); return; }
     if (holdWho() === m.who) return; // tests only
-    m.asker = String(row.asker); m.answer = String(row.answer); m.msgs = new Map(); m.dead = false;
+    m.asker = String(row.asker); m.answer = String(row.answer); m.msgs = new Map(); m.dead = false; m.turn = null;
     save(m);
+    // The turn begins at the kernel before the assistant is asked anything (a thread with no session yet begins it when its first reply opens).
+    if (viaKs() && m.thread) await beginTurn(m);
     const surface = row.surface ? String(row.surface) : "deck";
     if (!m.thread) {
       if (!m.cwd) throw fail("bad_input", `${m.who} has no folder to work in: name its cwd when it joins`);
@@ -531,6 +608,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       if (r.error) throw fail(r.error.code || "failed", r.error.message);
       m.thread = String(r.data.id);
       save(m);
+      if (viaKs()) await beginTurn(m); // vyred opened the thread's session from this send: the turn begins before its first read
       await catchUp(m);
     } else {
       byThread.set(m.thread, m);
@@ -630,7 +708,8 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       if (kernelOn()) {
         const mine = await personSession(meta, grp, author);
         const bots = [];
-        for (const id of to) { const m = g.bots.get(id); const k = kcalls.get(meta); if (m && k) bots.push([m, await sessionFor(k.chain, grp, author, shortOf(id))]); }
+        // The assistants' sessions are vyred's (the seam), opened from this send; the stream opens none for them on the daemon path.
+        if (!viaKs()) for (const id of to) { const m = g.bots.get(id); const k = kcalls.get(meta); if (m && k) bots.push([m, await sessionFor(k.chain, grp, author, shortOf(id))]); }
         kid = String((await append(mine.token, { text })).id);
         for (const [m, t] of bots) giveToken(/** @type {Member} */ (m), author, /** @type {any} */ (t));
       }
@@ -671,7 +750,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       if (meta && typeof meta === "object") { kernelPerson.set(meta, person); kcalls.set(meta, { chain, person }); }
       const g = adopt(grp, chat);
       // An assistant that is working for this person has no session token after a restart: open one now, so the replies waiting for it can be written.
-      for (const m of g.bots.values()) if (m.asker === person && ((m.tokens || new Map()).get(person) || { exp: 0 }).exp - 5000 <= now()) {
+      if (!viaKs()) for (const m of g.bots.values()) if (m.asker === person && ((m.tokens || new Map()).get(person) || { exp: 0 }).exp - 5000 <= now()) {
         try { giveToken(m, person, await sessionFor(chain, grp, person, shortOf(m.who))); } catch (err) { log(`session for ${m.who} in ${grp}: ${/** @type {any} */ (err).code || "error"}`); }
       }
     },
@@ -765,6 +844,12 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     async start() {
       for (const r of q.allMembers.all()) { const g = group(String(r.grp)); void g; }
       const ms = [...groups.values()].flatMap(g => [...g.bots.values()]).filter(m => m.thread);
+      // Reopen the kernel session of every turn that was open when the daemon stopped (the seam's reopenPending). One that cannot be reopened within stream.resumeWaitSeconds is
+      // given up: its pending reply is dropped and the room is told it could not resume.
+      if (viaKs()) {
+        const giveUp = (/** @type {string} */ thread) => { const m = byThread.get(thread); if (m && !m.dead) { m.dead = true; m.buf = new Map(); giveUpNote(m); } };
+        reopening = /** @type {KernelThreads} */ (ks).reopenPending({ timeoutMs: RESUME_MS, onGiveUp: giveUp }).catch(err => { log(`reopening turns: ${/** @type {Error} */ (err).message}`); }).finally(() => { reopening = null; });
+      }
       await Promise.all(ms.map(catchUp));
       for (const row of q.outOpen.all()) void schedule(row);
     },
