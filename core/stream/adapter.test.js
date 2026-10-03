@@ -108,6 +108,8 @@ test("adapter: messages sent, queued, steered and picked up keep their words by 
   assert.deepEqual(a.event(ev("thread.status", { status: "working", stopping: true }))[0].data, { state: "working", stopping: true });
   assert.deepEqual(a.event(ev("term.command", { term: "t1", session: "s", command: "ls -la" }))[0], { kind: "term-command", data: { term: "t1", command: "ls -la" }, turn: null });
   assert.deepEqual(a.event(ev("term.command", { term: "t1" })), []);
+  // the typist rides on the frame
+  assert.deepEqual(a.event(ev("term.command", { term: "t1", session: "s", command: "ls", author: "person:carol", via: "tailnet:carol", surface: "deck:c" }))[0], { kind: "term-command", data: { term: "t1", command: "ls", via: "tailnet:carol", surface: "deck:c" }, turn: null, author: "person:carol" });
 });
 
 test("adapter: status comes from thread.status; the legacy thread.state is ignored once thread.status was seen", () => {

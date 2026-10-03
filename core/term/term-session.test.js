@@ -18,6 +18,7 @@ import { tempHome } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { encodeClientFrame } from "../computers/ws.js";
 import { onCommand } from "./index.js";
+import { fakeThreads } from "../stream/fake-threads.js";
 
 const CORE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const LINUX = process.platform === "linux";
@@ -36,7 +37,12 @@ async function registry(t) {
   const prev = process.env.VYRE_DTACH_BIN;
   process.env.VYRE_DTACH_BIN = "";
   const reg = new Registry({ db, events, config: { role: "box", files: { roots: [work] }, term: { shell: "/bin/sh" } }, paths: p, log: () => {}, presence: /** @type {any} */ ({ required: () => false, verify: async () => ({ ok: true }) }) });
-  try { await reg.start(discover([CORE]).filter(f => f.manifest && f.manifest.name === "term"), { role: "box" }); }
+  // The switchboard's threads.get is a stand-in: term resolves a session through it as the caller.
+  const fake = fs.mkdtempSync(path.join(SCRATCH, "vyre-term-fake-"));
+  t.after(() => fs.rmSync(fake, { recursive: true, force: true }));
+  fakeThreads(fake);
+  globalThis.__fakeThreadsKnown = new Map(["s_one", "s_pw", "s_resume", "victim_thread"].map(id => [id, { cwd: path.join(work, "proj") }]));
+  try { await reg.start([...discover([CORE]).filter(f => f.manifest && f.manifest.name === "term"), ...discover([fake], { firstPartyRoots: [fake] })], { role: "box" }); }
   finally { if (prev === undefined) delete process.env.VYRE_DTACH_BIN; else process.env.VYRE_DTACH_BIN = prev; }
   t.after(async () => {
     const h = reg.modules.get("term")?.handle;
@@ -223,4 +229,51 @@ test("term session: kill the socket mid-output, reattach from the offset, get ex
   assert.ok(joined.equals(full.bytes), "the bytes are the same bytes in the same order");
   const at = second.msgs.filter(m => m.t === "at").pop();
   assert.equal(at.offset, full.bytes.length);
+});
+
+test("C-2: term.open {cwd, session: victim} is refused for a caller who may not use that thread, and nothing is written to the victim's record", { skip: SKIP }, async t => {
+  const { reg, work, events } = await registry(t);
+  globalThis.__fakeThreadsKnown.set("victim_thread", { cwd: path.join(work, "proj"), deny: "bob" });
+  const as = (login, caller) => (tool, input) => reg.call(tool, input, caller || `tailnet:${login}`, { peer: { login, stableId: `n_${login}` }, person: { id: "s1", kind: "cookie" } });
+  const r = await as("bob@example.com")("term.open", { cwd: path.join(work, "proj"), session: "victim_thread", surface: "deck:bobs" });
+  assert.equal(r.error?.code, "denied");
+  assert.equal((await as("bob@example.com")("term.open", { session: "ghost_thread", surface: "deck:bobs" })).error?.code, "not_found");
+  assert.equal((await reg.call("term.list", {}, "deck")).data.terms.length, 0, "no terminal was made");
+  assert.equal(events.since(0, {}).filter(e => e.type === "term.command").length, 0);
+  assert.ok(!events.since(0, {}).some(e => e.thread === "victim_thread"));
+  // the same session is fine for a caller the thread allows
+  const o = await ok(reg, "term.open", { session: "victim_thread", surface: DECK });
+  assert.equal(o.session, "victim_thread");
+});
+
+test("C-2: cwd with a session must be the session's own folder", { skip: SKIP }, async t => {
+  const { reg, work } = await registry(t);
+  fs.mkdirSync(path.join(work, "other"));
+  const r = await reg.call("term.open", { cwd: path.join(work, "other"), session: "s_one", surface: DECK }, "deck");
+  assert.equal(r.error?.code, "denied");
+  const same = await ok(reg, "term.open", { cwd: path.join(work, "proj"), session: "s_one", surface: DECK });
+  assert.equal(same.cwd, fs.realpathSync(path.join(work, "proj")));
+});
+
+test("C-2: a typed command is recorded under the typist (author, via, surface), and term.attach for a session re-checks the caller", { skip: SKIP }, async t => {
+  const { reg, work, events } = await registry(t);
+  const port = await server(t, reg);
+  const peer = { login: "carol@example.com", stableId: "n_carol" };
+  const o = (await reg.call("term.open", { session: "s_one", surface: "deck:carols" }, "tailnet:carol@example.com", { peer, person: { id: "s1", kind: "cookie" } }));
+  assert.ok(!o.error, JSON.stringify(o.error));
+  const c = await connect(port, o.data.path);
+  await c.until(/\$ $|# $|> $|%/);
+  c.send({ t: "in", d: "echo typed-by-carol\r" });
+  await c.until(/typed-by-carol\r?\n/);
+  await wait(300);
+  const ev = events.since(0, {}).filter(e => e.type === "term.command");
+  assert.equal(ev.length, 1);
+  assert.equal(ev[0].thread, "s_one");
+  assert.equal(ev[0].payload.author, "person:carol@example.com");
+  assert.equal(ev[0].payload.via, "tailnet:carol@example.com");
+  assert.equal(ev[0].payload.surface, "deck:carols");
+  // the session is no longer hers: attach is refused
+  globalThis.__fakeThreadsKnown.set("s_one", { cwd: path.join(work, "proj"), deny: "carol" });
+  const a = await reg.call("term.attach", { term: o.data.term, surface: "deck:carols" }, "tailnet:carol@example.com", { peer, person: { id: "s1", kind: "cookie" } });
+  assert.equal(a.error?.code, "not_found");
 });

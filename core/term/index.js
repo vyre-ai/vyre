@@ -45,6 +45,12 @@
 // guests are kept out by the caller allowlist, and a model's shell naming term.open by the
 // harness floor (core/presence PERSON_ONLY).
 //
+// A terminal is a full login shell. `session` (or `cwd`) only chooses the folder it STARTS in: nothing keeps
+// the shell there, and it is no sandbox (the files guard roots the starting folder, not the shell). A
+// session must be one the caller may use (threads.get as the caller), cwd must then be omitted or that
+// session's own folder, and a typed command is recorded in that session under the typist's own identity.
+// If a session's shell must stay in its project that is the runner's sandbox, not a label here.
+//
 // A terminal belongs to the screen that opened it: the caller label, the tailnet node the
 // listener verified (when there is one) and the surface named in the input. term.attach from any
 // other screen is not_found, so the owner's phone cannot pick up the shell open on their laptop.
@@ -162,7 +168,7 @@ export default {
     const save = () => {
       if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
       const rows = [...terms.values()].filter(t => t.durable && !t.ended).map(t => ({
-        id: t.id, cwd: t.cwd, session: t.session, surface: t.surface, key: t.key, offset: t.ring.end, started: t.started,
+        id: t.id, cwd: t.cwd, session: t.session, typist: t.typist || null, surface: t.surface, key: t.key, offset: t.ring.end, started: t.started,
         pid: t.pty.pid, sock: t.sock, left: t.sockets.size && !stopping ? null : t.left ?? now(), cols: t.pty.cols, rows: t.pty.rows,
       }));
       // A home that is gone stays gone: never make one back to write an empty table into.
@@ -297,8 +303,10 @@ export default {
           // A secret: the prompt asked for one, or the tty was not echoing when the line began.
           if (mark.prompt || (await mark.echo) === true) return;
           const command = redact(text).text.slice(0, COMMAND_CAP);
-          const c = { session: t.session, term: t.id, command, at: now() };
-          try { ctx.events.emit("term.command", { term: t.id, session: t.session, command }, { thread: t.session }); } catch {}
+          // Recorded under the real typist: author is the person who opened this terminal, via the caller and surface they used.
+          const who = t.typist || { author: "person:owner", via: "", surface: t.surface };
+          const c = { session: t.session, term: t.id, command, at: now(), author: who.author, via: who.via, surface: who.surface };
+          try { ctx.events.emit("term.command", { term: t.id, session: t.session, command, author: who.author, via: who.via, surface: who.surface }, { thread: t.session }); } catch {}
           for (const cb of commandSubs) { try { cb(c); } catch {} }
         }).catch(() => {});
       }
@@ -320,6 +328,7 @@ export default {
       if (!fs.existsSync(row.sock)) { lost(row); continue; }
       if (!(await isMaster(Number(row.pid), row.sock))) { try { fs.unlinkSync(row.sock); } catch {} lost(row); continue; }
       const t = blank(row.id, String(row.cwd), String(row.surface), String(row.key), Number(row.started) || now(), offsetOf(row.offset) ?? 0, true, row.sock, typeof row.session === "string" ? row.session : "");
+      t.typist = row.typist && typeof row.typist.author === "string" ? { author: String(row.typist.author), via: String(row.typist.via || ""), surface: String(row.typist.surface || t.surface) } : null;
       track(t);
       t.left = Number(row.left) || now();
       t.pty = new DtachPty({ sock: row.sock, cols: row.cols, rows: row.rows, adopt: { pid: Number(row.pid) }, onData: b => output(t, b), onExit: () => { end(t, "exited"); } });
@@ -331,18 +340,42 @@ export default {
 
     const tool = (name, description, input, run, extra = {}) => ctx.tool(name, { description, input, run, callers: PEOPLE, ...extra });
 
+    /** The thread, as the caller reads it. Throws denied or not_found; never answers for a thread the caller may not use. @param {string} thread @param {string} caller */
+    const threadOf = async (thread, caller) => {
+      let r;
+      try { r = await ctx.call("threads.get", { thread, limit: 1 }, { as: String(caller || "") }); }
+      catch (e) { throw fail("denied", /** @type {Error} */ (e).message); }
+      if (r && r.error) throw fail(["denied", "forbidden", "person_session_required"].includes(String(r.error.code)) ? "denied" : "not_found", "no such session on this box, or you may not use it");
+      const rec = r && r.data && (r.data.thread || r.data);
+      if (!rec || typeof rec !== "object") throw fail("not_found", "no such session on this box, or you may not use it");
+      return rec;
+    };
+    /** Who is typing at a terminal: the person its opener is (verified peer, else the owner's own surface), through which caller and screen. */
+    const typistOf = (caller, peer, surface) => {
+      const raw = peer && (peer.login || peer.stableId || peer.node);
+      return { author: raw ? `person:${String(raw).replace(/\s+/g, "-").slice(0, 120)}` : "person:owner", via: String(caller || ""), surface };
+    };
+
     tool("term.open", "Open a terminal: the user's login shell in a folder, on this machine. Returns a one-use ticket (30 s) for the stream at path, and whether the shell outlives a vyred restart (durable).",
       obj({ cwd: str, session: str, cols: int, rows: int, surface: str }, ["surface"]), async (i, { caller, peer }) => {
         const surface = surfaceOf(i);
         const key = keyOf(caller, peer, surface);
-        const session = i.session ? String(i.session).slice(0, 128) : "";
-        // With a session, the shell opens in the thread's folder (cwd wins when both are given).
+        // A session is a thread the CALLER may read and write: it is resolved through threads.get as the caller (a refusal is the
+        // answer: denied or not_found), cwd may be left out or must be the thread's own folder, and the session recorded, and every
+        // term.command's thread, is the id of that checked record and nothing the input said.
+        let session = "";
         let want = i.cwd ? String(i.cwd) : "";
-        if (!want && session) {
-          const r = await ctx.call("threads.get", { thread: session }).catch(() => null);
-          const rec = r && r.data && (r.data.thread || r.data);
-          const found = rec && typeof rec.cwd === "string" ? rec.cwd : "";
+        if (i.session) {
+          const asked = String(i.session).slice(0, 128);
+          const rec = await threadOf(asked, caller);
+          const found = typeof rec.cwd === "string" ? rec.cwd : "";
           if (!found) throw fail("not_found", "no such session, or it has no folder");
+          if (want) {
+            let a, b;
+            try { a = g.resolveSafe(want).real; b = g.resolveSafe(found).real; } catch (e) { throw fail(/** @type {any} */ (e).code === "not_available" ? "not_available" : "bad_input", /** @type {Error} */ (e).message); }
+            if (a !== b) throw fail("denied", "a terminal for a session opens in that session's folder; leave cwd out or name the same folder");
+          }
+          session = typeof rec.id === "string" && rec.id ? rec.id : asked;
           want = found;
         }
         if (!want) throw fail("bad_input", "give a cwd or a session");
@@ -357,6 +390,7 @@ export default {
         const durable = Boolean(dtach);
         const sock = durable ? path.join(socketDir(ctx.paths.root), `${id}.sock`) : "";
         const t = blank(id, dir, surface, key, now(), 0, durable, sock, session);
+        t.typist = typistOf(caller, peer, surface);
         track(t);
         const hooks = { onData: b => output(t, b), onExit: () => { end(t, "exited"); } };
         t.pty = durable
@@ -378,6 +412,8 @@ export default {
         const g = !t && gone.get(String(i.term));
         if (g && g.key === key) throw fail("terminal_closed", "the server was updated and this terminal was closed; open a new one");
         if (!t || t.key !== key) throw fail("not_found", "no such terminal on this screen");
+        // A terminal for a session stays authorized for it: the caller must still be able to read that session.
+        if (t.session) { try { await threadOf(t.session, caller); } catch (e) { throw fail("not_found", "no such terminal on this screen"); } }
         if (!t.sockets.size) idleSoon(t, keepMs + ticketMs);
         return { ...issue(t, offsetOf(i.from)), cwd: t.cwd, cols: t.pty.cols, rows: t.pty.rows, durable: t.durable, offset: t.ring.end, oldest: t.ring.start };
       });

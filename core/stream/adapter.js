@@ -43,7 +43,7 @@ const EDITS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
 const turnNo = (/** @type {unknown} */ t) => { const m = /:(\d+)$/.exec(String(t ?? "")); return m ? m[1] : null; };
 
 /**
- * @typedef {{ kind: string, data: any, turn?: string|null }} Spec
+ * @typedef {{ kind: string, data: any, turn?: string|null, author?: string }} Spec
  */
 
 export function createAdapter() {
@@ -163,7 +163,11 @@ export function createAdapter() {
           return d ? [spec("user-message", { message: uuid, text: words.get(uuid) || "", state: "cancelled" })] : [];
         }
         case "term.command":
-          return typeof p.command === "string" && p.command ? [spec("term-command", { term: String(p.term || "shell"), command: p.command })] : [];
+          // The typist rides on the frame: author (a person id), and via / surface as the terminal's opener used them.
+          return typeof p.command === "string" && p.command
+            ? [{ ...spec("term-command", { term: String(p.term || "shell"), command: p.command, ...(typeof p.via === "string" && p.via ? { via: p.via } : {}), ...(typeof p.surface === "string" && p.surface ? { surface: p.surface } : {}) }),
+              ...(typeof p.author === "string" && /^person:[^\s]{1,200}$/.test(p.author) ? { author: p.author } : {}) }]
+            : [];
         case "thread.text": return text(p);
         case "thread.thinking": return text({ ...p, kind: "reasoning", notice: undefined });
         case "thread.tool": return tool(p);
@@ -248,5 +252,5 @@ export function createAdapter() {
  * @param {import("./log.js").SessionLog} log @param {ReturnType<typeof createAdapter>} ad @param {{ type: string, payload?: any }} e
  */
 export function pipe(log, ad, e) {
-  return ad.event(e).map(s => log.append(s.kind, s.data, { turn: s.turn ?? null }));
+  return ad.event(e).map(s => log.append(s.kind, s.data, { turn: s.turn ?? null, ...(s.author ? { author: s.author } : {}) }));
 }

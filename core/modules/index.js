@@ -69,7 +69,9 @@ const CALL_AS = { agents: (/** @type {string} */ as) => isPerson(as), link: ["li
   // connectors relays the person who asked to one thing: writing an api-credential (a module cannot write one on its own); checked per call below.
   connectors: (/** @type {string} */ as) => isPerson(as),
   // stream asks threads.get as the very caller of stream.open (a person's surface or device, or an assistant), so a session's read is decided under that caller's own authority, never the module's.
-  stream: (/** @type {string} */ as) => isPerson(as) || agentClaim(as) !== null };
+  stream: (/** @type {string} */ as) => isPerson(as) || agentClaim(as) !== null,
+  // term asks threads.get as the person who opened the terminal, so a session's folder and its terminal are decided under that person's own authority.
+  term: (/** @type {string} */ as) => isPerson(as) };
 /**
  * A manifest still says `"roles": ["box"]` or `["local"]` (forty-plus modules across every
  * team; ADR 0039 keeps that vocabulary rather than renaming it everywhere). `start()` is called
