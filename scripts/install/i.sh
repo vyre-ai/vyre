@@ -7,6 +7,9 @@
 #      leaves a box that is already running alone. This script adds nothing to what it installs.
 #   3. Prints a pairing code (WINK-XXXX-XXXX). Type it in the Vyre app on any device you are signed in on, choose where the server goes
 #      under "Pair to:", and the app shows a code. Type that one back here.
+#      It also prints a QR code. A phone that scans it pairs the server with nothing to type: the QR carries a fresh 128-bit secret (a
+#      ticket's own), so it needs no short code and no PAKE. It is drawn by `qrencode` when this server has it, otherwise by the Vyre box
+#      itself (a small vendored encoder), never by a download.
 #
 # Run it again at any time: a server that is already installed is not touched, and a fresh code is shown. It never prints a secret, never
 # takes the setup code as an argument, and writes nothing outside what the release installer writes.
@@ -85,11 +88,29 @@ install_box() {
   sh "$TMP/install-box.sh" "$@"
 }
 
+# show_qr: the QR from wink.server.code, drawn for this terminal: by qrencode when it is installed, else the box's own drawing (the `art` field,
+# two QR rows per text row in four block glyphs), printed black on white so it scans on any theme. Nothing here is fetched.
+show_qr() {
+  [ -n "$qr" ] || return 0
+  say ""
+  say "  Or scan this with the Vyre app on your phone. Nothing to type, good for 5 minutes:"
+  say ""
+  if command -v qrencode >/dev/null 2>&1; then
+    drawn=$(qrencode -t ANSIUTF8 -m 2 -o - "$qr" 2>/dev/null || true)
+    [ -z "$drawn" ] || { printf '%s\n' "$drawn" | sed 's/^/    /'; return 0; }
+  fi
+  [ -n "$art" ] || { say "    (this terminal cannot draw it; the Vyre app can also take this text: $qr)"; return 0; }
+  printf '%s' "$art" | awk '{ gsub(/\\n/, "\n"); print }' | while IFS= read -r line; do
+    if [ -t 1 ]; then printf '    \033[30;47m%s\033[0m\n' "$line"; else printf '    %s\n' "$line"; fi
+  done
+}
+
 # show_code: wait for the server to answer, open a code, print it, and take the code the app shows.
 show_code() {
   n=0; made=""
   while [ "$n" -lt "${VYRE_CODE_TRIES:-40}" ]; do
-    made=$(vyre_call wink.server.code '{}' || true)
+    # Ask for the QR too; a release that does not know the option gets the plain call.
+    made=$(vyre_call wink.server.code '{"qr":true}' || vyre_call wink.server.code '{}' || true)
     [ -n "$(printf '%s' "$made" | json_field code)" ] && break
     # An answer that says what is wrong (the tool is not there) will not change by waiting; only a server still starting does.
     case "$(last_error)" in no_such_tool*) break ;; esac
@@ -97,6 +118,8 @@ show_code() {
   done
   code=$(printf '%s' "$made" | json_field code)
   offer=$(printf '%s' "$made" | json_field offer)
+  qr=$(printf '%s' "$made" | json_field qr)
+  art=$(printf '%s' "$made" | json_field art)
   if [ -z "$code" ]; then
     why=$(last_error)
     case "$why" in
@@ -114,6 +137,7 @@ show_code() {
   say "         $code"
   say ""
   say "  The code is good for 5 minutes. The app then shows a code of its own."
+  show_qr
   if [ "${VYRE_NO_PROMPT:-0}" = 1 ] || ! [ -r /dev/tty ]; then
     say "  Type that code back here with:"
     say "    $WRAPPER call wink.server.confirm '{\"offer\":\"$offer\",\"typed\":\"WINK-XXXX-XXXX\"}'"
@@ -123,11 +147,14 @@ show_code() {
     printf '  Type the code the app shows: ' >/dev/tty
     typed=""
     read -r typed </dev/tty || return 0
-    [ -n "$typed" ] || continue
+    if [ -z "$typed" ]; then
+      [ -z "$qr" ] || { say "  If you scanned the QR, the app finishes the pairing by itself."; return 0; }
+      continue
+    fi
     case "$typed" in *[!A-Za-z0-9\ -]*) say "  That is not a Vyre code." ; continue ;; esac
     res=$(vyre_call wink.server.confirm "{\"offer\":\"$offer\",\"typed\":\"$typed\"}" || true)
     case "$res" in
-      *'"ok":true'*|*'"ok": true'*) say ""; say "  Done. This server is paired."; return 0 ;;
+      *'"ok":true'*|*'"ok": true'*) say ""; say "  That code matched. The app finishes the pairing and tells you when this server is added; if it says it could not, follow what it says."; return 0 ;;
       *) say "  That code did not match, so the code above stopped working. A new one is showing: run this line again."; return 1 ;;
     esac
   done
