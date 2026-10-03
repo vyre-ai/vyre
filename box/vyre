@@ -546,7 +546,7 @@ publish_release() {
       done
       # The whole folder by rename: the old one is set aside and the new one takes its name, so no reader sees half of each release.
       # The old folder is kept in root's private folder as release.prev (not under the mounted status folder), so a rollback puts back the list its image was signed with.
-      mkdir -p -m 700 "$UPD_PRIV" 2>/dev/null || true
+      [ -d "$UPD_PRIV" ] || { mkdir "$UPD_PRIV" && chmod 700 "$UPD_PRIV"; } 2>/dev/null || true
       rm -rf "$UPD_PRIV/release.prev"
       if [ -d "$UPD_STATE/release" ]; then mv "$UPD_STATE/release" "$UPD_PRIV/release.prev" || { echo "vyre: could not replace the published release" >&2; rm -rf "$new"; rm -rf "$rt"; return 0; }; fi
       mv "$new" "$UPD_STATE/release" || echo "vyre: could not publish the release folder" >&2
