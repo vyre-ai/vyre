@@ -3,7 +3,7 @@
 // the store as untrusted: it never lets the store decide who may see a row, it checks each returned row itself,
 // it keeps the id it minted, and it verifies a record's version hash against the event that wrote it.
 import { canonical, sha256 } from "../core/canonical.js";
-import { mintUuid } from "../core/ids.js";
+import { mintUuid, isUuid } from "../core/ids.js";
 import { isChain, hasKind } from "../core/chain.js";
 import { KernelError } from "../core/errors.js";
 import { createGate } from "../core/gate.js";
@@ -17,10 +17,25 @@ export const RECORD_ACTIONS = Object.freeze([
   { action: "records.update", resource_type: "record", risk: "write", label: "edit records", gloss: "Change what a record holds." },
   { action: "records.remove", resource_type: "record", risk: "write", label: "remove records", gloss: "Move records to the bin." },
   { action: "records.restore", resource_type: "record", risk: "write", label: "restore records", gloss: "Bring records back from the bin." },
+  { action: "events.read", resource_type: "event", risk: "read", label: "read the activity log", gloss: "See what happened to records you can read." },
   { action: "records.define", resource_type: "definition", risk: "admin", label: "change types", gloss: "Add or change the kinds of record and their fields." },
 ].map(a => Object.freeze(a)));
 
 const TYPE_NAME = /^[a-z][a-z0-9-]*$/;
+/** Intents older than this are not replayed: they close as `unresolved` for a person to look at (K1 item 8b, K2-11). */
+const INTENT_MAX_AGE = 24 * 3600 * 1000;
+const checkType = (/** @type {any} */ t) => { if (typeof t !== "string" || !TYPE_NAME.test(t)) throw new KernelError("bad_input", "bad type name"); };
+const checkId = (/** @type {any} */ i) => { if (typeof i !== "string" || !isUuid(i)) throw new KernelError("bad_input", "bad record id"); };
+/** The head segment of every field a query, sort, group or measure names. */
+const fieldHeads = (/** @type {any} */ spec) => {
+  const out = new Set();
+  const walk = (/** @type {any} */ f) => { if (!f || typeof f !== "object") return; for (const k of ["and", "or"]) if (Array.isArray(f[k])) f[k].forEach(walk); if (f.not) walk(f.not); if (typeof f.field === "string") out.add(f.field.split(".")[0]); };
+  walk(spec.filter);
+  for (const s of spec.sort || []) if (s && typeof s.field === "string") out.add(s.field.split(".")[0]);
+  for (const g of spec.group_by || []) if (typeof g === "string") out.add(g.split(".")[0]);
+  for (const m of spec.measures || []) if (m && typeof m.field === "string") out.add(m.field.split(".")[0]);
+  return out;
+};
 /** A store answer that definitely means "nothing happened", so the intent can be closed as compensated. */
 const REFUSED = new Set(["invalid", "unknown_type", "unknown_field", "version_conflict", "not_found", "sealed_value_refused"]);
 const STORE_CODES = new Set(["not_found", "version_conflict", "invalid", "unknown_type", "unknown_field", "unsupported", "unavailable", "id_mismatch", "sealed_value_refused"]);
@@ -28,6 +43,11 @@ const STORE_CODES = new Set(["not_found", "version_conflict", "invalid", "unknow
 /** What a version hash covers: the record as the gateway wrote it. */
 export const versionHash = (/** @type {any} */ r) => sha256(canonical({ type: r.type, id: r.id, version: r.version, deleted: Boolean(r.deleted_at), data: r.data }));
 
+const mergePatch = (/** @type {any} */ data, /** @type {any} */ patch) => {
+  const out = { ...data };
+  for (const [k, v] of Object.entries(patch || {})) { if (v === null) delete out[k]; else out[k] = v; }
+  return out;
+};
 const redactDiff = (/** @type {any} */ data, /** @type {Set<string>} */ changed) =>
   Object.fromEntries(Object.entries(data || {}).map(([k, v]) => [k, isSealedShape(v) ? { sealed: true, changed: changed.has(k) } : v]));
 const changedFields = (/** @type {any} */ a, /** @type {any} */ b) => {
@@ -54,6 +74,24 @@ export function createRecords(cfg) {
 
   const { gate, allowed } = createGate({ authorizer, log });
 
+  const isModel = (/** @type {any} */ chain) => hasKind(chain, "agent") || chain.hops.some((/** @type {any} */ h) => h.actor.kind === "service" && sinks.has(h.actor.id));
+
+  /**
+   * A chain holding a model may not filter, sort, group or measure on a sealed field or any of its sub-fields (hint
+   * included): that is an equality oracle on a value the model must never learn (invariants 5, 6). The definition comes
+   * from the store; if it cannot be read, the query is refused rather than guessed.
+   */
+  async function guardSealed(/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ spec) {
+    if (!isModel(chain)) return;
+    const heads = fieldHeads(spec);
+    if (!heads.size) return;
+    let def;
+    try { def = typeof store.describe === "function" ? await store.describe(type) : undefined; } catch (e) { throw mapError(e); }
+    if (!def || !Array.isArray(def.fields)) throw new KernelError("unsupported", "cannot check the fields of this type, so a model may not query by field");
+    const sealed = new Set(def.fields.filter((/** @type {any} */ f) => f.kind === "sealed").map((/** @type {any} */ f) => f.name));
+    for (const h of heads) if (sealed.has(h)) throw new KernelError("bad_input", `${h} is sealed: it cannot be filtered, sorted, grouped or measured by an assistant`);
+  }
+
   /** Shape a stored row for the caller: checked, labelled, and with sealed values as placeholders when a model is in the chain. */
   function shape(/** @type {any} */ chain, /** @type {any} */ r) {
     const u = urn(r.type, r.id);
@@ -61,18 +99,21 @@ export function createRecords(cfg) {
     const hash = versionHash(r);
     const modified = !known || known.version !== r.version || known.hash !== hash;
     // Placeholders by destination (8.4): a model in the chain, or a declared model sink anywhere in it.
-    const model = hasKind(chain, "agent") || chain.hops.some((/** @type {any} */ h) => h.actor.kind === "service" && sinks.has(h.actor.id));
+    const model = isModel(chain);
     const data = model ? Object.fromEntries(Object.entries(r.data).map(([k, v]) => [k, isSealedShape(v) ? { sealed: /** @type {any} */ (v).sealed, present: Boolean(/** @type {any} */ (v).present), valid_format: Boolean(/** @type {any} */ (v).valid_format) } : v])) : r.data;
     return Object.freeze({ ...r, data, urn: u, labels: { trust: modified ? "external" : "member", red: "internal", source_spaces: [space] }, ...(modified ? { modified_outside: true } : {}) });
   }
 
   async function write(/** @type {any} */ chain, /** @type {"create"|"update"|"remove"|"restore"} */ op, /** @type {string} */ type, /** @type {string} */ id, /** @type {any} */ input, /** @type {number | null} */ base, /** @type {() => Promise<any>} */ run, /** @type {(() => Promise<any>) | null} */ getBefore) {
-    if (!TYPE_NAME.test(type)) throw new KernelError("bad_input", "bad type name");
+    checkType(type); checkId(id);
     const u = urn(type, id);
     const d = await gate(chain, `records.${op}`, u);
     let before = null;
     if (getBefore) { try { before = await getBefore(); } catch (e) { throw mapError(e); } }
-    const intent = { id: mintUuid(clock()), decision: d.decision, chain: chain.hops, record: u, base_version: base, operation: op, input_hash: sha256(canonical(input)), state: "open", started_at: clock(), stored: chains.serialize(chain) };
+    // What the store must show for this to be our change and no one else's: the exact data and deleted state.
+    const merged = op === "create" ? input : op === "update" ? mergePatch(before ? before.data : {}, input) : before ? before.data : null;
+    const expect = merged === null || merged === undefined ? null : sha256(canonical({ deleted: op === "remove", data: merged }));
+    const intent = { id: mintUuid(clock()), decision: d.decision, chain: chain.hops, record: u, base_version: base, operation: op, input_hash: sha256(canonical(input)), expect, before_data: before ? before.data : null, state: "open", started_at: clock(), stored: chains.serialize(chain) };
     intents.set(intent.id, intent);
     let rec;
     try { rec = await run(); }
@@ -117,6 +158,7 @@ export function createRecords(cfg) {
     },
 
     async get(chain, type, id) {
+      checkType(type); checkId(id);
       const u = urn(type, id);
       try { await gate(chain, "records.read", u); } catch (e) { if (e instanceof KernelError && e.code === "not_found") return null; throw e; }
       let r;
@@ -126,6 +168,8 @@ export function createRecords(cfg) {
 
     async query(chain, type, spec) {
       if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
+      checkType(type);
+      await guardSealed(chain, type, spec);
       let cursor = spec.page.cursor, out = [], next;
       for (let pages = 0; pages < 10; pages++) {
         let p;
@@ -140,6 +184,8 @@ export function createRecords(cfg) {
 
     async aggregate(chain, type, spec) {
       if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
+      checkType(type);
+      await guardSealed(chain, type, spec);
       // A store cannot hide rows from a total, so the gateway aggregates only the rows it has itself allowed.
       const rows = [];
       let cursor;
@@ -155,6 +201,7 @@ export function createRecords(cfg) {
 
     async search(chain, spec) {
       if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
+      for (const t of spec.types || []) checkType(t);
       let p;
       try { p = await store.search(spec); } catch (e) { throw mapError(e); }
       const rows = [];
@@ -180,21 +227,31 @@ export function createRecords(cfg) {
     },
 
     /**
-     * Close intents a crash left open: if the store shows the change was made, write the event that was missing
-     * (marked recovered); if it shows nothing happened, close the intent as compensated. Never guesses.
+     * Close intents a crash left open. An intent completes only when the store shows exactly the data this intent
+     * expected (hash of the expected data and deleted state), and the event is written as the intent's own chain.
+     * Nothing changed since the base means nothing happened (compensated); anything else, including another person's
+     * change on the same record, or an intent past its age limit, is `unresolved` for a person to look at. Never guesses.
      */
     async recover() {
-      const result = { completed: 0, compensated: 0, still_open: 0 };
+      const result = { completed: 0, compensated: 0, still_open: 0, unresolved: 0 };
       for (const intent of intents.values()) {
         if (intent.state !== "open") continue;
+        if (clock() - intent.started_at > INTENT_MAX_AGE) { intent.state = "unresolved"; result.unresolved++; continue; }
         const [, type, id] = intent.record.slice(7).split("/");
         let rec;
         try { rec = id ? await store.get(type, id, { include_deleted: true }) : null; } catch { result.still_open++; continue; }
         const op = intent.operation;
-        const applied = Boolean(rec) && (op === "create" ? true : op === "update" ? rec.version > intent.base_version : op === "remove" ? Boolean(rec.deleted_at) && rec.version > intent.base_version : !rec.deleted_at);
-        if (!applied) { intent.state = "compensated"; result.compensated++; continue; }
-        emit(chains.restore(intent.stored), intent, rec, null, intent.decision, true);
-        result.completed++;
+        const exact = Boolean(rec) && intent.expect !== null && sha256(canonical({ deleted: Boolean(rec.deleted_at), data: rec.data })) === intent.expect
+          && (op === "create" || (op === "restore" ? !rec.deleted_at : rec.version > intent.base_version));
+        if (exact) {
+          let c;
+          try { c = chains.restore(intent.stored); } catch { intent.state = "unresolved"; result.unresolved++; continue; }
+          emit(c, intent, rec, intent.before_data ? { data: intent.before_data } : null, intent.decision, true);
+          result.completed++;
+          continue;
+        }
+        const untouched = op === "create" ? !rec : Boolean(rec) && (op === "restore" ? Boolean(rec.deleted_at) : !rec.deleted_at && rec.version === intent.base_version);
+        if (untouched) { intent.state = "compensated"; result.compensated++; } else { intent.state = "unresolved"; result.unresolved++; }
       }
       return result;
     },

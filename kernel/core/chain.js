@@ -30,11 +30,18 @@ export const isExactlyPerson = (/** @type {any} */ chain) => isChain(chain) && c
 
 export const hasKind = (/** @type {any} */ chain, /** @type {string} */ kind) => chain.hops.some((/** @type {any} */ h) => h.actor.kind === kind);
 
+/** An unknown trust or class is an error, never "weakest": a bad label must not drop a taint (invariant 9). */
+export function checkLabels(/** @type {any} */ l) {
+  if (!l || !TRUST_ORDER.includes(l.trust) || !REDACTION_ORDER.includes(l.red) || !Array.isArray(l.source_spaces)) throw new KernelError("bad_input", "unknown trust or class label");
+  return l;
+}
+
 const weakest = (/** @type {string} */ a, /** @type {string} */ b) => (TRUST_ORDER.indexOf(/** @type {any} */ (a)) <= TRUST_ORDER.indexOf(/** @type {any} */ (b)) ? a : b);
 const strongest = (/** @type {string} */ a, /** @type {string} */ b) => (REDACTION_ORDER.indexOf(/** @type {any} */ (a)) >= REDACTION_ORDER.indexOf(/** @type {any} */ (b)) ? a : b);
 
 /** Weakest trust, strongest class, union of source Spaces: the label of anything derived from both. */
 export function mergeLabels(/** @type {any} */ a, /** @type {any} */ b) {
+  checkLabels(a); checkLabels(b);
   return { trust: weakest(a.trust, b.trust), red: strongest(a.red, b.red), source_spaces: [...new Set([...a.source_spaces, ...b.source_spaces])].sort() };
 }
 
@@ -120,21 +127,36 @@ export function createChainBuilder(cfg) {
     if (!stored || typeof stored.body !== "string" || typeof stored.mac !== "string" || !sameMac(hmac(cfg.key, stored.body), stored.mac)) return refuse("stored chain failed its seal");
     const o = JSON.parse(stored.body);
     if (o.space !== space) return refuse("stored chain is for another space");
+    try { checkLabels(o.labels); } catch { return refuse("stored chain has unknown labels"); }
+    if (!Array.isArray(o.hops) || !o.hops.length) return refuse("stored chain has no hops");
     const c = deepFreeze({ space, hops: o.hops, labels: o.labels, built_at: o.built_at, job: o.job });
     BUILT.add(c);
     return /** @type {any} */ (c);
   }
 
-  /**
-   * RETROFIT ONLY (K2b, removed at K6): a one-hop chain for a caller string the registry already trusted. The caller
-   * has parsed the string with the registry's own helpers; this only stamps it into a kernel chain so the old rules
-   * can be decided by `authorize`. Surfaces that arrive as SurfaceFacts never use it.
-   * @param {{ kind: "person" | "agent" | "service", id: string, legacy: string, person_session?: boolean, device?: string }} p
-   */
-  function fromLegacy(p) {
-    if (!["person", "agent", "service"].includes(p.kind) || typeof p.id !== "string" || !p.id) return refuse("bad legacy caller");
-    return make([hop(p.kind, p.id, "registry", { legacy: p.legacy, ...(p.person_session ? { session: "person" } : {}), ...(p.device ? { device: p.device } : {}) })], base());
-  }
+  return Object.freeze({ fromFacts, appendService, weaken, serialize, restore });
+}
 
-  return Object.freeze({ fromFacts, appendService, weaken, serialize, restore, fromLegacy });
+/** The one Space the retrofit's throwaway chains live in. No production authorizer evaluates it, so no chain minted for it is ever accepted by a real Space. */
+export const LEGACY_SPACE = "spc_legacy000000";
+
+/**
+ * RETROFIT ONLY (K2b, removed at K6): stamps a caller string the registry already trusted into a chain of the throwaway
+ * legacy Space, so the old rules can be decided by `authorize`. It is a separate factory, not a method of the production
+ * builder, and it refuses any Space but LEGACY_SPACE: a person hop minted from a string can exist only where nothing real is.
+ * @param {{ space: string, clock?: () => number }} cfg
+ */
+export function createLegacyChainBuilder(cfg) {
+  if (cfg.space !== LEGACY_SPACE) throw new KernelError("bad_input", "the legacy chain builder serves only the legacy Space");
+  const clock = cfg.clock || Date.now;
+  return Object.freeze({
+    /** @param {{ kind: "person" | "agent" | "service", id: string, legacy: string, person_session?: boolean, device?: string }} p */
+    fromLegacy(p) {
+      if (!["person", "agent", "service"].includes(p.kind) || typeof p.id !== "string" || !p.id) throw new KernelError("not_a_member", "no chain for this connection", "bad legacy caller");
+      const hop = { actor: { kind: p.kind, id: p.id, space: LEGACY_SPACE }, entered_by: "registry", via: { legacy: p.legacy, ...(p.person_session ? { session: "person" } : {}), ...(p.device ? { device: p.device } : {}) } };
+      const c = deepFreeze({ space: LEGACY_SPACE, hops: [hop], labels: { trust: "member", red: "public", source_spaces: [LEGACY_SPACE] }, built_at: clock() });
+      BUILT.add(c);
+      return /** @type {any} */ (c);
+    },
+  });
 }
