@@ -46,18 +46,18 @@ test("the app learns that one is stored and when, never the value; the logs, the
   for (const f of fs.readdirSync(root, { recursive: true })) { const p = path.join(root, String(f)); if (fs.statSync(p).isFile() && fs.statSync(p).size < 50_000_000) assert.equal(fs.readFileSync(p).includes(Buffer.from(tok)), false, `sealed at rest: ${f}`); }
 });
 
-test("the credentials port: the daemon took it once, the launcher gets the environment for an agent provider in the shape lib/agent-sandbox.js reads, or nothing, and each use leaves an audit row without the value", async t => {
+test("the credentials port: the daemon took it once, the launcher gets the token for a provider item, or null, and each use leaves an audit row without the value", async t => {
   const { d, reg, logs } = await daemon(t), tok = fake("claude"), key = fake("api");
   await reg("vault.put", { name: "claude-setup-token", kind: "secret", value: tok, grants: ["agents", "threads"] }, "module:onboard"); // as core/onboard makes it
   await reg("vault.provider.set", { provider: "anthropic", token: key }, "cli");
   // VP-2: the DAEMON took the port right after the vault started, so nothing else can: a second take fails.
   const port = d.registry.deps.credentialsPort; assert.ok(port, "the daemon holds the credentials port");
   assert.throws(() => takeCredentialsPort(), /already taken/, "nothing that imports the vault later can take it");
-  assert.deepEqual(await port.credentials("claude"), { CLAUDE_CODE_OAUTH_TOKEN: tok, ANTHROPIC_API_KEY: key });
-  assert.deepEqual(await port.credentials("codex"), {}); assert.deepEqual(await port.credentials("../x"), {}); for (const p of ["__proto__", "constructor", "toString"]) assert.deepEqual(await port.credentials(p), {}, p);
+  assert.equal(await port.credentials("claude"), tok); assert.equal(await port.credentials("anthropic"), key);
+  assert.equal(await port.credentials("codex"), null); assert.equal(await port.credentials("../x"), null); for (const p of ["__proto__", "constructor", "toString"]) assert.equal(await port.credentials(p), null, p);
   assert.ok(Object.isFrozen(port)); assert.equal(Object.keys(port).join(), "credentials");
   const all = await everything(reg, logs); assert.equal(all.includes(tok) || all.includes(key), false); assert.match(all, /provider-token/);
-  await reg("vault.provider.remove", { provider: "claude" }, "cli"); assert.deepEqual(await port.credentials("claude"), { ANTHROPIC_API_KEY: key }, "removed means gone");
+  await reg("vault.provider.remove", { provider: "claude" }, "cli"); assert.equal(await port.credentials("claude"), null, "removed means gone"); assert.equal(await port.credentials("anthropic"), key);
 });
 
 test("launcherOnly: once it is on, no module is granted the token, and the person's own reveal still needs presence like any item", async t => {
@@ -65,5 +65,5 @@ test("launcherOnly: once it is on, no module is granted the token, and the perso
   await reg("vault.provider.set", { provider: "claude", token: tok }, "cli");
   for (const m of ["agents", "threads", "sessions"]) assert.ok((await reg("vault.grant", { name: "claude-setup-token", module: m }, "cli")).error, `${m} is not granted it`);
   assert.ok((await reg("vault.put", { name: "claude-setup-token", kind: "secret", value: fake("x"), grants: ["agents"] }, "module:onboard")).error, "onboard must stop attaching grants before this is switched on");
-  assert.deepEqual(await d.registry.deps.credentialsPort.credentials("claude"), { CLAUDE_CODE_OAUTH_TOKEN: tok });
+  assert.equal(await d.registry.deps.credentialsPort.credentials("claude"), tok);
 });

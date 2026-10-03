@@ -13,7 +13,7 @@
 import { closeToAddedModules } from "../../lib/first-party-door.js";
 import { core as coreHolder } from "../presence/index.js";
 import { startForwarder } from "./forward.js";
-import { Vault, MIGRATIONS, KINDS, parseExpiry, ensureMacColumns, LAUNCHER_ITEMS, LAUNCHER_ENV } from "./vault.js";
+import { Vault, MIGRATIONS, KINDS, parseExpiry, ensureMacColumns, LAUNCHER_ITEMS } from "./vault.js";
 import { DETAILS, defaultField } from "../../lib/vault-kinds/kinds.js";
 import { codes, importCodes } from "./codes.js";
 import { sweep } from "./sweep.js";
@@ -64,8 +64,8 @@ export function takeCredentialsPort() {
   portHolder.taken = true;
   const vault = portHolder.vault;
   return Object.freeze({
-    /** The environment the launcher sets in the session's own process for an agent provider (`claude`): `{ CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY }` for what is stored, `{}` for nothing or an unknown provider. The shape lib/agent-sandbox.js `credentials(provider)` already reads. @param {string} provider @returns {Promise<Record<string, string>>} */
-    credentials: async provider => (Object.hasOwn(LAUNCHER_ENV, String(provider)) ? vault.launcherCredentials(provider) : {}),
+    /** The sign-in token for a provider item: `claude` is the setup token (claude-setup-token), `anthropic` the API key (anthropic-api-key). The token, or null for nothing or an unknown name. This is the shape sessions reads (the sandbox launcher accepts the string too). @param {string} provider @returns {Promise<string | null>} */
+    credentials: async provider => (Object.hasOwn(LAUNCHER_ITEMS, String(provider)) ? vault.providerToken(provider) : null),
   });
 }
 

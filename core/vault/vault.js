@@ -218,8 +218,6 @@ const kindOf = callerKind;
  * @type {Record<string, { item: string, kind: string }>}
  */
 export const LAUNCHER_ITEMS = Object.freeze({ claude: { item: "claude-setup-token", kind: "secret" }, anthropic: { item: "anthropic-api-key", kind: "api-key" } });
-/** What the session launcher (lib/agent-sandbox.js `credentials(provider)`) gets for an agent provider: environment variable name to the launcher item that fills it. */
-export const LAUNCHER_ENV = Object.freeze({ claude: Object.freeze({ CLAUDE_CODE_OAUTH_TOKEN: "claude", ANTHROPIC_API_KEY: "anthropic" }) });
 const LAUNCHER_NAMES = new Set(Object.values(LAUNCHER_ITEMS).map(x => x.item));
 export const launcherItem = /** @param {string} name */ name => LAUNCHER_NAMES.has(name);
 const moduleOf = c => (String(c).startsWith("module:") ? String(c).slice(7) : null);
@@ -1104,14 +1102,6 @@ export class Vault {
     if (!v) return null;
     this.audit("provider-token", row.name, "launcher", true, "handed to the session launcher");
     return v;
-  }
-
-  /** The launcher's answer for an agent provider, in the shape lib/agent-sandbox.js reads: `{ ENV_NAME: token }` for each token that is stored (none stored: `{}`). */
-  async launcherCredentials(provider) {
-    const map = Object.hasOwn(LAUNCHER_ENV, String(provider)) ? LAUNCHER_ENV[String(provider)] : null; if (!map) return {};
-    /** @type {Record<string, string>} */ const out = {};
-    for (const [envName, item] of Object.entries(map)) { const v = await this.providerToken(item); if (v) out[envName] = v; }
-    return out;
   }
 
   /** Which launcher sign-in tokens are stored and when each was added or last changed: names and times, never a value. */
