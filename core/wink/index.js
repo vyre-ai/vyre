@@ -47,11 +47,10 @@ function owner(meta, what) {
 /**
  * The Wink module. `inject` is the composition root's side (the platform's createKernel passes these; every one is optional and a box without one says so plainly):
  *   directory   { memberships(identity) -> [{ space, name?, role }], label?(identity) }   who holds which role (kernelDirectory over ctx.kernel when absent)
- *   offers      the kernel gateway's grants: { offer(chain, o, opt), unoffer(chain, id, opt), active(q) }   the ONLY store of compute offers (W-5)
- *   chainFor    (meta, person) -> the kernel chain for the calling owner (passed to offers.offer and offers.unoffer)
+ *   offers      { get(space, device, x), set(space, device, side, on, x) }   the ONLY store of compute offers (W-5); the kernel's grants.offers behind a port
  *   pool        the storage Pool engine (kernel/storage/pool.js) and poolBackend(credentials, offer) -> backend (kernel/storage/devices.js backendFor)
  *   ports       { typist, finish, adopt, callServer }   test seams for the typing flows
- * @param {{ ports?: import("./pairing.js").Ports, directory?: import("./pairing.js").Directory, pool?: any, poolBackend?: (c: any, offer: any) => any, offers?: any, chainFor?: (meta: any, person: string) => any, handover?: import("./pairing.js").Handover }} [inject]
+ * @param {{ ports?: import("./pairing.js").Ports, directory?: import("./pairing.js").Directory, pool?: any, poolBackend?: (c: any, offer: any) => any, offers?: any, handover?: import("./pairing.js").Handover }} [inject]
  * @returns {{ start(ctx: any): Promise<{ stop(): Promise<void>, peers: any, homeServe(inner: any): any }>, readonly peers: any, homeServe(inner: any): any }} */
 export function createWink(inject = {}) {
   /** @type {any} */
@@ -231,7 +230,9 @@ export function createWink(inject = {}) {
       ctx, now, identity: owner1, space: spaceId, openCode, ack: ackOffer, owner,
       // Who may pair to a space: the kernel's grants store when ctx.kernel offers it (work/kernel), else a fake that makes the box owner the owner of its own space.
       directory,
-      ports: inject.ports, offers: inject.offers, chainFor: inject.chainFor, handover: inject.handover,
+      ports: inject.ports,
+      offers: inject.offers,
+      handover: inject.handover,
       keyFile: path.join(ctx.paths && ctx.paths.root ? ctx.paths.root : path.join(os.homedir(), ".vyre"), "wink-keys.json"),
       spaceNow: () => spaceCache,
       relayUrl: async () => { const r = /** @type {any} */ (await ctx.call("relay.status", {})); return String((r && r.data && r.data.url) || (ctx.config.relay && ctx.config.relay.url) || ""); },

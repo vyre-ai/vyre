@@ -12,21 +12,6 @@ const ME = "per_aaaaaaaaaaaaaaaaaaaaaaaaaa";
 const HARLOW = "spc_harlowharlo";   // admin
 const NORTHWIND = "spc_northwindbk"; // member only
 
-/** A fake of the kernel gateway's grants offers: offer, unoffer, active (the same shape as kernel/grants/index.js). */
-function fakeOffers() {
-  const recs = new Map();
-  let n = 0;
-  return {
-    recs,
-    async offer(chain, o) { const rec = { id: `of_${++n}`, ...o, status: "active" }; recs.set(rec.id, rec); return rec; },
-    async unoffer(chain, id) { recs.set(id, { ...recs.get(id), status: "revoked" }); },
-    active(q) {
-      const live = r => r.status === "active" && r.member === q.member && r.device === q.device && (!r.device_key || r.device_key === q.device_key);
-      return { spaceAllows: [...recs.values()].some(r => live(r) && r.side === "space_allows"), memberAccepts: [...recs.values()].some(r => live(r) && r.side === "member_accepts") };
-    },
-  };
-}
-
 function world(o = {}) {
   const db = new DatabaseSync(":memory:");
   for (const m of [...MIGRATIONS, ...PEER_MIGRATIONS]) db.exec(m);
@@ -42,17 +27,15 @@ function world(o = {}) {
     typist: async a => { typed.push(a); return o.typistFails ? { ok: false, reason: o.typistFails } : { ok: true, ack: "WINK-AB12-CD34", seed: new Uint8Array(16), route: "rt" }; },
     finish: async a => { finishes.push(a); return { ok: true, paired: { route: "route-juno", name: "juno" } }; },
   };
-  const offers = o.offers || fakeOffers();
   const p = createPairing({
-    ctx, now: () => 1_000_000, identity: async () => ME, space: async () => HARLOW, directory, ports,
+    ctx, now: o.now || (() => 1_000_000), offers: o.offers, identity: async () => ME, space: async () => HARLOW, directory, ports,
     openCode: async flow => ({ offer: `wo_${flow}`, code: "WINK-ZZZZ-ZZZZ", expires: 1 }), ack: async () => ({ ok: true }),
     owner: () => {}, relayUrl: async () => "ws://relay.test", keyFile: o.keyFile, spaceNow: () => HARLOW,
-    ...(o.noOffers ? {} : { offers: offers }),
   });
   p.tools();
   const call = (name, input = {}, meta = {}) => tools.get(name).run(input, { caller: "device:x", ...meta });
   const fails = async (name, input, code) => { await assert.rejects(() => call(name, input), e => (code ? e.code === code : true) && (e.message || "")); };
-  return { p, call, events, typed, finishes, db, tools, fails, offers };
+  return { p, call, events, typed, finishes, db, tools, fails };
 }
 const settle = () => new Promise(r => setTimeout(r, 10));
 
@@ -258,94 +241,68 @@ test("after pairing, the server is told its owner over the paired channel with t
   }
 });
 
-test("W-5: compute offers live only in the kernel's offers: no second store here, and a withdrawal there is the answer here", async () => {
+test("the server's adopt: the first caller adopts, any later change needs the owner's presence and the first caller (W-4)", async () => {
   const w = world();
-  assert.equal(w.db.prepare("SELECT name FROM sqlite_master WHERE name = 'wink_compute'").get(), undefined, "the second store is dropped by the migrations");
-  assert.equal(typeof w.p.compute.get, "undefined", "no local read of the offers");
-  w.p.devices.add({ id: "pc", identity: ME, kind: "computer", name: "Alex's Mac", target: { kind: "identity", id: ME } });
-  await w.call("wink.offer.set", { device: "pc", offer: "compute", on: true });
-  await w.call("wink.offer.set", { device: "pc", offer: "compute", on: true, space: HARLOW, side: "space" });
-  await w.call("wink.offer.set", { device: "pc", offer: "compute", on: true, space: HARLOW, side: "member" });
-  assert.equal((await w.p.computeAllowed({ device: "pc", space: HARLOW })).ok, true);
-  assert.deepEqual([...w.offers.recs.values()].map(r => [r.side, r.member, r.device]), [["space_allows", ME, "pc"], ["member_accepts", ME, "pc"]], "both sides were made in the kernel");
-  // the kernel withdraws it on its own (a role change, a removal): this module follows, it keeps no copy
-  for (const [id, r] of w.offers.recs) w.offers.recs.set(id, { ...r, status: "revoked" });
-  assert.equal((await w.p.computeAllowed({ device: "pc", space: HARLOW })).ok, false);
-  // a box with no kernel gateway says so plainly and never keeps a local answer
-  const n = world({ noOffers: true });
-  n.p.devices.add({ id: "pc", identity: ME, kind: "computer", name: "Mac", target: { kind: "identity", id: ME } });
-  await n.call("wink.offer.set", { device: "pc", offer: "compute", on: true });
-  await assert.rejects(() => n.call("wink.offer.set", { device: "pc", offer: "compute", on: true, space: HARLOW, side: "space" }), e => e.code === "unavailable");
-  assert.match((await n.p.computeAllowed({ device: "pc", space: HARLOW })).reason, /no kernel/);
+  const tool = w.tools.get("wink.server.adopt");
+  const adopt = (input, caller, presence) => tool.run(input, { caller, ...(presence ? { presence: { method: "passkey" } } : {}) });
+  assert.equal(tool.presence.when(), false, "no presence for the first adoption");
+  await adopt({ owner: { kind: "space", id: HARLOW }, identity: ME, peerSecret: "A".repeat(43) }, "device:home1");
+  assert.equal(tool.presence.when(), true, "presence once there is an owner");
+  assert.deepEqual(w.p.meta.get("owner"), { kind: "space", id: HARLOW, identity: ME });
+  assert.equal(w.p.devices.get("self").identity, ME);
+  // another paired device, with or without presence, cannot take over
+  await assert.rejects(() => adopt({ owner: { kind: "identity", id: "per_evil" } }, "device:other"), e => e.code === "presence_required");
+  await assert.rejects(() => adopt({ owner: { kind: "identity", id: "per_evil" } }, "device:other", true), e => e.code === "denied");
+  // the adopter itself cannot re-target to a space without presence
+  await assert.rejects(() => adopt({ owner: { kind: "space", id: NORTHWIND }, identity: ME }, "device:home1"), e => e.code === "presence_required");
+  assert.deepEqual(w.p.meta.get("owner"), { kind: "space", id: HARLOW, identity: ME }, "nothing moved");
+  // with the owner's presence the adopter may change it, and so may a screen on this box
+  await adopt({ owner: { kind: "identity", id: ME } }, "device:home1", true);
+  await adopt({ owner: { kind: "space", id: HARLOW }, identity: ME }, "cli", true);
+  assert.equal(w.p.meta.get("adopter"), "device:home1", "the adopter stays the first caller");
 });
 
-test("W-5: an old database that still has wink_compute migrates (the table is dropped, nothing reads it)", () => {
-  const db = new DatabaseSync(":memory:");
-  for (const m of MIGRATIONS) db.exec(m);
-  db.prepare("INSERT INTO wink_compute (space, device, space_allows, member_accepts, updated) VALUES ('s', 'd', 1, 1, 1)").run();
-  for (const m of PEER_MIGRATIONS) db.exec(m);
-  assert.equal(db.prepare("SELECT name FROM sqlite_master WHERE name = 'wink_compute'").get(), undefined);
+test("W-4: a local (cli) adoption is recorded, and a paired device cannot adopt again afterwards", async () => {
+  const w = world();
+  const adopt = (input, caller, presence) => w.tools.get("wink.server.adopt").run(input, { caller, ...(presence ? { presence: { method: "passkey" } } : {}) });
+  await adopt({ owner: { kind: "identity", id: ME } }, "cli");
+  assert.equal(w.p.meta.get("adopter"), "cli");
+  await assert.rejects(() => adopt({ owner: { kind: "identity", id: "per_evil" } }, "device:other"), e => e.code === "presence_required");
+  await assert.rejects(() => adopt({ owner: { kind: "identity", id: "per_evil" } }, "device:other", true), e => e.code === "denied");
+  assert.deepEqual(w.p.meta.get("owner"), { kind: "identity", id: ME, identity: ME });
 });
 
-test("W-7: a second add under the same device id cannot change its identity, kind or owner; a removed device may pair again as itself", () => {
+test("W-7: a second add under a known id cannot change identity, kind or owner; the self row has its own path", () => {
   const w = world();
-  const add = (d) => w.p.devices.add({ name: "x", ...d });
-  add({ id: "d1", identity: ME, kind: "phone", target: { kind: "identity", id: ME } });
-  assert.throws(() => add({ id: "d1", identity: "per_evil", kind: "server", target: { kind: "space", id: HARLOW } }), e => e.code === "denied");
-  assert.throws(() => add({ id: "d1", identity: "per_evil", kind: "phone", target: { kind: "identity", id: "per_evil" } }), e => e.code === "denied");
-  assert.throws(() => add({ id: "d1", identity: ME, kind: "server", target: { kind: "identity", id: ME } }), e => e.code === "denied");
-  assert.throws(() => add({ id: "d1", identity: ME, kind: "phone", target: { kind: "space", id: HARLOW } }), e => e.code === "denied");
-  const d = w.p.devices.get("d1");
-  assert.deepEqual([d.identity, d.kind, d.owner], [ME, "phone", { kind: "identity", id: ME }]);
-  assert.equal(add({ id: "d1", identity: ME, kind: "phone", target: { kind: "identity", id: ME } }).id, "d1", "the same pairing again is a no-op");
+  const add = (o) => w.p.devices.add({ id: "d1", identity: ME, kind: "phone", name: "kit", target: { kind: "identity", id: ME }, ...o });
+  add({});
+  assert.throws(() => add({ identity: "per_evil" }), e => e.code === "conflict");
+  assert.throws(() => add({ kind: "server" }), e => e.code === "conflict");
+  assert.throws(() => add({ target: { kind: "space", id: HARLOW } }), e => e.code === "conflict");
+  assert.deepEqual([w.p.devices.get("d1").identity, w.p.devices.get("d1").kind, w.p.devices.get("d1").owner], [ME, "phone", { kind: "identity", id: ME }]);
+  assert.equal(add({ name: "kit 2" }).name, "kit 2", "the same device may refresh its name");
   w.p.devices.remove("d1");
-  assert.throws(() => add({ id: "d1", identity: "per_evil", kind: "phone", target: { kind: "identity", id: "per_evil" } }), e => e.code === "denied", "a removed row is still that identity's");
-  assert.equal(add({ id: "d1", identity: ME, kind: "phone", target: { kind: "identity", id: ME } }).removed, false);
-  // adopt's own row has its own path and rewrites only itself
-  w.p.devices.setSelf({ identity: ME, target: { kind: "identity", id: ME } });
-  w.p.devices.setSelf({ identity: ME, target: { kind: "space", id: HARLOW } });
+  assert.equal(add({}).removed, false, "a removed device pairs again");
+  assert.throws(() => add({ identity: "per_evil" }), e => e.code === "conflict", "never under another identity");
+  w.p.devices.setSelf({ identity: ME, name: "box", target: { kind: "identity", id: ME } });
+  w.p.devices.setSelf({ identity: ME, name: "box", target: { kind: "space", id: HARLOW } });
   assert.deepEqual(w.p.devices.get("self").owner, { kind: "space", id: HARLOW });
 });
 
-test("W-4: adoption happens once, the adopter is recorded for every caller kind, and any change needs the owner's presence or the space's admin claim", async () => {
-  const w = world();
-  const adopt = (input, caller, extra = {}) => w.tools.get("wink.server.adopt").run(input, { caller, ...extra });
-  const retarget = (input, caller, extra = {}) => w.tools.get("wink.server.retarget").run(input, { caller, ...extra });
-  // first caller works
-  await adopt({ owner: { kind: "identity", id: ME }, identity: ME, peerSecret: "A".repeat(43) }, "device:home1");
-  assert.deepEqual(w.p.meta.get("owner"), { kind: "identity", id: ME, identity: ME });
-  assert.equal(w.p.meta.get("adopter"), "device:home1");
-  assert.equal(w.p.devices.get("self").identity, ME);
-  // the same adopter re-targets to a space it does not administer: refused (probe 3a)
-  await assert.rejects(() => adopt({ owner: { kind: "space", id: NORTHWIND }, identity: ME }, "device:home1"), e => e.code === "denied");
-  assert.deepEqual(w.p.meta.get("owner"), { kind: "identity", id: ME, identity: ME });
-  // a different device naming another identity: refused
-  await assert.rejects(() => adopt({ owner: { kind: "identity", id: "per_evil" } }, "device:other"), e => e.code === "denied");
-  // repeating the same owner changes nothing and is fine
-  await adopt({ owner: { kind: "identity", id: ME }, identity: ME }, "device:home1");
-  await adopt({ owner: { kind: "identity", id: ME }, identity: ME }, "cli");
-  assert.equal(w.p.meta.get("adopter"), "device:home1", "a repeat does not take the adopter's place");
-  // a changed peer secret is a change too
-  await assert.rejects(() => adopt({ owner: { kind: "identity", id: ME }, identity: ME, peerSecret: "B".repeat(43) }, "device:other"), e => e.code === "denied");
-  assert.equal(w.p.meta.get("peer_secret"), "A".repeat(43));
-  // the space's admin claim (the directory port: ME administers Harlow) lets it move
-  await adopt({ owner: { kind: "space", id: HARLOW }, identity: ME }, "device:home1");
-  assert.deepEqual(w.p.meta.get("owner"), { kind: "space", id: HARLOW, identity: ME });
-  // the owner's own screen: presence, or nothing
-  await assert.rejects(() => retarget({ owner: { kind: "identity", id: ME } }, "cli"), e => e.code === "presence_required");
-  await retarget({ owner: { kind: "identity", id: ME } }, "cli", { presence: { method: "touchid" } });
-  assert.deepEqual(w.p.meta.get("owner"), { kind: "identity", id: ME, identity: ME });
-  assert.equal(w.tools.get("wink.server.retarget").presence.summary !== undefined, true, "the registry asks for presence");
-});
-
-test("W-4: after a cli adoption a different device cannot adopt again (probe 3b)", async () => {
-  const w = world();
-  const adopt = (input, caller) => w.tools.get("wink.server.adopt").run(input, { caller });
-  await adopt({ owner: { kind: "identity", id: ME }, identity: ME }, "cli");
-  assert.equal(w.p.meta.get("adopter"), "cli");
-  await assert.rejects(() => adopt({ owner: { kind: "identity", id: "per_evil" }, identity: "per_evil" }, "device:other"), e => e.code === "denied");
-  assert.equal(w.p.meta.get("owner").identity, ME);
-  assert.equal(w.p.devices.get("self").identity, ME);
+test("W-5: with an offers port the kernel's store is the only one and wink_compute is never touched", async () => {
+  const store = new Map();
+  const offers = { get: (s, d) => store.get(`${s}|${d}`) || { space_allows: 0, member_accepts: 0 },
+    set: (s, d, side, on) => store.set(`${s}|${d}`, { ...offers.get(s, d), [side === "space" ? "space_allows" : "member_accepts"]: on ? 1 : 0 }) };
+  const w = world({ offers });
+  w.p.devices.add({ id: "pc", identity: ME, kind: "computer", name: "pc", target: { kind: "identity", id: ME } });
+  w.db.prepare("UPDATE wink_devices SET offers = ? WHERE id = 'pc'").run(JSON.stringify({ access: true, compute: true }));
+  await w.call("wink.offer.set", { device: "pc", offer: "compute", on: true, space: HARLOW, side: "space" });
+  assert.equal((await w.call("wink.offer.set", { device: "pc", offer: "compute", on: true, space: HARLOW, side: "member" })).allowed.ok, true);
+  assert.equal(w.db.prepare("SELECT COUNT(*) AS n FROM wink_compute").get().n, 0, "no second store");
+  offers.set(HARLOW, "pc", "space", false);
+  assert.equal((await w.p.computeAllowed({ device: "pc", space: HARLOW })).ok, false, "a withdrawal in the kernel store reaches wink at once");
+  w.p.devices.remove("pc");
+  assert.equal(store.size, 1, "removing the device leaves the kernel's store to the kernel");
 });
 
 test("peer admission: a paired server of this space or identity only; the node key the host proved binds, and no other key gets the secret", async () => {
@@ -362,14 +319,8 @@ test("peer admission: a paired server of this space or identity only; the node k
   const NK = "nodekey:" + "aa".repeat(32), EVIL = "nodekey:" + "ee".repeat(32);
   const served = [];
   const serve = w.p.peers.serve(async (c, t) => { served.push([c, t]); return "ok"; });
-  // an unproven claim notes nothing that binds: the secret is offered, the row stays unbound
-  assert.equal(w.p.peers.shared("srvMe", NK, "stable1").toString("base64url"), w.p.peers.secretFor("srvMe"));
-  assert.equal(w.p.devices.get("srvMe").nodeKey, null);
-  // a call with no proof (the relay path) binds nothing
-  await serve("device:srvMe", "x", {});
-  assert.equal(w.p.devices.get("srvMe").nodeKey, null);
-  // the host reports the key it proved: that key binds, with the noted stable id
-  await serve("device:srvMe", "x", {}, { nodeKey: NK, stableId: "" });
+  w.p.peers.shared("srvMe", NK, "stable1");
+  await serve("device:srvMe", "x", {}, { nodeKey: NK });
   assert.equal(w.p.devices.get("srvMe").nodeKey, NK);
   assert.equal(w.p.devices.get("srvMe").stableId, "stable1");
   assert.ok(w.events.some(e => e[0] === "wink.peer-bound"));
@@ -378,40 +329,22 @@ test("peer admission: a paired server of this space or identity only; the node k
   assert.ok(w.p.peers.shared("srvMe", NK));
   await serve("device:srvMe", "x", {}, { nodeKey: EVIL });
   assert.equal(w.p.devices.get("srvMe").nodeKey, NK);
-  assert.equal(served.length, 3);
+  // W-4b: an unproven claim binds nothing, and cannot lock the real server out
+  w.p.peers.shared("srvHarlow", EVIL, "stableX");
+  await serve("device:srvHarlow", "x", {});
+  assert.equal(w.p.devices.get("srvHarlow").nodeKey, null, "a call with no proven key binds nothing");
+  w.p.peers.shared("srvHarlow", NK, "stableY");
+  await serve("device:srvHarlow", "x", {}, { nodeKey: "nodekey:" + "cc".repeat(32) });
+  assert.equal(w.p.devices.get("srvHarlow").nodeKey, null, "a proven key nobody claimed binds nothing");
+  w.p.peers.shared("srvHarlow", EVIL, "stableX");
+  await serve("device:srvHarlow", "x", {}, { nodeKey: NK });
+  assert.equal(w.p.devices.get("srvHarlow").nodeKey, NK, "the key that proved itself binds, whatever else was claimed");
+  assert.equal(w.p.peers.shared("srvHarlow", EVIL), null);
   // the module tool says the same, and a removed server is out
   assert.equal((await call("wink.peer.shared", { device: "srvMe", nodeKey: EVIL })).secret, null);
   assert.ok((await call("wink.peer.shared", { device: "srvMe", nodeKey: NK })).secret);
   w.p.devices.remove("srvMe");
   assert.equal(w.p.peers.allow("srvMe"), false);
-});
-
-test("node-key hijack (probe 4): an unproven shared(device, ATTACKERKEY) then the real server's call binds the real key, never the attacker's", async () => {
-  const w = world();
-  w.p.devices.add({ id: "srv1", identity: ME, kind: "server", name: "srv1", target: { kind: "identity", id: ME } });
-  const REAL = "nodekey:" + "11".repeat(32);
-  w.p.peers.shared("srv1", "nodekey:ATTACKERKEY");
-  const serve = w.p.peers.serve(async () => "ok");
-  await serve("device:srv1", "x", {}, { nodeKey: REAL, stableId: "real" });
-  assert.equal(w.p.devices.get("srv1").nodeKey, REAL);
-  assert.equal(w.p.devices.get("srv1").stableId, "real");
-  assert.ok(w.p.peers.shared("srv1", REAL), "the real server is not locked out");
-  assert.equal(w.p.peers.shared("srv1", "nodekey:ATTACKERKEY"), null);
-});
-
-test("node-key notes expire: a stale note supplies no stable id and never binds", async () => {
-  let t = 1_000_000;
-  const w = world();
-  // a second pairing with a moving clock
-  const { createPairing } = await import("./pairing.js");
-  const p = createPairing({ ctx: { store: { db: w.db }, config: {}, log() {}, events: { emit() {} }, tool() {} }, now: () => t, identity: async () => ME, space: async () => HARLOW, directory: { memberships: async () => [] }, ports: {}, openCode: async () => ({}), ack: async () => ({ ok: true }), owner: () => {}, relayUrl: async () => "", spaceNow: () => HARLOW });
-  p.devices.add({ id: "srv1", identity: ME, kind: "server", name: "srv1", target: { kind: "identity", id: ME } });
-  const NK = "nodekey:" + "22".repeat(32);
-  p.peers.shared("srv1", NK, "stale-id");
-  t += 61_000;
-  await p.peers.serve(async () => "ok")("device:srv1", "x", {}, { nodeKey: NK, stableId: "" });
-  assert.equal(p.devices.get("srv1").nodeKey, NK, "the proven key binds");
-  assert.equal(p.devices.get("srv1").stableId, null, "an expired note says nothing");
 });
 
 test("the server's side proves with the secret its home gave at adopt time", async () => {
@@ -497,7 +430,7 @@ test("adopt for a first owner needs no directory knowledge of the space; a later
   assert.deepEqual(r.owner, { kind: "space", id: HARLOW });
   assert.equal(w.p.meta.get("owner").name, "Harlow Legal");
   // a later change by the channel is refused, in words that say who owns it and which tool
-  await assert.rejects(() => adopt({ owner: { kind: "identity", id: ME }, identity: ME }), e => e.code === "denied" && /belongs to Harlow Legal/.test(e.message) && /wink\.remove/.test(e.message) && /wink\.server\.retarget/.test(e.message));
+  await assert.rejects(() => adopt({ owner: { kind: "identity", id: ME }, identity: ME }), e => e.code === "presence_required" && /belongs to Harlow Legal/.test(e.message) && /wink\.remove/.test(e.message) && /wink\.server\.retarget/.test(e.message));
   // with presence on the box, the owner's own screen retargets
   const t = await w.tools.get("wink.server.retarget").run({ owner: { kind: "identity", id: ME }, identity: ME }, { caller: "cli", presence: { ok: true } });
   assert.deepEqual(t.owner, { kind: "identity", id: ME });
@@ -533,4 +466,15 @@ test("adopt hands over what the device needs, only inside the channel: stored on
   assert.ok(!JSON.stringify(srv.events).includes(SECRET));
   const dump = JSON.stringify([...srv.tools.keys()]) + JSON.stringify(srv.p.devices.list(ME));
   assert.ok(!dump.includes(SECRET), "not in the device rows");
+});
+
+test("W-4b: a claim that no call proves lapses after a minute", async () => {
+  let t = 1_000_000;
+  const w = world({ now: () => t });
+  w.p.devices.add({ id: "srvA", identity: ME, kind: "server", name: "a", target: { kind: "identity", id: ME } });
+  const NK = "nodekey:" + "aa".repeat(32);
+  w.p.peers.shared("srvA", NK);
+  t += 61_000;
+  await w.p.peers.serve(async () => "ok")("device:srvA", "x", {}, { nodeKey: NK });
+  assert.equal(w.p.devices.get("srvA").nodeKey, null);
 });

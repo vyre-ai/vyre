@@ -10023,7 +10023,7 @@ Take something back: a grant (a member, a share) is revoked, or a device (give `
 
 ### `wink.server.adopt`
 
-On a server that was just paired: record who it belongs to, an identity or a space { kind, id }, and the identity that paired it. Called by the pairing app over the paired channel, once: the first caller wins and is recorded (whatever kind of caller it was). After that, repeating the same owner is a no-op and any change is refused unless the target space's admin claim holds; the owner's own screen changes it with wink.server.retarget (presence). Answers { owner }.
+On a server that was just paired: record who it belongs to, an identity or a space { kind, id }, and the identity that paired it. Called by the pairing app over the paired channel, once: the first caller adopts it and is recorded. After that it cannot be repeated over the paired channel; the person changes the owner on this box with wink.server.retarget (their own presence), and only the one that adopted it, or a screen on this box, may. Answers { owner }.
 
 - Input:
   - `owner` object, required
@@ -10041,6 +10041,7 @@ On a server that was just paired: record who it belongs to, an identity or a spa
   - `identity` string
   - `peerSecret` string
 - Callers: any caller
+- Needs a person present.
 
 ### `wink.server.code`
 
@@ -10067,7 +10068,7 @@ What this server was handed when it was adopted, to reach its home: { home, box,
 
 ### `wink.server.retarget`
 
-On this server, from the owner's own screen with presence: change who it belongs to (an identity or a space). The only way to change an owner without the target space's admin claim. Answers { owner }.
+On this server, from the owner's own screen with presence: change who it belongs to (an identity or a space). The same as wink.server.adopt once there is an owner. Answers { owner }.
 
 - Input:
   - `owner` object, required

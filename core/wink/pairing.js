@@ -41,7 +41,6 @@ export const MIGRATIONS = [
   `CREATE TABLE wink_devices (id TEXT PRIMARY KEY, identity TEXT NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL, fingerprint TEXT NOT NULL DEFAULT '',
      owner_kind TEXT NOT NULL DEFAULT 'identity', owner_id TEXT NOT NULL, offers TEXT NOT NULL DEFAULT '{}', created INTEGER NOT NULL, removed_at INTEGER)`,
   `CREATE INDEX wink_devices_identity ON wink_devices (identity, removed_at)`,
-  // (an older build also made wink_compute here; PEER_MIGRATIONS drops it, positions stay as they were)
   `CREATE TABLE wink_compute (space TEXT NOT NULL, device TEXT NOT NULL, space_allows INTEGER NOT NULL DEFAULT 0, member_accepts INTEGER NOT NULL DEFAULT 0,
      updated INTEGER NOT NULL, PRIMARY KEY (space, device))`,
 ];
@@ -51,8 +50,6 @@ export const PEER_MIGRATIONS = [
   `ALTER TABLE wink_devices ADD COLUMN node_key TEXT`,
   `ALTER TABLE wink_devices ADD COLUMN stable_id TEXT`,
   `CREATE TABLE wink_meta (k TEXT PRIMARY KEY, v TEXT NOT NULL)`,
-  // W-5: compute offers live only in the kernel's grants store (gateway.grants.offers). The old second store is dropped; old rows are not read.
-  `DROP TABLE IF EXISTS wink_compute`,
   // The owner's signing key for a device (SPKI, base64url), for signed instructions to a headless box (wink.relay.apply).
   `ALTER TABLE wink_devices ADD COLUMN sign_key TEXT`,
 ];
@@ -81,7 +78,8 @@ export const POLL_MS = 1500;
  * @param {{ ctx: any, now: () => number, identity: () => Promise<string>, space: () => Promise<string>, directory: Directory, ports?: Ports,
  *   openCode: (flow: "W1" | "W2" | "W3") => Promise<{ offer: string, code: string, expires: number }>,
  *   ack: (offer: string, typed: string) => Promise<{ ok: boolean }>, owner: (meta: any, what: string) => void, relayUrl: () => Promise<string>, keyFile?: string, spaceNow?: () => string,
- *   handover?: Handover }} o
+ *   handover?: Handover,
+ *   offers?: { get(space: string, device: string): { space_allows: number | boolean, member_accepts: number | boolean } | Promise<any>, set(space: string, device: string, side: "space" | "member", on: boolean): void | Promise<void> } }} o
  */
 export function createPairing(o) {
   const { ctx, now, directory } = o;
@@ -97,46 +95,44 @@ export function createPairing(o) {
   const pending = new Map();
 
   const rowOf = (/** @type {any} */ r) => r ? { id: r.id, identity: r.identity, kind: r.kind, name: r.name, fingerprint: r.fingerprint, owner: { kind: r.owner_kind, id: r.owner_id }, offers: JSON.parse(r.offers || "{}"), created: r.created, removed: r.removed_at != null, nodeKey: r.node_key || null, stableId: r.stable_id || null, signKey: r.sign_key || null } : null;
-  /** @param {string} kind */
-  const offersFor = kind => Object.fromEntries(/** @type {string[]} */ (KIND_OFFERS[/** @type {"phone"} */ (kind)]).filter(x => x === "access" || kind === "storage" || kind === "server").map(x => [x, x === "access" || kind === "storage"]));
   const devices = {
     /** @param {string} identity */
     list: identity => /** @type {any[]} */ (db.prepare("SELECT * FROM wink_devices WHERE identity = ? AND removed_at IS NULL ORDER BY created, id").all(identity)).map(rowOf),
     /** @param {string} id */
     get: id => rowOf(db.prepare("SELECT * FROM wink_devices WHERE id = ?").get(String(id))),
-    /** @param {{ id: string, identity: string, kind: string, name?: string, fingerprint?: string, target: { kind: string, id: string } }} d */
+    /**
+     * A second pairing under a known id may refresh the name and fingerprint and bring a removed row back, never change who holds it or what it
+     * is: a different identity or kind is refused, and so is a different owner unless the row was removed first.
+     * @param {{ id: string, identity: string, kind: string, name?: string, fingerprint?: string, target: { kind: string, id: string } }} d
+     */
     add(d) {
       if (!KINDS.includes(d.kind)) throw fail("bad_input", "a device is a phone, a computer, a server or a storage device");
-      // W-7: a device id is claimed once. A second add never changes the identity, the kind or the owner of a live row; a removed row may be
-      // paired again by the same identity and kind (a fresh pairing: its node binding is cleared). adopt's own row has its own path (setSelf).
-      const cur = devices.get(d.id);
-      if (cur) {
-        if (cur.identity !== d.identity || cur.kind !== d.kind) throw fail("denied", "that device already belongs to someone else");
-        if (!cur.removed) {
-          if (cur.owner.kind !== d.target.kind || cur.owner.id !== d.target.id) throw fail("denied", "that device already has an owner");
-          return cur;
-        }
-        const offers = offersFor(d.kind);
-        db.prepare("UPDATE wink_devices SET name = ?, fingerprint = ?, owner_kind = ?, owner_id = ?, offers = ?, created = ?, removed_at = NULL, node_key = NULL, stable_id = NULL WHERE id = ?")
-          .run(String(d.name || "a device").slice(0, 64), String(d.fingerprint || "").slice(0, 32), d.target.kind, d.target.id, JSON.stringify(offers), now(), String(d.id));
+      const offers = Object.fromEntries(/** @type {string[]} */ (KIND_OFFERS[/** @type {"phone"} */ (d.kind)]).filter(x => x === "access" || d.kind === "storage" || d.kind === "server").map(x => [x, x === "access" || d.kind === "storage"]));
+      const name = String(d.name || "a device").slice(0, 64), fingerprint = String(d.fingerprint || "").slice(0, 32);
+      const at = devices.get(d.id);
+      if (!at) {
+        db.prepare("INSERT INTO wink_devices (id, identity, kind, name, fingerprint, owner_kind, owner_id, offers, created) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+          .run(String(d.id), d.identity, d.kind, name, fingerprint, d.target.kind, d.target.id, JSON.stringify(offers), now());
         return devices.get(d.id);
       }
-      db.prepare("INSERT INTO wink_devices (id, identity, kind, name, fingerprint, owner_kind, owner_id, offers, created) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-        .run(String(d.id), d.identity, d.kind, String(d.name || "a device").slice(0, 64), String(d.fingerprint || "").slice(0, 32), d.target.kind, d.target.id, JSON.stringify(offersFor(d.kind)), now());
+      if (at.identity !== d.identity || at.kind !== d.kind) throw fail("conflict", "that device is already paired to someone else, or as something else");
+      if (!at.removed && (at.owner.kind !== d.target.kind || at.owner.id !== d.target.id)) throw fail("conflict", "that device already belongs somewhere else; remove it first");
+      db.prepare("UPDATE wink_devices SET name = ?, fingerprint = ?, owner_kind = ?, owner_id = ?, removed_at = NULL, offers = ?, node_key = ?, stable_id = ? WHERE id = ?")
+        .run(name, fingerprint, d.target.kind, d.target.id, JSON.stringify(at.removed ? offers : at.offers), at.removed ? null : at.nodeKey, at.removed ? null : at.stableId, String(d.id));
       return devices.get(d.id);
     },
     /** The owner's signing key for one of their devices (SPKI, base64url), used by wink.relay.apply. @param {string} id @param {string} key */
     setSignKey(id, key) { db.prepare("UPDATE wink_devices SET sign_key = ? WHERE id = ? AND removed_at IS NULL").run(key, String(id)); },
-    /** adopt's explicit path for this server's own row ("self"): the only place a row's identity and owner are rewritten. @param {{ identity: string, name?: string, target: { kind: string, id: string } }} d */
+    /** The row for this box itself, written by adopt only (its own path: adopting replaces the row, add never does). @param {{ identity: string, name: string, target: { kind: string, id: string } }} d */
     setSelf(d) {
-      db.prepare(`INSERT INTO wink_devices (id, identity, kind, name, fingerprint, owner_kind, owner_id, offers, created) VALUES ('self', ?, 'server', ?, '', ?, ?, ?, ?)
-        ON CONFLICT (id) DO UPDATE SET identity = excluded.identity, name = excluded.name, owner_kind = excluded.owner_kind, owner_id = excluded.owner_id, removed_at = NULL`)
-        .run(d.identity, String(d.name || "this server").slice(0, 64), d.target.kind, d.target.id, JSON.stringify(offersFor("server")), now());
+      db.prepare("INSERT OR REPLACE INTO wink_devices (id, identity, kind, name, fingerprint, owner_kind, owner_id, offers, created) VALUES ('self', ?, 'server', ?, '', ?, ?, ?, ?)")
+        .run(d.identity, String(d.name || "this server").slice(0, 64), d.target.kind, d.target.id, JSON.stringify({ access: true, compute: false, storage: false }), now());
       return devices.get("self");
     },
     /** @param {string} id */
     remove(id) {
       db.prepare("UPDATE wink_devices SET removed_at = ? WHERE id = ? AND removed_at IS NULL").run(now(), String(id));
+      if (!o.offers) db.prepare("DELETE FROM wink_compute WHERE device = ?").run(String(id));
     },
   };
 
@@ -167,26 +163,19 @@ export function createPairing(o) {
   };
 
   // ---- compute offers (DESIGN-wink section 7) ----
-  // W-5: the kernel's gateway.grants.offers is the ONLY store of `space_allows` and `member_accepts` (kernel/grants/index.js offer, unoffer, active).
-  // This module keeps no copy. The port `o.offers` has the gateway's own shape: { offer(chain, o, opt), unoffer(chain, id, opt), active({ member, device, device_key }) }
-  // (the platform passes `kernel.grants`; tests pass a fake). The only thing kept here is a pointer from (side, device) to the kernel's offer id, so a
-  // withdrawal can name it; the pointer never says whether anything is allowed.
-  const deviceKey = (/** @type {any} */ d) => d.fingerprint || d.id;
-  const offerRef = (/** @type {string} */ side, /** @type {string} */ device) => `offer:${side}:${device}`;
-  const compute = {
-    /** Make or withdraw one side through the kernel. @param {any} chain @param {any} d device row @param {"space" | "member"} side @param {boolean} on @param {any} [presence] */
-    async set(chain, d, side, on, presence) {
-      if (!o.offers) throw fail("unavailable", "compute offers live in the kernel, and this box has no kernel gateway yet");
-      const ref = offerRef(side, d.id);
-      if (on) {
-        const rec = await o.offers.offer(chain, { side: side === "space" ? "space_allows" : "member_accepts", member: d.identity, device: d.id, device_key: deviceKey(d) }, { presence });
-        meta.set(ref, rec.id);
-      } else {
-        const id = meta.get(ref);
-        if (id) { await o.offers.unoffer(chain, id, { presence }); meta.set(ref, null); }
-      }
+  // ONE store of the two sides at a time. With an `offers` port (the kernel's offers store, grants.offers, which the runner's lease path
+  // reads) every read and write goes there and wink_compute is never touched, so a withdrawal cannot be missed. Without one (a box with no
+  // kernel yet) wink_compute is the only store.
+  const local = {
+    /** @param {string} space @param {string} device */
+    get: (space, device) => /** @type {any} */ (db.prepare("SELECT * FROM wink_compute WHERE space = ? AND device = ?").get(space, device)) || { space_allows: 0, member_accepts: 0 },
+    /** @param {string} space @param {string} device @param {"space" | "member"} side @param {boolean} on */
+    set(space, device, side, on) {
+      const col = side === "space" ? "space_allows" : "member_accepts";
+      db.prepare(`INSERT INTO wink_compute (space, device, ${col}, updated) VALUES (?, ?, ?, ?) ON CONFLICT (space, device) DO UPDATE SET ${col} = excluded.${col}, updated = excluded.updated`).run(space, device, on ? 1 : 0, now());
     },
   };
+  const compute = o.offers || local;
   /**
    * May this device's compute run this space's work? Only a computer, only while its identity holds a membership in the space, and only
    * when BOTH sides agreed in the kernel (`offers.active`: the space allows it and the member accepts, bound to the computer's key). Your
@@ -198,13 +187,11 @@ export function createPairing(o) {
     if (!d || d.removed) return { ok: false, reason: "no such device" };
     if (d.kind !== "computer") return { ok: false, reason: "only a computer lends its compute to a space's work" };
     if (!d.offers.compute) return { ok: false, reason: "this computer is not offering compute" };
-    if (q.space === d.identity) return { ok: true };
-    if (!(await directory.memberships(d.identity)).some(m => m.space === q.space)) return { ok: false, reason: "its owner is not a member of that space" };
-    if (!o.offers) return { ok: false, reason: "this box has no kernel to ask about that space" };
-    if (o.spaceNow && o.spaceNow() && q.space !== o.spaceNow()) return { ok: false, reason: "this box does not run that space" };
-    const a = o.offers.active({ member: d.identity, device: d.id, device_key: deviceKey(d) });
-    if (!a.spaceAllows) return { ok: false, reason: "the space has not allowed work on members' computers" };
-    if (!a.memberAccepts) return { ok: false, reason: "its owner has not accepted work for this space" };
+    const personal = q.space === d.identity;
+    if (!personal && !(await directory.memberships(d.identity)).some(m => m.space === q.space)) return { ok: false, reason: "its owner is not a member of that space" };
+    const row = (await compute.get(q.space, q.device)) || { space_allows: 0, member_accepts: 0 };
+    if (!personal && !row.space_allows) return { ok: false, reason: "the space has not allowed work on members' computers" };
+    if (!row.member_accepts) return { ok: false, reason: "its owner has not accepted work for this space" };
     return { ok: true };
   };
 
@@ -231,17 +218,20 @@ export function createPairing(o) {
   };
 
   // ---- peer admission (the module's side of core/wink/node host.serveHome and the relay bridge's peers) ----
-  // A peer is a paired server of this space or identity. `shared(deviceId, nodeKey, stableId)` answers the secret the host proves a peer with, but only for
-  // a node key bound to that device row. A row with no node key binds the key the HOST reports as proven for a call: host.serveHome passes
-  // { nodeKey, stableId } as the fourth argument of `serve`, and that is the only thing that ever binds (the node key of a connection that completed the
-  // device-secret proof). A claim made through shared() is a note that expires after NOTE_MS and only supplies the stable id when the proven key is the
-  // same one; it never binds by itself, so an unproven claim can neither bind nor lock the real server out.
-  const NOTE_MS = 60_000, NOTE_MAX = 256;
-  /** @type {Map<string, { stableId: string, at: number }>} */
-  const notes = new Map();
-  const noted = (/** @type {string} */ id, /** @type {string} */ nodeKey) => {
-    const n = notes.get(`${id}\n${nodeKey}`);
-    return n && now() - n.at < NOTE_MS ? n.stableId : "";
+  // A peer is a paired server of this space or identity. `shared(deviceId, nodeKey)` answers the secret the host proves a peer with, but only for
+  // a node key bound to that device row. A row with no node key binds the first key that PROVES itself: shared() only notes the claim (for a
+  // minute), and the host, after it has checked the peer's proof of the device secret, reports the node key that proved it as the last argument
+  // of `serve`. Only a noted claim for that proven key binds. An unproven claim binds nothing, so naming a device's row with a made-up key
+  // cannot lock the real server out.
+  const CLAIM_TTL_MS = 60_000, MAX_CLAIMS = 8;
+  /** @type {Map<string, Map<string, { stableId: string, at: number }>>} */
+  const claims = new Map();
+  const liveClaims = (/** @type {string} */ id) => {
+    const m = claims.get(id);
+    if (!m) return null;
+    for (const [k, c] of m) if (now() - c.at >= CLAIM_TTL_MS) m.delete(k);
+    if (!m.size) { claims.delete(id); return null; }
+    return m;
   };
   const peers = {
     /** The secret for one device: derived from this box's peer root, never stored per device. @param {string} deviceId @returns {string} base64url */
@@ -262,27 +252,29 @@ export function createPairing(o) {
       const d = devices.get(String(deviceId));
       if (!peers.allow(deviceId) || !d) return null;
       if (d.nodeKey) return d.nodeKey === nodeKey ? Buffer.from(peers.secretFor(d.id), "base64url") : null;
-      const t = now();
-      for (const [k, v] of notes) if (t - v.at >= NOTE_MS) notes.delete(k);
-      if (notes.size >= NOTE_MAX) notes.delete(/** @type {string} */ (notes.keys().next().value));
-      notes.set(`${d.id}\n${nodeKey}`, { stableId: String(stableId || ""), at: t });
+      const m = liveClaims(d.id) || new Map();
+      if (!m.has(nodeKey) && m.size >= MAX_CLAIMS) m.delete(m.keys().next().value);
+      m.set(nodeKey, { stableId: stableId || "", at: now() });
+      claims.set(d.id, m);
       return Buffer.from(peers.secretFor(d.id), "base64url");
     },
     /**
-     * Wrap the registry's serve. A call that arrives as device:<id> with `proof = { nodeKey, stableId }` from the host (the node key of the connection that
-     * just proved the device secret) binds that key when the row has none. A call with no proof (the relay path) binds nothing.
-     * @param {(caller: string, tool: string, input: any) => Promise<any>} inner @returns {(caller: string, tool: string, input: any, proof?: { nodeKey?: string, stableId?: string }) => Promise<any>}
+     * Wrap the registry's serve. A call that arrives as device:<id> has proved the device secret; when the host also says which node key made that
+     * proof (`proven.nodeKey`), a noted claim for exactly that key becomes the binding. A call with no proven key binds nothing.
+     * @param {(caller: string, tool: string, input: any) => Promise<any>} inner
      */
     serve(inner) {
-      return async (caller, tool, input, proof) => {
+      return async (/** @type {string} */ caller, /** @type {string} */ tool, /** @type {any} */ input, /** @type {{ nodeKey?: string } | undefined} */ proven) => {
         const id = caller.startsWith("device:") ? caller.slice(7) : "";
-        if (id && proof && typeof proof.nodeKey === "string" && proof.nodeKey) {
+        const key = proven && typeof proven.nodeKey === "string" ? proven.nodeKey : "";
+        const m = id && key ? liveClaims(id) : null;
+        const claim = m && m.get(key);
+        if (claim) {
+          claims.delete(id);
           const d = devices.get(id);
-          if (d && !d.removed && !d.nodeKey && peers.allow(id)) {
-            const stable = String(proof.stableId || "") || noted(id, proof.nodeKey);
-            const r = db.prepare("UPDATE wink_devices SET node_key = ?, stable_id = ? WHERE id = ? AND node_key IS NULL").run(proof.nodeKey, stable || null, id);
-            notes.delete(`${id}\n${proof.nodeKey}`);
-            if (Number(r.changes) === 1) ctx.events.emit("wink.peer-bound", { device: id });
+          if (d && !d.nodeKey) {
+            db.prepare("UPDATE wink_devices SET node_key = ?, stable_id = ? WHERE id = ? AND node_key IS NULL").run(key, claim.stableId || null, id);
+            ctx.events.emit("wink.peer-bound", { device: id });
           }
         }
         return inner(caller, tool, input);
@@ -343,7 +335,7 @@ export function createPairing(o) {
           const before = devices.get(sid);
           try { devices.add({ id: sid, identity, kind: i.kind, name, target: i.target }); }
           catch (e) {
-            if (/already has an owner/.test(String(/** @type {Error} */ (e).message))) { failWith("failed", words("alreadyPaired", { name })); return; }
+            if (/already has an owner|already belongs somewhere else|paired to someone else/.test(String(/** @type {Error} */ (e).message))) { failWith("failed", words("alreadyPaired", { name })); return; }
             throw e;
           }
           if (!before || before.removed) fresh = sid;
@@ -434,13 +426,13 @@ export function createPairing(o) {
       }
       return "Personal";
     };
-    const sameOwner = (/** @type {any} */ cur, /** @type {any} */ next) => cur && next && cur.kind === next.kind && cur.id === next.id && cur.identity === next.identity;
     const applyAdopt = async (/** @type {any} */ input, /** @type {string} */ caller) => {
       const t = { kind: String(input.owner.kind), id: String(input.owner.id) };
       const ident = String(input.identity || (t.kind === "identity" ? t.id : "") || await o.identity());
       const ownerName = input.owner.name ? String(input.owner.name).slice(0, 64) : "";
+      const first = !meta.get("owner") || !meta.get("adopter");
       meta.set("owner", { ...t, identity: ident, ...(ownerName ? { name: ownerName } : {}) });
-      meta.set("adopter", caller);
+      if (first) meta.set("adopter", caller);
       if (input.peerSecret && /^[A-Za-z0-9_-]{20,80}$/.test(String(input.peerSecret))) meta.set("peer_secret", String(input.peerSecret));
       const h = cleanHandover(input.handover);
       if (h) meta.set("handover", h);
@@ -448,30 +440,19 @@ export function createPairing(o) {
       ctx.events.emit("wink.server-adopted", { owner: t });
       return { owner: t };
     };
-    /** Would this adopt change what is recorded? @param {any} input */
-    const changes = async input => {
-      const cur = meta.get("owner");
-      if (!cur) return false;
-      const t = { kind: String(input.owner.kind), id: String(input.owner.id) };
-      const ident = String(input.identity || (t.kind === "identity" ? t.id : "") || cur.identity);
-      if (!sameOwner(cur, { ...t, identity: ident })) return true;
-      return Boolean(input.peerSecret && meta.get("peer_secret") && String(input.peerSecret) !== meta.get("peer_secret"));
-    };
     const adoptInput = obj({ owner: obj({ kind: { type: "string", enum: ["identity", "space"] }, id: str, name: str }, ["kind", "id"]), identity: str, peerSecret: str, handover: obj({ home: str, box: str, controlUrl: str, authKey: str, relay: str, space: str, device: str }) }, ["owner"]);
     ctx.tool("wink.server.adopt", {
-      description: "On a server that was just paired: record who it belongs to, an identity or a space { kind, id }, and the identity that paired it. Called by the pairing app over the paired channel, once: the first caller wins and is recorded (whatever kind of caller it was). After that, repeating the same owner is a no-op and any change is refused unless the target space's admin claim holds; the owner's own screen changes it with wink.server.retarget (presence). Answers { owner }.",
+      description: "On a server that was just paired: record who it belongs to, an identity or a space { kind, id }, and the identity that paired it. Called by the pairing app over the paired channel, once: the first caller adopts it and is recorded. After that it cannot be repeated over the paired channel; the person changes the owner on this box with wink.server.retarget (their own presence), and only the one that adopted it, or a screen on this box, may. Answers { owner }.",
       input: adoptInput,
+      presence: { summary: async () => "Change who this server belongs to", when: () => Boolean(meta.get("owner")) },
       run: async (input, meta0 = {}) => {
         owner(meta0, "adopting a server");
-        const caller = String((meta0 && meta0.caller) || "");
-        if (await changes(input)) {
-          const t = { kind: String(input.owner.kind), id: String(input.owner.id) };
-          const ident = String(input.identity || (t.kind === "identity" ? t.id : ""));
-          const claim = t.kind === "space" && ident && (await directory.memberships(ident)).some(m => m.space === t.id && ADMIN_ROLES.includes(m.role));
-          if (!claim) throw fail("denied", words("serverOwned", { owner: await ownerWords(meta.get("owner")) }));
-        } else if (meta.get("owner") && meta.get("adopter") && meta.get("adopter") !== caller && !input.peerSecret) {
-          // the same owner named again by another caller changes nothing
-          return { owner: { kind: meta.get("owner").kind, id: meta.get("owner").id } };
+        const caller = String((meta0 && meta0.caller) || "anonymous");
+        const prior = meta.get("owner"), adopter = meta.get("adopter");
+        if (prior) {
+          // Once there is an owner, a change needs the owner's fresh presence, and comes from the one that adopted it or from a screen on this box.
+          if (!meta0.presence) throw fail("presence_required", words("serverOwned", { owner: await ownerWords(prior) }));
+          if (caller.startsWith("device:") && adopter !== caller) throw fail("denied", words("serverOwned", { owner: await ownerWords(prior) }));
         }
         return applyAdopt(input, caller);
       },
@@ -487,13 +468,15 @@ export function createPairing(o) {
       },
     });
     ctx.tool("wink.server.retarget", {
-      description: "On this server, from the owner's own screen with presence: change who it belongs to (an identity or a space). The only way to change an owner without the target space's admin claim. Answers { owner }.",
+      description: "On this server, from the owner's own screen with presence: change who it belongs to (an identity or a space). The same as wink.server.adopt once there is an owner. Answers { owner }.",
       input: adoptInput,
       presence: { summary: async i => `Change who this server belongs to${i && i.owner ? ` (${String(i.owner.kind)})` : ""}` },
       run: async (input, meta0 = {}) => {
         owner(meta0, "changing a server's owner");
+        const caller = String(meta0.caller || "anonymous");
         if (!meta0.presence) throw fail("presence_required", "changing a server's owner needs the owner's presence on this box");
-        return applyAdopt(input, String(meta0.caller || ""));
+        if (caller.startsWith("device:") && meta.get("adopter") !== caller) throw fail("denied", "only the one that adopted this server may change its owner");
+        return applyAdopt(input, caller);
       },
     });
     // For the relay bridge and the node host (reach modules): may this device open a peer stream, and the secret for a bound node key.
@@ -558,7 +541,7 @@ export function createPairing(o) {
           const role = (await directory.memberships(identity)).find(m => m.space === space);
           if (!role || !ADMIN_ROLES.includes(role.role)) throw fail("not_admin", words("notAdmin", { space }));
         } else if (d.identity !== identity) throw fail("denied", words("notYourDevice"));
-        if (space !== d.identity) await compute.set(o.chainFor ? o.chainFor(meta, identity) : { person: identity, meta }, d, side, on, meta.presence);
+        await compute.set(space, d.id, side, on);
         ctx.events.emit("wink.offer-changed", { device: d.id, offer, on, space, side });
         return { allowed: await computeAllowed({ device: d.id, space }) };
       },
