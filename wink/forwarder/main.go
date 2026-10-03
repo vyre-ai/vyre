@@ -95,6 +95,8 @@ func main() {
 	)
 	flag.Var(&maps, "listen", "PORT=/path/to/peer.sock (repeatable): accept tailnet connections on PORT and forward them to the Unix socket")
 	flag.Parse()
+	// A self-hosted network must not report to anyone: tsnet uploads logs to Tailscale unless this is set (spike, 3 Oct 2026).
+	os.Setenv("TS_NO_LOGS_NO_SUPPORT", "true")
 	if *stateDir == "" || *controlURL == "" || len(maps) == 0 {
 		fmt.Fprintln(os.Stderr, "usage: wink-forwarder -state-dir D -control-url URL [-auth-key-file F] -listen PORT=SOCK ...")
 		os.Exit(2)
