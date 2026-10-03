@@ -48,6 +48,8 @@ const MAX_RESPONSE = 2_000_000;
 export const MAX_RESULT = 256 * 1024;
 const TIMEOUT_MS = 30_000;
 const MAX_HOPS = 5;
+/** Longest a call waits for a rate allowance, and the longest Retry-After it will honour by waiting (a longer one comes back to the caller, who knows better what to do). */
+const MAX_WAIT_MS = 30_000, MAX_RETRY_AFTER_MS = 30_000, MAX_429_RETRIES = 2;
 const EARLY_MS = 60_000;
 const JWT_BEARER = "urn:ietf:params:oauth:grant-type:jwt-bearer";
 const CONCEALED = "<concealed by vyre>";
@@ -165,6 +167,34 @@ export class ApiRequests {
     this.stopped = false;
     /** @type {Set<any>} */
     this.timers = new Set();
+    this.sleep = deps.sleep || (ms => new Promise(r => { const t = setTimeout(r, ms); if (typeof t.unref === "function") t.unref(); }));
+    /** Per credential: the times of its requests in the last minute, and a cooldown the provider's own "too many requests" set. The limit is the Space's: every caller shares it. @type {Map<string, { times: number[], until: number }>} */
+    this.rates = new Map();
+  }
+
+  /**
+   * Wait for this credential's allowance (its `rate.per_minute`, if it has one, and any cooldown a "too many requests" answer set), up to MAX_WAIT_MS; beyond that the call is refused
+   * with `rate_limited` and the seconds to wait, never left hanging. Counts one request when it returns.
+   * @param {{ name: string, config: any }} plan
+   */
+  async throttle(plan) {
+    const per = plan.config.rate?.per_minute, st = this.rates.get(plan.name) ?? (this.rates.set(plan.name, { times: [], until: 0 }), /** @type {any} */ (this.rates.get(plan.name)));
+    const start = this.now();
+    for (;;) {
+      const t = this.now(); st.times = st.times.filter(x => t - x < 60_000);
+      const wait = Math.max(st.until - t, per && st.times.length >= per ? st.times[0] + 60_000 - t : 0);
+      if (wait <= 0) break;
+      if (t - start + wait > MAX_WAIT_MS) throw Object.assign(bad(`${plan.name} is at its limit of ${per ?? "the provider's"} requests a minute; try again in ${Math.ceil(wait / 1000)} s`, "rate_limited"), { retryAfter: Math.ceil(wait / 1000) });
+      await this.sleep(Math.min(wait, MAX_WAIT_MS));
+    }
+    st.times.push(this.now());
+  }
+  /** The provider said "too many requests": hold every caller of this credential for as long as its Retry-After says (seconds or a date). @returns {number} ms, 0 when it names none we may honour */
+  coolDown(name, reply) {
+    const h = String(reply.headers["retry-after"] ?? ""), ms = /^\d+$/.test(h) ? Number(h) * 1000 : Date.parse(h) - this.now();
+    if (!Number.isFinite(ms) || ms <= 0 || ms > MAX_RETRY_AFTER_MS) return 0;
+    const st = this.rates.get(name) ?? (this.rates.set(name, { times: [], until: 0 }), /** @type {any} */ (this.rates.get(name)));
+    st.until = Math.max(st.until, this.now() + ms); return ms;
   }
 
   // ---- building the plan: everything a decision needs, from the request alone ----
@@ -300,7 +330,8 @@ export class ApiRequests {
     let host;
     try { host = new URL(a.token_uri).hostname; } catch { throw bad(`${plan.name} has a token_uri that is not an address`, "config"); }
     const target = await checkTarget(a.token_uri, [host], { lookup: this.deps.lookup });
-    const body = new URLSearchParams({ grant_type: "refresh_token", refresh_token: t.refresh_token, client_id: clientId, scope: a.scopes.join(" ") });
+    const body = new URLSearchParams({ grant_type: "refresh_token", refresh_token: t.refresh_token, client_id: clientId });
+    if (a.scopes.length) body.set("scope", a.scopes.join(" "));
     if (isStr(clientSecret) && clientSecret) body.set("client_secret", clientSecret);
     const r = await this.transport({ url: target.url, address: target.addresses[0], method: "POST", body: body.toString(),
       headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" }, timeoutMs: TIMEOUT_MS, maxBytes: 100_000 });
@@ -383,12 +414,15 @@ export class ApiRequests {
       const auth = await this.authFor(plan);
       known = auth.known;
       const headers = { accept: "application/json", ...plan.headers, ...(plan.body !== undefined && !plan.headers["content-type"] ? { "content-type": looksJson(plan.body) ? "application/json" : "application/x-www-form-urlencoded" } : {}), ...auth.headers };
-      let url = plan.url, method = plan.method, hops = 0;
+      let url = plan.url, method = plan.method, hops = 0, tooMany = 0;
       /** @type {Reply} */ let reply;
       for (;;) {
         const t = await checkTarget(url.toString(), plan.config.hosts, { lookup: this.deps.lookup });
+        await this.throttle(plan);
         reply = await this.transport({ url: t.url, address: t.addresses[0], method, headers, ...(plan.body !== undefined && method === plan.method ? { body: plan.body } : {}),
           timeoutMs: TIMEOUT_MS, maxBytes: MAX_RESPONSE });
+        // "Too many requests" means the provider did not act on it, so waiting out its Retry-After and trying again is safe for any method; the cooldown is shared by every caller.
+        if (reply.status === 429 && tooMany < MAX_429_RETRIES && this.coolDown(plan.name, reply) > 0) { tooMany++; continue; }
         if (reply.status >= 300 && reply.status < 400 && reply.headers.location) {
           if (method !== "GET" && method !== "HEAD") throw bad("the API answered a redirect to a write, which is refused; call the address it names directly", "redirect");
           let next;
@@ -405,7 +439,7 @@ export class ApiRequests {
     } catch (e) {
       const msg = scrub(String(/** @type {Error} */ (e)?.message || e), known);
       this.vault.audit("api-request", plan.name, who, false, `${tag}: ${printable(msg, 160)}`);
-      throw Object.assign(new Error(msg), { code: /** @type {any} */ (e)?.code || "failed" });
+      throw Object.assign(new Error(msg), { code: /** @type {any} */ (e)?.code || "failed", ...(/** @type {any} */ (e)?.retryAfter ? { retryAfter: /** @type {any} */ (e).retryAfter } : {}) });
     }
   }
 

@@ -154,6 +154,7 @@ async function run(api, io, { plan, headers, body, length, input, desc, types, m
     const auth = await api.authFor(plan); known = auth.known;
     const t = await checkTarget(plan.url.toString(), plan.config.hosts, { lookup: api.deps.lookup });
     const send = api.deps.streamTransport || httpsStream;
+    await api.throttle(plan);
     const reply = await send({ url: t.url, address: t.addresses[0], method: plan.method, headers: { accept: "*/*", ...headers, ...auth.headers }, ...(body !== undefined ? { body, length } : {}), timeoutMs: TIMEOUT_MS });
     const heads = {}; for (const k of ["content-type", "content-length", "etag", "last-modified", "retry-after", "x-request-id", "content-disposition"]) if (reply.headers[k] !== undefined) heads[k] = scrub(String(reply.headers[k]), known);
     if (reply.status >= 300 && reply.status < 400) { reply.abort?.(); throw bad("the API answered a redirect, which is not followed for a file", "redirect"); }
@@ -173,7 +174,7 @@ async function run(api, io, { plan, headers, body, length, input, desc, types, m
     return { status: reply.status, ok, headers: heads, body: Buffer.from(scrub(b.toString("utf8"), known)) };
   } catch (e) {
     const msg = scrub(String(/** @type {Error} */ (e)?.message || e), known); audit(false, `${tag}: ${msg.slice(0, 160)}`);
-    throw Object.assign(new Error(msg), { code: /** @type {any} */ (e)?.code || "failed" });
+    throw Object.assign(new Error(msg), { code: /** @type {any} */ (e)?.code || "failed", ...(/** @type {any} */ (e)?.retryAfter ? { retryAfter: /** @type {any} */ (e).retryAfter } : {}) });
   }
 }
 
