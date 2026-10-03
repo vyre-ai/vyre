@@ -63,22 +63,18 @@ export function createMemoryEngine({ kernel, db, space, serviceChain, chainFor, 
   }
 
   /**
-   * A record source as text for everyone in `room`: each viewer reads it through the gateway under their own chain, a field is a value only when every viewer
-   * holds it and holds the same value, and any other field is a token that can be cited as `{{field:<urn>#<name>}}` and nothing more. Falls back to `fallback`
-   * (already scrubbed) never: an address that does not parse returns null and the caller withholds the source.
-   * @param {any[]} room @param {string} resource @param {string} fallback
+   * A record source as text for everyone in the room: the kernel's handle says which fields every viewer holds as the same value (`values`) and which it does
+   * not (`restricted`); those become tokens that can be cited as `{{field:<urn>#<name>}}` and nothing more. An address that does not parse, or a record the
+   * room cannot read, returns null and the caller withholds the source.
+   * @param {any} room @param {string} resource
    */
-  async function roomText(room, resource, fallback) {
+  async function roomText(room, resource) {
     const p = parseUrn(resource);
-    if (!p) return null; // an address that does not parse cannot be checked per viewer: it counts as withheld
-    const views = [];
-    for (const c of room) { const v = await kernel.records.get(c, p.type, p.id).catch(() => null); if (!v) return `${p.type} ${p.id}: not readable by everyone here`; views.push(v); }
-    const data = {};
-    for (const [k, v] of Object.entries(views[0].data)) {
-      const sealed = v && typeof v === "object" && "sealed" in v;
-      data[k] = sealed || views.every(w => k in w.data && JSON.stringify(w.data[k]) === JSON.stringify(v)) ? v : `{{field:${resource}#${k}}}`;
-    }
-    for (const w of views.slice(1)) for (const k of Object.keys(w.data)) if (!(k in data)) data[k] = `{{field:${resource}#${k}}}`;
+    if (!p) return null;
+    const r = await room.read(resource).catch(() => null);
+    if (!r || !r.values || !Array.isArray(r.restricted)) return null;
+    const data = { ...r.values };
+    for (const k of r.restricted) data[String(k)] = `{{field:${resource}#${k}}}`;
     return scrub(recordText({ type: p.type, id: p.id, data }), redactors).text;
   }
 
@@ -126,12 +122,12 @@ export function createMemoryEngine({ kernel, db, space, serviceChain, chainFor, 
      * Hits for `text`: the engine's meaning search merged with the store's own text search, each authorized for THIS chain (a source the caller may
      * not read is dropped, with its citation), carrying its labels.
      */
-    async search(/** @type {any} */ chain, /** @type {string} */ text, k = topK, /** @type {{ audience?: any[] }} */ { audience = [] } = {}) {
+    async search(/** @type {any} */ chain, /** @type {string} */ text, k = topK, /** @type {{ room?: any }} */ { room = null } = {}) {
       // In a chat with more than one person the words go to everyone: a source is used only when EVERY person in the chat may read it, and a record is
       // rendered from the fields they all hold as the same value (any other field is a token the answer may cite, never a value). The count of what was
       // left out is on the result so the answer can say that more exists.
-      const room = audience.length > 1 ? audience : [chain];
-      const mayAll = async (/** @type {string} */ resource) => { for (const c of room) if (!(await mayRead(c, resource))) return false; return true; };
+      const inRoom = Boolean(room && room.group);
+      const mayAll = async (/** @type {string} */ resource) => (inRoom ? await room.canRead(resource).then((/** @type {any} */ ok) => ok === true, () => false) : true);
       /** @type {Set<string>} */ const held = new Set();
       const out = new Map();
       for (const r of await idx.rank(text, k * 3)) {
@@ -139,8 +135,8 @@ export function createMemoryEngine({ kernel, db, space, serviceChain, chainFor, 
         if (!(await mayRead(chain, r.resource))) continue;
         if (!(await mayAll(r.resource))) { held.add(r.resource); continue; }
         // Event text carries values and cannot be rebuilt per field, so in a room it is withheld (A-2); lines are prose the viewers may all read, gated above.
-        if (room.length > 1 && r.kind === "event") { held.add(r.resource); continue; }
-        const snip = r.kind === "record" ? await roomText(room, r.resource, r.text) : r.text;
+        if (inRoom && r.kind === "event") { held.add(r.resource); continue; }
+        const snip = r.kind === "record" && inRoom ? await roomText(room, r.resource) : r.text;
         if (snip === null) { held.add(r.resource); continue; }
         out.set(r.source, { source: r.source, kind: r.kind, resource: r.resource, snippet: snip.slice(0, 240), score: r.score, labels: r.labels });
       }
@@ -149,7 +145,7 @@ export function createMemoryEngine({ kernel, db, space, serviceChain, chainFor, 
         const u = `vyre://${space}/${h.type}/${h.id}`;
         if (out.has(u) || !(await mayRead(chain, u))) continue;
         if (!(await mayAll(u))) { held.add(u); continue; }
-        const snip = await roomText(room, u, scrub(String(h.snippet || ""), redactors).text);
+        const snip = inRoom ? await roomText(room, u) : scrub(String(h.snippet || ""), redactors).text;
         if (snip === null) { held.add(u); continue; }
         out.set(u, { source: u, kind: "record", resource: u, snippet: snip, score: h.score, labels: memberLabels(space) });
       }
@@ -162,8 +158,8 @@ export function createMemoryEngine({ kernel, db, space, serviceChain, chainFor, 
      * dropped; the text is scrubbed; the labels are the weakest trust and strongest class of what it cited (or of all it was shown, if none).
      * @returns {Promise<{ text: string, citations: string[], labels: import("../../../lib/labels.js").Labels, sources: number }>}
      */
-    async answer(/** @type {any} */ chain, /** @type {string} */ question, /** @type {{ audience?: any[] }} */ { audience = [] } = {}) {
-      const hits = await api.search(chain, question, topK, { audience });
+    async answer(/** @type {any} */ chain, /** @type {string} */ question, /** @type {{ room?: any }} */ { room = null } = {}) {
+      const hits = await api.search(chain, question, topK, { room });
       const withheld = /** @type {any} */ (hits).withheld || 0;
       const shown = hits.map((h, i) => ({ id: `S${i + 1}`, ...h }));
       const r = await kernel.model.call({ chain, purpose: "memory", provider: "default", model: "default", messages: [

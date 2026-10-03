@@ -74,3 +74,15 @@ test("ansi colours become spans, other escapes are dropped", () => {
   assert.deepEqual(spans.map((s) => [s.text, s.fg, s.bold]), [["ok", "green", false], [" plain ", null, false], ["fail", "red", true]]);
   assert.equal(stripAnsi("\x1b[31mred\x1b[0m"), "red");
 });
+
+test("a cited field: a field-ref is never a value; a field is a value, a sealed chip or a hidden chip", () => {
+  const ref = /** @type {any} */ (normalizeBlock({ block: "field-ref", record: "vyre://s/matter/1", field: "fee", label: "Fee", value: "4200" }));
+  assert.deepEqual([ref.block, ref.label, ref.state, ref.value], ["field", "Fee", "hidden", ""]);
+  const val = /** @type {any} */ (normalizeBlock({ block: "field", label: "Fee", kind: "money", value: { amount: 4200, currency: "USD" } }));
+  assert.deepEqual([val.state, val.value], ["value", "USD 4200"]);
+  const hid = /** @type {any} */ (normalizeBlock({ block: "field", label: "Fee", kind: "money", placeholder: true, value: { hidden: "role", kind: "money", present: true } }));
+  assert.deepEqual([hid.state, hid.value, hid.present], ["hidden", "", true]);
+  const sealed = /** @type {any} */ (normalizeBlock({ block: "field", label: "SSN", kind: "sealed", sealed: true, placeholder: true, value: { sealed: "ssn", present: true, ref: "r_SECRET" } }));
+  assert.deepEqual([sealed.state, sealed.cls, sealed.value], ["sealed", "ssn", ""]);
+  assert.ok(!JSON.stringify(sealed).includes("r_SECRET"));
+});

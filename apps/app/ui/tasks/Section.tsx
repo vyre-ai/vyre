@@ -1,11 +1,11 @@
 import { View } from "react-native";
-import { Text } from "../components/Text";
+import { SectionLabel } from "../components/SectionLabel";
 
-/** A titled block of a screen: a small label (with a count) over its content. */
-export function Section({ title, count, children }: { title: string; count?: number; children: React.ReactNode }) {
+/** A titled block of a screen: the 11 mono label (with a quiet count) over its content. Blocks stack with 32 between them and 8 under the label. */
+export function Section({ title, count, first, children }: { title: string; count?: number; first?: boolean; children: React.ReactNode }) {
   return (
-    <View className="min-w-0 gap-s2">
-      <Text strong tone="muted">{count === undefined ? title : `${title} · ${count}`}</Text>
+    <View className="min-w-0">
+      <SectionLabel first={first} meta={count === undefined ? undefined : String(count)}>{title}</SectionLabel>
       {children}
     </View>
   );

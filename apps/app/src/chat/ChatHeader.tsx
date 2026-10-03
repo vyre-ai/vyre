@@ -3,9 +3,16 @@
 // Stop. State and Stop live in the status line under the transcript (StatusLine.tsx). Tapping the
 // row opens "About this chat" (AboutSheet.tsx).
 
-import { Pressable, View } from "react-native";
-import { Avatar, Icon, Text, useUiTheme } from "@vyre/ui";
+import { Pressable, View, StyleSheet } from "react-native";
+import { Icon, Text, useUiTheme } from "@vyre/ui";
+import { ChatAvatar } from "./ChatAvatar";
 import { avatarStack } from "./group.js";
+
+const S = StyleSheet.create({
+  s1: { width: 8 },
+  s2: { flex: 1, minWidth: 0 },
+});
+
 
 type Face = { id: string; name: string; family: string };
 
@@ -18,7 +25,7 @@ export function AvatarStack({ faces, more, size = "sm" }: { faces: readonly Face
     <View style={{ flexDirection: "row", alignItems: "center", paddingLeft: ring / 2 }}>
       {faces.map((f, i) => (
         <View key={f.id} style={{ marginLeft: i === 0 ? 0 : -8, borderRadius: 16, borderWidth: 2, borderColor: color["surface-1"], backgroundColor: color["surface-1"] }}>
-          <Avatar name={f.name} family={avatarFamily(f.family)} size={size} />
+          <ChatAvatar name={f.name} family={avatarFamily(f.family)} size={size} />
         </View>
       ))}
       {more > 0 ? (
@@ -48,10 +55,10 @@ export function ChatHeader({ title, participants, viewer, line, phone, onBack, o
         <Pressable accessibilityRole="button" accessibilityLabel="Back to chats" onPress={onBack} style={({ pressed, hovered }: any) => ({ width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: 22, backgroundColor: pressed ? color.press : hovered ? color.hover : "transparent" })}>
           <Icon name="chev-l" size={20} tone="text" />
         </Pressable>
-      ) : <View style={{ width: 8 }} />}
+      ) : <View style={S.s1} />}
       <Pressable accessibilityRole="button" accessibilityLabel={`About this chat: ${title}`} onPress={onOpen} style={({ pressed, hovered }: any) => ({ flex: 1, minWidth: 0, minHeight: 48, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 8, borderRadius: 12, backgroundColor: pressed ? color.press : hovered ? color.hover : "transparent" })}>
-        <AvatarStack faces={stack.shown} more={stack.more} />
-        <View style={{ flex: 1, minWidth: 0 }}>
+        <AvatarStack faces={stack.shown} more={stack.more} size="md" />
+        <View style={S.s2}>
           <Text strong numberOfLines={1}>{title}</Text>
           {line ? <Text size="caption" tone="label" numberOfLines={1}>{line}</Text> : null}
         </View>

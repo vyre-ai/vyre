@@ -27,7 +27,8 @@ export const actorString = a => `${a.kind}:${a.id}@${a.space}`;
 export const chainHash = (/** @type {any} */ chain) => sha256(canonical({ space: chain.space, hops: chain.hops.map((/** @type {any} */ h) => ({ actor: h.actor, via: h.via, entered_by: h.entered_by })) }));
 
 /** Approval is accepted only from a chain that is exactly one person (invariant 4). */
-export const isExactlyPerson = (/** @type {any} */ chain) => isChain(chain) && chain.hops.length === 1 && chain.hops[0].actor.kind === "person";
+/** One person acting for themselves. A viewer chain (a person in the room an assistant writes for) is NOT: it is the kernel's read-only view of them, never their own act. */
+export const isExactlyPerson = (/** @type {any} */ chain) => isChain(chain) && chain.viewer !== true && chain.hops.length === 1 && chain.hops[0].actor.kind === "person";
 
 export const hasKind = (/** @type {any} */ chain, /** @type {string} */ kind) => chain.hops.some((/** @type {any} */ h) => h.actor.kind === kind);
 
@@ -110,6 +111,13 @@ export function createChainBuilder(cfg) {
         if (!f.vouched) return refuse("session not vouched by the kernel's own token");
         if (f.person !== cfg.owner && !isMember(f.person)) return refuse("the session's person is not a member");
         return make([hop("person", f.person, "session", { node: `session:${f.session}` })], base());
+      }
+      case "viewer": {
+        // One person in the room an assistant writes for. Built by the kernel from the chat's own list (kernel/index.js audienceFor), never from a module's word. It reads
+        // what that person may read and can do nothing else: authorize refuses every act above read for it, and it holds no session, so it never stands for presence.
+        if (!f.vouched || typeof f.person !== "string" || !f.person) return refuse("viewer not vouched by the kernel");
+        if (f.person !== cfg.owner && !isMember(f.person)) return refuse("the viewer is not a member");
+        return make([hop("person", f.person, "surface", { surface: "viewer" })], base(), { viewer: true });
       }
       case "module": return appendService(f.inbound, f.module, f.first_party);
       case "job": return restore(f.stored);

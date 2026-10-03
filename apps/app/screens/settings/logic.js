@@ -57,8 +57,7 @@ export function settingsGroups(/** @type {string} */ space) {
       ["What my assistants can see", "Per space", "/u/settings/seeing", "eye"],
     ] },
     { title: "Devices", rows: [
-      ["Devices", "Your phone, computers and servers", "/u/settings/devices", "devices"],
-      ["Wink", "Add a device, invite someone, share a computer", "/u/wink", "cable"],
+      ["Devices", "Phone, computers, servers", "/u/settings/devices", "devices"],
       ["Access", "People, assistants, Kits and Flows", "/u/access", "shield"],
     ] },
     { title: space, rows: [
@@ -74,7 +73,7 @@ export function settingsGroups(/** @type {string} */ space) {
       ["Assistants", "juno, kit and @Engineer", "/u/settings/assistants", "terminal"],
     ] },
     { title: "Vyre", rows: [
-      ["Updates", "Version 0.3", "/u/settings/updates", "download"],
+      ["Updates", "Check for a new version", "/u/settings/updates", "download"],
       ["About", "Version and open-source credits", "/u/about", "globe"],
     ] },
   ];

@@ -15,6 +15,7 @@ import { ROLE_IDS } from "../../kernel/contracts/index.js";
 const WORDS = Object.freeze({
   not_allowed: ["forbidden", "Your role cannot do that here."],
   needs_presence: ["presence_required", "That needs your approval on your device."],
+  not_contained: ["exceeds_role", "That is more than your own role allows."],
   not_found: ["not_found", "No such person or invite."],
   expired: ["expired", "That has expired."],
   needs_confirmation: ["needs_confirmation", "The person who invited you has not confirmed your fingerprint words yet."],
@@ -44,7 +45,7 @@ export function kernelMembers({ handle, now = Date.now }) {
   };
   /** @template T @param {() => Promise<T>} f @returns {Promise<T>} */
   const run = async f => { try { return await f(); } catch (e) { throw plainKernelError(e); } };
-  const need = (/** @type {any} */ k) => { if (!k || !k.chain) throw Object.assign(new Error("Sign in on this device first."), { code: "no_identity" }); return k; };
+  const need = (/** @type {any} */ k) => { if (handle && handle.hosted === false) return k || {}; if (!k || !k.chain) throw Object.assign(new Error("Sign in on this device first."), { code: "no_identity" }); return k; };
 
   return {
     /** Everyone the caller may see (a manager and above sees all). */

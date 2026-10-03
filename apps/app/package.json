@@ -4,11 +4,20 @@
   "private": true,
   "type": "module",
   "main": "expo-router/entry",
+  "expo": {
+    "autolinking": {
+      "android": {
+        "exclude": [
+          "expo-camera"
+        ]
+      }
+    }
+  },
   "scripts": {
     "web": "expo start --web",
     "export:web": "node scripts/term-assets.mjs && expo export -p web && node scripts/precache.mjs",
     "typecheck": "tsc --noEmit",
-    "icons": "node scripts/gen-icons.mjs",
+    "icons": "node scripts/gen-ui-icons.mjs",
     "test": "node --test \"perf/*.test.js\" \"scripts/*.test.js\" \"src/**/*.test.js\" \"ui/**/*.test.js\" \"screens/**/*.test.js\"",
     "lint:ui": "node scripts/check-ui-imports.mjs"
   },
@@ -28,10 +37,13 @@
     "clsx": "^2.1.1",
     "expo": "~54.0.0",
     "expo-asset": "~12.0.13",
+    "expo-camera": "~17.0.8",
     "expo-clipboard": "~8.0.8",
     "expo-constants": "~18.0.14",
     "expo-font": "~14.0.12",
+    "expo-haptics": "~15.0.8",
     "expo-linking": "~8.0.12",
+    "expo-local-authentication": "~17.0.7",
     "expo-router": "~6.0.24",
     "expo-secure-store": "~15.0.8",
     "expo-status-bar": "~3.0.9",

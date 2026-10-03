@@ -45,7 +45,7 @@ export function createRemoteServer(cfg) {
   /** The chain for this peer: the Surfaces door's own, from facts the transport verified. */
   async function chainFor(/** @type {any} */ peer, /** @type {string} */ call) {
     if (!peer || typeof peer.person !== "string" || !peer.person || typeof peer.device_key_id !== "string" || !peer.device_key_id) throw new KernelError("not_a_member", "no chain for this connection");
-    const path = peer.path === "relay" ? "relay" : "wink";
+    const path = peer.path === "wink" ? "wink" : "relay"; // anything but a Wink node is the relay: the weaker surface
     if (k.gateway.members.roleOf({ kind: "person", id: peer.person, space: cfg.space }) !== null) {
       return { member: true, chain: await k.chains.fromFacts({ kind: "device", device_key_id: peer.device_key_id, person: peer.person, path, ...(typeof peer.session === "string" && peer.session && peer.session.length <= 64 ? { session: peer.session } : {}) }) };
     }

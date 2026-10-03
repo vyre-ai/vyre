@@ -14,7 +14,7 @@ import { KernelError } from "./core/errors.js";
 import { createSupervisor } from "./modules/supervisor.js";
 import { createModuleHost } from "./modules/host.js";
 import { createEgress } from "./modules/egress.js";
-import { createFirstPartyCheck, acceptMinimums } from "./modules/firstparty.js";
+import { createFirstPartyCheck, acceptMinimums, verifyMinimums } from "./modules/firstparty.js";
 import { RELEASE_KEY } from "../lib/release-sig.js";
 import { devSwitch } from "./devbuild.js";
 
@@ -37,7 +37,7 @@ export function homeIdentity(root) {
 
 /**
  * @param {{ releaseKey?: any, pathRule?: boolean, fileKey?: boolean, db: import("node:sqlite").DatabaseSync, root: string, log?: (m: string) => void, isFirstParty: (dir: string) => boolean,
- *   approvals?: (name: string) => string[], sealer?: any, door?: any }} cfg
+ *   approvals?: (name: string) => string[], sealer?: any, door?: any, onStageEnter?: any, stageTasks?: any, storeFor?: (space: string, dir: string) => Promise<any | undefined> }} cfg
  */
 export async function bootHomeKernel(cfg) {
   const id = homeIdentity(cfg.root);
@@ -56,7 +56,11 @@ export async function bootHomeKernel(cfg) {
     // moved only verifies what it already sealed; once that is read a snapshot is written under the new seal and the file is deleted.
     if (fs.existsSync(id.keyFile)) { try { legacyKeys = [Buffer.from(fs.readFileSync(id.keyFile, "utf8").trim(), "hex")]; } catch { /* unreadable: nothing to verify against */ } }
   } else { log("kernel: DEVELOPER file key in use (VYRE_KERNEL_FILE_KEY=1); never the default, never for a real home"); key = fileKernelKey(id.dir); }
-  const k = await bootKernel({ db: cfg.db, space: id.space, owner: id.owner, owner_uid: process.getuid ? process.getuid() : 0, ...(key ? { key } : {}), legacyKeys, sealer, door: cfg.door });
+  // Where a Space's records live: SQLite unless VYRE_STORE asks for the Space's own Twenty (stores/twenty/space-store.js; sqlite is the default and costs nothing to import).
+  const storeFor = cfg.storeFor || ((process.env.VYRE_STORE || "sqlite") !== "sqlite" ? (await import("../stores/twenty/space-store.js")).createStoreFor({ log }) : undefined);
+  const storePlan = storeFor ? (await import("../stores/twenty/space-store.js")).planStore : undefined;
+  const personalStore = storeFor ? await storeFor(id.space, id.dir) : undefined;
+  const k = await bootKernel({ db: cfg.db, space: id.space, ...(personalStore ? { store: personalStore } : {}), owner: id.owner, owner_uid: process.getuid ? process.getuid() : 0, ...(key ? { key } : {}), legacyKeys, sealer, door: cfg.door, ...(cfg.onStageEnter ? { onStageEnter: cfg.onStageEnter } : {}), ...(cfg.stageTasks ? { stageTasks: cfg.stageTasks } : {}) });
   // The migration pass ran inside the rebuild if there was anything to migrate; once the log holds a snapshot under the new seal the old key file has no use.
   if (sealer && legacyKeys.length && k.migrated) { try { fs.rmSync(id.keyFile, { force: true }); } catch { /* the file is harmless now */ } }
   // First party is a signature by the COMPILED release key (lib/release-sig.js), and a counter-signed list of minimum versions the release ships beside it
@@ -67,15 +71,23 @@ export async function bootHomeKernel(cfg) {
     if (process.env.VYRE_KERNEL_PATH_RULE === "1" && !devSwitch("1")) log("kernel: VYRE_KERNEL_PATH_RULE ignored (this is a packaged daemon)");
     if (cfg.pathRule === true || devSwitch(process.env.VYRE_KERNEL_PATH_RULE)) (cfg.log || (() => {}))("kernel: DEVELOPER path rule for first-party modules (VYRE_KERNEL_PATH_RULE=1); never the default, never for a real home");
     else {
-      // M-1: the highest counter accepted, and the minimums that came with it, live in the kernel's own sealed log (`kernel.minimums` events), not in a file the user can
-      // write. A missing, unsigned, older or unreadable document never relaxes: the last accepted minimums stay in force. A fresh home (nothing accepted yet) needs a signature only.
-      const note = /** @type {any} */ ({ type: "kernel.minimums", sv: 1, subject: `vyre://${id.space}/kernel/minimums`, vis: "owner", red: "internal" });
-      const seen = k.log.read({ type: "kernel.minimums" }).map((/** @type {any} */ e) => e.data).filter((/** @type {any} */ d) => d && Number.isInteger(d.counter) && d.minimums && typeof d.minimums === "object").sort((/** @type {any} */ x, /** @type {any} */ y) => x.counter - y.counter).pop() || null;
+      // M-1: the highest counter accepted, with the minimums that came with it, is kept in the kernel's own log (`kernel.minimums` events), not in a file the user can write. An
+      // event carries the release-SIGNED document itself and is re-verified against the release key at every boot: the counter and the minimums come from the verified
+      // document, never from the event's own fields, and an event that does not verify is ignored and logged. The highest VERIFIED counter wins. A missing, unsigned, older
+      // or unreadable `minimums.json` never relaxes it. A fresh home (nothing accepted yet) needs a signature only.
+      const relKey = cfg.releaseKey || RELEASE_KEY;
+      const note = /** @type {any} */ ({ type: "kernel.minimums", sv: 2, subject: `vyre://${id.space}/kernel/minimums`, vis: "owner", red: "internal" });
+      /** @type {{ counter: number, minimums: Record<string, string> } | null} */ let seen = null;
+      for (const e of k.log.read({ type: "kernel.minimums" })) {
+        const v = e.data && e.data.doc ? verifyMinimums(e.data.doc, relKey) : null;
+        if (!v) { log("kernel: a kernel.minimums event does not carry a document the release key signed; ignored"); continue; }
+        if (!seen || v.counter > seen.counter) seen = v;
+      }
       let minimums = seen ? seen.minimums : null;
       try {
         const doc = JSON.parse(fs.readFileSync(path.join(id.dir, "minimums.json"), "utf8"));
-        const d = acceptMinimums(doc, cfg.releaseKey || RELEASE_KEY, seen ? seen.counter : 0);
-        if (d) { minimums = d.minimums; if (!seen || d.counter > seen.counter) await k.log.append(k.chains.fromFacts({ kind: "module", module: "home", first_party: true }), { ...note, data: { counter: d.counter, minimums: d.minimums } }); }
+        const d = acceptMinimums(doc, relKey, seen ? seen.counter : 0);
+        if (d) { minimums = d.minimums; if (!seen || d.counter > seen.counter) await k.log.append(k.chains.fromFacts({ kind: "module", module: "home", first_party: true }), { ...note, data: { counter: d.counter, minimums: d.minimums, doc: { body: doc.body, sig: doc.sig } } }); }
         else if (seen) log("kernel: the minimum-versions document is older than one already accepted, or does not verify; the last accepted one stays in force");
       } catch { if (seen) log("kernel: no readable minimum-versions document; the last accepted one stays in force"); }
       firstPartyCheck = createFirstPartyCheck({ releaseKey: cfg.releaseKey || RELEASE_KEY, minimums });
@@ -93,7 +105,7 @@ export async function bootHomeKernel(cfg) {
   // The Spaces this home hosts (kernel/spaces): the personal one is this kernel; every other has its own store, log and sealing namespace, opened once here. Each takes the
   // home's sealing client namespaced per Space (kernel.mac and verify cover "<space>\n<data>"), so no key file exists for any of them; without a sealing process the registry
   // refuses a hosted Space unless this boot is the developer file-key one.
-  const spaces = createSpaceKernels({ root: cfg.root, personal: { space: id.space, kernel: k }, openDb: (/** @type {string} */ f) => new DatabaseSync(f), ...(sealer ? { sealer } : { fileKey: true }), ...(cfg.door ? { doorFor: () => cfg.door } : {}) });
+  const spaces = createSpaceKernels({ root: cfg.root, personal: { space: id.space, kernel: k }, openDb: (/** @type {string} */ f) => new DatabaseSync(f), ...(storeFor ? { storeFor, storePlan: (/** @type {string} */ d) => storePlan({ dir: d }) } : {}), ...(sealer ? { sealer } : { fileKey: true }), ...(cfg.door ? { doorFor: () => cfg.door } : {}) });
   await spaces.start();
   return Object.freeze({ ...k, spaces, id: { space: id.space, owner: id.owner }, kernelFor: k.kernelFor, firstPartyCheck, moduleHost: host, supervisor, moduleApprovals: approvals, stop: async () => { await spaces.stop(); await supervisor.stopAll(); if (ownSealer && sealer) await sealer.close(); } });
 }

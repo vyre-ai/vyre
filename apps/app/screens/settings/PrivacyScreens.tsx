@@ -1,7 +1,7 @@
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, Row, Segmented, Switch, Text } from "@vyre/ui";
-import { Group, Page } from "../shell/Page";
+import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, Row, Segmented, Switch, Text, markRef } from "@vyre/ui";
+import { Group, Page } from "../places/Frame";
 import { useTypes } from "../customize/state";
 import { PRIVACY_ROWS, RETENTION } from "./logic.js";
 import { RECORD_COUNTS, SEEING } from "./data";
@@ -13,7 +13,7 @@ export function SeeingScreen() {
   return (
     <Page title="What my assistants can see" back="/u/settings">
       <Card flush>
-        {SEEING.map((a, i) => <View key={a.id}>{i ? <Divider /> : null}<Row lead={<Avatar name={a.name} family={a.family} />} title={a.name} sub={`Works in ${a.works}`} end={<Button kind="ghost" size="sm" label="Memory" onPress={() => router.push("/u/memory" as never)} />} /></View>)}
+        {SEEING.map((a, i) => <View key={a.id}>{i ? <Divider /> : null}<Row lead={<Avatar of={markRef(a.family, a.name)} />} title={a.name} sub={`Works in ${a.works}`} end={<Button kind="ghost" size="sm" label="Memory" onPress={() => router.push("/u/memory" as never)} />} /></View>)}
       </Card>
       <Banner>Sealed fields stay hidden from every assistant. That includes yours and anyone acting for you. A space's admins decide what is sealed.</Banner>
       <View className="flex-row"><Button size="sm" label="Privacy and sealing" onPress={() => router.push("/u/settings/privacy" as never)} /></View>

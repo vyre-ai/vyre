@@ -287,7 +287,8 @@ export const tokens = {
         400,
         500,
         600
-      ]
+      ],
+      "system": "Inter on the web (bundled), SF on Apple, Roboto on Android"
     },
     "type": {
       "desktop": {
@@ -295,8 +296,16 @@ export const tokens = {
           12,
           16
         ],
+        "secondary": [
+          13,
+          18
+        ],
         "body": [
           14,
+          20
+        ],
+        "headline": [
+          15,
           20
         ],
         "read": [
@@ -322,8 +331,16 @@ export const tokens = {
           12,
           16
         ],
+        "secondary": [
+          15,
+          20
+        ],
         "body": [
           16,
+          22
+        ],
+        "headline": [
+          17,
           22
         ],
         "read": [
@@ -332,17 +349,125 @@ export const tokens = {
         ],
         "title": [
           20,
-          26
+          25
         ],
         "page": [
           28,
           34
         ],
         "display": [
-          32,
-          38
+          34,
+          41
         ],
         "label": 11
+      },
+      "platform": {
+        "note": "ui-system.md section 2, [size, line height]. The phone table follows the platform: iOS text styles, Android Material roles; wide screens and the web use the web table. Weights 400, 500 and 600 only: titles 600, buttons 500, the rest 400.",
+        "ios": {
+          "display": [
+            34,
+            41
+          ],
+          "page": [
+            28,
+            34
+          ],
+          "title": [
+            20,
+            25
+          ],
+          "headline": [
+            17,
+            22
+          ],
+          "body": [
+            16,
+            22
+          ],
+          "read": [
+            17,
+            25
+          ],
+          "secondary": [
+            15,
+            20
+          ],
+          "caption": [
+            12,
+            16
+          ],
+          "label": 11
+        },
+        "android": {
+          "display": [
+            36,
+            44
+          ],
+          "page": [
+            28,
+            36
+          ],
+          "title": [
+            22,
+            28
+          ],
+          "headline": [
+            16,
+            24
+          ],
+          "body": [
+            16,
+            24
+          ],
+          "read": [
+            16,
+            24
+          ],
+          "secondary": [
+            14,
+            20
+          ],
+          "caption": [
+            12,
+            16
+          ],
+          "label": 11
+        },
+        "web": {
+          "display": [
+            32,
+            38
+          ],
+          "page": [
+            24,
+            30
+          ],
+          "title": [
+            18,
+            24
+          ],
+          "headline": [
+            15,
+            20
+          ],
+          "body": [
+            14,
+            20
+          ],
+          "read": [
+            15,
+            23
+          ],
+          "secondary": [
+            13,
+            18
+          ],
+          "caption": [
+            12,
+            16
+          ],
+          "label": 11
+        }
       },
       "tracking": {
         "title": "-0.012em",
@@ -372,7 +497,9 @@ export const tokens = {
       "buttonTouch": 12,
       "row": 10,
       "card": 14,
-      "cardPhone": 14,
+      "cardPhone": 16,
+      "cardHero": 16,
+      "cardHeroPhone": 20,
       "sheet": 20,
       "full": 999
     },
@@ -567,7 +694,7 @@ export const tokens = {
             8,
             24,
             -8,
-            "rgba(20,19,17,0.22)",
+            "rgba(20,19,17,0.18)",
             false
           ],
           [
@@ -575,25 +702,17 @@ export const tokens = {
             2,
             6,
             0,
-            "rgba(20,19,17,0.1)",
+            "rgba(20,19,17,0.08)",
             false
           ]
         ],
         "e3": [
           [
             0,
-            1,
-            0,
-            0,
-            "edgeTop",
-            true
-          ],
-          [
-            0,
             28,
             64,
             -20,
-            "rgba(20,19,17,0.3)",
+            "rgba(20,19,17,0.28)",
             false
           ],
           [
@@ -601,7 +720,7 @@ export const tokens = {
             6,
             18,
             0,
-            "rgba(20,19,17,0.12)",
+            "rgba(20,19,17,0.10)",
             false
           ]
         ]
@@ -907,6 +1026,7 @@ export const tokens = {
         "button",
         "row",
         "card",
+        "cardHero",
         "sheet"
       ]
     },

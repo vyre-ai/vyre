@@ -10,7 +10,7 @@ import { mintId } from "./ids.js";
 const MAX_TTL = 24 * 3600 * 1000;
 const b64 = (/** @type {string} */ s) => Buffer.from(s).toString("base64url");
 
-/** @param {{ space: string, chains: any, door?: any, isAdmin?: (person: string) => boolean, clock?: () => number }} cfg the chain builder is what seals and checks a token: this holds no key */
+/** @param {{ space: string, chains: any, door?: any, isAdmin?: (person: string) => boolean, chatMember?: (person: string, chat: string) => boolean, clock?: () => number }} cfg the chain builder is what seals and checks a token: this holds no key */
 export function createSurfaces(cfg) {
   const clock = cfg.clock || Date.now;
   /** @type {Set<string>} */ const revoked = new Set();
@@ -19,15 +19,21 @@ export function createSurfaces(cfg) {
   const api = {
     /**
      * The person opens a session for a daemon (and, for an assistant's session, names the assistant). @param {any} chain
-     * @param {{ agent?: string, session?: string, thread?: string, ttl_ms?: number }} [o] @returns {{ token: string, session: string, expires: number }}
+     * @param {{ agent?: string, session?: string, thread?: string, ttl_ms?: number, chat?: string }} [o] @returns {{ token: string, session: string, expires: number }}
      */
     async open(chain, o = {}) {
       if (!isChain(chain) || !isExactlyPerson(chain)) throw new KernelError("chain_not_person", "only a person opens a session for a daemon");
+      // A session's chat is written into its token here, by the kernel, once the opener is checked to be in that chat; there is no later step that could point it elsewhere.
+      let chat = null;
+      if (o.chat !== undefined && o.chat !== null) {
+        if (typeof o.chat !== "string" || !cfg.chatMember || !cfg.chatMember(chain.hops[0].actor.id, o.chat)) throw new KernelError("not_found", "no such chat");
+        chat = o.chat;
+      }
       const session = o.session || mintId("ses", clock());
       const exp = clock() + Math.min(o.ttl_ms ?? 3600_000, MAX_TTL);
       openers.set(session, chain.hops[0].actor.id);
       if (openers.size > 5000) openers.delete(openers.keys().next().value);
-      const body = b64(JSON.stringify({ v: 1, space: cfg.space, person: chain.hops[0].actor.id, agent: o.agent || null, session, thread: o.thread || null, exp }));
+      const body = b64(JSON.stringify({ v: 1, space: cfg.space, person: chain.hops[0].actor.id, agent: o.agent || null, session, thread: o.thread || null, chat, exp }));
       return { token: `${body}.${await cfg.chains.sealToken(body)}`, session, expires: exp };
     },
     /**
@@ -41,14 +47,21 @@ export function createSurfaces(cfg) {
       }
       revoked.add(String(session));
     },
-    /** The chain for a presented token, or a refusal that says nothing about why. @param {string} token */
-    async chainFor(token) {
+    /** The verified facts of a presented token, or a refusal that says nothing about why. @param {string} token */
+    async verify(token) {
       const refuse = () => { throw new KernelError("not_a_member", "no chain for this session"); };
       if (typeof token !== "string") return refuse();
       const [body, mac] = token.split(".");
       if (!body || !mac || (await cfg.chains.checkToken(body, mac)) !== true) return refuse();
       let t; try { t = JSON.parse(Buffer.from(body, "base64url").toString()); } catch { return refuse(); }
       if (t.v !== 1 || t.space !== cfg.space || !(t.exp > clock()) || revoked.has(t.session)) return refuse();
+      return t;
+    },
+    /** The session a presented token is for (checked like `chainFor`): what a chat binding and a room are keyed by, never a name a caller says. @param {string} token */
+    async sessionOf(token) { return (await api.verify(token)).session; },
+    /** The chain for a presented token, or a refusal that says nothing about why. @param {string} token */
+    async chainFor(token) {
+      const t = await api.verify(token);
       return t.agent
         ? cfg.chains.fromFacts({ kind: "agent_session", agent: t.agent, session: t.session, thread: t.thread || t.session, person: t.person, vouched: true })
         : cfg.chains.fromFacts({ kind: "session_person", person: t.person, session: t.session, vouched: true });

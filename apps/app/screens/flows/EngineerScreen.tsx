@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Avatar, Banner, Button, Card, Chip, Field, Segmented, Text, showToast } from "@vyre/ui";
-import { Block, DiffBlock, FaceIdSheet, Page } from "../places/Page";
+import { Avatar, Banner, Button, Card, Chip, Field, Segmented, Text, showToast, markRef } from "@vyre/ui";
+import { Block, DiffBlock, FaceIdSheet } from "../places/Page";
+import { Frame } from "../places/Frame";
 import { flowsRepo } from "./data";
 import { useFlowsState } from "./store";
 
@@ -16,7 +17,7 @@ export default function EngineerScreen() {
   const [face, setFace] = useState(false);
   const [gone, setGone] = useState(false);
   return (
-    <Page scope={false} back={{ label: "Flows", to: "/u/flows" }} title="@Engineer" sub="Describe a process in plain words.">
+    <Frame back="/u/flows" title="@Engineer" sub="Describe a process in plain words.">
       <View className="flex-row flex-wrap items-center gap-s2">
         <Chip tone="accent" icon="play">Admins only</Chip><Chip>Can change definitions</Chip><Chip>Cannot send, pay or read the vault</Chip>
       </View>
@@ -26,10 +27,10 @@ export default function EngineerScreen() {
       ) : (
         <Card>
           <View className="gap-s3">
-            <View className="flex-row items-start gap-s3"><Avatar name="Alex" /><View className="min-w-0 flex-1 gap-s2"><Text strong>You</Text><Field multiline lines={4} value={text} onChangeText={setText} /><View className="self-start"><Button kind="primary" size="sm" label="Send to @Engineer" onPress={() => setSent(true)} /></View></View></View>
+            <View className="flex-row items-start gap-s3"><Avatar of={markRef("person", "Alex Rivera")} /><View className="min-w-0 flex-1 gap-s2"><Text strong>You</Text><Field multiline lines={4} value={text} onChangeText={setText} /><View className="self-start"><Button kind="primary" size="sm" label="Send to @Engineer" onPress={() => setSent(true)} /></View></View></View>
             {sent ? (
               <View className="gap-s3 border-t border-edge pt-s3">
-                <View className="flex-row items-start gap-s3"><Avatar name="Engineer" family="agent" /><View className="min-w-0 flex-1 gap-s1"><Text strong>@Engineer</Text><Text>{p.reply}</Text></View></View>
+                <View className="flex-row items-start gap-s3"><Avatar of={markRef("agent", "@Engineer")} /><View className="min-w-0 flex-1 gap-s1"><Text strong>@Engineer</Text><Text>{p.reply}</Text></View></View>
                 <Card>
                   <View className="gap-s3">
                     <Text size="caption" strong tone="label">{p.title}</Text>
@@ -58,6 +59,6 @@ export default function EngineerScreen() {
         </Card>
       )}
       <FaceIdSheet open={face} onClose={() => setFace(false)} title="Approve with Face ID" body="The Flow goes live as version 4 of the Estate planning matter Kit. The old On payment Flow is replaced." confirm="Approve with Face ID" onConfirm={() => { setApplied(true); showToast("Applied. The Flow is in Flows."); }} />
-    </Page>
+    </Frame>
   );
 }

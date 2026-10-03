@@ -9,7 +9,7 @@
 // It goes away at K6, when surfaces hand the kernel SurfaceFacts and nothing parses strings.
 import { createAuthorizer } from "../core/authorize.js";
 import { createLegacyChainBuilder, LEGACY_SPACE } from "../core/chain.js";
-import { callerKind, agentClaim, callerAllowed, ownerDevice } from "../../core/modules/index.js";
+import { callerKind, agentClaim, callerAllowed, ownerDevice, personRefusesAgent, agentOpensPerson, agentAskFirst } from "../../core/modules/index.js";
 import { PERSON_ONLY, machineSelf } from "../../core/presence/index.js";
 import { isPerson } from "../../lib/caller.js";
 
@@ -65,9 +65,9 @@ export function createLegacyGates(cfg) {
         allowed = !(from && from.dir && def.module !== (from.manifest && from.manifest.name) && !reg.isFirstParty(from.dir) && (!def.declaredReach || def.reach === "modules"));
         break;
       }
-      case "outward": allowed = !def.outward || isPerson(c); break;
+      case "outward": allowed = !(def.outward || agentAskFirst(tool, c)) || isPerson(c); break;
       case "visible": allowed = (!def.internal || isModule) && Boolean(def.hook) === (c === "hook"); break;
-      case "callers": allowed = callerAllowed(def.callers, c); break;
+      case "callers": allowed = (callerAllowed(def.callers, c) || agentOpensPerson(tool, def, c)) && !personRefusesAgent(tool, def, c); break;
       case "guest": allowed = !(c.startsWith("tailnet-guest:") && (PERSON_ONLY.has(tool) || pr)); break;
       case "session": {
         allowed = true;
