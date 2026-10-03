@@ -25,13 +25,13 @@ const P = {
   create: input => ({ presence: proof("grants.create", input, `vyre://${SPACE}/grant/new`) }),
   revoke: (id, reason) => ({ presence: proof("grants.revoke", { id, reason }, `vyre://${SPACE}/grant/${id}`) }),
   narrow: (id, patch) => ({ presence: proof("grants.narrow", { id, patch }, `vyre://${SPACE}/grant/${id}`) }),
-  role: m => ({ presence: proof("grants.role", m, `vyre://${SPACE}/member/${m.person}`) }),
+  role: m => ({ presence: proof("grants.role", m, `vyre://${SPACE}/member/${m.person || m.remove}`) }),
   actor: a => ({ presence: proof("grants.role", { actor: a }, `vyre://${SPACE}/member/${a.id}`) }),
 };
 
 function rig() {
   const log = createEventLog({ space: SPACE, clock });
-  const gs = createGrantsStore({ space: SPACE, log, chains, clock });
+  const gs = createGrantsStore({ space: SPACE, log, chains, clock, key: Buffer.alloc(32, 5) });
   const store = createMemoryStore({ clock });
   const gw = createGateway({ space: SPACE, store, log, chains, clock, grantsStore: gs, presence, owner: OWNER, hasPresenceSession: () => true });
   gs.bootstrap({ owner: OWNER });
@@ -173,4 +173,112 @@ test("fields: a human-level seal hides a field from members outside the chosen r
   assert.ok("terms" in (await gw.records.get(personChain(ALICE), "deal", d.id)).data, "an admin is among the reveal roles");
   assert.ok(!("terms" in (await gw.records.get(personChain(BOB), "deal", d.id)).data), "a member is not: the field is absent, not a placeholder");
   await assert.rejects(() => gw.records.query(personChain(BOB), "deal", { filter: { field: "terms.hint", op: "eq", value: "x" }, page: { limit: 1 } }), { code: "bad_input" });
+});
+
+test("offers: the compute pair needs both sides, only for that member's own computer, and revoking either tells the runner at once", async () => {
+  const { g, gs } = rig();
+  const set = (m) => g.setRole(owner(), m, P.role(m));
+  await set({ person: ALICE, role: "admin" });
+  await set({ person: BOB, role: "member" });
+  const events = [];
+  const off = g.offers.onRevoke(e => events.push(e));
+  const mkO = (chain, o) => g.offers.offer(chain, o, { presence: proof("grants.offer", o, `vyre://${SPACE}/offer/new`) });
+  const q = { member: BOB, device: "dev_laptop" };
+  assert.deepEqual(g.offers.active(q), { spaceAllows: false, memberAccepts: false });
+  // the member cannot allow it for the Space; an admin cannot accept for the member
+  await assert.rejects(() => mkO(personChain(BOB), { side: "space_allows", member: BOB }), { code: "not_allowed" });
+  await assert.rejects(() => mkO(personChain(ALICE), { side: "member_accepts", member: BOB, device: "dev_laptop" }), { code: "not_allowed" });
+  const allow = await mkO(personChain(ALICE), { side: "space_allows", member: BOB });
+  assert.deepEqual(g.offers.active(q), { spaceAllows: true, memberAccepts: false }, "one side is not enough");
+  const accept = await mkO(personChain(BOB), { side: "member_accepts", member: BOB, device: "dev_laptop" });
+  assert.deepEqual(g.offers.active(q), { spaceAllows: true, memberAccepts: true });
+  assert.deepEqual(g.offers.active({ member: BOB, device: "dev_other" }), { spaceAllows: true, memberAccepts: false }, "acceptance is per computer");
+  assert.deepEqual(g.offers.active({ member: ALICE, device: "dev_laptop" }), { spaceAllows: false, memberAccepts: false }, "another member's computer is not covered");
+  // the member withdraws: told at once; an admin cannot withdraw the member's acceptance
+  const un = id => ({ presence: proof("grants.offer", { revoke: id }, `vyre://${SPACE}/offer/${id}`) });
+  await assert.rejects(() => g.offers.unoffer(personChain(ALICE), accept.id, un(accept.id)), { code: "not_allowed" });
+  await g.offers.unoffer(personChain(BOB), accept.id, un(accept.id));
+  assert.deepEqual(events.map(e => [e.side, e.reason]), [["member_accepts", "withdrawn"]]);
+  assert.equal(g.offers.active(q).memberAccepts, false);
+  // the Space's side: a role change tells the runner too, and a non-member has no offer in effect
+  await mkO(personChain(BOB), { side: "member_accepts", member: BOB, device: "dev_laptop" });
+  await g.setRole(owner(), { person: BOB, role: "manager" }, P.role({ person: BOB, role: "manager" }));
+  assert.ok(events.some(e => e.reason === "role_changed"));
+  await g.offers.unoffer(personChain(ALICE), allow.id, un(allow.id));
+  assert.equal(g.offers.active(q).spaceAllows, false);
+  gs.rebuild();
+  assert.deepEqual(g.offers.active(q), { spaceAllows: false, memberAccepts: true }, "offers survive a rebuild from the log");
+  off();
+});
+
+test("G-1: an event any chain appends in the grants names is not authority at rebuild; only events the store sealed are", async () => {
+  const { g, gs, log } = rig();
+  const stranger = chains.fromFacts({ kind: "module", module: "grants", first_party: true });
+  log.append(stranger, { type: "member.set", sv: 1, subject: `vyre://${SPACE}/member/per_evil`, data: { membership: { space: SPACE, person: "per_evil", role: "owner", added_by: "x", added_at: 1 } } });
+  log.append(stranger, { type: "grant.created", sv: 1, subject: `vyre://${SPACE}/grant/gr_x`, data: { grant: { id: "gr_x", space: SPACE, subject: { kind: "actor", actor: actor("agent", "kit") }, actions: ["records.read"], action_set_version: 1, resource: { prefix: `vyre://${SPACE}/*/*` }, conditions: {}, issuer: actor("person", OWNER), source: "forged", status: "active", created_at: 1 } }, mac: "AAAA" });
+  gs.rebuild();
+  assert.equal(gs.roleOf(actor("person", "per_evil")), null);
+  assert.deepEqual((await g.list(owner())).map(x => x.id).filter(id => id === "gr_x"), []);
+  assert.equal(gs.roleOf(actor("person", OWNER)), "owner", "the real history still rebuilds");
+  await assert.rejects(async () => gs.bootstrap({ owner: "per_evil" }), { code: "not_allowed" }, "the first owner is made once, at the start");
+});
+
+test("G-3: removing a member takes their grants and offers with them, tells the runner, and keeps the last owner", async () => {
+  const { g, gs, gw } = rig();
+  await g.setRole(owner(), { person: BOB, role: "member" }, P.role({ person: BOB, role: "member" }));
+  await g.setRole(owner(), { person: ALICE, role: "admin" }, P.role({ person: ALICE, role: "admin" }));
+  const told = [];
+  g.offers.onRevoke(e => told.push(e.reason));
+  const o = { side: "member_accepts", member: BOB, device: "dev_laptop" };
+  await g.offers.offer(personChain(BOB), o, { presence: proof("grants.offer", o, `vyre://${SPACE}/offer/new`) });
+  const rm = m => g.removeMember(owner(), m, P.role({ remove: m.person }));
+  await assert.rejects(() => g.removeMember(owner(), { person: OWNER }, P.role({ remove: OWNER })), { code: "not_allowed" }, "the last owner stays");
+  await assert.rejects(() => g.removeMember(personChain(ALICE), { person: OWNER }, P.role({ remove: OWNER })), { code: "not_allowed" }, "an admin cannot remove an owner");
+  const r = await rm({ person: BOB });
+  assert.ok(r.grants_revoked >= 1);
+  assert.equal(gs.roleOf(actor("person", BOB)), null);
+  assert.equal(g.offers.active({ member: BOB, device: "dev_laptop" }).memberAccepts, false);
+  assert.deepEqual(told, ["removed"]);
+  assert.deepEqual((await g.list(owner(), { status: "active" })).filter(x => x.subject.actor && x.subject.actor.id === BOB), []);
+  gs.rebuild();
+  assert.equal(gs.roleOf(actor("person", BOB)), null, "a removal survives a rebuild");
+  assert.ok(gw);
+});
+
+test("G-2: an event's before and after are cut to the fields the chain may see, by read and by subscribe", async () => {
+  const { g, gw } = rig();
+  await gw.records.define(owner(), { add_types: [CONTACT] });
+  await g.addActor(owner(), actor("agent", "kit"), P.actor(actor("agent", "kit")));
+  const i = input({ subject: { kind: "actor", actor: actor("agent", "kit") }, actions: ["records.read", "events.read"], resource: sel(`vyre://${SPACE}/contact/*`, { fields: ["name"] }) });
+  await g.create(owner(), i, P.create(i));
+  await gw.records.create(owner(), "contact", { name: "Jane", age: 41, status: "open" });
+  const kit = agentChain("kit");
+  const ev = (await gw.events.read(kit, { type: "contact.created" }))[0];
+  assert.deepEqual(Object.keys(ev.data.after), ["name"]);
+  assert.deepEqual(ev.data.changed, ["name"]);
+  assert.ok(!/"age"/.test(JSON.stringify(ev.data)) && !/"status"/.test(JSON.stringify(ev.data)), "the cut fields are not in the diff at all");
+  const seen = [];
+  gw.events.subscribe(kit, "w", { type: "contact.created" }, e => { seen.push(e); });
+  for (let i = 0; i < 200 && !seen.length; i++) await new Promise(r => setTimeout(r, 10));
+  assert.ok(seen.length >= 1 && seen.every(e => !/"age"/.test(JSON.stringify(e.data))));
+  const full = (await gw.events.read(owner(), { type: "contact.created" }))[0];
+  assert.equal(full.data.after.age, 41, "the owner sees the whole diff");
+});
+
+
+test("G-1b: a genuine event appended again does not bring back a revoked grant or a removed member (the MAC binds the position)", async () => {
+  const { g, gs, log } = rig();
+  await g.setRole(owner(), { person: BOB, role: "member" }, P.role({ person: BOB, role: "member" }));
+  const i = input();
+  const made = await g.create(owner(), i, P.create(i));
+  await g.revoke(owner(), made.id, "gone", P.revoke(made.id, "gone"));
+  await g.removeMember(owner(), { person: BOB }, P.role({ remove: BOB }));
+  assert.equal(gs.roleOf(actor("person", BOB)), null);
+  // copy the genuine, validly sealed events and append them again with a chain that has log access
+  const replay = chains.fromFacts({ kind: "module", module: "grants", first_party: true });
+  for (const e of log.read({}).filter(x => x.type === "grant.created" || x.type === "member.set")) log.append(replay, { type: e.type, sv: 1, subject: e.subject, data: e.data });
+  gs.rebuild();
+  assert.equal(gs.roleOf(actor("person", BOB)), null, "the removed person stays removed");
+  assert.deepEqual((await g.list(owner(), { status: "active" })).filter(x => x.id === made.id), [], "the revoked grant stays revoked");
+  assert.equal(gs.roleOf(actor("person", OWNER)), "owner");
 });

@@ -18,7 +18,10 @@ export function record({ gates = false, generated = false } = {}) {
 
 export const load = () => JSON.parse(fs.readFileSync(GOLDEN_FILE, "utf8"));
 
-/** Cell-level differences between two golden sets: [{ role, tool, caller, world, was, now }]. */
+/**
+ * Cell-level differences between two golden sets: [{ role, tool, caller, world, was, now }]. A tool that is new in `b` is not a difference (new
+ * tools are recorded, not judged; `added(a, b)` lists them); a tool that vanished, or any existing cell that changed, is.
+ */
 export function diff(a, b) {
   const out = [];
   for (const role of Object.keys(a.roles)) {
@@ -26,6 +29,7 @@ export function diff(a, b) {
     for (const tool of new Set([...Object.keys(ra), ...Object.keys(rb)])) {
       const x = ra[tool], y = rb[tool];
       if (x === y) continue;
+      if (!x && y) continue;
       if (!x || !y) { out.push({ role, tool, caller: "*", world: "*", was: x ? "present" : "absent", now: y ? "present" : "absent" }); continue; }
       for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) {
         out.push({ role, tool, caller: a.callers[Math.floor(i / a.worlds.length)], world: a.worlds[i % a.worlds.length], was: a.legend[x[i]] || x[i], now: (b.legend[y[i]] || y[i]) });
@@ -39,4 +43,11 @@ export function diff(a, b) {
 if (process.argv[1] === fileURLToPath(import.meta.url) && process.argv[2] === "--write") {
   fs.writeFileSync(GOLDEN_FILE, JSON.stringify(record()) + "\n");
   console.log("wrote", GOLDEN_FILE);
+}
+
+/** Tools present in `b` and not in `a`, per role: what a refresh of the stored golden set would add. */
+export function added(a, b) {
+  const out = {};
+  for (const role of Object.keys(b.roles)) { const have = (a.roles[role] || { rows: {} }).rows; out[role] = Object.keys(b.roles[role].rows).filter(t => !(t in have)).sort(); }
+  return out;
 }

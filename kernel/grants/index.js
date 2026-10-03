@@ -4,7 +4,7 @@
 // members from here (`provider`, `members`). Every change is a `grant`-risk act: a fresh presence proof by the granting person, never from a chain
 // that holds a model (authorize denies `model_chain`), and the proof is bound to the exact input (`input_hash`). Widening is always a new grant;
 // narrowing and revoking happen in place; a delegated grant has a parent and must be contained in it; revoking a parent revokes its children.
-import { canonical, sha256 } from "../core/canonical.js";
+import { canonical, sha256, hmac, sameMac } from "../core/canonical.js";
 import { mintUuid } from "../core/ids.js";
 import { isChain, isExactlyPerson } from "../core/chain.js";
 import { createGate } from "../core/gate.js";
@@ -20,6 +20,7 @@ export const GRANT_ACTIONS = Object.freeze([
   { action: "grants.revoke", resource_type: "grant", risk: "grant", label: "take access away", gloss: "Remove access, and everything given from it." },
   { action: "grants.narrow", resource_type: "grant", risk: "grant", label: "reduce access", gloss: "Make an existing access smaller." },
   { action: "grants.role", resource_type: "grant", risk: "grant", label: "set a role", gloss: "Make someone an owner, admin, manager, member or temp." },
+  { action: "grants.offer", resource_type: "offer", risk: "grant", label: "offer a computer for work", gloss: "Let a Space's work run on a member's computer, or accept that on your own." },
   { action: "grants.list", resource_type: "grant", risk: "read", label: "see who has access", gloss: "List access you may see." },
 ].map(a => Object.freeze(a)));
 
@@ -30,8 +31,9 @@ const actorKey = (/** @type {any} */ a) => `${a.kind}:${a.id}`;
 const sameActor = (/** @type {any} */ a, /** @type {any} */ b) => Boolean(a && b) && a.kind === b.kind && a.id === b.id && a.space === b.space;
 
 /**
- * @param {{ space: string, log: any, chains: any, clock?: () => number, action_set_version?: number, actions?: () => Iterable<any> }} cfg
- *   actions: the registry (read at call time, so the store never holds a stale copy)
+ * @param {{ space: string, log: any, chains: any, key: Uint8Array | string, clock?: () => number, action_set_version?: number, actions?: () => Iterable<any> }} cfg
+ *   actions: the registry (read at call time, so the store never holds a stale copy). key: the kernel's secret (as the chain builder's): every event this
+ *   store writes carries a MAC under it, and `rebuild` takes authority only from events that verify, so an event any chain appends in these names is nothing.
  */
 export function createGrantsStore(cfg) {
   const clock = cfg.clock || Date.now;
@@ -39,6 +41,9 @@ export function createGrantsStore(cfg) {
   /** @type {Map<string, any>} */ const grants = new Map();
   /** @type {Map<string, any>} person id -> Membership */ const memberships = new Map();
   /** @type {Set<string>} agent, service and automation actors that belong to the Space */ const actors = new Set();
+  /** @type {Map<string, any>} compute offers: the two grants a member's computer runs a Space's work under */ const offers = new Map();
+  /** @type {Set<(e: { id: string, side: string, member: string, device: string | null, reason: string }) => void>} */ const revokeListeners = new Set();
+  const tell = (/** @type {any} */ o, /** @type {string} */ reason, /** @type {any} */ by) => { for (const f of revokeListeners) { try { f({ id: o.id, side: o.side, member: o.member, device: o.device, reason }, by); } catch { /* a listener never blocks a change */ } } };
   /** @type {{ gate: any, allowed: any, registry: () => Map<string, any> } | null} */ let bound = null;
 
   const reg = () => (bound ? bound.registry() : new Map([...(cfg.actions ? cfg.actions() : [])].map(a => [a.action, a])));
@@ -46,8 +51,15 @@ export function createGrantsStore(cfg) {
   const riskOf = (/** @type {string} */ a) => reg().get(a)?.risk;
   const urn = (/** @type {string} */ type, id = "new") => `vyre://${cfg.space}/${type}/${id}`;
   const kernelChain = () => cfg.chains.fromFacts({ kind: "module", module: "grants", first_party: true });
-  const note = (/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ subject, /** @type {any} */ data, /** @type {any} */ decision) =>
-    cfg.log.append(chain, { type, sv: 1, subject, data, vis: "owner", red: "internal" }, decision ? { decision } : {});
+  if (!cfg.key) throw new KernelError("bad_input", "the grants store needs the kernel's key to seal its events");
+  // The MAC binds the event's POSITION (its seq and the hash of the event before it), not just its content: a genuine event copied and appended again
+  // later sits at another position and does not verify, so a revoked grant or a removed member cannot be brought back by replay.
+  const macOf = (/** @type {string} */ type, /** @type {string} */ subject, /** @type {any} */ data, /** @type {number} */ seq, /** @type {string} */ prev) => hmac(cfg.key, canonical({ type, subject, data, seq, prev }));
+  const note = (/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ subject, /** @type {any} */ data, /** @type {any} */ decision) => {
+    // Computed and appended in one synchronous step, so the position it names is the position it takes.
+    const seq = cfg.log.latestSeq() + 1, prev = cfg.log.head();
+    return cfg.log.append(chain, { type, sv: 1, subject, data: { ...data, mac: macOf(type, subject, data, seq, prev) }, vis: "owner", red: "internal" }, decision ? { decision } : {});
+  };
 
   const memberOk = (/** @type {any} */ a) => {
     if (!a || a.space !== cfg.space) return false;
@@ -191,6 +203,7 @@ export function createGrantsStore(cfg) {
       }
       const membership = freeze({ space: cfg.space, person: m.person, role: m.role, ...(m.role === "temp" ? { scope: [...m.scope], expires: m.expires } : {}), added_by: issuer.id, added_at: clock() });
       memberships.set(m.person, membership);
+      for (const of of offers.values()) if (of.member === m.person && of.status === "active") tell(of, "role_changed", chain);
       note(chain, "member.set", urn("member", m.person), { membership }, d.decision);
       const deleg = m.role === "owner" || m.role === "admin" ? { allowed: true, max_depth: 2 } : { allowed: false, max_depth: 0 };
       const prefixes = m.role === "temp" ? m.scope : [`vyre://${cfg.space}/*/*`];
@@ -201,6 +214,36 @@ export function createGrantsStore(cfg) {
         note(chain, "grant.created", urn("grant", g.id), { grant: g }, d.decision);
       }
       return { membership, grants: made };
+    },
+
+    /**
+     * Take a person out of the Space (a grant-risk act with a fresh proof): their membership and every grant made to them go, their compute offers
+     * are withdrawn, and the runner is told at once. The last owner stays.
+     * @param {any} chain @param {{ person: string }} m @param {{ presence?: any }} [o]
+     */
+    async removeMember(chain, m, o = {}) {
+      const issuer = person(chain);
+      if (!m || typeof m.person !== "string") throw new KernelError("bad_input", "name the person to remove");
+      const d = await gate(chain, "grants.role", urn("member", m.person), { remove: m.person }, o.presence);
+      const prior = memberships.get(m.person);
+      if (!prior) throw new KernelError("not_found", "no such member");
+      const mine = roleOf(issuer);
+      if (!mine || !(MAY_SET[/** @type {"owner"} */ (mine)] || []).includes(prior.role)) throw new KernelError("not_allowed", `a ${mine || "non-member"} cannot remove a ${prior.role}`);
+      if (prior.role === "owner" && [...memberships.values()].filter(x => x.role === "owner").length === 1) throw new KernelError("not_allowed", "a Space keeps at least one owner");
+      const actor = { kind: "person", id: m.person, space: cfg.space };
+      const gone = [...grants.values()].filter(g => g.status === "active" && ((g.subject.kind === "actor" && sameActor(g.subject.actor, actor)) || (g.issuer && sameActor(g.issuer, actor) && g.parent)));
+      for (const g of gone) {
+        const n = freeze({ ...g, status: "revoked", revoked_at: clock(), reason: "member removed" }); grants.set(n.id, n);
+        note(chain, "grant.revoked", urn("grant", n.id), { id: n.id, reason: "member removed" }, d.decision);
+      }
+      memberships.delete(m.person);
+      note(chain, "member.removed", urn("member", m.person), { person: m.person }, d.decision);
+      for (const o2 of [...offers.values()]) if (o2.member === m.person && o2.status === "active") {
+        const n = freeze({ ...o2, status: "revoked", revoked_at: clock() }); offers.set(n.id, n);
+        note(chain, "offer.revoked", urn("offer", n.id), { id: n.id }, d.decision);
+        tell(n, "removed", chain);
+      }
+      return { removed: m.person, grants_revoked: gone.length };
     },
 
     /** Add an assistant, service or automation to the Space (a membership of its own kind). */
@@ -214,9 +257,52 @@ export function createGrantsStore(cfg) {
       return freeze({ ...actor });
     },
 
+    /**
+     * One side of the compute pair (DESIGN-wink 7): the Space allows its work to run on a member's computer (an owner or admin, for a member of this
+     * Space; `device` null covers any of that member's computers), or the member accepts it for one of their own computers (the member's own act).
+     * Both must be active for `offers.active` to say yes, and it covers only that member's own sessions on that member's own machine.
+     * @param {any} chain @param {{ side: "space_allows" | "member_accepts", member: string, device?: string | null }} o @param {{ presence?: any }} [opt]
+     */
+    async offer(chain, o, opt = {}) {
+      const issuer = person(chain);
+      if (!o || !["space_allows", "member_accepts"].includes(o.side) || typeof o.member !== "string" || (o.side === "member_accepts" && (typeof o.device !== "string" || !o.device)) || (o.device != null && typeof o.device !== "string")) throw new KernelError("bad_input", "an offer needs a side, a member and (to accept) one of the member's computers");
+      const d = await gate(chain, "grants.offer", urn("offer"), o, opt.presence);
+      const m = { kind: "person", id: o.member, space: cfg.space };
+      if (!memberOk(m)) throw new KernelError("not_found", "no such member");
+      if (o.side === "space_allows" ? !isAdmin(issuer) : issuer.id !== o.member) throw new KernelError("not_allowed", o.side === "space_allows" ? "only an owner or an admin lets the Space's work run on a member's computer" : "only the member accepts work on their own computer");
+      const rec = freeze({ id: `of_${mintUuid(clock())}`, space: cfg.space, side: o.side, offer: "compute", member: o.member, device: o.device ?? null, status: "active", made_by: issuer.id, at: clock() });
+      offers.set(rec.id, rec);
+      note(chain, "offer.created", urn("offer", rec.id), { offer: rec }, d.decision);
+      return rec;
+    },
+
+    /** Withdraw an offer. An admin withdraws the Space's side; the member withdraws their own acceptance. The runner is told at once. */
+    async unoffer(chain, id, opt = {}) {
+      const issuer = person(chain);
+      const d = await gate(chain, "grants.offer", urn("offer", id), { revoke: id }, opt.presence);
+      const o = offers.get(id);
+      if (!o || o.status !== "active") throw new KernelError("not_found", "no such offer");
+      if (o.side === "space_allows" ? !isAdmin(issuer) : issuer.id !== o.member) throw new KernelError("not_allowed", "that is not yours to withdraw");
+      const n = freeze({ ...o, status: "revoked", revoked_at: clock() });
+      offers.set(id, n);
+      note(chain, "offer.revoked", urn("offer", id), { id }, d.decision);
+      tell(n, "withdrawn", chain);
+      return n;
+    },
+
+    /** Are both sides of the compute pair active for this member and computer? Read at every session start. Sync: it reads the store, never the network. */
+    active(/** @type {{ member: string, device: string }} */ q) {
+      const live = (/** @type {any} */ o) => o.status === "active" && o.member === q.member;
+      const spaceAllows = memberOk({ kind: "person", id: q.member, space: cfg.space }) && [...offers.values()].some(o => live(o) && o.side === "space_allows" && (o.device === null || o.device === q.device));
+      const memberAccepts = [...offers.values()].some(o => live(o) && o.side === "member_accepts" && o.device === q.device);
+      return { spaceAllows, memberAccepts };
+    },
+    /** Be told when an offer is withdrawn or a member's role changes (so the runner can end work at once). Returns an unsubscribe. */
+    onRevoke(/** @type {(e: any, by?: any) => void} */ f) { revokeListeners.add(f); return () => revokeListeners.delete(f); },
+
     /** The first owner of a new Space, written by the kernel itself (no chain can give the first grant). Once only. */
     bootstrap({ owner }) {
-      if (memberships.size) throw new KernelError("not_allowed", "this Space already has members");
+      if (memberships.size || cfg.log.latestSeq() > 0) throw new KernelError("not_allowed", "this Space already has a history: its first owner is made once, at its start");
       const k = kernelChain();
       const membership = freeze({ space: cfg.space, person: owner, role: "owner", added_by: "kernel", added_at: clock() });
       memberships.set(owner, membership);
@@ -229,14 +315,22 @@ export function createGrantsStore(cfg) {
 
     /** Rebuild every grant and membership from the log (after a restart). The log is the durable copy. */
     rebuild() {
-      grants.clear(); memberships.clear(); actors.clear();
+      grants.clear(); memberships.clear(); actors.clear(); offers.clear();
       for (const e of cfg.log.read({})) {
-        const d = e.data;
-        if (!d || typeof d !== "object") continue;
+        let d = e.data;
+        if (!d || typeof d !== "object" || !/^(grant|member|actor|offer)\./.test(e.type)) continue;
+        // Authority comes only from events this store sealed: anything else in these names is ignored (and not trusted for a grant, a member or an offer).
+        const { mac, ...bare } = d;
+        if (typeof mac !== "string" || !sameMac(macOf(e.type, e.subject, bare, e.seq, e.prev), mac)) continue;
+        d = bare;
+        if (e.type === "grant.created" && grants.has(d.grant.id)) continue; // an id is made once: a second creation of it is never a resurrection
         if (e.type === "grant.created" || e.type === "grant.narrowed") grants.set(d.grant.id, freeze(structuredClone(d.grant)));
         else if (e.type === "grant.revoked") { const g = grants.get(d.id); if (g) grants.set(d.id, freeze({ ...g, status: "revoked", revoked_at: e.time, reason: d.reason })); }
         else if (e.type === "member.set") memberships.set(d.membership.person, freeze(structuredClone(d.membership)));
+        else if (e.type === "member.removed") memberships.delete(d.person);
         else if (e.type === "actor.added") actors.add(actorKey(d.actor));
+        else if (e.type === "offer.created") offers.set(d.offer.id, freeze(structuredClone(d.offer)));
+        else if (e.type === "offer.revoked") { const o = offers.get(d.id); if (o) offers.set(d.id, freeze({ ...o, status: "revoked", revoked_at: e.time })); }
       }
     },
   };

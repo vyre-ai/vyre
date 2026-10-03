@@ -616,6 +616,19 @@ export class Registry {
       rec.contract = moduleContract(m);
       const adapter = adapterFor(rec.contract);
       if (m.apiVersion !== undefined) this.deps.log(`warn: module ${m.name} uses apiVersion, which is deprecated; use "vyre": "${m.apiVersion}"`);
+      // K6: with a module host wired (kernel/modules/host.js), a module that is not first party never runs in this process. It runs under the
+      // supervisor (no network, no files beyond its folder, no child process), its tools call into it, and it has no ctx: only its tool handlers
+      // and the egress proxy. Without the supervisor the host refuses and the module fails to start. Off until the kernel default-on path.
+      if (this.deps.moduleHost && !this.isFirstParty(f.dir)) {
+        await this.deps.moduleHost.install({ name: m.name, dir: f.dir, entry: m.main || "index.js", manifest: m }, { approved_hosts: this.deps.moduleApprovals ? this.deps.moduleApprovals(m.name) : [] });
+        const ctx = this.context(m);
+        for (const e of toolEntries(m)) ctx.tool(e.name, { description: e.description || "", run: (/** @type {any} */ input) => this.deps.moduleHost.call(m.name, e.name, input) });
+        rec.handle = { stop: () => this.deps.moduleHost.uninstall(m.name) };
+        rec.sandboxed = true;
+        rec.state = "running";
+        this.deps.log(`module ${m.name} ${m.version} running (sandboxed)`);
+        return;
+      }
       const mod = (await import(pathToFileURL(entry).href)).default;
       if (!mod || typeof mod.start !== "function") throw new Error("entry file must export default { start(ctx) }");
       rec.handle = await mod.start(adapter.context(this.context(adapter.manifest(m))));

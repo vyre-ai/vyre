@@ -372,13 +372,15 @@ test("limits: a `once` grant carries one act, taken atomically", async () => {
 });
 
 test("limits: `rate` is a window per grant and actor", async () => {
-  const { r } = await withType(rig({ grants: limited({ rate: { n: 2, per_seconds: 60 } }), members: ["agent:kit"] }));
+  const { r, gw } = await withType(rig({ grants: limited({ rate: { n: 2, per_seconds: 60 } }), members: ["agent:kit"] }));
   const c = await r.create(owner(), "contact", { name: "Jane" });
   assert.ok(await r.get(agent(), "contact", c.id));
   assert.ok(await r.get(agent(), "contact", c.id));
   await assert.rejects(() => r.get(agent(), "contact", c.id), { code: "rate_limited" });
   await assert.rejects(() => r.query(agent(), "contact", { page: { limit: 1 } }), { code: "rate_limited" }, "a query is one counted act too");
   assert.ok(await r.get(owner(), "contact", c.id), "the owner has no rate");
+  gw.limits.rebuild();
+  await assert.rejects(() => r.get(agent(), "contact", c.id), { code: "rate_limited" }, "a restart does not reset the window");
   T += 61_000;
   assert.ok(await r.get(agent(), "contact", c.id), "the window moves on");
 });
@@ -411,4 +413,67 @@ test("limits: the model door's ai_spend and session hours reserve, settle the ac
   L.sessionEnd(chain, id, 2);
   assert.deepEqual(L.used(OWNER, "session_hours"), { settled: 2, reserved: 0 });
   assert.ok(log.read({ type: "meter.settled" }).some(e => e.data.meter === "session_hours" && e.data.actual === 2));
+});
+
+test("fields: a grant with row predicates and a field allow-list still refuses filters on omitted fields", async () => {
+  const where = [{ attr: "sensitivity", op: "ne", value: "privileged" }];
+  const grants = [G(), G({ subject: { kind: "actor", actor: actor("agent", "kit") }, actions: ["records.read"], resource: { prefix: `vyre://${SPACE}/contact/*`, where, fields: ["name"] } })];
+  const { r } = await withType(rig({ grants, members: ["agent:kit"] }));
+  await r.create(owner(), "contact", { name: "Jane", age: 41 }, { attrs: { sensitivity: "internal" } });
+  await assert.rejects(() => r.query(agent(), "contact", { filter: { field: "age", op: "eq", value: 41 }, page: { limit: 5 } }), { code: "bad_input" });
+  await assert.rejects(() => r.query(agent(), "contact", { sort: [{ field: "age", dir: "asc" }], page: { limit: 5 } }), { code: "bad_input" });
+  await assert.rejects(() => r.aggregate(agent(), "contact", { group_by: ["age"], measures: [{ fn: "count" }] }), { code: "bad_input" });
+  assert.equal((await r.query(agent(), "contact", { filter: { field: "name", op: "eq", value: "Jane" }, page: { limit: 5 } })).rows.length, 1, "an allowed field still filters");
+});
+
+// ---- stage gates ----
+import { parseExpr, evalExpr } from "../../records/language/expr.js";
+const DEAL = { name: "deal", label: "Deal", fields: [{ name: "title", kind: "text", label: "Title" }, { name: "signed", kind: "boolean", label: "Signed" }, { name: "stage", kind: "stage", label: "Stage", options: ["Intake", "Drafting", "Done"] }],
+  stages: [{ name: "Intake", tasks: [{ title: "Research", required: true }, { title: "Optional chat" }] }, { name: "Drafting" }, { name: "Done" }],
+  rules: [{ name: "signed_before_drafting", require: "stage < 'Drafting' or signed == true" }] };
+
+test("stage gates: a record cannot enter a stage unless its rules hold, and cannot leave one while its required tasks are open", async () => {
+  const done = new Set();
+  const entered = [];
+  const { r } = rig({ expr: { parseExpr, evalExpr }, stageTasks: (record, stage) => (stage === "Intake" ? [{ title: "Research", state: done.has(record) ? "done" : "working" }, { title: "Optional chat", state: "ready" }] : []), onStageEnter: e => { entered.push([e.stage, e.templates.map(t => t.title)]); } });
+  await r.define(owner(), { add_types: [DEAL] });
+  const d = await r.create(owner(), "deal", { title: "A", stage: "Intake", signed: false });
+  assert.deepEqual(entered, [["Intake", ["Research", "Optional chat"]]], "entering a stage hands its task templates to the tasks side");
+  // the rule: not signed, no Drafting
+  await assert.rejects(() => r.update(owner(), "deal", d.id, { stage: "Drafting" }, d.version), { code: "rule_failed" });
+  // signed, but the required Intake task is open
+  const s = await r.update(owner(), "deal", d.id, { signed: true }, d.version);
+  await assert.rejects(() => r.update(owner(), "deal", d.id, { stage: "Drafting" }, s.version), { code: "stage_tasks_open" });
+  done.add(`vyre://${SPACE}/deal/${d.id}`);
+  const moved = await r.update(owner(), "deal", d.id, { stage: "Drafting" }, s.version);
+  assert.equal(moved.data.stage, "Drafting");
+  // a non-stage edit never trips the gate
+  assert.equal((await r.update(owner(), "deal", d.id, { title: "B" }, moved.version)).data.title, "B");
+  // a create straight into Drafting is a new entry: the rule judges it
+  await assert.rejects(() => r.create(owner(), "deal", { title: "C", stage: "Drafting", signed: false }), { code: "rule_failed" });
+});
+
+test("stage gates: the kernel's own evaluator is the default, and with it switched off the gate fails closed", async () => {
+  const dflt = rig();
+  await dflt.r.define(owner(), { add_types: [DEAL] });
+  assert.equal((await dflt.r.create(owner(), "deal", { title: "A", stage: "Intake" })).data.stage, "Intake", "no evaluator to wire: the rule holds for Intake");
+  await assert.rejects(() => dflt.r.create(owner(), "deal", { title: "B", stage: "Drafting", signed: false }), { code: "rule_failed" });
+  const { r } = rig({ expr: null });
+  await r.define(owner(), { add_types: [DEAL] });
+  await assert.rejects(() => r.create(owner(), "deal", { title: "A", stage: "Intake" }), { code: "unavailable" });
+});
+
+test("K5: audit.verify also checks the signed checkpoints when the Space's key is given", async () => {
+  const { createCheckpointer, ed25519Signer } = await import("../audit/index.js");
+  const { generateKeyPairSync } = await import("node:crypto");
+  const k = generateKeyPairSync("ed25519");
+  const { r, gw, log } = await withType(rig({ checkpointKey: k.publicKey }));
+  await r.create(owner(), "contact", { name: "Jane" });
+  const cp = createCheckpointer({ space: SPACE, log, chains, sign: ed25519Signer(k.privateKey), key_id: "space-key-1", clock });
+  await cp.sign();
+  const ok = await gw.audit.verify();
+  assert.deepEqual([ok.ok, ok.checkpoints], [true, 1]);
+  const forged = createCheckpointer({ space: SPACE, log, chains, sign: ed25519Signer(generateKeyPairSync("ed25519").privateKey), key_id: "space-key-1", clock });
+  await forged.sign();
+  assert.equal((await gw.audit.verify()).ok, false);
 });

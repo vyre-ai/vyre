@@ -26,6 +26,11 @@ const FIX_CAP = 400;
 const COOL_DOWN_MS = 7 * 24 * 3600_000;
 const DENIALS_TO_STUCK = 3;
 
+/** The kernel's own read of a record's stage tasks (the gateway's stage gate). Held beside the public api, not on it: a surface cannot reach it. */
+const VIEWS = new WeakMap();
+/** @param {any} api @param {string} record @param {string} stage @returns {{ title: string, state: string, required: boolean }[]} */
+export const stageTasks = (api, record, stage) => { const v = VIEWS.get(api); return v ? v(record, stage) : []; };
+
 const urnOf = (/** @type {string} */ space, /** @type {string} */ id) => `vyre://${space}/task/${id}`;
 const same = (/** @type {any} */ a, /** @type {any} */ b) => Boolean(a && b) && a.kind === b.kind && a.id === b.id;
 const acting = (/** @type {any} */ chain) => chain.hops[chain.hops.length - 1].actor;
@@ -62,7 +67,7 @@ export async function checkOutput(task, evidence, facts) {
  * @param {{ enforce?: (chain: any, d: any) => void, space: string, authorizer: any, log: any, presence: import("../core/presence.js").PresenceVerifier,
  *   members: { has(actor: any): boolean }, roleHolders?: (role: string) => any[], approver?: (chain: any) => any,
  *   responsible?: (person: any, doer: any) => boolean, responsibleFor?: (doer: any) => any,
- *   resolve?: { contact?: (record: string, address: string) => Promise<boolean>, sealed?: (ref: string) => Promise<{ class: string } | null> },
+ *   resolve?: { template?: (id: string, version: number) => Promise<{ body: string } | null>, contact?: (record: string, address: string) => Promise<boolean>, sealed?: (ref: string) => Promise<{ class: string, record?: string } | null> },
  *   facts?: { record?: (urn: string) => Promise<any>, exists?: (urn: string) => Promise<boolean> },
  *   release?: (task: any, payload: any, by: { person: string, key_id: string }) => void | Promise<void>, chains: any, clock?: () => number }} cfg
  *   chains: the kernel's chain builder (for events the kernel itself writes, such as stuck detection); release: the held act's egress, run only after a verified approval.
@@ -94,9 +99,17 @@ export function createTasks(cfg) {
     for (const s of Array.isArray(ev.payload.sealed_slots) ? ev.payload.sealed_slots : []) {
       let meta = null;
       try { meta = cfg.resolve && cfg.resolve.sealed ? await cfg.resolve.sealed(s.ref) : null; } catch { meta = null; }
+      // The ref's own record, from the vault: a slot that names another record than its ref belongs to is refused (N2).
+      if (meta && typeof meta.record === "string" && meta.record !== s.record) throw new KernelError("bad_input", "a sealed slot names a record its reference does not belong to");
       sealed.push({ slot: String(s.slot), ref: String(s.ref), record: s.record || null, class: meta && typeof meta.class === "string" ? meta.class : "unknown" });
     }
-    return { recipients, sealed };
+    let template = null;
+    if (ev.payload.template && typeof ev.payload.template.id === "string") {
+      let t = null;
+      try { t = cfg.resolve && cfg.resolve.template ? await cfg.resolve.template(ev.payload.template.id, Number(ev.payload.template.version)) : null; } catch { t = null; }
+      template = { id: String(ev.payload.template.id), version: Number(ev.payload.template.version), hash: t && typeof t.body === "string" ? sha256(t.body) : null };
+    }
+    return { recipients, sealed, template };
   }
   const guarded = (/** @type {any} */ t) => Boolean(t.checker) || outward(t) || Boolean(t.required);
   const note = (/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ t, /** @type {any} */ data, /** @type {any} */ decision) =>
@@ -213,6 +226,12 @@ export function createTasks(cfg) {
         const risk = cfg.authorizer.actions && cfg.authorizer.actions.get(ev.action) && cfg.authorizer.actions.get(ev.action).risk;
         if (!risk || !String(risk).startsWith("outward")) throw new KernelError("bad_input", "a send must name an outward action");
         for (const s of ev.payload.sealed_slots || []) if (t.record && s.record !== t.record) throw new KernelError("bad_input", "a sealed slot names a record other than the task's");
+        // The delivery the approver is shown is the sink and the recipients on the card, and nothing else: a hidden `to` is refused (N1).
+        const dl = ev.payload.delivery;
+        if (dl !== undefined) {
+          const addrs = (Array.isArray(ev.payload.recipients) ? ev.payload.recipients : []).map((/** @type {any} */ r) => String(r.address).trim().toLowerCase());
+          if (typeof dl !== "object" || dl === null || typeof dl.sink !== "string" || Object.keys(dl).some(k => k !== "sink" && k !== "to") || (dl.to !== undefined && (!Array.isArray(dl.to) || dl.to.some((/** @type {any} */ x) => !addrs.includes(String(x).trim().toLowerCase()))))) throw new KernelError("bad_input", "a delivery names a sink and only the recipients shown");
+        }
         const o = await cfg.authorizer.authorize({ chain, action: ev.action, resource: ev.resource });
         if (o.effect === "deny") throw new KernelError("not_found", "no such action", o.reason);
         decision = o.decision;
@@ -233,6 +252,7 @@ export function createTasks(cfg) {
       const t = get_(id);
       if (t.kernel || !isDoer(chain, t)) throw new KernelError("not_allowed", "only the doer changes a draft");
       if (t.state !== "needs_check") throw new KernelError("bad_state", "there is nothing waiting for a check");
+      if (deciding.has(id)) throw new KernelError("bad_state", "that task is being decided");
       rule(t, "ready", "doer");
       bodies.delete(id);
       const { payload: _p, ...rest } = t;
@@ -268,6 +288,10 @@ export function createTasks(cfg) {
         return tasks.get(id);
       }
       if (a.outcome !== "approved") throw new KernelError("bad_input", "decide approves or rejects");
+      // The sealed-use proof is checked by the sealing process when it is used; here only its shape and window, so a garbage or expired one is
+      // refused now and the approver is not told a complete approval is one that cannot be used (K4 item 12).
+      const up = a.proofs && a.proofs.use;
+      if (up !== undefined && up !== null && !(typeof up === "object" && typeof up.signature === "string" && typeof up.key_id === "string" && typeof up.nonce === "string" && Number.isFinite(up.issued_at) && up.expires_at > clock())) throw new KernelError("bad_input", "the sealed-use confirmation is malformed or already expired");
       const body = bodies.get(id);
       const p = a.proof;
       // The approval covers the canonical payload as the kernel stored it, recomputed now, never the doer's description.
@@ -299,7 +323,9 @@ export function createTasks(cfg) {
     },
 
     /** Kernel detection: the same permission refused three times in a task makes it stuck with a fix built from the denials (R6-7). */
-    async observeDenial(/** @type {string} */ id, /** @type {{ action: string, resource: string }} */ d) {
+    async observeDenial(/** @type {any} */ chain, /** @type {string} */ id, /** @type {{ action: string, resource: string }} */ d) {
+      // Only the kernel's own module chain reports a denial: a caller with the object cannot force a task to stuck (K4 item 10).
+      if (!isChain(chain) || chain.hops.length !== 1 || chain.hops[0].actor.kind !== "service" || !["tasks", "gateway", "kernel"].includes(chain.hops[0].actor.id)) throw new KernelError("not_allowed", "only the kernel reports a denial");
       const t = get_(id);
       if (t.state !== "working" && t.state !== "ready") return t;
       const k = `${id}|${d.action}|${d.resource}`;
@@ -388,7 +414,8 @@ export function createTasks(cfg) {
     },
 
     /** The card the checker sees, built from the canonical payload. */
-    card(/** @type {string} */ id) {
+    async card(/** @type {any} */ chain, /** @type {string} */ id) {
+      await gate(chain, "tasks.read", urnOf(cfg.space, id));
       const t = get_(id);
       const b = bodies.get(id);
       return buildCard(t, b, { action_label: b && b.action && cfg.authorizer.actions && cfg.authorizer.actions.get(b.action) ? cfg.authorizer.actions.get(b.action).label : undefined });
@@ -414,5 +441,7 @@ export function createTasks(cfg) {
     },
   };
   const { _decideOnce, ...pub } = api;
-  return Object.freeze(pub);
+  const frozen = Object.freeze(pub);
+  VIEWS.set(frozen, (/** @type {string} */ record, /** @type {string} */ stage) => [...tasks.values()].filter(t => t.record === record && t.stage === stage).map(t => ({ title: t.title, state: t.state, required: Boolean(t.required) })));
+  return frozen;
 }

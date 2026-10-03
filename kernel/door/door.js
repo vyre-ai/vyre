@@ -47,6 +47,8 @@ export function createDoor({ sealer, drivers, sinks, residency = () => null, bud
   }
 
   return {
+    /** True when the door was built with the kernel's own `isChain`: the gateway refuses a door that was not (K3 R-4). */
+    usesKernelChain: Boolean(kernelIsChain),
     /** The session's ledger key for the sealing process's reveal and detect calls; entries it returns are added with `note`. A session is (Space, id). */
     ledgerKey: (chain, session, parent) => keyOf(ledger(chain.space, session, parent)),
     note: (chain, session, entries) => { ledger(chain.space, session).add(entries); },
@@ -69,12 +71,21 @@ export function createDoor({ sealer, drivers, sinks, residency = () => null, bud
       if (res) refuse({ code: "residency", detail: res }, input);
       const over = budget.reserve(input); if (over) refuse({ code: "budget", meter: over }, input);
 
-      const session = input.session ?? `call_${crypto.randomUUID()}`;
-      const messages = [];
-      for (const m of input.messages) messages.push({ role: m.role, content: await scan(chain, session, String(m.content), { ...input, session }) });
-      const out = await driver.call({ ...input, chain: undefined, messages });
-      const content = await scan(chain, session, String(out.content ?? ""), { ...input, session });
-      for (const t of out.tool_calls ?? []) await scan(chain, session, JSON.stringify(t.input ?? null), { ...input, session });
+      // Everything after the reservation gives it back when it fails: a refused or failed call spends nothing.
+      let out, content, session;
+      try {
+        session = input.session ?? `call_${crypto.randomUUID()}`;
+        const messages = [];
+        for (const m of input.messages) messages.push({ role: m.role, content: await scan(chain, session, String(m.content), { ...input, session }) });
+        out = await driver.call({ ...input, chain: undefined, messages });
+        content = await scan(chain, session, String(out.content ?? ""), { ...input, session });
+        for (const t of out.tool_calls ?? []) await scan(chain, session, JSON.stringify(t.input ?? null), { ...input, session });
+      } catch (e) {
+        // A call the provider never answered spends nothing; one it answered before a scan refused it cost what it cost (the usage it reported).
+        if (out) budget.settle?.(input, out.usage);
+        else if (budget.release) budget.release(input); else budget.settle?.(input, { cost_micro: 0 });
+        throw e;
+      }
       budget.settle?.(input, out.usage);
       if (!input.session) await this.endSession(chain, session);
       return { ...out, id: out.id ?? crypto.randomUUID(), content };
