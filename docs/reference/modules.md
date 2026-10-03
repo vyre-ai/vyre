@@ -67,7 +67,6 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`settings`](#settings) | `core/settings` | `box`, `local` | 10 | 2 | cli, deck |
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
-| [`space-sessions`](#space-sessions) | `core/space-sessions` | `box`, `local` | 0 | 3 | cli |
 | [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 54 | 29 | capsule, cli, deck |
 | [`spend`](#spend) | `core/spend` | `box`, `local` | 4 | 2 | cli |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
@@ -646,17 +645,6 @@ One screen service for the user's Mac and every agent's computer: what is on it,
 - Tools: [5](tools.md#sight)
 - Emits: [1 events](events.md#sight)
 - Shows on: no surface
-
-## space-sessions
-
-The session engine for a Space (Wink design sections 5 and 7): one Space per session, the checkpoint state that carries taint and permissions, resume, Continue in another space, and the hours and spend budgets. The runner owns the sandbox, workspace, sync, lease and placement.
-
-- Folder: `core/space-sessions`, version 0.1.0
-- Runs on: `box`, `local`
-- Requires: none
-- Tools: none
-- Emits: [3 events](events.md#space-sessions)
-- Shows on: cli
 
 ## spaces
 

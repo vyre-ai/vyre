@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":337,"tool":1050,"event":442,"config":249,"env":209,"screen":20,"concept":43},
+  "counts": {"command":337,"tool":1050,"event":439,"config":249,"env":209,"screen":20,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -1093,10 +1093,7 @@
     {"kind":"tool","name":"screen.shot","definedIn":"local/screen-mac/index.js","page":"reference/tools.md#screenshot","module":"screen","mentions":[{"page":"adr/0015-capsule-sight.md","line":29,"anchor":"decision"}]},
     {"kind":"config","name":"screen.shotDir","definedIn":"local/screen-mac/index.js","page":null,"mentions":[]},
     {"kind":"config","name":"screen.timeoutMs","definedIn":"local/screen-mac/index.js","page":null,"mentions":[]},
-    {"kind":"event","name":"session.continued","definedIn":"core/space-sessions/module.json","page":"reference/events.md#space-sessions","module":"space-sessions","mentions":[]},
-    {"kind":"event","name":"session.created","definedIn":"core/space-sessions/module.json","page":"reference/events.md#space-sessions","module":"space-sessions","mentions":[]},
     {"kind":"event","name":"session.indexed","definedIn":"core/recall/indexer.js","page":"reference/events.md#recall","module":"recall","mentions":[{"page":"design/import.md","line":89,"anchor":"on-the-server-owner-memory-iq"}]},
-    {"kind":"event","name":"session.resumed","definedIn":"core/space-sessions/module.json","page":"reference/events.md#space-sessions","module":"space-sessions","mentions":[]},
     {"kind":"event","name":"session.state","definedIn":"core/recall/watch.js","page":"reference/events.md#recall","module":"recall","mentions":[]},
     {"kind":"event","name":"session.turn","definedIn":"core/recall/watch.js","page":"reference/events.md#recall","module":"recall","mentions":[]},
     {"kind":"config","name":"sessions","definedIn":"core/sessions/config.js","page":null,"mentions":[{"page":"using/sessions.md","line":102,"anchor":"what-runs-them"},{"page":"using/sessions.md","line":203,"anchor":"near-your-plans-limit"},{"page":"concepts/box-and-mac.md","line":31,"anchor":"one-process-per-machine"},{"page":"build/module-contract.md","line":121,"anchor":"what-ctx-holds"}]},
