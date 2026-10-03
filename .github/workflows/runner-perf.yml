@@ -1,0 +1,26 @@
+name: runner-perf
+# What lending costs on a hosted macOS machine: the same work in a plain folder and inside the runner's sandbox on the encrypted,
+# leased workspace (scripts/runner-perf.mjs). Runs only on the work/runner-perf branch, never on a person's own Mac.
+on:
+  push:
+    branches: [work/runner-perf]
+permissions:
+  contents: read
+jobs:
+  mac:
+    runs-on: macos-14
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: measure
+        env:
+          VYRE_NO_WATCHDOG: "1"
+        run: node scripts/runner-perf.mjs --reps 5 --out perf-mac.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: runner-perf-mac
+          path: perf-mac.json
