@@ -21,7 +21,7 @@ const HOME_NK = "nodekey:" + "11".repeat(32), SRV_NK = "nodekey:" + "22".repeat(
 function scratch(name) { return fs.mkdtempSync(path.join(SCRATCH, `h-${name}-`)); }
 
 /** A home host and a server host wired through the fake forwarder, the way two machines would be. */
-async function world(t, { entries = new Map(), key = deviceKey(), listed = true,  blackhole = false, graceMs = 150, retryMs = 60_000, peers = null, hostOpts = {}, relayServe = null } = {}) {
+async function world(t, { entries = new Map(), key = deviceKey(), listed = true,  blackhole = false, graceMs = 150, retryMs = 60_000, peers = null, hostOpts = {}, relayServe = null, serveWith = null } = {}) {
   const homeRoot = scratch("home"), srvRoot = scratch("srv");
   const calls = /** @type {any[]} */ ([]);
   if (listed) entries.set("srv1", { eid: "srv1", kind: "device", pub: key.pub });
@@ -46,7 +46,7 @@ async function world(t, { entries = new Map(), key = deviceKey(), listed = true,
   server.addSpace({ id: "harlow", controlUrl: "http://127.0.0.1:1", hostname: "srv", box: "box1", peerAddr: "100.64.0.1:8443" });
   await home.start("harlow");
   await server.start("harlow");
-  const serveFn = async (caller, tool, input) => { calls.push({ caller, tool, input }); return { tool, input, caller }; };
+  const serveFn = async (caller, tool, input) => { calls.push({ caller, tool, input }); if (serveWith) serveWith(caller); return { tool, input, caller }; };
   await home.serveHome("harlow", { identity, ...(peers ? { peers } : {}), serve: serveFn, ...(relayServe ? { relayServe } : {}) });
   t.after(async () => { await server.stopAll(); await home.stopAll(); });
   return { home, server, calls, relayHooks, entries, key };
@@ -280,5 +280,34 @@ test("host: the relay door has its own dispatcher, so the chain can record the p
   const r = await link.call("about.text", {});
   assert.equal(r.path, "relay");
   assert.equal(w.calls.length, 0, "the direct dispatcher was not used for the relay peer");
+  link.close();
+});
+
+test("host.pathOf: the leg a call really arrived on, taken from the door: direct is wink, the relay stream is relay, outside any door is relay", async t => {
+  const seen = [];
+  let h;
+  const relayServe = async (c, tool) => { seen.push(["relay-door", h.pathOf(c)]); return { tool, caller: c }; };
+  const peers = { serve: inner => async (c, tool, input) => inner(c, tool, input) };
+  const w = await world(t, { peers, relayServe, blackhole: true, graceMs: 100 });
+  h = w.home;
+  assert.equal(h.pathOf("device:srv1"), "relay", "no door around it: unknown is relay");
+  assert.equal(w.home.pathOf(), "relay");
+  const link = w.server.connect("harlow");
+  await link.call("about.text", {});
+  assert.equal(link.status().path, "relay");
+  assert.deepEqual(seen, [["relay-door", "relay"]]);
+  link.close();
+});
+
+test("host.pathOf: a call over the direct door reports wink", async t => {
+  const seen = [];
+  let h;
+  const peers = { serve: inner => async (c, tool, input) => inner(c, tool, input) };
+  const w = await world(t, { peers, serveWith: c => seen.push(h.pathOf(c)) });
+  h = w.home;
+  const link = w.server.connect("harlow");
+  await link.call("about.text", {});
+  assert.equal(link.status().path, "direct");
+  assert.deepEqual(seen, ["wink"]);
   link.close();
 });

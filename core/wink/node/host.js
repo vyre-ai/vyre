@@ -22,6 +22,7 @@
 // retried at most once a minute while the relay carries the work.
 
 import net from "node:net";
+import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn as nodeSpawn } from "node:child_process";
@@ -138,6 +139,11 @@ export function createHost(deps) {
     return up;
   }
 
+  /** The leg a home call really arrived on, set by the door that accepted it (never read from the request): "wink" for the direct node door, "relay" for the relay peer stream. */
+  const legOf = new AsyncLocalStorage();
+  /** For the kernel's withKernelCall `pathOf`: "wink" only inside a call the direct door accepted; the relay door, and anything unknown, is "relay". @param {string} [_caller] @returns {"wink" | "relay"} */
+  const pathOf = _caller => (legOf.getStore() === "wink" ? "wink" : "relay");
+
   /**
    * The home side: answer peers for this space. Direct peers come through the forwarder's door and
    * must prove the device key; relay peers come from the bridge's peer stream (acceptRelay) already
@@ -167,7 +173,7 @@ export function createHost(deps) {
       onRefuse: why => log(`wink ${id}: refused a peer: ${why}`),
       onPeer: (conn, who) => {
         if (who.via !== "direct") { conn.destroy(); log(`wink ${id}: a relay-form header on the node door was refused`); return; }
-        const serve = wrapped ? (/** @type {string} */ c, /** @type {string} */ t, /** @type {any} */ i) => wrapped(c, t, i, { nodeKey: who.nodeKey, stableId: who.stableId }) : o.serve;
+        const serve = wrapped ? (/** @type {string} */ c, /** @type {string} */ t, /** @type {any} */ i) => legOf.run("wink", () => wrapped(c, t, i, { nodeKey: who.nodeKey, stableId: who.stableId })) : (/** @type {string} */ c, /** @type {string} */ t, /** @type {any} */ i) => legOf.run("wink", () => o.serve(c, t, i));
         if (!o.identity || typeof o.identity.entry !== "function") { conn.destroy(); return; }
         admitPeer(socketPipe(conn), { id: { nodeKey: who.nodeKey }, box: sp.spec.box, entry: o.identity.entry, serve })
           .then(({ session, caller }) => { if (o.onSession) o.onSession(caller, session); })
@@ -186,7 +192,7 @@ export function createHost(deps) {
         // the entry is read again on every call: a device removed after the stream opened is refused at once, whatever the sync allow cache says
         const e = sp.identity ? await sp.identity.entry(who.deviceId) : null;
         if (!e || e.eid !== who.deviceId || e.kind !== "device") { session.close("device removed"); throw err("denied", "this device is no longer on the identity list"); }
-        return sp.serve.relay(caller, tool, input);
+        return legOf.run("relay", () => sp.serve.relay(caller, tool, input));
       } });
       if (sp.onSession) try { sp.onSession(caller, session); } catch { /* the listener must not break the stream */ }
     };
@@ -370,5 +376,5 @@ export function createHost(deps) {
   async function stopAll() { for (const l of [...links]) l.close(); for (const id of spaces.keys()) await stop(id); }
   const info = (/** @type {string} */ id) => { const sp = spaces.get(id); return sp ? { id, up: sp.up, spec: sp.spec } : null; };
 
-  return { addSpace, start, serveHome, acceptRelay, connect, stop, stopAll, info, dialSock, peerSock };
+  return { addSpace, start, serveHome, acceptRelay, pathOf, connect, stop, stopAll, info, dialSock, peerSock };
 }

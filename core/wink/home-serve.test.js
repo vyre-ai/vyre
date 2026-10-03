@@ -56,7 +56,7 @@ test("homeServe: a peer's call reaches the registry as device:<id>, kernel.call 
   const serve = homeServe(p.peers, k.withKernelCall(registry, {
     serverFor: space => (space === "harlow" ? { serve: async (req, peer) => { served.push([req, peer]); return { v: 1, id: req.id, ok: true, result: { members: ["alex"] } }; } } : null),
     personOf: (device, space) => (device === "srv1" ? "per_alex" : null),
-    pathOf: () => "wink", // the kernel records how the call arrived: here, a direct Wink peer
+    pathOf: () => "wink", // this test drives the direct door by hand; host.test.js covers the real legs (host.pathOf)
   }));
   // the host's own composition: direct peers pass the node key the connection proved
   const kp = crypto.generateKeyPairSync("ed25519");
