@@ -18,7 +18,7 @@ const ownerChain = k => k.chains.fromFacts({ kind: "device", device_key_id: "d-o
 
 test("boot: a first start makes the owner; a restart brings back every grant, member, record and event from the home's database", async () => {
   const f = file();
-  let k = boot(f);
+  let k = await boot(f);
   assert.equal(k.fresh, true);
   const o = ownerChain(k);
   await k.gateway.records.define(o, { add_types: [CONTACT] });
@@ -29,7 +29,7 @@ test("boot: a first start makes the owner; a restart brings back every grant, me
   assert.equal(k.grants.roleOf(bob), "member");
   const events = k.log.latestSeq();
   // restart: a new process on the same file
-  k = boot(f);
+  k = await boot(f);
   assert.equal(k.fresh, false);
   assert.equal(k.grants.roleOf(bob), "member", "memberships come back from the log");
   assert.equal(k.grants.roleOf({ kind: "person", id: OWNER, space: SPACE }), "owner");
@@ -43,7 +43,7 @@ test("boot: a first start makes the owner; a restart brings back every grant, me
 
 import { createKernel } from "./index.js";
 test("createKernel: one call wires everything with safe defaults, including the rule evaluator", async () => {
-  const k = createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key });
+  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key });
   const o = k.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s1" });
   await k.gateway.records.define(o, { add_types: [{ name: "deal", label: "Deal", fields: [{ name: "stage", kind: "stage", label: "Stage", options: ["A", "B"] }, { name: "ok", kind: "boolean", label: "Ok" }], stages: [{ name: "A" }, { name: "B" }], rules: [{ name: "r", require: "stage < 'B' or ok == true" }] }] });
   await assert.rejects(() => k.gateway.records.create(o, "deal", { stage: "B", ok: false }), { code: "rule_failed" });
@@ -54,41 +54,41 @@ test("createKernel: one call wires everything with safe defaults, including the 
 
 test("surfaces: a daemon presents a token; the kernel mints the chain for that session's person and assistant; the token cannot be forged, moved or outlive its session", async () => {
   let now = 1_800_000_000_000;
-  const k = createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key, clock: () => now });
+  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key, clock: () => now });
   const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct" });
   const S = k.surfaces;
-  const { token, session } = S.open(owner, { thread: "t1" });
-  const c = S.chainFor(token);
+  const { token, session } = await S.open(owner, { thread: "t1" });
+  const c = await S.chainFor(token);
   assert.deepEqual(c.hops.map(h => [h.actor.kind, h.actor.id]), [["person", OWNER]]);
   assert.equal(c.hops[0].via.session, undefined, "a daemon's session is not a presence session");
-  const a = S.chainFor(S.open(owner, { agent: "kit", thread: "t1" }).token);
+  const a = await S.chainFor((await S.open(owner, { agent: "kit", thread: "t1" })).token);
   assert.deepEqual(a.hops.map(h => h.actor.kind), ["person", "agent"]);
   // forged, edited, expired, revoked, and someone else's
   const [body, mac] = token.split(".");
   const evil = Buffer.from(JSON.stringify({ ...JSON.parse(Buffer.from(body, "base64url")), person: "per_evil" })).toString("base64url");
-  for (const bad of [`${evil}.${mac}`, `${body}.AAAA`, "nonsense", "", undefined]) assert.throws(() => S.chainFor(bad), { code: "not_a_member" });
+  for (const bad of [`${evil}.${mac}`, `${body}.AAAA`, "nonsense", "", undefined]) await assert.rejects(() => S.chainFor(bad), { code: "not_a_member" });
   S.revoke(session);
-  assert.throws(() => S.chainFor(token), { code: "not_a_member" });
-  const short = S.open(owner, { ttl_ms: 1000 }).token;
+  await assert.rejects(() => S.chainFor(token), { code: "not_a_member" });
+  const short = (await S.open(owner, { ttl_ms: 1000 })).token;
   now += 2000;
-  assert.throws(() => S.chainFor(short), { code: "not_a_member" });
+  await assert.rejects(() => S.chainFor(short), { code: "not_a_member" });
   const agent = k.chains.fromFacts({ kind: "agent_session", agent: "kit", session: "s", thread: "t", vouched: true });
-  assert.throws(() => S.open(agent), { code: "chain_not_person" }, "a model does not open sessions");
+  await assert.rejects(() => S.open(agent), { code: "chain_not_person" }, "a model does not open sessions");
   // ctx.model: the door's call runs under the session's chain, and a door with no stream says so
   const seen = [];
-  const k2 = createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key, door: { usesKernelChain: true, call: async i => { seen.push(i.chain.hops.map(h => h.actor.kind)); return { content: "ok" }; } } });
+  const k2 = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key, door: { usesKernelChain: true, call: async i => { seen.push(i.chain.hops.map(h => h.actor.kind)); return { content: "ok" }; } } });
   const o2 = k2.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct" });
-  const t2 = k2.surfaces.open(o2, { agent: "kit" }).token;
+  const t2 = (await k2.surfaces.open(o2, { agent: "kit" })).token;
   assert.equal((await k2.surfaces.model.call(t2, { messages: [] })).content, "ok");
   assert.deepEqual(seen, [["person", "agent"]]);
-  assert.throws(() => k2.surfaces.model.stream(t2, {}), { code: "unsupported" }, "a door with no streaming call says so");
+  await assert.rejects(async () => { for await (const _ of k2.surfaces.model.stream(t2, {})) void _; }, { code: "unsupported" }, "a door with no streaming call says so");
   // a door with streaming: the chain is the session's, and the events come through as the door yields them
   const chains2 = [];
-  const k3 = createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key, door: { usesKernelChain: true, call: async () => ({}), async *stream(i) { chains2.push(i.chain.hops.map(h => h.actor.kind)); yield { type: "text", text: "he" }; yield { type: "text", text: "llo" }; yield { type: "done" }; } } });
-  const t3 = k3.surfaces.open(k3.chains.fromFacts({ kind: "device", device_key_id: "d", person: OWNER, path: "direct" }), { agent: "kit" }).token;
+  const k3 = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key, door: { usesKernelChain: true, call: async () => ({}), async *stream(i) { chains2.push(i.chain.hops.map(h => h.actor.kind)); yield { type: "text", text: "he" }; yield { type: "text", text: "llo" }; yield { type: "done" }; } } });
+  const t3 = (await k3.surfaces.open(k3.chains.fromFacts({ kind: "device", device_key_id: "d", person: OWNER, path: "direct" }), { agent: "kit" })).token;
   const got = [];
   for await (const ev of k3.surfaces.model.stream(t3, { messages: [] })) got.push(ev.type === "text" ? ev.text : ev.type);
   assert.deepEqual(got, ["he", "llo", "done"]);
   assert.deepEqual(chains2, [["person", "agent"]]);
-  assert.throws(() => k3.surfaces.model.stream("forged.token", {}), { code: "not_a_member" });
+  await assert.rejects(async () => { for await (const _ of k3.surfaces.model.stream("forged.token", {})) void _; }, { code: "not_a_member" });
 });

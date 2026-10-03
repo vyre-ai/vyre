@@ -24,7 +24,7 @@ function fakeDrive() {
 
 test("drive: every call asks authorize first, the version's author is the chain's actor, listings show only what is readable, and nothing but the path is logged", async () => {
   const drive = fakeDrive();
-  const k = createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 3), presence, drive });
+  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 3), presence, drive });
   const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
   const bob = k.chains.fromFacts({ kind: "device", device_key_id: "d-b", person: BOB, path: "direct" });
   const g = k.gateway.grants, D = k.gateway.drive;
