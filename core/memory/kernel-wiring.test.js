@@ -59,7 +59,7 @@ test("a. a group chat is refused personal memory, a one to one chat is not, and 
     assert.equal(r.code, "denied", `${tool}: ${r.error}`);
     assert.match(r.error, /not shared in a group chat/);
   }
-  assert.ok(!(await w.call("memory.stats", {}, "deck", ts)).error, "alone with the owner it answers");
+  assert.ok(!(await w.call("memory.stats", {}, "deck", ts, surface("deck"))).error, "alone with the owner it answers");
   assert.ok(!(await w.call("memory.stats", {}, "deck", undefined, surface("deck"))).error, "a person's own surface with no chat session is not in a chat");
   void G;
 });
@@ -76,8 +76,8 @@ test("a. a session whose room cannot be built is refused, not answered", async t
 test("c. personal memory is read only by its person and that person's own assistant, decided by the kernel's chain", async t => {
   const w = await world(t);
   // the owner, alone, and the owner's own assistant standing beside them
-  assert.ok(!(await w.call("memory.stats", {}, "deck", await w.session("per_alex"))).error);
-  assert.ok(!(await w.call("memory.stats", {}, "deck", await w.session("per_alex", { agent: "kit" }))).error, "the owner's own assistant");
+  assert.ok(!(await w.call("memory.stats", {}, "deck", await w.session("per_alex"), surface("deck"))).error);
+  assert.ok(!(await w.call("memory.stats", {}, "mcp:agent:kit", await w.session("per_alex", { agent: "kit" }), { agent: "kit", granted: "*" })).error, "the owner's own assistant");
   // another member of the Space, or their assistant: refused whatever the caller label says
   for (const [who, agent] of [["per_bob", undefined], ["per_bob", "kit"]]) {
     const tok = await w.session(who, agent ? { agent } : {});

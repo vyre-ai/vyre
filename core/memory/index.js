@@ -28,6 +28,7 @@ import { catchCorrection, groundedAnswer } from "./iq/chatfix.js";
 import { userWords, devTalk, vyreFolder, sessionTrust } from "./personal/trust.js";
 import { register as registerSite } from "./site.js";
 import { createKernelGate } from "./kernel-gate.js";
+import { whoStore, current as whoNow } from "./who.js";
 import { mergeSpace, spaceHits, spaceOnlyAnswer } from "./iq/space.js";
 import { scanRows } from "./sealed.js";
 import { writeStore, register as registerWrites, passages as writePassages, relevantLines, quoted as quotedWrite } from "./write.js";
@@ -54,13 +55,17 @@ export default {
       tool: (name, def) => rawCtx.tool(name, {
         ...def,
         run: async (input = {}, extra = {}) => {
-          const room = await kernelGate(name, extra);
+          const gated = await kernelGate(name, extra);
           // The one Ask door: in a chat with more than one person it is answered from the Space's memory alone.
-          if (room && room.group) return spaceOnlyAnswer((tool, i) => rawCtx.call(tool, i), String((input || {}).question || ""));
-          if (!extra || !extra.agent) return def.run(input, extra);
-          const { agent: _a, project_cwds: _p, ...rest } = input || {};
-          const granted = extra.granted === "*" ? "*" : Array.isArray(extra.granted) ? extra.granted.map(String) : [];
-          return callMeta.run({ granted }, () => def.run(rest, extra));
+          if (gated && gated.group) return spaceOnlyAnswer((tool, i) => rawCtx.call(tool, i), String((input || {}).question || ""));
+          const exec = () => {
+            if (!extra || !extra.agent) return def.run(input, extra);
+            const { agent: _a, project_cwds: _p, ...rest } = input || {};
+            const granted = extra.granted === "*" ? "*" : Array.isArray(extra.granted) ? extra.granted.map(String) : [];
+            return callMeta.run({ granted }, () => def.run(rest, extra));
+          };
+          // Who is calling, as the kernel's chain says it, is what the access predicates below read for the length of this call (core/memory/who.js).
+          return gated && gated.who ? whoStore.run(gated.who, exec) : exec();
         },
       }),
     });
@@ -333,14 +338,14 @@ export default {
     const NOTHING = ["/dev/null/vyre-assistant-has-no-mapped-projects"];
     /** The user's own surfaces. Only these, modules, and a verified all-projects agent read the main graph. */
     const OWNER = new Set(["deck", "cli", "local", "capsule"]);
-    const owner = caller => OWNER.has(String(caller)) || String(caller).startsWith("module:");
+    const owner = caller => { const w = whoNow(); return w ? (w.ownerSurface || w.module !== null) : OWNER.has(String(caller)) || String(caller).startsWith("module:"); };
     /**
      * The user on another of their devices: vyred's tailnet listener sets "tailnet:<login>" from
      * Tailscale's whois, and no caller can claim it. It reads as the owner does (graph, facts,
      * why, stats, corrections) but never corrects, merges or splits.
      */
     // An agent's own node ("tailnet:agent:<name>") is an agent, not the user on another device.
-    const viaTailnet = caller => /^tailnet:(?!agent:)[^\s]+$/.test(String(caller || ""));
+    const viaTailnet = caller => { const w = whoNow(); return w ? w.nodeDevice : /^tailnet:(?!agent:)[^\s]+$/.test(String(caller || "")); }; // SHIM(legacy labels): the label branch goes with the kernel-off path
     const reader = caller => owner(caller) || viaTailnet(caller);
     /**
      * Throws unless the caller may read these folders' graph or this room (none: the main
@@ -536,8 +541,10 @@ export default {
      * that names an agent is an agent, whatever surface carried it.
      * @param {(input: any, extra: { caller?: string }) => Promise<any>} run
      */
+    /** Whether the caller is an agent: the kernel chain has an agent hop (a label naming one, `agent:<name>`, only when the kernel is off). */
+    const namesAgent = caller => { const w = whoNow(); return w ? w.agent !== null : /(?:^|[\s:])agent:/.test(String(caller || "")); };
     const ownerOnly = run => async (input, extra = {}) => {
-      if (/(?:^|[\s:])agent:/.test(String(extra.caller || ""))) throw denied("corrections are the user's: an agent proposes one as a lesson instead");
+      if (namesAgent(extra.caller)) throw denied("corrections are the user's: an agent proposes one as a lesson instead");
       return run(input, extra);
     };
     /**
@@ -546,14 +553,16 @@ export default {
      * an agent, an agent's node, or a device nobody signed in on.
      */
     const personWrites = (caller, meta) => {
-      const c = String(caller || "");
+      const w = whoNow();
+      if (w) return w.agent === null && (w.ownerSurface || (w.device && w.signedIn));
+      const c = String(caller || ""); // SHIM(legacy labels): the label branch goes with the kernel-off path
       if (/(?:^|[\s:])agent:/.test(c)) return false;
       if (OWNERS.includes(c)) return true;
       return /^(?:tailnet:(?!agent:).|device:[a-z2-7]{16}$)/.test(c) && Boolean(meta && meta.person);
     };
     const ownerWrite = run => ownerOnly(async (input, extra = {}) => {
       if (!personWrites(extra.caller, extra)) {
-        const device = /^(?:tailnet:|device:)/.test(String(extra.caller || "")) && !/agent:/.test(String(extra.caller));
+        const device = whoNow() ? Boolean(whoNow()?.device) && !namesAgent(extra.caller) : /^(?:tailnet:|device:)/.test(String(extra.caller || "")) && !/agent:/.test(String(extra.caller));
         throw Object.assign(new Error(device ? "corrections are the person's own: sign in on this device with your passkey first"
           : `corrections are made from the user's own surfaces, not ${plain(extra.caller || "an unnamed caller", 60)}`), { code: device ? "person_session_required" : "denied" });
       }
@@ -594,7 +603,7 @@ export default {
     };
     // ---- an agent corrects only with the person's own words behind it (core/memory/iq/heard.js)
     /** A model's caller: the user's own Claude Code session, a thread's, or a named agent's. */
-    const agentCaller = caller => /^mcp(?::|$)/.test(String(caller || "")) || /^harness:agent:/.test(String(caller || ""));
+    const agentCaller = caller => { const w = whoNow(); return w ? (w.agent !== null || w.ownSession) : /^mcp(?::|$)/.test(String(caller || "")) || /^harness:agent:/.test(String(caller || "")); };
     /** Caps (e2e, 28 Sep): a thread applies at most this many an hour; suggestions wait this many a thread and in all, for this long. */
     const AGENT = { perHour: 3, openPerThread: 5, openTotal: 50, expireMs: 14 * 86_400_000 };
     /** What a suggestion is about, as it reads now: if it changes before the person decides, the suggestion expires. */
@@ -795,7 +804,7 @@ export default {
     // A bare "mcp" caller is the user's own Claude Code session, and "mcp:thread:<id>" a session
     // Vyre runs for the user (ADR 0030; an agent's says mcp:agent:<name>), so both ask about the
     // user's life as the user's surfaces do.
-    const ownSession = caller => /^mcp(?::thread:[A-Za-z0-9_-]+)?$/.test(String(caller));
+    const ownSession = caller => { const w = whoNow(); return w ? w.ownSession : /^mcp(?::thread:[A-Za-z0-9_-]+)?$/.test(String(caller)); };
     const personalOnly = async (input, caller, name) => {
       const r = await reach(input.agent, caller);
       // THE assistant rule: it keeps personal facts (distilled, not raw), even though it no

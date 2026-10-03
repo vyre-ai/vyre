@@ -1,0 +1,104 @@
+// @ts-check
+// Memory's access layer decided from the kernel chain's facts, not label strings (CUTOVER section H). Every caller class gets the SAME answer from the chain (kernel on) as it
+// got from its label (kernel off): the table's rows, run both ways. Only the model and the projects.reach stand-in (a 0.2 module this one asks) are stand-ins.
+import test from "node:test";
+import assert from "node:assert/strict";
+import path from "node:path";
+import { open } from "../store/index.js";
+import { SESSIONS, seedRecall } from "../../test/fixtures/corpus.js";
+import { tempHome } from "../../test/helpers.js";
+import { fakeReachCall } from "../../test/fixtures/fake-reach.js";
+import { createRig } from "../../test/kernel-rig.js";
+import { whoOfChain } from "./who.js";
+import memory from "./index.js";
+
+const AGENTS = [{ name: "kit", kind: "assistant", projects: "*" }];
+const BLOCKED = new Set(["denied", "person_session_required"]);
+const socket = (surface, uid = 501) => ({ kind: "socket", surface, uid, pid: 1, inside_model_process: false, capsule_verified: surface === "capsule" });
+const device = (session, path = "wink") => ({ kind: "device", device_key_id: "dk1", person: "per_alex", path, ...(session ? { session } : {}) });
+const CAPS = { graph: ["memory.graph", {}], corrections: ["memory.corrections", {}], me: ["memory.me", {}], correct: ["memory.merge", { node: "x", into: "y" }], pin: ["memory.pin", { node: "x" }], write: ["memory.write", { kind: "note", text: "kept", project: "you" }], site: ["memory.site.list", {}] };
+
+async function boot(t, { kernel = null } = {}) {
+  const db = open(path.join(tempHome(t), "vyre.db"));
+  t.after(() => db.close());
+  seedRecall(db, SESSIONS);
+  const tools = new Map();
+  const ctx = { name: "memory", config: { me: { domains: ["riverastudio.com"] } }, paths: {}, store: { db, migrate: () => {} }, log: () => {},
+    events: { on: () => () => {}, emit: () => {}, since: () => [], prune: () => 0 },
+    call: async (tool, input) => tool === "recall.search" ? { data: [] } : tool === "recall.thread" ? { data: { turns: [] } } : fakeReachCall(tool, input, { agents: AGENTS, projects: [] }),
+    tool: (n, d) => tools.set(n, d), memoryRunner: null, ...(kernel ? { kernel } : {}) };
+  const h = await memory.start(ctx);
+  t.after(() => h.stop());
+  /** What a caller can do: for each capability, "yes", or the refusal code. */
+  const can = async (caller, meta = {}, bind = () => {}) => {
+    const out = {};
+    for (const [cap, [tool, input]] of Object.entries(CAPS)) {
+      bind();
+      try { await tools.get(tool).run(input, { caller, ...meta }); out[cap] = "yes"; }
+      catch (e) { const code = /** @type {any} */ (e).code || "failed"; out[cap] = BLOCKED.has(code) ? code : "yes"; }
+    }
+    return out;
+  };
+  return { can };
+}
+
+const YES = { graph: "yes", corrections: "yes", me: "yes", correct: "yes", pin: "yes", write: "yes", site: "yes" };
+// A relay device (the phone app's path) never read the graph, the corrections list or personal facts as the owner: only `tailnet:` logins did. Kept exactly.
+const RELAY = { ...YES, graph: "denied", corrections: "denied", me: "denied" };
+const UNSIGNED = { ...YES, correct: "person_session_required", write: "person_session_required" };
+
+test("each caller class does exactly what its label did: the table's rows, by the chain and by the label", async t => {
+  const rig = await createRig({ agents: ["kit"] });
+  const handle = rig.k.kernelFor({ name: "memory", needs: { kernel: { membership: true } } });
+  const on = await boot(t, { kernel: handle }), off = await boot(t);
+  const bind = token => () => rig.k.bindCalls(() => (token ? { token } : null));
+  const own = (await rig.k.surfaces.open(rig.person("per_alex"), {})).token;
+  const agent = (await rig.k.surfaces.open(rig.person("per_alex"), { agent: "kit" })).token;
+  const rows = [
+    ["the person at this machine (deck)", await on.can("deck", { kernelFacts: socket("deck") }), await off.can("deck"), YES],
+    ["the person at this machine (cli)", await on.can("cli", { kernelFacts: socket("cli") }), await off.can("cli"), YES],
+    ["the Capsule (named exception)", await on.can("capsule"), await off.can("capsule"), YES],
+    ["the person on another device over Wink (was tailnet:), signed in", await on.can("tailnet:alex@example.com", { kernelFacts: device("s1") }), await off.can("tailnet:alex@example.com", { person: { id: "s1" } }), YES],
+    ["the same device, not signed in", await on.can("tailnet:alex@example.com", { kernelFacts: device() }), await off.can("tailnet:alex@example.com"), UNSIGNED],
+    ["the person's device over the relay (was device:<id>), signed in", await on.can("device:abcdefghijklmnop", { kernelFacts: device("s1", "relay") }), await off.can("device:abcdefghijklmnop", { person: { id: "s1" } }), RELAY],
+    ["the same relay device, not signed in", await on.can("device:abcdefghijklmnop", { kernelFacts: device(undefined, "relay") }), await off.can("device:abcdefghijklmnop"), { ...RELAY, correct: "person_session_required", write: "person_session_required" }],
+    ["the person's own session or thread", await on.can("mcp:thread:t1", { token: own }, bind(own)), await off.can("mcp:thread:t1"), null],
+    ["an agent (the assistant)", await on.can("mcp:agent:kit", { token: agent, agent: "kit", granted: "*" }, bind(agent)), await off.can("mcp:agent:kit", { agent: "kit", granted: "*" }), null],
+  ];
+  for (const [name, after, before, expected] of rows) {
+    assert.deepEqual(after, before, `${name}: the chain and the label disagree`);
+    if (expected) assert.deepEqual(after, expected, name);
+  }
+  // spot-check the rows with no declared expectation: an own session may not steer the main graph, read corrections, correct or use the site store
+  const session = rows[7][1];
+  assert.deepEqual([session.corrections, session.correct, session.site], ["denied", "denied", "denied"]);
+  const agentRow = rows[8][1];
+  assert.deepEqual([agentRow.corrections, agentRow.correct, agentRow.site], ["denied", "denied", "denied"], "an agent proposes, never decides");
+});
+
+test("a tailnet login that is not the owner reads nothing: there is no such chain, and a model on the socket has none either", async t => {
+  const rig = await createRig({ people: { per_bob: "member" }, agents: ["kit"] });
+  const handle = rig.k.kernelFor({ name: "memory", needs: { kernel: { membership: true } } });
+  const on = await boot(t, { kernel: handle });
+  for (const caller of ["tailnet:bob@example.com", "tailnet-guest:bob", "mcp", "harness"]) {
+    const r = await on.can(caller);
+    assert.ok(Object.values(r).every(v => v === "denied"), `${caller}: ${JSON.stringify(r)}`);
+  }
+  // another person of the Space, even with a person chain of their own
+  const bob = (await rig.k.surfaces.open(rig.person("per_bob"), {})).token;
+  const r = await on.can("deck", { token: bob }, () => rig.k.bindCalls(() => ({ token: bob })));
+  assert.ok(Object.values(r).every(v => v === "denied"), JSON.stringify(r));
+});
+
+test("who.js reads the chain's facts and nothing else", async () => {
+  const rig = await createRig({ agents: ["kit"] });
+  const h = rig.k.kernelFor({ name: "memory", needs: { kernel: { membership: true } } });
+  const w = async meta => whoOfChain(await h.chain(meta));
+  assert.deepEqual(await w({ kernelFacts: socket("deck") }), { ownerSurface: true, device: false, nodeDevice: false, signedIn: false, ownSession: false, agent: null, module: null });
+  assert.deepEqual(await w({ kernelFacts: socket("mobile") }), { ownerSurface: false, device: false, nodeDevice: false, signedIn: false, ownSession: false, agent: null, module: null }, "mobile is not an owner surface, as before");
+  assert.deepEqual([(await w({ kernelFacts: device("s1") })).signedIn, (await w({ kernelFacts: device("s1") })).nodeDevice, (await w({ kernelFacts: device("s1", "relay") })).nodeDevice], [true, true, false], "a Wink device reads like tailnet: did, a relay device like device: did");
+  assert.equal((await w({ kernelFacts: device() })).signedIn, false);
+  const own = (await rig.k.surfaces.open(rig.person("per_alex"), {})).token, ag = (await rig.k.surfaces.open(rig.person("per_alex"), { agent: "kit" })).token;
+  assert.equal((await w({ token: own })).ownSession, true);
+  assert.deepEqual([(await w({ token: ag })).agent, (await w({ token: ag })).ownSession], ["kit", false]);
+});

@@ -11,6 +11,7 @@
 // link; the row is forgotten with its last link; nothing is deleted, so every forget can be undone.
 
 import crypto from "node:crypto";
+import { current as whoNow } from "./who.js";
 import { contentWords } from "./iq/retrieve.js";
 import { scrubbed } from "./sealed.js";
 
@@ -237,7 +238,8 @@ export function relevantLines(store, text, scope, limit = 2) {
  */
 export function register(ctx, { store, reach, personWrites, ownSession, reader, projects, denied, plain }) {
   const bad = m => Object.assign(new Error(m), { code: "bad_input" });
-  const claims = c => /(?:^|[\s:])agent:/.test(String(c || ""));
+  /** An agent is calling: the kernel chain has an agent hop (a label naming one only when the kernel is off, SHIM(legacy labels)). */
+  const claims = c => { const w = whoNow(); return w ? w.agent !== null : /(?:^|[\s:])agent:/.test(String(c || "")); };
   /** The kind an agent is: the assistant, a teammate, or an agent. */
   const kindOf = async (name, r) => {
     if (r.assistant) return "assistant";
@@ -271,7 +273,7 @@ export function register(ctx, { store, reach, personWrites, ownSession, reader, 
     }
     if (personWrites(c, meta)) return { kind: "person", name: "you", r: { all: true }, you: true, limited: false, forced: false };
     if (ownSession(c)) return { kind: "person", name: "session", r: { all: true }, you: true, limited: false, forced: false };
-    if (/^(?:tailnet:|device:)/.test(c)) throw Object.assign(new Error("memory is written from this device once you sign in with your passkey"), { code: "person_session_required" });
+    if ((whoNow() ? Boolean(whoNow()?.device) : /^(?:tailnet:|device:)/.test(c))) throw Object.assign(new Error("memory is written from this device once you sign in with your passkey"), { code: "person_session_required" });
     throw denied(`memory.write is not open to ${plain(c || "an unnamed caller", 60)}`);
   };
   /** Whether a project is within what r reaches. */
