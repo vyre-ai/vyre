@@ -50,7 +50,7 @@ export function createFlowsHost(o) {
       const types = Object.fromEntries((await k.store.types()).map((/** @type {any} */ t) => [t.name, t]));
       const actions = Object.fromEntries(gw.actions().map((/** @type {any} */ a) => [a.action, { risk: a.risk, ...(a.label ? { label: a.label } : {}) }]));
       const tz = (o.tzFor && o.tzFor(space)) || "UTC";
-      return { space, types, actions, tz, roles: ["owner", "admin", "manager", "member"], teammates: ["assistant"], templates: [], connectors: {} };
+      return { space, types, actions, tz, roles: ["owner", "admin", "manager", "member"], teammates: ["assistant"], templates: [], connectors: o.connectors ? await o.connectors().catch(() => ({})) : {} };
     };
     const roleHolders = async (/** @type {string} */ role) => {
       try { return (await gw.grants.members.list(owner())).filter((/** @type {any} */ m) => m.role === role).map((/** @type {any} */ m) => actor(m.person)); } catch { return []; }

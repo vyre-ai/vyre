@@ -208,7 +208,9 @@ async function startLocked(opts, root, p, release) {
     // Flows and stages made of tasks run in ONE assembly per Space (core/daemon/flows-host.js): the home's own Space here, and every hosted Space through the Spaces registry's
     // `stageFactory`. The `flows` module only registers the tools over it. A Flow's "Call a service" step reaches the vault's forward after the kernel has allowed it.
     const { createFlowsHost } = await import("./flows-host.js");
-    const flowsHost = createFlowsHost({ log, tzFor: () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" });
+    const flowsHost = createFlowsHost({ log, tzFor: () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+      // The connectors a Flow may call, with their route rules (no host, no secret): the vault's own list.
+      connectors: async () => { const r = await registry.call("vault.service.catalog", {}, "module:leases"); return r.error ? {} : r.data.connectors; } });
     registry.deps.flowsHost = flowsHost;
     // `{{field:...}}` in an outward action: resolved from the record under the person the session's turn is for (their own grants, not the room's view), by the kernel's resolveFields.
     const { resolveFields } = await import("../../kernel/core/fields.js");
@@ -221,8 +223,13 @@ async function startLocked(opts, root, p, release) {
     kernel = await bootHomeKernel({ db, root, log, isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
       // A credentialed request run at the home: the vault's own forward (an internal tool only the lease module may call), under the Space's credential; the kernel has already authorized it.
       forwardCredential: async (/** @type {any} */ q) => {
-        if (!q.route) throw Object.assign(new Error("that connector's route table is the vault's and is not exposed to the kernel yet"), { code: "unavailable" });
         const r = q.request;
+        // A Flow's named connector: the vault holds the connector's route rules and host (vault.service.forward); the kernel has authorized the chain.
+        if (!q.route) {
+          const via = await registry.call("vault.service.forward", { connector: q.connector, request: r, ...(q.idem ? { idem: q.idem } : {}), ...(q.approval ? { approval: q.approval } : {}) }, "module:leases");
+          if (via.error) throw Object.assign(new Error(via.error.message), { code: via.error.code });
+          return via.data;
+        }
         const out = await registry.call("vault.forward", { credential: q.ref, method: r.method, url: `https://${q.route}${r.path}`, ...(r.query ? { query: r.query } : {}), ...(r.headers ? { headers: r.headers } : {}), ...(r.body !== undefined ? { body: r.body } : {}), session: q.session || q.idem || "home" }, "module:leases");
         if (out.error) throw Object.assign(new Error(out.error.message), { code: out.error.code });
         return out.data;
