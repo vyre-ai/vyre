@@ -6,6 +6,7 @@
 // narrowing and revoking happen in place; a delegated grant has a parent and must be contained in it; revoking a parent revokes its children.
 import { canonical, sha256, hmac, sameMac } from "../core/canonical.js";
 import { createKernelSeal } from "../core/seal.js";
+import { randomBytes } from "node:crypto";
 import { mintUuid } from "../core/ids.js";
 import { isChain, isExactlyPerson } from "../core/chain.js";
 import { createGate } from "../core/gate.js";
@@ -33,7 +34,7 @@ const actorKey = (/** @type {any} */ a) => `${a.kind}:${a.id}`;
 const sameActor = (/** @type {any} */ a, /** @type {any} */ b) => Boolean(a && b) && a.kind === b.kind && a.id === b.id && a.space === b.space;
 
 /**
- * @param {{ seal?: any, sealer?: any, key?: Uint8Array | string, legacyKeys?: (Uint8Array | string)[], presence?: { check(i: any): Promise<string | null> }, space: string, log: any, chains: any, key: Uint8Array | string, clock?: () => number, action_set_version?: number, actions?: () => Iterable<any> }} cfg
+ * @param {{ seal?: any, sealer?: any, key?: Uint8Array | string, legacyKeys?: (Uint8Array | string)[], presence?: { check(i: any): Promise<string | null> }, space: string, log: any, chains: any, key: Uint8Array | string, clock?: () => number, action_set_version?: number, actions?: () => Iterable<any>, label?: () => { name?: string, words?: string } }} cfg
  *   actions: the registry (read at call time, so the store never holds a stale copy). key: the kernel's secret (as the chain builder's): every event this
  *   store writes carries a MAC under it, and `rebuild` takes authority only from events that verify, so an event any chain appends in these names is nothing.
  */
@@ -62,11 +63,11 @@ export function createGrantsStore(cfg) {
   // back. (The log's own position cannot be the number: another writer appends between the MAC and the append now that the MAC is a round trip to the sealing process.)
   let gseq = 0, gprev = "genesis", queue = Promise.resolve();
   const sealed = (/** @type {string} */ type, /** @type {string} */ subject, /** @type {any} */ core, /** @type {number} */ n, /** @type {string} */ prev) => canonical({ type, subject, data: core, gseq: n, gprev: prev });
-  const note = (/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ subject, /** @type {any} */ data, /** @type {any} */ decision) => {
+  const note = (/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ subject, /** @type {any} */ data, /** @type {any} */ decision, /** @type {string} */ vis = "owner") => {
     const run = async () => {
       const n = gseq + 1, prev = gprev;
       const mac = await seal.mac("grants-event-v1", sealed(type, subject, data, n, prev));
-      const e = cfg.log.append(chain, { type, sv: 1, subject, data: { ...data, mac, gseq: n, gprev: prev }, vis: "owner", red: "internal" }, decision ? { decision } : {});
+      const e = cfg.log.append(chain, { type, sv: 1, subject, data: { ...data, mac, gseq: n, gprev: prev }, vis, red: "internal" }, decision ? { decision } : {});
       gseq = n; gprev = sha256(mac);
       return e;
     };
@@ -116,7 +117,25 @@ export function createGrantsStore(cfg) {
   }
   const person = (/** @type {any} */ chain) => { if (!isExactlyPerson(chain)) throw new KernelError("chain_not_person", "only a person on their own gives or takes access"); return chain.hops[0].actor; };
 
+  /** The caller of a read: exactly one person who belongs to this Space, else the Space does not exist for them. */
+  function reader(/** @type {any} */ chain) {
+    if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
+    if (!bound) throw new KernelError("unavailable", "the grants store is not bound to an authorizer");
+    const me = isExactlyPerson(chain) ? chain.hops[0].actor : null;
+    if (!me || !memberOk(me)) throw new KernelError("not_found", "no such grants");
+    return me;
+  }
   function depthOf(/** @type {any} */ g) { let d = 0; for (let p = g; p && p.parent && d <= MAX_DEPTH + 1; p = grants.get(p.parent)) d++; return d; }
+
+  /**
+   * What the spaces module needs to append an owner op to the Space's identity chain, or null when nobody's ownership changed: `{ op: "add" | "remove", person, by, role_was,
+   * role_is, space }`. Carried on the `member.set` (and `member.removed`) event, which is then visible to the Space (the owner list is public to its members and devices).
+   */
+  const ownerOp = (/** @type {any} */ prior, /** @type {string | null} */ role, /** @type {string} */ person, /** @type {string} */ by, /** @type {any} */ decision) => {
+    const was = prior ? prior.role : null;
+    if ((was === "owner") === (role === "owner")) return null;
+    return { op: role === "owner" ? "add" : "remove", person, by, role_was: was, role_is: role, space: cfg.space, ...(decision ? { decision: decision.decision || decision } : {}) };
+  };
 
   /** Apply a role to a person (the shared step of `setRole` and an accepted invite): checks the issuer's CURRENT authority over both roles, replaces the role's grants, records the membership. */
   async function applyRole(/** @type {any} */ chain, /** @type {any} */ issuer, /** @type {any} */ m, /** @type {any} */ decision) {
@@ -135,8 +154,11 @@ export function createGrantsStore(cfg) {
     }
     const membership = freeze({ space: cfg.space, person: m.person, role: m.role, ...(m.role === "temp" ? { scope: [...m.scope], expires: m.expires } : {}), added_by: issuer.id, added_at: clock() });
     memberships.set(m.person, membership);
+    // An owner change is also a fact for the Space's identity chain: the spaces module reads `owner_change` and appends the owner op, signed by the owner's devices.
+    const ownerChange = ownerOp(prior, m.role, m.person, issuer.id, d.decision);
     for (const of of offers.values()) if (of.member === m.person && of.status === "active") tell(of, "role_changed", chain);
     await note(chain, "member.set", urn("member", m.person), { membership }, d.decision);
+    if (ownerChange) await note(chain, "owner.changed", urn("member", m.person), { owner_change: ownerChange }, d.decision, "space");
     const deleg = m.role === "owner" || m.role === "admin" ? { allowed: true, max_depth: 2 } : { allowed: false, max_depth: 0 };
     const prefixes = m.role === "temp" ? m.scope : [`vyre://${cfg.space}/*/*`];
     const made = [];
@@ -211,18 +233,43 @@ export function createGrantsStore(cfg) {
       return n;
     },
 
-    /** An admin sees every grant; anyone else only the grants made to them. */
+    /** Whoever `authorize` lets list grants (a manager and above) sees every grant; anyone else only the grants made to them. */
     async list(chain, filter = {}) {
-      if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
-      if (!bound) throw new KernelError("unavailable", "the grants store is not bound to an authorizer");
-      const me = isExactlyPerson(chain) ? chain.hops[0].actor : null;
-      // Everyone may see what they themselves were given; seeing others' access is `grants.list` (managers and above).
-      if (!me || !memberOk(me)) throw new KernelError("not_found", "no such grants");
-      if (isAdmin(me)) await bound.gate(chain, "grants.list", urn("grant", "*"));
-      const mine = (/** @type {any} */ g) => me && g.subject.kind === "actor" && sameActor(g.subject.actor, me);
-      return [...grants.values()].filter(g => (me && isAdmin(me)) || mine(g))
+      const me = reader(chain);
+      const all = await bound.allowed(chain, "grants.list", urn("grant", "*"));
+      const mine = (/** @type {any} */ g) => g.subject.kind === "actor" && sameActor(g.subject.actor, me);
+      return [...grants.values()].filter(g => all || mine(g))
         .filter(g => (!filter.status || g.status === filter.status) && (!filter.subject || canonical(g.subject) === canonical(filter.subject)) && (!filter.resource_prefix || g.resource.prefix.startsWith(filter.resource_prefix)))
         .sort((a, b) => (a.id < b.id ? -1 : 1));
+    },
+
+    /** The Space's members, as the same read `list` is: a manager and above sees everyone, anyone else only themselves. Each is a Membership (role, scope, expires). */
+    async membersList(chain) {
+      const me = reader(chain);
+      const all = await bound.allowed(chain, "grants.list", urn("member", "*"));
+      return [...memberships.values()].filter(m => (all || m.person === me.id) && !(m.role === "temp" && !(m.expires > clock()))).sort((a, b) => (a.person < b.person ? -1 : 1)).map(m => structuredClone(m));
+    },
+    /** One member's Membership: your own, or anyone's if `authorize` lets you list members. A person you may not see is indistinguishable from one who does not exist. */
+    async membersGet(chain, /** @type {string} */ id) {
+      const me = reader(chain);
+      const m = typeof id === "string" ? memberships.get(id) : undefined;
+      if (!m || (m.person !== me.id && !(await bound.allowed(chain, "grants.list", urn("member", id)))) || (m.role === "temp" && !(m.expires > clock()))) throw new KernelError("not_found", "no such member");
+      return structuredClone(m);
+    },
+    /**
+     * The join card. Read by the person who made the invite, a manager and above, or the person it is for (an open invite is read by whoever holds its id, which the
+     * link carries and nothing else lists; the invitee is not a member yet, so `authorize` has nothing to say about them). It returns what the card shows and never
+     * the contents hash, the invite's id list, or any secret; `space` is the label the home gives (its name and fingerprint words), and `status` says expired once past its life.
+     */
+    async invitesGet(chain, /** @type {string} */ id) {
+      if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
+      if (!isExactlyPerson(chain)) throw new KernelError("not_found", "no such invite");
+      const me = chain.hops[0].actor;
+      const inv = typeof id === "string" ? invites.get(id) : undefined;
+      const sees = inv && ((memberOk(me) && (sameActor(inv.issuer, me) || (bound && await bound.allowed(chain, "grants.list", urn("invite", id))))) || (!inv.invitee || inv.invitee === me.id));
+      if (!inv || !sees) throw new KernelError("not_found", "no such invite");
+      const status = inv.status === "pending" && !(inv.valid_until > clock()) ? "expired" : inv.status;
+      return freeze({ id: inv.id, role: inv.role, scope: inv.scope, expires: inv.expires, invitee: inv.invitee, needs_confirm: inv.needs_confirm, confirmed: inv.confirmed, valid_until: inv.valid_until, status, space: { id: cfg.space, ...(cfg.label ? cfg.label() : {}) } });
     },
 
     /**
@@ -258,6 +305,8 @@ export function createGrantsStore(cfg) {
       }
       memberships.delete(m.person);
       await note(chain, "member.removed", urn("member", m.person), { person: m.person }, d.decision);
+      const oc = ownerOp(prior, null, m.person, issuer.id, d.decision);
+      if (oc) await note(chain, "owner.changed", urn("member", m.person), { owner_change: oc }, d.decision, "space");
       for (const o2 of [...offers.values()]) if (o2.member === m.person && o2.status === "active") {
         const n = freeze({ ...o2, status: "revoked", revoked_at: clock() }); offers.set(n.id, n);
         await note(chain, "offer.revoked", urn("offer", n.id), { id: n.id }, d.decision);
@@ -340,7 +389,7 @@ export function createGrantsStore(cfg) {
       const mine = roleOf(issuer);
       if (!mine || !(MAY_SET[/** @type {"owner"} */ (mine)] || []).includes(i.role)) throw new KernelError("not_allowed", `a ${mine || "non-member"} cannot invite someone as ${i.role}`);
       const contents = { role: i.role, scope: i.scope || null, expires: i.expires ?? null, invitee: i.invitee ?? null };
-      const rec = freeze({ id: `inv_${mintUuid(clock())}`, space: cfg.space, ...contents, hash: sha256(canonical(contents)), issuer: { ...issuer }, status: "pending", needs_confirm: i.role === "admin" || i.role === "owner", confirmed: false, valid_until: clock() + (i.valid_ms ?? 7 * 24 * 3600 * 1000), created_at: clock() });
+      const rec = freeze({ id: `inv_${randomBytes(16).toString("hex")}`, space: cfg.space, ...contents, hash: sha256(canonical(contents)), issuer: { ...issuer }, status: "pending", needs_confirm: i.role === "admin" || i.role === "owner", confirmed: false, valid_until: clock() + (i.valid_ms ?? 7 * 24 * 3600 * 1000), created_at: clock() });
       invites.set(rec.id, rec);
       await note(chain, "invite.created", urn("invite", rec.id), { invite: rec }, d.decision);
       return rec;
@@ -428,6 +477,7 @@ export function createGrantsStore(cfg) {
       const membership = freeze({ space: cfg.space, person: owner, role: "owner", added_by: "kernel", added_at: clock() });
       memberships.set(owner, membership);
       await note(k, "member.set", urn("member", owner), { membership });
+      await note(k, "owner.changed", urn("member", owner), { owner_change: ownerOp(null, "owner", owner, "kernel", null) }, null, "space");
       const g = freeze({ id: `gr_${mintUuid(clock())}`, space: cfg.space, subject: { kind: "actor", actor: { kind: "person", id: owner, space: cfg.space } }, actions: [...ROLE_ACTIONS.owner], action_set_version: version, resource: { prefix: `vyre://${cfg.space}/*/*` }, conditions: { delegate: { allowed: true, max_depth: 2 } }, issuer: { kind: "service", id: "grants", space: cfg.space }, source: "role:owner", status: "active", created_at: clock() });
       grants.set(g.id, g);
       await note(k, "grant.created", urn("grant", g.id), { grant: g });
@@ -454,7 +504,7 @@ export function createGrantsStore(cfg) {
     async rebuild() {
       grants.clear(); memberships.clear(); actors.clear(); offers.clear(); invites.clear();
       gseq = 0; gprev = "genesis";
-      const evs = cfg.log.read({}).filter((/** @type {any} */ e) => e.data && typeof e.data === "object" && (LEGACY_RE.test(e.type) || e.type === "grants.snapshot"));
+      const evs = cfg.log.read({}).filter((/** @type {any} */ e) => e.data && typeof e.data === "object" && (LEGACY_RE.test(e.type) || e.type === "owner.changed" || e.type === "grants.snapshot"));
       /** @type {{ e: any, mac: any, n: number | undefined, prev: any, core: any, legacy: boolean }[]} */
       const items = evs.map((/** @type {any} */ e) => { const { mac, gseq: n, gprev: pv, ...core } = e.data; return { e, mac, n, prev: pv, core, legacy: n === undefined }; });
       // 1. Verify the new-style events, in pipelined batches.

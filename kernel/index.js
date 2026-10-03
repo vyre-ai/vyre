@@ -15,12 +15,14 @@ import { createLimits } from "./core/limits.js";
 import { createTasks } from "./tasks/tasks.js";
 import { sealerPresence } from "./core/presence.js";
 import { expr as defaultExpr } from "./expr/index.js";
+import { KernelError } from "./core/errors.js";
 import { createSurfaces } from "./core/surfaces.js";
+import { proofFrom, proofRequest } from "./remote/proof.js";
 import { createKernelSeal } from "./core/seal.js";
 import { runnerPorts } from "./gateway/runner-ports.js";
 
 /**
- * @param {{ space: string, owner: string, owner_uid: number, key?: Uint8Array | string, seal?: any, clock?: () => number,
+ * @param {{ space: string, owner: string, owner_uid: number, key?: Uint8Array | string, seal?: any, label?: () => { name?: string, words?: string }, clock?: () => number,
  *   legacyKeys?: (Uint8Array | string)[], store?: any, log?: any, chains?: any, grantsStore?: any, grants?: any, members?: any, bootstrap?: boolean, presence?: any, sealer?: any, door?: any,
  *   expr?: any, hasPresenceSession?: (chain: any) => boolean, onStageEnter?: any, stageTasks?: any, checkpointKey?: any,
  *   drive?: any, resolveCredential?: any, routeAction?: any, templates?: any, destinations?: any, resolve?: any, actions?: any[], attrs?: any, sinks?: Set<string> }} cfg
@@ -34,7 +36,7 @@ export async function createKernel(cfg) {
   const seal = cfg.seal || createKernelSeal({ sealer: cfg.sealer, key: cfg.key });
   const chains = cfg.chains || createChainBuilder({ space: cfg.space, owner: cfg.owner, owner_uid: cfg.owner_uid, seal, clock, is_person: () => true });
   const own = Boolean(cfg.grants && cfg.members);
-  const grantsStore = own ? undefined : cfg.grantsStore || createGrantsStore({ legacyKeys: cfg.legacyKeys, space: cfg.space, log, chains, seal, clock, presence: cfg.presence || (cfg.sealer ? sealerPresence(cfg.sealer) : undefined) });
+  const grantsStore = own ? undefined : cfg.grantsStore || createGrantsStore({ legacyKeys: cfg.legacyKeys, space: cfg.space, log, chains, seal, clock, presence: cfg.presence || (cfg.sealer ? sealerPresence(cfg.sealer) : undefined), label: cfg.label });
   const presence = cfg.presence || (cfg.sealer ? sealerPresence(cfg.sealer) : undefined);
   const limits = createLimits({ space: cfg.space, log, clock });
   let fresh = false, migrated = false;
@@ -54,7 +56,7 @@ export async function createKernel(cfg) {
     sealer: cfg.sealer, door: cfg.door, onStageEnter: cfg.onStageEnter, stageTasks: cfg.stageTasks, checkpointKey: cfg.checkpointKey, templates: cfg.templates, destinations: cfg.destinations,
     actions: cfg.actions, attrs: cfg.attrs, sinks: cfg.sinks, drive: cfg.drive, resolveCredential: cfg.resolveCredential, routeAction: cfg.routeAction,
   });
-  const surfaces = createSurfaces({ space: cfg.space, chains, door: cfg.door, clock });
+  const surfaces = createSurfaces({ space: cfg.space, chains, door: cfg.door, clock, isAdmin: (/** @type {string} */ id) => Boolean(grantsStore && grantsStore.isAdmin({ kind: "person", id, space: cfg.space })) });
   /**
    * `ctx.kernel` for one first-party module (the registry calls this when it builds the module's context): the gateway's own surfaces, bound to this Space, and the
    * module's own service chain. A module declares what it needs under `needs.kernel` ({ actions, prefixes, types }) and is given exactly that: grants whose source is
@@ -75,12 +77,40 @@ export async function createKernel(cfg) {
     return Object.freeze({
       space: cfg.space, records, events: gateway.events, grants: gateway.grants, tasks: gateway.ask, audit: gateway.audit, authorize: gateway.authorize, limits: gateway.limits,
       model: surfaces.model,
+      /** The `{ presence }` option from what a surface sent beside the request (`meta.kernel_proof`), and what that surface must sign for a grants call. The kernel's verifier checks it. */
+      /** Any Space by id: this one, another this home hosts, or a remote client with the same gateway API (the chain argument carries no authority across). */
+      for: (/** @type {string} */ id) => (id === cfg.space ? Object.freeze({ space: cfg.space, hosted: true, gateway, surfaces }) : spaces ? spaces.for(id) : (() => { throw new KernelError("unavailable", "this kernel has no Spaces registry"); })()),
+      proofFrom, proofRequest: (/** @type {string} */ call, /** @type {any[]} */ ...a) => proofRequest(cfg.space, call, ...a),
       leases: gateway.leases, drive: gateway.drive,
+      // Only the pool's own module may record the index head; a head any module could write would make the rollback check worthless.
+      ...(m.name === "wink-storage" ? { storageIndex: Object.freeze({ record: recordStorageIndex, head: storageIndexHead }) } : {}),
       /** The runner's ports from the kernel's own pieces (see kernel/gateway/runner-ports.js): allowed, revocation and the device key are the kernel's. */
       runnerPorts: (/** @type {any} */ o) => runnerPorts({ leases: gateway.leases, offers: gateway.grants && gateway.grants.offers }, o),
       serviceChain: () => gateway.serviceChain(m.name),
       chain: async (/** @type {any} */ meta) => (meta && typeof meta.token === "string" ? surfaces.chainFor(meta.token) : (await ready, gateway.serviceChain(m.name))),
     });
   };
-  return Object.freeze({ gateway, log, store, chains, grants: grantsStore, limits, tasks, surfaces, kernelFor, fresh, migrated });
+  /** The home's registry of Spaces (kernel/spaces), set once by it: `ctx.kernel.for(id)` reaches any Space, hosted here or remote, through the same gateway. */
+  /** @type {any} */ let spaces = null;
+  const bindSpaces = (/** @type {any} */ reg) => { spaces = reg; };
+  /**
+   * The pool's index backup head (vault: `storage.index { seq, hash, copies, at_risk }` after each backup) goes into the log, so the checkpoint the owners' devices already
+   * hold covers it: a new home restoring the index is told the head to expect (`restoreIndex({ expected })`) and refuses anything older or different (`rollback`).
+   * @param {{ seq: number, hash: string, copies: number, at_risk?: boolean }} head
+   */
+  function recordStorageIndex(head) {
+    if (!head || !Number.isInteger(head.seq) || head.seq < 0 || typeof head.hash !== "string" || !/^[A-Za-z0-9_+/=-]{8,128}$/.test(head.hash) || !Number.isInteger(head.copies) || head.copies < 0) throw new Error("a storage index head needs seq, hash and copies");
+    return log.append(chains.fromFacts({ kind: "module", module: "storage", first_party: true }), { type: "storage.index", sv: 1, subject: `vyre://${cfg.space}/storage/index`, data: { seq: head.seq, hash: head.hash, copies: head.copies, at_risk: Boolean(head.at_risk) }, vis: "owner", red: "internal" });
+  }
+  /**
+   * The head to expect on restore: the latest `storage.index` at or before a checkpoint the owner's devices hold (so a head written after what they hold, or one a rolled-back
+   * home invented, is not what they vouch for). With no checkpoint, the latest in the log, marked unverified.
+   * @param {{ seq: number } | null} [checkpoint] @returns {{ seq: number, hash: string, copies: number, at_risk: boolean, unverified: boolean } | null}
+   */
+  function storageIndexHead(checkpoint = null) {
+    const all = log.read({ type: "storage.index" }).filter((/** @type {any} */ e) => !checkpoint || e.seq <= checkpoint.seq);
+    const e = all[all.length - 1];
+    return e ? { ...e.data, unverified: !checkpoint } : null;
+  }
+  return Object.freeze({ recordStorageIndex, storageIndexHead, gateway, log, store, chains, grants: grantsStore, limits, tasks, surfaces, kernelFor, bindSpaces, fresh, migrated });
 }

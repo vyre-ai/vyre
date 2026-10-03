@@ -10,10 +10,11 @@ import { mintId } from "./ids.js";
 const MAX_TTL = 24 * 3600 * 1000;
 const b64 = (/** @type {string} */ s) => Buffer.from(s).toString("base64url");
 
-/** @param {{ space: string, chains: any, door?: any, clock?: () => number }} cfg the chain builder is what seals and checks a token: this holds no key */
+/** @param {{ space: string, chains: any, door?: any, isAdmin?: (person: string) => boolean, clock?: () => number }} cfg the chain builder is what seals and checks a token: this holds no key */
 export function createSurfaces(cfg) {
   const clock = cfg.clock || Date.now;
   /** @type {Set<string>} */ const revoked = new Set();
+  /** @type {Map<string, string>} session -> the person who opened it, so a remote revoke can be held to its opener (or an admin) */ const openers = new Map();
 
   const api = {
     /**
@@ -24,11 +25,22 @@ export function createSurfaces(cfg) {
       if (!isChain(chain) || !isExactlyPerson(chain)) throw new KernelError("chain_not_person", "only a person opens a session for a daemon");
       const session = o.session || mintId("ses", clock());
       const exp = clock() + Math.min(o.ttl_ms ?? 3600_000, MAX_TTL);
+      openers.set(session, chain.hops[0].actor.id);
+      if (openers.size > 5000) openers.delete(openers.keys().next().value);
       const body = b64(JSON.stringify({ v: 1, space: cfg.space, person: chain.hops[0].actor.id, agent: o.agent || null, session, thread: o.thread || null, exp }));
       return { token: `${body}.${await cfg.chains.sealToken(body)}`, session, expires: exp };
     },
-    /** End a session now: its token stops working. */
-    revoke(/** @type {string} */ session) { revoked.add(String(session)); },
+    /**
+     * End a session now: its token stops working. A daemon of this home calls `revoke(session)`; a call that carries the caller's chain (`revoke(session, chain)`, the remote
+     * form) must be the person who opened the session or an admin (`cfg.isAdmin`), and anyone else finds no such session.
+     */
+    revoke(/** @type {string} */ session, /** @type {any} */ by) {
+      if (by !== undefined) {
+        const me = isChain(by) && isExactlyPerson(by) ? by.hops[0].actor.id : null;
+        if (!me || !(openers.get(String(session)) === me || (cfg.isAdmin && cfg.isAdmin(me)))) throw new KernelError("not_found", "no such session");
+      }
+      revoked.add(String(session));
+    },
     /** The chain for a presented token, or a refusal that says nothing about why. @param {string} token */
     async chainFor(token) {
       const refuse = () => { throw new KernelError("not_a_member", "no chain for this session"); };

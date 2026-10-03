@@ -92,3 +92,16 @@ test("surfaces: a daemon presents a token; the kernel mints the chain for that s
   assert.deepEqual(chains2, [["person", "agent"]]);
   await assert.rejects(async () => { for await (const _ of k3.surfaces.model.stream("forged.token", {})) void _; }, { code: "not_a_member" });
 });
+
+test("storage.index: the pool's backup head goes into the log, and the head to expect is the one at or before the checkpoint the owner's devices hold", async () => {
+  let now = 1_800_000_000_000;
+  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key, clock: () => now });
+  assert.equal(k.storageIndexHead(), null);
+  k.recordStorageIndex({ seq: 1, hash: "hash-one-aaaa", copies: 3 });
+  const cp = { seq: k.log.latestSeq() };
+  k.recordStorageIndex({ seq: 2, hash: "hash-two-bbbb", copies: 3, at_risk: true });
+  assert.deepEqual([k.storageIndexHead(cp).seq, k.storageIndexHead(cp).unverified], [1, false], "devices vouch for the head their checkpoint covers");
+  assert.deepEqual([k.storageIndexHead().seq, k.storageIndexHead().unverified], [2, true], "with no checkpoint it is the latest, and says it is unverified");
+  assert.throws(() => k.recordStorageIndex({ seq: -1, hash: "x", copies: 1 }));
+  assert.throws(() => k.recordStorageIndex({ seq: 1, hash: "bad hash with spaces", copies: 1 }));
+});
