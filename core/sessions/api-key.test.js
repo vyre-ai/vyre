@@ -33,6 +33,7 @@ async function service(t) {
 }
 
 test("api key: an OpenAI-compatible key is checked, vaulted, bound to its address, never returned, and a thread on it sends the key only there", async t => {
+  process.env.VYRE_LEGACY_DIRECT_MODEL = "1";   // this harness has no inference door; the door path is core/sessions/door-bridge.test.js
   const w = await boot(t, { driver: "cli", vault: { "seed-item": "seed-value" } });
   const s = await service(t);
   const r = await w.tool("sessions.accounts.key", { kind: "openai-compatible", key: GOOD, base_url: `${s.base}/v1`, model: "m1", label: "My lab server" });

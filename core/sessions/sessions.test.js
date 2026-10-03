@@ -34,6 +34,9 @@ import { callerKind, callerAllowed } from "../modules/index.js";
 import { open as openStore } from "../store/index.js";
 import { paths } from "../config/index.js";
 import { FAKE, TINI, SDK, noSdk, until, boot, terminalSession } from "./testing/boot.js";
+// The module harness here has no inference door: providers run on the legacy direct path. The door path is core/sessions/door-bridge.test.js.
+process.env.VYRE_LEGACY_DIRECT_MODEL = "1";
+
 
 // ------------------------------------------------------------ pure parts
 
