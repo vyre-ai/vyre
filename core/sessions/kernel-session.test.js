@@ -51,8 +51,8 @@ async function rig(t) {
   t.after(async () => { await ks.closeAll(); for (const o of socks) await o.close(); daemon.close(); daemon.closeAllConnections?.(); fs.rmSync(dir, { recursive: true, force: true }); });
   return { k, bob, group, solo, ks, seen, dsock, dir, sessionSocket };
 }
-const get = (socketPath, headers = {}) => new Promise((resolve, reject) => {
-  const r = http.request({ socketPath, path: "/call", method: "POST", headers, agent: false }, res => { let b = ""; res.on("data", c => (b += c)); res.on("end", () => { try { resolve(JSON.parse(b)); } catch { resolve({ raw: b, status: res.statusCode }); } }); });
+const get = (socketPath, headers = {}, urlPath = "/call") => new Promise((resolve, reject) => {
+  const r = http.request({ socketPath, path: urlPath, method: "POST", headers, agent: false }, res => { let b = ""; res.on("data", c => (b += c)); res.on("end", () => { try { resolve(JSON.parse(b)); } catch { resolve({ raw: b, status: res.statusCode }); } }); });
   r.on("error", reject); r.end("{}");
 });
 
@@ -97,7 +97,7 @@ test("a token cannot be reused after the turn ends", async t => {
   await ks.turn({ chain: bob, chat: group.id }, async s => { sock = await sessionSocket({ id: s.id }); assert.equal((await get(sock)).data.group, true); });
   const token = seen.at(-1).header;
   assert.deepEqual(await get(dsock, { [KERNEL_SESSION_HEADER]: token }), { error: { code: "no_audience" } }, "the token no longer verifies");
-  assert.deepEqual(await get(sock), { error: { code: "no_audience" } }, "the session's socket now stamps nothing");
+  assert.equal((await get(sock)).error.code, "no_session", "the session's socket refuses the call once the token is gone: never unstamped");
   assert.deepEqual(ks.list(), []);
   await assert.rejects(() => ks.turn({ chain: bob, chat: group.id }, async () => { throw new Error("turn failed"); }), /turn failed/);
   assert.deepEqual(ks.list(), [], "a failed turn ends its session too");
@@ -141,4 +141,16 @@ test("KS-3: a thread that outlives its token gets a fresh one before the call go
   await assert.rejects(() => k.surfaces.verify(first), { code: "not_a_member" }, "the old token is revoked");
   await ks.end(s.id);
   await assert.rejects(() => k.surfaces.verify(second), { code: "not_a_member" });
+});
+
+test("KS-1: person-only tools are refused on an unnamed thread's socket, and the handler is never reached", async t => {
+  const { bob, ks, seen, sessionSocket } = await rig(t);
+  const s = await ks.open({ chain: bob, thread: "t-unnamed" });
+  const sock = await sessionSocket(s);
+  const before = seen.length;
+  for (const tool of ["computers.member.add", "computers.egress.set", "vault.reveal"]) {
+    const r = await get(sock, {}, `/v1/tools/${tool}`);
+    assert.equal(r.error.code, "denied", tool);
+  }
+  assert.equal(seen.length, before, "none of them reached vyred's handler");
 });

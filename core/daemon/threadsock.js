@@ -68,6 +68,8 @@ export async function openThreadSocket(o) {
       // The session's kernel credential (core/sessions/kernel-session.js): set here from what vyred holds for this session, never from the client. Whatever the client sent is dropped.
       delete req.headers["x-vyre-kernel-session"];
       const kernelToken = o.kernelToken ? await o.kernelToken() : undefined;
+      // A socket that has a kernel credential never lets a call go out unstamped: no valid token (the session ended, a renewal failed) means the call is refused.
+      if (o.kernelToken && !kernelToken) return send(res, 401, { error: { code: "no_session", message: "this session's kernel credential is not valid; the call was not made" } });
       if (kernelToken) req.headers["x-vyre-kernel-session"] = kernelToken;
       await route(req, res, `${kind}:${who}`);
     } catch (e) { if (!res.headersSent) send(res, 500, { error: { code: "internal", message: /** @type {Error} */ (e).message } }); }
