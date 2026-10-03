@@ -184,3 +184,24 @@ test("compute: a member cannot speak for the space, a space without the person's
   await assert.rejects(() => w.call("wink.offer.set", { device: "sv", offer: "compute", on: true, space: HARLOW, side: "space" }), e => e.code === "bad_input" && /Only a computer/.test(e.message));
   assert.match((await w.p.computeAllowed({ device: "sv", space: HARLOW })).reason, /only a computer/);
 });
+
+test("the kernel directory reads the role from the grants store: owner and admin may pair to the space, a member may not, a stranger has none", async () => {
+  const { kernelDirectory, kernelHasRoles } = await import("./pairing.js");
+  const roles = { [ME]: "admin", per_member: "member", per_owner: "owner" };
+  const kernel = { grants: { roleOf: async a => (a.space === HARLOW ? roles[a.id] || null : null) } };
+  assert.equal(kernelHasRoles(kernel), true);
+  assert.equal(kernelHasRoles({}), false);
+  const dir = kernelDirectory({ kernel, space: async () => HARLOW, name: () => "Harlow Legal" });
+  for (const [who, pairs] of [[ME, true], ["per_owner", true], ["per_member", false], ["per_stranger", false]]) {
+    const w = world();
+    const p = (await import("./pairing.js")).createPairing({ ctx: { store: w.db ? { db: w.db } : null, config: {}, log() {}, events: { emit() {} }, tool: (n, d) => w.tools.set(n, d) }, now: () => 1, identity: async () => who, space: async () => HARLOW, directory: dir, ports: {}, openCode: async () => ({}), ack: async () => ({ ok: true }), owner: () => {}, relayUrl: async () => "" });
+    const ok = (await p.targets(who)).some(t => t.kind === "space" && t.id === HARLOW);
+    assert.equal(ok, pairs, `${who}`);
+    if (!pairs) await assert.rejects(() => p.checkTarget(who, "server", { kind: "space", id: HARLOW }), e => e.code === "not_admin");
+    else assert.deepEqual(await p.checkTarget(who, "server", { kind: "space", id: HARLOW }), { kind: "space", id: HARLOW });
+  }
+  // the older shape, roles.isAdmin(person, space), is read too
+  const d2 = kernelDirectory({ kernel: { roles: { isAdmin: async (p, s) => p === ME && s === HARLOW } }, space: async () => HARLOW, name: () => "H" });
+  assert.equal((await d2.memberships(ME))[0].role, "admin");
+  assert.deepEqual(await d2.memberships("per_x"), []);
+});

@@ -300,7 +300,32 @@ export function parseQr(s) {
   return p ? { code: p.code, relay: q.get("r") || "" } : null;
 }
 
-/** The fallback directory: this box answers for its own space, where the owner is the owner. @param {{ identity: () => Promise<string>, space: () => Promise<string>, name: () => string }} o @returns {Directory} */
+/**
+ * The real directory: the kernel's grants store knows who holds which role in the space this box runs (work/kernel, kernel/grants/index.js:
+ * `roleOf(actor)` and `isAdmin(actor)` on the store; the module surface may also offer `roles.isAdmin(person, space)`). PORT: until the kernel is
+ * merged into this tree the call shape is the one above, and tests pass a fake with the same shape. One role is read here, never written.
+ * @param {{ kernel: any, space: () => Promise<string>, name: () => string }} o @returns {Directory}
+ */
+export function kernelDirectory(o) {
+  const k = o.kernel;
+  return {
+    async memberships(identity) {
+      const space = await o.space();
+      const actor = { kind: "person", id: identity, space };
+      /** @type {string | null} */
+      let role = null;
+      if (k && k.grants && typeof k.grants.roleOf === "function") role = (await k.grants.roleOf(actor)) || null;
+      else if (k && k.grants && typeof k.grants.isAdmin === "function") role = (await k.grants.isAdmin(actor)) ? "admin" : null;
+      else if (k && k.roles && typeof k.roles.isAdmin === "function") role = (await k.roles.isAdmin(identity, space)) ? "admin" : null;
+      return role ? [{ space, name: o.name(), role }] : [];
+    },
+    async label() { return null; },
+  };
+}
+/** True when the kernel offers a way to read a role (any of the shapes kernelDirectory reads). @param {any} k */
+export const kernelHasRoles = k => Boolean(k && ((k.grants && (typeof k.grants.roleOf === "function" || typeof k.grants.isAdmin === "function")) || (k.roles && typeof k.roles.isAdmin === "function")));
+
+/** The fallback directory (PORT, a fake until the kernel is merged): this box answers for its own space, where the owner is the owner. @param {{ identity: () => Promise<string>, space: () => Promise<string>, name: () => string }} o @returns {Directory} */
 export function ownDirectory(o) {
   return {
     async memberships(identity) { return identity === await o.identity() ? [{ space: await o.space(), name: o.name(), role: "owner" }] : []; },
