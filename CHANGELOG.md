@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- site: the version text on every page comes from the release tag (assemble-site.sh passes VYRE_SITE_VERSION), with a per-version "out now" line in gen-site.mjs; vyre.run says 0.2.2, and the roadmap reads Sessions 0.2.3, Scale 0.2.4, Spaces 0.2.5.
+- fix(site): scripts/gen-og.sh launches Chrome with --use-mock-keychain and --password-store=basic, so it never raises a Keychain dialog on a Mac (test/chrome-flags).
 - test(vault) #77: agent grants read the time from the vault's `clock` (default `Date.now`), and "an expired grant is out of force" moves a fake clock instead of sleeping, so it can no longer flake.
 - ci(matrix): J2b update refusals, J2c cosign refusals, J5 (the phone QR, a Needs-you push, removing a device) and J1/J6/J7/J8 as jobs of the full matrix workflow, plus matrix-j5.yml and matrix-update-refusals.yml. Harness only (e2e2).
 - test(matrix): J2 upgrade fits 0.1.1's wrapper (no --print-link, update without --yes, rollback with it) and reads the seeded fact through memory.me; J8 checks the sealed export, an uninstall that keeps and deletes with an audit, and an import into a fresh box. Harness only (e2e2).
