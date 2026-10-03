@@ -43,7 +43,7 @@ test("a box that signs its route is served, and device frames reach it both ways
   const b = await box(base);
   const ready = await b.s.json();
   assert.equal(ready.t, "ready");
-  assert.deepEqual(ready.features, ["registered", "revoke"], "the relay says it answers registrations, so a box can tell silence from an older relay");
+  assert.deepEqual(ready.features, ["registered", "revoke", "code"], "the relay says it answers registrations, so a box can tell silence from an older relay");
 
   const dev = sock(`${base}/v1/device?route=${b.route}`);
   await dev.open();
@@ -347,4 +347,151 @@ test("/v1/pair charges only misses to an address: a spent miss budget still reso
   a.s.ws.send(JSON.stringify({ t: "ticket", loc, record: ticketSeal(Buffer.alloc(8, 3), JSON.stringify({ v: 1, name: "alex" })), mac: "m".repeat(43), exp }));
   assert.equal((await a.s.json()).status, 200);
   assert.equal((await resolve(loc)).status, 200, "a hit is served even with the miss budget spent");
+});
+
+// ---- the typed Wink code's rendezvous (spec 6.5) ----
+
+const CODE_BODY = { error: "that code did not work" };
+const step = (http, body, ip = "198.51.100.1") => fetch(`${http}/v1/wink/code`, { method: "POST", headers: { "content-type": "application/json", "x-test-ip": ip }, body: JSON.stringify(body) });
+const byHeader = req => String(req.headers["x-test-ip"] || req.socket.remoteAddress);
+const SID = "A".repeat(22);
+/** A connected box that has asked for a code. */
+async function codeBox(base, key) {
+  const b = await box(base, key);
+  await b.s.json();
+  b.s.ws.send(JSON.stringify({ t: "code.alloc" }));
+  const a = await b.s.json();
+  return { ...b, a };
+}
+
+test("code: a box is given a free rendezvous for 5 minutes, one live code per box, and a new ask replaces the old", async t => {
+  const relay = createRelay();
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const http = base.replace(/^ws/, "http");
+  const a = await codeBox(base);
+  assert.equal(a.a.t, "code.allocated");
+  assert.match(a.a.rv, /^[0-9A-HJKMNP-TV-Z]{2}$/);
+  assert.ok(Math.abs(a.a.exp - (Date.now() + 5 * 60_000)) < 5000);
+  assert.equal(relay.stats().codes, 1);
+  a.s.ws.send(JSON.stringify({ t: "code.alloc" }));
+  const again = await a.s.json();
+  assert.equal(relay.stats().codes, 1, "one live code per box");
+  const b = await codeBox(base);
+  assert.notEqual(b.a.rv, again.rv, "two boxes never share a rendezvous");
+  assert.equal(relay.stats().codes, 2);
+  // Nothing allocated: a release frees it, and so does the box leaving.
+  b.s.ws.send(JSON.stringify({ t: "code.release" }));
+  await new Promise(r => setTimeout(r, 30));
+  assert.equal(relay.stats().codes, 1);
+  a.s.ws.close();
+  await new Promise(r => setTimeout(r, 50));
+  assert.equal(relay.stats().codes, 0);
+  void http;
+});
+
+test("code: the relay forwards a typist's message only to the route that holds the rendezvous, and its answer back", async t => {
+  const relay = createRelay({ clientAddress: byHeader });
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const http = base.replace(/^ws/, "http");
+  const a = await codeBox(base), b = await codeBox(base);
+  const p = step(http, { rv: a.a.rv, s: SID, n: 1, m: "Yfirst" });
+  const got = await a.s.json();
+  assert.deepEqual({ ...got, q: "q" }, { t: "code.msg", q: "q", rv: a.a.rv, s: SID, n: 1, m: "Yfirst" });
+  // B's socket saw nothing, and B cannot answer A's request.
+  b.s.ws.send(JSON.stringify({ t: "code.reply", q: got.q, m: "forged" }));
+  await new Promise(r => setTimeout(r, 40));
+  assert.equal(relay.stats().codeRequests, 1, "a reply from another route is ignored");
+  a.s.ws.send(JSON.stringify({ t: "code.reply", q: got.q, m: "Ysecond" }));
+  const res = await p;
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { m: "Ysecond" });
+  assert.equal(relay.stats().codeRequests, 0);
+  const none = await Promise.race([b.s.next(), new Promise(r => setTimeout(() => r("quiet"), 50))]);
+  assert.equal(none, "quiet", "the other box was never told");
+});
+
+test("code: unknown, released, expired, refused and silent all get the same answer, and a miss creates no state", async t => {
+  const relay = createRelay({ clientAddress: byHeader, code: { waitMs: 150 } });
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const http = base.replace(/^ws/, "http");
+  const a = await codeBox(base);
+  const free = [...("0123456789ABCDEFGHJKMNPQRSTVWXYZ")].map(c => c + "0").find(rv => rv !== a.a.rv) || "00";
+  const out = [];
+  out.push(await step(http, { rv: free, s: SID, n: 1, m: "Y" }, "198.51.100.10"));
+  assert.equal(relay.stats().codes, 1, "an unknown rendezvous creates nothing");
+  // refused by the box (no m)
+  let p = step(http, { rv: a.a.rv, s: SID, n: 1, m: "Y" }, "198.51.100.11");
+  let got = await a.s.json();
+  a.s.ws.send(JSON.stringify({ t: "code.reply", q: got.q }));
+  out.push(await p);
+  // silent
+  out.push(await step(http, { rv: a.a.rv, s: SID, n: 3, m: "Y" }, "198.51.100.12"));
+  await a.s.json();
+  // released
+  a.s.ws.send(JSON.stringify({ t: "code.release" }));
+  await new Promise(r => setTimeout(r, 30));
+  out.push(await step(http, { rv: a.a.rv, s: SID, n: 1, m: "Y" }, "198.51.100.13"));
+  // expired
+  const b = await codeBox(base);
+  const real = Date.now;
+  Date.now = () => real() + 6 * 60_000;
+  try { out.push(await step(http, { rv: b.a.rv, s: SID, n: 1, m: "Y" }, "198.51.100.14")); } finally { Date.now = real; }
+  const bodies = [];
+  for (const r of out) { assert.equal(r.status, 404); bodies.push(await r.json()); }
+  for (const x of bodies) assert.deepEqual(x, CODE_BODY);
+  assert.equal(relay.stats().codeRequests, 0);
+});
+
+test("code: the preflight answers any origin, a bad request is 400 whatever is live", async t => {
+  const relay = createRelay({ clientAddress: byHeader });
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const http = base.replace(/^ws/, "http");
+  const pre = await fetch(`${http}/v1/wink/code`, { method: "OPTIONS", headers: { origin: "https://alex.vyre.run" } });
+  assert.equal(pre.status, 204);
+  assert.equal(pre.headers.get("access-control-allow-origin"), "*");
+  const a = await codeBox(base);
+  for (const bad of [{ rv: "UU", s: SID, n: 1, m: "Y" }, { rv: a.a.rv, s: "short", n: 1, m: "Y" }, { rv: a.a.rv, s: SID, n: 2, m: "Y" }, { rv: a.a.rv, s: SID, n: 1, m: "" }, { rv: a.a.rv, s: SID, n: 1, m: "x".repeat(300) }, { rv: a.a.rv, s: SID, n: 1, m: "a b" }]) {
+    assert.equal((await step(http, bad)).status, 400, JSON.stringify(bad).slice(0, 60));
+  }
+  assert.equal(relay.stats().codeRequests, 0, "nothing was forwarded");
+});
+
+test("code: sessions are charged per address (10 a minute), another address is untouched, and there is no global budget", async t => {
+  const relay = createRelay({ clientAddress: byHeader, code: { waitMs: 80 } });
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const http = base.replace(/^ws/, "http");
+  const a = await codeBox(base);
+  const statuses = [];
+  for (let i = 0; i < 12; i++) statuses.push((await step(http, { rv: a.a.rv, s: SID, n: 1, m: "Y" }, "203.0.113.5")).status);
+  assert.deepEqual(statuses.slice(0, 10), Array(10).fill(404), "ten sessions served (the silent box times out)");
+  assert.deepEqual(statuses.slice(10), [429, 429], "the eleventh is refused");
+  // Another address is served at once, and a spent address does not block it.
+  const p = step(http, { rv: a.a.rv, s: SID, n: 1, m: "Y" }, "203.0.113.6");
+  // drain the ten forwarded to the box, then answer the newest
+  let last;
+  for (let i = 0; i < 11; i++) last = await a.s.json();
+  a.s.ws.send(JSON.stringify({ t: "code.reply", q: last.q, m: "Yb" }));
+  assert.equal((await p).status, 200, "another address is not charged for this one's");
+});
+
+test("code: a miss is charged again to its own address (30 a minute), and a hit is still served after that", async t => {
+  const relay = createRelay({ clientAddress: byHeader, code: { sessionPerMin: 1000, stepPerMin: 1000 } });
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const http = base.replace(/^ws/, "http");
+  const a = await codeBox(base);
+  const free = "ZZ" === a.a.rv ? "ZY" : "ZZ";
+  let last = 0;
+  for (let i = 0; i < 40; i++) last = (await step(http, { rv: free, s: SID, n: 1, m: "Y" }, "203.0.113.9")).status;
+  assert.equal(last, 429, "its misses ran out");
+  const p = step(http, { rv: a.a.rv, s: SID, n: 1, m: "Y" }, "203.0.113.9");
+  const got = await a.s.json();
+  a.s.ws.send(JSON.stringify({ t: "code.reply", q: got.q, m: "Yb" }));
+  assert.equal((await p).status, 200, "a live code is served to an address whose miss budget is spent");
+  assert.equal((await step(http, { rv: free, s: SID, n: 1, m: "Y" }, "203.0.113.10")).status, 404, "another address still gets the plain miss");
 });
