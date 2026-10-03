@@ -342,6 +342,22 @@ export function createRecords(cfg) {
       return rec;
     },
     /** Kernel attributes of a record, from the gateway's own index. A record it did not write has none, so a policy predicate on it never matches. */
+    /**
+     * An event as this chain may see it (G-2): a record event carries field values in `before` and `after`, so the fields the chain's grant does not
+     * allow, and `human`-level sealed fields hidden from its role, are cut from the diff and from `changed`. Other events pass unchanged.
+     */
+    async viewEvent(chain, e) {
+      const d = e.data;
+      if (!d || typeof d !== "object" || !d.after || typeof d.after !== "object") return e;
+      const [, type] = String(e.subject).slice(7).split("/");
+      if (!type || !TYPE_NAME.test(type)) return e;
+      const dec = await check(chain, "records.read", e.subject);
+      const lim = await limitsOf(chain, type, dec);
+      if (!lim.allow && !lim.hidden.size) return e;
+      const keep = (/** @type {string} */ k) => !lim.hidden.has(k) && (!lim.allow || lim.allow.has(k));
+      const cut = (/** @type {any} */ o) => (o ? Object.fromEntries(Object.entries(o).filter(([k]) => keep(k))) : o);
+      return Object.freeze({ ...e, data: { ...d, ...(d.before ? { before: cut(d.before) } : {}), after: cut(d.after), changed: (d.changed || []).filter(keep) }, redacted_view: true });
+    },
     attrsOf: (/** @type {string} */ u) => kattrs.get(u),
 
     async update(chain, type, id, patch, base) {
