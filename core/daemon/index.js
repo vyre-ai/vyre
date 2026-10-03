@@ -897,6 +897,9 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   // through a real vyred the way a phone does.
   const resRelay = req.method === "GET" && /^\/relay\/client\/(client|channel|bytes|response|sse|webcrypto|noise|seedwords|words)\.js$/.exec(url.pathname);
   if (resRelay) return serveFile(res, path.join(REPO, "relay", "client", resRelay[1] + ".js"), cfg);
+  // The kernel's contracts, which the Deck imports as ../../kernel/contracts/index.js (deck/ui/tasks.js, deck/ui/fields.js): constant tables only, data and no logic, so the
+  // Deck and the kernel load the one copy and nothing drifts. This file and nothing else under kernel/.
+  if (req.method === "GET" && url.pathname === "/kernel/contracts/index.js") return serveFile(res, path.join(REPO, "kernel", "contracts", "index.js"), cfg);
   // The pure libs the Deck shares with Node, so both load the one copy: lib/avatar-seed (ADR 0043
   // section 6, a project tile's bytes) and lib/caps-flags (PLAN.md C14b, provider capabilities).
   // Exact paths only, nothing else in lib/.
