@@ -69,6 +69,8 @@ export function createGateway(cfg) {
 
   return Object.freeze({
     authorize: authorizer.authorize,
+    /** The action registry as the authorizer holds it (a Map of ActionDef): tasks read the risk of an action from here. */
+    registry: authorizer.actions,
     limits,
     ...(seal ? { seal } : {}),
     ...(gs ? { grants: Object.freeze({ create: gs.create, revoke: gs.revoke, narrow: gs.narrow, list: gs.list, setRole: gs.setRole, removeMember: gs.removeMember, addActor: gs.addActor, rebuild: gs.rebuild, offers: Object.freeze({ offer: gs.offer, unoffer: gs.unoffer, active: gs.active, onRevoke: gs.onRevoke }) }) } : {}),

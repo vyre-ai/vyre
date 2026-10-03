@@ -32,3 +32,32 @@ test("sqlite store: everything survives a restart (types, records, versions, the
   assert.equal((await s.update("contact", id, { age: 43 }, 2)).version, 3);
   assert.equal((await s.version()).store, "sqlite");
 });
+
+test("sqlite log: events, their salts and cursors survive a restart; erase survives; a row edited on disk fails the chain", async () => {
+  const { createSqliteEventLog } = await import("./sqlite-log.js");
+  const { createChainBuilder } = await import("../core/chain.js");
+  const { verifyEvents } = await import("../core/events.js");
+  const SPACE = "spc_aaaaaaaaaaaa";
+  const chains = createChainBuilder({ space: SPACE, owner: "per_owner", owner_uid: 501, key: Buffer.alloc(32, 1) });
+  const ch = chains.fromFacts({ kind: "module", module: "x", first_party: true });
+  const f = file();
+  let log = createSqliteEventLog({ db: new DatabaseSync(f), space: SPACE });
+  for (let i = 0; i < 4; i++) log.append(ch, { type: "note.added", sv: 1, subject: `vyre://${SPACE}/note/${i}`, data: { i } });
+  log.erase(2);
+  const before = log.read({}).map(e => e.hash);
+  log = createSqliteEventLog({ db: new DatabaseSync(f), space: SPACE });
+  assert.deepEqual(log.read({}).map(e => e.hash), before);
+  assert.equal(log.latestSeq(), 4);
+  assert.equal(log.proves(1), true, "the salt came back with the event");
+  assert.equal(log.proves(2), false, "the erased one stays erased");
+  assert.deepEqual(log.verify().ok, true);
+  const e5 = log.append(ch, { type: "note.added", sv: 1, subject: `vyre://${SPACE}/note/5`, data: {} });
+  assert.equal(e5.seq, 5);
+  assert.equal(e5.prev, before[3], "the chain continues from the stored head");
+  // a row edited on disk
+  const db = new DatabaseSync(f);
+  const row = db.prepare("SELECT event FROM kernel_events WHERE seq = 3").get();
+  db.prepare("UPDATE kernel_events SET event = ? WHERE seq = 3").run(row.event.replace('"i":2', '"i":99').replace(/"type":"note.added"/, '"type":"note.edited"'));
+  const reread = createSqliteEventLog({ db: new DatabaseSync(f), space: SPACE });
+  assert.equal(verifyEvents(SPACE, reread.read({})).ok, false);
+});
