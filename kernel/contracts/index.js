@@ -58,6 +58,15 @@ export const STORE_ERROR_CODES = f([
   "not_found", "version_conflict", "invalid", "unknown_type", "unknown_field", "unsupported", "unavailable", "id_mismatch", "sealed_value_refused",
 ]);
 
+export const IDENTITY_KINDS = f(["user", "space", "device", "agent", "project", "session", "task"]);
+export const NAMED_IDENTITY_KINDS = f(["user", "space"]);
+export const KEYED_IDENTITY_KINDS = f(["user", "space", "device", "agent"]);
+export const DEVICE_KINDS = f(["phone", "computer", "server", "storage_device"]);
+export const OFFER_KINDS = f(["access", "approval", "compute", "storage"]);
+export const DEVICE_OFFERS = Object.freeze({
+  phone: f(["access", "approval"]), computer: f(["access", "approval", "compute"]), server: f(["compute", "storage"]), storage_device: f(["storage"]),
+});
+
 export const ROLE_IDS = Object.freeze(["owner", "admin", "manager", "member", "temp"]);
 const bundle = (role, abilities, never, requires_scope, assistants_act_for_holder) =>
   Object.freeze({ role, abilities: Object.freeze(abilities), never: Object.freeze(never), requires_scope, assistants_act_for_holder });

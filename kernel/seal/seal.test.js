@@ -1,308 +1,399 @@
-import test from "node:test";
+// @ts-check
+// The sealing process (K3) against invariants 4, 5 and 6: a sealed value exists only inside the sealing process and the person's reveal view;
+// it goes only to the record's own verified contact point or a document for it; reveal and delivery are human-only, with a hardware-signed
+// proof over exactly this payload. Real child processes, temp folders, a real unix socket for the egress sink.
+import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
+import net from "node:net";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
-import { CLASSES, luhn, aba, ssn, itin, iban } from "./classes.js";
-import { normalize, normalized } from "./normalize.js";
-import { detect, sanitize } from "./detect.js";
-import { createSealClient, sealFlags } from "./client.js";
-import { createSeal, SEAL_ACTIONS } from "./index.js";
-import { createModelDoor, MODEL_ACTIONS } from "../model/door.js";
-import { createAuthorizer } from "../core/authorize.js";
-import { createEventLog } from "../core/events.js";
-import { createChainBuilder, chainHash } from "../core/chain.js";
-import { canonical, sha256 } from "../core/canonical.js";
-import { createGateway } from "../gateway/index.js";
-import { createMemoryStore } from "../store/memory.js";
-import { CONTACT } from "../conformance/suite.js";
+import { startSealer } from "./client.js";
+import { person, withAgent, chain, signer, tmp, property, randomSsn, luhnCard, enrolDevice, SPACE } from "./testing.js";
 
-const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner";
-const SSN = "123-45-6789", REC = `vyre://${SPACE}/contact/0190c3f2-1111-4abc-8def-000000000001`, OTHER = `vyre://${SPACE}/contact/0190c3f2-1111-4abc-8def-000000000002`;
-let T = 1_800_000_000_000;
-const clock = () => ++T;
-const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "seal-test-"));
+const REC = "vyre://spc_testspace0001/contact/c_jane";
+const dest = (over = {}) => ({ kind: "contact_point", record: REC, contact: "jane@harlow.test", verified: true, ...over });
 
-// ---- classes, normaliser, detectors ----
-test("classes: checksums accept real shapes and refuse near misses", () => {
-  assert.ok(luhn("4111111111111111") && !luhn("4111111111111112"));
-  assert.ok(aba("021000021") && !aba("021000022"));
-  assert.ok(ssn("123456789") && !ssn("000456789") && !ssn("666456789") && !ssn("923456789") && !ssn("123006789") && !ssn("123450000"));
-  assert.ok(itin("912701234") && !itin("912301234"));
-  assert.ok(iban("GB82 WEST 1234 5698 7654 32") && !iban("GB82 WEST 1234 5698 7654 33"));
-  assert.equal(CLASSES["us-ssn"].valid("123-45-6789"), true);
-  assert.equal(CLASSES["us-ssn"].valid("111-11-111"), false);
-  assert.equal(CLASSES["us-ein"].valid("12-3456789"), true);
-  for (const c of ["us-ssn", "us-itin", "us-ein", "card", "bank-account", "routing-number", "iban", "passport", "tax-id", "medical", "free"]) assert.ok(CLASSES[c], c);
-});
-
-test("normalise: full-width, digit words and separators map to one form with spans back to the text", () => {
-  assert.equal(normalized("１２３－４５－６７８９"), "123456789");
-  assert.equal(normalized("one two three"), "123");
-  assert.equal(normalized("Ab-12 . 3"), "ab123");
-  const n = normalize("x one 2");
-  assert.deepEqual([n.norm, n.start, n.end], ["x12", [0, 2, 6], [1, 5, 7]]);
-  assert.equal(normalized("someone"), "someone", "a digit word inside a word is just letters");
-});
-
-test("detectors: find the common shapes after normalising, replace each with a numbered reference, keep the originals aside", () => {
-  const r = sanitize(`My SSN is ${SSN} and card 4111 1111 1111 1111, routing 021000021.`);
-  assert.equal(r.text, "My SSN is [sealed: US SSN #1] and card [sealed: card number #1], routing [sealed: routing number #1].");
-  assert.deepEqual(r.originals.map(o => o.value), [SSN, "4111 1111 1111 1111", "021000021"]);
-  assert.equal(sanitize("ssn: one two three, four five, six seven eight nine").text, "ssn: [sealed: US SSN #1]");
-  assert.equal(sanitize("ssn １２３－４５－６７８９ ok").text, "ssn [sealed: US SSN #1] ok");
-  assert.match(sanitize("IBAN GB82 WEST 1234 5698 7654 32 and EIN 12-3456789").text, /\[sealed: IBAN #1\].*\[sealed: US EIN #1\]/);
-  assert.equal(sanitize("two people 123-45-6789 987-65-4321").detections, 2);
-  assert.equal(sanitize("a 123-45-6789 b 123-45-6789").text, "a [sealed: US SSN #1] b [sealed: US SSN #2]");
-});
-
-test("detectors: ordinary numbers are left alone (and the limits are real: best effort, lookalikes are flagged)", () => {
-  for (const t of ["call 415-555-0134", "on 2024-10-03", "order 20241003", "total 1,234,567.89", "id 12345678901", "version 1.2.3", "no digits at all"]) assert.equal(detect(t).length, 0, t);
-  assert.equal(detect("a lookalike 123456780 is flagged").length, 1, "a valid-looking nine digits is flagged: said plainly in the product");
-  assert.equal(detect("split 123 45 then later 6789").length, 0, "a number split across other text is a known miss");
-});
-
-// ---- the sealing process ----
-test("process: put returns metadata only, the vault on disk holds no plaintext, and errors never carry a value", async () => {
-  const dir = tmp(), c = createSealClient({ vault_key: Buffer.alloc(32, 9), dir, egress_dir: path.join(dir, "out") });
-  const put = await c.put({ record: REC, field: "ssn", class: "us-ssn", value: SSN });
-  assert.deepEqual(Object.keys(put.ref).sort(), ["present", "ref", "sealed", "set_at", "valid_format"]);
-  assert.equal(put.ref.valid_format, true);
-  assert.match(put.ref.ref, /^seal_[0-9a-f-]{36}$/);
-  const bad = await c.put({ record: REC, field: "ssn", class: "us-ssn", value: "111-11-111" });
-  assert.equal(bad.ref.valid_format, false);
-  const hint = await c.put({ record: REC, field: "ssn", class: "us-ssn", value: SSN, hint_allowed: true });
-  assert.equal(hint.ref.hint, "6789");
-  assert.equal((await c.put({ record: REC, field: "ssn", class: "us-ssn", value: SSN })).ref.hint, undefined, "no hint unless the field allows it");
-  await assert.rejects(() => c.put({ record: REC, field: "x", class: "nope", value: SSN }), e => e.code === "invalid_class" && !JSON.stringify(e).includes("6789"));
-  await c.close();
-  const disk = fs.readFileSync(path.join(dir, "vault.json"), "utf8");
-  assert.ok(!disk.includes("123456789") && !disk.includes("123-45") && !disk.includes(SSN), "the vault file is ciphertext (a hint, where a field allows one, is metadata)");
-});
-
-test("process: a vault survives a restart under the same key and is unreadable under another", async () => {
-  const dir = tmp();
-  const a = createSealClient({ vault_key: Buffer.alloc(32, 1), dir });
-  const { ref } = (await a.put({ record: REC, field: "ssn", class: "us-ssn", value: SSN })).ref ? { ref: (await a.put({ record: REC, field: "ssn", class: "us-ssn", value: SSN })).ref } : {};
-  await a.close();
-  const b = createSealClient({ vault_key: Buffer.alloc(32, 1), dir });
-  assert.equal((await b.meta({ ref: ref.ref })).record, REC);
-  assert.equal((await b.reveal({ ref: ref.ref, purpose: "check" })).value, SSN);
-  await b.close();
-  const c = createSealClient({ vault_key: Buffer.alloc(32, 2), dir });
-  await assert.rejects(() => c.reveal({ ref: ref.ref, purpose: "check" }), { code: "unreadable" });
-  await c.close();
-});
-
-test("process: use and reveal need the kernel's ticket; forged, changed, expired and replayed tickets are refused", async () => {
-  const dir = tmp(), c = createSealClient({ vault_key: Buffer.alloc(32, 3), dir, ticket_ttl_ms: 50 });
-  const { ref } = (await c.put({ record: REC, field: "ssn", class: "us-ssn", value: SSN })).ref ? { ref: (await c.put({ record: REC, field: "ssn", class: "us-ssn", value: SSN })).ref } : {};
-  const args = { ref: ref.ref, purpose: "p" };
-  await assert.rejects(() => c.raw("reveal", args), { code: "no_ticket" });
-  await assert.rejects(() => c.raw("reveal", args, { nonce: "n", exp: Date.now() + 1e6, mac: "x" }), { code: "bad_ticket" });
-  const good = c.ticket("reveal", args);
-  await assert.rejects(() => c.raw("reveal", { ...args, purpose: "other" }, good), { code: "bad_ticket" }, "a ticket is bound to its exact arguments");
-  await assert.rejects(() => c.raw("use", args, good), { code: "bad_ticket" }, "and to its operation");
-  assert.equal((await c.raw("reveal", args, good)).value, SSN);
-  await assert.rejects(() => c.raw("reveal", args, good), { code: "replayed" });
-  const old = c.ticket("reveal", args);
-  await new Promise(r => setTimeout(r, 80));
-  await assert.rejects(() => c.raw("reveal", args, old), { code: "expired" });
-  await c.close();
-});
-
-test("process: only the declared operations answer, and a dead process fails closed", async () => {
-  const c = createSealClient({ vault_key: Buffer.alloc(32, 4) });
-  for (const op of ["toString", "hasOwnProperty", "__proto__", "constructor", "nope", "init"]) await assert.rejects(() => c.raw(op, {}), e => ["bad_request", "already_init"].includes(e.code), op);
-  c.kill();
-  await new Promise(r => setTimeout(r, 100));
-  await assert.rejects(() => c.put({ record: REC, field: "f", class: "free", value: "x" }), { code: "unavailable" });
-});
-
-test("process: it runs with no child processes, no workers and no read or write outside its folders (Node 22 has no network deny: a known gap, see docs/work/kernel.md)", () => {
-  const dir = tmp();
-  const probe = [
-    "const out = {};",
-    "try { require('node:child_process').execSync('id'); out.child = 'ran'; } catch (e) { out.child = e.code; }",
-    "try { require('node:fs').readFileSync('/etc/hostname'); out.read = 'ran'; } catch (e) { out.read = e.code; }",
-    "try { require('node:fs').writeFileSync('/tmp/seal-probe-' + process.pid, 'x'); out.write = 'ran'; } catch (e) { out.write = e.code; }",
-    "try { new (require('node:worker_threads').Worker)('1', { eval: true }); out.worker = 'ran'; } catch (e) { out.worker = e.code; }",
-    "console.log(JSON.stringify(out));",
-  ].join("\n");
-  const r = spawnSync(process.execPath, [...sealFlags({ dir }), "-e", probe], { encoding: "utf8" });
-  const out = JSON.parse(r.stdout.trim().split("\n").pop());
-  assert.deepEqual(out, { child: "ERR_ACCESS_DENIED", read: "ERR_ACCESS_DENIED", write: "ERR_ACCESS_DENIED", worker: "ERR_ACCESS_DENIED" });
-});
-
-// ---- the API and the door ----
-const key = Buffer.alloc(32, 7);
-const chains = createChainBuilder({ space: SPACE, owner: OWNER, owner_uid: 501, key, clock, is_person: () => true });
-const person = (session = "s1") => chains.fromFacts({ kind: "device", device_key_id: "d1", person: OWNER, session, path: "direct" });
-const withService = (name, session) => chains.fromFacts({ kind: "module", module: name, first_party: true, inbound: person(session) });
-const agentChain = () => chains.fromFacts({ kind: "agent_session", agent: "kit", session: "s1", thread: "t", vouched: true });
-const actor = (kind, id) => ({ kind, id, space: SPACE });
-let gid = 0;
-const G = (subject, actions) => ({ id: `gr_${String(++gid).padStart(4, "0")}`, space: SPACE, subject: { kind: "actor", actor: subject }, actions, action_set_version: 9, resource: { prefix: `vyre://${SPACE}/*/*` }, conditions: {}, issuer: actor("person", OWNER), source: "test", status: "active", created_at: 0 });
-
-async function rig({ approved = false, providers, sinks = ["summarize"] } = {}) {
-  const dir = tmp(), egress = path.join(dir, "out");
-  const client = createSealClient({ vault_key: key, dir: path.join(dir, "v"), egress_dir: egress, clock });
-  const log = createEventLog({ space: SPACE, clock });
-  const grants = [G(actor("person", OWNER), ["seal.*", "model.*", "records.*"]), G(actor("agent", "kit"), ["seal.*", "model.*"]), G(actor("service", "summarize"), ["model.*", "records.read"]), G(actor("service", "rogue"), ["model.*"])];
-  const members = new Set([`person:${OWNER}`, "agent:kit", "service:summarize", "service:rogue"]);
-  const authorizer = createAuthorizer({
-    space: SPACE, actions: [...SEAL_ACTIONS, ...MODEL_ACTIONS], clock,
-    grants: { forSubject: a => grants.filter(g => g.subject.actor.kind === a.kind && g.subject.actor.id === a.id), get: () => undefined },
-    members: { has: a => members.has(`${a.kind}:${a.id}`) },
-    hasPresenceSession: () => true, verifyPresence: p => p.signature === "good",
-  });
-  const templates = async (urn, v) => (urn === `vyre://${SPACE}/template/welcome` && v === 1 ? { id: urn, version: 1, body: "Dear client, your SSN is {{ssn}}. Thanks.", slots: ["ssn"], headers: { subject: "Welcome" } } : urn === `vyre://${SPACE}/template/bad` ? { id: urn, version: 1, body: "x {{ssn}}", slots: ["ssn"], headers: { subject: "Your {{ssn}}" } } : null);
-  const seal = createSeal({ space: SPACE, client, authorizer, log, clock, templates, approvedTask: () => approved, verifyPresence: p => p.signature === "good" });
-  const calls = [];
-  const door = createModelDoor({ space: SPACE, providers: providers || { ok: { call: async req => { calls.push(req); return { content: "fine", usage: { input_tokens: 3, output_tokens: 1 } }; } } }, sinks: new Set(sinks), seal: client, authorizer, log, clock });
-  const sealed = (await seal.put({ chain: person(), record: REC, field: "ssn", class: "us-ssn", value: SSN })).ref;
-  const proofFor = (chain, ref, purpose, over = {}) => ({ signer: "secure_enclave", key_id: "k", payload_hash: sha256(canonical({ op: "reveal", ref, purpose })), decision: "d", chain_hash: chainHash(chain), issued_at: T, expires_at: T + 1e6, nonce: `n${Math.random()}`, signature: "good", ...over });
-  return { client, log, seal, door, calls, sealed, egress, proofFor, close: () => client.close() };
-}
-const everything = log => JSON.stringify(log.read());
-
-test("seal.put: one event, no value anywhere in the log", async () => {
-  const r = await rig();
-  const ev = r.log.read({ type: "field.sealed" });
-  assert.equal(ev.length, 1);
-  assert.deepEqual([ev[0].data.field, ev[0].data.class, ev[0].data.valid_format], ["ssn", "US SSN", true]);
-  assert.equal(ev[0].red, "pii");
-  assert.ok(!everything(r.log).includes("6789"));
-  await r.close();
-});
-
-test("seal.use: the module merges at the egress boundary and never sees the value; the output is a sealed derivative", async () => {
-  const r = await rig();
-  const dest = { kind: "contact_point", record: REC, contact: "jane@example.com", verified: true };
-  const res = await r.seal.use({ chain: person(), ref: r.sealed.ref, template: `vyre://${SPACE}/template/welcome`, template_version: 1, slot: "ssn", destination: dest });
-  assert.equal(res.merged, true);
-  assert.ok(!JSON.stringify(res).includes("6789"));
-  const file = path.join(r.egress, res.output_ref.split("/").pop() + ".out");
-  assert.equal(fs.readFileSync(file, "utf8"), `Dear client, your SSN is ${SSN}. Thanks.`);
-  assert.ok(!everything(r.log).includes("6789"));
-  assert.equal(r.log.read({ type: "seal.used" })[0].data.destination, "contact_point");
-  await r.close();
-});
-
-test("seal.use: another record's contact, an unverified contact, a header slot, an undeclared slot and an unknown template are refused", async () => {
-  const r = await rig();
-  const use = (over = {}) => r.seal.use({ chain: person(), ref: r.sealed.ref, template: `vyre://${SPACE}/template/welcome`, template_version: 1, slot: "ssn", destination: { kind: "contact_point", record: REC, contact: "j@x.com", verified: true }, ...over });
-  await assert.rejects(() => use({ destination: { kind: "contact_point", record: OTHER, contact: "j@x.com", verified: true } }), { code: "needs_approval" });
-  await assert.rejects(() => use({ destination: { kind: "contact_point", record: REC, contact: "j@x.com", verified: false } }), { code: "needs_approval" });
-  await assert.rejects(() => use({ destination: { kind: "document", record: OTHER, document: `vyre://${SPACE}/doc/1` } }), { code: "needs_approval" });
-  await assert.rejects(() => use({ template: `vyre://${SPACE}/template/bad` }), { code: "slot_not_in_body" });
-  await assert.rejects(() => use({ slot: "dob" }), { code: "bad_slot" });
-  await assert.rejects(() => use({ template: `vyre://${SPACE}/template/none` }), { code: "not_found" });
-  assert.equal((await use({ destination: { kind: "document", record: REC, document: `vyre://${SPACE}/doc/1` } })).merged, true);
-  assert.equal(fs.readdirSync(r.egress).length, 1, "only the allowed use wrote anything");
-  await r.close();
-});
-
-test("seal.use from a model's plan is always an Ask; a checker's approval of that exact payload lets it through", async () => {
-  const dest = { kind: "contact_point", record: REC, contact: "j@x.com", verified: true };
-  const call = r => r.seal.use({ chain: agentChain(), ref: r.sealed.ref, template: `vyre://${SPACE}/template/welcome`, template_version: 1, slot: "ssn", destination: dest, task: "task_1" });
-  const no = await rig({ approved: false });
-  await assert.rejects(() => call(no), e => e.code === "needs_approval" && e.class === "US SSN" && e.decision.startsWith("dec_"));
-  assert.equal(fs.readdirSync(no.egress).length, 0);
-  await no.close();
-  const yes = await rig({ approved: true });
-  assert.equal((await call(yes)).merged, true);
-  await yes.close();
-});
-
-test("seal.reveal is human-only: one person, a proof over this reveal, never twice", async () => {
-  const r = await rig();
-  const ref = r.sealed.ref, purpose = "confirm with client";
-  const p = person();
-  await assert.rejects(() => r.seal.reveal({ chain: agentChain(), ref, purpose, proof: r.proofFor(agentChain(), ref, purpose) }), { code: "chain_not_person" });
-  await assert.rejects(() => r.seal.reveal({ chain: withService("summarize"), ref, purpose, proof: r.proofFor(withService("summarize"), ref, purpose) }), { code: "chain_not_person" });
-  await assert.rejects(() => r.seal.reveal({ chain: p, ref, purpose, proof: undefined }), { code: "needs_presence" });
-  await assert.rejects(() => r.seal.reveal({ chain: p, ref, purpose, proof: r.proofFor(p, ref, "a different purpose") }), { code: "needs_presence" });
-  await assert.rejects(() => r.seal.reveal({ chain: p, ref, purpose, proof: r.proofFor(agentChain(), ref, purpose) }), { code: "needs_presence" }, "a proof for another chain");
-  await assert.rejects(() => r.seal.reveal({ chain: p, ref, purpose, proof: r.proofFor(p, ref, purpose, { expires_at: 1 }) }), { code: "needs_presence" });
-  await assert.rejects(() => r.seal.reveal({ chain: p, ref, purpose, proof: r.proofFor(p, ref, purpose, { signature: "forged" }) }), { code: "needs_presence" });
-  await assert.rejects(() => r.seal.reveal({ chain: p, ref, purpose: " ", proof: r.proofFor(p, ref, " ") }), { code: "bad_input" });
-  const proof = r.proofFor(p, ref, purpose);
-  const res = await r.seal.reveal({ chain: p, ref, purpose, proof });
-  assert.equal(res.value, SSN);
-  await assert.rejects(() => r.seal.reveal({ chain: p, ref, purpose, proof }), { code: "needs_presence" }, "a proof is single use");
-  const ev = r.log.read({ type: "field.revealed" });
-  assert.equal(ev.length, 1);
-  assert.equal(ev[0].data.purpose, purpose);
-  assert.equal(ev[0].red, "privileged");
-  assert.ok(!everything(r.log).includes("6789"));
-  await r.close();
-});
-
-test("the door: a value the session revealed cannot go to a model in any form, and the provider is never called", async () => {
-  const r = await rig();
-  const p = person("sess-A"), ref = r.sealed.ref;
-  await r.seal.reveal({ chain: p, ref, purpose: "look", proof: r.proofFor(p, ref, "look") });
-  const ask = (text, chain = withService("summarize", "sess-A")) => r.door.call({ chain, purpose: "summary", provider: "ok", model: "m", messages: [{ role: "user", content: text }] });
-  for (const text of [`the ssn is ${SSN}`, "the ssn is 123456789", "ssn 123 45 6789", "ssn １２３－４５－６７８９", "ssn one two three four five six seven eight nine", "SSN=123.45.6789!"]) {
-    await assert.rejects(() => ask(text), { code: "ledger_hit" }, text);
+/** Every byte the process wrote to disk, as text in the forms a value could take. */
+function diskHolds(dir, value) {
+  const forms = [value, value.replace(/\D/g, ""), Buffer.from(value).toString("base64"), Buffer.from(value).toString("hex")];
+  for (const d of fs.readdirSync(dir, { recursive: true })) {
+    const f = path.join(dir, String(d)); if (!fs.statSync(f).isFile() || f.endsWith("master.key")) continue;
+    const t = fs.readFileSync(f); if (forms.some(x => x.length >= 6 && t.includes(x))) return f;
   }
-  assert.equal(r.calls.length, 0);
-  assert.equal((await ask("hello there")).content, "fine");
-  assert.equal((await r.door.call({ chain: withService("summarize", "sess-B"), purpose: "summary", provider: "ok", model: "m", messages: [{ role: "user", content: SSN }] })).content, "fine", "another session did not resolve it (the detector still replaces it)");
-  const refusals = r.log.read({ type: "model.refused" });
-  assert.equal(refusals.length, 6);
-  assert.ok(!everything(r.log).includes("6789"), "a refusal names the class, never the text");
-  await r.client.endSession({ session: "sess-A" });
-  assert.equal((await ask("123456789")).content, "fine", "the ledger ended with the session");
-  await r.close();
+  return null;
+}
+async function setup(t, sinks = {}) {
+  const dir = tmp("seal"), s = startSealer({ dir, sinks, timeoutMs: 8000, dev: true, unattested: true }), alex = signer("per_alex");
+  t.after(async () => { await s.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+  await enrolDevice(s, alex);
+  return { dir, s, alex };
+}
+const put = (s, value, over = {}) => s.api.put({ chain: person(), record: REC, field: "ssn", class: "us-ssn", value, ...over });
+const code = p => p.then(() => null, e => e.code);
+
+test("put: a placeholder comes back, nothing about the value is in the reference, and the folder holds no plaintext", async t => {
+  const { dir, s } = await setup(t);
+  const { ref } = await put(s, "123-45-6789", { hint_allowed: false });
+  assert.deepEqual(Object.keys(ref).sort(), ["present", "ref", "sealed", "set_at", "valid_format"]);
+  assert.equal(ref.sealed, "US SSN"); assert.equal(ref.valid_format, true);
+  assert.equal(diskHolds(dir, "123-45-6789"), null);
+  assert.equal((await put(s, "000-00-0000")).ref.valid_format, false);
+  assert.equal((await put(s, "123-45-6789", { hint_allowed: true })).ref.hint, "last4 6789");
 });
 
-test("the door: detectors replace what they find, the provider sees only the sanitised text, and only the log of the call is kept", async () => {
-  const r = await rig();
-  const res = await r.door.call({ chain: withService("summarize", "s9"), purpose: "summary", provider: "ok", model: "m", messages: [{ role: "system", content: "be brief" }, { role: "user", content: `client says ${SSN} and card 4111 1111 1111 1111` }] });
-  assert.equal(res.content, "fine");
-  assert.deepEqual(r.calls[0].messages.map(m => m.content), ["be brief", "client says [sealed: US SSN #1] and card [sealed: card number #1]"]);
-  assert.equal((await r.client.stashed({ session: "s9" })).n, 2);
-  const ev = r.log.read({ type: "model.called" })[0];
-  assert.equal(ev.data.detections, 2);
-  assert.ok(!everything(r.log).includes("4111") && !everything(r.log).includes("6789") && !everything(r.log).includes("be brief"));
-  // what a detector took out of a prompt is now the session's: it cannot come back in a later message
-  await assert.rejects(() => r.door.call({ chain: withService("summarize", "s9"), purpose: "summary", provider: "ok", model: "m", messages: [{ role: "user", content: `again: ${SSN}` }] }), { code: "ledger_hit" });
-  await r.client.endSession({ session: "s9" });
-  assert.equal((await r.client.stashed({ session: "s9" })).n, 0, "what the detectors took is erased with the session");
-  await r.close();
+test("a sealed file does not open under another reference, record, field, Space or after a flipped bit", async t => {
+  const { dir, s, alex: owner } = await setup(t);
+  const { ref } = await put(s, "123-45-6789");
+  const f = path.join(dir, "values", `${ref.ref}.json`), j = JSON.parse(fs.readFileSync(f, "utf8"));
+  const alex = person();
+  const signed = signer("per_alex"); await enrolDevice(s, signed, { existing: owner });
+  const reveal = (r, ch = alex) => s.api.reveal({ chain: ch, ref: r, purpose: "check", proof: signed.proof(ch, "seal.reveal", { ref: r, purpose: "check" }) });
+  assert.equal((await reveal(ref.ref)).value, "123-45-6789");
+  // Another record's AAD, another field, a flipped bit: the file no longer opens, and the answer is the same as for a value that never existed.
+  const bad = [{ ...j, record: "vyre://spc_testspace0001/contact/c_other" }, { ...j, field: "dob" }, { ...j, ct: Buffer.from(j.ct, "base64").map((b, i) => i ? b : b ^ 1).toString("base64") }];
+  for (const b of bad) { fs.writeFileSync(f, JSON.stringify(b)); assert.equal(await code(reveal(ref.ref)), "not_found"); }
+  fs.writeFileSync(f, JSON.stringify(j)); assert.equal((await reveal(ref.ref)).value, "123-45-6789");
+  // A reference from another Space is absent, and so is one that never existed or is not a reference at all.
+  const other = chain([["person", "per_alex"]], "deck", "spc_other0000001");
+  assert.equal(await code(reveal(ref.ref, other)), "not_found");
+  assert.equal(await code(reveal("seal_" + "0".repeat(30))), "not_found");
+  assert.equal(await code(reveal("../../etc/passwd")), "not_found");
 });
 
-test("the door: a service that is not a declared sink, a provider the Space does not allow, and a hand-made chain are refused", async () => {
-  const r = await rig();
-  const call = (chain, provider = "ok") => r.door.call({ chain, purpose: "summary", provider, model: "m", messages: [{ role: "user", content: "hi" }] });
-  await assert.rejects(() => call(withService("rogue")), { code: "not_a_sink" });
-  assert.equal((await call(person())).content, "fine");
-  assert.equal((await call(withService("summarize"))).content, "fine");
-  await assert.rejects(() => call(withService("summarize"), "elsewhere"), { code: "residency" });
-  await assert.rejects(() => call({ hops: [], space: SPACE }), { code: "bad_input" });
-  assert.equal(r.calls.length, 2);
-  const closed = createModelDoor({ space: SPACE, providers: { ok: { call: async () => ({ content: "x" }) } }, sinks: new Set(["summarize"]), seal: r.client, authorizer: createAuthorizer({ space: SPACE, actions: MODEL_ACTIONS, grants: { forSubject: () => [G(actor("person", OWNER), ["model.*"])], get: () => undefined }, members: { has: () => true }, clock }), log: r.log, residency: { providers: ["other"] }, clock });
-  await assert.rejects(() => closed.call({ chain: person(), purpose: "other", provider: "ok", model: "m", messages: [] }), { code: "residency" });
-  await r.close();
+test("reveal is human only: it needs one person, a human surface, a hardware proof over this payload, fresh, used once", async t => {
+  const { s, alex } = await setup(t);
+  const { ref } = await put(s, "123-45-6789");
+  const ch = person(), fields = { ref: ref.ref, purpose: "read it to the bank" };
+  const go = (proof, c = ch, purpose = fields.purpose) => s.api.reveal({ chain: c, ref: ref.ref, purpose, proof });
+  const good = alex.proof(ch, "seal.reveal", fields);
+  assert.equal((await go(good)).value, "123-45-6789");
+  assert.equal(await code(go(good)), "replayed");
+  assert.equal(await code(go(null)), "needs_presence");
+  assert.equal(await code(go(alex.proof(ch, "seal.reveal", fields, { tamper: true }))), "bad_signature");
+  assert.equal(await code(go(alex.proof(ch, "seal.reveal", { ...fields, purpose: "other" }))), "wrong_payload");
+  assert.equal(await code(go(alex.proof(ch, "seal.use", fields))), "wrong_decision");
+  assert.equal(await code(go(alex.proof(ch, "seal.reveal", fields, { issued: Date.now() - 200_000, life: 60_000 }))), "expired");
+  assert.equal(await code(go(alex.proof(ch, "seal.reveal", fields, { life: 600_000 }))), "expired");
+  // Not exactly one person, an agent hop, a surface an assistant can read: all refused before the proof is looked at.
+  const proofFor = c => alex.proof(c, "seal.reveal", fields);
+  for (const c of [withAgent(), chain([["person", "per_alex"], ["service", "mail"]]), person("per_alex", "mcp"), person("per_alex", "cli"), chain([["agent", "intake"]])]) assert.equal(await code(go(proofFor(c), c)), "human_only");
+  // Someone else's key cannot sign for Alex, and a revoked key signs nothing.
+  const bob = signer("per_bob"); await enrolDevice(s, bob);
+  assert.equal(await code(go(bob.proof(ch, "seal.reveal", fields))), "unknown_key");
+  const k = signer("per_alex"); await enrolDevice(s, k, { existing: alex }); await s.revoke({ chain: ch, key_id: k.key_id, proof: alex.proof(ch, "presence.revoke", { key_id: k.key_id }) });
+  assert.equal(await code(go(k.proof(ch, "seal.reveal", fields))), "unknown_key");
 });
 
-test("a summary button on a record with a sealed SSN sends a placeholder: a declared sink or a model in the chain never gets the reference", async () => {
-  const store = createMemoryStore({ clock });
-  const log = createEventLog({ space: SPACE, clock });
-  const grants = [G(actor("person", OWNER), ["records.*"]), G(actor("service", "summarize"), ["records.read"]), G(actor("agent", "kit"), ["records.read"])];
-  const members = new Set([`person:${OWNER}`, "service:summarize", "agent:kit"]);
-  const gw = createGateway({ space: SPACE, store, log, chains, clock, sinks: new Set(["summarize"]), grants: { forSubject: a => grants.filter(g => g.subject.actor.kind === a.kind && g.subject.actor.id === a.id), get: () => undefined }, members: { has: a => members.has(`${a.kind}:${a.id}`) }, hasPresenceSession: () => true });
-  await gw.records.define(person(), { add_types: [CONTACT] });
-  const ref = { sealed: "US SSN", ref: "seal_x", present: true, valid_format: true, set_at: 1 };
-  const c = await gw.records.create(person(), "contact", { name: "Jane", ssn: ref });
-  assert.equal((await gw.records.get(person(), "contact", c.id)).data.ssn.ref, "seal_x");
-  const viaSink = await gw.records.get(withService("summarize"), "contact", c.id);
-  assert.deepEqual(viaSink.data.ssn, { sealed: "US SSN", present: true, valid_format: true });
-  const viaAgent = await gw.records.get(agentChain(), "contact", c.id);
-  assert.equal("ref" in viaAgent.data.ssn, false);
-  const listed = await gw.records.query(withService("summarize"), "contact", { page: { limit: 5 } });
-  assert.equal("ref" in listed.rows[0].data.ssn, false);
+test("reveal returns the event for the log without the value, and ledger entries only when asked", async t => {
+  const { s, alex } = await setup(t);
+  const { ref } = await put(s, "123-45-6789"), ch = person();
+  const r = await s.api.reveal({ chain: ch, ref: ref.ref, purpose: "p", proof: alex.proof(ch, "seal.reveal", { ref: ref.ref, purpose: "p" }), ledger_key: Buffer.alloc(32, 7).toString("base64") });
+  assert.equal(r.event.type, "field.revealed"); assert.ok(r.ledger.length > 10);
+  assert.ok(!JSON.stringify({ ...r, value: undefined }).includes("123-45-6789"));
+  assert.ok(!JSON.stringify(r.ledger).includes("6789"));
+});
+
+test("use: a template slot is merged into a derivative for the record's own verified contact point, and the caller learns only that it happened", async t => {
+  const { dir, s, alex } = await setup(t);
+  const { ref } = await put(s, "123-45-6789"), body = "Hello Jane. Your SSN on file is {{sealed:ssn}}.";
+  const base = { chain: person(), ref: ref.ref, slot: "ssn", body, template: "vyre://spc_testspace0001/template/welcome", template_version: 3 };
+  const r = await s.api.use({ ...base, destination: dest() });
+  assert.equal(r.merged, true); assert.match(r.output_ref, /^vyre:\/\/spc_testspace0001\/sealed-output\/out_/);
+  assert.ok(!JSON.stringify(r).includes("123-45-6789"));
+  assert.equal(r.sealed_slots[0].class, "us-ssn");
+  const derived = fs.readdirSync(path.join(dir, "derived"));
+  assert.equal(derived.length, 1); assert.equal(diskHolds(dir, "123-45-6789"), null, "the merged output is sealed on disk too");
+  // The slots in the body are exactly the bound ones; a value that looks like a slot cannot inject into another.
+  assert.equal(await code(s.api.use({ ...base, body: "no slots here", destination: dest() })), "slot_mismatch");
+  assert.equal(await code(s.api.use({ ...base, body: body + " {{sealed:other}}", destination: dest() })), "slot_mismatch");
+  const tricky = (await put(s, "x-{{sealed:b}}-y", { class: "free" })).ref, b = (await put(s, "SECOND-VALUE", { class: "free", field: "b" })).ref;
+  const two = await s.api.use({ ...base, body: "{{sealed:a}} {{sealed:b}}", bindings: [{ slot: "a", ref: tricky.ref }, { slot: "b", ref: b.ref }], destination: dest() });
+  const derivedRead = await s.revealDerived({ chain: person(), output_ref: two.output_ref, purpose: "check", proof: alex.proof(person(), "seal.reveal_derived", { ref: two.output_ref, purpose: "check" }) });
+  assert.equal(derivedRead.value, "x-{{sealed:b}}-y SECOND-VALUE");
+});
+
+test("use: any other destination, or a plan a model started, needs fresh presence that names the destination", async t => {
+  const { s, alex } = await setup(t);
+  const { ref } = await put(s, "123-45-6789"), body = "SSN {{sealed:ssn}}";
+  const mk = (over, ch = person()) => ({ chain: ch, ref: ref.ref, slot: "ssn", body, template: "vyre://spc_testspace0001/template/t", template_version: 1, destination: dest(), ...over });
+  const fields = d => ({ refs: [ref.ref], destination: d, template: "vyre://spc_testspace0001/template/t", template_version: 1 });
+  // Not the record's own contact point, unverified, or another record's document.
+  for (const d of [dest({ record: "vyre://spc_testspace0001/contact/c_other" }), dest({ verified: false }), { kind: "document", record: "vyre://spc_testspace0001/contact/c_other", document: "vyre://spc_testspace0001/doc/d1" }]) {
+    assert.equal(await code(s.api.use(mk({ destination: d }))), "needs_presence", JSON.stringify(d));
+    assert.ok((await s.api.use(mk({ destination: d, proof: alex.proof(person(), "seal.use", fields(d)) }))).merged);
+  }
+  // A model-originated chain needs presence even for the right destination, and presence for a different destination does not carry over.
+  const agent = withAgent();
+  const approver = person();
+  assert.equal(await code(s.api.use(mk({}, agent))), "needs_presence");
+  assert.equal((await s.api.use(mk({ approver_chain: approver, proof: alex.proof(approver, "seal.use", fields(dest())) }, agent))).merged, true);
+  assert.equal(await code(s.api.use(mk({ approver_chain: approver, proof: alex.proof(approver, "seal.use", fields(dest({ contact: "evil@x.test" }))) }, agent))), "wrong_payload");
+  assert.equal(await code(s.api.use(mk({ approver_chain: approver, proof: alex.proof(approver, "seal.reveal", fields(dest())) }, agent))), "wrong_decision");
+  // The approval must be one person: an approver chain with an assistant in it is refused.
+  assert.equal(await code(s.api.use(mk({ approver_chain: agent, proof: alex.proof(agent, "seal.use", fields(dest())) }, agent))), "chain_not_person");
+});
+
+/** An egress sink: a unix socket that records the delivery and replies, optionally echoing what it was given. */
+function sink(t, echo) {
+  const sock = path.join(tmp("sink"), "s.sock"), got = [];
+  const srv = net.createServer(c => { let b = ""; c.on("data", d => { b += d; if (b.endsWith("\n")) { const m = JSON.parse(b); got.push(m); c.end(JSON.stringify({ ok: true, status: 202, echo: echo ? m.body : undefined })); } }); });
+  srv.listen(sock); t.after(() => srv.close());
+  return { sock, got };
+}
+test("deliver: the sealing process hands the merged body to the egress sink as approved; only a status comes back", async t => {
+  const k = sink(t, true), { s, alex } = await setup(t, { mail: k.sock });
+  const { ref } = await put(s, "123-45-6789"), ch = person();
+  const out = await s.api.use({ chain: ch, ref: ref.ref, slot: "ssn", body: "SSN {{sealed:ssn}}", template: "vyre://spc_testspace0001/template/t", template_version: 1, destination: dest() });
+  const envelope = { to: "jane@harlow.test", subject: "Welcome" }, fields = { output_ref: out.output_ref, sink: "mail", envelope };
+  assert.equal(await code(s.deliver({ chain: ch, output_ref: out.output_ref, sink: "mail", envelope })), "needs_presence");
+  assert.equal(await code(s.deliver({ chain: ch, output_ref: out.output_ref, sink: "mail", envelope: { ...envelope, to: "evil@x.test" }, proof: alex.proof(ch, "seal.deliver", fields) })), "wrong_payload");
+  assert.equal(await code(s.deliver({ chain: ch, output_ref: out.output_ref, sink: "nowhere", envelope, proof: alex.proof(ch, "seal.deliver", { ...fields, sink: "nowhere" }) })), "not_found");
+  const r = await s.deliver({ chain: ch, output_ref: out.output_ref, sink: "mail", envelope, proof: alex.proof(ch, "seal.deliver", fields) });
+  assert.deepEqual(r, { delivered: true, status: 202, recipient_verified: true });
+  assert.equal(k.got.length, 1); assert.equal(k.got[0].body, "SSN 123-45-6789"); assert.deepEqual(k.got[0].envelope, envelope);
+});
+
+test("detect: values in text become numbered placeholders, the same value keeps its number, and a session's originals can be saved or are gone", async t => {
+  const { dir, s } = await setup(t);
+  const ch = person(), session = "ses_1", key = Buffer.alloc(32, 9).toString("base64");
+  const a = await s.detect({ chain: ch, session, text: "SSN 123-45-6789 and card 4111 1111 1111 1111.", ledger_key: key });
+  assert.equal(a.text, "SSN [sealed: US SSN #1] and card [sealed: card number #1].");
+  const b = await s.detect({ chain: ch, session, text: "again 123 45 6789, and a new one 321-54-9876" });
+  assert.equal(b.text, "again [sealed: US SSN #1], and a new one [sealed: US SSN #2]");
+  assert.ok(a.ledger.length > 20 && b.ledger.length === 0);
+  assert.equal(diskHolds(dir, "123-45-6789"), null, "originals are held in memory, not on disk, until saved");
+  const saved = await s.save({ chain: ch, session, class: "us-ssn", n: 2, record: REC, field: "ssn" });
+  assert.equal(saved.ref.sealed, "US SSN"); assert.ok(!JSON.stringify(saved).includes("321"));
+  await s.endSession(ch, session);
+  assert.equal(await code(s.save({ chain: ch, session, class: "us-ssn", n: 1, record: REC, field: "ssn" })), "not_found");
+});
+
+test("uniqueness at write time and the rate-limited human lookup are the only equality, and neither returns a value", async t => {
+  const { s } = await setup(t);
+  await put(s, "123-45-6789", { unique: true });
+  assert.equal(await code(put(s, "123 45 6789", { unique: true })), "duplicate");
+  assert.equal((await put(s, "321-54-9876", { unique: true })).ref.present, true);
+  const look = i => s.lookup({ chain: person(), class: "us-ssn", field: "ssn", value: "123-45-6789" });
+  assert.equal((await look()).refs.length, 1);
+  for (let i = 0; i < 6; i++) await look();
+  assert.equal(await code(look()), "rate_limited");
+  assert.equal(await code(s.lookup({ chain: withAgent(), class: "us-ssn", field: "ssn", value: "123-45-6789" })), "human_only");
+});
+
+test("an error never carries input: every refusal is a stable code, and the process's output holds no value", async t => {
+  const dir = tmp("seal"), out = [];
+  const s = startSealer({ dir, timeoutMs: 8000, dev: true }); t.after(async () => { await s.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+  const secret = "QWERTY-secret-98765";
+  const errs = [];
+  for (const p of [s.api.put({ chain: person(), record: REC, field: "f", class: "nope", value: secret }), s.api.put({ chain: person(), record: 5, field: "f", class: "free", value: secret }),
+    s.api.use({ chain: person(), ref: secret, slot: "x", body: secret, template: "t", template_version: 1, destination: dest() }), s.api.reveal({ chain: person(), ref: secret, purpose: secret, proof: { key_id: secret } }),
+    s.detect({ chain: person(), session: null, text: secret })]) errs.push(await p.then(() => "ok", e => `${e.code}|${e.message}`));
+  for (const e of errs) { assert.ok(!e.includes(secret), e); assert.match(e, /^[a-z_]+\|[a-z_]+$/); }
+  out.push(...errs);
+});
+
+test("property: whatever the sequence of puts, uses and detects, no plaintext is on disk and none is in any answer but a reveal", async t => {
+  const { dir, s } = await setup(t);
+  const seen = [], values = [];
+  property("no plaintext outside reveal", 12, r => { /* generated below, awaited in the outer loop */ void r; }, 1);
+  const rnd = (await import("./testing.js")).rng(Number(process.env.SEED) || 7);
+  for (let i = 0; i < 40; i++) {
+    const v = rnd.pick([() => randomSsn(rnd), () => luhnCard(rnd)])(), cls = v.length === 9 ? "us-ssn" : "card"; values.push(v);
+    const fmt = cls === "us-ssn" ? `${v.slice(0, 3)}-${v.slice(3, 5)}-${v.slice(5)}` : v.replace(/(\d{4})/g, "$1 ").trim();
+    seen.push(JSON.stringify(await put(s, fmt, { class: cls, field: "f" + i })));
+    seen.push(JSON.stringify(await s.detect({ chain: person(), session: "s" + (i % 5), text: `x ${fmt} y` })));
+    const ref = JSON.parse(seen[seen.length - 2]).ref.ref;
+    seen.push(JSON.stringify(await s.api.use({ chain: person(), ref, slot: "v", body: "{{sealed:v}}", template: "t", template_version: 1, destination: dest() }).catch(e => e.code)));
+  }
+  const blob = seen.join("\n");
+  for (const v of values) { assert.ok(!blob.includes(v), "an answer held a value"); assert.equal(diskHolds(dir, v), null, "the disk held a value"); }
+});
+
+test("a proof issued before the process started is refused (the used-nonce list does not survive a restart), and a sink name is not looked up through the prototype", async t => {
+  const { Presence } = await import("./proof.js");
+  let now = 1_000_000; const p = new Presence(() => now, { allowUnattested: true }), k = signer("per_alex"), e = k.enrolment, ch0 = person();
+  const { token } = p.begin({ person: "per_alex", key_id: e.key_id, spki: e.spki });
+  assert.deepEqual(p.enrol({ person: "per_alex", key_id: e.key_id, spki: e.spki, signer: e.signer, token, ctx: (await import("./wire.js")).chainCtx(ch0) }), { attested: false });
+  const ch = person(), fields = { ref: "seal_x", purpose: "p" };
+  const old = k.proof(ch, "seal.reveal", fields, { issued: now - 10_000, life: 60_000 });
+  assert.equal(p.refuse(old, { op: "seal.reveal", space: ch.space, fields, ctx: (await import("./wire.js")).chainCtx(ch) }), "expired");
+  const fresh = k.proof(ch, "seal.reveal", fields, { issued: now, life: 60_000 });
+  assert.equal(p.refuse(fresh, { op: "seal.reveal", space: ch.space, fields, ctx: (await import("./wire.js")).chainCtx(ch) }), null);
+  const { s, alex } = await setup(t, { mail: "/nonexistent.sock" });
+  const { ref } = await put(s, "123-45-6789"), c = person();
+  const out = await s.api.use({ chain: c, ref: ref.ref, slot: "ssn", body: "{{sealed:ssn}}", template: "t", template_version: 1, destination: dest() });
+  for (const sink of ["constructor", "__proto__", "toString"]) assert.equal(await code(s.deliver({ chain: c, output_ref: out.output_ref, sink, envelope: {}, proof: alex.proof(c, "seal.deliver", { output_ref: out.output_ref, sink, envelope: {} }) })), "not_found", sink);
+});
+
+test("K3 item 1: `unique` and lookup are one person's, share one rate limit, and an agent's probe is refused", async t => {
+  const { s } = await setup(t);
+  await put(s, "123-45-6789");
+  // An agent chain (or a service) probing for an existing value is refused with the same answer whether or not it exists.
+  for (const ch of [withAgent(), chain([["person", "per_alex"], ["service", "mail"]])]) {
+    assert.equal(await code(s.api.put({ chain: ch, record: REC, field: "ssn", class: "us-ssn", value: "123-45-6789", unique: true })), "human_only");
+    assert.equal(await code(s.api.put({ chain: ch, record: REC, field: "ssn", class: "us-ssn", value: "999-99-9999", unique: true })), "human_only");
+  }
+  // A person's probes count against the same per-field limit as the lookup.
+  let n = 0; while (n < 30 && !(await code(put(s, `1${String(n).padStart(2, "0")}-45-6789`, { unique: true })))) n++;
+  assert.ok(n >= 8 && n <= 10, `rate limit after ${n}`);
+  assert.equal(await code(s.lookup({ chain: person(), class: "us-ssn", field: "ssn", value: "123-45-6789" })), "rate_limited");
+});
+
+test("K3 item 4: a session belongs to one Space, and saving a detection is a person's act", async t => {
+  const { s } = await setup(t);
+  const a = person(), b = chain([["person", "per_alex"]], "deck", "spc_other0000001");
+  await s.detect({ chain: a, session: "shared-name", text: "ssn 123-45-6789" });
+  // The same session id from another Space is a different, empty session: the detection is not there to save.
+  assert.equal(await code(s.save({ chain: b, session: "shared-name", class: "us-ssn", n: 1, record: "vyre://spc_other0000001/contact/c", field: "ssn" })), "not_found");
+  // A model-originated chain cannot promote a detection, though the session and the number are right.
+  assert.equal(await code(s.save({ chain: withAgent(), session: "shared-name", class: "us-ssn", n: 1, record: REC, field: "ssn" })), "human_only");
+  assert.equal((await s.save({ chain: a, session: "shared-name", class: "us-ssn", n: 1, record: REC, field: "ssn" })).ref.present, true);
+  await s.endSession(b, "shared-name"); // another Space ending its own session of that name leaves this one alone
+  assert.equal((await s.save({ chain: a, session: "shared-name", class: "us-ssn", n: 1, record: REC, field: "ssn" })).ref.present, true);
+});
+
+test("K3 item 5: a device key is enrolled only through the ceremony, and a second device needs a proof from a first", async t => {
+  const dir = tmp("enrol"), s = startSealer({ dir, timeoutMs: 8000, dev: true }); // not started to allow unattested keys
+  t.after(async () => { await s.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+  const a = signer("per_alex"), e = a.enrolment, ch = person(), base = { chain: ch, person: "per_alex", key_id: e.key_id, spki: e.spki, signer: e.signer };
+  assert.equal(await code(s.enrol({ ...base, token: "nope" })), "no_ceremony");
+  assert.equal(await code(s.begin({ ...base, chain: withAgent() })), "chain_not_person");
+  assert.equal(await code(s.begin({ ...base, chain: person("per_bob") })), "chain_not_person");
+  const { token } = await s.begin(base);
+  assert.equal(await code(s.enrol({ ...base, token })), "unattested", "a key nobody attested is refused unless the process allows it");
+  assert.equal(await code(s.enrol({ ...base, token })), "no_ceremony", "the token is spent by any attempt");
+  assert.equal((await s.health()).unattested_allowed, false);
+  // A software key cannot claim to be a hardware key: the verifier decides the signer class.
+  const verifiers = path.join(dir, "verifiers.mjs");
+  fs.writeFileSync(verifiers, 'export default { fake: (att, spki) => (att.claims === "enclave" ? "secure_enclave" : null) };');
+  const s2 = startSealer({ dir: tmp("enrol2"), timeoutMs: 8000, dev: true, verifiers }); t.after(() => s2.close());
+  const tk = (await s2.begin(base)).token;
+  assert.equal(await code(s2.enrol({ ...base, token: tk, attestation: { format: "fake", claims: "software" } })), "bad_attestation");
+  assert.equal((await s2.enrol({ ...base, token: (await s2.begin(base)).token, attestation: { format: "fake", claims: "enclave" } })).attested, true);
+  // A second device for the same person needs a proof from the first; someone else's key cannot vouch.
+  const b = signer("per_alex"), eb = b.enrolment, ch2 = person();
+  const bb = { chain: ch2, person: "per_alex", key_id: eb.key_id, spki: eb.spki, signer: eb.signer, attestation: { format: "fake", claims: "enclave" } };
+  assert.equal(await code(s2.enrol({ ...bb, token: (await s2.begin(bb)).token })), "needs_presence");
+  const fields = { key_id: eb.key_id, spki: (await import("./wire.js")).sha256b64(eb.spki), signer: eb.signer };
+  assert.equal((await s2.enrol({ ...bb, token: (await s2.begin(bb)).token, proof: a.proof(ch2, "presence.enrol", fields) })).attested, true);
+  // Revoking needs the owner's chain.
+  assert.equal(await code(s2.revoke({ chain: person("per_bob"), key_id: eb.key_id })), "not_found");
+  assert.equal(await code(s2.revoke({ chain: person("per_alex"), key_id: eb.key_id })), "needs_presence", "a chain alone cannot revoke");
+  assert.equal(await code(s2.revoke({ chain: person("per_alex"), key_id: eb.key_id, proof: b.proof(person("per_alex"), "presence.revoke", { key_id: eb.key_id }) })), "needs_other_key", "a device cannot sign away the person's others by vouching for itself");
+  assert.equal((await s2.revoke({ chain: person("per_alex"), key_id: eb.key_id, proof: a.proof(person("per_alex"), "presence.revoke", { key_id: eb.key_id }) })).revoked, true);
+});
+
+test("K3 item 10: swapping two sealed files in one Space does not make a reference open the other value", async t => {
+  const { dir, s, alex } = await setup(t);
+  const one = (await put(s, "111-22-3333")).ref.ref, two = (await put(s, "444-55-6666")).ref.ref;
+  const f1 = path.join(dir, "values", `${one}.json`), f2 = path.join(dir, "values", `${two}.json`), b1 = fs.readFileSync(f1), b2 = fs.readFileSync(f2);
+  fs.writeFileSync(f1, b2); fs.writeFileSync(f2, b1);
+  const ch = person();
+  assert.equal(await code(s.api.reveal({ chain: ch, ref: one, purpose: "p", proof: alex.proof(ch, "seal.reveal", { ref: one, purpose: "p" }) })), "not_found");
+});
+
+test("K3 item 6: the sealing process refuses to start on a desktop profile or as an agent's uid, and a loose master key file", async t => {
+  const { hostCheck, fileMaster } = await import("./process.js");
+  assert.throws(() => hostCheck({ profile: "desktop", dev: false }), /OS keystore/);
+  assert.throws(() => hostCheck({ profile: "server", dev: false, uid: 2001 }), /own user/);
+  assert.doesNotThrow(() => hostCheck({ profile: "server", dev: false, uid: 1000 }));
+  assert.throws(() => hostCheck({ profile: "server", dev: false, uid: 5000, agentUids: "5000,5001" }), /own user/);
+  const d = tmp("master"); fileMaster(d); fs.chmodSync(path.join(d, "master.key"), 0o644);
+  assert.throws(() => fileMaster(d), /not private/);
+  const down = startSealer({ dir: tmp("seal"), timeoutMs: 3000 }); // no dev flag: a desktop profile
+  assert.equal(await code(down.health()), "sealer_down"); await down.close();
+});
+
+test("R-1: revoking every key leaves the person in recovery, never a first device, and enrolled keys survive a restart", async t => {
+  const dir = tmp("r1"), opts = { dir, timeoutMs: 8000, dev: true, unattested: true };
+  let s = startSealer(opts); t.after(async () => { await s.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+  const a = signer("per_alex"), ch = person(); await enrolDevice(s, a);
+  // A restart keeps the key: a proof signed by it still works afterwards (and the used-nonce guard is fresh, proofs are issued after the start).
+  await s.close(); s = startSealer(opts);
+  const { ref } = await put(s, "123-45-6789");
+  assert.equal((await s.api.reveal({ chain: ch, ref: ref.ref, purpose: "p", proof: a.proof(ch, "seal.reveal", { ref: ref.ref, purpose: "p" }) })).value, "123-45-6789");
+  // The last key goes with the person's own proof; after that an attacker's phone is not a "first device".
+  assert.equal((await s.revoke({ chain: ch, key_id: a.key_id, proof: a.proof(ch, "presence.revoke", { key_id: a.key_id }) })).revoked, true);
+  const evil = signer("per_alex");
+  assert.equal(await code(enrolDevice(s, evil)), "needs_recovery");
+  const stranger = signer("per_zoe"); assert.equal((await enrolDevice(s, stranger)).enrolled, true);
+});
+
+test("R-2: recipient_verified covers to, cc and bcc, and a document destination has no recipient", async () => {
+  const { recipientsVerified: ok } = await import("./process.js");
+  const contact = { dest_kind: "contact_point", dest_contact: "Jane@Harlow.test" }, doc = { dest_kind: "document", dest_contact: null };
+  assert.equal(ok(contact, { to: "jane@harlow.test" }), true);
+  assert.equal(ok(contact, { to: ["jane@harlow.test"], cc: [], bcc: null }), true);
+  assert.equal(ok(contact, { to: "jane@harlow.test", cc: "evil@x.test" }), false);
+  assert.equal(ok(contact, { to: "jane@harlow.test", bcc: ["jane@harlow.test", "evil@x.test"] }), false);
+  assert.equal(ok(contact, { subject: "no recipient at all" }), false);
+  assert.equal(ok(doc, { subject: "a document, nobody to send to" }), true);
+  assert.equal(ok(doc, { to: "jane@harlow.test" }), false);
+  assert.equal(ok(doc, { bcc: "jane@harlow.test" }), false);
+});
+
+test("R-3: a delivered output is swept ten minutes later by anyone who starts the folder, not by a timer that a restart loses", async () => {
+  const { SealStore } = await import("./store.js"), crypto = await import("node:crypto"), dir = tmp("sweep"), st = new SealStore(dir, crypto.randomBytes(32));
+  const meta = { ref: st.newRef("out"), space: SPACE, record: REC, field: "output", class: "derived" };
+  st.write("derived", meta, "text with a value"); st.markDelivered(meta.ref);
+  st.sweepDelivered(600_000); assert.equal(fs.existsSync(path.join(dir, "derived", `${meta.ref}.json`)), true, "not yet");
+  fs.writeFileSync(path.join(dir, "derived", `${meta.ref}.done`), String(Date.now() - 700_000));
+  st.sweepDelivered(600_000); assert.deepEqual(fs.readdirSync(path.join(dir, "derived")), []);
+});
+
+test("R-7: the key list is MACed and anchored, so a deleted, edited, truncated or rolled-back file means recovery, never a first device", async t => {
+  const dir = tmp("r7"), opts = { dir, timeoutMs: 8000, dev: true, unattested: true }, file = path.join(dir, "presence.json");
+  let s = startSealer(opts); t.after(async () => { await s.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+  assert.equal((await s.health()).presence, "ok");
+  const a = signer("per_alex"), ch = person(); await enrolDevice(s, a);
+  const second = signer("per_alex"); await enrolDevice(s, second, { existing: a });
+  const older = fs.readFileSync(file, "utf8");
+  await s.close();
+  // The owner's list is intact after a restart.
+  s = startSealer(opts); assert.equal((await s.health()).presence, "ok");
+  // 1. deleted
+  await s.close(); fs.rmSync(file); s = startSealer(opts);
+  assert.equal((await s.health()).presence, "recovery");
+  assert.equal(await code(enrolDevice(s, signer("per_alex"))), "needs_recovery");
+  assert.equal(await code(enrolDevice(s, signer("per_zoe"))), "needs_recovery", "while in recovery nothing is a first device");
+});
+
+test("R-7: a file edited to add a key fails its MAC, a rolled-back file is older than the anchor, a truncated file does not parse", async t => {
+  for (const [name, mutate] of [
+    ["edited", (f, other) => { const raw = JSON.parse(fs.readFileSync(f, "utf8")), b = JSON.parse(raw.body); b.keys.dk_evil = { person: "per_alex", signer: "secure_enclave", attested: true, spki: other }; fs.writeFileSync(f, JSON.stringify({ body: JSON.stringify(b), mac: raw.mac })); }],
+    ["rolled back", (f, _o, older) => fs.writeFileSync(f, older)],
+    ["truncated", f => fs.writeFileSync(f, fs.readFileSync(f, "utf8").slice(0, 40))],
+    ["emptied", f => fs.writeFileSync(f, "")],
+  ]) {
+    const dir = tmp("r7b"), opts = { dir, timeoutMs: 8000, dev: true, unattested: true }, file = path.join(dir, "presence.json");
+    let s = startSealer(opts); t.after(async () => { await s.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+    const a = signer("per_alex"); await enrolDevice(s, a);
+    const older = fs.readFileSync(file, "utf8");
+    await enrolDevice(s, signer("per_alex"), { existing: a });
+    await s.close(); mutate(file, signer("per_alex").enrolment.spki, older); s = startSealer(opts);
+    assert.equal((await s.health()).presence, "recovery", name);
+    assert.equal(await code(enrolDevice(s, signer("per_alex"))), "needs_recovery", name);
+  }
+});
+
+test("presence.check: the one verifier checks a task proof for the kernel, once, for task ops only", async t => {
+  const { s, alex } = await setup(t);
+  const ch = person("per_alex"), fields = { task: "t1", payload_hash: "ph", decision: "dec_1" };
+  assert.equal(await s.presenceCheck({ chain: ch, op: "task.decide", fields, proof: alex.proof(ch, "task.decide", fields) }), null);
+  const used = alex.proof(ch, "task.decide", fields);
+  assert.equal(await s.presenceCheck({ chain: ch, op: "task.decide", fields, proof: used }), null);
+  assert.equal(await s.presenceCheck({ chain: ch, op: "task.decide", fields, proof: used }), "replayed");
+  assert.equal(await s.presenceCheck({ chain: ch, op: "task.decide", fields: { ...fields, payload_hash: "other" }, proof: alex.proof(ch, "task.decide", fields) }), "wrong_payload");
+  assert.equal(await s.presenceCheck({ chain: withAgent(), op: "task.decide", fields, proof: alex.proof(withAgent(), "task.decide", fields) }), "chain_not_person", "an assistant in the chain");
+  assert.equal(await s.presenceCheck({ chain: ch, op: "seal.reveal", fields, proof: alex.proof(ch, "seal.reveal", fields) }), "bad_input", "not a task op: no path to a seal op");
+});
+
+test("teardown: closing the client ends the sealing process, and a parent that dies takes it with it", async () => {
+  const s = startSealer({ dir: tmp("tear"), timeoutMs: 8000, dev: true });
+  await s.health();
+  const pid = s.pid;
+  assert.doesNotThrow(() => process.kill(pid, 0));
+  await s.close();
+  await new Promise(r => setTimeout(r, 100));
+  assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
 });

@@ -9,6 +9,6 @@
   "exports": {
     ".": { "types": "./index.d.ts", "default": "./index.js" }
   },
-  "files": ["index.d.ts", "index.js", "common.d.ts", "chain.d.ts", "authorize.d.ts", "grant.d.ts", "event.d.ts", "store.d.ts", "task.d.ts", "fields.d.ts", "model.d.ts", "seal.d.ts", "README.md"],
+  "files": ["index.d.ts", "index.js", "common.d.ts", "chain.d.ts", "authorize.d.ts", "grant.d.ts", "event.d.ts", "store.d.ts", "task.d.ts", "fields.d.ts", "model.d.ts", "seal.d.ts", "roles.d.ts", "gateway.d.ts", "identity.d.ts", "README.md"],
   "engines": { "node": ">=22.5" }
 }
