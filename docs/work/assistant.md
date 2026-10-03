@@ -104,3 +104,17 @@ Needs from others:
 - records: `language.compile(source) -> { diff, canonical, hash, errors[{line,msg}], authorship, roles?, flows?, descriptions? }`; `fieldDef(type, field)` (kind, required) and `ownerOf(urn)`; reads of def.* through the gateway.
 - sessions: `flows.simulate(diff, scenarios) -> { ok, steps, failures[{scenario,msg}] }`; confirm the thread.tool event shape and subjects for the doing-now line.
 Changed contracts: none (new files only; lib/labels.js and lib/sealed.js are new).
+
+### Components for native-core (core/assistant/native/component-kinds.js, components.js)
+`toComponent(toolName, result, {types})` returns one plain, JSON-safe component; `assertComponent` is the closed validator (kinds closed, no functions, no sealed value or ref, no control or bidi characters, string caps). Anything unrecognised is a `text`. Every free-text field a doer or model wrote sits in a quoted block `{label, quoted:true, interactive:false, text}` with no links or buttons. Kinds and fields:
+- `record_card`: type, title, urn, stage|null, fields[{name,label,kind,display,sealed?}] (a sealed field reads "on file, sealed" or "empty", never a value), hidden (count), source{trust,red,source_spaces}.
+- `task_card`: id, title, record, doer, checker|null, state, output, tap{label,what}|null (what one tap does by state), payload_summary|null (the kernel's summary for a held act), from_doer|null (quoted block).
+- `draft`: title, body (slots stay `{{slot:name}}`), editable:true, template{name,version}|null, to|null, merge_fields[{name,value}], sealed_slots[{slot,label}], edit_voids_approval:true (tapping Edit voids the approval).
+- `flow_diff`: title, hash, authorship, changes[], simulation{ok,text}, outward[{text}], names[{name,shown,flags}], from_author|null (same shape as the Engineer's diffCard).
+- `memory_answer`: text, citations[{address,label|null}] (urn or line:<session>#<n>), labels|null. An answer with no citation becomes `text`.
+- `held_for_approval`: task|null, title, summary, approver, what ("Drafted and waiting for your approval. Nothing has left the Space.").
+- `group`: title, items[component] (several records). `text`: text.
+Needs from native-core: one renderer per kind. Needs from platform: the tool result shapes above (`held:true` with a task and summary for an outward act; records as gateway records with labels).
+
+### Fit eval (core/assistant/native/eval)
+`evaluateModel({adapter, kernelFixture, budgetUsd=5, tasks, prices})`: five tasks (find, gate, seal, approval, cite), 20 points each, deterministic checkers over a fresh fake-kernel world, hard budget stop (the next call's worst case must fit under the cap, else the score is partial). Adapter shape `{name, run(messages, tools, {task,max_tokens}) -> {content, tool_calls, usage}}`; `adapter-claude.js` is the Messages API one. Real run: `node core/assistant/native/eval/run.js --model <id> --yes --out <dir>` with ANTHROPIC_API_KEY set; never in tests. Needs: a per-model price table in run.js PRICES (unknown models use a high default); the model picker (native-core) reads the stored fit.
