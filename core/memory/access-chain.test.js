@@ -98,8 +98,8 @@ test("who.js reads the chain's facts and nothing else", async () => {
   const rig = await createRig({ agents: ["kit"] });
   const h = rig.k.kernelFor({ name: "memory", needs: { kernel: { membership: true } } });
   const w = async meta => whoOfChain(await h.chain(meta));
-  assert.deepEqual(await w({ kernelFacts: socket("deck") }), { ownerSurface: true, device: false, nodeDevice: false, signedIn: false, ownSession: false, agent: null, acting: null, module: null });
-  assert.deepEqual(await w({ kernelFacts: socket("mobile") }), { ownerSurface: false, device: false, nodeDevice: false, signedIn: false, ownSession: false, agent: null, acting: null, module: null }, "mobile is not an owner surface, as before");
+  assert.deepEqual(await w({ kernelFacts: socket("deck") }), { ownerSurface: true, device: false, nodeDevice: false, signedIn: false, ownSession: false, agent: null, acting: null, conflict: false, module: null });
+  assert.deepEqual(await w({ kernelFacts: socket("mobile") }), { ownerSurface: false, device: false, nodeDevice: false, signedIn: false, ownSession: false, agent: null, acting: null, conflict: false, module: null }, "mobile is not an owner surface, as before");
   assert.deepEqual([(await w({ kernelFacts: device("s1") })).signedIn, (await w({ kernelFacts: device("s1") })).nodeDevice, (await w({ kernelFacts: device("s1", "relay") })).nodeDevice], [true, true, false], "a Wink device reads like tailnet: did, a relay device like device: did");
   assert.equal((await w({ kernelFacts: device() })).signedIn, false);
   const own = (await rig.k.surfaces.open(rig.person("per_alex"), {})).token, ag = (await rig.k.surfaces.open(rig.person("per_alex"), { agent: "kit" })).token;
@@ -181,7 +181,15 @@ test("MA-6 and MA-7: a Flow's automation or a module's service after the person 
   const person = { actor: { kind: "person", id: "per_alex", space: rig.space }, via: { session: "s" }, entered_by: "session" };
   for (const order of [["assistant", "kit"], ["kit", "assistant"]]) assert.equal(whoOfChain({ hops: [person, ...order.map(agent)] }).agent, "kit", order.join());
   assert.equal(whoOfChain({ hops: [person, agent("assistant")] }).agent, "assistant");
+  // two different named agents in one chain: refused, whatever the order
+  for (const order of [["kit", "pax"], ["pax", "kit"], ["kit", "assistant", "pax"]]) assert.equal(whoOfChain({ hops: [person, ...order.map(agent)] }).conflict, true, order.join());
+  assert.equal(whoOfChain({ hops: [person, agent("kit"), agent("kit")] }).conflict, false, "the same agent twice is one agent");
   assert.equal(whoOfChain({ hops: [person, agent("assistant"), agent("kit")] }).ownSession, false, "a named agent acting through the assistant is not the person's own session");
+  // the gate refuses a chain that names two agents, end to end
+  const two = { hops: [person, agent("kit"), agent("pax")] };
+  const refused = await boot(t, { kernel: { ...handle, chain: async () => two } });
+  const rr = await refused.can("mcp:agent:kit");
+  assert.ok(Object.values(rr).every(v => v === "denied"), JSON.stringify(rr));
   // end to end: memory gets that chain from the kernel's handle
   const as = chain => ({ ...handle, chain: async () => chain });
   for (const [name, chain] of [["automation", flow], ["service", svc]]) {

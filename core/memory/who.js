@@ -10,7 +10,7 @@ import { PERSON_SURFACES } from "../presence/index.js";
 export const OWNER_SURFACES = PERSON_SURFACES;
 
 /**
- * @typedef {{ ownerSurface: boolean, device: boolean, nodeDevice: boolean, signedIn: boolean, ownSession: boolean, agent: string|null, acting: { kind: string, id: string }|null, module: { name: string, firstParty: boolean }|null, capsule?: boolean }} Who
+ * @typedef {{ ownerSurface: boolean, device: boolean, nodeDevice: boolean, signedIn: boolean, ownSession: boolean, agent: string|null, acting: { kind: string, id: string }|null, conflict?: boolean, module: { name: string, firstParty: boolean }|null, capsule?: boolean }} Who
  * ownerSurface: the person (the home's owner) at cli, local, deck or the Capsule. device: the owner on another paired or signed-in device; nodeDevice: one that arrived over the Wink node
  * path (what `tailnet:<login>` was). signedIn: their passkey session on it. RULING (6 Oct): an owner's own device reads memory as the owner only when signed in, over Wink or the relay
  * alike (`nodeDevice` is kept as a fact, but no longer decides); an unsigned device, a device that is not the owner's and any agent hop read nothing personal.
@@ -37,7 +37,10 @@ export function whoOfChain(chain, surface = null) {
   const notPerson = after.some((/** @type {any} */ h) => h.actor.kind !== "person");
   // MA-7: the NARROWEST agent wins: any named agent beats the assistant (the assistant's reach is the wider one), so `[person, assistant, kit]` and `[person, kit, assistant]` both read as kit.
   const names = after.filter((/** @type {any} */ h) => h.actor.kind === "agent").map((/** @type {any} */ h) => String(h.actor.id));
-  const agent = names.find((/** @type {string} */ n) => n !== "assistant") ?? (names.length ? "assistant" : null);
+  const named = [...new Set(names.filter((/** @type {string} */ n) => n !== "assistant"))];
+  const agent = named[0] ?? (names.length ? "assistant" : null);
+  // Two different named agents in one chain: which one is calling is not knowable, so the call is refused (the gate reads `conflict`).
+  const conflict = named.length > 1;
   const actingHop = after.find((/** @type {any} */ h) => h.actor.kind === "automation" || h.actor.kind === "service");
   const acting = actingHop ? { kind: String(actingHop.actor.kind), id: String(actingHop.actor.id) } : null;
   const sf = !notPerson && surface && surface.hops && surface.hops[0] ? surface.hops[0] : (!notPerson && first.entered_by === "surface" ? first : null);
@@ -54,6 +57,7 @@ export function whoOfChain(chain, surface = null) {
     ownSession,
     agent,
     acting,
+    conflict,
     module: null,
   };
 }

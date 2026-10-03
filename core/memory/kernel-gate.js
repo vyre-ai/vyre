@@ -58,6 +58,8 @@ export function createKernelGate(ctx, { denied }) {
     let m = null;
     try { m = typeof k.membership === "function" ? await k.membership(first.id) : null; } catch { m = null; }
     if (!m || m.member !== true || m.role !== "owner") throw denied(`${tool}: personal memory is read only by its person and that person's own assistant`);
-    return { who: whoOfChain(chain, await surfaceOf(extra)) };
+    const who = whoOfChain(chain, await surfaceOf(extra));
+    if (who.conflict) throw denied(`${tool}: this chain names more than one agent, so it is not known which is asking`);
+    return { who };
   };
 }
