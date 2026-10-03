@@ -80,3 +80,22 @@ Branch: work/assistant · Worktree: ../vyre-assistant · Owner session: assistan
 - Merged with work/sessions-reach: sessions' per-event provider/model/account tags are replaced by the live stamp (speaker: provider, model, account) on every reply event, so a one-turn switch is right line by line. threads.send takes only the account chip (no provider/account input). Init carries models and plan; thread.tool done carries exit_code.
 \n- reviewer-2's two MEDIUMs on c3d4747a7 fixed: personTurn on the one-turn route; model replies quoted (`  | `) and labelled data in the return note and the handoff brief. Models are learned after sign-in (threads.providers.learn, internal).\n
 - #41 (one model per turn): the thread's truth is what the provider reports per turn (speaker: live model, then the record). Fixed: init now moves the record and says model.switched once (reported: true); a live threads.model switch sets the live model so the next reply is stamped with it; the header, each reply and the picker all use shortModel. Root cause of the live miss: core/events delivered a listener's nested event before the outer one, and the SSE id cursor dropped the outer (model.switched lost to settings.changed); events now deliver in id order. Changed contract: core/events (re-entrant emits are queued until the current delivery ends), core/switchboard (model.switched also on init). Tests: switchboard "one model per turn", events "emitted by a listener", deck session.test header/reply labels.
+
+## 0.3 (work/teammates-03, worktree vyre-assistant-03; the branch name work/teammates is the 0.2 line and is taken, so this is work/teammates-03)
+
+Scope (lead, 3 Oct): project teammates on the `team` module (ADR 0031); memory in three layers; @Engineer. Built against kernel/contracts (work/kernel 0a2545d81, merged in). The kernel has contracts only so far, so every part is a factory over a `kernel` port (kernel/contracts `Kernel`) and is tested against `test/fake-kernel.js`, which keeps the rules the parts lean on (intersection of hops, placeholders to agents, one event per write, the task table, human-only approval, the inference door ledger).
+
+Layout (no new boundary edges; shared pure helpers are in lib):
+- lib/labels.js, lib/sealed.js: label joining (7.6) and the model view of a record (8.3).
+- core/team/: roles.js (Kit role to teammate), delegate.js (grant ceiling and the adder's conditions as obligations, R6-8), context.js (project plus links minus sealed), doing.js (live "doing now" line), stuck.js (the seven triggers and the kernel-composed fix, R6-7).
+- core/memory/engine/: lines.js (line-by-line session detail), facts.js (extraction, the three outcomes of 7.9), search.js (meaning search with per-source authorization and citations), index.js (the standing service, read-only, writes under [person, service:memory]).
+- core/engineer/: propose.js (TypeScript definition via the model door, compile and simulate through ports, diff card), index.js (admin-only module).
+
+Ports I need from others (asked in team/0.2/CHAT.md):
+- platform: `tasks.move(chain, id, to, info)` and `tasks.stuck` on the kernel (the contract has only ask.request and ask.decide); `members.isAdmin(chain)`; a `memory` standing-service actor.
+- records: `language.compile(source) -> { diff, errors }` (the TypeScript text form, 5.6) and the definition authorship label.
+- sessions: `flows.simulate(diff, scenarios) -> result` and session events for "doing now".
+
+Done: foundation (lib/labels.js, lib/sealed.js, test/fake-kernel.js with tests).
+Doing: the three parts in parallel.
+Next: tool wiring (module.json reach), docs, CHANGELOG, perf numbers.
