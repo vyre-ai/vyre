@@ -992,6 +992,10 @@ export class Registry {
       ...(kernelHandle ? { kernel: kernelHandle } : {}),
       // The session credential maker is the Switchboard's alone (vyred's own sessions): no other module is handed the way to open a kernel session for a thread.
       ...(m.name === "threads" && this.deps.kernelSession ? { kernelSession: (/** @type {any} */ q) => this.deps.kernelSession(q) } : {}),
+      // A provider's sign-in token (claude: the setup token, anthropic: the API key) comes from the credentials port the daemon took once at start, for the launcher modules only (threads, agents):
+      // never from a module grant on the vault items, so no other module can be given it. Late-bound: the port exists once the vault has started; until then it answers undefined (and the
+      // caller keeps its old grant-based read, which `vault.launcherOnly` switches off).
+      ...((m.name === "threads" || m.name === "agents") ? { credentials: (/** @type {string} */ provider) => (this.deps.credentialsPort ? this.deps.credentialsPort.credentials(provider) : Promise.resolve(null)) } : {}),
       // The confined spawner for the sessions it starts (the runner's home sandbox, composed by the daemon because core/sessions cannot import core/runner): the Switchboard's alone.
       ...(m.name === "threads" && this.deps.sandbox ? { sandbox: this.deps.sandbox } : {}),
       tool: (name, def) => {

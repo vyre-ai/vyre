@@ -940,7 +940,7 @@ export class Switchboard {
     if (!sock) throw Object.assign(new Error("Vyre did not start this session because it has no socket of its own to reach Vyre through."), { code: "sandbox_failed" });
     const provider = rec.provider || o.provider || "claude";
     const pickEnv = (/** @type {string[]} */ names) => Object.fromEntries(names.filter(n => o.env && o.env[n]).map(n => [n, o.env[n]]));
-    const r = await prepareSandbox({ ...cfg, temp: this.sessionTemp(id), credentials: cfg.credentials || (() => pickEnv(["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"])) }, { provider, command: cfg.binFor ? cfg.binFor(provider) : this.bin, sessionSocket: sock.path, workdirs: [rec.cwd], ...(o.gitEnv ? { trustedEnv: o.gitEnv } : {}) });
+    const r = await prepareSandbox({ ...cfg, temp: this.sessionTemp(id), credentials: cfg.credentials ? async (/** @type {string} */ p) => { const v = await cfg.credentials(p); return typeof v === "string" ? v : v || pickEnv(["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"]); } : (() => pickEnv(["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"])) }, { provider, command: cfg.binFor ? cfg.binFor(provider) : this.bin, sessionSocket: sock.path, workdirs: [rec.cwd], ...(o.gitEnv ? { trustedEnv: o.gitEnv } : {}) });
     if (r.sandboxed) {
       // Partly sandboxed (a provider that cannot move its settings folder keeps its own): said on this session's log, and once per machine and provider in words.
       if (r.partial) {
@@ -3018,8 +3018,9 @@ export default {
     // or sessions.auth set on purpose), so a machine without one never touches the vault.
     const chosen = Boolean(ctx.config && ((ctx.config.sessions && ctx.config.sessions.auth) || (ctx.config.onboard && ctx.config.onboard.claude)));
     const auth = async () => {
-      if (cfg.auth === "login" || !ctx.vault || !chosen) return null;
-      const fetch = async kind => { const v = await ctx.vault.fetch(CREDENTIALS[kind]); if (!v) throw new Error(`the vault has no ${CREDENTIALS[kind]}`); return String(v); };
+      if (cfg.auth === "login" || !(ctx.credentials || ctx.vault) || !chosen) return null;
+      // The sign-in token comes from the credentials port (the daemon took it once at start), not from a module grant on the vault item: with vault.launcherOnly on, no module holds one.
+      const fetch = async kind => { let v = ctx.credentials ? await ctx.credentials(kind === "api-key" ? "anthropic" : "claude") : undefined; if (v === undefined) v = await ctx.vault.fetch(CREDENTIALS[kind]); if (!v) throw new Error(`the vault has no ${CREDENTIALS[kind]}`); return String(v); };
       if (cfg.auth === "api-key") return { auth: "api-key", env: { ANTHROPIC_API_KEY: await fetch("api-key") } };
       const out = { auth: "subscription", env: { CLAUDE_CODE_OAUTH_TOKEN: await fetch("setup-token") } };
       try { return { ...out, fallback: { env: { ANTHROPIC_API_KEY: await fetch("api-key") } } }; } catch { return out; }
@@ -3037,7 +3038,10 @@ export default {
       if (a.kind === "login") return { auth: "subscription", env: {} };
       const name = ACCOUNT_ENV[a.provider] && ACCOUNT_ENV[a.provider][a.kind];
       if (!name) throw Object.assign(new Error(`a ${a.kind} account is not something ${a.provider} takes`), { code: "bad_input" });
-      const v = ctx.vault ? await ctx.vault.fetch(a.vault_item).catch(() => null) : null;
+      // The two provider sign-in items come through the credentials port; any other account's own item is still a grant to this module.
+      const launcherProvider = a.vault_item === "claude-setup-token" ? "claude" : a.vault_item === "anthropic-api-key" ? "anthropic" : null;
+      let v = launcherProvider && ctx.credentials ? await ctx.credentials(launcherProvider).catch(() => null) : undefined;
+      if (v === undefined) v = ctx.vault ? await ctx.vault.fetch(a.vault_item).catch(() => null) : null;
       if (!v) throw Object.assign(new Error(`the vault has no ${a.vault_item} for ${a.label}, or it is not granted to threads (vyre vault grant ${a.vault_item} threads)`), { code: "no_credential" });
       // An account that names its own endpoint (a key for an OpenAI-compatible or Anthropic-compatible service) sends the key there and nowhere else: the address was
       // checked when the account was made (https, or this machine), and it is the account's, not the thread's.
