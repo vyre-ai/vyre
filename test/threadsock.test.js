@@ -116,7 +116,7 @@ test("threadsock: a real session's call arrives with its own kernel token, in it
     export default { async start(ctx) { ctx.tool("zz-room.peek", { run: async (i, meta) => ({ caller: meta.caller, token: meta.token || null, room: await ctx.kernel.audienceFor({}).catch(e => ({ error: e.code })) }) }); return {}; } };`);
   const d = await start({ root, log: () => {}, kernel: true, firstPartyRoots: [fp] });
   t.after(() => d.stop());
-  const ctx = d.registry.context({ name: "switchboard", version: "0.1.0", does: { tools: [] } });
+  const ctx = d.registry.context({ name: "threads", version: "0.1.0", does: { tools: [] } });
   assert.equal(typeof ctx.kernelSession, "function", "the Switchboard is handed the session credential maker");
   assert.equal(typeof d.registry.context({ name: "other", version: "0.1.0", does: { tools: [] } }).kernelSession, "undefined", "and nobody else");
   // the confined spawner for its sessions is composed here too, for the Switchboard alone

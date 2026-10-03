@@ -205,9 +205,12 @@ async function startLocked(opts, root, p, release) {
     const { createKernelSessions } = await import("../../lib/kernel-session.js");
     const kernelSessions = createKernelSessions({ kernel });
     closeKernelSessions = () => kernelSessions.closeAll();
-    registry.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any }} */ q) => {
-      const person = kernel.chains.fromFacts({ kind: "session_person", person: kernel.id.owner, session: `thread:${q.thread}`, vouched: true });
-      const s = await kernelSessions.open({ chain: person, ...(q.rec && typeof q.rec.chat === "string" ? { chat: q.rec.chat } : {}), ...(q.agent ? { agent: q.agent } : {}), thread: q.thread });
+    registry.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any, chat?: string, asker?: string }} */ q) => {
+      // A chat turn (the stream asked, and the Switchboard only passes `chat` and `asker` from module:stream): the session is the asker's, in that chat, and the kernel checks they are in it.
+      // Anything else is the home owner's own thread, as before.
+      const person = kernel.chains.fromFacts({ kind: "session_person", person: q.asker || kernel.id.owner, session: `thread:${q.thread}`, vouched: true });
+      const chat = q.chat || (q.rec && typeof q.rec.chat === "string" ? q.rec.chat : undefined);
+      const s = await kernelSessions.open({ chain: person, ...(chat ? { chat } : {}), ...(q.agent ? { agent: q.agent } : {}), thread: q.thread });
       return { token: kernelSessions.tokenFor(s.id), end: () => kernelSessions.end(s.id) };
     };
     // The sandbox every Vyre-started session's agent runs in on this computer (the runner's home sandbox: planHome, selfTest, launch; core/sessions/ cannot import core/runner, so the
