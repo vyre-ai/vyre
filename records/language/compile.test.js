@@ -134,3 +134,16 @@ test("the kit's types are the kernel's TypeDefinition: every field has a label, 
     for (const f of t.fields) { assert.ok(f.label, `${t.name}.${f.name} has a label`); assert.ok(FIELD_KINDS.includes(f.kind)); if (f.kind === "sealed") assert.ok(f.seal.class && f.seal.level); }
   }
 });
+
+test("roles and extending a core type: a role marks its subject, a link may name several types, a Kit type named like a core type may add fields but not change one", () => {
+  const src = (body) => `import { defineKit, defineType, defineField } from "@vyre/sdk";\n${body}\nexport default defineKit({ id: "k", version: 1, includes: [X] });`;
+  const ok = compile(src(`export const X = defineType({ name: "ambassador", role: { subject: ["contact", "organization"] }, fields: { title: defineField.text(), who: defineField.link({ to: ["contact", "organization"], required: true }) } });`));
+  assert.deepEqual(ok.types[0].role, { subject: ["contact", "organization"] });
+  assert.deepEqual(ok.types[0].fields[1].to, ["contact", "organization"]);
+  assert.deepEqual(compile(print(ok)), ok, "a role and a list link round-trip through the printed text");
+  fails(src(`export const X = defineType({ name: "ambassador", role: { subject: ["contact"] }, fields: { title: defineField.text() } });`), "invalid_definition", /required link/);
+  fails(src(`export const X = defineType({ name: "ambassador", role: { subject: ["ghost"] }, fields: { c: defineField.link({ to: "ghost", required: true }) } });`), "invalid_definition", /ghost/);
+  fails(src(`export const X = defineType({ name: "ambassador", role: {}, fields: { c: defineField.link({ to: "contact", required: true }) } });`), "invalid_definition");
+  assert.ok(compile(src(`export const X = defineType({ name: "contact", fields: { full_name: defineField.text({ required: true }), nickname: defineField.text() } });`)), "a Kit's contact adds a field to the core contact");
+  fails(src(`export const X = defineType({ name: "contact", fields: { full_name: defineField.number() } });`), "invalid_definition", /cannot change/);
+});
