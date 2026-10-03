@@ -126,3 +126,16 @@ test("a directory node (a mounted drive) works and the index survives a restart"
   assert.deepEqual(await p1.probe(), []); assert.ok(p1.nodes.get("usb").deviceFree > 0);
   assert.ok(fs.readdirSync(drive, { recursive: true }).every(f => !String(f).endsWith(".tmp")));
 });
+
+test("the controller probes, heals when something changed, never ticks faster than 60 s, and withdraws a node by draining it", async t => {
+  const { createController, MIN_TICK_MS } = await import("./controller.js");
+  const { pool, b, tick } = world(t, { home: 10, nas: 10, cloud: 10, extra: 10 }), events = [], r = await pool.put(rand(MB), { class: "cold" });
+  let every = 0; const c = createController({ pool, tickMs: 5, emit: e => events.push(e), setTimer: (fn, ms) => { every = ms; return {}; }, clearTimer: () => {} });
+  c.start(); assert.equal(every, MIN_TICK_MS);
+  assert.equal((await c.tick()).changed.length, 0); assert.equal(events.length, 0, "a quiet pool says nothing");
+  const lost = pool.ix.chunks[pool.ix.manifests[r.id].chunks[0]].nodes[0]; b[lost].down = true;
+  const out1 = await c.tick(); assert.deepEqual(out1.changed, [lost]); assert.equal(out1.copied, 0, "inside the grace period nothing moves");
+  tick(11 * 60_000); const out = await c.tick(); assert.ok(out.copied >= 1, "past it, the missing copy is made"); assert.equal(events.at(-1).type, "storage.tick");
+  b[lost].down = false; await c.tick();
+  const w = await c.withdraw(lost); assert.ok(w.moved >= 0); assert.equal(events.at(-1).type, "storage.released"); assert.deepEqual(await pool.get(r.id), await pool.get(r.id));
+});

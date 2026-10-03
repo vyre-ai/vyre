@@ -10,6 +10,7 @@ import path from "node:path";
 const HERE = path.dirname(new URL(import.meta.url).pathname), KERNEL = path.resolve(HERE, "..");
 const code = f => fs.readFileSync(path.join(KERNEL, f), "utf8").split("\n").filter(l => l.trim() && !l.trim().startsWith("//")).length;
 const GROUPS = {
+  leases: { cap: 120, files: ["seal/leases.js"] },
   sealing: { cap: 800, files: ["seal/process.js", "seal/store.js", "seal/proof.js", "seal/wire.js", "seal/classes.js", "seal/normalise.js", "seal/client.js"] },
   door: { cap: 700, files: ["door/door.js", "seal/ledger.js"] },
   adapters: { cap: 300, files: ["seal/uses.js", "seal/placement.js"] },

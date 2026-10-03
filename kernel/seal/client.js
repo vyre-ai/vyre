@@ -54,6 +54,14 @@ export function startSealer({ dir, sinks = {}, timeoutMs = 20_000, execPath = pr
     sync: i => withCtx("presence.sync", i, { person: i.person, ops: i.ops, binds: i.binds }),
     recover: i => withCtx("presence.recover", i, { person: i.person, ops: i.ops, bind: i.bind, key_id: i.key_id, spki: i.spki, signer: i.signer, token: i.token, attestation: i.attestation }),
     revoke: i => withCtx("presence.revoke", i, { key_id: i.key_id, proof: i.proof }),
+    /** Key leases for a lent computer's workspace. `allowed` is the kernel's answer that both Offer grants hold. */
+    lease: {
+      issue: i => withCtx("lease.issue", i, { space: i.space, device: i.device, allowed: i.allowed }),
+      renew: i => withCtx("lease.renew", i, { lease: i.id, allowed: i.allowed }),
+      revoke: i => withCtx("lease.revoke", i, { space: i.space, device: i.device }),
+      reinstate: i => withCtx("lease.reinstate", i, { device: i.device, proof: i.proof }),
+      check: i => withCtx("lease.check", i, { lease: i.id }),
+    },
     health: () => call("health"),
     close: () => new Promise(res => { if (closed) return res(); child.once("exit", () => res()); child.stdin.end(); setTimeout(() => child.kill(), 2000).unref(); }),
   };
