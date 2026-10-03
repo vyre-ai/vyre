@@ -115,11 +115,11 @@
         "reach": "person"
       },
       {
-        "name": "wink.server.fingerprint",
+        "name": "wink.server.reset.begin",
         "reach": "person"
       },
       {
-        "name": "wink.server.reset",
+        "name": "wink.server.reset.confirm",
         "reach": "person"
       },
       {
@@ -231,6 +231,7 @@
       "wink.pair-failed",
       "wink.server-adopted",
       "wink.server-released",
+      "wink.server-reset",
       "wink.server-release",
       "wink.offer-changed",
       "storage.paired",
