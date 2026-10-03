@@ -10,6 +10,8 @@ jobs:
   mac:
     runs-on: macos-14
     timeout-minutes: 40
+    env:
+      VYRE_TEST_HOSTED: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Measures what lending costs: the same work in a plain folder and inside the runner's sandbox on the encrypted, leased workspace.
 // node scripts/runner-perf.mjs [--reps N] [--out file.json]   (macOS or Linux; never run on a person's own account: use a runner or a test box)
+import "../core/runner/testing/hosted-guard.js";
 import fs from "node:fs"; import path from "node:path"; import os from "node:os"; import http from "node:http"; import { spawn } from "node:child_process";
 import { createRunner } from "../core/runner/runner.js";
 import { fakeSpace } from "../core/runner/testing/fake-space.js";
