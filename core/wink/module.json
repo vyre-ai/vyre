@@ -1,0 +1,96 @@
+{
+  "name": "wink",
+  "version": "0.1.0",
+  "description": "Pairing as grants: every way into a space is a Wink (a code or a scan, a card, then one grant and a few events). Add a device, invite a person, share a computer, see and remove what was given.",
+  "roles": [
+    "box"
+  ],
+  "requires": [
+    "relay"
+  ],
+  "does": {
+    "tools": [
+      {
+        "name": "wink.code.open",
+        "reach": "person"
+      },
+      {
+        "name": "wink.code.status",
+        "reach": "person"
+      },
+      {
+        "name": "wink.code.ack",
+        "reach": "person"
+      },
+      {
+        "name": "wink.cancel",
+        "reach": "person"
+      },
+      {
+        "name": "wink.invite",
+        "reach": "person"
+      },
+      {
+        "name": "wink.approve",
+        "reach": "person"
+      },
+      {
+        "name": "wink.decline",
+        "reach": "person"
+      },
+      {
+        "name": "wink.share",
+        "reach": "person"
+      },
+      {
+        "name": "wink.access",
+        "reach": "person"
+      },
+      {
+        "name": "wink.offers",
+        "reach": "person"
+      },
+      {
+        "name": "wink.remove",
+        "reach": "person"
+      },
+      {
+        "name": "wink.card",
+        "reach": "person"
+      }
+    ]
+  },
+  "watches": {
+    "emits": [
+      "wink.offered",
+      "wink.found",
+      "wink.confirmed",
+      "wink.joined",
+      "wink.declined",
+      "wink.expired",
+      "wink.removed",
+      "wink.shared",
+      "wink.code-opened",
+      "wink.code-replaced",
+      "wink.code-closed",
+      "wink.code-wrong",
+      "wink.code-ack",
+      "wink.code-done",
+      "wink.code-unavailable",
+      "grant.created",
+      "grant.revoked"
+    ],
+    "on": [
+      "relay.code-asked",
+      "relay.invite-redeemed",
+      "device.paired",
+      "device.removed"
+    ]
+  },
+  "shows": {
+    "deck": [],
+    "capsule": [],
+    "cli": []
+  },
+  "needs": {}
+}

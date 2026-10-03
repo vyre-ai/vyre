@@ -57,7 +57,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`providers`](#providers) | `core/providers` | `box`, `local` | 1 | 0 | cli |
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 4 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 12 | 4 | cli |
-| [`relay`](#relay) | `core/relay` | `box`, `local` | 34 | 19 | capsule, cli, deck |
+| [`relay`](#relay) | `core/relay` | `box`, `local` | 38 | 21 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
 | [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 38 | 8 | cli |
@@ -80,6 +80,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 20 | 7 | capsule, cli, deck |
+| [`wink`](#wink) | `core/wink` | `box` | 12 | 17 | capsule, cli, deck |
 
 ## about
 
@@ -528,8 +529,8 @@ A second way to reach the box besides Tailscale: the box dials out to a relay, a
 - Folder: `core/relay`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [34](tools.md#relay), 9 of them only for other modules
-- Emits: [19 events](events.md#relay)
+- Tools: [38](tools.md#relay), 13 of them only for other modules
+- Emits: [21 events](events.md#relay)
 - Shows on: capsule, cli, deck
 - Needs vault: `tailscale-mint-oauth`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -787,3 +788,15 @@ One list of what waits on the user: session asks, held drafts, ringing reminders
 - Needs vault: `per-watcher`
 - Teaches memory: `watcher.item`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
+
+## wink
+
+Pairing as grants: every way into a space is a Wink (a code or a scan, a card, then one grant and a few events). Add a device, invite a person, share a computer, see and remove what was given.
+
+- Folder: `core/wink`, version 0.1.0
+- Runs on: `box`
+- Requires: `relay`
+- Tools: [12](tools.md#wink)
+- Emits: [17 events](events.md#wink)
+- Listens for: `relay.code-asked`, `relay.invite-redeemed`, `device.paired`, `device.removed`
+- Shows on: capsule, cli, deck

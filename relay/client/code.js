@@ -347,3 +347,26 @@ export async function enterCode(o) {
   const fin = t.finish(three.m);
   return fin.ok ? { ok: true, number: fin.number, key: fin.key, route: one.route } : { ok: false, reason: "refused" };
 }
+
+// ---- the code typed back (DESIGN-wink.md, section 4: pairing is two-sided) ----
+
+const ACK_LABEL = new TextEncoder().encode("vyre-wink-ack-v1");
+
+/**
+ * The code the typing device shows after the PAKE and the showing device's person types back: 8 symbols derived from the shared key, so a
+ * relay or anyone in the middle (a different key on each side) shows a different code and the typed one does not match. 40 bits of
+ * agreement, against the 1-in-3 of a number pick. Shown as WINK-XXXX-XXXX like every other Wink code.
+ * @param {Uint8Array} key @returns {string}
+ */
+export function ackCode(key) {
+  const d = hmac512(key, ACK_LABEL);
+  let bits = 0, acc = 0, out = "";
+  for (const x of d) { acc = (acc << 8) | x; bits += 8; while (bits >= 5 && out.length < 8) { out += ALPHABET[(acc >>> (bits - 5)) & 31]; bits -= 5; } if (out.length >= 8) break; }
+  return formatCode(out.slice(0, 2), out.slice(2, 8));
+}
+
+/** The typed-back code as 8 folded symbols, or null. @param {string} input */
+export function normaliseAck(input) {
+  const p = parseCode(input);
+  return p ? p.rv + p.pw : null;
+}

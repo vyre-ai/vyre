@@ -29,6 +29,7 @@
 //   wink.code.closed   { reason }                           expired | too_many | wrong_number | wrong_code | used | cancelled
 //   wink.code.wrong    { attempts }                         a typist's confirmation failed (a wrong code was tried)
 //   wink.code.pick     { id, choices }                      the PAKE completed; the approver picks the number
+//   wink.code.ack      { id }                               (two-sided) the PAKE completed; the person types back the code the other device shows
 //   wink.code.done     { id }                               the right number was picked
 //   wink.code.unavailable { reason }                        no rendezvous could be had (the relay is away or full)
 
@@ -48,6 +49,7 @@ const REPLACING = new Set(["expired", "too_many", "wrong_number", "wrong_code"])
  *   now?: () => number,
  *   level?: number,
  *   rotateOnWrong?: boolean,
+ *   twoSided?: boolean,
  *   maxAttempts?: number,
  *   ttlMs?: number,
  *   crypto?: Pick<typeof client, "newCode" | "showingStart" | "numberChoices" | "unb64url" | "b64url">,
@@ -192,10 +194,31 @@ export function createWinkCode(o) {
         l.matched = true;
         const id = cx.b64url(o.rng ? o.rng(9) : globalThis.crypto.getRandomValues(new Uint8Array(9)));
         l.pick = { id, number: r.number, key: r.key };
-        emit("wink.code.pick", { id, choices: cx.numberChoices(r.number, count, o.rng) });
+        if (o.twoSided) emit("wink.code.ack", { id });
+        else emit("wink.code.pick", { id, choices: cx.numberChoices(r.number, count, o.rng) });
         return { m: cx.b64url(r.tag) };
       }
       return null;
+    },
+
+    /**
+     * Two-sided pairing (DESIGN-wink.md, section 4): the person types back the code the typing device shows (`ackCode` of the shared key).
+     * One try per code, like the pick: the right code uses the code up, a wrong one closes it (and a fresh one replaces it).
+     * @param {string} id @param {string} typed
+     * @returns {Promise<{ ok: true, key: Uint8Array } | { ok: false }>}
+     */
+    async ack(id, typed) {
+      if (expired()) return { ok: false };
+      const l = live;
+      if (!l || l.closed || !l.pick || l.pick.id !== id) return { ok: false };
+      const p = l.pick;
+      l.pick = null;
+      const want = client.normaliseAck(client.ackCode(p.key));
+      const got = client.normaliseAck(String(typed));
+      if (!got || !want || !client.equalBytes(new TextEncoder().encode(got), new TextEncoder().encode(want))) { await end("wrong_number"); return { ok: false }; }
+      close("used");
+      emit("wink.code.done", { id });
+      return { ok: true, key: p.key };
     },
 
     /**
