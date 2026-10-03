@@ -208,3 +208,17 @@ test("property: whatever the sequence of puts, uses and detects, no plaintext is
   const blob = seen.join("\n");
   for (const v of values) { assert.ok(!blob.includes(v), "an answer held a value"); assert.equal(diskHolds(dir, v), null, "the disk held a value"); }
 });
+
+test("a proof issued before the process started is refused (the used-nonce list does not survive a restart), and a sink name is not looked up through the prototype", async t => {
+  const { Presence } = await import("./proof.js");
+  let now = 1_000_000; const p = new Presence(() => now), k = signer("per_alex"); p.enrol(k.enrolment);
+  const ch = person(), fields = { ref: "seal_x", purpose: "p" };
+  const old = k.proof(ch, "seal.reveal", fields, { issued: now - 10_000, life: 60_000 });
+  assert.equal(p.refuse(old, { op: "seal.reveal", space: ch.space, fields, ctx: (await import("./wire.js")).chainCtx(ch) }), "expired");
+  const fresh = k.proof(ch, "seal.reveal", fields, { issued: now, life: 60_000 });
+  assert.equal(p.refuse(fresh, { op: "seal.reveal", space: ch.space, fields, ctx: (await import("./wire.js")).chainCtx(ch) }), null);
+  const { s, alex } = await setup(t, { mail: "/nonexistent.sock" });
+  const { ref } = await put(s, "123-45-6789"), c = person();
+  const out = await s.api.use({ chain: c, ref: ref.ref, slot: "ssn", body: "{{sealed:ssn}}", template: "t", template_version: 1, destination: dest() });
+  for (const sink of ["constructor", "__proto__", "toString"]) assert.equal(await code(s.deliver({ chain: c, output_ref: out.output_ref, sink, envelope: {}, proof: alex.proof(c, "seal.deliver", { output_ref: out.output_ref, sink, envelope: {} }) })), "not_found", sink);
+});

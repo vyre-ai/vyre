@@ -7,7 +7,7 @@ export const SIGNERS = new Set(["secure_enclave", "tpm", "windows_hello", "stron
 export const MAX_PROOF_LIFE_MS = 120_000;
 
 export class Presence {
-  constructor(now = Date.now) { this.keys = new Map(); this.used = new Map(); this.now = now; }
+  constructor(now = Date.now) { this.keys = new Map(); this.used = new Map(); this.now = now; this.since = now(); }
   /** A device key the kernel enrolled for a person: SPKI DER, base64. Only the kernel (the parent process) can say this. */
   enrol({ person, key_id, spki, signer }) {
     if (!SIGNERS.has(signer)) throw new Error("bad signer");
@@ -23,7 +23,8 @@ export class Presence {
     if (proof.decision !== op || proof.chain_hash !== ctx.chain_hash) return "wrong_decision";
     if (proof.payload_hash !== payloadHash(op, space, fields)) return "wrong_payload";
     const t = this.now();
-    if (!(proof.issued_at <= t + 5000) || !(proof.expires_at > t) || proof.expires_at - proof.issued_at > MAX_PROOF_LIFE_MS) return "expired";
+    // The used-nonce list is in memory: a proof issued before this process started could already have been used, so none is accepted.
+    if (proof.issued_at < this.since || !(proof.issued_at <= t + 5000) || !(proof.expires_at > t) || proof.expires_at - proof.issued_at > MAX_PROOF_LIFE_MS) return "expired";
     let ok = false;
     try {
       const sig = Buffer.from(proof.signature, "base64url");

@@ -29,7 +29,14 @@ export class Sealer {
     this.sessions = new Map(); this.lookups = new Map();
   }
   ctxOf(ctx) { need(ctx && typeof ctx.space === "string" && ctx.space, "bad_input"); return ctx; }
-  session(id) { need(typeof id === "string" && id, "bad_input"); if (!this.sessions.has(id)) this.sessions.set(id, { numbers: new Map(), counts: {}, values: new Map() }); return this.sessions.get(id); }
+  session(id) {
+    need(typeof id === "string" && id, "bad_input");
+    const t = this.now();
+    // Originals found in text are kept for a session only: at most a day, at most 1000 sessions, and never on disk.
+    for (const [k, v] of this.sessions) if (v.at < t - 86_400_000) this.sessions.delete(k);
+    if (!this.sessions.has(id)) { if (this.sessions.size >= 1000) this.sessions.delete(this.sessions.keys().next().value); this.sessions.set(id, { at: t, numbers: new Map(), counts: {}, values: new Map() }); }
+    return this.sessions.get(id);
+  }
 
   put(r) {
     const ctx = this.ctxOf(r.ctx), cls = CLASSES[r.class];
@@ -67,7 +74,7 @@ export class Sealer {
   /** Hand the merged output to an egress sink (a mail adapter's socket), as the person approved it. Never returned to the caller. */
   async deliver(r) {
     const ctx = this.ctxOf(r.ctx), id = this.outRef(ctx, r.output_ref), d = this.store.read("derived", id, ctx.space);
-    need(d && r.sink in this.sinks && r.envelope && typeof r.envelope === "object", "not_found");
+    need(d && Object.hasOwn(this.sinks, r.sink) && r.envelope && typeof r.envelope === "object", "not_found");
     const why = this.presence.refuse(r.proof, { op: "seal.deliver", space: ctx.space, fields: { output_ref: r.output_ref, sink: r.sink, envelope: r.envelope }, ctx: r.approver || ctx });
     if (why) throw err(why === "no_proof" ? "needs_presence" : why);
     const reply = await new Promise((res, rej) => {
