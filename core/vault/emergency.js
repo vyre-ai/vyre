@@ -49,7 +49,7 @@ export const DAY = 86_400_000;
 export const DEFAULT_WAIT = 7 * DAY;
 const MIN_WAIT = DAY, MAX_WAIT = 30 * DAY;
 /** Kinds that sign inside the vault and are never handed out, so never escrowed by default. */
-const NEVER = ["ssh-key", "passkey", "api-credential"];
+const NEVER = ["ssh-key", "passkey", "api-credential", "provider-token"];
 const AAD = id => `vyre:emergency:v1:${id}`;
 const ID = /^e_[A-Za-z0-9_-]{8,40}$/;
 const json = (v, d) => { try { return v == null ? d : JSON.parse(String(v)); } catch { return d; } };
@@ -221,7 +221,7 @@ export class Emergency {
       if (!Array.isArray(items) || !items.length || !items.every(n => typeof n === "string" && n)) throw new Error("items is a list of item names");
       for (const n of items) {
         const r = this.vault.mustRow(n);
-        if (NEVER.includes(r.kind)) throw new Error(`${n} is ${r.kind === "passkey" ? "a passkey" : r.kind === "api-credential" ? "an api-credential" : "an ssh key"}; it ${r.kind === "api-credential" ? "is used only by vault.request" : "signs inside the vault"} and is never handed out`);
+        if (NEVER.includes(r.kind)) throw new Error(`${n} is ${r.kind === "passkey" ? "a passkey" : r.kind === "api-credential" ? "an api-credential" : r.kind === "provider-token" ? "a provider sign-in token" : "an ssh key"}; it ${r.kind === "api-credential" ? "is used only by vault.request" : r.kind === "provider-token" ? "goes only to the session launcher" : "signs inside the vault"} and is never handed out`);
         if (String(r.vault).startsWith("shared:")) throw new Error(`${n} is in a shared vault; its members already reach it`);
       }
       list = JSON.stringify([...new Set(items)]);
