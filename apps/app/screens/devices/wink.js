@@ -1,47 +1,56 @@
 // @ts-check
 // Wink, as the user sees it (DESIGN-wink.md section 4): one way anything joins. Reverse scan is the default: the new device shows a ring and the phone scans it.
-// A computer can fall back to a typed code, two-sided. Pure, so Node tests it.
+// Scan the code or paste the long one, then confirm three words on both screens. No typed codes. Pure, so Node tests it.
 
 /** @typedef {"phone"|"computer"|"server"} DeviceKind */
 
 /** The default name of the thing being added. */
 export const DEFAULT_NAMES = { phone: "Alex's iPhone", computer: "Alex's MacBook", server: "nova" };
 
-/** Only a computer has the typed-code fallback: a phone has a camera, a server prints its code. */
-export const canFallback = (/** @type {DeviceKind} */ kind) => kind === "computer";
+/** Words the pairing screens use (DESIGN-wink.md section 4; core/wink/cards.js has the matching lines for the module). */
+export const COPY = {
+  compare: "Check the other screen. Confirm only if it shows the same three words.",
+  /** The line above the words: who is asking. */
+  askLine: (/** @type {string} */ who) => `${who} is asking to pair. Both screens show these three words.`,
+  rejected: "Nothing was paired. The words were not the same. Start again from the new device.",
+  ended: "The pairing ended before it was confirmed, so nothing was paired. Start again from the new device.",
+  noCodeInPicture: "No Vyre code in that picture. Scan the code on the screen, or paste the long code it shows.",
+  noClipboard: "Vyre could not read what you copied. Paste the long code into the field.",
+};
 
-/** How many steps the add has: four by reverse scan (ring, scan, approve, done), three by code (code, number, done). */
-export const stepCount = (/** @type {boolean} */ fallback) => (fallback ? 3 : 4);
+/** A server prints its code and waits; a phone or computer shows a ring for the other device to scan. */
+export const showsRing = (/** @type {DeviceKind} */ kind) => kind !== "server";
+
+/** Steps: a phone or computer shows a ring, is scanned, shows the words, is done (4). A server prints a code, shows the words, is done (3). */
+export const stepCount = (/** @type {DeviceKind} */ kind) => (showsRing(kind) ? 4 : 3);
 
 /** The last step index. */
-export const lastStep = (/** @type {boolean} */ fallback) => stepCount(fallback) - 1;
+export const lastStep = (/** @type {DeviceKind} */ kind) => stepCount(kind) - 1;
 
-/** "Step 2 of 4 · reverse scan" */
-export function stepLine(/** @type {number} */ step, /** @type {boolean} */ fallback) {
-  return `Step ${step + 1} of ${stepCount(fallback)} · ${fallback ? "using a code" : "reverse scan"}`;
+/** The step where the three words show. */
+export const wordsStep = (/** @type {DeviceKind} */ kind) => (showsRing(kind) ? 2 : 1);
+
+/** "Step 2 of 4 · scan, then confirm three words" */
+export function stepLine(/** @type {number} */ step, /** @type {DeviceKind} */ kind) {
+  return `Step ${step + 1} of ${stepCount(kind)} · ${showsRing(kind) ? "scan, then confirm three words" : "scan or paste, then confirm three words"}`;
 }
 
 /** What the new device and the phone each say at a step. */
-export function stepWords(/** @type {DeviceKind} */ kind, /** @type {number} */ step, /** @type {boolean} */ fallback) {
+export function stepWords(/** @type {DeviceKind} */ kind, /** @type {number} */ step) {
   const noun = kind === "server" ? "server" : kind === "phone" ? "phone" : "computer";
-  if (fallback) {
+  if (!showsRing(kind)) {
     return [
-      "The fallback, for a phone that cannot see the screen. The code is a one-time password.",
-      "One try per code. A wrong tap closes the code and a new one shows.",
-      "Both screens say done.",
+      "The server printed a QR code and a long code. Scan the QR, or paste the long code. A short typed code is not accepted.",
+      "The server shows who is asking and the same three words. Confirm only if they match.",
+      "Both screens say done. Nothing was configured.",
     ][step];
   }
   return [
-    `The new ${noun} shows its ring and its name. The phone is already trusted.`,
-    "The camera opens already pointed at the ring. It reads in about a second.",
-    "The phone says what it is adding, and the fingerprint matches the other screen. Face ID is the approval.",
-    "Both screens say done. Nothing was typed and nothing was configured.",
+    `The new ${noun} shows its code. The phone is already trusted.`,
+    "The camera opens already pointed at the code. You can paste the long code instead.",
+    "Both screens show the same three words, made from both sides' keys. Confirm only if they match.",
+    "Both screens say done. Nothing was configured.",
   ][step];
-}
-
-/** A wrong number closes the code: back to the first step with a new code. */
-export function pick(/** @type {string} */ n, /** @type {string} */ right = "47") {
-  return n === right ? { ok: true } : { ok: false };
 }
 
 /** Both sides must say yes before a computer runs a space's work (DESIGN-wink.md section 7). */

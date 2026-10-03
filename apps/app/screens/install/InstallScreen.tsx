@@ -5,10 +5,15 @@ import { useRouter } from "expo-router";
 import { Avatar, Banner, Button, Card, Chip, Divider, Field, Row, Ring, Segmented, Text, showToast, type IconName, spaceRef, IconTile } from "@vyre/ui";
 import { FaceIdSheet, type FaceAsk } from "../shell/FaceIdSheet";
 import { loadInstall } from "./data";
-import { NUMBER_CHOICES, RECOVERY_CODE, SERVER_CODE, WHERE_STEP, backOf, homeLine, nameNote, nameStatus, pickNumber, serverLines, slug, startStep } from "./flow.js";
+import { RECOVERY_CODE, SERVER_LONG_CODE, WHERE_STEP, backOf, homeLine, nameNote, nameStatus, pairToOptions, serverLines, slug, startStep } from "./flow.js";
+import { PairEntry, PairWords, openPairing, type LongCode } from "../devices/PairParts";
+import { COPY } from "../devices/wink.js";
+import { parseWinkCode } from "../../src/api/wink-code";
+import { wordsLine, type PairingSession } from "../../src/api/pairing-session";
 
 type Made = { name: string; look: string; addr: string; line: string };
 const DATA = loadInstall();
+const parseSample = () => parseWinkCode(SERVER_LONG_CODE) as LongCode;
 
 function Page({ title, sub, children }: { title: string; sub?: string; children?: React.ReactNode }) {
   return (
@@ -63,7 +68,9 @@ export function InstallScreen({ start }: { start?: "create" | "join" }) {
   const [where, setWhere] = useState<"server" | "vps" | "here">("server");
   const [made, setMade] = useState<Made[]>([]);
   const [face, setFace] = useState<FaceAsk | null>(null);
-  const [wrong, setWrong] = useState(false);
+  const [wrong, setWrong] = useState("");
+  const [session, setSession] = useState<PairingSession | null>(null);
+  const [pairTo, setPairTo] = useState("me");
   const me = nameStatus(name);
   const spaceSlug = addr ?? slug(spaceName);
   const spaceSt = nameStatus(spaceSlug, [name]);
@@ -90,11 +97,17 @@ export function InstallScreen({ start }: { start?: "create" | "join" }) {
     );
   } else if (step === "scan") {
     body = (
-      <Page title="Scan from your other device" sub="Open Vyre on a device that has your name and scan this.">
+      <Page title="Scan from your other device" sub="Open Vyre on a device that has your name and scan this, or paste the long code on it.">
         <View className="w-ring self-center"><Ring seed={4} /></View>
-        <Button kind="primary" label="Simulate the scan" onPress={() => { setName("alex"); setStep("spaces"); }} />
+        <Button kind="primary" label="Simulate the scan" onPress={() => { setSession(openPairing(parseSample())); setStep("scanwords"); }} />
       </Page>
     );
+  } else if (step === "scanwords") {
+    body = session ? (
+      <Page title="Check the three words" sub="Your other device shows the same three words.">
+        <PairWords session={session} who="Your other device" onConfirmed={() => { setName("alex"); setStep("spaces"); }} onRejected={() => { setSession(null); setWrong(COPY.rejected); setStep("scan"); }} />
+      </Page>
+    ) : null;
   } else if (step === "recovery") {
     body = (
       <Page title="Save your recovery code" sub="It is the only way back in if you lose every device.">
@@ -167,30 +180,23 @@ export function InstallScreen({ start }: { start?: "create" | "join" }) {
   } else if (step === "vpsbusy") {
     body = <Page title="Creating your server"><Terminal lines={["Creating northwind on DigitalOcean", "Installing Vyre"]} cursor="" /></Page>;
   } else if (step === "srv1" || step === "srv2") {
-    const two = step === "srv2";
+    const two = step === "srv2" && session;
+    const to = pairToOptions(name, `${spaceSt.slug}.vyre.run`).find(([id]) => id === pairTo)?.[1] ?? "";
     body = (
-      <Page title="Pair your server" sub={two ? "The server shows a number. Pick the same one on your phone." : "The server asks for a code. Type the one below on it."}>
-        {wrong ? <Banner tone="warn">That is not the number on the server. A new code is showing. Try again.</Banner> : null}
+      <Page title="Pair your server" sub={two ? "The server shows who is asking and the same three words. Confirm only if they match." : "The server printed a QR code and a long code. Scan the QR, or paste the long code."}>
+        {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
         <View className="gap-s2">
           <Text size="caption" strong tone="label">Your server</Text>
-          <Terminal lines={serverLines(vps, sn, two)} cursor={two ? undefined : "Enter the code from your phone or computer: "} />
+          <Terminal lines={serverLines(vps, sn, two ? "words" : "code", { to, who: "Your phone", words: two ? wordsLine(session.words()) : "" })} />
         </View>
         <View className="gap-s2">
           <Text size="caption" strong tone="label">Your phone</Text>
           {two ? (
-            <Card className="gap-s3">
-              <Text strong>Is this your server?</Text>
-              <Text tone="muted">Pick the number it shows.</Text>
-              <View className="flex-row gap-s2">
-                {NUMBER_CHOICES.map((n) => <Button key={n} className="flex-1" label={n} onPress={() => { const r = pickNumber(n); setWrong(!r.ok); if (r.ok) make(where); else setStep(r.step); }} />)}
-              </View>
-            </Card>
+            <PairWords session={session} who="Your server" onConfirmed={() => { setSession(null); make(where); }} onRejected={() => { setSession(null); setWrong(COPY.rejected); setStep("srv1"); }} />
           ) : (
             <Card className="gap-s3">
-              <Text strong>Type this on your server</Text>
-              <Text mono size="title">{SERVER_CODE}</Text>
-              <Text size="caption" tone="label">Good for 5 minutes</Text>
-              <Button size="sm" label="I typed it" onPress={() => { setWrong(false); setStep("srv2"); }} />
+              <View className="gap-s1"><Text size="caption" strong tone="label">Pair to:</Text><Segmented label="Pair to" value={pairTo} onChange={setPairTo} options={pairToOptions(name, `${spaceSt.slug}.vyre.run`)} /></View>
+              <PairEntry onCode={(c: LongCode) => { setWrong(""); setSession(openPairing(c)); setStep("srv2"); }} sample={SERVER_LONG_CODE} />
             </Card>
           )}
         </View>
@@ -248,7 +254,7 @@ export function InstallScreen({ start }: { start?: "create" | "join" }) {
   return (
     <View className="flex-1 bg-bg">
       <View className="flex-row items-center gap-s2 px-s4 py-s3">
-        {back ? <Button kind="ghost" size="sm" icon="chevron-left" label="Back" onPress={() => { setWrong(false); setStep(back); }} /> : null}
+        {back ? <Button kind="ghost" size="sm" icon="chevron-left" label="Back" onPress={() => { setWrong(""); setSession(null); setStep(back); }} /> : null}
         <View className="flex-1" />
         <Button kind="ghost" size="sm" label="Close" onPress={finish} />
       </View>

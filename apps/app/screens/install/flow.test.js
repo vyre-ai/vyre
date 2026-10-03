@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { backOf, homeLine, nameNote, nameStatus, pickNumber, serverLines, slug, startStep, SERVER_NUMBER } from "./flow.js";
+import { backOf, homeLine, nameNote, nameStatus, pairToOptions, serverLines, slug, startStep, SERVER_LONG_CODE } from "./flow.js";
 
 test("a slug is what goes before .vyre.run", () => {
   assert.equal(slug("Harlow Legal"), "harlow-legal");
@@ -28,9 +28,11 @@ test("the note says what happened", () => {
   assert.equal(nameNote(nameStatus(""), true), "");
 });
 
-test("back from a server step goes to the server's first screen", () => {
-  assert.equal(backOf("srv2", { vps: true }), "vps");
-  assert.equal(backOf("srv2", { vps: false }), "cmd");
+test("back from the code goes to the server's first screen, and from the words to the code", () => {
+  assert.equal(backOf("srv1", { vps: true }), "vps");
+  assert.equal(backOf("srv1", { vps: false }), "cmd");
+  assert.equal(backOf("srv2"), "srv1");
+  assert.equal(backOf("scanwords"), "scan");
   assert.equal(backOf("where"), "create");
   assert.equal(backOf("recovery"), null);
 });
@@ -41,15 +43,26 @@ test("each route starts at its step", () => {
   assert.equal(startStep(undefined), "name");
 });
 
-test("the right number finishes pairing and a wrong one starts over", () => {
-  assert.deepEqual(pickNumber(SERVER_NUMBER), { ok: true, step: "done" });
-  assert.deepEqual(pickNumber("12"), { ok: false, step: "srv1" });
+test("Pair to offers the person and the space", () => {
+  assert.deepEqual(pairToOptions("jordan", "northwind.vyre.run"), [["me", "jordan.vyre.run"], ["space", "northwind.vyre.run"]]);
+  assert.equal(pairToOptions("", "x.vyre.run")[0][1], "alex.vyre.run");
 });
 
-test("the server prints the code prompt only on the second screen", () => {
-  assert.equal(serverLines(false, "Northwind Bakery", false).length, 3);
-  assert.ok(serverLines(false, "Northwind Bakery", true).some((l) => l.startsWith("Enter the code from your phone or computer:")));
-  assert.equal(serverLines(true, "X", false)[0], "Created northwind on DigitalOcean");
+test("the server prints a long code, then who is asking and the three words", () => {
+  const code = serverLines(false, "Northwind Bakery", "code");
+  assert.equal(code.length, 6);
+  assert.equal(code[code.length - 1], SERVER_LONG_CODE);
+  assert.ok(code.some((l) => /paste this long code/.test(l)));
+  const w = serverLines(false, "Northwind Bakery", "words", { who: "Alex's iPhone", to: "alex.vyre.run", words: "amber river lantern" });
+  assert.ok(w.includes("Alex's iPhone is asking to pair this server to alex.vyre.run."));
+  assert.ok(w.includes("The words are: amber river lantern"));
+  assert.equal(w[w.length - 1], "Waiting for yes.");
+  assert.equal(serverLines(true, "X", "code")[0], "Created northwind on DigitalOcean");
+});
+
+test("nothing in the server's lines asks for a typed code or a number", () => {
+  const all = [...serverLines(false, "X", "code"), ...serverLines(false, "X", "words")].join("\n");
+  assert.doesNotMatch(all, /Enter the code|Match this number|WINK-/);
 });
 
 test("a space made on this computer says it sleeps", () => {
