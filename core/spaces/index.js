@@ -23,6 +23,7 @@ import { SPACE_ID_RE } from "../../lib/spaces/home-unit.js";
 import { idDirectory, DEFAULT_BASE } from "../names/ids.js";
 import * as C from "../../names/worker/chain.js";
 import { createIdentityOps } from "./identity-ops.js";
+import { PASSWORD_MIN } from "./recovery.js";
 import { createCompute } from "../../lib/spaces/compute.js";
 import {
   MIGRATIONS, kvStore, membershipStore, roleNames, inviteStore, pairingService, spaceTable,
@@ -37,6 +38,7 @@ export const hooks = {
   /** @type {(() => number) | null} */ now: null,
   /** @type {number | null} */ sweepMs: null,
   /** @type {number | null} */ syncMs: null,
+  /** @type {{ memoryKiB: number, passes: number } | null} the recovery stretch, lowered by tests only */ stretch: null,
   /** @type {any} */ vpsDeps: null,
 };
 
@@ -74,7 +76,7 @@ export default {
     const dir = idDirectory({ base, fetch: hooks.fetch || globalThis.fetch, now: mono });
 
     const identity = fileIdentityStore(root);
-    const idops = createIdentityOps({ store: identity, dir, now, emit: (t, p) => emit(t, p) });
+    const idops = createIdentityOps({ store: identity, dir, now, emit: (t, p) => emit(t, p), stretch: hooks.stretch || undefined });
     const files = spaceFiles(root);
     const kv = kvStore(db);
     const mstore = membershipStore(db);
@@ -96,20 +98,20 @@ export default {
       return s;
     };
     /** This person, as an owner of a space: the person id, acting through this device's entry on their list. */
-    const ownerSigner = () => { const s = me(); return { by: /** @type {string} */ (s.id), via: /** @type {string} */ (s.eid), sign: (/** @type {Uint8Array} */ m) => identity.sign(Buffer.from(m)) }; };
+    const ownerSigner = async () => { const s = me(); return { by: /** @type {string} */ (s.id), via: /** @type {string} */ (s.eid), pos: await C.viaOf(identity.ops()), sign: (/** @type {Uint8Array} */ m) => identity.sign(Buffer.from(m)) }; };
     /** This device's own entry, for acts of the person's own list. */
     const selfSigner = () => { const s = me(); return { by: /** @type {string} */ (s.eid), sign: (/** @type {Uint8Array} */ m) => identity.sign(Buffer.from(m)) }; };
     /** The chain's resolver for a space's owners: this person from the local copy, anyone else through the directory by the name their entry carries. @param {any[]} spaceOps */
-    const ownerResolver = spaceOps => dir.ownersResolver(spaceOps, async (/** @type {string} */ id, /** @type {number} */ ts) => {
+    const ownerResolver = spaceOps => dir.ownersResolver(spaceOps, async (/** @type {string} */ id) => {
       const s = identity.status();
-      return s.exists && s.id === id ? C.stateAt(identity.ops(), ts, { now: now() + C.SKEW_MS }) : null;
+      return s.exists && s.id === id ? identity.ops() : null;
     });
     /** A space's chain as this device holds it: { ops, pin }, or null. @param {string} spaceId */
     const chainOf = spaceId => /** @type {any} */ (kv.get(`chain/${spaceId}`));
     const stateOfSpace = async (/** @type {string} */ spaceId) => {
       const c = await chainOf(spaceId);
       if (!c) throw refuse("This device does not hold the space's list of owners.", "no_chain");
-      return { c, state: await C.verifyChain(c.ops, { now: now() + C.SKEW_MS, resolve: ownerResolver(c.ops) }) };
+      return { c, state: await C.verifyChain(c.ops, { now: now() + C.SKEW_MS, ownerOps: ownerResolver(c.ops) }) };
     };
     const pinText = (/** @type {any} */ pin) => (pin ? `${pin.id}:${pin.seq}:${pin.head}` : undefined);
     const parsePin = (/** @type {unknown} */ t) => { const m = /^((?:per|spc)_[a-z2-7]{26}):(\d+):([0-9a-f]{64})$/.exec(String(t || "")); return m ? { id: m[1], seq: Number(m[2]), head: m[3] } : undefined; };
@@ -201,15 +203,15 @@ export default {
         let ops = c.ops;
         for (const id of owners) {
           if (state.entries.some(e => e.eid === id)) continue;
-          const op = await C.makeOp(state, { type: "add", entry: { eid: id, kind: "owner", subject: id, label: hint && PERSON_RE.test(id) ? hint : undefined } }, { by: /** @type {string} */ (me().id), via: /** @type {string} */ (me().eid), ts: Math.max(t, state.ts), sign: ownerSigner().sign });
-          state = await C.applyOp(state, op, { now: t + C.SKEW_MS, resolve: ownerResolver(ops) });
+          const op = await C.makeOp(state, { type: "add", entry: { eid: id, kind: "owner", subject: id, label: hint && PERSON_RE.test(id) ? hint : undefined } }, { by: /** @type {string} */ (me().id), via: /** @type {string} */ (me().eid), viaPos: await C.viaOf(identity.ops()), ts: Math.max(t, state.ts), sign: (await ownerSigner()).sign });
+          state = await C.applyOp(state, op, { now: t + C.SKEW_MS, ownerOps: ownerResolver(ops), live: true });
           await dir.append(row.label, [op]);
           ops = [...ops, op];
         }
         for (const e of [...state.entries]) {
           if (owners.has(e.eid)) continue;
-          const op = await C.makeOp(state, { type: "remove", target: e.eid }, { by: /** @type {string} */ (me().id), via: /** @type {string} */ (me().eid), ts: Math.max(t, state.ts), sign: ownerSigner().sign });
-          state = await C.applyOp(state, op, { now: t + C.SKEW_MS, resolve: ownerResolver(ops) });
+          const op = await C.makeOp(state, { type: "remove", target: e.eid }, { by: /** @type {string} */ (me().id), via: /** @type {string} */ (me().eid), viaPos: await C.viaOf(identity.ops()), ts: Math.max(t, state.ts), sign: (await ownerSigner()).sign });
+          state = await C.applyOp(state, op, { now: t + C.SKEW_MS, ownerOps: ownerResolver(ops), live: true });
           await dir.append(row.label, [op]);
           ops = [...ops, op];
         }
@@ -253,23 +255,23 @@ export default {
             let c = await chainOf(a.record.spaceId);
             if (!c) {
               const g = await C.makeGenesis({ kind: "space", entry: { eid: /** @type {string} */ (who.id), kind: "owner", subject: /** @type {string} */ (who.id), label: who.name || undefined },
-                nonce: crypto.randomBytes(12).toString("base64url"), ts: now(), via: /** @type {string} */ (who.eid), sign: ownerSigner().sign });
+                nonce: crypto.randomBytes(12).toString("base64url"), ts: now(), via: /** @type {string} */ (who.eid), viaPos: await C.viaOf(identity.ops()), sign: (await ownerSigner()).sign });
               c = { ops: [g], pin: null };
               await kv.put(`chain/${a.record.spaceId}`, c);
             }
-            const state = await C.verifyChain(c.ops, { now: now() + C.SKEW_MS, resolve: ownerResolver(c.ops) });
-            await dir.claim(a.name, state, c.ops, ownerSigner(), { v: 1, id: a.record.spaceId, name: a.name, label, rootPublic: a.rootPublic });
+            const state = await C.verifyChain(c.ops, { now: now() + C.SKEW_MS, ownerOps: ownerResolver(c.ops) });
+            await dir.claim(a.name, state, c.ops, await ownerSigner(), { v: 1, id: a.record.spaceId, name: a.name, label, rootPublic: a.rootPublic });
             await kv.put(`chain/${a.record.spaceId}`, { ops: c.ops, pin: C.pinOf(state) });
             return { ok: true };
           } catch (e) { return { ok: false, code: /** @type {any} */ (e).code, message: plainDirectory(e) }; }
         },
-        async releaseSpace(/** @type {{ name: string, spaceId: string }} */ a) { await dir.release(a.name, ownerSigner()); await kv.delete(`chain/${a.spaceId}`); return { ok: true }; },
+        async releaseSpace(/** @type {{ name: string, spaceId: string }} */ a) { await dir.release(a.name, await ownerSigner()); await kv.delete(`chain/${a.spaceId}`); return { ok: true }; },
         async pointHome(/** @type {{ name: string, spaceId: string, home: any }} */ a) {
           const row = spaces.get(a.spaceId);
           const k = files.keys.load(a.spaceId);
           const home = { kind: a.home && a.home.kind, ...(a.home && a.home.address ? { address: a.home.address } : {}) };
           const { state } = await stateOfSpace(a.spaceId);
-          await dir.update(a.name, state, ownerSigner(), { v: 1, id: a.spaceId, name: a.name, label: (row && (row.displayName || row.label)) || a.name, home, rootPublic: k ? k.publicKey : undefined });
+          await dir.update(a.name, state, await ownerSigner(), { v: 1, id: a.spaceId, name: a.name, label: (row && (row.displayName || row.label)) || a.name, home, rootPublic: k ? k.publicKey : undefined });
           return { ok: true };
         },
       },
@@ -344,6 +346,12 @@ export default {
     const publicIdentity = (/** @type {any} */ s) => ({
       exists: s.exists, name: s.name ? `${s.name}.vyre.run` : null, label: s.name, id: s.id, eid: s.eid, keyId: s.keyId, pending: s.pending, seq: s.seq, store: identity.kind,
     });
+    /** A recovery password is optional; when there is one it must be long enough to be worth the stretching (four or more words is best). @param {any} i */
+    const passwordOf = i => {
+      const pw = i.password === undefined ? "" : String(i.password);
+      if (pw && (pw.length < PASSWORD_MIN || pw.length > 256)) throw refuse(`A recovery password is ${PASSWORD_MIN} or more characters. Four or more words is best.`, "bad_password");
+      return pw;
+    };
     const idFail = (/** @type {any} */ e) => {
       const err = /** @type {any} */ (e);
       if (err && typeof err.code === "string" && /^[a-z][a-z0-9_.-]{1,40}$/.test(err.code) && !["unreachable", "directory"].includes(err.code)) return err;
@@ -354,26 +362,25 @@ export default {
     tool("spaces.identity.status", "This device's Vyre identity: its name, its permanent id and its place on the list. No key is ever shown.", obj(),
       async () => publicIdentity(identity.status()));
 
-    tool("spaces.identity.create", "Make this device's key and your identity, and claim your Vyre name (for example alex.vyre.run). The recovery code comes back in this reply only: show it to the person once and never keep a copy. A PIN is optional; with one, the paper alone is useless.",
-      obj({ name: str, pin: str, deviceLabel: str }, ["name"]), async i => {
+    tool("spaces.identity.create", "Make this device's key and your identity, and claim your Vyre name (for example alex.vyre.run). The recovery code comes back in this reply only: show it to the person once and never keep a copy. A recovery password is optional (four or more words is best); with one, the paper alone is not enough.",
+      obj({ name: str, password: str, deviceLabel: str }, ["name"]), async i => {
         const st = identity.status();
         if (st.exists) throw refuse(st.name ? `This device already has the name ${st.name}.vyre.run.` : "This device already has a Vyre identity.", "exists");
         const label = String(i.name || "").trim().toLowerCase().replace(/\.vyre\.run$/, "");
         if (!label) throw refuse("Choose a name.", "bad_name");
-        const pin = i.pin === undefined ? "" : String(i.pin);
-        if (pin && (pin.length < 4 || pin.length > 64)) throw refuse("A PIN is 4 to 64 characters.", "bad_pin");
+        const password = passwordOf(i);
         let made;
         try {
           const c = await dir.check(label);
           if (c.status === "taken") throw refuse("That name is taken. Pick another.", "name_taken");
           if (c.status !== "ok" && c.status !== "mine") throw refuse(c.status === "reserved" ? "That name is reserved. Pick another." : `That name can't be used: ${c.why}.`, "bad_name");
-          made = await idops.create({ name: label, pin, deviceLabel: i.deviceLabel ? String(i.deviceLabel) : undefined });
+          made = await idops.create({ name: label, password, deviceLabel: i.deviceLabel ? String(i.deviceLabel) : undefined });
         } catch (e) { const err = /** @type {any} */ (e); if (err.code === "name_taken" || err.code === "bad_name") throw err; throw idFail(err); }
         emit("identity.created", { name: `${label}.vyre.run`, id: made.status.id, at: now() });
         return {
           ...publicIdentity(made.status),
-          recoveryCode: made.recoveryCode, pinSet: made.pinSet,
-          note: "This recovery code is shown once. Write it down somewhere safe. " + (made.pinSet ? "It works only with the PIN you chose, so remember the PIN. " : "") + "Any one of your devices, this code, or two recovery contacts can bring you back, and none of them can be used to take your name from you in a day.",
+          recoveryCode: made.recoveryCode, passwordSet: made.passwordSet,
+          note: "This recovery code is shown once. Write it down somewhere safe. " + (made.passwordSet ? "It works only with the recovery password you chose, so remember it. " : "Add a recovery password (four or more words) so the paper alone is not enough. ") + "Any one of your devices, this code, or two recovery contacts can bring you back, and the recovery code can only add a device, and a new sign-in cannot remove older ones for 24 hours, so none of them can take your name from you in a day.",
         };
       });
 
@@ -399,19 +406,17 @@ export default {
       });
     tool("spaces.identity.entry.remove", "Take a device or contact off your list in one tap. Any older device can remove a newcomer. A sign-in under 24 hours old can remove only newer sign-ins.",
       obj({ eid: str }, ["eid"]), async i => { me(); try { return await idops.removeEntry(String(i.eid)); } catch (e) { throw idFail(e); } });
-    tool("spaces.identity.code.replace", "Make a new recovery code (and optionally a new PIN); the old code stops working. The code comes back in this reply only.",
-      obj({ pin: str }), async i => {
+    tool("spaces.identity.code.replace", "Make a new recovery code (and optionally a new recovery password); the old code stops working. The code comes back in this reply only.",
+      obj({ password: str }), async i => {
         me();
-        const pin = i.pin === undefined ? "" : String(i.pin);
-        if (pin && (pin.length < 4 || pin.length > 64)) throw refuse("A PIN is 4 to 64 characters.", "bad_pin");
-        try { return await idops.replaceCode({ pin }); } catch (e) { throw idFail(e); }
+        try { return await idops.replaceCode({ password: passwordOf(i) }); } catch (e) { throw idFail(e); }
       });
     tool("spaces.identity.sync", "Check the directory for changes to your list: new sign-ins and removals (each is an alert), whether this device was removed, and whether the directory answered with a stale or different list.",
       obj(), async () => { me(); try { return await idops.sync(); } catch (e) { throw idFail(e); } });
-    tool("spaces.identity.recover.code", "On a new device: take your identity back with the recovery code (and the PIN if you set one). Works at once; the new sign-in is a newcomer for 24 hours.",
-      obj({ name: str, code: str, pin: str, deviceLabel: str }, ["name", "code"]), async i => {
+    tool("spaces.identity.recover.code", "On a new device: take your identity back with the recovery code (and the recovery password if you set one). Works at once; the new sign-in is a newcomer for 24 hours.",
+      obj({ name: str, code: str, password: str, deviceLabel: str }, ["name", "code"]), async i => {
         try {
-          const r = await idops.recoverWithCode({ name: String(i.name).trim().toLowerCase().replace(/\.vyre\.run$/, ""), code: String(i.code), pin: i.pin === undefined ? "" : String(i.pin), deviceLabel: i.deviceLabel ? String(i.deviceLabel) : undefined });
+          const r = await idops.recoverWithCode({ name: String(i.name).trim().toLowerCase().replace(/\.vyre\.run$/, ""), code: String(i.code), password: i.password === undefined ? "" : String(i.password), deviceLabel: i.deviceLabel ? String(i.deviceLabel) : undefined });
           return publicIdentity(r.status);
         } catch (e) { throw idFail(e); }
       });
@@ -448,7 +453,7 @@ export default {
       if (i.space) {
         const { row } = mine(i.space);
         const { state } = await stateOfSpace(row.id);
-        return { name: row.label, id: state.id, signer: ownerSigner(), row };
+        return { name: row.label, id: state.id, signer: await ownerSigner(), row };
       }
       const s = me();
       if (i.name && String(i.name).toLowerCase().replace(/\.vyre\.run$/, "") !== s.name) throw refuse("That is not this device's name.", "forbidden");
@@ -657,9 +662,9 @@ export default {
     });
 
     /** This person's own list answers for themselves; everyone else is looked up by name inside the client. */
-    const ownerLookup = async (/** @type {string} */ id, /** @type {number} */ ts) => {
+    const ownerLookup = async (/** @type {string} */ id) => {
       const s = identity.status();
-      return s.exists && s.id === id ? C.stateAt(identity.ops(), ts, { now: now() + C.SKEW_MS }) : null;
+      return s.exists && s.id === id ? identity.ops() : null;
     };
     /** A join link, with an own-domain host resolved through the directory when this device does not know it. @param {string} link */
     const parseLink = async link => {
@@ -769,7 +774,7 @@ export default {
     if (typeof first.unref === "function") first.unref();
 
     // A removed or added sign-in is an alert on every device, so each device asks the directory for its list now and then (never faster than 60 s).
-    const syncEvery = Math.max(60_000, hooks.syncMs ?? 300_000);
+    const syncEvery = Math.max(60_000, hooks.syncMs ?? 60_000);
     const syncTimer = setInterval(() => { const s = identity.status(); if (s.exists && s.name) idops.sync().catch(e => ctx.log.warn(`the identity check failed: ${/** @type {Error} */ (e).message}`)); }, syncEvery);
     if (typeof syncTimer.unref === "function") syncTimer.unref();
 

@@ -60,15 +60,16 @@ export function openRecord(name, sealed) {
 /**
  * Verify what the directory returned for a name. `pin` is the head this client last saw for the identity (an invite, a pairing or an
  * earlier lookup): `{ id, seq, head }`. Without a pin the chain is trusted on first sight and the new pin is returned.
- * `resolve` finds a person's chain state for a space's owners (the directory is asked for them too, and verified the same way).
+ * `ownerOps` finds a person's whole chain for a space's owners (the directory is asked for them too, and verified the same way). What is newer than
+ * the pin is treated as accepted now: a space op by a device that is off its owner's current list is refused.
  * @param {string} name @param {any} r @param {{ id: string, seq: number, head: string }|null|undefined} pin
- * @param {{ resolve?: (id: string, ts: number) => Promise<C.State|null>, now?: number }} [o]
+ * @param {{ ownerOps?: (id: string) => Promise<any[]|null>, now?: number }} [o]
  */
 export async function verifyResolved(name, r, pin, o = {}) {
   if (!r || r.name !== name || !["person", "space"].includes(r.kind) || !Array.isArray(r.ops)) return { ok: false, why: "that is not the name asked for" };
   const now = o.now ?? Date.now();
   let state;
-  try { state = await C.verifyChain(r.ops, { now: now + C.SKEW_MS, resolve: o.resolve }); } catch (e) { return { ok: false, why: `the list does not verify: ${/** @type {any} */ (e).message}` }; }
+  try { state = await C.verifyChain(r.ops, { now: now + C.SKEW_MS, ownerOps: o.ownerOps, ...(pin ? { liveFrom: pin.seq + 1 } : {}) }); } catch (e) { return { ok: false, why: `the list does not verify: ${/** @type {any} */ (e).message}` }; }
   if (state.id !== r.id || state.kind !== r.kind) return { ok: false, why: "the list is not for the identity the directory named" };
   const seen = await C.checkAnswer(pin, r.ops);
   if (!seen.ok) return { ok: false, why: seen.why, code: seen.code };
@@ -77,9 +78,9 @@ export async function verifyResolved(name, r, pin, o = {}) {
   let payload = null;
   if (r.sealed && rec) {
     try {
-      const at = await C.stateAt(r.ops, rec.ts, { now: now + C.SKEW_MS, resolve: o.resolve });
-      const key = at && await C.signerKey(at, rec.by, rec.via, rec.ts, { resolve: o.resolve });
-      const good = key && await C.verifyWith(key.pub, recordMessage({ name, id: state.id, by: rec.by, via: rec.via, ts: rec.ts, sealedHash: sha256hex(r.sealed) }), rec.sig);
+      const at = await C.stateAt(r.ops, rec.ts, { now: now + C.SKEW_MS, ownerOps: o.ownerOps });
+      const key = at && await C.signerKey(at, rec.by, rec.via, rec.ts, { ownerOps: o.ownerOps, now: now + C.SKEW_MS }, { seq: rec.vseq, head: rec.vhead });
+      const good = key && await C.verifyWith(key.pub, recordMessage({ name, id: state.id, by: rec.by, via: rec.via, ts: rec.ts, sealedHash: sha256hex(r.sealed), vseq: rec.vseq, vhead: rec.vhead }), rec.sig);
       if (!good) return { ok: false, why: "the record's signature does not check out" };
     } catch { return { ok: false, why: "the record's signature does not check out" }; }
     payload = openRecord(name, r.sealed);
@@ -89,7 +90,7 @@ export async function verifyResolved(name, r, pin, o = {}) {
 }
 
 /**
- * @typedef {{ sign(message: Uint8Array): Promise<Uint8Array|Buffer>|Uint8Array|Buffer, by: string, via?: string }} EntrySigner an entry on the list that signs: `by` is its eid (a space owner's person id, with `via` the device)
+ * @typedef {{ sign(message: Uint8Array): Promise<Uint8Array|Buffer>|Uint8Array|Buffer, by: string, via?: string, pos?: { via_seq: number, via_head: string } }} EntrySigner an entry on the list that signs: `by` is its eid (a space owner's person id, with `via` the device and `pos` the position of that person's list it relied on)
  * @param {{ base?: string, fetch?: typeof globalThis.fetch, now?: () => number, timeoutMs?: number }} o
  */
 export function idDirectory({ base = DEFAULT_BASE, fetch = globalThis.fetch, now = Date.now, timeoutMs = 20_000 } = {}) {
@@ -117,27 +118,26 @@ export function idDirectory({ base = DEFAULT_BASE, fetch = globalThis.fetch, now
   /** A signed record over a payload for an identity's current state. @param {string} name @param {C.State} state @param {EntrySigner} signer @param {any} payload */
   async function recordFor(name, state, signer, payload, ts = now()) {
     const sealed = sealRecord(name, payload);
-    const sig = b64u(await signer.sign(recordMessage({ name, id: state.id, by: signer.by, via: signer.via, ts, sealedHash: sha256hex(sealed) })));
-    return { sealed, rec: { by: signer.by, ...(signer.via ? { via: signer.via } : {}), ts, sig } };
+    const vseq = signer.pos && signer.pos.via_seq, vhead = signer.pos && signer.pos.via_head;
+    const sig = b64u(await signer.sign(recordMessage({ name, id: state.id, by: signer.by, via: signer.via, ts, sealedHash: sha256hex(sealed), vseq, vhead })));
+    return { sealed, rec: { by: signer.by, ...(signer.via ? { via: signer.via } : {}), ...(vseq !== undefined ? { vseq, vhead } : {}), ts, sig } };
   }
   /** @param {string} action @param {string} name @param {string|undefined} domain @param {EntrySigner} signer */
   async function actFor(action, name, domain, signer, ts = now()) {
     return { by: signer.by, ...(signer.via ? { via: signer.via } : {}), ts, sig: b64u(await signer.sign(actMessage({ action, name, domain, ts }))) };
   }
 
-  /** @param {any[]} ops @param {((id: string, ts: number) => Promise<C.State|null>)|undefined} local */
+  /** @param {any[]} ops @param {((id: string) => Promise<any[]|null>)|undefined} local */
   function owners(ops, local) {
     /** @type {Map<string, any[]|null>} */ const seen = new Map();
-    return async (/** @type {string} */ id, /** @type {number} */ ts) => {
-      if (local) { const mine = await local(id, ts); if (mine) return mine; }
+    return async (/** @type {string} */ id) => {
+      if (local) { const mine = await local(id); if (mine) return mine; }
       const e = (Array.isArray(ops) ? ops : []).map(o => o && o.entry).filter(Boolean).find(x => x.subject === id && x.label);
       if (!e) return null;
       if (!seen.has(id)) {
         try { const q = await call("GET", `/v1/ids/resolve?name=${encodeURIComponent(String(e.label))}`); seen.set(id, q.id === id && q.kind === "person" ? q.ops : null); } catch { seen.set(id, null); }
       }
-      const theirs = seen.get(id);
-      if (!theirs) return null;
-      try { return await C.stateAt(theirs, ts, { now: now() + C.SKEW_MS }); } catch { return null; }
+      return seen.get(id) || null;
     };
   }
 
@@ -150,9 +150,9 @@ export function idDirectory({ base = DEFAULT_BASE, fetch = globalThis.fetch, now
     async resolve(nameOrAlias, { pin, alias = false, resolve } = /** @type {any} */ ({})) {
       const q = alias ? `alias=${encodeURIComponent(nameOrAlias)}` : `name=${encodeURIComponent(nameOrAlias)}`;
       const r = await call("GET", `/v1/ids/resolve?${q}`);
-      return verifyResolved(r.name, r, pin, { now: now(), resolve: owners(r.ops, resolve) });
+      return verifyResolved(r.name, r, pin, { now: now(), ownerOps: owners(r.ops, resolve) });
     },
-    /** The resolver a space's chain needs: its owners' own chains, found by the name each owner entry carries and verified like any other. `local` answers first (this person's own copy). @param {any[]} ops @param {((id: string, ts: number) => Promise<C.State|null>)|undefined} [local] */
+    /** The lookup a space's chain needs: its owners' own chains, found by the name each owner entry carries; the verifier checks them like any other. `local` answers first (this person's own copy). @param {any[]} ops @param {((id: string) => Promise<any[]|null>)|undefined} [local] */
     ownersResolver: (ops, local) => owners(ops, local),
     /** Send new ops. The directory verifies each against the list before it; a repeat of an op it has is fine. */
     append: (name, ops) => call("POST", "/v1/ids/append", { name, ops }),

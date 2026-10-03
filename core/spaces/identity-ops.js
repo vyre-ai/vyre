@@ -27,9 +27,9 @@ const plain = e => chainWords[e && e.code] || (e && e.message) || "That did not 
 
 /**
  * @param {{ store: ReturnType<typeof import("./identity.js").fileIdentityStore>, dir: ReturnType<typeof import("../names/ids.js").idDirectory>,
- *   now: () => number, emit?: (type: string, payload: any) => void, scrypt?: any }} d
+ *   now: () => number, emit?: (type: string, payload: any) => void, stretch?: any }} d
  */
-export function createIdentityOps({ store, dir, now, emit = () => {}, scrypt }) {
+export function createIdentityOps({ store, dir, now, emit = () => {}, stretch }) {
   const me = () => {
     const s = store.status();
     if (!s.exists) throw refuse("This device has no Vyre identity yet.", "no_identity");
@@ -69,10 +69,10 @@ export function createIdentityOps({ store, dir, now, emit = () => {}, scrypt }) 
   };
 
   return {
-    /** Make this device's key and chain with a recovery code (and an optional PIN), and claim the name. The code is returned ONCE. */
-    async create({ name, pin = "", deviceLabel }) {
+    /** Make this device's key and chain with a recovery code (and an optional recovery password), and claim the name. The code is returned ONCE. */
+    async create({ name, password = "", deviceLabel }) {
       const code = newCode();
-      const ck = codeKey(code, pin, scrypt);
+      const ck = codeKey(code, password, stretch);
       await store.generate({ code: { eid: ck.eid, pub: ck.publicKey }, label: deviceLabel, ts: now() });
       try {
         const state = await stateNow();
@@ -80,7 +80,7 @@ export function createIdentityOps({ store, dir, now, emit = () => {}, scrypt }) 
         store.setChain(store.ops(), C.pinOf(state));
       } catch (e) { store.clear(); throw e; }
       const status = store.setName(name);
-      return { status, recoveryCode: code, pinSet: Boolean(pin) };
+      return { status, recoveryCode: code, passwordSet: Boolean(password) };
     },
     entries: async () => view(await stateNow()),
     /** Add a device (its public key came from pairing) or a recovery contact (its approval key came from the contact). */
@@ -103,12 +103,12 @@ export function createIdentityOps({ store, dir, now, emit = () => {}, scrypt }) 
       return { eid, seq: r.state.seq };
     },
     /** A new recovery code; the old one stops. The code is returned ONCE. */
-    async replaceCode({ pin = "" } = {}) {
+    async replaceCode({ password = "" } = {}) {
       const code = newCode();
-      const ck = codeKey(code, pin, scrypt);
+      const ck = codeKey(code, password, stretch);
       const r = await change({ type: "replace-code", entry: { eid: ck.eid, kind: "code", pub: ck.publicKey } });
       emit("identity.code-replaced", { name: nameOf(), seq: r.state.seq, at: now() });
-      return { recoveryCode: code, pinSet: Boolean(pin), seq: r.state.seq };
+      return { recoveryCode: code, passwordSet: Boolean(password), seq: r.state.seq };
     },
     /** Here: a recovery contact makes the key it will approve with, and gives the PUBLIC half to the person. */
     makeContactKey(forName) {
@@ -133,13 +133,13 @@ export function createIdentityOps({ store, dir, now, emit = () => {}, scrypt }) 
       if (removed) emit("identity.device-removed", { name, eid: mine, at: now() });
       return { ok: true, alerts, removed, seq: r.state.seq };
     },
-    /** A new device, the recovery code in hand (and the PIN if one was set): back in at once. */
-    async recoverWithCode({ name, code, pin = "", deviceLabel }) {
+    /** A new device, the recovery code in hand (and the password if one was set): back in at once. */
+    async recoverWithCode({ name, code, password = "", deviceLabel }) {
       if (store.status().exists) throw refuse("This device already has a Vyre identity.", "exists");
       const r = await dir.resolve(name);
       if (!r.ok || r.kind !== "person") throw refuse(r.ok ? "That name does not belong to a person." : r.why, "not_found");
-      const ck = codeKey(code, pin, scrypt);
-      if (!r.state.entries.some(e => e.kind === "code" && e.eid === ck.eid)) throw refuse("That code (or PIN) is not the one for this name.", "wrong_code");
+      const ck = codeKey(code, password, stretch);
+      if (!r.state.entries.some(e => e.kind === "code" && e.eid === ck.eid)) throw refuse("That code (or password) is not the one for this name.", "wrong_code");
       const key = store.newDeviceKey();
       const op = await C.makeOp(r.state, { type: "add", entry: { eid: key.eid, kind: "device", pub: key.publicKey, label: deviceLabel ? String(deviceLabel).slice(0, 60) : undefined } }, { by: ck.eid, ts: Math.max(now(), r.state.ts), sign: ck.sign });
       let next;

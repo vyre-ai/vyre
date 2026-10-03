@@ -91,7 +91,7 @@ test("chain: the newcomer rule, in each direction", async () => {
   assert.ok(!w5.state.entries.some(e => e.eid === phone.eid));
 });
 
-test("chain: the recovery code is replaceable, the old one stops, and the new one keeps the old one's age", async () => {
+test("chain: the recovery code is replaceable, the old one stops, and the new one keeps the old one's age and still only adds a device", async () => {
   const phone = await key("phone"), code = await key("code"), code2 = await key("code2"), fresh = await key("fresh");
   let w = await person(phone);
   w = await step(w, { type: "add", entry: code.entry("code") }, phone, T0 + 25 * H);
@@ -102,8 +102,9 @@ test("chain: the recovery code is replaceable, the old one stops, and the new on
   // the new code signs back in at once with full power: all devices lost, code in hand
   const w2 = await step(w, { type: "add", entry: fresh.entry("device") }, code2, T0 + 101 * H);
   w2.state.entries.find(e => e.eid === code2.eid);
-  const w3 = await step(w2, { type: "remove", target: phone.eid }, code2, T0 + 102 * H);
-  assert.ok(!w3.state.entries.some(e => e.eid === phone.eid));
+  // ...but only to add a device: it cannot remove the owner's devices, and the owner's phone stays
+  await refused(step(w2, { type: "remove", target: phone.eid }, code2, T0 + 102 * H), "code_limited");
+  assert.ok(w2.state.entries.some(e => e.eid === phone.eid));
   // the new device that the code added is itself a newcomer
   await refused(step(w2, { type: "remove", target: code2.eid }, fresh, T0 + 102 * H), "newcomer");
 });
@@ -173,33 +174,88 @@ test("chain: a space's list holds its owners, signed through the owner's own dev
   alex = await step(alex, { type: "add", entry: newDevice.entry("device") }, phone, T0 + 100 * H);
   const bob = await person(bobPhone, T0);
   const chains = new Map([[alex.state.id, alex.ops], [bob.state.id, bob.ops]]);
-  const resolve = async (id, ts) => (chains.has(id) ? C.stateAt(chains.get(id), ts, { now: ts + 1e9 }) : null);
-  const ctx = { resolve, now: T0 + 200 * H };
+  const ctx = { ownerOps: async id => chains.get(id) || null, now: T0 + 200 * H };
+  const pos = async () => C.viaOf(alex.ops);
 
-  const g = await C.makeGenesis({ kind: "space", entry: { eid: alex.state.id, kind: "owner", subject: alex.state.id, label: "Alex" }, nonce: "space-nonce-1", ts: T0 + 101 * H, via: phone.eid, sign: phone.sign });
+  const g = await C.makeGenesis({ kind: "space", entry: { eid: alex.state.id, kind: "owner", subject: alex.state.id, label: "Alex" }, nonce: "space-nonce-1", ts: T0 + 101 * H, via: phone.eid, viaPos: await pos(), sign: phone.sign });
   let space = { ops: [g], state: await C.verifyChain([g], ctx) };
   assert.match(space.state.id, /^spc_[a-z2-7]{26}$/);
+  const op = async (body, dev, ts) => C.makeOp(space.state, body, { by: alex.state.id, via: dev.eid, viaPos: await pos(), ts, sign: dev.sign });
   // an owner adds another owner through an old device
-  const addBob = await C.makeOp(space.state, { type: "add", entry: { eid: bob.state.id, kind: "owner", subject: bob.state.id } }, { by: alex.state.id, via: phone.eid, ts: T0 + 102 * H, sign: phone.sign });
+  const addBob = await op({ type: "add", entry: { eid: bob.state.id, kind: "owner", subject: bob.state.id } }, phone, T0 + 102 * H);
   space = { ops: [...space.ops, addBob], state: await C.applyOp(space.state, addBob, ctx) };
   assert.equal(space.state.entries.length, 2);
   // alex's brand new device cannot change owners
-  const young = await C.makeOp(space.state, { type: "remove", target: bob.state.id }, { by: alex.state.id, via: newDevice.eid, ts: T0 + 100 * H + 1000 + 3 * H, sign: newDevice.sign });
-  await refused(C.applyOp(space.state, young, { ...ctx }), "newcomer");
-  // a device that is not on alex's list cannot sign for the space
-  const rogue = await C.makeOp(space.state, { type: "remove", target: bob.state.id }, { by: alex.state.id, via: bobPhone.eid, ts: T0 + 103 * H, sign: bobPhone.sign });
-  await refused(C.applyOp(space.state, rogue, ctx), "not_on_list");
-  // the last owner cannot be removed; a person with no chain cannot be an owner
+  await refused(C.applyOp(space.state, await op({ type: "remove", target: bob.state.id }, newDevice, T0 + 100 * H + 1000 + 3 * H), ctx), "newcomer");
+  // a device that is not on alex's list cannot sign for the space, and a recovery code never can
+  await refused(C.applyOp(space.state, await op({ type: "remove", target: bob.state.id }, bobPhone, T0 + 103 * H), ctx), "not_on_list");
+  // a space op must name a real position of the owner's list
+  const badPos = await C.makeOp(space.state, { type: "remove", target: bob.state.id }, { by: alex.state.id, via: phone.eid, viaPos: { via_seq: 1, via_head: "0".repeat(64) }, ts: T0 + 103 * H, sign: phone.sign });
+  await refused(C.applyOp(space.state, badPos, ctx), "bad_via");
+  const noPos = await C.makeOp(space.state, { type: "remove", target: bob.state.id }, { by: alex.state.id, via: phone.eid, ts: T0 + 103 * H, sign: phone.sign });
+  await refused(C.applyOp(space.state, noPos, ctx), "bad_via");
+  // adding an owner is allowed before that person has signed anything; a person with no chain cannot sign later
   const strangerId = "per_" + "b".repeat(26);
-  const addGhost = await C.makeOp(space.state, { type: "add", entry: { eid: strangerId, kind: "owner", subject: strangerId } }, { by: alex.state.id, via: phone.eid, ts: T0 + 104 * H, sign: phone.sign });
-  const ok = await C.applyOp(space.state, addGhost, ctx); // adding is allowed: the subject is resolved only when they sign
+  const ok = await C.applyOp(space.state, await op({ type: "add", entry: { eid: strangerId, kind: "owner", subject: strangerId } }, phone, T0 + 104 * H), ctx);
   assert.equal(ok.entries.length, 3);
-  const rm = await C.makeOp(space.state, { type: "remove", target: bob.state.id }, { by: alex.state.id, via: phone.eid, ts: T0 + 105 * H, sign: phone.sign });
+  const rm = await op({ type: "remove", target: bob.state.id }, phone, T0 + 105 * H);
   space = { ops: [...space.ops, rm], state: await C.applyOp(space.state, rm, ctx) };
-  const rmLast = await C.makeOp(space.state, { type: "remove", target: alex.state.id }, { by: alex.state.id, via: phone.eid, ts: T0 + 106 * H, sign: phone.sign });
-  await refused(C.applyOp(space.state, rmLast, ctx), "last_entry");
-  // history verifies again from scratch, using the owners' chains as they stood at each time
+  await refused(C.applyOp(space.state, await op({ type: "remove", target: alex.state.id }, phone, T0 + 106 * H), ctx), "last_entry");
+  // history verifies again from scratch
   assert.equal((await C.verifyChain(space.ops, ctx)).head, space.state.head);
+});
+
+test("chain (reviewer-2 probe 1): the recovery code alone cannot take over: it can add a device and nothing else", async () => {
+  const phone = await key("phone"), code = await key("code"), code2 = await key("thief code"), thief = await key("thief"), friend = await key("friend");
+  const g = await C.makeGenesis({ kind: "person", entry: phone.entry("device"), code: code.entry("code"), nonce: "takeover-nonce", ts: T0, sign: phone.sign });
+  let w = { ops: [g], state: await C.verifyChain([g], { now: T0 }) };
+  // a thief holding only the code, long after setup
+  const t = T0 + 500 * H;
+  w = await step(w, { type: "add", entry: thief.entry("device") }, code, t);
+  await refused(step(w, { type: "remove", target: phone.eid }, code, t + 1), "code_limited");
+  await refused(step(w, { type: "replace-code", entry: code2.entry("code") }, code, t + 1), "code_limited");
+  await refused(step(w, { type: "add", entry: friend.entry("contact") }, code, t + 1), "code_limited");
+  await refused(step(w, { type: "remove", target: code.eid }, code, t + 1), "code_limited");
+  // the device it added is a newcomer for 24 hours: it cannot remove the owner's phone or replace the code
+  await refused(step(w, { type: "remove", target: phone.eid }, thief, t + H), "newcomer");
+  await refused(step(w, { type: "replace-code", entry: code2.entry("code") }, thief, t + H), "newcomer");
+  // the owner's phone removes it in one op and the thief is out
+  const out = await step(w, { type: "remove", target: thief.eid }, phone, t + 2 * H);
+  assert.deepEqual(out.state.entries.map(e => e.eid).sort(), [phone.eid, code.eid].sort());
+  // the code's own key is a newcomer for acts that are not ops, too (it cannot release a name)
+  const state = out.state;
+  const k = await C.signerKey(state, code.eid, undefined, t + 3 * H, {});
+  assert.equal(k.young, true);
+});
+
+test("chain (reviewer-2 probe 2): a device removed from its owner's list cannot sign space ops, whatever time it claims", async () => {
+  const d1 = await key("d1"), d2 = await key("d2");
+  let alex = await person(d1, T0);
+  alex = await step(alex, { type: "add", entry: d2.entry("device") }, d1, T0 + 30 * H);
+  const pos0 = await C.viaOf(alex.ops);           // the list while d1 is still on it
+  const chains = new Map([[alex.state.id, alex.ops]]);
+  const ctxOf = (live, extra = {}) => ({ ownerOps: async id => chains.get(id) || null, now: T0 + 400 * H, live, ...extra });
+  const g = await C.makeGenesis({ kind: "space", entry: { eid: alex.state.id, kind: "owner", subject: alex.state.id }, nonce: "backdate-nonce", ts: T0 + 40 * H, via: d1.eid, viaPos: pos0, sign: d1.sign });
+  const space = { ops: [g], state: await C.verifyChain([g], ctxOf(true)) };
+  // d1 is removed from alex's list at R (by d2, which is old enough by now)
+  alex = await step(alex, { type: "remove", target: d1.eid }, d2, T0 + 100 * H);
+  chains.set(alex.state.id, alex.ops);
+  // the thief signs a space op with d1, a time just after the space's last op (before R) and the position it saw before the removal
+  const evil = await C.makeOp(space.state, { type: "add", entry: { eid: "per_" + "c".repeat(26), kind: "owner", subject: "per_" + "c".repeat(26) } }, { by: alex.state.id, via: d1.eid, viaPos: pos0, ts: T0 + 41 * H, sign: d1.sign });
+  // accepted now (the directory, or a client for what is newer than its pin): refused, whatever its time or position
+  await refused(C.applyOp(space.state, evil, ctxOf(true)), "removed");
+  await refused(C.applyOp(space.state, evil, ctxOf(false, { liveFrom: 1 })), "removed");
+  // history that was accepted while d1 was on the list still replays
+  const old = await C.makeOp(space.state, { type: "add", entry: { eid: "per_" + "c".repeat(26), kind: "owner", subject: "per_" + "c".repeat(26) } }, { by: alex.state.id, via: d1.eid, viaPos: pos0, ts: T0 + 41 * H, sign: d1.sign });
+  assert.equal((await C.applyOp(space.state, old, ctxOf(false))).entries.length, 2);
+  // a removed device cannot name a position after its removal either: it is not on the list there
+  const after = await C.viaOf(alex.ops);
+  const late = await C.makeOp(space.state, { type: "add", entry: { eid: "per_" + "d".repeat(26), kind: "owner", subject: "per_" + "d".repeat(26) } }, { by: alex.state.id, via: d1.eid, viaPos: after, ts: T0 + 41 * H, sign: d1.sign });
+  await refused(C.applyOp(space.state, late, ctxOf(false)), "not_on_list");
+  // and a record or an act signed for the space is held to the same rule
+  const k2 = await C.signerKey(space.state, alex.state.id, d2.eid, T0 + 200 * H, ctxOf(true));
+  assert.ok(k2.pub);
+  await refused(C.signerKey(space.state, alex.state.id, d1.eid, T0 + 200 * H, ctxOf(true)), "not_on_list");
 });
 
 test("chain: the first device and the recovery code made with it are founders, never newcomers", async () => {
