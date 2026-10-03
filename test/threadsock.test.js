@@ -192,7 +192,7 @@ test("a REAL daemon boot hands the Switchboard (the module named in its own mani
   const d = await start({ root, log: () => {}, kernel: true });
   t.after(() => d.stop());
   assert.equal(realManifest.name, "threads", "the real manifest name");
-  assert.deepEqual(realManifest.needs.daemon, ["kernelSession", "sandbox"], "it declares what it needs from the daemon");
+  assert.deepEqual(realManifest.needs.daemon, ["kernelSession", "sandbox", "credentials"], "it declares what it needs from the daemon");
   const row = d.registry.status().find(m => m.name === "threads");
   assert.equal(row && row.state, "running", JSON.stringify(row));
   const real = d.registry.context(realManifest);

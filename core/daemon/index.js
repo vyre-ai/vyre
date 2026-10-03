@@ -224,9 +224,12 @@ async function startLocked(opts, root, p, release) {
     const personChainFor = async (/** @type {string} */ person) => kernel.chains.fromFacts({ kind: "device", device_key_id: "vyred", person, path: "direct" });
     void kernelSessions.reopenPending({ personChainFor, timeoutMs: 10_000, onGiveUp: (/** @type {string} */ thread, /** @type {string} */ why) => log(`sessions: could not resume ${thread.slice(0, 8)} (${why})`) }).catch(() => {});
     closeKernelSessions = () => kernelSessions.closeAll();
-    registry.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any }} */ q) => {
-      const person = kernel.chains.fromFacts({ kind: "device", device_key_id: "vyred", person: kernel.id.owner, path: "direct" });
-      const s = await kernelSessions.open({ chain: person, ...(q.rec && typeof q.rec.chat === "string" ? { chat: q.rec.chat } : {}), ...(q.agent ? { agent: q.agent } : {}), thread: q.thread });
+    registry.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any, chat?: string, asker?: string }} */ q) => {
+      // A chat turn: the Switchboard passes `chat` and `asker` only from module:stream (threads.start and threads.send), so the session is the asker's, in that chat, and the kernel checks they are in it.
+      // Anything else is the home owner's own thread, as before.
+      const person = await personChainFor(q.asker || kernel.id.owner);
+      const chat = q.chat || (q.rec && typeof q.rec.chat === "string" ? q.rec.chat : undefined);
+      const s = await kernelSessions.open({ chain: person, ...(chat ? { chat } : {}), ...(q.agent ? { agent: q.agent } : {}), thread: q.thread });
       return { token: kernelSessions.tokenFor(s.id), end: () => kernelSessions.end(s.id) };
     };
     // The sandbox every Vyre-started session's agent runs in on this computer (the runner's home sandbox: planHome, selfTest, launch; core/sessions/ cannot import core/runner, so the
@@ -266,6 +269,9 @@ async function startLocked(opts, root, p, release) {
   }
   // The eight box-only modules gate on cfg.machine (ADR 0039: solo/server/device), not the
   // legacy cfg.role -- that's what lets a Mac chosen as the server run them.
+  // The provider sign-in token for the launcher modules (threads, agents), by declaration (needs.daemon: credentials): from the credentials port taken below, never a module grant on the vault
+  // items. Late-bound, because the port is taken after the vault starts; until then it answers undefined and the caller keeps its old grant-based read.
+  registry.deps.credentials = (/** @type {string} */ provider) => (registry.deps.credentialsPort ? registry.deps.credentialsPort.credentials(provider) : Promise.resolve(undefined));
   await registry.start(discover(moduleRoots(root), { firstPartyRoots }), { role: cfg.machine, ...cfg.modules });
   // The session launcher's way to a provider sign-in token (core/vault/index.js `takeCredentialsPort`): taken ONCE, here, right after the vault starts, and handed to the sandbox the Switchboard
   // reads per session (`lib/agent-sandbox.js` calls `credentials(provider)`). A second take throws, so nothing else can ever hold it. Where the vault did not start (a Mac whose vault is vyre-core's) there is none.
