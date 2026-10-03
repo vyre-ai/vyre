@@ -25,6 +25,11 @@ import { sandboxReader } from "./readerhost.js";
 import { place, deviceState } from "./placement.js";
 
 const WATCHDOG = path.join(path.dirname(fileURLToPath(import.meta.url)), "watchdog.js");
+/** What a lent session may reach when the Space has not said: the internet (a lent session that cannot clone or install is not usable). The one place to flip it. */
+export const LENT_NETWORK_DEFAULT = "internet";
+/** The Space's setting, capped by the lender: the lender's cap "provider" always wins (it is their connection and their address). */
+export const effectiveNetwork = (space, lenderCap) => (lenderCap === "provider" ? "provider" : (space === "provider" || space === "internet" ? space : LENT_NETWORK_DEFAULT));
+
 const spaceDir = (base, space) => path.join(base, "spaces", crypto.createHash("sha256").update(space).digest("hex").slice(0, 16));
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -57,7 +62,7 @@ export async function reconcile(o) {
  * @param {{ platform?: "darwin"|"linux"|"win32", base: string, space: string, device: string,
  *   vault: any, sync: any, grants: () => { spaceAllows: boolean, memberAccepts: boolean },
  *   limits?: any, server?: () => { available: boolean, hasRoom: boolean, why?: string }, requestServer?: (session: string) => Promise<void>|void,
- *   reader?: any, sessionState?: (session: string) => any, labels?: (session: string) => any, sealState?: (state: any) => any, verifyState?: (state: any) => boolean,
+ *   lenderCap?: "provider"|"internet", reader?: any, sessionState?: (session: string) => any, labels?: (session: string) => any, sealState?: (state: any) => any, verifyState?: (state: any) => boolean,
  *   driver?: any, state?: () => any, onEvent?: (e: any) => void, retryMs?: number, watchdog?: boolean, lockRetryMs?: number,
  *   setTimer?: typeof setTimeout, clearTimer?: typeof clearTimeout, now?: () => number }} o
  */
@@ -185,7 +190,7 @@ export function createRunner(o) {
     const reader = o.reader || sandboxReader({ platform, space: o.space, work, base: o.base });
     const sy = createSessionSync({ space: o.sync, session: s.session, work, state, reader, seal: o.sealState || (st => st), log: m => emit({ type: "sync", session: s.session, m }) });
     const token = crypto.randomBytes(24).toString("base64url");
-    const internet = s.network === "internet" ? { token } : undefined;   // the Space's choice: provider-and-space only (default), or the internet from this computer's connection
+    const internet = effectiveNetwork(s.network, o.lenderCap) === "internet" ? { token } : undefined;   // the Space's choice: provider-and-space only (default), or the internet from this computer's connection
     const eg = createEgress({ routes, vault: o.vault, session: s.session, token, internet: Boolean(internet), lease: () => lease.id, onEvent: e => emit({ type: "egress", session: s.session, ...e }) });
     const runDir = path.join(o.base, "run");
     fs.mkdirSync(runDir, { recursive: true, mode: 0o700 });

@@ -129,7 +129,10 @@ export function createEgress(o) {
       up.once("connect", () => { sock.write("HTTP/1.1 200 Connection Established\r\n\r\n"); if (head && head.length) up.write(head); up.pipe(sock); sock.pipe(up); });
       // An allowed host cannot be used to hold sockets open for ever: idle tunnels are closed, and there is a cap per session.
       sock.setTimeout(TUNNEL_IDLE_MS, () => sock.destroy()); up.setTimeout(TUNNEL_IDLE_MS, () => up.destroy());
-      up.on("error", () => sock.destroy()); sock.on("close", () => up.destroy()); up.on("close", () => { end(); sock.destroy(); });
+      let bin = 0, bout = 0; up.on("data", d => { bin += d.length; }); sock.on("data", d => { bout += d.length; });
+      // The destination and the byte counts per tunnel, never contents.
+      const logged = () => { if (!logged.done) { logged.done = true; o.onEvent?.({ route: "tunnel", host, port, bytesIn: bin, bytesOut: bout, status: 200, ms: 0 }); } };
+      up.on("error", () => sock.destroy()); sock.on("close", () => { logged(); up.destroy(); }); up.on("close", () => { logged(); end(); sock.destroy(); });
     }, () => { end(); deny(); });
   });
   return {

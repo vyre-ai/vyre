@@ -97,6 +97,7 @@ export function seatbeltProfile(o) {
     '(allow process-exec (subpath "/Library/Developer/CommandLineTools") (subpath "/Applications/Xcode.app/Contents/Developer"))',
     `(allow file-read* file-write* (subpath ${q(ws)}))`,
     `(allow process-exec (subpath ${q(ws)}))`,
+    ...(o.internet ? [`(allow file-read* (literal ${q(PROXYCMD)}))`] : []),
     ...ro.map(d => `(allow file-read* (subpath ${q(d)}))\n(allow process-exec (subpath ${q(d)}))`),
     ...[...meta].map(d => `(allow file-read-metadata (literal ${q(d)}))`),
   ];
@@ -141,14 +142,14 @@ function planLinux(o) {
   needTool(o.command, ro, ["/usr"]);
   const home = "/work/home";
   const base = proxyUrl(inner);
-  const env = { ...cleanEnv(o.env), HOME: home, TMPDIR: "/work/tmp", PATH: "/usr/local/bin:/usr/bin:/bin:" + ro.map(d => path.join(d, "bin")).join(":"), ...proxyEnv(base, o.internet) };
+  const env = { ...cleanEnv(o.env), HOME: home, TMPDIR: "/work/tmp", PATH: "/usr/local/bin:/usr/bin:/bin:" + ro.map(d => path.join(d, "bin")).join(":"), ...proxyEnv(base, o.internet, "/opt/vyre-proxycmd.js") };
   const argv = [
     "bwrap", "--die-with-parent", "--new-session", "--unshare-all", "--clearenv",
     "--ro-bind", "/usr", "/usr", "--symlink", "usr/bin", "/bin", "--symlink", "usr/lib", "/lib", "--symlink", "usr/lib64", "/lib64",
     "--ro-bind-try", "/etc/ssl", "/etc/ssl", "--ro-bind-try", "/etc/alternatives", "/etc/alternatives",
     "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/run", "--unshare-user", "--cap-drop", "ALL", "--disable-userns",
     ...ro.flatMap(d => ["--ro-bind", d, d]),
-    "--ro-bind", SHIM, "/opt/vyre-shim.js",
+    "--ro-bind", SHIM, "/opt/vyre-shim.js", "--ro-bind", PROXYCMD, "/opt/vyre-proxycmd.js",
     "--bind", ws, "/work", "--chdir", "/work/files",
     ...(sock ? ["--ro-bind", sock, "/run/egress.sock"] : []),
     ...Object.entries(env).flatMap(([k, v]) => ["--setenv", k, v]),
@@ -174,7 +175,10 @@ export function launch(p, opts = {}) {
 
 const proxyUrl = port => `http://127.0.0.1:${port}`;
 /** The session talks to the provider and the space through the proxy; the key it is given is a worthless session token. */
-const proxyEnv = (base, internet) => ({ ANTHROPIC_BASE_URL: `${base}/provider`, VYRE_SPACE_URL: `${base}/space`, ...(internet ? { HTTPS_PROXY: `http://vyre:${internet.token}@${base.replace(/^http:\/\//, "")}`, HTTP_PROXY: `http://vyre:${internet.token}@${base.replace(/^http:\/\//, "")}`, NO_PROXY: "" } : {}) });
+/** ssh (git over ssh) cannot use an HTTP proxy by itself: its ProxyCommand does the CONNECT. The node binary and proxycmd.js are in the sandbox (the shim path is bound on Linux). */
+export const PROXYCMD = path.join(path.dirname(fileURLToPath(import.meta.url)), "proxycmd.js");
+export const sshCommand = (base, token, script = PROXYCMD) => `ssh -o StrictHostKeyChecking=accept-new -o ProxyCommand='${process.execPath} ${script} ${base.replace(/^http:\/\//, "")} ${token} %h %p'`;
+const proxyEnv = (base, internet, script) => ({ ANTHROPIC_BASE_URL: `${base}/provider`, VYRE_SPACE_URL: `${base}/space`, ...(internet ? { HTTPS_PROXY: `http://vyre:${internet.token}@${base.replace(/^http:\/\//, "")}`, HTTP_PROXY: `http://vyre:${internet.token}@${base.replace(/^http:\/\//, "")}`, NO_PROXY: "", GIT_SSH_COMMAND: sshCommand(base, internet.token, script) } : {}) });
 
 /**
  * @param {PlanOpts} o
