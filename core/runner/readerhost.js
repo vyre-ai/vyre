@@ -41,7 +41,7 @@ export function sandboxReader(o) {
         if (buf.length < nl + 1 + (h.send ? h.size : 0)) return;
         const bytes = h.send ? Buffer.from(buf.subarray(nl + 1, nl + 1 + h.size)) : null;
         buf = buf.subarray(nl + 1 + (h.send ? h.size : 0));
-        const f = { rel: h.rel, hash: h.hash, size: h.send ? h.size : 0, len: h.len, mtimeMs: h.mtimeMs, bytes };
+        const f = { rel: h.rel, hash: h.hash, size: h.send ? h.size : 0, len: h.len, mtimeMs: h.mtimeMs, deferred: Boolean(h.deferred), bytes };
         chain = chain.then(() => onFile(f));      // handled one at a time, as each is framed: nothing accumulates
         chain.catch(fail);
       }

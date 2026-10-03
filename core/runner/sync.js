@@ -44,7 +44,7 @@ const canon = m => JSON.stringify(Object.keys(m).sort().map(k => [k, m[k].hash, 
 const transcriptHash = (lines, seq) => sha(lines.filter(e => e.seq <= seq).sort((a, b) => a.seq - b.seq).map(e => `${e.seq}:${e.line}\n`).join(""));
 export const coverOf = (manifest, lines, seq, turn) => ({ turn, seq, manifest: sha(canon(manifest)), transcript: transcriptHash(lines, seq) });
 
-/** @typedef {(req: { roots: typeof ROOTS, have: Record<string, { hash: string, size: number, mtimeMs: number }>, maxBytes?: number }, onFile: (f: { rel: string, hash: string, size: number, len: number, mtimeMs: number, bytes: Buffer|null }) => Promise<void>) => Promise<{ truncated: boolean }>} Reader */
+/** @typedef {(req: { roots: typeof ROOTS, have: Record<string, { hash: string, size: number, mtimeMs: number }>, maxBytes?: number }, onFile: (f: { rel: string, hash: string, size: number, len: number, mtimeMs: number, bytes: Buffer|null, deferred?: boolean }) => Promise<void>) => Promise<{ truncated: boolean }>} Reader */
 
 /**
  * A reader that runs in THIS process, for tests of a workspace nobody else writes to. Production uses readerhost.js, which reads from
@@ -105,6 +105,7 @@ export function createSessionSync(o) {
       if (!root) return;
       const remote = `${root.remote}/${f.rel.slice(root.dir.length + 1)}`;
       seen.add(remote);
+      if (f.deferred) return;   // modified in the last second: next checkpoint (and not a deletion)
       const have0 = manifest[remote];
       if (!f.bytes) { if (have0 && have0.hash === f.hash && have0.mtimeMs !== f.mtimeMs) have0.mtimeMs = f.mtimeMs; return; }
       if (have0 && have0.hash === f.hash) { have0.mtimeMs = f.mtimeMs; have0.len = f.len; return; }

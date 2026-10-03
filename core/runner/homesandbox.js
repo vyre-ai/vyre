@@ -15,7 +15,7 @@ import fs from "node:fs";
 import path from "node:path";
 import net from "node:net";
 import { spawn } from "node:child_process";
-import { launch, cleanEnv } from "./sandbox.js";
+import { launch } from "./sandbox.js";
 import { filter as seccompFilter } from "./seccomp.js";
 import { SHIM } from "./sandbox.js";
 
@@ -34,10 +34,21 @@ const SECRET_DIRS = [".ssh", ".aws", ".gnupg", ".kube", ".docker", ".netrc", ".g
  * @property {string} sessionSocket  the one socket this session may reach
  * @property {string[]} [readOnly] Linux: folders bound read-only besides the system ones (the agent's install folder)
  * @property {string[]} [workdirs] folders the session may read and write (the project)
- * @property {{ command: string, args?: string[], settingsPaths?: string[], private?: { from: string, env: string, credentialFiles: string[] }, hosts?: string[], versionArgs?: string[] }} [agent]  the provider's agent. `private` gives each session its OWN config folder holding only the credential files, seeded from the person's real folder `from` (which is never bound), through the env var the provider reads (CLAUDE_CONFIG_DIR); `settingsPaths` binds a real folder read-write and is only for a provider that cannot do that. `hosts` are what it needs to reach, `versionArgs` make it print its version
+ * @property {{ command: string, args?: string[], private?: { from: string, env: string, credentialFiles: string[] }, hosts?: string[], versionArgs?: string[] }} [agent]  the provider's agent. `private` is REQUIRED: each session gets its OWN config folder holding only the credential files, seeded from the person's real folder `from` (which is never bound), through the env var the provider reads (CLAUDE_CONFIG_DIR). A provider without it does not start sandboxed. `hosts` are what it needs to reach, `versionArgs` make it print its version
  * @property {string} [temp]  the session's own temp folder (read-write)
+ * @property {string[]} [passEnv]  names of environment variables the caller deliberately passes through (a credential the agent needs); everything else not on the allow-list is dropped
  * @property {{ socket?: string, port?: number, token?: string }} [proxy] Linux: the egress proxy the provider is reached through (a CONNECT tunnel to the agent's hosts only; the token is its password)
  */
+
+/** What a session's environment may hold: the basics, Vyre's own thread variables, and only the credential names the caller lists. No token by default. */
+const HOME_ENV = /^(PATH|LANG|LC_[A-Z]+|TERM|TZ|NO_COLOR|FORCE_COLOR|USER|LOGNAME|SHELL|VYRE_[A-Z0-9_]+)$/;
+/** @param {Record<string, string|undefined>} env @param {string[]} [pass] */
+export function homeEnv(env = {}, pass = []) {
+  const ok = new Set(pass);
+  /** @type {Record<string, string>} */ const out = {};
+  for (const [k, v] of Object.entries(env)) if (typeof v === "string" && (HOME_ENV.test(k) || ok.has(k))) out[k] = v;
+  return out;
+}
 
 /** Does `p` equal or lie above `d`? */
 const above = (p, d) => d === p || d.startsWith(p.endsWith(path.sep) ? p : p + path.sep);
@@ -50,11 +61,14 @@ const protectedPaths = o => { const h = real(o.home), v = real(o.vyreHome || pat
  */
 export function checkEntries(o) {
   const { h, v, secrets } = protectedPaths(o);
-  for (const [kind, list] of [["workdir", o.workdirs || []], ["settings path", o.agent?.settingsPaths || []], ["read-only folder", o.readOnly || []], ["temp folder", o.temp ? [o.temp] : []]]) {
+  for (const [kind, list] of [["workdir", o.workdirs || []], ["read-only folder", o.readOnly || []], ["temp folder", o.temp ? [o.temp] : []]]) {
     for (const e of list) {
       const p = real(e);
       if (p === path.parse(p).root || above(p, h)) throw new Error(`the ${kind} ${p} is the home folder or above it: a session is never given the whole home`);
-      for (const prot of [v, ...secrets]) if (above(prot, p) ) throw new Error(`the ${kind} ${p} is inside ${prot}, which a session never sees`);
+      for (const prot of [v, ...secrets]) {
+        if (above(prot, p)) throw new Error(`the ${kind} ${p} is inside ${prot}, which a session never sees`);
+        if (above(p, prot)) throw new Error(`the ${kind} ${p} contains ${prot}, which a session never sees`);
+      }
     }
   }
 }
@@ -79,7 +93,7 @@ export function seedConfig(o) {
 }
 
 /** The paths a session may touch besides the system: its project, the agent's own settings, its temp folder, the agent's install folder. @param {HomeOpts} o */
-const allowed = o => [...new Set([...(o.workdirs || []), ...(o.agent?.settingsPaths || []), ...(o.temp ? [o.temp] : []), ...(o.readOnly || [])].map(real))];
+const allowed = o => [...new Set([...(o.workdirs || []), ...(o.temp ? [o.temp] : []), ...(o.readOnly || [])].map(real))];
 const ancestors = p => { const out = []; for (let d = path.dirname(p); d !== path.dirname(d); d = path.dirname(d)) out.push(d); return out; };
 
 /**
@@ -115,7 +129,7 @@ export function homeSeatbelt(o) {
 function planDarwin(o) {
   const cfg = seedConfig(o);
   o = { ...o, workdirs: [...(o.workdirs || []), ...(cfg ? [cfg.dir] : [])] };
-  const env = { ...cleanEnv(o.env || {}), ...(cfg ? cfg.env : {}), VYRE_SOCKET: o.sessionSocket };
+  const env = { ...homeEnv(o.env, o.passEnv), ...(cfg ? cfg.env : {}), VYRE_SOCKET: o.sessionSocket };
   return { argv: ["/usr/bin/sandbox-exec", "-p", homeSeatbelt(o), o.command, ...(o.args || [])], env: { ...env, HOME: o.home }, cwd: undefined, cleanup() {}, profile: homeSeatbelt(o), fd3: undefined, socket: o.sessionSocket };
 }
 
@@ -126,8 +140,8 @@ function planLinux(o) {
   const sock = "/run/vyre-session.sock", inner = 18443;
   const sc = seccompFilter(); if (!sc) throw new Error(`no seccomp filter for this CPU (${process.arch}): a session is not started without one`);
   const ro = [...new Set(o.readOnly || [])].map(real);
-  const rw = [...new Set([...(o.workdirs || []), ...(o.agent?.settingsPaths || []), ...(o.temp ? [o.temp] : []), ...(cfg ? [cfg.dir] : [])])].map(d => { try { fs.mkdirSync(d, { recursive: true }); } catch {} return real(d); });
-  const env = { ...cleanEnv(o.env || {}), ...(cfg ? cfg.env : {}), VYRE_SOCKET: sock, HOME: h, PATH: "/usr/local/bin:/usr/bin:/bin", ...(o.proxy ? { HTTPS_PROXY: `http://vyre:${o.proxy.token || ""}@127.0.0.1:${inner}`, HTTP_PROXY: `http://vyre:${o.proxy.token || ""}@127.0.0.1:${inner}`, NO_PROXY: "" } : {}) };
+  const rw = [...new Set([...(o.workdirs || []), ...(o.temp ? [o.temp] : []), ...(cfg ? [cfg.dir] : [])])].map(d => { try { fs.mkdirSync(d, { recursive: true }); } catch {} return real(d); });
+  const env = { ...homeEnv(o.env, o.passEnv), ...(cfg ? cfg.env : {}), VYRE_SOCKET: sock, HOME: h, PATH: "/usr/local/bin:/usr/bin:/bin", ...(o.proxy ? { HTTPS_PROXY: `http://vyre:${o.proxy.token || ""}@127.0.0.1:${inner}`, HTTP_PROXY: `http://vyre:${o.proxy.token || ""}@127.0.0.1:${inner}`, NO_PROXY: "" } : {}) };
   const argv = [
     "bwrap", "--seccomp", "3", "--die-with-parent", "--new-session", "--unshare-all", "--unshare-user", "--cap-drop", "ALL", "--disable-userns", "--clearenv",
     "--ro-bind", "/usr", "/usr", "--symlink", "usr/bin", "/bin", "--symlink", "usr/lib", "/lib", "--symlink", "usr/lib64", "/lib64",
@@ -152,6 +166,7 @@ export function planHome(o) {
   if (!path.isAbsolute(o.command)) throw new Error("the sandbox runs an absolute program path");
   if (!o.sessionSocket) throw new Error("a session needs its own socket");
   checkEntries(o);
+  if (o.agent && !o.agent.private) throw new Error("this assistant can't run sandboxed yet: its provider entry has no config folder to relocate (configDirEnv and credentialFiles)");
   if (o.platform === "darwin") return planDarwin(o);
   if (o.platform === "linux") return planLinux(o);
   throw new Error("sessions on this system are not sandboxed yet (Windows needs the AppContainer pipe rule), so they do not start");
@@ -214,7 +229,7 @@ export async function selfTest(o) {
   if (old.length) return { ok: false, failures: ["the self-test is stale: " + old.join("; ")], results: null };
   const base = planHome({ ...o, command: node, args: [], readOnly: [...(o.readOnly || []), path.dirname(node)] });
   // The session reaches its socket at the path the sandbox gives it (VYRE_SOCKET), which is not the host path on Linux.
-  const probes = { ...o.probes, ownSocket: base.socket, vyreHome: o.vyreHome || path.join(o.home, ".vyre"), writable: [...(o.agent?.settingsPaths || []), ...(o.temp ? [o.temp] : []), ...(o.workdirs || [])], hosts: o.agent?.hosts || [], proxyPort: o.platform === "linux" && o.proxy ? 18443 : 0, proxyToken: o.proxy?.token || "" };
+  const probes = { ...o.probes, ownSocket: base.socket, vyreHome: o.vyreHome || path.join(o.home, ".vyre"), writable: [...(o.temp ? [o.temp] : []), ...(o.workdirs || [])], hosts: o.agent?.hosts || [], proxyPort: o.platform === "linux" && o.proxy ? 18443 : 0, proxyToken: o.proxy?.token || "" };
   const p = planHome({ ...o, command: node, args: ["-e", PROBE, JSON.stringify(probes)], readOnly: [...(o.readOnly || []), path.dirname(node)] });
   // The agent check and the probes run at the same time; the stale check ran first because a stale probe makes the rest meaningless.
   const t0 = Date.now();
