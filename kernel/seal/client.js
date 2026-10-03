@@ -50,6 +50,8 @@ export function startSealer({ dir, sinks = {}, timeoutMs = 20_000, execPath = pr
     lookup: i => withCtx("lookup", i, { class: i.class, field: i.field, value: i.value }),
     /** `seal.detect`: yes or no, is this candidate a sealed field's current value in this Space. `caller` is the kernel's word for which first-party module asked. */
     detectValue: i => withCtx("match", i, { caller: i.caller, value: i.value }),
+    /** Reset with wipe: destroys the sealing keys and the sealed folder, then the process ends. NOT on `api` (the SealApi the gateway and modules get): only the host's boot code holds this handle. */
+    wipe: () => call("wipe", { host: true, confirm: "destroy sealed state" }),
     drop: i => withCtx("drop", i, { ref: i.ref }),
     /** The enrolment ceremony: `begin` gives a one-time token, `enrol` needs it, the person's chain, a platform attestation (or an unattested-allowed process) and, for a second device, a proof from the first. */
     begin: i => withCtx("presence.begin", i, { person: i.person, key_id: i.key_id, spki: i.spki }),

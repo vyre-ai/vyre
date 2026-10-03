@@ -483,6 +483,28 @@ export class Vault {
     this.lock();
   }
 
+  /**
+   * Reset with wipe (host side, before a box becomes unowned): destroy the key material first, then everything it opened. Order matters: with the device key and the Secret Key gone the
+   * rows and files left behind open for no one even if a later step fails. 1: stop and zero the keys in memory; 2: destroy the device key (keychain entry, key file overwritten then removed,
+   * or the wrapped key) and the account Secret Key; 3: empty every vault_ table; 4: remove the vault folder's contents (agent key, account record, emergency bundles, backups) and leave
+   * it empty and private. Returns counts only. Overwriting a file is best effort on a disk that remaps blocks; the keys are what make the rest unreadable.
+   * @returns {Promise<{ wiped: true, tables: number, files: number }>}
+   */
+  async wipe() {
+    await this.stop();
+    this.stopping = true;
+    const overwrite = (/** @type {string} */ f) => { try { const n = fs.statSync(f).size; fs.writeFileSync(f, crypto.randomBytes(Math.max(n, 32))); fs.fsyncSync(fs.openSync(f, "r+")); } catch { /* absent */ } };
+    for (const f of ["key", "key.wrapped", "secret-key"]) overwrite(path.join(this.dir, f));
+    await this.keys.destroy(); await this.secretKeys.remove();
+    this.vk = null; this.pvk = null; this.mkey = null;
+    const tables = /** @type {any[]} */ (this.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'vault\\_%' ESCAPE '\\'").all());
+    for (const t of tables) this.db.prepare(`DELETE FROM "${String(t.name).replace(/"/g, "")}"`).run();
+    let files = 0;
+    for (const e of fs.readdirSync(this.dir, { withFileTypes: true })) { fs.rmSync(path.join(this.dir, e.name), { recursive: true, force: true }); files++; }
+    fs.chmodSync(this.dir, 0o700);
+    return { wiped: true, tables: tables.length, files };
+  }
+
   async locked() {
     if (this.vk) return false;
     return this.kind === "passphrase";

@@ -472,3 +472,25 @@ test("seal.detect: yes or no for one candidate, first-party modules only, rate l
   await ask("111-22-3333"); await ask("111-22-3334"); await ask("111-22-3335");
   assert.equal(await code(ask("111-22-3336")), "rate_limited");
 });
+
+test("reset with wipe: the master key goes first, the folder is emptied, the process ends, and a fresh start opens none of the old values and makes a new Space key", async t => {
+  const dir = tmp("seal"), mk = () => startSealer({ dir, timeoutMs: 8000, dev: true, unattested: true });
+  let s = mk(); t.after(async () => { await s.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+  await enrolDevice(s, signer("per_alex"));
+  await s.api.put({ chain: person(), record: REC, field: "ssn", class: "us-ssn", value: "123-45-6789" });
+  const pub1 = (await s.spaceKey.pub({ chain: person() })).pub;
+  assert.ok(fs.existsSync(path.join(dir, "master.key")));
+  // Nothing on the SealApi can wipe.
+  assert.equal(typeof s.api.wipe, "undefined");
+  const r = await s.wipe();
+  assert.equal(r.wiped, true);
+  assert.equal(await code(s.api.put({ chain: person(), record: REC, field: "ssn", class: "us-ssn", value: "321-54-9876" })), "wiped");
+  await new Promise(res => setTimeout(res, 400));
+  assert.deepEqual(fs.readdirSync(dir), [], "the folder is empty");
+  await s.close();
+  s = mk();
+  await enrolDevice(s, signer("per_alex"));
+  assert.notEqual((await s.spaceKey.pub({ chain: person() })).pub, pub1, "a new Space checkpoint key");
+  assert.equal((await put(s, "123-45-6789", { unique: true })).ref.present, true, "the old value is not remembered as a duplicate");
+  assert.equal(diskHolds(dir, "123-45-6789"), null);
+});
