@@ -439,7 +439,7 @@ export class Switchboard {
     this.shellContext = new Map();
     /** A thread running one turn on another provider (threads.send {provider}): where it goes back to, and what was said meanwhile. @type {Map<string, any>} */
     this.once = new Map();
-    /** @type {Map<string, { token: () => any, end: () => Promise<any>, turn: boolean }>} each thread's current kernel session (its own, or the current chat turn's) */ this.ksCur = new Map();
+    /** @type {Map<string, { token: () => any, end: () => Promise<any>, turn: boolean, asker: string | null }>} each thread's current kernel session (its own, or the current chat turn's) */ this.ksCur = new Map();
     /** Words that go in front of a thread's next turn, once (what happened while its provider was away). @type {Map<string, string>} */
     this.carry = new Map();
     /** provider:account -> when its limit was last hit here (ms), so a one-turn ask to it is refused at the door. @type {Map<string, number>} */
@@ -898,7 +898,8 @@ export class Switchboard {
    * when the thread stops. Only the thread's own processes get in (threadsock.js).
    */
   async openSocket(id, rec, turn = null) {
-    if (!this.deps.threadSocket) return;
+    // No socket on this machine (or it is off): the kernel session is still opened, because the stream's own calls on the thread (forThread) need it; there is just no socket to stamp it on.
+    if (!this.deps.threadSocket) { await this.renewKernelSession(id, rec, turn); return; }
     if (this.socks.has(id)) { if (turn) await this.renewKernelSession(id, rec, turn); return; }
     try {
       // The session's kernel credential (lib/kernel-session.js): vyred opens it and holds it; the socket stamps it on every call. The session never gets the token.
@@ -925,7 +926,7 @@ export class Switchboard {
     if (!this.deps.kernelSession) return;
     const ks = await this.deps.kernelSession({ thread: id, agent: rec.agent || null, rec, ...(turn && turn.chat ? { chat: turn.chat } : {}), ...(turn && turn.asker ? { asker: turn.asker } : {}) }).catch(() => null);
     const old = this.ksCur.get(id);
-    if (ks) this.ksCur.set(id, { ...ks, turn: Boolean(turn && turn.chat) }); else this.ksCur.delete(id);
+    if (ks) this.ksCur.set(id, { ...ks, turn: Boolean(turn && turn.chat), asker: turn && turn.asker ? turn.asker : null }); else this.ksCur.delete(id);
     if (old) await old.end().catch(() => {});
   }
 
@@ -989,7 +990,7 @@ export class Switchboard {
 
   closeSocket(id) {
     const sock = this.socks.get(id);
-    if (!sock) return;
+    if (!sock) { void this.endKernelSession(id); return; }
     this.socks.delete(id);
     const dir = path.join(String(this.deps.root || ""), "run", "session-tmp", String(id).replace(/[^\w-]/g, ""));
     sock.close().catch(() => {}).finally(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* already gone */ } });
@@ -1745,7 +1746,13 @@ export class Switchboard {
 
   async send(id, text, surface, { queue = true, wait = false, mode = "steer", uuid = undefined, kind = undefined, images = null, note = "", author = undefined, kernelTurn = null } = {}) {
     // First-party chat turn (core/stream): open this turn's kernel session for the person who asked, in the chat it belongs to, before any word reaches the session.
-    if (kernelTurn && this.record(id) && this.socks.has(id)) await this.renewKernelSession(id, this.record(id), kernelTurn);
+    if (kernelTurn && this.record(id)) {
+      // A turn keeps its asker for its whole run. Another person's message while it runs is not folded into it (it would run under the first asker's token: a member's refused act would succeed once an
+      // admin's turn is open): it is refused as busy and the stream delivers it again when the turn has ended. The same asker steering their own turn keeps the session they have.
+      const st = this.live.get(id), cur = this.ksCur.get(id);
+      if (st && st.turn && cur && cur.turn && cur.asker !== kernelTurn.asker) throw Object.assign(new Error("another person's turn is still running here; this message goes in when it ends"), { code: "busy" });
+      if (!(st && st.turn && cur && cur.turn)) await this.renewKernelSession(id, this.record(id), kernelTurn);
+    }
     // The same message again (a retry whose first answer was lost): already handed over or queued.
     if (uuid) {
       const was = /** @type {any} */ (this.db.prepare("SELECT thread FROM threads_sent WHERE uuid = ?").get(uuid))
