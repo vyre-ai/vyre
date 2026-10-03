@@ -51,6 +51,12 @@ export async function createRig({ space = SPACE, owner = "per_alex", people = {}
     const h = k.kernelFor({ name: "stream", needs: { kernel: { actions: [] } } });
     return h.audienceFor({});
   }
+  /** The owner's (or any person's) hardware approval of a task waiting for a check, over the payload the kernel stored and the decision it bound. SHIM(presence): the rig's verifier accepts exactly this. */
+  async function taskProof(/** @type {any} */ chain, /** @type {string} */ id) {
+    const t = await gw0().ask.get(chain, id);
+    return { op: "task.decide", fields: { task: id, payload_hash: t.payload.payload_hash, decision: t.payload.decision }, n: ++n + Math.random() };
+  }
+  const gw0 = () => k.gateway;
   /** A person's role grants cut down by the owner (the real `grants.narrow`): fewer actions, a deeper prefix, a smaller field list. Never wider. */
   async function restrict(/** @type {string} */ personId, /** @type {{ actions?: string[], prefix?: string, fields?: string[] }} */ patch) {
     const mine = await G.list(ownerChain, { subject: { kind: "actor", actor: actor("person", personId) }, status: "active" });
@@ -68,7 +74,7 @@ export async function createRig({ space = SPACE, owner = "per_alex", people = {}
   /** The port the work modules take: the real gateway's calls, plus the one stand-in. */
   const kernel = { space, authorize: gw.authorize, records: gw.records, events: gw.events, ask: gw.ask, tasks: gw.tasks, grants: gw.grants, members: gw.members, definitions: gw.definitions, actions: gw.actions, serviceChain: gw.serviceChain, model };
   return {
-    k, kernel, space, owner, ownerChain, room, person, assistant, withService, grantTo, restrict, addTemp, actor, proof, modelCalls,
+    k, kernel, space, owner, ownerChain, room, person, assistant, withService, grantTo, restrict, addTemp, taskProof, actor, proof, modelCalls,
     /** SHIM(model): what the provider answers, as a function of the call. */
     script: (/** @type {(call: any) => any} */ fn) => { script = fn; },
     /** Make a record as the owner. */

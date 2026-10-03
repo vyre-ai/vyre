@@ -60,7 +60,7 @@ export async function buildSituation(kernel, chain, { space, project, record, do
     rec = await kernel.records.get(chain, focus.type, focus.id).catch(() => null);
     if (rec) { urns.push(rec.urn); inputs.push(rec.labels); }
   }
-  const role = kernel.members && kernel.members.roleOf ? await kernel.members.roleOf(chain) : null;
+  const role = kernel.members && kernel.members.roleOf ? await kernel.members.roleOf(me) : null;
   const lines = [`Vyre. Space ${clean(space, 40)}. You act for ${clean(actorName(me), 40)}${role ? ` (${clean(role, 20)})` : ""}.`];
 
   // The record: its type, stage and fields. A tainted record's text is quoted, not stated.
