@@ -178,7 +178,7 @@ export function createPairing(o) {
     if (!d.offers.compute) return { ok: false, reason: "this computer is not offering compute" };
     const personal = q.space === d.identity;
     if (!personal && !(await directory.memberships(d.identity)).some(m => m.space === q.space)) return { ok: false, reason: "its owner is not a member of that space" };
-    const row = (await compute.get(q.space, q.device)) || { space_allows: 0, member_accepts: 0 };
+    const row = (await compute.get(q.space, q.device, { member: d.identity, device_key: d.nodeKey || undefined })) || { space_allows: 0, member_accepts: 0 };
     if (!personal && !row.space_allows) return { ok: false, reason: "the space has not allowed work on members' computers" };
     if (!row.member_accepts) return { ok: false, reason: "its owner has not accepted work for this space" };
     return { ok: true };
@@ -426,7 +426,7 @@ export function createPairing(o) {
           const role = (await directory.memberships(identity)).find(m => m.space === space);
           if (!role || !ADMIN_ROLES.includes(role.role)) throw fail("not_admin", words("notAdmin", { space }));
         } else if (d.identity !== identity) throw fail("denied", words("notYourDevice"));
-        await compute.set(space, d.id, side, on);
+        await compute.set(space, d.id, side, on, { member: d.identity, device_key: d.nodeKey || undefined, meta });
         ctx.events.emit("wink.offer-changed", { device: d.id, offer, on, space, side });
         return { allowed: await computeAllowed({ device: d.id, space }) };
       },
