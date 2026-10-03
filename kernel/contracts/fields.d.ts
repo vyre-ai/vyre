@@ -52,11 +52,13 @@ export interface FieldDefinition {
   readonly description?: string;
   /** For `choice`, `multi_choice` and `stage`. */
   readonly options?: readonly string[];
-  /** For `link` (a reference to another record): the target record type. */
-  readonly to?: string;
+  /** For `link` (a reference to another record): the target record type, or the list of types it may point at (a link that may hold a Contact or an Organization). */
+  readonly to?: string | readonly string[];
   readonly seal?: SealConfig;
   /** Among the type's live records no two hold the same non-null value. Kinds text, number, url, choice, date, datetime. A store enforces it atomically (store error `unique_violation`). */
   readonly unique?: boolean;
+  /** Kind text. `address`: the value must already be in normal form, a lower-cased email address or an E.164 phone number, so a unique contact-point value cannot be defeated by a writer that skips the helper. A store refuses anything else as `invalid`. */
+  readonly normal?: 'address';
 }
 
 export interface TaskTemplateDef {
@@ -81,6 +83,8 @@ export interface TypeDefinition {
   readonly stages?: readonly StageDef[];
   /** Expression strings in the Expression language, validated, never code. */
   readonly rules?: readonly { readonly name?: string; readonly require: string }[];
+  /** Marks the type as a role: what a contact or organization is to the Space (prospect, client, ambassador). `subject` lists the types it may point at; `field` names the required link field that does the pointing when the type has more than one candidate. */
+  readonly role?: { readonly subject: readonly string[]; readonly field?: string };
 }
 
 /** How a field is shown. */

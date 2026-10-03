@@ -117,7 +117,7 @@ export interface Store {
   /** Every type definition the store holds (the tool surface and Customize list from here). */
   types(): Promise<readonly TypeDefinition[]>;
   /** The field names and kinds of a type, or null: the gateway reads which fields are sealed from here and refuses model queries on them. */
-  describe(type: string): Promise<{ readonly name: string; readonly fields: readonly { readonly name: string; readonly kind: FieldKind }[] } | null>;
+  describe(type: string): Promise<{ readonly name: string; readonly fields: readonly { readonly name: string; readonly kind: FieldKind; /** Lookups by this field's value are indexed: every link field and every unique field, where the store can. A store that cannot says false. */ readonly indexed?: boolean }[] } | null>;
   get(type: string, id: RecordId, opts?: { readonly include_deleted?: boolean }): Promise<StoredRecord | null>;
   query(type: string, spec: QuerySpec): Promise<Page<StoredRecord>>;
   aggregate(type: string, spec: AggregateSpec): Promise<readonly AggregateRow[]>;
