@@ -81,7 +81,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 3 | 2 | cli |
-| [`vault`](#vault) | `core/vault` | `box`, `local` | 129 | 43 | capsule, cli, deck |
+| [`vault`](#vault) | `core/vault` | `box`, `local` | 129 | 44 | capsule, cli, deck |
 | [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
@@ -108,6 +108,7 @@ A few lines on who the user is, cached for every Claude Code session to start wi
 - Tools: [13](tools.md#agents), 2 of them only for other modules
 - Emits: no events
 - Shows on: cli
+- Needs daemon: `credentials`
 - Needs vault: `per-agent`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
@@ -769,7 +770,7 @@ Project teammates (ADR 0031): a named, persistent agent per role per project, a 
 - Tools: [56](tools.md#threads), 19 of them only for other modules
 - Emits: [36 events](events.md#threads)
 - Shows on: cli
-- Needs daemon: `kernelSession`, `sandbox`
+- Needs daemon: `kernelSession`, `sandbox`, `credentials`
 - Needs vault: `claude-setup-token`, `anthropic-api-key`, `per-account`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
@@ -813,7 +814,7 @@ Is a newer Vyre out: one daily look at the releases, one answer every surface dr
 - Runs on: `box`, `local`
 - Requires: none
 - Tools: [129](tools.md#vault), 13 of them only for other modules
-- Emits: [43 events](events.md#vault)
+- Emits: [44 events](events.md#vault)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 

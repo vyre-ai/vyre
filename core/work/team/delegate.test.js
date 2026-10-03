@@ -167,3 +167,35 @@ test("a Kit role's field-limited grant becomes a real field allow-list on the te
   const r = await delegateGrants(rig.kernel, chain, { adder: alice, teammate: research, presence: presenceOf(rig), wanted: [{ actions: ["records.update"], prefix: P1, fields: ["practice_area"] }] });
   assert.deepEqual(r.grants[0].resource.fields, ["practice_area"]);
 });
+
+// ---- DH-1 and DH-2 (reviewer-2): every parent dimension is carried, and what is accepted is what the kernel accepts ----
+test("once, audience and the selector's own predicates are carried from the parent, and an unknown parent condition is refused", async () => {
+  const w = await world();
+  const soon = Date.now() + 3_600_000;
+  await w.rig.grantTo(w.alice, ["records.read"], w.P1, { conditions: { delegate: { allowed: true, max_depth: 2 }, once: true, audience: ["memory", "flows"], how: { presence: "fresh" }, when: { expires: soon } } });
+  const add = (c, e = {}) => delegateGrants(w.rig.kernel, w.chain, { adder: w.alice, teammate: w.research, presence: presenceOf(w.rig), wanted: [{ actions: ["records.read"], prefix: w.P1, conditions: c, ...e }] });
+  await assert.rejects(add({ once: false }), { code: "loosens" });
+  await assert.rejects(add({ audience: ["memory", "mail"] }), { code: "loosens" });
+  const r = await add({ audience: ["memory"] });
+  const c = r.grants[0].conditions;
+  assert.equal(c.once, true);
+  assert.deepEqual(c.audience, ["memory"]);
+  assert.equal(c.how.presence, "fresh");
+  assert.equal((await add({})).grants.at(-1).conditions.audience.join(), "memory,flows");
+});
+
+test("an unknown key in the WANTED conditions is refused, not dropped", () => {
+  assert.throws(() => tighten({ conditions: {} }, { conditions: { zzz: true } }), { code: "bad_input", message: /unknown condition zzz/ });
+  assert.throws(() => tighten({ conditions: {} }, { conditions: { audiance: ["x"] } }), { code: "bad_input" }, "a typo of audience");
+});
+
+test("tighten on its own: unknown parent condition refused, the parent's predicates kept, schedule by value, rate the kernel's way", () => {
+  assert.throws(() => tighten({ conditions: { shiny: true } }, {}), { code: "loosens" });
+  const parent = { resource: { where: [{ attr: "project", op: "eq", value: "p1" }] }, conditions: { when: { expires: 9, schedule: "0 9 * * 1" }, rate: { n: 10, per_seconds: 60 } } };
+  const t = tighten(parent, { resource_where: [{ attr: "sensitivity", op: "eq", value: "low" }], conditions: { when: { schedule: "0  9 * *  1" }, rate: { n: 5, per_seconds: 120 } } });
+  assert.deepEqual(t.where, [{ attr: "project", op: "eq", value: "p1" }, { attr: "sensitivity", op: "eq", value: "low" }]);
+  assert.equal(t.conditions.when.schedule, "0 9 * * 1");
+  assert.throws(() => tighten(parent, { conditions: { rate: { n: 5, per_seconds: 30 } } }), { code: "loosens" }, "a shorter window is looser even with a smaller count");
+  assert.throws(() => tighten(parent, { conditions: { rate: { n: 20, per_seconds: 600 } } }), { code: "loosens" }, "a larger count is looser even with a longer window");
+  assert.throws(() => tighten(parent, { conditions: { when: { schedule: "* * * * *" } } }), { code: "loosens" });
+});

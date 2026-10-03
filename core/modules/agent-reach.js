@@ -9,6 +9,7 @@
 
 /** @type {ReadonlyMap<string, string>} */
 export const PERSON_ONLY = new Map([
+  ["memory.sealscan", "the person's own audit of where sensitive-looking values sit in memory: counts only, but it is the person's to ask"],
   ["vault.provider.set", "needs the person's Face ID or presence: changes which provider holds the Space's secrets"],
   ["vault.provider.remove", "needs the person's Face ID or presence: changes which provider holds the Space's secrets"],
   ["wink.server.pairing", "needs the person's Face ID or presence: pairing and devices"],

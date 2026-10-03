@@ -13,7 +13,7 @@
 import { closeToAddedModules } from "../../lib/first-party-door.js";
 import { core as coreHolder } from "../presence/index.js";
 import { startForwarder } from "./forward.js";
-import { Vault, MIGRATIONS, KINDS, parseExpiry, ensureMacColumns, LAUNCHER_ITEMS } from "./vault.js";
+import { Vault, MIGRATIONS, KINDS, parseExpiry, ensureMacColumns, LAUNCHER_ITEMS, launcherItem, validModuleName } from "./vault.js";
 import { DETAILS, defaultField } from "../../lib/vault-kinds/kinds.js";
 import { codes, importCodes } from "./codes.js";
 import { sweep } from "./sweep.js";
@@ -55,19 +55,14 @@ const SURFACES = [...PEOPLE, "deck", "capsule"];
 const str = { type: "string" };
 const strs = { type: "array", items: { type: "string" } };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
-// The credentials port (the session launcher's way to a provider sign-in token). Not a tool: a function the daemon takes ONCE, right after the vault starts, and hands to
-// the launcher inside vyred. A second take is refused, so a module, an assistant or a session that gets hold of this file cannot take it later.
-const portHolder = /** @type {{ vault: any, taken: boolean }} */ ({ vault: null, taken: false });
-export function takeCredentialsPort() {
-  if (!portHolder.vault) throw new Error("the vault has not started");
-  if (portHolder.taken) throw new Error("the credentials port was already taken");
-  portHolder.taken = true;
-  const vault = portHolder.vault;
-  return Object.freeze({
-    /** The sign-in token for a provider item: `claude` is the setup token (claude-setup-token), `anthropic` the API key (anthropic-api-key). The token, or null for nothing or an unknown name. This is the shape sessions reads (the sandbox launcher accepts the string too). @param {string} provider @returns {Promise<string | null>} */
-    credentials: async provider => (Object.hasOwn(LAUNCHER_ITEMS, String(provider)) ? vault.providerToken(provider) : null),
-  });
-}
+// The credentials port (the session launcher's way to a provider sign-in token). Not a tool: a frozen function the vault hands to the registry ONCE, at its own start, through
+// `ctx.provide` (the registry refuses a second provider, and any module but the vault). The daemon and the launcher modules receive it from the registry's own dependencies, so no
+// module and no daemon import reaches into the vault for it, and nothing that imports this file can take it.
+/** @param {any} vault */
+const credentialsPort = vault => Object.freeze({
+  /** The sign-in token for a provider item: `claude` is the setup token (claude-setup-token), `anthropic` the API key (anthropic-api-key). The token, or null for nothing or an unknown name. The string shape sessions reads. @param {string} provider @returns {Promise<string | null>} */
+  credentials: async provider => (Object.hasOwn(LAUNCHER_ITEMS, String(provider)) ? vault.providerToken(provider) : null),
+});
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
@@ -93,7 +88,7 @@ export default {
       try { if (await vault.keys.exists()) await vault.key(); }
       catch (e) { ctx.log(`vault: not opened at start: ${/** @type {Error} */ (e).message}`); }
     }
-    portHolder.vault = vault; portHolder.taken = false;
+    if (typeof ctx.provide === "function") ctx.provide("credentialsPort", credentialsPort(vault));
     let listener = null;
     if (opts.relay && (opts.relay.port !== undefined || opts.relay.host)) {
       // With identity "whois" no header counts: the login is the one Tailscale gives the peer
@@ -175,6 +170,12 @@ export default {
         if (!input.fields) throw new Error("give the item a value or fields");
         const mod = caller.startsWith("module:") ? caller.slice(7) : null;
         if (!mod && grants) throw new Error("grants on put are for modules; people use vault.grant");
+        // Every grant is checked BEFORE the item is written: a refused grant must not leave a changed value behind (reviewer-2 VP-5).
+        if (grants !== undefined && (!Array.isArray(grants) || grants.length > 32)) throw new Error("grants is a short list of module names");
+        const refuse = msg => { vault.refuse("put", input.name, caller, msg); throw new Error(msg); };
+        for (const g of grants || []) if (!validModuleName(g)) refuse(`"${String(g).slice(0, 60)}" is not a module name`);
+        // A provider sign-in token takes no module grant once the launcher reads it through the credentials port: refuse before anything is written, never after.
+        if (grants && launcherItem(String(input.name)) && vault.launcherOnly) refuse(`${input.name} is a provider sign-in token; no module is granted it, the session launcher is handed it by vyred itself`);
         // `<vault>/<item>` goes into a shared vault (shared.js); modules put only their own items.
         const slash = String(input.name).indexOf("/");
         if (slash > 0) {
@@ -469,6 +470,7 @@ export default {
       vault,
       connections: conns.connections,
       async stop() {
+        if (typeof ctx.provide === "function") ctx.provide("credentialsPort", null); // a stopped vault has no port: the launcher sees none and says so, never a stale answer
         requests.stop();
         reminders.stop();
         await conns.stop();

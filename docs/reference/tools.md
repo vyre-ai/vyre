@@ -6983,6 +6983,7 @@ Create a space and say where it will live: a server you have (the one command, t
   - `name` string, required
   - `displayName` string
   - `headscale` boolean
+  - `storeChoice` "create" or "cancel"
 - Callers: any caller
 
 ### `spaces.get`
@@ -8514,6 +8515,8 @@ Type into a thread. Only the surface holding its lease may type; a free thread i
 - Input:
   - `text` string, required
   - `thread` string, required
+  - `asker` string: First-party stream only: the person who asked this turn (the kernel session is opened for them, in `chat`). Anyone else's is ignored.
+  - `chat` string: First-party stream only: the chat this turn's reply belongs to. Anyone else's is ignored.
   - `effort` one of "low", "medium", "high", "xhigh", "max": Set this effort first (as threads.effort). A person's surface only.
   - `images` list of object: Pasted images, base64: at most 5, 5 MB each.
     - `data` string, required
@@ -8554,6 +8557,8 @@ Start a headless Claude Code session in a folder or a project's home, owned by v
 
 - Input:
   - `append` string
+  - `asker` string: First-party stream only: the person id (per_...) of who asked (the kernel session is opened for them, in `chat`). Any other form is refused as bad_input. Anyone else's is ignored.
+  - `chat` string: First-party stream only: the chat this session's reply belongs to. Anyone else's is ignored.
   - `cwd` string
   - `effort` one of "low", "medium", "high", "xhigh", "max": Reasoning effort, as /effort: low, medium, high, xhigh or max. Default: the model's own.
   - `lean` boolean: A one-question thread: no Vyre plugin, no tools, no MCP servers, none of the user's settings. Cheap to start.

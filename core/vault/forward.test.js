@@ -138,12 +138,12 @@ test("FW-1: request headers are an allow-list: a safe default plus the route's o
   const probe = { accept: "application/json", "content-type": "application/json", "if-none-match": "abc", "x-matter-id": "m42", "x-custom": "1",
     "x-http-method-override": "DELETE", "x-http-method": "DELETE", "x-method-override": "DELETE", "x-original-url": "/v3/admin", "x-rewrite-url": "/v3/admin", "x-forwarded-host": "evil.test", "x-forwarded-for": "1.2.3.4",
     "x-real-ip": "1.2.3.4", "x-host": "evil.test", "x-goog-iam-authorization-token": "tok", "x-amz-security-token": "tok", "x-ms-authorization-auxiliary": "tok", authorization: "Bearer attacker", cookie: "sid=1",
-    host: "evil.test", "x-api-key": "attacker", "proxy-authorization": "x", "sec-fetch-mode": "cors", "x-vyre-token": "t", forwarded: "for=1.2.3.4", "content-length": "9", "transfer-encoding": "chunked" };
+    host: "evil.test", "x-api-key": "attacker", "proxy-authorization": "x", "sec-fetch-mode": "cors", "x-vyre-token": "t", "x-access-token": "t", "x-oauth-token": "t", "x-session-id": "s", "x-goog-api-key": "k", forwarded: "for=1.2.3.4", "content-length": "9", "transfer-encoding": "chunked" };
   const seen = async routeHeaders => { m.routes.set(SESSION, [normalizeRoute({ route: "api.hellosign.test", ref: "dropsign", allow: [{ method: "GET", path: "/v3/*" }], ...(routeHeaders ? { headers: routeHeaders } : {}) })]); m.net.calls.length = 0; await m.call({ route: "api.hellosign.test", path: "/v3/x", headers: probe }); const h = { ...m.net.calls[0].headers }; delete h.authorization; delete h.host; return Object.keys(h).filter(k => !["accept", "content-type", "if-none-match"].includes(k)).sort(); };
   assert.deepEqual(await seen(null), ["content-type"].filter(() => false), "by default only the safe set reaches the vendor (the credential's own authorization is the home's)");
   assert.equal(m.net.calls[0].headers.authorization, `Bearer ${S}`, "the home added the key, not the program");
   assert.deepEqual(await seen(["x-matter-id"]), ["x-matter-id"], "a header the route names passes");
-  const naming = ["x-matter-id", "x-http-method-override", "x-original-url", "x-forwarded-host", "x-amz-security-token", "authorization", "cookie", "x-rewrite-url", "x-goog-iam-authorization-token"];
+  const naming = ["x-matter-id", "x-http-method-override", "x-original-url", "x-forwarded-host", "x-amz-security-token", "authorization", "cookie", "x-rewrite-url", "x-goog-iam-authorization-token", "x-access-token", "x-oauth-token", "x-session-id", "x-goog-api-key"];
   assert.deepEqual(await seen(naming), ["x-matter-id"], "naming a dangerous header on the route does not let it through");
   assert.throws(() => normalizeRoute({ route: "a.test", ref: "c", headers: ["bad name"] }), { code: "bad_input" });
 });

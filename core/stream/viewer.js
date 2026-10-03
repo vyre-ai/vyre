@@ -24,7 +24,9 @@ export const FIELD_BLOCKS = Object.freeze(["record", "draft", "answer"]);
 /**
  * A viewer is { id, roles }. `resolve(record, field)` (server side only, never from a client) answers a cited field with the
  * spec the viewer's own authority yields: { label?, kind?, value, read_roles?, seal?, present? }, or null when it cannot be read or does not exist.
- * @typedef {{ id?: string, roles?: readonly string[], resolve?: (record: string, field: string) => Promise<any>, resolveMs?: number }} Viewer
+ * `may(frame)` (group chats, kernel on) answers "may this viewer receive this frame" from the chat's membership at the frame's stamp (`data.ver`); the stream never decides that itself (group.js asks its reply port).
+ * `floor` is the cursor of the viewer's own join: a frame below it is not sent, except who joined and left (quiet, roster only).
+ * @typedef {{ id?: string, roles?: readonly string[], resolve?: (record: string, field: string) => Promise<any>, resolveMs?: number, may?: (frame: any) => boolean, floor?: number }} Viewer
  */
 
 const isObj = (/** @type {unknown} */ v) => !!v && typeof v === "object" && !Array.isArray(v);
@@ -153,7 +155,7 @@ export async function resolveRefs(frame, viewer) {
 
 /** forViewer for a frame that may carry cited fields: they are resolved for the viewer first. A frame the viewer may not see is never resolved. @param {any} frame @param {Viewer} viewer */
 export async function forViewerAsync(frame, viewer) {
-  if (!viewer || !hasRefs(frame) || !(frame.cur >= 1) || !mayView(frame, viewer)) return forViewer(frame, viewer);
+  if (!viewer || !hasRefs(frame) || !(frame.cur >= 1) || !mayView(frame, viewer) || !mayReceive(frame, viewer)) return forViewer(frame, viewer);
   return forViewer(await resolveRefs(frame, viewer), viewer);
 }
 
@@ -194,6 +196,21 @@ export function mayView(frame, viewer) {
   return true;
 }
 
+/** Does the viewer's `may` let this frame through? A frame with no stamp (not a reply) always passes. @param {any} frame @param {Viewer} viewer */
+function mayReceive(frame, viewer) {
+  if (!viewer || typeof viewer.may !== "function") return true;
+  try { return viewer.may(frame) !== false; } catch { return false; }
+}
+
+/**
+ * A cursor-only placeholder: no author, no text, no block, no message id. It keeps a viewer's cursor gapless over frames they may not have. `span` > 1 covers a run
+ * of cursors (cur - span + 1 .. cur) in one frame.
+ * @param {string} session @param {number} cur @param {number} span @param {number} time @param {string} [id]
+ */
+export function hiddenFrame(session, cur, span, time, id) {
+  return { v: 1, id: id || `hidden-${session}-${cur}`, cur, ...(span > 1 ? { span } : {}), session, turn: null, type: "session.hidden", time, corr: null, data: {} };
+}
+
 /**
  * The frame a connection is sent: what `viewer` may see. A frame they may not see is replaced by a `hidden` frame that
  * keeps its cursor (so the client's gapless check holds) and carries nothing of it: no author, no text, no block, no
@@ -204,7 +221,7 @@ export function mayView(frame, viewer) {
 export function forViewer(frame, viewer) {
   if (!viewer || !isObj(frame) || !isObj(frame.data)) return frame;
   if (!(frame.cur >= 1)) return frame;
-  if (!mayView(frame, viewer)) return { v: frame.v, id: frame.id, cur: frame.cur, session: frame.session, turn: null, type: "session.hidden", time: frame.time, corr: null, data: {} };
+  if (!mayView(frame, viewer) || !mayReceive(frame, viewer)) return hiddenFrame(frame.session, frame.cur, 1, frame.time, frame.id);
   return render(frame, viewer);
 }
 

@@ -406,5 +406,121 @@
  {
   "tool": "flows.kit.remove",
   "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
+ },
+ {
+  "tool": "vault.provider.status",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; provider status is a read, open to the person's assistant (a proven session claim only)"
+ },
+ {
+  "tool": "bridges.continue",
+  "reason": "declared reach anyone by its module (spaces or bridges, merged 4 Oct 2026): runs for a guest or a plain mcp caller by the owner's design (a code or invite or link carries its own proof); not a platform change; named for reviewer-2 to confirm"
+ },
+ {
+  "tool": "bridges.copy",
+  "reason": "declared reach anyone by its module (spaces or bridges, merged 4 Oct 2026): runs for a guest or a plain mcp caller by the owner's design (a code or invite or link carries its own proof); not a platform change; named for reviewer-2 to confirm"
+ },
+ {
+  "tool": "bridges.get",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+ },
+ {
+  "tool": "bridges.kit.plan",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+ },
+ {
+  "tool": "bridges.list",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+ },
+ {
+  "tool": "bridges.merge.links",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+ },
+ {
+  "tool": "bridges.propose-projection",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+ },
+ {
+  "tool": "bridges.propose-reference",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+ },
+ {
+  "tool": "bridges.propose-view",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+ },
+ {
+  "tool": "bridges.resolve",
+  "reason": "declared reach anyone by its module (spaces or bridges, merged 4 Oct 2026): runs for a guest or a plain mcp caller by the owner's design (a code or invite or link carries its own proof); not a platform change; named for reviewer-2 to confirm"
+ },
+ {
+  "tool": "bridges.view.read",
+  "reason": "declared reach anyone by its module (spaces or bridges, merged 4 Oct 2026): runs for a guest or a plain mcp caller by the owner's design (a code or invite or link carries its own proof); not a platform change; named for reviewer-2 to confirm"
+ },
+ {
+  "tool": "spaces.assess-computer",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+ },
+ {
+  "tool": "spaces.code.submit",
+  "reason": "declared reach anyone by its module (spaces or bridges, merged 4 Oct 2026): runs for a guest or a plain mcp caller by the owner's design (a code or invite or link carries its own proof); not a platform change; named for reviewer-2 to confirm"
+ },
+ {
+  "tool": "spaces.compute.status",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+ },
+ {
+  "tool": "spaces.get",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+ },
+ {
+  "tool": "spaces.identity.contact.key",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+ },
+ {
+  "tool": "spaces.identity.entries",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+ },
+ {
+  "tool": "spaces.identity.resolve",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+ },
+ {
+  "tool": "spaces.identity.status",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+ },
+ {
+  "tool": "spaces.identity.sync",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+ },
+ {
+  "tool": "spaces.invites.list",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+ },
+ {
+  "tool": "spaces.invites.preview",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+ },
+ {
+  "tool": "spaces.invites.redeem",
+  "reason": "declared reach anyone by its module (spaces or bridges, merged 4 Oct 2026): runs for a guest or a plain mcp caller by the owner's design (a code or invite or link carries its own proof); not a platform change; named for reviewer-2 to confirm"
+ },
+ {
+  "tool": "spaces.list",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+ },
+ {
+  "tool": "spaces.members.list",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+ },
+ {
+  "tool": "spaces.move.plan",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+ },
+ {
+  "tool": "spaces.roles.names",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+ },
+ {
+  "tool": "spaces.status",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; a read or a proposal, open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
  }
 ]
