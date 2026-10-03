@@ -1,5 +1,21 @@
 # vault
 
+## 0.3: sealing (branch work/sealing, worktree vyre-vault-03; K3 with platform)
+
+Scope: the sealing process, the inference door with the seal ledger, sealed derivatives, the vault and Drive on the kernel's grants and events (team/0.3/KERNEL-brief.md invariants 4, 5, 6; SPEC-core-contract.md section 8; DESIGN-tasks.md sealed slots). Node now, behind a protocol a Rust process can implement later (kernel/seal/process.js header). reviewer-2 gates every merge.
+
+Done (pushed on work/sealing):
+- kernel/seal/normalise.js, ledger.js, classes.js: how a value is recognised in text (case, spacing, separators, full-width, digit words, percent and \u escapes, hex, base64 at three alignments and url alphabet, split across tokens, 75% partial), keyed-hash ledger with derived sessions, class validators and best-effort detectors. Canary-corpus property tests.
+- kernel/seal/process.js, store.js, proof.js, wire.js, client.js: the separate sealing process (stdio NDJSON, bare env, own 0700 folder, AES-GCM with ref/space/record/field/class as AAD): put, use (sealed slots merged into a sealed derivative, own verified contact point or document only, else presence), deliver (to an egress sink socket, only a status returns), reveal and derived.read (human only, hardware-signed proof over the exact payload, one use), detect (placeholders, originals bound to the session), save, lookup (rate limited), drop.
+
+Doing: the inference door (kernel/door), the sink registry and CI check, sealed derivative reference files and the sandbox mount check, the vault and Drive on grants and events.
+
+Next: see the Doing line; then reviewer-2 gate request, then line-budget check and the platform gateway wiring (seal.use needs the Template body from records).
+
+Needs: platform (gateway hands the process chainCtx, template body and bindings; enrols device keys with presence.enrol; calls door for every model call), tailnet/native (the signer must hash payloads with kernel/seal/wire.js payloadHash and sign proofBytes).
+
+---
+
 Branch: work/vault · Worktree: ../vyre-vault · Milestone: M3 · Wave 1
 
 ## Scope
