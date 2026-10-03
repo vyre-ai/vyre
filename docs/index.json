@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":336,"tool":1041,"event":440,"config":249,"env":208,"screen":20,"concept":43},
+  "counts": {"command":336,"tool":1044,"event":440,"config":249,"env":208,"screen":20,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -1620,6 +1620,9 @@
     {"kind":"tool","name":"vault.people.verify","definedIn":"core/vault/share.js","page":"reference/tools.md#vaultpeopleverify","module":"vault","mentions":[]},
     {"kind":"event","name":"vault.person-verified","definedIn":"core/vault/share.js","page":"reference/events.md#vault","module":"vault","mentions":[]},
     {"kind":"tool","name":"vault.person.add","definedIn":"core/vault/tools/share.js","page":"reference/tools.md#vaultpersonadd","module":"vault","mentions":[]},
+    {"kind":"tool","name":"vault.provider.remove","definedIn":"core/vault/index.js","page":"reference/tools.md#vaultproviderremove","module":"vault","mentions":[]},
+    {"kind":"tool","name":"vault.provider.set","definedIn":"core/vault/index.js","page":"reference/tools.md#vaultproviderset","module":"vault","mentions":[]},
+    {"kind":"tool","name":"vault.provider.status","definedIn":"core/vault/index.js","page":"reference/tools.md#vaultproviderstatus","module":"vault","mentions":[]},
     {"kind":"tool","name":"vault.put","definedIn":"core/vault/forward.js","page":"reference/tools.md#vaultput","module":"vault","mentions":[{"page":"using/vault.md","line":29,"anchor":"the-rule-that-has-no-off-switch"},{"page":"using/vault.md","line":513,"anchor":"what-it-will-not-do"},{"page":"concepts/presence.md","line":30,"anchor":"which-tools-need-it"},{"page":"architecture/spec.md","line":390,"anchor":"75-vault--workstream"},{"page":"adr/0001-vault-crypto.md","line":47,"anchor":"threat-model"},{"page":"adr/0001-vault-crypto.md","line":144,"anchor":"6-who-may-call-what"},{"page":"adr/0001-vault-crypto.md","line":156,"anchor":"6-who-may-call-what"},{"page":"adr/0004-presence.md","line":18,"anchor":"the-problem"},{"page":"adr/0004-presence.md","line":70,"anchor":"layer-1--presence-proof-checked-by-vyred"},{"page":"design/session-credentials.md","line":82,"anchor":"4-after-approval-env-var-or-a-placeholder-through-the-egress-proxy-l"}]},
     {"kind":"tool","name":"vault.relay","definedIn":"core/vault/index.js","page":"reference/tools.md#vaultrelay","module":"vault","mentions":[{"page":"get-started/tailscale.md","line":544,"anchor":"vault-passes-authorized-by-the-policy"},{"page":"using/vault.md","line":381,"anchor":"share-with-another-person"},{"page":"adr/0001-vault-crypto.md","line":147,"anchor":"6-who-may-call-what"},{"page":"adr/0001-vault-crypto.md","line":169,"anchor":"7-passes"}]},
     {"kind":"config","name":"vault.relay","definedIn":"core/vault/index.js","page":"reference/tools.md#vaultrelay","mentions":[{"page":"get-started/tailscale.md","line":544,"anchor":"vault-passes-authorized-by-the-policy"},{"page":"using/vault.md","line":381,"anchor":"share-with-another-person"},{"page":"adr/0001-vault-crypto.md","line":147,"anchor":"6-who-may-call-what"},{"page":"adr/0001-vault-crypto.md","line":169,"anchor":"7-passes"}]},
