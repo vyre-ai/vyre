@@ -8,6 +8,13 @@ Read from the code, CI runs and the extension logs (read only); I drove no brows
 4. Not built or not seen: Chrome through Lumen on the person's computer has not been run by anyone in these logs; no live GHL acceptance run; the guided load-unpacked install screen; a server Chrome logged in to a real account (logins from the vault); Windows registry install on a real Windows machine.
 5. Verdict: ready to try on read and fill work in the person's own Chrome, not ready to trust for unattended GHL automation. The next step is one supervised GHL run by the person, with chrome_snapshot before each step, so the failing step "click Create Workflow" is fixed against the live page.
 
+## 2026-10-04 resume (after the usage limit): where I am
+Done (work/ui): WIP pushed 71e2d522d; pairing screens (typed codes gone, confirm = pick 1 of 3 sets or type all three, 55ddb3eb7); font ruling (cedf003fa, c3922a959); six icons, switcher on tab places only, Spaces plus menu and Extend, record page (7282d96de); software-key line on a device row (8ed50792c). App tests 381/381, lint:ui clean, tsc clean except src/chat/ChatAvatar.tsx(25,56) (chat's file, AvatarSize has no lg/md/sm; not mine). Run on testbox3 in ~/vyre-ci/ui-native.
+Captures for item 4 (primary text on Now cards): ios-app-capture 37161789131 and android-app-capture 37161791049 on c3922a959, queued behind the runner backlog when written. Read them before calling it fixed; invisible primary text stays a ship blocker until seen.
+Doing: wait for the two capture runs; then the short recordings app-design asked for (row to record, a sheet, approve with Face ID, iOS and Android): the capture scripts keep one recording of Now only, so these three need a script change (apps/app/scripts/capture-android.sh and the iOS workflow) and a real emulator run.
+Next: Android tab-bar indicator pill (64 x 32 accent-wash), Android first row 8 pt under the status bar, Doing now dot `--ok` with pulse, record desktop right column (Team, Chats), rail 40 px pitch, row-end and secondary action colours, chat items from review 2 (chat's files, ask chat).
+Note: I ran the three small pure test files once on the Mac by mistake; everything since runs on testbox3.
+
 ## Scope
 Own the NATIVE CORE milestone end to end: chat on the Claude Agent SDK that feels as native and
 smooth as the Claude Code terminal (and Paseo), plus complete Settings at account and project level.
