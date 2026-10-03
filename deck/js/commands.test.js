@@ -45,7 +45,7 @@ test("commands: sessions rank exact, then punctuation dropped, then words, then 
   assert.deepEqual(rankSessions("", rows), []);
 });
 
-test("commands: the line under the box says what Enter does", () => {
+test("commands: the line under your server says what Enter does", () => {
   assert.equal(plan(parseCommand("@kit hi", world), "", "juno"), "Enter asks kit.");
   assert.equal(plan(parseCommand("tell intake to add a phone field", world), "intake", "juno"), "Enter types into intake, then watches it.");
   assert.equal(plan(parseCommand("hello", world), "", "juno"), "Enter asks juno.");

@@ -40,20 +40,17 @@ name = "DEVICE_LIMITER"
 namespace_id = "26001"
 simple = { limit = 30, period = 60 }
 
-# Per-address and global limiting for /v1/pair (ADR 0045's Wink resolve). Same reasoning: the
-# 256-bit locator and the MAC make guessing infeasible, but flooding and cost are still real.
+# Per-address limiting for /v1/pair (ADR 0045's Wink resolve). The locator derives from a seed of at least 64 bits, so
+# guessing is infeasible within a ticket's five minutes; a flood from one address is still real.
 [[ratelimits]]
 name = "PAIR_LIMITER"
 namespace_id = "26002"
 simple = { limit = 30, period = 60 }
-[[ratelimits]]
-name = "PAIR_LIMITER_GLOBAL"
-namespace_id = "26003"
-simple = { limit = 600, period = 60 }
+# No global limit on /v1/pair: it let any outsider block pairing for every user (GHSA-25xh-w9j7-7v28).
 
 # The setup mailbox (tailnet plan 3.6b). Appends are the install script's, a handful per install,
 # so the per-address limit is small; reads are the page's long polls (one every 20 seconds), and
-# the global one caps what the Free plan's object requests can be made to cost. A zone rule backs
+# a per-locator limit stands in for the old global one, which let any outsider block every install (GHSA-25xh-w9j7-7v28). A zone rule backs
 # these if the Workers Free limiter stays silent.
 [[ratelimits]]
 name = "SETUP_LIMITER"
@@ -64,9 +61,10 @@ name = "SETUP_READ_LIMITER"
 namespace_id = "26005"
 simple = { limit = 10, period = 60 }
 [[ratelimits]]
-name = "SETUP_LIMITER_GLOBAL"
-namespace_id = "26006"
-simple = { limit = 300, period = 60 }
+name = "SETUP_LOC_LIMITER"
+namespace_id = "26007"
+simple = { limit = 60, period = 60 }
 
+# Cloudflare keeps request logs, with addresses, whenever this is on; Vyre needs none of them (#70). A specific failure may switch it on for a day, and the privacy page says so.
 [observability]
-enabled = true
+enabled = false

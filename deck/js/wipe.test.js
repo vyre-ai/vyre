@@ -71,7 +71,7 @@ test("watchRemoval: its own removal event wipes once; another device's does not"
   assert.match(root.textContent || "", /This phone was removed/);
 });
 
-test("watchRemoval: removed while away, one miss only marks it and a second look a minute later wipes; a key that is listed clears the mark; a box that cannot be asked wipes nothing", async () => {
+test("watchRemoval: removed while away, one miss only marks it and a second look a minute later wipes; a key that is listed clears the mark; a server that cannot be asked wipes nothing", async () => {
   const mem = new Map([["vyre.passkey", JSON.stringify({ id: "pk1" })]]);
   const st = { getItem: k => mem.get(k) ?? null, setItem: (k, v) => { mem.set(k, v); }, removeItem: k => { mem.delete(k); } };
   let clock = 1_000_000, w = 0;
@@ -89,7 +89,7 @@ test("watchRemoval: removed while away, one miss only marks it and a second look
   assert.equal(await launch({ data: [{ id: "other" }] }), 1, "still missing a minute or more later: wipe");
 });
 
-test("watchRemoval: the box's device_removed answer wipes", async () => {
+test("watchRemoval: your server's device_removed answer wipes", async () => {
   const p = phone();
   let fire = () => {};
   let w = 0;

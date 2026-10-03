@@ -37,6 +37,8 @@ import { threadHref, projectHref } from "./lib/routes.js";
 import { markOpened, openedHere } from "./lib/opened-here.js";
 import { mergeSessions, title } from "./lib/sessions.js";
 import { machineChip, offlineChip, readMacs } from "../js/machine.js";
+import { threadRow as rowOf } from "../js/thread-row.js";
+import { pageHeader } from "../js/page-header.js";
 
 /** How many sessions the catalogue returns per refresh: the newest, which is what Chat shows. */
 const CATALOG_LIMIT = 300;
@@ -92,7 +94,7 @@ export default async function chat(ctx) {
 
   /** Fetch and fold the result into state, live or offline. Shared by boot and refresh. */
   async function load() {
-    const [p, c, t, macs] = await Promise.all([attempt("projects.list"), attempt("projects.catalog", { limit: CATALOG_LIMIT }), attempt("threads.list", { all: true }),
+    const [p, c, t, macs] = await Promise.all([attempt("projects.list", {}, { share: true }), attempt("projects.catalog", { limit: CATALOG_LIMIT }), attempt("threads.list", { all: true }),
       readMacs(attempt, state.macs), readSystem(attempt), readTeammates(attempt)]);
     if (!ctx.alive()) return;
     setProjects(p.data?.projects || []); // each project's tile seed (js/avatars.js)
@@ -240,13 +242,9 @@ export default async function chat(ctx) {
       const proj = state.projects.find(x => x.slug === project);
       const rows = state.rows.filter(x => x.projects.includes(project));
       put(ctx.root, note, h("div", { class: "chat-pad" },
-        h("div", { class: "chat-head" },
-          link("/chat", { class: "chat-back", "aria-label": "All sessions" }, icon("left", 16), h("span", null, "Chat")),
-          h("h1", { class: "chat-title ellipsis" }, proj ? proj.name : project),
-          machineChip(proj),
-          rows.length ? h("span", { class: "code faint chat-count" }, plural(rows.length, "session")) : null,
-          offlineChip(state.macs),
-          actions(project)),
+        pageHeader({ title: proj ? proj.name : project, meta: rows.length ? plural(rows.length, "conversation") : "No conversations yet",
+          actions: [machineChip(proj), offlineChip(state.macs), actions(project)] }),
+        link("/chat", { class: "chat-back", "aria-label": "All sessions" }, icon("left", 16), h("span", null, "Chat")),
         rows.length ? h("div", { class: "rows chat-rows" }, rows.map(r => threadRow(r, project)))
           : !proj && state.projects.length ? h("div", { class: "empty" }, `There is no project called ${project}.`)
           : [empty(state.err ? "Sessions could not be read." : "No sessions in this project yet.", state.err), startHere(project)]));
@@ -254,14 +252,13 @@ export default async function chat(ctx) {
     }
     const recent = state.rows.filter(r => r.human || r.live).slice(0, 30);
     put(ctx.root, note, h("div", { class: "chat-pad" },
-      h("div", { class: "chat-head" }, h("h1", { class: "chat-title" }, "Chat"), offlineChip(state.macs), actions(null)),
+      pageHeader({ title: "Chat", meta: state.rows.length ? plural(state.rows.length, "conversation") : "Talk to your assistant or any agent", actions: [offlineChip(state.macs), actions(null)] }),
       // On a phone the rail is hidden, so the projects are listed here as well.
       state.projects.length ? h("section", { class: "chat-projects", "aria-labelledby": "chat-projects-h" },
         h("div", { class: "section-head" }, h("h2", { class: "lbl", id: "chat-projects-h" }, "Projects")),
         h("div", { class: "rows" }, state.projects.map(p => {
           const n = state.rows.filter(r => r.projects.includes(p.slug)).length;
-          return link(projectHref(p.slug), { class: "thread-row" },
-            h("div", { class: "r1" }, h("span", { class: "title ellipsis" }, p.name), machineChip(p), h("span", { class: "code faint" }, plural(n, "session")), icon("right", 14)));
+          return rowOf({ href: projectHref(p.slug), title: p.name, project: p.slug, last: plural(n, "conversation"), human: false, extra: [machineChip(p)] });
         }))) : null,
       h("section", { class: "chat-recent", "aria-labelledby": "chat-recent-h" },
         h("div", { class: "section-head" }, h("h2", { class: "lbl", id: "chat-recent-h" }, "Recent")),
@@ -278,18 +275,8 @@ export default async function chat(ctx) {
 
   function threadRow(row, inProject) {
     const where = inProject ? null : state.projects.find(p => p.slug === row.project)?.name;
-    return link(threadHref(row, inProject), { class: "thread-row" },
-      h("div", { class: "r1" },
-        threadAvatar({ agent: row.agent, project: row.project, thread: row.id }, { size: 24, cls: "av-agent" }),
-        h("span", { class: "title ellipsis" }, title(row)),
-        machineChip(row),
-        row.status === "running" ? h("span", { class: "dot signal", title: "running" }) : null),
-      h("div", { class: "meta" },
-        h("span", null, row.last ? when(row.last) : "no activity yet"),
-        row.id ? h("span", { class: "code faint", title: `Session ${row.id}` }, "#" + String(row.id).slice(0, 6)) : null,
-        h("span", null, row.turns ? plural(row.turns, "turn") : "no turns yet"),
-        where ? h("span", { class: "ellipsis" }, where) : null,
-        row.asks ? h("span", { class: "needs" }, h("span", { class: "dot beacon" }), `${row.asks} need${row.asks === 1 ? "s" : ""} you`) : null,
-        row.holder ? h("span", null, row.holder) : null));
+    return rowOf({ href: threadHref(row, inProject), title: title(row), project: row.project, agent: row.agent, thread: row.id, at: row.last, status: row.status,
+      asks: row.asks, turns: row.turns, where, human: row.human, participants: [row.holder],
+      extra: [machineChip(row)] });
   }
 }

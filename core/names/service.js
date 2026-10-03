@@ -523,6 +523,11 @@ export function names(deps) {
     // no signature, no outbound connection) just because vyred is running.
     if (net().via !== "vyre.run" && !net().recovering) return null;
     const m = await dir.mine();
+    // Support moved this box's name to another server (an operator rebind): tell the person once.
+    if (!m.name && m.moved && ctx.config.name === m.moved.name && told !== m.moved.at) {
+      told = m.moved.at;
+      ctx.events.emit("name.moved", { name: `${m.moved.name}.${domain()}`, at: m.moved.at });
+    }
     if (m.name && m.pending) {
       const fqdn = m.fqdn || `${m.name}.${domain()}`;
       if (m.pending.eta !== told) { told = m.pending.eta; ctx.events.emit("name.recovery-pending", { name: fqdn, eta: m.pending.eta }); }

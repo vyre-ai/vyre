@@ -241,7 +241,7 @@ export async function drawConnections(el, ctx, deps = {}) {
   void drawCatalog(catalogBox, ctx, { attempt, projects: () => (st.projects.length ? st.projects.map(x => ({ slug: x.slug, name: x.name })) : null) });
 
   async function load() {
-    const [s, g, c, gh] = await Promise.all([attempt("mcp.servers"), attempt("google.accounts"), attempt("vault.connections.list"), attempt("github.accounts")]);
+    const [s, g, c, gh] = await Promise.all([attempt("mcp.servers"), attempt("google.accounts"), attempt("vault.connections.list"), attempt("github.accounts", {}, { ifPresent: true })]);
     if (!ctx.alive()) return;
     st.serverErr = s.error || null;
     st.servers = s.error ? [] : pickServers(s.data);
@@ -998,7 +998,7 @@ export async function drawConnections(el, ctx, deps = {}) {
       if (left.length) {
         shut();
         save.disabled = false;
-        put(stt, "The google module cannot read the OAuth client yet. Run this on the box, then press Sign in with Google again: ",
+        put(stt, "The google module cannot read the OAuth client yet. Run this on your server, then press Sign in with Google again: ",
           h("code", { class: "set-mono" }, grantCommand(input.client, "google")));
         return;
       }
@@ -1124,7 +1124,7 @@ export async function drawConnections(el, ctx, deps = {}) {
     st.form = "";
     if (!left.length) { put(formBox); return; }
     put(formBox, h("div", { class: "cn-grant", "data-grant": "left" },
-      h("p", { class: "small" }, `${name} is added, but ${module} cannot use ${left.length === 1 ? "its vault item" : "its vault items"} yet. Run this on the box, then press Test:`),
+      h("p", { class: "small" }, `${name} is added, but ${module} cannot use ${left.length === 1 ? "its vault item" : "its vault items"} yet. Run this on your server, then press Test:`),
       left.map(it => h("code", { class: "set-mono cn-cmd" }, grantCommand(it, module))),
       h("div", { class: "set-actions" }, h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: () => put(formBox) }, "Done"))));
   }

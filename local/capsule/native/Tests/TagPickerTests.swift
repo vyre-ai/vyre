@@ -2,6 +2,7 @@
 // "#" in the box: finding the token, writing the pick, reading the search answer in its shapes, and the
 // list in the model against a fake vyred. Names only, nothing sent until Return.
 
+import AppKit
 import Foundation
 
 private func tok(_ s: String) -> String? { TagToken.trailing(in: s).map { $0.partial } }
@@ -201,5 +202,18 @@ let tagPickerSuite = Suite("tag picker") { t in
             m.text = "y"
             t.eq(m.pastedSpans.ranges, [0..<1], "a key press a second ago does not cover an edit now")
         }
+    }
+
+    t.test("every # row's icon is a symbol the system draws (the connector rows were empty tiles: the server says \"plug\")") {
+        for kind in ["vault", "drive", "file", "artifact", "github", "project", "session", "teammate", "connector", "account", "something-new"] {
+            for icon: String? in [nil, "plug", "user", "file", "key", "not-a-symbol", "x.y.z"] {
+                let n = IconCache.safeSymbol(TagResults.symbol(kind: kind, icon: icon))
+                t.ok(NSImage(systemSymbolName: n, accessibilityDescription: nil) != nil, "\(kind)/\(icon ?? "nil") -> \(n) draws")
+            }
+        }
+        t.eq(TagResults.symbol(kind: "connector", icon: "plug"), "powerplug", "a connector is a plug, from a real symbol")
+        t.eq(IconCache.safeSymbol("plug"), "powerplug")
+        t.eq(IconCache.safeSymbol("definitely-not-a-symbol"), IconCache.neutralSymbol, "an unknown name is a neutral glyph, never an empty tile")
+        t.eq(IconCache.safeSymbol("folder"), "folder")
     }
 }

@@ -233,6 +233,9 @@ fi
   // here otherwise. In this repo a hook it does not have is a no-op. Left out on purpose: the two
   // whose ABSENCE means something (push-to-checkout replaces git's own update of the worktree,
   // fsmonitor-watchman is a protocol with output); those are wrapped only when this repo has them.
+  // Another repo's copy needs no wrapper: git runs fsmonitor-watchman from the path in core.fsmonitor
+  // and a push into a checkout in a child process that does not inherit the session's hooks path
+  // (pinned by a test in git.test.js, run against the real git).
   const names = new Set(STANDARD_HOOKS);
   try { for (const name of fs.readdirSync(own)) if (!name.endsWith(".sample")) names.add(name); } catch { /* the repo has no hooks folder */ }
   for (const name of names) {

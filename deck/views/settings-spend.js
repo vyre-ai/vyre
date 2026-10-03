@@ -36,7 +36,7 @@ export async function drawSpend(el, ctx, deps = {}) {
     st.busy = true; st.problem = null; draw();
     const r = await attempt("spend.raise", off ? { provider, off: true } : { provider, to: Math.round(n * 100) / 100 });
     st.busy = false;
-    if (r.error) { st.problem = r.error.missing ? "Spend caps are not on this box." : String(r.error.message || "That did not go through."); draw(); return; }
+    if (r.error) { st.problem = r.error.missing ? "Spend caps are not on your server." : String(r.error.message || "That did not go through."); draw(); return; }
     st.editing = ""; await load();
   }
 
@@ -59,7 +59,7 @@ export async function drawSpend(el, ctx, deps = {}) {
   }
 
   function draw() {
-    if (st.error) { put(el, empty(st.error?.missing ? "Spend is not tracked on this box yet." : "Spend could not be read.", st.error)); return; }
+    if (st.error) { put(el, empty(st.error?.missing ? "Spend is not tracked on your server yet." : "Spend could not be read.", st.error)); return; }
     put(el,
       h("p", { class: "small muted" }, `Today, ${st.day || "UTC"} (UTC). At a provider's daily cap its work pauses with one line saying how to raise it; nothing asks first.`),
       st.rows.length ? st.rows.map(row) : h("div", { class: "empty" }, "Nothing spent today."));

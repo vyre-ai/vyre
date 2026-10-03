@@ -61,7 +61,7 @@ export async function utterance({ socketPath, mic, caller = "cli", onHeard = () 
 
   const r = await connect("ws://vyred/v1/streams/voice/listen", { socketPath, headers: { "x-vyre-caller": caller } });
   if (!r.peer) {
-    let message = r.unreachable ? "vyred is not running; vyre up to start it" : `vyred refused the stream (${r.status})`;
+    let message = r.unreachable ? "Vyre is not running. Start it with: vyre up" : `Vyre refused the stream (${r.status})`;
     try { const b = JSON.parse(String(r.body || "")); if (b.error?.message) message = b.error.message; } catch {}
     finish({ type: "error", code: r.unreachable ? "unreachable" : "refused", message });
     return { stop() {}, done };
@@ -73,7 +73,7 @@ export async function utterance({ socketPath, mic, caller = "cli", onHeard = () 
     if (msg.type === "done" || msg.type === "error") { finish(msg); return; }
     onHeard(msg);
   });
-  peer.on("close", () => finish({ type: "error", code: "closed", message: "vyred closed the stream" }));
+  peer.on("close", () => finish({ type: "error", code: "closed", message: "Vyre closed the stream" }));
   for (const b of early) peer.binary(b);
   early = [];
   if (settled) peer.close(1000);

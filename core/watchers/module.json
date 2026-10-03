@@ -27,7 +27,7 @@
       { "name": "watchers.duty.resume", "reach": "modules" }
     ]
   },
-  "watches": { "emits": ["watcher.created", "watcher.fired", "watcher.failed", "watcher.paused", "watcher.resumed", "watcher.deleted"] },
+  "watches": { "emits": ["watcher.created", "watcher.fired", "watcher.failed", "watcher.paused", "watcher.resumed", "watcher.deleted", "watcher.woke"] },
   "shows": { "deck": ["panel:watchers"], "capsule": [], "cli": ["watchers"] },
   "needs": { "vault": ["per-watcher"] },
   "teaches": {

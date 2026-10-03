@@ -20,6 +20,9 @@ import { icon } from "../js/icons.js";
 import { threadHref } from "./lib/routes.js";
 import { readNames, labelFor } from "./lib/names.js";
 
+/** How long the sheet waits before saying it is still starting, and before it gives up waiting for an answer (the server is never abandoned: it may still start). */
+export const START_SLOW_MS = 8000;
+export const START_GIVE_UP_MS = 45000;
 /** What the sheet says when threads.start answers "busy", with Try again next to it. */
 export const BUSY_NOTE = "All sessions are busy; one will free up shortly.";
 
@@ -169,8 +172,9 @@ export function mountNewSession(container, opts) {
     if (!alive) return;
     const w = state.where;
     put(whoBox, h("div", { class: "ns-choices", role: "radiogroup", "aria-label": "Who" },
-      choice(state.assistant, "a session in the folder you pick", state.agent === null, () => { state.agent = null; }),
-      state.agents.map(a => choice(a.name, a.kind === "assistant" ? "your assistant, in its own thread" : "an agent, in its own thread",
+      // A plain session is named for what it is, not for the assistant (#53); the assistant appears once, with its own name's capitals.
+      choice("A Claude session", "in the folder you pick", state.agent === null, () => { state.agent = null; }),
+      state.agents.map(a => choice(a.kind === "assistant" && state.assistant && state.assistant.toLowerCase() === String(a.name).toLowerCase() ? state.assistant : a.name, a.kind === "assistant" ? "your assistant, in its own thread" : "an agent, in its own thread",
         state.agent === a.name, () => { state.agent = a.name; }))));
 
     const off = state.agent !== null;
@@ -201,7 +205,13 @@ export function mountNewSession(container, opts) {
     const c = startCall(state.where, state.agent, text.value, state.root, pastes.of(text.value), tagUI.chips().map(t => ({ kind: t.kind, id: t.id, name: t.name })));
     if ("error" in c) { state.error = c.error; draw(); return; }
     state.starting = true; state.error = null; draw();
-    const r = await attempt(c.tool, c.input);
+    // Never "Starting..." forever (#42): a quiet line after a few seconds, and an answer in words if the server never replies. The session may still
+    // have started in that case, so the words say where to look.
+    const slow = setTimeout(() => { if (alive && state.starting) { state.error = "Still starting. A new project can take a moment."; draw(); } }, START_SLOW_MS);
+    let giveUp = /** @type {any} */ (null);
+    const gave = new Promise(res => { giveUp = setTimeout(() => res({ error: { code: "timeout", message: "the server did not answer in time. The session may still have started: check the list in Chat." } }), START_GIVE_UP_MS); });
+    const r = await Promise.race([attempt(c.tool, c.input), gave]);
+    clearTimeout(slow); clearTimeout(giveUp);
     if (!alive) return;
     state.starting = false;
     // Every session slot in use (threads.start code "busy"): not a failure, so say when to try again.

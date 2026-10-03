@@ -368,6 +368,7 @@ test("grok: the entry starts `grok agent stdio` without auto-update or always-ap
   assert.deepEqual(l.launch, ["--no-auto-update", "agent", "stdio"]);
   assert.ok(!l.launch.includes("--always-approve"));
   assert.equal(l.home, "/acct/2000");
+  assert.deepEqual(l.grokImports, ["0", "0"], "Grok does not import the person's Claude or Cursor MCP servers");
 });
 
 test("acp: an agent that starts in a bypass-shaped mode is moved to an ask mode, or the session does not run", async t => {

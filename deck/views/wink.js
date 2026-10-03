@@ -3,7 +3,7 @@
 // here. Just mounts js/pair-scan.js's sheet and tears the camera down on the way out - the
 // actual flow (scan, resolveTicket, confirm, pairOffer, the success dance) lives there.
 
-import { pairScanSheet } from "../js/pair-scan.js";
+import { pairScanSheet, deviceModel } from "../js/pair-scan.js";
 import { attempt } from "../js/api.js";
 
 // tailnet: this page already knows which box it's talking to (it's the Deck's own box, served
@@ -49,7 +49,14 @@ async function devRelayOverride(/** @type {URLSearchParams} */ query) {
 export default async function wink(ctx) {
   const relay = (await devRelayOverride(ctx.query)) || (await defaultRelay());
   if (!ctx.alive()) return;
-  const sheet = pairScanSheet({ relay });
+  // "Alex's iPhone": the owner's first name (system.info) plus the model; the model alone when the box has no name for them.
+  const deviceName = async () => {
+    const kind = await deviceModel();
+    const r = await attempt("system.info");
+    const first = r.data?.owner?.name ? String(r.data.owner.name).trim().split(/\s+/)[0] : null;
+    return first ? `${first}'s ${kind}` : kind;
+  };
+  const sheet = pairScanSheet({ relay, deviceName });
   ctx.root.append(sheet.el);
   ctx.cleanup(() => sheet.close());
   sheet.open();

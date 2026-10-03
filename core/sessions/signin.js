@@ -103,7 +103,9 @@ export class Signins {
     if (!f) throw Object.assign(new Error("no such sign-in; start again"), { code: "not_found" });
     if (!f.wantsPaste || f.ended) throw Object.assign(new Error("this sign-in is not waiting for a pasted code"), { code: "bad_input" });
     const c = String(code || "").trim();
-    if (!/^[\w.~-]{6,256}$/.test(c)) throw Object.assign(new Error("that does not look like the code the page showed"), { code: "bad_input" });
+    // Claude's page shows "<code>#<state>" (a long authorization code, a "#", then the state): letters, digits and the URL-safe and base64 marks, never a space or
+    // a control character, so what reaches the command's stdin is one word and one newline. Codex and Grok print their code to type on the web page and take no paste.
+    if (!/^[A-Za-z0-9_.~#%=+\/-]{6,512}$/.test(c)) throw Object.assign(new Error("that does not look like the code the page showed"), { code: "bad_input" });
     f.proc.stdin.write(c + "\n");
     return { flow, step: "waiting" };
   }

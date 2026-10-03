@@ -117,7 +117,7 @@ readline.createInterface({ input: process.stdin }).on("line", async line => {
   if (m.method === undefined && waits.has(m.id)) { const w = waits.get(m.id); waits.delete(m.id); return m.error ? w.reject(Object.assign(new Error(m.error.message), { code: m.error.code })) : w.resolve(m.result || {}); }
   if (m.method === "initialize") {
     clientCaps = m.params.clientCapabilities || {};
-    log({ launch: process.argv.slice(2), home: process.env.HOME || null, clientCaps });
+    log({ launch: process.argv.slice(2), home: process.env.HOME || null, grokImports: [process.env.GROK_CLAUDE_MCPS_ENABLED || null, process.env.GROK_CURSOR_MCPS_ENABLED || null], clientCaps });
     // FAKE_ACP_AUTH: like the real codex-acp and Grok, session/new answers "Authentication required" (-32000) until authenticate {methodId} was called.
     return out({ id: m.id, result: { protocolVersion: 1, agentCapabilities: { loadSession: true }, authMethods: process.env.FAKE_ACP_AUTH ? [{ id: "api-key", name: "API Key" }, { id: "chat-gpt", name: "ChatGPT" }, ...(clientCaps && clientCaps.auth && clientCaps.auth._meta && clientCaps.auth._meta.gateway ? [{ id: "gateway", name: "Custom model gateway" }] : [])] : [] } });
   }

@@ -570,7 +570,7 @@ test("setup: modules declare setupTools in module.json and the setup channel rea
   ] });
   // the registry's list: the tool the module owns and declared
   const listed = await new Promise(r => { const c = w.d.registry.context({ name: "probe", does: { tools: [] } }); r(c.declaredSetupTools()); });
-  assert.deepEqual([...listed].sort(), ["sessions.accounts.signin", "sessionsfx.accounts.signin"], "the shipped sessions module's own field, and the fixture's");
+  assert.deepEqual([...listed].sort(), ["sessions.accounts.key", "sessions.accounts.signin", "sessionsfx.accounts.signin"], "the shipped sessions module's own field (sign-in, and an API key instead), and the fixture's");
 
   const p = await page(w);
   await p.begin();

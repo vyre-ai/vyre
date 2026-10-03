@@ -32,7 +32,7 @@ test("a tool is unknown until asked, there once it answers, missing once it is n
 test("what counts as missing", () => {
   assert.equal(isMissing({ code: "no_such_tool" }), true);
   assert.equal(isMissing({ code: "http_404" }), true);
-  assert.equal(isMissing({ code: "offline", missing: true }), false, "a box that did not answer is not a verdict");
+  assert.equal(isMissing({ code: "offline", missing: true }), false, "a server that did not answer is not a verdict");
   assert.equal(isMissing({ code: "no_such_tool", missing: true }), true);
   assert.equal(isMissing({ code: "not_found", message: "no tool threads.edit" }), true);
   assert.equal(isMissing({ code: "not_found", message: "no such thread" }), false);
@@ -71,7 +71,7 @@ test("rewind's code restore is learnt from threads.commands or threads.model: an
   assert.equal(again.has(REWIND_CODE), true);
   const other = createCaps();
   await other.use("threads.commands", async () => ({ error: { code: "not_found", message: "no such thread" } }));
-  assert.equal(other.has(REWIND_CODE), null, "a missing thread says nothing about the box");
+  assert.equal(other.has(REWIND_CODE), null, "a missing thread says nothing about your server");
 });
 
 test("threads.tasks' answer says it for everything of sessions 034c71e5: images, !, #, thinking and Stop", async () => {
@@ -90,5 +90,5 @@ test("threads.tasks' answer says it for everything of sessions 034c71e5: images,
   assert.equal(calls, 0, "an older box is never asked for !");
   const unsure = createCaps();
   await unsure.use("threads.tasks", async () => ({ error: { code: "not_found", message: "no such thread" } }));
-  assert.equal(unsure.has(SEND_IMAGES), null, "a missing thread says nothing about the box");
+  assert.equal(unsure.has(SEND_IMAGES), null, "a missing thread says nothing about your server");
 });

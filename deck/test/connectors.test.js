@@ -38,7 +38,7 @@ const row = (el, id) => $(el, `[data-preset=${id}]`);
 /** Connect is now two taps: the row's Connect opens "Who can use it", and its Connect goes (the default: just me and the assistant). */
 async function startConnect(m, id) { click($(row(m.el, id), "[data-act=connect]")); await settle(); click($(row(m.el, id), "[data-act=who-go]")); await settle(); }
 
-test("groupsOf keeps the box's order and drops what is not a preset", () => {
+test("groupsOf keeps your server's order and drops what is not a preset", () => {
   assert.deepEqual(groupsOf(CATALOG).map(g => [g.group, g.presets.map(p => p.id)]), [["Code", ["github"]], ["Work", ["linear", "ghl", "acme"]], ["Google", ["gmail"]]]);
   assert.deepEqual(groupsOf(null), []);
   assert.deepEqual(groupsOf({ presets: [{ id: "x" }, null, { label: "y" }] }), []);
@@ -123,9 +123,9 @@ test("a refused connect says so in plain words and the button comes back; discon
   assert.deepEqual(m.of("connectors.disconnect")[0].input, { name: "linear" });
 });
 
-test("no connectors module on the box: one plain line, no error banner of raw text", async () => {
+test("no connectors module on your server: one plain line, no error banner of raw text", async () => {
   const m = await mount({ "connectors.catalog": { $error: { code: "no_such_tool", message: "no such tool", missing: true, module: "connectors" } } });
-  assert.match(text(m.el), /Connectors are not on this box yet/);
+  assert.match(text(m.el), /Connectors are not on your server yet/);
 });
 
 test("the events reload the catalog", async () => {
@@ -195,7 +195,7 @@ test("an error that echoes a typed token is shown with it hidden", async () => {
 });
 
 test("a connection's scope in words: the default, everything it granted before, named projects", async () => {
-  assert.equal(scopeLine(null), "Just you and the assistant", "null is the box saying: the default");
+  assert.equal(scopeLine(null), "Just you and the assistant", "null is your server saying: the default");
   assert.equal(scopeLine(undefined), "Scope not recorded", "no scope key at all is unknown, never presented as the safe default");
   assert.equal(scopeLine({ projects: "*", agents: "*" }), "All projects, every agent");
   assert.equal(scopeLine({ projects: ["northwind", "harlow"], agents: "*" }), "northwind, harlow");

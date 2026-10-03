@@ -92,7 +92,7 @@
 .sk-obj { display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 520px; }
 .sk-json { font-family: var(--mono); font-size: 12px; line-height: 18px; width: 100%; background: var(--bg); border-radius: var(--radius-field, var(--radius-field, 8px)); }
 
-/* Phone: label and control on one line, the reserved line under them, every target 44. */
+/* Phone: a switch sits beside its label; every other control goes under it at full width (beside it, the label was squeezed to a few characters). The reserved line comes last, every target 44. */
 @media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
   .sk-top { padding-top: 40px; }
   .sk-bar { position: static; }
@@ -100,15 +100,16 @@
   .sk-find { max-width: 100%; width: 100%; }
   .set-row.sk-row { grid-template-columns: minmax(0, 1fr) auto; margin: 0; padding: 8px 0; }
   .sk-row .sk-k { grid-column: 1; grid-row: 1; }
-  .sk-row .sk-v { grid-column: 2; grid-row: 1; }
-  .sk-row .sk-slot { grid-column: 1 / -1; grid-row: 2; justify-content: flex-start; min-height: 44px; }
-  .sk-row.sk-wide .sk-v { grid-column: 1 / -1; grid-row: 2; }
-  .sk-row.sk-wide .sk-slot { grid-row: 3; }
+  .sk-row .sk-v { grid-column: 1 / -1; grid-row: 2; }
+  .sk-row .sk-v:has(.sw) { grid-column: 2; grid-row: 1; }
+  .sk-row .sk-slot { grid-column: 1 / -1; grid-row: 3; justify-content: flex-start; min-height: 44px; }
+  .sk-row .sk-v:has(.sw) ~ .sk-slot, .sk-row.sk-wide .sk-v ~ .sk-slot { grid-row: 3; }
   .sk-label { font-size: 17px; line-height: 24px; white-space: normal; }
   .sk-desc, .sk-note { font-size: 13px; line-height: 18px; }
   .sk-ctl, .sk-ctl .seg { min-height: 44px; }
   .sk-ctl .seg button { height: 38px; }
   .sk-ctl .input, .sk-input, .sk-other { height: 44px; font-size: 16px; max-width: 100%; }
+  .sk-help { max-width: none; }
   .sk-ctl select.input { min-width: 0; }
   .sk-slot .btn-sm, .sk-add-row .btn-sm { height: 44px; }
   .sk-row .sk-reset { visibility: visible; }

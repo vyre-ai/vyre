@@ -119,3 +119,19 @@ test("signin: a code pasted after the command closed its input is not a crash (E
   await new Promise(res => setTimeout(res, 300));
   assert.equal(crashed, null, crashed ? String(crashed.code || crashed.message) : "");
 });
+
+test("signin: Claude's pasted code has the form <code>#<state> and is taken; spaces, control characters and an oversize paste are not", async t => {
+  const { s } = world(t, "paste");
+  const r = await s.start({ provider: "claude", account: { id: "a1" } });
+  assert.equal(r.step, "url");
+  // A real-shaped paste: a long URL-safe authorization code, a "#", then the 43-character state.
+  const code = "Zk3Lw9QmT7vXc2RbN8yHdA1sUe5gPjKo4WiFxVtBnC6lMqY0rEzSaD-hGu_JfOpIkTw9";
+  const state = "q7Fv3nYc0bLx-Re5TgHa8uIoMzPk2WdSj9N_ArEiC6s";
+  const paste = `${code}#${state}`;
+  assert.equal(paste.length > 100, true);
+  for (const bad of ["no space allowed#abc", "code#state\r\nmore", "code\u0000#state", "code#st ate", "a".repeat(513), "ab#", ""]) {
+    assert.throws(() => s.submit(r.flow, bad), /does not look like/, JSON.stringify(bad).slice(0, 30));
+  }
+  assert.deepEqual(s.submit(r.flow, `${paste}\n`), { flow: r.flow, step: "waiting" }, "a trailing newline from the paste is trimmed, not refused");
+  assert.equal(/^[A-Za-z0-9_.~#%=+\/-]{6,512}$/.test("a".repeat(512)), true, "512 is the limit");
+});

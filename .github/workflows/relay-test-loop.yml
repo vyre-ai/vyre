@@ -1,0 +1,54 @@
+# #13: test/relay.test.js failed once as a whole file with no assertion on a hosted node run, and passed on rerun, and
+# core/relay/setup.test.js "a new install code discards the device of an earlier unclaimed session" failed once with "box
+# closed the connection". This runs both files in a loop on a hosted runner and keeps every failing iteration's full output, so the cause can be read.
+# Runs on dispatch, and on a push to a work/rc-* branch that touches the relay or this file (GitHub only lets a workflow be dispatched once it has run).
+# Throwaway GitHub runner, never a Mac.
+name: relay-test-loop
+on:
+  push:
+    branches: ["work/rc-*"]
+    paths: ["core/relay/**", "relay/**", "test/relay*.test.js", ".github/workflows/relay-test-loop.yml"]
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: "How many times to run the file"
+        default: "25"
+        type: string
+permissions:
+  contents: read
+jobs:
+  loop:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --no-audit --no-fund
+      - name: Run the two files in a loop
+        env:
+          RUNS: ${{ inputs.runs || '25' }}
+        run: |
+          mkdir -p loop-logs
+          fails=0
+          for f in test/relay.test.js core/relay/setup.test.js; do
+            for i in $(seq 1 "$RUNS"); do
+              log="loop-logs/$(basename "$f")-run-$i.txt"
+              if node --test --test-reporter=spec "$f" >"$log" 2>&1; then
+                echo "$f run $i: pass"; rm -f "$log"
+              else
+                echo "$f run $i: FAIL"; fails=$((fails + 1))
+              fi
+            done
+          done
+          echo "failures: $fails"
+          { echo "## relay and setup test loop"; echo; echo "failures: $fails (each file run $RUNS times)"; } >> "$GITHUB_STEP_SUMMARY"
+          for f in loop-logs/*.txt; do [ -f "$f" ] && { echo; echo "### $f"; echo '```'; grep -vE "^\s*(✔|▶)" "$f" | tail -80; echo '```'; } >> "$GITHUB_STEP_SUMMARY"; done
+          true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: relay-test-loop-logs
+          path: loop-logs
+          if-no-files-found: ignore

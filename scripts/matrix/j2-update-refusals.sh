@@ -130,7 +130,9 @@ if [ "$MODE" = stripped ]; then
   mk good 9.9.9-e2e.1 good; offer good
   out=$(VYRE_RELEASE_KEY="$GOODPUB" VYRE_BOX_URL="http://127.0.0.1:$PORT/" VYRE_RELEASES_API="" vyre update </dev/null 2>&1); rc=$?
   ready; hv_now=$(hv)
-  if [ "$hv_now" = "$V0" ] && ! printf '%s' "$out" | grep -q "127.0.0.1:$PORT"; then rec S4-hand-run-overrides-ignored ok "rc $rc: $(printf %s "$out" | tail -1)"
+  # With the real network and no override, a hand-run update by the person installs the newest real signed release when there is one
+  # (a person may go back; only the automatic path refuses), so the box may legitimately end on that; it must never end on the local 9.9.9 one.
+  if [ "$hv_now" != "9.9.9-e2e.1" ] && ! printf '%s' "$out" | grep -q "127.0.0.1:$PORT"; then rec S4-hand-run-overrides-ignored ok "rc $rc: $(printf %s "$out" | tail -1)"
   else rec S4-hand-run-overrides-ignored false "rc $rc, runs '$hv_now': $(printf %s "$out" | tail -3)"; fi
   while read -r p; do kill "$p" 2>/dev/null; done <"$OUT/pids"
   exit $([ $FAILED -eq 0 ] && echo 0 || echo 1)
@@ -149,6 +151,8 @@ mk tamper 9.9.9-e2e.1 tamper; offer tamper; ask $PORT "$GOODPUB"; refused 5d-sig
 mk good 9.9.9-e2e.1 good; offer good; ask $PORT ""; refused 5e-pinned-key-default 'does not match|not signed'
 # 6 downgrade: a correctly signed release older than what the box runs
 mk old 0.0.1-e2e.1 good; offer old; ask $PORT "$GOODPUB"; refused 6-downgrade 'never goes back'
+# 6b the same version's earlier prerelease is a downgrade too (#15): the compare used to ignore the suffix
+mk oldpre "${V0%%-*}-e2e.0" good; offer oldpre; ask $PORT "$GOODPUB"; refused 6b-same-version-earlier-prerelease 'never goes back'
 # 7 positive control: the same signed release, newer, installs and keeps the data. The person's compose.yml is edited first to make the
 #   vyre service privileged; root runs from its own verified copy, so the container that comes up is not.
 sudo sed -i '/^  vyre:$/a\    privileged: true' "$DIR/compose.yml"

@@ -39,7 +39,7 @@ In the order `vyre help` lists them.
 | [`vyre context`](#vyre-context) | what a new thread in a project is told |
 | [`vyre pick`](#vyre-pick) | put threads into a project by hand |
 | [`vyre unpick`](#vyre-unpick) | take picked threads out of a project |
-| [`vyre setup`](#vyre-setup) | name this box, with no browser: <n>.vyre.run (--json prints the recovery code on stdout: keep it out of logs) |
+| [`vyre setup`](#vyre-setup) | where setup stands and where to continue (--new-link: a fresh link); with --name, name this box with no browser: <n>.vyre.run (--json prints the recovery code on stdout: keep it out of logs) |
 | [`vyre agenda`](#vyre-agenda) | what is on today: alarms, reminders, events and todos due |
 | [`vyre agents`](#vyre-agents) | agents: list, create, update, ask, history, threads, resume, computer, usage, stop, delete |
 | [`vyre capsule`](#vyre-capsule) | the Mac command bar: Control twice, anywhere |
@@ -208,7 +208,7 @@ vyre threads start|send|list|get|watch|queue|take-back|send-now|edit|interrupt|m
 
 Running a session vyred owns:
   vyre threads start [prompt] [--cwd D | --project P] [--name N] [--model M] [--purpose P]
-                                                    purpose: chat, agent, project, capsule, job, memory, planner, learn
+                                                    purpose: chat, agent, project, teammate, capsule, job, memory, planner, learn, helper
   vyre threads send <thread> <text>                 mid-turn, vyred joins it to the running turn
   vyre threads send <thread> --queue <text>         hold it until the turn ends (a terminal session always does)
   vyre threads send <thread> --steer <text>         join the running turn at its next step
@@ -266,7 +266,7 @@ vyre sessions [status]                          the driver, sign-in, Claude Code
   vyre sessions models                            the model each kind of session runs on
   vyre sessions models <purpose|project> <model>  set one (opus, sonnet, haiku or a model id)
   vyre sessions models <purpose|project> --clear  back to the default
-                                                  purposes: chat, agent, project, capsule, job, memory, planner, learn
+                                                  purposes: chat, agent, project, teammate, capsule, job, memory, planner, learn, helper
   vyre sessions prompt [scope] [show]             what sessions are told at one level
   vyre sessions prompt [scope] set [--text T | --file F] [--replace] [--note N]
                                                   a new version; with neither, opens $EDITOR
@@ -327,10 +327,10 @@ vyre unpick <project> <thread>...
 
 ### vyre setup
 
-Name this box, with no browser: <n>.vyre.run (--json prints the recovery code on stdout: keep it out of logs).
+Where setup stands and where to continue (--new-link: a fresh link); with --name, name this box with no browser: <n>.vyre.run (--json prints the recovery code on stdout: keep it out of logs).
 
 ```
-vyre setup --name <n> [--yes] [--json]
+vyre setup [--new-link] | vyre setup --name <n> [--yes] [--json]
 ```
 
 ### vyre agenda

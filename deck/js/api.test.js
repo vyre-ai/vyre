@@ -40,7 +40,7 @@ globalThis.fetch = async (/** @type {string} */ url, /** @type {any} */ init) =>
 const api = await import("./api.js");
 const refused = { body: { error: { code: "presence_required", message: "no such session, or it ended" } } };
 
-test("presence session: a passkey for gate.approve asks to keep one, and the box's header is stored", async () => {
+test("presence session: a passkey for gate.approve asks to keep one, and your server's header is stored", async () => {
   const until = Date.now() + 30 * 60_000;
   box = h => ({ body: { data: { state: "sent" } }, session: h["x-vyre-presence-keep"] === "1" ? `session id=s1 secret=k1 expires=${until}` : undefined });
   assert.equal(api.presenceCovered(), 0);
@@ -65,7 +65,7 @@ test("presence session: the next send carries the session and asks for no passke
   assert.equal(passkeys, 1);
 });
 
-test("presence session: refused by the box, it is forgotten and the passkey is asked for (and keeps a new one)", async () => {
+test("presence session: refused by your server, it is forgotten and the passkey is asked for (and keeps a new one)", async () => {
   sent.length = 0;
   const until = Date.now() + 30 * 60_000;
   box = h => (String(h["x-vyre-presence"]).startsWith("session ") ? refused : { body: { data: { state: "sent" } }, session: `session id=s2 secret=k2 expires=${until}` });
@@ -101,7 +101,7 @@ test("presence session: a tool that is not sessionable never sends one and never
   assert.equal(api.presenceCovered(), until, "the session is still there for the next send");
 });
 
-test("presence session: the box's word on an item wins; the time is this device's own", () => {
+test("presence session: your server's word on an item wins; the time is this device's own", () => {
   const until = api.presenceCovered();
   assert.ok(until > Date.now());
   assert.equal(api.coveredUntil({ required: true, covered: true }), until);
@@ -110,7 +110,7 @@ test("presence session: the box's word on an item wins; the time is this device'
   assert.equal(api.coveredUntil(null), until, "an older box says nothing: the local session");
 });
 
-test("presence session: a header the box never sends, or one past its time, is not kept", async () => {
+test("presence session: a header your server never sends, or one past its time, is not kept", async () => {
   for (const session of ["session id=s9 secret=k9", "passkey id=s9 secret=k9 expires=9999999999999", `session id=s9 secret=k9 expires=${Date.now() - 1}`]) {
     box = h => (String(h["x-vyre-presence"]).startsWith("session ") ? refused : { body: { data: {} }, session });
     await api.call("vault.reveal", { name: "kit-token" }, { presence: true });
@@ -133,7 +133,7 @@ test("presence session: a relaunched app finds a live session in localStorage, a
   assert.equal(kept.has("vyre.presence.session"), false);
 });
 
-test("presence \"asked\": relay.join goes without proof first, and only passkeys once the box actually asks",
+test("presence \"asked\": relay.join goes without proof first, and only passkeys once your server actually asks",
   async () => {
     // deck/onboard/onboard.js's live() screen calls relay.join this way (presence:"asked"), so a
     // box from before ADR 0004 (no presence_required) pairs in one round trip, and a box that
@@ -149,7 +149,7 @@ test("presence \"asked\": relay.join goes without proof first, and only passkeys
     const r = await api.call("relay.join", input, { presence: "asked" });
     assert.deepEqual(r, { relay: true, box: { name: "kit" }, device: { id: "dev_1" } });
     const tool = sent.filter(s => s.url === "/v1/tools/relay.join");
-    assert.equal(tool.length, 2, "no proof first, then the real send once the box asks");
+    assert.equal(tool.length, 2, "no proof first, then the real send once your server asks");
     assert.equal(tool[0].headers["x-vyre-presence"], undefined);
     assert.deepEqual(tool[0].body, input, "the same url/becomeDevice both times, not re-typed");
     assert.match(tool[1].headers["x-vyre-presence"], /^passkey id=c1 cred=\S+ ad=\S+ cd=\S+ sig=\S+$/);
@@ -157,13 +157,13 @@ test("presence \"asked\": relay.join goes without proof first, and only passkeys
     assert.equal(passkeys, 1);
   });
 
-test("presence \"asked\": a box with no presence_required pairs in one round trip, no passkey shown",
+test("presence \"asked\": a server with no presence_required pairs in one round trip, no passkey shown",
   async () => {
     sent.length = 0;
     passkeys = 0;
     box = () => ({ body: { data: { relay: true, box: { name: "kit" } } } });
     await api.call("relay.join", { url: "relay://pair/def456", becomeDevice: true }, { presence: "asked" });
-    assert.equal(sent.filter(s => s.url === "/v1/tools/relay.join").length, 1, "the no-nag rule: never asks a box that never asked");
+    assert.equal(sent.filter(s => s.url === "/v1/tools/relay.join").length, 1, "the no-nag rule: never asks a server that never asked");
     assert.equal(passkeys, 0);
   });
 
@@ -218,7 +218,7 @@ test("device_removed on a 4xx tells the phone it was removed; a network error or
   try {
     box = () => ({ body: { error: { code: "device_removed", message: "this device was removed" } } });
     await assert.rejects(api.call("threads.list", {}), /removed/);
-    assert.equal(heard, 1, "the box's own answer wipes");
+    assert.equal(heard, 1, "your server's own answer wipes");
     // A 5xx carrying the same words, a different code, and a dropped network: none of these wipe.
     // @ts-ignore
     globalThis.fetch = async () => ({ ok: false, status: 503, statusText: "", headers: new Headers(), json: async () => ({ error: { code: "device_removed", message: "x" } }) });
@@ -238,7 +238,23 @@ test("device_removed on a 4xx tells the phone it was removed; a network error or
     assert.equal(heard, 1, "plain http never wipes");
     Object.defineProperty(globalThis, "location", { value: { protocol: "https:", hostname: "alex.vyre.run" }, configurable: true });
     await assert.rejects(api.call("threads.list", {}));
-    assert.equal(heard, 2, "https to the box's own address does");
+    assert.equal(heard, 2, "https to your server's own address does");
     if (was) Object.defineProperty(globalThis, "location", was); else delete globalThis.location;
   } finally { globalThis.fetch = real; off(); box = () => ({ body: { data: { state: "sent" } } }); }
+});
+
+test("ifPresent: a tool your server does not list is never called; one it lists, or an unreadable list, is", async () => {
+  const seen = /** @type {string[]} */ ([]);
+  globalThis.fetch = /** @type {any} */ (async (/** @type {string} */ url) => {
+    seen.push(String(url));
+    if (String(url) === "/v1/tools") return { status: 200, json: async () => ({ data: [{ name: "link.pending" }, { name: "projects.list" }] }) };
+    return { status: 200, statusText: "", json: async () => ({ data: [] }) };
+  });
+  const { attempt } = await import("./api.js");
+  const gone = await attempt("github.accounts", {}, { ifPresent: true });
+  assert.equal(gone.error?.missing, true);
+  assert.ok(!seen.some(u => u.includes("github.accounts")), "no request for a tool your server lacks");
+  const there = await attempt("link.pending", {}, { ifPresent: true });
+  assert.deepEqual(there.data, []);
+  assert.equal(seen.filter(u => u === "/v1/tools").length, 1, "the list is asked once");
 });

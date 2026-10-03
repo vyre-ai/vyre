@@ -19,7 +19,7 @@ async function load() {
 function appWith(/** @type {any[]} */ items, /** @type {any[]} */ calls = []) {
   const opened = /** @type {any[]} */ ([]);
   const app = {
-    host: "this box",
+    host: "your server",
     st: { items, caps: {}, fav: new Set(), places: [], uses: {}, passes: [], pending: { grants: [], passes: [] }, health: null },
     vc: { has: () => false, call: async (/** @type {string} */ tool, /** @type {any} */ input) => { calls.push({ tool, input }); return { data: {} }; } },
     ctx: { cleanup() {}, alive: () => true },
@@ -58,6 +58,6 @@ test("replacing the key sends only the new key through vault.put", async () => {
   const form = lib.$(panel, "form");
   await Promise.all(form.dispatchEvent({ type: "submit", preventDefault() {} }));
   assert.deepEqual(calls, [{ tool: "vault.put", input: { name: "ms-graph", kind: "api-credential", fields: { secret: "fixture-new-key-000000" } } }]);
-  assert.equal(input.value, "", "the box is cleared at once");
+  assert.equal(input.value, "", "your server is cleared at once");
   assert.deepEqual(opened.at(-1), { mode: "item", name: "ms-graph" });
 });

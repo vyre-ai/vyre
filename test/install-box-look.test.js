@@ -48,8 +48,9 @@ test("install-box.sh look: plain output has steps, checks and a finish, and no e
   assert.equal(lines.filter(l => /^ {2}ok /.test(l)).length, 5, r.stdout);
   assert.match(r.stdout, /^would run: env VYRE_DIR=/m, "the would-run lines stay");
   assert.match(r.stdout, /That's the whole plan\./);
-  assert.match(r.stdout, /Go do your best work\. We'll keep the thread\./);
-  assert.ok(!r.stdout.includes("end the week"), "the Friday line is for colour only");
+  const last = r.stdout.split("\n").filter(l => l.trim()).pop();
+  assert.equal(last, "  Run it again without --dry-run when you're ready.", "the last printed line is the next step, not a send-off");
+  assert.ok(!/best work|keep the thread|end the week/.test(r.stdout), "no sign-off");
 });
 
 test("install-box.sh look: NO_COLOR and CI stay plain; VYRE_NO_UP has four steps", t => {

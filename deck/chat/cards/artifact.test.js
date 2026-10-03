@@ -157,7 +157,7 @@ test("the type comes from the tool when the card did not know it (the /a/<id> ro
   assert.ok($(s, "iframe"));
 });
 
-test("a box without the artifacts tools says so in plain words", async () => {
+test("a server without the artifacts tools says so in plain words", async () => {
   vyred({});
   const v = artifactView({ kind: "artifact", id: "a1", type: "report" }, {}, { phone: false });
   await settle();
@@ -262,7 +262,7 @@ test("the frame view carries a line outside the frame saying the page is the age
   assert.match(t(line), /Made by kit\. It runs on its own and is not part of Vyre\./);
 });
 
-test("a generated image draws inline from the box's own content route, with its provider and prompt read once from artifacts.get", async () => {
+test("a generated image draws inline from your server's own content route, with its provider and prompt read once from artifacts.get", async () => {
   const v = vyred({ [TOOLS.get]: { kind: "image", format: "png", media: { mime: "image/png", bytes: 1234, provider: "grok", model: "grok-imagine", prompt: "a red door at dusk" } } });
   const el = /** @type {any} */ (artifactCard(artifactFromEvent({ thread: "t1", artifact: "m1", version: 1, kind: "image", title: "Red door", mime: "image/png", bytes: 1234 }), { agent: "kit" }));
   await settle();
@@ -325,7 +325,7 @@ test("an interactive page says it runs its own code under the origin line and lo
   assert.doesNotMatch(t(deck.view.el), /Runs its own code/);
   assert.equal(q(deck.view.el, "iframe").getAttribute("sandbox"), "");
   const unknown = await mk("hologram", undefined);
-  assert.equal(q(unknown.view.el, "iframe").getAttribute("sandbox"), "", "an unknown kind on a box that says nothing runs no script");
+  assert.equal(q(unknown.view.el, "iframe").getAttribute("sandbox"), "", "an unknown kind on a server that says nothing runs no script");
   assert.doesNotMatch(t(unknown.view.el), /Runs its own code/);
   const old = await mk("page", undefined);
   assert.match(t(old.view.el), /Runs its own code/, "an older box that says nothing: a page is read as interactive");

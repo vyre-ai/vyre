@@ -60,7 +60,7 @@ test("a line per running agent computer, never the Mac; a step moves it; a stopp
   stop();
 });
 
-test("a box without sight shows nothing and is not asked again", async () => {
+test("a server without sight shows nothing and is not asked again", async () => {
   let n = 0;
   /** @type {Map<string, Function>} */ const subs = new Map();
   const el = h("div", { hidden: true });

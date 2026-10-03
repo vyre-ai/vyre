@@ -218,8 +218,8 @@ user). New `PairTicket` Durable Object in relay/worker/index.js, one object per 
 up by). `RouteRelay`'s control socket, previously silent after auth like relay/node's, now handles
 `{t:"ticket",...}` and writes to it; the Worker's top-level `fetch()` handles `POST /v1/pair`
 before the WebSocket-upgrade gate, same locator-in-body/never-a-URL shape as relay/node, with
-optional `PAIR_LIMITER`/`PAIR_LIMITER_GLOBAL` rate-limiting bindings (same optional pattern as
-`DEVICE_LIMITER`) and an in-memory per-route registration cap (60/minute, resets on hibernation, only weakens the cap, never the pairing security it sits in front of, which is the MAC, not this).
+an optional per-address `PAIR_LIMITER` rate-limiting binding, charged to misses only (same optional pattern as
+`DEVICE_LIMITER`; no global limit, GHSA-25xh-w9j7-7v28) and an in-memory per-route registration cap (60/minute, resets on hibernation, only weakens the cap, never the pairing security it sits in front of, which is the MAC, not this).
 wrangler.toml gains the `TICKETS` binding and migration entry.
 
 Had to extend the shared test harness, relay/worker/fake-cf.js, since it only ever bound one
@@ -964,7 +964,7 @@ Listed by the area they touch, so the merge can go in order. Everything below is
 - **relay/worker** (28 Sep, ADR 0045, own): new Durable Object `PairTicket`, bound `TICKETS` in
   wrangler.toml (new migration entry too); `RouteRelay`'s control socket handles `{ t: "ticket",
   loc, record, mac, exp }` post-auth (previously silent); the Worker's top-level `fetch` handles
-  `POST /v1/pair`, optional `PAIR_LIMITER`/`PAIR_LIMITER_GLOBAL` rate-limit bindings. Not deployed, code and tests only, per the lead; deploying needs the user's yes.
+  `POST /v1/pair`, an optional per-address `PAIR_LIMITER` binding (misses only; no global limit). Not deployed, code and tests only, per the lead; deploying needs the user's yes.
 - **relay/worker/fake-cf.js** (28 Sep, shared test harness, own): `createRuntime` takes an
   optional `classes` map for Durable Object bindings beyond `ROUTES`; a namespace's `.fetch()`
   accepts `(url, init)` as well as a `Request`; `FakeStorage` gains `deleteAll()`. `object(name)`
@@ -1082,3 +1082,42 @@ Listed by the area they touch, so the merge can go in order. Everything below is
 Suggested merge order: link and names, daemon and presence, vault, files, computers, watchers and
 hooks, then deck, capsule and onboard. They are one branch here, so this matters only if the
 integrator splits it.
+
+## Companion pairing (2 Oct, box side, `work/023-companion`)
+
+`core/link/companion.js` and `link.companion.*` land on the box, with tests. They are not usable
+until a transport exists that authenticates the local core's own key (v0.2.3 over the tailnet, as
+the Mac's link does; the built-in network in team/0.3 replaces that transport later). Until then
+nothing calls it and a companion cannot connect. CHANGELOG says the same.
+## 2 Oct 2026 status (relaunch)
+
+- Pushed, each after targeted tests plus docs, reach, boundaries and hygiene on the test box: 023-pair-window af1a30e7c, 023-companion e448cd652 (not usable until a transport exists), 023-app-relay-check 7fa12e885 (app-boot run 36966573078), 022-device-names f299fc4c1 (#65), and 023-relay-deploy b8339c039 (pair-window merged with pair-limit a9c9d8dd9, the one branch for the relay redeploy). 022-relay-flake cd691f322 (#13) was already pushed and its relay loop is green on Node 22 and 24.
+- Next: relay-deploy.yml needs the sha on work/stage-0.2; I dispatch it once the integrator lands 023-relay-deploy, then the lead approves the deploy environment. The edge rule stays off until CLOUDFLARE_WAF_TOKEN exists. 023-presence-trim is held, unpushed.
+- 0.3: ADR 0050 claimed (the built-in network, supersedes 0046's transport). Section 12b of team/0.3/PLAN-built-in-network.md is my confirmation of platform's sections 5 to 8 and 12; the spike list is there.
+
+## Companion core transport: the wire contract (v0.2.3, box side; 2 Oct 2026, `work/023-companion-transport`)
+
+A companion core is a local core (the Windows core, the Mac's) that joined the box through its desktop app's pairing (`link.companion.pair`). In v0.2.3 the PC has Tailscale, so the core reaches the box's tailnet address over HTTPS exactly as the Mac's core does. What is new is who the box says the caller is: not the tailnet node (a companion row carries none) but the core's own P-256 key, proved on every call.
+
+What the core pins at pairing: the answers of `link.companion.pair` and `link.companion.approve` carry `box: { pub, id }`. `pub` is the box's public key (the same SPKI base64url as `assertKey` in `link.hello`); `id` is the base64url SHA-256 of that `pub` string. The app relays them, over its own Noise channel to the box, so the core never learns the box from a name or an address.
+
+The token. Every call carries `c1.<companion id>.<ts>.<nonce>.<sig>`:
+- `companion id`: the UUID `link.companion.pair` answered.
+- `ts`: milliseconds since the epoch; the box accepts two minutes either side.
+- `nonce`: 16 to 64 characters of base64url, new for every call (12 random bytes is right).
+- `sig`: ECDSA P-256 with SHA-256, raw r||s (64 bytes, IEEE P1363), base64url, by the core's own private key, over these UTF-8 bytes joined by `\n`:
+  `vyre-companion-call`, the pinned `box id`, `companion id`, `ts`, `nonce`, the tool name, and the input digest.
+- input digest: base64url SHA-256 of the canonical JSON of the input as sent, without the `companion` field. Canonical JSON sorts object keys at every level, writes no whitespace and uses `JSON.stringify` for strings and numbers (core/link/companion.js `canonical`). An upload chunk's `data` is replaced by `{"sha256": base64url SHA-256 of the raw bytes}` before hashing.
+
+Where it goes:
+- JSON tools: the token is the `companion` field of the input of `POST /v1/tools/<tool>`: `link.companion.hello` (takes `token` instead, signed over an empty input `{}`), `sync.upload.plan`, `sync.upload.start`, `sync.upload.cancel`, `sync.upload.finish`.
+- `POST /v1/sync/upload/<upload>?offset=N` (the raw octet-stream chunk): the token is the `x-vyre-companion` header, signed over `{ upload, offset, data }` with `data` as above. Never in the URL.
+- The tailnet peer must still be the owner's node (the tools' `callers: ["tailnet"]` and the listener's whois), but that is only the outer door. With a token present the token alone decides who the peer is. A bad token is no peer; the box never falls back to the node, which a companion row does not carry.
+
+What the box checks, in order, on every call and every chunk (core/link/companion.js `verifyCall`): the token's shape; the time; that the companion row exists; that its parent app device is live and trusted right now (a removed or limited app device refuses it, a revoked companion refuses it, with no state on the core); that the box is the one the token names; the signature against the key registered at pairing; that the token was made after this box's daemon started (spent nonces live in memory only, so after a restart a token made before it is refused and the core signs a fresh one; a core whose clock runs behind the box's start is refused until its clock passes it); that the nonce is new (a nonce is spent only by a valid signature, kept for as long as its timestamp could still pass, with a table per companion so one companion's calls never push out another's, and a full table refuses rather than forgets). Every refusal is `denied` with a reason; none of them says which fact failed beyond that.
+
+What a companion may call: `link.companion.hello` and the five `sync.upload.*` tools above, and nothing else. The import must be switched on for the companion by the person (`sync.consent {machine: <companion name>, on: true}`), as for any peer. The box does not forward reads to a companion (`link.serve`, `link.reply`, `link.events`, `link.macs.call` are the Mac's); a core that must also answer the box's questions is a later step with its own review. A companion's caller is never `device:<id>` and never the owner's.
+
+Changed contracts: core/sync (`peerOf` takes the token and asks `link.companion.verify`, an internal tool; the five upload tools accept `companion`), core/daemon (the chunk route forwards `x-vyre-companion`), core/link (`link.companion.hello`, `link.companion.verify`, `box` in the pair and approve answers).
+
+Tests: core/link/companion.test.js (token verifies once; another key, tool, input, box or time is refused; a chunk's bytes are signed as bytes; a limited, removed or revoked parent or companion stops it at once), core/sync/sync.test.js (a real registry: upload start, chunk and finish with tokens; a tampered input or byte, the wrong tool, no token and the parent removed all refused).

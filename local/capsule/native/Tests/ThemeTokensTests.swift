@@ -38,6 +38,20 @@ let themeTokensSuite = Suite("theme tokens") { t in
         t.eq(Theme.status("needsYou")?.word, "needs you")
         t.ok(Theme.status("nope") == nil)
     }
+
+    t.test("Deck v2 tokens: surfaces, accent, the type roles, springs and the project emblem") {
+        t.eq(rgb(Tokens.V2.dark.surface1), [20, 19, 17], "surface 1 in dark")
+        t.eq(rgb(Tokens.V2.paper.surface1), [244, 241, 234], "surface 1 in paper")
+        t.eq(rgb(Tokens.V2.dark.accent), rgb(Tokens.dark.beacon), "the accent is the attention colour")
+        t.eq(Tokens.V2.TypeScale.body.size, 14)
+        t.eq(Tokens.V2.PhoneTypeScale.body.size, 16)
+        t.eq(Tokens.V2.Radius.card, 14)
+        t.eq(Tokens.V2.Motion.Spatial.`default`, Tokens.V2.Spring(damping: 0.8, stiffness: 380))
+        t.eq(Tokens.V2.Elevation.Dark.e2.count, 3)
+        t.eq(Tokens.V2.Emblem.palette.count, 8)
+        t.eq(Tokens.V2.Emblem.shapes.count, 8)
+        t.eq(Tokens.V2.Emblem.cells.count, 4)
+    }
 }
 
 let deepGlassSuite = Suite("glass skin") { t in

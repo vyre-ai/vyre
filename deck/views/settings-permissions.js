@@ -97,7 +97,7 @@ export async function drawPermissions(el, ctx, deps = {}) {
   }
 
   function draw() {
-    if (st.error) { put(el, empty(st.error?.missing ? "Standing permissions are not on this box yet." : "Permissions could not be read.", st.error)); return; }
+    if (st.error) { put(el, empty(st.error?.missing ? "Standing permissions are not on your server yet." : "Permissions could not be read.", st.error)); return; }
     const standing = st.items.filter(i => i.standing), once = st.items.filter(i => !i.standing);
     put(el,
       h("p", { class: "small muted" }, "What Vyre may send, post or pay without asking each time. A send or payment you did not ask for always asks you first. Taking permission back works at once."),

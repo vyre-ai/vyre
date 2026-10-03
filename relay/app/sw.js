@@ -52,7 +52,7 @@ async function installLoader() {
   return { release: m.release, manifest };
 }
 
-const typeFor = p => (p.endsWith(".html") ? "text/html; charset=utf-8" : p.endsWith(".css") ? "text/css" : p.endsWith(".js") ? "text/javascript" : "application/octet-stream");
+const typeFor = p => (p.endsWith(".html") ? "text/html; charset=utf-8" : p.endsWith(".css") ? "text/css" : p.endsWith(".js") ? "text/javascript" : p.endsWith(".webmanifest") ? "application/manifest+json" : p.endsWith(".png") ? "image/png" : "application/octet-stream");
 
 async function activateLoader() {
   const meta = await caches.open(META);

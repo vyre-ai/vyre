@@ -1,0 +1,30 @@
+/* The state kit (design-system.md sections 2 and 5): every list and panel renders through these four pieces, built on the v2 tokens
+   (css/tokens-v2.css). Skeleton rows, one empty state, one error state with Try again, and the type roles. */
+
+/* ---- type roles: the only sizes a v2 screen uses ---- */
+.t-caption { font: 400 var(--fs-caption)/var(--lh-caption) var(--sans); }
+.t-body { font: 400 var(--fs-body)/var(--lh-body) var(--sans); }
+.t-read { font: 400 var(--fs-read)/var(--lh-read) var(--sans); }
+.t-title { font: 600 var(--fs-title)/var(--lh-title) var(--sans); letter-spacing: -.012em; }
+.t-page { font: 600 var(--fs-page)/var(--lh-page) var(--sans); letter-spacing: -.02em; }
+.t-display { font: 600 var(--fs-display)/var(--lh-display) var(--sans); letter-spacing: -.025em; }
+.t-label { font: 600 var(--fs-caption)/16px var(--sans); letter-spacing: 0; text-transform: none; color: var(--label); }
+.t-num { font-feature-settings: "tnum" 1, "cv11" 1; }
+
+/* ---- loading: skeleton rows at the real row height ---- */
+.skel { display: flex; align-items: center; gap: var(--s-3); height: var(--row-h); padding: 0 var(--s-3); }
+.skel i { display: block; border-radius: 6px; background: linear-gradient(90deg, var(--hover), var(--press), var(--hover)); background-size: 200% 100%; animation: kit-shine 1.4s linear infinite; }
+.skel .c { width: 32px; height: 32px; border-radius: 50%; flex: none; }
+.skel .tx { flex: 1; min-width: 0; display: grid; gap: 8px; }
+.skel .l1 { height: 11px; width: 55%; }
+.skel .l2 { height: 9px; width: 30%; }
+@keyframes kit-shine { to { background-position: -200% 0; } }
+.kit-slow { margin: var(--s-3) var(--s-3) 0; font: 400 var(--fs-caption)/var(--lh-caption) var(--sans); color: var(--label); }
+
+/* ---- empty and error: one bold line, one sentence, one action ---- */
+.state { padding: var(--s-10) var(--s-6); text-align: center; }
+.state-title { display: block; font: 600 var(--fs-read)/var(--lh-read) var(--sans); margin-bottom: var(--s-1); color: var(--text); }
+.state-text { margin: 0 auto var(--s-4); max-width: 34ch; color: var(--text-2); font: 400 var(--fs-body)/var(--lh-body) var(--sans); }
+.state-reason { display: block; margin: 0 auto var(--s-4); max-width: 44ch; color: var(--label); font: 400 var(--fs-caption)/var(--lh-caption) var(--sans); }
+.state-actions { display: inline-flex; gap: var(--s-2); align-items: center; }
+@media (prefers-reduced-motion: reduce) { .skel i { animation: none; } }

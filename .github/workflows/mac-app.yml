@@ -1,0 +1,143 @@
+# The Lumen Mac app as release files: Vyre.app for Apple silicon and for Intel, each zipped and as a dmg, named like the
+# Windows installers (Vyre-Lumen_<version>_aarch64.dmg and .zip, Vyre-Lumen_<version>_x86_64.dmg and .zip, and the stable
+# Vyre-Lumen-aarch64.dmg, Vyre-Lumen-x86_64.dmg and the two zips). Each app carries its pinned Node and the setup script, so a Mac
+# needs no terminal and no Node. Uploaded as one workflow
+# artifact called `mac-app`, which the release job pulls into dist/ and lists in SHA256SUMS. This job holds no release key.
+#
+# Two jobs. `build` compiles the app with no environment and no secret and uploads it unsigned. `package` starts from a fresh checkout and runs
+# only scripts/mac-app-package.sh on that upload, so no build tool ever runs where the secrets are.
+# Developer ID signing and notarization are the person's and optional. They run only with `sign: true`, which a release passes on a publish:
+# `package` then runs in the protected GitHub Environment "apple" (its approver, its secrets), and only its package step receives the APPLE_*
+# secrets. Where a secret is missing the script prints a skip line and the app is signed ad hoc, which a release does not publish. On every
+# other run (a push, a dispatch, a rehearsal) there is no environment and no secret.
+name: mac-app
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: The release version, without a leading v. Empty reads package.json.
+        type: string
+        default: ""
+      sign:
+        description: Run in the "apple" environment and sign and notarize with its secrets. A release passes true on a publish.
+        type: boolean
+        default: false
+  workflow_dispatch:
+  push:
+    paths: ["local/capsule/native/**", "scripts/mac-app-package.sh", ".github/workflows/mac-app.yml"]
+permissions:
+  contents: read
+concurrency:
+  group: mac-app-${{ github.ref }}-${{ inputs.version }}
+  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
+jobs:
+  # build: the Swift build, with no environment and no secret. It uploads the unsigned app and nothing else.
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [aarch64, x86_64]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Build Lumen for ${{ matrix.arch }}
+        run: |
+          arch=${{ matrix.arch }}; [ "$arch" = aarch64 ] && arch=arm64
+          VYRE_CAPSULE_ARCH=$arch sh local/capsule/native/build.sh app
+      - name: The binary is for ${{ matrix.arch }}
+        run: |
+          archs="$(lipo -archs local/capsule/native/.build/Vyre.app/Contents/MacOS/Vyre)"
+          echo "architectures: $archs"
+          want=${{ matrix.arch }}; [ "$want" = aarch64 ] && want=arm64
+          [ "$archs" = "$want" ] || { echo "expected $want, got $archs" >&2; exit 1; }
+      - name: The unsigned app, zipped with its signature and permissions intact
+        run: mkdir unsigned && ditto -c -k --keepParent local/capsule/native/.build/Vyre.app unsigned/Vyre.app.zip
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: mac-unsigned-${{ matrix.arch }}
+          path: unsigned/Vyre.app.zip
+          retention-days: 2
+  # package: a fresh checkout that runs only scripts/mac-app-package.sh on the uploaded app. On a publish (`sign: true`) it runs in the "apple"
+  # environment and only the package step receives the secrets; no build tool and no repo build script runs in this job.
+  package:
+    needs: build
+    runs-on: macos-latest
+    timeout-minutes: 45
+    environment: ${{ inputs.sign && 'apple' || '' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [aarch64, x86_64]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Version
+        id: v
+        run: |
+          v="${{ inputs.version }}"
+          [ -n "$v" ] || v="$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' package.json | head -1)"
+          v="${v#v}"
+          echo "version=$v" >> "$GITHUB_OUTPUT"; echo "Lumen app version $v"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: mac-unsigned-${{ matrix.arch }}
+          path: ${{ runner.temp }}/unsigned
+      - name: Unpack the app
+        run: mkdir -p "$RUNNER_TEMP/app" && ditto -x -k "$RUNNER_TEMP/unsigned/Vyre.app.zip" "$RUNNER_TEMP/app" && test -d "$RUNNER_TEMP/app/Vyre.app/Contents/MacOS"
+      - name: The pinned Node (the version and checksum are the ones in scripts/install-mac-server.sh)
+        id: node
+        run: |
+          v="$(sed -n 's/^NODE_VERSION=//p' scripts/install-mac-server.sh | head -1)"
+          na=${{ matrix.arch }}; [ "$na" = aarch64 ] && na=arm64 || na=x64
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/node.tgz" "https://nodejs.org/dist/$v/node-$v-darwin-$na.tar.gz"
+          echo "tgz=$RUNNER_TEMP/node.tgz" >> "$GITHUB_OUTPUT"; echo "Node $v for $na"
+      - name: Package, sign if there is an identity, notarize if there is a credential
+        env:
+          VYRE_NODE_TGZ: ${{ steps.node.outputs.tgz }}
+          APPLE_DEVELOPER_ID_P12: ${{ inputs.sign && secrets.APPLE_DEVELOPER_ID_P12 || '' }}
+          APPLE_DEVELOPER_ID_P12_PASSWORD: ${{ inputs.sign && secrets.APPLE_DEVELOPER_ID_P12_PASSWORD || '' }}
+          APPLE_DEVELOPER_ID_IDENTITY: ${{ inputs.sign && secrets.APPLE_DEVELOPER_ID_IDENTITY || '' }}
+          APPLE_NOTARY_KEY_P8: ${{ inputs.sign && secrets.APPLE_NOTARY_KEY_P8 || '' }}
+          APPLE_NOTARY_KEY_ID: ${{ inputs.sign && secrets.APPLE_NOTARY_KEY_ID || '' }}
+          APPLE_NOTARY_ISSUER: ${{ inputs.sign && secrets.APPLE_NOTARY_ISSUER || '' }}
+        run: sh scripts/mac-app-package.sh "${{ steps.v.outputs.version }}" ${{ matrix.arch }} "$RUNNER_TEMP/app/Vyre.app" dist-mac
+      - name: The dmg mounts and holds the app, the setup files and the pinned Node
+        run: |
+          dmg="dist-mac/Vyre-Lumen_${{ steps.v.outputs.version }}_${{ matrix.arch }}.dmg"
+          hdiutil verify "$dmg"
+          mnt="$(mktemp -d)"; hdiutil attach "$dmg" -nobrowse -mountpoint "$mnt" >/dev/null
+          app="$mnt/Vyre Lumen.app"
+          test -d "$app/Contents/MacOS" && echo "dmg holds Vyre Lumen.app"
+          ls -l "$app/Contents/Resources/setup"; cat "$app/Contents/Resources/setup/setup.json"
+          test -x "$app/Contents/Resources/setup/install-mac-server.sh"
+          test -x "$app/Contents/Resources/setup/vyre-sudo-check"
+          codesign -dv "$app" 2>&1 | grep -E "Identifier|Authority|Signature" || true
+          hdiutil detach "$mnt" >/dev/null
+      - name: Status
+        run: |
+          cat dist-mac/mac-app-*.status
+          { echo "### Lumen Mac app (${{ matrix.arch }})"; echo; echo '```'; cat dist-mac/mac-app-*.status; echo '```'; ls -l dist-mac; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: mac-app-${{ matrix.arch }}
+          path: |
+            dist-mac/Vyre-Lumen*.dmg
+            dist-mac/Vyre-Lumen*.zip
+            dist-mac/mac-app-*.status
+          retention-days: 14
+  collect:
+    # One artifact called `mac-app`, as the release job expects.
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: mac-app-*
+          merge-multiple: true
+          path: dist-mac
+      - run: ls -l dist-mac
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: mac-app
+          path: dist-mac/*
+          retention-days: 14

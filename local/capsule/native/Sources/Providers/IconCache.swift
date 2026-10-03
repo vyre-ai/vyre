@@ -299,7 +299,22 @@ public final class IconCache {
         img.draw(in: r, from: .zero, operation: .sourceOver, fraction: 1)
     }
 
+    /// Names a module or a server may send that are not SF Symbols, with the symbol that means the same. A name the system does not
+    /// know draws as nothing, so an empty tile; anything neither here nor real falls back to a neutral glyph.
+    nonisolated static let symbolAliases: [String: String] = [
+        "plug": "powerplug", "user": "person", "users": "person.2", "file": "doc", "link": "link", "mail": "envelope", "calendar": "calendar",
+        "chat": "bubble.left", "folder": "folder", "search": "magnifyingglass", "settings": "gearshape", "lock": "lock", "key": "key",
+    ]
+    nonisolated static let neutralSymbol = "square.grid.2x2"
+
+    /// A symbol name that draws: the alias, the name itself when the system has it, else the neutral glyph.
+    nonisolated static func safeSymbol(_ name: String) -> String {
+        let n = symbolAliases[name] ?? name
+        return NSImage(systemSymbolName: n, accessibilityDescription: nil) != nil ? n : neutralSymbol
+    }
+
     static func symbol(_ name: String, tint: Tint, points: CGFloat, px: Int) -> NSImage? {
+        let name = safeSymbol(name)
         let cfg = NSImage.SymbolConfiguration(pointSize: CGFloat(px) * 0.62, weight: .regular)
         guard let base = NSImage(systemSymbolName: name, accessibilityDescription: nil) ?? NSImage(systemSymbolName: "questionmark.square.dashed", accessibilityDescription: nil),
               let sym = base.withSymbolConfiguration(cfg) else { return nil }

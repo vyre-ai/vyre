@@ -222,7 +222,7 @@ test("settings keys: advanced keys wait for Show advanced; search filters by lab
   assert.match(text($(el, ".sk-none")), /No setting matches "zzz"\./);
 });
 
-test("settings keys: a switch saves at once, shows before the box answers, then Saved in its slot for a moment", async () => {
+test("settings keys: a switch saves at once, shows before your server answers, then Saved in its slot for a moment", async () => {
   const api = fakeSettings();
   const { el } = await render(api);
   api.hold(true);
@@ -230,7 +230,7 @@ test("settings keys: a switch saves at once, shows before the box answers, then 
   const slotEl = $(rowOf(el, "sessions.fast"), ".sk-slot");
   const done = sw.click();
   await tick();
-  assert.equal(sw.getAttribute("aria-checked"), "true", "optimistic: on before the box answers");
+  assert.equal(sw.getAttribute("aria-checked"), "true", "optimistic: on before your server answers");
   assert.deepEqual(api.of("settings.set")[0].input, { key: "sessions.fast", level: "account", value: true });
   assert.equal(api.of("settings.set")[0].opts.presence, undefined, "a plain key needs no proof");
   api.hold(false);
@@ -255,7 +255,7 @@ test("settings keys: a refused change goes back and says Not saved and why on it
   inp.dispatchEvent(new Event("input"));
   inp.dispatchEvent(ev("keydown", { key: "Enter" }));
   await tick();
-  assert.equal(inp.value, "5000", "shown while the box decides");
+  assert.equal(inp.value, "5000", "shown while your server decides");
   assert.equal(src(el, "sessions.max_turns"), "account");
   api.release();
   await tick(); await tick();

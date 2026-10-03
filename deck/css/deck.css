@@ -134,27 +134,12 @@ span.vy-av-ring { border-radius: 9999px; overflow: hidden; }
 /* Installed on an iPad or a phone turned sideways (both can be 720 wide or more), the shell keeps
    clear of the status bar and the notch. env() is 0 on a desktop browser: nothing moves there. */
 .shell { padding-top: env(safe-area-inset-top); padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
-/* The header spans the area right of the rail (the brand moved to the rail's home mark). */
-.top { height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 16px; padding: 0 16px 0 20px; border-bottom: 1px solid var(--rule); }
+/* The star button (js/star-button.js). */
+.star { display: flex; align-items: center; gap: 8px; }
+.star[hidden] { display: none; }
+.star-btn { gap: 6px; }
 /* The mark and wordmark on the onboarding's pages (onboard.css); the shell has no brand row. */
 .brand { width: 216px; height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding-left: 20px; text-decoration: none; }
-.address { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px; border: 1px solid var(--rule);
-  border-radius: var(--radius-field, 8px); font-family: var(--mono); font-size: 12px; line-height: 16px; color: var(--label); flex-shrink: 1; min-width: 0; max-width: 460px;
-  white-space: nowrap; overflow: hidden; }
-/* One line: a long thread path ends in an ellipsis instead of wrapping the pill. */
-.address > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.address > svg { flex-shrink: 0; }
-.address b { font-weight: 400; color: var(--text); }
-.search { position: relative; display: flex; align-items: center; gap: 10px; height: 32px; width: 420px; min-width: 160px;
-  padding: 0 8px 0 12px; background: var(--panel); border: 1px solid var(--rule); border-radius: var(--radius-field, 8px); color: var(--label); flex-shrink: 1; }
-.search input { flex-grow: 1; min-width: 0; background: transparent; border: none; outline: none; color: var(--text); font-size: 13px; }
-.search input::placeholder { color: var(--label); }
-.search-pop { position: absolute; top: 38px; left: -1px; right: -1px; background: var(--panel); border: 1px solid var(--rule-strong);
-  border-radius: var(--radius-card, 12px); box-shadow: var(--popover); max-height: 420px; overflow: auto; z-index: 20; padding: 6px; }
-.search-pop a { display: block; padding: 8px 10px; border-radius: var(--radius-field, 8px); text-decoration: none; }
-.search-pop a:hover, .search-pop a.on { background: var(--hover); }
-.needs-pill { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px; border-radius: 14px;
-  color: var(--beacon-ink); text-decoration: none; font-size: 13px; line-height: 18px; font-weight: 500; white-space: nowrap; }
 /* From 720 up: the rail (72), then the stage: the header over the list column and the view. */
 .body { flex-grow: 1; min-height: 0; display: flex; }
 .stage { flex-grow: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
@@ -240,7 +225,6 @@ span.vy-av-ring { border-radius: 9999px; overflow: hidden; }
    at the bottom, and every other address pushed over them. The shell's mode is #deck[data-at]:
    page, pushed or find (js/app.js). */
 @media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
-  .top { display: none; }
   .rail { display: none; }
   .rail-lower { display: none; }
   /* One fixed shell (one-app DIRECTION.md, "Smooth"): the app never moves as a whole, so the page
@@ -280,20 +264,17 @@ span.vy-av-ring { border-radius: 9999px; overflow: hidden; }
   .ph-mark { display: inline-flex; flex-shrink: 0; }
   .ph-mark circle { fill: var(--mark-dot) !important; }
   .ph-head[data-needs] .ph-mark circle { fill: var(--beacon-dot) !important; }
-  .ph-tabs { display: flex; align-items: center; gap: 16px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
-  .ph-tabs::-webkit-scrollbar { display: none; }
-  .ph-tab { display: inline-flex; align-items: center; min-height: 44px; font-size: 22px; line-height: 28px; font-weight: 600; letter-spacing: -0.015em;
-    color: var(--label); text-decoration: none; white-space: nowrap; flex-shrink: 0; transition: color 160ms ease-out; -webkit-touch-callout: none; user-select: none; }
-  .ph-tab[aria-current="page"] { color: var(--text); }
+  /* The page's own name, in Page type; the glass tab bar below says where you are (css/tabbar.css). */
+  .ph-title { margin: 0; min-width: 0; font-size: 28px; line-height: 34px; font-weight: 600; letter-spacing: -0.02em; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ph-grow { flex-grow: 1; }
-  .ph-avatar, .ph-plus { width: 44px; height: 44px; margin-right: -5px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
+  .ph-avatar, .ph-plus, .ph-search { width: 44px; height: 44px; margin-right: -5px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
     padding: 0; border: none; background: transparent; color: var(--text); cursor: pointer; }
   .ph-initial { width: 34px; height: 34px; border-radius: 17px; display: inline-flex; align-items: center; justify-content: center;
     background: var(--hover); border: 1px solid var(--rule-strong); color: var(--text); font-size: 15px; line-height: 20px; font-weight: 600; }
   .ph-back { display: none; align-items: center; gap: 2px; height: 44px; margin-left: -8px; padding: 0 8px 0 2px; border: none; background: transparent;
     color: var(--text); font-size: 17px; line-height: 22px; cursor: pointer; }
   #deck[data-at="pushed"] .ph-back { display: inline-flex; }
-  #deck[data-at="pushed"] :is(.ph-mark, .ph-tabs, .ph-avatar, .ph-plus) { display: none; }
+  #deck[data-at="pushed"] :is(.ph-mark, .ph-title, .ph-avatar, .ph-plus, .ph-search) { display: none; }
   #deck[data-at="pushed"][data-own-back] .ph-head, #deck[data-at="find"] .ph-head { display: none; }
 
   /* The pager: the three pages side by side, native scroll that snaps a page at a time. */
@@ -360,11 +341,10 @@ span.vy-av-ring { border-radius: 9999px; overflow: hidden; }
 /* Reduce Motion: pages and pushed screens crossfade; nothing slides (js/app.js picks ph-fade). */
 @media (prefers-reduced-motion: reduce) {
   .pager { overflow-x: hidden; scroll-behavior: auto; }
-  .ph-tab { transition: none; }
+  .tb-item { transition: none; }
   .cap-rise.going, .ph-settle { transition: none; }
 }
 @media (min-width: 720px) and (min-height: 501px), (min-width: 720px) and (pointer: fine), (min-width: 720px) and (pointer: none) { .phone-head { display: none; } }
-@media (max-width: 1100px) { .address { display: none; } }
 
 /* Held content edited in place (js/editable.js): text until focused, then a subtle underline.
    No box, no Edit button. The focus ring is the underline itself, in Signal. */
@@ -393,3 +373,5 @@ span.vy-av-ring { border-radius: 9999px; overflow: hidden; }
 
 /* A page whose view file did not arrive yet (js/app.js waitForBox). */
 .page-wait { padding: 48px 24px; }
+/* A page's placeholder until its view has drawn: the state kit's rows (css/kit.css) with the page's own padding. */
+.page-skel { padding: 24px 20px; }

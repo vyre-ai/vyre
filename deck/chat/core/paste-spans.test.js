@@ -26,7 +26,7 @@ test("typing before moves the span, typing after leaves it, typing inside keeps 
   assert.ok(t.of(v)[0].includes("PLEASE"), "an edit inside stays marked, the safe side");
 });
 
-test("deleting the pasted text, or clearing the box, drops it", () => {
+test("deleting the pasted text, or clearing your server, drops it", () => {
   const t = pasteTracker();
   t.edit("", MAIL, true);
   t.edit(MAIL, "");

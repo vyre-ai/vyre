@@ -31,8 +31,8 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .rail-sub .rail-a[aria-current="page"] { background: var(--signal-wash); color: var(--text); }
 .rail-sub .rail-a[aria-current="page"] .count { color: var(--focus); }
 .rail-disclose { display: flex; align-items: center; gap: 6px; width: 100%; height: 26px; padding: 0 6px; background: transparent;
-  border: none; color: var(--label); cursor: pointer; font-family: var(--mono); font-size: 11px; font-weight: 500;
-  letter-spacing: 0.1em; text-transform: uppercase; text-align: left; }
+  border: none; color: var(--label); cursor: pointer; font-family: var(--sans); font-size: 12px; font-weight: 600;
+  letter-spacing: 0; text-transform: none; text-align: left; }
 .rail-disclose:hover { color: var(--text); }
 .rail-disclose svg { transition: transform 120ms ease; flex-shrink: 0; }
 .rail-disclose[aria-expanded="false"] svg { transform: rotate(-90deg); }
@@ -935,7 +935,7 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .cv-made .btn-sm { height: 24px; padding: 0 8px; }
 .cv-near { height: 24px; padding: 0 8px; font-weight: 600; }
 .composer-vault-chip { display: inline-flex; align-items: center; gap: 4px; }
-.cv-menu-group { padding: 8px 10px 2px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--label); }
+.cv-menu-group { padding: 8px 10px 2px; font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--label); }
 .ns-textwrap { position: relative; }
 .ns-textwrap .composer-menu { left: 0; right: 0; }
 .ns-tags { margin-top: 6px; }
@@ -961,3 +961,4 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .composer-answer-name { font-size: 12px; font-weight: 600; color: var(--text); }
 .composer-answer:disabled { opacity: 1; cursor: default; }
 .cv-menu-sub { padding-left: 30px; font-weight: 400; }
+.msg-state { font-size: 12px; line-height: 16px; color: var(--label); }

@@ -3,7 +3,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { askTitle, draftTitle, titleOf, secondLine, thirdLine, ago, agoLong, ariaLabel, presenceWord, sessionHref,
+import { plainSummary, requestFacts, askTitle, draftTitle, titleOf, secondLine, thirdLine, ago, agoLong, ariaLabel, presenceWord, sessionHref,
   release, questionAnswers, changesLine, pushTarget, swipeActions, swipeCommit, sheetPrimary, toastFor, heldFor, sheetWho, factRows,
   deferred, snoozes, LATER_MS, SWIPE_HINT } from "./need-rows.js";
 
@@ -194,13 +194,13 @@ test("need-rows: a deny waits out its Undo toast, and Undo means it never ran", 
 test("need-rows: flush sends at once, once; a failure is reported, not thrown", async () => {
   const t = clock();
   let ran = 0;
-  const d = deferred(() => { ran++; throw new Error("the box refused"); }, 4000, t);
+  const d = deferred(() => { ran++; throw new Error("your server refused"); }, 4000, t);
   d.flush(); d.flush();
   t.tick(5000);
   const r = await d.done;
   assert.equal(ran, 1);
   assert.equal(r.ran, true);
-  assert.equal(r.error.message, "the box refused");
+  assert.equal(r.error.message, "your server refused");
   assert.equal(d.state, "ran");
 });
 
@@ -233,10 +233,10 @@ test("need-rows: a Mac session's ask swipes and approves like any other, and say
   assert.match(ariaLabel(mac, NOW), /Actions: Approve, Deny, Open\.$/);
   assert.equal(thirdLine(mac), "kit · on alex-mac");
   assert.equal(thirdLine({ ...mac, machine: null }), "kit · on your Mac");
-  assert.equal(thirdLine({ ...mac, source: null }), "kit", "a box session says nothing of a Mac");
+  assert.equal(thirdLine({ ...mac, source: null }), "kit", "a server session says nothing of a Mac");
 });
 
-test("need-rows: on a box that cannot forward answers (pre-v2), a Mac's ask only opens and says where", async () => {
+test("need-rows: on a server that cannot forward answers (pre-v2), a Mac's ask only opens and says where", async () => {
   const { elsewhere, holdMacAnswers, resetMacAnswers, macAnswers } = await import("./need-rows.js");
   const mac = { kind: "ask", at: NOW, agent: "kit", tool: "Bash", command: "npm test", source: "mac", machine: "alex-mac" };
   holdMacAnswers();
@@ -245,8 +245,8 @@ test("need-rows: on a box that cannot forward answers (pre-v2), a Mac's ask only
     assert.equal(elsewhere(mac), "alex-mac");
     assert.equal(elsewhere({ ...mac, machine: null }), "your Mac");
     assert.equal(elsewhere({ ...mac, kind: "question" }), "alex-mac");
-    assert.equal(elsewhere({ ...mac, source: null }), null, "a box session is answered here");
-    assert.equal(elsewhere({ ...mac, kind: "draft" }), null, "a held draft is the box's");
+    assert.equal(elsewhere({ ...mac, source: null }), null, "a server session is answered here");
+    assert.equal(elsewhere({ ...mac, kind: "draft" }), null, "a held draft is your server's");
     assert.deepEqual(swipeActions(mac), []);
     assert.deepEqual(swipeActions({ ...mac, source: null }), ["Approve", "Deny"]);
     assert.equal(swipeCommit(mac, "right"), "sheet");
@@ -255,4 +255,21 @@ test("need-rows: on a box that cannot forward answers (pre-v2), a Mac's ask only
     assert.doesNotMatch(ariaLabel(mac, NOW), /Approve/);
   } finally { resetMacAnswers(); }
   assert.equal(elsewhere(mac), null);
+});
+
+test("need-rows: a held request is said in words, never as a raw HTTP request", () => {
+  const spend = { kind: "spend", via: "billing", summary: "POST https://api.example.com/v1/topups", draft: { method: "POST", url: "https://api.example.com/v1/topups", body: JSON.stringify({ account: "northwind-ads", amount_usd: 150 }) } };
+  assert.equal(plainSummary(spend), "Spend 150 USD on northwind-ads through billing");
+  assert.equal(secondLine({ kind: "draft", gate: spend }).text, "Spend 150 USD on northwind-ads through billing");
+  assert.equal(plainSummary({ kind: "spend", via: "billing", summary: "POST https://x.test/y", draft: null }), "Spend money through billing");
+  assert.equal(plainSummary({ kind: "delete", via: "drive", summary: "DELETE https://x.test/f/1", draft: null }), "Delete something through drive");
+  assert.equal(plainSummary({ kind: "send", via: "mail", summary: "POST https://x.test/send", draft: null }), "Send a request through mail");
+  assert.equal(plainSummary({ kind: "send", via: "mail", summary: "Email dana@harlowlegal.com", draft: null }), "Email dana@harlowlegal.com", "a plain summary is kept");
+  assert.equal(thirdLine({ kind: "draft", agent: null, project: null, projectName: "Harlow Legal" }), "an agent · Harlow Legal", "no actor known: said honestly, never the assistant");
+});
+
+test("need-rows: a request's card facts are Through, Amount and the account; the raw request is not among them", () => {
+  const g = { kind: "spend", via: "billing", draft: { method: "POST", url: "https://api.example.com/v1/topups", body: JSON.stringify({ account: "northwind-ads", amount_usd: 150 }) } };
+  assert.deepEqual(requestFacts(g), [["Spend", "through billing"], ["Amount", "150 USD"], ["Account", "northwind-ads"]]);
+  assert.deepEqual(requestFacts({ kind: "delete", via: "drive", draft: { method: "DELETE", url: "https://x.test/f" } }), [["Delete", "through drive"]]);
 });

@@ -396,7 +396,7 @@ test("modules: a presence tool needs a proof from every caller but a module, and
 test("modules: ctx.remote says no_link without a link, and a listener's peer reaches run but not input", async t => {
   const src = `export default { async start(ctx) {
     ctx.tool("notes.add", { input: { type: "object" }, run: async (input, meta) => ({ input, peer: meta.peer || null, caller: meta.caller, remote: await ctx.remote("x.y", {}) }) });
-    ctx.route("feed", (req, res) => res.end("ok"));
+    ctx.route("feed", (req, res) => res.end("ok"), { readOnly: true });
     return { async stop() {} };
   } };`;
   const reg = await registry(t, [["notes", good, src]]);
@@ -1094,13 +1094,15 @@ test("modules: firstPartyRoots, an in-process test's own option, loads a stand-i
 test("modules: the agents module relays a person to threads.send and to nothing else", async () => {
   const { agentsMayRelay } = await import("./index.js");
   assert.equal(agentsMayRelay("threads.send"), true);
+  assert.equal(agentsMayRelay("threads.release"), true);
   for (const tool of ["threads.start", "threads.delete", "threads.answer", "vault.put", "gate.request", "settings.set", "agents.create", "memory.write", ""]) assert.equal(agentsMayRelay(tool), false, tool);
 });
 
 test("modules: the agents relay check lets threads.send through and throws for every other tool, vault.reveal among them", async () => {
   const { checkAgentsRelay } = await import("./index.js");
   assert.doesNotThrow(() => checkAgentsRelay("threads.send", "deck"));
+  assert.doesNotThrow(() => checkAgentsRelay("threads.release", "deck"));
   for (const tool of ["vault.reveal", "vault.put", "threads.delete", "gate.request", "settings.set"]) {
-    assert.throws(() => checkAgentsRelay(tool, "deck"), new RegExp(`agents may not call ${tool.replace(".", "\\.")} as deck: it relays a person to threads\\.send only`), tool);
+    assert.throws(() => checkAgentsRelay(tool, "deck"), new RegExp(`agents may not call ${tool.replace(".", "\\.")} as deck: it relays a person to threads\\.send and threads\\.release only`), tool);
   }
 });

@@ -28,20 +28,20 @@ function payload(token) {
 
 /**
  * @param {string} provider @param {string} home
- * @returns {{ email?: string, org?: string } | null}
+ * @returns {{ email?: string, org?: string, name?: string } | null}
  */
 export function readIdentity(provider, home) {
-  let email, org;
+  let email, org, name;
   if (provider === "claude") {
     const c = json(path.join(home, ".claude.json")) || json(path.join(home, ".claude", ".claude.json"));
     const a = c && c.oauthAccount;
-    if (a) { email = clip(a.emailAddress); org = clip(a.organizationName); }
+    if (a) { email = clip(a.emailAddress); org = clip(a.organizationName); name = clip(a.displayName); }
   } else if (provider === "codex") {
     const a = json(path.join(home, ".codex", "auth.json"));
     const p = a && a.tokens ? payload(a.tokens.id_token) : null;
-    if (p) email = clip(p.email);
+    if (p) { email = clip(p.email); name = clip(p.name); }
   }
-  return email || org ? { ...(email ? { email } : {}), ...(org ? { org } : {}) } : null;
+  return email || org ? { ...(email ? { email } : {}), ...(org ? { org } : {}), ...(name ? { name } : {}) } : null;
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {

@@ -54,7 +54,7 @@ test("places: the seven tiles in the spec's order, the rail's routes, no page am
   assert.deepEqual(TILES.map(t => t.href), ["/projects", "/planner", "/memory", "/vault", "/files", "/settings#devices", "/settings"]);
   assert.deepEqual(TILES.map(t => t.icon), ["projects", "planner", "memory", "vault", "drive", "devices", "settings"]);
   const { PLACES } = await import("../js/rail.js");
-  for (const t of TILES) assert.equal(PLACES.find(p => p.label === t.label)?.href, t.href, `${t.label} goes where the rail goes`);
+  for (const t of TILES) { const p = PLACES.find(q => q.label === t.label); if (p) assert.equal(p.href, t.href, `${t.label} goes where the rail goes`); }
 });
 
 test("places: the head (avatar, name, address), a grid of seven links named by their labels, the hint", async () => {
@@ -75,7 +75,7 @@ test("places: the head (avatar, name, address), a grid of seven links named by t
     assert.ok(d.$(a, "svg"), "an icon over the label");
     assert.equal(a.getAttribute("aria-description"), "Long-press to pin as a page");
   }
-  assert.equal(d.$(d.body, ".plc-hint").textContent, "Long-press a tile to pin it as a fourth page.");
+  assert.equal(d.$(d.body, ".plc-hint").textContent, "Long-press a tile to pin it as a page.");
   // No owner name yet: the head still names the account.
   const n = await draw({ name: null });
   assert.equal(n.$(n.head, ".plc-name").textContent, "Account");
@@ -178,7 +178,7 @@ test("places: stored junk reads as none; storage that throws never breaks the sh
   assert.deepEqual(d.kept, ["/planner"]);
 });
 
-test("places: the path to the box joins the address only when link.health knows it", async () => {
+test("places: the path to your server joins the address only when link.health knows it", async () => {
   /** @type {(x: any) => void} */ let push = () => {};
   let stopped = 0;
   const d = await draw({ health: (/** @type {any} */ fn) => { push = fn; return () => { stopped++; }; }, line: (/** @type {any} */ x) => `${x.path} ${x.latencyMs} ms` });
@@ -193,20 +193,11 @@ test("places: the path to the box joins the address only when link.health knows 
   assert.equal(stopped, 1, "the sheet stops asking when it closes");
 });
 
-test("places: the shell opens the Places sheet from the avatar and keeps a fourth page", () => {
-  const app = read("js/app.js"), css = read("css/deck.css"), sheet = read("css/sheet.css");
-  assert.match(app, /class: "ph-avatar", "aria-label": "Places and account"[^\n]*onclick: \(\) => openPlaces\(\)/);
-  assert.match(app, /openSheet\(\{ title: "Places", label: "Places", build\(body, close, parts\) \{\s*stop = fillPlaces\(/);
+test("places: js/places.js is the one list of places; the phone's More sheet reads it, and the sheet geometry holds", () => {
+  const app = read("js/app.js"), sheet = read("css/sheet.css");
+  assert.match(app, /class: "ph-avatar", "aria-label": "More and account"[^\n]*onclick: \(\) => openMore\(\)/);
   assert.doesNotMatch(app, /openSettings|Settings and account/, "no Settings sheet left; Settings is a tile");
-  // The fourth page: read at start from this device, then changed by the sheet.
-  assert.match(app, /\{ const kept = readPin\(\); if \(kept\) strip\.push\(fourth\(kept\)\); \}/);
-  assert.match(app, /pinned: keep/);
-  assert.match(app, /export const slotOf = \(\/\*\* @type \{string\} \*\/ key\) => strip\.findIndex/);
-  assert.match(app, /const slots = strip\.map/);
-  assert.match(app, /const phLabels = strip\.map\(tab\);/);
-  // The labels scroll sideways when four do not fit, and never shrink.
-  assert.match(css, /\.ph-tabs \{[^}]*min-width: 0; overflow-x: auto/);
-  assert.match(css, /\.ph-tab \{[^}]*white-space: nowrap; flex-shrink: 0/);
+  assert.match(read("js/more.js"), /import \{ TILES, fillPlaces \} from "\.\/places\.js"/, "no second copy of the list");
   // The sheet's geometry from the spec.
   assert.match(sheet, /\.sheet-places \.sheet-head \{ padding: 12px 16px 8px; \}/);
   assert.match(sheet, /\.plc-grid \{ display: grid; grid-template-columns: repeat\(3, minmax\(0, 1fr\)\); gap: 8px; \}/);

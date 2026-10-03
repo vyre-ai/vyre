@@ -28,7 +28,7 @@ function dist(t, { literal = true, sign = true, unstripped = false, images = tru
     else compose = compose.replace("${VYRE_IMAGE:-ghcr.io/vyre-ai/vyre:latest}", `\${VYRE_IMAGE:-${BOX}}`).replace(/\$\{VYRE_IMAGE:-ghcr\.io\/vyre-ai\/vyre:latest\}/g, `\${VYRE_IMAGE:-${BOX}}`);
     if (!literal) compose = compose.replace("${VYRE_COMPUTERS_IMAGE:-vyre/computer:0.1}", `\${VYRE_COMPUTERS_IMAGE:-${COMPUTER}}`);
   }
-  const files = { "install-box.sh": "#!/bin/sh\n", "compose.yml": compose, "compose.build.yml": "# build\n", "vyre.env.example": "# env\n", "vyre": unstripped ? src : strip(src),
+  const files = { "install-box.sh": "#!/bin/sh\n", "install-mac-server.sh": "#!/bin/sh\n", "compose.yml": compose, "compose.build.yml": "# build\n", "vyre.env.example": "# env\n", "vyre": unstripped ? src : strip(src),
     "Dockerfile": "FROM x\n", "dockerignore": "test\n", "vyre.tgz": "tgz", "VERSION": "0.2.0\n",
     "release.json": JSON.stringify({ version: "0.2.0", channel: "stable", commit: "abc", date: "2026-10-01T00:00:00Z", min_from: "0.1.0", notes: "n", ...(images ? { images: { box: { ref: BOX, platforms: ["linux/amd64"] }, computer: { ref: COMPUTER, platforms: ["linux/amd64"] } } } : {}) }, null, 2) + "\n" };
   for (const [f, text] of Object.entries(files)) fs.writeFileSync(path.join(dir, f), text);
@@ -89,4 +89,43 @@ test("release dist: with --installer the Windows installer must be in the releas
   assert.ok(check(d, { installer: true }).some(p => /Vyre_0\.2\.0_x64-setup\.exe is not in the release/.test(p)));
   assert.ok(check(d, { installer: true }).some(p => /VyreSetup\.exe is not in the release/.test(p)));
   assert.deepEqual(check(d, {}), [], "without the flag nothing is required");
+});
+
+test("release dist: with --mac the two stable Lumen dmgs must be in the release, listed in SHA256SUMS", t => {
+  const d = dist(t);
+  const problems = check(d, { mac: true });
+  assert.ok(problems.some(p => /Vyre-Lumen-aarch64\.dmg is not in the release/.test(p)));
+  assert.ok(problems.some(p => /Vyre-Lumen-x86_64\.dmg is not in the release/.test(p)));
+  for (const f of ["Vyre-Lumen-aarch64.dmg", "Vyre-Lumen-x86_64.dmg"]) {
+    fs.writeFileSync(path.join(d, f), f);
+    fs.appendFileSync(path.join(d, "SHA256SUMS"), `${crypto.createHash("sha256").update(f).digest("hex")}  ${f}\n`);
+  }
+  assert.deepEqual(check(d, { mac: true }), []);
+  assert.deepEqual(check(dist(t), {}), [], "without the flag nothing is required");
+});
+
+/** Adds setup.json to a dist and lists it in SHA256SUMS, the way the release job does. @param {string} dir @param {string} text */
+function withSetup(dir, text) {
+  fs.writeFileSync(path.join(dir, "setup.json"), text);
+  const line = `${crypto.createHash("sha256").update(text).digest("hex")}  setup.json\n`;
+  fs.appendFileSync(path.join(dir, "SHA256SUMS"), line);
+}
+
+test("release dist: with --setup, setup.json must be in the release, listed in SHA256SUMS and { v: 1, files }", t => {
+  const d = dist(t);
+  assert.ok(check(d, { setup: true }).some(p => /setup\.json is not in the release/.test(p)));
+  assert.deepEqual(check(d, {}), [], "without the flag nothing is required");
+  const ok = dist(t); withSetup(ok, JSON.stringify({ v: 1, files: [["/i", "a".repeat(64)]] }));
+  assert.deepEqual(check(ok, { setup: true }), []);
+  const bad = dist(t); withSetup(bad, JSON.stringify({ v: 2, files: [] }));
+  assert.ok(check(bad, { setup: true }).some(p => /setup\.json is not \{ v: 1/.test(p)));
+  const junk = dist(t); withSetup(junk, "not json");
+  assert.ok(check(junk, { setup: true }).some(p => /setup\.json is not JSON/.test(p)));
+});
+
+test("release dist: install-mac-server.sh is a required release file, so it is signed with the rest (#9)", t => {
+  const d = dist(t);
+  fs.rmSync(path.join(d, "install-mac-server.sh"));
+  const problems = check(d, {});
+  assert.ok(problems.some(p => /missing install-mac-server\.sh/.test(p)), problems.join("\n"));
 });

@@ -71,6 +71,49 @@ export function draftTitle(g) {
   return name ? `Send ${what} to ${name}` : `Send ${what}`;
 }
 
+/**
+ * What a held request does, in words. A payment or a deletion, or a summary that is a raw HTTP request, becomes a sentence
+ * ("Spend 150 USD on northwind-ads through billing"); the raw request stays in the details. Anything else is the Gate's own summary.
+ * @param {{ kind?: string, via?: string, summary?: string, draft?: Record<string, any>|null } | null | undefined} g
+ */
+export function plainSummary(g) {
+  if (!g) return "";
+  const raw = String(g.summary || "");
+  const rawish = /^(GET|POST|PUT|PATCH|DELETE)\s+https?:\/\//i.test(raw);
+  if (g.kind !== "spend" && g.kind !== "delete" && !rawish) return raw;
+  const { amount, target } = requestParts(g);
+  const via = g.via || "a connector";
+  if (g.kind === "delete") return `Delete ${target?.[1] || "something"} through ${via}`;
+  if (g.kind === "spend") return amount ? `Spend ${amount}${target ? ` on ${target[1]}` : ""} through ${via}` : `Spend money through ${via}`;
+  return `Send a request through ${via}`;
+}
+
+/** The amount ("150 USD") and the account, payee or customer ([label, value]) a request's JSON body names, when it names them. @param {{ draft?: Record<string, any>|null } | null | undefined} g */
+function requestParts(g) {
+  /** @type {any} */ let body = g?.draft?.body;
+  if (typeof body === "string") { try { body = JSON.parse(body); } catch { body = null; } }
+  const o = body && typeof body === "object" ? body : {};
+  const key = Object.keys(o).find(k => /^(amount|total|price|sum)(_(usd|eur|gbp|aud|cad))?$/i.test(k) && Number.isFinite(Number(o[k])));
+  const cur = String(key && /_([a-z]{3})$/i.exec(key)?.[1] || o.currency || "").toUpperCase();
+  const amount = key ? `${Number(o[key]).toLocaleString("en-US")}${cur ? " " + cur : ""}` : "";
+  const LABELS = { account: "Account", payee: "Payee", customer: "Customer", recipient: "Recipient", name: "Name" };
+  const k = Object.keys(LABELS).find(x => typeof o[x] === "string" && o[x]);
+  return { amount, target: k ? /** @type {[string, string]} */ ([/** @type {any} */ (LABELS)[k], o[k]]) : null };
+}
+
+/**
+ * What a held request does as labelled facts, for its card: Through, Amount, Account. The method, URL and body belong in the details.
+ * @param {{ kind?: string, via?: string, draft?: Record<string, any>|null }} g @returns {[string, string][]}
+ */
+export function requestFacts(g) {
+  const { amount, target } = requestParts(g);
+  /** @type {[string, string][]} */
+  const rows = [[g.kind === "delete" ? "Delete" : g.kind === "spend" ? "Spend" : "Request", g.via ? `through ${g.via}` : "through a connector"]];
+  if (amount) rows.push(["Amount", amount]);
+  if (target) rows.push(target);
+  return rows;
+}
+
 /** @param {Item} n */
 export function titleOf(n) {
   if (n.kind === "draft") return draftTitle(n.gate);
@@ -87,7 +130,7 @@ export function secondLine(n) {
   if (n.kind === "ask") return { text: String(n.detail?.command || n.detail?.file || n.detail?.url || n.command || ""), mono: true };
   if (n.kind === "draft") {
     const s = n.gate?.draft?.subject;
-    return { text: typeof s === "string" && s ? s : String(n.gate?.summary || ""), mono: false };
+    return { text: typeof s === "string" && s ? s : plainSummary(n.gate), mono: false };
   }
   if (n.kind === "question") return { text: String(n.questions?.[0]?.question || n.why || ""), mono: false };
   if (n.kind === "pair") return { text: "Type the code shown on it", mono: false };
@@ -312,7 +355,7 @@ export function ariaLabel(n, now = Date.now()) {
   const who = n.kind === "pair" ? (n.pair?.name || "A Mac") : (n.agent || (n.kind === "draft" ? "An agent" : "A session"));
   const where = n.kind === "pair" ? null : (n.projectName || n.threadName);
   const t = titleOf(n);
-  const want = n.kind === "question" ? "has a question" : n.kind === "pair" ? "wants to pair with this box"
+  const want = n.kind === "question" ? "has a question" : n.kind === "pair" ? "wants to pair with your server"
     : `wants to ${t.charAt(0).toLowerCase()}${t.slice(1)}`;
   const line = secondLine(n).text;
   const time = n.kind === "pair" ? null : agoLong(n.at, now);

@@ -62,3 +62,21 @@ test("system: a malformed owner.id (any process running as this user can edit co
   assert.equal(r.data.owner.fingerprint8, null, "malformed owner.id is not passed through to the fingerprint formula");
   assert.equal(r.data.assistant.fingerprint8, null);
 });
+
+test("system: the person renames the server, system.info shows it, and an empty name goes back to the default", async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ machine: "solo", transcripts: [], network: { onboardPort: 0 } }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const seen = [];
+  d.events.on("device.renamed", e => seen.push(e.payload));
+  assert.equal((await d.registry.call("system.info", {}, "cli")).data.serverName, null);
+  const r = await d.registry.call("system.rename", { name: "  Home   server " }, "cli");
+  assert.deepEqual(r.data, { id: "server", name: "Home server" }, JSON.stringify(r.error));
+  assert.equal((await d.registry.call("system.info", {}, "cli")).data.serverName, "Home server");
+  assert.equal(JSON.parse(fs.readFileSync(path.join(root, "config.json"), "utf8")).serverName, "Home server");
+  assert.deepEqual(seen, [{ kind: "server", id: "server", name: "Home server" }]);
+  assert.equal((await d.registry.call("system.rename", { name: "" }, "cli")).data.name, null);
+  assert.equal((await d.registry.call("system.info", {}, "cli")).data.serverName, null);
+  assert.ok((await d.registry.call("system.rename", { name: "x".repeat(65) }, "cli")).error);
+});
