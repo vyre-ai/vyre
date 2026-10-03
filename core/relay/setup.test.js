@@ -103,31 +103,24 @@ function res() {
 }
 const request = (method, url) => ({ method, url, headers: {}, resume() {} });
 
-test("setup gate: the ticket works once and only while no owner exists; events and paths are the list and nothing else", async () => {
+test("setup gate: the setup page mints no pairing ticket (one pairing path: the installer's code, three words); events and paths are the list and nothing else", async () => {
   const { code } = await newCode();
   const s = new SetupSession({ code });
   const seen = [];
-  let owner = false, fail = false, minted = 0;
-  const gate = setupGate({ session: () => s, ownerExists: () => owner,
-    mintTicket: async () => { minted++; if (fail) throw Object.assign(new Error("relay down"), { code: "no_relay" }); return { ticket: "t" }; },
+  let minted = 0;
+  const gate = setupGate({ session: () => s, ownerExists: () => false,
+    mintTicket: async () => { minted++; return { ticket: "t" }; },
     handlerFor: policy => (req, rs) => { seen.push({ url: req.url, tool: policy.tool, path: policy.path, eventType: policy.eventType }); rs.writeHead(200, {}); rs.end("{}"); } });
   const call = async (method, url) => { const rs = res(); await gate(request(method, url), rs, "device:x", {}); await new Promise(r => setImmediate(r)); return rs; };
 
-  fail = true;
-  let r = await call("POST", "/v1/tools/relay.pair.ticket");
-  assert.equal(r.status, 502);
-  assert.equal(r.body.error.code, "no_relay");
-  assert.equal(s.ticket, "none", "a failed mint does not spend the one ticket");
-  fail = false;
-  r = await call("POST", "/v1/tools/relay.pair.ticket");
-  assert.equal(r.status, 200);
-  assert.deepEqual(r.body, { data: { ticket: "t" } });
   for (const spelled of ["/v1/tools/relay.pair.ticket", "/v1/tools/relay%2Epair.ticket", "/v1/tools/relay.pair%2eticket"]) {
-    r = await call("POST", spelled);
-    assert.equal(r.status, 403, `refusal: a second relay.pair.ticket, spelled ${spelled}`);
+    const r = await call("POST", spelled);
+    assert.equal(r.status, 403, `refusal: relay.pair.ticket, spelled ${spelled}`);
+    assert.match(r.body.error.message, /three words/);
   }
-  assert.equal(minted, 2, "one failed try and one success; nothing after");
-
+  assert.equal(minted, 0, "nothing was minted");
+  assert.equal(s.ticket, "none");
+  let r;
   // the router's policy is a second layer: only the allowlist by name, and a fixed set of paths
   await call("POST", "/v1/tools/names.check");
   const p = seen.at(-1);
@@ -324,23 +317,17 @@ test("setup refusal 2: a hello replayed from another Noise key is refused", asyn
   assert.equal(ok.reply.paired, true);
 });
 
-test("setup refusal 3: a second relay.pair.ticket from the setup key is refused, the first mints one a phone can use", async t => {
+test("setup refusal 3: the setup key can mint no relay.pair.ticket, so no device is paired at the relay by the setup page", async t => {
   const w = await world(t);
   const p = await page(w);
   await p.begin();
   const a = await p.connect();
   const first = await a.call("relay.pair.ticket");
-  assert.equal(first.status, 200, JSON.stringify(first));
-  assert.ok(first.data.ticket);
-  const second = await a.call("relay.pair.ticket");
-  assert.equal(second.status, 403);
-  assert.match(second.error.message, /already made its one/);
-  assert.equal((await w.d.registry.call("relay.setup.status", {}, "cli")).data.ticket, true);
-  // the ticket is a real Wink ticket: a phone pairs with it and becomes the first trusted device
-  const paired = await pairTicket(fromBase64url(first.data.ticket), { relay: w.base, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: fileKeyStore(path.join(tempHome(t), "k.json")) });
-  assert.ok(paired.device);
+  assert.equal(first.status, 403, JSON.stringify(first));
+  assert.match(first.error.message, /three words/);
+  assert.equal((await w.d.registry.call("relay.setup.status", {}, "cli")).data.ticket, false);
   const devices = (await w.d.registry.call("relay.devices.list", {}, "cli")).data.devices;
-  assert.deepEqual(devices.map(x => x.name), ["Alex's iPhone"]);
+  assert.deepEqual(devices.map(x => x.name), []);
 });
 
 test("setup refusal 4: a second browser holding the code cannot pair or reach the setup channel", async t => {
@@ -431,7 +418,9 @@ test("setup: an owner on the box shuts the setup door, and a code does nothing o
   const p = await page(w);
   await p.begin();
   const a = await p.connect();
-  const ticket = await a.call("relay.pair.ticket");
+  // an owner exists once a device is paired by another path (the owner's own ring ticket; the test helpers run the one-step ring)
+  const ticket = await w.d.registry.call("relay.pair.ticket", {}, "cli", { proof: { method: "passkey", id: "x" } });
+  assert.ok(ticket.data?.ticket, JSON.stringify(ticket.error));
   await pairTicket(fromBase64url(ticket.data.ticket), { relay: w.base, name: "phone", crypto: nodeCrypto(), keyStore: fileKeyStore(path.join(tempHome(t), "k.json")) });
   const status = (await a.call("relay.setup.status")).data;
   assert.equal(status.ownerExists, true);

@@ -201,6 +201,10 @@
       {
         "name": "wink.peer.allow",
         "reach": "modules"
+      },
+      {
+        "name": "wink.device.record",
+        "reach": "modules"
       }
     ]
   },
