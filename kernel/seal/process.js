@@ -212,6 +212,8 @@ if (process.argv[1] && process.argv[1].endsWith("kernel/seal/process.js") && pro
   // A crash must not print the exception: its message or stack could hold a value.
   process.on("uncaughtException", () => { process.stderr.write("seal: internal error\n"); process.exit(70); });
   process.on("unhandledRejection", () => { process.stderr.write("seal: internal error\n"); process.exit(70); });
+  // The pipe is the only way in: when the kernel closes it or dies, this process ends, so no test or crash leaves one running.
+  process.stdin.on("end", () => process.exit(0)); process.stdin.on("close", () => process.exit(0));
   let verifiers = {};
   if (process.env.VYRE_SEAL_VERIFIERS) verifiers = (await import(process.env.VYRE_SEAL_VERIFIERS)).default;
   try { serve({ dir: process.env.VYRE_SEAL_DIR, sinks: JSON.parse(process.env.VYRE_SEAL_SINKS || "{}"), verifiers, allowUnattested: process.env.VYRE_SEAL_UNATTESTED === "1" }); }
