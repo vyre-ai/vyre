@@ -11,14 +11,16 @@ Not mine: K-3 keys, K-2 signing, approval in authorize, surfaces.model.stream, t
 - 2 and 3 (kernel/spaces, kernel/remote/{wire,server,client,memory-transport}.js, kernel/spaces/spaces.test.js).
 
 ## Doing
-Full kernel suite on testbox3; then push, then tell windows and reviewer-2 about 1 and 4.
+Step 3 with windows: asked them (CHAT/message) whether to write lib/spaces/kernel-members.js (a createMembers-shaped adapter over kernel.for(space).gateway.grants) on a branch off origin/work/spaces. Waiting for their go.
+
+## Done since the gate
+- e9c5b7212 KS-1..7 fixed, reviewer-2 PASS. e6721aa10 kernel/remote/wink.js (kernel.call over peer wire). ea1199ef4 acceptProofRequest, proofChainHash, kernel/remote/run/real.mjs.
+- Real-machine run (testbox home, testbox2 device, direct then relay with direct firewalled): the kernel-remote-run review in <team-dir>/0.3/reviews. ufw rules removed.
 
 ## Next
-Push work/kernel-spaces. Answer reviewer-2. Then: wire `createSpaceKernels` into bootHomeKernel (daemon owns that, ask platform), and the Wink end of the transport port with tailnet (the `peer` shape in kernel/remote/wire.js).
+1. When windows answers: write the adapter + test against a real kernel (createKernel with a presence verifier, as kernel/remote/proof.test.js does), then hand the wiring and store deletion to windows.
+2. platform/tailnet: personOf from the identity chain; wrap the peer door's dispatcher with withKernelCall (core/wink/index.js hostPeer serve); wire createSpaceKernels into bootHomeKernel (await spaces.start()).
+3. Full suite on testbox: last run 461 tests, 459 pass; reds were kernel/door/sinks.test.js (work/kernel) and kernel/home.test.js (fixed in ea1199ef4).
 
 ## Needs from others
-- tailnet: fill the transport port (`send(space, request)` on the device; hand `serve(request, peer)` the verified peer { device_key_id, person, path }).
-- platform: merge after reviewer-2; the daemon builds the registry with `bootHomeKernel`'s kernel as `personal`.
-
-## Changed contracts
-- gateway.grants gains `members.{list,get}` and `invites.get`; member.set/member.removed gain `owner_change` and are `vis: "space"` when ownership changed; ctx.kernel gains `for`, `proofFrom`, `proofRequest`; createKernel returns `bindSpaces` and takes `label`.
+- windows: go/no-go on the adapter. tailnet: the dispatcher hook and a Wink (tsnet) run of real.mjs. platform: merge work/kernel-spaces (reviewer-2 passed e9c5b7212; later commits wink.js and run/real.mjs are new, not yet gated).
