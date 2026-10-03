@@ -5,7 +5,7 @@
 //      `paint.first` is the first characters of a reply; `paint.delta` is every delta fully on
 //      screen. Target p95 <= 300 ms.
 //   b. scroll: frame rate and frame time while a fling scrolls the 10,000-message thread (rAF
-//      deltas). Target 60 fps.
+//      deltas), at a fast phone fling and at a hard one. Target 60 fps.
 //   c. keystroke: key down to the next paint in the composer while a reply streams.
 import fs from "node:fs";
 import http from "node:http";
@@ -60,43 +60,44 @@ try {
   }
 
   if (!only || only === "scroll") {
-    const t0 = Date.now();
-    const { pg, ctx, errors } = await page("?n=10000");
-    await pg.waitForSelector("[data-testid=transcript]");
-    const loadMs = Date.now() - t0;
-    const r = await pg.evaluate(async () => {
-      const el = document.querySelector("[data-testid=transcript]");
-      const rows = () => el.querySelectorAll("[data-k]").length;
-      const mountedAtRest = rows();
-      const deltas = [];
-      let last = performance.now();
-      let stop = false;
-      const tick = (t) => { deltas.push(t - last); last = t; if (!stop) requestAnimationFrame(tick); };
-      requestAnimationFrame(tick);
-      const t0 = performance.now();
-      let y = 0, maxMounted = 0;
-      // A fling up through history: 40 px a frame at first, then faster, for about five seconds.
-      await new Promise((done) => {
-        const step = (t) => {
-          const dt = t - t0;
-          if (dt > 5000) return done();
-          y -= 30 + dt / 40;
-          el.scrollTop = y;
-          maxMounted = Math.max(maxMounted, rows());
+    // Two flings through the same 10,000-message thread while the mock reply streams at its tail:
+    // "fling" is a fast phone fling (120 px a frame, about 7,000 px a second); "hard" is 250 px a frame and speeding up.
+    for (const [name, base, accel] of [["fling", 120, 0], ["hard", 250, 20]]) {
+      const t0 = Date.now();
+      const { pg, ctx, errors } = await page("?n=10000");
+      await pg.waitForSelector("[data-testid=transcript]");
+      const loadMs = Date.now() - t0;
+      const r = await pg.evaluate(async ({ base, accel }) => {
+        const el = document.querySelector("[data-testid=transcript]");
+        const rows = () => el.querySelectorAll("[data-k]").length;
+        const mountedAtRest = rows();
+        const deltas = [];
+        let last = performance.now();
+        let stop = false;
+        const tick = (t) => { deltas.push(t - last); last = t; if (!stop) requestAnimationFrame(tick); };
+        requestAnimationFrame(tick);
+        const t0 = performance.now();
+        let y = 0, maxMounted = 0;
+        await new Promise((done) => {
+          const step = (t) => {
+            const dt = t - t0;
+            if (dt > 5000) return done();
+            y -= base + (accel ? dt / accel : 0);
+            el.scrollTop = y;
+            maxMounted = Math.max(maxMounted, rows());
+            requestAnimationFrame(step);
+          };
           requestAnimationFrame(step);
-        };
-        requestAnimationFrame(step);
-      });
-      stop = true;
-      const secs = (performance.now() - t0) / 1000;
-      return { deltas: deltas.slice(2), secs, scrolled: Math.round(-y), mountedAtRest, maxMounted, scrollTop: el.scrollTop, height: el.scrollHeight };
-    });
-    const d = r.deltas;
-    const fps = d.length / (d.reduce((a, b) => a + b, 0) / 1000);
-    const dropped = d.filter((x) => x > 25).length;
-    line({ metric: "scroll", thread: 10000, fps: +fps.toFixed(1), p50_frame_ms: pct(d, 0.5), p95_frame_ms: pct(d, 0.95), max_frame_ms: pct(d, 1), frames: d.length, over_25ms: dropped, scrolled_px: r.scrolled, mounted_rows_at_rest: r.mountedAtRest, max_mounted_rows: r.maxMounted, load_ms: loadMs, target_fps: 60, pass: fps >= 57 && pct(d, 0.95) <= 20 });
-    if (errors.length) line({ metric: "errors", errors: errors.slice(0, 3) });
-    await ctx.close();
+        });
+        stop = true;
+        return { deltas: deltas.slice(2), scrolled: Math.round(-y), mountedAtRest, maxMounted };
+      }, { base, accel });
+      const d = r.deltas;
+      const fps = d.length / (d.reduce((a, b) => a + b, 0) / 1000);
+      line({ metric: `scroll.${name}`, thread: 10000, fps: +fps.toFixed(1), p50_frame_ms: pct(d, 0.5), p95_frame_ms: pct(d, 0.95), max_frame_ms: pct(d, 1), frames: d.length, over_25ms: d.filter((x) => x > 25).length, scrolled_px: r.scrolled, mounted_rows_at_rest: r.mountedAtRest, max_mounted_rows: r.maxMounted, load_ms: loadMs, target_fps: 60, pass: fps >= 57 });
+      if (errors.length) line({ metric: "errors", errors: errors.slice(0, 3) });
+      await ctx.close();
+    }
   }
 
   if (!only || only === "keystroke") {

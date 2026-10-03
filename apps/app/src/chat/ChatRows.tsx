@@ -24,7 +24,7 @@ function useRow(store: ChatStore, key: string) {
 /** One row's frame: a centred column, 16 px gutters on a phone, 24 on a desktop. */
 function Frame({ children, indent, wide }: { children: React.ReactNode; indent?: boolean; wide: boolean }) {
   return (
-    <View style={{ width: "100%", maxWidth: MAX, alignSelf: "center", paddingHorizontal: wide ? 24 : 16, paddingVertical: 6, paddingLeft: (wide ? 24 : 16) + (indent ? BODY_INDENT : 0) }}>
+    <View style={{ width: "100%", maxWidth: MAX, alignSelf: "center", marginLeft: "auto", marginRight: "auto", paddingHorizontal: wide ? 24 : 16, paddingVertical: 6, paddingLeft: (wide ? 24 : 16) + (indent ? BODY_INDENT : 0) }}>
       {children}
     </View>
   );
@@ -42,7 +42,7 @@ function Who({ name, family, meta }: { name: string; family: "person" | "assista
 
 function Message({ who, family, meta, children, wide }: { who: string; family: "person" | "assistant"; meta?: string; children: React.ReactNode; wide: boolean }) {
   return (
-    <View style={{ width: "100%", maxWidth: MAX, alignSelf: "center", paddingHorizontal: wide ? 24 : 16, paddingVertical: 8, flexDirection: "row", gap: 12 }}>
+    <View style={{ width: "100%", maxWidth: MAX, alignSelf: "center", marginLeft: "auto", marginRight: "auto", paddingHorizontal: wide ? 24 : 16, paddingVertical: 8, flexDirection: "row", gap: 12 }}>
       <Avatar name={who} family={family} size="md" />
       <View style={{ flex: 1, minWidth: 0 }}>
         <Who name={who} family={family} meta={meta} />

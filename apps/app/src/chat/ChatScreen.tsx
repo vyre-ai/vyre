@@ -90,7 +90,7 @@ export function ChatScreen(p: ChatScreenProps) {
       </View>
 
       {meta.queue.length ? (
-        <View accessibilityLabel="Queued messages" style={{ width: "100%", maxWidth: 860, alignSelf: "center", paddingHorizontal: phone ? 12 : 20, gap: 4, paddingTop: 6 }}>
+        <View accessibilityLabel="Queued messages" style={{ width: "100%", maxWidth: 860, alignSelf: "center", marginLeft: "auto", marginRight: "auto", paddingHorizontal: phone ? 12 : 20, gap: 4, paddingTop: 6 }}>
           {meta.queue.map((q) => (
             <View key={q.key} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 36, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: color.edge, backgroundColor: color["surface-2"] }}>
               <View style={{ alignSelf: "center" }}><Chip icon="clock">Queued</Chip></View>

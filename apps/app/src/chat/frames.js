@@ -8,7 +8,7 @@
 // not become a row: it sits in `queue()` (shown above the composer) until it is picked up.
 
 /**
- * @typedef {{ v?: number, id?: string, cur: number, session?: string, turn?: string, type: string, time?: number, corr?: string, t?: number, data: any }} Frame
+ * @typedef {{ v?: number, id?: string, cur: number, span?: number, session?: string, turn?: string, type: string, time?: number, corr?: string, t?: number, data: any }} Frame
  * @typedef {{ key: string, kind: string, [k: string]: any }} Item
  * @typedef {{ type: "item", key: string, kind: string }} LayoutRow
  */
@@ -71,11 +71,16 @@ export function createFolder() {
   function apply(f) {
     const out = { dup: false, gap: false, layout: false, touched: /** @type {string[]} */ ([]), appended: /** @type {{ key: string, length: number } | null} */ (null) };
     if (!f || typeof f.cur !== "number" || typeof f.type !== "string") return { ...out, dup: true };
-    if (f.cur <= last) return { ...out, dup: true };
-    if (f.type !== "session.reset" && last > 0 && f.cur > last + 1) out.gap = true;
-    last = f.cur;
     const d = f.data ?? {};
     const kind = f.type.replace(/^session\./, "");
+    // Control frames (cur 0): a heartbeat changes nothing; a reset clears and takes the log's head.
+    if (kind === "heartbeat") return { ...out, dup: true };
+    if (kind !== "reset") {
+      if (f.cur <= last) return { ...out, dup: true };
+      // A merged history frame covers `span` cursors and ends at `cur`.
+      if (last > 0 && f.cur - (f.span ?? 1) + 1 > last + 1) out.gap = true;
+      last = f.cur;
+    }
     /** @param {string} key */
     const touch = (key) => { bump(key); out.touched.push(key); };
     switch (kind) {
@@ -95,6 +100,7 @@ export function createFolder() {
         break;
       }
       case "text-delta": {
+        if (d.reasoning) break; // thinking is not drawn as a reply
         const key = "a:" + d.message;
         const prev = items.get(key);
         const text = (prev?.text ?? "") + String(d.text ?? "");
@@ -154,15 +160,17 @@ export function createFolder() {
       }
       case "file-changed": {
         const key = "f:" + f.cur;
-        const files = [{ path: String(d.path ?? ""), op: d.op ?? "edit", diff: typeof d.diff === "string" ? d.diff : "" }];
-        put(key, "block", { key, kind: "block", tool: "file", toolKind: "file", summary: String(d.path ?? ""), status: "done", output: "", pct: null, block: { block: "diff", files } });
+        // `diff` is a Block ({ block: "diff", files }) from core/stream, or a plain unified diff.
+        const dd = d.diff;
+        const block = dd && typeof dd === "object" && dd.block ? dd : { block: "diff", files: [{ path: String(d.path ?? ""), op: d.op ?? "edit", diff: typeof dd === "string" ? dd : "" }] };
+        put(key, "block", { key, kind: "block", tool: "file", toolKind: "file", summary: String(d.path ?? ""), status: "done", output: "", pct: null, block });
         out.layout = true;
         touch(key);
         break;
       }
       case "ask": {
         const key = "k:" + d.ask_id;
-        const it = { key, kind: "ask", ask: String(d.ask_id), askKind: d.kind ?? "permission", task: d.task ?? null, title: d.title ?? null, state: "open", decision: null };
+        const it = { key, kind: "ask", ask: String(d.ask_id), askKind: d.kind ?? "permission", task: d.task ?? null, title: d.title ?? d.summary ?? null, state: "open", decision: null };
         if (put(key, "ask", it)) out.layout = true;
         else items.set(key, it);
         touch(key);
@@ -190,7 +198,7 @@ export function createFolder() {
       }
       case "reset": {
         rows = []; items.clear(); queued.clear(); queueSnap = []; layoutRev++;
-        last = f.cur;
+        last = typeof d.head === "number" ? d.head : f.cur;
         bump("@status");
         return { ...out, layout: true, reset: true };
       }
