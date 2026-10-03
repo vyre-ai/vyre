@@ -502,12 +502,26 @@ install_wrapper() {
 
 # Start the stack. VYRE_DIR and SSH_CONNECTION are passed on because sudo drops them, and the
 # wrapper needs SSH_CONNECTION to print the ssh -L line.
+# verify_up: the installer says it is done only when the vyre container is running. `vyre up` can end without starting it (a root run
+# refuses a box built from a checkout, see box/vyre prepare_run), and an exit status alone must not read as an installed box.
+verify_up() {
+  i=0
+  until [ -n "$(dk_quiet ps -q --filter name=vyre-vyre-1 --filter status=running 2>/dev/null | head -n 1)" ]; do
+    i=$((i + 1))
+    [ $i -lt "${VYRE_VERIFY_TRIES:-30}" ] || die "the install finished but Vyre is not running; see: docker compose -p vyre ps (in $DIR), then run: vyre up"
+    sleep 2
+  done
+}
 start() {
   say ""
+  # A root run of `vyre up` refuses a box built from a checkout (--from) once the updater has recorded it, so when the installer runs as
+  # root for someone else's account, the first start is that account's own.
+  as=""
+  if [ "$(id -u)" = 0 ] && [ -n "$FROM" ] && [ -n "$OWNER" ] && [ "$OWNER" != root ] && sudo -n -u "$OWNER" docker info >/dev/null 2>&1; then as="sudo -n -u $OWNER"; fi
   if [ "$LINK_ONLY" = 1 ]; then
-    dk env "VYRE_DIR=$DIR" "SSH_CONNECTION=${SSH_CONNECTION:-}" "$WRAPPER" up --print-link
+    dk $as env "VYRE_DIR=$DIR" "SSH_CONNECTION=${SSH_CONNECTION:-}" "$WRAPPER" up --print-link
   else
-    dk env "VYRE_DIR=$DIR" "SSH_CONNECTION=${SSH_CONNECTION:-}" "$WRAPPER" up
+    dk $as env "VYRE_DIR=$DIR" "SSH_CONNECTION=${SSH_CONNECTION:-}" "$WRAPPER" up
   fi
   if [ -n "$DOCKER_SUDO" ]; then
     say ""
@@ -869,7 +883,7 @@ main() {
   else
     step "Starting Vyre"
     start
-    if [ "$DRY" = 1 ]; then done_step "nothing started (dry run)"; else done_step "Vyre is up"; fi
+    if [ "$DRY" = 1 ]; then done_step "nothing started (dry run)"; else verify_up; done_step "Vyre is up"; fi
     show_words
   fi
   finish
