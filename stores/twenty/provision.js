@@ -199,8 +199,11 @@ export async function provisionSpace(o) {
   writePrivate(path.join(dir, "compose.yml"), composeFile({ space: o.space, tag, memory: o.memory }));
   if (o.memory !== undefined) writePrivate(path.join(dir, "memory.json"), JSON.stringify(o.memory));
   writePrivate(path.join(dir, "webhook.secret"), secret(24));
-  log("starting Twenty");
-  await runner.exec("docker", ["compose", "-f", "compose.yml", "--env-file", ".env", "up", "-d", "--wait"], { cwd: dir });
+  // Each phase is timed and logged, so a slow create says which part is slow (the screen that waits on this shows the same phases).
+  const phase = async (/** @type {string} */ name, /** @type {() => Promise<any>} */ fn) => { const t = Date.now(); const r = await fn(); log(`phase ${name}: ${((Date.now() - t) / 1000).toFixed(1)}s`); return r; };
+  await phase("pull images", () => runner.exec("docker", ["compose", "-f", "compose.yml", "--env-file", ".env", "pull", "--quiet"], { cwd: dir }));
+  await phase("start database and cache", () => runner.exec("docker", ["compose", "-f", "compose.yml", "--env-file", ".env", "up", "-d", "--wait", "db", "redis"], { cwd: dir }));
+  await phase("start Twenty (migrations, first healthy answer)", () => runner.exec("docker", ["compose", "-f", "compose.yml", "--env-file", ".env", "up", "-d", "--wait"], { cwd: dir }));
   if (o.gatewayContainer) await runner.exec("docker", ["network", "connect", "--alias", n.gatewayAlias, n.network, o.gatewayContainer]).catch((e) => { if (!/already exists/i.test(String(e.message))) throw e; });
   const url = await reachUrl(o, runner, n, origin);
   await waitHealthy(runner, url);
@@ -208,7 +211,7 @@ export async function provisionSpace(o) {
   const adminPass = secret(24);
   const adminEmail = `service@${o.space}.vyre.invalid`;
   writePrivate(path.join(dir, "admin.secret"), JSON.stringify({ email: adminEmail, password: adminPass }));
-  const r = await bootstrap({ runner, url, origin, email: adminEmail, password: adminPass, displayName: o.space });
+  const r = await phase("workspace and key", () => bootstrap({ runner, url, origin, email: adminEmail, password: adminPass, displayName: o.space }));
   writePrivate(keyFile, r.apiKey);
   writePrivate(path.join(dir, "key.json"), JSON.stringify({ apiKeyId: r.apiKeyId, expiresAt: r.expiresAt, createdAt: new Date().toISOString() }));
   writePrivate(path.join(dir, "workspace.id"), r.workspaceId);
