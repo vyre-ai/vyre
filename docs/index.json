@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":336,"tool":1021,"event":439,"config":244,"env":205,"screen":20,"concept":43},
+  "counts": {"command":336,"tool":1022,"event":439,"config":244,"env":205,"screen":20,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -1018,6 +1018,7 @@
     {"kind":"event","name":"reference.resolved","definedIn":"core/bridges/module.json","page":"reference/events.md#bridges","module":"bridges","mentions":[]},
     {"kind":"event","name":"reference.revoked","definedIn":"core/bridges/module.json","page":"reference/events.md#bridges","module":"bridges","mentions":[]},
     {"kind":"config","name":"relay","definedIn":"core/relay/index.js","page":null,"mentions":[{"page":"concepts/box-and-mac.md","line":31,"anchor":"one-process-per-machine"}]},
+    {"kind":"tool","name":"relay.apply","definedIn":"core/relay/index.js","page":"reference/tools.md#relayapply","module":"relay","mentions":[]},
     {"kind":"event","name":"relay.code-asked","definedIn":"core/relay/index.js","page":"reference/events.md#relay","module":"relay","mentions":[]},
     {"kind":"tool","name":"relay.code.alloc","definedIn":"core/relay/index.js","page":"reference/tools.md#relaycodealloc","module":"relay","mentions":[]},
     {"kind":"tool","name":"relay.code.release","definedIn":"core/relay/index.js","page":"reference/tools.md#relaycoderelease","module":"relay","mentions":[]},

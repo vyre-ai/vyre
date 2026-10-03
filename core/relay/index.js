@@ -550,6 +550,23 @@ export default {
       },
     });
 
+    // The same switch for the Wink module, after it has verified an instruction signed by the owner's device key (wink.relay.apply): a headless
+    // box has no presence, so the app proves the owner and the box takes the signed word.
+    ctx.tool("relay.apply", {
+      description: "Turn the relay on at a signed instruction from the owner's app. Only the wink module calls it, after verifying the signature.",
+      input: obj({ url: str }),
+      run: async (input, meta = {}) => {
+        if (meta.caller !== "module:wink") throw fail("denied", "relay.apply is for the wink module");
+        const url = input.url ? String(input.url) : settings().url;
+        if (!/^wss?:\/\/[^\s/]+/.test(url)) throw fail("bad_input", "url must be a ws:// or wss:// address");
+        if (url !== settings().url) stopLink();
+        await keys.ready();
+        save({ enabled: true, url });
+        startLink();
+        return { enabled: true, url };
+      },
+    });
+
     ctx.tool("relay.enable", {
       description: "Turn the relay on: the box connects out to the relay so paired devices can reach it without Tailscale.",
       input: obj({ url: str }),

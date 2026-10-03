@@ -332,7 +332,7 @@ export function createWink(inject = {}) {
         const used = (pairing.meta.get("instr_nonces") || []).filter((/** @type {any} */ n) => n.exp > now());
         if (used.some((/** @type {any} */ n) => n.n === input.nonce)) throw deny("already used");
         pairing.meta.set("instr_nonces", [...used.slice(-199), { n: String(input.nonce), exp: now() + 2 * INSTRUCTION_SKEW + 1000 }]);
-        const r = /** @type {any} */ (await ctx.call("relay.enable", url ? { url } : {}));
+        const r = /** @type {any} */ (await ctx.call("relay.apply", url ? { url } : {}));
         if (r && r.error) throw fail(r.error.code || "unavailable", String(r.error.message || "the relay did not change"));
         ctx.events.emit("wink.relay-applied", { device: dev.id, ...(url ? { url } : {}) });
         return { applied: true, url: (r && r.data && r.data.url) || url || null };
