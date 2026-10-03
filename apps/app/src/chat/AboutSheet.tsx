@@ -55,7 +55,6 @@ export function AboutSheet({ open, onClose, title, participants, viewer, info, m
               lead={<Face name={p.name} family={fam(p.family)} size={32} id={p.id} />}
               title={p.name}
               sub={p.id === viewer ? "You" : p.family === "assistant" ? `Assistant${p.role ? `, ${p.role}` : ""}` : p.role ?? "Person"}
-              end={p.family === "assistant" ? <Chip tone="accent">assistant</Chip> : undefined}
               onPress={onOpenParticipant ? () => onOpenParticipant(p.id) : undefined}
               accessibilityLabel={`${p.name}, open card`}
             />

@@ -54,7 +54,6 @@ function Who({ name, family, meta, sub }: { name: string; family: "person" | "as
     <View style={S.s1}>
       <View style={S.s2}>
         <Text strong>{name}</Text>
-        {family === "assistant" ? <Chip>assistant</Chip> : null}
         {meta ? <Text size="caption" tone="label">{meta}</Text> : null}
       </View>
       {sub ? <Text size="caption" tone="label">{sub}</Text> : null}
