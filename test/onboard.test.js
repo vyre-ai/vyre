@@ -546,7 +546,7 @@ process.stdin.on("data", d => {
   assert.ok(!JSON.stringify(done).includes(token), "the token never comes back");
   const item = (await call("vault.list", {}, { root, caller: "cli" })).data.items.find(i => i.name === "claude-setup-token");
   assert.ok(item, "the token is in the vault");
-  assert.ok(JSON.stringify(item.grants).includes("agents"));
+  assert.deepEqual(item.grants ?? [], [], "the stored sign-in carries no module grant: launchers read it through the credentials port");
   const events = fs.readdirSync(root, { recursive: true }).filter(f => /\.(jsonl|log|db)$/.test(String(f)));
   for (const f of events) assert.ok(!fs.readFileSync(path.join(root, String(f))).includes(token), `${f} holds the token`);
 });

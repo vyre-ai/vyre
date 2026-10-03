@@ -31,9 +31,8 @@ const PREFIX = { subscription: "sk-ant-oat", "api-key": "sk-ant-api" };
 const VAULT_ITEM = { subscription: "claude-setup-token", "api-key": "anthropic-api-key" };
 const VAULT_KIND = { subscription: "secret", "api-key": "api-key" };
 const VAULT_ABOUT = { subscription: "Claude subscription token from `claude setup-token`, for headless sessions", "api-key": "Anthropic API key, for headless sessions" };
-// The switchboard's agents module starts the headless sessions and hands them this credential.
-// agents for their own threads; threads for every other session Vyre starts (ADR 0030).
-const CREDENTIAL_READERS = ["agents", "threads"];
+// The stored sign-in carries NO module grant: the Switchboard, accounts and agents read it through the daemon's one-shot credentials port
+// (ctx.credentials, core/switchboard/launcher-only.test.js), so vault.launcherOnly can be on and no module is ever granted the provider token.
 // Who may be handed a passkey code: the loopback onboarding session and the box's own terminal.
 // Never a tailnet caller, which a model on the owner's Mac is too.
 const HANDS_CODE = new Set(["onboard", "cli", "local"]);
@@ -501,7 +500,7 @@ export default {
           if (!t.startsWith(PREFIX[kind]) || t.length < 40 || /\s/.test(t)) {
             throw new Error(kind === "subscription" ? "that does not look like a token from `claude setup-token`" : "that does not look like an Anthropic API key");
           }
-          await call("vault.put", { name: VAULT_ITEM[kind], kind: VAULT_KIND[kind], description: VAULT_ABOUT[kind], value: t, grants: CREDENTIAL_READERS });
+          await call("vault.put", { name: VAULT_ITEM[kind], kind: VAULT_KIND[kind], description: VAULT_ABOUT[kind], value: t });
           save({ onboard: { claude: kind } });
           await ensureAssistant();
         }
