@@ -2,9 +2,14 @@
 // Continuous sync and checkpoints (DESIGN-local-runner section 4). Nothing lives only on this machine.
 //
 // The space is the source of truth. This computer keeps a working copy inside the encrypted workspace:
-//   <mnt>/files             the space's files the session works on (its cwd)
-//   <mnt>/home              the agent's HOME (its own state, such as Claude Code's session files)
-//   <mnt>/.vyre/<session>   the runner's local copy of the transcript, the outbox and the last checkpoint
+//   <mnt>/work/files        the space's files the session works on (its cwd)
+//   <mnt>/work/home         the agent's HOME (its own state, such as Claude Code's session files)
+//   <mnt>/state/<session>   the runner's own copy of the transcript, the outbox and the last checkpoint. The sandbox is given
+//                           <mnt>/work only, so the session can never edit its own bookkeeping.
+//
+// The session writes into work/, so the runner treats everything in it as hostile (safefs.js): no link is followed, only plain
+// files inside the root are read, restores go through a temp file and a rename, and the runner stops the session's process group
+// while it reads (runner.js) so nothing changes under it.
 //
 // Per line, the transcript goes to the space as it happens. At every turn end the runner CHECKPOINTS: it flushes the
 // transcript, uploads every file that changed since the last checkpoint as a new version (two machines editing the
@@ -23,6 +28,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import { readInside, listInside, writeInside, parts } from "./safefs.js";
 
 /** The folders the sync carries, relative to the mounted workspace, and where each lands in the space. */
 export const ROOTS = [
@@ -34,22 +40,29 @@ const MAX_FILE = 100 * 1024 * 1024;
 
 const sha = buf => crypto.createHash("sha256").update(buf).digest("hex");
 
-function* walk(root, rel = "") {
-  let ents;
-  try { ents = fs.readdirSync(path.join(root, rel), { withFileTypes: true }); } catch { return; }
-  for (const e of ents) {
-    const r = rel ? rel + "/" + e.name : e.name;
-    if (e.isSymbolicLink()) continue;
-    if (e.isDirectory()) yield* walk(root, r); else if (e.isFile() && !SKIP.has(r)) yield r;
-  }
-}
+/** @typedef {(req: { roots: typeof ROOTS, have: Record<string, string>, maxBytes: number }) => Promise<{ rel: string, hash: string, size: number, bytes: Buffer|null }[]>} Reader */
 
 /**
- * @param {{ space: any, session: string, mnt: string, roots?: typeof ROOTS, log?: (m: string) => void }} o
+ * A reader that runs in THIS process, for tests of a workspace nobody else writes to. Production uses readerhost.js, which reads from
+ * inside the sandbox so a link or a race can never reach a host file.
+ * @param {string} work @returns {Reader}
+ */
+export const localReaderFor = work => async ({ roots, have, maxBytes }) => {
+  const out = [];
+  for (const root of roots) for (const rel of listInside(work, root.dir)) {
+    const bytes = readInside(work, rel, maxBytes); if (!bytes) continue;
+    const hash = sha(bytes), same = have[rel] === hash;
+    out.push({ rel, hash, size: same ? 0 : bytes.length, bytes: same ? null : bytes });
+  }
+  return out;
+};
+
+/**
+ * @param {{ space: any, session: string, work: string, state: string, reader: Reader, roots?: typeof ROOTS, log?: (m: string) => void }} o
  */
 export function createSessionSync(o) {
   const roots = o.roots || ROOTS;
-  const meta = path.join(o.mnt, ".vyre", o.session);
+  const meta = path.join(o.state, o.session);
   fs.mkdirSync(meta, { recursive: true, mode: 0o700 });
   const tFile = path.join(meta, "transcript.jsonl");
   const cFile = path.join(meta, "checkpoint.json");
@@ -79,26 +92,27 @@ export function createSessionSync(o) {
   }
 
   async function syncFiles() {
-    for (const root of roots) {
-      const abs = path.join(o.mnt, root.dir);
-      const seen = new Set();
-      for (const rel of walk(abs)) {
-        const remote = `${root.remote}/${rel}`;
-        seen.add(remote);
-        let buf;
-        try { const st = fs.statSync(path.join(abs, rel)); if (st.size > MAX_FILE) continue; buf = fs.readFileSync(path.join(abs, rel)); } catch { continue; }
-        const h = sha(buf);
-        const have = manifest[remote];
-        if (have && have.hash === h) continue;
-        const r = await o.space.putFile(o.session, remote, buf, { base: have ? have.version : 0 });
-        manifest[remote] = { hash: h, version: r.version };
-      }
-      // A file removed here is recorded as removed in the space (a tombstone version), not silently kept.
-      for (const remote of Object.keys(manifest)) {
-        if (remote.startsWith(root.remote + "/") && !seen.has(remote) && manifest[remote].hash !== "deleted") {
-          const r = await o.space.putFile(o.session, remote, null, { base: manifest[remote].version });
-          manifest[remote] = { hash: "deleted", version: r.version };
-        }
+    // The files are read by a reader running inside the session's own sandbox (reader.js), never by this process.
+    const have = {};
+    for (const [remote, m] of Object.entries(manifest)) { const root = roots.find(r => remote.startsWith(r.remote + "/")); if (root && m.hash !== "deleted") have[root.dir + "/" + remote.slice(root.remote.length + 1)] = m.hash; }
+    const found = await o.reader({ roots, have, maxBytes: MAX_FILE });
+    const seen = new Set();
+    for (const f of found) {
+      const root = roots.find(r => f.rel.startsWith(r.dir + "/"));
+      if (!root) continue;
+      const remote = `${root.remote}/${f.rel.slice(root.dir.length + 1)}`;
+      seen.add(remote);
+      if (!f.bytes) continue;
+      const have0 = manifest[remote];
+      if (have0 && have0.hash === f.hash) continue;
+      const r = await o.space.putFile(o.session, remote, f.bytes, { base: have0 ? have0.version : 0 });
+      manifest[remote] = { hash: f.hash, version: r.version };
+    }
+    // A file removed here is recorded as removed in the space (a tombstone version), not silently kept.
+    for (const remote of Object.keys(manifest)) {
+      if (!seen.has(remote) && manifest[remote].hash !== "deleted") {
+        const r = await o.space.putFile(o.session, remote, null, { base: manifest[remote].version });
+        manifest[remote] = { hash: "deleted", version: r.version };
       }
     }
   }
@@ -132,26 +146,28 @@ export function createSessionSync(o) {
 }
 
 /**
- * Restore a session from the space's last checkpoint into a mounted workspace: the transcript, the files, the agent's
- * home. Used to resume on another machine or after this one lost its workspace.
- * @param {{ space: any, session: string, mnt: string, roots?: typeof ROOTS }} o
+ * Restore a session from the space's last checkpoint into a workspace: the transcript, the files, the agent's home. Used to
+ * resume on another machine or after this one lost its workspace. Run it BEFORE the session starts. Every path in the manifest
+ * is checked and written through safefs, so a path that climbs out or a link planted earlier writes nothing outside work/.
+ * @param {{ space: any, session: string, work: string, state: string, roots?: typeof ROOTS, verify?: (state: any) => boolean }} o
  * @returns {Promise<{ turn: number, seq: number, state: any } | null>}
  */
 export async function restore(o) {
   const roots = o.roots || ROOTS;
   const cp = await o.space.getCheckpoint(o.session);
   if (!cp) return null;
-  const meta = path.join(o.mnt, ".vyre", o.session);
+  if (o.verify && !o.verify(cp.state)) throw Object.assign(new Error("the checkpoint's seal does not verify"), { code: "bad_checkpoint" });
+  const meta = path.join(o.state, o.session);
   fs.mkdirSync(meta, { recursive: true, mode: 0o700 });
   const lines = await o.space.getTranscript(o.session, 1);
   fs.writeFileSync(path.join(meta, "transcript.jsonl"), lines.filter(e => e.seq <= cp.seq).map(e => JSON.stringify(e)).join("\n") + (lines.length ? "\n" : ""), { mode: 0o600 });
+  let refused = 0;
   for (const [remote, m] of Object.entries(cp.manifest || {})) {
     const root = roots.find(r => remote.startsWith(r.remote + "/"));
     if (!root || m.hash === "deleted") continue;
-    const dest = path.join(o.mnt, root.dir, remote.slice(root.remote.length + 1));
-    if (!dest.startsWith(path.join(o.mnt, root.dir) + path.sep)) continue;
-    fs.mkdirSync(path.dirname(dest), { recursive: true });
-    fs.writeFileSync(dest, await o.space.getFile(o.session, remote, m.version), { mode: 0o600 });
+    let rel; try { rel = parts(remote.slice(root.remote.length + 1)).join("/"); } catch { continue; }
+    // A link planted in the workspace refuses that one file (and is counted), it never redirects the write.
+    try { writeInside(o.work, `${root.dir}/${rel}`, Buffer.from(await o.space.getFile(o.session, remote, m.version))); } catch (e) { if (!/unsafe_path|EEXIST|ENOTDIR|ELOOP/.test(String(e.code))) throw e; refused++; }
   }
   fs.writeFileSync(path.join(meta, "checkpoint.json"), JSON.stringify(cp), { mode: 0o600 });
   return { turn: cp.turn, seq: cp.seq, state: cp.state };

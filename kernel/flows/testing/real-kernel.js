@@ -11,8 +11,9 @@ import { createChainBuilder } from "../../core/chain.js";
 import { canonical, hmac } from "../../core/canonical.js";
 import { mintUuid } from "../../core/ids.js";
 import { createTasks, TASK_ACTIONS } from "../../tasks/tasks.js";
-import { createPresence, signProof } from "../../tasks/presence.js";
-import { chainHash } from "../../core/chain.js";
+import { parseExpr, evalExpr } from "../../../records/language/expr.js";
+import { Presence } from "../../seal/proof.js";
+import { payloadHash, proofBytes, chainCtx } from "../../seal/wire.js";
 
 const KEY = Buffer.alloc(32, 7);
 const sameActor = (a, b) => Boolean(a && b) && a.kind === b.kind && a.id === b.id;
@@ -48,8 +49,12 @@ export class RealKernel {
     /** @type {Map<string, any>} */ this.gatewayGrants = new Map();
     /** @type {Set<string>} */ this.members = new Set();
     /** @type {Map<string, string>} person -> private key holder */ this.signers = new Map();
-    this.presence = createPresence({ clock: this.clock });
+    // The one verifier is the sealing process's Presence class; wrapped the way the process's presence.check does (as kernel/tasks/tasks.test.js does).
+    const pr = new Presence(this.clock, { allowUnattested: true });
+    this.presenceKeys = pr;
+    this.presence = { check: async (/** @type {any} */ { chain, op, fields, proof }) => (chain && proof ? pr.refuse(proof, { op, space: this.space, fields, ctx: chainCtx(chain) }) : "no_proof") };
     this.#stageTypes = new Map();
+    /** @type {any} */ this.hooks = null;
 
     // SHIM(corr): events written under an automation chain carry corr = the chain's job. Wrapping the log is the only way in without editing core.
     const rawLog = createEventLog({ space: this.space, clock: this.clock });
@@ -58,7 +63,7 @@ export class RealKernel {
     this.logw = { ...rawLog, append(chain, ev, opts) { return rawLog.append(chain, ev.corr || !chain.job ? ev : { ...ev, corr: String(chain.job) }, opts); } };
 
     this.chains = createChainBuilder({ space: this.space, owner: this.owner, owner_uid: 501, key: KEY, clock: this.clock, is_person: p => self.members.has(`person:${p}`) });
-    this.actions = [...TASK_ACTIONS, ...FLOW_ACTIONS, ...Object.entries(o.actions || {}).map(([action, d]) => ({ action, resource_type: "external", risk: d.risk, label: d.label || action, gloss: d.label || action }))];
+    this.actions = [...TASK_ACTIONS, ...FLOW_ACTIONS, ...Object.entries({ "email.send": { risk: "outward.send", label: "Send an email" }, ...(o.actions || {}) }).map(([action, d]) => ({ action, resource_type: "external", risk: d.risk, label: d.label || action, gloss: d.label || action }))];
     this.grantActions = ["records.*", "records.define", "events.read", "tasks.request", "tasks.read", "tasks.work", "tasks.decide", "flows.run", "kits.install", "kits.remove", "model.call", "ask.request", "http.request", "fn.run", ...this.actions.filter(a => /^outward\./.test(a.risk)).map(a => a.action)];
 
     this.store = createMemoryStore({ clock: this.clock });
@@ -66,10 +71,14 @@ export class RealKernel {
       space: this.space, owner: this.owner, store: this.store, log: this.logw, chains: this.chains, clock: this.clock, actions: this.actions,
       grants: { forSubject: a => [...this.gatewayGrants.values()].filter(g => sameActor(g.subject.actor, a)), get: id => this.gatewayGrants.get(id) },
       members: { has: a => this.members.has(`${a.kind}:${a.id}`) },
-      hasPresenceSession: () => true,
+      hasPresenceSession: () => true, verifyPresence: () => true,
+      // stage gates: the rule evaluator is records' expression language; the stage hooks are set by whoever runs the stages module
+      expr: { parseExpr, evalExpr },
+      onStageEnter: e => (this.hooks && this.hooks.onStageEnter ? this.hooks.onStageEnter(e) : undefined),
+      stageTasks: (u, s) => (this.hooks && this.hooks.stageTasks ? this.hooks.stageTasks(u, s) : []),
     });
     this.tasksApi = createTasks({
-      space: this.space, authorizer: { authorize: this.gw.authorize }, log: this.logw, presence: this.presence, chains: this.chains, clock: this.clock,
+      space: this.space, authorizer: { authorize: this.gw.authorize, actions: new Map(this.actions.map(a => [a.action, a])) }, log: this.logw, presence: this.presence, chains: this.chains, clock: this.clock,
       members: { has: a => this.members.has(`${a.kind}:${a.id}`) },
       roleHolders: role => this.roleHolders(role),
       approver: () => ({ kind: "person", id: this.owner, space: this.space }),
@@ -101,7 +110,8 @@ export class RealKernel {
     this.records = {
       define: async (chain, diff) => {
         this.defines.push(diff);
-        const r = await rec.define(chain, diff);
+        // Defining types is an admin act: the kernel now wants exactly one person (the owner here), never a flow or module chain.
+        const r = await rec.define(this.as(this.ownerActor()), diff);
         for (const t of [...(diff.add_types || []), ...(diff.change_types || [])]) if ((t.fields || []).some((/** @type {any} */ f) => f.kind === "stage")) this.#stageTypes.set(t.name, true);
         return r;
       },
@@ -158,7 +168,7 @@ export class RealKernel {
     if (a.kind === "person" && !this.signers.has(a.id)) {
       const kp = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
       this.signers.set(a.id, kp.privateKey);
-      this.presence.enroll(`key-${a.id}`, { person: a.id, signer: "secure_enclave", public_key: kp.publicKey });
+      this.presenceKeys.keys.set(`key-${a.id}`, { person: a.id, signer: "secure_enclave", attested: true, key: kp.publicKey });
     }
     return actor;
   }
@@ -256,7 +266,8 @@ export class RealKernel {
     const out = o.outcome || "approved";
     if (out === "rejected") return this.tasksApi.decide(chain, id, { outcome: "rejected", reason: o.reason || "not yet" });
     const now = this.now();
-    const proof = signProof(this.signers.get(person.id), { signer: "secure_enclave", key_id: `key-${person.id}`, payload_hash: t.payload.payload_hash, decision: t.payload.decision, chain_hash: chainHash(chain), issued_at: now, expires_at: now + 60_000, nonce: crypto.randomUUID() });
+    const base = { signer: "secure_enclave", key_id: `key-${person.id}`, payload_hash: payloadHash("task.decide", this.space, { task: id, payload_hash: t.payload.payload_hash, decision: t.payload.decision }), decision: "task.decide", chain_hash: chainCtx(chain).chain_hash, issued_at: now, expires_at: now + 60_000, nonce: crypto.randomUUID() };
+    const proof = { ...base, signature: crypto.sign("sha256", proofBytes(base), { key: this.signers.get(person.id), dsaEncoding: "ieee-p1363" }).toString("base64url") };
     return this.tasksApi.decide(chain, id, { outcome: "approved", proof });
   }
 

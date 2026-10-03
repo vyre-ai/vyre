@@ -238,6 +238,28 @@ test("wink: the server's own code and typed-back confirmation use the same two-s
   for (const gone of ["wink.code.pick", "wink.pick"]) assert.equal((await w.call(gone, {})).error?.code, "no_such_tool", `${gone} is gone`);
 });
 
+test("wink: the app's side carries the proof: pair.server without presence is refused, a space pairing by a non-admin is refused, an admin passes; the server's own side stays presence-free", async t => {
+  const w = await world(t);
+  const bare = { peer: A.peer, person: A.person };
+  const own = (await w.call("wink.pair.targets", {})).data.targets[0];
+  const code = "WINK-K7QM-4P2X";
+  // no presence proof: refused before anything is checked or typed
+  const none = await w.call("wink.pair.server", { code, target: { kind: "identity", id: own.id } }, SCREEN, bare);
+  assert.equal(none.error?.code, "presence_required", JSON.stringify(none));
+  const noneSpace = await w.call("wink.pair.server", { code, target: { kind: "space", id: w.status.space || "spc_aaaaaaaaaaaa" } }, SCREEN, bare);
+  assert.equal(noneSpace.error?.code, "presence_required");
+  // with presence: a space the person does not administer is refused, then an unreachable code is a plain bad input (the checks passed)
+  assert.equal((await w.call("wink.pair.server", { code, target: { kind: "space", id: "spc_aaaaaaaaaaaa" } })).error?.code, "not_admin");
+  const spaces = (await w.call("wink.pair.targets", {})).data.targets.filter(x => x.kind === "space");
+  assert.ok(spaces.length >= 1, "the owner of this box administers its space");
+  assert.equal((await w.call("wink.pair.server", { code: "hello", target: { kind: "space", id: spaces[0].id } })).error?.code, "bad_input");
+  assert.equal((await w.call("wink.pair.server", { code: "hello", target: { kind: "identity", id: own.id } })).error?.code, "bad_input");
+  // the headless server has no Touch ID: its two calls take no proof
+  const open = await w.call("wink.server.code", {}, SCREEN, bare);
+  assert.ok(open.data?.code, JSON.stringify(open.error));
+  assert.equal((await w.call("wink.server.confirm", { offer: open.data.offer, typed: "WINK-0000-0000" }, SCREEN, bare)).error?.code, "not_found", "reaches the module with no proof");
+});
+
 test("wink cards: every card and prompt is in the words of wink-copy.md and never names a network, a key or a ticket", () => {
   const kinds = ["phone", "computer", "server", "invite", "lend", "share"];
   for (const kind of kinds) {

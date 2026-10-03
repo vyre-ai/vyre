@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import net from "node:net";
 import { SCRATCH } from "../../../test/scratch.mjs";
-import { listenPeers, encodeHeader, decodeHeader, MAGIC } from "./peer-channel.js";
+import { listenPeers, encodeHeader, decodeHeader, MAGIC, encodeRelayHeader, relayIdentity } from "./peer-channel.js";
 
 const NK = "nodekey:" + "ab".repeat(32);
 const ID = { nodeKey: NK, stableId: "12", tags: ["tag:device"], remoteAddr: "100.97.143.12:51234" };
@@ -40,7 +40,7 @@ test("peer-channel: a forwarded connection arrives with the node key, id, tags a
   c.write(Buffer.concat([encodeHeader(ID), Buffer.from("hello")]));
   await settle();
   assert.equal(w.peers.length, 1);
-  assert.deepEqual(w.peers[0].id, ID);
+  assert.deepEqual(w.peers[0].id, { via: "direct", ...ID });
   w.peers[0].c.on("data", (/** @type {Buffer} */ d) => got.push(d));
   c.write(" world");
   await settle();
@@ -103,7 +103,18 @@ test("peer-channel: a socket or directory widened after listen refuses the conne
 
 test("peer-channel: encode and decode agree", () => {
   const r = /** @type {any} */ (decodeHeader(Buffer.concat([encodeHeader(ID), Buffer.from("x")])));
-  assert.deepEqual(r.id, ID);
+  assert.deepEqual(r.id, { via: "direct", ...ID });
   assert.equal(r.used, encodeHeader(ID).length);
   assert.ok("need" in decodeHeader(encodeHeader(ID).subarray(0, 6)));
+});
+
+test("peer-channel: the relay form of the header carries the device and the space, and nothing a node would", () => {
+  const r = decodeHeader(encodeRelayHeader({ deviceId: "srv1", space: "harlow" }));
+  assert.deepEqual("id" in r && r.id, { via: "relay", deviceId: "srv1", space: "harlow" });
+  assert.deepEqual(relayIdentity("srv1", "harlow"), { via: "relay", deviceId: "srv1", space: "harlow" });
+  assert.throws(() => relayIdentity("bad id!", "harlow"));
+  const j = o => { const b = Buffer.from(JSON.stringify(o)); const h = Buffer.alloc(8); MAGIC.copy(h, 0); h.writeUInt32BE(b.length, 4); return Buffer.concat([h, b]); };
+  assert.match(String(/** @type {any} */ (decodeHeader(j({ v: 1, via: "relay", deviceId: "a", space: "b", nodeKey: NK }))).error), /unknown header field/);
+  assert.match(String(/** @type {any} */ (decodeHeader(j({ v: 1, via: "tailnet", deviceId: "a", space: "b" }))).error), /unknown path/);
+  assert.match(String(/** @type {any} */ (decodeHeader(j({ v: 1, via: "relay", deviceId: "a b", space: "b" }))).error), /bad device id/);
 });

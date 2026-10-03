@@ -90,6 +90,8 @@ func main() {
 		controlURL = flag.String("control-url", "", "control URL, normally the local pinning shim http://127.0.0.1:PORT")
 		keyFile    = flag.String("auth-key-file", "", "file holding a single-use pre-auth key, mode 0600; deleted after the node is up")
 		hostname   = flag.String("hostname", "wink-home", "node hostname")
+		dialSock   = flag.String("dial-sock", "", "optional Unix socket for outbound dials: a client writes {\"addr\":\"100.x.y.z:port\"}\\n and then speaks to that tailnet address")
+		dialWait   = flag.Duration("dial-timeout", 30*time.Second, "how long an outbound dial may take before it fails")
 		verbose    = flag.Bool("verbose", false, "send tsnet's own log to stderr")
 		maps       listenMap
 	)
@@ -97,7 +99,7 @@ func main() {
 	flag.Parse()
 	// A self-hosted network must not report to anyone: tsnet uploads logs to Tailscale unless this is set (spike, 3 Oct 2026).
 	os.Setenv("TS_NO_LOGS_NO_SUPPORT", "true")
-	if *stateDir == "" || *controlURL == "" || len(maps) == 0 {
+	if *stateDir == "" || *controlURL == "" || (len(maps) == 0 && *dialSock == "") {
 		fmt.Fprintln(os.Stderr, "usage: wink-forwarder -state-dir D -control-url URL [-auth-key-file F] -listen PORT=SOCK ...")
 		os.Exit(2)
 	}
@@ -164,6 +166,14 @@ func main() {
 	go watchPrefs(ctx, lc)
 
 	var wg sync.WaitGroup
+	if *dialSock != "" {
+		dl, err := listenDial(*dialSock)
+		if err != nil {
+			fatal("dial socket", err)
+		}
+		wg.Add(1)
+		go func() { defer wg.Done(); serveDial(ctx, dl, srv.Dial, *dialWait) }()
+	}
 	for port, sock := range targets {
 		ln, err := srv.Listen("tcp", ":"+strconv.Itoa(port))
 		if err != nil {
