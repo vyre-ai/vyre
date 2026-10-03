@@ -246,7 +246,7 @@ const store = (name, f = {}) => { const st = { name, full: true, wiped: 0, holds
 test("a box with data refuses a reset that does not wipe, names the stores, and leaves the owner in place; a box with no list is a box with data", async () => {
   for (const o of [{ dataStores: async () => [store("the vault"), store("sealed values")] }, { dataStores: null }, { dataStores: async () => [store("memory", { throws: true })] }]) {
     const b = box(o); b.own();
-    await assert.rejects(() => b.begin(), e => e.code === "holds_data" && /--wipe/.test(e.message) && /recover your identity/.test(e.message));
+    await assert.rejects(() => b.begin(), e => e.code === "holds_data" && /sudo vyre admin wipe/.test(e.message) && /recover your identity/.test(e.message));
     assert.deepEqual(b.p.meta.get("owner"), { kind: "identity", id: ME, identity: ME }, "nothing was reset");
     assert.equal(b.p.meta.get("reset_begin"), null, "no code was made valid");
   }
@@ -257,7 +257,7 @@ test("a box with data refuses a reset that does not wipe, names the stores, and 
   assert.equal((await unowned.begin()).r.begun, true);
 });
 
-test("the wipe: begin names --wipe, confirm needs the code AND the typed word, the old owner's card goes first, every store is wiped and checked empty, a new Space identity is made, then the box is unowned", async () => {
+test("the wipe: begin takes wipe, confirm needs the code AND the typed word, the old owner's card goes first, every store is wiped and checked empty, a new Space identity is made, then the box is unowned", async () => {
   const vault = store("the vault"), seal = store("sealed values");
   /** @type {string[]} */ const order = [];
   const b = box({ dataStores: async () => [vault, seal], newSpace: async () => { order.push("newSpace"); } });

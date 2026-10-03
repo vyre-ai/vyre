@@ -35,7 +35,7 @@ export const resetCard = at => ({ title: "This server was reset", text: `This se
  * Registers wink.server.reset.begin and wink.server.reset.confirm.
  * `dataStores` is the kernel's list of every store that holds the box's data (vault, sealing folder, records, the Drive pool, workspaces, sessions, memory), each `{ name, holds(), wipe() }`.
  * The default is "holds data": no list, a store that throws or does not answer exactly false, all count as holding data, so a store nobody listed blocks a reset instead of being skipped.
- * A reset of a box that holds data refuses unless it is a wipe (`vyre wink reset --begin --wipe`); a wipe needs the one-time code AND the typed word `wipe`, tells the previous owner first,
+ * A reset of a box that holds data refuses unless it is a wipe (run by `sudo vyre admin wipe`, which calls these two tools with wipe); a wipe needs the one-time code AND the typed word `wipe`, tells the previous owner first,
  * waits a short time, wipes every store, checks they are empty, and makes a NEW Space identity (`newSpace()`, never the old keys) before the box reports itself unowned. No list or no
  * `newSpace` means a wipe is refused, with the reason.
  * @param {{ ctx: any, pairing: any, now?: () => number, identity?: () => Promise<string>, dropMs?: number, dataStores?: () => Promise<{ name: string, holds: () => Promise<boolean | undefined>, wipe: () => Promise<void> }[]>, newSpace?: () => Promise<void>, wipeDelayMs?: number }} o
@@ -87,7 +87,7 @@ export function registerReset(o) {
       const wipe = input.wipe === true;
       if (owned()) {
         const h = await holdsData();
-        if (h.holds && !wipe) throw fail("holds_data", `This server holds data (${h.names.join(", ")}), and a reset would leave it for the next owner. Nothing was reset. If you only lost a device, recover your identity from another device instead. To erase everything on this server and start it as a new Space, run vyre wink reset --begin --wipe.`);
+        if (h.holds && !wipe) throw fail("holds_data", `This server holds data (${h.names.join(", ")}), and a reset would leave it for the next owner. Nothing was reset. If you only lost a device, recover your identity from another device instead. To erase everything on this server and start it as a new Space, run sudo vyre admin wipe on the server.`);
         if (h.holds && wipe && (!h.stores || typeof o.newSpace !== "function")) throw fail("wipe_unavailable", `This server cannot be wiped yet: ${!h.stores ? "it has no list of its data stores" : "it cannot make a new Space identity"}. Nothing was reset.`);
       }
       const until = now() + CODE_LIFE_MS;
@@ -122,7 +122,7 @@ export function registerReset(o) {
       // a wipe also needs the typed word, checked before the code is spent so a slip does not cost the code
       if (b.wipe && String((input && input.typed) || "").trim().toLowerCase() !== "wipe") throw fail("wipe_needs_typed", "This erases everything stored on this server. Type the word wipe to go on.");
       // the box may have changed since begin: a reset that is not a wipe still refuses on data
-      if (owned() && !b.wipe) { const h = await holdsData(); if (h.holds) { meta.del(BEGUN); throw fail("holds_data", `This server holds data (${h.names.join(", ")}). Nothing was reset. Begin again with --wipe to erase it.`); } }
+      if (owned() && !b.wipe) { const h = await holdsData(); if (h.holds) { meta.del(BEGUN); throw fail("holds_data", `This server holds data (${h.names.join(", ")}). Nothing was reset. To erase it, run sudo vyre admin wipe on the server.`); } }
       meta.del(BEGUN); meta.del(GUARD);
       const at = now();
       const om = meta.get("owner");
