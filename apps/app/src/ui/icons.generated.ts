@@ -228,6 +228,9 @@ const SET = {
   x: [{ el: "path", d: "M6 6l12 12M18 6L6 18" }],
 } as const satisfies Record<string, readonly IconElement[]>;
 
+/** The family's own drawings, without the old names (for the gallery). */
+export const ICON_NAMES = ["access","agents","assistants","back","bell","board","bolt","budget","cable","cal","camera","card","cfg","chart","chat","check","chev","chevron","chevron-down","chevron-left","chevron-up","clip","clock","contacts","copy","devices","download","drive","edit","error","external","eye","eye-off","face","file","filter","flows","font","globe","hand","hash","history","info","key","kits","laptop","link","list","lock","mail","memory","mention","menu","mic","minus","moon","more","now","offline","ok","pause","person","phone","pin","play","plus","projects","publish","qr","records","recovery","recovery-code","refresh","scan","sealed","search","send","server","settings","share","shield","sites","sort","space","spark","star","stop","storage","sun","task","term","trash","trip","undo","unlock","upload","users","vault","warning","wink","x"] as const;
+
 export const ICONS: Record<IconName, readonly IconElement[]> = {
   ...SET,
   "chev-r": SET["chevron"],

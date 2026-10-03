@@ -5,6 +5,7 @@ import { cn } from "../lib/cn";
 import { Text } from "../components/Text";
 import { Icon, type IconName } from "../components/Icon";
 import { Avatar } from "../components/Avatar";
+import { SpaceSwitcherTitle } from "../components/SpaceSwitcherTitle";
 import { markRef, spaceRef } from "../marks/useMark";
 import { Chip } from "../components/Chip";
 import { Menu } from "../components/Menu";
@@ -27,22 +28,8 @@ export type ShellProps = NavDef & {
   children: React.ReactNode;
 };
 
-function SpaceSwitcher({ spaces, space, onSpace, compact }: Pick<ShellProps, "spaces" | "space" | "onSpace"> & { compact?: boolean }) {
-  const cur = spaces.find((s) => s.id === space) ?? spaces[0];
-  const all = cur.id === "all";
-  return (
-    <Menu
-      trigger={
-        <Pressable accessibilityRole="button" accessibilityLabel={`Space: ${cur.name}. Switch space`}
-          className={cn("min-h-control flex-row items-center gap-s3 rounded-row border border-edge bg-surface-2 px-s3", compact ? "self-start" : "w-full")}>
-          <Avatar of={spaceRef(cur.name, cur.id)} size={24} />
-          <Text strong numberOfLines={1} className={compact ? "" : "flex-1"}>{cur.name}</Text>
-          <Icon name="more" tone="label" />
-        </Pressable>
-      }
-      items={spaces.map((s) => ({ label: s.id === space ? `${s.name} (showing)` : s.name, onPress: () => onSpace(s.id) }))}
-    />
-  );
+function SpaceSwitcher({ spaces, space, onSpace }: Pick<ShellProps, "spaces" | "space" | "onSpace"> & { compact?: boolean }) {
+  return <SpaceSwitcherTitle spaces={spaces} space={space} onSpace={onSpace} />;
 }
 
 function RailItem({ it, on, onPress }: { it: NavItem; on: boolean; onPress: () => void }) {

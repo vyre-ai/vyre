@@ -37,6 +37,6 @@ export function markRef(kind: MarkRef["kind"], name: string, id?: string, seed?:
 }
 
 /** A space's mark: seeded by its name's slug in every place that shows it, so one space looks the same in the rail, on a card badge and in Settings. */
-export function spaceRef(name: string, id?: string): MarkRef {
-  return { kind: "space", id: id ?? slugOf(name), name, seed: slugOf(name) };
+export function spaceRef(name: string, id?: string, seed?: string): MarkRef {
+  return { kind: "space", id: id ?? slugOf(name), name, seed: seed ?? slugOf(name) };
 }

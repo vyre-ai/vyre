@@ -14,16 +14,22 @@ const button = cva("flex-row items-center justify-center gap-s2 rounded-button b
   variants: {
     kind: {
       primary: "bg-primary border-transparent",
-      secondary: "bg-surface-3 border-edge-strong",
+      // Secondary is ghost on desktop (an outline, no fill) and a surface-3 fill on a phone (ui-review Global 6); `phone` picks.
+      secondary: "bg-transparent border-edge-strong",
       ghost: "bg-transparent border-transparent",
       danger: "bg-err-wash border-transparent",
       hold: "bg-err-wash border-transparent",
     },
     size: { md: "h-control px-s4", sm: "h-control-sm px-s3" },
     disabled: { true: "opacity-45", false: "" },
+    phone: { true: "", false: "" },
   },
-  defaultVariants: { kind: "secondary", size: "md", disabled: false },
+  compoundVariants: [{ kind: "secondary", phone: true, class: "bg-surface-3 border-transparent" }],
+  defaultVariants: { kind: "secondary", size: "md", disabled: false, phone: false },
 });
+
+/** The button label: 15 medium (ui-review Global 6), on every platform. */
+const LABEL = { fontSize: 15, lineHeight: 20 } as const;
 
 const ink: Record<string, string> = { primary: "inverse", secondary: "default", ghost: "muted", danger: "err", hold: "err" };
 
@@ -42,7 +48,7 @@ export type ButtonProps = {
 
 /** Button: one primary per surface. "hold" carries the count of what goes and fires after a held press (tokens.v2.motion.hold). */
 export function Button({ label, kind = "secondary", size = "md", icon, onPress, disabled, loading, accessibilityLabel, className }: ButtonProps) {
-  const { color } = useUiTheme();
+  const { color, phone } = useUiTheme();
   const hold = kind === "hold";
   const fill = useRef(new Animated.Value(0)).current;
   const [holding, setHolding] = useState(false);
@@ -70,7 +76,7 @@ export function Button({ label, kind = "secondary", size = "md", icon, onPress, 
       onPress={hold ? undefined : onPress}
       onPressIn={hold ? start : undefined}
       onPressOut={hold ? stop : undefined}
-      className={cn(button({ kind, size, disabled: !!disabled }), className)}
+      className={cn(button({ kind, size, disabled: !!disabled, phone }), className)}
       pressedStyle={hold ? undefined : { opacity: 0.85 }}
       hoverStyle={{ opacity: 0.92 }}
     >
@@ -79,7 +85,7 @@ export function Button({ label, kind = "secondary", size = "md", icon, onPress, 
       ) : null}
       <Pulse active={!!loading}>
         {icon ? <Icon name={icon} tone={kind === "primary" ? "primary-ink" : kind === "danger" || hold ? "err" : "text"} /> : null}
-        {label !== undefined ? <Text strong size={size === "sm" ? "caption" : "body"} tone={ink[kind] as any}>{label}</Text> : null}
+        {label !== undefined ? <Text medium style={size === "sm" ? undefined : LABEL} size={size === "sm" ? "secondary" : "body"} tone={ink[kind] as any}>{label}</Text> : null}
       </Pulse>
     </PressableScale>
   );

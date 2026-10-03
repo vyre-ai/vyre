@@ -7,6 +7,7 @@ import { useReducedMotion } from "../motion/useReducedMotion";
 import { motion } from "../motion/tokens";
 import { useMark, type MarkRef } from "../marks/useMark";
 import { Text } from "./Text";
+import { useCardFill } from "../lib/cardFill";
 
 /** What a mark stands for. Person, assistant, teammate and agent are faces and characters; project (matter, trip) and space are emblems; device a line drawing. */
 export type AvatarKind = MarkRef["kind"];
@@ -35,9 +36,10 @@ function Mark({ of, size }: { of: AvatarRef; size: number }) {
  */
 function Badge({ space, size, ring }: { space: AvatarRef; size: number; ring?: string }) {
   const { color } = useUiTheme();
+  const fill = useCardFill();
   const b = badgePx(size);
   return (
-    <View pointerEvents="none" style={{ position: "absolute", right: -RING, bottom: -RING, width: b + RING * 2, height: b + RING * 2, borderRadius: (b + RING * 2) * 0.3, backgroundColor: ring ?? color["surface-2"], alignItems: "center", justifyContent: "center" }}>
+    <View pointerEvents="none" style={{ position: "absolute", right: -RING, bottom: -RING, width: b + RING * 2, height: b + RING * 2, borderRadius: (b + RING * 2) * 0.3, backgroundColor: ring ?? color[fill], alignItems: "center", justifyContent: "center" }}>
       <Mark of={{ ...space, kind: "space" }} size={b} />
     </View>
   );
@@ -93,12 +95,13 @@ export function SpaceMark({ space, size = 28, onPress }: { space: AvatarRef; siz
 /** Faces, overlapping by 10, newest on top; more than `max` shows "+N" in the label colour. */
 export function AvatarStack({ of, size = 28, max = 3, space }: { of: AvatarRef[]; size?: 20 | 24 | 28 | 32 | 40; max?: number; space?: AvatarRef }) {
   const { color } = useUiTheme();
+  const fill = useCardFill();
   const shown = of.slice(0, max);
   const more = of.length - shown.length;
   return (
     <View accessibilityLabel={of.map((a) => a.name).join(", ")} style={{ flexDirection: "row", alignItems: "center" }}>
       {shown.map((a, i) => (
-        <View key={a.kind + a.id} style={{ marginLeft: i === 0 ? 0 : -10, borderRadius: size, borderWidth: 2, borderColor: color["surface-2"], backgroundColor: color["surface-2"], zIndex: shown.length - i }}>
+        <View key={a.kind + a.id} style={{ marginLeft: i === 0 ? 0 : -10, borderRadius: size, borderWidth: 2, borderColor: color[fill], backgroundColor: color[fill], zIndex: shown.length - i }}>
           <Avatar of={a} size={size as AvatarSize} space={i === 0 ? space : undefined} />
         </View>
       ))}

@@ -1,9 +1,11 @@
 import { View } from "react-native";
 import Svg, { Circle, Ellipse, Path, Rect } from "react-native-svg";
-import { ICONS, ICON_GRID, type IconName } from "../../src/ui/icons.generated";
+import { ICONS, ICON_GRID, ICON_NAMES, type IconName } from "../../src/ui/icons.generated";
 import { useUiTheme } from "../theme";
 
 export type { IconName };
+/** The family's own icon names (not the old aliases), in name order: the gallery draws every one. */
+export { ICON_NAMES };
 export type IconSize = 12 | 14 | 16 | 18 | 20 | 24;
 
 const GRID = ICON_GRID;

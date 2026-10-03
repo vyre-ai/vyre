@@ -6,18 +6,27 @@ import { useUiTheme } from "../theme";
 
 const text = cva("", {
   variants: {
-    size: { caption: "text-caption", body: "text-body", read: "text-read", title: "text-title", page: "text-page", display: "text-display" },
+    size: { caption: "text-caption", secondary: "text-secondary", body: "text-body", headline: "text-headline", read: "text-read", title: "text-title", page: "text-page", display: "text-display" },
     tone: { default: "text-text", muted: "text-text-2", label: "text-label", faint: "text-faint", accent: "text-accent", ok: "text-ok", warn: "text-warn", err: "text-err", inverse: "text-primary-ink" },
   },
   defaultVariants: { size: "body", tone: "default" },
 });
 
-export type TextStyleProps = VariantProps<typeof text> & { strong?: boolean; mono?: boolean };
+export type TextStyleProps = VariantProps<typeof text> & { strong?: boolean; medium?: boolean; mono?: boolean };
 
-/** The one Text: type roles and tones are token names. Weight is 400 or 600, set as the face. The face follows the font setting: Instrument Sans by default, the platform's own for "system". */
-export function Text({ size, tone, mono, strong, className, style, ...rest }: TextProps & TextStyleProps & { className?: string }) {
-  const { resolved } = useUiTheme();
+/** Letter spacing in em (tokens.v2.type.tracking): the big roles pull in a little. */
+const TRACKING = { display: -0.025, page: -0.02, title: -0.012, headline: -0.012 } as const;
+
+/**
+ * The one Text: type roles (caption, secondary, body, headline, read, title, page, display) and tones are token names; the sizes follow the platform
+ * (ui-system.md section 2). Weights are 400, `medium` 500 (buttons) and `strong` 600 (titles), set as the face. The face follows the font setting:
+ * the platform's own by default (SF, Roboto, bundled Inter on the web), Instrument Sans or the serif when a space or person chooses it.
+ */
+export function Text({ size, tone, mono, strong, medium, className, style, ...rest }: TextProps & TextStyleProps & { className?: string }) {
+  const { resolved, map } = useUiTheme();
   const faces = facesFor(resolved.font);
-  const face = mono ? faces.mono : strong ? faces.strong : faces.regular;
-  return <RNText {...rest} style={[face, style]} className={cn(text({ size, tone }), className)} />;
+  const face = mono ? faces.mono : strong ? faces.strong : medium ? faces.medium : faces.regular;
+  const em = size ? TRACKING[size as keyof typeof TRACKING] : undefined;
+  const fs = em ? Number.parseFloat(String(map[`--fs-${size}`])) : 0;
+  return <RNText {...rest} style={[face, em ? { letterSpacing: Math.round(fs * em * 100) / 100 } : null, style]} className={cn(text({ size, tone }), className)} />;
 }
