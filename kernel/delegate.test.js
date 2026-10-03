@@ -85,3 +85,15 @@ test("the default assistant has an off switch: an owner removes it with presence
   await g.rebuild();
   assert.equal(g.defaultAssistant.present(), true, "and it survives a rebuild from the log");
 });
+
+test("service.read and service.call: a connector read is a read, a connector call is an outward act that asks first, for a person and for their assistant", async () => {
+  const { owner, bob, forBob, decide, g } = await rig();
+  const gi = { subject: { kind: "actor", actor: { kind: "person", id: BOB, space: SPACE } }, actions: ["service.read", "service.call"], resource: { prefix: `vyre://${SPACE}/service/*` }, conditions: {}, source: "test" };
+  await g.create(owner, gi, { presence: proof("grants.create", gi, `vyre://${SPACE}/grant/new`) });
+  const svc = `vyre://${SPACE}/service/stripe`;
+  assert.equal((await decide(bob, "service.read", svc)).effect, "allow");
+  assert.equal((await decide(bob, "service.call", svc)).effect, "ask");
+  assert.equal((await decide(forBob, "service.read", svc)).effect, "allow", "his assistant reads where he reads");
+  assert.equal((await decide(forBob, "service.call", svc)).effect, "ask", "and a change asks first");
+  assert.equal((await decide(forBob, "service.call", `vyre://${SPACE}/other/stripe`)).effect, "deny");
+});

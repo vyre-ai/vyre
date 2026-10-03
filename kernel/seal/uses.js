@@ -20,6 +20,8 @@ export const ACTIONS = Object.freeze([
   { action: "drive.restore", resource_type: "file", risk: "admin", label: "Restore an older file or backup", gloss: "Replaces what is there now with an older version or a whole backup." },
   { action: "drive.share", resource_type: "file", risk: "outward.share", label: "Share a file", gloss: "Gives someone outside the Space access to a file." },
   { action: "drive.delete", resource_type: "file", risk: "outward.delete", label: "Delete a file", gloss: "Removes a file for good." },
+  { action: "service.read", resource_type: "service", risk: "read", label: "Read from a connected service", gloss: "Reads (GET or HEAD) through a connector the Space holds, with the Space's own credential, never the person's." },
+  { action: "service.call", resource_type: "service", risk: "outward.send", label: "Call a connected service", gloss: "Changes something at a connected service (POST, PUT, PATCH, DELETE). It asks first." },
   { action: "seal.put", resource_type: "record", risk: "write", label: "Seal a value", gloss: "Moves a value into the sealed store." },
   { action: "seal.use", resource_type: "record", risk: "write", label: "Fill a sealed slot", gloss: "Merges a sealed value into a document or message.", sealed_ok: true },
   { action: "seal.deliver", resource_type: "record", risk: "outward.send", label: "Send what was filled", gloss: "Sends a message or document that holds a sealed value." },
