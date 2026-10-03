@@ -62,8 +62,8 @@ async function world(t) {
   const port = /** @type {any} */ (s.address()).port;
   t.after(async () => { s.closeAllConnections(); s.close(); await reg.stop(); db.close(); });
   const as = (/** @type {string} */ who) => (/** @type {string} */ tool, /** @type {any} */ input) => reg.call(tool, input, "deck", { token: tokens[who] });
-  // An assistant's own session: the daemon stamps `cli:agent:<name>` from the session's socket and carries that session's token (core/daemon, L-1), so the registry's reach rule and the kernel's chain both see what a real session sends.
-  const asst = (/** @type {string} */ who, name = "kit") => (/** @type {string} */ tool, /** @type {any} */ input) => reg.call(tool, input, `cli:agent:${name}`, { token: tokens[who] });
+  // An assistant's own session: the daemon stamps `cli:agent:<name>` from the session's socket, binds the call to its thread (the claim is proven only then, reviewer-2 R-1) and carries that session's token (core/daemon, L-1), so the registry's reach rule and the kernel's chain both see what a real session sends.
+  const asst = (/** @type {string} */ who, name = "kit") => (/** @type {string} */ tool, /** @type {any} */ input) => reg.call(tool, input, `cli:agent:${name}`, { token: tokens[who], thread: `thr_${name}` });
   return { k, chains, as, asst, reg, port, stream: () => reg.modules.get("stream")?.handle };
 }
 const codeOf = (/** @type {any} */ r) => (r.error ? r.error.code : "ok");

@@ -87,8 +87,10 @@ test("C-1: an assistant acting for alex cannot open a chat between carol and dav
   const session = await group(w);
   // Without a kernel and a session token there is no person behind the assistant to read as: it never names itself, and a chat of others is not found.
   // What an assistant CAN read (its person's chats) is decided by the kernel's chats.read, and is tested on a real kernel in kernel.test.js.
-  const assistant = (tool, input) => w.reg.call(tool, input, "cli:agent:kit", { peer: { login: ALEX, stableId: `n_${ALEX}` } });
+  const assistant = (tool, input) => w.reg.call(tool, input, "cli:agent:kit", { peer: { login: ALEX, stableId: `n_${ALEX}` }, thread: "thr_kit" });
   for (const input of [{ session }, { session, as: `person:${CAROL}` }]) assert.equal(codeOf(await assistant("stream.open", input)), "not_found", JSON.stringify(input));
+  // an assistant claim no daemon bound to a session (no thread) is refused outright (reviewer-2 R-1), never read as the person
+  assert.equal(codeOf(await w.reg.call("stream.open", { session }, "cli:agent:kit", { peer: { login: ALEX, stableId: `n_${ALEX}` } })), "denied");
 });
 
 test("C-1: a ticket minted by one caller fails for another, works once for the same caller", async t => {
