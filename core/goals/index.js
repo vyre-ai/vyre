@@ -57,8 +57,29 @@ export default {
     const db = ctx.store.db;
     const now = () => Date.now();
 
-    const get = id => shape(/** @type {any} */ (db.prepare("SELECT * FROM goals_items WHERE id = ?").get(id)));
-    const must = id => { const g = get(id); if (!g) throw refuse(`no goal ${id}`, "not_found"); return g; };
+    // Where the rows live. With the kernel on (ctx.kernel, first-party only) new goals are kernel records of type `goal` (kernel/store, the home's own store);
+    // goals made before it stay in goals_items and keep working, read and written where they are. With the kernel off nothing about this module changes.
+    const K = ctx.kernel;
+    const kc = () => K.serviceChain();
+    const fromRec = (/** @type {any} */ r) => ({ id: r.id, project: r.data.project ?? null, thread: r.data.thread ?? null, goal: r.data.goal, state: r.data.state, created_by: r.data.created_by ?? null,
+      milestones: JSON.parse(r.data.milestones), created_at: r.data.created_at, accepted_at: r.data.accepted_at ?? null, done_at: r.data.done_at ?? null });
+    /** @param {any} r */
+    const fromRecV = r => Object.defineProperty(fromRec(r), "_version", { value: r.version, enumerable: false });
+    /** @param {string} id @returns {Promise<any>} */
+    const getK = async id => { try { const r = await K.records.get(kc(), "goal", id); return r ? fromRecV(r) : null; } catch { return null; } };
+    const legacyGet = (/** @type {string} */ id) => shape(/** @type {any} */ (db.prepare("SELECT * FROM goals_items WHERE id = ?").get(id)));
+    const get = async (/** @type {string} */ id) => (K ? (await getK(id)) || legacyGet(id) : legacyGet(id));
+    const must = async (/** @type {string} */ id) => { const g = await get(id); if (!g) throw refuse(`no goal ${id}`, "not_found"); return g; };
+    /** Update a goal where it lives. @param {any} g the goal as read @param {Record<string, any>} patch fields of the legacy row shape */
+    const update = async (g, patch) => {
+      if (K && g._version !== undefined) {
+        const data = { ...patch }; if (data.milestones !== undefined) data.milestones = JSON.stringify(data.milestones);
+        await K.records.update(kc(), "goal", g.id, data, g._version);
+        return;
+      }
+      const cols = Object.keys(patch);
+      db.prepare(`UPDATE goals_items SET ${cols.map(c => `${c} = ?`).join(", ")} WHERE id = ?`).run(...cols.map(c => (c === "milestones" ? JSON.stringify(patch[c]) : patch[c])), g.id);
+    };
 
     /** The calling thread's own project, or null (a person's own caller, or a thread with none). */
     const callerProject = async thread => {
@@ -92,7 +113,6 @@ export default {
       callers: [...PEOPLE, ...AGENTS],
       run: async (i, meta) => {
         if (!i.project && !i.thread) throw refuse("a goal needs a project or a thread", "bad_input");
-        const id = newId();
         const person = isPerson(meta && meta.caller);
         // LOW: an agent proposes only into its own session or project, never another's.
         if (!person && !(await inScope({ project: i.project || null, thread: i.thread || null }, meta))) {
@@ -102,9 +122,16 @@ export default {
         const created_by = person ? "person" : String((meta && meta.caller) || "agent");
         const milestones = i.milestones.map(text => ({ text: String(text), done: false, done_at: null }));
         const at = now();
-        db.prepare(`INSERT INTO goals_items (id, project, thread, goal, state, created_by, milestones, created_at, accepted_at)
-          VALUES (?,?,?,?,?,?,?,?,?)`).run(id, i.project || null, i.thread || null, String(i.goal), state, created_by, JSON.stringify(milestones), at, person ? at : null);
-        const g = must(id);
+        let id;
+        if (K) {
+          const rec = await K.records.create(kc(), "goal", { project: i.project || null, thread: i.thread || null, goal: String(i.goal), state, created_by, milestones: JSON.stringify(milestones), created_at: at, ...(person ? { accepted_at: at } : {}) });
+          id = rec.id;
+        } else {
+          id = newId();
+          db.prepare(`INSERT INTO goals_items (id, project, thread, goal, state, created_by, milestones, created_at, accepted_at)
+            VALUES (?,?,?,?,?,?,?,?,?)`).run(id, i.project || null, i.thread || null, String(i.goal), state, created_by, JSON.stringify(milestones), at, person ? at : null);
+        }
+        const g = await must(id);
         ctx.events.emit(person ? "goal.created" : "goal.proposed", { goal: id }, { project: g.project || undefined, thread: g.thread || undefined });
         return g;
       },
@@ -115,9 +142,9 @@ export default {
       input: { type: "object", required: ["goal"], properties: { goal: str } },
       callers: PEOPLE,
       run: async i => {
-        const g = must(i.goal);
+        const g = await must(i.goal);
         if (g.state !== "pending") throw refuse(`${i.goal} is ${g.state}, not pending`, "bad_state");
-        db.prepare("UPDATE goals_items SET state = 'active', accepted_at = ? WHERE id = ?").run(now(), i.goal);
+        await update(g, { state: "active", accepted_at: now() });
         ctx.events.emit("goal.accepted", { goal: i.goal }, { project: g.project || undefined, thread: g.thread || undefined });
         return must(i.goal);
       },
@@ -128,15 +155,14 @@ export default {
       input: { type: "object", required: ["goal", "index"], properties: { goal: str, index: { type: "integer", minimum: 0 } } },
       callers: [...PEOPLE, ...AGENTS],
       run: async (i, meta) => {
-        const g = must(i.goal);
+        const g = await must(i.goal);
         if (g.state !== "active") throw refuse(`${i.goal} is ${g.state}, not active`, "bad_state");
         if (!(await inScope(g, meta))) throw refuse(`${i.goal} belongs to another ${g.thread ? "session" : "project"}`, "denied");
         if (i.index >= g.milestones.length) throw refuse(`${i.goal} has no milestone ${i.index}`, "bad_input");
         if (g.milestones[i.index].done) return g; // already done: no event twice
         const milestones = g.milestones.map((m, idx) => idx === i.index ? { ...m, done: true, done_at: now() } : m);
         const allDone = milestones.every(m => m.done);
-        db.prepare(`UPDATE goals_items SET milestones = ?, state = ?, done_at = ? WHERE id = ?`)
-          .run(JSON.stringify(milestones), allDone ? "done" : g.state, allDone ? now() : null, i.goal);
+        await update(g, { milestones, state: allDone ? "done" : g.state, done_at: allDone ? now() : null });
         const where = { project: g.project || undefined, thread: g.thread || undefined };
         ctx.events.emit("goal.milestone", { goal: i.goal, index: i.index, text: milestones[i.index].text }, where);
         if (allDone) ctx.events.emit("goal.done", { goal: i.goal }, where);
@@ -149,7 +175,7 @@ export default {
       input: { type: "object", required: ["goal"], properties: { goal: str } },
       callers: [...PEOPLE, ...AGENTS],
       run: async (i, meta) => {
-        const g = must(i.goal);
+        const g = await must(i.goal);
         if (!(await inScope(g, meta))) throw refuse(`${i.goal} belongs to another ${g.thread ? "session" : "project"}`, "denied");
         return g;
       },
@@ -181,7 +207,22 @@ export default {
         if (thread) { where.push("thread = ?"); args.push(thread); }
         if (i.state) { where.push("state = ?"); args.push(i.state); }
         const sql = `SELECT * FROM goals_items ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY created_at DESC LIMIT 200`;
-        return /** @type {any[]} */ (db.prepare(sql).all(...args)).map(shape);
+        const legacy = /** @type {any[]} */ (db.prepare(sql).all(...args)).map(shape);
+        if (!K) return legacy;
+        // The same filter over the kernel's goal records, merged newest first with the goals made before the kernel was on.
+        const parts = [];
+        if (!isPerson(meta && meta.caller) && thread === undefined && project === undefined) {
+          const ownProject = await callerProject(meta && meta.thread);
+          const mine = [];
+          if (ownProject) mine.push({ field: "project", op: "eq", value: ownProject });
+          if (meta && meta.thread) mine.push({ field: "thread", op: "eq", value: meta.thread });
+          parts.push({ or: mine });
+        }
+        if (project) parts.push({ field: "project", op: "eq", value: project });
+        if (thread) parts.push({ field: "thread", op: "eq", value: thread });
+        if (i.state) parts.push({ field: "state", op: "eq", value: i.state });
+        const page = await K.records.query(kc(), "goal", { ...(parts.length ? { filter: { and: parts } } : {}), page: { limit: 200 } });
+        return [...legacy, ...page.rows.map(fromRec)].sort((a, b) => b.created_at - a.created_at).slice(0, 200).map(({ _version, ...g }) => g);
       },
     });
 
