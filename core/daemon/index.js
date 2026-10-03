@@ -224,6 +224,8 @@ async function startLocked(opts, root, p, release) {
       const asker = await kernel.surfaces.chainFor(q.meta.token, { noChat: true });
       return resolveFields({ input: q.input, read: async (/** @type {string} */ urn) => { const [, type, id] = urn.replace("vyre://", "").split("/"); return kernel.gateway.records.get(asker, type, id); } });
     };
+    // The owner's reset of the accepted module list (core/modulelist): the kernel checks the chain is exactly the owner and the presence proof; this only hands it over.
+    registry.deps.modulesListReset = (/** @type {any} */ chain, /** @type {any} */ proof) => kernel.resetModulesList(chain, proof);
     closeFlowsHost = () => flowsHost.stop();
     kernel = await bootHomeKernel({ db, root, log, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
       // A credentialed request run at the home: the vault's own forward (an internal tool only the lease module may call), under the Space's credential; the kernel has already authorized it.
