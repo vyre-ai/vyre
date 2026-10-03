@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(install-box): the installer ends only when the vyre container is running (verify_up), and fails with a plain line otherwise; run as root with --from it starts the box as the owner's account, because a root `vyre up` refuses a box built from a checkout. Tests: not running fails, running passes.
 - site: the version text on every page comes from the release tag (assemble-site.sh passes VYRE_SITE_VERSION), with a per-version "out now" line in gen-site.mjs; vyre.run says 0.2.2, and the roadmap reads Sessions 0.2.3, Scale 0.2.4, Spaces 0.2.5.
 - fix(site): scripts/gen-og.sh launches Chrome with --use-mock-keychain and --password-store=basic, so it never raises a Keychain dialog on a Mac (test/chrome-flags).
 - test(vault) #77: agent grants read the time from the vault's `clock` (default `Date.now`), and "an expired grant is out of force" moves a fake clock instead of sleeping, so it can no longer flake.
