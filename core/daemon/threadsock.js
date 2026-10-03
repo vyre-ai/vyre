@@ -69,7 +69,7 @@ export async function openThreadSocket(o) {
       if (!pid || !belongs(pid, await o.pids(), o.look)) return send(res, 403, { error: { code: "denied", message: "this socket is one session's, and the caller is not in it" } });
       // The kind of client (its MCP server or its hooks) is the one thing the call may say.
       const kind = String(req.headers["x-vyre-caller"] || "").startsWith("harness") ? "harness" : "mcp";
-      // The session's kernel credential (core/sessions/kernel-session.js): set here from what vyred holds for this session, never from the client. Whatever the client sent is dropped.
+      // The session's kernel credential (lib/kernel-session.js): set here from what vyred holds for this session, never from the client. Whatever the client sent is dropped.
       delete req.headers["x-vyre-kernel-session"];
       const kernelToken = o.kernelToken ? await o.kernelToken() : undefined;
       // A socket that has a kernel credential never lets a call go out unstamped: no valid token (the session ended, a renewal failed) means the call is refused.

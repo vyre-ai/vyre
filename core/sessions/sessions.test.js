@@ -1790,7 +1790,8 @@ for (const driver of ["cli", "sdk"]) {
     await until(() => w.launches().some(l => l.mode === "acceptEdits"), "the mode to reach Claude Code");
     assert.ok((await w.events(th.id)).some(e => e.type === "mode.changed" && e.payload.mode === "acceptEdits"));
     for (const caller of ["mcp", "mcp:agent:juno", "mcp:thread:abc", "harness"]) {
-      for (const mode of ["plan", "bypassPermissions"]) assert.equal((await w.tool("threads.mode", { thread: th.id, mode }, caller)).error.code, "denied", `${caller} ${mode}`);
+      // What else an assistant may set is the reach list's (platform); "Doesn't ask" is the person's alone, whoever is calling.
+      assert.equal((await w.tool("threads.mode", { thread: th.id, mode: "bypassPermissions" }, caller)).error.code, "denied", `${caller} bypassPermissions`);
     }
     await w.tool("threads.send", { thread: th.id, text: "forge cli threads.mode", surface: "deck" });
     await w.finished(th.id, 2);
@@ -1873,7 +1874,7 @@ for (const driver of ["cli", "sdk"]) {
     const sock = w.launches().at(-1).socket;
     assert.ok(sock && sock.endsWith(".sock"), "VYRE_SOCKET is the thread's own");
     assert.notEqual(sock, paths(w.root).socket, "not vyred's own socket");
-    assert.equal(fs.statSync(sock).mode & 0o777, 0o600);
+    assert.equal(fs.statSync(sock).mode & 0o777, 0o600, "a private socket is the owner's alone (0600); the box's shared folder keeps 0660");
     // It said "cli"; vyred bound it to the thread.
     assert.deepEqual(JSON.parse((await w.said(th.id)).at(-1)).data, { caller: `mcp:thread:${th.id}`, thread: th.id, agent: null });
     // A person's tool is refused on it, whatever the session says it is.
