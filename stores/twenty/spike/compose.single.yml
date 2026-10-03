@@ -1,0 +1,58 @@
+name: twspike
+services:
+  server:
+    image: twentycrm/twenty:${TAG}
+    networks: [store]
+    volumes: [server-data:/app/packages/twenty-server/.local-storage, "./empty-front:/app/packages/twenty-server/dist/front:ro"]
+    environment:
+      NODE_PORT: 3000
+      AUTH_PASSWORD_ENABLED: "false"
+      DISABLE_CRON_JOBS_REGISTRATION: "true"
+      API_RATE_LIMITING_SHORT_LIMIT: "2000"
+      API_RATE_LIMITING_LONG_LIMIT: "100000"
+      OUTBOUND_HTTP_ALLOWED_INTERNAL_HOSTS: gateway
+      PG_DATABASE_URL: postgres://postgres:${PG_DATABASE_PASSWORD}@db:5432/default
+      SERVER_URL: ${SERVER_URL}
+      REDIS_URL: redis://redis:6379
+      APP_SECRET: ${APP_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+    depends_on: {db: {condition: service_healthy}, redis: {condition: service_healthy}}
+    healthcheck: {test: "curl --fail http://localhost:3000/healthz", interval: 5s, timeout: 5s, retries: 40}
+  worker:
+    image: twentycrm/twenty:${TAG}
+    networks: [store]
+    command: ["yarn","worker:prod"]
+    volumes: [server-data:/app/packages/twenty-server/.local-storage]
+    environment:
+      PG_DATABASE_URL: postgres://postgres:${PG_DATABASE_PASSWORD}@db:5432/default
+      SERVER_URL: ${SERVER_URL}
+      REDIS_URL: redis://redis:6379
+      DISABLE_DB_MIGRATIONS: "true"
+      OUTBOUND_HTTP_ALLOWED_INTERNAL_HOSTS: gateway
+      DISABLE_CRON_JOBS_REGISTRATION: "true"
+      APP_SECRET: ${APP_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+    depends_on: {server: {condition: service_healthy}}
+  gateway:
+    image: node:22-alpine
+    working_dir: /gw
+    command: ["node","gateway.mjs"]
+    volumes: ["./gw:/gw", "gw-data:/data"]
+    ports: ["127.0.0.1:4000:4000"]
+    environment: {TWENTY_URL: "http://server:3000", GW_DATA: /data}
+    networks: [store, default]
+  db:
+    image: postgres:16
+    networks: [store]
+    volumes: [db-data:/var/lib/postgresql/data]
+    environment: {POSTGRES_DB: default, POSTGRES_USER: postgres, POSTGRES_PASSWORD: "${PG_DATABASE_PASSWORD}"}
+    healthcheck: {test: "pg_isready -U postgres -h localhost -d default", interval: 5s, timeout: 5s, retries: 10}
+  redis:
+    image: redis:7
+    networks: [store]
+    command: ["--maxmemory-policy","noeviction"]
+    healthcheck: {test: ["CMD","redis-cli","ping"], interval: 5s, timeout: 5s, retries: 10}
+networks:
+  store: {internal: true}
+  default: {}
+volumes: {gw-data: {}, db-data: {}, server-data: {}}
