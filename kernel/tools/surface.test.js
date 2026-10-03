@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createToolSurface, noun } from "./surface.js";
 import { createGateway } from "../gateway/index.js";
 import { createTasks, TASK_ACTIONS } from "../tasks/tasks.js";
+import { createPresence } from "../tasks/presence.js";
 import { createMemoryStore } from "../store/memory.js";
 import { createEventLog } from "../core/events.js";
 import { createChainBuilder } from "../core/chain.js";
@@ -27,7 +28,7 @@ async function rig({ grants = [], defs = [MATTER] } = {}) {
   const actions = [...TASK_ACTIONS, SEND];
   const store = createMemoryStore({ clock });
   const gw = createGateway({ space: SPACE, store, log, chains, clock, actions: [SEND, ...TASK_ACTIONS], grants: { forSubject: a => all.filter(g => g.subject.actor.kind === a.kind && g.subject.actor.id === a.id), get: () => undefined }, members: { has: a => members.has(`${a.kind}:${a.id}`) }, hasPresenceSession: () => true, verifyPresence: () => true });
-  const tasks = createTasks({ space: SPACE, authorizer: { authorize: gw.authorize }, log, presence: { check: async () => "no_proof" }, chains, clock, members: { has: a => members.has(`${a.kind}:${a.id}`) }, approver: () => actor("person", OWNER) });
+  const tasks = createTasks({ space: SPACE, authorizer: { authorize: gw.authorize }, log, presence: createPresence({ clock }), chains, clock, members: { has: a => members.has(`${a.kind}:${a.id}`) }, approver: () => actor("person", OWNER) });
   const kernel = { authorize: gw.authorize, records: gw.records, ask: tasks };
   const current = [...defs];
   await gw.records.define(person(OWNER), { add_types: defs });
