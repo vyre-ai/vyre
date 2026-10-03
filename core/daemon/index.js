@@ -8,6 +8,7 @@
 
 import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -201,6 +202,16 @@ async function startLocked(opts, root, p, release) {
       const s = await kernelSessions.open({ chain: person, ...(q.rec && typeof q.rec.chat === "string" ? { chat: q.rec.chat } : {}), ...(q.agent ? { agent: q.agent } : {}), thread: q.thread });
       return { token: kernelSessions.tokenFor(s.id), end: () => kernelSessions.end(s.id) };
     };
+    // The sandbox every Vyre-started session's agent runs in on this computer (the runner's home sandbox: planHome, selfTest, launch; core/sessions/ cannot import core/runner, so the
+    // daemon composes it for the Switchboard, behind the kernel flag). It confines a session to its workspace, its provider's own sign-in paths and its own socket, and keeps
+    // the person's socket, other sessions' sockets, the daemon's ports and Vyre's key files out of reach; the self-test runs before each session and a failure stops it with a plain
+    // reason. Linux and macOS only; VYRE_SESSION_SANDBOX=0 turns it off.
+    if (process.env.VYRE_SESSION_SANDBOX !== "0" && (process.platform === "darwin" || process.platform === "linux")) {
+      const [{ planHome, selfTest }, { launch }] = await Promise.all([import("../runner/homesandbox.js"), import("../runner/sandbox.js")]);
+      registry.deps.sandbox = { sandbox: { planHome, selfTest, launch }, platform: process.platform, home: os.homedir(), vyreHome: root,
+        probes: { personSocket: p.socket, otherSocket: path.join(root, "run", "sessions", "other.sock"), daemonPorts: [], keyFile: path.join(root, "kernel", "space.json") },
+        temp: os.tmpdir() };
+    }
     registry.deps.moduleHost = kernel.moduleHost;
     registry.deps.kernelFor = kernel.kernelFor;
     if (kernel.firstPartyCheck) registry.deps.firstPartyCheck = kernel.firstPartyCheck;

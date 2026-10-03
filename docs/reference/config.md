@@ -146,6 +146,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_SESSIONS_SDK_DIR` | Not described yet. | `core/sessions/config.js`, `core/spawner/main.js` |
 | `VYRE_SESSIONS_SDK_INSTALL` | Not described yet. | `core/sessions/sdk.js` |
 | `VYRE_SESSIONS_THREAD_SOCKET` | Not described yet. | `core/sessions/config.js` |
+| `VYRE_SESSION_SANDBOX` | Not described yet. | `core/daemon/index.js` |
 | `VYRE_SETUP_CODE` | Not described yet. | `core/relay/index.js` |
 | `VYRE_SETUP_CODE_AT` | Not described yet. | `core/relay/index.js` |
 | `VYRE_SPAWNER_ALLOW` | Not described yet. | `core/spawner/main.js` |
@@ -173,6 +174,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_WATCH_UID_MAX` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_WATCH_UID_MIN` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_WATCH_WORK` | Not described yet. | `core/watchers/spawner-wall.js` |
+| `VYRE_WINDOWS_LENDING` | Not described yet. | `core/runner/sandbox.js`, `core/runner/workspace.js` |
 | `VYRE_WINK_REAL` | `1`: let a test run the real Headscale and tailscaled (test server only). | `core/wink/control/headscale.js` |
 | `VYRE_WORK` | Not described yet. | `core/spawner/main.js`, `core/switchboard/index.js` |
 | `VYRE_WORK_DIR` | Not described yet. | `core/config/index.js` |
