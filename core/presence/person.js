@@ -41,8 +41,10 @@ export const ROTATE_EVERY = 30 * DAY;
 // No maximum life: the far end of the clock, so every `max` comparison still reads.
 const NEVER = Number.MAX_SAFE_INTEGER;
 const jwkOk = k => k && k.kty === "EC" && k.crv === "P-256" && typeof k.x === "string" && typeof k.y === "string" && !k.d;
-/** What a device signs to turn its grant into a session. */
-export const pairedStart = ({ device, t, n }) => `paired-start\n${device}\n${t}\n${n}`;
+// A paired session that has not rotated within this long after it was due accepts only the rotation.
+const ROTATE_GRACE = 3 * DAY;
+/** What a device signs to turn its grant into a session: its id and the challenge this box made for that grant. */
+export const pairedStart = ({ device, challenge }) => `paired-start\n${device}\n${challenge}`;
 /** What a paired session signs to get a new secret. */
 export const pairedRotate = ({ id, t, n }) => `paired-rotate\n${id}\n${t}\n${n}`;
 
@@ -221,7 +223,12 @@ export class PersonSessions {
       if (this.nonces.size > 10_000) this.nonces.delete(/** @type {string} */ (this.nonces.keys().next().value));
     }
     if (now - row.last_used > (row.paired ? TOUCH_PAIRED : TOUCH)) this.db.prepare("UPDATE presence_people SET last_used = ? WHERE id = ?").run(now, row.id);
-    return { ok: true, id: row.id, kind: row.kind, ...(row.paired ? { paired: true, rotateDue: now - (row.rotated || row.created) >= ROTATE_EVERY } : {}) };
+    if (row.paired) {
+      const age = now - (row.rotated || row.created);
+      // Past the grace the secret is only good for the one call that replaces it (a leaked secret dies by day 33).
+      return { ok: true, id: row.id, kind: row.kind, paired: true, rotateDue: age >= ROTATE_EVERY, ...(age >= ROTATE_EVERY + ROTATE_GRACE ? { rotateOnly: true } : {}) };
+    }
+    return { ok: true, id: row.id, kind: row.kind };
   }
 
   /**
@@ -236,31 +243,41 @@ export class PersonSessions {
     this.prune();
     // Replace, never stack: whatever this device held before ends now.
     this.endDevice(device);
-    this.db.prepare("INSERT INTO presence_pair_grants (device, key_id, device_key, created, expires, tries) VALUES (?,?,?,?,?,0)")
-      .run(String(device), String(keyId), JSON.stringify({ kty: "EC", crv: "P-256", x: deviceKey.x, y: deviceKey.y }), now, now + GRANT_TTL);
-    return { expires: now + GRANT_TTL };
+    const challenge = b64url(24);
+    this.db.prepare("INSERT INTO presence_pair_grants (device, key_id, device_key, challenge, created, expires, tries) VALUES (?,?,?,?,?,?,0)")
+      .run(String(device), String(keyId), JSON.stringify({ kty: "EC", crv: "P-256", x: deviceKey.x, y: deviceKey.y }), challenge, now, now + GRANT_TTL);
+    return { expires: now + GRANT_TTL, challenge };
+  }
+
+  /**
+   * The challenge for a device's grant, for the device to sign. A device with no grant gets a
+   * random one of the same shape, so nothing says whether a grant exists.
+   * @param {string} device
+   */
+  challengeFor(device) {
+    this.prune();
+    const row = /** @type {any} */ (this.db.prepare("SELECT challenge FROM presence_pair_grants WHERE device = ?").get(String(device || "")));
+    return row ? String(row.challenge) : b64url(24);
   }
 
   /**
    * The device's first start: it proves it holds the key the owner confirmed (a signature over its
-   * id, a fresh time and a nonce), and the grant becomes a session bound to that key. One refusal
+   * id and the challenge this box made for the grant), and the grant becomes a session bound to
+   * that key. A signed start from an earlier grant for the same device is worth nothing. One refusal
    * for no grant, an expired one, a used one and a wrong key; three wrong attempts delete it.
-   * @param {{ device: string, t: string, n: string, sig: string, label?: string|null }} o
+   * @param {{ device: string, sig: string, label?: string|null }} o
    * @returns {{ id: string, token: string, expires: number } | { refused: true, deleted?: boolean }}
    */
-  startPaired({ device, t, n, sig, label = null }) {
+  startPaired({ device, sig, label = null }) {
     const now = this.now();
     this.prune();
     const row = /** @type {any} */ (this.db.prepare("SELECT * FROM presence_pair_grants WHERE device = ?").get(String(device || "")));
     if (!row) return { refused: true };
     let good = false;
-    const ts = Number(t);
-    if (typeof n === "string" && /^[A-Za-z0-9_-]{8,64}$/.test(n) && Number.isFinite(ts) && Math.abs(now - ts) <= SKEW) {
-      try {
-        const pub = crypto.createPublicKey({ key: JSON.parse(row.device_key), format: "jwk" });
-        good = crypto.verify("sha256", Buffer.from(pairedStart({ device: row.device, t: String(t), n })), { key: pub, dsaEncoding: "ieee-p1363" }, Buffer.from(String(sig || ""), "base64url"));
-      } catch {}
-    }
+    try {
+      const pub = crypto.createPublicKey({ key: JSON.parse(row.device_key), format: "jwk" });
+      good = crypto.verify("sha256", Buffer.from(pairedStart({ device: row.device, challenge: row.challenge })), { key: pub, dsaEncoding: "ieee-p1363" }, Buffer.from(String(sig || ""), "base64url"));
+    } catch {}
     if (!good) {
       const tries = row.tries + 1;
       if (tries >= GRANT_TRIES) { this.db.prepare("DELETE FROM presence_pair_grants WHERE device = ?").run(row.device); return { refused: true, deleted: true }; }

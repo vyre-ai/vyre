@@ -376,6 +376,7 @@ export const MIGRATIONS = [`
     device TEXT PRIMARY KEY,
     key_id TEXT NOT NULL,
     device_key TEXT NOT NULL,
+    challenge TEXT NOT NULL,
     created INTEGER NOT NULL,
     expires INTEGER NOT NULL,
     tries INTEGER NOT NULL DEFAULT 0
