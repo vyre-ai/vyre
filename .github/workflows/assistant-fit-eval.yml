@@ -1,0 +1,71 @@
+# Scores a model's fit for the native assistant: five real Vyre tasks on the real kernel gateway and the generated tool surface
+# (scripts/eval/assistant-fit). Manual only: never on a pull request, push or schedule. It runs in the protected environment `eval`
+# (a required reviewer approves each run), whose secret OPENROUTER_EVAL_KEY is a key with its own hard limit at OpenRouter.
+# The run's own budget is a hard stop of $5 (the eval refuses the next model call when its worst case would pass the cap and scores
+# the rest as skipped). Before any call the job reads the key's usage (GET /api/v1/key) and prints it before and after, so the real
+# spend is visible next to the eval's own estimate. The key is never printed and never written to a file.
+name: assistant-fit-eval
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: OpenRouter model to score
+        type: choice
+        default: anthropic/claude-haiku-4.5
+        options:
+          - anthropic/claude-haiku-4.5
+          - anthropic/claude-sonnet-5.5
+          - openai/gpt-6-sol
+          - google/gemini-3.8-flash
+      budget:
+        description: Hard stop in dollars for this run (at most 5)
+        type: choice
+        default: "1"
+        options:
+          - "1"
+          - "2.5"
+          - "5"
+permissions:
+  contents: read
+concurrency:
+  group: assistant-fit-eval
+  cancel-in-progress: false
+env:
+  VYRE_NO_DIALOGS: "1"
+jobs:
+  fit:
+    runs-on: ubuntu-latest
+    environment: eval
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - name: Score the model
+        env:
+          OPENROUTER_EVAL_KEY: ${{ secrets.OPENROUTER_EVAL_KEY }}
+          MODEL: ${{ inputs.model }}
+          BUDGET: ${{ inputs.budget }}
+        run: |
+          set +e
+          usage() { curl -fsS -H "Authorization: Bearer $OPENROUTER_EVAL_KEY" https://openrouter.ai/api/v1/key | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const d=JSON.parse(s).data;console.log(d.usage)}catch{console.log("unreadable")}})'; }
+          before=$(usage)
+          echo "key usage before: $before"
+          if [ "$before" = "unreadable" ]; then echo "cannot read the key's usage: not running"; exit 1; fi
+          mkdir -p "$RUNNER_TEMP/fit"
+          nice -n 10 node scripts/eval/assistant-fit/run.js --model "$MODEL" --yes --budget "$BUDGET" --out "$RUNNER_TEMP/fit" | tee "$RUNNER_TEMP/fit/summary.txt"
+          code=${PIPESTATUS[0]}
+          after=$(usage)
+          echo "key usage after: $after"
+          { echo '### assistant-fit-eval'; echo "Model: $MODEL, hard stop: \$$BUDGET"; echo "Key usage before: $before, after: $after"; echo '```'; cat "$RUNNER_TEMP/fit/summary.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          mkdir -p fit-out && cp "$RUNNER_TEMP"/fit/* fit-out/ 2>/dev/null
+          exit $code
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: assistant-fit
+          path: fit-out/
+          if-no-files-found: warn

@@ -166,6 +166,7 @@ export default {
      * secret's hash keyed by itself (hex), same check as `pairing` above but there can be several. */
     /** @type {Map<string, { exp: number }>} */
     const pendingTickets = new Map();
+    // (an entry may carry `offer`: a Wink invitation sealed into the same ticket, handled by core/wink)
     /** Does a presented secret match a live pairing (the classic single one, or a ticket's), and
      * burn it either way? Null when nothing matches. */
     const takeLiveSecret = provided => {
@@ -173,7 +174,7 @@ export default {
       if (pairing && pairing.exp > now() && crypto.timingSafeEqual(h, pairing.hash)) { const m = { first: pairing.first, ticket: false }; pairing = null; return m; }
       const hex = h.toString("hex");
       const t = pendingTickets.get(hex);
-      if (t && t.exp > now()) { pendingTickets.delete(hex); return { first: false, ticket: true, ...(t.window ? { window: t.window } : {}) }; }
+      if (t && t.exp > now()) { pendingTickets.delete(hex); return { first: false, ticket: true, ...(t.window ? { window: t.window } : {}), ...(t.offer ? { offer: t.offer } : {}) }; }
       for (const [k, v] of pendingTickets) if (v.exp <= now()) pendingTickets.delete(k);
       return null;
     };
@@ -289,6 +290,8 @@ export default {
       link = relayLink({
         url: settings().url, route: route(), routeKey: k().route, boxKey: k().box, admit, onchannel,
         WebSocket: seam.WebSocket, log: m => ctx.log(m),
+        // A typed Wink code's PAKE message from a typing device (spec 6.5): handed to the wink module as an internal event, never to a surface.
+        oncode: m => { try { ctx.events.emit("relay.code-asked", m); } catch {} },
         onstate: (s, why) => {
           try { ctx.events.emit(s === "connected" ? "relay.connected" : "relay.disconnected", s === "connected" ? {} : { why: why || "" }); } catch {}
         },
@@ -308,6 +311,12 @@ export default {
         if (!match) throw new Error("this pairing code has expired or was already used; make a new one on the box");
         if (match.first && personExists()) throw new Error("this box already has a device; if that was not you, remove it from Settings, Devices");
         const name = friendlyDeviceName(promptSafe(typeof hello.name === "string" ? hello.name.trim() : "", "a device", 64), { kind: hello.kind === "web" ? "web" : "device", owner: (ctx.config.onboard || {}).person });
+        // A Wink invitation (core/wink): redeeming it enrols no device here. The person who was invited becomes a member of this space
+        // through the wink module, which hears the event below and writes the grant. Nothing about the invitee's other devices crosses.
+        if (match.offer && match.offer.kind === "invite") {
+          ctx.events.emit("relay.invite-redeemed", { name, fingerprint: keyFingerprint(pub), pub: pub.toString("base64url"), offer: match.offer });
+          return { v: 1, box: { name: boxName() }, paired: true, invite: true };
+        }
         // A ticket from a pairing window enrols nothing until the screen that opened it confirms this exact phone.
         if (match.window) await holdForConfirm(match.window, pub, name);
         const kind = hello.kind === "web" ? "web" : "app";
@@ -621,14 +630,15 @@ export default {
       const rawTicket = seed || crypto.randomBytes(TICKET_BYTES);
       const exp = now() + TICKET_TTL;
       const secret = ticketDerive("sec", rawTicket).toString("base64url");
-      pendingTickets.set(sha(secret).toString("hex"), { exp, ...(opt.window ? { window: opt.window } : {}) });
+      pendingTickets.set(sha(secret).toString("hex"), { exp, ...(opt.window ? { window: opt.window } : {}), ...(opt.offer ? { offer: opt.offer } : {}) });
       lastMinted = { loc: ticketDerive("loc", rawTicket).toString("base64url"), key: sha(secret).toString("hex") };
       await keys.ready();
       if (!settings().enabled) save({ enabled: true });
       startLink();
       const connected = link ? await link.ready() : false;
       // Sealed under the ticket's own "enc" key: the relay holds ciphertext only (wire.js).
-      const record = ticketSeal(rawTicket, JSON.stringify({ v: 1, name: boxName(), handle: boxHandle(), address: addressOrigin(), identity: identityFingerprint(), relay: settings().url, route: route(), box: k().box.pub.toString("base64url"), exp }));
+      // An offer (a Wink invitation: kind, role, projects) rides inside the sealed record only when a module minted the ticket (relay.ticket.mint).
+      const record = ticketSeal(rawTicket, JSON.stringify({ v: 1, name: boxName(), handle: boxHandle(), address: addressOrigin(), identity: identityFingerprint(), relay: settings().url, route: route(), box: k().box.pub.toString("base64url"), exp, ...(opt.offer ? { offer: opt.offer } : {}) }));
       const mac = ticketMac(rawTicket, record);
       let confirmed = false;
       if (link) {
@@ -645,6 +655,46 @@ export default {
       // A ticket the app chose is the app's own secret: not echoed back.
       return seed ? { expiresAt: exp, connected, confirmed } : { ticket: rawTicket.toString("base64url"), expiresAt: exp, connected, confirmed };
     };
+
+    // ---- for the wink module (internal: modules only) ----
+    ctx.tool("relay.ticket.mint", {
+      internal: true,
+      description: "A Wink ticket with an offer sealed into its record (an invitation: kind, role, projects), or a ticket from a seed both ends derived (a typed code's key). Modules only; answers like relay.pair.ticket.",
+      input: obj({ seed: str, offer: { type: "object" } }),
+      run: async input => {
+        let seed;
+        if (input.seed !== undefined) {
+          if (typeof input.seed !== "string" || !/^[A-Za-z0-9_-]+$/.test(input.seed)) throw fail("bad_input", "the seed is base64url");
+          seed = Buffer.from(input.seed, "base64url");
+          if (seed.length < TICKET_BYTES || seed.length > 32) throw fail("bad_input", `the seed is ${TICKET_BYTES} to 32 bytes`);
+        }
+        let offer;
+        if (input.offer !== undefined) {
+          offer = JSON.parse(JSON.stringify(input.offer));
+          if (JSON.stringify(offer).length > 2048) throw fail("bad_input", "the offer is at most 2 KB");
+        }
+        const minted = await mintTicket(seed, offer ? { offer } : {});
+        return seed ? { expiresAt: minted.expiresAt, connected: minted.connected, confirmed: minted.confirmed } : minted;
+      },
+    });
+    ctx.tool("relay.code.alloc", {
+      internal: true,
+      description: "Ask the relay for a free typed-code rendezvous for this box (5 minutes, one at a time). Answers { rv, exp }, or null when the relay is busy, away or has no typed codes. Modules only.",
+      input: obj(),
+      run: async () => { await keys.ready(); if (!settings().enabled) save({ enabled: true }); startLink(); if (link) await link.ready(); return (link && link.codes() ? await link.codeAlloc() : null); },
+    });
+    ctx.tool("relay.code.release", {
+      internal: true,
+      description: "Give the typed-code rendezvous back. Modules only.",
+      input: obj(),
+      run: async () => { link?.codeRelease(); return { released: true }; },
+    });
+    ctx.tool("relay.code.reply", {
+      internal: true,
+      description: "Answer a typed code's message (the relay.code-asked event): q is its id, m the reply in base64url, or none to refuse. Modules only.",
+      input: obj({ q: str, m: str }, ["q"]),
+      run: async input => { link?.codeReply(String(input.q), typeof input.m === "string" ? input.m : null); return { sent: true }; },
+    });
 
     ctx.tool("relay.pair.ticket", {
       description: "Mint a one-time pairing ticket for the Vyre code (Wink): a phone that scans it resolves the box's identity from the relay, then pairs exactly as relay.pair.start's QR does. Works once, for 5 minutes; call again for a fresh one (an old, unused ticket is simply left to expire, unlike relay.pair.start's single live QR). Not available on a Mac yet: see vyre-core (ADR 0040).",
@@ -893,6 +943,16 @@ export default {
         const id = String(input.id);
         if (!forget(id, "removed")) throw fail("not_found", `no paired device ${id}`);
         return { removed: id };
+      },
+    });
+
+    // The same removal for another module (wink: one removal of a device closes its connections). It needs no person: the module already holds the owner's say.
+    ctx.tool("relay.devices.drop", {
+      description: "Close a paired device's connections and refuse it from now on, for a module that has just removed it for the owner.",
+      input: obj({ id: str }, ["id"]),
+      run: async input => {
+        const id = String(input.id);
+        return { closed: forget(id, "removed"), id };
       },
     });
 
@@ -1159,7 +1219,7 @@ export default {
       internal: true,
       description: "This box's route id and route public key (base64url), for signing into the name directory. Modules only.",
       input: obj(),
-      run: async (_, meta) => { only(meta, ["names"], "the route id"); await keys.ready(); return { route: route(), pub: Buffer.from(k().route.pub).toString("base64url") }; },
+      run: async (_, meta) => { only(meta, ["names", "wink"], "the route id"); await keys.ready(); return { route: route(), pub: Buffer.from(k().route.pub).toString("base64url") }; },
     });
 
     ctx.tool("relay.route.sign", {

@@ -56,7 +56,7 @@ export const contact = {
     { name: "ssn", label: "SSN", kind: "sealed", seal: { level: "human", class: "us-ssn" } },
     { name: "acct", label: "Account number", kind: "sealed", seal: { level: "human", class: "bank-account" } },
     { name: "notes", label: "Notes", kind: "rich_text" },
-    { name: "matter", label: "Matter", kind: "ref", to: "matter" },
+    { name: "matter", label: "Matter", kind: "link", to: "matter" },
   ],
 };
 

@@ -34,6 +34,9 @@ import { callerKind, callerAllowed } from "../modules/index.js";
 import { open as openStore } from "../store/index.js";
 import { paths } from "../config/index.js";
 import { FAKE, TINI, SDK, noSdk, until, boot, terminalSession } from "./testing/boot.js";
+// The module harness here has no inference door: providers run on the legacy direct path. The door path is lib/door-bridge.test.js.
+process.env.VYRE_LEGACY_DIRECT_MODEL = "1";
+
 
 // ------------------------------------------------------------ pure parts
 
@@ -1361,7 +1364,7 @@ for (const driver of ["cli", "sdk"]) {
     await new Promise(r => srv.listen(0, "127.0.0.1", () => r(undefined)));
     t.after(() => { srv.closeAllConnections?.(); srv.close(); });
     const saved = process.env.VYRE_OPENROUTER_URL;
-    process.env.VYRE_OPENROUTER_URL = `http://127.0.0.1:${srv.address().port}`;
+    process.env.VYRE_LEGACY_DIRECT_MODEL = "1"; process.env.VYRE_OPENROUTER_URL = `http://127.0.0.1:${srv.address().port}`;
     t.after(() => { if (saved === undefined) delete process.env.VYRE_OPENROUTER_URL; else process.env.VYRE_OPENROUTER_URL = saved; });
     const w = await boot(t, { driver, sessions: { auth: "setup-token" }, vault: { "claude-setup-token": "fake-setup-value", "or-key": "sk-or" } });
     const acct = await w.tool("sessions.accounts.add", { provider: "openrouter", label: "Fallback", kind: "api-key", vault_item: "or-key" });
@@ -1383,7 +1386,7 @@ for (const driver of ["cli", "sdk"]) {
     await new Promise(r => srv.listen(0, "127.0.0.1", () => r(undefined)));
     t.after(() => { srv.closeAllConnections?.(); srv.close(); });
     const saved = process.env.VYRE_OPENROUTER_URL;
-    process.env.VYRE_OPENROUTER_URL = `http://127.0.0.1:${srv.address().port}`;
+    process.env.VYRE_LEGACY_DIRECT_MODEL = "1"; process.env.VYRE_OPENROUTER_URL = `http://127.0.0.1:${srv.address().port}`;
     t.after(() => { if (saved === undefined) delete process.env.VYRE_OPENROUTER_URL; else process.env.VYRE_OPENROUTER_URL = saved; });
     const w = await boot(t, { driver, vault: { "or-key": "sk-or" } });
     assert.equal((await w.tool("sessions.accounts.add", { provider: "openrouter", label: "Router", kind: "api-key", vault_item: "or-key" })).error, undefined);

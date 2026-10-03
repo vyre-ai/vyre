@@ -4,14 +4,15 @@
 import { isChain } from "./chain.js";
 import { KernelError } from "./errors.js";
 
-/** @param {{ authorizer: { authorize(i: any): Promise<any> }, log: any }} cfg */
+/** @param {{ authorizer: { authorize(i: any): Promise<any> }, log: any, enforce?: (chain: any, d: any) => void }} cfg */
 export function createGate(cfg) {
   const { authorizer, log } = cfg;
-  /** @param {any} chain @param {string} action @param {string} resource @param {{ quiet?: boolean, presence?: any, input_hash?: string }} [opts] */
+  /** @param {any} chain @param {string} action @param {string} resource @param {{ quiet?: boolean, presence?: any, input_hash?: string, probe?: boolean }} [opts] */
   async function gate(chain, action, resource, opts = {}) {
     if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
-    const d = await authorizer.authorize({ chain, action, resource, ...(opts.presence ? { presence: opts.presence } : {}), ...(opts.input_hash ? { input_hash: opts.input_hash } : {}) });
-    if (d.effect === "allow") return d;
+    const d = await authorizer.authorize({ chain, action, resource, ...(opts.presence ? { presence: opts.presence } : {}), ...(opts.input_hash ? { input_hash: opts.input_hash } : {}), ...(opts.probe ? { probe: true } : {}) });
+    // An act that was allowed is counted now (once, rate, meter), before anything runs. A probe (quiet) never counts.
+    if (d.effect === "allow") { if (!opts.quiet && cfg.enforce) cfg.enforce(chain, d); return d; }
     if (d.effect === "ask") throw Object.assign(new KernelError(d.reason, `${action} needs ${d.reason === "needs_presence" ? "presence" : "approval"}`), { decision: d.decision, obligations: d.obligations });
     if (!opts.quiet && d.obligations.some((/** @type {any} */ o) => o.type === "audit")) {
       try { log.append(chain, { type: "access.denied", sv: 1, subject: resource, data: { action, reason: d.reason }, prov: { decision: d.decision } }); } catch { /* the refusal stands even if the note cannot be written */ }
@@ -22,8 +23,8 @@ export function createGate(cfg) {
     try { await gate(chain, action, resource, { quiet: true }); return true; } catch { return false; }
   };
   /** The decision when allowed, else null: the caller needs the obligations (a field allow-list) as well as the yes. */
-  const check = async (/** @type {any} */ chain, /** @type {string} */ action, /** @type {string} */ resource) => {
-    try { return await gate(chain, action, resource, { quiet: true }); } catch { return null; }
+  const check = async (/** @type {any} */ chain, /** @type {string} */ action, /** @type {string} */ resource, /** @type {{ probe?: boolean }} */ o = {}) => {
+    try { return await gate(chain, action, resource, { quiet: true, ...(o.probe ? { probe: true } : {}) }); } catch { return null; }
   };
   return { gate, allowed, check };
 }

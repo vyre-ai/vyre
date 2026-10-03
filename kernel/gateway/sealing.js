@@ -10,12 +10,13 @@ import { isChain } from "../core/chain.js";
 import { KernelError } from "../core/errors.js";
 import { createGate } from "../core/gate.js";
 import { segments } from "../core/urn.js";
+import { sha256 } from "../core/canonical.js";
 import { recipientsOf } from "../seal/process.js";
 
 const APPROVAL_MAX_AGE = 24 * 3600_000;
 
 /**
- * @param {{ space: string, sealer: any, authorizer: any, log: any, door?: any,
+ * @param {{ enforce?: (chain: any, d: any) => void, space: string, sealer: any, authorizer: any, log: any, door?: any,
  *   clock?: () => number, approval_max_age?: number,
  *   approvals?: { get(id: string): Promise<{ approver_chain: any, proof: any, template: string, template_version: number, record: string, bindings: { slot: string, ref: string }[] } | null> },
  *   templates?: { get(urn: string, version: number): Promise<{ body: string } | null> },
@@ -23,7 +24,7 @@ const APPROVAL_MAX_AGE = 24 * 3600_000;
  */
 export function createSealing(cfg) {
   const { sealer, door } = cfg;
-  const { gate } = createGate({ authorizer: cfg.authorizer, log: cfg.log });
+  const { gate } = createGate({ authorizer: cfg.authorizer, log: cfg.log, enforce: cfg.enforce });
   const mustChain = (/** @type {any} */ c) => { if (!isChain(c)) throw new KernelError("bad_input", "a call needs a kernel-built chain"); };
   const mustRecord = (/** @type {any} */ u) => { const s = segments(u); if (!s || s[0] !== cfg.space || s.length < 3) throw new KernelError("bad_input", "bad record"); };
   const mapErr = (/** @type {any} */ e) => (e instanceof KernelError ? e : new KernelError(typeof e?.code === "string" ? e.code : "unavailable", "sealing refused"));
@@ -34,7 +35,7 @@ export function createSealing(cfg) {
     const ap = await need(cfg.approvals, "approvals").get(i.approval);
     if (!ap || ap.record !== i.record) throw new KernelError("not_found", "no such approval");
     mustChain(ap.approver_chain);
-    if (ap.doer && !sameActor(chain.hops[chain.hops.length - 1].actor, ap.doer)) throw new KernelError("not_found", "no such approval");
+    if (!ap.doer || !sameActor(chain.hops[chain.hops.length - 1].actor, ap.doer)) throw new KernelError("not_found", "no such approval");
     if (typeof ap.approved_at === "number" && (cfg.clock || Date.now)() - ap.approved_at > (cfg.approval_max_age ?? APPROVAL_MAX_AGE)) throw new KernelError("not_found", "that approval has expired");
     return ap;
   }
@@ -65,6 +66,8 @@ export function createSealing(cfg) {
       const ap = await approvalFor(chain, i);
       const tpl = await need(cfg.templates, "templates").get(ap.template, ap.template_version);
       if (!tpl) throw new KernelError("not_found", "no such template version");
+      // A template version is immutable: the body that is merged is the body the approver's payload hashed (K4 template immutability).
+      if (cfg.approvals && ap.template_hash !== undefined && (ap.template_hash === null || sha256(tpl.body) !== ap.template_hash)) throw new KernelError("not_found", "the template is not the one that was approved");
       const destination = await need(cfg.destinations, "destinations").resolve(i.record, i.destination);
       if (!destination) throw new KernelError("not_found", "no verified destination");
       return run(() => sealer.api.use({ chain, approver_chain: ap.approver_chain, bindings: ap.bindings, body: tpl.body, template: ap.template, template_version: ap.template_version, destination, proof: ap.proof }));

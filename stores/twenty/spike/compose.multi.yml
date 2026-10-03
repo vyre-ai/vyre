@@ -1,0 +1,61 @@
+name: twmulti
+x-twenty-env: &tenv
+  PG_DATABASE_URL: postgres://postgres:${PG_DATABASE_PASSWORD}@db:5432/default
+  SERVER_URL: http://twenty.internal:3000
+  FRONTEND_URL: http://twenty.internal:3000
+  IS_MULTIWORKSPACE_ENABLED: "true"
+  DEFAULT_SUBDOMAIN: app
+  REDIS_URL: redis://redis:6379
+  APP_SECRET: ${APP_SECRET}
+  ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+  OUTBOUND_HTTP_ALLOWED_INTERNAL_HOSTS: gateway-a,gateway-b
+  API_RATE_LIMITING_SHORT_LIMIT: "2000"
+  API_RATE_LIMITING_LONG_LIMIT: "100000"
+  DISABLE_CRON_JOBS_REGISTRATION: "true"
+  IS_WORKSPACE_CREATION_LIMITED_TO_SERVER_ADMINS: "false"
+services:
+  server:
+    image: twentycrm/twenty:${TAG}
+    networks: {store: {aliases: [twenty.internal, app.twenty.internal, harlow.twenty.internal, northwind.twenty.internal]}}
+    volumes: [server-data:/app/packages/twenty-server/.local-storage, "./empty-front:/app/packages/twenty-server/dist/front:ro"]
+    environment: {<<: *tenv, NODE_PORT: 3000}
+    depends_on: {db: {condition: service_healthy}, redis: {condition: service_healthy}}
+    healthcheck: {test: "curl --fail http://localhost:3000/healthz", interval: 5s, timeout: 5s, retries: 80}
+  worker:
+    image: twentycrm/twenty:${TAG}
+    networks: [store]
+    command: ["yarn","worker:prod"]
+    volumes: [server-data:/app/packages/twenty-server/.local-storage]
+    environment: {<<: *tenv, DISABLE_DB_MIGRATIONS: "true"}
+    depends_on: {server: {condition: service_healthy}}
+  db:
+    image: postgres:16
+    networks: [store]
+    volumes: [db-data:/var/lib/postgresql/data]
+    environment: {POSTGRES_DB: default, POSTGRES_USER: postgres, POSTGRES_PASSWORD: "${PG_DATABASE_PASSWORD}"}
+    healthcheck: {test: "pg_isready -U postgres -h localhost -d default", interval: 5s, timeout: 5s, retries: 10}
+  redis:
+    image: redis:7
+    networks: [store]
+    command: ["--maxmemory-policy","noeviction"]
+    healthcheck: {test: ["CMD","redis-cli","ping"], interval: 5s, timeout: 5s, retries: 10}
+  gateway-a:
+    image: node:22-alpine
+    working_dir: /gw
+    command: ["node","gateway.mjs"]
+    volumes: ["./gw:/gw", "gwa-data:/data"]
+    ports: ["127.0.0.1:4001:4000"]
+    environment: {TWENTY_URL: "http://harlow.twenty.internal:3000", GW_DATA: /data, GW_HOOK_URL: "http://gateway-a:4000/_twenty/webhook"}
+    networks: [store, default]
+  gateway-b:
+    image: node:22-alpine
+    working_dir: /gw
+    command: ["node","gateway.mjs"]
+    volumes: ["./gw:/gw", "gwb-data:/data"]
+    ports: ["127.0.0.1:4002:4000"]
+    environment: {TWENTY_URL: "http://northwind.twenty.internal:3000", GW_DATA: /data, GW_HOOK_URL: "http://gateway-b:4000/_twenty/webhook"}
+    networks: [store, default]
+networks:
+  store: {internal: true}
+  default: {}
+volumes: {db-data: {}, server-data: {}, gwa-data: {}, gwb-data: {}}

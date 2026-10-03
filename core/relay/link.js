@@ -24,6 +24,7 @@ const closeCode = code => code === 1000 || (code >= 3000 && code <= 4999) ? code
  *   admit: (devicePub: Buffer, hello: any) => Promise<any>,
  *   onchannel: (channel: import("./channel.js").Channel, info: { hello: any, reply: any }) => void,
  *   onstate?: (state: "connected"|"disconnected", why?: string) => void,
+ *   oncode?: (msg: { q: string, rv: string, s: string, n: number, m: string }) => void,
  *   log?: (m: string) => void, WebSocket?: any, pingMs?: number }} o
  */
 export function relayLink(o) {
@@ -73,6 +74,8 @@ export function relayLink(o) {
     const fn = status => { clearTimeout(t); resolve(status); };
     list.push(fn);
   });
+  /** Waiters for the relay's answer to a typed-code allocation (spec 6.5). @type {Array<(a: { rv: string, exp: number } | null) => void>} */
+  let codeWaiters = [];
   const flushRegs = () => {
     if (!control) return;
     for (const r of pendingRegs.splice(0)) { try { control.send(JSON.stringify({ t: "ticket", ...r })); } catch {} }
@@ -126,6 +129,8 @@ export function relayLink(o) {
         for (const c of Array.isArray(m.waiting) ? m.waiting : []) openData(String(c));
       } else if (m.t === "revoked") { for (const f of revokeAnswers.get(String(m.loc)) || []) f(Number(m.status)); revokeAnswers.delete(String(m.loc)); }
       else if (m.t === "registered") { for (const f of answers.get(String(m.loc)) || []) f(Number(m.status)); answers.delete(String(m.loc)); }
+      else if (m.t === "code.allocated") { const a = m.error ? null : { rv: String(m.rv), exp: Number(m.exp) }; for (const f of codeWaiters.splice(0)) f(a); }
+      else if (m.t === "code.msg") { try { o.oncode?.({ q: String(m.q), rv: String(m.rv), s: String(m.s), n: Number(m.n), m: String(m.m) }); } catch (err) { log(`relay: code handler failed: ${/** @type {Error} */ (err).message}`); } }
       else if (m.t === "open") openData(String(m.c));
       else if (m.t === "close") { data.get(String(m.c))?.close(1000); data.delete(String(m.c)); }
     };
@@ -156,6 +161,7 @@ export function relayLink(o) {
     ws.binaryType = "arraybuffer";
     data.set(c, ws);
     const side = boxSide({
+      get bufferedAmount() { return ws.bufferedAmount; },
       send: bytes => { try { ws.send(bytes); } catch {} },
       close: (code, reason) => { try { ws.close(closeCode(code), String(reason || "").slice(0, 120)); } catch {} },
     }, { s: o.boxKey, route: o.route, admit: o.admit });
@@ -201,6 +207,26 @@ export function relayLink(o) {
       try { control.send(JSON.stringify({ t: "revoke", loc })); } catch {}
       return a;
     },
+    /** Whether the relay this link is on has the typed-code rendezvous. */
+    codes() { return relayFeatures.includes("code"); },
+    /** Ask the relay for a free typed-code rendezvous (5 minutes; this box holds at most one, a new ask replaces it).
+     * Resolves { rv, exp }, or null when the relay is busy, does not answer in 5 seconds, or the link is down.
+     * @returns {Promise<{ rv: string, exp: number } | null>} */
+    codeAlloc() {
+      if (!control || !connected) return Promise.resolve(null);
+      return new Promise(resolve => {
+        const t = setTimeout(() => { codeWaiters = codeWaiters.filter(f => f !== fn); resolve(null); }, 5000);
+        t.unref?.();
+        const fn = a => { clearTimeout(t); resolve(a); };
+        codeWaiters.push(fn);
+        try { control.send(JSON.stringify({ t: "code.alloc" })); } catch {}
+      });
+    },
+    /** Give the rendezvous back. */
+    codeRelease() { try { control?.send(JSON.stringify({ t: "code.release" })); } catch {} },
+    /** Answer a message `oncode` delivered: `m` (base64url) is the reply; null refuses it. The relay gives the typing device one generic answer for a refusal.
+     * @param {string} q @param {string|null} m */
+    codeReply(q, m) { try { control?.send(JSON.stringify(m ? { t: "code.reply", q, m } : { t: "code.reply", q })); } catch {} },
     /** Register a setup offer's locator (tailnet plan 3.6): same fields, kept until dropSetup and
      * sent again after every reconnect. Resolves as registerTicket does; 409 means another server
      * used this code first, and the offer is dropped here so it is never re-sent.

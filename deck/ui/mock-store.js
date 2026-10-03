@@ -218,7 +218,8 @@ export function createMockStore(opts = {}) {
     async types(space) { return clone(space ? types.filter(t => TYPE_SPACE[t.name] === space) : types); },
     async list(type, q = {}) {
       let rows = [...records.entries()].filter(([urn, r]) => r.type === type && (!q.space || spaceOfUrn(urn) === q.space));
-      if (q.filter) rows = rows.filter(([, r]) => matchFilter(r.data, q.filter));
+      const flt = q.filter;
+      if (flt) rows = rows.filter(([, r]) => matchFilter(r.data, flt));
       if (q.sort?.length) rows.sort(([, a], [, b]) => { for (const s of /** @type {any[]} */ (q.sort)) { const c = cmp(a.data[s.field], b.data[s.field]) * (s.dir === "desc" ? -1 : 1); if (c) return c; } return 0; });
       return rows.map(([urn, r]) => shaped(r, urn));
     },

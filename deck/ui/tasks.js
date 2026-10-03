@@ -378,7 +378,7 @@ export function spawnStage(templates, ctx) {
   for (const t of templates) {
     const task = made.find(m => m.title === fill(t.title));
     if (!task) continue;
-    task.depends_on = (t.depends_on || []).map(d => byTitle.get(/** @type {string} */ (fill(d)))).filter(/** @returns {x is string} */ x => !!x);
+    /** @type {any} */ (task).depends_on = (t.depends_on || []).map(d => byTitle.get(/** @type {string} */ (fill(d)))).filter(/** @returns {x is string} */ x => !!x);
   }
   return unblock(made).tasks;
 }

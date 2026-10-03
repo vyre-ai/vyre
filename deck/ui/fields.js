@@ -421,6 +421,7 @@ function listKind(inputKind, word) {
     ops: containsOps, test: textTest, sort: lower,
   };
 }
+registry.url = { ...registry.text, label: "Web address" };
 registry.phones = { label: "Phone numbers", ...listKind("phone", "phone") };
 registry.emails = { label: "Email addresses", ...listKind("email", "email") };
 registry.urls = { label: "Web addresses", ...listKind("url", "url") };

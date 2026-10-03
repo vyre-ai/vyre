@@ -33,7 +33,7 @@ const G = (a, actions) => ({ id: `gr_${String(++gid).padStart(4, "0")}`, space: 
 function rig(over = {}) {
   const people = [OWNER, ALICE, BOB];
   const agents = ["research", "intake", "rogue"];
-  const grants = [...people.map(p => G(actor("person", p), ["tasks.*", "seal.put", "seal.use", "seal.deliver"])), ...agents.map(a => G(actor("agent", a), ["tasks.work", "tasks.read", "seal.use", "email.send"]))];
+  const grants = [G(actor("service", "tasks"), ["tasks.request", "tasks.read"]), ...people.map(p => G(actor("person", p), ["tasks.*", "seal.put", "seal.use", "seal.deliver"])), ...agents.map(a => G(actor("agent", a), ["tasks.work", "tasks.read", "seal.use", "email.send"]))];
   const members = new Set([...people.map(p => `person:${p}`), ...agents.map(a => `agent:${a}`), "service:tasks"]);
   const keys = {};
   // The one verifier is vault's Presence class (what the sealing process runs); the rig wraps it the way the process's presence.check does.
@@ -54,7 +54,7 @@ function rig(over = {}) {
     space: SPACE, authorizer, log, presence, chains, clock,
     members: { has: a => members.has(`${a.kind}:${a.id}`) }, roleHolders: r => state.roles[r] || [], approver: () => actor("person", OWNER),
     responsible: (p, doer) => p.id === OWNER, responsibleFor: () => actor("person", OWNER),
-    resolve: { contact: async (record, address) => address === "verified@example.com", sealed: async ref => (ref === "sv_1" ? { class: "us-ssn" } : null) },
+    resolve: { template: async (id, v) => (v === 1 ? { body: "Hello {{sealed:ssn}}" } : null), contact: async (record, address) => address === "verified@example.com", sealed: async ref => (ref === "sv_1" ? { class: "us-ssn", record: `vyre://${SPACE}/contact/c1` } : null) },
     facts: { record: async () => ({ data: { size: 12, partner: "x", empty: "" } }), exists: async u => u.startsWith("vyre://") },
     release: async (t, body, by) => { if (over.releaseDelay) await new Promise(res => setTimeout(res, over.releaseDelay)); if (over.releaseFails) throw new Error("smtp down"); released.push({ id: t.id, body, by }); },
   });
@@ -69,6 +69,7 @@ const draftTask = (over = {}) => ({ title: "Welcome email for Jane Doe", doer: a
 const payload = (over = {}) => ({ what: "the welcome email", recipients: [{ address: "jane@example.com", verified: false, record: `vyre://${SPACE}/contact/c1` }], template: { id: `vyre://${SPACE}/template/welcome`, version: 1 }, account: "firm-mail", ...over });
 const evidenceSent = (over = {}) => ({ payload: payload(), action: "email.send", resource: `vyre://${SPACE}/message/m1`, ...over });
 const asIntake = () => agentChain("intake");
+const kernelSvc = () => chains.fromFacts({ kind: "module", module: "tasks", first_party: true });
 
 async function toNeedsCheck(r, spec = draftTask(), ev = evidenceSent()) {
   const t = await r.tasks.request(owner(), spec);
@@ -147,7 +148,7 @@ test("complete: a guarded task waits for its checker with a payload the kernel h
   const r = rig();
   const t = await toNeedsCheck(r);
   assert.equal(t.state, "needs_check");
-  assert.equal(t.payload.payload_hash, sha256(canonical({ action: "email.send", resource: `vyre://${SPACE}/message/m1`, payload: payload(), facts: { recipients: [{ address: "jane@example.com", record: `vyre://${SPACE}/contact/c1`, verified: false }], sealed: [] } })));
+  assert.equal(t.payload.payload_hash, sha256(canonical({ action: "email.send", resource: `vyre://${SPACE}/message/m1`, payload: payload(), facts: { recipients: [{ address: "jane@example.com", record: `vyre://${SPACE}/contact/c1`, verified: false }], sealed: [], template: { id: `vyre://${SPACE}/template/welcome`, version: 1, hash: sha256("Hello {{sealed:ssn}}") } } })));
   assert.match(t.payload.decision, /^dec_/);
   const ev = r.log.read({ type: "task.needs-check" })[0];
   assert.equal(ev.data.payload_hash, t.payload.payload_hash);
@@ -248,16 +249,16 @@ test("stuck: the doer's fix is quoted text with no power; three refusals make th
   const k = await r.tasks.request(owner(), draftTask({ checker: undefined, output: { kind: "note" }, doer: actor("agent", "research") }));
   await r.tasks.start(agentChain("research"), k.id);
   const d = { action: "billing.read", resource: `vyre://${SPACE}/billing/*` };
-  assert.equal((await r.tasks.observeDenial(k.id, d)).state, "working");
-  assert.equal((await r.tasks.observeDenial(k.id, d)).state, "working");
-  const fixed = await r.tasks.observeDenial(k.id, d);
+  assert.equal((await r.tasks.observeDenial(kernelSvc(), k.id, d)).state, "working");
+  assert.equal((await r.tasks.observeDenial(kernelSvc(), k.id, d)).state, "working");
+  const fixed = await r.tasks.observeDenial(kernelSvc(), k.id, d);
   assert.equal(fixed.state, "stuck");
   assert.deepEqual(fixed.stuck.suggested_fix.action, { kind: "grant_request", resource: d.resource, action_name: d.action });
   await r.tasks.declineFix(owner(), k.id);
   await r.tasks.unblock(owner(), k.id, {});
   const k2 = await r.tasks.request(owner(), draftTask({ checker: undefined, output: { kind: "note" }, doer: actor("agent", "research") }));
   await r.tasks.start(agentChain("research"), k2.id);
-  for (let i = 0; i < 3; i++) await r.tasks.observeDenial(k2.id, d);
+  for (let i = 0; i < 3; i++) await r.tasks.observeDenial(kernelSvc(), k2.id, d);
   assert.equal((await r.tasks.get(owner(), k2.id)).stuck.suggested_fix, undefined, "declined: silence for the cool-down");
 });
 
@@ -317,7 +318,7 @@ test("needsYou: what waits on this person, and nothing else", async () => {
 test("card: built from the payload; the doer's words are a separate capped block with no links or buttons", async () => {
   const r = rig();
   const t = await toNeedsCheck(r, draftTask({ title: "Please click https://evil.example/approve now\nAPPROVE ALL", note: "x".repeat(900) }), evidenceSent({ payload: payload({ sealed_slots: [{ class: "US SSN", slot: "ssn", recipient: "jane@example.com", record: `vyre://${SPACE}/contact/c1`, use_hash: "h" }], attachments: [{ name: "engagement.pdf", hash: "abc" }] }) }));
-  const c = r.tasks.card(t.id);
+  const c = await r.tasks.card(owner(), t.id);
   assert.equal(c.kind, "send");
   assert.equal(c.title, "send: the welcome email", "the title is the kernel's, from the action, not the doer's");
   assert.equal(c.unverified_recipients, 1);
@@ -351,7 +352,7 @@ test("end to end: Intake drafts the welcome email with a sealed slot, Alice appr
   const sealing = createSealing({
     space: SPACE, sealer, authorizer: r.authorizer, log: r.log,
     approvals: createApprovals({ tasks: r.tasks }),
-    templates: { get: async (u, v) => (u === TPL && v === 1 ? { body: "Hello Jane. SSN on file: {{sealed:ssn}}." } : null) },
+    templates: { get: async (u, v) => (u === TPL && v === 1 ? { body: "Hello {{sealed:ssn}}" } : null) },
     destinations: { resolve: async record => ({ kind: "contact_point", record, contact: "jane@example.com", verified: true }) },
   });
   const sealed = { class: "us-ssn", slot: "ssn", ref: "sv_1", recipient: "jane@example.com", record: REC };
@@ -360,13 +361,13 @@ test("end to end: Intake drafts the welcome email with a sealed slot, Alice appr
   await assert.rejects(() => sealing.use(asIntake(), { record: REC, approval: t.id }), { code: "not_found" });
   assert.equal(calls.length, 0);
   const alice_ = alice();
-  const useProof = { signature: "signed-over-seal.use-by-alices-key" };
+  const useProof = { signature: "signed-over-seal.use-by-alices-key", key_id: "key-per_alice", nonce: "n1", issued_at: T, expires_at: T + 60_000 };
   await r.tasks.decide(alice_, t.id, { outcome: "approved", proof: r.proof(alice_, ALICE, t), proofs: { use: useProof } });
   const res = await sealing.use(asIntake(), { record: REC, approval: t.id });
   assert.equal(res.merged, true);
   assert.equal(calls.length, 1);
   assert.deepEqual(calls[0].bindings, [{ slot: "ssn", ref: "sv_1" }]);
-  assert.equal(calls[0].body, "Hello Jane. SSN on file: {{sealed:ssn}}.");
+  assert.equal(calls[0].body, "Hello {{sealed:ssn}}");
   assert.equal(calls[0].proof, useProof);
   assert.equal(calls[0].approver_chain, alice_, "the approver is the person who approved, not the assistant");
   assert.equal(calls[0].destination.contact, "jane@example.com");
@@ -399,7 +400,7 @@ test("K4-2: the kernel's skip proposal has no doer to rewrite it, and its card s
   await assert.rejects(() => r.tasks.revise(asIntake(), proposal.id, "x"), { code: "not_allowed" });
   await assert.rejects(() => r.tasks.start(asIntake(), proposal.id), { code: "not_allowed" });
   await assert.rejects(() => r.tasks.complete(asIntake(), proposal.id, { answer: "yes", reason: "x" }), { code: "not_allowed" });
-  const c = r.tasks.card(proposal.id);
+  const c = await r.tasks.card(owner(), proposal.id);
   assert.equal(c.kind, "skip");
   assert.match(c.title, /^Skip this task: /);
 });
@@ -407,7 +408,7 @@ test("K4-2: the kernel's skip proposal has no doer to rewrite it, and its card s
 test("K4-3: a doer-marked verified recipient or class shows as the kernel resolved it", async () => {
   const r = rig();
   const t = await toNeedsCheck(r, draftTask(), evidenceSent({ payload: payload({ recipients: [{ address: "evil@attacker.test", verified: true, record: `vyre://${SPACE}/contact/c1` }, { address: "verified@example.com", verified: false, record: `vyre://${SPACE}/contact/c1` }], sealed_slots: [{ class: "free", slot: "ssn", ref: "sv_1", record: `vyre://${SPACE}/contact/c1` }] }) }));
-  const c = r.tasks.card(t.id);
+  const c = await r.tasks.card(owner(), t.id);
   assert.deepEqual(c.recipients.map(x => [x.address, x.verified]), [["evil@attacker.test", false], ["verified@example.com", true]]);
   assert.equal(c.unverified_recipients, 1);
   assert.equal(c.sealed[0].class, "us-ssn");
@@ -421,7 +422,7 @@ test("K4-4 and 5: action and resource are part of the hash, and the body is a fr
   const ev = evidenceSent();
   const t = await toNeedsCheck(r, draftTask(), ev);
   ev.payload.recipients[0].address = "changed@x.test";
-  assert.equal(r.tasks.card(t.id).recipients[0].address, "jane@example.com");
+  assert.equal((await r.tasks.card(owner(), t.id)).recipients[0].address, "jane@example.com");
   await r.tasks.decide(alice(), t.id, { outcome: "approved", proof: r.proof(alice(), ALICE, t) });
   assert.equal(r.released[r.released.length - 1].body.payload.recipients[0].address, "jane@example.com");
   const bad = await r.tasks.request(owner(), draftTask());
@@ -441,4 +442,105 @@ test("K4-11: revise goes through the table (a doer row)", async () => {
   const t = await toNeedsCheck(r);
   await assert.rejects(() => r.tasks.revise(agentChain("research"), t.id, "x"), { code: "not_allowed" });
   assert.equal((await r.tasks.revise(asIntake(), t.id, "more")).state, "ready");
+});
+
+test("stageTasks: the kernel's view of a record's stage tasks is held beside the api, not on it", async () => {
+  const { stageTasks } = await import("./tasks.js");
+  const r = rig();
+  const rec = `vyre://${SPACE}/deal/d1`;
+  const t = await r.tasks.request(owner(), { title: "Research", doer: actor("agent", "research"), output: { kind: "note" }, record: rec, stage: "Intake", required: true });
+  assert.deepEqual(stageTasks(r.tasks, rec, "Intake"), [{ title: "Research", state: "ready", required: true }]);
+  assert.deepEqual(stageTasks(r.tasks, rec, "Drafting"), []);
+  assert.equal("stageTasks" in r.tasks, false);
+  assert.ok(t);
+});
+
+
+test("K4-10, 12 and template immutability: card and observeDenial are chain-gated, a malformed use proof is refused at decide, the approved body carries the template hash", async () => {
+  const r = rig();
+  const t = await toNeedsCheck(r, draftTask(), evidenceSent({ payload: payload({ template: { id: `vyre://${SPACE}/template/welcome`, version: 1 }, sealed_slots: [{ slot: "ssn", ref: "sv_1", record: `vyre://${SPACE}/contact/c1` }] }) }));
+  await assert.rejects(() => r.tasks.card(agentChain("ghost"), t.id), { code: "not_found" }, "no tasks.read, no card");
+  await assert.rejects(() => r.tasks.observeDenial(owner(), t.id, { action: "x", resource: "y" }), { code: "not_allowed" });
+  await assert.rejects(() => r.tasks.decide(alice(), t.id, { outcome: "approved", proof: r.proof(alice(), ALICE, t), proofs: { use: { garbage: true } } }), { code: "bad_input" });
+  await assert.rejects(() => r.tasks.decide(alice(), t.id, { outcome: "approved", proof: r.proof(alice(), ALICE, t), proofs: { use: { signature: "s", key_id: "k", nonce: "n", issued_at: 1, expires_at: 2 } } }), { code: "bad_input" }, "an expired use proof");
+  await r.tasks.decide(alice(), t.id, { outcome: "approved", proof: r.proof(alice(), ALICE, t) });
+  const ap = r.tasks.approvalFor(t.id);
+  assert.equal(ap.body.facts.template.hash, sha256("Hello {{sealed:ssn}}"));
+});
+
+
+test("N1 and N2: delivery recipients are the ones on the card, the sink is shown, and a slot must belong to the record its ref names", async () => {
+  const r = rig();
+  const rec = `vyre://${SPACE}/contact/c1`;
+  const mk = async over => { const t = await r.tasks.request(owner(), draftTask()); await r.tasks.start(asIntake(), t.id); return [t, over]; };
+  const ev = over => evidenceSent({ payload: payload({ template: { id: `vyre://${SPACE}/template/welcome`, version: 1 }, sealed_slots: [{ slot: "ssn", ref: "sv_1", record: rec }], ...over }) });
+  let [t] = await mk();
+  await assert.rejects(() => r.tasks.complete(asIntake(), t.id, ev({ delivery: { sink: "mail", to: ["attacker@evil.test"] } })), { code: "bad_input" }, "a hidden address");
+  await assert.rejects(() => r.tasks.complete(asIntake(), t.id, ev({ delivery: { sink: "mail", bcc: ["x@y.test"] } })), { code: "bad_input" });
+  const done = await r.tasks.complete(asIntake(), t.id, ev({ delivery: { sink: "mail", to: ["jane@example.com"] } }));
+  assert.equal((await r.tasks.card(owner(), done.id)).sink, "mail");
+  await r.tasks.decide(alice(), done.id, { outcome: "approved", proof: r.proof(alice(), ALICE, done) });
+  const ap = r.tasks.approvalFor(done.id);
+  assert.deepEqual(ap.body.facts.recipients.map(x => x.address), ["jane@example.com"]);
+  [t] = await mk();
+  await assert.rejects(() => r.tasks.complete(asIntake(), t.id, evidenceSent({ payload: payload({ sealed_slots: [{ slot: "ssn", ref: "sv_1", record: `vyre://${SPACE}/contact/c2` }] }) })), { code: "bad_input" });
+  const t2 = await r.tasks.request(owner(), draftTask({ record: `vyre://${SPACE}/contact/c2` }));
+  await r.tasks.start(asIntake(), t2.id);
+  await assert.rejects(() => r.tasks.complete(asIntake(), t2.id, evidenceSent({ payload: payload({ sealed_slots: [{ slot: "ssn", ref: "sv_1", record: `vyre://${SPACE}/contact/c2` }] }) })), { code: "bad_input" }, "the ref belongs to c1, the slot says c2");
+});
+
+test("sessions bug: a required task with no checker completes on the kernel's output check; required only makes a skip a proposal", async () => {
+  const r = rig();
+  const t = await r.tasks.request(owner(), { title: "Research", doer: actor("agent", "research"), output: { kind: "note" }, required: true });
+  await r.tasks.start(agentChain("research"), t.id);
+  const done = await r.tasks.complete(agentChain("research"), t.id, { note: "found it", sources: ["https://x"] });
+  assert.equal(done.state, "done", "no checker, no outward output: nothing to wait for");
+  const s = await r.tasks.request(owner(), { title: "Optional", doer: actor("agent", "research"), output: { kind: "note" }, required: true });
+  const sk = await r.tasks.skip(agentChain("research"), s.id, "not needed");
+  assert.ok(sk.proposal, "a skip of a required task is still a proposal for a person");
+});
+
+test("continue_in_space is a task source only from a service chain; flow and form travel as opaque, capped data", async () => {
+  const r = rig();
+  await assert.rejects(() => r.tasks.request(owner(), draftTask({ source: "continue_in_space" })), { code: "bad_input" }, "not a person's");
+  await assert.rejects(() => r.tasks.request(asIntake(), draftTask({ source: "continue_in_space" })), /./, "not a model's");
+  const svc = chains.fromFacts({ kind: "module", module: "tasks", first_party: true });
+  const made = await r.tasks.request(svc, { title: "Continue in the Space", doer: actor("agent", "research"), output: { kind: "note" }, source: "continue_in_space" });
+  assert.equal(made.source, "continue_in_space");
+  const t = await r.tasks.request(owner(), draftTask({ flow: "fl_welcome", form: { fields: [{ name: "x", label: "X" }] } }));
+  assert.equal(t.flow, "fl_welcome");
+  assert.deepEqual(t.form, { fields: [{ name: "x", label: "X" }] });
+  assert.ok(Object.isFrozen(t.form));
+  await assert.rejects(() => r.tasks.request(owner(), draftTask({ form: { big: "x".repeat(9000) } })), { code: "bad_input" });
+});
+
+test("idempotency: a repeated key returns the first task and makes one; the same key with other input is a conflict", async () => {
+  const r = rig();
+  const a = await r.tasks.request(owner(), draftTask(), { idem: "step-1" });
+  const b = await r.tasks.request(owner(), draftTask(), { idem: "step-1" });
+  assert.equal(a.id, b.id);
+  assert.equal(r.log.read({ type: "task.created" }).length, 1);
+  await assert.rejects(() => r.tasks.request(owner(), draftTask({ title: "Another" }), { idem: "step-1" }), { code: "idem_conflict" });
+  const c = await r.tasks.request(owner(), draftTask(), { idem: "step-2" });
+  assert.notEqual(c.id, a.id);
+});
+
+test("approval on authorize: an approved held-act task allows exactly that act by its doer once, and nothing else", async () => {
+  const r = rig();
+  const t = await toNeedsCheck(r);
+  await r.tasks.decide(alice(), t.id, { outcome: "approved", proof: r.proof(alice(), ALICE, t) });
+  const act = { chain: asIntake(), action: "email.send", resource: `vyre://${SPACE}/message/m1` };
+  assert.equal((await r.authorizer.authorize(act)).effect, "ask", "without the approval an outward act asks");
+  assert.equal(r.tasks.approvedAct({ id: t.id, ...act }), true);
+  assert.equal(r.tasks.approvedAct({ id: t.id, ...act, resource: `vyre://${SPACE}/message/other` }), false, "another resource");
+  assert.equal(r.tasks.approvedAct({ id: t.id, ...act, chain: agentChain("rogue") }), false, "another doer");
+  assert.equal(r.tasks.approvedAct({ id: "nope", ...act }), false);
+  // A-4: the approval is spent by the decision that uses it, whoever asked, and it has a day to live
+  assert.equal(r.tasks.useApproval({ id: t.id, ...act }), true);
+  assert.equal(r.tasks.useApproval({ id: t.id, ...act }), false, "once");
+  assert.equal(r.tasks.approvedAct({ id: t.id, ...act }), false);
+  const t2 = await toNeedsCheck(r);
+  await r.tasks.decide(alice(), t2.id, { outcome: "approved", proof: r.proof(alice(), ALICE, t2) });
+  T += 25 * 3600_000;
+  assert.equal(r.tasks.useApproval({ id: t2.id, ...act }), false, "an approval older than 24 hours is no approval");
 });

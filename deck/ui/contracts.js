@@ -50,7 +50,7 @@
 /** @typedef {import("../../kernel/contracts/store.js").Filter} Filter */
 /** @typedef {import("../../kernel/contracts/store.js").Sort} Sort */
 /** @typedef {import("../../kernel/contracts/store.js").QuerySpec} QuerySpec */
-/** @typedef {import("../../kernel/contracts/store.js").Page} Page */
+/** @typedef {import("../../kernel/contracts/store.js").Page<GatewayRecord>} Page */
 /** @typedef {import("../../kernel/contracts/store.js").DefineDiff} DefineDiff */
 /** @typedef {import("../../kernel/contracts/store.js").DefineResult} DefineResult */
 /** @typedef {import("../../kernel/contracts/store.js").StoreError} StoreError */

@@ -6,6 +6,7 @@
 //   GET /v1/box?route=<id>                  the box's control socket, after a signed challenge
 //   GET /v1/box?route=<id>&c=<conn>&t=<ticket>   the box's data socket for one device connection
 //   GET /v1/device?route=<id>               a device; the relay tells the box, then pipes frames
+//   POST /v1/wink/code                      one step of a typed Wink code's PAKE, forwarded to the box that holds the rendezvous
 //   POST /v1/pair                           resolve a Wink ticket's or a setup offer's locator
 //   POST /v1/setup/mbx                      append a line to a setup progress mailbox (the install script)
 //   GET /v1/setup/mbx                       read it, long poll, signed by the setup page's key
@@ -16,7 +17,7 @@
 import http from "node:http";
 import crypto from "node:crypto";
 import { acceptKey, encodeFrame, FrameParser } from "../../core/computers/ws.js";
-import { LIMITS, CLOSE, ROUTE_RE, routeId, authMessage, verifyRoute, TICKET_TTL, SETUP_TTL, MBX_LINE_MAX, isP256Spki, setupFingerprint, verifyP256, mbxReadMessage } from "../../core/relay/wire.js";
+import { LIMITS, CLOSE, ROUTE_RE, routeId, authMessage, verifyRoute, TICKET_TTL, SETUP_TTL, MBX_LINE_MAX, isP256Spki, setupFingerprint, verifyP256, mbxReadMessage, CODE, CODE_ALPHABET, CODE_RV_RE, CODE_REFUSED } from "../../core/relay/wire.js";
 
 /** A fixed window per key (an IP, or the constant "*" for the global cap): true while under it. */
 function rateLimiter(max, windowMs) {
@@ -87,10 +88,10 @@ class Peer {
 }
 
 /**
- * @param {{ limits?: Partial<typeof LIMITS>, setup?: { maxBoxes?: number, createPerIp?: number }, log?: (event: string, x?: any) => void }} [o]
+ * @param {{ limits?: Partial<typeof LIMITS>, setup?: { maxBoxes?: number, createPerIp?: number }, code?: Partial<typeof CODE>, clientAddress?: (req: import("node:http").IncomingMessage) => string, log?: (event: string, x?: any) => void }} [o]
  */
 /** What this relay does that a box may rely on, told in `ready` (an older relay says nothing): `registered` answers every ticket registration with 200 or 409. */
-export const FEATURES = ["registered", "revoke"];
+export const FEATURES = ["registered", "revoke", "code"];
 
 export function createRelay(o = {}) {
   const limits = { ...LIMITS, ...(o.limits || {}) };
@@ -163,6 +164,96 @@ export function createRelay(o = {}) {
   // outsider sends can stop a real pairing, and a shared address cannot block one (GHSA-25xh-w9j7-7v28).
   const pairResolveLimitByIp = rateLimiter(30, 60_000);
 
+  // The typed Wink code's rendezvous (spec 6.5; relay/worker/index.js CodeSlot for the whole contract).
+  // A box asks, over its own control socket, for a free two-symbol rendezvous (5 minutes, one live code
+  // per box). A typing device POSTs a PAKE message under that rendezvous; the relay forwards it to the
+  // control socket of the route that allocated it and returns the box's answer, and nowhere else. It
+  // keeps no state for a rendezvous that is not live and nothing derived from a password: a message is
+  // an opaque string it passes along. A hit also names the route (the typist needs it for the transcript, see relay/client/code.js). Limits are per address, never global: every session (step 1)
+  // costs `sessionPerMin`, every later step `stepPerMin`, and a miss (no live rendezvous) `missPerMin`
+  // more. An unknown, closed or expired rendezvous, a refusal and a silent box all give one answer.
+  const codeCfg = { ...CODE, ...(o.code || {}) };
+  /** @type {Map<string, { route: string, exp: number }>} */
+  const codeSlots = new Map();
+  /** @type {Map<string, string>} route -> rendezvous */
+  const routeCode = new Map();
+  /** @type {Map<string, { route: string, done: (m: string|null) => void, timer: any }>} */
+  const codePending = new Map();
+  const codeSessionLimit = rateLimiter(codeCfg.sessionPerMin, 60_000);
+  const codeStepLimit = rateLimiter(codeCfg.stepPerMin, 60_000);
+  const codeMissLimit = rateLimiter(codeCfg.missPerMin, 60_000);
+  const codeAllocLimit = rateLimiter(codeCfg.allocPerMin, 60_000);
+  const addressOf = req => o.clientAddress ? o.clientAddress(req) : String(req.socket.remoteAddress || "");
+  const sweepCodes = () => { const now = Date.now(); for (const [rv, c] of codeSlots) if (c.exp <= now) { codeSlots.delete(rv); if (routeCode.get(c.route) === rv) routeCode.delete(c.route); } };
+  /** Frees a route's code and refuses what is waiting on it. @param {string} route */
+  const releaseCode = route => {
+    const rv = routeCode.get(route);
+    if (rv && codeSlots.get(rv)?.route === route) codeSlots.delete(rv);
+    routeCode.delete(route);
+    for (const [q, p] of codePending) if (p.route === route) { clearTimeout(p.timer); codePending.delete(q); p.done(null); }
+  };
+  /** A free rendezvous, random among the free ones, or null. @param {string} route */
+  const allocCode = route => {
+    sweepCodes();
+    releaseCode(route);
+    const free = [];
+    for (let i = 0; i < 1024; i++) { const rv = CODE_ALPHABET[i >> 5] + CODE_ALPHABET[i & 31]; if (!codeSlots.has(rv)) free.push(rv); }
+    if (!free.length) return null;
+    const rv = free[crypto.randomInt(free.length)];
+    const exp = Date.now() + codeCfg.ttl;
+    codeSlots.set(rv, { route, exp });
+    routeCode.set(route, rv);
+    return { rv, exp };
+  };
+  /** The box side of a code: allocate, release, and answer a forwarded message. */
+  function onCodeControl(route, peer, t) {
+    if (t.t === "code.alloc") {
+      if (!codeAllocLimit(route)) { peer.json({ t: "code.allocated", error: "busy" }); return; }
+      const a = allocCode(route);
+      peer.json(a ? { t: "code.allocated", rv: a.rv, exp: a.exp } : { t: "code.allocated", error: "busy" });
+    } else if (t.t === "code.release") releaseCode(route);
+    else if (t.t === "code.reply") {
+      const p = codePending.get(String(t.q));
+      // Only the route the message was forwarded to may answer it.
+      if (!p || p.route !== route) return;
+      clearTimeout(p.timer);
+      codePending.delete(String(t.q));
+      const m = typeof t.m === "string" && t.m.length > 0 && t.m.length <= codeCfg.msg && /^[A-Za-z0-9_-]+$/.test(t.m) ? t.m : null;
+      p.done(m);
+    }
+  }
+  const refused = res => { res.writeHead(404, { "content-type": "application/json" }); res.end(JSON.stringify(CODE_REFUSED)); };
+  function onCodeStep(req, res) {
+    const ip = addressOf(req);
+    let body = "";
+    let over = false;
+    req.on("data", c => { body += c; if (body.length > 1024) { over = true; req.destroy(); } });
+    req.on("end", () => {
+      if (over) return;
+      let m;
+      try { m = JSON.parse(body); } catch { reply(res, 400, { error: "bad request" }); return; }
+      const rv = String(m?.rv || ""), s = String(m?.s || ""), n = Number(m?.n), msg = String(m?.m || "");
+      if (!CODE_RV_RE.test(rv) || !/^[A-Za-z0-9_-]{22}$/.test(s) || (n !== 1 && n !== 3) || !/^[A-Za-z0-9_-]+$/.test(msg) || msg.length > codeCfg.msg) { reply(res, 400, { error: "bad request" }); return; }
+      // Charged to the address that asked, before anything is looked up, whether or not the code is live.
+      if (!(n === 1 ? codeSessionLimit(ip) : codeStepLimit(ip))) { reply(res, 429, { error: "too many tries; wait a minute" }); return; }
+      sweepCodes();
+      const slot = codeSlots.get(rv);
+      const control = slot && routes.get(slot.route)?.control;
+      if (!slot || !control) {
+        // A miss: charged again, to this address only. Nothing is created for it.
+        if (!codeMissLimit(ip)) { reply(res, 429, { error: "too many tries; wait a minute" }); return; }
+        refused(res); return;
+      }
+      if (codePending.size >= codeCfg.pending * 16 || [...codePending.values()].filter(p => p.route === slot.route).length >= codeCfg.pending) { refused(res); return; }
+      const q = crypto.randomBytes(9).toString("base64url");
+      const timer = setTimeout(() => { codePending.delete(q); refused(res); }, codeCfg.waitMs);
+      timer.unref?.();
+      codePending.set(q, { route: slot.route, timer, done: out => { if (out) reply(res, 200, { m: out, route: slot.route }); else refused(res); } });
+      control.json({ t: "code.msg", q, rv, s, n, m: msg });
+    });
+    req.on("error", () => {});
+  }
+
   const server = http.createServer((req, res) => {
     const url = new URL(req.url || "/", "http://relay");
     if (url.pathname === "/health") { res.writeHead(200, { "content-type": "application/json" }); res.end('{"ok":true}'); return; }
@@ -173,6 +264,12 @@ export function createRelay(o = {}) {
       res.end();
       return;
     }
+    if (url.pathname === "/v1/wink/code" && req.method === "OPTIONS") {
+      res.writeHead(204, { "access-control-allow-origin": "*", "access-control-allow-methods": "POST", "access-control-allow-headers": "content-type", "access-control-max-age": "600" });
+      res.end();
+      return;
+    }
+    if (url.pathname === "/v1/wink/code" && req.method === "POST") { res.setHeader("access-control-allow-origin", "*"); onCodeStep(req, res); return; }
     if (url.pathname === "/v1/pair" && req.method === "POST") { res.setHeader("access-control-allow-origin", "*"); onPairResolve(req, res); return; }
     // The setup mailbox answers any origin too: the page reads it from vyre.run, and its safety is a signature and a sealed stream.
     if (url.pathname === "/v1/setup/mbx" && req.method === "OPTIONS") {
@@ -322,6 +419,8 @@ export function createRelay(o = {}) {
       authed = true;
       const r = routeOf(route);
       if (r.control) r.control.close(CLOSE.replaced, "replaced by a newer box connection");
+      // A code belongs to the control socket that asked for it: a new one starts with none.
+      releaseCode(route);
       r.control = peer;
       r.ticket = crypto.randomBytes(18).toString("base64url");
       peer.json({ t: "ready", ticket: r.ticket, waiting: [...r.conns].filter(([, x]) => !x.box).map(([c]) => c), ...(o.legacyNoAck ? {} : { features: FEATURES }) });
@@ -331,9 +430,11 @@ export function createRelay(o = {}) {
       // trust boundary the way the HTTP resolve side is; the size caps and the register-side
       // rate limit are just hygiene against a runaway or compromised box, not the real defence.
       peer.onmessage = (d2, bin2) => {
-        if (bin2 || !pairRegisterLimit(route)) return;
+        if (bin2) return;
         let t;
         try { t = JSON.parse(d2.toString()); } catch { return; }
+        if (typeof t?.t === "string" && t.t.startsWith("code.")) { onCodeControl(route, peer, t); return; }
+        if (!pairRegisterLimit(route)) return;
         if (t?.t === "revoke") {
           const rloc = String(t.loc || "");
           if (!/^[A-Za-z0-9_-]{20,64}$/.test(rloc)) return;
@@ -354,7 +455,7 @@ export function createRelay(o = {}) {
     };
     peer.onclose = () => {
       const r = routes.get(route);
-      if (r && r.control === peer) { r.control = null; r.ticket = null; log("box.disconnected", { route }); }
+      if (r && r.control === peer) { r.control = null; r.ticket = null; releaseCode(route); log("box.disconnected", { route }); }
       tidy(route);
     };
   }
@@ -412,8 +513,8 @@ export function createRelay(o = {}) {
         resolve(`ws://${host}:${a.port}`);
       }));
     },
-    /** For tests: how many routes and connections the relay holds. */
-    stats() { return { routes: routes.size, conns: [...routes.values()].reduce((n, r) => n + r.conns.size, 0) }; },
+    /** For tests: how many routes and connections the relay holds, and live codes and requests waiting on a box. */
+    stats() { return { routes: routes.size, conns: [...routes.values()].reduce((n, r) => n + r.conns.size, 0), codes: codeSlots.size, codeRequests: codePending.size }; },
     close() {
       for (const r of routes.values()) { r.control?.close(1001, "relay stopping"); for (const x of r.conns.values()) { x.device.close(1001); x.box?.close(1001); } }
       routes.clear();
