@@ -112,13 +112,8 @@ export class FlowRunner {
   async onEvent(env) {
     const work = [];
     for (const f of await this.#activeFlows()) {
-      const t = f.flow.trigger;
-      let scope = null;
-      if (t.on === "event" && typeMatches(t.event, env.type)) scope = { trigger: env.data ?? {}, event: env };
-      else if (t.on === "stage" && env.type === "record.stage-entered" && env.data && env.data.type === t.type && env.data.stage === t.stage) scope = { trigger: env.data, event: env };
-      if (!scope) continue;
-      if (t.on === "event" && t.where) { try { if (!truthy(evaluate(parse(t.where), scope))) continue; } catch { continue; } }
-      work.push(this.#start(f, { kind: t.on, key: String(env.id), event: env }, env));
+      if (!triggerScope(f.flow.trigger, env)) continue;
+      work.push(this.#start(f, { kind: f.flow.trigger.on, key: String(env.id), event: env }, env));
     }
     work.push(this.#deliver(env));
     return Promise.all(work);
@@ -336,6 +331,7 @@ export class FlowRunner {
 
   /** @param {string} type @param {any} data @param {Run} run @param {string} subject */
   #emit(type, data, run, subject) {
+    if (run.dry) return;
     try { this.emitFn(type, data, { chain: this.chains.forFlow({ flow: run.flow, space: run.space, approver: run.approver, tainted: run.tainted, run: run.id, source_spaces: run.source_spaces }), subject, corr: run.id }); } catch { /* an observer must never break a run */ }
   }
 
@@ -660,6 +656,79 @@ export class FlowRunner {
     });
   }
 
+  // ------------------------------------------------------------------ simulation
+
+  /**
+   * Replay a window of past events against a Flow with its actions stubbed, and say what it would have done: how many runs, how many approvals it
+   * would have asked for, what it would have written, sent and run. Reads are real (as the approver, read-only), so a `find` sees today's data;
+   * writes, tasks, calls, http, code and models are stubbed; waits do not wait. Nothing is stored and nothing is emitted.
+   * @param {any} flow a stored Flow (a draft or an active one)
+   * @param {{ approver: ActorRef, events?: any[], since?: number, until?: number, limit?: number, samples?: any[] }} o
+   */
+  async simulate(flow, o) {
+    const cat = await this.catalogFn();
+    const compiled = compileFlow(flow, cat);
+    if (!compiled.ok) return { ok: false, errors: compiled.errors, warnings: compiled.warnings };
+    const caps = Array.isArray(flow.caps) ? flow.caps : deriveCaps(flow, cat);
+    const limit = o.limit || 1000;
+    /** @type {{ trigger: string, key: string, scope: any, env: any, at: number }[]} */
+    const hits = [];
+    let seen = 0;
+    const t = flow.trigger;
+    if (t.on === "event" || t.on === "stage") {
+      let evs = o.events;
+      if (!evs) {
+        const chain = this.chains.forFlow({ flow: "simulation", space: cat.space, approver: o.approver, tainted: false, run: "sim", source_spaces: [cat.space] });
+        evs = await this.k.events.read(chain, { type: "*", limit: 20_000 });
+      }
+      for (const env of evs) {
+        if (o.since && env.received_at !== undefined && env.received_at < o.since) continue;
+        if (o.until && env.received_at !== undefined && env.received_at > o.until) continue;
+        seen++;
+        const scope = triggerScope(t, env);
+        if (scope && hits.length < limit) hits.push({ trigger: t.on, key: String(env.id), scope, env, at: env.received_at ?? env.time });
+      }
+    } else if (t.on === "time" && t.cron !== undefined && o.since !== undefined && o.until !== undefined) {
+      for (let at = nextCron(t.cron, o.since - 1); at !== null && at <= o.until && hits.length < limit; at = nextCron(t.cron, at)) hits.push({ trigger: "time", key: `sim@${at}`, scope: { trigger: { at } }, env: null, at });
+    } else if (t.on === "time" && t.every_ms !== undefined && o.since !== undefined && o.until !== undefined) {
+      for (let at = o.since + t.every_ms; at <= o.until && hits.length < limit; at += t.every_ms) hits.push({ trigger: "time", key: `sim@${at}`, scope: { trigger: { at } }, env: null, at });
+    } else for (const [i, sample] of (o.samples || []).entries()) hits.push({ trigger: t.on, key: `sample${i}`, scope: { trigger: sample }, env: null, at: this.now() });
+
+    const runs = [];
+    /** @type {Record<string, number>} */ const writes = {};
+    /** @type {Record<string, { action: string, risk: string, count: number }>} */ const outward = {};
+    let asks = 0, tasks = 0, completed = 0, paused = 0, failed = 0;
+    for (const h of hits) {
+      /** @type {Run} */
+      const run = { id: "sim_" + h.key, flow: "simulation", version: 0, hash: "", space: cat.space, trigger: { kind: h.trigger, key: h.key, ...(h.env ? { event: slim(h.env) } : { input: h.scope.trigger }) },
+        tainted: Boolean(h.env && (h.env.trust === "external" || h.env.trust === "untrusted")), source_spaces: (h.env && h.env.source_spaces) || [cat.space], depth: 0, state: "running", started_at: h.at, updated_at: h.at, steps: {}, approver: o.approver, dry: true };
+      const ctx = { run, flow, view: { flow, id: "simulation" }, cat, caps, dry: true, count: 0, dryEffects: /** @type {any[]} */ ([]), dryAsks: 0, dryTasks: /** @type {any[]} */ ([]) };
+      /** @type {{ outcome: string, reason?: string }} */ let result = { outcome: "completed" };
+      try { await this.#walk(ctx, flow.steps, "", {}); }
+      catch (e) {
+        if (e instanceof PauseFlow) result = { outcome: "paused", reason: e.reason };
+        else if (e instanceof Suspend) result = { outcome: "completed" };
+        else result = { outcome: "failed", reason: e instanceof Error ? e.message : String(e) };
+      }
+      if (result.outcome === "completed") completed++; else if (result.outcome === "paused") paused++; else failed++;
+      asks += ctx.dryAsks; tasks += ctx.dryTasks.length;
+      for (const eff of ctx.dryEffects) {
+        if (/^records\.(create|update|remove)$/.test(eff.action)) { const ty = eff.resource.split("/")[3]; writes[ty] = (writes[ty] || 0) + 1; }
+        if (OUTWARD.has(eff.risk)) { const k = eff.action; outward[k] = outward[k] || { action: eff.action, risk: eff.risk, count: 0 }; outward[k].count++; }
+      }
+      runs.push({ event: h.env ? h.env.id : null, at: h.at, ...result, asks: ctx.dryAsks, tasks: ctx.dryTasks.length, effects: ctx.dryEffects.length, tainted: run.tainted });
+    }
+    const span = o.since !== undefined && o.until !== undefined ? ` in ${describeSpan(o.until - o.since)}` : " in that window";
+    return {
+      ok: true, warnings: compiled.warnings, events_seen: seen, matched: hits.length,
+      summary: `This Flow would have run ${hits.length} ${hits.length === 1 ? "time" : "times"}${span} and asked for ${asks} ${asks === 1 ? "approval" : "approvals"}.`
+        + (paused ? ` ${paused} would have paused.` : "") + (failed ? ` ${failed} would have failed.` : ""),
+      totals: { runs: hits.length, completed, paused, failed, asks, tasks, writes, outward: Object.values(outward) },
+      runs: runs.slice(0, 200),
+      cannot_prove: ["what the actions really do (they are stubbed)", "how long a person takes to answer a question or a task", "what a model or a Code step returns", "events that have not happened yet"],
+    };
+  }
+
   // ------------------------------------------------------------------ reading runs
 
   /** @param {string} id */
@@ -672,6 +741,19 @@ export class FlowRunner {
 
 /** Does an event pattern (`noun.past-verb`, `noun.*`) match a type? @param {string} pattern @param {string} type */
 export const typeMatches = (pattern, type) => pattern === type || (pattern.endsWith(".*") && type.startsWith(pattern.slice(0, -1)));
+
+/**
+ * Does this event trigger this Flow? Returns the scope the Flow reads (`trigger` and `event`), or null. An error in the condition is "no".
+ * @param {any} t the Flow's trigger @param {any} env an event envelope
+ */
+export function triggerScope(t, env) {
+  let scope = null;
+  if (t.on === "event" && typeMatches(t.event, env.type)) scope = { trigger: env.data ?? {}, event: env };
+  else if (t.on === "stage" && env.type === "record.stage-entered" && env.data && env.data.type === t.type && env.data.stage === t.stage) scope = { trigger: env.data, event: env };
+  if (!scope) return null;
+  if (t.on === "event" && t.where) { try { if (!truthy(evaluate(parse(t.where), scope))) return null; } catch { return null; } }
+  return scope;
+}
 
 /** The outputs of finished steps, by step id (the latest turn of a loop wins). @param {Run} run */
 function outputs(run) {
@@ -731,6 +813,16 @@ const labelOf = (cat, action) => (cat.actions[action] && cat.actions[action].lab
 function flowUsesComputedOutward(ctx) {
   const c = compileFlow(ctx.view.flow, ctx.cat);
   return c.effects.needs_run_ask;
+}
+
+/** @param {number} ms */
+function describeSpan(ms) {
+  const d = Math.round(ms / 86_400_000);
+  if (d >= 56) return `${Math.round(d / 30)} months`;
+  if (d >= 14) return `${Math.round(d / 7)} weeks`;
+  if (d >= 2) return `${d} days`;
+  const h = Math.round(ms / 3_600_000);
+  return h >= 2 ? `${h} hours` : "an hour";
 }
 
 /** @param {any} v @returns {number|null} */
