@@ -147,13 +147,6 @@ export function ChatScreen(p: ChatScreenProps) {
   return (
     <View style={{ flex: 1, backgroundColor: color["surface-1"], paddingTop: insets.top }}>
       <ChatHeader title={p.title ?? "Session"} participants={faces} viewer={viewer} line={line} phone={phone} onBack={p.onBack} onOpen={() => setAboutOpen(true)} />
-      {sealedNote ? (
-        <Pressable accessibilityRole="button" accessibilityLabel="Dismiss the sealed note" onPress={() => setSealedNote(false)} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 40, paddingVertical: 6, paddingHorizontal: phone ? 16 : 24, backgroundColor: color["surface-2"], borderBottomWidth: 1, borderBottomColor: color.edge }}>
-          <Icon name="shield" />
-          <Text size="caption" tone="muted" style={{ flex: 1 }}>{sealedNoteText({ sealed: info.sealed, assistants: assistantsHere })}</Text>
-          <Text size="caption" tone="label" strong>Got it</Text>
-        </Pressable>
-      ) : null}
       <AboutSheet
         open={aboutOpen}
         onClose={() => setAboutOpen(false)}
@@ -180,7 +173,11 @@ export function ChatScreen(p: ChatScreenProps) {
             renderRow={renderRow}
             hasMore={false}
             onNearTop={() => {}}
-            head={<View style={{ height: 12 }} />}
+            head={<View>{sealedNote ? <Pressable accessibilityRole="button" accessibilityLabel="Dismiss the sealed note" onPress={() => setSealedNote(false)} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 40, paddingVertical: 6, paddingHorizontal: phone ? 16 : 24, marginBottom: 8, backgroundColor: color["surface-2"], borderBottomWidth: 1, borderBottomColor: color.edge }}>
+          <Icon name="shield" />
+          <Text size="caption" tone="muted" style={{ flex: 1 }}>{sealedNoteText({ sealed: info.sealed, assistants: assistantsHere })}</Text>
+          <Text size="caption" tone="label" strong>Got it</Text>
+        </Pressable> : null}<View style={{ height: 12 }} /></View>}
             jump={(go) => <JumpPill go={go} count={rows.length} base={base.current} bottom={16} />}
           />
         )}

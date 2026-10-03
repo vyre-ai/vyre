@@ -107,7 +107,7 @@ export function ChatComposer(p: ComposerProps) {
         onBlur={() => setFocused(false)}
         autoFocus={p.autoFocus}
         multiline
-        placeholder={askAll ? "Ask every assistant here at once" : intent.queue || p.state === "working" ? "Say more. It queues until the next step." : "Message, @ people, # records, / commands"}
+        placeholder={askAll ? "Ask every assistant here at once" : intent.queue || p.state === "working" ? "Say more. It queues until the next step." : "Message, or / for commands"}
         placeholderTextColor={color.label}
         accessibilityLabel="Message"
         onKeyPress={(e: any) => { if (!p.phone && e.nativeEvent.key === "Enter" && !e.nativeEvent.shiftKey && !trig) { e.preventDefault?.(); send(); } }}
