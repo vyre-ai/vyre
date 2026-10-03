@@ -18,6 +18,8 @@ import crypto from "node:crypto";
 import { ROLE_IDS } from "../../kernel/contracts/index.js";
 import { typeWinkCode, finishJoin } from "../../relay/client/join.js";
 import { parseCode } from "../../relay/client/code.js";
+import { connect as relayConnect } from "../../relay/client/client.js";
+import { nodeCrypto, fileKeyStore } from "../../relay/client/nodecrypto.js";
 import { base32 } from "./grants.js";
 import { words } from "./cards.js";
 
@@ -43,6 +45,15 @@ export const MIGRATIONS = [
      updated INTEGER NOT NULL, PRIMARY KEY (space, device))`,
 ];
 
+/** Appended after every other wink migration (versions are positions): the node binding for peer admission, and a small key-value table. */
+export const PEER_MIGRATIONS = [
+  `ALTER TABLE wink_devices ADD COLUMN node_key TEXT`,
+  `ALTER TABLE wink_devices ADD COLUMN stable_id TEXT`,
+  `CREATE TABLE wink_meta (k TEXT PRIMARY KEY, v TEXT NOT NULL)`,
+];
+/** What a device offers to the pairing keys: polling slower than the relay's rate limit, and Node's own crypto and key file (0600). */
+export const POLL_MS = 1500;
+
 /**
  * The directory port: who holds which role in which space. The real one is the kernel's membership table; until it is merged a box
  * answers for its own space only, and tests pass a fake.
@@ -58,16 +69,22 @@ export const MIGRATIONS = [
 /**
  * @param {{ ctx: any, now: () => number, identity: () => Promise<string>, space: () => Promise<string>, directory: Directory, ports?: Ports,
  *   openCode: (flow: "W1" | "W2" | "W3") => Promise<{ offer: string, code: string, expires: number }>,
- *   ack: (offer: string, typed: string) => Promise<{ ok: boolean }>, owner: (meta: any, what: string) => void, relayUrl: () => Promise<string> }} o
+ *   ack: (offer: string, typed: string) => Promise<{ ok: boolean }>, owner: (meta: any, what: string) => void, relayUrl: () => Promise<string>, keyFile?: string, spaceNow?: () => string }} o
  */
 export function createPairing(o) {
   const { ctx, now, directory } = o;
   const db = ctx.store.db;
   const ports = { typist: typeWinkCode, finish: finishJoin, ...(o.ports || {}) };
+  const meta = {
+    get: (/** @type {string} */ k) => { const r = /** @type {any} */ (db.prepare("SELECT v FROM wink_meta WHERE k = ?").get(k)); return r ? JSON.parse(r.v) : null; },
+    set: (/** @type {string} */ k, /** @type {any} */ v) => { db.prepare("INSERT INTO wink_meta (k, v) VALUES (?, ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v").run(k, JSON.stringify(v)); },
+  };
+  /** Node's crypto and a key file under the box's home: the typing side has no IndexedDB. @type {any} */
+  const pairOptions = o.keyFile ? { crypto: nodeCrypto(), keyStore: fileKeyStore(o.keyFile) } : {};
   /** Pairings this device is typing for (secret seeds stay in memory). @type {Map<string, any>} */
   const pending = new Map();
 
-  const rowOf = (/** @type {any} */ r) => r ? { id: r.id, identity: r.identity, kind: r.kind, name: r.name, fingerprint: r.fingerprint, owner: { kind: r.owner_kind, id: r.owner_id }, offers: JSON.parse(r.offers || "{}"), created: r.created, removed: r.removed_at != null } : null;
+  const rowOf = (/** @type {any} */ r) => r ? { id: r.id, identity: r.identity, kind: r.kind, name: r.name, fingerprint: r.fingerprint, owner: { kind: r.owner_kind, id: r.owner_id }, offers: JSON.parse(r.offers || "{}"), created: r.created, removed: r.removed_at != null, nodeKey: r.node_key || null, stableId: r.stable_id || null } : null;
   const devices = {
     /** @param {string} identity */
     list: identity => /** @type {any[]} */ (db.prepare("SELECT * FROM wink_devices WHERE identity = ? AND removed_at IS NULL ORDER BY created, id").all(identity)).map(rowOf),
@@ -143,6 +160,73 @@ export function createPairing(o) {
     return { ok: true };
   };
 
+  // ---- telling the new server who owns it: over the paired channel, with the secret its peers will prove with ----
+  /** @param {any} paired @param {string} tool @param {any} input */
+  const callServer = ports.callServer || (async (/** @type {any} */ paired, /** @type {string} */ tool, /** @type {any} */ input) => {
+    const c = relayConnect({ relay: paired.relay, route: paired.route, box: paired.box, name: String(ctx.config.name || "a device"), ...pairOptions });
+    try {
+      const r = await c.fetch(`/v1/tools/${tool}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) });
+      const j = await r.json().catch(() => null);
+      if (r.status >= 300 || !j || j.error) throw fail("unavailable", String((j && j.error && j.error.message) || `the server answered ${r.status}`));
+      return j.data;
+    } finally { try { c.close(); } catch { /* closed */ } }
+  });
+  /** @param {any} paired @param {{ kind: string, id: string }} target @param {{ identity: string, peerSecret: string, device: string }} x */
+  const adopt = async (paired, target, x) => {
+    if (ports.adopt) return ports.adopt(paired, target, x);
+    await callServer(paired, "wink.server.adopt", { owner: target, identity: x.identity, peerSecret: x.peerSecret });
+    return true;
+  };
+
+  // ---- peer admission (the module's side of core/wink/node host.serveHome and the relay bridge's peers) ----
+  // A peer is a paired server of this space or identity. `shared(deviceId, nodeKey)` answers the secret the host proves a peer with, but only for
+  // a node key bound to that device row. A row with no node key binds the first key that then PROVES itself: shared() only notes the claim, and
+  // the first call that arrives served as that device (see `serve`) turns a single noted claim into the binding. Two claims, or none, bind nothing.
+  /** @type {Map<string, Set<string>>} */
+  const claims = new Map();
+  const peers = {
+    /** The secret for one device: derived from this box's peer root, never stored per device. @param {string} deviceId @returns {string} base64url */
+    secretFor(deviceId) {
+      let root = meta.get("peer_root");
+      if (!root) { root = crypto.randomBytes(32).toString("base64url"); meta.set("peer_root", root); }
+      return crypto.createHmac("sha256", Buffer.from(root, "base64url")).update(`wink-peer\n${deviceId}`).digest("base64url");
+    },
+    /** May this device open a peer stream: a live paired server that belongs to this identity or this space. @param {string} deviceId */
+    allow(deviceId) {
+      const d = devices.get(String(deviceId));
+      if (!d || d.removed || d.kind !== "server") return false;
+      if (d.owner.kind === "space") return d.owner.id === (o.spaceNow ? o.spaceNow() : "");
+      return true;
+    },
+    /** @param {string} deviceId @param {string} nodeKey @param {string} [stableId] @returns {Buffer | null} */
+    shared(deviceId, nodeKey, stableId) {
+      const d = devices.get(String(deviceId));
+      if (!peers.allow(deviceId) || !d) return null;
+      if (d.nodeKey) return d.nodeKey === nodeKey ? Buffer.from(peers.secretFor(d.id), "base64url") : null;
+      const set = claims.get(d.id) || new Set();
+      set.add(`${nodeKey}\n${stableId || ""}`);
+      claims.set(d.id, set);
+      return Buffer.from(peers.secretFor(d.id), "base64url");
+    },
+    /** Wrap the registry's serve: a call that arrives as device:<id> has proved the secret, so a lone noted claim becomes the binding. @param {(caller: string, tool: string, input: any) => Promise<any>} inner */
+    serve(inner) {
+      return async (/** @type {string} */ caller, /** @type {string} */ tool, /** @type {any} */ input) => {
+        const id = caller.startsWith("device:") ? caller.slice(7) : "";
+        const set = id ? claims.get(id) : null;
+        if (id && set) {
+          claims.delete(id);
+          const d = devices.get(id);
+          if (set.size === 1 && d && !d.nodeKey) {
+            const [nodeKey, stableId] = [...set][0].split("\n");
+            db.prepare("UPDATE wink_devices SET node_key = ?, stable_id = ? WHERE id = ? AND node_key IS NULL").run(nodeKey, stableId || null, id);
+            ctx.events.emit("wink.peer-bound", { device: id });
+          } else if (set.size > 1) ctx.log(`wink: ${set.size} different node keys claimed device ${id}; none was bound`);
+        }
+        return inner(caller, tool, input);
+      };
+    },
+  };
+
   // ---- the typing side: the app types a code and shows the code to type back ----
   /** @param {{ code: string, kind: string, target: { kind: string, id: string }, name?: string, relay?: string }} i */
   const startTyping = async i => {
@@ -157,7 +241,7 @@ export function createPairing(o) {
     // The person types the ack on the showing device; the ticket then appears and this finishes with no more taps.
     void (async () => {
       try {
-        const f = await ports.finish({ relay, seed: t.seed, name: i.name || String(ctx.config.name || "a device"), waitMs: 5 * 60_000, pollMs: 200 });
+        const f = await ports.finish({ relay, seed: t.seed, name: i.name || String(ctx.config.name || "a device"), waitMs: 5 * 60_000, pollMs: POLL_MS, pairOptions });
         if (!f.ok) { p.state = f.reason === "expired" ? "expired" : "failed"; ctx.events.emit("wink.pair-failed", { pairing: id, reason: f.reason }); return; }
         const identity = await o.identity();
         if (i.kind === "server" || i.kind === "storage") {
@@ -165,7 +249,8 @@ export function createPairing(o) {
           const sid = `srv_${base32(sha(`server\n${pd.route || pd.device || id}`), 20)}`;
           devices.add({ id: sid, identity, kind: i.kind, name: String(pd.name || "a server"), target: i.target });
           p.device = sid;
-          p.adopted = ports.adopt ? await ports.adopt(pd, i.target).catch(() => false) : false;
+          const peerSecret = peers.secretFor(sid);
+          p.adopted = await adopt(pd, i.target, { identity, peerSecret, device: sid }).catch(() => false);
         }
         p.state = "done";
         ctx.events.emit("wink.pair-done", { pairing: id, kind: i.kind, target: i.target, ...(p.device ? { device: p.device } : {}) });
@@ -218,16 +303,33 @@ export function createPairing(o) {
       run: async (input, meta = {}) => { owner(meta, "adding this server"); return o.ack(String(input.offer), String(input.typed)); },
     });
     ctx.tool("wink.server.adopt", {
-      description: "On a server that was just paired: record who it belongs to, an identity or a space { kind, id }. Called by the paired app. Answers { owner }.",
-      input: obj({ owner: obj({ kind: { type: "string", enum: ["identity", "space"] }, id: str }, ["kind", "id"]) }, ["owner"]),
-      run: async (input, meta = {}) => {
-        owner(meta, "adopting a server");
-        const ident = await o.identity();
+      description: "On a server that was just paired: record who it belongs to, an identity or a space { kind, id }, and the identity that paired it. Called by the pairing app over the paired channel; the first caller wins, and only that caller (or the owner's own screen) may change it later. Answers { owner }.",
+      input: obj({ owner: obj({ kind: { type: "string", enum: ["identity", "space"] }, id: str }, ["kind", "id"]), identity: str, peerSecret: str }, ["owner"]),
+      run: async (input, meta0 = {}) => {
+        owner(meta0, "adopting a server");
+        const caller = String((meta0 && meta0.caller) || "");
+        const prior = meta.get("adopter");
+        if (prior && caller.startsWith("device:") && prior !== caller) throw fail("denied", "this server already has an owner");
         const t = { kind: String(input.owner.kind), id: String(input.owner.id) };
+        const ident = String(input.identity || (t.kind === "identity" ? t.id : "") || await o.identity());
+        meta.set("owner", { ...t, identity: ident });
+        if (caller.startsWith("device:")) meta.set("adopter", caller);
+        if (input.peerSecret && /^[A-Za-z0-9_-]{20,80}$/.test(String(input.peerSecret))) meta.set("peer_secret", String(input.peerSecret));
         devices.add({ id: "self", identity: ident, kind: "server", name: String(ctx.config.name || "this server"), target: t });
         ctx.events.emit("wink.server-adopted", { owner: t });
         return { owner: t };
       },
+    });
+    // For the relay bridge and the node host (reach modules): may this device open a peer stream, and the secret for a bound node key.
+    ctx.tool("wink.peer.allow", {
+      description: "Whether a device may open a peer stream to this space: only a live paired server of this space or its owner. Answers { allow }.",
+      input: obj({ device: str }, ["device"]),
+      run: async input => ({ allow: peers.allow(String(input.device)) }),
+    });
+    ctx.tool("wink.peer.shared", {
+      description: "The secret a peer proves with for a device and node key, or null when the node key is not the one bound to that device. A first claim is noted and bound once a call arrives as that device. Answers { secret }.",
+      input: obj({ device: str, nodeKey: str, stableId: str }, ["device", "nodeKey"]),
+      run: async input => { const k = peers.shared(String(input.device), String(input.nodeKey), input.stableId ? String(input.stableId) : undefined); return { secret: k ? k.toString("base64url") : null }; },
     });
 
     // A phone: a signed-in computer shows a code and a QR, the phone scans, the phone shows a code, the person types it on the computer.
@@ -286,7 +388,7 @@ export function createPairing(o) {
     });
   }
 
-  return { devices, targets, checkTarget, computeAllowed, compute, tools, startTyping, pending };
+  return { devices, targets, checkTarget, computeAllowed, compute, tools, startTyping, pending, peers, meta };
 }
 
 /** The QR a computer shows for a phone: the code and where to meet. @param {string} code @param {string} relay */

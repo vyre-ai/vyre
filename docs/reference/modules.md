@@ -68,7 +68,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
 | [`space-sessions`](#space-sessions) | `core/space-sessions` | `box`, `local` | 0 | 3 | cli |
-| [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 45 | 29 | capsule, cli, deck |
+| [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 47 | 29 | capsule, cli, deck |
 | [`spend`](#spend) | `core/spend` | `box`, `local` | 4 | 2 | cli |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
 | [`suggest`](#suggest) | `core/suggest` | `box`, `local` | 3 | 1 | cli |
@@ -85,7 +85,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 20 | 7 | capsule, cli, deck |
-| [`wink`](#wink) | `core/wink` | `box` | 28 | 25 | capsule, cli, deck |
+| [`wink`](#wink) | `core/wink` | `box` | 30 | 26 | capsule, cli, deck |
 | [`work`](#work) | `core/work` | `box`, `local` | 13 | 0 | cli |
 
 ## about
@@ -664,7 +664,7 @@ Identity, spaces, members and invites: your Vyre name, a space with a home you c
 - Folder: `core/spaces`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [45](tools.md#spaces)
+- Tools: [47](tools.md#spaces)
 - Emits: [29 events](events.md#spaces)
 - Shows on: capsule, cli, deck
 
@@ -859,8 +859,8 @@ Pairing as grants: every way in is a Wink (scan a code, or type two-sided codes)
 - Folder: `core/wink`, version 0.1.0
 - Runs on: `box`
 - Requires: `relay`
-- Tools: [28](tools.md#wink)
-- Emits: [25 events](events.md#wink)
+- Tools: [30](tools.md#wink)
+- Emits: [26 events](events.md#wink)
 - Listens for: `relay.code-asked`, `relay.invite-redeemed`, `device.paired`, `device.removed`
 - Shows on: capsule, cli, deck
 - Needs vault: `per-storage`
