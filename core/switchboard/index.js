@@ -3564,6 +3564,8 @@ export default {
       { type: "object", required: ["thread", "mode"], properties: { thread: str, mode: { type: "string", enum: PERSON_MODES } } },
       async (i, { caller, thread }) => {
         if (thread && thread === i.thread) throw Object.assign(new Error("a session's mode is changed by the person, not from the session"), { code: "denied" });
+        // Whatever the reach list lets an assistant do for its person, "Doesn't ask" is the person's own choice and nothing else's (ADR 0030, Security): only a person's surface sets it.
+        if (i.mode === BYPASS && !["cli", "local", "deck", "capsule"].includes(String(caller))) throw Object.assign(new Error("Doesn't ask is the person's own choice; an assistant never sets it"), { code: "denied" });
         return sb.mode(i.thread, i.mode);
       },
       ["cli", "local", "deck", "capsule"]);
