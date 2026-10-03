@@ -296,6 +296,44 @@ test("an outward action with a placeholder: refused when the person the turn is 
   assert.equal((await call({ body: "plain" })).error.code, "held_unavailable", "a plain outward call is held as before");
 });
 
+test("RF-1: a placeholder resolves under the turn token's own chain, not the person's: an agent granted one project is refused a field of another, and a field of its own project is held", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const { writeModule } = await import("./helpers.js");
+  const { CONTACT } = await import("../kernel/conformance/suite.js");
+  const { canonical, sha256 } = await import("../kernel/core/canonical.js");
+  const root = tempHome(t);
+  const fp = path.join(root, "modules");
+  fs.mkdirSync(fp, { recursive: true });
+  writeModule(fp, "zz-out", { does: { tools: [{ name: "zz-out.send", reach: "anyone", outward: "send" }] } }, `export default { async start(ctx) { ctx.tool("zz-out.send", { run: async i => ({ sent: i }) }); return {}; } };`);
+  // the kernel's presence check accepts a proof built for exactly this operation (a headless test has no hardware signer)
+  const used = new Set();
+  const kernelPresence = { check: async ({ chain, op, fields, proof }) => (chain && proof && proof.op === op && canonical(proof.fields) === canonical(fields) && !used.has(proof.n) && (used.add(proof.n), true) ? null : "wrong_proof") };
+  const d = await start({ root, log: () => {}, kernel: true, kernelPresence, firstPartyRoots: [fp] });
+  t.after(() => d.stop());
+  const space = d.kernel.id.space;
+  const owner = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
+  const G = d.kernel.gateway.grants;
+  const pr = (action, input, resource) => ({ op: `grant.${action.split(".")[1]}`, fields: { resource, input_hash: sha256(canonical({ action, input })) }, n: Math.random() });
+  const kit = { kind: "agent", id: "kit", space };
+  await G.addActor(owner, kit, { presence: pr("grants.role", { actor: kit }, `vyre://${space}/member/kit`) });
+  const grant = { subject: { kind: "actor", actor: kit }, actions: ["records.read"], resource: { prefix: `vyre://${space}/contact/*`, where: [{ attr: "project", op: "eq", value: "p1" }] }, conditions: {}, source: "test" };
+  await G.create(owner, grant, { presence: pr("grants.create", grant, `vyre://${space}/grant/new`) });
+  await d.kernel.gateway.records.define(owner, { add_types: [CONTACT] });
+  const mine = await d.kernel.gateway.records.create(owner, "contact", { name: "Jane", age: 40 }, { attrs: { project: "p1" } });
+  const other = await d.kernel.gateway.records.create(owner, "contact", { name: "Mallory", age: 51 }, { attrs: { project: "p2" } });
+  assert.equal((await d.kernel.gateway.records.get(owner, "contact", other.urn.split("/").pop())).data.name, "Mallory", "the person reads both");
+  const ses = await d.kernel.surfaces.open(owner, { agent: "kit" });
+  const meta = { token: ses.token, thread: "t1", agent: "kit" };
+  const call = input => d.registry.call("zz-out.send", input, "mcp:agent:kit", meta);
+  const ok = await call({ body: `Hi {{field:${mine.urn}#name}}` });
+  assert.equal(ok.error.code, "held_unavailable", "a field in its own project is resolved and the act is held");
+  const no = await call({ body: `Hi {{field:${other.urn}#name}}` });
+  assert.equal(no.error.code, "placeholder_unreadable", "a field in another project is refused, though the person could read it");
+  assert.ok(!JSON.stringify(no).includes("Mallory"));
+});
+
 test("the phone's chain: a device connection (relay device:<id>, a tailnet owner node, a paired owner device) builds the owner's chain; a guest, an agent node and an unknown listener build none", async t => {
   process.env.VYRE_SEAL_DEV = "1";
   process.env.VYRE_KERNEL_PATH_RULE = "1";
