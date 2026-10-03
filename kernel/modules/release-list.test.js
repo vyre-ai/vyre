@@ -208,3 +208,55 @@ test("SG-5: the release also lists the kernel and lib trees; a build whose kerne
   assert.equal(k.log.read({ type: "kernel.modules-list" }).length, 0);
   await k.stop();
 });
+
+test("SG-5-1 and SG-5-2: on a home that already accepted this list, a changed kernel or lib tree at the SAME counter (and at an older one) leaves no first-party list at all", { timeout: 120_000 }, async t => {
+  const r = release(t, { counter: 5 });
+  for (const n of ["kernel", "lib"]) { fs.mkdirSync(path.join(r.root, n), { recursive: true }); fs.writeFileSync(path.join(r.root, n, "x.js"), `export const n = "${n}";`); }
+  r.write(r.key, 5);
+  const root = tempHome(t), dbFile = path.join(root, "k.db");
+  const boot = async (logs = [], pkg = r.root) => bootHomeKernel({ db: new DatabaseSync(dbFile), root, log: m => logs.push(m), isFirstParty: () => false, releaseKey: r.pub, packageRoot: pkg });
+  let k = await boot();
+  assert.equal(k.firstPartyCheck(r.dir("alpha")), true, "the first boot accepts the list");
+  await k.stop();
+  // the same counter, no advance, then the kernel's own code is changed: the check runs anyway
+  fs.writeFileSync(path.join(r.root, "kernel", "x.js"), "export const n = 'evil';");
+  const logs = [];
+  k = await boot(logs);
+  assert.ok(logs.some(m => /kernel or lib tree differs/.test(m)), logs.join(" | "));
+  assert.equal(k.firstPartyCheck(r.dir("alpha")), false, "a genuine alpha is not first party: there is no list, not even the one already accepted");
+  assert.equal(k.log.read({ type: "kernel.modules-list" }).length, 1, "nothing new is accepted");
+  await k.stop();
+  // a build of an older counter whose lib is changed: the same
+  const old = release(t, { counter: 3, key: r.key });
+  for (const n of ["kernel", "lib"]) { fs.mkdirSync(path.join(old.root, n), { recursive: true }); fs.writeFileSync(path.join(old.root, n, "x.js"), `export const n = "${n}";`); }
+  old.write(r.key, 3);
+  fs.writeFileSync(path.join(old.root, "lib", "x.js"), "export const n = 'evil';");
+  k = await boot([], old.root);
+  assert.equal(k.firstPartyCheck(old.dir("alpha")), false);
+  await k.stop();
+  // the intact build boots again with its list
+  fs.writeFileSync(path.join(r.root, "kernel", "x.js"), `export const n = "kernel";`);
+  k = await boot();
+  assert.equal(k.firstPartyCheck(r.dir("alpha")), true);
+  await k.stop();
+});
+
+test("build time: the repo's own modules make an unambiguous list; a name shared by two folders must be for different machines, and both folders pass the check", t => {
+  const repo = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..");
+  const text = buildModuleList(repo, { counter: 1, release: "test" });
+  const list = JSON.parse(text);
+  assert.ok(list.modules.chrome && Array.isArray(list.modules.chrome.also) && list.modules.chrome.also.length === 1, "the box's chrome and the Mac's chrome are one name with two entries");
+  // two folders, one name, overlapping roles: the build fails
+  const r = release(t, { mods: [["alpha", "1.0.0"]] });
+  mod(r.root, "local", "alpha-two", "1.0.0"); fs.writeFileSync(path.join(r.root, "local", "alpha-two", "module.json"), JSON.stringify({ name: "alpha", version: "1.0.0", roles: ["box", "local"] }));
+  assert.throws(() => buildModuleList(r.root, { counter: 1, release: "x" }), /two modules are named alpha and their roles overlap/);
+  // disjoint roles: both pass
+  fs.writeFileSync(path.join(r.root, "core", "alpha", "module.json"), JSON.stringify({ name: "alpha", version: "1.0.0", roles: ["box"] }));
+  fs.writeFileSync(path.join(r.root, "local", "alpha-two", "module.json"), JSON.stringify({ name: "alpha", version: "1.0.0", roles: ["local"] }));
+  const built = JSON.parse(buildModuleList(r.root, { counter: 1, release: "x" }));
+  const check = createListCheck(built);
+  assert.equal(check(path.join(r.root, "core", "alpha")), true);
+  assert.equal(check(path.join(r.root, "local", "alpha-two")), true);
+  fs.appendFileSync(path.join(r.root, "local", "alpha-two", "index.js"), "// x");
+  assert.equal(check(path.join(r.root, "local", "alpha-two")), false, "a changed copy still fails");
+});

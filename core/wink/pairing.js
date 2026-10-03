@@ -158,18 +158,21 @@ export function createPairing(o) {
   const normWords = (/** @type {unknown} */ x) => String(x ?? "").trim().toLowerCase().replace(/\s+/g, " ");
   /**
    * The right words hidden among two decoys from the same list, in an order made fresh for this pairing from the system's random source (never from the words, so the right
-   * place cannot be guessed). No decoy shares a first word with the right set or with the other decoy, so typing a first word cannot match two of them.
+   * place cannot be guessed). A decoy never shares its first three letters with the right word in the same position (WP-1: 952 words of the list share a prefix with an earlier
+   * one, and a glance cannot tell "abandon" from "abandoned"), and no set shares a first word with another.
    * @param {string} right @returns {string[]}
    */
   const makeChoices = right => {
+    const rw = right.split(" ");
     const first = (/** @type {string} */ x) => x.split(" ")[0];
     const used = new Set([first(right)]);
     /** @type {string[]} */
     const decoys = [];
     while (decoys.length < 2) {
-      const d = [0, 1, 2].map(() => WORDLIST[crypto.randomInt(WORDLIST.length)]).join(" ");
-      if (used.has(first(d))) continue;
-      used.add(first(d)); decoys.push(d);
+      const d = [0, 1, 2].map(() => WORDLIST[crypto.randomInt(WORDLIST.length)]);
+      if (d.some((w, i) => w.slice(0, 3) === (rw[i] || "").slice(0, 3))) continue;
+      if (used.has(d[0])) continue;
+      used.add(d[0]); decoys.push(d.join(" "));
     }
     decoys.splice(crypto.randomInt(3), 0, right);
     return decoys;
@@ -177,14 +180,13 @@ export function createPairing(o) {
   /** Sets the right words on a question and shuffles its choices. @param {any} a @param {string} w */
   const setWords = (a, w) => { a.words = w; a.choices = makeChoices(w); };
   /**
-   * What the person said about the words: `right` (a pick of the right choice, its first word, or all three words typed), `wrong`, or `bare` (a yes with nothing to check).
+   * What the person said about the words: `right` (a pick of the right choice, or all three words typed; nothing shorter, WP-1), `wrong`, or `bare` (a yes with nothing to check).
    * @param {{ words: string, choices?: string[] }} a @param {any} input @returns {"right" | "wrong" | "bare"}
    */
   const judgeWords = (a, input) => {
     const i = input || {};
     if (i.words !== undefined) return normWords(i.words) === normWords(a.words) ? "right" : "wrong";
     if (i.pick !== undefined) { const n = Number(i.pick); return Number.isInteger(n) && n >= 1 && n <= 3 && (a.choices || [])[n - 1] === a.words ? "right" : "wrong"; }
-    if (i.first !== undefined) return normWords(i.first) === a.words.split(" ")[0] ? "right" : "wrong";
     return "bare";
   };
 
@@ -500,14 +502,12 @@ export function createPairing(o) {
     return { pairing: id, ack: t.ack, expires: p.expires };
   };
 
-  /** Tells the relay this module gates pairings (set by the module, retried until the relay answers). @type {() => Promise<void>} */
-  let ensureGate = async () => {};
   /**
    * Puts a ticket from a seed at the relay (relay.ticket.mint, modules only). A `gate` (phone or server) makes its redemption a waiting pairing: nothing is paired, no device or
    * presence key made, until this module confirms (confirmPending) after the person has picked the right words (X-1).
    * @param {Buffer} seed @param {"phone" | "server"} [gate]
    */
-  const mint = ports.mint || (async (/** @type {Buffer} */ seed, /** @type {string | undefined} */ gate) => { await ensureGate(); return ctx.call("relay.ticket.mint", { seed: seed.toString("base64url"), ...(gate ? { gate } : {}) }); });
+  const mint = ports.mint || (async (/** @type {Buffer} */ seed, /** @type {string | undefined} */ gate) => { return ctx.call("relay.ticket.mint", { seed: seed.toString("base64url"), ...(gate ? { gate } : {}) }); });
   /**
    * The yes, to the relay: the waiting pairing of this device becomes a paired device now. `not_found` is fine (a pairing the relay never held, a typed code or an ungated ring); any
    * other refusal is an error the caller must not turn into a yes. @param {string} device
@@ -615,8 +615,8 @@ export function createPairing(o) {
       },
     });
     ctx.tool("wink.server.pair.answer", {
-      description: "At the server: answer the pairing question. { yes: false } refuses it. { yes: true } needs the words check: give `pick` (1, 2 or 3, the choice that matches the three words the app shows) or `first` (the first of those words, typed); a bare yes is refused and adds nothing, and a wrong pick or first word is a no. Only this server's own screen or terminal may answer (cli, local, deck, capsule): never a paired device, the tailnet, the relay, a module, a session, a hook, a model client or an agent. Answers { answered, yes, name } or { answered: false } when nobody is asking (or the time ran out).",
-      input: obj({ yes: { type: "boolean" }, pick: { type: "integer" }, first: str }, ["yes"]),
+      description: "At the server: answer the pairing question. { yes: false } refuses it. { yes: true } needs the words check: give `pick` (1, 2 or 3, the choice that matches the three words the app shows) or `words` (all three, typed); a bare yes is refused and adds nothing, and a wrong pick or words is a no. Only this server's own screen or terminal may answer (cli, local, deck, capsule): never a paired device, the tailnet, the relay, a module, a session, a hook, a model client or an agent. Answers { answered, yes, name } or { answered: false } when nobody is asking (or the time ran out).",
+      input: obj({ yes: { type: "boolean" }, pick: { type: "integer" }, words: str }, ["yes"]),
       run: async (input, meta0 = {}) => {
         owner(meta0, "the pairing answer");
         atServer(meta0);
@@ -720,11 +720,14 @@ export function createPairing(o) {
           let proven = "";
           if (to) { try { proven = await proveIdentity(to, input, caller); } catch (e) { dropLater(caller); throw e; } }
           const fresh = !to && !o.pairWordsFor;
+          // WP-1: a ticket's memory is single use and goes at the first ask, whatever follows (a failed ask, a cancel, a bad commit): a stale tag cannot start a second ask
+          const liveTicket = pr.tag ? liveTickets.get(String(pr.tag)) : undefined;
+          if (pr.tag) liveTickets.delete(String(pr.tag));
           if (pr.cancel === true) throw fail("denied", words("pairCancelled"));
           if (fresh && !/^[0-9a-f]{64}$/.test(String(pr.commit || ""))) throw fail("bad_input", words("pairNeedsFresh"));
           let ticket = "";
           if (fresh && pr.tag) {
-            const t = liveTickets.get(String(pr.tag));
+            const t = liveTicket;
             if (!t || t.until <= now()) throw fail("denied", words("ticketTaken"));
             ticket = t.seed;
           }
@@ -955,8 +958,8 @@ export function createPairing(o) {
       },
     });
     ctx.tool("wink.phone.pair.answer", {
-      description: "On the computer: answer the phone question. { yes: false } sends it away and adds nothing. { yes: true } needs the words check: give `pick` (1, 2 or 3, the choice that matches the three words the phone shows), `first` (the first of those words, typed) or `words` (all three, typed). A bare yes is refused and adds nothing; a wrong pick or words is a no. Answers { answered, yes, name, device? } or { answered: false } when nobody is asking (or the time ran out).",
-      input: obj({ yes: { type: "boolean" }, pick: { type: "integer" }, first: str, words: str }, ["yes"]),
+      description: "On the computer: answer the phone question. { yes: false } sends it away and adds nothing. { yes: true } needs the words check: give `pick` (1, 2 or 3, the choice that matches the three words the phone shows) or `words` (all three, typed). A bare yes is refused and adds nothing; a wrong pick or words is a no. Answers { answered, yes, name, device? } or { answered: false } when nobody is asking (or the time ran out).",
+      input: obj({ yes: { type: "boolean" }, pick: { type: "integer" }, words: str }, ["yes"]),
       presence: { summary: async () => "Add a phone to you" },
       run: async (input, meta = {}) => {
         owner(meta, "the phone answer");
@@ -1039,7 +1042,7 @@ export function createPairing(o) {
 
   /** Lets a waiting pairing go: the relay closes its channels and forgets it (relay.devices.drop answers for a device that never existed). @param {string} device */
   const dropPending = async device => { if (typeof ctx.call === "function") await ctx.call("relay.devices.drop", { id: String(device) }); };
-  return { devices, targets, checkTarget, phone, computeAllowed, compute, dropPending, setGate: (/** @type {() => Promise<void>} */ f) => { ensureGate = f; }, tools: () => { tools(); startRetries(); }, startTyping, pending, peers, meta, clearOwner: () => clearOwnerHook(), releaseServer, retryReleases, stop, ownHandover: () => ownHandover() };
+  return { devices, targets, checkTarget, phone, computeAllowed, compute, dropPending, tools: () => { tools(); startRetries(); }, startTyping, pending, peers, meta, clearOwner: () => clearOwnerHook(), releaseServer, retryReleases, stop, ownHandover: () => ownHandover() };
 }
 
 /** The QR a computer shows for a phone: the code and where to meet. @param {string} code @param {string} relay */

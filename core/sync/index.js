@@ -260,7 +260,7 @@ export default {
     ctx.tool("sync.upload.plan", {
       description: "For a paired peer's own connection: which of its files are new, changed, already here, or outside the approved plan's included folders (excluded, sync.upload.start refuses these too, not merely reported), and its quota. Internal to the device's sender.",
       input: { type: "object", required: ["files"], properties: { companion: { type: "string" },  files: { type: "array", items: { type: "object", required: ["path", "bytes", "hash"], properties: { path: { type: "string" }, bytes: { type: "number" }, hash: { type: "string" } } } } } },
-      callers: ["tailnet"],
+      callers: ["tailnet", "device", "space", "agent"],
       run: async ({ files, companion }, meta) => {
         const peer = await peerOf(meta.peer, "sync.upload.plan", companion, { files });
         if (!peer) throw Object.assign(new Error("this connection is not a paired device"), { code: "no_link" });
@@ -284,7 +284,7 @@ export default {
     ctx.tool("sync.upload.start", {
       description: "Start (or resume) sending one file: offset is 0 for new, or how many bytes the box already holds for a retry of the exact same path and hash.",
       input: { type: "object", required: ["path", "bytes", "hash"], properties: { companion: { type: "string" },  path: { type: "string" }, bytes: { type: "number" }, hash: { type: "string" } } },
-      callers: ["tailnet"],
+      callers: ["tailnet", "device", "space", "agent"],
       run: async ({ path: rel, bytes, hash, companion }, meta) => {
         sweepUploads();
         const peer = await peerOf(meta.peer, "sync.upload.start", companion, { path: rel, bytes, hash });
@@ -324,7 +324,7 @@ export default {
     ctx.tool("sync.upload.chunk", {
       description: "One chunk of an upload's bytes, at an exact offset. Internal: the daemon's own route calls this after reading the request body.",
       input: { type: "object", required: ["upload", "offset", "data"], properties: { companion: { type: "string" },  upload: { type: "string" }, offset: { type: "number" }, data: {} } },
-      callers: ["tailnet"],
+      callers: ["tailnet", "device", "space", "agent"],
       run: async ({ upload, offset, data, companion }, meta) => {
         const u = uploads.get(String(upload));
         if (!u) throw Object.assign(new Error("no such upload (it may have expired; start again)"), { code: "denied" });
@@ -351,7 +351,7 @@ export default {
     ctx.tool("sync.upload.cancel", {
       description: "Give up on an open upload before it finishes: drops its temp file and its slot, freeing one of the peer's " + MAX_OPEN + " open uploads without waiting for the idle sweep. Not an error if the id is already gone (finished, expired, or never existed); cancel always succeeds.",
       input: { type: "object", required: ["upload"], properties: { companion: { type: "string" },  upload: { type: "string" } } },
-      callers: ["tailnet"],
+      callers: ["tailnet", "device", "space", "agent"],
       run: async ({ upload, companion }, meta) => {
         const u = uploads.get(String(upload));
         if (!u) return { ok: true, cancelled: false };
@@ -366,7 +366,7 @@ export default {
     ctx.tool("sync.upload.finish", {
       description: "Verify and land a finished upload: checks its hash, scrubs it for secrets, and renames it into synced/<machine>/ (or quarantines it).",
       input: { type: "object", required: ["upload", "hash"], properties: { companion: { type: "string" },  upload: { type: "string" }, hash: { type: "string" } } },
-      callers: ["tailnet"],
+      callers: ["tailnet", "device", "space", "agent"],
       run: async ({ upload, hash, companion }, meta) => {
         const u = uploads.get(String(upload));
         if (!u) throw Object.assign(new Error("no such upload (it may have expired; start again)"), { code: "denied" });
