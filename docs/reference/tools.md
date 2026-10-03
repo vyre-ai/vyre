@@ -7073,7 +7073,7 @@ Move the caller's read marker in a session forward to a cursor. The caller's oth
 
 ### `stream.open`
 
-A one-use ticket (30 s) for the session stream at path, resuming after cursor from (0 for everything the log holds). Also the log's head and floor: a from below floor will be sent a reset.
+A one-use ticket (15 s) for the session stream at path, resuming after cursor from (0 for everything the log holds). Also the log's head and floor: a from below floor will be sent a reset.
 
 - Input:
   - `session` string, required
@@ -7106,21 +7106,25 @@ React to a message in a group chat with an emoji (on: false takes it back).
 
 ### `stream.send`
 
-Say something in a group chat (a stream session with several people and assistants). The words are the caller's, appended first; then routing decides who answers (an @mention, the default assistant when no person is talking to a person, or the assistants named in to) and each gets the words in its own thread; its replies appear in the group with that assistant as author and the caller as acts_for. Two or more answering assistants make a fan-out set. People and assistants join by being named in people and assistants (an assistant needs a cwd to work in). Retry with the same message id and nothing is said twice.
+Say something in a group chat (a stream session with several people and assistants). The words are the caller's, appended first; then routing decides who answers (an @mention, the default assistant when no person is talking to a person, or the assistants named in to) and each gets the words in its own thread; its replies appear in the group with that assistant as author and the caller as acts_for. Two or more answering assistants make a fan-out set. People and assistants join by being named in people and assistants (an assistant needs a cwd to work in). Retry with the same message id and nothing is said twice. A private message is sent with enc { alg, kid, ct } and no text: an opaque ciphertext made on the person's device, stored and relayed as it is, never parsed, routed to no assistant and kept out of search, memory and export.
 
 - Input:
   - `session` string, required
-  - `text` string, required
   - `as` string
   - `assistants` list of any
   - `cwd` string
   - `default` string
+  - `enc` object
+    - `alg` string, required
+    - `ct` string, required
+    - `kid` string, required
   - `group` string
   - `mentions` list of string
   - `message` string
   - `name` string
   - `people` list of any
   - `surface` string
+  - `text` string
   - `to` list of string
 - Callers: `capsule`, `cli`, `deck`, `local`
 

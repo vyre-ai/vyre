@@ -593,7 +593,7 @@ Listens for: `link.unpaired`
 | Event | Fields |
 | --- | --- |
 | `term.closed` | `reason`, `term` |
-| `term.command` | `command`, `session`, `term` |
+| `term.command` | `author`, `command`, `session`, `surface`, `term`, `via` |
 | `term.opened` | `cwd`, `session`, `term` |
 
 ## threads
@@ -616,10 +616,10 @@ Listens for: `link.unpaired`
 | `thread.mentioned` | `mentions`, `uuid` |
 | `thread.plan` | built in a variable before the emit; see the source |
 | `thread.provider` | `account`, `from`, `model`, `reason`, `text`, `to`; sometimes `once` |
-| `thread.queued` | `queued`, `surface`, `text`, `uuid`; sometimes `edited`, `images`, `kind`, `queued_at`, `request`, `step` |
+| `thread.queued` | `queued`, `surface`, `text`, `uuid`; sometimes `author`, `edited`, `images`, `kind`, `queued_at`, `request`, `step` |
 | `thread.remembered` | `file`, `scope` |
 | `thread.rewound` | `restore`, `uuid`; sometimes `at`, `files` |
-| `thread.sent` | `surface`, `text`; sometimes `images`, `kind`, `queued`, `queued_at`, `request`, `step`, `uuid`, `via` |
+| `thread.sent` | `surface`, `text`; sometimes `author`, `images`, `kind`, `queued`, `queued_at`, `request`, `step`, `uuid`, `via` |
 | `thread.shell` | `code`, `command`, `output` |
 | `thread.started` | built in a variable before the emit; see the source |
 | `thread.state` | `state`; sometimes `error`, `turn` |
