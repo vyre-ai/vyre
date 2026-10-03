@@ -26,7 +26,6 @@ import { createIdentityOps } from "./identity-ops.js";
 import { PASSWORD_MIN } from "./recovery.js";
 import { WORDS } from "../../relay/client/words.js";
 import { createCompute } from "../../lib/spaces/compute.js";
-import { isPerson, agentName } from "../../lib/caller.js";
 import { createKernelMembers } from "./kernel-members-compat.js";
 import { kernelMembers } from "./kernel-members.js";
 import { acceptProofRequest } from "../../kernel/remote/proof.js";
@@ -843,9 +842,9 @@ export default {
       }, { callers: RELAY_DEVICE_CALLERS });
 
     // 5a. what other modules (bridges, publish) ask of spaces: who is a member, who is acting, which spaces a person is in. Modules only, never a person or a model.
-    tool("spaces.self", "The person acting and the space a call is for (the one named, or the only one this person is in). The person is this device's own: only for the person's own surface or device, or their own assistant (an agent claim); any other caller (a plain model session, a guest, a hook, an anonymous or module caller) is nobody. For modules.", obj({ caller: str, space: str }), async i => {
+    tool("spaces.self", "This device's person and the space a call is for (the one named, or the only one this person is in), for a module that has already taken the person from the call's kernel chain (ctx.kernel.chain(meta)): `person` is that chain's person, and it is this device's own only when it is the home's own person; anyone else is nobody. For modules.", obj({ person: str, space: str }, ["person"]), async i => {
       const s = me();
-      if (i.caller !== undefined && !(isPerson(String(i.caller)) || agentName(String(i.caller)) !== null)) return { person: null, space: null };
+      if (!K || typeof K.owner !== "string" || String(i.person) !== K.owner) return { person: null, space: null };
       const mine = [];
       for (const r of spaces.all()) if (r.status === "done" && (r.createdBy === s.id || await membershipRow(r.id, /** @type {string} */ (s.id)))) mine.push(r);
       const row = i.space ? mine.find(r => r.id === i.space || r.name === i.space || r.label === i.space) : mine.length === 1 ? mine[0] : null;

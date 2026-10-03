@@ -67,7 +67,7 @@ test("walk steps 2 and 3 on a real vyred against the stand-in directory, and BR-
     "bridges.merge.links": { person: alexId },
     "bridges.kit.plan": { person: alexId, space, kit: {} },
   };
-  for (const label of ["mcp", "mcp:thread:fake", "tailnet-guest:mallory@example.com", "anonymous", "harness"]) {
+  for (const label of ["mcp", "mcp:thread:fake", "tailnet-guest:mallory@example.com", "anonymous", "harness", "tailnet:bob@example.com", "mcp:agent:kit", "device:web0000000000001", "device:setup000000000002", "device:neverpaired00003"]) {
     for (const [tool, input] of Object.entries(inputs)) {
       const r = await as(label)(tool, input);
       assert.ok(r.error, `${tool} as ${label} must be refused, got ${String(JSON.stringify(r)).slice(0, 200)}`);
@@ -84,6 +84,27 @@ test("walk steps 2 and 3 on a real vyred against the stand-in directory, and BR-
   const own = await deck("bridges.merge.links", { person: alexId });
   assert.ok(!own.error, JSON.stringify(own.error));
   assert.ok(own.data.some((/** @type {any} */ l) => l.space === space), "the member's own verified call sees their space");
+  // BR-2 through the daemon's own device path: the home's relay row decides what a `device:<id>` is (PH-1), and the call carries only the facts that gives. A web browser (trusted or not),
+  // a setup page, a removed device and an id never paired get no facts, so no person chain, and every bridges tool refuses them; the owner's paired app device works.
+  const ins = d.registry.deps.db.prepare("INSERT INTO relay_devices (id, name, pub, paired_at, kind, trusted, removed_at) VALUES (?, ?, 'p', 1, ?, ?, ?)");
+  const ids = { app: "aaaaaaaaaaaaaaaa", web: "bbbbbbbbbbbbbbbb", webTrusted: "bbbbbbbbbbbbbbbc", setup: "cccccccccccccccc", gone: "dddddddddddddddd", never: "eeeeeeeeeeeeeeee" };
+  ins.run(ids.app, "phone", "app", 0, null); ins.run(ids.web, "browser", "web", 0, null); ins.run(ids.webTrusted, "browser", "web", 1, null); ins.run(ids.setup, "setup page", "setup", 0, null); ins.run(ids.gone, "old", "app", 0, 5);
+  const { callerFacts } = await import("../core/daemon/index.js");
+  const viaDevice = async (/** @type {string} */ id, /** @type {string} */ tool, /** @type {any} */ input) => {
+    const info = await d.registry.call("relay.device.info", { id }, "module:vyred");
+    const facts = callerFacts(`device:${id}`, { caller: `device:${id}` }, {}, d.kernel, false, info.data || null);
+    return d.registry.call(tool, input, `device:${id}`, facts ? { kernelFacts: facts } : {});
+  };
+  for (const id of [ids.web, ids.webTrusted, ids.setup, ids.gone, ids.never]) {
+    for (const [tool, input] of Object.entries(inputs)) {
+      const r = await viaDevice(id, tool, input);
+      assert.ok(r.error, `${tool} as device ${id} must be refused, got ${String(JSON.stringify(r)).slice(0, 200)}`);
+      assert.ok(!JSON.stringify(r).includes("Harlow Legal"), `${tool} as device ${id} leaked`);
+    }
+  }
+  const appLinks = await viaDevice(ids.app, "bridges.merge.links", { person: alexId });
+  assert.ok(!appLinks.error, JSON.stringify(appLinks.error));
+  assert.ok(appLinks.data.some((/** @type {any} */ l) => l.space === space), "the owner's paired app device sees their space");
   const wrong = await deck("bridges.merge.links", { person: "per_" + "z".repeat(26) });
   assert.equal(wrong.error?.code, "bad_input", "naming someone else through the person's own surface is refused");
 });

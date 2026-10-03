@@ -7,6 +7,7 @@ import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import * as config from "../config/index.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
+import { fakeKernelFor } from "../../test/fake-chain-kernel.js";
 
 const CORE = path.join(path.dirname(new URL(import.meta.url).pathname), "..");
 const SECRET = "SSN-123-45-6789-SENTINEL";
@@ -34,8 +35,8 @@ const FAKES = {
     const w = () => globalThis.__bw;
     ctx.tool("spaces.membership", { run: async ({ space, person }) => (w().members[space] || {})[person] || null });
     ctx.tool("spaces.merge-list", { run: async ({ person }) => w().spaces[person] ?? null });
-    // The real spaces.self (core/spaces): the person is this device's own only for the person's own surface, or an assistant's agent claim. Everything else is nobody.
-    ctx.tool("spaces.self", { run: async ({ caller }) => ({ person: /^(deck|cli|local|capsule|mobile)(:|$)/.test(caller) || /:agent:/.test(caller) ? (w().self ?? null) : null, space: null }) });
+    // The real spaces.self (core/spaces): the kernel's person is this device's own only when it is the home's own person (test/fake-chain-kernel.js). Everything else is nobody.
+    ctx.tool("spaces.self", { run: async ({ person }) => ({ person: person === "per_kernelowner" ? (w().self ?? null) : null, space: null }) });
     ctx.tool("spaces.policy", { run: async ({ space }) => w().policy[space] || {} });
     return {};
   } };`,
@@ -66,7 +67,7 @@ async function boxRegistry(t, { w = world(), fakes = ["spaces", "records", "task
   for (const f of fakes) writeModule(mods, f, { does: { tools: MANIFEST[f].map(name => ({ name, reach: "modules" })) } }, FAKES[f]);
   const db = open(p.db);
   const events = new Events(db);
-  const reg = new Registry({ db, events, config: { role: "box", name: "testbox" }, paths: p, log: () => {} });
+  const reg = new Registry({ db, events, config: { role: "box", name: "testbox" }, paths: p, log: () => {}, kernelFor: fakeKernelFor });
   const core = discover([CORE]).filter(f => f.manifest && f.manifest.name === "bridges");
   await reg.start([...core, ...discover([mods])], { role: "box" });
   t.after(async () => { await reg.stop(); db.close(); });
