@@ -1071,6 +1071,7 @@ test("activity: each step leaves one line in the page's own words, and a forged 
   flow.skipAi();
   assert.ok(flow.state.activity.some(l => l.startsWith("Skipped the AI sign-in")));
   assert.equal(new Set(flow.state.activity).size, flow.state.activity.length, "no line twice");
+  flow.stop();
 });
 
 test("steps: an API key is sent once, never kept in the page's state, and an error never carries it", async t => {
