@@ -2,7 +2,7 @@
 // the local runner; core/runner/sandbox-win.js builds the calls). Compiled with the csc that ships in every Windows
 // (C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe), so nothing is installed.
 //
-//   vyre-sandbox prepare <name> [--grant <path>=<RX|M>]... [--exempt]   make the container, give it the folders, allow loopback
+//   vyre-sandbox prepare <name> [--grant <path>=<RX|M>]... [--traverse <folder>]... [--exempt]   make the container, give it the folders, allow loopback
 //   vyre-sandbox run <name> <cwd> -- <command line>                      run it with this process's stdin, stdout and stderr
 //   vyre-sandbox delete <name>                                           remove the container
 //
@@ -60,6 +60,7 @@ public static class VyreSandbox {
         bool exempt = false;
         for (int i = 2; i < a.Length; i++) {
           if (a[i] == "--grant" && i + 1 < a.Length) { var kv = a[++i].Split(new[] { '=' }, 2); Exec("icacls.exe", "\"" + kv[0] + "\" /grant \"*" + sid + ":(OI)(CI)" + kv[1] + "\" /T /C /Q"); }
+          else if (a[i] == "--traverse" && i + 1 < a.Length) { Exec("icacls.exe", "\"" + a[++i] + "\" /grant \"*" + sid + ":(X)\" /C /Q"); }   // folder only, no inheritance: lets the container walk through it
           else if (a[i] == "--exempt") exempt = Exec("CheckNetIsolation.exe", "LoopbackExempt -a -p=" + sid) == 0;
         }
         Console.WriteLine("sid=" + sid + " exempt=" + (exempt ? "yes" : "no"));

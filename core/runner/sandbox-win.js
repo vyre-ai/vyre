@@ -38,7 +38,11 @@ const quote = s => (/[\s"]/.test(s) ? '"' + String(s).replace(/"/g, '\\"') + '"'
  * @param {{ launcher: string, space: string, workspace: string, readOnly?: string[] }} o
  */
 export function prepare(o) {
-  const args = ["prepare", containerName(o.space), "--grant", `${o.workspace}=M`, ...(o.readOnly || []).flatMap(d => ["--grant", `${d}=RX`]), "--exempt"];
+  // An AppContainer token has no "bypass traverse checking": it needs the traverse right on every folder above what it uses, including a
+  // mounted encrypted volume's root (measured: CreateProcess fails with 203 without it).
+  const above = p => { const out = []; for (let d = path.dirname(p); d !== path.dirname(d); d = path.dirname(d)) out.push(d); out.push(path.parse(p).root); return out; };
+  const trav = [...new Set([o.workspace, ...(o.readOnly || [])].flatMap(above))];
+  const args = ["prepare", containerName(o.space), "--grant", `${o.workspace}=M`, ...(o.readOnly || []).flatMap(d => ["--grant", `${d}=RX`]), ...trav.flatMap(d => ["--traverse", d]), "--exempt"];
   const r = spawnSync(o.launcher, args, { encoding: "utf8" });
   if (r.status !== 0) throw new Error("could not prepare the Windows sandbox: " + (r.stderr || r.stdout).trim().slice(0, 300));
   return { exempt: /exempt=yes/.test(r.stdout), output: r.stdout.trim() };

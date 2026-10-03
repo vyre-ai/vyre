@@ -21,12 +21,12 @@
       {
         "name": "runner.start",
         "summary": "start a session here: the kernel supplies its program, routes and credentials (both grants needed)",
-        "reach": "modules"
+        "reach": "person"
       },
       {
         "name": "runner.stop",
         "summary": "stop a session running here",
-        "reach": "modules"
+        "reach": "person"
       },
       {
         "name": "runner.lock",

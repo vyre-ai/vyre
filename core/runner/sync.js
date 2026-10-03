@@ -39,6 +39,10 @@ const SKIP = new Set([".git/index.lock"]);
 const MAX_FILE = 100 * 1024 * 1024;
 
 const sha = buf => crypto.createHash("sha256").update(buf).digest("hex");
+/** What a checkpoint's seal must cover: the manifest and the transcript up to seq, so a forged file or history is not resumed as the session's own. */
+const canon = m => JSON.stringify(Object.keys(m).sort().map(k => [k, m[k].hash, m[k].version]));
+const transcriptHash = (lines, seq) => sha(lines.filter(e => e.seq <= seq).sort((a, b) => a.seq - b.seq).map(e => `${e.seq}:${e.line}\n`).join(""));
+export const coverOf = (manifest, lines, seq, turn) => ({ turn, seq, manifest: sha(canon(manifest)), transcript: transcriptHash(lines, seq) });
 
 /** @typedef {(req: { roots: typeof ROOTS, have: Record<string, string>, maxBytes?: number }, onFile: (f: { rel: string, hash: string, size: number, bytes: Buffer|null }) => Promise<void>) => Promise<{ truncated: boolean }>} Reader */
 
@@ -57,7 +61,7 @@ export const localReaderFor = work => async ({ roots, have, maxBytes = 1e8 }, on
 };
 
 /**
- * @param {{ space: any, session: string, work: string, state: string, reader: Reader, roots?: typeof ROOTS, log?: (m: string) => void }} o
+ * @param {{ space: any, session: string, work: string, state: string, reader: Reader, seal: (state: any) => any, roots?: typeof ROOTS, log?: (m: string) => void }} o
  */
 export function createSessionSync(o) {
   const roots = o.roots || ROOTS;
@@ -135,7 +139,8 @@ export function createSessionSync(o) {
       if (!sent) return false;
       try {
         await syncFiles();
-        const cp = { turn: turn + 1, seq, manifest, state };
+        const all = fs.readFileSync(tFile, "utf8").split("\n").filter(Boolean).map(l => JSON.parse(l));
+        const cp = { turn: turn + 1, seq, manifest, state: o.seal({ ...state, cover: coverOf(manifest, all, seq, turn + 1) }) };
         await o.space.putCheckpoint(o.session, cp);
         turn = cp.turn;
         fs.writeFileSync(cFile, JSON.stringify(cp), { mode: 0o600 });
@@ -150,17 +155,22 @@ export function createSessionSync(o) {
  * Restore a session from the space's last checkpoint into a workspace: the transcript, the files, the agent's home. Used to
  * resume on another machine or after this one lost its workspace. Run it BEFORE the session starts. Every path in the manifest
  * is checked and written through safefs, so a path that climbs out or a link planted earlier writes nothing outside work/.
- * @param {{ space: any, session: string, work: string, state: string, roots?: typeof ROOTS, verify?: (state: any) => boolean }} o
+ * @param {{ space: any, session: string, work: string, state: string, roots?: typeof ROOTS, verify: (state: any) => boolean }} o
  * @returns {Promise<{ turn: number, seq: number, state: any } | null>}
  */
 export async function restore(o) {
   const roots = o.roots || ROOTS;
   const cp = await o.space.getCheckpoint(o.session);
   if (!cp) return null;
-  if (o.verify && !o.verify(cp.state)) throw Object.assign(new Error("the checkpoint's seal does not verify"), { code: "bad_checkpoint" });
+  // A checkpoint is never resumed unverified: the seal must verify, and it must cover THIS manifest and THIS transcript.
+  if (typeof o.verify !== "function") throw Object.assign(new Error("there is no way to verify a checkpoint, so it is not resumed"), { code: "bad_checkpoint" });
+  const bad = () => Object.assign(new Error("the checkpoint's seal does not verify"), { code: "bad_checkpoint" });
+  if (!o.verify(cp.state)) throw bad();
   const meta = path.join(o.state, o.session);
   fs.mkdirSync(meta, { recursive: true, mode: 0o700 });
   const lines = await o.space.getTranscript(o.session, 1);
+  const want = cp.state?.cover, got = coverOf(cp.manifest || {}, lines, cp.seq, cp.turn);
+  if (!want || want.manifest !== got.manifest || want.transcript !== got.transcript || want.seq !== cp.seq || want.turn !== cp.turn) throw bad();
   fs.writeFileSync(path.join(meta, "transcript.jsonl"), lines.filter(e => e.seq <= cp.seq).map(e => JSON.stringify(e)).join("\n") + (lines.length ? "\n" : ""), { mode: 0o600 });
   let refused = 0;
   for (const [remote, m] of Object.entries(cp.manifest || {})) {

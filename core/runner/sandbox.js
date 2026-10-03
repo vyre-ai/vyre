@@ -144,7 +144,8 @@ function planLinux(o) {
   ];
   // The deny-list filter goes in over fd 3 (see launch()).
   const sc = seccompFilter();
-  if (sc) argv.splice(1, 0, "--seccomp", "3");
+  if (!sc) throw new Error(`no seccomp filter for this CPU (${process.arch}): a session is not started without one`);
+  argv.splice(1, 0, "--seccomp", "3");
   return { argv, env: {}, cwd: undefined, cleanup() {}, profile: argv.join(" "), fd3: sc || undefined };
 }
 
@@ -179,6 +180,7 @@ export function plan(o) {
 export function unavailable(platform = process.platform, run = spawnProbe) {
   if (platform === "darwin") return fs.existsSync("/usr/bin/sandbox-exec") ? "" : "sandbox-exec is missing";
   if (platform === "linux") {
+    if (!seccompFilter()) return `no seccomp filter for this CPU (${process.arch}): a session is not started without one`;
     const r = run("bwrap", ["--unshare-all", "--ro-bind", "/", "/", "true"]);
     if (r.status === 0) return "";
     if (r.error) return "bubblewrap is not installed (apt install bubblewrap)";

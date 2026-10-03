@@ -69,6 +69,7 @@ export function createRunner(o) {
   /** @type {string|null} */ let mnt = null;
   /** @type {Map<string, any>} */ const live = new Map();
   const deadlineFile = path.join(o.base, "run", crypto.createHash("sha256").update(o.space).digest("hex").slice(0, 16) + ".deadline");
+  let gen = crypto.randomBytes(6).toString("hex");   // one per opening of the workspace; its watchdog belongs to it
   let pending = null;   // a retry timer while the workspace could not be closed yet
   const workOf = m => path.join(m, "work");
   const stateOf = m => path.join(m, "state");
@@ -105,7 +106,7 @@ export function createRunner(o) {
 
   const lease = createLease({
     vault: o.vault, space: o.space, device: o.device, retryMs: o.retryMs, setTimer: o.setTimer, clearTimer: o.clearTimer, now,
-    onArm: at => { try { fs.mkdirSync(path.dirname(deadlineFile), { recursive: true, mode: 0o700 }); fs.writeFileSync(deadlineFile, String(at), { mode: 0o600 }); } catch {} },
+    onArm: at => { try { fs.mkdirSync(path.dirname(deadlineFile), { recursive: true, mode: 0o700 }); fs.writeFileSync(deadlineFile, JSON.stringify({ gen, at }), { mode: 0o600 }); } catch {} },
     async onLock(why) {
       // The key is gone: stop every session, close the workspace. The data stays encrypted on disk (expired, slept or released).
       for (const s of [...live.keys()]) await stop(s, { final: false });
@@ -119,7 +120,7 @@ export function createRunner(o) {
   function startWatchdog() {
     if (o.watchdog === false || process.env.VYRE_NO_WATCHDOG) return;
     try {
-      const p = spawn(process.execPath, [WATCHDOG, platform, dir, String(process.pid), deadlineFile], { detached: true, stdio: "ignore" });
+      const p = spawn(process.execPath, [WATCHDOG, platform, dir, String(process.pid), deadlineFile, gen], { detached: true, stdio: "ignore" });
       p.unref();
     } catch (e) { emit({ type: "watchdog-failed", why: String(/** @type {any} */ (e).message) }); }
   }
@@ -127,6 +128,7 @@ export function createRunner(o) {
   /** Open the workspace (take the lease first). */
   async function open() {
     if (mnt && lease.key() && driver.isMounted(dir)) return mnt;
+    gen = crypto.randomBytes(6).toString("hex");   // a new opening supersedes any older watchdog
     const r = await lease.acquire();
     if (!r.ok) throw new Error(r.why);
     const key = lease.key();
@@ -161,7 +163,7 @@ export function createRunner(o) {
     const work = workOf(ws), state = stateOf(ws);
     let resumed = null, routes = s.routes, labels = s.labels || { trust: "external" };
     if (s.resume) {
-      resumed = await restore({ space: o.sync, session: s.session, work, state, verify: o.verifyState });
+      resumed = await restore({ space: o.sync, session: s.session, work, state, verify: o.verifyState });   // required: no verifier, no resume
       if (resumed) {
         // Resume never launders: the session starts at the weaker of its old and current trust, with only the routes it had before.
         labels = mergeLabels(resumed.state?.labels, labels);
@@ -170,7 +172,7 @@ export function createRunner(o) {
       }
     }
     const reader = o.reader || sandboxReader({ platform, space: o.space, work, base: o.base });
-    const sy = createSessionSync({ space: o.sync, session: s.session, work, state, reader, log: m => emit({ type: "sync", session: s.session, m }) });
+    const sy = createSessionSync({ space: o.sync, session: s.session, work, state, reader, seal: o.sealState || (st => st), log: m => emit({ type: "sync", session: s.session, m }) });
     const token = crypto.randomBytes(24).toString("base64url");
     const eg = createEgress({ routes, vault: o.vault, session: s.session, token, lease: () => lease.id, onEvent: e => emit({ type: "egress", session: s.session, ...e }) });
     const runDir = path.join(o.base, "run");
@@ -206,7 +208,7 @@ export function createRunner(o) {
             const cur = o.labels ? mergeLabels(h.labels, o.labels(s.session)) : h.labels;
             h.labels = cur;
             const st = { labels: cur, routes: routes.map(r => r.prefix), session: o.sessionState?.(s.session) };
-            const ok = await sy.checkpoint(o.sealState ? o.sealState(st) : st);
+            const ok = await sy.checkpoint(st);
             emit({ type: "checkpoint", session: s.session, ok, turn: sy.turn });
           } finally { group("SIGCONT"); }
         }).catch(() => {});
