@@ -921,7 +921,14 @@ export class Switchboard {
     if (!sock) throw Object.assign(new Error("Vyre did not start this session because it has no socket of its own to reach Vyre through."), { code: "sandbox_failed" });
     const provider = rec.provider || o.provider || "claude";
     const r = await prepareSandbox(cfg, { provider, command: cfg.binFor ? cfg.binFor(provider) : this.bin, sessionSocket: sock.path, workdirs: [rec.cwd] });
-    if (r.sandboxed) return r.spawn;
+    if (r.sandboxed) {
+      // Partly sandboxed (a provider that cannot move its settings folder keeps its own): said on this session's log, and once per machine and provider in words.
+      if (r.partial) {
+        this.emit("thread.sandbox", { sandboxed: "partial", reason: r.partial.reason, provider, folder: r.partial.folder.map(f => path.basename(f)) }, id, rec.project);
+        if (this.firstOnMachine(`partial-${provider}`)) this.emit("thread.text", { message: "vyre", text: r.partial.notice, done: true, notice: true }, id, rec.project);
+      }
+      return r.spawn;
+    }
     // Unsandboxed, and said so: on the audit log for this session, and in words once per machine (Windows has no sandbox in 0.3).
     if (r.reason === "windows") {
       this.emit("thread.sandbox", { sandboxed: false, reason: "windows" }, id, rec.project);

@@ -13,6 +13,7 @@
 // nesting depth, node count and time. A Code step's source is an opaque span: a template or string literal that is lexed only to
 // find its end, so nothing inside it (a `*/`, an escaped backtick, `import`, `require`, `///`) can end it early or trip a rejection.
 
+import { TRIGGER_KEY_ORDER } from "./triggers.js";
 import { checkFlow, STEP_KINDS, BLOCK_KINDS, FLOW_FORMAT, sourceHash, canonical } from "./schema.js";
 
 export const TEXT_LIMITS = Object.freeze({ source: 1_000_000, depth: 40, nodes: 60_000, ms: 2000, codeSource: 64 * 1024 });
@@ -365,8 +366,8 @@ const isFlowLike = v => v && typeof v === "object" && !Array.isArray(v) && v.for
 // ---------------------------------------------------------------- Flow: stored to text
 
 const FLOW_ORDER = ["name", "label", "description", "authorship", "caps", "trigger", "steps"];
-const TRIGGER_ORDER = ["on", "event", "where", "cron", "every_ms", "at", "path", "input", "type", "stage"];
-const STEP_PROP_ORDER = ["label", "type", "from", "match", "record", "to", "assistant", "action", "resource", "method", "url", "language", "over", "as", "if", "for_ms", "until", "event", "where", "timeout_ms", "on_timeout", "limit", "sort", "title", "instructions", "form", "input", "inputs", "outputs", "labels", "needs", "set", "headers", "body", "how", "template", "checker", "output", "await", "max", "then", "else", "steps", "source"];
+const TRIGGER_ORDER = TRIGGER_KEY_ORDER;
+const STEP_PROP_ORDER = ["label", "type", "from", "match", "record", "to", "assistant", "action", "resource", "connector", "method", "path", "url", "language", "over", "as", "if", "for_ms", "until", "event", "where", "timeout_ms", "on_timeout", "limit", "sort", "title", "instructions", "form", "input", "inputs", "outputs", "labels", "needs", "set", "query", "headers", "body", "drive", "how", "template", "checker", "output", "await", "max", "then", "else", "steps", "source"];
 
 /** @param {string} s */
 export function quote(s) {
