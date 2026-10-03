@@ -138,6 +138,22 @@ test("install-box.sh v2: --from as an account outside the docker group stops ear
   assert.ok(!fs.existsSync(path.join(b.dir, "compose.yml")), "nothing was laid out");
 });
 
+test("install-box.sh v2: the preflight says how many spaces fit, its memory number is the larger store's, and the kernel settings land once in vyre.env", async t => {
+  const { REQUIRE } = await import("../stores/twenty/space-store.js");
+  assert.equal(Number(/^SPACE_MEM_MB=\$\{VYRE_SPACE_MEM_MB:-(\d+)\}/m.exec(fs.readFileSync(SCRIPT, "utf8"))?.[1]), REQUIRE.memoryMb, "the installer's per-space memory is stores/twenty REQUIRE.memoryMb: change both together");
+  const b = box(t);
+  fs.mkdirSync(b.dir, { recursive: true });
+  fs.writeFileSync(path.join(b.dir, "vyre.env"), "CLOUDFLARE_VYRE_TOKEN=keep\nVYRE_STORE=sqlite\n", { mode: 0o600 });
+  const r = run(b.env, ["--yes", "--from", REPO]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout + r.stderr, /GB of memory free/);
+  const text = fs.readFileSync(path.join(b.dir, "vyre.env"), "utf8");
+  assert.match(text, /^CLOUDFLARE_VYRE_TOKEN=keep$/m);
+  assert.match(text, /^VYRE_KERNEL=1$/m);
+  assert.equal(text.match(/^VYRE_STORE=/gm)?.length, 1, "a person's own VYRE_STORE stays, and none is added");
+  assert.match(text, /^VYRE_STORE=sqlite$/m);
+});
+
 test("install-box.sh v2: a release with digests is cosign-checked against the workflow identity, then pulled by digest", t => {
   const b = box(t);
   const r = run({ ...b.env, VYRE_BOX_URL: site(b.base) }, ["--yes"]);
@@ -234,7 +250,8 @@ test("install-box.sh v2: the install line as shown (curl | VYRE_CODE=... sh) han
   fs.mkdirSync(b2.dir, { recursive: true });
   const wrong = spawnSync("sh", ["-c", `VYRE_CODE='${CODE}' cat '${SCRIPT}' | sh -s -- --yes --from '${REPO}'`], { encoding: "utf8", env: b2.env });
   assert.equal(wrong.status, 0);
-  assert.ok(!fs.existsSync(path.join(b2.dir, "vyre.env")), "the variable on curl's side is not the script's");
+  const wrongEnv = path.join(b2.dir, "vyre.env");
+  assert.ok(!fs.existsSync(wrongEnv) || !fs.readFileSync(wrongEnv, "utf8").includes("VYRE_SETUP_CODE="), "the variable on curl's side is not the script's");
 });
 
 test("install-box.sh v2: a running install is updated, never replaced", t => {
