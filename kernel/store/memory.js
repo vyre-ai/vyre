@@ -16,7 +16,7 @@ const fail = (/** @type {string} */ code, /** @type {string} */ message) => Obje
  * One type's rows. The reference store keeps them in a Map; a durable store (kernel/store/sqlite.js) pages them from its database behind a small LRU, so the rows it holds in
  * memory are the hot ones, not all of them. `candidates` and `searchCandidates` may return a SUPERSET of what a query or a search needs (the database narrows by an equality
  * filter or a word); the same code then applies the exact rules, so an answer is the same either way.
- * @typedef {{ get(id: string): any, has(id: string): boolean, set(id: string, r: any): void, values(): Iterable<any>, pageQuery?(spec: any): any, aggregateQuery?(spec: any): any, candidates(spec: any): Iterable<any>, searchCandidates(words: string[]): Iterable<any> }} Table
+ * @typedef {{ get(id: string): any, has(id: string): boolean, set(id: string, r: any): void, values(): Iterable<any>, searchTop?(words: string[], n: number): Iterable<any> | null, pageQuery?(spec: any): any, aggregateQuery?(spec: any): any, candidates(spec: any): Iterable<any>, searchCandidates(words: string[]): Iterable<any> }} Table
  */
 /** @returns {Table} */
 function mapTable() {
@@ -185,7 +185,7 @@ export function createMemoryStore(cfg = {}) {
       for (const [type, t] of rows) {
         if (spec.types && !spec.types.includes(type)) continue;
         const def = types.get(type);
-        for (const r of t.searchCandidates(words)) {
+        for (const r of (top && t.searchTop && t.searchTop(words, spec.page.limit + 1)) || t.searchCandidates(words)) {
           if (r.deleted_at) continue;
           let score = 0, snippet;
           for (const f of def.fields) {

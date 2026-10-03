@@ -112,6 +112,13 @@ export function createSqliteStore(cfg) {
     const doc = r.deleted_at ? null : docOf(r);
     if (doc) /** @type {any} */ (ftsPut).run(row.r, doc);
   };
+  // The reference score of a record for some words, computed from its search text (one lowered field per line): one point per field per word it holds.
+  if (ftsOk) db.function("vyre_score", { deterministic: true }, (/** @type {any} */ doc, /** @type {any} */ words) => {
+    let sc = 0;
+    const ws = String(words).split("\t");
+    for (const line of String(doc).split("\n")) for (const w of ws) if (line.includes(w)) sc++;
+    return sc;
+  });
   let ftsBuilt = false;
   /** Resolves when the index covers every record: at once on a new database, in slices (the loop is never held) on one that had records before the index. */
   const ftsReady = (async () => {
@@ -192,13 +199,25 @@ export function createSqliteStore(cfg) {
         const where = eq.map(([f]) => `json_extract(data, '$.${f}') = ?`).join(" AND ");
         return rows(db.prepare(`SELECT * FROM kernel_records WHERE type = '${type}' AND ${where}`).iterate(...eq.map(([, v]) => v)));
       },
+      /**
+       * The best `n` records for these words by the reference ranking (score, then id), ranked in SQL from the full-text index so a word every record holds does not mean reading every
+       * record. Null when the index cannot answer (a word under three characters, an index still being built): the caller takes `searchCandidates`.
+       */
+      searchTop(words, /** @type {number} */ n) {
+        if (!(ftsOk && ftsBuilt && words.length && words.every(w => !/\s/.test(w)))) return null;
+        // A word of three or more characters narrows by the index; with a shorter word the index cannot, so every document's text is scored (still without reading a record).
+        const indexed = words.every(w => [...w].length >= 3);
+        const inner = indexed ? "SELECT rowid AS rid, vyre_score(doc, ?) AS sc FROM kernel_fts WHERE kernel_fts MATCH ?" : "SELECT rowid AS rid, vyre_score(doc, ?) AS sc FROM kernel_fts";
+        const args = indexed ? [words.join("\t"), words.map(w => `"${w.replace(/"/g, '""')}"`).join(" OR ")] : [words.join("\t")];
+        return rows(db.prepare(`SELECT k.* FROM (${inner}) h CROSS JOIN kernel_records k ON k.rowid = h.rid WHERE h.sc > 0 AND k.type = ? AND k.deleted_at IS NULL ORDER BY h.sc DESC, k.id LIMIT ?`).all(...args, type, n));
+      },
       searchCandidates(words) {
         if (!words.length) return this.values();
         // Words of three or more characters: the full-text index finds every record whose text holds one of them as a substring (the same test the exact code applies next, so this
         // narrows and never drops a match). A shorter word, or an index still being built, takes the scan.
         if (ftsOk && ftsBuilt && words.every(w => [...w].length >= 3)) {
           const match = words.map(w => `"${w.replace(/"/g, '""')}"`).join(" OR ");
-          return rows(db.prepare("SELECT k.* FROM kernel_fts f JOIN kernel_records k ON k.rowid = f.rowid WHERE kernel_fts MATCH ? AND k.type = ? AND k.deleted_at IS NULL").iterate(match, type));
+          return rows(db.prepare("SELECT k.* FROM kernel_fts f CROSS JOIN kernel_records k ON k.rowid = f.rowid WHERE kernel_fts MATCH ? AND k.type = ? AND k.deleted_at IS NULL").iterate(match, type));
         }
         const any = words.map(() => "data LIKE ? ESCAPE '\\'").join(" OR ");
         return rows(db.prepare(`SELECT * FROM kernel_records WHERE type = ? AND deleted_at IS NULL AND (${any})`).iterate(type, ...words.map(w => `%${likeEsc(w)}%`)));
