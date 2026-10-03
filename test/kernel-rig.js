@@ -72,7 +72,11 @@ export async function createRig({ space = SPACE, owner = "per_alex", people = {}
   const model = { call: async (/** @type {any} */ input) => { modelCalls.push(input); return { id: `m${modelCalls.length}`, provider: "stand-in", model: "stand-in", content: "", ...(await script(input)) }; } };
   const gw = k.gateway;
   /** The port the work modules take: the real gateway's calls, plus the one stand-in. */
-  const kernel = { space, authorize: gw.authorize, records: gw.records, events: gw.events, ask: gw.ask, tasks: gw.tasks, grants: gw.grants, members: gw.members, definitions: gw.definitions, actions: gw.actions, serviceChain: gw.serviceChain, model };
+  // SHIM(tasks): the kernel's `tasks.list` answers only a chain that is exactly one person, and lists only that person's queue. An assistant acts for a person, so the
+  // shim answers with the queue of the person it acts for; `forRecord` (the open tasks on a record) is derived from the log. Both are platform asks (CHAT.md).
+  const tasksShim = { list: (/** @type {any} */ chain) => gw.tasks.list(person(chain.hops[0].actor.id)),
+    forRecord: async (/** @type {any} */ _chain, /** @type {string} */ recordUrn) => { const out = []; for (const e of await gw.events.read(ownerChain, { type: "task.created" })) { const id = String(e.subject).split("/").pop(); const t = await gw.ask.get(ownerChain, /** @type {string} */ (id)).catch(() => null); if (t && t.record === recordUrn) out.push(t); } return out; } };
+  const kernel = { space, authorize: gw.authorize, records: gw.records, events: gw.events, ask: gw.ask, tasks: tasksShim, grants: gw.grants, members: gw.members, definitions: gw.definitions, actions: gw.actions, serviceChain: gw.serviceChain, model };
   return {
     k, kernel, space, owner, ownerChain, room, person, assistant, withService, grantTo, restrict, addTemp, taskProof, actor, proof, modelCalls,
     /** SHIM(model): what the provider answers, as a function of the call. */

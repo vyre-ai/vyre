@@ -88,7 +88,12 @@ export async function buildSituation(kernel, chain, { space, project, record, do
   if (sealedNames.length) lines.push(`Sealed (${sealedNames.sort().join(", ")}): the values are never shown to you; ask for what is on file, and the kernel fills a template slot only when a checked message is sent.`);
 
   // Tasks: what waits on the caller (any record), and the open tasks on this record.
-  let all = kernel.tasks && kernel.tasks.list ? await kernel.tasks.list(chain, {}) : [];
+  // What waits on the person (the kernel's own queue for them) and the tasks on this record (`kernel.tasks.forRecord`, a platform gap: the kernel lists only a person's queue).
+  /** @type {any[]} */ let all = kernel.tasks && kernel.tasks.list ? await kernel.tasks.list(chain, {}) : [];
+  if (rec && kernel.tasks && typeof kernel.tasks.forRecord === "function") {
+    const have = new Set(all.map((/** @type {any} */ t) => t.id));
+    for (const t of await kernel.tasks.forRecord(chain, rec.urn).catch(() => [])) if (!have.has(t.id)) all.push(t);
+  }
   if (group) {
     // Only tasks every viewer may see; what waits on the asker is the asker's own business and is left out of a shared room.
     const keep = [];
@@ -111,7 +116,7 @@ export async function buildSituation(kernel, chain, { space, project, record, do
 
   // The team: people and assistant teammates of the project, each with a live line when there is one.
   if (project) {
-    const teamQ = (/** @type {any} */ c) => kernel.records.query(c, "team_member", { filter: { field: "project", op: "eq", value: { urn: rec ? rec.urn : "" } }, page: { limit: 50 } }).then((/** @type {any} */ r) => r.rows);
+    const teamQ = (/** @type {any} */ c) => kernel.records.query(c, "team-member", { filter: { field: "project", op: "eq", value: { urn: rec ? rec.urn : "" } }, page: { limit: 50 } }).then((/** @type {any} */ r) => r.rows);
     let team = await teamQ(chain).catch(() => []);
     if (group) { const keep = []; for (const m of team) if (await canRead(m.urn || `vyre://${space}/team_member/${m.id}`)) keep.push(m); team = keep; }
     const items = team.map((/** @type {any} */ m) => {
