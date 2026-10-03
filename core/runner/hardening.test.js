@@ -192,7 +192,7 @@ test("Z8: a credential is only added for a listed method and path, and the vault
   const seen = []; const up = http.createServer((req, res) => { seen.push(req.method + " " + req.url + " " + (req.headers.authorization || "")); res.end("ok"); });
   await new Promise(r => up.listen(0, "127.0.0.1", r));
   const sp = fakeSpace();
-  const eg = createEgress({ routes: [{ prefix: "/pay", upstream: `http://127.0.0.1:${up.address().port}`, credential: { ref: "vault://gmail", header: "authorization", prefix: "Bearer " }, allow: [{ method: "GET", path: "/v1/customers/*" }] }],
+  const eg = createEgress({ routes: [{ prefix: "/pay", upstream: `http://127.0.0.1:${up.address().port}`, credential: { header: "authorization", prefix: "Bearer " }, allow: [{ method: "GET", path: "/v1/customers/*" }] }],
     vault: sp.vault, session: "s1", token: "t", lease: () => "lease-1" });
   const { port } = await eg.listen();
   const call = (method, p) => new Promise(res => { const q = http.request({ hostname: "127.0.0.1", port, path: p, method, headers: { authorization: "Bearer t" } }, m => { m.resume(); m.on("end", () => res(m.statusCode)); }); q.on("error", () => res(0)); q.end(); });
@@ -206,7 +206,7 @@ test("Z8: a credential is only added for a listed method and path, and the vault
     assert.deepEqual(seen, ["GET /v1/customers/cus_1 Bearer ya29.REAL-GMAIL-SECRET"]);
     assert.deepEqual(sp.state.uses.map(u => u.method + " " + u.path), ["GET /v1/customers/cus_1"]);
   } finally { await eg.close(); await new Promise(r => { up.closeAllConnections(); up.close(r); }); }
-  assert.throws(() => createEgress({ routes: [{ prefix: "/pay", upstream: "https://x.example", credential: { ref: "vault://gmail", header: "authorization" } }], vault: sp.vault, session: "s", token: "t" }), /allowed methods and paths/);
+  assert.throws(() => createEgress({ routes: [{ prefix: "/pay", upstream: "https://x.example", credential: { header: "authorization" } }], vault: sp.vault, session: "s", token: "t" }), /allowed methods and paths/);
 });
 
 // ---- resume carries trust ---------------------------------------------------------------------------------------------

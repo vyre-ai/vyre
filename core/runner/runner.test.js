@@ -127,8 +127,8 @@ const get = (port, p, headers = {}, method = "GET") => new Promise(res => { cons
 
 test("egress: the vault is asked per request, the secret goes only into the outgoing header, the token never leaves", async () => {
   const up = await upstream(); const sp = fakeSpace();
-  const routes = [{ prefix: "/provider", upstream: `http://127.0.0.1:${up.port}`, credential: { ref: "vault://provider", header: "x-api-key" }, allow: [{ method: "GET", path: "/v1/messages" }, { method: "POST", path: "/v1/messages" }] },
-    { prefix: "/space", upstream: `http://127.0.0.1:${up.port}/api`, credential: { ref: "vault://gmail", header: "authorization", prefix: "Bearer " }, allow: [{ method: "GET", path: "/gmail/*" }] }];
+  const routes = [{ prefix: "/provider", upstream: `http://127.0.0.1:${up.port}`, credential: { header: "x-api-key" }, allow: [{ method: "GET", path: "/v1/messages" }, { method: "POST", path: "/v1/messages" }] },
+    { prefix: "/space", upstream: `http://127.0.0.1:${up.port}/api`, credential: { header: "authorization", prefix: "Bearer " }, allow: [{ method: "GET", path: "/gmail/*" }] }];
   const eg = createEgress({ routes, vault: sp.vault, session: "s1", token: "tok-abc", lease: () => "lease-1" });
   const { port } = await eg.listen();
   try {
@@ -149,7 +149,7 @@ test("egress: the vault is asked per request, the secret goes only into the outg
 
 test("egress: no token, a wrong token, an unlisted path and CONNECT are all refused, and nothing is fetched", async () => {
   const up = await upstream(); const sp = fakeSpace();
-  const eg = createEgress({ routes: [{ prefix: "/provider", upstream: `http://127.0.0.1:${up.port}`, credential: { ref: "vault://provider", header: "x-api-key" }, allow: [{ method: "GET", path: "/v1/messages" }, { method: "POST", path: "/v1/messages" }] }], vault: sp.vault, session: "s1", token: "tok-abc", lease: () => "lease-1" });
+  const eg = createEgress({ routes: [{ prefix: "/provider", upstream: `http://127.0.0.1:${up.port}`, credential: { header: "x-api-key" }, allow: [{ method: "GET", path: "/v1/messages" }, { method: "POST", path: "/v1/messages" }] }], vault: sp.vault, session: "s1", token: "tok-abc", lease: () => "lease-1" });
   const { port } = await eg.listen();
   try {
     assert.equal((await get(port, "/provider/x")).status, 401);
@@ -168,7 +168,7 @@ function net_connect(port) { const s = net.connect(port, "127.0.0.1"); s.write("
 
 test("egress: when the vault fails the request fails plainly and nothing goes upstream", async () => {
   const up = await upstream(); const sp = fakeSpace(); sp.state.offline = true;
-  const eg = createEgress({ routes: [{ prefix: "/provider", upstream: `http://127.0.0.1:${up.port}`, credential: { ref: "vault://provider", header: "x-api-key" }, allow: [{ method: "GET", path: "/v1/messages" }, { method: "POST", path: "/v1/messages" }] }], vault: sp.vault, session: "s1", token: "t", lease: () => "lease-1" });
+  const eg = createEgress({ routes: [{ prefix: "/provider", upstream: `http://127.0.0.1:${up.port}`, credential: { header: "x-api-key" }, allow: [{ method: "GET", path: "/v1/messages" }, { method: "POST", path: "/v1/messages" }] }], vault: sp.vault, session: "s1", token: "t", lease: () => "lease-1" });
   const { port } = await eg.listen();
   try {
     const r = await get(port, "/provider/v1/messages", { "x-api-key": "t" });
@@ -279,8 +279,8 @@ async function rig(t, over = {}) {
   const server = { starts: 0 };
   const mk = (b = base) => createRunner({ base: b, space: "harlow", device: "kit", vault: sp.vault, sync: sp.sync, grants: () => grants, requestServer: () => { server.starts++; }, retryMs: 50, sealState: seal, verifyState: unseal, sessionState: s => ({ v: 1, session: s, taint: "external" }) });
   const runner = mk();
-  const routes = [{ prefix: "/provider", upstream: `http://127.0.0.1:${up.port}`, credential: { ref: "vault://provider", header: "x-api-key" }, allow: [{ method: "GET", path: "/v1/messages" }, { method: "POST", path: "/v1/messages" }] },
-    { prefix: "/space", upstream: `http://127.0.0.1:${up.port}/api`, credential: { ref: "vault://gmail", header: "authorization", prefix: "Bearer " }, allow: [{ method: "GET", path: "/gmail/*" }] }];
+  const routes = [{ prefix: "/provider", upstream: `http://127.0.0.1:${up.port}`, credential: { header: "x-api-key" }, allow: [{ method: "GET", path: "/v1/messages" }, { method: "POST", path: "/v1/messages" }] },
+    { prefix: "/space", upstream: `http://127.0.0.1:${up.port}/api`, credential: { header: "authorization", prefix: "Bearer " }, allow: [{ method: "GET", path: "/gmail/*" }] }];
   const launch = (r, session, extra = {}) => r.start({ session, command: process.execPath, args: [path.join(agentDir, "agent.js")], readOnly: [agentDir, path.dirname(process.execPath)], routes,
     env: { VYRE_PROBE_FILE: path.join(outsideDir, "private.txt"), VYRE_PROBE_HOME: process.env.HOME || process.env.USERPROFILE || "/root", VYRE_PROBE_PORT: String(up.port) }, ...extra });
   t.after(async () => { try { await runner.stopAll(); await runner.lock(); } catch {} await up.close(); for (const d of [base, agentDir, outsideDir]) rm(d); });
