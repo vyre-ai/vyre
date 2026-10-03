@@ -393,10 +393,10 @@ Listens for: `floor.wrote`, `thread.deleted`
 | --- | --- |
 | `presence.enrolled` | `id`, `kind`, `name` |
 | `presence.proved` | `caller`, `method`, `tool` |
-| `presence.refused` | `caller`, `method`, `tool` |
+| `presence.refused` | none; sometimes `caller`, `device`, `method`, `tool`, `why` |
 | `presence.removed` | `id` |
 | `presence.signed-in` | `id`, `node` |
-| `presence.signed-out` | `id` |
+| `presence.signed-out` | none; sometimes `device`, `id` |
 
 ## projects
 
