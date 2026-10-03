@@ -408,7 +408,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
-        with: { pattern: results-*, path: results, merge-multiple: true }
+        # One folder per artifact: merged, the jobs' root results.jsonl files overwrote each other and left a torn line (report.mjs then died parsing it).
+        with: { pattern: results-*, path: results }
       - name: The results page
         run: node scripts/matrix/report.mjs results --sha "${{ github.sha }}" --run "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
       - uses: actions/upload-artifact@v4
