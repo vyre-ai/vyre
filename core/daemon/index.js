@@ -224,7 +224,12 @@ async function startLocked(opts, root, p, release) {
       forwardCredential: async (/** @type {any} */ q) => {
         if (!q.route) throw Object.assign(new Error("that connector's route table is the vault's and is not exposed to the kernel yet"), { code: "unavailable" });
         const r = q.request;
-        const out = await registry.call("vault.forward", { credential: q.ref, method: r.method, url: `https://${q.route}${r.path}`, ...(r.query ? { query: r.query } : {}), ...(r.headers ? { headers: r.headers } : {}), ...(r.body !== undefined ? { body: r.body } : {}), session: q.session || q.idem || "home" }, "module:leases");
+        // A file request goes to vault.forward.file with the route's limits and Drive lists, and the Drive is this call's own door (q.files: the kernel's Drive under the caller's chain, FW-2),
+        // handed in-process as meta, never as data a module could name. A plain request carries the route's header names.
+        const base = { credential: q.ref, method: r.method, url: `https://${q.route}${r.path}`, ...(r.query ? { query: r.query } : {}), ...(r.headers ? { headers: r.headers } : {}), ...(q.allow_headers ? { allow_headers: q.allow_headers } : {}), session: q.session || q.idem || "home" };
+        const out = q.file
+          ? await registry.call("vault.forward.file", { ...base, ...(r.upload ? { upload: r.upload } : {}), ...(r.saveTo ? { saveTo: r.saveTo } : {}), ...(q.limits ? { limits: q.limits } : {}), ...(q.drive ? { drive: q.drive } : {}) }, "module:leases", { files: q.files })
+          : await registry.call("vault.forward", { ...base, ...(r.body !== undefined ? { body: r.body } : {}) }, "module:leases");
         if (out.error) throw Object.assign(new Error(out.error.message), { code: out.error.code });
         return out.data;
       },
