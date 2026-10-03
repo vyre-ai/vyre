@@ -163,3 +163,26 @@ test("kits: removing needs the right to, and a Kit that is not installed is not 
   await assert.rejects(() => kits.remove("estate-planning", ALEX, caller), /needs a person's yes/);
   assert.equal(kitParts(estateKit(1)).length, 6);
 });
+
+test("kits: the installed Kits and waiting proposals are records, so they survive a restart on the real kernel", async () => {
+  const w = await world();
+  const { RecordsKitStore } = await import("./kits.js");
+  const sys = w.kernel.sysChain();
+  const store = new RecordsKitStore({ kernel: w.kernel, chain: sys });
+  await store.define();
+  const mk = s => new KitManager({ kernel: w.kernel, runner: w.runner, store: s, catalog: () => w.cat, chains: { forFlow: x => w.kernel.chainFor(x), forDoer: () => w.kernel.moduleChain({ module: "flows", approver: ALEX }) }, clock: () => w.clock.t, installerRole: () => "admin",
+    ports: { teammates: { create: async () => {}, remove: async () => {} } } });
+  const kits = mk(store);
+  const caller = w.kernel.chainFor({ flow: "x", approver: ALEX, tainted: false, space: SPACE });
+  w.offs.push(w.kernel.onEvent(e => { void kits.onEvent(e); }, "kits-records"));
+  const p = await kits.propose(estateKit(1), ALEX, caller);
+  assert.equal(p.ok, true);
+  // a restart: a new manager on a new store object over the same kernel finds the proposal and the approval installs it
+  const after = mk(new RecordsKitStore({ kernel: w.kernel, chain: sys }));
+  assert.equal((await after.store.proposalByTask(p.task)).kit.id, "estate-planning");
+  await w.kernel.completeTask(p.task, { outcome: "approved" });
+  await after.onEvent({ type: "task.completed", subject: `vyre://${SPACE}/task/${p.task}`, data: {} });
+  const listed = await new RecordsKitStore({ kernel: w.kernel, chain: sys }).list();
+  assert.deepEqual(listed.map(r => [r.kit_id, r.status]), [["estate-planning", "installed"]]);
+  assert.equal(await after.store.proposalByTask(p.task), null, "the proposal is gone once it is installed");
+});

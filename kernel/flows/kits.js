@@ -23,6 +23,8 @@ const NAME_RE = /^[a-z][a-z0-9_-]{0,63}$/;
  */
 
 export const KIT_TYPES = Object.freeze([
+  { name: "kit-proposal", label: "Kit waiting for a yes", fields: [
+    { name: "proposal_id", kind: "text", label: "Id" }, { name: "task", kind: "text", label: "Task" }, { name: "body", kind: "text", label: "Proposal" } ] },
   { name: "kit-install", label: "Installed Kit", fields: [
     { name: "kit_id", kind: "text", label: "Kit" }, { name: "version", kind: "number", label: "Version" }, { name: "hash", kind: "text", label: "Hash" },
     { name: "status", kind: "text", label: "Status" }, { name: "by", kind: "text", label: "Installed by" }, { name: "at", kind: "number", label: "When" }, { name: "body", kind: "text", label: "What it added" } ] },
@@ -200,6 +202,27 @@ export class MemoryKitStore {
   /** @param {string} id */ async getProposal(id) { const p = this.proposals.get(id); return p ? structuredClone(p) : null; }
   /** @param {string} id */ async delProposal(id) { this.proposals.delete(id); }
   /** @param {string} task */ async proposalByTask(task) { return [...this.proposals.values()].map(p => structuredClone(p)).find(p => p.task === task) || null; }
+}
+
+/** The installed Kits and the proposals waiting for a yes, as records in the kernel: they survive a restart, with version history and the audit log. @implements the MemoryKitStore methods */
+export class RecordsKitStore {
+  /** @param {{ kernel: any, chain: any }} o */
+  constructor(o) { this.k = o.kernel; this.chain = o.chain; }
+  async define() { return this.k.records.define(this.chain, { add_types: KIT_TYPES }); }
+  /** @param {string} type @param {string} field @param {string} value */
+  async #one(type, field, value) { return (await this.k.records.query(this.chain, type, { filter: { field, op: "eq", value }, page: { limit: 1 } })).rows[0] || null; }
+  /** @param {string} id */ async get(id) { const r = await this.#one("kit-install", "kit_id", id); return r ? JSON.parse(r.data.body) : null; }
+  /** @param {any} row */ async put(row) {
+    const data = { kit_id: row.kit_id, version: row.version ?? 0, hash: row.hash || "", status: row.status || "", by: row.by ? `${row.by.kind}:${row.by.id}` : "", at: row.at || 0, body: JSON.stringify(row) };
+    const cur = await this.#one("kit-install", "kit_id", row.kit_id);
+    if (cur) await this.k.records.update(this.chain, "kit-install", cur.id, data, cur.version); else await this.k.records.create(this.chain, "kit-install", data);
+  }
+  /** @param {string} id */ async del(id) { const cur = await this.#one("kit-install", "kit_id", id); if (cur) await this.k.records.remove(this.chain, "kit-install", cur.id, cur.version); }
+  async list() { return (await this.k.records.query(this.chain, "kit-install", { page: { limit: 200 } })).rows.map((/** @type {any} */ r) => JSON.parse(r.data.body)); }
+  /** @param {any} p */ async putProposal(p) { await this.k.records.create(this.chain, "kit-proposal", { proposal_id: p.id, task: p.task || "", body: JSON.stringify(p) }); }
+  /** @param {string} id */ async getProposal(id) { const r = await this.#one("kit-proposal", "proposal_id", id); return r ? JSON.parse(r.data.body) : null; }
+  /** @param {string} id */ async delProposal(id) { const r = await this.#one("kit-proposal", "proposal_id", id); if (r) await this.k.records.remove(this.chain, "kit-proposal", r.id, r.version); }
+  /** @param {string} task */ async proposalByTask(task) { const r = await this.#one("kit-proposal", "task", task); return r ? JSON.parse(r.data.body) : null; }
 }
 
 /**
