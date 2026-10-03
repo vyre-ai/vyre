@@ -252,6 +252,8 @@ function fscryptDriver() {
     async create(dir, key) {
       // Owner-only: only POSIX permissions protect an UNLOCKED workspace. Only the folders THIS call creates are chmodded; a folder that was
       // already there (a home, a shared mount) is never touched.
+      // A pre-existing folder above that anyone may write to (without the sticky bit) lets another user swap the path under the lender: refuse, say why.
+      for (let d = path.dirname(dir); d !== path.dirname(d); d = path.dirname(d)) { try { const m = fs.statSync(d).mode; if ((m & 0o002) && !(m & 0o1000)) throw new Error(`could not create the workspace: ${d} is writable by other users, so another user could swap a folder under it`); } catch (e) { if (/could not create/.test(String(e.message))) throw e; } }
       const made = []; for (let d = enc(dir); !fs.existsSync(d); d = path.dirname(d)) made.push(d);
       fs.mkdirSync(enc(dir), { recursive: true, mode: 0o700 });
       for (const d of made) { try { fs.chmodSync(d, 0o700); } catch {} }

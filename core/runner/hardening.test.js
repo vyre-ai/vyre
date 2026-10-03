@@ -516,3 +516,17 @@ test("internet mode refusals: a changing answer, a redirect, the machine's own a
   const get = url => new Promise(res => { const q = http.request({ hostname: "127.0.0.1", port: e2.port, path: url, headers: { host: new URL(url).host, "proxy-authorization": "Basic " + Buffer.from("vyre:tok").toString("base64") } }, m => { m.resume(); res(m.statusCode); }); q.on("error", () => res(0)); q.end(); });
   assert.equal(await get("http://10.0.0.1/secret"), 403, "the redirect target is refused when the client follows it");
 });
+
+test("FS-3: a folder that was already there is never chmodded, and a world-writable one above is refused", { skip: process.platform !== "linux" || !FSDIR || !fscryptSupported(FSDIR), timeout: 60_000 }, async t => {
+  const outer = fs.mkdtempSync(path.join(FSDIR, "fs3-")); t.after(() => rm(outer));
+  fs.chmodSync(outer, 0o755); fs.writeFileSync(path.join(outer, "other-file.txt"), "kept");
+  const drv = driverFor("linux", { prefer: "fscrypt" });
+  const dir = path.join(outer, "vyre", "spaces", "w");
+  await drv.create(dir, crypto_.randomBytes(32));
+  assert.equal(fs.statSync(outer).mode & 0o777, 0o755, "the pre-existing folder's mode is unchanged");
+  assert.equal(fs.readFileSync(path.join(outer, "other-file.txt"), "utf8"), "kept");
+  assert.equal(fs.statSync(path.join(outer, "vyre")).mode & 0o077, 0, "the folders it created are owner-only");
+  await drv.destroy(dir);
+  const open_ = fs.mkdtempSync(path.join(FSDIR, "fs3w-")); t.after(() => rm(open_)); fs.chmodSync(open_, 0o777);
+  await assert.rejects(() => drv.create(path.join(open_, "spaces", "w"), crypto_.randomBytes(32)), /writable by other users/);
+});
