@@ -41,7 +41,7 @@ public static class VyreSandbox {
   [DllImport("kernel32.dll")] static extern bool SetHandleInformation(IntPtr h, uint mask, uint flags);
 
   static string ContainerSid(string name, bool create) {
-    IntPtr sid; int hr = create ? CreateAppContainerProfile(name, name, "vyre local runner", IntPtr.Zero, 0, out sid) : 1;
+    IntPtr sid = IntPtr.Zero; int hr = create ? CreateAppContainerProfile(name, name, "vyre local runner", IntPtr.Zero, 0, out sid) : 1;
     if (hr != 0) { hr = DeriveAppContainerSidFromAppContainerName(name, out sid); if (hr != 0) throw new Exception("no container " + name + " (hr " + hr + ")"); }
     string s; ConvertSidToStringSid(sid, out s); return s;
   }

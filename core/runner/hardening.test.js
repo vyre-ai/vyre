@@ -225,12 +225,13 @@ test("S-1: a racing worker swapping a folder for a link gets 0 host reads over 1
   racer = spawn(process.execPath, ["-e", `
     const fs=require("fs"),p=${JSON.stringify(path.join(work, "files", "d"))},real=p+"-real",host=${JSON.stringify(host)};
     fs.renameSync(p,real);
-    for(;;){ try{fs.symlinkSync(host,p);}catch{} try{fs.unlinkSync(p);}catch{} try{fs.symlinkSync(real,p);}catch{} try{fs.unlinkSync(p);}catch{} }`], { stdio: "ignore" });
+    for(;;){ try{fs.symlinkSync(host,p);}catch{} try{fs.unlinkSync(p);}catch{} try{fs.symlinkSync(real,p);}catch{} try{fs.unlinkSync(p);}catch{} }`], { stdio: "ignore", detached: true });   // its own session, like a setsid helper
   await sleep(300);
   const read = sandboxReader({ platform: process.platform, space: "harlow", work, base: a });
-  const got = await read({ roots: [{ dir: "files", remote: "files" }], have: {}, maxBytes: 1e6 });
-  assert.equal(got.filter(f => f.bytes && f.bytes.includes("HOST-FILE")).length, 0);
-  assert.ok(got.length >= 0);
+  let host_reads = 0, n = 0;
+  await read({ roots: [{ dir: "files", remote: "files" }], have: {}, maxBytes: 1e6 }, async f => { n++; if (f.bytes && f.bytes.includes("HOST-FILE")) host_reads++; });
+  console.log(`S-1 race: ${n} files read, ${host_reads} host reads`);
+  assert.equal(host_reads, 0);
 });
 
 test("S-1b: the sandboxed reader returns plain files, skips links, and sends only what changed", { skip: !SANDBOX, timeout: 60_000 }, async t => {
@@ -240,10 +241,11 @@ test("S-1b: the sandboxed reader returns plain files, skips links, and sends onl
   fs.writeFileSync(path.join(work, "files", "a.txt"), "alpha"); fs.writeFileSync(path.join(work, "files", "sub", "b.txt"), "beta");
   fs.symlinkSync(path.join(host, "secret"), path.join(work, "files", "link.txt")); fs.symlinkSync(host, path.join(work, "files", "linkdir"));
   const read = sandboxReader({ platform: process.platform, space: "harlow", work, base: a });
-  const first = await read({ roots: [{ dir: "files", remote: "files" }], have: {}, maxBytes: 1e6 });
+  const collect = async have => { const out = []; await read({ roots: [{ dir: "files", remote: "files" }], have, maxBytes: 1e6 }, async f => { out.push(f); }); return out; };
+  const first = await collect({});
   assert.deepEqual(first.map(f => f.rel).sort(), ["files/a.txt", "files/sub/b.txt"]);
   assert.equal(first.find(f => f.rel === "files/a.txt").bytes.toString(), "alpha");
-  const again = await read({ roots: [{ dir: "files", remote: "files" }], have: { "files/a.txt": first.find(f => f.rel === "files/a.txt").hash }, maxBytes: 1e6 });
+  const again = await collect({ "files/a.txt": first.find(f => f.rel === "files/a.txt").hash });
   assert.equal(again.find(f => f.rel === "files/a.txt").bytes, null);
   assert.equal(again.find(f => f.rel === "files/sub/b.txt").bytes.toString(), "beta");
 });
@@ -291,4 +293,27 @@ test("ports: the lease is for this computer's device key and carries the kernel'
   subs[0]({ id: "o1", device: "dev_other" }); subs[0]({ id: "o2", device: "dev_kit" }); subs[0]({ id: "o3", device: null });
   assert.deepEqual(got, ["o2", "o3"]);
   assert.throws(() => realPorts({ sealer, offers, use: async () => "", deviceId: () => "", member: "m", spec: async () => ({}), sync: {} }), /device key/);
+});
+
+// ---- R-14: the reader is capped and has a deadline ---------------------------------------------------------------------
+
+test("R-14: too many files or bytes refuses the checkpoint, and a slow reader is killed", { skip: !SANDBOX, timeout: 60_000 }, async t => {
+  const a = tmp(); t.after(() => rm(a));
+  const work = path.join(a, "work"); fs.mkdirSync(path.join(work, "files"), { recursive: true });
+  for (let i = 0; i < 30; i++) fs.writeFileSync(path.join(work, "files", `f${i}.txt`), "x".repeat(1000));
+  const roots = [{ dir: "files", remote: "files" }];
+  const few = sandboxReader({ platform: process.platform, space: "harlow", work, base: a, limits: { maxFiles: 10 } });
+  assert.deepEqual(await few({ roots, have: {} }, async () => {}), { truncated: true });
+  const small = sandboxReader({ platform: process.platform, space: "harlow", work, base: a, limits: { maxTotal: 5000 } });
+  assert.deepEqual(await small({ roots, have: {} }, async () => {}), { truncated: true });
+  const slow = sandboxReader({ platform: process.platform, space: "harlow", work, base: a, limits: { deadlineMs: 1 } });
+  await assert.rejects(() => slow({ roots, have: {} }, async () => {}), /too long/);
+  const ok = sandboxReader({ platform: process.platform, space: "harlow", work, base: a });
+  let n = 0; assert.deepEqual(await ok({ roots, have: {} }, async () => { n++; }), { truncated: false }); assert.equal(n, 30);
+  // a checkpoint over the limits is refused, not recorded with files missing
+  const sp = fakeSpace(); fs.mkdirSync(path.join(a, "state"), { recursive: true });
+  const sy = createSessionSync({ space: sp.sync, session: "s1", work, state: path.join(a, "state"), reader: few });
+  await sy.line('{"type":"result"}');
+  assert.equal(await sy.checkpoint(), false);
+  assert.equal(sp.state.checkpoints.has("s1"), false);
 });
