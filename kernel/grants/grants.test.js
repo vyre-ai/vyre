@@ -430,6 +430,9 @@ test("transferOwner: one proof hands the Space on; a failure between the two ste
   await assert.rejects(() => g.transferOwner(owner(), { to: ALICE }), { code: "needs_presence" });
   await assert.rejects(() => g.transferOwner(personChain(ALICE), { to: OWNER }, mk(OWNER)), e => ["not_found", "not_allowed"].includes(e.code), "a member does not hand on the Space");
   await assert.rejects(() => g.transferOwner(owner(), { to: "per_nobody" }, mk("per_nobody")), { code: "not_found" });
+  // T-1: every argument is checked before the first step: a bad demote_to leaves nobody promoted
+  for (const bad of ["temp", "owner", "nonsense", 7]) await assert.rejects(() => g.transferOwner(owner(), { to: ALICE, demote_to: bad }, { presence: proof("grants.role", { transfer: { to: ALICE, demote_to: bad } }, `vyre://${SPACE}/member/${ALICE}`) }), { code: "bad_input" }, `demote_to ${bad}`);
+  assert.deepEqual(await owners(), [OWNER], "nobody was promoted by a refused hand-over");
   // the second step dies (the process is killed after the new owner is made)
   fail = true;
   await assert.rejects(() => g.transferOwner(owner(), { to: ALICE }, mk(ALICE)), /killed/);
