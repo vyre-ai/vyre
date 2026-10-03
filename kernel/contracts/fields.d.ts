@@ -7,7 +7,7 @@ import type { Actor } from './chain.js';
 /** The fixed set of field kinds (contract 5.2). Twenty has 25; ours is the language's, and a store translates. */
 export type FieldKind =
   | 'text' | 'rich_text' | 'number' | 'money' | 'boolean' | 'date' | 'datetime' | 'choice' | 'multi_choice'
-  | 'rating' | 'link' | 'ref' | 'actor' | 'file' | 'address' | 'phones' | 'emails' | 'urls' | 'stage' | 'sealed';
+  | 'rating' | 'url' | 'link' | 'actor' | 'file' | 'address' | 'phones' | 'emails' | 'urls' | 'stage' | 'sealed';
 
 export interface Money { readonly amount: number; readonly currency: string }
 export interface Address { readonly line1?: string; readonly line2?: string; readonly city?: string; readonly region?: string; readonly postal?: string; readonly country?: string }
@@ -31,7 +31,7 @@ export interface SealedPlaceholder { readonly sealed: string; readonly present: 
 
 export type FieldValue =
   | null | string | number | boolean | Money | Address | readonly string[] | readonly Address[]
-  | { readonly urn: Urn }                 // ref
+  | { readonly urn: Urn }                 // link
   | { readonly actor: Actor }             // actor
   | { readonly file: string; readonly name: string; readonly bytes: number }
   | SealedRefValue | SealedPlaceholder;
@@ -52,7 +52,7 @@ export interface FieldDefinition {
   readonly description?: string;
   /** For `choice`, `multi_choice` and `stage`. */
   readonly options?: readonly string[];
-  /** For `ref` and `link`: the target record type. */
+  /** For `link` (a reference to another record): the target record type. */
   readonly to?: string;
   readonly seal?: SealConfig;
 }

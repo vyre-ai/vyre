@@ -10,8 +10,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 export const GOLDEN_FILE = path.join(here, "golden.json");
 
 /** Boot today's registry and record every decision. Throws with the child's stderr tail on failure. */
-export function record() {
-  const r = spawnSync(process.execPath, [path.join(here, "dump.mjs")], { encoding: "utf8", timeout: 480_000, maxBuffer: 256 << 20, env: { PATH: process.env.PATH, VYRE_NO_DIALOGS: "1" } });
+export function record({ gates = false } = {}) {
+  const r = spawnSync(process.execPath, [path.join(here, "dump.mjs"), ...(gates ? ["--gates"] : [])], { encoding: "utf8", timeout: 480_000, maxBuffer: 256 << 20, env: { PATH: process.env.PATH, VYRE_NO_DIALOGS: "1" } });
   if (r.status !== 0) throw new Error(`golden dump failed: ${String(r.stderr).slice(-400)}`);
   return JSON.parse(r.stdout);
 }
