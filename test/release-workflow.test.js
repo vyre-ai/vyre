@@ -158,3 +158,12 @@ test("release.yml: prepare refuses a release whose package, lockfile and plugin 
   assert.ok(i > 0 && yml.indexOf("node scripts/bump-version.mjs --check", i) > i);
   assert.ok(yml.indexOf("node scripts/bump-version.mjs --check") < yml.indexOf("- name: Box files and vyre.tgz"));
 });
+
+test("release.yml: the signed module list is checked against the tarball and the built image before the release is signed", () => {
+  const i = yml.indexOf("The signed module list matches the tarball and the BUILT image");
+  assert.ok(i > 0 && i < yml.indexOf("release.json, SHA256SUMS, and on a publish the Ed25519 signature"), "checked before SHA256SUMS is signed");
+  const step = yml.slice(i, yml.indexOf("\n      - name:", i + 20));
+  assert.match(step, /verify-list-trees\.mjs "\$d" dist\/modules\.json/);
+  assert.match(step, /docker cp "\$id:\/opt\/vyre\/\."/);
+  assert.match(step, /verify-list-trees\.mjs "\$RUNNER_TEMP\/image-root" dist\/modules\.json/);
+});

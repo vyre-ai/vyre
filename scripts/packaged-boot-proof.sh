@@ -39,6 +39,9 @@ grep -q "$NEW" "$SRC/lib/release-sig.js" "$SRC/box/vyre"
 [ -s "$SRC/site/box/modules.json" ] || { echo "packaged-boot-proof: the build made no modules.json" >&2; exit 1; }
 listed=$(node -p 'Object.keys(require(process.argv[1]).modules).length' "$SRC/site/box/modules.json")
 echo "the signed list names $listed modules"
+# L-3: the list is made from the tarball, the image from a build context: the kernel's own check, run on BOTH, must find no difference at all.
+unpacked="$WORK/tgz-root"; mkdir -p "$unpacked"; tar -xzf "$SRC/site/box/vyre.tgz" -C "$unpacked" --strip-components=1
+node "$SRC/scripts/verify-list-trees.mjs" "$unpacked" "$SRC/site/box/modules.json"
 
 ( cd "$SRC/site/box" && python3 -m http.server 18090 --bind 127.0.0.1 >/dev/null 2>&1 & echo $! >"$WORK/http.pid" )
 trap 'kill "$(cat "$WORK/http.pid" 2>/dev/null)" 2>/dev/null || true; vyre uninstall --delete-data --yes >/dev/null 2>&1 || true' EXIT
@@ -50,16 +53,35 @@ env=$(docker exec vyre-vyre-1 env)
 printf '%s\n' "$env" | grep -qx 'VYRE_KERNEL=1' || { echo "the installer did not turn the kernel on"; exit 1; }
 if printf '%s\n' "$env" | grep -E '^VYRE_(KERNEL_PATH_RULE|KERNEL_FILE_KEY|SEAL_DEV)='; then echo "a development variable is set"; exit 1; fi
 
+# L-3 again, on the image that was built and is running: its /opt/vyre against the same signed list.
+rm -rf "$WORK/image-root"; mkdir -p "$WORK/image-root"
+docker cp vyre-vyre-1:/opt/vyre/. "$WORK/image-root/"
+node "$SRC/scripts/verify-list-trees.mjs" "$WORK/image-root" "$SRC/site/box/modules.json"
+
 ready() { i=0; until vyre status 2>/dev/null | grep -q "modules running"; do i=$((i + 1)); [ $i -lt 60 ] || return 1; sleep 2; done; }
 ready || { docker logs vyre-vyre-1 2>&1 | tail -30; echo "vyred did not come up"; exit 1; }
 sleep 5
 st=$(vyre status)
 echo "$st"
-running=$(printf '%s\n' "$st" | sed -n 's/.* \([0-9][0-9]*\) modules running.*/\1/p' | head -n 1)
-failed=$(printf '%s\n' "$st" | sed -n 's/.*· \([0-9][0-9]*\) failed.*/\1/p' | head -n 1)
-[ -n "$running" ] && [ "$running" -ge 1 ] || { echo "no module is running"; exit 1; }
-[ -z "$failed" ] || { echo "$failed module(s) failed on a packaged box:"; vyre modules 2>&1 | grep failed; exit 1; }
-echo "ok: $running modules run, none failed (the list names $listed)"
+# By name, not by count: the running set must be exactly the listed modules minus the ones that are off by default (scripts/packaged-boot-expected.txt), and none may be failed.
+vyre modules >"$WORK/modules.txt" 2>&1 || true
+node -e '
+const fs = require("fs");
+const listed = Object.keys(JSON.parse(fs.readFileSync(process.argv[1], "utf8")).modules).sort();
+const off = fs.readFileSync(process.argv[2], "utf8").split("\n").filter(l => l && !l.startsWith("#")).sort();
+const state = {};
+for (const l of fs.readFileSync(process.argv[3], "utf8").split("\n")) { const m = /^\s+(\S+)\s+\S+\s+(\S+)/.exec(l); if (m) state[m[1]] = m[2]; }
+const running = listed.filter(n => state[n] === "running").sort(), offNow = listed.filter(n => state[n] === "off").sort(), failed = listed.filter(n => state[n] === "failed");
+const want = listed.filter(n => !off.includes(n)).sort();
+const problems = [];
+if (failed.length) problems.push("failed: " + failed.join(", "));
+if (JSON.stringify(offNow) !== JSON.stringify(off)) problems.push("off by default should be [" + off.join(", ") + "], is [" + offNow.join(", ") + "]");
+if (JSON.stringify(running) !== JSON.stringify(want)) problems.push("running should be every listed module but the off ones; missing: " + want.filter(n => !running.includes(n)).join(", ") + "; unexpected: " + running.filter(n => !want.includes(n)).join(", "));
+const unlisted = Object.keys(state).filter(n => !listed.includes(n) && state[n] === "running");
+if (unlisted.length) problems.push("running but not in the signed list: " + unlisted.join(", "));
+if (problems.length) { console.error("packaged-boot-proof: " + problems.join("; ")); process.exit(1); }
+console.log("ok: " + running.length + " modules run, " + offNow.length + " are off by default, none failed (the list names " + listed.length + ")");
+' "$SRC/site/box/modules.json" "$HERE/scripts/packaged-boot-expected.txt" "$WORK/modules.txt" || { cat "$WORK/modules.txt"; exit 1; }
 
 # One module file changed after it was signed: refused, plainly, and nothing else is.
 docker exec -u 0 vyre-vyre-1 sh -c 'echo "// tampered" >> /opt/vyre/core/work/index.js'

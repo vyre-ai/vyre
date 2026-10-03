@@ -477,6 +477,18 @@ jobs:
           node scripts/pin-release-compose.mjs dist/compose.yml "$BOX" "$COMPUTER"
           grep -q "image: $BOX\$" dist/compose.yml || { echo "compose.yml did not take the box digest"; exit 1; }
           grep -q "$COMPUTER" dist/compose.yml || { echo "compose.yml did not take the computer digest"; exit 1; }
+      - name: The signed module list matches the tarball and the BUILT image (one byte of difference bricks that module on every box)
+        run: |
+          # The list is made from the unpacked vyre.tgz; the image is built from a context that is not the tarball. The kernel's own check (kernel/modules/release-list.js
+          # verifyTrees) runs on both, and the release fails on any difference. On a dry run there is no pushed image: the packaged-boot job covers the image.
+          d=$(mktemp -d); tar -xzf dist/vyre.tgz -C "$d" --strip-components=1
+          node scripts/verify-list-trees.mjs "$d" dist/modules.json
+          if [ "$PUBLISH" = true ] && [ -n "$BOX" ]; then
+            docker pull -q "$BOX" >/dev/null
+            id=$(docker create "$BOX"); mkdir -p "$RUNNER_TEMP/image-root"
+            docker cp "$id:/opt/vyre/." "$RUNNER_TEMP/image-root/"; docker rm "$id" >/dev/null
+            node scripts/verify-list-trees.mjs "$RUNNER_TEMP/image-root" dist/modules.json
+          fi
       - name: release.json, SHA256SUMS, and on a publish the Ed25519 signature every updater reads
         env:
           VYRE_SIGNING_KEY: ${{ env.PUBLISH == 'true' && secrets.VYRE_RELEASE_SIGNING_KEY || '' }}

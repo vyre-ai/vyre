@@ -11,7 +11,7 @@ here=$(dirname "$0")
 node_bin=${VYRE_NODE:-node}
 if [ "$(id -u)" = 0 ]; then
   # The release's signed files, where the kernel reads them (core/spawner/place-release.sh).
-  /bin/sh "$here/place-release.sh" || true
+  /bin/sh "$here/place-release.sh" || echo "wall: could not place the release's signed files; first-party modules will not start" >&2
   "$node_bin" "$here/wall.js" install || true
   # Dropping needs CAP_SETPCAP (held by the entry script, kept by the spawner): tried on a no-op first, so a container without it still starts the spawner.
   if /usr/bin/setpriv --bounding-set=-net_admin /bin/true 2>/dev/null; then
