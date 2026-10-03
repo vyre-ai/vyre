@@ -40,8 +40,30 @@ export function diff(a, b) {
   return out;
 }
 
+export const ALLOW_FILE = path.join(here, "allow.json");
+const RUNS = new Set(["would run", "ran:object"]);
+
+/**
+ * Changes a refresh must not make silently: an EXISTING cell that moved from refused to run (deny to allow). A tool that was absent (`no_such_tool`) and now has a
+ * decision is an addition, not a weakening. A change is allowed only when `allow` names it: `[{ tool, role?, caller?, reason }]`, committed with the refresh.
+ * @param {any} a @param {any} b @param {{ tool: string, role?: string, caller?: string, reason: string }[]} [allow]
+ */
+export function weakened(a, b, allow = []) {
+  return diff(a, b).filter(d => RUNS.has(d.now) && !RUNS.has(d.was) && d.was !== "no_such_tool" && d.was !== "absent"
+    && !allow.some(x => x && typeof x.reason === "string" && x.reason && x.tool === d.tool && (!x.role || x.role === d.role) && (!x.caller || x.caller === d.caller)));
+}
+
 if (process.argv[1] === fileURLToPath(import.meta.url) && process.argv[2] === "--write") {
-  fs.writeFileSync(GOLDEN_FILE, JSON.stringify(record()) + "\n");
+  const next = record();
+  let allow = [];
+  try { allow = JSON.parse(fs.readFileSync(ALLOW_FILE, "utf8")); } catch { /* none */ }
+  const bad = weakened(load(), next, allow);
+  if (bad.length) {
+    console.error(`refusing to refresh: ${bad.length} cell(s) moved from refused to run (deny to allow). Name each in kernel/golden/allow.json with a reason, commit it with the refresh, and run again:`);
+    for (const d of bad.slice(0, 30)) console.error(`  ${d.role} ${d.tool} ${d.caller}/${d.world}: ${d.was} -> ${d.now}`);
+    process.exit(1);
+  }
+  fs.writeFileSync(GOLDEN_FILE, JSON.stringify(next) + "\n");
   console.log("wrote", GOLDEN_FILE);
 }
 

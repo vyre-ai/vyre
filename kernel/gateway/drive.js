@@ -29,7 +29,9 @@ export function createDriveGateway(cfg) {
   };
 
   return Object.freeze({
-    async get(chain, /** @type {string} */ p, /** @type {{ version?: number | null }} */ o = {}) { return read(chain, "drive.read", file(p), () => cfg.drive.get(p, { version: o.version ?? null }), "file.accessed", { path: p, version: o.version ?? null }); },
+    async get(chain, /** @type {string} */ p, /** @type {{ version?: number | null }} */ o = {}) {
+      if (o.version != null && (!Number.isInteger(o.version) || o.version < 1)) throw new KernelError("bad_input", "name a version number");
+      return read(chain, "drive.read", file(p), () => cfg.drive.get(p, { version: o.version ?? null }), "file.accessed", { path: p, version: o.version ?? null }); },
     async history(chain, /** @type {string} */ p) { return read(chain, "drive.read", file(p), async () => cfg.drive.history(p), "file.accessed", { path: p, what: "history" }); },
     /** The listing shows only what the chain may read: each entry is asked about, and a hidden one is not there. */
     async list(chain, /** @type {string} */ prefix = "") {
@@ -45,15 +47,17 @@ export function createDriveGateway(cfg) {
     /** A version written by this chain: `by` is the chain's actor. Two writers on one file give two versions and `conflict: true` (no merge). */
     async put(chain, /** @type {string} */ p, /** @type {Uint8Array} */ bytes, /** @type {{ base?: number | null }} */ o = {}) {
       mustChain(chain);
+      if (!(bytes instanceof Uint8Array) || bytes.length > (cfg.maxBytes ?? 256 * 1024 * 1024)) throw new KernelError("bad_input", "a file is bytes, within the size limit");
       const d = await gate(chain, "drive.write", file(p));
       const r = await run(() => cfg.drive.put(p, bytes, { by: actor(chain), base: o.base ?? null }));
       note(chain, "file.written", file(p), { path: p, version: r.version, conflict: Boolean(r.conflict), bytes: bytes.length }, d.decision);
       return r;
     },
-    /** A restore is a new version. */
-    async restore(chain, /** @type {string} */ p, /** @type {number} */ version) {
+    /** A restore is a new version, and its own admin act: an assistant's `drive.write` never reaches it. */
+    async restore(chain, /** @type {string} */ p, /** @type {number} */ version, /** @type {{ presence?: any }} */ opt = {}) {
       mustChain(chain);
-      const d = await gate(chain, "drive.write", file(p));
+      if (!Number.isInteger(version) || version < 1) throw new KernelError("bad_input", "name a version number");
+      const d = await gate(chain, "drive.restore", file(p), opt.presence ? { presence: opt.presence } : {});
       const r = await run(() => cfg.drive.restore(p, version, { by: actor(chain) }));
       note(chain, "file.restored", file(p), { path: p, from: version, version: r.version }, d.decision);
       return r;
@@ -81,10 +85,10 @@ export function createDriveGateway(cfg) {
       return r;
     },
     async backups(chain, /** @type {string} */ name) { return read(chain, "drive.read", backup(name), async () => cfg.drive.backups(name), "file.accessed", { backup: name }); },
-    /** Bringing a backup back replaces what is there: a write by a person's act, like restore. */
-    async restoreBackup(chain, /** @type {string} */ name, /** @type {string | null} */ id = null) {
+    /** Bringing a backup back replaces what is there: its own admin act (`drive.restore`), like restore. */
+    async restoreBackup(chain, /** @type {string} */ name, /** @type {string | null} */ id = null, /** @type {{ presence?: any }} */ opt = {}) {
       mustChain(chain);
-      const d = await gate(chain, "drive.write", backup(name));
+      const d = await gate(chain, "drive.restore", backup(name), opt.presence ? { presence: opt.presence } : {});
       const r = await run(() => cfg.drive.restoreBackup(name, id));
       note(chain, "file.restored", backup(name), { backup: name, id }, d.decision);
       return r;
