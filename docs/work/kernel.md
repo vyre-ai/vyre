@@ -31,3 +31,9 @@ Branch: work/kernel · Worktree: ../vyre-kernel · Owner session: platform
 
 - kernel/store (memory, query, values), kernel/conformance (suite, memory test with 5 broken-store checks), kernel/gateway (records, index).
 - Decisions: a deny on read is `null`, on write `not_found` with the true code in `hidden_reason` and an `access.denied` event. Query returns the store's page filtered by the gateway (short pages allowed, up to 10 store pages to find a visible row); totals are computed by the gateway over allowed rows only. An `unavailable` store answer leaves the intent open for `recover()`; definite refusals close it as compensated.
+
+## K2b done (awaiting reviewer-2)
+
+- kernel/retrofit/gates.js, gates.test.js; Registry.call takes deps.gates (default off). golden.test.js runs the recorder with the gates on and requires zero changed cells.
+- Not yet moved into the kernel (stays in the registry, in order): input schema, projectArg and the agent grant lookup, the rules hook, proof verification, the asked-match, idempotency. Default-on needs `kernel/` in package.json files and a release that ships it, so that is a launch decision, not made here.
+- Retrofit-only pieces to delete at K6: `fromLegacy` on the chain builder, `Via.legacy`, parseCaller.
