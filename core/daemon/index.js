@@ -83,7 +83,7 @@ export function moduleRoots(root) {
 
 /**
  * Start vyred. Returns a handle with the running registry and a stop() for tests.
- * @param {{ root?: string, log?: (m: string, x?: any) => void, rules?: any, presence?: any, kernelPresence?: any,
+ * @param {{ root?: string, log?: (m: string, x?: any) => void, rules?: any, presence?: any, kernelPresence?: any, kernelForWrap?: (kernelFor: any) => any,
  *   kernel?: boolean, coreKeys?: any, person?: (socket: import("node:net").Socket) => Promise<string|{ key: string, tty: string|null }|null> }} [opts] person: a test's stand-in for atTerminal
  */
 export async function start(opts = {}) {
@@ -270,7 +270,7 @@ async function startLocked(opts, root, p, release) {
       }
     }
     registry.deps.moduleHost = kernel.moduleHost;
-    registry.deps.kernelFor = kernel.kernelFor;
+    registry.deps.kernelFor = typeof opts.kernelForWrap === "function" ? opts.kernelForWrap(kernel.kernelFor) : kernel.kernelFor; // kernelForWrap: a test seam (core/stream/e2e-step7-vyred.js), never passed by main.js
     if (kernel.firstPartyCheck) registry.deps.firstPartyCheck = kernel.firstPartyCheck;
     registry.deps.moduleApprovals = kernel.moduleApprovals;
     log(`kernel on · space ${kernel.id.space}${kernel.fresh ? " (new)" : ""}`);
