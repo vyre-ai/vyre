@@ -457,10 +457,14 @@ export class FlowRunner {
       case "create": case "update": case "upsert": case "remove": case "stage": out = await this.#write(ctx, s, key, scope(), val); break;
       case "wait": out = await this.#wait(ctx, s, key, val); break;
       case "ask": case "assign": case "agent": out = await this.#task(ctx, s, key, scope(), val); break;
-      case "call": out = await this.#effect(ctx, s, key, { action: s.action, resource: s.resource }, async idem => {
+      case "call": out = await this.#effect(ctx, s, key, { action: s.action, resource: s.resource }, async (idem, _approval, rules) => {
         if (ctx.dry) return { dry: true };
         if (!this.ports.call) throw new StepFail("unavailable", "this Space has no way to run actions yet");
-        return this.ports.call(this.#chain(ctx), s.action, s.resource, val(s.input), { idem });
+        // Draft only: the catalog says which action prepares a draft instead of sending (`draft_as`); without one the send does not happen at all.
+        const draftAs = rules && rules.draftOnly ? (ctx.cat.actions[s.action] || {}).draft_as : null;
+        if (rules && rules.draftOnly && !draftAs) throw new StepFail("draft_only", `a rule of this space allows drafts only${rules.draftOnly.label ? ` (${rules.draftOnly.label})` : ""}, and ${labelOf(ctx.cat, s.action)} has no way to prepare a draft, so nothing was sent`);
+        const r = await this.ports.call(this.#chain(ctx), draftAs || s.action, s.resource, val(s.input), { idem: draftAs ? `${idem}:draft` : idem });
+        return draftAs ? { draft: true, via: draftAs, result: r } : r;
       }, { input: val(s.input) }); break;
       case "classify": out = await this.#classify(ctx, s, key, val); break;
       case "service": out = await this.#service(ctx, s, key, val); break;
@@ -483,7 +487,7 @@ export class FlowRunner {
    * Check the caps, ask the kernel, and handle ask and deny. Runs `act(idem)` only when the step may go ahead. The ledger records "started" before
    * the act and the caller records "done" after, so a crash in between replays the act with the same idempotency key.
    * @param {any} ctx @param {any} s @param {string} key @param {{ action: string, resource: string }} need
-   * @param {(idem: string, approval?: string) => Promise<any>} act @param {{ input?: any, input_class?: string }} [info]
+   * @param {(idem: string, approval?: string, rules?: { draftOnly?: { rule?: string, label?: string } }) => Promise<any>} act @param {{ input?: any, input_class?: string }} [info]
    */
   async #effect(ctx, s, key, need, act, info = {}) {
     const run = ctx.run;
@@ -503,10 +507,15 @@ export class FlowRunner {
     const approvedTask = run.steps[askKey] && run.steps[askKey].status === "done" ? run.steps[askKey].task : undefined;
     const d = await this.k.authorize({ chain, action: need.action, resource: need.resource, ...(info.input_class ? { input_class: info.input_class } : {}), ...(approvedTask ? { approval: approvedTask } : {}) });
     let effect = d.effect;
+    // Standing rules for the space (DESIGN-flows-joints 5a, enforced in the kernel's authorize): a rule only tightens, and its refusal names itself.
+    const obl = Array.isArray(d.obligations) ? d.obligations : [];
+    const draftOnly = obl.find((/** @type {any} */ o) => o && o.type === "draft_only");
+    const alwaysAsk = obl.find((/** @type {any} */ o) => o && o.type === "ask" && o.waivable === false);
     const forced = !approvedTask && effect === "allow" && ((run.tainted && (OUTWARD.has(risk) || risk === "grant")) || (ctx.flow.authorship === "model" && ctx.view && (flowUsesComputedOutward(ctx) && OUTWARD.has(risk))));
     if (forced) effect = "ask";
     if (effect === "deny") {
-      this.#note(ctx, s, `denied: ${d.reason}`);
+      this.#note(ctx, s, `denied: ${d.rule && d.rule.label ? d.rule.label : d.reason}`);
+      if (d.rule && d.reason === "rule_never") throw new StepFail("rule_never", `a rule of this space does not allow this: ${d.rule.label || "never"}`);
       if (PAUSE_REASONS.has(d.reason)) throw new PauseFlow(`${nameOf(run.approver)} can no longer ${labelOf(ctx.cat, need.action)} (${d.reason.replace(/_/g, " ")}); the Flow is paused until that is fixed`);
       throw new StepFail(d.reason || "denied", `not allowed: ${d.reason}`);
     }
@@ -514,8 +523,11 @@ export class FlowRunner {
       if (ctx.dry) { ctx.dryAsks = (ctx.dryAsks || 0) + 1; }
       else {
         const why = forced ? (run.tainted ? "it started from content outside this Space" : "a model drafted this Flow") : "it needs a person's yes";
-        const task = await this.k.ask.request(chain, { title: `${ctx.view.flow.label || ctx.view.flow.name}: ${labelOf(ctx.cat, need.action)}?`, doer: run.approver, output: { kind: "decision" }, source: "flow_step",
-          form: { kind: "held_act", flow: run.flow, run: run.id, step: s.id, action: need.action, resource: need.resource, why, trigger_source: run.trigger.kind, input: info.input ?? null } }, { idem: `${run.id}:${askKey}` });
+        // An always-ask rule is answered BY the person or role it names, every time, with no "don't ask again": the task says so and carries the rule.
+        const named = alwaysAsk && alwaysAsk.approver && alwaysAsk.approver.person ? { kind: "person", id: alwaysAsk.approver.person, space: run.space } : null;
+        const task = await this.k.ask.request(chain, { title: `${ctx.view.flow.label || ctx.view.flow.name}: ${labelOf(ctx.cat, need.action)}?`, doer: named || run.approver, output: { kind: "decision" }, source: "flow_step",
+          form: { kind: "held_act", flow: run.flow, run: run.id, step: s.id, action: need.action, resource: need.resource, why: alwaysAsk ? (d.rule && d.rule.label) || "a rule of this space asks every time" : why, trigger_source: run.trigger.kind, input: info.input ?? null,
+            ...(alwaysAsk ? { rule: alwaysAsk.rule, waivable: false, ...(alwaysAsk.approver && alwaysAsk.approver.role ? { approver_role: alwaysAsk.approver.role } : {}) } : {}) } }, { idem: `${run.id}:${askKey}` });
         await this.#mark(ctx, askKey, { status: "waiting", task: task.id, wait: { kind: "task", task: task.id } });
         run.waiting = { step: askKey, kind: "task", task: task.id };
         this.#emit("step.waiting", { run: run.id, step: key, task: task.id, why }, run, `vyre://${run.space}/flow_run/${run.id}`);
@@ -524,7 +536,8 @@ export class FlowRunner {
     }
     if (!ctx.dry) await this.#mark(ctx, key, { status: "started" });
     if (ctx.dry) ctx.dryEffects = [...(ctx.dryEffects || []), { step: s.id, action: need.action, resource: need.resource, risk, effect }];
-    return act(`${run.id}:${key}`, approvedTask);
+    // Draft only: the action is prepared as a draft in the outside system and NEVER sent, even with an approval in hand.
+    return act(`${run.id}:${key}`, approvedTask, draftOnly ? { draftOnly: { rule: draftOnly.rule, label: d.rule && d.rule.label } } : undefined);
   }
 
   /** @param {any} ctx @param {any} s @param {string} text */
@@ -549,10 +562,17 @@ export class FlowRunner {
       ...(s.drive && s.drive.saveTo ? { saveTo: s.drive.saveTo } : {}),
     };
     const files = [...(request.upload ? [{ way: "send", path: request.upload.drive.path }] : []), ...(request.saveTo ? [{ way: "save", path: request.saveTo }] : [])];
-    return this.#effect(ctx, s, key, need, async (idem, approval) => {
+    return this.#effect(ctx, s, key, need, async (idem, approval, rules) => {
       if (ctx.dry) return { dry: true, response: { status: 0 } };
       if (!this.ports.service) throw new StepFail("unavailable", "this Space has no connectors yet");
-      const r = /** @type {any} */ (await this.ports.service({ chain: this.#chain(ctx), connector: s.connector, request, idem, ...(approval ? { approval } : {}) }));
+      // Draft only: the connector's own draft operation (`draft: { method, path }` on the connector in the catalog) replaces the send, with the same body; no draft operation, no call.
+      let req = request, asDraft = false;
+      if (rules && rules.draftOnly) {
+        const dr = ctx.cat.connectors && ctx.cat.connectors[s.connector] && /** @type {any} */ (ctx.cat.connectors[s.connector]).draft;
+        if (!dr || typeof dr.path !== "string") throw new StepFail("draft_only", `a rule of this space allows drafts only${rules.draftOnly.label ? ` (${rules.draftOnly.label})` : ""}, and ${s.connector} has no way to prepare a draft, so nothing was sent`);
+        req = { ...request, method: dr.method || "POST", path: dr.path }; asDraft = true;
+      }
+      const r = /** @type {any} */ (await this.ports.service({ chain: this.#chain(ctx), connector: s.connector, request: req, idem: asDraft ? `${idem}:draft` : idem, ...(asDraft ? { draft: true } : {}), ...(approval && !asDraft ? { approval } : {}) }));
       if (r && r.held) throw new StepFail("held", `the vault is holding the call to ${s.connector} for a person's yes${r.summary ? ` (${String(r.summary).slice(0, 120)})` : ""}`);
       ctx.run.tainted = true; // what came back is content from outside
       if (r && r.saved) return { saved: { path: String(r.saved.path), version: r.saved.version, size: r.saved.size, sha256: r.saved.sha256 } };
@@ -561,7 +581,7 @@ export class FlowRunner {
       const text = raw.length > SERVICE_BODY_CAP ? raw.slice(0, SERVICE_BODY_CAP) : raw;
       let json = null;
       if (/json/i.test(headers["content-type"] || "") && raw.length <= SERVICE_BODY_CAP) { try { json = JSON.parse(raw); } catch { json = null; } }
-      return { response: { status: Number(r && r.status) || 0, ok: Boolean(r && (r.ok ?? (r.status >= 200 && r.status < 300))), headers, body: text, json, truncated: raw.length > SERVICE_BODY_CAP }, ...(files.length ? { files } : {}) };
+      return { ...(asDraft ? { draft: true } : {}), response: { status: Number(r && r.status) || 0, ok: Boolean(r && (r.ok ?? (r.status >= 200 && r.status < 300))), headers, body: text, json, truncated: raw.length > SERVICE_BODY_CAP }, ...(files.length ? { files } : {}) };
     }, { input: request.body === undefined ? null : request.body });
   }
 
