@@ -8,6 +8,8 @@
 // that field made the first time it is used) before the same page and aggregate code applies the exact rules, and a search is narrowed by its words. So memory follows the
 // working set, not the history and not the number of records.
 import { createMemoryStore } from "./memory.js";
+import { planPage, fieldInfo } from "./sqlite-query.js";
+import { encodeCursor } from "./query.js";
 
 const MIGRATION = `
   CREATE TABLE IF NOT EXISTS kernel_types (name TEXT PRIMARY KEY, def TEXT NOT NULL);
@@ -38,6 +40,8 @@ export function createSqliteStore(cfg) {
   db.exec(MIGRATION);
   const hot = cfg.hotRows ?? HOT_ROWS;
   const types = db.prepare("SELECT def FROM kernel_types").all().map((/** @type {any} */ r) => JSON.parse(r.def));
+  /** @type {Map<string, any>} the type definitions, for the query planner */ const defs = new Map(types.map((/** @type {any} */ t) => [t.name, t]));
+  /** @type {Map<string, boolean>} `type.field` -> whether every value it holds is printable ASCII (so SQLite's byte order is the reference's order); a write of anything else clears it */ const asciiOf = new Map();
   const putType = db.prepare("INSERT INTO kernel_types (name, def) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET def = excluded.def");
   const delType = db.prepare("DELETE FROM kernel_types WHERE name = ?");
   const putRec = db.prepare("INSERT INTO kernel_records (type, id, version, data, created_at, updated_at, deleted_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(type, id) DO UPDATE SET version = excluded.version, data = excluded.data, updated_at = excluded.updated_at, deleted_at = excluded.deleted_at");
@@ -54,6 +58,24 @@ export function createSqliteStore(cfg) {
 
   /** @param {string} type @returns {import("./memory.js").Table} */
   /** @type {Map<string, any>[]} every type's hot rows, for `stats` */ const caches = [];
+  const counts = { pushed: 0, fell: 0 };
+  /** Is every value of this text field printable ASCII? Asked once per field, by a scan; kept true only while every write agrees. */
+  const isAscii = (/** @type {string} */ type, /** @type {string} */ field) => {
+    const key = `${type}.${field}`;
+    if (asciiOf.has(key)) return /** @type {boolean} */ (asciiOf.get(key));
+    const info = fieldInfo(defs.get(type), field);
+    let ok = false;
+    if (info && info.cls === "string" && TYPE_NAME.test(type) && FIELD.test(field)) ok = !db.prepare(`SELECT 1 FROM kernel_records WHERE type = '${type}' AND ${info.expr} GLOB '*[^ -~]*' LIMIT 1`).get();
+    asciiOf.set(key, ok);
+    return ok;
+  };
+  const noteWrite = (/** @type {any} */ r) => {
+    for (const [key, ok] of asciiOf) {
+      if (!ok || !key.startsWith(`${r.type}.`)) continue;
+      const v = r.data && r.data[key.slice(r.type.length + 1)];
+      if (typeof v === "string" && /[^\x20-\x7e]/.test(v)) asciiOf.set(key, false);
+    }
+  };
   const table = type => {
     /** @type {Map<string, any>} the hot rows, least recently used first */ const cache = new Map();
     caches.push(cache);
@@ -74,6 +96,21 @@ export function createSqliteStore(cfg) {
       has(id) { return cache.has(id) || Boolean(hasRow.get(type, id)); },
       set(id, r) { keep(id, r); },
       values() { return rows(allRows.iterate(type)); },
+      /**
+       * One page of a query as ONE indexed statement, when the planner can prove it answers exactly what the reference code would (kernel/store/sqlite-query.js); null otherwise, and
+       * the caller streams the rows through the reference code instead.
+       */
+      pageQuery(spec) {
+        const def = defs.get(type);
+        const plan = planPage({ type, def, spec, ascii: field => isAscii(type, field) });
+        if (!plan) { counts.fell++; return null; }
+        if ("error" in plan) return plan;
+        counts.pushed++;
+        if (plan.index && !indexed.has(plan.index.name) && indexed.size < MAX_INDEXES) { db.exec(plan.index.sql); indexed.add(plan.index.name); }
+        const got = /** @type {any[]} */ (db.prepare(plan.sql).all(...plan.args));
+        const mine = got.slice(0, plan.limit).map(r => cache.get(r.id) ?? parse(r));
+        return { rows: mine, ...(got.length > plan.limit && mine.length ? { next_cursor: encodeCursor(mine[mine.length - 1], spec.sort) } : {}) };
+      },
       candidates(spec) {
         const eq = equalities(spec && spec.filter).filter(([f]) => ensureIndex(f));
         if (!eq.length || !TYPE_NAME.test(type)) return this.values();
@@ -97,13 +134,14 @@ export function createSqliteStore(cfg) {
   const store = createMemoryStore({
     clock: cfg.clock, hook: cfg.hook, initial: { types, records: [], changes: [] }, backing: { table, changes },
     persist: {
-      type: (name, def) => { if (def) putType.run(name, JSON.stringify(def)); else delType.run(name); },
+      type: (name, def) => { if (def) { putType.run(name, JSON.stringify(def)); defs.set(name, def); } else { delType.run(name); defs.delete(name); } for (const k of [...asciiOf.keys()]) if (k.startsWith(`${name}.`)) asciiOf.delete(k); },
       // The record and its change entry are one transaction: the memory store calls them back to back.
       record: r => { pending = r; },
       change: e => {
         db.exec("BEGIN");
         try {
           const r = /** @type {any} */ (pending);
+          noteWrite(r);
           putRec.run(r.type, r.id, r.version, JSON.stringify(r.data), r.created_at, r.updated_at, r.deleted_at ?? null);
           putChange.run(Number(e.cursor.slice(1)), JSON.stringify(e));
           db.exec("COMMIT");
@@ -125,5 +163,5 @@ export function createSqliteStore(cfg) {
     },
     set(/** @type {string} */ u, /** @type {any} */ v) { putAttrs.run(u, JSON.stringify(v)); attrCache.set(u, v); if (attrCache.size > HOT_ATTRS) attrCache.delete(/** @type {string} */ (attrCache.keys().next().value)); },
   };
-  return { ...store, meta, /** What is held in memory: for the bound's tests and the load measurements. */ stats: () => ({ hot_rows: caches.reduce((n, c) => n + c.size, 0), hot_attrs: attrCache.size, changes_in_memory: 0 }), async version() { return { store: "sqlite", version: "1", conformance: (await store.version()).conformance }; } };
+  return { ...store, meta, /** What is held in memory: for the bound's tests and the load measurements. */ stats: () => ({ query_pushed: counts.pushed, query_streamed: counts.fell, hot_rows: caches.reduce((n, c) => n + c.size, 0), hot_attrs: attrCache.size, changes_in_memory: 0 }), async version() { return { store: "sqlite", version: "1", conformance: (await store.version()).conformance }; } };
 }
