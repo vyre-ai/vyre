@@ -23,6 +23,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
 | [`artifacts`](#artifacts) | `core/artifacts` | `box` | 28 | 10 | capsule, cli, deck |
 | [`assistant`](#assistant) | `core/assistant` | `box`, `local` | 8 | 4 | cli |
+| [`bridges`](#bridges) | `core/bridges` | `box`, `local` | 17 | 16 | capsule, cli, deck |
 | [`capsule`](#capsule) | `local/capsule` | `local` | 6 | 2 | capsule, cli |
 | [`chrome`](#chrome) | `local/hands-chrome-mac` | `local` | 37 | 16 | none |
 | [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 5 | 1 | cli, deck |
@@ -55,6 +56,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`presence`](#presence) | `core/presence` | `box`, `local` | 13 | 6 | capsule, cli, deck |
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 22 | 5 | cli |
 | [`providers`](#providers) | `core/providers` | `box`, `local` | 1 | 0 | cli |
+| [`publish`](#publish) | `core/publish` | `box` | 17 | 6 | capsule, cli, deck |
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 4 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 12 | 4 | cli |
 | [`relay`](#relay) | `core/relay` | `box`, `local` | 34 | 19 | capsule, cli, deck |
@@ -64,6 +66,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`settings`](#settings) | `core/settings` | `box`, `local` | 10 | 2 | cli, deck |
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
+| [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 45 | 29 | capsule, cli, deck |
 | [`spend`](#spend) | `core/spend` | `box`, `local` | 4 | 2 | cli |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
 | [`suggest`](#suggest) | `core/suggest` | `box`, `local` | 3 | 1 | cli |
@@ -149,6 +152,17 @@ The one assistant's own tools: a daily digest and triage from waiting.list and a
 - Tools: [8](tools.md#assistant)
 - Emits: [4 events](events.md#assistant)
 - Shows on: cli
+
+## bridges
+
+Lets one Space share with another on purpose: a shared view, a reference, an event projection, a copy, a Kit or a hand-off task. Both Spaces agree, nothing sealed crosses, and either side can stop it at once.
+
+- Folder: `core/bridges`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: `spaces`
+- Tools: [17](tools.md#bridges)
+- Emits: [16 events](events.md#bridges)
+- Shows on: capsule, cli, deck
 
 ## capsule
 
@@ -501,6 +515,18 @@ providers.list: every session provider on this machine, each with its own accoun
 - Emits: no events
 - Shows on: cli
 
+## publish
+
+Put a site or app on the internet from your space: build a private preview, approve it, publish it, go back to the last version, connect your own domain. Each site runs on its own, apart from your space's data.
+
+- Folder: `core/publish`, version 0.1.0
+- Runs on: `box`
+- Requires: none
+- Tools: [17](tools.md#publish)
+- Emits: [6 events](events.md#publish)
+- Shows on: capsule, cli, deck
+- Needs vault: `per-deployment`
+
 ## push
 
 - Folder: `core/push`, version 0.1.0
@@ -603,6 +629,17 @@ One screen service for the user's Mac and every agent's computer: what is on it,
 - Tools: [5](tools.md#sight)
 - Emits: [1 events](events.md#sight)
 - Shows on: no surface
+
+## spaces
+
+Identity, spaces, members and invites: your Vyre name, a space with a home you choose, the five roles with temp access, and join links.
+
+- Folder: `core/spaces`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [45](tools.md#spaces)
+- Emits: [29 events](events.md#spaces)
+- Shows on: capsule, cli, deck
 
 ## spend
 
