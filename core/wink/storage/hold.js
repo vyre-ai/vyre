@@ -52,7 +52,6 @@ export function createHolds(o = {}) {
     return new Promise(resolve => {
       const done = () => { clearTimeout(t); resolve(openOne(id)); };
       const t = setTimeout(() => { const l = waiting.get(id) || []; const i = l.indexOf(done); if (i >= 0) l.splice(i, 1); resolve(null); }, ms);
-      t.unref?.();
       const l = waiting.get(id) || []; l.push(done); waiting.set(id, l);
     });
   }
@@ -68,7 +67,6 @@ export function createHolds(o = {}) {
         if (done) return;
         if (rtt === null) { log("wink storage: a call got no answer and the connection did not answer a ping, closing it"); try { s.close("no pong"); } catch { /* gone */ } end(reject, err("unreachable", "the connection stopped answering")); }
       }, raceMs);
-      t.unref?.();
       s.call(tool, input, opt).then((/** @type {any} */ v) => end(resolve, v), (/** @type {any} */ e) => end(reject, e));
     });
   }

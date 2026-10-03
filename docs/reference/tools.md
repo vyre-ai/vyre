@@ -10230,6 +10230,7 @@ A storage frame for a drive this device serves, from the space's home (a put, ge
   - `ts` number, required
   - `body` string
   - `key` string
+  - `nonce` string
 - Callers: any caller
 
 ### `wink.storage.bridge.accept`
