@@ -1,0 +1,22 @@
+// Notices the app shows itself, on the phone. No push service, no token, no Google Play services:
+// a notice is made from an event the app already holds, and goes to the system tray through the
+// platform NotificationManager.
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'sh.vyre'
+version = '0.0.1'
+
+android {
+  namespace "sh.vyre.notify"
+  defaultConfig {
+    versionCode 1
+    versionName "0.0.1"
+  }
+}
+
+dependencies {
+  implementation "androidx.core:core-ktx:1.15.0"
+}

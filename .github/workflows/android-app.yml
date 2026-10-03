@@ -20,6 +20,8 @@ on:
       - "apps/app/src/native/**"
       - "apps/app/android-permissions.json"
       - "apps/app/scripts/check-android-permissions.*"
+      - "apps/app/scripts/check-apk-nothing-central.*"
+      - "apps/app/plugins/**"
       - ".github/workflows/android-app.yml"
   pull_request:
     paths:
@@ -30,6 +32,8 @@ on:
       - "apps/app/src/native/**"
       - "apps/app/android-permissions.json"
       - "apps/app/scripts/check-android-permissions.*"
+      - "apps/app/scripts/check-apk-nothing-central.*"
+      - "apps/app/plugins/**"
       - ".github/workflows/android-app.yml"
   workflow_dispatch:
 permissions:
@@ -69,7 +73,7 @@ jobs:
           key: android-ndk-27.1.12297006-cmake-3.22.1
       - run: npm ci --no-audit --no-fund
       - name: The checks' own tests
-        run: node --test "scripts/check-android-permissions.test.js" "src/native/*.test.js"
+        run: node --test "scripts/check-android-permissions.test.js" "scripts/check-apk-nothing-central.test.js" "src/native/*.test.js"
       - run: npx expo prebuild -p android --no-install --clean
       - run: ./gradlew --no-daemon assembleDebug
         working-directory: apps/app/android
@@ -83,6 +87,7 @@ jobs:
           echo "$badging" | sed -n "s/^package: name='\([^']*\)' versionCode='\([^']*\)' versionName='\([^']*\)'.*/package \1 versionCode \2 versionName \3/p" | tee -a "$GITHUB_STEP_SUMMARY"
           echo "$badging" | grep -q "^package: name='sh.vyre.app' " || { echo "the package is not sh.vyre.app"; exit 1; }
           node scripts/check-android-permissions.mjs --debug --apk dist-android/vyre-debug.apk | tee -a "$GITHUB_STEP_SUMMARY"
+          node scripts/check-apk-nothing-central.mjs --apk dist-android/vyre-debug.apk | tee -a "$GITHUB_STEP_SUMMARY"
           sha256sum dist-android/vyre-debug.apk | tee dist-android/SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
