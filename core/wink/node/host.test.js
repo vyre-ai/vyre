@@ -336,3 +336,20 @@ test("host D-1: a storage device's session may call only wink.storage.* on the h
   assert.equal((await link.call("about.text", {})).caller, "device:srv1");
   c.close(); link.close();
 });
+
+test("host P-1: a link that is up creates no recurring timer under 60 s, and a call after a long silence is pinged first (on demand)", async t => {
+  const made = [];
+  const realSet = globalThis.setInterval;
+  globalThis.setInterval = (f, ms, ...a) => { made.push(ms); return realSet(f, ms, ...a); };
+  let w;
+  try {
+    w = await world(t, { graceMs: 5000, retryMs: 60_000, hostOpts: { probeMs: 50, probeWaitMs: 150 } });
+    const link = w.server.connect("harlow");
+    assert.equal((await link.call("about.text", {})).caller, "device:srv1");
+    await new Promise(r => setTimeout(r, 400));
+    assert.deepEqual(made.filter(ms => ms < 60_000), [], "no recurring timer under 60 s while the link is up and idle");
+    // silent longer than probeMs: the next call pings first, and goes through
+    assert.equal((await link.call("about.text", { again: true })).caller, "device:srv1");
+    link.close();
+  } finally { globalThis.setInterval = realSet; }
+});

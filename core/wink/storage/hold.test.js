@@ -51,3 +51,33 @@ test("a connection a NAT dropped quietly: the call that finds no pong closes it 
   await assert.rejects(() => h3.linkTo("dev_y").call("t", {}), { code: "unreachable" });
   assert.equal(quiet.closed, true, "a quiet session is pinged before a call and closed when it does not answer; nothing pings on a timer");
 });
+
+test("P-1: nothing in hold.js recurs under 60 s: a held session and a connected holdDrive create no interval, and a quiet session is pinged only before a call", async () => {
+  const made = [];
+  const realSet = globalThis.setInterval;
+  globalThis.setInterval = (f, ms, ...a) => { made.push(ms); return realSet(f, ms, ...a); };
+  try {
+    const holds = createHolds({ waitMs: 100 });
+    let pings = 0;
+    const s = { closed: false, onclose: () => {}, call: async () => ({ status: 200 }), ping: async () => { pings++; return 1; }, close() { this.closed = true; } };
+    holds.onSession("device:dev_p", s);
+    await new Promise(r => setTimeout(r, 60));
+    assert.equal(pings, 0, "an idle held session is never pinged on a timer");
+    await holds.linkTo("dev_p").call("t", {});
+    assert.equal(pings, 0, "a session that was not quiet is not pinged before a call either");
+    const { holdDrive } = await import("./hold.js");
+    const link = { closed: false, status: () => ({ state: "up" }), close() {}, ready: async () => {}, onchange() {} };
+    const h = holdDrive({ connect: () => link, serve: async () => {}, space: "harlow" });
+    await new Promise(r => setTimeout(r, 30));
+    h.stop();
+  } finally { globalThis.setInterval = realSet; }
+  assert.deepEqual(made.filter(ms => ms < 60_000), [], "no recurring timer under 60 s");
+  // the quiet rule: silent for quietMs, pinged once before the call
+  const quietHolds = createHolds({ waitMs: 100, quietMs: 20 });
+  let n = 0;
+  const q = { closed: false, onclose: () => {}, call: async () => ({ status: 200 }), ping: async () => { n++; return 1; }, close() { this.closed = true; } };
+  quietHolds.onSession("device:dev_q", q);
+  await new Promise(r => setTimeout(r, 40));
+  await quietHolds.linkTo("dev_q").call("t", {});
+  assert.equal(n, 1, "one ping before the call, after the silence");
+});
