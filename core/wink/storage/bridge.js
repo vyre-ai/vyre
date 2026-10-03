@@ -6,16 +6,16 @@
 //
 //   device with the drive:  createBridgeEndpoint({ createBridge, secrets, ... }).handle(caller, input)  is the answer to the Wink call `wink.storage.bridge`
 //   home:                   bridgeMakeBackend({ backendFor, secrets, linkTo })                          is the adapter's `makeBackend`
-//   pairing:                pairDrive(...) on the device makes the secret and sends it once to the home, which keeps it with acceptEnrol(...)
+//   pairing:                pairFromHome(...) makes the secret on the home and hands it once to the device, which keeps it with acceptDrive(...)
 //
 // The secret is 32 random bytes. It lives in the vault on both devices (item `wink-bridge-<offer>`) and nowhere else: not in the offer row, not in an
-// event, not in a log line, not in a card. It crosses once, inside the Wink call that enrols it, which is encrypted end to end on both paths.
+// event, not in a log line, not in a card. It crosses once, inside the Wink call that hands it over (home to device), which is encrypted end to end on both paths.
 // Chunks are ciphertext before they reach this code, so the frames carry nothing readable either way.
 import crypto from "node:crypto";
 import fs from "node:fs";
 
 export const BRIDGE_TOOL = "wink.storage.bridge";
-export const ENROL_TOOL = "wink.storage.bridge.enrol";
+export const DRIVE_TOOL = "wink.storage.bridge.drive";
 /** Bodies travel as base64 in a JSON call (peer-wire carries up to 32 MB a message). The pool's chunks are far smaller; this stops a frame that could not fit. */
 export const MAX_FRAME_BODY = 20 * 1024 * 1024;
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
@@ -127,30 +127,35 @@ export function bridgeMakeBackend({ backendFor, secrets, linkTo, timeoutMs }) {
 }
 
 /**
- * Pairing, on the device with the drive: make the secret, keep it, tell the home once, start serving. Undone if any step fails.
- * `enrol` is the Wink call to the home ({ call }), `caller` the home's device identity (device:<id>) the Wink connection will report.
- * @param {{ endpoint: ReturnType<typeof createBridgeEndpoint>, secrets: ReturnType<typeof createBridgeSecrets>, enrol: (input: { offer: string, secret: string }) => Promise<any> }} o
- * @param {{ offer: string, dir: string, capacity: number, caller: string }} d
+ * Pairing, on the home (it runs where the person approves the card): make the secret, keep it, and hand it once to the device that has the drive, which keeps
+ * it too and starts serving. Undone on both sides if any step fails. `ask` is the Wink call to that device ({ call }).
+ * @param {{ secrets: ReturnType<typeof createBridgeSecrets>, linkTo: (device: string) => { call(tool: string, input?: any, opt?: any): Promise<any> } }} o
+ * @param {{ offer: string, device: string, kind: string, location: any, capacity: number }} d
  */
-export async function pairDrive({ endpoint, secrets, enrol }, d) {
-  if (!d.dir || !fs.existsSync(d.dir)) throw err("not_found", "This device cannot see that drive right now.");
+export async function pairFromHome({ secrets, linkTo }, d) {
   const secret = await secrets.make(d.offer);
   try {
-    await enrol({ offer: d.offer, secret });
-    await endpoint.serve(d);
-  } catch (e) { endpoint.stop(d.offer); await secrets.remove(d.offer); throw e; }
+    await linkTo(d.device).call(DRIVE_TOOL, { offer: d.offer, secret, kind: d.kind, location: d.location, capacity: d.capacity });
+  } catch (e) { await secrets.remove(d.offer); throw e; }
 }
 
 /**
- * Pairing, on the home: keep the secret the drive's device sends, once, and only from the device the offer names.
- * @param {{ secrets: ReturnType<typeof createBridgeSecrets>, deviceOf: (offer: string) => string | null | Promise<string | null> }} o
+ * Pairing, on the device with the drive: the answer to `wink.storage.bridge.drive`. Accepts a secret only from the home it is paired with, finds the drive
+ * mounted on this device, keeps the secret, and starts serving it to that home only.
+ * @param {{ endpoint: ReturnType<typeof createBridgeEndpoint>, secrets: ReturnType<typeof createBridgeSecrets>, home: () => string | null, exists?: (p: string) => boolean }} o
  */
-export function acceptEnrol({ secrets, deviceOf }) {
-  return async (/** @type {string} */ caller, /** @type {{ offer: string, secret: string }} */ input) => {
-    const dev = await deviceOf(String(input && input.offer));
-    if (!dev) throw err("not_found", "No drive is waiting for that.");
-    if (caller !== `device:${dev}`) throw err("denied", "Only the device the drive was found from can enrol it.");
+export function acceptDrive({ endpoint, secrets, home, exists }) {
+  return async (/** @type {string} */ caller, /** @type {{ offer: string, secret: string, kind?: string, location?: any, capacity: number }} */ input) => {
+    const h = home();
+    if (!h) throw err("not_found", "This device is not paired to a space's home.");
+    if (caller !== `device:${h}`) throw err("denied", "Only the space's home can offer a drive through this device.");
+    const dir = localDriveDir(input.location || {}, { kind: input.kind, exists });
+    if (!dir) throw err("not_found", "This device cannot see that drive right now.");
+    const cap = Number(input.capacity);
+    if (!Number.isFinite(cap) || cap <= 0) throw err("bad_input", "Say how much room may be used.");
     await secrets.keep(input.offer, input.secret);
+    try { await endpoint.serve({ offer: input.offer, dir: `${dir.replace(/\/+$/, "")}/vyre-${input.offer}`, capacity: cap, caller }); }
+    catch (e) { await secrets.remove(input.offer); throw e; }
     return { ok: true };
   };
 }

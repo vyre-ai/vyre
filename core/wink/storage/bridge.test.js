@@ -4,10 +4,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { SCRATCH } from "../../../test/scratch.mjs";
-import { createBridgeSecrets, createBridgeEndpoint, makeBridgeSend, bridgeMakeBackend, pairDrive, acceptEnrol, localDriveDir, BRIDGE_TOOL, ENROL_TOOL } from "./bridge.js";
+import { createBridgeSecrets, createBridgeEndpoint, makeBridgeSend, bridgeMakeBackend, pairFromHome, acceptDrive, localDriveDir, BRIDGE_TOOL, DRIVE_TOOL } from "./bridge.js";
 import { bridgedCard, bridgeAwayWords } from "./bridge-cards.js";
 import { FORBIDDEN } from "../cards.js";
 import { attachPool } from "./pool.js";
@@ -42,14 +41,14 @@ function world() {
   const homeSecrets = createBridgeSecrets({ vault: homeVault }), devSecrets = createBridgeSecrets({ vault: devVault });
   let liveNow = true, engine;
   const endpoint = createBridgeEndpoint({ createBridge: o => (engine = fakeCreateBridge(o)), secrets: devSecrets, live: () => liveNow, log: m => logs.push(m) });
-  const callFrom = caller => ({ call: async (tool, input) => { wire.push({ tool, input: JSON.parse(JSON.stringify(input)) }); if (tool === BRIDGE_TOOL) return JSON.parse(JSON.stringify(await endpoint.handle(caller, input))); throw new Error("no tool " + tool); } });
+  const drive = acceptDrive({ endpoint, secrets: devSecrets, home: () => "dev_home", exists: p => p === "/Volumes/Office" || p === dirD || fs.existsSync(p) });
+  const callFrom = caller => ({ call: async (tool, input) => { wire.push({ tool, input: JSON.parse(JSON.stringify(input)) }); if (tool === BRIDGE_TOOL) return JSON.parse(JSON.stringify(await endpoint.handle(caller, input))); if (tool === DRIVE_TOOL) return drive(caller, input); throw new Error("no tool " + tool); } });
   return { dirD, homeVault, devVault, homeSecrets, devSecrets, endpoint, logs, wire, callFrom, setLive: v => (liveNow = v), engine: () => engine };
 }
 const OFFER = { id: "sto_abc123", seenFrom: "dev_mini" };
 
 async function pair(w, homeCaller = "device:dev_home") {
-  const enrolHome = acceptEnrol({ secrets: w.homeSecrets, deviceOf: o => (o === OFFER.id ? "dev_mini" : null) });
-  await pairDrive({ endpoint: w.endpoint, secrets: w.devSecrets, enrol: i => enrolHome("device:dev_mini", i) }, { offer: OFFER.id, dir: w.dirD, capacity: 1e9, caller: homeCaller });
+  await pairFromHome({ secrets: w.homeSecrets, linkTo: () => w.callFrom(homeCaller) }, { offer: OFFER.id, device: "dev_mini", kind: "usb-disk", location: { path: w.dirD }, capacity: 1e9 });
 }
 
 test("pairing makes one 32 byte secret, keeps it in both vaults, and the home then writes and reads through the wire", async () => {
@@ -90,16 +89,17 @@ test("a wrong secret gets 401 from the engine, a stale offer or a taken grant is
   await assert.rejects(() => w.endpoint.handle("device:dev_home", bad), { code: "not_found" });
 });
 
-test("the enrolment is accepted only from the device the offer names, and a failed pairing leaves no secret behind", async () => {
+test("a drive is accepted only from the home, only when this device sees it, and a failed pairing leaves no secret on either side", async () => {
   const w = world();
-  const enrolHome = acceptEnrol({ secrets: w.homeSecrets, deviceOf: o => (o === OFFER.id ? "dev_mini" : null) });
-  await assert.rejects(() => enrolHome("device:dev_other", { offer: OFFER.id, secret: "s".repeat(43) }), { code: "denied" });
-  await assert.rejects(() => enrolHome("device:dev_mini", { offer: "sto_none", secret: "s".repeat(43) }), { code: "not_found" });
-  await assert.rejects(() => enrolHome("device:dev_mini", { offer: OFFER.id, secret: "short" }), { code: "bad_input" });
-  assert.equal(await w.homeSecrets.get(OFFER.id), null);
-  await assert.rejects(() => pairDrive({ endpoint: w.endpoint, secrets: w.devSecrets, enrol: async () => { throw new Error("home away"); } }, { offer: OFFER.id, dir: w.dirD, capacity: 1, caller: "device:dev_home" }), /home away/);
-  assert.equal(await w.devSecrets.get(OFFER.id), null); assert.equal(w.endpoint.has(OFFER.id), false);
-  await assert.rejects(() => pairDrive({ endpoint: w.endpoint, secrets: w.devSecrets, enrol: async () => {} }, { offer: OFFER.id, dir: "/nonexistent/x", capacity: 1, caller: "device:dev_home" }), { code: "not_found" });
+  const link = c => ({ call: (t, i) => w.callFrom(c).call(t, i) });
+  const d = { offer: OFFER.id, device: "dev_mini", kind: "usb-disk", location: { path: w.dirD }, capacity: 1e9 };
+  await assert.rejects(() => pairFromHome({ secrets: w.homeSecrets, linkTo: () => link("device:dev_other") }, d), { code: "denied" });
+  await assert.rejects(() => pairFromHome({ secrets: w.homeSecrets, linkTo: () => link("device:dev_home") }, { ...d, location: { path: "/nonexistent/x" } }), { code: "not_found" });
+  await assert.rejects(() => pairFromHome({ secrets: w.homeSecrets, linkTo: () => link("device:dev_home") }, { ...d, capacity: 0 }), { code: "bad_input" });
+  for (const v of [w.homeVault, w.devVault]) assert.equal(v.items.size, 0, "no secret left in either vault");
+  assert.equal(w.endpoint.has(OFFER.id), false);
+  await assert.rejects(() => acceptDrive({ endpoint: w.endpoint, secrets: w.devSecrets, home: () => null })("device:dev_home", { ...d, secret: "s".repeat(43) }), { code: "not_found" });
+  await assert.rejects(() => acceptDrive({ endpoint: w.endpoint, secrets: w.devSecrets, home: () => "dev_home" })("device:dev_home", { ...d, secret: "short" , location: { path: w.dirD } }), { code: "bad_input" });
 });
 
 test("the secret is nowhere but the two vaults: not in the wire frames, cards, logs, the pool node or any call result", async () => {
@@ -114,7 +114,9 @@ test("the secret is nowhere but the two vaults: not in the wire frames, cards, l
   assert.deepEqual(nodes[0].classes, ["cold", "backup"], "the device's classes reach the pool");
   await nodes[0].backend.put("c/x", Buffer.from("scrambled"));
   const card = bridgedCard({ name: "Office drive", owner: "Harlow Legal", capacity: 1.5e12, via: "Alex's Mac mini", classes: ["cold", "backup"] });
-  const dump = JSON.stringify({ wire: w.wire, card, logs: [...w.logs, ...seen], sync, nodes: nodes.map(n => ({ ...n, backend: Object.keys(n.backend) })) });
+  const crossing = w.wire.filter(x => JSON.stringify(x).includes(secret));
+  assert.deepEqual(crossing.map(x => x.tool), [DRIVE_TOOL], "the secret crosses once, in the hand-over, and in no bridge frame");
+  const dump = JSON.stringify({ wire: w.wire.filter(x => x.tool !== DRIVE_TOOL), card, logs: [...w.logs, ...seen], sync, nodes: nodes.map(n => ({ ...n, backend: Object.keys(n.backend) })) });
   assert.ok(!dump.includes(secret), "no copy of the secret outside the vaults");
   assert.ok(!JSON.stringify([...w.homeVault.items].filter(([n]) => !n.startsWith("wink-bridge-"))).includes(secret));
 });
@@ -154,5 +156,4 @@ test("the card says in plain words which device the drive hangs off, and uses no
     assert.ok(!FORBIDDEN.test(s), s); assert.ok(!/[—–§]/.test(s), s);
   }
   assert.ok(c.sensitive && c.primary === "Add storage");
-  void os; void ENROL_TOOL;
 });
