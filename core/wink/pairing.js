@@ -491,9 +491,8 @@ export function createPairing(o) {
       run: async (input, meta = {}) => { owner(meta, "adding this server"); const r = await o.ack(String(input.offer), String(input.typed)); return r && r.ok ? { ...r, message: words("codeMatched") } : r; },
     });
     // W-4: adoption happens once, at the first pairing. The adopter is recorded for every caller kind (a cli adoption too). After an owner exists nothing
-    // changes without (a) fresh presence of the current owner on this box (wink.server.retarget, the owner's own screen), or (b) the target space's admin
-    // claim. The claim is, for now, the kernel directory port's admin check (the named identity holds an admin role in the target space); the signed form
-    // (an admin device's signature over the server id and the space, verified by the space's home) is not built, see docs/work/tailnet.md.
+    // changes (owner, peer secret, handover, adopter) without the current owner's fresh presence, from the one that adopted it or a screen on this box
+    // (wink.server.retarget). The identity named in the input is never a claim: it is supplied by the caller. A signed admin claim is not built.
     /** The hand-over the app sent: short strings under known names, nothing else. @param {any} x */
     const cleanHandover = x => {
       if (!x || typeof x !== "object") return null;
