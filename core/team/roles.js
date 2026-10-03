@@ -30,13 +30,33 @@ const cap = (s, n) => String(s ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").sli
  *   templates: { name: string, kind: string, body: string, labels: import("../../lib/labels.js").Labels, reviewed: boolean }[], wanted: { actions: string[], prefix: string }[], outward: string[] }} TeammateSpec
  */
 
+const KIT_VERBS = { read: "records.read", write: "records.update", create: "records.create" };
+/**
+ * A Kit role's grants (`{ read: "matter" }`, `{ write: "matter.practice_area" }`, `{ create: "note" }`) as wanted entries: one per type and verb. A field-limited
+ * grant is carried as the type with its `fields` named, because the gateway grants by type: the add card shows the fields and the kernel does not yet enforce them.
+ * @param {readonly Record<string, string>[]} grants @param {string} space
+ */
+export function kitGrants(grants, space) {
+  /** @type {Map<string, { actions: string[], prefix: string, fields?: string[] }>} */ const by = new Map();
+  for (const g of grants || []) for (const [verb, target] of Object.entries(g)) {
+    const action = /** @type {any} */ (KIT_VERBS)[verb];
+    if (!action || typeof target !== "string") continue;
+    const [type, field] = target.split(".");
+    const key = `${action}\0${type}`;
+    const e = by.get(key) || { actions: [action], prefix: `vyre://${space}/${type}/*` };
+    if (field) e.fields = [...(e.fields || []), field];
+    by.set(key, e);
+  }
+  return [...by.values()];
+}
+
 /**
  * A teammate spec from a Kit's role. Kit text is external and unreviewed; the spec lists any outward action it wants so the card can say so.
  * @param {KitRole} kitRole @param {{ project: string, space: string, registry?: Record<string, string> }} o @returns {TeammateSpec}
  */
 export function teammateFromRole(kitRole, { project, space, registry }) {
   if (!kitRole || !kitRole.name) throw Object.assign(new Error("a role has a name"), { code: "bad_input" });
-  const wanted = (kitRole.wanted || []).map(w => ({ actions: [...w.actions], prefix: w.prefix || project }));
+  const wanted = (kitRole.wanted || (/** @type {any} */ (kitRole)).grants ? (kitRole.wanted || kitGrants(/** @type {any} */ (kitRole).grants, space)) : []).map(w => ({ actions: [...w.actions], prefix: w.prefix || project, ...(w.fields ? { fields: w.fields } : {}) }));
   const outward = [...new Set(wanted.flatMap(w => w.actions).filter(a => isOutward(a, registry)))];
   return {
     name: slug(kitRole.name), role: cap(kitRole.name, 60), project, space,
@@ -72,7 +92,7 @@ export function checkAdd({ spec, adder, count, humanApproved = false }) {
 export function addCardData(spec) {
   return {
     title: `Add ${spec.role}`, project: spec.project,
-    wants: spec.wanted.map(w => ({ actions: w.actions, prefix: w.prefix })),
+    wants: spec.wanted.map(w => ({ actions: w.actions, prefix: w.prefix, ...(/** @type {any} */ (w).fields ? { fields: /** @type {any} */ (w).fields } : {}) })),
     outward: spec.outward,
     kit_text: { instructions: { quoted: spec.instructions.text, label: spec.instructions.labels.trust, reviewed: spec.instructions.reviewed },
       templates: spec.templates.map(t => ({ name: t.name, label: t.labels.trust, reviewed: t.reviewed })) },

@@ -4,11 +4,14 @@
 // decision so the teammate pauses when the adder loses the grant, leaves or is limited (it fails closed).
 
 import { isOutward } from "./roles.js";
+import { segments, containedPrefix } from "../../kernel/core/urn.js";
 
 /** @typedef {{ kind: string, id: string, space: string }} ActorRef */
 
+/** Which of the adder's grants could be the parent? Chosen by action and by the kernel's own selector rule (`*` segments); a selector that is not a Space URN falls back to a plain prefix. The kernel's `grants.create` with `parent` is what proves containment (and the delegate condition) and refuses what is not. */
 const covers = (/** @type {any} */ g, /** @type {string[]} */ actions, /** @type {string} */ prefix) =>
-  actions.every(a => g.actions.includes(a) || g.actions.includes("*")) && prefix.startsWith(g.resource.prefix);
+  actions.every(a => g.actions.includes(a) || g.actions.includes("*") || g.actions.some((/** @type {string} */ p) => p.endsWith(".*") && a.startsWith(p.slice(0, -1))))
+  && (segments(g.resource.prefix) ? containedPrefix(prefix, g.resource.prefix) : prefix.startsWith(g.resource.prefix));
 
 /**
  * The time condition of the child: never later than the parent's expiry, never earlier than its start.

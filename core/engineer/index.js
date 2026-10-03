@@ -19,8 +19,8 @@ export const engineerActor = space => ({ kind: /** @type {const} */ ("agent"), i
 export function engineerGrants(space) {
   const subject = { kind: /** @type {const} */ ("actor"), actor: engineerActor(space) };
   return [
-    { subject, actions: ["records.read", "records.define"], resource: { prefix: `vyre://${space}/def` }, conditions: {}, source: "builtin:engineer", reason: "change definitions" },
-    { subject, actions: ["tasks.request"], resource: { prefix: `vyre://${space}/task` }, conditions: {}, source: "builtin:engineer", reason: "ask an admin to approve" },
+    { subject, actions: ["records.read", "records.define"], resource: { prefix: `vyre://${space}/definition` }, conditions: {}, source: "builtin:engineer", reason: "change definitions" },
+    { subject, actions: ["tasks.request", "tasks.work"], resource: { prefix: `vyre://${space}/task` }, conditions: {}, source: "builtin:engineer", reason: "ask an admin to approve" },
     { subject, actions: ["model.use"], resource: { prefix: `vyre://${space}/` }, conditions: {}, source: "builtin:engineer", reason: "write drafts" },
   ];
 }
@@ -47,9 +47,14 @@ export function createEngineer({ kernel, compile, simulate = null, engineerChain
 
   /** The task an admin sees: the Engineer is the doer, the admin the checker, and the task binds the card's hash. @param {any} echain @param {any} admin @param {any} p */
   async function raiseTask(echain, admin, p) {
+    // The real kernel binds an approval to the evidence the doer completes with, so the card's hash rides in it; the fake kernel binds `draft_hash` instead.
+    const real = typeof kernel.ask.complete === "function";
     const task = await kernel.ask.request(echain, { title: `Review a change to your definitions: ${p.summary}`.slice(0, 200), doer: engineerActor(echain.space), checker: admin,
-      output: { kind: "decision" }, source: "assistant_request", draft_hash: p.hash });
-    if (kernel.tasks) {
+      output: { kind: "decision" }, source: "assistant_request", ...(real ? {} : { draft_hash: p.hash }) });
+    if (real) {
+      await kernel.ask.start(echain, task.id);
+      await kernel.ask.complete(echain, task.id, { answer: "yes", reason: `Change to definitions, card ${p.hash}`, proposal_hash: p.hash });
+    } else if (kernel.tasks) {
       await kernel.tasks.move(echain, task.id, "working");
       await kernel.tasks.move(echain, task.id, "needs_check", { output_checked: true });
     }

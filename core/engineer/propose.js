@@ -35,6 +35,10 @@ export function parseReply(text) {
 /** The definitions that exist, as a model may see them: read through the gateway, sealed fields as placeholders, capped. @param {any} kernel @param {any} chain */
 async function existingDefinitions(kernel, chain) {
   /** @type {string[]} */ const out = [];
+  if (typeof kernel.definitions === "function") {
+    try { for (const t of await kernel.definitions(chain)) out.push(`type ${JSON.stringify(modelView({ name: t.name, label: t.label, fields: (t.fields || []).map((/** @type {any} */ f) => `${f.name}:${f.kind}`), stages: (t.stages || []).map((/** @type {any} */ x) => x.name) }))}`); } catch { /* none readable */ }
+    return out.join("\n").slice(0, CONTEXT_CAP) || "(no definitions yet)";
+  }
   for (const type of ["def.type", "def.flow", "def.role", "def.kit"]) {
     try {
       const page = await kernel.records.query(chain, type, { page: { limit: 100 } });
