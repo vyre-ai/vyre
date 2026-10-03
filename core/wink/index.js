@@ -562,7 +562,7 @@ export function createWink(inject = {}) {
     const frameOf = (/** @type {any} */ meta) => String((meta && meta.caller) || "");
     ctx.tool(BRIDGE_TOOL, {
       description: "A storage frame for a drive this device serves, from the space's home (a put, get, delete or ping of one encrypted chunk, signed with the drive's secret). Answers { status, body? }. Only the home this device is paired to may ask.",
-      input: obj({ offer: str, op: { type: "string", enum: ["put", "get", "del", "ping"] }, key: str, ts: { type: "number" }, sig: str, body: str }, ["offer", "op", "ts", "sig"]),
+      input: obj({ offer: str, op: { type: "string", enum: ["put", "get", "del", "ping"] }, key: str, ts: { type: "number" }, nonce: str, sig: str, body: str }, ["offer", "op", "ts", "sig"]),
       run: (/** @type {any} */ input, /** @type {any} */ meta) => endpoint.handle(frameOf(meta), input),
     });
     ctx.tool(ACCEPT_TOOL, {

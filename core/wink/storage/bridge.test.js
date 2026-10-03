@@ -258,3 +258,17 @@ test("holdDrive connects, serves, and when the link stays down it closes it and 
   assert.equal(h.status().up, true); assert.equal(h.status().nextWaitMs, 10, "backoff resets once the link is up");
   h.stop(); assert.ok(made[3].closed);
 });
+
+test("the frame's nonce reaches the engine (it refuses a replayed one), and a retry makes a fresh frame so it is never a replay", async () => {
+  const w = world(); await pair(w);
+  const seenNonces = [];
+  const real = w.engine().handle;
+  w.engine().handle = async f => { seenNonces.push(f.nonce); return real(f); };
+  const send = makeBridgeSend({ linkTo: () => w.callFrom("device:dev_home") })("dev_mini", OFFER);
+  const secret = await w.homeSecrets.get(OFFER.id), ts = Date.now();
+  await send({ op: "ping", key: "", ts, nonce: "n-abcdefgh", sig: sign(secret, { op: "ping", key: "", ts }) });
+  assert.deepEqual(seenNonces, ["n-abcdefgh"]);
+  let calls = 0; const sent = [];
+  const be = resilientBackend({ put: async () => { calls++; const f = { nonce: `n${calls}` }; sent.push(f.nonce); if (calls < 3) throw Object.assign(new Error("bridge put 409"), {}); }, get: async () => null, del: async () => {}, ping: async () => 1 }, { sleep: async () => {} });
+  await be.put("k", "v"); assert.deepEqual(sent, ["n1", "n2", "n3"], "each try is a new call, so a new frame and a new nonce");
+});

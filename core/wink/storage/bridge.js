@@ -90,7 +90,7 @@ export function createBridgeEndpoint({ createBridge, secrets, live = () => true,
     has: (/** @type {string} */ offer) => serving.has(offer),
     /**
      * The Wink call. `caller` is the identity the connection proved, never anything in `input`.
-     * @param {string} caller @param {{ offer: string, op: string, key?: string, ts: number, sig: string, body?: string }} input
+     * @param {string} caller @param {{ offer: string, op: string, key?: string, ts: number, nonce?: string, sig: string, body?: string }} input
      * @returns {Promise<{ status: number, body?: string }>}
      */
     async handle(caller, input) {
@@ -100,7 +100,7 @@ export function createBridgeEndpoint({ createBridge, secrets, live = () => true,
       if (!(await live(input.offer))) throw err("denied", "That drive is no longer offered.");
       if (input.body !== undefined && (typeof input.body !== "string" || input.body.length > Math.ceil(MAX_FRAME_BODY * 4 / 3) + 4)) return { status: 413 };
       const body = input.body ? Buffer.from(input.body, "base64") : undefined;
-      const r = await s.bridge.handle({ op: input.op, key: input.key, ts: input.ts, sig: input.sig, ...(body ? { body } : {}) });
+      const r = await s.bridge.handle({ op: input.op, key: input.key, ts: input.ts, nonce: input.nonce, sig: input.sig, ...(body ? { body } : {}) });
       return { status: r.status, ...(r.body ? { body: r.body.toString("base64") } : {}) };
     },
   };
@@ -108,8 +108,8 @@ export function createBridgeEndpoint({ createBridge, secrets, live = () => true,
 
 const sleepMs = (/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms));
 /** Errors a retry cannot fix: the other side said no, or the call is wrong. */
-const FINAL = new Set(["denied", "bad_input", "not_found", "no_secret", "no_room"]);
-const retryable = (/** @type {any} */ e) => !(e && (FINAL.has(String(e.code)) || /\b(401|403|404|413)\b/.test(String(e.message || ""))));
+const FINAL = new Set(["denied", "bad_input", "not_found", "no_secret", "no_room", "full"]);
+const retryable = (/** @type {any} */ e) => !(e && (FINAL.has(String(e.code)) || /\b(400|401|403|404|413|507)\b/.test(String(e.message || ""))));
 
 /**
  * Home side: `bridge.send(deviceId, offer)` of devices.js. `linkTo(deviceId)` returns the channel to that device ({ call(tool, input, opt) }): the connection
@@ -117,9 +117,9 @@ const retryable = (/** @type {any} */ e) => !(e && (FINAL.has(String(e.code)) ||
  * @param {{ linkTo: (device: string) => { call(tool: string, input?: any, opt?: { timeoutMs?: number }): Promise<any> }, timeoutMs?: number }} o
  */
 export function makeBridgeSend({ linkTo, timeoutMs = 30_000 }) {
-  return (/** @type {string} */ device, /** @type {{ id: string }} */ offer) => async (/** @type {{ op: string, key?: string, body?: Buffer, ts: number, sig: string }} */ f) => {
+  return (/** @type {string} */ device, /** @type {{ id: string }} */ offer) => async (/** @type {{ op: string, key?: string, body?: Buffer, ts: number, nonce?: string, sig: string }} */ f) => {
     if (f.body && f.body.length > MAX_FRAME_BODY) return { status: 413 };
-    const r = await linkTo(device).call(BRIDGE_TOOL, { offer: offer.id, op: f.op, key: f.key, ts: f.ts, sig: f.sig, ...(f.body ? { body: Buffer.from(f.body).toString("base64") } : {}) }, { timeoutMs });
+    const r = await linkTo(device).call(BRIDGE_TOOL, { offer: offer.id, op: f.op, key: f.key, ts: f.ts, nonce: f.nonce, sig: f.sig, ...(f.body ? { body: Buffer.from(f.body).toString("base64") } : {}) }, { timeoutMs });
     return { status: Number(r.status), ...(r.body ? { body: Buffer.from(r.body, "base64") } : {}) };
   };
 }
