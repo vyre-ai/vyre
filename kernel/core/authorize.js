@@ -90,7 +90,7 @@ export function createAuthorizer(cfg) {
     };
     const deny = (/** @type {string} */ reason) => done("deny", reason);
     try {
-      if (!input || !isChain(input.chain)) return deny("bad_input");
+      if (!input || !isChain(input.chain) || !input.chain.hops.length) return deny("bad_input");
       const { chain, action, resource } = input;
       const def = reg.get(action);
       if (!def) return deny("unknown_action");

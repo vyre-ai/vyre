@@ -72,7 +72,7 @@ export function createEventLog(cfg) {
       v: 1, id: mintUuid(now, rand), seq, space: cfg.space, type: ev.type, sv: ev.sv,
       time: opts.time ?? now, received_at: now,
       actor: actorString(last.actor), chain: chain.hops,
-      ...(opts.via || last.via ? { via: opts.via || last.via } : {}),
+      ...(last.via ? { via: last.via } : {}),
       subject: ev.subject,
       ...(ev.cause ? { cause: ev.cause } : opts.decision ? { cause: opts.decision } : {}),
       ...(ev.corr ? { corr: ev.corr } : {}),
@@ -99,7 +99,7 @@ export function createEventLog(cfg) {
     for (const e of log) {
       if (filter.since !== undefined && e.seq <= filter.since) continue;
       if (!typeMatches(filter.type, e.type)) continue;
-      if (filter.subject_prefix && !e.subject.startsWith(filter.subject_prefix)) continue;
+      if (filter.subject_prefix && !(e.subject === filter.subject_prefix || e.subject.startsWith(filter.subject_prefix.replace(/\/$/, "") + "/"))) continue;
       if (filter.corr && e.corr !== filter.corr) continue;
       if (filter.actor && e.actor !== filter.actor) continue;
       out.push(e);

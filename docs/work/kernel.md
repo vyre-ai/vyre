@@ -60,4 +60,4 @@ Done, pushed to origin/work/kernel (f43c4e570 and later):
 - `Store.describe(type)` added; `FieldKind` `ref` to `link`, `link` to `url`; `kernel/door/door.js` gains an optional `isChain` option.
 
 ## Next
-- After reviewer-2 passes K1 and K2: remaining K1 items 6 to 9, K2-5, K2-7, K2-9, K2-10, merge main, then K4 (tool surface, node.d.ts stud). Do not start K4 before the pass.
+- Done since: K1 8a, 9a, 9c, 9d. After reviewer-2 passes K1 and K2: remaining K1 items 6, 7, 8b, 8c, 9b, 9e, 9f, K2-5, K2-7, K2-9, K2-10, merge main, then K4 (tool surface, node.d.ts stud). Do not start K4 before the pass.
