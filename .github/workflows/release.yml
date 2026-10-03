@@ -60,7 +60,7 @@ jobs:
           node-version: 22
       - name: A tag that already has a release (published or draft) is never signed again
         # A tag that was released and then moved to another commit must not reach the signing steps: the lineage check below drops the tag itself from its
-        # list, and `gh release create` would refuse only after the release job had signed.
+        # list, and the publish step would refuse only after the release job had signed.
         if: github.event_name == 'push' && vars.VYRE_RELEASES == 'go'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -182,7 +182,13 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: signing-diff
-          path: signing-diff/*.txt
+          path: signing-diff/signing-diff.txt
+          retention-days: 14
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: whole-diff
+          path: signing-diff/whole-diff.txt
+          if-no-files-found: ignore
           retention-days: 14
       - name: Box files and vyre.tgz, as build-site.sh makes them
         run: |

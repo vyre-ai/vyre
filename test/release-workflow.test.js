@@ -158,3 +158,15 @@ test("release.yml: prepare refuses a release whose package, lockfile and plugin 
   assert.ok(i > 0 && yml.indexOf("node scripts/bump-version.mjs --check", i) > i);
   assert.ok(yml.indexOf("node scripts/bump-version.mjs --check") < yml.indexOf("- name: Box files and vyre.tgz"));
 });
+
+test("release.yml: a tag that already has a release is refused in prepare before anything is built, a patch run shows the whole diff, and the Mac status is bound to the file hashes", () => {
+  const guard = yml.indexOf("A tag that already has a release (published or draft) is never signed again");
+  assert.ok(guard > 0 && guard < yml.indexOf("The tag's commit is on main or the 0.2 stage line") && guard < yml.indexOf("- name: Version, channel, notes"), "the guard is the first step after setup");
+  assert.match(yml.slice(guard, guard + 900), /gh release list .*--json tagName/);
+  assert.match(yml, /PATCH RELEASE from hotfix\/\$TAG, NOT from main/);
+  assert.match(yml, /git diff "\$base" HEAD > signing-diff\/whole-diff\.txt/);
+  assert.match(yml, /sed -n "s\/\^sha256:\$f=\/\/p" "\$st"/, "the release job recomputes the hashes the status lists");
+  const mac = fs.readFileSync(path.join(REPO, ".github/workflows/mac-app.yml"), "utf8");
+  assert.ok(!/\$\{\{ *inputs\.version *\}\}"/.test(mac.replace(/IN_VERSION: \$\{\{ inputs\.version \}\}/g, "")), "no inputs expression inside a script");
+  assert.match(mac, /printf 'sha256:%s=%s/);
+});
