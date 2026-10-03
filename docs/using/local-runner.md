@@ -13,7 +13,7 @@ their own sessions on their own computer. The space stays the source of truth.
 
 ## Two yeses, once
 
-Harlow's admin turns on "Members can run our work on their own computers". You accept "Use this computer for
+Harlow's admin turns on "Members can run our work on their own computers, and through it use the credentials that work needs". The runner holds those credentials in memory while a session runs, so a member who is determined can use them through the runner; they cannot read them, and each credential works only for the methods and paths the space listed. You accept "Use this computer for
 Harlow Legal" on your device page, with your limits: only when plugged in, only when awake, a CPU and a memory
 ceiling. Either side can take theirs back in one tap. Without both, nothing starts here.
 
@@ -30,8 +30,11 @@ Pin a session to the server to keep it running when you close the laptop.
 - Everything it reads and writes lives in one encrypted workspace. Its key is leased from the space for an hour,
   renewed while your access holds, and kept in memory only. When the lease ends the workspace locks. When you are
   removed from the space it is deleted the next time this computer reaches the space.
-- Credentials are fetched from the space's vault at the moment of use and put into the outgoing request. No `.env`
-  file exists, and the session and the model never see the secret.
+- Credentials are fetched from the space's vault at the moment of use and put into the outgoing request, only for the
+  methods and paths the space listed. Anything that changes something outside is held for approval. No `.env` file
+  exists, and the session and the model never see the secret.
+- The runner's own bookkeeping sits outside the folder the session can see. If the runner is killed, a watchdog closes
+  the workspace; "locked" is only said once the workspace is really closed. A laptop that slept needs a fresh lease.
 - The transcript and files stream to the space as they change, and every turn is a checkpoint, so a session
   continues on another computer or on the server from its last turn.
 

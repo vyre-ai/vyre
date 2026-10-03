@@ -17,7 +17,7 @@ import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 
 /** The pass phrase for the tool: the key as hex, in a Buffer the caller zeroes after use. @param {Buffer} key */
-const passphrase = key => Buffer.from(key.toString("hex"));
+const passphrase = key => { const hex = "0123456789abcdef", b = Buffer.alloc(key.length * 2); for (let i = 0; i < key.length; i++) { b[i * 2] = hex.charCodeAt(key[i] >> 4); b[i * 2 + 1] = hex.charCodeAt(key[i] & 15); } return b; };
 
 /** Run a tool with the pass phrase on its stdin. @returns {Promise<{ code: number|null, err: string, out: string }>} */
 function runWithPass(cmd, args, pass) {

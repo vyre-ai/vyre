@@ -28,6 +28,23 @@ export function cleanEnv(env = {}) {
   return out;
 }
 
+/** Folders that hold a person's secrets. A folder that has one as a direct child is never bound into a sandbox. */
+const SECRET_DIRS = [".ssh", ".aws", ".gnupg", ".kube", ".docker", ".config", ".netrc", ".git-credentials", ".npmrc", ".claude"];
+
+/**
+ * Refuse a folder the sandbox must never see whole: the root, the home folder or any folder above it, or a folder with a secret
+ * folder directly in it (reviewer-2 R5, probe Z7). A tool is granted as its own install folder, never a person's home.
+ * @param {string} dir @param {string} [home]
+ */
+export function checkBind(dir, home = process.env.HOME || process.env.USERPROFILE || "") {
+  const d = real(dir);
+  const root = path.parse(d).root;
+  const h = home ? real(home) : "";
+  if (d === root || (h && (d === h || h.startsWith(d.endsWith(path.sep) ? d : d + path.sep)))) throw new Error(`the sandbox is never given ${d}: it is a home folder or above it`);
+  for (const n of SECRET_DIRS) if (fs.existsSync(path.join(d, n))) throw new Error(`the sandbox is never given ${d}: it holds ${n}`);
+  return d;
+}
+
 const real = p => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
 const q = s => JSON.stringify(String(s));
 const ancestors = p => { const out = []; for (let d = path.dirname(p); d !== p; p = d, d = path.dirname(d)) out.push(d); out.push("/"); return out; };
@@ -44,6 +61,7 @@ const ancestors = p => { const out = []; for (let d = path.dirname(p); d !== p; 
  * @property {number} [innerPort]  Linux: the loopback port the in-sandbox shim listens on (default 18443)
  * @property {string} [space]  Windows: the space the container is named for
  * @property {string} [launcher]  Windows: path of vyre-sandbox.exe
+ * @property {string} [home]  the person's home folder, for the bind check (default: this process's)
  * @property {string} [node]  the node binary the Linux shim runs under (default process.execPath)
  */
 
@@ -53,7 +71,8 @@ const ancestors = p => { const out = []; for (let d = path.dirname(p); d !== p; 
  */
 export function seatbeltProfile(o) {
   const ws = real(o.workspace);
-  const ro = [...new Set([...(o.readOnly || []), path.dirname(o.command)].map(real))];
+  const ro = [...new Set((o.readOnly || []).map(d => checkBind(d, o.home)))];
+  needTool(o.command, ro, ["/usr/bin", "/bin", "/usr/sbin", "/sbin"]);
   const meta = new Set(["/", ...ancestors(ws), ...ro.flatMap(ancestors)]);
   const lines = [
     "(version 1)",
@@ -61,7 +80,9 @@ export function seatbeltProfile(o) {
     '(import "system.sb")',
     "(allow process-fork)",
     "(allow signal (target self))",
-    "(allow sysctl-read)",
+    // No blanket sysctl-read: system.sb already lists the few a node program needs, and a blanket rule can expose other processes'
+    // arguments and environment (reviewer-2 R8). The system resolver is denied too: the only address the session needs is a literal loopback one.
+    '(deny mach-lookup (global-name "com.apple.dnssd.service") (global-name "com.apple.SystemConfiguration.DNSConfiguration") (global-name "com.apple.networkd") (global-name "com.apple.nsurlsessiond"))',
     // The system programs and libraries a shell and node need. Never /Users, /Volumes or /private/var/folders.
     '(allow file-read* (subpath "/usr") (subpath "/bin") (subpath "/sbin") (subpath "/System") (subpath "/Library/Frameworks") (subpath "/private/etc/ssl") (subpath "/private/var/db/timezone") (literal "/private/etc/passwd") (literal "/private/etc/hosts") (literal "/private/etc/resolv.conf"))',
     '(allow process-exec (subpath "/usr/bin") (subpath "/bin") (subpath "/usr/sbin") (subpath "/sbin"))',
@@ -72,6 +93,13 @@ export function seatbeltProfile(o) {
   ];
   if (o.proxy.port) lines.push(`(allow network-outbound (remote ip "localhost:${o.proxy.port}"))`);
   return lines.join("\n") + "\n";
+}
+
+/** The program must be in a granted tool folder or a system one: nothing is bound just because the command lives there. */
+function needTool(command, granted, system) {
+  const c = real(command);
+  const under = (p, d) => p === d || p.startsWith(d.endsWith(path.sep) ? d : d + path.sep);
+  if (![...granted, ...system].some(d => under(c, d))) throw new Error(`${command} is not in a granted tool folder: pass its install folder in readOnly`);
 }
 
 /** @param {PlanOpts} o */
@@ -95,7 +123,9 @@ function planLinux(o) {
   const node = o.node || process.execPath;
   const inner = o.innerPort || 18443;
   const sock = o.proxy.socket || "";
-  const ro = [...new Set([...(o.readOnly || []), path.dirname(o.command), path.dirname(node)].map(real))].filter(d => !["/usr", "/bin", "/lib", "/lib64", "/etc"].includes(d) && !d.startsWith("/usr/"));
+  const sys = d => ["/usr", "/bin", "/lib", "/lib64", "/etc"].includes(d) || d.startsWith("/usr/");
+  const ro = [...new Set([...(o.readOnly || []), path.dirname(node)].map(d => real(d)))].filter(d => !sys(d)).map(d => checkBind(d, o.home));
+  needTool(o.command, ro, ["/usr"]);
   const home = "/work/home";
   const base = proxyUrl(inner);
   const env = { ...cleanEnv(o.env), HOME: home, TMPDIR: "/work/tmp", PATH: "/usr/local/bin:/usr/bin:/bin:" + ro.map(d => path.join(d, "bin")).join(":"), ...proxyEnv(base) };
@@ -103,7 +133,7 @@ function planLinux(o) {
     "bwrap", "--die-with-parent", "--new-session", "--unshare-all", "--clearenv",
     "--ro-bind", "/usr", "/usr", "--symlink", "usr/bin", "/bin", "--symlink", "usr/lib", "/lib", "--symlink", "usr/lib64", "/lib64",
     "--ro-bind-try", "/etc/ssl", "/etc/ssl", "--ro-bind-try", "/etc/alternatives", "/etc/alternatives",
-    "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/run",
+    "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/run", "--unshare-user", "--cap-drop", "ALL", "--disable-userns",
     ...ro.flatMap(d => ["--ro-bind", d, d]),
     "--ro-bind", SHIM, "/opt/vyre-shim.js",
     "--bind", ws, "/work", "--chdir", "/work/files",
@@ -126,7 +156,7 @@ export function plan(o) {
   if (!path.isAbsolute(o.command)) throw new Error("the sandbox runs an absolute program path");
   if (o.platform === "darwin") return planDarwin(o);
   if (o.platform === "linux") return planLinux(o);
-  if (o.platform === "win32") return planWin(/** @type {any} */ ({ ...o, cleanEnv }));
+  if (o.platform === "win32") { for (const d of o.readOnly || []) checkBind(d, o.home); return planWin(/** @type {any} */ ({ ...o, cleanEnv })); }
   throw new Error(`no sandbox for ${o.platform} yet`);
 }
 

@@ -1,0 +1,212 @@
+// Regression tests for reviewer-2's gate on the runner (team/0.3/reviews/runner.md): Z1 to Z8, the watchdog, resume taint.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import http from "node:http";
+import { spawn } from "node:child_process";
+import { SCRATCH } from "../../test/scratch.mjs";
+import { readInside, listInside, writeInside } from "./safefs.js";
+import { createSessionSync, restore } from "./sync.js";
+import { createLease } from "./lease.js";
+import { createRunner, reconcile, weakest } from "./runner.js";
+import { createEgress } from "./egress.js";
+import { checkBind, plan, unavailable } from "./sandbox.js";
+import { driverFor, workspaceUnavailable } from "./workspace.js";
+import { watch } from "./watchdog.js";
+import { fakeSpace } from "./testing/fake-space.js";
+
+const tmp = () => fs.mkdtempSync(path.join(SCRATCH, "hd-"));
+const rm = d => fs.rmSync(d, { recursive: true, force: true });
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const POSIX = process.platform !== "win32";
+
+// ---- Z1, Z2: the session plants symlinks; the runner's sync must never follow one ----------------------------------
+
+test("Z1: restore never writes through a symlink the session planted", { skip: !POSIX }, async t => {
+  const sp = fakeSpace(); const a = tmp(), host = tmp(); t.after(() => { rm(a); rm(host); });
+  // The space holds a checkpoint with a file under files/real/.
+  const src = path.join(a, "src"); fs.mkdirSync(path.join(src, "work", "files", "real"), { recursive: true }); fs.mkdirSync(path.join(src, "state"));
+  fs.writeFileSync(path.join(src, "work", "files", "real", "pwned.txt"), "SESSION-CHOSEN");
+  const sy = createSessionSync({ space: sp.sync, session: "s1", work: path.join(src, "work"), state: path.join(src, "state") });
+  await sy.line('{"type":"result"}'); assert.equal(await sy.checkpoint(), true);
+  // The destination workspace has files/real replaced by a link to a host folder.
+  const dst = path.join(a, "dst"); fs.mkdirSync(path.join(dst, "work", "files"), { recursive: true });
+  fs.symlinkSync(host, path.join(dst, "work", "files", "real"));
+  await restore({ space: sp.sync, session: "s1", work: path.join(dst, "work"), state: path.join(dst, "state") });
+  assert.deepEqual(fs.readdirSync(host), [], "nothing was written in the host folder");
+});
+
+test("Z2: a file swapped for a symlink to a host file is not uploaded, and links in the walk are skipped", { skip: !POSIX }, async t => {
+  const sp = fakeSpace(); const a = tmp(), host = tmp(); t.after(() => { rm(a); rm(host); });
+  fs.writeFileSync(path.join(host, "secret"), "HOST-SECRET-KEY");
+  const work = path.join(a, "work"); fs.mkdirSync(path.join(work, "files"), { recursive: true });
+  fs.symlinkSync(path.join(host, "secret"), path.join(work, "files", "b.txt"));
+  fs.symlinkSync(host, path.join(work, "files", "dir"));
+  fs.writeFileSync(path.join(work, "files", "ok.txt"), "fine");
+  assert.equal(readInside(work, "files/b.txt", 1e6), null);
+  assert.equal(readInside(work, "files/dir/secret", 1e6), null);
+  assert.deepEqual(listInside(work, "files"), ["files/ok.txt"]);
+  const sy = createSessionSync({ space: sp.sync, session: "s1", work, state: path.join(a, "state") });
+  await sy.line('{"type":"result"}'); await sy.checkpoint();
+  const uploaded = [...sp.state.files.keys()].map(k => k.split("|")[1]);
+  assert.deepEqual(uploaded, ["files/ok.txt"]);
+  assert.ok(![...sp.state.files.values()].some(v => v.some(b => b && b.includes("HOST-SECRET"))));
+  // a symlinked home subfolder is refused as a whole
+  fs.mkdirSync(path.join(work, "home"), { recursive: true });
+  fs.symlinkSync(host, path.join(work, "home", ".claude"));
+  assert.deepEqual(listInside(work, "home/.claude"), []);
+  assert.throws(() => writeInside(work, "home/.claude/x", Buffer.from("x")));
+  // special files and parent climbs
+  assert.equal(readInside(work, "../x", 10), null);
+  assert.throws(() => writeInside(work, "files/../../escape", Buffer.from("x")));
+});
+
+// ---- Z3: wall-clock expiry and sleep -------------------------------------------------------------------------------
+
+test("Z3: after a sleep the lease is locked by the wall clock, not by a timer that never fired", async () => {
+  const sp = fakeSpace({ ttlMs: 3_600_000 });
+  let t = 1_000_000; const locks = [];
+  const l = createLease({ vault: sp.vault, space: "harlow", device: "kit", now: () => t, tickMs: 1e9, onLock: w => locks.push(w) });
+  await l.acquire();
+  t += 8 * 3_600_000;                       // eight hours pass with no timer firing (a closed laptop)
+  assert.equal(l.key(), null, "no key after the lease");
+  await l.tick();
+  assert.deepEqual(locks, ["expired"], "the tick locks it at once");
+  assert.equal(l.state, "locked");
+});
+
+test("Z3b: a gap between ticks means the machine slept: lock now and ask the vault again on wake", async () => {
+  const sp = fakeSpace({ ttlMs: 3_600_000 });
+  let t = 5_000; const locks = [];
+  const l = createLease({ vault: sp.vault, space: "harlow", device: "kit", now: () => t, tickMs: 1e9, sleepGapMs: 90_000, onLock: w => locks.push(w) });
+  await l.acquire();
+  t += 30_000; await l.tick(); assert.deepEqual(locks, []);
+  t += 20 * 60_000; await l.tick();         // 20 minutes with no tick, still inside the lease
+  assert.deepEqual(locks, ["slept"]);
+  assert.equal(l.key(), null);
+  assert.deepEqual(await l.acquire(), { ok: true });   // wake: a fresh lease, checked again by the vault
+  assert.equal(sp.state.leases, 2);
+});
+
+// ---- Z4, Z5: a failed unmount is not "locked"; a dead runner's workspace is closed -----------------------------------
+
+function fakeDriver() {
+  const st = { mounted: false, failUnmount: 0, exists: false, unmounts: 0 };
+  return { st, name: "fake", exists: () => st.exists, isMounted: () => st.mounted,
+    async create() { st.exists = true; }, async mount(d) { st.mounted = true; return path.join(d, "mnt"); },
+    async unmount() { st.unmounts++; if (st.failUnmount > 0) { st.failUnmount--; throw new Error("busy"); } st.mounted = false; },
+    async destroy() { if (st.mounted) throw new Error("busy"); st.exists = false; } };
+}
+const mk = (over = {}) => {
+  const base = tmp(); const drv = fakeDriver(); const sp = fakeSpace(); const ev = [];
+  const r = createRunner({ base, space: "harlow", device: "kit", vault: sp.vault, sync: sp.sync, driver: drv, watchdog: false, lockRetryMs: 1, platform: process.platform === "win32" ? "linux" : process.platform,
+    grants: () => ({ spaceAllows: true, memberAccepts: true }), onEvent: e => ev.push(e.type), ...over });
+  return { base, drv, sp, ev, r };
+};
+
+test("Z4: a failed unmount is reported as lock-pending, never locked, and is chased until it works", async t => {
+  const { base, drv, ev, r } = mk(); t.after(() => rm(base));
+  fs.mkdirSync(path.join(r.dir, "mnt"), { recursive: true });
+  await r.open();
+  drv.st.failUnmount = 1000;
+  await r.lock();
+  assert.ok(ev.includes("lock-pending"));
+  assert.ok(!ev.includes("locked"), "locked is not claimed while the workspace is still mounted");
+  assert.equal(r.status().mounted, true);
+  drv.st.failUnmount = 0;
+});
+
+test("Z4b: revoke with an unmount that fails does not say deleted", async t => {
+  const { base, drv, ev, r } = mk(); t.after(() => rm(base));
+  await r.open();
+  drv.st.failUnmount = 1000;
+  await r.revoke();
+  assert.ok(!ev.includes("deleted"));
+  assert.ok(!ev.includes("locked"));
+  assert.equal(drv.st.exists, true);
+  drv.st.failUnmount = 0;
+});
+
+test("Z5: the watchdog closes a workspace whose runner is gone, and one whose deadline has passed", async t => {
+  const d = tmp(); t.after(() => rm(d));
+  const drv = fakeDriver(); drv.st.mounted = true;
+  const f = path.join(d, "deadline"); fs.writeFileSync(f, String(Date.now() + 3_600_000));
+  assert.equal(await watch({ driver: drv, dir: "x", pid: 1, deadlineFile: f, isAlive: () => false, pollMs: 5 }), "unmounted");
+  drv.st.mounted = true; fs.writeFileSync(f, String(Date.now() - 1));
+  assert.equal(await watch({ driver: drv, dir: "x", pid: 1, deadlineFile: f, isAlive: () => true, pollMs: 5 }), "unmounted");
+});
+
+test("Z5b: start-up reconcile closes every workspace nobody holds a lease for", async t => {
+  const { base, drv } = mk(); t.after(() => rm(base));
+  fs.mkdirSync(path.join(base, "spaces", "aa"), { recursive: true });
+  drv.st.mounted = true;
+  const closed = await reconcile({ base, driver: drv, platform: "linux" });
+  assert.equal(closed.length, 1);
+  assert.equal(drv.st.mounted, false);
+});
+
+const REAL = unavailable() === "" && workspaceUnavailable() === "" && POSIX;
+test("Z5c: kill -9 the runner and the real workspace is closed by the watchdog", { skip: !REAL || false, timeout: 60_000 }, async t => {
+  const base = tmp(); t.after(() => rm(base));
+  const child = spawn(process.execPath, [new URL("./testing/open-and-wait.mjs", import.meta.url).pathname, base], { stdio: ["ignore", "pipe", "inherit"] });
+  let dir = "";
+  await new Promise((res, rej) => { child.stdout.on("data", d => { const m = /ready (.+)/.exec(String(d)); if (m) { dir = m[1].trim(); res(undefined); } }); child.on("exit", () => rej(new Error("child exited"))); setTimeout(() => rej(new Error("timeout")), 30000); });
+  const drv = driverFor(process.platform);
+  t.after(async () => { try { await drv.unmount(dir); } catch {} });
+  assert.equal(drv.isMounted(dir), true, "open while the runner lives");
+  child.kill("SIGKILL");
+  const t0 = Date.now(); while (drv.isMounted(dir) && Date.now() - t0 < 20000) await sleep(250);
+  assert.equal(drv.isMounted(dir), false, "closed by the watchdog after the runner died");
+});
+
+// ---- Z7: a home-like folder is never bound ---------------------------------------------------------------------------
+
+test("Z7: the sandbox is never given the home folder, anything above it, or a folder holding a secret folder", t => {
+  const home = tmp(); t.after(() => rm(home));
+  fs.mkdirSync(path.join(home, ".ssh")); fs.mkdirSync(path.join(home, "agents", "juno"), { recursive: true }); fs.mkdirSync(path.join(home, "tools", ".aws"), { recursive: true });
+  assert.throws(() => checkBind(home, home), /home folder/);
+  assert.throws(() => checkBind(path.dirname(home), home), /home folder or above/);
+  assert.throws(() => checkBind("/", home));
+  assert.throws(() => checkBind(path.join(home, "tools"), home), /\.aws/);
+  assert.equal(checkBind(path.join(home, "agents", "juno"), home), fs.realpathSync(path.join(home, "agents", "juno")));
+});
+
+test("Z7b: a program is only run from a granted tool folder, and plan refuses a home as a tool folder", t => {
+  const home = tmp(), ws = tmp(); t.after(() => { rm(home); rm(ws); });
+  fs.mkdirSync(path.join(home, ".ssh")); fs.mkdirSync(path.join(home, "agents"));
+  fs.writeFileSync(path.join(home, "agents", "agent"), "#!/bin/sh\n", { mode: 0o755 });
+  const platform = process.platform === "darwin" ? "darwin" : "linux";
+  assert.throws(() => plan({ platform, workspace: ws, command: path.join(home, "agents", "agent"), readOnly: [home], proxy: { port: 1, socket: "/x" }, home }), /home folder|holds/);
+  assert.throws(() => plan({ platform, workspace: ws, command: path.join(home, "agents", "agent"), readOnly: [], proxy: { port: 1, socket: "/x" }, home }), /granted tool folder/);
+});
+
+// ---- Z8: a credentialed route only does what it lists ------------------------------------------------------------------
+
+test("Z8: a credential is only added for a listed method and path, and the vault is told the method and path", async () => {
+  const seen = []; const up = http.createServer((req, res) => { seen.push(req.method + " " + req.url + " " + (req.headers.authorization || "")); res.end("ok"); });
+  await new Promise(r => up.listen(0, "127.0.0.1", r));
+  const sp = fakeSpace();
+  const eg = createEgress({ routes: [{ prefix: "/pay", upstream: `http://127.0.0.1:${up.address().port}`, credential: { ref: "vault://gmail", header: "authorization", prefix: "Bearer " }, allow: [{ method: "GET", path: "/v1/customers/*" }] }],
+    vault: sp.vault, session: "s1", token: "t", lease: () => "lease-1" });
+  const { port } = await eg.listen();
+  const call = (method, p) => new Promise(res => { const q = http.request({ hostname: "127.0.0.1", port, path: p, method, headers: { authorization: "Bearer t" } }, m => { m.resume(); m.on("end", () => res(m.statusCode)); }); q.on("error", () => res(0)); q.end(); });
+  try {
+    assert.equal(await call("GET", "/pay/v1/customers/cus_1"), 200);
+    assert.equal(await call("POST", "/pay/v1/refunds"), 403);
+    assert.equal(await call("DELETE", "/pay/v1/customers/cus_1"), 403);
+    assert.equal(await call("GET", "/pay/v1/customers/%2e%2e/refunds"), 403, "a dot-dot is normalised away and then not on the list");
+    assert.equal(await call("GET", "/pay/v1/customers/a%2fb"), 400);
+    assert.equal(await call("GET", "/pay/v1/charges"), 403);
+    assert.deepEqual(seen, ["GET /v1/customers/cus_1 Bearer ya29.REAL-GMAIL-SECRET"]);
+    assert.deepEqual(sp.state.uses.map(u => u.method + " " + u.path), ["GET /v1/customers/cus_1"]);
+  } finally { await eg.close(); await new Promise(r => { up.closeAllConnections(); up.close(r); }); }
+  assert.throws(() => createEgress({ routes: [{ prefix: "/pay", upstream: "https://x.example", credential: { ref: "vault://gmail", header: "authorization" } }], vault: sp.vault, session: "s", token: "t" }), /allowed methods and paths/);
+});
+
+// ---- resume carries trust ---------------------------------------------------------------------------------------------
+
+test("resume: the checkpoint carries the session's trust and routes, and a resumed session cannot start cleaner or wider", () => {
+  assert.equal(weakest("member", "external"), "external");
+  assert.equal(weakest("untrusted", "system"), "untrusted");
+});
