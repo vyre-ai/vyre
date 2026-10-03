@@ -56,7 +56,7 @@ const changedFields = (/** @type {any} */ a, /** @type {any} */ b) => {
 };
 
 /**
- * @param {{ enforce?: (chain: any, d: any) => void, members?: any, space: string, store: any, authorizer: { authorize(i: any): Promise<any> }, log: any, chains: any, clock?: () => number, sinks?: Set<string> }} cfg
+ * @param {{ expr?: { parseExpr(s: string): any, evalExpr(n: any, ctx: any): any }, stageTasks?: (record: string, stage: string) => { title: string, state: string }[], onStageEnter?: (e: any) => any, enforce?: (chain: any, d: any) => void, members?: any, space: string, store: any, authorizer: { authorize(i: any): Promise<any> }, log: any, chains: any, clock?: () => number, sinks?: Set<string> }} cfg
  */
 export function createRecords(cfg) {
   const { space, store, authorizer, log, chains } = cfg;
@@ -120,6 +120,44 @@ export function createRecords(cfg) {
     for (const h of heads) if (sealed.has(h)) throw new KernelError("bad_input", `${h} is sealed: it cannot be filtered, sorted, grouped or measured by an assistant`);
   }
 
+  /**
+   * Stage gates (contract 9; records' defineStage and defineRule): a record cannot enter a stage unless the type's rules hold for the record as it
+   * would be, and it cannot leave a stage until that stage's required tasks are done. Fail closed: a type with rules and no evaluator wired
+   * refuses the stage change rather than skipping the rule.
+   * @returns {Promise<{ entered?: { stage: string, templates: any[] } }>}
+   */
+  async function stageGate(/** @type {string} */ type, /** @type {string} */ u, /** @type {any} */ beforeData, /** @type {any} */ merged) {
+    let defs;
+    try { defs = typeof store.types === "function" ? await store.types() : []; } catch { throw new KernelError("unavailable", "the type definitions could not be read, so the stage rules were not checked"); }
+    const def = defs.find((/** @type {any} */ t) => t.name === type);
+    if (!def || !((def.rules && def.rules.length) || (def.stages && def.stages.length))) return {};
+    const sf = def.fields.find((/** @type {any} */ f) => f.kind === "stage");
+    const from = sf && beforeData ? beforeData[sf.name] : undefined, to = sf ? merged[sf.name] : undefined;
+    const moved = !sf || from !== to;
+    if (!moved) return {};
+    if ((def.rules || []).length) {
+      if (!cfg.expr) throw new KernelError("unavailable", "this type has rules and no rule evaluator is wired, so the change was refused");
+      const order = sf ? { [sf.name]: (def.stages || []).map((/** @type {any} */ s) => s.name) } : {};
+      for (const r of def.rules) {
+        let ok = false;
+        try { ok = cfg.expr.evalExpr(cfg.expr.parseExpr(r.require), { values: merged, stageOrder: order }) === true; } catch { ok = false; }
+        if (!ok) throw new KernelError("rule_failed", `the rule ${r.name || "(unnamed)"} does not hold for ${type}${to ? ` in ${to}` : ""}`);
+      }
+    }
+    if (sf && from !== undefined && from !== null && from !== to) {
+      const stage = (def.stages || []).find((/** @type {any} */ s) => s.name === from);
+      const need = ((stage && stage.tasks) || []).filter((/** @type {any} */ t) => t.required);
+      if (need.length) {
+        if (!cfg.stageTasks) throw new KernelError("unavailable", "this stage has required tasks and tasks are not wired, so the change was refused");
+        const have = cfg.stageTasks(u, from);
+        const open = need.filter((/** @type {any} */ t) => !have.some((/** @type {any} */ h) => h.title === t.title && h.state === "done"));
+        if (open.length) throw new KernelError("stage_tasks_open", `${from} still has required tasks: ${open.map((/** @type {any} */ t) => t.title).join(", ")}`);
+      }
+    }
+    const entering = (def.stages || []).find((/** @type {any} */ s) => s.name === to);
+    return to !== undefined && to !== null ? { entered: { stage: String(to), templates: (entering && entering.tasks) || [] } } : {};
+  }
+
   /** Shape a stored row for the caller: checked, labelled, and with sealed values as placeholders when a model is in the chain. */
   function shape(/** @type {any} */ chain, /** @type {any} */ r, /** @type {{ allow: Set<string> | null, hidden: Set<string> } | undefined} */ lim) {
     const u = urn(r.type, r.id);
@@ -142,6 +180,8 @@ export function createRecords(cfg) {
     if (op === "create" || op === "update") refuseOutside(lim.allow, input);
     let before = null;
     if (getBefore) { try { before = await getBefore(); } catch (e) { throw mapError(e); } }
+    let stage = {};
+    if (op === "create" || op === "update") stage = await stageGate(type, u, before ? before.data : null, op === "create" ? input : mergePatch(before ? before.data : {}, input));
     // What the store must show for this to be our change and no one else's: the exact data and deleted state.
     const merged = op === "create" ? input : op === "update" ? mergePatch(before ? before.data : {}, input) : before ? before.data : null;
     const expect = merged === null || merged === undefined ? null : sha256(canonical({ deleted: op === "remove", data: merged }));
@@ -170,6 +210,8 @@ export function createRecords(cfg) {
       throw new KernelError("store_disagreed", "the store's answer does not match what was asked, so nothing was recorded as done");
     }
     emit(chain, intent, rec, before, d.decision, false);
+    // The stage was entered: tell the tasks side to create the stage's task templates for this record (best effort; the write stands).
+    if (/** @type {any} */ (stage).entered && cfg.onStageEnter) { try { await cfg.onStageEnter({ record: u, ...(/** @type {any} */ (stage).entered), chain }); } catch { /* the stage rule retries on the next move */ } }
     return shape(chain, rec, lim);
   }
 

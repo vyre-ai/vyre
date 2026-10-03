@@ -423,3 +423,36 @@ test("fields: a grant with row predicates and a field allow-list still refuses f
   await assert.rejects(() => r.aggregate(agent(), "contact", { group_by: ["age"], measures: [{ fn: "count" }] }), { code: "bad_input" });
   assert.equal((await r.query(agent(), "contact", { filter: { field: "name", op: "eq", value: "Jane" }, page: { limit: 5 } })).rows.length, 1, "an allowed field still filters");
 });
+
+// ---- stage gates ----
+import { parseExpr, evalExpr } from "../../records/language/expr.js";
+const DEAL = { name: "deal", label: "Deal", fields: [{ name: "title", kind: "text", label: "Title" }, { name: "signed", kind: "boolean", label: "Signed" }, { name: "stage", kind: "stage", label: "Stage", options: ["Intake", "Drafting", "Done"] }],
+  stages: [{ name: "Intake", tasks: [{ title: "Research", required: true }, { title: "Optional chat" }] }, { name: "Drafting" }, { name: "Done" }],
+  rules: [{ name: "signed_before_drafting", require: "stage < 'Drafting' or signed == true" }] };
+
+test("stage gates: a record cannot enter a stage unless its rules hold, and cannot leave one while its required tasks are open", async () => {
+  const done = new Set();
+  const entered = [];
+  const { r } = rig({ expr: { parseExpr, evalExpr }, stageTasks: (record, stage) => (stage === "Intake" ? [{ title: "Research", state: done.has(record) ? "done" : "working" }, { title: "Optional chat", state: "ready" }] : []), onStageEnter: e => { entered.push([e.stage, e.templates.map(t => t.title)]); } });
+  await r.define(owner(), { add_types: [DEAL] });
+  const d = await r.create(owner(), "deal", { title: "A", stage: "Intake", signed: false });
+  assert.deepEqual(entered, [["Intake", ["Research", "Optional chat"]]], "entering a stage hands its task templates to the tasks side");
+  // the rule: not signed, no Drafting
+  await assert.rejects(() => r.update(owner(), "deal", d.id, { stage: "Drafting" }, d.version), { code: "rule_failed" });
+  // signed, but the required Intake task is open
+  const s = await r.update(owner(), "deal", d.id, { signed: true }, d.version);
+  await assert.rejects(() => r.update(owner(), "deal", d.id, { stage: "Drafting" }, s.version), { code: "stage_tasks_open" });
+  done.add(`vyre://${SPACE}/deal/${d.id}`);
+  const moved = await r.update(owner(), "deal", d.id, { stage: "Drafting" }, s.version);
+  assert.equal(moved.data.stage, "Drafting");
+  // a non-stage edit never trips the gate
+  assert.equal((await r.update(owner(), "deal", d.id, { title: "B" }, moved.version)).data.title, "B");
+  // a create straight into Drafting is a new entry: the rule judges it
+  await assert.rejects(() => r.create(owner(), "deal", { title: "C", stage: "Drafting", signed: false }), { code: "rule_failed" });
+});
+
+test("stage gates: fail closed when rules exist and no evaluator is wired", async () => {
+  const { r } = rig();
+  await r.define(owner(), { add_types: [DEAL] });
+  await assert.rejects(() => r.create(owner(), "deal", { title: "A", stage: "Intake" }), { code: "unavailable" });
+});

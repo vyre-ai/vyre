@@ -26,6 +26,11 @@ const FIX_CAP = 400;
 const COOL_DOWN_MS = 7 * 24 * 3600_000;
 const DENIALS_TO_STUCK = 3;
 
+/** The kernel's own read of a record's stage tasks (the gateway's stage gate). Held beside the public api, not on it: a surface cannot reach it. */
+const VIEWS = new WeakMap();
+/** @param {any} api @param {string} record @param {string} stage @returns {{ title: string, state: string, required: boolean }[]} */
+export const stageTasks = (api, record, stage) => { const v = VIEWS.get(api); return v ? v(record, stage) : []; };
+
 const urnOf = (/** @type {string} */ space, /** @type {string} */ id) => `vyre://${space}/task/${id}`;
 const same = (/** @type {any} */ a, /** @type {any} */ b) => Boolean(a && b) && a.kind === b.kind && a.id === b.id;
 const acting = (/** @type {any} */ chain) => chain.hops[chain.hops.length - 1].actor;
@@ -414,5 +419,7 @@ export function createTasks(cfg) {
     },
   };
   const { _decideOnce, ...pub } = api;
-  return Object.freeze(pub);
+  const frozen = Object.freeze(pub);
+  VIEWS.set(frozen, (/** @type {string} */ record, /** @type {string} */ stage) => [...tasks.values()].filter(t => t.record === record && t.stage === stage).map(t => ({ title: t.title, state: t.state, required: Boolean(t.required) })));
+  return frozen;
 }

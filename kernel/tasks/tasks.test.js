@@ -442,3 +442,14 @@ test("K4-11: revise goes through the table (a doer row)", async () => {
   await assert.rejects(() => r.tasks.revise(agentChain("research"), t.id, "x"), { code: "not_allowed" });
   assert.equal((await r.tasks.revise(asIntake(), t.id, "more")).state, "ready");
 });
+
+test("stageTasks: the kernel's view of a record's stage tasks is held beside the api, not on it", async () => {
+  const { stageTasks } = await import("./tasks.js");
+  const r = rig();
+  const rec = `vyre://${SPACE}/deal/d1`;
+  const t = await r.tasks.request(owner(), { title: "Research", doer: actor("agent", "research"), output: { kind: "note" }, record: rec, stage: "Intake", required: true });
+  assert.deepEqual(stageTasks(r.tasks, rec, "Intake"), [{ title: "Research", state: "ready", required: true }]);
+  assert.deepEqual(stageTasks(r.tasks, rec, "Drafting"), []);
+  assert.equal("stageTasks" in r.tasks, false);
+  assert.ok(t);
+});
