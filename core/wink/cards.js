@@ -78,7 +78,7 @@ const WORDS = {
   wrongCode: () => "That is not a Vyre code. Scan the code on the server's screen, or paste the long code it printed.",
   notACode: () => "That is not a Vyre code. Scan the code on the screen, or paste the long code it printed.",
   typedCodeOff: () => "That way of pairing is switched off in this release. Scan the code on the screen, or paste the long code it shows.",
-  phoneAsk: (/** @type {any} */ v) => `Add ${clean(v && v.name, "this phone")} to your identity? Words: ${clean(v && v.words, "")}.`,
+  phoneAsk: (/** @type {any} */ v) => `Add ${clean(v && v.name, "this phone")} to your identity? Pick the three words the phone shows: ${choiceLine(v && v.choices)}`,
   phoneConfirm: (/** @type {any} */ v) => `Check the computer: it should show the words ${clean(v && v.words, "")}. Add the phone there only if they match. Good for 5 minutes.`,
   phoneRefused: () => "The phone was not added: it was turned down on the computer, or the pairing ended. Start again from Add a phone.",
   phoneExpired: () => "Nobody said yes on the computer in time, so nothing was added. Start again from Add a phone.",
@@ -100,7 +100,12 @@ const WORDS = {
   adoptFailed: (/** @type {any} */ v) => `${clean(v && v.name, "The server")} paired, but it could not be told who owns it (${clean(v && v.why, "no answer")}). Run wink.remove for it, then pair it again.`,
   busy: () => "Too many tries just now. Wait a minute and try again.",
   pairConfirm: (/** @type {any} */ v) => `Check the server: it should show the words ${clean(v && v.words, "")}. Say yes there only if they match. Good for 5 minutes.`,
-  pairAsk: (/** @type {any} */ v) => `Pair this server to ${clean(v && v.name, "someone")}? Words: ${clean(v && v.words, "")}.`,
+  pairAsk: (/** @type {any} */ v) => `Pair this server to ${clean(v && v.name, "someone")}? Pick the three words the app shows: ${choiceLine(v && v.choices)}`,
+  pairPick: () => "Say which three words the other screen shows: pick one of the choices, or type the first word. A bare yes is not enough, because it would say yes to anyone.",
+  pairPickWrong: () => "Those are not the words the other screen shows, so nothing was paired.",
+  pairOnServer: () => "The pairing question is answered at the server itself, on its own screen or terminal, not from another device, an agent or a tool.",
+  pairNeedsProof: () => "This server was set up to pair to one identity, and this device did not prove it is that identity, so nothing was paired.",
+  pairCannotProve: () => "This server was set up to pair to one identity but cannot check who is asking yet, so nothing was paired. Pair it from the app and answer the question here instead.",
   pairBusy: () => "Another device is already asking to pair this server. Wait for it to finish, or start again from the server.",
   pairWrongIdentity: (/** @type {any} */ v) => `This server is waiting to pair to ${clean(v && v.name, "someone else")}, and this was not them, so nothing was paired.`,
   pairRefused: () => "The person at the server said no, so nothing was paired.",
@@ -113,6 +118,8 @@ const WORDS = {
   onlyComputeToSpace: () => "Only a computer can lend its compute to a space.",
   notYourDevice: () => "That device is not yours.",
 };
+/** The choices a person picks from, numbered: "1) a b c  2) d e f  3) g h i". @param {any} list */
+const choiceLine = list => (Array.isArray(list) ? list : []).map((c, i) => `${i + 1}) ${clean(c, "")}`).join("   ");
 /** @param {keyof typeof WORDS} key @param {any} [vars] */
 export const words = (key, vars) => WORDS[key](vars);
 
