@@ -1,0 +1,281 @@
+// @ts-check
+// Compile a stored Flow against the Space's catalog before it is saved or approved (contract 9.2, "Compiled before it runs"):
+// unknown types, fields, stages and actions are errors, expression names are checked, the Flow's caps must cover what its steps do,
+// and an effects summary says what the Flow reads, writes, sends and runs, for the approval card and for the simulation.
+
+import { checkFlow, walkSteps, canonical } from "./schema.js";
+import { parse, roots, stepRefs } from "./expr.js";
+
+/**
+ * What the compiler knows about a Space.
+ * @typedef {{
+ *   space: string,
+ *   types: Record<string, import('../contracts/fields.js').TypeDefinition>,
+ *   actions: Record<string, { risk: string, label?: string }>,
+ *   roles?: readonly string[],
+ *   teammates?: readonly string[],
+ *   templates?: readonly string[],
+ * }} Catalog
+ */
+
+/** The action each record step performs, and the registry risk it is judged by. */
+export const STEP_ACTIONS = Object.freeze({
+  find: "records.read", pick: "records.read", create: "records.create", update: "records.update", upsert: "records.update",
+  remove: "records.remove", stage: "records.update", ask: "ask.request", assign: "ask.request", agent: "ask.request",
+  classify: "model.call", http: "http.request", fn: "fn.run",
+});
+
+const OUTWARD = new Set(["outward.send", "outward.pay", "outward.publish", "outward.delete", "outward.share"]);
+
+/** `vyre://<space>/<type>/*` @param {string} space @param {string} type */
+const typeUrn = (space, type) => `vyre://${space}/${type}/*`;
+
+/**
+ * Does a cap's resource pattern cover a needed resource? `*` stands for one whole segment, a trailing `/*` for the rest.
+ * @param {string} pattern @param {string} need
+ */
+export function urnCovers(pattern, need) {
+  const a = pattern.replace(/^vyre:\/\//, "").split("/"), b = need.replace(/^vyre:\/\//, "").split("/");
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] === "*" && i === a.length - 1) return true;
+    if (i >= b.length) return false;
+    if (a[i] !== "*" && a[i] !== b[i]) return false;
+  }
+  return a.length === b.length;
+}
+
+/** @param {{ action: string, resource: string }} cap @param {string} action @param {string} resource */
+const capCovers = (cap, action, resource) => (cap.action === action || cap.action === "*.*") && urnCovers(cap.resource, resource);
+
+/**
+ * Every (action, resource) a Flow's steps need, in step order. Used to derive caps and to check declared ones.
+ * @param {any} flow @param {Catalog} cat @returns {{ step: string, path: string, action: string, resource: string }[]}
+ */
+export function needs(flow, cat) {
+  /** @type {{ step: string, path: string, action: string, resource: string }[]} */
+  const out = [];
+  walkSteps(flow.steps || [], (s, path) => {
+    if (s.kind === "call") { if (typeof s.action === "string" && typeof s.resource === "string") out.push({ step: s.id, path, action: s.action, resource: s.resource }); return; }
+    const action = /** @type {Record<string, string>} */ (STEP_ACTIONS)[s.kind];
+    if (!action) return;
+    if (["find", "pick", "create", "update", "upsert", "remove", "stage"].includes(s.kind)) out.push({ step: s.id, path, action, resource: typeUrn(cat.space, String(s.type)) });
+    else if (s.kind === "http") out.push({ step: s.id, path, action, resource: `vyre://${cat.space}/http/${hostOf(s.url)}` });
+    else out.push({ step: s.id, path, action, resource: `vyre://${cat.space}/${action.split(".")[0]}/*` });
+    if (s.kind === "upsert") out.push({ step: s.id, path, action: "records.create", resource: typeUrn(cat.space, String(s.type)) });
+  });
+  return out;
+}
+
+/** @param {any} url */
+const hostOf = url => { try { return new URL(String(url)).host; } catch { return "unknown"; } };
+
+/** The narrowest caps that let the Flow's steps run: one per distinct (action, resource). @param {any} flow @param {Catalog} cat */
+export function deriveCaps(flow, cat) {
+  const seen = new Set();
+  const caps = [];
+  for (const n of needs(flow, cat)) {
+    const k = n.action + " " + n.resource;
+    if (!seen.has(k)) { seen.add(k); caps.push({ action: n.action, resource: n.resource }); }
+  }
+  return caps;
+}
+
+/**
+ * @param {any} flow a stored Flow
+ * @param {Catalog} cat
+ * @returns {{ ok: boolean, errors: { path: string, message: string }[], warnings: { path: string, message: string }[], effects: Effects, caps: { action: string, resource: string }[] }}
+ */
+export function compileFlow(flow, cat) {
+  const errors = checkFlow(flow);
+  /** @type {{ path: string, message: string }[]} */
+  const warnings = [];
+  /** @type {Effects} */
+  const effects = { reads: [], writes: [], outward: [], http: [], code: [], asks: 0, assigns: [], sealed_uses: [], destinations: [], model_steps: [], needs_run_ask: false };
+  if (errors.length) return { ok: false, errors, warnings, effects, caps: [] };
+
+  const type = (/** @type {string} */ name, /** @type {string} */ path) => {
+    const t = cat.types[name];
+    if (!t) errors.push({ path, message: `there is no record type ${name}` });
+    return t;
+  };
+  const fieldNames = (/** @type {any} */ t) => new Set((t.fields || []).map((/** @type {any} */ f) => f.name));
+  const sealedNames = new Set(Object.values(cat.types).flatMap(t => (t.fields || []).filter(f => f.kind === "sealed").map(f => f.name)));
+
+  // Trigger
+  const tr = flow.trigger;
+  if (tr.on === "stage") {
+    const t = type(tr.type, "trigger.type");
+    if (t && !(t.stages || []).some(st => st.name === tr.stage)) errors.push({ path: "trigger.stage", message: `${tr.type} has no stage ${tr.stage}` });
+  }
+  if (tr.on === "time" && tr.cron !== undefined) { const c = parseCron(tr.cron); if (!c.ok) errors.push({ path: "trigger.cron", message: c.message }); }
+
+  /** scope names an expression may read at a given point */
+  const triggerScope = tr.on === "event" ? ["trigger", "event"] : ["trigger"];
+  const baseScope = new Set([...triggerScope, "steps", "run", "now"]);
+
+  /** @param {string|undefined} src @param {string} path @param {Set<string>} scope @param {Set<string>} done */
+  function checkExprNames(src, path, scope, done) {
+    if (typeof src !== "string") return;
+    let ast;
+    try { ast = parse(src); } catch { return; }
+    for (const r of roots(ast)) if (!scope.has(r)) errors.push({ path, message: `${r} is not available here (a Flow's expressions read ${[...scope].join(", ")})` });
+    for (const ref of stepRefs(ast)) if (!done.has(ref)) errors.push({ path, message: `steps.${ref} is not a step that has already run` });
+    if (sealedNames.size) for (const r of src.match(/[A-Za-z_][A-Za-z0-9_]*/g) || []) if (sealedNames.has(r)) { effects.sealed_uses.push({ path, field: r }); }
+  }
+  /** @param {any} v @param {string} path @param {Set<string>} scope @param {Set<string>} done */
+  function checkValueNames(v, path, scope, done) {
+    if (v === null || typeof v !== "object") return;
+    if (Array.isArray(v)) { v.forEach((x, i) => checkValueNames(x, `${path}[${i}]`, scope, done)); return; }
+    if (Object.hasOwn(v, "expr")) { checkExprNames(v.expr, path, scope, done); return; }
+    for (const k of Object.keys(v)) checkValueNames(v[k], `${path}.${k}`, scope, done);
+  }
+  /** a value that is a constant (no expr anywhere) @param {any} v @returns {boolean} */
+  const isConst = v => v === null || typeof v !== "object" ? true : Array.isArray(v) ? v.every(isConst) : Object.hasOwn(v, "expr") ? false : Object.values(v).every(isConst);
+
+  /** @param {any[]} steps @param {string} base @param {Set<string>} scope @param {Set<string>} done */
+  function visit(steps, base, scope, done) {
+    steps.forEach((s, i) => {
+      const p = `${base}[${i}]`;
+      const t = s.type ? type(s.type, `${p}.type`) : undefined;
+      if (["create", "update", "upsert"].includes(s.kind) && t) {
+        const names = fieldNames(t);
+        for (const k of Object.keys(s.set || {})) if (!names.has(k)) errors.push({ path: `${p}.set.${k}`, message: `${s.type} has no field ${k}` });
+        if (s.kind === "upsert") for (const k of Object.keys(s.match || {})) if (!names.has(k)) errors.push({ path: `${p}.match.${k}`, message: `${s.type} has no field ${k}` });
+        for (const k of Object.keys(s.set || {})) if ((t.fields || []).find(f => f.name === k)?.kind === "sealed") errors.push({ path: `${p}.set.${k}`, message: `${k} is sealed: a Flow cannot write a sealed value (it is entered by a person, or by an Ask)` });
+      }
+      if (s.kind === "stage" && t && s.to && !(t.stages || []).some(st => st.name === s.to)) errors.push({ path: `${p}.to`, message: `${s.type} has no stage ${s.to}` });
+      if (s.kind === "call") {
+        const a = cat.actions[s.action];
+        if (!a) errors.push({ path: `${p}.action`, message: `there is no action ${s.action}` });
+        else if (OUTWARD.has(a.risk)) effects.outward.push({ step: s.id, action: s.action, risk: a.risk, destination_constant: isConst(s.input) });
+      }
+      if (["assign", "agent"].includes(s.kind)) {
+        const who = String(s.kind === "agent" ? s.assistant : s.to);
+        const [kind, name] = [who.split(":")[0], who.slice(who.indexOf(":") + 1)];
+        if (kind === "teammate" && cat.teammates && !cat.teammates.includes(name)) errors.push({ path: `${p}.${s.kind === "agent" ? "assistant" : "to"}`, message: `there is no teammate ${name}` });
+        if (kind === "role" && cat.roles && !cat.roles.includes(name)) errors.push({ path: `${p}.to`, message: `there is no role ${name}` });
+        if (s.template && cat.templates && !cat.templates.includes(String(s.template))) errors.push({ path: `${p}.template`, message: `there is no template ${s.template}` });
+        effects.assigns.push({ step: s.id, to: who, checker: s.checker || null, output: s.output && s.output.kind });
+      }
+      if (s.kind === "ask") effects.asks++;
+      if (s.kind === "http") { effects.http.push({ step: s.id, method: s.method, url: s.url }); effects.outward.push({ step: s.id, action: "http.request", risk: "outward.send", destination_constant: true }); }
+      if (s.kind === "fn") effects.code.push({ step: s.id, hash: s.hash || null, needs: s.needs || [], outputs: s.outputs });
+      if (s.kind === "classify" || s.kind === "agent") effects.model_steps.push(s.id);
+      if (s.kind === "find" || s.kind === "pick") { if (t && !effects.reads.includes(s.type)) effects.reads.push(s.type); }
+      if (["create", "update", "upsert", "remove", "stage"].includes(s.kind) && !effects.writes.includes(s.type)) effects.writes.push(s.type);
+
+      // names inside expressions and values
+      const nm = (/** @type {any} */ v, /** @type {string} */ k) => checkValueNames(v, `${p}.${k}`, scope, done);
+      const ex = (/** @type {any} */ v, /** @type {string} */ k) => checkExprNames(v, `${p}.${k}`, scope, done);
+      switch (s.kind) {
+        case "find": case "pick": checkExprNames(s.where, `${p}.where`, new Set([...scope, "record"]), done); break;
+        case "filter": ex(s.from, "from"); checkExprNames(s.where, `${p}.where`, new Set([...scope, "record"]), done); break;
+        case "create": nm(s.set, "set"); break;
+        case "update": nm(s.record, "record"); nm(s.set, "set"); break;
+        case "upsert": nm(s.match, "match"); nm(s.set, "set"); break;
+        case "remove": nm(s.record, "record"); break;
+        case "stage": nm(s.record, "record"); break;
+        case "wait": if (s.until !== undefined) nm(s.until, "until"); checkExprNames(s.where, `${p}.where`, new Set([...scope, "event"]), done); break;
+        case "ask": nm(s.title, "title"); break;
+        case "assign": nm(s.title, "title"); nm(s.record, "record"); break;
+        case "agent": nm(s.title, "title"); nm(s.instructions, "instructions"); nm(s.record, "record"); break;
+        case "call": nm(s.input, "input"); break;
+        case "classify": nm(s.input, "input"); break;
+        case "http": nm(s.headers, "headers"); nm(s.body, "body"); if (s.body !== undefined && !isConst(s.body)) effects.destinations.push({ step: s.id, note: "the body is read from records" }); break;
+        case "fn": nm(s.inputs, "inputs"); break;
+        default: break;
+      }
+      if (s.kind === "decide") {
+        ex(s.if, "if");
+        visit(s.then || [], `${p}.then`, scope, new Set(done));
+        if (s.else) visit(s.else, `${p}.else`, scope, new Set(done));
+      } else if (s.kind === "repeat") {
+        ex(s.over, "over");
+        visit(s.steps || [], `${p}.steps`, new Set([...scope, s.as]), new Set(done));
+      }
+      done.add(s.id);
+    });
+  }
+  visit(flow.steps, "steps", baseScope, new Set());
+  if (tr.on === "event" && tr.where) checkExprNames(tr.where, "trigger.where", new Set(triggerScope), new Set());
+
+  // caps
+  const derived = deriveCaps(flow, cat);
+  const caps = Array.isArray(flow.caps) ? flow.caps : derived;
+  if (Array.isArray(flow.caps)) {
+    for (const n of needs(flow, cat)) if (!caps.some((/** @type {any} */ c) => capCovers(c, n.action, n.resource))) errors.push({ path: n.path, message: `the Flow's caps do not cover ${n.action} on ${n.resource}` });
+    for (const c of caps) if (c.action !== "*.*" && !cat.actions[c.action] && !/^(?:records|ask|model|http|fn)\./.test(c.action)) warnings.push({ path: "caps", message: `the cap names an unknown action ${c.action}` });
+  } else if (derived.length) warnings.push({ path: "caps", message: "no caps are declared, so the Flow's own steps set them" });
+
+  if (flow.authorship === "model" && (effects.sealed_uses.length || effects.outward.some(o => !o.destination_constant))) {
+    effects.needs_run_ask = true;
+    warnings.push({ path: "", message: "drafted by a model: a sealed value or a destination read from records needs a person's Ask on every run" });
+  }
+  if (flow.authorship === "kit") warnings.push({ path: "", message: "from a Kit: its text counts as external until a person has reviewed it" });
+  return { ok: errors.length === 0, errors, warnings, effects, caps };
+}
+
+/**
+ * @typedef {{
+ *   reads: string[], writes: string[],
+ *   outward: { step: string, action: string, risk: string, destination_constant: boolean }[],
+ *   http: { step: string, method: string, url: string }[],
+ *   code: { step: string, hash: string|null, needs: string[], outputs: string[] }[],
+ *   asks: number, assigns: { step: string, to: string, checker: string|null, output: string }[],
+ *   sealed_uses: { path: string, field: string }[], destinations: { step: string, note: string }[],
+ *   model_steps: string[], needs_run_ask: boolean,
+ * }} Effects
+ */
+
+// ---- cron (five fields, UTC, no names) ----
+
+const RANGES = [[0, 59], [0, 23], [1, 31], [1, 12], [0, 6]];
+
+/** @param {string} field @param {number} lo @param {number} hi @returns {Set<number>|null} */
+function cronField(field, lo, hi) {
+  const out = new Set();
+  for (const part of field.split(",")) {
+    const m = /^(\*|\d+(?:-\d+)?)(?:\/(\d+))?$/.exec(part);
+    if (!m) return null;
+    const step = m[2] ? Number(m[2]) : 1;
+    if (step < 1) return null;
+    let a = lo, b = hi;
+    if (m[1] !== "*") { const [x, y] = m[1].split("-").map(Number); a = x; b = y === undefined ? (m[2] ? hi : x) : y; }
+    if (a < lo || b > hi || a > b) return null;
+    for (let v = a; v <= b; v += step) out.add(v);
+  }
+  return out;
+}
+
+/** @param {string} src @returns {{ ok: true, sets: Set<number>[] } | { ok: false, message: string }} */
+export function parseCron(src) {
+  const f = String(src).trim().split(/\s+/);
+  if (f.length !== 5) return { ok: false, message: "cron has five fields: minute hour day month weekday" };
+  const sets = f.map((x, i) => cronField(x, RANGES[i][0], RANGES[i][1]));
+  if (sets.some(s => !s || !s.size)) return { ok: false, message: "a cron field is out of range or malformed" };
+  return { ok: true, sets: /** @type {Set<number>[]} */ (sets) };
+}
+
+/**
+ * The first time strictly after `after` (ms, UTC) that a cron expression matches. Looks at most four years ahead.
+ * @param {string} src @param {number} after @returns {number|null}
+ */
+export function nextCron(src, after) {
+  const c = parseCron(src);
+  if (!c.ok) return null;
+  const [mi, ho, dom, mo, dow] = c.sets;
+  const domStar = String(src).trim().split(/\s+/)[2] === "*", dowStar = String(src).trim().split(/\s+/)[4] === "*";
+  const d = new Date(Math.floor(after / 60_000) * 60_000 + 60_000);
+  const end = after + 4 * 366 * 86_400_000;
+  while (d.getTime() <= end) {
+    if (!mo.has(d.getUTCMonth() + 1)) { d.setUTCMonth(d.getUTCMonth() + 1, 1); d.setUTCHours(0, 0, 0, 0); continue; }
+    const dayOk = domStar && dowStar ? true : domStar ? dow.has(d.getUTCDay()) : dowStar ? dom.has(d.getUTCDate()) : dom.has(d.getUTCDate()) || dow.has(d.getUTCDay());
+    if (!dayOk) { d.setUTCDate(d.getUTCDate() + 1); d.setUTCHours(0, 0, 0, 0); continue; }
+    if (!ho.has(d.getUTCHours())) { d.setUTCHours(d.getUTCHours() + 1, 0, 0, 0); continue; }
+    if (!mi.has(d.getUTCMinutes())) { d.setUTCMinutes(d.getUTCMinutes() + 1, 0, 0); continue; }
+    return d.getTime();
+  }
+  return null;
+}
+
+export { canonical };
