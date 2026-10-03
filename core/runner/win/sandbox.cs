@@ -4,6 +4,7 @@
 //
 //   vyre-sandbox prepare <name> [--grant <path>=<RX|M>]... [--traverse <folder>]... [--exempt]   make the container, give it the folders, allow loopback
 //   vyre-sandbox run <name> <cwd> -- <command line>                      run it with this process's stdin, stdout and stderr
+//   vyre-sandbox cleanup <name> [--folder <path>]... [--tree <path>]...      take every right it was given off those folders (and trees), drop the exemption, delete it
 //   vyre-sandbox delete <name>                                           remove the container
 //
 // The child gets only the three standard handles (an explicit handle list), the environment this process was started with,
@@ -55,6 +56,18 @@ public static class VyreSandbox {
       if (a.Length < 2) { Console.Error.WriteLine("usage: prepare|run|delete <name> ..."); return 2; }
       string verb = a[0], name = a[1];
       if (verb == "delete") { DeleteAppContainerProfile(name); return 0; }
+      if (verb == "cleanup") {
+        // Undo prepare: take the container's rights off every folder it was given or let through, drop the loopback exemption, delete the container.
+        string sid0 = ContainerSid(name, false);
+        for (int i = 2; i < a.Length; i++) {
+          if (a[i] == "--folder" && i + 1 < a.Length) Exec("icacls.exe", "\"" + a[++i] + "\" /remove:g \"*" + sid0 + "\" /C /Q");        // just that folder (the ones above the workspace)
+          else if (a[i] == "--tree" && i + 1 < a.Length) Exec("icacls.exe", "\"" + a[++i] + "\" /remove:g \"*" + sid0 + "\" /T /C /Q");  // a folder and everything under it
+        }
+        Exec("CheckNetIsolation.exe", "LoopbackExempt -d -p=" + sid0);
+        DeleteAppContainerProfile(name);
+        Console.WriteLine("cleaned sid=" + sid0);
+        return 0;
+      }
       if (verb == "prepare") {
         string sid = ContainerSid(name, true);
         bool exempt = false;
