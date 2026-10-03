@@ -72,7 +72,7 @@ export function createAccess({ ctx, groups, logs }) {
     /**
      * Throws not_found or denied unless the caller may read the session. Returns the viewer and which path decided.
      * @param {string} session @param {any} meta @param {any} [i]
-     * @returns {Promise<{ viewer: { id: string, roles: string[] }, via: "thread"|"group"|"chat", chain: any }>}
+     * @returns {Promise<{ viewer: { id: string, roles: string[] }, via: "thread"|"group"|"chat", chain: any, chat?: any, person?: string }>}
      */
     async read(session, meta, i = {}) {
       const kc = await chat(session, meta);
@@ -80,7 +80,7 @@ export function createAccess({ ctx, groups, logs }) {
         const id = `person:${kc.person}`;
         const role = await kernelRole(kc.chain, kc.person);
         const viewer = { id, roles: /** @type {string[]} */ (role ? [role] : []) };
-        if (kc.chat) return { viewer, via: "chat", chain: kc.chain };
+        if (kc.chat) return { viewer, via: "chat", chain: kc.chain, chat: kc.chat, person: id };
         // The kernel is on and this person is not in a chat by that id: only a switchboard thread they may read remains. The group store never decides.
         if (await thread(session, meta)) return { viewer, via: "thread", chain: kc.chain };
         throw fail("not_found", "no such session");
@@ -89,7 +89,8 @@ export function createAccess({ ctx, groups, logs }) {
       // 0.2: every person caller on the box's own surfaces is the owner; a tailnet peer holds no role here (it fails closed).
       const viewer = { id: person, roles: /** @type {string[]} */ (person === "person:owner" ? ["owner"] : []) };
       if (await thread(session, meta)) return { viewer, via: "thread", chain: null };
-      if (groups && groups.known(session)) {
+      // The kernel is on and this call carries no session of its own: the 0.2 group store is not a chat's authority any more.
+      if (!(ctx.kernel && ctx.kernel.chats) && groups && groups.known(session)) {
         if (groups.people(session).has(person)) return { viewer, via: "group", chain: null };
         throw fail("not_found", "no such session");
       }
