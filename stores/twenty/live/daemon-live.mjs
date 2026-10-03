@@ -11,7 +11,7 @@ import { CONTACT } from "../../../kernel/conformance/suite.js";
 import { nameOf } from "../space-store.js";
 import { names } from "../provision.js";
 
-process.env.VYRE_STORE = "twenty"; process.env.VYRE_SEAL_DEV = "1"; process.env.VYRE_KERNEL_PATH_RULE = "1";
+process.env.VYRE_STORE = process.env.VYRE_STORE || "auto"; process.env.VYRE_SEAL_DEV = "1"; process.env.VYRE_KERNEL_PATH_RULE = "1";
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-home-"));
 const t0 = Date.now(); const lap = (s) => console.log(`${((Date.now() - t0) / 1000).toFixed(1)}s ${s}`);
 const d = await start({ root, log: lap, kernel: true });
