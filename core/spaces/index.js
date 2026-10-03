@@ -26,6 +26,7 @@ import { createIdentityOps } from "./identity-ops.js";
 import { PASSWORD_MIN } from "./recovery.js";
 import { WORDS } from "../../relay/client/words.js";
 import { createCompute } from "../../lib/spaces/compute.js";
+import { isPerson, agentName } from "../../lib/caller.js";
 import { createKernelMembers } from "./kernel-members-compat.js";
 import { kernelMembers } from "./kernel-members.js";
 import { acceptProofRequest } from "../../kernel/remote/proof.js";
@@ -47,6 +48,8 @@ export const hooks = {
 };
 
 const DAY = 24 * 60 * 60 * 1000;
+/** Before membership exists the only callers are the relay and the person's devices: a local anonymous or model caller cannot spend a use count or burn the five tries. */
+const RELAY_DEVICE_CALLERS = Object.freeze(["tailnet", "relay", "device"]);
 const b64u = (/** @type {Buffer|Uint8Array} */ b) => Buffer.from(b).toString("base64url");
 const PERSON_RE = /^per_[a-z2-7]{26}$/;
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
@@ -596,7 +599,7 @@ export default {
         const r = await flow.submitCode(row.id, String(i.code), i.vpsToken ? { vpsToken: String(i.vpsToken) } : {});
         const { pairing: p, ...view } = /** @type {any} */ (r);
         return { pairing: p, ...(await sync(row.id, view)), ...(r.message ? { message: r.message } : {}) };
-      }, {});
+      }, { callers: RELAY_DEVICE_CALLERS });
 
     tool("spaces.server.install", "The one command to run on a server, the prompt it will show, and the code to type there. For a space still being created it shows the current code; for a finished space it starts adding a server (as compute, or as the new home with moveHome).",
       obj({ space: str, moveHome: { type: "boolean" } }, ["space"]), async i => {
@@ -685,13 +688,19 @@ export default {
         }
         return { names: ROLE_IDS.map(id => ({ id, name: m.roleLabel(id) })) };
       });
-    tool("spaces.membership", "A person's membership in a space, or null. For other modules to decide who may do what.", obj({ space: str, person: str }, ["space", "person"]), async i => {
-      const m = mstore.get(String(i.space), String(i.person));
+    /** One person's membership in one space: the kernel's answer (member or not, and the role) when it hosts or reaches that space, else the local table's. @param {string} space @param {string} person */
+    const membershipRow = async (space, person) => {
+      if (K && typeof K.membership === "function" && kernelHandle(space)) {
+        let r; try { r = await K.membership(person, space); } catch { return null; }
+        return r && r.member ? { space, person, role: r.role, scope: null, expires: null } : null;
+      }
+      const m = mstore.get(space, person);
       return m ? out(m) : null;
-    }, { internal: true });
+    };
+    tool("spaces.membership", "A person's membership in a space, or null. For other modules to decide who may do what. For a space with a kernel it is the kernel's answer.", obj({ space: str, person: str }, ["space", "person"]), async i => membershipRow(String(i.space), String(i.person)), { internal: true });
     tool("spaces.abilities", "What a person may do in a space right now (a temp's access ends on time). For other modules.", obj({ space: str, person: str }, ["space", "person"]), async i => {
-      const m = mstore.get(String(i.space), String(i.person));
-      return { membership: m ? out(m) : null, abilities: m ? [...abilitiesOf(m, now())] : [] };
+      const m = await membershipRow(String(i.space), String(i.person));
+      return { membership: m, abilities: m ? [...abilitiesOf(/** @type {any} */ (m), now())] : [] };
     }, { internal: true });
 
     // 4. invites
@@ -831,18 +840,22 @@ export default {
         const row = payload && typeof payload.sid === "string" ? spaces.get(payload.sid) : null;
         if (!row || row.name !== payload.space) throw refuse("This invite is for a different space than the one it points to.", "wrong_space");
         return out(await invitesFor(row).acceptInvite({ token: String(i.token), person: i.person, proof: String(i.proof) }));
-      });
+      }, { callers: RELAY_DEVICE_CALLERS });
 
     // 5a. what other modules (bridges, publish) ask of spaces: who is a member, who is acting, which spaces a person is in. Modules only, never a person or a model.
-    tool("spaces.self", "The person acting on this device and the space a call is for (the one named, or the only one this person is in). For modules.", obj({ caller: str, space: str }), async i => {
+    tool("spaces.self", "The person acting and the space a call is for (the one named, or the only one this person is in). The person is this device's own: only for the person's own surface or device, or their own assistant (an agent claim); any other caller (a plain model session, a guest, a hook, an anonymous or module caller) is nobody. For modules.", obj({ caller: str, space: str }), async i => {
       const s = me();
-      const mine = spaces.all().filter(r => r.status === "done" && (mstore.get(r.id, /** @type {string} */ (s.id)) || r.createdBy === s.id));
+      if (i.caller !== undefined && !(isPerson(String(i.caller)) || agentName(String(i.caller)) !== null)) return { person: null, space: null };
+      const mine = [];
+      for (const r of spaces.all()) if (r.status === "done" && (r.createdBy === s.id || await membershipRow(r.id, /** @type {string} */ (s.id)))) mine.push(r);
       const row = i.space ? mine.find(r => r.id === i.space || r.name === i.space || r.label === i.space) : mine.length === 1 ? mine[0] : null;
       return row ? { person: s.id, space: { id: row.id, name: row.name } } : { person: s.id, space: null };
     }, { internal: true });
     tool("spaces.merge-list", "The spaces a person is in, one entry each: { space, name, color, link }, for a device that merges spaces itself. For modules.", obj({ person: str }, ["person"]), async i => {
       const p = String(i.person);
-      return { spaces: spaces.all().filter(r => r.status === "done" && (mstore.get(r.id, p) || r.createdBy === p)).map(r => ({ space: r.id, name: r.name, color: null, link: `https://${r.name}` })) };
+      const mineList = [];
+      for (const r of spaces.all()) if (r.status === "done" && (r.createdBy === p || await membershipRow(r.id, p))) mineList.push({ space: r.id, name: r.name, color: null, link: `https://${r.name}` });
+      return { spaces: mineList };
     }, { internal: true });
 
     // 5a'. for the transport: which person a proven device is. `spaces.identity.state` is the live, verified list of a person's entries (read from the directory on every

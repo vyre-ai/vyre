@@ -55,6 +55,8 @@ export const ACTIONS = BRIDGE_ACTIONS;
 
 const str = { type: "string" };
 const strs = { type: "array", items: { type: "string" } };
+/** The callers a person-facing bridges tool may be reached by: the person's own surfaces and devices, and sessions (a model session is the person's only through its assistant claim, which personOf checks). Not guests, hooks or modules. */
+const BRIDGE_CALLERS = Object.freeze(["cli", "local", "deck", "capsule", "mobile", "tailnet", "mcp", "harness"]);
 const PERSON = { type: "string", minLength: 1, maxLength: 128 };
 const NO_RECORDS = "records are not installed in that space";
 const NOT_FOUND = "no such share";
@@ -195,8 +197,18 @@ export default {
       },
     };
 
-    /** The person key a call is for: named in the input, then checked against the Space's own membership by authorize. */
-    const personOf = i => String(i.person);
+    /**
+     * The person a call is for is the VERIFIED caller's, from the spaces module (spaces.self maps the registry's caller to this device's person, or to nobody: a plain
+     * model session, a guest, a hook or an anonymous caller is not the person). An `input.person` is accepted only when it is that same person: naming another is a
+     * refusal, never silently replaced and never believed (BR-1). authorize then checks the Space's own membership for that person.
+     */
+    const personOf = async (i, meta) => {
+      const r = await call("spaces.self", { caller: String((meta && meta.caller) || "") });
+      const who = value(r) && value(r).person;
+      if (typeof who !== "string" || !who) throw new BridgeError("forbidden", "only a person, or their own assistant, can do that");
+      if (i && i.person !== undefined && String(i.person) !== who) throw new BridgeError("bad_input", "that is not you");
+      return who;
+    };
     const guard = fn => async (i, meta = {}) => { try { return await fn(i, meta); } catch (e) { throw asToolError(e); } };
     const party = (b, space) => b && (b.source === space || b.destination === space);
     /** A share this person may see: they belong to one of its Spaces. Otherwise it does not exist for them. */
@@ -211,7 +223,7 @@ export default {
 
     const proposeInput = { person: PERSON, source: str, destination: str, expires_at: { type: "number" }, max_red: str, owner_confirmed: { type: "boolean" } };
     const proposer = (kind, fn) => async (i, meta) => {
-      const input = { ...i, chain: chainFor(i.source, personOf(i, meta), meta) };
+      const input = { ...i, chain: chainFor(i.source, (await personOf(i, meta)), meta) };
       input.presence = proofFrom(meta, proposalHash(kind, input), now());
       return shape(await fn(input, deps));
     };
@@ -219,28 +231,28 @@ export default {
 
     ctx.tool("bridges.propose-view", {
       description: "Offer another Space a live, read-only view: a record type, a filter, a sort and the fields that may cross (default deny). Nothing flows until the other Space accepts. Needs you in person.",
-      input: { type: "object", required: ["person", "source", "destination", "expires_at", "type", "fields"], properties: { ...proposeInput, type: str, fields: strs, filter: { type: "object" }, sort: { type: "array" }, sealed_placeholder: { type: "boolean" }, destination_cache: { type: "boolean" } } },
+      input: { type: "object", required: ["source", "destination", "expires_at", "type", "fields"], properties: { ...proposeInput, type: str, fields: strs, filter: { type: "object" }, sort: { type: "array" }, sealed_placeholder: { type: "boolean" }, destination_cache: { type: "boolean" } } },
       presence: summaryOf("view"),
       run: guard(proposer("view", proposeView)),
     });
     ctx.tool("bridges.propose-reference", {
       description: "Let another Space show the names of chosen record types here. A reference is an address, not access. Needs you in person.",
-      input: { type: "object", required: ["person", "source", "destination", "expires_at", "types"], properties: { ...proposeInput, types: strs, label_fields: strs, cache_label: { type: "boolean" } } },
+      input: { type: "object", required: ["source", "destination", "expires_at", "types"], properties: { ...proposeInput, types: strs, label_fields: strs, cache_label: { type: "boolean" } } },
       presence: summaryOf("reference"),
       run: guard(proposer("reference", proposeReference)),
     });
     ctx.tool("bridges.propose-projection", {
       description: "Send chosen fields of chosen events to another Space. The other Space accepts first; everything it receives is marked external. Needs you in person.",
-      input: { type: "object", required: ["person", "source", "destination", "expires_at", "types", "fields"], properties: { ...proposeInput, types: strs, fields: strs, subject_prefix: str, free_text_confirmed: { type: "boolean" } } },
+      input: { type: "object", required: ["source", "destination", "expires_at", "types", "fields"], properties: { ...proposeInput, types: strs, fields: strs, subject_prefix: str, free_text_confirmed: { type: "boolean" } } },
       presence: summaryOf("projection"),
       run: guard(proposer("projection", proposeProjection)),
     });
 
     ctx.tool("bridges.accept", {
       description: "Accept what another Space offered to share with yours. Until you do, nothing flows.",
-      input: { type: "object", required: ["person", "bridge"], properties: { person: PERSON, bridge: str } },
+      input: { type: "object", required: ["bridge"], properties: { person: PERSON, bridge: str } },
       run: guard(async (i, meta) => {
-        const person = personOf(i, meta);
+        const person = (await personOf(i, meta));
         const b = await store.get(i.bridge);
         if (!b || !(await liveMember(b.destination, person))) throw new BridgeError("not_found", NOT_FOUND);
         return shape(await acceptBridge({ chain: chainFor(b.destination, person, meta), bridgeId: i.bridge }, deps));
@@ -249,9 +261,9 @@ export default {
 
     ctx.tool("bridges.revoke", {
       description: "Stop a share at once, from either side. Devices drop what they cached for it.",
-      input: { type: "object", required: ["person", "bridge"], properties: { person: PERSON, bridge: str, space: str, reason: str } },
+      input: { type: "object", required: ["bridge"], properties: { person: PERSON, bridge: str, space: str, reason: str } },
       run: guard(async (i, meta) => {
-        const person = personOf(i, meta);
+        const person = (await personOf(i, meta));
         const { b, space } = await must(i.bridge, person, i.space);
         const was = b.status;
         const out = await revokeBridge({ chain: chainFor(space, person, meta), bridgeId: i.bridge, reason: i.reason }, deps);
@@ -269,9 +281,9 @@ export default {
 
     ctx.tool("bridges.list", {
       description: "The shares a Space is part of, on both sides: the ones it offered and the ones offered to it.",
-      input: { type: "object", required: ["person"], properties: { person: PERSON, space: str } },
+      input: { type: "object", required: [], properties: { person: PERSON, space: str } },
       run: guard(async (i, meta) => {
-        const person = personOf(i, meta);
+        const person = (await personOf(i, meta));
         let spaces;
         if (i.space) { if (!(await liveMember(i.space, person))) throw new BridgeError("not_found", "no such space"); spaces = [i.space]; }
         else spaces = (await spacesOf(person)).map(s => s.space);
@@ -283,15 +295,16 @@ export default {
 
     ctx.tool("bridges.get", {
       description: "One share a Space is part of.",
-      input: { type: "object", required: ["person", "bridge"], properties: { person: PERSON, bridge: str, space: str } },
-      run: guard(async (i, meta) => shape((await must(i.bridge, personOf(i, meta), i.space)).b)),
+      input: { type: "object", required: ["bridge"], properties: { person: PERSON, bridge: str, space: str } },
+      run: guard(async (i, meta) => shape((await must(i.bridge, (await personOf(i, meta)), i.space)).b)),
     });
 
     ctx.tool("bridges.view.read", {
+      callers: BRIDGE_CALLERS,
       description: "Read a shared view through its source Space, live and read-only. Only the fields the share lists come back; sealed fields never do. The result is marked external and carries the source's residency rules.",
-      input: { type: "object", required: ["person", "share"], properties: { person: PERSON, share: str, space: str, filter: { type: "object" }, sort: { type: "array" }, limit: { type: "number" }, cursor: str } },
+      input: { type: "object", required: ["share"], properties: { person: PERSON, share: str, space: str, filter: { type: "object" }, sort: { type: "array" }, limit: { type: "number" }, cursor: str } },
       run: guard(async (i, meta) => {
-        const person = personOf(i, meta);
+        const person = (await personOf(i, meta));
         const b = await store.get(i.share);
         const space = b && b.kind === "view" ? b.destination : null;
         if (!space || (i.space && i.space !== space) || !(await liveMember(space, person))) throw new BridgeError("not_found", NOT_FOUND);
@@ -300,17 +313,19 @@ export default {
     });
 
     ctx.tool("bridges.resolve", {
+      callers: BRIDGE_CALLERS,
       description: "Look up the name behind a vyre:// reference to another Space. A reference you may not read and one that does not exist answer the same way.",
-      input: { type: "object", required: ["person", "space", "urn"], properties: { person: PERSON, space: str, urn: str } },
-      run: guard(async (i, meta) => resolveReference(i.urn, { chain: chainFor(i.space, personOf(i, meta), meta) }, deps)),
+      input: { type: "object", required: ["space", "urn"], properties: { person: PERSON, space: str, urn: str } },
+      run: guard(async (i, meta) => resolveReference(i.urn, { chain: chainFor(i.space, (await personOf(i, meta)), meta) }, deps)),
     });
 
     ctx.tool("bridges.copy", {
+      callers: BRIDGE_CALLERS,
       description: "Copy a record into another Space you belong to, as a new record that notes where it came from. Sealed fields come across empty. A model's copy is held for you to approve; sealed values copy only for you, in person.",
-      input: { type: "object", required: ["person", "urn", "toSpace"], properties: { person: PERSON, urn: str, toSpace: str, destType: str, copy_sealed: strs } },
+      input: { type: "object", required: ["urn", "toSpace"], properties: { person: PERSON, urn: str, toSpace: str, destType: str, copy_sealed: strs } },
       presence: { when: i => Boolean(i && Array.isArray(i.copy_sealed) && i.copy_sealed.length), summary: i => `Copy sealed values (${i && i.copy_sealed ? i.copy_sealed.join(", ") : ""}) into another Space` },
       run: guard(async (i, meta) => {
-        const person = personOf(i, meta);
+        const person = (await personOf(i, meta));
         const m = /^vyre:\/\/([^/?#\s]+)\//.exec(i.urn);
         const from = m ? m[1] : "";
         const sealed = (i.copy_sealed || []).filter(Boolean);
@@ -332,22 +347,23 @@ export default {
     });
     ctx.tool("bridges.kit.plan", {
       description: "List everything installing a Kit would add to a Space. Nothing is applied.",
-      input: { type: "object", required: ["person", "space", "kit"], properties: { person: PERSON, space: str, kit: { type: "object" } } },
+      input: { type: "object", required: ["space", "kit"], properties: { person: PERSON, space: str, kit: { type: "object" } } },
       run: guard(async (i, meta) => {
-        if (!(await liveMember(i.space, personOf(i, meta)))) throw new BridgeError("not_found", "no such space");
+        if (!(await liveMember(i.space, (await personOf(i, meta))))) throw new BridgeError("not_found", "no such space");
         return kitInstallPlan(i.kit, await deps.installedState(i.space));
       }),
     });
     ctx.tool("bridges.kit.install", {
       description: "Install a Kit into a Space after the person approved exactly this plan (its plan_hash). Adds definitions only.",
-      input: { type: "object", required: ["person", "space", "kit", "approved_plan_hash"], properties: { person: PERSON, space: str, kit: { type: "object" }, approved_plan_hash: str } },
-      run: guard(async (i, meta) => installKit({ chain: chainFor(i.space, personOf(i, meta), meta), kit: i.kit, approved_plan_hash: i.approved_plan_hash }, deps)),
+      input: { type: "object", required: ["space", "kit", "approved_plan_hash"], properties: { person: PERSON, space: str, kit: { type: "object" }, approved_plan_hash: str } },
+      run: guard(async (i, meta) => installKit({ chain: chainFor(i.space, (await personOf(i, meta)), meta), kit: i.kit, approved_plan_hash: i.approved_plan_hash }, deps)),
     });
 
     ctx.tool("bridges.continue", {
+      callers: BRIDGE_CALLERS,
       description: "Continue in another Space: hand the work over as a task there that points back at records here by reference. A model's hand-off is held for you to approve.",
-      input: { type: "object", required: ["person", "fromSpace", "toSpace", "summaryRefs"], properties: { person: PERSON, fromSpace: str, toSpace: str, summaryRefs: strs, title: str } },
-      run: guard(async (i, meta) => continueIn({ fromSpace: i.fromSpace, toSpace: i.toSpace, by: chainFor(i.fromSpace, personOf(i, meta), meta), summaryRefs: i.summaryRefs, title: i.title }, deps)),
+      input: { type: "object", required: ["fromSpace", "toSpace", "summaryRefs"], properties: { person: PERSON, fromSpace: str, toSpace: str, summaryRefs: strs, title: str } },
+      run: guard(async (i, meta) => continueIn({ fromSpace: i.fromSpace, toSpace: i.toSpace, by: chainFor(i.fromSpace, (await personOf(i, meta)), meta), summaryRefs: i.summaryRefs, title: i.title }, deps)),
     });
 
     ctx.tool("bridges.session.policy", {
@@ -365,9 +381,9 @@ export default {
 
     ctx.tool("bridges.merge.links", {
       description: "For a device that merges Spaces itself: one entry per Space the person belongs to, { space, name, color, link }. The device reads each link through that Space's own gateway and merges on the device; no server joins data across Spaces.",
-      input: { type: "object", required: ["person"], properties: { person: PERSON, spaces: strs } },
+      input: { type: "object", required: [], properties: { person: PERSON, spaces: strs } },
       run: guard(async (i, meta) => {
-        const person = personOf(i, meta);
+        const person = (await personOf(i, meta));
         const out = [];
         for (const s of await spacesOf(person, i.spaces)) {
           if (!(await liveMember(s.space, person))) continue;
