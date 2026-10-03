@@ -1,8 +1,11 @@
-import { Pressable, View } from "react-native";
+import { View } from "react-native";
 import { Card } from "./Card";
 import { Chip } from "./Chip";
 import { Text } from "./Text";
 import { Button, type ButtonProps } from "./Button";
+import { SwipeActions, type SwipeSet } from "../motion/SwipeActions";
+import { PressableScale } from "../motion/PressableScale";
+import { useUiTheme } from "../theme";
 
 type Tag = string | { text: string; tone?: "plain" | "accent" | "ok" | "warn" | "err" | "sealed" | "space" };
 
@@ -11,18 +14,19 @@ type Tag = string | { text: string; tone?: "plain" | "accent" | "ok" | "warn" | 
  * the words, not a coloured strip. Buttons name the action ("Approve with Face ID"). `onTitlePress` makes the title open the thing; `children` sit
  * above the buttons (an inline field); a tag may carry a tone ("Stuck" is warm).
  */
-export function AskCard({ lead, title, why, tags, actions = [], needsYou = true, onTitlePress, children }: {
-  lead?: React.ReactNode; title: string; why?: string; tags?: Tag[]; needsYou?: boolean; onTitlePress?: () => void; children?: React.ReactNode;
+export function AskCard({ lead, title, why, tags, actions = [], needsYou = true, onTitlePress, children, swipe }: {
+  lead?: React.ReactNode; title: string; why?: string; tags?: Tag[]; needsYou?: boolean; onTitlePress?: () => void; children?: React.ReactNode; swipe?: SwipeSet;
   actions?: (ButtonProps & { label: string })[];
 }) {
+  const { phone } = useUiTheme();
   const t = <Text strong>{title}</Text>;
-  return (
+  const card = (
     <Card>
       <View className="flex-row items-start gap-s3">
         {lead ? <View className="flex-none">{lead}</View> : null}
         <View className="min-w-0 flex-1 gap-s2">
           {needsYou ? <Chip tone="accent" icon="now">Needs you</Chip> : null}
-          {onTitlePress ? <Pressable accessibilityRole="button" onPress={onTitlePress}>{t}</Pressable> : t}
+          {onTitlePress ? <PressableScale depth={0.99} accessibilityRole="button" onPress={onTitlePress}>{t}</PressableScale> : t}
           {why ? <Text tone="muted">{why}</Text> : null}
           {tags?.length ? <View className="flex-row flex-wrap gap-s2">{tags.map((g) => { const x = typeof g === "string" ? { text: g } : g; return <Chip key={x.text} tone={x.tone}>{x.text}</Chip>; })}</View> : null}
           {children}
@@ -31,4 +35,5 @@ export function AskCard({ lead, title, why, tags, actions = [], needsYou = true,
       </View>
     </Card>
   );
+  return swipe ? <SwipeActions leading={swipe.leading} trailing={swipe.trailing} enabled={phone}>{card}</SwipeActions> : card;
 }

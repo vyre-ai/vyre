@@ -11,6 +11,8 @@ import { ActorMark } from "./ActorMark";
 import { Section } from "./Section";
 import { TaskCard } from "./TaskCard";
 import { nowModel, nameOf, recordTitle, spaceName, whenLabel, workingLine, who, type World } from "./model";
+import { Appear } from "../motion/Appear";
+import type { SwipeSet } from "../motion/SwipeActions";
 import { aid } from "../../../../deck/ui/kernel-view.js";
 
 const WIDE = 1000;
@@ -24,11 +26,12 @@ export function NowView({ world, onAction, onOpen, notice }: { world: World; onA
   const { width } = useWindowDimensions();
   const m = nowModel(world, scope);
   const showSpace = scope === "all";
+  const openSwipe = (t: any): SwipeSet => ({ trailing: [{ id: "open", label: "Open", icon: "chev-r", tone: "plain", haptic: "selection", onPress: () => onOpen(t) }] });
   const spaceOf = (t: any) => (showSpace ? <Chip tone="space">{spaceName(world, t.space)}</Chip> : null);
 
   const needs = (
     <Section title="Needs you" count={m.needs.length}>
-      {m.needs.length ? <View className="gap-s3">{m.needs.map((t) => <TaskCard key={t.id} world={world} task={t} showSpace={showSpace} onAction={(id, input) => onAction(t, id, input)} onOpen={() => onOpen(t)} />)}</View>
+      {m.needs.length ? <View className="gap-s3">{m.needs.map((t, i) => <Appear key={t.id} index={i}><TaskCard world={world} task={t} showSpace={showSpace} onAction={(id, input) => onAction(t, id, input)} onOpen={() => onOpen(t)} /></Appear>)}</View>
         : <Card><EmptyState title="Nothing needs you" body="Tasks that wait on you show up here." /></Card>}
     </Section>
   );
@@ -39,7 +42,7 @@ export function NowView({ world, onAction, onOpen, notice }: { world: World; onA
           {m.working.map((t, i) => (
             <View key={t.id}>
               {i > 0 ? <Divider /> : null}
-              <Row lead={<ActorMark who={who(world, aid(t.doer))} />} title={recordTitle(world, world.records.get(t.record))} sub={workingLine(world, t)} end={spaceOf(t)} onPress={() => onOpen(t)} />
+              <Row lead={<ActorMark who={who(world, aid(t.doer))} />} title={recordTitle(world, world.records.get(t.record))} sub={workingLine(world, t)} end={spaceOf(t)} onPress={() => onOpen(t)} swipe={openSwipe(t)} />
             </View>
           ))}
         </Card>
@@ -52,7 +55,7 @@ export function NowView({ world, onAction, onOpen, notice }: { world: World; onA
         {m.doneToday.map((t, i) => (
           <View key={t.id}>
             {i > 0 ? <Divider /> : null}
-            <Row lead={<ActorMark who={who(world, aid(t.doer))} />} title={t.title} sub={`${nameOf(world, aid(t.doer))} · ${recordTitle(world, world.records.get(t.record))}`} end={<Chip tone="ok">Done</Chip>} onPress={() => onOpen(t)} />
+            <Row lead={<ActorMark who={who(world, aid(t.doer))} />} title={t.title} sub={`${nameOf(world, aid(t.doer))} · ${recordTitle(world, world.records.get(t.record))}`} end={<Chip tone="ok">Done</Chip>} onPress={() => onOpen(t)} swipe={openSwipe(t)} />
           </View>
         ))}
       </Card>
