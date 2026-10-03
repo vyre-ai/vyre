@@ -38,8 +38,9 @@ test("daemon: with the kernel on, the home has a Space, a first owner and a modu
   assert.equal(d.kernel.grants.roleOf({ kind: "person", id: id.owner, space: id.space }), "owner");
   assert.ok(d.registry.deps.moduleHost);
   assert.equal((await d.kernel.gateway.audit.verify()).ok, true);
-  const events = d.kernel.log.latestSeq();
+  const klog = d.kernel.log;
   await d.stop();
+  const events = klog.latestSeq();
   d = await start({ root, log: () => {}, kernel: true });
   t.after(() => d.stop());
   assert.equal(d.kernel.fresh, false);
@@ -75,7 +76,7 @@ test("ctx.kernel: a first-party module gets the kernel handle with exactly the a
   const made = await d.registry.call("zz-fp.make", { name: "From a module" });
   assert.ok(made.data && made.data.id, JSON.stringify(made));
   assert.equal((await d.kernel.gateway.records.get(owner, "contact", made.data.id)).data.name, "From a module");
-  assert.deepEqual((await d.registry.call("zz-fp.peek", {})).data.has, ["audit", "authorize", "chain", "events", "grants", "limits", "model", "records", "serviceChain", "space", "tasks"]);
+  assert.deepEqual((await d.registry.call("zz-fp.peek", {})).data.has, ["audit", "authorize", "chain", "drive", "events", "grants", "leases", "limits", "model", "records", "runnerPorts", "serviceChain", "space", "tasks"]);
 });
 
 test("ctx.kernel: a module that is not first party has no kernel handle", { timeout: 60_000, skip: !linux }, async t => {
@@ -93,16 +94,16 @@ test("K-3: the kernel key is derived in the sealing process and never written to
   let d = await start({ root, log: () => {}, kernel: true });
   assert.equal(fs.existsSync(path.join(root, "kernel", "kernel.key")), false, "no key file on a custody boot");
   const owner = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d", person: d.kernel.id.owner, path: "direct" });
-  const tok = d.kernel.surfaces.open(owner, {}).token;
+  const tok = (await d.kernel.surfaces.open(owner, {})).token;
   await d.stop();
   d = await start({ root, log: () => {}, kernel: true });
   t.after(() => d.stop());
-  assert.ok(d.kernel.surfaces.chainFor(tok), "the same sealing master, the same Space: the token made before the restart still verifies");
+  assert.ok(await d.kernel.surfaces.chainFor(tok), "the same sealing master, the same Space: the token made before the restart still verifies");
   assert.equal(d.kernel.fresh, false);
   // another home has another sealing master and another key: the token is nothing there
   const other = await start({ root: tempHome(t), log: () => {}, kernel: true });
   t.after(() => other.stop());
-  assert.throws(() => other.kernel.surfaces.chainFor(tok), { code: "not_a_member" });
+  await assert.rejects(() => other.kernel.surfaces.chainFor(tok), { code: "not_a_member" });
 });
 
 test("K-3: where the sealing process cannot run safely the kernel refuses to start, unless a developer opts into a file key", { timeout: 60_000 }, async t => {
@@ -119,40 +120,56 @@ test("K-3: where the sealing process cannot run safely the kernel refuses to sta
   assert.ok(d.kernel.fresh);
 });
 
-test("K-3: events a key file sealed before custody moved still verify at rebuild, and nothing new is sealed under it", { timeout: 60_000 }, async t => {
+test("K-3: events an older key sealed (position-bound, before custody moved) verify once, are re-sealed in one snapshot under the sealing process, and the key file is deleted", { timeout: 60_000 }, async t => {
+  const { DatabaseSync } = await import("node:sqlite");
+  const { createSqliteEventLog } = await import("./store/sqlite-log.js");
+  const { homeIdentity: ident, bootHomeKernel } = await import("./home.js");
+  const { fileKernelKey } = await import("./keys.js");
+  const { createChainBuilder } = await import("./core/chain.js");
+  const { canonical, hmac } = await import("./core/canonical.js");
   const root = tempHome(t);
-  // an old home: booted with the developer file key
-  process.env.VYRE_KERNEL_FILE_KEY = "1";
-  let d = await start({ root, log: () => {}, kernel: true });
-  const owner = id => d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d", person: id, path: "direct", session: "s" });
-  const o = owner(d.kernel.id.owner);
-  const role = { person: "per_old", role: "member" };
-  const { canonical, sha256 } = await import("./core/canonical.js");
-  const pr = (action, input, resource) => ({ op: `grant.${action.split(".")[1]}`, fields: { resource, input_hash: sha256(canonical({ action, input })) } });
-  assert.ok(d.kernel.grants.roleOf({ kind: "person", id: d.kernel.id.owner, space: d.kernel.id.space }));
-  await d.stop();
-  delete process.env.VYRE_KERNEL_FILE_KEY;
-  // the same home, now with custody: the owner (sealed by the old key) is still the owner after the rebuild
-  d = await start({ root, log: () => {}, kernel: true });
-  t.after(() => d.stop());
-  assert.equal(d.kernel.grants.roleOf({ kind: "person", id: d.kernel.id.owner, space: d.kernel.id.space }), "owner");
-  assert.ok(pr && role && owner);
+  const id = ident(root), key = fileKernelKey(id.dir);
+  const dbFile = path.join(root, "k.db");
+  const db1 = new DatabaseSync(dbFile);
+  const log = createSqliteEventLog({ db: db1, space: id.space });
+  const chains = createChainBuilder({ space: id.space, owner: id.owner, owner_uid: 1, key });
+  const k = chains.fromFacts({ kind: "module", module: "grants", first_party: true });
+  // the old format: the MAC binds the log position and the previous hash
+  const legacy = (type, subject, data) => log.append(k, { type, sv: 1, subject, data: { ...data, mac: hmac(key, canonical({ type, subject, data, seq: log.latestSeq() + 1, prev: log.head() })) }, vis: "owner", red: "internal" });
+  const membership = (person, role) => ({ space: id.space, person, role, added_by: "kernel", added_at: 1 });
+  legacy("member.set", `vyre://${id.space}/member/${id.owner}`, { membership: membership(id.owner, "owner") });
+  legacy("member.set", `vyre://${id.space}/member/per_old`, { membership: membership("per_old", "member") });
+  // a forged legacy event (not sealed by that key) is ignored
+  log.append(k, { type: "member.set", sv: 1, subject: `vyre://${id.space}/member/per_evil`, data: { membership: membership("per_evil", "owner"), mac: "AAAA" }, vis: "owner", red: "internal" });
+  db1.close();
+  const boot = async () => bootHomeKernel({ db: new DatabaseSync(dbFile), root, log: () => {}, isFirstParty: () => false });
+  let kern = await boot();
+  const who = p => kern.grants.roleOf({ kind: "person", id: p, space: id.space });
+  assert.equal(who(id.owner), "owner");
+  assert.equal(who("per_old"), "member", "read under the old key");
+  assert.equal(who("per_evil"), null, "a forged one is not");
+  assert.equal(kern.migrated, true);
+  assert.equal(fs.existsSync(path.join(id.dir, "kernel.key")), false, "the key file is gone once the state is under the new seal");
+  assert.ok(kern.log.read({ type: "grants.snapshot" }).length === 1);
+  await kern.stop();
+  kern = await boot();
+  assert.equal(who(id.owner), "owner", "the snapshot alone is enough: no old key exists any more");
+  assert.equal(who("per_old"), "member");
+  assert.equal(kern.migrated, false);
+  await kern.stop();
 });
 
-
-test("K-2: by default first party is a signature by the compiled release key; there is no path-rule fallback and no pin file", { timeout: 60_000, skip: !linux }, async t => {
-  const saved = process.env.VYRE_KERNEL_PATH_RULE;
-  delete process.env.VYRE_KERNEL_PATH_RULE;
-  t.after(() => { process.env.VYRE_KERNEL_PATH_RULE = saved; });
+test("the daemon's edge carries x-vyre-kernel-proof to the tool as meta.kernel_proof, and the legacy proof header never becomes one", { timeout: 30_000 }, async t => {
+  const { call } = await import("../core/daemon/client.js");
   const root = tempHome(t);
-  fs.mkdirSync(path.join(root, "kernel"), { recursive: true });
-  // a planted pin file changes nothing: the key is compiled in
-  fs.writeFileSync(path.join(root, "kernel", "release.pub"), "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n-----END PUBLIC KEY-----\n");
-  writeModule(path.join(root, "modules"), "zz-unsigned", { does: { tools: [{ name: "zz-unsigned.ping", reach: "anyone" }] } }, `export const handlers = { "zz-unsigned.ping": async () => ({ pong: true }) };`);
-  const d = await start({ root, log: () => {}, kernel: true, firstPartyRoots: [path.join(root, "modules")] });
+  writeModule(path.join(root, "modules"), "zz-edge", { does: { tools: [{ name: "zz-edge.peek", reach: "anyone" }] } }, `
+    export default { async start(ctx) { ctx.tool("zz-edge.peek", { run: async (i, meta) => ({ kernel_proof: meta.kernel_proof ?? null, proof: meta.proof ?? null }) }); return {}; } };`);
+  const d = await start({ root, log: () => {}, kernel: false });
   t.after(() => d.stop());
-  // it sits in a firstPartyRoots folder, but no release signed it: it is not first party, so it runs sandboxed
-  assert.equal(d.registry.isFirstParty(path.join(root, "modules", "zz-unsigned")), false);
-  assert.equal(d.registry.status().find(m => m.name === "zz-unsigned").state, "running");
-  assert.deepEqual((await d.registry.call("zz-unsigned.ping", {})).data, { pong: true });
+  const proof = { op: "grant.create", signer: "secure_enclave", key_id: "k1", payload_hash: "ph", signature: "sig" };
+  const enc = Buffer.from(JSON.stringify(proof)).toString("base64url");
+  assert.deepEqual((await call("zz-edge.peek", {}, { root, headers: { "x-vyre-kernel-proof": enc } })).data.kernel_proof, proof);
+  assert.equal((await call("zz-edge.peek", {}, { root })).data.kernel_proof, null, "absent when not sent");
+  for (const bad of ["not base64 !!", Buffer.from("[1,2]").toString("base64url"), Buffer.from("nope").toString("base64url"), "A".repeat(6000)]) assert.equal((await call("zz-edge.peek", {}, { root, headers: { "x-vyre-kernel-proof": bad } })).data.kernel_proof, null, "malformed is simply absent");
+  assert.equal((await call("zz-edge.peek", {}, { root, headers: { "x-vyre-presence": "device abc" } })).data.kernel_proof, null, "the legacy presence header is not a kernel proof");
 });

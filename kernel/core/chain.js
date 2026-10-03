@@ -1,7 +1,8 @@
 // kernel/core/chain.js: the kernel builds the acting chain (invariant 2, contract 4.2). Nothing else can: a chain
 // is a frozen object registered in a module-private set, so a hand-made one is not a chain. The builder takes only
 // what the Surfaces door verified (SurfaceFacts), never a header string, and authority only narrows.
-import { canonical, sha256, hmac, sameMac } from "./canonical.js";
+import { canonical, sha256 } from "./canonical.js";
+import { createKernelSeal } from "./seal.js";
 import { mintId } from "./ids.js";
 import { KernelError } from "./errors.js";
 import { TRUST_ORDER, REDACTION_ORDER } from "../contracts/index.js";
@@ -46,12 +47,13 @@ export function mergeLabels(/** @type {any} */ a, /** @type {any} */ b) {
 }
 
 /**
- * @param {{ space: string, owner: string, owner_uid: number, key: Uint8Array | string, clock?: () => number,
+ * @param {{ space: string, owner: string, owner_uid: number, key?: Uint8Array | string, seal?: any, sealer?: any, clock?: () => number,
  *   is_person?: (person: string) => boolean, job_max_age?: number }} cfg
  *   owner: the person id of the Space's owner on this machine; owner_uid: the OS user the kernel treats as them;
- *   key: the secret that seals a stored chain; is_person: whether a person id is a member of this Space.
+ *   seal: the sealing handle (kernel/core/seal.js: the sealing process, or a development key) that seals a stored chain and a session token; is_person: whether a person id is a member of this Space.
  */
 export function createChainBuilder(cfg) {
+  const seal = cfg.seal || createKernelSeal({ sealer: cfg.sealer, key: cfg.key });
   const clock = cfg.clock || Date.now;
   const space = cfg.space;
   const isMember = cfg.is_person || (p => p === cfg.owner);
@@ -145,16 +147,26 @@ export function createChainBuilder(cfg) {
   }
 
   /** The stored form of a chain for a queued, scheduled or triggered job: sealed with the kernel's key. */
+  const after = (/** @type {any} */ v, /** @type {(x: any) => any} */ f) => (v && typeof v.then === "function" ? v.then(f) : f(v));
+  /** Returns the stored form, or a Promise of it when the sealing handle is the sealing process (`await` it; a development key answers at once). */
   function serialize(/** @type {any} */ chain, /** @type {string} */ job = mintId("job", clock())) {
     if (!isChain(chain)) return refuse("not a kernel chain");
     const body = canonical({ space: chain.space, hops: chain.hops, labels: chain.labels, built_at: chain.built_at, job });
-    return { job, body, mac: hmac(cfg.key, body) };
+    return after(seal.mac("chain-seal-v1", body), mac => ({ job, body, mac }));
   }
+  /** A session token: sealed text the Surfaces door can check later. Returns the MAC, or a Promise of it. @param {string} body */
+  const sealToken = body => seal.mac("surface-token-v1", body);
+  /** @param {string} body @param {string} mac @returns {boolean | Promise<boolean>} */
+  const checkToken = (body, mac) => seal.verify("surface-token-v1", body, mac);
 
   /** Rebuild a chain from its stored form, or from a chain a job already holds. A forged or altered record yields nothing. */
   function restore(/** @type {any} */ stored) {
     if (isChain(stored)) return stored.job ? stored : make([...stored.hops], stored.labels, { job: mintId("job", clock()) });
-    if (!stored || typeof stored.body !== "string" || typeof stored.mac !== "string" || !sameMac(hmac(cfg.key, stored.body), stored.mac)) return refuse("stored chain failed its seal");
+    if (!stored || typeof stored.body !== "string" || typeof stored.mac !== "string") return refuse("stored chain failed its seal");
+    // Returns the chain, or a Promise of it when the seal is checked by the sealing process (`await` it).
+    return after(seal.verify("chain-seal-v1", stored.body, stored.mac), ok => (ok ? finishRestore(stored) : refuse("stored chain failed its seal")));
+  }
+  function finishRestore(/** @type {any} */ stored) {
     const o = JSON.parse(stored.body);
     if (o.space !== space) return refuse("stored chain is for another space");
     // A leaked record replays for a bounded time only; authorize still rechecks every grant on use (invariant 3, K1 item 8b).
@@ -166,7 +178,7 @@ export function createChainBuilder(cfg) {
     return /** @type {any} */ (c);
   }
 
-  return Object.freeze({ fromFacts, appendService, forFlow, forModule, weaken, serialize, restore });
+  return Object.freeze({ fromFacts, appendService, forFlow, forModule, weaken, serialize, restore, sealToken, checkToken });
 }
 
 /** The one Space the retrofit's throwaway chains live in. No production authorizer evaluates it, so no chain minted for it is ever accepted by a real Space. */
