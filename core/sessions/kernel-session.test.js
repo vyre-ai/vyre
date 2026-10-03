@@ -11,6 +11,7 @@ import { openThreadSocket } from "../daemon/threadsock.js";
 
 const KERNEL_SESSION_HEADER = "x-vyre-kernel-session";
 
+let NOW = Date.now();
 const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner", BOB = "per_bob", CAROL = "per_carol";
 const proof = (action, input, resource) => ({ op: `grant.${action.split(".")[1]}`, fields: { resource, input_hash: sha256(canonical({ action, input })) }, n: Math.random() });
 const used = new Set();
@@ -22,6 +23,7 @@ async function rig(t) {
   const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 9), presence });
   const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
   for (const p of [BOB, CAROL]) { const r = { person: p, role: "member" }; await k.gateway.grants.setRole(owner, r, { presence: proof("grants.role", r, `vyre://${SPACE}/member/${p}`) }); }
+  for (const a of ["assistant", "kit"]) { const act = { kind: "agent", id: a, space: SPACE }; await k.gateway.grants.addActor(owner, act, { presence: proof("grants.role", { actor: act }, `vyre://${SPACE}/member/${a}`) }); }
   const bob = k.chains.fromFacts({ kind: "device", device_key_id: "d-b", person: BOB, path: "direct" });
   const group = await k.gateway.grants.chats.create(bob, { people: [CAROL] });
   const solo = await k.gateway.grants.chats.create(bob, {});
@@ -109,4 +111,34 @@ test("a chat the person is not in, and a chain that is not exactly one person, c
   const viewer = k.chains.fromFacts({ kind: "viewer", person: BOB, vouched: true });
   await assert.rejects(() => ks.open({ chain: viewer }), { code: "chain_not_person" });
   assert.deepEqual(ks.list(), []);
+});
+
+test("KS-1: no session token yields a one-person chain: an unnamed thread runs as the default assistant, which holds nothing the person holds", async t => {
+  const { k, bob, ks } = await rig(t);
+  const contact = { name: "contact", label: "Contact", fields: [{ name: "name", kind: "text", label: "Name" }] };
+  const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
+  await k.gateway.records.define(owner, { add_types: [contact] }, { presence: proof("records.define", { add_types: [contact] }, `vyre://${SPACE}/definition/types`) }).catch(() => {});
+  for (const q of [{ chain: bob }, { chain: bob, thread: "t9" }, { chain: bob, agent: "kit" }]) {
+    const s = await ks.open(q);
+    const tok = await ks.tokenFor(s.id)();
+    const chain = await k.surfaces.chainFor(tok);
+    assert.ok(chain.hops.length >= 2 && chain.hops.some(h => h.actor.kind === "agent"), `a model hop is always there (${JSON.stringify(chain.hops.map(h => h.actor.kind))})`);
+    assert.equal(chain.hops[0].actor.id, BOB);
+  }
+});
+
+test("KS-3: a thread that outlives its token gets a fresh one before the call goes out, and the old one is revoked", async t => {
+  const { k, bob, group, ks: _ks } = await rig(t);
+  const ks = createKernelSessions({ kernel: k, ttlMs: 10 * 60_000, renewBeforeMs: 5 * 60_000, clock: () => NOW });
+  const s = await ks.open({ chain: bob, chat: group.id });
+  const first = await ks.tokenFor(s.id)();
+  assert.equal((await k.surfaces.verify(first)).chat, group.id);
+  assert.equal(await ks.tokenFor(s.id)(), first, "far from expiry: the same token");
+  NOW += 6 * 60_000;
+  const second = await ks.tokenFor(s.id)();
+  assert.notEqual(second, first);
+  assert.equal((await k.surfaces.verify(second)).chat, group.id, "same chat");
+  await assert.rejects(() => k.surfaces.verify(first), { code: "not_a_member" }, "the old token is revoked");
+  await ks.end(s.id);
+  await assert.rejects(() => k.surfaces.verify(second), { code: "not_a_member" });
 });
