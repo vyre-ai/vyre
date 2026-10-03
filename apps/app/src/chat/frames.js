@@ -190,6 +190,9 @@ export function createFolder() {
         if (typeof d.name === "string" && d.name) names.set(String(d.who), d.name);
         if (kind === "participant-joined") participants.set(String(d.who), { ...(d.role ? { role: d.role } : {}) }); else participants.delete(String(d.who));
         bump("@participants");
+        // A person who joins sees the chat from their own join: the server sends who was there before as `quiet` (the roster, no marker), and the join itself is the one
+        // marker a new participant sees, drawn as a quiet line ("Chris joined") with nothing above it.
+        if (d.quiet) break;
         const key = "p:" + f.cur;
         put(key, "notice", { key, kind: "notice", text: `${nameOf(String(d.who))} ${kind === "participant-joined" ? "joined" : "left"}` });
         out.layout = true;

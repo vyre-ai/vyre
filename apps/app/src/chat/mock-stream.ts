@@ -186,6 +186,7 @@ export function groupScript(o: { tps?: number } = {}): Segment[] {
   b.push("reaction", { emoji: "\u{1F440}" }, 100, { ...chris, message: "j1" });
   b.push("user-message", { message: "m3", text: "Can kit also cover the leap year in the form test?", state: "sent" }, 400, { ...alex, message: "m3" });
   b.push("thread-reply", { parent: "k1" }, 5, { ...alex, message: "m3" });
+  b.push("participant-joined", { who: "person:dana", name: "dana", role: "Paralegal" }, 600);
 
   // Alex asks three models at once. They stream together; the local one is cut short.
   const f = new Clock().at(Math.max(j.t, b.t) + 800);
