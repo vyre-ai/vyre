@@ -54,5 +54,24 @@ export async function bootHomeKernel(cfg) {
   const approvalsFile = path.join(id.dir, "module-approvals.json");
   /** The hosts a person approved on a module's install card, kept by name. */
   const approvals = cfg.approvals || ((/** @type {string} */ name) => { try { return JSON.parse(fs.readFileSync(approvalsFile, "utf8"))[name] || []; } catch { return []; } });
-  return Object.freeze({ ...k, id: { space: id.space, owner: id.owner }, firstPartyCheck, moduleHost: host, supervisor, moduleApprovals: approvals, stop: async () => { await supervisor.stopAll(); } });
+  /**
+   * `ctx.kernel` for one first-party module (the registry calls this when it builds the module's context): the gateway's own surfaces, bound to this Space, and the
+   * module's own service chain. A module declares what it needs under `needs.kernel` ({ actions, prefixes }) and is given exactly that, as grants whose source is
+   * `install:<module>`; with nothing declared it is a service of the Space that can do nothing. `chain(meta)` is the Surfaces door's chain for a call that carries a
+   * session token, else the module's own service chain: a module never builds a chain.
+   * @param {any} m the module's manifest
+   */
+  const kernelFor = (/** @type {any} */ m) => {
+    const needs = (m.needs && m.needs.kernel) || { actions: [] };
+    k.grants.installModule(m.name, { actions: Array.isArray(needs.actions) ? needs.actions : [], prefixes: Array.isArray(needs.prefixes) ? needs.prefixes : undefined });
+    const gw = k.gateway;
+    return Object.freeze({
+      space: id.space,
+      records: gw.records, events: gw.events, grants: gw.grants, tasks: gw.ask, audit: gw.audit, authorize: gw.authorize, limits: gw.limits,
+      model: k.surfaces.model,
+      serviceChain: () => gw.serviceChain(m.name),
+      chain: (/** @type {any} */ meta) => (meta && typeof meta.token === "string" ? k.surfaces.chainFor(meta.token) : gw.serviceChain(m.name)),
+    });
+  };
+  return Object.freeze({ ...k, id: { space: id.space, owner: id.owner }, kernelFor, firstPartyCheck, moduleHost: host, supervisor, moduleApprovals: approvals, stop: async () => { await supervisor.stopAll(); } });
 }

@@ -96,6 +96,12 @@ export function createChainBuilder(cfg) {
         if (who !== cfg.owner && !isMember(who)) return refuse("the session's person is not a member");
         return make([hop("person", who, "session", { session: f.session }), hop("agent", f.agent, "session", { session: f.session })], base());
       }
+      case "invitee": {
+        // Someone who holds an invite and is not a member yet: the Surfaces door verified who they are. Their chain can do one thing, accept the invite
+        // (`grants.inviteAccept`); every other call finds no membership and is refused.
+        if (!f.vouched || typeof f.person !== "string" || !f.person) return refuse("invitee not vouched by the kernel's own door");
+        return make([hop("person", f.person, "surface", { surface: "link" })], { ...base(), trust: "member" });
+      }
       case "session_person": {
         // A daemon speaking for a person in a session it holds a token for (kernel/core/surfaces.js verified it). It is the person's chain, but not a
         // presence session: no passkey was shown, so an admin act still needs the person's own proof.

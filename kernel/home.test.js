@@ -53,3 +53,32 @@ test("daemon: an added module is refused while the supervisor cannot prove its s
   assert.equal(row.state, "running", JSON.stringify(row));
   assert.deepEqual((await d.registry.call("zz-added.ping", {})).data, { pong: true });
 });
+
+test("ctx.kernel: a first-party module gets the kernel handle with exactly the actions its manifest declared; a module from outside gets none", { timeout: 60_000 }, async t => {
+  const root = tempHome(t), fp = path.join(root, "modules");
+  writeModule(fp, "zz-fp", { does: { tools: [{ name: "zz-fp.make", reach: "anyone" }, { name: "zz-fp.peek", reach: "anyone" }] }, needs: { kernel: { actions: ["records.read", "records.create"], prefixes: ["contact/*"] } } }, `
+    export default { async start(ctx) {
+      ctx.tool("zz-fp.make", { run: async ({ name }) => { const r = await ctx.kernel.records.create(ctx.kernel.serviceChain(), "contact", { name }); return { id: r.id }; } });
+      ctx.tool("zz-fp.peek", { run: async () => ({ has: Object.keys(ctx.kernel).sort() }) });
+      return {};
+    } };`);
+  const d = await start({ root, log: () => {}, kernel: true, firstPartyRoots: [fp] });
+  t.after(() => d.stop());
+  const owner = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s1" });
+  await d.kernel.gateway.records.define(owner, { add_types: [{ name: "contact", label: "Contact", fields: [{ name: "name", kind: "text", label: "Name" }] }] });
+  const row = d.registry.status().find(m => m.name === "zz-fp");
+  assert.equal(row && row.state, "running", JSON.stringify(row));
+  const made = await d.registry.call("zz-fp.make", { name: "From a module" });
+  assert.ok(made.data && made.data.id, JSON.stringify(made));
+  assert.equal((await d.kernel.gateway.records.get(owner, "contact", made.data.id)).data.name, "From a module");
+  assert.deepEqual((await d.registry.call("zz-fp.peek", {})).data.has, ["audit", "authorize", "chain", "events", "grants", "limits", "model", "records", "serviceChain", "space", "tasks"]);
+});
+
+test("ctx.kernel: a module that is not first party has no kernel handle", { timeout: 60_000, skip: !linux }, async t => {
+  const root = tempHome(t);
+  writeModule(path.join(root, "modules"), "zz-out", { does: { tools: [{ name: "zz-out.peek", reach: "anyone" }] } }, `export const handlers = { "zz-out.peek": async () => ({ kernel: typeof globalThis.kernel }) };`);
+  const d = await start({ root, log: () => {}, kernel: true });
+  t.after(() => d.stop());
+  assert.equal(d.registry.status().find(m => m.name === "zz-out").state, "running");
+  assert.equal((await d.registry.call("zz-out.peek", {})).data.kernel, "undefined");
+});

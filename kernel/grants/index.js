@@ -21,6 +21,7 @@ export const GRANT_ACTIONS = Object.freeze([
   { action: "grants.narrow", resource_type: "grant", risk: "grant", label: "reduce access", gloss: "Make an existing access smaller." },
   { action: "grants.role", resource_type: "grant", risk: "grant", label: "set a role", gloss: "Make someone an owner, admin, manager, member or temp." },
   { action: "grants.offer", resource_type: "offer", risk: "grant", label: "offer a computer for work", gloss: "Let a Space's work run on a member's computer, or accept that on your own." },
+  { action: "grants.invite", resource_type: "invite", risk: "grant", label: "invite someone", gloss: "Invite a person to join with a role." },
   { action: "grants.list", resource_type: "grant", risk: "read", label: "see who has access", gloss: "List access you may see." },
 ].map(a => Object.freeze(a)));
 
@@ -31,7 +32,7 @@ const actorKey = (/** @type {any} */ a) => `${a.kind}:${a.id}`;
 const sameActor = (/** @type {any} */ a, /** @type {any} */ b) => Boolean(a && b) && a.kind === b.kind && a.id === b.id && a.space === b.space;
 
 /**
- * @param {{ space: string, log: any, chains: any, key: Uint8Array | string, clock?: () => number, action_set_version?: number, actions?: () => Iterable<any> }} cfg
+ * @param {{ presence?: { check(i: any): Promise<string | null> }, space: string, log: any, chains: any, key: Uint8Array | string, clock?: () => number, action_set_version?: number, actions?: () => Iterable<any> }} cfg
  *   actions: the registry (read at call time, so the store never holds a stale copy). key: the kernel's secret (as the chain builder's): every event this
  *   store writes carries a MAC under it, and `rebuild` takes authority only from events that verify, so an event any chain appends in these names is nothing.
  */
@@ -41,6 +42,7 @@ export function createGrantsStore(cfg) {
   /** @type {Map<string, any>} */ const grants = new Map();
   /** @type {Map<string, any>} person id -> Membership */ const memberships = new Map();
   /** @type {Set<string>} agent, service and automation actors that belong to the Space */ const actors = new Set();
+  /** @type {Map<string, any>} pending, single-use invitations an admin approved */ const invites = new Map();
   /** @type {Map<string, any>} compute offers: the two grants a member's computer runs a Space's work under */ const offers = new Map();
   /** @type {Set<(e: { id: string, side: string, member: string, device: string | null, reason: string }) => void>} */ const revokeListeners = new Set();
   const tell = (/** @type {any} */ o, /** @type {string} */ reason, /** @type {any} */ by) => { for (const f of revokeListeners) { try { f({ id: o.id, side: o.side, member: o.member, device: o.device, reason }, by); } catch { /* a listener never blocks a change */ } } };
@@ -103,6 +105,36 @@ export function createGrantsStore(cfg) {
   const person = (/** @type {any} */ chain) => { if (!isExactlyPerson(chain)) throw new KernelError("chain_not_person", "only a person on their own gives or takes access"); return chain.hops[0].actor; };
 
   function depthOf(/** @type {any} */ g) { let d = 0; for (let p = g; p && p.parent && d <= MAX_DEPTH + 1; p = grants.get(p.parent)) d++; return d; }
+
+  /** Apply a role to a person (the shared step of `setRole` and an accepted invite): checks the issuer's CURRENT authority over both roles, replaces the role's grants, records the membership. */
+  function applyRole(/** @type {any} */ chain, /** @type {any} */ issuer, /** @type {any} */ m, /** @type {any} */ decision) {
+    const d = { decision };
+    const mine = roleOf(issuer);
+    if (!mine || !(MAY_SET[/** @type {"owner"} */ (mine)] || []).includes(m.role)) throw new KernelError("not_allowed", `a ${mine || "non-member"} cannot make someone ${m.role}`);
+    const prior = memberships.get(m.person);
+    if (prior && !(MAY_SET[/** @type {"owner"} */ (mine)] || []).includes(prior.role)) throw new KernelError("not_allowed", `a ${mine} cannot change a ${prior.role}`);
+    if (m.role === "temp" && (!Array.isArray(m.scope) || !m.scope.length || m.scope.some(s => !segments(s) || spaceOf(s) !== cfg.space) || !(m.expires > clock()))) throw new KernelError("bad_input", "a temp role needs a scope and an expiry");
+    const actor = { kind: "person", id: m.person, space: cfg.space };
+    // The last owner stays: the Space is never left without one.
+    if (prior && prior.role === "owner" && m.role !== "owner" && [...memberships.values()].filter(x => x.role === "owner").length === 1) throw new KernelError("not_allowed", "a Space keeps at least one owner");
+    for (const g of [...grants.values()]) if (g.status === "active" && g.source.startsWith("role:") && g.subject.kind === "actor" && sameActor(g.subject.actor, actor)) {
+      const n = freeze({ ...g, status: "revoked", revoked_at: clock(), reason: "role changed" }); grants.set(n.id, n);
+      note(chain, "grant.revoked", urn("grant", n.id), { id: n.id, reason: "role changed" }, d.decision);
+    }
+    const membership = freeze({ space: cfg.space, person: m.person, role: m.role, ...(m.role === "temp" ? { scope: [...m.scope], expires: m.expires } : {}), added_by: issuer.id, added_at: clock() });
+    memberships.set(m.person, membership);
+    for (const of of offers.values()) if (of.member === m.person && of.status === "active") tell(of, "role_changed", chain);
+    note(chain, "member.set", urn("member", m.person), { membership }, d.decision);
+    const deleg = m.role === "owner" || m.role === "admin" ? { allowed: true, max_depth: 2 } : { allowed: false, max_depth: 0 };
+    const prefixes = m.role === "temp" ? m.scope : [`vyre://${cfg.space}/*/*`];
+    const made = [];
+    for (const prefix of prefixes) {
+      const g = freeze({ id: `gr_${mintUuid(clock())}`, space: cfg.space, subject: { kind: "actor", actor }, actions: [...ROLE_ACTIONS[/** @type {"owner"} */ (m.role)]], action_set_version: version, resource: { prefix }, conditions: { delegate: deleg, ...(m.role === "temp" ? { when: { expires: m.expires } } : {}) }, issuer: { ...issuer }, source: `role:${m.role}`, status: "active", created_at: clock() });
+      grants.set(g.id, g); made.push(g);
+      note(chain, "grant.created", urn("grant", g.id), { grant: g }, d.decision);
+    }
+    return { membership, grants: made };
+  }
 
   const api = {
     /** @param {any} chain @param {any} input @param {{ presence?: any }} [o] */
@@ -189,31 +221,7 @@ export function createGrantsStore(cfg) {
       const issuer = person(chain);
       if (!m || typeof m.person !== "string" || !ROLE_IDS.includes(m.role)) throw new KernelError("bad_input", "a role needs a person and one of the five roles");
       const d = await gate(chain, "grants.role", urn("member", m.person), m, o.presence);
-      const mine = roleOf(issuer);
-      if (!mine || !(MAY_SET[/** @type {"owner"} */ (mine)] || []).includes(m.role)) throw new KernelError("not_allowed", `a ${mine || "non-member"} cannot make someone ${m.role}`);
-      const prior = memberships.get(m.person);
-      if (prior && !(MAY_SET[/** @type {"owner"} */ (mine)] || []).includes(prior.role)) throw new KernelError("not_allowed", `a ${mine} cannot change a ${prior.role}`);
-      if (m.role === "temp" && (!Array.isArray(m.scope) || !m.scope.length || m.scope.some(s => !segments(s) || spaceOf(s) !== cfg.space) || !(m.expires > clock()))) throw new KernelError("bad_input", "a temp role needs a scope and an expiry");
-      const actor = { kind: "person", id: m.person, space: cfg.space };
-      // The last owner stays: the Space is never left without one.
-      if (prior && prior.role === "owner" && m.role !== "owner" && [...memberships.values()].filter(x => x.role === "owner").length === 1) throw new KernelError("not_allowed", "a Space keeps at least one owner");
-      for (const g of [...grants.values()]) if (g.status === "active" && g.source.startsWith("role:") && g.subject.kind === "actor" && sameActor(g.subject.actor, actor)) {
-        const n = freeze({ ...g, status: "revoked", revoked_at: clock(), reason: "role changed" }); grants.set(n.id, n);
-        note(chain, "grant.revoked", urn("grant", n.id), { id: n.id, reason: "role changed" }, d.decision);
-      }
-      const membership = freeze({ space: cfg.space, person: m.person, role: m.role, ...(m.role === "temp" ? { scope: [...m.scope], expires: m.expires } : {}), added_by: issuer.id, added_at: clock() });
-      memberships.set(m.person, membership);
-      for (const of of offers.values()) if (of.member === m.person && of.status === "active") tell(of, "role_changed", chain);
-      note(chain, "member.set", urn("member", m.person), { membership }, d.decision);
-      const deleg = m.role === "owner" || m.role === "admin" ? { allowed: true, max_depth: 2 } : { allowed: false, max_depth: 0 };
-      const prefixes = m.role === "temp" ? m.scope : [`vyre://${cfg.space}/*/*`];
-      const made = [];
-      for (const prefix of prefixes) {
-        const g = freeze({ id: `gr_${mintUuid(clock())}`, space: cfg.space, subject: { kind: "actor", actor }, actions: [...ROLE_ACTIONS[/** @type {"owner"} */ (m.role)]], action_set_version: version, resource: { prefix }, conditions: { delegate: deleg, ...(m.role === "temp" ? { when: { expires: m.expires } } : {}) }, issuer: { ...issuer }, source: `role:${m.role}`, status: "active", created_at: clock() });
-        grants.set(g.id, g); made.push(g);
-        note(chain, "grant.created", urn("grant", g.id), { grant: g }, d.decision);
-      }
-      return { membership, grants: made };
+      return applyRole(chain, issuer, m, d.decision);
     },
 
     /**
@@ -304,6 +312,103 @@ export function createGrantsStore(cfg) {
     /** Be told when an offer is withdrawn or a member's role changes (so the runner can end work at once). Returns an unsubscribe. */
     onRevoke(/** @type {(e: any, by?: any) => void} */ f) { revokeListeners.add(f); return () => revokeListeners.delete(f); },
 
+    /**
+     * Invites (windows' ruling). An admin's act, with the admin's fresh presence proof bound to exactly these contents, stores a pending, single-use approval; the
+     * invitee accepts under their own chain and their own presence, and the kernel applies the membership from the stored approval: no admin is present at accept.
+     * An invite for admin or owner stays pending until the inviter confirms the invitee's fingerprint words (a second, small presence act). An invite that has
+     * expired, was used, or whose contents differ from what was approved is refused.
+     * @param {any} chain @param {{ role: string, scope?: string[], expires?: number, invitee?: string, valid_ms?: number }} i @param {{ presence?: any }} [o]
+     */
+    async inviteCreate(chain, i, o = {}) {
+      const issuer = person(chain);
+      if (!i || !ROLE_IDS.includes(i.role)) throw new KernelError("bad_input", "an invite names one of the five roles");
+      if (i.role === "temp" && (!Array.isArray(i.scope) || !i.scope.length || i.scope.some(s => !segments(s) || spaceOf(s) !== cfg.space) || !(i.expires > clock()))) throw new KernelError("bad_input", "a temp invite needs a scope and an expiry");
+      if (i.invitee !== undefined && (typeof i.invitee !== "string" || !i.invitee)) throw new KernelError("bad_input", "invitee is a person id");
+      const d = await gate(chain, "grants.invite", urn("invite"), i, o.presence);
+      const mine = roleOf(issuer);
+      if (!mine || !(MAY_SET[/** @type {"owner"} */ (mine)] || []).includes(i.role)) throw new KernelError("not_allowed", `a ${mine || "non-member"} cannot invite someone as ${i.role}`);
+      const contents = { role: i.role, scope: i.scope || null, expires: i.expires ?? null, invitee: i.invitee ?? null };
+      const rec = freeze({ id: `inv_${mintUuid(clock())}`, space: cfg.space, ...contents, hash: sha256(canonical(contents)), issuer: { ...issuer }, status: "pending", needs_confirm: i.role === "admin" || i.role === "owner", confirmed: false, valid_until: clock() + (i.valid_ms ?? 7 * 24 * 3600 * 1000), created_at: clock() });
+      invites.set(rec.id, rec);
+      note(chain, "invite.created", urn("invite", rec.id), { invite: rec }, d.decision);
+      return rec;
+    },
+    /** The inviter confirms the invitee's fingerprint words (an admin or owner invite stays pending until they do): a second presence act, bound to the words. */
+    async inviteConfirm(chain, /** @type {string} */ id, /** @type {{ words: string }} */ c, o = {}) {
+      const issuer = person(chain);
+      const inv = invites.get(id);
+      const d = await gate(chain, "grants.invite", urn("invite", id), { confirm: id, words: c && c.words }, o.presence);
+      if (!inv || inv.status !== "pending" || !sameActor(inv.issuer, issuer)) throw new KernelError("not_found", "no such invite");
+      if (typeof c.words !== "string" || !c.words.trim()) throw new KernelError("bad_input", "confirm the invitee's fingerprint words");
+      const n = freeze({ ...inv, confirmed: true, confirmed_words_hash: sha256(c.words.trim().toLowerCase()) });
+      invites.set(id, n);
+      note(chain, "invite.confirmed", urn("invite", id), { id, words_hash: n.confirmed_words_hash }, d.decision);
+      return n;
+    },
+    /**
+     * The invitee accepts under their own chain (from the Surfaces door: a person chain that need not be a member yet) and their own presence proof over exactly
+     * these contents. `seen` is what the invitee was shown; if it differs from what the admin approved the invite is refused.
+     * @param {any} chain @param {string} id @param {{ seen: { role: string, scope?: string[] | null, expires?: number | null, invitee?: string | null }, proof: any }} a
+     */
+    async inviteAccept(chain, id, a) {
+      const me = person(chain);
+      const inv = invites.get(id);
+      if (!inv || inv.status !== "pending") throw new KernelError("not_found", "no such invite");
+      if (!(inv.valid_until > clock())) throw new KernelError("expired", "that invite has expired");
+      if (inv.invitee && inv.invitee !== me.id) throw new KernelError("not_found", "no such invite");
+      const seen = { role: a.seen && a.seen.role, scope: (a.seen && a.seen.scope) ?? null, expires: (a.seen && a.seen.expires) ?? null, invitee: (a.seen && a.seen.invitee) ?? null };
+      if (sha256(canonical(seen)) !== inv.hash) throw new KernelError("contents_differ", "that is not what was approved");
+      if (inv.needs_confirm && !inv.confirmed) throw new KernelError("needs_confirmation", "the person who invited you has not yet confirmed your fingerprint words");
+      if (!cfg.presence) throw new KernelError("unavailable", "no presence verifier is wired");
+      if (await cfg.presence.check({ chain, op: "grant.accept", fields: { invite: id, hash: inv.hash, person: me.id }, proof: a.proof }) !== null) throw new KernelError("needs_presence", "accepting needs your confirmation on this device");
+      // Single use: taken before the membership is applied, so a second accept (concurrent or later) finds it used.
+      invites.set(id, freeze({ ...inv, status: "used", used_by: me.id, used_at: clock() }));
+      try {
+        const r = applyRole(chain, inv.issuer, { person: me.id, role: inv.role, ...(inv.role === "temp" ? { scope: inv.scope, expires: inv.expires } : {}) }, null);
+        note(chain, "invite.used", urn("invite", id), { id, by: me.id });
+        return r;
+      } catch (e) { invites.set(id, inv); throw e; }
+    },
+    /**
+     * The clean-up of expired power, the kernel's own service act (no person present): grants past their `when.expires` are revoked, and a temp membership past its
+     * expiry is removed with its offers withdrawn. It only ever reduces power; nothing that widens runs here.
+     */
+    sweep() {
+      const k = kernelChain(), now = clock();
+      let revoked = 0, removed = 0;
+      for (const g of [...grants.values()]) if (g.status === "active" && g.conditions && g.conditions.when && g.conditions.when.expires !== undefined && g.conditions.when.expires <= now) {
+        const n = freeze({ ...g, status: "revoked", revoked_at: now, reason: "expired" }); grants.set(n.id, n);
+        note(k, "grant.revoked", urn("grant", n.id), { id: n.id, reason: "expired" }); revoked++;
+      }
+      for (const m of [...memberships.values()]) if (m.role === "temp" && !(m.expires > now)) {
+        memberships.delete(m.person);
+        note(k, "member.removed", urn("member", m.person), { person: m.person, reason: "expired" }); removed++;
+        for (const o of [...offers.values()]) if (o.member === m.person && o.status === "active") { const n = freeze({ ...o, status: "revoked", revoked_at: now }); offers.set(n.id, n); note(k, "offer.revoked", urn("offer", n.id), { id: n.id }); tell(n, "expired", null); }
+      }
+      return { revoked, removed };
+    },
+    /**
+     * A first-party module's own authority (kernel-only, at boot: nothing a caller can ask for): the module becomes a service actor of the Space and is given the
+     * actions its manifest declared under `needs.kernel`, over the prefixes it declared, as grants whose source is `install:<module>`. Idempotent.
+     * @param {string} name @param {{ actions: string[], prefixes?: string[] }} needs
+     */
+    installModule(name, needs) {
+      const k = kernelChain(), actor = { kind: "service", id: name, space: cfg.space };
+      if (!actors.has(actorKey(actor))) { actors.add(actorKey(actor)); note(k, "actor.added", urn("member", name), { actor }); }
+      const have = [...grants.values()].find(g => g.status === "active" && g.source === `install:${name}`);
+      const prefixes = (needs.prefixes && needs.prefixes.length ? needs.prefixes : ["*/*"]).map(p => `vyre://${cfg.space}/${p}`);
+      const want = canonical({ a: [...needs.actions].sort(), p: prefixes });
+      if (have && canonical({ a: [...have.actions].sort(), p: [have.resource.prefix] }) === want) return have;
+      for (const g of [...grants.values()]) if (g.status === "active" && g.source === `install:${name}`) { const n = freeze({ ...g, status: "revoked", revoked_at: clock(), reason: "reinstalled" }); grants.set(n.id, n); note(k, "grant.revoked", urn("grant", n.id), { id: n.id, reason: "reinstalled" }); }
+      let last;
+      for (const prefix of prefixes) {
+        last = freeze({ id: `gr_${mintUuid(clock())}`, space: cfg.space, subject: { kind: "actor", actor }, actions: [...needs.actions], action_set_version: version, resource: { prefix }, conditions: {}, issuer: { kind: "service", id: "grants", space: cfg.space }, source: `install:${name}`, status: "active", created_at: clock() });
+        grants.set(last.id, last);
+        note(k, "grant.created", urn("grant", last.id), { grant: last });
+      }
+      return last;
+    },
+
     /** The first owner of a new Space, written by the kernel itself (no chain can give the first grant). Once only. */
     bootstrap({ owner }) {
       if (memberships.size || cfg.log.latestSeq() > 0) throw new KernelError("not_allowed", "this Space already has a history: its first owner is made once, at its start");
@@ -319,10 +424,10 @@ export function createGrantsStore(cfg) {
 
     /** Rebuild every grant and membership from the log (after a restart). The log is the durable copy. */
     rebuild() {
-      grants.clear(); memberships.clear(); actors.clear(); offers.clear();
+      grants.clear(); memberships.clear(); actors.clear(); offers.clear(); invites.clear();
       for (const e of cfg.log.read({})) {
         let d = e.data;
-        if (!d || typeof d !== "object" || !/^(grant|member|actor|offer)\./.test(e.type)) continue;
+        if (!d || typeof d !== "object" || !/^(grant|member|actor|offer|invite)\./.test(e.type)) continue;
         // Authority comes only from events this store sealed: anything else in these names is ignored (and not trusted for a grant, a member or an offer).
         const { mac, ...bare } = d;
         if (typeof mac !== "string" || !sameMac(macOf(e.type, e.subject, bare, e.seq, e.prev), mac)) continue;
@@ -332,6 +437,9 @@ export function createGrantsStore(cfg) {
         else if (e.type === "grant.revoked") { const g = grants.get(d.id); if (g) grants.set(d.id, freeze({ ...g, status: "revoked", revoked_at: e.time, reason: d.reason })); }
         else if (e.type === "member.set") memberships.set(d.membership.person, freeze(structuredClone(d.membership)));
         else if (e.type === "member.removed") memberships.delete(d.person);
+        else if (e.type === "invite.created") invites.set(d.invite.id, freeze(structuredClone(d.invite)));
+        else if (e.type === "invite.used") { const v = invites.get(d.id); if (v) invites.set(d.id, freeze({ ...v, status: "used", used_by: d.by })); }
+        else if (e.type === "invite.confirmed") { const v = invites.get(d.id); if (v) invites.set(d.id, freeze({ ...v, confirmed: true })); }
         else if (e.type === "actor.added") actors.add(actorKey(d.actor));
         else if (e.type === "offer.created") offers.set(d.offer.id, freeze(structuredClone(d.offer)));
         else if (e.type === "offer.revoked") { const o = offers.get(d.id); if (o) offers.set(d.id, freeze({ ...o, status: "revoked", revoked_at: e.time })); }

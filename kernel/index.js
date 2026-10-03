@@ -30,7 +30,7 @@ export function createKernel(cfg) {
   const store = cfg.store || createMemoryStore({ clock });
   const chains = cfg.chains || createChainBuilder({ space: cfg.space, owner: cfg.owner, owner_uid: cfg.owner_uid, key: cfg.key, clock, is_person: () => true });
   const own = Boolean(cfg.grants && cfg.members);
-  const grantsStore = own ? undefined : cfg.grantsStore || createGrantsStore({ space: cfg.space, log, chains, key: cfg.key, clock });
+  const grantsStore = own ? undefined : cfg.grantsStore || createGrantsStore({ space: cfg.space, log, chains, key: cfg.key, clock, presence: cfg.presence || (cfg.sealer ? sealerPresence(cfg.sealer) : undefined) });
   const presence = cfg.presence || (cfg.sealer ? sealerPresence(cfg.sealer) : undefined);
   const limits = createLimits({ space: cfg.space, log, clock });
   let fresh = false;

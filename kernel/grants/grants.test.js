@@ -31,7 +31,7 @@ const P = {
 
 function rig() {
   const log = createEventLog({ space: SPACE, clock });
-  const gs = createGrantsStore({ space: SPACE, log, chains, clock, key: Buffer.alloc(32, 5) });
+  const gs = createGrantsStore({ space: SPACE, log, chains, clock, key: Buffer.alloc(32, 5), presence });
   const store = createMemoryStore({ clock });
   const gw = createGateway({ space: SPACE, store, log, chains, clock, grantsStore: gs, presence, owner: OWNER, hasPresenceSession: () => true });
   gs.bootstrap({ owner: OWNER });
@@ -293,4 +293,82 @@ test("G-4: an acceptance is bound to the computer's key; a second machine naming
   assert.equal(g.offers.active({ member: BOB, device: "dev_laptop", device_key: "KEY_A" }).memberAccepts, true);
   assert.equal(g.offers.active({ member: BOB, device: "dev_laptop", device_key: "KEY_B" }).memberAccepts, false, "another machine, same id");
   assert.equal(g.offers.active({ member: BOB, device: "dev_laptop" }).memberAccepts, false, "a bare id is not enough");
+});
+
+
+const inviteProof = (action, input, resource) => proof(action, input, resource);
+test("invites: an admin approves once; the invitee accepts alone with their own proof; single use, exact contents, expiry, and a second confirmation for admin and owner", async () => {
+  const { g, gs, log } = rig();
+  const inv = async (chain, i) => g.invites.create(chain, i, { presence: inviteProof("grants.invite", i, `vyre://${SPACE}/invite/new`) });
+  const guest = who => chains.fromFacts({ kind: "invitee", person: who, vouched: true });
+  const acceptP = (i, who) => ({ op: "grant.accept", fields: { invite: i.id, hash: i.hash, person: who }, n: Math.random() });
+  const seen = i => ({ role: i.role, scope: i.scope, expires: i.expires, invitee: i.invitee });
+  // an invite for a member
+  const i1 = await inv(owner(), { role: "member" });
+  assert.equal(i1.status, "pending");
+  assert.equal(gs.roleOf(actor("person", BOB)), null);
+  await assert.rejects(() => g.invites.accept(guest(BOB), i1.id, { seen: seen(i1), proof: {} }), { code: "needs_presence" }, "no proof of their own");
+  await assert.rejects(() => g.invites.accept(guest(BOB), i1.id, { seen: { ...seen(i1), role: "admin" }, proof: acceptP(i1, BOB) }), { code: "contents_differ" }, "not what was approved");
+  const done = await g.invites.accept(guest(BOB), i1.id, { seen: seen(i1), proof: acceptP(i1, BOB) });
+  assert.equal(done.membership.role, "member");
+  assert.equal(gs.roleOf(actor("person", BOB)), "member", "applied with no admin present");
+  await assert.rejects(() => g.invites.accept(guest("per_carol"), i1.id, { seen: seen(i1), proof: acceptP(i1, "per_carol") }), { code: "not_found" }, "single use");
+  // a named invitee, and expiry
+  const i2 = await inv(owner(), { role: "member", invitee: "per_dave" });
+  await assert.rejects(() => g.invites.accept(guest("per_carol"), i2.id, { seen: seen(i2), proof: acceptP(i2, "per_carol") }), { code: "not_found" });
+  const i3 = await inv(owner(), { role: "member", valid_ms: 1000 });
+  T += 5000;
+  await assert.rejects(() => g.invites.accept(guest("per_erin"), i3.id, { seen: seen(i3), proof: acceptP(i3, "per_erin") }), { code: "expired" });
+  // an admin invite stays pending until the inviter confirms the fingerprint words
+  const i4 = await inv(owner(), { role: "admin" });
+  assert.equal(i4.needs_confirm, true);
+  await assert.rejects(() => g.invites.accept(guest("per_frank"), i4.id, { seen: seen(i4), proof: acceptP(i4, "per_frank") }), { code: "needs_confirmation" });
+  await g.invites.confirm(owner(), i4.id, { words: "amber tiger" }, { presence: inviteProof("grants.invite", { confirm: i4.id, words: "amber tiger" }, `vyre://${SPACE}/invite/${i4.id}`) });
+  assert.equal((await g.invites.accept(guest("per_frank"), i4.id, { seen: seen(i4), proof: acceptP(i4, "per_frank") })).membership.role, "admin");
+  // a member cannot invite anyone, an admin cannot invite an admin
+  await assert.rejects(() => inv(personChain(BOB), { role: "member" }), e => ["not_found", "not_allowed"].includes(e.code));
+  await assert.rejects(() => inv(personChain("per_frank"), { role: "admin" }), { code: "not_allowed" });
+  // an invitee chain that is not accepting anything finds nothing
+  await assert.rejects(() => g.list(guest("per_zed")), { code: "not_found" });
+  // survives a rebuild: used stays used, memberships stay
+  gs.rebuild();
+  assert.equal(gs.roleOf(actor("person", BOB)), "member");
+  await assert.rejects(() => g.invites.accept(guest("per_gina"), i1.id, { seen: seen(i1), proof: acceptP(i1, "per_gina") }), { code: "not_found" });
+  assert.ok(log.read({ type: "invite.created" }).length >= 4);
+});
+
+test("expiry sweep: expired grants and temp memberships are revoked by the kernel itself, only ever reducing power, and the runner is told", async () => {
+  const { g, gs } = rig();
+  const exp = T + 60_000;
+  const role = { person: "per_temp", role: "temp", scope: [`vyre://${SPACE}/contact/c1`], expires: exp };
+  await g.setRole(owner(), role, P.role(role));
+  const told = [];
+  g.offers.onRevoke(e => told.push(e.reason));
+  const withExp = input({ subject: { kind: "actor", actor: actor("person", ALICE) }, conditions: { when: { expires: exp } } });
+  await g.create(owner(), withExp, P.create(withExp));
+  assert.deepEqual(gs.sweep(), { revoked: 0, removed: 0 }, "nothing expired yet");
+  T = exp + 10;
+  const r = gs.sweep();
+  assert.ok(r.revoked >= 2 && r.removed === 1, JSON.stringify(r));
+  assert.equal(gs.roleOf(actor("person", "per_temp")), null);
+  assert.deepEqual((await g.list(owner(), { status: "active" })).filter(x => x.conditions.when && x.conditions.when.expires === exp), []);
+  assert.deepEqual(gs.sweep(), { revoked: 0, removed: 0 }, "idempotent");
+  gs.rebuild();
+  assert.equal(gs.roleOf(actor("person", "per_temp")), null);
+});
+
+test("installModule: a first-party module becomes a service actor with exactly the actions its manifest declared, kernel-only and idempotent", async () => {
+  const { gs, gw } = rig();
+  await gw.records.define(owner(), { add_types: [CONTACT] });
+  const svc = () => gw.serviceChain("goals");
+  assert.equal(await gw.records.get(svc(), "contact", "0190c3f2-1111-4abc-8def-000000000000"), null, "no membership, no access");
+  gs.installModule("goals", { actions: ["records.read", "records.create"], prefixes: ["contact/*"] });
+  const c = await gw.records.create(svc(), "contact", { name: "From the module" });
+  assert.equal(c.data.name, "From the module");
+  await assert.rejects(() => gw.records.update(svc(), "contact", c.id, { age: 1 }, 1), { code: "not_found" }, "only what it declared");
+  const before = (await gw.grants.list(owner())).length;
+  gs.installModule("goals", { actions: ["records.read", "records.create"], prefixes: ["contact/*"] });
+  assert.equal((await gw.grants.list(owner())).length, before, "idempotent");
+  gs.rebuild();
+  assert.ok(await gw.records.get(svc(), "contact", c.id));
 });

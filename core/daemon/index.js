@@ -150,6 +150,7 @@ async function startLocked(opts, root, p, release) {
     const { bootHomeKernel } = await import("../../kernel/home.js");
     kernel = await bootHomeKernel({ db, root, log, isFirstParty: dir => registry.isFirstParty(dir) });
     registry.deps.moduleHost = kernel.moduleHost;
+    registry.deps.kernelFor = kernel.kernelFor;
     if (kernel.firstPartyCheck) registry.deps.firstPartyCheck = kernel.firstPartyCheck;
     registry.deps.moduleApprovals = kernel.moduleApprovals;
     log(`kernel on · space ${kernel.id.space}${kernel.fresh ? " (new)" : ""}`);
