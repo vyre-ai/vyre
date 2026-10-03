@@ -11,6 +11,7 @@
 // broken watcher runtime should not cost someone their search.
 
 import { AsyncLocalStorage } from "node:async_hooks";
+import { OPEN as AGENT_OPEN, ASK_FIRST as AGENT_ASK_FIRST } from "./agent-reach.js";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -429,35 +430,19 @@ export const agentClaim = caller => {
 };
 
 /**
- * Person reach is the person's: a caller that carries an agent claim ("cli:agent:kit", "deck:agent:kit") is an agent on every surface and never passes it, whatever surface
- * label it wears. A person-reach tool an assistant legitimately needs is listed here with the reason, and nowhere else; the default for any other is person only
- * (team/0.3/reviews/cli-agent-reach.md).
- * @type {ReadonlyMap<string, string>}
+ * Person reach and the person's assistant (the user's ruling, 4 Oct 2026; core/modules/agent-reach.js holds the three lists with a reason for each entry). A caller that
+ * carries an agent or thread claim, on any surface, is an assistant. A `reach: person` tool is OPEN to it unless it is on the person-only list (or on no list yet: a new tool
+ * is refused until someone classifies it). It then runs under the person's own narrowed grants like any other call. An ASK_FIRST tool is open but held for a one-tap task
+ * exactly like an outward one. An assistant reaches an open person tool from any of cli, local, mcp or harness: the surface label is not what decides it.
+ * Safe only because the claim is assigned by the daemon from the session's own socket (L-1), never self-declared on the person's own socket.
  */
-export const AGENT_REACH = new Map([
-  ["artifacts.activity.log", "an assistant records what it did on an artifact"],
-  ["artifacts.mention.search", "@-mention lookup while an assistant writes"],
-  ["bridges.propose-projection", "an assistant proposes a projection; a person accepts it"],
-  ["bridges.propose-reference", "an assistant proposes a reference; a person accepts it"],
-  ["bridges.propose-view", "an assistant proposes a bridge view; a person accepts it"],
-  ["computers.egress.status", "read-only status an assistant checks before it acts"],
-  ["computers.handback.status", "read-only status an assistant checks before it acts"],
-  ["computers.tailnet.status", "read-only status an assistant checks before it acts"],
-  ["files.mentions.search", "@-mention lookup while an assistant writes"],
-  ["github.star.status", "read-only status an assistant checks before it acts"],
-  ["mentions.kinds", "@-mention lookup while an assistant writes"],
-  ["mentions.search", "@-mention lookup while an assistant writes"],
-  ["network.funnel.status", "read-only status an assistant checks before it acts"],
-  ["sessions.mention.search", "@-mention lookup while an assistant writes"],
-  ["threads.remember", "an assistant saves a note to its own thread's memory"],
-  ["voice.status", "read-only status an assistant checks before it acts"],
-  ["wink.code.status", "read-only status an assistant checks before it acts"],
-  ["wink.pair.status", "read-only status an assistant checks before it acts"],
-  ["wink.storage.status", "read-only status an assistant checks before it acts"],
-  ["work.engineer.revise", "an assistant revises its own @Engineer request"],
-  ["work.engineer.talk", "an assistant talks to the @Engineer teammate"],
-]);
-export const personRefusesAgent = (/** @type {string} */ tool, /** @type {any} */ d, /** @type {any} */ caller) => d.reach === "person" && !AGENT_REACH.has(tool) && (agentClaim(caller) !== null || /(?:^|[\s:])thread:/.test(String(caller ?? "")));
+const claimsAgent = (/** @type {any} */ caller) => agentClaim(caller) !== null || /(?:^|[\s:])thread:/.test(String(caller ?? ""));
+const AGENT_SURFACES = new Set(["cli", "local", "mcp", "harness"]);
+export const personRefusesAgent = (/** @type {string} */ tool, /** @type {any} */ d, /** @type {any} */ caller) => d.reach === "person" && claimsAgent(caller) && !AGENT_OPEN.has(tool) && !AGENT_ASK_FIRST.has(tool);
+/** A person-reach tool that is open to this assistant caller even though the surface label is not one of the person's own. */
+export const agentOpensPerson = (/** @type {string} */ tool, /** @type {any} */ d, /** @type {any} */ caller) => d.reach === "person" && claimsAgent(caller) && AGENT_SURFACES.has(callerKind(caller)) && (AGENT_OPEN.has(tool) || AGENT_ASK_FIRST.has(tool));
+/** An open-but-ask-first tool called by an assistant: held for a one-tap task, like an outward one. */
+export const agentAskFirst = (/** @type {string} */ tool, /** @type {any} */ caller) => AGENT_ASK_FIRST.has(tool) && claimsAgent(caller);
 
 /**
  * May this caller use a tool with this callers list? On a box the Deck is served at the tailnet
@@ -1005,6 +990,8 @@ export class Registry {
         list: () => [...this.providers.keys()],
       },
       ...(kernelHandle ? { kernel: kernelHandle } : {}),
+      // The session credential maker is the Switchboard's alone (vyred's own sessions): no other module is handed the way to open a kernel session for a thread.
+      ...(m.name === "switchboard" && this.deps.kernelSession ? { kernelSession: this.deps.kernelSession } : {}),
       tool: (name, def) => {
         if (!declared.has(name)) throw new Error(`${m.name} registered tool ${name}, which its manifest does not declare under does.tools`);
         if (this.tools.has(name)) throw new Error(`tool ${name} is already registered`);
@@ -1105,12 +1092,12 @@ export class Registry {
       // (reviews/platform.md CR-H1): an outward tool runs only from the person's own surface or
       // device, and an asked tool never runs for a model, the harness or a module, since nothing
       // here can yet tell that the person's own words asked for it.
-      if (def.outward && !isPerson(caller)) {
+      if ((def.outward || agentAskFirst(tool, caller)) && !isPerson(caller)) {
         return { error: { code: "held_unavailable", message: `${tool} acts as you outside. A call from anyone but you is held at the Gate, and that routing lands with the Gate wiring; until then it runs only from your own surface.` } };
       }
       if (def.internal && !String(caller).startsWith("module:")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
       if (Boolean(def.hook) !== (caller === "hook")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
-      if (!callerAllowed(def.callers, caller) || personRefusesAgent(tool, def, caller)) return { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
+      if (!(callerAllowed(def.callers, caller) || agentOpensPerson(tool, def, caller)) || personRefusesAgent(tool, def, caller)) return { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
       // A guest from another tailnet is never a person proving they are here, whatever proof it
       // carries: presence is the owner's (ADR 0014 part 8), and so is the keyboard of an agent's
       // computer, which needs no proof (PERSON_ONLY). The router already hides these tools.
@@ -1347,7 +1334,7 @@ export class Registry {
   /** Tools the given caller may use. Without a caller, every tool that is neither internal nor a hook. */
   listTools(caller) {
     const needs = (name, d) => (this.deps.presence ? this.deps.presence.required(name, d) : Boolean(d.presence));
-    return [...this.tools.entries()].filter(([name, d]) => !d.internal && !d.hook && (!caller || (callerAllowed(d.callers, caller) && !personRefusesAgent(name, d, caller))))
+    return [...this.tools.entries()].filter(([name, d]) => !d.internal && !d.hook && (!caller || ((callerAllowed(d.callers, caller) || agentOpensPerson(name, d, caller)) && !personRefusesAgent(name, d, caller))))
       .map(([name, d]) => ({ name, module: d.module, description: d.description, input: d.input, ...(needs(name, d) ? { presence: true } : {}),
         // Module API 1: what an object entry declared, for the capability manifest.
         ...(d.declaredReach ? { reach: d.reach } : {}), ...(d.outward ? { outward: d.outward } : {}) }));

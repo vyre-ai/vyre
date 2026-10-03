@@ -1,7 +1,7 @@
 import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { Avatar, Button, Card, Chip, Divider, Segmented, Text, showToast, markRef } from "@vyre/ui";
-import { Page } from "../shell/Page";
+import { Page } from "../places/Frame";
 import { useSettings } from "./state";
 import { AUTONOMY } from "./logic.js";
 

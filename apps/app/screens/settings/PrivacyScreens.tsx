@@ -1,7 +1,7 @@
 import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, Row, Segmented, Switch, Text, markRef } from "@vyre/ui";
-import { Group, Page } from "../shell/Page";
+import { Group, Page } from "../places/Frame";
 import { useTypes } from "../customize/state";
 import { PRIVACY_ROWS, RETENTION } from "./logic.js";
 import { RECORD_COUNTS, SEEING } from "./data";

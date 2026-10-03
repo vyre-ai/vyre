@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { View } from "react-native";
 import { Avatar, Banner, Button, Card, Chip, Divider, Meter, Segmented, Sheet, Text, showToast, markRef } from "@vyre/ui";
-import { Page } from "../shell/Page";
+import { Page } from "../places/Frame";
 import { useSettings } from "./state";
 import { BUDGET_STEPS, budgetLine, money, overLine, usedPercent, usedShare } from "./logic.js";
 

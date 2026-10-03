@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Pressable, View, useWindowDimensions } from "react-native";
 import { aid, stageFieldOf, stageNames } from "../../../../deck/ui/kernel-view.js";
 import { Avatar } from "../components/Avatar";
-import { Button } from "../components/Button";
 import { Icon } from "../components/Icon";
 import { Card, Divider } from "../components/Card";
 import { Chip } from "../components/Chip";
@@ -11,8 +10,8 @@ import { Row } from "../components/Row";
 import { StageSteps } from "../components/StageSteps";
 import { Text } from "../components/Text";
 import { ActorMark } from "./ActorMark";
-import { spaceRef } from "../marks/useMark";
-import { createdLine, liveLine, progressText, recordTitle, required, spaceName, stageGroups, stateTone, stateWord, teamOf, waitsFor, who, type World } from "./model";
+import { useUiTheme } from "../theme";
+import { createdLine, liveLine, progressText, recordTitle, required, stageGroups, stateTone, stateWord, teamOf, waitsFor, who, type World } from "./model";
 
 const WIDE = 1000;
 
@@ -72,8 +71,9 @@ function filesOf(def: any, row: any, tasks: any[]): { name: string; sub: string 
  * doing now, each stage's tasks, the team with its doing-now line, linked records, chats and files. A task opens in place; when the last required task of a stage is
  * done the record moves on by itself, and this page redraws from the store.
  */
-export function ProjectView({ world, def, row, events, links, onOpenTask, onBack }: { world: World; def: any; row: any; events: any[]; links: { field: string; rec: any; def: any }[]; onOpenTask: (t: any) => void; onBack: () => void }) {
+export function ProjectView({ world, def, row, events, links, onOpenTask }: { world: World; def: any; row: any; events: any[]; links: { field: string; rec: any; def: any }[]; onOpenTask: (t: any) => void }) {
   const { width } = useWindowDimensions();
+  const { phone } = useUiTheme();
   const tasks = world.tasks.filter((t) => t.record === row.urn);
   const sf = stageFieldOf(def);
   const stages: string[] = sf ? stageNames(def, sf) : [];
@@ -84,7 +84,6 @@ export function ProjectView({ world, def, row, events, links, onOpenTask, onBack
   const live = liveLine(tasks, world.actors);
   const created = createdLine(events, world.actors, world.now);
   const files = filesOf(def, row, tasks);
-  const sp = spaceName(world, row.labels?.source_spaces?.[0]);
   const wide = width >= WIDE;
 
   const left = (
@@ -108,18 +107,8 @@ export function ProjectView({ world, def, row, events, links, onOpenTask, onBack
   );
   return (
     <View className="gap-s4">
-      <View className="items-start gap-s2">
-        <Button kind="ghost" size="sm" icon="chevron-left" label="Back to Projects" onPress={onBack} />
-        <View className="flex-row items-center gap-s3">
-          <Avatar of={{ kind: "project", id: row.id, name: recordTitle(world, row), seed: row.data?.avatar_seed }} size={44} space={row.labels?.source_spaces?.[0] ? spaceRef(sp, row.labels.source_spaces[0]) : undefined} />
-          <View className="min-w-0 flex-1 gap-s1">
-            <Text size="page" strong>{recordTitle(world, row)}</Text>
-            <View className="flex-row flex-wrap gap-s2"><Chip>{def.label}</Chip></View>
-          </View>
-        </View>
-        {created ? <Text size="caption" tone="label">{created}</Text> : null}
-      </View>
-      {stages.length ? <StageSteps stages={stages} current={Math.max(0, stages.indexOf(current ?? ""))} /> : null}
+      {created ? <Text size="caption" tone="label">{created}</Text> : null}
+      {stages.length ? <StageSteps strip={phone} stages={stages} current={Math.max(0, stages.indexOf(current ?? ""))} /> : null}
       {live ? <View className="flex-row items-center gap-s2"><View className="h-s2 w-s2 rounded-full bg-ok" /><Text tone="muted">{live}</Text></View> : null}
       {wide ? <View className="flex-row items-start gap-s6"><View className="min-w-0 flex-[3]">{left}</View><View className="min-w-0 flex-[2]">{right}</View></View> : <View className="gap-s4">{left}{right}</View>}
     </View>

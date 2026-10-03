@@ -104,27 +104,41 @@ test("threadsock: a session's call id reaches the tool; other callers' and malfo
   assert.deepEqual(cli.data, { call: null, thread: null }, "a caller with no thread never sets it");
 });
 
-test("threadsock: the session's own token rides every call from the listener, a client header never replaces it, and a revoked session's socket closes", async t => {
+test("threadsock: a real session's call arrives with its own kernel token, in its own chat; a header the client sends is dropped; no valid token refuses the call", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
   const root = tempHome(t);
-  const d = await start({ root, log: () => {} });
+  const fp = path.join(root, "modules");
+  fs.mkdirSync(fp, { recursive: true });
+  const { writeModule } = await import("./helpers.js");
+  writeModule(fp, "zz-room", { does: { tools: [{ name: "zz-room.peek", reach: "anyone" }] }, needs: { kernel: { actions: [] } } }, `
+    export default { async start(ctx) { ctx.tool("zz-room.peek", { run: async (i, meta) => ({ caller: meta.caller, token: meta.token || null, room: await ctx.kernel.audienceFor({}).catch(e => ({ error: e.code })) }) }); return {}; } };`);
+  const d = await start({ root, log: () => {}, kernel: true, firstPartyRoots: [fp] });
   t.after(() => d.stop());
-  d.registry.tools.set("probe.token", { module: "system", description: "", input: { type: "object" }, internal: false, callers: null, hook: false, presence: false,
-    run: async (_, meta) => ({ caller: meta.caller, token: meta.token || null }) });
+  const ctx = d.registry.context({ name: "switchboard", version: "0.1.0", does: { tools: [] } });
+  assert.equal(typeof ctx.kernelSession, "function", "the Switchboard is handed the session credential maker");
+  assert.equal(typeof d.registry.context({ name: "other", version: "0.1.0", does: { tools: [] } }).kernelSession, "undefined", "and nobody else");
+  const owner = d.kernel.id.owner;
+  const person = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct" });
+  const chat = await d.kernel.gateway.grants.chats.create(person, {});
   const dir = fs.mkdtempSync(path.join(SCRATCH, "ts-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  const ctx = d.registry.context({ name: "switchboard", version: "0.1.0", does: { tools: [] } });
   /** @type {number[]} */ const inThread = [];
-  let live = true;
-  const sock = await openThreadSocket({ handler: ctx.handler, thread: "t1", agent: "kit", dir, token: "own.token", valid: async () => live, pids: async () => ({ pids: inThread }) });
-  // the client says it is a CLI and sends another session's token: the caller is still kit's, the token is the session's own
-  const a = client(sock.path, "probe.token", {}, { "x-vyre-caller": "cli", "x-vyre-kernel-session": "other.token" });
+  const ks = await ctx.kernelSession({ thread: "t1", agent: "kit", rec: { chat: chat.id } });
+  const sock = await openThreadSocket({ handler: ctx.handler, thread: "t1", agent: "kit", dir, kernelToken: ks.token, pids: async () => ({ pids: inThread }) });
+  t.after(() => sock.close());
+  // the client claims to be a CLI and sends another token of its own: the caller is the session's agent, the token is the session's
+  const a = client(sock.path, "zz-room.peek", {}, { "x-vyre-caller": "cli", "x-vyre-kernel-session": "forged.token" });
   inThread.push(a.pid);
-  assert.deepEqual((await a.done).body.data, { caller: "cli:agent:kit", token: "own.token" });
-  // revoked: the next call is refused and the socket file is gone
-  live = false;
-  const b = client(sock.path, "probe.token", {});
+  const got = (await a.done).body.data;
+  assert.equal(got.caller, "mcp:agent:kit", "whatever the client claims, the listener names the agent");
+  assert.match(got.token, /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
+  assert.notEqual(got.token, "forged.token");
+  assert.deepEqual(got.room, { group: false }, "the session's own chat, a chat of one person");
+  // ended: the kernel stops honouring the token, the socket refuses and nothing is sent unstamped
+  await ks.end();
+  const b = client(sock.path, "zz-room.peek", {});
   inThread.push(b.pid);
-  assert.equal((await b.done).status, 403);
-  await new Promise(r => setTimeout(r, 100));
-  assert.equal(fs.existsSync(sock.path), false, "the socket is removed once the session is revoked");
+  assert.equal((await b.done).status, 401);
 });

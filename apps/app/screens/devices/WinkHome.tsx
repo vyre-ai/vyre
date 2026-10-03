@@ -1,7 +1,7 @@
 import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { Avatar, Card, Row, Switch, Text, showToast, type IconName, IconTile } from "@vyre/ui";
-import { Page } from "../shell/Page";
+import { Page } from "../places/Frame";
 import { useDevices } from "./state";
 
 const VERBS: { id: string; icon: IconName; title: string; body: string; href: string }[] = [

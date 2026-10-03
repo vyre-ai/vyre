@@ -188,6 +188,15 @@ export function nowModel(w, scope = "all") {
     faces: [...new Set(w.tasks.filter((t) => t.state === "working").map((t) => aid(t.doer)))].slice(0, 3),
   };
 }
+/** How many tasks wait on the person across every space: the one badge the shell shows on Now. @param {World} w */
+export const nowCount = (w) => nowModel(w, "all").needs.length;
+
+/** The event to show as "Next": the first one still to come today, else the first of the day. @param {any[]} calendar @param {number} now */
+export function nextEvent(calendar, now) {
+  const list = [...calendar].sort((a, b) => a.at - b.at);
+  return list.find((e) => e.at >= now) || list[0] || null;
+}
+
 /** The space id inside a urn. @param {string} urn */
 const spaceOfUrnLoose = (urn) => /^vyre:\/\/([^/]+)\//.exec(urn)?.[1] || "";
 
@@ -300,6 +309,9 @@ export const stateTone = (state) => ({ done: "ok", stuck: "sealed", needs_check:
 
 /** "2 of 4 tasks" / "No tasks", over every task of a record. @param {any[]} tasks */
 export const progressText = (tasks) => (tasks.length ? `${tasks.filter(isDone).length} of ${tasks.length} task${tasks.length === 1 ? "" : "s"}` : "No tasks");
+
+/** How many of a record's tasks are done, and how many there are. @param {any[]} tasks */
+export const taskFraction = (tasks) => ({ done: tasks.filter(isDone).length, total: tasks.length });
 
 /** Which of a task's dependencies are still open, as lower-case titles. @param {any} t @param {any[]} all */
 export const waitsFor = (t, all) => (t.depends_on || []).map((/** @type {string} */ d) => all.find((x) => x.id === d)).filter((/** @type {any} */ x) => x && !isDone(x)).map((/** @type {any} */ x) => lc(x.title));

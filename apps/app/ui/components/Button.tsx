@@ -19,8 +19,10 @@ const button = cva("flex-row items-center justify-center gap-s2 rounded-button b
       ghost: "bg-transparent border-transparent",
       danger: "bg-err-wash border-transparent",
       hold: "bg-err-wash border-transparent",
+      // A destructive text button: no fill, the err ink, and a held press (600 ms) fills it with the wash as it counts down.
+      holdText: "bg-transparent border-transparent",
     },
-    size: { md: "h-control px-s4", sm: "h-control-sm px-s3" },
+    size: { lg: "h-s12 px-s5", md: "h-control px-s4", sm: "h-control-sm px-s3" },
     disabled: { true: "opacity-45", false: "" },
     phone: { true: "", false: "" },
   },
@@ -31,12 +33,13 @@ const button = cva("flex-row items-center justify-center gap-s2 rounded-button b
 /** The button label: 15 medium (ui-review Global 6), on every platform. */
 const LABEL = { fontSize: 15, lineHeight: 20 } as const;
 
-const ink: Record<string, string> = { primary: "inverse", secondary: "default", ghost: "muted", danger: "err", hold: "err" };
+const ink: Record<string, string> = { primary: "inverse", secondary: "default", ghost: "muted", danger: "err", hold: "err", holdText: "err" };
 
 export type ButtonProps = {
   label?: string;
-  kind?: "primary" | "secondary" | "ghost" | "danger" | "hold";
-  size?: "md" | "sm";
+  kind?: "primary" | "secondary" | "ghost" | "danger" | "hold" | "holdText";
+  /** "lg" is the 48 high full-width primary of a page (Invite someone, Ask @Engineer); md is 44 on a phone; sm is 36. */
+  size?: "lg" | "md" | "sm";
   icon?: IconName;
   onPress?: () => void;
   disabled?: boolean;
@@ -49,7 +52,7 @@ export type ButtonProps = {
 /** Button: one primary per surface. "hold" carries the count of what goes and fires after a held press (tokens.v2.motion.hold). */
 export function Button({ label, kind = "secondary", size = "md", icon, onPress, disabled, loading, accessibilityLabel, className }: ButtonProps) {
   const { color, phone } = useUiTheme();
-  const hold = kind === "hold";
+  const hold = kind === "hold" || kind === "holdText";
   const fill = useRef(new Animated.Value(0)).current;
   const [holding, setHolding] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);

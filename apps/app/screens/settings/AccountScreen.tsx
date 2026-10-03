@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { View } from "react-native";
 import { Avatar, Button, Card, Chip, Divider, Row, Switch, Text, showToast, markRef } from "@vyre/ui";
-import { Group, Page } from "../shell/Page";
+import { Group, Page } from "../places/Frame";
 import { FaceIdSheet, type FaceAsk } from "../shell/FaceIdSheet";
 import { loadAccount } from "./data";
 import { useSettings } from "./state";
