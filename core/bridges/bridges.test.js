@@ -34,6 +34,8 @@ const FAKES = {
     const w = () => globalThis.__bw;
     ctx.tool("spaces.membership", { run: async ({ space, person }) => (w().members[space] || {})[person] || null });
     ctx.tool("spaces.merge-list", { run: async ({ person }) => w().spaces[person] ?? null });
+    // The real spaces.self (core/spaces): the person is this device's own only for the person's own surface, or an assistant's agent claim. Everything else is nobody.
+    ctx.tool("spaces.self", { run: async ({ caller }) => ({ person: /^(deck|cli|local|capsule|mobile)(:|$)/.test(caller) || /:agent:/.test(caller) ? (w().self ?? null) : null, space: null }) });
     ctx.tool("spaces.policy", { run: async ({ space }) => w().policy[space] || {} });
     return {};
   } };`,
@@ -52,7 +54,7 @@ const FAKES = {
     return {};
   } };`,
 };
-const MANIFEST = { spaces: ["spaces.membership", "spaces.merge-list", "spaces.policy"], records: ["records.read", "records.query", "records.create", "records.schema", "records.state", "records.define"], tasks: ["tasks.create"] };
+const MANIFEST = { spaces: ["spaces.membership", "spaces.merge-list", "spaces.policy", "spaces.self"], records: ["records.read", "records.query", "records.create", "records.schema", "records.state", "records.define"], tasks: ["tasks.create"] };
 
 /** A real box registry with core/bridges and fake spaces (and, unless left out, records and tasks) modules. */
 async function boxRegistry(t, { w = world(), fakes = ["spaces", "records", "tasks"] } = {}) {
@@ -69,7 +71,8 @@ async function boxRegistry(t, { w = world(), fakes = ["spaces", "records", "task
   await reg.start([...core, ...discover([mods])], { role: "box" });
   t.after(async () => { await reg.stop(); db.close(); });
   assert.equal(reg.modules.get("bridges").state, "running", reg.modules.get("bridges").error);
-  const call = (tool, input = {}, caller = "deck", meta = {}) => reg.call(tool, input, caller, meta);
+  // The fake spaces module answers "who is the verified caller" from w.self: these tests act as whoever the input names, unless a test pins w.self itself (a guest, a stranger).
+  const call = (tool, input = {}, caller = "deck", meta = {}) => { if (!w.pinned) w.self = input.person ?? w.self; return reg.call(tool, input, caller, meta); };
   const ok = async (...a) => { const r = await call(...a); assert.ok(!r.error, JSON.stringify(r.error)); return r.data; };
   const all = () => events.since(0);
   return { reg, db, events, call, ok, w, all };
@@ -255,8 +258,8 @@ test("bridges: a model chain is held for a copy and refused for sealed values", 
   assert.equal(h.w.records.northwind.client, undefined, "nothing was written");
   const sealed = await h.call("bridges.copy", { person: "alex", urn: "vyre://harlow/client/c1", toSpace: "northwind", copy_sealed: ["ssn"] }, "mcp:agent:juno", ME);
   assert.equal(sealed.error?.code, "sealed");
-  // a bare model session ("mcp") is no more the person than a named agent
-  assert.equal((await h.call("bridges.copy", { person: "alex", urn: "vyre://harlow/client/c1", toSpace: "northwind", copy_sealed: ["ssn"] }, "mcp", ME)).error?.code, "sealed");
+  // a bare model session ("mcp") is no more the person than a named agent: it is nobody, and is refused before anything is judged (BR-1)
+  assert.equal((await h.call("bridges.copy", { person: "alex", urn: "vyre://harlow/client/c1", toSpace: "northwind", copy_sealed: ["ssn"] }, "mcp", ME)).error?.code, "forbidden");
   // the person alone, with presence: off by default, so still not copied
   const own = await h.call("bridges.copy", { person: "alex", urn: "vyre://harlow/client/c1", toSpace: "northwind", copy_sealed: ["ssn"] }, "deck");
   assert.equal(own.error?.code, "needs_presence");
@@ -352,4 +355,54 @@ test("bridges: the manifest declares every event the module emits and the lib's 
   await h.ok("bridges.revoke", { person: "kit", bridge: b.id });
   const types = new Set(h.all().filter(e => e.source === "bridges").map(e => e.type));
   for (const x of types) assert.ok(manifest.watches.emits.includes(x), x);
+});
+
+
+test("bridges BR-1: the person is the verified caller's, never the input's: a guest, a plain model session, an anonymous caller or a mismatched name gets nothing", async t => {
+  const h = await boxRegistry(t);
+  const b = await h.ok("bridges.propose-view", viewOffer(), "deck", ME);
+  await h.ok("bridges.accept", { person: "kit", bridge: b.id });
+  const reads = ["bridges.view.read", "bridges.resolve", "bridges.copy", "bridges.continue"];
+  const input = {
+    "bridges.view.read": { person: "kit", share: b.id },
+    "bridges.resolve": { person: "kit", space: "northwind", urn: "vyre://harlow/client/c1" },
+    "bridges.copy": { person: "kit", urn: "vyre://harlow/client/c1", toSpace: "northwind" },
+    "bridges.continue": { person: "kit", fromSpace: "northwind", toSpace: "harlow", summaryRefs: ["vyre://northwind/matter/m1"] },
+  };
+  h.w.pinned = true;
+  h.w.self = "kit";
+  // the person's own deck as kit: allowed (nothing is held back by the identity check)
+  assert.ok(!(await h.call("bridges.view.read", input["bridges.view.read"], "deck")).error, "kit reading as kit through his own surface");
+  // anonymous, a plain mcp session, a hook, a guest and a module: each naming kit gets a refusal, and no data
+  for (const caller of ["mcp", "harness", "hook", "tailnet-guest:mallory@example.com", "module:other"]) {
+    for (const tool of reads) {
+      const r = await h.call(tool, input[tool], caller);
+      assert.ok(r.error, `${tool} as ${caller} must be refused`);
+      assert.ok(["forbidden", "denied", "no_such_tool"].includes(r.error.code), `${tool} as ${caller}: ${r.error.code}`);
+      assert.ok(!JSON.stringify(r).includes("Dana Harlow"), "no data came back");
+    }
+  }
+  // the person's own surface, but naming someone else: bad_input, never silently replaced
+  h.w.self = "alex";
+  for (const tool of reads) assert.equal((await h.call(tool, input[tool], "deck")).error?.code, "bad_input", tool);
+  // and with nobody verified at all the surface itself is refused
+  h.w.self = null;
+  assert.equal((await h.call("bridges.view.read", input["bridges.view.read"], "deck")).error?.code, "forbidden");
+});
+
+
+test("bridges: no tool reads the person from its input (the source is grepped); the one exception is the modules-only session policy, whose caller is a first-party module", async () => {
+  const fs = await import("node:fs");
+  const src = fs.readFileSync(new URL("./index.js", import.meta.url), "utf8");
+  const lines = src.split("\n");
+  const bad = [];
+  let inPolicy = false;
+  lines.forEach((line, n) => {
+    if (/ctx\.tool\("bridges\.session\.policy"/.test(line)) inPolicy = true;
+    else if (/ctx\.tool\("/.test(line)) inPolicy = false;
+    if (/^\s*(\*|\/\/|\/\*)/.test(line)) return;
+    if (/\b(i|input)\.person\b/.test(line) && !inPolicy && !/The person a call is for is the VERIFIED|i && i\.person !== undefined/.test(line)) bad.push(`${n + 1}: ${line.trim().slice(0, 100)}`);
+    if (/personOf\s*=\s*i\s*=>/.test(line)) bad.push(`${n + 1}: ${line.trim().slice(0, 100)}`);
+  });
+  assert.deepEqual(bad, [], "identity read from input");
 });
