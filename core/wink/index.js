@@ -44,7 +44,7 @@ function owner(meta, what) {
     throw fail("denied", `${what} is the owner's`);
 }
 
-/** @param {{ ports?: import("./pairing.js").Ports, directory?: import("./pairing.js").Directory, pool?: any, poolBackend?: (c: any, offer: any) => any }} [inject] @returns {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
+/** @param {{ offers?: any, ports?: import("./pairing.js").Ports, directory?: import("./pairing.js").Directory, pool?: any, poolBackend?: (c: any, offer: any) => any }} [inject] @returns {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export function createWink(inject = {}) {
   return {
   async start(ctx) {
@@ -220,6 +220,7 @@ export function createWink(inject = {}) {
       // Who may pair to a space: the kernel's grants store when ctx.kernel offers it (work/kernel), else a fake that makes the box owner the owner of its own space.
       directory,
       ports: inject.ports,
+      offers: inject.offers,
       keyFile: path.join(ctx.paths && ctx.paths.root ? ctx.paths.root : path.join(os.homedir(), ".vyre"), "wink-keys.json"),
       spaceNow: () => spaceCache,
       relayUrl: async () => { const r = /** @type {any} */ (await ctx.call("relay.status", {})); return String((r && r.data && r.data.url) || (ctx.config.relay && ctx.config.relay.url) || ""); },
