@@ -536,14 +536,13 @@ test("grant-risk acts are denied outright for a chain holding a model, and a fie
   assert.deepEqual(r.obligations.find(o => o.type === "fields").allow, ["name"]);
 });
 
-test("authorize: an approved act satisfies the outward ask for exactly that act, as a once obligation; a deny is not softened", async () => {
+test("authorize: an approved act satisfies the outward ask for exactly that act, the hook spends it; a deny is not softened", async () => {
   const send = grant({ actions: ["email.send"], resource: { prefix: `vyre://${SPACE}/message/*` } });
   const ok = world({ grants: [send], approvedAct: q => q.id === "task_ok" && q.action === "email.send" });
   const res = `vyre://${SPACE}/message/m1`;
   assert.equal((await ask(ok, person(), "email.send", res)).effect, "ask");
   const r = await ask(ok, person(), "email.send", res, { approval: "task_ok" });
   assert.equal(r.effect, "allow");
-  assert.ok(r.obligations.some(o => o.type === "once" && o.grant === "approval:task_ok"));
   assert.equal((await ask(ok, person(), "email.send", res, { approval: "task_other" })).effect, "ask");
   const none = world({ grants: [], approvedAct: () => true });
   assert.equal((await ask(none, person(), "email.send", res, { approval: "task_ok" })).effect, "deny", "no grant: the approval does not create one");

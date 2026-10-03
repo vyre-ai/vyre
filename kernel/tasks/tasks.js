@@ -87,6 +87,7 @@ export function createTasks(cfg) {
   /** @type {Map<string, string>} proposal id -> the task it proposes to skip */ const proposals = new Map();
   /** @type {Map<string, number>} */ const denials = new Map();
   const idem = createIdem({ clock });
+  /** @type {Set<string>} approvals already spent on an act */ const usedApprovals = new Set();
   /** @type {Set<string>} tasks being decided right now: a second decide on one is refused before it can release again */ const deciding = new Set();
   /** @type {Map<string, number>} */ const coolDown = new Map();
 
@@ -455,7 +456,13 @@ export function createTasks(cfg) {
      */
     approvedAct(q) {
       const a = api.approvalFor(q.id), t = tasks.get(q.id);
-      return Boolean(a && t && a.body.action === q.action && a.body.resource === q.resource && same(acting(q.chain), t.doer));
+      return Boolean(a && t && !usedApprovals.has(q.id) && clock() - t.updated_at <= APPROVAL_MAX_AGE && a.body.action === q.action && a.body.resource === q.resource && same(acting(q.chain), t.doer));
+    },
+    /** The same check, and when it holds the approval is spent in the same step: what `authorize` calls, so a held act is allowed once, within a day, by its doer. */
+    useApproval(q) {
+      if (!api.approvedAct(q)) return false;
+      usedApprovals.add(q.id);
+      return true;
     },
 
     /** Did a checker approve exactly this payload? Also true for a sealed use the approved payload listed by its hash. */
