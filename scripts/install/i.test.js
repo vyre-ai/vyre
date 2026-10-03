@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 
 const SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), "i.sh");
 
-function rig(t, { installed = false, confirm = "ok" } = {}) {
+function rig(t, { installed = false, confirm = "ok", code = "ok" } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-i-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const log = path.join(dir, "log");
@@ -21,7 +21,7 @@ echo "vyre $*" >> "${log}"
 [ "$1" = call ] || exit 0
 case "$2" in
   system.info) [ -f "${dir}/installed" ] || exit 1; echo '{"data":{}}' ;;
-  wink.server.code) echo '{"data":{"offer":"wo_000-abc","code":"WINK-K7QM-4P2X","expires":1}}' ;;
+  wink.server.code) ${code === "ok" ? `echo '{"data":{"offer":"wo_000-abc","code":"WINK-K7QM-4P2X","expires":1}}'` : code === "old" ? `printf '\\033[1m  no_such_tool: \\033[0mno tool wink.server.code\\n' >&2; exit 1` : `printf "  unavailable: Can't connect.\\n" >&2; exit 1`} ;;
   wink.server.confirm) ${confirm === "ok" ? `echo '{"data":{"ok":true}}'` : `echo '{"data":{"ok":false}}'`} ;;
 esac
 `, { mode: 0o755 });
@@ -71,4 +71,18 @@ test("install: never takes the setup code as an argument and never prints a secr
 test("install: a script piped from curl is read whole first (everything runs from main on the last line)", () => {
   const src = fs.readFileSync(SCRIPT, "utf8").trimEnd().split("\n");
   assert.equal(src[src.length - 1], 'main "$@"');
+});
+
+test("install: an old release with no pairing tool is told so at once, not after two minutes", t => {
+  const r = rig(t, { code: "old" });
+  const out = r.run({ VYRE_CODE_TRIES: "40" });
+  assert.notEqual(out.status, 0);
+  assert.match(out.stderr, /cannot be paired by a code yet/);
+});
+
+test("install: when the server will not make a code, the reason it gave is shown", t => {
+  const r = rig(t, { code: "down" });
+  const out = r.run({ VYRE_CODE_TRIES: "1" });
+  assert.notEqual(out.status, 0);
+  assert.match(out.stderr, /unavailable: Can't connect/);
 });
