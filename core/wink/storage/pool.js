@@ -17,7 +17,7 @@ export const POOL_KIND = Object.freeze({ s3: "s3", volume: "cloud_volume", smb: 
 /**
  * @typedef {{ nodes: Map<string, any>, addNode(n: any): any, used(id: string): number, drain(id: string): Promise<{ moved: number }>, forget?(id: string): void }} PoolLike
  * @param {{ storage: any, pool: PoolLike | (() => PoolLike | null | Promise<PoolLike | null>), by: () => Promise<{ kind: string, id: string }> | { kind: string, id: string },
- *   makeBackend: (c: { kind: string, location: any, accessKey?: string, secretKey?: string }, offer: any) => any, log?: (m: string) => void, now?: () => number }} o
+ *   makeBackend: (c: { kind: string, location: any, accessKey?: string, secretKey?: string }, offer: any) => any | Promise<any>, log?: (m: string) => void, now?: () => number }} o
  */
 export function attachPool(o) {
   const log = o.log || (() => {});
@@ -38,9 +38,9 @@ export function attachPool(o) {
       if (off.drain || off.state === "expired" || off.state === "removed" || pool.nodes.has(off.id)) continue;
       try {
         const c = off.credentialRef ? await o.storage.getCredentials(off.credentialRef, { by }) : { kind: off.kind, location: off.location };
-        const backend = o.makeBackend(c, off);
+        const backend = await o.makeBackend(c, off);
         if (!backend) { out.skipped.push({ id: off.id, why: "no backend for this kind" }); continue; }
-        pool.addNode({ id: off.id, backend, kind: POOL_KIND[/** @type {"s3"} */ (off.kind)] || "server", home: false, site: off.id, owned: off.kind !== "s3", offered: off.storage.capacity });
+        pool.addNode({ id: off.id, backend, kind: POOL_KIND[/** @type {"s3"} */ (off.kind)] || "server", home: false, site: off.id, owned: off.kind !== "s3", offered: off.storage.capacity, classes: off.storage.classes || off.storage.class });
         out.added.push(off.id);
       } catch (e) { out.skipped.push({ id: off.id, why: String((/** @type {any} */ (e)).code || "failed") }); log(`wink storage: could not add ${off.id} to the pool (${(/** @type {any} */ (e)).code || "failed"})`); }
     }

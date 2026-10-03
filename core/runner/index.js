@@ -16,7 +16,7 @@ const str = { type: "string" };
 export default {
   async start(ctx) {
     const seam = (ctx.paths && seams.get(ctx.paths.root)) || {};
-    const ports = () => seam.ports || null;
+    const ports = () => seam.ports || ctx.kernel?.runnerPorts?.() || null;
     // A workspace left open by a runner that died must not stay readable: close any nobody holds a lease for.
     try { await reconcile({ base: ctx.paths.root + "/runner", platform: seam.platform }); } catch {}
     /** @type {Map<string, any>} one runner per space */
@@ -24,6 +24,7 @@ export default {
     const emit = (space, e) => { try { ctx.events.emit(`runner.${e.type === "checkpoint" ? "checkpoint" : e.type}`, { space, ...e }); } catch {} };
     const forSpace = space => {
       const p = ports();
+      if (p && (typeof p.device !== "string" || !p.device)) throw Object.assign(new Error("the runner needs this computer's device key identity"), { code: "unavailable" });
       if (!p) throw Object.assign(new Error("running a space's work here is not connected yet: the space's vault and sync are not available"), { code: "unavailable" });
       let r = runners.get(space);
       if (!r) {
@@ -39,7 +40,7 @@ export default {
       input: obj(),
       run: async () => {
         const why = unavailable(seam.platform) || workspaceUnavailable(seam.platform);
-        return { ready: !why && !!ports(), why: why || (ports() ? "" : "the space's vault and sync are not connected yet"), spaces: [...runners].map(([space, r]) => ({ space, ...r.status() })) };
+        return { ready: !why && !!ports(), why: why || (ports() ? "" : "the space's vault and sync are not connected yet"), spaces: [...runners].map(([space, r]) => { const { dir, ...rest } = r.status(); return { space, ...rest }; }) };
       },
     });
     ctx.tool("runner.place", {
@@ -55,7 +56,7 @@ export default {
         const spec = await p.spec({ space, session });
         if (!spec || !spec.command || !Array.isArray(spec.routes)) throw Object.assign(new Error("the space has no definition for that session"), { code: "not_found" });
         const h = await r.start({ session, resume: Boolean(resume), command: spec.command, args: spec.args, env: spec.env, routes: spec.routes, readOnly: spec.readOnly, labels: spec.labels });
-        return { session, pid: h.pid };
+        return { session, pid: h.pid, resumed: h.resumed ? { turn: h.resumed.turn, seq: h.resumed.seq, state: h.resumed.state } : null };
       },
     });
     ctx.tool("runner.stop", { description: "Stop a session running here.", input: obj({ space: str, session: str }, ["space", "session"]),

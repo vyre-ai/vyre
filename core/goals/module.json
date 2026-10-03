@@ -2,11 +2,122 @@
   "name": "goals",
   "version": "0.1.0",
   "description": "A goal and an ordered milestone list, attached to a session or a project. An agent may propose one; a person's tap (goals.accept) makes it real.",
-  "roles": ["box", "local"],
+  "roles": [
+    "box",
+    "local"
+  ],
   "requires": [],
-  "does": { "tools": [{ "name": "goals.set", "reach": "anyone", "projectArg": "project" }, { "name": "goals.accept", "reach": "person" }, { "name": "goals.milestone-done", "reach": "anyone" }, { "name": "goals.get", "reach": "anyone" }, { "name": "goals.list", "reach": "anyone", "projectArg": "project" }] },
-  "watches": { "emits": ["goal.created", "goal.proposed", "goal.accepted", "goal.milestone", "goal.done"] },
-  "shows": { "deck": [], "capsule": [], "cli": [] },
-  "needs": {},
+  "does": {
+    "tools": [
+      {
+        "name": "goals.set",
+        "reach": "anyone",
+        "projectArg": "project"
+      },
+      {
+        "name": "goals.accept",
+        "reach": "person"
+      },
+      {
+        "name": "goals.milestone-done",
+        "reach": "anyone"
+      },
+      {
+        "name": "goals.get",
+        "reach": "anyone"
+      },
+      {
+        "name": "goals.list",
+        "reach": "anyone",
+        "projectArg": "project"
+      }
+    ]
+  },
+  "watches": {
+    "emits": [
+      "goal.created",
+      "goal.proposed",
+      "goal.accepted",
+      "goal.milestone",
+      "goal.done"
+    ]
+  },
+  "shows": {
+    "deck": [],
+    "capsule": [],
+    "cli": []
+  },
+  "needs": {
+    "kernel": {
+      "actions": [
+        "records.read",
+        "records.create",
+        "records.update"
+      ],
+      "prefixes": [
+        "goal/*"
+      ],
+      "types": [
+        {
+          "name": "goal",
+          "label": "Goal",
+          "fields": [
+            {
+              "name": "project",
+              "kind": "text",
+              "label": "Project"
+            },
+            {
+              "name": "thread",
+              "kind": "text",
+              "label": "Thread"
+            },
+            {
+              "name": "goal",
+              "kind": "text",
+              "label": "Goal",
+              "required": true
+            },
+            {
+              "name": "state",
+              "kind": "choice",
+              "label": "State",
+              "options": [
+                "pending",
+                "active",
+                "done",
+                "cancelled"
+              ]
+            },
+            {
+              "name": "created_by",
+              "kind": "text",
+              "label": "Created by"
+            },
+            {
+              "name": "milestones",
+              "kind": "text",
+              "label": "Milestones"
+            },
+            {
+              "name": "created_at",
+              "kind": "number",
+              "label": "Created"
+            },
+            {
+              "name": "accepted_at",
+              "kind": "number",
+              "label": "Accepted"
+            },
+            {
+              "name": "done_at",
+              "kind": "number",
+              "label": "Done"
+            }
+          ]
+        }
+      ]
+    }
+  },
   "teaches": {}
 }

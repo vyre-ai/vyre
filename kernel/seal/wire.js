@@ -10,6 +10,8 @@ export function canonical(v) {
 }
 export const sha256b64 = s => crypto.createHash("sha256").update(s).digest("base64url");
 /** sha-256 (base64url) of the canonical payload a person approves: `{ op, space, ...fields }`, for example op "seal.reveal" with ref and purpose. */
+/** What a device's identity-chain key signs to vouch for a presence key: the person, the key id and the key. The native signer uses this too. */
+export const bindBytes = (person, key_id, spki) => Buffer.from(`vyre-presence-bind-v1\n${person}\n${key_id}\n${sha256b64(spki)}`);
 export const payloadHash = (op, space, fields) => sha256b64(canonical({ op, space, ...fields }));
 /** The bytes a presence proof signs: the proof without its signature. */
 export const proofBytes = proof => { const { signature, ...rest } = proof; return Buffer.from(canonical(rest)); };

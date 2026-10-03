@@ -406,6 +406,11 @@ test("publish: the Flow for a deployment is the pipeline definition", async t =>
   assert.deepEqual(flow.steps.map((/** @type {any} */ s) => s.id), ["build", "preview", "approve", "production", "rollback"]);
   assert.equal(flow.authorship, "system");
   assert.equal((await b.call("publish.flow", { deployment: "dep_0000000000000000" })).error?.code, "not_found");
+  // The stored form the Flows runner takes (kernel/flows/schema.js): a manual trigger, the deploy caps over this deployment, an ask and an outward production.
+  const kernel = (await b.ok("publish.flow", { deployment: id, kernel: true })).flow;
+  assert.equal(kernel.format, 1);
+  assert.equal(kernel.trigger.on, "manual");
+  assert.deepEqual(kernel.steps.map((/** @type {any} */ s) => s.id), ["build", "preview", "approve", "decide_publish"]);
 });
 
 test("publish: a task goes to the tasks module when it exists, and the hold works the same", async t => {

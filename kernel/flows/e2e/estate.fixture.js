@@ -25,16 +25,8 @@ export function catalogOf(kit) {
   };
 }
 
-/** The Kit's payment Flow in the runner's stored form: find or create the contact, find or create the matter, which begins at Intake. */
-export const onPaymentFlow = () => ({
-  format: 1, name: "on_payment_estate", label: "On payment", description: "A Stripe payment starts a matter.", authorship: "kit",
-  trigger: { on: "event", event: "payment.received" },
-  steps: [
-    { id: "client", kind: "upsert", type: "contact", match: { stripe_customer: { expr: "trigger.customer" } }, set: { full_name: { expr: "trigger.name" }, email: { expr: "trigger.email" } } },
-    { id: "matter", kind: "upsert", type: "matter", match: { stripe_payment: { expr: "trigger.payment" } },
-      set: { title: { expr: "\"Estate plan for \" + trigger.name" }, client: { urn: { expr: "steps.client.record.urn" } }, fee: { expr: "trigger.amount" }, stage: "Intake" } },
-  ],
-});
+/** The Kit's own payment Flow, as records' compiler stores it: find or create the contact, find or create the matter, which begins at Intake. */
+export const onPaymentFlow = () => estateKit().flows.find(f => f.name === "on_payment");
 
 /** A paid Stripe checkout, run through the connector's own normaliser: the event data the Space sees as payment.received. */
 export function paymentEvent() {

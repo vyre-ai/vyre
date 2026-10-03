@@ -54,7 +54,7 @@ const fail = (s, status, code, message) => {
  * @param {import("./channel.js").Channel} channel
  * @param {{ handler: (req: any, res: any, caller: string, peer: any) => any, caller: string, peer: any,
  *   upgrade?: () => (req: any, socket: any, head: Buffer, caller: string) => void, log?: (m: string) => void,
- *   peers?: { space: string, allow: () => boolean, accept: (stream: any, who: { via: "relay", deviceId: string, space: string }) => void,
+ *   peers?: { space: string, allow: (deviceId: string) => boolean, accept: (stream: any, who: { via: "relay", deviceId: string, space: string }) => void,
  *     perMin?: number, open?: number, now?: () => number } }} o
  */
 export function bridge(channel, o) {
@@ -114,7 +114,7 @@ export function bridge(channel, o) {
     if (!device || !/^[A-Za-z0-9_-]{1,64}$/.test(device)) return fail(s, 403, "denied", "peer streams are for paired devices");
     if (h.space !== p.space) return fail(s, 403, "denied", "this device has no peer access to that space");
     let ok = false;
-    try { ok = p.allow() === true; } catch { ok = false; }
+    try { ok = p.allow(device) === true; } catch { ok = false; }
     if (!ok) return fail(s, 403, "denied", "this device has no peer access to that space");
     const now = (p.now || Date.now)();
     const u = peerUse.get(device) || { stamps: [], open: 0 };
@@ -125,11 +125,21 @@ export function bridge(channel, o) {
     u.open++;
     let released = false;
     const release = () => { if (released) return; released = true; u.open = Math.max(0, u.open - 1); if (!u.open && !u.stamps.length) peerUse.delete(device); };
+    // Release the slot on every way a stream can finish: the remote's end or reset (whatever handler
+    // the accept hook installs, or none), and the hook ending or resetting the stream itself.
+    for (const name of /** @type {const} */ (["onend", "onreset"])) {
+      let h = s[name];
+      Object.defineProperty(s, name, { configurable: true, enumerable: true,
+        get: () => (/** @type {any[]} */ ...a) => { release(); return typeof h === "function" ? h.apply(s, a) : undefined; },
+        set: f => { h = f; } });
+    }
+    for (const name of /** @type {const} */ (["end", "reset"])) {
+      const f = s[name].bind(s);
+      s[name] = (/** @type {any[]} */ ...a) => { release(); return f(...a); };
+    }
     s.respond({ status: 200, headers: { "x-vyre-peer": "wink" } });
     try { p.accept(s, { via: "relay", deviceId: device, space: p.space }); }
     catch (e) { release(); s.reset("peer door failed"); return; }
-    // the accept hook installs its own ondata/onend/onreset; free the slot when either ends
-    for (const name of /** @type {const} */ (["onend", "onreset"])) { const f = s[name]; s[name] = (/** @type {any[]} */ ...a) => { release(); return f.apply(s, a); }; }
   }
 
   /** A device's WebSocket: upgrade through the stream router, then carry whole messages. */

@@ -535,3 +535,36 @@ test("grant-risk acts are denied outright for a chain holding a model, and a fie
   const r = await ask(f, person(), "crm.read");
   assert.deepEqual(r.obligations.find(o => o.type === "fields").allow, ["name"]);
 });
+
+test("authorize: an approved act satisfies the outward ask for exactly that act, the hook spends it; a deny is not softened", async () => {
+  const send = grant({ actions: ["email.send"], resource: { prefix: `vyre://${SPACE}/message/*` } });
+  const ok = world({ grants: [send], approvedAct: q => q.id === "task_ok" && q.action === "email.send" });
+  const res = `vyre://${SPACE}/message/m1`;
+  assert.equal((await ask(ok, person(), "email.send", res)).effect, "ask");
+  const r = await ask(ok, person(), "email.send", res, { approval: "task_ok" });
+  assert.equal(r.effect, "allow");
+  assert.equal((await ask(ok, person(), "email.send", res, { approval: "task_other" })).effect, "ask");
+  const none = world({ grants: [], approvedAct: () => true });
+  assert.equal((await ask(none, person(), "email.send", res, { approval: "task_ok" })).effect, "deny", "no grant: the approval does not create one");
+});
+
+test("chains: forFlow and forModule carry the approver, the run id as the job, and taint; session_person is the person without a presence session", () => {
+  const b = builder({ is_person: p => p === OWNER || p === "per_two" });
+  const approver = b.fromFacts({ kind: "device", device_key_id: "d1", person: OWNER, path: "direct" });
+  const flow = b.forFlow({ flow: "fl_welcome", approver, run: "run_1" });
+  assert.deepEqual(flow.hops.map(h => h.actor.kind), ["person", "automation"]);
+  assert.equal(flow.job, "run_1");
+  assert.equal(flow.labels.trust, "member");
+  assert.equal(b.forFlow({ flow: "fl_welcome", approver, run: "run_2", tainted: true }).labels.trust, "external");
+  assert.throws(() => b.forFlow({ flow: "f", approver: { hops: [] }, run: "r" }), { code: "not_a_member" });
+  const agent = b.fromFacts({ kind: "agent_session", agent: "kit", session: "s", thread: "t", vouched: true });
+  assert.throws(() => b.forFlow({ flow: "f", approver: agent, run: "r" }), { code: "not_a_member" }, "a model cannot approve a flow run");
+  assert.deepEqual(b.forModule({ module: "stages", approver }).hops.map(h => h.actor.kind), ["person", "service"]);
+  const sp = b.fromFacts({ kind: "session_person", person: "per_two", session: "s1", vouched: true });
+  assert.ok(isExactlyPerson(sp));
+  assert.equal(sp.hops[0].via.session, undefined, "no presence session");
+  assert.throws(() => b.fromFacts({ kind: "session_person", person: "per_stranger", session: "s", vouched: true }), { code: "not_a_member" });
+  assert.throws(() => b.fromFacts({ kind: "session_person", person: OWNER, session: "s" }), { code: "not_a_member" });
+  const two = b.fromFacts({ kind: "agent_session", agent: "kit", session: "s", thread: "t", vouched: true, person: "per_two" });
+  assert.equal(two.hops[0].actor.id, "per_two");
+});

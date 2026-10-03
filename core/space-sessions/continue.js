@@ -36,7 +36,7 @@ export function createContinue(p) {
         title: "Continue this work in another space", source: "continue_in_space", doer: q.person, checker: q.checker || q.person,
         record: `vyre://${s.space}/session/${s.id}`, output: { kind: "decision", target: q.target_space }, note: clean.slice(0, 400),
       });
-      pending.set(task.id, { summary: clean, hash, target: q.target_space, from: { space: s.space, session: s.id } });
+      pending.set(task.id, { chain: q.chain, summary: clean, hash, target: q.target_space, from: { space: s.space, session: s.id } });
       return { task: task.id, summary: clean, hash };
     },
     /** Deliver an approved summary as the first context of a new session. The text the checker saw is the text delivered. @param {{ chain: any, task: string }} q */
@@ -48,10 +48,10 @@ export function createContinue(p) {
       pending.delete(q.task);
       return p.startSession(q.chain, d.target, { context: d.summary, from: d.from });
     },
-    /** Change the text before approval: a new hash, so an earlier approval does not carry over. @param {{ task: string, summary: string }} q */
+    /** Change the text before approval: a new hash, so an earlier approval does not carry over. @param {{ chain: any, task: string, summary: string }} q */
     async edit(q) {
-      const d = pending.get(q.task); if (!d) throw Object.assign(new Error("no such continuation"), { code: "not_found" });
-      const summary = (await p.sanitize({ chain: null, session: d.from.session, text: String(q.summary) })).slice(0, MAX_SUMMARY);
+      const d = pending.get(q.task); if (!d || !q.chain || q.chain.space !== d.from.space) throw Object.assign(new Error("no such continuation"), { code: "not_found" });
+      const summary = (await p.sanitize({ chain: q.chain, session: d.from.session, text: String(q.summary) })).slice(0, MAX_SUMMARY);
       d.summary = summary; d.hash = sha256(canonical({ summary, to: d.target, from: d.from.session }));
       return { hash: d.hash };
     },

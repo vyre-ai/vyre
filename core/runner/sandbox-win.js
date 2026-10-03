@@ -38,14 +38,37 @@ const quote = s => (/[\s"]/.test(s) ? '"' + String(s).replace(/"/g, '\\"') + '"'
  * @param {{ launcher: string, space: string, workspace: string, readOnly?: string[] }} o
  */
 export function prepare(o) {
-  const args = ["prepare", containerName(o.space), "--grant", `${o.workspace}=M`, ...(o.readOnly || []).flatMap(d => ["--grant", `${d}=RX`]), "--exempt"];
+  // An AppContainer token has no "bypass traverse checking": it needs the traverse right on every folder above what it uses, including a
+  // mounted encrypted volume's root (measured: CreateProcess fails with 203 without it).
+  const above = p => { const out = []; for (let d = path.dirname(p); d !== path.dirname(d); d = path.dirname(d)) out.push(d); out.push(path.parse(p).root); return out; };
+  const trav = [...new Set([o.workspace, ...(o.readOnly || [])].flatMap(above))];
+  const args = ["prepare", containerName(o.space), "--grant", `${o.workspace}=M`, ...(o.readOnly || []).flatMap(d => ["--grant", `${d}=RX`]), ...trav.flatMap(d => ["--traverse", d]), "--exempt"];
   const r = spawnSync(o.launcher, args, { encoding: "utf8" });
   if (r.status !== 0) throw new Error("could not prepare the Windows sandbox: " + (r.stderr || r.stdout).trim().slice(0, 300));
   return { exempt: /exempt=yes/.test(r.stdout), output: r.stdout.trim() };
 }
 
+/** What prepare() touched: trees (the workspace and each tool folder, rights were given to everything under them) and folders (traverse only, the ones above). */
+export const touched = o => {
+  const above = p => { const out = []; for (let d = path.dirname(p); d !== path.dirname(d); d = path.dirname(d)) out.push(d); out.push(path.parse(p).root); return out; };
+  const trees = [...new Set([o.workspace, ...(o.readOnly || [])])];
+  return { trees, folders: [...new Set(trees.flatMap(above))].filter(f => !trees.includes(f)) };
+};
+
+/**
+ * Access ended: take every right the container was given off those folders (the traverse entries on the folders above the workspace
+ * persist otherwise), drop its loopback exemption and delete it.
+ * @param {{ launcher: string, space: string, workspace: string, readOnly?: string[] }} o
+ */
+export function cleanup(o) {
+  const t = touched(o);
+  const args = ["cleanup", containerName(o.space), ...t.trees.flatMap(d => ["--tree", d]), ...t.folders.flatMap(d => ["--folder", d])];
+  const r = spawnSync(o.launcher, args, { encoding: "utf8" });
+  return r.status === 0;
+}
+
 /** Variables the container process is started with: the launcher passes its own environment on, so the plan returns it. */
-const WIN_ENV = ["SystemRoot", "windir", "ComSpec", "PATHEXT"];
+const WIN_ENV = ["SystemRoot", "windir", "ComSpec", "PATHEXT", "SystemDrive", "ProgramData", "ProgramFiles", "ALLUSERSPROFILE", "COMPUTERNAME", "OS", "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE"];
 
 /**
  * @param {import("./sandbox.js").PlanOpts & { space: string, launcher: string, cleanEnv: (e: any) => Record<string, string> }} o
@@ -55,7 +78,7 @@ export function planWin(o) {
   const port = o.proxy.port;
   const base = `http://127.0.0.1:${port}`;
   const env = {
-    ...o.cleanEnv(o.env), HOME: path.join(ws, "home"), USERPROFILE: path.join(ws, "home"), TEMP: path.join(ws, "tmp"), TMP: path.join(ws, "tmp"), TMPDIR: path.join(ws, "tmp"),
+    ...o.cleanEnv(o.env), HOME: path.join(ws, "home"), USERPROFILE: path.join(ws, "home"), LOCALAPPDATA: path.join(ws, "home", "AppData", "Local"), APPDATA: path.join(ws, "home", "AppData", "Roaming"), TEMP: path.join(ws, "tmp"), TMP: path.join(ws, "tmp"), TMPDIR: path.join(ws, "tmp"),
     PATH: [process.env.SystemRoot + "\\System32", process.env.SystemRoot, ...(o.readOnly || [])].join(";"),
     ANTHROPIC_BASE_URL: `${base}/provider`, VYRE_SPACE_URL: `${base}/space`,
   };

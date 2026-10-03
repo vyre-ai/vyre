@@ -12,7 +12,7 @@
 # takes the setup code as an argument, and writes nothing outside what the release installer writes.
 #
 # Environment: VYRE_SITE (default https://vyre.run), VYRE_INSTALLER (a local copy of install-box.sh, used instead of downloading),
-# VYRE_WRAPPER (the vyre command, default vyre), VYRE_NO_PROMPT=1 (print the code and the next command, do not wait),
+# VYRE_WRAPPER (the vyre command, default vyre), VYRE_CODE_TRIES (how many 3-second tries the server gets to answer, default 40), VYRE_NO_PROMPT=1 (print the code and the next command, do not wait),
 # VYRE_UNAME_S / VYRE_UNAME_M (tests). Every other variable and every argument goes to the release installer unchanged.
 # Everything is inside main(), called on the last line, so a piped script is read whole before anything runs.
 
@@ -47,12 +47,19 @@ fetch() {
   else die "needs curl or wget to download Vyre"; fi
 }
 
-# vyre_call TOOL JSON: run a Vyre tool on this server; sudo only if this account cannot reach Docker.
+# vyre_call TOOL JSON: run a Vyre tool on this server; sudo only if this account cannot reach Docker. The answer goes to stdout; what the
+# command said when it failed is kept in $TMP/err, so the person is told the real reason and not only "did not answer".
 vyre_call() {
-  if out=$("$WRAPPER" call "$1" "$2" 2>/dev/null); then printf '%s' "$out"; return 0; fi
-  command -v sudo >/dev/null 2>&1 || return 1
-  sudo "$WRAPPER" call "$1" "$2" 2>/dev/null
+  if out=$("$WRAPPER" call "$1" "$2" 2>"$TMP/err"); then printf '%s' "$out"; return 0; fi
+  if command -v sudo >/dev/null 2>&1; then
+    if out=$(sudo "$WRAPPER" call "$1" "$2" 2>"$TMP/err2"); then printf '%s' "$out"; return 0; fi
+    # sudo's own complaint (no terminal, no password) says nothing about Vyre: keep the first answer then.
+    grep -q '^sudo:' "$TMP/err2" 2>/dev/null || cat "$TMP/err2" >"$TMP/err" 2>/dev/null || true
+  fi
+  return 1
 }
+# last_error: the first line the last failed call said, without colour codes.
+last_error() { esc=$(printf '\033'); sed "s/$esc\\[[0-9;]*m//g" "$TMP/err" 2>/dev/null | head -n 1 | sed 's/^ *//'; }
 
 # json_field NAME: a string field out of the JSON on stdin (the answers here are flat).
 json_field() { tr -d '\n' | sed -n "s/.*\"$1\" *: *\"\\([^\"]*\\)\".*/\\1/p"; }
@@ -62,8 +69,6 @@ install_box() {
     say "Vyre is already installed here. Leaving it as it is."
     return 0
   fi
-  TMP=$(mktemp -d)
-  trap cleanup EXIT
   if [ -n "${VYRE_INSTALLER:-}" ]; then cp "$VYRE_INSTALLER" "$TMP/install-box.sh"
   else
     say "Downloading the Vyre installer from $SITE"
@@ -77,14 +82,22 @@ install_box() {
 # show_code: wait for the server to answer, open a code, print it, and take the code the app shows.
 show_code() {
   n=0; made=""
-  while [ "$n" -lt 40 ]; do
+  while [ "$n" -lt "${VYRE_CODE_TRIES:-40}" ]; do
     made=$(vyre_call wink.server.code '{}' || true)
     [ -n "$(printf '%s' "$made" | json_field code)" ] && break
+    # An answer that says what is wrong (the tool is not there) will not change by waiting; only a server still starting does.
+    case "$(last_error)" in no_such_tool*) break ;; esac
     n=$((n + 1)); sleep 3
   done
   code=$(printf '%s' "$made" | json_field code)
   offer=$(printf '%s' "$made" | json_field offer)
-  [ -n "$code" ] || die "the server did not answer. Run this line again, or run: $WRAPPER call wink.server.code '{}'"
+  if [ -z "$code" ]; then
+    why=$(last_error)
+    case "$why" in
+      no_such_tool*) die "this version of Vyre cannot be paired by a code yet (it has no wink.server.code). Update it with: $WRAPPER update, then run this line again." ;;
+      *) die "the server did not give a pairing code${why:+ ($why)}. Run this line again, or run: $WRAPPER call wink.server.code '{}'" ;;
+    esac
+  fi
   say ""
   say "  Pair this server."
   say ""
@@ -116,6 +129,8 @@ show_code() {
 
 main() {
   check_system
+  TMP=$(mktemp -d)
+  trap cleanup EXIT
   install_box "$@"
   show_code
 }
