@@ -119,6 +119,11 @@ test("threadsock: a real session's call arrives with its own kernel token, in it
   const ctx = d.registry.context({ name: "switchboard", version: "0.1.0", does: { tools: [] } });
   assert.equal(typeof ctx.kernelSession, "function", "the Switchboard is handed the session credential maker");
   assert.equal(typeof d.registry.context({ name: "other", version: "0.1.0", does: { tools: [] } }).kernelSession, "undefined", "and nobody else");
+  // the confined spawner for its sessions is composed here too, for the Switchboard alone
+  const sbx = ctx.sandbox;
+  assert.ok(sbx && typeof sbx.sandbox.planHome === "function" && typeof sbx.sandbox.selfTest === "function" && typeof sbx.sandbox.launch === "function", "the runner's home sandbox");
+  assert.equal(sbx.probes.personSocket.length > 0, true);
+  assert.equal(typeof d.registry.context({ name: "other", version: "0.1.0", does: { tools: [] } }).sandbox, "undefined");
   const owner = d.kernel.id.owner;
   const person = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct" });
   const chat = await d.kernel.gateway.grants.chats.create(person, {});

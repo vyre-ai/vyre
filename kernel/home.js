@@ -37,7 +37,7 @@ export function homeIdentity(root) {
 
 /**
  * @param {{ releaseKey?: any, pathRule?: boolean, fileKey?: boolean, db: import("node:sqlite").DatabaseSync, root: string, log?: (m: string) => void, isFirstParty: (dir: string) => boolean,
- *   approvals?: (name: string) => string[], sealer?: any, door?: any, storeFor?: (space: string, meta: any) => Promise<any> | any }} cfg
+ *   approvals?: (name: string) => string[], sealer?: any, door?: any, onStageEnter?: any, stageTasks?: any, storeFor?: (space: string, meta: any) => Promise<any> | any }} cfg
  */
 export async function bootHomeKernel(cfg) {
   const id = homeIdentity(cfg.root);
@@ -57,7 +57,7 @@ export async function bootHomeKernel(cfg) {
     if (fs.existsSync(id.keyFile)) { try { legacyKeys = [Buffer.from(fs.readFileSync(id.keyFile, "utf8").trim(), "hex")]; } catch { /* unreadable: nothing to verify against */ } }
   } else { log("kernel: DEVELOPER file key in use (VYRE_KERNEL_FILE_KEY=1); never the default, never for a real home"); key = fileKernelKey(id.dir); }
   const personalStore = cfg.storeFor ? await cfg.storeFor(id.space, { owner: id.owner, personal: true }) : undefined;
-  const k = await bootKernel({ db: cfg.db, space: id.space, owner: id.owner, owner_uid: process.getuid ? process.getuid() : 0, ...(key ? { key } : {}), legacyKeys, sealer, door: cfg.door, ...(personalStore ? { store: personalStore } : {}) });
+  const k = await bootKernel({ db: cfg.db, space: id.space, owner: id.owner, owner_uid: process.getuid ? process.getuid() : 0, ...(key ? { key } : {}), legacyKeys, sealer, door: cfg.door, ...(personalStore ? { store: personalStore } : {}), ...(cfg.onStageEnter ? { onStageEnter: cfg.onStageEnter } : {}), ...(cfg.stageTasks ? { stageTasks: cfg.stageTasks } : {}) });
   // The migration pass ran inside the rebuild if there was anything to migrate; once the log holds a snapshot under the new seal the old key file has no use.
   if (sealer && legacyKeys.length && k.migrated) { try { fs.rmSync(id.keyFile, { force: true }); } catch { /* the file is harmless now */ } }
   // First party is a signature by the COMPILED release key (lib/release-sig.js), and a counter-signed list of minimum versions the release ships beside it

@@ -117,3 +117,51 @@ export function leasedUse({ leaseOf, check, resolve, emit = () => {}, chain }) {
     return value;
   };
 }
+
+// ---- credentialed calls from a lent computer: one mechanism, run at the home ----
+const PATH_OK = x => typeof x === "string" && x.startsWith("/") && !x.slice(0, -2).includes("*") && (!x.includes("*") || x.endsWith("/*"));
+const atPath = (pat, path) => (pat.endsWith("/*") ? path === pat.slice(0, -2) || path.startsWith(pat.slice(0, -1)) : path === pat);
+
+/**
+ * A credential route as the Space holds it: a host, the credential, and what may be done with it. `allow` lists `{ method, path }` pairs (a path is exact or ends in `/*`);
+ * `deny` lists `{ method?, path }` and always wins; anything not allowed is denied. The older `methods` and `paths` shorthand means every listed method on every listed path
+ * (methods default to GET and HEAD). Example: Gmail for one mailbox only under `users/me`: `allow: [{ method: "GET", path: "/gmail/v1/users/me/*" }]`.
+ */
+export function normalizeRoute(r) {
+  if (!r || typeof r.route !== "string" || !r.route || typeof r.ref !== "string" || !r.ref) throw Object.assign(new Error("bad_input"), { code: "bad_input" });
+  const allow = (Array.isArray(r.allow) ? r.allow : []).map(a => ({ method: String(a?.method).toUpperCase(), path: String(a?.path) }));
+  const methods = (Array.isArray(r.methods) && r.methods.length ? r.methods : ["GET", "HEAD"]).map(m => String(m).toUpperCase());
+  for (const p of Array.isArray(r.paths) ? r.paths : []) for (const m of methods) allow.push({ method: m, path: String(p) });
+  const deny = (Array.isArray(r.deny) ? r.deny : []).map(d => ({ method: d?.method ? String(d.method).toUpperCase() : "*", path: String(d?.path) }));
+  for (const a of allow) if (!/^[A-Z]+$/.test(a.method) || !PATH_OK(a.path)) throw Object.assign(new Error("bad_input"), { code: "bad_input" });
+  for (const d of deny) if (!(d.method === "*" || /^[A-Z]+$/.test(d.method)) || !PATH_OK(d.path)) throw Object.assign(new Error("bad_input"), { code: "bad_input" });
+  return Object.freeze({ route: r.route.toLowerCase(), ref: r.ref, allow, deny });
+}
+/** May this route do this? The path is checked as the kernel checks every path (no dot segments, encoded dots or slashes, backslashes). Deny wins, and the default is no. */
+export function routeAllows(def, method, path) {
+  const p = String(path ?? "").split(/[?#]/)[0], m = String(method ?? "").toUpperCase();
+  try { if (!p.startsWith("/")) return false; if (p !== "/") safePath(p.slice(1)); } catch { return false; }
+  if (def.deny.some(d => (d.method === "*" || d.method === m) && atPath(d.path, p))) return false;
+  return def.allow.some(a => a.method === m && atPath(a.path, p));
+}
+
+/**
+ * A credentialed call from a lent computer. The program names a session, a host, a method, a path, its headers (never an authorization) and a body; the Space maps the
+ * session to a route (`routesOf(session)` is the home's own record, set when the session was bound), the route's allow and deny lists are applied, the session's lease must
+ * be live, and the request is RUN HERE at the home through `forward` (the vault's `vault.request` path). What goes back is a response (or `{ held }` for an outward call
+ * waiting on a person), never a key, a token or a header value. One `vault.used` event names the use (host, method, path, status), never a body or a value.
+ * @param {{ leaseOf: (session: string) => string | null, check: (i: { chain: any, id: string }) => Promise<{ space: string, member: string, device: string }>, routesOf: (session: string) => any[],
+ *   forward: (i: any) => Promise<any>, emit?: (e: any) => void, chain: any }} o
+ */
+export function leasedForward({ leaseOf, check, routesOf, forward, emit = () => {}, chain }) {
+  return async req => {
+    const id = leaseOf(req.session); if (!id) throw Object.assign(new Error("no_lease"), { code: "no_lease" });
+    const { space, member, device } = await check({ chain, id });
+    const host = String(req.route ?? "").toLowerCase(), method = String(req.method ?? "").toUpperCase(), path = String(req.path ?? "").split(/[?#]/)[0];
+    const def = (routesOf(req.session) || []).find(r => r.route === host && routeAllows(r, method, path));
+    if (!def) throw Object.assign(new Error("not_found"), { code: "not_found" }); // a refused request looks like absence
+    const res = await forward({ space, ref: def.ref, route: def.route, method, path, query: req.query, headers: req.headers, body: req.body, session: req.session });
+    emit({ type: "vault.used", space, member, device, ref: def.ref, route: def.route, method, path, status: res?.status ?? null, held: res?.held ? true : undefined, session: req.session });
+    return res;
+  };
+}

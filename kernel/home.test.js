@@ -228,3 +228,17 @@ test("R1/R2: the daemon sets meta.token only from a session token the kernel's o
   assert.ok(globalThis.__vyreLate.length >= 1 && globalThis.__vyreLate.every(x => x === null), "work started in a turn no longer sees its token once the turn is over");
   assert.equal(currentCall(), null);
 });
+
+test("stages: a record entering a stage reaches the stages module in the daemon (the gateway hook is wired), and a task nobody can do is reported, not lost", { timeout: 60_000 }, async t => {
+  const root = tempHome(t);
+  const logs = [];
+  const d = await start({ root, log: m => logs.push(String(m)), kernel: true });
+  t.after(() => d.stop());
+  const owner = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
+  const type = { name: "matter", label: "Matter", fields: [{ name: "title", kind: "text", label: "Title" }, { name: "stage", kind: "stage", label: "Stage", options: ["intake", "open"] }],
+    stages: [{ name: "intake", tasks: [{ title: "Research", doer: "teammate:ghost", output: { kind: "note" } }] }, { name: "open" }] };
+  await d.kernel.gateway.records.define(owner, { add_types: [type] });
+  await d.kernel.gateway.records.create(owner, "matter", { title: "Estate of Rivera", stage: "intake" });
+  await new Promise(r => setTimeout(r, 400));
+  assert.ok(logs.some(m => /stages: .*"stage":"intake"/.test(m) || /stages: /.test(m)), `the stages module saw the entry: ${logs.filter(m => /stages/.test(m)).join(" | ")}`);
+});

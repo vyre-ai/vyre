@@ -19,10 +19,12 @@
 import http from "node:http";
 import https from "node:https";
 import crypto from "node:crypto";
+import net from "node:net";
 import fs from "node:fs";
 
 /** Headers the proxy owns: the session's token and the real credential never pass through from the client. */
 const STRIP_IN = new Set(["host", "connection", "proxy-connection", "keep-alive", "transfer-encoding", "upgrade", "te", "trailer", "proxy-authorization", "x-vyre-token"]);
+export const MAX_TUNNELS = 16, TUNNEL_IDLE_MS = 120_000;
 const MAX_BODY = 64 * 1024 * 1024;
 
 const same = (a, b) => { const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && crypto.timingSafeEqual(x, y); };
@@ -30,7 +32,7 @@ const same = (a, b) => { const x = Buffer.from(String(a)), y = Buffer.from(Strin
 /**
  * @param {{ routes: { prefix: string, upstream: string, credential?: { header: string, prefix?: string }, allow?: { method: string, path: string }[] }[],
  *   vault: { credential(o: { session: string, route: string, lease?: string, method: string, path: string }): Promise<string> },
- *   session: string, token: string, lease?: () => string, onEvent?: (e: { route: string, status: number, ms: number, error?: string }) => void,
+ *   session: string, token: string, connect?: string[], lease?: () => string, onEvent?: (e: { route: string, status: number, ms: number, error?: string }) => void,
  *   request?: typeof http.request }} o
  */
 export function createEgress(o) {
@@ -84,7 +86,26 @@ export function createEgress(o) {
       req.pipe(up);
     } catch (e) { refuse(500, "the proxy failed"); }
   });
-  server.on("connect", (_req, sock) => { sock.end("HTTP/1.1 403 Forbidden\r\n\r\n"); });
+  // CONNECT is refused, except for a person's own session whose provider agent speaks HTTPS itself: then exactly the hosts listed in
+  // `connect` ("host:443") are tunnelled (no TLS termination, no credential injected), and the proxy token is required as the proxy password.
+  let tunnels = 0;
+  const tunnel = new Set((o.connect || []).map(h => String(h).toLowerCase()));
+  server.on("connect", (req, sock, head) => {
+    const deny = () => sock.end("HTTP/1.1 403 Forbidden\r\n\r\n");
+    sock.on("error", () => {});
+    const m = /^Basic\s+(.+)$/i.exec(String(req.headers["proxy-authorization"] || ""));
+    const pass = m ? Buffer.from(m[1], "base64").toString().split(":").slice(1).join(":") : "";
+    const target = String(req.url || "").toLowerCase();
+    if (!tunnel.has(target) || !same(pass, o.token)) return deny();
+    const [host, port] = [target.slice(0, target.lastIndexOf(":")), Number(target.slice(target.lastIndexOf(":") + 1))];
+    if (tunnels >= MAX_TUNNELS) return deny();
+    tunnels++;
+    const up = net.connect(port, host, () => { sock.write("HTTP/1.1 200 Connection Established\r\n\r\n"); if (head && head.length) up.write(head); up.pipe(sock); sock.pipe(up); });
+    // An allowed host cannot be used to hold sockets open for ever: idle tunnels are closed, and there is a cap per session.
+    sock.setTimeout(TUNNEL_IDLE_MS, () => sock.destroy()); up.setTimeout(TUNNEL_IDLE_MS, () => up.destroy());
+    let done = false; const end = () => { if (!done) { done = true; tunnels--; } };
+    up.on("error", () => sock.destroy()); sock.on("close", () => { end(); up.destroy(); }); up.on("close", () => { end(); sock.destroy(); });
+  });
   return {
     /** Listen on a loopback port (macOS) or a unix socket (Linux). @param {{ socket?: string }} [where] */
     listen(where = {}) {
