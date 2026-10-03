@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":336,"tool":1037,"event":442,"config":249,"env":206,"screen":20,"concept":43},
+  "counts": {"command":337,"tool":1038,"event":442,"config":249,"env":206,"screen":20,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -2021,6 +2021,7 @@
     {"kind":"command","name":"vyre watchers resume","definedIn":"core/cli/commands/watchers.js","page":"reference/cli.md#vyre-watchers","mentions":[{"page":"using/watchers.md","line":133,"anchor":"a-watcher-paused-itself-after-three-failed-runs"},{"page":"using/watchers.md","line":173,"anchor":"standing-duties-are-watchers-too"}]},
     {"kind":"command","name":"vyre watchers test","definedIn":"core/cli/commands/watchers.js","page":"reference/cli.md#vyre-watchers","mentions":[{"page":"using/watchers.md","line":141,"anchor":"a-watcher-shows-changed-and-does-not-run"},{"page":"using/watchers.md","line":155,"anchor":"which-surface-does-what"}]},
     {"kind":"command","name":"vyre why","definedIn":"core/cli/commands/memory.js","page":"reference/cli.md#vyre-why","mentions":[{"page":"get-started/first-day.md","line":126,"anchor":"find-something-from-last-week"},{"page":"using/cli.md","line":188,"anchor":"ask-what-memory-knows"},{"page":"using/memory.md","line":24,"anchor":"the-gold-marking"},{"page":"using/memory.md","line":169,"anchor":"correct-a-fact"},{"page":"using/memory.md","line":195,"anchor":"which-surface-does-what"},{"page":"using/memory.md","line":214,"anchor":"next"},{"page":"adr/0007-intelligence.md","line":272,"anchor":"12-the-contract"},{"page":"design/iq-everywhere.md","line":148,"anchor":"the-cli-recall-memory-why"}]},
+    {"kind":"command","name":"vyre wink","definedIn":"core/cli/commands/wink.js","page":"reference/cli.md#vyre-wink","mentions":[]},
     {"kind":"env","name":"VYRE_ACCOUNT_UID_MAX","definedIn":"core/spawner/main.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_ACCOUNT_UID_MIN","definedIn":"core/spawner/main.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_ACCOUNTS_HOME","definedIn":"core/config/index.js","page":"reference/config.md#environment-variables","mentions":[]},
@@ -2307,6 +2308,7 @@
     {"kind":"tool","name":"wink.server.adopt","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkserveradopt","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.server.code","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkservercode","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.server.confirm","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkserverconfirm","module":"wink","mentions":[]},
+    {"kind":"tool","name":"wink.server.fingerprint","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkserverfingerprint","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.server.handover","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkserverhandover","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.server.release","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkserverrelease","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.server.reset","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkserverreset","module":"wink","mentions":[]},

@@ -79,7 +79,7 @@ export const POLL_MS = 1500;
  * @param {{ ctx: any, now: () => number, identity: () => Promise<string>, space: () => Promise<string>, directory: Directory, ports?: Ports,
  *   openCode: (flow: "W1" | "W2" | "W3") => Promise<{ offer: string, code: string, expires: number }>,
  *   ack: (offer: string, typed: string) => Promise<{ ok: boolean }>, owner: (meta: any, what: string) => void, relayUrl: () => Promise<string>, keyFile?: string, spaceNow?: () => string,
- *   handover?: Handover, releaseMs?: number, releaseRetryMs?: number,
+ *   handover?: Handover, releaseMs?: number, dropMs?: number, releaseRetryMs?: number,
  *   offers?: { get(space: string, device: string): { space_allows: number | boolean, member_accepts: number | boolean } | Promise<any>, set(space: string, device: string, side: "space" | "member", on: boolean): void | Promise<void> } }} o
  */
 export function createPairing(o) {
@@ -529,22 +529,39 @@ export function createPairing(o) {
     ctx.tool("wink.server.adopt", {
       description: "On a server that was just paired: record who it belongs to, an identity or a space { kind, id }, and the identity that paired it. Called by the pairing app over the paired channel, once: the first caller adopts it and is recorded. After that it cannot be repeated over the paired channel; the person changes the owner on this box with wink.server.retarget (their own presence), and only the one that adopted it, or a screen on this box, may. Answers { owner }.",
       input: adoptInput,
-      presence: { summary: async () => "Change who this server belongs to", when: () => Boolean(meta.get("owner")) },
+      // No presence gate in front: the platform would turn a stranger away before this ran, and its relay device row would stay on the box.
+      // The same rule is kept here: once there is an owner, a change needs the owner's fresh presence (meta0.presence) from the one that adopted it.
       run: async (input, meta0 = {}) => {
         owner(meta0, "adopting a server");
         const caller = String((meta0 && meta0.caller) || "anonymous");
         const prior = meta.get("owner"), adopter = meta.get("adopter");
         if (prior) {
           // Once there is an owner, a change needs the owner's fresh presence, and comes from the one that adopted it or from a screen on this box.
+          // A refused device that is not the adopter leaves nothing behind: its relay device goes (after the refusal has been answered).
+          const stranger = caller.startsWith("device:") && adopter !== caller;
+          if (stranger) dropLater(caller);
           if (!meta0.presence) throw fail("presence_required", words("serverOwned", { owner: await ownerWords(prior) }));
-          if (caller.startsWith("device:") && adopter !== caller) throw fail("denied", words("serverOwned", { owner: await ownerWords(prior) }));
+          if (stranger) throw fail("denied", words("serverOwned", { owner: await ownerWords(prior) }));
         }
         return applyAdopt(input, caller);
       },
     });
-    /** Clears who owns this server: owner, adopter, the hand-over and the peer secret, and its own row. Its own keys stay. */
+    /** Takes a paired app's relay device off this box, so it no longer reaches it as an owner device. Waits a moment so the answer to the call that asked still travels. @param {any} caller */
+    function dropLater(caller) {
+      const c = String(caller || "");
+      if (!c.startsWith("device:") || typeof ctx.call !== "function") return;
+      const id = c.slice(7);
+      const go = () => { Promise.resolve(ctx.call("relay.devices.drop", { id })).catch(() => null); };
+      const wait = o.dropMs ?? 750;
+      if (!wait) { go(); return; }
+      const t = setTimeout(go, wait);
+      if (t.unref) t.unref();
+    }
+    /** Clears who owns this server: owner, adopter, the hand-over and the peer secret, and its own row. Its own keys stay. The one that adopted it loses its device here too. */
     const clearOwner = () => {
+      const adopter = meta.get("adopter");
       for (const k of ["owner", "adopter", "handover", "peer_secret"]) meta.del(k);
+      dropLater(adopter);
       db.prepare("UPDATE wink_devices SET removed_at = ? WHERE id = 'self' AND removed_at IS NULL").run(now());
       ctx.events.emit("wink.server-released", {});
     };
@@ -560,15 +577,38 @@ export function createPairing(o) {
         return { released: true };
       },
     });
-    ctx.tool("wink.server.reset", {
-      description: "On the server itself, with the person's presence: forget who owns it so it can be paired again, when the app that owned it cannot tell it to let go (the app was lost, or the server was unreachable when it was removed). Not callable over a paired channel. Keeps the server's own keys. Answers { reset }.",
+    /** The short fingerprint of this server, which the person types to free it: eight characters from its own name and route, shown by wink.server.fingerprint. */
+    const serverFingerprint = async () => {
+      let route = "";
+      try { const r = /** @type {any} */ (typeof ctx.call === "function" ? await ctx.call("relay.status", {}) : null); route = String((r && r.data && r.data.route) || ""); } catch { /* the relay may be off */ }
+      const h = crypto.createHash("sha256").update(`wink-server\n${String(ctx.config.name || "")}\n${route}`).digest("hex").slice(0, 8).toUpperCase();
+      return `${h.slice(0, 4)}-${h.slice(4)}`;
+    };
+    ctx.tool("wink.server.fingerprint", {
+      description: "On the server itself: its short fingerprint (like AB12-CD34), the code a person types to free it with wink.server.reset when the server has no passkey. Not a secret. Answers { fingerprint, owned }.",
       input: obj(),
-      presence: { summary: async () => "Free this server so it can be added again" },
       run: async (_, meta0 = {}) => {
+        owner(meta0, "the server's fingerprint");
+        const c = String((meta0 && meta0.caller) || "");
+        if (/^(device:|tailnet|relay)/.test(c)) throw fail("denied", words("resetOnServer"));
+        return { fingerprint: await serverFingerprint(), owned: Boolean(meta.get("owner")) };
+      },
+    });
+    ctx.tool("wink.server.reset", {
+      description: "On the server itself: forget who owns it so it can be paired again, when the app that owned it cannot tell it to let go (the app was lost, or the server was unreachable when it was removed). Two ways, both only at the server: the person's presence, or, on a box with no passkey, the local command line (`vyre wink reset`) with the server's fingerprint typed in `fingerprint` (see wink.server.fingerprint). Never callable over a paired channel, the tailnet or the relay, and never by an agent. Keeps the server's own keys; the app that owned it loses its device here. Answers { reset }.",
+      input: obj({ fingerprint: str }),
+      // Presence is asked unless the caller brought the fingerprint; run() decides whether that is allowed for this caller.
+      presence: { summary: async () => "Free this server so it can be added again", when: (/** @type {any} */ i) => !(i && i.fingerprint) },
+      run: async (input, meta0 = {}) => {
         owner(meta0, "resetting a server");
         const caller = String((meta0 && meta0.caller) || "anonymous");
-        if (caller.startsWith("device:")) throw fail("denied", words("resetOnServer"));
-        if (!meta0.presence) throw fail("presence_required", words("resetNeedsYou"));
+        if (/^(device:|tailnet|relay|module:relay)/.test(caller)) throw fail("denied", words("resetOnServer"));
+        if (!meta0.presence) {
+          if (!input || !input.fingerprint) throw fail("presence_required", words("resetNeedsYou"));
+          if (caller !== "cli") throw fail("denied", words("resetOnServer"));
+          const want = await serverFingerprint();
+          if (String(input.fingerprint).trim().toUpperCase().replace(/[^A-Z0-9]/g, "") !== want.replace("-", "")) throw fail("fingerprint_mismatch", words("resetFingerprint"));
+        }
         const had = Boolean(meta.get("owner"));
         clearOwner();
         return { reset: true, had };

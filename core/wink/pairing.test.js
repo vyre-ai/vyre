@@ -18,7 +18,8 @@ function world(o = {}) {
   /** @type {Map<string, any>} */
   const tools = new Map();
   const events = /** @type {any[]} */ ([]);
-  const ctx = { store: { db }, config: { name: "alex" }, log() {}, events: { emit: (n, d) => events.push([n, d]) }, tool: (n, def) => tools.set(n, def) };
+  const drops = /** @type {any[]} */ ([]);
+  const ctx = { store: { db }, config: { name: "alex" }, log() {}, events: { emit: (n, d) => events.push([n, d]) }, tool: (n, def) => tools.set(n, def), call: async (tool, input) => { drops.push([tool, input]); return { data: { closed: true } }; } };
   const typed = /** @type {any[]} */ ([]);
   const finishes = /** @type {any[]} */ ([]);
   const minted = /** @type {any[]} */ ([]);
@@ -32,12 +33,12 @@ function world(o = {}) {
   const p = createPairing({
     ctx, now: o.now || (() => 1_000_000), offers: o.offers, identity: async () => ME, space: async () => HARLOW, directory, ports,
     openCode: async flow => ({ offer: `wo_${flow}`, code: "WINK-ZZZZ-ZZZZ", expires: 1 }), ack: async () => ({ ok: true }),
-    owner: () => {}, relayUrl: async () => "ws://relay.test", keyFile: o.keyFile, spaceNow: () => HARLOW,
+    owner: (m, what) => { if (m && (m.agent || String(m.caller).startsWith("agent:"))) throw Object.assign(new Error(what), { code: "denied" }); }, dropMs: 0, relayUrl: async () => "ws://relay.test", keyFile: o.keyFile, spaceNow: () => HARLOW,
   });
   p.tools();
   const call = (name, input = {}, meta = {}) => tools.get(name).run(input, { caller: "device:x", ...meta });
   const fails = async (name, input, code) => { await assert.rejects(() => call(name, input), e => (code ? e.code === code : true) && (e.message || "")); };
-  return { p, call, events, typed, finishes, minted, db, tools, fails };
+  return { p, call, drops, events, typed, finishes, minted, db, tools, fails };
 }
 const settle = () => new Promise(r => setTimeout(r, 10));
 
@@ -247,9 +248,7 @@ test("the server's adopt: the first caller adopts, any later change needs the ow
   const w = world();
   const tool = w.tools.get("wink.server.adopt");
   const adopt = (input, caller, presence) => tool.run(input, { caller, ...(presence ? { presence: { method: "passkey" } } : {}) });
-  assert.equal(tool.presence.when(), false, "no presence for the first adoption");
   await adopt({ owner: { kind: "space", id: HARLOW }, identity: ME, peerSecret: "A".repeat(43) }, "device:home1");
-  assert.equal(tool.presence.when(), true, "presence once there is an owner");
   assert.deepEqual(w.p.meta.get("owner"), { kind: "space", id: HARLOW, identity: ME });
   assert.equal(w.p.devices.get("self").identity, ME);
   // another paired device, with or without presence, cannot take over
@@ -584,7 +583,7 @@ test("without the release, a second adopt over the paired channel still refuses,
   app.p.devices.remove(d.id);            // removed in the app, the server never told
   const again = await pairOnce(app, { kind: "space", id: HARLOW });
   assert.equal(again.st.state, "failed");
-  assert.equal(again.st.reason, "This server still belongs to someone. Remove it from that app first, or reset it on the server itself (wink.server.reset).");
+  assert.equal(again.st.reason, "This server still belongs to Harlow Legal. Remove it from Harlow Legal first, or reset it on the server itself (wink.server.reset).");
   assert.ok(!/de\)/.test(again.st.reason), "never the raw tool error cut short");
   assert.equal(b.p.meta.get("owner").id, HARLOW, "the owner did not move");
   // the real card when the box's own refusal names the owner
@@ -644,6 +643,7 @@ test("the person at the server frees it with wink.server.reset, with presence an
   const reset = (caller, presence) => b.tools.get("wink.server.reset").run({}, { caller, ...(presence ? { presence: { method: "passkey" } } : {}) });
   assert.ok(b.tools.get("wink.server.reset").presence, "it declares presence");
   await assert.rejects(() => reset("cli"), e => e.code === "presence_required");
+  assert.deepEqual(b.drops, [], "nothing was dropped yet");
   await assert.rejects(() => reset("device:app1", true), e => e.code === "denied" && /from the server itself/.test(e.message));
   assert.ok(b.p.meta.get("owner"));
   assert.deepEqual(await reset("cli", true), { reset: true, had: true });
@@ -661,4 +661,62 @@ test("the server's confirm says the codes matched, not that it is paired", async
   assert.equal(r.ok, true);
   assert.match(r.message, /The code matched\. The app is finishing/);
   assert.ok(!/is paired|is added/.test(r.message));
+});
+
+test("a release takes the adopter's relay device off the box; a stranger's refused adopt takes the stranger's", async () => {
+  const b = box();
+  const app = appWith(b);
+  await pairOnce(app, { kind: "identity", id: ME });
+  // a stranger is refused, in words naming the owner, and its device goes
+  const stranger = await b.tools.get("wink.server.adopt").run({ owner: { kind: "identity", id: ME }, identity: ME }, { caller: "device:stranger1" }).catch(e => e);
+  assert.equal(stranger.code, "presence_required");
+  assert.match(stranger.message, /already belongs to Personal\./);
+  assert.deepEqual(b.drops, [["relay.devices.drop", { id: "stranger1" }]]);
+  assert.ok(b.p.meta.get("owner"), "the owner did not move");
+  // the adopter itself is not dropped by a refused change without presence
+  await b.tools.get("wink.server.adopt").run({ owner: { kind: "identity", id: ME }, identity: ME }, { caller: "device:app1" }).catch(() => null);
+  assert.equal(b.drops.length, 1);
+  // the release drops the adopter
+  const [d] = app.p.devices.list(ME);
+  assert.equal(await app.p.releaseServer(d.id), "released");
+  assert.deepEqual(b.drops.at(-1), ["relay.devices.drop", { id: "app1" }]);
+  assert.equal(b.p.meta.get("owner"), null);
+});
+
+test("the app's refusal words name the owner when the box said it", async () => {
+  const b = box();
+  const app = appWith(b);
+  await pairOnce(app, { kind: "space", id: HARLOW });
+  b.p.meta.set("owner", { kind: "space", id: HARLOW, identity: ME, name: "Harlow Legal" });
+  const again = await pairOnce(world({ callServer: b.callServer }), { kind: "identity", id: ME });
+  assert.equal(again.st.state, "failed");
+  assert.match(again.st.reason, /still belongs to Harlow Legal\./);
+});
+
+test("on a box with no passkey the local command line frees it by typing the server's fingerprint; nobody else can", async () => {
+  const b = box();
+  const app = appWith(b);
+  await pairOnce(app, { kind: "identity", id: ME });
+  const fpTool = b.tools.get("wink.server.fingerprint");
+  const { fingerprint } = await fpTool.run({}, { caller: "cli" });
+  assert.match(fingerprint, /^[0-9A-F]{4}-[0-9A-F]{4}$/);
+  await assert.rejects(() => fpTool.run({}, { caller: "device:app1" }), e => e.code === "denied");
+  const reset = (caller, input, extra = {}) => b.tools.get("wink.server.reset").run(input, { caller, ...extra });
+  assert.equal(b.tools.get("wink.server.reset").presence.when({ fingerprint }), false, "a fingerprint stands in for presence");
+  assert.equal(b.tools.get("wink.server.reset").presence.when({}), true, "without one, presence is asked");
+  // wrong fingerprint
+  await assert.rejects(() => reset("cli", { fingerprint: "0000-0000" }), e => e.code === "fingerprint_mismatch");
+  assert.ok(b.p.meta.get("owner"));
+  // a device or the tailnet or an agent, even with a right fingerprint or a valid-looking proof
+  await assert.rejects(() => reset("device:app1", { fingerprint }), e => e.code === "denied");
+  await assert.rejects(() => reset("device:app1", {}, { presence: { method: "passkey" } }), e => e.code === "denied");
+  await assert.rejects(() => reset("tailnet:node", { fingerprint }), e => e.code === "denied");
+  await assert.rejects(() => reset("module:relay", { fingerprint }), e => e.code === "denied");
+  await assert.rejects(() => reset("agent:x", { fingerprint }), e => e.code === "denied");
+  await assert.rejects(() => reset("cli", { fingerprint }, { agent: true }), e => e.code === "denied");
+  assert.ok(b.p.meta.get("owner"), "nothing moved");
+  // the right one, typed in lower case with the dash left out
+  assert.deepEqual(await reset("cli", { fingerprint: fingerprint.replace("-", "").toLowerCase() }), { reset: true, had: true });
+  assert.equal(b.p.meta.get("owner"), null);
+  assert.deepEqual(b.drops.at(-1), ["relay.devices.drop", { id: "app1" }], "the app that owned it loses its device");
 });

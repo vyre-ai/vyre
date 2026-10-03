@@ -1324,6 +1324,14 @@ Fix for "Third run, break 2". `wink.remove { device }` on a server or storage de
 - The gate still holds: a re-adopt without a release is refused (tested); the owner changes on the box with presence.
 - Not proven on real machines yet: the release over a real relay channel after the first pairing (the app reuses `relayConnect` with the kept route and its own device key, as the adopt does).
 
+## Release drops the app's device, and reset on a headless box (4 Oct, work/wink)
+
+Fixes "Fourth run", breaks 1 to 3.
+- `wink.server.release` and `wink.server.reset` call `relay.devices.drop` for the adopter's `device:<id>` (module:wink only) after a short wait (750 ms) so the answer still reaches the app; the device.removed event then clears the box's own row, so `wink.access` on the box is empty. The relay no longer admits that device.
+- `wink.server.adopt` no longer sits behind the platform's presence gate (it turned a stranger away before the tool ran, which left the stranger's relay device on the box). The same rule is in the tool: with an owner, a change needs the owner's presence from the one that adopted it; a refused `device:` caller that is not the adopter is dropped from the relay. The refusal names the owner ("still belongs to <name>").
+- `wink.server.reset` on a box with no passkey: the local `cli` caller passes the server's short fingerprint (`wink.server.fingerprint`, like AB12-CD34) in `fingerprint` and needs no presence (presence still works where there is a passkey). Every `device:`, tailnet, relay and agent caller is refused, with or without a proof. CLI: `vyre wink reset [<fingerprint>]` shows the fingerprint and asks for it to be typed back.
+- Not testable through the registry: a call "as" a dropped device (the registry trusts the caller string; the relay authenticates devices at the channel). The test checks the relay row is gone.
+
 ## Wink bridged storage
 
 3 to 4 Oct 2026. A drive only one device can reach (a network drive in the office, a disk on a Mac mini) is offered to the space by that device, and the space's home uses it through Wink. Code: `core/wink/storage/bridge.js` (secret, frames, retry, sealed hand-over), `hold.js` (the held connection, both sides), `bridge-cards.js` (words); the engine (work/sealing `kernel/storage`) is only passed in (`createBridge`, `backendFor`), so core/wink gains no import edge.

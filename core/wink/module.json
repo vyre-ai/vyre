@@ -91,6 +91,10 @@
         "reach": "person"
       },
       {
+        "name": "wink.server.fingerprint",
+        "reach": "person"
+      },
+      {
         "name": "wink.server.reset",
         "reach": "person"
       },
