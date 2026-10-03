@@ -357,7 +357,7 @@ test("a server that already has an owner says so plainly and names the tool to u
   const w = world({ callServer: async () => { throw Object.assign(new Error("This server already belongs to Personal. Remove it first: run wink.remove for it in the app, or change its owner on the server itself with wink.server.retarget."), { code: "unavailable" }); } });
   const { st } = await pairOnce(w, { kind: "space", id: HARLOW });
   assert.equal(st.state, "failed");
-  assert.equal(st.reason, "This server still belongs to Personal. Remove it from Personal first, or reset it on the server itself (wink.server.reset).");
+  assert.equal(st.reason, "This server still belongs to Personal. Remove it from Personal first, or reset it on the server itself (run vyre wink reset --begin in a terminal there).");
   assert.equal(w.p.devices.list(ME).length, 0);
 });
 
@@ -556,7 +556,7 @@ test("without the release, a second adopt over the paired channel still refuses,
   app.p.devices.remove(d.id);            // removed in the app, the server never told
   const again = await pairOnce(app, { kind: "space", id: HARLOW });
   assert.equal(again.st.state, "failed");
-  assert.equal(again.st.reason, "This server still belongs to Harlow Legal. Remove it from Harlow Legal first, or reset it on the server itself (wink.server.reset).");
+  assert.equal(again.st.reason, "This server still belongs to Harlow Legal. Remove it from Harlow Legal first, or reset it on the server itself (run vyre wink reset --begin in a terminal there).");
   assert.ok(!/de\)/.test(again.st.reason), "never the raw tool error cut short");
   assert.equal(b.p.meta.get("owner").id, HARLOW, "the owner did not move");
   // the real card when the box's own refusal names the owner
@@ -1111,7 +1111,7 @@ test("reviewer-3 LOW: an unowned server answers `already` to a paired device onl
   const gave = app.events.find(e => e[0] === "wink.server-release" && e[1].state === "gaveup");
   assert.ok(gave, "the person is told");
   assert.match(gave[1].message, /never confirmed/);
-  assert.match(gave[1].message, /wink\.server\.reset/);
+  assert.match(gave[1].message, /vyre wink reset --begin/);
   assert.match(removed({ what: "device", name: "juno", release: "gaveup" }), /Removed juno\. The server never confirmed/);
   assert.ok(!FORBIDDEN.test(gave[1].message));
 });
