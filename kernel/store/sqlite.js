@@ -58,7 +58,8 @@ export function createSqliteStore(cfg) {
     /** @type {Map<string, any>} the hot rows, least recently used first */ const cache = new Map();
     caches.push(cache);
     const keep = (/** @type {string} */ id, /** @type {any} */ r) => { cache.delete(id); cache.set(id, r); if (cache.size > hot) cache.delete(/** @type {string} */ (cache.keys().next().value)); return r; };
-    const rows = (/** @type {any[]} */ list) => list.map(r => cache.get(r.id) ?? parse(r));
+    /** The rows of a statement as they are read, one at a time (the hot copy where there is one): a scan holds one row, never the type. */
+    const rows = function* (/** @type {Iterable<any>} */ list) { for (const r of list) yield cache.get(r.id) ?? parse(r); };
     /** Make an index on a field the first time an equality filter names it: a partial expression index, used by exactly this expression. */
     const ensureIndex = (/** @type {string} */ field) => {
       const name = `kidx_${type}_${field}`;
@@ -72,17 +73,17 @@ export function createSqliteStore(cfg) {
       get(id) { const c = cache.get(id); if (c) return keep(id, c); const r = getRow.get(type, id); return r ? keep(id, parse(r)) : undefined; },
       has(id) { return cache.has(id) || Boolean(hasRow.get(type, id)); },
       set(id, r) { keep(id, r); },
-      values() { return rows(/** @type {any[]} */ (allRows.all(type))); },
+      values() { return rows(allRows.iterate(type)); },
       candidates(spec) {
         const eq = equalities(spec && spec.filter).filter(([f]) => ensureIndex(f));
         if (!eq.length || !TYPE_NAME.test(type)) return this.values();
         const where = eq.map(([f]) => `json_extract(data, '$.${f}') = ?`).join(" AND ");
-        return rows(/** @type {any[]} */ (db.prepare(`SELECT * FROM kernel_records WHERE type = '${type}' AND ${where}`).all(...eq.map(([, v]) => v))));
+        return rows(db.prepare(`SELECT * FROM kernel_records WHERE type = '${type}' AND ${where}`).iterate(...eq.map(([, v]) => v)));
       },
       searchCandidates(words) {
         if (!words.length) return this.values();
         const any = words.map(() => "data LIKE ? ESCAPE '\\'").join(" OR ");
-        return rows(/** @type {any[]} */ (db.prepare(`SELECT * FROM kernel_records WHERE type = ? AND deleted_at IS NULL AND (${any})`).all(type, ...words.map(w => `%${likeEsc(w)}%`))));
+        return rows(db.prepare(`SELECT * FROM kernel_records WHERE type = ? AND deleted_at IS NULL AND (${any})`).iterate(type, ...words.map(w => `%${likeEsc(w)}%`)));
       },
     };
   };

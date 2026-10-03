@@ -16,7 +16,7 @@ const fail = (/** @type {string} */ code, /** @type {string} */ message) => Obje
  * One type's rows. The reference store keeps them in a Map; a durable store (kernel/store/sqlite.js) pages them from its database behind a small LRU, so the rows it holds in
  * memory are the hot ones, not all of them. `candidates` and `searchCandidates` may return a SUPERSET of what a query or a search needs (the database narrows by an equality
  * filter or a word); the same code then applies the exact rules, so an answer is the same either way.
- * @typedef {{ get(id: string): any, has(id: string): boolean, set(id: string, r: any): void, values(): any[], candidates(spec: any): any[], searchCandidates(words: string[]): any[] }} Table
+ * @typedef {{ get(id: string): any, has(id: string): boolean, set(id: string, r: any): void, values(): Iterable<any>, candidates(spec: any): Iterable<any>, searchCandidates(words: string[]): Iterable<any> }} Table
  */
 /** @returns {Table} */
 function mapTable() {
@@ -84,7 +84,7 @@ export function createMemoryStore(cfg = {}) {
       }
       for (const name of diff.remove_types || []) {
         if (!types.has(name)) continue;
-        if (/** @type {Table} */ (rows.get(name)).values().some((/** @type {any} */ r) => !r.deleted_at)) throw fail("invalid", `type ${name} still has records`);
+        if ([.../** @type {Table} */ (rows.get(name)).values()].some((/** @type {any} */ r) => !r.deleted_at)) throw fail("invalid", `type ${name} still has records`);
         types.delete(name); rows.delete(name);
         if (cfg.persist) cfg.persist.type(name, null);
         changesMade.push(`removed type ${name}`);
@@ -106,14 +106,14 @@ export function createMemoryStore(cfg = {}) {
     },
     async query(type, spec) {
       touch("query", [type, spec]);
-      const all = table(type).candidates(spec).filter((/** @type {any} */ r) => spec.include_deleted || !r.deleted_at);
+      const all = (function* (/** @type {Iterable<any>} */ it) { for (const r of it) if (spec.include_deleted || !r.deleted_at) yield r; })(table(type).candidates(spec));
       const p = page(all, spec);
       if (p.error) throw fail("invalid", p.error);
       return clone(p);
     },
     async aggregate(type, spec) {
       touch("aggregate", [type, spec]);
-      return clone(agg(table(type).candidates(spec).filter((/** @type {any} */ r) => !r.deleted_at), spec));
+      return clone(agg((function* (/** @type {Iterable<any>} */ it) { for (const r of it) if (!r.deleted_at) yield r; })(table(type).candidates(spec)), spec));
     },
     async create(type, id, data) {
       touch("create", [type, id, data]);
@@ -159,7 +159,20 @@ export function createMemoryStore(cfg = {}) {
     async search(spec) {
       touch("search", [spec]);
       const words = spec.text.toLowerCase().split(/\s+/).filter(Boolean);
-      const hits = [];
+      // The first page keeps only the best `limit` hits as it goes (a small sorted list); a later page (a cursor is a position in the whole ranking) needs the whole list.
+      const top = !spec.page.cursor;
+      const better = (/** @type {any} */ a, /** @type {any} */ b) => a.score - b.score ? b.score - a.score : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+      /** @type {any[]} */ const hits = [];
+      let counted = 0;
+      const add = (/** @type {any} */ h) => {
+        if (!top) { hits.push(h); return; }
+        counted++;
+        if (hits.length === spec.page.limit && better(h, hits[hits.length - 1]) >= 0) return;
+        let lo = 0, hi = hits.length;
+        while (lo < hi) { const mid = (lo + hi) >> 1; if (better(hits[mid], h) <= 0) lo = mid + 1; else hi = mid; }
+        hits.splice(lo, 0, h);
+        if (hits.length > spec.page.limit) hits.pop();
+      };
       for (const [type, t] of rows) {
         if (spec.types && !spec.types.includes(type)) continue;
         const def = types.get(type);
@@ -173,9 +186,10 @@ export function createMemoryStore(cfg = {}) {
             const low = text.toLowerCase();
             for (const w of words) if (low.includes(w)) { score += 1; snippet = snippet || text.slice(0, 80); }
           }
-          if (score) hits.push({ type, id: r.id, score, ...(snippet ? { snippet } : {}) });
+          if (score) add({ type, id: r.id, score, ...(snippet ? { snippet } : {}) });
         }
       }
+      if (top) return { rows: hits, ...(counted > spec.page.limit && hits.length ? { next_cursor: hits[hits.length - 1].id } : {}) };
       hits.sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : 1));
       let start = 0;
       if (spec.page.cursor) { const i = hits.findIndex(h => h.id === spec.page.cursor); start = i === -1 ? hits.length : i + 1; }
