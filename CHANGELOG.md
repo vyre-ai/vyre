@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(vitals) #71: a machine with no nvidia-smi is not asked again for an hour. The failed spawn forked the whole daemon once a minute, which was most of the idle CPU blip (about 80 ms a minute, now about 10 ms). perf-check reads CPU from /proc ticks (10 ms) instead of `ps` time (1 s), with budgets p95 2% and sustained 3%; the one remaining blip is the update check two minutes after start.
 - site: the version text on every page comes from the release tag (assemble-site.sh passes VYRE_SITE_VERSION), with a per-version "out now" line in gen-site.mjs; vyre.run says 0.2.2, and the roadmap reads Sessions 0.2.3, Scale 0.2.4, Spaces 0.2.5.
 - fix(site): scripts/gen-og.sh launches Chrome with --use-mock-keychain and --password-store=basic, so it never raises a Keychain dialog on a Mac (test/chrome-flags).
 - test(vault) #77: agent grants read the time from the vault's `clock` (default `Date.now`), and "an expired grant is out of force" moves a fake clock instead of sleeping, so it can no longer flake.

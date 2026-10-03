@@ -169,12 +169,23 @@ test("batteryNow: none on the server, not built elsewhere yet", () => {
   assert.match(batteryNow("darwin").why, /not built yet/);
 });
 
+test("gpuNow: a machine with no nvidia-smi is not asked again for an hour (each failed spawn forks the daemon)", async () => {
+  let calls = 0, t = 1_000_000;
+  const exec = (cmd, args, opts, cb) => { calls++; cb(Object.assign(new Error("not found"), { code: "ENOENT" })); };
+  const o = { platform: "linux", exec, state: { none: 0 }, now: () => t };
+  assert.equal((await gpuNow(o)).why, "no GPU");
+  t += 59_000; assert.equal((await gpuNow(o)).why, "no GPU");
+  assert.equal(calls, 1, "the second minute spawned nothing");
+  t += 3_600_000; await gpuNow(o);
+  assert.equal(calls, 2, "asked again after the hour");
+});
+
 test("gpuNow: nvidia-smi through the injected exec; ENOENT means no GPU, not an error", async () => {
-  const ok = await gpuNow({ platform: "linux", exec: (cmd, args, opts, cb) => cb(null, "17, 100, 8192\n") });
+  const ok = await gpuNow({ platform: "linux", state: { none: 0 }, exec: (cmd, args, opts, cb) => cb(null, "17, 100, 8192\n") });
   assert.deepEqual(ok, { gpu: 17 });
-  const none = await gpuNow({ platform: "linux", exec: (cmd, args, opts, cb) => cb(Object.assign(new Error("not found"), { code: "ENOENT" })) });
+  const none = await gpuNow({ platform: "linux", state: { none: 0 }, exec: (cmd, args, opts, cb) => cb(Object.assign(new Error("not found"), { code: "ENOENT" })) });
   assert.deepEqual(none, { gpu: null, why: "no GPU" });
-  const broken = await gpuNow({ platform: "linux", exec: (cmd, args, opts, cb) => cb(new Error("boom")) });
+  const broken = await gpuNow({ platform: "linux", state: { none: 0 }, exec: (cmd, args, opts, cb) => cb(new Error("boom")) });
   assert.match(broken.why, /nvidia-smi: boom/);
   assert.match((await gpuNow({ platform: "win32" })).why, /not built yet/);
 });
