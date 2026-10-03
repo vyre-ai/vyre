@@ -86,11 +86,12 @@ export function ownAddresses() { return Object.values(os.networkInterfaces()).fl
  */
 export async function resolvePublic(host, o = {}) {
   const own = o.own || ownAddresses();
-  if (/\s/.test(String(host))) throw Object.assign(new Error("not a public address"), { code: "NOT_PUBLIC" });   // whitespace anywhere, including a trailing space, is refused before anything else
+  if (/[\s\x00-\x1f\x7f]/.test(String(host))) throw Object.assign(new Error("not a public address"), { code: "NOT_PUBLIC" });   // whitespace anywhere, including a trailing space, is refused before anything else
   let h = String(host).toLowerCase().replace(/^\[|\]$/g, "");
   if (h.endsWith(".") && !h.endsWith("..")) h = h.slice(0, -1);
   if (!h || h.includes("%") || /\s/.test(h)) throw Object.assign(new Error("not a public address"), { code: "NOT_PUBLIC" });
   const literal = toBytes(h);
+  if (!literal && (h.startsWith(".") || h.split(".").some(l => l === "") || /[^a-z0-9.\-_]/.test(h))) throw Object.assign(new Error("not a public address"), { code: "NOT_PUBLIC" });   // not a clean name: an empty label or a character a host name cannot hold
   if (!literal && /^[0-9a-fx.]+$/.test(h)) throw Object.assign(new Error("not a public address"), { code: "NOT_PUBLIC" });   // numeric forms resolvers read as IPv4
   const list = literal ? [{ address: h }] : await (o.lookup || (n => dns.promises.lookup(n, { all: true })))(h);
   if (!list.length) throw Object.assign(new Error("no address"), { code: "ENOTFOUND" });
