@@ -131,7 +131,7 @@ export function createAuthorizer(cfg) {
         const candidates = (await cfg.grants.forSubject(actor, h, input)).filter(g => g.status === "active" && g.space === cfg.space).sort((a, b) => (a.id < b.id ? -1 : 1));
         let best = "no_grant", chosen = null, chosenObs = [];
         for (const g of candidates) {
-          const r = await evaluate(g, h, ms, chain, action, resource, attrs, now);
+          const r = await evaluate(g, h, ms, chain, action, resource, attrs, now, 0, input.probe === true);
           if (r.ok) { chosen = g; chosenObs = r.obligations; break; }
           if (REASON_RANK.indexOf(r.reason) > REASON_RANK.indexOf(best)) best = r.reason;
         }
@@ -186,7 +186,7 @@ export function createAuthorizer(cfg) {
   }
 
   /** One candidate grant against one hop: coverage, selector, kernel attributes, conditions, narrowing. */
-  async function evaluate(/** @type {any} */ g, /** @type {any} */ h, /** @type {any} */ ms, /** @type {any} */ chain, /** @type {string} */ action, /** @type {string} */ resource, /** @type {any} */ attrs, /** @type {number} */ now, depth = 0) {
+  async function evaluate(/** @type {any} */ g, /** @type {any} */ h, /** @type {any} */ ms, /** @type {any} */ chain, /** @type {string} */ action, /** @type {string} */ resource, /** @type {any} */ attrs, /** @type {number} */ now, depth = 0, probe = false) {
     const subj = g.subject;
     const subjectOk = subj.kind === "actor" ? subj.actor.kind === h.actor.kind && subj.actor.id === h.actor.id && subj.actor.space === h.actor.space
       : subj.kind === "role" ? Boolean(ms && ms.role === subj.name) : false;
@@ -196,7 +196,9 @@ export function createAuthorizer(cfg) {
     if (cov === null) return { ok: false, reason: "no_grant" };
     if (cov !== "covered") return { ok: false, reason: "pattern_not_covered" };
     if (!covers(g.resource.prefix, resource)) return { ok: false, reason: "no_grant" };
-    for (const pr of g.resource.where || []) {
+    // A type-level probe (input.probe) asks only what a grant carries for the type, to learn its field limits: row predicates are skipped, and the
+    // answer is never an access decision for any row.
+    for (const pr of probe ? [] : g.resource.where || []) {
       // A predicate on an absent attribute matches nothing, for every op; an unknown op denies.
       if (!Object.hasOwn(attrs, pr.attr) || attrs[pr.attr] === undefined || attrs[pr.attr] === null) return { ok: false, reason: "no_grant" };
       const v = attrs[pr.attr];
@@ -239,7 +241,7 @@ export function createAuthorizer(cfg) {
         const pms = cfg.members.membership ? cfg.members.membership(pa) : undefined;
         if (pms && pms.role === "temp" && (pms.expires === undefined || pms.expires <= now || !(pms.scope || []).some((/** @type {string} */ s) => covers(s, resource)))) return { ok: false, reason: "expired" };
       }
-      const pr = await evaluate({ ...parent, subject: subj }, h, ms, chain, action, resource, attrs, now, depth + 1);
+      const pr = await evaluate({ ...parent, subject: subj }, h, ms, chain, action, resource, attrs, now, depth + 1, probe);
       if (!pr.ok) return pr;
       obs.push(...pr.obligations);
     }

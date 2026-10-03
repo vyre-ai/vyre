@@ -412,3 +412,14 @@ test("limits: the model door's ai_spend and session hours reserve, settle the ac
   assert.deepEqual(L.used(OWNER, "session_hours"), { settled: 2, reserved: 0 });
   assert.ok(log.read({ type: "meter.settled" }).some(e => e.data.meter === "session_hours" && e.data.actual === 2));
 });
+
+test("fields: a grant with row predicates and a field allow-list still refuses filters on omitted fields", async () => {
+  const where = [{ attr: "sensitivity", op: "ne", value: "privileged" }];
+  const grants = [G(), G({ subject: { kind: "actor", actor: actor("agent", "kit") }, actions: ["records.read"], resource: { prefix: `vyre://${SPACE}/contact/*`, where, fields: ["name"] } })];
+  const { r } = await withType(rig({ grants, members: ["agent:kit"] }));
+  await r.create(owner(), "contact", { name: "Jane", age: 41 }, { attrs: { sensitivity: "internal" } });
+  await assert.rejects(() => r.query(agent(), "contact", { filter: { field: "age", op: "eq", value: 41 }, page: { limit: 5 } }), { code: "bad_input" });
+  await assert.rejects(() => r.query(agent(), "contact", { sort: [{ field: "age", dir: "asc" }], page: { limit: 5 } }), { code: "bad_input" });
+  await assert.rejects(() => r.aggregate(agent(), "contact", { group_by: ["age"], measures: [{ fn: "count" }] }), { code: "bad_input" });
+  assert.equal((await r.query(agent(), "contact", { filter: { field: "name", op: "eq", value: "Jane" }, page: { limit: 5 } })).rows.length, 1, "an allowed field still filters");
+});

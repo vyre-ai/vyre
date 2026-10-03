@@ -75,7 +75,7 @@ export function createRecords(cfg) {
 
   const { gate, allowed, check } = createGate({ authorizer, log, enforce: cfg.enforce });
   /** A read through query, aggregate or search is one act on the type: counted once against the type-level decision, never per row. */
-  const countRead = async (/** @type {any} */ chain, /** @type {string} */ type) => { const d = await check(chain, "records.read", urn(type, "*")); if (d && cfg.enforce) cfg.enforce(chain, d); };
+  const countRead = async (/** @type {any} */ chain, /** @type {string} */ type) => { const d = await check(chain, "records.read", urn(type, "*"), { probe: true }); if (d && cfg.enforce) cfg.enforce(chain, d); };
   const members = cfg.members;
 
   /** A field allow-list from a decision's obligations: every hop's grant may narrow it, so the result is their intersection. null means no limit. */
@@ -109,7 +109,7 @@ export function createRecords(cfg) {
     const heads = fieldHeads(spec);
     if (!heads.size) return;
     // A field the access does not allow, or that is hidden from this chain, cannot be filtered, sorted or grouped on either: that would be an oracle.
-    const probe = await check(chain, "records.read", urn(type, "*"));
+    const probe = await check(chain, "records.read", urn(type, "*"), { probe: true });
     const lim = await limitsOf(chain, type, probe);
     for (const h of heads) if (lim.hidden.has(h) || (lim.allow && !lim.allow.has(h) && h !== "id" && h !== "version" && h !== "type" && h !== "created_at" && h !== "updated_at")) throw new KernelError("bad_input", `${h} is outside what this access allows`);
     if (!isModel(chain)) return;
