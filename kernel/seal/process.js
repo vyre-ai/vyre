@@ -240,6 +240,18 @@ export class Sealer {
       case "lease.reinstate": { const c = this.ctxOf(req.ctx); const why = this.presence.refuse(req.proof, { op: "lease.reinstate", space: c.space, fields: { member: req.member, device: req.device }, ctx: c }); if (why) throw err(why === "no_proof" ? "needs_presence" : why); return this.leases.reinstate({ space: c.space, member: req.member, device: req.device }); }
       case "lease.check": { const c = this.ctxOf(req.ctx); return this.leases.check({ id: req.lease, member: c.person }); }
       // The kernel's own channel only: this process's pipes belong to the kernel, and a call that says a model started it is refused. The key never leaves.
+      // The log anchor (kernel-2, BL-2): the latest (seq, head) of a Space's event log the kernel showed this process, kept in its own sealed store, moving only forward. The kernel calls advance
+      // when it signs a checkpoint and reads it at boot, so a log with its newest events deleted no longer verifies. Kernel channel only, never a model's chain.
+      case "anchor.advance": case "anchor.read": {
+        const ctx = this.ctxOf(req.ctx); need(!ctx.model_originated, "human_only");
+        const meta = { ref: `seal_la${crypto.createHash("sha256").update(ctx.space).digest("hex").slice(0, 30)}`, space: ctx.space, record: "_", field: "logAnchor", class: "logAnchor" };
+        const held = (() => { const r = this.store.read("values", meta.ref, ctx.space); return r ? JSON.parse(r.plaintext) : null; })();
+        if (req.op === "anchor.read") return { anchor: held };
+        need(Number.isSafeInteger(req.seq) && req.seq >= 0 && typeof req.head === "string" && /^[A-Za-z0-9_=+\/-]{16,128}$/.test(req.head), "bad_input");
+        if (held) { need(req.seq >= held.seq, "anchor_behind"); if (req.seq === held.seq) { need(req.head === held.head, "anchor_split"); return { anchor: held, event: null }; } }
+        this.store.write("values", meta, JSON.stringify({ seq: req.seq, head: req.head }));
+        return { anchor: { seq: req.seq, head: req.head }, event: null };
+      }
       case "kernel.mac": { need(!req.ctx?.model_originated && /^[a-z0-9_.-]{1,40}$/.test(req.purpose) && typeof req.data === "string" && req.data.length <= 2_000_000, "bad_input"); return { mac: this.store.kernelMac(req.purpose, req.data) }; }
       case "kernel.verify": { need(!req.ctx?.model_originated && /^[a-z0-9_.-]{1,40}$/.test(req.purpose) && typeof req.data === "string" && req.data.length <= 2_000_000 && typeof req.mac === "string", "bad_input"); const a = Buffer.from(this.store.kernelMac(req.purpose, req.data)), b = Buffer.from(req.mac); return { ok: a.length === b.length && crypto.timingSafeEqual(a, b) }; }
       case "pool.key": { need(!req.ctx?.model_originated && /^(per|spc)_[a-z0-9]{8,40}$/.test(req.owner), "bad_input"); return { key: this.store.poolKey(req.owner).toString("base64") }; }

@@ -82,6 +82,11 @@ export function startSealer({ dir, sinks = {}, timeoutMs = 20_000, execPath = pr
       check: i => withCtx("lease.check", i, { lease: i.id }),
     },
     /** The kernel's own MAC key lives in the sealing process (K-3): `mac` and `verify` take a purpose (separates uses: "grant-event", "chain") and the data as a string (canonical JSON). The key is never returned. */
+    /** The log anchor (BL-2): the latest (seq, head) of a Space's log, moving only forward ('anchor_behind', 'anchor_split'). Kernel channel only. */
+    anchor: {
+      advance: i => call("anchor.advance", { ctx: { space: i.space }, seq: i.seq, head: i.head }).then(r => r.anchor),
+      read: i => call("anchor.read", { ctx: { space: i.space } }).then(r => r.anchor),
+    },
     kernel: {
       mac: i => call("kernel.mac", { purpose: i.purpose, data: i.data }).then(r => r.mac),
       verify: i => call("kernel.verify", { purpose: i.purpose, data: i.data, mac: i.mac }).then(r => r.ok),

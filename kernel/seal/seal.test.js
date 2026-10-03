@@ -513,3 +513,20 @@ test("seal.detect (SD-1, SD-2): a value sealed only in a record the person canno
   await s.close(); s = mk();
   assert.equal((await s.detectValue({ chain: person(), caller: FIRST, value: "111-22-3333", canRead: async () => true })).event.count, 6);
 });
+
+test("BL-2 anchor: the log's latest (seq, head) moves only forward, a split is refused, it survives a restart, and a Space sees only its own", async t => {
+  const dir = tmp("seal"), mk = () => startSealer({ dir, timeoutMs: 8000, dev: true, unattested: true });
+  let s = mk(); t.after(async () => { await s.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+  const A = { space: SPACE }, h = c => c.repeat(20);
+  assert.equal(await s.anchor.read(A), null);
+  assert.deepEqual(await s.anchor.advance({ ...A, seq: 10, head: h("a") }), { seq: 10, head: h("a") });
+  assert.equal((await s.anchor.advance({ ...A, seq: 10, head: h("a") })).seq, 10, "the same again is fine");
+  assert.equal(await code(s.anchor.advance({ ...A, seq: 9, head: h("b") })), "anchor_behind");
+  assert.equal(await code(s.anchor.advance({ ...A, seq: 10, head: h("c") })), "anchor_split");
+  assert.equal((await s.anchor.advance({ ...A, seq: 25, head: h("d") })).seq, 25);
+  assert.equal(await code(s.anchor.advance({ ...A, seq: -1, head: h("d") })), "bad_input");
+  assert.equal(await s.anchor.read({ space: "spc_otherspace0001" }), null);
+  await s.close(); s = mk();
+  assert.deepEqual(await s.anchor.read(A), { seq: 25, head: h("d") });
+  assert.equal(diskHolds(dir, h("d")), null, "the head is not on disk in the clear");
+});
