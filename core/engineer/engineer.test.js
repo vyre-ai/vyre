@@ -173,6 +173,7 @@ test("the model never sees a sealed value: the door refuses a pasted one, and de
   w.f.sealValue("123-45-6789");
   await assert.rejects(w.engineer.propose(w.as(w.alex), "the client's ssn is 123-45-6789, add a field"), { code: "ledger_hit" });
   assert.equal(w.f.modelCalls.length, 0, "the prompt never left");
+  w.f.grant(w.eng, ["records.read"], `vyre://${w.f.space}/def.type`);
   w.f.seed("def.type", { name: "matter", sample: { sealed: "us-ssn", ref: "seal_secret_1", present: true, valid_format: true, set_at: 1 } });
   await w.engineer.propose(w.as(w.alex), "add a stage");
   const prompt = w.f.modelCalls[0].messages.map((/** @type {any} */ m) => m.content).join("\n");
