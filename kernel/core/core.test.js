@@ -525,3 +525,13 @@ test("K1-8b and 9f: a stored job chain expires; a poison event is retried, then 
   for (let i = 0; i < 4 && !got.length; i++) { await new Promise(r => setTimeout(r, 5)); await log.pump(); }
   assert.deepEqual(got, [R(2)]);
 });
+
+test("grant-risk acts are denied outright for a chain holding a model, and a field allow-list is an obligation the narrowest hop sets", async () => {
+  const withAgent = builder().fromFacts({ kind: "agent_session", agent: "kit", session: "s", thread: "t", vouched: true });
+  const adm = grant({ actions: ["grants.create"], resource: { prefix: `vyre://${SPACE}/grant/*` } });
+  const az = world({ grants: [adm, { ...adm, id: "gr_kit", subject: { kind: "actor", actor: actorOf("agent", "kit") } }], members: ["agent:kit"], hasPresenceSession: () => true, verifyPresence: () => true });
+  assert.equal((await ask(az, withAgent, "grants.create", `vyre://${SPACE}/grant/new`)).reason, "model_chain");
+  const f = world({ grants: [grant({ actions: ["crm.read"], resource: { prefix: `vyre://${SPACE}/contact/*`, fields: ["name"] } })] });
+  const r = await ask(f, person(), "crm.read");
+  assert.deepEqual(r.obligations.find(o => o.type === "fields").allow, ["name"]);
+});

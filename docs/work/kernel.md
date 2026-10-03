@@ -71,3 +71,8 @@ Done, pushed to origin/work/kernel (f43c4e570 and later):
 ## K4 gate round (reviewer-2, db8342cc8)
 - Fixed with probes as tests: items 1 to 8, 11 and the reveal-without-door condition. Open: 10 (card and observeDenial take no chain), 12 (use proof checked at decide), the door built with the kernel's isChain at gateway level, template immutability (hash the body into the approval).
 - Next: events and the remaining assistant gaps (ctx.kernel), then review and merge kernel/tools/surface.js from work/teammates-03.
+
+## Grants store (3 Oct)
+- kernel/grants (index.js, roles.js, grants.test.js, 7 tests) and the gateway wiring (`createGateway({ grantsStore, presence })`, `gateway.grants`). The full `kernel/**` suite exits by itself (181 pass before this piece).
+- A signer signs `grant.<verb>` over `{ resource, input_hash }` with `input_hash = sha256(canonical({ action: "grants.<verb>", input }))`; resources are `vyre://<space>/grant/new`, `grant/<id>` and `member/<person>`.
+- Next: stage gates in the gateway (needs the stage definition shape from records), the tool surface review, the remaining K4 items (10, 12, template immutability).

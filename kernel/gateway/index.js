@@ -6,19 +6,25 @@ import { ACTIONS as SEAL_ACTIONS } from "../seal/uses.js";
 import { TASK_ACTIONS } from "../tasks/tasks.js";
 import { createApprovals } from "../tasks/approvals.js";
 import { createGate } from "../core/gate.js";
+import { GRANT_ACTIONS } from "../grants/index.js";
+import { grantProofVerifier } from "../core/presence.js";
 import { isChain, actorString, isExactlyPerson } from "../core/chain.js";
 import { KernelError } from "../core/errors.js";
 
 /**
- * @param {{ tasks?: any, sealer?: any, door?: any, approvals?: any, templates?: any, destinations?: any, owner?: string, space: string, store: any, log: any, chains: any, grants: any, members: any, actions?: any[], attrs?: any, sealedFields?: any,
+ * @param {{ grantsStore?: any, presence?: any, tasks?: any, sealer?: any, door?: any, approvals?: any, templates?: any, destinations?: any, owner?: string, space: string, store: any, log: any, chains: any, grants: any, members: any, actions?: any[], attrs?: any, sealedFields?: any,
  *   sinks?: Set<string>, standing?: any, verifyPresence?: any, hasPresenceSession?: any, clock?: () => number, policy_version?: number }} cfg
  */
 export function createGateway(cfg) {
   /** @type {any} */ let records;
   // Kernel attributes come from the gateway's own index (K2-7); a caller-supplied resolver only fills what the gateway does not hold.
   const attrs = (/** @type {string} */ u) => ({ ...((cfg.attrs && cfg.attrs(u)) || {}), ...((records && records.attrsOf(u)) || {}) });
-  const authorizer = createAuthorizer({ ...cfg, attrs, actions: [...RECORD_ACTIONS, ...SEAL_ACTIONS, ...TASK_ACTIONS, ...(cfg.actions || [])] });
-  records = createRecords({ space: cfg.space, store: cfg.store, authorizer, log: cfg.log, chains: cfg.chains, clock: cfg.clock, sinks: cfg.sinks });
+  // `authorize` reads grants and members from the kernel's grants store when one is given; otherwise from the caller (the retrofit path).
+  const gs = cfg.grantsStore;
+  const wiring = gs ? { grants: gs.provider, members: gs.members, ...(cfg.presence ? { verifyPresence: grantProofVerifier(cfg.presence) } : {}) } : {};
+  const authorizer = createAuthorizer({ ...cfg, ...wiring, attrs, actions: [...RECORD_ACTIONS, ...SEAL_ACTIONS, ...TASK_ACTIONS, ...GRANT_ACTIONS, ...(cfg.actions || [])] });
+  if (gs) gs.bind({ authorizer, registry: () => authorizer.actions });
+  records = createRecords({ members: wiring.members || cfg.members, space: cfg.space, store: cfg.store, authorizer, log: cfg.log, chains: cfg.chains, clock: cfg.clock, sinks: cfg.sinks });
   const { allowed, gate } = createGate({ authorizer, log: cfg.log });
 
   /** May this chain see this event? `events.read` on the subject, then the event's own `vis` (contract 7.4). Anything unknown is no. */
@@ -27,12 +33,13 @@ export function createGateway(cfg) {
     const vis = e.vis;
     if (vis === "space") return true;
     if (vis === "subject") return allowed(chain, "records.read", e.subject);
+    const mem = wiring.members || cfg.members;
     const owner = isExactlyPerson(chain) && cfg.owner !== undefined && chain.hops[0].actor.id === cfg.owner;
     if (vis === "owner") return owner;
     if (vis === "actor") return owner || chain.hops.some((/** @type {any} */ h) => actorString(h.actor) === e.actor);
     if (typeof vis === "string" && vis.startsWith("members:")) {
       const role = vis.slice(8);
-      return chain.hops.some((/** @type {any} */ h) => h.actor.kind === "person" && cfg.members.membership && cfg.members.membership(h.actor)?.role === role);
+      return chain.hops.some((/** @type {any} */ h) => h.actor.kind === "person" && mem.membership && mem.membership(h.actor)?.role === role);
     }
     return false;
   }
@@ -58,6 +65,7 @@ export function createGateway(cfg) {
   return Object.freeze({
     authorize: authorizer.authorize,
     ...(seal ? { seal } : {}),
+    ...(gs ? { grants: Object.freeze({ create: gs.create, revoke: gs.revoke, narrow: gs.narrow, list: gs.list, setRole: gs.setRole, addActor: gs.addActor, rebuild: gs.rebuild }) } : {}),
     /** The Space's type definitions, read through authorize like any record read (the tool surface and Customize list from here). */
     async definitions(chain) {
       await gate(chain, "records.read", `vyre://${cfg.space}/definition/types`);
@@ -67,8 +75,8 @@ export function createGateway(cfg) {
     actions: () => [...authorizer.actions.values()],
     members: Object.freeze({
       /** The role a member holds in this Space, or null. A role is read from the membership the kernel holds, never from the caller. */
-      roleOf: (/** @type {any} */ a) => (cfg.members.has(a) && cfg.members.membership ? cfg.members.membership(a)?.role ?? null : null),
-      isAdmin: (/** @type {any} */ a) => { const r = cfg.members.has(a) && cfg.members.membership ? cfg.members.membership(a)?.role : null; return r === "owner" || r === "admin"; },
+      roleOf: (/** @type {any} */ a) => ((wiring.members || cfg.members).has(a) && (wiring.members || cfg.members).membership ? (wiring.members || cfg.members).membership(a)?.role ?? null : null),
+      isAdmin: (/** @type {any} */ a) => { const m = wiring.members || cfg.members; const r = m.has(a) && m.membership ? m.membership(a)?.role : null; return r === "owner" || r === "admin"; },
     }),
     /** A service chain for the kernel's own module (memory, hooks): first-party, built by the kernel, never by a caller. */
     serviceChain: (/** @type {string} */ name) => cfg.chains.fromFacts({ kind: "module", module: String(name), first_party: true }),

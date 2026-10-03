@@ -165,8 +165,8 @@ export class Sealer {
       case "presence.enrol": { const r = this.presence.enrol({ ...req, ctx: this.ctxOf(req.ctx) }); if (r.refused) throw err(r.refused); return { enrolled: true, attested: r.attested, event: { type: "presence.enrolled", person: req.person, key_id: req.key_id, signer: req.signer, attested: r.attested } }; }
       case "presence.revoke": { const why = this.presence.revoke(req.key_id, this.ctxOf(req.ctx), req.proof); if (why) throw err(why); return { revoked: true, event: { type: "presence.revoked", key_id: req.key_id } }; }
       // The one verifier for the kernel: a task approval (or any kernel act the person signs) is checked here, against the keys enrolled here,
-      // and the proof is used up. The kernel supplies who is in the chain; only task ops are accepted, so this is not a path to a seal op.
-      case "presence.check": { const ctx = this.ctxOf(req.ctx); need(typeof req.act === "string" && /^task\.[a-z_]+$/.test(req.act) && req.fields && typeof req.fields === "object", "bad_input"); const why = this.presence.refuse(req.proof, { op: req.act, space: ctx.space, fields: req.fields, ctx }); if (why) throw err(why === "no_proof" ? "needs_presence" : why); return { ok: true }; }
+      // and the proof is used up. The kernel supplies who is in the chain; only task and grant ops are accepted, so this is not a path to a seal op.
+      case "presence.check": { const ctx = this.ctxOf(req.ctx); need(typeof req.act === "string" && /^(task|grant)\.[a-z_]+$/.test(req.act) && req.fields && typeof req.fields === "object", "bad_input"); const why = this.presence.refuse(req.proof, { op: req.act, space: ctx.space, fields: req.fields, ctx }); if (why) throw err(why === "no_proof" ? "needs_presence" : why); return { ok: true }; }
       case "health": return { ok: true, pid: process.pid, unattested_allowed: this.allowUnattested, presence: this.presence.recovery ? "recovery" : "ok" };
       default: throw err("bad_op");
     }

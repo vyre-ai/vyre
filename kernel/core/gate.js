@@ -7,10 +7,10 @@ import { KernelError } from "./errors.js";
 /** @param {{ authorizer: { authorize(i: any): Promise<any> }, log: any }} cfg */
 export function createGate(cfg) {
   const { authorizer, log } = cfg;
-  /** @param {any} chain @param {string} action @param {string} resource @param {{ quiet?: boolean, presence?: any }} [opts] */
+  /** @param {any} chain @param {string} action @param {string} resource @param {{ quiet?: boolean, presence?: any, input_hash?: string }} [opts] */
   async function gate(chain, action, resource, opts = {}) {
     if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
-    const d = await authorizer.authorize({ chain, action, resource, ...(opts.presence ? { presence: opts.presence } : {}) });
+    const d = await authorizer.authorize({ chain, action, resource, ...(opts.presence ? { presence: opts.presence } : {}), ...(opts.input_hash ? { input_hash: opts.input_hash } : {}) });
     if (d.effect === "allow") return d;
     if (d.effect === "ask") throw Object.assign(new KernelError(d.reason, `${action} needs ${d.reason === "needs_presence" ? "presence" : "approval"}`), { decision: d.decision, obligations: d.obligations });
     if (!opts.quiet && d.obligations.some((/** @type {any} */ o) => o.type === "audit")) {
@@ -21,5 +21,9 @@ export function createGate(cfg) {
   const allowed = async (/** @type {any} */ chain, /** @type {string} */ action, /** @type {string} */ resource) => {
     try { await gate(chain, action, resource, { quiet: true }); return true; } catch { return false; }
   };
-  return { gate, allowed };
+  /** The decision when allowed, else null: the caller needs the obligations (a field allow-list) as well as the yes. */
+  const check = async (/** @type {any} */ chain, /** @type {string} */ action, /** @type {string} */ resource) => {
+    try { return await gate(chain, action, resource, { quiet: true }); } catch { return null; }
+  };
+  return { gate, allowed, check };
 }

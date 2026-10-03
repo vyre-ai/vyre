@@ -13,7 +13,7 @@ const OUTWARD = new Set(["outward.send", "outward.pay", "outward.publish", "outw
 const PRESENCE_RANK = { none: 0, session: 1, fresh: 2 };
 const maxPresence = (/** @type {string} */ a, /** @type {string} */ b) => (PRESENCE_RANK[/** @type {'none'} */ (a)] >= PRESENCE_RANK[/** @type {'none'} */ (b)] ? a : b);
 // An obligation the kernel cannot recognise is never silently met: it makes the effect an ask (K1 item 8c).
-const KNOWN_OBLIGATIONS = new Set(["audit", "presence", "ask", "meter", "rate", "placeholders"]);
+const KNOWN_OBLIGATIONS = new Set(["audit", "presence", "ask", "meter", "rate", "placeholders", "fields"]);
 const REASON_RANK = ["no_grant", "wrong_node", "pattern_not_covered", "not_contained", "revoked", "expired"];
 
 /** Does an action pattern (`crm.update`, `crm.*`, `*.read`, `*`) cover `action`, for a grant made against action-set `version`? */
@@ -65,7 +65,7 @@ export function contains(parent, child, since = () => 0, riskOf = () => undefine
  * @property {(urn: string) => any} [attrs] kernel attributes of a resource: space, owner, sensitivity, project, created_by
  * @property {(urn: string) => string[]} [sealedFields]
  * @property {(service: string, action: string, resource: string) => boolean} [standing] whether a service declared a standing read of this family of resources; a service with no declaration gets nothing
- * @property {(proof: any, ctx: any) => boolean} [verifyPresence] K4 supplies the hardware-signer check; default none
+ * @property {(proof: any, ctx: any) => boolean | Promise<boolean>} [verifyPresence] the hardware-signer check (core/presence.js); default none
  * @property {(chain: any) => boolean} [hasPresenceSession]
  * @property {number} [policy_version]
  * @property {() => number} [clock]
@@ -106,6 +106,8 @@ export function createAuthorizer(cfg) {
       // An unknown trust value is the most restrictive, never trusted (invariant 9).
       const trust = TRUST_ORDER.includes(chain.labels.trust) ? chain.labels.trust : "untrusted";
       if (trust === "untrusted" && risk !== "read") return deny("tainted");
+      // A grant is a person's act: never from a chain that holds a model, whatever it was lent (invariants 2 and 4).
+      if (risk === "grant" && hasKind(chain, "agent")) return deny("model_chain");
 
       // 2 and 3. Candidates and the effective grant per hop; the chain's authority is the intersection.
       const used = [];
@@ -168,8 +170,7 @@ export function createAuthorizer(cfg) {
       // A session stands for presence on admin and grant only when the chain is exactly one person: an assistant in the chain never inherits it.
       const sessionOk = !(risk === "admin" || risk === "grant") || isExactlyPerson(chain);
       const presenceMet = presence === "none" || (presence === "session" && sessionOk && (cfg.hasPresenceSession ? cfg.hasPresenceSession(chain) : false))
-        || (input.presence && cfg.verifyPresence ? cfg.verifyPresence(input.presence, ctxEvidence) : false)
-        || (presence === "session" && input.presence && cfg.verifyPresence ? cfg.verifyPresence(input.presence, ctxEvidence) : false);
+        || (input.presence && cfg.verifyPresence ? await cfg.verifyPresence(input.presence, ctxEvidence) === true : false);
       const out = [...obligations];
       if (presence !== "none") out.push({ type: "presence", method: presence });
       if (ask) out.push({ type: "ask", kind: ask.kind, approver: ask.approver, checker_must_be_person: true });
@@ -217,6 +218,8 @@ export function createAuthorizer(cfg) {
     /** @type {any[]} */ const obs = [];
     if (c.how && c.how.presence && c.how.presence !== "none") obs.push({ type: "presence", method: c.how.presence });
     if (c.how && c.how.approval) obs.push({ type: "ask", kind: reg.get(action).risk, approver: c.how.approval.by, checker_must_be_person: true });
+    // A field allow-list on the selector: the gateway omits other fields on read and refuses writes to them (the narrowest hop wins).
+    if (Array.isArray(g.resource.fields)) obs.push({ type: "fields", allow: [...g.resource.fields] });
     if (c.budget) obs.push({ type: "meter", meter: c.budget.meter, amount: 1 });
     if (c.rate) obs.push({ type: "rate", ...c.rate });
     for (const k of Object.keys(c)) if (!["when", "where", "how", "audience", "delegate", "budget", "rate", "once"].includes(k)) obs.push({ type: `unknown:${k}` });

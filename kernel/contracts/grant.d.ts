@@ -8,6 +8,8 @@ import type { Actor, Surface } from './chain.js';
 export interface Selector {
   readonly prefix: Urn;
   readonly where?: readonly SelectorPredicate[];
+  /** Optional field allow-list: on read, other fields are omitted; on write, a write to another field is refused. Narrowing may only shrink it. */
+  readonly fields?: readonly string[];
 }
 
 export interface SelectorPredicate {
