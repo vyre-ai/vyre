@@ -1237,9 +1237,9 @@ export default {
     // does not begin that way).
     ctx.tool("relay.route.id", {
       internal: true,
-      description: "This box's route id and route public key (base64url), for signing into the name directory. Modules only.",
+      description: "This box's route id and route public key (base64url), for signing into the name directory, and the box's own public key (`box`), which the Wink module hashes into the words a pairing shows. Modules only.",
       input: obj(),
-      run: async (_, meta) => { only(meta, ["names", "wink"], "the route id"); await keys.ready(); return { route: route(), pub: Buffer.from(k().route.pub).toString("base64url") }; },
+      run: async (_, meta) => { only(meta, ["names", "wink"], "the route id"); await keys.ready(); return { route: route(), pub: Buffer.from(k().route.pub).toString("base64url"), box: Buffer.from(k().box.pub).toString("base64url") }; },
     });
 
     ctx.tool("relay.route.sign", {

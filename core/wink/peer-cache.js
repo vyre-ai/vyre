@@ -30,7 +30,7 @@ export function createPeerAllowCache(o) {
     return p;
   };
   const idOf = (/** @type {any} */ e) => { const p = (e && e.payload) || e || {}; const v = p.eid || p.device || p.id; return typeof v === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(v) ? v : ""; };
-  const offs = ["wink.pair-done", "wink.peer-bound", "device.paired", "wink.server-adopted"].map(n => o.events.on(n, e => { const id = idOf(e); if (id) void refresh(id); else for (const k of [...cache.keys()]) void refresh(k); }));
+  const offs = ["wink.pair-done", "device.paired", "wink.server-adopted"].map(n => o.events.on(n, e => { const id = idOf(e); if (id) void refresh(id); else for (const k of [...cache.keys()]) void refresh(k); }));
   offs.push(...["wink.removed", "device.removed", "identity.entry-removed", "identity.removed"].map(n => o.events.on(n, e => { const id = idOf(e); if (id) { cache.set(id, { ok: false, at: now() }); void refresh(id); } })));
   // a list changed without saying which entry: every answer becomes no until it is read again
   offs.push(o.events.on("identity.changed", () => { for (const k of [...cache.keys()]) { cache.set(k, { ok: false, at: now() }); void refresh(k); } }));

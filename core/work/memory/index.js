@@ -39,14 +39,14 @@ const READ = "records.read";
 /**
  * @param {{ kernel: any, db: any, space: string, serviceChain: any, chainFor: (person: any) => any, embed?: (texts: string[]) => Promise<number[][]>,
  *   clock?: () => number, redactors?: import("./scrub.js").Redactor[], fieldDef?: (type: string, field: string) => any, ownerOf?: (record: string) => any,
- *   autoAccept?: { grant: string }|null, topK?: number }} o
+ *   autoAccept?: boolean|{ grant?: string }|null, personChain?: ((person: any) => any)|null, topK?: number }} o
  *   serviceChain: the kernel-built chain [service:memory] the engine reads with. chainFor(person): the kernel-built [person, service:memory] a fact is written under.
  */
-export function createMemoryEngine({ kernel, db, space, serviceChain, chainFor, embed, clock = Date.now, redactors = [], fieldDef, ownerOf, autoAccept = null, topK = 6 }) {
+export function createMemoryEngine({ kernel, db, space, serviceChain, chainFor, embed, clock = Date.now, redactors = [], fieldDef, ownerOf, autoAccept = null, personChain = null, topK = 6 }) {
   migrate(db, "memory_engine", SCHEMA);
   const lines = createLines(db, redactors);
   const idx = createIndex(db, { embed, redactors });
-  const facts = createFacts({ kernel, db, clock, space, chainFor, redactors, fieldDef, ownerOf, autoAccept });
+  const facts = createFacts({ kernel, db, clock, space, chainFor, redactors, fieldDef, ownerOf, autoAccept, personChain });
   const inSpace = (/** @type {string} */ urn) => { const p = parseUrn(urn); return !p || p.space === space; };
   let lastSweep = -Infinity;
 

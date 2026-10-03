@@ -311,3 +311,45 @@ test("host.pathOf: a call over the direct door reports wink", async t => {
   assert.deepEqual(seen, ["wink"]);
   link.close();
 });
+
+test("host D-1: a storage device's session may call only wink.storage.* on the home, on the direct door and on the relay door; nothing else reaches the registry", async t => {
+  const w = await world(t, { listed: false });
+  w.entries.set("srv1", { eid: "srv1", kind: "device", deviceKind: "storage", pub: w.key.pub });
+  const link = w.server.connect("harlow");
+  assert.equal((await link.call("wink.storage.bridge", { x: 1 })).caller, "device:srv1", "a storage call is served");
+  assert.equal(link.status().path, "direct");
+  for (const tool of ["about.text", "identity.sign", "wink.server.handover", "wink.pair.server", "wink.storagex.bridge", "chat.send"]) {
+    await assert.rejects(link.call(tool, {}, { timeoutMs: 1500 }), e => e.code === "denied", `${tool} is refused for a storage device`);
+  }
+  assert.deepEqual(w.calls.map(c => c.tool), ["wink.storage.bridge"], "only the storage call reached the registry");
+  const net = await import("node:net");
+  const [x, y] = await pairSockets(net);
+  const { socketPipe } = await import("./peer-wire.js");
+  w.home.acceptRelay("harlow")(streamOver(y), { deviceId: "srv1" });
+  const c = peerSession(socketPipe(x), { first: 1 });
+  assert.equal((await c.call("wink.storage.bridge", {})).caller, "device:srv1");
+  await assert.rejects(c.call("about.text", {}), e => e.code === "denied");
+  await assert.rejects(c.call("chat.send", {}), e => e.code === "denied");
+  assert.deepEqual(w.calls.map(c => c.tool), ["wink.storage.bridge", "wink.storage.bridge"]);
+  // the kind comes from the entry on every call: the same session, a person's device entry, may call anything
+  w.entries.set("srv1", { eid: "srv1", kind: "device", pub: w.key.pub });
+  assert.equal((await link.call("about.text", {})).caller, "device:srv1");
+  c.close(); link.close();
+});
+
+test("host P-1: a link that is up creates no recurring timer under 60 s, and a call after a long silence is pinged first (on demand)", async t => {
+  const made = [];
+  const realSet = globalThis.setInterval;
+  globalThis.setInterval = (f, ms, ...a) => { made.push(ms); return realSet(f, ms, ...a); };
+  let w;
+  try {
+    w = await world(t, { graceMs: 5000, retryMs: 60_000, hostOpts: { probeMs: 50, probeWaitMs: 150 } });
+    const link = w.server.connect("harlow");
+    assert.equal((await link.call("about.text", {})).caller, "device:srv1");
+    await new Promise(r => setTimeout(r, 400));
+    assert.deepEqual(made.filter(ms => ms < 60_000), [], "no recurring timer under 60 s while the link is up and idle");
+    // silent longer than probeMs: the next call pings first, and goes through
+    assert.equal((await link.call("about.text", { again: true })).caller, "device:srv1");
+    link.close();
+  } finally { globalThis.setInterval = realSet; }
+});
