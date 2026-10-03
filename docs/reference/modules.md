@@ -893,6 +893,7 @@ Pairing as grants: every way in is a Wink (scan a code, or type two-sided codes)
 - Emits: [33 events](events.md#wink)
 - Listens for: `relay.code-asked`, `relay.invite-redeemed`, `device.paired`, `device.removed`
 - Shows on: capsule, cli, deck
+- Needs daemon: `dataStores`
 - Needs vault: `per-storage`
 
 ## work
