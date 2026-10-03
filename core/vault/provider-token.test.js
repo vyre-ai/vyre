@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { start } from "../daemon/index.js";
 import { tempHome, present } from "../../test/helpers.js";
-import { takeCredentialsPort } from "./index.js";
+import { provideOnce } from "../modules/index.js";
 
 const fake = l => `fixture-${l}-${crypto.randomBytes(14).toString("hex")}`;
 async function daemon(t, vaultConfig = {}) {
@@ -34,7 +34,7 @@ test("only you, or the setup page for you, add, replace or remove the token; a m
   assert.ok((await reg("vault.delete", { name: "claude-setup-token" }, "module:sessions")).error, "nor through vault.delete");
   assert.equal((await reg("vault.provider.remove", { provider: "claude" }, "cli")).data.stored, false);
   assert.deepEqual((await reg("vault.provider.status", {}, "cli")).data.tokens, []);
-  for (const bad of [{ provider: "codex", token: tok }, { provider: "claude", token: "has a space" }]) assert.ok((await reg("vault.provider.set", bad, "cli")).error, JSON.stringify(bad));
+  for (const bad of [{ provider: "codex", token: tok }, { provider: "__proto__", token: tok }, { provider: "constructor", token: tok }, { provider: "toString", token: tok }, { provider: "claude", token: "has a space" }]) assert.ok((await reg("vault.provider.set", bad, "cli")).error, JSON.stringify(bad));
   assert.equal((await reg("vault.provider.set", { provider: "anthropic", token: fake("api") }, "cli")).data.stored, true, "the API key is the other provider item");
 });
 
@@ -46,21 +46,28 @@ test("the app learns that one is stored and when, never the value; the logs, the
   for (const f of fs.readdirSync(root, { recursive: true })) { const p = path.join(root, String(f)); if (fs.statSync(p).isFile() && fs.statSync(p).size < 50_000_000) assert.equal(fs.readFileSync(p).includes(Buffer.from(tok)), false, `sealed at rest: ${f}`); }
 });
 
-test("the credentials port: the launcher gets the token for a provider, or nothing; it is taken once; each use leaves an audit row without the value", async t => {
-  const { reg, logs } = await daemon(t), tok = fake("claude"), key = fake("api");
+test("the credentials port: the vault provided it once, the launcher gets the token for a provider item, or null, and each use leaves an audit row without the value", async t => {
+  const { d, reg, logs } = await daemon(t), tok = fake("claude"), key = fake("api");
   await reg("vault.put", { name: "claude-setup-token", kind: "secret", value: tok, grants: ["agents", "threads"] }, "module:onboard"); // as core/onboard makes it
   await reg("vault.provider.set", { provider: "anthropic", token: key }, "cli");
-  const port = takeCredentialsPort();
-  assert.equal(await port.credentials("claude"), tok); assert.equal(await port.credentials("anthropic"), key); assert.equal(await port.credentials("codex"), null); assert.equal(await port.credentials("../x"), null);
-  assert.throws(() => takeCredentialsPort(), /already taken/, "a module that imports the vault later cannot take it"); assert.ok(Object.isFrozen(port)); assert.equal(Object.keys(port).join(), "credentials");
+  // VP-2: the vault provided the port to the registry once, at its own start, and the daemon gave it to the sandbox; no import of the vault is involved, and nothing can take it later.
+  const port = d.registry.deps.credentialsPort; assert.ok(port, "the registry holds the credentials port the vault provided");
+  // VP-4: the vault may provide again after a restart and the new port replaces the old one; nobody else can provide at all.
+  const before = d.registry.deps.credentialsPort, fresh = Object.freeze({ credentials: async () => "fresh" });
+  provideOnce(d.registry.deps, "vault", "credentialsPort", fresh); assert.equal(d.registry.deps.credentialsPort, fresh, "the restarted vault's port replaced the old one");
+  provideOnce(d.registry.deps, "vault", "credentialsPort", before); assert.equal(d.registry.deps.credentialsPort, before);
+  for (const [mod, name] of [["sessions", "credentialsPort"], ["agents", "credentialsPort"], ["vault", "sandbox"], ["mcp", "credentialsPort"]]) assert.throws(() => provideOnce({}, mod, name, {}), /may not provide/, `${mod} ${name}`);
+  assert.equal(await port.credentials("claude"), tok); assert.equal(await port.credentials("anthropic"), key);
+  assert.equal(await port.credentials("codex"), null); assert.equal(await port.credentials("../x"), null); for (const p of ["__proto__", "constructor", "toString"]) assert.equal(await port.credentials(p), null, p);
+  assert.ok(Object.isFrozen(port)); assert.equal(Object.keys(port).join(), "credentials");
   const all = await everything(reg, logs); assert.equal(all.includes(tok) || all.includes(key), false); assert.match(all, /provider-token/);
-  await reg("vault.provider.remove", { provider: "claude" }, "cli"); assert.equal(await port.credentials("claude"), null, "removed means gone");
+  await reg("vault.provider.remove", { provider: "claude" }, "cli"); assert.equal(await port.credentials("claude"), null, "removed means gone"); assert.equal(await port.credentials("anthropic"), key);
 });
 
 test("launcherOnly: once it is on, no module is granted the token, and the person's own reveal still needs presence like any item", async t => {
-  const { reg } = await daemon(t, { launcherOnly: true }), tok = fake("claude");
+  const { d, reg } = await daemon(t, { launcherOnly: true }), tok = fake("claude");
   await reg("vault.provider.set", { provider: "claude", token: tok }, "cli");
   for (const m of ["agents", "threads", "sessions"]) assert.ok((await reg("vault.grant", { name: "claude-setup-token", module: m }, "cli")).error, `${m} is not granted it`);
   assert.ok((await reg("vault.put", { name: "claude-setup-token", kind: "secret", value: fake("x"), grants: ["agents"] }, "module:onboard")).error, "onboard must stop attaching grants before this is switched on");
-  assert.equal(await takeCredentialsPort().credentials("claude"), tok);
+  assert.equal(await d.registry.deps.credentialsPort.credentials("claude"), tok);
 });

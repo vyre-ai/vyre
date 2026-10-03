@@ -12,6 +12,7 @@ import { BlockView, type BlockCtx } from "./Blocks";
 import type { ChatStore } from "./store";
 import type { LayoutRow } from "./frames.js";
 import { askAudience } from "./group.js";
+import { readSelection } from "./highlight.js";
 import { FanoutSet } from "./FanoutSet";
 import { MessageTools, Reactions, UnreadDivider, WaitingCard } from "./GroupParts";
 
@@ -80,6 +81,20 @@ function Message({ who, family, meta, sub, dress, children, wide }: { who: strin
           {dress?.replies ? <Text size="caption" tone="accent">{`${dress.replies} ${dress.replies === 1 ? "reply" : "replies"}`}</Text> : null}
         </View>
       </View>
+    </View>
+  );
+}
+
+/** Highlight to assistant: the message, or the part of it the person selected, goes above the composer as a quoted reference. Nothing is sent. */
+function HighlightAction({ from, text, ctx }: { from: string; text: string; ctx: BlockCtx }) {
+  const { color } = useUiTheme();
+  const picked = useRef("");
+  if (!ctx.onHighlight) return null;
+  return (
+    <View style={S.s4}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Highlight to assistant" onPressIn={() => { picked.current = readSelection(); }} onPress={() => ctx.onHighlight?.({ from, text, selected: picked.current })} style={({ pressed, hovered }: any) => ({ minHeight: ctx.wide ? 28 : 44, justifyContent: "center", paddingHorizontal: 8, marginLeft: -8, borderRadius: 8, backgroundColor: pressed ? color.press : hovered ? color.hover : "transparent" })}>
+        <Text size="caption" tone="label">Highlight to assistant</Text>
+      </Pressable>
     </View>
   );
 }
@@ -194,6 +209,7 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
         <Message who={w.name} family={w.family} sub={w.sub} meta={it.pickedUp ? "picked up" : undefined} dress={dressOf(store, k, it.text)} wide={wide}>
           <Text size="read" selectable>{it.text}</Text>
           {mine ? <MessageActions uuid={k.slice(2)} text={it.text} ctx={ctx} /> : null}
+          <HighlightAction from={w.name} text={it.text} ctx={ctx} />
           <GroupTools store={store} k={k} ctx={ctx} name={w.name} />
         </Message>
       );
@@ -208,6 +224,7 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
       return (
         <Message who={w.name} family={w.family} sub={w.sub} dress={dressOf(store, k, it.text)} wide={wide}>
           <StreamText store={store} k={k} text={it.text} done={it.done} />
+          {it.done ? <HighlightAction from={w.name} text={it.text} ctx={ctx} /> : null}
           <GroupTools store={store} k={k} ctx={ctx} name={w.name} />
         </Message>
       );

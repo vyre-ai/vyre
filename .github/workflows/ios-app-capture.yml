@@ -59,6 +59,12 @@ jobs:
                       print(d["udid"]); sys.exit()
           ')
           xcrun simctl boot "$udid"; xcrun simctl bootstatus "$udid" -b
+          # openurl asks "Open in Vyre?" once per scheme: answer it in advance (the simulator's scheme approval list), then restart it.
+          xcrun simctl shutdown "$udid"
+          plist="$HOME/Library/Developer/CoreSimulator/Devices/$udid/data/Library/Preferences/com.apple.launchservices.schemeapproval.plist"
+          mkdir -p "$(dirname "$plist")"
+          /usr/libexec/PlistBuddy -c 'Add :com.apple.CoreSimulator.CoreSimulatorBridge-->vyre string sh.vyre.app' "$plist" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :com.apple.CoreSimulator.CoreSimulatorBridge-->vyre sh.vyre.app" "$plist"
+          xcrun simctl boot "$udid"; xcrun simctl bootstatus "$udid" -b
           xcrun simctl install "$udid" "$app"
           xcrun simctl launch "$udid" sh.vyre.app || true
           sleep 20

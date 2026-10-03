@@ -55,19 +55,14 @@ const SURFACES = [...PEOPLE, "deck", "capsule"];
 const str = { type: "string" };
 const strs = { type: "array", items: { type: "string" } };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
-// The credentials port (the session launcher's way to a provider sign-in token). Not a tool: a function the daemon takes ONCE, right after the vault starts, and hands to
-// the launcher inside vyred. A second take is refused, so a module, an assistant or a session that gets hold of this file cannot take it later.
-const portHolder = /** @type {{ vault: any, taken: boolean }} */ ({ vault: null, taken: false });
-export function takeCredentialsPort() {
-  if (!portHolder.vault) throw new Error("the vault has not started");
-  if (portHolder.taken) throw new Error("the credentials port was already taken");
-  portHolder.taken = true;
-  const vault = portHolder.vault;
-  return Object.freeze({
-    /** The token for this provider, or null. @param {string} provider @returns {Promise<string | null>} */
-    credentials: async provider => (Object.hasOwn(LAUNCHER_ITEMS, String(provider)) ? vault.providerToken(provider) : null),
-  });
-}
+// The credentials port (the session launcher's way to a provider sign-in token). Not a tool: a frozen function the vault hands to the registry ONCE, at its own start, through
+// `ctx.provide` (the registry refuses a second provider, and any module but the vault). The daemon and the launcher modules receive it from the registry's own dependencies, so no
+// module and no daemon import reaches into the vault for it, and nothing that imports this file can take it.
+/** @param {any} vault */
+const credentialsPort = vault => Object.freeze({
+  /** The sign-in token for a provider item: `claude` is the setup token (claude-setup-token), `anthropic` the API key (anthropic-api-key). The token, or null for nothing or an unknown name. The string shape sessions reads. @param {string} provider @returns {Promise<string | null>} */
+  credentials: async provider => (Object.hasOwn(LAUNCHER_ITEMS, String(provider)) ? vault.providerToken(provider) : null),
+});
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
@@ -93,7 +88,7 @@ export default {
       try { if (await vault.keys.exists()) await vault.key(); }
       catch (e) { ctx.log(`vault: not opened at start: ${/** @type {Error} */ (e).message}`); }
     }
-    portHolder.vault = vault; portHolder.taken = false;
+    if (typeof ctx.provide === "function") ctx.provide("credentialsPort", credentialsPort(vault));
     let listener = null;
     if (opts.relay && (opts.relay.port !== undefined || opts.relay.host)) {
       // With identity "whois" no header counts: the login is the one Tailscale gives the peer
@@ -211,7 +206,7 @@ export default {
     // A provider's sign-in token (`claude setup-token`, or an Anthropic key) lives in the items core/onboard already makes (claude-setup-token, anthropic-api-key; LAUNCHER_ITEMS).
     // The person sets, replaces or removes one here with presence; the app learns only that one is stored and when. Nothing returns the value: the session launcher gets it through the
     // credentials port above and sets it in the session's own process.
-    const provider = p => { const spec = LAUNCHER_ITEMS[String(p)]; if (!spec) throw new Error(`provider is one of ${Object.keys(LAUNCHER_ITEMS).join(", ")}`); return spec; };
+    const provider = p => { const spec = Object.hasOwn(LAUNCHER_ITEMS, String(p)) ? LAUNCHER_ITEMS[String(p)] : null; if (!spec) throw new Error(`provider is one of ${Object.keys(LAUNCHER_ITEMS).join(", ")}`); return spec; };
     tool("vault.provider.set", SURFACES, "Store or replace a provider's session sign-in token (for Claude, the one `claude setup-token` makes). Sealed, yours, never shown again; the session launcher is the only thing that receives it.",
       obj({ provider: str, token: str }, ["provider", "token"]),
       async ({ provider: p, token }, { caller }) => {

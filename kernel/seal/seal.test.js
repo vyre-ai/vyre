@@ -294,14 +294,21 @@ test("K3 item 10: swapping two sealed files in one Space does not make a referen
 
 test("K3 item 6: the sealing process refuses to start on a desktop profile or as an agent's uid, and a loose master key file", async t => {
   const { hostCheck, fileMaster } = await import("./process.js");
-  assert.throws(() => hostCheck({ profile: "desktop", dev: false }), /OS keystore/);
+  assert.doesNotThrow(() => hostCheck({ profile: "desktop", dev: false }), "a desktop uses the file master inside the Vyre home, no development switch");
+  assert.throws(() => hostCheck({ profile: "mystery", dev: false, uid: 1000 }), /own user/, "an unknown profile is refused");
   assert.throws(() => hostCheck({ profile: "server", dev: false, uid: 2001 }), /own user/);
   assert.doesNotThrow(() => hostCheck({ profile: "server", dev: false, uid: 1000 }));
   assert.throws(() => hostCheck({ profile: "server", dev: false, uid: 5000, agentUids: "5000,5001" }), /own user/);
   const d = tmp("master"); fileMaster(d); fs.chmodSync(path.join(d, "master.key"), 0o644);
   assert.throws(() => fileMaster(d), /not private/);
-  const down = startSealer({ dir: tmp("seal"), timeoutMs: 3000 }); // no dev flag: a desktop profile
-  assert.equal(await code(down.health()), "sealer_down"); await down.close();
+  // Both profiles boot with no development variable at all, and say plainly where the key lives.
+  for (const profile of [undefined, "desktop", "server"]) {
+    const dir = tmp("seal"), s = startSealer({ dir, timeoutMs: 8000, ...(profile ? { profile } : {}) }); t.after(async () => { await s.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+    const h = await s.health(); assert.equal(h.ok, true, String(profile)); assert.equal(h.custody.master, "file"); assert.equal(h.custody.profile, profile ?? "desktop"); assert.match(h.custody.note, /key/);
+    assert.equal(fs.statSync(path.join(dir, "master.key")).mode & 0o077, 0, "the master is private to the process's user");
+  }
+  const { custodyNote } = await import("./process.js");
+  assert.match(custodyNote("desktop", "win32"), /only as protected as this PC's own Windows account/); assert.match(custodyNote("server", "linux"), /Root on this server, or a stolen disk/); assert.match(custodyNote("desktop", "darwin"), /sandboxed away from it/);
 });
 
 test("R-1: revoking every key leaves the person in recovery, never a first device, and enrolled keys survive a restart", async t => {
@@ -432,4 +439,15 @@ test("service credentials: a kernel module's key is sealed in the process, read 
   // An existing 0600 file is moved in once and shredded.
   const file = path.join(dir, "..", `adopt-${Date.now()}.key`); fs.writeFileSync(file, key + "\n", { mode: 0o600 });
   assert.equal((await s.service.adopt({ name: "twenty.spc_adopted.key", file })).adopted, true); assert.equal(fs.existsSync(file), false); assert.equal(await s.service.get({ name: "twenty.spc_adopted.key" }), key);
+});
+
+test("found against the real chains: a member on a paired device reveals with a hardware proof, a daemon speaking for them in a session does not", async t => {
+  const { s } = await setup(t), bob = signer("per_bob"); await enrolDevice(s, bob);
+  const dev = person("per_bob"), { ref } = await s.api.put({ chain: dev, record: REC, field: "ssn", class: "us-ssn", value: "123-45-6789" });
+  assert.equal(dev.hops[0].via.device, "device:d_per_bob", "the kernel's device chain has a device and no surface"); assert.equal(dev.hops[0].via.surface, undefined);
+  assert.equal((await s.api.reveal({ chain: dev, ref: ref.ref, purpose: "p", proof: bob.proof(dev, "seal.reveal", { ref: ref.ref, purpose: "p" }) })).value, "123-45-6789");
+  // SHIM(session-person-chain): the kernel's `session_person` door (a daemon speaking for a person, no passkey shown) is built here by hand-made facts through chain(); a person's own chain from it must not reveal.
+  const { createChainBuilder } = await import("../core/chain.js"), { createKernelSeal } = await import("../core/seal.js");
+  const sp = createChainBuilder({ space: SPACE, owner: "per_alex", owner_uid: 501, seal: createKernelSeal({ key: Buffer.alloc(32, 3) }), clock: Date.now, is_person: () => true }).fromFacts({ kind: "session_person", person: "per_bob", session: "x", vouched: true });
+  assert.equal(await code(s.api.reveal({ chain: sp, ref: ref.ref, purpose: "p", proof: bob.proof(sp, "seal.reveal", { ref: ref.ref, purpose: "p" }) })), "human_only");
 });

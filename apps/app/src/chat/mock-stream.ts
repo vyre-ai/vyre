@@ -173,6 +173,9 @@ export function groupScript(o: { tps?: number } = {}): Segment[] {
   // Two assistants stream at once; each keeps its own message.
   const k = new Clock().at(a.t);
   k.say("k1", "Running the intake tests. Two of the fourteen failed on the first pass, both on 29 February. The check uses a fixed month table, so I am switching it to the real month length and running them again.", tps, 250, { ...kit, message: "k1" });
+  // A terminal block in a room of more than one person says so under itself (the server sets the note when the room has more than one person).
+  k.push("tool-started", { tool_id: "gt1", tool: "Bash", kind: "terminal", summary: "npm test -- intake" }, 100, { ...kit });
+  k.push("tool-finished", { tool_id: "gt1", ok: true, result: { block: "terminal", command: "npm test -- intake", output: "pass 14  fail 0\n", exit: 0, note: "visible to everyone in this chat" } }, 300, { ...kit });
   k.push("presence", { who: "assistant:kit", state: "idle" }, 40);
   const j = new Clock().at(a.t);
   j.say("j1", "Draft for the owner: the demand letter went out on 2 October and the landlord has until 14 October to reply. I will write again that day either way, and you can call before then if you prefer.", tps, 300, { ...juno, message: "j1" });
@@ -186,6 +189,7 @@ export function groupScript(o: { tps?: number } = {}): Segment[] {
   b.push("reaction", { emoji: "\u{1F440}" }, 100, { ...chris, message: "j1" });
   b.push("user-message", { message: "m3", text: "Can kit also cover the leap year in the form test?", state: "sent" }, 400, { ...alex, message: "m3" });
   b.push("thread-reply", { parent: "k1" }, 5, { ...alex, message: "m3" });
+  b.push("participant-joined", { who: "person:dana", name: "dana", role: "Paralegal" }, 600);
 
   // Alex asks three models at once. They stream together; the local one is cut short.
   const f = new Clock().at(Math.max(j.t, b.t) + 800);
