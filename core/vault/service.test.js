@@ -87,3 +87,15 @@ test("forward: an approved outward call runs once per idem key, with the approva
   const audit = JSON.stringify(m.db.prepare("SELECT * FROM vault_audit").all());
   assert.ok(audit.includes("released:tsk_approved1")); assert.ok(!audit.includes(SECRET));
 });
+
+test("SV-1: a path the URL parser would rewrite (backslash, tab, line break) cannot walk around a deny rule", async t => {
+  const m = await mk(t); await put(m, { allow: [{ method: "GET", path: "/v4/matters/*/notes" }], deny: [{ path: "/v4/users/*" }] });
+  const same = [];
+  for (const path of ["/v4/matters/x\\..\\..\\users\\9/notes", "/v4/matters/x/..%2f..%2fusers/9/notes", "/v4/us\ters/9", "/v4/users\t/9", "/v4/matters/x\n/notes", "/v4/matters/x /notes", "/v4/matters/x/../../users/9/notes"]) {
+    same.push(await m.run("vault.service.forward", { connector: "clio", request: { method: "GET", path } }).then(() => `sent ${path}`, e => `${e.code}: ${e.message}`));
+  }
+  assert.deepEqual([...new Set(same)], ["not_found: that request is not open to this caller"]);
+  assert.equal(m.net.calls.length, 0, "nothing reached the transport");
+  const ok = await m.run("vault.service.forward", { connector: "clio", request: { method: "GET", path: "/v4/matters/12/notes" } });
+  assert.equal(ok.status, 200);
+});
