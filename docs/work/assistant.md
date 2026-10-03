@@ -122,3 +122,20 @@ Needs from native-core: one renderer per kind. Needs from platform: the tool res
 ## 0.3 native assistant (3 Oct)
 Done: situation, playbooks, tools-port 83dc06920; components 431ac11b5 and ec22b3f10 (contract in the "Components for native-core" section); fit eval. 224 of 224 pass (1 skipped) with boundaries, docs and reach on the test box.
 Needs: platform generates the tool list from definitions as documented in tools-port.js, plus kernel.tasks.list, members.roleOf, a team-member read and the held-result shape in kernel/contracts; records: `playbook` and `team_member` types; vault: sign-off on the "why sealed" wording; native-core: one renderer per component kind and the picker reading the stored fit; someone: the price table (PRICES) in eval/run.js. No real model call has been made; a real run needs ANTHROPIC_API_KEY and the lead's go (about 5 dollars).
+
+## 0.3 wired to the kernel (3 Oct, after the account switch)
+Done:
+- Merged origin/work/kernel (K1 to K4). Action names in my code are the registry's (`records.read`, `records.update`, `records.define`, `tasks.request`, `events.read`); the fake kernel uses them too.
+- `kernel/tools/surface.js` (my branch, platform told so it lands once): the tool surface generated from the Space's definitions and the action registry, cut by the chain's grants. `<plural>.find|create|update`, `.move_stage` for a stage field, `tasks.assign`, and one tool per outward registry action. A tool the chain cannot use is not listed and a call to it is `not_found`. An outward act returns `{ held: { task, summary, approver } }` for an agent doer (the kernel makes the `sent` task with the approver as checker); a person's own act returns `{ needs_presence: { action, summary } }` (a person cannot check their own work, the kernel says `same_actor`). Sealed fields never appear in a tool schema. Tested on the REAL gateway and tasks (`test/real-kernel.js`).
+- `core/work` module (`module.json`, reach on every tool): `native.tools|call|situation`, `teammates.context|add|doing`, `know.search|answer|suggestions|accept` (not `recall.*`: that name is Recall's), `engineer.talk|revise|approve`. Reads `ctx.kernel`; every tool answers `unavailable` until platform wires it.
+- The fit eval now runs on the real gateway and the generated surface, with the kernel-built situation as its system text. `adapter-openrouter.js` and `run.js` use OPENROUTER_EVAL_KEY when set (the protected `eval` environment has only that secret). `.github/workflows/assistant-fit-eval.yml`: manual, environment `eval`, hard stop $5, key usage printed before and after.
+
+Gaps for platform (what `ctx.kernel` must provide for core/work, all named in core/work/index.js):
+- `kernel.chainFor(extra)`: the chain built from the call's own facts (no tool builds one).
+- `kernel.definitions(chain)`: the Space's current type definitions (the store has `describe(type)` only; nothing lists types). `kernel.actions()`: the action registry.
+- `kernel.grants.list/create/revoke` (teammates), `kernel.members.roleOf/isAdmin`, `kernel.tasks.list` (situation), `kernel.model.call` (memory answers, Engineer), `kernel.serviceChain("memory")`, `kernel.chainForPerson(person)`, `kernel.compile` and `kernel.simulate` (records, sessions), `kernel.fieldDef/ownerOf`.
+- Stage gates (a stage's required tasks) are not enforced by the gateway; the eval fixture stands in for them.
+- A person's own outward act: confirm `needs_presence` as the shape, or give a surface prompt for presence.
+
+Blocked: the paid eval. The `eval` environment only allows main and work/stage-0.2 and a required reviewer, and a workflow must be on main to dispatch. Needs launch/lead: land `assistant-fit-eval.yml` on main (or add this branch to the environment's branch policy), then dispatch with model anthropic/claude-haiku-4.5 and budget 2.5, then sonnet-4.6 at 2.5 (total hard stop 5).
+Next: first thing, run the eval once the workflow is dispatchable and record the run id here; then proposals as records for the Engineer; perf numbers with scripts/perf-check.

@@ -78,3 +78,18 @@ test("the Claude adapter speaks the Messages API shape (a fake fetch; no network
   assert.deepEqual(r.tool_calls, [{ id: "t1", name: "matters.find", input: { query: "x" } }]);
   assert.equal(r.usage?.input_tokens, 5);
 });
+
+test("the OpenRouter adapter speaks chat completions with function calling (a fake fetch; no network)", async () => {
+  const { openrouterAdapter } = await import("./adapter-openrouter.js");
+  /** @type {any} */ let body, auth;
+  const fake = /** @type {any} */ (async (/** @type {string} */ _u, /** @type {any} */ init) => { body = JSON.parse(init.body); auth = init.headers.authorization; return { ok: true, json: async () => ({ choices: [{ message: { content: "hi", tool_calls: [{ id: "t1", function: { name: "matters__find", arguments: "{\"where\":{}}" } }] } }], usage: { prompt_tokens: 7, completion_tokens: 3 } }) }; });
+  const a = openrouterAdapter({ apiKey: "k", model: "anthropic/claude-haiku-4.5", fetchImpl: fake });
+  const r = await a.run([{ role: "system", content: "s" }, { role: "user", content: "q" }, { role: "assistant", content: "", tool_calls: [{ id: "t0", name: "matters.find", input: {} }] }, { role: "tool", tool_call_id: "t0", name: "matters.find", content: "{}" }],
+    [{ name: "matters.find", description: "d", schema: { type: "object" } }], { task: "find", max_tokens: 100 });
+  assert.equal(auth, "Bearer k");
+  assert.equal(body.tools[0].function.name, "matters__find");
+  assert.equal(body.messages[2].tool_calls[0].function.name, "matters__find");
+  assert.equal(body.messages[3].role, "tool");
+  assert.deepEqual(r.tool_calls, [{ id: "t1", name: "matters.find", input: { where: {} } }]);
+  assert.deepEqual([r.usage?.input_tokens, r.usage?.output_tokens], [7, 3]);
+});

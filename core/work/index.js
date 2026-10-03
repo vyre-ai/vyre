@@ -120,26 +120,26 @@ export default {
       },
     });
 
-    ctx.tool("recall.search", {
+    ctx.tool("know.search", {
       description: "Search the Space's records, events and session lines by meaning. Only sources the caller may read come back, each with its address.",
       input: obj({ query: { type: "string" }, k: { type: "integer" } }, ["query"]),
       run: async (input, extra) => ({ hits: await engineOf().search(await chainOf(extra), String(input.query), Math.min(Number(input.k) || 6, 12)) }),
     });
-    ctx.tool("recall.answer", {
+    ctx.tool("know.answer", {
       description: "Answer a question from the Space's own records and history. Every claim cites a source the caller may read; with none to cite it says so.",
       input: obj({ question: { type: "string" } }, ["question"]),
       run: async (input, extra) => {
         const chain = await chainOf(extra);
         const result = await engineOf().answer(chain, String(input.question));
-        return { result, component: toComponent("recall.answer", result) };
+        return { result, component: toComponent("know.answer", result) };
       },
     });
-    ctx.tool("recall.suggestions", {
+    ctx.tool("know.suggestions", {
       description: "Facts memory proposes for a record, each with the lines they came from. Nothing is written until a person accepts one.",
       input: obj({ record: { type: "string" } }, ["record"]),
       run: async (input, extra) => ({ suggestions: await engineOf().facts.suggestions(await chainOf(extra), String(input.record)) }),
     });
-    ctx.tool("recall.accept", {
+    ctx.tool("know.accept", {
       description: "Accept a proposed fact: it is written onto the record under the person's own chain, with its sources.",
       input: obj({ id: { type: "integer" } }, ["id"]),
       run: async (input, extra) => engineOf().facts.accept(await chainOf(extra), Number(input.id)),
