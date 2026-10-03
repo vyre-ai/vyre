@@ -166,4 +166,5 @@ test("CN-1 on the real kernel: a delegate with an object schedule survives a reb
   const d = await k.gateway.authorize({ chain, action: "records.read", resource: `vyre://${S}/contact/c1` });
   assert.notEqual(d.reason, "not_contained", "the child is still inside its parent");
   assert.ok(d.obligations.some(o => o.type === "unknown:schedule"), "and the schedule it carries is never met silently");
+  assert.equal(d.obligations.filter(o => o.type === "unknown:schedule").length, 1, "once, not once per grant in the chain");
 });
