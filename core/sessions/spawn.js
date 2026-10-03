@@ -41,9 +41,16 @@ export const usesSpawner = () => process.env.VYRE_SESSIONS_SPAWNER === "on" && p
  * reads at start and its tools never inherit. A setup token (CLAUDE_CODE_OAUTH_TOKEN) Claude Code
  * already keeps from its tools.
  * @param {{ cwd?: string, env?: Record<string, string|undefined>, signal?: AbortSignal, subreaper?: string|null,
- *           uid?: number, gid?: number, account?: { uid: number, shared?: boolean }, seed?: Record<string, string>, onSpawn?: (g: { pid: number, pgid: number, sid: number }) => void }} o
+ *           uid?: number, gid?: number, account?: { uid: number, shared?: boolean }, seed?: Record<string, string>, onSpawn?: (g: { pid: number, pgid: number, sid: number }) => void, sandboxSpawn?: (command: string, args: string[], env: Record<string, string|undefined>, cwd?: string, opts?: any) => any }} o
  */
 export function spawnSession(command, args, o = {}) {
+  // A session confined by the runner's home sandbox (lib/agent-sandbox.js): the prepared spawner plans and launches this process under the same rules, its group
+  // recorded for the peer check. The subreaper and the uid split are the unconfined path's; the sandbox replaces them here.
+  if (o.sandboxSpawn) {
+    const child = o.sandboxSpawn(command, args, o.env || {}, o.cwd, o.signal ? { signal: o.signal } : undefined);
+    if (child.pid && o.onSpawn) { try { o.onSpawn({ pid: child.pid, pgid: child.pid, sid: child.pid }); } catch {} }
+    return child;
+  }
   // With sessions.spawner "on" (VYRE_SESSIONS_SPAWNER=on) and a spawner here. vyre-agent cannot
   // open vyred's socket, so the session reaches Vyre on its own one (VYRE_SOCKET in o.env).
   if (o.spawner === true || (o.spawner !== false && usesSpawner())) return viaSpawner(command, args, o);

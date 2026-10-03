@@ -226,6 +226,7 @@ export function createRunner(o) {
     child.stderr.on("data", d => emit({ type: "stderr", session: s.session, text: String(d).slice(0, 2000) }));
     h.done = new Promise(resolve => child.on("close", async (code, sig) => {
       h.exit = { code, sig };
+      emit({ type: "exit", session: s.session, code, signal: sig });
       await h.queue;
       if (!h.stopped) await finish(h);
       resolve({ code, signal: sig });

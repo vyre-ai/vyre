@@ -45,7 +45,7 @@ function mountedPaths() {
 export function driverFor(platform, opts = {}) {
   if (platform === "darwin") return macDriver(opts);
   if (platform === "linux") return linuxDriver();
-  if (platform === "win32") return winDriver(opts);
+  if (platform === "win32") { if (process.env.VYRE_WINDOWS_LENDING !== "experimental") throw new Error("Running a space's work on this computer isn't available on Windows yet. Your sessions run on the space's server."); return winDriver(opts); }
   throw new Error(`no encrypted workspace for ${platform} yet`);
 }
 
@@ -59,6 +59,7 @@ export function workspaceUnavailable(platform = process.platform) {
     return "";
   }
   if (platform === "win32") {
+    if (process.env.VYRE_WINDOWS_LENDING !== "experimental") return "Running a space's work on this computer isn't available on Windows yet. Your sessions run on the space's server.";
     if (run("net", ["session"]).code !== 0) return "the runner needs administrator rights on Windows to attach the encrypted disk (the Vyre helper has them)";
     const r = run("powershell", ["-NoProfile", "-Command", "if (Get-Command Enable-BitLocker -ErrorAction SilentlyContinue) { 'ok' }"]);
     return /ok/.test(r.out) ? "" : "this edition of Windows has no BitLocker (Windows Home): sessions for this space run on its server";
