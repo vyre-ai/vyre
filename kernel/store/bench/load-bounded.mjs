@@ -37,7 +37,7 @@ const contacts = [], matters = [];
 let nContacts = 0, nMatters = 0;
 // the script keeps a SAMPLE of ids (20,000 at most), so its own memory stays flat and RSS shows the kernel's
 const CAP = 20000;
-const keep = (arr, id, n) => { if (arr.length < CAP) arr.push(id); else arr[Math.floor(Math.random() * n)] = id; };
+const keep = (arr, id, n) => { if (arr.length < CAP) arr.push(id); else { const j = Math.floor(Math.random() * n); if (j < CAP) arr[j] = id; } };
 let seq = 0;
 async function addContact() { const i = ++seq; const c = await R.create(chain(), "contact", { full_name: `Client ${i} Rivera`, email: `client${i}@example.test`, phone: `555${String(i).padStart(7, "0")}`, stripe_customer: `cus_${i}` }); keep(contacts, c.id, ++nContacts); return c; }
 async function addMatter() { const c = contacts[rnd(contacts.length)]; const i = ++seq; const m = await R.create(chain(), "matter", { title: `Estate plan ${i}`, client: { urn: `vyre://${SPACE}/contact/${c}` }, plan: ["Will", "Trust", "Both"][rnd(3)], fee: { amount: 1500 + rnd(8000), currency: "USD" }, stage: stages[rnd(6)], engagement_signed: true, stripe_payment: `pi_${i}` }); keep(matters, m.id, ++nMatters); return m; }

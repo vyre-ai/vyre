@@ -66,6 +66,10 @@ export function createRecords(cfg) {
   const sinks = cfg.sinks || new Set();
   const urn = (/** @type {string} */ type, /** @type {string} */ id) => `vyre://${space}/${type}/${id}`;
   /** @type {Map<string, any>} */ const intents = new Map();
+  // An intent exists to recover a write that may or may not have happened: once it is completed or compensated it has done its job, so only the last few stay (for `intents()`),
+  // and what is held follows the writes still open, not every write ever made.
+  /** @type {string[]} */ const retired = [];
+  const retire = (/** @type {any} */ i) => { retired.push(i.id); if (retired.length > 200) intents.delete(/** @type {string} */ (retired.shift())); };
   // Kernel attributes as the gateway wrote them (owner, created_by, project, sensitivity), never the store's. A store that keeps them on disk (`store.meta`, the built-in
   // SQLite store) answers from there with a small LRU in front; any other store leaves them in memory as before.
   const kattrs = store.meta ? store.meta : new Map();
@@ -248,11 +252,11 @@ export function createRecords(cfg) {
     catch (e) {
       const err = mapError(e);
       // A definite refusal means nothing happened. A lost answer (unavailable) may mean it did: the intent stays open for recovery.
-      if (REFUSED.has(err.code)) intent.state = "compensated";
+      if (REFUSED.has(err.code)) { intent.state = "compensated"; retire(intent); }
       throw err;
     }
     if (rec.id !== id || rec.type !== type) {
-      intent.state = "compensated";
+      intent.state = "compensated"; retire(intent);
       try { if (op === "create") await store.remove(type, id, rec.version); } catch { /* best effort */ }
       throw new KernelError("id_mismatch", "the store did not keep the id it was given");
     }
@@ -287,7 +291,7 @@ export function createRecords(cfg) {
       vis: "subject",
     }, { decision });
     index.set(intent.record, { version: rec.version, hash });
-    intent.state = "completed";
+    intent.state = "completed"; retire(intent);
   }
 
   async function createOnce(/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ data, /** @type {any} */ opts) {
@@ -476,7 +480,7 @@ export function createRecords(cfg) {
           continue;
         }
         const untouched = op === "create" ? !rec : Boolean(rec) && (op === "restore" ? Boolean(rec.deleted_at) : !rec.deleted_at && rec.version === intent.base_version);
-        if (untouched) { intent.state = "compensated"; result.compensated++; } else { intent.state = "unresolved"; result.unresolved++; }
+        if (untouched) { intent.state = "compensated"; retire(intent); result.compensated++; } else { intent.state = "unresolved"; result.unresolved++; }
       }
       return result;
     },
