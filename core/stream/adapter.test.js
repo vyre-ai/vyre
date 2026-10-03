@@ -95,14 +95,19 @@ test("adapter: asks, answers and cancellations", () => {
 
 test("adapter: messages sent, queued, steered and picked up keep their words by uuid", () => {
   const a = createAdapter();
-  const q = a.event(ev("thread.queued", { queued: 12, uuid: "u-9", text: "also fix the footer", at: 5 }));
+  const q = a.event(ev("thread.queued", { queued: 12, uuid: "u-9", text: "also fix the footer", queued_at: 5 }));
   assert.deepEqual(q[0].data, { message: "u-9", text: "also fix the footer", state: "queued", queued_at: 5 });
   const st = a.event(ev("thread.steered", { uuid: "u-9" }));
   assert.deepEqual(st[0].data, { message: "u-9", text: "also fix the footer", state: "picked-up" });
   assert.equal(a.event(ev("thread.sent", { text: "hello", uuid: "u-1" }))[0].data.state, "sent");
-  assert.equal(a.event(ev("thread.sent", { text: "go", uuid: "u-2", via: "steer" }))[0].data.state, "picked-up");
+  assert.equal(a.event(ev("thread.sent", { text: "go", uuid: "u-2", via: "steer", queued_at: 7 }))[0].data.state, "queued", "a steer waits for its next safe point");
+  assert.equal(a.event(ev("thread.sent", { text: "now", uuid: "u-3", via: "turn" }))[0].data.state, "picked-up");
   assert.deepEqual(a.event(ev("thread.sent", { kind: "teammate-result", text: "x" })), []);
-  assert.deepEqual(a.event(ev("thread.unqueued", { queued: 12 })), [], "a withdrawn row has no frame kind in the fixed design");
+  assert.deepEqual(a.event(ev("thread.unqueued", { queued: 12, uuid: "u-9" }))[0].data, { message: "u-9", text: "also fix the footer", state: "cancelled" });
+  assert.deepEqual(a.event(ev("thread.unqueued", {})), []);
+  assert.deepEqual(a.event(ev("thread.status", { status: "working", stopping: true }))[0].data, { state: "working", stopping: true });
+  assert.deepEqual(a.event(ev("term.command", { term: "t1", session: "s", command: "ls -la" }))[0], { kind: "term-command", data: { term: "t1", command: "ls -la" }, turn: null });
+  assert.deepEqual(a.event(ev("term.command", { term: "t1" })), []);
 });
 
 test("adapter: status comes from thread.status; the legacy thread.state is ignored once thread.status was seen", () => {

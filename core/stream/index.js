@@ -23,7 +23,7 @@ const str = { type: "string" };
 const int = { type: "integer" };
 const obj = (/** @type {any} */ properties, required = []) => ({ type: "object", properties, required });
 const PEOPLE = ["cli", "local", "deck", "capsule"];
-const EVENTS = /^(thread|ask)\./;
+const EVENTS = /^(thread\.|ask\.|term\.command$)/;
 
 /** @param {import("node:net").Socket} socket @param {number} status @param {string} reason */
 const reject = (socket, status, reason) => { try { socket.end(`HTTP/1.1 ${status} ${reason}\r\nConnection: close\r\n\r\n`); } catch {} };

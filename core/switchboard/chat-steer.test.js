@@ -13,7 +13,7 @@ import * as config from "../config/index.js";
 import { tempHome, present } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { until, boot, FAKE } from "../sessions/testing/boot.js";
-import { reduce, toUserMessage } from "./queue-state.js";
+import { reduce, toUserMessage } from "../../lib/queue-state.js";
 
 const RUNNER = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "runner.js");
 

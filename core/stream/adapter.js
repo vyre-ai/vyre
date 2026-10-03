@@ -12,10 +12,15 @@
 // input (so its finish can become a typed Block), queued message words by uuid (thread.steered
 // names only the uuid), the turn number, and a terminal's running offset.
 //
+// Message life (queued, picked-up, cancelled) goes through lib/queue-state.js, the one reading of
+// thread.queued / thread.sent / thread.steered / thread.unqueued. term.command (what a person typed
+// in the session's terminal) becomes a term-command frame.
+//
 // Not mapped, on purpose: thread.usage, thread.limit, mode/model changes (header state, read from a
-// snapshot), and thread.unqueued (a message leaving the queue has no frame kind in the fixed design).
+// snapshot).
 
 import { blockFor, kindOfTool, summarize, termChunks } from "./protocol.js";
+import { describe, toUserMessage } from "../../lib/queue-state.js";
 
 /** The switchboard's raw thread.state word, as a person says it (lib/thread-status.js). @param {unknown} w */
 export function stateWord(w) {
@@ -141,24 +146,24 @@ export function createAdapter() {
           if (!statusSeen) out.push(spec("status", { state: "working", ...(n ? { turn: n } : {}) }));
           return out;
         }
-        case "thread.sent": {
+        case "thread.sent": case "thread.queued": case "thread.steered": {
           if (p.kind === "teammate-result") return [];
           const uuid = String(p.uuid || (p.queued != null ? `q:${p.queued}` : ""));
           if (!uuid) return [];
-          const words_ = typeof p.text === "string" && p.text ? p.text : words.get(uuid) || "";
-          const taken = p.via === "steer" || p.via === "now" || p.via === "turn";
-          return [spec("user-message", { message: uuid, text: words_, state: taken ? "picked-up" : "sent" })];
+          // via steer is queued; via turn, now or restored is taken at once (queue-state.js).
+          const m = toUserMessage({ ...e, payload: { ...p, uuid } });
+          if (!m) return [];
+          if (m.text) words.set(uuid, m.text);
+          const state = e.type === "thread.sent" && m.state === "picked-up" && !p.via ? "sent" : m.state;
+          return [spec("user-message", { message: m.message, text: m.text || words.get(uuid) || "", state, ...(m.queued_at != null ? { queued_at: m.queued_at } : {}) })];
         }
-        case "thread.queued": {
+        case "thread.unqueued": {
           const uuid = String(p.uuid || (p.queued != null ? `q:${p.queued}` : ""));
-          if (!uuid) return [];
-          if (typeof p.text === "string") words.set(uuid, p.text);
-          return [spec("user-message", { message: uuid, text: String(p.text ?? ""), state: "queued", ...(Number.isFinite(p.at) ? { queued_at: p.at } : {}) })];
+          const d = uuid ? describe({ ...e, payload: { ...p, uuid } }) : null;
+          return d ? [spec("user-message", { message: uuid, text: words.get(uuid) || "", state: "cancelled" })] : [];
         }
-        case "thread.steered": {
-          const uuid = String(p.uuid || "");
-          return uuid ? [spec("user-message", { message: uuid, text: words.get(uuid) || "", state: "picked-up" })] : [];
-        }
+        case "term.command":
+          return typeof p.command === "string" && p.command ? [spec("term-command", { term: String(p.term || "shell"), command: p.command })] : [];
         case "thread.text": return text(p);
         case "thread.thinking": return text({ ...p, kind: "reasoning", notice: undefined });
         case "thread.tool": return tool(p);

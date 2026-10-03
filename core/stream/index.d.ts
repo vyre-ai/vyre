@@ -20,7 +20,7 @@ export interface DataByKind {
   "file-changed": { path: string; op: "create" | "edit" | "delete"; diff?: Block };
   "ask": { ask_id: string; kind: "permission" | "question" | "approval"; tool?: string; summary?: string; task?: unknown };
   "ask-answered": { ask_id: string; decision?: string | null };
-  "user-message": { message: string; text: string; state: "sent" | "queued" | "picked-up"; queued_at?: number };
+  "user-message": { message: string; text: string; state: "sent" | "queued" | "picked-up" | "cancelled"; queued_at?: number };
   "status": { state: State; turn?: string; stopping?: boolean };
   "reset": { reason: string; head?: number };
   "heartbeat": { head: number };
