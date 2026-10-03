@@ -21,6 +21,8 @@ import { createWinkCode } from "./code.js";
 import { createGrants, MIGRATIONS as GRANT_MIGRATIONS, spaceIdOf, timeId, base32 } from "./grants.js";
 import { card, removal, removed } from "./cards.js";
 import { createPairing, MIGRATIONS as DEVICE_MIGRATIONS, FLOW_KIND, ownDirectory } from "./pairing.js";
+import { createStorageDevices, registerStorageTools, MIGRATIONS as STORAGE_MIGRATIONS } from "./storage/index.js";
+import { storageGrants } from "./storage/grants.js";
 import { seedFromKey } from "../../relay/client/join.js";
 
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
@@ -50,6 +52,7 @@ export function createWink(inject = {}) {
       `CREATE INDEX wink_offers_state ON wink_offers (state, expires)`,
       ...GRANT_MIGRATIONS,
       ...DEVICE_MIGRATIONS,
+      ...STORAGE_MIGRATIONS,
     ]);
     const db = ctx.store.db;
     let routeId = "";
@@ -391,10 +394,9 @@ export function createWink(inject = {}) {
           const d = pairing.devices.get(String(input.device));
           if (!d || d.removed || d.identity !== await owner1()) throw fail("not_found", "no such device");
           pairing.devices.remove(d.id);
-          // Its relay connections close at once when relay.devices.remove accepts this caller (today it is the person's own tool: `closed`
-          // says what happened, and the surface that asked then calls relay.devices.remove itself).
+          // Its relay connections close at once through relay.devices.drop (a module's door to the relay's own removal); `closed` says what happened.
           let closed = false;
-          if (d.kind !== "server" && d.kind !== "storage") { const rr = /** @type {any} */ (await ctx.call("relay.devices.remove", { id: d.id })); closed = !rr.error; }
+          if (d.kind !== "server" && d.kind !== "storage") { const rr = /** @type {any} */ (await ctx.call("relay.devices.drop", { id: d.id })); closed = !rr.error && Boolean(rr.data && rr.data.closed); }
           ctx.events.emit("wink.removed", { device: d.id });
           return { removed: d.id, closed, prompt: removal({ what: "device", name: d.name }).prompt, done: removed({ what: "device", name: d.name }) };
         }
@@ -406,7 +408,7 @@ export function createWink(inject = {}) {
         const label = String(gr.reason || "").split(", ")[0];
         await g.revoke(gr.id, "removed by the owner");
         // A device grant takes the device with it; its connections close at once (the relay's own removal).
-        if (subject && subject.kind === "device") await ctx.call("relay.devices.remove", { id: subject.id });
+        if (subject && subject.kind === "device") await ctx.call("relay.devices.drop", { id: subject.id });
         ctx.events.emit("wink.removed", { grant: gr.id, ...(subject && subject.kind === "device" ? { device: subject.id } : {}) });
         const what = gr.source === "wink:W4" ? "share" : gr.source === "wink:W5" ? "member" : "device";
         return { removed: gr.id, prompt: removal({ what: /** @type {any} */ (what), name: label, member: label, space: "this space" }).prompt, done: removed({ what, name: label, member: label, space: "this space" }) };
@@ -426,11 +428,31 @@ export function createWink(inject = {}) {
       },
     });
 
+    // Storage devices (core/wink/storage): the vault holds a drive's login, and the pool engine reads offers through this seam.
+    const sdata = (/** @type {any} */ r) => { if (r && r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r && r.data; };
+    const storageVault = {
+      put: async (/** @type {any} */ o) => { sdata(await ctx.call("vault.put", { name: o.name, kind: "env-set", description: o.description, fields: o.fields, grants: ["wink"] })); },
+      fetch: async (/** @type {string} */ name, /** @type {string | undefined} */ field) => ctx.vault.fetch(name, field ? { field } : {}),
+      remove: async (/** @type {string} */ name) => { sdata(await ctx.call("vault.delete", { name })); },
+    };
+    const storageAdmin = {
+      self: async () => owner0(),
+      isAdmin: async (/** @type {string} */ person, /** @type {string} */ sp) => {
+        if (ctx.kernel && ctx.kernel.roles && ctx.kernel.roles.isAdmin) return Boolean(await ctx.kernel.roles.isAdmin(person, sp));
+        return sp === (await spaceId());
+      },
+      nameOf: async (/** @type {any} */ o) => (o.kind === "person" ? "Personal" : String((ctx.config && ctx.config.name) || "this space")),
+    };
+    const storage = createStorageDevices({ ctx, grants: storageGrants({ ctx, space: () => spaceCache }), vault: storageVault, admin: storageAdmin, space: spaceId });
+    registerStorageTools(ctx, storage, "wink.storage");
+    const stopStorage = storage.startTimer();
+
     const timer = setInterval(sweep, 60_000);
     timer.unref();
     return {
       async stop() {
         clearInterval(timer);
+        try { stopStorage(); } catch {}
         for (const off of [offCode, offPaired, offRemoved, offInvite]) { try { off(); } catch {} }
         try { code?.cancel(); } catch {}
       },

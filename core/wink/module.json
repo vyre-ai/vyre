@@ -93,6 +93,34 @@
       {
         "name": "wink.offer.set",
         "reach": "person"
+      },
+      {
+        "name": "wink.storage.discover",
+        "reach": "person"
+      },
+      {
+        "name": "wink.storage.pick",
+        "reach": "person"
+      },
+      {
+        "name": "wink.storage.pair",
+        "reach": "person"
+      },
+      {
+        "name": "wink.storage.card",
+        "reach": "person"
+      },
+      {
+        "name": "wink.storage.offers",
+        "reach": "person"
+      },
+      {
+        "name": "wink.storage.status",
+        "reach": "person"
+      },
+      {
+        "name": "wink.storage.remove",
+        "reach": "person"
       }
     ]
   },
@@ -119,7 +147,10 @@
       "wink.pair-done",
       "wink.pair-failed",
       "wink.server-adopted",
-      "wink.offer-changed"
+      "wink.offer-changed",
+      "storage.paired",
+      "storage.removed",
+      "storage.unreachable"
     ],
     "on": [
       "relay.code-asked",
@@ -133,5 +164,9 @@
     "capsule": [],
     "cli": []
   },
-  "needs": {}
+  "needs": {
+    "vault": [
+      "per-storage"
+    ]
+  }
 }
