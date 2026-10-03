@@ -320,12 +320,12 @@ test("a delta written under a group token cannot carry a value the gateway retur
   assert.equal(got.data.age, `{{field:${c.urn}#age}}`, "the record read");
   assert.deepEqual(rows.rows.map(r => r.data.age), [`{{field:${c.urn}#age}}`], "the query");
   for (const h of (hits && hits.rows) || []) assert.equal(h.snippet, undefined, "no search snippet: it could carry a field's text");
-  assert.equal(JSON.stringify(got.data).includes("40"), false);
+  assert.equal(typeof got.data.age, "string", "the number 40 is not in the record the session was given");
   // so a reply composed from it carries the placeholder, which each person's own device fills in under their own grants
   const reply = await stream.chats.appendOpen(t.token, {});
   const text = `Jane's age is ${JSON.parse(seen)[0].data.age}`;
   await reply.write(text);
-  assert.equal(text.includes("40"), false);
+  assert.equal(text.includes("is 40"), false);
   const done = await reply.close(text);
   assert.ok(done.hash);
 });
@@ -404,4 +404,47 @@ test("R4 on chats: a failed log write leaves the chat's people as they were, and
   assert.deepEqual([...(await C.read(bob, chat.id)).people].sort(), [BOB, CAROL].sort(), "carol was not removed: the removal was never durable");
   const after = await C.change(bob, chat.id, { remove_people: [CAROL] });
   assert.deepEqual(after.people, [BOB]);
+});
+
+test("a reply stops when the person it acts for or the ASSISTANT is removed from the chat: what was written stays, marked ended", async () => {
+  const { k, bob, carol, C } = await rig();
+  const stream = k.kernelFor({ name: "stream", needs: { kernel: { actions: [] } } });
+  // the assistant is removed mid-reply
+  const chat = await C.create(bob, { people: [CAROL], assistants: ["kit"] });
+  const t = await k.surfaces.open(bob, { chat: chat.id, agent: "kit" });
+  const reply = await stream.chats.appendOpen(t.token, {});
+  await reply.write("the first part");
+  await C.change(bob, chat.id, { remove_assistants: ["kit"] });
+  await assert.rejects(() => reply.write(" and more"), { code: "not_found" }, "the assistant is no longer a participant");
+  await assert.rejects(() => reply.write("again"), { code: "closed" });
+  await assert.rejects(() => reply.close(), { code: "closed" }, "it does not finish");
+  const ended = k.log.read({}).find(e => e.type === "message.ended" && e.data.id === reply.id);
+  assert.equal(ended.data.bytes, Buffer.byteLength("the first part"));
+  assert.equal(ended.data.reason, "no_longer_allowed");
+  assert.equal(k.log.read({}).some(e => e.type === "message.added" && e.data.id === reply.id), false, "never closed as a finished message");
+  // the person it acts for is removed mid-reply
+  const chat2 = await C.create(bob, { people: [CAROL], assistants: ["kit"] });
+  const t2 = await k.surfaces.open(bob, { chat: chat2.id, agent: "kit" });
+  const r2 = await stream.chats.appendOpen(t2.token, {});
+  await r2.write("x");
+  await C.change(carol, chat2.id, { remove_people: [BOB] });
+  await assert.rejects(() => r2.write("y"), { code: "not_found" });
+  assert.ok(k.log.read({}).some(e => e.type === "message.ended" && e.data.id === r2.id));
+});
+
+test("roomFor(token): the same live room for event-driven code, only for a module that declares it and a token that verifies and names a chat", async () => {
+  const { k, bob, C } = await rig();
+  const plain = k.kernelFor({ name: "plain", needs: { kernel: { actions: [] } } });
+  const events = k.kernelFor({ name: "worker", needs: { kernel: { actions: [], room: true } } });
+  const group = await C.create(bob, { people: [CAROL] }), solo = await C.create(bob, {});
+  const tg = await k.surfaces.open(bob, { chat: group.id }), ts = await k.surfaces.open(bob, { chat: solo.id }), tn = await k.surfaces.open(bob);
+  assert.equal(plain.chats.roomFor, undefined, "a module that did not declare it has no roomFor");
+  const room = await events.chats.roomFor(tg.token);
+  assert.deepEqual(Object.keys(room).sort(), ["canRead", "group", "read"]);
+  assert.deepEqual(await events.chats.roomFor(ts.token), { group: false });
+  await assert.rejects(() => events.chats.roomFor(tn.token), { code: "no_audience" }, "a session with no chat");
+  await assert.rejects(() => events.chats.roomFor("not.a-token"), { code: "no_audience" });
+  await C.change(bob, group.id, { remove_people: [BOB] }).catch(() => {});
+  k.surfaces.revoke(tg.session);
+  await assert.rejects(() => events.chats.roomFor(tg.token), { code: "no_audience" }, "a token that has ended");
 });

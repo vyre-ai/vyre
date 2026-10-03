@@ -134,16 +134,23 @@ export function createRoom(cfg) {
     });
   }
 
+  /** The handle for a verified turn's facts: `{ group: false }`, or the live room. @param {any} t */
+  const roomOf = (t) => {
+    const people = gs.chatPeople(t.chat);
+    if (!people || !people.includes(t.person)) throw new KernelError("no_audience", "the chat is not known");
+    if (people.length < 2) return Object.freeze({ group: false });
+    return handle({ chat: t.chat, session: t.session, person: t.person });
+  };
   /** @type {any} */ const api = Object.freeze({
     bindCalls(/** @type {() => any} */ fn) { currentCall = fn; },
     /** The room the running turn answers in: `{ group: false }`, or the handle. Never from an argument; throws `no_audience` when it cannot be built. */
-    async audienceFor() {
-      const t = await turn("no_audience");
-      const people = gs.chatPeople(t.chat);
-      if (!people || !people.includes(t.person)) throw new KernelError("no_audience", "the chat is not known");
-      if (people.length < 2) return Object.freeze({ group: false });
-      return handle({ chat: t.chat, session: t.session, person: t.person });
-    },
+    async audienceFor() { return roomOf(await turn("no_audience")); },
+    /**
+     * The same room, from a context that is not a call (event-driven code holding the session's token): the token must verify, name a chat, and its person be in it; the answer
+     * is the live room as `audienceFor` gives it, with the same rules and the same rate limit. Only for a module whose manifest declares it (kernel/index.js).
+     * @param {string} token
+     */
+    async roomFor(token) { return roomOf(await ofToken(token, "no_audience")); },
     /**
      * Open a reply in the chat the session was opened for. The reply is stamped with the chat's membership VERSION now and belongs to it: it is delivered only to the people who
      * were in the room at that version (`mayReceive`), so someone who joins while it streams, or afterwards, never receives it, and a reply never has to be refused or run again
@@ -166,8 +173,20 @@ export function createRoom(cfg) {
       messages().set(id, { chat: t.chat, ver: v.ver });
       let open = true, bytes = 0;
       const hash = crypto.createHash("sha256");
-      /** The token must still be good and the person still in the chat at every write. */
-      const live = async () => { if (!open) throw new KernelError("closed", "this reply is closed"); await ofToken(token, "not_found"); };
+      /** The reply stops here: what was written stays, and the log says it ended and why. */
+      const stop = (/** @type {string} */ reason) => {
+        if (!open) return;
+        open = false;
+        try { cfg.log.append(chain, { type: "message.ended", sv: 1, subject, data: { id, chat: t.chat, ver: v.ver, session: t.session, by, kind, bytes, hash: hash.copy().digest("hex"), reason }, vis: "owner", red: "internal" }); } catch { /* the reply is dead either way */ }
+      };
+      /** At every write and at the close: the token is still good, the person it acts for is still in the chat, and the assistant (when there is one) is still a participant. */
+      const live = async () => {
+        if (!open) throw new KernelError("closed", "this reply is closed");
+        try {
+          const now = await ofToken(token, "not_found");
+          if (now.agent) { const a = gs.chatAssistants(t.chat); if (!a || !a.includes(now.agent)) throw new KernelError("not_found", "the assistant is no longer in the chat"); }
+        } catch (e) { stop(e instanceof KernelError ? "no_longer_allowed" : "failed"); throw e; }
+      };
       return Object.freeze({
         id, chat: t.chat, ver: v.ver,
         /** @param {any} delta text (or a JSON value) of the reply so far, in order */
@@ -175,7 +194,7 @@ export function createRoom(cfg) {
           await live();
           const text = typeof delta === "string" ? delta : canonical(delta ?? null);
           bytes += Buffer.byteLength(text);
-          if (bytes > MAX_BODY) { open = false; throw new KernelError("bad_input", "a message is at most 64 KB"); }
+          if (bytes > MAX_BODY) { stop("too_large"); throw new KernelError("bad_input", "a message is at most 64 KB"); }
           hash.update(text);
           return { bytes };
         },
