@@ -9,7 +9,7 @@ export const DEFAULT_NAMES = { phone: "Alex's iPhone", computer: "Alex's MacBook
 
 /** Words the pairing screens use (DESIGN-wink.md section 4; core/wink/cards.js has the matching lines for the module). */
 export const COPY = {
-  pick: "The other screen shows three words. Pick the set that matches, or type all three.",
+  pick: "The other screen shows three words. Pick one of the three choices, or type all three words.",
   /** The line above the words: who is asking. */
   askLine: (/** @type {string} */ who) => `${who} is asking to pair. Both screens show these three words.`,
   rejected: "Nothing was paired. The words were not the same. Start again from the new device.",

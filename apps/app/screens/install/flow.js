@@ -39,7 +39,7 @@ export function nameNote(/** @type {ReturnType<typeof nameStatus>} */ st, /** @t
 /** @type {Record<string, string|null>} */
 export const BACK = {
   name: null, scan: "name", scanwords: "scan", recovery: null, spaces: null, create: "spaces", where: "create", cmd: "where", vps: "where", vpsbusy: null,
-  srv1: "cmd", srv2: "cmd", here: "where", done: null, join: "spaces", invite: "join", joined: null,
+  srv1: "cmd", srv2: "cmd", here: "where", look: null, members: "look", connectors: "members", kit: "connectors", done: null, join: "spaces", invite: "join", joined: null,
 };
 
 /** Where Back goes from a step. The code step goes back to the server's own first screen (the line or the new server); the words go back to the code. */
@@ -48,6 +48,39 @@ export function backOf(/** @type {string} */ step, /** @type {{ vps?: boolean }}
   if (step === "srv1") return ctx.vps ? "vps" : "cmd";
   return BACK[step] ?? null;
 }
+
+// After the space has its home (the server is paired, or "On this computer" was chosen) setup carries on by itself on the device it started on:
+// look, members, connectors, the first Kit, then done (DESIGN-spaces-first.md, "The order, and where setup happens"). Nothing here asks the server anything.
+export const SETUP_STEPS = ["look", "members", "connectors", "kit"];
+/** The step the flow moves to the moment the space has its home. */
+export const AFTER_HOME = "look";
+/** The step after this one, inside setup. */
+export const nextSetup = (/** @type {string} */ step) => SETUP_STEPS[SETUP_STEPS.indexOf(step) + 1] ?? "done";
+
+/** Steps worth coming back to: a closed app reopens on one of these. Everything before "where" is quick and starts again. */
+const RESUMABLE = ["where", "cmd", "srv1", "here", ...SETUP_STEPS];
+export const isResumable = (/** @type {string} */ step) => RESUMABLE.includes(step);
+/** srv2 shows the words of a pairing that does not survive a restart, so it resumes at the code. */
+export const resumeStep = (/** @type {string} */ step) => (step === "srv2" ? "srv1" : step);
+
+/** What is kept so a closed app resumes: the step and what the person entered. No secret, no code, no key. */
+export function packProgress(/** @type {{ step: string, name: string, spaceName: string, addr: string | null, look: string, where: string, pairTo: string, device: string, picks?: { members?: string[], connectors?: string[], kit?: string | null } }} */ s) {
+  return JSON.stringify({ v: 1, step: resumeStep(s.step), name: s.name, spaceName: s.spaceName, addr: s.addr, look: s.look, where: s.where, pairTo: s.pairTo, device: s.device, picks: s.picks ?? {} });
+}
+/** Reads it back; anything unreadable or from another version is nothing. */
+export function unpackProgress(/** @type {string | null | undefined} */ raw) {
+  try {
+    const j = JSON.parse(String(raw ?? ""));
+    if (j && j.v === 1 && isResumable(j.step) && typeof j.spaceName === "string") return j;
+  } catch {}
+  return null;
+}
+
+/** What another of the person's devices says while setup is unfinished elsewhere. */
+export const setupElsewhere = (/** @type {string} */ device) => `Setup in progress on your ${device}`;
+export const CONTINUE_HERE = "Continue here";
+/** The line a server prints once it is paired: it asks nothing more. */
+export const connectedLine = (/** @type {string} */ space, /** @type {string} */ device) => `Connected to ${space}. Finish setting up on your ${device}.`;
 
 /** The first step for a route: /u/install, /u/install/create, /u/install/join. */
 export function startStep(/** @type {string|undefined} */ start) {

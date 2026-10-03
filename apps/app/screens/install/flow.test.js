@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { backOf, homeLine, nameNote, nameStatus, pairToOptions, serverLines, slug, startStep, SERVER_LONG_CODE } from "./flow.js";
+import { backOf, homeLine, nameNote, nameStatus, pairToOptions, serverLines, slug, startStep, SERVER_LONG_CODE, AFTER_HOME, nextSetup, isResumable, resumeStep, packProgress, unpackProgress, setupElsewhere, connectedLine } from "./flow.js";
 
 test("a slug is what goes before .vyre.run", () => {
   assert.equal(slug("Harlow Legal"), "harlow-legal");
@@ -67,4 +67,29 @@ test("nothing in the server's lines asks for a typed code or a number", () => {
 
 test("a space made on this computer says it sleeps", () => {
   assert.match(homeLine("here"), /Unreachable while it sleeps/);
+});
+
+test("setup carries on after the home: look, members, connectors, kit, done", () => {
+  assert.equal(AFTER_HOME, "look");
+  assert.deepEqual(["look", "members", "connectors", "kit"].map(nextSetup), ["members", "connectors", "kit", "done"]);
+  assert.equal(backOf("members"), "look");
+  assert.equal(backOf("look"), null);
+});
+
+test("a closed app resumes on the same step, and a pairing in progress resumes at the code", () => {
+  assert.equal(isResumable("members"), true);
+  assert.equal(isResumable("name"), false);
+  assert.equal(resumeStep("srv2"), "srv1");
+  const raw = packProgress({ step: "srv2", name: "alex", spaceName: "Northwind", addr: null, look: "sky", where: "server", pairTo: "me", device: "iPhone" });
+  const back = unpackProgress(raw);
+  assert.equal(back.step, "srv1");
+  assert.equal(back.look, "sky");
+  assert.equal(unpackProgress("nope"), null);
+  assert.equal(unpackProgress(JSON.stringify({ v: 2, step: "look", spaceName: "x" })), null);
+  assert.equal(unpackProgress(JSON.stringify({ v: 1, step: "name", spaceName: "x" })), null);
+});
+
+test("other devices and the server say the same thing in plain words", () => {
+  assert.equal(setupElsewhere("iPhone"), "Setup in progress on your iPhone");
+  assert.equal(connectedLine("Northwind", "iPhone"), "Connected to Northwind. Finish setting up on your iPhone.");
 });

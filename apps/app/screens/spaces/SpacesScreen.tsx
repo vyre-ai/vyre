@@ -1,18 +1,22 @@
 import { useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Avatar, Button, Card, IconButton, Menu, Chip, Divider, Field, Row, Segmented, Sheet, Text, showToast, markRef, spaceRef, haptic } from "@vyre/ui";
+import { Avatar, Banner, Button, Card, IconButton, Menu, Chip, Divider, Field, Row, Segmented, Sheet, Text, showToast, markRef, spaceRef, haptic } from "@vyre/ui";
 import { Footnote, Page, Sec } from "../places/Frame";
 import { usePhone } from "../places/Page";
 import { FaceIdSheet, type FaceAsk } from "../shell/FaceIdSheet";
 import { useSpaces } from "../shell/state";
 import { loadMembers, loadSpaces, loadTeammates, ME, TEMP_PROJECTS, type Member } from "./data";
 import { useMembers } from "./state";
+import { loadSetupElsewhere } from "../install/data";
+import { CONTINUE_HERE, packProgress, setupElsewhere } from "../install/flow.js";
+import { writeProgress } from "../../src/state/setup-progress";
 import { EXTENSIONS, ROLES, TEMP_ENDS, endDate as endDateOf, assignable, canManage, ownerMoveLine, roleLabel, type Role } from "./roles.js";
 
 const SPACES = loadSpaces();
 const TEAM = loadTeammates();
 const MY_ROLE: Role = "admin";
+const ELSEWHERE = loadSetupElsewhere();
 const OWNER = loadMembers().find((m) => m.role === "owner")?.name ?? "its owner";
 
 type Sheetv = null | { kind: "role"; id: string; role: Role; scope: string; days: string } | { kind: "extend"; id: string } | { kind: "temp"; name: string; scope: string; days: string };
@@ -31,6 +35,15 @@ export function SpacesScreen() {
   return (
     <Page title="Spaces and members" sub="Where your things live, and who is in them." back="/u/settings"
       actions={<Menu trigger={<IconButton icon="plus" label="Create or join a space" />} items={[{ label: "Create a space", onPress: () => router.push("/u/install/create" as never) }, { label: "Join a space", onPress: () => router.push("/u/install/join" as never) }]} />}>
+      {ELSEWHERE ? (
+        <Banner icon="refresh">
+          <View className="gap-s2">
+            <Text strong>{setupElsewhere(ELSEWHERE.device)}</Text>
+            <Text size="caption" tone="muted">{`${ELSEWHERE.spaceName} is paired. The rest of its setup carries on from there, or from here.`}</Text>
+            <View className="self-start"><Button size="sm" label={CONTINUE_HERE} onPress={() => { writeProgress(packProgress({ step: "look", name: "alex", spaceName: ELSEWHERE.spaceName, addr: ELSEWHERE.space, look: "amber", where: "server", pairTo: "me", device: "this" })).then(() => router.push("/u/install/create" as never)); }} /></View>
+          </View>
+        </Banner>
+      ) : null}
       <View className="flex-row flex-wrap gap-s3">
         {SPACES.map((s) => (
           <Card flush key={s.id} className="min-w-menu flex-1">

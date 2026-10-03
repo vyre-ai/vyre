@@ -1,14 +1,15 @@
-import { useState } from "react";
-import { ScrollView, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Platform, ScrollView, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { useRouter } from "expo-router";
 import { Avatar, Banner, Button, Card, Chip, Divider, Field, Row, Ring, Segmented, Text, showToast, type IconName, spaceRef, IconTile } from "@vyre/ui";
 import { FaceIdSheet, type FaceAsk } from "../shell/FaceIdSheet";
 import { loadInstall } from "./data";
-import { RECOVERY_CODE, SERVER_LONG_CODE, WHERE_STEP, backOf, homeLine, nameNote, nameStatus, pairToOptions, serverLines, slug, startStep } from "./flow.js";
+import { AFTER_HOME, RECOVERY_CODE, SERVER_LONG_CODE, WHERE_STEP, backOf, connectedLine, isResumable, nextSetup, packProgress, unpackProgress, homeLine, nameNote, nameStatus, pairToOptions, serverLines, slug, startStep } from "./flow.js";
 import { PairEntry, PairWords, openPairing, type LongCode } from "../devices/PairParts";
 import { COPY } from "../devices/wink.js";
 import { parseWinkCode } from "../../src/api/wink-code";
+import { readProgress, writeProgress } from "../../src/state/setup-progress";
 import { wordsLine, type PairingSession } from "../../src/api/pairing-session";
 
 type Made = { name: string; look: string; addr: string; line: string };
@@ -71,6 +72,11 @@ export function InstallScreen({ start }: { start?: "create" | "join" }) {
   const [wrong, setWrong] = useState("");
   const [session, setSession] = useState<PairingSession | null>(null);
   const [pairTo, setPairTo] = useState("me");
+  const [pickConnectors, setPickConnectors] = useState<string[]>([]);
+  const [pickKit, setPickKit] = useState<string | null>(null);
+  const [inviteLine, setInviteLine] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const device = Platform.OS === "ios" ? "iPhone" : Platform.OS === "android" ? "phone" : "computer";
   const me = nameStatus(name);
   const spaceSlug = addr ?? slug(spaceName);
   const spaceSt = nameStatus(spaceSlug, [name]);
@@ -78,10 +84,35 @@ export function InstallScreen({ start }: { start?: "create" | "join" }) {
   const vps = where === "vps";
   const back = backOf(step, { vps });
   const finish = () => router.replace((first ? "/u/now" : "/u/spaces") as never);
+  // The space has its home (the server is paired, or it lives here): setup carries on by itself on this device, with no refresh and no second sign-in.
   const make = (w: "server" | "vps" | "here") => {
     setMade((m) => [...m, { name: sn, look, addr: `${spaceSt.slug}.vyre.run`, line: homeLine(w) }]);
-    setStep("done");
+    setStep(AFTER_HOME);
   };
+  const advance = (from: string) => setStep(nextSetup(from));
+
+  // Closing and reopening resumes at the same step: read what was kept once, then keep every resumable step.
+  useEffect(() => {
+    readProgress().then((raw) => {
+      const p = unpackProgress(raw);
+      if (p && start !== "join") {
+        setName(p.name); setSpaceName(p.spaceName); setAddr(p.addr); setLook(p.look); setWhere(p.where as typeof where); setPairTo(p.pairTo);
+        setPickConnectors(p.picks?.connectors ?? []); setPickKit(p.picks?.kit ?? null);
+        setStep(p.step);
+      }
+      setLoaded(true);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const lastKept = useRef("");
+  useEffect(() => {
+    if (!loaded) return;
+    const raw = isResumable(step) ? packProgress({ step, name, spaceName, addr, look, where, pairTo, device, picks: { connectors: pickConnectors, kit: pickKit } }) : null;
+    if (raw === lastKept.current) return;
+    lastKept.current = raw ?? "";
+    // A step that is not resumable (done, spaces, join) means setup is over or not begun: forget it.
+    if (raw !== null || step === "done" || step === "spaces") writeProgress(raw);
+  }, [loaded, step, name, spaceName, addr, look, where, pairTo, device, pickConnectors, pickKit]);
   const last = made[made.length - 1];
   const inv = DATA.invite;
 
@@ -138,13 +169,6 @@ export function InstallScreen({ start }: { start?: "create" | "join" }) {
       <Page title="Create a space">
         <Field label="Name" value={spaceName} onChangeText={(v) => { setSpaceName(v); }} />
         <NameField label="Claim its name" value={spaceSlug} onChange={(v) => setAddr(v)} also={[name]} space />
-        <View className="gap-s2">
-          <Text size="caption" strong tone="label">Look</Text>
-          <View className="flex-row items-center gap-s3">
-            <Segmented label="Look" value={look} onChange={setLook} options={DATA.looks.map((l) => [l.id, l.label] as [string, string])} />
-          </View>
-          <Avatar of={spaceRef(sn)} size={56} />
-        </View>
         <Button kind="primary" label="Continue" disabled={spaceSt.state !== "ok"} onPress={() => setStep("where")} />
       </Page>
     );
@@ -208,6 +232,55 @@ export function InstallScreen({ start }: { start?: "create" | "join" }) {
         <Banner tone="warn">{`${sn} is unreachable while this computer sleeps or is off. Moving it to a server later is one action. Nothing is lost.`}</Banner>
         <Button kind="primary" label="Create it here" onPress={() => make("here")} />
         <Button kind="ghost" label="Choose a server instead" onPress={() => setStep("where")} />
+      </Page>
+    );
+  } else if (step === "look") {
+    body = (
+      <Page title={`Give ${sn} a look`} sub="This is how its mark shows on every screen. You can change it later.">
+        <Terminal lines={[connectedLine(sn, device)]} />
+        <View className="items-center gap-s3"><Avatar of={spaceRef(sn)} size={56} /></View>
+        <Segmented label="Look" value={look} onChange={setLook} options={DATA.looks.map((l) => [l.id, l.label] as [string, string])} />
+        <Button kind="primary" label="Continue" onPress={() => advance("look")} />
+      </Page>
+    );
+  } else if (step === "members") {
+    body = (
+      <Page title="Who is in it?" sub="Invite people now, or later from Spaces and members. You are the owner.">
+        <Row lead={<Avatar of={{ kind: "person", id: "me", name: name || "alex" }} size={40} />} title={name || "alex"} sub="Owner, this device" />
+        <Field label="Invite someone" value={inviteLine} onChangeText={setInviteLine} placeholder="Their email" />
+        <View className="flex-row gap-s2">
+          <Button kind="primary" label={inviteLine.trim() ? "Send the invite and continue" : "Continue"} onPress={() => { if (inviteLine.trim()) showToast(`Invite sent to ${inviteLine.trim()}.`); setInviteLine(""); advance("members"); }} />
+          <Button kind="ghost" label="Later" onPress={() => advance("members")} />
+        </View>
+      </Page>
+    );
+  } else if (step === "connectors") {
+    const on = (id: string) => pickConnectors.includes(id);
+    body = (
+      <Page title="Connect your tools" sub="Each one asks for its own sign-in, and only what you pick is connected.">
+        <Card flush>
+          {DATA.connectors.map((c, i) => (
+            <View key={c.id}>{i ? <Divider /> : null}<Row dense title={c.label} sub={c.sub} end={<Chip tone={on(c.id) ? "ok" : "plain"} icon={on(c.id) ? "check" : undefined}>{on(c.id) ? "Chosen" : "Choose"}</Chip>} onPress={() => setPickConnectors((l) => (on(c.id) ? l.filter((x) => x !== c.id) : [...l, c.id]))} /></View>
+          ))}
+        </Card>
+        <View className="flex-row gap-s2">
+          <Button kind="primary" label="Continue" onPress={() => advance("connectors")} />
+          <Button kind="ghost" label="Later" onPress={() => { setPickConnectors([]); advance("connectors"); }} />
+        </View>
+      </Page>
+    );
+  } else if (step === "kit") {
+    body = (
+      <Page title="Start with a Kit" sub="A Kit adds record types, Flows and views in one step. Pick one, or start empty.">
+        <Card flush>
+          {DATA.kits.map((k) => (
+            <Row key={k.id} dense lead={<IconTile name="box" />} title={k.label} sub={k.sub} end={<Chip tone={pickKit === k.id ? "ok" : "plain"} icon={pickKit === k.id ? "check" : undefined}>{pickKit === k.id ? "Chosen" : "Choose"}</Chip>} onPress={() => setPickKit(pickKit === k.id ? null : k.id)} />
+          ))}
+        </Card>
+        <View className="flex-row gap-s2">
+          <Button kind="primary" label="Finish setup" onPress={() => advance("kit")} />
+          <Button kind="ghost" label="Start empty" onPress={() => { setPickKit(null); advance("kit"); }} />
+        </View>
       </Page>
     );
   } else if (step === "done") {
