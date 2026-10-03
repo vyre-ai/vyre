@@ -34,7 +34,7 @@ export const contact = {
 
 /** @type {TypeDef} */
 export const matter = {
-  id: "matter", name: "Matter", plural: "Matters", icon: "projects", space: "harlow", titleKey: "title", holdsWork: true,
+  id: "matter", name: "Matter", plural: "Matters", icon: "records", space: "harlow", titleKey: "title", holdsWork: true,
   fields: [
     { key: "title", label: "Title", kind: "text", required: true },
     { key: "client", label: "Client", kind: "link", link: "contact" },

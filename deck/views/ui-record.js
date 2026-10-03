@@ -5,7 +5,7 @@ import { h, put, go, back } from "../js/dom.js";
 import { pageHeader } from "../js/page-header.js";
 import { loading } from "../js/states.js";
 import { iconButton, chip, errorState, emptyState } from "../ui/components/index.js";
-import { getFieldStore, linkIndex, reasonOf } from "../ui/field-screens.js";
+import { getFieldStore, linkIndex, reasonOf, relatedRecords } from "../ui/field-screens.js";
 import { recordPage, titleOf } from "../ui/views.js";
 
 /** @param {any} ctx */
@@ -25,11 +25,7 @@ export default async function screen(ctx) {
       if (!row) { put(ctx.root, h("div", { class: "uv-page" }, emptyState({ title: "That record is not here", body: "It may have been removed, or it lives in a space you cannot see." }))); return; }
       const def = types.find(t => t.id === row.type);
       if (!def) { put(ctx.root, h("div", { class: "uv-page" }, errorState({ title: "That record has no type.", reason: `Nothing defines "${row.type}".` }))); return; }
-      const [actors, spaces, links, events, tasks, same] = await Promise.all([store.actors(), store.spaces(), linkIndex(store, types), store.events({ record: id }), store.tasks({ record: id }), store.list(def.id)]);
-      // Records that link to this one (a contact's matters), for Linked records.
-      const related = [];
-      for (const t of types) for (const f of t.fields) if (f.kind === "link" && f.link === def.id)
-        for (const r of await store.list(t.id)) if (r.values[f.key] === id) related.push({ id: r.id, title: titleOf(t, r), type: t.id });
+      const [actors, spaces, links, events, tasks, same, related] = await Promise.all([store.actors(), store.spaces(), linkIndex(store, types), store.events({ record: id }), store.tasks({ record: id }), store.list(def.id), relatedRecords(store, types, def, id)]);
       const ids = [...new Set(tasks.flatMap(t => [t.doer, t.checker, ...(t.helpers || [])]).filter(/** @returns {x is string} */ x => !!x))];
       const team = ids.map(i => { const a = actors.find(x => x.id === i); const w = tasks.find(t => t.doer === i && t.state === "working"); return { id: i, role: a?.role, doing: w?.now ? `${a?.name} ${w.now}` : a?.role }; });
       const working = tasks.find(t => t.state === "working" && t.now);

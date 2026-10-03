@@ -419,7 +419,7 @@ export function createMockStore(opts = {}) {
         result: { note: { text: "Wants the trust funded before the house sale in November.", sources: ["Intake form, 8 Sep", "County property record", "Her first message"] } } });
       const k2 = k("m1", { title: "Welcome email for Jane Doe", doer: "intake", checker: "alex", stage: "Intake", state: "done", output: { kind: "sent", target: "Email to Jane Doe" }, how: "tailor", template: "tpl1", dependsOn: [k1.id],
         result: { draft: { subject: "Welcome to Harlow Legal, Jane", body: "Hi Jane,\n\nThank you for choosing Harlow Legal. I read that you want the trust funded before the house sale in November, so we will start there.\n\nHarlow Legal", sources: 3 }, sent: { at: today(9, 12), by: "alex", method: "face_id" }, approved: { at: today(9, 12), by: "alex", method: "face_id" } } });
-      const k3 = k("m1", { title: "Engagement letter", doer: "drafting", checker: "alex", stage: "Engagement", state: "working", output: { kind: "sent", target: "Letter for signature" }, how: "tailor", template: "tpl2", due: today(12, 0) + dayMs, now: "is drafting the engagement letter from Engagement letter" });
+      const k3 = k("m1", { title: "Engagement letter", doer: "drafting", checker: "alex", stage: "Engagement", state: "working", output: { kind: "sent", target: "Letter for signature" }, how: "tailor", template: "tpl2", due: today(12, 0) + dayMs, now: "is drafting the engagement letter" });
       k("m1", { title: "Review the draft with Jane Doe", doer: "alex", stage: "Engagement", state: "ready", output: { kind: "decision", target: "Approved or changes" }, how: "person", dependsOn: [k3.id], madeBy: "chris", note: "Assigned by Chris", due: today(12, 0) + 3 * dayMs });
       void k2;
     }

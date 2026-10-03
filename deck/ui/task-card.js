@@ -91,7 +91,7 @@ const HEX = "M8 1.5l5.8 3.3v6.4L8 14.5 2.2 11.2V4.8z";
 
 /** The space's tint, for the current scheme. @param {Space|undefined} sp */
 export function tintOf(sp) {
-  const scheme = typeof document !== "undefined" && document.documentElement.dataset.theme === "paper" ? "paper" : "dark";
+  const scheme = typeof document !== "undefined" && document.documentElement?.dataset?.theme === "paper" ? "paper" : "dark";
   return resolveTheme({ space: { accent: sp?.accent, tint: "accent" }, person: { theme: scheme } }).tint;
 }
 

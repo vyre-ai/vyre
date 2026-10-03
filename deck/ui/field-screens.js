@@ -27,3 +27,12 @@ export async function linkIndex(store, types) {
 
 /** The plain state a screen shows when the Store cannot be read. @param {any} e */
 export const reasonOf = e => String(e?.message || e || "Something went wrong.");
+
+/** The records that link to one record (a contact's matters), as { id, title, type }, for Linked records. @param {Store} store @param {import("./contracts.js").TypeDef[]} types @param {import("./contracts.js").TypeDef} def @param {string} id */
+export async function relatedRecords(store, types, def, id) {
+  /** @type {{ id: string, title: string, type: string }[]} */
+  const out = [];
+  for (const t of types) for (const f of t.fields) if (f.kind === "link" && f.link === def.id)
+    for (const r of await store.list(t.id)) if (r.values[f.key] === id) out.push({ id: r.id, title: String(r.values[t.titleKey] ?? r.id), type: t.id });
+  return out;
+}

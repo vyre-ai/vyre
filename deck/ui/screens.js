@@ -6,6 +6,7 @@ export const screens = {
   now: () => import("../views/ui-now.js"),
   task: () => import("../views/ui-task.js"),
   project: () => import("../views/ui-project.js"),
+  projects: () => import("../views/ui-projects.js"),
   records: () => import("../views/ui-records.js"),
   record: () => import("../views/ui-record.js"),
   appearance: () => import("../views/ui-appearance.js"),

@@ -10,7 +10,7 @@
 //   recordPage(def, row, o)     fields in order, You / Your assistant sees, Add a field, stage steps, timeline, linked records, chats, files, field menu
 //   describeDef(def, kind)      the text "How this page is made" shows
 //
-// o: { actors, links, who, now, open(id), reveal(rowId, key, proof), store, empty, rowExtra(row), onupdate(patch), onaddfield(field), onsealtype(key),
+// o: { actors, links, tasks (a node shown under the fields: the project page's stages and their tasks), who, now, open(id), reveal(rowId, key, proof), store, empty, rowExtra(row), onupdate(patch), onaddfield(field), onsealtype(key),
 //      rows (every row of the type, for the sealed count), events, team, related, chats, files, doing, seesAs(rowId), confirm(spec), faceId, timers }
 import { h, add, put } from "../js/dom.js";
 import { when } from "../js/fmt.js";
@@ -364,7 +364,7 @@ export function recordPage(def, row, o = {}) {
       o.doing ? h("p", { class: "uv-doing" }, h("span", { class: "uv-live", "aria-hidden": "true" }), o.doing) : null,
       bar, note,
       h("div", { class: "uv-rec-grid" },
-        h("div", { class: "uv-main" }, card({ tone: "plain" }, def.fields.map(fieldRow)),
+        h("div", { class: "uv-main" }, card({ tone: "plain" }, def.fields.map(fieldRow)), o.tasks || null,
           card({ title: "Timeline", actions: h("span", { class: "uv-hint" }, "Every change, who and why") },
             events.length ? events.map((/** @type {any} */ e) => timelineItem({ actor: h("span", { class: "uv-actor" }, actorAv(o, e.actor, 20), h("span", null, nameOf(o, e.actor))), what: e.what, at: when(e.at), why: e.why })) : h("div", { class: "uv-hint uv-pad" }, "Nothing has happened yet."))),
         h("div", { class: "uv-side" },

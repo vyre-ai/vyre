@@ -4,6 +4,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### ui: the project page
+
+- `deck/views/ui-project.js` (/u/project/:id): the record page (stage strip, You or Your assistant sees, fields, timeline, linked records, chats, files) with the work around it. Each stage is a list of its tasks (title, doer, checker, state), the current stage open and the others collapsed with "n of m done"; a task opens its card sheet in place, which leads to /u/task/:id. When the last required task of a stage is done the record moves on by itself: the strip advances, the new stage opens and a toast says so. A "Created by Vyre from the Kit ..." line comes from the first event.
+- The Team card shows each teammate's face, role and a live "doing now" line (a working task, the actor's `doing` field, then what it finished), and so does the line under the stage strip. Both redraw when the store notifies.
+- `deck/views/ui-projects.js` (/u/projects): every record of a type that holds work, with space and type chips, Stage, Owner and "n of m tasks"; New makes a record of a chosen type.
+- `deck/ui/project.js` holds the pure parts (stageGroups, teamOf, teamLine, liveLine, createdLine) and the Tasks card; `deck/css/ui-project.css` styles both screens with tokens only (checked by tokens-only.test.js), linked from the Deck, the lab and the service worker.
+- `recordPage` takes `o.tasks`, a node drawn under the fields. `relatedRecords` in `deck/ui/field-screens.js` replaces a loop in ui-record.js. A `records` icon (a table) is added and Matter uses it, as in the prototype. The Engagement letter's "doing now" text no longer repeats its title.
+- Lab: `project`, `project-paid` (after the client-pays scenario) and `projects`; `project` has a Play button that finishes the Engagement stage. `deck/test/pwa-shots.js` shoots /u/now, /u/project/m1, /u/projects, /u/records/contact, /u/record/m1, /u/task/k1 and /u/appearance in the real Deck shell, both themes.
+- Tests: `deck/ui/project.test.js` (tasks under their stages, the stage that advances, the team line and its update, a stuck task's reason, Projects).
+
 #### ui: field renderers and generated views
 
 - `deck/ui/types.js`: the sample type definitions as data (Contact with sealed SSN and account number, Matter with Intake to Closed, Project, Trip, Template), copied from the approved prototype's fields, stages and views.
