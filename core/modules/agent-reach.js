@@ -16,6 +16,8 @@ export const PERSON_ONLY = new Map([
   ["wink.server.release", "needs the person's Face ID or presence: pairing and devices"],
   ["wink.server.fingerprint", "needs the person's Face ID or presence: pairing and devices"],
   ["wink.server.reset", "needs the person's Face ID or presence: pairing and devices"],
+  ["network.wink.join", "changes this computer's own network: bringing a link up"],
+  ["network.wink.leave", "changes this computer's own network: taking a link down"],
   ["wink.phone.pairing", "needs the person's Face ID or presence: pairing and devices"],
   ["wink.phone.pair.answer", "needs the person's Face ID or presence: pairing and devices"],
   ["wink.phone.wait", "needs the person's Face ID or presence: pairing and devices"],
