@@ -34,7 +34,7 @@ export const STUBS = Object.freeze(["hidden"]);
 export { EPHEMERAL, isEphemeral, HOLDBACK, settle };
 /** Control kinds: never logged, no cursor. */
 export const CONTROL = Object.freeze(["reset", "heartbeat"]);
-export const BLOCKS = Object.freeze(["terminal", "diff", "files", "record", "task", "draft", "flow-change", "answer", "screen", "text"]);
+export const BLOCKS = Object.freeze(["terminal", "diff", "files", "record", "task", "draft", "flow-change", "answer", "screen", "text", "field-ref", "field"]);
 export const STATES = Object.freeze(["starting", "working", "asking", "waiting", "paused", "stopped", "finished", "failed"]);
 
 /** Longest text a block carries; a longer output is cut with a note, never sent whole. */
@@ -67,7 +67,7 @@ export const isEncrypted = f => Boolean(f && f.data && typeof f.data === "object
 /** @type {Record<string, (d: any) => string|null>} */
 const CHECK = {
   "text-delta": d => (idStr(d.message) && isInt(d.index) && isStr(d.text) && (d.parent === undefined || idStr(d.parent)) ? null : "text-delta needs message, index and text"),
-  "text-done": d => (idStr(d.message) ? null : "text-done needs message"),
+  "text-done": d => (idStr(d.message) && (d.blocks === undefined || (Array.isArray(d.blocks) && d.blocks.length <= 8 && d.blocks.every(validBlock))) ? null : "text-done needs message, and blocks (up to 8, each a block such as field-ref) when it has any"),
   "tool-started": d => (idStr(d.tool_id) && isStr(d.tool) && isStr(d.kind) && isStr(d.summary) ? null : "tool-started needs tool_id, tool, kind and summary"),
   "tool-progress": d => (idStr(d.tool_id) && (d.text === undefined || isStr(d.text)) && (d.pct === undefined || (typeof d.pct === "number" && d.pct >= 0 && d.pct <= 100)) ? null : "tool-progress needs tool_id and text or pct"),
   "tool-finished": d => (idStr(d.tool_id) && typeof d.ok === "boolean" && validBlock(d.result) ? null : "tool-finished needs tool_id, ok and a result block"),
@@ -107,6 +107,9 @@ export function validBlock(b) {
     case "diff": return isStr(o.path) && Array.isArray(o.hunks);
     case "files": return Array.isArray(o.files);
     case "task": return Array.isArray(o.items);
+    // A cited field: which record and which field, never its value (the server draws it per viewer into a `field` block).
+    case "field-ref": return isStr(o.record) && o.record.length > 0 && o.record.length <= 400 && isStr(o.field) && o.field.length > 0 && o.field.length <= 120 && Object.keys(o).every(k => ["block", "record", "field", "label"].includes(k)) && (o.label === undefined || isStr(o.label));
+    case "field": return isStr(o.label);
     default: return true;
   }
 }

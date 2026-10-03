@@ -47,6 +47,12 @@ function uuidOf(s) {
   const h = b.toString("hex");
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
 }
+/** Does a frame's data hold a `field` block that carries a value (not a placeholder)? @param {any} d */
+function carriesFieldValue(d) {
+  if (!d || typeof d !== "object") return false;
+  const one = (/** @type {any} */ b) => b && typeof b === "object" && b.block === "field" && b.placeholder !== true;
+  return one(d) || one(d.result) || one(d.block) || (Array.isArray(d.blocks) && d.blocks.some(one));
+}
 const shortOf = (/** @type {string} */ id) => id.slice(id.indexOf(":") + 1);
 const botId = (/** @type {string} */ id) => id.startsWith("assistant:") || id.startsWith("model:");
 
@@ -128,8 +134,12 @@ export function createGroups({ ctx, logs, db, now = Date.now }) {
     logs.get(grp).append("participant-joined", { who, ...(o.role ? { role: o.role } : {}), ...(o.name ? { name: o.name } : {}) });
   }
 
-  /** @param {any} meta @param {any} i the person a call is from: the verified peer, else a named one (local surfaces), else the owner */
+  /** The person a kernel-on call is from, set by mirror() from the caller's own chain (a call's meta object is the key). @type {WeakMap<object, string>} */
+  const kernelPerson = new WeakMap();
+  /** @param {any} meta @param {any} i the person a call is from: the kernel's chain when it spoke, else the verified peer, else a named one (local surfaces), else the owner */
   function personOf(meta, i) {
+    const kp = meta && typeof meta === "object" ? kernelPerson.get(meta) : undefined;
+    if (kp) return kp;
     const peer = meta && meta.peer;
     const raw = peer && (peer.login || peer.stableId || peer.node);
     if (raw) return `person:${String(raw).replace(/\s+/g, "-").slice(0, 120)}`;
@@ -154,8 +164,11 @@ export function createGroups({ ctx, logs, db, now = Date.now }) {
     const out = logs.get(m.grp);
     let specs = [];
     try { specs = m.ad.event(e); } catch (err) { log(`${e.type} for ${m.thread}: ${/** @type {Error} */ (err).message}`); }
+    const room = group(m.grp).people.size > 1;
     for (const s of specs) {
       if (SKIP.has(s.kind)) continue;
+      // In a room of more than one person an assistant's reply never carries a field value (it is the same words for everyone): a field is cited as a field-ref block, drawn per viewer.
+      if (room && carriesFieldValue(s.data)) { log(`${s.kind} for ${m.who} in ${m.grp}: dropped, it carried a field value (cite it as a field-ref)`); continue; }
       let data = s.data, message;
       if ((s.kind === "text-delta" || s.kind === "text-done") && m.answer) {
         const raw = String(data.message);
@@ -247,6 +260,18 @@ export function createGroups({ ctx, logs, db, now = Date.now }) {
     known: grp => groups.has(grp) || logs.known(grp),
     /** The people in a group, from its log. Call only for a known group. @param {string} grp */
     people: grp => new Set(group(grp).people),
+
+    /**
+     * The kernel holds a chat's people (one store); this group mirrors its list: whoever the kernel lists and the group lacks joins, whoever the group holds and the kernel no longer lists leaves
+     * (a participant-left frame). The caller's own person comes from their chain. @param {string} grp @param {string[]} people @param {any} meta @param {string} person
+     */
+    mirror(grp, people, meta, person) {
+      if (meta && typeof meta === "object") kernelPerson.set(meta, person);
+      const g = group(grp);
+      const want = new Set(people);
+      for (const p of want) if (!g.people.has(p)) join(grp, p);
+      for (const p of [...g.people]) if (!want.has(p)) { g.people.delete(p); g.names.delete(p); logs.get(grp).append("participant-left", { who: p }); }
+    },
 
     /** @param {any} i @param {any} meta */
     async send(i, meta) {

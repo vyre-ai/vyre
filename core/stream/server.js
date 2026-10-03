@@ -17,7 +17,7 @@
 
 import { acceptKey, encodeFrame, FrameParser } from "../../lib/ws.js";
 import { heartbeatFrame, resetFrame } from "./protocol.js";
-import { forViewer } from "./viewer.js";
+import { forViewer, forViewerAsync, hasRefs } from "./viewer.js";
 
 export const HEARTBEAT_MS = 25_000;
 export const MAX_BUFFERED = 1024 * 1024;
@@ -47,7 +47,22 @@ export function serve(log, conn, opts = {}) {
 
   // The viewer is part of the connection: every frame, replayed or live, is drawn for them HERE, before conn.send.
   // Nothing a connection sends has not been through forViewer; a client only draws what arrives.
-  const send = (/** @type {any} */ f) => { try { conn.send(opts.viewer ? forViewer(f, opts.viewer) : f); } catch { shut(); } };
+  // A frame that cites a field is resolved for the viewer first (their own authority, asynchronously); every later frame waits behind it, so order holds.
+  /** @type {Promise<void>|null} */ let tail = null;
+  const out = (/** @type {any} */ f) => { try { conn.send(f); } catch { shut(); } };
+  const send = (/** @type {any} */ f) => {
+    const v = opts.viewer;
+    if (!v) { out(f); return; }
+    if (!tail && !(v.resolve && hasRefs(f))) { out(forViewer(f, v)); return; }
+    const me = (tail || Promise.resolve()).then(async () => {
+      if (closed) return;
+      let drawn;
+      try { drawn = await forViewerAsync(f, v); } catch { drawn = forViewer(f, v); }
+      if (!closed) out(drawn);
+    });
+    tail = me;
+    void me.finally(() => { if (tail === me) tail = null; });
+  };
   const shut = () => {
     if (closed) return;
     closed = true;

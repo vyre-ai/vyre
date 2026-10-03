@@ -15,6 +15,7 @@
  *  | { block: "flow-change", title: string, steps: { op: string, label: string }[] }
  *  | { block: "answer", text: string, sources: { title: string, url: string | null }[] }
  *  | { block: "screen", label: string, live: boolean, frames: string[] }
+ *  | { block: "field", label: string, kind: string, state: "value" | "sealed" | "hidden", value: string, cls: string, present: boolean }
  *  | { block: "text", text: string }} Block
  * @typedef {{ path: string, op: string, diff: string, add: number, del: number }} DiffFile
  */
@@ -77,6 +78,21 @@ export function normalizeBlock(raw, fallback = "Done") {
     case "answer": {
       const t = str(o.text, 8000);
       return t ? { block: "answer", text: t, sources: arr(o.sources).map((s) => rec(s)).filter(Boolean).map((s) => ({ title: str(s?.title, 200) || "Source", url: typeof s?.url === "string" ? s.url : null })).slice(0, 12) } : text();
+    }
+    // A cited field. `field-ref` (the server did not draw it for this viewer) is never a value here; a `field` is drawn for this viewer by the server:
+    // a value, or a placeholder (sealed or hidden by role) that keeps only its class and presence.
+    case "field-ref":
+      return { block: "field", label: str(o.label, 80) || str(o.field, 80) || "Field", kind: "text", state: "hidden", value: "", cls: "", present: false };
+    case "field": {
+      const label = str(o.label ?? o.name, 80);
+      if (!label) return text();
+      const v = rec(o.value);
+      if (o.placeholder === true || o.kind === "sealed" || (v && (typeof v.sealed === "string" || v.hidden === "role"))) {
+        const sealed = o.kind === "sealed" || (v !== null && typeof v.sealed === "string");
+        return { block: "field", label, kind: sealed ? "sealed" : str(v && v.kind, 20) || str(o.kind, 20) || "text", state: sealed ? "sealed" : "hidden", value: "", cls: sealed ? str(v && v.sealed, 60) || label : "", present: v && typeof v.present === "boolean" ? v.present : false };
+      }
+      const value = typeof o.value === "string" ? o.value : typeof o.value === "number" || typeof o.value === "boolean" ? String(o.value) : v && typeof v.amount === "number" ? `${v.currency ?? ""} ${v.amount}`.trim() : "";
+      return { block: "field", label, kind: str(o.kind, 20) || "text", state: "value", value: value.slice(0, 300), cls: "", present: value !== "" };
     }
     case "screen": {
       const frames = arr(o.frames).filter((f) => typeof f === "string").slice(-4);

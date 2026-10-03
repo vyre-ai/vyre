@@ -25,7 +25,7 @@ export * from "./protocol.js";
 export { whoAnswers, mentionedIn } from "./routing.js";
 export { createDoorAdapter, pipeDoor, drainDoor } from "./door-adapter.js";
 export { createGroups } from "./group.js";
-export { render, forViewer, mayView, assertAskerCanRead, canRead, placeholder, cutData } from "./viewer.js";
+export { render, forViewer, forViewerAsync, resolveRefs, hasRefs, mayView, assertAskerCanRead, canRead, placeholder, cutData } from "./viewer.js";
 export { createPresence, presenceFor, PRESENCE_MS } from "./presence.js";
 export { createReadMarkers } from "./readmarks.js";
 
@@ -89,6 +89,24 @@ export default {
       return p;
     };
 
+    /** Where a cited field's value comes from, per viewer (see resolverFor). Set by whoever owns the records (platform); null reads the kernel's records. @type {null | ((o: { record: string, field: string, viewer: { id: string, roles: string[] } }) => Promise<any>)} */
+    let fieldSource = null;
+    /**
+     * What a viewer's own authority yields for a cited field. The viewer's chain (kernel on) is the caller's own, never the module's: records.get under it hides what that
+     * person may not read; the server then draws the field (value or chip) per viewer. Never throws: anything unresolved is a chip.
+     * @param {{ id: string, roles: string[] }} who @param {any} chain
+     */
+    const resolverFor = (who, chain) => async (/** @type {string} */ record, /** @type {string} */ field) => {
+      if (fieldSource) return fieldSource({ record, field, viewer: { id: who.id, roles: [...who.roles] } });
+      const k = ctx.kernel;
+      const m = /^vyre:\/\/[^/]+\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.:-]+)$/.exec(record);
+      if (!chain || !k || !k.records || typeof k.records.get !== "function" || !m) return null;
+      const r = await k.records.get(chain, m[1], m[2]);
+      const data = r && typeof r === "object" ? (r.data ?? r) : null;
+      if (!data || typeof data !== "object" || !(field in data)) return null;
+      return { kind: typeof data[field] === "object" && data[field] !== null ? "object" : "text", value: data[field] };
+    };
+
     const groups = ctx.store && ctx.store.db ? createGroups({ ctx, logs, db: ctx.store.db }) : null;
     const access = createAccess({ ctx, groups, logs });
 
@@ -112,7 +130,8 @@ export default {
         const session = String(i.session || "");
         if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(session)) { const e = /** @type {any} */ (new Error("session must be a thread id")); e.code = "bad_input"; throw e; }
         // Who may read it comes first: nothing below runs, and no log or set entry is made, for a session the caller may not read.
-        const { viewer: who } = await access.read(session, meta, i);
+        const { viewer: who0, chain } = await access.read(session, meta, i);
+        const who = { ...who0, resolve: resolverFor(who0, chain) };
         if (!seen.has(session)) { seen.add(session); if (logs.get(session).head === 0) await seed(session); }
         else if (seeding.has(session)) await seeding.get(session);
         for (const [k, v] of tickets) if (v.expires <= now()) tickets.delete(k);
@@ -145,9 +164,33 @@ export default {
       } catch { reject(socket, 400, "Bad Request"); }
     });
 
+    /**
+     * With the kernel on and a session token on the call, a chat is the kernel's and so is its list of people (one store): the caller must be in it (chats.read), the
+     * group's people mirror it, and a call cannot add people or assistants the kernel does not list (they are added with the kernel's chats.change, a person in the chat).
+     * @param {any} i @param {any} meta
+     */
+    const kernelGate = async (i, meta) => {
+      const session = String((i && i.session) || "");
+      if (!groups || !/^[A-Za-z0-9_.:-]{1,128}$/.test(session)) return;
+      const kc = await access.chat(session, meta);
+      if (!kc) return;
+      if (!kc.chat) throw Object.assign(new Error("no such session"), { code: "not_found" });
+      const people = new Set(kc.chat.people.map((/** @type {string} */ p) => `person:${p}`));
+      const bots = new Set((kc.chat.assistants || []).map((/** @type {string} */ a) => `assistant:${a}`));
+      for (const spec of [...(i.people || []), ...(i.assistants || [])]) {
+        const id = typeof spec === "string" ? spec : spec && spec.id;
+        if (!people.has(id) && !bots.has(id)) throw Object.assign(new Error("people and assistants of a chat are added with the kernel's chat change, by a person in it"), { code: "bad_input" });
+      }
+      groups.mirror(session, [...people], meta, `person:${kc.person}`);
+    };
+
     const tool = (/** @type {string} */ name, /** @type {string} */ description, /** @type {any} */ input, /** @type {string} */ method) => ctx.tool(name, {
       description, input, callers: PEOPLE,
-      run: async (/** @type {any} */ i, /** @type {any} */ meta) => { if (!groups) throw Object.assign(new Error("the stream has no store here"), { code: "unavailable" }); return /** @type {any} */ (groups)[method](i, meta); },
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        if (!groups) throw Object.assign(new Error("the stream has no store here"), { code: "unavailable" });
+        await kernelGate(i, meta);
+        return /** @type {any} */ (groups)[method](i, meta);
+      },
     });
     const bool = { type: "boolean" };
     tool("stream.send", "Say something in a group chat (a stream session with several people and assistants). The words are the caller's, appended first; then routing decides who answers (an @mention, the default assistant when no person is talking to a person, or the assistants named in to) and each gets the words in its own thread; its replies appear in the group with that assistant as author and the caller as acts_for. Two or more answering assistants make a fan-out set. People and assistants join by being named in people and assistants (an assistant needs a cwd to work in). Retry with the same message id and nothing is said twice. A private message is sent with enc { alg, kid, ct } and no text: an opaque ciphertext made on the person's device, stored and relayed as it is, never parsed, routed to no assistant and kept out of search, memory and export.",
@@ -162,6 +205,8 @@ export default {
     return {
       logs,
       groups,
+      /** Where a cited field's value comes from for a viewer: ({ record, field, viewer }) => { label?, kind?, value, read_roles?, seal? } | null. @param {typeof fieldSource} fn */
+      setFieldSource(fn) { fieldSource = typeof fn === "function" ? fn : null; },
       async stop() {
         off();
         if (groups) groups.stop();
