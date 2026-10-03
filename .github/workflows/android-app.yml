@@ -79,6 +79,7 @@ jobs:
         working-directory: apps/app/android
       - name: Name the APK, check its package and what it asks the phone for
         run: |
+          set -o pipefail
           apk=$(ls android/app/build/outputs/apk/debug/*.apk | head -1)
           test -f "$apk" || { echo "no debug APK"; ls -R android/app/build/outputs; exit 1; }
           mkdir -p dist-android && cp "$apk" dist-android/vyre-debug.apk

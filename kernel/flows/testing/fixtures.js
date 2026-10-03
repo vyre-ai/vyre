@@ -21,11 +21,14 @@ export const catalog = () => ({
   actions: {
     "email.send": { risk: "outward.send", label: "Send an email" },
     "email.draft": { risk: "write", label: "Draft an email" },
+    "service.read": { risk: "read", label: "Read from a connected service" }, "service.call": { risk: "outward.send", label: "Call a connected service" },
     "records.read": { risk: "read" }, "records.create": { risk: "write" }, "records.update": { risk: "write" }, "records.remove": { risk: "outward.delete" },
   },
   roles: ["owner", "admin", "manager", "member", "attorney"],
   teammates: ["research", "intake"],
   templates: ["welcome"],
+  // A connector is a vault credential and its route. No secret here: the catalog holds only which methods and paths the route allows.
+  connectors: { practice: { allow: [{ method: "GET", path: "/matters/*" }, { method: "POST", path: "/matters" }, { method: "PUT", path: "/documents/*" }], deny: [{ path: "/admin/*" }] } },
 });
 
 /** A valid stored Flow touching most step kinds. */
