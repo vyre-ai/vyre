@@ -16,7 +16,7 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 import { createTwentyStore } from "./store.js";
 import { TwentyClient } from "./client.js";
-import { provisionSpace, spaceDir, realRunner, firewallRules, MEMORY_PROFILES } from "./provision.js";
+import { provisionSpace, spaceDir, realRunner, MEMORY_PROFILES } from "./provision.js";
 import { CORE_TYPES } from "../../records/core-types.js";
 
 /** What a Space's Twenty needs on the box, in MB: the sum of the `small` profile plus headroom for the gateway and the OS. */
@@ -111,7 +111,7 @@ export function createStoreFor(cfg) {
     const store = createTwentyStore({ space: name, client: new TwentyClient({ url: p.url, key: () => fs.readFileSync(p.keyFile, "utf8").trim() }), dir: sdir, webhookSecret: fs.readFileSync(p.webhookSecretFile, "utf8").trim() });
     // the kernel's own types are a kernel act at start (idempotent), like a module's `needs.types`
     await store.define({ add_types: [...CORE_TYPES] });
-    fs.writeFileSync(path.join(dir, "firewall.rules"), firewallRules({ space: name, subnet: "172.30.0.0/16" }), { mode: 0o600 });
+    // the firewall rules are the root helper's to derive from the Space's real network (docs/work/records.md, "Root helper"); a guessed subnet written here would be wrong
     fs.writeFileSync(choiceFile, JSON.stringify({ kind: "twenty", name }), { mode: 0o600 });
     log(`store for ${space}: Twenty ready`);
     return store;
