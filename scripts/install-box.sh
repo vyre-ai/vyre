@@ -869,6 +869,11 @@ main() {
   need_tun
   docker_flavor
   one_install
+  # An install from a checkout (--from) starts as the person, never as root (a root `vyre up` refuses a box built from a checkout), so that person
+  # must reach Docker themselves. Say what to do now, before anything is laid out, instead of stopping later with the box half installed.
+  if [ -n "$FROM" ] && [ "$DRY" != 1 ] && [ "$(id -u)" != 0 ] && [ -n "$DOCKER_SUDO" ]; then
+    die "this account cannot reach Docker without sudo, and an install from a checkout starts as you. Run: sudo usermod -aG docker $(id -un), sign in again, then run this installer again (the docker group is root-equivalent on this server)."
+  fi
   if command -v docker >/dev/null 2>&1; then done_step "Docker, Compose and the TUN device are there"
   else done_step "Docker would be installed first (dry run)"
   fi
