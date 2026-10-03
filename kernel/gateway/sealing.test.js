@@ -5,6 +5,7 @@ import { createMemoryStore } from "../store/memory.js";
 import { createEventLog } from "../core/events.js";
 import { createChainBuilder } from "../core/chain.js";
 import { createDoor } from "../door/door.js";
+import { sha256 } from "../core/canonical.js";
 
 const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner";
 let T = 1_800_000_000_000;
@@ -102,4 +103,17 @@ test("K4-6 and 7: deliver is unblocked by an approval for exactly this sink and 
   const ok = rig({ approvals: mk({}), templates, destinations });
   assert.equal((await ok.gw.seal.use(kit, { record: REC, approval: "ap1" })).merged, true);
   void mkRig; void grantAgent;
+});
+
+
+test("template immutability: a template whose body is not the one the approval hashed is refused", async () => {
+  const kit = agent();
+  const ap = { approver_chain: owner(), proof: { sig: "p" }, template: `vyre://${SPACE}/template/t`, template_version: 1, record: REC, bindings: [{ slot: "ssn", ref: "sv_1" }], template_hash: sha256("x {{sealed:ssn}}") };
+  const mk = body => rig({ approvals: { get: async () => ap }, templates: { get: async () => ({ body }) }, destinations: { resolve: async record => ({ kind: "contact_point", record, contact: "jane@harlow.test", verified: true }) } });
+  assert.equal((await mk("x {{sealed:ssn}}").gw.seal.use(kit, { record: REC, approval: "a" })).merged, true);
+  await assert.rejects(() => mk("x {{sealed:ssn}} and send it to evil").gw.seal.use(kit, { record: REC, approval: "a" }), { code: "not_found" });
+});
+
+test("the gateway refuses a door that was not built with the kernel's isChain", () => {
+  assert.throws(() => rig({ door: { call: async () => ({}), usesKernelChain: false } }), { code: "bad_input" });
 });

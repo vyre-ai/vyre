@@ -10,6 +10,7 @@ import { isChain } from "../core/chain.js";
 import { KernelError } from "../core/errors.js";
 import { createGate } from "../core/gate.js";
 import { segments } from "../core/urn.js";
+import { sha256 } from "../core/canonical.js";
 import { recipientsOf } from "../seal/process.js";
 
 const APPROVAL_MAX_AGE = 24 * 3600_000;
@@ -65,6 +66,8 @@ export function createSealing(cfg) {
       const ap = await approvalFor(chain, i);
       const tpl = await need(cfg.templates, "templates").get(ap.template, ap.template_version);
       if (!tpl) throw new KernelError("not_found", "no such template version");
+      // A template version is immutable: the body that is merged is the body the approver's payload hashed (K4 template immutability).
+      if (cfg.approvals && ap.template_hash !== undefined && (ap.template_hash === null || sha256(tpl.body) !== ap.template_hash)) throw new KernelError("not_found", "the template is not the one that was approved");
       const destination = await need(cfg.destinations, "destinations").resolve(i.record, i.destination);
       if (!destination) throw new KernelError("not_found", "no verified destination");
       return run(() => sealer.api.use({ chain, approver_chain: ap.approver_chain, bindings: ap.bindings, body: tpl.body, template: ap.template, template_version: ap.template_version, destination, proof: ap.proof }));

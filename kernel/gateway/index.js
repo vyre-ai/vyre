@@ -17,6 +17,7 @@ import { KernelError } from "../core/errors.js";
  *   sinks?: Set<string>, standing?: any, verifyPresence?: any, hasPresenceSession?: any, clock?: () => number, policy_version?: number }} cfg
  */
 export function createGateway(cfg) {
+  if (cfg.door && cfg.door.usesKernelChain !== true) throw new KernelError("bad_input", "the door must be built with the kernel's own isChain");
   const limits = cfg.limits || createLimits({ space: cfg.space, log: cfg.log, clock: cfg.clock });
   const enforce = (/** @type {any} */ chain, /** @type {any} */ d) => limits.enforce(chain, d);
   /** @type {any} */ let records;

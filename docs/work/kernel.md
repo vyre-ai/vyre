@@ -76,3 +76,7 @@ Done, pushed to origin/work/kernel (f43c4e570 and later):
 - kernel/grants (index.js, roles.js, grants.test.js, 7 tests) and the gateway wiring (`createGateway({ grantsStore, presence })`, `gateway.grants`). The full `kernel/**` suite exits by itself (181 pass before this piece).
 - A signer signs `grant.<verb>` over `{ resource, input_hash }` with `input_hash = sha256(canonical({ action: "grants.<verb>", input }))`; resources are `vyre://<space>/grant/new`, `grant/<id>` and `member/<person>`.
 - Next: stage gates in the gateway (needs the stage definition shape from records), the tool surface review, the remaining K4 items (10, 12, template immutability).
+
+## Round 5 (3 Oct, after the grants store)
+- Done: once, rate and meter enforcement (kernel/core/limits.js); field limits fail closed under row predicates; stage gates (entry rules and required tasks, expr injected); K4 items 10, 12, template immutability, door isChain.
+- Open: the stage-entry task creation is `onStageEnter` (records or tasks wires it); `rate` windows are not durable; K2-9 and default-on gates stay a reviewer-2 gate.
