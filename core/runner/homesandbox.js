@@ -157,6 +157,14 @@ export function planHome(o) {
   throw new Error("sessions on this system are not sandboxed yet (Windows needs the AppContainer pipe rule), so they do not start");
 }
 
+/** Throw the session's private config folder away when the session ends (the copy of the credential goes with it). @param {HomeOpts} o */
+export function discardConfig(o) {
+  if (!o.temp) return false;
+  const dir = path.join(real(o.temp), "agent-config");
+  try { fs.rmSync(dir, { recursive: true, force: true }); } catch { return false; }
+  return !fs.existsSync(dir);
+}
+
 const PROBE = `
 const net=require("net"),fs=require("fs");const P=JSON.parse(process.argv[1]);const out={};
 const conn=(t)=>new Promise(res=>{const s=typeof t==="number"?net.connect(t,"127.0.0.1"):net.connect(t);let d=false;const f=v=>{if(!d){d=true;try{s.destroy()}catch{}res(v)}};s.on("connect",()=>f("connected"));s.on("error",e=>f(e.code||"error"));setTimeout(()=>f("timeout"),2500)});

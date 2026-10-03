@@ -4,7 +4,7 @@ import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { SCRATCH } from "../../test/scratch.mjs";
-import { planHome, selfTest, homeSeatbelt, seedConfig } from "./homesandbox.js";
+import { planHome, selfTest, homeSeatbelt, seedConfig, discardConfig } from "./homesandbox.js";
 import { launch } from "./sandbox.js";
 import { spawn } from "node:child_process";
 import { unavailable } from "./sandbox.js";
@@ -137,7 +137,10 @@ test("HS-1: each session gets its own config folder with only the credential fil
   assert.match(j.cred, /SIGN-IN/);
   assert.notEqual(typeof j.real, "number", "the real config folder is not visible: " + j.real);
   assert.equal(fs.readFileSync(path.join(real, "settings.json"), "utf8"), "{}", "the real settings were not touched");
-  assert.ok(seedConfig({ ...base(r, { agent }) }).dir.endsWith("agent-config"));
+  const seeded = seedConfig({ ...base(r, { agent }) });
+  assert.ok(seeded.dir.endsWith("agent-config"));
+  assert.equal(discardConfig(base(r, { agent })), true, "the private config folder is thrown away at session end");
+  assert.equal(fs.existsSync(seeded.dir), false);
   assert.throws(() => seedConfig({ ...base(r, { agent: { ...agent, private: { ...agent.private, credentialFiles: ["../x"] } } }) }), /name inside/);
 });
 
