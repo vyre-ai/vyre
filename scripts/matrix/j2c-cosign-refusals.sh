@@ -80,9 +80,10 @@ R4="ghcr.io/vyre-ai/vyre@sha256:$(printf '0%.0s' $(seq 1 64))"
 # ---- 5 a release that names an image by digest, as release.sh will
 mkrel() { # mkrel NAME REF
   d="$WORK/$1"; rm -rf "$d"; mkdir -p "$d"; cp -R "$BOX"/. "$d"/
-  sed -i "s|\${VYRE_IMAGE:-ghcr.io/vyre-ai/vyre:latest}|$2|" "$d/compose.yml"
-  # the installer wants every image pinned (it never pulls tailscale before cosign), so it gets a placeholder digest; an update pulls it, so it stays
-  [ "${3:-}" = unpinned ] || sed -i "s|\${VYRE_TAILSCALE_IMAGE:-tailscale/tailscale:stable}|tailscale/tailscale@sha256:$(printf 'a%.0s' $(seq 1 64))|" "$d/compose.yml"
+  # The released compose.yml is made the way release.yml makes it (scripts/pin-release-compose.mjs): every image line literal and pinned by digest.
+  # The computers image gets a placeholder digest here (nothing pulls it). "unpinned" then puts a moving tag back on the tailscale line.
+  node "$HERE/scripts/pin-release-compose.mjs" "$d/compose.yml" "$2" "ghcr.io/vyre-ai/vyre-computer@sha256:$(printf 'b%.0s' $(seq 1 64))" || return 1
+  [ "${3:-}" = unpinned ] && sed -i 's|^\([[:space:]]*image: \)tailscale/tailscale:.*$|\1tailscale/tailscale:stable|' "$d/compose.yml"
   printf '{"version":"%s","channel":"stable","box":{"ref":"%s"}}\n' "$V0" "$2" >"$d/release.json"
   files=$(awk '{print $2}' "$BOX/SHA256SUMS"; echo release.json)
   (cd "$d" && for f in $(printf '%s\n' $files | sort -u); do sha256sum "$f"; done >SHA256SUMS)
@@ -144,7 +145,7 @@ updrefused B4-update-wrong-identity upd-wrongid "$R2" 'identit'
 updrefused B5-update-key-signature upd-key "$R3" 'no matching signatures|certificate'
 updrefused B6-update-digest-not-held upd-missing "$R4" 'no signatures|manifest|not found'
 # A release that is not pinned by digest at all (tailscale left on its tag) is refused before cosign runs.
-mkupd upd-tag "$R1"; sed -i "s|tailscale/tailscale@sha256:a*|tailscale/tailscale:stable|" "$WORK/upd-tag/compose.yml"
+mkupd upd-tag "$R1"; sed -i 's|^\([[:space:]]*image: \)tailscale/tailscale:.*$|\1tailscale/tailscale:stable|' "$WORK/upd-tag/compose.yml"
 (cd "$WORK/upd-tag" && fl=$(awk '{print $2}' SHA256SUMS | sort -u) && for f in $fl; do sha256sum "$f"; done >SHA256SUMS.new && mv SHA256SUMS.new SHA256SUMS)
 node -e 'const c=require("crypto"),fs=require("fs");const d=process.argv[1];const sums=fs.readFileSync(d+"/SHA256SUMS");fs.writeFileSync(d+"/SHA256SUMS.sig",c.sign(null,Buffer.concat([Buffer.from("vyre-release-sums\n"),sums]),c.createPrivateKey(fs.readFileSync(process.argv[2]))).toString("base64")+"\n");' "$WORK/upd-tag" "$WORK/good.pem"
 askupd upd-tag; ready; v=$(hv)

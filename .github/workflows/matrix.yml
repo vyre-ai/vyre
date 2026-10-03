@@ -380,6 +380,8 @@ jobs:
   cosign:
     if: contains(github.event.inputs.on || 'all', 'all') || contains(github.event.inputs.on, 'cosign')
     runs-on: ubuntu-24.04
+    # cosign keyless signing (case 6a) needs the run's OIDC token; without it cosign waits for a device login and ends in expired_token.
+    permissions: { contents: read, id-token: write }
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
