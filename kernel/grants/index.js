@@ -284,6 +284,30 @@ export function createGrantsStore(cfg) {
     },
 
     /**
+     * Hand ownership to another member under ONE proof: the new owner is made first, then the caller steps down (to `demote_to`, admin by default). A failure between
+     * the two leaves two owners, never none, and a repeat of the call (a fresh proof, the proof being single use) finds the new owner already made and does only the
+     * second step.
+     * @param {any} chain @param {{ to: string, demote_to?: string }} t @param {{ presence?: any }} [o]
+     */
+    async transferOwner(chain, t, o = {}) {
+      const issuer = person(chain);
+      const demote = (t && t.demote_to) || "admin";
+      if (!t || typeof t.to !== "string" || !t.to || t.to === issuer.id || !ROLE_IDS.includes(demote) || demote === "owner") throw new KernelError("bad_input", "name the member to hand the Space to, and the role you keep");
+      const d = await gate(chain, "grants.role", urn("member", t.to), { transfer: { to: t.to, demote_to: demote } }, o.presence);
+      if (roleOf(issuer) !== "owner") throw new KernelError("not_allowed", "only an owner hands the Space on");
+      if (!memberOk({ kind: "person", id: t.to, space: cfg.space })) throw new KernelError("not_found", "no such member");
+      if (roleOf({ kind: "person", id: t.to, space: cfg.space }) !== "owner") await applyRole(chain, issuer, { person: t.to, role: "owner" }, d.decision);
+      // The log is the durable copy: if the second step fails part way, the store is restored from it so what is held matches what was written (two owners), and the
+      // caller's owner grants (which the step may already have revoked) are written again. If even that fails, the new owner still holds the Space in full.
+      try { await applyRole(chain, issuer, { person: issuer.id, role: demote }, d.decision); } catch (e) {
+        await api.rebuild();
+        try { await applyRole(chain, issuer, { person: issuer.id, role: "owner" }, d.decision); } catch { /* the new owner is whole; the caller's own grants wait for the next attempt */ }
+        throw e;
+      }
+      return { owner: t.to, previous: issuer.id, previous_role: demote };
+    },
+
+    /**
      * Take a person out of the Space (a grant-risk act with a fresh proof): their membership and every grant made to them go, their compute offers
      * are withdrawn, and the runner is told at once. The last owner stays.
      * @param {any} chain @param {{ person: string }} m @param {{ presence?: any }} [o]
