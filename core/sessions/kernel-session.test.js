@@ -183,3 +183,45 @@ test("a brand-new Space needs no setup: an unnamed thread runs as the default as
   assert.equal((await k.gateway.records.get(chain, "note", rec.id)).data.title, "hello", "reads what its person may read");
   await ks.end(s.id);
 });
+
+test("forThread: a thread's current turn is used as calls, the token is never returned, and a thread with no session is no_session", async t => {
+  const { k, bob, group } = await rig(t);
+  const got = [];
+  const chats = { appendOpen: async (token, m) => { got.push(["open", token, m]); return { id: "m1", chat: (await k.surfaces.verify(token)).chat }; }, append: async (token, m) => { got.push(["append", token, m]); return { id: "m2" }; } };
+  const ks = createKernelSessions({ kernel: k, chats });
+  const s = await ks.open({ chain: bob, chat: group.id, thread: "th-1", agent: "kit" });
+  const turn = ks.forThread("th-1");
+  assert.deepEqual(Object.keys(turn).sort(), ["append", "appendOpen", "roomFor"], "calls only");
+  const r = await turn.appendOpen({ kind: "text" });
+  assert.equal(r.chat, group.id, "the kernel's own token for this thread's chat");
+  assert.equal((await k.surfaces.verify(got[0][1])).session, s.id);
+  assert.ok(!JSON.stringify([s, r, Object.keys(turn)]).includes(got[0][1]), "the token is in nothing the caller holds");
+  await assert.rejects(() => turn.roomFor(), { code: "unsupported" });
+  await assert.rejects(() => ks.forThread("th-none").append({ body: "x" }), { code: "no_session" });
+  await ks.end(s.id);
+  await assert.rejects(() => turn.append({ body: "x" }), { code: "no_session" }, "after the turn there is nothing to use");
+});
+
+test("restart: an open turn is reopened from the stored turn with no new call from the asker; one that cannot be reopened in time is given up and forgotten", async t => {
+  const { k, bob, group } = await rig(t);
+  const store = new Map();
+  const turns = { get: x => store.get(x), set: (x, r) => store.set(x, r), delete: x => store.delete(x), all: () => [...store] };
+  const before = createKernelSessions({ kernel: k, turns });
+  await before.open({ chain: bob, chat: group.id, thread: "th-a" });
+  await before.open({ chain: bob, chat: group.id, thread: "th-b" });
+  assert.deepEqual([...store.keys()].sort(), ["th-a", "th-b"]);
+  assert.ok(!JSON.stringify([...store]).includes("."), "no token is stored, only who, which chat, which assistant");
+  // a restart: a new process, the same store, nothing in memory
+  const chats = { append: async (token, m) => ({ chat: (await k.surfaces.verify(token)).chat }) };
+  const after = createKernelSessions({ kernel: k, turns, chats });
+  const gave = [];
+  const out = await after.reopenPending({ personChainFor: async p => (p === BOB ? bob : new Promise(() => {})), timeoutMs: 50, onGiveUp: (th, why) => gave.push([th, why]) });
+  assert.deepEqual(out, { resumed: ["th-a", "th-b"], gaveUp: [] });
+  assert.equal((await after.forThread("th-a").append({ body: "continuing" })).chat, group.id, "the reply resumes in its own chat");
+  store.set("th-c", { person: "per_ghost", chat: group.id, agent: null, at: 1 });
+  const out2 = await after.reopenPending({ personChainFor: async p => (p === BOB ? bob : new Promise(() => {})), timeoutMs: 50, onGiveUp: (th, why) => gave.push([th, why]) });
+  assert.deepEqual(out2, { resumed: [], gaveUp: ["th-c"] });
+  assert.deepEqual(gave, [["th-c", "timeout"]]);
+  assert.equal(store.has("th-c"), false, "forgotten once given up");
+  await after.closeAll();
+});
