@@ -36,9 +36,9 @@ function world(o = {}) {
   const ctx = { store: { db }, config: { name: "alex" }, log() {}, events: { emit: (n, d) => events.push([n, d]) }, tool: (n, def) => tools.set(n, def) };
   const typed = /** @type {any[]} */ ([]);
   const finishes = /** @type {any[]} */ ([]);
-  const directory = { memberships: async id => id === ME ? [{ space: HARLOW, name: "Harlow Legal", role: "admin" }, { space: NORTHWIND, name: "Northwind Bakery", role: "member" }] : [] };
+  const directory = o.directory || { memberships: async id => id === ME ? [{ space: HARLOW, name: "Harlow Legal", role: "admin" }, { space: NORTHWIND, name: "Northwind Bakery", role: "member" }] : [] };
   const ports = {
-    ...(o.callServer ? { callServer: o.callServer } : {}),
+    callServer: o.callServer || (async (paired, tool, input) => ({ owner: input.owner })),
     typist: async a => { typed.push(a); return o.typistFails ? { ok: false, reason: o.typistFails } : { ok: true, ack: "WINK-AB12-CD34", seed: new Uint8Array(16), route: "rt" }; },
     finish: async a => { finishes.push(a); return { ok: true, paired: { route: "route-juno", name: "juno" } }; },
   };
@@ -102,7 +102,7 @@ test("a storage device pairs the same way, to the identity or an administered sp
 });
 
 test("a wrong or unreachable code says so in plain words and registers nothing", async () => {
-  for (const [reason, code, re] of [["refused", "refused", /not a Vyre code/], ["offline", "unavailable", /Can't connect/], ["busy", "refused", /Too many tries/]]) {
+  for (const [reason, code, re] of [["refused", "refused", /not a Vyre code/], ["offline", "unavailable", /could not reach the relay; try again in a minute/], ["busy", "refused", /Too many tries/]]) {
     const w = world({ typistFails: reason });
     await assert.rejects(() => w.call("wink.pair.server", { code: "WINK-K7QM-4P2X", target: { kind: "identity", id: ME } }), e => e.code === code && re.test(e.message));
     assert.equal(w.p.devices.list(ME).length, 0);
@@ -120,7 +120,7 @@ test("a phone pairs only to the identity: any space target is refused", async ()
   const r = await w.call("wink.phone.scan", { payload: qr });
   assert.equal(r.ack, "WINK-AB12-CD34", "the phone shows a code for the person to type on the computer");
   assert.equal(w.typed[0].relay, "ws://relay.test", "the relay comes from the QR");
-  assert.deepEqual(r.target, { kind: "identity", id: ME });
+  assert.deepEqual(r.target, { kind: "identity", id: ME, label: "alex" }, "the answer names who it is");
   const open = await w.call("wink.phone.open", {});
   assert.equal(open.offer, "wo_W1");
   assert.equal(parseQr(open.qr)?.code, "WINK-ZZZZ-ZZZZ");
@@ -250,7 +250,8 @@ test("after pairing, the server is told its owner over the paired channel with t
     assert.equal((await w.call("wink.pair.status", { pairing: r.pairing })).state, "done");
     assert.equal(calls.length, 1);
     assert.equal(calls[0].tool, "wink.server.adopt");
-    assert.deepEqual(calls[0].input.owner, target);
+    assert.deepEqual({ kind: calls[0].input.owner.kind, id: calls[0].input.owner.id }, target);
+    assert.equal(calls[0].input.owner.name, target.kind === "space" ? "Harlow Legal" : "alex", "the owner is named, so the server's own card does not say this space");
     assert.equal(calls[0].input.identity, ME);
     assert.equal(calls[0].input.peerSecret, w.p.peers.secretFor(w.p.devices.list(ME)[0].id), "the secret is the device's own");
     assert.equal(w.p.pending.get(r.pairing).adopted, true);
@@ -418,4 +419,118 @@ test("the server's side proves with the secret its home gave at adopt time", asy
   assert.throws(() => w.p.peers.ownSecret(), e => e.code === "unavailable");
   await w.tools.get("wink.server.adopt").run({ owner: { kind: "identity", id: ME }, identity: ME, peerSecret: w.p.peers.secretFor("srv") }, { caller: "device:home1" });
   assert.equal(w.p.peers.ownSecret().toString("base64url"), w.p.peers.secretFor("srv"));
+});
+
+/** Run one server pairing and wait for it to settle. */
+async function pairOnce(w, target, kind = "server") {
+  const r = await w.call("wink.pair.server", { code: "WINK-K7QM-4P2X", kind, target });
+  await settle();
+  return { r, st: await w.call("wink.pair.status", { pairing: r.pairing }) };
+}
+
+test("a failed adopt ends failed with a plain reason and leaves no half-added server", async () => {
+  const w = world({ callServer: async () => { throw Object.assign(new Error("the server answered 500"), { code: "unavailable" }); } });
+  const { r, st } = await pairOnce(w, { kind: "identity", id: ME });
+  assert.equal(st.state, "failed");
+  assert.match(st.reason, /paired, but it could not be told who owns it/);
+  assert.match(st.reason, /wink\.remove/);
+  assert.equal(st.device, undefined);
+  assert.equal(w.p.devices.list(ME).length, 0, "the row was taken back");
+  assert.ok(w.events.some(([n, e]) => n === "wink.pair-failed" && e.pairing === r.pairing));
+  assert.ok(!w.events.some(([n]) => n === "wink.pair-done"));
+});
+
+test("a server that already has an owner says so plainly and names the tool to use", async () => {
+  const w = world({ callServer: async () => { throw Object.assign(new Error("This server already belongs to Personal. Remove it first: run wink.remove for it in the app, or change its owner on the server itself with wink.server.retarget."), { code: "unavailable" }); } });
+  const { st } = await pairOnce(w, { kind: "space", id: HARLOW });
+  assert.equal(st.state, "failed");
+  assert.match(st.reason, /already belongs to Personal/);
+  assert.match(st.reason, /wink\.remove/);
+  assert.match(st.reason, /wink\.server\.retarget/);
+  assert.equal(w.p.devices.list(ME).length, 0);
+});
+
+test("a second pairing of a live server says to run wink.remove first", async () => {
+  const w = world();
+  const first = await pairOnce(w, { kind: "identity", id: ME });
+  assert.equal(first.st.state, "done");
+  const second = await pairOnce(w, { kind: "space", id: HARLOW });
+  assert.equal(second.st.state, "failed");
+  assert.match(second.st.reason, /juno is already added\. Run wink\.remove for it first, then pair it again\./);
+  const [d] = w.p.devices.list(ME);
+  assert.deepEqual(d.owner, { kind: "identity", id: ME }, "the live row is untouched");
+  // after the remove it pairs again
+  w.p.devices.remove(d.id);
+  assert.equal((await pairOnce(w, { kind: "space", id: HARLOW })).st.state, "done");
+});
+
+test("the relay's trouble is named: unreachable says the relay could not be reached, and a 426 says the relay is out of date", async () => {
+  const w = world({ typistFails: "offline" });
+  await assert.rejects(() => w.call("wink.pair.server", { code: "WINK-K7QM-4P2X", target: { kind: "identity", id: ME } }), e => /Wink could not reach the relay; try again in a minute/.test(e.message) && !/internet/.test(e.message));
+  // a relay that answers 426 to the typed-code request: the typist's own fetch sees it
+  const db = new DatabaseSync(":memory:");
+  for (const m of [...MIGRATIONS, ...PEER_MIGRATIONS]) db.exec(m);
+  const tools = new Map();
+  const ctx = { store: { db }, config: { name: "alex" }, log() {}, events: { emit() {} }, tool: (n, d) => tools.set(n, d) };
+  const p = createPairing({ ctx, now: () => 1, identity: async () => ME, space: async () => HARLOW, directory: { memberships: async () => [] },
+    ports: { typist: async a => { const r = await a.fetch("http://relay.test/v1/wink/code"); return { ok: false, reason: r.status === 200 ? "ok" : "refused" }; } },
+    openCode: async () => ({}), ack: async () => ({ ok: true }), owner: () => {}, relayUrl: async () => "ws://relay.test" });
+  const real = globalThis.fetch;
+  globalThis.fetch = async () => new Response("upgrade required", { status: 426 });
+  try { await assert.rejects(() => p.startTyping({ code: "WINK-K7QM-4P2X", kind: "server", target: { kind: "identity", id: ME } }), e => e.code === "relay_old" && /relay is out of date/.test(e.message)); }
+  finally { globalThis.fetch = real; }
+});
+
+test("the answers carry names: the target says who, and a pairing to a space names the space", async () => {
+  const w = world();
+  const r = await w.call("wink.pair.server", { code: "WINK-K7QM-4P2X", target: { kind: "space", id: HARLOW } });
+  assert.deepEqual(r.target, { kind: "space", id: HARLOW, label: "Harlow Legal" });
+  const p = await w.call("wink.pair.server", { code: "WINK-K7QM-4P2X", target: { kind: "identity", id: ME } });
+  assert.equal(p.target.label, "alex");
+});
+
+test("adopt for a first owner needs no directory knowledge of the space; a later change still needs presence or the claim", async () => {
+  const w = world({ directory: { memberships: async () => [] } });
+  const adopt = (input, caller = "device:app") => w.tools.get("wink.server.adopt").run(input, { caller });
+  // the box's own directory knows nothing of HARLOW; the app is authoritative for its own space
+  const r = await adopt({ owner: { kind: "space", id: HARLOW, name: "Harlow Legal" }, identity: ME, peerSecret: "A".repeat(43) });
+  assert.deepEqual(r.owner, { kind: "space", id: HARLOW });
+  assert.equal(w.p.meta.get("owner").name, "Harlow Legal");
+  // a later change by the channel is refused, in words that say who owns it and which tool
+  await assert.rejects(() => adopt({ owner: { kind: "identity", id: ME }, identity: ME }), e => e.code === "denied" && /belongs to Harlow Legal/.test(e.message) && /wink\.remove/.test(e.message) && /wink\.server\.retarget/.test(e.message));
+  // with presence on the box, the owner's own screen retargets
+  const t = await w.tools.get("wink.server.retarget").run({ owner: { kind: "identity", id: ME }, identity: ME }, { caller: "cli", presence: { ok: true } });
+  assert.deepEqual(t.owner, { kind: "identity", id: ME });
+});
+
+test("adopt hands over what the device needs, only inside the channel: stored on the server, in no card, event, result or log", async () => {
+  const SECRET = "joinkey-SECRET-0123456789";
+  const calls = [];
+  const logs = [];
+  const w = world({ callServer: async (paired, tool, input) => { calls.push(input); return { owner: input.owner }; } });
+  // the app side: a handover seam gives the home's address, box id and join key
+  const app = createPairing({ ctx: { store: { db: w.db }, config: { name: "alex" }, log: m => logs.push(m), events: { emit: (n, d) => w.events.push([n, d]) }, tool() {} }, now: () => 1_000_000, identity: async () => ME, space: async () => HARLOW,
+    directory: { memberships: async () => [{ space: HARLOW, name: "Harlow Legal", role: "admin" }] },
+    ports: { typist: async () => ({ ok: true, ack: "WINK-AB12-CD34", seed: new Uint8Array(16) }), finish: async () => ({ ok: true, paired: { route: "route-juno", name: "juno" } }), callServer: async (paired, tool, input) => { calls.push(input); return { owner: input.owner }; } },
+    openCode: async () => ({}), ack: async () => ({ ok: true }), owner: () => {}, relayUrl: async () => "ws://relay.test",
+    handover: async q => ({ home: "100.64.0.1:8443", box: "box1", controlUrl: "https://hs.example", authKey: SECRET, relay: "ws://relay.test", space: q.target.id }) });
+  const r = await app.startTyping({ code: "WINK-K7QM-4P2X", kind: "server", target: { kind: "space", id: HARLOW }, label: "Harlow Legal" });
+  await settle();
+  assert.equal(app.pending.get(r.pairing).state, "done");
+  const sent = calls[0];
+  assert.equal(sent.handover.home, "100.64.0.1:8443");
+  assert.equal(sent.handover.authKey, SECRET);
+  assert.equal(sent.handover.device, app.devices.list(ME)[0].id);
+  assert.equal(sent.owner.name, "Harlow Legal");
+  assert.ok(!JSON.stringify(w.events).includes(SECRET) && !logs.join().includes(SECRET), "no event or log carries the join key");
+  // the server side stores it and gives it to modules only
+  const srv = world();
+  await srv.tools.get("wink.server.adopt").run(sent, { caller: "device:app" });
+  const h = await srv.tools.get("wink.server.handover").run({}, { caller: "module:platform" });
+  assert.equal(h.handover.authKey, SECRET);
+  assert.equal(h.handover.peerSecret, sent.peerSecret);
+  await assert.rejects(() => srv.tools.get("wink.server.handover").run({}, { caller: "device:app" }), e => e.code === "denied");
+  assert.ok(!JSON.stringify(srv.events).includes(SECRET));
+  const dump = JSON.stringify([...srv.tools.keys()]) + JSON.stringify(srv.p.devices.list(ME));
+  assert.ok(!dump.includes(SECRET), "not in the device rows");
 });

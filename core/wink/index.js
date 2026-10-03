@@ -51,7 +51,7 @@ function owner(meta, what) {
  *   chainFor    (meta, person) -> the kernel chain for the calling owner (passed to offers.offer and offers.unoffer)
  *   pool        the storage Pool engine (kernel/storage/pool.js) and poolBackend(credentials, offer) -> backend (kernel/storage/devices.js backendFor)
  *   ports       { typist, finish, adopt, callServer }   test seams for the typing flows
- * @param {{ ports?: import("./pairing.js").Ports, directory?: import("./pairing.js").Directory, pool?: any, poolBackend?: (c: any, offer: any) => any, offers?: any, chainFor?: (meta: any, person: string) => any }} [inject]
+ * @param {{ ports?: import("./pairing.js").Ports, directory?: import("./pairing.js").Directory, pool?: any, poolBackend?: (c: any, offer: any) => any, offers?: any, chainFor?: (meta: any, person: string) => any, handover?: import("./pairing.js").Handover }} [inject]
  * @returns {{ start(ctx: any): Promise<{ stop(): Promise<void>, peers: any, homeServe(inner: any): any }>, readonly peers: any, homeServe(inner: any): any }} */
 export function createWink(inject = {}) {
   /** @type {any} */
@@ -223,13 +223,15 @@ export function createWink(inject = {}) {
     const ownerMeta = () => { try { const r = /** @type {any} */ (db.prepare("SELECT v FROM wink_meta WHERE k = 'owner'").get()); return r ? JSON.parse(r.v) : null; } catch { return null; } };
     // The identity this box answers for: the one that adopted it (wink.server.adopt), else the one derived from its own route.
     const owner1 = async () => { const m = ownerMeta(); return m && m.identity ? String(m.identity) : (await owner0()).id; };
-    const directory = inject.directory || (kernelHasRoles(ctx.kernel) ? kernelDirectory({ kernel: ctx.kernel, space: spaceId, name: () => String(ctx.config.name || "this space") })
-      : ownDirectory({ identity: owner1, space: spaceId, name: () => String(ctx.config.name || "this space") }));
+    /** What this box calls its own space: its name, else the name the app gave the space that adopted it, never "this space". */
+    const boxName = () => { const om = ownerMeta(); return String(ctx.config.name || (om && om.kind === "space" && om.name) || "your space"); };
+    const directory = inject.directory || (kernelHasRoles(ctx.kernel) ? kernelDirectory({ kernel: ctx.kernel, space: spaceId, name: boxName })
+      : ownDirectory({ identity: owner1, space: spaceId, name: boxName }));
     const pairing = createPairing({
       ctx, now, identity: owner1, space: spaceId, openCode, ack: ackOffer, owner,
       // Who may pair to a space: the kernel's grants store when ctx.kernel offers it (work/kernel), else a fake that makes the box owner the owner of its own space.
       directory,
-      ports: inject.ports, offers: inject.offers, chainFor: inject.chainFor,
+      ports: inject.ports, offers: inject.offers, chainFor: inject.chainFor, handover: inject.handover,
       keyFile: path.join(ctx.paths && ctx.paths.root ? ctx.paths.root : path.join(os.homedir(), ".vyre"), "wink-keys.json"),
       spaceNow: () => spaceCache,
       relayUrl: async () => { const r = /** @type {any} */ (await ctx.call("relay.status", {})); return String((r && r.data && r.data.url) || (ctx.config.relay && ctx.config.relay.url) || ""); },
@@ -239,7 +241,10 @@ export function createWink(inject = {}) {
     /** A space's own name for a card, never its id. */
     const spaceName = async (/** @type {string} */ id) => {
       try { const m = (await directory.memberships(await owner1())).find(x => x.space === id); if (m && m.name) return String(m.name); } catch {}
-      return "this space";
+      // the app named the space when it adopted this server (wink.server.adopt owner.name): a card says that name, never "this space"
+      const om = ownerMeta();
+      if (om && om.kind === "space" && om.id === id && om.name) return String(om.name);
+      return "your space";
     };
     // A device that paired (a typed code, or the ring) is registered under the identity with its kind. No grant is written in any space.
     const registerDevice = async (/** @type {any} */ p) => {
@@ -530,7 +535,7 @@ export function createWink(inject = {}) {
         if (kernelHasRoles(ctx.kernel)) return (await kernelDirectory({ kernel: ctx.kernel, space: async () => sp, name: () => "" }).memberships(person)).some(m => ADMIN_ROLES.includes(m.role));
         return sp === (await spaceId());
       },
-      nameOf: async (/** @type {any} */ o) => (o.kind === "person" ? "Personal" : String((ctx.config && ctx.config.name) || "this space")),
+      nameOf: async (/** @type {any} */ o) => (o.kind === "person" ? "Personal" : boxName()),
     };
     const storage = createStorageDevices({ ctx, grants: storageGrants({ ctx, space: () => spaceCache }), vault: storageVault, admin: storageAdmin, space: spaceId });
     registerStorageTools(ctx, storage, "wink.storage");
@@ -564,6 +569,14 @@ export function createWink(inject = {}) {
   Object.defineProperty(mod, "peers", { enumerable: false, get() { if (!live) throw fail("unavailable", "the wink module has not started"); return live; } });
   Object.defineProperty(mod, "homeServe", { enumerable: false, value: (/** @type {any} */ inner) => { if (!live) throw fail("unavailable", "the wink module has not started"); return homeServe(live, inner); } });
   return mod;
+}
+
+/**
+ * The relay bridge's peer door for one space (core/relay/peers.js reads it as `ctx.peerDoor()`): `allow` from the Wink module's registry, `accept` from the node
+ * host's own relay door. The composition root sets `ctx.peerDoor = () => peerDoor({ wink, host, space })` for the relay module.
+ * @param {{ wink: { peers: { allow(deviceId: string): boolean } }, host: { acceptRelay(space: string): (stream: any, who: any) => void }, space: string }} o */
+export function peerDoor(o) {
+  return { space: o.space, allow: (/** @type {string} */ d) => o.wink.peers.allow(d), accept: o.host.acceptRelay(o.space) };
 }
 
 /**

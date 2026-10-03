@@ -19,6 +19,7 @@ import { ackCode } from "../relay/client/code.js";
 import { tempHome } from "./helpers.js";
 import { macCore } from "./fake-core-keys.js";
 import { card, removal, FORBIDDEN } from "../core/wink/cards.js";
+import { peerDoor } from "../core/wink/index.js";
 
 /** Takes any presence proof: refusals below are about who calls and what the module decides. */
 const lenient = {
@@ -345,4 +346,14 @@ test("wink.relay.apply: the owner's app signs the instruction, the box checks it
   ]) assert.match((await apply(i)).error?.message || "", re, why);
   // an agent never applies one, even with a good signature
   assert.equal((await w.call("wink.relay.apply", make(), "tailnet:agent:juno", {})).error?.code, "denied");
+});
+
+test("peerDoor: allow answers from the wink module's registry and accept is the host's own relay door, ready for the relay bridge", () => {
+  const accepted = [];
+  const door = peerDoor({ wink: { peers: { allow: d => d === "srv1" } }, host: { acceptRelay: space => (s, who) => accepted.push([space, who]) }, space: "harlow" });
+  assert.equal(door.space, "harlow");
+  assert.equal(door.allow("srv1"), true);
+  assert.equal(door.allow("x"), false);
+  door.accept({}, { deviceId: "srv1" });
+  assert.deepEqual(accepted, [["harlow", { deviceId: "srv1" }]]);
 });

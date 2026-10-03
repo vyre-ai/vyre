@@ -16,14 +16,14 @@ const HOME_NK = "nodekey:" + "11".repeat(32), SRV_NK = "nodekey:" + "22".repeat(
 function scratch(name) { return fs.mkdtempSync(path.join(SCRATCH, `h-${name}-`)); }
 
 /** A home host and a server host wired through the fake forwarder, the way two machines would be. */
-async function world(t, { blackhole = false, graceMs = 150, retryMs = 60_000, peers = null } = {}) {
+async function world(t, { blackhole = false, graceMs = 150, retryMs = 60_000, peers = null, hostOpts = {}, relayServe = null } = {}) {
   const homeRoot = scratch("home"), srvRoot = scratch("srv");
   const calls = /** @type {any[]} */ ([]);
   const home = createHost({ root: homeRoot, forwarderBin: FWD, spawn: (bin, args, o) => spawnFake(bin, args, { ...o.env, FAKE_NODEKEY: HOME_NK }) });
   home.addSpace({ id: "harlow", controlUrl: "http://127.0.0.1:1", hostname: "home", box: "box1", peerPort: 8443 });
   const routes = { "100.64.0.1:8443": home.peerSock("harlow") };
   const relayHooks = { opened: 0, fail: false };
-  const server = createHost({ root: srvRoot, forwarderBin: FWD, graceMs, retryMs,
+  const server = createHost({ root: srvRoot, forwarderBin: FWD, graceMs, retryMs, ...hostOpts,
     spawn: (bin, args, o) => spawnFake(bin, args, { ...o.env, FAKE_NODEKEY: SRV_NK, FAKE_ROUTES: JSON.stringify(routes), ...(blackhole ? { FAKE_BLACKHOLE: "1" } : {}) }),
     device: { id: "srv1", shared: () => (peers ? Buffer.from(peers.secretFor("srv1"), "base64url") : shared) },
     relayPeer: async () => {
@@ -40,12 +40,21 @@ async function world(t, { blackhole = false, graceMs = 150, retryMs = 60_000, pe
   await home.start("harlow");
   await server.start("harlow");
   const serveFn = async (caller, tool, input) => { calls.push({ caller, tool, input }); return { tool, input, caller }; };
-  await home.serveHome("harlow", peers ? { peers, serve: serveFn } : { shared: (d, nk) => (d === "srv1" && nk === SRV_NK ? shared : null), serve: async (caller, tool, input) => { calls.push({ caller, tool, input }); return { tool, input, caller }; } });
+  await home.serveHome("harlow", peers ? { peers, serve: serveFn, ...(relayServe ? { relayServe } : {}) } : { shared: (d, nk) => (d === "srv1" && nk === SRV_NK ? shared : null), serve: async (caller, tool, input) => { calls.push({ caller, tool, input }); return { tool, input, caller }; } });
   t.after(async () => { await server.stopAll(); await home.stopAll(); });
   return { home, server, calls, relayHooks };
 }
 
 import { spawn } from "node:child_process";
+/** A real session pair over a socket pair: `client` is the dialled direct session, `home` answers, and `freeze()` makes the home go silent. */
+async function answeringPair() {
+  const net = await import("node:net");
+  const { socketPipe } = await import("./peer-wire.js");
+  const [a, b] = await pairSockets(net);
+  const home = peerSession(socketPipe(b), { first: 2, serve: async (tool, input) => ({ tool, input, caller: "device:srv1", via: "direct" }) });
+  const client = peerSession(socketPipe(a), { first: 1 });
+  return { client, home, freeze: () => b.pause() };
+}
 function spawnFake(bin, args, env) { return spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"], env }); }
 async function pairSockets(net) {
   const srv = net.createServer(); await new Promise(r => srv.listen(0, "127.0.0.1", r));
@@ -103,7 +112,7 @@ test("host: a failed direct dial starts the relay at once, and the direct path i
   let allow = false;
   const real = () => w.server.connect("harlow");
   void real;
-  const l2 = w.server.connect("harlow", { dial: async () => { if (!allow) throw new Error("no path"); return peerSession({ write() {}, end() {}, destroy() {}, buffered: () => 0, ondata() {}, onclose() {} }, { first: 1 }); } });
+  const l2 = w.server.connect("harlow", { dial: async () => { if (!allow) throw new Error("no path"); return (await answeringPair()).client; } });
   await l2.call("about.text", {});
   assert.equal(l2.status().path, "relay");
   allow = true;
@@ -178,5 +187,74 @@ test("host: a call over the relay peer stream is served as the device and binds 
   assert.equal((await link.call("about.text", {})).caller, "device:srv1");
   assert.equal(link.status().path, "relay");
   assert.equal(pairing.devices.get("srv1").nodeKey, null, "the relay path carries no node key");
+  link.close();
+});
+
+test("host: direct says up only after a ping round trip; a session that answers nothing is not up and the relay carries the call", async t => {
+  const w = await world(t, { graceMs: 5000, retryMs: 60_000, hostOpts: { pingMs: 150 } });
+  const silent = () => peerSession({ write() {}, end() {}, destroy() {}, buffered: () => 0, ondata() {}, onclose() {} }, { first: 1 });
+  const link = w.server.connect("harlow", { dial: async () => silent() });
+  const r = await link.call("about.text", {});
+  assert.equal(r.caller, "device:srv1");
+  assert.equal(link.status().path, "relay");
+  assert.notEqual(link.status().direct, "up");
+  assert.match(String(link.status().lastError), /did not answer/);
+  link.close();
+});
+
+test("host: a direct path that died quietly is noticed by the probe before a call, and the call goes to the relay", async t => {
+  const w = await world(t, { graceMs: 5000, retryMs: 60_000, hostOpts: { probeMs: 100, probeWaitMs: 150 } });
+  let pair;
+  const link = w.server.connect("harlow", { dial: async () => { pair = await answeringPair(); return pair.client; } });
+  assert.equal((await link.call("about.text", {})).via, "direct");
+  assert.equal(link.status().path, "direct");
+  pair.freeze();
+  await new Promise(r => setTimeout(r, 130));
+  const r = await link.call("about.text", { again: 1 });
+  assert.equal(r.caller, "device:srv1");
+  assert.equal(link.status().path, "relay", "the call was answered over the relay stream");
+  link.close();
+});
+
+test("host: a direct call with no answer races to the relay after raceMs and is retried there once", async t => {
+  const w = await world(t, { graceMs: 5000, retryMs: 60_000, hostOpts: { probeMs: 3_600_000, raceMs: 250, probeWaitMs: 150 } });
+  let pair;
+  const link = w.server.connect("harlow", { dial: async () => { pair = await answeringPair(); return pair.client; } });
+  await link.call("about.text", {});
+  pair.freeze();
+  const t0 = Date.now();
+  const r = await link.call("about.text", { slow: 1 });
+  assert.equal(r.caller, "device:srv1");
+  assert.equal(link.status().path, "relay");
+  assert.ok(Date.now() - t0 < 3000, `took ${Date.now() - t0} ms`);
+  link.close();
+});
+
+test("host: a call that is only slow (the path still answers a ping) is not moved off the direct path", async t => {
+  const w = await world(t, { graceMs: 5000, hostOpts: { probeMs: 3_600_000, raceMs: 100, probeWaitMs: 300 } });
+  const net = await import("node:net");
+  const { socketPipe } = await import("./peer-wire.js");
+  const [a, b] = await pairSockets(net);
+  peerSession(socketPipe(b), { first: 2, serve: async () => { await new Promise(r => setTimeout(r, 500)); return { slow: true }; } });
+  const link = w.server.connect("harlow", { dial: async () => peerSession(socketPipe(a), { first: 1 }) });
+  assert.deepEqual(await link.call("about.text", {}), { slow: true });
+  assert.equal(link.status().path, "direct");
+  assert.equal(w.relayHooks.opened, 0);
+  link.close();
+});
+
+test("host: the relay door has its own dispatcher, so the chain can record the path as relay", async t => {
+  const { DatabaseSync } = await import("node:sqlite");
+  const { createPairing, MIGRATIONS, PEER_MIGRATIONS } = await import("../pairing.js");
+  const db = new DatabaseSync(":memory:");
+  for (const m of [...MIGRATIONS, ...PEER_MIGRATIONS]) db.exec(m);
+  const ME = "per_aaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const pairing = createPairing({ ctx: { store: { db }, config: {}, log() {}, events: { emit() {} }, tool() {} }, now: Date.now, identity: async () => ME, space: async () => "harlow", directory: { memberships: async () => [] }, ports: {}, openCode: async () => ({}), ack: async () => ({ ok: true }), owner: () => {}, relayUrl: async () => "", spaceNow: () => "harlow" });
+  pairing.devices.add({ id: "srv1", identity: ME, kind: "server", name: "juno", target: { kind: "identity", id: ME } });
+  const w = await world(t, { peers: pairing.peers, blackhole: true, graceMs: 100, relayServe: async (caller, tool, input) => ({ caller, tool, path: "relay" }) });
+  const link = w.server.connect("harlow");
+  const r = await link.call("about.text", {});
+  assert.equal(r.path, "relay");
+  assert.equal(w.calls.length, 0, "the direct dispatcher was not used for the relay peer");
   link.close();
 });

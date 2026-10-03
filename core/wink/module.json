@@ -135,6 +135,10 @@
         "reach": "person"
       },
       {
+        "name": "wink.server.handover",
+        "reach": "modules"
+      },
+      {
         "name": "wink.peer.allow",
         "reach": "modules"
       },

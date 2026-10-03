@@ -22,6 +22,7 @@ import { routeId, base32, TICKET_BYTES, TICKET_TTL, ticketDerive, ticketMac, tic
 import { SetupSession, setupGate } from "./setup.js";
 import { relayLink } from "./link.js";
 import { bridge } from "./bridge.js";
+import { peersFor } from "./peers.js";
 import { pairUrl, parsePairUrl } from "./pairing.js";
 import { knownBuild, findRelease, newestRelease } from "./releases.js";
 import { agentClaim, ownerDevice } from "../modules/index.js";
@@ -480,7 +481,8 @@ export default {
       // The tailnet key is answered here, before vyred's router ever sees the request, so it is
       // reachable only from inside this device's own Noise channel and never as a tool.
       const handler = (req, res, caller, p) => (req.method === "POST" && req.url === JOIN_PATH ? tailnetKey(id, res) : routed(req, res, caller, p));
-      bridge(channel, { handler, caller: `device:${id}`, peer, upgrade: () => (upgrade = upgrade || ctx.upgrader({})), log: m => ctx.log(m) });
+      const peers = peersFor(ctx);
+      bridge(channel, { handler, caller: `device:${id}`, peer, upgrade: () => (upgrade = upgrade || ctx.upgrader({})), log: m => ctx.log(m), ...(peers ? { peers } : {}) });
       const set = live.get(id) || new Set();
       set.add(channel);
       live.set(id, set);
