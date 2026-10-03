@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(0.3, real Vyre, 4 Oct): the Store's gateway adapter (deck/ui/gateway-adapter.js): every Store method is one tool call on the person's own vyred through the app's box connection (reads now, writes through the outbox, a human-only call's proof as the call's presence, never in the body; no actor or chain ever sent). Tool names are the proposal in team/0.2/CHAT.md until platform confirms. The /u layout links it (src/api/store-link.ts). The mock is development only: in the app there is no mock unless the build was made with EXPO_PUBLIC_VYRE_MOCK=1 (npm run export:web:mock, the debug APK that the emulator capture shows); a packaged build with no Vyre connected shows each screen's error state, never sample data. Not yet run against a real vyred.
+
 - feat(0.3, pairing hello): `presenceKey` carries `storage: "hardware" | "software"`, read from the platform's own key API (Secure Enclave on iOS, StrongBox or the TEE on Android through vyre-signer's level); left out when unknown, and in a browser, which cannot say. Self-reported, display only; the home turns "software" into the Devices line.
 
 - test(app, 4 Oct): every test file in apps/app imports scripts/test-guard.mjs first, which exits on a Mac unless VYRE_TEST_HOSTED=1 or GITHUB_ACTIONS=true (tests never run on the user's Mac; a test box or a hosted runner only). scripts/test-guard.test.js proves it.

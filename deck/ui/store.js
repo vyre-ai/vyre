@@ -1,25 +1,31 @@
 // @ts-check
-// deck/ui/store: the one place the Deck's generated screens get their Store (contracts.js). Today it is the in-memory mock; when platform's gateway adapter
-// (kernel/contracts/, on branch work/kernel) lands, ADAPTER below becomes "gateway" and makeStore() builds it. No screen imports mock-store.js or the gateway:
-// they call getStore(), so the swap touches this file only. setStore() is for tests and the lab (a screen reads getStore() on every draw).
+// deck/ui/store: the one place the generated screens get their Store (contracts.js). Two adapters: the real one (gateway-adapter.js, over a vyred) and the
+// in-memory mock (mock-store.js). No screen imports either: they call getStore(), so a swap touches this file only. setStore() is for tests, the lab and the app.
+//
+// The mock is for development only. In the Expo app (which sets globalThis.__VYRE_APP__ before anything asks for a Store, apps/app/src/api/store-link.ts) there is
+// no mock unless allowMock() was called, which that file does only when the build was made with EXPO_PUBLIC_VYRE_MOCK=1 (dev runs, screenshots, captures). A packaged
+// build never sets it, so it can never show mock data: with no Vyre connected, getStore() throws and the screen shows its error state. Plain Node (tests, the lab)
+// keeps the mock as its default.
 import { createMockStore } from "./mock-store.js";
 
 /** @typedef {import("./contracts.js").Store} Store */
 
-/** The switch. "mock" until the gateway adapter exists. */
-const ADAPTER = /** @type {"mock"|"gateway"} */ ("mock");
+/** @type {Store|null} */
+let current = null;
+let mockOk = false;
+
+/** The app asked for the mock on purpose (a dev or capture build). */
+export function allowMock() { mockOk = true; }
 
 /** @returns {Store} */
 function makeStore() {
-  if (ADAPTER === "gateway") throw new Error("The gateway adapter has not landed yet (kernel/contracts/).");
+  const inApp = Boolean(/** @type {any} */ (globalThis).__VYRE_APP__);
+  if (inApp && !mockOk) throw Object.assign(new Error("Not connected to your Vyre yet."), { code: "offline" });
   return createMockStore({ world: "morning" });
 }
-
-/** @type {Store|null} */
-let current = null;
 
 /** The Store every screen reads. @returns {Store} */
 export function getStore() { return (current ??= makeStore()); }
 
-/** Replace the Store (tests, the lab). Pass null to go back to the default. @param {Store|null} store */
+/** Replace the Store (tests, the lab, the app's gateway). Pass null to go back to the default. @param {Store|null} store */
 export function setStore(store) { current = store; }
