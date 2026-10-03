@@ -65,7 +65,7 @@ test("a copy that was changed behind the pool's back is never returned, and the 
   const { pool, b, holders } = world(t), d = rand(5000), r = await pool.put(d, { class: "cold" }), cid = chunkIds(pool, r.id)[0];
   const first = holders(cid)[0], blob = Buffer.from(b[first].m.get(`c/${cid}`)); blob[20] ^= 1; b[first].m.set(`c/${cid}`, blob);
   assert.deepEqual(await pool.get(r.id), d);
-  for (const n of holders(cid).slice(1)) { const x = Buffer.from(b[n].m.get(`c/${cid}`)); x[20] ^= 1; b[n].m.set(`c/${cid}`, x); }
+  for (const n of holders(cid)) { const x = Buffer.from(b[n].m.get(`c/${cid}`)); x[20] ^= 1; b[n].m.set(`c/${cid}`, x); }
   assert.equal(await code(pool.get(r.id)), "unavailable");
 });
 
@@ -133,7 +133,7 @@ test("the controller probes, heals when something changed, never ticks faster th
   let every = 0; const c = createController({ pool, tickMs: 5, emit: e => events.push(e), setTimer: (fn, ms) => { every = ms; return {}; }, clearTimer: () => {} });
   c.start(); assert.equal(every, MIN_TICK_MS);
   assert.equal((await c.tick()).changed.length, 0); assert.equal(events.length, 0, "a quiet pool says nothing");
-  const lost = pool.ix.chunks[pool.ix.manifests[r.id].chunks[0]].nodes[0]; b[lost].down = true;
+  const lost = pool.ix.chunks[pool.ix.manifests[r.id].chunks[0]].nodes.find(n => n !== "home"); b[lost].down = true;
   const out1 = await c.tick(); assert.deepEqual(out1.changed, [lost]); assert.equal(out1.copied, 0, "inside the grace period nothing moves");
   tick(11 * 60_000); const out = await c.tick(); assert.ok(out.copied >= 1, "past it, the missing copy is made"); assert.equal(events.at(-1).type, "storage.tick");
   b[lost].down = false; await c.tick();
@@ -166,8 +166,8 @@ test("bridge: a drive only another device can reach works as a pool node, authen
   // Wrong secret, stale time, a body altered after signing, bad key names: all refused.
   const bad = bridgeBackend({ secret: "another-secret-0123456789", send: httpSend(url), now: () => clock }); await assert.rejects(bad.put("c/x", v), /401/);
   const old = bridgeBackend({ secret, send: httpSend(url), now: () => clock - WINDOW_MS - 1 }); await assert.rejects(old.get("c/x"), /401/);
-  const raw = await httpSend(url)({ op: "put", key: "c/y", body: Buffer.from("tampered"), ts: clock, sig: sign(secret, { op: "put", key: "c/y", ts: clock, body: Buffer.from("original") }) }); assert.equal(raw.status, 401);
-  for (const k of ["../x", "a//b", "/abs", "c/%2e%2e/x"]) assert.equal((await br.handle({ op: "put", key: k, body: Buffer.from("x"), ts: clock, sig: sign(secret, { op: "put", key: k, ts: clock, body: Buffer.from("x") }) })).status, 400, k);
+  const raw = await httpSend(url)({ op: "put", key: "c/y", body: Buffer.from("tampered"), ts: clock, nonce: "nonce-tamper-1", sig: sign(secret, { op: "put", key: "c/y", ts: clock, nonce: "nonce-tamper-1", body: Buffer.from("original") }) }); assert.equal(raw.status, 401);
+  for (const k of ["../x", "a//b", "/abs", "c/%2e%2e/x"]) assert.equal((await br.handle({ op: "put", key: k, body: Buffer.from("x"), ts: clock, nonce: "nonce-key-" + Buffer.from(k).toString("hex"), sig: sign(secret, { op: "put", key: k, ts: clock, nonce: "nonce-key-" + Buffer.from(k).toString("hex"), body: Buffer.from("x") }) })).status, 400, k);
   // Capacity: 3 MB offered.
   await be.put("c/big1", rand(MB + 10)); await be.put("c/big2", rand(MB + 10)); await assert.rejects(be.put("c/big3", rand(MB + 10)), /full|507/);
   assert.equal(br.used, 2 * (MB + 10));
@@ -180,4 +180,93 @@ test("bridge: a drive only another device can reach works as a pool node, authen
   // backendFor picks the bridge for a drive no local mount reaches.
   const viaBridge = backendFor({ kind: "smb", location: { host: "nas.local", share: "office" }, seenFrom: "dev_office_mac" }, { id: "dev9" }, { bridge: { secret: () => secret, send: () => httpSend(url) } });
   assert.equal(typeof viaBridge.put, "function"); assert.equal(backendFor({ kind: "smb", location: { host: "nas.local" } }, { id: "dev9" }, { bridge: { secret: () => secret, send: () => httpSend(url) } }), null, "no device to go through, no backend");
+});
+
+test("review S-1: two writers at once get two versions and a conflict, not two version 1s", async t => {
+  const { Drive } = await import("./drive.js"), dir = tmp("s1"); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const { pool } = world(t, { home: 10, nas: 10 }), drive = new Drive(pool);
+  const [a, b] = await Promise.all([drive.put("f.txt", rand(500), { by: "a" }), drive.put("f.txt", rand(600), { by: "b" })]);
+  assert.deepEqual([a.version, b.version].sort(), [1, 2]); assert.equal([a, b].filter(x => x.conflict).length, 1);
+  assert.deepEqual(drive.history("f.txt").map(v => v.ver), [1, 2]);
+});
+
+test("review S-2 and S-7: a drain that cannot finish leaves the node counted, and concurrent passes never count a node twice", async t => {
+  const { pool, b } = world(t, { home: 10, nas: 10 }), r = await pool.put(rand(MB), { class: "cold" });
+  pool.nodes.get("nas").classes = null; b.home.down = true; // the only other place is away: the drain cannot finish
+  await pool.probe(); assert.equal(await code(pool.drain("nas")), "no_room");
+  assert.equal(pool.nodes.get("nas").draining, false, "nothing is left half withdrawn"); b.home.down = false; await pool.probe();
+  const w = world(t, { home: 10, nas: 10, cloud: 10 }), x = await w.pool.put(rand(MB), { class: "cold" }), cid = w.pool.ix.manifests[x.id].chunks[0];
+  await Promise.all([w.pool.ensure(cid), w.pool.ensure(cid), w.pool.ensure(cid)]);
+  assert.equal(new Set(w.pool.ix.chunks[cid].nodes).size, w.pool.ix.chunks[cid].nodes.length, "no node listed twice");
+  assert.equal(await code(w.pool.drain("home")), "home_stays");
+});
+
+test("review S-3 and S-9: emptied or corrupted copies are noticed and repaired, and a delete a node missed is retried", async t => {
+  const { pool, b } = world(t, { home: 10, nas: 10, cloud: 10 }), data = rand(MB), r = await pool.put(data, { class: "cold" }), cid = pool.ix.manifests[r.id].chunks[0];
+  const [n1, n2] = pool.ix.chunks[cid].nodes, c = () => pool.ix.chunks[cid];
+  b[n1].m.clear(); // a node that still pings but has lost what it accepted
+  assert.equal(pool.satisfied(c()), true, "before a scrub it still looks fine");
+  let s = await pool.scrub({ limit: 10 }); assert.equal(s.dropped, 1); assert.ok(pool.satisfied(c()) && c().nodes.length === 2 && c().nodes.includes(n2), "healed from the good copy");
+  const [m1, m2] = c().nodes, bad = Buffer.from(b[m1].m.get(`c/${cid}`)); bad[30] ^= 1; b[m1].m.set(`c/${cid}`, bad); // a copy changed behind its back
+  s = await pool.scrub({ limit: 10 }); assert.equal(s.dropped, 1); assert.ok(pool.satisfied(c()), "repaired"); for (const n of c().nodes) assert.ok(pool.open(cid, b[n].m.get(`c/${cid}`)), "every counted copy opens"); assert.deepEqual(await pool.get(r.id), data);
+  // A node that is away when a file is deleted keeps nothing once it answers: the delete is retried.
+  const other = c().nodes[0]; b[other].down = true; await pool.probe(); await pool.remove(r.id);
+  assert.ok(pool.ix.pending.some(p => p.node === other)); b[other].down = false; await pool.probe(); assert.equal(pool.ix.pending.length, 0); assert.equal(b[other].m.has(`c/${cid}`), false);
+});
+
+test("review S-4, S-5, S-6, S-8, S-10: the bridge server survives a bad escape, refuses before reading, a NaN time, a replayed frame, and an oversized reply or write", async t => {
+  const { createBridge, serveBridge, httpSend, bridgeBackend, sign, MAX_BODY } = await import("./bridge.js"), http = await import("node:http");
+  const root = tmp("s4"); t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const secret = "bridge-secret-0123456789", br = createBridge({ dir: path.join(root, "d"), secret, capacity: 2 * MB }), srv = await serveBridge(br); t.after(srv.close);
+  const url = `http://127.0.0.1:${srv.port}`, post = (p, headers, body) => new Promise(res => { const r = http.request(url + p, { method: "POST", agent: false, headers: { connection: "close", ...headers } }, x => { x.resume(); x.on("end", () => res(x.statusCode)); }); r.on("error", () => res(0)); r.end(body); });
+  assert.equal(await post("/%E0%A4%A", { "x-vyre-op": "get", "x-vyre-ts": String(Date.now()), "x-vyre-sig": "x", "x-vyre-nonce": "nonce-12345" }), 400, "a bad escape is a 400, not a crash");
+  assert.equal(await post("/c/x", {}), 400, "no headers, no read"); assert.equal(await post("/c/x", { "x-vyre-op": "put", "x-vyre-ts": String(Date.now()), "x-vyre-sig": "x", "x-vyre-nonce": "nonce-12345", "content-length": String(MAX_BODY + 1) }), 413);
+  assert.equal(await post("/c/x", { "x-vyre-op": "ping", "x-vyre-ts": "NaN", "x-vyre-sig": "x", "x-vyre-nonce": "nonce-12345" }), 400, "a NaN time is refused");
+  const be = bridgeBackend({ secret, send: httpSend(url) }); await be.put("c/ok", rand(10)); assert.ok(await be.ping() >= 0, "and the server is still up");
+  // Replay: the same signed frame twice, the second is refused.
+  const ts = Date.now(), nonce = "replay-nonce-1", f = { op: "get", key: "c/ok", ts, nonce, sig: sign(secret, { op: "get", key: "c/ok", ts, nonce }) };
+  assert.equal((await httpSend(url)(f)).status, 200); assert.equal((await httpSend(url)(f)).status, 409, "a captured frame cannot be replayed");
+  // A reply bigger than the cap is cut, and capacity is held under concurrent writes.
+  const huge = http.createServer((q, r) => { r.writeHead(200); r.end(Buffer.alloc(9 * MB)); }); await new Promise(r => huge.listen(0, "127.0.0.1", r)); t.after(() => huge.close());
+  await assert.rejects(bridgeBackend({ secret, send: httpSend(`http://127.0.0.1:${huge.address().port}`) }).get("c/x"), /too big/);
+  const results = await Promise.allSettled([1, 2, 3].map(i => be.put("c/cap" + i, rand(MB)))); assert.ok(results.filter(r => r.status === "fulfilled").length <= 2 && br.used <= 2 * MB + 10, "two MB of room, no over-commit");
+});
+
+test("review S-11: the pool key is derived from the home's master for that purpose, per owner", async t => {
+  const { startSealer } = await import("../seal/client.js"), dir = tmp("pk"); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const s = startSealer({ dir, timeoutMs: 8000, dev: true }); t.after(() => s.close());
+  const a = await s.poolKey({ owner: "per_alexalexalexalex" }), b = await s.poolKey({ owner: "spc_harlowharlowharlow" });
+  assert.equal(a.length, 32); assert.notDeepEqual(a, b); assert.deepEqual(a, await s.poolKey({ owner: "per_alexalexalexalex" }));
+  assert.equal(await code(s.poolKey({ owner: "nobody" })), "bad_input");
+});
+
+test("scrub scales with the pool to a two-week cycle, and when no copy opens it keeps every pointer and raises an alert instead of deleting", async t => {
+  const { pool, b } = world(t, { home: 50, nas: 50, cloud: 50 });
+  for (let i = 0; i < 12; i++) await pool.put(rand(MB / 4), { class: "cold" });
+  const first = await pool.scrub({ cycleMs: 14 * 86_400_000, tickMs: 60_000 }); assert.equal(first.checked, 5, "a small pool still checks a few a tick");
+  const big = Object.keys(pool.ix.chunks).length; for (let i = 0; i < 20_000 * 3; i++) pool.ix.chunks["x" + i] = { size: 1, nodes: [], refs: { m: "cold" } };
+  const many = await pool.scrub({ cycleMs: 14 * 86_400_000, tickMs: 60_000 }); assert.ok(many.checked >= 3 && many.checked <= 5 + Math.ceil((big + 60_000) / 20_160), "scaled: " + many.checked);
+  for (let i = 0; i < 20_000 * 3; i++) delete pool.ix.chunks["x" + i];
+  // A wrong key (or a failing store) makes every copy fail to open: the pointers stay and an alert says so.
+  const cid = Object.keys(pool.ix.chunks)[0], nodes = [...pool.ix.chunks[cid].nodes];
+  for (const n of nodes) { const x = Buffer.from(b[n].m.get(`c/${cid}`)); x[40] ^= 1; b[n].m.set(`c/${cid}`, x); }
+  const s = await pool.scrub({ limit: 1000 }); assert.ok(s.alerts >= 1); assert.deepEqual(pool.ix.chunks[cid].nodes, nodes, "no pointer was deleted");
+  assert.ok(pool.alerts.has(cid)); assert.equal(pool.ix.chunks[cid].dropped, undefined);
+  const events = [], { createController } = await import("./controller.js"), c = createController({ pool, emit: e => events.push(e), setTimer: () => ({}), clearTimer: () => {}, loaded: () => false }); await c.tick();
+  assert.ok(events.some(e => e.type === "storage.alert"));
+  // One bad copy beside a good one is dropped, and the drop is remembered for the cycle.
+  const w = world(t, { home: 10, nas: 10, cloud: 10 }), r = await w.pool.put(rand(1000), { class: "cold" }), id = w.pool.ix.manifests[r.id].chunks[0], bad = w.pool.ix.chunks[id].nodes[0];
+  const y = Buffer.from(w.b[bad].m.get(`c/${id}`)); y[40] ^= 1; w.b[bad].m.set(`c/${id}`, y);
+  await w.pool.scrub({ limit: 100 }); assert.ok(w.pool.ix.chunks[id].dropped.some(d => d.node === bad), "the dropped copy is on the list for the cycle");
+});
+
+test("bridge: a frame signed before the bridge started is refused, so a restart does not reopen the replay window", async t => {
+  const { createBridge, sign } = await import("./bridge.js"), root = tmp("epoch"); t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const secret = "bridge-secret-0123456789"; let clock = 9_000_000;
+  const frame = (ts, nonce) => ({ op: "ping", key: "", ts, nonce, sig: sign(secret, { op: "ping", key: "", ts, nonce }) });
+  const first = createBridge({ dir: root + "/a", secret, now: () => clock }), captured = frame(clock, "captured-nonce-1");
+  assert.equal((await first.handle(captured)).status, 200);
+  clock += 10_000; const restarted = createBridge({ dir: root + "/a", secret, now: () => clock });
+  assert.equal((await restarted.handle(captured)).status, 401, "the nonce table is gone but the frame predates this start");
+  assert.equal((await restarted.handle(frame(clock, "fresh-nonce-0001"))).status, 200);
 });
