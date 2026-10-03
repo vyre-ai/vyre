@@ -201,3 +201,13 @@ test("explain says what a definition is and how it came to be, and talk routes t
   assert.match(e.text, /^matter has 1 fields \(Client\) and the stages Intake, Drafting\. It was last added by person:per_alex\.$/);
   assert.equal((await w.engineer.explain(w.owner, "nothing")).found, false);
 });
+
+test("a viewer chain and a delegated (session-token) chain are not the admin acting", async () => {
+  const w = await world();
+  const viewer = w.rig.k.chains.fromFacts({ kind: "viewer", person: "per_alex", vouched: true });
+  await assert.rejects(w.engineer.talk(viewer, "add a type"), { code: "not_found" });
+  const tok = (await w.rig.k.surfaces.open(w.owner, {})).token;
+  const delegated = await w.rig.k.surfaces.chainFor(tok);
+  await assert.rejects(w.engineer.propose(delegated, "add a type"), { code: "not_found" });
+  assert.equal(w.rig.modelCalls.length, 0);
+});

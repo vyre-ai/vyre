@@ -160,6 +160,26 @@ export default {
       run: async (input, extra) => engineOf().facts.accept(await chainOf(extra), Number(input.id)),
     });
 
+    // The capture port (CUTOVER section G): sessions captures a session's turns ONCE and hands the same lines to Recall and here, so Space memory knows what was said. A first-party
+    // module calls it; a person or an agent cannot (it would let them write lines under another session's address). The lines are scrubbed on the way in by the engine.
+    ctx.tool("work.know.capture", {
+      description: "Keep a session's lines so the Space's memory can answer from what was said. Called by the session capture, once per indexed batch: { session, lines: [{ seq, role, text, at }] }. Lines are scrubbed on the way in and readable only by a chain that may read the session. Returns how many were kept and indexed.",
+      input: obj({ session: { type: "string", maxLength: 128 }, lines: { type: "array", items: { type: "object" } }, record: { type: "string" } }, ["session", "lines"]),
+      run: async input => {
+        const e = engineOf();
+        if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(String(input.session))) throw fail("bad_input", "a session id is letters, digits and . _ : -");
+        const lines = (Array.isArray(input.lines) ? input.lines : []).slice(0, 2000).filter((/** @type {any} */ l) => l && Number.isInteger(l.seq) && typeof l.text === "string" && ["user", "assistant", "tool"].includes(String(l.role))).map((/** @type {any} */ l) => ({ seq: l.seq, role: String(l.role), text: l.text.slice(0, 20_000), at: Number(l.at) || 0 }));
+        const kept = e.lines.ingest(String(input.session), lines, input.record && urnOk(input.record) ? { record: input.record } : {});
+        const indexed = await e.index({ kind: "lines", session: String(input.session) });
+        return { kept, indexed };
+      },
+    });
+    ctx.tool("work.know.forget", {
+      description: "Erase a session's lines and every index row made from them (the session was deleted or the person asked). Called by the session capture.",
+      input: obj({ session: { type: "string", maxLength: 128 } }, ["session"]),
+      run: async input => ({ erased: engineOf().forgetSession(String(input.session)) }),
+    });
+
     ctx.tool("work.engineer.talk", {
       description: "Talk to the Engineer, which only admins can do: 'explain <type>' reads a definition back in plain words, anything else proposes a change and returns a card and a task. Nothing is applied until an admin approves the card.",
       input: obj({ text: { type: "string" } }, ["text"]),
