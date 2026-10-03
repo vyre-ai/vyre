@@ -133,7 +133,7 @@ test("ids: a claim must carry a valid chain and a record an entry signed; a forg
   assert.equal(code(await alex.post("/v1/ids/claim", { name: "alex", ops: alex.ops, sealed: "x".repeat(3000), rec: good.rec })), "bad_record");
   assert.equal(code(await alex.post("/v1/ids/claim", { name: "alex", ops: alex.ops, sealed: good.sealed })), "bad_record", "unsigned");
   w.clock.t += 10 * 60_000;
-  assert.equal(code(await alex.post("/v1/ids/claim", { name: "alex", ops: alex.ops, ...good })), "stale");
+  assert.equal(code(await alex.post("/v1/ids/claim", { name: "alex", ops: alex.ops, ...good })), "bad_time", "a genesis made ten minutes ago is not made now");
   assert.equal(code(await alex.get("/v1/ids/resolve?name=alex")), "not_found", "nothing was claimed by any of those");
 });
 
@@ -246,12 +246,13 @@ test("ids: an own domain becomes an alias only with a TXT an entry of the identi
 });
 
 test("ids: released soon is freed; released after use is a tombstone for good, and a newcomer cannot release", async t => {
-  const w = world(t), a = await person(w), b = await person(w), c = await person(w);
+  const w = world(t), a = await person(w), b = await person(w);
   data(await a.claim("alex"));
   assert.equal(data(await a.post("/v1/ids/release", { name: "alex", act: await act(w, a, "release", "alex") })).tombstone, false);
   data(await b.claim("alex"));
   w.clock.t += 2 * HOUR;
   assert.equal(data(await b.post("/v1/ids/release", { name: "alex", act: await act(w, b, "release", "alex") })).tombstone, true);
+  const c = await person(w);
   assert.equal(code(await c.claim("alex")), "taken", "a used name is never reassigned");
   assert.equal(data(await c.get("/v1/names/check?name=alex")).status, "taken");
   // a newcomer cannot release a name
@@ -285,4 +286,15 @@ test("ids: the unchanged box claim path still works beside identities", async t 
   const c = data(await box.post("/v1/names/claim", { name: "harlow" }));
   assert.equal(c.name, "harlow");
   assert.equal(code(await alex.claim("harlow")), "taken");
+});
+
+test("ids: the directory refuses an op made at an old time, so an adder cannot hand a new entry a past age", async t => {
+  const w = world(t), alex = await person(w), phone = alex.first;
+  data(await alex.claim("alex"));
+  const thief = await key("thief");
+  w.clock.t += 500 * HOUR;
+  const old = await C.makeOp(alex.state, { type: "add", entry: thief.entry("device") }, { by: phone.eid, ts: alex.state.ts, sign: phone.sign });
+  assert.equal(code(await alex.post("/v1/ids/append", { name: "alex", ops: [old] })), "bad_time");
+  const now = await alex.append({ type: "add", entry: thief.entry("device") }, phone);
+  assert.equal(data(await alex.post("/v1/ids/append", { name: "alex", ops: [now] })).seq, 1);
 });

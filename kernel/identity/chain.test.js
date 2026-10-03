@@ -236,15 +236,15 @@ test("chain (reviewer-2 probe 2): a device removed from its owner's list cannot 
   const chains = new Map([[alex.state.id, alex.ops]]);
   const ctxOf = (live, extra = {}) => ({ ownerOps: async id => chains.get(id) || null, now: T0 + 400 * H, live, ...extra });
   const g = await C.makeGenesis({ kind: "space", entry: { eid: alex.state.id, kind: "owner", subject: alex.state.id }, nonce: "backdate-nonce", ts: T0 + 40 * H, via: d1.eid, viaPos: pos0, sign: d1.sign });
-  const space = { ops: [g], state: await C.verifyChain([g], ctxOf(true)) };
+  const space = { ops: [g], state: await C.verifyChain([g], ctxOf(false)) };
   // d1 is removed from alex's list at R (by d2, which is old enough by now)
   alex = await step(alex, { type: "remove", target: d1.eid }, d2, T0 + 100 * H);
   chains.set(alex.state.id, alex.ops);
   // the thief signs a space op with d1, a time just after the space's last op (before R) and the position it saw before the removal
-  const evil = await C.makeOp(space.state, { type: "add", entry: { eid: "per_" + "c".repeat(26), kind: "owner", subject: "per_" + "c".repeat(26) } }, { by: alex.state.id, via: d1.eid, viaPos: pos0, ts: T0 + 41 * H, sign: d1.sign });
+  const evil = await C.makeOp(space.state, { type: "add", entry: { eid: "per_" + "c".repeat(26), kind: "owner", subject: "per_" + "c".repeat(26) } }, { by: alex.state.id, via: d1.eid, viaPos: pos0, ts: T0 + 101 * H, sign: d1.sign });
   // accepted now (the directory, or a client for what is newer than its pin): refused, whatever its time or position
-  await refused(C.applyOp(space.state, evil, ctxOf(true)), "removed");
-  await refused(C.applyOp(space.state, evil, ctxOf(false, { liveFrom: 1 })), "removed");
+  await refused(C.applyOp(space.state, evil, ctxOf(true, { now: T0 + 101 * H })), "removed");
+  await refused(C.applyOp(space.state, evil, ctxOf(false, { liveFrom: 1, now: T0 + 101 * H })), "removed");
   // history that was accepted while d1 was on the list still replays
   const old = await C.makeOp(space.state, { type: "add", entry: { eid: "per_" + "c".repeat(26), kind: "owner", subject: "per_" + "c".repeat(26) } }, { by: alex.state.id, via: d1.eid, viaPos: pos0, ts: T0 + 41 * H, sign: d1.sign });
   assert.equal((await C.applyOp(space.state, old, ctxOf(false))).entries.length, 2);
@@ -271,4 +271,30 @@ test("chain: the first device and the recovery code made with it are founders, n
   // a genesis may not smuggle in anything but a code
   const bad = await C.makeGenesis({ kind: "person", entry: phone.entry("device"), code: mac.entry("device"), nonce: "founder-nonce2", ts: T0, sign: phone.sign });
   await refused(C.verifyChain([bad], { now: T0 }), "bad_entry");
+});
+
+test("chain (reviewer-2 W-1): a newcomer's age never comes from a time its adder wrote", async () => {
+  const phone = await key("phone"), code = await key("code"), code2 = await key("thief code"), thief = await key("thief");
+  const g = await C.makeGenesis({ kind: "person", entry: phone.entry("device"), code: code.entry("code"), nonce: "backdate-nonce", ts: T0, sign: phone.sign });
+  const w0 = { ops: [g], state: await C.verifyChain([g], { now: T0 }) };
+  const now = T0 + 500 * H;
+  // the probe: a code-only thief adds a device with the previous op's time, 500 hours before the acceptor's clock
+  const stale = await C.makeOp(w0.state, { type: "add", entry: thief.entry("device") }, { by: code.eid, ts: T0, sign: code.sign });
+  await refused(C.applyOp(w0.state, stale, { now, live: true }), "bad_time");
+  // made now, it is accepted, and the device is a newcomer for 24 hours: it cannot remove the owner's phone, replace the code or add a contact
+  const fresh = await C.makeOp(w0.state, { type: "add", entry: thief.entry("device") }, { by: code.eid, ts: now, sign: code.sign });
+  const s1 = await C.applyOp(w0.state, fresh, { now, live: true });
+  const w1 = { ops: [g, fresh], state: s1 };
+  await refused(C.applyOp(s1, await C.makeOp(s1, { type: "remove", target: phone.eid }, { by: thief.eid, ts: now + 1000, sign: thief.sign }), { now: now + 2000, live: true }), "newcomer");
+  await refused(C.applyOp(s1, await C.makeOp(s1, { type: "replace-code", entry: code2.entry("code") }, { by: thief.eid, ts: now + 1000, sign: thief.sign }), { now: now + 2000, live: true }), "newcomer");
+  await refused(C.applyOp(s1, await C.makeOp(s1, { type: "remove", target: phone.eid }, { by: thief.eid, ts: now + 23 * H, sign: thief.sign }), { now: now + 23 * H, live: true }), "newcomer");
+  // a verifier that learned the op later counts the age from when it first saw it, not from the op's time
+  const lateCtx = { now: now + 600 * H, seenAt: seq => (seq === 1 ? now + 599 * H : undefined) };
+  const learned = await C.verifyChain(w1.ops, lateCtx);
+  assert.equal(learned.entries.find(e => e.eid === thief.eid).since, now + 599 * H);
+  const rmLate = await C.makeOp(learned, { type: "remove", target: phone.eid }, { by: thief.eid, ts: now + 599 * H + H, sign: thief.sign });
+  await refused(C.applyOp(learned, rmLate, { now: now + 600 * H, seenAt: lateCtx.seenAt }), "newcomer");
+  // while the same chain without a recorded first sight would count from the op's own time
+  const plain = await C.verifyChain(w1.ops, { now: now + 600 * H });
+  assert.equal(plain.entries.find(e => e.eid === thief.eid).since, now);
 });

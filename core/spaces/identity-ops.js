@@ -35,7 +35,9 @@ export function createIdentityOps({ store, dir, now, emit = () => {}, stretch })
     if (!s.exists) throw refuse("This device has no Vyre identity yet.", "no_identity");
     return s;
   };
-  const ctx = () => ({ now: now() + C.SKEW_MS });
+  const ctx = () => ({ now: now() + C.SKEW_MS, seenAt: (/** @type {number} */ seq) => store.seen()[seq] });
+  /** Remember when this device first saw ops it learned of from the directory. @param {number} before the number of ops held before @param {number} after the number now */
+  const sawNew = (before, after) => { if (after > before) store.markSeen(before, after - 1, now()); };
   /** The verified state of the chain this device holds. */
   const stateNow = async () => C.verifyChain(store.ops(), ctx());
   const signer = () => { const s = me(); return { by: /** @type {string} */ (s.eid), sign: (/** @type {Uint8Array} */ m) => store.sign(Buffer.from(m)) }; };
@@ -45,7 +47,7 @@ export function createIdentityOps({ store, dir, now, emit = () => {}, stretch })
   async function refresh() {
     const r = await dir.resolve(nameOf(), { pin: store.pin() }).catch(e => { throw refuse(plain(e), /** @type {any} */ (e).code || "failed"); });
     if (!r.ok) throw refuse(`The directory's answer for your name could not be trusted: ${r.why}`, r.code || "bad_answer");
-    if (r.advanced) store.setChain(r.ops, r.pin);
+    if (r.advanced) { sawNew(store.ops().length, r.ops.length); store.setChain(r.ops, r.pin); }
   }
 
   /** Make an op, check it here, send it, keep it. `by` is another signer when the code or a contact signs. */
@@ -54,8 +56,9 @@ export function createIdentityOps({ store, dir, now, emit = () => {}, stretch })
     const state = await stateNow();
     const op = await C.makeOp(state, body, { by: by.by, ts: Math.max(now(), state.ts), sign: by.sign });
     let next;
-    try { next = await C.applyOp(state, op, ctx()); } catch (e) { throw refuse(plain(e), /** @type {any} */ (e).code || "failed"); }
+    try { next = await C.applyOp(state, op, { ...ctx(), live: true }); } catch (e) { throw refuse(plain(e), /** @type {any} */ (e).code || "failed"); }
     try { await dir.append(nameOf(), [op]); } catch (e) { throw refuse(plain(e), /** @type {any} */ (e).code || "failed"); }
+    store.markSeen(op.seq, op.seq, op.ts);
     store.setChain([...store.ops(), op], C.pinOf(next));
     // Alerts about what other devices did stay pending (sync() shows them); only our own op is marked seen.
     if (store.alerted() === state.seq) store.setAlerted(next.seq);
@@ -124,7 +127,7 @@ export function createIdentityOps({ store, dir, now, emit = () => {}, stretch })
       const name = nameOf(), mine = me().eid;
       const r = await dir.resolve(name, { pin: store.pin() });
       if (!r.ok) { emit("identity.warning", { name, why: r.why, code: r.code || "bad_answer", at: now() }); return { ok: false, why: r.why, code: r.code || "bad_answer" }; }
-      if (r.advanced) store.setChain(r.ops, r.pin);
+      if (r.advanced) { sawNew(store.ops().length, r.ops.length); store.setChain(r.ops, r.pin); }
       const since = store.alerted();
       const alerts = C.alertsSince(r.ops, since).filter(a => a.by !== mine);
       store.setAlerted(r.state.seq);
