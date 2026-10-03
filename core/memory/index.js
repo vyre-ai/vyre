@@ -348,6 +348,17 @@ export default {
     const viaTailnet = caller => { const w = whoNow(); return w ? (w.device && w.signedIn) : /^tailnet:(?!agent:)[^\s]+$/.test(String(caller || "")); }; // SHIM(legacy labels): the label branch goes with the kernel-off path. With a chain, one of the OWNER's own devices reads as the owner only when signed in (a person session), over Wink or the relay alike (ruling, 6 Oct)
     const reader = caller => owner(caller) || viaTailnet(caller);
     /**
+     * The one plain hint, for a READ refused on the OWNER's own paired device that is not signed in: sign in once on this device (ruling 6 Oct, option B). Only for that device: the kernel
+     * gate has already refused another person's device, an agent and a group chat with the plain refusal, and `Who` says no agent or Flow stands beside it, so the hint never tells
+     * a stranger that a sign-in would help. Null (the plain refusal stands) for everyone else, and with the kernel off.
+     * @returns {Error|null}
+     */
+    const signInHint = () => {
+      const w = whoNow();
+      if (!w || !w.device || w.signedIn || w.agent !== null || w.acting !== null || w.module !== null) return null;
+      return Object.assign(new Error("memory is read from this device once you sign in with your passkey"), { code: "person_session_required" });
+    };
+    /**
      * Throws unless the caller may read these folders' graph or this room (none: the main
      * graph). The main graph is for the user's own surfaces, modules and the assistant only
      * (docs/adr/0007-intelligence.md, decision 1, narrowed by the user's 2026-09-28 decision:
@@ -367,7 +378,7 @@ export default {
       const cwds = clean(project_cwds);
       const scoped = Boolean((room && room !== "*") || cwds.length);
       if (r.all) {
-        if (!scoped && !whole && !r.agent && !(tailnet ? reader(caller) : owner(caller))) throw denied("the main graph is drawn for the Deck and the assistant; pass room (a project's slug, or unfiled) or project_cwds");
+        if (!scoped && !whole && !r.agent && !(tailnet ? reader(caller) : owner(caller))) throw signInHint() || denied("the main graph is drawn for the Deck and the assistant; pass room (a project's slug, or unfiled) or project_cwds");
         return { ...r, cwds: project_cwds };
       }
       // THE assistant rule: unfiled is never the assistant's either, only the true owner's
@@ -570,7 +581,7 @@ export default {
     });
     /** Reading corrections: the owner's surfaces, or the user on a tailnet device. Never an agent. */
     const readerOnly = (run, name = "memory.corrections") => ownerOnly(async (input, extra = {}) => {
-      if (!reader(extra.caller)) throw denied(`${name} is for the user's own surfaces, not ${plain(extra.caller || "an unnamed caller", 60)}`);
+      if (!reader(extra.caller)) throw signInHint() || denied(`${name} is for the user's own surfaces, not ${plain(extra.caller || "an unnamed caller", 60)}`);
       return run(input, extra);
     });
     /** The scope a correction applies in: a room's slug, or '*' for everywhere. */
@@ -811,7 +822,7 @@ export default {
       // longer reaches the unfiled room most of them are drawn from. r.all is never true for a
       // named caller (only !who gets it), so this is r.assistant or refuse, for any agent.
       if (r.agent ? !r.assistant : !(reader(caller) || ownSession(caller))) {
-        throw denied(r.agent ? `personal facts are not a project's: only the assistant reads them, not ${r.agent}` : `${name} is for the user's own surfaces and the assistant, not ${plain(caller || "an unnamed caller", 60)}`);
+        throw (!r.agent && signInHint()) || denied(r.agent ? `personal facts are not a project's: only the assistant reads them, not ${r.agent}` : `${name} is for the user's own surfaces and the assistant, not ${plain(caller || "an unnamed caller", 60)}`);
       }
     };
     // ---- agent, module and watcher writes (core/memory/write.js, plan 3.4)

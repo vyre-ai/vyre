@@ -44,7 +44,7 @@ async function boot(t, { kernel = null } = {}) {
 
 const YES = { graph: "yes", corrections: "yes", me: "yes", correct: "yes", pin: "yes", write: "yes", site: "yes" };
 // RULING 6 Oct (second deliberate change): an owner device reads as the owner only when signed in, over Wink or the relay alike. Unsigned: nothing personal, and no correct or write.
-const NO_READS = { graph: "denied", corrections: "denied", me: "denied" };
+const NO_READS = { graph: "person_session_required", corrections: "person_session_required", me: "person_session_required" }; // the plain sign-in hint, only for the owner's own unsigned device
 const UNSIGNED = { ...YES, ...NO_READS, correct: "person_session_required", write: "person_session_required" };
 
 test("each caller class does exactly what its label did: the table's rows, by the chain and by the label", async t => {
@@ -151,8 +151,8 @@ test("RULING 6 Oct: an owner's own device reads personal memory as the owner whe
   assert.deepEqual(await reads("device:abcdefghijklmnop", { kernelFacts: device("s1", "relay") }), ["yes", "yes", "yes"], "relay, signed in");
   assert.deepEqual(await reads("device:abcdefghijklmnop", { kernelFacts: device("s1", "wink") }), ["yes", "yes", "yes"], "Wink, signed in");
   // 2. unsigned, either path: nothing personal
-  assert.deepEqual(await reads("device:abcdefghijklmnop", { kernelFacts: device(undefined, "relay") }), ["denied", "denied", "denied"], "relay, unsigned");
-  assert.deepEqual(await reads("tailnet:alex@example.com", { kernelFacts: device(undefined, "wink") }), ["denied", "denied", "denied"], "Wink, unsigned");
+  assert.deepEqual(await reads("device:abcdefghijklmnop", { kernelFacts: device(undefined, "relay") }), ["person_session_required", "person_session_required", "person_session_required"], "relay, unsigned");
+  assert.deepEqual(await reads("tailnet:alex@example.com", { kernelFacts: device(undefined, "wink") }), ["person_session_required", "person_session_required", "person_session_required"], "Wink, unsigned");
   // 3. a device that is not the owner's: the kernel builds a chain for that member and the gate refuses it
   const bobs = { kind: "device", device_key_id: "dk2", person: "per_bob", path: "relay", session: "s2" };
   assert.deepEqual(await reads("device:abcdefghijklmnop", { kernelFacts: bobs }), ["denied", "denied", "denied"], "another person's device, signed in");
@@ -198,4 +198,42 @@ test("MA-6 and MA-7: a Flow's automation or a module's service after the person 
     assert.deepEqual([r.graph, r.corrections, r.me, r.correct, r.site], ["denied", "denied", "denied", "denied", "denied"], `${name}: ${JSON.stringify(r)}`);
     assert.equal(r.write, "denied", "it may not write into the person's own room ('you'): its writes are limited and attributed to it, never the person's");
   }
+});
+
+
+test("the sign-in hint on a refused READ goes only to the owner's own unsigned device, and never to a stranger, an agent or a group chat", async t => {
+  const rig = await createRig({ people: { per_bob: "member" }, agents: ["kit", "assistant"] });
+  const handle = rig.k.kernelFor({ name: "memory", needs: { kernel: { membership: true } } });
+  const tools = new Map();
+  const db = open(path.join(tempHome(t), "vyre.db"));
+  t.after(() => db.close());
+  seedRecall(db, SESSIONS);
+  const h = await memory.start({ name: "memory", config: { me: {} }, paths: {}, store: { db, migrate: () => {} }, log: () => {}, events: { on: () => () => {}, emit: () => {}, since: () => [], prune: () => 0 },
+    call: async (tool, input) => tool === "recall.search" ? { data: [] } : fakeReachCall(tool, input, { agents: AGENTS, projects: [] }), tool: (n, d) => tools.set(n, d), memoryRunner: null, kernel: handle });
+  t.after(() => h.stop());
+  const READS = [["memory.graph", {}], ["memory.corrections", {}], ["memory.me", {}], ["memory.answer", { q: "who" }]];
+  /** What each read says when it is refused: [code, message]. */
+  const says = async (caller, meta, bind = () => {}) => {
+    const out = [];
+    for (const [tool, input] of READS) { bind(); try { await tools.get(tool).run(input, { caller, ...meta }); out.push(["allowed", ""]); } catch (e) { out.push([/** @type {any} */ (e).code, /** @type {any} */ (e).message]); } }
+    return out;
+  };
+  const HINT = /sign in with your passkey/;
+  // the owner's own device, not signed in: the hint, with its own code, on every read, over Wink and the relay
+  for (const [label, path_] of [["device:abcdefghijklmnop", "relay"], ["tailnet:alex@example.com", "wink"]]) {
+    for (const [code, message] of await says(label, { kernelFacts: device(undefined, path_) })) { assert.equal(code, "person_session_required", path_); assert.match(message, HINT, path_); }
+  }
+  // signed in: no refusal at all
+  assert.ok((await says("device:abcdefghijklmnop", { kernelFacts: device("s1", "relay") })).every(([c]) => c === "allowed"));
+  // a device that is not the owner's: the plain refusal, no hint
+  for (const [code, message] of await says("device:abcdefghijklmnop", { kernelFacts: { kind: "device", device_key_id: "dk2", person: "per_bob", path: "relay" } })) { assert.equal(code, "denied"); assert.doesNotMatch(message, HINT); }
+  // an agent, with unsigned owner-device facts beside its token: no hint
+  const kit = (await rig.k.surfaces.open(rig.person("per_alex"), { agent: "kit" })).token;
+  for (const [code, message] of await says("mcp:agent:kit", { token: kit, agent: "kit", granted: "*", kernelFacts: device(undefined, "relay") }, () => rig.k.bindCalls(() => ({ token: kit })))) assert.ok(code !== "person_session_required" && !HINT.test(message), `${code} ${message}`);
+  // a group chat: the plain refusal, no hint, even from the owner's unsigned device
+  const chat = await rig.k.gateway.grants.chats.create(rig.person("per_alex"), { people: ["per_bob"] });
+  const tg = (await rig.k.surfaces.open(rig.person("per_alex"), { chat: chat.id })).token;
+  for (const [code, message] of await says("device:abcdefghijklmnop", { token: tg, kernelFacts: device(undefined, "relay") }, () => rig.k.bindCalls(() => ({ token: tg })))) assert.ok(code === "denied" && !HINT.test(message), `${code} ${message}`);
+  // no chain at all (a model on the socket): the plain refusal
+  for (const [code, message] of await says("mcp")) assert.ok(code === "denied" && !HINT.test(message));
 });
