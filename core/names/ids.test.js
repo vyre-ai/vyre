@@ -70,8 +70,6 @@ test("ids client: the signer is asked to sign only directory messages", async t 
   await c.update("alex", "person", { v: 2 }).catch(() => {});
   assert.ok(signed.length >= 3 && signed.every(s => ["vyre-names-v1", "vyre-id-record-v1"].includes(s)), signed.join(","));
 });
-  await assert.rejects(() => evil.mine().then(() => { throw new Error("did not refuse"); }), /unreachable|not reachable|no/);
-});
 
 test("ids client: an own-domain alias, rotation to a new key, release and recovery through the client", async t => {
   const w = world(t), oldKey = w.key(), newKey = w.key(), fresh = w.key();
