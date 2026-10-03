@@ -5,7 +5,7 @@
 // person, with a hardware-signer proof over the exact payload, the decision and the chain, once.
 import { canonical, sha256 } from "../core/canonical.js";
 import { mintUuid } from "../core/ids.js";
-import { isChain, isExactlyPerson, chainHash } from "../core/chain.js";
+import { isChain, isExactlyPerson } from "../core/chain.js";
 import { createGate } from "../core/gate.js";
 import { KernelError } from "../core/errors.js";
 import { TASK_TRANSITIONS, ACTOR_KINDS } from "../contracts/index.js";
@@ -56,7 +56,7 @@ export async function checkOutput(task, evidence, facts) {
 }
 
 /**
- * @param {{ space: string, authorizer: any, log: any, presence: { verify(p: any, c: any): boolean, consume(p: any): boolean },
+ * @param {{ space: string, authorizer: any, log: any, presence: import("../core/presence.js").PresenceVerifier,
  *   members: { has(actor: any): boolean }, roleHolders?: (role: string) => any[], approver?: (chain: any) => any,
  *   responsible?: (person: any, doer: any) => boolean, responsibleFor?: (doer: any) => any,
  *   facts?: { record?: (urn: string) => Promise<any>, exists?: (urn: string) => Promise<boolean> },
@@ -232,12 +232,12 @@ export function createTasks(cfg) {
       const p = a.proof;
       // The approval covers the canonical payload as the kernel stored it, recomputed now, never the doer's description.
       if (!t.payload || !body || sha256(canonical(body)) !== t.payload.payload_hash) throw new KernelError("needs_presence", "this task has no approvable payload");
-      if (!p || !cfg.presence.verify(p, { person: person.id, payload_hash: t.payload.payload_hash, decision: t.payload.decision, chain_hash: chainHash(chain) })) throw new KernelError("needs_presence", "approving needs your confirmation on this device, over exactly this");
+      // One verifier: the sealing process's. The signed fields are the task, the canonical payload hash and the decision it is bound to.
+      if (!p || await cfg.presence.check({ chain, op: "task.decide", fields: { task: id, payload_hash: t.payload.payload_hash, decision: t.payload.decision }, proof: p })) throw new KernelError("needs_presence", "approving needs your confirmation on this device, over exactly this");
       rule(t, "done", "checker_approval");
       if (outward(t) && cfg.release) {
         try { await cfg.release(t, body, { person: person.id, key_id: p.key_id }); } catch (e) { throw new KernelError("unavailable", "it could not be sent, so it was not approved as sent", String(e && /** @type {any} */ (e).message)); }
       }
-      if (!cfg.presence.consume(p)) throw new KernelError("needs_presence", "that confirmation was already used");
       const n = put(t, { state: "done", outcome: "approved" });
       approvedBy.set(id, { approver_chain: chain, use_proof: a.proofs && a.proofs.use ? a.proofs.use : null });
       note(chain, "task.approved", n, { payload_hash: t.payload.payload_hash, key_id: p.key_id }, d.decision);
@@ -295,8 +295,7 @@ export function createTasks(cfg) {
       rule(t, "ready", "responsible_person_or_person_with_presence");
       const responsible = cfg.responsible ? cfg.responsible(person, t.doer) : false;
       if (!responsible) {
-        const want = sha256(canonical({ op: "unblock", task: id, reassign_to: o.reassign_to || null }));
-        if (!o.proof || !cfg.presence.verify(o.proof, { person: person.id, payload_hash: want, chain_hash: chainHash(chain) }) || !cfg.presence.consume(o.proof)) throw new KernelError("needs_presence", "you are not responsible for this doer: unblocking needs your confirmation on this device");
+        if (!o.proof || await cfg.presence.check({ chain, op: "task.unblock", fields: { task: id, reassign_to: o.reassign_to || null }, proof: o.proof })) throw new KernelError("needs_presence", "you are not responsible for this doer: unblocking needs your confirmation on this device");
       }
       let doer = t.doer;
       if (o.reassign_to) {
