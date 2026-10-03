@@ -294,14 +294,21 @@ test("K3 item 10: swapping two sealed files in one Space does not make a referen
 
 test("K3 item 6: the sealing process refuses to start on a desktop profile or as an agent's uid, and a loose master key file", async t => {
   const { hostCheck, fileMaster } = await import("./process.js");
-  assert.throws(() => hostCheck({ profile: "desktop", dev: false }), /OS keystore/);
+  assert.doesNotThrow(() => hostCheck({ profile: "desktop", dev: false }), "a desktop uses the file master inside the Vyre home, no development switch");
+  assert.throws(() => hostCheck({ profile: "mystery", dev: false, uid: 1000 }), /own user/, "an unknown profile is refused");
   assert.throws(() => hostCheck({ profile: "server", dev: false, uid: 2001 }), /own user/);
   assert.doesNotThrow(() => hostCheck({ profile: "server", dev: false, uid: 1000 }));
   assert.throws(() => hostCheck({ profile: "server", dev: false, uid: 5000, agentUids: "5000,5001" }), /own user/);
   const d = tmp("master"); fileMaster(d); fs.chmodSync(path.join(d, "master.key"), 0o644);
   assert.throws(() => fileMaster(d), /not private/);
-  const down = startSealer({ dir: tmp("seal"), timeoutMs: 3000 }); // no dev flag: a desktop profile
-  assert.equal(await code(down.health()), "sealer_down"); await down.close();
+  // Both profiles boot with no development variable at all, and say plainly where the key lives.
+  for (const profile of [undefined, "desktop", "server"]) {
+    const dir = tmp("seal"), s = startSealer({ dir, timeoutMs: 8000, ...(profile ? { profile } : {}) }); t.after(async () => { await s.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+    const h = await s.health(); assert.equal(h.ok, true, String(profile)); assert.equal(h.custody.master, "file"); assert.equal(h.custody.profile, profile ?? "desktop"); assert.match(h.custody.note, /key/);
+    assert.equal(fs.statSync(path.join(dir, "master.key")).mode & 0o077, 0, "the master is private to the process's user");
+  }
+  const { custodyNote } = await import("./process.js");
+  assert.match(custodyNote("desktop", "win32"), /only as protected as this PC's own Windows account/); assert.match(custodyNote("server", "linux"), /Root on this server, or a stolen disk/); assert.match(custodyNote("desktop", "darwin"), /sandboxed away from it/);
 });
 
 test("R-1: revoking every key leaves the person in recovery, never a first device, and enrolled keys survive a restart", async t => {
@@ -376,6 +383,21 @@ test("R-7: a file edited to add a key fails its MAC, a rolled-back file is older
   }
 });
 
+test("K-3: the kernel's MAC key lives in the sealing process: same key across restarts, purposes apart, tamper and a different home fail, the key is on no op", async t => {
+  const dir = tmp("kmac"), opts = { dir, timeoutMs: 8000, dev: true };
+  let s = startSealer(opts); t.after(async () => { await s.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+  const data = JSON.stringify({ grant: "gr_1", actions: ["records.read"] }), mac = await s.kernel.mac({ purpose: "grant-event", data });
+  assert.match(mac, /^[A-Za-z0-9_-]{43}$/); assert.equal(await s.kernel.verify({ purpose: "grant-event", data, mac }), true);
+  assert.equal(await s.kernel.verify({ purpose: "grant-event", data: data.replace("gr_1", "gr_2"), mac }), false, "tampered data");
+  assert.equal(await s.kernel.verify({ purpose: "chain", data, mac }), false, "another purpose, another key");
+  assert.equal(await s.kernel.verify({ purpose: "grant-event", data, mac: mac.slice(0, -1) + (mac.endsWith("A") ? "B" : "A") }), false);
+  assert.equal(await code(s.kernel.mac({ purpose: "Bad Purpose", data })), "bad_input"); assert.equal(await code(s.kernel.mac({ purpose: "chain", data: 5 })), "bad_input");
+  await s.close(); s = startSealer(opts); assert.equal(await s.kernel.verify({ purpose: "grant-event", data, mac }), true, "the same home, the same key");
+  const other = startSealer({ dir: tmp("kmac2"), timeoutMs: 8000, dev: true }); t.after(() => other.close());
+  assert.equal(await other.kernel.verify({ purpose: "grant-event", data, mac }), false, "another home's key does not verify it");
+  for (const f of fs.readdirSync(dir, { recursive: true })) { const p = path.join(dir, String(f)); if (fs.statSync(p).isFile() && !p.endsWith("master.key")) assert.equal(fs.readFileSync(p).includes(mac), false); }
+});
+
 test("presence.check: the one verifier checks a task proof for the kernel, once, for task ops only", async t => {
   const { s, alex } = await setup(t);
   const ch = person("per_alex"), fields = { task: "t1", payload_hash: "ph", decision: "dec_1" };
@@ -396,4 +418,36 @@ test("teardown: closing the client ends the sealing process, and a parent that d
   await s.close();
   await new Promise(r => setTimeout(r, 100));
   assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
+});
+
+test("service credentials: a kernel module's key is sealed in the process, read back at the point of use, rotated in place, listed by name, and on no disk in the clear", async t => {
+  const dir = tmp("svc"), opts = { dir, timeoutMs: 8000, dev: true };
+  let s = startSealer(opts); t.after(async () => { await s.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+  const key = "twenty-key-" + "A1b2C3".repeat(8), next = "twenty-key-" + "Z9y8X7".repeat(8);
+  assert.equal((await s.service.put({ name: "twenty.spc_harlow.key", value: key })).stored, true);
+  assert.equal(await s.service.get({ name: "twenty.spc_harlow.key" }), key);
+  await s.service.put({ name: "twenty.spc_harlow.key", value: next }); assert.equal(await s.service.get({ name: "twenty.spc_harlow.key" }), next, "a rotation lands in place");
+  await s.service.put({ name: "twenty.spc_other.key", value: key });
+  assert.deepEqual(await s.service.list(), ["twenty.spc_harlow.key", "twenty.spc_other.key"]);
+  for (const f of fs.readdirSync(dir, { recursive: true })) { const p = path.join(dir, String(f)); if (fs.statSync(p).isFile() && !p.endsWith("master.key")) for (const v of [key, next]) assert.equal(fs.readFileSync(p).includes(Buffer.from(v)), false, `no plaintext in ${f}`); }
+  await s.close(); s = startSealer(opts); assert.equal(await s.service.get({ name: "twenty.spc_harlow.key" }), next, "it survives a restart");
+  assert.equal(await code(s.service.get({ name: "twenty.spc_nobody.key" })), "not_found");
+  for (const bad of ["x", "Has Space", "../etc", "A.B"]) assert.equal(await code(s.service.put({ name: bad, value: "v" })), "bad_input", bad);
+  assert.equal(await code(s.service.put({ name: "twenty.spc_harlow.key", value: "" })), "bad_input");
+  assert.equal((await s.service.delete({ name: "twenty.spc_harlow.key" })).deleted, true); assert.equal(await code(s.service.get({ name: "twenty.spc_harlow.key" })), "not_found");
+  const other = startSealer({ dir: tmp("svc2"), timeoutMs: 8000, dev: true }); t.after(() => other.close()); assert.equal(await code(other.service.get({ name: "twenty.spc_other.key" })), "not_found", "another home does not have it");
+  // An existing 0600 file is moved in once and shredded.
+  const file = path.join(dir, "..", `adopt-${Date.now()}.key`); fs.writeFileSync(file, key + "\n", { mode: 0o600 });
+  assert.equal((await s.service.adopt({ name: "twenty.spc_adopted.key", file })).adopted, true); assert.equal(fs.existsSync(file), false); assert.equal(await s.service.get({ name: "twenty.spc_adopted.key" }), key);
+});
+
+test("found against the real chains: a member on a paired device reveals with a hardware proof, a daemon speaking for them in a session does not", async t => {
+  const { s } = await setup(t), bob = signer("per_bob"); await enrolDevice(s, bob);
+  const dev = person("per_bob"), { ref } = await s.api.put({ chain: dev, record: REC, field: "ssn", class: "us-ssn", value: "123-45-6789" });
+  assert.equal(dev.hops[0].via.device, "device:d_per_bob", "the kernel's device chain has a device and no surface"); assert.equal(dev.hops[0].via.surface, undefined);
+  assert.equal((await s.api.reveal({ chain: dev, ref: ref.ref, purpose: "p", proof: bob.proof(dev, "seal.reveal", { ref: ref.ref, purpose: "p" }) })).value, "123-45-6789");
+  // SHIM(session-person-chain): the kernel's `session_person` door (a daemon speaking for a person, no passkey shown) is built here by hand-made facts through chain(); a person's own chain from it must not reveal.
+  const { createChainBuilder } = await import("../core/chain.js"), { createKernelSeal } = await import("../core/seal.js");
+  const sp = createChainBuilder({ space: SPACE, owner: "per_alex", owner_uid: 501, seal: createKernelSeal({ key: Buffer.alloc(32, 3) }), clock: Date.now, is_person: () => true }).fromFacts({ kind: "session_person", person: "per_bob", session: "x", vouched: true });
+  assert.equal(await code(s.api.reveal({ chain: sp, ref: ref.ref, purpose: "p", proof: bob.proof(sp, "seal.reveal", { ref: ref.ref, purpose: "p" }) })), "human_only");
 });

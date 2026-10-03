@@ -18,14 +18,16 @@ export async function playbooksFor(kernel, chain, { type, stage }) {
   const page = await kernel.records.query(chain, "playbook", { page: { limit: 200 } }).then((/** @type {any} */ r) => r.rows).catch(() => []);
   const hits = [];
   for (const r of page) {
-    const a = r.data.applies_to || {};
-    if (!a.type && !a.stage) continue;
-    if (a.type && a.type !== type) continue;
-    if (a.stage && a.stage !== stage) continue;
-    // Not reviewed means a Kit or a model wrote it: external, whatever the record's own label says.
-    const reviewed = r.data.reviewed === true;
+    // records' playbook type: `name`, `applies_to` (one text: "<type>" or "<type>:<stage>"), `body`, `kit`. A playbook that names neither applies nowhere.
+    const [aType, aStage] = String(r.data.applies_to || "").split(":").map(x => x.trim());
+    if (!aType) continue;
+    if (aType !== type) continue;
+    if (aStage && aStage !== stage) continue;
+    // Not reviewed: it came with a Kit (`kit` is set) and no one has edited it since (its version is still 1), or the kernel says it was changed outside the gateway.
+    // The kernel does not yet label a record by who wrote it, so version and `kit` are the signal (a platform gap: a last-writer label).
+    const reviewed = !(r.labels && r.labels.trust === "external") && !(r.data.kit && Number(r.version) <= 1);
     const labels = reviewed ? r.labels : { ...(r.labels || externalLabels(chain.space)), trust: "external" };
-    hits.push({ urn: r.urn, title: clean(r.data.title, 60), version: Number(r.data.version) || 1, reviewed, text: clean(r.data.body, PLAYBOOK_CHARS), labels, specific: Boolean(a.stage) });
+    hits.push({ urn: r.urn, title: clean(r.data.name, 60), version: Number(r.version) || 1, reviewed, text: clean(r.data.body, PLAYBOOK_CHARS), labels, specific: Boolean(aStage) });
   }
   hits.sort((a, b) => Number(b.specific) - Number(a.specific) || a.title.localeCompare(b.title) || a.urn.localeCompare(b.urn));
   return hits.slice(0, PLAYBOOK_MAX);

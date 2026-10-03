@@ -46,12 +46,8 @@ const enc = new TextEncoder();
 const err = (status, code, message) => ({ status, code, message });
 const unb64 = C.unb64;
 
-/** The bytes an entry signs over a sealed record. @param {{ name: string, id: string, by: string, via?: string, ts: number|string, sealedHash: string }} m */
-export const recordMessage = m => enc.encode(`${RECORD_TAG}\n${m.name}\n${m.id}\n${m.by}\n${m.via || "-"}\n${m.ts}\n${m.sealedHash}`);
-/** What an own domain's TXT carries, signed by an entry. */
-export const aliasMessage = m => enc.encode(`${ALIAS_TAG}\n${m.name}\n${m.domain}\n${m.id}`);
-/** A signed act that is not a chain op: clearing an alias, releasing a name. @param {{ action: string, name: string, domain?: string, ts: number|string }} m */
-export const actMessage = m => enc.encode(`${ACT_TAG}\n${m.action}\n${m.name}\n${m.domain || "-"}\n${m.ts}`);
+export { recordMessage, aliasMessage, actMessage } from "./id-messages.js";
+import { recordMessage, aliasMessage } from "./id-messages.js";
 
 /** A hostname the directory will accept as an alias: letters, digits, dashes, at least two labels, no IP, nothing under vyre.run. @param {unknown} raw */
 export function aliasDomain(raw) {
@@ -71,12 +67,11 @@ async function txtOf(env, name) {
   return (j.Answer || []).filter(a => a.type === 16).map(a => String(a.data).replace(/^"|"$/g, "").replace(/" "/g, ""));
 }
 
-/** The directory's view of an identity as the chain's resolver: the state of a person as it stood at a time. @this {any} @param {string} id @param {number} ts */
-async function resolveOwner(id, ts) {
+/** The chain's owner lookup: a person's whole chain by id (the verifier checks it itself). @this {any} @param {string} id */
+async function ownerOps(id) {
   const name = await this.store.get(`ii/${id}`);
   const rec = name ? await this.store.get(`id/${name}`) : null;
-  if (!rec || rec.state === "tombstone") return null;
-  try { return await C.stateAt(rec.ops, ts, { now: this.now() + C.SKEW_MS }); } catch { return null; }
+  return rec && rec.state !== "tombstone" ? rec.ops : null;
 }
 
 /** The mixin: methods the Directory gains. `this` is the Directory. */
@@ -91,7 +86,9 @@ export const idOps = {
     return rec && rec.state !== "tombstone" ? rec : null;
   },
   /** @this {any} */
-  idCtx() { return { now: this.now(), resolve: resolveOwner.bind(this) }; },
+  idCtx() { return { now: this.now(), ownerOps: ownerOps.bind(this) }; },
+  /** For ops, records and acts being ACCEPTED now: a space's owner device must be on the owner's current list. @this {any} */
+  idLive() { return { ...this.idCtx(), live: true }; },
   /** The entry ids that may sign a request for a route: kept so the box-side "is this name mine" check still works. @param {C.State} state */
   eidsOf(state) { return state.entries.filter(e => e.kind === "device" || e.kind === "code").map(e => e.eid); },
 
@@ -101,10 +98,10 @@ export const idOps = {
     if (typeof sealed !== "string" || sealed.length < 1 || sealed.length > ID_LIMITS.sealed || !/^[A-Za-z0-9_-]+$/.test(sealed)) throw err(400, "bad_record", "the sealed record is missing or too large");
     if (!Number.isFinite(Number(r.ts)) || Math.abs(this.now() - Number(r.ts)) > ID_LIMITS.recordSkewMs) throw err(400, "stale", "the record's time is off; check the clock");
     let key;
-    try { key = await C.signerKey(state, String(r.by), r.via ? String(r.via) : undefined, Number(r.ts), this.idCtx()); } catch (e) { throw err(403, "bad_signature", String(/** @type {any} */ (e).message)); }
+    try { key = await C.signerKey(state, String(r.by), r.via ? String(r.via) : undefined, Number(r.ts), this.idLive(), { seq: r.vseq, head: r.vhead }); } catch (e) { throw err(403, "bad_signature", String(/** @type {any} */ (e).message)); }
     const sealedHash = await C.sha256hex(sealed);
-    if (!await C.verifyWith(key.pub, recordMessage({ name: rec.name, id: state.id, by: String(r.by), via: r.via ? String(r.via) : undefined, ts: r.ts, sealedHash }), r.sig)) throw err(403, "bad_signature", "the record's signature does not check out");
-    return { by: String(r.by), via: r.via ? String(r.via) : undefined, ts: Number(r.ts), sig: r.sig };
+    if (!await C.verifyWith(key.pub, recordMessage({ name: rec.name, id: state.id, by: String(r.by), via: r.via ? String(r.via) : undefined, ts: r.ts, sealedHash, vseq: r.vseq, vhead: r.vhead }), r.sig)) throw err(403, "bad_signature", "the record's signature does not check out");
+    return { by: String(r.by), via: r.via ? String(r.via) : undefined, ...(r.vseq !== undefined ? { vseq: r.vseq, vhead: r.vhead } : {}), ts: Number(r.ts), sig: r.sig };
   },
 
   /** Check a signed act (alias clear, release) by an entry; `fresh` forbids a newcomer. @this {any} */
@@ -113,7 +110,7 @@ export const idOps = {
     if (!Number.isFinite(Number(act.ts)) || Math.abs(this.now() - Number(act.ts)) > ID_LIMITS.recordSkewMs) throw err(400, "stale", "the request's time is off; check the clock");
     const state = await C.verifyChain(rec.ops, { ...this.idCtx(), now: this.now() + C.SKEW_MS });
     let key;
-    try { key = await C.signerKey(state, String(act.by), act.via ? String(act.via) : undefined, this.now(), this.idCtx()); } catch (e) { throw err(403, "not_yours", "that name is not held by this entry"); }
+    try { key = await C.signerKey(state, String(act.by), act.via ? String(act.via) : undefined, this.now(), this.idLive()); } catch (e) { throw err(403, "not_yours", "that name is not held by this entry"); }
     if (!await C.verifyWith(key.pub, actMessage({ action, name: rec.name, domain, ts: act.ts }), act.sig)) throw err(403, "bad_signature", "the signature does not check out");
     if (fresh && key.young) throw err(403, "newcomer", "a sign-in under 24 hours old cannot do that");
     return state;
@@ -127,7 +124,7 @@ export const idOps = {
     const ops = Array.isArray(b.ops) ? b.ops : [];
     if (!ops.length || ops.length > ID_LIMITS.appendBatch) throw err(400, "bad_chain", "send the identity's chain from its genesis");
     let state;
-    try { state = await C.verifyChain(ops, this.idCtx()); } catch (e) { throw err(400, String(/** @type {any} */ (e).code || "bad_chain"), String(/** @type {any} */ (e).message)); }
+    try { state = await C.verifyChain(ops, this.idLive()); } catch (e) { throw err(400, String(/** @type {any} */ (e).code || "bad_chain"), String(/** @type {any} */ (e).message)); }
     const held = await this.store.get(`ii/${state.id}`);
     if (held) {
       if (held === v.name) return { name: v.name, kind: state.kind, id: state.id, mine: true };
@@ -169,8 +166,8 @@ export const idOps = {
     const add = Array.isArray(b.ops) ? b.ops : [];
     if (!add.length || add.length > ID_LIMITS.appendBatch) throw err(400, "bad_chain", `send between 1 and ${ID_LIMITS.appendBatch} ops`);
     await this.count("iap", rec.name, ID_LIMITS.appendPerName, "too many changes to that identity today");
-    const ctx = this.idCtx();
-    let state = await C.verifyChain(rec.ops, { ...ctx, now: this.now() + C.SKEW_MS });
+    const live = this.idLive();
+    let state = await C.verifyChain(rec.ops, { ...this.idCtx(), now: this.now() + C.SKEW_MS });
     const before = state.seq;
     for (const op of add) {
       if (op && op.seq <= state.seq) {
@@ -178,7 +175,7 @@ export const idOps = {
         if (await C.hashOf(rec.ops[op.seq]) === await C.hashOf(op)) continue;
         throw err(409, "fork", "that op is not the one the list already has at that place");
       }
-      try { state = await C.applyOp(state, op, ctx); } catch (e) { throw err(/** @type {any} */ (e).code === "newcomer" ? 403 : 400, String(/** @type {any} */ (e).code || "bad_op"), String(/** @type {any} */ (e).message)); }
+      try { state = await C.applyOp(state, op, live); } catch (e) { throw err(/** @type {any} */ (e).code === "newcomer" ? 403 : 400, String(/** @type {any} */ (e).code || "bad_op"), String(/** @type {any} */ (e).message)); }
     }
     if (state.seq === before) return { name: rec.name, id: rec.id, seq: state.seq, head: state.head };
     if (state.seq > C.MAX_OPS) throw err(409, "too_long", "that chain is as long as a chain may be");
@@ -222,7 +219,7 @@ export const idOps = {
       const m = /^vyre-id=2;name=([a-z0-9-]+);id=((?:per|spc)_[a-z2-7]{26});by=([a-z2-7_]{26,30});via=([a-z2-7]{26}|-);sig=([A-Za-z0-9_-]+)$/.exec(line.trim());
       if (!m || m[1] !== rec.name || m[2] !== rec.id) continue;
       try {
-        const key = await C.signerKey(state, m[3], m[4] === "-" ? undefined : m[4], this.now(), this.idCtx());
+        const key = await C.signerKey(state, m[3], m[4] === "-" ? undefined : m[4], this.now(), this.idLive());
         if (await C.verifyWith(key.pub, aliasMessage({ name: rec.name, domain, id: rec.id }), m[5])) { proven = true; break; }
       } catch { /* not an entry */ }
     }

@@ -19,7 +19,7 @@ const MAX_STEPS = 8;
 const DEFAULT_PRICE = { in: 15, out: 75 };
 
 /** Rough input size of a conversation, for the next call's worst case: four characters a token. @param {Message[]} m */
-const estimateInput = m => Math.ceil(JSON.stringify(m).length / 4);
+const estimateInput = (/** @type {any} */ m, /** @type {any} */ tools = []) => Math.ceil((JSON.stringify(m).length + JSON.stringify(tools).length) / 4);
 
 /**
  * @param {{ adapter: Adapter, kernelFixture?: () => ReturnType<typeof buildFixture>|any, budgetUsd?: number, tasks?: typeof TASKS, prices?: Record<string, { in: number, out: number }>, maxSteps?: number }} o
@@ -38,9 +38,9 @@ export async function evaluateModel({ adapter, kernelFixture = buildFixture, bud
     let taskCost = 0, stopped = false, steps = 0;
     for (; steps < maxSteps; steps++) {
       // The worst this call could cost: all of what it reads and the most it may write. If that could pass the cap, stop here.
-      if (spent + cost(estimateInput(messages), MAX_TOKENS) > budgetUsd) { stopped = true; partial = true; break; }
+      if (spent + cost(estimateInput(messages, fx.tools), MAX_TOKENS) > budgetUsd) { stopped = true; partial = true; break; }
       const r = await adapter.run(messages, fx.tools, { task: task.id, max_tokens: MAX_TOKENS });
-      const used = cost(r.usage?.input_tokens ?? estimateInput(messages), r.usage?.output_tokens ?? Math.ceil(String(r.content || "").length / 4));
+      const used = cost(r.usage?.input_tokens ?? estimateInput(messages, fx.tools), r.usage?.output_tokens ?? Math.ceil(String(r.content || "").length / 4));
       spent += used; taskCost += used;
       messages.push({ role: "assistant", content: String(r.content || ""), ...(r.tool_calls && r.tool_calls.length ? { tool_calls: r.tool_calls } : {}) });
       if (!r.tool_calls || !r.tool_calls.length) break;

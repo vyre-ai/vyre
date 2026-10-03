@@ -39,7 +39,7 @@ const cliPid = surface => { const m = /^cli:(\d+)$/.exec(String(surface)); retur
  * @param {string} surface
  */
 export const ownSurface = surface => /^(?:deck|phone|capsule|glass|lumen|mac|web)(?::|$)/.test(String(surface));
-const sameKeyboard = (a, b) => a === b || (ownSurface(a) && ownSurface(b));
+export const sameKeyboard = (a, b) => a === b || (ownSurface(a) && ownSurface(b));
 
 export class Leases {
   /**

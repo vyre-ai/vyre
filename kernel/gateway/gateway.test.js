@@ -477,3 +477,26 @@ test("K5: audit.verify also checks the signed checkpoints when the Space's key i
   await forged.sign();
   assert.equal((await gw.audit.verify()).ok, false);
 });
+
+test("sessions gaps: idempotency keys on record writes, corr under a flow chain, record.stage-entered", async () => {
+  const { r, log } = rig({ expr: { parseExpr, evalExpr } });
+  await r.define(owner(), { add_types: [DEAL] });
+  const a = await r.create(owner(), "deal", { title: "A", stage: "Intake" }, { idem: "k1" });
+  const b = await r.create(owner(), "deal", { title: "A", stage: "Intake" }, { idem: "k1" });
+  assert.equal(a.id, b.id);
+  assert.equal(log.read({ type: "deal.created" }).length, 1, "one write for one key");
+  await assert.rejects(() => r.create(owner(), "deal", { title: "Other", stage: "Intake" }, { idem: "k1" }), { code: "idem_conflict" });
+  const entered = log.read({ type: "record.stage-entered" });
+  assert.equal(entered.length, 1);
+  assert.deepEqual([entered[0].data.stage, entered[0].data.id, entered[0].subject], ["Intake", a.id, `vyre://${SPACE}/deal/${a.id}`]);
+  const u = await r.update(owner(), "deal", a.id, { signed: true }, a.version, { idem: "k2" });
+  const u2 = await r.update(owner(), "deal", a.id, { signed: true }, a.version, { idem: "k2" });
+  assert.equal(u.version, u2.version, "the repeat returns the first result, not a version conflict");
+  assert.equal(log.read({ type: "record.stage-entered" }).length, 1, "an update that keeps the stage is not an entry");
+  // under a flow chain every event carries the run id as corr
+  const flow = chains.forFlow({ flow: "fl_x", approver: owner(), run: "run_77" });
+  const g2 = rig({ grants: [G(), G({ subject: { kind: "actor", actor: actor("automation", "fl_x") }, actions: ["records.*"] })], members: ["automation:fl_x"], expr: { parseExpr, evalExpr } });
+  await g2.r.define(owner(), { add_types: [DEAL] });
+  await g2.r.create(flow, "deal", { title: "From a flow" });
+  assert.ok(g2.log.read({ type: "deal.created" }).every(e => e.corr === "run_77"));
+});

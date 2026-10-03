@@ -9,7 +9,7 @@
 // It goes away at K6, when surfaces hand the kernel SurfaceFacts and nothing parses strings.
 import { createAuthorizer } from "../core/authorize.js";
 import { createLegacyChainBuilder, LEGACY_SPACE } from "../core/chain.js";
-import { callerKind, agentClaim, callerAllowed, ownerDevice } from "../../core/modules/index.js";
+import { callerKind, agentClaim, callerAllowed, ownerDevice, personRefusesAgent, agentOpensPerson, agentAskFirst } from "../../core/modules/index.js";
 import { PERSON_ONLY, machineSelf } from "../../core/presence/index.js";
 import { isPerson } from "../../lib/caller.js";
 
@@ -21,11 +21,11 @@ const actor = (/** @type {string} */ kind, /** @type {string} */ id) => ({ kind,
 
 /**
  * Read a caller string the way the registry does, into the one hop a chain starts from.
- * @param {string} caller @param {boolean} person
+ * @param {string} caller @param {boolean} person @param {string | undefined} [thread] the thread the daemon bound the call to (a session's own socket, a vouched key or session): what proves an assistant claim
  */
-export function parseCaller(caller, person) {
+export function parseCaller(caller, person, thread) {
   const c = String(caller);
-  const base = { legacy: c, ...(person ? { person_session: true } : {}) };
+  const base = { legacy: c, ...(person ? { person_session: true } : {}), ...(typeof thread === "string" && thread ? { thread } : {}) };
   if (c.startsWith("module:")) return { kind: "service", id: c.slice(7) || "unnamed", ...base };
   if (c === "hook") return { kind: "service", id: "hooks", ...base };
   const claim = agentClaim(c);
@@ -65,9 +65,9 @@ export function createLegacyGates(cfg) {
         allowed = !(from && from.dir && def.module !== (from.manifest && from.manifest.name) && !reg.isFirstParty(from.dir) && (!def.declaredReach || def.reach === "modules"));
         break;
       }
-      case "outward": allowed = !def.outward || isPerson(c); break;
+      case "outward": allowed = !(def.outward || agentAskFirst(tool, c)) || isPerson(c); break;
       case "visible": allowed = (!def.internal || isModule) && Boolean(def.hook) === (c === "hook"); break;
-      case "callers": allowed = callerAllowed(def.callers, c); break;
+      case "callers": allowed = (callerAllowed(def.callers, c) || agentOpensPerson(tool, def, c, { thread: hop.via.thread })) && !personRefusesAgent(tool, def, c, { thread: hop.via.thread }); break;
       case "guest": allowed = !(c.startsWith("tailnet-guest:") && (PERSON_ONLY.has(tool) || pr)); break;
       case "session": {
         allowed = true;
@@ -95,7 +95,7 @@ export function createLegacyGates(cfg) {
 
   const ask = async (/** @type {string} */ gate, /** @type {any} */ chain, /** @type {string} */ tool, /** @type {string} */ input_class) =>
     authorizer.authorize({ chain, action: `legacy.${gate}`, resource: urn(tool), input_class });
-  const chainOf = (/** @type {string} */ caller, /** @type {any} */ meta) => chains.fromLegacy(parseCaller(caller, Boolean(meta && meta.person)));
+  const chainOf = (/** @type {string} */ caller, /** @type {any} */ meta) => chains.fromLegacy(parseCaller(caller, Boolean(meta && meta.person), meta && meta.thread));
 
   return Object.freeze({
     /**

@@ -8,7 +8,7 @@
 //
 // Seams other modules fill (all tolerant: a missing one answers in plain words, never a crash):
 //   spaces.membership {space, person}  -> Membership | null          (core/spaces)
-//   spaces.list {person}               -> [{space|id, name, color, link}]
+//   spaces.merge-list {person}             -> [{space|id, name, color, link}]
 //   spaces.policy {space}              -> { inference, secrets, allow_copy }
 //   records.read {space,type,id} -> {record}   records.query {space,type,spec} -> {rows,next_cursor}
 //   records.create {space,type,id,data,meta}   records.schema {space,type} -> {schema}
@@ -261,7 +261,7 @@ export default {
     });
 
     const spacesOf = async (person, candidates) => {
-      const d = value(await call("spaces.list", { person }));
+      const d = value(await call("spaces.merge-list", { person }));
       const rows = Array.isArray(d) ? d : d && Array.isArray(d.spaces) ? d.spaces : null;
       if (rows) return rows.map(r => ({ space: String(r.space ?? r.id), name: r.name ?? String(r.space ?? r.id), color: r.color ?? null, link: r.link ?? r.url ?? null }));
       return (candidates || []).map(s => ({ space: s, name: s, color: null, link: null }));

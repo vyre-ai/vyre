@@ -33,6 +33,21 @@ export default {
     /** The kernel and the chain for this call. Both come from platform; a refusal to build a chain is the caller's, not ours. */
     const kernelOf = () => { const k = ctx.kernel; if (!k || typeof k.chainFor !== "function") throw unavailable(); return k; };
     const chainOf = (/** @type {any} */ extra) => kernelOf().chainFor(extra || {});
+    /**
+     * The room this call is running in, from the running session and never from the tool's input (a model that can name the chat can leave it out). `null` means
+     * the kernel says it is a chat of one person; otherwise it is the kernel's room handle (no chain of another person ever reaches this module). If the kernel cannot say which, or says group and gives no audience, the
+     * call is refused: there is no fallback to the one to one view.
+     */
+    const audienceOf = async (/** @type {any} */ extra) => {
+      const k = kernelOf();
+      const unknown = (/** @type {string} */ why) => Object.assign(new Error(why), { code: "unavailable" });
+      if (typeof k.audienceFor !== "function") throw unknown("the room this runs in is not known, so nothing is built for it");
+      const room = await k.audienceFor(extra || {});
+      if (!room || typeof room.group !== "boolean") throw unknown("the room this runs in is not known, so nothing is built for it");
+      if (!room.group) return null;
+      if (typeof room.read !== "function" || typeof room.canRead !== "function") throw unknown("this is a group chat and its audience is not known, so nothing is built for it");
+      return room;
+    };
     const surfaceOf = () => surface || (surface = createToolSurface({ kernel: kernelOf(), space: kernelOf().space, types: async c => (kernelOf().definitions ? kernelOf().definitions(c) : []), actions: () => (kernelOf().actions ? kernelOf().actions() : []) }));
     const engineOf = () => {
       if (engine) return engine;
@@ -72,7 +87,7 @@ export default {
         const ref = (/** @type {any} */ u) => { if (!urnOk(u)) return undefined; const [, , , type, id] = u.split("/"); return { type, id }; };
         const project = ref(input.project), record = ref(input.record);
         const lines = Object.fromEntries([...doing.values()].flatMap(d => [...(d.lines || [])]));
-        return buildSituation(k, await chainOf(extra), { space: k.space, ...(project ? { project } : {}), ...(record ? { record } : {}), doing: lines });
+        return buildSituation(k, await chainOf(extra), { space: k.space, ...(project ? { project } : {}), ...(record ? { record } : {}), doing: lines, room: await audienceOf(extra) });
       },
     });
 
@@ -123,14 +138,14 @@ export default {
     ctx.tool("work.know.search", {
       description: "Search the Space's records, events and session lines by meaning. Only sources the caller may read come back, each with its address.",
       input: obj({ query: { type: "string" }, k: { type: "integer" } }, ["query"]),
-      run: async (input, extra) => ({ hits: await engineOf().search(await chainOf(extra), String(input.query), Math.min(Number(input.k) || 6, 12)) }),
+      run: async (input, extra) => { const hits = await engineOf().search(await chainOf(extra), String(input.query), Math.min(Number(input.k) || 6, 12), { room: await audienceOf(extra) }); return { hits, withheld: /** @type {any} */ (hits).withheld || 0 }; },
     });
     ctx.tool("work.know.answer", {
       description: "Answer a question from the Space's own records and history. Every claim cites a source the caller may read; with none to cite it says so.",
       input: obj({ question: { type: "string" } }, ["question"]),
       run: async (input, extra) => {
         const chain = await chainOf(extra);
-        const result = await engineOf().answer(chain, String(input.question));
+        const result = await engineOf().answer(chain, String(input.question), { room: await audienceOf(extra) });
         return { result, component: toComponent("work.know.answer", result) };
       },
     });
@@ -143,6 +158,26 @@ export default {
       description: "Accept a proposed fact: it is written onto the record under the person's own chain, with its sources.",
       input: obj({ id: { type: "integer" } }, ["id"]),
       run: async (input, extra) => engineOf().facts.accept(await chainOf(extra), Number(input.id)),
+    });
+
+    // The capture port (CUTOVER section G): sessions captures a session's turns ONCE and hands the same lines to Recall and here, so Space memory knows what was said. A first-party
+    // module calls it; a person or an agent cannot (it would let them write lines under another session's address). The lines are scrubbed on the way in by the engine.
+    ctx.tool("work.know.capture", {
+      description: "Keep a session's lines so the Space's memory can answer from what was said. Called by the session capture, once per indexed batch: { session, lines: [{ seq, role, text, at }] }. Lines are scrubbed on the way in and readable only by a chain that may read the session. Returns how many were kept and indexed.",
+      input: obj({ session: { type: "string", maxLength: 128 }, lines: { type: "array", items: { type: "object" } }, record: { type: "string" } }, ["session", "lines"]),
+      run: async input => {
+        const e = engineOf();
+        if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(String(input.session))) throw fail("bad_input", "a session id is letters, digits and . _ : -");
+        const lines = (Array.isArray(input.lines) ? input.lines : []).slice(0, 2000).filter((/** @type {any} */ l) => l && Number.isInteger(l.seq) && typeof l.text === "string" && ["user", "assistant", "tool"].includes(String(l.role))).map((/** @type {any} */ l) => ({ seq: l.seq, role: String(l.role), text: l.text.slice(0, 20_000), at: Number(l.at) || 0 }));
+        const kept = e.lines.ingest(String(input.session), lines, input.record && urnOk(input.record) ? { record: input.record } : {});
+        const indexed = await e.index({ kind: "lines", session: String(input.session) });
+        return { kept, indexed };
+      },
+    });
+    ctx.tool("work.know.forget", {
+      description: "Erase a session's lines and every index row made from them (the session was deleted or the person asked). Called by the session capture.",
+      input: obj({ session: { type: "string", maxLength: 128 } }, ["session"]),
+      run: async input => ({ erased: engineOf().forgetSession(String(input.session)) }),
     });
 
     ctx.tool("work.engineer.talk", {

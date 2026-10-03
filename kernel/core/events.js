@@ -12,7 +12,7 @@ import { REDACTION_ORDER } from "../contracts/index.js";
 import { KernelError } from "./errors.js";
 
 const okVis = (/** @type {any} */ v) => ["space", "actor", "subject", "owner"].includes(v) || (typeof v === "string" && /^members:.+/.test(v));
-const TYPE = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/;
+const TYPE = /^[a-z][a-z0-9_-]*\.[a-z][a-z0-9_-]*$/;
 export const genesis = (/** @type {string} */ space) => sha256(`vyre-genesis:${space}`);
 
 /** The envelope's hash input: everything but `data` (replaced by `commit`, already present), `hash` and `sig`. */
@@ -84,7 +84,8 @@ export function createEventLog(cfg) {
       ...(last.via ? { via: last.via } : {}),
       subject: ev.subject,
       ...(ev.cause ? { cause: ev.cause } : opts.decision ? { cause: opts.decision } : {}),
-      ...(ev.corr ? { corr: ev.corr } : {}),
+      // Under a Flow run (a job chain) every event carries the run id as its correlation, so a run's effects are found by it.
+      ...(ev.corr ? { corr: ev.corr } : chain.job ? { corr: chain.job } : {}),
       ...(ev.prov || opts.decision ? { prov: { ...(ev.prov || {}), ...(opts.decision ? { decision: opts.decision } : {}) } } : {}),
       trust: labels.trust, source_spaces: labels.source_spaces,
       vis: ev.vis || "space", red: labels.red,

@@ -12,6 +12,7 @@ import { ordinary } from "./words.js";
 import { sessionTrust, userWords, devTalk, DEV_TURNS, TRUST_VERSION } from "./trust.js";
 import { MIGRATIONS } from "../schema.js";
 import { migrate } from "../../store/index.js";
+import { scrubbed } from "../sealed.js";
 
 /** Evidence kept per fact: enough to show where it came from. */
 const EVIDENCE_PER_FACT = 20;
@@ -149,8 +150,8 @@ export class Personal {
           const ts = Number(t.ts) || 0;
           const r = extractPersonal(own, { role: "user", prev: focus });
           focus = r.focus;
-          for (const c of r.claims) { addClaim.run(session, seq, ts, c.subj, c.rel, c.obj, c.conf, c.method); claims++; }
-          for (const q of r.cues) addCue.run(session, seq, ts, q);
+          for (const c of r.claims) { addClaim.run(session, seq, ts, c.subj, c.rel, scrubbed(c.obj), c.conf, c.method); claims++; }
+          for (const q of r.cues) addCue.run(session, seq, ts, scrubbed(q));
           const pri = signal(own, known);
           if (pri) enqueue.run(session, seq, ts, turnHash(own), pri);
         }
@@ -234,7 +235,7 @@ export class Personal {
     this.tx(() => {
       for (const c of claims || []) {
         if (!c || !c.subj || !c.rel || !c.obj) continue;
-        ins.run(String(session), Number(seq), Number(ts) || 0, String(c.subj), String(c.rel), String(c.obj), Math.max(0, Math.min(1, Number(c.conf ?? 0.75))), String(c.method || "model"));
+        ins.run(String(session), Number(seq), Number(ts) || 0, String(c.subj), String(c.rel), scrubbed(c.obj), Math.max(0, Math.min(1, Number(c.conf ?? 0.75))), String(c.method || "model"));
         n++;
       }
     });
@@ -250,7 +251,7 @@ export class Personal {
    * @returns {{ id: number, text: string, facts: Fact[] }}
    */
   remember(text, { room = null, who = null } = {}) {
-    const t = String(text ?? "").replace(/\s+/g, " ").trim().slice(0, TOLD_MAX);
+    const t = scrubbed(String(text ?? "").replace(/\s+/g, " ").trim().slice(0, TOLD_MAX));
     if (!t) throw new Error("remember needs the fact to keep, as text");
     const ts = this.now();
     const id = Number(this.db.prepare("INSERT INTO memory_me_told (ts, text, room, who) VALUES (?,?,?,?)").run(ts, t, room, who).lastInsertRowid);
@@ -270,7 +271,7 @@ export class Personal {
    * @param {string} text @param {{ subj: string, rel: string, obj: string }} claim
    */
   tell(text, claim, { who = null } = {}) {
-    const t = String(text ?? "").replace(/\s+/g, " ").trim().slice(0, TOLD_MAX);
+    const t = scrubbed(String(text ?? "").replace(/\s+/g, " ").trim().slice(0, TOLD_MAX));
     const ts = this.now();
     const id = Number(this.db.prepare("INSERT INTO memory_me_told (ts, text, room, who) VALUES (?,?,?,?)").run(ts, t, null, who).lastInsertRowid);
     this.addClaims(`told:${id}`, 0, ts, [{ subj: claim.subj, rel: claim.rel, obj: claim.obj, conf: TOLD.explicit, method: "told" }]);

@@ -1,0 +1,6 @@
+# The trusted base and the pipeline that builds it need the owner's review.
+/kernel/ @irfad7
+/kernel/identity/ @irfad7
+/kernel/seal/ @irfad7
+/kernel/door/ @irfad7
+/.github/workflows/ @irfad7

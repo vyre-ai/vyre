@@ -246,7 +246,7 @@ test("authorize: presence is met only by a verified proof or a held session, and
 test("authorize: delegation is contained in its parent, rechecked, and carries the parent's obligations", async () => {
   const parent = grant({ actions: ["crm.update", "crm.read"], conditions: { delegate: { allowed: true, max_depth: 2 }, how: { presence: "fresh" }, when: { expires: T + 1000 } } });
   const sub = actorOf("agent", "kit");
-  const child = over => grant({ subject: { kind: "actor", actor: sub }, parent: parent.id, actions: ["crm.read"], conditions: { when: { expires: T + 500 }, delegate: { allowed: true, max_depth: 1 } }, ...over });
+  const child = over => grant({ subject: { kind: "actor", actor: sub }, parent: parent.id, actions: ["crm.read"], conditions: { when: { expires: T + 500 }, how: { presence: "fresh" }, delegate: { allowed: true, max_depth: 1 } }, ...over });
   const chain = builder().fromFacts({ kind: "agent_session", agent: "kit", session: "s", thread: "t", vouched: true });
   const okChild = child();
   const az = world({ grants: [parent, okChild], members: ["agent:kit"] });
@@ -254,9 +254,12 @@ test("authorize: delegation is contained in its parent, rechecked, and carries t
   assert.equal(r.effect, "ask", "the parent's fresh presence comes along");
   assert.equal(r.reason, "needs_presence");
   assert.deepEqual(r.grants.length, 2);
+  // a child that drops the parent's fresh presence is wider than its parent: refused at decision time
+  const laxer = child({ conditions: { when: { expires: T + 500 }, delegate: { allowed: true, max_depth: 1 } } });
+  assert.equal((await ask(world({ grants: [grant({ actions: ["crm.*"] }), parent, laxer], members: ["agent:kit"] }), chain, "crm.read")).reason, "not_contained");
   const wider = child({ actions: ["crm.merge"] });
   assert.equal((await ask(world({ grants: [grant({ actions: ["crm.*"] }), parent, wider], members: ["agent:kit"] }), chain, "crm.merge")).reason, "not_contained");
-  const longer = child({ conditions: { when: { expires: T + 5000 } } });
+  const longer = child({ conditions: { when: { expires: T + 5000 }, how: { presence: "fresh" } } });
   assert.equal((await ask(world({ grants: [grant({ actions: ["crm.*"] }), parent, longer], members: ["agent:kit"] }), chain, "crm.read")).reason, "not_contained");
   const revoked = { ...parent, status: "revoked" };
   assert.equal((await ask(world({ grants: [grant({ actions: ["crm.*"] }), revoked, okChild], members: ["agent:kit"] }), chain, "crm.read")).reason, "revoked");
@@ -534,4 +537,37 @@ test("grant-risk acts are denied outright for a chain holding a model, and a fie
   const f = world({ grants: [grant({ actions: ["crm.read"], resource: { prefix: `vyre://${SPACE}/contact/*`, fields: ["name"] } })] });
   const r = await ask(f, person(), "crm.read");
   assert.deepEqual(r.obligations.find(o => o.type === "fields").allow, ["name"]);
+});
+
+test("authorize: an approved act satisfies the outward ask for exactly that act, the hook spends it; a deny is not softened", async () => {
+  const send = grant({ actions: ["email.send"], resource: { prefix: `vyre://${SPACE}/message/*` } });
+  const ok = world({ grants: [send], approvedAct: q => q.id === "task_ok" && q.action === "email.send" });
+  const res = `vyre://${SPACE}/message/m1`;
+  assert.equal((await ask(ok, person(), "email.send", res)).effect, "ask");
+  const r = await ask(ok, person(), "email.send", res, { approval: "task_ok" });
+  assert.equal(r.effect, "allow");
+  assert.equal((await ask(ok, person(), "email.send", res, { approval: "task_other" })).effect, "ask");
+  const none = world({ grants: [], approvedAct: () => true });
+  assert.equal((await ask(none, person(), "email.send", res, { approval: "task_ok" })).effect, "deny", "no grant: the approval does not create one");
+});
+
+test("chains: forFlow and forModule carry the approver, the run id as the job, and taint; session_person is the person without a presence session", () => {
+  const b = builder({ is_person: p => p === OWNER || p === "per_two" });
+  const approver = b.fromFacts({ kind: "device", device_key_id: "d1", person: OWNER, path: "direct" });
+  const flow = b.forFlow({ flow: "fl_welcome", approver, run: "run_1" });
+  assert.deepEqual(flow.hops.map(h => h.actor.kind), ["person", "automation"]);
+  assert.equal(flow.job, "run_1");
+  assert.equal(flow.labels.trust, "member");
+  assert.equal(b.forFlow({ flow: "fl_welcome", approver, run: "run_2", tainted: true }).labels.trust, "external");
+  assert.throws(() => b.forFlow({ flow: "f", approver: { hops: [] }, run: "r" }), { code: "not_a_member" });
+  const agent = b.fromFacts({ kind: "agent_session", agent: "kit", session: "s", thread: "t", vouched: true });
+  assert.throws(() => b.forFlow({ flow: "f", approver: agent, run: "r" }), { code: "not_a_member" }, "a model cannot approve a flow run");
+  assert.deepEqual(b.forModule({ module: "stages", approver }).hops.map(h => h.actor.kind), ["person", "service"]);
+  const sp = b.fromFacts({ kind: "session_person", person: "per_two", session: "s1", vouched: true });
+  assert.ok(isExactlyPerson(sp));
+  assert.equal(sp.hops[0].via.session, undefined, "no presence session");
+  assert.throws(() => b.fromFacts({ kind: "session_person", person: "per_stranger", session: "s", vouched: true }), { code: "not_a_member" });
+  assert.throws(() => b.fromFacts({ kind: "session_person", person: OWNER, session: "s" }), { code: "not_a_member" });
+  const two = b.fromFacts({ kind: "agent_session", agent: "kit", session: "s", thread: "t", vouched: true, person: "per_two" });
+  assert.equal(two.hops[0].actor.id, "per_two");
 });

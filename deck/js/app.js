@@ -85,6 +85,10 @@ const ROUTES = [
   // Drive is where a person looks for it (#51): /drive works as a bookmark and after a reload, like the rail link.
   ["/drive", "files"],
   ["/drive/:share", "files"],
+  // The generated screens of the UI build (views/ui.js dispatches through ui/screens.js): /u/now, /u/project/:id, /u/records/:type, /u/record/:id, /u/task/:id, /u/appearance.
+  ["/u/:screen", "ui"],
+  ["/u/:screen/:a", "ui"],
+  ["/u/:screen/:a/:b", "ui"],
   ["/planner", "planner"],
   // A planner push notification opens /planner/<firing> (ADR 0025).
   ["/planner/:firing", "planner"],

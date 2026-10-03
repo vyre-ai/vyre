@@ -33,7 +33,7 @@ const FAKES = {
   spaces: `export default { async start(ctx) {
     const w = () => globalThis.__bw;
     ctx.tool("spaces.membership", { run: async ({ space, person }) => (w().members[space] || {})[person] || null });
-    ctx.tool("spaces.list", { run: async ({ person }) => w().spaces[person] ?? null });
+    ctx.tool("spaces.merge-list", { run: async ({ person }) => w().spaces[person] ?? null });
     ctx.tool("spaces.policy", { run: async ({ space }) => w().policy[space] || {} });
     return {};
   } };`,
@@ -52,7 +52,7 @@ const FAKES = {
     return {};
   } };`,
 };
-const MANIFEST = { spaces: ["spaces.membership", "spaces.list", "spaces.policy"], records: ["records.read", "records.query", "records.create", "records.schema", "records.state", "records.define"], tasks: ["tasks.create"] };
+const MANIFEST = { spaces: ["spaces.membership", "spaces.merge-list", "spaces.policy"], records: ["records.read", "records.query", "records.create", "records.schema", "records.state", "records.define"], tasks: ["tasks.create"] };
 
 /** A real box registry with core/bridges and fake spaces (and, unless left out, records and tasks) modules. */
 async function boxRegistry(t, { w = world(), fakes = ["spaces", "records", "tasks"] } = {}) {

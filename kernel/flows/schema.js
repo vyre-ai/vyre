@@ -5,20 +5,21 @@
 
 import crypto from "node:crypto";
 import { parse, ExprError } from "./expr.js";
+import { TRIGGER_ONS, checkTrigger as checkTriggerKind } from "./triggers.js";
 
 export const FLOW_FORMAT = 1;
 
-export const STEP_KINDS = Object.freeze(["find", "pick", "filter", "create", "update", "upsert", "remove", "decide", "repeat", "wait", "ask", "assign", "call", "stage", "agent", "classify", "http", "fn"]);
+export const STEP_KINDS = Object.freeze(["find", "pick", "filter", "create", "update", "upsert", "remove", "decide", "repeat", "wait", "ask", "assign", "call", "stage", "agent", "classify", "service", "fn"]);
 /** Steps that hold a nested list of steps. */
 export const BLOCK_KINDS = Object.freeze({ decide: ["then", "else"], repeat: ["steps"] });
-export const TRIGGER_KINDS = Object.freeze(["event", "time", "web", "manual", "stage"]);
+export const TRIGGER_KINDS = TRIGGER_ONS;
 export const AUTHORSHIP = Object.freeze(["builder", "human", "model", "kit"]);
 export const LIMITS = Object.freeze({ steps: 200, depth: 6, name: 120, codeSource: 64 * 1024, repeatMax: 1000 });
 
 const ID_RE = /^[a-z][a-z0-9_]{0,39}$/;
-const NAME_RE = /^[a-z][a-z0-9_]{0,63}$/;
+const NAME_RE = /^[a-z][a-z0-9_-]{0,63}$/; // record type names are the kernel's: lowercase letters, digits and hyphens (fields and roles keep underscores)
 const ACTION_RE = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/;
-const EVENT_RE = /^[a-z][a-z0-9-]*\.(?:[a-z][a-z0-9-]*|\*)$/;
+const EVENT_RE = /^[a-z][a-z0-9_-]*\.(?:[a-z][a-z0-9_-]*|\*)$/;
 const URN_RE = /^vyre:\/\/[^/\s]+\/[^\s]*$/;
 
 /** @typedef {{ path: string, message: string }} Problem */
@@ -59,35 +60,7 @@ function onlyKeys(o, allowed, path, out) {
 }
 
 /** @param {any} t @param {Problem[]} out */
-function checkTrigger(t, out) {
-  const path = "trigger";
-  if (!isObj(t) || !TRIGGER_KINDS.includes(t.on)) { out.push({ path, message: `a trigger is one of ${TRIGGER_KINDS.join(", ")}` }); return; }
-  switch (t.on) {
-    case "event":
-      onlyKeys(t, ["on", "event", "where"], path, out);
-      if (typeof t.event !== "string" || !EVENT_RE.test(t.event)) out.push({ path: `${path}.event`, message: "an event pattern is noun.past-verb or noun.*" });
-      if (t.where !== undefined) checkExpr(t.where, `${path}.where`, out);
-      break;
-    case "time":
-      onlyKeys(t, ["on", "cron", "every_ms", "at"], path, out);
-      if ([t.cron, t.every_ms, t.at].filter(x => x !== undefined).length !== 1) out.push({ path, message: "a time trigger has exactly one of cron, every_ms or at" });
-      if (t.cron !== undefined && typeof t.cron !== "string") out.push({ path: `${path}.cron`, message: "cron is a five-field string" });
-      if (t.every_ms !== undefined && !(Number.isInteger(t.every_ms) && t.every_ms >= 60_000)) out.push({ path: `${path}.every_ms`, message: "a repeat is a whole number of milliseconds, at least a minute" });
-      if (t.at !== undefined && !Number.isInteger(t.at)) out.push({ path: `${path}.at`, message: "at is a time in milliseconds" });
-      break;
-    case "web":
-      onlyKeys(t, ["on", "path"], path, out);
-      if (typeof t.path !== "string" || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(t.path)) out.push({ path: `${path}.path`, message: "a web trigger path is lowercase letters, digits and hyphens" });
-      break;
-    case "manual": onlyKeys(t, ["on", "input"], path, out); break;
-    case "stage":
-      onlyKeys(t, ["on", "type", "stage"], path, out);
-      if (typeof t.type !== "string" || !NAME_RE.test(t.type)) out.push({ path: `${path}.type`, message: "the record type is a name" });
-      if (typeof t.stage !== "string" || !t.stage) out.push({ path: `${path}.stage`, message: "name the stage" });
-      break;
-    default: break;
-  }
-}
+function checkTrigger(t, out) { checkTriggerKind(t, out, { onlyKeys, checkExpr, EVENT_RE, NAME_RE }); }
 
 /** Keys each step kind may carry (beyond id, kind, label). */
 const STEP_KEYS = {
@@ -98,7 +71,7 @@ const STEP_KEYS = {
   ask: ["to", "title", "form", "record"], assign: ["to", "title", "record", "output", "how", "template", "checker", "await"],
   call: ["action", "resource", "input"], stage: ["type", "record", "to"],
   agent: ["assistant", "title", "instructions", "record", "output", "await"], classify: ["input", "labels"],
-  http: ["method", "url", "headers", "body"],
+  service: ["connector", "method", "path", "query", "headers", "body", "drive"],
   fn: ["language", "source", "hash", "inputs", "outputs", "needs"],
 };
 
@@ -182,10 +155,26 @@ function checkSteps(steps, path, out, ids, depth, budget) {
         break;
       case "stage": need("type", typeName, "name the record type"); need("record", () => true, "name the record"); value("record"); need("to", v => typeof v === "string" && v.length > 0, "name the stage"); break;
       case "classify": need("input", () => true, "give the text to classify"); value("input"); need("labels", v => Array.isArray(v) && v.length >= 2 && v.every((x/** @type {any} */) => typeof x === "string"), "give at least two labels"); break;
-      case "http":
-        need("method", v => ["GET", "POST", "PUT", "PATCH", "DELETE"].includes(v), "method is GET, POST, PUT, PATCH or DELETE");
-        need("url", v => typeof v === "string" && /^https:\/\/[^\s]+$/.test(v), "the address is written out and starts with https://");
+      case "service":
+        // The Flow names a connector (a vault credential and its route), never a web address or a credential: the home's vault holds the host and the key.
+        need("connector", v => typeof v === "string" && /^[a-z][a-z0-9_-]{0,63}$/.test(v), "name the connector (lowercase letters, digits, - and _)");
+        need("method", v => ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"].includes(v), "method is GET, HEAD, POST, PUT, PATCH or DELETE");
+        need("path", v => typeof v === "string" && /^\/[^\s?#]*$/.test(v) && !v.split("/").includes(".."), "the path starts with / and is written out (the query goes in `query`)");
+        if (s.query !== undefined) { if (!isObj(s.query)) out.push({ path: `${p}.query`, message: "the query is an object of names and values" }); else checkValue(s.query, `${p}.query`, out); }
         value("headers"); value("body");
+        if (s.headers !== undefined && isObj(s.headers)) for (const h of Object.keys(s.headers)) if (/^(authorization|proxy-authorization|cookie|x-api-key|host)$/i.test(h)) out.push({ path: `${p}.headers.${h}`, message: `${h} is the vault's: a Flow never sets it` });
+        if (s.drive !== undefined) {
+          if (!isObj(s.drive)) out.push({ path: `${p}.drive`, message: "drive is { upload?, saveTo? }" });
+          else {
+            onlyKeys(s.drive, ["upload", "saveTo"], `${p}.drive`, out);
+            if (s.drive.upload !== undefined) {
+              if (!isObj(s.drive.upload) || typeof s.drive.upload.path !== "string" || !s.drive.upload.path || String(s.drive.upload.path).split("/").includes("..")) out.push({ path: `${p}.drive.upload`, message: "an upload names a Drive path: { path, version?, contentType? }" });
+              else onlyKeys(s.drive.upload, ["path", "version", "contentType"], `${p}.drive.upload`, out);
+            }
+            if (s.drive.saveTo !== undefined && (typeof s.drive.saveTo !== "string" || !s.drive.saveTo || s.drive.saveTo.split("/").includes(".."))) out.push({ path: `${p}.drive.saveTo`, message: "saveTo is a Drive path" });
+            if (s.drive.upload !== undefined && s.drive.saveTo !== undefined) out.push({ path: `${p}.drive`, message: "a step sends a file or saves one, not both" });
+          }
+        }
         break;
       case "fn":
         need("language", v => v === "js", "the language is js");

@@ -466,6 +466,14 @@ test("daemon: the Deck's resilience client is served from core/resilience, and n
   const caps = /** @type {any} */ (await get("/lib/caps-flags/index.js"));
   assert.equal(caps.status, 200);
   assert.equal(caps.body, fs.readFileSync(path.join(import.meta.dirname, "..", "lib", "caps-flags", "index.js"), "utf8"));
+  // lib/theme/contrast.js: the colour maths a custom accent needs, served the same way (deck/ui/theme.js).
+  const contrast = /** @type {any} */ (await get("/lib/theme/contrast.js"));
+  assert.equal(contrast.status, 200);
+  assert.equal(contrast.body, fs.readFileSync(path.join(import.meta.dirname, "..", "lib", "theme", "contrast.js"), "utf8"));
+  // kernel/contracts/index.js: the frozen constant tables (task transitions, field kinds), served the same way (deck/ui/tasks.js reads them).
+  const studs = /** @type {any} */ (await get("/kernel/contracts/index.js"));
+  assert.equal(studs.status, 200);
+  assert.equal(studs.body, fs.readFileSync(path.join(import.meta.dirname, "..", "kernel", "contracts", "index.js"), "utf8"));
   // node.js (Node transports) and the tests are not the Deck's; neither is anything else in core/ or lib/.
   for (const p of ["/core/resilience/node.js", "/core/resilience/sse.test.js", "/core/daemon/index.js", "/lib/avatar-seed/index.test.js", "/lib/caps-flags/index.test.js", "/lib/identity.js"]) {
     const r = /** @type {any} */ (await get(p));
@@ -524,7 +532,8 @@ test("daemon: every module outside deck/ that any Deck module imports is served 
   const walk = (/** @type {string} */ file) => {
     if (seen.has(file) || !fs.existsSync(file)) return;
     seen.add(file);
-    const src = fs.readFileSync(file, "utf8");
+    // Comments are not imports: a JSDoc `import("./x.js").Type` is erased before the browser sees it.
+    const src = fs.readFileSync(file, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:\\])\/\/.*$/gm, "$1");
     for (const m of src.matchAll(/(?:^|\n)\s*(?:import|export)[^'"\n]*?from\s*["'](\.[^"']+)["']|import\(\s*["'](\.[^"']+)["']\s*\)|(?:^|\n)import\s+["'](\.[^"']+)["']/g)) {
       const spec = m[1] || m[2] || m[3];
       const target = path.normalize(path.join(path.dirname(file), spec));
@@ -545,6 +554,12 @@ test("daemon: every module outside deck/ that any Deck module imports is served 
     if (r.status !== 200 || !/javascript/.test(String(r.headers["content-type"])) || r.body !== fs.readFileSync(path.join(REPO, rel), "utf8")) bad.push(rel);
   }
   assert.deepEqual(bad, [], `the daemon does not serve: ${bad.join(", ")} (add them to its Deck allowlist)`);
+  // Only the contracts' constant tables are served from kernel/: nothing else there answers as a file.
+  for (const p of ["/kernel/index.js", "/kernel/core/authorize.js", "/kernel/contracts/chain.d.ts", "/kernel/contracts/contracts.test.js", "/kernel/contracts/package.json", "/kernel/seal/process.js", "/kernel/grants/index.js"]) {
+    const r = /** @type {any} */ (await get(p));
+    assert.ok(!/javascript/.test(String(r.headers["content-type"])) || r.status !== 200, `${p} must not be served as a script`);
+    assert.notEqual(r.body, fs.readFileSync(path.join(REPO, p.slice(1).split("/").filter(x => x !== "..").join("/")), "utf8").toString(), `${p} must not answer with the file`);
+  }
 });
 
 test("daemon: a real box never serves the Deck's sample data; only a dev world does (0.2 honesty pass)", { timeout: 20_000 }, async t => {

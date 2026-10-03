@@ -159,7 +159,7 @@ export function sameRow(a: TranscriptRow, b: TranscriptRow): boolean {
 }
 
 /** First guesses at row heights by kind (px), replaced by measurements (chat core window.js). */
-export const ESTIMATES: Record<string, number> = { user: 64, text: 96, reasoning: 36, tool: 36, run: 36, turn: 28, notice: 28, ask: 132, steer: 24 };
+export const ESTIMATES: Record<string, number> = { user: 64, text: 96, reasoning: 36, tool: 36, run: 36, turn: 28, notice: 28, ask: 132, steer: 24, block: 170 };
 
 /**
  * Did applying an event only change rows already drawn? Then only those rows repaint (a reply

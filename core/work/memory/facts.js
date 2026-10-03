@@ -41,20 +41,21 @@ const same = (/** @type {any} */ a, /** @type {any} */ b) => JSON.stringify(a) =
 /**
  * @param {{ kernel: any, db: any, clock: () => number, space: string, chainFor: (person: any) => any, redactors?: import("./scrub.js").Redactor[],
  *   fieldDef?: (type: string, field: string) => { kind?: string, required?: boolean }|null|undefined, ownerOf?: (record: string) => any,
- *   autoAccept?: { grant: string }|null }} o
+ *   autoAccept?: boolean|{ grant?: string }|null, personChain?: ((person: any) => any)|null }} o
  */
-export function createFacts({ kernel, db, clock, space, chainFor, redactors = [], fieldDef = () => null, ownerOf = () => null, autoAccept = null }) {
+export function createFacts({ kernel, db, clock, space, chainFor, redactors = [], fieldDef = () => null, ownerOf = () => null, autoAccept = null, personChain = null }) {
   /** @param {any} r */
   const sug = r => ({ id: Number(r.id), record: String(r.record), field: r.field ? String(r.field) : null, note: Boolean(r.note), value: String(r.value), citations: JSON.parse(r.citations),
     labels: { trust: r.trust, red: r.red, source_spaces: JSON.parse(r.spaces) }, person: String(r.person), private: Boolean(r.private), state: String(r.state), from: String(r.source_label), at: Number(r.at) });
   const personId = (/** @type {any} */ chain) => chain.hops[0].actor.id;
 
-  /** Is the automatic acceptance of notes and empty fields approved by an admin's policy grant, still active? */
-  async function autoOn(/** @type {any} */ chain) {
-    if (!autoAccept) return false;
-    const list = await kernel.grants.list(chain, { status: "active" }).catch(() => []);
-    return list.some((/** @type {any} */ g) => g.id === autoAccept.grant && String(g.source || "").startsWith("policy:"));
-  }
+  /**
+   * Automatic acceptance is the kernel's own rule, not a list we read. The memory service does not hold `records.update` from its install; an admin's policy grant
+   * (source `policy:memory.auto-accept`) gives it to the service on a prefix. The write below runs under the person AND the service, so it is allowed exactly when both
+   * hold it, and a revoked policy turns it off with nothing here to forget. (Reading the grants list from a person-and-service chain cannot work: `grants.list` is
+   * answered only to exactly one person.)
+   */
+  const autoOn = () => Boolean(autoAccept);
 
   /** @param {{ record: string, field: string|null, note: boolean, value: string, citations: string[], labels: Labels, person: any, from: string }} f @param {boolean} priv */
   function keepSuggestion(f, priv) {
@@ -75,16 +76,17 @@ export function createFacts({ kernel, db, clock, space, chainFor, redactors = []
     const doer = ownerOf(f.record) || f.person;
     const task = await kernel.ask.request(wc, {
       title: `Review a change to ${f.field || "a note"} on ${p ? p.type : "a record"}`,
-      record: f.record, doer, output: { kind: "fields", target: f.field ? [f.field] : [] }, source: "memory_proposal",
-      // A sealed field's proposed value is never copied into a task: only that a value was proposed and where it came from.
-      form: { field: f.field, why, ...(sealed ? { value_withheld: true } : { value: f.value }), citations: f.citations, from: f.from, trust: f.labels.trust },
+      record: f.record, doer, output: { kind: "fields", target: f.field ? [f.field] : [] }, source: "assistant_request",
+      // The kernel owns a task's fields (it refuses any it did not name), so what the person needs to decide rides in `note`: the field, why it is a task, and the
+      // proposed value and where it came from. A sealed field's proposed value is never copied into a task: only that a value was proposed.
+      note: `${why}: ${sealed ? "a value was proposed and is withheld" : `proposed "${String(f.value).slice(0, 200)}"`} (from ${String(f.from).slice(0, 80)}, ${f.labels.trust})`,
     });
     db.prepare("INSERT INTO memory_engine_proposals (key, record, task, at) VALUES (?,?,?,?)").run(key, f.record, task.id, clock());
     return { task: String(task.id), duplicate: false };
   }
 
   async function writeNote(/** @type {any} */ wc, /** @type {any} */ f) {
-    return kernel.records.create(wc, "note", { record: f.record, text: f.value, sources: f.citations, trust: f.labels.trust, from: f.from });
+    return kernel.records.create(wc, "note", { record: { urn: f.record }, text: f.value, sources: f.citations, trust: f.labels.trust, from: f.from });
   }
 
   /**
@@ -113,7 +115,8 @@ export function createFacts({ kernel, db, clock, space, chainFor, redactors = []
       return { outcome: "task", fact: f, ...(await raiseTask(wc, f, "changes an existing value", false)) };
     }
     // An empty field. Without write on the record the fact stays the person's own suggestion.
-    const can = (await kernel.authorize({ chain: wc, action: "records.update", resource: f.record })).effect !== "deny";
+    // May the PERSON write it? Asked of the person's own chain: with the service beside them the answer would also be about the service's grants.
+    const can = (await kernel.authorize({ chain: personChain ? personChain(f.person) : wc, action: "records.update", resource: f.record })).effect !== "deny";
     if (!can) return { outcome: "private_suggestion", fact: f, suggestion: keepSuggestion(f, true) };
     if (auto) {
       try { await kernel.records.update(wc, p.type, p.id, { [f.field]: f.value }, rec.version); return { outcome: "applied", fact: f }; }
@@ -151,7 +154,7 @@ export function createFacts({ kernel, db, clock, space, chainFor, redactors = []
       const out = [];
       for (const f of facts) {
         const wc = chainFor(f.person);
-        out.push(await apply(f, { auto: await autoOn(wc) }));
+        out.push(await apply(f, { auto: autoOn() }));
       }
       return out;
     },

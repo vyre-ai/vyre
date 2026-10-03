@@ -16,7 +16,7 @@
 
 import http from "node:http";
 import crypto from "node:crypto";
-import { acceptKey, encodeFrame, FrameParser } from "../../core/computers/ws.js";
+import { acceptKey, encodeFrame, FrameParser } from "../../lib/ws.js";
 import { LIMITS, CLOSE, ROUTE_RE, routeId, authMessage, verifyRoute, TICKET_TTL, SETUP_TTL, MBX_LINE_MAX, isP256Spki, setupFingerprint, verifyP256, mbxReadMessage, CODE, CODE_ALPHABET, CODE_RV_RE, CODE_REFUSED } from "../../core/relay/wire.js";
 
 /** A fixed window per key (an IP, or the constant "*" for the global cap): true while under it. */

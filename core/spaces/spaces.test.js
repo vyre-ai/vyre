@@ -19,7 +19,7 @@ import { fakeDns } from "../../names/worker/fake-dns.js";
 import spacesModule, { hooks } from "./index.js";
 import { newKeyPair, personIdOf, fileIdentityStore } from "./identity.js";
 import { createIdentityOps } from "./identity-ops.js";
-import { idDirectory } from "../names/ids.js";
+import { idDirectory, memorySeen } from "../../lib/identity/directory.js";
 
 const CORE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const T0 = Date.UTC(2026, 9, 3, 12, 0, 0);
@@ -40,6 +40,7 @@ function world(t) {
   const ok = (status, body = {}) => ({ status, headers: { get: () => null }, json: async () => body, text: async () => JSON.stringify(body) });
   hooks.fetch = /** @type {any} */ (fetch);
   hooks.now = () => clock.t;
+  hooks.stretch = { memoryKiB: 64, passes: 1 };
   hooks.vpsDeps = { sleep: async () => {}, fetch: async (url, init) => {
     do_.calls.push(`${init.method} ${url}`);
     if (init.method === "POST" && url.endsWith("/firewalls")) return ok(202, { firewall: { id: "fw9" } });
@@ -47,7 +48,7 @@ function world(t) {
     if (init.method === "GET") return ok(200, { droplet: { status: "active", networks: { v4: [{ type: "public", ip_address: "203.0.113.20" }] } } });
     return ok(204);
   } };
-  t.after(async () => { hooks.fetch = null; hooks.now = null; hooks.vpsDeps = null; await rt.settle(); assert.deepEqual(rt.errors.map(String), []); });
+  t.after(async () => { hooks.fetch = null; hooks.now = null; hooks.stretch = null; hooks.vpsDeps = null; await rt.settle(); assert.deepEqual(rt.errors.map(String), []); });
   return { clock, txt, do_, fetch };
 }
 
@@ -57,7 +58,7 @@ const presence = {
 };
 
 /** A box-role registry running only the spaces module (one device). Extra modules (a fake records driver) can ride along. */
-async function device(t, { records = false } = {}) {
+async function device(t, { records = false, kernelFor = undefined } = {}) {
   const root = tempHome(t);
   const p = config.ensure(root);
   const found = discover([CORE]).filter(f => f.manifest && f.manifest.name === "spaces");
@@ -75,7 +76,7 @@ async function device(t, { records = false } = {}) {
   const logs = [];
   const seen = [];
   events.on("*", e => seen.push(e));
-  const reg = new Registry({ db, events, config: { role: "box", name: "testbox", names: { directory: "http://127.0.0.1:1" } }, paths: p, log: m => logs.push(String(m)), presence: /** @type {any} */ (presence) });
+  const reg = new Registry({ db, events, config: { role: "box", name: "testbox", names: { directory: "http://127.0.0.1:1" } }, paths: p, log: m => logs.push(String(m)), presence: /** @type {any} */ (presence), ...(kernelFor ? { kernelFor } : {}) });
   await reg.start(found, { role: "box" });
   let stopped = false;
   t.after(async () => { if (stopped) return; stopped = true; await reg.stop(); db.close(); });
@@ -99,8 +100,9 @@ async function actAs(d, label) {
   fs.mkdirSync(d.space, { recursive: true });
   fs.rmSync(path.join(d.space, "identity.json"), { force: true });
   const store = fileIdentityStore(d.space);
-  const dir = idDirectory({ base: "http://127.0.0.1:1", fetch: hooks.fetch, now: () => hooks.now() });
-  const ops = createIdentityOps({ store, dir, now: () => hooks.now(), scrypt: { N: 1 << 8, r: 8, p: 1, maxmem: 64 * 1024 * 1024 } });
+  const seen = memorySeen();
+  const dir = idDirectory({ base: "http://127.0.0.1:1", fetch: hooks.fetch, now: () => hooks.now(), seen });
+  const ops = createIdentityOps({ store, dir, seen, now: () => hooks.now(), stretch: { memoryKiB: 64, passes: 1 } });
   await ops.create({ name: label, deviceLabel: label });
   return { id: store.status().id, publicKey: store.status().publicKey };
 }
@@ -508,7 +510,7 @@ test("invites: each role, a stranger sees only the card, the join is signed by t
   const stranger = await device(t);
   await stranger.ok("spaces.identity.create", { name: "stranger" });
   const card = await stranger.ok("spaces.invites.preview", { link: made.member.link });
-  assert.deepEqual(Object.keys(card).sort(), ["button", "label", "role", "role_label", "sees", "space", "valid_until"]);
+  assert.deepEqual(Object.keys(card).sort(), ["button", "fingerprint", "fingerprint_words", "label", "role", "role_label", "sees", "space", "valid_until"]);
   assert.deepEqual([card.space, card.label, card.role, card.button], ["harlow.vyre.run", "Harlow Legal", "member", "Join Harlow Legal"]);
   assert.deepEqual(card.sees.scope, scope);
   const text = JSON.stringify(card);
@@ -654,8 +656,8 @@ test("the module hands out no private tool to an agent or a stranger: reach is p
 test("identity tools: entries, a second device, the newcomer rule, an older device removes it, and the others are told", async t => {
   const w = world(t);
   const d1 = await device(t), d2 = await device(t);
-  const made = await d1.ok("spaces.identity.create", { name: "alex", pin: "4711", deviceLabel: "phone" });
-  assert.equal(made.pinSet, true);
+  const made = await d1.ok("spaces.identity.create", { name: "alex", password: "four plain words here", deviceLabel: "phone" });
+  assert.equal(made.passwordSet, true);
   const list = await d1.ok("spaces.identity.entries");
   assert.deepEqual(list.entries.map(e => [e.kind, e.self, e.newcomer]), [["device", true, false], ["code", false, false]]);
   // The second device makes its key; the first adds it and hands it the chain (pairing carries this: tailnet's part).
@@ -676,15 +678,15 @@ test("identity tools: entries, a second device, the newcomer rule, an older devi
   const gone = await d2.ok("spaces.identity.sync");
   assert.equal(gone.removed, true);
   assert.deepEqual(d2.of("identity.device-removed").map(e => e.eid), [added.eid]);
-  // a PIN and a code bring it back on a third device; the code is replaceable
+  // a password and a code bring it back on a third device; the code is replaceable
   const d3 = await device(t);
-  assert.equal((await d3.call("spaces.identity.recover.code", { name: "alex", code: made.recoveryCode, pin: "0000" })).error?.code, "wrong_code");
-  const back = await d3.ok("spaces.identity.recover.code", { name: "alex", code: made.recoveryCode, pin: "4711", deviceLabel: "new phone" });
+  assert.equal((await d3.call("spaces.identity.recover.code", { name: "alex", code: made.recoveryCode, password: "wrong words wrong words" })).error?.code, "wrong_code");
+  const back = await d3.ok("spaces.identity.recover.code", { name: "alex", code: made.recoveryCode, password: "four plain words here", deviceLabel: "new phone" });
   assert.equal(back.id, made.id);
   const next = await d1.ok("spaces.identity.code.replace", {});
   assert.notEqual(next.recoveryCode, made.recoveryCode);
   const d4 = await device(t);
-  assert.equal((await d4.call("spaces.identity.recover.code", { name: "alex", code: made.recoveryCode, pin: "4711" })).error?.code, "wrong_code", "the old code stops");
+  assert.equal((await d4.call("spaces.identity.recover.code", { name: "alex", code: made.recoveryCode, password: "four plain words here" })).error?.code, "wrong_code", "the old code stops");
   void w;
 });
 
@@ -731,4 +733,129 @@ test("the compute grant pair through the tools: the space allows, the member acc
   const other = await d.ok("spaces.compute.may-run", { space, session: { owner: alex.id }, machine: { owner: "per_" + "k".repeat(26) } }, "module:scheduler");
   assert.equal(other.allow, false);
   assert.deepEqual(d.of("compute.member-accepted").map(e => e.person), [alex.id]);
+});
+
+
+test("kernel mode: roles and members are the Space kernel's, through the tools, with the kernel's proofs and refusals (a real kernel, in memory)", async t => {
+  const { createKernel } = await import("../../kernel/index.js");
+  const { payloadHash } = await import("../../kernel/seal/wire.js");
+  const { proofRequest } = await import("../../kernel/remote/proof.js");
+  const w = world(t);
+  const KSPACE = "spc_aaaaaaaaaaaa";
+  /** @type {any} */ let K = null, handle = null;
+  const used = new Set();
+  const presenceK = { check: async ({ chain, op, fields, proof }) => (chain && proof && proof.payload_hash === payloadHash(op, chain.space, fields) && !used.has(proof.nonce) && (used.add(proof.nonce), true) ? null : "bad_proof") };
+  // The module reaches the one real kernel for any space id it asks about (the routing is the only fake: the kernel itself is real).
+  const real = m => (handle ||= K.kernelFor(m));
+  const kernelFor = m => ({ for: () => real(m).for(KSPACE), chain: meta => real(m).chain(meta), proofFrom: meta => real(m).proofFrom(meta), serviceChain: () => real(m).serviceChain(), acceptProofRequest: (c, p) => real(m).acceptProofRequest(c, p) });
+  const d = await device(t, { kernelFor });
+  const alex = await d.ok("spaces.identity.create", { name: "alex" });
+  K = await createKernel({ space: KSPACE, owner: alex.id, owner_uid: 501, key: Buffer.alloc(32, 9), clock: () => w.clock.t, presence: presenceK, hasPresenceSession: () => true });
+  const ownerChain = K.chains.fromFacts({ kind: "socket", surface: "deck", uid: 501, pid: 1, inside_model_process: false, capsule_verified: true });
+  const { token } = await K.surfaces.open(ownerChain);
+  const sign = (call, ...a) => ({ payload_hash: proofRequest(KSPACE, call, ...a).payload_hash, nonce: Math.random().toString(36) });
+  // The default `assistant` actor is the kernel's own bootstrap (sessions, work/flows 1a4646c87), not a step of creating a Space here; once platform takes it,
+  // a brand-new Space's unnamed thread reads under its person's grants and this test checks that.
+  const s = await d.ok("spaces.create", { name: "harlow", displayName: "Harlow Legal", home: { kind: "this-computer", confirmed: true } });
+  const space = s.space;
+  const KIT = "per_" + "k".repeat(26);
+  // no proof: the kernel says the change needs the person's approval, in the module's words
+  const bare = await d.call("spaces.members.add", { space, person: KIT, role: "member" }, "cli", { token });
+  assert.equal(bare.error?.code, "needs_presence", JSON.stringify(bare.error));
+  // with the kernel's proof it goes through, and the list is the kernel's
+  const added = await d.call("spaces.members.add", { space, person: KIT, role: "member" }, "cli", { token, kernel_proof: sign("setRole", { person: KIT, role: "member" }) });
+  assert.ok(!added.error, JSON.stringify(added.error));
+  const listed = await d.ok("spaces.members.list", { space }, "cli", { token });
+  assert.deepEqual(listed.members.map(m => [m.person, m.role]).sort(), [[alex.id, "owner"], [KIT, "member"]].sort());
+  // a role the kernel refuses (a member cannot be made owner by... the owner can; a temp needs a scope) comes back as the module's code
+  const temp = await d.call("spaces.members.set-role", { space, person: KIT, role: "temp" }, "cli", { token, kernel_proof: sign("setRole", { person: KIT, role: "temp" }) });
+  assert.equal(temp.error?.code, "bad_scope", JSON.stringify(temp.error));
+  const gone = await d.call("spaces.members.remove", { space, person: KIT }, "cli", { token, kernel_proof: sign("removeMember", { person: KIT }) });
+  assert.ok(!gone.error, JSON.stringify(gone.error));
+  assert.deepEqual((await d.ok("spaces.members.list", { space }, "cli", { token })).members.map(m => m.person), [alex.id]);
+  // the last owner stays: the kernel's rule, as last_owner
+  const last = await d.call("spaces.members.remove", { space, person: alex.id }, "cli", { token, kernel_proof: sign("removeMember", { person: alex.id }) });
+  assert.equal(last.error?.code, "last_owner", JSON.stringify(last.error));
+  // spaces.get and spaces.list read the role from the kernel
+  assert.equal((await d.ok("spaces.get", { space }, "cli", { token })).role, "owner");
+  assert.equal((await d.ok("spaces.list", {}, "cli", { token })).find(x => x.id === space).role, "owner");
+});
+
+
+test("kernel mode: an invite is the Space kernel's: the link carries its id and the pin, the card comes from the kernel, and the invitee joins with their own proof", async t => {
+  const { createKernel } = await import("../../kernel/index.js");
+  const { payloadHash } = await import("../../kernel/seal/wire.js");
+  const { proofRequest } = await import("../../kernel/remote/proof.js");
+  const w = world(t);
+  const KSPACE = "spc_aaaaaaaaaaaa";
+  /** @type {any} */ let K = null;
+  const handles = new Map();
+  const used = new Set();
+  const presenceK = { check: async ({ chain, op, fields, proof }) => (chain && proof && proof.payload_hash === payloadHash(op, chain.space, fields) && !used.has(proof.nonce) && (used.add(proof.nonce), true) ? null : "bad_proof") };
+  const real = m => { if (!handles.has(m.name)) handles.set(m.name, K.kernelFor(m)); return handles.get(m.name); };
+  const kernelFor = m => ({ for: () => real(m).for(KSPACE), chain: meta => real(m).chain(meta), proofFrom: meta => real(m).proofFrom(meta), serviceChain: () => real(m).serviceChain(), acceptProofRequest: (c, p) => real(m).acceptProofRequest(c, p) });
+  const d = await device(t, { kernelFor }), kitDev = await device(t, { kernelFor });
+  const alex = await d.ok("spaces.identity.create", { name: "alex" });
+  const kit = await kitDev.ok("spaces.identity.create", { name: "kit" });
+  K = await createKernel({ space: KSPACE, owner: alex.id, owner_uid: 501, key: Buffer.alloc(32, 9), clock: () => w.clock.t, presence: presenceK, hasPresenceSession: () => true });
+  const token = (await K.surfaces.open(K.chains.fromFacts({ kind: "socket", surface: "deck", uid: 501, pid: 1, inside_model_process: false, capsule_verified: true }))).token;
+  const kitToken = (await K.surfaces.open(K.chains.fromFacts({ kind: "invitee", person: kit.id, vouched: true }))).token;
+  const s = await d.ok("spaces.create", { name: "harlow", displayName: "Harlow Legal", home: { kind: "this-computer", confirmed: true } });
+  const space = s.space;
+  const sign = (call, ...a) => ({ payload_hash: proofRequest(KSPACE, call, ...a).payload_hash, nonce: Math.random().toString(36) });
+  // the admin makes an invite for kit: a grant act with the admin's proof; the link is the kernel invite's id plus the pin
+  const made = await d.call("spaces.invites.create", { space, role: "member", to: kit.id }, "cli", { token, kernel_proof: sign("inviteCreate", { role: "member", invitee: kit.id }) });
+  assert.ok(!made.error, JSON.stringify(made.error));
+  assert.match(made.data.id, /^inv_[0-9a-f]{32}$/);
+  assert.match(made.data.link, /^https:\/\/harlow\.vyre\.run\/join\/inv_[0-9a-f]{32}\.[A-Za-z0-9_-]+$/);
+  // kit's device: the card comes from the kernel, with the words to read out; the pin in the link is checked against the space's list
+  const card = await kitDev.ok("spaces.invites.preview", { link: made.data.link }, "cli", { token: kitToken });
+  assert.deepEqual([card.role, card.status, card.invitee], ["member", "pending", kit.id]);
+  assert.match(card.fingerprint_words, /^\w+ \w+ \w+ \w+$/);
+  // accepting needs the invitee's own proof over exactly this card: the first call says what to sign
+  const first = await kitDev.ok("spaces.invites.accept", { link: made.data.link }, "cli", { token: kitToken });
+  assert.equal(first.joined, false);
+  assert.equal(first.needs_proof, true);
+  assert.equal(first.request.op, "grant.accept");
+  const proof = { payload_hash: first.request.payload_hash, nonce: "n-kit-1" };
+  const joined = await kitDev.call("spaces.invites.accept", { link: made.data.link }, "cli", { token: kitToken, kernel_proof: proof });
+  assert.ok(!joined.error, JSON.stringify(joined.error));
+  assert.equal(joined.data.joined, true);
+  assert.equal(joined.data.membership.role, "member");
+  // single use, and a link whose pin is for another space's list is refused
+  const again = await kitDev.call("spaces.invites.accept", { link: made.data.link }, "cli", { token: kitToken, kernel_proof: { ...proof, nonce: "n-kit-2" } });
+  assert.ok(again.error);
+  const [id0, blob] = made.data.token.split(".");
+  const bad = JSON.parse(Buffer.from(blob, "base64url").toString());
+  bad.rk = "0".repeat(32);
+  const forged = `https://harlow.vyre.run/join/${id0}.${Buffer.from(JSON.stringify(bad)).toString("base64url")}`;
+  assert.equal((await kitDev.call("spaces.invites.preview", { link: forged }, "cli", { token: kitToken })).error?.code, "forged");
+  // an admin invite waits for the inviter to confirm the invitee's words
+  const adm = await d.ok("spaces.invites.create", { space, role: "admin" }, "cli", { token, kernel_proof: sign("inviteCreate", { role: "admin" }) });
+  assert.equal(adm.needs_confirm, true);
+  const conf = await d.call("spaces.invites.confirm", { space, id: adm.id, words: card.fingerprint_words }, "cli", { token, kernel_proof: sign("inviteConfirm", adm.id, { words: card.fingerprint_words }) });
+  assert.ok(!conf.error, JSON.stringify(conf.error));
+});
+
+test("the transport's ports: a paired device is an entry, the entry port answers live and a removed device answers null at its next call, and the device signs only the transport's proof", async t => {
+  const w = world(t);
+  const d = await device(t), d2 = await device(t);
+  const alex = await d.ok("spaces.identity.create", { name: "alex" });
+  const s = await d.ok("spaces.create", { name: "harlow", displayName: "Harlow Legal", home: { kind: "this-computer", confirmed: true } });
+  // alex's own identity is known to this device and a member of harlow
+  const key = fileIdentityStore(d2.space).newDeviceKey();
+  w.clock.t += 2 * 3_600_000;
+  const enrolled = await d.ok("spaces.identity.enrol", { publicKey: key.publicKey, label: "alex's laptop" }, "module:wink");
+  assert.equal(enrolled.eid, key.eid);
+  const entry = await d.ok("spaces.identity.entry", { space: s.space, eid: key.eid }, "module:wink");
+  assert.deepEqual(entry, { eid: key.eid, kind: "device", pub: key.publicKey });
+  assert.equal(await d.ok("spaces.identity.entry", { space: s.space, eid: "a".repeat(26) }, "module:wink"), null, "not on any list");
+  // the person's older device removes it: the very next read says null
+  await d.ok("spaces.identity.entry.remove", { eid: key.eid });
+  assert.equal(await d.ok("spaces.identity.entry", { space: s.space, eid: key.eid }, "module:wink"), null);
+  assert.deepEqual(d.of("identity.entry-removed").map(e => e.eid), [key.eid]);
+  // the signer: the transport's own message only
+  const ok = await d.ok("spaces.identity.sign", { message: Buffer.from("vyre-wink-peer-v2\nnonce\nnode\nbox\n" + alex.eid).toString("base64url") }, "module:wink");
+  assert.equal(ok.eid, alex.eid);
+  assert.equal((await d.call("spaces.identity.sign", { message: Buffer.from("anything else").toString("base64url") }, "module:wink")).error?.code, "forbidden");
 });

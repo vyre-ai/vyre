@@ -150,6 +150,10 @@
     "reach": "person"
    },
    {
+    "name": "spaces.invites.confirm",
+    "reach": "person"
+   },
+   {
     "name": "spaces.invites.revoke",
     "reach": "person"
    },
@@ -176,6 +180,38 @@
    {
     "name": "spaces.compute.accept",
     "reach": "person"
+   },
+   {
+    "name": "spaces.self",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.identity.entry",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.identity.enrol",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.identity.sign",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.identity.state",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.label",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.people",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.merge-list",
+    "reach": "modules"
    },
    {
     "name": "spaces.compute.status",
@@ -229,6 +265,10 @@
   "capsule": [],
   "cli": []
  },
- "needs": {},
+ "needs": {
+  "kernel": {
+   "membership": true
+  }
+ },
  "teaches": {}
 }

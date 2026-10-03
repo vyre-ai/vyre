@@ -14,6 +14,8 @@
     {"name": "work.know.search", "summary": "search records, events and session lines by meaning, only what the caller may read", "reach": "anyone"},
     {"name": "work.know.answer", "summary": "answer a question from the Space's own records and history, with citations", "reach": "anyone"},
     {"name": "work.know.suggestions", "summary": "facts memory proposes for a record, with the lines they came from", "reach": "anyone"},
+    {"name": "work.know.capture", "summary": "keep a session's lines so the Space's memory can answer from what was said; first-party modules only", "reach": "modules"},
+    {"name": "work.know.forget", "summary": "erase a session's lines and the index rows made from them; first-party modules only", "reach": "modules"},
     {"name": "work.know.accept", "summary": "accept a proposed fact onto its record", "reach": "person"},
     {"name": "work.engineer.talk", "summary": "ask the Engineer to explain or change this Space's definitions; admins only", "reach": "person"},
     {"name": "work.engineer.revise", "summary": "edit the Engineer's proposed definition yourself; the earlier approval is void", "reach": "person"},
