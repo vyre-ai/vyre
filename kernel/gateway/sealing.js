@@ -35,7 +35,7 @@ export function createSealing(cfg) {
     const ap = await need(cfg.approvals, "approvals").get(i.approval);
     if (!ap || ap.record !== i.record) throw new KernelError("not_found", "no such approval");
     mustChain(ap.approver_chain);
-    if (ap.doer && !sameActor(chain.hops[chain.hops.length - 1].actor, ap.doer)) throw new KernelError("not_found", "no such approval");
+    if (!ap.doer || !sameActor(chain.hops[chain.hops.length - 1].actor, ap.doer)) throw new KernelError("not_found", "no such approval");
     if (typeof ap.approved_at === "number" && (cfg.clock || Date.now)() - ap.approved_at > (cfg.approval_max_age ?? APPROVAL_MAX_AGE)) throw new KernelError("not_found", "that approval has expired");
     return ap;
   }

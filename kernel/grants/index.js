@@ -20,6 +20,7 @@ export const GRANT_ACTIONS = Object.freeze([
   { action: "grants.revoke", resource_type: "grant", risk: "grant", label: "take access away", gloss: "Remove access, and everything given from it." },
   { action: "grants.narrow", resource_type: "grant", risk: "grant", label: "reduce access", gloss: "Make an existing access smaller." },
   { action: "grants.role", resource_type: "grant", risk: "grant", label: "set a role", gloss: "Make someone an owner, admin, manager, member or temp." },
+  { action: "grants.offer", resource_type: "offer", risk: "grant", label: "offer a computer for work", gloss: "Let a Space's work run on a member's computer, or accept that on your own." },
   { action: "grants.list", resource_type: "grant", risk: "read", label: "see who has access", gloss: "List access you may see." },
 ].map(a => Object.freeze(a)));
 
@@ -39,6 +40,9 @@ export function createGrantsStore(cfg) {
   /** @type {Map<string, any>} */ const grants = new Map();
   /** @type {Map<string, any>} person id -> Membership */ const memberships = new Map();
   /** @type {Set<string>} agent, service and automation actors that belong to the Space */ const actors = new Set();
+  /** @type {Map<string, any>} compute offers: the two grants a member's computer runs a Space's work under */ const offers = new Map();
+  /** @type {Set<(e: { id: string, side: string, member: string, device: string | null, reason: string }) => void>} */ const revokeListeners = new Set();
+  const tell = (/** @type {any} */ o, /** @type {string} */ reason) => { for (const f of revokeListeners) { try { f({ id: o.id, side: o.side, member: o.member, device: o.device, reason }); } catch { /* a listener never blocks a change */ } } };
   /** @type {{ gate: any, allowed: any, registry: () => Map<string, any> } | null} */ let bound = null;
 
   const reg = () => (bound ? bound.registry() : new Map([...(cfg.actions ? cfg.actions() : [])].map(a => [a.action, a])));
@@ -191,6 +195,7 @@ export function createGrantsStore(cfg) {
       }
       const membership = freeze({ space: cfg.space, person: m.person, role: m.role, ...(m.role === "temp" ? { scope: [...m.scope], expires: m.expires } : {}), added_by: issuer.id, added_at: clock() });
       memberships.set(m.person, membership);
+      for (const of of offers.values()) if (of.member === m.person && of.status === "active") tell(of, "role_changed");
       note(chain, "member.set", urn("member", m.person), { membership }, d.decision);
       const deleg = m.role === "owner" || m.role === "admin" ? { allowed: true, max_depth: 2 } : { allowed: false, max_depth: 0 };
       const prefixes = m.role === "temp" ? m.scope : [`vyre://${cfg.space}/*/*`];
@@ -214,6 +219,49 @@ export function createGrantsStore(cfg) {
       return freeze({ ...actor });
     },
 
+    /**
+     * One side of the compute pair (DESIGN-wink 7): the Space allows its work to run on a member's computer (an owner or admin, for a member of this
+     * Space; `device` null covers any of that member's computers), or the member accepts it for one of their own computers (the member's own act).
+     * Both must be active for `offers.active` to say yes, and it covers only that member's own sessions on that member's own machine.
+     * @param {any} chain @param {{ side: "space_allows" | "member_accepts", member: string, device?: string | null }} o @param {{ presence?: any }} [opt]
+     */
+    async offer(chain, o, opt = {}) {
+      const issuer = person(chain);
+      if (!o || !["space_allows", "member_accepts"].includes(o.side) || typeof o.member !== "string" || (o.side === "member_accepts" && (typeof o.device !== "string" || !o.device)) || (o.device != null && typeof o.device !== "string")) throw new KernelError("bad_input", "an offer needs a side, a member and (to accept) one of the member's computers");
+      const d = await gate(chain, "grants.offer", urn("offer"), o, opt.presence);
+      const m = { kind: "person", id: o.member, space: cfg.space };
+      if (!memberOk(m)) throw new KernelError("not_found", "no such member");
+      if (o.side === "space_allows" ? !isAdmin(issuer) : issuer.id !== o.member) throw new KernelError("not_allowed", o.side === "space_allows" ? "only an owner or an admin lets the Space's work run on a member's computer" : "only the member accepts work on their own computer");
+      const rec = freeze({ id: `of_${mintUuid(clock())}`, space: cfg.space, side: o.side, offer: "compute", member: o.member, device: o.device ?? null, status: "active", made_by: issuer.id, at: clock() });
+      offers.set(rec.id, rec);
+      note(chain, "offer.created", urn("offer", rec.id), { offer: rec }, d.decision);
+      return rec;
+    },
+
+    /** Withdraw an offer. An admin withdraws the Space's side; the member withdraws their own acceptance. The runner is told at once. */
+    async unoffer(chain, id, opt = {}) {
+      const issuer = person(chain);
+      const d = await gate(chain, "grants.offer", urn("offer", id), { revoke: id }, opt.presence);
+      const o = offers.get(id);
+      if (!o || o.status !== "active") throw new KernelError("not_found", "no such offer");
+      if (o.side === "space_allows" ? !isAdmin(issuer) : issuer.id !== o.member) throw new KernelError("not_allowed", "that is not yours to withdraw");
+      const n = freeze({ ...o, status: "revoked", revoked_at: clock() });
+      offers.set(id, n);
+      note(chain, "offer.revoked", urn("offer", id), { id }, d.decision);
+      tell(n, "withdrawn");
+      return n;
+    },
+
+    /** Are both sides of the compute pair active for this member and computer? Read at every session start. Sync: it reads the store, never the network. */
+    active(/** @type {{ member: string, device: string }} */ q) {
+      const live = (/** @type {any} */ o) => o.status === "active" && o.member === q.member;
+      const spaceAllows = memberOk({ kind: "person", id: q.member, space: cfg.space }) && [...offers.values()].some(o => live(o) && o.side === "space_allows" && (o.device === null || o.device === q.device));
+      const memberAccepts = [...offers.values()].some(o => live(o) && o.side === "member_accepts" && o.device === q.device);
+      return { spaceAllows, memberAccepts };
+    },
+    /** Be told when an offer is withdrawn or a member's role changes (so the runner can end work at once). Returns an unsubscribe. */
+    onRevoke(/** @type {(e: any) => void} */ f) { revokeListeners.add(f); return () => revokeListeners.delete(f); },
+
     /** The first owner of a new Space, written by the kernel itself (no chain can give the first grant). Once only. */
     bootstrap({ owner }) {
       if (memberships.size) throw new KernelError("not_allowed", "this Space already has members");
@@ -229,7 +277,7 @@ export function createGrantsStore(cfg) {
 
     /** Rebuild every grant and membership from the log (after a restart). The log is the durable copy. */
     rebuild() {
-      grants.clear(); memberships.clear(); actors.clear();
+      grants.clear(); memberships.clear(); actors.clear(); offers.clear();
       for (const e of cfg.log.read({})) {
         const d = e.data;
         if (!d || typeof d !== "object") continue;
@@ -237,6 +285,8 @@ export function createGrantsStore(cfg) {
         else if (e.type === "grant.revoked") { const g = grants.get(d.id); if (g) grants.set(d.id, freeze({ ...g, status: "revoked", revoked_at: e.time, reason: d.reason })); }
         else if (e.type === "member.set") memberships.set(d.membership.person, freeze(structuredClone(d.membership)));
         else if (e.type === "actor.added") actors.add(actorKey(d.actor));
+        else if (e.type === "offer.created") offers.set(d.offer.id, freeze(structuredClone(d.offer)));
+        else if (e.type === "offer.revoked") { const o = offers.get(d.id); if (o) offers.set(d.id, freeze({ ...o, status: "revoked", revoked_at: e.time })); }
       }
     },
   };

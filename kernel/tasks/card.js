@@ -34,6 +34,7 @@ export function buildCard(task, body, opts = {}) {
     attachments: Array.isArray(payload.attachments) ? payload.attachments.map((/** @type {any} */ a) => ({ name: String(a.name).slice(0, 80), hash: String(a.hash) })) : [],
     template: payload.template ? { id: String(payload.template.id), version: Number(payload.template.version) } : null,
     account: payload.account ? String(payload.account) : null,
+    sink: payload.delivery && typeof payload.delivery.sink === "string" ? strip(payload.delivery.sink) : null,
     sealed,
     payload_hash: task.payload ? task.payload.payload_hash : null,
     trust: task.labels ? task.labels.trust : "member",

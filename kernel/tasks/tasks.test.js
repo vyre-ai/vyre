@@ -54,7 +54,7 @@ function rig(over = {}) {
     space: SPACE, authorizer, log, presence, chains, clock,
     members: { has: a => members.has(`${a.kind}:${a.id}`) }, roleHolders: r => state.roles[r] || [], approver: () => actor("person", OWNER),
     responsible: (p, doer) => p.id === OWNER, responsibleFor: () => actor("person", OWNER),
-    resolve: { template: async (id, v) => (v === 1 ? { body: "Hello {{sealed:ssn}}" } : null), contact: async (record, address) => address === "verified@example.com", sealed: async ref => (ref === "sv_1" ? { class: "us-ssn" } : null) },
+    resolve: { template: async (id, v) => (v === 1 ? { body: "Hello {{sealed:ssn}}" } : null), contact: async (record, address) => address === "verified@example.com", sealed: async ref => (ref === "sv_1" ? { class: "us-ssn", record: `vyre://${SPACE}/contact/c1` } : null) },
     facts: { record: async () => ({ data: { size: 12, partner: "x", empty: "" } }), exists: async u => u.startsWith("vyre://") },
     release: async (t, body, by) => { if (over.releaseDelay) await new Promise(res => setTimeout(res, over.releaseDelay)); if (over.releaseFails) throw new Error("smtp down"); released.push({ id: t.id, body, by }); },
   });
@@ -466,4 +466,25 @@ test("K4-10, 12 and template immutability: card and observeDenial are chain-gate
   await r.tasks.decide(alice(), t.id, { outcome: "approved", proof: r.proof(alice(), ALICE, t) });
   const ap = r.tasks.approvalFor(t.id);
   assert.equal(ap.body.facts.template.hash, sha256("Hello {{sealed:ssn}}"));
+});
+
+
+test("N1 and N2: delivery recipients are the ones on the card, the sink is shown, and a slot must belong to the record its ref names", async () => {
+  const r = rig();
+  const rec = `vyre://${SPACE}/contact/c1`;
+  const mk = async over => { const t = await r.tasks.request(owner(), draftTask()); await r.tasks.start(asIntake(), t.id); return [t, over]; };
+  const ev = over => evidenceSent({ payload: payload({ template: { id: `vyre://${SPACE}/template/welcome`, version: 1 }, sealed_slots: [{ slot: "ssn", ref: "sv_1", record: rec }], ...over }) });
+  let [t] = await mk();
+  await assert.rejects(() => r.tasks.complete(asIntake(), t.id, ev({ delivery: { sink: "mail", to: ["attacker@evil.test"] } })), { code: "bad_input" }, "a hidden address");
+  await assert.rejects(() => r.tasks.complete(asIntake(), t.id, ev({ delivery: { sink: "mail", bcc: ["x@y.test"] } })), { code: "bad_input" });
+  const done = await r.tasks.complete(asIntake(), t.id, ev({ delivery: { sink: "mail", to: ["jane@example.com"] } }));
+  assert.equal((await r.tasks.card(owner(), done.id)).sink, "mail");
+  await r.tasks.decide(alice(), done.id, { outcome: "approved", proof: r.proof(alice(), ALICE, done) });
+  const ap = r.tasks.approvalFor(done.id);
+  assert.deepEqual(ap.body.facts.recipients.map(x => x.address), ["jane@example.com"]);
+  [t] = await mk();
+  await assert.rejects(() => r.tasks.complete(asIntake(), t.id, evidenceSent({ payload: payload({ sealed_slots: [{ slot: "ssn", ref: "sv_1", record: `vyre://${SPACE}/contact/c2` }] }) })), { code: "bad_input" });
+  const t2 = await r.tasks.request(owner(), draftTask({ record: `vyre://${SPACE}/contact/c2` }));
+  await r.tasks.start(asIntake(), t2.id);
+  await assert.rejects(() => r.tasks.complete(asIntake(), t2.id, evidenceSent({ payload: payload({ sealed_slots: [{ slot: "ssn", ref: "sv_1", record: `vyre://${SPACE}/contact/c2` }] }) })), { code: "bad_input" }, "the ref belongs to c1, the slot says c2");
 });

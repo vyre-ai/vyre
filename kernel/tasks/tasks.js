@@ -67,7 +67,7 @@ export async function checkOutput(task, evidence, facts) {
  * @param {{ enforce?: (chain: any, d: any) => void, space: string, authorizer: any, log: any, presence: import("../core/presence.js").PresenceVerifier,
  *   members: { has(actor: any): boolean }, roleHolders?: (role: string) => any[], approver?: (chain: any) => any,
  *   responsible?: (person: any, doer: any) => boolean, responsibleFor?: (doer: any) => any,
- *   resolve?: { template?: (id: string, version: number) => Promise<{ body: string } | null>, contact?: (record: string, address: string) => Promise<boolean>, sealed?: (ref: string) => Promise<{ class: string } | null> },
+ *   resolve?: { template?: (id: string, version: number) => Promise<{ body: string } | null>, contact?: (record: string, address: string) => Promise<boolean>, sealed?: (ref: string) => Promise<{ class: string, record?: string } | null> },
  *   facts?: { record?: (urn: string) => Promise<any>, exists?: (urn: string) => Promise<boolean> },
  *   release?: (task: any, payload: any, by: { person: string, key_id: string }) => void | Promise<void>, chains: any, clock?: () => number }} cfg
  *   chains: the kernel's chain builder (for events the kernel itself writes, such as stuck detection); release: the held act's egress, run only after a verified approval.
@@ -99,6 +99,8 @@ export function createTasks(cfg) {
     for (const s of Array.isArray(ev.payload.sealed_slots) ? ev.payload.sealed_slots : []) {
       let meta = null;
       try { meta = cfg.resolve && cfg.resolve.sealed ? await cfg.resolve.sealed(s.ref) : null; } catch { meta = null; }
+      // The ref's own record, from the vault: a slot that names another record than its ref belongs to is refused (N2).
+      if (meta && typeof meta.record === "string" && meta.record !== s.record) throw new KernelError("bad_input", "a sealed slot names a record its reference does not belong to");
       sealed.push({ slot: String(s.slot), ref: String(s.ref), record: s.record || null, class: meta && typeof meta.class === "string" ? meta.class : "unknown" });
     }
     let template = null;
@@ -224,6 +226,12 @@ export function createTasks(cfg) {
         const risk = cfg.authorizer.actions && cfg.authorizer.actions.get(ev.action) && cfg.authorizer.actions.get(ev.action).risk;
         if (!risk || !String(risk).startsWith("outward")) throw new KernelError("bad_input", "a send must name an outward action");
         for (const s of ev.payload.sealed_slots || []) if (t.record && s.record !== t.record) throw new KernelError("bad_input", "a sealed slot names a record other than the task's");
+        // The delivery the approver is shown is the sink and the recipients on the card, and nothing else: a hidden `to` is refused (N1).
+        const dl = ev.payload.delivery;
+        if (dl !== undefined) {
+          const addrs = (Array.isArray(ev.payload.recipients) ? ev.payload.recipients : []).map((/** @type {any} */ r) => String(r.address).trim().toLowerCase());
+          if (typeof dl !== "object" || dl === null || typeof dl.sink !== "string" || Object.keys(dl).some(k => k !== "sink" && k !== "to") || (dl.to !== undefined && (!Array.isArray(dl.to) || dl.to.some((/** @type {any} */ x) => !addrs.includes(String(x).trim().toLowerCase()))))) throw new KernelError("bad_input", "a delivery names a sink and only the recipients shown");
+        }
         const o = await cfg.authorizer.authorize({ chain, action: ev.action, resource: ev.resource });
         if (o.effect === "deny") throw new KernelError("not_found", "no such action", o.reason);
         decision = o.decision;
@@ -244,6 +252,7 @@ export function createTasks(cfg) {
       const t = get_(id);
       if (t.kernel || !isDoer(chain, t)) throw new KernelError("not_allowed", "only the doer changes a draft");
       if (t.state !== "needs_check") throw new KernelError("bad_state", "there is nothing waiting for a check");
+      if (deciding.has(id)) throw new KernelError("bad_state", "that task is being decided");
       rule(t, "ready", "doer");
       bodies.delete(id);
       const { payload: _p, ...rest } = t;

@@ -174,3 +174,39 @@ test("fields: a human-level seal hides a field from members outside the chosen r
   assert.ok(!("terms" in (await gw.records.get(personChain(BOB), "deal", d.id)).data), "a member is not: the field is absent, not a placeholder");
   await assert.rejects(() => gw.records.query(personChain(BOB), "deal", { filter: { field: "terms.hint", op: "eq", value: "x" }, page: { limit: 1 } }), { code: "bad_input" });
 });
+
+test("offers: the compute pair needs both sides, only for that member's own computer, and revoking either tells the runner at once", async () => {
+  const { g, gs } = rig();
+  const set = (m) => g.setRole(owner(), m, P.role(m));
+  await set({ person: ALICE, role: "admin" });
+  await set({ person: BOB, role: "member" });
+  const events = [];
+  const off = g.offers.onRevoke(e => events.push(e));
+  const mkO = (chain, o) => g.offers.offer(chain, o, { presence: proof("grants.offer", o, `vyre://${SPACE}/offer/new`) });
+  const q = { member: BOB, device: "dev_laptop" };
+  assert.deepEqual(g.offers.active(q), { spaceAllows: false, memberAccepts: false });
+  // the member cannot allow it for the Space; an admin cannot accept for the member
+  await assert.rejects(() => mkO(personChain(BOB), { side: "space_allows", member: BOB }), { code: "not_allowed" });
+  await assert.rejects(() => mkO(personChain(ALICE), { side: "member_accepts", member: BOB, device: "dev_laptop" }), { code: "not_allowed" });
+  const allow = await mkO(personChain(ALICE), { side: "space_allows", member: BOB });
+  assert.deepEqual(g.offers.active(q), { spaceAllows: true, memberAccepts: false }, "one side is not enough");
+  const accept = await mkO(personChain(BOB), { side: "member_accepts", member: BOB, device: "dev_laptop" });
+  assert.deepEqual(g.offers.active(q), { spaceAllows: true, memberAccepts: true });
+  assert.deepEqual(g.offers.active({ member: BOB, device: "dev_other" }), { spaceAllows: true, memberAccepts: false }, "acceptance is per computer");
+  assert.deepEqual(g.offers.active({ member: ALICE, device: "dev_laptop" }), { spaceAllows: false, memberAccepts: false }, "another member's computer is not covered");
+  // the member withdraws: told at once; an admin cannot withdraw the member's acceptance
+  const un = id => ({ presence: proof("grants.offer", { revoke: id }, `vyre://${SPACE}/offer/${id}`) });
+  await assert.rejects(() => g.offers.unoffer(personChain(ALICE), accept.id, un(accept.id)), { code: "not_allowed" });
+  await g.offers.unoffer(personChain(BOB), accept.id, un(accept.id));
+  assert.deepEqual(events.map(e => [e.side, e.reason]), [["member_accepts", "withdrawn"]]);
+  assert.equal(g.offers.active(q).memberAccepts, false);
+  // the Space's side: a role change tells the runner too, and a non-member has no offer in effect
+  await mkO(personChain(BOB), { side: "member_accepts", member: BOB, device: "dev_laptop" });
+  await g.setRole(owner(), { person: BOB, role: "manager" }, P.role({ person: BOB, role: "manager" }));
+  assert.ok(events.some(e => e.reason === "role_changed"));
+  await g.offers.unoffer(personChain(ALICE), allow.id, un(allow.id));
+  assert.equal(g.offers.active(q).spaceAllows, false);
+  gs.rebuild();
+  assert.deepEqual(g.offers.active(q), { spaceAllows: false, memberAccepts: true }, "offers survive a rebuild from the log");
+  off();
+});

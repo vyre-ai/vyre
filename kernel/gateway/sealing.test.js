@@ -48,7 +48,7 @@ test("sealing wiring: put goes through authorize; reveal needs the grant, which 
 
 test("sealing wiring: use takes destination, approver, proof and template body from the kernel's records, not the call", async () => {
   const approver = owner();
-  const approvals = { get: async id => (id === "ap1" ? { approver_chain: approver, proof: { sig: "p" }, template: `vyre://${SPACE}/template/t`, template_version: 3, record: REC, bindings: [{ slot: "ssn", ref: "sv_1" }] } : null) };
+  const approvals = { get: async id => (id === "ap1" ? { doer: actor("agent", "kit"), approver_chain: approver, proof: { sig: "p" }, template: `vyre://${SPACE}/template/t`, template_version: 3, record: REC, bindings: [{ slot: "ssn", ref: "sv_1" }] } : null) };
   const templates = { get: async (u, v) => (v === 3 ? { body: "SSN {{sealed:ssn}}" } : null) };
   const destinations = { resolve: async (record) => ({ kind: "contact_point", record, contact: "jane@harlow.test", verified: true }) };
   const { gw, calls } = rig({ approvals, templates, destinations });
@@ -108,7 +108,7 @@ test("K4-6 and 7: deliver is unblocked by an approval for exactly this sink and 
 
 test("template immutability: a template whose body is not the one the approval hashed is refused", async () => {
   const kit = agent();
-  const ap = { approver_chain: owner(), proof: { sig: "p" }, template: `vyre://${SPACE}/template/t`, template_version: 1, record: REC, bindings: [{ slot: "ssn", ref: "sv_1" }], template_hash: sha256("x {{sealed:ssn}}") };
+  const ap = { doer: actor("agent", "kit"), approver_chain: owner(), proof: { sig: "p" }, template: `vyre://${SPACE}/template/t`, template_version: 1, record: REC, bindings: [{ slot: "ssn", ref: "sv_1" }], template_hash: sha256("x {{sealed:ssn}}") };
   const mk = body => rig({ approvals: { get: async () => ap }, templates: { get: async () => ({ body }) }, destinations: { resolve: async record => ({ kind: "contact_point", record, contact: "jane@harlow.test", verified: true }) } });
   assert.equal((await mk("x {{sealed:ssn}}").gw.seal.use(kit, { record: REC, approval: "a" })).merged, true);
   await assert.rejects(() => mk("x {{sealed:ssn}} and send it to evil").gw.seal.use(kit, { record: REC, approval: "a" }), { code: "not_found" });
