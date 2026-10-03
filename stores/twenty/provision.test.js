@@ -142,3 +142,47 @@ test("a backup holds the database, the files and the Space folder with checksums
     await assert.rejects(() => restoreSpace({ home: home2, space: "harlow-2", from: b.dir, runner }), /damaged|already provisioned/);
   } finally { await fake.stop(); }
 });
+
+// ---- the Space's key: a year of life, rotated before it ends ----
+const jwt = (expMs) => `h.${Buffer.from(JSON.stringify({ exp: Math.floor(expMs / 1000) })).toString("base64url")}.s`;
+
+test("a key's expiry is read from the key; health says ok, rotate inside the window, and expired", async () => {
+  const { keyHealth, keyExpiry, KEY_ROTATE_WITHIN_DAYS } = await import("./provision.js");
+  const t0 = Date.UTC(2026, 9, 4); const home = tmp();
+  const dir = spaceDir(home, "harlow"); fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "service.key"), jwt(t0 + 365 * 864e5));
+  assert.equal(keyExpiry(jwt(t0)), t0);
+  assert.deepEqual([keyHealth({ home, space: "harlow", now: () => t0 }).ok, keyHealth({ home, space: "harlow", now: () => t0 }).rotate], [true, false]);
+  const late = keyHealth({ home, space: "harlow", now: () => t0 + (365 - KEY_ROTATE_WITHIN_DAYS + 1) * 864e5 });
+  assert.deepEqual([late.ok, late.rotate], [true, true]);
+  const gone = keyHealth({ home, space: "harlow", now: () => t0 + 366 * 864e5 });
+  assert.deepEqual([gone.ok, gone.rotate, gone.why], [false, true, "the Space's key has expired"]);
+  assert.equal(keyHealth({ home, space: "nobody", now: () => t0 }).ok, false);
+});
+
+test("with the clock a year ahead, rotation replaces the key before it ends, the new one works, the old is revoked, and nothing restarts", async () => {
+  const { rotateApiKey, keyHealth } = await import("./provision.js");
+  const fake = await new FakeTwenty().start();
+  try {
+    const t0 = Date.UTC(2026, 9, 4); fake.key = jwt(t0 + 365 * 864e5);
+    const home = tmp(), calls = [];
+    const runner = fakeRunner(fake, calls);
+    const p = await provisionSpace({ home, space: "harlow", runner, reach: "ip" });
+    assert.equal(fs.readFileSync(p.keyFile, "utf8").trim(), fake.key);
+    // eleven months on, inside the window
+    const now = t0 + 280 * 864e5; fake.nextKey = jwt(now + 365 * 864e5);
+    assert.equal(keyHealth({ home, space: "harlow", now: () => now }).rotate, true);
+    const r = await rotateApiKey({ home, space: "harlow", runner, reach: "ip", now: () => now });
+    assert.equal(r.rotated, true);
+    assert.equal(fs.readFileSync(p.keyFile, "utf8").trim(), fake.nextKey);
+    assert.equal((fs.statSync(p.keyFile).mode & 0o777).toString(8), "600");
+    assert.equal(fake.revoked, 1, "the old key is revoked");
+    assert.equal(keyHealth({ home, space: "harlow", now: () => now }).rotate, false);
+    assert.equal(JSON.parse(fs.readFileSync(path.join(p.dir, "key.json"), "utf8")).previous, "key-1");
+    // a store that reads the key file on every call keeps working with the new key and not with a forged one
+    const ok = await fetch(`${fake.url}/metadata`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${fs.readFileSync(p.keyFile, "utf8").trim()}` }, body: JSON.stringify({ query: "query Health { objects { totalCount } }" }) });
+    assert.equal(ok.status, 200);
+    // outside the window nothing happens
+    assert.equal((await rotateApiKey({ home, space: "harlow", runner, reach: "ip", now: () => now })).rotated, false);
+  } finally { await fake.stop(); }
+});

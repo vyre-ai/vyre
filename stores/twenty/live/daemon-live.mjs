@@ -17,7 +17,7 @@ const t0 = Date.now(); const lap = (s) => console.log(`${((Date.now() - t0) / 10
 const d = await start({ root, log: lap, kernel: true });
 const k = d.kernel, id = k.id;
 lap(`daemon up, space ${id.space}, store.json = ${fs.readFileSync(path.join(root, "kernel", "store.json"), "utf8")}`);
-const owner = () => k.chains.fromFacts({ kind: "socket", surface: "deck", uid: process.getuid(), pid: process.pid, inside_model_process: false, capsule_verified: true });
+const owner = () => k.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: id.owner, path: "direct", session: "s1" });
 const model = () => k.chains.fromFacts({ kind: "socket", surface: "mcp", uid: process.getuid(), pid: process.pid, inside_model_process: true });
 const R = k.gateway.records;
 try {
@@ -40,7 +40,7 @@ try {
   await d.stop();
   const d2 = await start({ root, log: lap, kernel: true });
   const k2 = d2.kernel;
-  const o2 = k2.chains.fromFacts({ kind: "socket", surface: "deck", uid: process.getuid(), pid: process.pid, inside_model_process: false, capsule_verified: true });
+  const o2 = k2.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: k2.id.owner, path: "direct", session: "s1" });
   const m2 = k2.chains.fromFacts({ kind: "socket", surface: "mcp", uid: process.getuid(), pid: process.pid, inside_model_process: true });
   const again = await k2.gateway.records.get(o2, "contact", c.id);
   const againModel = await k2.gateway.records.get(m2, "contact", c.id).catch((e) => ({ refused: e.code }));
