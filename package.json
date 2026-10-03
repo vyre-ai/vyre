@@ -25,6 +25,7 @@
     "docs:check": "node scripts/docs-check",
     "docs:build": "node scripts/build-docs",
     "docs:ref": "node scripts/gen-docs-reference",
+    "golden:allow": "node scripts/gen-allow.mjs",
     "tokens": "node scripts/gen-tokens",
     "design:audit": "node scripts/design-audit",
     "docs:shots": "node scripts/docs-shots",
