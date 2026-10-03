@@ -744,6 +744,9 @@ export class Shared {
   async move({ name, to }, caller) {
     const r = this.vault.mustRow(name);
     if (String(r.vault).startsWith("shared:")) throw new Error(`${name} is already in a shared vault`);
+    // The local copy is removed after the shared one is written, and remove refuses an item in a live pass: check that first, so a refusal leaves nothing half moved.
+    const inPass = this.vault.activePasses().find(p => p.items.includes(name));
+    if (inPass) { const why = `${name} is in pass ${inPass.id}; revoke the pass first`; this.vault.refuse("move", name, caller, why); throw new Error(why); }
     const { meta, fields } = await this.vault.open(r);
     const out = await this.put({ vault: to, name, kind: meta.kind, description: r.description, fields, url: meta.url, hosts: meta.hosts, apps: meta.apps, reprompt: meta.reprompt }, caller);
     if (out.conflict) return out;
