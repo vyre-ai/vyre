@@ -6,18 +6,17 @@ import { Segmented } from "../components/Segmented";
 import { Text } from "../components/Text";
 import { Section } from "./Section";
 import { DraftBlock, TaskFacts } from "./TaskFacts";
-import { cardFor, draftOf, HOW_LABEL, recordTitle, spaceName, stateTone, STATE_LABEL, taskFacts, type World } from "./model";
+import { cardFor, draftOf, HOW_LABEL, recordTitle, stateTone, STATE_LABEL, taskFacts, type World } from "./model";
 
 /**
  * One task, as a page (DESIGN-tasks.md): who does it (one doer, accountable), who checks it, what done looks like, how it is made and what it starts from.
  * A stuck task says why and offers Fix and Reassign; a drafted item shows the draft with its one sentence, and Send with Face ID and Edit.
  */
-export function TaskDetail({ world, task, onAction, onBack, onHow, onOpenRecord }: {
-  world: World; task: any; onAction: (id: string, input?: string) => void; onBack: () => void; onHow: (how: string) => void; onOpenRecord?: (urn: string) => void;
+export function TaskDetail({ world, task, onAction, onHow, onOpenRecord }: {
+  world: World; task: any; onAction: (id: string, input?: string) => void; onHow: (how: string) => void; onOpenRecord?: (urn: string) => void;
 }) {
   const m = cardFor(world, task);
   const rec = world.records.get(task.record);
-  const note = typeof task.ext?.note === "string" ? task.ext.note : "";
   const titles = new Map(world.tasks.map((t) => [t.id, t.title] as [string, string]));
   const draft = draftOf(world, task);
   const showHow = ["sent", "draft", "note"].includes(task.output?.kind);
@@ -26,13 +25,9 @@ export function TaskDetail({ world, task, onAction, onBack, onHow, onOpenRecord 
   return (
     <View className="gap-s4">
       <View className="items-start gap-s2">
-        <Button kind="ghost" size="sm" icon="chevron-left" label="Back" onPress={onBack} />
-        <Text size="page" strong>{task.title}</Text>
+        <Text size="title" strong>{task.title}</Text>
         <View className="flex-row flex-wrap gap-s2">
           <Chip tone={stateTone(task.state) as never}>{STATE_LABEL[task.state]}</Chip>
-          {rec ? <Chip>{recordTitle(world, rec)}</Chip> : null}
-          {spaceName(world, task.space) ? <Chip tone="space">{spaceName(world, task.space)}</Chip> : null}
-          {note && !/^is /.test(note) ? <Chip>{note}</Chip> : null}
         </View>
       </View>
       {task.state === "stuck" && task.stuck ? (

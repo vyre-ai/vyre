@@ -1,7 +1,7 @@
 // The one place the look is configured (ui-primitives.md section 2): defaults, then the space, then the person. resolveTheme (the Deck's pure
 // resolver, shared) picks the accent, scheme, density, font and corners and checks contrast; themeVars turns the result into custom properties;
 // the provider writes them on its root view with NativeWind's vars(), so every component restyles with no code of its own.
-import { createContext, useContext, useMemo, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
 import { Platform, StyleSheet, useColorScheme, useWindowDimensions, View } from "react-native";
 import { vars } from "nativewind";
 import { resolveTheme } from "../../../deck/ui/theme.js";
@@ -47,6 +47,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     return { resolved, phone, color, map };
   }, [space, person, system, phone]);
   const style = useMemo(() => vars(ctx.map), [ctx]);
+  // The web's dialogs and menus are portalled to <body>, outside this view, so they would lose every custom property. Mirror them on the root element.
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return;
+    const root = document.documentElement;
+    const names = Object.keys(ctx.map);
+    for (const k of names) root.style.setProperty(k, String(ctx.map[k]));
+    return () => { for (const k of names) root.style.removeProperty(k); };
+  }, [ctx]);
   return (
     <ThemeCtx.Provider value={ctx}>
       <View style={[StyleSheet.absoluteFill, style]} className="bg-bg">

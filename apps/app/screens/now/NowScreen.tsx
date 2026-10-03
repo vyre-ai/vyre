@@ -10,10 +10,10 @@ export default function NowScreen() {
   const go = (p: string) => router.push(p as never);
   const { run, sheets } = useTaskActions(q.data, go);
   return (
-    <LargeTitleScreen title="Now" own onRefresh={q.reload}>
+    <LargeTitleScreen title="Now" own wide onRefresh={q.reload}>
       {q.error && !q.data ? <ErrorState title="Could not load Now." reason={q.error.message} retry={q.reload} />
         : !q.data ? <LoadingState rows={4} />
-        : <NowView world={q.data} notice={play.notice} onAction={(t, id, input) => void run(t, id, input)} onOpen={(t) => void run(t, "open")} />}
+        : <NowView world={q.data} notice={play.notice} onEdit={() => go("/u/settings/customize")} onMore={(k) => go(`/u/now/${k}`)} onAction={(t, id, input) => void run(t, id, input)} onOpen={(t) => void run(t, "open")} />}
       {scenario ? <Button kind="ghost" size="sm" label="Play: client pays" onPress={play.replay} /> : null}
       {sheets}
     </LargeTitleScreen>

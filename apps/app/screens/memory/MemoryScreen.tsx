@@ -1,85 +1,100 @@
 import { useMemo, useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Banner, Button, Card, Chip, Divider, EmptyState, Field, Segmented, Text, showToast, type IconName } from "@vyre/ui";
-import { Note, Page, Section, SpaceChip } from "../places/Page";
+import { Avatar, Banner, Button, Card, Chip, Composer, Divider, EmptyState, Field, Icon, IconButton, Menu, Row, Segmented, Sheet, SpaceMark, Text, showToast, markRef, spaceRef, type IconName } from "@vyre/ui";
+import { Footnote, Frame } from "../places/Frame";
 import { SPACES, useScope } from "../places/scope";
 import { memoryRepo, SUBJECTS, type Fact } from "./data";
 import { answer, edit, forget, group, restore, visible } from "./logic.js";
 
-const SRC_ICON: Record<Fact["src"]["kind"], IconName> = { record: "file", file: "file", chat: "chat", email: "send", flow: "refresh" };
+const SRC_ICON: Record<Fact["src"]["kind"], IconName> = { record: "records", file: "file", chat: "chat", email: "mail", flow: "flows" };
+/** A citation: the number in brackets, 12 mono, in the accent, set small beside the 17 answer. */
+const sup = (n: number) => `[${n}]`;
+
+/** A group's header as a row: the person's 24 face (the project's or space's emblem for those), its name, how many facts. */
+function GroupHead({ mark, name, count }: { mark: ReturnType<typeof markRef>; name: string; count: number }) {
+  return (
+    <View accessibilityRole="header" className="flex-row items-center gap-s2 pt-s6 pb-s2">
+      <Avatar of={mark} size={24} />
+      <Text strong size="secondary" className="min-w-0 flex-1" numberOfLines={1}>{name}</Text>
+      <Text size="caption" tone="faint">{`${count} ${count === 1 ? "fact" : "facts"}`}</Text>
+    </View>
+  );
+}
 
 export default function MemoryScreen() {
   const scope = useScope((s) => s.scope);
   const router = useRouter();
   const [facts, setFacts] = useState<Fact[]>(() => memoryRepo.facts());
   const [mode, setMode] = useState<Fact["kind"]>("person");
-  const [q, setQ] = useState("Jane");
+  const [q, setQ] = useState("");
   const [asked, setAsked] = useState("Jane");
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
   const [undo, setUndo] = useState<{ fact: Fact; index: number } | null>(null);
+  const [cite, setCite] = useState<Fact | null>(null);
 
   const shown = useMemo(() => visible(facts, scope), [facts, scope]);
   const sections = useMemo(() => group(shown, mode), [shown, mode]);
   const ans = useMemo(() => (asked ? answer(facts, SUBJECTS, asked, scope) : null), [facts, asked, scope]);
   const sealed = memoryRepo.sealed().filter((s) => scope === "all" || s.space === scope);
   const open = (s: Fact["src"]) => (s.target ? router.push(`/u/${s.target}` as never) : showToast(`Opened ${s.label}.`));
+  const ask = (text: string) => { setQ(text); setAsked(text); };
+  const notIncluded = ans?.kind === "ok" ? memoryRepo.sealed().find((s) => s.subject === ans.name && (scope === "all" || s.space === scope)) : undefined;
 
   const row = (f: Fact) => {
     const isEdit = editing?.id === f.id;
+    if (isEdit) {
+      return (
+        <View key={f.id} className="gap-s2 p-s4">
+          <Field label="Fact" value={editing.text} onChangeText={(text) => setEditing({ id: f.id, text })} />
+          <View className="flex-row gap-s2">
+            <Button kind="primary" size="sm" label="Save" onPress={() => { setFacts((xs) => edit(xs, f.id, editing.text)); setEditing(null); showToast("Saved. Assistants recall the new wording."); }} />
+            <Button kind="ghost" size="sm" label="Cancel" onPress={() => setEditing(null)} />
+          </View>
+        </View>
+      );
+    }
     return (
-      <View key={f.id} className="gap-s2 px-s4 py-s3">
-        {isEdit ? (
-          <View className="gap-s2">
-            <Field label="Fact" value={editing.text} onChangeText={(text) => setEditing({ id: f.id, text })} />
-            <View className="flex-row gap-s2">
-              <Button kind="primary" size="sm" label="Save" onPress={() => { setFacts((xs) => edit(xs, f.id, editing.text)); setEditing(null); showToast("Saved. Assistants recall the new wording."); }} />
-              <Button kind="ghost" size="sm" label="Cancel" onPress={() => setEditing(null)} />
+      <Row key={f.id}
+        title={<Text style={{ fontSize: 16, lineHeight: 23 }}>{f.text}</Text>}
+        sub={
+          <View className="gap-s1 pt-s1">
+            <View className="flex-row items-center gap-s1">
+              <Icon name={SRC_ICON[f.src.kind]} size={14} tone="label" />
+              <Text tone="label" numberOfLines={1} className="min-w-0 flex-shrink" style={{ fontSize: 13, lineHeight: 18 }} onPress={() => open(f.src)}>{`${f.src.label}, ${memoryRepo.assistantName(f.by)}, ${f.when}`}</Text>
+            </View>
+            <View className="flex-row items-center gap-s1">
+              <Text tone="label" numberOfLines={1} style={{ fontSize: 13, lineHeight: 18 }}>{`Used ${f.used} ${f.used === 1 ? "time" : "times"}${scope === "all" ? "," : ""}`}</Text>
+              {scope === "all" ? <><SpaceMark space={spaceRef(SPACES[f.sp].name)} size={16} /><Text tone="label" numberOfLines={1} style={{ fontSize: 13, lineHeight: 18 }}>{SPACES[f.sp].name}</Text></> : null}
             </View>
           </View>
-        ) : <Text>{f.text}</Text>}
-        <View className="flex-row flex-wrap items-center gap-x-s3 gap-y-s2">
-          <Button size="sm" kind="secondary" icon={SRC_ICON[f.src.kind]} label={f.src.label} onPress={() => open(f.src)} />
-          <Text size="caption" tone="label">Learned by {memoryRepo.assistantName(f.by)}, {f.when}</Text>
-          <Text size="caption" tone="label">Used {f.used} {f.used === 1 ? "time" : "times"}</Text>
-          <SpaceChip sp={f.sp} />
-        </View>
-        {isEdit ? null : (
-          <View className="flex-row gap-s2">
-            <Button kind="ghost" size="sm" label="Edit" onPress={() => setEditing({ id: f.id, text: f.text })} />
-            <Button kind="danger" size="sm" label="Forget" onPress={() => { const r = forget(facts, f.id); setFacts(r.facts); setUndo(r.undo); }} />
-          </View>
-        )}
-      </View>
+        }
+        end={<Menu trigger={<IconButton icon="more" label="More about this fact" />} items={[{ label: "Edit", onPress: () => setEditing({ id: f.id, text: f.text }) }, { label: "Forget", danger: true, onPress: () => { const r = forget(facts, f.id); setFacts(r.facts); setUndo(r.undo); } }]} />} />
     );
   };
 
   return (
-    <Page title="Memory" sub="What Vyre knows, and where each fact came from.">
-      {scope === "mine" ? <Note title="This is the Mine boundary." body="Facts from Harlow Legal never show here, and your assistants do not carry them into Mine." /> : null}
-      {scope === "harlow" ? <Note title="This is the Harlow Legal boundary." body="Facts here stay in Harlow Legal. Members with the right role can read them. Your own Mine facts are not shown." /> : null}
+    <Frame title="Memory" sub="What Vyre knows, and where each fact came from." scope>
+      {scope === "mine" ? <Footnote icon="shield">This is the Mine boundary. Facts from Harlow Legal never show here, and your assistants do not carry them into Mine.</Footnote> : null}
+      {scope === "harlow" ? <Footnote icon="shield">This is the Harlow Legal boundary. Facts here stay in Harlow Legal. Your own Mine facts are not shown.</Footnote> : null}
 
-      <Card title="Ask Memory">
-        <View className="gap-s3">
-          <Field value={q} onChangeText={setQ} placeholder="Who or what?" />
-          <View className="self-start"><Button kind="primary" label={`What do we know about ${q.trim() || "..."}`} onPress={() => setAsked(q)} /></View>
-          {ans?.kind === "ok" ? (
-            <View className="gap-s2">
-              <Text size="read"><Text strong size="read">{ans.name}</Text>{": "}{ans.items.map((it) => `${it.fact.text} [${it.n}]`).join(" ")}</Text>
-              <View className="gap-s1">
-                {ans.items.map((it) => (
-                  <Text key={it.n} size="caption" tone="label">[{it.n}] {it.fact.src.label}, {it.fact.when}</Text>
-                ))}
-              </View>
-              {memoryRepo.sealed().some((s) => s.subject === ans.name && (scope === "all" || s.space === scope)) ? (
-                <Chip tone="sealed" icon="shield">{`Not included: ${memoryRepo.sealed().find((s) => s.subject === ans.name)?.labels.join(", ")}`}</Chip>
-              ) : null}
-            </View>
-          ) : null}
-          {ans?.kind === "boundary" ? <Note tone="warn" title={`Nothing in ${scope === "all" ? "this view" : SPACES[scope].name} about "${asked}".`} body="Memory does not cross spaces unless a space shares it. Switch to All spaces, or to another space, to ask there." /> : null}
-          {ans?.kind === "none" ? <Text tone="muted">Nothing remembered about {ans.name}.</Text> : null}
-        </View>
-      </Card>
+      <View className="gap-s3 pt-s2">
+        <Composer label="Ask Memory" placeholder="Ask about a person or project" value={q} onChangeText={setQ} onSend={() => setAsked(q)} />
+        <View className="flex-row flex-wrap gap-s2"><Chip onPress={() => ask("Jane")}>What do we know about Jane</Chip></View>
+        {ans?.kind === "ok" ? (
+          <View className="gap-s2 pt-s2">
+            <Text size="read">
+              <Text strong size="read">{ans.name}</Text>{": "}
+              {ans.items.map((it) => (
+                <Text key={it.n} size="read">{`${it.fact.text} `}<Text mono accessibilityRole="link" accessibilityLabel={`Source ${it.n}`} tone="accent" style={{ fontSize: 12 }} onPress={() => setCite(it.fact)}>{sup(it.n)}</Text>{" "}</Text>
+              ))}
+            </Text>
+            {notIncluded ? <Footnote icon="sealed">{`Not included: ${notIncluded.labels.join(", ")}`}</Footnote> : null}
+          </View>
+        ) : null}
+        {ans?.kind === "boundary" ? <Footnote icon="shield">{`Nothing in ${scope === "all" ? "this view" : SPACES[scope].name} about "${asked}". Memory does not cross spaces unless a space shares it. Switch the space to ask there.`}</Footnote> : null}
+        {ans?.kind === "none" ? <Text tone="muted">Nothing remembered about {ans.name}.</Text> : null}
+      </View>
 
       {undo ? (
         <Banner>
@@ -90,17 +105,30 @@ export default function MemoryScreen() {
         </Banner>
       ) : null}
 
-      <Segmented label="Facts by" value={mode} onChange={setMode} options={[["person", "People"], ["project", "Projects"], ["space", "Spaces"]]} />
+      <View className="pt-s4"><Segmented label="Facts by" value={mode} onChange={setMode} options={[["person", "People"], ["project", "Projects"], ["space", "Spaces"]]} /></View>
 
       {sections.length ? sections.map((s) => (
-        <Section key={s.key} title={mode === "space" ? SPACES[s.sp as "mine"].name : SUBJECTS[s.subj] ?? s.subj} meta={`${s.facts.length} ${s.facts.length === 1 ? "fact" : "facts"}`}>
+        <View key={s.key}>
+          <GroupHead
+            mark={mode === "space" ? spaceRef(SPACES[s.sp as "mine"].name) : mode === "project" ? markRef("project", SUBJECTS[s.subj] ?? s.subj) : markRef("person", SUBJECTS[s.subj] ?? s.subj, s.subj)}
+            name={mode === "space" ? SPACES[s.sp as "mine"].name : SUBJECTS[s.subj] ?? s.subj} count={s.facts.length} />
           <Card flush>{s.facts.map((f, i) => <View key={f.id}>{i ? <Divider /> : null}{row(f)}</View>)}</Card>
-        </Section>
+        </View>
       )) : <Card><EmptyState title="Nothing here yet" body={`No ${mode} facts in this space.`} /></Card>}
 
       {sealed.length ? (
-        <Note title="Not remembered" body={sealed.map((s) => `Sealed fields are never read into Memory: ${s.subject} has ${s.labels.length} (${s.labels.join(", ")}). Assistants see "SSN on file, sealed" and nothing more.`).join(" ")} />
+        <Footnote icon="sealed">{`Sealed fields are never read into Memory: ${sealed.map((s) => `${s.subject} has ${s.labels.length}`).join(", ")}. Assistants see "SSN on file, sealed" and nothing more.`}</Footnote>
       ) : null}
-    </Page>
+
+      <Sheet open={!!cite} onClose={() => setCite(null)} title={cite?.src.label}>
+        {cite ? (
+          <>
+            <Text size="read">{cite.text}</Text>
+            <Text tone="label">{`Learned by ${memoryRepo.assistantName(cite.by)}, ${cite.when}. Used ${cite.used} ${cite.used === 1 ? "time" : "times"}.`}</Text>
+            <Button kind="primary" label="Open the source" onPress={() => { const s = cite.src; setCite(null); open(s); }} />
+          </>
+        ) : null}
+      </Sheet>
+    </Frame>
   );
 }
