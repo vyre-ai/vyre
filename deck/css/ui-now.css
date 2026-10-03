@@ -1,1 +1,113 @@
-/* ui-now: owned by the UI build (see docs/work/native-core.md). */
+/* ui-now: Now (/u/now), the task card and the task page (/u/task/:id). Tokens only (css/tokens-v2.css, css/tokens-v3.css, components in css/ui.css): no colour, no raw
+   font size, no raw radius. The side column starts at 1000 px; a phone gets one column in the same order. */
+
+/* ---- the page ---- */
+.un-now, .un-task { min-width: 0; }
+.un-wrap { display: flex; flex-direction: column; min-width: 0; }
+.un-wrap > .page-head { margin-bottom: var(--s-4); }
+.un-meta { color: var(--label); font: 400 var(--fs-caption)/var(--lh-caption) var(--sans); }
+.un-muted { color: var(--text-2); }
+.un-none { color: var(--label); }
+.un-hint { margin: 0; color: var(--label); font: 400 var(--fs-caption)/var(--lh-caption) var(--sans); }
+.un-chips { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+.un-btns { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+.un-chip-link { cursor: pointer; text-decoration: none; }
+.un-chip-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.un-stack { display: inline-flex; align-items: center; padding-right: var(--s-2); }
+.un-stack > span.vy-av { box-shadow: 0 0 0 2px var(--bg); }
+.un-stack > span.vy-av + span.vy-av { margin-left: calc(var(--s-2) * -1); }
+
+/* ---- scope pills ---- */
+.un-pills { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-bottom: var(--s-5); }
+.un-pill { display: inline-flex; align-items: center; gap: var(--s-2); height: var(--control-sm); padding: 0 var(--s-3) 0 var(--s-2); margin: 0; border: 1px solid var(--edge-strong);
+  border-radius: var(--r-full); background: transparent; color: var(--text-2); font: 500 var(--fs-caption)/1 var(--sans); white-space: nowrap; cursor: pointer; -webkit-tap-highlight-color: transparent;
+  transition: background var(--dur-2) var(--ease), color var(--dur-2) var(--ease), border-color var(--dur-2) var(--ease); }
+.un-pill:not(:has(.un-mark)) { padding-left: var(--s-3); }
+.un-pill[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); color: var(--primary-ink); }
+.un-pill:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (hover: hover) { .un-pill[aria-pressed="false"]:hover { background: var(--hover); color: var(--text); } }
+.un-mark { display: inline-grid; place-items: center; flex: none; width: calc(var(--s-4) + var(--s-1)); height: calc(var(--s-4) + var(--s-1)); border-radius: var(--r-chip);
+  background: color-mix(in srgb, var(--tint, var(--accent)) 20%, transparent); color: var(--tint, var(--accent)); }
+.un-mark svg { width: var(--s-3); height: var(--s-3); }
+
+/* ---- columns and sections ---- */
+.un-cols { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s-6); }
+.un-col { display: flex; flex-direction: column; gap: var(--s-6); min-width: 0; }
+.un-col:empty { display: none; }
+@media (min-width: 1000px) {
+  .un-cols { grid-template-columns: minmax(0, 1fr) minmax(calc(var(--s-12) * 6), calc(var(--s-12) * 8)); gap: var(--s-10); align-items: start; }
+  .un-col:empty { display: block; }
+}
+.un-sec { min-width: 0; }
+.un-sec-h { display: flex; align-items: center; gap: var(--s-2); min-height: var(--s-6); margin-bottom: var(--s-2); }
+.un-sec-t { flex: 1; min-width: 0; margin: 0; color: var(--label); font: 600 var(--fs-body)/var(--lh-body) var(--sans); }
+.un-tools { display: inline-flex; gap: var(--s-1); }
+.un-up svg { transform: rotate(180deg); }
+.un-stack-v { display: flex; flex-direction: column; gap: var(--s-3); }
+.un-add { display: inline-flex; align-items: center; min-height: var(--control-sm); padding: 0 var(--s-3); border: 1px solid var(--edge-strong); border-radius: var(--r-full); background: transparent;
+  color: var(--text-2); font: 500 var(--fs-caption)/1 var(--sans); cursor: pointer; }
+.un-add:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (hover: hover) { .un-add:hover { background: var(--hover); color: var(--text); } }
+.un-wrap > .ui-banner { margin-bottom: var(--s-4); }
+.un-wrap > .ui-card { margin-top: var(--s-4); }
+
+/* ---- the task card ---- */
+.un-card { transition: box-shadow var(--dur-3) var(--ease), border-color var(--dur-3) var(--ease); }
+.un-card-t { display: block; width: 100%; margin: 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
+.un-card-t:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-chip); }
+.un-card.is-new { animation: un-in var(--dur-4) var(--spring) both, un-glow calc(var(--dur-4) * 5) var(--ease) 1; }
+@keyframes un-in { from { opacity: 0; transform: translateY(var(--s-3)) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes un-glow { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); } 100% { box-shadow: 0 0 0 var(--s-5) transparent; } }
+.un-card .ui-ask-acts .ui-field { flex: 0 1 calc(var(--s-12) * 4); }
+.un-sheet-p { margin: 0 0 var(--s-3); color: var(--text-2); overflow-wrap: anywhere; }
+.un-text { font-family: var(--sans); }
+
+/* ---- status dots ---- */
+.un-dot { display: inline-block; flex: none; width: var(--s-3); height: var(--s-3); border: 2px solid var(--faint); border-radius: var(--r-full); }
+.un-dot.is-done { border-color: var(--ok); background: var(--ok); }
+.un-dot.is-working { border-color: var(--accent); border-top-color: transparent; animation: un-spin calc(var(--dur-4) * 3) linear infinite; }
+.un-dot.is-needs_check { border-color: var(--accent); background: var(--accent-wash); }
+.un-dot.is-stuck { border-color: var(--warn); background: var(--warn-wash); }
+.un-dot.is-ready { border-color: var(--text); }
+@keyframes un-spin { to { transform: rotate(360deg); } }
+
+/* ---- today's calendar, recent ---- */
+.un-cal { display: flex; align-items: flex-start; gap: var(--s-3); padding: var(--s-2) 0; }
+.un-cal-t { flex: none; width: var(--s-12); color: var(--label); font: 400 var(--fs-body)/var(--lh-body) var(--mono); }
+.un-cal-b { display: flex; flex-direction: column; min-width: 0; }
+.un-cal-b b { font-weight: 600; }
+.un-recent { display: flex; flex-direction: column; }
+.un-act { display: flex; align-items: center; gap: var(--s-3); min-height: var(--control); padding: var(--s-1) 0; }
+.un-act-t { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.un-act-at { flex: none; color: var(--label); font: 400 var(--fs-caption)/var(--lh-caption) var(--mono); }
+
+/* ---- the task page ---- */
+.un-thead { display: flex; align-items: flex-start; gap: var(--s-3); margin-bottom: var(--s-4); }
+.un-thead > .page-head { flex: 1; min-width: 0; margin: 0; }
+.un-thead > .ui-ibtn { margin-top: var(--s-1); }
+.un-task .page-head-meta { margin-top: var(--s-2); }
+.ui-card:has(> .un-facts) { padding: 0; }
+.un-fact { display: grid; grid-template-columns: calc(var(--s-10) * 3) minmax(0, 1fr); align-items: center; gap: var(--s-3); min-height: var(--row-h); padding: var(--s-3) var(--s-4); border-bottom: 1px solid var(--edge); }
+.un-fact:last-child { border-bottom: 0; }
+.un-fact-l { color: var(--label); font: 500 var(--fs-caption)/var(--lh-caption) var(--sans); }
+.un-fact-v { min-width: 0; overflow-wrap: anywhere; }
+.un-actor { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+.un-how { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-2); }
+.un-draft { display: flex; flex-direction: column; gap: var(--s-2); padding: var(--s-4); border: 1px solid var(--edge); border-radius: var(--r-card); background: var(--surface-2); }
+.un-draft-b { color: var(--text-2); white-space: pre-wrap; overflow-wrap: anywhere; }
+.un-task .un-sec { margin-top: var(--s-5); }
+.un-task .un-sec + .un-btns, .un-task .ui-card + .un-btns { margin-top: var(--s-4); }
+.un-stuck { display: flex; flex-direction: column; gap: var(--s-3); }
+
+/* ---- the lab's frame (not shipped: the lab draws a page around a screen) ---- */
+.un-lab-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); margin-bottom: var(--s-4); }
+
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
+  .un-fact { grid-template-columns: minmax(0, 1fr); gap: var(--s-1); }
+  .un-wrap > .page-head { margin-bottom: var(--s-4); }
+  .un-pills { margin-bottom: var(--s-4); }
+  .un-lab-root { padding: var(--s-4); }
+}
+@media (min-width: 720px) and (min-height: 501px), (min-width: 720px) and (pointer: fine), (min-width: 720px) and (pointer: none) {
+  .un-lab-root { max-width: calc(var(--s-12) * 22); margin: 0 auto; padding: var(--s-8); }
+}
