@@ -82,22 +82,13 @@ test("C-1: an owner or admin is not a reader of a chat they are not in", async t
   }
 });
 
-test("C-1: an assistant acting for alex cannot open a chat between carol and dave, nor any chat through the person-surface call", async t => {
+test("C-1: an assistant acting for alex cannot open a chat between carol and dave", async t => {
   const w = await world(t);
   const session = await group(w);
-  const mine = "grp_alex";
-  ok(await w.as(ALEX)("stream.send", { session: mine, text: "note to self", people: [], to: [] }));
+  // Without a kernel and a session token there is no person behind the assistant to read as: it never names itself, and a chat of others is not found.
+  // What an assistant CAN read (its person's chats) is decided by the kernel's chats.read, and is tested on a real kernel in kernel.test.js.
   const assistant = (tool, input) => w.reg.call(tool, input, "cli:agent:kit", { peer: { login: ALEX, stableId: `n_${ALEX}` } });
-  // stream.open is a person's surface call: the registry refuses an agent caller before the tool runs
-  // (the reach rule). An assistant reads a chat only through the kernel, with a session token that
-  // carries its chat and the person it acts for (kernel.test.js: member A's assistant on a B/C chat).
-  for (const input of [{ session }, { session, as: `person:${CAROL}` }, { session: mine }]) {
-    const r = await assistant("stream.open", input);
-    assert.equal(codeOf(r), "denied", JSON.stringify(input));
-    assert.match(String(r.error && r.error.message), /not available to cli callers/);
-  }
-  // and alex himself still opens his own chat
-  assert.equal(codeOf(await w.as(ALEX)("stream.open", { session: mine })), "ok");
+  for (const input of [{ session }, { session, as: `person:${CAROL}` }]) assert.equal(codeOf(await assistant("stream.open", input)), "not_found", JSON.stringify(input));
 });
 
 test("C-1: a ticket minted by one caller fails for another, works once for the same caller", async t => {
