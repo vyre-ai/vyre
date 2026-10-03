@@ -49,7 +49,7 @@ function RailItem({ it, on, onPress }: { it: NavItem; on: boolean; onPress: () =
     <Pressable accessibilityRole="link" accessibilityLabel={it.label} accessibilityState={{ selected: on }} onPress={onPress}
       style={({ hovered }: any) => [{ minHeight: px(map, "--s-10") }, hovered && !on ? { backgroundColor: "var(--hover)" } : null]}
       className={cn("flex-row items-center gap-s3 rounded-row px-s3", on && "bg-surface-3")}>
-      {on ? <View className="absolute rounded-full bg-accent" style={{ left: 0, top: 8, bottom: 8, width: 3 }} /> : null}
+      {on ? <View className="absolute rounded-full bg-accent" style={{ left: 0, top: 8, height: 24, width: 3 }} /> : null}
       <Icon name={it.icon} tone={on ? "text" : "text-2"} size={20} />
       <Text medium style={{ fontSize: 15, lineHeight: 20 }} tone={on ? "default" : "muted"} className="flex-1" numberOfLines={1}>{it.label}</Text>
       {it.id === "now" && it.badge ? <CountBadge n={it.badge} /> : null}

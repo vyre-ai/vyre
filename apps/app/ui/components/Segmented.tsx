@@ -14,13 +14,13 @@ export function Segmented<T extends string>({ options, value, onChange, label, f
   const { phone, resolved } = useUiTheme();
   const h = iconsOnly ? 32 : phone ? 40 : 36;
   return (
-    <View accessibilityRole="radiogroup" accessibilityLabel={label} style={{ minHeight: h, padding: 2 }} className={cn("max-w-full flex-row gap-s1 rounded-full bg-hover", fill ? "self-stretch" : "flex-wrap self-start")}>
+    <View accessibilityRole="radiogroup" accessibilityLabel={label} style={{ minHeight: h, padding: 2 }} className={cn("max-w-full flex-row gap-s1 bg-hover", fill ? "self-stretch rounded-full" : "flex-wrap self-start rounded-card")}>
       {options.map(([v, l]) => (
         <Pressable key={v} accessibilityRole="radio" accessibilityLabel={l} accessibilityState={{ selected: v === value }} onPress={() => onChange?.(v)}
           style={[{ height: h - 4 }, v === value ? elevation(resolved.scheme, 1) : null]}
-          className={cn("flex-row items-center justify-center gap-s2 rounded-full", iconsOnly ? "px-s3" : "px-s4", fill && "flex-1", v === value ? "bg-surface-3" : "bg-transparent")}>
+          className={cn("flex-row items-center justify-center gap-s2 rounded-full", iconsOnly ? "px-s3" : "px-s4", fill && "grow", v === value ? "bg-surface-3" : "bg-transparent")}>
           {icons?.[v] ? <Icon name={icons[v] as IconName} size={16} tone={v === value ? "text" : "text-2"} /> : null}
-          {iconsOnly && icons?.[v] ? null : <Text medium style={{ fontSize: 15, lineHeight: 20 }} tone={v === value ? "default" : "muted"}>{l}</Text>}
+          {iconsOnly && icons?.[v] ? null : <Text medium numberOfLines={1} style={{ fontSize: 15, lineHeight: 20 }} tone={v === value ? "default" : "muted"}>{l}</Text>}
         </Pressable>
       ))}
     </View>

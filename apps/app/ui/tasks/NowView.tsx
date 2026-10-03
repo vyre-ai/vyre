@@ -166,10 +166,11 @@ export function NowView({ world, onAction, onOpen, onEdit, onMore, notice }: Pro
     </Section>
   ) : null;
   const contact = next ? [...world.records.values()].find((r: any) => r.type === "contact" && next.title.includes(recordTitle(world, r))) : null;
+  const withName = next && / with (.+)$/.exec(next.title)?.[1];
   const calendarPhone = next ? (
     <Card className="justify-center" style={{ minHeight: 56, paddingVertical: 0 }}>
       <View className="flex-row items-center gap-s3" style={{ minHeight: 56 }}>
-        {contact ? <Avatar of={{ kind: "person", id: contact.id, name: recordTitle(world, contact) }} size={32} /> : null}
+        {contact ? <Avatar of={{ kind: "person", id: contact.id, name: recordTitle(world, contact) }} size={32} /> : withName ? <Avatar of={{ kind: "person", id: withName, name: withName }} size={32} /> : null}
         <Text numberOfLines={1} className="min-w-0 flex-1"><Text tone="label">Next </Text><Text mono tone="label">{whenLabel(next.at, world.now)}</Text><Text strong>{`  ${next.title}`}</Text></Text>
       </View>
     </Card>
