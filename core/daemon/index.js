@@ -57,16 +57,19 @@ function kernelProof(req) {
 }
 /**
  * The session token a request carries (`x-vyre-kernel-session`), which the registry hands the tool as `meta.token` and nowhere else. It is set here only: the daemon checks the
- * token with the kernel's own Surfaces door, and a tool's input, a module's `ctx.call` and every other header never supply one. A missing, malformed or invalid token is simply
- * absent (the call is then not in any chat). The kernel re-checks it when it is used, so expiry and revocation hold for a long turn.
- * @param {import("node:http").IncomingMessage} req @param {(() => any) | null} kernelOf
+ * token with the kernel's own Surfaces door, and a tool's input, a module's `ctx.call` and every other header never supply one. No header is simply no session
+ * (`undefined`). A header that is present but malformed, invalid, expired or revoked is `null`: the call is REFUSED, never run as if it carried none (reviewer-2 KS-4). The
+ * kernel re-checks the token when it is used, so expiry and revocation hold for a long turn.
+ * @param {import("node:http").IncomingMessage} req @param {(() => any) | null} kernelOf @returns {Promise<string | null | undefined>}
  */
 async function kernelSession(req, kernelOf) {
-  const h = String(req.headers["x-vyre-kernel-session"] || "");
-  if (!h || h.length > 2048 || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(h)) return undefined;
+  const h = req.headers["x-vyre-kernel-session"];
+  if (h === undefined) return undefined;
+  const t = String(h);
+  if (!t || t.length > 2048 || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(t)) return null;
   const k = kernelOf ? kernelOf() : null;
-  if (!k || !k.surfaces || typeof k.surfaces.verify !== "function") return undefined;
-  try { await k.surfaces.verify(h); return h; } catch { return undefined; }
+  if (!k || !k.surfaces || typeof k.surfaces.verify !== "function") return null;
+  try { await k.surfaces.verify(t); return t; } catch { return null; }
 }
 export const REPO = path.resolve(HERE, "..", "..");
 export const VERSION = JSON.parse(fs.readFileSync(path.join(REPO, "package.json"), "utf8")).version;
@@ -169,10 +172,22 @@ async function startLocked(opts, root, p, release) {
   // The kernel is off unless asked for (VYRE_KERNEL=1, or opts.kernel): nothing below runs and nothing about this daemon changes. When on, it gives the home a
   // Space and a first owner, a durable log and store, and the module host: modules from outside Vyre then run only under the supervisor (core/modules/index.js).
   /** @type {any} */ let kernel = null;
+  /** @type {(() => Promise<void>) | null} */ let closeKernelSessions = null;
   if (opts.kernel === true || (opts.kernel === undefined && process.env.VYRE_KERNEL === "1")) {
     const { bootHomeKernel } = await import("../../kernel/home.js");
     kernel = await bootHomeKernel({ db, root, log, isFirstParty: dir => registry.isFirstParty(dir) });
     if (typeof kernel.bindCalls === "function") kernel.bindCalls(currentCall);
+    // The session credential of a session vyred starts (core/sessions/kernel-session.js): the kernel opens a token for the owner this home runs as, with the thread's chat written
+    // in by the kernel after it checks the owner is in it; vyred holds it and the thread's own socket stamps it on every call, so the session never sees it. An unnamed thread
+    // runs as the default assistant. A thread with no chat of its own gets a session of no chat. Only the Switchboard is handed this (core/modules/index.js context).
+    const { createKernelSessions } = await import("../sessions/kernel-session.js");
+    const kernelSessions = createKernelSessions({ kernel });
+    closeKernelSessions = () => kernelSessions.closeAll();
+    registry.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any }} */ q) => {
+      const person = kernel.chains.fromFacts({ kind: "session_person", person: kernel.id.owner, session: `thread:${q.thread}`, vouched: true });
+      const s = await kernelSessions.open({ chain: person, ...(q.rec && typeof q.rec.chat === "string" ? { chat: q.rec.chat } : {}), ...(q.agent ? { agent: q.agent } : {}), thread: q.thread });
+      return { token: kernelSessions.tokenFor(s.id), end: () => kernelSessions.end(s.id) };
+    };
     registry.deps.moduleHost = kernel.moduleHost;
     registry.deps.kernelFor = kernel.kernelFor;
     if (kernel.firstPartyCheck) registry.deps.firstPartyCheck = kernel.firstPartyCheck;
@@ -224,6 +239,7 @@ async function startLocked(opts, root, p, release) {
   const stop = async () => {
     if (stopped) return; stopped = true;
     if (labelTimer) clearTimeout(labelTimer);
+    if (closeKernelSessions) await closeKernelSessions().catch(() => {});
     // Stop taking calls, and give the ones running up to DRAIN_MS to finish: a write cut off
     // mid-way looks to its client like a failure it will retry (ADR 0029, R7).
     drain.on = true;
@@ -808,6 +824,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       }
     }
     const sessionToken = await kernelSession(req, kernelOf);
+    if (sessionToken === null) return send(res, 401, { error: { code: "no_session", message: "this call carries a session credential that is not valid, so it was not made" } });
     const result = await registry.call(name, input, caller, { ...via, proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
       keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req), ...(kernelProof(req) ? { kernel_proof: kernelProof(req) } : {}), ...(sessionToken ? { token: sessionToken } : {}) });
     // A new person session for the Deck goes in the cookie, never in the body a script could read.

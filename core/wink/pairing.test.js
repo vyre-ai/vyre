@@ -7,10 +7,13 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { createPairing, MIGRATIONS, PEER_MIGRATIONS, POLL_MS, KIND_OFFERS, parseQr, qrPayload } from "./pairing.js";
 import { FORBIDDEN, words } from "./cards.js";
+import { createChainBuilder } from "../../kernel/core/chain.js";
 import { createOffersPort } from "../../kernel/remote/offers-port.js";
 
 const ME = "per_aaaaaaaaaaaaaaaaaaaaaaaaaa";
 const HARLOW = "spc_harlowharlo";   // admin
+// The kernel-built chain of the proven caller (the device owner): the offers port takes the member for the member side from it, never from an argument.
+const chains = createChainBuilder({ space: HARLOW, owner: ME, owner_uid: 1, key: Buffer.alloc(32, 5), is_person: () => true });
 const NORTHWIND = "spc_northwindbk"; // member only
 
 /** A fake of the kernel gateway's grants offers: offer, unoffer, active (the same shape as kernel/grants/index.js). */
@@ -46,7 +49,7 @@ function world(o = {}) {
   };
   // the real offers port (kernel/remote/offers-port.js) over a fake of the kernel gateway's grants.offers: one store, the kernel's
   const offers = fakeOffers();
-  const port = o.offers || createOffersPort({ space: HARLOW, grants: { offers }, chain: async () => ({}), proofFrom: () => ({}) });
+  const port = o.offers || createOffersPort({ space: HARLOW, grants: { offers }, chain: async () => chains.fromFacts({ kind: "device", device_key_id: "d-me", person: ME, path: "direct" }), proofFrom: () => ({}) });
   const p = createPairing({
     ctx, now: o.now || (() => 1_000_000), identity: async () => ME, space: async () => HARLOW, directory, ports,
     openCode: async flow => ({ offer: `wo_${flow}`, code: "WINK-ZZZZ-ZZZZ", expires: 1 }), ack: async () => ({ ok: true }),

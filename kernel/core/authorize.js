@@ -4,6 +4,7 @@
 // K1 stops at the decision; sealing placeholders, presence signatures and approvals are enforced by K3/K4 against
 // the obligations returned here.
 import { isChain, hasKind, isExactlyPerson } from "./chain.js";
+const DEFAULT_ASSISTANT = "assistant";
 import { mintId } from "./ids.js";
 import { segments, covers, containedPrefix, spaceOf } from "./urn.js";
 import { KernelError } from "./errors.js";
@@ -126,6 +127,9 @@ export function createAuthorizer(cfg) {
           continue;
         }
         if (actor.kind === "service" && risk === "read" && cfg.standing && cfg.standing(actor.id, action, resource) && !(await cfg.grants.forSubject(actor, h, input)).length) continue;
+        // The default assistant is a delegate: acting for a person (that person is in the chain) it adds no grants of its own and takes none away, so the chain's authority is the
+        // person's. Alone, or with no person beside it, it is an ordinary actor with no grants and can do nothing. Named assistants are never delegates: their own grants narrow them.
+        if (actor.kind === "agent" && actor.id === DEFAULT_ASSISTANT && chain.hops.some((/** @type {any} */ x) => x.actor.kind === "person")) continue;
         const ms = cfg.members.membership ? cfg.members.membership(actor) : undefined;
         if (ms && ms.role === "temp") {
           if (ms.expires === undefined || ms.expires <= now) return deny("expired");
