@@ -43,13 +43,13 @@ export class FakeTwenty {
     const send = (code, v, type = "application/json") => { res.writeHead(code, { "content-type": type }); res.end(typeof v === "string" ? v : JSON.stringify(v)); };
     if (req.url === "/healthz") return send(200, { status: "ok" });
     if (req.url === "/client-config") return send(200, { appVersion: this.version });
-    if (req.headers.authorization !== `Bearer ${this.key}`) return send(401, { errors: [{ message: "Unauthorized" }] });
-    if (++this.served > this.limit) { this.served = 0; return send(429, { errors: [{ message: "Too many requests" }] }); }
     const { query, variables } = JSON.parse(body || "{}");
     const op = /^\s*(?:query|mutation)\s+(\w+)/.exec(query)?.[1] ?? "";
+    if (!op.startsWith("Boot_") && req.headers.authorization !== `Bearer ${this.key}`) return send(401, { errors: [{ message: "Unauthorized" }] });
+    if (!op.startsWith("Boot_") && ++this.served > this.limit) { this.served = 0; return send(429, { errors: [{ message: "Too many requests" }] }); }
     this.requests.push({ op, variables });
     try {
-      const data = req.url === "/metadata" ? this.#metadata(op, variables) : req.url === "/graphql" ? await this.#core(op, variables) : (() => { throw new GqlError("not found"); })();
+      const data = req.url === "/metadata" ? this.#metadata(op, variables, query) : req.url === "/graphql" ? await this.#core(op, variables) : (() => { throw new GqlError("not found"); })();
       send(200, { data });
     } catch (e) {
       if (e instanceof GqlError) return send(200, { errors: [{ message: e.message, extensions: { code: e.code, ...(e.subCode ? { subCode: e.subCode } : {}) } }], data: null });
@@ -57,7 +57,8 @@ export class FakeTwenty {
     }
   }
 
-  #metadata(op, v) {
+  #metadata(op, v, query = "") {
+    if (op.startsWith("Boot_")) return this.#boot(op, query);
     switch (op) {
       case "Health": return { objects: { totalCount: this.objects.size } };
       case "Objs": return { objects: { edges: [...this.objects.values()].map((o) => ({ node: { id: o.id, nameSingular: o.nameSingular, namePlural: o.namePlural, fields: { edges: [...o.fields.values()].map((f) => ({ node: f })) } } })) } };
@@ -83,6 +84,24 @@ export class FakeTwenty {
       case "NewHook": { const h = { id: crypto.randomUUID(), ...v.i }; this.hooks.push(h); return { createWebhook: { id: h.id } }; }
       case "DelHook": { this.hooks = this.hooks.filter((h) => h.id !== v.id); return { deleteWebhook: { id: v.id } }; }
       default: throw new GqlError(`Unknown metadata operation ${op}`);
+    }
+  }
+
+  /** The headless bootstrap the provisioner runs, in the order it runs it. */
+  #boot(op, query) {
+    this.boot = this.boot ?? { calls: [], origin: null };
+    this.boot.calls.push(op);
+    switch (op) {
+      case "Boot_signUp": return { signUp: { tokens: { accessOrWorkspaceAgnosticToken: { token: "agnostic" } } } };
+      case "Boot_signIn": return { signIn: { tokens: { accessOrWorkspaceAgnosticToken: { token: "agnostic" } } } };
+      case "Boot_workspace": return { signUpInNewWorkspace: { loginToken: { token: "login" }, workspace: { id: this.workspaceId } } };
+      case "Boot_login": return { getAuthTokensFromLoginToken: { tokens: { accessOrWorkspaceAgnosticToken: { token: "access" } } } };
+      case "Boot_activate": return { activateWorkspace: { id: this.workspaceId } };
+      case "Boot_roles": return { getRoles: [{ id: "role-member", label: "Member" }, { id: "role-admin", label: "Admin" }] };
+      case "Boot_key": return { createApiKey: { id: "key-1" } };
+      case "Boot_token": return { generateApiKeyToken: { token: this.key } };
+      case "Boot_close": this.boot.closed = true; return { updateWorkspace: { id: this.workspaceId } };
+      default: throw new GqlError(`Unknown bootstrap operation ${op}`);
     }
   }
 
