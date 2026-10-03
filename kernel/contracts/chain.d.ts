@@ -26,6 +26,8 @@ export interface Via {
   readonly device?: string;
   readonly node?: string;
   readonly session?: string;
+  /** Retrofit only (K2b, removed at K6): the caller string the registry was called with, kept so the old rules can be compiled to grants. */
+  readonly legacy?: string;
 }
 
 /** How the kernel came to add this hop. A caller can never add a hop itself (invariant 2). */
