@@ -1,0 +1,8 @@
+{
+  "nodes": [ {"name": "win-spike", "space": "W", "control": "http://10.0.2.2:28090", "keyFile": "key", "dir": "state"} ],
+  "tests": [
+    {"label": "windows ping hub", "from": "win-spike", "to": "100.97.143.1:7000", "kind": "ping", "count": 200, "waitSeconds": 40},
+    {"label": "windows hello hub", "from": "win-spike", "to": "100.97.143.1:7000", "kind": "hello", "waitSeconds": 40}
+  ],
+  "holdSeconds": 30
+}
