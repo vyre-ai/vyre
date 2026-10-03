@@ -71,7 +71,7 @@ export const testHooks = { now: () => Date.now(), holdMs: HOLD_MS };
  * `loud` rings through quiet hours: an alarm or a timer the user set themselves (ADR 0025).
  * @type {Record<string, (e: any, s: any) => { kind: string, title: string, path: string, tag: string, body?: string, actions?: string[], loud?: boolean } | null>}
  */
-const NOTES = {
+export const NOTES = {
   "ask.raised": e => ({ kind: "ask", title: "A session is waiting for your answer", path: `/needs/${enc(e.payload.ask)}`, tag: `ask-${e.payload.ask}` }),
   "gate.held": e => ({ kind: "draft", title: "Something is waiting for your approval", path: `/needs/${enc(e.payload.id)}`, tag: `draft-${e.payload.id}` }),
   "thread.watched": e => ({ kind: "watch",
@@ -99,6 +99,14 @@ const NOTES = {
   // own label (never model text), and the path opens that change, whose Undo needs no proof.
   "settings.loosened": e => ({ kind: "notice", title: `${String(e.payload.label || "A setting").slice(0, 80)} changed, as you asked. Undo`,
     path: `/settings?change=${enc(e.payload.change)}`, tag: `settings-loosened-${e.payload.change}`, loud: true }),
+  // core/spaces: the person's identity list changed (a new device, a recovery by the code or by contacts, a removal). Every device that sees
+  // it (each asks the directory for the list, spaces.identity.sync) rings its own push devices at once, through quiet hours and outside the
+  // daily budget, with a one-tap Remove. The words are fixed; the path carries only an entry id, which is a hash of a public key.
+  "identity.entry-added": e => ({ kind: "notice", title: "A new sign-in was added to your identity. Remove it if it was not you",
+    path: `/settings?section=identity&remove=${enc(e.payload.eid || (e.payload.entry && e.payload.entry.eid))}`, tag: `identity-entry-${e.payload.seq}-${e.payload.eid || (e.payload.entry && e.payload.entry.eid) || ""}`, actions: ["remove"], loud: true }),
+  "identity.recovered": e => ({ kind: "notice", title: "Your identity was recovered on a new device. Remove it if it was not you",
+    path: "/settings?section=identity", tag: `identity-recovered-${e.payload.seq}`, actions: ["remove"], loud: true }),
+  "identity.device-removed": e => ({ kind: "notice", title: "A device was removed from your identity", path: "/settings?section=identity", tag: `identity-removed-${e.payload.eid}`, loud: true }),
   "goal.done": e => ({ kind: "goal", title: "A goal is done", path: `/goals/${enc(e.payload.goal)}`, tag: `goal-done-${e.payload.goal}` }),
 };
 const PLANNER_TITLES = /** @type {Record<string, string>} */ ({ alarm: "Alarm", timer: "Timer finished", reminder: "Reminder", event: "Starting soon", todo: "Todo due" });

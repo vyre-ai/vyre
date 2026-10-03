@@ -1,18 +1,19 @@
 // @ts-check
 // spaces: the recovery code (team/0.3/DESIGN-wink.md section 2). A code is 128 random bits written as 26 base32 characters in groups of four.
-// With an optional PIN the person memorises, the paper alone is useless: the key is a memory-hard function of both. Only the PUBLIC half is
-// on the identity's list, so nothing the directory holds helps a guesser except the work factor below, and the code's own 128 bits.
+// With an optional recovery PASSWORD the person memorises, the paper alone is not enough: the key is Argon2id (kernel/identity/stretch.js, one file
+// for every client and verifier) of both. Only the PUBLIC half is on the identity's list, so a short password adds only the cost of that function
+// against an offline guesser who holds the paper: the setup copy recommends four or more words, and the minimum here is eight characters.
 //
-// The honest limit (the design says it too): whoever holds the code, and the PIN if one is set, can sign in as the person until an older
-// entry removes them. The PIN only keeps the paper from being enough.
+// The code is a way BACK IN, never a way to take over: on the chain it can only add a device, and that device is a newcomer for 24 hours.
+// The honest limit stays: whoever holds the code, and the password if one is set, can read as the person until an older device removes them.
 
 import crypto from "node:crypto";
-import { keyId } from "../names/ids.js";
+import { keyId } from "../../lib/identity/directory.js";
+import { argon2id, STRETCH, STRETCH_SALT } from "../../kernel/identity/stretch.js";
 
 const ALPHABET = "abcdefghijklmnopqrstuvwxyz234567";
-const SALT = Buffer.from("vyre-recovery-code-v1");
 const PKCS8_ED25519 = Buffer.from("302e020100300506032b657004220420", "hex");
-export const SCRYPT = Object.freeze({ N: 1 << 17, r: 8, p: 1, maxmem: 256 * 1024 * 1024 });
+export const PASSWORD_MIN = 8;
 
 /** A fresh code: 128 bits as 26 characters in groups of four. @param {(n: number) => Buffer} [random] */
 export function newCode(random = crypto.randomBytes) {
@@ -28,12 +29,12 @@ export const normalizeCode = code => String(code ?? "").toLowerCase().replace(/[
 export const codeLooksRight = (/** @type {unknown} */ code) => /^[a-z2-7]{26}$/.test(normalizeCode(code));
 
 /**
- * The Ed25519 key a code (and PIN) stands for. `params` is for tests only: the work factor is part of what makes a stolen paper slow to use.
- * @param {string} code @param {string} [pin] @param {{ N: number, r: number, p: number, maxmem: number }} [params]
+ * The Ed25519 key a code (and password) stands for. `params` is for tests only: the work factor is part of what makes a stolen paper slow to use.
+ * @param {string} code @param {string} [password] @param {{ memoryKiB: number, passes: number }} [params]
  */
-export function codeKey(code, pin = "", params = SCRYPT) {
+export function codeKey(code, password = "", params = STRETCH) {
   if (!codeLooksRight(code)) throw Object.assign(new Error("that is not a recovery code"), { code: "bad_code" });
-  const seed = crypto.scryptSync(Buffer.from(`${normalizeCode(code)}\n${String(pin ?? "").normalize("NFKC")}`), SALT, 32, params);
+  const seed = argon2id(Buffer.from(`${normalizeCode(code)}\n${String(password ?? "").normalize("NFKC")}`), STRETCH_SALT, params);
   const privateKey = crypto.createPrivateKey({ key: Buffer.concat([PKCS8_ED25519, seed]), format: "der", type: "pkcs8" });
   const pub = crypto.createPublicKey(privateKey).export({ format: "der", type: "spki" }).subarray(-32);
   return { eid: keyId(pub), publicKey: Buffer.from(pub).toString("base64url"), sign: (/** @type {Uint8Array} */ m) => crypto.sign(null, Buffer.from(m), privateKey) };

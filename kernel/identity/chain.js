@@ -80,9 +80,11 @@ async function verifySig(pubText, message, sigText) {
 /**
  * @typedef {{ eid: string, kind: "device"|"code"|"contact"|"owner", pub?: string, subject?: string, label?: string, since: number, addedBy: string|null, founder?: boolean }} Entry
  * @typedef {{ id: string, kind: "person"|"space", seq: number, head: string, ts: number, entries: Entry[] }} State
- * @typedef {{ ownerOps?: (id: string) => Promise<any[]|null>, live?: boolean, liveFrom?: number, now?: number, skewMs?: number }} Ctx
+ * @typedef {{ ownerOps?: (id: string) => Promise<any[]|null>, live?: boolean, liveFrom?: number, seenAt?: (seq: number) => number|undefined, now?: number, skewMs?: number }} Ctx
  * `ownerOps(id)` gives a person's whole chain (the verifier checks it itself). `live` says every op here is being ACCEPTED now, so its device must be on the owner's
  * current list; `liveFrom` is the same for ops from that sequence on (a client that pinned a head treats what is newer than its pin as live).
+ * An entry's age never comes from a time its adder wrote: an op accepted live must be made now (its time is within the skew of the acceptor's clock), and a
+ * verifier that learned an op later passes `seenAt(seq)`, the first time IT saw it, and the age starts there if that is later than the op's own time.
  */
 
 /** Does one entry's own shape hold? @param {any} e @param {"person"|"space"} kind */
@@ -117,6 +119,10 @@ export async function applyOp(state, op, ctx = {}) {
   const now = ctx.now ?? Date.now(), skew = ctx.skewMs ?? SKEW_MS;
   if (!op || typeof op !== "object" || op.v !== 1) throw chainError("bad_op", "not an op");
   if (!Number.isFinite(op.ts) || op.ts > now + skew) throw chainError("bad_time", "an op's time is ahead of the clock");
+  // Accepted now, so made now: the adder cannot pick an old time and so cannot hand a new entry a past age.
+  if (ctx.live && op.ts < now - skew) throw chainError("bad_time", "an op accepted now must be made now");
+  /** The time an age is counted from: the op's own, or the first time this verifier saw it if that is later. */
+  const eff = ctx.seenAt && Number.isInteger(op.seq) ? Math.max(op.ts, ctx.seenAt(op.seq) ?? 0) : op.ts;
   const msg = messageOf(op);
 
   if (op.type === "genesis") {
@@ -127,13 +133,13 @@ export async function applyOp(state, op, ctx = {}) {
     if (op.id !== await idOfGenesis(op)) throw chainError("bad_id", "the id is not the hash of the genesis");
     if (op.kind === "person") {
       if (entry.kind !== "device" || op.by !== entry.eid || !await verifySig(entry.pub, msg, op.sig)) throw chainError("bad_signature", "the first device signs its own genesis");
-    } else await verifyOwnerSig(op, entry.eid, /** @type {Entry} */ ({ ...entry, since: op.ts, addedBy: null }), msg, op.ts, ctx);
+    } else await verifyOwnerSig(op, entry.eid, /** @type {Entry} */ ({ ...entry, since: eff, addedBy: null }), msg, eff, ctx);
     /** @type {Entry[]} */
-    const entries = [{ ...entry, since: op.ts, addedBy: null, founder: true }];
+    const entries = [{ ...entry, since: eff, addedBy: null, founder: true }];
     if (op.code !== undefined) {
       const code = await shapeOfEntry(op.code, op.kind);
       if (op.kind !== "person" || code.kind !== "code") throw chainError("bad_entry", "a genesis may carry a recovery code entry for a person");
-      entries.push({ ...code, since: op.ts, addedBy: null, founder: true });
+      entries.push({ ...code, since: eff, addedBy: null, founder: true });
     }
     return { id: op.id, kind: op.kind, seq: 0, head: await hashOf(op), ts: op.ts, entries };
   }
@@ -156,11 +162,11 @@ export async function applyOp(state, op, ctx = {}) {
     signer = find(state, String(op.by));
     if (!signer) throw chainError("not_on_list", "the signer is not on the list");
     if (isSpace) {
-      young = await verifyOwnerSig(op, signer.eid, signer, msg, op.ts, ctx);
+      young = await verifyOwnerSig(op, signer.eid, signer, msg, eff, ctx);
     } else {
       if (signer.kind === "contact") throw chainError("not_allowed", "a recovery contact only approves a recovery");
       if (!await verifySig(signer.pub, msg, op.sig)) throw chainError("bad_signature", "the signature does not check out");
-      young = youngAt(signer, op.ts);
+      young = youngAt(signer, eff);
       // The recovery code is a way BACK IN, not a way to take over: it can only add a device. That device is a newcomer, and the owner's own devices stay and can remove it.
       if (signer.kind === "code" && !(op.type === "add" && op.entry && op.entry.kind === "device")) throw chainError("code_limited", "the recovery code can only add a device; sign in with a device to change the list");
     }
@@ -173,7 +179,7 @@ export async function applyOp(state, op, ctx = {}) {
       if (find(state, e.eid)) throw chainError("exists", "that entry is already on the list");
       if (isSpace ? young : (sensitive(/** @type {Entry} */ (e)) && young)) throw chainError("newcomer", "a sign-in under 24 hours old cannot change the owners, the recovery code or the contacts");
       if (e.kind === "code" && state.entries.some(x => x.kind === "code")) throw chainError("has_code", "there is a recovery code already; replace it");
-      entries.push({ ...e, since: op.ts, addedBy: signer ? signer.eid : null });
+      entries.push({ ...e, since: eff, addedBy: signer ? signer.eid : null });
       break;
     }
     case "remove": {
@@ -195,7 +201,7 @@ export async function applyOp(state, op, ctx = {}) {
       if (find(state, e.eid)) throw chainError("exists", "that is the code it already has");
       const old = state.entries.find(x => x.kind === "code");
       entries = entries.filter(x => x.kind !== "code");
-      entries.push({ ...e, since: old ? old.since : op.ts, addedBy: /** @type {Entry} */ (signer).eid });
+      entries.push({ ...e, since: old ? old.since : eff, addedBy: /** @type {Entry} */ (signer).eid });
       break;
     }
     case "recover": {
@@ -205,11 +211,11 @@ export async function applyOp(state, op, ctx = {}) {
       const seen = new Set();
       for (const a of Array.isArray(op.approvals) ? op.approvals : []) {
         const c = a && find(state, String(a.eid));
-        if (!c || c.kind !== "contact" || seen.has(c.eid) || youngAt(c, op.ts)) continue;
+        if (!c || c.kind !== "contact" || seen.has(c.eid) || youngAt(c, eff)) continue;
         if (await verifySig(c.pub, msg, a.sig)) seen.add(c.eid);
       }
       if (seen.size < CONTACT_QUORUM) throw chainError("no_quorum", `a recovery needs ${CONTACT_QUORUM} recovery contacts to approve`);
-      entries.push({ ...e, since: op.ts, addedBy: null });
+      entries.push({ ...e, since: eff, addedBy: null });
       break;
     }
     default: throw chainError("bad_op", "unknown op type");

@@ -216,3 +216,22 @@ export function spaceTable(db) {
     delete: (/** @type {string} */ id) => db.prepare("DELETE FROM spaces_space WHERE id = ?").run(id),
   };
 }
+
+/**
+ * When this device first saw each op of each identity list it verifies (seq -> ms), kept in the module's table so it survives a restart. A newcomer's age counts
+ * from here (kernel/identity/chain.js seenAt), never from a time its adder wrote. Synchronous: the chain verifier asks for it in the middle of a check.
+ * @param {any} db
+ */
+export function seenStore(db) {
+  const read = (/** @type {string} */ id) => { const r = /** @type {any} */ (db.prepare("SELECT value FROM spaces_kv WHERE key = ?").get(`seen/${id}`)); return r ? parse(r.value) || {} : null; };
+  return {
+    has: (/** @type {string} */ id) => read(id) !== null,
+    get: (/** @type {string} */ id, /** @type {number} */ seq) => { const m = read(id); return m && m[seq] !== undefined ? Number(m[seq]) : undefined; },
+    mark: (/** @type {string} */ id, /** @type {number} */ seq, /** @type {number} */ ts) => {
+      const m = read(id) || {};
+      if (m[seq] !== undefined) return;
+      m[seq] = ts;
+      db.prepare("INSERT INTO spaces_kv (key, value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(`seen/${id}`, JSON.stringify(m));
+    },
+  };
+}
