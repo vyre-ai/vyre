@@ -15,8 +15,8 @@ import { open, migrate } from "../store/index.js";
 const ME = "per_aaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const ZOE = "per_zzzzzzzzzzzzzzzzzzzzzzzzzzz";
 
-/** A server with an owner (an app, device app1, plus a second device of the owner), a fake clock, and every output captured. @param {{ file?: string, clock?: { t: number } }} [o] */
-function box(o = {}) {
+/** A server with an owner (an app, device app1, plus a second device of the owner), a fake clock, and every output captured. @param {any} [o] { file, clock, dataStores (null: no list), newSpace } */
+function box(o = /** @type {any} */ ({})) {
   const db = new DatabaseSync(o.file || ":memory:");
   const fresh = !db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'wink_meta'").get();
   if (fresh) for (const m of [...MIGRATIONS, ...PEER_MIGRATIONS]) db.exec(m);
@@ -26,7 +26,7 @@ function box(o = {}) {
   const ctx = { store: { db }, config: { name: "juno" }, log: (/** @type {string} */ m) => logs.push(m), events: { emit: (/** @type {string} */ n, /** @type {any} */ d) => events.push([n, d]) }, tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d), call: async (/** @type {string} */ t, /** @type {any} */ i) => { calls.push([t, i]); return { data: {} }; } };
   const p = createPairing({ ctx, now: () => clock.t, identity: async () => ME, space: async () => "spc_x", directory: { memberships: async () => [] }, ports: {}, openCode: async () => ({}), ack: async () => ({ ok: true }), owner: () => {}, dropMs: 0, relayUrl: async () => "ws://r", spaceNow: () => "spc_x" });
   p.tools();
-  registerReset({ ctx, pairing: p, now: () => clock.t, identity: async () => ME, dropMs: 0 });
+  registerReset({ ctx, pairing: p, now: () => clock.t, identity: async () => ME, dropMs: 0, dataStores: o.dataStores === null ? undefined : (o.dataStores || (async () => [])), newSpace: o.newSpace, wipeDelayMs: 0 });
   /** @param {string} name @param {any} input @param {string} [caller] @param {any} [extra] */
   const call = (name, input, caller = "cli", extra = {}) => tools.get(name).run(input, { caller, ...extra });
   const own = () => {
@@ -238,4 +238,61 @@ test("a reset leaves the vault sealed: a paired app or a new owner's device is n
   for (const caller of ["device:zoe1aaaaaaaaaaaa", "tailnet:zoe", "deck", "mcp"]) await assert.rejects(() => v.release({ name: "stripe" }, caller), /only modules may ask the vault/, caller);
   for (const f of fs.readdirSync(dir, { recursive: true })) { const p = path.join(dir, String(f)); if (fs.statSync(p).isFile() && !/\.key$|keys?\./.test(String(f))) assert.ok(!fs.readFileSync(p).includes(secret), `${f} holds no plaintext`); }
   assert.equal((await v.release({ name: "stripe" }, "module:x").catch(e => e.message)).includes("not granted"), true, "even a module needs the item granted to it");
+});
+
+/** A store of the kernel's list: holds data until wiped. @param {string} name @param {{ stuck?: boolean, throws?: boolean }} [f] */
+const store = (name, f = {}) => { const st = { name, full: true, wiped: 0, holds: async () => { if (f.throws) throw new Error("cannot tell"); return st.full; }, wipe: async () => { st.wiped++; if (!f.stuck) st.full = false; } }; return st; };
+
+test("a box with data refuses a reset that does not wipe, names the stores, and leaves the owner in place; a box with no list is a box with data", async () => {
+  for (const o of [{ dataStores: async () => [store("the vault"), store("sealed values")] }, { dataStores: null }, { dataStores: async () => [store("memory", { throws: true })] }]) {
+    const b = box(o); b.own();
+    await assert.rejects(() => b.begin(), e => e.code === "holds_data" && /--wipe/.test(e.message) && /recover your identity/.test(e.message));
+    assert.deepEqual(b.p.meta.get("owner"), { kind: "identity", id: ME, identity: ME }, "nothing was reset");
+    assert.equal(b.p.meta.get("reset_begin"), null, "no code was made valid");
+  }
+  const named = box({ dataStores: async () => [store("the vault"), store("empty one")] }); named.own(); named.p.meta.get("owner");
+  const e = await named.begin().catch(x => x); assert.match(e.message, /the vault/);
+  // a box nobody owns has nothing to hand over
+  const unowned = box({ dataStores: null });
+  assert.equal((await unowned.begin()).r.begun, true);
+});
+
+test("the wipe: begin names --wipe, confirm needs the code AND the typed word, the old owner's card goes first, every store is wiped and checked empty, a new Space identity is made, then the box is unowned", async () => {
+  const vault = store("the vault"), seal = store("sealed values");
+  /** @type {string[]} */ const order = [];
+  const b = box({ dataStores: async () => [vault, seal], newSpace: async () => { order.push("newSpace"); } });
+  b.own();
+  const code = newCode();
+  const begun = await b.call("wink.server.reset.begin", { ...beginInput(code), wipe: true });
+  assert.equal(begun.wipe, true);
+  await assert.rejects(() => b.call("wink.server.reset.confirm", { code }), e => e.code === "wipe_needs_typed");
+  await assert.rejects(() => b.call("wink.server.reset.confirm", { code, typed: "yes" }), e => e.code === "wipe_needs_typed");
+  assert.equal(b.p.meta.get("reset_guard"), null, "a slip with the word does not count as a wrong code");
+  assert.equal(vault.wiped, 0);
+  b.events.length = 0;
+  const r = await b.call("wink.server.reset.confirm", { code, typed: " Wipe " });
+  assert.deepEqual(r, { reset: true, had: true, wiped: true });
+  assert.equal(vault.wiped + seal.wiped, 2);
+  assert.equal(vault.full || seal.full, false, "verified empty");
+  assert.deepEqual(order, ["newSpace"]);
+  assert.equal(b.p.meta.get("owner"), null);
+  assert.ok(b.events.some(e => e[0] === "wink.server-reset"), "the previous owner's card");
+  await assert.rejects(() => b.call("wink.server.reset.confirm", { code, typed: "wipe" }), e => e.code === "no_code", "the code was single use");
+});
+
+test("a wipe that does not empty a store, or has no new-Space maker, or no list, fails closed: the owner stays and the reason is said", async () => {
+  const stuck = store("the vault", { stuck: true });
+  let made = 0;
+  const b = box({ dataStores: async () => [stuck], newSpace: async () => { made++; } });
+  b.own();
+  const code = newCode();
+  await b.call("wink.server.reset.begin", { ...beginInput(code), wipe: true });
+  await assert.rejects(() => b.call("wink.server.reset.confirm", { code, typed: "wipe" }), e => e.code === "wipe_failed" && /the vault/.test(e.message));
+  assert.ok(b.p.meta.get("owner"), "still owned");
+  assert.equal(made, 0, "no new Space until the stores are empty");
+  assert.ok(b.events.some(e => e[0] === "wink.server-reset-failed"));
+  const noSpace = box({ dataStores: async () => [store("the vault")] }); noSpace.own();
+  await assert.rejects(() => noSpace.call("wink.server.reset.begin", { ...beginInput(newCode()), wipe: true }), e => e.code === "wipe_unavailable" && /new Space/.test(e.message));
+  const noList = box({ dataStores: null }); noList.own();
+  await assert.rejects(() => noList.call("wink.server.reset.begin", { ...beginInput(newCode()), wipe: true }), e => e.code === "wipe_unavailable" && /list/.test(e.message));
 });

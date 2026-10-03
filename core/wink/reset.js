@@ -33,7 +33,12 @@ export const resetCard = at => ({ title: "This server was reset", text: `This se
 
 /**
  * Registers wink.server.reset.begin and wink.server.reset.confirm.
- * @param {{ ctx: any, pairing: any, now?: () => number, identity?: () => Promise<string>, dropMs?: number }} o
+ * `dataStores` is the kernel's list of every store that holds the box's data (vault, sealing folder, records, the Drive pool, workspaces, sessions, memory), each `{ name, holds(), wipe() }`.
+ * The default is "holds data": no list, a store that throws or does not answer exactly false, all count as holding data, so a store nobody listed blocks a reset instead of being skipped.
+ * A reset of a box that holds data refuses unless it is a wipe (`vyre wink reset --begin --wipe`); a wipe needs the one-time code AND the typed word `wipe`, tells the previous owner first,
+ * waits a short time, wipes every store, checks they are empty, and makes a NEW Space identity (`newSpace()`, never the old keys) before the box reports itself unowned. No list or no
+ * `newSpace` means a wipe is refused, with the reason.
+ * @param {{ ctx: any, pairing: any, now?: () => number, identity?: () => Promise<string>, dropMs?: number, dataStores?: () => Promise<{ name: string, holds: () => Promise<boolean | undefined>, wipe: () => Promise<void> }[]>, newSpace?: () => Promise<void>, wipeDelayMs?: number }} o
  */
 export function registerReset(o) {
   const { ctx, pairing } = o;
@@ -46,6 +51,16 @@ export function registerReset(o) {
     const c = String((m && m.caller) || "");
     if (c !== "cli" || (m && m.agent)) throw fail("denied", "A server is reset from its own console: run vyre wink reset in a terminal on the server.");
   };
+  /** What this box holds, by the kernel's list; fail closed. @returns {Promise<{ holds: boolean, names: string[], stores: any[] | null }>} */
+  const holdsData = async () => {
+    /** @type {any[] | null} */ let stores = null;
+    try { const l = o.dataStores ? await o.dataStores() : null; stores = Array.isArray(l) ? l : null; } catch { stores = null; }
+    if (!stores) return { holds: true, names: ["the list of this box's data stores"], stores: null };
+    /** @type {string[]} */ const names = [];
+    for (const st of stores) { let h; try { h = await st.holds(); } catch { h = undefined; } if (h !== false) names.push(String(st.name)); }
+    return { holds: names.length > 0, names, stores };
+  };
+  const owned = () => Boolean(meta.get("owner") || meta.get("adopter"));
   const lockedUntil = () => { const g = meta.get(GUARD); return g && g.until > now() ? g.until : 0; };
   const notLocked = () => {
     const u = lockedUntil();
@@ -64,21 +79,27 @@ export function registerReset(o) {
   ctx.tool("wink.server.reset.begin", {
     callers: ["cli"],
     description: "On the server's own console only: start a reset. The command line (vyre wink reset --begin) makes a one-time code, shows it on the person's terminal, and sends this only its salted hash { salt, hash }. The code is valid 5 minutes and once. The local command line only: never a deck, hook, agent, module, device, tailnet or relay caller. Answers { begun, until }.",
-    input: obj({ salt: str, hash: str }, ["salt", "hash"]),
+    input: obj({ salt: str, hash: str, wipe: { type: "boolean" } }, ["salt", "hash"]),
     run: async (/** @type {any} */ input, /** @type {any} */ m = {}) => {
       cliOnly(m);
       notLocked();
       if (!input || !/^[0-9a-f]{32}$/.test(String(input.salt)) || !/^[0-9a-f]{64}$/.test(String(input.hash))) throw fail("bad_input", "begin takes the salt and hash the command line made");
+      const wipe = input.wipe === true;
+      if (owned()) {
+        const h = await holdsData();
+        if (h.holds && !wipe) throw fail("holds_data", `This server holds data (${h.names.join(", ")}), and a reset would leave it for the next owner. Nothing was reset. If you only lost a device, recover your identity from another device instead. To erase everything on this server and start it as a new Space, run vyre wink reset --begin --wipe.`);
+        if (h.holds && wipe && (!h.stores || typeof o.newSpace !== "function")) throw fail("wipe_unavailable", `This server cannot be wiped yet: ${!h.stores ? "it has no list of its data stores" : "it cannot make a new Space identity"}. Nothing was reset.`);
+      }
       const until = now() + CODE_LIFE_MS;
-      meta.set(BEGUN, { salt: String(input.salt), hash: String(input.hash), until });
-      return { begun: true, until };
+      meta.set(BEGUN, { salt: String(input.salt), hash: String(input.hash), until, ...(wipe ? { wipe: true } : {}) });
+      return { begun: true, until, ...(wipe ? { wipe: true } : {}) };
     },
   });
 
   ctx.tool("wink.server.reset.confirm", {
     callers: ["cli"],
     description: "On the server's own console only: finish a reset with the code that vyre wink reset --begin showed. The server forgets its owner (owner, adopter, hand-over, peer secret, the app's devices) and keeps its own keys; the previous owner's devices get a card. Five wrong codes lock this for an hour. The local command line only. Answers { reset, had }.",
-    input: obj({ code: str }, ["code"]),
+    input: obj({ code: str, typed: str }, ["code"]),
     run: async (/** @type {any} */ input, /** @type {any} */ m = {}) => {
       cliOnly(m);
       notLocked();
@@ -98,6 +119,10 @@ export function registerReset(o) {
         meta.set(GUARD, { wrong, until: 0 });
         throw fail("wrong_code", `That is not the code. ${MAX_WRONG - wrong} ${MAX_WRONG - wrong === 1 ? "try" : "tries"} left.`);
       }
+      // a wipe also needs the typed word, checked before the code is spent so a slip does not cost the code
+      if (b.wipe && String((input && input.typed) || "").trim().toLowerCase() !== "wipe") throw fail("wipe_needs_typed", "This erases everything stored on this server. Type the word wipe to go on.");
+      // the box may have changed since begin: a reset that is not a wipe still refuses on data
+      if (owned() && !b.wipe) { const h = await holdsData(); if (h.holds) { meta.del(BEGUN); throw fail("holds_data", `This server holds data (${h.names.join(", ")}). Nothing was reset. Begin again with --wipe to erase it.`); } }
       meta.del(BEGUN); meta.del(GUARD);
       const at = now();
       const om = meta.get("owner");
@@ -107,12 +132,29 @@ export function registerReset(o) {
       // The card goes first, while the previous owner's devices are still reachable; then the owner goes and so do their devices here.
       if (had) ctx.events.emit("wink.server-reset", { at, devices: devs.map((/** @type {any} */ d) => d.id), card: resetCard(at) });
       ctx.log(`wink: this server was reset from its console at ${new Date(at).toISOString()}`);
+      if (b.wipe) {
+        // the previous owner has the card; a short wait, then every store is wiped, checked empty, and a NEW Space identity is made. Any failure leaves the owner in place and says why.
+        const wait = o.wipeDelayMs ?? 10_000;
+        if (wait) await new Promise(r => { const t = setTimeout(r, wait); if (t.unref) t.unref(); });
+        try {
+          const h = await holdsData();
+          if (!h.stores || typeof o.newSpace !== "function") throw fail("wipe_unavailable", "This server cannot be wiped: no list of its data stores, or no way to make a new Space identity.");
+          for (const st of h.stores) await st.wipe();
+          const after = await holdsData();
+          if (after.holds) throw fail("wipe_failed", `The wipe did not empty this server (${after.names.join(", ")}). It still belongs to its owner and nothing was reset.`);
+          await o.newSpace();
+        } catch (e) {
+          ctx.events.emit("wink.server-reset-failed", { at, reason: String(/** @type {any} */ (e).message || e) });
+          ctx.log(`wink: the wipe failed: ${String(/** @type {any} */ (e).message || e)}`);
+          throw e;
+        }
+      }
       const adopter = String(meta.get("adopter") || "");
       pairing.clearOwner(); // drops the adopter's relay device
       for (const d of devs) { pairing.devices.remove(d.id); if (`device:${d.id}` !== adopter) dropDevice(d.id); }
       // every paired person session and grant ends with the owner (ADR 0032 2d): a reset is a recovery reset
       if (typeof ctx.call === "function") Promise.resolve(ctx.call("presence.person.end-paired", {})).catch(() => null);
-      return { reset: true, had };
+      return { reset: true, had, ...(b.wipe ? { wiped: true } : {}) };
     },
   });
 }
