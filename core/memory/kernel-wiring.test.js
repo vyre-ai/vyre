@@ -24,11 +24,15 @@ async function world(t) {
   t.after(() => db.close());
   seedRecall(db, SESSIONS);
   const tools = new Map();
+  const calls = [], prompts = [];
+  // The work module is not started here: its tools are answered by stand-ins so the test sees what memory asks of it and what it never asks.
+  const space = { hits: [], answer: null };
   const ctx = {
     name: "memory", config: { me: { domains: ["riverastudio.com"] } }, paths: {}, store: { db, migrate: () => {} }, log: () => {},
     events: { on: () => () => {}, emit: () => {}, since: () => [], prune: () => 0 },
-    call: async (tool, input) => tool === "recall.search" ? { data: [] } : tool === "recall.thread" ? { data: { turns: [] } } : fakeReachCall(tool, input, { agents: AGENTS, projects: [] }),
+    call: async (tool, input) => { calls.push(tool); return tool === "recall.search" ? { data: [] } : tool === "recall.thread" ? { data: { turns: [] } } : tool === "work.know.search" ? { data: { hits: space.hits } } : tool === "work.know.answer" ? (space.answer || { data: { result: { text: "", citations: [] } } }) : fakeReachCall(tool, input, { agents: AGENTS, projects: [] }); },
     tool: (name, def) => tools.set(name, def), kernel: handle, memoryRunner: null,
+    iqRunner: async ({ prompt }) => { prompts.push(prompt); return { text: JSON.stringify({ answer: null, cite: [], confidence: 0, abstain: true, known: [] }), usd: 0 }; },
   };
   const h = await memory.start(ctx);
   t.after(() => h.stop());
@@ -38,7 +42,7 @@ async function world(t) {
     try { return { data: await tools.get(name).run(input, { caller, ...(token ? { token } : {}) }) }; } catch (e) { return { error: /** @type {Error} */ (e).message, code: /** @type {any} */ (e).code || "failed" }; }
   };
   const session = async (person, o = {}) => (await rig.k.surfaces.open(rig.person(person), o)).token;
-  return { rig, call, db, tools, session };
+  return { rig, call, db, tools, session, calls, prompts, space };
 }
 
 test("a. a group chat is refused personal memory, a one to one chat is not, and a call with no session is not in a chat", async t => {
@@ -47,7 +51,7 @@ test("a. a group chat is refused personal memory, a one to one chat is not, and 
   const group = await w.rig.k.gateway.grants.chats.create(w.rig.person("per_alex"), { people: ["per_bob"] });
   const solo = await w.rig.k.gateway.grants.chats.create(w.rig.person("per_alex"), {});
   const tg = await w.session("per_alex", { chat: group.id }), ts = await w.session("per_alex", { chat: solo.id });
-  for (const tool of ["memory.stats", "memory.facts", "memory.ask", "memory.me"]) {
+  for (const tool of ["memory.stats", "memory.facts", "memory.answer", "memory.me", "memory.retrieve"]) {
     const r = await w.call(tool, { question: "who", about: "Harlow" }, "deck", tg);
     assert.equal(r.code, "denied", `${tool}: ${r.error}`);
     assert.match(r.error, /not shared in a group chat/);
@@ -145,4 +149,31 @@ test("d. the tables are still there with their rows after the module starts agai
   }
   assert.equal(db.prepare("SELECT COUNT(*) n FROM memory_me_told WHERE text = 'kept'").get().n, 1);
   assert.equal(db.prepare("SELECT COUNT(*) n FROM memory_site").get().n, 1);
+});
+
+test("the one Ask door: one to one it reads personal memory AND the Space's, in a room only the Space's, and a room never reaches Recall", async t => {
+  const w = await world(t);
+  w.space.hits = [{ source: `vyre://${w.rig.space}/matter/m1`, kind: "record", snippet: "matter Doe estate plan, stage Intake" }];
+  const solo = await w.rig.k.gateway.grants.chats.create(w.rig.person("per_alex"), {});
+  const group = await w.rig.k.gateway.grants.chats.create(w.rig.person("per_alex"), { people: ["per_bob"] });
+  // one to one: the pipeline retrieves from Recall as always, and the Space's engine is one more source
+  const ts = await w.session("per_alex", { chat: solo.id });
+  w.calls.length = 0; w.prompts.length = 0;
+  const one = await w.call("memory.ask", { question: "what do we know about the Doe estate plan" }, "deck", ts);
+  assert.ok(!one.error, one.error);
+  assert.ok(w.calls.includes("recall.search") && w.calls.includes("work.know.search"), w.calls.join());
+  assert.match(w.prompts.join("\n"), /Doe estate plan, stage Intake/, "the Space passage was read");
+  // a room: only Space memory, narrowed to the room by the engine; personal memory and Recall are never touched
+  w.space.answer = { data: { result: { text: "Doe is in Intake [S1]", citations: [`vyre://${w.rig.space}/matter/m1`], withheld: 0 } } };
+  const tg = await w.session("per_alex", { chat: group.id });
+  w.calls.length = 0; w.prompts.length = 0;
+  const room = await w.call("memory.ask", { question: "what do we know about the Doe estate plan" }, "deck", tg);
+  assert.ok(!room.error, room.error);
+  assert.equal(room.data.via, "space");
+  assert.equal(room.data.room, true);
+  assert.match(room.data.answer, /Intake/);
+  assert.deepEqual(w.calls, ["work.know.answer"], "nothing else was asked: no Recall, no personal facts");
+  assert.equal(w.prompts.length, 0, "no personal prompt was built");
+  // every other personal tool is still refused in that room
+  assert.equal((await w.call("memory.facts", { about: "Harlow" }, "deck", tg)).code, "denied");
 });

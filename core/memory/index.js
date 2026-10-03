@@ -28,6 +28,7 @@ import { catchCorrection, groundedAnswer } from "./iq/chatfix.js";
 import { userWords, devTalk, vyreFolder, sessionTrust } from "./personal/trust.js";
 import { register as registerSite } from "./site.js";
 import { createKernelGate } from "./kernel-gate.js";
+import { mergeSpace, spaceHits, spaceOnlyAnswer } from "./iq/space.js";
 import { scanRows } from "./sealed.js";
 import { writeStore, register as registerWrites, passages as writePassages, relevantLines, quoted as quotedWrite } from "./write.js";
 
@@ -53,7 +54,9 @@ export default {
       tool: (name, def) => rawCtx.tool(name, {
         ...def,
         run: async (input = {}, extra = {}) => {
-          await kernelGate(name, extra);
+          const room = await kernelGate(name, extra);
+          // The one Ask door: in a chat with more than one person it is answered from the Space's memory alone.
+          if (room && room.group) return spaceOnlyAnswer((tool, i) => rawCtx.call(tool, i), String((input || {}).question || ""));
           if (!extra || !extra.agent) return def.run(input, extra);
           const { agent: _a, project_cwds: _p, ...rest } = input || {};
           const granted = extra.granted === "*" ? "*" : Array.isArray(extra.granted) ? extra.granted.map(String) : [];
@@ -1026,7 +1029,7 @@ export default {
     const LIFE = new Set(["kin", "of", "birthday", "car", "carFate", "diet", "lives", "born", "myname", "owns"]);
     const trustOf = ctx.store.db.prepare("SELECT ok FROM memory_me_trust WHERE session = ?");
     const humanOf = () => { try { return ctx.store.db.prepare("SELECT human FROM recall_sessions WHERE id = ?"); } catch { return null; } };
-    const ask = asker({ db: ctx.store.db, answer, decide, site: q => siteStore.answer(q), retrieve: async i => withWrites(await retrieve(i), i.question, i.writes || null), fixes: fixed,
+    const ask = asker({ db: ctx.store.db, answer, decide, site: q => siteStore.answer(q), retrieve: async i => { const base = withWrites(await retrieve(i), i.question, i.writes || null); return rawCtx.kernel && i.personal ? mergeSpace(base, await spaceHits((tool, x) => rawCtx.call(tool, x), i.question)) : base; }, fixes: fixed,
       personalQ: q => {
         // About the user's own life: a relative, their car, home, diet, birthday, name. Work
         // questions that the personal parser also reads ("who's priya") stay work questions.

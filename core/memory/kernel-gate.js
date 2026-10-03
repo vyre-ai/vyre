@@ -7,9 +7,12 @@
 //      only that person's own assistants (agent hops) may stand beside them. A chain with no person (a module or the daemon calling) is not decided here: the legacy rules stand.
 // With no kernel on the daemon (`ctx.kernel` absent) nothing changes. The 0.2 reach rules (projects.reach, agent project grants) still run after this, and only narrow.
 
+/** Tools a person asks the ONE Ask door through: in a room they are answered from the Space's memory alone, not refused. */
+export const ROOM_ANSWERS = new Set(["memory.ask"]);
+
 /** @param {any} ctx @param {{ denied: (message: string) => Error }} o */
 export function createKernelGate(ctx, { denied }) {
-  /** @param {string} tool @param {any} extra @returns {Promise<void>} */
+  /** @param {string} tool @param {any} extra @returns {Promise<{ group: true } | void>} `{ group: true }` for a room-answered tool in a room; refuses everything else in a room */
   return async function gate(tool, extra) {
     const k = ctx.kernel;
     if (!k) return;
@@ -22,12 +25,17 @@ export function createKernelGate(ctx, { denied }) {
       let room = null;
       try { room = typeof k.audienceFor === "function" ? await k.audienceFor(extra || {}) : null; } catch { room = null; }
       if (!room) throw denied(`${tool}: the room this runs in is not known, so personal memory is not read`);
-      if (room.group === true) throw denied(`${tool}: personal memory is not shared in a group chat`);
+      if (room.group === true) {
+        if (ROOM_ANSWERS.has(tool)) return { group: true };
+        throw denied(`${tool}: personal memory is not shared in a group chat`);
+      }
     }
     // c. whose memory
+    // SHIM(surface chain): a call from the person's own surface (CLI, Deck) reaches a module with no kernel chain today (only session tokens build one), so there is no person
+    // here to check and the 0.2 caller label decides alone. Delete this branch when the kernel hands a module the call's chain (K6); the `tailnet:` labels go with it.
     if (!chain || !Array.isArray(chain.hops) || !chain.hops.length) return;
     const hops = chain.hops.map((/** @type {any} */ h) => h.actor);
-    if (hops.every((/** @type {any} */ a) => a.kind === "service")) return;
+    if (hops.every((/** @type {any} */ a) => a.kind === "service")) return; // SHIM(surface chain): the module's own service chain stands for "no chain for this call"
     const first = hops[0];
     if (first.kind !== "person" || hops.slice(1).some((/** @type {any} */ a) => a.kind === "person")) throw denied(`${tool}: personal memory is read only by its person and that person's own assistant`);
     let m = null;
