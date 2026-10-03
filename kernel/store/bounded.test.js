@@ -142,3 +142,32 @@ test("a boot reads the newest snapshot and the grants events after it, not the h
   const k3 = await open();
   assert.equal((await k3.gateway.grants.members.list(k3.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" }))).some(m => m.person === "per_late"), true);
 });
+
+test("BL-1: the filter columns are generated from the event, so a database edit cannot make a by-type read disagree with the event", () => {
+  const db = new DatabaseSync(":memory:");
+  const log = createSqliteEventLog({ db, space: SPACE, clock, window: { events: 20, bytes: 1_000_000 }, rand: n => Buffer.alloc(n, 7) });
+  fill(log, 300);
+  const before = log.read({ type: "grant.created" }).length;
+  // probe 1: change only the type column of an old event
+  for (const col of ["type", "subject", "corr", "actor", "ref"]) assert.throws(() => db.prepare(`UPDATE kernel_events SET ${col} = 'x' WHERE seq = 6`).run(), /generated/i, `${col} cannot be written`);
+  assert.equal(log.read({ type: "grant.created" }).length, before);
+  // probe 2: a row whose JSON says contact.updated is never returned by a grant.created read, whatever the row's other fields: the column is the JSON
+  const e = JSON.parse(/** @type {any} */ (db.prepare("SELECT event FROM kernel_events WHERE seq = 2").get()).event);
+  assert.notEqual(e.type, "grant.created");
+  assert.ok(!log.read({ type: "grant.created" }).some(x => x.seq === 2));
+  // editing the event's own type is a different edit: the column follows it, and the chain catches it
+  db.prepare("UPDATE kernel_events SET event = json_set(event, '$.type', 'grant.created') WHERE seq = 2").run();
+  assert.equal(log.verify().ok, false, "the edit is found by the chain");
+  assert.equal(log.verify().at, 2);
+});
+
+test("BL-1: a database made with plain filter columns is migrated to generated ones, and a column that is not generated is refused", () => {
+  const db = new DatabaseSync(":memory:");
+  db.exec("CREATE TABLE kernel_events (seq INTEGER PRIMARY KEY, space TEXT NOT NULL, event TEXT NOT NULL, salt TEXT, type TEXT, subject TEXT, corr TEXT, actor TEXT, ref TEXT)");
+  const old = createEventLog({ space: SPACE, clock, rand: n => Buffer.alloc(n, 7) });
+  fill(old, 40);
+  for (const e of old.iterate({})) db.prepare("INSERT INTO kernel_events (seq, space, event, salt, type, subject, corr, actor, ref) VALUES (?, ?, ?, NULL, ?, ?, NULL, ?, NULL)").run(e.seq, SPACE, JSON.stringify(e), "contact.updated", e.subject, e.actor);
+  const log = createSqliteEventLog({ db, space: SPACE, clock });
+  assert.equal(log.read({ type: "grant.created" }).length, old.read({ type: "grant.created" }).length, "the lying column was dropped, the JSON answers");
+  for (const c of /** @type {any[]} */ (db.prepare("PRAGMA table_xinfo(kernel_events)").all())) if (["type", "subject", "corr", "actor", "ref"].includes(c.name)) assert.notEqual(c.hidden, 0, c.name);
+});
