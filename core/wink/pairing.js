@@ -67,6 +67,8 @@ export const PEER_MIGRATIONS = [
   `ALTER TABLE wink_devices ADD COLUMN device_key TEXT`,
   `ALTER TABLE wink_devices ADD COLUMN hardware INTEGER NOT NULL DEFAULT 0`,
   `ALTER TABLE wink_devices ADD COLUMN software INTEGER NOT NULL DEFAULT 0`,
+  // Where the app SAYS it made the device key: hardware | software | unknown. Self-reported, display only; real attestation is 0.3.1.
+  `ALTER TABLE wink_devices ADD COLUMN key_storage TEXT NOT NULL DEFAULT 'unknown'`,
 ];
 /** What a device offers to the pairing keys: polling slower than the relay's rate limit, and Node's own crypto and key file (0600). */
 export const POLL_MS = 1500;
@@ -118,7 +120,7 @@ export function createPairing(o) {
   let clearOwnerHook = () => { throw fail("not_ready", "the pairing tools are not registered"); };
   const phone = { hold: async () => false, holdRing: async () => false, boxTicketLive: () => false };
 
-  const rowOf = (/** @type {any} */ r) => r ? { id: r.id, identity: r.identity, kind: r.kind, name: r.name, fingerprint: r.fingerprint, owner: { kind: r.owner_kind, id: r.owner_id }, offers: JSON.parse(r.offers || "{}"), created: r.created, removed: r.removed_at != null, nodeKey: r.node_key || null, stableId: r.stable_id || null, signKey: r.sign_key || null, ...(r.software ? { software: true } : {}) } : null;
+  const rowOf = (/** @type {any} */ r) => r ? { id: r.id, identity: r.identity, kind: r.kind, name: r.name, fingerprint: r.fingerprint, owner: { kind: r.owner_kind, id: r.owner_id }, offers: JSON.parse(r.offers || "{}"), created: r.created, removed: r.removed_at != null, nodeKey: r.node_key || null, stableId: r.stable_id || null, signKey: r.sign_key || null, keyStorage: r.key_storage || "unknown", ...(r.key_storage === "software" ? { software: true } : {}) } : null;
   /** Ends a device's paired person session and grant (presence.person.end-paired, module:wink only). Late-bound: set once the context can call. A failure is logged, never a reason to keep the device. @type {(device?: string) => void} */
   let endPaired = () => {};
   const devices = {
@@ -152,8 +154,8 @@ export function createPairing(o) {
      * @param {string} id @param {{ by: string, keyId: string | null, key: any }} c
      */
     setConfirmed(id, c) { db.prepare("UPDATE wink_devices SET confirmed_by = ?, confirm_key = ?, device_key = ?, hardware = 0, software = 0 WHERE id = ? AND removed_at IS NULL").run(c.by, c.keyId, c.key ? JSON.stringify(c.key) : null, String(id)); },
-    /** @param {string} id @param {boolean} software */
-    setSoftware(id, software) { db.prepare("UPDATE wink_devices SET software = ? WHERE id = ? AND removed_at IS NULL").run(software ? 1 : 0, String(id)); },
+    /** The app's own report of where its key lives. @param {string} id @param {unknown} storage */
+    setKeyStorage(id, storage) { db.prepare("UPDATE wink_devices SET key_storage = ? WHERE id = ? AND removed_at IS NULL").run(storage === "hardware" || storage === "software" ? storage : "unknown", String(id)); },
     /** What the presence module reads to decide on a paired session: only what this module itself recorded at the owner's confirm. Null for a device never confirmed, or removed. @param {string} id */
     record(id) {
       const r = /** @type {any} */ (db.prepare("SELECT * FROM wink_devices WHERE id = ? AND removed_at IS NULL").get(String(id)));
@@ -172,7 +174,7 @@ export function createPairing(o) {
     remove(id) {
       endPaired(String(id));
       // S-1: a removed device's signing key goes with it (it could drive wink.relay.apply), and a re-added row never inherits one
-      db.prepare("UPDATE wink_devices SET removed_at = ?, sign_key = NULL, confirmed_by = NULL, confirm_key = NULL, device_key = NULL, software = 0 WHERE id = ? AND removed_at IS NULL").run(now(), String(id));
+      db.prepare("UPDATE wink_devices SET removed_at = ?, sign_key = NULL, confirmed_by = NULL, confirm_key = NULL, device_key = NULL, software = 0, key_storage = 'unknown' WHERE id = ? AND removed_at IS NULL").run(now(), String(id));
       if (!o.offers) db.prepare("DELETE FROM wink_compute WHERE device = ?").run(String(id));
     },
   };
@@ -562,11 +564,11 @@ export function createPairing(o) {
    */
   const openPairedSession = async (device, identity, presence, confirmed) => {
     try {
+      devices.setKeyStorage(device, confirmed && confirmed.storage);
       devices.setConfirmed(device, { by: identity, keyId: presence && presence.keyId ? String(presence.keyId) : null, key: confirmed && confirmed.key && (confirmed.alg === undefined || confirmed.alg === -7) ? jwkOf(confirmed.key) : null });
       if (typeof ctx.call !== "function") return;
       const g = /** @type {any} */ (await ctx.call("presence.person.pair-grant", { device }));
-      if (g && g.data && g.data.granted) devices.setSoftware(device, g.data.software === true);
-      else ctx.log(`wink: no paired session for ${device}: ${g && g.error ? g.error.message : "refused"}`);
+      if (!(g && g.data && g.data.granted)) ctx.log(`wink: no paired session for ${device}: ${g && g.error ? g.error.message : "refused"}`);
     } catch (e) { ctx.log(`wink: no paired session for ${device}: ${/** @type {Error} */ (e).message}`); }
   };
 

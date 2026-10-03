@@ -688,7 +688,7 @@ test("paired session, real daemon, relay and presence module: the owner's pick r
   const w = await world(t);
   const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   const ks = keystore(t);
-  const presenceKey = { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7 };
+  const presenceKey = { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: "software" };
   const minted = await w.d.registry.call("relay.pair.ticket", {}, "cli", PROOF);
   const paired = await pairTicket(fromBase64url(minted.data.ticket), { relay: w.status.url, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: ks, presenceKey });
   assert.equal(paired.pending, true);
@@ -705,7 +705,7 @@ test("paired session, real daemon, relay and presence module: the owner's pick r
   assert.ok((await w.d.registry.call("wink.device.record", { id: paired.device }, "cli", PROOF)).error);
   // the relay trusts it from the same moment
   assert.equal((await w.d.registry.call("relay.device.info", { id: paired.device }, "module:vyred")).data.trusted, true);
-  // a software key is a plain flag on its Devices row (nothing attests hardware yet)
+  // the line shows only when the app reports a software key (self-reported, display only; the grant still treats the key as unattested)
   await until(async () => (await w.call("wink.access")).data.devices.find(d => d.id === paired.device)?.software === true);
   // the device gets its challenge over its own channel, signs it, and has a person session with no prompt and no passkey
   const c = connect({ relay: w.status.url, route: paired.route, box: paired.box, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: ks });
