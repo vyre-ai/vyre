@@ -37,3 +37,10 @@ Branch: work/kernel · Worktree: ../vyre-kernel · Owner session: platform
 - kernel/retrofit/gates.js, gates.test.js; Registry.call takes deps.gates (default off). golden.test.js runs the recorder with the gates on and requires zero changed cells.
 - Not yet moved into the kernel (stays in the registry, in order): input schema, projectArg and the agent grant lookup, the rules hook, proof verification, the asked-match, idempotency. Default-on needs `kernel/` in package.json files and a release that ships it, so that is a launch decision, not made here.
 - Retrofit-only pieces to delete at K6: `fromLegacy` on the chain builder, `Via.legacy`, parseCaller.
+
+## K3 done (awaiting reviewer-2)
+
+- kernel/seal (normalize, classes, detect, engine, serve, client, index), kernel/model/door.js, kernel/core/gate.js.
+- The process is Node for now. The line protocol in serve.js is the contract; the client takes any command that speaks it, so a Rust process (the lean from the kernel decisions) can replace it without touching the kernel. The language spike is still open and is the lead's call to schedule.
+- Known gap: Node 22's permission model has no network deny, so the sealing process can open sockets today. Closing it needs Node with `--allow-net`, an OS sandbox wrapper (a network namespace or seatbelt profile) or the Rust process under its own sandbox. Plaintext lives in that process's memory while merging (8.12 residual).
+- Not here yet: K4 supplies the presence verifier (`verifyPresence`) and `approvedTask`; the connector egress adapters; per-actor lookup rate limits (equality is not offered at all yet); sealing an existing field's values (8.9 migration); uniqueness check at write time.

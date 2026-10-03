@@ -6,6 +6,7 @@ import { canonical, sha256 } from "../core/canonical.js";
 import { mintUuid } from "../core/ids.js";
 import { isChain, hasKind } from "../core/chain.js";
 import { KernelError } from "../core/errors.js";
+import { createGate } from "../core/gate.js";
 import { aggregate as aggregateRows } from "../store/query.js";
 import { isSealedShape } from "../store/values.js";
 
@@ -35,11 +36,12 @@ const changedFields = (/** @type {any} */ a, /** @type {any} */ b) => {
 };
 
 /**
- * @param {{ space: string, store: any, authorizer: { authorize(i: any): Promise<any> }, log: any, chains: any, clock?: () => number }} cfg
+ * @param {{ space: string, store: any, authorizer: { authorize(i: any): Promise<any> }, log: any, chains: any, clock?: () => number, sinks?: Set<string> }} cfg
  */
 export function createRecords(cfg) {
   const { space, store, authorizer, log, chains } = cfg;
   const clock = cfg.clock || Date.now;
+  const sinks = cfg.sinks || new Set();
   const urn = (/** @type {string} */ type, /** @type {string} */ id) => `vyre://${space}/${type}/${id}`;
   /** @type {Map<string, any>} */ const intents = new Map();
   /** @type {Map<string, { version: number, hash: string }>} the latest version hash the gateway wrote, per record */ const index = new Map();
@@ -50,20 +52,7 @@ export function createRecords(cfg) {
     return new KernelError("unavailable", "the store could not answer", String(e && e.message));
   }
 
-  /** Ask `authorize`. Allow returns the decision; ask and deny throw, and a deny looks like absence (invariant 8). */
-  async function gate(/** @type {any} */ chain, /** @type {string} */ action, /** @type {string} */ resource, /** @type {{ quiet?: boolean }} */ opts = {}) {
-    if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
-    const d = await authorizer.authorize({ chain, action, resource });
-    if (d.effect === "allow") return d;
-    if (d.effect === "ask") throw Object.assign(new KernelError(d.reason, `${action} needs ${d.reason === "needs_presence" ? "presence" : "approval"}`), { decision: d.decision, obligations: d.obligations });
-    if (!opts.quiet && d.obligations.some((/** @type {any} */ o) => o.type === "audit")) {
-      try { log.append(chain, { type: "access.denied", sv: 1, subject: resource, data: { action, reason: d.reason }, prov: { decision: d.decision } }); } catch { /* the refusal stands even if the note cannot be written */ }
-    }
-    throw Object.assign(new KernelError("not_found", "no such record", d.reason), { decision: d.decision });
-  }
-  const allowed = async (/** @type {any} */ chain, /** @type {string} */ action, /** @type {string} */ resource) => {
-    try { await gate(chain, action, resource, { quiet: true }); return true; } catch { return false; }
-  };
+  const { gate, allowed } = createGate({ authorizer, log });
 
   /** Shape a stored row for the caller: checked, labelled, and with sealed values as placeholders when a model is in the chain. */
   function shape(/** @type {any} */ chain, /** @type {any} */ r) {
@@ -71,7 +60,8 @@ export function createRecords(cfg) {
     const known = index.get(u);
     const hash = versionHash(r);
     const modified = !known || known.version !== r.version || known.hash !== hash;
-    const model = hasKind(chain, "agent");
+    // Placeholders by destination (8.4): a model in the chain, or a declared model sink anywhere in it.
+    const model = hasKind(chain, "agent") || chain.hops.some((/** @type {any} */ h) => h.actor.kind === "service" && sinks.has(h.actor.id));
     const data = model ? Object.fromEntries(Object.entries(r.data).map(([k, v]) => [k, isSealedShape(v) ? { sealed: /** @type {any} */ (v).sealed, present: Boolean(/** @type {any} */ (v).present), valid_format: Boolean(/** @type {any} */ (v).valid_format) } : v])) : r.data;
     return Object.freeze({ ...r, data, urn: u, labels: { trust: modified ? "external" : "member", red: "internal", source_spaces: [space] }, ...(modified ? { modified_outside: true } : {}) });
   }

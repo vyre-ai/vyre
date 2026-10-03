@@ -4,11 +4,11 @@ import { createRecords, RECORD_ACTIONS } from "./records.js";
 
 /**
  * @param {{ space: string, store: any, log: any, chains: any, grants: any, members: any, actions?: any[], attrs?: any, sealedFields?: any,
- *   standing?: any, verifyPresence?: any, hasPresenceSession?: any, clock?: () => number, policy_version?: number }} cfg
+ *   sinks?: Set<string>, standing?: any, verifyPresence?: any, hasPresenceSession?: any, clock?: () => number, policy_version?: number }} cfg
  */
 export function createGateway(cfg) {
   const authorizer = createAuthorizer({ ...cfg, actions: [...RECORD_ACTIONS, ...(cfg.actions || [])] });
-  const records = createRecords({ space: cfg.space, store: cfg.store, authorizer, log: cfg.log, chains: cfg.chains, clock: cfg.clock });
+  const records = createRecords({ space: cfg.space, store: cfg.store, authorizer, log: cfg.log, chains: cfg.chains, clock: cfg.clock, sinks: cfg.sinks });
   return Object.freeze({
     authorize: authorizer.authorize,
     records,
