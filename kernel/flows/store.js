@@ -2,7 +2,7 @@
 // Where Flow definitions, approvals and runs are kept. The runner talks to one small interface; two implementations satisfy it:
 //   MemoryFlowStore   for tests and for simulation (nothing persists)
 //   RecordsFlowStore  over the kernel's record calls: definitions are records of the reserved kind `def-flow`, runs are records of
-//                     `flow_run`, so they inherit version history, grants, undo and audit like any record (contract 5.1, 9.2).
+//                     `flow-run`, so they inherit version history, grants, undo and audit like any record (contract 5.1, 9.2).
 //
 // A definition is immutable once stored: a change is a new version. An approval binds (flow, version, hash) to the person who gave it.
 // Only an approved version can be active, and a version is active only while its approval stands.
@@ -136,12 +136,12 @@ export const FLOW_TYPES = Object.freeze([
   { name: "flow-approval", label: "Flow approval", fields: [
     { name: "flow_id", kind: "text", label: "Flow" }, { name: "version", kind: "number", label: "Version" }, { name: "hash", kind: "text", label: "Hash" },
     { name: "approver", kind: "text", label: "Approver" }, { name: "at", kind: "number", label: "When" } ] },
-  { name: "flow_state", label: "Flow state", fields: [
+  { name: "flow-state", label: "Flow state", fields: [
     { name: "flow_id", kind: "text", label: "Flow" }, { name: "status", kind: "text", label: "Status" }, { name: "active", kind: "number", label: "Active version" },
     { name: "reason", kind: "text", label: "Reason" }, { name: "since", kind: "number", label: "Since" } ] },
   { name: "flow-schedule", label: "Flow schedule", fields: [
     { name: "flow_id", kind: "text", label: "Flow" }, { name: "last_fire", kind: "number", label: "Last ran" } ] },
-  { name: "flow_run", label: "Flow run", icon: "run", fields: [
+  { name: "flow-run", label: "Flow run", icon: "run", fields: [
     { name: "run_id", kind: "text", label: "Id" }, { name: "flow_id", kind: "text", label: "Flow" }, { name: "state", kind: "text", label: "State" },
     { name: "started_at", kind: "number", label: "Started" }, { name: "body", kind: "text", label: "Run" } ] },
 ]);
@@ -182,10 +182,10 @@ export class RecordsFlowStore {
 
   /** @param {string} id @param {{ status: string, active?: number|null, reason?: string, since?: number }} s */
   async #setState(id, s) {
-    const rows = await this.#find("flow_state", "flow_id", id);
+    const rows = await this.#find("flow-state", "flow_id", id);
     const data = { flow_id: id, status: s.status, active: s.active ?? null, reason: s.reason || "", since: s.since || 0 };
-    if (rows[0]) await this.k.records.update(this.chain, "flow_state", rows[0].id, { ...data, active: s.active === undefined ? rows[0].data.active : s.active }, rows[0].version);
-    else await this.k.records.create(this.chain, "flow_state", data);
+    if (rows[0]) await this.k.records.update(this.chain, "flow-state", rows[0].id, { ...data, active: s.active === undefined ? rows[0].data.active : s.active }, rows[0].version);
+    else await this.k.records.create(this.chain, "flow-state", data);
   }
 
   /** @param {any} row @param {number} version */
@@ -201,14 +201,14 @@ export class RecordsFlowStore {
 
   /** @param {string} id */
   async active(id) {
-    const st = (await this.#find("flow_state", "flow_id", id))[0];
+    const st = (await this.#find("flow-state", "flow_id", id))[0];
     if (!st || st.data.active === null || st.data.status !== "active") return null;
     return this.#viewOf(st, Number(st.data.active));
   }
   /** @param {string} id @param {number} version */
-  async getVersion(id, version) { const st = (await this.#find("flow_state", "flow_id", id))[0] || { data: { flow_id: id, status: "draft" } }; return this.#viewOf(st, version); }
+  async getVersion(id, version) { const st = (await this.#find("flow-state", "flow_id", id))[0] || { data: { flow_id: id, status: "draft" } }; return this.#viewOf(st, version); }
   async activeFlows() {
-    const r = await this.k.records.query(this.chain, "flow_state", { filter: { field: "status", op: "eq", value: "active" }, page: { limit: 1000 } });
+    const r = await this.k.records.query(this.chain, "flow-state", { filter: { field: "status", op: "eq", value: "active" }, page: { limit: 1000 } });
     const out = [];
     for (const st of r.rows) if (st.data.active !== null) { const v = await this.#viewOf(st, Number(st.data.active)); if (v && v.approver) out.push(v); }
     return out;
@@ -220,7 +220,7 @@ export class RecordsFlowStore {
   /** @param {string} id */
   async disable(id) { await this.#setState(id, { status: "disabled", active: null }); }
   async list() {
-    const r = await this.k.records.query(this.chain, "flow_state", { page: { limit: 1000 } });
+    const r = await this.k.records.query(this.chain, "flow-state", { page: { limit: 1000 } });
     return r.rows.map((/** @type {any} */ s) => ({ id: s.data.flow_id, status: s.data.status, active: s.data.active }));
   }
 
@@ -239,22 +239,22 @@ export class RecordsFlowStore {
     const known = this.ids.get(run.id);
     const data = { run_id: run.id, flow_id: run.flow, state: run.state, started_at: run.started_at, body };
     if (known) {
-      const cur = await this.k.records.get(this.chain, "flow_run", known);
-      if (cur) { await this.k.records.update(this.chain, "flow_run", known, data, cur.version); return; }
+      const cur = await this.k.records.get(this.chain, "flow-run", known);
+      if (cur) { await this.k.records.update(this.chain, "flow-run", known, data, cur.version); return; }
     }
-    const found = (await this.#find("flow_run", "run_id", run.id))[0];
-    if (found) { this.ids.set(run.id, found.id); await this.k.records.update(this.chain, "flow_run", found.id, data, found.version); return; }
-    const rec = await this.k.records.create(this.chain, "flow_run", data);
+    const found = (await this.#find("flow-run", "run_id", run.id))[0];
+    if (found) { this.ids.set(run.id, found.id); await this.k.records.update(this.chain, "flow-run", found.id, data, found.version); return; }
+    const rec = await this.k.records.create(this.chain, "flow-run", data);
     this.ids.set(run.id, rec.id);
   }
   /** @param {string} id @returns {Promise<Run|null>} */
-  async getRun(id) { const f = (await this.#find("flow_run", "run_id", id))[0]; return f ? JSON.parse(f.data.body) : null; }
+  async getRun(id) { const f = (await this.#find("flow-run", "run_id", id))[0]; return f ? JSON.parse(f.data.body) : null; }
   /** @param {{ flow?: string, state?: string, limit?: number }} [f] @returns {Promise<Run[]>} */
   async listRuns(f = {}) {
     /** @type {any[]} */ const and = [];
     if (f.flow) and.push({ field: "flow_id", op: "eq", value: f.flow });
     if (f.state) and.push({ field: "state", op: "eq", value: f.state });
-    const r = await this.k.records.query(this.chain, "flow_run", { filter: and.length ? { and } : undefined, sort: [{ field: "started_at", dir: "desc" }], page: { limit: f.limit || 200 } });
+    const r = await this.k.records.query(this.chain, "flow-run", { filter: and.length ? { and } : undefined, sort: [{ field: "started_at", dir: "desc" }], page: { limit: f.limit || 200 } });
     return r.rows.map((/** @type {any} */ x) => JSON.parse(x.data.body));
   }
 }

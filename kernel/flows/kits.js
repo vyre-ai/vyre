@@ -23,7 +23,7 @@ const NAME_RE = /^[a-z][a-z0-9_-]{0,63}$/;
  */
 
 export const KIT_TYPES = Object.freeze([
-  { name: "kit_install", label: "Installed Kit", fields: [
+  { name: "kit-install", label: "Installed Kit", fields: [
     { name: "kit_id", kind: "text", label: "Kit" }, { name: "version", kind: "number", label: "Version" }, { name: "hash", kind: "text", label: "Hash" },
     { name: "status", kind: "text", label: "Status" }, { name: "by", kind: "text", label: "Installed by" }, { name: "at", kind: "number", label: "When" }, { name: "body", kind: "text", label: "What it added" } ] },
 ]);
@@ -241,20 +241,32 @@ export class KitManager {
     }
     const diff = installed ? diffKits(installed.kit, kit, cat) : null;
     const id = newId("kp_");
+    // The install card is a task the Flows service asks and the approver CHECKS: their approve or reject (with presence) is the answer, as for any approval.
+    const doerChain = this.chains.forDoer ? this.chains.forDoer({ kit: kit.id, space: cat.space, approver }) : null;
     const task = await this.k.ask.request(this.#chain(cat, kit.id, approver), {
-      title: installed ? `Update ${kit.name} to version ${kit.version}?` : `Install ${kit.name}?`, doer: approver, output: { kind: "decision" }, source: "kit_install",
-      form: { kind: "kit_install", proposal: id, card, diff }, checker: undefined,
+      title: installed ? `Update ${kit.name} to version ${kit.version}?` : `Install ${kit.name}?`, output: { kind: "decision" }, source: "manual",
+      ...(doerChain ? { doer: { kind: "service", id: "flows", space: cat.space }, checker: approver } : { doer: approver }),
+      form: { kind: "kit_install", proposal: id, card, diff },
     }, { idem: `kit:${kit.id}:${kit.version}:${kitHash(kit)}` });
+    if (doerChain) for (const [step, arg] of [["start"], ["complete", { answer: "yes", reason: `${kit.name} version ${kit.version} is waiting for your yes` }]]) {
+      try { await (step === "start" ? this.k.ask.start(doerChain, task.id) : this.k.ask.complete(doerChain, task.id, arg)); } catch (e) { if (!e || !["bad_state", "not_allowed"].includes(/** @type {any} */ (e).code)) throw e; }
+    }
     await this.store.putProposal({ id, kit, hash: kitHash(kit), approver, task: task.id, at: this.now(), update: Boolean(installed) });
     return { ok: true, proposal: id, task: task.id, card, diff };
   }
 
   /** A task event from the kernel: if it is an approved Kit task, apply it. @param {any} env */
   async onEvent(env) {
-    if (!/^task\./.test(env.type) || !env.data || env.data.state !== "done") return null;
-    const p = await this.store.proposalByTask(env.data.task || env.data.id);
+    if (!/^task\./.test(env.type)) return null;
+    // The kernel's own task events carry only the subject: the task id is its last segment, and the outcome is read from the task, not from the event.
+    const id = (env.data && (env.data.task || env.data.id)) || (typeof env.subject === "string" && /\/task\/[^/]+$/.test(env.subject) ? env.subject.slice(env.subject.lastIndexOf("/") + 1) : null);
+    if (!id) return null;
+    const p = await this.store.proposalByTask(id);
     if (!p) return null;
-    if (env.data.outcome !== "approved") { await this.store.delProposal(p.id); return { declined: p.kit.id }; }
+    const cat = this.catalogFn();
+    const row = await this.k.ask.get(this.#chain(cat, p.kit.id, p.approver), id);
+    if (!row || row.state !== "done") return null;
+    if (row.outcome !== "approved") { await this.store.delProposal(p.id); return { declined: p.kit.id }; }
     return this.apply(p.id);
   }
 
@@ -286,7 +298,7 @@ export class KitManager {
       if (part.kind === "type" || part.kind === "seed") continue;
       if (part.kind === "template") {
         const existing = row.refs[key];
-        const data = { name: part.name, kind: part.def.kind, body: part.def.body, kit: kit.id, kit_version: kit.version, authorship: "kit" };
+        const data = { name: part.name, kind: part.def.kind, ...(part.def.subject ? { subject: part.def.subject } : {}), body: part.def.body, kit: kit.id };
         if (existing) { const cur = await this.k.records.get(chain, "template", existing); if (cur) await this.k.records.update(chain, "template", existing, data, cur.version); }
         else { const r = await this.k.records.create(chain, "template", data, { idem: `kit:${kit.id}:${key}` }); row.refs[key] = r.id; }
       } else if (part.kind === "flow") {
@@ -296,8 +308,9 @@ export class KitManager {
         // the person approved this Kit's content, and the card showed this Flow; that approval covers the version just stored
         await this.runner.approve(d.id, d.version, p.approver, d.hash);
       } else if (part.kind === "role" || part.kind === "view") {
-        const type = part.kind === "role" ? "def_role" : "def_view";
-        const data = { name: part.name, body: canonical(part.def), kit: kit.id, kit_version: kit.version };
+        const type = part.kind === "role" ? "def-role" : "def-view";
+        await this.#ensureDefType(chain, type);
+        const data = { name: part.name, body: canonical(part.def), kit: kit.id };
         const existing = row.refs[key];
         if (existing) { const cur = await this.k.records.get(chain, type, existing); if (cur) await this.k.records.update(chain, type, existing, data, cur.version); }
         else { const r = await this.k.records.create(chain, type, data, { idem: `kit:${kit.id}:${key}` }); row.refs[key] = r.id; }
@@ -318,12 +331,19 @@ export class KitManager {
     return { installed: kit.id, version: kit.version, flows: row.flows };
   }
 
+  /** The types a Kit's roles and views are stored as, made once when the first one is installed (the kernel's type names are lowercase with hyphens). @param {any} chain @param {string} type */
+  async #ensureDefType(chain, type) {
+    if (this.catalogFn().types[type]) return;
+    try { await this.k.records.define(chain, { add_types: [{ name: type, label: type === "def-role" ? "Role definition" : "View definition", fields: [{ name: "name", kind: "text", label: "Name" }, { name: "body", kind: "text", label: "Definition" }, { name: "kit", kind: "text", label: "From Kit" }] }] }); }
+    catch (e) { if (!e || !["already_exists", "conflict", "bad_input"].includes(/** @type {any} */ (e).code)) throw e; }
+  }
+
   /** @param {any} chain @param {any} row @param {Part} part */
   async #drop(chain, row, part) {
     const key = `${part.kind}:${part.name}`;
     if (part.kind === "flow") { const id = row.flows[part.name]; if (id) { await this.runner.store.disable(id); this.runner.cache = null; delete row.flows[part.name]; } }
     else if (["template", "role", "view"].includes(part.kind)) {
-      const type = part.kind === "template" ? "template" : part.kind === "role" ? "def_role" : "def_view";
+      const type = part.kind === "template" ? "template" : part.kind === "role" ? "def-role" : "def-view";
       const ref = row.refs[key];
       if (ref) { const cur = await this.k.records.get(chain, type, ref); if (cur && !cur.deleted_at) await this.k.records.remove(chain, type, ref, cur.version); delete row.refs[key]; }
     } else if (part.kind === "teammate" && this.ports.teammates) await this.ports.teammates.remove(chain, part.name);

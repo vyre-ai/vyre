@@ -1,5 +1,5 @@
 // The real kernel pieces (gateway over the memory store, tasks with approval, event log, chain builder, authorizer) assembled behind the
-// surface FakeKernel exposes, so the same Flow and stage tests run on both. Nothing under kernel/ is edited: where the real gateway lacks
+// surface the Flow tests were first written against (the Fake is gone: every Flows test now runs on this). Nothing under kernel/ is edited: where the real gateway lacks
 // what Flows need, the harness shims it, and every shim sits in a block marked SHIM(<gap>) so it can be deleted when platform lands it.
 // The gaps are listed in team/0.2/CHAT.md ("sessions -> platform, 3 Oct").
 
@@ -292,7 +292,8 @@ export class RealKernel {
     for (let i = 0; i < 6; i++) { const p = this.pending.splice(0); await Promise.all(p); await this.pump(); if (!this.pending.length) break; }
     this._tasks = (await this.allTasks()).map(t => ({ ...t, ...(this.extras.get(t.id) || {}) }));
     const chain = this.sysChain();
-    const names = new Set(this.defines.flatMap(d => (d.add_types || []).map((/** @type {any} */ t) => t.name)));
+    const names = new Set();
+    for (const d of this.defines) { for (const t of d.add_types || []) names.add(t.name); for (const n of d.remove_types || []) names.delete(n); }
     const tables = new Map();
     for (const name of names) {
       const m = new Map();

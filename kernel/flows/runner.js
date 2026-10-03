@@ -283,7 +283,7 @@ export class FlowRunner {
     const run = { id, flow: f.id, version: f.version, hash: f.hash, space: f.space, trigger: recordTrigger(f.flow.trigger, trig, slim),
       tainted, source_spaces: sourceSpaces, depth, state: "running", started_at: now, updated_at: now, steps: {}, approver: f.approver };
     await this.store.putRun(run);
-    this.#emit("flow.started", { run: id, flow: f.id, version: f.version, trigger: trig.kind, source: run.trigger.source, tainted }, run, `vyre://${f.space}/flow_run/${id}`);
+    this.#emit("flow.started", { run: id, flow: f.id, version: f.version, trigger: trig.kind, source: run.trigger.source, tainted }, run, `vyre://${f.space}/flow-run/${id}`);
     await this.#execLocked(id);
     return { run: id };
   }
@@ -384,7 +384,7 @@ export class FlowRunner {
         run.state = "paused"; run.error = { step: run.error ? run.error.step : "", code: "paused", message: e.reason }; run.updated_at = this.now();
         await this.store.putRun(run);
         await this.pauseFlow(run.flow, e.reason);
-        this.#emit("flow.paused", { run: run.id, flow: run.flow, reason: e.reason }, run, `vyre://${run.space}/flow_run/${run.id}`);
+        this.#emit("flow.paused", { run: run.id, flow: run.flow, reason: e.reason }, run, `vyre://${run.space}/flow-run/${run.id}`);
         return;
       }
       const code = e instanceof StepFail ? e.code : "error";
@@ -398,7 +398,7 @@ export class FlowRunner {
   async #finish(run) {
     run.finished_at = this.now(); run.updated_at = run.finished_at; run.waiting = undefined;
     await this.store.putRun(run);
-    this.#emit("flow.finished", { run: run.id, flow: run.flow, state: run.state, ...(run.error ? { error: run.error } : {}) }, run, `vyre://${run.space}/flow_run/${run.id}`);
+    this.#emit("flow.finished", { run: run.id, flow: run.flow, state: run.state, ...(run.error ? { error: run.error } : {}) }, run, `vyre://${run.space}/flow-run/${run.id}`);
   }
 
   /** @param {string} type @param {any} data @param {Run} run @param {string} subject */
@@ -486,7 +486,7 @@ export class FlowRunner {
       default: throw new StepFail("bad_step", `unknown step kind ${s.kind}`);
     }
     await this.#mark(ctx, key, { status: "done", output: out });
-    this.#emit("step.done", { run: run.id, step: key, kind: s.kind }, run, `vyre://${run.space}/flow_run/${run.id}`);
+    this.#emit("step.done", { run: run.id, step: key, kind: s.kind }, run, `vyre://${run.space}/flow-run/${run.id}`);
   }
 
   /** @param {any} ctx */
@@ -555,7 +555,7 @@ export class FlowRunner {
         }
         await this.#mark(ctx, askKey, { status: "waiting", task: task.id, wait: { kind: "task", task: task.id } });
         run.waiting = { step: askKey, kind: "task", task: task.id };
-        this.#emit("step.waiting", { run: run.id, step: key, task: task.id, why }, run, `vyre://${run.space}/flow_run/${run.id}`);
+        this.#emit("step.waiting", { run: run.id, step: key, task: task.id, why }, run, `vyre://${run.space}/flow-run/${run.id}`);
         throw new Suspend();
       }
     }
@@ -702,7 +702,7 @@ export class FlowRunner {
     else wait = { kind: "event", event: s.event, where: s.where, deadline: now + Math.min(s.timeout_ms, this.limits.wait_max_ms) };
     if (wait.kind === "time" && wait.until <= now) return { waited_ms: 0 };
     await this.#mark(ctx, key, { status: "waiting", wait });
-    this.#emit("step.waiting", { run: ctx.run.id, step: key, until: wait.until ?? wait.deadline }, ctx.run, `vyre://${ctx.run.space}/flow_run/${ctx.run.id}`);
+    this.#emit("step.waiting", { run: ctx.run.id, step: key, until: wait.until ?? wait.deadline }, ctx.run, `vyre://${ctx.run.space}/flow-run/${ctx.run.id}`);
     throw this.#suspendOn(ctx, key, wait);
   }
 
@@ -737,7 +737,7 @@ export class FlowRunner {
       const task = await this.k.ask.request(this.#chain(ctx), { ...spec, flow: { run: run.id, step: s.id } }, { idem });
       if (!awaiting) return { task: task.id };
       await this.#mark(ctx, key, { status: "waiting", task: task.id, wait: { kind: "task", task: task.id } });
-      this.#emit("step.waiting", { run: run.id, step: key, task: task.id }, run, `vyre://${run.space}/flow_run/${run.id}`);
+      this.#emit("step.waiting", { run: run.id, step: key, task: task.id }, run, `vyre://${run.space}/flow-run/${run.id}`);
       throw this.#suspendOn(ctx, key, { kind: "task", task: task.id });
     }, { input: s.kind === "agent" ? val(s.instructions) : val(s.title) });
   }

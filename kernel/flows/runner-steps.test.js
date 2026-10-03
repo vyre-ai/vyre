@@ -359,11 +359,11 @@ test("stores: the same Flow works when definitions and runs are records in the k
   w.kernel.inbound("payment.received", { who: "Records" });
   await settle(w);
   assert.equal((await last(w, id)).state, "waiting");
-  assert.ok(mine(w, "def-flow").length === 1 && mine(w, "flow_run").length === 1 && mine(w, "flow-approval").length === 1, "definition, approval and run are records");
+  assert.ok(mine(w, "def-flow").length === 1 && mine(w, "flow-run").length === 1 && mine(w, "flow-approval").length === 1, "definition, approval and run are records");
   w.advance(1500); await w.runner.tick(); await settle(w);
   assert.equal((await last(w, id)).state, "done");
   assert.equal(mine(w, "payment").length, 1);
-  assert.equal(mine(w, "flow_run").length, 1, "the run record is updated in place");
+  assert.equal(mine(w, "flow-run").length, 1, "the run record is updated in place");
 });
 
 // ---- standing rules for a space (DESIGN-flows-joints 5a): the two behaviours the kernel's authorize calls on ----
