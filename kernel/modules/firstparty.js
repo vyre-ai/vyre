@@ -32,18 +32,28 @@ export function signModule(dir, releasePrivateKey) {
 const semver = (/** @type {string} */ v) => String(v).split(".").map(x => Number.parseInt(x, 10) || 0);
 const atLeast = (/** @type {string} */ v, /** @type {string} */ min) => { const a = semver(v), b = semver(min); for (let i = 0; i < 3; i++) { if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0); } return true; };
 
-/** The release signs the lowest version of each module it still accepts as first party, so an older, validly signed copy stops being first party (K-1). @param {Record<string, string>} minimums @param {crypto.KeyObject} releasePrivateKey */
-export function signMinimums(minimums, releasePrivateKey) {
-  const body = JSON.stringify(Object.fromEntries(Object.entries(minimums).sort()));
-  return { body, sig: crypto.sign(null, Buffer.from("vyre-module-minimums-v1\n" + body), releasePrivateKey).toString("base64url") };
+/** A public key as a KeyObject: a KeyObject, a PEM, or the base64 SPKI DER the release pins (lib/release-sig.js RELEASE_KEY). @param {crypto.KeyObject | string} k */
+export const keyOf = k => (typeof k !== "string" ? k : k.includes("BEGIN") ? crypto.createPublicKey(k) : crypto.createPublicKey({ key: Buffer.from(k, "base64"), format: "der", type: "spki" }));
+
+/**
+ * The release signs the lowest version of each module it still accepts as first party (K-1) and a COUNTER, so an older signed document cannot be shown again
+ * (K-2): a device that has accepted counter N refuses any document below N.
+ * @param {Record<string, string>} minimums @param {crypto.KeyObject} releasePrivateKey @param {number} counter
+ */
+export function signMinimums(minimums, releasePrivateKey, counter = 1) {
+  const body = JSON.stringify({ counter, minimums: Object.fromEntries(Object.entries(minimums).sort()) });
+  return { body, sig: crypto.sign(null, Buffer.from("vyre-module-minimums-v2\n" + body), releasePrivateKey).toString("base64url") };
 }
-/** @param {{ body: string, sig: string }} doc @param {crypto.KeyObject | string} releaseKey @returns {Record<string, string> | null} null when the signature does not verify */
+/** @param {{ body: string, sig: string }} doc @param {crypto.KeyObject | string} releaseKey @returns {{ counter: number, minimums: Record<string, string> } | null} null when the signature does not verify */
 export function verifyMinimums(doc, releaseKey) {
   try {
-    const key = typeof releaseKey === "string" ? crypto.createPublicKey(releaseKey) : releaseKey;
-    return crypto.verify(null, Buffer.from("vyre-module-minimums-v1\n" + doc.body), key, Buffer.from(doc.sig, "base64url")) ? JSON.parse(doc.body) : null;
+    if (!crypto.verify(null, Buffer.from("vyre-module-minimums-v2\n" + doc.body), keyOf(releaseKey), Buffer.from(doc.sig, "base64url"))) return null;
+    const d = JSON.parse(doc.body);
+    return Number.isInteger(d.counter) && d.minimums && typeof d.minimums === "object" ? d : null;
   } catch { return null; }
 }
+/** Verify a minimums document and refuse a rollback: below the highest counter already accepted is refused. @returns {{ counter: number, minimums: Record<string, string> } | null} */
+export function acceptMinimums(doc, releaseKey, lastCounter = 0) { const d = verifyMinimums(doc, releaseKey); return d && d.counter >= lastCounter ? d : null; }
 
 /**
  * @param {{ releaseKey: crypto.KeyObject | string, minimums?: Record<string, string> | null }} cfg the pinned release public key, and the release-signed minimum versions
@@ -51,7 +61,7 @@ export function verifyMinimums(doc, releaseKey) {
  * @returns {(dir: string) => boolean}
  */
 export function createFirstPartyCheck(cfg) {
-  const key = typeof cfg.releaseKey === "string" ? crypto.createPublicKey(cfg.releaseKey) : cfg.releaseKey;
+  const key = keyOf(cfg.releaseKey);
   return dir => {
     try {
       const sig = fs.readFileSync(path.join(dir, SIG), "utf8").trim();

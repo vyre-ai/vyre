@@ -16,12 +16,13 @@ import { createTasks } from "./tasks/tasks.js";
 import { sealerPresence } from "./core/presence.js";
 import { expr as defaultExpr } from "./expr/index.js";
 import { createSurfaces } from "./core/surfaces.js";
+import { runnerPorts } from "./gateway/runner-ports.js";
 
 /**
  * @param {{ space: string, owner: string, owner_uid: number, key: Uint8Array | string, clock?: () => number,
- *   store?: any, log?: any, chains?: any, grantsStore?: any, grants?: any, members?: any, bootstrap?: boolean, presence?: any, sealer?: any, door?: any,
+ *   legacyKeys?: (Uint8Array | string)[], store?: any, log?: any, chains?: any, grantsStore?: any, grants?: any, members?: any, bootstrap?: boolean, presence?: any, sealer?: any, door?: any,
  *   expr?: any, hasPresenceSession?: (chain: any) => boolean, onStageEnter?: any, stageTasks?: any, checkpointKey?: any,
- *   resolveCredential?: any, routeAction?: any, templates?: any, destinations?: any, resolve?: any, actions?: any[], attrs?: any, sinks?: Set<string> }} cfg
+ *   drive?: any, resolveCredential?: any, routeAction?: any, templates?: any, destinations?: any, resolve?: any, actions?: any[], attrs?: any, sinks?: Set<string> }} cfg
  *   grants and members together replace the grants store (the retrofit path and test rigs); otherwise a grants store is made and, on an empty log, its first owner
  */
 export function createKernel(cfg) {
@@ -30,7 +31,7 @@ export function createKernel(cfg) {
   const store = cfg.store || createMemoryStore({ clock });
   const chains = cfg.chains || createChainBuilder({ space: cfg.space, owner: cfg.owner, owner_uid: cfg.owner_uid, key: cfg.key, clock, is_person: () => true });
   const own = Boolean(cfg.grants && cfg.members);
-  const grantsStore = own ? undefined : cfg.grantsStore || createGrantsStore({ space: cfg.space, log, chains, key: cfg.key, clock, presence: cfg.presence || (cfg.sealer ? sealerPresence(cfg.sealer) : undefined) });
+  const grantsStore = own ? undefined : cfg.grantsStore || createGrantsStore({ legacyKeys: cfg.legacyKeys, space: cfg.space, log, chains, key: cfg.key, clock, presence: cfg.presence || (cfg.sealer ? sealerPresence(cfg.sealer) : undefined) });
   const presence = cfg.presence || (cfg.sealer ? sealerPresence(cfg.sealer) : undefined);
   const limits = createLimits({ space: cfg.space, log, clock });
   let fresh = false;
@@ -45,10 +46,10 @@ export function createKernel(cfg) {
     approver: () => ({ kind: "person", id: cfg.owner, space: cfg.space }), resolve: cfg.resolve, enforce: (/** @type {any} */ c, /** @type {any} */ d) => limits.enforce(c, d),
   });
   gateway = createGateway({
-    space: cfg.space, store, log, chains, clock, limits, tasks, approvedAct: (/** @type {any} */ q) => tasks.approvedAct(q), owner: cfg.owner, presence, hasPresenceSession, expr: cfg.expr === undefined ? defaultExpr : cfg.expr,
+    space: cfg.space, store, log, chains, clock, limits, tasks, approvedAct: (/** @type {any} */ q) => tasks.useApproval(q), owner: cfg.owner, presence, hasPresenceSession, expr: cfg.expr === undefined ? defaultExpr : cfg.expr,
     ...(grantsStore ? { grantsStore } : { grants: cfg.grants, members: cfg.members }),
     sealer: cfg.sealer, door: cfg.door, onStageEnter: cfg.onStageEnter, stageTasks: cfg.stageTasks, checkpointKey: cfg.checkpointKey, templates: cfg.templates, destinations: cfg.destinations,
-    actions: cfg.actions, attrs: cfg.attrs, sinks: cfg.sinks, resolveCredential: cfg.resolveCredential, routeAction: cfg.routeAction,
+    actions: cfg.actions, attrs: cfg.attrs, sinks: cfg.sinks, drive: cfg.drive, resolveCredential: cfg.resolveCredential, routeAction: cfg.routeAction,
   });
   const surfaces = createSurfaces({ space: cfg.space, chains, key: cfg.key, door: cfg.door, clock });
   /**
@@ -68,6 +69,9 @@ export function createKernel(cfg) {
     return Object.freeze({
       space: cfg.space, records, events: gateway.events, grants: gateway.grants, tasks: gateway.ask, audit: gateway.audit, authorize: gateway.authorize, limits: gateway.limits,
       model: surfaces.model,
+      leases: gateway.leases, drive: gateway.drive,
+      /** The runner's ports from the kernel's own pieces (see kernel/gateway/runner-ports.js): allowed, revocation and the device key are the kernel's. */
+      runnerPorts: (/** @type {any} */ o) => runnerPorts({ leases: gateway.leases, offers: gateway.grants && gateway.grants.offers }, o),
       serviceChain: () => gateway.serviceChain(m.name),
       chain: (/** @type {any} */ meta) => (meta && typeof meta.token === "string" ? surfaces.chainFor(meta.token) : gateway.serviceChain(m.name)),
     });

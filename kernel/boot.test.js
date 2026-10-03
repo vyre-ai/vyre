@@ -81,5 +81,14 @@ test("surfaces: a daemon presents a token; the kernel mints the chain for that s
   const t2 = k2.surfaces.open(o2, { agent: "kit" }).token;
   assert.equal((await k2.surfaces.model.call(t2, { messages: [] })).content, "ok");
   assert.deepEqual(seen, [["person", "agent"]]);
-  assert.throws(() => k2.surfaces.model.stream(t2, {}), { code: "unsupported" });
+  assert.throws(() => k2.surfaces.model.stream(t2, {}), { code: "unsupported" }, "a door with no streaming call says so");
+  // a door with streaming: the chain is the session's, and the events come through as the door yields them
+  const chains2 = [];
+  const k3 = createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key, door: { usesKernelChain: true, call: async () => ({}), async *stream(i) { chains2.push(i.chain.hops.map(h => h.actor.kind)); yield { type: "text", text: "he" }; yield { type: "text", text: "llo" }; yield { type: "done" }; } } });
+  const t3 = k3.surfaces.open(k3.chains.fromFacts({ kind: "device", device_key_id: "d", person: OWNER, path: "direct" }), { agent: "kit" }).token;
+  const got = [];
+  for await (const ev of k3.surfaces.model.stream(t3, { messages: [] })) got.push(ev.type === "text" ? ev.text : ev.type);
+  assert.deepEqual(got, ["he", "llo", "done"]);
+  assert.deepEqual(chains2, [["person", "agent"]]);
+  assert.throws(() => k3.surfaces.model.stream("forged.token", {}), { code: "not_a_member" });
 });

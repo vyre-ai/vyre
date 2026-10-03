@@ -32,7 +32,7 @@ const actorKey = (/** @type {any} */ a) => `${a.kind}:${a.id}`;
 const sameActor = (/** @type {any} */ a, /** @type {any} */ b) => Boolean(a && b) && a.kind === b.kind && a.id === b.id && a.space === b.space;
 
 /**
- * @param {{ presence?: { check(i: any): Promise<string | null> }, space: string, log: any, chains: any, key: Uint8Array | string, clock?: () => number, action_set_version?: number, actions?: () => Iterable<any> }} cfg
+ * @param {{ legacyKeys?: (Uint8Array | string)[], presence?: { check(i: any): Promise<string | null> }, space: string, log: any, chains: any, key: Uint8Array | string, clock?: () => number, action_set_version?: number, actions?: () => Iterable<any> }} cfg
  *   actions: the registry (read at call time, so the store never holds a stale copy). key: the kernel's secret (as the chain builder's): every event this
  *   store writes carries a MAC under it, and `rebuild` takes authority only from events that verify, so an event any chain appends in these names is nothing.
  */
@@ -430,7 +430,7 @@ export function createGrantsStore(cfg) {
         if (!d || typeof d !== "object" || !/^(grant|member|actor|offer|invite)\./.test(e.type)) continue;
         // Authority comes only from events this store sealed: anything else in these names is ignored (and not trusted for a grant, a member or an offer).
         const { mac, ...bare } = d;
-        if (typeof mac !== "string" || !sameMac(macOf(e.type, e.subject, bare, e.seq, e.prev), mac)) continue;
+        if (typeof mac !== "string" || !(sameMac(macOf(e.type, e.subject, bare, e.seq, e.prev), mac) || (cfg.legacyKeys || []).some((/** @type {any} */ k) => sameMac(hmac(k, canonical({ type: e.type, subject: e.subject, data: bare, seq: e.seq, prev: e.prev })), mac)))) continue;
         d = bare;
         if (e.type === "grant.created" && grants.has(d.grant.id)) continue; // an id is made once: a second creation of it is never a resurrection
         if (e.type === "grant.created" || e.type === "grant.narrowed") grants.set(d.grant.id, freeze(structuredClone(d.grant)));

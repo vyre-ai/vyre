@@ -194,10 +194,19 @@ test("K-1: a release-signed minimum version makes an older signed copy not first
   const { signMinimums, verifyMinimums } = await import("./firstparty.js");
   const release = crypto.generateKeyPairSync("ed25519");
   const mk = version => { const dir = tmp("fpv"); fs.writeFileSync(path.join(dir, "module.json"), JSON.stringify({ name: "email", version })); fs.writeFileSync(path.join(dir, "index.js"), "export default {};"); signModule(dir, release.privateKey); return dir; };
-  const doc = signMinimums({ email: "0.3.0" }, release.privateKey);
-  const minimums = verifyMinimums(doc, release.publicKey);
-  assert.deepEqual(minimums, { email: "0.3.0" });
-  assert.equal(verifyMinimums({ ...doc, body: JSON.stringify({ email: "0.0.1" }) }, release.publicKey), null, "edited minimums do not verify");
+  const doc = signMinimums({ email: "0.3.0" }, release.privateKey, 5);
+  const { acceptMinimums } = await import("./firstparty.js");
+  const got = verifyMinimums(doc, release.publicKey);
+  assert.deepEqual([got.counter, got.minimums], [5, { email: "0.3.0" }]);
+  const minimums = got.minimums;
+  assert.equal(verifyMinimums({ ...doc, body: JSON.stringify({ counter: 5, minimums: { email: "0.0.1" } }) }, release.publicKey), null, "edited minimums do not verify");
+  // K-2: an older signed document cannot be shown again once a newer counter was accepted
+  assert.ok(acceptMinimums(doc, release.publicKey, 5), "the same counter again is the same document");
+  assert.equal(acceptMinimums(signMinimums({ email: "0.0.1" }, release.privateKey, 4), release.publicKey, 5), null, "a lower counter is a rollback");
+  assert.ok(acceptMinimums(signMinimums({ email: "0.4.0" }, release.privateKey, 6), release.publicKey, 5));
+  // the pinned key is the compiled base64 SPKI the updaters use
+  const { RELEASE_KEY } = await import("../../lib/release-sig.js");
+  assert.equal(createFirstPartyCheck({ releaseKey: RELEASE_KEY })(tmp("unsigned-by-release")), false);
   const check = createFirstPartyCheck({ releaseKey: release.publicKey, minimums });
   assert.equal(check(mk("0.3.0")), true);
   assert.equal(check(mk("0.4.2")), true);

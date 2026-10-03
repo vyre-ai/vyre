@@ -10,6 +10,7 @@ import { GRANT_ACTIONS } from "../grants/index.js";
 import { createLimits } from "../core/limits.js";
 import { verifyLog } from "../audit/index.js";
 import { createLeases } from "./leases.js";
+import { createDriveGateway } from "./drive.js";
 import { grantProofVerifier } from "../core/presence.js";
 import { isChain, actorString, isExactlyPerson } from "../core/chain.js";
 import { KernelError } from "../core/errors.js";
@@ -70,8 +71,11 @@ export function createGateway(cfg) {
 
   const leases = cfg.sealer && gs && cfg.sealer.lease ? createLeases({ space: cfg.space, sealer: cfg.sealer, grantsStore: gs, authorize: authorizer.authorize, log: cfg.log, chains: cfg.chains, resolve: cfg.resolveCredential, routeAction: cfg.routeAction }) : undefined;
 
+  const drive = cfg.drive ? createDriveGateway({ space: cfg.space, drive: cfg.drive, authorizer, log: cfg.log, enforce }) : undefined;
+
   return Object.freeze({
     authorize: authorizer.authorize,
+    ...(drive ? { drive } : {}),
     ...(leases ? { leases } : {}),
     /** The action registry as the authorizer holds it (a Map of ActionDef): tasks read the risk of an action from here. */
     registry: authorizer.actions,
