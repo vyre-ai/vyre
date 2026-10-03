@@ -33,12 +33,13 @@ const FINISHED = new Set(["done", "skipped"]);
  *   kernel: any, catalog: () => any, chain: () => any,
  *   ports?: { roles?: (space: string, role: string) => any[] | Promise<any[]>, doer?: (role: string, ctx: any) => any },
  *   clock?: () => number, emit?: (type: string, data: any) => void,
+ *   hook?: boolean,  // the gateway calls onStageEnter itself, so the record.stage-entered event is not a second way in
  * }} o
  */
 export function createStages(o) {
   const now = o.clock || Date.now;
   const emit = o.emit || (() => {});
-  /** @type {Map<string, { key: string, urn: string, type: string, id: string, stage: string, tasks: { title: string, id: string, required: boolean }[], advanced: boolean }>} */
+  /** @type {Map<string, { key: string, urn: string, type: string, id: string, stage: string, tasks: { title: string, id: string, required: boolean, state?: string }[], advanced: boolean }>} */
   const entries = new Map();
   /** @type {Map<string, string>} task id -> entry key */
   const taskEntry = new Map();
@@ -69,9 +70,9 @@ export function createStages(o) {
     return undefined;
   };
 
-  /** A record entered a stage: make its tasks. @param {{ urn: string, type: string, id: string, stage: string, entry: string }} e */
+  /** A record entered a stage: make its tasks. `templates` are the ones the gateway handed over (onStageEnter); otherwise the catalog's. @param {{ urn: string, type: string, id: string, stage: string, entry: string, templates?: any[] }} e */
   async function enter(e) {
-    const stage = (await stagesOf(e.type)).find((/** @type {any} */ s) => s.name === e.stage);
+    const stage = e.templates ? { tasks: e.templates } : (await stagesOf(e.type)).find((/** @type {any} */ s) => s.name === e.stage);
     const key = `${e.urn}|${e.stage}|${e.entry}`;
     if (entries.has(key)) return;
     const space = (await o.catalog()).space;
@@ -113,7 +114,7 @@ export function createStages(o) {
     if (!ent || ent.advanced || !ent.tasks.length) return;
     const chain = o.chain();
     const rows = [];
-    for (const t of ent.tasks) { const row = await o.kernel.ask.get(chain, t.id); if (!row) return; rows.push({ ...t, state: row.state }); }
+    for (const t of ent.tasks) { const row = await o.kernel.ask.get(chain, t.id); if (!row) return; t.state = row.state; rows.push({ ...t, state: row.state }); }
     const required = rows.filter(r => r.required);
     const ok = required.length ? required.every(r => DONE.has(r.state)) : rows.every(r => FINISHED.has(r.state));
     if (!ok) { if (rows.some(r => r.state === "stuck")) emit("stage.blocked", { record: ent.urn, stage: ent.stage, tasks: rows.filter(r => r.state === "stuck").map(r => r.id) }); return; }
@@ -130,11 +131,29 @@ export function createStages(o) {
     emit("stage.advanced", { record: ent.urn, from: ent.stage, to: next.name });
   }
 
+  /** The gateway's onStageEnter hook: the record, the stage and the stage's task templates, handed over right after the write. Never throws into the write. @param {{ record: string, stage: string, templates: any[] }} e */
+  function onStageEnter(e) {
+    const m = /^vyre:\/\/[^/]+\/([^/]+)\/([^/]+)$/.exec(e.record);
+    if (!m) return Promise.resolve();
+    // Not awaited: the gateway calls this inside the write, and the queue may be mid-advance on this very record (an awaited call would wait on itself).
+    void serial(() => enter({ urn: e.record, type: m[1], id: m[2], stage: e.stage, entry: `gw${++entrySeq}`, templates: e.templates })).catch(err => emit("stage.error", { record: e.record, stage: e.stage, why: String(err && err.message) }));
+    return Promise.resolve();
+  }
+  let entrySeq = 0;
+
+  /** The gateway's stageTasks port (sync): what this record's latest entry into `stage` made, with the states last seen. Fail closed: unknown states are not done. */
+  function stageTasks(/** @type {string} */ urn, /** @type {string} */ stage) {
+    const key = latest.get(`${urn}|${stage}`);
+    const ent = key && entries.get(key);
+    return ent ? ent.tasks.map(t => ({ title: t.title, state: t.state || "ready" })) : [];
+  }
+
   /** One kernel event in. Safe to call with every event; it reads only the ones it needs. @param {any} env */
   function onEvent(env) {
     return serial(async () => {
       if (!env || typeof env.type !== "string") return;
       if (env.type === "record.stage-entered" && env.data && env.data.stage) {
+        if (o.hook) return;
         await enter({ urn: env.subject, type: env.data.type, id: env.data.id, stage: env.data.stage, entry: String(env.id || env.seq) });
         // an entry that has no required work left (all optional and already finished) can settle at once
         return;
@@ -149,5 +168,5 @@ export function createStages(o) {
     });
   }
 
-  return { onEvent, idle: () => queue, enter: (/** @type {any} */ e) => serial(() => enter(e)), settle: (/** @type {string} */ k) => serial(() => settle(k)), entries: () => [...entries.values()] };
+  return { onEvent, onStageEnter, stageTasks, idle: () => queue, enter: (/** @type {any} */ e) => serial(() => enter(e)), settle: (/** @type {string} */ k) => serial(() => settle(k)), entries: () => [...entries.values()] };
 }

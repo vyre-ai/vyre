@@ -34,9 +34,10 @@ export async function world(o = {}) {
   });
   // stages made of tasks: a module over the same events, working under [ALEX, service:stages]
   const stageEvents = [];
-  const stages = createStages({ kernel, catalog: () => cat, chain: () => kernel.moduleChain({ module: "stages", approver: ALEX }), clock: () => clock.t, emit: (type, data) => stageEvents.push({ type, data }),
+  const stages = createStages({ kernel, catalog: () => cat, chain: () => kernel.moduleChain({ module: "stages", approver: ALEX }), clock: () => clock.t, hook: which === "real", emit: (type, data) => stageEvents.push({ type, data }),
     ports: { roles: (space, role) => (role === "attorney" ? [ALEX, BOB] : role === "manager" ? [BOB] : []) } });
   kernel.onEvent(e => stages.onEvent(e), "stages");
+  if (which === "real") kernel.hooks = { onStageEnter: e => stages.onStageEnter(e), stageTasks: (u, s) => stages.stageTasks(u, s) };
   // the kernel's own event stream feeds the runner, as the real gateway's does
   kernel.onEvent(e => runner.onEvent(e), "flows");
   return { which, stages, stageEvents, clock, kernel, store, runner, emitted, cat, advance: ms => { clock.t += ms; } };

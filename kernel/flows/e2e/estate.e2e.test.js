@@ -24,7 +24,7 @@ test("estate planning: payment, matter, tasks, research, approved welcome email,
   const [contact] = await rows(w, "contact"), [matter] = await rows(w, "matter");
   assert.equal(contact.data.full_name, "Sam Rivera");
   assert.equal(matter.data.stage, "Intake");
-  assert.equal(matter.data.client, contact.urn ?? `vyre://${w.cat.space}/contact/${contact.id}`);
+  assert.deepEqual(matter.data.client, { urn: contact.urn ?? `vyre://${w.cat.space}/contact/${contact.id}` });
   assert.deepEqual(matter.data.fee, { amount: 3500, currency: "USD" });
 
   // 3. entering Intake made the Kit's tasks: research ready, the welcome email waiting on it
@@ -57,7 +57,7 @@ test("estate planning: payment, matter, tasks, research, approved welcome email,
   await w.kernel.approve(welcome.id);
   await settle(w);
   assert.equal(w.kernel.released.length, 1);
-  assert.equal(w.kernel.released[0].body.recipients[0].address, "sam@example.test");
+  assert.equal(w.kernel.released[0].body.payload.recipients[0].address, "sam@example.test");
   assert.equal((await rows(w, "matter"))[0].data.stage, "Engagement");
   const next = await byTitle("Engagement letter signed");
   assert.deepEqual([next.state, next.doer.id, next.stage], ["ready", "per_alex", "Engagement"]);

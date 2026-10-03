@@ -453,8 +453,12 @@ test("stage gates: a record cannot enter a stage unless its rules hold, and cann
   await assert.rejects(() => r.create(owner(), "deal", { title: "C", stage: "Drafting", signed: false }), { code: "rule_failed" });
 });
 
-test("stage gates: fail closed when rules exist and no evaluator is wired", async () => {
-  const { r } = rig();
+test("stage gates: the kernel's own evaluator is the default, and with it switched off the gate fails closed", async () => {
+  const dflt = rig();
+  await dflt.r.define(owner(), { add_types: [DEAL] });
+  assert.equal((await dflt.r.create(owner(), "deal", { title: "A", stage: "Intake" })).data.stage, "Intake", "no evaluator to wire: the rule holds for Intake");
+  await assert.rejects(() => dflt.r.create(owner(), "deal", { title: "B", stage: "Drafting", signed: false }), { code: "rule_failed" });
+  const { r } = rig({ expr: null });
   await r.define(owner(), { add_types: [DEAL] });
   await assert.rejects(() => r.create(owner(), "deal", { title: "A", stage: "Intake" }), { code: "unavailable" });
 });
