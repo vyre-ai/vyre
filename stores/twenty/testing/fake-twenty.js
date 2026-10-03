@@ -74,11 +74,18 @@ export class FakeTwenty {
         const f = v.i.field; const obj = [...this.objects.values()].find((o) => o.id === f.objectMetadataId);
         if (!obj) throw new GqlError("Object not found", "NOT_FOUND");
         if (obj.fields.has(f.name)) throw new GqlError("Field already exists");
-        const field = { id: crypto.randomUUID(), name: f.name, type: f.type, options: f.options ?? null, isActive: true, defaultValue: f.defaultValue };
+        const field = { id: crypto.randomUUID(), name: f.name, type: f.type, options: f.options ?? null, isActive: true, defaultValue: f.defaultValue, isUnique: f.isUnique === true };
         obj.fields.set(f.name, field); return { createOneField: { id: field.id, name: field.name } };
       }
       case "UpdField": {
-        for (const o of this.objects.values()) for (const f of o.fields.values()) if (f.id === v.i.id) { f.options = v.i.update.options; return { updateOneField: { id: f.id } }; }
+        for (const o of this.objects.values()) for (const f of o.fields.values()) if (f.id === v.i.id) {
+          if (v.i.update.options !== undefined) f.options = v.i.update.options;
+          if (v.i.update.isUnique !== undefined) {
+            if (v.i.update.isUnique) { const seen = new Set(); for (const r of this.rows.get(o.nameSingular).values()) { if (r.deletedAt || r[f.name] == null) continue; const k = JSON.stringify(r[f.name]); if (seen.has(k)) throw new GqlError(`could not create unique index "IDX_UNIQUE_${f.name}": duplicate key value violates unique constraint`); seen.add(k); } }
+            f.isUnique = v.i.update.isUnique;
+          }
+          return { updateOneField: { id: f.id } };
+        }
         throw new GqlError("Field not found", "NOT_FOUND");
       }
       case "Hooks": return { webhooks: this.hooks.map((h) => ({ id: h.id, targetUrl: h.targetUrl, description: h.description })) };
@@ -150,7 +157,8 @@ export class FakeTwenty {
     if (kind === "Create") {
       const { obj, rows } = this.#objBySingular(name); const d = v.d;
       this.#checkInput(obj, d);
-      if (rows.has(d.id)) throw new GqlError("duplicate key value violates unique constraint", "INTERNAL_SERVER_ERROR");
+      if (rows.has(d.id)) throw new GqlError("duplicate key value violates unique constraint \"PK_pkey\"", "INTERNAL_SERVER_ERROR");
+      this.#unique(obj, rows, d, null);
       const at = this.#now();
       const row = { name: null, position: 0, createdBy: { source: "API", name: "vyre-gateway" }, updatedBy: { source: "API", name: "vyre-gateway" }, searchVector: "", ...d, createdAt: at, updatedAt: at, deletedAt: null };
       rows.set(row.id, row); this.#emit(name, "created", row, Object.keys(d));
@@ -160,17 +168,26 @@ export class FakeTwenty {
       const { obj, rows } = this.#objByPlural(name); this.#checkInput(obj, v.d);
       const hit = [...rows.values()].filter((r) => this.#vis(v.f, r) && this.#match(r, v.f));
       const out = [];
+      for (const r of hit) this.#unique(obj, rows, { ...r, ...v.d }, r.id);
       for (const r of hit) { Object.assign(r, v.d, { updatedAt: this.#now(), updatedBy: { source: "API", name: "vyre-gateway" } }); this.#emit(obj.nameSingular, "updated", r, Object.keys(v.d)); out.push(r); }
       return { [`update${cap(name)}`]: out };
     }
     if (kind === "Delete" || kind === "Restore") {
-      const { rows } = this.#objBySingular(name); if (!UUID.test(v.id)) throw new GqlError(`Value "${v.id}" is not a valid UUID`);
+      const { obj, rows } = this.#objBySingular(name); if (!UUID.test(v.id)) throw new GqlError(`Value "${v.id}" is not a valid UUID`);
       const r = rows.get(v.id); if (!r) throw new GqlError("Record not found", "NOT_FOUND", "RECORD_NOT_FOUND");
+      if (kind === "Restore") this.#unique(obj, rows, r, r.id);
       r.deletedAt = kind === "Delete" ? this.#now() : null; r.updatedAt = this.#now();
       this.#emit(name, kind === "Delete" ? "deleted" : "restored", r, ["deletedAt"]);
       return { [`${kind.toLowerCase()}${cap(name)}`]: r };
     }
     throw new GqlError(`Unknown operation ${op}`);
+  }
+  /** the unique fields of an object, enforced among live rows like a partial unique index @param {any} obj @param {Map<string, any>} rows @param {any} cand @param {string | null} selfId */
+  #unique(obj, rows, cand, selfId) {
+    for (const f of obj.fields.values()) {
+      if (!f.isUnique || cand[f.name] == null) continue;
+      for (const r of rows.values()) if (r.id !== selfId && !r.deletedAt && JSON.stringify(r[f.name]) === JSON.stringify(cand[f.name])) throw new GqlError(`duplicate key value violates unique constraint "IDX_UNIQUE_${obj.nameSingular}_${f.name}"`, "INTERNAL_SERVER_ERROR");
+    }
   }
   #vis(filter, row) { return JSON.stringify(filter ?? {}).includes("deletedAt") ? true : !row.deletedAt; }
   #visible() {}
