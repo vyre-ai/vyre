@@ -1,3 +1,4 @@
+import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { COPY, SOFTWARE_KEY, deviceSub, deviceLine, lastStep, lendState, list, removeText, stepCount, stepLine, stepWords, wordsStep } from "./wink.js";

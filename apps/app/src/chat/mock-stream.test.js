@@ -1,6 +1,7 @@
 // @ts-check
 // The mock session: cadence of text deltas (about 40 tokens a second), gapless cursors, the scripted
 // turn's contents, the queue, the approval gate, and resume. Loaded through Node's type stripping.
+import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createFolder } from "./frames.js";

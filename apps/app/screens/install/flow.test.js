@@ -1,3 +1,4 @@
+import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { backOf, homeLine, nameNote, nameStatus, pairToOptions, serverLines, slug, startStep, SERVER_LONG_CODE, AFTER_HOME, nextSetup, isResumable, resumeStep, packProgress, unpackProgress, setupElsewhere, connectedLine } from "./flow.js";
