@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { BoardView, CalendarView, EmptyState, ErrorState, LargeTitleScreen, ListView, LoadingState, Segmented, Tabs, Text, showToast, useFieldEnv, useRecordsWorld, useStore, viewDefOf, viewsOf } from "@vyre/ui";
+import { BoardView, CalendarView, EmptyState, ErrorState, LargeTitleScreen, ListView, LoadingState, Segmented, Tabs, Text, showToast, useFieldEnv, useRecordsWorld, useStore, useUiTheme, viewDefOf, viewsOf } from "@vyre/ui";
 
 type ViewKind = "list" | "board" | "calendar";
 const LABEL: Record<ViewKind, string> = { list: "List", board: "Board", calendar: "Calendar" };
@@ -11,6 +11,7 @@ export function RecordsScreen({ type }: { type: string }) {
   const router = useRouter();
   const store = useStore();
   const { data: world, loading, error, reload } = useRecordsWorld();
+  const { phone } = useUiTheme();
   const [view, setView] = useState<ViewKind>("list");
   const open = useCallback((urn: string) => router.push(`/u/record/${urn.split("/").pop()}` as never), [router]);
   const env = useFieldEnv(world, open);
@@ -27,6 +28,8 @@ export function RecordsScreen({ type }: { type: string }) {
     if (!g) return;
     try { await store.update(rec.urn, { [g]: to || null } as any, rec.version); } catch (e) { showToast(e instanceof Error ? e.message : String(e)); }
   };
+  // One scope-style control, with icons only on a phone.
+  const switcher = views.length > 1 ? <Segmented<ViewKind> label="View" value={shown} onChange={setView} iconsOnly={phone} icons={{ list: "list", board: "board", calendar: "cal" }} options={views.map((v) => [v, LABEL[v]] as [ViewKind, string])} /> : null;
   const openRec = (rec: any) => router.push(`/u/record/${rec.id}` as never);
   return (
     <LargeTitleScreen title={vd.plural} own onRefresh={reload}>
@@ -37,8 +40,7 @@ export function RecordsScreen({ type }: { type: string }) {
         </View>
       </View>
       <Tabs value={type} onChange={(t) => router.replace(`/u/records/${t}` as never)} items={world.types.map((t) => [t.name, viewDefOf(t).plural] as [string, string])} />
-      {views.length > 1 ? <Segmented<ViewKind> label="View" value={shown} onChange={setView} options={views.map((v) => [v, LABEL[v]] as [ViewKind, string])} /> : null}
-      {shown === "list" ? <ListView def={def} rows={rows} env={env} onOpen={openRec} /> : null}
+      {shown === "list" ? <ListView def={def} rows={rows} env={env} onOpen={openRec} lead={switcher} /> : switcher}
       {shown === "board" ? <BoardView def={def} rows={rows} env={env} onOpen={openRec} onMove={move} /> : null}
       {shown === "calendar" ? <CalendarView def={def} rows={rows} env={env} onOpen={openRec} /> : null}
     </LargeTitleScreen>

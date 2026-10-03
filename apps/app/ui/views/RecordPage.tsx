@@ -147,7 +147,7 @@ export function RecordPage({ def, rec, world, events, env, onOpen }: { def: any;
 
   return (
     <View className="gap-s4">
-      {sf ? <StageSteps stages={stages} current={stages.indexOf(String(val(rec, sf.name) ?? ""))} onSelect={ai ? undefined : (s) => change(sf, s)} /> : null}
+      {sf ? <StageSteps strip={phone} stages={stages} current={stages.indexOf(String(val(rec, sf.name) ?? ""))} onSelect={ai ? undefined : (s) => change(sf, s)} /> : null}
       <View className="flex-row flex-wrap items-center gap-s3">
         <Segmented<"person" | "assistant"> label="Who is looking" value={who} onChange={(v) => { setWho(v); setEditing(null); }} options={[["person", "You"], ["assistant", "Your assistant sees"]]} />
         <View className="flex-1" />
