@@ -183,3 +183,28 @@ test("SG-6: a kernel.modules-list event not written by the home counts for nothi
   assert.equal(k.firstPartyCheck(r.dir("alpha")), true, "this build is not disabled by it");
   await k.stop();
 });
+
+test("SG-5: the release also lists the kernel and lib trees; a build whose kernel or lib differs from them uses no first-party list from itself", { timeout: 120_000 }, async t => {
+  const r = release(t, { counter: 5 });
+  for (const n of ["kernel", "lib"]) { fs.mkdirSync(path.join(r.root, n), { recursive: true }); fs.writeFileSync(path.join(r.root, n, "x.js"), `export const n = "${n}";`); }
+  r.write(r.key, 5);
+  const list = readReleaseList(r.root, r.pub);
+  assert.equal(list.ok, true, JSON.stringify(list));
+  assert.deepEqual(Object.keys(list.trees).sort(), ["kernel", "lib"]);
+  const root = tempHome(t), dbFile = path.join(root, "k.db");
+  const boot = async (logs = []) => bootHomeKernel({ db: new DatabaseSync(dbFile), root, log: m => logs.push(m), isFirstParty: () => false, releaseKey: r.pub, packageRoot: r.root });
+  // intact: first party, counter accepted
+  let k = await boot();
+  assert.equal(k.firstPartyCheck(r.dir("alpha")), true);
+  assert.equal(k.log.read({ type: "kernel.modules-list" }).length, 1);
+  await k.stop();
+  // a changed lib file after signing: this build's list is not used and nothing is accepted from it (fresh home)
+  fs.rmSync(dbFile, { force: true });
+  fs.writeFileSync(path.join(r.root, "lib", "x.js"), "export const n = 'evil';");
+  const logs = [];
+  k = await boot(logs);
+  assert.ok(logs.some(m => /kernel or lib tree differs/.test(m)), logs.join(" | "));
+  assert.equal(k.firstPartyCheck(r.dir("alpha")), false, "no first-party list from a build whose lib was changed");
+  assert.equal(k.log.read({ type: "kernel.modules-list" }).length, 0);
+  await k.stop();
+});

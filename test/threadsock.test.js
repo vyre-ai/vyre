@@ -256,6 +256,9 @@ test("a person's own surface call carries a kernel chain in a module: the owner'
     const r = /** @type {any} */ (await call("zz-who.me", {}, { root, caller: label }));
     assert.deepEqual(r.data && r.data.hops, [["person", owner, label]], `${label}: ${JSON.stringify(r)}`);
   }
+  // the Capsule label with no pinned binary behind it gets no person chain (a label is not a proof)
+  const cap = /** @type {any} */ (await call("zz-who.me", {}, { root, caller: "capsule" }));
+  assert.ok(cap.data ? cap.data.hops.every(h => h[0] !== "person") : cap.error, JSON.stringify(cap));
   // a model on the socket (mcp) gets no person chain: the module's own service chain
   const m = /** @type {any} */ (await call("zz-who.me", {}, { root, caller: "mcp" }));
   assert.ok(m.data ? m.data.hops.every(h => h[0] !== "person") : m.error, JSON.stringify(m));
@@ -304,10 +307,45 @@ test("the phone's chain: a device connection (relay device:<id>, a tailnet owner
   const k = d.kernel, owner = k.id.owner;
   const hops = f => { const c = f && k.chains.fromFacts(f); return c ? c.hops.map(h => [h.actor.kind, h.actor.id]) : null; };
   const dev = "abcdefghijklmnop";
-  assert.deepEqual(hops(callerFacts(`device:${dev}`, { caller: `device:${dev}` }, {}, k)), [["person", owner]], "a phone through the relay");
+  const row = o => ({ kind: "app", removed: false, ...o });
+  assert.deepEqual(hops(callerFacts(`device:${dev}`, { caller: `device:${dev}` }, {}, k, false, row({}))), [["person", owner]], "a paired app device the home holds");
+  // PH-1: no row, a removed one, a web browser (trusted or not), a setup page: no person facts, whatever the relay says
+  const dpol = { caller: `device:${dev}` };
+  assert.equal(callerFacts(`device:${dev}`, dpol, {}, k), null, "an arbitrary id");
+  assert.equal(callerFacts(`device:${dev}`, dpol, {}, k, false, null), null, "no row");
+  assert.equal(callerFacts(`device:${dev}`, dpol, {}, k, false, row({ removed: true })), null, "a removed device");
+  assert.equal(callerFacts(`device:${dev}`, dpol, {}, k, false, row({ kind: "web" })), null, "a web browser");
+  assert.equal(callerFacts(`device:${dev}`, dpol, {}, k, false, row({ kind: "web", trusted: true })), null, "a trusted web browser");
+  assert.equal(callerFacts(`device:${dev}`, dpol, {}, k, false, row({ kind: "setup" })), null, "a setup page");
+  // a confirmed device with no person session is the owner's device but carries no presence session
+  assert.equal(callerFacts(`device:${dev}`, dpol, {}, k, false, row({})).session, undefined, "no person session, no session fact");
+  assert.equal(callerFacts(`device:${dev}`, dpol, { person: { id: "ps1" } }, k, false, row({})).session, "ps1", "a person session is carried");
   assert.deepEqual(hops(callerFacts("tailnet:phone", { caller: "tailnet:phone", peer: { node: "n1" } }, {}, k)), [["person", owner]], "a phone on the tailnet");
   assert.equal(callerFacts("tailnet:agent:x", { caller: "tailnet:agent:x" }, {}, k), null, "an agent node");
   assert.equal(callerFacts("tailnet-guest:g", { caller: "tailnet-guest:g" }, {}, k), null, "a guest");
   assert.equal(callerFacts("mobile", { caller: "tailnet:phone" }, {}, k) && callerFacts("mobile", { caller: "evil" }, {}, k), null, "an unrecognised listener identity");
   assert.equal(callerFacts("mobile", {}, {}, null), null, "no kernel, no facts");
+  // the Capsule: its chain only with the pinned-binary proof; the label alone builds nothing
+  assert.equal(callerFacts("capsule", {}, {}, k), null, "a capsule label with no proof");
+  assert.equal(callerFacts("capsule", {}, {}, k, false), null);
+  assert.deepEqual(hops(callerFacts("capsule", {}, {}, k, true)), [["person", owner]], "the pinned Capsule is the owner");
+  assert.equal(callerFacts("capsule", { caller: "tailnet:agent:x" }, {}, k, true), null, "a listener's identity is never a Capsule");
+});
+
+test("PH-1 end to end: the daemon's own relay row decides what a device is (relay.device.info for a paired, a web, a setup and a removed device and one never paired)", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {}, kernel: true });
+  t.after(() => d.stop());
+  const db = d.registry.deps.db;
+  const ins = db.prepare("INSERT INTO relay_devices (id, name, pub, paired_at, kind, trusted, removed_at) VALUES (?, ?, 'p', 1, ?, ?, ?)");
+  const ids = { app: "aaaaaaaaaaaaaaaa", web: "bbbbbbbbbbbbbbbb", setup: "cccccccccccccccc", gone: "dddddddddddddddd" };
+  ins.run(ids.app, "phone", "app", 0, null); ins.run(ids.web, "browser", "web", 1, null); ins.run(ids.setup, "setup page", "setup", 0, null); ins.run(ids.gone, "old", "app", 0, 5);
+  const { callerFacts } = await import("../core/daemon/index.js");
+  const facts = async id => { const r = await d.registry.call("relay.device.info", { id }, "module:vyred"); return callerFacts(`device:${id}`, { caller: `device:${id}` }, {}, d.kernel, false, r.data || null); };
+  assert.equal((await facts(ids.app)).kind, "device");
+  for (const k of ["web", "setup", "gone"]) assert.equal(await facts(ids[k]), null, k);
+  assert.equal(await facts("eeeeeeeeeeeeeeee"), null, "never paired");
 });
