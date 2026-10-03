@@ -12,7 +12,7 @@ import { isChain, isExactlyPerson } from "../core/chain.js";
 import { createGate } from "../core/gate.js";
 import { KernelError } from "../core/errors.js";
 import { segments, containedPrefix, spaceOf } from "../core/urn.js";
-import { contains, patternCovers } from "../core/authorize.js";
+import { contains, containsDims, clampTo, patternCovers } from "../core/authorize.js";
 import { ROLE_IDS } from "../contracts/index.js";
 import { ROLE_ACTIONS, MAY_SET } from "./roles.js";
 
@@ -283,7 +283,7 @@ export function createGrantsStore(cfg) {
         && (g.resource.where || []).every((/** @type {any} */ p) => (next.resource.where || []).some((/** @type {any} */ q) => q.attr === p.attr && q.op === p.op && canonical(q.value) === canonical(p.value)))
         && (g.conditions.when?.expires === undefined || (next.conditions.when?.expires !== undefined && next.conditions.when.expires <= g.conditions.when.expires))
         && (!g.resource.fields || (next.resource.fields && next.resource.fields.every((/** @type {string} */ f) => g.resource.fields.includes(f))));
-      if (!inside) throw new KernelError("not_contained", "narrowing may only make a grant smaller");
+      if (!inside || !containsDims(g, next, since, riskOf)) throw new KernelError("not_contained", "narrowing may only make a grant smaller");
       const n = freeze(next);
       grants.set(id, n);
       await note(chain, "grant.narrowed", urn("grant", id), { grant: n }, d.decision);
@@ -742,6 +742,34 @@ export function createGrantsStore(cfg) {
     },
     /** The chat's assistants, for the append check. @param {string} id @returns {string[] | null} */
     chatAssistants(id) { const c = chats.get(String(id)); return c ? [...c.assistants] : null; },
+    /**
+     * Check every stored delegated grant against its parent on every dimension, and cut down any that is wider (made before containment compared every dimension, or by a bug): it keeps
+     * what it was inside, the cut is written to the log as a `grant.narrowed` event saying why, and one that cannot be brought inside is revoked. Never trusts what is on disk. Run at
+     * boot, once the actions are registered. @returns {Promise<{ clamped: number, revoked: number }>}
+     */
+    async containmentPass() {
+      let clamped = 0, revoked = 0;
+      const depthOf2 = (/** @type {any} */ g) => { let d = 0; for (let p = g; p && p.parent && d < 10; p = grants.get(p.parent)) d++; return d; };
+      for (const g of [...grants.values()].filter(x => x.status === "active" && x.parent).sort((a, b) => depthOf2(a) - depthOf2(b))) {
+        const parent = grants.get(g.parent);
+        if (!parent || parent.status !== "active") continue;
+        if (contains(parent, g, since, riskOf)) continue;
+        const cut = clampTo(parent, g, since, riskOf);
+        const k = kernelChain();
+        if (cut && contains(parent, cut, since, riskOf)) {
+          const n = freeze({ ...cut, reason: "cut to its parent's limits" });
+          grants.set(g.id, n);
+          await note(k, "grant.narrowed", urn("grant", g.id), { grant: n, why: "wider than its parent" });
+          clamped++;
+        } else {
+          const n = freeze({ ...g, status: "revoked", revoked_at: clock(), reason: "wider than its parent and cannot be cut down" });
+          grants.set(g.id, n);
+          await note(k, "grant.revoked", urn("grant", g.id), { id: g.id, reason: n.reason });
+          revoked++;
+        }
+      }
+      return { clamped, revoked };
+    },
     /**
      * The whole state as one sealed event: what a migration from an older key writes, and what rebuild can start from. Kernel-only.
      * A snapshot is a point the log can be read from: events before it are not needed once it exists.
