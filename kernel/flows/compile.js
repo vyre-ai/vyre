@@ -60,7 +60,7 @@ export function needs(flow, cat) {
     if (!action) return;
     if (["find", "pick", "create", "update", "upsert", "remove", "stage"].includes(s.kind)) out.push({ step: s.id, path, action, resource: typeUrn(cat.space, String(s.type)) });
     else if (s.kind === "http") out.push({ step: s.id, path, action, resource: `vyre://${cat.space}/http/${hostOf(s.url)}` });
-    else out.push({ step: s.id, path, action, resource: `vyre://${cat.space}/${action.split(".")[0]}/*` });
+    else out.push({ step: s.id, path, action, resource: `vyre://${cat.space}/${action === "ask.request" ? "task" : action.split(".")[0]}/*` });
     if (s.kind === "upsert") out.push({ step: s.id, path, action: "records.create", resource: typeUrn(cat.space, String(s.type)) });
   });
   return out;
