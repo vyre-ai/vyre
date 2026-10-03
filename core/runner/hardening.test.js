@@ -282,7 +282,7 @@ test("ports: the lease is for this computer's device key and carries the kernel'
   const calls = []; let both = true; const subs = [];
   const sealer = { lease: { issue: i => { calls.push(["issue", i]); return { id: "lease_1", key: "AA==", ttlMs: 1 }; }, renew: i => { calls.push(["renew", i]); return { ttlMs: 1 }; } } };
   const offers = { active: q => { calls.push(["active", q]); return { spaceAllows: both, memberAccepts: true }; }, onRevoke: fn => { subs.push(fn); return () => {}; } };
-  const p = realPorts({ sealer, offers, use: async o => "secret-for-" + o.method, deviceId: () => "dev_kit", member: "usr_juno", spec: async () => ({}), sync: {} });
+  const p = realPorts({ sealer, offers, credentialFor: async o => "secret-for-" + o.method, deviceId: () => "dev_kit", member: "usr_juno", spec: async () => ({}), sync: {} });
   assert.equal(p.device, "dev_kit");
   await p.vault.lease({ space: "spc_harlow", device: "anything the caller says" });
   assert.deepEqual(calls.find(c => c[0] === "issue")[1], { space: "spc_harlow", device: "dev_kit", allowed: true });
@@ -292,7 +292,7 @@ test("ports: the lease is for this computer's device key and carries the kernel'
   const got = []; p.onRevoke(i => got.push(i.id));
   subs[0]({ id: "o1", device: "dev_other" }); subs[0]({ id: "o2", device: "dev_kit" }); subs[0]({ id: "o3", device: null });
   assert.deepEqual(got, ["o2", "o3"]);
-  assert.throws(() => realPorts({ sealer, offers, use: async () => "", deviceId: () => "", member: "m", spec: async () => ({}), sync: {} }), /device key/);
+  assert.throws(() => realPorts({ sealer, offers, credentialFor: async () => "", deviceId: () => "", member: "m", spec: async () => ({}), sync: {} }), /device key/);
 });
 
 // ---- R-14: the reader is capped and has a deadline ---------------------------------------------------------------------
