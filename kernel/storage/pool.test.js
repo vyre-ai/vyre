@@ -139,3 +139,17 @@ test("the controller probes, heals when something changed, never ticks faster th
   b[lost].down = false; await c.tick();
   const w = await c.withdraw(lost); assert.ok(w.moved >= 0); assert.equal(events.at(-1).type, "storage.released"); assert.deepEqual(await pool.get(r.id), await pool.get(r.id));
 });
+
+test("devices: a paired bucket, volume or disk becomes a backend, a network drive only when mounted here, and a device's classes are honoured", async t => {
+  const { backendFor } = await import("./devices.js");
+  const drive = tmp("usb"); t.after(() => fs.rmSync(drive, { recursive: true, force: true }));
+  assert.equal(typeof backendFor({ kind: "s3", location: { endpoint: "http://127.0.0.1:9", bucket: "b" }, accessKey: "k", secretKey: "s" }, { id: "dev1" }).put, "function");
+  assert.equal(backendFor({ kind: "s3", location: { bucket: "b" }, accessKey: "k", secretKey: "s" }, { id: "dev1" }), null, "no endpoint, no backend");
+  const usb = backendFor({ kind: "usb-disk", location: { path: drive } }, { id: "dev2" }); await usb.put("c/x", Buffer.from("hi")); assert.equal((await usb.get("c/x")).toString(), "hi");
+  assert.equal(backendFor({ kind: "smb", location: { host: "nas.local", share: "office" } }, { id: "dev3" }), null, "not mounted here");
+  assert.equal(typeof backendFor({ kind: "smb", location: { mount: drive } }, { id: "dev3" }).put, "function");
+  // A cold-and-backup-only device never takes working data.
+  const { pool } = world(t, { home: 10 }); pool.addNode({ id: "nas", backend: memoryBackend(), offered: 10 * MB, classes: ["cold", "backup"] });
+  const w = await pool.put(rand(1000), { class: "working" }); assert.equal(w.atRisk, true, "working needs a second copy and only the home may hold it");
+  const c = await pool.put(rand(1000), { class: "cold" }); assert.equal(c.atRisk, false); assert.ok(pool.ix.chunks[pool.ix.manifests[c.id].chunks[0]].nodes.includes("nas"));
+});

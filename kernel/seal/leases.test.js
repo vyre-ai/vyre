@@ -14,35 +14,35 @@ const code = p => p.then(() => null, e => e.code), SP = "spc_testspace0001";
 const mk = () => { let t = 5_000_000; const dir = tmp("lease"), store = new SealStore(dir, Buffer.alloc(32, 4)), L = new Leases(store, () => t); return { L, dir, store, tick: ms => { t += ms; }, reopen: () => new Leases(store, () => t) }; };
 
 test("a lease gives a stable key per Space and device, an hour long, and different keys for another device or Space", () => {
-  const { L } = mk(), a = L.issue({ space: SP, member: "per_m", device: "dev_mac", allowed: true }), b = L.issue({ space: SP, member: "per_m", device: "dev_mac", allowed: true });
+  const { L } = mk(), a = L.issue({ space: SP, member: "per_a", device: "dev_mac", allowed: true }), b = L.issue({ space: SP, member: "per_a", device: "dev_mac", allowed: true });
   assert.equal(a.ttlMs, LEASE_MS); assert.equal(Buffer.from(a.key, "base64").length, 32); assert.equal(a.key, b.key, "the workspace reopens with the same key"); assert.notEqual(a.id, b.id);
-  assert.notEqual(L.issue({ space: SP, member: "per_m", device: "dev_pc", allowed: true }).key, a.key); assert.notEqual(L.issue({ space: "spc_other", member: "per_m", device: "dev_mac", allowed: true }).key, a.key);
+  assert.notEqual(L.issue({ space: SP, member: "per_a", device: "dev_pc", allowed: true }).key, a.key); assert.notEqual(L.issue({ space: "spc_other", member: "per_a", device: "dev_mac", allowed: true }).key, a.key);
 });
 
 test("renewal needs access to hold; losing it revokes at once, and nothing is issued again, across a restart", () => {
-  const { L, reopen, tick } = mk(), a = L.issue({ space: SP, member: "per_m", device: "dev_mac", allowed: true });
-  tick(LEASE_MS / 2); assert.deepEqual(L.renew({ id: a.id, allowed: true }), { ttlMs: LEASE_MS });
-  assert.deepEqual(L.renew({ id: a.id, allowed: false }), { revoked: true });
-  assert.deepEqual(L.issue({ space: SP, member: "per_m", device: "dev_mac", allowed: true }), { revoked: true }, "never issued after a revoke, even if the kernel now says yes");
-  assert.deepEqual(reopen().issue({ space: SP, member: "per_m", device: "dev_mac", allowed: true }), { revoked: true }, "the revoke survives a restart");
-  assert.equal(L.issue({ space: SP, member: "per_m", device: "dev_pc", allowed: true }).id.startsWith("lease_"), true, "another device is unaffected");
-  assert.deepEqual(L.issue({ space: SP, member: "per_m", device: "dev_new", allowed: false }), { revoked: true }, "no grant, no key");
-  assert.equal(L.issue({ space: SP, member: "per_m", device: "dev_new", allowed: true }).id.startsWith("lease_"), true, "a refused issue revokes nothing (L-5)");
+  const { L, reopen, tick } = mk(), a = L.issue({ space: SP, member: "per_a", device: "dev_mac", allowed: true });
+  tick(LEASE_MS / 2); assert.deepEqual(L.renew({ id: a.id, member: "per_a", allowed: true }), { ttlMs: LEASE_MS });
+  assert.deepEqual(L.renew({ id: a.id, member: "per_a", allowed: false }), { revoked: true });
+  assert.deepEqual(L.issue({ space: SP, member: "per_a", device: "dev_mac", allowed: true }), { revoked: true }, "never issued after a revoke, even if the kernel now says yes");
+  assert.deepEqual(reopen().issue({ space: SP, member: "per_a", device: "dev_mac", allowed: true }), { revoked: true }, "the revoke survives a restart");
+  assert.equal(L.issue({ space: SP, member: "per_a", device: "dev_pc", allowed: true }).id.startsWith("lease_"), true, "another device is unaffected");
+  assert.deepEqual(L.issue({ space: SP, member: "per_a", device: "dev_new", allowed: false }), { revoked: true }, "no grant, no key");
+  assert.equal(L.issue({ space: SP, member: "per_a", device: "dev_new", allowed: true }).id.startsWith("lease_"), true, "a refused issue revokes nothing (L-5)");
 });
 
 test("a lease that runs out is not renewed, and the key after a reinstatement is not the old one", () => {
-  const { L, tick } = mk(), a = L.issue({ space: SP, member: "per_m", device: "dev_mac", allowed: true });
-  tick(LEASE_MS + 1); assert.throws(() => L.renew({ id: a.id, allowed: true }), { code: "lease_expired" });
-  assert.throws(() => L.renew({ id: "lease_nope", allowed: true }), { code: "unknown_lease" });
-  const b = L.issue({ space: SP, member: "per_m", device: "dev_mac", allowed: true }); L.revoke({ space: SP, member: "per_m", device: "dev_mac" }); L.reinstate({ space: SP, member: "per_m", device: "dev_mac" });
-  const c = L.issue({ space: SP, member: "per_m", device: "dev_mac", allowed: true }); assert.notEqual(c.key, b.key, "a key copied before the revoke opens nothing now");
+  const { L, tick } = mk(), a = L.issue({ space: SP, member: "per_a", device: "dev_mac", allowed: true });
+  tick(LEASE_MS + 1); assert.throws(() => L.renew({ id: a.id, member: "per_a", allowed: true }), { code: "lease_expired" });
+  assert.throws(() => L.renew({ id: "lease_nope", member: "per_a", allowed: true }), { code: "unknown_lease" });
+  const b = L.issue({ space: SP, member: "per_a", device: "dev_mac", allowed: true }); L.revoke({ space: SP, member: "per_a", device: "dev_mac" }); L.reinstate({ space: SP, member: "per_a", device: "dev_mac" });
+  const c = L.issue({ space: SP, member: "per_a", device: "dev_mac", allowed: true }); assert.notEqual(c.key, b.key, "a key copied before the revoke opens nothing now");
 });
 
 test("check is for a live, unrevoked lease only", () => {
-  const { L, tick } = mk(), a = L.issue({ space: SP, member: "per_m", device: "dev_mac", allowed: true });
-  assert.deepEqual(L.check({ id: a.id }), { space: SP, member: "per_m", device: "dev_mac" });
-  L.revoke({ space: SP, member: "per_m", device: "dev_mac" }); assert.throws(() => L.check({ id: a.id }), { code: "no_lease" });
-  const b = L.issue({ space: SP, member: "per_m", device: "dev_pc", allowed: true }); tick(LEASE_MS + 1); assert.throws(() => L.check({ id: b.id }), { code: "no_lease" });
+  const { L, tick } = mk(), a = L.issue({ space: SP, member: "per_a", device: "dev_mac", allowed: true });
+  assert.deepEqual(L.check({ id: a.id, member: "per_a" }), { space: SP, member: "per_a", device: "dev_mac" });
+  L.revoke({ space: SP, member: "per_a", device: "dev_mac" }); assert.throws(() => L.check({ id: a.id, member: "per_a" }), { code: "no_lease" });
+  const b = L.issue({ space: SP, member: "per_a", device: "dev_pc", allowed: true }); tick(LEASE_MS + 1); assert.throws(() => L.check({ id: b.id, member: "per_a" }), { code: "no_lease" });
 });
 
 test("the sealing process: only a person asks, reinstating needs presence, no key or secret is in the folder", async t => {
@@ -62,10 +62,20 @@ test("the sealing process: only a person asks, reinstating needs presence, no ke
 });
 
 test("vault use at the point of use: needs a live lease, resolves per request, caches nothing, emits no value", async () => {
-  const { L } = mk(), a = L.issue({ space: SP, member: "per_m", device: "dev_mac", allowed: true }), events = []; let calls = 0;
-  const use = leasedUse({ chain: null, leaseOf: s => (s === "sess1" ? a.id : null), check: async ({ id }) => L.check({ id }), resolve: async ({ ref }) => { calls++; return `secret-for-${ref}`; }, emit: e => events.push(e) });
+  const { L } = mk(), a = L.issue({ space: SP, member: "per_a", device: "dev_mac", allowed: true }), events = []; let calls = 0;
+  const use = leasedUse({ chain: null, leaseOf: s => (s === "sess1" ? a.id : null), check: async ({ id }) => L.check({ id, member: "per_a" }), resolve: async ({ ref }) => { calls++; return `secret-for-${ref}`; }, emit: e => events.push(e) });
   assert.equal(await use({ ref: "gmail", session: "sess1", route: "/gmail" }), "secret-for-gmail"); await use({ ref: "gmail", session: "sess1", route: "/gmail" }); assert.equal(calls, 2);
   assert.equal(JSON.stringify(events).includes("secret-for"), false);
   assert.equal(await code(use({ ref: "gmail", session: "other", route: "/gmail" })), "no_lease");
-  L.revoke({ space: SP, member: "per_m", device: "dev_mac" }); assert.equal(await code(use({ ref: "gmail", session: "sess1", route: "/gmail" })), "no_lease");
+  L.revoke({ space: SP, member: "per_a", device: "dev_mac" }); assert.equal(await code(use({ ref: "gmail", session: "sess1", route: "/gmail" })), "no_lease");
+});
+
+test("L-5: a lease belongs to one member on one device: another member naming the same device shares no key and cannot revoke it", () => {
+  const { L } = mk(), a = L.issue({ space: SP, member: "per_a", device: "dev_mac", allowed: true }), b = L.issue({ space: SP, member: "per_b", device: "dev_mac", allowed: true });
+  assert.notEqual(a.key, b.key, "like-named devices of two members have different keys");
+  // per_b is refused (grant gone): only per_b's slot is revoked, per_a keeps renewing and can still be issued.
+  assert.deepEqual(L.issue({ space: SP, member: "per_b", device: "dev_mac", allowed: false }), { revoked: true });
+  assert.deepEqual(L.renew({ id: a.id, member: "per_a", allowed: true }), { ttlMs: LEASE_MS }); assert.equal(L.issue({ space: SP, member: "per_a", device: "dev_mac", allowed: true }).id.startsWith("lease_"), true);
+  assert.throws(() => L.renew({ id: a.id, member: "per_b", allowed: true }), { code: "unknown_lease" }, "a lease id is useless to another member");
+  assert.throws(() => L.check({ id: a.id, member: "per_b" }), { code: "no_lease" });
 });

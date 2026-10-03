@@ -33,13 +33,15 @@ export class Pool {
   save() { const t = `${this.file}.tmp`; fs.writeFileSync(t, JSON.stringify(this.ix), { mode: 0o600 }); fs.renameSync(t, this.file); }
 
   /** Offer a node. kind: server | computer | network_drive | cloud_volume | s3. copies: how many copies the node keeps inside itself (a SeaweedFS service at replication 010 is 2). */
-  addNode({ id, backend, kind = "server", home = false, site = id, owned = true, region = null, offered = Infinity, copies = 1 }) {
+  addNode({ id, backend, kind = "server", home = false, site = id, owned = true, region = null, offered = Infinity, copies = 1, classes = null }) {
     if (this.nodes.has(id)) throw err("exists");
     if (kind === "phone") throw err("phones_do_not_offer_storage");
     if (home && [...this.nodes.values()].some(n => n.home)) throw err("one_home");
-    this.nodes.set(id, { id, backend, kind, home, site, owned, region, offered, copies, online: true, offlineSince: null, draining: false, deviceFree: Infinity });
+    this.nodes.set(id, { id, backend, kind, home, site, owned, region, offered, copies, classes: classes && new Set(classes), online: true, offlineSince: null, draining: false, deviceFree: Infinity });
     return id;
   }
+  /** A device offered for some classes only (cold and backup by default) never receives another class. rebuildable data counts as cold. */
+  allows(n, c) { return !n.classes || Object.values(c.refs).every(k => n.classes.has(k === "rebuildable" ? "cold" : k)); }
   eligible(n) { return !(this.policy.ownedOnly && !n.owned) && !(this.policy.regions && !this.policy.regions.includes(n.region)); }
   used(id) { let u = 0; for (const c of Object.values(this.ix.chunks)) if (c.nodes.includes(id)) u += c.size; return u; }
   free(n) { return Math.max(0, Math.min(n.offered - this.used(n.id), n.deviceFree)); }
@@ -74,7 +76,7 @@ export class Pool {
   /** The best node for one more copy: the home first when a working chunk has none, a different site from what already holds it, then the emptiest. */
   place(c, held, n) {
     const have = new Set(c.nodes), sites = new Set(held.map(x => x.site));
-    const cand = [...this.nodes.values()].filter(x => x.online && this.counts(x) && !have.has(x.id) && this.free(x) >= c.size);
+    const cand = [...this.nodes.values()].filter(x => x.online && this.counts(x) && !have.has(x.id) && this.allows(x, c) && this.free(x) >= c.size);
     const homeWanted = n.home && !held.some(x => x.home), offWanted = n.offHome && !held.some(x => !x.home);
     return cand.filter(x => !(offWanted && x.home)).sort((a, b) => (homeWanted ? (b.home - a.home) : 0) || (sites.has(a.site) - sites.has(b.site)) || this.frac(b) - this.frac(a))[0];
   }
@@ -134,6 +136,13 @@ export class Pool {
     const m = this.ix.manifests[id]; if (!m) return false;
     delete this.ix.manifests[id]; if (m.meter) this.ix.meters[m.meter] -= m.size;
     await this.drop(m.chunks, id); this.save(); return true;
+  }
+  /** Move an object to another class (the current version of a file is working, an old one is cold): copies are brought to the new class's needs. */
+  async reclass(id, cls) {
+    const m = this.ix.manifests[id]; if (!m) throw err("not_found"); if (!CLASSES[cls] || cls === "hot") throw err("bad_class");
+    m.class = cls; let atRisk = false;
+    for (const cid of m.chunks) { const c = this.ix.chunks[cid]; if (c) { c.refs[id] = cls; atRisk ||= (await this.ensure(cid)).missing; } }
+    this.save(); return { atRisk };
   }
   /** Give up rebuildable things (indexes, thumbnails, previews) to make `bytes` of room. Never anything else. */
   async evict(bytes) {
