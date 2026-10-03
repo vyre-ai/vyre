@@ -49,17 +49,17 @@ export function startSealer({ dir, sinks = {}, timeoutMs = 20_000, execPath = pr
     drop: i => withCtx("drop", i, { ref: i.ref }),
     /** The enrolment ceremony: `begin` gives a one-time token, `enrol` needs it, the person's chain, a platform attestation (or an unattested-allowed process) and, for a second device, a proof from the first. */
     begin: i => withCtx("presence.begin", i, { person: i.person, key_id: i.key_id, spki: i.spki }),
-    enrol: i => withCtx("presence.enrol", i, { person: i.person, key_id: i.key_id, spki: i.spki, signer: i.signer, token: i.token, attestation: i.attestation, proof: i.proof, bind: i.bind }),
+    enrol: i => withCtx("presence.enrol", i, { person: i.person, key_id: i.key_id, spki: i.spki, signer: i.signer, token: i.token, attestation: i.attestation, proof: i.proof, bind: i.bind, ops: i.ops }),
     /** R-8: `sync` hands the process the person's identity chain (ops) and device-to-key binds; `recover` gives a person with no key left a new first key from chain evidence. */
     sync: i => withCtx("presence.sync", i, { person: i.person, ops: i.ops, binds: i.binds }),
     recover: i => withCtx("presence.recover", i, { person: i.person, ops: i.ops, bind: i.bind, key_id: i.key_id, spki: i.spki, signer: i.signer, token: i.token, attestation: i.attestation }),
     revoke: i => withCtx("presence.revoke", i, { key_id: i.key_id, proof: i.proof }),
     /** Key leases for a lent computer's workspace. `allowed` is the kernel's answer that both Offer grants hold. */
     lease: {
-      issue: i => withCtx("lease.issue", i, { space: i.space, device: i.device, allowed: i.allowed }),
+      issue: i => withCtx("lease.issue", i, { device: i.device, allowed: i.allowed }),
       renew: i => withCtx("lease.renew", i, { lease: i.id, allowed: i.allowed }),
-      revoke: i => withCtx("lease.revoke", i, { space: i.space, device: i.device }),
-      reinstate: i => withCtx("lease.reinstate", i, { device: i.device, proof: i.proof }),
+      revoke: i => withCtx("lease.revoke", i, { member: i.member, device: i.device }),
+      reinstate: i => withCtx("lease.reinstate", i, { member: i.member, device: i.device, proof: i.proof }),
       check: i => withCtx("lease.check", i, { lease: i.id }),
     },
     health: () => call("health"),
