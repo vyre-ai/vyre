@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- refactor(sessions): core/space-sessions keeps only the session engine (one Space per session, checkpoint state with taint and permissions, resume, continue in another space, budgets); the working copy, sync, lease and placement code is gone, because core/runner and the vault own them. fix(sessions): continue.edit sanitizes under the caller's chain. Estate e2e uses the Kit's own payment Flow.
 - feat(sessions): budgets. core/space-sessions/budget.js meters `session_hours` (reserved at start, settled at end) and turns a door `ai_spend` refusal into `budget_exhausted`, stops the session and raises a task for the person. fix(kernel): the door gives its reservation back when a call fails or is refused (`doorBudget.release`).
 - fix(flows): the flows harness uses the sealing Presence, wires the rule evaluator and the gateway's stage hooks; stages made of tasks hang on `onStageEnter` and `stageTasks`; door-bridge moves to lib so voice no longer imports core/sessions.
 - feat(kernel): the rule evaluator moves into the kernel (kernel/expr: parseExpr, evalExpr, LanguageError; records/language/expr.js and errors.js re-export it) and is the gateway's default, so no consumer wires one. `createKernel` (kernel/index.js) is the composition root: log, store, chains, grants store (or the caller's grants and members for a rig), limits, tasks, evaluator, sealing client and door, gateway; `bootKernel` is the same with the durable log and store.

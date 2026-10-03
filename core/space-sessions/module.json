@@ -1,11 +1,24 @@
 {
   "name": "space-sessions",
   "version": "0.1.0",
-  "description": "Sessions that belong to one Space (Wink design, sections 5 and 7): where a session may run, its encrypted working copy and continuous sync, a checkpoint at every turn with a lease so it can move between machines, and Continue in another space.",
-  "roles": ["box", "local"],
+  "description": "The session engine for a Space (Wink design sections 5 and 7): one Space per session, the checkpoint state that carries taint and permissions, resume, Continue in another space, and the hours and spend budgets. The runner owns the sandbox, workspace, sync, lease and placement.",
+  "roles": [
+    "box",
+    "local"
+  ],
   "requires": [],
-  "does": { "tools": [] },
-  "watches": { "emits": ["session.placed", "session.checkpointed", "session.resumed", "session.continued"] },
-  "shows": { "cli": [] },
+  "does": {
+    "tools": []
+  },
+  "watches": {
+    "emits": [
+      "session.created",
+      "session.resumed",
+      "session.continued"
+    ]
+  },
+  "shows": {
+    "cli": []
+  },
   "needs": {}
 }
