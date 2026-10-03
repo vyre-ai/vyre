@@ -49,7 +49,7 @@ export function prepare(o) {
 }
 
 /** Variables the container process is started with: the launcher passes its own environment on, so the plan returns it. */
-const WIN_ENV = ["SystemRoot", "windir", "ComSpec", "PATHEXT"];
+const WIN_ENV = ["SystemRoot", "windir", "ComSpec", "PATHEXT", "SystemDrive", "ProgramData", "ProgramFiles", "ALLUSERSPROFILE", "COMPUTERNAME", "OS", "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE"];
 
 /**
  * @param {import("./sandbox.js").PlanOpts & { space: string, launcher: string, cleanEnv: (e: any) => Record<string, string> }} o
@@ -59,7 +59,7 @@ export function planWin(o) {
   const port = o.proxy.port;
   const base = `http://127.0.0.1:${port}`;
   const env = {
-    ...o.cleanEnv(o.env), HOME: path.join(ws, "home"), USERPROFILE: path.join(ws, "home"), TEMP: path.join(ws, "tmp"), TMP: path.join(ws, "tmp"), TMPDIR: path.join(ws, "tmp"),
+    ...o.cleanEnv(o.env), HOME: path.join(ws, "home"), USERPROFILE: path.join(ws, "home"), LOCALAPPDATA: path.join(ws, "home", "AppData", "Local"), APPDATA: path.join(ws, "home", "AppData", "Roaming"), TEMP: path.join(ws, "tmp"), TMP: path.join(ws, "tmp"), TMPDIR: path.join(ws, "tmp"),
     PATH: [process.env.SystemRoot + "\\System32", process.env.SystemRoot, ...(o.readOnly || [])].join(";"),
     ANTHROPIC_BASE_URL: `${base}/provider`, VYRE_SPACE_URL: `${base}/space`,
   };
