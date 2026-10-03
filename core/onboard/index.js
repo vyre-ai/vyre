@@ -31,8 +31,8 @@ const PREFIX = { subscription: "sk-ant-oat", "api-key": "sk-ant-api" };
 const VAULT_ITEM = { subscription: "claude-setup-token", "api-key": "anthropic-api-key" };
 const VAULT_KIND = { subscription: "secret", "api-key": "api-key" };
 const VAULT_ABOUT = { subscription: "Claude subscription token from `claude setup-token`, for headless sessions", "api-key": "Anthropic API key, for headless sessions" };
-// The stored sign-in carries NO module grant: the Switchboard, accounts and agents read it through the daemon's one-shot credentials port
-// (ctx.credentials, core/switchboard/launcher-only.test.js), so vault.launcherOnly can be on and no module is ever granted the provider token.
+// The token is handed to the session launcher through the vault's credentials port (vault.launcherOnly), never through a module grant.
+
 // Who may be handed a passkey code: the loopback onboarding session and the box's own terminal.
 // Never a tailnet caller, which a model on the owner's Mac is too.
 const HANDS_CODE = new Set(["onboard", "cli", "local"]);
