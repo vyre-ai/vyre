@@ -40,7 +40,7 @@ function equalities(f) {
   return [];
 }
 
-/** @param {{ db: import("node:sqlite").DatabaseSync, clock?: () => number, hook?: (op: string, args: any[]) => void, hotRows?: number }} cfg */
+/** @param {{ db: import("node:sqlite").DatabaseSync, clock?: () => number, hook?: (op: string, args: any[]) => void, hotRows?: number, searchRare?: number }} cfg */
 export function createSqliteStore(cfg) {
   const { db } = cfg;
   db.exec(MIGRATION);
@@ -66,7 +66,7 @@ export function createSqliteStore(cfg) {
 
   /** @param {string} type @returns {import("./memory.js").Table} */
   /** @type {Map<string, any>[]} every type's hot rows, for `stats` */ const caches = [];
-  const counts = { pushed: 0, fell: 0, agg: 0 };
+  const counts = { pushed: 0, fell: 0, agg: 0, fast: 0 };
   /** Is every value of this text field printable ASCII? Asked once per field, by a scan; kept true only while every write agrees. */
   const isAscii = (/** @type {string} */ type, /** @type {string} */ field) => {
     const key = `${type}.${field}`;
@@ -106,11 +106,29 @@ export function createSqliteStore(cfg) {
   const ftsPut = ftsOk ? db.prepare("INSERT INTO kernel_ftf (rowid, doc) VALUES (?, ?)") : null;
   const ftsGet = ftsOk ? db.prepare("SELECT doc FROM kernel_ftf WHERE rowid = ?") : null;
   const ftsDelOne = ftsOk ? db.prepare("DELETE FROM kernel_ftf WHERE rowid = ?") : null;
+  /** word -> the most fields of one record that hold it: an upper bound, computed once from the index and raised by every write that adds more, never lowered (a rolled-back write leaves
+   * it too high, which is safe). It lets a search prove what a record that only a common word reaches can score. Emptied when the index is rebuilt. */
+  /** @type {Map<string, number>} */ const bounds = new Map();
+  const BOUNDS_MAX = 64;
+  const RARE = cfg.searchRare ?? 500;
+  const boundOf = (/** @type {string} */ w) => {
+    let b = bounds.get(w);
+    if (b === undefined) {
+      b = /** @type {any} */ (db.prepare("SELECT coalesce(max(c), 0) AS m FROM (SELECT count(*) AS c FROM kernel_ftf WHERE kernel_ftf MATCH ? GROUP BY rowid >> 10)").get(`"${w.replace(/"/g, '""')}"`)).m;
+      if (bounds.size >= BOUNDS_MAX) bounds.delete(/** @type {string} */ (bounds.keys().next().value));
+    } else bounds.delete(w);
+    bounds.set(w, b);
+    return b;
+  };
+  const raiseBounds = (/** @type {Map<number, string>} */ want) => {
+    for (const [w, b] of bounds) { let c = 0; for (const t of want.values()) if (t.includes(w)) c++; if (c > b) bounds.set(w, c); }
+  };
   // (FTS5 scans the whole table for a rowid range, so a record's few field rows are read, replaced and deleted by their own rowids.)
   const ftsWrite = (/** @type {number} */ rid, /** @type {any} */ r) => {
     const def = defs.get(r.type);
     const slots = def ? Math.min(def.fields.length, FIELD_SLOTS) : 0;
     const want = new Map(r.deleted_at ? [] : partsOf(r) || []);
+    raiseBounds(want);
     for (let i = 0; i < slots; i++) {
       const row = /** @type {any} */ (/** @type {any} */ (ftsGet).get(rid * FIELD_SLOTS + i));
       const text = want.get(i);
@@ -154,7 +172,7 @@ export function createSqliteStore(cfg) {
   /** A type's definition changed: rows written under the old one may sit in positions the new one does not use, so the index is emptied and built again (searches scan meanwhile). */
   const ftsRestart = () => {
     if (!ftsOk) return;
-    ftsBuilt = false; ftsGen++;
+    ftsBuilt = false; ftsGen++; bounds.clear();
     db.exec("DELETE FROM kernel_flags WHERE name = 'ftf_built'");
     db.exec("DELETE FROM kernel_ftf");
     ftsReady = ftsReady.then(() => ftsBuild());
@@ -221,9 +239,66 @@ export function createSqliteStore(cfg) {
        */
       searchTop(words, /** @type {number} */ n, /** @type {{ score: number, id: string } | undefined} */ after) {
         if (!(ftsOk && ftsBuilt && words.length && (defs.get(type)?.fields.length ?? FIELD_SLOTS + 1) <= FIELD_SLOTS)) return null;
+        const fast = this.searchTopFast(words, n, after);
+        if (fast) return fast;
         const per = words.map(w => ([...w].length >= 3 ? "SELECT rowid >> 10 AS rid FROM kernel_ftf WHERE kernel_ftf MATCH ?" : "SELECT rowid >> 10 AS rid FROM kernel_ftf WHERE instr(doc, ?) > 0"));
         const args = words.map(w => ([...w].length >= 3 ? `"${w.replace(/"/g, '""')}"` : w));
         return rows(db.prepare(`SELECT k.* FROM (SELECT rid, count(*) AS sc FROM (${per.join(" UNION ALL ")}) GROUP BY rid) h CROSS JOIN kernel_records k ON k.rowid = h.rid WHERE k.type = ? AND k.deleted_at IS NULL${after ? " AND (h.sc < ? OR (h.sc = ? AND k.id > ?))" : ""} ORDER BY h.sc DESC, k.id LIMIT ?`).all(...args, type, ...(after ? [after.score, after.score, after.id] : []), n));
+      },
+      /**
+       * The ranked search when ONE word is common (reaches more than `searchRare` field rows) and the others are rare, which is "Client 4521" in a type full of clients: the common
+       * word's postings are never read. A record that only the common word reaches holds it in at most `boundOf(word)` fields, so it scores at most that, and every record scoring more
+       * was reached by a rare word: those are few, found by their postings and scored exactly. The rest of the ranking is the records of each score from the bound down, each in id
+       * order, found by walking the type's primary key and counting a record's field hits by point reads (it stops as soon as the page is full). Null (the general ranking answers)
+       * in every other case, and when the walk would have to pass too many records to find a sparse score.
+       */
+      searchTopFast(words, /** @type {number} */ n, /** @type {{ score: number, id: string } | undefined} */ after) {
+        const def = defs.get(type);
+        if (!def || def.fields.length > 24 || new Set(words).size !== words.length || words.some(w => [...w].length < 3)) return null;
+        const quoted = (/** @type {string} */ w) => `"${w.replace(/"/g, '""')}"`;
+        const capped = db.prepare(`SELECT count(*) AS c FROM (SELECT 1 FROM kernel_ftf WHERE kernel_ftf MATCH ? LIMIT ${RARE + 1})`);
+        const rare = [], common = [];
+        for (const w of words) (/** @type {any} */ (capped.get(quoted(w))).c > RARE ? common : rare).push(w);
+        if (common.length !== 1) return null;
+        const top = boundOf(common[0]);
+        if (top < 1) return null;
+        counts.fast++;
+        // Above the bound: only records the rare words reach, scored exactly as the reference scores them (a field holds a word, counted once per field and word).
+        /** @type {Set<number>} */ const rids = new Set();
+        for (const w of rare) for (const x of /** @type {any[]} */ (db.prepare("SELECT rowid >> 10 AS rid FROM kernel_ftf WHERE kernel_ftf MATCH ?").all(quoted(w)))) rids.add(x.rid);
+        const byRid = db.prepare("SELECT * FROM kernel_records WHERE rowid = ?");
+        /** @type {{ r: any, sc: number }[]} */ const above = [];
+        for (const rid of rids) {
+          const r = /** @type {any} */ (byRid.get(rid));
+          if (!r || r.type !== type || r.deleted_at !== null) continue;
+          let sc = 0;
+          for (const [, text] of partsOf(parse(r)) || []) for (const w of words) if (text.includes(w)) sc++;
+          if (sc > top) above.push({ r, sc });
+        }
+        above.sort((a, b) => b.sc - a.sc || (a.r.id < b.r.id ? -1 : 1));
+        const out = above.filter(t => !after || t.sc < after.score || (t.sc === after.score && t.r.id > after.id)).slice(0, n).map(t => t.r);
+        const slots = def.fields.length;
+        const docs = Array.from({ length: slots }, (_, j) => `SELECT doc FROM kernel_ftf WHERE rowid = k.rowid * ${FIELD_SLOTS} + ${j}`).join(" UNION ALL ");
+        const hit = words.map(() => "(instr(d.doc, ?) > 0)").join(" + ");
+        const stmt = db.prepare(`SELECT k.* FROM (SELECT rowid, * FROM kernel_records WHERE type = ? AND deleted_at IS NULL AND id > ? ORDER BY id LIMIT ?) k WHERE (SELECT coalesce(sum(${hit}), 0) FROM (${docs}) d) = ? ORDER BY k.id LIMIT ?`);
+        const lastOf = db.prepare("SELECT id FROM kernel_records WHERE type = ? AND deleted_at IS NULL AND id > ? ORDER BY id LIMIT 1 OFFSET ?");
+        const CHUNK = 2000;
+        let examined = 0;
+        for (let level = top; level >= 1 && out.length < n; level--) {
+          if (after && level > after.score) continue;
+          let from = after && level === after.score ? after.id : "";
+          for (;;) {
+            for (const g of /** @type {any[]} */ (stmt.all(type, from, CHUNK, ...words, level, n - out.length))) out.push(g);
+            if (out.length >= n) break;
+            // the whole chunk was examined and held too few of this score: the next one starts after its last record
+            const last = /** @type {any} */ (lastOf.get(type, from, CHUNK - 1));
+            if (!last) break;
+            from = last.id;
+            // too sparse a score for a walk: the general ranking answers
+            if ((examined += CHUNK) >= 5 * CHUNK) { counts.fast--; return null; }
+          }
+        }
+        return rows(out);
       },
       searchCandidates(words) {
         if (!words.length) return this.values();
@@ -280,5 +355,5 @@ export function createSqliteStore(cfg) {
     },
     set(/** @type {string} */ u, /** @type {any} */ v) { putAttrs.run(u, JSON.stringify(v)); attrCache.set(u, v); if (attrCache.size > HOT_ATTRS) attrCache.delete(/** @type {string} */ (attrCache.keys().next().value)); },
   };
-  return { ...store, meta, /** What is held in memory: for the bound's tests and the load measurements. */ get ftsReady() { return ftsReady; }, stats: () => ({ fts_built: ftsBuilt, aggregate_pushed: counts.agg, query_pushed: counts.pushed, query_streamed: counts.fell, hot_rows: caches.reduce((n, c) => n + c.size, 0), hot_attrs: attrCache.size, changes_in_memory: 0 }), async version() { return { store: "sqlite", version: "1", conformance: (await store.version()).conformance }; } };
+  return { ...store, meta, /** What is held in memory: for the bound's tests and the load measurements. */ get ftsReady() { return ftsReady; }, stats: () => ({ fts_built: ftsBuilt, aggregate_pushed: counts.agg, query_pushed: counts.pushed, query_streamed: counts.fell, search_fast: counts.fast, hot_rows: caches.reduce((n, c) => n + c.size, 0), hot_attrs: attrCache.size, changes_in_memory: 0 }), async version() { return { store: "sqlite", version: "1", conformance: (await store.version()).conformance }; } };
 }

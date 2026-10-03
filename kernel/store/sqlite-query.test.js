@@ -16,9 +16,9 @@ const TYPE = { name: "person", label: "Person", fields: [
 const rng = seed => { let a = seed >>> 0; return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; };
 const id = n => `01a${String(n).padStart(5, "0")}-0000-4000-8000-000000000000`;
 
-async function world(n, seed, { nonAscii = false } = {}) {
+async function world(n, seed, { nonAscii = false, searchRare } = {}) {
   const r = rng(seed), pick = a => a[Math.floor(r() * a.length)];
-  const mem = createMemoryStore({ clock }), sql = createSqliteStore({ db: new DatabaseSync(":memory:"), clock, hotRows: 20 });
+  const mem = createMemoryStore({ clock }), sql = createSqliteStore({ db: new DatabaseSync(":memory:"), clock, hotRows: 20, ...(searchRare !== undefined ? { searchRare } : {}) });
   for (const s of [mem, sql]) await s.define({ add_types: [TYPE] });
   const rows = [];
   for (let i = 0; i < n; i++) {
@@ -173,4 +173,21 @@ test("search: a type whose definition changes is indexed again, and searches sta
   await sql.ftsReady;
   assert.equal(sql.stats().fts_built, true);
   await same();
+});
+
+test("search: a common word beside rare ones is ranked without reading its postings, and every page equals the reference's", async () => {
+  // searchRare 6: "ann", "bob" and the like reach more than six field rows, a number or a rare name does not
+  const { mem, sql, r, pick } = await world(400, 9, { searchRare: 6 });
+  await sql.ftsReady;
+  const TEXTS = ["ann", "bob", "smith", "alpha", "delta", "ann 3", "bob 2", "smith 4", "ann zed", "eve smith", "ann 10", "alpha beta", "zed", "gamma ann"];
+  const pages = async (s, text, limit) => { const out = []; let cursor; for (let i = 0; i < 90; i++) { const p = await s.search({ text, page: { limit, ...(cursor ? { cursor } : {}) } }); out.push(p.rows.map(h => `${h.id}:${h.score}:${h.snippet ?? ""}`), p.next_cursor ?? null); if (!p.next_cursor) break; cursor = p.next_cursor; } return out; };
+  const all = async () => { for (const text of TEXTS) for (const limit of [1, 3, 10, 500]) assert.deepEqual(await pages(sql, text, limit), await pages(mem, text, limit), `${text} / ${limit}`); };
+  await all();
+  assert.ok(sql.stats().search_fast > 0, "the common-word path ran");
+  // writes move the bound and the postings; the answers stay the reference's
+  for (let i = 1; i < 400; i += 5) for (const s of [mem, sql]) { const cur = await s.get("person", id(i)); if (cur && !cur.deleted_at) await s.update("person", id(i), { name: i % 3 ? "Ann Ann" : "Bob 3 Ann", bio: i % 2 ? "ann" : null }, cur.version); }
+  await all();
+  for (const s of [mem, sql]) { await s.remove("person", id(7), (await s.get("person", id(7)))?.version ?? 1).catch(() => {}); }
+  await all();
+  void r; void pick;
 });
