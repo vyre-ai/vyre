@@ -51,7 +51,7 @@ test("R-8: every device lost, the recovery code adds and removes devices on the 
   await enrolled(s, I.id, p1);
   assert.deepEqual((await s.sync({ chain: person(I.id), person: I.id, ops: I.ops, binds: [bind(I.d1, I.id, p1)] })).pruned, []);
   // The phone is gone. The code (founder, so not a newcomer) adds a new device and removes the old one: the chain says so, and the process drops the key bound to it.
-  const d3 = await edKey(); await I.add(I.rc, { type: "add", entry: d3.entry("device") }, I.t0 + 3600_000); await I.add(I.rc, { type: "remove", target: I.d1.eid }, I.t0 + 7200_000);
+  const d3 = await edKey(); await I.add(I.rc, { type: "add", entry: d3.entry("device") }, I.t0 + 3600_000); await I.add(d3, { type: "remove", target: I.d1.eid }, I.t0 + 30 * 3600_000);
   const r = await s.sync({ chain: person(I.id), person: I.id, ops: I.ops }); assert.deepEqual(r.pruned, [p1.key_id]);
   assert.equal(await code(reveal(s, I.id, p1)), "unknown_key", "the old device's presence key no longer proves anything");
   const p3 = signer(I.id), a = await recoverArgs(s, I.id, p3, I.ops, bind(d3, I.id, p3));
@@ -85,7 +85,7 @@ test("R-8: an old list replayed after a device was removed is stale, and a devic
   const { s } = await start(t), I = await identity(), p1 = signer(I.id), ch = person(I.id);
   await enrolled(s, I.id, p1); await s.sync({ chain: ch, person: I.id, ops: I.ops, binds: [bind(I.d1, I.id, p1)] });
   const old = I.ops.slice(); // D1 still listed
-  const d2 = await edKey(); await I.add(I.rc, { type: "add", entry: d2.entry("device") }, I.t0 + 3600_000); await I.add(I.rc, { type: "remove", target: I.d1.eid }, I.t0 + 7200_000);
+  const d2 = await edKey(); await I.add(I.rc, { type: "add", entry: d2.entry("device") }, I.t0 + 3600_000); await I.add(d2, { type: "remove", target: I.d1.eid }, I.t0 + 30 * 3600_000);
   await s.sync({ chain: ch, person: I.id, ops: I.ops });
   const p2 = signer(I.id); assert.equal(await code(s.recover(await recoverArgs(s, I.id, p2, old, bind(I.d1, I.id, p2)))), "chain_stale", "the stolen phone cannot come back on an old copy of the list");
   // Barred: revoke a bound key by hand; the same device cannot vouch for a new one while it stays listed.
@@ -118,22 +118,25 @@ test("R-8: a process whose key list was lost recovers each person from the chain
   const z = signer("per_zoe"); assert.equal(await code(enrolled(s2, "per_zoe", z)), null, "an unrelated person's first device is still ordinary");
 });
 
-test("R-8 item 3: once a chain is pinned every key needs a bind, and a key nobody bound does not outlive its device", async t => {
+test("R-8 item 3 and V-2: once a chain is pinned every key needs a bind; unbound keys go only when the chain removes a device, never on a bare sync", async t => {
   const { s } = await start(t), I = await identity(), p1 = signer(I.id), ch = person(I.id);
   await enrolled(s, I.id, p1);
   const p2 = signer(I.id); await enrolled(s, I.id, p2, p1); // before any pin: allowed, but unbound
-  assert.deepEqual((await s.sync({ chain: ch, person: I.id, ops: I.ops, binds: [bind(I.d1, I.id, p1)] })).pruned, [p2.key_id], "the unbound key is dropped at the first sync");
-  // Pinned now: a further key needs a bind from a listed device.
+  assert.deepEqual((await s.sync({ chain: ch, person: I.id, ops: I.ops, binds: [bind(I.d1, I.id, p1)] })).pruned, [], "no removal in the chain, so nothing is dropped");
+  assert.deepEqual((await s.sync({ chain: ch, person: I.id, ops: I.ops })).pruned, [], "a sync with no binds cannot force a recovery (V-2)");
   const p3 = signer(I.id), e3 = p3.enrolment, f3 = { key_id: e3.key_id, spki: sha256b64(e3.spki), signer: e3.signer };
-  const attempt = async b => s.enrol({ chain: ch, person: I.id, ...e3, token: (await s.begin({ chain: ch, person: I.id, key_id: e3.key_id, spki: e3.spki })).token, proof: p1.proof(ch, "presence.enrol", f3), bind: b });
+  const attempt = async (b, ops = I.ops) => s.enrol({ chain: ch, person: I.id, ...e3, token: (await s.begin({ chain: ch, person: I.id, key_id: e3.key_id, spki: e3.spki })).token, proof: p1.proof(ch, "presence.enrol", f3), bind: b, ops });
   assert.equal(await code(attempt(undefined)), "needs_bind");
   assert.equal(await code(attempt({ eid: (await edKey()).eid, key_id: e3.key_id, sig: "AAAA" })), "needs_bind", "a device the list does not hold cannot vouch");
+  assert.equal(await code(attempt(bind(I.d1, I.id, p3), null)), "needs_chain", "a pinned person's enrolment brings the current chain");
   assert.equal((await attempt(bind(I.d1, I.id, p3))).enrolled, true);
-  // The device is removed from the chain: both keys it vouched for go, and it is barred.
-  const d2 = await edKey(); await I.add(I.rc, { type: "add", entry: d2.entry("device") }, I.t0 + 3600_000); await I.add(I.rc, { type: "remove", target: I.d1.eid }, I.t0 + 7200_000);
-  assert.deepEqual((await s.sync({ chain: ch, person: I.id, ops: I.ops })).pruned.sort(), [p1.key_id, p3.key_id].sort());
-  const p4 = signer(I.id); assert.equal(await code(s.recover(await recoverArgs(s, I.id, p4, I.ops, bind(I.d1, I.id, p4)))), "bad_bind");
-  assert.deepEqual((await s.health()).needs_recovery, [I.id]);
+  // V-1: D1 is removed on the chain but the process has not synced yet. Enrolling a key bound by D1 now takes the current chain first: nothing gets in.
+  const d2 = await edKey(); await I.add(I.rc, { type: "add", entry: d2.entry("device") }, I.t0 + 3600_000); await I.add(d2, { type: "remove", target: I.d1.eid }, I.t0 + 30 * 3600_000);
+  const p5 = signer(I.id), e5 = p5.enrolment, f5 = { key_id: e5.key_id, spki: sha256b64(e5.spki), signer: e5.signer };
+  const stale = await code(s.enrol({ chain: ch, person: I.id, ...e5, token: (await s.begin({ chain: ch, person: I.id, key_id: e5.key_id, spki: e5.spki })).token, proof: p3.proof(ch, "presence.enrol", f5), bind: bind(I.d1, I.id, p5), ops: I.ops }));
+  assert.ok(["needs_recovery", "needs_bind", "unknown_key"].includes(stale), "a removed device cannot bind a new key: " + stale);
+  assert.deepEqual((await s.health()).needs_recovery, [I.id], "its keys went with it: every key was bound to D1 or unbound at a removal");
+  const p4 = signer(I.id); assert.equal(await code(s.recover(await recoverArgs(s, I.id, p4, I.ops, bind(I.d1, I.id, p4)))), "bad_bind", "and D1 is barred");
 });
 
 test("R-8 item 4: a key saved before the age field existed counts as the oldest, so a newcomer cannot remove it", async t => {
@@ -147,4 +150,20 @@ test("R-8 item 4: a key saved before the age field existed counts as the oldest,
   const n = signer("per_alex"), tk = p.begin({ person: "per_alex", key_id: n.key_id, spki: n.enrolment.spki }).token;
   assert.deepEqual(p.enrol({ person: "per_alex", ...n.enrolment, token: tk, proof: legacy.proof(ch, "presence.enrol", { key_id: n.key_id, spki: sha256b64(n.enrolment.spki), signer: n.enrolment.signer }), ctx }), { attested: false });
   assert.equal(p.revoke(legacy.key_id, ctx, n.proof(ch, "presence.revoke", { key_id: legacy.key_id })), "newcomer");
+});
+
+test("R-8 with the new chain rules: the code can only add a device, a new device gets a newcomer key at once even while a lost phone's key stands, and the old key goes when the chain removes its device", async t => {
+  const { s } = await start(t), I = await identity(), p1 = signer(I.id), ch = person(I.id);
+  await enrolled(s, I.id, p1); await s.sync({ chain: ch, person: I.id, ops: I.ops, binds: [bind(I.d1, I.id, p1)] });
+  const d3 = await edKey(), st = await verifyChain(I.ops);
+  await assert.rejects(makeOp(st, { type: "remove", target: I.d1.eid }, { by: I.rc.eid, ts: I.t0 + 3600_000, sign: I.rc.sign }).then(op => verifyChain([...I.ops, op])), { code: "code_limited" });
+  await I.add(I.rc, { type: "add", entry: d3.entry("device") }, I.t0 + 3600_000);
+  const p3 = signer(I.id); assert.equal((await s.recover(await recoverArgs(s, I.id, p3, I.ops, bind(d3, I.id, p3)))).recovered, true, "a device the pin did not know starts a newcomer key");
+  assert.equal(await code(s.recover(await recoverArgs(s, I.id, signer(I.id), I.ops, bind(I.d1, I.id, signer(I.id))))), "has_keys", "a device the pin knew enrols the ordinary way");
+  assert.equal((await reveal(s, I.id, p3)).value, "123-45-6789");
+  // The newcomer cannot remove the lost phone's key yet; 24 hours on, its chain removes the phone and the old key goes.
+  assert.equal(await code(s.revoke({ chain: ch, key_id: p1.key_id, proof: p3.proof(ch, "presence.revoke", { key_id: p1.key_id }) })), "newcomer");
+  await I.add(d3, { type: "remove", target: I.d1.eid }, I.t0 + 30 * 3600_000);
+  assert.deepEqual((await s.sync({ chain: ch, person: I.id, ops: I.ops })).pruned, [p1.key_id]);
+  assert.equal(await code(reveal(s, I.id, p1)), "unknown_key"); assert.equal((await reveal(s, I.id, p3)).value, "123-45-6789");
 });

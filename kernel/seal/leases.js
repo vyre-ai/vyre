@@ -16,14 +16,14 @@ export class Leases {
     const r = store.read("values", STATE.ref, "_system"); this.st = r ? JSON.parse(r.plaintext) : { epoch: {}, revoked: {} };
   }
   save() { this.store.write("values", STATE, JSON.stringify(this.st)); }
-  // The slot is (space, member, device): another member naming the same device id has a different slot, so cannot revoke or reinstate this member's computer (L-5).
-  slot(space, member, device) { return `${space}\n${member}\n${device}`; }
-  keyFor(space, member, device) { return Buffer.from(crypto.hkdfSync("sha256", this.store.master, Buffer.alloc(0), `vyre lease key v2 ${space}|${member}|${device}|${this.st.epoch[this.slot(space, member, device)] ?? 0}`, 32)); }
+  // A lease belongs to one member on one device in one Space (reviewer-2 L-5): two members with like-named devices share no key and no revocation.
+  slot(space, member, device) { return JSON.stringify([space, member, device]); }
+  keyFor(space, member, device) { return Buffer.from(crypto.hkdfSync("sha256", this.store.master, Buffer.alloc(0), `vyre lease key v2 ${this.slot(space, member, device)}|${this.st.epoch[this.slot(space, member, device)] ?? 0}`, 32)); }
   /** @returns {{ id: string, key: string, ttlMs: number } | { revoked: true }} */
   issue({ space, member, device, allowed }) {
     if (typeof device !== "string" || !device || typeof member !== "string" || !member) throw err("bad_input");
     const s = this.slot(space, member, device);
-    // A refused issue refuses and nothing more: it never revokes (a revoke is an act of its own, by the member or an admin).
+    // A refused issue refuses and nothing more: it never revokes (a revoke is an act of its own, by the member or an admin; renew with `allowed: false` is how a lost grant ends a lease).
     if (!allowed) return { revoked: true };
     if (this.st.revoked[s]) return { revoked: true };
     const id = `lease_${crypto.randomBytes(12).toString("hex")}`;
@@ -31,8 +31,8 @@ export class Leases {
     return { id, key: this.keyFor(space, member, device).toString("base64"), ttlMs: LEASE_MS };
   }
   /** Renewal needs access to still hold. A lease that ran out or is unknown (a restart) is refused as transient: the device asks for a new one, which is checked again. */
-  renew({ id, allowed }) {
-    const l = this.live.get(id); if (!l) throw err("unknown_lease");
+  renew({ id, member, allowed }) {
+    const l = this.live.get(id); if (!l || l.member !== member) throw err("unknown_lease");
     if (this.st.revoked[this.slot(l.space, l.member, l.device)] || !allowed) { this.revoke(l); return { revoked: true }; }
     if (l.exp <= this.now()) { this.live.delete(id); throw err("lease_expired"); }
     l.exp = this.now() + LEASE_MS; return { ttlMs: LEASE_MS };
@@ -46,9 +46,9 @@ export class Leases {
   }
   reinstate({ space, member, device }) { delete this.st.revoked[this.slot(space, member, device)]; this.save(); return { reinstated: true }; }
   /** The point of use: a live, unrevoked lease, and nothing else. The credential itself comes from the vault, per request, and is never kept here. */
-  check({ id }) {
+  check({ id, member }) {
     const l = this.live.get(id);
-    if (!l || l.exp <= this.now() || this.st.revoked[this.slot(l.space, l.member, l.device)]) throw err("no_lease");
+    if (!l || l.member !== member || l.exp <= this.now() || this.st.revoked[this.slot(l.space, l.member, l.device)]) throw err("no_lease");
     return { space: l.space, member: l.member, device: l.device };
   }
 }

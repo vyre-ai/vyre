@@ -376,6 +376,21 @@ test("R-7: a file edited to add a key fails its MAC, a rolled-back file is older
   }
 });
 
+test("K-3: the kernel's MAC key lives in the sealing process: same key across restarts, purposes apart, tamper and a different home fail, the key is on no op", async t => {
+  const dir = tmp("kmac"), opts = { dir, timeoutMs: 8000, dev: true };
+  let s = startSealer(opts); t.after(async () => { await s.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+  const data = JSON.stringify({ grant: "gr_1", actions: ["records.read"] }), mac = await s.kernel.mac({ purpose: "grant-event", data });
+  assert.match(mac, /^[A-Za-z0-9_-]{43}$/); assert.equal(await s.kernel.verify({ purpose: "grant-event", data, mac }), true);
+  assert.equal(await s.kernel.verify({ purpose: "grant-event", data: data.replace("gr_1", "gr_2"), mac }), false, "tampered data");
+  assert.equal(await s.kernel.verify({ purpose: "chain", data, mac }), false, "another purpose, another key");
+  assert.equal(await s.kernel.verify({ purpose: "grant-event", data, mac: mac.slice(0, -1) + (mac.endsWith("A") ? "B" : "A") }), false);
+  assert.equal(await code(s.kernel.mac({ purpose: "Bad Purpose", data })), "bad_input"); assert.equal(await code(s.kernel.mac({ purpose: "chain", data: 5 })), "bad_input");
+  await s.close(); s = startSealer(opts); assert.equal(await s.kernel.verify({ purpose: "grant-event", data, mac }), true, "the same home, the same key");
+  const other = startSealer({ dir: tmp("kmac2"), timeoutMs: 8000, dev: true }); t.after(() => other.close());
+  assert.equal(await other.kernel.verify({ purpose: "grant-event", data, mac }), false, "another home's key does not verify it");
+  for (const f of fs.readdirSync(dir, { recursive: true })) { const p = path.join(dir, String(f)); if (fs.statSync(p).isFile() && !p.endsWith("master.key")) assert.equal(fs.readFileSync(p).includes(mac), false); }
+});
+
 test("presence.check: the one verifier checks a task proof for the kernel, once, for task ops only", async t => {
   const { s, alex } = await setup(t);
   const ch = person("per_alex"), fields = { task: "t1", payload_hash: "ph", decision: "dec_1" };
