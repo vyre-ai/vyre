@@ -123,7 +123,7 @@ export default {
     });
 
     // The person session (person.js): a browser signed in as the person, not only their device.
-    const people = new PersonSessions({ db: ctx.store.db });
+    const people = new PersonSessions({ db: ctx.store.db, softwareCap: Boolean(ctx.config && ctx.config.presence && ctx.config.presence.softwareKeyCap) });
     const nodeOf = meta => (meta.peer && (meta.peer.stableId || meta.peer.node)) || null;
 
     ctx.tool("presence.person.start", {
@@ -180,6 +180,83 @@ export default {
         const s = people.start({ node, kind: "cookie", label, keyId: meta.presence.keyId || null });
         ctx.events.emit("presence.signed-in", { id: s.id, node: label });
         return { kind: "cookie", id: s.id, token: s.token, expires: s.expires };
+      },
+    });
+
+    // ---- an owner-paired device (ADR 0032 section 2d) ----------------------------------------------
+    // The pairing, once the owner confirmed it with a presence proof, asks for one grant. This tool
+    // trusts none of its arguments: it names the device, and the pair record (wink's, read here)
+    // says who confirmed, what kind of device it is and which key it registered.
+    ctx.tool("presence.person.pair-grant", {
+      internal: true,
+      description: "After the owner confirmed a pairing with a presence proof, the one-use grant that lets that device open its person session. Only the wink module may ask, and only for a device its own record says the owner confirmed.",
+      input: obj({ device: str }, ["device"]),
+      run: async (input, meta = {}) => {
+        if (String((meta && meta.caller) || "") !== "module:wink") throw Object.assign(new Error("only the pairing makes a grant"), { code: "denied" });
+        const r = await ctx.call("wink.device.record", { id: String(input.device) }).catch(() => null);
+        const rec = r && r.data;
+        if (!rec || rec.id !== input.device || !rec.confirmed || !rec.owner || rec.confirmedBy !== rec.owner) throw Object.assign(new Error("that device was not confirmed by its owner"), { code: "denied" });
+        if (!["phone", "computer"].includes(String(rec.kind))) throw Object.assign(new Error("only a phone or a computer paired to its owner gets a person session"), { code: "denied" });
+        // Believed in hardware only when the pair record says so (platform attestation, wink's side); anything else is recorded as a software key, with no prompt (the sessions list shows it).
+        const software = rec.hardware !== true;
+        // The confirming key is the one the presence layer verified in the pairing's own call; the record is the fallback only for a pairing confirmed before this call.
+        const keyId = (meta.presence && meta.presence.keyId) || rec.confirmKeyId || null;
+        if (!keyId) throw Object.assign(new Error("the pairing carries no presence proof"), { code: "denied" });
+        const g = people.grant({ device: rec.id, keyId: String(keyId), deviceKey: rec.key, software });
+        // The challenge goes back to the pairing, which hands it to the device; the device can also ask for it (presence.person.pair-challenge).
+        return { granted: true, expires: g.expires, challenge: g.challenge, ...(software ? { software: true } : {}) };
+      },
+    });
+
+    ctx.tool("presence.person.start-paired", {
+      description: "A device its owner paired opens its person session: it signs `paired-start`, its id and the challenge of its grant with the key the owner confirmed. No prompt. Answers the token, or one refusal whatever the reason.",
+      input: obj({ sig: str, label: str }, ["sig"]),
+      run: async (input, meta = {}) => {
+        const peer = meta.peer;
+        const device = peer && peer.kind === "device" ? nodeOf(meta) : null;
+        const refuse = () => Object.assign(new Error("this device cannot sign in that way; sign in with its key"), { code: "denied" });
+        if (!device) throw refuse();
+        const s = people.startPaired({ device, sig: String(input.sig), label: input.label || null });
+        if ("refused" in s) {
+          if (s.deleted) ctx.events.emit("presence.refused", { device, why: "pairing grant withdrawn after three wrong attempts" });
+          throw refuse();
+        }
+        ctx.events.emit("presence.signed-in", { id: s.id, node: input.label || device });
+        return { kind: "bearer", id: s.id, token: s.token, expires: s.expires };
+      },
+    });
+
+    ctx.tool("presence.person.pair-challenge", {
+      description: "A device its owner paired asks for the challenge of its grant, to sign for presence.person.start-paired. A device with no grant gets a random one, so nothing says whether a grant exists.",
+      input: obj({}),
+      run: async (_, meta = {}) => {
+        const peer = meta.peer;
+        if (!(peer && peer.kind === "device")) throw Object.assign(new Error("this device cannot sign in that way; sign in with its key"), { code: "denied" });
+        return { challenge: people.challengeFor(nodeOf(meta)) };
+      },
+    });
+
+    ctx.tool("presence.person.rotate", {
+      description: "A paired device's session gets a new secret, signed by the device's key. The old one stops working.",
+      input: obj({ t: str, n: str, sig: str }, ["t", "n", "sig"]),
+      run: async (input, meta = {}) => {
+        if (!meta.person) throw Object.assign(new Error("no person session"), { code: "denied" });
+        const r = people.rotate({ id: meta.person.id, t: String(input.t), n: String(input.n), sig: String(input.sig) });
+        if (!r) throw Object.assign(new Error("that rotation was not accepted"), { code: "denied" });
+        return { kind: "bearer", id: r.id, token: r.token, expires: r.expires };
+      },
+    });
+
+    // Removal of a device, its key leaving the identity list, a recovery reset or sign-out-everywhere: wink says so, here it ends.
+    ctx.tool("presence.person.end-paired", {
+      internal: true,
+      description: "End every paired session and grant of one device, or of all devices when none is named. Only the wink module asks.",
+      input: obj({ device: str }),
+      run: async (input, meta = {}) => {
+        if (String((meta && meta.caller) || "") !== "module:wink") throw Object.assign(new Error("only the pairing ends paired sessions"), { code: "denied" });
+        const n = people.endDevice(input.device ? String(input.device) : undefined);
+        if (n) ctx.events.emit("presence.signed-out", { device: input.device || "all" });
+        return { ended: n };
       },
     });
 

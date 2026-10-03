@@ -744,6 +744,10 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       /** @type {any} */ (req).vyreRaw = raw;
     }
     const c = people.check({ headers: req.headers, node: nodeId, method: req.method, path: url.pathname + url.search, raw });
+    if (c && c.ok && c.rotateOnly && url.pathname !== "/v1/tools/presence.person.rotate") {
+      // A paired session past its rotation plus grace: the secret is good for the one call that replaces it.
+      return send(res, 401, { error: { code: "person_session_required", message: "this device's sign-in must be renewed before anything else; it renews itself, or sign in again" } });
+    }
     if (c && c.ok) person = { id: c.id, kind: c.kind };
     // The credential this box issued, for a device whose key was since removed: said once, in plain
     // words, with its own code (only the holder of the real credential gets it, person.js check).
