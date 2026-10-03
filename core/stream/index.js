@@ -138,7 +138,7 @@ export default {
         // A person who opens a chat after a restart gives the assistants answering them a session again; the group's list follows the kernel's.
         if (kchat && groups) await groups.mirror(session, { people: [...kchat.people], assistants: [...(kchat.assistants || [])] }, meta, who0.id, chain);
         // A chat of the kernel's: the viewer receives a reply only if they were in the chat at its membership version (asked of the reply port, never decided here), and sees the chat from their own join.
-        const who = { ...who0, resolve: resolverFor(who0, chain), ...(kchat && groups && groups.known(session) ? groups.viewerFor(session, who0.id) : {}) };
+        const who = { ...who0, resolve: resolverFor(who0, chain), ...(kchat && groups && groups.known(session) ? groups.viewerFor(session, who0.id, chain) : {}) };
         if (!seen.has(session)) { seen.add(session); if (logs.get(session).head === 0) await seed(session); }
         else if (seeding.has(session)) await seeding.get(session);
         for (const [k, v] of tickets) if (v.expires <= now()) tickets.delete(k);

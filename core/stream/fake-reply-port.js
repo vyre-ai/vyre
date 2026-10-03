@@ -68,7 +68,6 @@ export function createFakeKernel() {
 
   /** @type {import("./reply-port.js").ReplyPort} */
   const port = {
-    stamp: grp => /** @type {Chat} */ (chats.get(grp)).version,
     async open({ grp, token }) {
       const t = chatOf(token);
       const c = chats.get(grp);
@@ -76,13 +75,13 @@ export function createFakeKernel() {
       const r = { grp, ver: c.version, deltas: /** @type {string[]} */ ([]), final: null, token };
       replies.push(r);
       return {
-        ver: r.ver,
+        id: `msg_${++n}`, ver: r.ver,
         write: async d => { if (refuse.has(grp)) throw e("denied"); r.deltas.push(d); },
         close: async f => { if (refuse.has(grp)) throw e("denied"); r.final = f; appended.push({ id: `k${++n}`, chat: grp, by: t.person, agent: t.agent, kind: "text", body: f }); },
       };
     },
     // In the chat at that version, and still in it.
-    mayReceive: (grp, person, ver) => { const c = /** @type {Chat} */ (chats.get(grp)); const at = c.history.get(ver); return Boolean(at && at.has(person.replace(/^person:/, "")) && c.people.includes(person.replace(/^person:/, ""))); },
+    mayReceive: (grp, person, { ver }) => { const c = /** @type {Chat} */ (chats.get(grp)); const at = c.history.get(ver); return Boolean(at && at.has(person.replace(/^person:/, "")) && c.people.includes(person.replace(/^person:/, ""))); },
   };
   return { kernel, port, create, change, chats, appended, replies, refuse };
 }

@@ -71,7 +71,7 @@ const botId = (/** @type {string} */ id) => id.startsWith("assistant:") || id.st
 /**
  * @typedef {{ who: string, name: string, thread: string|null, cwd: string|null, asker: string|null, answer: string|null, last: number,
  *   ad: ReturnType<typeof createAdapter>, msgs: Map<string, string>, held: any[]|null, q: Promise<any>, grp: string,
- *   tokens?: Map<string, { token: string, exp: number }>, tokenWaiters?: { asker: string|null, res: (t: any) => void }[], pq?: Promise<any>, buf?: Map<string, any>, refused?: Set<string>, turnVer?: number|null }} Member
+ *   tokens?: Map<string, { token: string, exp: number }>, tokenWaiters?: { asker: string|null, res: (t: any) => void }[], pq?: Promise<any>, buf?: Map<string, any>, refused?: Set<string>, turnAt?: number|null }} Member
  * @typedef {{ people: Set<string>, bots: Map<string, Member>, names: Map<string, string>, dflt: string|null, previous: string|null, spans: Map<string, { from: number, to: number|null }[]> }} Group
  */
 
@@ -158,29 +158,42 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort }) {
     return g;
   }
 
+  /** The kernel's list, read with the asker's own session, into this group (the stream's mirror: its roster, its join frames, a viewer's floor). A refusal is the reply's refusal. @param {string} grp @param {string} token */
+  async function syncList(grp, token) {
+    const k = ctx.kernel;
+    const chat = await k.chats.read(await k.chain({ token }), grp);
+    adopt(grp, { people: [...chat.people], assistants: [...(chat.assistants || [])] });
+  }
+
   /**
-   * The stand-in reply port (see reply-port.js for the swap point). Open reads the kernel's list with the asker's own session (so the stamp, the group log's head, is the
-   * kernel's truth now; a refusal here is the reply's refusal), writes nothing while streaming (the frames are the stream's), and hands the whole text to chats.append at close.
-   * A participant was in the chat at a cursor when a joined frame is at or before it and no left frame is.
+   * The kernel's own reply port: chats.appendOpen (stamps the reply with the room's membership version, checks the token and the person at every write) and
+   * chats.mayReceive (sync: was the viewer in the room at that version and is in it now). The only place the stream asks the kernel about delivery.
+   * @type {import("./reply-port.js").ReplyPort}
+   */
+  const kernelPort = {
+    open: async ({ token }) => {
+      const h = await ctx.kernel.chats.appendOpen(token, { kind: "text" });
+      return { id: String(h.id), ver: Number(h.ver), write: d => h.write(d), close: f => h.close(f).then(() => {}) };
+    },
+    mayReceive: (_grp, _person, r, chain) => { try { return ctx.kernel.chats.mayReceive(chain, r.kid) === true; } catch { return false; } },
+  };
+
+  /**
+   * The stand-in port, for a kernel that has no appendOpen (see reply-port.js): the stamp is the group log's cursor, the list is the kernel's as read when the reply
+   * opens and now and then while it streams (`follow`), and the whole text goes to chats.append when it closes. A participant was in the chat at a cursor when a
+   * joined frame is at or before it and no left frame is.
    * @type {import("./reply-port.js").ReplyPort}
    */
   const mirrorPort = {
-    sync: async (grp, token) => {
-      const k = ctx.kernel;
-      const chain = await k.chain({ token });
-      const chat = await k.chats.read(chain, grp);
-      adopt(grp, { people: [...chat.people], assistants: [...(chat.assistants || [])] });
-    },
-    stamp: grp => logs.get(grp).head,
-    open: async ({ grp, token }) => {
-      await mirrorPort.sync?.(grp, token);
-      return { ver: logs.get(grp).head, write: () => {}, close: final => append(token, { text: final.text, ...(final.blocks && final.blocks.length ? { blocks: final.blocks } : {}) }).then(() => {}) };
-    },
-    mayReceive: (grp, person, ver, cur) => { const g = group(grp); return inAt(g, person, ver) && inAt(g, person, cur); },
+    follow: true,
+    open: async ({ grp, token }) => ({ id: `r-${crypto.randomUUID()}`, ver: logs.get(grp).head, write: () => {}, close: final => append(token, { text: final.text, ...(final.blocks && final.blocks.length ? { blocks: final.blocks } : {}) }).then(() => {}) }),
+    mayReceive: (grp, person, r) => { const g = group(grp); return inAt(g, person, r.ver) && inAt(g, person, r.cur); },
   };
-  const port = replyPort || mirrorPort;
-  /** How often a streaming reply asks the port to refresh its view of the chat (the stand-in reads the kernel's list; a kernel port has nothing to do). */
+  const port = replyPort || (ctx.kernel && ctx.kernel.chats && typeof ctx.kernel.chats.appendOpen === "function" && typeof ctx.kernel.chats.mayReceive === "function" ? kernelPort : mirrorPort);
+  /** How often a reply on the stand-in port reads the kernel's list again while it streams (a kernel port follows the room itself). */
   const SYNC_MS = 500;
+  /** The group log's cursor now: what a tool frame or a held thought is stamped with (`data.at`), asked of the group's own list. @param {string} grp */
+  const cursor = grp => logs.get(grp).head;
 
   /** The group's state, read from its log (who is in, who spoke last) and the member table (threads). @param {string} grp */
   function group(grp) {
@@ -321,29 +334,31 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort }) {
   function activity(m, s) {
     // The turn is over for words that never became a reply (reasoning only): they are released as they were.
     if (s.kind === "status" && s.data && s.data.state !== "working") {
-      for (const [id, b] of [...(m.buf || [])]) if (!b.h) { for (const it of b.items) write(m, it, { ...it.data, ver: b.ver }, id); m.buf.delete(id); }
-      m.turnVer = null;
+      for (const [id, b] of [...(m.buf || [])]) if (!b.h) { for (const it of b.items) write(m, it, { ...it.data, at: b.at }, id); m.buf.delete(id); }
+      m.turnAt = null;
     }
     if (carriesFieldValue(s.data) && group(m.grp).people.size > 1) { log(`${s.kind} for ${m.who} in ${m.grp}: dropped, it carried a field value (cite it as a field-ref)`); return; }
     if (s.kind === "status") { write(m, s, s.data); return; }
-    if (m.turnVer == null) m.turnVer = port.stamp(m.grp);
-    write(m, s, { ...s.data, ver: m.turnVer });
+    if (m.turnAt == null) m.turnAt = cursor(m.grp);
+    write(m, s, { ...s.data, at: m.turnAt });
   }
+
+  /** What every frame of an open reply carries (`rid`, not `kid`: that is a person's message): the kernel's id for it and the membership version it was opened at. @param {any} b */
+  const stampOf = b => ({ rid: b.h.id, ver: b.h.ver });
 
   /**
    * Open the reply: the port stamps it, the reasoning that waited is written with the stamp. False when the kernel refused (nothing was shown). @param {Member} m @param {any} b @param {string} message
    */
   async function begin(m, b, message) {
     const t = await tokenOf(m);
-    try { b.h = await port.open({ grp: m.grp, token: t.token, message }); }
+    try { await syncList(m.grp, t.token); b.h = await port.open({ grp: m.grp, token: t.token, message }); }
     catch (err) {
       /** @type {Set<string>} */ (m.refused).add(message); /** @type {Map<string, any>} */ (m.buf).delete(message);
       log(`${m.who} in ${m.grp}: the kernel refused the reply (${/** @type {any} */ (err).code || "error"}); nothing was shown`);
       return false;
     }
     b.token = t.token; b.lastSync = now();
-    if (m.turnVer == null || m.turnVer > b.h.ver) m.turnVer = b.h.ver;
-    for (const it of b.items) write(m, it, { ...it.data, ver: b.h.ver }, message);
+    for (const it of b.items) write(m, it, { ...it.data, ...stampOf(b) }, message);
     b.items = [];
     return true;
   }
@@ -352,7 +367,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort }) {
   function withdraw(m, b, message, s, err) {
     /** @type {Set<string>} */ (m.refused).add(message); /** @type {Map<string, any>} */ (m.buf).delete(message);
     log(`${m.who} in ${m.grp}: the kernel refused the rest of the reply (${/** @type {any} */ (err).code || "error"}); it was cut`);
-    write(m, { kind: "text-cut", turn: s.turn }, { ...cutNote(message), ver: b.h.ver }, message);
+    write(m, { kind: "text-cut", turn: s.turn }, { ...cutNote(message), ...stampOf(b) }, message);
   }
 
   /** @param {Member} m @param {any} s a text-delta or text-done */
@@ -361,19 +376,19 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort }) {
     const message = m.answer ? answerId(m, String(s.data.message)) : String(s.data.message);
     if (refused.has(message)) return;
     let b = m0.get(message);
-    if (!b) { b = { items: [], reply: "", h: null, ver: port.stamp(m.grp), token: "", lastSync: 0 }; m0.set(message, b); }
+    if (!b) { b = { items: [], reply: "", h: null, at: cursor(m.grp), token: "", lastSync: 0 }; m0.set(message, b); }
     if (s.kind === "text-delta") {
       if (s.data.reasoning) {
-        if (b.h) write(m, s, { ...s.data, message, ver: b.h.ver }, message); else b.items.push({ ...s, data: { ...s.data, message } }); // thinking waits for the reply to open
+        if (b.h) write(m, s, { ...s.data, message, ...stampOf(b) }, message); else b.items.push({ ...s, data: { ...s.data, message } }); // thinking waits for the reply to open
         return;
       }
       if (!b.h && !(await begin(m, b, message))) return;
       // A kernel port follows the room itself; the stand-in reads the kernel's list now and then, so a person who left stops receiving.
-      if (port.sync && now() - b.lastSync >= SYNC_MS) { b.lastSync = now(); try { await port.sync(m.grp, b.token); if (!group(m.grp).bots.has(m.who)) throw Object.assign(new Error("the assistant is no longer in the chat"), { code: "denied" }); } catch (err) { if (["not_found", "denied", "forbidden"].includes(/** @type {any} */ (err).code)) { withdraw(m, b, message, s, err); return; } } }
+      if (port.follow && now() - b.lastSync >= SYNC_MS) { b.lastSync = now(); try { await syncList(m.grp, b.token); if (!group(m.grp).bots.has(m.who)) throw Object.assign(new Error("the assistant is no longer in the chat"), { code: "denied" }); } catch (err) { if (["not_found", "denied", "forbidden"].includes(/** @type {any} */ (err).code)) { withdraw(m, b, message, s, err); return; } } }
       const text = String(s.data.text);
       try { await b.h.write(text); } catch (err) { withdraw(m, b, message, s, err); return; }
       b.reply += text;
-      write(m, s, { ...s.data, message, ver: b.h.ver }, message);
+      write(m, s, { ...s.data, message, ...stampOf(b) }, message);
       return;
     }
     let blocks = Array.isArray(s.data.blocks) ? s.data.blocks : [];
@@ -384,7 +399,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort }) {
       blocks = blocks.filter((/** @type {any} */ x) => !(x && x.block === "field" && x.placeholder !== true));
     }
     if (!b.h && !(await begin(m, b, message))) return;
-    const done = { ...s.data, message, ...(blocks.length ? { blocks } : {}), ver: b.h.ver };
+    const done = { ...s.data, message, ...(blocks.length ? { blocks } : {}), ...stampOf(b) };
     if (!blocks.length) delete done.blocks;
     try { await b.h.close({ text: b.reply, ...(blocks.length ? { blocks } : {}) }); } catch (err) { withdraw(m, b, message, s, err); return; }
     write(m, s, done, message);
@@ -584,13 +599,22 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort }) {
 
     /**
      * Who may receive and from where, for a viewer of a group chat (kernel on): `may(frame)` asks the reply port (never decides here), `floor` is the cursor of the
-     * viewer's own join (they see the chat from then). @param {string} grp @param {string} person
+     * viewer's own join (they see the chat from then). @param {string} grp @param {string} person @param {any} chain the viewer's own kernel chain (the kernel's answer is for the person asking)
      */
-    viewerFor(grp, person) {
+    viewerFor(grp, person, chain) {
       const g = group(grp);
       const l = g.spans.get(person) || [];
       const floor = l.length ? l[l.length - 1].from : 0;
-      return { may: (/** @type {any} */ f) => { const v = f && f.data && f.data.ver; return !Number.isInteger(v) || port.mayReceive(grp, person, v, Number(f.cur)); }, floor };
+      return {
+        floor,
+        may: (/** @type {any} */ f) => {
+          const d = f && f.data;
+          if (!d) return true;
+          if (typeof d.rid === "string") return port.mayReceive(grp, person, { kid: d.rid, ver: Number(d.ver), cur: Number(f.cur) }, chain);
+          if (Number.isInteger(d.at)) return inAt(g, person, d.at) && inAt(g, person, Number(f.cur)); // a tool, an ask, a held thought: the stream's own list at the cursor it was stamped
+          return true;
+        },
+      };
     },
 
     /** One send at a time per message id: a retry that arrives while the first is still being written to the kernel waits and then finds it done. @param {any} i @param {any} meta */

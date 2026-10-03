@@ -6,23 +6,19 @@
 // version: someone who joins while it streams, or afterwards, never receives it; nothing is held back and nothing is re-run when the room grows
 // (`room_changed` is dropped). The stream does not decide who was in the chat: it asks this port, `mayReceive`, for each frame and each viewer.
 //
-// THE SWAP POINT. group.js takes `replyPort` (createGroups option; index.js passes none). The default is the stand-in in group.js (`mirrorPort`): it stamps
-// with the group log's cursor, reads the kernel's list with chats.read at open so the stamp is the kernel's truth then, and writes the whole text to the
-// kernel with chats.append when the reply closes. When kernel-2's `chats.appendOpen(token)` is merged, replace that one object by a port built on it:
-//
-//   open({ grp, token })        -> const h = await ctx.kernel.chats.appendOpen(token);  return { ver: h.version, write: h.write, close: h.close }
-//   mayReceive(grp, p, ver, c)  -> the kernel's answer for "was p in chat grp at membership version ver (and still is)"
-//
-// (h.version and the kernel's answer are what the ruling says the kernel stamps and decides; confirm their names with kernel-2.) Nothing else in the
-// stream changes. core/stream/fake-reply-port.js is the same contract over an in-memory chat, used by the tests.
+// WIRED. group.js picks the port: the kernel's own (`kernelPort`: chats.appendOpen to open, chats.mayReceive(viewerChain, id) to deliver; kernel-2's
+// work/kernel-chats-2, merged) when ctx.kernel has both, else the stand-in (`mirrorPort`, for a kernel without them) that stamps with the group log's cursor, reads the
+// kernel's list while the reply streams and writes the whole text with chats.append at close; or a `replyPort` handed to createGroups (the tests: fake-reply-port.js, the
+// same contract over an in-memory chat). Every frame of a reply carries `data.rid` (the kernel's message id) and `data.ver` (the version it was opened at); the viewer's
+// `may(frame)` asks `mayReceive` with the VIEWER's own chain (stream.open's), so the answer is for the person asking. A tool, ask or held thought of a turn carries `data.at`
+// (the group log's cursor) and is asked of the group's own mirrored list.
 
 /**
- * @typedef {{ ver: number, write: (delta: string) => void | Promise<void>, close: (final: { text: string, blocks?: any[] }) => void | Promise<void> }} OpenReply
+ * @typedef {{ id: string, ver: number, write: (delta: string) => void | Promise<void>, close: (final: { text: string, blocks?: any[] }) => void | Promise<void> }} OpenReply
  * @typedef {{
  *   open: (o: { grp: string, token: string, message: string }) => Promise<OpenReply>,
- *   stamp: (grp: string) => number,
- *   mayReceive: (grp: string, person: string, ver: number, cur: number) => boolean,
- *   sync?: (grp: string, token: string) => Promise<void>,
+ *   mayReceive: (grp: string, person: string, reply: { kid: string, ver: number, cur: number }, chain: any) => boolean,
+ *   follow?: boolean,
  * }} ReplyPort
  */
 

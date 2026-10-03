@@ -40,7 +40,10 @@ async function world(t) {
   const p = config.ensure(tempHome(t));
   const db = open(p.db);
   const events = new Events(db);
-  const reg = new Registry({ db, events, config: { role: "box" }, paths: p, log: () => {}, kernelFor: k.kernelFor });
+  // CH-7: a chain made from a session token is delegated and cannot open another session; the stream opens each assistant's session from the call's chain, so here a token stands for the person's own direct chain.
+  const direct = new Map(Object.entries(tokens).map(([n, tok]) => [tok, /** @type {any} */ (chains)[n]]).filter(([, c]) => c));
+  const kernelFor = (/** @type {any} */ m) => { const h = k.kernelFor(m); return Object.freeze({ ...h, chain: async (/** @type {any} */ meta) => (meta && direct.get(meta.token)) || h.chain(meta) }); };
+  const reg = new Registry({ db, events, config: { role: "box" }, paths: p, log: () => {}, kernelFor });
   const fake = fs.mkdtempSync(path.join(SCRATCH, "vyre-stream-kernel-"));
   t.after(() => fs.rmSync(fake, { recursive: true, force: true }));
   fakeThreads(fake);
