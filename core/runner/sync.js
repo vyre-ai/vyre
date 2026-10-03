@@ -44,7 +44,7 @@ const canon = m => JSON.stringify(Object.keys(m).sort().map(k => [k, m[k].hash, 
 const transcriptHash = (lines, seq) => sha(lines.filter(e => e.seq <= seq).sort((a, b) => a.seq - b.seq).map(e => `${e.seq}:${e.line}\n`).join(""));
 export const coverOf = (manifest, lines, seq, turn) => ({ turn, seq, manifest: sha(canon(manifest)), transcript: transcriptHash(lines, seq) });
 
-/** @typedef {(req: { roots: typeof ROOTS, have: Record<string, string>, maxBytes?: number }, onFile: (f: { rel: string, hash: string, size: number, bytes: Buffer|null }) => Promise<void>) => Promise<{ truncated: boolean }>} Reader */
+/** @typedef {(req: { roots: typeof ROOTS, have: Record<string, { hash: string, size: number, mtimeMs: number }>, maxBytes?: number }, onFile: (f: { rel: string, hash: string, size: number, len: number, mtimeMs: number, bytes: Buffer|null }) => Promise<void>) => Promise<{ truncated: boolean }>} Reader */
 
 /**
  * A reader that runs in THIS process, for tests of a workspace nobody else writes to. Production uses readerhost.js, which reads from
@@ -54,8 +54,8 @@ export const coverOf = (manifest, lines, seq, turn) => ({ turn, seq, manifest: s
 export const localReaderFor = work => async ({ roots, have, maxBytes = 1e8 }, onFile) => {
   for (const root of roots) for (const rel of listInside(work, root.dir)) {
     const bytes = readInside(work, rel, maxBytes); if (!bytes) continue;
-    const hash = sha(bytes), same = have[rel] === hash;
-    await onFile({ rel, hash, size: same ? 0 : bytes.length, bytes: same ? null : bytes });
+    const hash = sha(bytes), same = have[rel]?.hash === hash, st = fs.statSync(path.join(work, rel));
+    await onFile({ rel, hash, size: same ? 0 : bytes.length, len: bytes.length, mtimeMs: st.mtimeMs, bytes: same ? null : bytes });
   }
   return { truncated: false };
 };
@@ -98,18 +98,18 @@ export function createSessionSync(o) {
     // The files are read by a reader running inside the session's own sandbox (reader.js), never by this process, and handled one at a
     // time as each arrives. Total bytes, file count and time are capped by the reader host.
     const have = {};
-    for (const [remote, m] of Object.entries(manifest)) { const root = roots.find(r => remote.startsWith(r.remote + "/")); if (root && m.hash !== "deleted") have[root.dir + "/" + remote.slice(root.remote.length + 1)] = m.hash; }
+    for (const [remote, m] of Object.entries(manifest)) { const root = roots.find(r => remote.startsWith(r.remote + "/")); if (root && m.hash !== "deleted") have[root.dir + "/" + remote.slice(root.remote.length + 1)] = { hash: m.hash, size: m.len, mtimeMs: m.mtimeMs }; }
     const seen = new Set();
     const { truncated } = await o.reader({ roots, have, maxBytes: MAX_FILE }, async f => {
       const root = roots.find(r => f.rel.startsWith(r.dir + "/"));
       if (!root) return;
       const remote = `${root.remote}/${f.rel.slice(root.dir.length + 1)}`;
       seen.add(remote);
-      if (!f.bytes) return;
       const have0 = manifest[remote];
-      if (have0 && have0.hash === f.hash) return;
+      if (!f.bytes) { if (have0 && have0.hash === f.hash && have0.mtimeMs !== f.mtimeMs) have0.mtimeMs = f.mtimeMs; return; }
+      if (have0 && have0.hash === f.hash) { have0.mtimeMs = f.mtimeMs; have0.len = f.len; return; }
       const r = await o.space.putFile(o.session, remote, f.bytes, { base: have0 ? have0.version : 0 });
-      manifest[remote] = { hash: f.hash, version: r.version };
+      manifest[remote] = { hash: f.hash, version: r.version, len: f.len, mtimeMs: f.mtimeMs };
     });
     // Over the caps the checkpoint is refused rather than recorded with files missing (a half-read tree would tombstone real files).
     if (truncated) throw new Error("the workspace is over the checkpoint limits");

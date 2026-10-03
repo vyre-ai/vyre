@@ -46,7 +46,7 @@ export default {
       description: "Whether this computer can run a space's sessions, and what is running here.",
       input: obj(),
       run: async () => {
-        const why = unavailable(seam.platform) || workspaceUnavailable(seam.platform);
+        const why = unavailable(seam.platform) || workspaceUnavailable(seam.platform, { base: ctx.paths.root + "/runner" });
         return { ready: !why && !!ports(), why: why || (ports() ? "" : "the space's vault and sync are not connected yet"), spaces: [...runners].map(([space, r]) => { const { dir, ...rest } = r.status(); return { space, ...rest }; }) };
       },
     });
