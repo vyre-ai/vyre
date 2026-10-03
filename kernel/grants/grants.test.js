@@ -183,17 +183,17 @@ test("offers: the compute pair needs both sides, only for that member's own comp
   const events = [];
   const off = g.offers.onRevoke(e => events.push(e));
   const mkO = (chain, o) => g.offers.offer(chain, o, { presence: proof("grants.offer", o, `vyre://${SPACE}/offer/new`) });
-  const q = { member: BOB, device: "dev_laptop" };
+  const q = { member: BOB, device: "dev_laptop", device_key: "KEY_LAPTOP" };
   assert.deepEqual(g.offers.active(q), { spaceAllows: false, memberAccepts: false });
   // the member cannot allow it for the Space; an admin cannot accept for the member
   await assert.rejects(() => mkO(personChain(BOB), { side: "space_allows", member: BOB }), { code: "not_allowed" });
-  await assert.rejects(() => mkO(personChain(ALICE), { side: "member_accepts", member: BOB, device: "dev_laptop" }), { code: "not_allowed" });
+  await assert.rejects(() => mkO(personChain(ALICE), { side: "member_accepts", member: BOB, device: "dev_laptop", device_key: "KEY_LAPTOP" }), { code: "not_allowed" });
   const allow = await mkO(personChain(ALICE), { side: "space_allows", member: BOB });
   assert.deepEqual(g.offers.active(q), { spaceAllows: true, memberAccepts: false }, "one side is not enough");
-  const accept = await mkO(personChain(BOB), { side: "member_accepts", member: BOB, device: "dev_laptop" });
+  const accept = await mkO(personChain(BOB), { side: "member_accepts", member: BOB, device: "dev_laptop", device_key: "KEY_LAPTOP" });
   assert.deepEqual(g.offers.active(q), { spaceAllows: true, memberAccepts: true });
   assert.deepEqual(g.offers.active({ member: BOB, device: "dev_other" }), { spaceAllows: true, memberAccepts: false }, "acceptance is per computer");
-  assert.deepEqual(g.offers.active({ member: ALICE, device: "dev_laptop" }), { spaceAllows: false, memberAccepts: false }, "another member's computer is not covered");
+  assert.deepEqual(g.offers.active({ member: ALICE, device: "dev_laptop", device_key: "KEY_LAPTOP" }), { spaceAllows: false, memberAccepts: false }, "another member's computer is not covered");
   // the member withdraws: told at once; an admin cannot withdraw the member's acceptance
   const un = id => ({ presence: proof("grants.offer", { revoke: id }, `vyre://${SPACE}/offer/${id}`) });
   await assert.rejects(() => g.offers.unoffer(personChain(ALICE), accept.id, un(accept.id)), { code: "not_allowed" });
@@ -201,7 +201,7 @@ test("offers: the compute pair needs both sides, only for that member's own comp
   assert.deepEqual(events.map(e => [e.side, e.reason]), [["member_accepts", "withdrawn"]]);
   assert.equal(g.offers.active(q).memberAccepts, false);
   // the Space's side: a role change tells the runner too, and a non-member has no offer in effect
-  await mkO(personChain(BOB), { side: "member_accepts", member: BOB, device: "dev_laptop" });
+  await mkO(personChain(BOB), { side: "member_accepts", member: BOB, device: "dev_laptop", device_key: "KEY_LAPTOP" });
   await g.setRole(owner(), { person: BOB, role: "manager" }, P.role({ person: BOB, role: "manager" }));
   assert.ok(events.some(e => e.reason === "role_changed"));
   await g.offers.unoffer(personChain(ALICE), allow.id, un(allow.id));
@@ -229,7 +229,7 @@ test("G-3: removing a member takes their grants and offers with them, tells the 
   await g.setRole(owner(), { person: ALICE, role: "admin" }, P.role({ person: ALICE, role: "admin" }));
   const told = [];
   g.offers.onRevoke(e => told.push(e.reason));
-  const o = { side: "member_accepts", member: BOB, device: "dev_laptop" };
+  const o = { side: "member_accepts", member: BOB, device: "dev_laptop", device_key: "KEY_LAPTOP" };
   await g.offers.offer(personChain(BOB), o, { presence: proof("grants.offer", o, `vyre://${SPACE}/offer/new`) });
   const rm = m => g.removeMember(owner(), m, P.role({ remove: m.person }));
   await assert.rejects(() => g.removeMember(owner(), { person: OWNER }, P.role({ remove: OWNER })), { code: "not_allowed" }, "the last owner stays");
@@ -237,7 +237,7 @@ test("G-3: removing a member takes their grants and offers with them, tells the 
   const r = await rm({ person: BOB });
   assert.ok(r.grants_revoked >= 1);
   assert.equal(gs.roleOf(actor("person", BOB)), null);
-  assert.equal(g.offers.active({ member: BOB, device: "dev_laptop" }).memberAccepts, false);
+  assert.equal(g.offers.active({ member: BOB, device: "dev_laptop", device_key: "KEY_LAPTOP" }).memberAccepts, false);
   assert.deepEqual(told, ["removed"]);
   assert.deepEqual((await g.list(owner(), { status: "active" })).filter(x => x.subject.actor && x.subject.actor.id === BOB), []);
   gs.rebuild();
@@ -281,4 +281,16 @@ test("G-1b: a genuine event appended again does not bring back a revoked grant o
   assert.equal(gs.roleOf(actor("person", BOB)), null, "the removed person stays removed");
   assert.deepEqual((await g.list(owner(), { status: "active" })).filter(x => x.id === made.id), [], "the revoked grant stays revoked");
   assert.equal(gs.roleOf(actor("person", OWNER)), "owner");
+});
+
+test("G-4: an acceptance is bound to the computer's key; a second machine naming the same id, or no key, does not claim it", async () => {
+  const { g } = rig();
+  await g.setRole(owner(), { person: BOB, role: "member" }, P.role({ person: BOB, role: "member" }));
+  const mkO = (chain, o) => g.offers.offer(chain, o, { presence: proof("grants.offer", o, `vyre://${SPACE}/offer/new`) });
+  await mkO(owner(), { side: "space_allows", member: BOB });
+  await assert.rejects(() => mkO(personChain(BOB), { side: "member_accepts", member: BOB, device: "dev_laptop" }), { code: "bad_input" }, "an acceptance names its computer's key");
+  await mkO(personChain(BOB), { side: "member_accepts", member: BOB, device: "dev_laptop", device_key: "KEY_A" });
+  assert.equal(g.offers.active({ member: BOB, device: "dev_laptop", device_key: "KEY_A" }).memberAccepts, true);
+  assert.equal(g.offers.active({ member: BOB, device: "dev_laptop", device_key: "KEY_B" }).memberAccepts, false, "another machine, same id");
+  assert.equal(g.offers.active({ member: BOB, device: "dev_laptop" }).memberAccepts, false, "a bare id is not enough");
 });

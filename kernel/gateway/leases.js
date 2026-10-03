@@ -19,10 +19,10 @@ import { leasedUse } from "../seal/uses.js";
  */
 export function createLeases(cfg) {
   const { sealer, grantsStore } = cfg;
-  /** @type {Map<string, { member: string, device: string }>} */ const info = new Map();
+  /** @type {Map<string, { member: string, device: string, device_key?: string }>} */ const info = new Map();
   /** @type {Map<string, string>} session -> lease id (the platform's mapping, bound by `bind`) */ const sessions = new Map();
   const person = (/** @type {any} */ chain) => { if (!isChain(chain) || !isExactlyPerson(chain)) throw new KernelError("chain_not_person", "a lease is a person's, on their own"); return chain.hops[0].actor; };
-  const allowedFor = (/** @type {string} */ member, /** @type {string} */ device) => { const a = typeof grantsStore.active === "function" ? grantsStore.active({ member, device }) : { spaceAllows: false, memberAccepts: false }; return a.spaceAllows === true && a.memberAccepts === true; };
+  const allowedFor = (/** @type {string} */ member, /** @type {string} */ device, /** @type {string | undefined} */ device_key) => { const a = typeof grantsStore.active === "function" ? grantsStore.active({ member, device, device_key }) : { spaceAllows: false, memberAccepts: false }; return a.spaceAllows === true && a.memberAccepts === true; };
   const kernelChain = () => cfg.chains.fromFacts({ kind: "module", module: "leases", first_party: true });
   const mapErr = (/** @type {any} */ e) => (e instanceof KernelError ? e : new KernelError(typeof e?.code === "string" ? e.code : "unavailable", "the lease could not be handled"));
   const run = async (/** @type {() => Promise<any>} */ f) => { try { return await f(); } catch (e) { throw mapErr(e); } };
@@ -37,11 +37,11 @@ export function createLeases(cfg) {
 
   const api = {
     /** The key that opens this device's workspace for this Space, while both Offers hold. */
-    async issue(chain, /** @type {{ device: string }} */ i) {
+    async issue(chain, /** @type {{ device: string, device_key?: string }} */ i) {
       const p = person(chain);
       if (!i || typeof i.device !== "string" || !i.device) throw new KernelError("bad_input", "name the computer");
-      const r = await run(() => sealer.lease.issue({ chain, space: cfg.space, device: i.device, allowed: allowedFor(p.id, i.device) }));
-      if (r && r.id) info.set(r.id, { member: p.id, device: i.device });
+      const r = await run(() => sealer.lease.issue({ chain, space: cfg.space, device: i.device, allowed: allowedFor(p.id, i.device, i.device_key) }));
+      if (r && r.id) info.set(r.id, { member: p.id, device: i.device, device_key: i.device_key });
       return r;
     },
     /** Renewal re-checks the Offers every time; a lease that is not this person's is unknown. */
@@ -49,7 +49,7 @@ export function createLeases(cfg) {
       const p = person(chain);
       const l = info.get(i.id);
       if (!l || l.member !== p.id) throw new KernelError("unknown_lease", "no such lease");
-      return run(() => sealer.lease.renew({ chain, id: i.id, allowed: allowedFor(l.member, l.device) }));
+      return run(() => sealer.lease.renew({ chain, id: i.id, allowed: allowedFor(l.member, l.device, l.device_key) }));
     },
     /** Reinstating a revoked device is an admin's act, with their fresh presence proof. */
     async reinstate(chain, /** @type {{ device: string, proof: any }} */ i) {

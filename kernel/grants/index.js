@@ -261,16 +261,18 @@ export function createGrantsStore(cfg) {
      * One side of the compute pair (DESIGN-wink 7): the Space allows its work to run on a member's computer (an owner or admin, for a member of this
      * Space; `device` null covers any of that member's computers), or the member accepts it for one of their own computers (the member's own act).
      * Both must be active for `offers.active` to say yes, and it covers only that member's own sessions on that member's own machine.
-     * @param {any} chain @param {{ side: "space_allows" | "member_accepts", member: string, device?: string | null }} o @param {{ presence?: any }} [opt]
+     * The acceptance is bound to the computer's KEY (`device_key`, from the Identity stud's device identity): `active` answers yes only for the device that
+     * presents that key, so a second machine cannot claim the first one's offer by naming its id.
+     * @param {any} chain @param {{ side: "space_allows" | "member_accepts", member: string, device?: string | null, device_key?: string }} o @param {{ presence?: any }} [opt]
      */
     async offer(chain, o, opt = {}) {
       const issuer = person(chain);
-      if (!o || !["space_allows", "member_accepts"].includes(o.side) || typeof o.member !== "string" || (o.side === "member_accepts" && (typeof o.device !== "string" || !o.device)) || (o.device != null && typeof o.device !== "string")) throw new KernelError("bad_input", "an offer needs a side, a member and (to accept) one of the member's computers");
+      if (!o || !["space_allows", "member_accepts"].includes(o.side) || typeof o.member !== "string" || (o.side === "member_accepts" && (typeof o.device !== "string" || !o.device || typeof o.device_key !== "string" || !o.device_key || o.device_key.length > 200)) || (o.device != null && typeof o.device !== "string") || (o.device_key !== undefined && (typeof o.device_key !== "string" || o.device_key.length > 200))) throw new KernelError("bad_input", "an offer needs a side, a member and (to accept) one of the member's computers with its key");
       const d = await gate(chain, "grants.offer", urn("offer"), o, opt.presence);
       const m = { kind: "person", id: o.member, space: cfg.space };
       if (!memberOk(m)) throw new KernelError("not_found", "no such member");
       if (o.side === "space_allows" ? !isAdmin(issuer) : issuer.id !== o.member) throw new KernelError("not_allowed", o.side === "space_allows" ? "only an owner or an admin lets the Space's work run on a member's computer" : "only the member accepts work on their own computer");
-      const rec = freeze({ id: `of_${mintUuid(clock())}`, space: cfg.space, side: o.side, offer: "compute", member: o.member, device: o.device ?? null, status: "active", made_by: issuer.id, at: clock() });
+      const rec = freeze({ id: `of_${mintUuid(clock())}`, space: cfg.space, side: o.side, offer: "compute", member: o.member, device: o.device ?? null, device_key: o.device_key ?? null, status: "active", made_by: issuer.id, at: clock() });
       offers.set(rec.id, rec);
       note(chain, "offer.created", urn("offer", rec.id), { offer: rec }, d.decision);
       return rec;
@@ -291,10 +293,12 @@ export function createGrantsStore(cfg) {
     },
 
     /** Are both sides of the compute pair active for this member and computer? Read at every session start. Sync: it reads the store, never the network. */
-    active(/** @type {{ member: string, device: string }} */ q) {
+    active(/** @type {{ member: string, device: string, device_key?: string }} */ q) {
       const live = (/** @type {any} */ o) => o.status === "active" && o.member === q.member;
-      const spaceAllows = memberOk({ kind: "person", id: q.member, space: cfg.space }) && [...offers.values()].some(o => live(o) && o.side === "space_allows" && (o.device === null || o.device === q.device));
-      const memberAccepts = [...offers.values()].some(o => live(o) && o.side === "member_accepts" && o.device === q.device);
+      // A bound offer answers only for the key it was made for; the caller presents the key of the connected device (verified by the network layer), never a bare id.
+      const keyOk = (/** @type {any} */ o) => !o.device_key || (typeof q.device_key === "string" && o.device_key === q.device_key);
+      const spaceAllows = memberOk({ kind: "person", id: q.member, space: cfg.space }) && [...offers.values()].some(o => live(o) && o.side === "space_allows" && (o.device === null || (o.device === q.device && keyOk(o))));
+      const memberAccepts = [...offers.values()].some(o => live(o) && o.side === "member_accepts" && o.device === q.device && keyOk(o));
       return { spaceAllows, memberAccepts };
     },
     /** Be told when an offer is withdrawn or a member's role changes (so the runner can end work at once). Returns an unsubscribe. */
