@@ -2,7 +2,7 @@
 // coloured session (ls, git, a test run) and echoing what is typed. No pty, no shell, nothing real.
 //   node scripts/fake-term.mjs [port]      listens on 127.0.0.1 (default 7391); ws://127.0.0.1:<port>/pty?from=<offset>
 import http from "node:http";
-import { acceptKey, encodeFrame, FrameParser } from "../../../core/computers/ws.js";
+import { acceptKey, encodeFrame, FrameParser } from "../../../lib/ws.js";
 
 const C = (n, s) => `\x1b[${n}m${s}\x1b[0m`;
 const prompt = `${C("1;32", "alex@juno")}:${C("1;34", "~/harlow-site")}$ `;

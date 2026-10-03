@@ -17,7 +17,7 @@
 // holds part of the span trims by parts, so nothing is lost or repeated.
 
 import crypto from "node:crypto";
-import { redact } from "../transcripts/sanitize.js";
+import { redact } from "../../lib/sanitize.js";
 import { kindOf, startOf, EPHEMERAL, isEphemeral, HOLDBACK, settle } from "./frame.js";
 
 export const V = 1;

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { keyPair } from "./noise.js";
 import { deviceSide, boxSide } from "./channel.js";
 import { bridge } from "./bridge.js";
-import { acceptKey, encodeFrame, FrameParser } from "../computers/ws.js";
+import { acceptKey, encodeFrame, FrameParser } from "../../lib/ws.js";
 
 const ROUTE = "abcdefghijklmnopqrstuvwxyz";
 

@@ -16,7 +16,7 @@ import { Events } from "../events/index.js";
 import * as config from "../config/index.js";
 import { tempHome } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
-import { encodeClientFrame } from "../computers/ws.js";
+import { encodeClientFrame } from "../../lib/ws.js";
 import { onCommand } from "./index.js";
 import { fakeThreads } from "../stream/fake-threads.js";
 

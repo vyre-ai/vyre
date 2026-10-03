@@ -67,10 +67,6 @@ their wider imports). "Becomes" says where each remaining one should go:
 | `core/switchboard -> core/harness` | rules.js | sessions/switchboard split (ADR 0030), cleanup owed by sessions after 0.1.0 | ctx.call |
 | `core/switchboard -> core/sessions` | config.js, providers.js, sdk.js, spawn.js | sessions/switchboard split (ADR 0030), cleanup owed by sessions after 0.1.0 | ctx.call |
 | `core/switchboard -> core/transcripts` | sanitize.js | keeps credentials out of what it builds from transcripts | lib |
-| `core/stream -> core/computers` | ws.js | the RFC 6455 framing sliver Glass wrote (the stream serves a WebSocket the way term does), a pure helper | lib |
-| `core/stream -> core/transcripts` | sanitize.js | a tool result's text and a typed command are redacted before they enter a frame | lib |
-| `core/term -> core/transcripts` | sanitize.js | a typed command is redacted before it is recorded | lib |
-| `core/term -> core/computers` | ws.js | the RFC 6455 framing sliver Glass wrote, a pure helper | lib |
 | `core/term -> core/files` | safety.js | the path gate every file path passes through | ctx.call |
 | `core/vyre-core -> core/vault` | vault.js | vyre-core hosts the vault's store and crypto in its own process and db (ADR 0040 phase 2) | host |
 | `core/vault -> core/link` | transport.js | the vault relay between the Mac and the box | lib |

@@ -15,7 +15,7 @@
 // Adapters: serveSSE (HTTP, with Last-Event-ID) and serveWS (RFC 6455 over an upgraded socket,
 // the helpers core/term and Glass use).
 
-import { acceptKey, encodeFrame, FrameParser } from "../computers/ws.js";
+import { acceptKey, encodeFrame, FrameParser } from "../../lib/ws.js";
 import { heartbeatFrame, resetFrame } from "./protocol.js";
 import { forViewer } from "./viewer.js";
 

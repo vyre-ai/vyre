@@ -21,7 +21,7 @@
 
 import { blockFor, kindOfTool, summarize, termChunks } from "./protocol.js";
 import { describe, toUserMessage } from "../../lib/queue-state.js";
-import { redact } from "../transcripts/sanitize.js";
+import { redact } from "../../lib/sanitize.js";
 
 /** The switchboard's raw thread.state word, as a person says it (lib/thread-status.js). @param {unknown} w */
 export function stateWord(w) {

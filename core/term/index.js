@@ -63,12 +63,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { guard } from "../files/safety.js";
-import { acceptKey, encodeFrame, FrameParser } from "../computers/ws.js";
+import { acceptKey, encodeFrame, FrameParser } from "../../lib/ws.js";
 import { Pty, size } from "./pty.js";
 import { DtachPty, findDtach, isMaster, socketDir } from "./dtach.js";
 import { Ring } from "./ring.js";
 import { LineTracker, asksForSecret } from "./typed.js";
-import { redact } from "../transcripts/sanitize.js";
+import { redact } from "../../lib/sanitize.js";
 import { execFile } from "node:child_process";
 
 /** Who hears a command the person typed: the session stream adapter subscribes (task A). */
