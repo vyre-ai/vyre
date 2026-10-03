@@ -1784,7 +1784,13 @@ export class Switchboard {
   }
 
   async sendOne(id, text, surface, { queue = true, wait = false, mode = "steer", uuid = undefined, kind = undefined, images = null, note = "", author = undefined, kernelTurn = null } = {}) {
-    // First-party chat turn (core/stream): open this turn's kernel session for the person who asked, in the chat it belongs to, before any word reaches the session.
+    // The same message again (a retry whose first answer was lost): already handed over or queued.
+    if (uuid) {
+      const was = /** @type {any} */ (this.db.prepare("SELECT thread FROM threads_sent WHERE uuid = ?").get(uuid))
+        || this.db.prepare("SELECT thread, id AS queued FROM threads_inbox WHERE uuid = ?").get(uuid);
+      if (was) return { sent: true, already: true, thread: String(was.thread), uuid, ...(was.queued ? { queued_id: Number(was.queued) } : {}) };
+    }
+    // First-party chat turn (core/stream): open this turn's kernel session for the person who asked, in the chat it belongs to, before any word reaches the session. (A duplicate was answered above, before anything is opened.)
     if (kernelTurn && this.record(id)) {
       // A turn keeps its asker for its whole run. Another person's message while it runs is not folded into it (it would run under the first asker's token: a member's refused act would succeed once an
       // admin's turn is open): it is refused as busy and the stream delivers it again when the turn has ended. The same asker steering their own turn keeps the session they have.
@@ -1799,12 +1805,6 @@ export class Switchboard {
       // Claim the thread for this asker NOW, before any await, so nothing that arrives while the session opens can slip in as the running turn's asker.
       if (!(st && st.turn)) this.turnAsker.set(id, kernelTurn.asker);
       if (this.live.has(id) && !(st && st.turn)) await this.renewKernelSession(id, this.record(id), kernelTurn);
-    }
-    // The same message again (a retry whose first answer was lost): already handed over or queued.
-    if (uuid) {
-      const was = /** @type {any} */ (this.db.prepare("SELECT thread FROM threads_sent WHERE uuid = ?").get(uuid))
-        || this.db.prepare("SELECT thread, id AS queued FROM threads_inbox WHERE uuid = ?").get(uuid);
-      if (was) return { sent: true, already: true, thread: String(was.thread), uuid, ...(was.queued ? { queued_id: Number(was.queued) } : {}) };
     }
     if (!this.live.has(id)) {
       if (!this.record(id)) await this.adopt(id);
@@ -2946,6 +2946,15 @@ export class Switchboard {
     return null;
   }
 
+  /**
+   * After a restart: a chat message that was queued behind a turn the restart cut off is still in the queue (it is a row in the home's database), and its thread is stopped. Resume each such thread
+   * so the next turn runs: the queue hands over the leading messages of one asker, opening THAT asker's kernel session first. Nothing is lost, and nothing runs under anyone else's authority.
+   */
+  async resumeQueuedChats() {
+    const rows = /** @type {any[]} */ (this.db.prepare("SELECT DISTINCT thread FROM threads_inbox WHERE delivered_at IS NULL AND kturn IS NOT NULL").all());
+    for (const r of rows) { try { if (!this.live.has(String(r.thread))) await this.launch({ resume: String(r.thread) }); } catch (e) { this.deps.log(`threads: could not run the queued chat messages of ${String(r.thread).slice(0, 8)} (${/** @type {Error} */ (e).message})`); } }
+  }
+
   /** vyred is stopping: every live thread ends with reason "restart" (ADR 0029 R7), so a surface says why. */
   async stopAll() {
     // No new spare starts, and one being started is waited for, so it is stopped with the rest.
@@ -3141,6 +3150,8 @@ export default {
       ...(typeof cfg.uid === "number" ? { uid: cfg.uid, gid: typeof cfg.gid === "number" ? cfg.gid : cfg.uid } : {}),
     });
     sb.recover();
+    // chat messages queued behind a turn the restart cut off run now, each under its own asker (the queue is durable)
+    setTimeout(() => { void sb.resumeQueuedChats(); }, 1500).unref?.();
     // ADR 0041 section 5, end side (start side is where()'s github.session.worktree call above):
     // a github project's worktree is cleaned up once its session reaches "finished" - a one-shot's
     // own natural completion (threads.launch's own purpose: "job", once: true; never resumed by
