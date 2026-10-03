@@ -26,6 +26,7 @@ module.exports = {
       height: { control: "var(--control)", "control-sm": "var(--control-sm)", row: "var(--row-h)", touch: "var(--touch)" },
       minHeight: { control: "var(--control)", "control-sm": "var(--control-sm)", row: "var(--row-h)", touch: "var(--touch)" },
       width: { control: "var(--control)", "control-sm": "var(--control-sm)", touch: "var(--touch)" },
+      minWidth: { menu: "calc(var(--s-12) * 4)" },
       maxWidth: { page: "var(--page-max)", read: "var(--read-max)" },
     },
   },

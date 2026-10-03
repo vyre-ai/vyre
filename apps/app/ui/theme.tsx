@@ -6,6 +6,8 @@ import { StyleSheet, useColorScheme, useWindowDimensions, View } from "react-nat
 import { vars } from "nativewind";
 import { resolveTheme } from "../../../deck/ui/theme.js";
 import { create } from "zustand";
+import { PortalHost } from "@rn-primitives/portal";
+import { ToastHost } from "./components/Toast";
 import { themeVars } from "./theme-vars.js";
 
 export type SpaceTheme = { accent?: string; hex?: string; tint?: string; thex?: string; density?: string; font?: string; corners?: string };
@@ -47,6 +49,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     <ThemeCtx.Provider value={ctx}>
       <View style={[StyleSheet.absoluteFill, style]} className="bg-bg">
         {children}
+        <ToastHost />
+        <PortalHost />
       </View>
     </ThemeCtx.Provider>
   );
