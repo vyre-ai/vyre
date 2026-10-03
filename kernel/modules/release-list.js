@@ -73,6 +73,30 @@ export function createListCheck(list, say = () => {}) {
 }
 
 /**
+ * Every module folder of a package root against its signed list (SG-3): the list is advanced in the log only when this says ok. A listed module whose folder is missing, changed or
+ * at another version fails, and so does a folder the list does not name.
+ * @param {string} root the package root @param {{ modules: Record<string, { version: string, tree: string }> }} list @returns {{ ok: boolean, bad: string[] }}
+ */
+export function verifyTrees(root, list) {
+  const check = createListCheck(list);
+  /** @type {string[]} */ const bad = [], seen = [];
+  for (const top of ["core", "local", "modules"]) {
+    const base = path.join(root, top);
+    if (!fs.existsSync(base)) continue;
+    for (const d of fs.readdirSync(base).sort()) {
+      const dir = path.join(base, d), mj = path.join(dir, "module.json");
+      if (!fs.existsSync(mj)) continue;
+      let name = d;
+      try { name = String(JSON.parse(fs.readFileSync(mj, "utf8")).name); } catch { /* unreadable: counted as bad below */ }
+      seen.push(name);
+      if (!check(dir)) bad.push(name);
+    }
+  }
+  for (const n of Object.keys(list.modules)) if (!seen.includes(n)) bad.push(n);
+  return { ok: bad.length === 0, bad };
+}
+
+/**
  * What the release does at build time: hash every module folder of an UNPACKED package and write the list (the signing happens when the release signs SHA256SUMS, which must list this
  * file). `counter` rises with every release.
  * @param {string} root the unpacked package root @param {{ counter: number, release: string }} o @returns {string} the JSON text

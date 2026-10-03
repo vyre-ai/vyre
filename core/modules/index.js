@@ -574,7 +574,8 @@ export class Registry {
     const mentionKinds = new Map();
     // The names of the modules shipped with Vyre in this start, on or off on this machine: an added module can
     // never load under one, so it can't answer another module's tools (names.*, network.*) from first party code.
-    const shipped = new Set(found.filter(x => x && x.manifest && typeof x.manifest.name === "string" && this.isFirstParty(x.dir)).map(x => x.manifest.name));
+    // A name the release's signed list holds stays reserved even for a folder that fails it (`deps.reservedName`): that folder is refused, never loaded as an added module.
+    const shipped = new Set(found.filter(x => x && x.manifest && typeof x.manifest.name === "string" && (this.isFirstParty(x.dir) || (this.deps.reservedName && this.deps.reservedName(x.manifest.name)))).map(x => x.manifest.name));
     for (const f of found) {
       const name = f.manifest && f.manifest.name;
       // A module with a problem never starts, but it never disappears without a word either: it
