@@ -52,7 +52,10 @@ test("the credentials port: the vault provided it once, the launcher gets the to
   await reg("vault.provider.set", { provider: "anthropic", token: key }, "cli");
   // VP-2: the vault provided the port to the registry once, at its own start, and the daemon gave it to the sandbox; no import of the vault is involved, and nothing can take it later.
   const port = d.registry.deps.credentialsPort; assert.ok(port, "the registry holds the credentials port the vault provided");
-  assert.throws(() => provideOnce(d.registry.deps, "vault", "credentialsPort", {}), /already provided/, "a second provider is refused");
+  // VP-4: the vault may provide again after a restart and the new port replaces the old one; nobody else can provide at all.
+  const before = d.registry.deps.credentialsPort, fresh = Object.freeze({ credentials: async () => "fresh" });
+  provideOnce(d.registry.deps, "vault", "credentialsPort", fresh); assert.equal(d.registry.deps.credentialsPort, fresh, "the restarted vault's port replaced the old one");
+  provideOnce(d.registry.deps, "vault", "credentialsPort", before); assert.equal(d.registry.deps.credentialsPort, before);
   for (const [mod, name] of [["sessions", "credentialsPort"], ["agents", "credentialsPort"], ["vault", "sandbox"], ["mcp", "credentialsPort"]]) assert.throws(() => provideOnce({}, mod, name, {}), /may not provide/, `${mod} ${name}`);
   assert.equal(await port.credentials("claude"), tok); assert.equal(await port.credentials("anthropic"), key);
   assert.equal(await port.credentials("codex"), null); assert.equal(await port.credentials("../x"), null); for (const p of ["__proto__", "constructor", "toString"]) assert.equal(await port.credentials(p), null, p);

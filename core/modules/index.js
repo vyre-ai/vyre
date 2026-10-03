@@ -281,12 +281,12 @@ function checkCredentials(list) {
 }
 
 /**
- * A module hands something UP to the daemon by a fixed name, once: only the vault, only `credentialsPort`, only the first time. (Exported for the test that proves the refusals.)
+ * A module hands something UP to the daemon by a fixed name: only the vault, only `credentialsPort`. The vault may provide again (a crash restart, a disable and enable) and the new port replaces
+ * the old, so the registry never holds a port that closes over a stopped vault; no one else can provide at all. (Exported for the test that proves the refusals.)
  * @param {Record<string, any>} deps the registry's dependencies @param {string} module @param {string} name @param {any} value
  */
 export function provideOnce(deps, module, name, value) {
   if (!(name === "credentialsPort" && module === "vault")) throw new Error(`${module} may not provide ${String(name).slice(0, 40)}`);
-  if (deps[name]) throw new Error(`${name} was already provided`);
   deps[name] = value;
 }
 
