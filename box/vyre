@@ -505,11 +505,11 @@ put_wrapper() {
 # android: bring the release's phone app into the container's releases folder, APK first and
 # android.json last through a temp name and a rename, the old manifest kept as android.json.prev.
 # Then releases.sign signs it with the owner's key. Its refusal is reported, never fatal.
-# publish_release SRC: the release's SHA256SUMS, its signature and shell.json go into root's status/release folder, which the
-# compose file mounts read-only at the install's deck/release, where vyred serves them at /release/ so the phone's service
-# worker can check the web shell against the one release signature (pwa). They live on the host, not in the container's
-# writable layer, so a recreate keeps them. Only what was downloaded and checked; a missing file is skipped, and none of it can
-# fail the update. A person running `vyre update` is not root, so root does it for them through sudo, if it can.
+# publish_release SRC: the release's SHA256SUMS, its signature, shell.json and modules.json (the signed list of first-party modules,
+# kernel/modules/release-list.js) go into root's status/release folder, which the vyre container mounts read-only at /opt/vyre/deck/release.
+# The folder is replaced as a whole by rename, never file by file, so a running vyred keeps the one consistent release it was started with and the
+# next one sees the next. The list's counter only ever goes up: a modules.json whose counter is below the one already published (a rollback, or an old
+# signed release shown again) is refused and nothing changes.
 publish_release() {
   src=$1
   if [ "$(id -u)" != "$ROOT_UID" ]; then
@@ -522,16 +522,32 @@ publish_release() {
   # only root can use, and everything after this looks only at the copies. Nothing is published unless SHA256SUMS.sig verifies
   # over the copied SHA256SUMS (so an unsigned release publishes nothing), and shell.json is the file that SHA256SUMS lists.
   rt=$(mktemp -d) || return 0
-  for f in SHA256SUMS SHA256SUMS.sig shell.json; do cp -P "$src/$f" "$rt/$f" 2>/dev/null || true; done
+  for f in SHA256SUMS SHA256SUMS.sig shell.json modules.json; do cp -P "$src/$f" "$rt/$f" 2>/dev/null || true; done
   if [ -f "$rt/SHA256SUMS" ] && [ ! -L "$rt/SHA256SUMS" ] && [ -f "$rt/SHA256SUMS.sig" ] && [ ! -L "$rt/SHA256SUMS.sig" ] && sig_ok "$rt/SHA256SUMS" "$rt/SHA256SUMS.sig"; then
     if [ -f "$rt/shell.json" ] && [ ! -L "$rt/shell.json" ]; then
       want=$(awk '$2 == "shell.json" || $2 == "*shell.json" { print $1; exit }' "$rt/SHA256SUMS")
       if [ -z "$want" ] || [ "$want" != "$(sha256 "$rt/shell.json")" ]; then echo "vyre: shell.json is not the file the signed SHA256SUMS lists; it was not published" >&2; rm -f "$rt/shell.json"; fi
     fi
-    if mkdir -p "$UPD_STATE/release" && chmod 755 "$UPD_STATE/release"; then
-      for f in SHA256SUMS SHA256SUMS.sig shell.json; do
-        if [ -f "$rt/$f" ] && [ ! -L "$rt/$f" ]; then put_file "$rt/$f" "$UPD_STATE/release/$f" 0644 || echo "vyre: could not publish $f" >&2; fi
+    if [ -f "$rt/modules.json" ] && [ ! -L "$rt/modules.json" ]; then
+      want=$(awk '$2 == "modules.json" || $2 == "*modules.json" { print $1; exit }' "$rt/SHA256SUMS")
+      if [ -z "$want" ] || [ "$want" != "$(sha256 "$rt/modules.json")" ]; then echo "vyre: modules.json is not the file the signed SHA256SUMS lists; it was not published" >&2; rm -f "$rt/modules.json"; fi
+    fi
+    # The counter only goes up (a signed older release must not roll the module list back).
+    newc=$(tr -d '\n' <"$rt/modules.json" 2>/dev/null | sed -n 's/.*"counter": *\([0-9][0-9]*\).*/\1/p')
+    oldc=$(tr -d '\n' <"$UPD_STATE/release/modules.json" 2>/dev/null | sed -n 's/.*"counter": *\([0-9][0-9]*\).*/\1/p')
+    if [ -n "$newc" ] && [ -n "$oldc" ] && [ "$newc" -lt "$oldc" ]; then
+      echo "vyre: this release's module list is older (counter $newc) than the one already published (counter $oldc); nothing was published" >&2
+      rm -rf "$rt"; return 0
+    fi
+    if mkdir -p "$UPD_STATE" && new=$(mktemp -d "$UPD_STATE/release.new.XXXXXX") && chmod 755 "$new"; then
+      for f in SHA256SUMS SHA256SUMS.sig shell.json modules.json; do
+        if [ -f "$rt/$f" ] && [ ! -L "$rt/$f" ]; then put_file "$rt/$f" "$new/$f" 0644 || echo "vyre: could not publish $f" >&2; fi
       done
+      # The whole folder by rename: the old one is set aside and the new one takes its name, so no reader sees half of each release.
+      # The old folder is kept as release.prev until the update has come up healthy (drop_prev_release), so a rollback puts back the list its image was signed with.
+      rm -rf "$UPD_STATE/release.prev"
+      if [ -d "$UPD_STATE/release" ]; then mv "$UPD_STATE/release" "$UPD_STATE/release.prev" || { echo "vyre: could not replace the published release" >&2; rm -rf "$new"; rm -rf "$rt"; return 0; }; fi
+      mv "$new" "$UPD_STATE/release" || echo "vyre: could not publish the release folder" >&2
     fi
   else
     echo "vyre: the release's SHA256SUMS.sig is missing or does not verify; nothing was published for the phone's shell check" >&2
@@ -561,6 +577,14 @@ android() {
 }
 
 # roll_back: undo a failed update: src, image, box files, then the database from the backup.
+# restore_release: the folder publish_release set aside goes back (an update that did not come up healthy). After a healthy update it stays as release.prev,
+# the previous release's signed files, which `vyre update --rollback` swaps back with the previous image (and a second --rollback swaps forward again).
+restore_release() {
+  [ -d "$UPD_STATE/release.prev" ] || return 0
+  rm -rf "$UPD_STATE/release.bad"
+  [ ! -d "$UPD_STATE/release" ] || mv "$UPD_STATE/release" "$UPD_STATE/release.bad" || return 0
+  mv "$UPD_STATE/release.prev" "$UPD_STATE/release" && rm -rf "$UPD_STATE/release.bad"
+}
 roll_back() {
   echo "vyre: the update did not come up healthy; rolling back" >&2
   UPD_END=rolled_back
@@ -568,6 +592,7 @@ roll_back() {
   if [ "$BUILD_SRC" = 1 ] && [ -d "$SRCDIR.prev" ]; then rm -rf "$SRCDIR"; mv "$SRCDIR.prev" "$SRCDIR"; fi
   if [ "$TAGGED" = 1 ]; then docker image tag vyre:prev "$IMG"; fi
   put_box "$BOXPREV" exact
+  restore_release
   compose up -d || true
   restore_db || true
   compose up -d || true
@@ -668,7 +693,7 @@ update() {
     # A root run builds from its own copy of the verified source and takes the mode from root's record, never from this .env.
     if [ "$ROOT_RUN" = 1 ] || [ "${src%/}" = "${DIR%/}/src" ]; then BUILD_SRC=1; get vyre.tgz; fi
   fi
-  for f in $BOXF VERSION vyre release.json shell.json; do if listed "$f"; then get "$f"; fi; done
+  for f in $BOXF VERSION vyre release.json shell.json modules.json; do if listed "$f"; then get "$f"; fi; done
   VERSION=$(tr -d ' \n' 2>/dev/null <"$tmp/VERSION" || true)
   VERSION=${VERSION:-${TAG#v}}
   VERSION=${VERSION:-$(date -u +%Y%m%d%H%M%S)}
@@ -718,6 +743,10 @@ update() {
     die "the new image did not build; the box files are back as they were and vyred was not restarted"
   fi
   stage restarting
+  # The daemon is stopped, the signed release files are replaced as a folder, and only then the new container starts: a running vyred never sees
+  # the new module list against the old tree (or the reverse), and a restart verifies one consistent release.
+  compose stop vyre >/dev/null 2>&1 || true
+  publish_release "$tmp"
   compose up -d || roll_back
   ready || roll_back
   put_text "$VERSION" "$DIR/VERSION"
@@ -728,7 +757,6 @@ update() {
   state ok finished "updated to $VERSION"
   say "updated to $VERSION"
 
-  publish_release "$tmp"
   android
   # Report only: a fresh link would void the one the user was sent and has not opened yet.
   compose exec -T vyre vyre up --keep-link || true
@@ -921,6 +949,8 @@ rollback() {
   fi
   # A swap, so a second --rollback goes forward again.
   if [ -d "$SRCDIR.prev" ]; then swap_dirs "$SRCDIR" "$SRCDIR.prev"; fi
+  # The signed release files go with the image: stop the daemon, swap the folder whole, and let the container below start on the pair it was signed with.
+  if [ -d "$UPD_STATE/release.prev" ]; then compose stop vyre >/dev/null 2>&1 || true; swap_dirs "$UPD_STATE/release" "$UPD_STATE/release.prev"; fi
   if [ "$have_img" = 1 ]; then
     if docker image inspect "$IMG" >/dev/null 2>&1; then docker image tag "$IMG" vyre:next; fi
     docker image tag vyre:prev "$IMG"

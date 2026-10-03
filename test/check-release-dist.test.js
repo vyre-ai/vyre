@@ -129,3 +129,25 @@ test("release dist: install-mac-server.sh is a required release file, so it is s
   const problems = check(d, {});
   assert.ok(problems.some(p => /missing install-mac-server\.sh/.test(p)), problems.join("\n"));
 });
+
+test("release dist --modules: modules.json must be in the release, listed in SHA256SUMS, at the release's own version and the counter that version makes", async t => {
+  const { releaseCounter } = await import("../scripts/release-counter.mjs");
+  const make = (/** @type {any} */ over = {}, listed = true) => {
+    const dir = dist(t, { sign: false });
+    const body = JSON.stringify({ v: 1, counter: releaseCounter("0.2.0"), release: "0.2.0", modules: { work: { version: "0.1.0", tree: "a".repeat(64) } }, ...over });
+    if (body !== "null") fs.writeFileSync(path.join(dir, "modules.json"), body);
+    if (listed) {
+      const names = fs.readdirSync(dir).filter(f => !/^SHA256SUMS/.test(f) && f !== "notes.md").sort();
+      fs.writeFileSync(path.join(dir, "SHA256SUMS"), names.map(f => `${crypto.createHash("sha256").update(fs.readFileSync(path.join(dir, f))).digest("hex")}  ${f}\n`).join(""));
+    }
+    return dir;
+  };
+  assert.deepEqual(check(make(), { pulled: true, modules: true }), []);
+  assert.match(check(make({ counter: 5 }), { pulled: true, modules: true }).join("\n"), /counter is 5, this version makes/);
+  assert.match(check(make({ release: "0.2.1" }), { pulled: true, modules: true }).join("\n"), /says release 0.2.1, VERSION says 0.2.0/);
+  assert.match(check(make({ modules: {} }), { pulled: true, modules: true }).join("\n"), /with modules/);
+  assert.match(check(dist(t, { sign: false }), { pulled: true, modules: true }).join("\n"), /modules\.json is not in the release/);
+  const unlisted = make({}, false);
+  fs.appendFileSync(path.join(unlisted, "modules.json"), " ");
+  assert.ok(check(unlisted, { pulled: true, modules: true }).length > 0, "a list SHA256SUMS does not carry is refused");
+});

@@ -407,6 +407,12 @@ write_stack() {
       pick_build
       [ "$TGZ" = 1 ] && files="$files vyre.tgz"
       for f in $files; do [ -f "$TMP/$f" ] || get "$f"; done
+      # The signed list of first-party modules (and shell.json) the release carries: checked against SHA256SUMS like every file, and placed for the box by
+      # publish_signed_files once the wrapper is installed.
+      for f in modules.json shell.json; do
+        if awk -v p="$f" '$2 == p || $2 == "*" p { x = 1 } END { exit !x }' "$TMP/SHA256SUMS"; then get "$f"; fi
+      done
+      fetch SHA256SUMS.sig "$TMP/SHA256SUMS.sig" 2>/dev/null || rm -f "$TMP/SHA256SUMS.sig"
       done_step "every file matches SHA256SUMS"
       verify_images
     fi
@@ -478,6 +484,12 @@ write_env() {
 }
 
 # /usr/local/bin/vyre: ours, or ask before replacing whatever is there.
+# publish_signed_files: the release's SHA256SUMS, its signature, modules.json and shell.json go where the box reads them (the wrapper's publish-release checks the
+# signature with the pinned release key and publishes nothing for an unsigned release). Not for an install from a checkout, which has none of them.
+publish_signed_files() {
+  [ "$DRY" != 1 ] && [ -z "$FROM" ] && [ -s "$TMP/SHA256SUMS.sig" ] || return 0
+  priv env "VYRE_DIR=$DIR" "$WRAPPER" publish-release "$TMP" || say "note: could not place the release's signed files; vyre update will"
+}
 install_wrapper() {
   if [ -e "$WRAPPER" ] && ! grep -q "$MARK" "$WRAPPER" 2>/dev/null; then
     ask "$WRAPPER exists and is not the box wrapper. Replace it?" \
@@ -920,6 +932,7 @@ main() {
   if [ "$DRY" = 1 ]; then done_step "nothing written (dry run)"; else done_step "$DIR is laid out"; fi
   step "Installing the vyre command"
   install_wrapper
+  publish_signed_files
   if [ "$DRY" = 1 ]; then done_step "nothing installed (dry run)"; else done_step "vyre is at $WRAPPER"; fi
   # VYRE_NO_UP=1: everything but starting it, for `vyre box move`, which streams the volumes in first.
   if [ "${VYRE_NO_UP:-0}" = 1 ]; then say "installed in $DIR; not started (VYRE_NO_UP=1). Start it with: vyre up"

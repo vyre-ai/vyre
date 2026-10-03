@@ -935,3 +935,45 @@ test("publish-release: root copies without following links and publishes only wh
   await b.run(["publish-release", src], {});
   assert.deepEqual(published(), [], "nothing was published through a link");
 });
+
+test("publish-release: modules.json is published when the signed list has it, the folder is replaced whole by rename, and the counter never goes down", async t => {
+  const b = await box(t, { releases: [] });
+  units_dirs(b);
+  const src = path.join(b.DIR, "src-rel");
+  const rel = path.join(b.U, "status", "release");
+  const release = (/** @type {number} */ counter, /** @type {string} */ extra = "") => {
+    const modules = JSON.stringify({ v: 1, counter, release: "0.3.0", modules: { work: { version: "0.1.0", tree: "a".repeat(64) } } });
+    const sums = Buffer.from(`${sha(modules)}  modules.json\n${sha("shell")}  shell.json\n${sha("tgz")}  vyre.tgz\n`);
+    fs.rmSync(src, { recursive: true, force: true }); fs.mkdirSync(src);
+    fs.writeFileSync(path.join(src, "SHA256SUMS"), sums);
+    fs.writeFileSync(path.join(src, "SHA256SUMS.sig"), signSums(sums, RELEASE.privateKey));
+    fs.writeFileSync(path.join(src, "shell.json"), "shell");
+    fs.writeFileSync(path.join(src, "modules.json"), modules + extra);
+    return modules;
+  };
+  const counterOf = () => JSON.parse(fs.readFileSync(path.join(rel, "modules.json"), "utf8")).counter;
+  release(3004100);
+  await b.run(["publish-release", src], {});
+  assert.deepEqual(fs.readdirSync(rel).sort(), ["SHA256SUMS", "SHA256SUMS.sig", "modules.json", "shell.json"]);
+  assert.equal(counterOf(), 3004100);
+  // A modules.json that is not the file the signed list has is not published (the other files still are).
+  release(3004200, " ");
+  const bad = /** @type {any} */ (await b.run(["publish-release", src], {}));
+  assert.match(bad.out, /modules\\.json is not the file the signed SHA256SUMS lists/);
+  assert.ok(!fs.existsSync(path.join(rel, "modules.json")) || counterOf() !== 3004200, "the unlisted list was not published");
+  // A newer release replaces the folder as a whole and the old one is set aside, whole.
+  release(3004200);
+  await b.run(["publish-release", src], {});
+  assert.equal(counterOf(), 3004200);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(b.U, "status", "release.prev", "modules.json"), "utf8")).counter, 3004100, "the release before is kept whole beside it");
+  assert.deepEqual(fs.readdirSync(path.join(b.U, "status")).filter(n => /^release\\.new/.test(n)), [], "no temp folder left");
+  // The counter only goes up: a signed older list is refused, nothing changes.
+  release(3004100);
+  const old = /** @type {any} */ (await b.run(["publish-release", src], {}));
+  assert.match(old.out, /older \\(counter 3004100\\) than the one already published \\(counter 3004200\\)/);
+  assert.equal(counterOf(), 3004200);
+  // The same counter again is not a rollback (a re-run of the same release).
+  release(3004200);
+  await b.run(["publish-release", src], {});
+  assert.equal(counterOf(), 3004200);
+});
