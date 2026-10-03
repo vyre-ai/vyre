@@ -169,7 +169,8 @@ test("bridges: a projection delivers only allowed fields with scoped ids, and st
   const row = await h.ok("bridges.project", { projection: b.id, event: ev }, "module:test");
   assert.deepEqual(row.data, { name: "Dana Harlow" });
   assert.equal(row.trust, "external");
-  assert.ok(!JSON.stringify(row).includes("ev_origin") && !JSON.stringify(row).includes("c1"), "the origin's ids do not cross");
+  // The scoped ids are random hex, so a bare "c1" turns up in them by chance (about a third of runs): look for the origin's whole id instead.
+  assert.ok(!/ev_origin|\/c1(?![0-9a-z])/.test(JSON.stringify(row)), "the origin's ids do not cross: " + JSON.stringify(row));
   assert.equal(await h.ok("bridges.project", { projection: b.id, event: { ...ev, type: "client.deleted" } }, "module:test"), null, "outside the selector: nothing");
   assert.ok(h.w.records.northwind.projected_event, "it landed in the destination's own records");
   await h.ok("bridges.revoke", { person: "alex", bridge: b.id, space: "harlow" });
