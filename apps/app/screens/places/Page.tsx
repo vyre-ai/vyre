@@ -1,6 +1,6 @@
 import { ScrollView, View, useWindowDimensions } from "react-native";
 import { useRouter } from "expo-router";
-import { Banner, Button, Card, Chip, Icon, Segmented, Sheet, Text, PHONE_MAX, type IconName } from "@vyre/ui";
+import { Banner, Button, Card, Chip, Icon, Segmented, Sheet, Text, PHONE_MAX, haptic, type IconName } from "@vyre/ui";
 import { SPACES, useScope, type Scope, type SpaceId } from "./scope";
 
 /** True below the phone width. The same test the theme uses. */
@@ -91,7 +91,7 @@ export function FaceIdSheet({ open, onClose, title, body, confirm, onConfirm, ch
     <Sheet open={open} onClose={onClose} title={title}>
       <Text tone="muted">{body}</Text>
       {children}
-      <Button kind="primary" icon="faceid" label={confirm} onPress={() => { onClose(); onConfirm(); }} />
+      <Button kind="primary" icon="faceid" label={confirm} onPress={() => { onClose(); haptic.approve(); onConfirm(); }} />
       <Button kind="ghost" label="Not now" onPress={onClose} />
     </Sheet>
   );

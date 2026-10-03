@@ -76,6 +76,8 @@ last_error() { esc=$(printf '\033'); sed "s/$esc\\[[0-9;]*m//g" "$TMP/err" 2>/de
 
 # json_field NAME: a string field out of the JSON on stdin (the answers here are flat).
 json_field() { tr -d '\n' | sed -n "s/.*\"$1\" *: *\"\\([^\"]*\\)\".*/\\1/p"; }
+# json_choice N: the Nth of the three sets of words in choices
+json_choice() { tr -d '\n' | sed -n "s/.*\"choices\" *: *\\[ *\"\\([^\"]*\\)\" *, *\"\\([^\"]*\\)\" *, *\"\\([^\"]*\\)\".*/\\$1/p"; }
 
 install_box() {
   if command -v "$WRAPPER" >/dev/null 2>&1 && "$WRAPPER" call system.info '{}' >/dev/null 2>&1; then
@@ -146,10 +148,11 @@ show_code() {
   fi
   if [ "${VYRE_NO_PROMPT:-0}" = 1 ] || ! [ -r /dev/tty ]; then
     say ""
-    say "  When the app asks, this server shows who is asking and three words. See them with:"
+    say "  When the app asks, this server shows who is asking and three sets of three words. See them with:"
     say "    $WRAPPER call wink.server.pairing '{}'"
-    say "  and answer, only if the words match the ones in the app, with:"
-    say "    $WRAPPER call wink.server.pair.answer '{\"yes\":true}'"
+    say "  and answer by picking the set that matches the three words the app shows (1, 2 or 3):"
+    say "    $WRAPPER call wink.server.pair.answer '{\"yes\":true,\"pick\":1}'"
+    say "  A bare yes is refused. To say no: $WRAPPER call wink.server.pair.answer '{\"yes\":false}'"
     return 0
   fi
   say ""
@@ -159,15 +162,16 @@ show_code() {
     res=$(vyre_call wink.server.pairing '{}' || true)
     case "$res" in
       *'"asking":true'*|*'"asking": true'*)
-        who=$(printf '%s' "$res" | json_field name); said=$(printf '%s' "$res" | json_field words)
-        printf '\n  Pair this server to %s? Words: %s. The app shows the same words. [y/N] ' "$who" "$said" >/dev/tty
+        who=$(printf '%s' "$res" | json_field name)
+        c1=$(printf '%s' "$res" | json_choice 1); c2=$(printf '%s' "$res" | json_choice 2); c3=$(printf '%s' "$res" | json_choice 3)
+        printf '\n  Pair this server to %s?\n  Which three words does the app show?\n    1) %s\n    2) %s\n    3) %s\n  Type 1, 2 or 3 (anything else is no): ' "$who" "$c1" "$c2" "$c3" >/dev/tty
         ans=""
         read -r ans </dev/tty || ans=""
         case "$ans" in
-          y|Y|yes|YES|Yes)
-            if vyre_call wink.server.pair.answer '{"yes":true}' >/dev/null; then
+          1|2|3)
+            if vyre_call wink.server.pair.answer "{\"yes\":true,\"pick\":$ans}" | grep -q '"yes": *true'; then
               say "  Yes. The app finishes the pairing and tells you when this server is added; if it says it could not, follow what it says."
-            else say "  The question had already run out. Nothing was paired. Run this line again."; return 1; fi ;;
+            else say "  Those are not the words the app shows, or the question had run out. Nothing was paired. Run this line again."; return 1; fi ;;
           *) vyre_call wink.server.pair.answer '{"yes":false}' >/dev/null || true; say "  No. Nothing was paired." ;;
         esac
         return 0 ;;

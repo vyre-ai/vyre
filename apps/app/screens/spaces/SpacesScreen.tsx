@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Avatar, Button, Card, Chip, Divider, Field, Row, Segmented, Sheet, Text, showToast, markRef, spaceRef } from "@vyre/ui";
+import { Avatar, Button, Card, Chip, Divider, Field, Row, Segmented, Sheet, Text, showToast, markRef, spaceRef, haptic } from "@vyre/ui";
 import { Footnote, Page, Sec } from "../places/Frame";
 import { usePhone } from "../places/Page";
 import { FaceIdSheet, type FaceAsk } from "../shell/FaceIdSheet";
@@ -85,7 +85,7 @@ export function SpacesScreen() {
               </View>
             ) : null}
             <View className="flex-row flex-wrap gap-s2">
-              <Button kind="primary" label="Save" onPress={() => { const m = member(sheet.id)!; setRole(m.id, sheet.role, { scope: sheet.scope, days: Number(sheet.days) }); setSheet(null); showToast(`${m.name} is now ${roleLabel(sheet.role)}.`); }} />
+              <Button kind="primary" label="Save" onPress={() => { const m = member(sheet.id)!; setRole(m.id, sheet.role, { scope: sheet.scope, days: Number(sheet.days) }); setSheet(null); haptic.approve(); showToast(`${m.name} is now ${roleLabel(sheet.role)}.`); }} />
               <Button kind="ghost" label="Cancel" onPress={() => setSheet(null)} />
               <View className="flex-1" />
               <Button kind="hold" label={`Remove ${member(sheet.id)?.name}`} onPress={() => { const m = member(sheet.id)!; remove(m.id); setSheet(null); showToast(`${m.name} was removed from Harlow Legal.`); }} />

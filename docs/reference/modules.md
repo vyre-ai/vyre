@@ -51,7 +51,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`memory`](#memory) | `core/memory` | `box`, `local` | 46 | 15 | capsule, cli, deck |
 | [`mentions`](#mentions) | `core/mentions` | `box`, `local` | 3 | 0 | none |
 | [`names`](#names) | `core/names` | `box` | 12 | 12 | cli |
-| [`network`](#network) | `core/network` | `box` | 9 | 4 | capsule, cli, deck |
+| [`network`](#network) | `core/network` | `box` | 13 | 4 | capsule, cli, deck |
 | [`onboard`](#onboard) | `core/onboard` | `box`, `local` | 14 | 2 | none |
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 15 | 7 | capsule, cli, deck |
 | [`presence`](#presence) | `core/presence` | `box`, `local` | 13 | 6 | capsule, cli, deck |
@@ -81,12 +81,12 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 3 | 2 | cli |
-| [`vault`](#vault) | `core/vault` | `box`, `local` | 129 | 43 | capsule, cli, deck |
+| [`vault`](#vault) | `core/vault` | `box`, `local` | 129 | 44 | capsule, cli, deck |
 | [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 20 | 7 | capsule, cli, deck |
-| [`wink`](#wink) | `core/wink` | `box` | 44 | 31 | capsule, cli, deck |
+| [`wink`](#wink) | `core/wink` | `box` | 48 | 32 | capsule, cli, deck |
 | [`work`](#work) | `core/work` | `box`, `local` | 15 | 0 | cli |
 
 ## about
@@ -108,6 +108,7 @@ A few lines on who the user is, cached for every Claude Code session to start wi
 - Tools: [13](tools.md#agents), 2 of them only for other modules
 - Emits: no events
 - Shows on: cli
+- Needs daemon: `credentials`
 - Needs vault: `per-agent`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
@@ -477,7 +478,7 @@ Who besides the owner the box's tailnet listener serves: guests from other tailn
 - Folder: `core/network`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [9](tools.md#network)
+- Tools: [13](tools.md#network)
 - Emits: [4 events](events.md#network)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -769,7 +770,7 @@ Project teammates (ADR 0031): a named, persistent agent per role per project, a 
 - Tools: [56](tools.md#threads), 19 of them only for other modules
 - Emits: [36 events](events.md#threads)
 - Shows on: cli
-- Needs daemon: `kernelSession`, `sandbox`
+- Needs daemon: `kernelSession`, `sandbox`, `credentials`
 - Needs vault: `claude-setup-token`, `anthropic-api-key`, `per-account`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
@@ -813,7 +814,7 @@ Is a newer Vyre out: one daily look at the releases, one answer every surface dr
 - Runs on: `box`, `local`
 - Requires: none
 - Tools: [129](tools.md#vault), 13 of them only for other modules
-- Emits: [43 events](events.md#vault)
+- Emits: [44 events](events.md#vault)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
@@ -874,8 +875,8 @@ Pairing as grants: every way in is a Wink (scan a code, or type two-sided codes)
 - Folder: `core/wink`, version 0.1.0
 - Runs on: `box`
 - Requires: `relay`
-- Tools: [44](tools.md#wink), 1 of them only for other modules
-- Emits: [31 events](events.md#wink)
+- Tools: [48](tools.md#wink), 1 of them only for other modules
+- Emits: [32 events](events.md#wink)
 - Listens for: `relay.code-asked`, `relay.invite-redeemed`, `device.paired`, `device.removed`
 - Shows on: capsule, cli, deck
 - Needs vault: `per-storage`

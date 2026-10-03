@@ -30,6 +30,8 @@ export function tighten(parent, want) {
   const pc = parent.conditions || {}, wc = want.conditions || {};
   // A condition we do not know cannot be carried and so cannot be kept: refuse rather than drop it (the kernel's own check will refuse a child missing it).
   for (const k of Object.keys(pc)) if (!KNOWN.has(k)) throw loosens(`unknown condition ${k}`);
+  // The same for what the teammate asks for: a key we do not know is a typo or a restriction nobody enforces, and silence would read as a limit that is not there.
+  for (const k of Object.keys(wc)) if (!KNOWN.has(k)) throw Object.assign(new Error(`unknown condition ${k}`), { code: "bad_input" });
   /** @type {any} */ const out = {};
   // presence: never lower
   const pp = pc.how?.presence ?? "none", wp = wc.how?.presence;
