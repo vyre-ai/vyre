@@ -395,8 +395,10 @@ restore_db() {
   [ -n "$f" ] || { echo "vyre: no pre-update backup is recorded in $BK/last" >&2; return 1; }
   compose stop vyre
   k="$BK/$(basename "$f" .tar.gz).key"
-  [ -f "$k" ] || { echo "vyre: no passphrase is kept for $f ($k)" >&2; return 1; }
-  compose run --rm --no-deps -T vyre vyre restore "$f" --force <"$k" || { echo "vyre: could not restore $f" >&2; return 1; }
+  # A backup this wrapper made has its passphrase beside it. One made by an older release's updater (0.1.x) has none: it is plain, and
+  # the release rolled back to is the one that made it, so its own restore reads it without a passphrase.
+  if [ -f "$k" ]; then kin=$k; else kin=/dev/null; fi
+  compose run --rm --no-deps -T vyre vyre restore "$f" --force <"$kin" || { echo "vyre: could not restore $f" >&2; return 1; }
   say "restored the database from $f"
 }
 
