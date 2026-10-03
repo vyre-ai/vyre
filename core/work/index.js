@@ -34,18 +34,19 @@ export default {
     const kernelOf = () => { const k = ctx.kernel; if (!k || typeof k.chainFor !== "function") throw unavailable(); return k; };
     const chainOf = (/** @type {any} */ extra) => kernelOf().chainFor(extra || {});
     /**
-     * The room this call is running in, from the running session and never from the tool's input (a model that can name the chat can leave it out). `[]` means
-     * the kernel says it is a chat of one person; more than one chain means a group. If the kernel cannot say which, or says group and gives no audience, the
+     * The room this call is running in, from the running session and never from the tool's input (a model that can name the chat can leave it out). `null` means
+     * the kernel says it is a chat of one person; otherwise it is the kernel's room handle (no chain of another person ever reaches this module). If the kernel cannot say which, or says group and gives no audience, the
      * call is refused: there is no fallback to the one to one view.
      */
     const audienceOf = async (/** @type {any} */ extra) => {
       const k = kernelOf();
-      if (typeof k.audienceFor !== "function") throw Object.assign(new Error("the room this runs in is not known, so nothing is built for it"), { code: "unavailable" });
+      const unknown = (/** @type {string} */ why) => Object.assign(new Error(why), { code: "unavailable" });
+      if (typeof k.audienceFor !== "function") throw unknown("the room this runs in is not known, so nothing is built for it");
       const room = await k.audienceFor(extra || {});
-      if (!room || typeof room.group !== "boolean") throw Object.assign(new Error("the room this runs in is not known, so nothing is built for it"), { code: "unavailable" });
-      if (!room.group) return [];
-      if (!Array.isArray(room.chains) || room.chains.length < 2) throw Object.assign(new Error("this is a group chat and its audience is not known, so nothing is built for it"), { code: "unavailable" });
-      return room.chains;
+      if (!room || typeof room.group !== "boolean") throw unknown("the room this runs in is not known, so nothing is built for it");
+      if (!room.group) return null;
+      if (!(room.size >= 2) || typeof room.read !== "function" || typeof room.canRead !== "function") throw unknown("this is a group chat and its audience is not known, so nothing is built for it");
+      return room;
     };
     const surfaceOf = () => surface || (surface = createToolSurface({ kernel: kernelOf(), space: kernelOf().space, types: async c => (kernelOf().definitions ? kernelOf().definitions(c) : []), actions: () => (kernelOf().actions ? kernelOf().actions() : []) }));
     const engineOf = () => {
@@ -86,7 +87,7 @@ export default {
         const ref = (/** @type {any} */ u) => { if (!urnOk(u)) return undefined; const [, , , type, id] = u.split("/"); return { type, id }; };
         const project = ref(input.project), record = ref(input.record);
         const lines = Object.fromEntries([...doing.values()].flatMap(d => [...(d.lines || [])]));
-        return buildSituation(k, await chainOf(extra), { space: k.space, ...(project ? { project } : {}), ...(record ? { record } : {}), doing: lines, audience: await audienceOf(extra) });
+        return buildSituation(k, await chainOf(extra), { space: k.space, ...(project ? { project } : {}), ...(record ? { record } : {}), doing: lines, room: await audienceOf(extra) });
       },
     });
 
@@ -137,14 +138,14 @@ export default {
     ctx.tool("work.know.search", {
       description: "Search the Space's records, events and session lines by meaning. Only sources the caller may read come back, each with its address.",
       input: obj({ query: { type: "string" }, k: { type: "integer" } }, ["query"]),
-      run: async (input, extra) => { const hits = await engineOf().search(await chainOf(extra), String(input.query), Math.min(Number(input.k) || 6, 12), { audience: await audienceOf(extra) }); return { hits, withheld: /** @type {any} */ (hits).withheld || 0 }; },
+      run: async (input, extra) => { const hits = await engineOf().search(await chainOf(extra), String(input.query), Math.min(Number(input.k) || 6, 12), { room: await audienceOf(extra) }); return { hits, withheld: /** @type {any} */ (hits).withheld || 0 }; },
     });
     ctx.tool("work.know.answer", {
       description: "Answer a question from the Space's own records and history. Every claim cites a source the caller may read; with none to cite it says so.",
       input: obj({ question: { type: "string" } }, ["question"]),
       run: async (input, extra) => {
         const chain = await chainOf(extra);
-        const result = await engineOf().answer(chain, String(input.question), { audience: await audienceOf(extra) });
+        const result = await engineOf().answer(chain, String(input.question), { room: await audienceOf(extra) });
         return { result, component: toComponent("work.know.answer", result) };
       },
     });
