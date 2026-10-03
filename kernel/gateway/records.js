@@ -9,6 +9,7 @@ import { KernelError } from "../core/errors.js";
 import { createGate } from "../core/gate.js";
 import { aggregate as aggregateRows } from "../store/query.js";
 import { isSealedShape } from "../store/values.js";
+import { expr as defaultExpr } from "../expr/index.js";
 
 /** The actions the gateway registers with the authorizer (contract 6.1). */
 export const RECORD_ACTIONS = Object.freeze([
@@ -136,11 +137,12 @@ export function createRecords(cfg) {
     const moved = !sf || from !== to;
     if (!moved) return {};
     if ((def.rules || []).length) {
-      if (!cfg.expr) throw new KernelError("unavailable", "this type has rules and no rule evaluator is wired, so the change was refused");
+      const expr = cfg.expr === undefined ? defaultExpr : cfg.expr; // null switches it off (the fail-closed test)
+      if (!expr) throw new KernelError("unavailable", "this type has rules and no rule evaluator is wired, so the change was refused");
       const order = sf ? { [sf.name]: (def.stages || []).map((/** @type {any} */ s) => s.name) } : {};
       for (const r of def.rules) {
         let ok = false;
-        try { ok = cfg.expr.evalExpr(cfg.expr.parseExpr(r.require), { values: merged, stageOrder: order }) === true; } catch { ok = false; }
+        try { ok = expr.evalExpr(expr.parseExpr(r.require), { values: merged, stageOrder: order }) === true; } catch { ok = false; }
         if (!ok) throw new KernelError("rule_failed", `the rule ${r.name || "(unnamed)"} does not hold for ${type}${to ? ` in ${to}` : ""}`);
       }
     }
