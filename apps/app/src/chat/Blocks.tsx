@@ -4,11 +4,12 @@
 // is the typed placeholder chip and never a value. Callbacks (open terminal, open in Drive, Face ID,
 // take over) arrive in `ctx`: the screen decides what they do.
 
-import { memo, useMemo, useState, type ReactNode } from "react";
+import { memo, useMemo, useRef, useState, type ReactNode } from "react";
 import { Image, Pressable, ScrollView, TextInput, View, StyleSheet } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { Button, Chip, Icon, IconButton, Text, useUiTheme } from "@vyre/ui";
 import { parseAnsi, stripAnsi } from "./ansi.js";
+import { readSelection } from "./highlight.js";
 import { countDiff, fileTree, parseUnified, sealedCount, sideBySide, TREE_AT, type Block, type DiffFile, type RecordField } from "./blocks.js";
 
 const S = StyleSheet.create({
@@ -62,6 +63,8 @@ export type BlockCtx = {
   onBranchFrom?: (uuid: string) => void;
   /** Group chats: reply in a thread to a message (its id and its author's name). */
   onReplyTo?: (message: string, name: string) => void;
+  /** Highlight to assistant: pin this (a part of it when the person selected one) above the composer as a quoted reference. Nothing is sent. */
+  onHighlight?: (h: { from: string; text: string; selected?: string; kind?: "message" | "terminal" }) => void;
   /** The tool is still running (live output, caret). */
   live?: boolean;
 };
@@ -109,6 +112,7 @@ const TERM_LINE = 20;
 export function TerminalBlock({ block, ctx, output, running }: { block: Extract<Block, { block: "terminal" }>; ctx: BlockCtx; output?: string; running?: boolean }) {
   const { color } = useUiTheme();
   const [open, setOpen] = useState(false);
+  const picked = useRef("");
   const text = output ?? block.output;
   const lines = useMemo(() => text.replace(/\n$/, "").split("\n"), [text]);
   const live = running ?? block.running;
@@ -146,6 +150,11 @@ export function TerminalBlock({ block, ctx, output, running }: { block: Extract<
         <Pressable accessibilityRole="button" accessibilityLabel="Copy output" onPress={() => copy(stripAnsi(text), ctx)} style={S.s8}>
           <Icon name="copy" tone="label" /><Text size="caption" style={{ color: ANSI.white }}>Copy</Text>
         </Pressable>
+        {ctx.onHighlight ? (
+          <Pressable accessibilityRole="button" accessibilityLabel="Highlight to assistant" onPressIn={() => { picked.current = readSelection(); }} onPress={() => ctx.onHighlight?.({ from: "terminal", text: `${block.command ? `$ ${block.command}\n` : ""}${stripAnsi(text).replace(/\n$/, "")}`, selected: picked.current, kind: "terminal" })} style={S.s8}>
+            <Icon name="chat" tone="label" /><Text size="caption" style={{ color: ANSI.white }}>Highlight to assistant</Text>
+          </Pressable>
+        ) : null}
         {ctx.onOpenTerminal ? (
           <Pressable accessibilityRole="button" accessibilityLabel="Open full terminal" onPress={() => ctx.onOpenTerminal?.(block.command)} style={S.s8}>
             <Icon name="terminal" tone="label" /><Text size="caption" style={{ color: ANSI.white }}>Open full terminal</Text>
