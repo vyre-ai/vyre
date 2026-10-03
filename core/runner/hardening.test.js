@@ -371,3 +371,22 @@ test("X-3: a checkpoint is never resumed without a verifier, with a bad seal, or
   sp.state.transcript.get("s1")[0].line = '{"type":"result","forged":true}';
   await assert.rejects(() => restore({ space: sp.sync, session: "s1", ...dst(), verify }), /does not verify/);
 });
+
+// ---- Windows lending is out of 0.3 -------------------------------------------------------------------------------------
+
+import { WINDOWS_LINE } from "./sandbox.js";
+import { place } from "./placement.js";
+test("Windows: lending is refused with one plain line, placement never says here, and nothing is reachable by accident", () => {
+  const old = process.env.VYRE_WINDOWS_LENDING; delete process.env.VYRE_WINDOWS_LENDING;
+  try {
+    assert.equal(WINDOWS_LINE, "Running a space's work on this computer isn't available on Windows yet. Your sessions run on the space's server.");
+    assert.equal(unavailable("win32"), WINDOWS_LINE);
+    assert.equal(workspaceUnavailable("win32"), WINDOWS_LINE);
+    assert.throws(() => driverFor("win32"), /isn't available on Windows yet/);
+    const calm = { onPower: true, awake: true, cpuPct: 1, memPct: 1 };
+    const p = place({ spaceAllows: true, memberAccepts: true, state: calm, runnerReady: unavailable("win32"), server: { available: true, hasRoom: true } });
+    assert.equal(p.where, "server");
+    assert.equal(place({ spaceAllows: true, memberAccepts: true, state: calm, runnerReady: unavailable("win32") }).where, "wait");
+    assert.throws(() => createRunner({ platform: "win32", base: "/x", space: "s", device: "d", vault: {}, sync: {}, grants: () => ({}) }), /isn't available on Windows yet/);
+  } finally { if (old !== undefined) process.env.VYRE_WINDOWS_LENDING = old; }
+});
