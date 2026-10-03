@@ -19,6 +19,8 @@ export class SealStore {
   key(space) { return hk(this.master, `vyre seal v1 ${space}`); }
   /** A keyed MAC for the sealing process's own state files (the presence key list): a file edited without the master key does not verify. */
   mac(data) { return crypto.createHmac("sha256", hk(this.master, "vyre seal state mac v1")).update(data).digest("base64url"); }
+  /** The kernel's own MAC key (K-3): derived from the master, held only here, never returned by any op. It MACs grants events and stored chains, so an assistant that can read the kernel's files still cannot forge either. `purpose` separates uses. */
+  kernelMac(purpose, data) { return crypto.createHmac("sha256", hk(this.master, `vyre kernel mac v1 ${purpose}`)).update(data).digest("base64url"); }
   /** A sealed marker in the encrypted store, beside the values: what the presence file must agree with, so deleting or rolling it back is detected. */
   anchorRead() { const r = this.read("values", ANCHOR, "_system"); return r ? JSON.parse(r.plaintext) : null; }
   anchorWrite(obj) { this.write("values", { ref: ANCHOR, space: "_system", record: "_", field: "anchor", class: "anchor" }, JSON.stringify(obj)); }

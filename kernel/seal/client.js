@@ -62,6 +62,11 @@ export function startSealer({ dir, sinks = {}, timeoutMs = 20_000, execPath = pr
       reinstate: i => withCtx("lease.reinstate", i, { member: i.member, device: i.device, proof: i.proof }),
       check: i => withCtx("lease.check", i, { lease: i.id }),
     },
+    /** The kernel's own MAC key lives in the sealing process (K-3): `mac` and `verify` take a purpose (separates uses: "grant-event", "chain") and the data as a string (canonical JSON). The key is never returned. */
+    kernel: {
+      mac: i => call("kernel.mac", { purpose: i.purpose, data: i.data }).then(r => r.mac),
+      verify: i => call("kernel.verify", { purpose: i.purpose, data: i.data, mac: i.mac }).then(r => r.ok),
+    },
     health: () => call("health"),
     close: () => new Promise(res => { if (closed) return res(); child.once("exit", () => res()); child.stdin.end(); setTimeout(() => child.kill(), 2000).unref(); }),
   };
