@@ -933,6 +933,7 @@ test("publish-release: root copies without following links and publishes only wh
   assert.deepEqual(published(), ["SHA256SUMS", "SHA256SUMS.sig", "shell.json"]);
   // A link in the caller's folder is copied as a link and refused: a file only root can read is never published through it.
   fs.rmSync(path.join(b.U, "status", "release"), { recursive: true });
+  fs.rmSync(path.join(b.U, "private", "release.prev"), { recursive: true, force: true });
   const secret = path.join(b.DIR, "root-only.txt");
   fs.writeFileSync(secret, "secret\n");
   write(RELEASE.privateKey);
@@ -947,7 +948,7 @@ test("publish-release: modules.json is published when the signed list has it, th
   const src = path.join(b.DIR, "src-rel");
   const rel = path.join(b.U, "status", "release");
   const release = (/** @type {number} */ counter, /** @type {string} */ extra = "") => {
-    const modules = JSON.stringify({ v: 1, counter, release: "0.3.0", modules: { work: { version: "0.1.0", tree: "a".repeat(64) } } });
+    const modules = JSON.stringify({ v: 1, counter, release: "0.3.0", modules: { work: { version: "0.1.0", tree: "a".repeat(64) } } }, null, 1) + "\n";
     const sums = Buffer.from(`${sha(modules)}  modules.json\n${sha("shell")}  shell.json\n${sha("tgz")}  vyre.tgz\n`);
     fs.rmSync(src, { recursive: true, force: true }); fs.mkdirSync(src);
     fs.writeFileSync(path.join(src, "SHA256SUMS"), sums);
@@ -1007,7 +1008,7 @@ test("L-1: an update whose module list is refused (an older counter) stops there
   const r = /** @type {any} */ (await b.run(["update"]));
   assert.notEqual(r.code, 0, r.out);
   assert.match(r.out, /older \(counter 3004100\) than the one already published \(counter 3004200\)/);
-  assert.equal(b.read(path.join(b.DIR, "VERSION")).trim().length > 0 ? JSON.parse(fs.readFileSync(path.join(rel, "modules.json"), "utf8")).counter : 0, 3004200, "the old list stays");
+  assert.equal(JSON.parse(fs.readFileSync(path.join(rel, "modules.json"), "utf8")).counter, 3004200, "the old list stays");
   assert.equal(b.read(path.join(b.FAKE, "running")), "orig", "the old image is the one running");
 });
 
@@ -1048,7 +1049,7 @@ test("L-2: update --rollback to a release with an older list asks the owner for 
   assert.match(r.out, /the owner has to approve going back/);
   assert.match(r.out, /not rolled back: the module list was not reset/);
   assert.equal(counter(), 3004200, "the list is untouched");
-  assert.equal(b.read(path.join(b.FAKE, "running")), "pulled-1", "the new image still runs");
+  assert.equal(b.read(path.join(b.FAKE, "running")), "built-1", "the new image still runs");
   // With the owner's reset: the image and the list go back together.
   fs.writeFileSync(path.join(b.FAKE, "reset-ok"), "1");
   r = /** @type {any} */ (await b.run(["update", "--rollback"], {}));
