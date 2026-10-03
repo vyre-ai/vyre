@@ -163,8 +163,8 @@ const SCREENS = [
       if (document.querySelectorAll('.pager .pager-slot').length !== 4) throw new Error('the pager still has a fifth page');` },
 ];
 
-// The Deck v2 passes, for showing the user the real thing (the sample world's data): Now, Chat, a thread, Projects, a project, Planner, Settings > Devices, in both
-// themes. Run with ONLY="^v2-" and DESKTOP=1440x900 for the laptop and the phone together.
+// The Deck v2 passes, for showing the user the real thing (the sample world's data): Now, Chat, a thread, Projects, a project, Planner, Settings > Devices, and the
+// generated /u/ screens, in both themes. Run with ONLY="^v2-" and DESKTOP=1440x900 for the laptop and the phone together.
 for (const [theme, suffix] of [[undefined, ""], ["paper", "-paper"]]) {
   const t = theme ? { theme } : {};
   SCREENS.push(
@@ -174,7 +174,15 @@ for (const [theme, suffix] of [[undefined, ""], ["paper", "-paper"]]) {
     { name: "v2-projects" + suffix, path: "/projects", wait: 3000, ...t },
     { name: "v2-project" + suffix, path: "/projects/harlow-legal", shell: "pushed", wait: 3000, ...t },
     { name: "v2-planner" + suffix, path: "/planner", shell: "pushed", wait: 3000, ...t },
-    { name: "v2-devices" + suffix, path: "/settings#devices", shell: "pushed", wait: 3500, ...t });
+    { name: "v2-devices" + suffix, path: "/settings#devices", shell: "pushed", wait: 3500, ...t },
+    // The generated screens of the UI build under /u/ (sample world), in the real Deck shell: Now, a project, Projects, a list, a record, a task, Appearance.
+    { name: "u-now" + suffix, path: "/u/now", wait: 3000, ...t },
+    { name: "u-project" + suffix, path: "/u/project/m1", shell: "pushed", wait: 3000, ...t },
+    { name: "u-projects" + suffix, path: "/u/projects", shell: "pushed", wait: 3000, ...t },
+    { name: "u-records" + suffix, path: "/u/records/contact", shell: "pushed", wait: 3000, ...t },
+    { name: "u-record" + suffix, path: "/u/record/m1", shell: "pushed", wait: 3000, ...t },
+    { name: "u-task" + suffix, path: "/u/task/k1", shell: "pushed", wait: 3000, ...t },
+    { name: "u-appearance" + suffix, path: "/u/appearance", shell: "pushed", wait: 3000, ...t });
 }
 
 let failed = 0;

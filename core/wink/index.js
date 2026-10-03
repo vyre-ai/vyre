@@ -17,12 +17,15 @@
 // opened it and never put on the event bus.
 
 import crypto from "node:crypto";
+import os from "node:os";
+import path from "node:path";
 import { createWinkCode } from "./code.js";
 import { createGrants, MIGRATIONS as GRANT_MIGRATIONS, spaceIdOf, timeId, base32 } from "./grants.js";
 import { card, removal, removed } from "./cards.js";
-import { createPairing, MIGRATIONS as DEVICE_MIGRATIONS, FLOW_KIND, ownDirectory } from "./pairing.js";
+import { createPairing, MIGRATIONS as DEVICE_MIGRATIONS, PEER_MIGRATIONS, FLOW_KIND, ADMIN_ROLES, ownDirectory, kernelDirectory, kernelHasRoles } from "./pairing.js";
 import { createStorageDevices, registerStorageTools, MIGRATIONS as STORAGE_MIGRATIONS } from "./storage/index.js";
 import { storageGrants } from "./storage/grants.js";
+import { attachPool } from "./storage/pool.js";
 import { seedFromKey } from "../../relay/client/join.js";
 
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
@@ -41,7 +44,7 @@ function owner(meta, what) {
     throw fail("denied", `${what} is the owner's`);
 }
 
-/** @param {{ ports?: import("./pairing.js").Ports, directory?: import("./pairing.js").Directory }} [inject] @returns {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
+/** @param {{ ports?: import("./pairing.js").Ports, directory?: import("./pairing.js").Directory, pool?: any, poolBackend?: (c: any, offer: any) => any }} [inject] @returns {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export function createWink(inject = {}) {
   return {
   async start(ctx) {
@@ -53,6 +56,7 @@ export function createWink(inject = {}) {
       ...GRANT_MIGRATIONS,
       ...DEVICE_MIGRATIONS,
       ...STORAGE_MIGRATIONS,
+      ...PEER_MIGRATIONS,
     ]);
     const db = ctx.store.db;
     let routeId = "";
@@ -138,7 +142,9 @@ export function createWink(inject = {}) {
     const openCode = async flow => {
       sweep();
       const c = await ensureCode();
-      if (codeOffer) { const prev = readOffer(codeOffer); if (prev && ["offered", "found"].includes(prev.state)) writeOffer(codeOffer, "closed", {}); }
+      // A new code always replaces the old one: the abandoned code is closed (its rendezvous goes back) and its offer is closed, so typing the old one fails plainly.
+      if (codeOffer) { const prev = readOffer(codeOffer); if (prev && ["offered", "found", "joining"].includes(prev.state)) writeOffer(codeOffer, "closed", { why: "replaced" }); }
+      c.cancel();
       codeOffer = newOffer(flow, "code", {});
       const made = await c.open();
       if (!made) { writeOffer(codeOffer, "closed", {}); throw fail("unavailable", "Can't connect. Check your internet connection. Nothing was lost."); }
@@ -204,14 +210,26 @@ export function createWink(inject = {}) {
     });
 
     // ---- pairing: devices belong to the identity (pairing.js) ----
-    const owner1 = async () => (await owner0()).id;
+    const ownerMeta = () => { try { const r = /** @type {any} */ (db.prepare("SELECT v FROM wink_meta WHERE k = 'owner'").get()); return r ? JSON.parse(r.v) : null; } catch { return null; } };
+    // The identity this box answers for: the one that adopted it (wink.server.adopt), else the one derived from its own route.
+    const owner1 = async () => { const m = ownerMeta(); return m && m.identity ? String(m.identity) : (await owner0()).id; };
+    const directory = inject.directory || (kernelHasRoles(ctx.kernel) ? kernelDirectory({ kernel: ctx.kernel, space: spaceId, name: () => String(ctx.config.name || "this space") })
+      : ownDirectory({ identity: owner1, space: spaceId, name: () => String(ctx.config.name || "this space") }));
     const pairing = createPairing({
       ctx, now, identity: owner1, space: spaceId, openCode, ack: ackOffer, owner,
-      directory: inject.directory || ownDirectory({ identity: owner1, space: spaceId, name: () => String(ctx.config.name || "this space") }),
+      // Who may pair to a space: the kernel's grants store when ctx.kernel offers it (work/kernel), else a fake that makes the box owner the owner of its own space.
+      directory,
       ports: inject.ports,
+      keyFile: path.join(ctx.paths && ctx.paths.root ? ctx.paths.root : path.join(os.homedir(), ".vyre"), "wink-keys.json"),
+      spaceNow: () => spaceCache,
       relayUrl: async () => { const r = /** @type {any} */ (await ctx.call("relay.status", {})); return String((r && r.data && r.data.url) || (ctx.config.relay && ctx.config.relay.url) || ""); },
     });
     pairing.tools();
+    /** A space's own name for a card, never its id. */
+    const spaceName = async (/** @type {string} */ id) => {
+      try { const m = (await directory.memberships(await owner1())).find(x => x.space === id); if (m && m.name) return String(m.name); } catch {}
+      return "this space";
+    };
     // A device that paired (a typed code, or the ring) is registered under the identity with its kind. No grant is written in any space.
     const registerDevice = async (/** @type {any} */ p) => {
       const identity = await owner1();
@@ -370,7 +388,7 @@ export function createWink(inject = {}) {
         const g = await grants();
         await adoptLegacy();
         const list = await g.list({ ...(input.status ? { status: input.status } : { status: "active" }), source: "wink:" });
-        const devices = pairing.devices.list(await owner1()).map(d => ({ ...d, card: card({ kind: /** @type {any} */ (d.kind), receiver: { name: d.name, fingerprint: d.fingerprint }, space: d.owner.kind === "space" ? d.owner.id : "Personal" }) }));
+        const devices = await Promise.all(pairing.devices.list(await owner1()).map(async d => ({ ...d, card: card({ kind: /** @type {any} */ (d.kind), receiver: { name: d.name, fingerprint: d.fingerprint }, space: d.owner.kind === "space" ? await spaceName(d.owner.id) : "Personal" }) })));
         return { devices, grants: await Promise.all(list.map(cardOf)) };
       },
     });
@@ -438,7 +456,7 @@ export function createWink(inject = {}) {
     const storageAdmin = {
       self: async () => owner0(),
       isAdmin: async (/** @type {string} */ person, /** @type {string} */ sp) => {
-        if (ctx.kernel && ctx.kernel.roles && ctx.kernel.roles.isAdmin) return Boolean(await ctx.kernel.roles.isAdmin(person, sp));
+        if (kernelHasRoles(ctx.kernel)) return (await kernelDirectory({ kernel: ctx.kernel, space: async () => sp, name: () => "" }).memberships(person)).some(m => ADMIN_ROLES.includes(m.role));
         return sp === (await spaceId());
       },
       nameOf: async (/** @type {any} */ o) => (o.kind === "person" ? "Personal" : String((ctx.config && ctx.config.name) || "this space")),
@@ -446,6 +464,13 @@ export function createWink(inject = {}) {
     const storage = createStorageDevices({ ctx, grants: storageGrants({ ctx, space: () => spaceCache }), vault: storageVault, admin: storageAdmin, space: spaceId });
     registerStorageTools(ctx, storage, "wink.storage");
     const stopStorage = storage.startTimer();
+    // The pool engine (work/sealing kernel/storage) is a library, not a module: a box that runs it passes the Pool and a backend factory (inject.pool,
+    // inject.poolBackend; PORT until it is merged). Devices join the pool, usage and drains flow back, on every pairing and removal and once a minute.
+    const poolLink = inject.pool && inject.poolBackend ? attachPool({ storage, pool: inject.pool, by: owner0, makeBackend: inject.poolBackend, log: m => ctx.log(m) }) : null;
+    const poolSync = () => { if (poolLink) poolLink.sync().catch(err => ctx.log(`wink storage: pool sync failed: ${/** @type {Error} */ (err).message}`)); };
+    const offStorage = [ctx.events.on("storage.paired", poolSync), ctx.events.on("storage.removed", poolSync)];
+    const poolTimer = poolLink ? setInterval(poolSync, 60_000) : null;
+    poolTimer?.unref();
 
     const timer = setInterval(sweep, 60_000);
     timer.unref();
@@ -453,6 +478,8 @@ export function createWink(inject = {}) {
       async stop() {
         clearInterval(timer);
         try { stopStorage(); } catch {}
+        if (poolTimer) clearInterval(poolTimer);
+        for (const off of offStorage) { try { off(); } catch {} }
         for (const off of [offCode, offPaired, offRemoved, offInvite]) { try { off(); } catch {} }
         try { code?.cancel(); } catch {}
       },

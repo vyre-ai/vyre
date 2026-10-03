@@ -6,13 +6,14 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { bootKernel } from "./boot.js";
+import { startSealer } from "./seal/client.js";
+import { deriveKernelKey, fileKernelKey } from "./keys.js";
+import { KernelError } from "./core/errors.js";
 import { createSupervisor } from "./modules/supervisor.js";
 import { createModuleHost } from "./modules/host.js";
 import { createEgress } from "./modules/egress.js";
-import { createFirstPartyCheck, verifyMinimums } from "./modules/firstparty.js";
-
-/** The release-signed minimum versions kept beside the pinned key, or null when absent or not signed by that key. */
-function readMinimums(dir, releaseFile) { try { return verifyMinimums(JSON.parse(fs.readFileSync(path.join(dir, "minimums.json"), "utf8")), fs.readFileSync(releaseFile, "utf8")); } catch { return null; } }
+import { createFirstPartyCheck, acceptMinimums } from "./modules/firstparty.js";
+import { RELEASE_KEY } from "../lib/release-sig.js";
 
 const B32 = "abcdefghijklmnopqrstuvwxyz234567";
 const rand32 = (/** @type {number} */ n) => Array.from(crypto.randomBytes(n), b => B32[b & 31]).join("");
@@ -28,23 +29,41 @@ export function homeIdentity(root) {
     id = { space: `spc_${rand32(12)}`, owner: `per_${rand32(26)}`, made_at: Date.now() };
     fs.writeFileSync(idFile, JSON.stringify(id), { mode: 0o600 });
   }
-  if (!fs.existsSync(keyFile)) fs.writeFileSync(keyFile, crypto.randomBytes(32).toString("hex"), { mode: 0o600 });
-  const key = Buffer.from(fs.readFileSync(keyFile, "utf8").trim(), "hex");
-  if (key.length !== 32) throw new Error("the kernel key is not 32 bytes: refusing to start the kernel");
-  return { ...id, key, dir };
+  return { ...id, dir, keyFile };
 }
 
 /**
- * @param {{ db: import("node:sqlite").DatabaseSync, root: string, log?: (m: string) => void, isFirstParty: (dir: string) => boolean,
+ * @param {{ releaseKey?: any, pathRule?: boolean, fileKey?: boolean, db: import("node:sqlite").DatabaseSync, root: string, log?: (m: string) => void, isFirstParty: (dir: string) => boolean,
  *   approvals?: (name: string) => string[], sealer?: any, door?: any }} cfg
  */
 export async function bootHomeKernel(cfg) {
   const id = homeIdentity(cfg.root);
-  const k = bootKernel({ db: cfg.db, space: id.space, owner: id.owner, owner_uid: process.getuid ? process.getuid() : 0, key: id.key, sealer: cfg.sealer, door: cfg.door });
-  const releaseFile = path.join(id.dir, "release.pub");
-  // A pinned release key turns first party into a signature check (and a minimum version, if the release signed minimums); without one the registry keeps its path rule
-  // and the flip is not safe (team/0.3/KERNEL-default-on.md).
-  const firstPartyCheck = cfg.firstPartyCheck || (fs.existsSync(releaseFile) ? createFirstPartyCheck({ releaseKey: fs.readFileSync(releaseFile, "utf8"), minimums: readMinimums(id.dir, releaseFile) }) : null);
+  // K-3: the kernel key comes from the sealing process, never from a file. A sealing process is started here unless one was given; if it cannot run safely on this
+  // host the kernel does not start (a developer may opt into a file key with VYRE_KERNEL_FILE_KEY=1).
+  const log = cfg.log || (() => {});
+  let sealer = cfg.sealer, ownSealer = false, key, legacyKeys = [];
+  if (!sealer && cfg.fileKey !== true && process.env.VYRE_KERNEL_FILE_KEY !== "1") {
+    try { sealer = startSealer({ dir: path.join(id.dir, "seal"), dev: process.env.VYRE_SEAL_DEV === "1", ...(process.env.VYRE_SEAL_PROFILE ? { profile: process.env.VYRE_SEAL_PROFILE } : {}) }); ownSealer = true; await sealer.health(); }
+    catch (e) { if (sealer) await sealer.close().catch(() => {}); throw new KernelError("key_custody", "the kernel will not start here: its key must live in the sealing process, and the sealing process cannot run safely on this machine (a server with its own OS user, or the OS keystore)", String(e && /** @type {any} */ (e).code || e)); }
+  }
+  if (sealer) {
+    key = await deriveKernelKey(sealer, id.space);
+    // A key file from before custody moved only verifies what it already sealed; nothing new is sealed under it, and it is removed once the log is read.
+    if (fs.existsSync(id.keyFile)) { try { legacyKeys = [Buffer.from(fs.readFileSync(id.keyFile, "utf8").trim(), "hex")]; } catch { /* unreadable: nothing to verify against */ } }
+  } else { log("kernel: DEVELOPER file key in use (VYRE_KERNEL_FILE_KEY=1); never the default, never for a real home"); key = fileKernelKey(id.dir); }
+  const k = bootKernel({ db: cfg.db, space: id.space, owner: id.owner, owner_uid: process.getuid ? process.getuid() : 0, key, legacyKeys, sealer, door: cfg.door });
+  // First party is a signature by the COMPILED release key (lib/release-sig.js), and a counter-signed list of minimum versions the release ships beside it
+  // (`<home>/kernel/minimums.json`, written by the updater; never taken from a file that decides the key). There is no fallback to a path rule: a checkout whose modules are
+  // not signed (development) must say so with VYRE_KERNEL_PATH_RULE=1, which is loud and never the default. A production kernel without a signature check does not start.
+  /** @type {((dir: string) => boolean) | null} */ let firstPartyCheck = cfg.firstPartyCheck || null;
+  if (!firstPartyCheck) {
+    if (cfg.pathRule === true || process.env.VYRE_KERNEL_PATH_RULE === "1") (cfg.log || (() => {}))("kernel: DEVELOPER path rule for first-party modules (VYRE_KERNEL_PATH_RULE=1); never the default, never for a real home");
+    else {
+      let minimums = null;
+      try { const doc = JSON.parse(fs.readFileSync(path.join(id.dir, "minimums.json"), "utf8")); const last = Number(fs.readFileSync(path.join(id.dir, "minimums.counter"), "utf8")) || 0; const d = acceptMinimums(doc, cfg.releaseKey || RELEASE_KEY, last); if (d) { minimums = d.minimums; fs.writeFileSync(path.join(id.dir, "minimums.counter"), String(d.counter), { mode: 0o600 }); } } catch { /* no document: first party needs a signature only */ }
+      firstPartyCheck = createFirstPartyCheck({ releaseKey: cfg.releaseKey || RELEASE_KEY, minimums });
+    }
+  }
   /** @type {any} */ let host;
   const egress = createEgress({ space: id.space, log: k.log, chains: k.chains, hostsOf: (/** @type {string} */ n) => host && host.hostsOf(n) });
   const supervisor = createSupervisor({ egress });
@@ -54,24 +73,5 @@ export async function bootHomeKernel(cfg) {
   const approvalsFile = path.join(id.dir, "module-approvals.json");
   /** The hosts a person approved on a module's install card, kept by name. */
   const approvals = cfg.approvals || ((/** @type {string} */ name) => { try { return JSON.parse(fs.readFileSync(approvalsFile, "utf8"))[name] || []; } catch { return []; } });
-  /**
-   * `ctx.kernel` for one first-party module (the registry calls this when it builds the module's context): the gateway's own surfaces, bound to this Space, and the
-   * module's own service chain. A module declares what it needs under `needs.kernel` ({ actions, prefixes }) and is given exactly that, as grants whose source is
-   * `install:<module>`; with nothing declared it is a service of the Space that can do nothing. `chain(meta)` is the Surfaces door's chain for a call that carries a
-   * session token, else the module's own service chain: a module never builds a chain.
-   * @param {any} m the module's manifest
-   */
-  const kernelFor = (/** @type {any} */ m) => {
-    const needs = (m.needs && m.needs.kernel) || { actions: [] };
-    k.grants.installModule(m.name, { actions: Array.isArray(needs.actions) ? needs.actions : [], prefixes: Array.isArray(needs.prefixes) ? needs.prefixes : undefined });
-    const gw = k.gateway;
-    return Object.freeze({
-      space: id.space,
-      records: gw.records, events: gw.events, grants: gw.grants, tasks: gw.ask, audit: gw.audit, authorize: gw.authorize, limits: gw.limits,
-      model: k.surfaces.model,
-      serviceChain: () => gw.serviceChain(m.name),
-      chain: (/** @type {any} */ meta) => (meta && typeof meta.token === "string" ? k.surfaces.chainFor(meta.token) : gw.serviceChain(m.name)),
-    });
-  };
-  return Object.freeze({ ...k, id: { space: id.space, owner: id.owner }, kernelFor, firstPartyCheck, moduleHost: host, supervisor, moduleApprovals: approvals, stop: async () => { await supervisor.stopAll(); } });
+  return Object.freeze({ ...k, id: { space: id.space, owner: id.owner }, kernelFor: k.kernelFor, firstPartyCheck, moduleHost: host, supervisor, moduleApprovals: approvals, stop: async () => { await supervisor.stopAll(); if (ownSealer && sealer) await sealer.close(); } });
 }

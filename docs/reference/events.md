@@ -503,9 +503,8 @@ Listens for: `floor.wrote`, `thread.deleted`
 
 | Event | Fields |
 | --- | --- |
-| `session.checkpointed` | not found in the source (the type is built at run time) |
 | `session.continued` | not found in the source (the type is built at run time) |
-| `session.placed` | not found in the source (the type is built at run time) |
+| `session.created` | not found in the source (the type is built at run time) |
 | `session.resumed` | not found in the source (the type is built at run time) |
 
 ## spaces
@@ -757,6 +756,7 @@ Listens for: `link.unpaired`
 | `wink.pair-done` | `kind`, `pairing`, `target`; sometimes `device` |
 | `wink.pair-failed` | `pairing`, `reason` |
 | `wink.pair-waiting` | `kind`, `pairing`, `target` |
+| `wink.peer-bound` | `device` |
 | `wink.removed` | none; sometimes `device`, `grant` |
 | `wink.server-adopted` | `owner` |
 | `wink.shared` | `device`, `grant` |

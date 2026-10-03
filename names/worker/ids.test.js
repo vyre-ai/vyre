@@ -66,20 +66,22 @@ async function identity(w, first, { kind = "person", ctxFor } = {}) {
   me.sealRecord = (name, sealed, by = first, via) => {
     const sealedHash = crypto.createHash("sha256").update(sealed).digest("hex");
     const ts2 = w.clock.t;
-    return { sealed, rec: { by: kind === "space" ? me.state.entries[0].eid : by.eid, ...(via ? { via } : {}), ts: ts2, sig: by.sig64(I.recordMessage({ name, id: me.state.id, by: kind === "space" ? me.state.entries[0].eid : by.eid, via, ts: ts2, sealedHash })) } };
+    const pos = kind === "space" && me.pos ? { vseq: me.pos.via_seq, vhead: me.pos.via_head } : {};
+    return { sealed, rec: { by: kind === "space" ? me.state.entries[0].eid : by.eid, ...(via ? { via } : {}), ...pos, ts: ts2, sig: by.sig64(I.recordMessage({ name, id: me.state.id, by: kind === "space" ? me.state.entries[0].eid : by.eid, via, ts: ts2, sealedHash, ...pos })) } };
   };
   me.genesis = async (entry, via) => {
-    const g = await C.makeGenesis({ kind, entry: entry || first.entry("device"), nonce: "nonce-" + first.eid.slice(0, 10), ts, via, sign: first.sign });
+    if (kind === "space" && ctxFor) me.pos = await C.viaOf(await ctxFor(entry.subject));
+    const g = await C.makeGenesis({ kind, entry: entry || first.entry("device"), nonce: "nonce-" + first.eid.slice(0, 10), ts, via, viaPos: me.pos, sign: first.sign });
     me.ops = [g];
-    me.state = await C.verifyChain(me.ops, { now: ts, resolve: ctxFor });
+    me.state = await C.verifyChain(me.ops, { now: ts, ownerOps: ctxFor });
     return me;
   };
   me.claim = (name, sealed = "c2VhbGVk", by, via) => me.post("/v1/ids/claim", { name, ops: me.ops, ...me.sealRecord(name, sealed, by, via) });
   me.append = async (body, signer, { via } = {}) => {
-    const op = await C.makeOp(me.state, body, { by: kind === "space" ? me.state.entries[0].eid : signer.eid, via, ts: w.clock.t, sign: signer.sign });
+    const op = await C.makeOp(me.state, body, { by: kind === "space" ? me.state.entries[0].eid : signer.eid, via, viaPos: me.pos, ts: w.clock.t, sign: signer.sign });
     return op;
   };
-  me.accept = async op => { me.state = await C.applyOp(me.state, op, { now: w.clock.t, resolve: ctxFor }); me.ops = [...me.ops, op]; return op; };
+  me.accept = async op => { me.state = await C.applyOp(me.state, op, { now: w.clock.t, ownerOps: ctxFor }); me.ops = [...me.ops, op]; return op; };
   return me;
 }
 const person = async (w, k = null) => identity(w, k || await key("phone")).then(i => i.genesis());
@@ -90,7 +92,7 @@ test("ids: a person and a space claim names; anyone resolves the whole chain by 
   const a = data(await alex.claim("alex"));
   assert.deepEqual([a.name, a.kind, a.mine, a.id], ["alex", "person", true, alex.state.id]);
   const chainsById = new Map();
-  const harlow = await identity(w, alex.first, { kind: "space", ctxFor: async (id, ts) => id === alex.state.id ? C.stateAt(alex.ops, ts, { now: ts + 1e9 }) : null });
+  const harlow = await identity(w, alex.first, { kind: "space", ctxFor: async id => id === alex.state.id ? alex.ops : null });
   await harlow.genesis({ eid: alex.state.id, kind: "owner", subject: alex.state.id, label: "Alex" }, alex.first.eid);
   const h = data(await harlow.claim("harlow", "aG9tZQ", alex.first, alex.first.eid));
   assert.equal(h.kind, "space");
@@ -131,7 +133,7 @@ test("ids: a claim must carry a valid chain and a record an entry signed; a forg
   assert.equal(code(await alex.post("/v1/ids/claim", { name: "alex", ops: alex.ops, sealed: "x".repeat(3000), rec: good.rec })), "bad_record");
   assert.equal(code(await alex.post("/v1/ids/claim", { name: "alex", ops: alex.ops, sealed: good.sealed })), "bad_record", "unsigned");
   w.clock.t += 10 * 60_000;
-  assert.equal(code(await alex.post("/v1/ids/claim", { name: "alex", ops: alex.ops, ...good })), "stale");
+  assert.equal(code(await alex.post("/v1/ids/claim", { name: "alex", ops: alex.ops, ...good })), "bad_time", "a genesis made ten minutes ago is not made now");
   assert.equal(code(await alex.get("/v1/ids/resolve?name=alex")), "not_found", "nothing was claimed by any of those");
 });
 
@@ -244,12 +246,13 @@ test("ids: an own domain becomes an alias only with a TXT an entry of the identi
 });
 
 test("ids: released soon is freed; released after use is a tombstone for good, and a newcomer cannot release", async t => {
-  const w = world(t), a = await person(w), b = await person(w), c = await person(w);
+  const w = world(t), a = await person(w), b = await person(w);
   data(await a.claim("alex"));
   assert.equal(data(await a.post("/v1/ids/release", { name: "alex", act: await act(w, a, "release", "alex") })).tombstone, false);
   data(await b.claim("alex"));
   w.clock.t += 2 * HOUR;
   assert.equal(data(await b.post("/v1/ids/release", { name: "alex", act: await act(w, b, "release", "alex") })).tombstone, true);
+  const c = await person(w);
   assert.equal(code(await c.claim("alex")), "taken", "a used name is never reassigned");
   assert.equal(data(await c.get("/v1/names/check?name=alex")).status, "taken");
   // a newcomer cannot release a name
@@ -263,7 +266,7 @@ test("ids: released soon is freed; released after use is a tombstone for good, a
 test("ids: a space's list holds its owners; a person who is not on a chain the directory knows cannot own", async t => {
   const w = world(t), alex = await person(w), phone = alex.first;
   data(await alex.claim("alex"));
-  const ctxFor = async (id, ts) => id === alex.state.id ? C.stateAt(alex.ops, ts, { now: ts + 1e9 }) : null;
+  const ctxFor = async id => id === alex.state.id ? alex.ops : null;
   const space = await identity(w, phone, { kind: "space", ctxFor });
   await space.genesis({ eid: alex.state.id, kind: "owner", subject: alex.state.id }, phone.eid);
   data(await space.claim("harlow", "aG9tZQ", phone, phone.eid));
@@ -283,4 +286,15 @@ test("ids: the unchanged box claim path still works beside identities", async t 
   const c = data(await box.post("/v1/names/claim", { name: "harlow" }));
   assert.equal(c.name, "harlow");
   assert.equal(code(await alex.claim("harlow")), "taken");
+});
+
+test("ids: the directory refuses an op made at an old time, so an adder cannot hand a new entry a past age", async t => {
+  const w = world(t), alex = await person(w), phone = alex.first;
+  data(await alex.claim("alex"));
+  const thief = await key("thief");
+  w.clock.t += 500 * HOUR;
+  const old = await C.makeOp(alex.state, { type: "add", entry: thief.entry("device") }, { by: phone.eid, ts: alex.state.ts, sign: phone.sign });
+  assert.equal(code(await alex.post("/v1/ids/append", { name: "alex", ops: [old] })), "bad_time");
+  const now = await alex.append({ type: "add", entry: thief.entry("device") }, phone);
+  assert.equal(data(await alex.post("/v1/ids/append", { name: "alex", ops: [now] })).seq, 1);
 });

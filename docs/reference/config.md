@@ -121,6 +121,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_HEADSCALE_BIN` | The `headscale` binary a space's network control plane runs. Under node --test there is none unless `VYRE_WINK_REAL=1`. | `core/wink/control/headscale.js` |
 | `VYRE_HOME` | Where Vyre keeps its data. Default `~/.vyre`. | `core/agents/index.js`, `core/config/dialogs.js`, `core/config/index.js`, `core/daemon/peer.js`, `core/harness/rules.js`, `core/learn/checks.js`, `core/sessions/index.js`, `core/sessions/spawn.js`, `core/switchboard/index.js`, `harness/lib/vyre.js`, `local/hands-chrome-mac/native-host/host.js`, `local/hands-chrome-mac/native-host/install.js` |
 | `VYRE_HOST_USER` | The user name in the `ssh -L` line `vyre up` prints for reaching the box. | `core/cli/commands/up.js` |
+| `VYRE_KERNEL` | Not described yet. | `core/daemon/index.js` |
 | `VYRE_LEGACY_DIRECT_MODEL` | Not described yet. | `core/sessions/index.js`, `local/voice/index.js` |
 | `VYRE_MODULE_SDK` | A folder holding the module SDK's testing.js, for a module's own tests made by `vyre module new` before the SDK is on npm. | `core/cli/commands/module.js` |
 | `VYRE_NAMES_DEV_CLOUDFLARE` | Not described yet. | `core/names/index.js` |
@@ -128,6 +129,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_NO_OPEN` | Never open a browser tab from the terminal. | `core/cli/commands/vault.js` |
 | `VYRE_NO_TIPS` | Not described yet. | `core/cli/index.js` |
 | `VYRE_NO_UP` | `vyre box add` installs Vyre without starting it. | `core/cli/commands/box.js` |
+| `VYRE_NO_WATCHDOG` | Not described yet. | `core/runner/runner.js` |
 | `VYRE_NPM_BIN` | The `npm` that `vyre update` installs a release with. Tests point it at a fake. | `core/cli/commands/update.js` |
 | `VYRE_OLD_PROJECTS_DIR` | Not described yet. | `core/config/index.js` |
 | `VYRE_ONBOARD_HOST` | The address onboarding listens on. Default `127.0.0.1`. | `core/onboard/loopback.js` |
@@ -152,7 +154,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_SUPERVISOR` | What runs vyred: `docker` inside the box container, which changes how `vyre up` restarts it. | `bin/vyre`, `core/cli/commands/module.js`, `core/cli/commands/up.js`, `core/cli/commands/update.js`, `core/cli/daemonctl.js`, `core/daemon/index.js` |
 | `VYRE_TAILSCALE_BIN` | The `tailscale` binary to run. A path that does not exist means no tailnet. | `core/cli/tailnet.js`, `core/link/mac.js`, `core/link/transport.js`, `core/relay/tailnet.js` |
 | `VYRE_TAILSCALE_UP_FLAGS` | Extra flags for `tailscale up`, space separated. | `core/names/tailscale.js` |
-| `VYRE_TEST` | Not described yet. | `core/names/directory.js`, `core/names/ids.js` |
+| `VYRE_TEST` | Not described yet. | `core/names/directory.js` |
 | `VYRE_TEXT_PRUNE_MS` | How long a thread's streamed text events are kept before they are pruned. | `core/switchboard/index.js` |
 | `VYRE_THREAD_SOCKETS` | Not described yet. | `core/daemon/threadsock.js` |
 | `VYRE_TILE_BIN` | Not described yet. | `local/sideview/index.js` |
