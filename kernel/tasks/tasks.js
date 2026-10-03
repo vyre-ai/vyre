@@ -69,6 +69,7 @@ export function createTasks(cfg) {
   const roleHolders = cfg.roleHolders || (() => []);
   /** @type {Map<string, any>} */ const tasks = new Map();
   /** @type {Map<string, any>} */ const bodies = new Map();
+  /** @type {Map<string, { approver_chain: any, use_proof: any }>} who approved a task and the sealed-use proof they signed with it (the sealing process verifies that proof itself) */ const approvedBy = new Map();
   /** @type {Map<string, string>} proposal id -> the task it proposes to skip */ const proposals = new Map();
   /** @type {Map<string, number>} */ const denials = new Map();
   /** @type {Map<string, number>} */ const coolDown = new Map();
@@ -208,7 +209,7 @@ export function createTasks(cfg) {
     },
 
     /** Human-only: exactly one person, a checker of this task and not its doer, with a signer's proof over this payload, once. */
-    async decide(/** @type {any} */ chain, /** @type {string} */ id, /** @type {{ outcome: "approved" | "rejected", reason?: string, proof?: any }} */ a) {
+    async decide(/** @type {any} */ chain, /** @type {string} */ id, /** @type {{ outcome: "approved" | "rejected", reason?: string, proof?: any, proofs?: { use?: any } }} */ a) {
       if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
       if (!isExactlyPerson(chain)) throw new KernelError("chain_not_person", "only a person on their own can decide a task");
       const person = chain.hops[0].actor;
@@ -238,6 +239,7 @@ export function createTasks(cfg) {
       }
       if (!cfg.presence.consume(p)) throw new KernelError("needs_presence", "that confirmation was already used");
       const n = put(t, { state: "done", outcome: "approved" });
+      approvedBy.set(id, { approver_chain: chain, use_proof: a.proofs && a.proofs.use ? a.proofs.use : null });
       note(chain, "task.approved", n, { payload_hash: t.payload.payload_hash, key_id: p.key_id }, d.decision);
       const proposed = proposals.get(id);
       if (proposed) { const pt = tasks.get(proposed); if (pt && (pt.state === "ready" || pt.state === "stuck")) { rule(pt, "skipped", "proposal_for_person_with_presence"); note(chain, "task.skipped", put(pt, { state: "skipped" }), { by: "approved proposal" }); } }
@@ -350,6 +352,16 @@ export function createTasks(cfg) {
     card(/** @type {string} */ id) {
       const t = get_(id);
       return buildCard(t, bodies.get(id));
+    },
+
+    /**
+     * What an approved task lets the sealing step do: the approver's own chain, the sealed-use proof they signed, and the canonical
+     * body the approval covered (so the refs, slots, template and record are the ones the person saw). Null until approved.
+     */
+    approvalFor(/** @type {string} */ id) {
+      const t = tasks.get(id), who = approvedBy.get(id), body = bodies.get(id);
+      if (!t || t.state !== "done" || t.outcome !== "approved" || !who || !body || sha256(canonical(body)) !== t.payload.payload_hash) return null;
+      return { approver_chain: who.approver_chain, use_proof: who.use_proof, body, payload_hash: t.payload.payload_hash };
     },
 
     /** Did a checker approve exactly this payload? Also true for a sealed use the approved payload listed by its hash. */
