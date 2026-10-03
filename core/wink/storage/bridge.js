@@ -223,12 +223,21 @@ function openSecret(priv, offer, s) {
 export async function pairFromHome({ secrets, linkTo }, d) {
   const link = linkTo(d.device);
   const shape = { offer: d.offer, kind: d.kind, location: d.location, capacity: d.capacity };
-  const opened = await link.call(ACCEPT_TOOL, { ...shape, step: "open" });
-  if (!opened || typeof opened.pub !== "string") throw err("unreachable", "That device did not answer the way a drive's device does.");
-  const secret = await secrets.make(d.offer);
-  try {
-    await link.call(ACCEPT_TOOL, { ...shape, step: "seal", ...sealSecret(opened.pub, d.offer, secret) });
-  } catch (e) { await secrets.remove(d.offer); throw e; }
+  const lost = (/** @type {any} */ e) => e && (e.code === "unreachable" || e.code === "timeout");
+  /** @type {string | null} */ let secret = null;
+  /** @type {any} */ let last;
+  // The connection can drop between the two steps: the whole hand-over is tried again (a new one-time key, the same secret), up to three times.
+  for (let n = 0; n < 3; n++) {
+    try {
+      const opened = await link.call(ACCEPT_TOOL, { ...shape, step: "open" });
+      if (!opened || typeof opened.pub !== "string") throw err("unreachable", "That device did not answer the way a drive's device does.");
+      secret ??= await secrets.make(d.offer);
+      await link.call(ACCEPT_TOOL, { ...shape, step: "seal", ...sealSecret(opened.pub, d.offer, secret) });
+      return;
+    } catch (e) { last = e; if (!lost(e)) break; }
+  }
+  if (secret) await secrets.remove(d.offer);
+  throw last;
 }
 
 /**

@@ -14,10 +14,13 @@ const err = (/** @type {string} */ code, /** @type {string} */ message) => Objec
 
 /**
  * Home side: the connections the devices hold open.
- * @param {{ waitMs?: number, log?: (m: string) => void }} [o] `waitMs`: how long a call waits for a device that is between connections.
+ * `beatMs`: a held session is pinged this often (a connection a NAT dropped quietly shows no pong, and is closed so the device's new one is used).
+ * `raceMs`: a call with no answer after this long makes a ping; no pong means the session is dead, it is closed and the call goes down the next one (a call
+ * that is only slow, with a pong, is left alone). Calls are tried on at most `attempts` sessions; each frame the pool sends is idempotent by key.
+ * @param {{ waitMs?: number, beatMs?: number, raceMs?: number, probeMs?: number, attempts?: number, log?: (m: string) => void }} [o] `waitMs`: how long a call waits for a device that is between connections.
  */
 export function createHolds(o = {}) {
-  const waitMs = o.waitMs ?? 15_000, log = o.log || (() => {});
+  const waitMs = o.waitMs ?? 15_000, beatMs = o.beatMs ?? 10_000, raceMs = o.raceMs ?? 5000, probeMs = o.probeMs ?? 2500, attempts = o.attempts ?? 3, log = o.log || (() => {});
   /** @type {Map<string, any[]>} */ const sessions = new Map();
   /** @type {Map<string, Array<() => void>>} */ const waiting = new Map();
   const idOf = (/** @type {string} */ caller) => String(caller).replace(/^device:/, "");
@@ -28,7 +31,16 @@ export function createHolds(o = {}) {
     const id = idOf(caller);
     const list = sessions.get(id) || [];
     list.push(session); sessions.set(id, list);
-    session.onclose = (/** @type {string} */ why) => { openOne(id); log(`wink storage: the connection held by ${id} closed (${String(why).slice(0, 60)})`); };
+    /** @type {any} */ let beat = null;
+    session.onclose = (/** @type {string} */ why) => { if (beat) clearInterval(beat); openOne(id); log(`wink storage: the connection held by ${id} closed (${String(why).slice(0, 60)})`); };
+    if (typeof session.ping === "function" && beatMs > 0) {
+      let busy = false;
+      beat = setInterval(async () => {
+        if (busy || session.closed) return; busy = true;
+        try { const r = await session.ping(probeMs); if (r === null && !session.closed) { log(`wink storage: the connection held by ${id} did not answer a ping, closing it`); session.close("no pong"); } } catch { /* closed meanwhile */ } finally { busy = false; }
+      }, beatMs);
+      beat.unref?.();
+    }
     for (const w of waiting.get(id) || []) w();
     waiting.delete(id);
   }
@@ -45,6 +57,22 @@ export function createHolds(o = {}) {
     });
   }
 
+  /** One call with a watch: no answer in raceMs makes a ping, and no pong closes the session (the call then rejects as unreachable). */
+  function raced(/** @type {any} */ s, /** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ opt) {
+    return new Promise((resolve, reject) => {
+      let done = false;
+      const end = (/** @type {(v: any) => void} */ f, /** @type {any} */ v) => { if (done) return; done = true; clearInterval(t); f(v); };
+      const t = setInterval(async () => {
+        if (done || typeof s.ping !== "function") return;
+        let rtt = null; try { rtt = await s.ping(probeMs); } catch { /* closed */ }
+        if (done) return;
+        if (rtt === null) { log("wink storage: a call got no answer and the connection did not answer a ping, closing it"); try { s.close("no pong"); } catch { /* gone */ } end(reject, err("unreachable", "the connection stopped answering")); }
+      }, raceMs);
+      t.unref?.();
+      s.call(tool, input, opt).then((/** @type {any} */ v) => end(resolve, v), (/** @type {any} */ e) => end(reject, e));
+    });
+  }
+
   return {
     onSession,
     /** Is the device connected right now? @param {string} device */
@@ -57,9 +85,14 @@ export function createHolds(o = {}) {
       const id = idOf(device);
       return {
         async call(/** @type {string} */ tool, /** @type {any} */ input = {}, /** @type {{ timeoutMs?: number }} */ opt = {}) {
-          const s = await until(id, waitMs);
-          if (!s) throw err("unreachable", "That device is not connected to the space's home right now.");
-          return s.call(tool, input, opt);
+          /** @type {any} */ let last = null;
+          for (let n = 0; n < attempts; n++) {
+            const s = await until(id, waitMs);
+            if (!s) throw last || err("unreachable", "That device is not connected to the space's home right now.");
+            try { return await raced(s, tool, input, opt); }
+            catch (e) { if (!e || e.code !== "unreachable") throw e; last = e; }
+          }
+          throw last;
         },
       };
     },
