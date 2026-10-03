@@ -15,9 +15,8 @@ const KIT_ID_RE = /^[a-z][a-z0-9-]*$/;
 import { FIELD_KINDS as KERNEL_KINDS, SEAL_CLASSES as KERNEL_SEAL_CLASSES, TASK_HOW as KERNEL_TASK_HOW, TASK_OUTPUT_KINDS as KERNEL_OUTPUT_KINDS } from "../../kernel/contracts/index.js";
 
 /** The kinds a definition file may call, one per kernel field kind. `stage` is made with defineStage. */
-/** The name the SDK uses for a link to another record is `link` (ruling 3 Oct); the kernel still calls that kind `ref`, so it is mapped here. Flip these two when the kernel renames. */
-export const KERNEL_LINK_KIND = "ref";
-export const FIELD_KINDS = KERNEL_KINDS.filter((k) => k !== "stage" && k !== "link" && k !== KERNEL_LINK_KIND).concat(["link"]);
+export const KERNEL_LINK_KIND = "link";
+export const FIELD_KINDS = KERNEL_KINDS.filter((k) => k !== "stage");
 export const SEAL_CLASSES = KERNEL_SEAL_CLASSES;
 export const SEAL_LEVELS = ["ai", "human"];
 export const TASK_HOW = KERNEL_TASK_HOW;
@@ -66,7 +65,7 @@ function fieldBuilder(kind) {
     onlyKeys(opts, [...COMMON, ...(FIELD_OPTS[kind] ?? [])], `defineField.${kind}`);
     /** @type {Record<string, any>} */ const f = { kind, label: opts.label === undefined ? undefined : str(opts.label, `defineField.${kind}.label`, { max: 120 }), description: opts.description === undefined ? undefined : str(opts.description, `defineField.${kind}.description`), required: opts.required === undefined ? undefined : bool(opts.required, `defineField.${kind}.required`) };
     if (kind === "choice" || kind === "multi_choice") { f.options = strList(main, `defineField.${kind} options`, 200); if (!f.options.length) bad(`defineField.${kind}`, "Needs at least one option"); if (new Set(f.options).size !== f.options.length) bad(`defineField.${kind}`, "Options must be different"); }
-    if (kind === "link") { f.to = name(opts.to, "defineField.link.to"); f.kind = KERNEL_LINK_KIND; }
+    if (kind === "link") f.to = name(opts.to, "defineField.link.to");
     if (kind === "sealed") {
       if (!SEAL_CLASSES.includes(opts.class)) bad("defineField.sealed.class", `Class must be one of ${SEAL_CLASSES.join(", ")}`);
       const level = opts.level ?? "ai"; if (!SEAL_LEVELS.includes(level)) bad("defineField.sealed.level", `Level must be one of ${SEAL_LEVELS.join(", ")}`);

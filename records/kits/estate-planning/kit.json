@@ -67,7 +67,7 @@
         },
         {
           "name": "client",
-          "kind": "ref",
+          "kind": "link",
           "label": "Client",
           "to": "contact"
         },

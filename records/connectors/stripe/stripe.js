@@ -6,11 +6,10 @@
 //   verify  the Stripe-Signature header (HMAC-SHA256 over "<t>.<body>", 5 minute tolerance, any v1)
 //   refuse  live-mode events unless the connector was told to accept them (this build is test mode)
 //   map     checkout.session.completed, payment_intent.succeeded, invoice.paid, charge.succeeded
-//   emit    payment.received through the gateway, once per Stripe event id
-//   run     the kit flow that listens for payment.received (find or create the contact, then the matter)
+//   emit    payment.received into the Space's event log (once per payment), where the Flow runner hears it
+//   run     the Kit's Flow for payment.received (find or create the contact, then the matter) runs on the kernel's runner
 
 import crypto from "node:crypto";
-import { runFlow } from "../../flows/run.js";
 
 const TOLERANCE_SEC = 300;
 export const HANDLED = ["checkout.session.completed", "payment_intent.succeeded", "invoice.paid", "charge.succeeded"];
@@ -76,12 +75,19 @@ export function normalize(ev) {
 
 /**
  * The webhook handler. Returns what to answer Stripe; Stripe retries anything that is not 2xx.
- * @param {{ secret: string, gateway: { emit: Function, find: Function, create: Function, urn?: Function }, kit: any, allowLive?: boolean,
+ * `host` is the Space's records host (records/host.js): `emit` writes the event, `settle` waits for the runs it started,
+ * `flows.runner` says how they ended.
+ * @param {{ secret: string, host: { emit: Function, settle: Function, flows: { runner: any } }, allowLive?: boolean,
  *   now?: () => number, onRejected?: (reason: string) => void }} o
  */
 export function createStripeHandler(o) {
-  const flow = (o.kit.flows ?? []).find((/** @type {any} */ f) => f.on?.event === "payment.received");
-  /** @type {Map<string, Promise<any>>} one delivery at a time per payment */ const inflight = new Map();
+  /** @type {Map<string, Promise<any>>} one delivery at a time per customer, so two payments cannot each create the contact */
+  const inflight = new Map();
+  /** The runs an event started, and whether any of them did not finish. @param {string} eventId */
+  async function runsOf(eventId) {
+    const runs = (await o.host.flows.runner.listRuns({ limit: 1000 })).filter((/** @type {any} */ r) => r.trigger && r.trigger.key === eventId);
+    return { runs, bad: runs.filter((/** @type {any} */ r) => r.state === "failed" || r.state === "paused") };
+  }
   return async function handle(/** @type {Record<string, string | string[] | undefined>} */ headers, /** @type {string} */ rawBody) {
     const sigHeader = headers["stripe-signature"]; const sig = Array.isArray(sigHeader) ? sigHeader[0] : sigHeader;
     const v = verifySignature(rawBody, sig, o.secret, { now: o.now });
@@ -91,18 +97,28 @@ export function createStripeHandler(o) {
     const pay = normalize(ev);
     if (!pay) return { status: 200, body: { ignored: `${ev.type} is not a received payment` } };
     if (pay.livemode && !o.allowLive) return { status: 200, body: { ignored: "live-mode event; this connector is in test mode" } };
-    if (!flow) return { status: 500, body: { error: "the kit has no flow for payment.received" } };
-    // One Checkout payment arrives as several Stripe events (the session, the payment intent, the charge).
-    // The payment.received event is written once per payment; the flow runs on every delivery, because it
-    // only finds or creates, and a retry after a failed run must still finish the job.
+    // One Checkout payment arrives as several Stripe events (the session, the payment intent, the charge). The event is written
+    // once per payment. If its run did not finish (the store was down), the next delivery writes a retry event: the Flow only
+    // finds or creates, so running it again finishes the job and never doubles it.
     const run = async () => {
-      const { event, duplicate } = o.gateway.emit("payment.received", pay, { source: "connector:stripe", key: `stripe:payment:${pay.payment}` });
-      const r = await runFlow(flow, pay, o.gateway);
-      return { status: 200, body: { event: event.id, duplicate, steps: r.steps } };
+      const key = `stripe:payment:${pay.payment}`;
+      let { event, duplicate } = await o.host.emit("payment.received", pay, { source: "connector:stripe", key, subject: `vyre://${o.host.space}/payment/${pay.payment}` });
+      await o.host.settle();
+      let { runs, bad } = await runsOf(event.id);
+      if (duplicate && bad.length) {
+        const n = (await o.host.flows.runner.listRuns({ limit: 1000 })).filter((/** @type {any} */ r) => r.trigger?.event?.corr === key || r.trigger?.event?.data?.payment === pay.payment).length;
+        ({ event } = await o.host.emit("payment.received", { ...pay, retry: n }, { source: "connector:stripe", key: `${key}#retry${n}`, subject: `vyre://${o.host.space}/payment/${pay.payment}` }));
+        await o.host.settle();
+        ({ runs, bad } = await runsOf(event.id));
+        duplicate = false;
+      }
+      if (bad.length) return { status: 500, body: { error: bad[0].error?.message ?? "the flow did not finish", event: event.id } };
+      const steps = runs.flatMap((/** @type {any} */ r) => Object.entries(r.steps ?? {}).map(([id, st]) => ({ id, status: /** @type {any} */ (st).status })));
+      return { status: 200, body: { event: event.id, duplicate, runs: runs.map((/** @type {any} */ r) => r.id), steps } };
     };
-    const prior = inflight.get(pay.payment);
-    const p = (prior ?? Promise.resolve()).then(run, run).finally(() => { if (inflight.get(pay.payment) === p) inflight.delete(pay.payment); });
-    inflight.set(pay.payment, p);
+    const prior = inflight.get(pay.customer);
+    const p = (prior ?? Promise.resolve()).then(run, run).finally(() => { if (inflight.get(pay.customer) === p) inflight.delete(pay.customer); });
+    inflight.set(pay.customer, p);
     try { return await p; } catch (e) { return { status: 500, body: { error: String(/** @type {Error} */ (e).message).slice(0, 200) } }; }
   };
 }

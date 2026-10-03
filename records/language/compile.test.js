@@ -23,7 +23,7 @@ test("the estate planning kit compiles to the stored form", () => {
   assert.equal(kit.templates[0].name, "welcome");
   assert.equal(kit.flows[0].trigger.event, "payment.received");
   assert.deepEqual(kit.flows[0].steps.map((x) => [x.id, x.kind]), [["client", "upsert"], ["matter", "upsert"]]);
-  assert.equal(kit.types[1].fields.find((f) => f.name === "client").kind, "ref", "the SDK says link; the kernel kind is still ref");
+  assert.equal(kit.types[1].fields.find((f) => f.name === "client").kind, "link", "a link to another record");
 });
 
 test("round trip: stored to text to stored is identical, and the text is a fixed point", () => {

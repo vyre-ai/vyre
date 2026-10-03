@@ -33,7 +33,7 @@ export class GatewayLite {
   /** Templates give a ref as its urn text; the store wants { urn }. @param {string} type @param {string} field @param {any} v */
   #coerce(type, field, v) {
     const f = this.types.get(type)?.fields.find((/** @type {any} */ x) => x.name === field);
-    if (f?.kind === "ref" && typeof v === "string") return { urn: v };
+    if (f?.kind === "link" && typeof v === "string") return { urn: v };
     return v;
   }
   /** @param {string} type @param {Record<string, any>} fields */

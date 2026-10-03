@@ -24,7 +24,7 @@ import { twentyGet } from "./client.js";
 import { planType, pascal, selection, checkData, toInput, fromRow, toFilter, toOrderBy, PlanError, VERSION_FIELD } from "./plan.js";
 
 /** The conformance suite revision this store last passed (kernel/conformance/suite.js SUITE_REVISION). */
-export const CONFORMANCE_REVISION = 1;
+export const CONFORMANCE_REVISION = 2;
 const MAX_PAGE = 200;
 const MAX_SCAN = 50_000;
 const EITHER = { or: [{ deletedAt: { is: "NULL" } }, { deletedAt: { is: "NOT_NULL" } }] };
@@ -203,6 +203,12 @@ export class TwentyStore {
     } catch (e) { throw asStoreError(e); }
     this.#saveTypes();
     return { applied: changes.length > 0, changes };
+  }
+
+  /** @param {string} type */
+  async describe(type) {
+    const p = this.plans.get(type);
+    return p ? { name: type, fields: p.def.fields.map((/** @type {any} */ f) => ({ name: f.name, kind: f.kind })) } : null;
   }
 
   // ---- reads -----------------------------------------------------------------------------------
