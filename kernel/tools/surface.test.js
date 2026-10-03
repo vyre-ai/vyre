@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { createToolSurface, noun } from "./surface.js";
 import { createGateway } from "../gateway/index.js";
 import { createTasks, TASK_ACTIONS } from "../tasks/tasks.js";
-import { createPresence } from "../tasks/presence.js";
 import { createMemoryStore } from "../store/memory.js";
 import { createEventLog } from "../core/events.js";
 import { createChainBuilder } from "../core/chain.js";
@@ -28,7 +27,7 @@ async function rig({ grants = [], defs = [MATTER] } = {}) {
   const actions = [...TASK_ACTIONS, SEND];
   const store = createMemoryStore({ clock });
   const gw = createGateway({ space: SPACE, store, log, chains, clock, actions: [SEND, ...TASK_ACTIONS], grants: { forSubject: a => all.filter(g => g.subject.actor.kind === a.kind && g.subject.actor.id === a.id), get: () => undefined }, members: { has: a => members.has(`${a.kind}:${a.id}`) }, hasPresenceSession: () => true, verifyPresence: () => true });
-  const tasks = createTasks({ space: SPACE, authorizer: { authorize: gw.authorize }, log, presence: createPresence({ clock }), chains, clock, members: { has: a => members.has(`${a.kind}:${a.id}`) }, approver: () => actor("person", OWNER) });
+  const tasks = createTasks({ space: SPACE, authorizer: { authorize: gw.authorize }, log, presence: { check: async () => "no_proof" }, chains, clock, members: { has: a => members.has(`${a.kind}:${a.id}`) }, approver: () => actor("person", OWNER) });
   const kernel = { authorize: gw.authorize, records: gw.records, ask: tasks };
   const current = [...defs];
   await gw.records.define(person(OWNER), { add_types: defs });
@@ -100,4 +99,20 @@ test("a person's own outward act needs their presence, not a task they would che
   const out = await r.surface.call(person(OWNER), "email.send", { summary: "x" });
   assert.equal(out.needs_presence.action, "email.send");
   assert.equal(out.held, undefined);
+});
+
+test("T-1 and T-2: a duplicate tool name is dropped, and the schema names only the fields the chain's grant allows", async () => {
+  const dup = { ...SEND, action: "matters.update", resource_type: "message" };
+  const r = await rig({ grants: [G(actor("agent", "intake"), ["records.read"], `vyre://${SPACE}/matter/*`)] });
+  const surf = createToolSurface({ kernel: r.kernel, space: SPACE, types: () => r.current, actions: () => [SEND, dup] });
+  const names = (await surf.list(person(OWNER))).map(t => t.name);
+  assert.equal(names.filter(n => n === "matters.update").length, 1, "the outward action does not shadow the record tool");
+  assert.equal((await surf.list(person(OWNER))).find(t => t.name === "matters.update").risk, "write");
+  // a field allow-list hides names too
+  const limited = G(actor("agent", "intake"), ["records.read"], `vyre://${SPACE}/matter/*`);
+  limited.resource = { prefix: `vyre://${SPACE}/matter/*`, fields: ["title"] };
+  const r2 = await rig({ grants: [limited] });
+  const find = (await r2.surface.list(agent("intake"))).find(t => t.name === "matters.find");
+  assert.match(find.schema.properties.where.description, /Fields: title\./);
+  assert.ok(!/stage/.test(find.schema.properties.where.description));
 });

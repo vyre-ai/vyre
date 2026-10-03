@@ -30,6 +30,46 @@
     "reach": "person"
    },
    {
+    "name": "spaces.identity.entries",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.identity.entry.add",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.identity.entry.remove",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.identity.code.replace",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.identity.sync",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.identity.recover.code",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.identity.contact.key",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.identity.recover.begin",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.identity.recover.approve",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.identity.recover.finish",
+    "reach": "person"
+   },
+   {
     "name": "spaces.create",
     "reach": "person"
    },
@@ -130,6 +170,30 @@
     "reach": "anyone"
    },
    {
+    "name": "spaces.compute.allow",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.compute.accept",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.self",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.merge-list",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.compute.status",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.compute.may-run",
+    "reach": "modules"
+   },
+   {
     "name": "spaces.sweep",
     "reach": "modules"
    }
@@ -139,6 +203,12 @@
   "emits": [
    "identity.created",
    "identity.alias-added",
+   "identity.entry-added",
+   "identity.entry-removed",
+   "identity.code-replaced",
+   "identity.device-removed",
+   "identity.recovered",
+   "identity.warning",
    "space.create-step",
    "space.pairing-state",
    "space.create-done",
@@ -155,7 +225,11 @@
    "invite.created",
    "invite.accepted",
    "invite.revoked",
-   "invite.expired"
+   "invite.expired",
+   "compute.space-allowed",
+   "compute.space-stopped",
+   "compute.member-accepted",
+   "compute.member-declined"
   ]
  },
  "shows": {

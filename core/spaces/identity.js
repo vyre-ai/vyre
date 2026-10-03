@@ -20,8 +20,8 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { keyId } from "../names/ids.js";
-import * as C from "../../names/worker/chain.js";
+import { keyId } from "../../lib/identity/directory.js";
+import * as C from "../../kernel/identity/chain.js";
 
 const b64u = (/** @type {Uint8Array|Buffer} */ b) => Buffer.from(b).toString("base64url");
 export const SPKI_ED25519 = Buffer.from("302a300506032b6570032100", "hex");

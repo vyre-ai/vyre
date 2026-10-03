@@ -39,12 +39,21 @@ export function verifyEvents(/** @type {string} */ space, /** @type {readonly an
   return { ok: true, head: prev, seq: n };
 }
 
-/** @param {{ space: string, clock?: () => number, rand?: (n: number) => Uint8Array }} cfg */
+const deepFreezeEarly = (/** @type {any} */ o) => { if (o && typeof o === "object" && !Object.isFrozen(o)) { Object.freeze(o); for (const v of Object.values(o)) deepFreezeEarly(v); } return o; };
+
+/**
+ * @param {{ space: string, clock?: () => number, rand?: (n: number) => Uint8Array,
+ *   initial?: { events: any[], salts: [number, string][], cursors: [string, number][] },
+ *   persist?: { append(e: any, salt: string): void, erase(seq: number, e: any): void, cursor(name: string, seq: number): void } }} cfg
+ *   initial and persist make the log durable (kernel/store/sqlite-log.js): the history it starts from, and a write-through done BEFORE the event is
+ *   taken as appended, so an event that could not be written is not in the log.
+ */
 export function createEventLog(cfg) {
   const clock = cfg.clock || Date.now;
   const rand = cfg.rand || (n => randomBytes(n));
   /** @type {any[]} */ const log = [];
   /** @type {Map<number, string>} the salt kept beside the data, erased with it */ const salts = new Map();
+  if (cfg.initial) { log.push(...cfg.initial.events.map((/** @type {any} */ e) => deepFreezeEarly(e))); for (const [s, v] of cfg.initial.salts) salts.set(s, v); }
   /** @type {Map<string, { filter: any, cursor: number, onEvent: any, busy: boolean, fails?: { seq: number, n: number } }>} */ const consumers = new Map();
 
   /**
@@ -75,7 +84,8 @@ export function createEventLog(cfg) {
       ...(last.via ? { via: last.via } : {}),
       subject: ev.subject,
       ...(ev.cause ? { cause: ev.cause } : opts.decision ? { cause: opts.decision } : {}),
-      ...(ev.corr ? { corr: ev.corr } : {}),
+      // Under a Flow run (a job chain) every event carries the run id as its correlation, so a run's effects are found by it.
+      ...(ev.corr ? { corr: ev.corr } : chain.job ? { corr: chain.job } : {}),
       ...(ev.prov || opts.decision ? { prov: { ...(ev.prov || {}), ...(opts.decision ? { decision: opts.decision } : {}) } } : {}),
       trust: labels.trust, source_spaces: labels.source_spaces,
       vis: ev.vis || "space", red: labels.red,
@@ -85,6 +95,7 @@ export function createEventLog(cfg) {
     };
     e.hash = hashOf(e);
     deepFreeze(e);
+    if (cfg.persist) cfg.persist.append(e, salt);
     log.push(e);
     salts.set(seq, salt);
     queueMicrotask(pump);
@@ -121,8 +132,10 @@ export function createEventLog(cfg) {
   function erase(/** @type {number} */ seq) {
     const e = log[seq - 1];
     if (!e) throw new KernelError("not_found", "no such event");
+    const erased = deepFreeze({ ...e, data: { erased: true } });
+    if (cfg.persist) cfg.persist.erase(seq, erased);
     salts.delete(seq);
-    log[seq - 1] = deepFreeze({ ...e, data: { erased: true } });
+    log[seq - 1] = erased;
   }
 
   /** At-least-once with a durable named cursor: a handler that throws is retried, never skipped. @returns {() => void} */
@@ -134,7 +147,7 @@ export function createEventLog(cfg) {
     return () => { if (consumers.get(consumer) === c) consumers.delete(consumer); };
   }
 
-  const cursors = new Map();
+  const cursors = new Map(cfg.initial ? cfg.initial.cursors : []);
   /** @type {{ consumer: string, seq: number, at: number }[]} */ const dead = [];
   const MAX_ATTEMPTS = 8;
   async function pump() {
@@ -149,6 +162,7 @@ export function createEventLog(cfg) {
           await c.onEvent(next);
           c.cursor = next.seq;
           cursors.set(name, c.cursor);
+          if (cfg.persist) cfg.persist.cursor(name, c.cursor);
         }
       } catch {
         // The cursor did not move: retry the same event with a growing delay, and after MAX_ATTEMPTS set it aside (dead letter) so one

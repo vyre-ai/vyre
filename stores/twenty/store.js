@@ -24,7 +24,7 @@ import { twentyGet } from "./client.js";
 import { planType, pascal, selection, checkData, toInput, fromRow, toFilter, toOrderBy, PlanError, VERSION_FIELD } from "./plan.js";
 
 /** The conformance suite revision this store last passed (kernel/conformance/suite.js SUITE_REVISION). */
-export const CONFORMANCE_REVISION = 2;
+export const CONFORMANCE_REVISION = 3;
 const MAX_PAGE = 200;
 const MAX_SCAN = 50_000;
 const EITHER = { or: [{ deletedAt: { is: "NULL" } }, { deletedAt: { is: "NOT_NULL" } }] };
@@ -204,6 +204,9 @@ export class TwentyStore {
     this.#saveTypes();
     return { applied: changes.length > 0, changes };
   }
+
+  /** Every definition the store holds, as it was defined. */
+  async types() { return [...this.plans.values()].map((p) => structuredClone(p.def)); }
 
   /** @param {string} type */
   async describe(type) {

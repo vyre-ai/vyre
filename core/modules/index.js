@@ -490,6 +490,8 @@ export class Registry {
 
   /** Vyre's own: shipped in the repo, or in a firstPartyRoots folder an in-process caller named. @param {string} dir */
   isFirstParty(dir) {
+    // With a signed-release check wired (kernel/modules/firstparty.js, from the kernel boot) a module is first party only by signature: not by where it sits and not by its name.
+    if (this.deps.firstPartyCheck) return this.deps.firstPartyCheck(dir) === true;
     return firstParty(dir) || inRoots(dir, this.firstPartyRoots);
   }
 
@@ -616,6 +618,19 @@ export class Registry {
       rec.contract = moduleContract(m);
       const adapter = adapterFor(rec.contract);
       if (m.apiVersion !== undefined) this.deps.log(`warn: module ${m.name} uses apiVersion, which is deprecated; use "vyre": "${m.apiVersion}"`);
+      // K6: with a module host wired (kernel/modules/host.js), a module that is not first party never runs in this process. It runs under the
+      // supervisor (no network, no files beyond its folder, no child process), its tools call into it, and it has no ctx: only its tool handlers
+      // and the egress proxy. Without the supervisor the host refuses and the module fails to start. Off until the kernel default-on path.
+      if (this.deps.moduleHost && !this.isFirstParty(f.dir)) {
+        await this.deps.moduleHost.install({ name: m.name, dir: f.dir, entry: m.main || "index.js", manifest: m }, { approved_hosts: this.deps.moduleApprovals ? this.deps.moduleApprovals(m.name) : [] });
+        const ctx = this.context(m);
+        for (const e of toolEntries(m)) ctx.tool(e.name, { description: e.description || "", run: (/** @type {any} */ input) => this.deps.moduleHost.call(m.name, e.name, input) });
+        rec.handle = { stop: () => this.deps.moduleHost.uninstall(m.name) };
+        rec.sandboxed = true;
+        rec.state = "running";
+        this.deps.log(`module ${m.name} ${m.version} running (sandboxed)`);
+        return;
+      }
       const mod = (await import(pathToFileURL(entry).href)).default;
       if (!mod || typeof mod.start !== "function") throw new Error("entry file must export default { start(ctx) }");
       rec.handle = await mod.start(adapter.context(this.context(adapter.manifest(m))));
@@ -633,6 +648,8 @@ export class Registry {
   /** What a module gets. It sees only what its manifest declared. */
   context(m) {
     const { db, events, config, log, paths } = this.deps;
+    // The kernel handle (kernel/home.js `kernelFor`): only for a first-party module, and only when the daemon runs with the kernel on.
+    const kernelHandle = (() => { const r = this.modules.get(m.name); return this.deps.kernelFor && r && this.isFirstParty(r.dir) ? this.deps.kernelFor(m) : undefined; })();
     // Tool names from either form of does.tools, with the reach and outward an object entry declares.
     const entries = new Map(toolEntries(m).map(e => [e.name, e]));
     const objectForm = new Set(((m.does && m.does.tools) || []).filter(e => e && typeof e === "object").map(e => e.name));
@@ -936,6 +953,7 @@ export class Registry {
         get: name => { const p = this.providers.get(String(name)); return p ? p.driver : null; },
         list: () => [...this.providers.keys()],
       },
+      ...(kernelHandle ? { kernel: kernelHandle } : {}),
       tool: (name, def) => {
         if (!declared.has(name)) throw new Error(`${m.name} registered tool ${name}, which its manifest does not declare under does.tools`);
         if (this.tools.has(name)) throw new Error(`tool ${name} is already registered`);

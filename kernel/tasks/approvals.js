@@ -10,12 +10,13 @@ export function createApprovals(cfg) {
     async get(id) {
       const a = typeof id === "string" ? cfg.tasks.approvalFor(id) : null;
       if (!a) return null;
-      const slots = Array.isArray(a.body.sealed_slots) ? a.body.sealed_slots : [];
-      const t = a.body.template;
+      const payload = a.body.payload || {};
+      const slots = Array.isArray(payload.sealed_slots) ? payload.sealed_slots : [];
+      const t = payload.template;
       if (!slots.length || slots.some((/** @type {any} */ s) => typeof s.ref !== "string" || typeof s.slot !== "string") || !t || typeof t.id !== "string" || !Number.isInteger(t.version)) return null;
       const record = slots[0].record;
       if (typeof record !== "string" || slots.some((/** @type {any} */ s) => s.record !== record)) return null;
-      return { approver_chain: a.approver_chain, proof: a.use_proof, template: t.id, template_version: t.version, record, bindings: slots.map((/** @type {any} */ s) => ({ slot: s.slot, ref: s.ref })), payload_hash: a.payload_hash };
+      return { approver_chain: a.approver_chain, proof: a.use_proof, template: t.id, template_version: t.version, record, doer: a.doer, approved_at: a.approved_at, delivery: payload.delivery ? { sink: payload.delivery.sink, to: (a.body.facts && a.body.facts.recipients ? a.body.facts.recipients : []).map((/** @type {any} */ r) => r.address) } : null, template_hash: (a.body.facts && a.body.facts.template && a.body.facts.template.hash) || null, bindings: slots.map((/** @type {any} */ s) => ({ slot: s.slot, ref: s.ref })), payload_hash: a.payload_hash };
     },
   });
 }

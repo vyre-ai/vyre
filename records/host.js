@@ -15,6 +15,7 @@ import { createChainBuilder } from "../kernel/core/chain.js";
 import { createFlows } from "../kernel/flows/index.js";
 import { CORE_TYPES } from "./core-types.js";
 import { toKernelKit } from "./kit-adapter.js";
+import { parseExpr, evalExpr } from "./language/expr.js";
 
 const RECORD_GRANT_ACTIONS = ["records.*", "records.define", "events.read"];
 
@@ -42,6 +43,8 @@ export function createRecordsHost(o) {
     grants: { forSubject: (/** @type {any} */ a) => grants.filter((g) => g.subject.actor.kind === a.kind && g.subject.actor.id === a.id), get: (/** @type {string} */ id) => byId.get(id) },
     members: { has: (/** @type {any} */ a) => (a.kind === "person" && a.id === o.owner) || (a.kind === "service" && (a.id === "flows" || a.id.startsWith("connector"))) },
     hasPresenceSession: () => true,
+    // the type rules (defineRule) are written in the records language's Expression language
+    expr: { parseExpr, evalExpr },
   });
 
   const ownerChain = () => chains.fromFacts({ kind: "socket", surface: "deck", uid: ownerUid, pid: 1, inside_model_process: false, capsule_verified: true });

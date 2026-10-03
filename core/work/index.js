@@ -8,14 +8,14 @@
 // the call's own facts; a tool never builds or accepts a chain from its input. Until platform wires ctx.kernel every tool answers `unavailable`.
 
 import { createToolSurface } from "../../kernel/tools/surface.js";
-import { buildSituation } from "../assistant/native/situation.js";
-import { toComponent } from "../assistant/native/components.js";
-import { teammateContext } from "../team/context.js";
-import { teammateFromRole, markReviewed, checkAdd, addCardData } from "../team/roles.js";
-import { delegateGrants } from "../team/delegate.js";
-import { createDoingLine } from "../team/doing.js";
-import { createMemoryEngine } from "../memory/engine/index.js";
-import { createEngineer } from "../engineer/index.js";
+import { buildSituation } from "./native/situation.js";
+import { toComponent } from "./native/components.js";
+import { teammateContext } from "./team/context.js";
+import { teammateFromRole, markReviewed, checkAdd, addCardData } from "./team/roles.js";
+import { delegateGrants } from "./team/delegate.js";
+import { createDoingLine } from "./team/doing.js";
+import { createMemoryEngine } from "./memory/index.js";
+import { createEngineer } from "./engineer/index.js";
 
 const obj = (properties = {}, required = []) => ({ type: "object", properties, required });
 const unavailable = () => Object.assign(new Error("the kernel is not wired on this box yet"), { code: "unavailable" });
@@ -47,12 +47,12 @@ export default {
       return (engineer = createEngineer({ kernel: k, compile: k.compile, simulate: k.simulate || null, ...(k.engineerChain ? { engineerChain: k.engineerChain } : {}) }));
     };
 
-    ctx.tool("native.tools", {
+    ctx.tool("work.tools", {
       description: "The tools this caller may use in this Space, generated from its record definitions and the action registry and cut by what the caller may do. A tool the caller cannot use is not listed.",
       input: obj(),
       run: async (_input, extra) => ({ tools: await surfaceOf().list(await chainOf(extra)) }),
     });
-    ctx.tool("native.call", {
+    ctx.tool("work.call", {
       description: "Run one of the listed tools. Returns { result, component }: the component is what to show, a record card, a task card, a draft or a held-for-approval card. An outward act (send, pay, publish, share) is never run: it returns held with a task, and a person approves it.",
       input: obj({ tool: { type: "string" }, input: { type: "object" } }, ["tool"]),
       run: async (input, extra) => {
@@ -64,7 +64,7 @@ export default {
         return { result, component: toComponent(String(input.tool), normal, { types }) };
       },
     });
-    ctx.tool("native.situation", {
+    ctx.tool("work.situation", {
       description: "Where the caller is, in a few hundred tokens: the Space, their role, the project or record in scope, the team, open tasks, what waits on them, and what is sealed and why.",
       input: obj({ project: { type: "string" }, record: { type: "string" } }),
       run: async (input, extra) => {
@@ -76,7 +76,7 @@ export default {
       },
     });
 
-    ctx.tool("teammates.context", {
+    ctx.tool("work.team.context", {
       description: "What a teammate starts with on a project: its role instructions, the project and its linked records without sealed fields, and the Kit's templates.",
       input: obj({ project: { type: "string" }, role: { type: "object" }, templates: { type: "array" } }, ["project"]),
       run: async (input, extra) => {
@@ -85,7 +85,7 @@ export default {
         return { text: r.text, records: r.urns, labels: r.labels, skipped: r.skipped };
       },
     });
-    ctx.tool("teammates.add", {
+    ctx.tool("work.team.add", {
       description: "Add an assistant teammate to a project from a Kit role. Its grants are narrowings of the adder's and never wider. Without { approved: true } this returns the card to show, and nothing is created.",
       input: obj({ project: { type: "string" }, role: { type: "object" }, approved: { type: "boolean" }, count: { type: "integer" } }, ["project", "role"]),
       run: async (input, extra) => {
@@ -102,7 +102,7 @@ export default {
         return { teammate, grants: made.grants.map((/** @type {any} */ g) => g.id), obligations: made.obligations };
       },
     });
-    ctx.tool("teammates.doing", {
+    ctx.tool("work.team.doing", {
       description: "What each teammate on a project is doing right now, one plain line each, from the project's own events. Updates at most once a minute.",
       input: obj({ project: { type: "string" } }, ["project"]),
       run: async (input, extra) => {
@@ -120,45 +120,45 @@ export default {
       },
     });
 
-    ctx.tool("know.search", {
+    ctx.tool("work.know.search", {
       description: "Search the Space's records, events and session lines by meaning. Only sources the caller may read come back, each with its address.",
       input: obj({ query: { type: "string" }, k: { type: "integer" } }, ["query"]),
       run: async (input, extra) => ({ hits: await engineOf().search(await chainOf(extra), String(input.query), Math.min(Number(input.k) || 6, 12)) }),
     });
-    ctx.tool("know.answer", {
+    ctx.tool("work.know.answer", {
       description: "Answer a question from the Space's own records and history. Every claim cites a source the caller may read; with none to cite it says so.",
       input: obj({ question: { type: "string" } }, ["question"]),
       run: async (input, extra) => {
         const chain = await chainOf(extra);
         const result = await engineOf().answer(chain, String(input.question));
-        return { result, component: toComponent("know.answer", result) };
+        return { result, component: toComponent("work.know.answer", result) };
       },
     });
-    ctx.tool("know.suggestions", {
+    ctx.tool("work.know.suggestions", {
       description: "Facts memory proposes for a record, each with the lines they came from. Nothing is written until a person accepts one.",
       input: obj({ record: { type: "string" } }, ["record"]),
       run: async (input, extra) => ({ suggestions: await engineOf().facts.suggestions(await chainOf(extra), String(input.record)) }),
     });
-    ctx.tool("know.accept", {
+    ctx.tool("work.know.accept", {
       description: "Accept a proposed fact: it is written onto the record under the person's own chain, with its sources.",
       input: obj({ id: { type: "integer" } }, ["id"]),
       run: async (input, extra) => engineOf().facts.accept(await chainOf(extra), Number(input.id)),
     });
 
-    ctx.tool("engineer.talk", {
+    ctx.tool("work.engineer.talk", {
       description: "Talk to the Engineer, which only admins can do: 'explain <type>' reads a definition back in plain words, anything else proposes a change and returns a card and a task. Nothing is applied until an admin approves the card.",
       input: obj({ text: { type: "string" } }, ["text"]),
       run: async (input, extra) => {
         const r = await engineerOf().talk(await chainOf(extra), String(input.text));
-        return { ...r, component: toComponent("engineer.talk", r.kind === "proposal" ? { kind: "flow_diff", ...r.card } : r) };
+        return { ...r, component: toComponent("work.engineer.talk", r.kind === "proposal" ? { kind: "flow_diff", ...r.card } : r) };
       },
     });
-    ctx.tool("engineer.revise", {
+    ctx.tool("work.engineer.revise", {
       description: "Edit the Engineer's proposed definition yourself. It is checked again, gets its own card and task, and the earlier approval is void.",
       input: obj({ id: { type: "string" }, source: { type: "string" } }, ["id", "source"]),
       run: async (input, extra) => engineerOf().revise(await chainOf(extra), String(input.id), String(input.source)),
     });
-    ctx.tool("engineer.approve", {
+    ctx.tool("work.engineer.approve", {
       description: "Approve or reject the Engineer's change with your own presence proof over the card's hash. Only your own chain is accepted, and the change applies as you.",
       input: obj({ id: { type: "string" }, proof: { type: "object" }, outcome: { enum: ["approved", "rejected"] }, reason: { type: "string" } }, ["id", "proof"]),
       run: async (input, extra) => engineerOf().approve(await chainOf(extra), String(input.id), { proof: input.proof, outcome: input.outcome || "approved", ...(input.reason ? { reason: String(input.reason) } : {}) }),

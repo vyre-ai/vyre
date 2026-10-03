@@ -20,9 +20,14 @@ import {
   createSpaceFlow, assessThisComputer, planMoveHome, PAIRING_DEFAULTS, INSTALL_COMMAND, PAIR_PROMPT,
 } from "../../lib/spaces/homes.js";
 import { SPACE_ID_RE } from "../../lib/spaces/home-unit.js";
-import { idDirectory, DEFAULT_BASE } from "../names/ids.js";
+import { idDirectory, DEFAULT_BASE } from "../../lib/identity/directory.js";
+import * as C from "../../kernel/identity/chain.js";
+import { createIdentityOps } from "./identity-ops.js";
+import { PASSWORD_MIN } from "./recovery.js";
+import { WORDS } from "../../relay/client/words.js";
+import { createCompute } from "../../lib/spaces/compute.js";
 import {
-  MIGRATIONS, kvStore, membershipStore, roleNames, inviteStore, pairingService, spaceTable,
+  MIGRATIONS, kvStore, seenStore, membershipStore, roleNames, inviteStore, pairingService, spaceTable,
 } from "./store.js";
 import { fileIdentityStore, signerOf, personIdOf } from "./identity.js";
 import { spaceFiles } from "./host.js";
@@ -33,6 +38,8 @@ export const hooks = {
   /** @type {typeof globalThis.fetch | null} */ fetch: null,
   /** @type {(() => number) | null} */ now: null,
   /** @type {number | null} */ sweepMs: null,
+  /** @type {number | null} */ syncMs: null,
+  /** @type {{ memoryKiB: number, passes: number } | null} the recovery stretch, lowered by tests only */ stretch: null,
   /** @type {any} */ vpsDeps: null,
 };
 
@@ -67,10 +74,11 @@ export default {
     let lastTs = 0;
     const mono = () => (lastTs = Math.max(now(), lastTs + 1));
     const base = (ctx.config && ctx.config.names && ctx.config.names.directory) || DEFAULT_BASE;
-    const dirFor = (/** @type {any} */ signer) => idDirectory({ base, signer, fetch: hooks.fetch || globalThis.fetch, now: mono });
-    const stubSigner = { identity: async () => ({ route: "", pub: Buffer.alloc(32) }), sign: async () => { throw new Error("no key"); } };
+    const seen = seenStore(db);
+    const dir = idDirectory({ base, fetch: hooks.fetch || globalThis.fetch, now: mono, seen });
 
     const identity = fileIdentityStore(root);
+    const idops = createIdentityOps({ store: identity, dir, seen, now, emit: (t, p) => emit(t, p), stretch: hooks.stretch || undefined });
     const files = spaceFiles(root);
     const kv = kvStore(db);
     const mstore = membershipStore(db);
@@ -91,7 +99,32 @@ export default {
       if (!s.exists || s.pending) throw refuse("Choose your Vyre name first.", "no_identity");
       return s;
     };
-    const personSigner = () => { const s = identity.status(); return s.exists ? signerOf(/** @type {string} */ (s.publicKey), m => identity.sign(m)) : stubSigner; };
+    /** This person, as an owner of a space: the person id, acting through this device's entry on their list. */
+    const ownerSigner = async () => { const s = me(); return { by: /** @type {string} */ (s.id), via: /** @type {string} */ (s.eid), pos: await C.viaOf(identity.ops()), sign: (/** @type {Uint8Array} */ m) => identity.sign(Buffer.from(m)) }; };
+    /** This device's own entry, for acts of the person's own list. */
+    const selfSigner = () => { const s = me(); return { by: /** @type {string} */ (s.eid), sign: (/** @type {Uint8Array} */ m) => identity.sign(Buffer.from(m)) }; };
+    /** The chain's resolver for a space's owners: this person from the local copy, anyone else through the directory by the name their entry carries. @param {any[]} spaceOps */
+    const ownerResolver = spaceOps => dir.ownersResolver(spaceOps, async (/** @type {string} */ id) => {
+      const s = identity.status();
+      return s.exists && s.id === id ? identity.ops() : null;
+    });
+    /** A space's chain as this device holds it: { ops, pin }, or null. @param {string} spaceId */
+    const chainOf = spaceId => /** @type {any} */ (kv.get(`chain/${spaceId}`));
+    const stateOfSpace = async (/** @type {string} */ spaceId) => {
+      const c = await chainOf(spaceId);
+      if (!c) throw refuse("This device does not hold the space's list of owners.", "no_chain");
+      return { c, state: await C.verifyChain(c.ops, { now: now() + C.SKEW_MS, ownerOps: ownerResolver(c.ops) }) };
+    };
+    /** The fingerprint of a space as its inviter saw it: its permanent id and its root key. 32 hex characters; four words show the first 44 bits on the card. */
+    const spaceFingerprint = (/** @type {string} */ chainId, /** @type {string} */ rootPublic) => crypto.createHash("sha256").update(`vyre-space-fingerprint-v1\n${chainId}\n${rootPublic}`).digest("hex").slice(0, 32);
+    const wordList = String(WORDS).split(/\s+/).filter(Boolean);
+    const fingerprintWords = (/** @type {string|null|undefined} */ hex) => {
+      if (!hex) return null;
+      const bits = BigInt("0x" + hex.slice(0, 11)); // 44 bits, four words
+      return [3, 2, 1, 0].map(k => wordList[Number((bits >> BigInt(11 * k)) & 2047n)]).join(" ");
+    };
+    const pinText = (/** @type {any} */ pin) => (pin ? `${pin.id}:${pin.seq}:${pin.head}` : undefined);
+    const parsePin = (/** @type {unknown} */ t) => { const m = /^((?:per|spc)_[a-z2-7]{26}):(\d+):([0-9a-f]{64})$/.exec(String(t || "")); return m ? { id: m[1], seq: Number(m[2]), head: m[3] } : undefined; };
     const authorize = createRoleAuthorize({ membership: (space, person) => mstore.get(space, person), now });
     const REASONS = /** @type {Record<string, string>} */ ({ not_a_member: "You are not a member of this space.", expired: "Your access to this space has ended.", no_grant: "Your role cannot do that.", chain_not_person: "Only a person can do that." });
     /** Is the acting person an active member who may do `action`? Returns the person. @param {string} spaceId @param {string} [action] */
@@ -136,21 +169,71 @@ export default {
         if (!k) throw refuse("This device does not hold the space's key, so it cannot make or check its invites.", "no_key");
         inv = createInvites({
           space: { id: row.id, name: row.name, aliases: row.aliases }, signer: { publicKey: k.publicKey, sign: k.sign },
-          members: membersFor(row.id), store: inviteStore(db, row.id), now, emit, personIdFromKey: personIdOf,
+          members: membersFor(row.id), store: inviteStore(db, row.id), now, emit, personIdFromKey: personIdOf, verifyPersonProof,
         });
         for (const k2 of [...inviteSvc.keys()]) if (k2.startsWith(`${row.id}|`)) inviteSvc.delete(k2);
         inviteSvc.set(key, inv);
       }
       return inv;
     };
+    /** An acceptance by an identity: the directory's CURRENT list for the person's name decides, so a device that was removed cannot join. @param {any} person @param {Buffer} message @param {string} proof */
+    const verifyPersonProof = async (person, message, proof) => {
+      try {
+        const name = String(person.name || "").toLowerCase().replace(/\.vyre\.run$/, "");
+        const r = await dir.resolve(name);
+        if (!r.ok || r.kind !== "person" || r.id !== person.id) return false;
+        const e = r.state.entries.find((/** @type {any} */ x) => x.eid === person.by && (x.kind === "device" || x.kind === "code"));
+        return Boolean(e) && await C.verifyWith(e.pub, message, proof);
+      } catch { return false; }
+    };
     const personRef = async (/** @type {any} */ value) => {
       const text = String(value || "").trim().toLowerCase();
       if (PERSON_RE.test(text)) return text;
       const label = text.replace(/\.vyre\.run$/, "");
       let r;
-      try { r = await dirFor(stubSigner).resolve(label); } catch (e) { throw refuse(plainDirectory(e), "not_found"); }
-      if (!r.ok || r.kind !== "person") throw refuse("That name does not belong to a person.", "not_found");
-      return `per_${r.keyId}`;
+      // Pinned from the first time this device saw the name: a later answer that is older, or a different history, is refused.
+      const pinKey = `person-pin/${label}`;
+      const seen = /** @type {any} */ (await kv.get(pinKey));
+      try { r = await dir.resolve(label, { pin: seen || undefined }); } catch (e) { throw refuse(plainDirectory(e), "not_found"); }
+      if (!r.ok) throw refuse(`That name could not be verified: ${r.why}.`, r.code || "unverified");
+      if (r.kind !== "person") throw refuse("That name does not belong to a person.", "not_found");
+      await kv.put(pinKey, r.pin);
+      return r.id;
+    };
+
+    // ---- a space's list of owners follows its owners ----
+    /**
+     * After any membership change, make the space's chain list the people who are owners now: adds first, then removals, each signed by this
+     * person through this device. A newcomer device cannot change owners, so a refusal leaves a warning on the space and nothing else changes.
+     * @param {any} row @param {string} [hint] the name of a person just added, so their entry can be found by name
+     */
+    const syncOwners = async (row, hint) => {
+      const c = await chainOf(row.id);
+      if (!c) return;
+      try {
+        const t = now();
+        let { state } = await stateOfSpace(row.id);
+        const rows = await membersFor(row.id).list();
+        const owners = new Set(rows.filter((/** @type {any} */ r) => r.role === "owner" && !(r.expires && r.expires <= t)).map((/** @type {any} */ r) => r.person));
+        let ops = c.ops;
+        for (const id of owners) {
+          if (state.entries.some(e => e.eid === id)) continue;
+          const op = await C.makeOp(state, { type: "add", entry: { eid: id, kind: "owner", subject: id, label: hint && PERSON_RE.test(id) ? hint : undefined } }, { by: /** @type {string} */ (me().id), via: /** @type {string} */ (me().eid), viaPos: await C.viaOf(identity.ops()), ts: Math.max(t, state.ts), sign: (await ownerSigner()).sign });
+          state = await C.applyOp(state, op, { now: t + C.SKEW_MS, ownerOps: ownerResolver(ops), live: true });
+          await dir.append(row.label, [op]);
+          ops = [...ops, op];
+        }
+        for (const e of [...state.entries]) {
+          if (owners.has(e.eid)) continue;
+          const op = await C.makeOp(state, { type: "remove", target: e.eid }, { by: /** @type {string} */ (me().id), via: /** @type {string} */ (me().eid), viaPos: await C.viaOf(identity.ops()), ts: Math.max(t, state.ts), sign: (await ownerSigner()).sign });
+          state = await C.applyOp(state, op, { now: t + C.SKEW_MS, ownerOps: ownerResolver(ops), live: true });
+          await dir.append(row.label, [op]);
+          ops = [...ops, op];
+        }
+        await kv.put(`chain/${row.id}`, { ops, pin: C.pinOf(state) });
+      } catch (e) {
+        warn(row.id, { code: "owners_chain_behind", message: `The space's list of owners could not be updated yet: ${plainDirectory(e)}` });
+      }
     };
 
     // ---- the create flow's dependencies, wired to real things ----
@@ -160,12 +243,7 @@ export default {
       spaces.patch(spaceId, { warnings: [...row.warnings, w] }, now());
       emit("space.warning", { spaceId, code: w.code, message: w.message });
     };
-    const rootSigner = (/** @type {string} */ id) => {
-      const k = files.keys.load(id);
-      if (!k) throw refuse("This device does not hold the space's key.", "no_key");
-      return signerOf(k.publicKey, k.sign);
-    };
-    const vpsDeps = () => hooks.vpsDeps || { fetch: hooks.fetch || globalThis.fetch };
+    const vpsDeps = () => ({ emit, ...(hooks.vpsDeps || { fetch: hooks.fetch || globalThis.fetch }) });
     const deps = {
       store: kv,
       emit,
@@ -175,7 +253,7 @@ export default {
       names: {
         async check(/** @type {string} */ label) {
           let r;
-          try { r = await dirFor(stubSigner).check(label); } catch (e) { throw refuse(plainDirectory(e), /** @type {any} */ (e).code || "unreachable"); }
+          try { r = await dir.check(label); } catch (e) { throw refuse(plainDirectory(e), /** @type {any} */ (e).code || "unreachable"); }
           if (r.status === "ok" || r.status === "mine") return { ok: true };
           if (r.status === "taken") return { ok: false, reason: "taken", message: "That name is taken. Pick another." };
           return { ok: false, reason: r.status, message: r.status === "reserved" ? "That name is reserved. Pick another." : `That name can't be used: ${r.why}.` };
@@ -185,16 +263,30 @@ export default {
           if (!k || k.publicKey !== a.rootPublic) return { ok: false, message: "The space's key is not on this device." };
           const label = String(a.record.displayName || a.name).slice(0, 80);
           try {
-            // The directory's one-time recovery code for a space is not kept: the space's own root key is its authority, and it stays on this device.
-            await dirFor(signerOf(k.publicKey, k.sign)).claim(a.name, "space", { v: 1, id: a.record.spaceId, name: a.name, label });
+            // A space is an identity whose list holds its owners. This person is the first owner, acting through this device's entry.
+            // The chain is kept on this device so a retried step reuses it instead of making a second identity. The invite key (the root key) is
+            // carried in the sealed record, signed by an owner, which is how an invitee learns it.
+            const who = me();
+            let c = await chainOf(a.record.spaceId);
+            if (!c) {
+              const g = await C.makeGenesis({ kind: "space", entry: { eid: /** @type {string} */ (who.id), kind: "owner", subject: /** @type {string} */ (who.id), label: who.name || undefined },
+                nonce: crypto.randomBytes(12).toString("base64url"), ts: now(), via: /** @type {string} */ (who.eid), viaPos: await C.viaOf(identity.ops()), sign: (await ownerSigner()).sign });
+              c = { ops: [g], pin: null };
+              await kv.put(`chain/${a.record.spaceId}`, c);
+            }
+            const state = await C.verifyChain(c.ops, { now: now() + C.SKEW_MS, ownerOps: ownerResolver(c.ops) });
+            await dir.claim(a.name, state, c.ops, await ownerSigner(), { v: 1, id: a.record.spaceId, name: a.name, label, rootPublic: a.rootPublic });
+            await kv.put(`chain/${a.record.spaceId}`, { ops: c.ops, pin: C.pinOf(state) });
             return { ok: true };
           } catch (e) { return { ok: false, code: /** @type {any} */ (e).code, message: plainDirectory(e) }; }
         },
-        async releaseSpace(/** @type {{ name: string, spaceId: string }} */ a) { await dirFor(rootSigner(a.spaceId)).release(a.name); return { ok: true }; },
+        async releaseSpace(/** @type {{ name: string, spaceId: string }} */ a) { await dir.release(a.name, await ownerSigner()); await kv.delete(`chain/${a.spaceId}`); return { ok: true }; },
         async pointHome(/** @type {{ name: string, spaceId: string, home: any }} */ a) {
           const row = spaces.get(a.spaceId);
+          const k = files.keys.load(a.spaceId);
           const home = { kind: a.home && a.home.kind, ...(a.home && a.home.address ? { address: a.home.address } : {}) };
-          await dirFor(rootSigner(a.spaceId)).update(a.name, "space", { v: 1, id: a.spaceId, name: a.name, label: (row && (row.displayName || row.label)) || a.name, home });
+          const { state } = await stateOfSpace(a.spaceId);
+          await dir.update(a.name, state, await ownerSigner(), { v: 1, id: a.spaceId, name: a.name, label: (row && (row.displayName || row.label)) || a.name, home, rootPublic: k ? k.publicKey : undefined });
           return { ok: true };
         },
       },
@@ -267,79 +359,132 @@ export default {
       ctx.tool(name, { description, input, run: guarded(run), ...extra });
 
     const publicIdentity = (/** @type {any} */ s) => ({
-      exists: s.exists, name: s.name ? `${s.name}.vyre.run` : null, label: s.name, id: s.id, keyId: s.keyId, pending: s.pending, store: identity.kind,
+      exists: s.exists, name: s.name ? `${s.name}.vyre.run` : null, label: s.name, id: s.id, eid: s.eid, keyId: s.keyId, pending: s.pending, seq: s.seq, store: identity.kind,
     });
+    /** A recovery password is optional; when there is one it must be long enough to be worth the stretching (four or more words is best). @param {any} i */
+    const passwordOf = i => {
+      const pw = i.password === undefined ? "" : String(i.password);
+      if (pw && (pw.length < PASSWORD_MIN || pw.length > 256)) throw refuse(`A recovery password is ${PASSWORD_MIN} or more characters. Four or more words is best.`, "bad_password");
+      return pw;
+    };
+    const idFail = (/** @type {any} */ e) => {
+      const err = /** @type {any} */ (e);
+      if (err && typeof err.code === "string" && /^[a-z][a-z0-9_.-]{1,40}$/.test(err.code) && !["unreachable", "directory"].includes(err.code)) return err;
+      return refuse(plainDirectory(err), "failed");
+    };
 
-    // 1. identity
-    tool("spaces.identity.status", "This device's Vyre identity: its name, its person id and whether a name is still waiting to be claimed. No key is ever shown.", obj(),
+    // 1. identity: a permanent id and a signed list of who can speak for it (devices, a recovery code, optional recovery contacts)
+    tool("spaces.identity.status", "This device's Vyre identity: its name, its permanent id and its place on the list. No key is ever shown.", obj(),
       async () => publicIdentity(identity.status()));
 
-    tool("spaces.identity.create", "Make this device's person key and claim your Vyre name (for example alex.vyre.run). The one-time recovery code comes back in this reply only: show it to the person once and never keep a copy. Nothing here stores it.",
-      obj({ name: str }, ["name"]), async i => {
+    tool("spaces.identity.create", "Make this device's key and your identity, and claim your Vyre name (for example alex.vyre.run). The recovery code comes back in this reply only: show it to the person once and never keep a copy. A recovery password is optional (four or more words is best); with one, the paper alone is not enough.",
+      obj({ name: str, password: str, deviceLabel: str }, ["name"]), async i => {
         const st = identity.status();
-        if (st.exists && !st.pending) throw refuse(`This device already has the name ${st.name}.vyre.run.`, "exists");
+        if (st.exists) throw refuse(st.name ? `This device already has the name ${st.name}.vyre.run.` : "This device already has a Vyre identity.", "exists");
         const label = String(i.name || "").trim().toLowerCase().replace(/\.vyre\.run$/, "");
         if (!label) throw refuse("Choose a name.", "bad_name");
-        const fresh = !st.exists;
-        const info = fresh ? identity.generate() : st;
-        const d = dirFor(signerOf(/** @type {string} */ (info.publicKey), m => identity.sign(m)));
-        let claimed;
+        const password = passwordOf(i);
+        let made;
         try {
-          const c = await d.check(label);
+          const c = await dir.check(label);
           if (c.status === "taken") throw refuse("That name is taken. Pick another.", "name_taken");
           if (c.status !== "ok" && c.status !== "mine") throw refuse(c.status === "reserved" ? "That name is reserved. Pick another." : `That name can't be used: ${c.why}.`, "bad_name");
-          claimed = await d.claim(label, "person", { v: 1 });
-        } catch (e) {
-          if (fresh) identity.clear();
-          const err = /** @type {any} */ (e);
-          if (err && err.code === "name_taken" || err.code === "bad_name") throw err;
-          throw refuse(plainDirectory(err), typeof err.code === "string" && /^[a-z][a-z0-9_-]{1,40}$/.test(err.code) ? err.code : "failed");
-        }
-        const done = identity.setName(label);
-        emit("identity.created", { name: `${label}.vyre.run`, id: done.id, at: now() });
+          made = await idops.create({ name: label, password, deviceLabel: i.deviceLabel ? String(i.deviceLabel) : undefined });
+        } catch (e) { const err = /** @type {any} */ (e); if (err.code === "name_taken" || err.code === "bad_name") throw err; throw idFail(err); }
+        emit("identity.created", { name: `${label}.vyre.run`, id: made.status.id, at: now() });
         return {
-          ...publicIdentity(done),
-          recoveryCode: claimed.code || null,
-          note: claimed.code
-            ? "This recovery code is shown once. Write it down somewhere safe: it is the only way to take your name back if you lose this device."
-            : "This name was already claimed by this device's key, so no new recovery code was made.",
+          ...publicIdentity(made.status),
+          recoveryCode: made.recoveryCode, passwordSet: made.passwordSet,
+          note: "This recovery code is shown once. Write it down somewhere safe. " + (made.passwordSet ? "It works only with the recovery password you chose, so remember it. " : "Add a recovery password (four or more words) so the paper alone is not enough. ") + "Any one of your devices, this code, or two recovery contacts can bring you back, and the recovery code can only add a device, and a new sign-in cannot remove older ones for 24 hours, so none of them can take your name from you in a day.",
         };
       });
 
-    tool("spaces.identity.resolve", "Look up a Vyre name (or an own domain) and check it against the key it is held by. Returns the kind, the id and the pinned key.",
-      obj({ name: str }, ["name"]), async i => {
+    tool("spaces.identity.resolve", "Look up a Vyre name (or an own domain) by its exact name and verify its list. Returns the kind, the permanent id and the list's head. There is no way to browse names.",
+      obj({ name: str, pin: str }, ["name"]), async i => {
         const text = String(i.name || "").trim().toLowerCase();
         const alias = text.includes(".") && !text.endsWith(".vyre.run");
         let r;
-        try { r = await dirFor(stubSigner).resolve(alias ? text : text.replace(/\.vyre\.run$/, ""), { alias }); } catch (e) { throw refuse(plainDirectory(e), "not_found"); }
-        if (!r.ok) throw refuse(`That name could not be verified: ${r.why}.`, "unverified");
+        try { r = await dir.resolve(alias ? text : text.replace(/\.vyre\.run$/, ""), { alias, pin: parsePin(i.pin) }); } catch (e) { throw refuse(plainDirectory(e), "not_found"); }
+        if (!r.ok) throw refuse(`That name could not be verified: ${r.why}.`, r.code || "unverified");
         return {
-          name: alias ? (r.payload && r.payload.name ? `${r.payload.name}.vyre.run` : null) : `${text.replace(/\.vyre\.run$/, "")}.vyre.run`, kind: r.kind, keyId: r.keyId, pin: r.pin,
-          id: r.kind === "person" ? `per_${r.keyId}` : (r.payload && r.payload.id) || null, label: (r.payload && r.payload.label) || null, aliases: r.aliases,
+          name: alias ? (r.payload && r.payload.name ? `${r.payload.name}.vyre.run` : null) : `${text.replace(/\.vyre\.run$/, "")}.vyre.run`, kind: r.kind, id: r.id, pin: pinText(r.pin),
+          label: (r.payload && r.payload.label) || null, ...(r.kind === "space" && r.payload ? { spaceId: r.payload.id } : {}), aliases: r.aliases, entries: r.state.entries.length, words: fingerprintWords(crypto.createHash("sha256").update(`vyre-identity-fingerprint-v1\n${r.id}`).digest("hex")),
         };
       });
 
-    /** The identity (the person's or a space's root) an alias call is about. @param {any} i */
-    const aliasTarget = i => {
+    tool("spaces.identity.entries", "Who can speak for you: your devices, your recovery code and your recovery contacts, with which are new sign-ins (under 24 hours old).", obj(),
+      async () => { me(); return { id: identity.status().id, entries: await idops.entries() }; });
+    tool("spaces.identity.entry.add", "Add a device (its public key from pairing) or a recovery contact (the key the contact made for you). Signed by this device. A sign-in under 24 hours old cannot add a contact.",
+      obj({ kind: { type: "string", enum: ["device", "contact"] }, publicKey: str, label: str }, ["publicKey"]), async i => {
+        me();
+        try { return await idops.addEntry({ kind: i.kind || "device", publicKey: i.publicKey, label: i.label }); } catch (e) { throw idFail(e); }
+      });
+    tool("spaces.identity.entry.remove", "Take a device or contact off your list in one tap. Any older device can remove a newcomer. A sign-in under 24 hours old can remove only newer sign-ins.",
+      obj({ eid: str }, ["eid"]), async i => { me(); try { return await idops.removeEntry(String(i.eid)); } catch (e) { throw idFail(e); } });
+    tool("spaces.identity.code.replace", "Make a new recovery code (and optionally a new recovery password); the old code stops working. The code comes back in this reply only.",
+      obj({ password: str }), async i => {
+        me();
+        try { return await idops.replaceCode({ password: passwordOf(i) }); } catch (e) { throw idFail(e); }
+      });
+    tool("spaces.identity.sync", "Check the directory for changes to your list: new sign-ins and removals (each is an alert), whether this device was removed, and whether the directory answered with a stale or different list.",
+      obj(), async () => { me(); try { return await idops.sync(); } catch (e) { throw idFail(e); } });
+    tool("spaces.identity.recover.code", "On a new device: take your identity back with the recovery code (and the recovery password if you set one). Works at once; the new sign-in is a newcomer for 24 hours.",
+      obj({ name: str, code: str, password: str, deviceLabel: str }, ["name", "code"]), async i => {
+        try {
+          const r = await idops.recoverWithCode({ name: String(i.name).trim().toLowerCase().replace(/\.vyre\.run$/, ""), code: String(i.code), password: i.password === undefined ? "" : String(i.password), deviceLabel: i.deviceLabel ? String(i.deviceLabel) : undefined });
+          return publicIdentity(r.status);
+        } catch (e) { throw idFail(e); }
+      });
+    tool("spaces.identity.contact.key", "As a recovery contact: make the approval key for someone's identity and give them its public half. This device keeps the private half and signs when they ask, after you approve.",
+      obj({ name: str }, ["name"]), async i => { me(); return idops.makeContactKey(String(i.name).replace(/\.vyre\.run$/, "")); });
+    /** @type {Map<string, { request: any, key: any }>} */
+    const recoveries = new Map();
+    tool("spaces.identity.recover.begin", "On a new device with nothing else: ask your recovery contacts. Returns a request to pass to two of them.",
+      obj({ name: str, deviceLabel: str }, ["name"]), async i => {
+        try {
+          const b = await idops.beginContactRecovery({ name: String(i.name).trim().toLowerCase().replace(/\.vyre\.run$/, ""), deviceLabel: i.deviceLabel ? String(i.deviceLabel) : undefined });
+          const requestId = `rec_${crypto.randomBytes(9).toString("base64url")}`;
+          recoveries.set(requestId, { request: b.request, key: b.key });
+          if (recoveries.size > 8) recoveries.delete(/** @type {string} */ (recoveries.keys().next().value));
+          return { requestId, request: b.request, contacts: b.contacts };
+        } catch (e) { throw idFail(e); }
+      });
+    tool("spaces.identity.recover.approve", "As a recovery contact: approve someone's recovery request. Needs your approval on this device.",
+      obj({ request: obj() }, ["request"]), async i => { try { return await idops.approveRecovery(i.request); } catch (e) { throw idFail(e); } },
+      { presence: { summary: (/** @type {any} */ i) => `Help ${i && i.request && i.request.name ? i.request.name : "someone"} get their Vyre identity back` } });
+    tool("spaces.identity.recover.finish", "On the new device: put two contacts' approvals on the request and take your identity back.",
+      obj({ requestId: str, approvals: { type: "array", items: obj({ eid: str, sig: str }, ["eid", "sig"]) } }, ["requestId", "approvals"]), async i => {
+        const pending = recoveries.get(String(i.requestId));
+        if (!pending) throw refuse("That recovery is no longer waiting. Start again.", "not_found");
+        try {
+          const r = await idops.finishContactRecovery({ request: pending.request, key: pending.key, approvals: i.approvals });
+          recoveries.delete(String(i.requestId));
+          return publicIdentity(r.status);
+        } catch (e) { throw idFail(e); }
+      });
+
+    /** The identity (the person's or a space's) an alias call is about, with who signs for it. @param {any} i */
+    const aliasTarget = async i => {
       if (i.space) {
         const { row } = mine(i.space);
-        return { name: row.label, signer: rootSigner(row.id), row };
+        const { state } = await stateOfSpace(row.id);
+        return { name: row.label, id: state.id, signer: await ownerSigner(), row };
       }
       const s = me();
       if (i.name && String(i.name).toLowerCase().replace(/\.vyre\.run$/, "") !== s.name) throw refuse("That is not this device's name.", "forbidden");
-      return { name: /** @type {string} */ (s.name), signer: personSigner(), row: null };
+      return { name: /** @type {string} */ (s.name), id: /** @type {string} */ (s.id), signer: selfSigner(), row: null };
     };
     tool("spaces.identity.alias", "The DNS TXT record to publish at _vyre-id.<your domain> so your own domain can sit on top of your Vyre name (or a space's). Publish it, then call spaces.identity.alias.add.",
       obj({ name: str, domain: str, space: str }, ["domain"]), async i => {
-        const t = aliasTarget(i);
-        const txt = await dirFor(t.signer).aliasTxt(t.name, String(i.domain).trim().toLowerCase());
+        const t = await aliasTarget(i);
+        const txt = await dir.aliasTxt(t.name, t.id, String(i.domain).trim().toLowerCase(), t.signer);
         return { name: `${t.name}.vyre.run`, host: txt.host, value: txt.value, then: "Publish this TXT record, wait for DNS, then add the domain." };
       });
     tool("spaces.identity.alias.add", "Add an own domain to your Vyre name (or a space's) once its TXT record is published.",
       obj({ name: str, domain: str, space: str }, ["domain"]), async i => {
-        const t = aliasTarget(i);
+        const t = await aliasTarget(i);
         let r;
-        try { r = await dirFor(t.signer).addAlias(t.name, String(i.domain).trim().toLowerCase()); } catch (e) { throw refuse(plainDirectory(e), /** @type {any} */ (e).code || "failed"); }
+        try { r = await dir.addAlias(t.name, String(i.domain).trim().toLowerCase()); } catch (e) { throw refuse(plainDirectory(e), /** @type {any} */ (e).code || "failed"); }
         if (t.row) { spaces.patch(t.row.id, { aliases: r.aliases }, now()); }
         emit("identity.alias-added", { name: `${t.name}.vyre.run`, domain: r.domain, at: now() });
         return { name: `${t.name}.vyre.run`, domain: r.domain, aliases: r.aliases };
@@ -456,19 +601,25 @@ export default {
       async (i, meta) => {
         const row = spaceOf(i.space);
         const s = await gate(row.id);
-        return out(await membersFor(row.id).addMember({ actor: s.id, person: await personRef(i.person), role: i.role, scope: i.scope, expires: i.expires, presence: meta.presence }));
+        const r = out(await membersFor(row.id).addMember({ actor: s.id, person: await personRef(i.person), role: i.role, scope: i.scope, expires: i.expires, presence: meta.presence }));
+        if (i.role === "owner") await syncOwners(row, PERSON_RE.test(String(i.person)) ? undefined : String(i.person).toLowerCase().replace(/\.vyre\.run$/, ""));
+        return r;
       }, { presence: { summary: (/** @type {any} */ i) => `Make ${i && i.person} an owner of ${i && i.space}`, when: ownerGrant } });
     tool("spaces.members.set-role", "Change a person's role. Making someone an owner needs the person's approval on their device.",
       obj({ space: str, person: str, role: { type: "string", enum: ROLE_IDS }, scope: { type: "array", items: str }, expires: { type: "number" } }, ["space", "person", "role"]),
       async (i, meta) => {
         const row = spaceOf(i.space);
         const s = await gate(row.id);
-        return out(await membersFor(row.id).setRole({ actor: s.id, person: await personRef(i.person), role: i.role, scope: i.scope, expires: i.expires, presence: meta.presence }));
+        const r = out(await membersFor(row.id).setRole({ actor: s.id, person: await personRef(i.person), role: i.role, scope: i.scope, expires: i.expires, presence: meta.presence }));
+        await syncOwners(row, PERSON_RE.test(String(i.person)) ? undefined : String(i.person).toLowerCase().replace(/\.vyre\.run$/, ""));
+        return r;
       }, { presence: { summary: (/** @type {any} */ i) => `Make ${i && i.person} an owner of ${i && i.space}`, when: ownerGrant } });
     tool("spaces.members.remove", "Remove a person from a space. A space always keeps at least one owner.", obj({ space: str, person: str }, ["space", "person"]), async i => {
       const row = spaceOf(i.space);
       const s = await gate(row.id);
-      return out(await membersFor(row.id).removeMember({ actor: s.id, person: await personRef(i.person) }));
+      const r = out(await membersFor(row.id).removeMember({ actor: s.id, person: await personRef(i.person) }));
+      await syncOwners(row);
+      return r;
     });
     tool("spaces.members.extend", "Give a temp member a later end date. This is a grant change, so it needs the person's approval on their device.",
       obj({ space: str, person: str, expires: { type: "number" } }, ["space", "person", "expires"]), async (i, meta) => {
@@ -480,7 +631,9 @@ export default {
       obj({ space: str, to: str, demoteTo: { type: "string", enum: ["admin", "manager", "member"] } }, ["space", "to"]), async (i, meta) => {
         const row = spaceOf(i.space);
         const s = await gate(row.id);
-        return out(await membersFor(row.id).transferOwnership({ actor: s.id, to: await personRef(i.to), demoteTo: i.demoteTo, presence: meta.presence }));
+        const r = out(await membersFor(row.id).transferOwnership({ actor: s.id, to: await personRef(i.to), demoteTo: i.demoteTo, presence: meta.presence }));
+        await syncOwners(row, PERSON_RE.test(String(i.to)) ? undefined : String(i.to).toLowerCase().replace(/\.vyre\.run$/, ""));
+        return r;
       }, { presence: { summary: (/** @type {any} */ i) => `Transfer ${i && i.space} to ${i && i.to}` } });
     tool("spaces.roles.names", "Read the display names of the five roles, or rename one (owner or admin). The ids never change.",
       obj({ space: str, role: { type: "string", enum: ROLE_IDS }, name: str }, ["space"]), async i => {
@@ -504,12 +657,18 @@ export default {
     }, { internal: true });
 
     // 4. invites
+    /** What a link carries so the joiner starts pinned: the space's list as this device last saw it, and the fingerprint of its root key. */
+    const invitePin = async (/** @type {any} */ row) => {
+      const c = await chainOf(row.id);
+      const k = files.keys.load(row.id);
+      return c && c.pin && k ? { chain: c.pin, rk: spaceFingerprint(c.pin.id, k.publicKey) } : {};
+    };
     tool("spaces.invites.create", "Make a join link (https://<space>.vyre.run/join/...) for a role. A temp or member invite can name projects. Owners and admins only, unless the space lets managers invite.",
-      obj({ space: str, role: { type: "string", enum: ROLE_IDS }, scope: { type: "array", items: str }, expires: { type: "number" }, uses: { type: "number" }, ttlDays: { type: "number" }, alias: str }, ["space", "role"]),
+      obj({ space: str, role: { type: "string", enum: ROLE_IDS }, scope: { type: "array", items: str }, expires: { type: "number" }, uses: { type: "number" }, ttlDays: { type: "number" }, alias: str, to: str }, ["space", "role"]),
       async i => {
         const row = spaceOf(i.space);
         const s = await gate(row.id);
-        const r = await invitesFor(row).createInvite({ creator: s.id, role: i.role, scope: i.scope, expires: i.expires, uses: i.uses, ttl: i.ttlDays === undefined ? undefined : Number(i.ttlDays) * DAY, alias: i.alias });
+        const r = await invitesFor(row).createInvite({ creator: s.id, role: i.role, scope: i.scope, expires: i.expires, uses: i.uses, ttl: i.ttlDays === undefined ? undefined : Number(i.ttlDays) * DAY, alias: i.alias, to: i.to ? await personRef(i.to) : undefined, ...(await invitePin(row)) });
         return { id: r.id, link: r.link, token: r.token };
       });
     tool("spaces.invites.revoke", "Cancel an invite so its link stops working.", obj({ space: str, id: str }, ["space", "id"]), async i => {
@@ -523,6 +682,11 @@ export default {
       return { invites: out(await invitesFor(row).listInvites({ actor: s.id })) };
     });
 
+    /** This person's own list answers for themselves; everyone else is looked up by name inside the client. */
+    const ownerLookup = async (/** @type {string} */ id) => {
+      const s = identity.status();
+      return s.exists && s.id === id ? identity.ops() : null;
+    };
     /** A join link, with an own-domain host resolved through the directory when this device does not know it. @param {string} link */
     const parseLink = async link => {
       const known = Object.fromEntries(spaces.all().flatMap(r => r.aliases.map((/** @type {string} */ a) => [a, r.name])));
@@ -531,7 +695,7 @@ export default {
         try { host = new URL(String(link)).hostname.toLowerCase(); } catch { /* the lib already said it is not a link */ }
         if (!host || host.endsWith(".vyre.run") || (/** @type {any} */ (e)).code !== "bad_input") throw e;
         let r;
-        try { r = await dirFor(stubSigner).resolve(host, { alias: true }); } catch { throw e; }
+        try { r = await dir.resolve(host, { alias: true, resolve: ownerLookup }); } catch { throw e; }
         if (!r.ok || r.kind !== "space") throw e;
         const spaceName = r.payload && r.payload.name ? `${r.payload.name}.vyre.run` : null;
         if (!spaceName) throw e;
@@ -542,14 +706,19 @@ export default {
     const previewLink = async i => {
       const p = await parseLink(i.link);
       const local = spaces.byName(p.name);
-      const pinned = i.pin ? String(i.pin) : local && local.rootPublic ? local.rootPublic : undefined;
+      const kept = local ? await chainOf(local.id) : null;
+      let carried;
+      try { carried = JSON.parse(Buffer.from(String(p.token).split(".")[0], "base64url").toString("utf8")).chain; } catch { carried = undefined; }
+      const pinned = parsePin(i.pin) || (kept && kept.pin) || (carried && { id: carried.id, seq: carried.seq, head: carried.head }) || undefined;
+      // Never an unpinned first fetch: the link says which version of the space's list it was made for, or this device already holds one.
+      if (!pinned) return { p, res: { ok: false, code: "unpinned", message: "This invite does not say which version of the space it was made for. Ask for a new one." }, local };
       const res = await previewInvite(p.token, {
         now: now(), expectName: p.name,
         resolveSpace: async (/** @type {string} */ name) => {
           const label = name.replace(/\.vyre\.run$/, "");
-          const r = await dirFor(stubSigner).resolve(label, { pinned });
-          if (!r.ok || r.kind !== "space") return null;
-          return { name, id: r.payload && r.payload.id, root_public_key: r.pin, label: (r.payload && r.payload.label) || label };
+          const r = await dir.resolve(label, { pin: pinned, resolve: ownerLookup });
+          if (!r.ok || r.kind !== "space" || !r.payload) return null;
+          return { name, id: r.payload.id, root_public_key: r.payload.rootPublic, rk: spaceFingerprint(r.id, r.payload.rootPublic), label: r.payload.label || label };
         },
         ...(local ? { store: inviteStore(db, local.id) } : {}),
       });
@@ -559,7 +728,7 @@ export default {
       obj({ link: str, pin: str }, ["link"]), async i => {
         const { res } = await previewLink(i);
         if (!res.ok) throw refuse(res.message, res.code);
-        return res.card;
+        return { ...res.card, fingerprint_words: fingerprintWords(res.card.fingerprint) };
       });
     tool("spaces.invites.accept", "Join a space from its link, signing with this device's person key. When this device is the space's home the membership is made at once; otherwise the signed acceptance is returned for the home to redeem.",
       obj({ link: str, pin: str }, ["link"]), async i => {
@@ -568,18 +737,61 @@ export default {
         if (!res.ok) throw refuse(res.message, res.code);
         const payload = JSON.parse(Buffer.from(p.token.split(".")[0], "base64url").toString("utf8"));
         const proof = b64u(await identity.sign(acceptMessage(payload.id, payload.space, /** @type {string} */ (s.id))));
-        const redeem = { token: p.token, person: { id: s.id, publicKey: s.publicKey }, proof };
+        const redeem = { token: p.token, person: { id: s.id, name: s.name, ops: identity.ops(), by: s.eid }, proof };
         if (local && files.keys.has(local.id)) return { joined: true, space: local.id, ...out(await invitesFor(local).acceptInvite(redeem)) };
         return { joined: false, pending: true, space: payload.space, card: res.card, redeem };
       });
     tool("spaces.invites.redeem", "The space's home checks a signed acceptance (from spaces.invites.accept on another device) and makes the membership. The link's signature, the person's own signature and the use count are the authority.",
-      obj({ token: str, person: obj({ id: str, publicKey: str }, ["id", "publicKey"]), proof: str }, ["token", "person", "proof"]), async i => {
+      obj({ token: str, person: obj({ id: str, name: str, ops: { type: "array", items: obj() }, by: str, publicKey: str }, ["id"]), proof: str }, ["token", "person", "proof"]), async i => {
         let payload;
         try { payload = JSON.parse(Buffer.from(String(i.token).split(".")[0], "base64url").toString("utf8")); } catch { throw refuse("That is not a valid invite.", "bad_input"); }
         const row = payload && typeof payload.sid === "string" ? spaces.get(payload.sid) : null;
         if (!row || row.name !== payload.space) throw refuse("This invite is for a different space than the one it points to.", "wrong_space");
         return out(await invitesFor(row).acceptInvite({ token: String(i.token), person: i.person, proof: String(i.proof) }));
       });
+
+    // 5a. what other modules (bridges, publish) ask of spaces: who is a member, who is acting, which spaces a person is in. Modules only, never a person or a model.
+    tool("spaces.self", "The person acting on this device and the space a call is for (the one named, or the only one this person is in). For modules.", obj({ caller: str, space: str }), async i => {
+      const s = me();
+      const mine = spaces.all().filter(r => r.status === "done" && (mstore.get(r.id, /** @type {string} */ (s.id)) || r.createdBy === s.id));
+      const row = i.space ? mine.find(r => r.id === i.space || r.name === i.space || r.label === i.space) : mine.length === 1 ? mine[0] : null;
+      return row ? { person: s.id, space: { id: row.id, name: row.name } } : { person: s.id, space: null };
+    }, { internal: true });
+    tool("spaces.merge-list", "The spaces a person is in, one entry each: { space, name, color, link }, for a device that merges spaces itself. For modules.", obj({ person: str }, ["person"]), async i => {
+      const p = String(i.person);
+      return { spaces: spaces.all().filter(r => r.status === "done" && (mstore.get(r.id, p) || r.createdBy === p)).map(r => ({ space: r.id, name: r.name, color: null, link: `https://${r.name}` })) };
+    }, { internal: true });
+
+    // 5b. the compute grant pair: the space allows its work on members' computers, the member accepts, and it covers only their own sessions on their own machine
+    /** @type {Map<string, any>} */ const computeSvc = new Map();
+    const computeFor = (/** @type {string} */ id) => {
+      let c = computeSvc.get(id);
+      if (!c) { c = createCompute({ space: id, members: membersFor(id), store: kv, now, emit }); computeSvc.set(id, c); }
+      return c;
+    };
+    tool("spaces.compute.allow", "As an owner or admin: allow (or stop allowing) this space's work to run on members' own computers. A member must still accept, and it covers only that member's own sessions on their own machine.",
+      obj({ space: str, enabled: { type: "boolean" }, maxSessions: { type: "number" } }, ["space", "enabled"]), async i => {
+        const row = spaceOf(i.space);
+        const s = await gate(row.id);
+        return out(await computeFor(row.id).allowSpace({ actor: /** @type {string} */ (s.id), enabled: i.enabled === true, terms: i.maxSessions === undefined ? undefined : { maxSessions: Number(i.maxSessions) } }));
+      });
+    tool("spaces.compute.accept", "As a member: accept (or stop accepting) this space using your own computer for your own sessions. `terms` is the hash the space's terms show; if the space changed them you must look again.",
+      obj({ space: str, enabled: { type: "boolean" }, terms: str }, ["space", "enabled"]), async i => {
+        const row = spaceOf(i.space);
+        const s = await gate(row.id);
+        return out(await computeFor(row.id).acceptMember({ person: /** @type {string} */ (s.id), enabled: i.enabled === true, terms: i.terms === undefined ? undefined : String(i.terms) }));
+      });
+    tool("spaces.compute.status", "What the space and you have each said about running its work on your computer, and whether it is on.", obj({ space: str }, ["space"]), async i => {
+      const row = spaceOf(i.space);
+      const s = await gate(row.id);
+      return out(await computeFor(row.id).status({ person: /** @type {string} */ (s.id) }));
+    });
+    tool("spaces.compute.may-run", "The scheduler asks: may this member's session run on this member's computer? Needs both grants and the same person on the session, the machine and the request.",
+      obj({ space: str, session: obj({ owner: str, running: { type: "number" } }, ["owner"]), machine: obj({ owner: str }, ["owner"]) }, ["space", "session", "machine"]), async i => {
+        const row = spaceOf(i.space);
+        const s = await gate(row.id);
+        return out(await computeFor(row.id).mayRun({ actor: /** @type {string} */ (s.id), session: i.session, machine: i.machine }));
+      }, { internal: true });
 
     // 6. the sweep
     const sweep = async () => {
@@ -598,7 +810,12 @@ export default {
     const first = setTimeout(() => { sweep().catch(() => {}); }, 2_000);
     if (typeof first.unref === "function") first.unref();
 
-    return { async stop() { clearInterval(timer); clearTimeout(first); } };
+    // A removed or added sign-in is an alert on every device, so each device asks the directory for its list now and then (never faster than 60 s).
+    const syncEvery = Math.max(60_000, hooks.syncMs ?? 60_000);
+    const syncTimer = setInterval(() => { const s = identity.status(); if (s.exists && s.name) idops.sync().catch(e => ctx.log.warn(`the identity check failed: ${/** @type {Error} */ (e).message}`)); }, syncEvery);
+    if (typeof syncTimer.unref === "function") syncTimer.unref();
+
+    return { async stop() { clearInterval(timer); clearTimeout(first); clearInterval(syncTimer); } };
   },
 };
 

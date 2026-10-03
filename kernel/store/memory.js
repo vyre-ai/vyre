@@ -7,21 +7,35 @@ import { checkValue } from "./values.js";
 import { page, aggregate as agg, fieldOf } from "./query.js";
 
 /** The conformance suite revision this store last passed. Bump with the suite. */
-export const CONFORMANCE_REVISION = 2;
+export const CONFORMANCE_REVISION = 3;
 
 const clone = (/** @type {any} */ v) => structuredClone(v);
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 
-/** @param {{ clock?: () => number, hook?: (op: string, args: any[]) => void }} [cfg] hook: tests throw from it to simulate a crash or an outage */
+/**
+ * @param {{ clock?: () => number, hook?: (op: string, args: any[]) => void,
+ *   initial?: { types: any[], records: any[], changes: any[] },
+ *   persist?: { type(name: string, def: any | null): void, record(r: any): void, change(e: any): void } }} [cfg]
+ *   hook: tests throw from it to simulate a crash or an outage. initial and persist make the store durable (kernel/store/sqlite.js): the state it starts from, and a
+ *   write-through for every change, called after the in-memory change is made.
+ */
 export function createMemoryStore(cfg = {}) {
   const clock = cfg.clock || Date.now;
   /** @type {Map<string, any>} */ const types = new Map();
   /** @type {Map<string, Map<string, any>>} */ const rows = new Map();
   /** @type {any[]} */ const changes = [];
+  if (cfg.initial) {
+    for (const t of cfg.initial.types) { types.set(t.name, t); rows.set(t.name, new Map()); }
+    for (const r of cfg.initial.records) rows.get(r.type)?.set(r.id, r);
+    changes.push(...cfg.initial.changes);
+  }
   const touch = (/** @type {string} */ op, /** @type {any[]} */ args) => cfg.hook && cfg.hook(op, args);
   const table = (/** @type {string} */ t) => { if (!types.has(t)) throw fail("unknown_type", `no type ${t}`); return rows.get(t); };
-  const note = (/** @type {string} */ kind, /** @type {any} */ r, /** @type {any} */ before) =>
-    changes.push({ cursor: `c${changes.length + 1}`, type: r.type, id: r.id, kind, version: r.version, at: r.updated_at, ...(before ? { before: clone(before) } : {}), after: clone(r.data) });
+  const note = (/** @type {string} */ kind, /** @type {any} */ r, /** @type {any} */ before) => {
+    const entry = { cursor: `c${changes.length + 1}`, type: r.type, id: r.id, kind, version: r.version, at: r.updated_at, ...(before ? { before: clone(before) } : {}), after: clone(r.data) };
+    changes.push(entry);
+    if (cfg.persist) { cfg.persist.record(clone(r)); cfg.persist.change(clone(entry)); }
+  };
 
   function validate(/** @type {string} */ type, /** @type {any} */ data) {
     const def = types.get(type);
@@ -42,6 +56,7 @@ export function createMemoryStore(cfg = {}) {
         const had = types.get(t.name);
         if (had && canonical(had) === canonical(t)) continue;
         types.set(t.name, clone(t));
+        if (cfg.persist) cfg.persist.type(t.name, clone(t));
         if (!rows.has(t.name)) rows.set(t.name, new Map());
         changesMade.push(had ? `changed type ${t.name}` : `added type ${t.name}`);
       }
@@ -49,16 +64,20 @@ export function createMemoryStore(cfg = {}) {
         if (!types.has(t.name)) throw fail("unknown_type", `no type ${t.name}`);
         if (canonical(types.get(t.name)) === canonical(t)) continue;
         types.set(t.name, clone(t));
+        if (cfg.persist) cfg.persist.type(t.name, clone(t));
         changesMade.push(`changed type ${t.name}`);
       }
       for (const name of diff.remove_types || []) {
         if (!types.has(name)) continue;
         if ([...rows.get(name).values()].some(r => !r.deleted_at)) throw fail("invalid", `type ${name} still has records`);
         types.delete(name); rows.delete(name);
+        if (cfg.persist) cfg.persist.type(name, null);
         changesMade.push(`removed type ${name}`);
       }
       return { applied: changesMade.length > 0, changes: changesMade };
     },
+    /** Every type definition, as defined. */
+    async types() { touch("types", []); return [...types.values()].map(t => clone(t)); },
     /** The field names and kinds of a type, or null when there is no such type (the gateway reads sealed fields from here). */
     async describe(type) {
       touch("describe", [type]);

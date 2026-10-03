@@ -14,7 +14,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { swift, ts, css, cssV2, load, TOKENS } from "./lib/tokens.js";
+import { swift, ts, css, cssV2, cssV3, jsV3, load, TOKENS } from "./lib/tokens.js";
 import { applyOverride } from "./lib/theme.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -24,6 +24,8 @@ export const OUTPUTS = {
   "local/capsule/native/Sources/UI/Tokens.generated.swift": swift,
   "deck/css/tokens.css": css,
   "deck/css/tokens-v2.css": cssV2,
+  "deck/css/tokens-v3.css": cssV3,
+  "deck/ui/tokens-v3.js": jsV3,
 };
 /** The folder each surface lives in: no folder, no surface in this tree, so nothing is written. */
 export const ROOTS = {
@@ -31,6 +33,8 @@ export const ROOTS = {
   "local/capsule/native/Sources/UI/Tokens.generated.swift": "local/capsule/native",
   "deck/css/tokens.css": "deck",
   "deck/css/tokens-v2.css": "deck",
+  "deck/css/tokens-v3.css": "deck",
+  "deck/ui/tokens-v3.js": "deck",
 };
 
 /** @returns {Record<string, string>} repo path to contents */

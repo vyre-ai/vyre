@@ -1,7 +1,8 @@
 // kernel/core/chain.js: the kernel builds the acting chain (invariant 2, contract 4.2). Nothing else can: a chain
 // is a frozen object registered in a module-private set, so a hand-made one is not a chain. The builder takes only
 // what the Surfaces door verified (SurfaceFacts), never a header string, and authority only narrows.
-import { canonical, sha256, hmac, sameMac } from "./canonical.js";
+import { canonical, sha256 } from "./canonical.js";
+import { createKernelSeal } from "./seal.js";
 import { mintId } from "./ids.js";
 import { KernelError } from "./errors.js";
 import { TRUST_ORDER, REDACTION_ORDER } from "../contracts/index.js";
@@ -46,12 +47,13 @@ export function mergeLabels(/** @type {any} */ a, /** @type {any} */ b) {
 }
 
 /**
- * @param {{ space: string, owner: string, owner_uid: number, key: Uint8Array | string, clock?: () => number,
+ * @param {{ space: string, owner: string, owner_uid: number, key?: Uint8Array | string, seal?: any, sealer?: any, clock?: () => number,
  *   is_person?: (person: string) => boolean, job_max_age?: number }} cfg
  *   owner: the person id of the Space's owner on this machine; owner_uid: the OS user the kernel treats as them;
- *   key: the secret that seals a stored chain; is_person: whether a person id is a member of this Space.
+ *   seal: the sealing handle (kernel/core/seal.js: the sealing process, or a development key) that seals a stored chain and a session token; is_person: whether a person id is a member of this Space.
  */
 export function createChainBuilder(cfg) {
+  const seal = cfg.seal || createKernelSeal({ sealer: cfg.sealer, key: cfg.key });
   const clock = cfg.clock || Date.now;
   const space = cfg.space;
   const isMember = cfg.is_person || (p => p === cfg.owner);
@@ -92,7 +94,22 @@ export function createChainBuilder(cfg) {
       }
       case "agent_session": {
         if (!f.vouched) return refuse("agent claim not vouched by the kernel's own session");
-        return make([hop("person", cfg.owner, "session", { session: f.session }), hop("agent", f.agent, "session", { session: f.session })], base());
+        const who = f.person ?? cfg.owner;
+        if (who !== cfg.owner && !isMember(who)) return refuse("the session's person is not a member");
+        return make([hop("person", who, "session", { session: f.session }), hop("agent", f.agent, "session", { session: f.session })], base());
+      }
+      case "invitee": {
+        // Someone who holds an invite and is not a member yet: the Surfaces door verified who they are. Their chain can do one thing, accept the invite
+        // (`grants.inviteAccept`); every other call finds no membership and is refused.
+        if (!f.vouched || typeof f.person !== "string" || !f.person) return refuse("invitee not vouched by the kernel's own door");
+        return make([hop("person", f.person, "surface", { surface: "link" })], { ...base(), trust: "member" });
+      }
+      case "session_person": {
+        // A daemon speaking for a person in a session it holds a token for (kernel/core/surfaces.js verified it). It is the person's chain, but not a
+        // presence session: no passkey was shown, so an admin act still needs the person's own proof.
+        if (!f.vouched) return refuse("session not vouched by the kernel's own token");
+        if (f.person !== cfg.owner && !isMember(f.person)) return refuse("the session's person is not a member");
+        return make([hop("person", f.person, "session", { node: `session:${f.session}` })], base());
       }
       case "module": return appendService(f.inbound, f.module, f.first_party);
       case "job": return restore(f.stored);
@@ -108,6 +125,21 @@ export function createChainBuilder(cfg) {
     return make([...(inbound ? inbound.hops : []), h], firstParty ? labels : mergeLabels(labels, { trust: "external", red: "public", source_spaces: [space] }));
   }
 
+  /**
+   * The chain a Flow run acts under: the approver's own chain with the automation appended (the approver stays the assigner of what the run makes), the run
+   * id as its job, and taint carried: a run that read foreign content is external for good. `approver` must be a kernel chain that is exactly one person.
+   * @param {{ flow: string, approver: any, run: string, tainted?: boolean }} o
+   */
+  function forFlow(o) {
+    if (!isChain(o.approver) || o.approver.hops.length !== 1 || o.approver.hops[0].actor.kind !== "person") return refuse("a Flow runs under one person's approval");
+    if (typeof o.flow !== "string" || !o.flow || typeof o.run !== "string" || !o.run) return refuse("a Flow run needs its flow and its run id");
+    const labels = o.tainted ? mergeLabels(o.approver.labels, { trust: "external", red: "public", source_spaces: [space] }) : o.approver.labels;
+    return make([...o.approver.hops, hop("automation", o.flow, "job")], labels, { job: o.run });
+  }
+
+  /** A module acting for an approver: [approver, service:module], so what the module assigns carries the approver as its assigner. @param {{ module: string, approver: any, first_party?: boolean }} o */
+  function forModule(o) { return appendService(o.approver, o.module, o.first_party !== false); }
+
   /** A derived chain whose label is weaker or equal: taint is sticky and only grows. */
   function weaken(/** @type {any} */ chain, /** @type {any} */ labels) {
     if (!isChain(chain)) return refuse("not a kernel chain");
@@ -115,16 +147,26 @@ export function createChainBuilder(cfg) {
   }
 
   /** The stored form of a chain for a queued, scheduled or triggered job: sealed with the kernel's key. */
+  const after = (/** @type {any} */ v, /** @type {(x: any) => any} */ f) => (v && typeof v.then === "function" ? v.then(f) : f(v));
+  /** Returns the stored form, or a Promise of it when the sealing handle is the sealing process (`await` it; a development key answers at once). */
   function serialize(/** @type {any} */ chain, /** @type {string} */ job = mintId("job", clock())) {
     if (!isChain(chain)) return refuse("not a kernel chain");
     const body = canonical({ space: chain.space, hops: chain.hops, labels: chain.labels, built_at: chain.built_at, job });
-    return { job, body, mac: hmac(cfg.key, body) };
+    return after(seal.mac("chain-seal-v1", body), mac => ({ job, body, mac }));
   }
+  /** A session token: sealed text the Surfaces door can check later. Returns the MAC, or a Promise of it. @param {string} body */
+  const sealToken = body => seal.mac("surface-token-v1", body);
+  /** @param {string} body @param {string} mac @returns {boolean | Promise<boolean>} */
+  const checkToken = (body, mac) => seal.verify("surface-token-v1", body, mac);
 
   /** Rebuild a chain from its stored form, or from a chain a job already holds. A forged or altered record yields nothing. */
   function restore(/** @type {any} */ stored) {
     if (isChain(stored)) return stored.job ? stored : make([...stored.hops], stored.labels, { job: mintId("job", clock()) });
-    if (!stored || typeof stored.body !== "string" || typeof stored.mac !== "string" || !sameMac(hmac(cfg.key, stored.body), stored.mac)) return refuse("stored chain failed its seal");
+    if (!stored || typeof stored.body !== "string" || typeof stored.mac !== "string") return refuse("stored chain failed its seal");
+    // Returns the chain, or a Promise of it when the seal is checked by the sealing process (`await` it).
+    return after(seal.verify("chain-seal-v1", stored.body, stored.mac), ok => (ok ? finishRestore(stored) : refuse("stored chain failed its seal")));
+  }
+  function finishRestore(/** @type {any} */ stored) {
     const o = JSON.parse(stored.body);
     if (o.space !== space) return refuse("stored chain is for another space");
     // A leaked record replays for a bounded time only; authorize still rechecks every grant on use (invariant 3, K1 item 8b).
@@ -136,7 +178,7 @@ export function createChainBuilder(cfg) {
     return /** @type {any} */ (c);
   }
 
-  return Object.freeze({ fromFacts, appendService, weaken, serialize, restore });
+  return Object.freeze({ fromFacts, appendService, forFlow, forModule, weaken, serialize, restore, sealToken, checkToken });
 }
 
 /** The one Space the retrofit's throwaway chains live in. No production authorizer evaluates it, so no chain minted for it is ever accepted by a real Space. */

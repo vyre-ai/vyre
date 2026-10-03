@@ -13,7 +13,7 @@ const OUTWARD = new Set(["outward.send", "outward.pay", "outward.publish", "outw
 const PRESENCE_RANK = { none: 0, session: 1, fresh: 2 };
 const maxPresence = (/** @type {string} */ a, /** @type {string} */ b) => (PRESENCE_RANK[/** @type {'none'} */ (a)] >= PRESENCE_RANK[/** @type {'none'} */ (b)] ? a : b);
 // An obligation the kernel cannot recognise is never silently met: it makes the effect an ask (K1 item 8c).
-const KNOWN_OBLIGATIONS = new Set(["audit", "presence", "ask", "meter", "rate", "placeholders"]);
+const KNOWN_OBLIGATIONS = new Set(["audit", "presence", "ask", "meter", "rate", "placeholders", "fields", "once"]);
 const REASON_RANK = ["no_grant", "wrong_node", "pattern_not_covered", "not_contained", "revoked", "expired"];
 
 /** Does an action pattern (`crm.update`, `crm.*`, `*.read`, `*`) cover `action`, for a grant made against action-set `version`? */
@@ -65,7 +65,8 @@ export function contains(parent, child, since = () => 0, riskOf = () => undefine
  * @property {(urn: string) => any} [attrs] kernel attributes of a resource: space, owner, sensitivity, project, created_by
  * @property {(urn: string) => string[]} [sealedFields]
  * @property {(service: string, action: string, resource: string) => boolean} [standing] whether a service declared a standing read of this family of resources; a service with no declaration gets nothing
- * @property {(proof: any, ctx: any) => boolean} [verifyPresence] K4 supplies the hardware-signer check; default none
+ * @property {(i: { id: string, chain: any, action: string, resource: string }) => boolean | Promise<boolean>} [approvedAct] does this approval (an approved held-act task) cover exactly this act by this chain? It is USED here: the hook marks it spent atomically as it answers yes, so an approval is one decision, whoever calls `authorize` (the gate or a Flow runner), and cannot be replayed for a second act.
+ * @property {(proof: any, ctx: any) => boolean | Promise<boolean>} [verifyPresence] the hardware-signer check (core/presence.js); default none
  * @property {(chain: any) => boolean} [hasPresenceSession]
  * @property {number} [policy_version]
  * @property {() => number} [clock]
@@ -106,6 +107,8 @@ export function createAuthorizer(cfg) {
       // An unknown trust value is the most restrictive, never trusted (invariant 9).
       const trust = TRUST_ORDER.includes(chain.labels.trust) ? chain.labels.trust : "untrusted";
       if (trust === "untrusted" && risk !== "read") return deny("tainted");
+      // A grant is a person's act: never from a chain that holds a model, whatever it was lent (invariants 2 and 4).
+      if (risk === "grant" && hasKind(chain, "agent")) return deny("model_chain");
 
       // 2 and 3. Candidates and the effective grant per hop; the chain's authority is the intersection.
       const used = [];
@@ -129,7 +132,7 @@ export function createAuthorizer(cfg) {
         const candidates = (await cfg.grants.forSubject(actor, h, input)).filter(g => g.status === "active" && g.space === cfg.space).sort((a, b) => (a.id < b.id ? -1 : 1));
         let best = "no_grant", chosen = null, chosenObs = [];
         for (const g of candidates) {
-          const r = await evaluate(g, h, ms, chain, action, resource, attrs, now);
+          const r = await evaluate(g, h, ms, chain, action, resource, attrs, now, 0, input.probe === true);
           if (r.ok) { chosen = g; chosenObs = r.obligations; break; }
           if (REASON_RANK.indexOf(r.reason) > REASON_RANK.indexOf(best)) best = r.reason;
         }
@@ -162,14 +165,19 @@ export function createAuthorizer(cfg) {
         if (fields && fields.length) obligations.push({ type: "placeholders", fields: [...fields] });
       }
 
+      // A held act the person approved (a task, by id) is the evidence that satisfies the outward ask for exactly that act by exactly that chain, once. The
+      // approval stands in for the person's confirmation too: they gave it when they approved. Nothing else is waived (a deny stays a deny).
+      if (ask && OUTWARD.has(risk) && typeof input.approval === "string" && cfg.approvedAct && await cfg.approvedAct({ id: input.approval, chain, action, resource }) === true) {
+        ask = null; presence = "none";
+      }
+
       // Is each obligation met by evidence the kernel holds? An unmet one makes the effect ask, not allow.
       // Binding evidence: the proof must cover the canonical input, so it is not reusable for another payload (K4 supplies the hash).
       const ctxEvidence = { decision, chain, action, resource, input_hash: input.input_hash };
       // A session stands for presence on admin and grant only when the chain is exactly one person: an assistant in the chain never inherits it.
       const sessionOk = !(risk === "admin" || risk === "grant") || isExactlyPerson(chain);
       const presenceMet = presence === "none" || (presence === "session" && sessionOk && (cfg.hasPresenceSession ? cfg.hasPresenceSession(chain) : false))
-        || (input.presence && cfg.verifyPresence ? cfg.verifyPresence(input.presence, ctxEvidence) : false)
-        || (presence === "session" && input.presence && cfg.verifyPresence ? cfg.verifyPresence(input.presence, ctxEvidence) : false);
+        || (input.presence && cfg.verifyPresence ? await cfg.verifyPresence(input.presence, ctxEvidence) === true : false);
       const out = [...obligations];
       if (presence !== "none") out.push({ type: "presence", method: presence });
       if (ask) out.push({ type: "ask", kind: ask.kind, approver: ask.approver, checker_must_be_person: true });
@@ -185,7 +193,7 @@ export function createAuthorizer(cfg) {
   }
 
   /** One candidate grant against one hop: coverage, selector, kernel attributes, conditions, narrowing. */
-  async function evaluate(/** @type {any} */ g, /** @type {any} */ h, /** @type {any} */ ms, /** @type {any} */ chain, /** @type {string} */ action, /** @type {string} */ resource, /** @type {any} */ attrs, /** @type {number} */ now, depth = 0) {
+  async function evaluate(/** @type {any} */ g, /** @type {any} */ h, /** @type {any} */ ms, /** @type {any} */ chain, /** @type {string} */ action, /** @type {string} */ resource, /** @type {any} */ attrs, /** @type {number} */ now, depth = 0, probe = false) {
     const subj = g.subject;
     const subjectOk = subj.kind === "actor" ? subj.actor.kind === h.actor.kind && subj.actor.id === h.actor.id && subj.actor.space === h.actor.space
       : subj.kind === "role" ? Boolean(ms && ms.role === subj.name) : false;
@@ -195,7 +203,9 @@ export function createAuthorizer(cfg) {
     if (cov === null) return { ok: false, reason: "no_grant" };
     if (cov !== "covered") return { ok: false, reason: "pattern_not_covered" };
     if (!covers(g.resource.prefix, resource)) return { ok: false, reason: "no_grant" };
-    for (const pr of g.resource.where || []) {
+    // A type-level probe (input.probe) asks only what a grant carries for the type, to learn its field limits: row predicates are skipped, and the
+    // answer is never an access decision for any row.
+    for (const pr of probe ? [] : g.resource.where || []) {
       // A predicate on an absent attribute matches nothing, for every op; an unknown op denies.
       if (!Object.hasOwn(attrs, pr.attr) || attrs[pr.attr] === undefined || attrs[pr.attr] === null) return { ok: false, reason: "no_grant" };
       const v = attrs[pr.attr];
@@ -217,8 +227,12 @@ export function createAuthorizer(cfg) {
     /** @type {any[]} */ const obs = [];
     if (c.how && c.how.presence && c.how.presence !== "none") obs.push({ type: "presence", method: c.how.presence });
     if (c.how && c.how.approval) obs.push({ type: "ask", kind: reg.get(action).risk, approver: c.how.approval.by, checker_must_be_person: true });
-    if (c.budget) obs.push({ type: "meter", meter: c.budget.meter, amount: 1 });
-    if (c.rate) obs.push({ type: "rate", ...c.rate });
+    // A field allow-list on the selector: the gateway omits other fields on read and refuses writes to them (the narrowest hop wins).
+    if (Array.isArray(g.resource.fields)) obs.push({ type: "fields", allow: [...g.resource.fields] });
+    // These three are counted by the gateway (kernel/core/limits.js): authorize only says the grant carries them.
+    if (c.budget) obs.push({ type: "meter", meter: c.budget.meter, limit: c.budget.limit, amount: 1, grant: g.id });
+    if (c.rate) obs.push({ type: "rate", n: c.rate.n, per_seconds: c.rate.per_seconds, grant: g.id });
+    if (c.once === true || (c.how && c.how.approval && c.how.approval.once === true)) obs.push({ type: "once", grant: g.id });
     for (const k of Object.keys(c)) if (!["when", "where", "how", "audience", "delegate", "budget", "rate", "once"].includes(k)) obs.push({ type: `unknown:${k}` });
     // Narrowing: a delegated grant is contained in its parent, the parent is rechecked now, and its presence and
     // approval conditions come along as obligations (R6-8); revoking a parent kills every child.
@@ -234,7 +248,7 @@ export function createAuthorizer(cfg) {
         const pms = cfg.members.membership ? cfg.members.membership(pa) : undefined;
         if (pms && pms.role === "temp" && (pms.expires === undefined || pms.expires <= now || !(pms.scope || []).some((/** @type {string} */ s) => covers(s, resource)))) return { ok: false, reason: "expired" };
       }
-      const pr = await evaluate({ ...parent, subject: subj }, h, ms, chain, action, resource, attrs, now, depth + 1);
+      const pr = await evaluate({ ...parent, subject: subj }, h, ms, chain, action, resource, attrs, now, depth + 1, probe);
       if (!pr.ok) return pr;
       obs.push(...pr.obligations);
     }
