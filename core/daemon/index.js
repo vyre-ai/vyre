@@ -939,7 +939,7 @@ const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", "
   ".ttf": "font/ttf", ".map": "application/json" };
 
 /** The lib files vyred serves to the Deck (pure, import-free, shared with Node). */
-const DECK_LIBS = new Set(["/lib/avatar-seed/index.js", "/lib/caps-flags/index.js"]);
+const DECK_LIBS = new Set(["/lib/avatar-seed/index.js", "/lib/caps-flags/index.js", "/lib/theme/contrast.js", "/kernel/contracts/index.js"]);
 
 /**
  * The Deck: static files from deck/ in the repo (the deck workstream builds them). Paths that
