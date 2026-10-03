@@ -210,16 +210,16 @@ export function createRunner(o) {
         h.queue = h.queue.then(async () => {
           await sy.line(line);
           if (!endsTurn(line)) return;
-          // The reader runs inside the sandbox (reader.js), so a racing helper cannot reach a host file. Pausing the group as well
-          // just keeps the files steady for a consistent checkpoint.
-          group("SIGSTOP");
-          try {
+          // The reader runs inside the sandbox (reader.js), so a racing helper cannot reach a host file, and it reads only files whose size or
+          // modification time changed. The session is NOT paused: stopping it for the length of the read blocked every write (measured:
+          // seconds on a big workspace). A file written during the read is picked up by the next turn's checkpoint.
+          {
             const cur = o.labels ? mergeLabels(h.labels, o.labels(s.session)) : h.labels;
             h.labels = cur;
             const st = { labels: cur, routes: routes.map(r => r.prefix), session: o.sessionState?.(s.session) };
             const ok = await sy.checkpoint(st);
             emit({ type: "checkpoint", session: s.session, ok, turn: sy.turn });
-          } finally { group("SIGCONT"); }
+          }
         }).catch(() => {});
       }
     });

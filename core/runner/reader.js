@@ -4,9 +4,9 @@
 // path the session controls: a link the session plants leads nowhere (the host is not in this view; on macOS seatbelt denies
 // it), and a race with a helper process cannot reach a host file (reviewer-2 S-1, fixed at the root).
 //
-//   stdin  one JSON line: { roots: [{ dir, remote }], have: { "<rel>": "<sha256>" }, maxBytes, maxFiles, maxTotal }
+//   stdin  one JSON line: { roots: [{ dir, remote }], have: { "<rel>": { hash, size, mtimeMs } }, maxBytes, maxFiles, maxTotal }
 //          (caps per file, files per checkpoint and bytes per checkpoint: a hostile session cannot make a checkpoint unbounded)
-//   stdout for each plain file: a header line  H {"rel","hash","size","send"}\n  then size bytes when send is true
+//   stdout for each plain file: a header line  H {"rel","hash","size","mtimeMs","send"}\n  then size bytes when send is true
 //          (send is false when the hash is the one the space already has). Ends with  E\n
 //
 // It still refuses links and non-regular files itself (lstat, O_NOFOLLOW): defence in depth, not the boundary.
@@ -47,12 +47,15 @@ process.stdin.on("end", () => {
         if (!st.isFile() || st.size > req.maxBytes) continue;
         if (++files > req.maxFiles || total + st.size > req.maxTotal) { w(Buffer.from("T\n")); process.exit(0); }
         total += st.size;
+        // Unchanged since the last checkpoint (same size and modification time): not read, not hashed, only listed.
+        const known = req.have[rel];
+        if (known && known.size === st.size && known.mtimeMs === st.mtimeMs) { w(Buffer.from("H " + JSON.stringify({ rel, hash: known.hash, size: 0, len: st.size, mtimeMs: st.mtimeMs, send: false }) + "\n")); continue; }
         const buf = Buffer.alloc(st.size); let n = 0;
         while (n < st.size) { const r = fs.readSync(fdn, buf, n, st.size - n, n); if (!r) break; n += r; }
         const data = buf.subarray(0, n);
         const hash = crypto.createHash("sha256").update(data).digest("hex");
-        const send = req.have[rel] !== hash;
-        w(Buffer.from("H " + JSON.stringify({ rel, hash, size: send ? data.length : 0, send }) + "\n"));
+        const send = !known || known.hash !== hash;
+        w(Buffer.from("H " + JSON.stringify({ rel, hash, size: send ? data.length : 0, len: data.length, mtimeMs: st.mtimeMs, send }) + "\n"));
         if (send) w(data);
       } catch {} finally { if (fdn >= 0) try { fs.closeSync(fdn); } catch {} }
     }

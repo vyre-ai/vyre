@@ -251,8 +251,10 @@ test("S-1b: the sandboxed reader returns plain files, skips links, and sends onl
   const first = await collect({});
   assert.deepEqual(first.map(f => f.rel).sort(), ["files/a.txt", "files/sub/b.txt"]);
   assert.equal(first.find(f => f.rel === "files/a.txt").bytes.toString(), "alpha");
-  const again = await collect({ "files/a.txt": first.find(f => f.rel === "files/a.txt").hash });
+  const a0 = first.find(f => f.rel === "files/a.txt");
+  const again = await collect({ "files/a.txt": { hash: a0.hash, size: a0.len, mtimeMs: a0.mtimeMs } });
   assert.equal(again.find(f => f.rel === "files/a.txt").bytes, null);
+  assert.equal(again.find(f => f.rel === "files/a.txt").hash, a0.hash, "an unchanged file (same size and mtime) is listed with its known hash, not re-read");
   assert.equal(again.find(f => f.rel === "files/sub/b.txt").bytes.toString(), "beta");
 });
 
