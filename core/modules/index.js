@@ -1011,10 +1011,10 @@ export class Registry {
         list: () => [...this.providers.keys()],
       },
       ...(kernelHandle ? { kernel: kernelHandle } : {}),
-      // The session credential maker is the Switchboard's alone (vyred's own sessions): no other module is handed the way to open a kernel session for a thread.
-      ...(m.name === "switchboard" && this.deps.kernelSession ? { kernelSession: this.deps.kernelSession } : {}),
-      // The confined spawner for the sessions it starts (the runner's home sandbox, composed by the daemon because core/sessions cannot import core/runner): the Switchboard's alone.
-      ...(m.name === "switchboard" && this.deps.sandbox ? { sandbox: this.deps.sandbox } : {}),
+      // What only the daemon can hand a module comes by DECLARATION, not by a name: a first-party module lists it under needs.daemon and gets exactly that on ctx. kernelSession is the
+      // maker of a Vyre-started session's kernel credential, sandbox the confined spawner for those sessions (the runner's home sandbox, composed by the daemon because core/sessions
+      // cannot import core/runner), flowsHost the Flows assembly (core/daemon/flows-host.js).
+      ...Object.fromEntries((Array.isArray(m.needs && m.needs.daemon) ? m.needs.daemon : []).filter((/** @type {string} */ n) => ["kernelSession", "sandbox", "flowsHost"].includes(n) && this.deps[n]).map((/** @type {string} */ n) => [n, this.deps[n]])),
       tool: (name, def) => {
         if (!declared.has(name)) throw new Error(`${m.name} registered tool ${name}, which its manifest does not declare under does.tools`);
         if (this.tools.has(name)) throw new Error(`tool ${name} is already registered`);

@@ -79,11 +79,31 @@
         "reach": "person"
       },
       {
+        "name": "wink.server.pairing",
+        "reach": "person"
+      },
+      {
+        "name": "wink.server.pair.answer",
+        "reach": "person"
+      },
+      {
         "name": "wink.server.adopt",
         "reach": "person"
       },
       {
         "name": "wink.server.retarget",
+        "reach": "person"
+      },
+      {
+        "name": "wink.server.release",
+        "reach": "person"
+      },
+      {
+        "name": "wink.server.fingerprint",
+        "reach": "person"
+      },
+      {
+        "name": "wink.server.reset",
         "reach": "person"
       },
       {
@@ -100,6 +120,18 @@
       },
       {
         "name": "wink.phone.scan",
+        "reach": "person"
+      },
+      {
+        "name": "wink.phone.pairing",
+        "reach": "person"
+      },
+      {
+        "name": "wink.phone.pair.answer",
+        "reach": "person"
+      },
+      {
+        "name": "wink.phone.wait",
         "reach": "person"
       },
       {
@@ -135,15 +167,23 @@
         "reach": "person"
       },
       {
+        "name": "wink.storage.bridge",
+        "reach": "person"
+      },
+      {
+        "name": "wink.storage.bridge.accept",
+        "reach": "person"
+      },
+      {
+        "name": "wink.storage.bridge.drive",
+        "reach": "person"
+      },
+      {
         "name": "wink.server.handover",
         "reach": "modules"
       },
       {
         "name": "wink.peer.allow",
-        "reach": "modules"
-      },
-      {
-        "name": "wink.peer.shared",
         "reach": "modules"
       }
     ]
@@ -169,13 +209,17 @@
       "grant.revoked",
       "wink.pair-waiting",
       "wink.pair-done",
+      "wink.pair-asked",
+      "wink.pair-confirm",
+      "wink.pair-answered",
       "wink.pair-failed",
       "wink.server-adopted",
+      "wink.server-released",
+      "wink.server-release",
       "wink.offer-changed",
       "storage.paired",
       "storage.removed",
       "storage.unreachable",
-      "wink.peer-bound",
       "wink.relay-applied"
     ],
     "on": [

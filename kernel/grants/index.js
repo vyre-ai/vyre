@@ -12,7 +12,7 @@ import { isChain, isExactlyPerson } from "../core/chain.js";
 import { createGate } from "../core/gate.js";
 import { KernelError } from "../core/errors.js";
 import { segments, containedPrefix, spaceOf } from "../core/urn.js";
-import { contains, patternCovers } from "../core/authorize.js";
+import { contains, containsDims, clampTo, patternCovers } from "../core/authorize.js";
 import { ROLE_IDS } from "../contracts/index.js";
 import { ROLE_ACTIONS, MAY_SET } from "./roles.js";
 
@@ -25,12 +25,64 @@ export const GRANT_ACTIONS = Object.freeze([
   { action: "grants.offer", resource_type: "offer", risk: "grant", label: "offer a computer for work", gloss: "Let a Space's work run on a member's computer, or accept that on your own." },
   { action: "grants.invite", resource_type: "invite", risk: "grant", label: "invite someone", gloss: "Invite a person to join with a role." },
   { action: "grants.list", resource_type: "grant", risk: "read", label: "see who has access", gloss: "List access you may see." },
+  // Standing rules for a Space (DESIGN-flows-joints 5a): an owner sets them with presence; they only ever tighten.
+  { action: "rules.set", resource_type: "rule", risk: "grant", label: "set a standing rule", gloss: "Make a rule the whole Space must keep: never, draft only, or always ask." },
+  { action: "rules.remove", resource_type: "rule", risk: "grant", label: "remove a standing rule", gloss: "Take a standing rule away." },
+  { action: "rules.accept", resource_type: "rule", risk: "grant", label: "accept a proposed rule", gloss: "Make a proposed rule a standing rule." },
+  { action: "rules.dismiss", resource_type: "rule", risk: "grant", label: "turn down a proposed rule", gloss: "Dismiss a proposed rule." },
+  { action: "rules.propose", resource_type: "rule", risk: "write", label: "propose a standing rule", gloss: "Suggest a rule. It does nothing until an owner accepts it." },
+  { action: "rules.list", resource_type: "rule", risk: "read", label: "see the standing rules", gloss: "List the rules of the Space and the proposals." },
 ].map(a => Object.freeze(a)));
+
+
+/** Does a resource match a rule's pattern: equal, or the pattern ends in `/*` and the resource is under it. @param {string} pattern @param {string} resource */
+const urnMatches = (pattern, resource) => (pattern.endsWith("/*") ? resource === pattern.slice(0, -2) || resource.startsWith(pattern.slice(0, -1)) : pattern === resource);
+const RULE_KINDS = new Set(["never", "draft_only", "always_ask"]);
+
+/**
+ * The shape of a rule, and nothing else: a kind, who it binds, what it covers by action (and, where it matters, by a resource pattern: a connector and route are urn segments),
+ * the approver for an always-ask, and a plain label. No free text drives behaviour and no rule can grant anything. Rules never cover the rules calls themselves.
+ * @param {any} r
+ */
+function checkRule(r) {
+  const bad = (/** @type {string} */ m) => new KernelError("bad_input", m);
+  if (!r || typeof r !== "object" || Array.isArray(r)) throw bad("a rule is an object");
+  const allowed = new Set(["kind", "binds", "covers", "approver", "label"]);
+  for (const k of Object.keys(r)) if (!allowed.has(k)) throw bad(`${k} is not part of a rule`);
+  if (!RULE_KINDS.has(r.kind)) throw bad("a rule is never, draft_only or always_ask");
+  if (!Array.isArray(r.binds) || !r.binds.length || r.binds.some((/** @type {any} */ b) => b !== "assistants" && b !== "members")) throw bad("a rule binds assistants, members, or both");
+  const c = r.covers;
+  if (!c || typeof c !== "object" || Object.keys(c).some(k => k !== "actions" && k !== "resource")) throw bad("a rule covers actions, and where it matters a resource pattern");
+  if (!Array.isArray(c.actions) || !c.actions.length || c.actions.length > 50 || c.actions.some((/** @type {any} */ a) => typeof a !== "string" || !/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/.test(a) || a.startsWith("rules."))) throw bad("name the actions the rule covers, exactly");
+  if (c.resource !== undefined && (typeof c.resource !== "string" || !segments(c.resource.replace(/\/\*$/, "")))) throw bad("a resource pattern is a urn, ending in /* to cover what is under it");
+  if (r.kind === "always_ask") {
+    const a = r.approver;
+    if (!a || typeof a !== "object" || (("person" in a) === ("role" in a)) || ("person" in a && (typeof a.person !== "string" || !a.person)) || ("role" in a && !ROLE_IDS.includes(a.role))) throw bad("an always-ask rule names who approves: a person or a role");
+  } else if (r.approver !== undefined) throw bad("only an always-ask rule has an approver");
+  if (typeof r.label !== "string" || !r.label.trim() || r.label.length > 120) throw bad("a rule has a plain label of up to 120 characters");
+  return { kind: r.kind, binds: [...new Set(r.binds)].sort(), covers: { actions: [...new Set(c.actions)].sort(), ...(c.resource ? { resource: c.resource } : {}) }, ...(r.kind === "always_ask" ? { approver: "person" in r.approver ? { person: r.approver.person } : { role: r.approver.role } } : {}), label: r.label.trim() };
+}
+
+/** A rule in plain words, from its structured fields only. @param {any} r */
+export function describeRule(r) {
+  const who = r.binds.join(" and ");
+  const what = r.covers.actions.join(", ") + (r.covers.resource ? ` on ${r.covers.resource}` : "");
+  const kind = r.kind === "never" ? `Never, for ${who}: ${what}` : r.kind === "draft_only" ? `Draft only, for ${who}: ${what}` : `Always ask ${r.approver && r.approver.person ? `person ${r.approver.person}` : `the ${r.approver && r.approver.role}`}, for ${who}: ${what}`;
+  return kind;
+}
+
+/** @param {any} rule @param {(a: string) => any} def */
+function checkDraftable(rule, def) {
+  if (rule.kind !== "draft_only") return;
+  // A draft-only rule is only as good as the door that enforces it: it may cover only actions whose door says it prepares a draft instead of sending (`draftable`), never one that would just run.
+  for (const a of rule.covers.actions) if (!def(a) || def(a).draftable !== true) throw new KernelError("bad_input", `${a} cannot be made draft only: its door does not prepare a draft instead of sending`);
+}
 
 /** The default assistant's id: the one agent that acts as a delegate of the person it works for (kernel/core/authorize.js). */
 export const DEFAULT_ASSISTANT = "assistant";
 const SUBJECT_KINDS = new Set(["actor", "role", "group"]);
 const MAX_DEPTH = 3;
+const HISTORY = 1000;
 const freeze = (/** @type {any} */ o) => { if (o && typeof o === "object" && !Object.isFrozen(o)) { Object.freeze(o); for (const v of Object.values(o)) freeze(v); } return o; };
 const actorKey = (/** @type {any} */ a) => `${a.kind}:${a.id}`;
 const sameActor = (/** @type {any} */ a, /** @type {any} */ b) => Boolean(a && b) && a.kind === b.kind && a.id === b.id && a.space === b.space;
@@ -48,6 +100,8 @@ export function createGrantsStore(cfg) {
   /** @type {Set<string>} agent, service and automation actors that belong to the Space */ const actors = new Set();
   /** @type {Map<string, any>} pending, single-use invitations an admin approved */ const invites = new Map();
   /** @type {Map<string, any>} compute offers: the two grants a member's computer runs a Space's work under */ const offers = new Map();
+  /** @type {Map<string, any>} standing rules of the Space (never, draft only, always ask) */ const rules = new Map();
+  /** @type {Map<string, any>} rules a Kit proposed: no effect until an owner accepts */ const proposals = new Map();
   /** @type {Map<string, any>} chats: the people (and assistants) in a room, which is the audience a turn in it writes for and the readers of its stream */ const chats = new Map();
   /** @type {Set<(e: { id: string, side: string, member: string, device: string | null, reason: string }) => void>} */ const revokeListeners = new Set();
   const tell = (/** @type {any} */ o, /** @type {string} */ reason, /** @type {any} */ by) => { for (const f of revokeListeners) { try { f({ id: o.id, side: o.side, member: o.member, device: o.device, reason }, by); } catch { /* a listener never blocks a change */ } } };
@@ -60,7 +114,7 @@ export function createGrantsStore(cfg) {
   const kernelChain = () => cfg.chains.fromFacts({ kind: "module", module: "grants", first_party: true });
   // K-3: the seal is the sealing process (or, for a development kernel with no sealing process, a local key). The store holds no key of its own.
   const seal = cfg.seal || createKernelSeal({ sealer: cfg.sealer, key: cfg.key });
-  const LEGACY_RE = /^(grant|member|actor|offer|invite|chat)\./;
+  const LEGACY_RE = /^(grant|member|actor|offer|invite|chat|rule)\./;
   // Every event this store writes is sealed (one `kernel.mac` per event) and numbered on THIS store's own chain: `gseq` counts its events and `gprev` is the hash of the
   // seal of the one before. A genuine event copied and appended again later has an old `gseq`, so rebuild skips it: a revoked grant or a removed member cannot be replayed
   // back. (The log's own position cannot be the number: another writer appends between the MAC and the append now that the MAC is a round trip to the sealing process.)
@@ -229,7 +283,7 @@ export function createGrantsStore(cfg) {
         && (g.resource.where || []).every((/** @type {any} */ p) => (next.resource.where || []).some((/** @type {any} */ q) => q.attr === p.attr && q.op === p.op && canonical(q.value) === canonical(p.value)))
         && (g.conditions.when?.expires === undefined || (next.conditions.when?.expires !== undefined && next.conditions.when.expires <= g.conditions.when.expires))
         && (!g.resource.fields || (next.resource.fields && next.resource.fields.every((/** @type {string} */ f) => g.resource.fields.includes(f))));
-      if (!inside) throw new KernelError("not_contained", "narrowing may only make a grant smaller");
+      if (!inside || !containsDims(g, next, since, riskOf)) throw new KernelError("not_contained", "narrowing may only make a grant smaller");
       const n = freeze(next);
       grants.set(id, n);
       await note(chain, "grant.narrowed", urn("grant", id), { grant: n }, d.decision);
@@ -540,13 +594,96 @@ export function createGrantsStore(cfg) {
       return membership;
     },
 
+    // ---- standing rules (DESIGN-flows-joints 5a) ----
+    // A rule belongs to the Space, is set by an owner with a fresh presence proof, and is an event in the sealed log. It only tightens: `authorize` asks `rulesFor` BEFORE grants,
+    // a `never` refuses, an `always_ask` makes the act wait for the named approver whatever any grant says, a `draft_only` allows only a draft; no rule ever allows anything.
+    /** The rules that bind this chain for this action and resource, in the order they were made. @param {any} chain @param {string} action @param {string} resource */
+    rulesFor(chain, action, resource) {
+      if (!rules.size || !isChain(chain)) return [];
+      // A chain with a person in it is bound by the rules that name members; a chain with an assistant (an agent or an automation) in it by the rules that name assistants; an
+      // assistant acting for a person is both, so it is bound by whichever of the two is stricter, never by the weaker only.
+      const assistant = chain.hops.some((/** @type {any} */ h) => h.actor.kind === "agent" || h.actor.kind === "automation");
+      const member = chain.hops.some((/** @type {any} */ h) => h.actor.kind === "person");
+      return [...rules.values()].filter(r => r.status === "active" && ((member && r.binds.includes("members")) || (assistant && r.binds.includes("assistants"))) && r.covers.actions.includes(action) && (!r.covers.resource || urnMatches(r.covers.resource, resource)));
+    },
+    /** The rules and the proposals, for a manager and above. @param {any} chain */
+    async rulesList(chain) {
+      reader(chain);
+      await bound.gate(chain, "rules.list", urn("rule", "*"));
+      // The view an owner reads is built from the rule's structured fields (kind, who it binds, the actions, the resource, the approver), never from the label a proposer wrote.
+      const viewed = (/** @type {any} */ r) => ({ ...r, view: describeRule(r) });
+      return { rules: [...rules.values()].filter(r => r.status === "active").map(viewed), proposals: [...proposals.values()].map(viewed) };
+    },
+    /** @param {any} chain @param {any} r @param {{ presence?: any }} [o] */
+    async ruleSet(chain, r, o = {}) {
+      const issuer = person(chain);
+      const rule = checkRule(r);
+      checkDraftable(rule, a => reg().get(a));
+      const d = await gate(chain, "rules.set", urn("rule"), rule, o.presence);
+      if (roleOf(issuer) !== "owner") throw new KernelError("not_allowed", "only an owner sets a standing rule");
+      const rec = freeze({ id: `rule_${mintUuid(clock())}`, space: cfg.space, ...rule, status: "active", by: issuer.id, at: clock() });
+      rules.set(rec.id, rec);
+      await note(chain, "rule.set", urn("rule", rec.id), { rule: rec }, d.decision);
+      return rec;
+    },
+    /** @param {any} chain @param {string} id @param {{ presence?: any }} [o] */
+    async ruleRemove(chain, id, o = {}) {
+      const issuer = person(chain);
+      const d = await gate(chain, "rules.remove", urn("rule", String(id)), { id }, o.presence);
+      if (roleOf(issuer) !== "owner") throw new KernelError("not_allowed", "only an owner removes a standing rule");
+      if (!rules.has(String(id))) throw new KernelError("not_found", "no such rule");
+      rules.delete(String(id));
+      await note(chain, "rule.removed", urn("rule", String(id)), { id: String(id), by: issuer.id }, d.decision);
+      return { removed: String(id) };
+    },
+    /** A Kit (or anyone holding `rules.propose`) suggests a rule: it is kept, and does nothing until an owner accepts it. @param {any} chain @param {any} r */
+    async rulePropose(chain, r) {
+      if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
+      if (!bound) throw new KernelError("unavailable", "the grants store is not bound to an authorizer");
+      const rule = checkRule(r);
+      checkDraftable(rule, a => reg().get(a));
+      const d = await bound.gate(chain, "rules.propose", urn("rule", "new"));
+      if (proposals.size >= 200) throw new KernelError("bad_input", "too many proposals wait for an owner");
+      const last = chain.hops[chain.hops.length - 1].actor;
+      // One proposer cannot fill the queue: a Kit or a person may have a few waiting at once.
+      if ([...proposals.values()].filter(x => x.by.kind === last.kind && x.by.id === last.id).length >= 20) throw new KernelError("bad_input", "this proposer already has 20 proposals waiting for an owner");
+      const rec = freeze({ id: `prop_${mintUuid(clock())}`, space: cfg.space, ...rule, by: { kind: last.kind, id: last.id }, at: clock() });
+      proposals.set(rec.id, rec);
+      await note(chain, "rule.proposed", urn("rule", rec.id), { proposal: rec }, d.decision);
+      return rec;
+    },
+    /** The owner accepts a proposal, with presence: it becomes a standing rule exactly as proposed. @param {any} chain @param {string} id @param {{ presence?: any }} [o] */
+    async ruleAccept(chain, id, o = {}) {
+      const issuer = person(chain);
+      const d = await gate(chain, "rules.accept", urn("rule", String(id)), { id }, o.presence);
+      if (roleOf(issuer) !== "owner") throw new KernelError("not_allowed", "only an owner accepts a proposed rule");
+      const p = proposals.get(String(id));
+      if (!p) throw new KernelError("not_found", "no such proposal");
+      const { by: _by, at: _at, id: _id, space: _sp, ...rule } = p;
+      const rec = freeze({ id: `rule_${mintUuid(clock())}`, space: cfg.space, ...rule, status: "active", by: issuer.id, at: clock(), proposed_by: p.by });
+      proposals.delete(p.id);
+      rules.set(rec.id, rec);
+      await note(chain, "rule.set", urn("rule", rec.id), { rule: rec, from: p.id }, d.decision);
+      return rec;
+    },
+    /** @param {any} chain @param {string} id @param {{ presence?: any }} [o] */
+    async ruleDismiss(chain, id, o = {}) {
+      const issuer = person(chain);
+      const d = await gate(chain, "rules.dismiss", urn("rule", String(id)), { id }, o.presence);
+      if (roleOf(issuer) !== "owner") throw new KernelError("not_allowed", "only an owner turns down a proposed rule");
+      if (!proposals.has(String(id))) throw new KernelError("not_found", "no such proposal");
+      proposals.delete(String(id));
+      await note(chain, "rule.dismissed", urn("rule", String(id)), { id: String(id), by: issuer.id }, d.decision);
+      return { dismissed: String(id) };
+    },
+
     // ---- chats: who is in a room (the kernel's own list, never a module's) ----
     // A chat is a list of people and assistants. The kernel keeps it because three decisions depend on it and none may be a module's word: who may READ the chat's stream
     // (its participants only: an owner or admin outside it is refused; an assistant reads only chats the person it acts for is in), who is in the AUDIENCE of a turn an
     // assistant writes (every person in the room, asker included), and who may change the list (a person in it). Every call here takes a kernel-built chain.
     /** @param {any} chain @param {{ people?: string[], assistants?: string[], id?: string }} [o] */
     async chatCreate(chain, o = {}) {
-      if (chain && chain.viewer === true) throw new KernelError("chain_not_person", "a viewer chain changes nothing");
+      if (chain && (chain.viewer === true || chain.delegated === true)) throw new KernelError("chain_not_person", "only a person acting directly starts a chat: a viewer or a session's chain does not");
       const p = person(chain);
       if (!memberOk(p)) throw new KernelError("not_a_member", "only a member starts a chat");
       const people = [...new Set([p.id, ...(Array.isArray(o.people) ? o.people.map(String) : [])])];
@@ -556,14 +693,14 @@ export function createGrantsStore(cfg) {
       if (people.length > 100 || assistants.length > 20) throw new KernelError("bad_input", "too many in one chat");
       const id = o.id === undefined ? `chat_${mintUuid(clock())}` : String(o.id);
       if (!/^chat_[A-Za-z0-9_-]{4,64}$/.test(id) || chats.has(id)) throw new KernelError("bad_input", "a chat id is new and shaped chat_...");
-      const rec = freeze({ id, space: cfg.space, people, assistants, made_by: p.id, at: clock() });
+      const rec = freeze({ id, space: cfg.space, people, assistants, made_by: p.id, at: clock(), ver: 1, h: [{ ver: 1, people: [...people] }] });
       chats.set(id, rec);
       await note(chain, "chat.created", urn("chat", id), { chat: rec }, null);
       return rec;
     },
     /** Add or remove people and assistants. Only a person in the chat does it; nobody else, an owner or admin included. @param {any} chain @param {string} id @param {{ add_people?: string[], remove_people?: string[], add_assistants?: string[], remove_assistants?: string[] }} change */
     async chatChange(chain, id, change = {}) {
-      if (chain && chain.viewer === true) throw new KernelError("chain_not_person", "a viewer chain changes nothing");
+      if (chain && (chain.viewer === true || chain.delegated === true)) throw new KernelError("chain_not_person", "only a person acting directly, in the chat, changes who is in it: a viewer or a session's chain does not");
       const p = person(chain);
       const c = chats.get(String(id));
       if (!c || !c.people.includes(p.id) || !memberOk(p)) throw new KernelError("not_found", "no such chat");
@@ -573,9 +710,13 @@ export function createGrantsStore(cfg) {
       for (const x of change.add_assistants || []) { if (!memberOk({ kind: "agent", id: String(x), space: cfg.space })) throw new KernelError("bad_input", "an assistant in a chat belongs to the Space"); assistants.add(String(x)); }
       for (const x of change.remove_assistants || []) assistants.delete(String(x));
       if (!people.size || people.size > 100 || assistants.size > 20) throw new KernelError("bad_input", "a chat keeps at least one person");
-      const n = freeze({ ...c, people: [...people], assistants: [...assistants] });
+      // The room's version moves on every change, and the people at each version are kept: a message belongs to the version it was written under and is delivered only to the
+      // people who were in the room then (the kernel answers "may this person receive it"; the stream never decides).
+      const ver = (c.ver || 1) + 1;
+      const joined = [...people].filter(x => !c.people.includes(x)), left = c.people.filter(x => !people.has(x));
+      const n = freeze({ ...c, people: [...people], assistants: [...assistants], ver, h: [...(c.h || [{ ver: c.ver || 1, people: c.people }]), { ver, people: [...people] }].slice(-HISTORY) });
       chats.set(c.id, n);
-      await note(chain, "chat.changed", urn("chat", c.id), { id: c.id, people: n.people, assistants: n.assistants }, null);
+      await note(chain, "chat.changed", urn("chat", c.id), { id: c.id, people: n.people, assistants: n.assistants, ver, joined, left }, null);
       return n;
     },
     /**
@@ -604,14 +745,53 @@ export function createGrantsStore(cfg) {
       const c = chats.get(String(id));
       return c ? c.people.filter((/** @type {string} */ x) => memberOk({ kind: "person", id: x, space: cfg.space })) : null;
     },
+    /** The room's current membership version. @param {string} id @returns {{ ver: number } | null} */
+    chatVersion(id) { const c = chats.get(String(id)); return c ? { ver: c.ver || 1 } : null; },
+    /** Who was in the room at a version (the latest recorded version at or before it), or null when that version is older than the history kept. Kernel-internal. @param {string} id @param {number} ver @returns {string[] | null} */
+    chatPeopleAt(id, ver) {
+      const c = chats.get(String(id));
+      const h = c && (c.h || [{ ver: c.ver || 1, people: c.people }]);
+      if (!h || !h.length || !(ver >= h[0].ver)) return null;
+      let at = h[0];
+      for (const x of h) if (x.ver <= ver) at = x;
+      return [...at.people];
+    },
     /** The chat's assistants, for the append check. @param {string} id @returns {string[] | null} */
     chatAssistants(id) { const c = chats.get(String(id)); return c ? [...c.assistants] : null; },
+    /**
+     * Check every stored delegated grant against its parent on every dimension, and cut down any that is wider (made before containment compared every dimension, or by a bug): it keeps
+     * what it was inside, the cut is written to the log as a `grant.narrowed` event saying why, and one that cannot be brought inside is revoked. Never trusts what is on disk. Run at
+     * boot, once the actions are registered. @returns {Promise<{ clamped: number, revoked: number }>}
+     */
+    async containmentPass() {
+      let clamped = 0, revoked = 0;
+      const depthOf2 = (/** @type {any} */ g) => { let d = 0; for (let p = g; p && p.parent && d < 10; p = grants.get(p.parent)) d++; return d; };
+      for (const g of [...grants.values()].filter(x => x.status === "active" && x.parent).sort((a, b) => depthOf2(a) - depthOf2(b))) {
+        const parent = grants.get(g.parent);
+        if (!parent || parent.status !== "active") continue;
+        if (contains(parent, g, since, riskOf)) continue;
+        const cut = clampTo(parent, g, since, riskOf);
+        const k = kernelChain();
+        if (cut && contains(parent, cut, since, riskOf)) {
+          const n = freeze({ ...cut, reason: "cut to its parent's limits" });
+          grants.set(g.id, n);
+          await note(k, "grant.narrowed", urn("grant", g.id), { grant: n, why: "wider than its parent" });
+          clamped++;
+        } else {
+          const n = freeze({ ...g, status: "revoked", revoked_at: clock(), reason: "wider than its parent and cannot be cut down" });
+          grants.set(g.id, n);
+          await note(k, "grant.revoked", urn("grant", g.id), { id: g.id, reason: n.reason });
+          revoked++;
+        }
+      }
+      return { clamped, revoked };
+    },
     /**
      * The whole state as one sealed event: what a migration from an older key writes, and what rebuild can start from. Kernel-only.
      * A snapshot is a point the log can be read from: events before it are not needed once it exists.
      */
     async snapshot() {
-      const state = { grants: [...grants.values()], memberships: [...memberships.values()], actors: [...actors], offers: [...offers.values()], invites: [...invites.values()], chats: [...chats.values()] };
+      const state = { grants: [...grants.values()], memberships: [...memberships.values()], actors: [...actors], offers: [...offers.values()], invites: [...invites.values()], chats: [...chats.values()], rules: [...rules.values()], proposals: [...proposals.values()] };
       await note(kernelChain(), "grants.snapshot", urn("grant", "snapshot"), { state });
       return { grants: state.grants.length, memberships: state.memberships.length };
     },
@@ -624,7 +804,11 @@ export function createGrantsStore(cfg) {
      * @returns {Promise<{ legacy: number, migrated: boolean }>}
      */
     async rebuild() {
-      grants.clear(); memberships.clear(); actors.clear(); offers.clear(); invites.clear(); chats.clear();
+      const keep = capture();
+      try { return await api.rebuildFromLog(); } catch (e) { restore(keep); throw e; }
+    },
+    async rebuildFromLog() {
+      grants.clear(); memberships.clear(); actors.clear(); offers.clear(); invites.clear(); chats.clear(); rules.clear(); proposals.clear();
       gseq = 0; gprev = "genesis";
       const evs = cfg.log.read({}).filter((/** @type {any} */ e) => e.data && typeof e.data === "object" && (LEGACY_RE.test(e.type) || e.type === "owner.changed" || e.type === "grants.snapshot"));
       /** @type {{ e: any, mac: any, n: number | undefined, prev: any, core: any, legacy: boolean }[]} */
@@ -654,8 +838,12 @@ export function createGrantsStore(cfg) {
         else if (e.type === "actor.removed") actors.delete(actorKey(d.actor));
         else if (e.type === "offer.created") offers.set(d.offer.id, freeze(structuredClone(d.offer)));
         else if (e.type === "offer.revoked") { const o = offers.get(d.id); if (o) offers.set(d.id, freeze({ ...o, status: "revoked", revoked_at: e.time })); }
+        else if (e.type === "rule.set") { rules.set(d.rule.id, freeze(structuredClone(d.rule))); if (d.from) proposals.delete(d.from); }
+        else if (e.type === "rule.removed") rules.delete(d.id);
+        else if (e.type === "rule.proposed") proposals.set(d.proposal.id, freeze(structuredClone(d.proposal)));
+        else if (e.type === "rule.dismissed") proposals.delete(d.id);
         else if (e.type === "chat.created") { if (!chats.has(d.chat.id)) chats.set(d.chat.id, freeze(structuredClone(d.chat))); }
-        else if (e.type === "chat.changed") { const c = chats.get(d.id); if (c) chats.set(d.id, freeze({ ...c, people: [...d.people], assistants: [...d.assistants] })); }
+        else if (e.type === "chat.changed") { const c = chats.get(d.id); if (c) chats.set(d.id, freeze({ ...c, people: [...d.people], assistants: [...d.assistants], ver: d.ver ?? (c.ver || 1) + 1, h: [...(c.h || [{ ver: c.ver || 1, people: c.people }]), { ver: d.ver ?? (c.ver || 1) + 1, people: [...d.people] }].slice(-HISTORY) })); }
       };
       if (snap) {
         const st = snap.core.state;
@@ -665,6 +853,8 @@ export function createGrantsStore(cfg) {
         for (const o of st.offers) offers.set(o.id, freeze(structuredClone(o)));
         for (const v of st.invites) invites.set(v.id, freeze(structuredClone(v)));
         for (const c of st.chats || []) chats.set(c.id, freeze(structuredClone(c)));
+        for (const x of st.rules || []) rules.set(x.id, freeze(structuredClone(x)));
+        for (const x of st.proposals || []) proposals.set(x.id, freeze(structuredClone(x)));
         nextN = /** @type {number} */ (snap.n) + 1; nextPrev = sha256(snap.mac);
       } else {
         // 3a. Events an older key sealed, in log order, each position-bound under a legacy key.
@@ -688,6 +878,40 @@ export function createGrantsStore(cfg) {
       return { legacy: legacyCount, migrated };
     },
   };
+
+  /** The whole in-memory state, by reference (every record in it is frozen), so a failed call can put it back even when the log cannot be read. */
+  const capture = () => ({ grants: new Map(grants), memberships: new Map(memberships), actors: new Set(actors), offers: new Map(offers), invites: new Map(invites), chats: new Map(chats), rules: new Map(rules), proposals: new Map(proposals), gseq, gprev });
+  const restore = (/** @type {any} */ c) => {
+    grants.clear(); for (const [k, v] of c.grants) grants.set(k, v);
+    memberships.clear(); for (const [k, v] of c.memberships) memberships.set(k, v);
+    actors.clear(); for (const v of c.actors) actors.add(v);
+    offers.clear(); for (const [k, v] of c.offers) offers.set(k, v);
+    invites.clear(); for (const [k, v] of c.invites) invites.set(k, v);
+    chats.clear(); for (const [k, v] of c.chats) chats.set(k, v);
+    rules.clear(); for (const [k, v] of c.rules) rules.set(k, v);
+    proposals.clear(); for (const [k, v] of c.proposals) proposals.set(k, v);
+    gseq = c.gseq; gprev = c.gprev;
+  };
+  // One pattern for every state-changing call (reviewer-2's R4): the calls run one at a time, and a call that fails while writing its sealed event (the sealing process died,
+  // the log refused) restores the store from the log, which is the durable copy, so memory never shows a change the log does not hold, and the caller is told it failed.
+  // A refusal the call itself makes before changing anything (a KernelError) needs no restore.
+  let lock = Promise.resolve();
+  for (const name of ["create", "revoke", "narrow", "setRole", "transferOwner", "removeMember", "addActor", "offer", "unoffer", "inviteCreate", "inviteConfirm", "inviteAccept", "sweep", "installModule", "chatCreate", "chatChange", "ruleSet", "ruleRemove", "ruleAccept", "ruleDismiss", "rulePropose"]) {
+    const f = /** @type {(...a: any[]) => Promise<any>} */ (/** @type {any} */ (api)[name]);
+    /** @type {any} */ (api)[name] = (/** @type {any[]} */ ...a) => {
+      const run = async () => {
+        const before = capture();
+        try { return await f(...a); } catch (e) {
+          // A failure while writing: put the store back from the log; if the log cannot be read either, put back the state this call started from, never an empty store.
+          if (!(e instanceof KernelError)) { try { await api.rebuild(); } catch { restore(before); } }
+          throw e;
+        }
+      };
+      const p = lock.then(run, run);
+      lock = p.then(() => {}, () => {});
+      return p;
+    };
+  }
 
   return Object.freeze({
     ...api, provider, members, isAdmin, roleOf,

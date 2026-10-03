@@ -25,6 +25,10 @@ const CALLS = {
   revoke: (s, id, reason) => ({ action: "grants.revoke", resource: urn(s, "grant", id), input: { id, reason } }),
   narrow: (s, id, patch) => ({ action: "grants.narrow", resource: urn(s, "grant", id), input: { id, patch } }),
   setRole: (s, m) => ({ action: "grants.role", resource: urn(s, "member", m.person), input: m }),
+  ruleSet: (s, r) => ({ action: "rules.set", resource: urn(s, "rule"), input: r }),
+  ruleRemove: (s, id) => ({ action: "rules.remove", resource: urn(s, "rule", id), input: { id } }),
+  ruleAccept: (s, id) => ({ action: "rules.accept", resource: urn(s, "rule", id), input: { id } }),
+  ruleDismiss: (s, id) => ({ action: "rules.dismiss", resource: urn(s, "rule", id), input: { id } }),
   transferOwner: (s, t) => ({ action: "grants.role", resource: urn(s, "member", t.to), input: { transfer: { to: t.to, demote_to: t.demote_to || "admin" } } }),
   removeMember: (s, m) => ({ action: "grants.role", resource: urn(s, "member", m.person), input: { remove: m.person } }),
   removeActor: (s, actor) => ({ action: "grants.role", resource: urn(s, "member", actor.id), input: { remove_actor: actor } }),
@@ -46,7 +50,7 @@ export function proofRequest(space, call, ...args) {
   const f = Object.hasOwn(CALLS, call) ? CALLS[call] : null;
   if (!f) throw new KernelError("bad_input", `${call} is not a call a presence proof covers`);
   const { action, resource, input } = f(space, args[0], args[1]);
-  const op = `grant.${action.split(".")[1]}`;
+  const op = action.startsWith("rules.") ? `grant.rule_${action.split(".")[1]}` : `grant.${action.split(".")[1]}`;
   const fields = { resource, input_hash: sha256(canonical({ action, input })) };
   return Object.freeze({ op, space, fields, payload_hash: payloadHash(op, space, fields) });
 }

@@ -24,7 +24,7 @@ export const REACHES = ["anyone", "asked", "person", "modules", "hook"];
 /** The reaches an outward tool may have: only a person or an asking agent can start one. */
 const OUTWARD_REACH = ["anyone", "asked"];
 /** Manifest keys only Vyre's own modules may use in 0.2, each with where it lives. */
-const BUILT_IN_ONLY = [["does", "providers"], ["shows", "streams"], ["needs", "vault"]];
+const BUILT_IN_ONLY = [["does", "providers"], ["shows", "streams"], ["needs", "vault"], ["needs", "daemon"]];
 
 /** @type {any} */
 export const SCHEMA = JSON.parse(fs.readFileSync(new URL("./manifest.schema.json", import.meta.url), "utf8"));

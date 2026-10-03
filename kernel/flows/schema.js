@@ -17,9 +17,9 @@ export const AUTHORSHIP = Object.freeze(["builder", "human", "model", "kit"]);
 export const LIMITS = Object.freeze({ steps: 200, depth: 6, name: 120, codeSource: 64 * 1024, repeatMax: 1000 });
 
 const ID_RE = /^[a-z][a-z0-9_]{0,39}$/;
-const NAME_RE = /^[a-z][a-z0-9_]{0,63}$/;
+const NAME_RE = /^[a-z][a-z0-9_-]{0,63}$/; // record type names are the kernel's: lowercase letters, digits and hyphens (fields and roles keep underscores)
 const ACTION_RE = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/;
-const EVENT_RE = /^[a-z][a-z0-9-]*\.(?:[a-z][a-z0-9-]*|\*)$/;
+const EVENT_RE = /^[a-z][a-z0-9_-]*\.(?:[a-z][a-z0-9_-]*|\*)$/;
 const URN_RE = /^vyre:\/\/[^/\s]+\/[^\s]*$/;
 
 /** @typedef {{ path: string, message: string }} Problem */

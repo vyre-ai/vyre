@@ -12,7 +12,7 @@ const OUTWARD = /(^|\.)(send|pay|publish|delete|share)$/;
 export const engineerActor = space => ({ kind: /** @type {const} */ ("agent"), id: "engineer", space });
 
 /**
- * What the Engineer holds: read and define on definitions, ask for a person's approval, and the model door. Nothing that sends, pays, publishes,
+ * What the Engineer holds: read and define on definitions and ask for a person's approval. The model door is the kernel's own (it is not a registry action). Nothing that sends, pays, publishes,
  * shares or deletes, and nothing on the vault.
  * @param {string} space
  */
@@ -21,7 +21,6 @@ export function engineerGrants(space) {
   return [
     { subject, actions: ["records.read", "records.define"], resource: { prefix: `vyre://${space}/definition` }, conditions: {}, source: "builtin:engineer", reason: "change definitions" },
     { subject, actions: ["tasks.request", "tasks.work"], resource: { prefix: `vyre://${space}/task` }, conditions: {}, source: "builtin:engineer", reason: "ask an admin to approve" },
-    { subject, actions: ["model.use"], resource: { prefix: `vyre://${space}/` }, conditions: {}, source: "builtin:engineer", reason: "write drafts" },
   ];
 }
 
@@ -41,7 +40,8 @@ export function createEngineer({ kernel, compile, simulate = null, engineerChain
   /** Only an admin, and the refusal looks like absence. @param {any} chain */
   function requireAdmin(chain) {
     const first = chain && chain.hops && chain.hops[0];
-    if (!first || first.actor.kind !== "person" || !kernel.members || !kernel.members.isAdmin(chain)) throw refusal("not_found", "not found");
+    // Exactly one person: an assistant acting for an admin is not the admin (the Engineer's own chain is built inside, beside the admin).
+    if (!first || chain.hops.length !== 1 || first.actor.kind !== "person" || !kernel.members || !kernel.members.isAdmin(first.actor)) throw refusal("not_found", "not found");
     return first.actor;
   }
 
@@ -69,7 +69,7 @@ export function createEngineer({ kernel, compile, simulate = null, engineerChain
     async propose(chain, request) {
       const admin = requireAdmin(chain);
       const echain = engineerChain(chain);
-      const p = await propose({ kernel, compile, simulate, chain: echain, request, ...(model ? { model } : {}) });
+      const p = await propose({ kernel, compile, simulate, chain: echain, adminChain: chain, request, ...(model ? { model } : {}) });
       const task = await raiseTask(echain, admin, p);
       const id = `prop_${(++n).toString(36)}_${p.hash.slice(0, 8)}`;
       proposals.set(id, { proposal: p, task, admin: admin.id, state: "open" });
@@ -82,7 +82,7 @@ export function createEngineer({ kernel, compile, simulate = null, engineerChain
       const rec = proposals.get(id);
       if (!rec || rec.admin !== admin.id || rec.state !== "open") throw refusal("not_found", "not found");
       const echain = engineerChain(chain);
-      const p = await evaluate({ kernel, compile, simulate, chain: echain, source, authorship: "edited" });
+      const p = await evaluate({ kernel, compile, simulate, chain: echain, adminChain: chain, source, authorship: "edited" });
       rec.state = "superseded";
       const task = await raiseTask(echain, admin, p);
       const nid = `prop_${(++n).toString(36)}_${p.hash.slice(0, 8)}`;
@@ -112,26 +112,26 @@ export function createEngineer({ kernel, compile, simulate = null, engineerChain
       return { applied: done.applied, changes: done.changes, task };
     },
 
-    /** Say in plain words what a definition is and how it came to be, from the stored definitions and the log. @param {any} chain @param {string} name */
+    /** Say in plain words what a definition is and how it came to be: the stored definition from `definitions`, who and when from the kernel's `types.defined` events. @param {any} chain @param {string} name */
     async explain(chain, name) {
       requireAdmin(chain);
-      const events = await kernel.events.read(chain, { type: "definition.changed" });
+      const events = await kernel.events.read(chain, { type: "types.defined" });
       const history = [];
-      let current = null;
       for (const e of events) {
-        const d = e.data && e.data.diff;
-        if (!d) continue;
-        const hit = [...(d.add_types || []), ...(d.change_types || [])].find((/** @type {any} */ t) => t.name === name);
-        if (hit) { current = hit; history.push({ at: e.time, by: e.actor, what: (d.add_types || []).some((/** @type {any} */ t) => t.name === name) ? "added" : "changed" }); }
-        else if ((d.remove_types || []).includes(name)) { current = null; history.push({ at: e.time, by: e.actor, what: "removed" }); }
+        for (const c of (e.data && Array.isArray(e.data.changes) ? e.data.changes : [])) {
+          const m = /^(added|changed|removed) type (\S+)/.exec(String(c));
+          if (m && m[2] === name) history.push({ at: e.time, by: e.actor, what: m[1] });
+        }
       }
-      if (!history.length) return { name, found: false, text: `There is no definition called ${name}.`, history };
+      const current = (await kernel.definitions(chain)).find((/** @type {any} */ t) => t.name === name) || null;
+      if (!history.length && !current) return { name, found: false, text: `There is no definition called ${name}.`, history };
       const fields = current ? (current.fields || []).map((/** @type {any} */ f) => f.label || f.name) : [];
       const stages = current ? (current.stages || []).map((/** @type {any} */ s) => s.name) : [];
       const last = history[history.length - 1];
+      const by = last ? String(last.by).replace(/@.*$/, "") : "";
       const text = current
-        ? `${name} has ${fields.length} fields${fields.length ? ` (${fields.join(", ")})` : ""}${stages.length ? ` and the stages ${stages.join(", ")}` : ""}. It was last ${last.what} by ${last.by}.`
-        : `${name} was removed by ${last.by}.`;
+        ? `${name} has ${fields.length} fields${fields.length ? ` (${fields.join(", ")})` : ""}${stages.length ? ` and the stages ${stages.join(", ")}` : ""}.${last ? ` It was last ${last.what} by ${by}.` : ""}`
+        : `${name} was removed by ${by}.`;
       return { name, found: true, text, history, definition: current };
     },
 

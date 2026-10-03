@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const PKG_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+export const PKG_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 /** @type {unknown} */ let COMPILED = null;
 try { COMPILED = (await import("../lib/build-kind.js")).BUILD_KIND; } catch { COMPILED = null; }
 

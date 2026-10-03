@@ -1,5 +1,5 @@
 // @ts-check
-// The business record types every Space has before any Kit is installed: templates, playbooks and team members
+// The business record types every Space has before any Kit is installed: events, templates, playbooks and team members
 // (team/0.3/DESIGN-tasks.md and DESIGN-native-assistant.md). They are plain kernel TypeDefinitions, stored in the
 // Space's Twenty like any other type, so a Kit can link to them and a view can list them.
 //
@@ -49,4 +49,24 @@ export const TEAM_MEMBER = {
   ],
 };
 
-export const CORE_TYPES = Object.freeze([TEMPLATE, PLAYBOOK, TEAM_MEMBER].map((t) => Object.freeze(t)));
+/** An event on the Space's calendar. The calendar is a view of these (and of any record with a date field). `source` says where it came from; `calendar` and `external_id` tie it to an outside calendar it syncs with. */
+export const EVENT_SOURCES = ["vyre", "google"];
+export const EVENT = {
+  name: "event", label: "Event", icon: "IconCalendarEvent",
+  fields: [
+    text("title", "Title", { required: true }),
+    f("datetime", "starts_at", "Starts", { required: true }),
+    f("datetime", "ends_at", "Ends"),
+    f("boolean", "all_day", "All day"),
+    text("time_zone", "Time zone"),
+    text("place", "Place"),
+    f("emails", "people", "People (email addresses)"),
+    f("link", "record", "Belongs to"),
+    choice("source", "Came from", EVENT_SOURCES),
+    text("calendar", "Outside calendar (route)"),
+    text("external_id", "Outside id"),
+    f("rich_text", "notes", "Notes"),
+  ],
+};
+
+export const CORE_TYPES = Object.freeze([EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER].map((t) => Object.freeze(t)));

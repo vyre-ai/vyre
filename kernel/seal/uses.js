@@ -24,7 +24,7 @@ export const ACTIONS = Object.freeze([
   { action: "service.call", resource_type: "service", risk: "outward.send", label: "Call a connected service", gloss: "Changes something at a connected service (POST, PUT, PATCH, DELETE). It asks first." },
   { action: "seal.put", resource_type: "record", risk: "write", label: "Seal a value", gloss: "Moves a value into the sealed store." },
   { action: "seal.use", resource_type: "record", risk: "write", label: "Fill a sealed slot", gloss: "Merges a sealed value into a document or message.", sealed_ok: true },
-  { action: "seal.deliver", resource_type: "record", risk: "outward.send", label: "Send what was filled", gloss: "Sends a message or document that holds a sealed value." },
+  { action: "seal.deliver", resource_type: "record", risk: "outward.send", draftable: true, label: "Send what was filled", gloss: "Sends a message or document that holds a sealed value." },
   { action: "seal.reveal", resource_type: "record", risk: "admin", label: "Show a sealed value", gloss: "Shows it on your screen only, after Face ID." },
 ]);
 
@@ -137,7 +137,14 @@ export function normalizeRoute(r) {
   const deny = (Array.isArray(r.deny) ? r.deny : []).map(d => ({ method: d?.method ? String(d.method).toUpperCase() : "*", path: String(d?.path) }));
   for (const a of allow) if (!/^[A-Z]+$/.test(a.method) || !PATH_OK(a.path)) throw Object.assign(new Error("bad_input"), { code: "bad_input" });
   for (const d of deny) if (!(d.method === "*" || /^[A-Z]+$/.test(d.method)) || !PATH_OK(d.path)) throw Object.assign(new Error("bad_input"), { code: "bad_input" });
-  return Object.freeze({ route: r.route.toLowerCase(), ref: r.ref, allow, deny });
+  // Files (core/vault/forward-file.js): a size cap up and down (25 MB by default), the content types a body, a part or a response may have, and the Drive paths this route may read and write.
+  const maxBytes = r.maxBytes === undefined ? 25 * 1024 * 1024 : Number(r.maxBytes);
+  if (!Number.isFinite(maxBytes) || maxBytes <= 0 || maxBytes > 1024 ** 3) throw Object.assign(new Error("bad_input"), { code: "bad_input" });
+  const contentTypes = (Array.isArray(r.contentTypes) ? r.contentTypes : ["application/json", "application/x-www-form-urlencoded", "text/plain"]).map(t => String(t).toLowerCase());
+  if (contentTypes.some(t => !/^[a-z0-9.+-]+\/([a-z0-9.+-]+|\*)$/.test(t))) throw Object.assign(new Error("bad_input"), { code: "bad_input" });
+  const drive = { read: (r.drive?.read ?? []).map(String), write: (r.drive?.write ?? []).map(String) };
+  for (const p of [...drive.read, ...drive.write]) if (!p || p.startsWith("/") || p.slice(0, -2).includes("*") || (p.includes("*") && !p.endsWith("/*"))) throw Object.assign(new Error("bad_input"), { code: "bad_input" });
+  return Object.freeze({ route: r.route.toLowerCase(), ref: r.ref, allow, deny, maxBytes, contentTypes, drive });
 }
 /** May this route do this? The path is checked as the kernel checks every path (no dot segments, encoded dots or slashes, backslashes). Deny wins, and the default is no. */
 export function routeAllows(def, method, path) {
@@ -153,16 +160,21 @@ export function routeAllows(def, method, path) {
  * be live, and the request is RUN HERE at the home through `forward` (the vault's `vault.request` path). What goes back is a response (or `{ held }` for an outward call
  * waiting on a person), never a key, a token or a header value. One `vault.used` event names the use (host, method, path, status), never a body or a value.
  * @param {{ leaseOf: (session: string) => string | null, check: (i: { chain: any, id: string }) => Promise<{ space: string, member: string, device: string }>, routesOf: (session: string) => any[],
- *   forward: (i: any) => Promise<any>, emit?: (e: any) => void, chain: any }} o
+ *   forward: (i: any) => Promise<any>, forwardFile?: (i: any) => Promise<any>, emit?: (e: any) => void, chain: any }} o
+ * A request with `upload`, `saveTo` or `stream` moves a file through `forwardFile`: the program names Drive paths, never bytes, and the route's own size cap, content types and Drive lists apply.
  */
-export function leasedForward({ leaseOf, check, routesOf, forward, emit = () => {}, chain }) {
+export function leasedForward({ leaseOf, check, routesOf, forward, forwardFile, emit = () => {}, chain }) {
   return async req => {
     const id = leaseOf(req.session); if (!id) throw Object.assign(new Error("no_lease"), { code: "no_lease" });
     const { space, member, device } = await check({ chain, id });
     const host = String(req.route ?? "").toLowerCase(), method = String(req.method ?? "").toUpperCase(), path = String(req.path ?? "").split(/[?#]/)[0];
     const def = (routesOf(req.session) || []).find(r => r.route === host && routeAllows(r, method, path));
     if (!def) throw Object.assign(new Error("not_found"), { code: "not_found" }); // a refused request looks like absence
-    const res = await forward({ space, ref: def.ref, route: def.route, method, path, query: req.query, headers: req.headers, body: req.body, session: req.session });
+    const file = req.upload !== undefined || req.saveTo !== undefined || req.stream === true;
+    if (file && !forwardFile) throw Object.assign(new Error("unavailable"), { code: "unavailable" });
+    const res = file
+      ? await forwardFile({ space, ref: def.ref, route: def.route, method, path, query: req.query, headers: req.headers, session: req.session, upload: req.upload, saveTo: req.saveTo, stream: req.stream === true, limits: { maxBytes: def.maxBytes, contentTypes: def.contentTypes }, drive: def.drive })
+      : await forward({ space, ref: def.ref, route: def.route, method, path, query: req.query, headers: req.headers, body: req.body, session: req.session });
     emit({ type: "vault.used", space, member, device, ref: def.ref, route: def.route, method, path, status: res?.status ?? null, held: res?.held ? true : undefined, session: req.session });
     return res;
   };

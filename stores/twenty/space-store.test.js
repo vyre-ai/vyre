@@ -79,3 +79,26 @@ test("a new hosted Space on a box too small for Twenty is not created until the 
   assert.equal(fs.existsSync(path.join(hdir(home), "store.json")), false, "nothing was decided or written");
   assert.equal(await f(SP, { owner: "per_x", accept_builtin_store: true }), undefined, "once agreed it opens on the built-in store");
 });
+
+test("opening a Space whose key is inside the rotation window rotates it; a failed rotation is loud and writes a warning; an expired key refuses to start", async () => {
+  const dir = path.join(tmp(), "kernel"); fs.mkdirSync(dir, { recursive: true });
+  const home = path.dirname(dir);
+  const tw = path.join(dir, "twenty-home", "spaces", nameOf(SP), "twenty"); fs.mkdirSync(tw, { recursive: true });
+  const jwt = (ms) => `h.${Buffer.from(JSON.stringify({ exp: Math.floor(ms / 1000) })).toString("base64url")}.s`;
+  fs.writeFileSync(path.join(tw, "service.key"), jwt(Date.now() + 10 * 864e5));
+  fs.writeFileSync(path.join(tw, "webhook.secret"), "x"); fs.writeFileSync(path.join(tw, "workspace.id"), "w");
+  const lines = []; let rotated = 0, fail = false;
+  const base = { home, mode: "twenty", log: (l) => lines.push(l), preflight: async () => ({ ok: true, reasons: [] }),
+    provision: async () => ({ url: "http://127.0.0.1:1", keyFile: path.join(tw, "service.key"), webhookSecretFile: path.join(tw, "webhook.secret") }),
+    rotate: async () => { if (fail) throw new Error("Twenty did not answer"); rotated++; fs.writeFileSync(path.join(tw, "service.key"), jwt(Date.now() + 365 * 864e5)); } };
+  const store1 = await createStoreFor(base)(SP, { personal: true }).catch((e) => e);
+  assert.equal(rotated, 1, "inside the window: rotated at open");
+  // (the store itself needs a live Twenty to define core types; the key check is what is under test, so a refused define is fine here)
+  fail = true; fs.writeFileSync(path.join(tw, "service.key"), jwt(Date.now() + 10 * 864e5));
+  const r2 = await createStoreFor(base)(SP, { personal: true }).catch((e) => e);
+  assert.ok(lines.some((l) => /WARNING: the API key/.test(l) && /expires in 9 days|expires in 10 days/.test(l)), "the failure is logged loudly with the days left");
+  assert.ok(fs.existsSync(path.join(dir, "key-warning.json")));
+  fs.writeFileSync(path.join(tw, "service.key"), jwt(Date.now() - 864e5));
+  const r3 = await createStoreFor(base)(SP, { personal: true }).catch((e) => e);
+  assert.ok(r3 instanceof Error && r3.code === "unavailable" && /has expired/.test(r3.message), "an expired key stops the Space from starting quietly");
+});

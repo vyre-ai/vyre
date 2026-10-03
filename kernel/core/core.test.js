@@ -246,7 +246,7 @@ test("authorize: presence is met only by a verified proof or a held session, and
 test("authorize: delegation is contained in its parent, rechecked, and carries the parent's obligations", async () => {
   const parent = grant({ actions: ["crm.update", "crm.read"], conditions: { delegate: { allowed: true, max_depth: 2 }, how: { presence: "fresh" }, when: { expires: T + 1000 } } });
   const sub = actorOf("agent", "kit");
-  const child = over => grant({ subject: { kind: "actor", actor: sub }, parent: parent.id, actions: ["crm.read"], conditions: { when: { expires: T + 500 }, delegate: { allowed: true, max_depth: 1 } }, ...over });
+  const child = over => grant({ subject: { kind: "actor", actor: sub }, parent: parent.id, actions: ["crm.read"], conditions: { when: { expires: T + 500 }, how: { presence: "fresh" }, delegate: { allowed: true, max_depth: 1 } }, ...over });
   const chain = builder().fromFacts({ kind: "agent_session", agent: "kit", session: "s", thread: "t", vouched: true });
   const okChild = child();
   const az = world({ grants: [parent, okChild], members: ["agent:kit"] });
@@ -254,9 +254,12 @@ test("authorize: delegation is contained in its parent, rechecked, and carries t
   assert.equal(r.effect, "ask", "the parent's fresh presence comes along");
   assert.equal(r.reason, "needs_presence");
   assert.deepEqual(r.grants.length, 2);
+  // a child that drops the parent's fresh presence is wider than its parent: refused at decision time
+  const laxer = child({ conditions: { when: { expires: T + 500 }, delegate: { allowed: true, max_depth: 1 } } });
+  assert.equal((await ask(world({ grants: [grant({ actions: ["crm.*"] }), parent, laxer], members: ["agent:kit"] }), chain, "crm.read")).reason, "not_contained");
   const wider = child({ actions: ["crm.merge"] });
   assert.equal((await ask(world({ grants: [grant({ actions: ["crm.*"] }), parent, wider], members: ["agent:kit"] }), chain, "crm.merge")).reason, "not_contained");
-  const longer = child({ conditions: { when: { expires: T + 5000 } } });
+  const longer = child({ conditions: { when: { expires: T + 5000 }, how: { presence: "fresh" } } });
   assert.equal((await ask(world({ grants: [grant({ actions: ["crm.*"] }), parent, longer], members: ["agent:kit"] }), chain, "crm.read")).reason, "not_contained");
   const revoked = { ...parent, status: "revoked" };
   assert.equal((await ask(world({ grants: [grant({ actions: ["crm.*"] }), revoked, okChild], members: ["agent:kit"] }), chain, "crm.read")).reason, "revoked");
