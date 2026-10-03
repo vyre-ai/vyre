@@ -71,6 +71,8 @@ export function startSealer({ dir, sinks = {}, timeoutMs = 20_000, execPath = pr
       mac: i => call("kernel.mac", { purpose: i.purpose, data: i.data }).then(r => r.mac),
       verify: i => call("kernel.verify", { purpose: i.purpose, data: i.data, mac: i.mac }).then(r => r.ok),
     },
+    /** The storage pool's key for one owner (a person or Space id), derived from the home's master for that purpose only; the pool encrypts chunks with it in the home's process. */
+    poolKey: i => call("pool.key", { owner: i.owner }).then(r => Buffer.from(r.key, "base64")),
     health: () => call("health"),
     close: () => new Promise(res => { if (closed) return res(); child.once("exit", () => res()); child.stdin.end(); setTimeout(() => child.kill(), 2000).unref(); }),
   };

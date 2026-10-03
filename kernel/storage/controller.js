@@ -7,9 +7,10 @@ export const MIN_TICK_MS = 60_000;
 export function createController({ pool, tickMs = MIN_TICK_MS, emit = () => {}, setTimer = setInterval, clearTimer = clearInterval }) {
   let timer = null, busy = null;
   const run = async () => {
-    const changed = await pool.probe();
-    const r = changed.length || pool.report().nudges.some(n => /fewer copies/.test(n)) ? await pool.heal() : { copied: 0, atRisk: 0, unreachable: 0 };
+    const changed = await pool.probe(); const sc = await pool.scrub({ limit: 5 });
+    const r = changed.length || sc.dropped || pool.report().nudges.some(n => /fewer copies/.test(n)) ? await pool.heal() : { copied: 0, atRisk: 0, unreachable: 0 };
     const rep = pool.report();
+    if (sc.dropped) emit({ type: "storage.scrub", dropped: sc.dropped, checked: sc.checked });
     if (changed.length || r.copied) emit({ type: "storage.tick", changed, copied: r.copied, at_risk: r.atRisk, unreachable: r.unreachable, nudges: rep.nudges });
     return { changed, ...r };
   };
