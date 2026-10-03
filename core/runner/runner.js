@@ -116,12 +116,14 @@ export function createRunner(o) {
       resolve({ code, signal: sig });
     }));
     emit({ type: "started", session: s.session, pid: child.pid });
-    return { pid: child.pid, done: h.done, send: line => child.stdin.write(line.endsWith("\n") ? line : line + "\n"), stop: () => stop(s.session) };
+    return { pid: child.pid, child, done: h.done, send: line => child.stdin.write(line.endsWith("\n") ? line : line + "\n"), stop: () => stop(s.session) };
   }
 
   async function finish(h, { final }) {
     live.delete(h.session);
-    try { await h.queue; if (final && mnt) await h.sy.checkpoint(); } catch {}
+    // Checkpoints happen only at a turn's end. A stop or a crash in the middle of a turn keeps the transcript it already
+    // streamed but not the half-finished file changes, so the session continues from the last whole turn.
+    try { await h.queue; if (mnt) await h.sy.flush(); } catch {}
     try { await h.eg.close(); } catch {}
     if (h.sock) { try { fs.unlinkSync(h.sock); } catch {} }
     emit({ type: "stopped", session: h.session });
