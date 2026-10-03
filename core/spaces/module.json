@@ -150,6 +150,10 @@
     "reach": "person"
    },
    {
+    "name": "spaces.invites.confirm",
+    "reach": "person"
+   },
+   {
     "name": "spaces.invites.revoke",
     "reach": "person"
    },
@@ -183,6 +187,10 @@
    },
    {
     "name": "spaces.identity.state",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.label",
     "reach": "modules"
    },
    {

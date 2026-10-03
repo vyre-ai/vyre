@@ -98,13 +98,22 @@ test("K2-3: the production chain builder cannot mint a person from a string; the
   assert.equal(c.space, LEGACY_SPACE);
 });
 
-test("person reach refuses a caller that carries an agent claim on any surface, except the tools listed with a reason in AGENT_REACH", async () => {
-  const { personRefusesAgent, AGENT_REACH } = await import("../../core/modules/index.js");
+test("person reach and the assistant: open unless a reason keeps it the person's; ask-first is held; an unclassified tool is refused", async () => {
+  const { personRefusesAgent, agentOpensPerson, agentAskFirst } = await import("../../core/modules/index.js");
+  const { PERSON_ONLY, OPEN, ASK_FIRST } = await import("../../core/modules/agent-reach.js");
   const person = { reach: "person" };
-  for (const c of ["cli:agent:kit", "deck:agent:kit", "cli agent:kit", "mcp:agent:", "cli:thread:x"]) assert.equal(personRefusesAgent("vault.rotate", person, c), true, c);
-  for (const c of ["cli", "local", "deck", "capsule", "mobile", "tailnet:alex"]) assert.equal(personRefusesAgent("vault.rotate", person, c), false, c);
-  assert.equal(personRefusesAgent("vault.rotate", { reach: "anyone" }, "cli:agent:kit"), false, "only person reach");
-  assert.ok(AGENT_REACH.size > 0 && [...AGENT_REACH.values()].every(r => typeof r === "string" && r.length > 10), "every exception carries its reason");
-  const open = [...AGENT_REACH.keys()][0];
-  assert.equal(personRefusesAgent(open, person, "cli:agent:kit"), false);
+  const open = [...OPEN][0], only = [...PERSON_ONLY.keys()][0], ask = [...ASK_FIRST.keys()][0];
+  for (const c of ["cli:agent:kit", "mcp:agent:kit", "harness:agent:kit", "cli:thread:x"]) {
+    assert.equal(personRefusesAgent(open, person, c), false, `${open} for ${c}`);
+    assert.equal(agentOpensPerson(open, person, c), true, `${open} reaches ${c} on any of its surfaces`);
+    assert.equal(personRefusesAgent(only, person, c), true, `${only} stays the person's for ${c}`);
+    assert.equal(personRefusesAgent("brand.new.tool", person, c), true, "an unclassified tool is refused until it is classified");
+    assert.equal(agentAskFirst(ask, c), true, `${ask} is held for ${c}`);
+  }
+  for (const c of ["cli", "local", "deck", "capsule", "mobile", "tailnet:alex"]) { assert.equal(personRefusesAgent(only, person, c), false, c); assert.equal(agentAskFirst(ask, c), false, c); }
+  assert.equal(agentOpensPerson(open, person, "module:agent:kit"), false, "a module is not a surface");
+  assert.equal(personRefusesAgent(only, { reach: "anyone" }, "cli:agent:kit"), false, "only person reach");
+  for (const [n, r] of [...PERSON_ONLY, ...ASK_FIRST]) assert.ok(typeof r === "string" && r.length > 8, `${n} carries its reason`);
+  const all = [...OPEN, ...PERSON_ONLY.keys(), ...ASK_FIRST.keys()];
+  assert.equal(new Set(all).size, all.length, "a tool is in exactly one list");
 });

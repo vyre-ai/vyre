@@ -39,7 +39,8 @@ test("threadsock: the session's own processes, as the caller vyred bound, and ne
   const ctx = d.registry.context({ name: "switchboard", version: "0.1.0", does: { tools: [] } });
   /** @type {number[]} */ const inThread = [];
   const sock = await openThreadSocket({ handler: ctx.handler, thread: "t1", agent: "kit", dir, pids: async () => ({ pids: inThread }) });
-  assert.equal(fs.statSync(sock.path).mode & 0o777, 0o660);
+  assert.equal(fs.statSync(sock.path).mode & 0o777, 0o600, "a private folder: the socket is the person's user alone");
+  assert.equal(fs.statSync(dir).mode & 0o777, 0o700);
 
   // A process of the session: its call is kit's, whatever it claims to be.
   const a = client(sock.path, "probe.whoami", {}, { "x-vyre-caller": "cli" });
@@ -101,4 +102,43 @@ test("threadsock: a session's call id reaches the tool; other callers' and malfo
   assert.deepEqual(bound.data, { call: "toolu_02", thread: "t9" });
   const cli = await request("POST", "/v1/tools/probe.call", {}, { root, caller: "cli", headers: { "x-vyre-call-id": "toolu_03" } });
   assert.deepEqual(cli.data, { call: null, thread: null }, "a caller with no thread never sets it");
+});
+
+test("threadsock: a real session's call arrives with its own kernel token, in its own chat; a header the client sends is dropped; no valid token refuses the call", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const root = tempHome(t);
+  const fp = path.join(root, "modules");
+  fs.mkdirSync(fp, { recursive: true });
+  const { writeModule } = await import("./helpers.js");
+  writeModule(fp, "zz-room", { does: { tools: [{ name: "zz-room.peek", reach: "anyone" }] }, needs: { kernel: { actions: [] } } }, `
+    export default { async start(ctx) { ctx.tool("zz-room.peek", { run: async (i, meta) => ({ caller: meta.caller, token: meta.token || null, room: await ctx.kernel.audienceFor({}).catch(e => ({ error: e.code })) }) }); return {}; } };`);
+  const d = await start({ root, log: () => {}, kernel: true, firstPartyRoots: [fp] });
+  t.after(() => d.stop());
+  const ctx = d.registry.context({ name: "switchboard", version: "0.1.0", does: { tools: [] } });
+  assert.equal(typeof ctx.kernelSession, "function", "the Switchboard is handed the session credential maker");
+  assert.equal(typeof d.registry.context({ name: "other", version: "0.1.0", does: { tools: [] } }).kernelSession, "undefined", "and nobody else");
+  const owner = d.kernel.id.owner;
+  const person = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct" });
+  const chat = await d.kernel.gateway.grants.chats.create(person, {});
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "ts-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  /** @type {number[]} */ const inThread = [];
+  const ks = await ctx.kernelSession({ thread: "t1", agent: "kit", rec: { chat: chat.id } });
+  const sock = await openThreadSocket({ handler: ctx.handler, thread: "t1", agent: "kit", dir, kernelToken: ks.token, pids: async () => ({ pids: inThread }) });
+  t.after(() => sock.close());
+  // the client claims to be a CLI and sends another token of its own: the caller is the session's agent, the token is the session's
+  const a = client(sock.path, "zz-room.peek", {}, { "x-vyre-caller": "cli", "x-vyre-kernel-session": "forged.token" });
+  inThread.push(a.pid);
+  const got = (await a.done).body.data;
+  assert.equal(got.caller, "mcp:agent:kit", "whatever the client claims, the listener names the agent");
+  assert.match(got.token, /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
+  assert.notEqual(got.token, "forged.token");
+  assert.deepEqual(got.room, { group: false }, "the session's own chat, a chat of one person");
+  // ended: the kernel stops honouring the token, the socket refuses and nothing is sent unstamped
+  await ks.end();
+  const b = client(sock.path, "zz-room.peek", {});
+  inThread.push(b.pid);
+  assert.equal((await b.done).status, 401);
 });
