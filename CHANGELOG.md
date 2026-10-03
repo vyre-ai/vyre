@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(0.3, pairing hello): `presenceKey` carries `storage: "hardware" | "software"`, read from the platform's own key API (Secure Enclave on iOS, StrongBox or the TEE on Android through vyre-signer's level); left out when unknown, and in a browser, which cannot say. Self-reported, display only; the home turns "software" into the Devices line.
+
 - test(app, 4 Oct): every test file in apps/app imports scripts/test-guard.mjs first, which exits on a Mac unless VYRE_TEST_HOSTED=1 or GITHUB_ACTIONS=true (tests never run on the user's Mac; a test box or a hosted runner only). scripts/test-guard.test.js proves it.
 
 - feat(0.3, install order, 4 Oct): identity, then space, then everything inside, on the device where setup began. Once the server is paired (or "On this computer" is chosen, which has no server step) setup moves on by itself to look, members, connectors and the first Kit, with no refresh and no second sign-in; the server's terminal says "Connected to <space>. Finish setting up on your <device>." and asks nothing more. Closing and reopening resumes at the same step (src/state/setup-progress.ts keeps the step and what was typed, never a code or key; a pairing in progress resumes at the code). Spaces and members shows "Setup in progress on your <device>" with "Continue here" for a setup begun on another device. The create step now only names and claims the space; its look moved after pairing. Pairing copy follows tailnet's words card: "Pick one of the three choices, or type all three words."

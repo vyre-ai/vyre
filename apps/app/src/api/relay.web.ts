@@ -15,7 +15,7 @@ export const relayCrypto = () => (provider ??= webCrypto());
 let store: ReturnType<typeof indexedDbKeyStore> | null = null;
 export const relayKeyStore = () => (store ??= indexedDbKeyStore());
 
-export async function presenceKey(): Promise<{ public_key: string; alg: number } | undefined> {
+export async function presenceKey(): Promise<{ public_key: string; alg: number; storage?: "hardware" | "software" } | undefined> {
   try {
     const k = await personKey();
     return { public_key: b64url(await crypto.subtle.exportKey("spki", k.publicKey)), alg: -7 };

@@ -77,3 +77,13 @@ test("pickPath: the link when up, else the relay when paired, else direct", { sk
   assert.equal(pickPath({ link: OFF, relayPaired: false }), "direct");
   assert.equal(pickPath({ link: { state: "starting", say: "" }, relayPaired: true }), "relay");
 });
+
+test("keyStorage: what the pairing hello reports about the key", { skip: !strip }, async () => {
+  const { keyStorage } = await import("./presence-model.ts");
+  assert.equal(keyStorage("secure-enclave"), "hardware");
+  assert.equal(keyStorage("strongbox"), "hardware");
+  assert.equal(keyStorage("tee"), "hardware");
+  assert.equal(keyStorage("software"), "software");
+  assert.equal(keyStorage("none"), undefined);
+  assert.equal(keyStorage(undefined), undefined);
+});
