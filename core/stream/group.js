@@ -77,9 +77,9 @@ const botId = (/** @type {string} */ id) => id.startsWith("assistant:") || id.st
  */
 
 /**
- * @param {{ ctx: any, logs: import("./log.js").Logs, db: any, now?: () => number, replyPort?: import("./reply-port.js").ReplyPort, timers?: { set: (fn: () => void, ms: number) => any, clear: (t: any) => void } }} o
+ * @param {{ ctx: any, logs: import("./log.js").Logs, db: any, now?: () => number, replyPort?: import("./reply-port.js").ReplyPort, standIn?: boolean, timers?: { set: (fn: () => void, ms: number) => any, clear: (t: any) => void } }} o
  */
-export function createGroups({ ctx, logs, db, now = Date.now, replyPort, timers }) {
+export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn = false, timers }) {
   const setT = (timers && timers.set) || ((/** @type {() => void} */ fn, /** @type {number} */ ms) => { const t = setTimeout(fn, ms); t.unref?.(); return t; });
   const clearT = (timers && timers.clear) || ((/** @type {any} */ t) => clearTimeout(t));
   /** How long a reply waits for an assistant session after a restart (stream.resumeWaitSeconds, 60 by default). */
@@ -202,7 +202,14 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, timers 
     open: async ({ grp, token }) => ({ id: `r-${crypto.randomUUID()}`, ver: logs.get(grp).head, write: () => {}, close: final => append(token, { text: final.text, ...(final.blocks && final.blocks.length ? { blocks: final.blocks } : {}) }).then(() => {}) }),
     mayReceive: (grp, person, r) => { const g = group(grp); return inAt(g, person, r.ver) && inAt(g, person, r.cur); },
   };
-  const port = replyPort || (ctx.kernel && ctx.kernel.chats && typeof ctx.kernel.chats.appendOpen === "function" && typeof ctx.kernel.chats.mayReceive === "function" ? kernelPort : mirrorPort);
+  /** A kernel that holds chats but cannot stream or gate a reply: refuse, never fall back to the mirror (the mirror is for a daemon with no kernel at all). */
+  const unavailablePort = {
+    follow: false,
+    open: async () => { throw Object.assign(new Error("this kernel's chats cannot stream or gate a reply (appendOpen and mayReceive are missing)"), { code: "unavailable" }); },
+    mayReceive: () => false,
+  };
+  const kernelChats = ctx.kernel && ctx.kernel.chats;
+  const port = replyPort || (standIn || !kernelChats ? mirrorPort : (typeof kernelChats.appendOpen === "function" && typeof kernelChats.mayReceive === "function" ? kernelPort : unavailablePort));
   /** How often a reply on the stand-in port reads the kernel's list again while it streams (a kernel port follows the room itself). */
   const SYNC_MS = 500;
   /** The group log's cursor now: what a tool frame or a held thought is stamped with (`data.at`), asked of the group's own list. @param {string} grp */
@@ -646,6 +653,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, timers 
   }
 
   return {
+    port,
     markers,
     person: personOf,
     /** Does a group by this id exist here (in memory or stored)? Creates nothing. @param {string} grp */

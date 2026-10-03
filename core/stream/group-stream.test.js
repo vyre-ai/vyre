@@ -34,7 +34,7 @@ function rig(t, which, now = () => Date.now(), extra = /** @type {any} */ ({})) 
       return { data: {} };
     },
   };
-  const groups = createGroups({ ctx, logs, db, now, ...(extra.timers ? { timers: extra.timers } : {}), ...(which === PORTS[0] ? { replyPort: extra.wrapPort ? extra.wrapPort(fk.port) : fk.port } : {}) });
+  const groups = createGroups({ ctx, logs, db, now, ...(extra.timers ? { timers: extra.timers } : {}), ...(which === PORTS[0] ? { replyPort: extra.wrapPort ? extra.wrapPort(fk.port) : fk.port } : { standIn: true }) });
   t.after(() => { groups.stop(); logs.close(); db.close(); });
   let eid = 0;
   /** A call from `who` (a kernel person such as "bob"): the kernel's list is mirrored first, as stream.open and every stream tool do. @param {string} grp @param {string} who */
@@ -433,4 +433,19 @@ test("the wait for an assistant session is stream.resumeWaitSeconds", async t =>
   r.say(r.threadOf("d2", "assistant:kit"), "ma", { delta: "x" });
   await new Promise(x => setTimeout(x, 40));
   assert.deepEqual(ms, [7000]);
+});
+
+test("a kernel whose chats cannot stream or gate a reply refuses (unavailable) and never falls back to the stand-in", async t => {
+  const p = config.ensure(tempHome(t));
+  const db = open(p.db);
+  const fk = createFakeKernel();
+  const chats = { ...fk.kernel.chats };
+  delete chats.appendOpen;
+  const logs = new Logs({ maxFrames: 1000, coalesce: false });
+  const groups = createGroups({ ctx: { log: () => {}, kernel: { ...fk.kernel, chats }, call: async () => ({ data: {} }) }, logs, db });
+  t.after(() => { groups.stop(); logs.close(); db.close(); });
+  const port = /** @type {any} */ (groups).port;
+  assert.ok(port, "the groups expose the port it chose");
+  await assert.rejects(() => port.open({ grp: "g", token: "t" }), /** @param {any} e */ e => e.code === "unavailable");
+  assert.equal(port.mayReceive("g", "alex", { kid: "x", ver: 0, cur: 1 }, {}), false);
 });
