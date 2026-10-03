@@ -13,6 +13,7 @@
 // Chunks are ciphertext before they reach this code, so the frames carry nothing readable either way.
 import crypto from "node:crypto";
 import fs from "node:fs";
+import path from "node:path";
 
 export const BRIDGE_TOOL = "wink.storage.bridge";
 export const DRIVE_TOOL = "wink.storage.bridge.drive";
@@ -142,15 +143,19 @@ export async function pairFromHome({ secrets, linkTo }, d) {
 /**
  * Pairing, on the device with the drive: the answer to `wink.storage.bridge.drive`. Accepts a secret only from the home it is paired with, finds the drive
  * mounted on this device, keeps the secret, and starts serving it to that home only.
- * @param {{ endpoint: ReturnType<typeof createBridgeEndpoint>, secrets: ReturnType<typeof createBridgeSecrets>, home: () => string | null, exists?: (p: string) => boolean }} o
+ * @param {{ endpoint: ReturnType<typeof createBridgeEndpoint>, secrets: ReturnType<typeof createBridgeSecrets>, home: () => string | null, exists?: (p: string) => boolean, roots?: string[] }} o
+ * `roots` are the folders a drive may be mounted under on this device (the home names a mount, it never gets to name any folder it likes).
  */
-export function acceptDrive({ endpoint, secrets, home, exists }) {
+export function acceptDrive({ endpoint, secrets, home, exists, roots = ["/Volumes", "/mnt", "/media"] }) {
   return async (/** @type {string} */ caller, /** @type {{ offer: string, secret: string, kind?: string, location?: any, capacity: number }} */ input) => {
     const h = home();
     if (!h) throw err("not_found", "This device is not paired to a space's home.");
     if (caller !== `device:${h}`) throw err("denied", "Only the space's home can offer a drive through this device.");
-    const dir = localDriveDir(input.location || {}, { kind: input.kind, exists });
-    if (!dir) throw err("not_found", "This device cannot see that drive right now.");
+    const loc = input.location || {};
+    const under = (/** @type {string} */ p) => roots.some(r => { const x = path.resolve(p), b = path.resolve(r); return x === b || x.startsWith(b + path.sep); });
+    for (const p of [loc.mount, input.kind === "usb-disk" ? loc.path : undefined]) if (p && (typeof p !== "string" || !under(p))) throw err("denied", "That folder is not one this device shares drives from.");
+    const dir = localDriveDir(loc, { kind: input.kind, exists });
+    if (!dir || !under(dir)) throw err("not_found", "This device cannot see that drive right now.");
     const cap = Number(input.capacity);
     if (!Number.isFinite(cap) || cap <= 0) throw err("bad_input", "Say how much room may be used.");
     await secrets.keep(input.offer, input.secret);

@@ -41,7 +41,7 @@ function world() {
   const homeSecrets = createBridgeSecrets({ vault: homeVault }), devSecrets = createBridgeSecrets({ vault: devVault });
   let liveNow = true, engine;
   const endpoint = createBridgeEndpoint({ createBridge: o => (engine = fakeCreateBridge(o)), secrets: devSecrets, live: () => liveNow, log: m => logs.push(m) });
-  const drive = acceptDrive({ endpoint, secrets: devSecrets, home: () => "dev_home", exists: p => p === "/Volumes/Office" || p === dirD || fs.existsSync(p) });
+  const drive = acceptDrive({ endpoint, secrets: devSecrets, home: () => "dev_home", exists: p => p === "/Volumes/Office" || fs.existsSync(p), roots: [dirD, "/Volumes"] });
   const callFrom = caller => ({ call: async (tool, input) => { wire.push({ tool, input: JSON.parse(JSON.stringify(input)) }); if (tool === BRIDGE_TOOL) return JSON.parse(JSON.stringify(await endpoint.handle(caller, input))); if (tool === DRIVE_TOOL) return drive(caller, input); throw new Error("no tool " + tool); } });
   return { dirD, homeVault, devVault, homeSecrets, devSecrets, endpoint, logs, wire, callFrom, setLive: v => (liveNow = v), engine: () => engine };
 }
@@ -94,8 +94,10 @@ test("a drive is accepted only from the home, only when this device sees it, and
   const link = c => ({ call: (t, i) => w.callFrom(c).call(t, i) });
   const d = { offer: OFFER.id, device: "dev_mini", kind: "usb-disk", location: { path: w.dirD }, capacity: 1e9 };
   await assert.rejects(() => pairFromHome({ secrets: w.homeSecrets, linkTo: () => link("device:dev_other") }, d), { code: "denied" });
-  await assert.rejects(() => pairFromHome({ secrets: w.homeSecrets, linkTo: () => link("device:dev_home") }, { ...d, location: { path: "/nonexistent/x" } }), { code: "not_found" });
+  await assert.rejects(() => pairFromHome({ secrets: w.homeSecrets, linkTo: () => link("device:dev_home") }, { ...d, location: { path: path.join(w.dirD, "gone") } }), { code: "not_found" });
   await assert.rejects(() => pairFromHome({ secrets: w.homeSecrets, linkTo: () => link("device:dev_home") }, { ...d, capacity: 0 }), { code: "bad_input" });
+  await assert.rejects(() => pairFromHome({ secrets: w.homeSecrets, linkTo: () => link("device:dev_home") }, { ...d, kind: "smb", location: { mount: "/etc" } }), { code: "denied" });
+  await assert.rejects(() => pairFromHome({ secrets: w.homeSecrets, linkTo: () => link("device:dev_home") }, { ...d, location: { path: path.join(w.dirD, "..", "..") } }), { code: "denied" });
   for (const v of [w.homeVault, w.devVault]) assert.equal(v.items.size, 0, "no secret left in either vault");
   assert.equal(w.endpoint.has(OFFER.id), false);
   await assert.rejects(() => acceptDrive({ endpoint: w.endpoint, secrets: w.devSecrets, home: () => null })("device:dev_home", { ...d, secret: "s".repeat(43) }), { code: "not_found" });
