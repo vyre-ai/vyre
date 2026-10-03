@@ -104,6 +104,7 @@ export function createRecords(cfg) {
   async function viewersOf(/** @type {any} */ chain) {
     const people = cfg.room ? cfg.room.peopleOf(chain) : null;
     if (!people) return null;
+    cfg.room.noteRead(chain);
     return Promise.all(people.map(async (/** @type {string} */ person) => chains.fromFacts({ kind: "viewer", person, vouched: true })));
   }
   /** What the whole room may read of one record: null when anyone cannot read it (a record someone cannot see is not in the room's view), else the fields everyone is allowed (`allow`, null for no limit) and any hidden from anyone. */

@@ -24,7 +24,18 @@ const RATE = Object.freeze({ max: 120, window_ms: 60_000, sessions: 5000 });
  */
 export function createRoomPort(cfg) {
   const gs = cfg.grantsStore;
+  /** @type {Map<string, number>} session -> the lowest room version any read since its last reply was made under */ const reads = new Map();
   return Object.freeze({
+    /** A read under a group session happened now: remember the room's version it was made under (a reply built from it belongs to that version, or an older one). @param {any} chain */
+    noteRead(chain) {
+      const v = gs.chatVersion(chain.room.chat);
+      if (!v) return;
+      const sid = chain.room.session, was = reads.get(sid);
+      reads.set(sid, was === undefined ? v.ver : Math.min(was, v.ver));
+      if (reads.size > RATE.sessions) reads.delete(reads.keys().next().value);
+    },
+    /** The version a reply opened now belongs to: the oldest version any read since the last reply was made under, else the current one; the notes start again. @param {string} session @param {number} current */
+    takeVersion(session, current) { const was = reads.get(session); reads.delete(session); return was === undefined ? current : Math.min(current, was); },
     /** The people of the chain's room when it is a group (more than one), null when it is not; `not_found` when the person the session is for is no longer in the chat. @param {any} chain @returns {string[] | null} */
     peopleOf(chain) {
       const r = chain && chain.room;
@@ -93,6 +104,7 @@ export function createRoom(cfg) {
       if (!people || !people.includes(t.person)) throw new KernelError("no_audience", "the person this turn is for is no longer in the chat");
       return people.map(person => cfg.chains.fromFacts({ kind: "viewer", person, vouched: true }));
     };
+    const note = () => cfg.port.noteRead({ room: { chat: t.chat, session: t.session } });
     const everyone = async (/** @type {any[]} */ vs, /** @type {(v: any) => Promise<boolean>} */ f) => { let all = true; for (const v of vs) if (!(await f(v))) all = false; return all; }; // asks every viewer: its time does not say who failed
     return Object.freeze({
       group: true,
@@ -100,6 +112,7 @@ export function createRoom(cfg) {
       canRead: async (/** @type {string} */ resource) => {
         limited(t.session);
         if (typeof resource !== "string" || !segments(resource)) return false;
+        note();
         // A task lives in the kernel's task store or as a record, so a task counts as readable only when BOTH reads allow it (the narrower of the two); team members, playbooks and
         // every other record are `records.read` on their urn.
         const type = segments(resource)[1];
@@ -115,6 +128,7 @@ export function createRoom(cfg) {
         limited(t.session);
         const s = typeof resource === "string" ? segments(resource) : null;
         if (!s || s.length !== 3 || s[0] !== cfg.space) return null;
+        note();
         const vs = viewers();
         let rows;
         try {
@@ -167,8 +181,10 @@ export function createRoom(cfg) {
       const t = await ofToken(token, "not_found");
       if (!message || typeof message !== "object" || (message.chat !== undefined && message.chat !== t.chat)) throw new KernelError("not_found", "no such chat");
       if (t.agent) { const a = gs.chatAssistants(t.chat); if (!a || !a.includes(t.agent)) throw new KernelError("not_found", "no such chat"); }
-      const v = gs.chatVersion(t.chat);
-      if (!v) throw new KernelError("not_found", "no such chat");
+      const cur = gs.chatVersion(t.chat);
+      if (!cur) throw new KernelError("not_found", "no such chat");
+      // CH-10: a reply built from reads made when the room was smaller belongs to that smaller room, however late it is opened.
+      const v = { ver: cfg.port.takeVersion(t.session, cur.ver) };
       const id = mintId("msg", clock());
       const kind = String(message.kind || "text").slice(0, 32);
       const by = { person: t.person, ...(t.agent ? { agent: t.agent } : {}) };
@@ -243,4 +259,32 @@ export function createRoom(cfg) {
     },
   });
   return api;
+}
+
+/**
+ * The authorizer every read goes through, made group-aware (CH-8b). For a chain made from a session token that names a chat of more than one person, a READ action is allowed
+ * only when every person in the room is also allowed it: so tasks, drive files, events, listings and every other gated read give the room's view, not the asker's, whichever
+ * module asks. Writes and every other act still run under the asker's grants. A chain with no room, or a room of one, is untouched.
+ * @param {any} base the real authorizer @param {{ peopleOf(chain: any): string[] | null, noteRead(chain: any): void }} port @param {any} chains
+ */
+export function roomedAuthorizer(base, port, chains) {
+  return Object.create(base, {
+    authorize: { value: async (/** @type {any} */ input) => {
+      const d = await base.authorize(input);
+      const chain = input && input.chain;
+      if (!chain || !chain.room || d.effect !== "allow") return d;
+      const def = base.actions && base.actions.get ? base.actions.get(input.action) : null;
+      if (!def || def.risk !== "read") return d;
+      let people;
+      try { people = port.peopleOf(chain); } catch { return Object.freeze({ ...d, effect: "deny", reason: "not_in_room", obligations: Object.freeze([]) }); }
+      if (!people) return d;
+      port.noteRead(chain);
+      for (const person of people) {
+        const v = await chains.fromFacts({ kind: "viewer", person, vouched: true });
+        const r = await base.authorize({ chain: v, action: input.action, resource: input.resource, ...(input.probe === true ? { probe: true } : {}) });
+        if (r.effect !== "allow") return Object.freeze({ ...d, effect: "deny", reason: "not_in_room", obligations: Object.freeze([]) });
+      }
+      return d;
+    } },
+  });
 }

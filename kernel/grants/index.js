@@ -624,6 +624,10 @@ export function createGrantsStore(cfg) {
      * @returns {Promise<{ legacy: number, migrated: boolean }>}
      */
     async rebuild() {
+      const keep = capture();
+      try { return await api.rebuildFromLog(); } catch (e) { restore(keep); throw e; }
+    },
+    async rebuildFromLog() {
       grants.clear(); memberships.clear(); actors.clear(); offers.clear(); invites.clear(); chats.clear();
       gseq = 0; gprev = "genesis";
       const evs = cfg.log.read({}).filter((/** @type {any} */ e) => e.data && typeof e.data === "object" && (LEGACY_RE.test(e.type) || e.type === "owner.changed" || e.type === "grants.snapshot"));
@@ -688,6 +692,17 @@ export function createGrantsStore(cfg) {
     },
   };
 
+  /** The whole in-memory state, by reference (every record in it is frozen), so a failed call can put it back even when the log cannot be read. */
+  const capture = () => ({ grants: new Map(grants), memberships: new Map(memberships), actors: new Set(actors), offers: new Map(offers), invites: new Map(invites), chats: new Map(chats), gseq, gprev });
+  const restore = (/** @type {any} */ c) => {
+    grants.clear(); for (const [k, v] of c.grants) grants.set(k, v);
+    memberships.clear(); for (const [k, v] of c.memberships) memberships.set(k, v);
+    actors.clear(); for (const v of c.actors) actors.add(v);
+    offers.clear(); for (const [k, v] of c.offers) offers.set(k, v);
+    invites.clear(); for (const [k, v] of c.invites) invites.set(k, v);
+    chats.clear(); for (const [k, v] of c.chats) chats.set(k, v);
+    gseq = c.gseq; gprev = c.gprev;
+  };
   // One pattern for every state-changing call (reviewer-2's R4): the calls run one at a time, and a call that fails while writing its sealed event (the sealing process died,
   // the log refused) restores the store from the log, which is the durable copy, so memory never shows a change the log does not hold, and the caller is told it failed.
   // A refusal the call itself makes before changing anything (a KernelError) needs no restore.
@@ -695,7 +710,14 @@ export function createGrantsStore(cfg) {
   for (const name of ["create", "revoke", "narrow", "setRole", "transferOwner", "removeMember", "addActor", "offer", "unoffer", "inviteCreate", "inviteConfirm", "inviteAccept", "sweep", "installModule", "chatCreate", "chatChange"]) {
     const f = /** @type {(...a: any[]) => Promise<any>} */ (/** @type {any} */ (api)[name]);
     /** @type {any} */ (api)[name] = (/** @type {any[]} */ ...a) => {
-      const run = async () => { try { return await f(...a); } catch (e) { if (!(e instanceof KernelError)) await api.rebuild().catch(() => {}); throw e; } };
+      const run = async () => {
+        const before = capture();
+        try { return await f(...a); } catch (e) {
+          // A failure while writing: put the store back from the log; if the log cannot be read either, put back the state this call started from, never an empty store.
+          if (!(e instanceof KernelError)) { try { await api.rebuild(); } catch { restore(before); } }
+          throw e;
+        }
+      };
       const p = lock.then(run, run);
       lock = p.then(() => {}, () => {});
       return p;

@@ -69,7 +69,7 @@ export function createChainBuilder(cfg) {
   const refuse = (/** @type {string} */ why) => { throw new KernelError("not_a_member", "no chain for this connection", why); };
 
   /** The chat a session token names (the kernel wrote it into the token): a chain made from a session carries it, so the gateway can answer a group session with the room's view. */
-  const roomOf = (/** @type {any} */ f) => (typeof f.chat === "string" && f.chat && typeof f.session === "string" ? { chat: f.chat, session: f.session } : null);
+  const roomOf = (/** @type {any} */ f) => (f.from_token === true && typeof f.chat === "string" && f.chat && typeof f.session === "string" ? { chat: f.chat, session: f.session } : null);
 
   /** @param {any} f SurfaceFacts */
   function fromFacts(f) {
@@ -100,7 +100,7 @@ export function createChainBuilder(cfg) {
         if (!f.vouched) return refuse("agent claim not vouched by the kernel's own session");
         const who = f.person ?? cfg.owner;
         if (who !== cfg.owner && !isMember(who)) return refuse("the session's person is not a member");
-        return make([hop("person", who, "session", { session: f.session }), hop("agent", f.agent, "session", { session: f.session })], base(), { delegated: true, ...(roomOf(f) ? { room: roomOf(f) } : {}) });
+        return make([hop("person", who, "session", { session: f.session }), hop("agent", f.agent, "session", { session: f.session })], base(), { ...(f.from_token === true ? { delegated: true } : {}), ...(roomOf(f) ? { room: roomOf(f) } : {}) });
       }
       case "invitee": {
         // Someone who holds an invite and is not a member yet: the Surfaces door verified who they are. Their chain can do one thing, accept the invite
@@ -113,7 +113,7 @@ export function createChainBuilder(cfg) {
         // presence session: no passkey was shown, so an admin act still needs the person's own proof.
         if (!f.vouched) return refuse("session not vouched by the kernel's own token");
         if (f.person !== cfg.owner && !isMember(f.person)) return refuse("the session's person is not a member");
-        return make([hop("person", f.person, "session", { node: `session:${f.session}` })], base(), { delegated: true, ...(roomOf(f) ? { room: roomOf(f) } : {}) });
+        return make([hop("person", f.person, "session", { node: `session:${f.session}` })], base(), { ...(f.from_token === true ? { delegated: true } : {}), ...(roomOf(f) ? { room: roomOf(f) } : {}) });
       }
       case "viewer": {
         // One person in the room an assistant writes for. Built by the kernel from the chat's own list (kernel/index.js audienceFor), never from a module's word. It reads
