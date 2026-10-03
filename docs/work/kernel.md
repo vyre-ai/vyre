@@ -67,3 +67,16 @@ Done, pushed to origin/work/kernel (f43c4e570 and later):
 - Approval and sealed use: decide takes the main proof plus an optional `proofs.use` (the person's signature over the `seal.use` payload, which the sealing process verifies itself). The `seal.deliver` proof is made after the merge, by the approver, at deliver time.
 - Known: tasks use their own presence verifier (kernel/tasks/presence.js); vault's `seal/proof.js` has a second one for the sealing process. One enrolment should feed both before release (Needs from vault).
 - Done: K1 items 6 to 9 and K2-5, K2-7, K2-9 (generated differential, kernel/golden), K2-10. Next: reviewer-2 re-gate, then the tool surface.
+
+## K4 gate round (reviewer-2, db8342cc8)
+- Fixed with probes as tests: items 1 to 8, 11 and the reveal-without-door condition. Open: 10 (card and observeDenial take no chain), 12 (use proof checked at decide), the door built with the kernel's isChain at gateway level, template immutability (hash the body into the approval).
+- Next: events and the remaining assistant gaps (ctx.kernel), then review and merge kernel/tools/surface.js from work/teammates-03.
+
+## Grants store (3 Oct)
+- kernel/grants (index.js, roles.js, grants.test.js, 7 tests) and the gateway wiring (`createGateway({ grantsStore, presence })`, `gateway.grants`). The full `kernel/**` suite exits by itself (181 pass before this piece).
+- A signer signs `grant.<verb>` over `{ resource, input_hash }` with `input_hash = sha256(canonical({ action: "grants.<verb>", input }))`; resources are `vyre://<space>/grant/new`, `grant/<id>` and `member/<person>`.
+- Next: stage gates in the gateway (needs the stage definition shape from records), the tool surface review, the remaining K4 items (10, 12, template immutability).
+
+## Round 5 (3 Oct, after the grants store)
+- Done: once, rate and meter enforcement (kernel/core/limits.js); field limits fail closed under row predicates; stage gates (entry rules and required tasks, expr injected); K4 items 10, 12, template immutability, door isChain.
+- Open: the stage-entry task creation is `onStageEnter` (records or tasks wires it); `rate` windows are not durable; K2-9 and default-on gates stay a reviewer-2 gate.

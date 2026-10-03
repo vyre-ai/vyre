@@ -47,6 +47,8 @@ export function createDoor({ sealer, drivers, sinks, residency = () => null, bud
   }
 
   return {
+    /** True when the door was built with the kernel's own `isChain`: the gateway refuses a door that was not (K3 R-4). */
+    usesKernelChain: Boolean(kernelIsChain),
     /** The session's ledger key for the sealing process's reveal and detect calls; entries it returns are added with `note`. A session is (Space, id). */
     ledgerKey: (chain, session, parent) => keyOf(ledger(chain.space, session, parent)),
     note: (chain, session, entries) => { ledger(chain.space, session).add(entries); },

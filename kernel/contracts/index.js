@@ -44,6 +44,7 @@ export const TASK_TRANSITIONS = Object.freeze([
   { from: "working", to: "stuck", by: "assistant_or_detection" },
   { from: "needs_check", to: "done", by: "checker_approval" },
   { from: "needs_check", to: "ready", by: "checker" },
+  { from: "needs_check", to: "ready", by: "doer" },
   { from: "stuck", to: "ready", by: "responsible_person_or_person_with_presence" },
   { from: "stuck", to: "skipped", by: "proposal_for_person_with_presence", guarded: true },
   { from: "stuck", to: "skipped", by: "doer_or_person", guarded: false },

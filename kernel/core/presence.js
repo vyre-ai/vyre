@@ -22,3 +22,16 @@ export function sealerPresence(sealer) {
     },
   });
 }
+
+/**
+ * The verifier `authorize` calls for a risk-`grant` action: the person signs `grant.<verb>` over the resource and the canonical input hash,
+ * and the sealing process checks it (one verifier). Any other action has no kernel-signed form here and so is never met by a proof.
+ * @param {PresenceVerifier} presence @returns {(proof: any, ctx: any) => Promise<boolean>}
+ */
+export function grantProofVerifier(presence) {
+  return async (proof, ctx) => {
+    const m = /^grants\.([a-z_]+)$/.exec(String(ctx && ctx.action));
+    if (!m || !ctx.input_hash) return false;
+    return (await presence.check({ chain: ctx.chain, op: `grant.${m[1]}`, fields: { resource: ctx.resource, input_hash: ctx.input_hash }, proof })) === null;
+  };
+}

@@ -56,7 +56,7 @@ const changedFields = (/** @type {any} */ a, /** @type {any} */ b) => {
 };
 
 /**
- * @param {{ space: string, store: any, authorizer: { authorize(i: any): Promise<any> }, log: any, chains: any, clock?: () => number, sinks?: Set<string> }} cfg
+ * @param {{ expr?: { parseExpr(s: string): any, evalExpr(n: any, ctx: any): any }, stageTasks?: (record: string, stage: string) => { title: string, state: string }[], onStageEnter?: (e: any) => any, enforce?: (chain: any, d: any) => void, members?: any, space: string, store: any, authorizer: { authorize(i: any): Promise<any> }, log: any, chains: any, clock?: () => number, sinks?: Set<string> }} cfg
  */
 export function createRecords(cfg) {
   const { space, store, authorizer, log, chains } = cfg;
@@ -73,7 +73,30 @@ export function createRecords(cfg) {
     return new KernelError("unavailable", "the store could not answer", String(e && e.message));
   }
 
-  const { gate, allowed } = createGate({ authorizer, log });
+  const { gate, allowed, check } = createGate({ authorizer, log, enforce: cfg.enforce });
+  /** A read through query, aggregate or search is one act on the type: counted once against the type-level decision, never per row. */
+  const countRead = async (/** @type {any} */ chain, /** @type {string} */ type) => { const d = await check(chain, "records.read", urn(type, "*"), { probe: true }); if (d && cfg.enforce) cfg.enforce(chain, d); };
+  const members = cfg.members;
+
+  /** A field allow-list from a decision's obligations: every hop's grant may narrow it, so the result is their intersection. null means no limit. */
+  const allowList = (/** @type {any} */ d) => {
+    let allow = null;
+    for (const o of (d && d.obligations) || []) if (o.type === "fields") allow = allow === null ? new Set(o.allow) : new Set([...allow].filter(f => o.allow.includes(f)));
+    return allow;
+  };
+  /** The role the chain's person holds, for `human` seals (a field hidden from members outside chosen roles). */
+  const roleOfChain = (/** @type {any} */ chain) => { const h = chain.hops.find((/** @type {any} */ x) => x.actor.kind === "person"); return h && members && members.membership ? members.membership(h.actor)?.role : undefined; };
+  /** Fields this chain may not see at all: `human`-level sealed fields when its role is not among the reveal roles (or no person is in the chain). */
+  async function hiddenFields(/** @type {any} */ chain, /** @type {string} */ type) {
+    let defs;
+    try { defs = typeof store.types === "function" ? await store.types() : []; } catch { return null; }
+    const def = defs.find((/** @type {any} */ t) => t.name === type);
+    if (!def) return new Set();
+    const role = roleOfChain(chain);
+    return new Set(def.fields.filter((/** @type {any} */ f) => f.kind === "sealed" && f.seal && f.seal.level === "human" && !(role && (f.seal.reveal_roles || []).includes(role))).map((/** @type {any} */ f) => f.name));
+  }
+  const limitsOf = async (/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ d) => ({ allow: allowList(d), hidden: (await hiddenFields(chain, type)) || new Set() });
+  const refuseOutside = (/** @type {Set<string> | null} */ allow, /** @type {any} */ data) => { if (allow) for (const k of Object.keys(data || {})) if (!allow.has(k)) throw new KernelError("field_not_allowed", `${k} is outside what this access allows`); };
 
   const isModel = (/** @type {any} */ chain) => hasKind(chain, "agent") || chain.hops.some((/** @type {any} */ h) => h.actor.kind === "service" && sinks.has(h.actor.id));
 
@@ -83,9 +106,13 @@ export function createRecords(cfg) {
    * from the store; if it cannot be read, the query is refused rather than guessed.
    */
   async function guardSealed(/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ spec) {
-    if (!isModel(chain)) return;
     const heads = fieldHeads(spec);
     if (!heads.size) return;
+    // A field the access does not allow, or that is hidden from this chain, cannot be filtered, sorted or grouped on either: that would be an oracle.
+    const probe = await check(chain, "records.read", urn(type, "*"), { probe: true });
+    const lim = await limitsOf(chain, type, probe);
+    for (const h of heads) if (lim.hidden.has(h) || (lim.allow && !lim.allow.has(h) && h !== "id" && h !== "version" && h !== "type" && h !== "created_at" && h !== "updated_at")) throw new KernelError("bad_input", `${h} is outside what this access allows`);
+    if (!isModel(chain)) return;
     let def;
     try { def = typeof store.describe === "function" ? await store.describe(type) : undefined; } catch (e) { throw mapError(e); }
     if (!def || !Array.isArray(def.fields)) throw new KernelError("unsupported", "cannot check the fields of this type, so a model may not query by field");
@@ -93,15 +120,55 @@ export function createRecords(cfg) {
     for (const h of heads) if (sealed.has(h)) throw new KernelError("bad_input", `${h} is sealed: it cannot be filtered, sorted, grouped or measured by an assistant`);
   }
 
+  /**
+   * Stage gates (contract 9; records' defineStage and defineRule): a record cannot enter a stage unless the type's rules hold for the record as it
+   * would be, and it cannot leave a stage until that stage's required tasks are done. Fail closed: a type with rules and no evaluator wired
+   * refuses the stage change rather than skipping the rule.
+   * @returns {Promise<{ entered?: { stage: string, templates: any[] } }>}
+   */
+  async function stageGate(/** @type {string} */ type, /** @type {string} */ u, /** @type {any} */ beforeData, /** @type {any} */ merged) {
+    let defs;
+    try { defs = typeof store.types === "function" ? await store.types() : []; } catch { throw new KernelError("unavailable", "the type definitions could not be read, so the stage rules were not checked"); }
+    const def = defs.find((/** @type {any} */ t) => t.name === type);
+    if (!def || !((def.rules && def.rules.length) || (def.stages && def.stages.length))) return {};
+    const sf = def.fields.find((/** @type {any} */ f) => f.kind === "stage");
+    const from = sf && beforeData ? beforeData[sf.name] : undefined, to = sf ? merged[sf.name] : undefined;
+    const moved = !sf || from !== to;
+    if (!moved) return {};
+    if ((def.rules || []).length) {
+      if (!cfg.expr) throw new KernelError("unavailable", "this type has rules and no rule evaluator is wired, so the change was refused");
+      const order = sf ? { [sf.name]: (def.stages || []).map((/** @type {any} */ s) => s.name) } : {};
+      for (const r of def.rules) {
+        let ok = false;
+        try { ok = cfg.expr.evalExpr(cfg.expr.parseExpr(r.require), { values: merged, stageOrder: order }) === true; } catch { ok = false; }
+        if (!ok) throw new KernelError("rule_failed", `the rule ${r.name || "(unnamed)"} does not hold for ${type}${to ? ` in ${to}` : ""}`);
+      }
+    }
+    if (sf && from !== undefined && from !== null && from !== to) {
+      const stage = (def.stages || []).find((/** @type {any} */ s) => s.name === from);
+      const need = ((stage && stage.tasks) || []).filter((/** @type {any} */ t) => t.required);
+      if (need.length) {
+        if (!cfg.stageTasks) throw new KernelError("unavailable", "this stage has required tasks and tasks are not wired, so the change was refused");
+        const have = cfg.stageTasks(u, from);
+        const open = need.filter((/** @type {any} */ t) => !have.some((/** @type {any} */ h) => h.title === t.title && h.state === "done"));
+        if (open.length) throw new KernelError("stage_tasks_open", `${from} still has required tasks: ${open.map((/** @type {any} */ t) => t.title).join(", ")}`);
+      }
+    }
+    const entering = (def.stages || []).find((/** @type {any} */ s) => s.name === to);
+    return to !== undefined && to !== null ? { entered: { stage: String(to), templates: (entering && entering.tasks) || [] } } : {};
+  }
+
   /** Shape a stored row for the caller: checked, labelled, and with sealed values as placeholders when a model is in the chain. */
-  function shape(/** @type {any} */ chain, /** @type {any} */ r) {
+  function shape(/** @type {any} */ chain, /** @type {any} */ r, /** @type {{ allow: Set<string> | null, hidden: Set<string> } | undefined} */ lim) {
     const u = urn(r.type, r.id);
     const known = index.get(u);
     const hash = versionHash(r);
     const modified = !known || known.version !== r.version || known.hash !== hash;
     // Placeholders by destination (8.4): a model in the chain, or a declared model sink anywhere in it.
     const model = isModel(chain);
-    const data = model ? Object.fromEntries(Object.entries(r.data).map(([k, v]) => [k, isSealedShape(v) ? { sealed: /** @type {any} */ (v).sealed, present: Boolean(/** @type {any} */ (v).present), valid_format: Boolean(/** @type {any} */ (v).valid_format) } : v])) : r.data;
+    const cut = (/** @type {any} */ o) => (lim ? Object.fromEntries(Object.entries(o).filter(([k]) => !lim.hidden.has(k) && (!lim.allow || lim.allow.has(k)))) : o);
+    const base = cut(r.data);
+    const data = model ? Object.fromEntries(Object.entries(base).map(([k, v]) => [k, isSealedShape(v) ? { sealed: /** @type {any} */ (v).sealed, present: Boolean(/** @type {any} */ (v).present), valid_format: Boolean(/** @type {any} */ (v).valid_format) } : v])) : base;
     return Object.freeze({ ...r, data, urn: u, labels: { trust: modified ? "external" : "member", red: "internal", source_spaces: [space] }, ...(modified ? { modified_outside: true } : {}) });
   }
 
@@ -109,8 +176,12 @@ export function createRecords(cfg) {
     checkType(type); checkId(id);
     const u = urn(type, id);
     const d = await gate(chain, `records.${op}`, u);
+    const lim = await limitsOf(chain, type, d);
+    if (op === "create" || op === "update") refuseOutside(lim.allow, input);
     let before = null;
     if (getBefore) { try { before = await getBefore(); } catch (e) { throw mapError(e); } }
+    let stage = {};
+    if (op === "create" || op === "update") stage = await stageGate(type, u, before ? before.data : null, op === "create" ? input : mergePatch(before ? before.data : {}, input));
     // What the store must show for this to be our change and no one else's: the exact data and deleted state.
     const merged = op === "create" ? input : op === "update" ? mergePatch(before ? before.data : {}, input) : before ? before.data : null;
     const expect = merged === null || merged === undefined ? null : sha256(canonical({ deleted: op === "remove", data: merged }));
@@ -139,7 +210,9 @@ export function createRecords(cfg) {
       throw new KernelError("store_disagreed", "the store's answer does not match what was asked, so nothing was recorded as done");
     }
     emit(chain, intent, rec, before, d.decision, false);
-    return shape(chain, rec);
+    // The stage was entered: tell the tasks side to create the stage's task templates for this record (best effort; the write stands).
+    if (/** @type {any} */ (stage).entered && cfg.onStageEnter) { try { await cfg.onStageEnter({ record: u, ...(/** @type {any} */ (stage).entered), chain }); } catch { /* the stage rule retries on the next move */ } }
+    return shape(chain, rec, lim);
   }
 
   function emit(/** @type {any} */ chain, /** @type {any} */ intent, /** @type {any} */ rec, /** @type {any} */ before, /** @type {string} */ decision, /** @type {boolean} */ recovered) {
@@ -172,21 +245,28 @@ export function createRecords(cfg) {
     async get(chain, type, id) {
       checkType(type); checkId(id);
       const u = urn(type, id);
-      try { await gate(chain, "records.read", u); } catch (e) { if (e instanceof KernelError && e.code === "not_found") return null; throw e; }
+      let dec;
+      try { dec = await gate(chain, "records.read", u); } catch (e) { if (e instanceof KernelError && e.code === "not_found") return null; throw e; }
       let r;
       try { r = await store.get(type, id); } catch (e) { throw mapError(e); }
-      return r && r.id === id && r.type === type ? shape(chain, r) : null;
+      return r && r.id === id && r.type === type ? shape(chain, r, await limitsOf(chain, type, dec)) : null;
     },
 
     async query(chain, type, spec) {
       if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
       checkType(type);
       await guardSealed(chain, type, spec);
+      await countRead(chain, type);
       let cursor = spec.page.cursor, out = [], next;
       for (let pages = 0; pages < 10; pages++) {
         let p;
         try { p = await store.query(type, { ...spec, page: { limit: spec.page.limit, ...(cursor ? { cursor } : {}) } }); } catch (e) { throw mapError(e); }
-        for (const r of p.rows) if (r.type === type && await allowed(chain, "records.read", urn(r.type, r.id))) out.push(shape(chain, r));
+        const hiddenSet = await hiddenFields(chain, type);
+        for (const r of p.rows) {
+          if (r.type !== type) continue;
+          const dec = await check(chain, "records.read", urn(r.type, r.id));
+          if (dec) out.push(shape(chain, r, { allow: allowList(dec), hidden: hiddenSet || new Set() }));
+        }
         next = p.next_cursor;
         if (out.length || !next) break;
         cursor = next;
@@ -206,13 +286,21 @@ export function createRecords(cfg) {
       if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
       checkType(type);
       await guardSealed(chain, type, spec);
+      await countRead(chain, type);
       // A store cannot hide rows from a total, so the gateway aggregates only the rows it has itself allowed.
       const rows = [];
       let cursor;
       for (let pages = 0; pages < 40; pages++) {
         let p;
         try { p = await store.query(type, { filter: spec.filter, page: { limit: 500, ...(cursor ? { cursor } : {}) } }); } catch (e) { throw mapError(e); }
-        for (const r of p.rows) if (r.type === type && await allowed(chain, "records.read", urn(r.type, r.id))) rows.push(r);
+        const hiddenSet = await hiddenFields(chain, type);
+        for (const r of p.rows) {
+          if (r.type !== type) continue;
+          const dec = await check(chain, "records.read", urn(r.type, r.id));
+          if (!dec) continue;
+          const al = allowList(dec);
+          rows.push(al || (hiddenSet && hiddenSet.size) ? { ...r, data: Object.fromEntries(Object.entries(r.data).filter(([k]) => !(hiddenSet && hiddenSet.has(k)) && (!al || al.has(k)))) } : r);
+        }
         if (!p.next_cursor) return aggregateRows(rows, spec);
         cursor = p.next_cursor;
       }
@@ -225,7 +313,14 @@ export function createRecords(cfg) {
       let p;
       try { p = await store.search(spec); } catch (e) { throw mapError(e); }
       const rows = [];
-      for (const h of p.rows) if (await allowed(chain, "records.read", urn(h.type, h.id))) rows.push(h);
+      for (const h of p.rows) {
+        const dec = await check(chain, "records.read", urn(h.type, h.id));
+        if (!dec) continue;
+        // A snippet is text from some field: it is shown only when the access has no field limit and no field is hidden from this chain.
+        const limited = allowList(dec) !== null || ((await hiddenFields(chain, h.type)) || new Set([1])).size > 0;
+        const { snippet: _s, ...bare } = h;
+        rows.push(limited ? bare : h);
+      }
       // Page after filtering: a cursor only when an allowed hit is ahead (K2-10).
       let more = false, next = p.next_cursor;
       for (let ahead = 0; next && !more && ahead < 10; ahead++) {
