@@ -10,6 +10,7 @@
 // A module that fails to start is disabled and reported. It never takes the daemon down: one
 // broken watcher runtime should not cost someone their search.
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -375,6 +376,13 @@ export function checkInput(schema, value, where = "input") {
  * label but a model's own (mcp, harness) from under a `claude` or a thread as that session's
  * (core/daemon asTaken), whether or not it is listed here.
  */
+/**
+ * The meta of the tool call now running, as the registry dispatched it. The kernel reads the running turn's own session token from here (`ctx.kernel.audienceFor`), so a
+ * module cannot hand it another turn's token: whatever it passes, the room is the one of the call the registry is running for it.
+ */
+const callStore = new AsyncLocalStorage();
+export const currentCall = () => callStore.getStore() ?? null;
+
 export const SURFACE_LABELS = Object.freeze(["cli", "local", "deck", "capsule", "mobile"]);
 
 /** Who may call a reach "person" tool: the person's own surfaces, and the owner's own devices (callerAllowed). */
@@ -1199,7 +1207,7 @@ export class Registry {
   /** @param {any} def @param {any} input @param {any} meta */
   async run(def, input, meta) {
     // The caller is passed on, so a tool like vault.release can check which module is asking.
-    try { return { data: await def.run(input, meta) }; }
+    try { return { data: await callStore.run(meta, () => def.run(input, meta)) }; }
     catch (e) {
       // A tool may throw an error carrying a code the caller can act on (a presence refusal, a
       // conflict, a missing grant). Pass a short lowercase code through; anything else is "failed".

@@ -17,6 +17,7 @@ import { sealerPresence } from "./core/presence.js";
 import { expr as defaultExpr } from "./expr/index.js";
 import { KernelError } from "./core/errors.js";
 import { createSurfaces } from "./core/surfaces.js";
+import { createRoom } from "./core/room.js";
 import { proofFrom, proofRequest } from "./remote/proof.js";
 import { createOffersPort } from "./remote/offers-port.js";
 import { createKernelSeal } from "./core/seal.js";
@@ -24,7 +25,7 @@ import { runnerPorts } from "./gateway/runner-ports.js";
 
 /**
  * @param {{ space: string, owner: string, owner_uid: number, key?: Uint8Array | string, seal?: any, label?: () => { name?: string, words?: string }, clock?: () => number,
- *   legacyKeys?: (Uint8Array | string)[], store?: any, log?: any, chains?: any, grantsStore?: any, grants?: any, members?: any, bootstrap?: boolean, presence?: any, sealer?: any, door?: any,
+ *   legacyKeys?: (Uint8Array | string)[], currentCall?: () => any, store?: any, log?: any, chains?: any, grantsStore?: any, grants?: any, members?: any, bootstrap?: boolean, presence?: any, sealer?: any, door?: any,
  *   expr?: any, hasPresenceSession?: (chain: any) => boolean, onStageEnter?: any, stageTasks?: any, checkpointKey?: any,
  *   drive?: any, resolveCredential?: any, routeAction?: any, templates?: any, destinations?: any, resolve?: any, actions?: any[], attrs?: any, sinks?: Set<string> }} cfg
  *   grants and members together replace the grants store (the retrofit path and test rigs); otherwise a grants store is made and, on an empty log, its first owner
@@ -57,7 +58,8 @@ export async function createKernel(cfg) {
     sealer: cfg.sealer, door: cfg.door, onStageEnter: cfg.onStageEnter, stageTasks: cfg.stageTasks, checkpointKey: cfg.checkpointKey, templates: cfg.templates, destinations: cfg.destinations,
     actions: cfg.actions, attrs: cfg.attrs, sinks: cfg.sinks, drive: cfg.drive, resolveCredential: cfg.resolveCredential, routeAction: cfg.routeAction,
   });
-  const surfaces = createSurfaces({ space: cfg.space, chains, door: cfg.door, clock, isAdmin: (/** @type {string} */ id) => Boolean(grantsStore && grantsStore.isAdmin({ kind: "person", id, space: cfg.space })) });
+  const surfaces = createSurfaces({ space: cfg.space, chains, door: cfg.door, clock, isAdmin: (/** @type {string} */ id) => Boolean(grantsStore && grantsStore.isAdmin({ kind: "person", id, space: cfg.space })), chatMember: (/** @type {string} */ person, /** @type {string} */ chat) => Boolean(grantsStore && grantsStore.chatHas(person, chat)) });
+  const room = grantsStore ? createRoom({ space: cfg.space, grantsStore, surfaces, chains, gateway, log, clock, currentCall: cfg.currentCall }) : null;
   /**
    * `ctx.kernel` for one first-party module (the registry calls this when it builds the module's context): the gateway's own surfaces, bound to this Space, and the
    * module's own service chain. A module declares what it needs under `needs.kernel` ({ actions, prefixes, types }) and is given exactly that: grants whose source is
@@ -82,28 +84,13 @@ export async function createKernel(cfg) {
       /** Any Space by id: this one, another this home hosts, or a remote client with the same gateway API (the chain argument carries no authority across). */
       for: (/** @type {string} */ id) => (id === cfg.space ? Object.freeze({ space: cfg.space, hosted: true, gateway, surfaces }) : spaces ? spaces.for(id) : (() => { throw new KernelError("unavailable", "this kernel has no Spaces registry"); })()),
       proofFrom, proofRequest: (/** @type {string} */ call, /** @type {any[]} */ ...a) => proofRequest(cfg.space, call, ...a),
-      leases: gateway.leases, drive: gateway.drive, chats: gateway.grants && gateway.grants.chats,
+      leases: gateway.leases, drive: gateway.drive, chats: gateway.grants && gateway.grants.chats ? Object.freeze({ ...gateway.grants.chats, append: (/** @type {string} */ token, /** @type {any} */ message) => { if (!room) throw new KernelError("unavailable", "this kernel keeps no chats"); return room.append(token, message); } }) : undefined,
       // Only the pool's own module may record the index head; a head any module could write would make the rollback check worthless.
       ...(m.name === "wink-storage" ? { storageIndex: Object.freeze({ record: recordStorageIndex, head: storageIndexHead }) } : {}),
       /** The runner's ports from the kernel's own pieces (see kernel/gateway/runner-ports.js): allowed, revocation and the device key are the kernel's. */
       runnerPorts: (/** @type {any} */ o) => runnerPorts({ leases: gateway.leases, offers: gateway.grants && gateway.grants.offers }, o),
-      /**
-       * The room the running turn answers in, derived from the session behind the call's own token (`extra.token`, checked by the Surfaces door) and the chat the asker
-       * bound that session to: `{ group: false }` when the chat has one person, else `{ group: true, chains }` with a read-only viewer chain (kernel-built; authorize
-       * refuses every act above read for it) for every person in the chat, the asker first, and always at least two. The room is never an argument and a module cannot name,
-       * supply or shorten it. Throws `no_audience` when it cannot be built (no token, a session in no chat the kernel knows, an asker who left), never answers one to one.
-       */
-      audienceFor: async (/** @type {any} */ extra) => {
-        if (!grantsStore || typeof grantsStore.chatAudience !== "function") throw new KernelError("unavailable", "this kernel keeps no chats");
-        if (!extra || typeof extra.token !== "string") throw new KernelError("no_audience", "this call carries no session, so there is no room to write for");
-        let session;
-        try { session = await surfaces.sessionOf(extra.token); } catch { throw new KernelError("no_audience", "this call's session is not valid, so there is no room to write for"); }
-        const people = grantsStore.chatAudience(session);
-        if (people.length < 2) return Object.freeze({ group: false });
-        return Object.freeze({ group: true, chains: Object.freeze(people.map((/** @type {string} */ person) => chains.fromFacts({ kind: "viewer", person, vouched: true }))) });
-      },
-      /** May this chain (a viewer of one person in the room, or any) read this resource? A probe: no row predicates, nothing counted or logged. For the harness to answer each viewer from what THAT person may read. */
-      canRead: async (/** @type {any} */ chain, /** @type {string} */ resource, /** @type {string} */ action = "records.read") => (await gateway.authorize({ chain, action, resource, probe: true })).effect === "allow",
+      /** The room the RUNNING turn answers in (see kernel/core/room.js): `{ group: false }` or an opaque handle `{ group, size, read, canRead }`. The turn's own token is used, never an argument; throws `no_audience`. */
+      audienceFor: async (/** @type {any} */ _extra) => { if (!room) throw new KernelError("unavailable", "this kernel keeps no chats"); return room.audienceFor(); },
       serviceChain: () => gateway.serviceChain(m.name),
       chain: async (/** @type {any} */ meta) => (meta && typeof meta.token === "string" ? surfaces.chainFor(meta.token) : (await ready, gateway.serviceChain(m.name))),
     };
@@ -133,5 +120,5 @@ export async function createKernel(cfg) {
     const e = all[all.length - 1];
     return e ? { ...e.data, unverified: !checkpoint } : null;
   }
-  return Object.freeze({ recordStorageIndex, storageIndexHead, gateway, log, store, chains, grants: grantsStore, limits, tasks, surfaces, kernelFor, bindSpaces, fresh, migrated });
+  return Object.freeze({ bindCalls: (/** @type {() => any} */ fn) => { if (room) room.bindCalls(fn); }, recordStorageIndex, storageIndexHead, gateway, log, store, chains, grants: grantsStore, limits, tasks, surfaces, kernelFor, bindSpaces, fresh, migrated });
 }
