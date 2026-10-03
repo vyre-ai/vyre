@@ -17,17 +17,20 @@ sessions, tailnet and platform teams plug in the real ones.
 - core/runner/runner.js: ties them together; start, stop, lock, revoke, contact, moveToServer.
 - core/runner/runner.test.js: 27 tests. Passing on the Mac (temp dirs, hdiutil mounts inside the scratch dir) and on the test box (Linux, bubblewrap + gocryptfs): session runs and the server stays idle, no read outside the workspace, no direct network, no credential in the session, no credential or plaintext transcript on disk (running or locked), revoke deletes, offline-then-revoke deletes on contact, lease expiry locks, resume on another machine from the last whole turn.
 
+- core/runner/module.json + index.js + module.test.js: the runner module (tools status, place, start, stop, lock, revoke, move), ports as seams. docs/using/local-runner.md, CHANGELOG. Reach, docs, boundaries tests green on the test box (109 passed).
+- Windows spike written from documentation only (team/0.3/SPIKE-runner-windows.md): nothing measured, the VM was down and the host at load 20-30. Recommends AppContainer + job object, and a gocryptfs-format folder via WinFsp.
+
 ## Doing
-- Windows spike (restricted job + AppContainer vs WSL2 + bubblewrap), then build the winner.
+- Waiting for host load under about 12 and for windows to free the VM, then run the spike experiments and build sandbox-win.js.
 
 ## Next
-1. Windows: write team/0.3/SPIKE-runner-windows.md, build sandbox-win.js and the Windows workspace driver, prove on the Win11 VM.
-2. Module wiring: core/runner/module.json and index.js (tools runner.status, runner.place, runner.start, runner.stop, runner.lock, runner.move), grants from the kernel Offer and Use studs.
+1. Windows: start the VM when free, run experiments 1 and 3b from the spike doc, build sandbox-win.js and the Windows workspace driver, prove on the Win11 VM.
+2. Wire the real ports into index.js seams once vault, sessions and platform answer in CHAT.md.
 3. Real ports: vault lease/use over Wink (vault team), space sync port (sessions team), grants (platform).
 4. docs/using/local-runner.md, CHANGELOG, ADR number, perf numbers (scripts/perf-check).
 
 ## Needs from others
-- vault: the lease and use calls below. vault.lease({ space, device }) -> { id, key (base64, 32 bytes, stable per space and device), ttlMs } or { revoked: true }; vault.renew({ id }) -> { ttlMs } or { revoked: true }; vault.use({ ref, session, route }) -> secret string. Per request, over Wink, no caching.
+- vault: the lease and use calls below. vault.lease({ space, device }) -> { id, key (base64, 32 bytes, stable per space and device), ttlMs } or { revoked: true }; vault.renew({ id }) -> { ttlMs } or { revoked: true }; vault.credential({ ref, session, route }) -> secret string. Per request, over Wink, no caching.
 - sessions: the space sync port (appendTranscript, putFile with versions, putCheckpoint, getCheckpoint, getTranscript, getFile) and the continue-elsewhere path that resumes from a checkpoint on the server. Shapes are in core/runner/sync.js and testing/fake-space.js.
 - platform: Offer (space_allows, member_accepts) and Use from kernel/contracts/identity.d.ts, and a way to ask "does this member have both grants for this device".
 - tailnet: reachability of the space's vault and sync endpoints from the runner.

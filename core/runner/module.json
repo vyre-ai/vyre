@@ -1,0 +1,63 @@
+{
+  "name": "runner",
+  "version": "0.1.0",
+  "description": "Runs a space's AI sessions on this computer: sandboxed, in an encrypted workspace opened by a leased key, with credentials fetched at the moment of use and a checkpoint at every turn.",
+  "roles": [
+    "local"
+  ],
+  "requires": [],
+  "does": {
+    "tools": [
+      {
+        "name": "runner.status",
+        "summary": "whether this computer can run a space's sessions, and what is running",
+        "reach": "anyone"
+      },
+      {
+        "name": "runner.place",
+        "summary": "where a session would run: here, the server, or waiting, with the reason",
+        "reach": "anyone"
+      },
+      {
+        "name": "runner.start",
+        "summary": "start a session here (both grants needed)",
+        "reach": "modules"
+      },
+      {
+        "name": "runner.stop",
+        "summary": "stop a session running here",
+        "reach": "modules"
+      },
+      {
+        "name": "runner.lock",
+        "summary": "close the workspace on this computer; the data stays encrypted",
+        "reach": "person"
+      },
+      {
+        "name": "runner.revoke",
+        "summary": "access ended: lock and delete the workspace",
+        "reach": "modules"
+      },
+      {
+        "name": "runner.move",
+        "summary": "move a session to the space's server after a last checkpoint",
+        "reach": "person"
+      }
+    ]
+  },
+  "watches": {
+    "emits": [
+      "runner.started",
+      "runner.stopped",
+      "runner.checkpoint",
+      "runner.locked",
+      "runner.deleted"
+    ]
+  },
+  "shows": {
+    "deck": [],
+    "capsule": [],
+    "cli": []
+  },
+  "needs": {}
+}

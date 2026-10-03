@@ -10,7 +10,7 @@
 //   - only the routes the space granted exist; any other path, host or method gets a plain refusal.
 //
 // A route is { prefix: "/provider", upstream: "https://api.anthropic.com", credential?: { ref, header, prefix? } }.
-// vault.use({ ref, session, route }) returns the secret as a string, or throws.
+// vault.credential({ ref, session, route }) returns the secret as a string, or throws.
 
 import http from "node:http";
 import https from "node:https";
@@ -25,7 +25,7 @@ const same = (a, b) => { const x = Buffer.from(String(a)), y = Buffer.from(Strin
 
 /**
  * @param {{ routes: { prefix: string, upstream: string, credential?: { ref: string, header: string, prefix?: string } }[],
- *   vault: { use(o: { ref: string, session: string, route: string }): Promise<string> },
+ *   vault: { credential(o: { ref: string, session: string, route: string }): Promise<string> },
  *   session: string, token: string, onEvent?: (e: { route: string, status: number, ms: number, error?: string }) => void,
  *   request?: typeof http.request }} o
  */
@@ -53,7 +53,7 @@ export function createEgress(o) {
       }
       if (route.credential) {
         let secret;
-        try { secret = await o.vault.use({ ref: route.credential.ref, session: o.session, route: route.prefix }); } catch { return refuse(502, "the space's vault did not give the credential", route.prefix); }
+        try { secret = await o.vault.credential({ ref: route.credential.ref, session: o.session, route: route.prefix }); } catch { return refuse(502, "the space's vault did not give the credential", route.prefix); }
         if (typeof secret !== "string" || !secret) return refuse(502, "the space's vault did not give the credential", route.prefix);
         headers[route.credential.header] = (route.credential.prefix || "") + secret;
         secret = "";

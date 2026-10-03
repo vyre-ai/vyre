@@ -15,7 +15,7 @@ export function fakeSpace(o = {}) {
   const vault = {
     async lease() { guard(); if (st.revoked) return { revoked: true }; st.leases++; return { id: "lease-" + st.leases, key: st.key.toString("base64"), ttlMs: st.ttlMs }; },
     async renew() { guard(); st.renews++; if (st.revoked) return { revoked: true }; return { ttlMs: st.ttlMs }; },
-    async use({ ref, session, route }) { guard(); if (st.revoked) throw new Error("revoked"); st.uses.push({ ref, session, route }); const v = st.secrets[ref]; if (!v) throw new Error("no such credential"); return v; },
+    async credential({ ref, session, route }) { guard(); if (st.revoked) throw new Error("revoked"); st.uses.push({ ref, session, route }); const v = st.secrets[ref]; if (!v) throw new Error("no such credential"); return v; },
   };
   const sync = {
     async appendTranscript(s, entries) { guard(); const t = st.transcript.get(s) || []; for (const e of entries) if (!t.some(x => x.seq === e.seq)) t.push(e); st.transcript.set(s, t); return { acked: t.length ? Math.max(...t.map(x => x.seq)) : 0 }; },

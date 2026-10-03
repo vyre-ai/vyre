@@ -17,6 +17,7 @@
       "using/cli.md",
       "using/claude-code.md",
       "using/sessions.md",
+      "using/local-runner.md",
       "using/projects-and-threads.md",
       "using/teammates.md",
       "using/agents.md",

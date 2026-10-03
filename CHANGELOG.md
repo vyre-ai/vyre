@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(runner): core/runner runs a space's sessions on a member's own computer. Seatbelt (macOS) or bubblewrap (Linux) sandbox, an egress proxy that fetches credentials from the space's vault per request, a one-hour key lease held in memory, an encrypted workspace (hdiutil AES-256 image, gocryptfs), transcript and file sync with a checkpoint every turn, placement (here, server or wait with a reason), and the runner module (runner.status, place, start, stop, lock, revoke, move). The vault, sync and grant ports are seams until those teams land theirs. New runtime needs on Linux: bubblewrap, gocryptfs, fuse3. Windows waits on the spike (team/0.3/SPIKE-runner-windows.md).
 - site: the version text on every page comes from the release tag (assemble-site.sh passes VYRE_SITE_VERSION), with a per-version "out now" line in gen-site.mjs; vyre.run says 0.2.2, and the roadmap reads Sessions 0.2.3, Scale 0.2.4, Spaces 0.2.5.
 - fix(site): scripts/gen-og.sh launches Chrome with --use-mock-keychain and --password-store=basic, so it never raises a Keychain dialog on a Mac (test/chrome-flags).
 - test(vault) #77: agent grants read the time from the vault's `clock` (default `Date.now`), and "an expired grant is out of force" moves a fake clock instead of sleeping, so it can no longer flake.
