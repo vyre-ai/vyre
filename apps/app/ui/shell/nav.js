@@ -33,3 +33,14 @@ export function currentItem(/** @type {string} */ path, /** @type {NavItem[]} */
 export function phoneSplit(nav, tabs = 4) {
   return { tabs: nav.items.slice(0, tabs), more: [...nav.items.slice(tabs), ...nav.more, ...nav.bottom] };
 }
+
+/**
+ * A top-level place is one a tab or the rail names (Now, Chat, Projects, a record list): it keeps the large title and the space switcher above it. Anything
+ * deeper (a task, a project, a record, a Flow, a Settings page) is pushed and draws its own header (PageHeader on a phone).
+ * @param {string} path @param {NavItem[]} all
+ */
+export function isTopLevel(path, all) {
+  const p = String(path || "").split("?")[0].replace(/\/+$/, "") || "/";
+  if (p === "/u" || /^\/u\/records\/[^/]+$/.test(p)) return true;
+  return all.some((it) => p === (it.href.replace(/\/+$/, "") || "/"));
+}

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { currentItem, isActive, phoneSplit } from "./nav.js";
+import { currentItem, isActive, isTopLevel, phoneSplit } from "./nav.js";
 
 const item = (id, href, match) => ({ id, label: id, icon: "now", href, match });
 
@@ -31,4 +31,16 @@ test("a phone shows four tabs and puts the rest under More", () => {
   const { tabs, more } = phoneSplit(nav);
   assert.deepEqual(tabs.map((t) => t.id), ["a", "b", "c", "d"]);
   assert.deepEqual(more.map((t) => t.id), ["e", "m", "s"]);
+});
+
+test("a place named by the nav is top level; a task, a project or a record page is pushed", () => {
+  const all = [item("now", "/u/now"), item("projects", "/u/projects", ["/u/project"]), item("settings", "/u/settings")];
+  assert.equal(isTopLevel("/u/now", all), true);
+  assert.equal(isTopLevel("/u/projects", all), true);
+  assert.equal(isTopLevel("/u/records/matter", all), true);
+  assert.equal(isTopLevel("/u/task/t1", all), false);
+  assert.equal(isTopLevel("/u/project/p1", all), false);
+  assert.equal(isTopLevel("/u/record/r1", all), false);
+  assert.equal(isTopLevel("/u/now/needs", all), false);
+  assert.equal(isTopLevel("/u/settings/account", all), false);
 });

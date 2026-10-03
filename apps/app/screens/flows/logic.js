@@ -64,3 +64,19 @@ export function addsLine(adds) {
   const part = (n, one, many) => (n ? `${n} ${n === 1 ? one : many}` : "");
   return [part(adds.types, "record type", "record types"), part(adds.flows, "Flow", "Flows"), part(adds.views, "view", "views"), part(adds.roles, "role", "roles")].filter(Boolean).join(", ");
 }
+
+/** The icon of what starts a Flow: a payment is a card, a matter entering a stage is the board, anything on a time is a clock. @param {{ triggerCode: string }} flow @returns {"card"|"board"|"clock"} */
+export function triggerIcon(flow) {
+  const c = flow.triggerCode;
+  return /payment/.test(c) ? "card" : /stage/.test(c) ? "board" : "clock";
+}
+
+/** Line 2 of a Flow row: what starts it, short ("On payment received", "On matter entering Intake"). @param {{ trigger: string, triggerCode: string }} flow */
+export function triggerLine(flow) {
+  const c = flow.triggerCode;
+  if (/payment\.received/.test(c)) return "On payment received";
+  const stage = /stage:\s*'([^']+)'/.exec(c)?.[1];
+  const type = /type:\s*'([^']+)'/.exec(c)?.[1];
+  if (stage) return `On ${type ?? "record"} entering ${stage}`;
+  return `On ${flow.trigger.replace(/^An? /, "").replace(/ is /, " ").toLowerCase()}`;
+}

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { Avatar, Button, Card, Chip, Divider, Field, Row, Segmented, Sheet, Switch, Text, showToast, markRef } from "@vyre/ui";
-import { Page } from "../shell/Page";
+import { Page } from "../places/Frame";
 import { CUSTOMIZE_SPACES } from "./data";
 import { useTypes } from "./state";
 import { TEMPLATES, buildType, templateName, typeLine } from "./logic.js";

@@ -1,7 +1,7 @@
 import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { Banner, Button, Card, Divider, Row, Segmented, Switch, Text, showToast } from "@vyre/ui";
-import { Group, Page } from "../shell/Page";
+import { Group, Page } from "../places/Frame";
 import { CREDITS, VERSION } from "./data";
 import { NOTIFY_ROWS } from "./logic.js";
 import { useSettings } from "./state";

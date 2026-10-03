@@ -2,7 +2,7 @@ import { useState } from "react";
 import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Avatar, Button, Card, Chip, Divider, EmptyState, Row, Text, showToast, markRef, spaceRef } from "@vyre/ui";
-import { Group, Page } from "../shell/Page";
+import { Group, Page } from "../places/Frame";
 import { FaceIdSheet, type FaceAsk } from "../shell/FaceIdSheet";
 import { SPACE_NAMES, glyph } from "./data";
 import { lendInfo, useDevices } from "./state";

@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { AskCard, Avatar, Button, Card, Chip, Divider, EmptyState, Row, Tabs, Text, showToast, markRef } from "@vyre/ui";
-import { Block, FaceIdSheet, IconTile, Page, SpaceChip } from "../places/Page";
+import { AskCard, Avatar, Button, Card, Chip, Divider, EmptyState, IconTile, Row, Tabs, Text, showToast, markRef } from "@vyre/ui";
+import { Block, FaceIdSheet } from "../places/Page";
+import { Frame } from "../places/Frame";
+import { SpaceBadge } from "../places/badge";
 import { useScope } from "../places/scope";
 import { driveRepo, EDITORS, PROJECTS, type DriveFile, type Link } from "./data";
 import { addLink, filesIn, LINK_DAYS, projectsIn, restore, revoke, versionsOf } from "./logic.js";
@@ -32,16 +34,16 @@ export default function DriveScreen() {
   ) : null;
 
   const fileRow = (f: DriveFile) => (
-    <View key={f.id} className="gap-s2 px-s3 py-s2">
-      <Row lead={<IconTile icon={f.sealed ? "shield" : "file"} tone={f.sealed ? "warn" : "text-2"} />} title={f.name}
-        sub={`${PROJECTS[f.proj]} · ${f.size} · ${f.mod} by ${f.by}`}
-        end={<><SpaceChip sp={f.sp} /><Chip>{`v${f.ver}`}</Chip></>} />
-      <View className="gap-s2 pl-s12">
+    <View key={f.id} className="gap-s2 pb-s2">
+      <Row dense lead={<IconTile name={f.sealed ? "sealed" : "file"} tone={f.sealed ? "warn" : "text-2"} badge={<SpaceBadge sp={f.sp} />} />} title={f.name}
+        sub={`${PROJECTS[f.proj]}, ${f.size}, ${f.mod} by ${f.by}`}
+        end={<Chip>{`v${f.ver}`}</Chip>} />
+      <View className="gap-s2 pr-s4" style={{ paddingLeft: 60 }}>
         {f.att ? <View className="self-start"><Button kind="ghost" size="sm" icon="link" label={`Attached to ${f.att.title}`} onPress={() => router.push(`/u/record/${f.att!.id}` as never)} /></View> : null}
-        {f.sealed ? <View className="flex-row items-center gap-s2"><Chip tone="sealed" icon="shield">Kept away from assistants</Chip><Text size="caption" tone="muted" className="min-w-0 flex-1">{f.note}. They see "{f.name}" as on file, sealed.</Text></View> : null}
+        {f.sealed ? <Text size="caption" tone="label">{`${f.note}. Kept away from assistants: they see "${f.name}" as on file, sealed.`}</Text> : null}
         <View className="flex-row flex-wrap gap-s2">
           <Button kind="ghost" size="sm" label={versions === f.id ? "Hide versions" : "Versions"} onPress={() => setVersions(versions === f.id ? null : f.id)} />
-          {f.sealed ? <Button size="sm" icon="faceid" label="Open" onPress={() => setFace({ kind: "open", id: f.id })} /> : <Button size="sm" label="Share a link" onPress={() => setLinkFor(f.id)} />}
+          {f.sealed ? <Button kind="ghost" size="sm" icon="faceid" label="Open" onPress={() => setFace({ kind: "open", id: f.id })} /> : <Button kind="ghost" size="sm" label="Share a link" onPress={() => setLinkFor(f.id)} />}
         </View>
         {versions === f.id ? (
           <Card flush>
@@ -57,25 +59,25 @@ export default function DriveScreen() {
   );
 
   return (
-    <Page title="Drive" sub="Files per space and project, kept with their versions.">
+    <Frame title="Drive" sub="Files per space and project, kept with their versions." scope>
       <Tabs<Tab> value={tab} onChange={setTab} items={[["files", "Files"], ["links", "Shared links"], ["computer", "On this computer"]]} />
       {tab !== "computer" ? linkAsk : null}
       {tab === "files" ? (
         <>
           <View className="flex-row flex-wrap gap-s2">
             {["all", ...projects].map((p) => (
-              <Button key={p} size="sm" kind={proj === p || (!projects.includes(proj) && p === "all") ? "primary" : "secondary"} label={p === "all" ? "All projects" : PROJECTS[p]} onPress={() => setProj(p)} />
+              <Chip key={p} selected={proj === p || (!projects.includes(proj) && p === "all")} onPress={() => setProj(p)}>{p === "all" ? "All projects" : PROJECTS[p]}</Chip>
             ))}
           </View>
-          <Card flush>{shown.length ? shown.map((f, i) => <View key={f.id}>{i ? <Divider /> : null}{fileRow(f)}</View>) : <EmptyState title="No files" body="Nothing in this space or project." />}</Card>
+          <Card flush>{shown.length ? shown.map((f, i) => <View key={f.id}>{i ? <Divider inset={60} /> : null}{fileRow(f)}</View>) : <EmptyState title="No files" body="Nothing in this space or project." />}</Card>
         </>
       ) : null}
       {tab === "links" ? (
         <Card flush>
           {links.length ? links.map((l, i) => (
             <View key={l.id}>{i ? <Divider /> : null}
-              <Row lead={<IconTile icon="share" tone="accent" />} title={l.name} sub={`vyre.run/s/${l.code} · expires in ${LINK_DAYS} days · created just now by you`}
-                end={<><Button size="sm" label="Copy" onPress={() => showToast("Link copied.")} /><Button kind="danger" size="sm" label="Revoke" onPress={() => { setLinks((xs) => revoke(xs, l.id)); showToast("Link revoked. It stops working now."); }} /></>} />
+              <Row dense lead={<IconTile name="share" tone="accent" />} title={l.name} sub={`vyre.run/s/${l.code}, expires in ${LINK_DAYS} days`}
+                end={<><Button kind="ghost" size="sm" label="Copy" onPress={() => showToast("Link copied.")} /><Button kind="holdText" size="sm" label="Revoke" onPress={() => { setLinks((xs) => revoke(xs, l.id)); showToast("Link revoked. It stops working now."); }} /></>} />
             </View>
           )) : <EmptyState title="No shared links" body="A link needs your Face ID. Sealed files cannot be shared." />}
         </Card>
@@ -84,9 +86,9 @@ export default function DriveScreen() {
         <Card>
           <View className="gap-s4">
             <View className="flex-row flex-wrap items-center gap-s3">
-              <IconTile icon="laptop" tone="accent" />
+              <IconTile name="laptop" tone="accent" />
               <View className="min-w-0 flex-1"><Text strong>{`Vyre Drive on ${mount.computer}`}</Text><Text size="caption" tone="label">{mounted ? "Mounted as a folder. Open it like any other." : "Not mounted."}</Text></View>
-              <Button kind={mounted ? "secondary" : "primary"} size="sm" label={mounted ? "Unmount" : "Mount"} onPress={() => setMounted(!mounted)} />
+              <Button kind={mounted ? "ghost" : "primary"} size="sm" label={mounted ? "Unmount" : "Mount"} onPress={() => setMounted(!mounted)} />
             </View>
             {mounted ? (
               <>
@@ -107,6 +109,6 @@ export default function DriveScreen() {
           if (face?.kind === "link" && target) { setLinks((xs) => addLink(xs, target)); setLinkFor(null); setTab("links"); showToast("Link created. It is in Shared links."); }
           else showToast(`Opened ${target?.name ?? "the file"}.`);
         }} />
-    </Page>
+    </Frame>
   );
 }

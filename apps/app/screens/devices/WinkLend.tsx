@@ -1,7 +1,7 @@
 import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { Avatar, Card, Chip, Divider, EmptyState, Row, markRef } from "@vyre/ui";
-import { Page } from "../shell/Page";
+import { Page } from "../places/Frame";
 import { useDevices } from "./state";
 
 /** Share a computer: pick the computer, then its page holds the card with two yeses. */

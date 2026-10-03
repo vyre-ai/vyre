@@ -2,7 +2,7 @@ import { useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { Avatar, Button, Card, Chip, Ring, Row, Text, type IconName, IconTile } from "@vyre/ui";
-import { Page } from "../shell/Page";
+import { Page } from "../places/Frame";
 import { FaceIdSheet, type FaceAsk } from "../shell/FaceIdSheet";
 import { useDevices } from "./state";
 import { DEFAULT_NAMES, canFallback, lastStep, pick, stepLine, stepWords, type DeviceKind } from "./wink.js";

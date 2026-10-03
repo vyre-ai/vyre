@@ -2,7 +2,8 @@ import { useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { Avatar, Banner, Button, Card, Chip, Field, Segmented, Text, showToast, markRef } from "@vyre/ui";
-import { Block, DiffBlock, FaceIdSheet, Page } from "../places/Page";
+import { Block, DiffBlock, FaceIdSheet } from "../places/Page";
+import { Frame } from "../places/Frame";
 import { flowsRepo } from "./data";
 import { useFlowsState } from "./store";
 
@@ -16,7 +17,7 @@ export default function EngineerScreen() {
   const [face, setFace] = useState(false);
   const [gone, setGone] = useState(false);
   return (
-    <Page scope={false} back={{ label: "Flows", to: "/u/flows" }} title="@Engineer" sub="Describe a process in plain words.">
+    <Frame back="/u/flows" title="@Engineer" sub="Describe a process in plain words.">
       <View className="flex-row flex-wrap items-center gap-s2">
         <Chip tone="accent" icon="play">Admins only</Chip><Chip>Can change definitions</Chip><Chip>Cannot send, pay or read the vault</Chip>
       </View>
@@ -58,6 +59,6 @@ export default function EngineerScreen() {
         </Card>
       )}
       <FaceIdSheet open={face} onClose={() => setFace(false)} title="Approve with Face ID" body="The Flow goes live as version 4 of the Estate planning matter Kit. The old On payment Flow is replaced." confirm="Approve with Face ID" onConfirm={() => { setApplied(true); showToast("Applied. The Flow is in Flows."); }} />
-    </Page>
+    </Frame>
   );
 }
