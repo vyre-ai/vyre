@@ -466,6 +466,14 @@ test("daemon: the Deck's resilience client is served from core/resilience, and n
   const caps = /** @type {any} */ (await get("/lib/caps-flags/index.js"));
   assert.equal(caps.status, 200);
   assert.equal(caps.body, fs.readFileSync(path.join(import.meta.dirname, "..", "lib", "caps-flags", "index.js"), "utf8"));
+  // lib/theme/contrast.js: the colour maths a custom accent needs, served the same way (deck/ui/theme.js).
+  const contrast = /** @type {any} */ (await get("/lib/theme/contrast.js"));
+  assert.equal(contrast.status, 200);
+  assert.equal(contrast.body, fs.readFileSync(path.join(import.meta.dirname, "..", "lib", "theme", "contrast.js"), "utf8"));
+  // kernel/contracts/index.js: the frozen constant tables (task transitions, field kinds), served the same way (deck/ui/tasks.js reads them).
+  const studs = /** @type {any} */ (await get("/kernel/contracts/index.js"));
+  assert.equal(studs.status, 200);
+  assert.equal(studs.body, fs.readFileSync(path.join(import.meta.dirname, "..", "kernel", "contracts", "index.js"), "utf8"));
   // node.js (Node transports) and the tests are not the Deck's; neither is anything else in core/ or lib/.
   for (const p of ["/core/resilience/node.js", "/core/resilience/sse.test.js", "/core/daemon/index.js", "/lib/avatar-seed/index.test.js", "/lib/caps-flags/index.test.js", "/lib/identity.js"]) {
     const r = /** @type {any} */ (await get(p));
