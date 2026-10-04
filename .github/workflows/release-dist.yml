@@ -4,6 +4,7 @@
 # What it cannot show: a pulled image's cosign signature (needs the real release workflow's identity and registry images).
 name: release-dist
 on:
+  workflow_call:
   workflow_dispatch:
   push:
     paths: ["apps/app/package.json", "apps/app/package-lock.json", "scripts/build-app-out.mjs", "relay/app/**", "test/build-app-out.test.js", "scripts/check-release-dist.mjs", "scripts/pin-release-compose.mjs", "scripts/strip-wrapper.mjs", "scripts/build-site.sh", "box/**", ".github/workflows/release-dist.yml"]

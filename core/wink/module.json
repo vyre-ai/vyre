@@ -209,6 +209,10 @@
       {
         "name": "wink.device.record",
         "reach": "modules"
+      },
+      {
+        "name": "wink.server.paired",
+        "reach": "modules"
       }
     ]
   },

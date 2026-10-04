@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { Platform } from "react-native";
 import { usePathname, useRouter } from "expo-router";
 import { Shell, allowsMock, nowCount, useAppearance, useWorld } from "@vyre/ui";
 import { NAV } from "./nav";
@@ -20,6 +21,19 @@ export function UiShell({ children }: { children: React.ReactNode }) {
     loadReal().then((d) => { if (!live) return; set(d); if (!d.spaces.some((x) => x.id === useSpaces.getState().space)) setShowing(startSpace(d)); }).catch((e) => live && fail(e instanceof Error ? e.message : "The box did not answer."));
     return () => { live = false; };
   }, [set, fail, setShowing]);
+  // A browser or Windows window has no menu bar: Ctrl or Cmd with a comma opens Settings, with 1 to 4 the first four places. Lumen's own menu does this on a Mac.
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof window === "undefined" || (window as unknown as { __vyreShell?: unknown }).__vyreShell) return;
+    const on = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
+      if (e.key === ",") { e.preventDefault(); router.push("/u/settings" as never); return; }
+      const n = Number(e.key);
+      const to = n >= 1 && n <= 4 ? NAV.items[n - 1]?.href : undefined;
+      if (to) { e.preventDefault(); router.push(to as never); }
+    };
+    window.addEventListener("keydown", on);
+    return () => window.removeEventListener("keydown", on);
+  }, [router]);
   const setSpace = useAppearance((s) => s.setSpace);
   const world = useWorld();
   const waiting = world.data ? nowCount(world.data) : 0;

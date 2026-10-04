@@ -64,5 +64,5 @@ test("a hidden or missing folder is one plain refusal that keeps its code", { sk
   const { driveSource } = await import("./source.ts");
   const { driveRefusal } = await import("./real-model.ts");
   const b = box({ "files.drive.list": { error: { code: "not_available", message: "not available" } } });
-  await assert.rejects(driveSource(b.call).listReal("projects", "/secret"), (/** @type {any} */ e) => e.code === "not_available" && /not available on this box/.test(driveRefusal(e.code, e.message)));
+  await assert.rejects(driveSource(b.call).listReal("projects", "/secret"), (/** @type {any} */ e) => e.code === "not_available" && /not available on your home/.test(driveRefusal(e.code, e.message)));
 });

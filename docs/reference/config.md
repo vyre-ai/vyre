@@ -78,8 +78,10 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_ALLOW_DIALOGS` | `1`: a home other than `~/.vyre` that you keep on purpose may raise Touch ID and other prompts. Never under tests; `VYRE_NO_DIALOGS` still wins. | `core/config/dialogs.js`, `core/daemon/index.js` |
 | `VYRE_ALLOW_REAL_BOX` | Not described yet. | `core/config/dialogs.js` |
 | `VYRE_ALLOW_REAL_TRANSCRIPTS` | `1`: a home other than `~/.vyre` reads the transcripts in `~/.claude` too. Never under tests. | `core/config/dialogs.js` |
+| `VYRE_ANDROID_CERT_SHA256` | Not described yet. | `core/daemon/app.js` |
 | `VYRE_API_BASE_URL` | Not described yet. | `core/sessions/drivers/openrouter.js` |
 | `VYRE_API_MODEL` | Not described yet. | `core/sessions/drivers/openrouter.js` |
+| `VYRE_APPLE_TEAM_ID` | Not described yet. | `core/daemon/app.js` |
 | `VYRE_BACKUP_SKIP_PROJECTS` | Not described yet. | `core/cli/commands/up.js` |
 | `VYRE_BACKUP_SKIP_TRANSCRIPTS` | Not described yet. | `core/cli/commands/up.js` |
 | `VYRE_BOX_INSTALLER` | The installer `vyre box add` runs on the server, in place of the published one. | `core/cli/commands/box.js` |

@@ -102,6 +102,10 @@ export default {
       instructions: r.instructions == null ? null : String(r.instructions), skills: JSON.parse(String(r.skills)), computer: Boolean(r.computer),
       model: r.model == null ? null : String(r.model), effort: r.effort == null ? null : String(r.effort), thread: r.thread == null ? null : String(r.thread), builtin: Boolean(r.builtin) });
     // The Engineer is made once and kept: a home that has none gets it, a home that has it keeps what an admin wrote in its instructions.
+    // The name is reserved (ENG-2): a user agent already called `engineer` becomes the built-in, losing its projects, credentials, skills and computer, so it can never shadow the held one.
+    if (db.prepare("SELECT 1 FROM agents_agents WHERE name = ? AND builtin = 0").get(ENGINEER.name)) {
+      db.prepare("UPDATE agents_agents SET builtin = 1, kind = 'agent', projects = '[]', auth = '{}', skills = '[]', computer = 0, updated_at = ? WHERE name = ?").run(Date.now(), ENGINEER.name);
+    }
     if (!db.prepare("SELECT 1 FROM agents_agents WHERE name = ?").get(ENGINEER.name)) {
       const now = Date.now();
       db.prepare(`INSERT INTO agents_agents (name, kind, projects, auth, instructions, skills, computer, model, effort, builtin, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
@@ -391,6 +395,13 @@ export default {
         const { caller } = meta0;
         guard(caller, "talk to other agents");
         if (!modelMay(meta0, { sessionOk: true })) throw Object.assign(new Error("an unidentified caller cannot talk to agents"), { code: "denied" });
+        // HD-9: a model's words go out as this module, which skips the thread scope checks, so a session may not use them to reach a wider agent than itself: the assistant (every project)
+        // is the person's and the verified assistant's to ask, and an agent only reaches agents whose projects are within its own grant.
+        if (!isPerson(caller) && !meta0.firstParty && meta0.agentKind !== "assistant") {
+          const target = get(String(i.agent));
+          const within = target && Array.isArray(target.projects) && (!Array.isArray(meta0.granted) || target.projects.every(p => meta0.granted.includes(p)));
+          if (target && !within) throw Object.assign(new Error(`${target.name} sees more than this session does: ask the person, who can ask it directly`), { code: "denied" });
+        }
         // A person's own tags ride with the words, as that person (threads.send hears their turn); from any other caller they are dropped.
         const tagged = isPerson(caller) && ((Array.isArray(i.mentions) && i.mentions.length) || (Array.isArray(i.pasted) && i.pasted.length));
         // The person typing an ask is the person choosing to spend, so the daily spend cap (core/spend) does not hold it;

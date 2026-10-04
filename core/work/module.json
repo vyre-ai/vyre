@@ -4,7 +4,7 @@
   "description": "The work layer on the kernel: the native assistant's tool surface and situation, teammates, the three-layer memory and the Engineer. Every call goes through the kernel with the chain the kernel builds for the caller; nothing here holds authority.",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "tools": [
+  "does": { "reads": ["work.know.search", "work.tools"], "tools": [
     {"name": "work.tools", "summary": "the tools this caller may use in this Space, generated from its definitions", "reach": "anyone"},
     {"name": "work.call", "summary": "run one of those tools; an outward act comes back held for approval", "reach": "anyone"},
     {"name": "work.situation", "summary": "where the caller is: the Space, role, record, team, open tasks, what waits and what is sealed", "reach": "anyone"},
@@ -23,6 +23,6 @@
   ] },
   "watches": { "emits": [] },
   "shows": { "cli": [] },
-  "needs": { "kernel": { "work": true, "actions": ["records.read", "records.create", "records.update", "events.read"] } },
+  "needs": { "kernel": { "work": true, "attrs": true, "actions": ["records.read", "records.create", "records.update", "events.read"] } },
   "teaches": {}
 }

@@ -12,7 +12,7 @@ permissions:
 jobs:
   mac:
     runs-on: macos-14
-    timeout-minutes: 40
+    timeout-minutes: 50
     env:
       VYRE_TEST_HOSTED: "1"
     steps:
@@ -28,7 +28,7 @@ jobs:
         timeout-minutes: 15
         env:
           VYRE_NO_WATCHDOG: ""
-        run: node --test --test-force-exit --test-reporter=spec core/runner/homesandbox.test.js core/runner/mac-hosted.test.js core/runner/runner.test.js core/runner/hardening.test.js core/runner/checkpoint-io.test.js core/runner/checkpoint-store.test.js 2>&1 | tee sandbox-tests.txt
+        run: node --test --test-reporter=spec core/runner/homesandbox.test.js core/runner/mac-hosted.test.js core/runner/home-network.test.js core/runner/rv2-seatbelt.test.js core/runner/runner.test.js core/runner/hardening.test.js core/runner/checkpoint-io.test.js core/runner/checkpoint-store.test.js 2>&1 | tee sandbox-tests.txt
       - name: real commands through the sandbox network (git clone, npm ci, pip install, git over ssh, refusals)
         if: always()
         run: |
@@ -50,10 +50,10 @@ jobs:
           node p.mjs || true
       - name: measure (last, because it is the slow one; it stopped a whole run at the 40 minute limit on 3 Oct)
         if: always()
-        timeout-minutes: 12
+        timeout-minutes: 25
         env:
           VYRE_NO_WATCHDOG: "1"
-        run: node scripts/runner-perf.mjs --reps 5 --out perf-mac.json
+        run: node scripts/runner-perf.mjs --reps 3 --out perf-mac.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:

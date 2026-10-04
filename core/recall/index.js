@@ -102,10 +102,13 @@ export default {
       onVector: item => dense.add(item),
       // The capture port: after a batch of a session's turns is indexed (already scrubbed), the work module's engine keeps the same lines for the Space's memory, once, in chunks of
       // at most 2000. A session whose turns were rewritten is forgotten there first. No work module, or a refusal, is not an error: the Space just has no memory of conversations.
-      capture: async ({ session, rewritten, lines }) => {
+      capture: async ({ session, rewritten, lines, cwd }) => {
         if (rewritten) await ctx.call("work.know.forget", { session });
+        // The project the session's folder belongs to: the work module reads a session's lines under that project's record, so a teammate granted the project covers its sessions.
+        const of = cwd ? await ctx.call("projects.of", { cwd }).catch(() => null) : null;
+        const project = of && of.data && typeof of.data.slug === "string" ? of.data.slug : null;
         for (let i = 0; i < lines.length; i += 2000) {
-          const r = await ctx.call("work.know.capture", { session, lines: lines.slice(i, i + 2000) });
+          const r = await ctx.call("work.know.capture", { session, lines: lines.slice(i, i + 2000), ...(project ? { project } : {}) });
           if (r && r.error) { if (!captureWarned) { captureWarned = true; ctx.log(`recall: the Space's memory takes no conversations (${r.error.code || "refused"})`); } return; }
         }
       },

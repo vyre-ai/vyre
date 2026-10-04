@@ -33,7 +33,7 @@ const b64 = (/** @type {string} */ s) => Buffer.from(s).toString("base64");
 
 test("upload, versions and restore run under the caller's own chain and answer plain shapes", async () => {
   const r = rig();
-  assert.deepEqual([...r.tools.keys()].sort(), ["files.drive.restore", "files.drive.upload", "files.drive.versions"]);
+  assert.deepEqual([...r.tools.keys()].sort(), ["files.drive.restore", "files.drive.space.list", "files.drive.space.read", "files.drive.upload", "files.drive.versions"]);
   for (const d of r.tools.values()) assert.deepEqual(d.callers, ["cli", "local", "deck", "capsule", "mobile", "device"]);
   const up = await r.run("files.drive.upload", { path: "Clients/A/retainer.txt", base64: b64("hello") });
   assert.deepEqual(up, { path: "Clients/A/retainer.txt", version: 1, conflict: false, size: 5 });
@@ -87,6 +87,10 @@ test("on a real kernel-on daemon the home Space's Drive works through the real t
   const v = await ok("files.drive.versions", { path: "Clients/A/retainer.txt" });
   assert.deepEqual(v.versions.map((/** @type {any} */ x) => x.ver), [1, 2, 3]);
   assert.ok(v.versions.every((/** @type {any} */ x) => typeof x.by === "string" && x.by.startsWith("person:")), "the actor is the chain's, not a name the caller supplied");
+  const listed = await ok("files.drive.space.list", { prefix: "Clients/A" });
+  assert.deepEqual(listed.entries.map((/** @type {any} */ e) => e.path), ["Clients/A/retainer.txt"]);
+  assert.equal(Buffer.from((await ok("files.drive.space.read", { path: "Clients/A/retainer.txt", version: 1 })).base64, "base64").toString(), "version one");
+  assert.equal(Buffer.from((await ok("files.drive.space.read", { path: "Clients/A/retainer.txt" })).base64, "base64").toString(), "from an old copy", "the head is the latest write; the conflict flag marks it");
   const nothing = await call("files.drive.versions", { path: "Clients/A/never.txt" }, { root, caller: "cli" });
   assert.equal(nothing.error && nothing.error.code, "not_found");
   const restored = await call("files.drive.restore", { path: "Clients/A/retainer.txt", version: 1 }, { root, caller: "cli" });
@@ -95,4 +99,19 @@ test("on a real kernel-on daemon the home Space's Drive works through the real t
     for (const [tool, input] of [["files.drive.versions", { path: "Clients/A/retainer.txt" }], ["files.drive.upload", { path: "x/y.txt", base64: b64("no") }]]) assert.ok((await call(tool, input, { root, caller })).error, `${caller} ${tool}`);
   }
   assert.equal((await ok("files.drive.versions", { path: "Clients/A/retainer.txt" })).versions.length, 3, "nothing else was written");
+});
+
+test("DR-2: versions pages by `after` and `limit`, and list and read refuse bad paging input", async () => {
+  const { run } = rig();
+  await run("files.drive.upload", { path: "a/b.txt", base64: b64("1") });
+  for (let n = 2; n <= 5; n++) await run("files.drive.upload", { path: "a/b.txt", base64: b64(String(n)), base: n - 1 });
+  const p1 = await run("files.drive.versions", { path: "a/b.txt", limit: 2 });
+  assert.deepEqual(p1.versions.map((/** @type {any} */ v) => v.ver), [1, 2]);
+  assert.equal(p1.next, 2);
+  const p2 = await run("files.drive.versions", { path: "a/b.txt", limit: 2, after: p1.next });
+  assert.deepEqual([p2.versions.map((/** @type {any} */ v) => v.ver), p2.next], [[3, 4], 4]);
+  const p3 = await run("files.drive.versions", { path: "a/b.txt", limit: 2, after: p2.next });
+  assert.deepEqual([p3.versions.map((/** @type {any} */ v) => v.ver), p3.next], [[5], null]);
+  assert.equal(await code(run("files.drive.versions", { path: "a/b.txt", limit: 0 })), "bad_input");
+  assert.equal(await code(run("files.drive.space.list", { limit: -1 })), "bad_input");
 });

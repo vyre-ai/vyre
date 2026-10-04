@@ -37,10 +37,13 @@ export function registerSpaceDrive(ctx) {
       return { path: p, version: r.version, conflict: Boolean(r.conflict), size: bytes.length };
     });
 
-  tool("files.drive.versions", "The versions of one file in the Space's Drive, newest last, under the caller's own grants: { space?, path }. Answers { path, versions: [{ ver, size, at, by, ... }] }; a file the caller may not read is the same as one that is not there.",
-    obj({ space: str, path: str }, ["path"]), async (i, d, drive) => {
+  tool("files.drive.versions", "The versions of one file in the Space's Drive, newest last, under the caller's own grants: { space?, path, after?, limit? }. Answers { path, versions: [{ ver, size, at, by, ... }], next } (at most `limit`, default 200, at most 1,000, those after version `after`; `next` is the version to pass as `after`, or null); a file the caller may not read is the same as one that is not there.",
+    obj({ space: str, path: str, after: { type: "integer" }, limit: { type: "integer" } }, ["path"]), async (i, d, drive) => {
       const p = pathOf(i.path);
-      return { path: p, versions: await drive.history(d.chain, p) };
+      if (i.after !== undefined && (!Number.isInteger(i.after) || i.after < 0)) throw refuse("after is a version number", "bad_input");
+      if (i.limit !== undefined && (!Number.isInteger(i.limit) || i.limit < 1)) throw refuse("limit is a positive number", "bad_input");
+      const limit = Math.min(i.limit ?? 200, 1000), rest = (await drive.history(d.chain, p)).filter((/** @type {any} */ v) => v.ver > (i.after ?? 0));
+      return { path: p, versions: rest.slice(0, limit), next: rest.length > limit ? rest[limit - 1].ver : null };
     });
 
   tool("files.drive.restore", "Restore an old version of a file in the Space's Drive as a NEW version (nothing is lost): { space?, path, version }. The person's own act with their presence proof, which rides beside the request. Answers { path, from, version }.",
@@ -49,5 +52,23 @@ export function registerSpaceDrive(ctx) {
       if (!Number.isInteger(i.version) || i.version < 1) throw refuse("name a version number", "bad_input");
       const r = await drive.restore(d.chain, p, i.version, d.proof ? { presence: d.proof } : {});
       return { path: p, from: i.version, version: r.version };
+    });
+
+  tool("files.drive.space.list", "The files in the Space's Drive under a folder, under the caller's own grants: { space?, prefix?, limit?, after? }. Answers { prefix, entries: [...], next } with only what the caller may read, at most `limit` (default 500, at most 1,000) per call; `next` is the cursor to pass as `after`, or null at the end.",
+    obj({ space: str, prefix: str, limit: { type: "integer" }, after: str }), async (i, d, drive) => {
+      const raw = String(i.prefix ?? ""), prefix = raw === "" ? "" : pathOf(raw.replace(/\/+$/, "")) + "/";
+      if (i.limit !== undefined && (!Number.isInteger(i.limit) || i.limit < 1)) throw refuse("limit is a positive number", "bad_input");
+      if (i.after !== undefined && typeof i.after !== "string") throw refuse("after is the cursor the last page gave", "bad_input");
+      const r = await drive.listPage(d.chain, prefix, { limit: i.limit, after: i.after ?? null });
+      return { prefix, entries: r.entries, next: r.next };
+    });
+
+  tool("files.drive.space.read", `Download one file from the Space's Drive, head or a named version, under the caller's own grants: { space?, path, version? }. Answers { path, version, size, base64 } for a file of at most ${MAX_UPLOAD / 1048576} MB (\`too_large\` beyond).`,
+    obj({ space: str, path: str, version: { type: "integer" } }, ["path"]), async (i, d, drive) => {
+      const p = pathOf(i.path);
+      if (i.version !== undefined && (!Number.isInteger(i.version) || i.version < 1)) throw refuse("name a version number", "bad_input");
+      const bytes = await drive.get(d.chain, p, { version: i.version ?? null, maxBytes: MAX_UPLOAD });
+      if (bytes.length > MAX_UPLOAD) throw refuse(`a file here is at most ${MAX_UPLOAD / 1048576} MB to download in one call`, "too_large");
+      return { path: p, version: i.version ?? null, size: bytes.length, base64: Buffer.from(bytes).toString("base64") };
     });
 }
