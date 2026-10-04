@@ -4038,7 +4038,14 @@ export default {
       run: async i => {
         const rec = sb.record(String(i.session));
         if (!rec || (rec.provider || "claude") !== "claude") return null;
-        const t = findSession(sb.deps.transcripts || [], String(i.session));
+        let t = findSession(sb.deps.transcripts || [], String(i.session));
+        // In the packaged box a session runs as an account's own uid and writes its transcript in THAT account's HOME (<accounts home>/<uid>/.claude/projects): vyred reads it through the
+        // account's group. The accounts folder is entered, never listed, so each uid in the account range is looked at by name.
+        if (!t && process.env.VYRE_SUPERVISOR === "docker") {
+          const base = process.env.VYRE_ACCOUNTS_HOME || "/home/acct", lo = Number(process.env.VYRE_ACCOUNT_UID_MIN) || 2000, hi = Number(process.env.VYRE_ACCOUNT_UID_MAX) || 2063;
+          const folders = []; for (let u = lo; u <= hi; u++) { const f = path.join(base, String(u), ".claude", "projects"); try { if (fs.statSync(f).isDirectory()) folders.push(f); } catch { /* none for this uid */ } }
+          t = findSession(folders, String(i.session));
+        }
         if (!t) return null;
         return { session: String(i.session), file: t.file, root: path.dirname(path.dirname(t.file)), ...(rec.cwd ? { cwd: String(rec.cwd) } : {}) };
       },
