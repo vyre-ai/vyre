@@ -50,3 +50,8 @@ Then `node scripts/standin-phone.mjs --home <abs .vyre dir> --answer yes|no|igno
 Not walked: spending an approved card. The box reads an approval only from a paired device caller, so it needs a browser paired through the relay. Also, RC1 hides Reveal in a browser on purpose (screens/vault/RealVault.tsx), so no page starts this flow for a vault item.
 
 Run both scripts from an ssh login shell, in the foreground: the stand-in phone signs in with `signin.dev`, which the daemon allows only for a caller it already counts as the owner, and a detached process (setsid, nohup in the background) is not one. `--timeout` makes the run take about five minutes.
+
+## awbox's own setup (app-wire), kept here so it can be rebuilt
+
+- Unit `vyre-aw` runs the pinned tree in `~/awbox/src` with `~/awbox/env`: `VYRE_KERNEL=1`, `VYRE_KERNEL_PATH_RULE=1`, `VYRE_NO_DIALOGS=1`, `VYRE_SEAL_DEV=1`, `VYRE_SEAL_SOFTWARE=1`. `VYRE_KERNEL_FILE_KEY` is not set (a file key leaves no sealing process, so the stand-in phone's proof cannot be checked). The home is `~/awbox/home/.vyre`, enrolled with `scripts/dev-enrol-software-key.mjs`. `~/awbox/env.bak-filekey` is the old env.
+- Unit `vyre-aw-relay` runs `~/awbox/relay.mjs`, a plain Node relay (`relay/node/server.js`, `createRelay().listen(8791)`) on `ws://127.0.0.1:8791`. The box is not pointed at it yet: `relay.enable` and `relay.pair.start` need a person's proof, and the dev stand-in only covers `vault.put` and `vault.reveal` (`STAND_IN_AUTO` in core/presence/index.js), so they answer `presence_required` headless.
