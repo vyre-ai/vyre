@@ -235,10 +235,19 @@ export class PersonSessions {
     return { ok: true, id: row.id, kind: row.kind };
   }
 
-  /** The strength of a live session: `software` for a key the server did not see attested, `hardware` otherwise; null when there is no such session. @param {string} id @returns {"software"|"hardware"|null} */
+  /**
+   * The strength of a live session, for a module that relays a paired device's act: "software" (a key the server holds no better than a file), "hardware" (a key the server saw attested),
+   * "enclave, unattested" (an app Secure Enclave or Android keystore key whose attestation the server did not verify: a hardware key on release, ruling 6410c6a), "passkey" (a web passkey with user
+   * verification), or null when there is no such session. A row that records its opening proof's strength (a `strength` column, startPaired's) answers with that; an older row has only the
+   * `software` flag, where 1 is software and 0 is hardware. @param {string} id @returns {string|null}
+   */
   strength(id) {
-    const row = /** @type {any} */ (this.db.prepare("SELECT software FROM presence_people WHERE id = ?").get(String(id)));
-    return row ? (row.software ? "software" : "hardware") : null;
+    let row = /** @type {any} */ (null);
+    try { row = this.db.prepare("SELECT software, strength FROM presence_people WHERE id = ?").get(String(id)); }
+    catch { row = this.db.prepare("SELECT software FROM presence_people WHERE id = ?").get(String(id)); }
+    if (!row) return null;
+    if (typeof row.strength === "string" && row.strength) return row.strength;
+    return row.software ? "software" : "hardware";
   }
 
   /**

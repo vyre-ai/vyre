@@ -956,4 +956,10 @@ test("person sessions report their key's strength: an attested key is hardware, 
   assert.equal(people.strength(hw.id), "hardware");
   assert.equal(people.strength(sw.id), "software");
   assert.equal(people.strength("nope"), null);
+  // A row that records its opening proof's strength answers with it (an unattested enclave key is not software).
+  db.exec("ALTER TABLE presence_people ADD COLUMN strength TEXT");
+  const enc = people.start({ node: "n3", software: false });
+  db.prepare("UPDATE presence_people SET strength = 'enclave, unattested' WHERE id = ?").run(enc.id);
+  assert.equal(people.strength(enc.id), "enclave, unattested");
+  assert.equal(people.strength(sw.id), "software", "a row that recorded none keeps the flag");
 });
