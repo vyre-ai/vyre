@@ -29,11 +29,11 @@ const P = {
   actor: a => ({ presence: proof("grants.role", { actor: a }, `vyre://${SPACE}/member/${a.id}`) }),
 };
 
-async function rig(wrap) {
+async function rig(wrap, { session = true } = {}) {
   const log = wrap ? wrap(createEventLog({ space: SPACE, clock })) : createEventLog({ space: SPACE, clock });
   const gs = createGrantsStore({ space: SPACE, log, chains, clock, key: Buffer.alloc(32, 5), presence });
   const store = createMemoryStore({ clock });
-  const gw = createGateway({ space: SPACE, store, log, chains, clock, grantsStore: gs, presence, owner: OWNER, hasPresenceSession: () => true });
+  const gw = createGateway({ space: SPACE, store, log, chains, clock, grantsStore: gs, presence, owner: OWNER, hasPresenceSession: () => session });
   await gs.bootstrap({ owner: OWNER });
   return { gw, gs, log, store, g: gw.grants };
 }
@@ -603,4 +603,54 @@ test("AO-3: a crash right after the owner.adopted marker (the owner moved only i
   await gs.rebuild();
   assert.equal(JSON.stringify([role(NEW), role(OWNER)]), live, "a rebuild agrees");
   assert.deepEqual(await gs.adoptOwner(NEW), { owner: NEW, previous: OWNER, changed: false });
+});
+
+test("lend (ruling 5 Oct): the first lend takes ONE proof bound to the compound act and makes both sides; the proof covers nothing else; taking it away needs only a live session", async () => {
+  const { g } = await rig();
+  const set = m => g.setRole(owner(), m, P.role(m));
+  await set({ person: ALICE, role: "admin" });
+  await set({ person: BOB, role: "member" });
+  const lendProof = o => ({ presence: proof("grants.offer", { lend: { member: o.member, device: o.device, device_key: o.device_key } }, `vyre://${SPACE}/offer/lend`) });
+  const q = (member, device, device_key) => ({ member, device, device_key });
+  // a member lends their own computer: their side only, with one proof
+  const b = { member: BOB, device: "dev_laptop", device_key: "KEY_B" };
+  assert.equal((await g.offers.lend(personChain(BOB), b, lendProof(b))).offers.length, 1);
+  assert.deepEqual(g.offers.active(q(BOB, "dev_laptop", "KEY_B")), { spaceAllows: false, memberAccepts: true });
+  // an owner or admin lending their own computer: the Space's side and their own, ONE proof
+  const a = { member: ALICE, device: "dev_alice", device_key: "KEY_A" };
+  const made = await g.offers.lend(personChain(ALICE), a, lendProof(a));
+  assert.deepEqual(made.offers.map(o => o.side).sort(), ["member_accepts", "space_allows"]);
+  assert.deepEqual(g.offers.active(q(ALICE, "dev_alice", "KEY_A")), { spaceAllows: true, memberAccepts: true });
+  // the proof is for this act only: another device, another member, a replay, no proof, and someone else's computer are all refused
+  const c = { member: ALICE, device: "dev_other", device_key: "KEY_C" };
+  const forA = lendProof(a);
+  await assert.rejects(() => g.offers.lend(personChain(ALICE), c, forA));
+  await assert.rejects(() => g.offers.lend(personChain(ALICE), c, {}));
+  const once = lendProof(c);
+  await g.offers.lend(personChain(ALICE), c, once);
+  await assert.rejects(() => g.offers.lend(personChain(ALICE), { ...c, device: "dev_third" }, once), "a spent proof is not reusable");
+  await assert.rejects(() => g.offers.lend(personChain(ALICE), { member: BOB, device: "dev_x", device_key: "K" }, lendProof({ member: BOB, device: "dev_x", device_key: "K" })), { code: "not_allowed" });
+  // taking it away: no fresh proof, a live session is enough, and it withdraws both sides
+  const told = [];
+  const off = g.offers.onRevoke(e => told.push(e.side));
+  assert.deepEqual(await g.offers.unlend(personChain(ALICE), { member: ALICE, device: "dev_alice" }), { withdrawn: 2 });
+  assert.deepEqual(g.offers.active(q(ALICE, "dev_alice", "KEY_A")), { spaceAllows: false, memberAccepts: false });
+  assert.deepEqual(told.sort(), ["member_accepts", "space_allows"], "the runner is told at once");
+  assert.deepEqual(await g.offers.unlend(personChain(BOB), { member: BOB, device: "dev_laptop" }), { withdrawn: 1 });
+  // a member cannot withdraw the Space's side of someone else's computer
+  assert.deepEqual(await g.offers.unlend(personChain(BOB), { member: ALICE, device: "dev_other" }), { withdrawn: 0 });
+  off();
+});
+
+test("lend (ruling 5 Oct): without a live person session even withdrawing is refused, and a model's chain cannot lend or withdraw", async () => {
+  const { g } = await rig(undefined, { session: false });
+  const set = m => g.setRole(owner(), m, P.role(m));
+  await set({ person: BOB, role: "member" });
+  const b = { member: BOB, device: "dev_laptop", device_key: "KEY_B" };
+  const pr = { presence: proof("grants.offer", { lend: { member: BOB, device: "dev_laptop", device_key: "KEY_B" } }, `vyre://${SPACE}/offer/lend`) };
+  await g.offers.lend(personChain(BOB), b, pr);
+  await assert.rejects(() => g.offers.unlend(personChain(BOB), { member: BOB, device: "dev_laptop" }), "no session and no proof: refused");
+  assert.equal(g.offers.active({ member: BOB, device: "dev_laptop", device_key: "KEY_B" }).memberAccepts, true, "still lent");
+  await assert.rejects(() => g.offers.unlend(agentChain("juno"), { member: BOB, device: "dev_laptop" }));
+  await assert.rejects(() => g.offers.lend(agentChain("juno"), b, pr));
 });
