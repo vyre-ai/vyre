@@ -496,6 +496,36 @@ export function createGrantsStore(cfg) {
       await note(chain, "invite.created", urn("invite", rec.id), { invite: rec }, d.decision);
       return rec;
     },
+    /**
+     * Stop an invite at once: the one who made it, or a manager and above. A revoked invite is refused at accept as `not_found`, like any other that is not pending. One sealed event, `invite.revoked`.
+     * @param {any} chain @param {string} id @param {{ presence?: any }} [o]
+     */
+    async inviteRevoke(chain, id, o = {}) {
+      const me = person(chain);
+      const inv = invites.get(id);
+      const d = await gate(chain, "grants.invite", urn("invite", String(id)), { revoke: String(id) }, o.presence);
+      const mine = roleOf(me);
+      if (!inv || inv.status !== "pending" || !(sameActor(inv.issuer, me) || mine === "owner" || mine === "admin" || mine === "manager")) throw new KernelError("not_found", "no such invite");
+      const n = freeze({ ...inv, status: "revoked", revoked_by: me.id, revoked_at: clock() });
+      invites.set(id, n);
+      await note(chain, "invite.revoked", urn("invite", id), { id, by: me.id }, d.decision);
+      return n;
+    },
+    /**
+     * The invites this person may see: their own, or every one for a manager and above. Each as the join card shows it, with its status, and never the hash or a link.
+     * @param {any} chain
+     */
+    async inviteList(chain) {
+      if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
+      if (!isExactlyPerson(chain)) throw new KernelError("not_found", "no such invite");
+      const me = chain.hops[0].actor;
+      if (!memberOk(me)) throw new KernelError("not_found", "no such invite");
+      const mine = roleOf(me), all = mine === "owner" || mine === "admin" || mine === "manager";
+      return [...invites.values()].filter(v => all || sameActor(v.issuer, me)).map(v => {
+        const status = v.status === "pending" && !(v.valid_until > clock()) ? "expired" : v.status;
+        return freeze({ id: v.id, role: v.role, scope: v.scope, expires: v.expires, invitee: v.invitee, needs_confirm: v.needs_confirm, confirmed: v.confirmed, valid_until: v.valid_until, status });
+      });
+    },
     /** The inviter confirms the invitee's fingerprint words (an admin or owner invite stays pending until they do): a second presence act, bound to the words. */
     async inviteConfirm(chain, /** @type {string} */ id, /** @type {{ words: string }} */ c, o = {}) {
       const issuer = person(chain);
@@ -570,6 +600,33 @@ export function createGrantsStore(cfg) {
         await note(k, "grant.created", urn("grant", last.id), { grant: last });
       }
       return last;
+    },
+
+    /**
+     * The kernel's own owner change, for the day the person claims their identity: the home's owner (a local id made at first start) becomes the claimed identity's id, so the Space has ONE person for
+     * its owner. Not a chain's act (nothing can ask for it but the spaces module through the kernel's handle): the new id is made the owner, the old one is taken out, every grant of the old
+     * one is revoked and the owner's role grants are made again, each as an ordinary sealed event, so a rebuild from the log reaches the same state. Once; the same id again changes nothing.
+     * @param {string} from @param {string} to @returns {Promise<{ owner: string, previous: string, changed: boolean }>}
+     */
+    async adoptOwner(from, to) {
+      if (typeof to !== "string" || !/^per_[a-z2-7]{26}$/.test(to)) throw new KernelError("bad_input", "an owner is a person id");
+      if (from === to) return { owner: to, previous: from, changed: false };
+      const prior = memberships.get(from);
+      if (!prior || prior.role !== "owner") throw new KernelError("not_allowed", "only the Space's owner can be replaced this way");
+      const k = kernelChain();
+      for (const g of [...grants.values()]) if (g.status === "active" && g.subject.kind === "actor" && g.subject.actor.kind === "person" && g.subject.actor.id === from) {
+        const n = freeze({ ...g, status: "revoked", revoked_at: clock(), reason: "owner adopted the claimed identity" }); grants.set(n.id, n);
+        await note(k, "grant.revoked", urn("grant", n.id), { id: n.id, reason: "owner adopted the claimed identity" });
+      }
+      memberships.delete(from);
+      await note(k, "member.removed", urn("member", from), { person: from });
+      const membership = freeze({ space: cfg.space, person: to, role: "owner", added_by: "kernel", added_at: clock() });
+      memberships.set(to, membership);
+      await note(k, "member.set", urn("member", to), { membership });
+      const g = freeze({ id: `gr_${mintUuid(clock())}`, space: cfg.space, subject: { kind: "actor", actor: { kind: "person", id: to, space: cfg.space } }, actions: [...ROLE_ACTIONS.owner], action_set_version: version, resource: { prefix: `vyre://${cfg.space}/*/*` }, conditions: { delegate: { allowed: true, max_depth: 2 } }, issuer: { kind: "service", id: "grants", space: cfg.space }, source: "role:owner", status: "active", created_at: clock() });
+      grants.set(g.id, g);
+      await note(k, "grant.created", urn("grant", g.id), { grant: g });
+      return { owner: to, previous: from, changed: true };
     },
 
     /** The first owner of a new Space, written by the kernel itself (no chain can give the first grant). Once only. */
@@ -834,6 +891,7 @@ export function createGrantsStore(cfg) {
         else if (e.type === "invite.created") invites.set(d.invite.id, freeze(structuredClone(d.invite)));
         else if (e.type === "invite.used") { const v = invites.get(d.id); if (v) invites.set(d.id, freeze({ ...v, status: "used", used_by: d.by })); }
         else if (e.type === "invite.confirmed") { const v = invites.get(d.id); if (v) invites.set(d.id, freeze({ ...v, confirmed: true })); }
+        else if (e.type === "invite.revoked") { const v = invites.get(d.id); if (v) invites.set(d.id, freeze({ ...v, status: "revoked", revoked_by: d.by })); }
         else if (e.type === "actor.added") actors.add(actorKey(d.actor));
         else if (e.type === "actor.removed") actors.delete(actorKey(d.actor));
         else if (e.type === "offer.created") offers.set(d.offer.id, freeze(structuredClone(d.offer)));
@@ -896,7 +954,7 @@ export function createGrantsStore(cfg) {
   // the log refused) restores the store from the log, which is the durable copy, so memory never shows a change the log does not hold, and the caller is told it failed.
   // A refusal the call itself makes before changing anything (a KernelError) needs no restore.
   let lock = Promise.resolve();
-  for (const name of ["create", "revoke", "narrow", "setRole", "transferOwner", "removeMember", "addActor", "offer", "unoffer", "inviteCreate", "inviteConfirm", "inviteAccept", "sweep", "installModule", "chatCreate", "chatChange", "ruleSet", "ruleRemove", "ruleAccept", "ruleDismiss", "rulePropose"]) {
+  for (const name of ["create", "revoke", "narrow", "setRole", "transferOwner", "adoptOwner", "inviteRevoke", "removeMember", "addActor", "offer", "unoffer", "inviteCreate", "inviteConfirm", "inviteAccept", "sweep", "installModule", "chatCreate", "chatChange", "ruleSet", "ruleRemove", "ruleAccept", "ruleDismiss", "rulePropose"]) {
     const f = /** @type {(...a: any[]) => Promise<any>} */ (/** @type {any} */ (api)[name]);
     /** @type {any} */ (api)[name] = (/** @type {any[]} */ ...a) => {
       const run = async () => {

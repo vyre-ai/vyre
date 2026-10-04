@@ -23,7 +23,7 @@ function box(o = /** @type {any} */ ({})) {
   const clock = o.clock || { t: 1_000_000 };
   /** @type {Map<string, any>} */ const tools = new Map();
   const events = /** @type {any[]} */ ([]), logs = /** @type {string[]} */ ([]), calls = /** @type {any[]} */ ([]);
-  const ctx = { store: { db }, config: { name: "juno" }, log: (/** @type {string} */ m) => logs.push(m), events: { emit: (/** @type {string} */ n, /** @type {any} */ d) => events.push([n, d]) }, tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d), call: async (/** @type {string} */ t, /** @type {any} */ i) => { calls.push([t, i]); return { data: {} }; } };
+  const ctx = { store: { db }, config: { name: "juno" }, log: (/** @type {string} */ m) => logs.push(m), events: { emit: (/** @type {string} */ n, /** @type {any} */ d) => events.push([n, d]) }, tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d), call: async (/** @type {string} */ t, /** @type {any} */ i) => { calls.push([t, i]); return o.callResult ? o.callResult(t, i) : { data: {} }; } };
   const p = createPairing({ ctx, now: () => clock.t, identity: async () => ME, space: async () => "spc_x", directory: { memberships: async () => [] }, ports: {}, openCode: async () => ({}), ack: async () => ({ ok: true }), owner: () => {}, dropMs: 0, relayUrl: async () => "ws://r", spaceNow: () => "spc_x" });
   p.tools();
   registerReset({ ctx, pairing: p, now: () => clock.t, identity: async () => ME, dropMs: 0, dataStores: o.dataStores === null ? undefined : (o.dataStores || (async () => [])), newSpace: o.newSpace, wipeDelayMs: 0 });
@@ -272,4 +272,29 @@ test("no daemon path destroys data: a begin that asks to wipe still refuses on a
   await assert.rejects(() => c.call("wink.server.reset.confirm", { code }), e => e.code === "holds_data");
   assert.ok(c.p.meta.get("owner"));
   assert.equal(late.wiped, 0);
+});
+
+test("recovery reset ends every paired person session first and awaits it: a reset that cannot end them fails and changes nothing", async () => {
+  // success: end-paired (no device) is called while the owner is still in place, then the reset completes
+  const seen = [];
+  const b = box({ callResult: (t, i) => { if (t === "presence.person.end-paired" && !i.device) seen.push(Boolean(b.p.meta.get("owner"))); return { data: { ended: 2 } }; } }); b.own();
+  const { code } = await b.begin();
+  assert.deepEqual(await b.call("wink.server.reset.confirm", { code }), { reset: true, had: true });
+  assert.deepEqual(seen, [true], "end-paired ran once, before the owner was forgotten");
+  assert.deepEqual(b.calls.find(c => c[0] === "presence.person.end-paired" && !c[1].device)[1], {}, "for every device");
+  // failure: presence cannot end them: the reset refuses, the owner and devices stay, the same code still works later
+  let down = true;
+  const f = box({ callResult: t => (t === "presence.person.end-paired" && down ? { error: { code: "failed", message: "presence is down" } } : { data: {} }) }); f.own();
+  const g = await f.begin();
+  await assert.rejects(f.call("wink.server.reset.confirm", { code: g.code }), e => /** @type {any} */ (e).code === "unavailable" && /nothing was reset/.test(e.message));
+  assert.ok(f.p.meta.get("owner") && f.p.meta.get("adopter"), "the owner is still in place");
+  assert.equal(f.p.devices.list(ME).length > 0, true);
+  assert.equal(f.events.some(e => e[0] === "wink.server-reset"), false, "no reset card was sent");
+  down = false;
+  assert.deepEqual(await f.call("wink.server.reset.confirm", { code: g.code }), { reset: true, had: true }, "the same code works once presence is back");
+  // a missing presence module is a failure too, never "nothing to end": the reset refuses and changes nothing
+  const n = box({ callResult: t => (t === "presence.person.end-paired" ? { error: { code: "no_such_tool", message: "no" } } : { data: {} }) }); n.own();
+  const h = await n.begin();
+  await assert.rejects(n.call("wink.server.reset.confirm", { code: h.code }), e => /** @type {any} */ (e).code === "unavailable");
+  assert.ok(n.p.meta.get("owner"), "the owner is still in place");
 });

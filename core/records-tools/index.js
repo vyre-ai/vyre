@@ -4,6 +4,7 @@
 // { error: { code, message } } with the kernel's own codes (not_found, version_conflict, sealed_value_refused, bad_input, denied).
 import { createDoor } from "../../lib/gateway-door.js";
 import { segments } from "../../kernel/core/urn.js";
+import { registerDevSeed } from "./dev-seed.js";
 
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 const str = { type: "string" };
@@ -45,7 +46,14 @@ export default {
       const list = await d.gateway.grants.members.list(d.chain);
       return { actors: (Array.isArray(list) ? list : []).map((/** @type {any} */ m) => ({ id: m.person, name: m.name || m.person, family: "person", role: m.role })) };
     });
-    tool("records.types", "The record types of a Space, as defined.", obj({ space: str }), async (_i, d) => ({ types: await d.gateway.definitions(d.chain) }));
+    // The kernel's own bookkeeping types (Flows' definitions, runs and approvals, goals) are `system: true` and left out of the default list, so Customize and Records show only the person's own.
+    const SYSTEM_TYPES = new Set(["goal", "flow-approval", "flow-state", "flow-schedule", "flow-run"]);
+    const isSystem = (/** @type {string} */ n) => SYSTEM_TYPES.has(n) || n.startsWith("def-") || n.startsWith("flow-");
+    tool("records.types", "The record types of a Space, as defined (a type may carry kind: project). The kernel's own bookkeeping types are left out unless `system: true` is asked for, and then carry system: true.", obj({ space: str, system: { type: "boolean" } }), async (i, d) => {
+      const all = (await d.gateway.definitions(d.chain)) || [];
+      const withFlag = all.map((/** @type {any} */ t) => (isSystem(String(t.name)) ? { ...t, system: true } : t));
+      return { types: i.system === true ? withFlag : withFlag.filter((/** @type {any} */ t) => !t.system) };
+    });
     tool("records.define", "Add or change record types and their fields (a DefineDiff). The kernel decides who may.", obj({ space: str, diff: { type: "object" } }, ["diff"]), (i, d) => d.gateway.records.define(d.chain, i.diff));
     tool("records.list", "One page of records of a type: filter, sort, a cursor from the last page.", obj({ space: str, type: str, filter: {}, sort: { type: "array" }, cursor: str, limit: { type: "integer" } }, ["type"]), async (i, d) => {
       const limit = Number.isInteger(i.limit) ? Math.min(Math.max(i.limit, 1), 200) : 50;
@@ -102,6 +110,7 @@ export default {
       const limit = Number.isInteger(i.limit) ? Math.min(Math.max(i.limit, 1), 500) : 100;
       return { events: await d.gateway.events.read(d.chain, { ...(prefix ? { subject_prefix: prefix } : {}), ...(Number.isInteger(i.since) ? { since: i.since } : {}), limit }) };
     });
+    registerDevSeed(ctx, door, () => typeof ctx.devStandIn === "function" && ctx.devStandIn() === true);
     return { async stop() {} };
   },
 };

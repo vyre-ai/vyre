@@ -24,6 +24,7 @@ on:
         default: false
   workflow_dispatch:
   push:
+    branches: ["main", "work/capsule*", "work/mac-*", "work/lumen*"]
     paths: ["local/capsule/native/**", "scripts/mac-app-package.sh", ".github/workflows/mac-app.yml"]
 permissions:
   contents: read

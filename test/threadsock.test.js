@@ -415,3 +415,24 @@ test("the kernel's data-store list: a fresh kernel daemon holds no data of the p
   await d.kernel.gateway.records.create(owner, "contact", { name: "Jane", age: 40 });
   assert.equal((await read())["the Space's records, events and grants"], true);
 });
+
+test("the presence stand-in: a development daemon takes it only while the owner's hand-made file is in the home; a packaged daemon never does", async t => {
+  const fs2 = await import("node:fs"), os = await import("node:os");
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const ask = () => d.registry.deps.presence.verify({ tool: "vault.reveal", input: { id: 1 }, caller: "cli", proof: { method: "stand-in" } });
+  assert.equal((await ask()).ok, false, "no file: refused");
+  fs2.writeFileSync(path.join(root, "dev-presence-stand-in"), "");
+  const r = await ask();
+  assert.deepEqual([r.ok, r.method], [true, "stand-in"]);
+  const pkg = fs2.mkdtempSync(path.join(os.tmpdir(), "pkg-"));
+  t.after(() => fs2.rmSync(pkg, { recursive: true, force: true }));
+  fs2.mkdirSync(path.join(pkg, "lib"), { recursive: true });
+  fs2.writeFileSync(path.join(pkg, "lib", "build-kind.js"), 'export const BUILD_KIND = "release";\n');
+  const root2 = tempHome(t);
+  fs2.writeFileSync(path.join(root2, "dev-presence-stand-in"), "");
+  const d2 = await start({ root: root2, log: () => {}, packageRoot: pkg });
+  t.after(() => d2.stop());
+  assert.equal((await d2.registry.deps.presence.verify({ tool: "vault.reveal", input: { id: 1 }, caller: "cli", proof: { method: "stand-in" } })).ok, false, "a packaged daemon ignores the file");
+});
