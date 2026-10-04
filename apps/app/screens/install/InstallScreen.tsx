@@ -6,7 +6,7 @@ import { Avatar, Banner, Button, Card, Chip, Divider, Field, Row, Ring, Segmente
 import { FaceIdSheet, type FaceAsk } from "../shell/FaceIdSheet";
 import { loadInstall } from "./data";
 import { AFTER_HOME, CONTINUE_HERE, SERVER_FAILED, RECOVERY_CODE, SERVER_LONG_CODE, WHERE_STEP, backOf, connectedLine, isResumable, nextSetup, packProgress, unpackProgress, homeLine, nameNote, nameStatus, pairToOptions, serverLines, slug, startStep } from "./flow.js";
-import { PairEntry, PairWords, openPairing, type LongCode } from "../devices/PairParts";
+import { PairEntry, PairServer, PairWords, openPairing, type LongCode } from "../devices/PairParts";
 import { COPY } from "../devices/wink.js";
 import { parseWinkCode } from "../../src/api/wink-code";
 import { readProgress, writeProgress } from "../../src/state/setup-progress";
@@ -328,7 +328,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
         <View className="gap-s2">
           <Text size="caption" strong tone="label">Your phone</Text>
           {two ? (
-            <PairWords session={session} who="Your server" onConfirmed={() => { setSession(null); doMake(where); }} onRejected={() => { setSession(null); setWrong(SERVER_FAILED.rejected); setStep("srv1"); }} />
+            <PairServer session={session} who="Your server" onConfirmed={() => { setSession(null); doMake(where); }} onRejected={(say) => { setSession(null); setWrong(say || SERVER_FAILED.rejected); setStep("srv1"); }} />
           ) : (
             <Card className="gap-s3">
               <View className="gap-s1"><Text size="caption" strong tone="label">Pair to:</Text><Segmented label="Pair to" value={pairTo} onChange={setPairTo} options={pairToOptions(name, `${spaceSt.slug}.vyre.run`)} /></View>

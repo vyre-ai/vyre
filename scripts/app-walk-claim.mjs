@@ -12,12 +12,16 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
+import { execSync } from "node:child_process";
 
 const args = process.argv.slice(2);
 const flag = (n, d) => { const i = args.indexOf(n); return i < 0 ? d : args[i + 1]; };
 const DIST = path.resolve(flag("--dist", "apps/app/dist"));
 const NAMES = new URL(flag("--names", "http://127.0.0.1:8788"));
 const OUT = path.resolve(flag("--out", "claim-out"));
+// --code-cmd prints a fresh wink.server.code qr on the (unowned) test server; --answer-cmd answers its pairing question, with {words} replaced by the three words the page shows.
+const CODE_CMD = flag("--code-cmd", "");
+const ANSWER_CMD = flag("--answer-cmd", "");
 const NAME = flag("--name", "walk" + Math.floor(Math.random() * 90000 + 10000));
 fs.mkdirSync(OUT, { recursive: true });
 const require = createRequire(process.env.PW_FROM || path.join(os.homedir(), "shots/"));
@@ -32,6 +36,7 @@ const server = http.createServer((q, r) => {
     q.pipe(u);
     return;
   }
+  if (q.url.startsWith("/v1/")) { r.writeHead(502, { "content-type": "text/plain" }); return r.end("no box here"); }
   let p = decodeURIComponent(q.url.split("?")[0]).replace(/^\/app/, "") || "/";
   const a = /\/((?:_expo|assets)\/.*)$/.exec(p); if (a) p = "/" + a[1];
   if (p === "/sw.js") { r.writeHead(200, { "content-type": "text/javascript" }); return r.end(""); }
@@ -46,6 +51,7 @@ const BASE = `http://127.0.0.1:${server.address().port}`;
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1000, height: 900 } });
 const results = [];
+if (args.includes("--debug")) { page.on("console", (m) => console.log("  console:", m.type(), m.text().slice(0, 240))); page.on("pageerror", (e) => console.log("  pageerror:", String(e).slice(0, 240))); page.on("websocket", (w) => console.log("  ws:", w.url())); }
 const check = async (name, fn) => {
   let ok = false, note = "";
   try { note = (await fn()) || ""; ok = true; } catch (e) { note = String(e.message).split("\n")[0].slice(0, 200); }
@@ -73,6 +79,40 @@ alive = alive && await check("the directory now resolves the name (and the key i
   const kept = await page.evaluate(() => new Promise((res) => { const q = indexedDB.open("vyre-identity"); q.onsuccess = () => { try { const g = q.result.transaction("identity").objectStore("identity").get("self"); g.onsuccess = () => res(Boolean(g.result && g.result.name)); g.onerror = () => res(false); } catch { res(false); } }; q.onerror = () => res(false); }));
   if (!kept) throw new Error("no identity kept in IndexedDB");
 });
+if (CODE_CMD && ANSWER_CMD) {
+  // The user's install order: identity first (above), then a space on a server, which pairs the server from this browser alone. STAND-INS: the server is a throwaway vyred on a test box
+  // on the stand-in relay; the person at the server is this script answering with the words the page shows (the real answer is typed at the server's own console).
+  alive = alive && await check("after the recovery code the app offers a space on a server I have", async () => {
+    await page.getByRole("button", { name: /I saved it/ }).click();
+    await page.getByText("Create a space").first().click();
+    await page.locator("input").first().fill("ws" + Math.floor(Math.random() * 90000 + 10000));
+    await page.getByText(/is yours to take/).waitFor({ timeout: 10000 });
+    await page.getByRole("button", { name: /^Continue/ }).click();
+    await page.getByText("On a server you have").first().click();
+    await page.getByRole("button", { name: /I ran it/ }).click();
+    await page.getByText("Pair your server").waitFor({ timeout: 10000 });
+  });
+  let words = "";
+  alive = alive && await check("the long code is pasted and the app shows three words (the server was paired from this browser, no box)", async () => {
+    const qr = execSync(CODE_CMD, { encoding: "utf8" }).match(/vyre:\/\/wink\/2\?[^"\s]+/)?.[0];
+    if (!qr) throw new Error("the code command printed no vyre://wink/2 code");
+    await page.locator("input").first().fill(qr);
+    await page.getByRole("button", { name: /^Continue/ }).click();
+    const until = Date.now() + 60000;
+    for (;;) {
+      const m = /asking to pair\.\s*\n([a-z]+ [a-z]+ [a-z]+)\s*\n/.exec(await body());
+      if (m) { words = m[1]; break; }
+      if (Date.now() > until) throw new Error("the page never showed the three words: " + (await body()).slice(0, 200).replace(/\n/g, " | "));
+      await page.waitForTimeout(500);
+    }
+  });
+  alive = alive && await check("the person at the server says yes with those words and the app finishes", async () => {
+    execSync(ANSWER_CMD.replace("{words}", words), { encoding: "utf8" });
+    await page.waitForTimeout(Number(flag("--after-ms", "8000")));
+    const t = await body();
+    if (/could not|cannot reach|did not|failed|do not match/i.test(t)) throw new Error("the page reports a failure: " + t.slice(0, 200).replace(/\n/g, " | "));
+  });
+}
 fs.writeFileSync(path.join(OUT, "report.json"), JSON.stringify({ at: new Date().toISOString(), name: NAME, results }, null, 2));
 await browser.close(); server.close();
 process.exit(results.every((x) => x.ok) ? 0 : 1);

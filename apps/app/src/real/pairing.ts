@@ -12,6 +12,7 @@ import { pairServerDirect } from "./pair-direct.js";
 
 const box = () => import("./box");
 const POLL_MS = 2000;
+const BOX_WAIT_MS = 4000;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export type Target = { id: string; kind: "identity" | "space"; label?: string };
@@ -39,7 +40,7 @@ export function serverSession(code: Extract<WinkCode, { ok: true }>, target?: Ta
     kind: "watch",
     async ready() {
       const { tool, BoxError } = await box();
-      if (!direct && code.kind === "ticket" && !(await boxReachable(tool))) {
+      if (!direct && code.kind === "ticket" && !(await boxReachable(tool, BoxError))) {
         const mine = await directSessionFor(code);
         if (mine) { direct = mine; await mine.ready!(); return; }
       }
@@ -80,9 +81,13 @@ export function phoneAnswerSession(words: [string, string, string]): PairingSess
   };
 }
 
-/** Can this app reach a box of its own right now? A call that says "offline" or that needs no box answer means there is none. */
-async function boxReachable(tool: (name: string, input?: Record<string, unknown>) => Promise<unknown>): Promise<boolean> {
-  try { await tool("wink.pair.targets"); return true; } catch (e) { return (e as { code?: string })?.code !== "offline" && (e as { code?: string })?.code !== "unreachable"; }
+/** Can this app reach a box of its own right now? Only a success, or a refusal in the box's own words, says there is one; no answer, a page that is not a box, or a failed read says there is none. */
+async function boxReachable(tool: (name: string, input?: Record<string, unknown>) => Promise<unknown>, BoxError: new (code: string, message: string) => Error & { code: string }): Promise<boolean> {
+  // The box client retries an unreachable box for a long while; a device with no box must not wait on that, so no answer in a few seconds is "no box".
+  const gone = Symbol("no answer");
+  try { const r = await Promise.race([tool("wink.pair.targets"), new Promise((res) => setTimeout(() => res(gone), BOX_WAIT_MS))]); return r !== gone; } catch (e) {
+    return e instanceof BoxError && !["offline", "unreachable", "bad_response", "error", "timeout"].includes(e.code);
+  }
 }
 
 /**
@@ -93,8 +98,8 @@ async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticke
   const { loadIdentity } = await import("../identity/store");
   const mine = await loadIdentity();
   if (!mine) return null;
-  const { relayCrypto, relayKeyStore, about, deviceName, savePairing } = await import("../api/relay");
-  const { connect } = await import("../api/box");
+  const { relayCrypto, relayKeyStore, about, deviceName, savePairing, presenceKey } = await import("../api/relay");
+  const { connect, disconnect } = await import("../api/box");
   let words: [string, string, string] = ["", "", ""];
   let wake: () => void = () => {};
   const seen = new Promise<void>((r) => { wake = r; });
@@ -102,7 +107,7 @@ async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticke
   const run = pairServerDirect({
     ticket: code.ticket, relay: code.relay, deviceName: deviceName(),
     identity: { id: mine.id, name: mine.name, eid: mine.key.eid, sign: (m) => mine.key.sign(m) },
-    pairOptions: { crypto: relayCrypto(), keyStore: relayKeyStore(), about },
+    pairOptions: { crypto: relayCrypto(), keyStore: relayKeyStore(), about, presenceKey: await presenceKey() },
     onWords: (w) => { const p = w.split(" "); if (p.length === 3) { words = [p[0], p[1], p[2]]; wake(); } },
   });
   run.catch((e: Error) => { failed = e; wake(); });
@@ -115,7 +120,9 @@ async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticke
     async confirm() {
       const r = await run;
       await savePairing(r.paired);
-      connect().catch(() => {});
+      // The connection made while there was no pairing (the box check) is stale: drop it so the next call goes over the relay to this server.
+      await disconnect();
+      await connect().catch(() => {});
     },
     reject() { /* the server's side drops this device when nothing is answered */ },
   };

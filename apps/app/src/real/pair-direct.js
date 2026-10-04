@@ -3,7 +3,7 @@
 // The same steps core/wink/pairing.js startTyping and adopt take on a computer, here in the app, with the relay client and the identity key:
 //   1. the long code (vyre://wink/2?t=<16 bytes>&r=<relay>) is the ticket seed: finishJoin(once) redeems it at the relay and pairs this device with the server;
 //   2. over the paired channel it calls wink.server.adopt: the owner is THIS identity (id and name), with a proof (a signature by a key on the identity's list over
-//      "vyre-wink-pair-to-v1 / box / device", Q-3), and the three words come from a commit-then-reveal of two nonces (pairwords.js): the app sends sha256(its nonce),
+//      "vyre-wink-pair-to-v1 / box / device", Q-3) only when the server asks for one, and the three words come from a commit-then-reveal of two nonces (pairwords.js): the app sends sha256(its nonce),
 //      the server answers with its own nonce, the app reveals, both show the same three words;
 //   3. the person at the server says yes; the call then answers not-pending and the server is this identity's.
 // Every effect (the redeem, the call over the channel, the clock, the signer) is passed in, so Node tests it with fakes.
@@ -62,15 +62,25 @@ export async function pairServerDirect(o) {
   const na = o.random ? Array.from(o.random(16), (x) => x.toString(16).padStart(2, "0")).join("") : newNonce();
   const commit = await nonceCommit(na), tag = await ticketTag(seedText);
   const sig = await o.identity.sign(pairToMessage(String(paired.box), String(paired.device)));
-  const input = { owner: { kind: "identity", id: o.identity.id, name: String(o.identity.name).slice(0, 64) }, identity: o.identity.id,
-    peerSecret: b64u(o.random ? o.random(24) : crypto.getRandomValues(new Uint8Array(24))), handover: { device: String(paired.device) },
-    proof: { eid: o.identity.eid, sig: b64u(sig) } };
+  const base = { owner: { kind: "identity", id: o.identity.id, name: String(o.identity.name).slice(0, 64) }, identity: o.identity.id,
+    peerSecret: b64u(o.random ? o.random(24) : crypto.getRandomValues(new Uint8Array(24))), handover: { device: String(paired.device) } };
+  // A server installed to pair to ONE identity asks for proof that this app is that identity (a signature by a key on its list over this pairing's box and device); every other
+  // server takes the owner as it is. So the proof is sent only once the server says it wants it.
+  let input = base;
+  const withProof = async () => { const sig = await o.identity.sign(pairToMessage(String(paired.box), String(paired.device))); input = { ...base, proof: { eid: o.identity.eid, sig: b64u(sig) } }; };
   const body = (/** @type {any} */ more) => ({ ...input, pairing: { commit, tag, ...more } });
+  const adopt = async (/** @type {any} */ more) => {
+    try { return await call(paired, "wink.server.adopt", body(more)); }
+    catch (e) {
+      if (input === base && /did not prove it is that identity/.test(String(/** @type {Error} */ (e).message))) { await withProof(); return call(paired, "wink.server.adopt", body(more)); }
+      throw e;
+    }
+  };
   let mine = "";
   const cancel = () => { void call(paired, "wink.server.adopt", { ...input, pairing: { cancel: true, commit, tag } }).catch(() => null); };
   try {
     for (let n = 0; n < 1000; n++) {
-      const r = await call(paired, "wink.server.adopt", body(mine ? { reveal: na } : {}));
+      const r = await adopt(mine ? { reveal: na } : {});
       if (!r || !r.pending) return { paired };
       if (!mine && r.nb) {
         mine = await pairWords(String(paired.box), String(paired.device), { ticket: seedText, nonceA: na, nonceB: String(r.nb) }).catch(() => "");

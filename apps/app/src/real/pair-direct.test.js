@@ -21,7 +21,7 @@ async function identity() {
 }
 
 /** A server that follows core/wink/pairing.js wink.server.adopt: commit, then its nonce, then the words once the app has revealed, then yes. */
-function fakeServer({ lie = false, no = false } = {}) {
+function fakeServer({ lie = false, no = false, needProof = false } = {}) {
   const calls = [];
   const nb = "b".repeat(32);
   let commit = "";
@@ -29,6 +29,7 @@ function fakeServer({ lie = false, no = false } = {}) {
     calls.push({ tool, input });
     assert.equal(tool, "wink.server.adopt");
     const pr = input.pairing;
+    if (needProof && !input.proof) throw Object.assign(new Error("This server was set up to pair to one identity, and this device did not prove it is that identity, so nothing was paired."), { remote: "denied" });
     if (pr.cancel) return { ok: true };
     if (!pr.reveal) { commit = pr.commit; return { pending: true, nb, until: 9e12 }; }
     assert.equal(await nonceCommit(pr.reveal), commit, "the revealed nonce matches the commit");
@@ -51,11 +52,18 @@ test("a device with only an identity pairs a fresh server: owner, proof, commit 
   assert.equal(first.identity, me.id);
   assert.equal(first.pairing.tag, await ticketTag(b64u(seed)));
   assert.equal(first.pairing.reveal, undefined, "the first call commits only");
-  assert.equal(first.proof.eid, me.eid);
-  assert.equal(await C.verifyWith(me.key.publicKey, pairToMessage(box, "dev1"), first.proof.sig), true, "the proof is a signature by a key of the identity over box and device");
+  assert.equal(first.proof, undefined, "a server that does not ask is sent no proof");
   assert.equal(shown.length, 1);
   assert.match(shown[0], /\w+ \w+ \w+/);
   assert.equal(shown[0], await pairWords(box, "dev1", { ticket: b64u(seed), nonceA: "09".repeat(16), nonceB: "b".repeat(32) }), "the words are the server's, made from both nonces");
+});
+
+test("a server set up for one identity asks for proof: the app signs box and device with its key and retries", async () => {
+  const me = await identity(), server = fakeServer({ needProof: true });
+  await pairServerDirect({ ticket, relay, deviceName: "x", identity: me, finish, call: server, now: nowFn, sleep: async () => {} });
+  const withProof = server.calls.find((c) => c.input.proof).input;
+  assert.equal(withProof.proof.eid, me.eid);
+  assert.equal(await C.verifyWith(me.key.publicKey, pairToMessage(box, "dev1"), withProof.proof.sig), true, "a signature by a key of the identity over box and device");
 });
 
 test("words that differ from the server's pair nothing and tell the server to let go", async () => {
