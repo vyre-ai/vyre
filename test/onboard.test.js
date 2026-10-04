@@ -148,6 +148,7 @@ test("onboard: skipping and a bad token say why, a good token goes to the vault,
   assert.match(bad.error.message, /does not look like/);
   const fine = "sk-ant-api" + "0".repeat(40);
   const stored = await (await tool(base, cookie, "onboard.claude", { mode: "api-key", key: fine })).json();
+  assert.ok(stored.data, JSON.stringify(stored.error));
   assert.equal(stored.data.state, "done");
   assert.equal(stored.data.signedIn, true);
   assert.equal(stored.data.via, "api-key");
