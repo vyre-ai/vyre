@@ -122,6 +122,10 @@
     "reach": "person"
    },
    {
+    "name": "spaces.identity.name-of",
+    "reach": "modules"
+   },
+   {
     "name": "spaces.admin-list",
     "reach": "modules"
    },

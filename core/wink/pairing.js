@@ -98,7 +98,7 @@ export const POLL_MS = 1500;
  *   openCode: (flow: "W1" | "W2" | "W3") => Promise<{ offer: string, code: string, expires: number }>,
  *   ack: (offer: string, typed: string) => Promise<{ ok: boolean }>, owner: (meta: any, what: string) => void, relayUrl: () => Promise<string>, keyFile?: string, spaceNow?: () => string,
  *   handover?: Handover, releaseMs?: number, dropMs?: number, releaseRetryMs?: number, releaseMaxMs?: number,
- *   vyreName?: (identity: string) => Promise<string | null> | string | null,
+ *   vyreName?: (identity: string, claimed?: string) => Promise<string | null> | string | null,
  *   signIdentity?: (message: Buffer) => Promise<{ eid: string, sig: string } | null> | { eid: string, sig: string } | null,
  *   identityEntry?: (identity: string, eid: string) => Promise<{ eid: string, kind?: string, pub: string, identity?: string } | null | undefined> | { eid: string, kind?: string, pub: string, identity?: string } | null | undefined,
  *   confirmPending?: (device: string, trusted?: boolean) => Promise<any>,
@@ -755,7 +755,7 @@ export function createPairing(o) {
       const id = String(input.identity || (input.owner && input.owner.id) || "");
       const tag = id.replace(/^[a-z]+_/, "").replace(/[^A-Za-z0-9]/g, "").slice(0, 6);
       /** @type {string | null} */ let vyre = null;
-      if (typeof o.vyreName === "function" && id) { try { const v = await o.vyreName(id); if (typeof v === "string" && /^[a-z0-9.-]{3,253}$/.test(v)) vyre = v; } catch { vyre = null; } }
+      if (typeof o.vyreName === "function" && id) { try { const v = await o.vyreName(id, String((input.owner && input.owner.vyre) || "") || undefined); if (typeof v === "string" && /^[a-z0-9.-]{3,253}$/.test(v)) vyre = v; } catch { vyre = null; } }
       const ok = display && !mixedScript(display);
       if (vyre) return ok ? `${display} (${vyre})` : vyre;
       const short = tag ? `id ${tag}` : "";
