@@ -1258,6 +1258,15 @@ export default {
         if (await notRemoved(row.id, meta).then(() => false, () => true)) continue;
         out.push({ ...(row.home && row.home.kind === "server" && K && K.spaces && K.spaces.hosts(row.id) === true && !(await serverOf(row.id)) ? { hostedHere: true, note: "hosted on this device, home says server" } : {}), id: row.id, name: row.name, label: row.label, displayName: row.displayName, status: row.status, home: row.home, role: m ? m.role : null, aliases: row.aliases, workspaceId: row.workspaceId, warnings: row.warnings, createdAt: row.createdAt, setup: await setupView(row, s) });
       }
+      // spaces this person joined on someone else's server: they live there, this device keeps only where the home is
+      try {
+        for (const r of /** @type {any[]} */ (db.prepare("SELECT key, value FROM spaces_kv WHERE key LIKE 'member-of/%'").all())) {
+          const id = String(r.key).slice("member-of/".length), v = JSON.parse(r.value);
+          if (out.some(x => x.id === id)) continue;
+          const name = typeof v.name === "string" ? v.name : null;
+          out.push({ id, name, label: name ? name.replace(/\.vyre\.run$/, "") : null, displayName: null, status: "done", home: { kind: "server" }, role: v.role || null, member: true });
+        }
+      } catch { /* no joined spaces */ }
       return out;
     });
 
@@ -1548,6 +1557,23 @@ export default {
     };
     const isKernelToken = (/** @type {string} */ t) => /^inv_[0-9a-f]{32}\.[A-Za-z0-9_-]+$/.test(String(t));
     /** @type {Map<string, any>} */ const remoteHandles = new Map();
+    /** @type {Map<string, any>} the remote kernels of spaces this person joined on a server */ const memberHandles = new Map();
+    /** The row of a space this person joined (read synchronously: the daemon asks while it builds a kernel handle). @param {string} id @returns {any} */
+    const memberRow = id => { try { const r = /** @type {any} */ (db.prepare("SELECT value FROM spaces_kv WHERE key = ?").get(`member-of/${id}`)); return r ? JSON.parse(r.value) : null; } catch { return null; } };
+    /** A remote kernel for a joined space, over a member stream to its home (the invitee channel, a hello that names `member`), or null. @param {string} id */
+    const memberRemote = id => {
+      const row = memberRow(id);
+      if (!row || !row.channel) return null;
+      const have = memberHandles.get(id);
+      if (have) return have;
+      const sf = typeof hooks.inviteeSessionFor === "function" ? hooks.inviteeSessionFor : typeof ctx.inviteeSessionFor === "function" ? ctx.inviteeSessionFor : null;
+      if (!sf) return null;
+      const channel = row.channel;
+      const h = createRemoteKernel({ space: id, transport: winkTransport({ sessionFor: async () => sf(channel, (/** @type {string} */ channelKey) => inviteeHello(channel, id, "member", channelKey), { invite: "member" }) }) });
+      memberHandles.set(id, h);
+      return h;
+    };
+    try { if (typeof ctx.provide === "function") ctx.provide("memberRemote", memberRemote); } catch { /* provided already (a restart in one process), or no daemon (a test ctx) */ }
     /** The invitee's signed hello for the home's door: their identity key over the box, the space and the invite (core/wink/serverlink.js carries it in the stream head). @param {{ box: string }} channel @param {string} space @param {string} invite */
     const inviteeHello = async (channel, space, invite, channelKey) => {
       const who = me();
@@ -1648,7 +1674,12 @@ export default {
               : undefined;
             const got = await kernelMembers({ handle: c.handle, now }).invites.accept(c.k, c.invId, req.seen, bind);
             // the invitee stream has done its one job; a member session starts next, by the member-device path
-            if (c.handle.hosted === false) { remoteHandles.delete(`${c.spaceId}/${c.invId}`); await kv.delete(`invitee-route/${c.spaceId}`); }
+            if (c.handle.hosted === false) {
+              // the person is a member now: keep where the home is, so this device reaches the space with a member stream (no invite) and lists it
+              try { const route = await kv.get(`invitee-route/${c.spaceId}`); if (route && route.channel) await kv.put(`member-of/${c.spaceId}`, { channel: route.channel, name: route.name, role: got && got.membership && got.membership.role ? String(got.membership.role) : null, at: now() }); } catch { /* the join stands; the row is made again by the next accept of a link */ }
+              memberHandles.delete(c.spaceId);
+              remoteHandles.delete(`${c.spaceId}/${c.invId}`); await kv.delete(`invitee-route/${c.spaceId}`);
+            }
             return { joined: true, space: c.spaceId, membership: out(got.membership) };
           }
         }

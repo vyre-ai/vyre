@@ -107,7 +107,7 @@ export function createPeerDoor(o) {
     const now = (o.now || Date.now)();
     if (!h || typeof h !== "object" || Array.isArray(h)) return { why: "bad_input" };
     const str = (/** @type {any} */ v, /** @type {RegExp} */ re) => typeof v === "string" && re.test(v);
-    if (!str(h.space, /^spc_[a-z2-7]{12,26}$/) || !str(h.invite, /^inv_[0-9a-f]{32}$/) || !str(h.identity, /^per_[a-z2-7]{26}$/) || !str(h.entry, /^[a-z2-7]{26}$/) || !str(h.nonce, /^[A-Za-z0-9_-]{16,64}$/) || !str(h.channel, /^[a-z2-7]{16}$/) || !Number.isFinite(h.ts) || !str(h.sig, /^[A-Za-z0-9_-]{80,100}$/)) return { why: "bad_input" };
+    if (!str(h.space, /^spc_[a-z2-7]{12,26}$/) || !str(h.invite, /^(inv_[0-9a-f]{32}|member)$/) || !str(h.identity, /^per_[a-z2-7]{26}$/) || !str(h.entry, /^[a-z2-7]{26}$/) || !str(h.nonce, /^[A-Za-z0-9_-]{16,64}$/) || !str(h.channel, /^[a-z2-7]{16}$/) || !Number.isFinite(h.ts) || !str(h.sig, /^[A-Za-z0-9_-]{80,100}$/)) return { why: "bad_input" };
     if (h.name !== undefined && !str(h.name, /^[a-z0-9.-]{3,253}$/)) return { why: "bad_input" };
     if (h.channel !== inviteeId) return { why: "wrong_channel" };
     if (Math.abs(now - Number(h.ts)) > HELLO_WINDOW_MS) return { why: "stale" };
@@ -128,7 +128,7 @@ export function createPeerDoor(o) {
     try { entry = await o.identityEntry(h.identity, h.entry, h.name); } catch { return { why: "cannot_check" }; }
     if (!entry || typeof entry.pub !== "string" || entry.alg === "webauthn-es256" || entry.held === "web") { misses.delete(missKey); misses.set(missKey, now); trim(misses, MISS_MAX); return { why: "unknown_identity" }; }
     if (!verifyDevice(entry.pub, helloMessage(box, h), h.sig)) return { why: "bad_proof" };
-    if (over(`i:${h.invite}`, lim.perInvite, now) || over(`p:${h.identity}`, lim.perIdentity, now)) return { why: "rate_limited" };
+    if (over(h.invite === "member" ? `m:${h.space}:${h.identity}` : `i:${h.invite}`, lim.perInvite, now) || over(`p:${h.identity}`, lim.perIdentity, now)) return { why: "rate_limited" };
     if (nonces.has(h.nonce)) return { why: "replayed" };
     nonces.set(h.nonce, now + 2 * HELLO_WINDOW_MS);
     trim(nonces, lim.nonceMax);
@@ -160,6 +160,13 @@ export function createPeerDoor(o) {
         if (!c.identity) { log(`peer door: invitee ${inviteeId} refused (${String(c.why)})`); return { ok: false, why: String(c.why) }; }
         const server = serverFor(head.space);
         if (!server) { log(`peer door: invitee ${inviteeId} refused (not_found)`); return { ok: false, why: "not_found" }; }
+        // A MEMBER's stream (the hello names `member` where an invitee's names its invite): the person joined this space before and reaches it from a device on their own identity list. The space's own kernel decides whether they
+        // are a member (its member read answers only for one); from then on the stream carries kernel calls under the member's own chain, which the home builds from this channel's proved facts like any member device's.
+        if (head.invite === "member") {
+          const m = await server.serve(inviteeRequest(head.space, "grants.members.get", [c.identity], (o.now || Date.now)()), { device_key_id: inviteeId, person: c.identity, path: "relay" });
+          if (!m || m.ok !== true || !m.result) { log(`peer door: member ${inviteeId} refused (not_a_member${m && m.error ? `: ${String(m.error.code)}` : ""})`); return { ok: false, why: "not_a_member" }; }
+          return { ok: true, member: true, identity: c.identity, space: head.space, invite: "member", entry: head.entry, ...(typeof head.name === "string" && head.name ? { name: head.name } : {}) };
+        }
         // the space's own kernel decides whether this invite is live, unused and meant for this person: a preview is the proof (it is all the invitee may read before it accepts)
         const r = await server.serve(inviteeRequest(head.space, "grants.invites.get", [head.invite], (o.now || Date.now)()), { device_key_id: inviteeId, person: c.identity, path: "relay" });
         if (!r || r.ok !== true || !r.result || r.result.status !== "pending") { log(`peer door: invitee ${inviteeId} refused (bad_invite${r && r.error ? `: ${String(r.error.code)}` : ""})`); return { ok: false, why: "bad_invite" }; }
@@ -175,6 +182,13 @@ export function createPeerDoor(o) {
         const a = await admit();
         if (!a.ok) { finished = true; end("not admitted"); throw err("denied", "that invite cannot be used from here"); }
         if (tool !== KERNEL_CALL_TOOL || !input || typeof input !== "object") throw err("denied", "an invite opens two calls and nothing else");
+        if (a.member === true) {
+          // a member's stream: the space's kernel calls and nothing else (no registry tool, no other space); the invite calls are not a member's
+          if (input.space !== a.space || INVITEE_CALLS.has(String(input.call))) throw err("denied", "a member stream opens this space's kernel calls and nothing else");
+          const sv = serverFor(a.space);
+          if (!sv) { end("gone"); throw err("not_found", "no such space here"); }
+          return sv.serve(input, { device_key_id: inviteeId, person: a.identity, path: "relay", entry: a.entry });
+        }
         const args = Array.isArray(input.args) ? input.args : [];
         if (input.space !== a.space || !INVITEE_CALLS.has(String(input.call)) || args[0] !== a.invite) throw err("denied", "an invite opens two calls and nothing else");
         const server = serverFor(a.space);
