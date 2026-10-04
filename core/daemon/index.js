@@ -402,7 +402,7 @@ async function startLocked(opts, root, p, release) {
             { name: "Vyre's own home", path: userHome }, { name: "the vault and keys", path: path.join(root, "kernel") }, { name: "the daemon's socket", path: p.socket },
             { name: "the spawner's socket", path: spawnerSocket }, { name: "the spawner's folder", path: path.dirname(spawnerSocket) }, { name: "the box's secrets folder", path: "/var/lib/vyre-secrets" },
             { name: "the key file", path: path.join(root, "kernel", "space.json") }, { name: "the list of accounts", path: accounts, list: true },
-            ...(other ? [{ name: "another agent's home", path: other }] : []) ] });
+            ...(other ? [{ name: "another agent's home", path: other }] : []) ] }).then(r => { if (r.results.listening.length) log(`confinement: a session's uid can connect to port(s) ${[...new Set(r.results.listening)].join(", ")}, which something in the box listens on (reported, not refused)`); return r; });
         } } };
     }
     else if (process.platform === "darwin" || process.platform === "linux") {

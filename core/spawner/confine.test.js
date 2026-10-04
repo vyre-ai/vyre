@@ -77,8 +77,10 @@ test("confinement: every project folder is checked, and a port something listens
   const a = tmp(), b = tmp(); t.after(() => { for (const d of [a, b]) fs.rmSync(d, { recursive: true, force: true }); });
   const two = await confineSelfTest({ workdirs: [a, b], vyreUid: 1000, out: [], spawn: /** @type {any} */ (saying("uid 2001\nproject rw\nproject no\n")) });
   assert.match(two.failures.join(" "), new RegExp(`cannot use its own project folder ${b.replace(/[/.]/g, "\\$&")}`));
-  const heard = await confineSelfTest({ workdirs: [a], vyreUid: 1000, out: [], spawn: /** @type {any} */ (saying("uid 2001\nproject rw\nlisten 8080\n")) });
+  const heard = await confineSelfTest({ workdirs: [a], vyreUid: 1000, out: [], refuseListen: true, spawn: /** @type {any} */ (saying("uid 2001\nproject rw\nlisten 8080\n")) });
   assert.match(heard.failures[0], /can connect to port 8080/);
-  const expected = await confineSelfTest({ workdirs: [a], vyreUid: 1000, out: [], allowListen: [8080], spawn: /** @type {any} */ (saying("uid 2001\nproject rw\nlisten 8080\n")) });
+  const reported = await confineSelfTest({ workdirs: [a], vyreUid: 1000, out: [], spawn: /** @type {any} */ (saying("uid 2001\nproject rw\nlisten 8080\n")) });
+  assert.deepEqual(reported.failures, []); assert.deepEqual(reported.results.listening, [8080]);
+  const expected = await confineSelfTest({ workdirs: [a], vyreUid: 1000, out: [], refuseListen: true, allowListen: [8080], spawn: /** @type {any} */ (saying("uid 2001\nproject rw\nlisten 8080\n")) });
   assert.deepEqual(expected.failures, []);
 });
