@@ -1625,6 +1625,8 @@ export class Switchboard {
     const all = /** @type {any[]} */ (this.db.prepare("SELECT id, text, surface, uuid, kind, images, request, note, at, kturn FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL ORDER BY id").all(id));
     if (!all.length) return;
     // One turn belongs to one asker: the queued messages that run together are the leading ones with the SAME asker and chat (a person's surface has none). The rest wait for the next turn's end.
+    // A queued turn written before adoption names the replaced owner id: read it as the identity so it groups with, and runs as, the same person.
+    for (const r of all) r.kturn = this.canonTurn(r.kturn);
     const lead = all[0].kturn || null;
     const rows = all.filter((r, i) => (r.kturn || null) === lead && all.slice(0, i).every(p => (p.kturn || null) === lead));
     const now = Date.now();
@@ -1797,7 +1799,7 @@ export class Switchboard {
       // admin's turn is open): it is refused as busy and the stream delivers it again when the turn has ended. The same asker steering their own turn keeps the session they have.
       await this.assertAsker(id, this.record(id), kernelTurn);
       const st = this.live.get(id), askedBy = this.turnAsker.get(id);
-      if (st && st.turn && askedBy !== kernelTurn.asker) {
+      if (st && st.turn && this.canon(askedBy) !== this.canon(kernelTurn.asker)) {
         // Another person's message mid-turn waits as the NEXT turn, under its own asker: it never steers the running one, and the running turn's kernel session is never replaced. A chat turn that
         // arrives while a turn with no chat is running (someone typing on their own surface) waits the same way.
         return this.queue(id, text, surface, undefined, { ...(uuid ? { uuid } : {}), kind, note, author, kernelTurn });
@@ -2087,6 +2089,15 @@ export class Switchboard {
    * the surface holding the keyboard when that is why (a send with `wait`).
    * @param {string} id @param {string} text @param {string} surface @param {string} [holder]
    */
+  /** @param {string} person */
+  canon(person) { const f = this.deps.canonicalPerson; return typeof f === "function" ? f(person) : person; }
+
+  /** A stored queued-turn key `{chat, asker}` with its asker read through canonicalPerson. @param {string | null} k */
+  canonTurn(k) {
+    if (!k) return k || null;
+    try { const o = JSON.parse(k); return o && typeof o.asker === "string" ? JSON.stringify({ chat: o.chat, asker: this.canon(o.asker) }) : k; } catch { return k; }
+  }
+
   queue(id, text, surface, holder, { owned = false, uuid = crypto.randomUUID(), kind = undefined, request = undefined, images = /** @type {any} */ (null), note = "", author = undefined, kernelTurn = null } = {}) {
     const rec = this.must(id);
     // A session open elsewhere takes queued words through its hooks, which carry text only.
@@ -3161,6 +3172,8 @@ export default {
       // Each session's own socket (option A): always with "on", with the spawner under "auto".
       // Through the spawner it goes in the box's shared folder; else a private one of this user's.
       kernelSession: ctx.kernelSession || null,
+      // The kernel's own map from a replaced owner id to the identity (adoption); every person id this module stores is compared through it, so sessions and queued words survive adoption.
+      canonicalPerson: ctx.kernel && typeof ctx.kernel.canonicalPerson === "function" ? ctx.kernel.canonicalPerson : null,
       sandbox: ctx.sandbox || null,
       threadSocket: cfg.thread_socket === "off" ? null
         : async (/** @type {any} */ o) => cfg.thread_socket === "on" || usesSpawner()
@@ -3322,7 +3335,7 @@ export default {
       // ONE form at this boundary: the kernel's own person id (per_...). An actor string (person:per_x), a bare name or anything else is refused, never quietly rewritten: a mismatch between the stream
       // and the Switchboard must show, because this id decides whose authority a turn runs under.
       if (typeof i.asker !== "string" || !/^per_[a-z0-9]{3,64}$/.test(i.asker)) throw Object.assign(new Error("asker must be a person id (per_...), as the kernel names one"), { code: "bad_input" });
-      return { chat: i.chat, asker: i.asker };
+      return { chat: i.chat, asker: sb.canon(i.asker) };
     };
     const sendToMac = async (i, caller) => {
       const r = await ctx.call("link.macs.call", { tool: "threads.send", as: "person", ...(i.machine ? { mac: i.machine } : {}),
