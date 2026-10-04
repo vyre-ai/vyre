@@ -21,7 +21,7 @@ function world(o = {}) {
   const tools = new Map();
   const events = /** @type {any[]} */ ([]);
   const drops = /** @type {any[]} */ ([]);
-  const ctx = { store: { db }, config: { name: "alex" }, log(m) { if (process.env.DBG) console.log("LOG", m); }, events: { emit: (n, d) => events.push([n, d]) }, tool: (n, def) => tools.set(n, def), call: async (tool, input) => { if (o.call) { const r = await o.call(tool, input); if (r !== undefined) return r; } if (tool === "relay.route.id") return { data: { box: o.box || "Qm94S2V5" } }; drops.push([tool, input]); return { data: { closed: true } }; } };
+  const ctx = { store: { db }, config: { name: "alex" }, log() {}, events: { emit: (n, d) => events.push([n, d]) }, tool: (n, def) => tools.set(n, def), call: async (tool, input) => { if (tool === "relay.route.id") return { data: { box: o.box || "Qm94S2V5" } }; drops.push([tool, input]); return { data: { closed: true } }; } };
   const typed = /** @type {any[]} */ ([]);
   const finishes = /** @type {any[]} */ ([]);
   const minted = /** @type {any[]} */ ([]);
@@ -1367,4 +1367,30 @@ test("wink.server.paired: a module asks whether a device is a server paired to t
   assert.deepEqual(await ask("nope"), { paired: false });
   await assert.rejects(ask("srv1", ME, "cli"), e => e.code === "denied");
   await assert.rejects(ask("srv1", ME, "device:aaaaaaaaaaaaaaaa"), e => e.code === "denied");
+});
+
+test("SP-1 and SP-2: an owner id must have an id's shape; a proof offered with no --pair-to is checked; the stored and shown name carries no control or bidi byte", async () => {
+  const r = proofRig();
+  const w = world({ confirm: true, identityEntry: r.identityEntry });
+  await assert.rejects(() => adoptAs(w, "device:app1", { owner: { kind: "identity", id: "NOT-A-PERSON-ID; rm -rf", name: "Alex" }, identity: "x" }), e => e.code === "bad_input");
+  await assert.rejects(() => adoptAs(w, "device:app1", { owner: { kind: "space", id: "per_aaaa", name: "Alex" } }), e => e.code === "bad_input", "a space owner needs a space id");
+  assert.equal(w.p.meta.get("owner"), null, "nothing stored for a malformed id");
+  // a proof by a key that is not on that identity's list is refused at once, with no --pair-to
+  const w2 = world({ confirm: true, identityEntry: r.identityEntry });
+  await assert.rejects(() => adoptAs(w2, "device:app1", { ...ASKED, proof: r.proof("app1", r.other.privateKey) }), e => e.code === "denied");
+  assert.equal(w2.p.meta.get("owner"), null);
+  // the right proof: the question is still asked (the person's yes stays the check), then the name is stored clean
+  const w3 = world({ confirm: true, identityEntry: r.identityEntry });
+  const dirty = "Alex\u001b[2J\u001b]0;pwned\u0007\u202egnp.exe";
+  const input = { owner: { kind: "identity", id: ME, name: dirty }, identity: ME, proof: r.proof("app1") };
+  assert.equal((await adoptAs(w3, "device:app1", input)).pending, true);
+  assert.equal(await (async () => (await atServer(w3, "wink.server.pairing")).name)(), "Alex2J0pwnedgnp.exe (id aaaaaa)");
+  const q = await atServer(w3, "wink.server.pairing");
+  await atServer(w3, "wink.server.pair.answer", pickOf(q, "amber coral app1"));
+  const ok = await adoptAs(w3, "device:app1", input);
+  assert.equal(ok.owner.id, ME);
+  const stored = w3.p.meta.get("owner").name;
+  assert.equal(stored, "Alex2J0pwnedgnp.exe");
+  assert.doesNotMatch(stored, /[\u0000-\u001f\u007f-\u009f\u202a-\u202e]/);
+  assert.equal((await atServer(w3, "wink.server.status")).space, "Alex2J0pwnedgnp.exe");
 });
