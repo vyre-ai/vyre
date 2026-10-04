@@ -8,7 +8,7 @@ export const ASK_AGAIN = "Let Claude Code ask again";
 
 /** @param {string} computer */
 export const askTitle = (computer) => `Let Claude Code on ${computer} read your memory and your projects' sessions?`;
-export const ASK_CAPTION = "It can only suggest new memories, and you approve each one. If you do not answer, the ask ends in 24 hours and Claude Code waits 7 days before asking again.";
+export const ASK_CAPTION = "If you do nothing, this ends in 24 hours and Claude Code waits 7 days to ask again.";
 
 /** What Access shows for Claude Code: the open asks, then at most one standing row. @param {any} status @param {any} pending */
 export function pluginView(status, pending) {
@@ -22,15 +22,15 @@ export function pluginView(status, pending) {
 
 export const grantedLine = "Reads your memory and the sessions of your projects. It suggests new memories and you approve them.";
 export const declinedTitle = "Claude Code is not asking";
-export const declinedLine = "You said no. Turn this on and Claude Code asks again the next time it runs here.";
+export const declinedLine = "It asks once more the next time it runs. You still approve it.";
 export const removeLabel = "Remove Claude Code";
 
 /** @param {string} computer */
 export const allowedToast = (computer) => `Claude Code on ${computer} can read your memory and sessions.`;
-export const declinedToast = "Claude Code will not ask again. You can turn it back on in Access.";
+export const declinedToast = "Claude Code will not ask again. You can let it ask again in Access.";
 export const askAgainToast = "Claude Code can ask again.";
 /** @param {string} computer */
-export const removedToast = (computer) => `Claude Code on ${computer} can no longer read your memory.`;
+export const removedToast = (computer) => `Claude Code on ${computer} no longer has access. It will not ask again until you let it.`;
 
 /** The words for a refused Allow, Don't allow or Remove. @param {string | undefined} code */
 export function pluginRefusal(code) {
