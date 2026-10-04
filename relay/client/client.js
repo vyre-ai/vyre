@@ -452,6 +452,8 @@ export class Connection {
     const delay = this.backoff * (0.8 + 0.4 * this.random());
     this.backoff = Math.min(this.backoff * 2, this.max);
     this.retryTimer = globalThis.setTimeout(() => { this.retryTimer = null; this.dial(); }, delay);
+    // a pause between tries never keeps a Node process alive by itself (an open socket does); a browser timer has no unref
+    if (this.retryTimer && typeof this.retryTimer.unref === "function") this.retryTimer.unref();
   }
 
   /** Reconnect now if we are not connected (a wake, the network came back, the app came to the front). */

@@ -183,7 +183,10 @@ function planLinux(o) {
   const cfg = seedConfig(o);
   const sock = "/run/vyre-session.sock", inner = 18443;
   const sc = seccompFilter(); if (!sc) throw new Error(`no seccomp filter for this CPU (${process.arch}): a session is not started without one`);
-  const ro = [...new Set(o.readOnly || [])].map(real);
+  // With the egress proxy the session starts under Vyre's own shim, run by THIS process's node (process.execPath): that program's folder is bound read-only too, or a node that lives under a
+  // person's folder (an npm or nvm install, /home/<user>/node24/bin) is "No such file" inside the sandbox. (Under /usr it is already there.)
+  const shimNode = o.proxy?.socket ? [path.dirname(real(process.execPath))] : [];
+  const ro = [...new Set([...(o.readOnly || []), ...shimNode])].map(real);
   const rw = [...new Set([...(o.workdirs || []), ...(o.temp ? [o.temp] : []), ...(cfg ? [cfg.dir] : [])])].map(d => { try { fs.mkdirSync(d, { recursive: true }); } catch {} return real(d); });
   const env = { ...homeEnv(o.env, o.passEnv), ...(cfg ? cfg.env : {}), VYRE_SOCKET: sock, HOME: h, PATH: [...new Set([...(o.pathDirs || []), "/usr/local/bin", "/usr/bin", "/bin"])].join(":"), ...(o.proxy ? { HTTPS_PROXY: `http://vyre:${o.proxy.token || ""}@127.0.0.1:${inner}`, HTTP_PROXY: `http://vyre:${o.proxy.token || ""}@127.0.0.1:${inner}`, NO_PROXY: "", GIT_SSH_COMMAND: sshCommand(`127.0.0.1:${inner}`, o.proxy.token || "", "/opt/vyre-proxycmd.js") } : {}) };
   const argv = [

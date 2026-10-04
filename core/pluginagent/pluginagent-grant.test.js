@@ -79,4 +79,6 @@ test("the grant names exactly what it gives; a decline, a revoke and an expiry e
   assert.ok(!(await call("pluginagent.revoke", {}, proof)).error);
   assert.equal((await ask()).state, "declined");
   assert.equal((await call("memory.profile", {}, as)).error.code, "denied");
+  assert.ok(!((await call("agents.list", {}, opts)).data || []).some((/** @type {any} */ a) => a.name === agent), "the revoked agent is gone, not just its key");
+  assert.equal((await call("agents.delete", { agent: "assistant" }, { root, caller: "mcp" })).error.code, "denied", "a model deletes no agent");
 });

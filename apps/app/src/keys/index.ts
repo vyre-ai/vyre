@@ -26,4 +26,5 @@ export const presenceKey = async (): Promise<Awaited<ReturnType<typeof import(".
 export const enclavePublic = async (): Promise<string> => notOnWeb();
 export const enrolAttestation = async (_token: string): Promise<null> => null;
 export const setPersonProvider = (_f: () => Promise<string | null>): void => {};
-export const signListChange = async (_m: Uint8Array, _prompt: string): Promise<{ sig: Uint8Array; esig: string }> => notOnWeb();
+export const signListChange = async (_m: Uint8Array, _prompt: string): Promise<{ sig: Uint8Array; esig: Uint8Array }> => notOnWeb();
+export const listChangeSigners = (_prompt: string): { sign: (m: Uint8Array) => Promise<Uint8Array>; esign: (m: Uint8Array) => Promise<Uint8Array> } => notOnWeb();

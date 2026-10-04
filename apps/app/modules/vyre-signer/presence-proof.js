@@ -90,6 +90,23 @@ export function p1363FromDer(der) {
   return sig;
 }
 
+const P256_N = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n;
+/**
+ * The one canonical form of an ECDSA P-256 signature on the identity chain (NK-2, NE-1): 64 bytes r||s with s in the low half. The Secure Enclave returns either s, so a high s is
+ * replaced by n - s (the same signature, verifies the same), and a verifier that refuses the high twin never sees one from this phone.
+ * @param {Uint8Array} raw
+ */
+export function lowS(raw) {
+  if (raw.length !== 64) throw new Error("not a 64 byte r||s signature");
+  let s = 0n;
+  for (let i = 32; i < 64; i++) s = (s << 8n) | BigInt(raw[i]);
+  if (s <= P256_N >> 1n) return raw;
+  s = P256_N - s;
+  const out = new Uint8Array(raw);
+  for (let i = 63; i >= 32; i--) { out[i] = Number(s & 0xffn); s >>= 8n; }
+  return out;
+}
+
 /**
  * Check what the card showed against its hash and build the proof body (everything but the signature). Refuses, with a code, when the fields do not hash to the card's
  * payload_hash: that is what makes what you see what you sign.

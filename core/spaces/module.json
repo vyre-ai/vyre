@@ -156,6 +156,11 @@
     "effect": "read"
    },
    {
+    "name": "spaces.owner.claimed",
+    "reach": "modules",
+    "effect": "read"
+   },
+   {
     "name": "spaces.owner.adopt",
     "reach": "modules",
     "effect": "write"
