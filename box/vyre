@@ -990,13 +990,12 @@ updater() {
 rollback() {
   DATA=0
   YES=0
-  PROOF_FILE=""
   for a in "$@"; do
     case "$a" in
       --rollback) ;;
       --restore-data) DATA=1 ;;
       --yes|-y) YES=1 ;;
-      --proof-file=*) PROOF_FILE=${a#--proof-file=} ;;
+      --proof-file=*) ;; # the approval comes from the owner's phone now (ask and status); the flag is accepted and ignored
       *) die "vyre update --rollback: unknown option $a" ;;
     esac
   done
@@ -1023,16 +1022,26 @@ rollback() {
     curc=$(counter_of "$UPD_STATE/release/modules.json"); prevc=$(counter_of "$UPD_PRIV/release.prev/modules.json")
     if [ -n "$curc" ] && [ -n "$prevc" ] && [ "$prevc" -lt "$curc" ]; then
       echo "vyre: the release before has an older module list (counter $prevc, this one is $curc); the owner has to approve going back, once." >&2
-      # The owner's approval: a kernel presence proof for this reset, made on the owner's own device (base64url JSON, 4 KB at most), from --proof-file=FILE or VYRE_KERNEL_PROOF.
-      # It is handed to the CLI inside the container as an environment variable of that one call, which sends it as the request's x-vyre-kernel-proof header.
-      kp=${VYRE_KERNEL_PROOF:-}
-      # shellcheck disable=SC2015 # A && B || C on purpose: C is the refusal
-      if [ -z "$kp" ] && [ -n "$PROOF_FILE" ]; then [ -f "$PROOF_FILE" ] && [ ! -L "$PROOF_FILE" ] && [ "$(wc -c <"$PROOF_FILE")" -le 4096 ] || die "the proof file is not a plain file of 4 KB or less"; kp=$(tr -d ' \n\r' <"$PROOF_FILE"); fi
-      if [ -n "$kp" ] && ! printf '%s' "$kp" | grep -Eqx '[A-Za-z0-9_-]{1,5600}'; then die "that is not an approval (base64url, up to 4 KB); nothing was changed"; fi
-      if ! rst=$(compose exec -T -e "VYRE_KERNEL_PROOF=$kp" vyre vyre call modules.list.reset '{}' 2>&1); then
-        echo "$rst" | head -n 3 >&2
-        die "not rolled back: the module list was not reset. It needs the owner's approval for this exact reset, made on the owner's device, then: vyre update --rollback --proof-file=FILE. Nothing was changed."
-      fi
+      # The owner's approval comes from the owner's phone through the running daemon: ask (one new ask per 10 minutes, a second call returns the same id), print where to approve,
+      # then poll the status about every 2 s until it is answered or the ask runs out. Approved swaps; refused, none, a rate limit or no answer refuses and changes nothing.
+      ask=$(compose exec -T vyre vyre call modules.list.reset.ask '{}' 2>&1) || { printf '%s\n' "$ask" | head -n 3 >&2; die "not rolled back: the owner could not be asked to approve (is Vyre running and the kernel on?). Nothing was changed."; }
+      rid=$(printf '%s' "$ask" | tr -d '\n' | sed -n 's/.*"id": *"\([A-Za-z0-9_-]\{1,80\}\)".*/\1/p')
+      ttl=$(printf '%s' "$ask" | tr -d '\n' | sed -n 's/.*"expires_in_s": *\([0-9]\{1,5\}\).*/\1/p')
+      [ -n "$rid" ] || die "not rolled back: the answer to the approval request was not understood. Nothing was changed."
+      case "$ttl" in ""|*[!0-9]*) ttl=300 ;; esac
+      echo "vyre: approve going back on your phone (Vyre asks you to confirm). Waiting up to $ttl seconds."
+      end=$(( $(date +%s) + ttl )); verdict=""
+      while [ "$(date +%s)" -lt "$end" ]; do
+        stt=$(compose exec -T vyre vyre call modules.list.reset.status "{\"id\":\"$rid\"}" 2>&1 | tr -d '\n') || true
+        case "$stt" in *'"approved"'*) verdict=approved; break ;; *'"refused"'*) verdict=refused; break ;; *'"none"'*) verdict=none; break ;; esac
+        sleep "${VYRE_ROLLBACK_POLL:-2}"
+      done
+      case "$verdict" in
+        approved) ;;
+        refused) die "not rolled back: you refused on your phone. Nothing was changed." ;;
+        none) die "not rolled back: the approval request is gone (it ran out or was answered elsewhere). Run this again to ask again. Nothing was changed." ;;
+        *) die "not rolled back: nobody approved in time. Run this again to ask again. Nothing was changed." ;;
+      esac
     fi
   fi
   # A swap, so a second --rollback goes forward again.
@@ -1177,6 +1186,7 @@ SP_STATE=$SPACES_ROOT/status
 SP_PRIV=$SPACES_ROOT/private
 SP_NAME_RE='[a-z][a-z0-9-]{0,30}'
 SPACES_PUBLISH_MAX_KB=${VYRE_PUBLISH_MAX_KB:-524288}
+SPACES_PUBLISH_TIMEOUT=${VYRE_PUBLISH_TIMEOUT:-120}
 
 # sp_lend_base: where the runner keeps lent workspaces, as ROOT finds it: the host folder behind the vyre container's home mount, read from Docker, never from a file or
 # a request the daemon can write. A volume's folder or a bind: both are a Source path on the host. Printed only when it is an absolute path.
@@ -1493,7 +1503,7 @@ STAT
 # volume is done here, as root, so the daemon never names a path or a volume. The request is `publish-fill <space id> <site folder> <deployment>`: the volume name and the folder are rebuilt
 # here from those tokens. The folder is CLAIMED by rename into root's own folder (same disk only), then walked as root: only plain files and folders, no file with a second link, a size cap.
 # It is copied by a throwaway container (no network, the folder read-only, two capabilities), and a fixed check runs on the volume after; a volume that fails it is removed. The folder goes
-# back where it was, so the daemon's own sweep still finds it.
+# deleted after it, never moved back.
 sp_publish_fill_do() {
   id=$1; req=$(printf '%s' "$2" | tr '+' ' '); MSG=""
   printf '%s\n' "$req" | grep -Eqx 'spc_[a-z0-9]{12} site-[A-Za-z0-9]{6} [0-9a-f]{16}' || { sp_status "$id" failed "not a request the helper knows"; sp_log "refused publish-fill: not the shape"; return 0; }
@@ -1524,8 +1534,8 @@ sp_publish_fill() {
   [ "$(stat -c %d "$src")" = "$(stat -c %d "$pc")" ] || { MSG="the site folder is on another disk than the helper's folder"; return 1; }
   mv -T -- "$src" "$claim" 2>/dev/null || { MSG="the site folder could not be taken"; return 1; }
   rc=0; sp_publish_fill_body "$sid" "$slug" || rc=1
-  # The folder goes back where the daemon expects it, unless something took its name meanwhile.
-  if [ -e "$src" ] || [ -L "$src" ]; then rm -rf -- "$claim"; else mv -T -- "$claim" "$src" 2>/dev/null || rm -rf -- "$claim"; fi
+  # PF-2: nothing goes back through the daemon's path (it could have been swapped for a link meanwhile): the claim is deleted, the daemon writes a new folder at every preview.
+  rm -rf -- "$claim"
   return "$rc"
 }
 sp_publish_fill_body() {
@@ -1539,7 +1549,14 @@ sp_publish_fill_body() {
   [ "$kb" -le "$SPACES_PUBLISH_MAX_KB" ] || { MSG="the site is bigger than $((SPACES_PUBLISH_MAX_KB / 1024)) MB"; return 1; }
   img=$(hdock inspect -f '{{.Image}}' "$CTR_NAME" 2>/dev/null || true)
   case "$img" in sha256:[0-9a-f]*) ;; *) MSG="the vyre image could not be found"; return 1 ;; esac
-  pf_run() { hdock run --rm --network none --cap-drop ALL "$@"; }
+  # PF-1: each container step has a time limit and a fixed name, so a stuck copy (a FIFO the daemon adds to the claimed folder) is removed and the helper's queue moves on.
+  pf_run() {
+    hdock rm -f vyre-publish-fill >/dev/null 2>&1 || true
+    timeout "$SPACES_PUBLISH_TIMEOUT" env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker run --rm --name vyre-publish-fill --network none --cap-drop ALL "$@"
+    pf_rc=$?
+    [ "$pf_rc" != 124 ] || hdock rm -f vyre-publish-fill >/dev/null 2>&1 || true
+    return "$pf_rc"
+  }
   have=$(pf_run --security-opt no-new-privileges --read-only --user 0 --entrypoint sh -v "$vol:/srv:ro" "$img" -c 'find /srv -mindepth 1 | head -n 1') || { MSG="the site's volume could not be looked at"; return 1; }
   if [ -z "$have" ]; then
     pf_run --cap-add CHOWN --cap-add DAC_OVERRIDE --security-opt no-new-privileges --read-only --user 0 --entrypoint sh -v "$claim:/in:ro" -v "$vol:/srv" "$img" \
@@ -1774,12 +1791,14 @@ admin() {
       say "wiped. Vyre is running again, new and empty, with no owner. Pair a device to claim it."
       ;;
     anchor-reset)
-      # Offline: the daemon is stopped, then scripts/admin-anchor-reset.mjs (kernel and vault own it) starts only the sealing process from a one-off container of the same image, asks the
-      # owner's phone for the presence proof of `anchor.reset`, resets the anchor, writes the sealed event and exits non-zero on any refusal (a bad or replayed proof changes nothing).
+      # Offline: the daemon is stopped, then scripts/admin-anchor-reset.mjs (kernel-2's) starts ONLY the sealing process from a one-off container of the same image and prints one request line.
+      # The owner's device signs that request (a proof made after the line was printed: the sealing process takes none older, and one lives under a minute) and the signed proof comes back as
+      # one line on this terminal's input. A refused, expired or replayed proof changes nothing; the script exits non-zero and the daemon is started again either way.
       set_root_run; prepare_run
-      compose run --rm --no-deps -T --entrypoint test vyre -f /opt/vyre/scripts/admin-anchor-reset.mjs >/dev/null 2>&1 || die "this release has no anchor-reset step (scripts/admin-anchor-reset.mjs in the image); nothing was changed"
+      pf=$(compose run --rm --no-deps -T --entrypoint test vyre -f /opt/vyre/scripts/admin-anchor-reset.mjs 2>&1) || die "this release has no anchor-reset step (scripts/admin-anchor-reset.mjs in the image), or the image could not be run: $pf; nothing was changed"
       compose stop vyre >/dev/null 2>&1 || die "the daemon could not be stopped; nothing was changed"
-      if compose run --rm --no-deps --entrypoint node vyre /opt/vyre/scripts/admin-anchor-reset.mjs --home /home/vyre/.vyre; then rs=0; else rs=1; fi
+      echo "Vyre will print one request line. Approve it on your device, then paste the proof your device gives back and press Enter. It is good for under a minute."
+      if compose run --rm --no-deps -i --entrypoint node vyre /opt/vyre/scripts/admin-anchor-reset.mjs --home /home/vyre/.vyre; then rs=0; else rs=1; fi
       compose up -d >/dev/null 2>&1 || die "the daemon did not start; run: vyre up"
       [ "$rs" = 0 ] || die "the anchor was not reset (see the line above); Vyre was started again and will refuse again until it is"
       say "the anchor is reset and Vyre is running again."
