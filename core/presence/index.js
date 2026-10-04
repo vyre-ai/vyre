@@ -365,6 +365,24 @@ export const MIGRATIONS = [`
     removed INTEGER NOT NULL,
     PRIMARY KEY (id, kind)
   );
+`, `
+  -- An owner-paired device's person session (ADR 0032 section 2d). The pairing writes one grant for
+  -- the device: the key the owner confirmed, the presence key whose proof confirmed it, and a short
+  -- life. The device's first start proves it holds that key, and turns the grant into a session
+  -- with no maximum life (paired = 1), which still ends after 30 days unused.
+  ALTER TABLE presence_people ADD COLUMN paired INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE presence_people ADD COLUMN rotated INTEGER;
+  ALTER TABLE presence_people ADD COLUMN software INTEGER NOT NULL DEFAULT 0;
+  CREATE TABLE presence_pair_grants (
+    device TEXT PRIMARY KEY,
+    key_id TEXT NOT NULL,
+    device_key TEXT NOT NULL,
+    challenge TEXT NOT NULL,
+    software INTEGER NOT NULL DEFAULT 0,
+    created INTEGER NOT NULL,
+    expires INTEGER NOT NULL,
+    tries INTEGER NOT NULL DEFAULT 0
+  );
 `];
 
 const CHALLENGE_TTL = 120_000;

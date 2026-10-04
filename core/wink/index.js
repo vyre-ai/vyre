@@ -51,7 +51,7 @@ function owner(meta, what) {
 }
 
 /**
- * The Wink module. `inject` is the composition root's side (the platform's createKernel passes these; every one is optional and a box without one says so plainly):
+ * The Wink module. `inject.dataStores` is the kernel's list of data stores (core/wink/reset.js); without it a reset of an owned box refuses. `inject` is the composition root's side (the platform's createKernel passes these; every one is optional and a box without one says so plainly):
  *   directory   { memberships(identity) -> [{ space, name?, role }], label?(identity) }   who holds which role (kernelDirectory over ctx.kernel when absent)
  *   offers      { get(space, device, x), set(space, device, side, on, x) }   the ONLY store of compute offers (W-5); the kernel's grants.offers behind a port
  *   bridge      { createBridge, backendFor, home?, roots? } the pool engine'S bridge (kernel/storage/bridge.js, devices.js): a drive reached through another device (core/wink/storage/bridge.js)
@@ -245,8 +245,15 @@ export function createWink(inject = {}) {
 
     // ---- pairing: devices belong to the identity (pairing.js) ----
     const ownerMeta = () => { try { const r = /** @type {any} */ (db.prepare("SELECT v FROM wink_meta WHERE k = 'owner'").get()); return r ? JSON.parse(r.v) : null; } catch { return null; } };
-    // The identity this box answers for: the one that adopted it (wink.server.adopt), else the one derived from its own route.
-    const owner1 = async () => { const m = ownerMeta(); return m && m.identity ? String(m.identity) : (await owner0()).id; };
+    // The identity this box answers for: the one that adopted it (wink.server.adopt), else the person's identity this device holds (the spaces module keeps the one identity id: ONE identity
+    // per person, never a second one here), else, before any is claimed, the one derived from its own route.
+    const owner1 = async () => {
+      const m = ownerMeta();
+      if (m && m.identity) return String(m.identity);
+      const r = /** @type {any} */ (typeof ctx.call === "function" ? await ctx.call("spaces.identity.id", {}).catch(() => null) : null);
+      if (r && r.data && typeof r.data.id === "string" && r.data.id) return r.data.id;
+      return (await owner0()).id;
+    };
     /** What this box calls its own space: its name, else the name the app gave the space that adopted it, never "this space". */
     const boxName = () => { const om = ownerMeta(); return String(ctx.config.name || (om && om.kind === "space" && om.name) || "your space"); };
     const directory = inject.directory || (kernelHasRoles(ctx.kernel) ? kernelDirectory({ kernel: ctx.kernel, space: spaceId, name: boxName })
@@ -274,7 +281,7 @@ export function createWink(inject = {}) {
       relayUrl: async () => { const r = /** @type {any} */ (await ctx.call("relay.status", {})); return String((r && r.data && r.data.url) || (ctx.config.relay && ctx.config.relay.url) || ""); },
     });
     pairing.tools();
-    registerReset({ ctx, pairing, now, identity: owner1, dropMs: inject.dropMs });
+    registerReset({ ctx, pairing, now, identity: owner1, dropMs: inject.dropMs, dataStores: inject.dataStores || ctx.dataStores });
     live = pairing.peers;
     /** A space's own name for a card, never its id. */
     const spaceName = async (/** @type {string} */ id) => {

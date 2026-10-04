@@ -118,3 +118,11 @@ test("a refused attempt to attach a grant to a provider sign-in token is a recor
   assert.equal(trail.length, 2); assert.ok(trail.every(e => e.ok === false));
   assert.equal(await d.registry.deps.credentialsPort.credentials("claude"), tok, "and the token is unchanged");
 });
+
+test("a provider sign-in token is never put or moved into a shared vault, where a team could use it", async t => {
+  const { reg } = await daemon(t), tok = fake("claude");
+  await reg("vault.provider.set", { provider: "claude", token: tok }, "cli");
+  const put = await reg("vault.put", { name: "team/claude-setup-token", kind: "secret", value: tok }, "cli"); assert.match(put.error?.message ?? "", /never put in a shared vault/);
+  const moved = await reg("vault.move", { name: "claude-setup-token", to: "team" }, "cli"); assert.match(moved.error?.message ?? "", /never moved into a shared vault/);
+  assert.equal((await reg("vault.audit", { limit: 50 }, "cli")).data.entries.filter(e => /^refused:/.test(String(e.why)) && /claude-setup-token/.test(String(e.name))).length, 2, "both refusals are recorded");
+});

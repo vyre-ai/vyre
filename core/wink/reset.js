@@ -33,7 +33,11 @@ export const resetCard = at => ({ title: "This server was reset", text: `This se
 
 /**
  * Registers wink.server.reset.begin and wink.server.reset.confirm.
- * @param {{ ctx: any, pairing: any, now?: () => number, identity?: () => Promise<string>, dropMs?: number }} o
+ * `dataStores` is the kernel's list of every store that holds the box's data, each `{ name, holds() }`. The default is "holds data": no list, a store that throws or does not answer
+ * exactly false, all count as holding data. A reset of an owned box that holds data REFUSES, with the reason; no daemon tool destroys data (lead ruling, 4 Oct 2026). Erasing is
+ * `sudo vyre admin wipe`: it stops the daemon, runs the vault's wipeHome, makes a fresh Space identity offline, and only then lets the daemon start unowned. A box with no data resets
+ * with the console code alone.
+ * @param {{ ctx: any, pairing: any, now?: () => number, identity?: () => Promise<string>, dropMs?: number, dataStores?: () => Promise<{ name: string, holds: () => Promise<boolean | undefined> }[]> }} o
  */
 export function registerReset(o) {
   const { ctx, pairing } = o;
@@ -46,6 +50,16 @@ export function registerReset(o) {
     const c = String((m && m.caller) || "");
     if (c !== "cli" || (m && m.agent)) throw fail("denied", "A server is reset from its own console: run vyre wink reset in a terminal on the server.");
   };
+  /** What this box holds, by the kernel's list; fail closed. @returns {Promise<{ holds: boolean, names: string[], stores: any[] | null }>} */
+  const holdsData = async () => {
+    /** @type {any[] | null} */ let stores = null;
+    try { const l = o.dataStores ? await o.dataStores() : null; stores = Array.isArray(l) ? l : null; } catch { stores = null; }
+    if (!stores) return { holds: true, names: ["the list of this box's data stores"], stores: null };
+    /** @type {string[]} */ const names = [];
+    for (const st of stores) { let h; try { h = await st.holds(); } catch { h = undefined; } if (h !== false) names.push(String(st.name)); }
+    return { holds: names.length > 0, names, stores };
+  };
+  const owned = () => Boolean(meta.get("owner") || meta.get("adopter"));
   const lockedUntil = () => { const g = meta.get(GUARD); return g && g.until > now() ? g.until : 0; };
   const notLocked = () => {
     const u = lockedUntil();
@@ -69,6 +83,10 @@ export function registerReset(o) {
       cliOnly(m);
       notLocked();
       if (!input || !/^[0-9a-f]{32}$/.test(String(input.salt)) || !/^[0-9a-f]{64}$/.test(String(input.hash))) throw fail("bad_input", "begin takes the salt and hash the command line made");
+      if (owned()) {
+        const h = await holdsData();
+        if (h.holds) throw fail("holds_data", `This server holds data (${h.names.join(", ")}), and a reset would leave it for the next owner. Nothing was reset. If you only lost a device, recover your identity from another device instead. To erase everything on this server and start it as a new Space, run sudo vyre admin wipe on the server.`);
+      }
       const until = now() + CODE_LIFE_MS;
       meta.set(BEGUN, { salt: String(input.salt), hash: String(input.hash), until });
       return { begun: true, until };
@@ -98,6 +116,8 @@ export function registerReset(o) {
         meta.set(GUARD, { wrong, until: 0 });
         throw fail("wrong_code", `That is not the code. ${MAX_WRONG - wrong} ${MAX_WRONG - wrong === 1 ? "try" : "tries"} left.`);
       }
+      // the box may have changed since begin: a box that holds data is never reset here
+      if (owned()) { const h = await holdsData(); if (h.holds) { meta.del(BEGUN); throw fail("holds_data", `This server holds data (${h.names.join(", ")}). Nothing was reset. To erase it, run sudo vyre admin wipe on the server.`); } }
       meta.del(BEGUN); meta.del(GUARD);
       const at = now();
       const om = meta.get("owner");
@@ -110,6 +130,8 @@ export function registerReset(o) {
       const adopter = String(meta.get("adopter") || "");
       pairing.clearOwner(); // drops the adopter's relay device
       for (const d of devs) { pairing.devices.remove(d.id); if (`device:${d.id}` !== adopter) dropDevice(d.id); }
+      // every paired person session and grant ends with the owner (ADR 0032 2d): a reset is a recovery reset
+      if (typeof ctx.call === "function") Promise.resolve(ctx.call("presence.person.end-paired", {})).catch(() => null);
       return { reset: true, had };
     },
   });
