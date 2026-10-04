@@ -35,6 +35,7 @@ import {
 } from "./store.js";
 import { fileIdentityStore, signerOf, personIdOf } from "./identity.js";
 import { spaceFiles } from "./host.js";
+import fs from "node:fs";
 import path from "node:path";
 
 /** Test seams. Nothing here is a setting: a test sets them before the module starts. */
@@ -441,9 +442,17 @@ export default {
       if (!K || typeof K.adoptOwner !== "function") return;
       let s; try { s = identity.status(); } catch { return; }
       if (!s || !s.exists || !s.id || s.id === K.owner) return;
+      try { if (typeof K.owner === "string" && !(await kv.get("home-first-owner"))) await kv.put("home-first-owner", K.owner); } catch { /* the space.json record still names it */ }
       try { await K.adoptOwner(s.id); } catch (e) { ctx.log.warn(`the kernel could not take your identity as its owner: ${String(/** @type {any} */ (e).message || e).slice(0, 160)}`); }
     };
     /** Every Space this home hosts has the claimed identity as its owner too (a Space made before the claim, or by an older build, still has the first-start id): the same once-only adoption in each hosted kernel. */
+    /** The ids this home's owner has had before the claimed identity: the home kernel's space.json says it (previous_owner) and the module keeps what it saw at the first adoption. */
+    const firstOwners = () => {
+      const out = new Set();
+      try { const j = JSON.parse(fs.readFileSync(path.join(ctx.paths.root, "kernel", "space.json"), "utf8")); if (typeof j.previous_owner === "string") out.add(j.previous_owner); if (typeof j.owner === "string" && K && j.owner !== K.owner) out.add(j.owner); } catch { /* none */ }
+      if (K && typeof K.owner === "string") { try { const r = /** @type {any} */ (db.prepare("SELECT value FROM spaces_kv WHERE key = 'home-first-owner'").get()); if (r) out.add(JSON.parse(r.value)); } catch { /* none */ } }
+      return out;
+    };
     /** @type {Set<string>} */ const hostedAdopted = new Set();
     const adoptHosted = async () => {
       if (!K || !K.spaces || typeof K.spaces.list !== "function") return;
@@ -455,7 +464,8 @@ export default {
         if (!k || typeof k.kernelFor !== "function" || id === (K.space) || hostedAdopted.has(id + s.id)) continue;
         try {
           const hk = k.kernelFor({ name: "spaces", needs: { kernel: { spaces: true } } });
-          if (hk && typeof hk.adoptOwner === "function" && hk.owner !== s.id) await hk.adoptOwner(s.id);
+          // ONLY a space hosted for this home's own first-start owner takes the claimed identity: a space hosted for somebody else (a person's own space this home hosts for them) is never touched.
+          if (hk && typeof hk.adoptOwner === "function" && hk.owner !== s.id && firstOwners().has(String(hk.owner))) await hk.adoptOwner(s.id);
           hostedAdopted.add(id + s.id);
         } catch (e) { ctx.log.warn(`a hosted space could not take your identity as its owner (${id}): ${String(/** @type {any} */ (e).message || e).slice(0, 120)}`); }
       }
@@ -974,6 +984,27 @@ export default {
       }
       return [...new Set(ids)];
     };
+    /** A MEMBER's device (another person's, invited to a space this home hosts): the person whose own identity list carries this device as a device entry, among the people this home has verified by name
+     * (person-name/<id>, written when they joined). Read from the directory, cached a minute. Null when no known person's list has it. @type {Map<string, { at: number, person: string | null }>} */
+    const memberDeviceCache = new Map();
+    const memberDevicePerson = async (/** @type {string} */ device) => {
+      const hit = memberDeviceCache.get(device);
+      if (hit && Date.now() - hit.at < 60_000) return hit.person;
+      let person = null;
+      try {
+        for (const r of /** @type {any[]} */ (db.prepare("SELECT key, value FROM spaces_kv WHERE key LIKE 'person-name/%' LIMIT 200").all())) {
+          const id = String(r.key).slice("person-name/".length);
+          let label = null; try { label = JSON.parse(r.value); } catch { continue; }
+          if (typeof label !== "string" || !label) continue;
+          try {
+            const v = await dir.resolve(label, { resolve: ownerLookup });
+            if (v && v.ok && v.id === id && v.kind === "person" && Array.isArray(v.state && v.state.entries) && v.state.entries.some((/** @type {any} */ e) => e.kind === "device" && e.eid === device)) { person = id; break; }
+          } catch { /* that person's list could not be read: not them */ }
+        }
+      } catch { person = null; }
+      memberDeviceCache.set(device, { at: Date.now(), person });
+      return person;
+    };
     const homePerson = () => { let who = null; try { const st = identity.status(); who = st && st.exists ? st.id : null; } catch { who = null; } return who || (K && typeof K.owner === "string" ? K.owner : null); };
     // The SERVER's half of "a space whose home is this server": the creating device asks over the paired session and THIS home's kernel hosts the Space (kernel, store, key, log live here), for this
     // home's owner (the identity that paired it). Idempotent for a given id. Only the owner person acts: a chain that is not exactly the home's owner is refused.
@@ -1002,13 +1033,22 @@ export default {
       }
       try { const h = await K.spaces.host({ owner: K.owner, name: label, ...(typeof i.id === "string" && i.id ? { id: i.id } : {}) }); return { space: h.space || h.id, existed: false }; } catch (e) { throw plainKernelError(e); }
     }, { presence: { summary: (/** @type {any} */ i) => `Make the space ${i && i.name} on this server` } });
+    // Which paired server hosts a space this device made with a server as its home (null for a space hosted here): for the module that opens the remote path to that Space.
+    tool("spaces.server-of", "The paired server's device id that hosts a space this device made, or null. For modules.", obj({ space: str }, ["space"]), async i => ({ device: await serverOf(String(i.space)) }), { internal: true });
     tool("spaces.devices.enrolled", "Whether a device is enrolled in a space (true when the device has no list yet). For the kernel and other modules, which refuse a device that is not.", obj({ device: str, space: str }, ["device", "space"]),
       async i => {
         // A Space this module has no row for (the home's own Space, which the kernel makes before any space is created here) is asked by its id as given: no list means enrolled.
         // The device argument comes from other modules and the kernel (internal is reach, not trust): only the shapes a device id has are looked up (a relay device id or an enrolment entry id).
         if (!/^[A-Za-z0-9_-]{8,64}$/.test(String(i.device))) return { enrolled: false };
         // Only a device the box knows as this person's paired device is ever enrolled anywhere, with a list or without; an id in none of the tables answers false and writes nothing.
-        if (K && !(await isPairedDevice(String(i.device), homePerson()))) return { enrolled: false };
+        let memberPerson = null;
+        if (K && !(await isPairedDevice(String(i.device), homePerson()))) {
+          // not the home person's device: a MEMBER's device is enrolled in a space only when it is a device on that member's own identity list AND the member is an active member of that space NOW
+          memberPerson = await memberDevicePerson(String(i.device));
+          let ok = false;
+          if (memberPerson && typeof K.membership === "function") { try { ok = (await K.membership(memberPerson, String(i.space))).member === true; } catch { ok = false; } }
+          return { enrolled: ok };
+        }
         let id = String(i.space);
         let known = true;
         let rowStatus = "done";

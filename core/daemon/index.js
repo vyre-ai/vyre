@@ -34,6 +34,8 @@ import { registryRules } from "../harness/rules.js";
 // redeem, tailnet via relay/client - into the kernel just for one constant.
 import { DEFAULT_RELAY } from "../../lib/relay-default.js";
 import { within } from "../../lib/within.js";
+import { createRemoteKernel } from "../../kernel/remote/client.js";
+import { winkTransport } from "../../kernel/remote/wink.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // The SSE heartbeat. Clients call a stream dead after three missed beats (ADR 0029, R1); the
@@ -113,7 +115,7 @@ export function moduleRoots(root) {
 
 /**
  * Start vyred. Returns a handle with the running registry and a stop() for tests.
- * @param {{ root?: string, log?: (m: string, x?: any) => void, rules?: any, presence?: any, kernelPresence?: any,
+ * @param {{ root?: string, log?: (m: string, x?: any) => void, rules?: any, presence?: any, sessionFor?: (device: string) => Promise<{ call(tool: string, input: any): Promise<any> }>, kernelPresence?: any,
  *   kernel?: boolean, coreKeys?: any, deviceIdentity?: () => Promise<{ deviceId: string, deviceKey: string }>, person?: (socket: import("node:net").Socket) => Promise<string|{ key: string, tty: string|null }|null> }} [opts] person: a test's stand-in for atTerminal
  */
 export async function start(opts = {}) {
@@ -272,7 +274,17 @@ async function startLocked(opts, root, p, release) {
         return id;
       },
     });
-    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, runnerHost, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
+    // A space this device made with a PAIRED SERVER as its home is hosted there: K.for(id) is a RemoteKernel over the Wink peer wire to that server (the one remote path, kernel/remote). The server's device
+    // id is the spaces module's row (server-hosted/<id>); the open peer session comes from the Wink module (`wink.sessionFor`), or a test's `opts.sessionFor`. No row or no session function: not a remote space.
+    const remoteFor = (/** @type {string} */ id) => {
+      const sf = opts.sessionFor || /** @type {any} */ (registry.deps).winkSessionFor;
+      if (typeof sf !== "function") return null;
+      let device = null;
+      try { const r = /** @type {any} */ (db.prepare("SELECT value FROM spaces_kv WHERE key = ?").get(`server-hosted/${id}`)); if (r) device = JSON.parse(r.value).device; } catch { /* no spaces table yet */ }
+      if (typeof device !== "string" || !device) return null;
+      return createRemoteKernel({ space: id, transport: winkTransport({ sessionFor: async () => sf(device) }) });
+    };
+    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, runnerHost, remote: remoteFor, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
       // A credentialed request run at the home: the vault's own forward (an internal tool only the lease module may call), under the Space's credential; the kernel has already authorized it.
       forwardCredential: async (/** @type {any} */ q) => {
         const r = q.request;

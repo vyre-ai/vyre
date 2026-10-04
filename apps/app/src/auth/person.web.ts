@@ -166,3 +166,13 @@ export function webPerson(box: string, onSignIn?: () => void): PersonSession {
     },
   });
 }
+
+/** Keep a person token for `box` (the paired session's token, made by presence.person.start-paired) where webPerson reads it. */
+export async function keepToken(box: string, token: string): Promise<void> {
+  await idbSlot<string>("token:" + new URL(box).origin).save(token);
+}
+
+/** Is there a person token kept for `box`? (A browser that paired over the relay holds one; nothing else is asked.) */
+export async function hasToken(box: string): Promise<boolean> {
+  try { return Boolean(await idbSlot<string>("token:" + new URL(box).origin).load()); } catch { return false; }
+}

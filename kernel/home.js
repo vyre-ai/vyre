@@ -81,7 +81,17 @@ export async function bootHomeKernel(cfg) {
       drive = new Drive(pool);
     } catch (e) { log(`kernel: no Drive on this home (${/** @type {Error} */ (e).message})`); }
   }
-  const k = await bootKernel({ db: cfg.db, space: id.space, ...(drive ? { drive } : {}), ...(cfg.presence ? { presence: cfg.presence } : {}), owner: id.owner, owner_uid: process.getuid ? process.getuid() : 0, ...(key ? { key } : {}), legacyKeys, sealer, door: cfg.door, ...(cfg.forwardCredential ? { forwardCredential: cfg.forwardCredential } : {}), ...(personalStore ? { store: personalStore } : {}), ...(cfg.deviceEnrolled ? { deviceEnrolled: cfg.deviceEnrolled } : {}), ...(cfg.standIn ? { standIn: cfg.standIn } : {}), ...(cfg.runnerHost ? { runnerHost: cfg.runnerHost } : {}), onOwnerAdopted: (/** @type {string} */ to, /** @type {string} */ from) => { adoptedOwner(to, from); }, ...(cfg.onStageEnter ? { onStageEnter: cfg.onStageEnter } : {}), ...(cfg.stageTasks ? { stageTasks: cfg.stageTasks } : {}) });
+  const k = await bootKernel({ db: cfg.db, space: id.space, ...(drive ? { drive } : {}), ...(cfg.presence ? { presence: cfg.presence } : {}), owner: id.owner, owner_uid: process.getuid ? process.getuid() : 0, ...(key ? { key } : {}), legacyKeys, sealer, ...(sealer ? { checkpoints: true } : {}), door: cfg.door, ...(cfg.forwardCredential ? { forwardCredential: cfg.forwardCredential } : {}), ...(personalStore ? { store: personalStore } : {}), ...(cfg.deviceEnrolled ? { deviceEnrolled: cfg.deviceEnrolled } : {}), ...(cfg.standIn ? { standIn: cfg.standIn } : {}), ...(cfg.runnerHost ? { runnerHost: cfg.runnerHost } : {}), onOwnerAdopted: (/** @type {string} */ to, /** @type {string} */ from) => { adoptedOwner(to, from); }, ...(cfg.onStageEnter ? { onStageEnter: cfg.onStageEnter } : {}), ...(cfg.stageTasks ? { stageTasks: cfg.stageTasks } : {}) });
+  // BL-2: the restart's checks. The log against the last signed checkpoint, and against the anchor the sealing process keeps outside the database. A packaged build that finds the log
+  // rolled back, rewritten or broken does not start: the owner's own `anchor.reset` (a presence-gated act on the sealing process) is the way out after a restore from backup. A development
+  // build says so and goes on.
+  if (k.boot && !k.boot.ok) {
+    const way = k.boot.why && String(k.boot.why).startsWith("anchor_") ? "; after a restore from a backup the owner's anchor.reset (with their presence) lets it start" : "";
+    const msg = `the kernel's log does not match what was signed or anchored (${k.boot.why || "broken"})${way}`;
+    if (isPackaged(cfg.packageRoot)) { if (ownSealer && sealer) await sealer.close().catch(() => {}); throw new KernelError("log_rolled_back", `the kernel will not start: ${msg}`); }
+    log(`kernel: DEVELOPMENT build, starting anyway: ${msg}`);
+  }
+  if (k.checkpoints) k.checkpoints.start();   // a 60-second timer that never keeps the process alive; a checkpoint when 1,000 events or 10 minutes have passed
   // The migration pass ran inside the rebuild if there was anything to migrate; once the log holds a snapshot under the new seal the old key file has no use.
   if (sealer && legacyKeys.length && k.migrated) { try { fs.rmSync(id.keyFile, { force: true }); } catch { /* the file is harmless now */ } }
   // First party is a signature by the COMPILED release key (lib/release-sig.js), and a counter-signed list of minimum versions the release ships beside it
