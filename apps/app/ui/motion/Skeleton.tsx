@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { View, type DimensionValue } from "react-native";
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from "react-native-reanimated";
 import { cn } from "../lib/cn";
@@ -24,8 +24,16 @@ export function Skeleton({ width = "100%", height = 16, rounded = "rounded-row",
   );
 }
 
+/** True once `ms` have passed since mount: a fast load never flashes a skeleton (motion.md 3.6, show late at 150 ms; the space is kept so nothing shifts). */
+function useAfter(ms: number) {
+  const [late, setLate] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setLate(true), ms); return () => clearTimeout(t); }, [ms]);
+  return late;
+}
+
 /** What a list looks like while it loads: `rows` rows of a mark and two lines. */
 export function SkeletonRows({ rows = 4, card = true }: { rows?: number; card?: boolean }) {
+  const late = useAfter(150);
   const body = (
     <View className="gap-s3">
       {Array.from({ length: rows }, (_, i) => (
@@ -37,7 +45,7 @@ export function SkeletonRows({ rows = 4, card = true }: { rows?: number; card?: 
     </View>
   );
   return (
-    <View accessibilityRole="progressbar" accessibilityLabel="Loading" accessibilityState={{ busy: true }}>
+    <View accessibilityRole="progressbar" accessibilityLabel="Loading" accessibilityState={{ busy: true }} style={{ opacity: late ? 1 : 0 }}>
       {card ? <View className="rounded-card border border-edge bg-surface-2 py-s2">{body}</View> : body}
     </View>
   );

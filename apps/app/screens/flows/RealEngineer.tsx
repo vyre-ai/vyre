@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Banner, Button, Card, Chip, EmptyState, Field, Row, Text } from "@vyre/ui";
+import { Banner, Button, Card, Chip, EmptyState, Field, Row, Text, LoadingState } from "@vyre/ui";
 import { ChatScreen } from "../../src/chat/ChatScreen";
 import { Frame } from "../places/Frame";
 import { ENGINEER, engineerRefusal, findEngineer, mayTalk, proposals, stateOf, type Agent } from "./assistant-model";
@@ -20,9 +20,10 @@ export function RealEngineer() {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [roleErr, setRoleErr] = useState("");
   const load = useCallback(() => {
     setErr("");
-    myRole().then(setRole).catch(() => setRole("member"));
+    myRole().then((r) => { setRole(r); setRoleErr(""); }).catch((e) => { setRole(null); setRoleErr(said(e)); });
     listAgents().then((a) => setAgent(findEngineer(a))).catch((e) => { setErr(said(e)); setAgent(null); });
     Promise.all([listFlowRows().catch(() => []), listKitRows().catch(() => []), listTaskRows().catch(() => [])]).then(([f, k, t]) => setWaiting(proposals(f, k, t)));
   }, []);
@@ -35,6 +36,9 @@ export function RealEngineer() {
   const head = (
     <View className="flex-row flex-wrap items-center gap-s2"><Chip tone="accent" icon="play">Admins only</Chip><Chip>Proposes, never acts</Chip><Chip>Cannot send, pay or read the vault</Chip></View>
   );
+  if (roleErr && role === null) {
+    return <Frame back="/u/flows" title="@Engineer" sub="Describe a process in plain words."><Card><EmptyState title="Could not check your role" body={roleErr} action={{ label: "Try again", onPress: load }} /></Card></Frame>;
+  }
   if (role !== null && !mayTalk(role)) {
     return <Frame back="/u/flows" title="@Engineer" sub="Describe a process in plain words.">{head}<Card><EmptyState title="Only space admins can talk to @Engineer" body="Ask an admin of this space, or open Flows to read what it built." /></Card></Frame>;
   }
@@ -58,7 +62,7 @@ export function RealEngineer() {
     <Frame back="/u/flows" title="@Engineer" sub="Describe a process in plain words.">
       {head}
       {err ? <Banner tone="warn"><Text>{err}</Text></Banner> : null}
-      {state === null ? <Card><EmptyState title="Loading" body="Asking your Vyre." /></Card> : null}
+      {state === null ? <LoadingState rows={3} /> : null}
       {state === "none" && !err ? <Card><EmptyState title="@Engineer is not on this box yet" body="Every space gets @Engineer built in. This box does not list it, so there is nobody to talk to. Update your Vyre, then open this page again." action={{ label: "Check again", onPress: load }} /></Card> : null}
       {state === "new" ? (
         <Card>

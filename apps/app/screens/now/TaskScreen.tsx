@@ -17,7 +17,7 @@ export default function TaskScreen() {
     <View className="min-h-0 flex-1">
       <PageHeader title={h?.title ?? "Task"} context={h?.context} faces={h?.faces} onBack={back} />
       <ScrollView contentContainerClassName="gap-s4 px-s4 pb-s12 pt-s2 max-w-page w-full self-center">
-        {q.error && !q.data ? <ErrorState title="Could not load this task." reason={q.error.message} retry={q.reload} />
+        {q.error && !q.data ? <ErrorState title="This task did not load" reason={q.error.message} retry={q.reload} />
           : !q.data ? <SkeletonRows rows={3} />
           : !task ? <EmptyState title="That task is gone" body="It may have been removed." action={{ label: "Back to Now", onPress: back }} />
           : <TaskDetail world={q.data} task={task} onAction={(a, input) => void run(task, a, input)}

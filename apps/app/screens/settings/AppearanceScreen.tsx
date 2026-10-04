@@ -73,7 +73,7 @@ export function AppearanceScreen() {
           {scope !== showing ? <Text size="caption" tone="label">{`${NAMES[scope]} is not showing. Switch to it in the rail to see these.`}</Text> : null}
         </Group>
       ) : null}
-      <Group title="Every base component, live"><ComponentGallery /></Group>
+      {real ? null : <Group title="Every base component, live"><ComponentGallery /></Group>}
     </Page>
   );
 }

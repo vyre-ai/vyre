@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Avatar, Button, Card, Chip, Divider, Field, Row, Segmented, Sheet, Switch, Text, allowsMock, showToast, markRef, Banner, EmptyState } from "@vyre/ui";
+import { Avatar, Button, Card, Chip, Divider, Field, Row, Segmented, Sheet, Switch, Text, allowsMock, showToast, markRef, Banner, LoadingState } from "@vyre/ui";
 import { Page } from "../places/Frame";
 import { CUSTOMIZE_SPACES } from "./data";
 import { useTypes } from "./state";
@@ -17,7 +17,7 @@ export function CustomizeScreen() {
   const real = !allowsMock();
   const showing = useSpaces((s) => s.space);
   const shell = useShell((s) => s.data);
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { void load(real && showing !== "all" ? showing : undefined); }, [showing]);
   const [space, setSpace] = useState("harlow");
   const [sheet, setSheet] = useState<null | { tpl: string; name: string; work: boolean }>(null);
   const list = real ? types : types.filter((t) => t.spaces.includes(space));
@@ -26,7 +26,7 @@ export function CustomizeScreen() {
     <Page title="Customize" sub={real ? `Types, fields and stages in ${spaceName}` : spaceName} back="/u/settings">
       {real ? null : <Segmented label="Space" value={space} onChange={setSpace} options={CUSTOMIZE_SPACES} />}
       {error ? <Banner tone="warn">{error}</Banner> : null}
-      {real && loading && !types.length ? <EmptyState title="Loading" body="Asking your Vyre." /> : null}
+      {real && loading && !types.length ? <LoadingState rows={3} /> : null}
       <Card flush>
         {list.map((t, i) => (
           <View key={t.id}>

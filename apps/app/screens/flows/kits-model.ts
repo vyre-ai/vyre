@@ -22,6 +22,7 @@ export function kitLine(k: KitRow): string {
 export const listed = (rows: KitRow[]): KitRow[] => rows.filter((k) => k.status !== "removed").sort((a, b) => Number(b.status === "installed") - Number(a.status === "installed") || kitName(a.id).localeCompare(kitName(b.id)));
 
 export function kitRefusal(code: string | undefined, message: string): string {
+  if (code === "unknown_action") return "This box cannot install Kits yet. It will once it is updated.";
   if (code === "chain_not_person") return "Only a person removes a Kit, not an assistant.";
   if (code === "presence_required") return "That needs you. Approve on this device, then try again.";
   if (code === "not_found") return "That Kit is already gone.";

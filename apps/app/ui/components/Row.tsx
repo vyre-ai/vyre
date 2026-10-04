@@ -32,9 +32,9 @@ function stylesFor(ctx: UiCtx) {
     box: { ...box, minHeight: px(ctx, "--row-h"), paddingHorizontal: px(ctx, "--s-3") },
     dense: { ...box, minHeight: 56, paddingHorizontal: px(ctx, "--s-4") },
     selected: { backgroundColor: ctx.color.selected },
-    lead: { flex: 0, flexDirection: "row", alignItems: "center" },
+    lead: { flexGrow: 0, flexShrink: 0, flexDirection: "row", alignItems: "center" },
     main: { minWidth: 0, flex: 1 },
-    end: { flex: 0, flexDirection: "row", alignItems: "center", gap: px(ctx, "--s-2") },
+    end: { flexGrow: 0, flexShrink: 0, flexDirection: "row", alignItems: "center", gap: px(ctx, "--s-2") },
     press: { backgroundColor: ctx.color.press },
     hover: { backgroundColor: ctx.color.hover },
   };

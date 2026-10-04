@@ -52,6 +52,6 @@ test("an upload path is checked before the box is asked, bytes become base64, an
   assert.equal(m.toBase64(new Uint8Array([1, 2, 3])), "AQID");
   assert.match(m.spaceDriveRefusal("unavailable", ""), /no Drive yet/);
   assert.match(m.spaceDriveRefusal("too_large", ""), /8 MB/);
-  assert.match(m.spaceDriveRefusal("presence_required", ""), /Face ID/);
+  assert.match(m.spaceDriveRefusal("presence_required", ""), /Approve on this device/);
   assert.match(m.versionLine({ ver: 3, size: 10, at: 0 }, 3), /^Version 3, current, 10 B$/);
 });
