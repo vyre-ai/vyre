@@ -412,6 +412,14 @@ export const SURFACE_LABELS = Object.freeze(["cli", "local", "deck", "capsule", 
 /** Who may call a reach "person" tool: the person's own surfaces, and the owner's own devices (callerAllowed). */
 const PERSON_CALLERS = Object.freeze([...SURFACE_LABELS, "tailnet", "device", "space", "agent"]);
 
+/**
+ * The once-only registry default (reviewer-2's group D audit, the lead's ruling 4 Oct): a tool that changes state and declares no `callers` list is the person's own surfaces and modules
+ * only, so an agent is refused until the tool's owner declares who else may call it; a missing declaration is a refused call, the safe failure. A tool says what it is with `effect: "read"`
+ * or `"write"` (manifest entry or `ctx.tool` definition); undeclared, a tool whose last name segment is a plain read verb is a read and everything else is a write.
+ */
+const READ_VERBS = new Set(["get", "list", "status", "show", "read", "search", "find", "info", "check", "peek", "tail", "whoami", "me", "describe", "explain", "preview", "count", "has", "query", "history", "view", "inspect", "doctor", "detect", "lookup", "resolve", "verify", "stats", "summary", "ls", "cat", "available", "enabled", "tools", "types", "url", "version", "health", "ping", "events", "log", "logs", "whois", "targets", "pending", "mine", "current", "overview"]);
+export const effectOf = (/** @type {string} */ name, /** @type {any} */ declared) => (declared === "read" || declared === "write" ? declared : READ_VERBS.has(String(name).split(".").pop() || "") ? "read" : "write");
+
 export const callerKind = caller => {
   const c = String(caller);
   // "mcp:agent:<name>" and "mcp:thread:<id>" (a Vyre-owned session, ADR 0030) are both "mcp".
@@ -934,7 +942,13 @@ export class Registry {
         }
         // opts.onPartial: a tool that streams (threads.quick with stream: true) hands its partial text to
         // this function, on this call only. Never the events bus, and never over a connection.
-        if (!as) return this.call(tool, input, `module:${m.name}`, { firstParty: fp, ...(opts && typeof opts.onPartial === "function" ? { partial: opts.onPartial } : {}) });
+        if (!as) {
+          // A module hop carries the caller class the running call came from (reviewer-2's group D, 2): a tool the registry defaulted to person-only checks the ORIGINAL caller, so a module acting
+          // for an agent is still an agent call. A call with no running call (a timer, a start) has no origin and is the module's own.
+          const running = currentCall();
+          const origin = running ? (running.origin || (running.caller && !String(running.caller).startsWith("module:") ? running.caller : undefined)) : undefined;
+          return this.call(tool, input, `module:${m.name}`, { firstParty: fp, ...(origin ? { origin } : {}), ...(opts && typeof opts.onPartial === "function" ? { partial: opts.onPartial } : {}) });
+        }
         // The capsule module sits in local/capsule (the Mac app's), and is first party there.
         const core = Boolean(rec && (path.resolve(rec.dir).startsWith(CORE_DIR + path.sep) || (m.name === "capsule" && fp)));
         const allowed = /** @type {any} */ (CALL_AS)[m.name];
@@ -1047,9 +1061,12 @@ export class Registry {
         // route, and person is the person's own surfaces and devices only. anyone and asked stay
         // open here; the asked check and outward routing are later build steps (plans/platform.md).
         const e = entries.get(name), reach = e ? e.reach : "anyone";
-        this.tools.set(name, { module: m.name, description: def.description || "", input: def.input || { type: "object" }, run: def.run,
+        const effect = effectOf(name, def.effect || (e && e.effect));
+        // the once-only default: a state-changing tool open to anyone that declares no callers list is the person's surfaces and modules, with the original caller checked on a module hop
+        const defaulted = reach === "anyone" && !Array.isArray(def.callers) && effect === "write" && !def.hook && !def.internal;
+        this.tools.set(name, { module: m.name, description: def.description || "", input: def.input || { type: "object" }, run: def.run, effect, defaulted,
           internal: Boolean(def.internal) || reach === "modules",
-          callers: reach === "person" ? [...PERSON_CALLERS] : Array.isArray(def.callers) ? def.callers : null,
+          callers: reach === "person" ? [...PERSON_CALLERS] : Array.isArray(def.callers) ? def.callers : defaulted ? [...PERSON_CALLERS, "module"] : null,
           hook: Boolean(def.hook) || reach === "hook", presence: def.presence || false, core: Boolean(def.core),
           reach, outward: (e && e.outward) || null, target: (e && e.target) || null, projectArg: (e && e.projectArg) || null, cwdArg: (e && e.cwdArg) || null, declaredReach: objectForm.has(name) });
       },
@@ -1109,6 +1126,8 @@ export class Registry {
   async call(tool, input = {}, caller = "unknown", { proof = null, keep = false, terminal = null, idempotencyKey = undefined, door = false, ...meta } = {}) {
     const def = this.tools.get(tool);
     if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
+    // `origin` is set only by a module's own ctx.call (the caller class the running call came from); nothing a client sends is ever one.
+    if (!String(caller).startsWith("module:")) delete meta.origin;
     // The static permission gates, up to the input schema. With deps.gates (the kernel retrofit, kernel/retrofit/gates.js)
     // they are decided by `authorize` over grants compiled from the rules below; without it the rules below run as written.
     // The golden set (kernel/golden) proves the two give the same answer for every tool, caller and world.
@@ -1168,8 +1187,19 @@ export class Registry {
         return { error: { code: "person_session_required", message: `${tool} is the person's own action: sign in on this device with your passkey first` } };
       }
     }
+    // A tool the registry defaulted to person-only checks the ORIGINAL caller on a module hop: a module acting for an agent is still an agent call.
+    if (def.defaulted && String(caller).startsWith("module:") && meta.origin && !callerAllowed(def.callers, meta.origin)) {
+      return { error: { code: "denied", message: `${tool} is not available to ${callerKind(meta.origin)} callers, through a module or not` } };
+    }
     const problems = checkInput(def.input, input);
     if (problems.length) return { error: { code: "bad_input", message: problems.join("; ") } };
+    // Undeclared input keys are refused (reviewer-2's group D, 3): a tool that lists its properties takes those and no others, so a handler that spreads the rest of its input into something
+    // stronger (threads.start into launch) is never handed a key its schema did not name. A schema with no properties list, or one that says additionalProperties, is taken as written; a module's
+    // own call is not held to it (a module knows its tool's real keys), and the loader's door calls are not either.
+    if (!door && !String(caller).startsWith("module:") && def.input && def.input.type === "object" && def.input.properties && def.input.additionalProperties === undefined && input && typeof input === "object") {
+      const extra = Object.keys(input).filter(k => !Object.hasOwn(def.input.properties, k));
+      if (extra.length) return { error: { code: "bad_input", message: `${tool} does not take ${extra.slice(0, 5).join(", ")}` } };
+    }
     // A tool that takes a project declares projectArg, and one that takes a folder declares cwdArg. An agent's call for a
     // project it is not granted (or a folder in one) is refused here, once, for every module alike: the one door is
     // projects.reach (owner's revokes and the assistant's rule included). not_found, so a refusal never says whether the

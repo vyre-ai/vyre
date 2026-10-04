@@ -47,6 +47,8 @@ export interface ToolEntry {
   outward?: Outward;
   /** It spends money through the module's own model or API use. */
   cost?: "paid";
+  /** What the tool does to state: "read" changes nothing, "write" does. Undeclared, a read verb at the end of the name (list, get, status ...) is a read, else a write. A write with no `callers` list is open to the person's surfaces and modules only; declare `callers` to open it to anyone else. */
+  effect?: "read" | "write";
   /** The input field (or fields) holding a project: an agent calling for a project it is not granted is refused (not_found) before the tool runs, and the tool gets meta.reach for listings. */
   projectArg?: string | string[];
   /** The input field (or fields) holding a folder: mapped to its project, and refused for an agent not granted that project (or for a folder in no project). */
