@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":342,"tool":1184,"event":452,"config":254,"env":237,"screen":20,"concept":43},
+  "counts": {"command":342,"tool":1185,"event":453,"config":254,"env":238,"screen":20,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -895,6 +895,7 @@
     {"kind":"event","name":"pairing-window.closed","definedIn":"core/relay/index.js","page":"reference/events.md#relay","module":"relay","mentions":[]},
     {"kind":"event","name":"pairing-window.opened","definedIn":"core/relay/index.js","page":"reference/events.md#relay","module":"relay","mentions":[]},
     {"kind":"event","name":"pairing-window.renewed","definedIn":"core/relay/index.js","page":"reference/events.md#relay","module":"relay","mentions":[]},
+    {"kind":"event","name":"pairing.abandoned","definedIn":"core/relay/index.js","page":"reference/events.md#relay","module":"relay","mentions":[]},
     {"kind":"event","name":"pairing.pending","definedIn":"core/relay/index.js","page":"reference/events.md#relay","module":"relay","mentions":[]},
     {"kind":"event","name":"pairing.rejected","definedIn":"core/relay/index.js","page":"reference/events.md#relay","module":"relay","mentions":[]},
     {"kind":"event","name":"pairing.requested","definedIn":"core/relay/index.js","page":"reference/events.md#relay","module":"relay","mentions":[]},
@@ -1328,6 +1329,7 @@
     {"kind":"tool","name":"spaces.identity.entry.add","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesidentityentryadd","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.identity.entry.remove","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesidentityentryremove","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.identity.id","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesidentityid","module":"spaces","mentions":[]},
+    {"kind":"tool","name":"spaces.identity.lookup","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesidentitylookup","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.identity.name-of","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesidentityname-of","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.identity.recover.approve","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesidentityrecoverapprove","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.identity.recover.begin","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesidentityrecoverbegin","module":"spaces","mentions":[]},
@@ -2368,6 +2370,7 @@
     {"kind":"env","name":"VYRE_TEST_HOST","definedIn":"core/daemon/host-guard.js","page":"reference/config.md#for-tests-and-development","mentions":[]},
     {"kind":"env","name":"VYRE_TEST_HOSTED","definedIn":"core/daemon/host-guard.js","page":"reference/config.md#for-tests-and-development","mentions":[]},
     {"kind":"env","name":"VYRE_TEST_MAC_OK","definedIn":"scripts/mac-test-guard.mjs","page":null,"mentions":[]},
+    {"kind":"env","name":"VYRE_TEST_PAIR_NO_PROOF","definedIn":"core/wink/pairing.js","page":"reference/config.md#for-tests-and-development","mentions":[]},
     {"kind":"env","name":"VYRE_TEST_REAL_TAILSCALE","definedIn":"core/link/transport.js","page":"reference/config.md#for-tests-and-development","mentions":[]},
     {"kind":"env","name":"VYRE_TEST_UNGATED_RING","definedIn":"core/relay/index.js","page":"reference/config.md#for-tests-and-development","mentions":[]},
     {"kind":"env","name":"VYRE_TEST_UNSTRIPPED_WRAPPER","definedIn":"scripts/build-site.sh","page":null,"mentions":[{"page":"releases/checklist.md","line":34,"anchor":"what-the-released-composeyml-must-look-like-pulled-boxes"}]},
