@@ -1829,3 +1829,34 @@ test("add this device from another device: a no, a wrong pick, a used code and a
   await assert.rejects(() => addThisDevice({ payload: open.qr, key: { publicKey: "short" } }), e => e.code === "bad_code");
   assert.equal(await count(), n0);
 });
+
+// ---- a recovered phone (tailnet, 4 Oct): its key is on the identity's list by recovery and was never paired with this server ----
+test("a recovered phone's key, on the identity's list but never paired here, is not admitted: no device channel, no peer stream, no session; its way in is a pairing (the owner's yes, or its identity proof on a pair-to server)", async t => {
+  const sealWas = process.env.VYRE_SEAL_DEV;
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; if (sealWas === undefined) delete process.env.VYRE_SEAL_DEV; else process.env.VYRE_SEAL_DEV = sealWas; });
+  const w = await world(t, { kernel: true });
+  const crypt = nodeCrypto();
+  const keys = await clientDeviceKey({ keyStore: keystore(t), crypto: crypt });
+  const offer = (await resolveTicket(fromBase64url((await w.d.registry.call("relay.pair.ticket", {}, "cli", PROOF)).data.ticket), { relay: w.status.url, crypto: crypt })).offer;
+  const route = offer.route, box = Buffer.from(offer.box);
+  // as an ordinary device (no pairing secret, no invitee hello): the box does not know the key, and the channel never opens
+  await assert.rejects(() => openChannel({ relay: w.status.url, route, box, keys, hello: { v: 1 }, crypto: crypt, WebSocket: globalThis.WebSocket }), /not a paired device|closed|refused/i);
+  // a hello that names a pairing it does not hold is the same
+  await assert.rejects(() => openChannel({ relay: w.status.url, route, box, keys, hello: { v: 1, pair: "x".repeat(22) }, crypto: crypt, WebSocket: globalThis.WebSocket }), /expired|already used|closed|refused/i);
+  assert.equal(((await w.d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices || []).length, 0, "and no device row was made");
+  // as an invitee (the only unpaired door): a channel with no row, whose one stream is the invitee stream; it gets no session, no tool and no kernel call without an invite
+  const r = await openChannel({ relay: w.status.url, route, box, keys, hello: { v: 1, invitee: true }, crypto: crypt, WebSocket: globalThis.WebSocket });
+  t.after(() => r.channel.close(1000, "done"));
+  assert.ok(r.reply.invitee && !r.reply.device);
+  const head = h => new Promise(res => { const s = r.channel.open(h); s.onhead = x => res({ status: x && x.status, s }); s.onreset = () => res({ status: 0, s }); });
+  assert.equal((await head({ peer: "wink", space: "home" })).status, 400, "no peer stream without an invite hello");
+  const { peerSession, streamPipe } = await import("../core/wink/node/peer-wire.js");
+  const bad = await head({ peer: "wink", space: "home", invitee: { space: "spc_" + "a".repeat(12), invite: "inv_" + "b".repeat(32), identity: "per_" + "c".repeat(26), entry: "d".repeat(26), ts: Date.now(), nonce: "n".repeat(20), channel: r.reply.invitee, sig: "s".repeat(86) } });
+  const session = peerSession(streamPipe(bad.s), { first: 1 });
+  for (const [tool, input] of [["system.info", {}], ["records.me", {}], ["presence.person.start-paired", { sig: "AAAA" }], ["wink.server.pairing", {}]]) {
+    await assert.rejects(() => session.call(tool, input, { timeoutMs: 3000 }), e => e.code === "denied", tool);
+  }
+  assert.equal(((await w.d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices || []).length, 0, "an invitee channel made no device row either");
+});
