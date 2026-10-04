@@ -15,6 +15,10 @@
   "does": {
     "tools": [
       {
+        "name": "approvals.request",
+        "reach": "person"
+      },
+      {
         "name": "approvals.ask",
         "reach": "person"
       },

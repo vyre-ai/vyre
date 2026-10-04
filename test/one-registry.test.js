@@ -30,7 +30,7 @@ test("a Space made through spaces.create is the kernel's Space (one id, a store 
   const lines = /** @type {string[]} */ ([]);
   const d = await start({ root, kernel: true, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
   t.after(() => d.stop());
-  const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "deck" });
+  const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "cli" });
   const ok = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => { const r = await deck(tool, input); assert.ok(!r.error, `${tool}: ${JSON.stringify(r.error)} :: ${lines.filter(l => /owner|identity|adopt/i.test(l)).join(" ; ").slice(0, 800)}`); return r.data; };
 
   const made = await ok("spaces.identity.create", { name: "alex" });
@@ -73,7 +73,7 @@ test("the claimed identity is the home kernel's owner at once (no spaces call af
   const cfg = (/** @type {string} */ root, /** @type {string} */ name) => fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name, transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${port}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
   const lines = /** @type {string[]} */ ([]);
   const agree = async (/** @type {string} */ root, /** @type {any} */ d, /** @type {string} */ label) => {
-    const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "deck" });
+    const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "cli" });
     const st = await deck("spaces.identity.status");
     assert.ok(!st.error, label + JSON.stringify(st.error));
     // records.me is the kernel's own tool: it must already name the identity, with no spaces call in between
@@ -91,20 +91,20 @@ test("the claimed identity is the home kernel's owner at once (no spaces call af
   const da = await start({ root: a, kernel: true, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
   t.after(() => da.stop());
   // SF-1 (reviewer-2): calls that return before the first await (module start, a spaces tool BEFORE any claim) must not leave the single-flight guard stuck, or the claim is never adopted
-  for (let i = 0; i < 3; i++) assert.ok(!(await call("spaces.identity.status", {}, { root: a, caller: "deck" })).error);
-  const casey = await call("spaces.identity.create", { name: "casey" }, { root: a, caller: "deck" });
+  for (let i = 0; i < 3; i++) assert.ok(!(await call("spaces.identity.status", {}, { root: a, caller: "cli" })).error);
+  const casey = await call("spaces.identity.create", { name: "casey" }, { root: a, caller: "cli" });
   assert.ok(!casey.error, JSON.stringify(casey.error));
   await agree(a, da, "fresh home");
   // existing home: claimed with the kernel off, then started with it on
   const b = tempHome(t); cfg(b, "existing-box");
   const off = await start({ root: b, kernel: false, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
-  const made = await call("spaces.identity.create", { name: "drew" }, { root: b, caller: "deck" });
+  const made = await call("spaces.identity.create", { name: "drew" }, { root: b, caller: "cli" });
   assert.ok(!made.error, JSON.stringify(made.error));
   await off.stop();
   const on = await start({ root: b, kernel: true, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
   t.after(() => on.stop());
   await agree(b, on, "existing home");
-  assert.equal((await call("spaces.identity.status", {}, { root: b, caller: "deck" })).data.id, made.data.id, "the id did not change");
+  assert.equal((await call("spaces.identity.status", {}, { root: b, caller: "cli" })).data.id, made.data.id, "the id did not change");
 });
 
 test("lend is the one switch: it makes the kernel's compute offers (the space's side and the member's own) and turning it off withdraws them", async t => {
@@ -156,7 +156,7 @@ test("PA-1: creating a space is all or nothing in the kernel's registry too: a r
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "pa1-box", transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${port}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
   const d = await start({ root, kernel: true, log: () => {} });
   t.after(() => d.stop());
-  const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "deck" });
+  const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "cli" });
   assert.ok(!(await deck("spaces.identity.create", { name: "alex" })).error);
   const hostedCount = () => d.kernel.spaces.list().length;
   const folders = () => { try { return fs.readdirSync(path.join(root, "kernel", "spaces")).length; } catch { return 0; } };
@@ -204,7 +204,7 @@ test("a Space this home hosted with the first-start owner (made before the claim
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "hosted-box", transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${port}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
   const d = await start({ root, kernel: true, log: () => {} });
   t.after(() => d.stop());
-  const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "deck" });
+  const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "cli" });
   // a Space hosted for the home's first-start owner, before any identity exists
   const old = d.kernel.id.owner;
   const stale = await d.kernel.spaces.host({ owner: old, name: "stale" });
@@ -229,7 +229,7 @@ test("lend: a module record that says the first grant was given is not consent t
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "lend2-box", transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${port}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
   const d = await start({ root, kernel: true, presence: present, log: () => {} });
   t.after(() => d.stop());
-  const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "deck" });
+  const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "cli" });
   const made = (await deck("spaces.identity.create", { name: "alex" })).data;
   const a = (await deck("spaces.create", { name: "lendb", home: { kind: "this-computer", confirmed: true } })).data;
   const b = (await deck("spaces.create", { name: "lendc", home: { kind: "this-computer", confirmed: true } })).data;
@@ -263,7 +263,7 @@ test("a directory that lost its claims gets the identity and the spaces' names b
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "rep-box", transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${port}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
   const d = await start({ root, kernel: true, log: () => {} });
   t.after(() => d.stop());
-  const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "deck" });
+  const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "cli" });
   assert.ok(!(await deck("spaces.identity.create", { name: "alex" })).error);
   const sp = await deck("spaces.create", { name: "harlowrep", home: { kind: "this-computer", confirmed: true } });
   assert.equal(sp.data.status, "done", JSON.stringify(sp));
@@ -289,7 +289,7 @@ test("the kernel's home space is a space in the device lists: pairing's list inc
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "home-box", transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${port}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
   let d = await start({ root, kernel: true, log: () => {} });
-  const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "deck" });
+  const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "cli" });
   const made = (await deck("spaces.identity.create", { name: "alex" })).data;
   const home = d.kernel.id.space;
   assert.match(home, /^spc_/);
@@ -327,7 +327,7 @@ test("spaces.devices.enrolled is fail-closed: an unknown space is enrolled only 
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "fc-box", transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${port}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
   const d = await start({ root, kernel: true, log: () => {} });
   t.after(() => d.stop());
-  const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "deck" });
+  const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "cli" });
   const enrolled = async (/** @type {string} */ device, /** @type {string} */ space) => (await d.registry.call("spaces.devices.enrolled", { device, space }, "module:vyred", { door: true })).data.enrolled;
   // a server with no identity of its own: its owner is the person, it lists the space its kernel hosts for that owner
   const hosted = await d.kernel.spaces.host({ owner: d.kernel.id.owner, name: "serverspace" });
@@ -392,4 +392,28 @@ test("spaces.devices.enrolled is fail-closed: an unknown space is enrolled only 
   assert.equal(await enrolled("devicexxxxxxxxxx7", tmpShared.space), false, "the temp access has ended: a device meeting the box now is not enrolled in it");
   await shared.gateway.grants.removeMember(them, { person: me2 }, { presence: { method: "stand-in" } });
   assert.equal(await enrolled(dev2, shared.space), false, "removed: the kernel says so at call time");
+});
+
+test("spaces.host-here: this home's owner has its OWN kernel host a space (kernel, folder and key here), idempotent by id; a bad name or id is refused", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const port = await freePort();
+  const child = spawn(process.execPath, [SCRIPT, "--port", String(port)], { stdio: ["ignore", "pipe", "inherit"] });
+  t.after(() => { child.kill("SIGTERM"); });
+  await new Promise((res, rej) => { child.stdout.on("data", d => { if (String(d).includes("stand-in names directory")) res(null); }); child.on("exit", c => rej(new Error(`the stand-in exited early (${c})`))); });
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "host-box", transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${port}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  const d = await start({ root, kernel: true, presence: present, log: () => {} });
+  t.after(() => d.stop());
+  const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "cli" });
+  const r = await deck("spaces.host-here", { name: "servedhere" });
+  assert.ok(!r.error, JSON.stringify(r.error));
+  assert.match(r.data.space, /^spc_[a-z2-7]{12}$/);
+  assert.equal(d.kernel.spaces.hosts(r.data.space), true, "this home's kernel hosts it");
+  assert.ok(fs.existsSync(path.join(root, "kernel", "spaces", r.data.space, "space.json")));
+  const again = await deck("spaces.host-here", { name: "servedhere", id: r.data.space });
+  assert.deepEqual([again.data.space, again.data.existed], [r.data.space, true]);
+  assert.equal((await deck("spaces.host-here", { name: "x" })).error?.code, "bad_name");
+  assert.equal((await deck("spaces.host-here", { name: "fine", id: "spc_nope" })).error?.code, "bad_input");
 });
