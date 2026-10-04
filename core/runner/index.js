@@ -55,6 +55,7 @@ export default {
     const portsFor = async space => {
       const p = ports(); if (p) return p;
       const h = hostOf(); if (!h || typeof h.identity !== "function") return null;
+      if (ctx.config && ctx.config.role === "box") return null;   // a server seals its own sessions (below); lending a computer to a Space is a person's computer
       let l = lenders.get(space);
       if (!l) {
         const k = ctx.kernel?.for?.(space);
@@ -66,7 +67,7 @@ export default {
       }
       return l.ports;
     };
-    const hasHost = () => Boolean(seam.ports || hostOf());
+    const hasHost = () => Boolean(seam.ports || (hostOf() && !(ctx.config && ctx.config.role === "box")));
     // A workspace left open by a runner that died must not stay readable: close any nobody holds a lease for.
     try { await reconcile({ base: ctx.paths.root + "/runner", platform: seam.platform }); } catch {}
     /** @type {Map<string, any>} one runner per space */
@@ -90,6 +91,7 @@ export default {
       input: obj(),
       run: async () => {
         const why = unavailable(seam.platform) || workspaceUnavailable(seam.platform, { base: ctx.paths.root + "/runner" });
+        if (ctx.config && ctx.config.role === "box") return { ready: false, why: "this server seals its own sessions at every turn; running a Space's work is for a person's computer", ownServer: Boolean(ownServerOf()), spaces: [] };
         let ident = ""; const h = !why && !seam.ports ? hostOf() : null;
         if (h && typeof h.identity === "function") { try { await h.identity(); } catch (e) { ident = String(/** @type {any} */ (e).message || "this computer has no device identity yet"); } }
         return { ready: !why && hasHost() && !ident, why: why || ident || (hasHost() ? "" : "the space's vault and sync are not connected yet"), spaces: [...runners].map(([space, r]) => { const { dir, ...rest } = r.status(); return { space, ...rest }; }) };
@@ -132,16 +134,34 @@ export default {
     const seals = new Map();
     // The own-server seal's two ports come from the test seam / kernel ports, or from the host (the daemon's own-server half).
     const ownServerOf = () => ports()?.ownServer || hostOf()?.ownServer || null;
-    const offTurns = ownServerOf() ? ctx.events.on("thread.finished", async e => {
-      const o = ownServerOf(); let r = null;
-      try { r = o && await o.resolve(e); } catch { r = null; }
-      if (!r) return;
+    const sealFor = (o, r) => {
       const key = `${r.space}/${r.session}`;
       let seal = seals.get(key);
       if (!seal) { seal = createTurnSeal({ port: o.port(r.space), session: r.session, file: r.file, root: r.root }); seals.set(key, seal); }
+      return { key, seal };
+    };
+    // Always subscribed: whether this computer seals its own sessions is asked at each turn (the daemon's kernel is not up yet when this module starts).
+    const offTurns = ctx.events.on("thread.finished", async e => {
+      const o = ownServerOf(); let r = null;
+      try { r = o && await o.resolve(e); } catch { r = null; }
+      if (!r) return;
+      const { key, seal } = sealFor(o, r);
       try { const done = await seal.seal({ state: r.state }); emit(r.space, { type: "sealed", session: r.session, ...done }); }
       catch (err) { seals.delete(key); emit(r.space, { type: "seal-failed", session: r.session, code: err.code || "error", message: String(err.message || err).slice(0, 200) }); }
-    }) : null;
+    });
+
+    ctx.tool("runner.recover", {
+      description: "Put a session on this server back to its last whole turn before it is resumed after an unclean stop: the provider's transcript is rewritten to exactly the sealed lines (a torn last line and an unfinished turn are dropped). Answers the sealed turn and its state, or nothing when the session was never sealed. Call it only while no process of the session is running.",
+      input: obj({ session: str }, ["session"]),
+      run: async ({ session }) => {
+        const o = ownServerOf();
+        if (!o) throw Object.assign(new Error("this computer does not seal its own sessions"), { code: "unavailable" });
+        const r = await o.resolve({ payload: { session } });
+        if (!r) throw Object.assign(new Error("no such session here"), { code: "not_found" });
+        const { key, seal } = sealFor(o, r);
+        try { return (await seal.recover()) || { sealed: false }; } catch (e) { seals.delete(key); throw e; }
+      },
+    });
 
     return { async stop() { try { off?.(); } catch {} try { offTurns?.(); } catch {} for (const l of lenders.values()) { try { l.stop(); } catch {} } for (const r of runners.values()) { try { await r.stopAll(); await r.lock(); } catch {} } runners.clear(); } };
   },

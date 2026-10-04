@@ -13,8 +13,8 @@ export const sha256b64 = s => crypto.createHash("sha256").update(s).digest("base
 /** What a device's identity-chain key signs to vouch for a presence key: the person, the key id and the key. The native signer uses this too. */
 export const bindBytes = (person, key_id, spki) => Buffer.from(`vyre-presence-bind-v1\n${person}\n${key_id}\n${sha256b64(spki)}`);
 export const payloadHash = (op, space, fields) => sha256b64(canonical({ op, space, fields }));
-/** The bytes a presence proof signs: the proof without its signature. */
-export const proofBytes = proof => { const { signature, ...rest } = proof; return Buffer.from(canonical(rest)); };
+/** The bytes a presence proof signs: the proof without its signature and without its App Attest assertion (B2: the assertion is a second signature over these same bytes, made by the app's own key). */
+export const proofBytes = proof => { const { signature, assertion, ...rest } = proof; return Buffer.from(canonical(rest)); };
 /** The chain summary the kernel hands the sealing process (it cannot see the branded Chain across a process). */
 export function chainCtx(chain) {
   const hops = chain.hops, first = hops[0];

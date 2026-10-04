@@ -66,7 +66,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`relay`](#relay) | `core/relay` | `box`, `local` | 41 | 22 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
 | [`rules`](#rules) | `core/rules-tools` | `box`, `local` | 10 | 0 | cli |
-| [`runner`](#runner) | `core/runner` | `local` | 6 | 7 | capsule, cli, deck |
+| [`runner`](#runner) | `core/runner` | `local`, `box` | 7 | 7 | capsule, cli, deck |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
 | [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 38 | 8 | cli |
 | [`settings`](#settings) | `core/settings` | `box`, `local` | 10 | 2 | cli, deck |
@@ -655,9 +655,9 @@ The app's way into a Space's standing rules: one tool per call on the kernel's r
 Runs a space's AI sessions on this computer: sandboxed, in an encrypted workspace opened by a leased key, with credentials fetched at the moment of use and a checkpoint at every turn.
 
 - Folder: `core/runner`, version 0.1.0
-- Runs on: `local`
+- Runs on: `local`, `box`
 - Requires: none
-- Tools: [6](tools.md#runner)
+- Tools: [7](tools.md#runner)
 - Emits: [7 events](events.md#runner)
 - Shows on: capsule, cli, deck
 
