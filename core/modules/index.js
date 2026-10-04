@@ -1159,11 +1159,12 @@ export class Registry {
       }
       // Over the tailnet a node signed in as the owner, and over the relay a paired device
       // (`device:<id>`), is the owner's device, and so is any script on it (ADR 0032). The person's
-      // own actions there need the person's session too (core/presence/person.js),
+      // own actions there need the person's session too (core/presence/person.js): every tool that declares `reach: person` is one (an owner's app device that has not signed in gets
+      // no deck-like surface from its label alone),
       // which only vyred's router sets, from a cookie or a signed bearer token. Signing in is the one
       // way to get it, and the first passkey is enrolled with onboarding's code.
       if (ownerDevice(caller) && !meta.person && !PERSON_FREE.has(tool) && !machineSelf(tool, input)
-        && (PERSON_ONLY.has(tool) || (this.deps.presence ? this.deps.presence.required(tool, def, input) : Boolean(def.presence)))) {
+        && (PERSON_ONLY.has(tool) || def.reach === "person" || (this.deps.presence ? this.deps.presence.required(tool, def, input) : Boolean(def.presence)))) {
         return { error: { code: "person_session_required", message: `${tool} is the person's own action: sign in on this device with your passkey first` } };
       }
     }
