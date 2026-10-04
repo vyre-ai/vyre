@@ -182,7 +182,7 @@ await step("drive: browse a folder and open a text file", { skip: has("drive") &
   await click("checklist.txt", { exact: false });
   await settle(1000);
 });
-await step("calendar: week, month, day", {}, async () => { await go("u/calendar"); await click("Month"); await click("Day"); await click("Week"); });
+await step("calendar: week, month, day", { honest: true }, async () => { await go("u/calendar"); await click("Month"); await click("Day"); await click("Week"); });
 await step("sites: list", { honest: !has("publish") }, async () => { await go("u/sites"); });
 await step("sites: publish a draft", { skip: has("publish") ? undefined : "the dev box has no publish module (windows is bringing Publish up on testbox3)" }, async () => {});
 await step("settings: home", {}, async () => { await go("u/settings"); });
