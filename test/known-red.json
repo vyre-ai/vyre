@@ -1,8 +1,4 @@
 {
- "apps/app/src/api/wink-code.test.js": {
-  "owner": "app-wire",
-  "seen": "hosted run 37176623881"
- },
  "apps/app/src/identity/identity.test.js": {
   "owner": "chat"
  },
