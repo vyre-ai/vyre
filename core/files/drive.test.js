@@ -117,7 +117,7 @@ async function registry(t, { role, cfg = {}, link = undefined, seam = undefined,
     globalThis.__driveMedia = globalThis.__driveMedia || new Map();
     globalThis.__driveMedia.set(root, media);
     t.after(() => globalThis.__driveMedia.delete(root));
-    writeModule(mods, "artifacts", { roles: ["box"], does: { tools: [{ name: "artifacts.list", reach: "anyone" }, { name: "artifacts.media.read", reach: "modules" }] } },
+    writeModule(mods, "artifacts", { roles: ["box"], does: { tools: [{ name: "artifacts.list", reach: "anyone", effect: "read", projectArg: "project" }, { name: "artifacts.media.read", reach: "modules" }] } },
       `export default { async start(ctx) {
         const m = () => globalThis.__driveMedia.get(ctx.paths.root);
         ctx.tool("artifacts.list", { run: async ({ kind, project }) => ({ artifacts: m().filter(a => a.kind === kind && a.project === project).map(({ bytes_b64, ...a }) => a) }) });
