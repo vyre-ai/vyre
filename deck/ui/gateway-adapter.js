@@ -10,15 +10,18 @@
 
 /** @typedef {import("./contracts.js").Store} Store */
 
-/** The tool names, one place. */
+/** The tool names, one place: platform's list (team/0.2/CHAT.md, "the gateway tools for the app"). `space` is optional on each (absent = the home's own). */
 export const TOOLS = {
-  spaces: "spaces.list", actors: "actors.list", me: "me", types: "types.list",
+  me: "records.me", actors: "records.actors", types: "records.types", define: "records.define",
   list: "records.list", get: "records.get", create: "records.create", update: "records.update",
-  seesAs: "records.sees_as", sealPut: "records.seal_put", reveal: "records.reveal",
-  tasks: "tasks.list", task: "tasks.get", request: "tasks.request", decide: "tasks.decide", submit: "tasks.submit",
-  move: "tasks.move", reassign: "tasks.reassign", editTask: "tasks.edit",
-  events: "events.list", define: "define", calendar: "calendar.list",
+  seesAs: "records.sees-as", sealPut: "records.seal-put", reveal: "records.reveal", events: "records.events",
+  tasks: "tasks.list", task: "tasks.get", request: "tasks.request", decide: "tasks.decide", move: "tasks.move", submit: "tasks.submit",
 };
+
+/** A tool answer that may be the thing itself or wrapped one level ({record}, {task}, {field}): the platform has not frozen the wrapping, so read both. @param {any} d @param {string} k */
+const one = (d, k) => (d && typeof d === "object" && k in d ? d[k] : d);
+/** The rows of a page. @param {any} d */
+const rowsOf = (d) => (Array.isArray(d) ? d : d?.rows ?? d?.records ?? d?.items ?? []);
 
 /** The StoreError codes the screens know. */
 const CODES = new Set(["version_conflict", "not_found", "sealed_value_refused", "invalid"]);
@@ -38,56 +41,82 @@ export function createGatewayStore({ rpc }) {
   /** @type {Set<() => void>} */ const subs = new Set();
   /** @type {null | (() => void)} */ let stop = null;
   const notify = () => { for (const f of [...subs]) { try { f(); } catch { /* a screen's redraw must not stop the others */ } } };
-  /** @type {any[] | null} */ let spaceList = null;
-  const spaces = async () => (spaceList ??= (await rpc.read(TOOLS.spaces, {}))?.spaces ?? []);
-  const home = async (/** @type {string | undefined} */ s) => s ?? (await spaces())[0]?.id;
+  /** @type {any | null} */ let meCache = null;
+  const meAnswer = async () => (meCache ??= await rpc.read(TOOLS.me, {}));
+  const spaces = async () => { const d = await meAnswer(); return d?.spaces ?? []; };
   /** A write, then the screens redraw from the store. */
   const write = async (/** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ o = undefined) => { const d = await rpc.write(tool, input, o); notify(); return d; };
+  /** The Space-optional input: only name a space when the screen did. */
+  const sp = (/** @type {any} */ space) => (space ? { space } : {});
+  const types = async (/** @type {string | undefined} */ space) => { const d = await rpc.read(TOOLS.types, sp(space)); return Array.isArray(d) ? d : d?.types ?? []; };
+  /** A definition change for one type, as records.define's diff. @param {string} type @param {(t: any) => any} change */
+  const changeType = async (type, change) => {
+    const t = (await types(undefined)).find((/** @type {any} */ x) => x.name === type);
+    if (!t) throw Object.assign(new Error(`There is no record type "${type}".`), { code: "not_found" });
+    const next = change(structuredClone(t));
+    await write(TOOLS.define, { diff: { change_types: [next] } });
+    return next;
+  };
 
   return {
     spaces,
-    actors: async () => (await rpc.read(TOOLS.actors, {}))?.actors ?? [],
-    types: async (space) => (await rpc.read(TOOLS.types, { space: await home(space) }))?.types ?? [],
+    actors: async () => { const d = await rpc.read(TOOLS.actors, {}); return Array.isArray(d) ? d : d?.actors ?? []; },
+    types,
     async list(type, q = {}) {
       /** @type {any[]} */ const out = [];
-      const space = q.space;
       let cursor;
       do {
-        const d = await rpc.read(TOOLS.list, { space, type, ...(q.filter ? { filter: q.filter } : {}), ...(q.sort ? { sort: q.sort } : {}), ...(cursor ? { cursor } : {}) });
-        out.push(...(d?.rows ?? []));
+        const d = await rpc.read(TOOLS.list, { ...sp(q.space), type, ...(q.filter ? { filter: q.filter } : {}), ...(q.sort ? { sort: q.sort } : {}), ...(cursor ? { cursor } : {}) });
+        out.push(...rowsOf(d));
         cursor = d?.next_cursor;
       } while (cursor);
       return out;
     },
-    async get(urn) { return (await rpc.read(TOOLS.get, { urn }))?.record ?? null; },
-    async create(type, data, opts = {}) { return (await write(TOOLS.create, { space: await home(opts.space), type, data, ...(opts.why ? { why: opts.why } : {}) })).record; },
-    async update(urn, patch, base_version) { return (await write(TOOLS.update, { urn, patch, base_version })).record; },
-    async putSealed(urn, field, value) { return (await write(TOOLS.sealPut, { urn, field, value })).record; },
+    async get(urn) { const d = await rpc.read(TOOLS.get, { urn }); const r = one(d, "record"); return r && typeof r === "object" ? r : null; },
+    async create(type, data, opts = {}) { return one(await write(TOOLS.create, { ...sp(opts.space), type, data, ...(opts.why ? { why: opts.why } : {}) }), "record"); },
+    async update(urn, patch, base_version) { return one(await write(TOOLS.update, { urn, patch, base_version }), "record"); },
+    async putSealed(urn, field, value) { return one(await write(TOOLS.sealPut, { urn, field, value }), "record"); },
     // Human-only: the proof rides in the header, never the body.
     async reveal(urn, field, purpose, proof) { return await rpc.write(TOOLS.reveal, { urn, field, purpose }, { proof }); },
-    async seesAs(urn, who) { return (await rpc.read(TOOLS.seesAs, { urn, who }))?.fields ?? {}; },
-    async tasks(q = {}) { return (await rpc.read(TOOLS.tasks, q))?.tasks ?? []; },
-    async task(id) { return (await rpc.read(TOOLS.task, { id }))?.task ?? null; },
-    async request(task) { return (await write(TOOLS.request, { task })).task; },
+    async seesAs(urn, who) { const d = await rpc.read(TOOLS.seesAs, { urn, who }); return d?.fields ?? d ?? {}; },
+    async tasks(q = {}) { return rowsOf(await rpc.read(TOOLS.tasks, q)).map((/** @type {any} */ t) => t); },
+    async task(id) { const d = await rpc.read(TOOLS.task, { id }); const t = one(d, "task"); return t && typeof t === "object" ? t : null; },
+    async request(task) { return one(await write(TOOLS.request, { task }), "task"); },
     async decide(id, approval) {
       const { proof, ...rest } = approval;
-      return (await write(TOOLS.decide, { id, ...rest }, { proof })).task;
+      return one(await write(TOOLS.decide, { id, ...rest }, { proof }), "task");
     },
-    async submit(id, evidence) { return (await write(TOOLS.submit, { id, evidence })).task; },
-    async move(id, to, _by, o = {}) { return (await write(TOOLS.move, { id, to, ...o })).task; },
-    async reassign(id, doer) { return (await write(TOOLS.reassign, { id, doer })).task; },
-    async editTask(id, patch) { return (await write(TOOLS.editTask, { id, patch })).task; },
-    async events(q = {}) { return (await rpc.read(TOOLS.events, q))?.events ?? []; },
+    async submit(id, evidence) { return one(await write(TOOLS.submit, { id, evidence }), "task"); },
+    // The daemon derives the transition (start, stuck, skip, fix) from the kernel's own rules: the screen names where it wants to go.
+    async move(id, to, _by, o = {}) { return one(await write(TOOLS.move, { id, to, ...o }), "task"); },
+    async reassign() { throw Object.assign(new Error("Reassigning a task is not available on this Vyre yet."), { code: "invalid" }); },
+    async editTask() { throw Object.assign(new Error("Editing a task is not available on this Vyre yet."), { code: "invalid" }); },
+    async events(q = {}) { const d = await rpc.read(TOOLS.events, q); return Array.isArray(d) ? d : d?.events ?? []; },
     async define(diff) { return await write(TOOLS.define, { diff }); },
-    async addField(type, spec) { return (await write(TOOLS.define, { op: "add_field", type, spec })).field; },
-    async sealField(type, field) { return (await write(TOOLS.define, { op: "seal_field", type, field })).field; },
+    // Customize is a definition change: the field is added to, or sealed in, the type's own definition.
+    async addField(type, spec) {
+      /** @type {any} */ let made;
+      await changeType(type, (t) => {
+        let name = String(spec.label).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "field";
+        const base = name; let n = 2;
+        while (t.fields.some((/** @type {any} */ f) => f.name === name)) name = `${base}_${n++}`;
+        made = { name, label: spec.label, kind: spec.kind, ...(spec.to ? { to: spec.to } : {}), ...(spec.options ? { options: spec.options } : {}), ...(spec.kind === "sealed" ? { seal: { level: "ai", class: "free" } } : {}) };
+        t.fields.push(made);
+        return t;
+      });
+      return made;
+    },
+    async sealField(type, field) {
+      /** @type {any} */ let sealed;
+      await changeType(type, (t) => { const f = t.fields.find((/** @type {any} */ x) => x.name === field); if (f) { f.seal = f.seal || { level: "ai", class: "free" }; sealed = f; } return t; });
+      return sealed;
+    },
     subscribe(fn) {
       subs.add(fn);
-      if (!stop && rpc.events) stop = rpc.events(() => { spaceList = null; notify(); });
+      if (!stop && rpc.events) stop = rpc.events(() => { meCache = null; notify(); });
       return () => { subs.delete(fn); if (!subs.size && stop) { stop(); stop = null; } };
     },
-    async me() { return (await rpc.read(TOOLS.me, {}))?.actor ?? ""; },
-    async calendar(q) { return (await rpc.read(TOOLS.calendar, q ?? {}))?.events ?? []; },
+    async me() { const p = (await meAnswer())?.person; return typeof p === "string" ? p : p?.id ?? ""; },
   };
 }
 

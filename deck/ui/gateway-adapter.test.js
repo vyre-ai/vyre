@@ -46,7 +46,7 @@ test("decide and reveal pass the proof as the call's presence, not in the body",
 });
 
 test("a write redraws the screens, an event from the vyred does too, and subscribe stops the stream when the last screen leaves", async () => {
-  const f = fake({ [TOOLS.update]: { record: { urn: "vyre://h/m/1", version: 2 } }, [TOOLS.spaces]: { spaces: [{ id: "h" }] } });
+  const f = fake({ [TOOLS.update]: { record: { urn: "vyre://h/m/1", version: 2 } }, [TOOLS.me]: { person: "per_x", spaces: [{ id: "h" }] } });
   const s = createGatewayStore({ rpc: f.rpc });
   let n = 0;
   const off = s.subscribe(() => { n++; });
@@ -59,11 +59,23 @@ test("a write redraws the screens, an event from the vyred does too, and subscri
   assert.equal(n, 2);
 });
 
-test("a create goes to the first space when none is named", async () => {
-  const f = fake({ [TOOLS.spaces]: { spaces: [{ id: "mine" }, { id: "harlow" }] }, [TOOLS.create]: { record: { urn: "vyre://mine/contact/1" } } });
+test("a create names no space unless the screen did, and me reads the person", async () => {
+  const f = fake({ [TOOLS.me]: { person: "per_x", spaces: [{ id: "mine" }] }, [TOOLS.create]: { record: { urn: "vyre://mine/contact/1" } } });
   const s = createGatewayStore({ rpc: f.rpc });
   await s.create("contact", { name: "Jane" });
-  assert.equal(f.calls.find((c) => c.tool === TOOLS.create).input.space, "mine");
+  assert.ok(!("space" in f.calls.find((c) => c.tool === TOOLS.create).input));
+  assert.equal(await s.me(), "per_x");
+});
+
+test("adding a field and sealing one are definition changes on the type", async () => {
+  const f = fake({ [TOOLS.types]: [{ name: "matter", fields: [{ name: "title", label: "Title", kind: "text" }] }], [TOOLS.define]: { applied: true, changes: [] } });
+  const s = createGatewayStore({ rpc: f.rpc });
+  const made = await s.addField?.("matter", { label: "Plan year", kind: "text" });
+  assert.equal(made.name, "plan_year");
+  const d = f.calls.find((c) => c.tool === TOOLS.define).input.diff;
+  assert.deepEqual(d.change_types[0].fields.map((x) => x.name), ["title", "plan_year"]);
+  const sealed = await s.sealField?.("matter", "title");
+  assert.equal(sealed.seal.level, "ai");
 });
 
 test("an error answer becomes a StoreError code the screens know", () => {
