@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":342,"tool":1194,"event":455,"config":255,"env":245,"screen":20,"concept":43},
+  "counts": {"command":345,"tool":1195,"event":455,"config":255,"env":245,"screen":20,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -1358,6 +1358,7 @@
     {"kind":"tool","name":"spaces.label","definedIn":"core/spaces/index.js","page":"reference/tools.md#spaceslabel","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.list","definedIn":"core/spaces/index.js","page":"reference/tools.md#spaceslist","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.members.add","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesmembersadd","module":"spaces","mentions":[]},
+    {"kind":"tool","name":"spaces.members.add-agent","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesmembersadd-agent","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.members.extend","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesmembersextend","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.members.list","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesmemberslist","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.members.remove","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesmembersremove","module":"spaces","mentions":[]},
@@ -2028,6 +2029,9 @@
     {"kind":"command","name":"vyre signin","definedIn":"core/cli/commands/signin.js","page":"reference/cli.md#vyre-signin","mentions":[]},
     {"kind":"command","name":"vyre signout","definedIn":"core/cli/commands/signout.js","page":"reference/cli.md#vyre-signout","mentions":[]},
     {"kind":"command","name":"vyre snooze","definedIn":"core/cli/commands/planner.js","page":"reference/cli.md#vyre-snooze","mentions":[{"page":"using/planner.md","line":72,"anchor":"answer-something-that-is-ringing"},{"page":"using/planner.md","line":73,"anchor":"answer-something-that-is-ringing"}]},
+    {"kind":"command","name":"vyre space","definedIn":"core/cli/commands/space.js","page":"reference/cli.md#vyre-space","mentions":[]},
+    {"kind":"command","name":"vyre space add-agent","definedIn":"core/cli/commands/space.js","page":"reference/cli.md#vyre-space","mentions":[]},
+    {"kind":"command","name":"vyre space use","definedIn":"core/cli/commands/space.js","page":"reference/cli.md#vyre-space","mentions":[]},
     {"kind":"command","name":"vyre space-helper","definedIn":"box/vyre","page":null,"mentions":[]},
     {"kind":"command","name":"vyre space-helper-run","definedIn":"box/vyre","page":null,"mentions":[]},
     {"kind":"command","name":"vyre spend","definedIn":"core/cli/commands/spend.js","page":"reference/cli.md#vyre-spend","mentions":[]},
