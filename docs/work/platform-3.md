@@ -11,13 +11,13 @@ Two jobs taken off platform. (1) What the registry defaults on work/kernel-reg b
 - Suite run on testbox4, 640 files, one process per file: kernel-reg 534 pass 106 fail.
 
 ## Doing
-- Separating pre-existing reds (base 58d3e8f54) from registry reds, then fixing tests and declarations the registry reds point at; per-owner lists in team/0.2/CHAT.md.
+- Nothing running. Owners hold their DESIGN CHOICE lists (team/0.2/CHAT.md, "platform-3 -> platform ...").
 
 ## Next
-Re-run the red files on the branch, push, send the sha to reviewer-2. Then the DESIGN CHOICE list per owner (CHAT.md).
+Re-attack by reviewer-2 on dca63a3fc; platform merges work/kernel-declare into work/kernel-reg. Then HD-6 (consequence guard to a safe set), HD-8 (pending remembered facts) if no owner takes them.
 
 ## Needs from others
-Owners: each DESIGN CHOICE in CHAT.md. Not done: HD-6 (hands consequence guard, inverted to a safe set), HD-8 (memory.remember pending state), HD-4b (a label cannot say a person typed).
+Owners: DESIGN CHOICE items in CHAT.md. platform: the testbox socket-label stall (test/cli #6, recall module #5).
 
 ## Changed contracts
-None. Effect is read from the manifest entry or the ctx.tool def (already supported by the registry); callers stay in code.
+None. Effect is read from the manifest entry or the ctx.tool def (already supported by the registry); callers stay in code. Tools that need a module hop to work for an assistant list `module` explicitly (threads.lease).
