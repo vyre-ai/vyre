@@ -6,9 +6,11 @@
 // field only through the placeholder path.
 const MEMBER = ["records.read", "records.create", "records.update", "records.remove", "records.restore", "seal.put", "events.read", "tasks.request", "tasks.read", "tasks.work", "tasks.decide", "grants.offer"];
 const MANAGER = [...MEMBER, "records.define", "grants.list", "rules.list", "rules.get", "rules.test", "rules.propose"];
-const ADMIN = [...MANAGER, "grants.create", "grants.revoke", "grants.narrow", "grants.role", "grants.invite", "drive.restore", "rules.set", "rules.enable", "rules.disable", "rules.remove", "rules.accept", "rules.dismiss"];
+const ADMIN = [...MANAGER, "grants.create", "grants.revoke", "grants.narrow", "grants.role", "grants.invite", "drive.restore"];
+// Standing rules are the owner's alone to change (RT-2): the store refuses anyone else, and a role that lacked the action is refused at the gate, before a presence proof is spent.
+const OWNER = [...ADMIN, "rules.set", "rules.enable", "rules.disable", "rules.remove", "rules.accept", "rules.dismiss"];
 export const ROLE_ACTIONS = Object.freeze({
-  owner: Object.freeze([...ADMIN]),
+  owner: Object.freeze([...OWNER]),
   admin: Object.freeze([...ADMIN]),
   manager: Object.freeze([...MANAGER]),
   member: Object.freeze([...MEMBER]),

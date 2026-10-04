@@ -322,3 +322,56 @@ test("R4 on rules.enable and rules.disable: a switch whose event cannot be writt
   fail = false;
   assert.equal((await g.rules.list(owner)).rules[0].status, "disabled", "still off");
 });
+
+test("RT-2: an admin is refused every rule change at the gate, before a presence proof is spent; only the owner changes rules", async () => {
+  let checks = 0;
+  const counting = { check: async (i) => { checks++; return presence.check(i); } };
+  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 9), presence: counting });
+  const g = k.gateway.grants;
+  const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
+  const r = { person: ALICE, role: "admin" };
+  await g.setRole(owner, r, { presence: proof("grants.role", r, `vyre://${SPACE}/member/${ALICE}`) });
+  const rule = await g.rules.set(owner, NEVER_REMOVE, { presence: proof("rules.set", normal(NEVER_REMOVE), `vyre://${SPACE}/rule/new`) });
+  const alice = k.chains.fromFacts({ kind: "device", device_key_id: "d-a", person: ALICE, path: "direct" });
+  const p = (action, input, id) => ({ presence: proof(action, input, `vyre://${SPACE}/rule/${id}`) });
+  const before = checks;
+  for (const [what, f] of [
+    ["set", () => g.rules.set(alice, NEVER_REMOVE, p("rules.set", normal(NEVER_REMOVE), "new"))],
+    ["disable", () => g.rules.disable(alice, rule.id, p("rules.disable", { id: rule.id }, rule.id))],
+    ["enable", () => g.rules.enable(alice, rule.id, p("rules.enable", { id: rule.id }, rule.id))],
+    ["remove", () => g.rules.remove(alice, rule.id, p("rules.remove", { id: rule.id }, rule.id))],
+    ["accept", () => g.rules.accept(alice, "prop_x", p("rules.accept", { id: "prop_x" }, "prop_x"))],
+    ["dismiss", () => g.rules.dismiss(alice, "prop_x", p("rules.dismiss", { id: "prop_x" }, "prop_x"))],
+  ]) await assert.rejects(f, e => ["not_allowed", "not_found"].includes(e.code), `admin ${what}`);
+  assert.equal(checks, before, "no presence proof was checked, so none was spent");
+  assert.equal((await g.rules.list(owner)).rules[0].status, "active");
+});
+
+test("RT-1: every write on the rule store (set, remove, propose, accept, dismiss, enable, disable) leaves the live store and a rebuild from the log in agreement when its event cannot be written", async () => {
+  let fail = false;
+  const base = createEventLog({ space: SPACE });
+  const log = { ...base, append: (...a) => { if (fail && a[1] && String(a[1].type).startsWith("rule.")) throw new Error("log refused"); return base.append(...a); } };
+  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 9), presence, log });
+  const g = k.gateway.grants;
+  const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
+  const kit = { kind: "agent", id: "kit", space: SPACE };
+  await g.addActor(owner, kit, { presence: proof("grants.role", { actor: kit }, `vyre://${SPACE}/member/kit`) });
+  const gi = { subject: { kind: "actor", actor: kit }, actions: ["rules.propose"], resource: { prefix: `vyre://${SPACE}/rule/*` }, conditions: {}, source: "test" };
+  await g.create(owner, gi, { presence: proof("grants.create", gi, `vyre://${SPACE}/grant/new`) });
+  const asKit = k.chains.fromFacts({ kind: "agent_session", vouched: true, person: OWNER, agent: "kit", session: "s1" });
+  const p = (action, input, id) => ({ presence: proof(action, input, `vyre://${SPACE}/rule/${id}`) });
+  const rule = await g.rules.set(owner, NEVER_REMOVE, p("rules.set", normal(NEVER_REMOVE), "new"));
+  const other = { kind: "never", binds: ["members"], covers: { actions: ["records.update"] }, label: "Nobody edits" };
+  const prop = await g.rules.propose(asKit, other);
+  const view = async () => JSON.stringify(await g.rules.list(owner));
+  const same = async (what) => { const live = await view(); await g.rebuild(); assert.equal(await view(), live, `${what}: a rebuild from the log agrees with the live store`); return live; };
+  const down = async (what, f) => { const was = await view(); fail = true; try { await assert.rejects(f, /log refused/, what); } finally { fail = false; } assert.equal(await view(), was, `${what}: nothing moved`); await same(what); };
+  await down("set", () => g.rules.set(owner, other, p("rules.set", normal(other), "new")));
+  await down("disable", () => g.rules.disable(owner, rule.id, p("rules.disable", { id: rule.id }, rule.id)));
+  await down("propose", () => g.rules.propose(asKit, { ...other, label: "Another" }));
+  await down("accept", () => g.rules.accept(owner, prop.id, p("rules.accept", { id: prop.id }, prop.id)));
+  await down("dismiss", () => g.rules.dismiss(owner, prop.id, p("rules.dismiss", { id: prop.id }, prop.id)));
+  await down("remove", () => g.rules.remove(owner, rule.id, p("rules.remove", { id: rule.id }, rule.id)));
+  await g.rules.disable(owner, rule.id, p("rules.disable", { id: rule.id }, rule.id));
+  await down("enable", () => g.rules.enable(owner, rule.id, p("rules.enable", { id: rule.id }, rule.id)));
+});
