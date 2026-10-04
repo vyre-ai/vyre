@@ -140,7 +140,7 @@ export async function bring(role, mineOf = build) {
  * @typedef {{ ask(q: string): Promise<string>, tty: boolean }} IO
  * @typedef {{ io?: IO, bring?: typeof bring, call?: typeof call, health?: (box: string) => Promise<any>,
  *   save?: typeof config.save, openCapsule?: () => Promise<boolean>, addBox?: (target: string, opts: any) => Promise<number>,
- *   openUrl?: (url: string) => void, platform?: string }} Deps
+ *   openUrl?: (url: string) => void, platform?: string, sleep?: (ms: number) => Promise<void> }} Deps
  */
 
 /** Questions on the person's own terminal. One readline per question, so nothing holds stdin open. */
@@ -276,7 +276,13 @@ async function run(args, deps) {
 
   // --keep-link (vyre update): report, mint nothing, so the link the user already has still works.
   const keep = Boolean(flags["keep-link"]);
-  const link = await callTool("onboard.link", keep ? { mint: false } : {});
+  let link = await callTool("onboard.link", keep ? { mint: false } : {});
+  // A daemon with the whole signed module list answers on its socket before every module has started: the tool is "not there" for a few seconds, then it is. Wait for it (a minute at most)
+  // rather than end the install with an error the next call would not have.
+  for (let tries = 0; link.error && link.error.code === "no_such_tool" && tries < 30; tries++) {
+    await (deps.sleep || ((/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms))))(2000);
+    link = await callTool("onboard.link", keep ? { mint: false } : {});
+  }
   if (link.error) return fail("onboarding_unavailable", "onboarding is not available: " + link.error.message);
   const d = link.data;
   const ssh = d.url ? sshLine(d.port, d.user) : null;

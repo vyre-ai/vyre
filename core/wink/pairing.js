@@ -679,13 +679,18 @@ export function createPairing(o) {
       },
     });
     ctx.tool("wink.server.pairing", {
-      description: "At the server: is a device asking to pair this server right now? Answers { asking: false } or { asking: true, name, choices, until, line }: `name` is who is asking, `choices` three sets of three words (one is what the app shows, two are decoys, in an order made fresh for this pairing), and `line` the question to put to the person (answer with wink.server.pair.answer). Only this server's own screen or terminal (the command line, the local console, the deck or the capsule) sees it: never a paired device, the tailnet, the relay, a module, a session, a hook or an agent, and never a model client (mcp or harness).",
+      description: "At the server: is a device asking to pair this server right now? Answers { asking: false } (with { paired: true, owner } once the server has an owner: a name in words) or { asking: true, name, choices, until, line }: `name` is who is asking, `choices` three sets of three words (one is what the app shows, two are decoys, in an order made fresh for this pairing), and `line` the question to put to the person (answer with wink.server.pair.answer). Only this server's own screen or terminal (the command line, the local console, the deck or the capsule) sees it: never a paired device, the tailnet, the relay, a module, a session, a hook or an agent, and never a model client (mcp or harness).",
       input: obj(),
       run: async (_, meta0 = {}) => {
         owner(meta0, "the pairing question");
         atServer(meta0);
         const a = askLive();
-        if (!a || a.state !== "waiting" || !a.words) return { asking: false, ...(meta.get("pair_to") ? { pairTo: meta.get("pair_to") } : {}) };
+        if (!a || a.state !== "waiting" || !a.words) {
+          // Once the server has an owner, say whose it is in words (the installer's closing line, "Connected to <space>"): a name only, never a key or a hand-over.
+          const cur = meta.get("owner");
+          const paired = cur && meta.get("adopter") ? { paired: true, owner: await ownerWords(cur) } : {};
+          return { asking: false, ...paired, ...(meta.get("pair_to") ? { pairTo: meta.get("pair_to") } : {}) };
+        }
         return { asking: true, name: a.name, choices: a.choices, until: a.until, line: words("pairAsk", { name: a.name, choices: a.choices }) };
       },
     });

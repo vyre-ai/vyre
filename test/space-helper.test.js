@@ -62,6 +62,14 @@ if (a[0] === "compose") {
   if (sub === "down") { fs.rmSync(F + "/running-" + n, { force: true }); fs.rmSync(F + "/net-" + n, { force: true }); if (a.includes("-v")) fs.appendFileSync(F + "/purged", n + "\\n"); process.exit(0); }
   process.exit(0);
 }
+if (a[0] === "volume" && a[1] === "rm") { fs.rmSync(F + "/vol-content", { force: true }); fs.appendFileSync(F + "/vol-rm", a.join(" ") + "\\n"); process.exit(0); }
+if (a[0] === "run" && a[a.indexOf("--network") + 1] === "none" && !a.includes("-e")) {
+  // publish-fill: the throwaway container. The last argument is the shell command it runs.
+  const cmd = a[a.length - 1];
+  if (cmd.startsWith("cp -R")) { if (has("fill-fails")) process.exit(1); fs.writeFileSync(F + "/vol-content", "/srv/index.html"); fs.appendFileSync(F + "/filled", a.join(" ") + "\\n"); process.exit(0); }
+  if (cmd.includes("-links +1")) out(has("post-dirty") ? "/srv/x" : "");
+  out(rd("vol-content"));
+}
 if (a[0] === "run") {
   const i = a.indexOf("-e");
   let t = cp.execFileSync("node", ["-e", a[i + 1].replace("/opt/vyre", REPO), a[i + 2], a[i + 3]], { encoding: "utf8" });
@@ -576,7 +584,7 @@ test("space helper SH-5: an `up` is refused when the vyre container does not mou
   await r.prime();
   r.flag("no-state-mount");
   const id = r.ask("up harlow\n"); await r.helper();
-  assert.equal(r.status(id).state, "failed"); assert.match(r.status(id).message, /does not mount the helper's state folder/);
+  assert.equal(r.status(id).state, "failed"); assert.match(r.status(id).message, /does not mount the helper state folder/);
   assert.ok(!fs.existsSync(path.join(r.F, "running-harlow")), "the store never started");
 });
 
@@ -671,4 +679,110 @@ test("space helper RH-9: a directory or a link named like a request is removed, 
   assert.equal(r.status(stuck).message, "interrupted");
   assert.deepEqual(fs.readdirSync(path.join(r.SP, "private", "claim")), [], "nothing is left in claim");
   assert.deepEqual(fs.readdirSync(path.join(r.SP, "spool")), []);
+});
+
+// publish-fill: the root half of publishing a static site (reviewer-3's conditions, team/0.3/reviews/publish-edge.md).
+const SPC = "spc_abcdefghijkl", SITE = "site-aBc123", SLUG = "0123456789abcdef", VOL = `vyre-publish-${SPC}_site-${SLUG}`;
+const REQ = `publish-fill ${SPC} ${SITE} ${SLUG}\n`;
+/** The daemon's site folder under the fake home (the folder the helper finds from Docker's mount record). @param {ReturnType<typeof rig>} r */
+function site(r, /** @type {Record<string, string>} */ files = { "index.html": "<h1>hi</h1>" }) {
+  const dir = path.join(r.F, "lend", "publish", SPC, "sites", SITE);
+  fs.mkdirSync(dir, { recursive: true });
+  for (const [f, c] of Object.entries(files)) { fs.mkdirSync(path.dirname(path.join(dir, f)), { recursive: true }); fs.writeFileSync(path.join(dir, f), c, { mode: 0o444 }); }
+  return dir;
+}
+const fillCalls = (/** @type {ReturnType<typeof rig>} */ r) => r.calls().split("\n").filter(l => l.startsWith("run ") && l.includes("--network none"));
+
+test("space helper publish-fill: the folder is claimed, checked as root, copied by a throwaway container with the volume name rebuilt from the tokens, checked after, and put back", opts, async t => {
+  const r = rig(t);
+  await r.prime();
+  const dir = site(r, { "index.html": "<h1>hi</h1>", "a/b.css": "x" });
+  const id = r.ask(REQ);
+  const h = /** @type {any} */ (await r.helper());
+  assert.equal(h.code, 0, h.out);
+  assert.equal(r.status(id).state, "ok", JSON.stringify(r.status(id)));
+  const fills = fs.readFileSync(path.join(r.F, "filled"), "utf8");
+  assert.match(fills, new RegExp(`-v ${VOL}:/srv `), "the volume name is the rebuilt one");
+  assert.match(fills, /--network none --cap-drop ALL --cap-add CHOWN --cap-add DAC_OVERRIDE/);
+  assert.match(fills, /-v \S*private\/publish-claim\/fill:\/in:ro/, "the copy reads root's claimed folder, never the daemon's");
+  assert.ok(!fills.includes(r.F + "/lend"), "no daemon path reaches the container");
+  assert.equal(fillCalls(r).length, 3, "looked at, filled, checked");
+  assert.ok(fs.existsSync(path.join(dir, "index.html")) && fs.existsSync(path.join(dir, "a", "b.css")), "the folder is back where the daemon left it");
+  assert.ok(!fs.existsSync(path.join(r.SP, "private", "publish-claim", "fill")), "nothing is left in the claim folder");
+  assert.ok(!fs.existsSync(r.spool(id)), "the request was consumed");
+  // Asked again, the volume already holds the files: nothing is copied twice, the check still runs.
+  const id2 = r.ask(REQ); await r.helper();
+  assert.equal(r.status(id2).state, "ok");
+  assert.equal(fs.readFileSync(path.join(r.F, "filled"), "utf8").split("\n").filter(Boolean).length, 1, "one copy only");
+});
+
+test("space helper publish-fill: only the exact three tokens pass; a path, a volume, a capital, an extra word or another verb's shape never runs a container", opts, async t => {
+  const r = rig(t);
+  await r.prime();
+  site(r);
+  const bad = {
+    "a path": `publish-fill ${SPC} ../x ${SLUG}\n`, "a path in the space id": `publish-fill ../${SPC} ${SITE} ${SLUG}\n`, "a volume name": `publish-fill ${SPC} ${SITE} ${VOL}\n`,
+    "a capital in the slug": `publish-fill ${SPC} ${SITE} 0123456789ABCDEF\n`, "a short slug": `publish-fill ${SPC} ${SITE} 0123\n`, "an extra word": `publish-fill ${SPC} ${SITE} ${SLUG} /etc\n`,
+    "no space id": `publish-fill ${SITE} ${SLUG}\n`, "a site name of 7 characters": `publish-fill ${SPC} site-aBc1234 ${SLUG}\n`, "a mount option": `publish-fill ${SPC} ${SITE} ${SLUG}:/etc\n`,
+    "two lines": REQ + REQ, "a trailing space": `publish-fill ${SPC} ${SITE} ${SLUG} \n`,
+  };
+  for (const [why, text] of Object.entries(bad)) {
+    const id = r.ask(text);
+    await r.helper();
+    assert.equal(r.status(id).state, "failed", why);
+  }
+  assert.equal(fillCalls(r).length, 0, "no container was started for any of them");
+});
+
+test("space helper publish-fill: a link, a second hard link, a swapped-in link or a folder that is not the daemon's is refused, nothing is copied, and the folder goes back", opts, async t => {
+  const r = rig(t);
+  await r.prime();
+  // a symlink inside the site
+  let dir = site(r);
+  fs.symlinkSync("/etc/passwd", path.join(dir, "link"));
+  let id = r.ask(REQ); await r.helper();
+  assert.equal(r.status(id).state, "failed"); assert.match(r.status(id).message, /not a plain file or folder/);
+  assert.ok(fs.lstatSync(path.join(dir, "link")).isSymbolicLink(), "the folder was put back as it was");
+  fs.rmSync(dir, { recursive: true, force: true });
+  // a file with a second link
+  dir = site(r);
+  fs.linkSync(path.join(dir, "index.html"), path.join(r.F, "outside"));
+  id = r.ask(REQ); await r.helper();
+  assert.equal(r.status(id).state, "failed"); assert.match(r.status(id).message, /second link/);
+  fs.rmSync(dir, { recursive: true, force: true });
+  // the site folder itself is a link to another folder
+  const other = fs.mkdtempSync(path.join(r.root, "other-")); fs.writeFileSync(path.join(other, "index.html"), "x");
+  fs.mkdirSync(path.join(r.F, "lend", "publish", SPC, "sites"), { recursive: true });
+  fs.symlinkSync(other, path.join(r.F, "lend", "publish", SPC, "sites", SITE));
+  id = r.ask(REQ); await r.helper();
+  assert.equal(r.status(id).state, "failed"); assert.match(r.status(id).message, /no such site folder/);
+  fs.rmSync(path.join(r.F, "lend", "publish", SPC, "sites", SITE));
+  // no such folder at all
+  id = r.ask(REQ); await r.helper();
+  assert.equal(r.status(id).state, "failed");
+  assert.equal(fs.existsSync(path.join(r.F, "filled")), false, "nothing was ever copied");
+});
+
+test("space helper publish-fill: a copy that fails, or a volume that does not pass its check, leaves no volume in use", opts, async t => {
+  const r = rig(t);
+  await r.prime();
+  site(r);
+  r.flag("fill-fails");
+  let id = r.ask(REQ); await r.helper();
+  assert.equal(r.status(id).state, "failed"); assert.match(r.status(id).message, /could not be copied/);
+  assert.match(fs.readFileSync(path.join(r.F, "vol-rm"), "utf8"), new RegExp(VOL), "the volume was removed");
+  fs.rmSync(path.join(r.F, "fill-fails"));
+  r.flag("post-dirty");
+  id = r.ask(REQ); await r.helper();
+  assert.equal(r.status(id).state, "failed"); assert.match(r.status(id).message, /did not pass its check, so it was removed/);
+  assert.ok(fs.existsSync(path.join(r.F, "lend", "publish", SPC, "sites", SITE, "index.html")), "the daemon's folder is back");
+});
+
+test("space helper: `vyre uninstall` removes the helper's units too, so nothing keeps running a wrapper that is gone", opts, async t => {
+  const r = rig(t);
+  await r.prime();
+  assert.ok(fs.existsSync(path.join(r.UNITS, "vyre-spaces.path")), "installed");
+  const u = /** @type {any} */ (await r.run(["uninstall", "--delete-data", "--yes"], { VYRE_SYSTEMD_SEAM: "1" }));
+  assert.ok(!fs.existsSync(path.join(r.UNITS, "vyre-spaces.path")), u.out);
+  assert.ok(!fs.existsSync(path.join(r.UNITS, "vyre-spaces-watch.service")), u.out);
 });
