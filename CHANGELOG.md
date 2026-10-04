@@ -4,6 +4,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- records, wink: `records.types` and `records.define` reach a space hosted on a paired server: the remote gateway has `definitions` (wire call `records.definitions`), and the person's proof for the call rides over the gateway door to answer the home's presence challenge (nothing is loosened: no proof, no change).
+- spaces, wink: the invitee hello is v2 and signs the channel's own key id (reviewer IV-4); the link asks for it per stream (`inviteeSessionFor(channel, helloFor, { invite })`). `spaces.identity.self` also answers the identity's pin.
+
 - spaces, cli: `vyre space add-agent <space> <agent>` (tool `spaces.members.add-agent`) adds an agent as an actor of a space through the kernel's own actor membership, under the person's proof; refused plainly without it.
 - names: a key that was removed and put back is a newcomer again for the record rule (its age starts when it was last added), so an old key cannot come back and repoint a record it once signed. The forged-token test now carries a real, well formed person proof.
 
