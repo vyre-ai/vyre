@@ -1198,8 +1198,13 @@ export class Registry {
     delete meta.terminal;
     if (terminal && (typeof terminal === "string" || typeof terminal === "object")) meta.terminal = terminal;
     // An approval id (a card the owner's phone answered, core/approvals) rides beside the call, never in its input: it is taken out here so no tool sees it, and only a device caller's is read.
-    const approval = typeof meta.approval === "string" && /^ap_[A-Za-z0-9_-]{6,40}$/.test(meta.approval) ? meta.approval : null;
+    let approval = typeof meta.approval === "string" && /^ap_[A-Za-z0-9_-]{6,40}$/.test(meta.approval) ? meta.approval : null;
     delete meta.approval;
+    // the retry of a held act carries `approval: <id>` as an input field too (the shape the apps build to): taken out here unless the tool declares a property of that name
+    if (!approval && input && typeof input === "object" && !Array.isArray(input) && typeof input.approval === "string" && !(def.input && def.input.properties && Object.hasOwn(def.input.properties, "approval"))) {
+      if (/^ap_[A-Za-z0-9_-]{6,40}$/.test(input.approval)) approval = input.approval;
+      const { approval: _drop, ...rest } = input; input = rest;
+    }
     // `standalone` says the caller is the standalone Chrome runtime's own MCP session (local/hands-chrome-mac/standalone/runtime.js hands it to a tool directly, never through here): nothing that comes
     // through the registry, from a client or a module, may claim it.
     delete meta.standalone;
@@ -1374,7 +1379,13 @@ export class Registry {
       if (approved) meta = { ...meta, presence: approved };
       else {
       const v = await presence.verify({ tool, input, caller, proof, def, meta, peer: meta.peer || null, terminal: typeof terminal === "string" || (terminal && typeof terminal === "object") ? terminal : null });
-      if (!v.ok) return { error: { code: v.code === "no_dialog" ? "no_dialog" : "presence_required", message: v.message, methods: v.methods } };
+      if (!v.ok) {
+        // A device that cannot give the yes on the spot (no proof beside the call) and is asking for one of the three moments is HELD: the answer names the moment and the exact request approvals.ask takes, and the
+        // retry carries `approval: <id>`. Anyone else, or a call that carried a proof which did not stand, gets the old refusal.
+        const mo = !proof && !String(caller).startsWith("module:") ? momentOf(tool) : null, dev = mo ? deviceIdOf(String(caller)) : null, plain = mo ? plainFieldsOf(input) : null;
+        if (mo && dev && plain) return { error: { code: "held", message: "This needs your yes: it is waiting for you on your phone.", detail: { moment: mo, request: { op: tool, fields: plain } } } };
+        return { error: { code: v.code === "no_dialog" ? "no_dialog" : "presence_required", message: v.message, methods: v.methods } };
+      }
       // The tool learns how the person proved it (and with which enrolled key), never the proof.
       meta = { ...meta, presence: { method: v.method, keyId: v.keyId ?? null, ...(v.where ? { where: v.where } : {}) } };
       }

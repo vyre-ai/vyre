@@ -329,7 +329,7 @@ export default {
       description: "The strength of a live person session, for a module that relays a paired device's act to a person-only tool: { strength: one of STRENGTHS | null }. Only pluginagent asks.",
       input: obj({ id: str }, ["id"]),
       run: async (input, meta = {}) => {
-        if (String((meta && meta.caller) || "") !== "module:pluginagent") throw Object.assign(new Error("only pluginagent asks a session's strength"), { code: "denied" });
+        if (!["module:pluginagent", "module:approvals"].includes(String((meta && meta.caller) || ""))) throw Object.assign(new Error("only pluginagent asks a session's strength"), { code: "denied" });
         return { strength: people.strength(String(input.id)) };
       },
     });

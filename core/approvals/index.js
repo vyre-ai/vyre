@@ -125,7 +125,18 @@ export default {
         const a = open.get(String(input.id));
         if (!a || a.state !== "waiting") throw refuse("there is nothing waiting for you with that id", "not_found");
         if (a.moment && a.from === String(meta.caller || "")) throw refuse("a device cannot answer its own card", "denied");
-        if (input.approve !== true) { if (!meta || !meta.person) return { answered: "ignored", why: "a no needs your signed-in session" }; a.state = "refused"; if (a.moment) refusedUntil.set(a.from, now() + 10 * 60_000); return { answered: "refused" }; }
+        if (input.approve !== true) {
+          if (a.moment) {
+            // a "no" holds the asker for ten minutes, so it counts only from the owner's own surface on the server (the terminal, the Capsule) or from a device with a session of a real key; a software browser's no is ignored
+            const caller = String((meta && meta.caller) || "");
+            let ok = !caller.startsWith("device:");
+            if (!ok) { const sid = meta && meta.person && meta.person.id; const st = sid ? await ctx.call("presence.person.strength", { id: String(sid) }).catch(() => null) : null; ok = Boolean(st && st.data && st.data.strength === "real"); }
+            if (!ok) return { answered: "ignored", why: "a no counts from your phone's own session or this server's own screen" };
+            a.state = "refused"; refusedUntil.set(a.from, now() + 10 * 60_000); return { answered: "refused" };
+          }
+          if (!meta || !meta.person) return { answered: "ignored", why: "a no needs your signed-in session" };
+          a.state = "refused"; return { answered: "refused" };
+        }
         const given = ctx.kernel && typeof ctx.kernel.proofFrom === "function" ? ctx.kernel.proofFrom(meta) : null;
         const proof = given && given.presence ? given.presence : null; // proofFrom answers `{ presence }`, the option a kernel call takes
         if (!proof || typeof proof !== "object" || JSON.stringify(proof).length > MAX_PROOF) throw refuse("this needs your presence: approve it on your device", "needs_presence");

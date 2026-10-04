@@ -1011,7 +1011,7 @@ test("one permission rule: a paired device is you: an admin act passes with no s
   assert.equal(await rk.gateway.records.define(null, { add_types: [{ name: "note", label: "Note", fields: [{ name: "title", kind: "text", label: "Title" }] }] }).then(() => "ok", e => String(e.code || e.message)), "ok", "and after its sessions ended");
   // the three moments still want a yes: a vault secret is not revealed for a paired device's say-so
   await links.startPaired("srv");
-  await assert.rejects(() => links.sessionFor("srv").call("vault.reveal", { name: "northwind-mail" }), e => /presence|denied/.test(`${e.code} ${e.message}`), "a vault reveal without a yes is refused");
+  await assert.rejects(() => links.sessionFor("srv").call("vault.reveal", { name: "northwind-mail" }), e => /presence|denied|held/.test(`${e.code} ${e.message}`), "a vault reveal without a yes is refused (held for the phone)");
 });
 
 test("the session strength is proven at each sign-in (the identity entry's enclave key over the challenge); a card for the owner's phone carries a browser's yes back once and upgrades nothing", async t => {
@@ -1084,7 +1084,11 @@ test("the session strength is proven at each sign-in (the identity entry's encla
     const used = await via();
     assert.ok(!used || !/presence/i.test(`${used.code} ${used.message}`), `an approved vault call passes the floor (what the vault says next is its own: ${used && used.code})`);
     const again = await via();
-    assert.ok(again && /presence/i.test(`${again.code} ${again.message}`), "the approval was spent: the same call is stopped by the floor again");
+    assert.ok(again && /presence|held/i.test(`${again.code} ${again.message}`), "the approval was spent: the same call is stopped by the floor again");
+    // a vault call with neither a proof nor an approval is HELD: the answer names the moment and the exact request approvals.ask takes
+    const heldCall = await links.sessionFor("srv").call("vault.reveal", { name: "northwind-mail" }).then(() => null, e => e);
+    assert.equal(heldCall && heldCall.code, "held");
+    assert.deepEqual(heldCall && heldCall.detail, { moment: "vault", request: { op: "vault.reveal", fields: { name: "northwind-mail" } } });
     assert.deepEqual(await yesAt("vault", act, { card: ask.id }), { ok: false, reason: "replayed" }, "once");
     assert.deepEqual(await yesAt("vault", act, { card: "ap_unknown" }), { ok: false, reason: "no_proof" });
     assert.deepEqual(await strengthsOf(f), ["software"], "nothing about the browser's own session changed"); }
@@ -1092,6 +1096,10 @@ test("the session strength is proven at each sign-in (the identity entry's encla
   { const f = await pairFreshServer(t, { kind: "web", about: { kind: "web" }, presenceStorage: "software" }); const links = linksFor(t, f); await links.startPaired("srv");
     const outward = { moment: "outward", request: { op: "email.send", fields: { to: "jane@example.com" } } };
     const ask = await links.askApproval("srv", outward);
+    // a software browser's no is ignored (it could stall the owner); the owner's own screen on the server can say no
+    const softNo = await f.w.d.registry.call("approvals.answer", { id: ask.id, approve: false }, "device:zzzzzzzzzzzzzzzz", { peer: { kind: "device", stableId: "zzzzzzzzzzzzzzzz", node: "zzzzzzzzzzzzzzzz" }, person: { id: "ps-none" } });
+    assert.ok(softNo.error || (softNo.data && softNo.data.answered === "ignored"), "a software device's no does not count");
+    assert.equal((await links.approvalStatus("srv", ask.id)).state, "waiting", "the card is still waiting");
     assert.equal((await f.w.d.registry.call("approvals.answer", { id: ask.id, approve: false }, "cli", { person: { id: "ps1" } })).data.answered, "refused");
     assert.equal((await links.approvalStatus("srv", ask.id)).state, "refused");
     await assert.rejects(() => links.askApproval("srv", outward), e => /rate_limited/.test(String(e.code)), "no new card right after a no"); }
