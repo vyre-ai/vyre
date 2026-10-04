@@ -17,7 +17,7 @@ const signOf = (c) => (c && c.sign && typeof c.sign.op === "string" && typeof c.
 function normalize(c) {
   const sg = signOf(c);
   if (!sg) return c;
-  return { ...c, title: String(c.line || c.title || "A device is asking for your yes"), body: c.body || "Allowing signs exactly this with your Face ID. If you did not just ask for it, choose Don't allow.", op: sg.op, space: sg.space, fields: sg.fields, payload_hash: payloadHash(sg.op, sg.space, sg.fields) };
+  return { ...c, title: String(c.line || c.title || "A device is asking for your yes"), body: c.body || "Approving signs exactly this with the key on this phone. If you did not just ask for it, deny it.", op: sg.op, space: sg.space, fields: sg.fields, payload_hash: payloadHash(sg.op, sg.space, sg.fields) };
 }
 
 /** What the card shows as given: each field name and value, nothing summarised away, because those are what is being signed. @param {Pending} c */
