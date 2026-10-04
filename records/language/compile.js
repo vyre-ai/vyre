@@ -29,7 +29,7 @@ function mergeCoreType(t) {
   for (const f of t.fields) { const c = core.fields.find((/** @type {any} */ x) => x.name === f.name); if (c && c.kind !== f.kind) throw new LanguageError("invalid_definition", `${t.name}.${f.name} is already a core ${c.kind} field; a Kit adds new fields to a core type, it does not change core ones`, { path: `type ${t.name}.${f.name}` }); }
   const have = new Set(core.fields.map((/** @type {any} */ f) => f.name));
   const merged = { ...t, label: core.label, ...(core.icon ? { icon: core.icon } : {}), fields: [...core.fields.map(inOrder), ...t.fields.filter((/** @type {any} */ f) => !have.has(f.name))] };
-  return Object.fromEntries(["name", "label", "icon", "fields", "stages", "rules", "role"].filter((k) => /** @type {any} */ (merged)[k] !== undefined).map((k) => [k, /** @type {any} */ (merged)[k]]));
+  return Object.fromEntries(["name", "label", "icon", "kind", "fields", "stages", "rules", "role"].filter((k) => /** @type {any} */ (merged)[k] !== undefined).map((k) => [k, /** @type {any} */ (merged)[k]]));
 }
 /** Roles every Space has. */
 export const CORE_ROLES = Object.freeze(["owner", "admin", "member"]);

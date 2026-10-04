@@ -135,7 +135,7 @@ function defineRoleMark(/** @type {string} */ nm, /** @type {any} */ r) {
 
 /** A type is the kernel's TypeDefinition: fields (a stage field among them), stages with their task templates, rules. */
 function defineType(t) {
-  onlyKeys(t, ["name", "label", "icon", "fields", "rules", "role"], "defineType");
+  onlyKeys(t, ["name", "label", "icon", "kind", "fields", "rules", "role"], "defineType");
   const nm = name(t.name, "defineType.name");
   if (!isObj(t.fields) || !Object.keys(t.fields).length) bad(`defineType(${nm}).fields`, "A type needs at least one field");
   if (Object.keys(t.fields).length > 200) bad(`defineType(${nm}).fields`, "A type has at most 200 fields");
@@ -150,7 +150,7 @@ function defineType(t) {
     } else { const { $, ...rest } = v; fields.push({ name: k, ...ordered({ ...rest, label: rest.label ?? labelOf(k) }, FIELD_ORDER) }); }
   }
   const rules = (t.rules ?? []).map((/** @type {any} */ r, /** @type {number} */ i) => { if (!isObj(r) || r.$ !== "rule") bad(`defineType(${nm}).rules[${i}]`, "Each entry in rules must be a defineRule(...) call"); const { $, ...rest } = r; return rest; });
-  return { $: "type", ...ordered({ name: nm, label: t.label === undefined ? labelOf(nm) : str(t.label, "defineType.label", { max: 120 }), icon: t.icon === undefined ? undefined : str(t.icon, "defineType.icon", { max: 60 }), fields, stages: stageDef ? stageDef.stages : undefined, rules: rules.length ? rules : undefined, role: t.role === undefined ? undefined : defineRoleMark(nm, t.role) }, ["name", "label", "icon", "fields", "stages", "rules", "role"]) };
+  return { $: "type", ...ordered({ name: nm, label: t.label === undefined ? labelOf(nm) : str(t.label, "defineType.label", { max: 120 }), icon: t.icon === undefined ? undefined : str(t.icon, "defineType.icon", { max: 60 }), fields, stages: stageDef ? stageDef.stages : undefined, rules: rules.length ? rules : undefined, role: t.role === undefined ? undefined : defineRoleMark(nm, t.role), kind: t.kind === undefined ? undefined : (t.kind === "project" ? "project" : bad(`defineType(${nm}).kind`, 'kind is "project" (a type that holds work) or left out')) }, ["name", "label", "icon", "kind", "fields", "stages", "rules", "role"]) };
 }
 
 function defineTemplate(t) {

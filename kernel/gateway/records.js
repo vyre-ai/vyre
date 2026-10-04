@@ -125,6 +125,11 @@ export function createRecords(cfg) {
   }
   const refuseOutside = (/** @type {Set<string> | null} */ allow, /** @type {any} */ data) => { if (allow) for (const k of Object.keys(data || {})) if (!allow.has(k)) throw new KernelError("field_not_allowed", `${k} is outside what this access allows`); };
 
+  /** A type may say it holds work: the one value is "project". */
+  function checkKinds(/** @type {any} */ diff) {
+    for (const t of [...(diff.add_types || []), ...(diff.change_types || [])]) if (t.kind !== undefined && t.kind !== "project") throw new KernelError("bad_input", `${t.name}: kind is "project" or left out`);
+  }
+
   /** A role type points at one contact or organization through one required link, and names stages that already exist. */
   async function checkRoles(/** @type {any} */ diff) {
     for (const t of [...(diff.add_types || []), ...(diff.change_types || [])]) {
@@ -406,7 +411,7 @@ export function createRecords(cfg) {
     async define(chain, diff) {
       const d = await gate(chain, "records.define", `vyre://${space}/definition/types`);
       for (const t of [...(diff.add_types || []), ...(diff.change_types || [])]) if (!TYPE_NAME.test(t.name)) throw new KernelError("bad_input", `bad type name ${t.name}`);
-      await checkRoles(diff);
+      checkKinds(diff); await checkRoles(diff);
       // A removed field is never required (new records could not be written without it); its data stays.
       await checkComputed(diff);
       const unrequire = (/** @type {any} */ t) => (t.fields || []).some((/** @type {any} */ f) => (f.hidden === true || f.computed) && (f.required || f.unique)) ? { ...t, fields: t.fields.map((/** @type {any} */ f) => ((f.hidden === true || f.computed) && (f.required || f.unique) ? { ...f, required: false, unique: false } : f)) } : t;

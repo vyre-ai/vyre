@@ -451,6 +451,14 @@ test("search: a caller with a field limit cannot find a record by text in a fiel
   assert.equal((await r.search(owner(), { text: "closed", page: { limit: 5 } })).rows.length, 1, "the unlimited owner still does");
 });
 
+test("kind: a type may say it holds work (project), nothing else, and the definition returns it", async () => {
+  const { r, gw } = await withType(rig());
+  const t = { name: "campaign", label: "Campaign", kind: "project", fields: [{ name: "title", kind: "text", label: "Title" }] };
+  await assert.rejects(() => r.define(owner(), { add_types: [{ ...t, name: "other", kind: "board" }] }), { code: "bad_input" });
+  await r.define(owner(), { add_types: [t] });
+  assert.equal((await gw.definitions(owner())).find(x => x.name === "campaign").kind, "project");
+});
+
 // ---- roles: what a contact is to the Space ----
 const roleType = (name, extra = {}) => ({ name, label: name, role: { link: "contact", ended: ["Ended"] }, fields: [
   { name: "contact", kind: "link", to: "contact", label: "Contact", required: true },

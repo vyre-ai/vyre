@@ -87,6 +87,8 @@ export interface TypeDefinition {
   readonly name: string;
   readonly label: string;
   readonly icon?: string;
+  /** "project" marks a type that holds work (the app shows it as a project); anything else is refused. Left out for a plain type. */
+  readonly kind?: 'project';
   readonly fields: readonly FieldDefinition[];
   readonly stages?: readonly StageDef[];
   /** Expression strings in the Expression language, validated, never code. */
