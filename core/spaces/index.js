@@ -180,7 +180,7 @@ export default {
     const remoteCall = async (/** @type {string} */ device, /** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ meta) => {
       // ONE remote path (lead's ruling): the Wink peer wire to the paired server, as a session `{ call(tool, input) }` that a port supplies (`hooks.sessionFor(device)`, the daemon's wiring of the open
       // joinPeer session); the owner's proof rides in the input's `proof` for the SERVER's registry to verify. Until a port is wired, the Wink module's `wink.server.call` tool is tried.
-      const sessionForFn = typeof hooks.sessionFor === "function" ? hooks.sessionFor : typeof ctx.sessionFor === "function" ? ctx.sessionFor : null;
+      const sessionForFn = typeof hooks.sessionFor === "function" ? hooks.sessionFor : typeof ctx.sessionFor === "function" && typeof ctx.sessionForReady === "function" && ctx.sessionForReady() ? ctx.sessionFor : null;
       if (sessionForFn) {
         let session; try { session = await sessionForFn(device); } catch { throw refuse("The server could not be reached. Nothing was made.", "server_unreachable"); }
         if (!session || typeof session.call !== "function") throw refuse("The server could not be reached. Nothing was made.", "server_unreachable");
