@@ -42,6 +42,9 @@ export function RecordPage({ def, rec, world, events, env, onOpen }: { def: any;
   const [draft, setDraft] = useState<any>(undefined);
   const [confirm, setConfirm] = useState<{ f: any } | null>(null);
   const [adding, setAdding] = useState(false);
+  const [showEmpty, setShowEmpty] = useState(false);
+  const [hover, setHover] = useState<string | null>(null);
+  const [rowMenu, setRowMenu] = useState<any>(null);
   const ai = who === "assistant";
 
   useEffect(() => {
@@ -70,6 +73,11 @@ export function RecordPage({ def, rec, world, events, env, onOpen }: { def: any;
   const related = relatedRecords(world.types, world.byType, def, rec);
   const files = filesOf(def, rec);
   const pool = world.byType[def.name] || [rec];
+  // The stage strip above is the stage field's renderer, so the list leaves it out; empty fields wait behind one line, except the one being edited.
+  const listed = def.fields.filter((f: any) => !sf || f.name !== sf.name);
+  const isBlank = (f: any) => f.kind !== "sealed" && isEmpty(val(rec, f.name)) && editing !== f.name;
+  const filled = listed.filter((f: any) => !isBlank(f));
+  const empty = listed.filter(isBlank);
 
   const fieldRow = (f: any) => {
     const isEditing = editing === f.name && !ai;
@@ -77,23 +85,23 @@ export function RecordPage({ def, rec, world, events, env, onOpen }: { def: any;
     const sealed = isSealedField(f);
     const plainEditable = !ai && f.kind !== "sealed" && f.kind !== "link" && f.kind !== "ref" && f.kind !== "file";
     const shown = renderField({ kind: f.kind, definition: f, value, mode: "view", read_only: true, reveal: ai ? undefined : revealFor(f) }, env);
-    const menuNode = !ai ? (
-          <View className="flex-none">
-            <Menu
-              trigger={<IconButton icon="more" label={`${f.label}, more`} />}
-              items={[
-                { label: "Edit", onPress: () => { setEditing(f.name); setDraft(undefined); } },
-                ...(sealed ? [] : [{ label: `Seal this field for all ${vd.plural.toLowerCase()}`, onPress: () => setConfirm({ f }) }]),
-              ]}
-            />
-          </View>
+    const items = [
+      { label: "Edit", onPress: () => { setEditing(f.name); setDraft(undefined); } },
+      ...(sealed ? [] : [{ label: `Seal this field for all ${vd.plural.toLowerCase()}`, onPress: () => setConfirm({ f }) }]),
+    ];
+    // Desktop: the menu shows on hover (or while the row is being edited). Phone: tap the row to edit, long-press for the menu.
+    const menuNode = !ai && !phone ? (
+      <View className="flex-none" style={{ opacity: hover === f.name || isEditing ? 1 : 0 }}>
+        <Menu trigger={<IconButton icon="more" label={`${f.label}, more`} />} items={items} />
+      </View>
     ) : null;
     return (
-      <View key={f.name} className={cn("gap-s1 px-s4 py-s3", !phone && "flex-row items-center gap-s3")}>
+      <Pressable key={f.name} disabled={ai || !phone || isEditing} onPress={plainEditable ? () => { setEditing(f.name); setDraft(undefined); } : undefined} onLongPress={() => setRowMenu({ f, items })}
+        onHoverIn={() => setHover(f.name)} onHoverOut={() => setHover((h) => (h === f.name ? null : h))}
+        className={cn("gap-s1 px-s4 py-s3", !phone && "flex-row items-center gap-s3")}>
         <View className={cn("flex-row flex-wrap items-center gap-s2", !phone && "flex-1")}>
           <Text tone="label">{f.label}</Text>
           {sealed ? <Chip tone="sealed" icon="vault">Sealed</Chip> : null}
-          {phone ? <View className="flex-1 items-end">{menuNode}</View> : null}
         </View>
         <View className={cn("min-w-0", !phone && "flex-[3]")}>
           {isEditing ? (
@@ -108,14 +116,26 @@ export function RecordPage({ def, rec, world, events, env, onOpen }: { def: any;
             <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${f.label}`} onPress={() => { setEditing(f.name); setDraft(undefined); }} className="self-start">{shown}</Pressable>
           ) : shown}
         </View>
-        {!phone ? menuNode : null}
-      </View>
+        {menuNode}
+      </Pressable>
     );
   };
 
   const main = (
     <View className={cn("min-w-0 gap-s4", !phone && "flex-[2]")}>
-      <Card flush>{def.fields.map((f: any, i: number) => <View key={f.name}>{i > 0 ? <Divider /> : null}{fieldRow(f)}</View>)}</Card>
+      <Card flush>
+        {filled.map((f: any, i: number) => <View key={f.name}>{i > 0 ? <Divider /> : null}{fieldRow(f)}</View>)}
+        {empty.length ? (
+          <View>
+            {filled.length ? <Divider /> : null}
+            <Pressable accessibilityRole="button" accessibilityState={{ expanded: showEmpty }} onPress={() => setShowEmpty(!showEmpty)} className="min-h-control flex-row items-center justify-between px-s4 py-s3">
+              <Text tone="label">{`${empty.length} empty ${empty.length === 1 ? "field" : "fields"}`}</Text>
+              <Icon name={showEmpty ? "chevron-up" : "chevron-down"} size={16} tone="label" />
+            </Pressable>
+            {showEmpty ? empty.map((f: any) => <View key={f.name}><Divider />{fieldRow(f)}</View>) : null}
+          </View>
+        ) : null}
+      </Card>
       <Card title="Timeline" actions={<Text size="caption" tone="label">Every change, who and why</Text>}>
         {events.length ? events.map((e) => {
           const l = timelineLine(e);
@@ -151,7 +171,7 @@ export function RecordPage({ def, rec, world, events, env, onOpen }: { def: any;
       <View className="flex-row flex-wrap items-center gap-s3">
         <Segmented<"person" | "assistant"> label="Who is looking" value={who} onChange={(v) => { setWho(v); setEditing(null); }} options={[["person", "You"], ["assistant", "Your assistant sees"]]} />
         <View className="flex-1" />
-        {ai ? null : <Button size="sm" icon="plus" label="Add a field" onPress={() => setAdding(true)} />}
+        {ai ? null : phone ? <IconButton icon="plus" label="Add a field" kind="secondary" onPress={() => setAdding(true)} /> : <Button size="sm" icon="plus" label="Add a field" onPress={() => setAdding(true)} />}
       </View>
       {ai ? (
         <Banner tone="warn">
@@ -161,6 +181,9 @@ export function RecordPage({ def, rec, world, events, env, onOpen }: { def: any;
       ) : null}
       <View className={cn("gap-s4", !phone && "flex-row items-start")}>{main}{side}</View>
 
+      <Sheet open={!!rowMenu} onClose={() => setRowMenu(null)} title={rowMenu?.f.label}>
+        <View>{(rowMenu?.items ?? []).map((it: any) => <Row key={it.label} title={it.label} onPress={() => { setRowMenu(null); it.onPress(); }} />)}</View>
+      </Sheet>
       <Sheet open={!!confirm} onClose={() => setConfirm(null)} title={confirm ? sealSpec(def, confirm.f, pool, vd).title : undefined}>
         <Text tone="muted">{confirm ? sealSpec(def, confirm.f, pool, vd).body : ""}</Text>
         <View className="flex-row gap-s2">

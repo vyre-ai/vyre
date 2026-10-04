@@ -21,7 +21,7 @@ import { Events } from "../events/index.js";
 import { Registry, discover, ownerDevice, currentCall } from "../modules/index.js";
 import { devSwitch, isPackaged } from "../../kernel/devbuild.js";
 import { build, swWithBuild, htmlWithBuild } from "./build.js";
-import { serveApp } from "./app.js";
+import { serveApp, associationFile } from "./app.js";
 import { acquire } from "./lock.js";
 import { Presence, PERSON_ONLY, HUMAN_ONLY, SESSIONABLE, personOnly, fingerprint, parse as parsePresence, core as coreHolder } from "../presence/index.js";
 import { readCoreConfig, coreLink } from "../../lib/vyre-core-client.js";
@@ -221,7 +221,9 @@ async function startLocked(opts, root, p, release) {
     // Flows and stages made of tasks run in ONE assembly per Space (core/daemon/flows-host.js): the home's own Space here, and every hosted Space through the Spaces registry's
     // `stageFactory`. The `flows` module only registers the tools over it. A Flow's "Call a service" step reaches the vault's forward after the kernel has allowed it.
     const { createFlowsHost } = await import("./flows-host.js");
-    const flowsHost = createFlowsHost({ log, tzFor: () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" });
+    const flowsHost = createFlowsHost({ log, tzFor: () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+      // The connectors a Flow may call, with their route rules (no host, no secret): the vault's own list.
+      connectors: async () => { const r = await registry.call("vault.service.catalog", {}, "module:leases"); return r.error ? {} : r.data.connectors; } });
     registry.deps.flowsHost = flowsHost;
     // `{{field:...}}` in an outward action: resolved from the record under the person the session's turn is for (their own grants, not the room's view), by the kernel's resolveFields.
     const { resolveFields } = await import("../../kernel/core/fields.js");
@@ -251,8 +253,13 @@ async function startLocked(opts, root, p, release) {
     kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
       // A credentialed request run at the home: the vault's own forward (an internal tool only the lease module may call), under the Space's credential; the kernel has already authorized it.
       forwardCredential: async (/** @type {any} */ q) => {
-        if (!q.route) throw Object.assign(new Error("that connector's route table is the vault's and is not exposed to the kernel yet"), { code: "unavailable" });
         const r = q.request;
+        // A Flow's named connector: the vault holds the connector's route rules and host (vault.service.forward); the kernel has authorized the chain.
+        if (!q.route) {
+          const via = await registry.call("vault.service.forward", { connector: q.connector, request: r, ...(q.idem ? { idem: q.idem } : {}), ...(q.approval ? { approval: q.approval } : {}), ...(q.bind ? { bind: q.bind } : {}) }, "module:leases", q.files ? { files: q.files } : undefined);
+          if (via.error) throw Object.assign(new Error(via.error.message), { code: via.error.code });
+          return via.data;
+        }
         // A file request goes to vault.forward.file with the route's limits and Drive lists, and the Drive is this call's own door (q.files: the kernel's Drive under the caller's chain, FW-2),
         // handed in-process as meta, never as data a module could name. A plain request carries the route's header names.
         const base = { credential: q.ref, method: r.method, url: `https://${q.route}${r.path}`, ...(r.query ? { query: r.query } : {}), ...(r.headers ? { headers: r.headers } : {}), ...(q.allow_headers ? { allow_headers: q.allow_headers } : {}), session: q.session || q.idem || "home" };
@@ -279,7 +286,9 @@ async function startLocked(opts, root, p, release) {
       all: () => /** @type {any[]} */ (db.prepare("SELECT thread, body FROM kernel_turns").all()).map(r => /** @type {[string, any]} */ ([r.thread, JSON.parse(r.body)])) };
     const kernelSessions = createKernelSessions({ kernel, turns, chats: kernel.kernelFor({ name: "kernel-sessions" }).chats });
     // A chain of exactly that person, built by the kernel as a DEVICE chain of this home (vyred's own key), never from session facts: a chain made from a session token is delegated and may not mint a session (CH-7), so the opener must not be one. A person who is no longer a member gets none.
-    const personChainFor = async (/** @type {string} */ person) => kernel.chains.fromFacts({ kind: "device", device_key_id: "vyred", person, path: "direct" });
+    const canonPerson = (/** @type {string} */ p) => { const f = kernel.kernelFor({ name: "kernel-sessions" }).canonicalPerson; return typeof f === "function" ? f(p) : p; };
+    // A person id kept from before the owner adopted an identity (a stored turn, a queued message) opens as the identity: canonicalPerson maps the replaced id forward and leaves any other as given.
+    const personChainFor = async (/** @type {string} */ person) => kernel.chains.fromFacts({ kind: "device", device_key_id: "vyred", person: canonPerson(person), path: "direct" });
     // What the stream is given of it (needs.daemon "kernelThreads", core/stream): calls on a thread's session and the restart's reopening, never a token and never a way to open a session.
     // The stream reopens the open turns itself at its start so a turn it cannot resume says so in its chat; when no stream asks (it is off), the daemon reopens them once its modules are up.
     let reopenCalled = false;
@@ -290,6 +299,7 @@ async function startLocked(opts, root, p, release) {
     });
     reopenLater = () => { if (!reopenCalled) void kernelSessions.reopenPending(reopenOpts({ timeoutMs: 10_000, onGiveUp: (/** @type {string} */ thread, /** @type {string} */ why) => log(`sessions: could not resume ${thread.slice(0, 8)} (${why})`) })).catch(() => {}); };
     closeKernelSessions = () => kernelSessions.closeAll();
+    registry.deps.kernelSessionCount = () => kernelSessions.list().length; // how many are open now (a number, for tests and status: never a token or a way to open one)
     registry.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any, chat?: string, asker?: string, probe?: boolean }} */ q) => {
       // A chat turn: the Switchboard passes `chat` and `asker` only from module:stream (threads.start and threads.send), so the session is the asker's, in that chat, and the kernel checks they are in it.
       // Anything else is the home owner's own thread, as before.
@@ -309,8 +319,8 @@ async function startLocked(opts, root, p, release) {
     if ((process.platform === "darwin" || process.platform === "linux") && devSwitch(process.env.VYRE_SESSION_SANDBOX_OFF)) registry.deps.sandbox = { off: true };
     else if (process.platform === "darwin" || process.platform === "linux") {
       try {
-        const [{ planHome, selfTest }, { launch }] = await Promise.all([import("../runner/homesandbox.js"), import("../runner/sandbox.js")]);
-        registry.deps.sandbox = { sandbox: { planHome, selfTest, launch }, platform: process.platform, home: os.homedir(), vyreHome: root,
+        const [{ planHome, selfTest }, { launch }, { startHomeProxy }] = await Promise.all([import("../runner/homesandbox.js"), import("../runner/sandbox.js"), import("../runner/homeproxy.js")]);
+        registry.deps.sandbox = { sandbox: { planHome, selfTest, launch, homeProxy: o => startHomeProxy({ platform: o && o.platform, dir: path.join(root, "run") }) }, platform: process.platform, home: os.homedir(), vyreHome: root,
           // Real targets, made for each self-test and torn down after it: a unix socket standing in for another session's, and a loopback listener standing in for a daemon port. The
           // sandboxed probe must fail to connect to every one of them, and a probe target that does not exist is refused by the runner's own check.
           probes: async () => {
@@ -331,6 +341,13 @@ async function startLocked(opts, root, p, release) {
     }
     registry.deps.moduleHost = kernel.moduleHost;
     registry.deps.kernelFor = kernel.kernelFor;
+    // The gate's presence check asks the kernel whether a call is the person's own (exactly one person hop in the chain the daemon's proven facts build), never the caller's label.
+    if (presence && typeof kernel.kernelFor === "function") {
+      const gateKernel = kernel.kernelFor({ name: "presence-gate" });
+      presence.personOf = async (/** @type {any} */ meta) => {
+        try { const c = await gateKernel.chain(meta); return Boolean(c && Array.isArray(c.hops) && c.hops.length === 1 && c.hops[0].actor && c.hops[0].actor.kind === "person"); } catch { return false; }
+      };
+    }
     if (kernel.firstPartyCheck) registry.deps.firstPartyCheck = kernel.firstPartyCheck;
     if (kernel.reservedName) registry.deps.reservedName = kernel.reservedName;
     registry.deps.moduleApprovals = kernel.moduleApprovals;
@@ -341,6 +358,8 @@ async function startLocked(opts, root, p, release) {
   // The provider sign-in token for the launcher modules (threads, agents), by declaration (needs.daemon: credentials): from the credentials port taken below, never a module grant on the vault
   // items. Late-bound, because the port is taken after the vault starts; until then it answers undefined and the caller keeps its old grant-based read.
   registry.deps.credentials = (/** @type {string} */ provider) => (registry.deps.credentialsPort ? registry.deps.credentialsPort.credentials(provider) : Promise.resolve(undefined));
+  // A box's container is the server: a config that says "device" or "solo" there would switch off every box-only module without a word, so it stops here with the reason.
+  if (process.env.VYRE_SUPERVISOR === "docker" && !config.isServer(cfg.machine)) throw new Error(`this is a server's container but its config says machine "${cfg.machine}", which turns off every server module; set "machine": "server" in the home's config.json and start again`);
   await registry.start(discover(moduleRoots(root), { firstPartyRoots }), { role: cfg.machine, ...cfg.modules });
   if (reopenLater) reopenLater();
   // The session launcher's way to a provider sign-in token: the vault provided it to the registry once, at its own start (`ctx.provide`, core/modules/index.js), so no import of the vault is needed here.
@@ -475,7 +494,9 @@ export const callId = v => (typeof v === "string" && /^[A-Za-z0-9_-]{1,128}$/.te
 
 // "link:" is the paired box's person on a Mac, which only the link module may call as (CALL_AS in
 // core/modules): threads.answer takes it only with the box's signed assertion checked.
-const FORBIDDEN_LABEL = /^(module:|tailnet:|tailnet-guest:|device:|link:|onboard$|hook$)/;
+// "web:", "setup:" and "space:" are labels the relay and the spaces listener make (a waiting or browser pairing, the setup page, a visiting person); a socket client never gets them, nor the bare
+// class words that only a tool's callers list uses (reviewer-3 LB-1b).
+const FORBIDDEN_LABEL = /^(module:|tailnet:|tailnet-guest:|device:|link:|web:|setup:|space:|onboard$|hook$|web$|setup$|space$|device$|tailnet$|agent$)/;
 
 /**
  * Who a socket request says it is. No label is "anonymous", which no tool's callers list names,
@@ -832,6 +853,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const g = await registry.call("agents.scope", { name: via.agent }, "module:vyred");
     /** @type {any} */ (via).granted = g && g.data ? g.data.projects : [];
     /** @type {any} */ (via).agentKind = g && g.data ? g.data.kind : null;
+    if (g && g.data && Array.isArray(g.data.only)) /** @type {any} */ (via).agentOnly = g.data.only;
   }
   // A person's label from a model's shell is the session's own, whatever the tool (asTaken).
   const shell = socket && !policy.caller ? await asTaken(caller, req.socket, registry, via.thread) : { caller, model: false };
@@ -1092,6 +1114,11 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   // section 6, a project tile's bytes) and lib/caps-flags (PLAN.md C14b, provider capabilities).
   // Exact paths only, nothing else in lib/.
   if (req.method === "GET" && DECK_LIBS.has(url.pathname)) return serveFile(res, path.join(REPO, ...url.pathname.slice(1).split("/")), cfg);
+  // The verified-link files for the iPhone and Android apps (app-wire): public, tiny, and absent until the deploy sets the signing identities.
+  if (req.method === "GET" && url.pathname.startsWith("/.well-known/")) {
+    const body = associationFile(url.pathname);
+    if (body) { res.writeHead(200, { "content-type": "application/json", "cache-control": "public, max-age=300", "x-content-type-options": "nosniff" }); return res.end(body); }
+  }
   // The one app (ADR 0027), beside the Deck until it takes over /. Once config app.root flips
   // (mobile's client-side migration, off by default: core/config/index.js), /app/* is a 301 to
   // the same path under "/" instead, so an installed /app/ Home Screen icon or a stale bookmark

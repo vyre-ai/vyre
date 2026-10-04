@@ -274,6 +274,10 @@
     "reach": "modules"
    },
    {
+    "name": "spaces.identity.self",
+    "reach": "modules"
+   },
+   {
     "name": "spaces.label",
     "reach": "modules"
    },

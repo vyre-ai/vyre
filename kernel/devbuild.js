@@ -5,6 +5,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { DEV_LINE } from "../lib/build-kind-text.js";
 
 export const PKG_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 /** @type {unknown} */ let COMPILED = null;
@@ -18,7 +19,7 @@ export function isPackaged(root) {
   if (root === undefined) return COMPILED !== "development" || fs.existsSync(path.join(PKG_ROOT, "SHA256SUMS.sig"));
   let text = "";
   try { text = fs.readFileSync(path.join(root, "lib", "build-kind.js"), "utf8"); } catch { return true; }
-  return !/export const BUILD_KIND = "development";/.test(text) || fs.existsSync(path.join(root, "SHA256SUMS.sig"));
+  return !text.includes(DEV_LINE) || fs.existsSync(path.join(root, "SHA256SUMS.sig"));
 }
 
 /** Is an environment developer switch honoured here? Only in a development build, and only when it is exactly "1". @param {string | undefined} value @param {string} [root] */

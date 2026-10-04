@@ -62,7 +62,14 @@ export function ProjectsList({ world, items, onOpen, onNew }: { world: World; it
   const emblem = (i: Item, size: 32 | 44, badge: boolean) => (
     <Avatar of={{ kind: "project", id: i.row.id, name: recordTitle(world, i.row), seed: i.row.data?.avatar_seed }} size={size} space={badge && spaceId(i) ? spaceRef(spaceName(world, spaceId(i)), spaceId(i)) : undefined} />
   );
-  const showBadge = space === "all";
+  // The space badge and the space name only say something when the rows come from more than one space.
+  const manySpaces = new Set(shown.map(spaceId).filter(Boolean)).size > 1;
+  const showBadge = space === "all" && manySpaces;
+  // A column that says the same thing or nothing on every row is left out.
+  const showType = type === "all" && work.length > 1;
+  const showOwner = shown.some((i) => !!ownerOf(i));
+  const showTasks = shown.some((i) => tasksOf(i).total > 0);
+  const tally = (() => { const c = new Map<string, number>(); for (const i of shown) { const s = stageOf(i); const n = s.at >= 0 ? s.stages[s.at] : ""; if (n) c.set(n, (c.get(n) ?? 0) + 1); } const parts = [...c].map(([n, k]) => `${k} ${n}`); return work.length === 1 && parts.length <= 5 ? parts.join(", ") : ""; })();
   const typeLabel = (i: Item) => i.def.label;
 
   const filter = (
@@ -81,14 +88,14 @@ export function ProjectsList({ world, items, onOpen, onNew }: { world: World; it
             {emblem(i, 32, showBadge)}
             <View className="min-w-0 flex-1">
               <Text strong numberOfLines={1}>{recordTitle(world, i.row)}</Text>
-              <Text size="secondary" tone="label" numberOfLines={1}>{[typeLabel(i), spaceName(world, spaceId(i))].filter(Boolean).join(" · ")}</Text>
+              <Text size="secondary" tone="label" numberOfLines={1}>{[showType ? "" : typeLabel(i), manySpaces ? spaceName(world, spaceId(i)) : ""].filter(Boolean).join(" · ")}</Text>
             </View>
           </View>
         ) },
-        ...(type === "all" ? [{ key: "type", label: "Type", sortValue: (i: Item) => i.def.label, render: (i: Item) => i.def.label }] : []),
+        ...(showType ? [{ key: "type", label: "Type", sortValue: (i: Item) => i.def.label, render: (i: Item) => i.def.label }] : []),
         { key: "stage", label: "Stage", sortValue: (i) => String(i.row.data?.stage ?? ""), render: (i) => { const s = stageOf(i); return <StageMini stages={s.stages} current={s.at} />; } },
-        { key: "owner", label: "Owner", sortValue: (i) => who(world, ownerOf(i))?.name || "", render: (i) => { const a = who(world, ownerOf(i)); return a ? <View className="flex-row items-center gap-s2"><ActorMark who={a} size="sm" /><Text size="secondary" tone="muted" numberOfLines={1}>{a.name}</Text></View> : <Text tone="faint">{"–"}</Text>; } },
-        { key: "tasks", label: "Tasks", sortValue: (i) => tasksOf(i).total, render: (i) => { const t = tasksOf(i); return <TaskBar done={t.done} total={t.total} />; } },
+        ...(showOwner ? [{ key: "owner", label: "Owner", sortValue: (i: Item) => who(world, ownerOf(i))?.name || "", render: (i: Item) => { const a = who(world, ownerOf(i)); return a ? <View className="flex-row items-center gap-s2"><ActorMark who={a} size="sm" /><Text size="secondary" tone="muted" numberOfLines={1}>{a.name}</Text></View> : <Text tone="faint">{"–"}</Text>; }}] : []),
+        ...(showTasks ? [{ key: "tasks", label: "Tasks", sortValue: (i: Item) => tasksOf(i).total, render: (i: Item) => { const t = tasksOf(i); return <TaskBar done={t.done} total={t.total} />; }}] : []),
       ]}
     />
   );
@@ -130,11 +137,11 @@ export function ProjectsList({ world, items, onOpen, onNew }: { world: World; it
   return (
     <View className="gap-s4">
       <View className="flex-row items-center gap-s2">
-        <Text size="page" strong className="flex-1">Projects</Text>
+        <View className="min-w-0 flex-1"><Text size="page" strong>Projects</Text><Text size="caption" tone="label">{`${shown.length} ${shown.length === 1 ? "project" : "projects"}${tally ? `: ${tally}` : ""}`}</Text></View>
         {filter}
         {phone ? null : <NewMenu items={items} onNew={onNew} />}
       </View>
-      <Segmented fill={phone} label="Space" value={space} onChange={setSpace} options={[["all", "All spaces"], ...world.spaces.map((s: any) => [s.id, s.name] as [string, string])]} />
+      {world.spaces.length > 1 ? <Segmented fill={phone} label="Space" value={space} onChange={setSpace} options={[["all", "All spaces"], ...world.spaces.map((s: any) => [s.id, s.name] as [string, string])]} /> : null}
       {type !== "all" ? <View className="flex-row"><Chip icon="x" onPress={() => setType("all")}>{`Type: ${viewDefOf(work.find((t) => t.name === type) ?? work[0]).plural}`}</Chip></View> : null}
       {phone ? phoneList : table}
       {!items.length ? <EmptyState title="Nothing here yet" /> : null}

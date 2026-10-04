@@ -6,7 +6,7 @@ export const CUSTOMIZE_SPACES: [string, string][] = [["mine", "Mine"], ["harlow"
 export function loadTypes(): TypeDef[] {
   return [
     {
-      id: "contact", label: "Contact", plural: "Contacts", spaces: ["mine", "harlow"], work: false, icon: "agents",
+      id: "contact", label: "Contact", plural: "Contacts", spaces: ["mine", "harlow"], work: false, icon: "contacts",
       fields: [
         { key: "name", label: "Name", kind: "text", required: true }, { key: "role", label: "Role", kind: "choice" }, { key: "email", label: "Email", kind: "email" },
         { key: "phone", label: "Phone", kind: "phone" }, { key: "address", label: "Address", kind: "address" }, { key: "dob", label: "Date of birth", kind: "date" },

@@ -8,5 +8,5 @@ const PX = { sm: 24, md: 32, lg: 40 } as const;
 export function ActorMark({ who, size = "md", space, onPress }: { who?: Who; size?: "sm" | "md" | "lg" | AvatarSize; space?: AvatarRef; onPress?: () => void }) {
   const name = who?.name || "Vyre";
   const px = typeof size === "number" ? size : PX[size];
-  return <Avatar of={{ kind: kindOf(who?.family), id: who?.id || name, name, seed: who?.seed }} size={px as AvatarSize} space={space} onPress={onPress} />;
+  return <Avatar of={{ kind: who ? kindOf(who.family) : "agent", id: who?.id || name, name, seed: who?.seed }} size={px as AvatarSize} space={space} onPress={onPress} />;
 }

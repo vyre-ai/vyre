@@ -707,11 +707,11 @@ test("Q-1: a first adoption by a paired device is a question at the server: who 
   assert.equal(first.words, "amber coral app1", "the words come from the server's keys and this device");
   assert.equal(w.p.meta.get("owner"), null, "asking does not own");
   const q = await atServer(w, "wink.server.pairing");
-  assert.deepEqual({ asking: q.asking, name: q.name, words: q.words }, { asking: true, name: "Alex (per_aaaaaa)", words: undefined }, "the question never shows the right words, only choices");
+  assert.deepEqual({ asking: q.asking, name: q.name, words: q.words }, { asking: true, name: "Alex (id aaaaaa)", words: undefined }, "the question never shows the right words, only choices; the claimed name carries the identity id's first characters");
   assert.equal(q.choices.length, 3);
   assert.equal(new Set(q.choices).size, 3);
   assert.ok(q.choices.includes("amber coral app1"), "the right words are one of the three");
-  assert.match(q.line, /^Pair this server to Alex \(per_aaaaaa\)\? Pick the three words the app shows: 1\) .+ 2\) .+ 3\) .+$/);
+  assert.match(q.line, /^Pair this server to Alex \(id aaaaaa\)\? Pick the three words the app shows: 1\) .+ 2\) .+ 3\) .+$/);
   assert.ok(w.events.some(e => e[0] === "wink.pair-asked" && e[1].choices.includes("amber coral app1") && e[1].words === undefined), "the event carries choices, never the right words");
   // asking again is the same ask, not a second owner
   assert.equal((await adoptAs(w, "device:app1")).pending, true);
@@ -722,7 +722,11 @@ test("Q-1: a first adoption by a paired device is a question at the server: who 
   assert.deepEqual(done.owner, { kind: "identity", id: ME });
   assert.equal(w.p.meta.get("owner").identity, ME);
   assert.equal(w.p.meta.get("adopter"), "device:app1");
-  assert.equal((await atServer(w, "wink.server.pairing")).asking, false, "the question is closed");
+  const after = await atServer(w, "wink.server.pairing");
+  assert.equal(after.asking, false, "the question is closed");
+  assert.equal(after.paired, true, "once there is an owner the server says so, for the installer's closing line");
+  assert.equal(typeof after.owner, "string");
+  assert.ok(!/key|secret|authKey/i.test(JSON.stringify(after)), "a name in words only");
 });
 
 test("Q-1: a second scanner is refused while one is asking, and cannot ride the first one's yes", async () => {
@@ -1337,4 +1341,28 @@ test("ruling 7: a server adopted by an identity makes that identity its home own
   const dir = kernelDirectory({ kernel: { grants: { roleOf: async () => "owner" } }, space: async () => HARLOW, name: () => "Harlow Legal", label: async id => (id === ME ? "alex" : null) });
   assert.equal(await dir.label(ME), "alex");
   assert.equal(await dir.label("per_other"), null);
+});
+
+test("wink.server.status: not owned before the pairing, then the space and the pairing device's name for the installer's last line; the server's own surfaces only", async () => {
+  const w = world({ confirm: true });
+  assert.deepEqual(await atServer(w, "wink.server.status"), { owned: false });
+  await adoptAs(w, "device:app1");
+  const choices = (await atServer(w, "wink.server.pairing")).choices;
+  assert.equal((await atServer(w, "wink.server.pair.answer", { yes: true, pick: choices.indexOf("amber coral app1") + 1 })).yes, true);
+  await adoptAs(w, "device:app1");
+  const st = await atServer(w, "wink.server.status");
+  assert.equal(st.owned, true);
+  assert.equal(st.space, "Personal");
+  assert.equal(typeof st.device, "string");
+  await assert.rejects(() => w.call("wink.server.status", {}, "device:app1"), e => e.code === "denied");
+});
+
+test("PA-2: a look-alike letter in the claimed name is shown beside the identity id, which a claim cannot fake", async () => {
+  const w = world({ confirm: true });
+  const lookalike = "\u0430lex"; // a Cyrillic "a" then "lex": it reads as alex
+  await adoptAs(w, "device:app1", { ...ASKED, owner: { ...ASKED.owner, name: lookalike } });
+  const q = await atServer(w, "wink.server.pairing");
+  assert.match(q.name, /\(id [A-Za-z0-9]{1,6}\)$/, "the id's first characters are always shown");
+  assert.notEqual(q.name, "alex");
+  assert.ok(q.line.includes("(id "), "and so is the line the person reads");
 });
