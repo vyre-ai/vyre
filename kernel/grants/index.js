@@ -572,6 +572,33 @@ export function createGrantsStore(cfg) {
       return last;
     },
 
+    /**
+     * The kernel's own owner change, for the day the person claims their identity: the home's owner (a local id made at first start) becomes the claimed identity's id, so the Space has ONE person for
+     * its owner. Not a chain's act (nothing can ask for it but the spaces module through the kernel's handle): the new id is made the owner, the old one is taken out, every grant of the old
+     * one is revoked and the owner's role grants are made again, each as an ordinary sealed event, so a rebuild from the log reaches the same state. Once; the same id again changes nothing.
+     * @param {string} from @param {string} to @returns {Promise<{ owner: string, previous: string, changed: boolean }>}
+     */
+    async adoptOwner(from, to) {
+      if (typeof to !== "string" || !/^per_[a-z2-7]{26}$/.test(to)) throw new KernelError("bad_input", "an owner is a person id");
+      if (from === to) return { owner: to, previous: from, changed: false };
+      const prior = memberships.get(from);
+      if (!prior || prior.role !== "owner") throw new KernelError("not_allowed", "only the Space's owner can be replaced this way");
+      const k = kernelChain();
+      for (const g of [...grants.values()]) if (g.status === "active" && g.subject.kind === "actor" && g.subject.actor.kind === "person" && g.subject.actor.id === from) {
+        const n = freeze({ ...g, status: "revoked", revoked_at: clock(), reason: "owner adopted the claimed identity" }); grants.set(n.id, n);
+        await note(k, "grant.revoked", urn("grant", n.id), { id: n.id, reason: "owner adopted the claimed identity" });
+      }
+      memberships.delete(from);
+      await note(k, "member.removed", urn("member", from), { person: from });
+      const membership = freeze({ space: cfg.space, person: to, role: "owner", added_by: "kernel", added_at: clock() });
+      memberships.set(to, membership);
+      await note(k, "member.set", urn("member", to), { membership });
+      const g = freeze({ id: `gr_${mintUuid(clock())}`, space: cfg.space, subject: { kind: "actor", actor: { kind: "person", id: to, space: cfg.space } }, actions: [...ROLE_ACTIONS.owner], action_set_version: version, resource: { prefix: `vyre://${cfg.space}/*/*` }, conditions: { delegate: { allowed: true, max_depth: 2 } }, issuer: { kind: "service", id: "grants", space: cfg.space }, source: "role:owner", status: "active", created_at: clock() });
+      grants.set(g.id, g);
+      await note(k, "grant.created", urn("grant", g.id), { grant: g });
+      return { owner: to, previous: from, changed: true };
+    },
+
     /** The first owner of a new Space, written by the kernel itself (no chain can give the first grant). Once only. */
     async bootstrap({ owner }) {
       if (memberships.size || cfg.log.latestSeq() > 0) throw new KernelError("not_allowed", "this Space already has a history: its first owner is made once, at its start");
@@ -896,7 +923,7 @@ export function createGrantsStore(cfg) {
   // the log refused) restores the store from the log, which is the durable copy, so memory never shows a change the log does not hold, and the caller is told it failed.
   // A refusal the call itself makes before changing anything (a KernelError) needs no restore.
   let lock = Promise.resolve();
-  for (const name of ["create", "revoke", "narrow", "setRole", "transferOwner", "removeMember", "addActor", "offer", "unoffer", "inviteCreate", "inviteConfirm", "inviteAccept", "sweep", "installModule", "chatCreate", "chatChange", "ruleSet", "ruleRemove", "ruleAccept", "ruleDismiss", "rulePropose"]) {
+  for (const name of ["create", "revoke", "narrow", "setRole", "transferOwner", "adoptOwner", "removeMember", "addActor", "offer", "unoffer", "inviteCreate", "inviteConfirm", "inviteAccept", "sweep", "installModule", "chatCreate", "chatChange", "ruleSet", "ruleRemove", "ruleAccept", "ruleDismiss", "rulePropose"]) {
     const f = /** @type {(...a: any[]) => Promise<any>} */ (/** @type {any} */ (api)[name]);
     /** @type {any} */ (api)[name] = (/** @type {any[]} */ ...a) => {
       const run = async () => {

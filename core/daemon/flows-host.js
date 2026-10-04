@@ -25,12 +25,14 @@ export function createFlowsHost(o) {
   /** @type {Map<string, any>} */ const spaces = new Map();
 
   /** @param {string} space @param {any} k the Space's kernel (kernel/index.js) @param {string} ownerId the Space's first owner */
-  async function attach(space, k, ownerId) {
+  async function attach(space, k, ownerArg) {
+    /** The Space's first owner, read live: it becomes the claimed identity's id when the person claims one. */
+    const ownerOf = () => (typeof ownerArg === "function" ? ownerArg() : ownerArg);
     if (spaces.has(space)) return spaces.get(space);
     const gw = k.gateway;
     const actor = (/** @type {string} */ id) => ({ kind: "person", id, space });
     // The host acts for the Space's owner only for housekeeping (defining its own record types); everything a person's Flow does runs under that person's chain.
-    const owner = () => k.chains.fromFacts({ kind: "device", device_key_id: "flows-host", person: ownerId, path: "direct", session: "flows-host" });
+    const owner = () => k.chains.fromFacts({ kind: "device", device_key_id: "flows-host", person: ownerOf(), path: "direct", session: "flows-host" });
     const personChain = (/** @type {string} */ id) => k.chains.fromFacts({ kind: "device", device_key_id: "flows-host", person: id, path: "direct" });
     const sh = k.kernelFor({ name: "flows", needs: { kernel: { actions: ["records.read", "records.create", "records.update", "records.remove", "events.read", "tasks.request", "tasks.read"], prefixes: ["*"] } } });
     const flowsChain = () => k.chains.appendService(owner(), "flows", true);
@@ -97,11 +99,11 @@ export function createFlowsHost(o) {
     try { await flows.recover(); } catch (err) { log(`flows ${space}: recover failed (${/** @type {Error} */ (err).message})`); }
     void arm();
 
-    const host = Object.freeze({ space, flows, stages, owner: ownerId,
+    const host = Object.freeze({ space, flows, stages, get owner() { return ownerOf(); },
       /** The chain of a session token this Space's door minted (an assistant's session, a person's), or null. */
       chainForToken: async (/** @type {string} */ token) => { try { return await k.surfaces.chainFor(token); } catch { return null; } },
       /** The Space owner's own chain for a call the module has itself checked came from the person's own surface (no presence session: approving still asks for the person's proof). */
-      personChain: () => personChain(ownerId),
+      personChain: () => personChain(ownerOf()),
       stop: () => { stopped = true; if (timer) clearTimeout(timer); } });
     spaces.set(space, host);
     return host;
