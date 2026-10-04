@@ -151,6 +151,7 @@ export class TwentyStore {
   }
 
   /**
+   * (Twenty v2.44.0 does not offer it: a live write adds one timeline activity each, so `scrub` is what removes a sealed field's old values there.)
    * Whether this Twenty can switch an object's timeline off (`isAuditLogged`). It is switched off on every Vyre object, so the values of a field that is
    * sealed later were never copied into Twenty's history; `scrub` still destroys what an older Space already holds. A Twenty that does not offer the switch
    * answers false and nothing changes. Asked once.

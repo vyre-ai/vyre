@@ -70,21 +70,24 @@ if (!URL_ || !KEY_FILE) {
       return { store, behind, touch, cleanup: async () => {} };
     },
   });
-  test("live: Twenty's timeline is off for a Vyre object and a write leaves nothing in it", async () => {
+  test("live: Twenty timeline switch (isAuditLogged) when offered, and how much a write adds when it is not", async () => {
     const store = await fresh();
     const probe = await client.gql("metadata", 'query P { __type(name: "CreateObjectInput") { inputFields { name } } }');
     const offered = Boolean(probe.__type && probe.__type.inputFields.some((f) => f.name === "isAuditLogged"));
     console.log(`isAuditLogged offered by this Twenty: ${offered}`);
-    if (!offered) return;
-    const d = await client.gql("metadata", "query O { objects(paging: { first: 200 }) { edges { node { nameSingular isAuditLogged } } } }");
-    assert.equal(d.objects.edges.find((e) => e.node.nameSingular === "contact").node.isAuditLogged, false);
+    if (offered) {
+      const d = await client.gql("metadata", "query O { objects(paging: { first: 200 }) { edges { node { nameSingular isAuditLogged } } } }");
+      assert.equal(d.objects.edges.find((e) => e.node.nameSingular === "contact").node.isAuditLogged, false);
+    }
     const count = async () => (await client.gql("graphql", "query T { timelineActivities(first: 1) { totalCount } }")).timelineActivities.totalCount;
     const before = await count();
     const id = crypto.randomUUID();
     await store.create("contact", id, { name: "Timeline Probe" });
     await store.update("contact", id, { name: "Timeline Probe 2" }, 1);
     await new Promise((r) => setTimeout(r, 8000));
-    assert.equal(await count(), before, "no timeline activity was written for the contact");
+    const after = await count();
+    console.log(`timeline activities written by two writes: ${after - before}`);
+    if (offered) assert.equal(after, before, "no timeline activity was written for the contact");
   });
   test("live: close the listener", async () => { await new Promise((r) => (listener ? listener.close(() => r(null)) : r(null))); });
 }
