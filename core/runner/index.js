@@ -7,6 +7,7 @@ import { createRunner, reconcile } from "./runner.js";
 import { unavailable } from "./sandbox.js";
 import { workspaceUnavailable } from "./workspace.js";
 import { createTurnSeal } from "./ownserver.js";
+import { createLenderHost } from "./lender-host.js";
 
 /** Test and wiring seam, keyed by the module's root folder: { ports: { vault, sync, grants, server, requestServer }, platform }. */
 export const seams = new Map();
@@ -41,19 +42,38 @@ const str = { type: "string" };
 export default {
   async start(ctx) {
     const seam = (ctx.paths && seams.get(ctx.paths.root)) || {};
-    // The kernel's own ports need the host's answers (the person's chain, this computer's device id and key, the sync and spec ports). Until the host gives them, building them throws:
-    // that is "not connected yet", never a module that fails to start (walk step 11, 4 Oct).
+    // What the host (the daemon, through the kernel handle) gives the runner: ready `ports`, or the pieces to build them (`runnerPorts`), or this computer's identity alone
+    // (`identity()` -> { deviceId, deviceKey }), from which the runner builds one lender host per Space whose home is another computer, over the kernel's remote call
+    // (`ctx.kernel.for(space).call`: the one remote path). Until the host gives anything, building throws: that is "not connected yet", never a module that fails to start (walk step 11, 4 Oct).
+    const hostOf = () => { try { return ctx.kernel?.runnerHost?.() || null; } catch { return null; } };
+    const lenders = new Map();
+    /** @type {() => any} the ports for ONE Space, built without asking for a Space (the test seam and the kernel's own pieces) */
     const ports = () => {
       if (seam.ports) return seam.ports;
-      try { const h = ctx.kernel?.runnerHost?.(); return (h && h.ports) || ctx.kernel?.runnerPorts?.(h) || null; } catch { return null; }
+      try { const h = hostOf(); return (h && h.ports) || (h && !h.identity && ctx.kernel?.runnerPorts?.(h)) || null; } catch { return null; }
     };
+    const portsFor = async space => {
+      const p = ports(); if (p) return p;
+      const h = hostOf(); if (!h || typeof h.identity !== "function") return null;
+      let l = lenders.get(space);
+      if (!l) {
+        const k = ctx.kernel?.for?.(space);
+        if (!k || typeof k.call !== "function") return null;   // a Space this computer hosts itself: not lent over a wire
+        const id = await h.identity();
+        l = createLenderHost({ invoke: k.call, deviceId: id.deviceId, deviceKey: id.deviceKey, ...(h.lenderCap ? { lenderCap: h.lenderCap } : {}) });
+        await l.ready; lenders.set(space, l);
+        l.ports.onRevoke(async () => { const r = runners.get(space); if (r) { try { await r.revoke(); } catch {} } });
+      }
+      return l.ports;
+    };
+    const hasHost = () => Boolean(seam.ports || hostOf());
     // A workspace left open by a runner that died must not stay readable: close any nobody holds a lease for.
     try { await reconcile({ base: ctx.paths.root + "/runner", platform: seam.platform }); } catch {}
     /** @type {Map<string, any>} one runner per space */
     const runners = new Map();
     const emit = (space, e) => { try { ctx.events.emit(`runner.${e.type === "checkpoint" ? "checkpoint" : e.type}`, { space, ...e }); } catch {} };
-    const forSpace = space => {
-      const p = ports();
+    const forSpace = async space => {
+      const p = await portsFor(space);
       if (p && (typeof p.device !== "string" || !p.device)) throw Object.assign(new Error("the runner needs this computer's device key identity"), { code: "unavailable" });
       if (!p) throw Object.assign(new Error("running a space's work here is not connected yet: the space's vault and sync are not available"), { code: "unavailable" });
       let r = runners.get(space);
@@ -70,20 +90,22 @@ export default {
       input: obj(),
       run: async () => {
         const why = unavailable(seam.platform) || workspaceUnavailable(seam.platform, { base: ctx.paths.root + "/runner" });
-        return { ready: !why && !!ports(), why: why || (ports() ? "" : "the space's vault and sync are not connected yet"), spaces: [...runners].map(([space, r]) => { const { dir, ...rest } = r.status(); return { space, ...rest }; }) };
+        let ident = ""; const h = !why && !seam.ports ? hostOf() : null;
+        if (h && typeof h.identity === "function") { try { await h.identity(); } catch (e) { ident = String(/** @type {any} */ (e).message || "this computer has no device identity yet"); } }
+        return { ready: !why && hasHost() && !ident, why: why || ident || (hasHost() ? "" : "the space's vault and sync are not connected yet"), spaces: [...runners].map(([space, r]) => { const { dir, ...rest } = r.status(); return { space, ...rest }; }) };
       },
     });
     ctx.tool("runner.place", {
       description: "Where a session in this space would run now: here, the server or waiting, with the reason in words.",
       input: obj({ space: str, pinned: { type: "boolean" } }, ["space"]),
-      run: async ({ space, pinned }) => forSpace(space).decide({ pinnedToServer: Boolean(pinned) }),
+      run: async ({ space, pinned }) => (await forSpace(space)).decide({ pinnedToServer: Boolean(pinned) }),
     });
     ctx.tool("runner.start", {
       description: "Start a session here. The space's own definition of the session decides the program, the routes and the credentials it may use; the caller names only the space and the session. Needs both grants and a held key lease.",
       input: obj({ space: str, session: str, resume: { type: "boolean" } }, ["space", "session"]),
       run: async ({ space, session, resume }, meta) => {
         await person(ctx, meta, "starting a session here");
-        const p = ports(); const r = forSpace(space);
+        const p = await portsFor(space); const r = await forSpace(space);
         const spec = await p.spec({ space, session });
         if (!spec || !spec.command || !Array.isArray(spec.routes)) throw Object.assign(new Error("the space has no definition for that session"), { code: "not_found" });
         const h = await r.start({ session, resume: Boolean(resume), command: spec.command, args: spec.args, env: spec.env, routes: spec.routes, readOnly: spec.readOnly, labels: spec.labels, network: spec.network });
@@ -92,13 +114,13 @@ export default {
     });
     ctx.tool("runner.stop", { description: "Stop a session running here.", input: obj({ space: str, session: str }, ["space", "session"]),
       run: async ({ space, session }, meta) => {
-        await person(ctx, meta, "stopping a session here"); await forSpace(space).stop(session); return { stopped: true }; } });
+        await person(ctx, meta, "stopping a session here"); await (await forSpace(space)).stop(session); return { stopped: true }; } });
     ctx.tool("runner.lock", { description: "Close the workspace on this computer. The data stays encrypted.", input: obj({ space: str }, ["space"]),
       run: async ({ space }, meta) => {
-        await person(ctx, meta, "closing the workspace"); await forSpace(space).lock(); return { locked: true }; } });
+        await person(ctx, meta, "closing the workspace"); await (await forSpace(space)).lock(); return { locked: true }; } });
     ctx.tool("runner.move", { description: "Move a session to the space's server, after a last checkpoint here.", input: obj({ space: str, session: str }, ["space", "session"]),
       run: async ({ space, session }, meta) => {
-        await person(ctx, meta, "moving a session"); await forSpace(space).moveToServer(session); return { moved: true }; } });
+        await person(ctx, meta, "moving a session"); await (await forSpace(space)).moveToServer(session); return { moved: true }; } });
 
     // Revoking is the kernel's reaction to a withdrawn offer or a removed member, never a tool anyone can call.
     const off = ports()?.onRevoke?.(async () => {
@@ -119,6 +141,6 @@ export default {
       catch (err) { seals.delete(key); emit(r.space, { type: "seal-failed", session: r.session, code: err.code || "error", message: String(err.message || err).slice(0, 200) }); }
     }) : null;
 
-    return { async stop() { try { off?.(); } catch {} try { offTurns?.(); } catch {} for (const r of runners.values()) { try { await r.stopAll(); await r.lock(); } catch {} } runners.clear(); } };
+    return { async stop() { try { off?.(); } catch {} try { offTurns?.(); } catch {} for (const l of lenders.values()) { try { l.stop(); } catch {} } for (const r of runners.values()) { try { await r.stopAll(); await r.lock(); } catch {} } runners.clear(); } };
   },
 };
