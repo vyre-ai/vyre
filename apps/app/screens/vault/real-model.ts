@@ -55,6 +55,15 @@ export function usesLine(rows: UseRow[], now: number): { key: string; who: strin
 export function useCount(rows: UseRow[], now: number): number { return rows.filter((u) => now - u.at <= DAY && u.ok).length; }
 
 /** The words a refused reveal gets, from the box's error code, never from a value. */
+/** The words for an unlock of the personal vault from the phone, by code. Only our own sentences: the server's text is never shown (one rule everywhere). The codes for a wrong password and for too many tries are asked of vault; `wrong_password` and `too_many` are the names used until it answers. */
+export function personalUnlockRefusal(code: string | undefined): string {
+  if (code === "presence_required") return "That needs you. Approve on this device, then try again.";
+  if (code === "wrong_password" || code === "bad_password") return "That is not the password for this vault. It is still locked.";
+  if (code === "too_many" || code === "rate_limited") return "Too many tries. Wait a few minutes, then try again.";
+  if (code === "no_such_tool" || code === "not_found") return "This server cannot unlock it from a phone yet.";
+  return "The personal vault did not open. Nothing was changed.";
+}
+
 export function revealRefusal(code: string | undefined, message: string, how: "phone" | "touchid" | "browser" = "browser"): string {
   if (code === "presence_required") return "That needs you. Approve on this device, then try again.";
   if (code === "locked") return "The vault is locked. Enter its passphrase to open it, then try again.";
