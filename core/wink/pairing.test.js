@@ -21,7 +21,8 @@ function world(o = {}) {
   const tools = new Map();
   const events = /** @type {any[]} */ ([]);
   const drops = /** @type {any[]} */ ([]);
-  const ctx = { store: { db }, config: { name: "alex" }, log() {}, events: { emit: (n, d) => events.push([n, d]) }, tool: (n, def) => tools.set(n, def), call: async (tool, input) => { if (tool === "relay.route.id") return { data: { box: o.box || "Qm94S2V5" } }; drops.push([tool, input]); return { data: { closed: true } }; } };
+  const adopts = /** @type {any[]} */ ([]);
+  const ctx = { store: { db }, config: { name: "alex" }, log() {}, events: { emit: (n, d) => events.push([n, d]) }, tool: (n, def) => tools.set(n, def), call: async (tool, input) => { if (tool === "relay.route.id") return { data: { box: o.box || "Qm94S2V5" } }; if (tool === "spaces.owner.adopt") { adopts.push(input); return { data: { changed: true } }; } drops.push([tool, input]); return { data: { closed: true } }; } };
   const typed = /** @type {any[]} */ ([]);
   const finishes = /** @type {any[]} */ ([]);
   const minted = /** @type {any[]} */ ([]);
@@ -42,7 +43,7 @@ function world(o = {}) {
   p.tools();
   const call = (name, input = {}, meta = {}) => tools.get(name).run(input, { caller: "device:x", ...meta });
   const fails = async (name, input, code) => { await assert.rejects(() => call(name, input), e => (code ? e.code === code : true) && (e.message || "")); };
-  return { p, call, drops, events, typed, finishes, minted, db, tools, fails };
+  return { p, call, drops, adopts, events, typed, finishes, minted, db, tools, fails };
 }
 const settle = () => new Promise(r => setTimeout(r, 200)); // 40 ms flaked on a loaded box (4 Oct)
 
@@ -1326,11 +1327,11 @@ test("the old ring (relay.pair.ticket) is held for the same words: nothing is re
 test("ruling 7: a server adopted by an identity makes that identity its home owner (spaces.owner.adopt with the identity id), and the pair targets name the person it was given, not a first-start id", async () => {
   const w = world();
   await w.tools.get("wink.server.adopt").run({ owner: { kind: "identity", id: ME, name: "alex" }, identity: ME, peerSecret: "A".repeat(43) }, { caller: "device:home1" });
-  assert.ok(w.drops.some(([tool, input]) => tool === "spaces.owner.adopt" && input.person === ME), JSON.stringify(w.drops));
+  assert.deepEqual(w.adopts, [{ person: ME }]);
   // a space target adopted with an identity does the same; a bad identity id calls nothing
   const w2 = world();
   await w2.tools.get("wink.server.adopt").run({ owner: { kind: "space", id: HARLOW }, identity: "per_evil", peerSecret: "A".repeat(43) }, { caller: "device:home1" });
-  assert.ok(!w2.drops.some(([tool]) => tool === "spaces.owner.adopt"));
+  assert.deepEqual(w2.adopts, []);
   // the directory's label for an identity is the name it claimed, when one is given
   const { kernelDirectory } = await import("./pairing.js");
   const dir = kernelDirectory({ kernel: { grants: { roleOf: async () => "owner" } }, space: async () => HARLOW, name: () => "Harlow Legal", label: async id => (id === ME ? "alex" : null) });
