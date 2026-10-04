@@ -118,6 +118,12 @@ export function registerReset(o) {
       }
       // the box may have changed since begin: a box that holds data is never reset here
       if (owned()) { const h = await holdsData(); if (h.holds) { meta.del(BEGUN); throw fail("holds_data", `This server holds data (${h.names.join(", ")}). Nothing was reset. To erase it, run sudo vyre admin wipe on the server.`); } }
+      // Every paired person session and grant ends with the owner (ADR 0032 2d: a reset is a recovery reset), AWAITED and BEFORE anything is forgotten: a reset that cannot end them fails and
+      // changes nothing (the code stays good), because phones signed in as the old owner must not outlive it. A box with no presence module has none to end.
+      if (typeof ctx.call === "function") {
+        const ended = /** @type {any} */ (await Promise.resolve(ctx.call("presence.person.end-paired", {})).catch((/** @type {any} */ e) => ({ error: { code: "failed", message: String(e && e.message) } })));
+        if (!ended || ended.error) throw fail("unavailable", "Could not sign out the phones that are signed in as the current owner, so nothing was reset. Try again.");
+      }
       meta.del(BEGUN); meta.del(GUARD);
       const at = now();
       const om = meta.get("owner");
@@ -127,8 +133,6 @@ export function registerReset(o) {
       // The card goes first, while the previous owner's devices are still reachable; then the owner goes and so do their devices here.
       if (had) ctx.events.emit("wink.server-reset", { at, devices: devs.map((/** @type {any} */ d) => d.id), card: resetCard(at) });
       ctx.log(`wink: this server was reset from its console at ${new Date(at).toISOString()}`);
-      // every paired person session and grant ends with the owner (ADR 0032 2d), and that is awaited: a reset that cannot end them fails and leaves the owner in place
-      await pairing.endPairedNow();
       const adopter = String(meta.get("adopter") || "");
       pairing.clearOwner(); // drops the adopter's relay device
       for (const d of devs) { pairing.devices.remove(d.id); if (`device:${d.id}` !== adopter) dropDevice(d.id); }
