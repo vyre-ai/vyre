@@ -21,7 +21,7 @@ import { isUuid } from "../../kernel/core/ids.js";
 import { createAggregator } from "../../kernel/store/query.js";
 import { SnapshotStore } from "./snapshots.js";
 import { twentyGet } from "./client.js";
-import { planType, pascal, selection, checkData, toInput, fromRow, toFilter, toOrderBy, PlanError, VERSION_FIELD, HELD_FIELD, uniqueFields } from "./plan.js";
+import { planType, pascal, selection, checkData, toInput, fromRow, toFilter, toOrderBy, PlanError, VERSION_FIELD, HELD_FIELD, uniqueFields, fromTwenty } from "./plan.js";
 
 /** The conformance suite revision this store last passed (kernel/conformance/suite.js SUITE_REVISION). */
 export const CONFORMANCE_REVISION = 5;
@@ -268,11 +268,66 @@ export class TwentyStore {
     return all;
   }
 
+  /**
+   * Totals computed inside Twenty (`<plural>GroupBy`): one request however many rows. Used when every group field is a plain scalar and every measure is a count, or
+   * a sum, average, minimum or maximum of a number (or a money field's `.amount`); anything else, or more groups than one answer holds, is folded from the rows
+   * instead, which gives the same answer. Returns null when it does not apply. @param {import("./plan.js").TypePlan} p @param {string} type @param {any} spec
+   */
+  async #nativeAggregate(p, type, spec) {
+    const SCALAR = new Set(["TEXT", "SELECT", "BOOLEAN", "DATE", "NUMBER"]);
+    const dims = [];
+    for (const g of spec.group_by ?? []) { const f = p.byVyre.get(g); if (!f || !SCALAR.has(f.type) || f.sealed) return null; dims.push(f); }
+    /** @type {{ m: any, f: any, money: boolean }[]} */ const meas = [];
+    for (const m of spec.measures ?? []) {
+      if (!m.field) { if (m.fn !== "count") return null; meas.push({ m, f: null, money: false }); continue; }
+      const [head, sub, ...more] = String(m.field).split(".");
+      const f = p.byVyre.get(head);
+      if (!f || f.sealed || more.length) return null;
+      if (m.fn === "count" && !sub) { if (!(SCALAR.has(f.type) || f.type === "CURRENCY")) return null; meas.push({ m, f, money: false }); continue; }
+      if (f.type === "NUMBER" && !sub) { meas.push({ m, f, money: false }); continue; }
+      if (f.type === "CURRENCY" && sub === "amount") { meas.push({ m, f, money: true }); continue; }
+      return null;
+    }
+    const cap = (/** @type {string} */ x) => x[0].toUpperCase() + x.slice(1);
+    const sel = new Set();
+    for (const { m, f, money } of meas) {
+      if (!f) continue;
+      sel.add(`countNotEmpty${cap(f.twenty)}`);
+      if (m.fn === "count") continue;
+      const fn = m.fn === "avg" ? "sum" : m.fn;
+      sel.add(`${fn}${cap(f.twenty)}${money ? "AmountMicros" : ""}`);
+    }
+    const P = pascal(p.singular), LIMIT = 1000;
+    const filter = toFilter(p, spec.filter);
+    const q = `query Agg_${p.plural}($f: ${P}FilterInput, $g: [${P}GroupByInput!]!) { ${p.plural}GroupBy(groupBy: $g, filter: $f, limit: ${LIMIT}) { groupByDimensionValues totalCount ${[...sel].join(" ")} } }`;
+    const d = await this.#t(() => this.client.gql("graphql", q, { ...(filter ? { f: filter } : {}), g: dims.map((f) => ({ [f.twenty]: true })) }));
+    const rows = d[`${p.plural}GroupBy`];
+    if (!Array.isArray(rows) || rows.length >= LIMIT) return null;
+    const agg = createAggregator(spec);
+    for (const r of rows) {
+      /** @type {Record<string, any>} */ const group = {};
+      dims.forEach((f, i) => { const v = fromTwenty(f, r.groupByDimensionValues[i]); group[f.vyre] = v === undefined ? null : v; });
+      const states = (spec.measures ?? []).map((/** @type {any} */ m, /** @type {number} */ i) => {
+        const { f, money } = meas[i];
+        if (!f) return null;
+        const k = 1 / (money ? 1_000_000 : 1);
+        const nonnull = Number(r[`countNotEmpty${cap(f.twenty)}`] ?? 0);
+        if (m.fn === "count") return { nonnull, nums: 0, sum: 0, min: Infinity, max: -Infinity };
+        const col = (/** @type {string} */ fn) => { const v = r[`${fn}${cap(f.twenty)}${money ? "AmountMicros" : ""}`]; return v === null || v === undefined ? null : Number(v) * k; };
+        return { nonnull, nums: nonnull, sum: m.fn === "sum" || m.fn === "avg" ? (col("sum") ?? 0) : 0, min: m.fn === "min" ? (col("min") ?? Infinity) : Infinity, max: m.fn === "max" ? (col("max") ?? -Infinity) : -Infinity };
+      });
+      agg.addGroup(group, Number(r.totalCount), states);
+    }
+    return agg.result();
+  }
+
   /** Groups and measures over the rows that match, computed by the kernel's own aggregate. @param {string} type @param {any} spec */
   async aggregate(type, spec) {
     const p = this.#plan(type);
     for (const g of spec.group_by ?? []) { const f = p.byVyre.get(g); if (g !== "id" && !f) throw new StoreError("unknown_field", `${type} has no field ${g}`); if (f?.sealed) throw new StoreError("invalid", `${type}.${g} is sealed`); }
     for (const m of spec.measures ?? []) { const f = m.field ? p.byVyre.get(m.field) : null; if (m.field && !f) throw new StoreError("unknown_field", `${type} has no field ${m.field}`); if (f?.sealed) throw new StoreError("invalid", `${type}.${m.field} is sealed`); }
+    const native = await this.#nativeAggregate(p, type, spec);
+    if (native) return native;
     // Folded page by page: no row cap, and the rows are never all in memory.
     const agg = createAggregator(spec);
     let cursor;

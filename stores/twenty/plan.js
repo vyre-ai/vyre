@@ -122,7 +122,7 @@ function toTwenty(f, v) {
   }
 }
 /** Twenty value -> kernel value, or undefined when absent. @param {FieldPlan} f @param {any} v */
-function fromTwenty(f, v) {
+export function fromTwenty(f, v) {
   if (v === null || v === undefined || v === "") return undefined;
   switch (f.kind) {
     case "money": return v.amountMicros == null ? undefined : { amount: Number(v.amountMicros) / 1_000_000, currency: v.currencyCode };

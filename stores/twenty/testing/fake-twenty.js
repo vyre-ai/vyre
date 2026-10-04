@@ -49,7 +49,7 @@ export class FakeTwenty {
     if (!op.startsWith("Boot_") && !op.startsWith("Rot_") && ++this.served > this.limit) { this.served = 0; return send(429, { errors: [{ message: "Too many requests" }] }); }
     this.requests.push({ op, variables });
     try {
-      const data = req.url === "/metadata" ? this.#metadata(op, variables, query) : req.url === "/graphql" ? await this.#core(op, variables) : (() => { throw new GqlError("not found"); })();
+      const data = req.url === "/metadata" ? this.#metadata(op, variables, query) : req.url === "/graphql" ? await this.#core(op, variables, query) : (() => { throw new GqlError("not found"); })();
       send(200, { data });
     } catch (e) {
       if (e instanceof GqlError) return send(200, { errors: [{ message: e.message, extensions: { code: e.code, ...(e.subCode ? { subCode: e.subCode } : {}) } }], data: null });
@@ -140,7 +140,7 @@ export class FakeTwenty {
     }
   }
 
-  async #core(op, v) {
+  async #core(op, v, query = "") {
     if (op === "PurgeTimeline") { this.timelinePurges = (this.timelinePurges ?? 0) + 1; return { destroyTimelineActivities: [] }; }
     const [kind, ...rest] = op.split("_"); const name = rest.join("_");
     if (kind === "Get") { const { rows } = this.#objBySingular(name); const rowsList = [...rows.values()].filter((r) => this.#match(r, v.f)); this.#visible(v.f, rowsList); return { [name]: rowsList.filter((r) => this.#vis(v.f, r))[0] ?? null }; }
@@ -159,8 +159,12 @@ export class FakeTwenty {
       const { rows } = this.#objByPlural(name);
       const dims = v.g.map((x) => Object.keys(x)[0]);
       const list = [...rows.values()].filter((r) => this.#vis(v.f, r) && this.#match(r, v.f));
-      const b = new Map(); for (const r of list) { const k = JSON.stringify(dims.map((d) => r[d] ?? null)); const e = b.get(k) ?? { groupByDimensionValues: dims.map((d) => r[d] ?? null), totalCount: 0 }; e.totalCount++; b.set(k, e); }
-      return { [`${name}GroupBy`]: [...b.values()] };
+      // the aggregate fields the query asks for: sumX, avgX, minX, maxX, countNotEmptyX (a money field's are sumXAmountMicros ...)
+      const asked = [...new Set([...query.matchAll(/\b(sum|avg|min|max|countNotEmpty)([A-Z]\w*?)(AmountMicros)?\b/g)].map((m) => m[0]))].map((tok) => { const m = /^(sum|avg|min|max|countNotEmpty)([A-Z]\w*?)(AmountMicros)?$/.exec(tok); return { tok, fn: m[1], col: m[2][0].toLowerCase() + m[2].slice(1), micros: Boolean(m[3]) }; });
+      const val = (r, a) => { const x = r[a.col]; return a.micros ? (x == null ? null : x.amountMicros) : x; };
+      const b = new Map();
+      for (const r of list) { const k = JSON.stringify(dims.map((d) => r[d] ?? null)); const e = b.get(k) ?? { groupByDimensionValues: dims.map((d) => r[d] ?? null), totalCount: 0, rows: [] }; e.totalCount++; e.rows.push(r); b.set(k, e); }
+      return { [`${name}GroupBy`]: [...b.values()].map(({ rows: rs, ...e }) => { const out = { ...e }; for (const a of asked) { const xs = rs.map((r) => val(r, a)).filter((x) => x !== null && x !== undefined && x !== ""); out[a.tok] = a.fn === "countNotEmpty" ? xs.length : !xs.length ? null : a.fn === "sum" ? xs.reduce((p, c) => p + Number(c), 0) : a.fn === "avg" ? xs.reduce((p, c) => p + Number(c), 0) / xs.length : a.fn === "min" ? Math.min(...xs.map(Number)) : Math.max(...xs.map(Number)); } return out; }) };
     }
     if (kind === "Create") {
       const { obj, rows } = this.#objBySingular(name); const d = v.d;

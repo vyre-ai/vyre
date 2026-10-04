@@ -99,6 +99,18 @@ export function createAggregator(spec) {
         if (typeof v === "number") { a.nums++; a.sum += v; if (v < a.min) a.min = v; if (v > a.max) a.max = v; }
       });
     },
+    /** Fold in a group a store already totalled: its group values, its row count and, per measure that names a field, `{ nonnull, nums, sum, min, max }`. Groups with the same values join. */
+    addGroup(/** @type {any} */ group, /** @type {number} */ n, /** @type {any[]} */ m) {
+      const k = canonical(group);
+      let s = groups.get(k);
+      if (!s) { s = fresh(group); groups.set(k, s); }
+      s.n += n;
+      measures.forEach((/** @type {any} */ x, /** @type {number} */ i) => {
+        if (!x.field || !m[i]) return;
+        const a = s.m[i], b = m[i];
+        a.nonnull += b.nonnull; a.nums += b.nums; a.sum += b.sum; if (b.nums && b.min < a.min) a.min = b.min; if (b.nums && b.max > a.max) a.max = b.max;
+      });
+    },
     result() {
       if (!groups.size && !by.length) groups.set("{}", fresh({}));
       return [...groups.values()].sort((a, b) => (canonical(a.group) < canonical(b.group) ? -1 : 1)).map(({ group, n, m }) => ({
