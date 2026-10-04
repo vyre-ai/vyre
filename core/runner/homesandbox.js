@@ -135,7 +135,9 @@ export function homeSeatbelt(o) {
     // ...then the session gets back only what it needs (these come last, so they win).
     // The blanket `(deny file-write*)` above is not overridden by a later `(allow file* ...)` on macOS 14 (hosted run 37167578152: variant A failed, the same rule with the
     // write operations named, F, passed), so each writable folder gets its write operations spelled out as well.
-    ...writable(o).flatMap(d => [`(allow file* (subpath ${q(d)}))`, `(allow file-write-create file-write-data file-write-unlink file-write-mode file-write-flags file-write-times file-write-xattr (subpath ${q(d)}))`]),
+    // Same for reads: the deny of /private/var/folders and /private/tmp above is not overridden by `file*` alone (hosted diagnosis 37174501495: every write into an allowed folder failed), so the
+    // read operations are allowed back by name too.
+    ...writable(o).flatMap(d => [`(allow file* (subpath ${q(d)}))`, `(allow file-read* (subpath ${q(d)}))`, `(allow file-write-create file-write-data file-write-unlink file-write-mode file-write-flags file-write-times file-write-xattr (subpath ${q(d)}))`]),
     ...ok.filter(d => !writable(o).includes(d)).map(d => `(allow file-read* (subpath ${q(d)}))`),
     ...[...new Set(ok.flatMap(ancestors))].map(d => `(allow file-read-metadata (literal ${q(d)}))`),
     // The protected places are denied AGAIN after the allows, so no allowed folder can re-open them.

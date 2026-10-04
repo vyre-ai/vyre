@@ -22,6 +22,7 @@ const variants = {
   D_no_both_read_denies: drop(/^\(deny file-read\* \(subpath "\/private\/(var\/folders|tmp)"\)\)/),
   E_no_launchd_mach: drop(/com\.apple\.xpc\.launchd/),
   F_no_launchctl_exec: drop(/process-exec/),
+  H_allow_read_star_too: lines.flatMap(l => l.startsWith("(allow file* (subpath") ? [l, l.replace("(allow file* ", "(allow file-read* ")] : [l]),
   G_no_network_deny: drop(/^\(deny network-outbound\)$/),
 };
 for (const [name, ls] of Object.entries(variants)) {
