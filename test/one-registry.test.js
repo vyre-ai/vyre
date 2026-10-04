@@ -291,7 +291,7 @@ test("the kernel's home space is a space in the device lists: pairing's list inc
   let d = await start({ root, kernel: true, log: () => {} });
   const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "deck" });
   const made = (await deck("spaces.identity.create", { name: "alex" })).data;
-  const home = d.kernel.space;
+  const home = d.kernel.id.space;
   assert.match(home, /^spc_/);
   assert.ok((await deck("spaces.list")).data.every((/** @type {any} */ x) => x.id !== home), "the home is not listed as a space the person made");
   const sp = (await deck("spaces.create", { name: "homelist", home: { kind: "this-computer", confirmed: true } })).data;
@@ -312,7 +312,7 @@ test("the kernel's home space is a space in the device lists: pairing's list inc
   d = await start({ root, kernel: true, log: () => {} });
   t.after(() => d.stop());
   await new Promise(r => setTimeout(r, 1500));
-  assert.equal((await d.registry.call("spaces.devices.enrolled", { device: made.eid, space: d.kernel.space }, "module:vyred", { door: true })).data.enrolled, true, "enrolled in the home after the boot migration");
+  assert.equal((await d.registry.call("spaces.devices.enrolled", { device: made.eid, space: d.kernel.id.space }, "module:vyred", { door: true })).data.enrolled, true, "enrolled in the home after the boot migration");
 });
 
 test("spaces.devices.enrolled is fail-closed: an unknown space is enrolled only when the kernel hosts it and the person belongs; and a server with no identity lists the spaces its kernel hosts for its owner", async t => {
@@ -334,9 +334,18 @@ test("spaces.devices.enrolled is fail-closed: an unknown space is enrolled only 
   const listed = await deck("spaces.list");
   assert.ok(!listed.error, JSON.stringify(listed.error));
   assert.ok(listed.data.some((/** @type {any} */ x) => x.id === hosted.space && x.name === "serverspace.vyre.run" && x.role === "owner"), JSON.stringify(listed.data));
-  assert.ok(listed.data.some((/** @type {any} */ x) => x.id === d.kernel.space));
+  assert.ok(listed.data.some((/** @type {any} */ x) => x.id === d.kernel.id.space));
   const dev = "devicexxxxxxxxxx1";
-  assert.equal(await enrolled(dev, d.kernel.space), true, "the home, a device with no list");
+  // the box knows two paired phones (active relay_devices rows of kind app); everything else is an id nobody paired
+  const ins = d.registry.deps.db.prepare("INSERT INTO relay_devices (id, name, pub, paired_at, kind, trusted, removed_at) VALUES (?, ?, 'p', 1, ?, ?, ?)");
+  ins.run(dev, "phone", "app", 0, null); ins.run("devicexxxxxxxxxx2", "phone two", "app", 0, null); ins.run("devremovedxxxxxx3", "old phone", "app", 0, 5); ins.run("devwebbrowserxxx4", "browser", "web", 0, null);
+  const kvRow = (/** @type {string} */ k) => d.registry.deps.db.prepare("SELECT value FROM spaces_kv WHERE key = ?").get(k);
+  assert.equal(await enrolled("deviceneverpaired5", d.kernel.id.space), false, "an id in no table is not enrolled, with no list");
+  assert.equal(await enrolled("devremovedxxxxxx3", d.kernel.id.space), false, "a removed relay device");
+  assert.equal(await enrolled("devwebbrowserxxx4", d.kernel.id.space), false, "a browser is not a paired app device");
+  for (const id of ["deviceneverpaired5", "devremovedxxxxxx3", "devwebbrowserxxx4"]) assert.equal(kvRow(`device-spaces/${id}`), undefined, `${id} left no list behind`);
+  assert.equal(kvRow(`device-spaces/${dev}`), undefined, "no list before first contact");
+  assert.equal(await enrolled(dev, d.kernel.id.space), true, "the home, a device with no list");
   assert.equal(await enrolled(dev, hosted.space), true, "a hosted space the owner belongs to");
   assert.equal(await enrolled(dev, "spc_aaaaaaaaaaaa"), false, "a space nobody here hosts");
   assert.equal(await enrolled(dev, "not-a-space"), false);
@@ -344,7 +353,7 @@ test("spaces.devices.enrolled is fail-closed: an unknown space is enrolled only 
   const theirs = await d.kernel.spaces.host({ owner: other, name: "theirs" });
   assert.equal(await enrolled(dev, theirs.space), false, "a hosted space the person is not a member of");
   // the device argument must have a device id's shape; nothing else is looked up
-  for (const bad of ["", "a b", "x".repeat(200), "dev/../x", "short"]) assert.equal(await enrolled(bad, d.kernel.space), false, JSON.stringify(bad));
+  for (const bad of ["", "a b", "x".repeat(200), "dev/../x", "short"]) assert.equal(await enrolled(bad, d.kernel.id.space), false, JSON.stringify(bad));
   // a creation that was cancelled is no space to be enrolled in, and neither is one still being made
   const mine = (await deck("spaces.identity.create", { name: "alex" })).data;
   assert.ok(mine.id);
@@ -355,4 +364,32 @@ test("spaces.devices.enrolled is fail-closed: an unknown space is enrolled only 
   // a finished space of the person's: enrolled, and not once the kernel says the person is no longer a member of it
   const fin = (await deck("spaces.create", { name: "finishedone", home: { kind: "this-computer", confirmed: true } })).data;
   assert.equal(await enrolled(dev, fin.space), true);
+  // migration by contact: the first answer wrote this device an explicit list; a space joined LATER is not added to it by itself
+  const afterContact = (await deck("spaces.devices.list", { device: dev })).error;
+  void afterContact;
+  const late = await d.kernel.spaces.host({ owner: d.kernel.id.owner, name: "joinedlater" });
+  assert.equal(await enrolled(dev, late.space), false, "a space made after the device's first contact is not enrolled until the person adds it");
+  // a removed member is not enrolled: a hosted space where the person was a member and then was removed
+  const theirOwner = "per_" + "c".repeat(26);
+  const shared = await d.kernel.spaces.host({ owner: theirOwner, name: "sharedwith" });
+  fs.writeFileSync(path.join(root, "dev-presence-stand-in"), "");
+  const them = shared.kernel.chains.fromFacts({ kind: "device", device_key_id: "dev0000000000000x", person: theirOwner, path: "direct", session: "s" });
+  const me2 = d.kernel.id.owner;
+  await shared.gateway.grants.setRole(them, { person: me2, role: "member" }, { presence: { method: "stand-in" } });
+  const dev2 = "devicexxxxxxxxxx2";
+  assert.equal(await enrolled(dev2, shared.space), true, "a member of a hosted space");
+  // the first contact wrote ONE list, with the spaces that existed then
+  const listOf = (/** @type {string} */ k) => JSON.parse(String(kvRow(`device-spaces/${k}`).value));
+  assert.ok(Array.isArray(listOf(dev)) && listOf(dev).includes(d.kernel.id.space), "a live paired phone got a list at first contact");
+  // an expired temp member: enrolled while the temp access stands (a device meeting the box then), not for a device that meets it after it ended
+  const tmpShared = await d.kernel.spaces.host({ owner: theirOwner, name: "tempshared" });
+  const them2 = tmpShared.kernel.chains.fromFacts({ kind: "device", device_key_id: "dev0000000000000y", person: theirOwner, path: "direct", session: "s" });
+  await tmpShared.gateway.grants.setRole(them2, { person: me2, role: "temp", scope: [`vyre://${tmpShared.space}/contact/*`], expires: Date.now() + 2500 }, { presence: { method: "stand-in" } });
+  ins.run("devicexxxxxxxxxx6", "phone six", "app", 0, null); ins.run("devicexxxxxxxxxx7", "phone seven", "app", 0, null);
+  assert.equal(await enrolled("devicexxxxxxxxxx2", tmpShared.space), false, "a space made after the device's first contact is not on its list");
+  assert.equal(await enrolled("devicexxxxxxxxxx6", tmpShared.space), true, "a device meeting the box while the temp access stands");
+  await new Promise(r => setTimeout(r, 3200));
+  assert.equal(await enrolled("devicexxxxxxxxxx7", tmpShared.space), false, "the temp access has ended: a device meeting the box now is not enrolled in it");
+  await shared.gateway.grants.removeMember(them, { person: me2 }, { presence: { method: "stand-in" } });
+  assert.equal(await enrolled(dev2, shared.space), false, "removed: the kernel says so at call time");
 });
