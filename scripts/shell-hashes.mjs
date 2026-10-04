@@ -79,7 +79,14 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const dir = process.argv[2];
   if (!dir) { console.error("usage: shell-hashes.mjs DIR"); process.exit(2); }
   try {
-    const s = shellHashes(REPO, process.argv[3]);
+    // --modules FILE --appbuild FILE: the release's signed module list and app record ride inside shell.json as exact text (lib/release-shell.js), so an old updater that knows only shell.json
+    // still delivers them. The text must be the bytes of the files SHA256SUMS will list.
+    const a = process.argv.slice(3);
+    const opt = (/** @type {string} */ n) => { const i = a.indexOf(n); return i >= 0 ? a[i + 1] : undefined; };
+    const ver = a[0] && !a[0].startsWith("--") ? a[0] : undefined;
+    const s = /** @type {any} */ (shellHashes(REPO, ver));
+    if (opt("--modules")) s.modulesJson = fs.readFileSync(/** @type {string} */ (opt("--modules")), "utf8");
+    if (opt("--appbuild")) s.appbuildJson = fs.readFileSync(/** @type {string} */ (opt("--appbuild")), "utf8");
     fs.writeFileSync(path.join(dir, "shell.json"), JSON.stringify(s));
     console.log(`shell.json lists ${s.files.length} files`);
   } catch (e) { console.error(`shell-hashes: ${/** @type {Error} */ (e).message}`); process.exit(1); }

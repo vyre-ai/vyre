@@ -7,6 +7,9 @@
 # kernel's plain line, and nothing else fails. It caught two bugs no unit test could: packed folders missing from package.json "files", and two modules with one name.
 # --drop FOLDER removes a folder from the copy before the build (for a known, open problem only; say which in the job).
 set -eu
+# Checks that do not stop the run: each failure is said where it happens and collected, so one broken check never hides the ones after it; the run fails at the end if any did.
+FAILS=""
+soft() { FAILS="$FAILS x"; }
 [ -n "${CI:-}" ] || { echo "packaged-boot-proof: runs on a CI runner only (CI is unset)" >&2; exit 2; }
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 WORK=${RUNNER_TEMP:-/tmp}/packaged-boot
@@ -92,6 +95,8 @@ console.log("ok: " + running.length + " modules run, " + offNow.length + " are o
 st=$(vyre status)
 echo "$st"
 check_modules
+# A migration that fails on a module takes its tools away while the daemon stays up: the log says so.
+! docker logs vyre-vyre-1 2>&1 | grep -Ei 'migration .* failed' || { docker logs vyre-vyre-1 2>&1 | grep -Ei 'migration .* failed' | head -5; echo "a migration failed at boot"; soft; }
 # A root-run update passes the daemon only the settings it checks (box/vyre prepare_run). Run one as root (`sudo vyre up` recreates the container from root's own env file), then the
 # kernel must still be on and the same modules must run: a box must not fall back to kernel off after its first update.
 sudo -n vyre up >"$WORK/rootrun.log" 2>&1 || { tail -20 "$WORK/rootrun.log"; echo "the root-run up failed"; exit 1; }
@@ -102,24 +107,25 @@ docker exec vyre-vyre-1 env | grep -qx 'VYRE_STORE=auto' || { echo "after a root
 check_modules
 
 # A box is a server: the daemon reports machine server, so no server module is switched off by a wrong config.
-docker exec -u 1000 vyre-vyre-1 sh -c 'cat /home/vyre/.vyre/config.json 2>/dev/null' | grep -q '"machine": *"\(device\|solo\|local\)"' && { echo "the box's config says it is not a server"; exit 1; }
-vyre status | grep -q ' box' || { echo "vyre status does not say this is a box"; exit 1; }
+docker exec -u 1000 vyre-vyre-1 sh -c 'cat /home/vyre/.vyre/config.json 2>/dev/null' | grep -q '"machine": *"\(device\|solo\|local\)"' && { echo "the box's config says it is not a server"; soft; }
+vyre status | grep -q ' box' || { echo "vyre status does not say this is a box"; soft; }
 # No first-run page on a server (0.3): nothing listens on the onboarding port inside the container, and the compose publishes nothing on the host.
 for port in 7300 7301; do
-  docker exec -u 1000 vyre-vyre-1 node -e 'const s=require("net").connect({host:process.argv[1],port:Number(process.argv[2])});s.on("connect",()=>{console.log("LISTENING");process.exit(0)});s.on("error",()=>process.exit(1))' 127.0.0.1 "$port" | grep -q LISTENING && { echo "something listens on port $port inside the box: a server has no setup page"; exit 1; }
+  docker exec -u 1000 vyre-vyre-1 node -e 'const s=require("net").connect({host:process.argv[1],port:Number(process.argv[2])});s.on("connect",()=>{console.log("LISTENING");process.exit(0)});s.on("error",()=>process.exit(1))' 127.0.0.1 "$port" | grep -q LISTENING && { echo "something listens on port $port inside the box: a server has no setup page"; soft; }
 done
-docker ps --format '{{.Ports}}' --filter name=vyre-vyre-1 | grep -q 7300 && { echo "the box publishes the onboarding port on the host"; exit 1; }
+docker ps --format '{{.Ports}}' --filter name=vyre-vyre-1 | grep -q 7300 && { echo "the box publishes the onboarding port on the host"; soft; }
 # DP-1 on the running image: the container's build is a release build, and a dev-presence-stand-in file in its home does not make it a development one.
-docker exec -u 0 vyre-vyre-1 grep -qx 'export const BUILD_KIND = "release";' /opt/vyre/lib/build-kind.js || { echo "the image's lib/build-kind.js does not say release"; exit 1; }
-docker exec -u 0 vyre-vyre-1 node --input-type=module -e 'const d = await import("/opt/vyre/kernel/devbuild.js"); if (!d.isPackaged() || d.devSwitch("1")) process.exit(1)' || { echo "the running image honours a developer switch"; exit 1; }
+docker exec -u 0 vyre-vyre-1 grep -qx 'export const BUILD_KIND = "release";' /opt/vyre/lib/build-kind.js || { echo "the image's lib/build-kind.js does not say release"; soft; }
+docker exec -u 0 vyre-vyre-1 node --input-type=module -e 'const d = await import("/opt/vyre/kernel/devbuild.js"); if (!d.isPackaged() || d.devSwitch("1")) process.exit(1)' || { echo "the running image honours a developer switch"; soft; }
 
 # The admin steps refuse for the RIGHT reason on the packaged image (not "no such step" or "no Vyre home"): a wrong typed word, and a bad proof for the anchor reset (the daemon is stopped for it
 # and started again either way). VYRE_ADMIN_NO_TTY stands in for the terminal the real command needs.
-out=$(printf 'not-the-word\n' | sudo -n env VYRE_ADMIN_NO_TTY=1 vyre admin wipe 2>&1 || true)
-printf '%s' "$out" | grep -q "that was not the word; nothing was done" || { echo "admin wipe with a wrong word did not refuse plainly: $out"; exit 1; }
-out=$(printf 'anchor-reset\n{}\n' | sudo -n env VYRE_ADMIN_NO_TTY=1 vyre admin anchor-reset 2>&1 || true)
-printf '%s' "$out" | grep -Eq 'refused: (unknown_key|no_proof|bad_proof|needs_presence)' || { echo "admin anchor-reset with a bad proof did not refuse for the right reason: $out"; exit 1; }
-printf '%s' "$out" | grep -Eq 'no Vyre home|no_home|has no anchor-reset step|has no admin' && { echo "admin anchor-reset could not even start its step: $out"; exit 1; }
+# (the real command needs a terminal: the checks give it one with script(1); the test override for "no terminal" is refused in a root run, as it should be)
+out=$(printf 'not-the-word\n' | timeout 120 script -qec "sudo -n vyre admin wipe" /dev/null 2>&1 || true)
+printf '%s' "$out" | grep -q "that was not the word; nothing was done" || { echo "admin wipe with a wrong word did not refuse plainly: $out"; soft; }
+out=$(printf 'anchor-reset\n{}\n' | timeout 300 script -qec "sudo -n vyre admin anchor-reset" /dev/null 2>&1 || true)
+printf '%s' "$out" | grep -Eq 'refused: (unknown_key|no_proof|bad_proof|needs_presence)' || { echo "admin anchor-reset with a bad proof did not refuse for the right reason: $out"; soft; }
+printf '%s' "$out" | grep -Eq 'no Vyre home|no_home|has no anchor-reset step|has no admin' && { echo "admin anchor-reset could not even start its step: $out"; soft; }
 ready || { docker logs vyre-vyre-1 2>&1 | tail -20; echo "vyred did not come back after the anchor-reset refusal"; exit 1; }
 sleep 5
 # DP-1 and the software signer: a REAL sealing process from a release-kind tree refuses a software presence key even with the variable and the dev flag set. The probe runs on a COPY of the
@@ -128,19 +134,19 @@ docker exec -u 1000 vyre-vyre-1 sh -c 'rm -rf /tmp/probe && mkdir /tmp/probe && 
 docker cp "$HERE/kernel/seal/testing.js" vyre-vyre-1:/tmp/probe/kernel/seal/testing.js
 docker cp "$HERE/test/scratch.mjs" vyre-vyre-1:/tmp/probe/test/scratch.mjs
 docker cp "$HERE/scripts/packaged-probes/software-release.mjs" vyre-vyre-1:/tmp/software-release.mjs
-docker exec -u 1000 vyre-vyre-1 node /tmp/software-release.mjs /tmp/probe || { echo "a release-kind build accepted a software key (or the probe could not run)"; exit 1; }
+docker exec -u 1000 vyre-vyre-1 node /tmp/software-release.mjs /tmp/probe || { echo "a release-kind build accepted a software key (or the probe could not run)"; soft; }
 docker exec -u 1000 vyre-vyre-1 rm -rf /tmp/probe /tmp/software-release.mjs
 
 # MW-5: the web app build is signed too. /app/ answers 200 from the signed build, and one changed file under it is refused (503, app_build_changed) by the daemon that serves it.
 sock=$(docker exec -u 1000 vyre-vyre-1 sh -c 'ls /home/vyre/.vyre/*.sock 2>/dev/null | head -n 1')
 appcode() { docker exec -u 1000 vyre-vyre-1 node -e 'require("http").get({socketPath:process.argv[1],path:"/app/",headers:{"x-vyre-caller":"anonymous"}},r=>{console.log(r.statusCode);r.resume()}).on("error",()=>console.log("err"))' "$sock"; }
 appwhy() { docker exec -u 1000 vyre-vyre-1 node -e 'let b="";require("http").get({socketPath:process.argv[1],path:"/app/",headers:{"x-vyre-caller":"anonymous"}},r=>{r.on("data",d=>b+=d);r.on("end",()=>console.log(b.slice(0,300)))})' "$sock"; }
-[ "$(appcode)" = 200 ] || { echo "the signed web app is not served (/app/ answered $(appcode)): $(appwhy)"; docker exec vyre-vyre-1 ls -l /opt/vyre/appbuild.json /opt/vyre/SHA256SUMS 2>&1 | head -3; exit 1; }
+[ "$(appcode)" = 200 ] || { echo "the signed web app is not served (/app/ answered $(appcode)): $(appwhy)"; docker exec vyre-vyre-1 ls -l /opt/vyre/appbuild.json /opt/vyre/SHA256SUMS 2>&1 | head -3; soft; }
 swcode() { docker exec -u 1000 vyre-vyre-1 node -e 'require("http").get({socketPath:process.argv[1],path:"/app/"+process.argv[2],headers:{"x-vyre-caller":"anonymous"}},r=>{console.log(r.statusCode);r.resume()}).on("error",()=>console.log("err"))' "$sock" "$1"; }
-[ "$(swcode sw.js)" = 200 ] || { echo "the signed sw.js is not served (answered $(swcode sw.js))"; exit 1; }
-[ "$(swcode manifest.webmanifest)" = 200 ] || { echo "the signed manifest is not served (answered $(swcode manifest.webmanifest))"; exit 1; }
+[ "$(swcode sw.js)" = 200 ] || { echo "the signed sw.js is not served (answered $(swcode sw.js))"; soft; }
+[ "$(swcode manifest.webmanifest)" = 200 ] || { echo "the signed manifest is not served (answered $(swcode manifest.webmanifest))"; soft; }
 docker exec -u 0 vyre-vyre-1 sh -c 'echo "<!-- tampered -->" >> /opt/vyre/apps/app/dist/index.html'
-[ "$(appcode)" = 503 ] || { echo "a changed file of the web app was served (/app/ answered $(appcode))"; exit 1; }
+[ "$(appcode)" = 503 ] || { echo "a changed file of the web app was served (/app/ answered $(appcode))"; soft; }
 docker exec -u 0 vyre-vyre-1 sh -c 'sed -i "$ d" /opt/vyre/apps/app/dist/index.html'
 
 # The runner on a server (own-server sealing): the module runs on the box, says what the box does, and a session on the server is SEALED AT EVERY TURN into the home's checkpoint store
@@ -186,3 +192,4 @@ docker exec -u 1000 vyre-vyre-1 sh -c 'cat /home/vyre/.vyre/logs/*.log' | grep -
 after=$(vyre status | sed -n 's/.*· \([0-9][0-9]*\) failed.*/\1/p' | head -n 1)
 [ "${after:-0}" = 1 ] || { echo "expected exactly one module refused after the tamper, saw ${after:-0}"; vyre modules 2>&1 | grep failed; exit 1; }
 echo "ok: the tampered module is refused and the rest run"
+[ -z "$FAILS" ] || { echo "packaged-boot-proof: $(printf '%s' "$FAILS" | wc -w) check(s) failed (see the lines above)"; exit 1; }
