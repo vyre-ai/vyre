@@ -15,7 +15,7 @@ const err = (/** @type {string} */ code, /** @type {string} */ message) => Objec
 
 /**
  * @param {{ channelOf: (sid: string) => { relay: string, route: string, box: string } | null, connect: (o: any) => any, options?: any, name?: string,
- *   sign?: (message: string) => Promise<string> | string, log?: (m: string) => void, openMs?: number }} o
+ *   sign?: (message: string) => Promise<string> | string, presenceSigner?: (challenge: any) => Promise<{ presence: any }> | { presence: any }, log?: (m: string) => void, openMs?: number }} o
  *   channelOf: where the paired server is (relay, route and box, as pairing stored them); connect: the relay client's `connect`; options: its crypto and key store.
  */
 export function createServerLinks(o) {
@@ -91,7 +91,7 @@ export function createServerLinks(o) {
     sessionFor,
     startPaired,
     /** A kernel for one Space the server hosts, over the same peer session: the kernel's own remote client. @param {string} sid @param {string} space */
-    remoteKernel: (sid, space) => createRemoteKernel({ space, transport: winkTransport({ sessionFor: () => sessionFor(sid) }) }),
+    remoteKernel: (sid, space) => createRemoteKernel({ space, transport: winkTransport({ sessionFor: () => sessionFor(sid) }), ...(o.presenceSigner ? { signer: o.presenceSigner } : {}) }),
     token: (/** @type {string} */ sid) => (links.get(sid) ? links.get(sid)?.token : null),
     close() { for (const l of links.values()) { try { l.peer && l.peer.close("done"); } catch { /* closed */ } try { l.conn.close(); } catch { /* closed */ } } links.clear(); },
   };
