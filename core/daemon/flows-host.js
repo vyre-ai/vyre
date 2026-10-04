@@ -34,7 +34,7 @@ export function createFlowsHost(o) {
     // The host acts for the Space's owner only for housekeeping (defining its own record types); everything a person's Flow does runs under that person's chain.
     const owner = () => k.chains.fromFacts({ kind: "device", device_key_id: "flows-host", person: ownerOf(), path: "direct", session: "flows-host" });
     const personChain = (/** @type {string} */ id) => k.chains.fromFacts({ kind: "device", device_key_id: "flows-host", person: id, path: "direct" });
-    const sh = k.kernelFor({ name: "flows", needs: { kernel: { actions: ["records.read", "records.create", "records.update", "records.remove", "events.read", "tasks.request", "tasks.read"], prefixes: ["*"] } } });
+    const sh = k.kernelFor({ name: "flows", needs: { kernel: { actions: ["records.read", "records.create", "records.update", "records.remove", "tasks.request", "tasks.read", "tasks.work"], prefixes: ["*"] } } });
     const flowsChain = () => k.chains.appendService(owner(), "flows", true);
     // The module's service grant is written asynchronously; any call through the handle's records waits for it, so wait here before anything runs under the service chain.
     await sh.records.query(sh.serviceChain(), "def_flow", { page: { limit: 1 } }).catch(() => {});
@@ -47,6 +47,8 @@ export function createFlowsHost(o) {
     const chains = {
       forFlow: (/** @type {any} */ x) => k.chains.forFlow({ ...x, approver: personChain(x.approver.id) }),
       forModule: (/** @type {any} */ x) => k.chains.forModule({ ...x, approver: personChain(x.approver.id) }),
+      // The Flows service as the doer of a task it puts in front of a person to check (a Kit's install card, an assistant's proposal, a held act): the approver, narrowed to service:flows.
+      forDoer: (/** @type {any} */ x) => k.chains.forModule({ module: "flows", approver: personChain(x.approver.id) }),
     };
     const catalog = async () => {
       const types = Object.fromEntries((await k.store.types()).map((/** @type {any} */ t) => [t.name, t]));
@@ -78,7 +80,13 @@ export function createFlowsHost(o) {
     }
 
     const emit = (/** @type {string} */ type, /** @type {any} */ data) => { if (/error|failed/.test(type)) log(`flows ${space}: ${type} ${JSON.stringify(data).slice(0, 200)}`); };
-    const flows = createFlows({ kernel, chains, catalog, store, clock, emit, ports });
+    // An assistant's proposals (the Engineer's) become tasks for an owner or an admin; the change is applied only after the kernel has the approver's yes, as the approver (kernel/flows/proposals.js).
+    const proposals = {
+      chain: flowsChain,
+      isAdmin: async (/** @type {any} */ who) => (await roleHolders("owner")).concat(await roleHolders("admin")).some((/** @type {any} */ a) => a.id === who.id),
+      applyTypes: async (/** @type {any} */ approver, /** @type {any} */ diff) => gw.records.define(personChain(approver.id), diff),
+    };
+    const flows = createFlows({ kernel, chains, catalog, store, clock, emit, ports, proposals });
     const stages = createStages({ kernel: { ask: gw.ask, records: gw.records }, catalog, hook: true, ports: { roles: ports.roles }, clock, emit,
       chain: () => k.chains.appendService(owner(), "flows", true) });
 

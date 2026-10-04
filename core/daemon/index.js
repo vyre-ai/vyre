@@ -286,7 +286,9 @@ async function startLocked(opts, root, p, release) {
       all: () => /** @type {any[]} */ (db.prepare("SELECT thread, body FROM kernel_turns").all()).map(r => /** @type {[string, any]} */ ([r.thread, JSON.parse(r.body)])) };
     const kernelSessions = createKernelSessions({ kernel, turns, chats: kernel.kernelFor({ name: "kernel-sessions" }).chats });
     // A chain of exactly that person, built by the kernel as a DEVICE chain of this home (vyred's own key), never from session facts: a chain made from a session token is delegated and may not mint a session (CH-7), so the opener must not be one. A person who is no longer a member gets none.
-    const personChainFor = async (/** @type {string} */ person) => kernel.chains.fromFacts({ kind: "device", device_key_id: "vyred", person, path: "direct" });
+    const canonPerson = (/** @type {string} */ p) => { const f = kernel.kernelFor({ name: "kernel-sessions" }).canonicalPerson; return typeof f === "function" ? f(p) : p; };
+    // A person id kept from before the owner adopted an identity (a stored turn, a queued message) opens as the identity: canonicalPerson maps the replaced id forward and leaves any other as given.
+    const personChainFor = async (/** @type {string} */ person) => kernel.chains.fromFacts({ kind: "device", device_key_id: "vyred", person: canonPerson(person), path: "direct" });
     // What the stream is given of it (needs.daemon "kernelThreads", core/stream): calls on a thread's session and the restart's reopening, never a token and never a way to open a session.
     // The stream reopens the open turns itself at its start so a turn it cannot resume says so in its chat; when no stream asks (it is off), the daemon reopens them once its modules are up.
     let reopenCalled = false;
@@ -851,6 +853,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const g = await registry.call("agents.scope", { name: via.agent }, "module:vyred");
     /** @type {any} */ (via).granted = g && g.data ? g.data.projects : [];
     /** @type {any} */ (via).agentKind = g && g.data ? g.data.kind : null;
+    if (g && g.data && Array.isArray(g.data.only)) /** @type {any} */ (via).agentOnly = g.data.only;
   }
   // A person's label from a model's shell is the session's own, whatever the tool (asTaken).
   const shell = socket && !policy.caller ? await asTaken(caller, req.socket, registry, via.thread) : { caller, model: false };
