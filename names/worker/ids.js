@@ -215,7 +215,7 @@ export const idOps = {
     // repoint a space. It may continue what it itself signed (the same device as the record's current signer), so a phone that made the space this morning can finish setting it up.
     // The same for a person's record (where their home or box is). Continuing means the same signer: the same device through the owner's list for a space, the same entry for a person.
     // ...and only while it has been on its list since it signed that record: a key that was removed and put back is a newcomer again, so an old compromised key cannot come back and repoint.
-    const same = !!(rec.rec && (rec.rec.via ? sig.via === rec.rec.via : !sig.via && sig.by === rec.rec.by) && !(Number.isFinite(/** @type {any} */ (sig).since) && /** @type {any} */ (sig).since > rec.rec.ts));
+    const same = !!(rec.rec && (rec.rec.via ? sig.via === rec.rec.via : !sig.via && sig.by === rec.rec.by) && Number.isFinite(/** @type {any} */ (sig).since) && /** @type {any} */ (sig).since <= rec.rec.ts);
     if (sig.young && !same) throw err(403, "newcomer", rec.kind === "space" ? "a sign-in under 24 hours old cannot change where a space lives" : "a sign-in under 24 hours old cannot change where your name points");
     if (rec.rec && sig.ts <= rec.rec.ts) throw err(400, "stale", "the record must be newer than the one it replaces and match the clock");
     Object.assign(rec, { sealed: b.sealed, rec: sig });
