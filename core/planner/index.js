@@ -285,7 +285,7 @@ export default {
      * @param {string} thread the caller's own calling thread (vyred's meta.thread), direct or none
      * @returns {Promise<{ person: boolean, source: string, name: string|null, thread: string|null }>}
      */
-    const who = async (i, caller, thread = null) => {
+    const who = async (i, caller, thread = null, agent = null) => {
       if (isPerson(caller)) {
         const as = i && i.as && typeof i.as === "object" ? i.as : null;
         if (as && as.source) return { person: false, source: String(as.source).slice(0, 120), name: as.name ? String(as.name).slice(0, 80) : null, thread: as.thread ? String(as.thread).slice(0, 120) : null };
@@ -295,8 +295,9 @@ export default {
       if (c.startsWith("module:")) return { person: false, source: c.slice(0, 120), name: null, thread };
       // A Vyre-owned session's thread (ADR 0030, in-process tools): the person's assistant, as an
       // unnamed terminal session is, so what one thread adds another may change.
-      if (/^(mcp|harness):thread:/.test(c)) return { person: false, source: c.slice(0, c.indexOf(":")), name: null, thread };
-      const claim = agentClaim(c);
+      // The session is what the daemon vouched (meta.thread, meta.agent), never the `:thread:<id>` or `:agent:<name>` text of a label (RC-1). The label only says which surface (mcp or harness); the claim text is read only when no verified meta came with the call (SHIM: kernel off).
+      const claim = typeof agent === "string" && agent ? agent : (agent === null && !thread ? agentClaim(c) : null);
+      if (!claim && thread && /^(mcp|harness)(?::|$)/.test(c)) return { person: false, source: c.slice(0, /[:]/.test(c) ? c.indexOf(":") : c.length), name: null, thread };
       // An unnamed MCP or harness caller is the person's own Claude session: their assistant.
       if (!claim) return { person: false, source: callerKind(caller), name: null, thread };
       return { person: false, source: `agent:${claim}`, name: (await isAssistant(claim)) ? null : claim, thread };
@@ -877,7 +878,7 @@ export default {
       // `as` is the Mac's forward of an agent's call to the box (who() honours it only from a person's label).
       description, input: { ...input, properties: { ...(input.properties || {}), as: { type: "object" } } }, effect: READS.has(name) ? "read" : "write", callers: agents ? [...PEOPLE, ...AGENTS] : PEOPLE,
       run: async (i, meta) => {
-        const w = await who(i, meta.caller, meta.thread || null);
+        const w = await who(i, meta.caller, meta.thread || null, meta.agent || null);
         const { as: _as, ...rest } = i || {};
         if (!local && role === "local" && (await checkLink())) return forward(name, w.person ? rest : { ...rest, as: { source: w.source, name: w.name, ...(w.thread ? { thread: w.thread } : {}) } });
         return run(rest, w);

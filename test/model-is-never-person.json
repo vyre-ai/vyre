@@ -13,6 +13,7 @@
   "core/network/wink.js": 1,
   "core/onboard/index.js": 3,
   "core/projects/index.js": 1,
+  "core/recall/index.js": 2,
   "core/relay/index.js": 1,
   "core/settings/index.js": 2,
   "core/switchboard/said.js": 1,
