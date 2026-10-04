@@ -128,6 +128,11 @@
     "effect": "read"
    },
    {
+    "name": "spaces.host-here",
+    "reach": "person",
+    "effect": "write"
+   },
+   {
     "name": "spaces.admin-list",
     "reach": "modules",
     "effect": "read"

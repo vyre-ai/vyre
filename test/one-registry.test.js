@@ -393,3 +393,27 @@ test("spaces.devices.enrolled is fail-closed: an unknown space is enrolled only 
   await shared.gateway.grants.removeMember(them, { person: me2 }, { presence: { method: "stand-in" } });
   assert.equal(await enrolled(dev2, shared.space), false, "removed: the kernel says so at call time");
 });
+
+test("spaces.host-here: this home's owner has its OWN kernel host a space (kernel, folder and key here), idempotent by id; a bad name or id is refused", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const port = await freePort();
+  const child = spawn(process.execPath, [SCRIPT, "--port", String(port)], { stdio: ["ignore", "pipe", "inherit"] });
+  t.after(() => { child.kill("SIGTERM"); });
+  await new Promise((res, rej) => { child.stdout.on("data", d => { if (String(d).includes("stand-in names directory")) res(null); }); child.on("exit", c => rej(new Error(`the stand-in exited early (${c})`))); });
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "host-box", transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${port}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  const d = await start({ root, kernel: true, log: () => {} });
+  t.after(() => d.stop());
+  const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "deck" });
+  const r = await deck("spaces.host-here", { name: "servedhere" });
+  assert.ok(!r.error, JSON.stringify(r.error));
+  assert.match(r.data.space, /^spc_[a-z2-7]{12}$/);
+  assert.equal(d.kernel.spaces.hosts(r.data.space), true, "this home's kernel hosts it");
+  assert.ok(fs.existsSync(path.join(root, "kernel", "spaces", r.data.space, "space.json")));
+  const again = await deck("spaces.host-here", { name: "servedhere", id: r.data.space });
+  assert.deepEqual([again.data.space, again.data.existed], [r.data.space, true]);
+  assert.equal((await deck("spaces.host-here", { name: "x" })).error?.code, "bad_name");
+  assert.equal((await deck("spaces.host-here", { name: "fine", id: "spc_nope" })).error?.code, "bad_input");
+});

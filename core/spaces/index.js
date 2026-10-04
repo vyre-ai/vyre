@@ -940,6 +940,21 @@ export default {
       return [...new Set(ids)];
     };
     const homePerson = () => { let who = null; try { const st = identity.status(); who = st && st.exists ? st.id : null; } catch { who = null; } return who || (K && typeof K.owner === "string" ? K.owner : null); };
+    // The SERVER's half of "a space whose home is this server": the creating device asks over the paired session and THIS home's kernel hosts the Space (kernel, store, key, log live here), for this
+    // home's owner (the identity that paired it). Idempotent for a given id. Only the owner person acts: a chain that is not exactly the home's owner is refused.
+    tool("spaces.host-here", "On a server: host a new space in THIS home's kernel for its owner (called by the owner's device over the paired session when a space is made with this server as its home). Answers { space }. Idempotent when given the id.", obj({ name: str, id: str }, ["name"]), async (i, meta) => {
+      if (!K || !K.spaces || typeof K.spaces.host !== "function" || typeof K.owner !== "string") throw refuse("This home has no kernel to host a space.", "unavailable");
+      let person = null;
+      try { const c = await K.chain(meta); const h = c && c.hops && c.hops.length === 1 ? c.hops[0].actor : null; person = h && h.kind === "person" ? String(h.id) : null; } catch { person = null; }
+      if (!person || person !== K.owner) throw refuse("Only this home's owner can have it host a space.", "forbidden");
+      const label = String(i.name || "").trim().toLowerCase().replace(/\.vyre\.run$/, "");
+      if (!/^[a-z0-9][a-z0-9-]{1,30}$/.test(label)) throw refuse("That is not a space name.", "bad_name");
+      if (typeof i.id === "string" && i.id) {
+        if (!/^spc_[a-z2-7]{12}$/.test(i.id)) throw refuse("That is not a space id.", "bad_input");
+        if (K.spaces.hosts(i.id) === true) return { space: i.id, existed: true };
+      }
+      try { const h = await K.spaces.host({ owner: K.owner, name: label, ...(typeof i.id === "string" && i.id ? { id: i.id } : {}) }); return { space: h.space || h.id, existed: false }; } catch (e) { throw plainKernelError(e); }
+    });
     tool("spaces.devices.enrolled", "Whether a device is enrolled in a space (true when the device has no list yet). For the kernel and other modules, which refuse a device that is not.", obj({ device: str, space: str }, ["device", "space"]),
       async i => {
         // A Space this module has no row for (the home's own Space, which the kernel makes before any space is created here) is asked by its id as given: no list means enrolled.
