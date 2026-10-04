@@ -10,6 +10,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { start } from "../core/daemon/index.js";
+import { call } from "../core/daemon/client.js";
 import { interactiveFrom } from "../core/harness/index.js";
 import { HUMAN_ONLY } from "../core/presence/index.js";
 import { socketPath } from "../core/config/index.js";
@@ -112,7 +113,7 @@ test("hooks: a broken lesson sends the turn back from Stop, in Claude Code's top
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   const env = { VYRE_HOME: root };
-  assert.ok((await d.registry.call("learn.add", { text: "never use em dashes in anything you write" }, "cli")).data.id);
+  assert.ok((await call("learn.add", { text: "never use em dashes in anything you write" }, { root, caller: "cli", timeout: 20_000 })).data.id);
   // Exactly the fields Claude Code 2.1.283 sends to a Stop hook.
   const payload = {
     session_id: "s1", transcript_path: path.join(root, "s1.jsonl"), cwd: "/w/harlow-site", prompt_id: "p1",
@@ -132,8 +133,8 @@ test("hooks: a broken lesson sends the turn back from Stop, in Claude Code's top
 test("hooks: with vyred down, the accepted lessons still hold, from the snapshot in the home", async t => {
   const root = tempHome(t);
   const d = await start({ root, log: () => {} });
-  assert.equal((await d.registry.call("learn.add", { text: "never use em dashes in anything you write" }, "cli")).data.id, 1);
-  assert.equal((await d.registry.call("learn.add", { text: "update CHANGELOG.md whenever you change code" }, "cli")).data.id, 2);
+  assert.equal((await call("learn.add", { text: "never use em dashes in anything you write" }, { root, caller: "cli", timeout: 20_000 })).data.id, 1);
+  assert.equal((await call("learn.add", { text: "update CHANGELOG.md whenever you change code" }, { root, caller: "cli", timeout: 20_000 })).data.id, 2);
   await d.stop();
   const env = { VYRE_HOME: root };
   // Exactly the fields Claude Code 2.1.283 sends to a Stop hook.
@@ -162,7 +163,7 @@ test("hooks: with vyred down, the accepted lessons still hold, from the snapshot
 test("hooks: with vyred down and lessons.json deleted, the lessons still hold, read from vyre.db", async t => {
   const root = tempHome(t);
   const d = await start({ root, log: () => {} });
-  assert.equal((await d.registry.call("learn.add", { text: "never use em dashes in anything you write" }, "cli")).data.id, 1);
+  assert.equal((await call("learn.add", { text: "never use em dashes in anything you write" }, { root, caller: "cli", timeout: 20_000 })).data.id, 1);
   await d.stop();
   fs.rmSync(path.join(root, "lessons.json"));
   const env = { VYRE_HOME: root };
