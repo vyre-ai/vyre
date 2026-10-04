@@ -55,6 +55,7 @@ export const hooks = {
   /** @type {any} */ vpsDeps: null,
   /** @type {((channel: { relay: string, route: string, box: string }, hello: any) => Promise<{ call(tool: string, input: any): Promise<any> }> | { call(tool: string, input: any): Promise<any> }) | null} an invitee's peer session to the home a space's record names (the daemon wires it); a test sets it */ inviteeSessionFor: null,
   /** @type {((spaceId: string) => { relay: string, route: string, box: string } | null) | null} the home's route for a space's directory record (read at call time) */ route: null,
+  /** @type {number | null} how long a read of a SERVER-hosted space's members waits for the server before it counts as unknown (default 4000 ms; read at call time) */ remoteMs: null,
   /** @type {(() => Promise<any>) | null} replaces the kernel's store plan in host-here (read at call time) */ storePlan: null,
   /** @type {boolean | null} when set, answers "does this space live on this computer" for every space (read at call time) */ livesHere: null,
   /** @type {((device: string) => Promise<{ call(tool: string, input: any): Promise<any> }>) | null} the open Wink peer session to a paired server (the daemon wires it); a test sets it */ sessionFor: null,
@@ -241,7 +242,16 @@ export default {
       return createKernelMembers({ space: id, handle: h, now, displayNames: rnames.load(id), reader: () => k });
     };
     /** A person's role in a space from the place that decides it. @param {string} id @param {string} person @param {any} [meta] */
-    const membershipOf = async (id, person, meta) => (kernelHandle(id) ? (await (await members(id, meta)).get(person)) : mstore.get(id, person)) || null;
+    const membershipOf = async (id, person, meta) => {
+      const h = kernelHandle(id);
+      if (!h) return mstore.get(id, person) || null;
+      const ask = async () => (await (await members(id, meta)).get(person)) || null;
+      // A space on a SERVER is read over the network: a server that is down, rebuilt or silent must not hold up every list and every pairing that asks who belongs where (walker, 4 Oct: wink.pair.server
+      // hung 90 s on a stale server-hosted row). No answer in time is "unknown", and the caller falls back to what this device itself knows.
+      if (h.hosted !== false) return ask();
+      const ms = typeof hooks.remoteMs === "number" ? hooks.remoteMs : 4000;
+      return Promise.race([ask().catch(() => null), new Promise(res => { const t = setTimeout(() => res(null), ms); if (t.unref) t.unref(); })]);
+    };
 
     // ---- members and invites, one instance per space (their own queues keep one change at a time) ----
     /** @type {Map<string, any>} */ const memberSvc = new Map();
@@ -674,7 +684,12 @@ export default {
         // A space whose home is a PAIRED SERVER is hosted by that server (DESIGN-spaces-first, "Where a space is hosted"): the server's kernel makes it (key, store, log, files there) and answers THE id;
         // this device keeps only the row. A server that is not yet paired goes through the code step as before. "On this computer" stays local.
         let remoteServer = null;
-        if (i.home && i.home.kind === "server" && i.home.device && typeof i.home.device.id === "string" && await pairedServer(i.home.device.id)) remoteServer = i.home.device.id;
+        if (i.home && i.home.kind === "server" && i.home.device && typeof i.home.device.id === "string" && i.home.device.id) {
+          // A person who named THEIR server never gets a space on this computer instead: a server that is not paired to this person is refused, and nothing is made. (A new server with no device named
+          // still goes through the typed-code step below.)
+          if (!(await pairedServer(i.home.device.id))) throw refuse("That server is not paired with you yet, so Vyre did not make the space. Pair the server first, then try again. Nothing was made.", "server_not_paired");
+          remoteServer = i.home.device.id;
+        }
         const KS = !remoteServer && K && K.spaces && typeof K.spaces.host === "function" ? K.spaces : null;
         if (remoteServer) {
           let made;
