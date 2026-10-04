@@ -1557,10 +1557,27 @@ test("an invitee's session opens the stream with the signed hello in its head an
   const hello = { space: "spc_aaaaaaaaaaaa", invite: "inv_" + "a".repeat(32), identity: "per_kit", entry: "e1", ts: 1, nonce: "n1", sig: "s1" };
   await assert.rejects(() => links.inviteeSessionFor(ch, hello).call("grants.invites.get", {}), e => e.code === "denied");
   assert.deepEqual(heads[0], { route: "rt-harlow", head: { peer: "wink", space: "home", invitee: hello } });
-  // a second hello for the same invite closes the first link and opens a new one with the new hello
+  // a second hello for the same invite is the one the next stream opens with
   await assert.rejects(() => links.inviteeSessionFor(ch, { ...hello, nonce: "n2", sig: "s2" }).call("grants.invites.get", {}), e => e.code === "denied");
   assert.equal(heads[1].head.invitee.nonce, "n2");
-  assert.deepEqual(closed, ["rt-harlow"]);
+  assert.deepEqual(closed, []);
+  // IV-4: the channel is a throwaway key of its own, said to be an invitee's, and a hello made by a function is asked for with that key's id and made again for every stream
+  const keys = [], opts = [];
+  const connect2 = o => { opts.push(o); return { ready: async () => ({ open: head => { heads.push({ route: o.route, head }); return { reset() {}, set onhead(f) { f({ status: 403 }); } }; } }), close() {}, reply: {} }; };
+  const links2 = createServerLinks({ connect: connect2, options: { keyStore: { get: async () => { throw new Error("the device's own key is never used for an invitee"); } } }, name: "Kit's phone", channelOf: () => null });
+  t.after(() => links2.close());
+  let asked = 0;
+  const helloFor = id => { keys.push(id); return { ...hello, channel: id, nonce: `m${++asked}` }; };
+  const n0 = heads.length;
+  await assert.rejects(() => links2.inviteeSessionFor(ch, helloFor, { invite: hello.invite }).call("grants.invites.get", {}), e => e.code === "denied");
+  await assert.rejects(() => links2.inviteeSessionFor(ch, helloFor, { invite: hello.invite }).call("grants.invites.get", {}), e => e.code === "denied");
+  assert.equal(opts[0].invitee, true, "the channel says in its hello that it is an invitee's");
+  const pub = (await opts[0].keyStore.get()).publicKey;
+  const { createHash } = await import("node:crypto");
+  const { base32 } = await import("../relay/client/bytes.js");
+  assert.equal(keys[0], base32(createHash("sha256").update(Buffer.from(pub)).digest()).slice(0, 16), "the hello is asked for with the id the box will see for the channel");
+  assert.equal(opts.length, 1, "one channel for the invite");
+  assert.deepEqual(heads.slice(n0).map(h => h.head.invitee.nonce), ["m1", "m2"], "each stream is opened with a hello made at that moment");
   // no route, or no signed hello: nothing is opened
   assert.throws(() => links.inviteeSessionFor(null, hello), e => e.code === "bad_input");
   assert.throws(() => links.inviteeSessionFor(ch, {}), e => e.code === "bad_input");
