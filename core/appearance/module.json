@@ -4,7 +4,7 @@
   "description": "The theme preset, the scheme and the design tokens as hub settings (ADR 0035), checked before they are saved and resolved per device for every surface.",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "tools": ["appearance.check", "appearance.presets", { "name": "appearance.resolve", "projectArg": "project" }] },
+  "does": { "tools": ["appearance.check", "appearance.presets", { "name": "appearance.resolve", "projectArg": "project", "effect": "read" }] },
   "watches": { "emits": ["appearance.changed"] },
   "shows": { "cli": [] },
   "needs": {},
