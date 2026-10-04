@@ -292,10 +292,6 @@
  "test/no-internal-words.test.js": {
   "owner": "platform-2"
  },
- "test/no-lime.test.js": {
-  "owner": "ui-ux",
-  "seen": "hosted run 37176623881"
- },
  "test/onboard.test.js": {
   "owner": "launch",
   "seen": "hosted run 37176623881"
