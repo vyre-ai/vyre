@@ -16,7 +16,9 @@ const proof = (action, input, resource) => ({ op: `grant.${action.split(".")[1]}
 const used = new Set();
 const presence = { check: async ({ chain, op, fields, proof: p }) => (chain && p && p.op === op && canonical(p.fields) === canonical(fields) && !used.has(p.n) && (used.add(p.n), true) ? null : "wrong_proof") };
 const mb = n => (n / 1048576).toFixed(0);
-const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
+// a fixed key, so a kept database (KEEP) still verifies its checkpoints on a later run
+const privateKey = crypto.createPrivateKey({ key: Buffer.concat([Buffer.from("302e020100300506032b657004220420", "hex"), Buffer.alloc(32, 7)]), format: "der", type: "pkcs8" });
+const publicKey = crypto.createPublicKey(privateKey);
 
 for (const N of sizes) {
   const dir = process.env.KEEP ? path.join(process.env.KEEP, `n${N}`) : fs.mkdtempSync(path.join(os.tmpdir(), "vyre-boot-"));
