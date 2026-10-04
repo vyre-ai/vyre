@@ -113,6 +113,15 @@ docker ps --format '{{.Ports}}' --filter name=vyre-vyre-1 | grep -q 7300 && { ec
 docker exec -u 0 vyre-vyre-1 grep -qx 'export const BUILD_KIND = "release";' /opt/vyre/lib/build-kind.js || { echo "the image's lib/build-kind.js does not say release"; exit 1; }
 docker exec -u 0 vyre-vyre-1 node --input-type=module -e 'const d = await import("/opt/vyre/kernel/devbuild.js"); if (!d.isPackaged() || d.devSwitch("1")) process.exit(1)' || { echo "the running image honours a developer switch"; exit 1; }
 
+# The admin steps refuse for the RIGHT reason on the packaged image (not "no such step" or "no Vyre home"): a wrong typed word, and a bad proof for the anchor reset (the daemon is stopped for it
+# and started again either way). VYRE_ADMIN_NO_TTY stands in for the terminal the real command needs.
+out=$(printf 'not-the-word\n' | sudo -n env VYRE_ADMIN_NO_TTY=1 vyre admin wipe 2>&1 || true)
+printf '%s' "$out" | grep -q "that was not the word; nothing was done" || { echo "admin wipe with a wrong word did not refuse plainly: $out"; exit 1; }
+out=$(printf 'anchor-reset\n{}\n' | sudo -n env VYRE_ADMIN_NO_TTY=1 vyre admin anchor-reset 2>&1 || true)
+printf '%s' "$out" | grep -Eq 'refused: (unknown_key|no_proof|bad_proof|needs_presence)' || { echo "admin anchor-reset with a bad proof did not refuse for the right reason: $out"; exit 1; }
+printf '%s' "$out" | grep -Eq 'no Vyre home|no_home|has no anchor-reset step|has no admin' && { echo "admin anchor-reset could not even start its step: $out"; exit 1; }
+ready || { docker logs vyre-vyre-1 2>&1 | tail -20; echo "vyred did not come back after the anchor-reset refusal"; exit 1; }
+sleep 5
 # DP-1 and the software signer: a REAL sealing process from a release-kind tree refuses a software presence key even with the variable and the dev flag set. The probe runs on a COPY of the
 # image's tree (kernel/seal/testing.js and test/scratch.mjs are not shipped and are added to the copy only), so the signed tree under test is not touched.
 docker exec -u 1000 vyre-vyre-1 sh -c 'rm -rf /tmp/probe && mkdir /tmp/probe && cp -a /opt/vyre/lib /opt/vyre/kernel /opt/vyre/package.json /tmp/probe/ && mkdir /tmp/probe/test'
