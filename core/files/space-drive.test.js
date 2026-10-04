@@ -50,7 +50,7 @@ test("upload, versions and restore run under the caller's own chain and answer p
 
 test("paths, sizes and shapes are checked at the entry, before the Drive is touched", async () => {
   const r = rig();
-  for (const p of ["../x", "/abs/x", "a//b", "a\\b", "a/%2e%2e/b", "a/./b", "a\tb", ""]) assert.equal(await code(r.run("files.drive.upload", { path: p, base64: b64("x") })), "bad_input", JSON.stringify(p));
+  for (const p of ["../x", "/abs/x", "a//b", "a\\b", "a/%2e%2e/b", "a/./b", "a\tb", "", " Clients/A", "Clients/A ", "Clients/ A/x", "Clients/A /x"]) assert.equal(await code(r.run("files.drive.upload", { path: p, base64: b64("x") })), "bad_input", JSON.stringify(p));
   assert.equal(await code(r.run("files.drive.upload", { path: "a/b", base64: "not base64!!" })), "bad_input");
   assert.equal(await code(r.run("files.drive.upload", { path: "a/b", base64: b64("x"), base: 0 })), "bad_input");
   assert.equal(await code(r.run("files.drive.upload", { path: "a/b", base64: Buffer.alloc(MAX_UPLOAD + 1).toString("base64") })), "too_large");

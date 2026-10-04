@@ -37,6 +37,10 @@ test("labels grant nothing on a kernel-on daemon: presence's session check, vaul
   const ok = await list(ids.app, true);
   assert.ok(!ok.error && ok.data.surface === "person", `the owner device signed in sees the person surface: ${JSON.stringify(ok.error || ok.data.surface)}`);
   for (const k of ["web", "setup", "gone", "never"]) { const r = await list(ids[k], true); assert.ok(r.error || r.data.surface !== "person", `${k} gets no person surface`); }
+  const unsigned = await list(ids.app, false);
+  assert.ok(unsigned.error || unsigned.data.surface !== "person", `an owner device with no person session gets no person surface: ${JSON.stringify(unsigned.error || unsigned.data.surface)}`);
+  const revokeUnsigned = await (async () => { const { label, meta } = await metaOf(ids.app, false); return d.registry.call("vault.connections.revoke", { id: "cn_none", surface: "agents" }, label, meta); })();
+  assert.ok(revokeUnsigned.error, "revoke from an unsigned owner device is refused at the surface check");
   const tn = await d.registry.call("vault.connections.list", {}, "tailnet:alex@harlow.example", { person: { id: "ps1" }, peer: { stableId: "nodeA" } });
   assert.ok(tn.error || tn.data.surface !== "person", "a tailnet label that merely claims a person session gets no person surface");
 

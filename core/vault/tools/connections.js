@@ -33,7 +33,7 @@ export function register({ ctx, vault, tool }) {
   });
 
   tool("vault.connections.list", [...PEOPLE, "mobile", "mcp", "tailnet", "device", "space", "agent", "module"], "Connections the caller's surface may use: {surface, connections: [{id, source, ref, provider, account, auth, label, capabilities, state, needs?, uses, use?}], suggest_default?}. `uses` maps each capability to the {tool, input} that acts on it; with `capability`, `use` is that one and `suggest_default` is true the first time that capability has two or more ready connections and no default (asked once ever, not once per surface). A person sees every row with its surfaces and may pass `surface` to see one surface's view; a module must pass `surface` or `caller` (the caller it acts for). Never a value.",
-    obj({ capability: str, surface: str, caller: str }), async (input, meta) => c.list(input, meta.caller, await isPerson(meta)));
+    obj({ capability: str, surface: str, caller: str }), async (input, meta) => c.list(input, meta.caller, await isSignedInPerson(meta)));
 
   tool("vault.connections.get", ["module"], "One connection's metadata, for the module that acts on it: a row of its own source, or one whose uses name one of its tools. Anything else is not_found. Never a value.",
     obj({ id: str }, ["id"]), (input, { caller }) => c.get(input, caller));
@@ -43,7 +43,7 @@ export function register({ ctx, vault, tool }) {
     presence("Let a surface use a connection", input => c.summary(input), { when: input => input.surface === "agents" }));
 
   tool("vault.connections.revoke", [...PEOPLE, "mcp"], "Take a surface's use of a connection away. Needs no one: taking access away is always allowed, but only of the caller's own surface.",
-    obj({ id: str, surface: str }, ["id", "surface"]), async (input, meta) => c.revoke(input, meta.caller, await isPerson(meta)));
+    obj({ id: str, surface: str }, ["id", "surface"]), async (input, meta) => c.revoke(input, meta.caller, await isSignedInPerson(meta)));
 
   tool("vault.connections.update", PEOPLE, "Rename a connection or set its capabilities (both survive every resync), or make it the default for some capabilities (`default_for`; one default per capability, so this clears it elsewhere). A default changes no access and needs no proof of presence.",
     obj({ id: str, label: str, capabilities: strs, default_for: strs }, ["id"]), (input, { caller }) => c.update(input, caller),
