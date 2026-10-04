@@ -73,7 +73,7 @@ export async function createKernel(cfg) {
   // The log decides who the owner is (AO-3): an adoption it holds wins over what the home's own file says, a move a crash cut short is finished here, and the file is rewritten from it.
   if (grantsStore && cfg.bootstrap !== false && typeof grantsStore.adopted === "function" && grantsStore.adopted()) {
     const ad = /** @type {{ from: string, to: string }} */ (grantsStore.adopted());
-    await grantsStore.adoptOwner(ad.to);
+    await grantsStore.adoptOwner(ad.to, ad.from);
     if (ownerRef.id !== ad.to) { const from = ownerRef.id; ownerRef.id = ad.to; if (typeof cfg.onOwnerAdopted === "function") await cfg.onOwnerAdopted(ad.to, from); }
   }
   // A presence session (the person signed in with their passkey on this device) stands for admin acts only for a chain that is exactly one person.
@@ -114,9 +114,10 @@ export async function createKernel(cfg) {
     try { return (await cfg.deviceEnrolled(space, facts.device_key_id)) !== false; } catch { return false; }
   };
   /** The one adoption path (the handle's call and the boot repair share it). The grants store serialises it and reads the owner it replaces itself, so two callers at once make one adoption. */
-  const adoptNow = async (/** @type {string} */ to) => {
-    const r = await grantsStore.adoptOwner(to);
-    if (r.owner !== ownerRef.id) { const from = ownerRef.id; ownerRef.id = r.owner; if (typeof cfg.onOwnerAdopted === "function") await cfg.onOwnerAdopted(r.owner, from); }
+  const adoptNow = async (/** @type {string} */ to, /** @type {any} */ fromArg) => {
+    const from = fromArg && typeof fromArg === "object" ? fromArg.from : fromArg; // `adoptOwner(to, { from })` (windows' shape) or `adoptOwner(to, from)`
+    const r = await grantsStore.adoptOwner(to, from);
+    if (r.owner !== ownerRef.id) { const was = ownerRef.id; ownerRef.id = r.owner; if (typeof cfg.onOwnerAdopted === "function") await cfg.onOwnerAdopted(r.owner, was); }
     return r;
   };
   const kernelFor = (/** @type {any} */ m) => {
@@ -280,9 +281,9 @@ export async function createKernel(cfg) {
     }
     if (needs.spaces === true) {
       /** The claimed identity's id becomes the owner's id here (once, logged): the one person of this Space. */
-      handle.adoptOwner = (/** @type {string} */ to) => {
+      handle.adoptOwner = (/** @type {string} */ to, /** @type {any} */ from) => {
         if (!grantsStore) throw new KernelError("unavailable", "this kernel has no grants store");
-        return adoptNow(to);
+        return adoptNow(to, from);
       };
 
       const reg = () => { if (!spaces) throw new KernelError("unavailable", "this kernel has no Spaces registry"); return spaces; };
