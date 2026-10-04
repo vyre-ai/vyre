@@ -1483,8 +1483,9 @@ test("SERVER-HOSTED SPACE end to end: a device daemon with a spaces module asks 
   // the names directory the device's spaces module talks to can be made unreachable for one attempt (read when the module starts)
   const { hooks: dirHooks } = await import("../core/spaces/index.js");
   let dirDown = false;
-  dirHooks.fetch = (/** @type {any} */ u, /** @type {any} */ o) => (dirDown ? Promise.reject(new Error("the directory is down")) : globalThis.fetch(u, o));
-  t.after(() => { dirHooks.fetch = null; });
+  const innerFetch = dirHooks.fetch || globalThis.fetch; // whatever directory the earlier tests left wired (in-memory or real)
+  dirHooks.fetch = (/** @type {any} */ u, /** @type {any} */ o) => (dirDown ? Promise.reject(new Error("the directory is down")) : innerFetch(u, o));
+  t.after(() => { dirHooks.fetch = /** @type {any} */ (innerFetch === globalThis.fetch ? null : innerFetch); });
   const device = await start({ root: droot, kernel: true, presence: lenient, sessionFor: async () => (silent ? { call: () => new Promise(() => {}) } : links.sessionFor("srv")), log: () => {} });
   const { hooks: spacesHooks } = await import("../core/spaces/index.js");
   spacesHooks.sessionFor = async () => links.sessionFor("srv");
