@@ -9,8 +9,18 @@ let held = null;
 /** Keep a link in memory for the screen that will open it. @param {string} link */
 export function holdJoin(link) { held = link; }
 
-/** The held link, once: a second read is empty. */
-export function takeJoin() { const l = held; held = null; return l; }
+/** @type {{ link: string, at: number } | null} */
+let taken = null;
+/** How long a second read of the same link is answered: React's development double-run of an initialiser reads twice, and must not leave the card empty. */
+const SAME_READ_MS = 1000;
+
+/** The held link, once. A second read within a second (the double-run) gets the same link; after that it is empty. @param {number} [now] */
+export function takeJoin(now = Date.now()) {
+  if (held !== null) { const l = held; held = null; taken = { link: l, at: now }; return l; }
+  if (taken && now - taken.at < SAME_READ_MS) return taken.link;
+  taken = null;
+  return null;
+}
 
 /** The link with its token left off, for showing on screen and for any log line. @param {string} link */
 export function withoutToken(link) { return link.replace(/\/join\/.*$/, "/join/…"); }

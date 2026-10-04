@@ -10,7 +10,7 @@ test("only an https join link of a space is passed on, encoded once or twice", (
   assert.equal(joinLink(good), good);
   assert.equal(joinLink(encodeURIComponent(good)), good);
   assert.equal(joinTarget(good), "/u/install/join", "the token is not in the address");
-  assert.equal(takeJoin(), good);
+  assert.equal(takeJoin(0), good);
   for (const bad of ["http://harlow.vyre.run/join/x", "https://harlow.vyre.run/other/x", "javascript:alert(1)", "", undefined, "https://h.vyre.run/join/"]) assert.equal(joinLink(bad), null);
   assert.equal(joinTarget("nope"), "/u/install/join");
 });
@@ -26,8 +26,10 @@ test("JL-1: the token is held in memory once, never in the address, and never sh
   const tok = "https://h.vyre.run/join/eyJ2IjoxfQ.c2ln";
   assert.equal(takeJoin(), null);
   holdJoin(tok);
-  assert.equal(takeJoin(), tok);
-  assert.equal(takeJoin(), null, "a second read is empty");
+  const t0 = 1_000_000;
+  assert.equal(takeJoin(t0), tok);
+  assert.equal(takeJoin(t0 + 50), tok, "the development double-run of an initialiser reads the same link");
+  assert.equal(takeJoin(t0 + 5000), null, "a later read is empty");
   assert.equal(withoutToken(tok), "https://h.vyre.run/join/…");
   assert.ok(!withoutToken(tok).includes("eyJ"));
   assert.equal(cleanAddress("https://app.vyre.run/app/join?link=https%3A%2F%2Fh.vyre.run%2Fjoin%2Fx.y#frag"), "/app/join");

@@ -241,6 +241,23 @@ await step("settings: appearance, pick a theme", { needs: "presence" }, async ()
 await step("settings: rules", { skip: "BLOCKED: no rules.* tools on the box yet (kernel-2, platform)" }, async () => {});
 await step("settings: devices (chat's)", {}, async () => { await go("u/settings/devices"); });
 
+await step("join: a link in /u/install/join's own query fills nothing and leaves the address bare", {}, async () => {
+  const tok = "https://harlow.vyre.run/join/eyJ2IjoxfQ.c2lnLWFiYw";
+  await go(`u/install/join?link=${encodeURIComponent(tok)}`);
+  await page.screenshot({ path: path.join(OUT, "join-query-ignored.png") });
+  const search = await page.evaluate(() => window.location.search);
+  if (search) throw new Error(`the address still carries a query: ${search.slice(0, 40)}`);
+  const field = page.getByLabel("Invite link").first();
+  if (await field.count()) { const v = await field.inputValue(); if (v) throw new Error("the Invite link field was filled from the query"); }
+});
+await step("join: /app/join?link= is taken out of the address and held, not left in it", {}, async () => {
+  const tok = "https://harlow.vyre.run/join/eyJ2IjoxfQ.c2lnLWFiYw";
+  await page.goto(`${BASE}/join?link=${encodeURIComponent(tok)}`, { waitUntil: "domcontentloaded" }).catch(() => {});
+  await settle(3500);
+  await page.screenshot({ path: path.join(OUT, "join-link-held.png") });
+  const href = await page.evaluate(() => window.location.href);
+  if (/link=|eyJ2/.test(href)) throw new Error(`the token is still in the address: ${href.slice(0, 80)}`);
+});
 await step("setup: create a space on this computer, close partway, resume", { skip: SETUP ? undefined : "starts a real space on the dev box: pass --setup" }, async () => {
   await go("u/install/create");
   await page.getByLabel("Name").first().fill(`Walk ${Date.now().toString(36).slice(-4)}`);
