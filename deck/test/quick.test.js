@@ -1,5 +1,6 @@
 // @ts-check
 // /quick: the hotkey panel's compact ask (C22). Sample world only.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { install, text, $ } from "./fake-dom.js";

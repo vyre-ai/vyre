@@ -5,6 +5,7 @@
 //
 // There is no feed to serve: a duty's code is fixed and files one item per firing (core/watchers/duty.js), and the wall keeps
 // the child off the network, loopback included. What fires it here is its own first run on create and team.duties.run-now.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

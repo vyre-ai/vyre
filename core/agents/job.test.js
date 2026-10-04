@@ -2,6 +2,7 @@
 // agents.job: a scheduled job runs as the agent, in a side thread. In-process registry with fake
 // threads and projects modules in a temp home: no daemon, no real session is started.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

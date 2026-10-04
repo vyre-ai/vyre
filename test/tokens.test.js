@@ -1,4 +1,5 @@
 // The one-app tokens: one JSON, rendered for the Capsule (Swift), the app (TS) and the Deck (CSS).
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

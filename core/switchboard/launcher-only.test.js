@@ -1,4 +1,5 @@
 // With vault.launcherOnly on, no module holds the provider sign-in token, yet a session still signs in (the launcher takes it through the credentials port), and a module that asks is refused.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

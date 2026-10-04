@@ -5,6 +5,7 @@
 // agents.projects and projects.access never drift apart. Real daemon, real modules: this is an
 // integration point across two modules, not one to fake.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

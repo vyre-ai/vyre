@@ -1,6 +1,7 @@
 // @ts-check
 // The native bar's pure helpers. Runs without Chrome:
 //   node --test "deck/test/native-bar/stats.test.js"
+import "../../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { percentile, p95, mean, cv, streamGate, frameStats, rng, burstText, burstPlan } from "./stats.js";

@@ -2,6 +2,7 @@
 // Who a federated read reaches, and how the rows come back: core/modules/federate.js without a
 // link. test/federation-reads.test.js runs it through a paired box and Mac.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { wantsMacs, askMacs, mergeRows, sourcesOf } from "./federate.js";

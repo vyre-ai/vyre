@@ -1,3 +1,4 @@
+import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { addGrant, heldIn, listOf, removeGrant, REVEAL_MS, useLine, usesToday } from "./logic.js";

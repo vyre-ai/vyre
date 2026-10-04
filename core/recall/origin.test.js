@@ -4,6 +4,7 @@
 // and treats no record as not human, so a forged transcript makes no decision and no personal claim.
 // Fictional data only (alex, Harlow Legal, Northwind Bakery).
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

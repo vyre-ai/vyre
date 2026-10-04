@@ -3,6 +3,7 @@
 // read, exit 2 with a next step for a usage mistake, exit 5 with a next step when vyred is not
 // running, and never a stack trace. Real processes, a real vyred, temp homes.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";

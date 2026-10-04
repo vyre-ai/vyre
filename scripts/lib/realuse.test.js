@@ -1,4 +1,5 @@
 // @ts-check
+import "../mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { parseQuestions, acceptable, generateQuestions, textOfSession } from "./realuse.js";

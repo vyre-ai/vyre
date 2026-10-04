@@ -2,6 +2,7 @@
 // @vyre/module-sdk/conform (ADR 0047 section 7): a module that keeps the contract passes with no
 // failures, and each broken rule comes back as one line that says what to change.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

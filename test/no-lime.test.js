@@ -3,6 +3,7 @@
 // primary on dark, ink on paper). No shipped file, spec or board may bring it back: not its hex,
 // its washes, its paper green or the word. History (changelogs, work notes, ADRs) is exempt.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

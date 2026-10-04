@@ -2,6 +2,7 @@
 // The link, end to end: two vyreds in two temp homes stand in for the Mac and the box, through
 // the harness in test/link-harness.js (the simulated tailnet at both ends).
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

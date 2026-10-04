@@ -2,6 +2,7 @@
 // relay/app: the signed manifest, release.js, the app.vyre.run Worker's headers, the pair page's
 // parser and the service worker (in a vm with fake caches and fetch). No network, no browser.
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

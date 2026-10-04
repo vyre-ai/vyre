@@ -2,6 +2,7 @@
 // The multi-file diff (diff-files.js) in the fake DOM: which files start open, per-file state,
 // Expand all, counts, binary and too-large files, patch text. Sample world only.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { install, text, $, $$ } from "../../test/fake-dom.js";

@@ -4,6 +4,7 @@
 // Hermes uses, the JWK from x and y, a session over a DER signer (as the native module is), and
 // the HUMAN_ONLY mirror against the box's own list. No native module, no app packages.
 
+import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash, createPublicKey, generateKeyPairSync, sign as nodeSign, verify as nodeVerify } from "node:crypto";

@@ -1,4 +1,5 @@
 /** Standing duties against a fake watchers: identity here, running there. */
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

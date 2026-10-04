@@ -3,6 +3,7 @@
 // pinned for a box address and a relay pair URL longer than version 10 holds, plus the parts a
 // scanner reads first and the half-block drawing.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

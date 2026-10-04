@@ -3,6 +3,7 @@
 // proof message, a signature the box can verify (P1363), the token trade, and a 401
 // person_session_required forgetting the token. No DOM, no network.
 
+import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { caller } from "../../../../core/resilience/web.js";

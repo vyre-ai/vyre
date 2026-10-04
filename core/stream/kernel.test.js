@@ -1,6 +1,7 @@
 // @ts-check
 // The stream on a real kernel (chat 0.3 task M): stream.open decides through the kernel's chats.read, the chat's people are the kernel's
 // (one store), roles come from the kernel's members, and an assistant's cited field is drawn per viewer over a real socket.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";

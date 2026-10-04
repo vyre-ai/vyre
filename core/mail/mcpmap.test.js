@@ -2,6 +2,7 @@
 // Unit tests for mcpmap.js: how mail maps its verbs onto an MCP mail server's own tools (ADR 0016
 // decision 8). Pure: tool lists and results are literals, nothing is started.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { guess, checkMap, sendArgs, messagesOf, messageOf } from "./mcpmap.js";

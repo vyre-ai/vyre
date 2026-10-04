@@ -1,6 +1,7 @@
 // @ts-check
 // The CLI's presence flow against a fake vyred on a unix socket in a temp home.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";

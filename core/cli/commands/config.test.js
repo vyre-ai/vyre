@@ -2,6 +2,7 @@
 // `vyre config` as a person runs it: the real bin/vyre in a child process, against a vyred in
 // this process in a temp home.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";

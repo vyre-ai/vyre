@@ -1,5 +1,6 @@
 // @ts-check
 // The Wink side of a bridged drive, with fakes: a fake engine (frames signed with HMAC-SHA256 as the pool engine does), a fake Wink link, a fake vault.
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

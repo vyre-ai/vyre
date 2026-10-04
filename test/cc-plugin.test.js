@@ -3,6 +3,7 @@
 // Code's plugin cache, away from the package's core/. With Vyre on PATH it hands over to that
 // package; with no Vyre it says how to install it once and is otherwise silent.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

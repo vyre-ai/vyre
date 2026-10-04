@@ -4,6 +4,7 @@
 // Fixtures under test/fixtures/modules/v<major>.<minor>/ are never edited, only added. A module
 // that names a newer contract is refused cleanly: one plain line, its code never imported.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

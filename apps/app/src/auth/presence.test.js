@@ -4,6 +4,7 @@
 // input hash's canonical JSON against the box's, the device proof verified as the box does
 // (node:crypto, DER), the presence session replacing prompts after keep, and its expiry.
 
+import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash, createPublicKey, generateKeyPairSync, sign as nodeSign, verify as nodeVerify } from "node:crypto";

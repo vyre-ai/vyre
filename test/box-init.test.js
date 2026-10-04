@@ -3,6 +3,7 @@
 // dtach terminals once vyred is gone. A compose `init: true` on a service that runs the vyre image
 // would put docker-init in front of it and make tini a second init. The runtime check (PID 1 is
 // tini in a booted container) is ci's box-image smoke; this guards the files.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

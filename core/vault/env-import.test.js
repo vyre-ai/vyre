@@ -3,6 +3,7 @@
 // skips dependencies and templates, a token over every file, and the rewrite to vault:// refs.
 // Every value here is a made-up sample built at run time.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

@@ -8,6 +8,7 @@
 //    client. Each has a world built so the naive answer is wrong.
 //  - Evidence that points at the wrong turn, or at a turn that no longer exists.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

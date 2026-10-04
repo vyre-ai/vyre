@@ -4,6 +4,7 @@
 // its phishing guard, sessions that end, revoked devices, the Touch ID pick-up, and the promise
 // that no value, token or passphrase lands in an audit row. All logins here are fictional.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

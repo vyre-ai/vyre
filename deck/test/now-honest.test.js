@@ -2,6 +2,7 @@
 // The Now page tells the truth (#44): running means a turn is in progress, every thread has a real title and the same avatar a chat wears
 // everywhere, and a project's chat count counts its chats. Sample world only.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { install } from "./fake-dom.js";

@@ -2,6 +2,7 @@
 // The daemon, end to end: start vyred in a temp home, talk to it over its socket as the CLI and
 // the Harness hooks will, and check it cleans up after itself.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

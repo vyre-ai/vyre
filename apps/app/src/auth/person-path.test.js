@@ -5,6 +5,7 @@
 // both; a 401 on the relay starting the device flow, not the browser; a closed prompt not shown
 // again on its own for 60 s. Node only, no native module, no network.
 
+import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash, generateKeyPairSync, sign as nodeSign, verify as nodeVerify } from "node:crypto";

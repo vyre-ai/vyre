@@ -2,6 +2,7 @@
 // RULES.md, "Every printed word is product copy": no cute sign-offs and no filler in what the installers print. The last thing
 // install-box.sh prints is the next step, not a send-off. Scans the printed lines of the three installers for banned phrases.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

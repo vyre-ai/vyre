@@ -1,4 +1,5 @@
 // The capture port on the REAL kernel: sessions hands the lines of an indexed session to the work module once, and the Space's memory can then answer from what was said.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

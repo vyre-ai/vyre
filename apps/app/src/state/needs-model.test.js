@@ -3,6 +3,7 @@
 // events, and the cache read back. Loaded through Node's type stripping, so skipped on a Node
 // without it.
 
+import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 

@@ -1,5 +1,6 @@
 // Pure tests for the bench: scenarios line up with the fixture pages, the API-learning reduction
 // keeps names and drops values, and the in-page scripts behave against a tiny fake DOM. No Chrome.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

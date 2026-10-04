@@ -2,6 +2,7 @@
 // The search model's library is installed on first use, not by npm i -g. These run a fake npm
 // that writes a fake library, so nothing is downloaded.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

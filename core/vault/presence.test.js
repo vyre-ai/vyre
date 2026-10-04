@@ -4,6 +4,7 @@
 // never a value. The module is started against a recording ctx, so the declarations are read
 // straight off what index.js registers; a tool that loses its declaration fails here.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

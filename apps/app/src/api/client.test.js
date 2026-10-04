@@ -3,6 +3,7 @@
 // fake fetch and a fake open: no network. Imports client.ts through Node's type stripping, so it
 // is skipped on a Node without it.
 
+import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { caller, over } from "../../../../core/resilience/web.js";

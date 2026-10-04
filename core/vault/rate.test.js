@@ -1,6 +1,7 @@
 // @ts-check
 // Two things a practice-management provider needs without code changes: OAuth settings that leave `scope` out, and a per-credential rate limit that is the Space's (every caller shares it)
 // and that waits out a provider's own "too many requests" instead of failing. Fakes only: DNS, transport, a clock that the fake sleep moves.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

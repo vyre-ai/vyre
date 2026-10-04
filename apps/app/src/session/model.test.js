@@ -3,6 +3,7 @@
 // it: threads.get's events into session-state, the header's words, and the transcript's rows with
 // runs of tools folded. Loaded through Node's type stripping, so skipped on a Node without it.
 
+import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createSession, applyEvent } from "../../../../deck/chat/core/session-state.js";

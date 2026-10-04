@@ -2,6 +2,7 @@
 // scripts/check-release-dist.mjs against a release folder built the way the release job builds it (build-site.sh's box files, release.json, SHA256SUMS,
 // the stripped wrapper). The compose.yml pin is done both ways: the integrator's first sed, which keeps `${VYRE_IMAGE:-<digest>}` (refused), and the literal lines
 // the updater requires (accepted).
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

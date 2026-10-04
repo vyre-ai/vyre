@@ -1,6 +1,7 @@
 // Pure tests for the Chrome proof harness helpers: latency stats, native-messaging framing (checked
 // byte for byte against native-host/stdio.js), extension ids, wrapper and manifest text, arg
 // parsing, and the host's byte pipe over a real local socket. No Chrome, no browser, fake-only.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

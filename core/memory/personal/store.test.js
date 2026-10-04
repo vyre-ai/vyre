@@ -2,6 +2,7 @@
 // Personal facts over a store: read incrementally from Recall's turns, resolved into one entity
 // per person, and derived the same way every time.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

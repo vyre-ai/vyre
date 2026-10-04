@@ -1,4 +1,5 @@
 // @ts-check
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { validate, frame, toEnvelope, blockFor, validBlock, KINDS, BLOCKS, startOf, termChunks, resetFrame, heartbeatFrame, summarize } from "./protocol.js";

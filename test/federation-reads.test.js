@@ -5,6 +5,7 @@
 // guests and modules that do not ask get the box's own. A Mac that is away costs the box nothing
 // but its rows, and nothing the Mac answers is stored on the box.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

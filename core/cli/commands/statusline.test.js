@@ -2,6 +2,7 @@
 // `vyre statusline install|uninstall` and the installed script, in a temp home with a temp
 // CLAUDE_CONFIG_DIR. Never the real ~/.claude: every call passes its own env.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

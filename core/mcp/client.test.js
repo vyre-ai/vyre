@@ -2,6 +2,7 @@
 // The MCP client against the fake servers, over all three transports. Only fakes this file
 // starts itself: a child process from testing/fake-mcp.js, or an HTTP server on 127.0.0.1:0.
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

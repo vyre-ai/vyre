@@ -1,6 +1,7 @@
 // @ts-check
 // Flows in a REAL vyred (kernel on): not a rig. A Flow is written through the `flows` module's tool, approved, run by a record event and by a schedule, and still there after a restart,
 // with its trigger in the run record.
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { start } from "../core/daemon/index.js";

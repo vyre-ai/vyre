@@ -1,6 +1,7 @@
 // Generated media in Drive, against the REAL artifacts module (core/artifacts), not a stand-in: a provider's image is
 // kept by artifacts.media.register, and the project's folder in files.drive.list then shows it under Generated and
 // reads its bytes through artifacts.media.read. The call shapes are artifacts' own.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
