@@ -958,6 +958,7 @@ test("setup in progress: kept with the space, claimed by another device of the p
   assert.ok(!JSON.stringify(saved).includes("SECRETVALUE") && !JSON.stringify(saved).includes("123456"), "only the shape is kept");
   assert.equal((await d.ok("spaces.get", { space })).setup.step, "look");
   assert.equal((await d.ok("spaces.list"))[0].setup.device.id, "phone00000000001");
+  assert.equal((await d.call("spaces.setup.save", { space, setup: { step: "ai" } }, "cli", phone)).error, undefined, "the AI accounts step is a setup step");
   for (const bad of [{ step: "pairing" }, { step: "look", where: "moon" }, "look", [1]]) assert.equal((await d.call("spaces.setup.save", { space, setup: bad }, "cli", phone)).error?.code, "bad_input", JSON.stringify(bad));
   // another device may not write over it; it must claim
   assert.equal((await d.call("spaces.setup.save", { space, setup: { step: "members" } }, "cli", laptop)).error?.code, "setup_elsewhere");
