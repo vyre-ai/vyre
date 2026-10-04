@@ -3,7 +3,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ASK_LIFE_MS, SESSION_ANSWER, SESSION_ASKED, answerSession, askTitle, sessionRefusal, withAsk } from "./session-asks.js";
+import { withPending, ASK_LIFE_MS, SESSION_ANSWER, SESSION_ASKED, answerSession, askTitle, sessionRefusal, withAsk } from "./session-asks.js";
 
 const ev = (id, label) => ({ type: SESSION_ASKED, payload: { id, device: "dev1", label } });
 
@@ -38,4 +38,11 @@ test("a failed answer has our words", () => {
   assert.match(sessionRefusal("needs_presence"), /Face ID/);
   assert.match(sessionRefusal("expired"), /ended/);
   assert.match(sessionRefusal("ERR_CANCELED"), /Cancelled/);
+});
+
+test("the pending list fills in asks made while the app was closed, once each", () => {
+  const l = withPending(withAsk([], ev("a1", "x"), 1), [{ id: "a1", label: "x" }, { id: "a2", label: "Vyre on browser" }], 2);
+  assert.deepEqual(l.map((a) => a.id), ["a1", "a2"]);
+  assert.equal(withPending([], { asks: [{ id: "b1" }] }, 1).length, 1);
+  assert.deepEqual(withPending([], undefined, 1), []);
 });

@@ -6,6 +6,7 @@ import { answerRefusal } from "./phone-approve.js";
 
 export const SESSION_ASKED = "presence.session-asked";
 export const SESSION_ANSWER = "presence.person.session-answer";
+export const SESSION_PENDING = "presence.person.session-pending";
 export const ASK_LIFE_MS = 5 * 60_000;
 
 /** @typedef {{ id: string, device: string, label: string, at: number }} SessionAsk */
@@ -40,4 +41,12 @@ export function sessionRefusal(code) {
   if (code === "presence_required" || code === "needs_presence") return "That needs your Face ID. Nothing was allowed.";
   if (code === "expired" || code === "none") return "That request ended before you answered.";
   return answerRefusal(code);
+}
+
+/** The asks from presence.person.session-pending (an array, or { asks } / { pending }; each { id, device, label }), merged into what the event stream gave. A box with no such tool gives nothing. @param {SessionAsk[]} list @param {any} answer @param {number} now @returns {SessionAsk[]} */
+export function withPending(list, answer, now) {
+  const rows = Array.isArray(answer) ? answer : Array.isArray(answer?.asks) ? answer.asks : Array.isArray(answer?.pending) ? answer.pending : [];
+  let out = list;
+  for (const r of rows) out = withAsk(out, { type: SESSION_ASKED, payload: r }, now);
+  return out;
 }
