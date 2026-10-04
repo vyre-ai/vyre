@@ -1,65 +1,139 @@
 {
+ "apps/app/src/api/wink-code.test.js": {
+  "owner": "app-wire",
+  "seen": "hosted run 37176623881"
+ },
  "apps/app/src/identity/identity.test.js": {
   "owner": "chat"
+ },
+ "apps/test/world.test.js": {
+  "owner": "app-wire",
+  "seen": "hosted run 37176623881"
+ },
+ "core/agents/access.test.js": {
+  "owner": "assistant",
+  "seen": "hosted run 37176623881"
+ },
+ "core/agents/job.test.js": {
+  "owner": "assistant",
+  "seen": "hosted run 37176623881"
  },
  "core/artifacts/artifacts.test.js": {
   "owner": "vault"
  },
+ "core/artifacts/backup.test.js": {
+  "owner": "vault",
+  "seen": "hosted run 37176623881"
+ },
+ "core/artifacts/media.test.js": {
+  "owner": "vault",
+  "seen": "hosted run 37176623881"
+ },
+ "core/assistant/assistant.test.js": {
+  "owner": "assistant",
+  "seen": "hosted run 37176623881"
+ },
+ "core/assistant/surface.test.js": {
+  "owner": "assistant",
+  "seen": "hosted run 37176623881"
+ },
  "core/cli/commands/agents.test.js": {
   "owner": "launch"
  },
- "core/cli/commands/needs.test.js": {
-  "owner": "launch"
- },
- "core/cli/commands/phone.test.js": {
-  "owner": "launch"
- },
- "core/cli/commands/threads-sessions.test.js": {
-  "owner": "launch"
+ "core/cli/commands/home.test.js": {
+  "owner": "launch",
+  "seen": "hosted run 37176623881"
  },
  "core/cli/screen/screen-live.test.js": {
   "owner": "launch"
  },
+ "core/context/context.test.js": {
+  "owner": "assistant",
+  "seen": "hosted run 37176623881"
+ },
+ "core/files/dirs.test.js": {
+  "owner": "vault",
+  "seen": "hosted run 37176623881"
+ },
  "core/files/drive.test.js": {
   "owner": "vault"
+ },
+ "core/files/files.test.js": {
+  "owner": "vault",
+  "seen": "hosted run 37176623881"
+ },
+ "core/files/generated-real.test.js": {
+  "owner": "vault",
+  "seen": "hosted run 37176623881"
+ },
+ "core/github/index.test.js": {
+  "owner": "unassigned",
+  "seen": "hosted run 37176623881"
  },
  "core/glass/glass.test.js": {
   "owner": "tailnet"
  },
+ "core/goals/goals.test.js": {
+  "owner": "assistant",
+  "seen": "hosted run 37176623881"
+ },
  "core/hooks/hooks.test.js": {
   "owner": "launch"
  },
- "core/mentions/mentions.test.js": {
-  "owner": "vault"
+ "core/learn/learn.test.js": {
+  "owner": "assistant",
+  "seen": "hosted run 37176623881"
  },
- "core/publish/publish.test.js": {
-  "owner": "launch"
+ "core/learn/signals.test.js": {
+  "owner": "assistant",
+  "seen": "hosted run 37176623881"
  },
- "core/recall/embed-install.test.js": {
-  "owner": "records"
+ "core/memory/adopt-recall.test.js": {
+  "owner": "assistant",
+  "seen": "hosted run 37176623881"
+ },
+ "core/memory/personal/answer.test.js": {
+  "owner": "assistant",
+  "seen": "hosted run 37176623881"
+ },
+ "core/memory/sealscan-daemon.test.js": {
+  "owner": "assistant",
+  "seen": "hosted run 37176623881"
+ },
+ "core/names/system.test.js": {
+  "owner": "tailnet",
+  "seen": "hosted run 37176623881"
+ },
+ "core/projects/cwd-grant.test.js": {
+  "owner": "unassigned",
+  "seen": "hosted run 37176623881"
+ },
+ "core/recall/origin.test.js": {
+  "owner": "assistant",
+  "seen": "hosted run 37176623881"
  },
  "core/relay/setup.test.js": {
   "owner": "tailnet"
  },
- "core/runner/runner.test.js": {
-  "owner": "runner"
+ "core/runner/lent-wire.test.js": {
+  "owner": "unassigned",
+  "seen": "hosted run 37176623881"
  },
  "core/sessions/api-key.test.js": {
-  "owner": "sessions"
- },
- "core/sessions/drivers/acp.test.js": {
-  "owner": "sessions"
- },
- "core/sessions/sessions-turns.test.js": {
   "owner": "sessions"
  },
  "core/sessions/sessions.test.js": {
   "owner": "sessions"
  },
- "core/stream/access.test.js": {
-  "owner": "chat"
+ "core/settings/hub.test.js": {
+  "owner": "unassigned",
+  "seen": "hosted run 37176623881"
  },
- "core/stream/group-ks-daemon.test.js": {
+ "core/sight/sight.test.js": {
+  "owner": "unassigned",
+  "seen": "hosted run 37176623881"
+ },
+ "core/stream/access.test.js": {
   "owner": "chat"
  },
  "core/stream/group-ks-live.test.js": {
@@ -68,32 +142,77 @@
  "core/stream/group-live.test.js": {
   "owner": "chat"
  },
- "core/stream/live.test.js": {
-  "owner": "chat"
- },
- "core/switchboard/chat-steer.test.js": {
-  "owner": "sessions"
+ "core/suggest/suggest.test.js": {
+  "owner": "unassigned",
+  "seen": "hosted run 37176623881"
  },
  "core/switchboard/kernel-turn.test.js": {
   "owner": "sessions"
  },
- "core/switchboard/launcher-only.test.js": {
-  "owner": "sessions"
+ "core/switchboard/person-label.test.js": {
+  "owner": "sessions",
+  "seen": "hosted run 37176623881"
+ },
+ "core/switchboard/start-inputs.test.js": {
+  "owner": "sessions",
+  "seen": "hosted run 37176623881"
  },
  "core/switchboard/switchboard.test.js": {
   "owner": "sessions"
  },
+ "core/vault/kit.test.js": {
+  "owner": "vault",
+  "seen": "hosted run 37176623881"
+ },
+ "core/vault/module.test.js": {
+  "owner": "vault",
+  "seen": "hosted run 37176623881"
+ },
  "core/vault/presence.test.js": {
   "owner": "platform"
+ },
+ "core/vault/said.test.js": {
+  "owner": "vault",
+  "seen": "hosted run 37176623881"
+ },
+ "core/vault/tools/cli.test.js": {
+  "owner": "vault",
+  "seen": "hosted run 37176623881"
+ },
+ "core/vault/update.test.js": {
+  "owner": "vault",
+  "seen": "hosted run 37176623881"
+ },
+ "core/waiting/waiting.test.js": {
+  "owner": "unassigned",
+  "seen": "hosted run 37176623881"
  },
  "core/watchers/reach.test.js": {
   "owner": "platform"
  },
- "kernel/door/sinks.test.js": {
-  "owner": "platform"
+ "core/work/know-daemon.test.js": {
+  "owner": "assistant",
+  "seen": "hosted run 37176623881"
  },
- "kernel/gateway/gateway.test.js": {
-  "owner": "platform"
+ "kernel/adopt.test.js": {
+  "owner": "platform",
+  "seen": "hosted run 37176623881"
+ },
+ "kernel/flows/index.test.js": {
+  "owner": "platform",
+  "seen": "hosted run 37176623881"
+ },
+ "kernel/flows/kits.test.js": {
+  "owner": "platform",
+  "seen": "hosted run 37176623881"
+ },
+ "kernel/flows/proposals.test.js": {
+  "owner": "platform",
+  "seen": "hosted run 37176623881"
+ },
+ "kernel/golden/allow.test.js": {
+  "owner": "platform",
+  "seen": "hosted run 37176623881"
  },
  "kernel/golden/golden.test.js": {
   "owner": "platform"
@@ -104,8 +223,37 @@
  "kernel/retrofit/agent-reach.test.js": {
   "owner": "platform"
  },
- "relay/client/e2e.test.js": {
-  "owner": "tailnet"
+ "local/apps/module.test.js": {
+  "owner": "unassigned",
+  "seen": "hosted run 37176623881"
+ },
+ "local/capsule/views.test.js": {
+  "owner": "unassigned",
+  "seen": "hosted run 37176623881"
+ },
+ "local/hands-chrome-mac/module.test.js": {
+  "owner": "windows",
+  "seen": "hosted run 37176623881"
+ },
+ "local/hands-mac/control.test.js": {
+  "owner": "windows",
+  "seen": "hosted run 37176623881"
+ },
+ "local/hands-mac/module.test.js": {
+  "owner": "windows",
+  "seen": "hosted run 37176623881"
+ },
+ "modules/hands-desktop/hands-desktop.test.js": {
+  "owner": "windows",
+  "seen": "hosted run 37176623881"
+ },
+ "test/boundaries.test.js": {
+  "owner": "unassigned",
+  "seen": "hosted run 37176623881"
+ },
+ "test/cc-plugin.test.js": {
+  "owner": "unassigned",
+  "seen": "hosted run 37176623881"
  },
  "test/chrome-flags.test.js": {
   "owner": "launch"
@@ -113,8 +261,9 @@
  "test/cohesion-drift.test.js": {
   "owner": "platform-2"
  },
- "test/docs-build.test.js": {
-  "owner": "platform-2"
+ "test/created-space-presence.test.js": {
+  "owner": "unassigned",
+  "seen": "hosted run 37176623881"
  },
  "test/docs-check.test.js": {
   "owner": "platform-2"
@@ -122,20 +271,20 @@
  "test/docs-index.test.js": {
   "owner": "platform-2"
  },
- "test/federation-answer.test.js": {
-  "owner": "tailnet"
- },
  "test/federation-send.test.js": {
   "owner": "tailnet"
  },
- "test/flows-daemon.test.js": {
-  "owner": "sessions"
+ "test/harness.test.js": {
+  "owner": "unassigned",
+  "seen": "hosted run 37176623881"
  },
- "test/hygiene.test.js": {
-  "owner": "platform-2"
+ "test/journey.test.js": {
+  "owner": "unassigned",
+  "seen": "hosted run 37176623881"
  },
- "test/link.test.js": {
-  "owner": "tailnet"
+ "test/mobile-tailnet.test.js": {
+  "owner": "unassigned",
+  "seen": "hosted run 37176623881"
  },
  "test/module-sdk.test.js": {
   "owner": "platform-2"
@@ -143,8 +292,13 @@
  "test/no-internal-words.test.js": {
   "owner": "platform-2"
  },
- "test/one-identity.test.js": {
-  "owner": "windows"
+ "test/no-lime.test.js": {
+  "owner": "unassigned",
+  "seen": "hosted run 37176623881"
+ },
+ "test/onboard.test.js": {
+  "owner": "unassigned",
+  "seen": "hosted run 37176623881"
  },
  "test/one-registry.test.js": {
   "owner": "windows"
@@ -152,32 +306,58 @@
  "test/pack-imports.test.js": {
   "owner": "launch"
  },
+ "test/peer-race.test.js": {
+  "owner": "platform",
+  "seen": "hosted run 37176623881"
+ },
+ "test/peer.test.js": {
+  "owner": "platform",
+  "seen": "hosted run 37176623881"
+ },
  "test/person-label-hygiene.test.js": {
   "owner": "platform-2"
  },
  "test/person.test.js": {
   "owner": "windows"
  },
- "test/reach-anyone.test.js": {
-  "owner": "platform"
+ "test/presence-bypass.test.js": {
+  "owner": "platform",
+  "seen": "hosted run 37176623881"
  },
- "test/reach-explicit.test.js": {
+ "test/project-arg.test.js": {
+  "owner": "unassigned",
+  "seen": "hosted run 37176623881"
+ },
+ "test/projects-cli.test.js": {
+  "owner": "unassigned",
+  "seen": "hosted run 37176623881"
+ },
+ "test/reach-anyone.test.js": {
   "owner": "platform"
  },
  "test/reach-registry.test.js": {
   "owner": "platform"
  },
+ "test/redteam/vault.test.js": {
+  "owner": "platform",
+  "seen": "hosted run 37176623881"
+ },
+ "test/registry-default.test.js": {
+  "owner": "unassigned",
+  "seen": "hosted run 37176623881"
+ },
  "test/relay.test.js": {
   "owner": "tailnet"
- },
- "test/roles-enforced.test.js": {
-  "owner": "platform"
  },
  "test/stdin-hygiene.test.js": {
   "owner": "launch"
  },
  "test/threadsock.test.js": {
   "owner": "platform"
+ },
+ "test/vault-labels-daemon.test.js": {
+  "owner": "unassigned",
+  "seen": "hosted run 37176623881"
  },
  "test/walk-identity-space.test.js": {
   "owner": "windows"
