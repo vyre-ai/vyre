@@ -104,6 +104,7 @@ export function createGrantsStore(cfg) {
   /** @type {Set<string>} agent, service and automation actors that belong to the Space */ const actors = new Set();
   /** @type {Map<string, any>} pending, single-use invitations an admin approved */ const invites = new Map();
   /** @type {Map<string, any>} compute offers: the two grants a member's computer runs a Space's work under */ const offers = new Map();
+  /** @type {{ from: string, to: string } | null} the owner's adoption of the claimed identity, once (`owner.adopted`) */ let adopted = null;
   /** @type {Map<string, any>} standing rules of the Space (never, draft only, always ask) */ const rules = new Map();
   /** @type {Map<string, any>} rules a Kit proposed: no effect until an owner accepts */ const proposals = new Map();
   /** @type {Map<string, any>} chats: the people (and assistants) in a room, which is the audience a turn in it writes for and the readers of its stream */ const chats = new Map();
@@ -145,6 +146,9 @@ export function createGrantsStore(cfg) {
   // seal of the one before. A genuine event copied and appended again later has an old `gseq`, so rebuild skips it: a revoked grant or a removed member cannot be replayed
   // back. (The log's own position cannot be the number: another writer appends between the MAC and the append now that the MAC is a round trip to the sealing process.)
   let gseq = 0, gprev = "genesis", queue = Promise.resolve();
+  /** The number of the newest snapshot: a new one is written every SNAP_EVERY events so a boot reads a snapshot and a short tail, never the whole history. */
+  let snapAt = 0;
+  const SNAP_EVERY = cfg.snapshot_every ?? 500;
   const sealed = (/** @type {string} */ type, /** @type {string} */ subject, /** @type {any} */ core, /** @type {number} */ n, /** @type {string} */ prev) => canonical({ type, subject, data: core, gseq: n, gprev: prev });
   const note = (/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ subject, /** @type {any} */ data, /** @type {any} */ decision, /** @type {string} */ vis = "owner") => {
     const run = async () => {
@@ -629,31 +633,55 @@ export function createGrantsStore(cfg) {
     },
 
     /**
-     * The kernel's own owner change, for the day the person claims their identity: the home's owner (a local id made at first start) becomes the claimed identity's id, so the Space has ONE person for
-     * its owner. Not a chain's act (nothing can ask for it but the spaces module through the kernel's handle): the new id is made the owner, the old one is taken out, every grant of the old
-     * one is revoked and the owner's role grants are made again, each as an ordinary sealed event, so a rebuild from the log reaches the same state. Once; the same id again changes nothing.
-     * @param {string} from @param {string} to @returns {Promise<{ owner: string, previous: string, changed: boolean }>}
+     * The home's claimed identity becomes THE owner, once. The Space has one owner (its first, a local id); when the person claims an identity, that identity's id takes the owner's place: the old
+     * owner's grants are revoked and the owner role grants made again for the identity, each as an ordinary sealed event, so a rebuild reaches the same state. `owner.adopted` is written FIRST
+     * and is the once-marker the rebuild reads (a snapshot carries it): any other `to` afterwards is refused `already_adopted`. A crash after the marker leaves the owner moved only in part; the next call
+     * with the same `to` (the kernel makes it at boot) finishes the move, so the Space repairs itself. `owner.changed` closes it, naming from and to. The first adoption needs no presence (the person
+     * claiming is the first person there is, and boot adoption has none to ask); a different identity later is never adopted, with or without a proof.
+     * @param {string} to @returns {Promise<{ owner: string, previous: string, changed: boolean }>}
      */
-    async adoptOwner(from, to) {
+    async adoptOwner(to) {
       if (typeof to !== "string" || !/^per_[a-z2-7]{26}$/.test(to)) throw new KernelError("bad_input", "an owner is a person id");
+      if (adopted && adopted.to !== to) throw new KernelError("already_adopted", "this Space's owner already took the claimed identity");
+      const owners = [...memberships.values()].filter(m => m.role === "owner").map(m => m.person);
+      const from = adopted ? adopted.from : owners.length === 1 ? owners[0] : null;
+      if (!from) throw new KernelError("not_allowed", "this Space has no single owner to replace");
       if (from === to) return { owner: to, previous: from, changed: false };
+      if (adopted && memberships.get(to)?.role === "owner" && !memberships.has(from) && [...grants.values()].every(g => !(g.status === "active" && g.subject.kind === "actor" && g.subject.actor.kind === "person" && g.subject.actor.id === from))) return { owner: to, previous: from, changed: false };
       const prior = memberships.get(from);
-      if (!prior || prior.role !== "owner") throw new KernelError("not_allowed", "only the Space's owner can be replaced this way");
+      if (!adopted && (!prior || prior.role !== "owner")) throw new KernelError("not_allowed", "only the Space's owner can be replaced this way");
       const k = kernelChain();
+      if (!adopted) { await note(k, "owner.adopted", urn("member", to), { from, to }); adopted = freeze({ from, to }); }
       for (const g of [...grants.values()]) if (g.status === "active" && g.subject.kind === "actor" && g.subject.actor.kind === "person" && g.subject.actor.id === from) {
         const n = freeze({ ...g, status: "revoked", revoked_at: clock(), reason: "owner adopted the claimed identity" }); grants.set(n.id, n);
         await note(k, "grant.revoked", urn("grant", n.id), { id: n.id, reason: "owner adopted the claimed identity" });
       }
-      memberships.delete(from);
-      await note(k, "member.removed", urn("member", from), { person: from });
-      const membership = freeze({ space: cfg.space, person: to, role: "owner", added_by: "kernel", added_at: clock() });
-      memberships.set(to, membership);
-      await note(k, "member.set", urn("member", to), { membership });
-      const g = freeze({ id: `gr_${mintUuid(clock())}`, space: cfg.space, subject: { kind: "actor", actor: { kind: "person", id: to, space: cfg.space } }, actions: [...ROLE_ACTIONS.owner], action_set_version: version, resource: { prefix: `vyre://${cfg.space}/*/*` }, conditions: { delegate: { allowed: true, max_depth: 2 } }, issuer: { kind: "service", id: "grants", space: cfg.space }, source: "role:owner", status: "active", created_at: clock() });
-      grants.set(g.id, g);
-      await note(k, "grant.created", urn("grant", g.id), { grant: g });
+      if (memberships.has(from)) { memberships.delete(from); await note(k, "member.removed", urn("member", from), { person: from }); }
+      if (memberships.get(to)?.role !== "owner") {
+        const membership = freeze({ space: cfg.space, person: to, role: "owner", added_by: "kernel", added_at: clock() });
+        memberships.set(to, membership);
+        await note(k, "member.set", urn("member", to), { membership });
+      }
+      if (![...grants.values()].some(g => g.status === "active" && g.source === "role:owner" && g.subject.kind === "actor" && g.subject.actor.kind === "person" && g.subject.actor.id === to)) {
+        const g = freeze({ id: `gr_${mintUuid(clock())}`, space: cfg.space, subject: { kind: "actor", actor: { kind: "person", id: to, space: cfg.space } }, actions: [...ROLE_ACTIONS.owner], action_set_version: version, resource: { prefix: `vyre://${cfg.space}/*/*` }, conditions: { delegate: { allowed: true, max_depth: 2 } }, issuer: { kind: "service", id: "grants", space: cfg.space }, source: "role:owner", status: "active", created_at: clock() });
+        grants.set(g.id, g);
+        await note(k, "grant.created", urn("grant", g.id), { grant: g });
+      }
+      // The owner's rooms: the identity takes the old id's place in each, as an ordinary chat change (a new version; messages written before it still go to the same person, see chatPeopleAt).
+      for (const c of [...chats.values()]) if (c.people.includes(from)) {
+        const people = [...new Set(c.people.map((/** @type {string} */ x) => (x === from ? to : x)))];
+        const ver = (c.ver || 1) + 1;
+        const n = freeze({ ...c, people, ver, h: [...(c.h || [{ ver: c.ver || 1, people: c.people }]), { ver, people: [...people] }].slice(-HISTORY) });
+        chats.set(c.id, n);
+        await note(k, "chat.changed", urn("chat", c.id), { id: c.id, people: n.people, assistants: n.assistants, ver, joined: people.includes(to) && !c.people.includes(to) ? [to] : [], left: [from] }, null);
+      }
+      await note(k, "owner.changed", urn("member", to), { owner_change: { op: "adopt", person: to, from, by: "kernel", space: cfg.space } }, null, "space");
       return { owner: to, previous: from, changed: true };
     },
+    /** The adoption the log records, or null: `{ from, to }`. The kernel reads it at boot to take the owner from the log, and to finish a move a crash cut short. */
+    adopted() { return adopted; },
+    /** A person id as the Space knows them now: the owner it replaced is the identity that replaced them, so what was keyed by the old id still belongs to its person. @param {string} id */
+    canonicalPerson(id) { return adopted && id === adopted.from ? adopted.to : id; },
 
     /** The first owner of a new Space, written by the kernel itself (no chain can give the first grant). Once only. */
     async bootstrap({ owner }) {
@@ -883,7 +911,7 @@ export function createGrantsStore(cfg) {
       if (!h || !h.length || !(ver >= h[0].ver)) return null;
       let at = h[0];
       for (const x of h) if (x.ver <= ver) at = x;
-      return [...at.people];
+      return [...new Set(at.people.map((/** @type {string} */ x) => (adopted && x === adopted.from ? adopted.to : x)))];
     },
     /** The chat's assistants, for the append check. @param {string} id @returns {string[] | null} */
     chatAssistants(id) { const c = chats.get(String(id)); return c ? [...c.assistants] : null; },
@@ -920,8 +948,9 @@ export function createGrantsStore(cfg) {
      * A snapshot is a point the log can be read from: events before it are not needed once it exists.
      */
     async snapshot() {
-      const state = { grants: [...grants.values()], memberships: [...memberships.values()], actors: [...actors], offers: [...offers.values()], invites: [...invites.values()], chats: [...chats.values()], rules: [...rules.values()], proposals: [...proposals.values()] };
+      const state = { adopted, grants: [...grants.values()], memberships: [...memberships.values()], actors: [...actors], offers: [...offers.values()], invites: [...invites.values()], chats: [...chats.values()], rules: [...rules.values()], proposals: [...proposals.values()] };
       await note(kernelChain(), "grants.snapshot", urn("grant", "snapshot"), { state });
+      snapAt = gseq;
       return { grants: state.grants.length, memberships: state.memberships.length };
     },
 
@@ -937,12 +966,24 @@ export function createGrantsStore(cfg) {
       try { return await api.rebuildFromLog(); } catch (e) { restore(keep); throw e; }
     },
     async rebuildFromLog() {
+      adopted = null;
       grants.clear(); memberships.clear(); actors.clear(); offers.clear(); invites.clear(); chats.clear(); rules.clear(); proposals.clear();
       gseq = 0; gprev = "genesis";
-      const evs = cfg.log.read({}).filter((/** @type {any} */ e) => e.data && typeof e.data === "object" && (LEGACY_RE.test(e.type) || e.type === "owner.changed" || e.type === "grants.snapshot"));
-      /** @type {{ e: any, mac: any, n: number | undefined, prev: any, core: any, legacy: boolean }[]} */
-      const items = evs.map((/** @type {any} */ e) => { const { mac, gseq: n, gprev: pv, ...core } = e.data; return { e, mac, n, prev: pv, core, legacy: n === undefined }; });
-      // 1. Verify the new-style events, in pipelined batches.
+      // Boot reads what it needs, not the whole log: the newest snapshot that verifies is the starting state, and only the grants events written after it are read, by type
+      // (an index scan on a durable log). A log with no snapshot reads every grants event once, and the migration below writes one.
+      const rd = (/** @type {any} */ f) => (cfg.log.iterate ? [...cfg.log.iterate(f)] : cfg.log.read(f));
+      /** @param {any} e */ const toItem = (e) => { const { mac, gseq: n, gprev: pv, ...core } = e.data; return { e, mac, n, prev: pv, core, legacy: n === undefined }; };
+      const snapItems = rd({ type: "grants.snapshot" }).filter((/** @type {any} */ e) => e.data && typeof e.data === "object").map(toItem).filter((/** @type {any} */ i) => !i.legacy && typeof i.mac === "string" && Number.isInteger(i.n)).sort((/** @type {any} */ a, /** @type {any} */ b) => b.n - a.n);
+      /** @type {any} */ let snap = null;
+      for (const c of snapItems) { // newest by its own number first (a replayed old one is older); the first that verifies is the start
+        if (await seal.verify("grants-event-v1", sealed(c.e.type, c.e.subject, c.core, c.n, c.prev), c.mac)) { snap = c; break; }
+      }
+      const since = snap ? snap.e.seq : 0;
+      /** @type {any[]} */ const tail = [];
+      for (const t of ["grant.*", "member.*", "actor.*", "offer.*", "invite.*", "chat.*", "rule.*", "owner.changed", "owner.adopted"]) for (const e of rd({ type: t, since })) if (e.data && typeof e.data === "object") tail.push(e);
+      tail.sort((a, b) => a.seq - b.seq);
+      const items = tail.map(toItem);
+      // 1. Verify the new-style events after the snapshot, in pipelined batches.
       const fresh = items.filter(i => !i.legacy && typeof i.mac === "string" && Number.isInteger(i.n));
       const ok = new Set();
       for (let i = 0; i < fresh.length; i += 128) {
@@ -950,9 +991,6 @@ export function createGrantsStore(cfg) {
         const res = await seal.verifyMany(part.map(x => ({ purpose: "grants-event-v1", data: sealed(x.e.type, x.e.subject, x.core, /** @type {number} */ (x.n), x.prev), mac: x.mac })));
         part.forEach((x, k) => { if (res[k]) ok.add(x); });
       }
-      // 2. The newest verified snapshot (by its own number, not its place in the log: a replayed old one is older) is the starting state.
-      const snaps = fresh.filter(i => ok.has(i) && i.e.type === "grants.snapshot").sort((a, b) => /** @type {number} */ (b.n) - /** @type {number} */ (a.n));
-      const snap = snaps[0];
       let nextN = 1, nextPrev = "genesis", legacyCount = 0;
       const apply = (/** @type {any} */ e, /** @type {any} */ d) => {
         if (e.type === "grant.created" && grants.has(d.grant.id)) return; // an id is made once: a second creation of it is never a resurrection
@@ -960,6 +998,7 @@ export function createGrantsStore(cfg) {
         else if (e.type === "grant.revoked") { const g = grants.get(d.id); if (g) grants.set(d.id, freeze({ ...g, status: "revoked", revoked_at: e.time, reason: d.reason })); }
         else if (e.type === "member.set") memberships.set(d.membership.person, freeze(structuredClone(d.membership)));
         else if (e.type === "member.removed") memberships.delete(d.person);
+        else if (e.type === "owner.adopted") { if (!adopted && d && typeof d.from === "string" && typeof d.to === "string") adopted = freeze({ from: d.from, to: d.to }); }
         else if (e.type === "invite.created") invites.set(d.invite.id, freeze(structuredClone(d.invite)));
         else if (e.type === "invite.used") { const v = invites.get(d.id); if (v) invites.set(d.id, freeze({ ...v, status: "used", used_by: d.by })); }
         else if (e.type === "invite.confirmed") { const v = invites.get(d.id); if (v) invites.set(d.id, freeze({ ...v, confirmed: true })); }
@@ -978,6 +1017,7 @@ export function createGrantsStore(cfg) {
       };
       if (snap) {
         const st = snap.core.state;
+        adopted = st.adopted && typeof st.adopted.to === "string" ? freeze({ from: st.adopted.from, to: st.adopted.to }) : null;
         for (const g of st.grants) grants.set(g.id, freeze(structuredClone(g)));
         for (const m of st.memberships) memberships.set(m.person, freeze(structuredClone(m)));
         for (const a of st.actors) actors.add(a);
@@ -990,19 +1030,19 @@ export function createGrantsStore(cfg) {
       } else {
         // 3a. Events an older key sealed, in log order, each position-bound under a legacy key.
         for (const it of items) {
-          if (!it.legacy || typeof it.mac !== "string" || it.e.type === "grants.snapshot") continue;
+          if (!it.legacy || typeof it.mac !== "string") continue;
           const good = (cfg.legacyKeys || []).some((/** @type {any} */ k) => sameMac(hmac(k, canonical({ type: it.e.type, subject: it.e.subject, data: it.core, seq: it.e.seq, prev: it.e.prev })), it.mac));
           if (good) { apply(it.e, it.core); legacyCount++; }
         }
       }
       // 3b. The new chain: only the event that is exactly next (its number, and the hash of the seal before it) is taken; replays and gaps are skipped.
-      const started = items.indexOf(snap);
-      for (const it of items.slice(snap ? started + 1 : 0)) {
-        if (!ok.has(it) || it.e.type === "grants.snapshot" || it.n !== nextN || it.prev !== nextPrev) continue;
+      for (const it of items) {
+        if (!ok.has(it) || it.n !== nextN || it.prev !== nextPrev) continue;
         apply(it.e, it.core);
         nextN++; nextPrev = sha256(it.mac);
       }
       gseq = nextN - 1; gprev = nextPrev;
+      snapAt = snap ? snap.n : 0;
       // 4. Migration: legacy events were read, so write the state under the new seal; the old key is not needed again.
       let migrated = false;
       if (legacyCount > 0 && !snap) { await api.snapshot(); migrated = true; }
@@ -1011,8 +1051,9 @@ export function createGrantsStore(cfg) {
   };
 
   /** The whole in-memory state, by reference (every record in it is frozen), so a failed call can put it back even when the log cannot be read. */
-  const capture = () => ({ grants: new Map(grants), memberships: new Map(memberships), actors: new Set(actors), offers: new Map(offers), invites: new Map(invites), chats: new Map(chats), rules: new Map(rules), proposals: new Map(proposals), gseq, gprev });
+  const capture = () => ({ adopted, grants: new Map(grants), memberships: new Map(memberships), actors: new Set(actors), offers: new Map(offers), invites: new Map(invites), chats: new Map(chats), rules: new Map(rules), proposals: new Map(proposals), gseq, gprev });
   const restore = (/** @type {any} */ c) => {
+    adopted = c.adopted || null;
     grants.clear(); for (const [k, v] of c.grants) grants.set(k, v);
     memberships.clear(); for (const [k, v] of c.memberships) memberships.set(k, v);
     actors.clear(); for (const v of c.actors) actors.add(v);
@@ -1027,14 +1068,17 @@ export function createGrantsStore(cfg) {
   // the log refused) restores the store from the log, which is the durable copy, so memory never shows a change the log does not hold, and the caller is told it failed.
   // A refusal the call itself makes before changing anything (a KernelError) needs no restore.
   let lock = Promise.resolve();
-  for (const name of ["create", "revoke", "narrow", "setRole", "transferOwner", "adoptOwner", "inviteRevoke", "removeMember", "addActor", "offer", "unoffer", "inviteCreate", "inviteConfirm", "inviteAccept", "sweep", "installModule", "chatCreate", "chatChange", "ruleSet", "ruleRemove", "ruleAccept", "ruleDismiss", "rulePropose", "ruleEnable", "ruleDisable"]) {
+  for (const name of ["create", "revoke", "narrow", "setRole", "transferOwner", "adoptOwner", "bootstrap", "inviteRevoke", "removeMember", "addActor", "offer", "unoffer", "inviteCreate", "inviteConfirm", "inviteAccept", "sweep", "installModule", "chatCreate", "chatChange", "ruleSet", "ruleRemove", "ruleAccept", "ruleDismiss", "rulePropose", "ruleEnable", "ruleDisable"]) {
     const f = /** @type {(...a: any[]) => Promise<any>} */ (/** @type {any} */ (api)[name]);
     /** @type {any} */ (api)[name] = (/** @type {any[]} */ ...a) => {
       const run = async () => {
-        const before = capture();
-        try { return await f(...a); } catch (e) {
-          // A failure while writing: put the store back from the log; if the log cannot be read either, put back the state this call started from, never an empty store.
-          if (!(e instanceof KernelError)) { try { await api.rebuild(); } catch { restore(before); } }
+        const before = capture(), seq0 = cfg.log.latestSeq();
+        try { const r = await f(...a); if (gseq - snapAt >= SNAP_EVERY) { try { await api.snapshot(); } catch { /* the next call tries again */ } } return r; } catch (e) {
+          // WF-1: memory never shows a change the log does not hold. If the log did not move, nothing was written, so memory goes back exactly to what the call started from (a refusal, or a
+          // sealing process that failed under the event). If events were written before it failed (a change made of several), the log is the truth: rebuild from it, and only if it cannot be
+          // read put back the state this call started from, never an empty store.
+          if (cfg.log.latestSeq() === seq0) restore(before);
+          else { try { await api.rebuild(); } catch { restore(before); } }
           throw e;
         }
       };
