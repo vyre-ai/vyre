@@ -27,6 +27,7 @@ const ONLY = flag("--only", "").split(",").filter(Boolean);
 const WIDTH = Number(flag("--width", "1280"));
 const CALLER = flag("--caller", "deck");
 const PRESENCE = bool("--presence");
+const SETUP = bool("--setup");
 if (!SOCKET && !BOX_URL) { console.error("app-walk: give --socket <path to the box's vyred.sock> or --box-url <http://host:port>"); process.exit(2); }
 fs.mkdirSync(OUT, { recursive: true });
 
@@ -170,7 +171,17 @@ await step("memory: ask a question", { expect: [/Nothing remembered|Asking Memor
 });
 await step("memory: pin a node", { skip: "the box holds no memory node to pin (memory.graph is empty)" }, async () => {});
 await step("vault: list and tabs", {}, async () => { await go("u/vault"); await click("Keys").catch(() => {}); await click("Cards").catch(() => {}); });
-await step("vault: reveal a field", { needs: "presence" }, async () => {});
+await step("vault: reveal a field", { needs: "presence" }, async () => {
+  let items = (await boxCall("vault.list")).data?.items ?? [];
+  if (!items.length) { await boxCall("vault.put", { name: "walk-login", kind: "login", fields: { username: "walk", password: "walk-pw-123" } }); items = (await boxCall("vault.list")).data?.items ?? []; }
+  if (!items.length) throw new Error("the box would not take a vault item from the walk (vault.put refused)");
+  await go("u/vault");
+  await click(items[0].name, { exact: false });
+  await click("Reveal", { exact: false });
+  await settle(1500);
+  const body = await text();
+  if (!/walk-pw-123|•/.test(body) && !/Reveal|Hide/.test(body)) throw new Error("no reveal result on screen");
+});
 await step("drive: browse a folder and open a text file", { skip: has("drive") && world.drive.data?.shares?.length ? undefined : "no share offered by the box", expect: [/Harlow intake/] }, async () => {
   await go("u/drive");
   await click("Box folders");
@@ -192,13 +203,46 @@ await step("settings: notifications, switch a kind and back", {}, async () => {
 await step("settings: assistants", {}, async () => { await go("u/settings/assistants"); });
 await step("settings: AI accounts", {}, async () => { await go("u/settings/ai"); });
 await step("settings: account and recovery", { expect: [/ways in/i] }, async () => { await go("u/settings/account"); });
-await step("settings: account, make a new recovery code", { needs: "presence" }, async () => {});
+await step("settings: account, make a new recovery code", { needs: "presence", expect: [/new recovery code/i] }, async () => {
+  await go("u/settings/account");
+  await press("Make a new recovery code");
+  await settle(1500);
+  // The new code is shown once; keep it where the dev box keeps its own (RECOVERY beside the home), never in the report.
+  const code = await page.locator("[selectable], div").filter({ hasText: /^[A-Za-z0-9 -]{20,}$/ }).first().innerText().catch(() => "");
+  if (code) fs.writeFileSync(path.join(OUT, ".new-recovery"), code, { mode: 0o600 });
+});
 await step("settings: what my assistants can see", {}, async () => { await go("u/settings/seeing"); });
 await step("settings: privacy and sealing", {}, async () => { await go("u/settings/privacy"); });
 await step("settings: about", {}, async () => { await go("u/about"); });
-await step("settings: appearance, pick a theme", { needs: "presence" }, async () => {});
+await step("settings: appearance, pick a theme", { needs: "presence" }, async () => {
+  await go("u/appearance");
+  await click("Paper");
+  await settle(1200);
+  const got = await boxCall("settings.get", { key: "appearance.scheme" });
+  if (JSON.stringify(got).indexOf("paper") < 0) throw new Error(`the theme write did not reach the box: ${JSON.stringify(got).slice(0, 160)}`);
+  await boxCall("settings.set", { key: "appearance.scheme", value: "system" });
+});
 await step("settings: rules", { skip: "BLOCKED: no rules.* tools on the box yet (kernel-2, platform)" }, async () => {});
 await step("settings: devices (chat's)", {}, async () => { await go("u/settings/devices"); });
+
+await step("setup: create a space on this computer, close partway, resume", { skip: SETUP ? undefined : "starts a real space on the dev box: pass --setup" }, async () => {
+  await go("u/install/create");
+  await page.getByLabel("Name").first().fill("Walk Space");
+  await settle(1500);
+  await page.screenshot({ path: path.join(OUT, "setup-1-name.png") });
+  await click("Continue");
+  await click("On this computer");
+  await page.screenshot({ path: path.join(OUT, "setup-2-here.png") });
+  await click("Create it here", { settle: 4000 });
+  await page.screenshot({ path: path.join(OUT, "setup-3-after-create.png") });
+  const t3 = await text();
+  if (!/Give .* a look/.test(t3)) throw new Error(`stopped after Create it here: ${t3.replace(/\s+/g, " ").slice(0, 300)}`);
+  // Close partway: a fresh page, and setup must resume at the look step.
+  await go("u/spaces");
+  await page.screenshot({ path: path.join(OUT, "setup-4-reopened.png") });
+  const t4 = await text();
+  if (!/Setup in progress|Continue here|a look/.test(t4)) throw new Error(`no resume offered after closing: ${t4.replace(/\s+/g, " ").slice(0, 300)}`);
+});
 
 await browser.close();
 server.close();
