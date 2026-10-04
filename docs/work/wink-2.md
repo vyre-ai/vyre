@@ -45,3 +45,8 @@ A paired session is renewed, not re-paired. (a) A device that lapsed and still h
 - `stream.open-peer` re-asks access before every batch of frames (one ask serves every frame queued while it ran); a refusal ends the stream with `access_ended`; roles refresh from the re-check. A reset frame is flushed before the close. core/stream/peer-open.test.js (4), test/wink.test.js (web software session, ninth open).
 - A computer's pairing sends `owner.pin` (identityPin seam, from `spaces.identity.self`).
 - Open: walker's pairing hang. `wink.pair.server` steps are bounded at 20 s and named; the stuck step is not known until walker's fresh-homes rerun names it.
+
+## Next (paused by the lead, 4 Oct)
+- Full test/wink.test.js run on 59678f38e was still going on testbox4 (/tmp/w2-d.out); read its summary first. Everything else on 59678f38e passed: core/stream, daemon-smoke, kernel/boot, peer-door (203 pass, 0 fail), pairing.test.js 80/80.
+- Pairing hang: walker could not reproduce it on a fresh state (trunk 6368a11c0), so it was leftover state in the old first-machine home or specific to spaces 1f9b1945f. Nothing to fix until windows names a branch where it recurs.
+- Review the stream half of tailnet's merge of wink-rc1 with devbox 9f7e91594 in core/daemon/peer-door.js (dispatchFor(peerStream), openByDevice, watchers, events.on must survive next to the invitee block).
