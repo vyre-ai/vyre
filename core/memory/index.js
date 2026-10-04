@@ -729,8 +729,8 @@ export default {
 
     ctx.tool("memory.correct", {
       effect: "write",
-      callers: PEOPLE,
-      // No callers list: the person's device reaches it too, and ownerWrite decides.
+      // A model may call it: with no words of the person's behind it the call only suggests (iq/heard.js); ownerOnly and ownerWrite decide the rest.
+      callers: [...PEOPLE, "mcp", "harness"],
       description: "Correct a fact: wrong (never true), ended (stopped being true at `at`), replace (ended, and `object` is true instead), confirm (sure, no decay), add (a new fact). fact is src|rel|dst from memory.facts, or give subject, rel and object. room or project scopes it to one project; otherwise everywhere. Answers at once with the correction and pending: true, and memory.curated follows when the graph has it; wait: true answers after, with the fact as it now reads. Or correct a Vyre Memory answer where it is shown: answer is memory.ask's answer_id, and action is wrong (never give that answer to that question again), replace (object is the right answer: the same question gets it at once) or forget (the facts and turns behind it never ground an answer again); returns { fix }, and memory.uncorrect { fix } undoes it. An agent (Claude in a chat) may correct only when the person said so in its own thread: from_turn: { seq } names that turn of the person's, and the new value must be in their words. It is applied as theirs ({ applied: true, heard }); otherwise it waits as a suggestion for the person ({ applied: false, suggestion }). suggestion: <id> accepts one (the person only).",
       input: { type: "object", required: ["action"], properties: { fact: { type: "string" }, subject: { type: "string" }, rel: { type: "string" }, object: { type: "string" },
         answer: { type: "string", description: "memory.ask's answer_id" },
@@ -1198,7 +1198,8 @@ export default {
     // Told outright, by the person or their assistant: kept at once, no prompt (the no-nag rule).
     ctx.tool("memory.remember", {
       effect: "write",
-      callers: PEOPLE_MOD,
+      // The person's own Claude session remembers a fact through this (/vyre remember); the body refuses an agent's session. Group D HD-8 (a session-sourced fact should wait for the person) is still open.
+      callers: [...PEOPLE_MOD, "mcp", "harness"],
       description: "Keep a fact the user or their assistant states outright (\"my wife is Jordan\", \"I moved to Lisbon\"). No confirmation. It is read like a conversation at confidence 0.95 and kept as a note either way, so memory.answer finds a line no rule reads by its words. room is kept as where it was said; personal facts are not a project's. Returns { id, text, facts: [{ id, subject, rel, object, confidence }] }.",
       input: { type: "object", properties: { text: { type: "string" }, room: { type: "string" }, ...agentField } },
       run: async (input, { caller } = {}) => {
