@@ -127,6 +127,8 @@ export interface Manifest {
   does?: {
     /** A name is the built in grace form (reach anyone). Added modules use ToolEntry. */
     tools?: (ToolName | ToolEntry)[];
+    /** The tools of this module that change nothing. A tool open to anyone that is not named here (or given effect: "read" on its entry) is a write: open to the person's surfaces and modules only until its callers list says otherwise. */
+    reads?: ToolName[];
     /** Session drivers (ADR 0030). Built in only in 0.2. */
     providers?: string[];
     /** Watcher preset files it ships (relative .json paths). A preset only describes; it runs no code. */
@@ -168,6 +170,8 @@ export interface Manifest {
     connections?: { provider: string; purpose: string }[];
     /** Its default daily cap on core/spend. */
     spend?: { dailyUsd: number };
+    /** Daemon services handed to a built in module (names the loader knows: kernelSession, kernelThreads, sandbox, flowsHost, credentials, dataStores, devStandIn, modulesListReset, modulesListResetPayload). */
+    daemon?: string[];
     /** @planned Tools it calls with ctx.call, or "module.*". */
     tools?: string[];
     /** @planned Hosts it talks to. A declaration the person approves, not a wall, while in process. */
@@ -330,6 +334,10 @@ export interface ModuleEvents {
   emit<P = any>(type: EventType, payload?: P, where?: { project?: string; thread?: string }): VyreEvent<P>;
   /** Subscribe to a type, "noun.*" or "*". Returns an unsubscribe function. */
   on(pattern: EventPattern, fn: (event: VyreEvent) => void): () => void;
+  /** The caller class the running call came from, past module hops, or undefined when nothing is running. A module that stores work for later stores this beside it (RG-2). */
+  origin(): string | undefined;
+  /** Run `fn` as the call `origin` came from (the origin stored with a job or an event), so what it calls is judged as that caller class. With no origin it just runs `fn`. */
+  withOrigin<T>(origin: string | undefined, fn: () => T): T | Promise<T>;
   /** Events after an id, oldest first. */
   since(id?: number, opts?: { type?: string; project?: string; limit?: number }): VyreEvent[];
   /** The id a read is current to, so a view can follow the stream from it with no gap. */
@@ -486,6 +494,8 @@ export interface ModuleContext {
   /** @internal The registered drivers, for the Switchboard. */
   providers: { get(name: string): SessionDriver | null; list(): string[] };
   /** @internal Every running module's declared settings, tagged with its module. For the settings module. */
+  /** Offer a value to the modules that asked for it, once (a name another module reads); the loader refuses a second provider of the same name. */
+  provide(name: string, value: unknown): void;
   declaredSettings(): (SettingDef & { module: string })[];
   /** @internal The tools shipped modules list under setupTools, for the relay's pre-claim setup channel. Only a built-in module's field counts. */
   declaredSetupTools(): string[];
