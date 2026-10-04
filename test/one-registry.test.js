@@ -523,3 +523,23 @@ test("pre-0.3 boot (reviewer-3): a paired app device with no list at start gets 
   assert.deepEqual(read("device-spaces/oldphonexxxxxxx01"), [home, sp.space].includes(home) ? [home, sp.space] : [sp.space], "an existing list is topped up with the home only, never rewritten from scratch");
   void made;
 });
+
+test("the remote path: a space this device made with a paired server as home is reached through K.for(id) as a RemoteKernel over the Wink peer session (kernel.call), and a space with no server row is not remote", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "remote-box", transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  /** @type {any[]} */ const seen = [];
+  const sessionFor = async (/** @type {string} */ device) => ({ call: async (/** @type {string} */ tool, /** @type {any} */ input) => { seen.push([device, tool, input.call, input.space]); return { v: 1, id: input.id, ok: true, result: { record: "from the server" } }; } });
+  const d = await start({ root, kernel: true, sessionFor, log: () => {} });
+  t.after(() => d.stop());
+  const sid = "spc_abcdefghjklm";
+  d.registry.deps.db.prepare("INSERT INTO spaces_kv (key, value) VALUES (?, ?)").run(`server-hosted/${sid}`, JSON.stringify({ device: "srv_paired0000000001" }));
+  const h = d.kernel.spaces.for(sid);
+  assert.equal(h.hosted, false, "not hosted here");
+  const r = await h.gateway.records.get(null, "contact", "c1");
+  assert.deepEqual(r, { record: "from the server" });
+  assert.deepEqual(seen, [["srv_paired0000000001", "kernel.call", "records.get", sid]]);
+  assert.throws(() => d.kernel.spaces.for("spc_zzzzzzzzzzzz"), { code: "not_found" }, "a space with no server row is no remote space");
+});
