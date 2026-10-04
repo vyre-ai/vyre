@@ -121,9 +121,12 @@ test("the Mac's boxless window types the server's code: the words follow the pro
   assert.deepEqual(macServerSay("offline", 3), { title: "Your Mac cannot reach the server", line: "Check that it is on and online. Nothing was connected.", over: false });
 });
 
-test("the install line is the release candidate's own when the version is known, else the stable one", () => {
-  assert.equal(installLine("0.3.0-rc1"), "curl -fsSL https://github.com/vyre-ai/vyre/releases/download/v0.3.0-rc1/install-box.sh | VYRE_BOX_URL=https://github.com/vyre-ai/vyre/releases/download/v0.3.0-rc1/ sh");
-  for (const v of [undefined, null, "", "latest", "0.3", "1.0.0; rm -rf /"]) assert.equal(installLine(v), "curl -fsSL vyre.run/i | sh", String(v));
-  assert.equal(installLine("0.3.0"), installLine(" 0.3.0 "));
+test("the install line is the release candidate's own only for a hyphenated version; a plain release and an unknown version get the stable one", () => {
+  const STABLE = "curl -fsSL vyre.run/i | sh";
+  const rc = (v) => `curl -fsSL https://github.com/vyre-ai/vyre/releases/download/v${v}/install-box.sh | VYRE_BOX_URL=https://github.com/vyre-ai/vyre/releases/download/v${v}/ sh`;
+  assert.equal(installLine("0.3.0-rc.1"), rc("0.3.0-rc.1"));
+  assert.equal(installLine(" 0.3.0-rc1 "), rc("0.3.0-rc1"));
+  assert.equal(installLine("0.3.0"), STABLE);
+  for (const v of [undefined, null, "", "latest", "0.3", "1.0.0; rm -rf /", "0.3.0-rc.1; ls", "-rc1"]) assert.equal(installLine(v), STABLE, String(v));
   assert.doesNotMatch(MAC_SERVER.help, /\d+ minutes/);
 });

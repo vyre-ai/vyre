@@ -62,12 +62,12 @@ export function macServerSay(reason, left) {
 }
 
 /**
- * The line to run on a server. A release candidate's own install script when the bridge says which version this app is (the Mac app exposes it), else the stable line.
- * @param {string | null | undefined} version e.g. "0.3.0-rc1"
+ * The line to run on a server. A release candidate's own install script only when the bridge gives a version with a hyphen ("0.3.0-rc.1"); a plain release ("0.3.0"), an unknown version and anything that is not a version get the stable line.
+ * @param {string | null | undefined} version
  */
 export function installLine(version) {
   const v = String(version ?? "").trim();
-  if (!/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(v)) return "curl -fsSL vyre.run/i | sh";
+  if (!/^\d+\.\d+\.\d+-[0-9A-Za-z.-]+$/.test(v)) return "curl -fsSL vyre.run/i | sh";
   const base = `https://github.com/vyre-ai/vyre/releases/download/v${v}/`;
   return `curl -fsSL ${base}install-box.sh | VYRE_BOX_URL=${base} sh`;
 }
