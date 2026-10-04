@@ -448,13 +448,14 @@ export function createSqliteStore(cfg) {
         const was = /** @type {any} */ (db.prepare("PRAGMA secure_delete").get());
         db.exec("PRAGMA secure_delete = ON");
         try {
-          const upd = db.prepare("UPDATE kernel_changes SET entry = ? WHERE seq = ?");
-          let from = 0;
-          for (;;) {
-            const rows = /** @type {any[]} */ (db.prepare("SELECT seq, entry FROM kernel_changes WHERE seq > ? ORDER BY seq LIMIT 500").all(from));
-            if (!rows.length) break;
-            db.exec("BEGIN");
-            try {
+          // One savepoint (it joins a caller's transaction, stands alone otherwise): the log entries, the row, the kept stage counts and the attribute row go together or not at all.
+          db.exec("SAVEPOINT kdestroy");
+          try {
+            const upd = db.prepare("UPDATE kernel_changes SET entry = ? WHERE seq = ?");
+            let from = 0;
+            for (;;) {
+              const rows = /** @type {any[]} */ (db.prepare("SELECT seq, entry FROM kernel_changes WHERE seq > ? ORDER BY seq LIMIT 500").all(from));
+              if (!rows.length) break;
               for (const r of rows) {
                 from = r.seq;
                 const e = JSON.parse(r.entry);
@@ -462,11 +463,21 @@ export function createSqliteStore(cfg) {
                 delete e.before; delete e.after; e.erased = true;
                 upd.run(JSON.stringify(e), r.seq);
               }
-              db.exec("COMMIT");
-            } catch (err) { db.exec("ROLLBACK"); throw err; }
-          }
-          db.prepare("DELETE FROM kernel_records WHERE type = ? AND id = ?").run(type, id);
-          ftsRestart();
+            }
+            // A live record is counted under each kept stage count: take it out in the same transaction (a removed one was taken out when it was removed).
+            const row = /** @type {any} */ (db.prepare("SELECT data, deleted_at FROM kernel_records WHERE type = ? AND id = ?").get(type, id));
+            if (row && row.deleted_at == null) {
+              const data = JSON.parse(row.data);
+              for (const f of countFields(type)) if (countsReady.has(`${type}\u0000${f}`)) decCount.run(type, f, valKey(data[f]));
+            }
+            db.prepare("DELETE FROM kernel_records WHERE type = ? AND id = ?").run(type, id);
+            // The attribute row is keyed by urn (space/type/id): the space is not known here, so it is found by its tail.
+            const tail = `/${type}/${id}`;
+            db.prepare("DELETE FROM kernel_attrs WHERE substr(urn, -?) = ?").run(tail.length, tail);
+            for (const k of [...attrCache.keys()]) if (k.endsWith(tail)) attrCache.delete(k);
+            ftsRestart();
+            db.exec("RELEASE kdestroy");
+          } catch (err) { db.exec("ROLLBACK TO kdestroy"); db.exec("RELEASE kdestroy"); throw err; }
           try { db.exec("VACUUM"); } catch { /* inside a transaction of the caller's: the freed pages stay until the next vacuum */ }
         } finally {
           db.exec(`PRAGMA secure_delete = ${was && was.secure_delete ? was.secure_delete : 0}`);
