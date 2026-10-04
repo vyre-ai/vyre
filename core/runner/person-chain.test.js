@@ -57,3 +57,15 @@ test("RN-2: another member's person chain is not this computer's person: refused
   const noOwner = await boot(t, () => person("per_a"), { owner: undefined });
   await assert.rejects(noOwner("runner.lock", { caller: "cli" }), e => e.code === "denied", "an unknown owner is a refusal");
 });
+
+test("walk step 11: a kernel whose runner ports cannot be built yet (the host gave no device) does not stop the module from loading; status says it is not connected", async t => {
+  const sp = fakeSpace();
+  const root = `/tmp/runner-walk-${process.pid}-${Math.random().toString(36).slice(2)}`;
+  /** @type {Map<string, any>} */ const tools = new Map();
+  const ctx = { paths: { root }, events: { emit() {}, on: () => () => {} }, tool: (name, def) => tools.set(name, def), kernel: { runnerPorts: o => o.deviceId() } };
+  const h = await mod.start(ctx); t.after(() => h.stop());
+  const st = await tools.get("runner.status").run({}, {});
+  assert.equal(st.ready, false);
+  assert.match(st.why, /not connected|installed|blocks|missing/);
+  void sp;
+});
