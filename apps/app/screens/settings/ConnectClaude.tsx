@@ -3,14 +3,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { Linking, View } from "react-native";
 import { Button, Card, Chip, Field, Text, showToast } from "@vyre/ui";
-import { call } from "../../src/api/box";
+import { tool } from "../../src/real/box";
 import { aiRefusal, claudeState, codeInput, keyInput, safeLink, startInput } from "../../src/real/ai-connect.js";
 
-const ask = async (tool: string, input: Record<string, unknown> = {}) => {
-  const r = await call<any>(tool, input);
-  if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code });
-  return r.data;
-};
+// tool() answers a presence ask the way this build does (the phone's biometric; a browser says to do it on the phone), so onboard.claude, which needs the person's presence, works from here.
+const ask = (name: string, input: Record<string, unknown> = {}) => tool<any>(name, input);
 
 export function ConnectClaude({ onConnected }: { onConnected?: () => void }) {
   const [claude, setClaude] = useState<any>(null);
