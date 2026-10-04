@@ -5,6 +5,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 ## Unreleased
 
 - test(wink): the owner's-phone card test asks its outward card for mail.send, a tool marked `outward: true`, in place of the made-up email.send that only the old verb pattern accepted.
+- test(walk): the walk's paired-device helper builds its device row the way the daemon does (the relay's row plus the person Wink's record names), so a signed-in paired app device reaches bridges.merge.links as the person. Not a bridges bug: the check reads the call's kernel chain, and a paired device's chain is one person (core/daemon callerFacts); the test's row had no person, so no chain was built. publish.whoIs uses the same chain check and needs no change.
 
 - test(one-yes): an `outward: true` tool on reach hook or modules is held for a hook caller, a module with no person behind it and a module acting for an agent, and never runs; a module acting for you runs it (reviewer-3 OW-5).
 - feat(app): a phone's connect step offers `TypeCode kind="phone"` (app-wire's typed-code field, the box side is platform-3's wink.code.redeem) under the pasted code, above "I don't have Vyre running yet". A finished typing goes to the spaces step.
