@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":337,"tool":1076,"event":441,"config":252,"env":211,"screen":20,"concept":43},
+  "counts": {"command":337,"tool":1076,"event":441,"config":252,"env":210,"screen":20,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -2155,7 +2155,6 @@
     {"kind":"env","name":"VYRE_IMAGE","definedIn":"box/compose.egress.yml","page":null,"mentions":[{"page":"releases/checklist.md","line":34,"anchor":"what-the-released-composeyml-must-look-like-pulled-boxes"},{"page":"using/box-care.md","line":267,"anchor":"run-the-installer-by-hand"},{"page":"using/box-care.md","line":279,"anchor":"run-the-installer-by-hand"}]},
     {"kind":"env","name":"VYRE_INSTALL_MAIN","definedIn":"scripts/install-mac-server.sh","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_INSTALLER","definedIn":"scripts/install/i.sh","page":null,"mentions":[]},
-    {"kind":"env","name":"VYRE_KERNEL","definedIn":"core/daemon/index.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_LAUNCHAGENTS","definedIn":"scripts/install-mac-server.sh","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_LAUNCHCTL","definedIn":"scripts/install-mac-server.sh","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_LEGACY_DIRECT_MODEL","definedIn":"core/sessions/index.js","page":"reference/config.md#environment-variables","mentions":[]},

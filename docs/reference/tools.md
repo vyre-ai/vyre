@@ -609,7 +609,7 @@ Accept what another Space offered to share with yours. Until you do, nothing flo
 
 - Input:
   - `bridge` string, required
-  - `person` string, required
+  - `person` string
 - Callers: any caller
 
 ### `bridges.continue`
@@ -618,23 +618,23 @@ Continue in another Space: hand the work over as a task there that points back a
 
 - Input:
   - `fromSpace` string, required
-  - `person` string, required
   - `summaryRefs` list of string, required
   - `toSpace` string, required
+  - `person` string
   - `title` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
 
 ### `bridges.copy`
 
 Copy a record into another Space you belong to, as a new record that notes where it came from. Sealed fields come across empty. A model's copy is held for you to approve; sealed values copy only for you, in person.
 
 - Input:
-  - `person` string, required
   - `toSpace` string, required
   - `urn` string, required
   - `copy_sealed` list of string
   - `destType` string
-- Callers: any caller
+  - `person` string
+- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
 - Needs a person present.
 
 ### `bridges.get`
@@ -643,7 +643,7 @@ One share a Space is part of.
 
 - Input:
   - `bridge` string, required
-  - `person` string, required
+  - `person` string
   - `space` string
 - Callers: any caller
 
@@ -662,8 +662,8 @@ Install a Kit into a Space after the person approved exactly this plan (its plan
 - Input:
   - `approved_plan_hash` string, required
   - `kit` object, required
-  - `person` string, required
   - `space` string, required
+  - `person` string
 - Callers: any caller
 
 ### `bridges.kit.plan`
@@ -672,8 +672,8 @@ List everything installing a Kit would add to a Space. Nothing is applied.
 
 - Input:
   - `kit` object, required
-  - `person` string, required
   - `space` string, required
+  - `person` string
 - Callers: any caller
 
 ### `bridges.list`
@@ -681,7 +681,7 @@ List everything installing a Kit would add to a Space. Nothing is applied.
 The shares a Space is part of, on both sides: the ones it offered and the ones offered to it.
 
 - Input:
-  - `person` string, required
+  - `person` string
   - `space` string
 - Callers: any caller
 
@@ -690,7 +690,7 @@ The shares a Space is part of, on both sides: the ones it offered and the ones o
 For a device that merges Spaces itself: one entry per Space the person belongs to, { space, name, color, link }. The device reads each link through that Space's own gateway and merges on the device; no server joins data across Spaces.
 
 - Input:
-  - `person` string, required
+  - `person` string
   - `spaces` list of string
 - Callers: any caller
 
@@ -711,12 +711,12 @@ Send chosen fields of chosen events to another Space. The other Space accepts fi
   - `destination` string, required
   - `expires_at` number, required
   - `fields` list of string, required
-  - `person` string, required
   - `source` string, required
   - `types` list of string, required
   - `free_text_confirmed` boolean
   - `max_red` string
   - `owner_confirmed` boolean
+  - `person` string
   - `subject_prefix` string
 - Callers: any caller
 - Needs a person present.
@@ -728,13 +728,13 @@ Let another Space show the names of chosen record types here. A reference is an 
 - Input:
   - `destination` string, required
   - `expires_at` number, required
-  - `person` string, required
   - `source` string, required
   - `types` list of string, required
   - `cache_label` boolean
   - `label_fields` list of string
   - `max_red` string
   - `owner_confirmed` boolean
+  - `person` string
 - Callers: any caller
 - Needs a person present.
 
@@ -746,13 +746,13 @@ Offer another Space a live, read-only view: a record type, a filter, a sort and 
   - `destination` string, required
   - `expires_at` number, required
   - `fields` list of string, required
-  - `person` string, required
   - `source` string, required
   - `type` string, required
   - `destination_cache` boolean
   - `filter` object
   - `max_red` string
   - `owner_confirmed` boolean
+  - `person` string
   - `sealed_placeholder` boolean
   - `sort` list
 - Callers: any caller
@@ -763,10 +763,10 @@ Offer another Space a live, read-only view: a record type, a filter, a sort and 
 Look up the name behind a vyre:// reference to another Space. A reference you may not read and one that does not exist answer the same way.
 
 - Input:
-  - `person` string, required
   - `space` string, required
   - `urn` string, required
-- Callers: any caller
+  - `person` string
+- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
 
 ### `bridges.revoke`
 
@@ -774,7 +774,7 @@ Stop a share at once, from either side. Devices drop what they cached for it.
 
 - Input:
   - `bridge` string, required
-  - `person` string, required
+  - `person` string
   - `reason` string
   - `space` string
 - Callers: any caller
@@ -793,14 +793,14 @@ The rules of a session whose context draws on these Spaces: drafts only for writ
 Read a shared view through its source Space, live and read-only. Only the fields the share lists come back; sealed fields never do. The result is marked external and carries the source's residency rules.
 
 - Input:
-  - `person` string, required
   - `share` string, required
   - `cursor` string
   - `filter` object
   - `limit` number
+  - `person` string
   - `sort` list
   - `space` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
 
 ## capsule
 
@@ -6872,7 +6872,7 @@ The new server sends the code its person typed (or, for a second server, with jo
   - `space` string, required
   - `join` string
   - `vpsToken` string
-- Callers: any caller
+- Callers: `device`, `relay`, `tailnet`
 
 ### `spaces.compute.accept`
 
@@ -6931,6 +6931,7 @@ Create a space and say where it will live: a server you have (the one command, t
   - `name` string, required
   - `displayName` string
   - `headscale` boolean
+  - `storeChoice` "create" or "cancel"
 - Callers: any caller
 
 ### `spaces.get`
@@ -7173,7 +7174,7 @@ The space's home checks a signed acceptance (from spaces.invites.accept on anoth
     - `publicKey` string
   - `proof` string, required
   - `token` string, required
-- Callers: any caller
+- Callers: `device`, `relay`, `tailnet`
 
 ### `spaces.invites.revoke`
 
@@ -7266,7 +7267,7 @@ Hand a space to another member. The old owner becomes an admin (or the role you 
 
 ### `spaces.membership`
 
-A person's membership in a space, or null. For other modules to decide who may do what.
+A person's membership in a space, or null. For other modules to decide who may do what. For a space with a kernel it is the kernel's answer.
 
 - Input:
   - `person` string, required
@@ -7328,7 +7329,7 @@ Read the display names of the five roles, or rename one (owner or admin). The id
 
 ### `spaces.self`
 
-The person acting on this device and the space a call is for (the one named, or the only one this person is in). For modules.
+The person acting and the space a call is for (the one named, or the only one this person is in). The person is this device's own: only for the person's own surface or device, or their own assistant (an agent claim); any other caller (a plain model session, a guest, a hook, an anonymous or module caller) is nobody. For modules.
 
 - Input:
   - `caller` string
