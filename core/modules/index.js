@@ -1171,9 +1171,6 @@ export class Registry {
     if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     // `origin` is set only by a module's own ctx.call (the caller class the running call came from); nothing a client sends is ever one.
     if (!String(caller).startsWith("module:")) delete meta.origin;
-    // `terminalKey`: the login terminal the daemon measured for this call (core/daemon atTerminal), null for a model's shell; only the daemon's own `terminal` argument sets it, never anything in meta.
-    delete meta.terminalKey;
-    { const tk = typeof terminal === "string" ? terminal : terminal && typeof terminal === "object" && typeof terminal.key === "string" ? terminal.key : null; if (tk) meta.terminalKey = tk; }
     // A tool the registry defaulted to person-only is reached by a module only when the module is acting FOR a person (the call it relays came from one): a module with no origin (a timer, a start,
     // a direct call) is not that person, and must have its tool declare `callers: ["module"]` to be allowed (RG-2). The daemon's own calls (module:vyred) are the daemon.
     const hop = def.defaulted && String(caller).startsWith("module:") && caller !== "module:vyred";
