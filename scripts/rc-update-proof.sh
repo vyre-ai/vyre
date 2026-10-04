@@ -59,6 +59,8 @@ docker exec -u 1000 vyre-vyre-1 sh -c 'echo rc-marker-1 > /home/vyre/.vyre/rc-ma
 vyre call memory.remember '{"text":"My wife is Robin"}' >/dev/null 2>&1 || fail "could not write a memory fact into the old release"
 vyre call planner.add '{"kind":"note","text":"Marlow and Finch retainer draft"}' >/dev/null 2>&1 || fail "could not write a planner note into the old release"
 vyre call memory.me '{}' 2>&1 | grep -q Robin && vyre call planner.list '{}' 2>&1 | grep -q 'retainer draft' || fail "the seed is not readable on the old release"
+# What the person's own config already enabled (a module off by default that the old home turned on stays on after an update: that is their choice, not a difference from a fresh install).
+docker exec -u 1000 vyre-vyre-1 cat /home/vyre/.vyre/config.json >"$WORK/old-config.json" 2>/dev/null || echo '{}' >"$WORK/old-config.json"
 docker exec vyre-vyre-1 env | grep -q '^VYRE_STORE=' && fail "the old install already has VYRE_STORE (this proof starts from an untouched 0.2 box)"
 say "1 ok: $OLDV installed untouched (no VYRE_STORE), data written and read back"
 
@@ -69,17 +71,18 @@ every_module() {
   node -e '
 const fs = require("fs");
 const listed = Object.keys(JSON.parse(fs.readFileSync(process.argv[1], "utf8")).modules).sort();
-const off = fs.readFileSync(process.argv[2], "utf8").split("\n").filter(l => l && !l.startsWith("#")).sort();
+let kept = []; try { const c = JSON.parse(fs.readFileSync(process.argv[4], "utf8")); kept = (c.modules && Array.isArray(c.modules.enable)) ? c.modules.enable : []; } catch {}
+const off = fs.readFileSync(process.argv[2], "utf8").split("\n").filter(l => l && !l.startsWith("#") && !kept.includes(l)).sort();
 const state = {};
 for (const l of fs.readFileSync(process.argv[3], "utf8").split("\n")) { const m = /^\s+(\S+)\s+\S+\s+(\S+)/.exec(l); if (m) state[m[1]] = m[2]; }
 const running = listed.filter(n => state[n] === "running").sort(), failed = listed.filter(n => state[n] === "failed" || state[n] === "invalid");
 const want = listed.filter(n => !off.includes(n)).sort();
 const problems = [];
 if (failed.length) problems.push("failed: " + failed.join(", "));
-if (JSON.stringify(running) !== JSON.stringify(want)) problems.push("running " + running.length + " of " + want.length + " expected; missing: " + want.filter(n => !running.includes(n)).join(", "));
+if (JSON.stringify(running) !== JSON.stringify(want)) problems.push("running " + running.length + " of " + want.length + " expected; missing: " + want.filter(n => !running.includes(n)).join(", ") + "; unexpected: " + running.filter(n => !want.includes(n)).join(", "));
 if (problems.length) { console.error(problems.join("; ")); process.exit(1); }
 console.log(running.length + " modules run, none failed");
-' "$WORK/new/site/box/modules.json" "$HERE/scripts/packaged-boot-expected.txt" "$WORK/modules.txt" || { cat "$WORK/modules.txt" | head -80; fail "$1: the modules that run are not the candidate's fresh-install set"; }
+' "$WORK/new/site/box/modules.json" "$HERE/scripts/packaged-boot-expected.txt" "$WORK/modules.txt" "$WORK/old-config.json" || { cat "$WORK/modules.txt" | head -80; fail "$1: the modules that run are not the candidate's fresh-install set"; }
   ! docker logs vyre-vyre-1 2>&1 | grep -Ei 'migration .* failed' || { docker logs vyre-vyre-1 2>&1 | grep -Ei 'migration .* failed' | head -5; fail "$1: a migration failed"; }
 }
 # do_update LABEL: the update to the candidate, the way the root unit does it (a hand run of its step), with the throwaway key trusted for this run.
