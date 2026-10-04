@@ -15,7 +15,7 @@ import { edgeCompose, composeText, caddyfile, caddyDockerfile, IMAGES, serviceNa
 const arg = (/** @type {string} */ n, /** @type {string} */ d) => { const i = process.argv.indexOf(`--${n}`); return i > 0 && process.argv[i + 1] ? process.argv[i + 1] : d; };
 const dir = path.resolve(arg("dir", fs.mkdtempSync(path.join(os.homedir(), "publish-e2e-"))));
 const keep = process.argv.includes("--keep");
-const SPACE = { id: "spc_pube2e000001", name: "harlow.vyre.run" };
+const SPACE = { id: "spc_pubeedgeabcd", name: "harlow.vyre.run" };
 const DEP = "dep_0123456789abcdef";
 const work = [{ id: DEP, kind: "static", name: "northwind", stage: "Production" }];
 const run = (/** @type {string} */ cmd, /** @type {string[]} */ args, o = {}) => { const r = spawnSync(cmd, args, { cwd: dir, encoding: "utf8", ...o }); return { code: r.status, out: String(r.stdout || "") + String(r.stderr || "") }; };

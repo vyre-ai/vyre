@@ -27,6 +27,7 @@ import { runnerPorts } from "./gateway/runner-ports.js";
  * @param {{ space: string, owner: string, owner_uid: number, key?: Uint8Array | string, seal?: any, label?: () => { name?: string, words?: string }, clock?: () => number,
  *   legacyKeys?: (Uint8Array | string)[], currentCall?: () => any, store?: any, log?: any, chains?: any, grantsStore?: any, grants?: any, members?: any, bootstrap?: boolean, presence?: any, sealer?: any, door?: any,
  *   expr?: any, hasPresenceSession?: (chain: any) => boolean, onStageEnter?: any, stageTasks?: any, checkpointKey?: any,
+ *   deviceEnrolled?: (space: string, device: string) => Promise<boolean>,
  *   drive?: any, resolveCredential?: any, forwardCredential?: any, routeAction?: any, templates?: any, destinations?: any, resolve?: any, actions?: any[], attrs?: any, sinks?: Set<string> }} cfg
  *   grants and members together replace the grants store (the retrofit path and test rigs); otherwise a grants store is made and, on an empty log, its first owner
  */
@@ -72,6 +73,11 @@ export async function createKernel(cfg) {
    * chain: a module never builds a chain. Record calls wait for the module's types to be defined.
    * @param {any} m the module's manifest
    */
+  /** Is this device (a `device` fact) still enrolled in this Space? The spaces module keeps the list (`cfg.deviceEnrolled`); with no port every device is (a build without the module). Any error is a no. */
+  const enrolledHere = async (/** @type {string} */ space, /** @type {any} */ facts) => {
+    if (!cfg.deviceEnrolled || !facts || facts.kind !== "device" || typeof facts.device_key_id !== "string") return true;
+    try { return (await cfg.deviceEnrolled(space, facts.device_key_id)) !== false; } catch { return false; }
+  };
   const kernelFor = (/** @type {any} */ m) => {
     if (!grantsStore) throw new Error("ctx.kernel needs the kernel's own grants store");
     const needs = (m.needs && m.needs.kernel) || { actions: [] };
@@ -102,13 +108,25 @@ export async function createKernel(cfg) {
        * @param {string} person @param {string} [space] this Space only
        */
       ...(needs.membership === true && grantsStore ? { membership: async (/** @type {string} */ person, /** @type {string} */ space = cfg.space) => {
-        if (space !== cfg.space) throw new KernelError("not_found", "no such space here");
         if (typeof person !== "string" || !/^per_[A-Za-z0-9_-]{1,64}$/.test(person)) throw new KernelError("bad_input", "name one person");
-        const a = { kind: "person", id: person, space: cfg.space };
-        const role = grantsStore.roleOf(a) || null;
-        try { log.append(gateway.serviceChain(m.name), { type: "membership.read", sv: 1, subject: `vyre://${cfg.space}/member/${person}`, data: { module: m.name, person, member: role !== null }, vis: "owner", red: "internal" }); } catch { /* the answer is a read; a log that cannot be written says so on the next write */ }
+        // This Space, or another this home hosts (its own grants and its own log): the answer and the owner-visible note come from the Space asked about.
+        const h = space === cfg.space ? null : (spaces && typeof spaces.hosted === "function" ? spaces.hosted(space) : null);
+        if (space !== cfg.space && !(h && h.kernel && h.kernel.grants)) throw new KernelError("not_found", "no such space here");
+        const store = h ? h.kernel.grants : grantsStore, slog = h ? h.kernel.log : log, sgw = h ? h.kernel.gateway : gateway;
+        const a = { kind: "person", id: person, space };
+        const role = store.roleOf(a) || null;
+        try { slog.append(sgw.serviceChain(m.name), { type: "membership.read", sv: 1, subject: `vyre://${space}/member/${person}`, data: { module: m.name, person, member: role !== null }, vis: "owner", red: "internal" }); } catch { /* the answer is a read; a log that cannot be written says so on the next write */ }
         return Object.freeze({ member: role !== null, role });
       } } : {}),
+      /**
+       * Only for a first-party module that declares `needs.kernel.spaces: true` (the module that creates Spaces): what a Space made here would be stored in (`storePlan`, with the confirmation to
+       * show BEFORE it is made) and starting to host one (`host({ owner, name, accept_builtin_store })` -> `{ space }`, the kernel's own `spc_` plus 12 base32 id). The Space's first owner is the
+       * person id named; nothing here lists or reaches another Space (`for` and `chainIn` do that, under a chain).
+       */
+      ...(needs.spaces === true ? { spaces: Object.freeze({
+        storePlan: () => { if (!spaces) throw new KernelError("unavailable", "this kernel has no Spaces registry"); return spaces.storePlan(); },
+        host: async (/** @type {{ owner: string, name?: string, accept_builtin_store?: boolean }} */ o) => { if (!spaces) throw new KernelError("unavailable", "this kernel has no Spaces registry"); const h = await spaces.host(o); return { space: h.space || h.id, id: h.space || h.id }; },
+      }) } : {}),
       /**
        * Sessions for a daemon (kernel/core/surfaces.js): the PERSON opens one under their own chain (`open(chain, { agent?, chat?, session?, thread?, ttl_ms? })` gives
        * `{ token, session, expires }`; the chat is checked and written into the token), `valid(token)` says whether it is still good (so a session socket can close when it
@@ -138,7 +156,11 @@ export async function createKernel(cfg) {
        */
       chain: async (/** @type {any} */ meta) => {
         if (meta && typeof meta.token === "string") return surfaces.chainFor(meta.token);
-        if (meta && meta.kernelFacts && typeof meta.kernelFacts === "object") { try { return chains.fromFacts(meta.kernelFacts); } catch { /* no person chain for this connection */ } }
+        if (meta && meta.kernelFacts && typeof meta.kernelFacts === "object") {
+          // A device the person removed from THIS Space has no chain in it (the user's ruling: devices enrol per Space); it keeps its chains in the Spaces it is still in.
+          if (!(await enrolledHere(cfg.space, meta.kernelFacts))) return gateway.serviceChain(m.name);
+          try { return chains.fromFacts(meta.kernelFacts); } catch { /* no person chain for this connection */ }
+        }
         await ready;
         return gateway.serviceChain(m.name);
       },
@@ -153,7 +175,10 @@ export async function createKernel(cfg) {
       const h = spaces && typeof spaces.hosted === "function" ? spaces.hosted(space) : null;
       if (!h || !h.kernel) throw new KernelError("not_found", "no such space here");
       if (meta && typeof meta.token === "string") return h.surfaces.chainFor(meta.token);
-      if (meta && meta.kernelFacts && typeof meta.kernelFacts === "object") { try { return h.kernel.chains.fromFacts(meta.kernelFacts); } catch { /* no person chain for this connection */ } }
+      if (meta && meta.kernelFacts && typeof meta.kernelFacts === "object") {
+        if (!(await enrolledHere(space, meta.kernelFacts))) throw new KernelError("not_a_member", "this device is not enrolled in that space");
+        try { return h.kernel.chains.fromFacts(meta.kernelFacts); } catch { /* no person chain for this connection */ }
+      }
       throw new KernelError("not_a_member", "no chain for this connection");
     };
     /** Wink's `offers` port over this Space's grants.offers (kernel/remote/offers-port.js): the caller's chain and proof come from the call's meta. */
