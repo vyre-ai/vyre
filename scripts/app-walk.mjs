@@ -319,6 +319,23 @@ await step("recovery: a phone with no name says Welcome back, takes a code, and 
     if (!/Scan from your other device/.test(t)) throw new Error(`the scan step did not open: ${t.slice(0, 200)}`);
   } finally { await ctx2.close(); }
 });
+await step("access: Claude Code's grant card, Don't allow, then Let Claude Code ask again", { skip: (await boxCall("pluginagent.status")).error ? "the box has no pluginagent" : undefined, expect: [/Claude Code/] }, async () => {
+  // Needs a box where Claude Code has not been granted. An ask is filed the way the plugin files one (pluginagent.ask); the walk answers it as the person would.
+  const st = (await boxCall("pluginagent.status")).data;
+  if (st?.granted) throw new Error("Claude Code is already granted on this box: revoke it first");
+  if (st?.declined) await boxCall("pluginagent.on");
+  const a = await boxCall("pluginagent.ask");
+  if (a.data?.state !== "waiting" && !(await boxCall("pluginagent.pending")).data?.length) throw new Error(`no ask is waiting (ask answered ${JSON.stringify(a.data ?? a.error)})`);
+  await go("u/access");
+  await page.getByText(/Let Claude Code on .* read your memory/).first().waitFor({ state: "visible", timeout: 8000 });
+  await page.screenshot({ path: path.join(OUT, "access-plugin-card.png") });
+  await click("Don't allow", { settle: 1500 });
+  await page.getByText("Let Claude Code ask again").first().waitFor({ state: "visible", timeout: 8000 });
+  await page.screenshot({ path: path.join(OUT, "access-plugin-declined.png") });
+  await click("Let Claude Code ask again", { settle: 1500 });
+  const t = (await text()).replace(/\s+/g, " ");
+  if (/Let Claude Code ask again/.test(t)) throw new Error("the ask-again row stayed after turning it on");
+});
 await step("settings: devices (chat's)", {}, async () => { await go("u/settings/devices"); });
 
 await step("join: a link in /u/install/join's own query fills nothing and leaves the address bare", {}, async () => {

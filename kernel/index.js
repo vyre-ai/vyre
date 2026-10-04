@@ -291,6 +291,9 @@ export async function createKernel(cfg) {
         return adoptNow(to, from);
       };
 
+      /** The identity that took this Space's owner place (claimed at the server's own screen or by a pairing), or null while the owner is still the first-start id. First owner wins: nothing else may become the owner. */
+      handle.ownerClaimed = () => { const a = grantsStore && typeof grantsStore.adopted === "function" ? grantsStore.adopted() : null; return a ? String(a.to) : null; };
+
       const reg = () => { if (!spaces) throw new KernelError("unavailable", "this kernel has no Spaces registry"); return spaces; };
       handle.spaces = Object.freeze({
         host: (/** @type {any} */ o) => reg().host(o),
@@ -355,5 +358,8 @@ export async function createKernel(cfg) {
   /** @type {any} */ const boot = tail || anchored ? { ...(tail || { ok: true, from: 0, checked: 0 }), ok: (!tail || tail.ok) && (!anchored || anchored.ok), ...(tail && !tail.ok ? {} : anchored && !anchored.ok ? { why: anchored.why } : {}), ...(anchored ? { anchor: anchored } : {}) } : null;
   // Signed checkpoints, when the Space's key is given (the sealing process holds it): each one verifies the log, moves the anchor, and is written into the log.
   const checkpoints = signer ? createCheckpointer({ space: cfg.space, log, chains, publicKey: signer.pub, sign: signer.sign, key_id: signer.key_id, clock, ...(anchor ? { anchor } : {}) }) : null;
-  return Object.freeze({ boot, checkpoints, adoptOwner: adoptNow, setLabel: (/** @type {() => { name?: string, words?: string }} */ f) => { label = f; }, bindCalls: (/** @type {() => any} */ fn) => { if (room) room.bindCalls(fn); }, recordStorageIndex, storageIndexHead, gateway, log, store, chains, grants: grantsStore, limits, tasks, surfaces, kernelFor, bindSpaces, fresh, migrated });
+  /** An invitee's first presence key on this server (RC1), through the sealing process; only the remote door's accept calls it, with the identity chain it read from the directory itself. */
+  const joinKey = cfg.sealer && typeof cfg.sealer.join === "function" ? (/** @type {any} */ i) => cfg.sealer.join(i) : undefined;
+  const unjoinKey = cfg.sealer && typeof cfg.sealer.unjoin === "function" ? (/** @type {any} */ i) => cfg.sealer.unjoin(i) : undefined;
+  return Object.freeze({ boot, checkpoints, adoptOwner: adoptNow, ...(joinKey ? { joinKey, ...(unjoinKey ? { unjoinKey } : {}) } : {}), setLabel: (/** @type {() => { name?: string, words?: string }} */ f) => { label = f; }, bindCalls: (/** @type {() => any} */ fn) => { if (room) room.bindCalls(fn); }, recordStorageIndex, storageIndexHead, gateway, log, store, chains, grants: grantsStore, limits, tasks, surfaces, kernelFor, bindSpaces, fresh, migrated });
 }

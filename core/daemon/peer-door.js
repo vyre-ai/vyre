@@ -13,6 +13,7 @@ import { withKernelCall, KERNEL_CALL_TOOL } from "../../kernel/remote/wink.js";
 import { INVITEE_CALLS, WIRE_VERSION, PRESENCE_CODES } from "../../kernel/remote/wire.js";
 import { verifyDevice } from "../wink/node/peer-wire.js";
 import crypto from "node:crypto";
+import { devSwitch } from "../../kernel/devbuild.js";
 
 /** The stream's `space` head: this home, not one of its hosted Spaces (a kernel call names its Space in the request). */
 export const PEER_HOME = "home";
@@ -27,6 +28,7 @@ const err = (/** @type {string} */ code, /** @type {string} */ message) => Objec
  */
 export function createPeerDoor(o) {
   const log = o.log || (() => {});
+  const softwareOk = o.softwareOk || (() => devSwitch(process.env.VYRE_SEAL_SOFTWARE));
   /** @type {Map<string, any>} */ const servers = new Map();
   const kernelOf = (/** @type {string} */ space) => (space === o.kernel.id.space ? o.kernel : (o.kernel.spaces && typeof o.kernel.spaces.for === "function" ? (() => { try { const h = o.kernel.spaces.for(space); return h && h.hosted === true ? h.kernel : null; } catch { return null; } })() : null));
   const serverFor = (/** @type {string} */ space) => {
@@ -34,14 +36,22 @@ export function createPeerDoor(o) {
     const k = kernelOf(space);
     if (!k) { servers.delete(space); return null; }
     let s = servers.get(space);
-    if (!s || s.k !== k) { s = { k, server: createRemoteServer({ space, home: o.kernel.id.space, kernel: k, attest: async nonce => { const r = await o.registry.call("spaces.attest", { space, nonce }, "module:vyred"); return r && r.data && !r.error ? r.data : null; } }) }; servers.set(space, s); }
+    if (!s || s.k !== k) { s = { k, server: createRemoteServer({ space, home: o.kernel.id.space, kernel: k, identityEvidence: async (/** @type {{ person: string, name?: string }} */ w) => { try { const r = await o.registry.call("spaces.identity.evidence", w, "module:vyred", { door: true }); return r && !r.error && r.data && Array.isArray(r.data.ops) ? r.data : null; } catch { return null; } }, attest: async nonce => { const r = await o.registry.call("spaces.attest", { space, nonce }, "module:vyred"); return r && r.data && !r.error ? r.data : null; } }) }; servers.set(space, s); }
     return s.server;
   };
   /** The device's own row at the relay, now: an app device that is not removed, or null. @param {string} id */
-  const rowOf = async id => { try { const r = await o.registry.call("relay.device.info", { id }, "module:vyred"); const d = r && r.data; return d && d.kind === "app" && d.removed === false ? d : null; } catch { return null; } };
+  const rowOf = async id => {
+    try {
+      const r = await o.registry.call("relay.device.info", { id }, "module:vyred"); const d = r && r.data;
+      if (!(d && d.kind === "app" && d.removed === false)) return null;
+      // the person the device's own record names (Wink: who confirmed it); callerFacts gives the device the owner's person only when this is the home's owner
+      let person = null; try { const w = await o.registry.call("wink.device.record", { id }, "module:vyred"); person = w && w.data && typeof w.data.owner === "string" ? w.data.owner : null; } catch { person = null; }
+      return { ...d, person };
+    } catch { return null; }
+  };
   /** The person a device is: the facts the daemon proves for it (PH-1) name the home's owner, and only for a live app device. @param {string} id */
   /** The device's own live paired session (it signed in with start-paired), or null: a call is the person's with a session and a device's own, with no person, without one. @param {string} id */
-  const sessionOf = id => { const now = (o.now || Date.now)(); try { const s = o.people ? o.people.list().find(x => x.node === id && x.paired && x.expires > now) : null; return s ? { id: String(s.id), kind: String(s.kind) } : null; } catch { return null; } };
+  const sessionOf = id => { const now = (o.now || Date.now)(); try { const s = o.people ? o.people.list().find(x => x.node === id && x.paired && x.expires > now) : null; return s ? { id: String(s.id), kind: String(s.kind), ...(s.software ? { software: true } : {}) } : null; } catch { return null; } };
   const factsOf = async (/** @type {string} */ id, /** @type {any} */ person = null) => { const row = await rowOf(id); return row ? o.callerFacts(`device:${id}`, { caller: `device:${id}`, peer: { kind: "device", stableId: id } }, person ? { person } : null, o.kernel, false, row) : null; };
   const personOf = async (/** @type {string} */ id) => { const f = await factsOf(id); return f && typeof f.person === "string" ? f.person : null; };
 
@@ -125,7 +135,14 @@ export function createPeerDoor(o) {
   };
   /** A kernel request for one of the two invitee calls on this invite, as the invitee. @param {string} space @param {string} call @param {any[]} args @param {number} now */
   const inviteeRequest = (space, call, args, now) => ({ v: WIRE_VERSION, space, id: `inv-${crypto.randomBytes(8).toString("hex")}`, ts: now, call, args });
-  const dispatchFor = (/** @type {any} */ peerStream) => withKernelCall((/** @type {string} */ c, /** @type {string} */ t, /** @type {any} */ i) => asDevice(c, t, i, peerStream), { serverFor, personOf: (/** @type {string} */ d) => personOf(d), pathOf: () => "relay" });
+  const dispatchFor = (/** @type {any} */ peerStream) => withKernelCall((/** @type {string} */ c, /** @type {string} */ t, /** @type {any} */ i) => asDevice(c, t, i, peerStream), { serverFor, personOf: (/** @type {string} */ d) => personOf(d), sessionOf: (/** @type {string} */ d) => {
+    // a software-marked paired session (a device key nobody had to touch) is presence for an admin act only where the presence module itself takes software proofs: a development build behind its switch, never a release build
+    const s = sessionOf(d);
+    if (!s) return null;
+    if (s.software && !softwareOk()) { log(`peer door: ${d} holds a software-strength session: not presence for an admin act here`); return null; }
+    log(`peer door: ${d} session counts as presence, strength ${s.software ? "software (development switch)" : "enclave or phone-approved"}`);
+    return s.software ? { id: s.id, software: true } : s.id;
+  }, pathOf: () => "relay" });
   /** @type {Map<string, number>} device -> its open streams, across its peer streams */
   const openByDevice = new Map();
   /** @type {Set<{ id: string, check: () => void }>} the accepted peer streams with streams open, re-checked when a device is removed or a session ends (PS-C: an event, not a fast poll) */
@@ -152,7 +169,7 @@ export function createPeerDoor(o) {
         // the space's own kernel decides whether this invite is live, unused and meant for this person: a preview is the proof (it is all the invitee may read before it accepts)
         const r = await server.serve(inviteeRequest(head.space, "grants.invites.get", [head.invite], (o.now || Date.now)()), { device_key_id: inviteeId, person: c.identity, path: "relay" });
         if (!r || r.ok !== true || !r.result || r.result.status !== "pending") { log(`peer door: invitee ${inviteeId} refused (bad_invite${r && r.error ? `: ${String(r.error.code)}` : ""})`); return { ok: false, why: "bad_invite" }; }
-        return { ok: true, identity: c.identity, space: head.space, invite: head.invite };
+        return { ok: true, identity: c.identity, space: head.space, invite: head.invite, entry: head.entry, ...(typeof head.name === "string" && head.name ? { name: head.name } : {}) };
       })());
       // accepting (or a refusal of the invite itself) finishes the stream at once: no call after it is served, even inside the moment the close takes
       let finished = false;
@@ -168,7 +185,7 @@ export function createPeerDoor(o) {
         if (input.space !== a.space || !INVITEE_CALLS.has(String(input.call)) || args[0] !== a.invite) throw err("denied", "an invite opens two calls and nothing else");
         const server = serverFor(a.space);
         if (!server) { end("gone"); throw err("not_found", "no such space here"); }
-        const r = await server.serve(input, { device_key_id: inviteeId, person: a.identity, path: "relay" });
+        const r = await server.serve(input, { device_key_id: inviteeId, person: a.identity, path: "relay", entry: a.entry, ...(a.name ? { name: a.name } : {}) });
         // accepting ends the stream (a member session begins elsewhere); so does any refusal of the invite itself. The home asking for the invitee's presence is not a refusal: the same stream carries the signed retry.
         const asksPresence = Boolean(r && r.ok !== true && r.error && PRESENCE_CODES.has(String(r.error.code)));
         if (!asksPresence && (input.call === "grants.invites.accept" || !r || r.ok !== true)) { finished = true; end("done"); }

@@ -55,7 +55,8 @@ export async function addThisDevice(o) {
   const stop = () => { try { conn.close(); } catch { /* closed */ } };
   /** One call of the pairing's own tool, answered with its data or thrown with the remote's code. @param {any} input */
   const wait = async input => {
-    const r = await Promise.race([conn.fetch("/v1/tools/wink.phone.wait", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) }), new Promise((_, rej) => setTimeout(() => rej(fail("unreachable", "The other device did not answer.")), 15_000))]);
+    /** @type {any} */ let to;
+    const r = await Promise.race([conn.fetch("/v1/tools/wink.phone.wait", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) }), new Promise((_, rej) => { to = setTimeout(() => rej(fail("unreachable", "The other device did not answer.")), 15_000); })]).finally(() => clearTimeout(to));
     const body = /** @type {any} */ (await /** @type {any} */ (r).json().catch(() => null));
     if (/** @type {any} */ (r).status === 200 && body && body.data) return body.data;
     const code = body && body.error && body.error.code;

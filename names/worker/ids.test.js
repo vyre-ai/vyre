@@ -515,3 +515,17 @@ test("PT-1: certificates for a Space's names are DNS-01 only: the Space signs, t
   // a challenge written for one Space is under that Space's label only, whatever the token says
   assert.deepEqual(w.dns.records.filter(r => r.type === "TXT").map(r => r.name), []);
 });
+
+test("ids: continuing one's own record needs a readable age: an unreadable or later `since` is not the same signer (fail closed)", async () => {
+  const { continuesOwnRecord } = await import("./ids.js");
+  const cur = { by: "e1", ts: 1000 };
+  assert.equal(continuesOwnRecord(cur, { by: "e1", since: 500 }), true);
+  assert.equal(continuesOwnRecord(cur, { by: "e1", since: 1000 }), true);
+  assert.equal(continuesOwnRecord(cur, { by: "e1", since: 1001 }), false, "put back after the record: a newcomer");
+  assert.equal(continuesOwnRecord(cur, { by: "e1", since: NaN }), false, "an unreadable age is not the same signer");
+  assert.equal(continuesOwnRecord(cur, { by: "e1" }), false, "no age at all is not the same signer");
+  assert.equal(continuesOwnRecord(cur, { by: "e2", since: 1 }), false);
+  assert.equal(continuesOwnRecord({ by: "o", via: "d1", ts: 1000 }, { by: "o", via: "d1", since: 5 }), true);
+  assert.equal(continuesOwnRecord({ by: "o", via: "d1", ts: 1000 }, { by: "o", via: "d2", since: 5 }), false);
+  assert.equal(continuesOwnRecord(null, { by: "e1", since: 1 }), false);
+});

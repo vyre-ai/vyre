@@ -22,7 +22,7 @@ test("labels grant nothing on a kernel-on daemon: presence's session check, vaul
   const metaOf = async (id, signedIn) => {
     const label = `device:${id}`, via = signedIn ? { person: { id: "ps1" } } : {};
     const info = await d.registry.call("relay.device.info", { id }, "module:vyred");
-    const facts = callerFacts(label, { caller: label }, via, d.kernel, false, info.data || null);
+    const facts = callerFacts(label, { caller: label }, via, d.kernel, false, info.data ? { ...info.data, person: d.kernel.id.owner } : null);
     return { label, meta: { caller: label, ...via, ...(facts ? { kernelFacts: facts } : {}) } };
   };
   const presence = d.registry.deps.presence;

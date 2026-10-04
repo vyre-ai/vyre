@@ -257,6 +257,10 @@
         "reach": "modules"
       },
       {
+        "name": "wink.device.enclave-live",
+        "reach": "modules"
+      },
+      {
         "name": "wink.server.probe",
         "reach": "person"
       },
@@ -313,8 +317,7 @@
       "storage.removed",
       "storage.unreachable",
       "wink.relay-applied",
-      "wink.network-changed"
-    ],
+      "wink.network-changed", "wink.device-needs-repair"],
     "on": [
       "relay.code-asked",
       "relay.invite-redeemed",
