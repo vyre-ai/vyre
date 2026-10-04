@@ -8,7 +8,8 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import * as C from "../../../../kernel/identity/chain.js";
 import { claimIdentity } from "./claim.js";
-import { recoverIdentity } from "./restore.ts";
+import { codeKey } from "./recovery.js";
+import { recoverIdentity, replaceRecoveryCode } from "./restore.ts";
 import { forgetIdentity, hadIdentity, loadIdentity } from "./store.ts";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
@@ -99,4 +100,25 @@ test("RX-2: a publish whose answer is lost after the directory applied it keeps 
   const refuse = async (url, init) => (init && init.method === "POST" ? new Response(JSON.stringify({ error: { code: "bad_op", message: "no" } }), { status: 400 }) : fetch(url, init));
   await assert.rejects(recoverIdentity({ name: "moe", code: made2.recoveryCode, deviceLabel: "p", base, params: PARAMS, fetch: refuse }));
   assert.equal(await loadIdentity(), null, "a refusal kept nothing");
+});
+
+test("replaceRecoveryCode: a device under 24 hours old is refused (newcomer) and changes nothing; a day later the op replaces the code on the list (the directory refuses back-dated ops, so its answer is faked)", { timeout: 90_000 }, async t => {
+  await forgetIdentity();
+  const base = await standIn(t);
+  const made = await claimIdentity({ name: "lee", base, params: PARAMS });
+  await recoverIdentity({ name: "lee", code: made.recoveryCode, deviceLabel: "new phone", base, params: PARAMS });
+  await assert.rejects(replaceRecoveryCode({ base, params: PARAMS }), { code: "newcomer" });
+  assert.equal((await resolve(base, "lee")).ops.length, 2, "nothing was appended");
+  const later = () => Date.now() + 25 * 3600_000;
+  const posted = [];
+  const fake = async (_url, init) => { posted.push(JSON.parse(init.body)); return { ok: true, status: 200, json: async () => ({ data: {} }) }; };
+  const got = await replaceRecoveryCode({ base, params: PARAMS, now: later, fetch: fake });
+  assert.notEqual(got.recoveryCode, made.recoveryCode);
+  assert.equal(posted.length, 1);
+  const ops = (await resolve(base, "lee")).ops;
+  const state = await C.verifyChain([...ops, ...posted[0].ops], { now: later() + C.SKEW_MS });
+  assert.equal(state.entries.filter(e => e.kind === "code").length, 1);
+  assert.equal(state.entries.find(e => e.kind === "code").eid, (await codeKey(got.recoveryCode, "", PARAMS)).eid, "the list holds the new code and no other");
+  assert.equal((await loadIdentity()).ops.length, 3, "kept");
+  await forgetIdentity();
 });

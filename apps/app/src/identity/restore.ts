@@ -13,7 +13,7 @@
 //   not_hardware a phone could not give its Secure Enclave key (`requireEnclave`): nothing is signed or kept (NK-2)
 
 import * as C from "../../../../kernel/identity/chain.js";
-import { codeLooksRight, codeSigner, STRETCH } from "./recovery.js";
+import { codeKey, codeLooksRight, codeSigner, newCode, STRETCH } from "./recovery.js";
 import { generateDeviceKey } from "./keys.js";
 import { forgetIdentity, hadIdentity, loadIdentity, saveIdentity } from "./store.ts";
 import type { PairingSession } from "../api/pairing-session";
@@ -95,6 +95,37 @@ export async function recoverIdentity(o: Opts): Promise<{ name: string; id: stri
     if (!landed) { if (again) await forgetIdentity().catch(() => {}); throw e; }
   }
   return { name, id: state.id };
+}
+
+/**
+ * A new recovery code after recovering (the chain's `replace-code`), signed by this device. A device that joined under 24 hours ago is refused by the list (`newcomer`): the screen
+ * says the offer opens a day after the recovery. The old code stops working only when the directory takes the op; a lost answer is checked by reading the chain again.
+ * The code comes back once and is never kept.
+ */
+export async function replaceRecoveryCode(o: { base?: string; password?: string; fetch?: typeof fetch; now?: () => number; params?: { memoryKiB: number; passes: number }; random?: (n: number) => Uint8Array }): Promise<{ recoveryCode: string }> {
+  const f = o.fetch ?? globalThis.fetch;
+  const base = (o.base ?? DIRECTORY).replace(/\/+$/, "");
+  const now = o.now ?? Date.now;
+  const mine = await loadIdentity().catch(() => null);
+  if (!mine) throw fail("no_identity", "This device holds no name.");
+  const code = newCode(o.random);
+  const ck = await codeKey(code, o.password ?? "", o.params ?? STRETCH);
+  let state: any;
+  try { state = await C.verifyChain(mine.ops as any[], { now: now() + C.SKEW_MS }); } catch { throw fail("unreachable", "This device's copy of the list did not check out."); }
+  let op: any;
+  try {
+    op = await C.makeOp(state, { type: "replace-code", entry: { eid: ck.eid, kind: "code", pub: ck.publicKey } }, { by: mine.eid, ts: Math.max(now(), state.ts), sign: (m: Uint8Array) => mine.key.sign(m) });
+    await C.applyOp(state, op, { now: now() + C.SKEW_MS });
+  } catch (e) { throw fail(/new|young/i.test(String((e as { code?: string }).code ?? "")) ? "newcomer" : "unreachable", String((e as Error).message)); }
+  try { await directory(f, base, "POST", "/v1/ids/append", { name: mine.name, ops: [op] }); }
+  catch (e) {
+    if ((e as { code?: string }).code !== "unreachable") throw e;
+    const again = await directory(f, base, "GET", `/v1/ids/resolve?name=${encodeURIComponent(mine.name)}`).catch(() => null);
+    const landed = again && Array.isArray(again.data.ops) && again.data.ops.some((x: any) => x && x.entry && x.entry.eid === ck.eid);
+    if (!landed) throw e;
+  }
+  await saveIdentity({ name: mine.name, id: mine.id, eid: mine.eid, ops: [...(mine.ops as any[]), op], pin: C.pinOf(await C.applyOp(state, op, { now: now() + C.SKEW_MS })), key: mine.key });
+  return { recoveryCode: code };
 }
 
 /**
