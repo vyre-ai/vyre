@@ -30,7 +30,7 @@ import { base32 } from "./grants.js";
 import { words, removed } from "./cards.js";
 import { createServerLinks } from "./serverlink.js";
 import { deviceKey } from "./devicekey.js";
-import { devSwitch } from "../../kernel/devbuild.js";
+import { devSwitch, isPackaged } from "../../kernel/devbuild.js";
 
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 const sha = (/** @type {string} */ s) => crypto.createHash("sha256").update(s).digest();
@@ -41,7 +41,19 @@ export const KINDS = Object.freeze(["phone", "computer", "server", "storage", "w
 /** The callers that are a person at this machine: the question of an unowned server is shown and answered on these only (Q-2). */
 export const PERSON_SURFACES = Object.freeze(["cli", "local", "deck", "capsule"]);
 /** What the app signs to prove it is the identity an unattended server was installed for (Q-3): this pairing's box and device, nothing a stranger could reuse. @param {string} box @param {string} device */
-export const pairToMessage = (box, device) => Buffer.from(`vyre-wink-pair-to-v1\n${box}\n${device}`, "utf8");
+/** What the identity key signs for a pairing: this box and this relay device, and (PI-3) this pairing's own ticket tag, so a proof is good for one pairing only. @param {string} box @param {string} device @param {string} [tag] */
+export const pairToMessage = (box, device, tag) => Buffer.from(`vyre-wink-pair-to-v1\n${box}\n${device}${tag ? `\n${tag}` : ""}`, "utf8");
+const SPKI_P256 = Buffer.from("3059301306072a8648ce3d020106082a8648ce3d030107034200", "hex");
+/** The Secure Enclave key's ECDSA P-256 signature (raw r||s or DER) over a message; `enclave` is the raw uncompressed point, base64url. @param {string} enclave @param {Buffer} msg @param {string} esig */
+const verifyEnclave = (enclave, msg, esig) => {
+  try {
+    const pt = Buffer.from(String(enclave), "base64url");
+    if (pt.length !== 65 || pt[0] !== 4) return false;
+    const key = crypto.createPublicKey({ key: Buffer.concat([SPKI_P256, pt]), format: "der", type: "spki" });
+    const sig = Buffer.from(String(esig), "base64url");
+    return crypto.verify("sha256", msg, { key, dsaEncoding: sig.length === 64 ? "ieee-p1363" : "der" }, sig);
+  } catch { return false; }
+};
 /** What each kind of device may offer (DESIGN-wink section 3). */
 export const KIND_OFFERS = Object.freeze({ web: ["access"], phone: ["access"], computer: ["access", "compute"], server: ["access", "compute", "storage"], storage: ["storage"] });
 /** The kind each typed-code flow adds (W1 a phone, W2 a computer, W3 a server). */
@@ -307,8 +319,9 @@ export function createPairing(o) {
     const input = { owner: { ...target, ...(x.ownerName ? { name: String(x.ownerName).slice(0, 64) } : {}), ...(vyre ? { vyre: String(vyre) } : {}) }, identity: x.identity, peerSecret: x.peerSecret, handover: hand, deviceKind: "computer", deviceName: String(ctx.config.name || "a computer").slice(0, 64) };
     // A server installed to pair to one identity asks for proof that this app IS that identity: a signature by a key on its list over this pairing's box and device (Q-3).
     if (typeof o.signIdentity === "function" && paired && paired.box && paired.device) {
-      const sig = await Promise.resolve(o.signIdentity(pairToMessage(String(paired.box), String(paired.device)))).catch(() => null);
-      if (sig && sig.eid && sig.sig) /** @type {any} */ (input).proof = { eid: String(sig.eid), sig: String(sig.sig) };
+      const sigTag = x.seed ? await ticketTag(b64url(x.seed)) : "";
+      const sig = await Promise.resolve(o.signIdentity(pairToMessage(String(paired.box), String(paired.device), sigTag))).catch(() => null);
+      if (sig && sig.eid && sig.sig) /** @type {any} */ (input).proof = { eid: String(sig.eid), sig: String(sig.sig), ...(sig.esig ? { esig: String(sig.esig) } : {}) };
     }
     // The three words are made from this pairing's own material (pairwords.js): the ticket secret, both keys and two fresh nonces. Commit then reveal: this app sends
     // sha256(its nonce) first, the server answers with its own nonce, then this app reveals its nonce, so neither side can pick a nonce after seeing the other's.
@@ -689,7 +702,7 @@ export function createPairing(o) {
         const cur = meta.get("owner"), by = String(meta.get("adopter") || "");
         if (!cur) return { owned: false };
         const dev = deviceIdOf(by) !== null ? devices.get(/** @type {string} */ (deviceIdOf(by))) : null;
-        return { owned: true, space: await ownerWords({ ...cur, identity: cur.identity }), device: (dev && dev.name) || (cur.name ? String(cur.name) : "device") };
+        return { owned: true, space: await ownerWords({ ...cur, identity: cur.identity }), device: (dev && dev.name) || (cur.name ? String(cur.name) : "device"), ...(meta.get("owner_proof") ? { owner_proof: String(meta.get("owner_proof")) } : {}) };
       },
     });
     ctx.tool("wink.server.pairing", {
@@ -784,6 +797,8 @@ export function createPairing(o) {
      * relay device (pairToMessage), checked against the entry the identity port reads live. Answers the identity the proof speaks for.
      * @param {string} to @param {any} input @param {string} caller @returns {Promise<string>}
      */
+    /** How each pairing's owner proof was held, by caller, until adoption records it. @type {Map<string, "hardware" | "software">} */
+    const proofKinds = new Map();
     const proveIdentity = async (to, input, caller, open = false) => {
       const pr = input && input.proof && typeof input.proof === "object" ? input.proof : null;
       // a server installed with no pair-to is not waiting for anyone: its refusals say what was missing, not whom it waits for
@@ -793,11 +808,26 @@ export function createPairing(o) {
       // A fresh server has never seen this identity's chain: the app says the Vyre name it claims (`owner.vyre`) and the port reads that name's chain from the names directory, pinned and verified, and
       // keeps it only if the chain is the claimed id's. The directory out of reach is its own answer, never a "not them", and nothing is paired on a proof that could not be checked.
       const claimed = input.owner && typeof input.owner.vyre === "string" ? input.owner.vyre : undefined;
-      const e = await Promise.resolve(o.identityEntry(to, pr.eid, claimed)).catch((/** @type {any} */ err) => (err && err.code === "unreachable" ? { unreachable: true } : null));
+      const pin = input.owner && input.owner.pin && typeof input.owner.pin === "object" ? input.owner.pin : undefined;
+      const e = await Promise.resolve(o.identityEntry(to, pr.eid, claimed, pin)).catch((/** @type {any} */ err) => (err && err.code === "unreachable" ? { unreachable: true } : null));
       if (e && e.unreachable) throw fail("unavailable", words("pairCannotCheckNow"));
       const notThem = () => fail(open ? "denied_wrong_proof" : "denied", words(open ? "pairNotProven" : "pairWrongIdentity", open ? { name: shownName } : { name: to }));
       if (!e || e.eid !== pr.eid || typeof e.pub !== "string") { ctx.log(`wink: the identity proof named an entry that ${to} does not have${claimed ? " in the directory" : ""}`); throw notThem(); }
-      if (!verifyDevice(e.pub, pairToMessage(await boxKey(), caller.slice(7)), pr.sig)) { ctx.log("wink: the identity proof's signature did not match this pairing"); throw notThem(); }
+      // PI-3: the open flow's message carries this pairing's own ticket tag, so a proof from an earlier pairing of the same device and box is no proof; a release build requires the tag
+      const tag = input.pairing && typeof input.pairing.tag === "string" ? input.pairing.tag : "";
+      const release = o.releaseProof ?? isPackaged();
+      if (open && release && !tag) { ctx.log("wink: the identity proof carried no pairing tag"); throw notThem(); }
+      const message = pairToMessage(await boxKey(), caller.slice(7), tag);
+      // a --pair-to server also takes the older message with no tag (an installer made before the tag); the open flow never does
+      if (!verifyDevice(e.pub, message, pr.sig) && !(!open && tag && verifyDevice(e.pub, pairToMessage(await boxKey(), caller.slice(7)), pr.sig))) { ctx.log("wink: the identity proof's signature did not match this pairing"); throw notThem(); }
+      if (open) {
+        // PI-1: who owns a server speaks from a hardware-held key. A phone's entry carries `enclave` (its Secure Enclave key behind Face ID) and must add that key's signature over the same message; a browser-held
+        // entry, a passkey and a plain software key are accepted on a development build only, which says so in wink.server.status (owner_proof: software).
+        const hardware = Boolean(e.enclave) && e.held !== "web" && e.alg === undefined;
+        if (hardware && !(typeof pr.esig === "string" && verifyEnclave(e.enclave, message, pr.esig))) { ctx.log("wink: the identity proof lacks its Face ID signature"); throw notThem(); }
+        if (!hardware && release) { ctx.log("wink: the identity proof came from a key that is not hardware-held"); throw fail("not_hardware", words("pairNotHardware")); }
+        proofKinds.set(caller, hardware ? "hardware" : "software");
+      }
       return String(e.identity || to);
     };
     const boxKey = async () => {
@@ -935,6 +965,7 @@ export function createPairing(o) {
       const ownerName = cleanName(input.owner.name, 64);
       const first = !meta.get("owner") || !meta.get("adopter");
       meta.set("owner", { ...t, identity: ident, ...(ownerName ? { name: ownerName } : {}) });
+      { const k = proofKinds.get(caller); if (k) { meta.set("owner_proof", k); proofKinds.delete(caller); } else if (first) meta.del("owner_proof"); }
       if (first) meta.set("adopter", caller);
       if (input.peerSecret && /^[A-Za-z0-9_-]{20,80}$/.test(String(input.peerSecret))) meta.set("peer_secret", String(input.peerSecret));
       const h = cleanHandover(input.handover);
@@ -944,7 +975,7 @@ export function createPairing(o) {
       ctx.events.emit("wink.server-adopted", { owner: t });
       return { owner: t };
     };
-    const adoptInput = obj({ pairing: obj({ commit: str, reveal: str, tag: str, cancel: { type: "boolean" } }), owner: obj({ kind: { type: "string", enum: ["identity", "space"] }, id: str, name: str, vyre: str }, ["kind", "id"]), identity: str, peerSecret: str, proof: obj({ eid: str, sig: str }), deviceKind: { type: "string", enum: ["phone", "computer", "web"] }, deviceName: str, keyStorage: { type: "string", enum: ["hardware", "software"] }, handover: obj({ home: str, box: str, controlUrl: str, authKey: str, relay: str, space: str, device: str }) }, ["owner"]);
+    const adoptInput = obj({ pairing: obj({ commit: str, reveal: str, tag: str, cancel: { type: "boolean" } }), owner: obj({ kind: { type: "string", enum: ["identity", "space"] }, id: str, name: str, vyre: str, pin: obj({ id: str, seq: { type: "integer" }, head: str }) }, ["kind", "id"]), identity: str, peerSecret: str, proof: obj({ eid: str, sig: str, esig: str }), deviceKind: { type: "string", enum: ["phone", "computer", "web"] }, deviceName: str, keyStorage: { type: "string", enum: ["hardware", "software"] }, handover: obj({ home: str, box: str, controlUrl: str, authKey: str, relay: str, space: str, device: str }) }, ["owner"]);
     ctx.tool("wink.server.adopt", {
       callers: ["web"],
       description: "On a server that was just paired: record who it belongs to, an identity or a space { kind, id }, and the identity that paired it. Called by the pairing app over the paired channel. On a server with no owner the person at the server must say yes first (the server shows who asks and three words; no answer in 5 minutes pairs nothing): the call answers { pending, words, until } until then, and call it again to hear the result; a server installed with a named identity (pairTo) takes only that identity and asks no one. After that it cannot be repeated over the paired channel; the person changes the owner on this box with wink.server.retarget (their own presence), and only the one that adopted it, or a screen on this box, may. Answers { owner }.",

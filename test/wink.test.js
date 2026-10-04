@@ -1372,6 +1372,7 @@ test("owning a server needs the identity proof checked against the directory: th
   assert.equal(ok.result.ok && ok.result.ok.paired, true, String(ok.result.err && ok.result.err.message));
   assert.equal(ok.result.ok.session, true, "the adopt answer says the device has its session");
   assert.equal(ok.w.d.kernel.id.owner, ident.id, "the proven identity is the home's owner");
+  assert.equal((await ok.w.call("wink.server.status", {}, "cli", PROOF)).data.owner_proof, "software", "a development build takes a software key and says so");
   // no proof at all: refused, and a server installed with no pair-to is not waiting for anyone
   const none = await attemptPairing(t, ident, { sign: null });
   assert.equal(none.result.err && none.result.err.code, "denied_no_proof");

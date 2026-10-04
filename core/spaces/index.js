@@ -1473,13 +1473,14 @@ export default {
     }, { internal: true });
     // For the pairing module on a server that has never seen an identity: read the claimed Vyre name's chain from the directory (verified, first sight) and answer its device entries only when the chain is
     // THIS id's. Nothing is stored. A directory that cannot be reached is `unreachable`, which is not the same as no such entry.
-    tool("spaces.identity.lookup", "A claimed Vyre name's identity list from the directory, verified, and only if it is the given id's: { entries }. Nothing is kept. For the pairing module.", obj({ name: str, id: str }, ["name", "id"]), async i => {
+    tool("spaces.identity.lookup", "A claimed Vyre name's identity list from the directory, verified, and only if it is the given id's: { entries }. Nothing is kept. For the pairing module.", obj({ name: str, id: str, pin: { type: "object" } }, ["name", "id"]), async i => {
       const label = String(i.name).trim().toLowerCase().replace(/\.vyre\.run$/, "");
       if (!/^[a-z0-9][a-z0-9-]{1,30}$/.test(label)) return { entries: [] };
       let r;
-      try { r = await dir.resolve(label); } catch (e) { throw refuse("The names directory could not be reached.", "unreachable"); }
+      const pin = i.pin && typeof i.pin === "object" && typeof i.pin.id === "string" && Number.isInteger(i.pin.seq) && typeof i.pin.head === "string" ? { id: i.pin.id, seq: i.pin.seq, head: i.pin.head } : undefined;
+      try { r = await dir.resolve(label, pin ? { pin } : undefined); } catch (e) { throw refuse("The names directory could not be reached.", "unreachable"); }
       if (!r.ok || r.kind !== "person" || r.id !== String(i.id)) { if (process.env.WLOG) ctx.log.warn(`lookup ${label}: ok=${r.ok} kind=${r.kind} id=${r.id} want=${i.id} why=${r.why || r.code || ""}`); return { entries: [] }; }
-      return { entries: r.state.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, pub: e.pub })) };
+      return { entries: r.state.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, pub: e.pub, ...(e.held ? { held: e.held } : {}), ...(e.alg ? { alg: e.alg } : {}), ...(e.enclave ? { enclave: e.enclave } : {}) })) };
     }, { internal: true });
     tool("spaces.identity.state", "A person's identity list as verified now: their entry ids and kinds. Read live each call. For the transport's personOf.", obj({ person: str }, ["person"]), async i => stateOfPerson(String(i.person)), { internal: true });
     /** Is this person a member of this space, by the place that decides it (the kernel's membership read when it offers one, else the local table)? @param {string} space @param {string} person */
