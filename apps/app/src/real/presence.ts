@@ -5,9 +5,10 @@
 // again carrying the signed proof. Nothing here keeps a proof; each one is for one call.
 
 import { post } from "../api/box";
+import { shell } from "../shell/shell";
 import { getOptions, passkeyHeader } from "./presence-model.js";
 
-export const canProve = (): boolean => typeof window !== "undefined" && !!(window as unknown as { PublicKeyCredential?: unknown }).PublicKeyCredential && !!navigator?.credentials;
+export const canProve = (): boolean => !!shell() || typeof window !== "undefined" && !!(window as unknown as { PublicKeyCredential?: unknown }).PublicKeyCredential && !!navigator?.credentials;
 
 export class PresenceError extends Error {
   code: string;
@@ -19,6 +20,11 @@ export class PresenceError extends Error {
 
 /** The x-vyre-presence header value for one call, from a passkey the person uses now. Throws PresenceError with plain words. */
 export async function passkeyProof(tool: string, input: Record<string, unknown>): Promise<string> {
+  // In the Mac app the window answers with Touch ID itself (VyreAppWindow.swift); nothing else to ask.
+  const mac = shell();
+  if (mac) {
+    try { return await mac.presence(tool, input); } catch (e) { throw new PresenceError("cancelled", (e as Error).message || "Touch ID was cancelled."); }
+  }
   if (!canProve()) throw new PresenceError("no_passkey", "This browser cannot use a passkey. Use the Vyre app on your phone or computer.");
   const ch = await post("/v1/presence/challenge", { tool, input, method: "passkey" });
   const opts = getOptions(ch);
