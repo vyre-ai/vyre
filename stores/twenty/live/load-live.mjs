@@ -94,12 +94,26 @@ async function profile(label) {
   await step("store.query stage eq, sort fee, 20", () => store.query("matter", { filter: { field: "stage", op: "eq", value: "Drafting" }, sort: [{ field: "fee", dir: "desc" }], page: { limit: 20 } }));
   await step("gateway list stage eq, sort fee, 20", () => R.query(chain(), "matter", { filter: { field: "stage", op: "eq", value: "Drafting" }, sort: [{ field: "fee", dir: "desc" }], page: { limit: 20 } }));
   await step("store.query email eq", () => store.query("contact", { filter: { field: "email", op: "eq", value: `client${1 + rnd(seq)}@example.test` }, page: { limit: 5 } }));
-  await step("gateway update (matter)", async () => { const m = await R.get(chain(), "matter", matters[rnd(matters.length)]); await R.update(chain(), "matter", m.id, { practice_area: ["Estate"] }, m.version); });
+  await step("gateway update (matter)", async () => { const m = await R.get(chain(), "matter", matters[rnd(matters.length)]); await R.update(chain(), "matter", m.id, { practice_area: "Estate" }, m.version); });
   await step("store.aggregate count by stage", () => store.aggregate("matter", { group_by: ["stage"], measures: [{ fn: "count" }] }));
   await step("gateway aggregate count by stage", () => R.aggregate(chain(), "matter", { group_by: ["stage"], measures: [{ fn: "count" }] }));
   await step("store.search contact word", () => store.search({ text: `Client ${1 + rnd(seq)}`, types: ["contact"], page: { limit: 10 } }));
   await step("gateway search contact word", () => R.search(chain(), { text: `Client ${1 + rnd(seq)}`, types: ["contact"], page: { limit: 10 } }));
   store.client.gql = gql;
+  // concurrency sweep: c callers, no think time, 8 s: throughput, p50, the gateway process's own CPU and Twenty's containers
+  const sweep = async (name, fn, levels) => {
+    for (const c of levels) {
+      let conflicts = 0; const ts = []; const until = Date.now() + 8000, cpu0 = process.cpuUsage(), t0 = Date.now();
+      await Promise.all(Array.from({ length: c }, async () => { while (Date.now() < until) { const t = performance.now(); try { await fn(); } catch (e) { conflicts++; continue; } ts.push(performance.now() - t); } }));
+      const wall = (Date.now() - t0) * 1000, cpu = process.cpuUsage(cpu0);
+      console.log(`  ${name.padEnd(16)} ${String(c).padStart(2)} callers: ${(ts.length / (wall / 1e6)).toFixed(1).padStart(6)}/s  p50 ${med(ts).toFixed(0).padStart(5)} ms  gateway cpu ${(((cpu.user + cpu.system) / wall) * 100).toFixed(0)}%${conflicts ? `  (${conflicts} refused, e.g. a version conflict)` : ""}`);
+    }
+    console.log("    " + stats().replace(/\n/g, "\n    "));
+  };
+  console.log(`\n== concurrency sweep at ${contacts.length + matters.length} records ==`);
+  await sweep("gateway get", () => R.get(chain(), "matter", matters[rnd(matters.length)]), [1, 4, 10, 20]);
+  await sweep("store.get", () => store.get("matter", matters[rnd(matters.length)]), [1, 4, 10, 20]);
+  await sweep("gateway edit", async () => { const m = await R.get(chain(), "matter", matters[rnd(matters.length)]); await R.update(chain(), "matter", m.id, { practice_area: "Estate" }, m.version); }, [1, 4, 10]);
 }
 try {
   for (const n of sizes) { await seedTo(n); if (process.env.PROFILE) await profile(`${n}`); if (process.env.PROFILE !== "only") await run(`${n}`); }
