@@ -14,6 +14,7 @@ import { createTwentyStore } from "../store.js";
 import { TwentyClient } from "../client.js";
 import { specific } from "../specific-suite.js";
 import { toInput } from "../plan.js";
+import { createRecordsHost } from "../../../records/host.js";
 
 const URL_ = process.env.VYRE_TWENTY_LIVE_URL;
 const KEY_FILE = process.env.VYRE_TWENTY_LIVE_KEY_FILE;
@@ -88,6 +89,40 @@ if (!URL_ || !KEY_FILE) {
     const after = await count();
     console.log(`timeline activities written by two writes: ${after - before}`);
     if (offered) assert.equal(after, before, "no timeline activity was written for the contact");
+  });
+  test("live: sealing a field late removes the plain value from Twenty's timeline, the record history and search; a field sealed at define never takes one", async () => {
+    const store = await fresh();
+    let refs = 0;
+    const host = createRecordsHost({ space: "spc_livesealtest", owner: "per_owner", store, sealer: { api: { put: async (i) => ({ ref: { sealed: i.class, ref: `sv_${++refs}`, present: true, valid_format: true, set_at: 1 } }) } } });
+    const c = host.ownerChain(), R = host.kernel.records, V1 = "123-45-6781", V2 = "123-45-6782";
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const timeline = async () => JSON.stringify((await client.gql("graphql", "query T { timelineActivities(first: 200) { edges { node { id name properties } } } }")).timelineActivities.edges.map((e) => e.node));
+    // late sealing: a plain field holds the value first
+    await host.defineTypes([{ name: "patient", label: "Patient", fields: [{ name: "name", kind: "text", label: "Name", required: true }, { name: "ssn", kind: "text", label: "SSN" }] }]);
+    const p = await R.create(c, "patient", { name: "Jane", ssn: V1 });
+    await R.update(c, "patient", p.id, { ssn: V2 }, 1);
+    await wait(10_000);
+    const before = await timeline();
+    console.log(`timeline holds the plain value before sealing: ${before.includes("123-45-678")}`);
+    const out = await host.kernel.migrate.sealField(c, { type: "patient", field: "ssn", class: "us-ssn" });
+    assert.equal(out.moved, 1);
+    await wait(10_000); // a timeline write queued before the purge may land after it: look again
+    const found = [];
+    const note = (where, text) => { if (text.includes("123-45-678")) found.push(where); };
+    note("timeline", await timeline());
+    note("record history", JSON.stringify((await store.changes(null, 5000)).entries));
+    note("event log", JSON.stringify(host.log.read()));
+    note("search", JSON.stringify(await store.search({ text: "123-45-678", page: { limit: 20 } })));
+    note("search by word", JSON.stringify(await store.search({ text: "6781", page: { limit: 20 } })));
+    const col = store.plans.get("patient").byVyre.get("ssn").twenty;
+    const rows = await client.gql("graphql", `query R($f: PatientFilterInput) { patients(filter: $f, first: 5) { edges { node { id } } } }`, { f: { [col]: { like: "%123-45-678%" } } });
+    note("rows by value", JSON.stringify(rows));
+    assert.deepEqual(found, [], `the plain value is still in: ${found.join(", ")}`);
+    // sealed at define: a plain value is refused, so nothing reaches Twenty or its timeline
+    await host.defineTypes([{ name: "client2", label: "Client", fields: [{ name: "name", kind: "text", label: "Name", required: true }, { name: "ssn", kind: "sealed", label: "SSN", seal: { level: "ai", class: "us-ssn" } }] }]);
+    await assert.rejects(() => R.create(c, "client2", { name: "Bob", ssn: "123-45-6799" }), { code: "sealed_value_refused" });
+    await wait(5000);
+    assert.equal((await timeline()).includes("123-45-6799"), false, "a refused plain value is nowhere in the timeline");
   });
   test("live: close the listener", async () => { await new Promise((r) => (listener ? listener.close(() => r(null)) : r(null))); });
 }
