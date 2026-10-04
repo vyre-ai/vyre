@@ -111,7 +111,7 @@ export async function bootHomeKernel(cfg) {
     const packaged = isPackaged(cfg.packageRoot);
     if (packaged && process.env.VYRE_KERNEL_PATH_RULE === "1") log("kernel: VYRE_KERNEL_PATH_RULE ignored (this is a packaged daemon)");
     const devPathRule = !packaged && cfg.pathRule !== false && process.env.VYRE_KERNEL_PATH_RULE !== "0";
-    if (cfg.pathRule === true || devPathRule) log("kernel: DEVELOPMENT build, first-party modules are trusted by path (VYRE_KERNEL_PATH_RULE=0 asks for the signature check); a release build requires the signature");
+    if (!packaged && (cfg.pathRule === true || devPathRule)) log("kernel: DEVELOPMENT build, first-party modules are trusted by path (VYRE_KERNEL_PATH_RULE=0 asks for the signature check); a release build requires the signature");
     else {
       // M-1: the highest counter accepted, with the minimums that came with it, is kept in the kernel's own log (`kernel.minimums` events), not in a file the user can write. An
       // event carries the release-SIGNED document itself and is re-verified against the release key at every boot: the counter and the minimums come from the verified
