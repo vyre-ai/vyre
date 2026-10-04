@@ -941,6 +941,9 @@ test("M1 invites to a space on its server: the home's one-use challenge is answe
 
 test("typed pair, real daemon and relay: addThisDevice by code with its presence key, the owner's signed ack confirms it, start-paired signs in with that key, and a person-session call works", async t => {
   const { addThisDevice } = await import("../relay/client/phonepair.js");
+  const savedTyped = process.env.VYRE_WINK_TYPED_CODE;
+  delete process.env.VYRE_WINK_TYPED_CODE; // the release default: the typed code is on
+  t.after(() => { if (savedTyped !== undefined) process.env.VYRE_WINK_TYPED_CODE = savedTyped; else delete process.env.VYRE_WINK_TYPED_CODE; });
   const w = await world(t);
   const open = (await w.call("wink.phone.open", {})).data;
   assert.match(open.code, /^WINK-/);

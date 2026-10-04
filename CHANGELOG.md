@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(wink): a device paired by the typed code can open a person session. `wink.code.ack` is a pair yes moment (it takes the owner's software yes on a development build, like wink.phone.open), the owner's typed-back ack is the confirmation the paired session is granted on (the record is confirmed by the owner, with a key id `ack:<offer>`), and `addThisDevice({ ..., presenceKey })` reports the device's P-256 presence key at pairing: that key, never the Ed25519 identity key, signs presence.person.start-paired. test/wink-paired.test.js covers typed pair, signed ack, start-paired and a person-session call.
+
 - feat(wink): `wink.phone.wait` answers `identity: { id, vyre? }` once the yes is done, and `addThisDevice` returns it, so a device that joined an identity reads its list by the identity's own name; `name` stays the other device's (box) name.
 
 - feat(wink): a browser with no box pairs to a server by the code the phone's Devices screen shows, with the existing `joinWithCode({ relay, input, name, onState, pairOptions: { crypto, keyStore, about: { kind: "web" } } })` (relay/client/join.js); a test covers it. wink.code.ack no longer says "Development only" (reviewer-3 TY-2).
