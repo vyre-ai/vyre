@@ -23,7 +23,7 @@ const STREAM_ID = /^[A-Za-z0-9_-]{8,64}$/;
 const err = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 
 /**
- * @param {{ kernel: any, registry: any, people?: { list(): any[] } | null, events?: { on(type: string, f: (e: any) => void): (() => void) | void } | null, now?: () => number, identityEntry?: (identity: string, eid: string, name?: string) => Promise<{ pub: string, alg?: string, held?: string } | null>, boxId?: () => Promise<string | null>, serverFor?: (space: string) => { serve(request: any, peer: any): Promise<any> } | null, inviteeLimits?: { perInvite?: number, perIdentity?: number, perMinute?: number, perChannel?: number, perBox?: number, nonceMax?: number }, callerFacts: (caller: string, policy: any, via: any, k: any, capsule: boolean, device: any) => any, log?: (m: string) => void }} o
+ * @param {{ kernel: any, registry: any, people?: { list(): any[] } | null, events?: { on(type: string, f: (e: any) => void): (() => void) | void } | null, now?: () => number, identityEntry?: (identity: string, eid: string, name?: string) => Promise<{ pub: string, alg?: string, held?: string } | null>, boxId?: () => Promise<string | null>, serverFor?: (space: string) => { serve(request: any, peer: any): Promise<any> } | null, inviteeLimits?: { perInvite?: number, perIdentity?: number, perMinute?: number, perChannel?: number, perBox?: number, nonceMax?: number, idleMs?: number, presenceMs?: number }, callerFacts: (caller: string, policy: any, via: any, k: any, capsule: boolean, device: any) => any, log?: (m: string) => void }} o
  */
 export function createPeerDoor(o) {
   const log = o.log || (() => {});
@@ -73,7 +73,7 @@ export function createPeerDoor(o) {
   /** @type {Map<string, number[]>} */ const uses = new Map();
   /** @type {Map<string, number>} "identity/entry/name" -> when the directory last had no such entry (negative cache) */ const misses = new Map();
   /** @type {number[]} when the directory was last asked on behalf of any invitee channel (the box-wide cap) */ let lookups = [];
-  const lim = { perInvite: 30, perIdentity: 60, perMinute: 60_000, perBox: 120, nonceMax: 5000, perChannel: /** @type {number | undefined} */ (undefined), ...(o.inviteeLimits || {}) };
+  const lim = { perInvite: 30, perIdentity: 60, perMinute: 60_000, perBox: 120, nonceMax: 5000, idleMs: 30_000, presenceMs: 120_000, perChannel: /** @type {number | undefined} */ (undefined), ...(o.inviteeLimits || {}) };
   const perChannel = lim.perChannel ?? lim.perIdentity;
   const over = (/** @type {string} */ key, /** @type {number} */ max, /** @type {number} */ now) => {
     const a = (uses.get(key) || []).filter(t => now - t < lim.perMinute);
@@ -141,7 +141,8 @@ export function createPeerDoor(o) {
     acceptInvitee(stream, who, head) {
       const inviteeId = String(who.inviteeId);
       /** @type {any} */ let session = null;
-      const end = (/** @type {string} */ why) => { const t = setTimeout(() => { try { session && session.close(why); } catch { /* closed */ } }, 50); if (t.unref) t.unref(); };
+      /** @type {any} */ let idleTimer = null;
+      const end = (/** @type {string} */ why) => { if (idleTimer) clearTimeout(idleTimer); const t = setTimeout(() => { try { session && session.close(why); } catch { /* closed */ } }, 50); if (t.unref) t.unref(); };
       /** @type {Promise<{ ok: true, identity: string, space: string, invite: string } | { ok: false, why: string }> | null} */ let admitted = null;
       const admit = () => admitted || (admitted = (async () => {
         const c = await checkHello(head, inviteeId);
@@ -155,8 +156,11 @@ export function createPeerDoor(o) {
       })());
       // accepting (or a refusal of the invite itself) finishes the stream at once: no call after it is served, even inside the moment the close takes
       let finished = false;
-      session = peerSession(streamPipe(stream), { first: 2, serve: async (/** @type {string} */ tool, /** @type {any} */ input) => {
-        if (finished) throw err("denied", "this invite's stream is finished");
+      // a stream with no call either way for 30 s is closed (IV-5: silent streams must not hold the invitee pool); while the home waits for the invitee's presence answer it may be silent for 2 minutes
+      const arm = (/** @type {number} */ ms) => { if (idleTimer) clearTimeout(idleTimer); idleTimer = setTimeout(() => { finished = true; end("idle"); }, ms); if (idleTimer.unref) idleTimer.unref(); };
+      arm(lim.idleMs);
+      let wait = lim.idleMs;
+      const handle = async (/** @type {string} */ tool, /** @type {any} */ input) => {
         const a = await admit();
         if (!a.ok) { finished = true; end("not admitted"); throw err("denied", "that invite cannot be used from here"); }
         if (tool !== KERNEL_CALL_TOOL || !input || typeof input !== "object") throw err("denied", "an invite opens two calls and nothing else");
@@ -168,7 +172,14 @@ export function createPeerDoor(o) {
         // accepting ends the stream (a member session begins elsewhere); so does any refusal of the invite itself. The home asking for the invitee's presence is not a refusal: the same stream carries the signed retry.
         const asksPresence = Boolean(r && r.ok !== true && r.error && PRESENCE_CODES.has(String(r.error.code)));
         if (!asksPresence && (input.call === "grants.invites.accept" || !r || r.ok !== true)) { finished = true; end("done"); }
+        if (asksPresence) wait = lim.presenceMs;
         return r;
+      };
+      session = peerSession(streamPipe(stream), { first: 2, serve: async (/** @type {string} */ tool, /** @type {any} */ input) => {
+        if (finished) throw err("denied", "this invite's stream is finished");
+        if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+        wait = lim.idleMs;
+        try { return await handle(tool, input); } finally { if (!finished) arm(wait); }
       } });
       log(`peer door: invitee ${inviteeId} opened a stream`);
     },
