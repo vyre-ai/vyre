@@ -942,3 +942,7 @@ Merged origin/work/kernel-chats-2 25dd88c19 (kernel/contracts and kernel/core/ro
   - RX-2a MEDIUM: on the idempotent retry branch (identity already kept), a failed resolve or failed resend returns success while the directory holds 1 op; throw unreachable instead. Test: retry with the directory down rejects.
   - RX-2b LOW: the `landed` re-read is not verifyChain'd; verify the chain and look in the state, in both recoverIdentity and replaceRecoveryCode.
   - RC-1 LOW: replaceRecoveryCode shows the new code only after saveIdentity; a save failure leaves no working code. RC-2 LOW: password defaults to "", so the screen must pass the password of the first code.
+- reviewer-3 re-gate of 7f8442298 (team/0.3/reviews/chat-rx-52e38bb5f.md, 6684ebb): RX-1, RX-2a, RX-2b PASS. Open, to do when woken:
+  - RC-3 medium-low: in replaceRecoveryCode an UNKNOWN publish result (answer lost, re-read null) must keep the saved new list as pending and resend the same op next time (as recover does); restore the old list only on a clear refusal.
+  - RX-2c low: `listed` in restore.ts has no pin check, so a rolled-back directory answer without the entry reads false and forgets a key whose op landed. Check the pin (o.pin / the saved pin).
+  - RC-2: the screen passes the first code's password to replaceRecoveryCode. Also the phone esign (listChangeSigners), addThisDevice, and the browser walk over the peer wire.
