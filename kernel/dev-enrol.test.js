@@ -81,3 +81,29 @@ test("a release-kind build ignores VYRE_SEAL_DEV and VYRE_SEAL_SOFTWARE even whe
   t.after(async () => { await again.close(); });
   assert.deepEqual(await again.anchor.read({ space: id.space }), { seq: 5, head: "a".repeat(20) }, "the anchor was not reset");
 });
+
+test("dev-sign-proof --gate: the proof for a kernel-gated act (an invite in a created Space, a role in the home's own Space) is accepted by the real verifier with the nested payload hash", { timeout: 120_000 }, async t => {
+  const { canonical, sha256 } = await import("./core/canonical.js");
+  const home = tempHome(t), id = homeIdentity(home), sdir = path.join(id.dir, "seal");
+  assert.equal(run(ROOT, "dev-enrol-software-key.mjs", ["--home", home]).status, 0);
+  const s = startSealer({ dir: sdir, dev: true, software: true, timeoutMs: 15_000 });
+  t.after(async () => { await s.close(); });
+  await s.health(); await new Promise(r => setTimeout(r, 50));
+  const chainIn = (/** @type {string} */ space) => ({ space, hops: [{ actor: { kind: "person", id: id.owner, space }, via: { surface: "cli" } }] });
+  // 1. an invite in a CREATED Space: the kernel gates grants.invite on vyre://<space>/invite/new with the invite's own contents as the input (no `space` key)
+  const created = "spc_dg3xdpn6yc5w", input = { role: "member" };
+  const fields = { resource: `vyre://${created}/invite/new`, input_hash: sha256(canonical({ action: "grants.invite", input })) };
+  const a = run(ROOT, "dev-sign-proof.mjs", ["--home", home, "--space", created, "--gate", "grants.invite", "--input", JSON.stringify(input)]);
+  assert.equal(a.status, 0, a.stderr);
+  assert.deepEqual(await s.presenceProve({ chain: /** @type {any} */ (chainIn(created)), op: "grant.invite", fields, proof: JSON.parse(a.stdout) }), { ok: true, method: "software" });
+  // the same proof is for that Space only: it does not stand for the home's Space, nor for other contents
+  const b = run(ROOT, "dev-sign-proof.mjs", ["--home", home, "--space", created, "--gate", "grants.invite", "--input", JSON.stringify(input)]);
+  assert.equal((await s.presenceProve({ chain: /** @type {any} */ (chainIn(id.space)), op: "grant.invite", fields, proof: JSON.parse(b.stdout) })).ok, false, "another Space");
+  const c = run(ROOT, "dev-sign-proof.mjs", ["--home", home, "--space", created, "--gate", "grants.invite", "--input", JSON.stringify({ role: "admin" })]);
+  assert.equal((await s.presenceProve({ chain: /** @type {any} */ (chainIn(created)), op: "grant.invite", fields, proof: JSON.parse(c.stdout) })).ok, false, "other contents");
+  // 2. an act in the HOME's own Space with no --space: a role change
+  const role = { person: "per_carol", role: "member" }, rfields = { resource: `vyre://${id.space}/member/per_carol`, input_hash: sha256(canonical({ action: "grants.role", input: role })) };
+  const d = run(ROOT, "dev-sign-proof.mjs", ["--home", home, "--gate", "grants.role", "--resource", rfields.resource, "--input", JSON.stringify(role)]);
+  assert.equal(d.status, 0, d.stderr);
+  assert.deepEqual(await s.presenceProve({ chain: /** @type {any} */ (chainIn(id.space)), op: "grant.role", fields: rfields, proof: JSON.parse(d.stdout) }), { ok: true, method: "software" });
+});
