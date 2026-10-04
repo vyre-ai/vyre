@@ -34,3 +34,17 @@ exists on the dev box. With one, pass `--presence`; the script then runs them.
 
 Add a step when a screen goes real. Add to `SAMPLE` any text only the sample world shows. A step that has to be skipped says why in its name's reason, so the skip list
 is the list of what is not yet proven.
+
+## The stand-in phone (approvals)
+
+`scripts/standin-phone.mjs` answers the cards a browser asks the owner's phone for, in a development-kind home. It is a second client of the box's socket (caller `local`), never part of the app or the daemon, and refuses on a release-kind build.
+
+One-time enrolment of a walk home (a throwaway home only; the daemon must be stopped):
+
+1. Start the daemon once and stop it, so the home has `kernel/space.json`.
+2. `node scripts/dev-enrol-software-key.mjs --home <abs .vyre dir>` (puts the owner's software presence key in the sealing process and writes `dev-owner-key.json`, 0600).
+3. Start the daemon with `VYRE_SEAL_DEV=1 VYRE_SEAL_SOFTWARE=1` and WITHOUT `VYRE_KERNEL_FILE_KEY`. With the file key there is no sealing process to check the proof, and every yes answers `no_presence`. (Switching an existing home from the file key to the sealing process moves its kernel key once.)
+
+Then `node scripts/standin-phone.mjs --home <abs .vyre dir> --answer yes|no|ignore --once` answers the next card. `scripts/app-walk-approval.mjs --socket <home>/.vyre/vyred.sock [--timeout]` runs the app's own ask code (`heldAsk`, `askYes`) against it: yes, no, and with `--timeout` a card nobody answers (5 minutes).
+
+Not walked: spending an approved card. The box reads an approval only from a paired device caller, so it needs a browser paired through the relay. Also, RC1 hides Reveal in a browser on purpose (screens/vault/RealVault.tsx), so no page starts this flow for a vault item.

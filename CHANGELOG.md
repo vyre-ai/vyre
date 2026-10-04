@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- test(app): a stand-in phone for the walks. scripts/standin-phone.mjs lists approvals.pending as a second caller and answers yes (a software-key proof over the card's own `sign`, scripts/dev-sign-proof.mjs), no, or not at all; it is test-only and refuses on a release-kind build, and nothing in the app or daemon knows it. scripts/app-walk-approval.mjs runs the app's own ask code (heldAsk, askYes) against a real vyred with it: yes, no and (with --timeout) a card nobody answers. The enrolment recipe is in scripts/app-walk.README.md.
+
 - feat(app): New chat. Chats has a New chat button (header, and the empty state's action) that opens /new-chat: pick an agent (your assistant is the default), optionally a first message, Start chat. It calls threads.start as you, naming the agent, its kind and your default AI account (src/state/new-chat-model.js), and opens the new session. Codes: under the drawn Wink code the app shows the typed code large with "Type this code on your other device" when the box answers one (`code` on wink.phone.open and spaces.invites.create; neither returns it yet), and otherwise says to copy the link or paste the long code. It never says the drawing can be scanned.
 
 - test(app): scripts/app-walk-firstrun.mjs walks the first-run screens in headless Chromium against a real vyred (browser start, welcome, Who it is for, the Wink codes, the empty states); the two proofs a headless page cannot give (wink.phone.open, and an invitation to a this-computer space) are answered by named stand-ins beside their steps. fix(app): the long code under the Add your device code wraps.
