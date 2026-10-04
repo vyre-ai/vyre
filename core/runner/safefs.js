@@ -87,6 +87,6 @@ export function writeInside(root, rel, data) {
   const dir = safeDir(root, p.slice(0, -1), true);
   const dest = path.join(dir, p[p.length - 1]);
   const tmp = path.join(dir, `.vyre-${crypto.randomBytes(6).toString("hex")}.tmp`);
-  fs.writeFileSync(tmp, data, { mode: 0o600, flag: "wx" });
+  try { fs.writeFileSync(tmp, data, { mode: 0o600, flag: "wx" }); } catch (e) { try { fs.rmSync(tmp, { force: true }); } catch {} throw e; }   // a full disk leaves no half file
   try { fs.renameSync(tmp, dest); } catch (e) { try { fs.rmSync(tmp, { force: true }); } catch {} throw e; }
 }

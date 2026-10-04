@@ -1,23 +1,32 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Avatar, Button, Card, Chip, Divider, Field, Row, Segmented, Sheet, Switch, Text, showToast, markRef } from "@vyre/ui";
+import { Avatar, Button, Card, Chip, Divider, Field, Row, Segmented, Sheet, Switch, Text, allowsMock, showToast, markRef, Banner, LoadingState } from "@vyre/ui";
 import { Page } from "../places/Frame";
 import { CUSTOMIZE_SPACES } from "./data";
 import { useTypes } from "./state";
+import { useSpaces } from "../shell/state";
+import { useShell } from "../shell/shared";
+import { showingName } from "../shell/real-model";
 import { TEMPLATES, buildType, templateName, typeLine } from "./logic.js";
 
 /** Settings, Customize: the types a space owns, with their fields and stages. Add a type from a template. */
 export function CustomizeScreen() {
   const router = useRouter();
-  const { types, add } = useTypes();
+  const { types, add, load, loading, error } = useTypes();
+  const real = !allowsMock();
+  const showing = useSpaces((s) => s.space);
+  const shell = useShell((s) => s.data);
+  useEffect(() => { void load(real && showing !== "all" ? showing : undefined); }, [showing]);
   const [space, setSpace] = useState("harlow");
   const [sheet, setSheet] = useState<null | { tpl: string; name: string; work: boolean }>(null);
-  const list = types.filter((t) => t.spaces.includes(space));
-  const spaceName = CUSTOMIZE_SPACES.find(([id]) => id === space)?.[1] ?? space;
+  const list = real ? types : types.filter((t) => t.spaces.includes(space));
+  const spaceName = real ? showingName(shell, showing) : CUSTOMIZE_SPACES.find(([id]) => id === space)?.[1] ?? space;
   return (
-    <Page title="Customize" sub={spaceName} back="/u/settings">
-      <Segmented label="Space" value={space} onChange={setSpace} options={CUSTOMIZE_SPACES} />
+    <Page title="Customize" sub={real ? `Types, fields and stages in ${spaceName}` : spaceName} back="/u/settings">
+      {real ? null : <Segmented label="Space" value={space} onChange={setSpace} options={CUSTOMIZE_SPACES} />}
+      {error ? <Banner tone="warn">{error}</Banner> : null}
+      {real && loading && !types.length ? <LoadingState rows={3} /> : null}
       <Card flush>
         {list.map((t, i) => (
           <View key={t.id}>

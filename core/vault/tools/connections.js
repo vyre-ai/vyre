@@ -10,6 +10,7 @@
 // value or the name of a field that holds one.
 
 import { Connections } from "../connections.js";
+import { personCall } from "../person.js";
 import { presence } from "./presence.js";
 
 const PEOPLE = ["cli", "local", "deck", "capsule"];
@@ -22,14 +23,17 @@ const obj = (properties, required = []) => ({ type: "object", properties, requir
  *   tool: (name: string, callers: string[]|null, description: string, input: any, run: Function, needs?: any) => void }} o
  */
 export function register({ ctx, vault, tool }) {
+  const isPerson = personCall(ctx);
+  // A device over the tailnet or relay is the person's surface for connections only when the kernel's chain says person AND the call carries a signed-in person session (as before: a device with no session is no surface).
+  const isSignedInPerson = async meta => Boolean(meta && meta.person) && await isPerson(meta);
   const c = new Connections(vault, {
     call: ctx.call ? (name, input) => ctx.call(name, input) : undefined,
     modules: () => (ctx.modules && typeof ctx.modules.status === "function" ? ctx.modules.status() : []),
     log: m => ctx.log(m),
   });
 
-  tool("vault.connections.list", [...PEOPLE, "mobile", "mcp", "tailnet", "module"], "Connections the caller's surface may use: {surface, connections: [{id, source, ref, provider, account, auth, label, capabilities, state, needs?, uses, use?}], suggest_default?}. `uses` maps each capability to the {tool, input} that acts on it; with `capability`, `use` is that one and `suggest_default` is true the first time that capability has two or more ready connections and no default (asked once ever, not once per surface). A person sees every row with its surfaces and may pass `surface` to see one surface's view; a module must pass `surface` or `caller` (the caller it acts for). Never a value.",
-    obj({ capability: str, surface: str, caller: str }), (input, meta) => c.list(input, meta.caller, Boolean(meta.person)));
+  tool("vault.connections.list", [...PEOPLE, "mobile", "mcp", "tailnet", "device", "space", "agent", "module"], "Connections the caller's surface may use: {surface, connections: [{id, source, ref, provider, account, auth, label, capabilities, state, needs?, uses, use?}], suggest_default?}. `uses` maps each capability to the {tool, input} that acts on it; with `capability`, `use` is that one and `suggest_default` is true the first time that capability has two or more ready connections and no default (asked once ever, not once per surface). A person sees every row with its surfaces and may pass `surface` to see one surface's view; a module must pass `surface` or `caller` (the caller it acts for). Never a value.",
+    obj({ capability: str, surface: str, caller: str }), async (input, meta) => c.list(input, meta.caller, await isSignedInPerson(meta)));
 
   tool("vault.connections.get", ["module"], "One connection's metadata, for the module that acts on it: a row of its own source, or one whose uses name one of its tools. Anything else is not_found. Never a value.",
     obj({ id: str }, ["id"]), (input, { caller }) => c.get(input, caller));
@@ -39,7 +43,7 @@ export function register({ ctx, vault, tool }) {
     presence("Let a surface use a connection", input => c.summary(input), { when: input => input.surface === "agents" }));
 
   tool("vault.connections.revoke", [...PEOPLE, "mcp"], "Take a surface's use of a connection away. Needs no one: taking access away is always allowed, but only of the caller's own surface.",
-    obj({ id: str, surface: str }, ["id", "surface"]), (input, meta) => c.revoke(input, meta.caller, Boolean(meta.person)));
+    obj({ id: str, surface: str }, ["id", "surface"]), async (input, meta) => c.revoke(input, meta.caller, await isSignedInPerson(meta)));
 
   tool("vault.connections.update", PEOPLE, "Rename a connection or set its capabilities (both survive every resync), or make it the default for some capabilities (`default_for`; one default per capability, so this clears it elsewhere). A default changes no access and needs no proof of presence.",
     obj({ id: str, label: str, capabilities: strs, default_for: strs }, ["id"]), (input, { caller }) => c.update(input, caller),

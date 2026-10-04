@@ -2,6 +2,7 @@
 // The phone's stream transport (native-open.ts) under the box's own follow() (stream.js), with a
 // fake XMLHttpRequest: frames split at every awkward point, heartbeats, CRLF, and a resume with
 // Last-Event-ID after the stream drops. These carry over the old sse.js parser cases.
+import "../../scripts/test-guard.mjs";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";

@@ -46,8 +46,22 @@ export const PRIVACY_ROWS = [
   ["mem", "Memory learns from what assistants read", "Sealed values are never read, so they are never remembered."],
 ];
 
-/** Settings home, in the prototype's groups. `space` names the group for the space showing. */
-export function settingsGroups(/** @type {string} */ space) {
+/** Rows only an owner or admin can use (DESIGN-spaces-first.md, roles): Customize, sealing policy and Kits. Rules stay for everyone but temp: anyone can propose one (RulesScreen). */
+const ADMIN_ROWS = ["/u/settings/customize", "/u/settings/privacy", "/u/kits"];
+/** Rows a temp member has no use for: they see only the projects named, so the space-wide places stay out of Settings. */
+const NOT_FOR_TEMP = ["/u/memory", "/u/flows", "/u/settings/seeing", "/u/settings/rules"];
+
+/**
+ * Settings home, in the prototype's groups. `space` names the group for the space showing. `role` is the person's role in it: a row their role cannot use
+ * is not offered. No role (All spaces showing, or not known yet) shows every row, and the screen behind each row still decides.
+ * @param {string} space @param {string} [role]
+ */
+export function settingsGroups(space, role) {
+  const hide = (/** @type {string} */ href) => !!role && ((role !== "owner" && role !== "admin" && ADMIN_ROWS.includes(href)) || (role === "temp" && NOT_FOR_TEMP.includes(href)));
+  return all(space).map((g) => ({ ...g, rows: g.rows.filter((r) => !hide(r[2])) })).filter((g) => g.rows.length);
+}
+
+function all(/** @type {string} */ space) {
   return [
     { title: "You", rows: [
       ["Account and recovery", "Sign-in, recovery code", "/u/settings/account", "faceid"],
@@ -62,19 +76,20 @@ export function settingsGroups(/** @type {string} */ space) {
     ] },
     { title: space, rows: [
       ["Customize", "Types, fields, stages", "/u/settings/customize", "file"],
-      ["Spaces and members", "Who is in them", "/u/spaces", "agents"],
+      ["Spaces and members", "Who is in them", "/u/spaces", "space"],
+      ["Rules", "Never, drafts only, always ask", "/u/settings/rules", "shield"],
       ["Privacy and sealing", "Admins only", "/u/settings/privacy", "vault"],
       ["Kits", "Installed and available", "/u/kits", "box"],
     ] },
     { title: "More places", rows: [
       ["Memory", "What Vyre knows", "/u/memory", "memory"],
       ["Vault", "Logins, keys, cards", "/u/vault", "vault"],
-      ["Flows", "What runs by itself", "/u/flows", "planner"],
-      ["Assistants", "juno, kit and @Engineer", "/u/settings/assistants", "terminal"],
+      ["Flows", "What runs by itself", "/u/flows", "flows"],
+      ["Assistants", "juno, kit and @Engineer", "/u/settings/assistants", "assistants"],
     ] },
     { title: "Vyre", rows: [
       ["Updates", "Check for a new version", "/u/settings/updates", "download"],
-      ["About", "Version and open-source credits", "/u/about", "globe"],
+      ["About", "Version and open-source credits", "/u/about", "info"],
     ] },
   ];
 }

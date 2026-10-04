@@ -389,7 +389,7 @@ export type PersonSession = {
   /** Trade the sign-in page's code and our verifier for a token. */
   exchange(code: string, verifier: string): Promise<{ ok: true } | { ok: false; code: string; message: string }>;
   /**
-   * Keep a token the box answered some other way (the phone's device sign-in over the relay) for
+   * Keep a token your home answered some other way (the phone's device sign-in over the relay) for
    * `path`, the current one when left out.
    */
   adopt(token: string, path?: string): Promise<boolean>;
@@ -536,11 +536,11 @@ export function personSession(o: {
         if (o.signTrade) headers["x-vyre-proof"] = await proofWith(k.sign, { method: "POST", url: "/v1/person/token", body, now: now(), nonce: o.nonce?.() });
         res = await doFetch(`${box}/v1/person/token`, { method: "POST", headers, body, cache: "no-store" });
       } catch (e) {
-        return { ok: false, code: "unreachable", message: e instanceof Error ? e.message : "the box is out of reach" };
+        return { ok: false, code: "unreachable", message: e instanceof Error ? e.message : "your home is out of reach" };
       }
       const b = (await res.json().catch(() => null)) as { data?: { token?: string } & Record<string, unknown>; error?: { code: string; message: string } } | null;
       const t = b?.data?.token;
-      if (!t || !TOKEN.test(t)) return { ok: false, code: b?.error?.code ?? "bad_response", message: b?.error?.message ?? `the box answered ${res.status}` };
+      if (!t || !TOKEN.test(t)) return { ok: false, code: b?.error?.code ?? "bad_response", message: b?.error?.message ?? `your home answered ${res.status}` };
       // The trade goes straight to the box's address, so its token is the direct path's.
       await setToken(t, o.path ? "direct" : undefined);
       if (o.traded && b?.data) await Promise.resolve(o.traded(b.data)).catch(() => {});
@@ -784,7 +784,7 @@ export async function devicePersonStart(o: {
   } catch (e) {
     return { ok: false, code: "no_key", message: e instanceof Error ? e.message : "the phone's key is out of reach" };
   }
-  if (!id) return { ok: false, code: "no_key", message: "this phone has no biometric key enrolled on the box; pair it again" };
+  if (!id) return { ok: false, code: "no_key", message: "this phone has no biometric key enrolled on your home; pair it again" };
   const input = { key };
   const body = JSON.stringify(input);
   const ts = (o.now ?? Date.now)();
@@ -803,7 +803,7 @@ export async function devicePersonStart(o: {
       body,
     });
   } catch (e) {
-    return { ok: false, code: "unreachable", message: e instanceof Error ? e.message : "the box is out of reach" };
+    return { ok: false, code: "unreachable", message: e instanceof Error ? e.message : "your home is out of reach" };
   }
   const b = (await res.json().catch(() => null)) as { data?: Record<string, unknown>; error?: { code: string; message: string } } | null;
   const d = (b && typeof b === "object" && b.data && typeof b.data === "object" ? b.data : b) as Record<string, unknown> | null;
@@ -811,7 +811,7 @@ export async function devicePersonStart(o: {
   // The token is `<id>.<secret>`; an answer that splits the two is joined here.
   const token = TOKEN.test(t) ? t : typeof d?.id === "string" && TOKEN.test(`${d.id}.${t}`) ? `${d.id}.${t}` : "";
   if (!token || (d?.kind !== undefined && d.kind !== "bearer")) {
-    return { ok: false, code: b?.error?.code ?? "bad_response", message: b?.error?.message ?? `the box answered ${res.status}` };
+    return { ok: false, code: b?.error?.code ?? "bad_response", message: b?.error?.message ?? `your home answered ${res.status}` };
   }
   return { ok: true, token, ...(typeof d?.expires === "number" ? { expires: d.expires } : {}) };
 }

@@ -319,6 +319,9 @@ export function hostCheck({ profile = process.env.VYRE_SEAL_PROFILE || "desktop"
   if (profile !== "server" || agents.includes(uid)) throw Object.assign(new Error("the sealing process must run as its own user, not an agent's"), { safe: true });
 }
 
+/** Is a SOFTWARE signer (no platform attestation) accepted for presence? Only in a development build and only with VYRE_SEAL_UNATTESTED=1 (kernel/devbuild.test.js holds this). @param {Record<string, string | undefined>} env @param {string} [root] */
+export const unattestedAllowed = (env, root) => devSwitch(env.VYRE_SEAL_UNATTESTED, root);
+
 /** Serve requests on stdin and stdout. Anything unexpected is a generic code: the message of an exception may hold input, so it is never sent. */
 export function serve({ dir, master = (hostCheck(), fileMaster(dir)), sinks = {}, input = process.stdin, output = process.stdout, verifiers = {}, allowUnattested = false, allowSoftware = false } = {}) {
   const sealer = new Sealer({ dir, master, sinks, verifiers, allowUnattested, allowSoftware });

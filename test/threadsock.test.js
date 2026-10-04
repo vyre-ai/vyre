@@ -114,7 +114,7 @@ test("threadsock: a real session's call arrives with its own kernel token, in it
   fs.mkdirSync(fp, { recursive: true });
   const { writeModule } = await import("./helpers.js");
   writeModule(fp, "zz-room", { does: { tools: [{ name: "zz-room.peek", reach: "anyone" }] }, needs: { kernel: { actions: [] } } }, `
-    export default { async start(ctx) { ctx.tool("zz-room.peek", { run: async (i, meta) => ({ caller: meta.caller, token: meta.token || null, room: await ctx.kernel.audienceFor({}).catch(e => ({ error: e.code })) }) }); return {}; } };`);
+    export default { async start(ctx) { ctx.tool("zz-room.peek", { effect: "read", run: async (i, meta) => ({ caller: meta.caller, token: meta.token || null, room: await ctx.kernel.audienceFor({}).catch(e => ({ error: e.code })) }) }); return {}; } };`);
   const d = await start({ root, log: () => {}, kernel: true, firstPartyRoots: [fp] });
   t.after(() => d.stop());
   const ctx = d.registry.context(realManifest);
@@ -245,7 +245,7 @@ test("a person's own surface call carries a kernel chain in a module: the owner'
   const fp = path.join(root, "modules");
   fs.mkdirSync(fp, { recursive: true });
   writeModule(fp, "zz-who", { does: { tools: [{ name: "zz-who.me", reach: "anyone" }] }, needs: { kernel: { actions: [] } } }, `
-    export default { async start(ctx) { ctx.tool("zz-who.me", { run: async (i, meta) => {
+    export default { async start(ctx) { ctx.tool("zz-who.me", { effect: "read", run: async (i, meta) => {
       const c = await ctx.kernel.chain({ ...meta, ...(i && i.forge ? { kernelFacts: i.forge } : {}) });
       return { hops: c.hops.map(h => [h.actor.kind, h.actor.id, h.via && h.via.surface || null]), facts: Boolean(meta.kernelFacts) };
     } }); return {}; } };`);
@@ -276,7 +276,7 @@ test("an outward action with a placeholder: refused when the person the turn is 
   const root = tempHome(t);
   const fp = path.join(root, "modules");
   fs.mkdirSync(fp, { recursive: true });
-  writeModule(fp, "zz-out", { does: { tools: [{ name: "zz-out.send", reach: "anyone", outward: "send" }] } }, `export default { async start(ctx) { ctx.tool("zz-out.send", { run: async i => ({ sent: i }) }); return {}; } };`);
+  writeModule(fp, "zz-out", { does: { tools: [{ name: "zz-out.send", reach: "anyone", outward: "send" }] } }, `export default { async start(ctx) { ctx.tool("zz-out.send", { effect: "read", run: async i => ({ sent: i }) }); return {}; } };`);
   const d = await start({ root, log: () => {}, kernel: true, firstPartyRoots: [fp] });
   t.after(() => d.stop());
   const owner = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
@@ -285,15 +285,61 @@ test("an outward action with a placeholder: refused when the person the turn is 
   const ses = await d.kernel.surfaces.open(owner, { agent: "assistant" });
   const meta = { token: ses.token, thread: "t1", agent: "assistant" };
   const call = (input, m = meta) => d.registry.call("zz-out.send", input, "mcp:agent:assistant", m);
+  /** @type {any[]} */ const cards = [];
+  d.registry.deps.held = async x => { cards.push(x); };
   const held = await call({ body: `Hi {{field:${c.urn}#name}}` });
   assert.equal(held.error.code, "held_unavailable", "an outward act by an assistant is held");
-  assert.deepEqual(held.error.resolved, [{ urn: c.urn, field: "name" }], "the approver is told which field fills in, not its value");
-  assert.ok(!JSON.stringify(held).includes("Jane"), "no value in the held answer");
+  assert.equal(held.error.resolved, undefined, "RF-2: the model's answer carries no field names");
+  assert.equal(held.error.slots, undefined, "RF-2: nor the sealed slots");
+  assert.deepEqual(cards.map(x => x.resolved), [[{ urn: c.urn, field: "name" }]], "the approver (the held card) is told which field fills in, not its value");
+  assert.match(cards[0].bound, /^[A-Za-z0-9_-]{20,}$/, "RF-3: and the hash of what was resolved");
+  assert.ok(!JSON.stringify(held).includes("Jane") && !JSON.stringify(cards).includes("Jane"), "no value in the held answer or the card");
+  const typo = await call({ body: `Hi {{field:${c.urn}#name}} and {{field:oops}}` });
+  assert.equal(typo.error.code, "placeholder_unreadable", "a malformed placeholder is refused, not sent as text");
+  assert.equal(JSON.stringify((await call({ body: `Hi {{field:vyre://${d.kernel.id.space}/contact/nonesuch0000#name}}` })).error), JSON.stringify(typo.error), "one refusal for every reason");
   const gone = await call({ body: `Hi {{field:vyre://${d.kernel.id.space}/contact/nonesuch0000#name}}` });
   assert.equal(gone.error.code, "placeholder_unreadable", "a record the asker cannot read refuses the whole action");
   const noSession = await call({ body: `Hi {{field:${c.urn}#name}}` }, { thread: "t1", agent: "assistant" });
   assert.equal(noSession.error.code, "placeholder_unreadable", "no session, no resolution, nothing sent as text");
   assert.equal((await call({ body: "plain" })).error.code, "held_unavailable", "a plain outward call is held as before");
+});
+
+test("RF-1: a placeholder resolves under the turn token's own chain, not the person's: an agent granted one project is refused a field of another, and a field of its own project is held", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const { writeModule } = await import("./helpers.js");
+  const { CONTACT } = await import("../kernel/conformance/suite.js");
+  const { canonical, sha256 } = await import("../kernel/core/canonical.js");
+  const root = tempHome(t);
+  const fp = path.join(root, "modules");
+  fs.mkdirSync(fp, { recursive: true });
+  writeModule(fp, "zz-out", { does: { tools: [{ name: "zz-out.send", reach: "anyone", outward: "send" }] } }, `export default { async start(ctx) { ctx.tool("zz-out.send", { effect: "read", run: async i => ({ sent: i }) }); return {}; } };`);
+  // the kernel's presence check accepts a proof built for exactly this operation (a headless test has no hardware signer)
+  const used = new Set();
+  const kernelPresence = { check: async ({ chain, op, fields, proof }) => (chain && proof && proof.op === op && canonical(proof.fields) === canonical(fields) && !used.has(proof.n) && (used.add(proof.n), true) ? null : "wrong_proof") };
+  const d = await start({ root, log: () => {}, kernel: true, kernelPresence, firstPartyRoots: [fp] });
+  t.after(() => d.stop());
+  const space = d.kernel.id.space;
+  const owner = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
+  const G = d.kernel.gateway.grants;
+  const pr = (action, input, resource) => ({ op: `grant.${action.split(".")[1]}`, fields: { resource, input_hash: sha256(canonical({ action, input })) }, n: Math.random() });
+  const kit = { kind: "agent", id: "kit", space };
+  await G.addActor(owner, kit, { presence: pr("grants.role", { actor: kit }, `vyre://${space}/member/kit`) });
+  const grant = { subject: { kind: "actor", actor: kit }, actions: ["records.read"], resource: { prefix: `vyre://${space}/contact/*`, where: [{ attr: "project", op: "eq", value: "p1" }] }, conditions: {}, source: "test" };
+  await G.create(owner, grant, { presence: pr("grants.create", grant, `vyre://${space}/grant/new`) });
+  await d.kernel.gateway.records.define(owner, { add_types: [CONTACT] });
+  const mine = await d.kernel.gateway.records.create(owner, "contact", { name: "Jane", age: 40 }, { attrs: { project: "p1" } });
+  const other = await d.kernel.gateway.records.create(owner, "contact", { name: "Mallory", age: 51 }, { attrs: { project: "p2" } });
+  assert.equal((await d.kernel.gateway.records.get(owner, "contact", other.urn.split("/").pop())).data.name, "Mallory", "the person reads both");
+  const ses = await d.kernel.surfaces.open(owner, { agent: "kit" });
+  const meta = { token: ses.token, thread: "t1", agent: "kit" };
+  const call = input => d.registry.call("zz-out.send", input, "mcp:agent:kit", meta);
+  const ok = await call({ body: `Hi {{field:${mine.urn}#name}}` });
+  assert.equal(ok.error.code, "held_unavailable", "a field in its own project is resolved and the act is held");
+  const no = await call({ body: `Hi {{field:${other.urn}#name}}` });
+  assert.equal(no.error.code, "placeholder_unreadable", "a field in another project is refused, though the person could read it");
+  assert.ok(!JSON.stringify(no).includes("Mallory"));
 });
 
 test("the phone's chain: a device connection (relay device:<id>, a tailnet owner node, a paired owner device) builds the owner's chain; a guest, an agent node and an unknown listener build none", async t => {
@@ -348,4 +394,51 @@ test("PH-1 end to end: the daemon's own relay row decides what a device is (rela
   assert.equal((await facts(ids.app)).kind, "device");
   for (const k of ["web", "setup", "gone"]) assert.equal(await facts(ids[k]), null, k);
   assert.equal(await facts("eeeeeeeeeeeeeeee"), null, "never paired");
+});
+
+test("the kernel's data-store list: a fresh kernel daemon holds no data of the person's (except what it cannot read), and one record or one file makes it hold some", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const { CONTACT } = await import("../kernel/conformance/suite.js");
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {}, kernel: true });
+  t.after(() => d.stop());
+  const read = async () => Object.fromEntries(await Promise.all((await d.registry.deps.dataStores()).map(async s => [s.name, await s.holds().catch(() => undefined)])));
+  const fresh = await read();
+  assert.equal(fresh["the Space's records, events and grants"], false, JSON.stringify(fresh));
+  assert.equal(fresh["the modules' own data"], false, JSON.stringify(fresh));
+  assert.equal(fresh["the files in this server's home"], false, JSON.stringify(fresh));
+  assert.notEqual(fresh["the vault and sealed values"], false, "no vault read in this build: it counts as data");
+  const owner = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
+  await d.kernel.gateway.records.define(owner, { add_types: [CONTACT] });
+  await d.kernel.gateway.records.create(owner, "contact", { name: "Jane", age: 40 });
+  assert.equal((await read())["the Space's records, events and grants"], true);
+});
+
+test("the presence stand-in: a development daemon takes it only while the owner's hand-made file is in the home; a packaged daemon never does", async t => {
+  const fs2 = await import("node:fs"), os = await import("node:os");
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const ask = () => d.registry.deps.presence.verify({ tool: "vault.reveal", input: { id: 1 }, caller: "cli", proof: { method: "stand-in" } });
+  assert.equal((await ask()).ok, false, "no file: refused");
+  fs2.writeFileSync(path.join(root, "dev-presence-stand-in"), "");
+  const r = await ask();
+  assert.deepEqual([r.ok, r.method], [true, "stand-in"]);
+  const pkg = fs2.mkdtempSync(path.join(os.tmpdir(), "pkg-"));
+  t.after(() => fs2.rmSync(pkg, { recursive: true, force: true }));
+  fs2.mkdirSync(path.join(pkg, "lib"), { recursive: true });
+  fs2.writeFileSync(path.join(pkg, "lib", "build-kind.js"), 'export const BUILD_KIND = "release";\n');
+  const root2 = tempHome(t);
+  fs2.writeFileSync(path.join(root2, "dev-presence-stand-in"), "");
+  const d2 = await start({ root: root2, log: () => {}, packageRoot: pkg });
+  t.after(() => d2.stop());
+  assert.equal((await d2.registry.deps.presence.verify({ tool: "vault.reveal", input: { id: 1 }, caller: "cli", proof: { method: "stand-in" } })).ok, false, "a packaged daemon ignores the file");
+  // A walk that offers no proof: a development daemon with the file counts vault.put and vault.reveal as the stand-in (and says so), nothing else; a packaged one takes none.
+  const bare = (/** @type {any} */ dd, /** @type {string} */ tool) => dd.registry.deps.presence.verify({ tool, input: { name: "x" }, caller: "cli", proof: null });
+  for (const tool of ["vault.put", "vault.reveal"]) { const b = await bare(d, tool); assert.deepEqual([b.ok, b.method], [true, "stand-in"], tool); assert.equal((await bare(d2, tool)).ok, false, `${tool}: a packaged daemon takes no stand-in`); }
+  for (const tool of ["spaces.identity.code.replace", "vault.backup", "vault.delete", "grants.create"]) assert.equal((await bare(d, tool)).ok, false, `${tool} stays real presence`);
+  fs2.rmSync(path.join(root, "dev-presence-stand-in"));
+  assert.equal((await bare(d, "vault.put")).ok, false, "no file: no stand-in");
 });

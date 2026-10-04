@@ -11,6 +11,7 @@
 // the server's pings itself, and each whole message crosses the channel as one data frame,
 // `[1 text | 2 binary][message]`, never split.
 
+import { deviceIdOf } from "../../lib/caller.js";
 import http from "node:http";
 import crypto from "node:crypto";
 import { duplexPair } from "node:stream";
@@ -110,7 +111,7 @@ export function bridge(channel, o) {
     const p = o.peers;
     if (!p) return fail(s, 403, "denied", "this box does not serve peer streams");
     if (h.peer !== "wink" || Object.keys(h).some(k => k !== "peer" && k !== "space") || typeof h.space !== "string") return fail(s, 400, "bad_input", "a peer stream is {peer: \"wink\", space}");
-    const device = o.caller.startsWith("device:") ? o.caller.slice(7) : "";
+    const device = deviceIdOf(o.caller) || "";
     if (!device || !/^[A-Za-z0-9_-]{1,64}$/.test(device)) return fail(s, 403, "denied", "peer streams are for paired devices");
     if (h.space !== p.space) return fail(s, 403, "denied", "this device has no peer access to that space");
     let ok = false;

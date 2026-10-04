@@ -7,8 +7,8 @@ import type { Pairing } from "./pairing";
 export function relayCrypto(): any;
 /** Where this device's relay key lives: IndexedDB on the web, the secure store on the phone. */
 export function relayKeyStore(): { get(): Promise<any>; set(k: any): Promise<void> };
-/** The public key pair() offers as the device's presence key: base64url SPKI DER, alg -7 (ES256). */
-export function presenceKey(): Promise<{ public_key: string; alg: number } | undefined>;
+/** The public key pair() offers as the device's presence key: base64url SPKI DER, alg -7 (ES256), and where the key was made (`storage`, native only; left out when unknown, and in a browser, which cannot say). */
+export function presenceKey(): Promise<{ public_key: string; alg: number; storage?: "hardware" | "software" } | undefined>;
 /** What the device says about itself in each hello. */
 export const about: { kind: "app" | "web" };
 /** A name for this device on the box's list. */

@@ -12,6 +12,7 @@ import { FlowRunner } from "./runner.js";
 import { KitManager, MemoryKitStore, installCard, diffKits } from "./kits.js";
 import { MemoryFlowStore } from "./store.js";
 import { createStages, taskIdOf } from "./stages.js";
+import { Proposals, proposerOf } from "./proposals.js";
 import { graph, paintRun, seeAsCode, fromCode, flowChanges } from "./canvas.js";
 import { compileFlow } from "./compile.js";
 import { printFlow, parseFlowTextBounded } from "./text.js";
@@ -25,6 +26,7 @@ export { bridgeWatchers } from "./watcher-bridge.js";
 export { printFlow, parseFlowText, parseFlowTextBounded, normalizeFlow, sameFlow } from "./text.js";
 export { defineFlow, step, expr } from "./sdk.js";
 export { RecordsFlowStore, FLOW_TYPES } from "./store.js";
+export { Proposals, proposerOf, assistantOf } from "./proposals.js";
 export { graph, paintRun, seeAsCode, fromCode, flowChanges, describeStep, describeTrigger, ops } from "./canvas.js";
 
 /**
@@ -46,6 +48,7 @@ function personOf(chain) {
  *   store?: any, kitStore?: any, clock?: () => number,
  *   emit?: (type: string, data: any, o: any) => void,
  *   ports?: any, installerRole?: (a: any) => Promise<string> | string, limits?: any,
+ *   proposals?: { chain: () => any, applyTypes?: (approver: any, diff: any) => Promise<any>, isAdmin?: (who: any) => Promise<boolean> | boolean },  an assistant's proposals become tasks (proposals.js)
  *   stages?: { approver: any },  stages made of tasks run when this is given: the person whose chain the module works under
  * }} o
  */
@@ -54,6 +57,7 @@ export function createFlows(o) {
   const runner = new FlowRunner({ kernel: o.kernel, store, catalog: o.catalog, chains: o.chains, clock: o.clock, emit: o.emit, ports: o.ports, limits: o.limits });
   const kits = new KitManager({ kernel: o.kernel, runner, store: o.kitStore || new MemoryKitStore(), catalog: o.catalog, chains: o.chains, clock: o.clock, installerRole: o.installerRole, ports: o.ports });
   const stages = o.stages && o.chains.forModule ? createStages({ kernel: o.kernel, catalog: o.catalog, chain: () => o.chains.forModule({ module: "stages", approver: o.stages.approver }), ports: o.ports, clock: o.clock, emit: o.emit }) : null;
+  const proposals = o.proposals ? new Proposals({ kernel: o.kernel, runner, store, chain: o.proposals.chain, chains: o.chains, catalog: o.catalog, applyTypes: o.proposals.applyTypes, isAdmin: o.proposals.isAdmin, clock: o.clock, log: m => (o.emit ? o.emit("proposal.log", { m }) : undefined) }) : null;
   const cat = async () => o.catalog();
   const view = async (/** @type {string} */ id, /** @type {number} */ [version] = [/** @type {any} */ (undefined)]) => {
     const v = version !== undefined ? await store.getVersion(id, version) : (await store.active(id)) || (await latest(id));
@@ -110,7 +114,9 @@ export function createFlows(o) {
     "flows.run": async (chain, i) => { const r = await runner.getRun(i.run); if (!r) throw Object.assign(new Error("no such run"), { code: "not_found" }); const v = await store.getVersion(r.flow, r.version); return { run: r, painted: v ? paintRun(v.flow, r, await cat()) : null }; },
     "flows.retry": async (chain, i) => { personOf(chain); await runner.retry(i.run); return { ok: true }; },
     "kits.card": async (chain, i) => installCard(i.kit, await cat()),
-    "kits.propose": async (chain, i) => kits.propose(i.kit, personOf(chain), chain),
+    // A person, or an assistant acting for them: the person is the approver and the task asks them. An assistant never installs: the install runs only after the approver says yes.
+    "kits.propose": async (chain, i) => { const who = proposerOf(chain); if (!who) throw Object.assign(new Error("only a person can do that, in their own name"), { code: "chain_not_person" }); return kits.propose(i.kit, who, chain); },
+    "flows.propose": async (chain, i) => { if (!proposals) throw Object.assign(new Error("proposals are not wired here"), { code: "unavailable" }); return proposals.propose(chain, i); },
     "kits.remove": async (chain, i) => kits.remove(i.id, personOf(chain), chain),
     "kits.list": async () => kits.list(),
   };
@@ -118,7 +124,7 @@ export function createFlows(o) {
   return {
     runner, kits, stages, store, tools,
     /** One subscription feeds triggers, waits and Kit approvals. @param {any} env */
-    onEvent: async env => { await runner.onEvent(env); await kits.onEvent(env); if (stages) await stages.onEvent(env); },
+    onEvent: async env => { await runner.onEvent(env); await kits.onEvent(env); if (proposals) await proposals.onEvent(env); if (stages) await stages.onEvent(env); },
     tick: () => runner.tick(),
     /** A watcher found something new (see watcher-bridge.js): starts the Flows armed on it, once per item. */
     watcherItem: w => runner.watcherItem(w),
