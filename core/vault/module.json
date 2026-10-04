@@ -7,7 +7,7 @@
   ],
   "requires": [],
   "does": {
-    "reads": ["vault.account.status", "vault.device.list", "vault.emergency.list", "vault.health", "vault.history", "vault.list", "vault.pass.list", "vault.search", "vault.vaults.list"],
+    "reads": ["vault.account.status", "vault.device.list", "vault.emergency.list", "vault.history", "vault.list", "vault.pass.list", "vault.search", "vault.vaults.list"],
     "tools": [
       { "name": "vault.put", "effect": "write", "reach": "anyone" },
       { "name": "vault.list", "reach": "anyone" },
@@ -57,6 +57,7 @@
       { "name": "vault.unlock-passphrase", "effect": "write", "reach": "anyone" },
       { "name": "vault.account.create", "effect": "write", "reach": "anyone" },
       { "name": "vault.account.unlock", "effect": "write", "reach": "anyone" },
+      { "name": "vault.account.unlock-phone", "effect": "write", "reach": "anyone" },
       { "name": "vault.account.lock", "effect": "write", "reach": "person" },
       { "name": "vault.people", "effect": "read", "reach": "anyone" },
       { "name": "vault.person.add", "effect": "write", "reach": "anyone" },
@@ -81,7 +82,7 @@
       { "name": "vault.copy", "effect": "write", "reach": "anyone" },
       { "name": "vault.fill.native", "effect": "write", "reach": "anyone" },
       { "name": "vault.caps", "effect": "read", "reach": "anyone" },
-      { "name": "vault.health", "reach": "anyone" },
+      { "name": "vault.health", "effect": "write", "reach": "anyone" },
       { "name": "vault.breach.check", "effect": "write", "reach": "anyone" },
       { "name": "vault.update", "effect": "write", "reach": "anyone" }, { "name": "vault.verify", "effect": "write", "reach": "anyone" },
       { "name": "vault.clipboard.clear", "effect": "write", "reach": "anyone" },

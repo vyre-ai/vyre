@@ -820,6 +820,11 @@ test("kernel mode: an invite is the Space kernel's: the link carries its id and 
   const s = await d.ok("spaces.create", { name: "harlow", displayName: "Harlow Legal", home: { kind: "this-computer", confirmed: true } });
   const space = s.space;
   const sign = (call, ...a) => ({ payload_hash: proofRequest(KSPACE, call, ...a).payload_hash, nonce: Math.random().toString(36) });
+  // a space that lives on this computer makes no link: nobody else can reach it
+  const refused = await d.call("spaces.invites.create", { space, role: "member", to: kit.id }, "cli", { token, kernel_proof: sign("inviteCreate", { role: "member", invitee: kit.id }) });
+  assert.equal(refused.error && refused.error.code, "this_computer");
+  assert.match(refused.error.message, /^This space lives on this computer, so other people cannot join it\. Move it to your server first\.$/);
+  hooks.livesHere = false; t.after(() => { hooks.livesHere = null; });
   // the admin makes an invite for kit: a grant act with the admin's proof; the link is the kernel invite's id plus the pin
   const made = await d.call("spaces.invites.create", { space, role: "member", to: kit.id }, "cli", { token, kernel_proof: sign("inviteCreate", { role: "member", invitee: kit.id }) });
   assert.ok(!made.error, JSON.stringify(made.error));

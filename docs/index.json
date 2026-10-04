@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":342,"tool":1188,"event":454,"config":254,"env":244,"screen":20,"concept":43},
+  "counts": {"command":342,"tool":1189,"event":454,"config":254,"env":244,"screen":20,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -1624,6 +1624,7 @@
     {"kind":"tool","name":"vault.account.lock","definedIn":"core/vault/tools/account.js","page":"reference/tools.md#vaultaccountlock","module":"vault","mentions":[]},
     {"kind":"tool","name":"vault.account.status","definedIn":"core/vault/tools/account.js","page":"reference/tools.md#vaultaccountstatus","module":"vault","mentions":[]},
     {"kind":"tool","name":"vault.account.unlock","definedIn":"core/vault/tools/account.js","page":"reference/tools.md#vaultaccountunlock","module":"vault","mentions":[]},
+    {"kind":"tool","name":"vault.account.unlock-phone","definedIn":"core/vault/tools/account.js","page":"reference/tools.md#vaultaccountunlock-phone","module":"vault","mentions":[]},
     {"kind":"event","name":"vault.agent-granted","definedIn":"core/vault/agents.js","page":"reference/events.md#vault","module":"vault","mentions":[]},
     {"kind":"event","name":"vault.agent-revoked","definedIn":"core/vault/agents.js","page":"reference/events.md#vault","module":"vault","mentions":[]},
     {"kind":"tool","name":"vault.agent.grant","definedIn":"core/vault/tools/agents.js","page":"reference/tools.md#vaultagentgrant","module":"vault","mentions":[{"page":"adr/0028-vault-everywhere.md","line":178,"anchor":"2-agent-logins-one-agent-one-login-one-origin"},{"page":"adr/0031-teammates.md","line":356,"anchor":"11-security"}]},
