@@ -305,3 +305,43 @@ export const ASK_FIRST = new Map([
   ["hooks.close", "changes what reaches the Space from outside"],
   ["hooks.open", "opens the Space to the outside"],
 ]);
+
+// The two caller classes the relay listener labels that are not the person's (BR-2). Each has a short, explicit list, one reason per tool; a tool on no list does not exist for the class,
+// whatever its `callers` says, and whatever its reach is. Both lists are checked against their sources by test/reach-classes.test.js.
+
+/**
+ * `web:<id>`: a browser on the relay that has not been confirmed (a pairing that is waiting, or a legacy one-step browser row). It reaches only what it needs to finish confirming.
+ * @type {ReadonlyMap<string, string>}
+ */
+export const WEB_REACH = new Map([
+  ["wink.phone.wait", "the waiting pairing polls for the owner's confirmation"],
+  ["wink.server.adopt", "the pairing's last step, taking the box as its server once confirmed"],
+  ["relay.devices.ask-trust", "a legacy browser asks to be trusted, about itself only"],
+  ["relay.devices.list", "a legacy browser reads its own row"],
+  ["relay.web.release", "a legacy browser lets its own row go"],
+]);
+
+/**
+ * `setup:<id>`: the setup page before the box is claimed. Exactly what the relay's setup gate (core/relay/setup.js SETUP_TOOLS and SETUP_TOOL_FAMILIES) lets through, plus the tools a
+ * shipped module declares under `setupTools` (sessions: sign in to the AI). The relay's gate still holds the channel to its own list first; this is the registry's second check.
+ * @type {ReadonlyMap<string, string>}
+ */
+export const SETUP_REACH = new Map([
+  ["relay.setup.status", "the page reads its own setup session"],
+  ["relay.setup.claim-token", "the page claims the box with its code"],
+  ["names.check", "checks that a name is free"],
+  ["names.claim", "claims the box's name"],
+  ["names.status", "reads the name's state"],
+  ["names.domain.check", "checks the person's own domain"],
+  ["link.health", "reads whether the box is reachable"],
+  ["system.info", "reads what machine this is"],
+  ["onboard.machine", "reads the machine's setup state"],
+  ["network.tailscale.login", "starts the tailnet sign-in"],
+  ["network.tailscale.status", "reads the tailnet state"],
+  ["network.tailscale.peers", "reads the tailnet's machines"],
+  ["sessions.accounts.signin", "signs in to the person's AI (a module's setupTools)"],
+  ["sessions.accounts.key", "saves the person's AI key (a module's setupTools)"],
+]);
+
+/** The first word of every caller label the registry recognises. A label whose first word is none of these is refused on every tool, including one open to any caller. */
+export const KNOWN_LABELS = new Set(["cli", "local", "deck", "capsule", "mobile", "mcp", "harness", "hook", "onboard", "anonymous", "module", "tailnet", "tailnet-guest", "device", "space", "agent", "web", "setup", "assistant", "runner", "link", "relay"]);

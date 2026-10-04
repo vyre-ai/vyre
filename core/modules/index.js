@@ -11,7 +11,7 @@
 // broken watcher runtime should not cost someone their search.
 
 import { AsyncLocalStorage } from "node:async_hooks";
-import { OPEN as AGENT_OPEN, ASK_FIRST as AGENT_ASK_FIRST } from "./agent-reach.js";
+import { OPEN as AGENT_OPEN, ASK_FIRST as AGENT_ASK_FIRST, WEB_REACH, SETUP_REACH, KNOWN_LABELS } from "./agent-reach.js";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -463,6 +463,20 @@ export const agentOpensPerson = (/** @type {string} */ tool, /** @type {any} */ 
 export const agentAskFirst = (/** @type {string} */ tool, /** @type {any} */ caller) => AGENT_ASK_FIRST.has(tool) && claimsAgent(caller);
 
 /**
+ * The reach of the classes that are not the person's, and of a label nobody recognises: `false` for an unknown label (every tool, `callers: null` included), the class's own list for `web:<id>` and
+ * `setup:<id>` (WEB_REACH, SETUP_REACH in agent-reach.js; a call that names no tool reaches nothing), and `null` for everyone else, who go on to the tool's `callers` list.
+ * @param {string} caller @param {string} [tool]
+ */
+export const classReach = (caller, tool) => {
+  const c = String(caller);
+  if (!KNOWN_LABELS.has(c.split(":")[0])) return false;
+  const k = callerKind(c);
+  if (k === "web") return tool !== undefined && WEB_REACH.has(tool);
+  if (k === "setup") return tool !== undefined && SETUP_REACH.has(tool);
+  return null;
+};
+
+/**
  * May this caller use a tool with this callers list? On a box the Deck is served at the tailnet
  * address, where the names listener admits only the owner and labels the call "tailnet:<login>"
  * (ADR 0002). That is the owner's own Deck, so a tool open to "deck" is open to it; an agent's own
@@ -471,10 +485,10 @@ export const agentAskFirst = (/** @type {string} */ tool, /** @type {any} */ cal
  * it as a label.
  * @param {string[]|null|undefined} callers
  */
-export const callerAllowed = (callers, caller) => !callers || callerKind(caller) === "setup" || (callers.includes(callerKind(caller)) && !CLASS_ONLY.has(callerKind(caller)))
+export const callerAllowed = (callers, caller, tool) => classReach(caller, tool) ?? (!callers || (callers.includes(callerKind(caller)) && !CLASS_ONLY.has(callerKind(caller)))
   || (callers.includes("deck") && ownerDevice(caller))
   || (callers.includes("tailnet") && ownerDevice(caller))
-  || (callers.includes("device") && deviceLabel(caller));
+  || (callers.includes("device") && deviceLabel(caller)));
 
 /**
  * Caller classes that exist only as an entry in a tool's `callers` list, never as a caller: a socket client could send the bare word as its label. "device" opens a tool to the owner's
