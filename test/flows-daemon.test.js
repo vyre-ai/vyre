@@ -21,8 +21,8 @@ test("Flows run in a real daemon: an event trigger and a schedule, approved by a
   assert.ok(host(), "the Flows assembly is built for the home's own Space");
   const admin = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
   await d.kernel.gateway.records.define(admin, { add_types: [CONTACT] });
-  // the owner at their own Deck: the facts the daemon proves about the socket (the Flows tools take the caller's chain from the kernel only, never from a label)
-  const ownerMeta = async () => ({ kernelFacts: { kind: "socket", surface: "deck", uid: process.getuid(), pid: process.pid, inside_model_process: false, capsule_verified: true } });
+  // the owner's own signed-in session: a verified session token's chain (the Flows tools take the caller's chain from the kernel only, never from a label)
+  const ownerMeta = async () => ({ token: (await d.kernel.surfaces.open(d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" }), {})).token });
 
   // The Flow tools are the `flows` module's, run under the caller's own chain; a caller with no chain is refused
   const onEvent = { format: 1, name: "mark_seen", label: "Mark a new contact seen", authorship: "human", trigger: { on: "event", event: "contact.created" },
@@ -90,13 +90,14 @@ test("Flows run in a hosted FIRM Space too: its own kernel, its own Flow records
   const flow = { format: 1, name: "mark_seen", label: "Mark a new contact seen", authorship: "human", trigger: { on: "event", event: "contact.created" },
     steps: [{ id: "u", kind: "update", type: "contact", record: { expr: "event.subject" }, set: { status: "seen" } }] };
   const firmMeta = async () => ({ token: (await firm.kernel.surfaces.open(firm.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-h", person: ownerId, path: "direct", session: "s" }), {})).token });
+  const homeMeta = async () => ({ token: (await d.kernel.surfaces.open(d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" }), {})).token });
   const def = await d.registry.call("flows.define", { space, flow }, "cli", await firmMeta());
   assert.ok(def.data && def.data.ok, JSON.stringify(def));
   await host.flows.tools["flows.approve"](host.personChain(), { id: def.data.id, version: def.data.version, hash: def.data.hash });
   const jane = await firm.gateway.records.create(admin, "contact", { name: "Jane" });
   await until(async () => { const r = await firm.gateway.records.get(admin, "contact", jane.id); return r && r.data.status === "seen" ? r : null; }, "the firm's Flow to mark the contact");
   // the home's own Space does not see the firm's Flow
-  assert.deepEqual((await d.registry.call("flows.list", {}, "cli", await firmMeta())).data, []);
+  assert.deepEqual((await d.registry.call("flows.list", {}, "cli", await homeMeta())).data, []);
   assert.equal((await d.registry.call("flows.list", { space }, "cli", await firmMeta())).data.length, 1);
   assert.ok((await d.registry.call("flows.list", { space: "spc_zzzzzzzzzzzz" }, "cli", await firmMeta())).error, "a Space this home does not host");
 });
