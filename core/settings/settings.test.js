@@ -312,7 +312,12 @@ export default { async start(ctx) {
   assert.equal(r.data.value, 200);
   r = await c("oven.get");
   assert.ok(r.data.seen.length >= 2, JSON.stringify(r.data.seen));
-  assert.deepEqual([...new Set(r.data.seen.slice(0, -1))], ["module:settings"], "the settings module, never the person, reached the home module's tools");
+  // The oven is trusted by path in this second start, so it is first party and its declared setter hears the person ("local": the settings module passes the person on to a first-party setter, as the next test pins).
+  // A home module that is not trusted runs in the sandbox, never reaches this path, and never appears in settingTools (checked below).
+  assert.deepEqual([...new Set(r.data.seen)].sort(), ["cli", "local"], "a first-party setter hears the person's own surfaces, and nothing else");
+  await d.stop();
+  d = await start({ root, log: () => {} });
+  assert.ok(!d.registry.settingTools().has("oven.set"), "an untrusted home module's tool is no setting tool, so settings never passes the person to it");
 });
 
 test("only a person changes a setting: agent labels, mcp, anonymous and an unsigned owner device are refused, and confirm is no proof", { timeout: 30_000 }, async t => {
