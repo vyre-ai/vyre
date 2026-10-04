@@ -138,3 +138,17 @@ export function inviteFrom(p, link) {
     roleLine: String(p?.role_line ?? ""), sees, status: String(p?.status ?? "pending"), words: String(p?.fingerprint_words ?? ""),
   };
 }
+
+/**
+ * What the done page says is still pending after the picks (UX-20): a Kit asked for waits for a yes in Now; connectors are never connected by setup, each asks
+ * for its own sign-in. Nothing is claimed as done that is not.
+ * @param {{ kit: { id: string, label: string } | null, kitResult: { ok: boolean, text: string } | null, connectors: string[] }} o
+ * @returns {string[]}
+ */
+export function pendingLines(o) {
+  /** @type {string[]} */ const out = [];
+  if (o.kit && o.kitResult?.ok) out.push(`${o.kit.label} is waiting for your yes in Now. Nothing is installed until you approve it.`);
+  else if (o.kit) out.push(`${o.kit.label} was not asked for${o.kitResult?.text ? `: ${o.kitResult.text}` : ""}. Install it later from Kits.`);
+  if (o.connectors.length) out.push(`Not connected yet: ${o.connectors.join(", ")}. Each one asks for its own sign-in when you set it up.`);
+  return out;
+}

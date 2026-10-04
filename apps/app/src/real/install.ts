@@ -1,6 +1,6 @@
 // The install flow's calls to the box (screens/install/real.js maps the answers). Each is one tool through src/real/box.ts.
 
-import { tool } from "./box";
+import { said, tool } from "./box";
 import { claimIdentity } from "../identity/claim.js";
 import { loadIdentity, saveIdentity } from "../identity/store";
 import { createdFrom, directoryAnswer, identityFrom, nameAnswer } from "../../screens/install/real.js";
@@ -55,3 +55,22 @@ export const saveSetup = (space: string, setup: Record<string, unknown> | null) 
 export const claimSetup = (space: string) => tool<{ space: string; setup: any; moved?: boolean }>("spaces.setup.claim", { space });
 export const previewInvite = (link: string) => tool<any>("spaces.invites.preview", { link });
 export const acceptInvite = (link: string) => tool<any>("spaces.invites.accept", { link });
+
+/** The Kits the box offers a new space (flows.kit.library). null when the box has no such tool: the step then offers none. */
+export async function kitChoices(): Promise<{ id: string; label: string; sub: string }[] | null> {
+  try {
+    const r = await tool<any>("flows.kit.library");
+    const rows: any[] = Array.isArray(r) ? r : Array.isArray(r?.kits) ? r.kits : [];
+    return rows.map((k) => ({ id: String(k.id), label: String(k.name ?? k.id), sub: String(k.description ?? "") }));
+  } catch { return null; }
+}
+
+/** Ask to install the picked Kit in the new space. It lands as a card in Now for a person to approve; nothing installs until then. */
+export async function proposeKitFor(space: string, id: string): Promise<{ ok: boolean; text: string }> {
+  try {
+    const got = await tool<any>("flows.kit.library.get", { id });
+    const kit = got && typeof got === "object" && got.kit ? got.kit : got;
+    const r = await tool<any>("flows.kit.propose", { space, kit });
+    return r?.ok === false ? { ok: false, text: r.errors?.[0]?.message ?? "The Kit cannot be installed." } : { ok: true, text: "waiting" };
+  } catch (e) { return { ok: false, text: said(e) }; }
+}

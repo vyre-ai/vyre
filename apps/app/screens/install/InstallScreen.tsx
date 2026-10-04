@@ -12,8 +12,8 @@ import { parseWinkCode } from "../../src/api/wink-code";
 import { readProgress, writeProgress } from "../../src/state/setup-progress";
 import { wordsLine, type PairingSession } from "../../src/api/pairing-session";
 import { MOCK, said } from "../../src/real/box";
-import { acceptInvite, checkName, claimSetup, createIdentity, createSpace, listSpaces, previewInvite, readIdentity, resumeSpace, saveSetup } from "../../src/real/install";
-import { applyClaim, createInput, inviteFrom, nameNoteReal, nameStatusReal, savesAt, setupElsewhere, setupFrom } from "./real.js";
+import { acceptInvite, checkName, claimSetup, createIdentity, createSpace, kitChoices, listSpaces, previewInvite, proposeKitFor, readIdentity, resumeSpace, saveSetup } from "../../src/real/install";
+import { applyClaim, createInput, inviteFrom, nameNoteReal, pendingLines, nameStatusReal, savesAt, setupElsewhere, setupFrom } from "./real.js";
 import { setupElsewhere as setupElsewhereLine } from "./flow.js";
 
 type Made = { name: string; look: string; addr: string; line: string };
@@ -79,6 +79,9 @@ export function InstallScreen({ start, link: linkIn }: { start?: "create" | "joi
   const [pairTo, setPairTo] = useState("me");
   const [pickConnectors, setPickConnectors] = useState<string[]>([]);
   const [pickKit, setPickKit] = useState<string | null>(null);
+  // Real box: the Kits it offers (null: it offers none) and what asking for the picked one came to, for the done page.
+  const [kitList, setKitList] = useState<{ id: string; label: string; sub: string }[] | null | undefined>(undefined);
+  const [kitResult, setKitResult] = useState<{ ok: boolean; text: string } | null>(null);
   const [inviteLine, setInviteLine] = useState("");
   const [loaded, setLoaded] = useState(false);
   // Real box only: what the directory said about each name, the space being made, the recovery code (shown once, never kept), another device's setup, the invite.
@@ -126,7 +129,15 @@ export function InstallScreen({ start, link: linkIn }: { start?: "create" | "joi
     } catch (e) { setWrong(said(e)); } finally { setBusy(false); }
   };
   const doMake = (w: "server" | "vps" | "here") => (MOCK ? make(w) : void makeReal(w));
-  const advance = (from: string) => setStep(nextSetup(from));
+  const advance = (from: string) => {
+    if (from === "kit" && !MOCK && spaceId && pickKit) {
+      setBusy(true);
+      void proposeKitFor(spaceId, pickKit).then((r) => { setKitResult(r); setStep(nextSetup(from)); }).finally(() => setBusy(false));
+      return;
+    }
+    setStep(nextSetup(from));
+  };
+  useEffect(() => { if (!MOCK && step === "kit" && kitList === undefined) void kitChoices().then(setKitList); }, [step]);
 
   // Closing and reopening resumes at the same step: read what was kept once, then keep every resumable step.
   useEffect(() => {
@@ -366,12 +377,14 @@ export function InstallScreen({ start, link: linkIn }: { start?: "create" | "joi
     body = (
       <Page title="Start with a Kit" sub="A Kit adds record types, Flows and views in one step. Pick one, or start empty.">
         <Card flush>
-          {DATA.kits.map((k) => (
+          {(MOCK ? DATA.kits : kitList ?? []).map((k) => (
             <Row key={k.id} dense lead={<IconTile name="box" />} title={k.label} sub={k.sub} end={<Chip tone={pickKit === k.id ? "ok" : "plain"} icon={pickKit === k.id ? "check" : undefined}>{pickKit === k.id ? "Chosen" : "Choose"}</Chip>} onPress={() => setPickKit(pickKit === k.id ? null : k.id)} />
           ))}
+          {!MOCK && kitList === undefined ? <Row dense title="Looking for Kits" /> : null}
+          {!MOCK && kitList !== undefined && !(kitList ?? []).length ? <Row dense title="No Kits to pick here yet" sub="You can add one later from Kits." /> : null}
         </Card>
         <View className="flex-row gap-s2">
-          <Button kind="primary" label="Finish setup" onPress={() => advance("kit")} />
+          <Button kind="primary" label={busy ? "Asking" : "Finish setup"} onPress={busy ? () => {} : () => advance("kit")} />
           <Button kind="ghost" label="Start empty" onPress={() => { setPickKit(null); advance("kit"); }} />
         </View>
       </Page>
@@ -383,6 +396,7 @@ export function InstallScreen({ start, link: linkIn }: { start?: "create" | "joi
         <Text size="page" strong className="text-center">{`${last?.name ?? sn} is ready`}</Text>
         <Text tone="muted" className="text-center">{last?.line}</Text>
         <Text mono size="caption" tone="label">{last?.addr}</Text>
+        {MOCK ? null : pendingLines({ kit: pickKit ? { id: pickKit, label: kitList?.find((k) => k.id === pickKit)?.label ?? pickKit } : null, kitResult, connectors: pickConnectors.map((id) => DATA.connectors.find((c) => c.id === id)?.label ?? id) }).map((l) => <Text key={l} tone="muted" className="text-center">{l}</Text>)}
         <Button kind="primary" label="Continue" onPress={() => setStep("spaces")} />
       </View>
     );
