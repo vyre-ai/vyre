@@ -697,6 +697,8 @@ export function createPairing(o) {
       run: async (input, meta = {}) => {
         owner(meta, "adding this server");
         const i = input || {};
+        // an unowned server holds no device that matters: rows left by a pairing that never completed ownership must not refuse the new owner's pairing (first owner wins once it is owned)
+        if (!hasOwner() && typeof ctx.call === "function") { try { await ctx.call("relay.devices.clear-leftover", {}); } catch { /* no relay module here */ } }
         if (i.typed === true && !typedOn()) throw fail("typed_code_off", words("typedCodeOff"));
         if (i.pairTo !== undefined) {
           if (!["cli", "local"].includes(String((meta && meta.caller) || ""))) throw fail("denied", "Who a server pairs to is set at install time, on the server itself.");
@@ -711,6 +713,7 @@ export function createPairing(o) {
       },
     });
     const meta0Set = (/** @type {string} */ to) => { meta.set("pair_to", to); };
+    const hasOwner = () => Boolean(meta.get("owner"));
     ctx.tool("wink.server.confirm", {
       description: "On the new server: type back the code the app is showing. One try per code. Answers { ok, message }. A right code means the codes matched, nothing more: the app finishes the pairing (wink.server.adopt) and wink.pair.status on the app is the one place that says it is done or that it failed and why.",
       input: obj({ offer: str, typed: str }, ["offer", "typed"]),

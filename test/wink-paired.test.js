@@ -887,4 +887,3 @@ async function pairSecondDevice(t, f, { kind = "computer", name = "Alex's Mac" }
   } };
 }
 
-
