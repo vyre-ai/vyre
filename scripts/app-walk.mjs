@@ -67,7 +67,10 @@ const server = http.createServer((req, res) => {
   if (req.url.startsWith("/v1")) return forward(req, res);
   const p = decodeURIComponent(req.url.split("?")[0]).replace(/^\/app/, "") || "/";
   let f = path.join(DIST, p);
-  if (!f.startsWith(DIST) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) f = path.join(DIST, "index.html");
+  const missing = !f.startsWith(DIST) || !fs.existsSync(f) || fs.statSync(f).isDirectory();
+  // A missing file with an extension is a 404 (the box's /app/sw.js has no copy here); only a route falls back to the page.
+  if (missing && path.extname(p)) { res.writeHead(404); return res.end(); }
+  if (missing) f = path.join(DIST, "index.html");
   res.writeHead(200, { "content-type": TYPES[path.extname(f)] || "application/octet-stream" });
   fs.createReadStream(f).pipe(res);
 }).listen(0, "127.0.0.1");
@@ -94,7 +97,7 @@ const spaceNames = has("spaces") && Array.isArray(world.spaces.data) ? world.spa
 
 // ---- the walk ----
 const browser = await chromium.launch();
-const ctx = await browser.newContext({ viewport: { width: WIDTH, height: 900 }, colorScheme: "dark" });
+const ctx = await browser.newContext({ viewport: { width: WIDTH, height: 900 }, colorScheme: "dark", serviceWorkers: "block" });
 const page = await ctx.newPage();
 let consoleErrors = [];
 page.on("pageerror", (e) => consoleErrors.push(`pageerror: ${e}`));
