@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":342,"tool":1179,"event":453,"config":254,"env":236,"screen":20,"concept":43},
+  "counts": {"command":342,"tool":1180,"event":453,"config":254,"env":236,"screen":20,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -938,7 +938,6 @@
     {"kind":"tool","name":"presence.capsule.pin","definedIn":"core/presence/module.js","page":"reference/tools.md#presencecapsulepin","module":"presence","mentions":[{"page":"adr/0040-vyre-core.md","line":188,"anchor":"4-touch-id-and-signatures"},{"page":"adr/0040-vyre-core.md","line":190,"anchor":"4-touch-id-and-signatures"}]},
     {"kind":"tool","name":"presence.code","definedIn":"core/presence/index.js","page":"reference/tools.md#presencecode","module":"presence","mentions":[{"page":"concepts/presence.md","line":33,"anchor":"which-tools-need-it"},{"page":"concepts/presence.md","line":53,"anchor":"how-each-surface-proves-it"},{"page":"adr/0004-presence.md","line":72,"anchor":"layer-1--presence-proof-checked-by-vyred"},{"page":"adr/0004-presence.md","line":99,"anchor":"layer-1--presence-proof-checked-by-vyred"},{"page":"adr/0004-presence.md","line":129,"anchor":"layer-1--presence-proof-checked-by-vyred"},{"page":"adr/0004-presence.md","line":236,"anchor":"addendum-26-sep-2026-after-review-with-the-other-workstreams"}]},
     {"kind":"tool","name":"presence.covered","definedIn":"core/presence/module.js","page":"reference/tools.md#presencecovered","module":"presence","mentions":[]},
-    {"kind":"tool","name":"presence.device.enroll-paired","definedIn":"core/presence/module.js","page":"reference/tools.md#presencedeviceenroll-paired","module":"presence","mentions":[]},
     {"kind":"tool","name":"presence.enroll","definedIn":"core/presence/index.js","page":"reference/tools.md#presenceenroll","module":"presence","mentions":[{"page":"concepts/presence.md","line":33,"anchor":"which-tools-need-it"},{"page":"concepts/presence.md","line":53,"anchor":"how-each-surface-proves-it"},{"page":"adr/0004-presence.md","line":72,"anchor":"layer-1--presence-proof-checked-by-vyred"},{"page":"adr/0004-presence.md","line":99,"anchor":"layer-1--presence-proof-checked-by-vyred"},{"page":"adr/0004-presence.md","line":127,"anchor":"layer-1--presence-proof-checked-by-vyred"},{"page":"adr/0004-presence.md","line":294,"anchor":"addendum-27-sep-2026-device-keys-for-the-phone-apps"},{"page":"adr/0018-mobile.md","line":77,"anchor":"3--presence-on-the-phone-a-device-key-enrolled-with-the-decks-passkey"},{"page":"adr/0018-mobile.md","line":82,"anchor":"3--presence-on-the-phone-a-device-key-enrolled-with-the-decks-passkey"},{"page":"adr/0018-mobile.md","line":88,"anchor":"3--presence-on-the-phone-a-device-key-enrolled-with-the-decks-passkey"},{"page":"adr/0040-vyre-core.md","line":151,"anchor":"3-the-protocol-between-vyred-and-vyre-core"}]},
     {"kind":"event","name":"presence.enrolled","definedIn":"core/presence/module.js","page":"reference/events.md#presence","module":"presence","mentions":[]},
     {"kind":"tool","name":"presence.grant.mint","definedIn":"core/presence/module.js","page":"reference/tools.md#presencegrantmint","module":"presence","mentions":[]},
@@ -1322,6 +1321,7 @@
     {"kind":"tool","name":"spaces.identity.code.replace","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesidentitycodereplace","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.identity.contact.key","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesidentitycontactkey","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.identity.create","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesidentitycreate","module":"spaces","mentions":[]},
+    {"kind":"tool","name":"spaces.identity.device","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesidentitydevice","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.identity.enrol","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesidentityenrol","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.identity.entries","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesidentityentries","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.identity.entry","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesidentityentry","module":"spaces","mentions":[]},
@@ -2453,6 +2453,7 @@
     {"kind":"tool","name":"wink.decline","definedIn":"core/wink/index.js","page":"reference/tools.md#winkdecline","module":"wink","mentions":[]},
     {"kind":"event","name":"wink.declined","definedIn":"core/wink/index.js","page":"reference/events.md#wink","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.device.key","definedIn":"core/wink/index.js","page":"reference/tools.md#winkdevicekey","module":"wink","mentions":[]},
+    {"kind":"tool","name":"wink.device.paired","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkdevicepaired","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.device.record","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkdevicerecord","module":"wink","mentions":[]},
     {"kind":"event","name":"wink.expired","definedIn":"core/wink/index.js","page":"reference/events.md#wink","module":"wink","mentions":[]},
     {"kind":"event","name":"wink.found","definedIn":"core/wink/index.js","page":"reference/events.md#wink","module":"wink","mentions":[]},

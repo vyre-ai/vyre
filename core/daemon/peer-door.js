@@ -44,7 +44,8 @@ export function createPeerDoor(o) {
     const body = input && typeof input === "object" && !Array.isArray(input) ? { ...input } : {};
     /** @type {any} */ let proof;
     if (body.proof && typeof body.proof === "object") { try { if (JSON.stringify(body.proof).length <= 4096) proof = body.proof; } catch { /* no proof */ } delete body.proof; }
-    const r = await o.registry.call(tool, body, caller, { ...(person ? { person } : {}), kernelFacts: facts, ...(proof ? { kernel_proof: proof } : {}) });
+    // the owner's proof rides input.proof: the registry's presence floor reads it as `proof`, and the kernel as `kernel_proof` (each checks its own shape; neither is trusted here)
+    const r = await o.registry.call(tool, body, caller, { ...(person ? { person } : {}), kernelFacts: facts, ...(proof ? { proof, kernel_proof: proof } : {}) });
     if (r && r.error) throw err(String(r.error.code || "internal"), String(r.error.message || "the call failed"));
     return r ? r.data : null;
   };

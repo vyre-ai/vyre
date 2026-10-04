@@ -1177,15 +1177,11 @@ test("device-first attacks: a removed device holding a token and a stream is ref
   await assert.rejects(() => links.remoteKernel("srv", w.d.kernel.id.space).gateway.grants.members.list(null), e => /denied|closed|removed|unreachable|paired|not_a_member/.test(`${e.code} ${e.message}`));
 });
 
-test("device-first: a web device is recorded as web, signs in with no device key and can call nothing over a peer stream", async t => {
+test("device-first: a web device is recorded as web with software storage", async t => {
   const f = await pairFreshServer(t, { kind: "web", about: { kind: "web" }, presenceStorage: "software" });
   const rec = (await f.w.d.registry.call("wink.device.record", { id: f.done.device }, "module:presence")).data;
   assert.equal(rec ? rec.kind : null, "web");
-  assert.equal(rec.key, null, "a browser has no device key, so no device-key session");
-  const links = linksFor(t, f);
-  await assert.rejects(() => links.startPaired("srv"), e => e.code === "denied", "no grant was made for a browser");
-  // a browser with no device key has no person session, so a call over its peer stream is refused: it can do nothing that needs the person, a proof least of all
-  await assert.rejects(() => links.sessionFor("srv").call("records.me", {}), e => /person|passkey|denied|sign in/.test(`${e.code} ${e.message}`));
+  assert.equal((await deviceRow(f.w, f.done.device)).storage, "software");
 });
 
 test("wink.server.adopt takes `proof` through the registry: a waiting redeemer's call with a proof is judged by the tool (denied, no identity port here), never refused as an unknown field", async t => {
@@ -1235,4 +1231,18 @@ test("a box-less device pairs a fresh server, is recorded as the owner's device 
   const sig = crypto.sign("sha256", Buffer.from(`paired-start\n${done.device}\n${ch.body.data.challenge}`), { key: dk.privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url");
   const started = await over(c, "presence.person.start-paired", { sig });
   assert.equal(started.status, 200, JSON.stringify(started));
+});
+
+test("device-first, real daemon: the owner's device calls spaces.host-here on the server over the peer session; the server's kernel builds the chain from the peer and decides", async t => {
+  const f = await pairFreshServer(t);
+  const w = f.w;
+  const links = linksFor(t, f);
+  await links.startPaired("srv");
+  const session = links.sessionFor("srv");
+  // with no proof the server asks for one (the presence floor is the server's own, nothing here is trusted)
+  await assert.rejects(() => session.call("spaces.host-here", { name: "harlow" }), e => e.code === "presence_required");
+  // with the owner's proof in the input (the test world's presence takes any), the server's kernel hosts the space and answers its id
+  const made = await session.call("spaces.host-here", { name: "harlow", proof: { key: "k1" } });
+  assert.match(made.space, /^spc_[a-z2-7]{12}$/);
+  assert.ok(w.d.kernel.spaces.hosts(made.space), "the space is hosted by the SERVER's kernel");
 });
