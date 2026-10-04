@@ -676,3 +676,15 @@ test("claim token: the page mints over its channel, the browser at the address c
   assert.ok((await w.d.registry.call("relay.setup.claim-token", { host: "alex.vyre.run" }, "module:sneaky")).error);
   assert.ok((await w.d.registry.call("presence.grant.mint", { peer: null, host: "alex.vyre.run" }, "module:sneaky")).error, "only the relay module makes a grant");
 });
+
+test("PA-4: a web caller reads only its own row of relay.devices.list, the owner's surfaces read all", async t => {
+  const w = await world(t);
+  const db = /** @type {any} */ (w.d.registry).db || /** @type {any} */ (w.d.registry).deps?.db;
+  assert.ok(db, "the registry's database");
+  const ins = (id, kind) => db.prepare("INSERT INTO relay_devices (id, name, pub, presence_key, paired_at, last_seen, removed_at, kind, release, manifest, trusted, join_grant, join_mints, join_last) VALUES (?, ?, ?, NULL, ?, ?, NULL, ?, NULL, NULL, 1, 0, 0, NULL)").run(id, `name-${id}`, Buffer.alloc(32, id.length).toString("base64url"), Date.now(), Date.now(), kind);
+  ins("webone", "web"); ins("phone1", "phone"); ins("phone2", "phone");
+  const asWeb = (await w.d.registry.call("relay.devices.list", {}, "device:webone")).data;
+  assert.deepEqual((asWeb?.devices || []).map(d => d.id), ["webone"], JSON.stringify(asWeb));
+  const asOwner = (await w.d.registry.call("relay.devices.list", {}, "cli")).data.devices.map(d => d.id).sort();
+  assert.deepEqual(asOwner, ["phone1", "phone2", "webone"]);
+});
