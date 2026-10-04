@@ -3,6 +3,7 @@ import { createAuthorizer } from "../core/authorize.js";
 import { createRecords, RECORD_ACTIONS } from "./records.js";
 import { createSealing } from "./sealing.js";
 import { ACTIONS as SEAL_ACTIONS } from "../seal/uses.js";
+import { CHECKPOINT_ACTIONS } from "./checkpoints.js";
 import { TASK_ACTIONS } from "../tasks/tasks.js";
 import { createApprovals } from "../tasks/approvals.js";
 import { createGate } from "../core/gate.js";

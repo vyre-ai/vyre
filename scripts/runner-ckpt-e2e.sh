@@ -8,12 +8,12 @@ DELAYS=${DELAYS:-"0 300 700 1200 1800 2600"}
 SRC=$(cd "$(dirname "$0")/.." && pwd); URL=http://127.0.0.1:$TPORT; FAIL=0
 for b in $HOME_BOX $LENDER_BOX $RESUME_BOX; do rsync -a --exclude node_modules --exclude .git "$SRC/" $b:runner-ckpt-e2e/src/; done
 ssh $HOME_BOX "cd runner-ckpt-e2e/src && rm -rf ../home && (setsid nohup node scripts/runner-ckpt-e2e.mjs home 127.0.0.1 $PORT \$HOME/runner-ckpt-e2e/home > ../home.log 2>&1 &) ; sleep 2; cat ../home.log"
-ssh -f -N -o ExitOnForwardFailure=yes -L $TPORT:127.0.0.1:$PORT $HOME_BOX
-for b in $LENDER_BOX $RESUME_BOX; do ssh -f -N -o ExitOnForwardFailure=yes -R $TPORT:127.0.0.1:$TPORT $b; done
+ssh -f -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ControlPath=none -L $TPORT:127.0.0.1:$PORT $HOME_BOX
+for b in $LENDER_BOX $RESUME_BOX; do ssh -f -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ControlPath=none -R $TPORT:127.0.0.1:$TPORT $b; done
 for D in $DELAYS; do
   S=r$D; echo "=== round: kill $D ms after turn 3 was sent (session $S)"
   ssh $LENDER_BOX "cd runner-ckpt-e2e/src && (SESSION=$S KILL_AFTER_MS=$D setsid nohup node scripts/runner-ckpt-e2e.mjs lender $URL \$HOME/runner-ckpt-e2e/lender-$S lender-box > ../lender-$S.log 2>&1 &)"
-  for i in $(seq 1 120); do sleep 1; ssh $LENDER_BOX "grep -q 'turn 3 sent' runner-ckpt-e2e/lender-$S.log 2>/dev/null && ! pgrep -f 'runner-ckpt-e2e/[l]ender-$S' >/dev/null" && break; done
+  for i in $(seq 1 120); do sleep 1; ssh $LENDER_BOX "grep -q 'turn 3 sent' runner-ckpt-e2e/lender-$S.log 2>/dev/null && ! pgrep -f 'e2e.mjs [l]ender .*lender-$S ' >/dev/null" && break; done
   ssh $LENDER_BOX "pkill -9 -f 'runner-ckpt-e2e/lender-$S[/ ]' ; sleep 1; for m in \$(mount | grep lender-$S | awk '{print \$3}'); do fusermount3 -u -z \$m; done; true"
   HELD=$(ssh $RESUME_BOX "cd runner-ckpt-e2e/src && SESSION=$S node scripts/runner-ckpt-e2e.mjs peek $URL")
   echo "home holds after the kill: $HELD"
@@ -30,5 +30,5 @@ echo "== the home's files"; ssh $HOME_BOX "du -sh runner-ckpt-e2e/home; echo str
 ssh $HOME_BOX "pkill -f '[r]unner-ckpt-e2e.mjs home'"
 for b in $LENDER_BOX $RESUME_BOX; do ssh $b 'for m in $(mount | grep ckpt-e2e | awk "{print \$3}"); do fusermount3 -u -z $m; done; true'; done
 for b in $HOME_BOX $LENDER_BOX $RESUME_BOX; do ssh $b "chmod -R u+rwX runner-ckpt-e2e 2>/dev/null; rm -rf runner-ckpt-e2e"; done
-pkill -f "ssh -f -N -o ExitOnForwardFailure=yes.*$TPORT" 2>/dev/null
+pkill -f "ssh -f -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ControlPath=none.*$TPORT" 2>/dev/null
 echo "RESULT: $([ $FAIL = 0 ] && echo ALL PASS || echo FAILURES)"
