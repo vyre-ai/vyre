@@ -40,7 +40,7 @@ export function createFlowsHost(o) {
     await sh.records.query(sh.serviceChain(), "def_flow", { page: { limit: 1 } }).catch(() => {});
 
     const kernel = {
-      records: gw.records, ask: gw.ask, authorize: (/** @type {any} */ i) => gw.authorize(i), grants: gw.grants,
+      records: gw.records, ask: gw.ask, ...(gw.kits ? { kits: gw.kits } : {}), authorize: (/** @type {any} */ i) => gw.authorize(i), grants: gw.grants,
       events: { read: (/** @type {any} */ c, /** @type {any} */ f) => gw.events.read(c, f), subscribe: (/** @type {any} */ c, /** @type {string} */ n, /** @type {any} */ f, /** @type {any} */ cb) => gw.events.subscribe(c, n, f, cb), latestSeq: async () => k.log.latestSeq() },
       model: { call: async () => { throw Object.assign(new Error("no model door is wired to Flows yet"), { code: "unavailable" }); } },
     };
@@ -75,7 +75,12 @@ export function createFlowsHost(o) {
     {
       const { FLOW_TYPES } = await import("../../kernel/flows/store.js");
       const have = new Set((await k.store.types()).map((/** @type {any} */ t) => t.name));
-      const missing = FLOW_TYPES.filter(t => !have.has(t.name));
+      // The record types a Kit's non-type parts are stored in (templates, role and view definitions) are defined here by the owner with the Flow types, so installing a Kit later never needs a
+      // definition change of its own for them: only the Kit's own types are defined at install, under the approved-Kit waiver.
+      const { CORE_TYPES } = await import("../../records/core-types.js");
+      const defType = (/** @type {string} */ name, /** @type {string} */ label) => ({ name, label, fields: [{ name: "name", kind: "text", label: "Name" }, { name: "body", kind: "text", label: "Definition" }, { name: "kit", kind: "text", label: "From Kit" }] });
+      const kitStorage = [CORE_TYPES.find((/** @type {any} */ t) => t.name === "template"), defType("def-role", "Role definition"), defType("def-view", "View definition")].filter(Boolean);
+      const missing = [...FLOW_TYPES, ...kitStorage].filter(t => !have.has(t.name));
       if (missing.length) await gw.records.define(owner(), { add_types: [...missing] }).catch((/** @type {any} */ e) => { log(`flows: could not define the Flow record types for ${space}: ${e && e.message}`); });
     }
 
