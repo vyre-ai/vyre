@@ -435,7 +435,7 @@ async function startLocked(opts, root, p, release) {
     fs.rmSync(p.socket, { force: true });
   }
 
-  const terminalOf = opts.person || (sock => atTerminal(sock, registry, presence, devStandIn()));
+  const terminalOf = opts.person || (sock => atTerminal(sock, registry, presence, devStandIn(), { log }));
   const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, people, socket: true, terminalOf, kernelOf: () => kernel }).catch(e => fail(res, e)));
   server.on("upgrade", async (req, socket, head) => {
     try { upgrade(req, socket, head, (await asTaken(socketCaller(req), /** @type {any} */ (socket), registry)).caller); }
@@ -810,7 +810,7 @@ export function isLoginServer(server) {
 export async function atTerminal(socket, registry, presence, standIn = false, deps = {}) {
   const d = { above, peerPid, loginOf, tmuxClients, insideClaude, loginFrom, ...deps };
   /** Why no terminal, said once in the daemon log (never a secret: a pid, a tty name and the logins `who` lists). @param {string} why */
-  const no = why => { try { registry.deps && typeof registry.deps.log === "function" && registry.deps.log(`terminal: refused, ${why}`); } catch { /* logging never decides */ } return null; };
+  const no = why => { try { const say = typeof d.log === "function" ? d.log : registry.deps && typeof registry.deps.log === "function" ? registry.deps.log : null; if (say) say(`terminal: refused, ${why}`); } catch { /* logging never decides */ } return null; };
   // The development stand-in (a hand-made file in a development build) is the one thing that replaces this guard; a real build never passes it.
   /** @type {any} */ let who = null;
   if (!standIn) {
@@ -1100,6 +1100,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const proof = parsePresence(req.headers["x-vyre-presence"]);
     // For a tool one proof covers, the CLI's terminal: its window is bound to it (core/presence).
     const terminal = socket && terminalOf && (SESSIONABLE.has(name) || SIGNIN_TOOLS.has(name)) && /^(cli|local)$/.test(caller) ? await terminalOf(req.socket) : null;
+    if (socket && SIGNIN_TOOLS.has(name) && !terminal) { try { if (typeof events.log === "function") events.log(`terminal: ${name} got no terminal key (${terminalOf ? `caller label ${caller}, ${/^(cli|local)$/.test(caller) ? "the terminal check refused: see the line above" : "not cli or local, so it was never asked"}` : "no terminal check in this daemon"})`); } catch { /* logging never decides */ } }
     // Only a caller vyred bound to a thread above says which chat tool call this is.
     const call = via.thread ? callId(req.headers["x-vyre-call-id"]) : null;
     // presence.capsule.pin judges the calling binary's own signature, read here from the socket's
