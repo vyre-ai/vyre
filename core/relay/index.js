@@ -30,6 +30,7 @@ import { agentClaim, ownerDevice } from "../modules/index.js";
 import { loadKeys, keyHandle } from "./keys.js";
 import { fingerprint8, toBase64url } from "../../lib/identity.js";
 import { redeem } from "./redeem.js";
+import { deviceIdOf } from "../../lib/caller.js";
 import { tailscaleApi, desktopJoin, pairedBox, MINT_ITEM, DEVICE_TAG, JOIN_PATH } from "./tailnet.js";
 import { DEFAULT_RELAY } from "../../lib/relay-default.js";
 
@@ -381,6 +382,17 @@ export default {
           kind = excluded.kind, release = excluded.release, manifest = excluded.manifest, trusted = 0, join_grant = excluded.join_grant, join_mints = 0, join_last = NULL,
           node_id = NULL, node_name = NULL, node_tagged = 0, key_storage = excluded.key_storage`)
         .run(id, name, pub.toString("base64url"), presenceKey, now(), now(), kind, release, manifest, grant, storage);
+      // A browser's passkey (ADR 0032 2b), after the three words and in the same step as its row: enrolled bound to THIS device id and to the app's own origin, so it proves for nothing else.
+      // A phone keeps its device key above. Offered in the hello as passkey { credential_id, public_key, alg, rp_id }; a refusal leaves the device paired without it and says so in the log.
+      const pkey = hello.passkey;
+      if (pkey && typeof pkey === "object" && kind === "app") {
+        try {
+          const r = /** @type {any} */ (await ctx.call("presence.enroll", { kind: "passkey", name, public_key: String(pkey.public_key || ""), alg: pkey.alg ?? -7, rp_id: String(pkey.rp_id || ""), credential_id: String(pkey.credential_id || ""), device: id }));
+          if (r && r.error) ctx.log(`relay: this device's passkey was not enrolled: ${r.error.message || r.error.code}`);
+          // a browser has no device key, so its passkey is the row's presence key: removing the device removes it (the existing path), and the list shows presence
+          else if (r && r.data && r.data.id && !presenceKey) { presenceKey = String(r.data.id); presence = { enrolled: true, reason: "" }; db.prepare("UPDATE relay_devices SET presence_key = ? WHERE id = ?").run(presenceKey, id); }
+        } catch (e) { ctx.log(`relay: this device's passkey was not enrolled: ${/** @type {Error} */ (e).message}`); }
+      }
       // The pairing notice: every surface shows it with a one-tap removal (ADR 0026 section 6).
       // Carries the new device's own key fingerprint (reviewer, 28 Sep LOW) so the notice reads
       // the same short form ("a1b2 c3d4") as every other Touch ID / confirm screen that shows one.
@@ -439,7 +451,7 @@ export default {
     function holdPending(pub, id, name, hello, match) {
       if (pendingPairs.size >= PENDING_MAX && !pendingPairs.has(id)) throw new Error("too many pairings are waiting; make a new code in a minute");
       pendingDrop(id, "replaced");
-      const keep = { v: 1, ...(hello.kind === "web" ? { kind: "web" } : {}), ...(hello.tailnet ? { tailnet: hello.tailnet } : {}), ...(hello.enroll ? { enroll: hello.enroll } : {}), ...(hello.release ? { release: hello.release } : {}), ...(hello.manifest ? { manifest: hello.manifest } : {}), ...(hello.presenceKey ? { presenceKey: hello.presenceKey } : {}) };
+      const keep = { v: 1, ...(hello.kind === "web" ? { kind: "web" } : {}), ...(hello.tailnet ? { tailnet: hello.tailnet } : {}), ...(hello.enroll ? { enroll: hello.enroll } : {}), ...(hello.release ? { release: hello.release } : {}), ...(hello.manifest ? { manifest: hello.manifest } : {}), ...(hello.presenceKey ? { presenceKey: hello.presenceKey } : {}), ...(hello.passkey ? { passkey: hello.passkey } : {}) };
       const p = { pub: Buffer.from(pub), name, hello: keep, gate: String(match.gate), match, channels: new Set(), timer: setTimeout(() => pendingDrop(id, "nobody confirmed this pairing in time"), PENDING_MS) };
       if (p.timer.unref) p.timer.unref();
       pendingPairs.set(id, p);
@@ -1143,14 +1155,15 @@ export default {
         owner(meta.caller, meta, "a device's path");
         const c = String(meta.caller || "");
         const rtt = Number.isFinite(input.rtt) && input.rtt >= 0 && input.rtt < 60_000 ? Math.round(input.rtt) : null;
-        if (c.startsWith("device:") && meta.peer && meta.peer.via === "tailnet") {
+        const callerDevice = deviceIdOf(c);
+        if (callerDevice !== null && meta.peer && meta.peer.via === "tailnet") {
           // A desktop bound through ADR 0046's tagged join, calling over its own tailnet node.
-          const id = c.slice("device:".length);
+          const id = callerDevice;
           moved(id, input.path === "direct" ? "direct" : "relay", rtt);
           return { path: input.path, device: id };
         }
-        if (c.startsWith("device:")) {
-          const id = c.slice("device:".length);
+        if (callerDevice !== null) {
+          const id = callerDevice;
           if (input.path !== "relay") throw fail("bad_input", "through the relay, a device reports the relay path");
           moved(id, "relay", rtt);
           const code = crypto.randomBytes(16).toString("base64url");

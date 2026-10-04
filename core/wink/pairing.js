@@ -16,6 +16,7 @@
 // The module wiring (index.js) owns the Wink code state machine and hands this file the pieces it needs.
 
 import crypto from "node:crypto";
+import { deviceIdOf } from "../../lib/caller.js";
 import { ROLE_IDS } from "../../kernel/contracts/index.js";
 import { typeWinkCode, finishJoin } from "../../relay/client/join.js";
 import { parseCode, b64url, unb64url } from "../../relay/client/code.js";
@@ -673,7 +674,7 @@ export function createPairing(o) {
         atServer(meta0);
         const cur = meta.get("owner"), by = String(meta.get("adopter") || "");
         if (!cur) return { owned: false };
-        const dev = by.startsWith("device:") ? devices.get(by.slice(7)) : null;
+        const dev = deviceIdOf(by) !== null ? devices.get(/** @type {string} */ (deviceIdOf(by))) : null;
         return { owned: true, space: await ownerWords({ ...cur, identity: cur.identity }), device: (dev && dev.name) || (cur.name ? String(cur.name) : "device") };
       },
     });
@@ -874,20 +875,20 @@ export function createPairing(o) {
         if (prior) {
           // Once there is an owner, a change needs the owner's fresh presence, and comes from the one that adopted it or from a screen on this box.
           // A refused device that is not the adopter leaves nothing behind: its relay device goes (after the refusal has been answered).
-          const stranger = caller.startsWith("device:") && adopter !== caller;
+          const stranger = (deviceIdOf(caller) !== null) && adopter !== caller;
           if (stranger) dropLater(caller);
           if (!meta0.presence) throw fail("presence_required", words("serverOwned", { owner: await ownerWords(prior) }));
           if (stranger) throw fail("denied", words("serverOwned", { owner: await ownerWords(prior) }));
         }
-        else if (confirmAdopt && caller.startsWith("device:")) return firstAdopt(input, caller);
+        else if (confirmAdopt && (deviceIdOf(caller) !== null)) return firstAdopt(input, caller);
         return applyAdopt(input, caller);
       },
     });
     /** Takes a paired app's relay device off this box, so it no longer reaches it as an owner device. Waits a moment so the answer to the call that asked still travels. @param {any} caller */
     function dropLater(caller) {
       const c = String(caller || "");
-      if (!c.startsWith("device:") || typeof ctx.call !== "function") return;
-      const id = c.slice(7);
+      if (!(deviceIdOf(c) !== null) || typeof ctx.call !== "function") return;
+      const id = /** @type {string} */ (deviceIdOf(c));
       const go = () => { Promise.resolve(ctx.call("relay.devices.drop", { id })).catch(() => null); };
       const wait = o.dropMs ?? 750;
       if (!wait) { go(); return; }
@@ -910,8 +911,8 @@ export function createPairing(o) {
         owner(meta0, "letting a server go");
         const caller = String((meta0 && meta0.caller) || "anonymous");
         // an unowned server answers `already` to a paired device only: a stranger who can reach it must not learn that it is unowned (reviewer-3, LOW)
-        if (!meta.get("owner")) { if (!caller.startsWith("device:")) throw fail("denied", "Only a device paired to this server may ask it to let go."); return { released: true, already: true }; }
-        if (!caller.startsWith("device:") || meta.get("adopter") !== caller) throw fail("denied", words("releaseDenied", { owner: await ownerWords(meta.get("owner")) }));
+        if (!meta.get("owner")) { if (!(deviceIdOf(caller) !== null)) throw fail("denied", "Only a device paired to this server may ask it to let go."); return { released: true, already: true }; }
+        if (!(deviceIdOf(caller) !== null) || meta.get("adopter") !== caller) throw fail("denied", words("releaseDenied", { owner: await ownerWords(meta.get("owner")) }));
         clearOwner();
         return { released: true };
       },
@@ -944,7 +945,7 @@ export function createPairing(o) {
         owner(meta0, "changing a server's owner");
         const caller = String(meta0.caller || "anonymous");
         if (!meta0.presence) throw fail("presence_required", "changing a server's owner needs the owner's presence on this box");
-        if (caller.startsWith("device:") && meta.get("adopter") !== caller) throw fail("denied", "only the one that adopted this server may change its owner");
+        if ((deviceIdOf(caller) !== null) && meta.get("adopter") !== caller) throw fail("denied", "only the one that adopted this server may change its owner");
         return applyAdopt(input, caller);
       },
     });

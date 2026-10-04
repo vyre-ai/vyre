@@ -871,6 +871,28 @@ test("one pairing path for a browser: unconfirmed it is web:<id> and reaches win
   assert.notEqual(asked.status, 200, "device:<id> is not a browser with limits to lift");
 });
 
+test("a browser's passkey is enrolled only after the three words, bound to its device id and the app's origin, and removed with the device", async t => {
+  const w = await world(t);
+  const kp = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const passkey = { credential_id: crypto.randomBytes(24).toString("base64url"), public_key: kp.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, rp_id: "app.vyre.run" };
+  const keys = async () => ((await w.d.registry.call("presence.keys", {}, "cli", PROOF)).data || []).filter(k => k.kind === "passkey");
+  const minted = await w.d.registry.call("relay.pair.ticket", {}, "cli", PROOF);
+  const paired = await pairTicket(fromBase64url(minted.data.ticket), { relay: w.status.url, name: "Alex's browser", crypto: nodeCrypto(), keyStore: keystore(t), about: { kind: "web", release: "0.3.0" }, passkey });
+  assert.equal(paired.pending, true);
+  assert.equal((await keys()).length, 0, "nothing is enrolled for an unconfirmed redeemer");
+  const mine = await askPhone(w, paired.device, new Uint8Array(0), "Alex's browser");
+  const q = await until(async () => { const x = (await w.call("wink.phone.pairing")).data; return x && x.asking ? x : null; });
+  assert.equal((await w.call("wink.phone.pair.answer", { yes: true, pick: q.choices.indexOf(mine.words) + 1 })).data.yes, true);
+  await until(async () => (await keys()).length === 1);
+  assert.equal((await keys())[0].id, passkey.credential_id);
+  assert.equal((await deviceRow(w, paired.device)).presence, true);
+  const db = w.d.registry.deps.db;
+  const bound = db.prepare("SELECT device, origin FROM presence_key_devices WHERE key = ?").get(passkey.credential_id);
+  assert.deepEqual([bound.device, bound.origin], [paired.device, "https://app.vyre.run"], "bound to this device and the app's origin");
+  await w.call("wink.remove", { device: paired.device });
+  await until(async () => (await keys()).length === 0);
+});
+
 test("X-1, real daemon and relay: the yes makes the device (row, presence key, bridge session) and only the yes; a wrong pick makes nothing", async t => {
   const w = await world(t);
   const open = (await w.call("wink.phone.open", {})).data;
