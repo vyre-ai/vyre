@@ -3,7 +3,7 @@
 // person session's P-256 key as the presence key.
 
 import { indexedDbKeyStore, webCrypto } from "@vyre/relay-client/webcrypto.js";
-import { b64url } from "../auth/person";
+import { b64url } from "../auth/person.ts"; // the explicit file: "../auth/person" resolves to person.web.ts on the web, which exports no b64url (the presence key was never offered)
 import { personKey } from "../auth/person.web";
 import { readPairing, type Pairing } from "./pairing";
 

@@ -63,6 +63,7 @@ const body = () => page.locator("body").innerText();
 
 let alive = await check("install: the name step is open (the web claim flag is on)", async () => {
   await page.goto(`${BASE}/app/u/install`, { waitUntil: "networkidle" });
+  await page.getByText("Choose your Vyre name").first().waitFor({ timeout: 25000 }).catch(() => {}); // the app retries the missing box for a few seconds before it draws
   if (!(await body()).includes("Choose your Vyre name")) throw new Error("the page does not offer the claim (built from a tree whose rc.ts says browserClaim: false, or from a cached bundle)");
 });
 alive = alive && await check(`a free name is offered: ${NAME}`, async () => { await page.locator("input").first().fill(NAME); await page.getByText(/is yours to take/).waitFor({ timeout: 10000 }); });
@@ -115,6 +116,7 @@ if (CODE_CMD && ANSWER_CMD) {
     if (/could not|cannot reach|did not|failed|do not match/i.test(t)) throw new Error("the page reports a failure: " + t.slice(0, 200).replace(/\n/g, " | "));
   });
 }
+if (args.includes("--debug")) console.log("PK:", await page.evaluate(() => [sessionStorage.getItem("__PK"), sessionStorage.getItem("__PKERR")]).catch(() => "?"));
 fs.writeFileSync(path.join(OUT, "report.json"), JSON.stringify({ at: new Date().toISOString(), name: NAME, results }, null, 2));
 await browser.close(); server.close();
 process.exit(results.every((x) => x.ok) ? 0 : 1);
