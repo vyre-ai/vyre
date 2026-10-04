@@ -1,4 +1,4 @@
-// Memory against the real vyred: memory.facts to read, memory.correct to edit or forget, memory.uncorrect for Undo (core/memory/index.js).
+// Memory against the real vyred: memory.facts to read, memory.correct to edit or forget (Undo is extras.ts uncorrectReal: one implementation of memory.uncorrect).
 // A fact belongs to the person, not to a space (the personal graph), so every real fact sits in Mine.
 import { call } from "../../src/api/box";
 import type { Fact } from "./data";
@@ -19,11 +19,6 @@ export async function forgetReal(fact: string): Promise<number | null> {
   if (r.error) throw new Error(r.error.message);
   const c = r.data?.correction;
   return typeof c === "number" ? c : typeof c === "object" && c && typeof c.id === "number" ? c.id : null;
-}
-
-export async function undoReal(correction: number): Promise<void> {
-  const r = await call("memory.uncorrect", { id: correction });
-  if (r.error) throw new Error(r.error.message);
 }
 
 /** Edit: the old wording ended, and the person's words are true instead. */

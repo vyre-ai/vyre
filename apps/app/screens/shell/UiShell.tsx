@@ -1,18 +1,25 @@
 import { useEffect } from "react";
 import { usePathname, useRouter } from "expo-router";
-import { Shell, nowCount, useAppearance, useWorld } from "@vyre/ui";
+import { Shell, allowsMock, nowCount, useAppearance, useWorld } from "@vyre/ui";
 import { NAV } from "./nav";
-import { loadShell } from "./data";
+import { useShell } from "./shared";
+import { loadReal } from "./real";
+import { startSpace } from "./real-model";
 import { useSpaces } from "./state";
 import { themeFor } from "./spaces.js";
-
-const DATA = loadShell();
 
 /** The frame of /u: the rail or tab bar, the space switcher, and the showing space's look applied to the theme. */
 export function UiShell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const router = useRouter();
   const { space, looks, setShowing } = useSpaces();
+  const { data: DATA, set, fail } = useShell();
+  useEffect(() => {
+    if (allowsMock()) return;
+    let live = true;
+    loadReal().then((d) => { if (!live) return; set(d); if (!d.spaces.some((x) => x.id === useSpaces.getState().space)) setShowing(startSpace(d)); }).catch((e) => live && fail(e instanceof Error ? e.message : "The box did not answer."));
+    return () => { live = false; };
+  }, [set, fail, setShowing]);
   const setSpace = useAppearance((s) => s.setSpace);
   const world = useWorld();
   const waiting = world.data ? nowCount(world.data) : 0;

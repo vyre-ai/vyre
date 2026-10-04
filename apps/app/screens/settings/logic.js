@@ -63,6 +63,7 @@ export function settingsGroups(/** @type {string} */ space) {
     { title: space, rows: [
       ["Customize", "Types, fields, stages", "/u/settings/customize", "file"],
       ["Spaces and members", "Who is in them", "/u/spaces", "space"],
+      ["Rules", "Never, drafts only, always ask", "/u/settings/rules", "shield"],
       ["Privacy and sealing", "Admins only", "/u/settings/privacy", "vault"],
       ["Kits", "Installed and available", "/u/kits", "box"],
     ] },

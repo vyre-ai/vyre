@@ -12,7 +12,7 @@
 
 /** The tool names, one place: platform's list (team/0.2/CHAT.md, "the gateway tools for the app"). `space` is optional on each (absent = the home's own). */
 export const TOOLS = {
-  me: "records.me", actors: "records.actors", types: "records.types", define: "records.define",
+  me: "records.me", spaceList: "spaces.list", actors: "records.actors", types: "records.types", define: "records.define",
   list: "records.list", get: "records.get", create: "records.create", update: "records.update",
   seesAs: "records.sees-as", sealPut: "records.seal-put", reveal: "records.reveal", events: "records.events",
   tasks: "tasks.list", task: "tasks.get", request: "tasks.request", decide: "tasks.decide", move: "tasks.move", submit: "tasks.submit",
@@ -21,7 +21,7 @@ export const TOOLS = {
 /** A tool answer that may be the thing itself or wrapped one level ({record}, {task}, {field}): the platform has not frozen the wrapping, so read both. @param {any} d @param {string} k */
 const one = (d, k) => (d && typeof d === "object" && k in d ? d[k] : d);
 /** The rows of a page. @param {any} d */
-const rowsOf = (d) => (Array.isArray(d) ? d : d?.rows ?? d?.records ?? d?.items ?? []);
+const rowsOf = (d) => (Array.isArray(d) ? d : d?.rows ?? d?.tasks ?? d?.records ?? d?.items ?? []);
 
 /** The StoreError codes the screens know. */
 const CODES = new Set(["version_conflict", "not_found", "sealed_value_refused", "invalid"]);
@@ -43,7 +43,17 @@ export function createGatewayStore({ rpc }) {
   const notify = () => { for (const f of [...subs]) { try { f(); } catch { /* a screen's redraw must not stop the others */ } } };
   /** @type {any | null} */ let meCache = null;
   const meAnswer = async () => (meCache ??= await rpc.read(TOOLS.me, {}));
-  const spaces = async () => { const d = await meAnswer(); return d?.spaces ?? []; };
+  /** The spaces on this Vyre, named by spaces.list (windows' tool); records.me names the home's own space, which is added when the list does not have it. */
+  const spaces = async () => {
+    const d = await meAnswer();
+    const listed = await rpc.read(TOOLS.spaceList, {}).catch(() => []);
+    /** @type {any[]} */ const out = (Array.isArray(listed) ? listed : listed?.spaces ?? []).filter((/** @type {any} */ x) => !x.status || x.status === "done")
+      .map((/** @type {any} */ x) => ({ id: x.id, name: x.displayName || x.label || x.name, kind: x.role === "owner" ? "mine" : "team" }));
+    const own = d?.space ?? d?.spaces?.[0]?.id;
+    if (Array.isArray(d?.spaces) && d.spaces.length) return d.spaces;
+    if (own && !out.some((x) => x.id === own)) out.unshift({ id: own, name: "Home", kind: "mine" });
+    return out;
+  };
   /** A write, then the screens redraw from the store. */
   const write = async (/** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ o = undefined) => { const d = await rpc.write(tool, input, o); notify(); return d; };
   /** The Space-optional input: only name a space when the screen did. */
@@ -78,7 +88,7 @@ export function createGatewayStore({ rpc }) {
     async putSealed(urn, field, value) { return one(await write(TOOLS.sealPut, { urn, field, value }), "record"); },
     // Human-only: the proof rides in the header, never the body.
     async reveal(urn, field, purpose, proof) { return await rpc.write(TOOLS.reveal, { urn, field, purpose }, { proof }); },
-    async seesAs(urn, who) { const d = await rpc.read(TOOLS.seesAs, { urn, who }); return d?.fields ?? d ?? {}; },
+    async seesAs(urn, who) { const d = await rpc.read(TOOLS.seesAs, { urn, who }); return d?.data ?? d?.fields ?? d ?? {}; },
     async tasks(q = {}) { return rowsOf(await rpc.read(TOOLS.tasks, q)).map((/** @type {any} */ t) => t); },
     async task(id) { const d = await rpc.read(TOOLS.task, { id }); const t = one(d, "task"); return t && typeof t === "object" ? t : null; },
     async request(task) { return one(await write(TOOLS.request, { task }), "task"); },
