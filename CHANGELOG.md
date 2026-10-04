@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(daemon): an open member stream re-checks the device's identity entry and the membership on every call and by a watcher, so a removed device or member is refused and its stream closed.
+
 - feat(kernel/remote,records): `seal.reveal` crosses to the home with the person's proof for the home's challenge, so a device on a server-hosted space can reveal with a yes (needs a wired inference door and a reveal grant). fix(wink): a pairing that does not finish says why in the server's log; the home logs the reason of every non-presence refusal.
 
 - feat(spaces): a call with no space named acts in the one space the person made; with two or more it answers `needs_space` and lists them. A member's stream reconnects with no error after the invitee channel's life (tested).

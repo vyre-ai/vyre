@@ -23,7 +23,7 @@ const STREAM_ID = /^[A-Za-z0-9_-]{8,64}$/;
 const err = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 
 /**
- * @param {{ kernel: any, registry: any, people?: { list(): any[] } | null, events?: { on(type: string, f: (e: any) => void): (() => void) | void } | null, now?: () => number, identityEntry?: (identity: string, eid: string, name?: string) => Promise<{ pub: string, alg?: string, held?: string } | null>, boxId?: () => Promise<string | null>, serverFor?: (space: string) => { serve(request: any, peer: any): Promise<any> } | null, inviteeLimits?: { perInvite?: number, perIdentity?: number, perMinute?: number, perChannel?: number, perBox?: number, nonceMax?: number, idleMs?: number, presenceMs?: number }, callerFacts: (caller: string, policy: any, via: any, k: any, capsule: boolean, device: any) => any, log?: (m: string) => void }} o
+ * @param {{ kernel: any, registry: any, people?: { list(): any[] } | null, events?: { on(type: string, f: (e: any) => void): (() => void) | void } | null, now?: () => number, identityEntry?: (identity: string, eid: string, name?: string) => Promise<{ pub: string, alg?: string, held?: string } | null>, boxId?: () => Promise<string | null>, serverFor?: (space: string) => { serve(request: any, peer: any): Promise<any> } | null, memberWatchMs?: number, inviteeLimits?: { perInvite?: number, perIdentity?: number, perMinute?: number, perChannel?: number, perBox?: number, nonceMax?: number, idleMs?: number, presenceMs?: number }, callerFacts: (caller: string, policy: any, via: any, k: any, capsule: boolean, device: any) => any, log?: (m: string) => void }} o
  */
 export function createPeerDoor(o) {
   const log = o.log || (() => {});
@@ -132,7 +132,7 @@ export function createPeerDoor(o) {
     if (nonces.has(h.nonce)) return { why: "replayed" };
     nonces.set(h.nonce, now + 2 * HELLO_WINDOW_MS);
     trim(nonces, lim.nonceMax);
-    return { identity: h.identity };
+    return { identity: h.identity, pub: entry.pub };
   };
   /** A kernel request for one of the two invitee calls on this invite, as the invitee. @param {string} space @param {string} call @param {any[]} args @param {number} now */
   const inviteeRequest = (space, call, args, now) => ({ v: WIRE_VERSION, space, id: `inv-${crypto.randomBytes(8).toString("hex")}`, ts: now, call, args });
@@ -153,7 +153,7 @@ export function createPeerDoor(o) {
       const inviteeId = String(who.inviteeId);
       /** @type {any} */ let session = null;
       /** @type {any} */ let idleTimer = null;
-      const end = (/** @type {string} */ why) => { if (idleTimer) clearTimeout(idleTimer); const t = setTimeout(() => { try { session && session.close(why); } catch { /* closed */ } }, 50); if (t.unref) t.unref(); };
+      const end = (/** @type {string} */ why) => { if (idleTimer) clearTimeout(idleTimer); if (watcher) clearInterval(watcher); const t = setTimeout(() => { try { session && session.close(why); } catch { /* closed */ } }, 50); if (t.unref) t.unref(); };
       /** @type {Promise<{ ok: true, identity: string, space: string, invite: string } | { ok: false, why: string }> | null} */ let admitted = null;
       const admit = () => admitted || (admitted = (async () => {
         const c = await checkHello(head, inviteeId);
@@ -165,19 +165,38 @@ export function createPeerDoor(o) {
         if (head.invite === "member") {
           const m = await server.serve(inviteeRequest(head.space, "grants.members.get", [c.identity], (o.now || Date.now)()), { device_key_id: inviteeId, person: c.identity, path: "relay" });
           if (!m || m.ok !== true || !m.result) { log(`peer door: member ${inviteeId} refused (not_a_member${m && m.error ? `: ${String(m.error.code)}` : ""})`); return { ok: false, why: "not_a_member" }; }
-          return { ok: true, member: true, identity: c.identity, space: head.space, invite: "member", entry: head.entry, ...(typeof head.name === "string" && head.name ? { name: head.name } : {}) };
+          return { ok: true, member: true, pub: c.pub, identity: c.identity, space: head.space, invite: "member", entry: head.entry, ...(typeof head.name === "string" && head.name ? { name: head.name } : {}) };
         }
         // the space's own kernel decides whether this invite is live, unused and meant for this person: a preview is the proof (it is all the invitee may read before it accepts)
         const r = await server.serve(inviteeRequest(head.space, "grants.invites.get", [head.invite], (o.now || Date.now)()), { device_key_id: inviteeId, person: c.identity, path: "relay" });
         if (!r || r.ok !== true || !r.result || r.result.status !== "pending") { log(`peer door: invitee ${inviteeId} refused (bad_invite${r && r.error ? `: ${String(r.error.code)}` : ""})`); return { ok: false, why: "bad_invite" }; }
         return { ok: true, identity: c.identity, space: head.space, invite: head.invite, entry: head.entry, ...(typeof head.name === "string" && head.name ? { name: head.name } : {}) };
       })());
+      /** Is a member's stream still entitled: the device's entry is on its identity's list now (read live, same key as admitted) and the space's kernel still shows the person as a member. @param {any} a */
+      const memberStillOk = async a => {
+        try {
+          const e = typeof o.identityEntry === "function" ? await o.identityEntry(a.identity, a.entry, a.name) : null;
+          if (!e || typeof e.pub !== "string" || e.pub !== a.pub || e.alg === "webauthn-es256" || e.held === "web") return false;
+          const sv = serverFor(a.space);
+          if (!sv) return false;
+          const m = await sv.serve(inviteeRequest(a.space, "grants.members.get", [a.identity], (o.now || Date.now)()), { device_key_id: inviteeId, person: a.identity, path: "relay" });
+          return Boolean(m && m.ok === true && m.result);
+        } catch { return false; }
+      };
       // accepting (or a refusal of the invite itself) finishes the stream at once: no call after it is served, even inside the moment the close takes
       let finished = false;
       // a stream with no call either way for 30 s is closed (IV-5: silent streams must not hold the invitee pool); while the home waits for the invitee's presence answer it may be silent for 2 minutes
       const arm = (/** @type {number} */ ms) => { if (idleTimer) clearTimeout(idleTimer); idleTimer = setTimeout(() => { finished = true; end("idle"); }, ms); if (idleTimer.unref) idleTimer.unref(); };
       arm(lim.idleMs);
       let wait = lim.idleMs;
+      // an open member stream is re-checked on its own too (a removal is not waited for until the next call): the device or the membership gone ends it
+      const watchMs = o.memberWatchMs ?? 10_000;
+      /** @type {any} */ let watcher = null;
+      if (head && head.invite === "member") admit().then(a => {
+        if (!a.ok || a.member !== true || finished) return;
+        watcher = setInterval(async () => { if (finished) { clearInterval(watcher); return; } if (!(await memberStillOk(a))) { finished = true; clearInterval(watcher); end("not a member any more"); } }, watchMs);
+        if (watcher.unref) watcher.unref();
+      }, () => {});
       const handle = async (/** @type {string} */ tool, /** @type {any} */ input) => {
         const a = await admit();
         if (!a.ok) { finished = true; end("not admitted"); throw err("denied", "that invite cannot be used from here"); }
@@ -185,6 +204,8 @@ export function createPeerDoor(o) {
         if (a.member === true) {
           // a member's stream: the space's kernel calls and nothing else (no registry tool, no other space); the invite calls are not a member's
           if (input.space !== a.space || INVITEE_CALLS.has(String(input.call))) throw err("denied", "a member stream opens this space's kernel calls and nothing else");
+          // every call: the device must still be on the identity's signed list (the same key it was admitted with) and the person must still be a member; otherwise the stream ends now
+          if (!(await memberStillOk(a))) { finished = true; end("not a member any more"); throw err("denied", "this device or this membership is gone"); }
           const sv = serverFor(a.space);
           if (!sv) { end("gone"); throw err("not_found", "no such space here"); }
           return sv.serve(input, { device_key_id: inviteeId, person: a.identity, path: "relay", entry: a.entry });

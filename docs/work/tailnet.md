@@ -1497,3 +1497,6 @@ test/wink.test.js "join end to end" (scratch branch work/join-e2e, never sent to
 
 - CL-1: `relay.devices.clear-leftover` must itself refuse while the server is owned (today the only guard is the call site in wink.server.code). Have the relay read the owner marker (ctx.config.network.owner or ask wink for owned) and answer `owned`; test as module:wink on an owned server.
 - CL-2: collapse the `relay: refused a hello (...)` log lines: one per reason per minute with a count, so an outsider opening channels cannot flood the log.
+
+## Note from windows (5 Oct): peer-door.js member stream
+core/daemon/peer-door.js: an invitee hello whose `invite` is `member` opens a member stream, admitted only when the space's kernel answers `grants.members.get` for the person; it serves that space's kernel calls only, re-checks the device's identity entry and the membership on every call, and a watcher ends it when either is gone (`memberWatchMs`, 10 s). The invite path and its limits are unchanged.
