@@ -1,5 +1,6 @@
 // @ts-check
 // Kits across a restart on a real daemon: a proposal waiting for the owner's yes survives it and installs the APPROVED content after it; an installed Kit is still installed, with its ledger intact.
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { start } from "../core/daemon/index.js";

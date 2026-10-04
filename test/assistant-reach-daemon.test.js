@@ -1,5 +1,6 @@
 // @ts-check
 // Which of threads.start, agents.ask and team.ask an assistant acting for its person may call on a real daemon, and which a bare model caller may not.
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
