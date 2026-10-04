@@ -301,7 +301,7 @@ export function custodyNote(profile = process.env.VYRE_SEAL_PROFILE || "desktop"
   if (platform === "win32") return "Sealed data on this PC is only as protected as this PC's own Windows account: any program running as you can read the key file.";
   return "The sealing key is a file inside your Vyre folder, private to you. Vyre's own sessions are sandboxed away from it and your disk's encryption protects it at rest; root, or a program running as you outside Vyre's sandbox, can read it.";
 }
-export function hostCheck({ profile = process.env.VYRE_SEAL_PROFILE || "desktop", dev = process.env.VYRE_SEAL_DEV === "1", uid = process.getuid?.() ?? -1, agentUids = process.env.VYRE_AGENT_UIDS } = {}) {
+export function hostCheck({ profile = process.env.VYRE_SEAL_PROFILE || "desktop", dev = devSwitch(process.env.VYRE_SEAL_DEV), uid = process.getuid?.() ?? -1, agentUids = process.env.VYRE_AGENT_UIDS } = {}) {
   if (dev || profile === "desktop") return;
   const agents = agentUids ? agentUids.split(",").map(Number) : Array.from({ length: 64 }, (_, i) => 2000 + i);
   if (profile !== "server" || agents.includes(uid)) throw Object.assign(new Error("the sealing process must run as its own user, not an agent's"), { safe: true });
@@ -310,6 +310,7 @@ export function hostCheck({ profile = process.env.VYRE_SEAL_PROFILE || "desktop"
 /** Serve requests on stdin and stdout. Anything unexpected is a generic code: the message of an exception may hold input, so it is never sent. */
 export function serve({ dir, master = (hostCheck(), fileMaster(dir)), sinks = {}, input = process.stdin, output = process.stdout, verifiers = {}, allowUnattested = false, allowSoftware = false } = {}) {
   const sealer = new Sealer({ dir, master, sinks, verifiers, allowUnattested, allowSoftware });
+  if (allowSoftware) process.stderr.write("seal: software presence keys are accepted (development build); every use is method software\n");
   const rl = readline.createInterface({ input });
   rl.on("line", async line => {
     let req; try { req = JSON.parse(line); } catch { return; }
@@ -327,6 +328,6 @@ if (process.argv[1] && process.argv[1].endsWith("kernel/seal/process.js") && pro
   process.stdin.on("end", () => process.exit(0)); process.stdin.on("close", () => process.exit(0));
   let verifiers = {};
   if (process.env.VYRE_SEAL_VERIFIERS) verifiers = (await import(process.env.VYRE_SEAL_VERIFIERS)).default;
-  try { serve({ dir: process.env.VYRE_SEAL_DIR, sinks: JSON.parse(process.env.VYRE_SEAL_SINKS || "{}"), verifiers, allowUnattested: process.env.VYRE_SEAL_UNATTESTED === "1", allowSoftware: devSwitch(process.env.VYRE_SEAL_SOFTWARE) }); }
+  try { serve({ dir: process.env.VYRE_SEAL_DIR, sinks: JSON.parse(process.env.VYRE_SEAL_SINKS || "{}"), verifiers, allowUnattested: devSwitch(process.env.VYRE_SEAL_UNATTESTED), allowSoftware: devSwitch(process.env.VYRE_SEAL_SOFTWARE) }); }
   catch (e) { process.stderr.write(`seal: ${e?.safe ? e.message : "internal error"}\n`); process.exit(70); }
 }
