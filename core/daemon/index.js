@@ -701,21 +701,36 @@ export async function asTaken(caller, socket, registry, thread, deps) {
   // Only a definite answer stays for the connection's life: inside a model, or read to the top and
   // outside. "Unknown" (an unreadable chain, a peer not found) is asked again on the next call.
   if (!v) {
-    const mine = above(socket, registry, undefined, deps).then(w => ({
+    // A peer read that comes back empty (a busy box starving the helper) is retried a few times, short and bounded, while the connection is still open: a real person's CLI must not be refused because
+    // a helper ran late. Still empty: the call is not taken on its word (a model's, as before) and the refusal says Vyre could not tell who was calling.
+    const measure = async () => {
+      let w = await above(socket, registry, undefined, deps);
+      for (let n = 0; n < PEER_RETRIES && w.nopid && canReadPeers && !socket.destroyed; n++) {
+        await new Promise(r => setTimeout(r, deps && typeof deps.peerRetryMs === "number" ? deps.peerRetryMs : 60 * (n + 1)));
+        w = await above(socket, registry, undefined, deps);
+      }
+      return w;
+    };
+    const mine = measure().then(w => ({
       model: Boolean(w.inside || (w.nopid && canReadPeers)),
       definite: Boolean(!w.unreadable && (w.inside || (!w.unknown && !w.nopid))),
       outside: Boolean(!w.inside && !w.unreadable && !w.unknown && !w.nopid && !w.server && canReadPeers),
       server: !w.inside && w.server ? w.server : null,
+      couldNotTell: Boolean((w.nopid && canReadPeers) || w.unreadable),
     }));
     v = mine;
     taken.set(socket, mine);
-    // A measurement that did not come out definite (a slow or failed peer read, an unreadable table) is "unknown": it is logged, never a person, and asked again on the next call.
-    mine.then(a => { if (!a.definite) { try { registry.deps && typeof registry.deps.log === "function" && registry.deps.log("ancestry: unknown for a socket call (not a person; asked again next call)"); } catch { /* logging never decides */ } if (taken.get(socket) === mine) taken.delete(socket); } }, () => { if (taken.get(socket) === mine) taken.delete(socket); });
+    // A measurement that did not come out definite (a slow or failed peer read, an unreadable table) is "unknown": never a person, asked again on the next call, and logged ONCE per connection (a model's
+    // shell must not be able to fill the log by calling again and again).
+    mine.then(a => { if (!a.definite) { if (!told.has(socket)) { told.add(socket); try { registry.deps && typeof registry.deps.log === "function" && registry.deps.log("ancestry: unknown for a socket call (not a person; asked again next call)"); } catch { /* logging never decides */ } } if (taken.get(socket) === mine) taken.delete(socket); } }, () => { if (taken.get(socket) === mine) taken.delete(socket); });
   }
   const a = await v;
-  return a.model ? { caller: thread ? `mcp:thread:${thread}` : "mcp", model: true, outside: false } : { caller, model: false, outside: a.outside, server: a.server };
+  return a.model ? { caller: thread ? `mcp:thread:${thread}` : "mcp", model: true, outside: false, couldNotTell: a.couldNotTell } : { caller, model: false, outside: a.outside, server: a.server, couldNotTell: a.couldNotTell };
 }
-/** @type {WeakMap<object, Promise<{ model: boolean, definite: boolean, outside: boolean, server: any }>>} */
+const PEER_RETRIES = 3;
+/** Sockets whose unknown ancestry was already logged. @type {WeakSet<object>} */
+const told = new WeakSet();
+/** @type {WeakMap<object, Promise<{ model: boolean, definite: boolean, outside: boolean, server: any, couldNotTell: boolean }>>} */
 const taken = new WeakMap();
 
 /** The tools that need the calling terminal's login, never a model's shell: the command line's sign-in. */
@@ -1069,8 +1084,10 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     /** @type {{ inside: boolean, outside?: boolean } | undefined} */
     const measured = socket && !policy.caller ? surfaceAncestry(shell, typeof registry.deps.devStandIn === "function" && registry.deps.devStandIn() === true, cliSession) : undefined; // not `ancestry`: that is the imported function used earlier in this handler
     const facts = callerFacts(caller, policy, via, kernelOf ? kernelOf() : null, capsuleOk, deviceRow, measured);
-    const result = await registry.call(name, input, caller, { ...via, ...(facts ? { kernelFacts: facts } : {}), proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
+    let result = await registry.call(name, input, caller, { ...via, ...(facts ? { kernelFacts: facts } : {}), proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
       keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req), ...(kernelProof(req) ? { kernel_proof: kernelProof(req) } : {}), ...(sessionToken ? { token: sessionToken } : {}) });
+    // The caller said cli or local, the daemon could not read who was on the socket (a busy box, an unreadable table) and so did not take the label: say that, not "not a signed-in person".
+    if (socket && !policy.caller && shell.couldNotTell && /^(cli|local)$/.test(String(req.headers["x-vyre-caller"] || "")) && result.error && ["denied", "no_such_tool"].includes(result.error.code)) result = { error: { code: "caller_unknown", message: "Vyre could not tell who is calling; try again" } };
     // A new person session for the Deck goes in the cookie, never in the body a script could read.
     if (name === "presence.person.start" && result.data && result.data.kind === "cookie" && result.data.token) {
       res.setHeader("set-cookie", `${COOKIE}=${result.data.token}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=${Math.floor(PERSON_MAX / 1000)}`);
