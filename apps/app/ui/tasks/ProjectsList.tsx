@@ -69,7 +69,7 @@ export function ProjectsList({ world, items, onOpen, onNew }: { world: World; it
   const showType = type === "all" && work.length > 1;
   const showOwner = shown.some((i) => !!ownerOf(i));
   const showTasks = shown.some((i) => tasksOf(i).total > 0);
-  const tally = (() => { const c = new Map<string, number>(); for (const i of shown) { const s = stageOf(i); const n = s.at >= 0 ? s.stages[s.at] : ""; if (n) c.set(n, (c.get(n) ?? 0) + 1); } return [...c].map(([n, k]) => `${k} ${n}`).join(", "); })();
+  const tally = (() => { const c = new Map<string, number>(); for (const i of shown) { const s = stageOf(i); const n = s.at >= 0 ? s.stages[s.at] : ""; if (n) c.set(n, (c.get(n) ?? 0) + 1); } const parts = [...c].map(([n, k]) => `${k} ${n}`); return work.length === 1 && parts.length <= 5 ? parts.join(", ") : ""; })();
   const typeLabel = (i: Item) => i.def.label;
 
   const filter = (
@@ -137,7 +137,7 @@ export function ProjectsList({ world, items, onOpen, onNew }: { world: World; it
   return (
     <View className="gap-s4">
       <View className="flex-row items-center gap-s2">
-        <View className="min-w-0 flex-1"><Text size="page" strong>Projects</Text>{tally ? <Text size="caption" tone="label">{`${shown.length} ${shown.length === 1 ? "project" : "projects"}: ${tally}`}</Text> : null}</View>
+        <View className="min-w-0 flex-1"><Text size="page" strong>Projects</Text><Text size="caption" tone="label">{`${shown.length} ${shown.length === 1 ? "project" : "projects"}${tally ? `: ${tally}` : ""}`}</Text></View>
         {filter}
         {phone ? null : <NewMenu items={items} onNew={onNew} />}
       </View>

@@ -17,7 +17,7 @@ export default function ProjectsScreen() {
       <LargeTitleScreen title="Projects" own onRefresh={q.reload}>
         {q.error && !q.data ? <ErrorState title="Projects did not load" reason={q.error.message} retry={q.reload} />
           : !q.data ? <LoadingState rows={5} />
-          : <ProjectsList world={q.data.world} items={q.data.items} onOpen={open} onNew={create} />}
+          : <><ProjectsList world={q.data.world} items={q.data.items} onOpen={open} onNew={create} />{phone ? <View style={{ height: 40 }} /> : null}</>}
       </LargeTitleScreen>
       {phone && q.data ? <View style={{ position: "absolute", right: 16, bottom: 16 }}><NewMenu floating items={q.data.items} onNew={create} /></View> : null}
     </View>
