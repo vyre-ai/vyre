@@ -10,6 +10,7 @@
 //   newcomer     the chain refuses the change from this entry (too new to do it)
 //   rolled_back  the directory's chain is older than one this device has seen (the pin)
 //   exists       this device already holds a different name
+//   not_hardware a phone could not give its Secure Enclave key (`requireEnclave`): nothing is signed or kept (NK-2)
 
 import * as C from "../../../../kernel/identity/chain.js";
 import { codeLooksRight, codeSigner, STRETCH } from "./recovery.js";
@@ -32,6 +33,8 @@ type Opts = {
   key?: Awaited<ReturnType<typeof generateDeviceKey>>;
   /** The phone's Secure Enclave public key (NK-2) for the new entry, when this device has one. */
   enclave?: string;
+  /** On a phone: refuse (not_hardware) unless `enclave` is given, so a recovered phone never has a device entry whose seed alone can change the list (NK-2). */
+  requireEnclave?: boolean;
 };
 
 async function directory(f: typeof fetch, base: string, method: "GET" | "POST", target: string, body?: unknown): Promise<{ status: number; data: any }> {
@@ -54,7 +57,15 @@ export async function recoverIdentity(o: Opts): Promise<{ name: string; id: stri
   const now = o.now ?? Date.now;
   // A second recovery on the same device is idempotent: the name is already here.
   const mine = await loadIdentity().catch(() => null);
-  if (mine) { if (mine.name === name) return { name: mine.name, id: mine.id }; throw fail("exists", "This device already holds a different name."); }
+  if (mine) {
+    if (mine.name !== name) throw fail("exists", "This device already holds a different name.");
+    // Kept here: make sure the directory has this device's entry too (an earlier publish whose answer was lost may not have landed); if not, send the same op again.
+    const last = mine.ops[mine.ops.length - 1] as any;
+    const there = await directory(f, base, "GET", `/v1/ids/resolve?name=${encodeURIComponent(name)}`).catch(() => null);
+    const listed = there && Array.isArray(there.data.ops) && there.data.ops.some((x: any) => x && x.entry && x.entry.eid === mine.eid);
+    if (there && !listed && last && last.entry && last.entry.eid === mine.eid) await directory(f, base, "POST", "/v1/ids/append", { name, ops: [last] });
+    return { name: mine.name, id: mine.id };
+  }
   const r = await directory(f, base, "GET", `/v1/ids/resolve?name=${encodeURIComponent(name)}`);
   const ops: any[] = Array.isArray(r.data.ops) ? r.data.ops : [];
   if (r.data.kind !== "person") throw fail("not_a_person", "That name does not belong to a person.");
@@ -64,6 +75,7 @@ export async function recoverIdentity(o: Opts): Promise<{ name: string; id: stri
   if (o.pin) { const seen = await C.checkAnswer(o.pin, ops); if (!seen.ok) throw fail("rolled_back", "The directory's list is older than one this device has seen."); }
   const ck = await codeSigner(o.code, o.password ?? "", o.params ?? STRETCH);
   if (!state.entries.some((e: any) => e.kind === "code" && e.eid === ck.eid)) throw fail("wrong_code", "That code (or password) is not the one for this name.");
+  if (o.requireEnclave && !o.enclave) throw fail("not_hardware", "This phone could not give its Secure Enclave key.");
   const key = o.key ?? (await generateDeviceKey());
   const entry = { eid: key.eid, kind: "device", pub: key.publicKey, label: o.deviceLabel ? String(o.deviceLabel).slice(0, 60) : undefined, ...(o.enclave ? { enclave: o.enclave } : {}) };
   let op: any, next: any;
@@ -74,7 +86,14 @@ export async function recoverIdentity(o: Opts): Promise<{ name: string; id: stri
   // Keep the key first, then publish: if keeping fails nothing was appended (the code is not spent on a lost key).
   await saveIdentity({ name, id: state.id, eid: key.eid, ops: [...ops, op], pin: C.pinOf(next), key });
   try { await directory(f, base, "POST", "/v1/ids/append", { name, ops: [op] }); }
-  catch (e) { await forgetIdentity().catch(() => {}); throw e; }
+  catch (e) {
+    // A clear refusal (the directory said no) means nothing landed: forget the key. A lost answer (the directory may have applied the op) is checked: read the chain again, and if it holds this
+    // device the recovery succeeded; if it cannot be read the key STAYS (a retry sends the same op again), because forgetting it would leave an entry on the list that nobody holds (RX-2).
+    if ((e as { code?: string }).code !== "unreachable") { await forgetIdentity().catch(() => {}); throw e; }
+    const again = await directory(f, base, "GET", `/v1/ids/resolve?name=${encodeURIComponent(name)}`).catch(() => null);
+    const landed = again && Array.isArray(again.data.ops) && again.data.ops.some((x: any) => x && x.entry && x.entry.eid === key.eid);
+    if (!landed) { if (again) await forgetIdentity().catch(() => {}); throw e; }
+  }
   return { name, id: state.id };
 }
 

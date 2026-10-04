@@ -63,3 +63,40 @@ test("recover: no such name, a bad format, and a rolled-back chain (the pin) are
   await assert.rejects(recoverIdentity({ name: "sam", code: made.recoveryCode, deviceLabel: "x", base: "http://127.0.0.1:9", params: PARAMS }), { code: "unreachable" });
   await forgetIdentity();
 });
+
+test("RX-1: a phone (requireEnclave) without its Secure Enclave key signs and keeps nothing; with it the entry carries `enclave`", { timeout: 90_000 }, async t => {
+  await forgetIdentity();
+  const base = await standIn(t);
+  const made = await claimIdentity({ name: "kim", base, params: PARAMS });
+  await assert.rejects(recoverIdentity({ name: "kim", code: made.recoveryCode, deviceLabel: "phone", base, params: PARAMS, requireEnclave: true }), { code: "not_hardware" });
+  assert.equal((await resolve(base, "kim")).ops.length, 1, "nothing was appended");
+  assert.equal(await loadIdentity(), null, "and nothing kept");
+  const point = Buffer.concat([Buffer.from([4]), Buffer.alloc(64, 7)]).toString("base64url");
+  // the chain checks the enclave point's shape, so a stand-in point is refused by the directory: the entry still carries it on its way (the op is built with it)
+  let sent = null;
+  const spy = async (url, init) => { if (init && init.method === "POST") sent = JSON.parse(init.body); return fetch(url, init); };
+  await recoverIdentity({ name: "kim", code: made.recoveryCode, deviceLabel: "phone", base, params: PARAMS, requireEnclave: true, enclave: point, fetch: spy }).catch(() => {});
+  assert.ok(sent && sent.ops[0].entry.enclave === point, "the add op's entry carries the enclave key");
+  await forgetIdentity();
+});
+
+test("RX-2: a publish whose answer is lost after the directory applied it keeps the identity; a clear refusal forgets it", { timeout: 90_000 }, async t => {
+  await forgetIdentity();
+  const base = await standIn(t);
+  const made = await claimIdentity({ name: "lee", base, params: PARAMS });
+  // the directory applies the append, then the connection drops
+  const dropAfter = async (url, init) => { const r = await fetch(url, init); if (init && init.method === "POST") throw new TypeError("connection dropped"); return r; };
+  const got = await recoverIdentity({ name: "lee", code: made.recoveryCode, deviceLabel: "p", base, params: PARAMS, fetch: dropAfter });
+  assert.equal(got.id, made.id, "the lost answer did not lose the recovery");
+  assert.ok(await loadIdentity(), "the identity is kept");
+  assert.equal((await resolve(base, "lee")).ops.length, 2, "one op, not two");
+  // a second call is idempotent and adds nothing
+  await recoverIdentity({ name: "lee", code: made.recoveryCode, deviceLabel: "p", base, params: PARAMS });
+  assert.equal((await resolve(base, "lee")).ops.length, 2);
+  await forgetIdentity();
+  // a clear refusal (the directory answers 4xx) forgets the key
+  const made2 = await claimIdentity({ name: "moe", base, params: PARAMS });
+  const refuse = async (url, init) => (init && init.method === "POST" ? new Response(JSON.stringify({ error: { code: "bad_op", message: "no" } }), { status: 400 }) : fetch(url, init));
+  await assert.rejects(recoverIdentity({ name: "moe", code: made2.recoveryCode, deviceLabel: "p", base, params: PARAMS, fetch: refuse }));
+  assert.equal(await loadIdentity(), null, "a refusal kept nothing");
+});

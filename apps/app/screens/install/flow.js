@@ -38,12 +38,14 @@ export function nameNote(/** @type {ReturnType<typeof nameStatus>} */ st, /** @t
 
 /** @type {Record<string, string|null>} */
 export const BACK = {
-  name: null, scan: "name", scanwords: "scan", recovery: null, spaces: null, create: "spaces", where: "create", cmd: "where", vps: "where", vpsbusy: null,
+  name: null, have: "name", recover: "have", scan: "name", scanwords: "scan", recovery: null, spaces: null, create: "spaces", where: "create", cmd: "where", vps: "where", vpsbusy: null,
   srv1: "cmd", srv2: "cmd", here: "where", look: null, members: "look", connectors: "members", kit: "connectors", done: null, join: "spaces", invite: "join", joined: null,
 };
 
 /** Where Back goes from a step. The code step goes back to the server's own first screen (the line or the new server); the words go back to the code. */
-export function backOf(/** @type {string} */ step, /** @type {{ vps?: boolean }} */ ctx = {}) {
+export function backOf(/** @type {string} */ step, /** @type {{ vps?: boolean, have?: boolean }} */ ctx = {}) {
+  // The scan step reached through "I already have a name" goes back to that choice, not to the name field.
+  if (step === "scan" && ctx.have) return "have";
   if (step === "srv2") return "srv1";
   if (step === "srv1") return ctx.vps ? "vps" : "cmd";
   return BACK[step] ?? null;

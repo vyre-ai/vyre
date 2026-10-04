@@ -48,3 +48,6 @@ export function inviteRefusal(code, message, owner = "") {
 
 /** The inviter's side after someone joins: who, and from which device. @param {{ who: string, device: string }} r */
 export const joinedLine = (r) => (r.who ? `Joined by ${r.who}${r.device ? ` from ${r.device}` : ""}.` : "");
+
+/** The live servers in wink.access (person surfaces): rows of kind "server" that are not removed. No row means the person has paired no server yet. @param {any} access */
+export const liveServers = (access) => (Array.isArray(access?.devices) ? access.devices.filter((/** @type {any} */ d) => d && d.kind === "server" && !d.removed) : []);

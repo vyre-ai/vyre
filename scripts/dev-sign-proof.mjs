@@ -7,12 +7,16 @@
 //        a KERNEL GATED ACT (a grant, an invite, a role): the proof the kernel's gate asks for. The op is "grant.<verb>", the fields are { resource, input_hash } where input_hash is the hash of { action, input } exactly as
 //        the kernel builds it, so --input must be the very object the kernel is given (for spaces.invites.create { space, role: "member" } that is {"role":"member"}: no space key). --space is the Space the act is in (a
 //        created Space's own id, not the home's): it is part of the payload hash and of the chain the proof is bound to. --resource defaults to vyre://<space>/invite/new for grants.invite.
+//   node scripts/dev-sign-proof.mjs --home <dir> [--space <spc_...>] --call <name> --args '<json array>'
+//        the same act by the kernel's own request builder (kernel/remote/proof.js proofRequest: create, revoke, narrow, setRole, ruleSet, ruleRemove, inviteCreate, ...), e.g. --call ruleSet --args '[{...the rule}]'. Prefer this
+//        for any grants or rules act: the op, resource and input hash come from the kernel's own table, not a second list.
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { chainCtx, payloadHash, proofBytes } from "../kernel/seal/wire.js";
 import { devSwitch } from "../kernel/seal/appattest.js";
 import { canonical, sha256 } from "../kernel/core/canonical.js";
+import { opOf, proofRequest, PROOF_CALLS } from "../kernel/remote/proof.js";
 
 const argv = process.argv.slice(2), take = (/** @type {string} */ f) => { const i = argv.indexOf(f); return i < 0 ? undefined : argv[i + 1]; };
 const die = (/** @type {number} */ c, /** @type {string} */ m) => { process.stderr.write(`dev-sign-proof: ${m}\n`); process.exit(c); };
@@ -28,11 +32,15 @@ if (take("--request")) {
 } else {
   const space = take("--space") || k.space;
   let fields;
-  if (take("--gate")) {
+  if (take("--call")) {
+    const call = /** @type {string} */ (take("--call")), args = take("--args") ? JSON.parse(/** @type {string} */ (take("--args"))) : [];
+    if (!PROOF_CALLS.includes(call)) die(64, `--call is one of: ${PROOF_CALLS.join(", ")}`);
+    const rq = proofRequest(space, call, ...args); op = rq.op; fields = rq.fields;
+  } else if (take("--gate")) {
     const action = /** @type {string} */ (take("--gate")), input = take("--input") ? JSON.parse(/** @type {string} */ (take("--input"))) : {};
     const resource = take("--resource") || (action === "grants.invite" ? `vyre://${space}/invite/new` : null);
     if (!resource) die(64, "--resource is required for this act (the urn the kernel gates, vyre://<space>/...)");
-    op = `grant.${action.split(".")[1]}`;
+    op = opOf(action);
     fields = { resource, input_hash: sha256(canonical({ action, input })) };
   } else {
     op = take("--op"); if (!op) die(64, "--op, --gate or --request is required");

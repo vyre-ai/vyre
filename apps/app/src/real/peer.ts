@@ -37,12 +37,35 @@ export async function peerCall<T = unknown>(tool: string, input: Record<string, 
   let p = await openPeer();
   try { return (await p.call(tool, input)) as T; }
   catch (e) {
+    const code = (e as { code?: string })?.code;
+    // a lapsed paired session renews once, with the same key and no owner step (pair-challenge, then start-paired), and the call is made again
+    if (code === "person_session_required" && (await renewSession())) { p = await openPeer(); return (await p.call(tool, input)) as T; }
     // a closed connection is reopened once; anything the server answered is the answer
-    if ((e as { code?: string })?.code !== "unreachable") throw e;
+    if (code !== "unreachable") throw e;
     peer = null;
     p = await openPeer();
     return (await p.call(tool, input)) as T;
   }
+}
+
+let renewing: Promise<boolean> | null = null;
+/** Renew the paired session over a fresh channel; tells the person (src/auth/notice.js) only when it FAILS. */
+export function renewSession(): Promise<boolean> {
+  return (renewing ??= (async () => {
+    const notice = await import("../auth/notice.js");
+    try {
+      const { loadPairing, relayCrypto, relayKeyStore, about, deviceName } = await import("../api/relay");
+      const pairing = await loadPairing();
+      if (!pairing) throw Object.assign(new Error("not paired"), { code: "unreachable" });
+      const { startPaired, channelCall } = await import("../auth/paired");
+      const { personKey } = await import("../auth/person.web");
+      const ch = await channelCall({ relay: pairing.relay, route: pairing.route, box: pairing.box, name: deviceName() }, { crypto: relayCrypto(), keyStore: relayKeyStore(), about });
+      try { await startPaired({ device: String(pairing.device), call: ch.call, privateKey: (await personKey()).privateKey, label: deviceName() }); } finally { ch.close(); }
+      closePeer();
+      return true;
+    } catch (e) { notice.noteRenewFailed((e as { code?: string })?.code); return false; }
+    finally { renewing = null; }
+  })());
 }
 
 /** Drop the open peer (sign out, a removed device). */

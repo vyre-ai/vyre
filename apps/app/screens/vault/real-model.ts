@@ -55,6 +55,26 @@ export function usesLine(rows: UseRow[], now: number): { key: string; who: strin
 export function useCount(rows: UseRow[], now: number): number { return rows.filter((u) => now - u.at <= DAY && u.ok).length; }
 
 /** The words a refused reveal gets, from the box's error code, never from a value. */
+/** The wait a lock-out names, from the box's `retry_after_s`: seconds under a minute, else whole minutes rounded up. */
+export function waitWords(seconds: number | undefined): string {
+  const n = Math.max(1, Math.ceil(Number(seconds) || 0));
+  if (n < 60) return `${n} ${n === 1 ? "second" : "seconds"}`;
+  const m = Math.ceil(n / 60);
+  return `${m} ${m === 1 ? "minute" : "minutes"}`;
+}
+
+/** The words for an unlock of the personal vault from the phone, by code (vault, 078bfd7e8). Only our own sentences: the server's text is never shown. */
+export function personalUnlockRefusal(code: string | undefined, detail?: { retry_after_s?: number }): string {
+  if (code === "presence_required") return "That needs you. Approve on this device, then try again.";
+  if (code === "wrong_password") return "That is not the password for this vault. It is still locked.";
+  if (code === "throttled") return `Too many wrong passwords. Even the right one is refused for now. Try again in ${waitWords(detail?.retry_after_s)}.`;
+  if (code === "no_account") return "This vault has no account password yet, so there is no personal vault to open.";
+  if (code === "no_secret_key") return "This server does not have your account's Secret Key, so it cannot open the personal vault. You need your recovery kit.";
+  if (code === "wrong_account") return "The Secret Key on this server belongs to another account. Nothing was changed.";
+  if (code === "denied" || code === "not_available" || code === "no_such_tool" || code === "not_found") return "This server cannot unlock it from a phone yet.";
+  return "The personal vault did not open. Nothing was changed.";
+}
+
 export function revealRefusal(code: string | undefined, message: string, how: "phone" | "touchid" | "browser" = "browser"): string {
   if (code === "presence_required") return "That needs you. Approve on this device, then try again.";
   if (code === "locked") return "The vault is locked. Enter its passphrase to open it, then try again.";
