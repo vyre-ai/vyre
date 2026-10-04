@@ -270,6 +270,27 @@ await step("join: /app/join#link= (fragment) is taken out of the address and hel
   const t = (await text()).replace(/\s+/g, " ");
   if (!/harlow\.vyre\.run\/join\//.test(v) && !/harlow/i.test(t.replace(/harlow\.vyre\.run\/join\/\.\.\./, ""))) throw new Error(`the held link was not used: field="${v.slice(0, 40)}" page="${t.slice(0, 160)}"`);
 });
+await step("RC1: a browser with no identity sees no Create, makes no claim and opens no identity storage", {}, async () => {
+  const ctx2 = await browser.newContext({ viewport: { width: WIDTH, height: 900 }, serviceWorkers: "block" });
+  const pg = await ctx2.newPage();
+  await pg.addInitScript(() => {
+    window.__spy = { fetches: [], dbs: [] };
+    const f = window.fetch; window.fetch = (...a) => { window.__spy.fetches.push(String(a[0] && a[0].url || a[0])); return f.apply(window, a); };
+    const o = indexedDB.open.bind(indexedDB); indexedDB.open = (...a) => { window.__spy.dbs.push(String(a[0])); return o(...a); };
+  });
+  // A box with no identity: the name step is the first thing a person sees. Only this read is answered by the walk; nothing else is changed.
+  await pg.route("**/v1/tools/spaces.identity.status", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { exists: false, name: null } }) }));
+  await pg.goto(`${BASE}/u/install`, { waitUntil: "domcontentloaded" }).catch(() => {});
+  await pg.waitForTimeout(3500);
+  await pg.screenshot({ path: path.join(OUT, "rc1-no-identity.png") });
+  const body = await pg.locator("body").innerText();
+  const spy = await pg.evaluate(() => window.__spy);
+  await ctx2.close();
+  if (/Continue with|Create with|Face ID/i.test(body)) throw new Error(`a Create path is on screen: ${body.replace(/\s+/g, " ").slice(0, 200)}`);
+  if (!/Scan from my phone|phone/i.test(body)) throw new Error(`the pair path is not on screen: ${body.replace(/\s+/g, " ").slice(0, 200)}`);
+  if (spy.fetches.some((u) => /\/v1\/ids\/claim/.test(u))) throw new Error("a claim request was made");
+  if (spy.dbs.some((d) => /vyre-identity/i.test(d))) throw new Error(`the identity database was opened: ${spy.dbs.join(",")}`);
+});
 await step("setup: create a space on this computer, close partway, resume", { skip: SETUP ? undefined : "starts a real space on the dev box: pass --setup" }, async () => {
   await go("u/install/create");
   await page.getByLabel("Name").first().fill(`Walk ${Date.now().toString(36).slice(-4)}`);

@@ -11,7 +11,8 @@ type Created = { state: "done" | "running" | "asking" | "failed"; id: string; ad
 /** This device's claimed name, or null. */
 export const readIdentity = async (): Promise<{ id: string; label: string; address: string } | null> => {
   // The identity this device made comes first (it needs no box); a paired box's own answer is the fallback, and no box is not an error here.
-  const mine = await loadIdentity();
+  // A blocked browser (RC1) ignores a key an earlier build left in IndexedDB: that key was never meant to be used here, and the person pairs instead.
+  const mine = claimBlocked() ? null : await loadIdentity();
   if (mine) return { id: mine.id, label: mine.name, address: `${mine.name}.vyre.run` };
   try { return identityFrom(await tool("spaces.identity.status")); } catch { return null; }
 };
@@ -40,7 +41,7 @@ export async function checkName(name: string): Promise<"free" | "taken" | "unkno
  */
 export async function createIdentity(name: string, deviceLabel: string, password = ""): Promise<{ name: string; id: string; recoveryCode: string; software: boolean }> {
   // RC1: a browser never makes a name (KP-1): refused before any key is made, any storage is opened or the directory is asked.
-  if (claimBlocked()) throw new Error("Create your name on the phone or computer app, then pair this browser to it.");
+  if (claimBlocked()) throw new Error("Create your name on your iPhone, then pair this browser to it.");
   const made = await claimIdentity({ name, password, deviceLabel, base: DIRECTORY });
   await saveIdentity({ name: made.name, id: made.id, eid: made.eid, ops: made.ops, pin: made.pin, key: made.key });
   return { name: made.name, id: made.id, recoveryCode: made.recoveryCode, software: made.software };
