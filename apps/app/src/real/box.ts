@@ -8,7 +8,7 @@ import { peerCall, peerWanted } from "./peer";
 import { wantsPasskey } from "./presence-model.js";
 import { claimBlocked } from "../../screens/shell/rc";
 import { needsPerson, onPhoneFor, reasonLine, softwareKeyLine } from "./on-phone.js";
-import { APPROVE_ON_PHONE, actWords, askPhone, endLine, phoneRoute, proofHeader } from "./approvals.js";
+import { APPROVE_ON_PHONE, actWords, askPhone, endLine, heldAsk, phoneRoute, proofHeader, askYes } from "./approvals.js";
 import { useApproval } from "./approval-state";
 import { Platform } from "react-native";
 import { passkeyProof, PresenceError } from "./presence";
@@ -35,7 +35,14 @@ export async function tool<T = unknown>(name: string, given: Record<string, unkn
   // A device paired to its server over the relay (device-first install) calls it over the peer wire: the server runs the call as this device with its paired session.
   if (peerWanted()) {
     try { return await peerCall<T>(name, input); }
-    catch (e) { const x = e as { code?: string; message?: string }; throw new BoxError(x.code ?? "error", x.message ?? ""); }
+    catch (e) {
+      const x = e as { code?: string; message?: string; detail?: unknown };
+      // An act held for the owner's yes: the phone approves it, the server runs it, and the result comes back here (no proof is carried by this browser).
+      const held = heldAsk(x, name, input);
+      // The same act again with the approval id beside it, as an extra input key on the peer wire (the door strips it before the tool sees it).
+      if (held) return yesThenRetry<T>(held, (t, i) => peerCall<any>(t, i ?? {}), (approval) => peerCall<T>(name, { ...input, approval }));
+      throw new BoxError(x.code ?? "error", x.message ?? "");
+    }
   }
   let r = await call<T>(name, input).catch((e: Error) => ({ error: { code: "offline", message: e.message } }) as const);
   // A kernel act a person signs (a rule, say), asked from the web app: the paired phone approves it ("Approve on your phone"), then the act goes again with the proof it signed.
@@ -49,6 +56,14 @@ export async function tool<T = unknown>(name: string, given: Record<string, unkn
       if ("ended" in out) throw new BoxError("not_approved", endLine(out.ended));
       r = await call<T>(name, input, { kernelProof: proofHeader(out.proof) }).catch((e: Error) => ({ error: { code: "offline", message: e.message } }) as const);
     } finally { useApproval.getState().hide(); }
+  }
+  // A browser that cannot prove the yes itself asks the phone, then sends the act again with the approval id in the x-vyre-approval header (never inside the tool's own input).
+  if (r.error && (claimBlocked() || r.error.code === "held")) {
+    const held = heldAsk(r.error, name, input);
+    if (held) {
+      const raw = async (t: string, i?: Record<string, unknown>) => { const x = await call<any>(t, i ?? {}); if (x.error) throw Object.assign(new Error(x.error.message), { code: x.error.code }); return x.data; };
+      return yesThenRetry<T>(held, raw, async (approval) => { const x = await call<T>(name, input, { approval }); if (x.error) throw Object.assign(new Error(x.error.message), { code: x.error.code }); return x.data as T; });
+    }
   }
   // RC1: a browser does not answer a person-only ask (vault secrets, pairing a device, an outbound send): the person does it in Vyre on their phone.
   if (r.error && claimBlocked() && needsPerson(r.error)) throw new BoxError("on_phone", onPhoneFor(name));
@@ -71,6 +86,21 @@ export async function tool<T = unknown>(name: string, given: Record<string, unkn
   }
   if (r.error) throw new BoxError(r.error.code ?? "error", r.error.message ?? "");
   return r.data as T;
+}
+
+/** An act that needs the owner's yes: ask the phone, wait with "Approve this in Vyre on your phone" and Stop waiting, then send the act again with the approval id (spent once). */
+async function yesThenRetry<T>(held: { moment: string; request: unknown }, ask: (tool: string, input?: Record<string, unknown>) => Promise<any>, retry: (approval: string) => Promise<T>): Promise<T> {
+  const st = useApproval.getState();
+  st.show(softwareKeyLine());
+  try {
+    const out = await askYes(ask, { moment: held.moment, request: held.request, signal: st.signal, onWaiting: (line) => { if (line) useApproval.getState().show(line); } });
+    if ("ended" in out) throw new BoxError("not_approved", endLine(out.ended));
+    return await retry(out.approval);
+  } catch (e) {
+    if (e instanceof BoxError) throw e;
+    const x = e as { code?: string; message?: string };
+    throw new BoxError(x.code ?? "error", x.message ?? "");
+  } finally { useApproval.getState().hide(); }
 }
 
 /** The words to show for a failed call. */

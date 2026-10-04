@@ -342,6 +342,15 @@ async function startLocked(opts, root, p, release) {
       stageFactory: async (/** @type {string} */ space, /** @type {any} */ k, /** @type {any} */ meta) => (await flowsHost.attach(space, k, meta.owner)).stages });
     stages = (await flowsHost.attach(kernel.id.space, kernel, () => kernel.id.owner)).stages;
     if (typeof kernel.bindCalls === "function") kernel.bindCalls(currentCall);
+    // ONE yes (DESIGN-one-yes): the three moments' proofs are checked by the kernel's own presence verifier (the sealing process; it spends the proof). The card's act and fields are the vocabulary the sealer accepts
+    // (signOf in lib/one-yes.js); a software key is refused by the sealer on a release build, and a result that does not say how strong the key was never counts as real.
+    if (kernel.presence && typeof kernel.presence.check === "function") {
+      const { configureYes, signOf } = await import("../../lib/one-yes.js");
+      configureYes({
+        verify: async (/** @type {any} */ i) => { const sg = signOf(i.moment, { op: i.request ? i.request.op : i.op, fields: i.request ? i.request.fields : i.fields }); return kernel.presence.check({ ...(i.chain ? { chain: i.chain } : {}), op: sg.op, fields: sg.fields, proof: i.proof }); },
+        softwareOk: () => devSwitch(process.env.VYRE_SEAL_SOFTWARE, opts.packageRoot),
+      });
+    }
     // The session credential of a session vyred starts (lib/kernel-session.js): the kernel opens a token for the owner this home runs as, with the thread's chat written
     // in by the kernel after it checks the owner is in it; vyred holds it and the thread's own socket stamps it on every call, so the session never sees it. An unnamed thread
     // runs as the default assistant. A thread with no chat of its own gets a session of no chat. Only the Switchboard is handed this (core/modules/index.js context).
@@ -1271,7 +1280,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const measured = socket && !policy.caller ? surfaceAncestry(shell, typeof registry.deps.devStandIn === "function" && registry.deps.devStandIn() === true, cliSession) : undefined; // not `ancestry`: that is the imported function used earlier in this handler
     const facts = callerFacts(caller, policy, via, kernelOf ? kernelOf() : null, capsuleOk, deviceRow, measured);
     let result = await registry.call(name, input, caller, { ...via, ...(facts ? { kernelFacts: facts } : {}), proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
-      keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req), ...(kernelProof(req) ? { kernel_proof: kernelProof(req) } : {}), ...(sessionToken ? { token: sessionToken } : {}) });
+      keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req), ...(kernelProof(req) ? { kernel_proof: kernelProof(req) } : {}), ...(typeof req.headers["x-vyre-approval"] === "string" ? { approval: req.headers["x-vyre-approval"].slice(0, 60) } : {}), ...(sessionToken ? { token: sessionToken } : {}) });
     // The caller said cli or local, the daemon could not read who was on the socket (a busy box, an unreadable table) and so did not take the label: say that, not "not a signed-in person".
     if (socket && !policy.caller && shell.couldNotTell && /^(cli|local)$/.test(String(req.headers["x-vyre-caller"] || "")) && result.error && ["denied", "no_such_tool"].includes(result.error.code)) result = { error: { code: "caller_unknown", message: "Vyre could not tell who is calling; try again" } };
     // A new person session for the Deck goes in the cookie, never in the body a script could read.

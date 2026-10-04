@@ -134,6 +134,8 @@ export class Frames {
 }
 
 const err = (code, message) => Object.assign(new Error(message), { code });
+/** An error's `detail` (a plain object up to 2 KB, e.g. the request a held act names) travels with it; anything else does not. */
+const smallDetail = (/** @type {any} */ d) => { try { return d && typeof d === "object" && !Array.isArray(d) && JSON.stringify(d).length <= 2048 ? { detail: d } : {}; } catch { return {}; } };
 
 /**
  * One session over a Pipe. Either side may call; `serve` (when given) answers calls from the other.
@@ -206,13 +208,13 @@ export function peerSession(pipe, o = {}) {
       if (!o.serve) return answer(id, { ok: false, error: { code: "denied", message: "this side does not answer calls" } });
       if (!j || typeof j.tool !== "string" || !/^[a-z][a-z0-9_.-]{0,80}$/i.test(j.tool)) return answer(id, { ok: false, error: { code: "bad_input", message: "a call names a tool" } });
       try { answer(id, { ok: true, data: await o.serve(j.tool, j.input ?? {}) }); }
-      catch (e) { answer(id, { ok: false, error: { code: String(/** @type {any} */ (e)?.code || "internal"), message: String(/** @type {any} */ (e)?.message || e).slice(0, 500) } }); }
+      catch (e) { answer(id, { ok: false, error: { code: String(/** @type {any} */ (e)?.code || "internal"), message: String(/** @type {any} */ (e)?.message || e).slice(0, 500), ...(smallDetail(/** @type {any} */ (e)?.detail)) } }); }
     } else if (type === T.result) {
       const c = calls.get(id);
       if (!c) return;
       calls.delete(id); clearTimeout(c.timer);
       if (j && j.ok) c.resolve(j.data);
-      else c.reject(err(String(j?.error?.code || "internal"), String(j?.error?.message || "the call failed")));
+      else c.reject(Object.assign(err(String(j?.error?.code || "internal"), String(j?.error?.message || "the call failed")), j?.error?.detail && typeof j.error.detail === "object" ? { detail: j.error.detail } : {}));
     }
   }
 
