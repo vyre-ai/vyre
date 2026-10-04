@@ -10,7 +10,7 @@ const moduleOf = e => { const m = /\/(?:core|local|modules)\/([a-z0-9-]+)\//.exe
 const note = e => { if (stopped) late.push({ module: moduleOf(e), message: String((e && e.message) || e).slice(0, 160) }); };
 process.on("unhandledRejection", note);
 process.on("uncaughtException", note);
-const d = await start({ root, log: () => {} });
+const d = await start({ root, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
 const running = d.registry.status().filter(m => m.state === "running").length;
 if (afterMs) await new Promise(r => setTimeout(r, afterMs));
 await d.stop();

@@ -286,7 +286,7 @@ test("daemon: a request cannot claim the hook caller to reach a webhook-only too
   const root = tempHome(t);
   writeModule(path.join(root, "modules"), "hooky", { does: { tools: ["hooky.in"] } },
     `export default { async start(ctx) { ctx.tool("hooky.in", { hook: true, run: async () => ({ reached: true }) }); return {}; } };`);
-  const d = await start({ root, log: () => {} });
+  const d = await start({ root, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
   t.after(() => d.stop());
   const r = await request("POST", "/v1/tools/hooky.in", {}, { root, caller: "hook" });
   assert.equal(r.error && r.error.code, "no_such_tool");

@@ -106,8 +106,12 @@ export async function bootHomeKernel(cfg) {
   /** What the owner's phone shows and signs to drop the accepted counter (a rollback): the op, the Space and the counter it forgets, with the hash the signer signs. Null when this build has no signed list. @type {() => { op: string, space: string, fields: { counter: number }, payload_hash: string } | null} */
   let modulesListReset = () => null;
   if (!firstPartyCheck) {
-    if (process.env.VYRE_KERNEL_PATH_RULE === "1" && !devSwitch("1")) log("kernel: VYRE_KERNEL_PATH_RULE ignored (this is a packaged daemon)");
-    if (cfg.pathRule === true || devSwitch(process.env.VYRE_KERNEL_PATH_RULE)) (cfg.log || (() => {}))("kernel: DEVELOPER path rule for first-party modules (VYRE_KERNEL_PATH_RULE=1); never the default, never for a real home");
+    // Module trust follows the build kind (the same gate as the presence stand-in, isPackaged): a development build trusts the modules in the checkout's own folders by path (a checkout
+    // has no module.sig), unless VYRE_KERNEL_PATH_RULE=0 or cfg.pathRule === false asks for the signature check; a release build requires the signature and ignores the variable, once in the log.
+    const packaged = isPackaged(cfg.packageRoot);
+    if (packaged && process.env.VYRE_KERNEL_PATH_RULE === "1") log("kernel: VYRE_KERNEL_PATH_RULE ignored (this is a packaged daemon)");
+    const devPathRule = !packaged && cfg.pathRule !== false && process.env.VYRE_KERNEL_PATH_RULE !== "0";
+    if (!packaged && (cfg.pathRule === true || devPathRule)) log("kernel: DEVELOPMENT build, first-party modules are trusted by path (VYRE_KERNEL_PATH_RULE=0 asks for the signature check); a release build requires the signature");
     else {
       // M-1: the highest counter accepted, with the minimums that came with it, is kept in the kernel's own log (`kernel.minimums` events), not in a file the user can write. An
       // event carries the release-SIGNED document itself and is re-verified against the release key at every boot: the counter and the minimums come from the verified
