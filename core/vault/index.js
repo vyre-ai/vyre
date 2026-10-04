@@ -34,6 +34,7 @@ import * as historyTools from "./tools/history.js";
 import * as agentTools from "./tools/agents.js";
 import * as needsTools from "./tools/needs.js";
 import * as connectionTools from "./tools/connections.js";
+import { isDeviceGroupId } from "./devices.js";
 import * as saidTools from "./said.js";
 import { grantPrompt, putPrompt } from "./prompt.js";
 import { scanEnvFiles } from "./envscan.js";
@@ -52,6 +53,8 @@ const PEOPLE = ["cli", "local"];
 // The Deck and the Capsule are surfaces a person uses. They call as themselves, and the presence
 // floor (ADR 0004) is what proves a person is there, whichever surface asks.
 const SURFACES = [...PEOPLE, "deck", "capsule"];
+// The phone app adds and unlocks from the app itself (UX-33): the paired phone calls as `mobile` (or its device label), and the presence floor, a Face ID on the phone, is what proves the person is there.
+const PHONE = ["mobile", "device"];
 const str = { type: "string" };
 const strs = { type: "array", items: { type: "string" } };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -104,7 +107,7 @@ export default {
           if (!byWhois) return vault.onRelay(env, meta);
           return vault.onRelay(env, whoisMeta(meta, await byWhois(meta.remoteAddress)));
         },
-        onSync: env => (String(env && env.vault).startsWith("device:") ? vault.devices.onSync(env) : vault.shared.onSync(env)),
+        onSync: env => (isDeviceGroupId(env && env.vault) ? vault.devices.onSync(env) : vault.shared.onSync(env)),
         onEmergency: env => vault.emergency.onRequest(env) });
       vault.relayUrl = opts.relay.url ? String(opts.relay.url) : listener.url;
       ctx.log(`vault relay listening on ${listener.url}`);
@@ -162,7 +165,7 @@ export default {
     // Modules may put too (onboarding stores the Claude credential this way), but only new items
     // or items they made themselves, and they may grant only what they put: neither reveals a
     // value the module did not already have. `value` is shorthand for fields.value.
-    tool("vault.put", [...SURFACES, "module"], "Add or replace an item. Values come from `vyre vault put`'s hidden prompt or a module, never from Claude.",
+    tool("vault.put", [...SURFACES, ...PHONE, "module"], "Add or replace an item. Values come from `vyre vault put`'s hidden prompt or a module, never from Claude.",
       obj({ name: str, kind: { type: "string", enum: KINDS }, description: str, value: str, fields: { type: "object" }, url: str, hosts: strs, apps: strs, reprompt: { type: "boolean" }, grants: strs, relay: obj({ body: { type: "boolean" } }), details: DETAILS }, ["name"]),
       async ({ value, grants, relay: relayRules, ...input }, { caller }) => {
         // `value` is the kind's own field: a PAT's token, a secret's value.
@@ -359,7 +362,10 @@ export default {
     tool("vault.match", SURFACES, "Logins for a page, for autofill: names only.",
       obj({ url: str }, ["url"]), input => vault.match(input));
 
-    tool("vault.unlock", PEOPLE, "Unlock a passphrase vault (the first unlock sets the passphrase).",
+    tool("vault.state", [...SURFACES, ...PHONE], "Whether the vault is open, for the app's empty and locked states: { locked, keystore, unlock: \"passphrase\" | \"none\", items }. Never a value.",
+      obj({}), async () => { const locked = await vault.locked(); return { locked, keystore: vault.kind, unlock: vault.kind === "passphrase" ? "passphrase" : "none", items: locked ? null : (l => (Array.isArray(l) ? l : l.items || []).length)(vault.list({})) }; });
+
+    tool("vault.unlock", [...PEOPLE, ...PHONE], "Unlock a passphrase vault (the first unlock sets the passphrase).",
       obj({ passphrase: str }, ["passphrase"]), input => vault.unlock(input.passphrase),
       presence("Unlock the vault", () => "Unlock the vault"));
 

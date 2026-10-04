@@ -41,7 +41,7 @@ export { TimelineItem } from "./components/TimelineItem";
 export { EmptyState, ErrorState, LoadingState } from "./components/States";
 export { motion, SPRING, useReducedMotion, PressableScale, Appear, Stagger, Skeleton, SkeletonRows, SkeletonPage, Pulse, haptic, SwipeActions, LargeTitleScreen } from "./motion";
 export type { PressableScaleProps, HapticName, SwipeAction, SwipeSet } from "./motion";
-export { useStore, useStoreQuery, setStore } from "./store";
+export { useStore, useStoreQuery, setStore, allowsMock } from "./store";
 export type { Store, Query } from "./store";
 export { Shell } from "./shell/Shell";
 export type { NavItem, NavDef, ShellSpace, ShellProps } from "./shell/Shell";

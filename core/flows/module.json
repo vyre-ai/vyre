@@ -4,11 +4,12 @@
   "description": "Flows and Kits: write, approve and run a Flow, with its triggers, waits and tasks. The assembly lives in the daemon (core/daemon/flows-host.js); this module registers the tools over it, each running under the caller's own chain.",
   "roles": ["box", "local"],
   "requires": [],
-  "needs": { "daemon": ["flowsHost"] },
+  "needs": { "daemon": ["flowsHost"], "kernel": { "actions": ["records.read", "records.create", "records.update", "records.remove", "tasks.request", "tasks.read", "tasks.work"], "prefixes": ["*"] } },
   "does": {
     "tools": [
       { "name": "flows.define", "reach": "anyone" },
       { "name": "flows.approve", "reach": "person" },
+      { "name": "flows.propose", "reach": "anyone" },
       { "name": "flows.card", "reach": "anyone" },
       { "name": "flows.get", "reach": "anyone" },
       { "name": "flows.list", "reach": "anyone" },

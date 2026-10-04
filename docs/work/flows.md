@@ -38,6 +38,16 @@ All code under `kernel/flows/` (pure ES modules, built on kernel/contracts types
 - Every run records `trigger: { kind, source, at, input (capped at 64 KB, sealed values replaced), key, caught_up?, missed?, tz? }`; `paintRun` returns `why` and `fired` on the trigger node.
 - Not done: the daemon wiring of `bridgeWatchers` and a `catalog.tz` from the Space's setting (both host side); the canvas component for trigger nodes (native-core).
 
+## The Engineer and proposals (5 Oct)
+- Built-in agent `engineer` (core/agents): listed with `builtin`, `proposes_only`, `tools`; kept (no delete, projects, credentials, computer). Its session is held to `ENGINEER.tools` by the registry (`agents.scope` -> meta.agentOnly).
+- kernel/flows/proposals.js: `flows.propose { what: "flow"|"types" }` makes one task (`form.kind: "proposal"`), Flows service the doer, the person the assistant acts for the checker (an owner or an admin, else nobody is asked). On the kernel's approved event it applies as the approver: `runner.approve` for a Flow, `records.define` for types. `kits.propose` accepts an assistant's chain too (task form stays `kit_install`).
+- Found and fixed: the flows module's `needs.kernel.actions: []` reinstalled the host's service grant empty, so every Flow write on a real vyred was refused; flows-daemon.test.js is green again on testbox.
+- OPEN for platform: the real gateway has no `kits.install` / `kits.remove` action (only the harness defines them), so a Kit proposal is refused `unknown_action` on a real vyred for anyone. Needs the action table and the owner/admin role bundles (and the golden).
+- Not done: applying a types proposal needs the approver's presence session on the real kernel (`records.define` is admin risk); proven on the harness only.
+
+- HD-7 (github.session.push, undo, redo): a model call, the assistant included, pushes and undoes only the session whose thread it is (`meta.thread`). The assistant has no thread of its own for another session, so it can no longer push or roll back another session's branch; the person does that from their own surface.
+- PR-2 (the approval proof binding the proposal's hash) is open until kernel-2 or platform says where task evidence is bound.
+
 ## Doing
 All six relaunch items have a first cut (4 Oct): real-kernel harness + stages + Estate e2e (kernel/flows), sessions under Wink (core/space-sessions, docs/work/sessions-spaces.md), door retrofit (docs/work/door-retrofit.md). Waiting on platform for the gateway gaps listed in team/0.2/CHAT.md (sessions -> platform, 3 Oct).
 

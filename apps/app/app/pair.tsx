@@ -47,7 +47,7 @@ export default function Pair() {
         await savePairing(r);
         await disconnect();
         connect().catch(() => {});
-        setState({ at: "paired", name: r.name || "your box", presence: Boolean(r.presence?.enrolled) });
+        setState({ at: "paired", name: r.name || "your home", presence: Boolean(r.presence?.enrolled) });
       } catch (e) {
         setState({ at: "failed", message: e instanceof Error ? e.message : String(e) });
       }
@@ -55,9 +55,9 @@ export default function Pair() {
   }, [offer]);
 
   const line = !offer
-    ? "This link has no pairing code. Make a new one on the box with vyre phone add."
+    ? "This link has no pairing code. Make a new one on your home with vyre phone add."
     : state.at === "pairing"
-      ? "Pairing with your box"
+      ? "Pairing with your home"
       : state.at === "paired"
         ? `Paired with ${state.name}`
         : state.message;

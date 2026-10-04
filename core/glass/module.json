@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "roles": ["box"],
   "requires": [],
-  "does": { "tools": [
+  "does": { "reads": ["glass.files.list", "glass.files.preview"], "tools": [
       {"name": "glass.targets", "reach": "person"},
       {"name": "glass.open", "reach": "person"},
       {"name": "glass.close", "reach": "person"},

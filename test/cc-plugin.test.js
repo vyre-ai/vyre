@@ -214,16 +214,16 @@ test(`planner: ${REAL_PLANNER ? "the planner's" : "a stand-in planner's"} tools 
   if (!REAL_PLANNER) writeModule(path.join(root, "modules"), "planner", { roles: ["box", "local"], does: { tools: ["planner.add", "planner.list", "planner.agenda"] } }, `
     const items = [];
     export default { async start(ctx) {
-      ctx.tool("planner.add", { description: "Add a todo or a reminder.", input: { type: "object", properties: { text: { type: "string" }, kind: { type: "string" } } },
+      ctx.tool("planner.add", { effect: "read", description: "Add a todo or a reminder.", input: { type: "object", properties: { text: { type: "string" }, kind: { type: "string" } } },
         run: async ({ text, kind }) => {
           const m = /^remind me (in 2 hours) (.+)$/.exec(text);
           if (!kind && !m) throw new Error("a reminder needs a time: at, or wall (and date)");
           const it = m ? { id: "i" + (items.length + 1), kind: "reminder", title: m[2], at: Date.now() + 7_200_000, tz: "UTC", date: null, wall: null }
             : { id: "i" + (items.length + 1), kind, title: text, at: null, tz: "UTC", date: null, wall: null };
           items.push(it); return it; } });
-      ctx.tool("planner.list", { description: "Open items.", input: { type: "object", properties: { kind: { type: "string" } } },
+      ctx.tool("planner.list", { effect: "read", description: "Open items.", input: { type: "object", properties: { kind: { type: "string" } } },
         run: async ({ kind }) => items.filter(i => !kind || i.kind === kind) });
-      ctx.tool("planner.agenda", { description: "What is on today.", input: { type: "object", properties: { from: { type: "string" } } },
+      ctx.tool("planner.agenda", { effect: "read", description: "What is on today.", input: { type: "object", properties: { from: { type: "string" } } },
         run: async () => ({ tz: "UTC", from: 0, to: 0, entries: items.filter(i => i.at != null).map(i => ({ source: "planner", item: i.id, kind: i.kind, title: i.title, at: i.at })),
           todos: [] }) });
       return {}; } };`);

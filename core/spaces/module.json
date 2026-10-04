@@ -118,6 +118,26 @@
     "reach": "person"
    },
    {
+    "name": "spaces.identity.republish",
+    "reach": "person",
+    "effect": "write"
+   },
+   {
+    "name": "spaces.identity.name-of",
+    "reach": "modules",
+    "effect": "read"
+   },
+   {
+    "name": "spaces.admin-list",
+    "reach": "modules",
+    "effect": "read"
+   },
+   {
+    "name": "spaces.owner.adopt",
+    "reach": "modules",
+    "effect": "write"
+   },
+   {
     "name": "spaces.devices.remove",
     "reach": "person"
    },
@@ -259,6 +279,10 @@
    },
    {
     "name": "spaces.identity.state",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.identity.self",
     "reach": "modules"
    },
    {

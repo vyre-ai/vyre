@@ -17,7 +17,7 @@ export default function Settings() {
   return (
     <Screen title="Settings" back>
       <View>
-        <ListRow title={deviceName()} meta={boxName() ? `Follows ${boxName()}` : "Not paired with a box yet"} />
+        <ListRow title={deviceName()} meta={boxName() ? `Follows ${boxName()}` : "Not paired with a home yet"} />
         {/* The 44 single-line rows (list-row spec): the title, a chevron where a screen opens. */}
         <ListRow testID="settings-devices" title="Devices" push onPress={() => router.push("/devices")} />
         {Platform.OS === "android" ? <ListRow testID="settings-autofill" title="Autofill" push onPress={() => router.push("/settings/autofill")} /> : null}
@@ -34,7 +34,7 @@ export default function Settings() {
           />
         ) : null}
         <View style={styles.pad}>
-          <Button kind="ghost" label="Sign out of the box" onPress={() => void signOut()} />
+          <Button kind="ghost" label="Sign out of your home" onPress={() => void signOut()} />
         </View>
       </View>
     </Screen>

@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Avatar, Banner, Button, Card, Chip, Field, Segmented, Text, showToast, markRef } from "@vyre/ui";
+import { Avatar, Banner, Button, Card, Chip, Field, Segmented, Text, allowsMock, showToast, markRef } from "@vyre/ui";
+import { RealEngineer } from "./RealEngineer";
 import { Block, DiffBlock, FaceIdSheet } from "../places/Page";
 import { Frame } from "../places/Frame";
 import { flowsRepo } from "./data";
 import { useFlowsState } from "./store";
 
-export default function EngineerScreen() {
+function SampleEngineerScreen() {
   const router = useRouter();
   const p = flowsRepo.proposal();
   const { applied, setApplied } = useFlowsState();
@@ -61,4 +62,9 @@ export default function EngineerScreen() {
       <FaceIdSheet open={face} onClose={() => setFace(false)} title="Approve with Face ID" body="The Flow goes live as version 4 of the Estate planning matter Kit. The old On payment Flow is replaced." confirm="Approve with Face ID" onConfirm={() => { setApplied(true); showToast("Applied. The Flow is in Flows."); }} />
     </Frame>
   );
+}
+
+/** The sample proposal in a mock build; writing a Flow in text on the box everywhere else. */
+export default function EngineerScreen() {
+  return allowsMock() ? <SampleEngineerScreen /> : <RealEngineer />;
 }
