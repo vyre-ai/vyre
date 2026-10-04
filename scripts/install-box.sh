@@ -529,6 +529,17 @@ verify_up() {
     [ $i -lt "${VYRE_VERIFY_TRIES:-30}" ] || die "the install finished but Vyre is not running; see: docker compose -p vyre ps (in $DIR), then run: vyre up"
     sleep 2
   done
+  # Running is not enough: a box whose modules did not start (a build the kernel does not recognise as signed) answers its socket with nothing behind it. Say so, loudly, with the reason.
+  [ "${VYRE_MODULES_TRIES:-60}" != 0 ] || return 0   # a test seam: the tests' stub docker runs no daemon
+  j=0; mods=0
+  while [ "$j" -lt "${VYRE_MODULES_TRIES:-60}" ]; do
+    st=$(dk env "VYRE_DIR=$DIR" "$WRAPPER" status 2>/dev/null | tr -d '\033' || true)
+    mods=$(printf '%s\n' "$st" | sed -n 's/.*[^0-9]\([0-9][0-9]*\) modules running.*/\1/p' | head -n 1)
+    [ "${mods:-0}" -gt 0 ] && return 0
+    j=$((j + 1)); sleep 2
+  done
+  why=$(dk_quiet logs --tail 40 vyre-vyre-1 2>&1 | sed -n 's/.*\(modules from outside Vyre run only under[^"]*\).*/\1/p' | head -n 1)
+  die "Vyre is running but none of its modules started${why:+ ($why)}. A box built from a checkout (--from) has no signed module list, so it cannot run them: install a release, or build one with scripts/build-site.sh and install from that. Nothing is set up on this server."
 }
 start() {
   say ""
