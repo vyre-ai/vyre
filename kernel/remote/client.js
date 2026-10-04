@@ -70,6 +70,11 @@ export function createRemoteKernel(cfg) {
 
   /** A caller that already holds a proof passes it as the trailing options `{ presence, challenge }`: moved out of the args to travel beside them (the home puts it back for the kernel). */
   function invokeWith(/** @type {string} */ call, /** @type {any[]} */ args) {
+    // A grants call whose proof options came empty (no proof yet) is the same call as one with none: the home binds its challenge to the exact arguments, so the first ask and the answer must agree.
+    if (call.startsWith("grants.") && args.length) {
+      const l = args[args.length - 1];
+      if (l === undefined || l === null || (typeof l === "object" && !Array.isArray(l) && Object.keys(l).length === 0)) args = args.slice(0, -1);
+    }
     const last = args[args.length - 1];
     if (last && typeof last === "object" && !Array.isArray(last) && Object.hasOwn(last, "presence") && typeof last.challenge === "string") {
       // PW-4: only the proof and its challenge travel in the options object; any other option cannot cross, so a proof can never be aimed at a data argument

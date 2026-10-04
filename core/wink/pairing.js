@@ -17,6 +17,7 @@
 
 import crypto from "node:crypto";
 import { deviceIdOf } from "../../lib/caller.js";
+import { withinOrThrow } from "../../lib/within.js";
 import { ROLE_IDS } from "../../kernel/contracts/index.js";
 import { typeWinkCode, finishJoin } from "../../relay/client/join.js";
 import { parseCode, b64url, unb64url } from "../../relay/client/code.js";
@@ -30,6 +31,7 @@ import { base32 } from "./grants.js";
 import { words, removed } from "./cards.js";
 import { createServerLinks } from "./serverlink.js";
 import { deviceKey } from "./devicekey.js";
+import { presenceKeyId } from "../../lib/presence-key-id.js";
 import { isReleaseBuild, devKindSwitch } from "./buildkind.js";
 
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
@@ -888,6 +890,18 @@ export function createPairing(o) {
       if (r.error) { if (r.error.code === "no_such_tool") return null; throw fail("unavailable", words("pairOwnerFailed")); }
       return r.data && typeof r.data.claimed === "string" ? r.data.claimed : null;
     };
+    /** The presence key this device offered in its hello, as the home's sealing process takes it: a software key only from a computer that says it keeps it in software (the sealing process refuses it on a release-kind build), a hardware key only with the signer kind the device names. Anything else is not enrolled here. @param {string} device @param {any} confirmed @param {any} input */
+    const presenceKeyFor = (device, confirmed, input) => {
+      try {
+        if (!confirmed || typeof confirmed.key !== "string" || (confirmed.alg !== undefined && confirmed.alg !== -7)) return null;
+        const storage = String(confirmed.storage || input.keyStorage || "");
+        const kindOk = ["secure_enclave", "tpm", "windows_hello", "strongbox", "webauthn_platform"].includes(String(confirmed.signer || ""));
+        const signer = storage === "software" ? "software" : kindOk ? String(confirmed.signer) : null;
+        if (!signer) return null;
+        const der = Buffer.from(confirmed.key, "base64url");
+        return { device, key_id: presenceKeyId(der), spki: der.toString("base64"), signer };
+      } catch { return null; }
+    };
     /**
      * Device-first pairing (lead ruling, 4 Oct): the pick of the three words at the server IS the owner's confirmation of the device that asked. When the app says what it is (`deviceKind`: phone,
      * computer or web), the device is recorded as one of the owner's with that kind, its key storage as the app reported it, and its paired session is granted in the same act, so it can go
@@ -907,7 +921,7 @@ export function createPairing(o) {
       // refused a different claimed owner.
       if (proven) {
         /** @type {any} */ let adopted;
-        try { adopted = await ctx.call("spaces.owner.adopt", { person: identity, ...(input.owner && typeof input.owner.vyre === "string" ? { name: input.owner.vyre } : {}) }); } catch (e) { adopted = { error: { code: String(/** @type {any} */ (e) && /** @type {any} */ (e).code || "failed"), message: String(/** @type {any} */ (e) && /** @type {any} */ (e).message || "") } }; }
+        try { adopted = await ctx.call("spaces.owner.adopt", { person: identity, ...(input.owner && typeof input.owner.vyre === "string" ? { name: input.owner.vyre } : {}), ...(presenceKeyFor(device, confirmed, input) ? { presence_key: presenceKeyFor(device, confirmed, input) } : {}) }); } catch (e) { adopted = { error: { code: String(/** @type {any} */ (e) && /** @type {any} */ (e).code || "failed"), message: String(/** @type {any} */ (e) && /** @type {any} */ (e).message || "") } }; }
         if (adopted && adopted.error && adopted.error.code !== "no_such_tool") {
           ctx.log(`wink: the kernel refused ${identity} as this home's owner (${adopted.error.code}); nothing was paired`);
           try { devices.remove(device); } catch { /* none */ }
@@ -1152,7 +1166,7 @@ export function createPairing(o) {
         if (!chan && meta.get(`removed:${String(input.device)}`)) return { reachable: false, code: "removed", message: "this server was removed from this device" };
         if (!chan || !chan.route) return { reachable: false, code: "unknown", message: "this device never paired a server by that id" };
         try {
-          const r = await Promise.race([callServer({ relay: String(chan.relay || ""), route: String(chan.route), box: String(chan.box || "") }, "system.info", {}), new Promise((_, rej) => { const h = setTimeout(() => rej(Object.assign(new Error("no answer in 8 seconds"), { remote: "timeout" })), 8000); if (h.unref) h.unref(); })]);
+          const r = await withinOrThrow(callServer({ relay: String(chan.relay || ""), route: String(chan.route), box: String(chan.box || "") }, "system.info", {}), 8000, () => Object.assign(new Error("no answer in 8 seconds"), { remote: "timeout" }));
           return { reachable: true, answered: Boolean(r) };
         } catch (e) { return { reachable: false, code: String((/** @type {any} */ (e)).remote || (/** @type {any} */ (e)).code || "refused"), message: String((/** @type {Error} */ (e)).message || "").slice(0, 200) }; }
       },

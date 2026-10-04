@@ -17,6 +17,9 @@ const MAX_STORED_BYTES = 8 * 1024 * 1024;
 const INVITEE_RESPONSE_BYTES = 16 * 1024;
 const RATE = Object.freeze({ member: 300, invitee: 30, window_ms: 60_000, peers: 10_000 });
 
+/** Gateway paths whose grants call has another name in the proof requests (kernel/remote/proof.js). */
+const WIRE_TO_PROOF = Object.freeze({ "grants.invites.create": "inviteCreate", "grants.invites.confirm": "inviteConfirm" });
+
 /**
  * @param {{ space: string, home?: string, kernel: any, clock?: () => number, rate?: { member?: number, invitee?: number }, services?: Record<string, any>, attest?: (nonce: string) => Promise<{ pub: string, sig: string } | null>, identityEvidence?: (who: { person: string, name?: string }) => Promise<{ ops: any[], entries: { eid: string, kind: string, pub: string, founder: boolean, since: number }[] } | null> }} cfg `kernel` is the home's kernel for this Space (createKernel / bootKernel's result)
  */
@@ -38,7 +41,8 @@ export function createRemoteServer(cfg) {
     const nonce = crypto.randomBytes(16).toString("base64url");
     const ah = argsHash(args);
     challenges.set(nonce, { device, call, args: ah, exp: now + CHALLENGE_TTL_MS });
-    const short = call.split(".").slice(1).join(".");
+    // the wire names a call by its gateway path (grants.invites.create); the proof request is named by the grants call (inviteCreate)
+    const short = WIRE_TO_PROOF[call] || call.split(".").slice(1).join(".");
     /** @type {any} */ let cover = {};
     if (call.startsWith("grants.") && PROOF_CALLS.includes(short)) { try { const r = proofRequest(cfg.space, short, ...args); cover = { op: r.op, fields: r.fields, payload_hash: r.payload_hash }; } catch { cover = {}; } }
     return { call, space: cfg.space, home: cfg.home || cfg.space, nonce, expires: now + CHALLENGE_TTL_MS, args_hash: ah, ...cover };
@@ -204,6 +208,8 @@ export function createRemoteServer(cfg) {
             // Only the code and the message cross; a reason the kernel kept hidden stays in the home's log.
             const err = /** @type {any} */ (e);
             const code = err && typeof err.code === "string" ? err.code : "unavailable";
+            // a refused presence proof says why in the home's own log (unknown_key, wrong_decision, software_refused ...), never to the caller
+            if (PRESENCE_CODES.has(code) && typeof cfg.log === "function") { try { cfg.log(`kernel remote: ${request.call} on ${cfg.space} refused as ${code} (${String((err.detail && err.detail.reason) || err.hidden_reason || "no proof or no reason given").slice(0, 80)}) for ${peer && peer.person}`); } catch { /* a log never fails a call */ } }
             return fail(id, code, err && err instanceof KernelError ? err.message : "the home could not do that", PRESENCE_CODES.has(code) && who.member ? challengeFor(peer.device_key_id, request.call, request.args, clock()) : undefined);
           }
         })();

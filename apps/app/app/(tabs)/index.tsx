@@ -16,7 +16,8 @@ import { ScrollSignal, createScrollSignal } from "../../src/ui/scroll-signal";
 import { NotifyBar } from "../../src/ui/NotifyBar";
 import { Row, ROW_HEIGHT } from "../../src/ui/Row";
 import { GlassCard, useScreenFocused } from "../../src/ui/GlassMini";
-import { Empty, Screen } from "../../src/ui/Screen";
+import { EmptyHere } from "../../src/ui/EmptyHere";
+import { Screen } from "../../src/ui/Screen";
 import { SignInBar } from "../../src/ui/SignInBar";
 import { StatusMark } from "../../src/ui/StatusMark";
 import { SwipeRow } from "../../src/ui/SwipeRow";
@@ -137,7 +138,6 @@ export default function Now() {
   const refused = useRefused();
   const now = useMinute();
   const open = useOpen();
-  const router = useRouter();
   useTabDrawn();
   const list = useMemo(() => visibleNeeds(items, hidden), [items, hidden]);
   const glass = useGlassCards().length > 0;
@@ -164,7 +164,7 @@ export default function Now() {
           </ScrollView>
         </ScrollSignal.Provider>
       ) : list.length === 0 ? (
-        <Empty text={from === "none" ? "Connecting to your server" : "Nothing needs you"} action={from === "none" ? undefined : { label: "Open Chats", onPress: () => router.push("/chats") }} />
+        <EmptyHere kind="now" loading={from === "none"} />
       ) : (
         <List
           items={list}

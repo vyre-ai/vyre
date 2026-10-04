@@ -52,3 +52,11 @@ test("a person has a server when wink.access lists a live one", () => {
   assert.equal(liveServers({ devices: [{ id: "d3", kind: "server", removed: false }] }).length, 1);
   assert.deepEqual(liveServers(null), []);
 });
+
+import { emailIt } from "./invite.js";
+test("Email it is a mailto for the person's own mail app, with the link and no recipient", () => {
+  const e = emailIt("Harlow Legal", "https://harlow.vyre.run/join/abc");
+  assert.ok(e.mailto.startsWith("mailto:?subject="));
+  assert.ok(decodeURIComponent(e.mailto).includes("https://harlow.vyre.run/join/abc"));
+  assert.match(e.subject, /Harlow Legal/);
+});

@@ -5,7 +5,8 @@ import { age } from "../../src/state/needs-model";
 import { useThreads, useThreadsFrom, type ThreadRow } from "../../src/state/threads";
 import { List } from "../../src/ui/List";
 import { Row, ROW_HEIGHT } from "../../src/ui/Row";
-import { Empty, Screen } from "../../src/ui/Screen";
+import { EmptyHere } from "../../src/ui/EmptyHere";
+import { Screen } from "../../src/ui/Screen";
 import type { Status } from "../../src/ui/StatusMark";
 
 /** A session's mark, most urgent first (tokens.status.order). */
@@ -32,7 +33,7 @@ export default function Chats() {
   return (
     <Screen title="Chats">
       {threads.length === 0 ? (
-        <Empty text={from === "none" ? "Connecting to your server" : "No chats yet"} action={from === "none" ? undefined : { label: "Start with an agent", onPress: () => router.push("/agents") }} />
+        <EmptyHere kind="chats" loading={from === "none"} />
       ) : (
         <List
           items={threads}

@@ -31,6 +31,8 @@ export function plainKernelError(e) {
   const known = e && /** @type {Record<string, string[]>} */ (WORDS)[e.code];
   const out = /** @type {Error & { code?: string }} */ (new Error(known ? (e.code === "not_allowed" && e.message ? e.message : known[1]) : "The space's kernel could not do that."));
   out.code = known ? known[0] : "failed";
+  // A space's home on a server answers a presence ask with a one-use challenge: it is kept (plain data) so the tool can hand it to the person's device to sign.
+  if (e && e.challenge && typeof e.challenge === "object") /** @type {any} */ (out).challenge = e.challenge;
   return out;
 }
 

@@ -52,13 +52,14 @@ function PlacesButton({ name, onPress }: { name: string; onPress: () => void }) 
   );
 }
 
-/** The quiet empty state: one plain line in the label colour and, where there is a next step, one action under it. */
-export function Empty({ text, action }: { text: string; action?: { label: string; onPress: () => void } }) {
+/** The quiet empty state: one line, the label colour. With `action` it says what is missing and gives the one thing that fixes it, so a screen is never blank. */
+export function Empty({ text, line, action }: { text: string; line?: string; action?: { label: string; onPress: () => void } }) {
   const { color } = useTheme();
   return (
     <View style={styles.empty}>
       <Text style={[type.read, { color: color.label }]}>{text}</Text>
-      {action ? <Button kind="primary" label={action.label} onPress={action.onPress} /> : null}
+      {line ? <Text style={[type.base, styles.line, { color: color.label }]}>{line}</Text> : null}
+      {action ? <View style={styles.action}><Button kind="secondary" label={action.label} onPress={action.onPress} /></View> : null}
     </View>
   );
 }
@@ -76,5 +77,7 @@ const styles = StyleSheet.create({
   title: { flex: 1 },
   avatarHit: { width: tokens.control.touch, height: tokens.control.touch, alignItems: "flex-end", justifyContent: "center" },
   body: { flex: 1 },
-  empty: { flex: 1, alignItems: "center", justifyContent: "center", gap: tokens.space[4], padding: tokens.layout.gutterPhone },
+  empty: { flex: 1, alignItems: "center", justifyContent: "center", padding: tokens.layout.gutterPhone },
+  line: { textAlign: "center", marginTop: tokens.space[2] },
+  action: { marginTop: tokens.space[4] },
 });
