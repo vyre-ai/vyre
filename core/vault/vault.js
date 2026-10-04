@@ -704,16 +704,16 @@ export class Vault {
     const t0 = now();
     if (t0 < f.until) {
       this.audit("account-unlock", null, who, false, "throttled after wrong passwords");
-      throw Object.assign(new Error(`too many wrong passwords in a row · try again in ${Math.ceil((f.until - t0) / 1000)} seconds`), { code: "throttled" });
+      throw Object.assign(new Error(`too many wrong passwords in a row · try again in ${Math.ceil((f.until - t0) / 1000)} seconds`), { code: "throttled", detail: { retry_after_s: Math.ceil((f.until - t0) / 1000) } });
     }
     const rec = readJsonFile(this.dir, ACCOUNT);
-    if (!rec) throw new Error("this vault has no account password yet · vyre vault account create");
+    if (!rec) throw Object.assign(new Error("this vault has no account password yet · vyre vault account create"), { code: "no_account" });
     await this.key();
     const params = clampKdf(rec, { test: Boolean(this.testKdf) });
     const text = await this.secretKeys.read();
-    if (!text) throw new Error("this device has no Secret Key for the account · use your recovery kit");
+    if (!text) throw Object.assign(new Error("this device has no Secret Key for the account · use your recovery kit"), { code: "no_secret_key" });
     const { acct, bytes } = parseSecretKey(text);
-    if (acct !== rec.acct) { bytes.fill(0); throw new Error("the Secret Key on this device belongs to another account"); }
+    if (acct !== rec.acct) { bytes.fill(0); throw Object.assign(new Error("the Secret Key on this device belongs to another account"), { code: "wrong_account" }); }
     try {
       const auk = accountUnlockKey({ password: String(password ?? ""), secretKey: bytes, acct, salt: Buffer.from(String(rec.salt), "base64"), params });
       unwrapVaultKey(auk, rec.personal, vkAad(PERSONAL, Number(rec.personal && rec.personal.kv), acct));
@@ -723,7 +723,7 @@ export class Vault {
       f.n++;
       if (f.n >= 5) f.until = now() + Math.min(30_000 * 2 ** (f.n - 5), 15 * 60_000);
       this.audit("account-unlock", null, who, false, `wrong password (${f.n} in a row)`);
-      throw new Error("that password does not open your personal vault");
+      throw Object.assign(new Error("that password does not open your personal vault"), { code: "wrong_password" });
     } finally { bytes.fill(0); }
   }
 

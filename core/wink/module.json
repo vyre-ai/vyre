@@ -258,8 +258,7 @@
       },
       {
         "name": "wink.server.probe",
-        "reach": "person",
-        "effect": "read"
+        "reach": "person"
       },
       {
         "name": "wink.server.owner",

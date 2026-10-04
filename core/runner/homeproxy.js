@@ -19,7 +19,7 @@ export async function startHomeProxy(o = {}) {
   const token = crypto.randomBytes(18).toString("hex");
   const eg = createEgress({ routes: [], vault: {}, session: "home", token, internet: true, lookup: o.lookup, dial: o.dial, onEvent: o.onEvent });
   /** @type {string | null} */ let dir = null;
-  const where = platform === "linux" ? { socket: path.join((dir = fs.mkdtempSync(path.join(o.dir || os.tmpdir(), "vyre-eg-"))), "egress.sock") } : {};
+  const where = platform === "linux" ? { socket: path.join((dir = fs.mkdtempSync(path.join(o.dir ? (fs.mkdirSync(o.dir, { recursive: true, mode: 0o700 }), o.dir) : os.tmpdir(), "vyre-eg-"))), "egress.sock") } : {};
   if (dir) fs.chmodSync(dir, 0o700);
   const r = await eg.listen(where);
   return { proxy: { ...r, token }, async stop() { await eg.close(); if (dir) fs.rmSync(dir, { recursive: true, force: true }); } };

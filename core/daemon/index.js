@@ -291,7 +291,7 @@ async function startLocked(opts, root, p, release) {
       if (typeof device !== "string" || !device) return null;
       return createRemoteKernel({ space: id, transport: winkTransport({ sessionFor: async () => sf(device) }) });
     };
-    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, runnerHost, remote: remoteFor, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
+    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, onOwnerAdopted: (/** @type {string} */ owner, /** @type {string} */ previous) => events.emit("kernel", "owner.adopted", { owner, previous }), runnerHost, remote: remoteFor, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
       // A credentialed request run at the home: the vault's own forward (an internal tool only the lease module may call), under the Space's credential; the kernel has already authorized it.
       forwardCredential: async (/** @type {any} */ q) => {
         const r = q.request;
@@ -348,7 +348,12 @@ async function startLocked(opts, root, p, release) {
       const chat = q.chat || (q.rec && typeof q.rec.chat === "string" ? q.rec.chat : undefined);
       // A probe asks only: is this person in this chat? (the kernel's own check: not_found when they are not). The Switchboard asks before it queues or runs a chat turn.
       if (q.probe) { kernel.gateway.grants.chats.read(person, chat); return null; }
-      const s = await kernelSessions.open({ chain: person, ...(chat ? { chat } : {}), ...(q.agent ? { agent: q.agent } : {}), thread: q.thread });
+      // The home's assistant acts in the kernel as the one actor it has, the default "assistant" (core/tasks-tools seeds a task's doer as that id, and the Space adds that actor once at setup), whatever name the person
+      // gave it: a named assistant (juno) is not a member of the Space of its own, so its session token carried an agent hop the kernel could not find and every call of its own answered not_found.
+      let isAssistant = Boolean(q.rec && q.rec.agent_kind === "assistant");
+      if (q.agent && !isAssistant) { try { const sc = await registry.call("agents.scope", { name: q.agent }, "module:vyred"); isAssistant = Boolean(sc && sc.data && sc.data.kind === "assistant"); } catch { /* agents is not running: the name stands */ } }
+      const kernelAgent = q.agent && !isAssistant ? q.agent : undefined;
+      const s = await kernelSessions.open({ chain: person, ...(chat ? { chat } : {}), ...(kernelAgent ? { agent: kernelAgent } : {}), thread: q.thread });
       return { token: kernelSessions.tokenFor(s.id), end: () => kernelSessions.end(s.id) };
     };
     // The sandbox every Vyre-started session's agent runs in on this computer (the runner's home sandbox: planHome, selfTest, launch; core/sessions/ cannot import core/runner, so the

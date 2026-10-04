@@ -1410,14 +1410,17 @@ test("an owned server: a second device with no owner presence is granted nothing
   assert.equal((await f.w.d.registry.call("wink.device.record", { id: "zzzzzzzzzzzzzzzz" }, "module:presence")).data, null);
 });
 
-test("sessionFor signs the device in by itself when a call needs the person (no manual start-paired); a session the server ended is refused with the server's own reason", async t => {
+test("sessionFor signs the device in by itself when a call needs the person (no manual start-paired); a lapsed session is renewed with the device's own key; a removed device is refused", async t => {
   const f = await pairFreshServer(t);
   const links = linksFor(t, f);
   const session = links.sessionFor("srv");
   assert.ok(JSON.stringify(await session.call("records.me", {})).includes(f.owner.id), "the first call needed the person: the device signed in and the call went through");
-  // the grant is one use: a device whose session the server ended (sign out everywhere) is refused with the server's own reason, never a bare person_session_required
+  // RENEWED, not re-paired (lead, 4 Oct): the server ends the device's session (it lapsed); the device still holds its key and signs in again by itself
   assert.ok((await f.w.d.registry.call("presence.person.end-paired", { device: f.done.device }, "module:wink")).data.ended >= 1);
-  await assert.rejects(() => session.call("records.me", {}), e => /could not sign in to the server/.test(e.message));
+  assert.ok(JSON.stringify(await session.call("records.me", {})).includes(f.owner.id), "the lapsed session is renewed with the device's key, no owner step");
+  // a removed device has no key on its record: there is nothing to renew, and re-pairing is for it alone
+  assert.equal((await f.w.call("wink.remove", { device: f.done.device }, SCREEN, A)).data.removed, f.done.device);
+  await assert.rejects(() => session.call("records.me", {}), e => /denied|closed|removed|unreachable|sign in|paired/i.test(`${e.code} ${e.message}`));
 });
 
 
@@ -1426,18 +1429,40 @@ test("a computer's own device key makes the owner's proof for an act that needs 
   const f = await pairFreshServer(t, { kind: "computer", presenceStorage: "software", devKey, realPresence: true });
   assert.equal(f.done.session, true, "a first pairing on a real presence module still grants the session");
   assert.equal((await deviceRow(f.w, f.done.device)).presence, true, "the server enrolled the computer's key as its presence key");
-  const links = createServerLinks({ connect, options: { crypto: nodeCrypto(), keyStore: f.ks }, name: "Alex's Mac", sign: m => devKey.sign(m), proveTool: devKey.proveTool,
+  const links = createServerLinks({ connect, options: { crypto: nodeCrypto(), keyStore: f.ks }, name: "Alex's Mac", sign: m => devKey.sign(m), proveTool: devKey.proveTool, autoPresence: true,
     channelOf: sid => (sid === "srv" ? { relay: f.w.status.url, route: f.done.route, box: f.done.box } : null) });
   t.after(() => links.close());
   const made = await links.sessionFor("srv").call("spaces.host-here", { name: "harlow" });
   assert.match(made.space, /^spc_[a-z2-7]{12}$/, "host-here answered after the device signed the server's presence_required");
   assert.ok(f.w.d.kernel.spaces.hosts(made.space), "the space is hosted by the server's kernel");
+  // PW-1: with the dev switch off (a computer's own software key), nothing signs a presence challenge by itself
+  const quiet = createServerLinks({ connect, options: { crypto: nodeCrypto(), keyStore: f.ks }, name: "q", sign: m => devKey.sign(m), proveTool: devKey.proveTool,
+    channelOf: sid => (sid === "srv" ? { relay: f.w.status.url, route: f.done.route, box: f.done.box } : null) });
+  t.after(() => quiet.close());
+  await assert.rejects(() => quiet.sessionFor("srv").call("spaces.host-here", { name: "nope" }), e => e.code === "presence_required");
   // a key the server never enrolled proves nothing
   const stranger = deviceKey(path.join(tempHome(t), "stranger.json"));
-  const bad = createServerLinks({ connect, options: { crypto: nodeCrypto(), keyStore: f.ks }, name: "x", sign: m => devKey.sign(m), proveTool: stranger.proveTool,
+  const bad = createServerLinks({ connect, options: { crypto: nodeCrypto(), keyStore: f.ks }, name: "x", sign: m => devKey.sign(m), proveTool: stranger.proveTool, autoPresence: true,
     channelOf: sid => (sid === "srv" ? { relay: f.w.status.url, route: f.done.route, box: f.done.box } : null) });
   t.after(() => bad.close());
   await assert.rejects(() => bad.sessionFor("srv").call("spaces.host-here", { name: "other" }), e => e.code === "presence_required");
+});
+
+
+test("renewal lock: three wrong sign-in answers lock the device for fifteen minutes; only the owner's own device lifts it", async t => {
+  const f = await pairFreshServer(t);
+  const id = f.done.device, as = `device:${id}`, peer = { peer: { kind: "device", stableId: id, node: id } };
+  const call = (tool, input) => f.w.d.registry.call(tool, input, as, peer);
+  // the pairing's own grant is still unused: three wrong answers delete it and lock the device
+  for (let i = 0; i < 3; i++) { const ch = (await call("presence.person.pair-challenge", {})).data.challenge; assert.ok(ch); await call("presence.person.start-paired", { sig: "AAAA" }); }
+  const ch1 = (await call("presence.person.pair-challenge", {})).data.challenge;
+  const started = await call("presence.person.start-paired", { sig: f.sign(`paired-start\n${id}\n${ch1}`) });
+  assert.ok(started.error, "locked: a right answer to a random challenge is no session");
+  // the owner lifts it from their own device (with their presence)
+  assert.equal((await f.w.d.registry.call("presence.person.renew-allow", { device: id }, "cli", PROOF)).data.allowed, id);
+  const ch2 = (await call("presence.person.pair-challenge", {})).data.challenge;
+  const ok = await call("presence.person.start-paired", { sig: f.sign(`paired-start\n${id}\n${ch2}`) });
+  assert.ok(ok.data && ok.data.token, "after the owner lifted the lock the device renews with its key");
 });
 
 test("SERVER-HOSTED SPACE end to end: a device daemon with a spaces module asks the paired server over the peer session; the SERVER's kernel hosts the space, the device keeps only a row and reaches it through the remote kernel", async t => {

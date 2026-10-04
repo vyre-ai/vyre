@@ -15,7 +15,7 @@ process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
 process.env.VYRE_SESSION_SANDBOX_OFF = "1";
 
-test("the assistant's session starts and submits a task: ready, working, needs_check for the owner", { timeout: 120_000, todo: "agents.ask on a fresh test home starts no assistant thread (unexplained); the tasks.* tools themselves are open to a proven assistant" }, async t => {
+test("the assistant's session starts and submits a task: ready, working, needs_check for the owner", { timeout: 120_000 }, async t => {
   const root = tempHome(t);
   const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, FAKE_CLAUDE_TRANSCRIPTS: process.env.FAKE_CLAUDE_TRANSCRIPTS };
   const transcripts = path.join(root, "transcripts");
@@ -33,15 +33,15 @@ test("the assistant's session starts and submits a task: ready, working, needs_c
   assert.equal(task.state, "ready");
   // the assistant's own session (the fake provider) calls the tools the way the MCP server does inside its thread
   // the home's assistant (onboarding makes one; a fresh test home has none)
-  const made = await d.registry.call("agents.create", { name: "juno", kind: "assistant" }, "cli");
+  const made = await d.registry.call("agents.create", { name: "assistant", kind: "assistant", projects: "*" }, "cli");
   assert.ok(!made.error, JSON.stringify(made));
-  const name = "juno";
+  const name = "assistant";
   const ask = async (/** @type {string} */ text) => d.registry.call("agents.ask", { agent: name, text, wait: false, surface: "deck" }, "cli");
-  const first = await ask(`vyre tasks.move ${JSON.stringify({ id: task.id, to: "working" })}`);
+  const first = await ask(`vyre-sock tasks.move ${JSON.stringify({ id: task.id, to: "working" })}`);
   assert.ok(!first.error, JSON.stringify(first));
   const row = async () => d.kernel.gateway.ask.get(person, task.id);
   await until(async () => (await row()).state === "working", `the assistant starts the task (${await (async () => { const l = (await d.registry.call("agents.list", {}, "cli")).data.find((/** @type {any} */ x) => x.name === name); const ev = l && l.thread ? (await d.registry.call("threads.get", { thread: l.thread, limit: 100 }, "cli")).data.events : []; return JSON.stringify(ev.filter((/** @type {any} */ e) => e.type === "thread.text" && e.payload.text).map((/** @type {any} */ e) => e.payload.text)); })()})`);
-  const second = await ask(`vyre tasks.submit ${JSON.stringify({ id: task.id, evidence: { answer: "yes", reason: "drafted" } })}`);
+  const second = await ask(`vyre-sock tasks.submit ${JSON.stringify({ id: task.id, evidence: { answer: "yes", reason: "drafted" } })}`);
   assert.ok(!second.error, JSON.stringify(second));
   await until(async () => (await row()).state === "needs_check", "the assistant submits it");
 });

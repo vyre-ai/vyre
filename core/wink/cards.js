@@ -104,6 +104,7 @@ const WORDS = {
   pairNeedsProof: () => "This server was set up to pair to one identity, and this device did not prove it is that identity, so nothing was paired.",
   pairCannotProve: () => "This server was set up to pair to one identity but cannot check who is asking yet, so nothing was paired. Pair it from the app and answer the question here instead.",
   pairBusy: () => "Another device is already asking to pair this server. Wait for it to finish, or start again from the server.",
+  pairNeedsPin: () => "The app did not say which version of your Vyre identity it last saw, so nothing was paired. Update the app and try again.",
   pairNotHardware: () => "Pair this server from Vyre on your phone.",
   pairNeedsIdentity: () => "The app did not prove which Vyre identity it is, so nothing was paired. Update the app and try again.",
   pairNotProven: (/** @type {any} */ v) => `The app said it is ${clean(v && v.name, "someone")}, but its key did not prove it, so nothing was paired.`,

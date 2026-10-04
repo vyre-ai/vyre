@@ -4,12 +4,14 @@
 // is trusted here: a reply is plain JSON, and the only thing kept is a MARKED copy of reads for the device's own screens (`cached`), never fed back as authority.
 import { KernelError } from "../core/errors.js";
 import { CALLS, CACHEABLE, WIRE_VERSION, MAX_RESPONSE_BYTES, PRESENCE_CODES } from "./wire.js";
+import { canonical, sha256 } from "../core/canonical.js";
+import { proofRequest, PROOF_CALLS } from "./proof.js";
 
 /** @typedef {{ send(space: string, request: any): Promise<any> }} RemoteTransport the port the Wink connection (or the relay) fills; it delivers to the home and returns its reply */
 
 let seq = 0;
 /**
- * @param {{ space: string, transport: RemoteTransport, clock?: () => number, cacheMax?: number,
+ * @param {{ space: string, home?: string, transport: RemoteTransport, clock?: () => number, cacheMax?: number,
  *   signer?: (challenge: any) => Promise<{ presence: any }> | { presence: any } }} cfg `signer` is the device's presence key: given the home's challenge it returns the proof; the one place presence over the wire is handled
  */
 export function createRemoteKernel(cfg) {
@@ -18,19 +20,19 @@ export function createRemoteKernel(cfg) {
   /** @type {Map<string, any>} */ const cache = new Map();
   const keyOf = (/** @type {string} */ call, /** @type {any[]} */ args) => `${call}\n${JSON.stringify(args)}`;
 
-  async function invoke(/** @type {string} */ call, /** @type {any[]} */ args, /** @type {{ proof?: any, challenge?: string, opts?: number }} */ extra = {}) {
+  async function invoke(/** @type {string} */ call, /** @type {any[]} */ args, /** @type {{ proof?: any, challenge?: string }} */ extra = {}) {
     // JSON only, so what is sent is exactly what the home signs off on (no functions, no cycles, no undefined holes).
     let wireArgs;
     try { wireArgs = JSON.parse(JSON.stringify(args.map(a => (a === undefined ? null : a)))); } catch { throw new KernelError("bad_input", "a remote call takes plain data"); }
     const id = `rq_${clock().toString(36)}_${(++seq).toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
     let reply;
-    try { reply = await cfg.transport.send(cfg.space, { v: WIRE_VERSION, space: cfg.space, id, ts: clock(), call, args: wireArgs, ...(extra.proof !== undefined ? { proof: extra.proof, challenge: extra.challenge, ...(extra.opts !== undefined ? { opts: extra.opts } : {}) } : {}) }); } catch { throw new KernelError("unreachable", "the Space's home could not be reached"); }
+    try { reply = await cfg.transport.send(cfg.space, { v: WIRE_VERSION, space: cfg.space, id, ts: clock(), call, args: wireArgs, ...(extra.proof !== undefined ? { proof: extra.proof, challenge: extra.challenge } : {}) }); } catch { throw new KernelError("unreachable", "the Space's home could not be reached"); }
     if (!reply || reply.v !== WIRE_VERSION || reply.id !== id || typeof reply.ok !== "boolean") throw new KernelError("unavailable", "the home's answer was not understood");
     if (!reply.ok) {
       const code = String(reply.error && reply.error.code || "unavailable").slice(0, 40);
       const ch = reply.error && reply.error.challenge && typeof reply.error.challenge === "object" ? reply.error.challenge : null;
       // the home asks for presence: sign its challenge with this device's key and send the same call once more; the peer session alone never counts
-      if (PRESENCE_CODES.has(code) && ch && cfg.signer && extra.proof === undefined) {
+      if (PRESENCE_CODES.has(code) && ch && cfg.signer && extra.proof === undefined && challengeIsOurs(ch, call, wireArgs)) {
         let signed; try { signed = await cfg.signer(ch); } catch { signed = null; }
         if (signed && signed.presence && typeof signed.presence === "object") return invoke(call, args, { proof: signed.presence, challenge: String(ch.nonce) });
       }
@@ -44,13 +46,32 @@ export function createRemoteKernel(cfg) {
     return reply.result;
   }
 
+  /**
+   * PW-2: the home's challenge is its own text, so it is checked against what THIS device asked before anything is signed: the call it made, this Space, the hash of the exact arguments it sent, and for a call a
+   * presence proof covers, the op, fields and payload hash it works out itself. A challenge for anything else gets no signature.
+   * @param {any} ch @param {string} call @param {any[]} sent
+   */
+  function challengeIsOurs(ch, call, sent) {
+    try {
+      if (ch.call !== call || ch.space !== cfg.space || ch.args_hash !== sha256(canonical(sent))) return false;
+      if (cfg.home && ch.home !== cfg.home) return false;
+      const short = call.split(".").slice(1).join(".");
+      if (call.startsWith("grants.") && PROOF_CALLS.includes(short)) {
+        const r = proofRequest(cfg.space, short, ...sent);
+        if (ch.op !== r.op || ch.payload_hash !== r.payload_hash || canonical(ch.fields) !== canonical(r.fields)) return false;
+      }
+      return typeof ch.nonce === "string" && ch.nonce.length > 0;
+    } catch { return false; }
+  }
+
   /** A caller that already holds a proof passes it as the trailing options `{ presence, challenge }`: moved out of the args to travel beside them (the home puts it back for the kernel). */
   function invokeWith(/** @type {string} */ call, /** @type {any[]} */ args) {
     const last = args[args.length - 1];
     if (last && typeof last === "object" && !Array.isArray(last) && Object.hasOwn(last, "presence") && typeof last.challenge === "string") {
+      // PW-4: only the proof and its challenge travel in the options object; any other option cannot cross, so a proof can never be aimed at a data argument
       const { presence, challenge, ...rest } = last;
-      const keep = Object.keys(rest).length > 0;
-      return invoke(call, keep ? [...args.slice(0, -1), rest] : args.slice(0, -1), { proof: presence, challenge, ...(keep ? { opts: args.length - 1 } : {}) });
+      if (Object.keys(rest).length) return Promise.reject(new KernelError("bad_input", "a remote call takes only a proof and its challenge as options"));
+      return invoke(call, args.slice(0, -1), { proof: presence, challenge });
     }
     return invoke(call, args);
   }

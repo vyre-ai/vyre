@@ -14,7 +14,6 @@ import path from "node:path";
 /** Reads that write today, by name, each to be redeclared `write` (with callers) or fixed by its owner. Never add one. */
 const KNOWN_WRITERS = new Set([
   "appearance.resolve", "settings.get", "settings.snapshot", // three existing settings rows change on every call (settings)
-  "vault.health", // appends to vault_audit (vault)
 ]);
 
 test("a tool declared effect read changes no state when called with no input", { timeout: 280_000 }, async t => {

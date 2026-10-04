@@ -7,6 +7,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { createPairing, pairToMessage, MIGRATIONS, PEER_MIGRATIONS, POLL_MS, KIND_OFFERS, parseQr, qrPayload, parseServerQr, serverQrPayload, parsePhoneQr, phoneQrPayload } from "./pairing.js";
 import { FORBIDDEN, words, removed } from "./cards.js";
 import { pairWords, nonceCommit, ticketTag, newNonce } from "../../relay/client/pairwords.js";
@@ -22,7 +25,7 @@ function world(o = {}) {
   const tools = new Map();
   const events = /** @type {any[]} */ ([]);
   const drops = /** @type {any[]} */ ([]);
-  const ctx = { store: { db }, config: { name: "alex" }, log() {}, events: { emit: (n, d) => events.push([n, d]) }, tool: (n, def) => tools.set(n, def), call: async (tool, input) => { if (tool === "relay.route.id") return { data: { box: o.box || "Qm94S2V5" } }; drops.push([tool, input]); return { data: { closed: true } }; } };
+  const ctx = { store: { db }, config: { name: "alex" }, log() {}, events: { emit: (n, d) => events.push([n, d]) }, tool: (n, def) => tools.set(n, def), call: async (tool, input) => { if (o.call) { const r = await o.call(tool, input); if (r !== undefined) return r; } if (tool === "relay.route.id") return { data: { box: o.box || "Qm94S2V5" } }; drops.push([tool, input]); return { data: { closed: true } }; } };
   const typed = /** @type {any[]} */ ([]);
   const finishes = /** @type {any[]} */ ([]);
   const minted = /** @type {any[]} */ ([]);
@@ -38,7 +41,7 @@ function world(o = {}) {
     openCode: async flow => ({ offer: `wo_${flow}`, code: "WINK-ZZZZ-ZZZZ", expires: 1 }), ack: async () => ({ ok: true }),
     owner: (m, what) => { if (m && (m.agent || String(m.caller).startsWith("agent:"))) throw Object.assign(new Error(what), { code: "denied" }); }, dropMs: 0, relayUrl: async () => "ws://relay.test", keyFile: o.keyFile,
     // existing tests adopt in one step and type codes; the Q-1 tests below turn the confirmation on and the typed code off, as a release build has them
-    confirmAdopt: o.confirm === true, requireProof: o.requireProof ?? false, releaseProof: o.releaseProof ?? false, typedCode: o.typedCode ?? true, askHoldMs: o.askHoldMs ?? 0, askMs: o.askMs, askPollMs: 1, releaseMaxMs: o.releaseMaxMs, identityEntry: o.identityEntry, signIdentity: o.signIdentity, vyreName: o.vyreName, mintMs: o.mintMs, looseOwnerIds: o.exactIds ? false : true, pairWordsFor: o.pairWordsFor === null ? undefined : (o.pairWordsFor || (async d => `amber coral ${d}`)), spaceNow: () => HARLOW,
+    confirmAdopt: o.confirm === true, requireProof: o.requireProof ?? false, buildRoot: o.buildRoot, releaseProof: "releaseProof" in o ? o.releaseProof : false, typedCode: o.typedCode ?? true, askHoldMs: o.askHoldMs ?? 0, askMs: o.askMs, askPollMs: 1, releaseMaxMs: o.releaseMaxMs, identityEntry: o.identityEntry, signIdentity: o.signIdentity, vyreName: o.vyreName, mintMs: o.mintMs, looseOwnerIds: o.exactIds ? false : true, pairWordsFor: o.pairWordsFor === null ? undefined : (o.pairWordsFor || (async d => `amber coral ${d}`)), spaceNow: () => HARLOW,
   });
   p.tools();
   const call = (name, input = {}, meta = {}) => tools.get(name).run(input, { caller: "device:x", ...meta });
@@ -1473,7 +1476,7 @@ test("PI-1: on a release build the owner's proof must come from a phone's hardwa
   const msg = pairToMessage(BOX, "app1", TAG);
   const proof = (eid, esig) => ({ eid, sig: crypto.sign(null, msg, soft.privateKey).toString("base64url"), ...(esig ? { esig } : {}) });
   const esigOf = () => crypto.sign("sha256", msg, { key: enc.privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url");
-  const base = { owner: { kind: "identity", id: ME, name: "Alex", vyre: "alex" }, identity: ME, pairing: { commit: "0".repeat(64), tag: TAG } };
+  const base = { owner: { kind: "identity", id: ME, name: "Alex", vyre: "alex", pin: { id: ME, seq: 1, head: "h" } }, identity: ME, pairing: { commit: "0".repeat(64), tag: TAG } };
   const attempt = async (releaseProof, p) => { const w = world({ confirm: true, requireProof: true, releaseProof, identityEntry }); try { return { ok: await w.tools.get("wink.server.adopt").run({ ...base, proof: p }, { caller: "device:app1" }), w }; } catch (e) { return { err: e, w }; } };
   // a release build
   assert.equal((await attempt(true, proof("e_soft"))).err.code, "not_hardware");
@@ -1482,6 +1485,12 @@ test("PI-1: on a release build the owner's proof must come from a phone's hardwa
   assert.equal((await attempt(true, proof("e_phone"))).err.code, "denied_wrong_proof", "an enclave entry's proof without its Face ID signature");
   assert.equal((await attempt(true, proof("e_phone", "A".repeat(86)))).err.code, "denied_wrong_proof", "a wrong esig");
   assert.equal((await attempt(true, proof("e_phone", esigOf()))).ok.pending, true, "with its Face ID signature it is asked");
+  // PI-2: a release build refuses a pairing with no pin; a development build takes it and says so
+  const nopin = { ...base, owner: { kind: "identity", id: ME, name: "Alex", vyre: "alex" } };
+  const wNo = world({ confirm: true, requireProof: true, releaseProof: true, identityEntry });
+  await assert.rejects(() => wNo.tools.get("wink.server.adopt").run({ ...nopin, proof: proof("e_phone", esigOf()) }, { caller: "device:app1" }), e => e.code === "no_pin");
+  const wDev = world({ confirm: true, requireProof: true, releaseProof: false, identityEntry });
+  assert.equal((await wDev.tools.get("wink.server.adopt").run({ ...nopin, proof: proof("e_soft") }, { caller: "device:app1" })).pending, true);
   // a proof with no pairing tag is no proof on a release build
   const w0 = world({ confirm: true, requireProof: true, releaseProof: true, identityEntry });
   await assert.rejects(() => w0.tools.get("wink.server.adopt").run({ ...base, pairing: { commit: "0".repeat(64) }, proof: proof("e_phone", esigOf()) }, { caller: "device:app1" }), e => e.code === "denied_wrong_proof");
@@ -1504,4 +1513,58 @@ test("PI-2: the app's pin goes to the directory lookup, and a refused refusal le
   assert.equal(w.p.meta.get("owner"), null);
   assert.equal((await w.tools.get("wink.server.pairing").run({}, { caller: "cli" })).asking, false, "no ask is left");
   assert.ok(w.drops.some(d => d[0] === "relay.devices.drop" && d[1].id === "app1"), "the refused device's relay row is dropped");
+});
+
+test("the owner record is written BEFORE spaces.owner.adopt asks for it (windows' check reads wink.server.owner): adoption never refuses for an order bug", async () => {
+  const kp = crypto.generateKeyPairSync("ed25519");
+  const pub = kp.publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("base64url");
+  const BOX = "Qm94S2V5", TAG = "t".repeat(43);
+  let ownerAtAdopt = "unset";
+  let wref;
+  const w = world({ confirm: true, requireProof: true, releaseProof: false, identityEntry: async (_i, eid) => (eid === "e1" ? { eid: "e1", kind: "device", pub, identity: ME } : null),
+    call: async (tool, input) => {
+      if (tool === "relay.pair.pending.confirm") return { data: { key: crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7 } };
+      if (tool === "relay.device.presence") return { data: { key: "pk1" } };
+      if (tool === "spaces.owner.adopt") { ownerAtAdopt = wref.p.meta.get("owner"); return { data: { owner: input.person } }; }
+      return undefined;
+    } });
+  wref = w;
+  const proof = { eid: "e1", sig: crypto.sign(null, pairToMessage(BOX, "app1", TAG), kp.privateKey).toString("base64url") };
+  const input = { owner: { kind: "identity", id: ME, name: "Alex", vyre: "alex" }, identity: ME, deviceKind: "phone", proof, pairing: { commit: "0".repeat(64), tag: TAG } };
+  const run = () => w.tools.get("wink.server.adopt").run(input, { caller: "device:app1" });
+  assert.equal((await run()).pending, true);
+  await atServer(w, "wink.server.pair.answer", await rightYes(w, "amber coral app1").catch(() => ({ yes: true, pick: 1 })));
+  const done = await run().catch(e => e);
+  if (process.env.NEVER) console.log("DBG", JSON.stringify(done), JSON.stringify(w.p.meta.get("owner")), JSON.stringify(w.p.devices.get("app1")), JSON.stringify(w.events.map(e => e[0])), "PROOF", w.p.meta.get("owner_proof"), JSON.stringify(w.drops.map(d => d[0])));
+  assert.ok(ownerAtAdopt && ownerAtAdopt.identity === ME, `the owner record named the identity when adopt asked: ${JSON.stringify(ownerAtAdopt)}`);
+});
+
+
+const fixtureBuild = (kind) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `bk-${kind}-`));
+  fs.mkdirSync(path.join(dir, "lib"));
+  fs.writeFileSync(path.join(dir, "lib", "build-kind.js"), kind === "development" ? 'export const BUILD_KIND = "development";\n' : 'export const BUILD_KIND = "release";\n');
+  if (kind === "dev-image") fs.writeFileSync(path.join(dir, "vyre.tgz"), "x");   // a dev-kind image is packed, but its KIND is still development
+  return dir;
+};
+
+test("the build KIND decides release behaviour, on three builds: a checkout and a packaged dev-kind image take a software prover and the software signer switch; a release-stamped copy refuses the prover and ignores the switch", async () => {
+  const saved = process.env.VYRE_SEAL_SOFTWARE;
+  try {
+    process.env.VYRE_SEAL_SOFTWARE = "1";
+    const soft = crypto.generateKeyPairSync("ed25519");
+    const entry = { eid: "e_soft", kind: "device", pub: soft.publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("base64url"), identity: ME };
+    const BOX = "Qm94S2V5", TAG = "t".repeat(43);
+    const proof = { eid: "e_soft", sig: crypto.sign(null, pairToMessage(BOX, "app1", TAG), soft.privateKey).toString("base64url") };
+    const input = { owner: { kind: "identity", id: ME, name: "Alex", vyre: "alex", pin: { id: ME, seq: 1, head: "h" } }, identity: ME, proof, pairing: { commit: "0".repeat(64), tag: TAG } };
+    for (const [name, root] of [["a checkout", undefined], ["a packaged dev-kind image", fixtureBuild("dev-image")]]) {
+      const w = world({ confirm: true, requireProof: true, identityEntry: async () => entry, buildRoot: root, releaseProof: undefined });
+      assert.equal(w.p.autoPresence, true, `${name}: the software signer switch is honoured`);
+      assert.equal((await w.tools.get("wink.server.adopt").run(input, { caller: "device:app1" })).pending, true, `${name}: a software prover is asked`);
+    }
+    const rel = fixtureBuild("release");
+    const w = world({ confirm: true, requireProof: true, identityEntry: async () => entry, buildRoot: rel, releaseProof: undefined });
+    assert.equal(w.p.autoPresence, false, "a release-stamped copy ignores the switch");
+    await assert.rejects(() => w.tools.get("wink.server.adopt").run(input, { caller: "device:app1" }), e => e.code === "not_hardware");
+  } finally { if (saved === undefined) delete process.env.VYRE_SEAL_SOFTWARE; else process.env.VYRE_SEAL_SOFTWARE = saved; }
 });

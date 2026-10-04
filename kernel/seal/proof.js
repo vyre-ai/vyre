@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import { proofBytes, payloadHash, sha256b64, bindBytes } from "./wire.js";
 import { bindAttestation, assertProof } from "./appattest.js";
+import { strengthOf, strengthRefusal, methodOf } from "./strength.js";
 // The identity chain verifier lives in kernel/identity (windows authors it, its hash is pinned there): the root of trust for devices.
 import { verifyChain, checkAnswer, pinOf, verifyWith } from "../identity/chain.js";
 
@@ -184,7 +185,8 @@ export class Presence {
     if (!ctx.one_person || !ctx.person) return "chain_not_person";
     const k = this.keys.get(proof.key_id);
     if (!k || k.person !== ctx.person || k.signer !== proof.signer) return "unknown_key";
-    if (k.signer === SOFTWARE) { if (!this.allowSoftware) return "software_refused"; } else if (!k.attested && !this.allowUnattested) return "unattested";
+    // The ONE strength rule (strength.js, shared with the registry): a software key satisfies presence only where a dev switch is on, and is marked method software.
+    const why = strengthRefusal(strengthOf(k.attested), k.signer === SOFTWARE ? this.allowSoftware : this.allowUnattested); if (why) return why; // each dev switch admits only its own kind of key
     // V-3: a key from before the chain was pinned and never bound has a day after the first pin to be bound by a sync; after that it proves nothing.
     const pin = this.pins.get(ctx.person);
     if (!k.device && pin?.first !== undefined && this.now() - pin.first > UNBOUND_GRACE_MS) return "needs_bind";
@@ -204,7 +206,7 @@ export class Presence {
     for (const [n, e] of this.used) if (e < t) this.used.delete(n);
     if (this.used.has(proof.nonce)) return "replayed";
     this.used.set(proof.nonce, proof.expires_at);
-    this.lastMethod = k.signer === SOFTWARE ? "software" : k.attested ? "attested" : "unattested";
+    this.lastMethod = methodOf(strengthOf(k.attested)); this.lastStrength = strengthOf(k.attested);
     return null;
   }
 }
