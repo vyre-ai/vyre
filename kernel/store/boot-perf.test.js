@@ -36,6 +36,9 @@ test(`a restart over ${N.toLocaleString("en")} events reads by type prefix from 
     const plan = db.prepare("EXPLAIN QUERY PLAN SELECT event FROM kernel_events WHERE space = ? AND seq > ? AND type >= ? AND type < ? ORDER BY seq LIMIT ?").all(SPACE, 0, prefix, prefix.slice(0, -1) + "/", 100).map(r => r.detail).join(" | ");
     assert.match(plan, /kernel_events_type/, `${prefix}: ${plan}`);
   }
+  // and the window read (the newest events, newest first) walks the table from its end and stops: with an index in play the planner sorted every event of the Space first (0.5 to 1.3 s at 1.4 million)
+  const wplan = db.prepare("EXPLAIN QUERY PLAN SELECT seq, event, salt FROM kernel_events NOT INDEXED WHERE space = ? ORDER BY seq DESC LIMIT ?").all(SPACE, 2000).map(r => r.detail).join(" | ");
+  assert.doesNotMatch(wplan, /TEMP B-TREE/, wplan);
   const t0 = performance.now();
   k = await bootKernel({ db, space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 9) });
   const ms = performance.now() - t0;
