@@ -396,6 +396,20 @@ export class TwentyStore {
     });
   }
 
+  /**
+   * A field was sealed: forget the plain values it held in everything this store keeps (the change log, the snapshots) and destroy Twenty's own timeline, which
+   * records every changed value of every record. The timeline is not used by Vyre (the gateway's log is the history), so all of it goes. A database keeps dead
+   * pages on disk until it is vacuumed; that is the operator's step. @param {string} type @param {string[]} fields
+   */
+  async scrub(type, fields) {
+    this.#plan(type);
+    for (const e of this.log) if (e.type === type) for (const f of fields) { if (e.before) delete e.before[f]; if (e.after) delete e.after[f]; }
+    if (this.logFile && fs.existsSync(this.logFile)) { const tmp = this.logFile + ".tmp"; fs.writeFileSync(tmp, this.log.map((e) => JSON.stringify(e)).join("\n") + (this.log.length ? "\n" : ""), { mode: 0o600 }); fs.renameSync(tmp, this.logFile); }
+    for (const [k, snap] of this.snaps.map) if (k.startsWith(`${type}/`)) for (const f of fields) delete snap.data[f];
+    this.snaps.compact();
+    await this.#t(() => this.client.gql("graphql", "mutation PurgeTimeline($f: TimelineActivityFilterInput) { destroyTimelineActivities(filter: $f) { id } }", { f: { or: [{ deletedAt: { is: "NULL" } }, { deletedAt: { is: "NOT_NULL" } }] } }));
+  }
+
   // ---- what happened, and trust ----------------------------------------------------------------
   /** @param {string | null} since @param {number} limit */
   async changes(since, limit) {

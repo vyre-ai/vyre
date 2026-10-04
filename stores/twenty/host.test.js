@@ -20,7 +20,7 @@ const dirs = [];
 const fake = await new FakeTwenty().start();
 after(async () => { await fake.stop(); for (const d of dirs) fs.rmSync(d, { recursive: true, force: true }); });
 
-async function boot() {
+async function boot(extra = {}) {
   fake.reset();
   const dir = fs.mkdtempSync(path.join(SCRATCH, "twh-")); dirs.push(dir);
   const client = new TwentyClient({ url: fake.url, key: () => fake.key, sleep: async () => {} });
@@ -28,7 +28,7 @@ async function boot() {
   const store = createTwentyStore({ client, space: "harlow", dir, webhookSecret: secret, graceMs: 0 });
   fake.deliver = async (payload, headers, raw) => { await store.handleWebhook(Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])), raw); };
   await store.registerWebhook("fn:store");
-  const host = createRecordsHost({ space: SPACE, owner: "per_owner", store });
+  const host = createRecordsHost({ space: SPACE, owner: "per_owner", store, ...extra });
   return { host, store };
 }
 
@@ -192,4 +192,20 @@ test("computed fields over Twenty: a total over linked records, an expression, a
   assert.equal(def.applied, true);
   assert.equal("old" in (await R.get(c, "client", a.id)).data, false);
   await assert.rejects(() => R.update(c, "client", a.id, { old: "x" }, 1), { code: "bad_input" });
+});
+
+test("seal a field in place over Twenty: no plaintext in Twenty's rows, the store's change log or the event log, and Twenty's timeline is purged", async () => {
+  let refs = 0;
+  const { host, store } = await boot({ sealer: { api: { put: async (i) => ({ ref: { sealed: i.class, ref: `sv_${++refs}`, present: true, valid_format: true, set_at: 1 } }) } } });
+  const c = host.ownerChain(), R = host.kernel.records;
+  await host.defineTypes([{ name: "person", label: "Person", fields: [{ name: "name", kind: "text", label: "Name", required: true }, { name: "ssn", kind: "text", label: "SSN" }] }]);
+  const p = await R.create(c, "person", { name: "Jane", ssn: "123-45-6789" });
+  await R.update(c, "person", p.id, { ssn: "123-45-6790" }, 1);
+  const out = await host.kernel.migrate.sealField(c, { type: "person", field: "ssn", class: "us-ssn" });
+  assert.equal(out.moved, 1);
+  assert.equal(fake.timelinePurges, 1, "Twenty's own history was destroyed");
+  const rows = JSON.stringify([...fake.rows.values()].flatMap((m) => [...m.values()]));
+  assert.equal(rows.includes("123-45-67"), false, "not in Twenty's row");
+  assert.equal(JSON.stringify((await store.changes(null, 1000)).entries).includes("123-45-67"), false);
+  assert.equal(JSON.stringify(host.log.read()).includes("123-45-67"), false);
 });

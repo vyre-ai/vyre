@@ -141,6 +141,7 @@ export class FakeTwenty {
   }
 
   async #core(op, v) {
+    if (op === "PurgeTimeline") { this.timelinePurges = (this.timelinePurges ?? 0) + 1; return { destroyTimelineActivities: [] }; }
     const [kind, ...rest] = op.split("_"); const name = rest.join("_");
     if (kind === "Get") { const { rows } = this.#objBySingular(name); const rowsList = [...rows.values()].filter((r) => this.#match(r, v.f)); this.#visible(v.f, rowsList); return { [name]: rowsList.filter((r) => this.#vis(v.f, r))[0] ?? null }; }
     if (kind === "Q") {

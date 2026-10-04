@@ -233,6 +233,12 @@ export function createMemoryStore(cfg = {}) {
         yield { seq: seq++, records, done: i + 100 >= all.length, checksum: sha256(canonical(records)) };
       }
     },
+    /** Forget the values these fields held in the change log (a field was sealed: its old plain values must not survive here). Stores with a durable log do the same through `cfg.persist.scrub`. */
+    async scrub(type, fields) {
+      touch("scrub", [type, fields]);
+      for (const e of changes) if (e.type === type) for (const f of fields) { if (e.before) delete e.before[f]; if (e.after) delete e.after[f]; }
+      if (cfg.persist && typeof cfg.persist.scrub === "function") cfg.persist.scrub(type, fields);
+    },
     features() { return { aggregate: true, search: true, changes: true, cursor_paging: /** @type {const} */ (true) }; },
   };
 }

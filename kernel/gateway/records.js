@@ -51,8 +51,8 @@ const mergePatch = (/** @type {any} */ data, /** @type {any} */ patch) => {
   for (const [k, v] of Object.entries(patch || {})) { if (v === null) delete out[k]; else out[k] = v; }
   return out;
 };
-const redactDiff = (/** @type {any} */ data, /** @type {Set<string>} */ changed) =>
-  Object.fromEntries(Object.entries(data || {}).map(([k, v]) => [k, isSealedShape(v) ? { sealed: true, changed: changed.has(k) } : v]));
+const redactDiff = (/** @type {any} */ data, /** @type {Set<string>} */ changed, /** @type {readonly string[]} */ also = []) =>
+  Object.fromEntries(Object.entries(data || {}).map(([k, v]) => [k, isSealedShape(v) || also.includes(k) ? { sealed: true, changed: changed.has(k) } : v]));
 const changedFields = (/** @type {any} */ a, /** @type {any} */ b) => {
   const keys = new Set([...Object.keys(a || {}), ...Object.keys(b || {})]);
   return [...keys].filter(k => canonical((a || {})[k] ?? null) !== canonical((b || {})[k] ?? null)).sort();
@@ -287,7 +287,7 @@ export function createRecords(cfg) {
     return Object.freeze({ ...r, data, urn: u, labels: { trust: modified ? "external" : "member", red: "internal", source_spaces: [space] }, ...(modified ? { modified_outside: true } : {}) });
   }
 
-  async function write(/** @type {any} */ chain, /** @type {"create"|"update"|"remove"|"restore"} */ op, /** @type {string} */ type, /** @type {string} */ id, /** @type {any} */ input, /** @type {number | null} */ base, /** @type {() => Promise<any>} */ run, /** @type {(() => Promise<any>) | null} */ getBefore) {
+  async function write(/** @type {any} */ chain, /** @type {"create"|"update"|"remove"|"restore"} */ op, /** @type {string} */ type, /** @type {string} */ id, /** @type {any} */ input, /** @type {number | null} */ base, /** @type {() => Promise<any>} */ run, /** @type {(() => Promise<any>) | null} */ getBefore, /** @type {readonly string[]} */ redact = []) {
     checkType(type); checkId(id);
     const u = urn(type, id);
     const d = await gate(chain, `records.${op}`, u);
@@ -311,7 +311,7 @@ export function createRecords(cfg) {
     // What the store must show for this to be our change and no one else's: the exact data and deleted state.
     const merged = op === "create" ? input : op === "update" ? mergePatch(before ? before.data : {}, input) : before ? before.data : null;
     const expect = merged === null || merged === undefined ? null : sha256(canonical({ deleted: op === "remove", data: merged }));
-    const intent = { id: mintUuid(clock()), decision: d.decision, chain: chain.hops, record: u, base_version: base, operation: op, input_hash: sha256(canonical(input)), expect, before_data: before ? before.data : null, state: "open", started_at: clock(), stored: await chains.serialize(chain) };
+    const intent = { id: mintUuid(clock()), decision: d.decision, chain: chain.hops, record: u, base_version: base, operation: op, input_hash: sha256(canonical(input)), expect, redact, before_data: before ? before.data : null, state: "open", started_at: clock(), stored: await chains.serialize(chain) };
     intents.set(intent.id, intent);
     let rec;
     try { rec = await run(); }
@@ -351,7 +351,7 @@ export function createRecords(cfg) {
     const sealed = Object.values(rec.data).some(isSealedShape);
     log.append(chain, {
       type: `${rec.type}.${verb}`, sv: 1, subject: intent.record,
-      data: { changed, version: rec.version, version_hash: hash, ...(before ? { before: redactDiff(before.data, set) } : {}), after: redactDiff(rec.data, set), ...(recovered ? { recovered: true } : {}) },
+      data: { changed, version: rec.version, version_hash: hash, ...(before ? { before: redactDiff(before.data, set, intent.redact) } : {}), after: redactDiff(rec.data, set, intent.redact), ...(recovered ? { recovered: true } : {}) },
       red: sealed ? "pii" : "internal",
       // Record events carry field values: only a chain that may read the record may read them (R2-1).
       vis: "subject",
@@ -502,7 +502,7 @@ export function createRecords(cfg) {
       return idem.once(chain, "create", opts.idem, { type, data, attrs: opts.attrs }, () => createOnce(chain, type, data, opts));
     },
     async update(chain, type, id, patch, base, opts = {}) {
-      return idem.once(chain, "update", opts.idem, { type, id, patch, base }, () => write(chain, "update", type, id, patch, base, () => store.update(type, id, patch, base), () => store.get(type, id)));
+      return idem.once(chain, "update", opts.idem, { type, id, patch, base }, () => write(chain, "update", type, id, patch, base, () => store.update(type, id, patch, base), () => store.get(type, id), opts.redact || []));
     },
     async remove(chain, type, id, base, opts = {}) {
       return idem.once(chain, "remove", opts.idem, { type, id, base }, () => write(chain, "remove", type, id, {}, base, () => store.remove(type, id, base), () => store.get(type, id)));

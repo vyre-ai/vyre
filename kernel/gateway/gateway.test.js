@@ -564,6 +564,33 @@ test("remove a field softly: nothing shows, writes, filters or finds it, the dat
   assert.equal((await r.get(owner(), "memo", m.id)).data.secret, "needle", "the data was kept");
 });
 
+test("seal a field in place: values move into a sealed field, no plaintext is left in the store, its change log or the event log, and the audit chain still verifies", async () => {
+  let refs = 0;
+  const sealer = { api: { put: async i => ({ ref: { sealed: i.class, ref: `sv_${++refs}`, present: true, valid_format: true, set_at: 1 } }) } };
+  const { r, gw, log, store } = rig({ grants: [G({ actions: ["records.*", "records.define", "seal.put", "events.read"] })], sealer });
+  await r.define(owner(), { add_types: [{ name: "person", label: "Person", fields: [{ name: "name", kind: "text", label: "Name", required: true }, { name: "ssn", kind: "text", label: "SSN", required: true }] }] });
+  const a = await r.create(owner(), "person", { name: "Jane", ssn: "123-45-6789" });
+  const b = await r.create(owner(), "person", { name: "Bob", ssn: "987-65-4321" });
+  await r.update(owner(), "person", b.id, { ssn: "987-65-4322" }, 1);
+  const gone = await r.create(owner(), "person", { name: "Binned", ssn: "555-55-5555" });
+  await r.remove(owner(), "person", gone.id, 1);
+  const out = await gw.migrate.sealField(owner(), { type: "person", field: "ssn", class: "us-ssn" });
+  assert.equal(out.moved, 3, "the binned record too");
+  assert.equal(out.sealed_field, "ssn_sealed");
+  const all = JSON.stringify(await store.query("person", { include_deleted: true, page: { limit: 50 } }));
+  for (const plain of ["123-45-6789", "987-65-4321", "987-65-4322", "555-55-5555"]) assert.equal(all.includes(plain), false, `${plain} is not in the store`);
+  assert.equal(JSON.stringify((await store.changes(null, 1000)).entries).includes("123-45-6789"), false, "not in the store's change log");
+  const events = JSON.stringify(log.read());
+  for (const plain of ["123-45-6789", "987-65-4321", "987-65-4322", "555-55-5555"]) assert.equal(events.includes(plain), false, `${plain} is not in the event log`);
+  const got = (await r.get(owner(), "person", a.id)).data;
+  assert.equal(got.ssn_sealed.sealed, "us-ssn");
+  assert.equal("ssn" in got, false, "the plain field is removed from view");
+  assert.equal(await r.get(owner(), "person", gone.id), null, "the binned record is back in the bin");
+  assert.equal((await gw.audit.verify()).ok, true, "an erased event keeps the chain verifiable");
+  assert.equal(log.read({ type: "records.field-sealed" }).length, 1);
+  await assert.rejects(() => gw.migrate.sealField(owner(), { type: "person", field: "ssn", class: "us-ssn" }), { code: "bad_input" }, "a field that is already removed from view is refused");
+});
+
 // ---- stage gates ----
 import { parseExpr, evalExpr } from "../../records/language/expr.js";
 const DEAL = { name: "deal", label: "Deal", fields: [{ name: "title", kind: "text", label: "Title" }, { name: "signed", kind: "boolean", label: "Signed" }, { name: "stage", kind: "stage", label: "Stage", options: ["Intake", "Drafting", "Done"] }],
