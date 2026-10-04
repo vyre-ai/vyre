@@ -2,6 +2,7 @@
 // spend: the ledger and the per-provider daily cap. At the cap the spending thread pauses with one line
 // and a raise-it action, once a day, and nothing asks on a call. Fictional data only (juno, kit).
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

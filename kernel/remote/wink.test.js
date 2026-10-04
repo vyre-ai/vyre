@@ -1,3 +1,4 @@
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { winkTransport, withKernelCall, KERNEL_CALL_TOOL } from "./wink.js";

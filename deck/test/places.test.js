@@ -4,6 +4,7 @@
 // place as a fourth page of the pager. The tiles, their order and routes, the hold and its
 // keyboard path, the one kept place and where it is stored.
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

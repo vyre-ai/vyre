@@ -1,6 +1,7 @@
 // @ts-check
 // page tools across frames: a top page (the shell) with cross-origin, nested, same-origin, late, navigating and unreadable frames.
 // Everything runs on the fakes in test-support/fake-chrome.js (createFakeFrames): no Chrome, no window, no network.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import vm from "node:vm";

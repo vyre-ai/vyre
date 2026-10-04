@@ -1,6 +1,7 @@
 // L-2 at the kernel: a rollback to an older release is below the module-list counter the home accepted, so the older build's modules are refused until the owner resets the list
 // with a REAL presence proof (a key enrolled through the sealing process's own ceremony, signing the payload the sealer recomputes). Nothing is stubbed: a real sealing process, a real
 // home kernel booted twice over the same data, the real `resetModulesList`. (The box wrapper's rollback asks the daemon for this reset before it swaps the image: box/vyre.)
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

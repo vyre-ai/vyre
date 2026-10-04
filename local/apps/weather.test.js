@@ -2,6 +2,7 @@
 // Weather over a fake fetch: the place, the URLs, which day of the forecast, the words, and a
 // network failure as code failed.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { makeEnv } from "./env.js";

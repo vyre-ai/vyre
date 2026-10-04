@@ -3,6 +3,7 @@
 // at once; an existing non-repo folder gets one offer, once; a repo or a module caller gets nothing.
 // Runs the real module's start() into a fake ctx (access.test.js's pattern); github's tool is a spy.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

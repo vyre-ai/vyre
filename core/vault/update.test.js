@@ -3,6 +3,7 @@
 // vault.health, vault.caps and the breach check's off switch, and that none of them lets a
 // canary value out through a result, an error, an event, a log line, the audit trail or a listing.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

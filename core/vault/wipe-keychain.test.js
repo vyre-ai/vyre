@@ -1,6 +1,7 @@
 // @ts-check
 // Reset with wipe where the vault's device key is in the macOS Keychain: the CLI hands wipeHome the keystore's own destroy, the entry is really gone afterwards, and with no way to delete it
 // the wipe refuses before touching anything. A temporary keychain only (never the login keychain); runs on the hosted Mac job.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

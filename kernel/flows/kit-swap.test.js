@@ -1,5 +1,6 @@
 // reviewer-2 repro KT-1 against work/flows 380a6162a (drop into kernel/flows/): the stored Kit proposal carries both the Kit and its hash; the approved task's form names the Kit by kit_hash. A Kit with no
 // types never reaches kernel kits.begin (the only place the form's kit_hash is compared), so a proposal swapped after the owner's yes (Kit and hash together) installs the swapped content.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { world, settle, ALEX } from "./testing/world.js";

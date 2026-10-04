@@ -1,6 +1,7 @@
 // @ts-check
 // What a teammate starts with, on the REAL kernel (test/kernel-rig.js): records read through the real gateway under the teammate's own chain, sealed fields as
 // placeholders, labels from the kernel, and an unreadable or foreign link skipped and named.
+import "../../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRig } from "../../../test/kernel-rig.js";

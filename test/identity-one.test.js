@@ -1,6 +1,7 @@
 // @ts-check
 // One identity per person (DESIGN-wink 1), on a REAL vyred: after the identity is claimed through the names directory (the stand-in, a real process on loopback), the pairing
 // targets Wink offers name that same id, not a second one made from the box's route. Run on a runner or the test box, never on a person's Mac.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

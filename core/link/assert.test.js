@@ -2,6 +2,7 @@
 // The box's signed answers to a Mac's asks (assert.js): the key it keeps, and every check the Mac
 // makes before threads.answer runs as "link:box". Each failed check refuses on its own.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

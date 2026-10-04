@@ -3,6 +3,7 @@
 // against a real vyred in a temp home (with `present` as its verifier, so the vault grant needs
 // no dialog), fake MCP servers and the fake Google. Never a real server, Google or `claude`.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

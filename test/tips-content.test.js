@@ -3,6 +3,7 @@
 // checker the tips module uses, each docs link lands on a real page and heading, and every surface
 // has tips of each kind. Tips waiting on unmerged code sit in docs/work/tips-pending.json.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

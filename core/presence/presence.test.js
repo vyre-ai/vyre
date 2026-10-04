@@ -2,6 +2,7 @@
 // Presence: every method proves a call once, for that tool and that input, and refuses the rest.
 // Nothing here opens a dialog or writes to a real terminal: every OS touch point is a fake.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

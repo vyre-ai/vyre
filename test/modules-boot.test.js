@@ -2,6 +2,7 @@
 // Every first-party module loads and starts the way the daemon starts it. A module that throws while its files load (a bad import, a cycle: "Cannot access X before
 // initialization") or in start() is "failed" in the registry and its tools are gone, and nothing else notices: the daemon boots without it. This boots them all in a
 // temp home, once per role the daemon runs in, and fails on any module in state failed. A module that cannot run in a bare home says so in EXPECTED with the reason.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

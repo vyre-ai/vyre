@@ -88,7 +88,11 @@ async function main() {
   const sock = sockPathOf(dataDir);
 
   if (cmd === "mcp") {
-    const runtime = await createRuntime({ dataDir, version });
+    /** @type {any} */ let runtime;
+    try { runtime = await createRuntime({ dataDir, version }); } catch (e) {
+      if (/** @type {any} */ (e).code === "vyred_running") { process.stderr.write(`vyre-chrome: ${/** @type {Error} */ (e).message}\n`); process.exit(1); }
+      throw e;
+    }
     // Never hang on the way out: give the bridge a moment to close, then leave whatever it is doing.
     const stop = async () => { try { await Promise.race([runtime.stop(), new Promise(r => setTimeout(r, 2000))]); } finally { process.exit(0); } };
     process.on("SIGINT", stop); process.on("SIGTERM", stop);

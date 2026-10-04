@@ -332,21 +332,27 @@ export class KitManager {
 
     // types first, as one definition change
     const types = parts.filter(x => x.kind === "type").map(x => x.def);
-    if (types.length) {
-      const old = prior ? new Set(kitParts(prior.kit).filter(x => x.kind === "type").map(x => x.name)) : new Set();
-      const add = types.filter(t => !old.has(t.name) && !cat.types[t.name]);
-      const change = types.filter(t => old.has(t.name) || cat.types[t.name]);
-      // The kernel's approved-Kit waiver (kernel/tasks/kit-apply.js): the owner's approval of THIS task, which signed the form's kit_hash, stands for the admin presence the type definitions ask
-      // for, once. A resumed install whose types are already defined (the ledger says so) asks for nothing, so a spent approval never blocks the rest.
-      // Whether the types still need defining comes from the LIVE catalog, never from the ledger row alone (a row is a record some chains can write): a type that does not exist is defined under a fresh waiver.
-      const live = (await this.catalogFn()).types || {};
-      // An install that is not a resume (a first install or an update) always defines; a resumed one defines only what is still missing.
-      const need = !(prior && prior.status === "installing") || types.some(t => !live[t.name]);
-      const waiver = need && this.k.kits && p.task ? await this.k.kits.begin({ chain, task: p.task, kit: waiverKit(kit) }) : undefined;
-      if (need) await this.k.records.define(chain, { ...(add.length ? { add_types: add } : {}), ...(change.length ? { change_types: change } : {}) }, waiver ? { waiver } : undefined);
-      if (waiver && this.k.kits) await this.k.kits.end(waiver);
-      for (const t of types) if (!row.added.includes(`type:${t.name}`)) row.added.push(`type:${t.name}`);
+    const resuming = Boolean(prior && prior.status === "installing");
+    // Whether a type still needs defining comes from the LIVE catalog, never from the ledger row alone (a row is a record some chains can write).
+    const live = (await this.catalogFn()).types || {};
+    const missing = types.filter(t => !live[t.name]);
+    // The kernel's approved-Kit waiver (kernel/tasks/kit-apply.js): the owner's approval of THIS task, which signed the form's kit_hash, stands for the admin presence the type definitions ask for.
+    // A first install or an update takes it with `begin` for EVERY Kit (types or not, so the approval, the hash and the approver are checked and the approval is spent once); a RESUMED install, whose
+    // approval is already spent, takes `resume` and only for the types still missing.
+    /** @type {any} */ let waiver;
+    if (this.k.kits && p.task) {
+      if (!resuming) waiver = await this.k.kits.begin({ chain, task: p.task, kit: waiverKit(kit) });
+      else if (missing.length && this.k.kits.resume) waiver = await this.k.kits.resume({ chain, task: p.task, kit: waiverKit(kit) });
     }
+    const old = prior ? new Set(kitParts(prior.kit).filter(x => x.kind === "type").map(x => x.name)) : new Set();
+    const toDefine = resuming ? missing : types;
+    if (toDefine.length) {
+      const add = toDefine.filter(t => !old.has(t.name) && !live[t.name]);
+      const change = toDefine.filter(t => old.has(t.name) || live[t.name]);
+      await this.k.records.define(chain, { ...(add.length ? { add_types: add } : {}), ...(change.length ? { change_types: change } : {}) }, waiver ? { waiver } : undefined);
+    }
+    if (waiver && this.k.kits) await this.k.kits.end(waiver);
+    for (const t of types) if (!row.added.includes(`type:${t.name}`)) row.added.push(`type:${t.name}`);
     for (const part of parts) {
       const key = `${part.kind}:${part.name}`;
       if (part.kind === "type" || part.kind === "seed") continue;

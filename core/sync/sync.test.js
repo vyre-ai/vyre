@@ -3,6 +3,7 @@
 // 5a, e2e's session-import review). A minimal box-only registry; peer identity is a test seam
 // (meta.peer), the same shape core/daemon/index.js's tailnet listener gives a real connection.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

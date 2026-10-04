@@ -1,4 +1,5 @@
 // Regression tests for reviewer-2's gate on the runner (team/0.3/reviews/runner.md): Z1 to Z8, the watchdog, resume taint.
+import "../../scripts/mac-test-guard.mjs";
 import "./testing/hosted-guard.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";

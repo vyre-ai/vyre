@@ -8,6 +8,7 @@
 
 import crypto from "node:crypto";
 import fs from "node:fs";
+import { execFile } from "node:child_process";
 import os from "node:os";
 import http from "node:http";
 import path from "node:path";
@@ -434,7 +435,7 @@ async function startLocked(opts, root, p, release) {
     fs.rmSync(p.socket, { force: true });
   }
 
-  const terminalOf = opts.person || (sock => atTerminal(sock, registry, presence, devStandIn()));
+  const terminalOf = opts.person || (sock => atTerminal(sock, registry, presence, devStandIn(), { log }));
   const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, people, socket: true, terminalOf, kernelOf: () => kernel }).catch(e => fail(res, e)));
   server.on("upgrade", async (req, socket, head) => {
     try { upgrade(req, socket, head, (await asTaken(socketCaller(req), /** @type {any} */ (socket), registry)).caller); }
@@ -806,33 +807,54 @@ export function isLoginServer(server) {
  * @param {import("node:net").Socket} socket @param {any} registry @param {any} presence
  * @returns {Promise<{ key: string, tty: string|null }|null>} tty: the caller's own terminal, where a notice goes
  */
-export async function atTerminal(socket, registry, presence, standIn = false) {
+export async function atTerminal(socket, registry, presence, standIn = false, deps = {}) {
+  const d = { above, peerPid, loginOf, tmuxClients, insideClaude, loginFrom, ...deps };
   /** Why no terminal, said once in the daemon log (never a secret: a pid, a tty name and the logins `who` lists). @param {string} why */
-  const no = why => { try { registry.deps && typeof registry.deps.log === "function" && registry.deps.log(`terminal: refused, ${why}`); } catch { /* logging never decides */ } return null; };
+  const no = why => { try { const say = typeof d.log === "function" ? d.log : registry.deps && typeof registry.deps.log === "function" ? registry.deps.log : null; if (say) say(`terminal: refused, ${why}`); } catch { /* logging never decides */ } return null; };
   // The development stand-in (a hand-made file in a development build) is the one thing that replaces this guard; a real build never passes it.
+  /** @type {any} */ let who = null;
   if (!standIn) {
-    // The login the person types in is a NAMED server at the top of an ancestry vyred can read (an ssh login, tmux, an app's terminal): such a chain is `unknown` to the walk, which is why a
-    // plain fromClaude refused the real `vyre signin` over ssh. The terminal key below still needs a login `who` lists (or tmux clients that are), and the sign-in itself waits for the owner's
-    // phone, so a named server is enough here; a model's shell (inside), an unreadable chain with no server, and no peer at all are still refused.
-    const who = await above(socket, registry);
+    who = await d.above(socket, registry);
     if (who.nopid || who.inside || (who.unknown && !who.server)) return no("ancestry " + (who.nopid ? "has no peer pid" : who.inside ? "is inside a model" : "is unknown with no named server"));
   }
-  const pid = await peerPid(socket);
+  const pid = await d.peerPid(socket);
   if (!pid || !presence || typeof presence.who !== "function") return no(!pid ? "no peer pid" : "no presence.who");
   const logins = await presence.who();
-  const login = loginOf(pid);
-  if (login && logins.includes(login.tty)) return { key: login.key, tty: login.tty };
-  const clients = tmuxClients(pid);
-  if (!clients || !clients.length) return no(`no login: the caller's terminal is ${login ? login.tty : "none"} and who lists ${logins.join(",") || "nothing"}${login ? "" : " (it has no controlling terminal)"}`);
+  // SG-1 (reviewer-2): the login the person types in is a root-owned login server (sshd, login) at the top, or a tmux the person attached to from one. A user-owned named server (a model that
+  // double-forked and kept the person's tty) is not a login, whatever `who` lists: only the walk's own `outside` (no server at all) or a login server passes for the caller itself.
+  const callerOk = standIn || !who.unknown || isLoginServer(who.server);
+  const login = d.loginOf(pid);
+  if (callerOk && login && logins.includes(login.tty)) return { key: login.key, tty: login.tty, from: await d.loginFrom(login.tty) };
+  const clients = d.tmuxClients(pid);
+  if (!clients || !clients.length) return no(`no login: ${callerOk ? "" : "a user-owned server is not a login; "}the caller's terminal is ${login ? login.tty : "none"} and who lists ${logins.join(",") || "nothing"}`);
   const r = await registry.call("threads.pids", {}, "module:vyred");
   const threads = (r.data && r.data.pids) || [];
   const keys = [];
+  let from = null;
   for (const c of clients) {
-    const l = insideClaude(c, { threads }).inside ? null : loginOf(c);
+    const ins = d.insideClaude(c, { threads });
+    // A client must read as the person's own: not inside a model, and not an unknown chain unless it tops out at a root login server.
+    if (ins.inside || (ins.unknown && !standIn && !isLoginServer(ins.server))) return no("a tmux client is not a person's login (inside a model or a user-owned server)");
+    const l = d.loginOf(c);
     if (!l || !logins.includes(l.tty)) return no(`a tmux client is not a listed login (${l ? l.tty : "none"})`);
     keys.push(l.key);
+    from = from || await d.loginFrom(l.tty);
   }
-  return { key: "tmux:" + [...new Set(keys)].sort().join("+"), tty: controllingTty(pid) };
+  return { key: "tmux:" + [...new Set(keys)].sort().join("+"), tty: controllingTty(pid), from };
+}
+
+/** Where the login on this terminal came from, as `who` records it ("203.0.113.9", "127.0.0.1"), or null when it lists none. @param {string} tty @returns {Promise<string|null>} */
+function loginFrom(tty) {
+  return new Promise(resolve => {
+    execFile("/usr/bin/who", [], { timeout: 3000 }, (err, stdout) => {
+      if (err) return resolve(null);
+      for (const line of String(stdout).split("\n")) {
+        const cols = line.trim().split(/\s+/);
+        if (cols[1] === tty) { const m = /\(([^)]*)\)\s*$/.exec(line); return resolve(m && m[1] ? m[1].slice(0, 80) : null); }
+      }
+      resolve(null);
+    });
+  });
 }
 
 async function route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, people = null, socket = false, terminalOf = null, kernelOf = null }, /** @type {Policy} */ policy = {}) {
@@ -1078,6 +1100,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const proof = parsePresence(req.headers["x-vyre-presence"]);
     // For a tool one proof covers, the CLI's terminal: its window is bound to it (core/presence).
     const terminal = socket && terminalOf && (SESSIONABLE.has(name) || SIGNIN_TOOLS.has(name)) && /^(cli|local)$/.test(caller) ? await terminalOf(req.socket) : null;
+    if (socket && SIGNIN_TOOLS.has(name) && !terminal) { try { if (typeof events.log === "function") events.log(`terminal: ${name} got no terminal key (${terminalOf ? `caller label ${caller}, ${/^(cli|local)$/.test(caller) ? "the terminal check refused: see the line above" : "not cli or local, so it was never asked"}` : "no terminal check in this daemon"})`); } catch { /* logging never decides */ } }
     // Only a caller vyred bound to a thread above says which chat tool call this is.
     const call = via.thread ? callId(req.headers["x-vyre-call-id"]) : null;
     // presence.capsule.pin judges the calling binary's own signature, read here from the socket's

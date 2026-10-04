@@ -1,5 +1,6 @@
 // @ts-check
 // Invite someone against the box's shapes: the input, the answer in words, the list rows and the refusals.
+import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";

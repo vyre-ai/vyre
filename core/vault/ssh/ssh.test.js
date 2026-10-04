@@ -4,6 +4,7 @@
 // signature that `ssh-keygen -Y verify` accepts. Throwaway keys in a temp folder only; ~/.ssh is
 // never read, and SSH_AUTH_SOCK is set per child to this test's own socket.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

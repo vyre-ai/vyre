@@ -2,6 +2,7 @@
 // computers.helper and computers.shield in a real vyred on the fake driver, with every computer
 // answering at a small fake computerd on 127.0.0.1 that records what it was told.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

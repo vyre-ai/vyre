@@ -8,6 +8,7 @@
 // names what chat already calls live (SESSION_TOOLS) and hears, shipped on work/sessions and not
 // yet on this tree's core: allowed missing here, strict again once core has it.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

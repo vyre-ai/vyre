@@ -2,6 +2,7 @@
 // The module's URL tier: what is blind, what is read-only, what is open, and that it gives the
 // same answers as the extension's own lib/floor.js on a shared table.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

@@ -1,6 +1,7 @@
 // @ts-check
 // The doing-now line. The line logic is pure (events in, at most one line a minute out) and takes no kernel; `attach` follows a project's events through the REAL
 // kernel's event log (test/kernel-rig.js), for agent actors only.
+import "../../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRig } from "../../../test/kernel-rig.js";

@@ -3,6 +3,7 @@
 // that stands in for their actions, and the offline chip from link.macs. Pure enough for node,
 // with the chat tests' small DOM stand-in. The views themselves are a browser check.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

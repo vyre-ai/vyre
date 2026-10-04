@@ -3,6 +3,7 @@
 // vyred behind fetch and a fake passkey: what each shows, the keys, and exactly what
 // threads.answer is called with. Sample world only.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

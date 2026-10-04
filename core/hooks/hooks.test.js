@@ -5,6 +5,7 @@
 // delivery off hook.received. The secret is a distinctive string, and every log line, event,
 // config file, tool result and HTTP response is searched for it at the end.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

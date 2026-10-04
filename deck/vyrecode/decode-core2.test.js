@@ -5,6 +5,7 @@
 // browser's getImageData, which is what test/harness.js (headless Chrome, manual/slow, not run
 // here) answers - see docs/work/pwa.md for its measured pass rate.
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

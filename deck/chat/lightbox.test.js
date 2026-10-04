@@ -2,6 +2,7 @@
 // The tap-to-zoom overlay (cohesion item 18): opens with a picture and its caption, Esc or a tap
 // on the backdrop closes it, and closing returns focus to whatever opened it.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { install, $, text } from "../test/fake-dom.js";

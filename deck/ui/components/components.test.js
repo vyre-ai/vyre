@@ -2,6 +2,7 @@
 // deck/ui/components: what each base component builds, in the fake DOM (test/fake-dom.js): classes, roles and states, text kept as text, the handlers, the keyboard,
 // the hold button's timer, the menu, the table, the state kit. Looks (colour, size, radius) are css/ui.css's, checked by ui/tokens-only.test.js and the lab shots.
 
+import "../../../scripts/mac-test-guard.mjs";
 import test, { mock } from "node:test";
 import assert from "node:assert/strict";
 import { install, $, $$, text } from "../../test/fake-dom.js";
