@@ -10,7 +10,7 @@ const read = (/** @type {string} */ p) => fs.readFileSync(new URL(p, import.meta
 test("RC1 (screens/shell/rc.ts, the one switch file): both switches are off", () => {
   const rc = read("../../screens/shell/rc.ts");
   assert.match(rc, /sites: false/);
-  assert.match(rc, /browserClaim: false/);
+  assert.match(rc, /browserClaim: process\.env\.EXPO_PUBLIC_VYRE_BROWSER_CLAIM === "1"/, "off unless a build sets the flag, read in the one form Expo inlines");
   assert.ok(!fs.existsSync(new URL("./flags.js", import.meta.url)), "no second switch file");
 });
 

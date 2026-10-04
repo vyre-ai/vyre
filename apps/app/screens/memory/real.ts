@@ -1,6 +1,6 @@
 // Memory against the real vyred: memory.facts to read, memory.correct to edit or forget (Undo is extras.ts uncorrectReal: one implementation of memory.uncorrect).
 // A fact belongs to the person, not to a space (the personal graph), so every real fact sits in Mine.
-import { call } from "../../src/api/box";
+import { callT as call } from "../../src/real/call-tool";
 import type { Fact } from "./data";
 import { toFact, type Row } from "./real-model";
 
