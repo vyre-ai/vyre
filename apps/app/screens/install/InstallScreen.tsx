@@ -64,7 +64,8 @@ function NameField({ value, onChange, label, also, space, real }: { value: strin
 
 /** The install flow, one thing per screen. `start` is the route: first run, create a space, or join one. */
 /** TEST builds only: the browser claim path is on (EXPO_PUBLIC_VYRE_WEB_CLAIM=1). RC1 builds leave it off. */
-const WEB_CLAIM: boolean = typeof process !== "undefined" && process.env?.EXPO_PUBLIC_VYRE_WEB_CLAIM === "1";
+// Written as a plain `process.env.EXPO_PUBLIC_...` so the bundler inlines it (an optional-chained read is left for runtime, where a browser has no `process`).
+const WEB_CLAIM: boolean = process.env.EXPO_PUBLIC_VYRE_WEB_CLAIM === "1";
 
 export function InstallScreen({ start, link: linkIn }: { start?: "create" | "join"; link?: string }) {
   const router = useRouter();

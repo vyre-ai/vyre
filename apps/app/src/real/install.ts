@@ -19,7 +19,7 @@ export const readIdentity = async (): Promise<{ id: string; label: string; addre
  * Where the names directory is: the public service, never a box. The identity comes first (a name, then a space, then a server), so
  * a name is checked before there is any box to ask. EXPO_PUBLIC_VYRE_NAMES_DIRECTORY points a walk at a stand-in.
  */
-export const DIRECTORY: string = ((typeof process !== "undefined" && process.env?.EXPO_PUBLIC_VYRE_NAMES_DIRECTORY) || "https://names.vyre.run").replace(/\/+$/, "");
+export const DIRECTORY: string = (process.env.EXPO_PUBLIC_VYRE_NAMES_DIRECTORY || "https://names.vyre.run").replace(/\/+$/, "");
 
 /** Is a name free in the directory? Asked of the directory itself, no box. An answer that is neither found nor not_found is "unknown". */
 export async function checkName(name: string): Promise<"free" | "taken" | "unknown"> {

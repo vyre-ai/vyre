@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(0.3, walk, 4 Oct): scripts/app-walk-claim.mjs, the browser claims a name against a stand-in names directory in headless Chromium (4 of 4 on testbox, test build with EXPO_PUBLIC_VYRE_WEB_CLAIM=1). The two EXPO_PUBLIC flags read in InstallScreen and install.ts are now plain `process.env.EXPO_PUBLIC_...` reads: an optional-chained read is not inlined by the bundler and was always off in a browser.
 - fix(0.3, app, walk, 4 Oct; flag EXPO_PUBLIC_VYRE_WEB_CLAIM=1 in a test build turns the web claim back on): RC1 web does not claim a name (the user's ruling): the install name step on the web says to claim it on the phone or Mac app and offers pairing this browser to an existing name. scripts/app-walk.mjs opens a fresh page for every step (and a fresh browser if one is gone), so one step's timeout cannot fail the steps after it.
 - fix(0.3, app identity, 4 Oct; reviewer-3 identity-port): KP-3 the device key is kept and read back BEFORE the name is claimed (claimIdentity takes `beforeClaim`; a failed keep claims nothing; a failed claim takes the key back out, an unreachable directory leaves it). KP-2 a software key is stored sealed under a non-extractable AES-GCM key, never as the seed bytes. KP-4 storage persistence is asked for. CSP-1 `connect-src` gains exactly https://names.vyre.run. KP-1 (passkey for list changes) is waiting on the chain rule for web-class keys.
 
