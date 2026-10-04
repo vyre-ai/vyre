@@ -1219,3 +1219,22 @@ test("an unowned server lets go of devices left by a pairing that never complete
   assert.equal(await relayHas(w, left.device), false, "the leftover row is gone");
   assert.ok(w.logs.some(l => /let go of 1 leftover device/.test(l)));
 });
+
+test("relay.devices.clear-leftover refuses for itself when the server is owned, and a flood of refused hellos logs one line per reason per minute with a count", async t => {
+  const f = await pairFreshServer(t);
+  const row = async () => (await f.w.d.registry.call("relay.device.info", { id: f.done.device }, "module:vyred")).data;
+  assert.equal((await row()).removed, false);
+  const r = await f.w.d.registry.call("relay.devices.clear-leftover", {}, "module:wink");
+  assert.equal(r.error && r.error.code, "owned", JSON.stringify(r));
+  assert.equal((await row()).removed, false, "an owned server's device is still there");
+  // the owned check is the relay's own: other callers never get that far
+  assert.ok((await f.w.d.registry.call("relay.devices.clear-leftover", {}, "module:evil")).error);
+  // 12 refused hellos with the same reason: one line, then a count at the next minute
+  const crypt = nodeCrypto();
+  for (let i = 0; i < 12; i++) {
+    const k = await clientDeviceKey({ keyStore: keystore(t), crypto: crypt });
+    await assert.rejects(() => openChannel({ relay: f.w.status.url, route: f.done.route, box: Buffer.from(f.done.box, "base64url"), keys: k, hello: { v: 1, pair: "x".repeat(22) }, crypto: crypt, WebSocket: globalThis.WebSocket }));
+  }
+  const lines = f.w.logs.filter(l => /relay: refused a hello \(this pairing code has expired/.test(l));
+  assert.equal(lines.length, 1, `one log line for twelve identical refusals (${lines.length})`);
+});
