@@ -1422,6 +1422,8 @@ test("the session strength is proven at each sign-in (the identity entry's encla
     const yes = { op: "vault.reveal", signer: "secure_enclave", sig: "signed-by-the-phone" };
     const softwareYes = await f.w.d.registry.call("presence.person.session-answer", { id: ask.id, yes: true, proof: { op: "vault.reveal", signer: "software", sig: "x" } }, "cli");
     assert.equal(softwareYes.error && softwareYes.error.code, "software_key", "a software key's answer is refused on a release build");
+    const junk = await f.w.d.registry.call("presence.person.session-answer", { id: ask.id, yes: true, proof: { junk: 1 } }, "cli");
+    assert.equal(junk.error && junk.error.code, "unknown_key", "any object is not a yes: refused with the yes() reason");
     const wrongRequest = await f.w.d.registry.call("presence.person.session-answer", { id: ask.id, yes: true, proof: { op: "vault.copy", signer: "secure_enclave", sig: "x" } }, "cli");
     assert.ok(wrongRequest.error, "a yes over another request does not stand");
     assert.equal((await links.signInStatus("srv", ask.id)).state, "waiting", "no refused answer approved the card");

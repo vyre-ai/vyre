@@ -28,7 +28,7 @@ export function isYou(subject) {
   try { return isPerson(subject); } catch { return false; }
 }
 
-/** @typedef {(i: { chain?: any, op: string, fields: any, proof: any, moment: string }) => Promise<null | string | { ok: boolean, code?: string, reason?: string, strength?: string }> | null | string | { ok: boolean, code?: string, reason?: string, strength?: string }} Verifier */
+/** @typedef {(i: { chain?: any, op: string, fields: any, proof: any, moment: string, dry?: boolean }) => Promise<null | string | { ok: boolean, code?: string, reason?: string, strength?: string }> | null | string | { ok: boolean, code?: string, reason?: string, strength?: string }} Verifier */
 /** @type {{ verify: Verifier | null, softwareOk: () => boolean }} */
 const state = { verify: null, softwareOk: () => false };
 
@@ -58,7 +58,7 @@ export function yesReason(code) {
  * @param {string} moment one of MOMENTS
  * @param {{ chain?: any, op: string, fields: any }} request the exact thing the proof was made over
  * @param {any} proof the signed proof object
- * @param {{ verify?: Verifier | null, softwareOk?: () => boolean }} [via] a test seam; the daemon's configuration is the default
+ * @param {{ verify?: Verifier | null, softwareOk?: () => boolean, dry?: boolean }} [via] a test seam (and `dry`); the daemon's configuration is the default. `dry: true` asks the verifier to CHECK the proof without spending it (a card's answer is checked when it is given and spent when it is used)
  * @returns {Promise<{ ok: true, strength?: string } | { ok: false, reason: string }>}
  */
 export async function yes(moment, request, proof, via = {}) {
@@ -69,7 +69,7 @@ export async function yes(moment, request, proof, via = {}) {
   if (typeof verify !== "function") return { ok: false, reason: "no_proof" };
   const softwareOk = via.softwareOk || state.softwareOk;
   /** @type {any} */ let r;
-  try { r = await verify({ ...(request.chain ? { chain: request.chain } : {}), op: request.op, fields: request.fields, proof, moment }); } catch { return { ok: false, reason: "no_proof" }; }
+  try { r = await verify({ ...(request.chain ? { chain: request.chain } : {}), op: request.op, fields: request.fields, proof, moment, ...(via.dry === true ? { dry: true } : {}) }); } catch { return { ok: false, reason: "no_proof" }; }
   // only `null` means the proof stands (the sealing process's own answer); `undefined`, a bare boolean or anything else is a refusal
   if (r === null) return { ok: true };
   if (r === undefined) return { ok: false, reason: "no_proof" };

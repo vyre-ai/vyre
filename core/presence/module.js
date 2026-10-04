@@ -399,9 +399,9 @@ export default {
         if (a.state !== "waiting") return { state: a.state };
         if (input.yes !== true) { a.state = "refused"; refusedUntil.set(a.device, Date.now() + 10 * 60_000); return { state: "refused" }; }
         if (!(input.proof && typeof input.proof === "object" && !Array.isArray(input.proof) && JSON.stringify(input.proof).length <= 8192)) throw Object.assign(new Error("a yes carries the owner's signed proof"), { code: "bad_input" });
-        // only a yes signed by a real key over the exact request the server wrote on the card counts (yes(): enclave, keystore, passkey, Touch ID; a software key is refused software_key on a release build)
+        // only a yes signed by a real key over the exact request the server wrote on the card counts (yes(): enclave, keystore, passkey, Touch ID; a software key is refused software_key on a release build); it is CHECKED here and spent where the act uses it (dry), so any device answering with junk is refused
         /** @type {any} */ let chain; try { chain = ctx.kernel && typeof ctx.kernel.chain === "function" ? await ctx.kernel.chain(meta) : undefined; } catch { chain = undefined; }
-        const v = await yes(a.moment, { ...(chain ? { chain } : {}), op: a.request.op, fields: a.request.fields }, input.proof);
+        const v = await yes(a.moment, { ...(chain ? { chain } : {}), op: a.request.op, fields: a.request.fields }, input.proof, { dry: true });
         if (!v.ok) throw Object.assign(new Error(v.reason === "software_key" ? "approve this with the key in your phone: a software key cannot say yes here" : "that yes did not stand"), { code: v.reason });
         a.proof = input.proof;
         a.state = "approved";

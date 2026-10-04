@@ -46,6 +46,12 @@ test("yes: the three moments, the six reasons, software only where the build tak
   assert.deepEqual(await yes("pair", req, proof, { verify: async () => ({ ok: true, strength: "software" }), softwareOk: () => true }), { ok: true, strength: "software" }, "a development build takes it");
   assert.deepEqual(await yes("pair", req, proof, verdict({ ok: true, strength: "real" })), { ok: true, strength: "real" });
   assert.deepEqual(await yes("pair", req, proof, { verify: async () => { throw new Error("down"); } }), { ok: false, reason: "no_proof" }, "a verifier that throws is a refusal");
+  // dry: the verifier is told to check without spending
+  let seen = null;
+  await yes("vault", req, proof, { verify: async i => { seen = i; return null; }, dry: true });
+  assert.equal(seen && seen.dry, true);
+  await yes("vault", req, proof, { verify: async i => { seen = i; return null; } });
+  assert.equal(seen && seen.dry, undefined);
   configureYes({ verify: async () => null, softwareOk: () => false });
   assert.deepEqual(await yes("vault", req, proof), { ok: true }, "the daemon's configuration is the default");
   configureYes({ verify: null });
