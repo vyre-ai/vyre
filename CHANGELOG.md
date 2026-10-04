@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(0.3, real Vyre, 4 Oct): Drive reads the real vyred (app-wire). The box's offered folders (files.drive.status), browsed by path a page at a time (files.drive.list), and a text file opened from its first chunk (files.drive.read); a refused folder reads as "not available", sharing to a computer says why it is off. There is no upload or version history here: the box has no tool for either yet. The sample files stay behind a mock build.
+
 - feat(0.3, real Vyre, 4 Oct): a Flow on the real vyred can be run and its run read (app-wire). Run now is flows.start (one key per tap), a selected run shows what each step did in the Flow's order from the kernel's painted run, and a failed or paused run offers Retry (flows.retry). A paused or unapproved Flow says so in words. Builds on native-core's list, canvas, approve, runs and pause.
 
 - feat(0.3, real Vyre, 4 Oct): Memory beside the facts, on the real vyred (app-wire). Ask is memory.ask (the answer with its sources, or an honest nothing, never the sample answer); a map of what Memory holds from memory.graph by room, with Pin first and Never offer (memory.pin, memory.mute, everywhere); and What you corrected from memory.corrections with Undo (memory.uncorrect). The sample boundary notes show only in a mock build.
