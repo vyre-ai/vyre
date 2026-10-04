@@ -1738,7 +1738,8 @@ test("the three-strikes count is in the store too: two wrong answers, a restart,
   await call(d2, "presence.person.pair-challenge", {});
   await call(d2, "presence.person.start-paired", { sig: "AAAA" });
   assert.ok((await d2.registry.call("presence.person.locked", {}, "cli", PROOF)).data.locked.some(l => l.device === id), "the count survived the restart: the third wrong answer locks");
-=======
+});
+
 test("an invitee link pointed at a box whose key is not the record's route.box sends no hello and answers with a plain refusal", async t => {
   const f = await pairFreshServer(t);
   const ch = { relay: f.w.status.url, route: f.done.route, box: Buffer.alloc(32, 5).toString("base64url") };
@@ -1755,5 +1756,4 @@ test("an invitee link pointed at a box whose key is not the record's route.box s
   await assert.rejects(() => links2.inviteeSessionFor({ ...ch, box: f.done.box }, hello).call("grants.invites.get", {}));
   assert.equal(heads.length, 1, "the right box key opens the channel and the head goes");
   assert.deepEqual(heads[0].invitee, hello);
->>>>>>> origin/work/spaces
 });
