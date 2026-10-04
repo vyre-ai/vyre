@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(sessions, review): HD-2 threads.start from a model's call takes declared fields only; HD-7 a model call pushes, undoes and redoes its own session's branch only (the assistant included); HD-9 agents.ask refuses a wider agent; HD-10 charter draft and revert are the person's; flows.start by an assistant's chain runs tainted; PR-1/3/4/5 proposals: admin non-doer checker, card recomputed from the stored draft, one application per task, no removals; ENG-2 the engineer name is reserved; the Flows service loses events.read; Recall counts a person's app-started thread as human whatever the driver.
 - feat(sessions): adoption-safe person ids. The Switchboard reads a queued turn's asker, compares the running turn's asker, and accepts a new turn's asker through the kernel's `canonicalPerson` (module handle), and the daemon opens a kernel session for a stored or queued person id as the identity that replaced it. Test: core/switchboard/adopt.test.js (a thread started before adoption is still listed after a restart, a session for the old id opens).
 - fix(daemon): `callerFacts`'s caller measurement was a `const ancestry` that shadowed the imported function used earlier in the same handler (a dead-zone error: `threads.bind` answered internal). Renamed.
 - fix(test): the fake `claude` in sessions.test.js used `require` in a file node reads as a module; it now uses `process.getBuiltinModule`.
