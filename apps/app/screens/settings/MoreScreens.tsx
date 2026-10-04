@@ -1,12 +1,13 @@
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Banner, Button, Card, Divider, Row, Segmented, Switch, Text, showToast } from "@vyre/ui";
+import { Banner, Button, Card, Divider, Row, Segmented, Switch, Text, allowsMock, showToast } from "@vyre/ui";
+import { RealNotifications, RealUpdates } from "./RealMore";
 import { Group, Page } from "../places/Frame";
 import { CREDITS, VERSION } from "./data";
 import { NOTIFY_ROWS } from "./logic.js";
 import { useSettings } from "./state";
 
-export function NotificationsScreen() {
+function SampleNotificationsScreen() {
   const { notify, setNotify } = useSettings();
   return (
     <Page title="Notifications" sub="What can reach you, and when." back="/u/settings">
@@ -18,7 +19,7 @@ export function NotificationsScreen() {
   );
 }
 
-export function UpdatesScreen() {
+function SampleUpdatesScreen() {
   const router = useRouter();
   const { upd, setUpd } = useSettings();
   return (
@@ -46,3 +47,7 @@ export function AboutScreen() {
     </Page>
   );
 }
+
+/** The sample page in a mock build; the box's own settings everywhere else. */
+export const NotificationsScreen = () => (allowsMock() ? <SampleNotificationsScreen /> : <RealNotifications />);
+export const UpdatesScreen = () => (allowsMock() ? <SampleUpdatesScreen /> : <RealUpdates />);

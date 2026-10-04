@@ -13,8 +13,10 @@ Connect the 0.3 app's Vault, Memory (graph, pins, corrections), Flows (start, a 
 - Settings (4 Oct): subscreens today: Home (SettingsHome), Account and recovery (AccountScreen), Appearance (AppearanceScreen, native-core), Notifications and Updates and About (MoreScreens), AI accounts (AiScreen), What my assistants can see and Privacy and sealing (PrivacyScreens), Assistants (AssistantsScreen), Devices (chat), Customize (native-core), and new Rules. Mine to wire: all but Devices, Customize and Appearance. Tools on the dev box for them: Account spaces.identity.*; AI providers.list and agents.usage; Assistants agents.list; Notifications push.settings and push.devices; Updates update.status, check, apply; Seeing and Privacy: still to find. Order: Rules, Updates, Notifications, Assistants, AI, Account, Seeing and Privacy, About.
 - Rules: screens/rules/ (model.ts, source.ts, real.ts, RulesScreen.tsx, model.test.js 4 of 4 on the test box), route app/u/settings/rules.tsx, a Rules row in settingsGroups. Tool names are the kernel's rule actions; platform has not registered them as tools (nothing under core/ calls grants.rules), so nothing real was seen. Asked platform and kernel-2 in CHAT.md.
 
+- Settings, Updates, Notifications, Assistants, AI accounts: screens/settings/{real-model,real-source,real,RealMore,agents-model,RealAgents}, real.test.js (13 of 13 in screens/settings on the test box, with the existing logic test). On the dev box via `vyre call`: update.status and update.check answered (0.2.2, no newer, canApply false, auto notify), push.settings answered the kinds and a write of lesson true then false round-tripped, push.devices [], agents.list [], providers.list answered Claude signed in plus four unconnected, spaces.identity.status answered. So Updates and Notifications are seen against the real tools; Assistants has no agent on the box and AI shows only providers.
+
 ## Doing
-- Settings pages after Rules (Updates next).
+- Settings: Account, What my assistants can see, Privacy, About remain.
 - Calendar: waiting on records for the Event type's exact fields, and on the dev box being updated to work/kernel to run it.
 
 ## Next
