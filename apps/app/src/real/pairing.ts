@@ -8,7 +8,6 @@
 import type { PairingSession } from "../api/pairing-session";
 import type { WinkCode } from "../api/wink-code";
 import { added, pairPhase, payloadOf, targetsOf } from "../../screens/devices/real.js";
-import { pairServer } from "@vyre/relay-client/serverpair.js";
 
 const box = () => import("./box");
 const POLL_MS = 2000;
@@ -98,6 +97,8 @@ async function boxReachable(tool: (name: string, input?: Record<string, unknown>
  * Null when this device has no identity of its own yet (the caller then falls back to the box's tools and says what is missing).
  */
 async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticket" }>): Promise<PairingSession | null> {
+  // Loaded when needed: only Metro resolves the relay-client alias, so a Node test that reads the pairing session does not import it.
+  const { pairServer } = await import("@vyre/relay-client/serverpair.js");
   const { loadIdentity } = await import("../identity/store");
   const mine = await loadIdentity();
   if (!mine) return null;
