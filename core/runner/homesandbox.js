@@ -123,7 +123,8 @@ export function homeSeatbelt(o) {
     '(deny network-outbound (remote ip "localhost:*"))',
     // The daemon's ports are denied on EVERY address directly (an address that appears later, a VPN or a Wi-Fi change, is covered too); the address list is a second layer.
     ...(o.daemonPorts || []).map(p => `(deny network-outbound (remote ip "*:${Number(p)}"))`),
-    ...lanAddrs().map(a => `(deny network-outbound (remote ip "${a}:*"))`),
+    // (No rule per LAN address: seatbelt accepts only "*" or "localhost" as the host of a network address, so "(remote ip \"192.168.64.4:*\")" is a
+    // profile error and nothing starts; measured on a hosted Mac, run 37162622014. The port rule above is what covers every address.)
     // ...then the session gets back only what it needs (these come last, so they win).
     ...writable(o).map(d => `(allow file* (subpath ${q(d)}))`),
     ...ok.filter(d => !writable(o).includes(d)).map(d => `(allow file-read* (subpath ${q(d)}))`),
