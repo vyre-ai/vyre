@@ -116,6 +116,8 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_EGRESS_PROXY` | Not described yet. | `core/computers/egress.js` |
 | `VYRE_EGRESS_SOCKET` | Not described yet. | `core/computers/egressgate.js` |
 | `VYRE_EGRESS_UPSTREAM` | Not described yet. | `core/computers/egressgate.js` |
+| `VYRE_FINISH_MS` | Not described yet. | `core/daemon/index.js` |
+| `VYRE_FINISH_POLL_MS` | Not described yet. | `core/daemon/index.js` |
 | `VYRE_FREEZE_FD` | Not described yet. | `core/computers/image/computerd/index.js` |
 | `VYRE_GEMINI_HOME` | Not described yet. | `core/import/formats/index.js` |
 | `VYRE_HANDS_BIN` | Another build of the Mac hands helper. | `local/hands-mac/index.js` |
@@ -145,7 +147,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_RELEASES_API` | Where `vyre update` reads releases. Default `https://api.github.com`. Tests point it at a local server. | `core/cli/commands/update.js`, `core/update/index.js` |
 | `VYRE_RELEASES_REPO` | Not described yet. | `core/update/index.js` |
 | `VYRE_SCREEN_BIN` | Not described yet. | `local/screen-mac/index.js` |
-| `VYRE_SEAL_SOFTWARE` | Not described yet. | `core/wink/pairing.js` |
+| `VYRE_SEAL_SOFTWARE` | Not described yet. | `core/daemon/index.js`, `core/presence/module.js`, `core/wink/pairing.js` |
 | `VYRE_SESSIONS_DRIVER` | Not described yet. | `core/sessions/config.js` |
 | `VYRE_SESSIONS_SDK_DIR` | Not described yet. | `core/sessions/config.js`, `core/spawner/main.js` |
 | `VYRE_SESSIONS_SDK_INSTALL` | Not described yet. | `core/sessions/sdk.js` |

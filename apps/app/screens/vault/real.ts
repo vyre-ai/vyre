@@ -3,4 +3,4 @@
 import { call } from "../../src/api/box";
 import { vaultSource } from "./source";
 
-export const { listReal, usesReal, revealReal, revokeReal, stateReal, unlockReal, putReal } = vaultSource(call);
+export const { listReal, usesReal, revealReal, revokeReal, stateReal, unlockReal, unlockPersonalReal, putReal } = vaultSource(call);

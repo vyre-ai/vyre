@@ -9,8 +9,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { sumsSigned } from "../../lib/release-sig.js";
 import { treeHash } from "./firstparty.js";
+import { releaseFile } from "../../lib/release-shell.js";
 
-const MAX = 1_000_000;
 /** The pinned key as the base64 SPKI DER string lib/release-sig.js takes, from that string or a KeyObject (tests). @param {any} k */
 const der = k => (k === undefined || typeof k === "string" ? k : k.export({ type: "spki", format: "der" }).toString("base64"));
 const sha256 = (/** @type {Buffer | string} */ b) => crypto.createHash("sha256").update(b).digest("hex");
@@ -21,8 +21,10 @@ const sha256 = (/** @type {Buffer | string} */ b) => crypto.createHash("sha256")
  * @returns {{ ok: true, counter: number, modules: Record<string, { version: string, tree: string }>, trees?: Record<string, string>, raw: { list: string, sums: string, sig: string } } | { ok: false, why: string }}
  */
 export function readReleaseList(root, releaseKey) {
-  /** @param {string} f */
-  const read = f => { const p = path.join(root, f); const st = fs.lstatSync(p); if (!st.isFile() || st.size > MAX) throw new Error(`${f} is not a plain file`); return fs.readFileSync(p); };
+  // Each signed file from the package root, else from what the host published beside it (deck/release), else (the list) from the verified shell.json that carries it: a server an old updater
+  // updated has only the published files, never a modules.json of its own (lib/release-shell.js).
+  /** @param {"SHA256SUMS" | "SHA256SUMS.sig" | "modules.json"} f */
+  const read = f => { const b = releaseFile(root, f, der(releaseKey)); if (!b) throw new Error(`no ${f}`); return b; };
   let sums, sig, list;
   try { sums = read("SHA256SUMS"); } catch { return { ok: false, why: "there is no SHA256SUMS beside this build" }; }
   try { sig = read("SHA256SUMS.sig"); } catch { return { ok: false, why: "SHA256SUMS has no signature" }; }

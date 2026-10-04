@@ -7,6 +7,7 @@
 // passkey from the Deck. Enrolling, removing and minting need presence themselves; they are on
 // the floor's list, and they say so here too.
 
+import { devSwitch } from "../../kernel/devbuild.js";
 import { Presence } from "./index.js";
 import { PersonSessions } from "./person.js";
 import { isServer } from "../config/index.js";
@@ -20,7 +21,8 @@ const obj = (properties, required = []) => ({ type: "object", properties, requir
 export default {
   async start(ctx) {
     // Rows only: challenges and nonces live in vyred's own verifier, not in this one.
-    const presence = new Presence({ db: ctx.store.db, log: m => ctx.log(m) });
+    // `softwareOk`: a development-kind build behind VYRE_SEAL_SOFTWARE takes a device key as presence (marked software); a release-kind one never does (PW-1), and a device key opens no session there (PS-1).
+    const presence = new Presence({ db: ctx.store.db, log: m => ctx.log(m), softwareOk: () => devSwitch(process.env.VYRE_SEAL_SOFTWARE) });
 
     ctx.tool("presence.keys", {
       effect: "read", callers: ["cli", "local", "deck", "capsule", "tailnet", "device", "module"], // key names and ids are the person's, not a model's
