@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { tempHome, writeModule } from "./helpers.js";
-import { start, callerFacts } from "../core/daemon/index.js";
+import { start, callerFacts, surfaceAncestry } from "../core/daemon/index.js";
 import { setPeerHosting } from "../core/daemon/peer.js";
 
 process.env.VYRE_SEAL_DEV = "1";
@@ -71,4 +71,22 @@ req.end("{}");`);
   setPeerHosting(true);
   try { await new Promise(r => spawn(process.execPath, [js], { stdio: "ignore" }).on("close", r)); } finally { setPeerHosting(false); }
   assert.deepEqual(globalThis.__who.map((/** @type {any} */ w) => w.kind), ["person"], "the person's own deck label still gets the person chain");
+});
+
+test("the development stand-in makes a surface label that is not inside a model the owner; a model's shell and a release build never are", () => {
+  const unread = { model: false, outside: false }, inside = { model: true, outside: false }, outside = { model: false, outside: true };
+  assert.deepEqual(surfaceAncestry(unread, false), { inside: false, outside: false }, "no stand-in: an unreadable ancestry is no person");
+  assert.deepEqual(surfaceAncestry(unread, true), { inside: false, outside: true }, "stand-in: a terminal over ssh is the owner");
+  assert.deepEqual(surfaceAncestry(outside, false), { inside: false, outside: true });
+  assert.deepEqual(surfaceAncestry(inside, true), { inside: true, outside: false }, "a model's shell stays one");
+  for (const label of LABELS) {
+    assert.equal(callerFacts(label, {}, null, k, false, null, surfaceAncestry(unread, false)), null);
+    assert.equal(/** @type {any} */ (callerFacts(label, {}, null, k, false, null, surfaceAncestry(unread, true))).inside_model_process, false);
+    assert.equal(callerFacts(label, {}, null, k, false, null, surfaceAncestry(inside, true))?.inside_model_process, true);
+  }
+});
+
+test("devStandIn is false in a release-kind build, so the stand-in file is ignored there", async () => {
+  const { devSwitch } = await import("../kernel/devbuild.js");
+  assert.equal(devSwitch("1", fs.mkdtempSync(path.join(process.env.TMPDIR || "/tmp", "pk-"))), false, "a folder with no development build marker is packaged");
 });
