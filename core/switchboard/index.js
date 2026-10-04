@@ -437,6 +437,8 @@ export class Switchboard {
     this.closing = false;
     /** @type {Map<string, { path: string, close: () => Promise<void> }>} each live thread's own socket to vyred (deps.threadSocket) */
     this.socks = new Map();
+    /** how each live session is confined (`uid`, `bwrap`, `seatbelt`), shown on its record @type {Map<string, string>} */
+    this.confinedBy = new Map();
     /** @type {Map<string, () => Promise<void>>} the session's egress proxy stopper, run when its socket closes */
     this.releases = new Map();
     /** @type {Map<string, string>} the last status said per thread, for thread.state */
@@ -548,7 +550,7 @@ export class Switchboard {
       canonical_status: threadStatus(r.status, r.stopped_reason), model: r.model, driver: r.driver || null,
       provider: r.provider || "claude", account: r.account || null, purpose: r.purpose || null, branch: optsOf(r).branch || null, mode: r.mode || "default", effort: optsOf(r).effort || null, origin: optsOf(r).origin || null, caps: optsOf(r).caps || null, parent: optsOf(r).parent || null, continued_from: optsOf(r).continued_from || null, starter: optsOf(r).starter || null, taint: { outside: Boolean(optsOf(r).taint && optsOf(r).taint.outside), private: Boolean(optsOf(r).taint && optsOf(r).taint.private) }, archived: r.archived_at || null,
       auth: r.auth, started: r.started_at, last: r.last_at, cost_usd: r.cost_usd, turns: r.turns,
-      holder: holder ? holder.surface : null, asks: this.asks.open(id).length, ...(r.stopped_reason ? { stopped_reason: r.stopped_reason } : {}) };
+      holder: holder ? holder.surface : null, asks: this.asks.open(id).length, confined_by: this.confinedBy.get(id) || null, ...(r.stopped_reason ? { stopped_reason: r.stopped_reason } : {}) };
   }
 
   /** A thread's ancestors, nearest first, up to the thread nobody started it from (the person's own). @param {string} id */
@@ -1031,8 +1033,11 @@ export class Switchboard {
     if (!sock) throw Object.assign(new Error("Vyre did not start this session because it has no socket of its own to reach Vyre through."), { code: "sandbox_failed" });
     const provider = rec.provider || o.provider || "claude";
     const pickEnv = (/** @type {string[]} */ names) => Object.fromEntries(names.filter(n => o.env && o.env[n]).map(n => [n, o.env[n]]));
-    const r = await prepareSandbox({ ...cfg, temp: this.sessionTemp(id), credentials: cfg.credentials ? async (/** @type {string} */ p) => { const v = await cfg.credentials(p); return typeof v === "string" ? v : v || pickEnv(["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"]); } : (() => pickEnv(["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"])) }, { provider, command: absoluteBin(cfg.binFor ? cfg.binFor(provider) : this.bin), sessionSocket: sock.path, workdirs: [rec.cwd], ...(o.gitEnv ? { trustedEnv: o.gitEnv } : {}) });
+    const r = await prepareSandbox({ ...cfg, temp: this.sessionTemp(id), credentials: cfg.credentials ? async (/** @type {string} */ p) => { const v = await cfg.credentials(p); return typeof v === "string" ? v : v || pickEnv(["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"]); } : (() => pickEnv(["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"])) }, { provider, command: absoluteBin(cfg.binFor ? cfg.binFor(provider) : this.bin), sessionSocket: sock.path, workdirs: [rec.cwd], ...(o.accountRun && o.accountRun.uid != null ? { account: { uid: o.accountRun.uid, shared: rec.cwd === (process.env.VYRE_WORK || "/work") || String(rec.cwd).startsWith((process.env.VYRE_WORK || "/work") + "/") } } : {}), ...(o.gitEnv ? { trustedEnv: o.gitEnv } : {}) });
     if (r.sandboxed) {
+      // How this session is confined, said on its record and its log: `uid` in the packaged box (its own uid, the container and the wall, proved before the start), `bwrap` or the seatbelt elsewhere.
+      this.confinedBy.set(id, r.confinedBy || (process.platform === "darwin" ? "seatbelt" : "bwrap"));
+      this.emit("thread.sandbox", { sandboxed: true, confined_by: this.confinedBy.get(id) }, id, rec.project);
       if (r.release) { const old = this.releases.get(id); this.releases.set(id, r.release); if (old) old().catch(() => {}); }
       // Partly sandboxed (a provider that cannot move its settings folder keeps its own): said on this session's log, and once per machine and provider in words.
       if (r.partial) {
