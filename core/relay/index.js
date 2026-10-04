@@ -314,7 +314,8 @@ export default {
     const refusals = new Map();
     function refusedLog(/** @type {string} */ why) {
       const t = now(), r = refusals.get(why);
-      if (r && t - r.at < 60_000) { r.n++; return; }
+      // a repeat inside the minute still says its reason, for the first few (a person retrying a pairing must see why each try was refused); past that it is only counted, so an outsider cannot flood the log
+      if (r && t - r.at < 60_000) { r.n++; if (r.n <= 5) ctx.log(`relay: refused again (${why}); ${r.n} more like it this minute`); return; }
       ctx.log(`relay: refused a hello (${why})${r && r.n ? `; ${r.n} more like it in the last minute` : ""}`);
       refusals.set(why, { at: t, n: 0 });
       if (refusals.size > 50) refusals.delete(refusals.keys().next().value);

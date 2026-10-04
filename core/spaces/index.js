@@ -37,7 +37,7 @@ import { createKernelMembers } from "./kernel-members-compat.js";
 import { kernelMembers, plainKernelError } from "./kernel-members.js";
 import { createRemoteKernel } from "../../kernel/remote/client.js";
 import { devSwitch } from "../../kernel/devbuild.js";
-import { softwareProof, softwareKey } from "./presence-signer.js";
+import { softwareProof, softwareActProof, softwareKey } from "./presence-signer.js";
 import { winkTransport } from "../../kernel/remote/wink.js";
 import { acceptProofRequest } from "../../kernel/remote/proof.js";
 import { joinBytes } from "../../kernel/seal/wire.js";
@@ -1636,10 +1636,22 @@ export default {
             const c = await kernelCard(i, p0, meta);
             // What the invitee signs on their own device: the kernel's accept request over exactly this card. The surface sends the signed proof beside the next call.
             const req = acceptProofRequest((c.card.space && c.card.space.id) || c.handle.space, c.card, /** @type {string} */ (s.id));
-            if (!meta || !meta.kernel_proof) return { joined: false, needs_proof: true, request: req, card: c.card, fingerprint_words: fingerprintWords(c.fingerprint) };
+            // This computer signs it itself when it can: the hardware signer a surface set, else (a development build only) its software key, which then also names itself as the presence key to enrol on this server (RC1 below).
+            let given = meta, named = i.presence_key;
+            if (!meta || !meta.kernel_proof) {
+              /** @type {any} */ let signed = null;
+              try { if (typeof hooks.signer === "function") signed = await hooks.signer({ ...req, accept: true }, { space: c.spaceId, person: /** @type {string} */ (s.id) }); } catch { signed = null; }
+              if (!signed && devSwitch(process.env.VYRE_SEAL_SOFTWARE, hooks.buildRoot)) {
+                const file = path.join(ctx.paths.root, "wink-keys.json.device");
+                try { signed = softwareActProof(file, /** @type {string} */ (s.id), req); if (signed && !named) { const k0 = softwareKey(file); named = { key_id: k0.key_id, spki: k0.spki, signer: k0.signer }; } } catch { signed = null; }
+              }
+              if (!signed || typeof signed !== "object") return { joined: false, needs_proof: true, request: req, card: c.card, fingerprint_words: fingerprintWords(c.fingerprint) };
+              given = { ...(meta || {}), kernel_proof: signed };
+              c.k = c.handle.hosted === false ? { chain: null, proof: K.proofFrom(given) } : await kctxOf(given, c.spaceId);
+            }
             // RC1: a person who has never touched this server has no presence key there. The app names the key it signed with, and this device's own identity key vouches for it, over this invite, this Space, this identity and that key;
             // the server reads the identity's list from the directory, checks the device and the signature, and enrols the key inside this same accept (kernel/remote/server.js joinKey).
-            const pk = i.presence_key;
+            const pk = named;
             const bind = c.handle.hosted === false && pk && typeof pk === "object" && typeof pk.key_id === "string" && typeof pk.spki === "string" && typeof pk.signer === "string"
               ? { key_id: pk.key_id, spki: pk.spki, signer: pk.signer, sig: b64u(await identity.sign(joinBytes(c.invId, c.spaceId, /** @type {string} */ (s.id), pk.key_id, pk.spki))), ...(pk.attestation && typeof pk.attestation === "object" ? { attestation: pk.attestation } : {}) }
               : undefined;
