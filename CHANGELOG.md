@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- test(wink): the owner's-phone card test asks its outward card for mail.send, a tool marked `outward: true`, in place of the made-up email.send that only the old verb pattern accepted.
+
 - test(one-yes): an `outward: true` tool on reach hook or modules is held for a hook caller, a module with no person behind it and a module acting for an agent, and never runs; a module acting for you runs it (reviewer-3 OW-5).
 - test(app): `src/identity/restore-store.test.js`: recovery asks the store it was handed (a phone-store stand-in refuses a second name before any directory call), and the root layout wires `./store` (the platform file), not `./store.ts`. Run with restore.test.js on the full repo on testbox3.
 - test(app): the phone's connect screen has tests (screens/install/phone-novyre.test.js): no camera view in RC1 (`CAMERA_SCAN` is now in first-run.js and guards PairEntry's permission request, camera and permission line), "I don't have Vyre running yet" only on a phone (`offersNoVyre`), the share text is the setup link with no install command, and the step shares it through the system share sheet with "Not now" keeping the skip flag then opening the landing.
