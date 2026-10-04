@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { open } from "../store/index.js";
-import { start } from "../daemon/index.js";
+import { start, callerFacts } from "../daemon/index.js";
 import { call, request } from "../daemon/client.js";
 import { SESSIONS, seedRecall } from "../../test/fixtures/corpus.js";
 import { tempHome } from "../../test/helpers.js";
@@ -163,9 +163,10 @@ test("memory module: the person corrects from their phone only signed in; a devi
   await call("memory.remember", { text: "my wife is Jordan" }, { root });
   const a = (await call("memory.ask", { question: "what is my wife's name?" }, { root })).data;
   const phone = "device:abcdefghijklmnop";
-  // The registry asks for the person's own session beside the kernel's facts, the way vyred's router sets both for a signed-in device.
-  const facts = (signedIn) => ({ ...(signedIn ? { person: { id: "s1", kind: "cookie" } } : {}), kernelFacts: { kind: "device", device_key_id: "abcdefghijklmnop", person: d.kernel.id.owner, path: "relay", ...(signedIn ? { session: "s1" } : {}) } });
-
+  // The phone is a paired app device in the home's own relay table; its facts are the daemon's own `callerFacts` from that row (PH-1), never hand-made.
+  d.registry.deps.db.prepare("INSERT INTO relay_devices (id, name, pub, paired_at, kind, trusted, removed_at) VALUES (?, 'phone', 'p', 1, 'app', 0, NULL)").run("abcdefghijklmnop");
+  const row = (await d.registry.call("relay.device.info", { id: "abcdefghijklmnop" }, "module:vyred")).data || null;
+  const facts = (signedIn) => { const via = signedIn ? { person: { id: "s1", kind: "cookie" } } : {}; return { ...via, kernelFacts: callerFacts(phone, { caller: phone }, via, d.kernel, false, row) }; };
   const bare = await d.registry.call("memory.correct", { answer: a.answer_id, action: "wrong" }, phone, facts(false));
   assert.equal(bare.error?.code, "person_session_required", JSON.stringify(bare));
   const graphBare = await d.registry.call("memory.correct", { subject: "Dana Reyes", rel: "works_at", object: "Harlow Legal", action: "confirm" }, phone, facts(false));
