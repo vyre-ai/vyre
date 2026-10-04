@@ -1854,3 +1854,17 @@ test("FO-1: adopt never changes the owner of an owned server: the adopter naming
   assert.equal(f.w.d.kernel.id.owner, f.ident.id, "the kernel owner is unchanged");
   assert.equal((await f.w.d.registry.call("wink.server.owner", {}, "module:spaces")).data.identity, f.ident.id, "and so is the pairing record");
 });
+
+test("a paired device's live presence session rides the kernel call: an admin act is refused needs_presence without a session, passes after start-paired, and is refused again once the session is revoked", async t => {
+  const f = await pairFreshServer(t);
+  const links = linksFor(t, f);
+  const { CONTACT } = await import("../kernel/conformance/suite.js");
+  const space = f.w.d.kernel.id.space;
+  const rk = links.remoteKernel("srv", space);
+  const define = () => rk.gateway.records.define(null, { add_types: [CONTACT] }).then(() => "ok", e => String(e.code || e.message));
+  assert.match(await define(), /needs_presence|presence/, "no paired session: refused for presence");
+  await links.startPaired("srv");
+  assert.equal(await define(), "ok", "with the device's paired session the admin act passes");
+  await f.w.d.registry.call("presence.person.end-paired", { device: f.done.device }, "module:wink");
+  assert.match(await define(), /needs_presence|presence|not_a_member|session/, "the session was revoked: refused again at the next call");
+});
