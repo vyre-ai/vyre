@@ -10,6 +10,7 @@
 // watcher must refuse to run, in words, and run nothing). With none set, the test reports which
 // wall it found and holds either answer to its rules.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

@@ -9,7 +9,10 @@
 // The device's row is asked of the relay on EVERY call, so a device removed after the stream opened is refused at its next call and its stream closes. Nothing here caches who a device is.
 import { peerSession, streamPipe } from "../wink/node/peer-wire.js";
 import { createRemoteServer } from "../../kernel/remote/server.js";
-import { withKernelCall } from "../../kernel/remote/wink.js";
+import { withKernelCall, KERNEL_CALL_TOOL } from "../../kernel/remote/wink.js";
+import { INVITEE_CALLS, WIRE_VERSION } from "../../kernel/remote/wire.js";
+import { verifyDevice } from "../wink/node/peer-wire.js";
+import crypto from "node:crypto";
 
 /** The stream's `space` head: this home, not one of its hosted Spaces (a kernel call names its Space in the request). */
 export const PEER_HOME = "home";
@@ -17,17 +20,18 @@ const DEVICE = /^[a-z2-7]{16}$/;
 const err = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 
 /**
- * @param {{ kernel: any, registry: any, people?: { list(): any[] } | null, now?: () => number, callerFacts: (caller: string, policy: any, via: any, k: any, capsule: boolean, device: any) => any, log?: (m: string) => void }} o
+ * @param {{ kernel: any, registry: any, people?: { list(): any[] } | null, now?: () => number, identityEntry?: (identity: string, eid: string, name?: string) => Promise<{ pub: string, alg?: string, held?: string } | null>, boxId?: () => Promise<string | null>, serverFor?: (space: string) => { serve(request: any, peer: any): Promise<any> } | null, inviteeLimits?: { perInvite?: number, perIdentity?: number, perMinute?: number }, callerFacts: (caller: string, policy: any, via: any, k: any, capsule: boolean, device: any) => any, log?: (m: string) => void }} o
  */
 export function createPeerDoor(o) {
   const log = o.log || (() => {});
   /** @type {Map<string, any>} */ const servers = new Map();
-  const kernelOf = (/** @type {string} */ space) => (space === o.kernel.id.space ? o.kernel : (o.kernel.spaces && typeof o.kernel.spaces.for === "function" ? (() => { try { return o.kernel.spaces.for(space); } catch { return null; } })() : null));
+  const kernelOf = (/** @type {string} */ space) => (space === o.kernel.id.space ? o.kernel : (o.kernel.spaces && typeof o.kernel.spaces.for === "function" ? (() => { try { const h = o.kernel.spaces.for(space); return h && h.hosted === true ? h.kernel : null; } catch { return null; } })() : null));
   const serverFor = (/** @type {string} */ space) => {
+    if (typeof o.serverFor === "function") return o.serverFor(space);
     const k = kernelOf(space);
     if (!k) { servers.delete(space); return null; }
     let s = servers.get(space);
-    if (!s || s.k !== k) { s = { k, server: createRemoteServer({ space, kernel: k }) }; servers.set(space, s); }
+    if (!s || s.k !== k) { s = { k, server: createRemoteServer({ space, home: o.kernel.id.space, kernel: k }) }; servers.set(space, s); }
     return s.server;
   };
   /** The device's own row at the relay, now: an app device that is not removed, or null. @param {string} id */
@@ -45,17 +49,97 @@ export function createPeerDoor(o) {
     if (!facts) throw err("denied", "this device is not paired here any more");
     const body = input && typeof input === "object" && !Array.isArray(input) ? { ...input } : {};
     /** @type {any} */ let proof;
-    if (body.proof && typeof body.proof === "object") { try { if (JSON.stringify(body.proof).length <= 4096) proof = body.proof; } catch { /* no proof */ } delete body.proof; }
+    // PD-1: a tool that takes `proof` as a parameter of its own (a pairing's identity proof) keeps it in its input and gets nothing in meta; for any other tool `proof` is the owner's presence proof
+    const declared = (() => { try { const t = o.registry.tools && o.registry.tools.get(tool); return Boolean(t && t.input && t.input.properties && Object.hasOwn(t.input.properties, "proof")); } catch { return false; } })();
+    if (!declared && body.proof && typeof body.proof === "object") { try { if (JSON.stringify(body.proof).length <= 4096) proof = body.proof; } catch { /* no proof */ } delete body.proof; }
     // the owner's proof rides input.proof: the registry's presence floor reads it as `proof`, and the kernel as `kernel_proof` (each checks its own shape; neither is trusted here)
     const r = await o.registry.call(tool, body, caller, { ...(person ? { person } : {}), kernelFacts: facts, ...(proof ? { proof, kernel_proof: proof } : {}) });
     if (r && r.error) throw err(String(r.error.code || "internal"), String(r.error.message || "the call failed"));
     return r ? r.data : null;
   };
+
+  // ---- the invitee door (lead, 4 Oct: DESIGN-spaces-first.md "How a second person reaches a space to join it") ----
+  // A person who is not a member of a space opens `{ peer: "wink", space: "home", invitee: { space, invite, identity, entry, name?, ts, nonce, sig } }` on a relay channel that said `invitee` in its hello
+  // (it made no device row). The door admits it only when ALL of these hold: the hello is fresh (2 minutes) and its nonce is new; the identity's entry resolves from the names directory and its signature over this
+  // box's own id, the space, the invite, the identity, the entry, the time and the nonce checks out (so a hello cannot be replayed at another box); the space is one this home hosts; and the space's kernel
+  // shows the invite as unexpired and unused, and, if it is addressed to one identity, to this one. What the stream may then do is `grants.invites.get` and `grants.invites.accept` for THAT invite, nothing else:
+  // no registry tool, no other kernel call, no person session. A wrong, spent or other-identity token closes the stream. Accepting ends it. Rates are held per invite, per identity and per channel.
+  const HELLO_WINDOW_MS = 120_000;
+  /** @type {Map<string, number>} nonce -> expiry */ const nonces = new Map();
+  /** @type {Map<string, number[]>} */ const uses = new Map();
+  const lim = { perInvite: 30, perIdentity: 60, perMinute: 60_000, ...(o.inviteeLimits || {}) };
+  const over = (/** @type {string} */ key, /** @type {number} */ max, /** @type {number} */ now) => {
+    const a = (uses.get(key) || []).filter(t => now - t < lim.perMinute);
+    uses.set(key, a);
+    if (a.length >= max) return true;
+    a.push(now);
+    if (uses.size > 5000) for (const [k, v] of uses) if (!v.length || now - v[v.length - 1] > lim.perMinute) uses.delete(k);
+    return false;
+  };
+  const helloMessage = (/** @type {string} */ box, /** @type {any} */ h) => Buffer.from(`vyre-invitee-hello-v1\n${box}\n${h.space}\n${h.invite}\n${h.identity}\n${h.entry}\n${h.ts}\n${h.nonce}`, "utf8");
+  /** Checks one invitee hello and says why not, or answers { identity }. @param {any} h @param {string} inviteeId */
+  const checkHello = async (h, inviteeId) => {
+    const now = (o.now || Date.now)();
+    if (!h || typeof h !== "object" || Array.isArray(h)) return { why: "bad_input" };
+    const str = (/** @type {any} */ v, /** @type {RegExp} */ re) => typeof v === "string" && re.test(v);
+    if (!str(h.space, /^spc_[a-z2-7]{12,26}$/) || !str(h.invite, /^inv_[0-9a-f]{32}$/) || !str(h.identity, /^per_[a-z2-7]{26}$/) || !str(h.entry, /^[a-z2-7]{26}$/) || !str(h.nonce, /^[A-Za-z0-9_-]{16,64}$/) || !Number.isFinite(h.ts) || !str(h.sig, /^[A-Za-z0-9_-]{80,100}$/)) return { why: "bad_input" };
+    if (h.name !== undefined && !str(h.name, /^[a-z0-9.-]{3,253}$/)) return { why: "bad_input" };
+    if (Math.abs(now - Number(h.ts)) > HELLO_WINDOW_MS) return { why: "stale" };
+    for (const [n, exp] of nonces) if (exp <= now) nonces.delete(n);
+    if (nonces.has(h.nonce)) return { why: "replayed" };
+    if (over(`i:${h.invite}`, lim.perInvite, now) || over(`p:${h.identity}`, lim.perIdentity, now) || over(`d:${inviteeId}`, lim.perIdentity, now)) return { why: "rate_limited" };
+    if (typeof o.identityEntry !== "function" || typeof o.boxId !== "function") return { why: "cannot_check" };
+    let box = null;
+    try { box = await o.boxId(); } catch { box = null; }
+    if (!box) return { why: "cannot_check" };
+    /** @type {any} */ let entry = null;
+    try { entry = await o.identityEntry(h.identity, h.entry, h.name); } catch { return { why: "cannot_check" }; }
+    if (!entry || typeof entry.pub !== "string" || entry.alg === "webauthn-es256" || entry.held === "web") return { why: "unknown_identity" };
+    if (!verifyDevice(entry.pub, helloMessage(box, h), h.sig)) return { why: "bad_proof" };
+    nonces.set(h.nonce, now + 2 * HELLO_WINDOW_MS);
+    if (nonces.size > 5000) nonces.clear();
+    return { identity: h.identity };
+  };
+  /** A kernel request for one of the two invitee calls on this invite, as the invitee. @param {string} space @param {string} call @param {any[]} args @param {number} now */
+  const inviteeRequest = (space, call, args, now) => ({ v: WIRE_VERSION, space, id: `inv-${crypto.randomBytes(8).toString("hex")}`, ts: now, call, args });
   const dispatch = withKernelCall(asDevice, { serverFor, personOf: (/** @type {string} */ d) => personOf(d), pathOf: () => "relay" });
 
   return {
     space: PEER_HOME,
     allow: (/** @type {string} */ d) => DEVICE.test(String(d)),
+    /**
+     * An invitee's stream (see above). `head` is the hello the peer stream carried. @param {any} stream @param {{ inviteeId: string }} who @param {any} head
+     */
+    acceptInvitee(stream, who, head) {
+      const inviteeId = String(who.inviteeId);
+      /** @type {any} */ let session = null;
+      const end = (/** @type {string} */ why) => { const t = setTimeout(() => { try { session && session.close(why); } catch { /* closed */ } }, 50); if (t.unref) t.unref(); };
+      /** @type {Promise<{ ok: true, identity: string, space: string, invite: string } | { ok: false, why: string }> | null} */ let admitted = null;
+      const admit = () => admitted || (admitted = (async () => {
+        const c = await checkHello(head, inviteeId);
+        if (!c.identity) return { ok: false, why: String(c.why) };
+        const server = serverFor(head.space);
+        if (!server) return { ok: false, why: "not_found" };
+        // the space's own kernel decides whether this invite is live, unused and meant for this person: a preview is the proof (it is all the invitee may read before it accepts)
+        const r = await server.serve(inviteeRequest(head.space, "grants.invites.get", [head.invite], (o.now || Date.now)()), { device_key_id: inviteeId, person: c.identity, path: "relay" });
+        if (!r || r.ok !== true || !r.result || r.result.status !== "pending") return { ok: false, why: "bad_invite" };
+        return { ok: true, identity: c.identity, space: head.space, invite: head.invite };
+      })());
+      session = peerSession(streamPipe(stream), { first: 2, serve: async (/** @type {string} */ tool, /** @type {any} */ input) => {
+        const a = await admit();
+        if (!a.ok) { end("not admitted"); throw err("denied", "that invite cannot be used from here"); }
+        if (tool !== KERNEL_CALL_TOOL || !input || typeof input !== "object") throw err("denied", "an invite opens two calls and nothing else");
+        const args = Array.isArray(input.args) ? input.args : [];
+        if (input.space !== a.space || !INVITEE_CALLS.has(String(input.call)) || args[0] !== a.invite) throw err("denied", "an invite opens two calls and nothing else");
+        const server = serverFor(a.space);
+        if (!server) { end("gone"); throw err("not_found", "no such space here"); }
+        const r = await server.serve(input, { device_key_id: inviteeId, person: a.identity, path: "relay" });
+        // accepting ends the stream (a member session begins elsewhere); so does any refusal of the invite itself
+        if (input.call === "grants.invites.accept" || !r || r.ok !== true) end("done");
+        return r;
+      } });
+      log(`peer door: invitee ${inviteeId} opened a stream`);
+    },
     /** @param {any} stream @param {{ deviceId: string }} who */
     accept(stream, who) {
       const id = who.deviceId;

@@ -1,5 +1,6 @@
 // The lent-computer wire on the REAL kernel: a member's computer runs one of the Space's sessions through the kernel's remote call (the in-memory stand-in for Wink), with the real Offers,
 // the real leases and the real remote server on the home side, and the lent home service in front of the checkpoint store. Every refusal in docs/work/runner.md is a test here.
+import "../../scripts/mac-test-guard.mjs";
 import "./testing/hosted-guard.js";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -32,6 +33,7 @@ function fakeSealer() {
 }
 
 async function rig(t, o = {}) {
+  const acceptCap = o.acceptCap;
   const dir = fs.mkdtempSync(path.join(SCRATCH, "lw-")); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const sealer = fakeSealer();
   const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 8), sealer, presence, resolveCredential: async () => ({ secret: "v" }) });
@@ -41,7 +43,7 @@ async function rig(t, o = {}) {
   for (const p of [BOB, CAROL]) { const role = { person: p, role: "member" }; await g.setRole(owner, role, { presence: proof("grants.role", role, `vyre://${SPACE}/member/${p}`) }); }
   const mk = (chain, x) => g.offers.offer(chain, x, { presence: proof("grants.offer", x, `vyre://${SPACE}/offer/new`) });
   await mk(owner, { side: "space_allows", member: BOB });
-  const accept = await mk(bob, { side: "member_accepts", member: BOB, device: "dev_laptop", device_key: "KEY_LAPTOP" });
+  const accept = await mk(bob, { side: "member_accepts", member: BOB, device: "dev_laptop", device_key: "KEY_LAPTOP", ...(acceptCap ? { network_cap: acceptCap } : {}) });
   const home = createLentHome({ space: SPACE, root: path.join(dir, "home"), offers: g.offers, leases: k.gateway.leases, lenderCap: () => o.cap,
     specFor: async ({ session }) => ({ command: "/usr/bin/agent", args: [session], env: {}, routes: [], readOnly: [], labels: {}, network: "internet", credentialRoutes: [{ route: "api.example.com", ref: "svc", paths: ["/v1/*"] }] }) });
   const server = createRemoteServer({ space: SPACE, kernel: k, services: { lent: home } });
@@ -136,7 +138,9 @@ test("the wire carries no group the home did not allow: an unknown call and a le
 
 import { createRunner } from "./runner.js";
 import { createLenderHost } from "./lender-host.js";
-const SKIP_RUN = process.platform !== "linux" && process.platform !== "darwin";
+import { SANDBOX_WHY } from "./testing/require-sandbox.js";
+// The real runner needs a sandbox and an encrypted workspace on this machine (bubblewrap and gocryptfs on Linux): without them the test is skipped, as in the runner's other tests.
+const SKIP_RUN = (process.platform !== "linux" && process.platform !== "darwin") || SANDBOX_WHY !== "";
 
 test("the real runner on a lent computer, ports from the lender host over the real kernel: it starts the Space's session, checkpoints reach the home's store, a second computer resumes, and a withdrawn Offer tells the runner", { skip: SKIP_RUN, timeout: 120_000 }, async t => {
   const r = await rig(t, { cap: "provider" });
@@ -197,4 +201,18 @@ test("a host with no device identity yet: the module loads and says so, and a ca
   const st = await tools.get("runner.status").run({}, {});
   assert.equal(st.ready, false); assert.match(st.why, /no device identity/);
   await assert.rejects(tools.get("runner.place").run({ space: SPACE }, {}), e => e.code === "unavailable" || /identity/.test(e.message));
+});
+
+test("the lender's cap is read from the Offer the member accepted: the home limits the definition by it, the lender host reports it, a bad value is refused, and it is the member's own acceptance only", async t => {
+  const r = await rig(t, { acceptCap: "provider" });          // no lenderCap function: the cap comes from the Offer alone
+  const c = r.as(BOB, "dev_laptop"); await c.vault.lease();
+  assert.equal((await c.spec({ session: "s1" })).network, "provider");
+  const remote = createRemoteKernel({ space: SPACE, transport: createMemoryTransport({ servers: { [SPACE]: r.server }, peer: { device_key_id: "dev_laptop", person: BOB, path: "wink" } }) });
+  const host = createLenderHost({ invoke: remote.call, deviceId: "dev_laptop", deviceKey: "KEY_LAPTOP" }); await host.ready; t.after(() => host.stop());
+  assert.equal(host.ports.lenderCap, "provider", "the lender's runner applies the same cap locally");
+  const open = await rig(t); const c2 = open.as(BOB, "dev_laptop"); await c2.vault.lease();
+  assert.equal((await c2.spec({ session: "s1" })).network, "internet", "an acceptance that names no cap leaves the Space's choice");
+  const bad = await rig(t);
+  await assert.rejects(bad.g.offers.offer(bad.bob, { side: "member_accepts", member: BOB, device: "dev_x", device_key: "K", network_cap: "everything" }, { presence: proof("grants.offer", { side: "member_accepts", member: BOB, device: "dev_x", device_key: "K", network_cap: "everything" }, `vyre://${SPACE}/offer/new`) }), e => e.code === "bad_input");
+  await assert.rejects(bad.g.offers.offer(bad.owner, { side: "space_allows", member: BOB, network_cap: "provider" }, { presence: proof("grants.offer", { side: "space_allows", member: BOB, network_cap: "provider" }, `vyre://${SPACE}/offer/new`) }), e => e.code === "bad_input", "the Space cannot set the lender's cap");
 });

@@ -5,6 +5,7 @@
 // A key with no reader is on DEAD below, with the team that owns it; the list only shrinks: wire the reader, or remove the
 // setting, and delete the line.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

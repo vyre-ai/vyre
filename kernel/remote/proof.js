@@ -37,11 +37,14 @@ const CALLS = {
   addActor: (s, actor) => ({ action: "grants.role", resource: urn(s, "member", actor.id), input: { actor } }),
   offer: (s, o) => ({ action: "grants.offer", resource: urn(s, "offer"), input: o }),
   unoffer: (s, id) => ({ action: "grants.unoffer", resource: urn(s, "offer", id), input: { revoke: id } }),
-  lend: (s, o) => ({ action: "grants.offer", resource: urn(s, "offer", "lend"), input: { lend: { member: o.member, device: o.device, device_key: o.device_key } } }),
+  lend: (s, o) => ({ action: "grants.offer", resource: urn(s, "offer", "lend"), input: { lend: { member: o.member, device: o.device, device_key: o.device_key, network_cap: o.network_cap ?? null } } }),
   unlend: (s, o) => ({ action: "grants.unoffer", resource: urn(s, "offer", "lend"), input: { unlend: { member: o.member, device: o.device } } }),
   inviteCreate: (s, i) => ({ action: "grants.invite", resource: urn(s, "invite"), input: i }),
   inviteConfirm: (s, id, c) => ({ action: "grants.invite", resource: urn(s, "invite", id), input: { confirm: id, words: c && c.words } }),
 };
+
+/** The presence op a gated action is proved under: grants.invite -> grant.invite, rules.set -> grant.rule_set. The one list of how an action becomes an op (scripts/dev-sign-proof.mjs uses it too). @param {string} action */
+export const opOf = action => (String(action).startsWith("rules.") ? `grant.rule_${String(action).split(".")[1]}` : `grant.${String(action).split(".")[1]}`);
 
 /** The names `proofRequest` knows. */
 export const PROOF_CALLS = Object.freeze(Object.keys(CALLS));
@@ -54,7 +57,7 @@ export function proofRequest(space, call, ...args) {
   const f = Object.hasOwn(CALLS, call) ? CALLS[call] : null;
   if (!f) throw new KernelError("bad_input", `${call} is not a call a presence proof covers`);
   const { action, resource, input } = f(space, args[0], args[1]);
-  const op = action.startsWith("rules.") ? `grant.rule_${action.split(".")[1]}` : `grant.${action.split(".")[1]}`;
+  const op = opOf(action);
   const fields = { resource, input_hash: sha256(canonical({ action, input })) };
   return Object.freeze({ op, space, fields, payload_hash: payloadHash(op, space, fields) });
 }

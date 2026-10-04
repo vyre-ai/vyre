@@ -6,12 +6,13 @@
 // config.json under "onboard". The steps call other modules' tools (names.*, vault.put,
 // recall.*, projects.*) and work without them: a missing module blocks its step and says why.
 
+import { assistantWhenReady } from "./assistant-ready.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import * as config from "../config/index.js";
-import { isPerson } from "../../lib/caller.js";
+import { isPerson, onTailnet } from "../../lib/caller.js";
 import { loopback } from "./loopback.js";
 import { setupToken } from "./setup-token.js";
 import { SETUP_STEPS, SKIPPABLE, PASSABLE, setupList } from "../../lib/setup-steps.js";
@@ -33,9 +34,7 @@ const VAULT_KIND = { subscription: "secret", "api-key": "api-key" };
 const VAULT_ABOUT = { subscription: "Claude subscription token from `claude setup-token`, for headless sessions", "api-key": "Anthropic API key, for headless sessions" };
 // The token is handed to the session launcher through the vault's credentials port (vault.launcherOnly), never through a module grant.
 
-// Who may be handed a passkey code: the loopback onboarding session and the box's own terminal.
 // Never a tailnet caller, which a model on the owner's Mac is too.
-const HANDS_CODE = new Set(["onboard", "cli", "local"]);
 // relay.join is not shippable on a Mac yet: vyre.db is a same-uid store, so a Mac chosen as
 // Solo/Server has nowhere safe to hold a paired device's keys until vyre-core (ADR 0040) owns
 // its own root-only store -- reviewer/team-lead, 28 Sep ("gated on vyre-core, same as Mac GA").
@@ -139,8 +138,16 @@ export default {
   async start(ctx) {
     const save = patch => config.save(patch, ctx.paths.root, ctx.config);
     const ob = () => ctx.config.onboard || {};
-    /** Does this server have an owner (a paired device)? config's ownerSeen (the tailnet owner) counts too. */
-    const isOwned = async () => Boolean(net().ownerSeen) || Boolean(((await ctx.call("wink.server.owned", {}).catch(() => null)) || {}).owned);
+    /**
+     * Does this machine have an owner? On a SERVER: a device paired and was confirmed (wink.server.owned), or the tailnet owner arrived (ownerSeen). On a COMPUTER that is itself the person's Vyre
+     * (solo or device: no pairing), the owner exists once the person has claimed their identity there (spaces.identity.id answers an id): the home's owner was adopted to it. Whichever way,
+     * a fresh home with neither is not owned.
+     */
+    const isOwned = async () => {
+      if (config.isServer(ctx.config.machine)) return Boolean(net().ownerSeen) || Boolean(((await ctx.call("wink.server.owned", {}).catch(() => null)) || {}).owned);
+      const id = await ctx.call("spaces.identity.id", {}).catch(() => null);
+      return Boolean(id && (id.id || (id.data && id.data.id)));
+    };
     const skipped = () => new Set(ob().skipped || []);
     const net = () => ctx.config.network || {};
     /** The setup page (or an earlier step) already claimed a vyre.run address on this box: ctx.config.name is that address, not the person. */
@@ -167,8 +174,8 @@ export default {
     // Reviewer, 28 Sep: onboard now loads on Solo too, so this can no longer resume
     // unconditionally -- on a Mac that would bind the setup listener with no server chosen and
     // nothing to onboard into. Belt and braces alongside the boxOnly() guard on onboard.link.
-    if (config.isServer(ctx.config.machine) && !net().ownerSeen) await lb.resume().catch(e => ctx.log(`onboard: the kept link did not reopen: ${e.message}`));
-    else keep.save(null);
+    // 0.3: a server has no first-run page. The listener is never opened (onboard.link refuses), so nothing listens on the onboarding port; a server is set up from the owner's app after pairing.
+    keep.save(null);
     let claimUrl = null;
     let indexing = null;
     let lastPhase = "idle";
@@ -298,12 +305,13 @@ export default {
       const accountName = await aiAccount().then(a => a.name).catch(() => null);
       // The sign-in and owner-claim links are the person's: a model session that reads the status is not handed them.
       if (!personOrPage(caller)) { tailscale.loginUrl = null; tailscale.claimUrl = null; }
-      const mode = caller === "onboard" ? "loopback" : String(caller).startsWith("tailnet:") ? "tailnet" : "local";
+      const mode = caller === "onboard" ? "loopback" : onTailnet({ caller }) ? "tailnet" : "local";
       // can: what this machine is actually able to do, for launch's cards to gate on rather than
       // guess from role/machine. relayJoin is false on darwin until vyre-core exists (see
       // RELAY_JOIN_DARWIN_REASON above); every other platform can already join a relay today.
       const can = canRelayJoin(process.platform);
-      return { mode, role: ctx.config.role, machine: ctx.config.machine, platform: process.platform, can,
+      const owned = await isOwned();
+      return { mode, role: ctx.config.role, machine: ctx.config.machine, platform: process.platform, can, owned, ownerFirst: owned ? null : config.isServer(ctx.config.machine) ? "pair" : "name",
         owner: net().owner || null, address: n && n.phase === "serving" ? n.address : null,
         host: (t && t.node && t.node.name) || os.hostname(), name: personOrPage(caller) ? ob().person || null : null, accountName: personOrPage(caller) ? accountName : null, person: personOrPage(caller) ? ob().person || null : null, assistant: ob().assistant || null, assistantState: ob().assistantState || null,
         // arrived: the owner has reached the address over the tailnet (the page's Switch), so the
@@ -513,13 +521,20 @@ export default {
       effect: "write", callers: ONBOARD_CALLERS,
       description: "Store Claude Code's sign-in in the Vault: a subscription setup token or an API key. The value is never returned. setup-token alone starts `claude setup-token` and returns its sign-in url; setup-token with the code the page showed finishes it.",
       presence: { when: () => true, summary: async () => "Sign this server in to Claude" },
-      input: obj({ mode: { type: "string", enum: ["detect", "setup-token", "api-key"] }, key: { type: "string" }, code: { type: "string" },
+      input: obj({ mode: { type: "string", enum: ["detect", "setup-token", "api-key", "disconnect"] }, key: { type: "string" }, code: { type: "string" },
         kind: { type: "string", enum: ["subscription", "api-key"] }, token: { type: "string" } }),
       run: async ({ mode, key, code, kind, token }, { caller, ...meta }) => {
         boxOnly();
         ownerWrite(caller, meta, "signing in to Claude", await isOwned());
         // Only a read (no mode, or detect, and nothing to store) is open to a non-person; storing a key or starting the sign-in is the person's (HD-1).
         if (mode !== "detect" && (mode || key || code || kind || token)) personOnly(caller);
+        if (mode === "disconnect") {
+          // The person disconnects the AI account: both sign-in items leave the vault (a missing one is fine) and the step reads as not signed in. Assistants on it stop and ask. The account itself is not touched.
+          for (const name of Object.values(VAULT_ITEM)) await call("vault.delete", { name }).catch(() => null);
+          save({ onboard: { claude: null } });
+          ctx.events.emit("onboard.claude-changed", { signedIn: false });
+          return stepOf("claude", caller);
+        }
         if (mode === "setup-token" && !key && !token) {
           if (!code) return { ...(await stepOf("claude", caller)), url: await signin.start(), needsCode: true };
           [kind, token] = ["subscription", await signin.finish(code)];
@@ -533,6 +548,7 @@ export default {
           }
           await call("vault.put", { name: VAULT_ITEM[kind], kind: VAULT_KIND[kind], description: VAULT_ABOUT[kind], value: t });
           save({ onboard: { claude: kind } });
+          ctx.events.emit("onboard.claude-changed", { signedIn: true });
           await ensureAssistant();
         }
         return { ...(await stepOf("claude", caller)), url: null, needsCode: signin.active() };
@@ -709,29 +725,12 @@ export default {
       },
     });
 
-    /**
-     * The first passkey is made at the box's own address (a passkey made on the loopback page
-     * would belong to 127.0.0.1). While none exists, presence mints a one-time code, which rides
-     * in the fragment to the page that enrolls it; the code proves presence.enroll and nothing else.
-     */
-    async function passkeyUrl(address) {
-      const keys = await tryCall("presence.keys");
-      if (keys.__error) return null;
-      const list = Array.isArray(keys) ? keys : keys.keys || [];
-      if (list.some(k => k.kind === "passkey")) return null;
-      const c = await tryCall("presence.code");
-      return c.__error || !c.code ? null : `${String(address).replace(/\/$/, "")}/onboard/passkey#e=${encodeURIComponent(c.code)}`;
-    }
-
+    // The first-passkey path is gone (0.3): a server's owner arrives by pairing with a verified identity proof, and browser passkeys come back with RC2, behind an owner's presence.
     ctx.tool("onboard.passkey", {
       effect: "write", callers: ONBOARD_CALLERS,
-      description: "A one-time link to make the first passkey at this box's address, while none exists. Only to the loopback session or the box's terminal.",
+      description: "Not available: a server is paired to your Vyre app first. Always answers that.",
       input: obj(),
-      run: async (_, { caller }) => {
-        boxOnly();
-        const address = (await status(caller)).address || net().address || null;
-        return { address, passkeyUrl: address && HANDS_CODE.has(String(caller)) ? await passkeyUrl(address) : null };
-      },
+      run: async () => { boxOnly(); throw Object.assign(new Error("Pair this server to your Vyre app first."), { code: "pair_first" }); },
     });
 
     ctx.tool("onboard.finish", {
@@ -751,7 +750,7 @@ export default {
         await tryCall("relay.setup.end", { reason: "finished" });
         if (net().ownerSeen) await lb.close();
         const s = await status(caller);
-        return { ...s, url: s.address, passkeyUrl: HANDS_CODE.has(String(caller)) && (s.address || net().address) ? await passkeyUrl(s.address || net().address) : null, assistant, thread: assistant && assistant.thread, ready: "Vyre is ready." };
+        return { ...s, url: s.address, assistant, thread: assistant && assistant.thread, ready: "Vyre is ready." };
       },
     });
 
@@ -812,18 +811,17 @@ export default {
       input: obj({ mint: { type: "boolean" } }),
       run: async (input, { caller }) => {
         boxOnly(); // revisit once the Solo Deck loopback design (docs/design/anywhere.md) lands and reuses this link
+        throw Object.assign(new Error("a server has no setup page: pair it from your Vyre app (the installer shows the code; or run vyre call wink.server.code)"), { code: "not_available" });
         if (!["cli", "local", "capsule"].includes(String(caller))) throw new Error("links are made only from the box's own terminal");
         const address = net().address || null;
         // Once the owner has come in over the tailnet, or onboarding is finished and the address
         // serves, the way in is the address: no more one-time links (the open one may still finish).
         if (net().ownerSeen || (ob().finished && address)) {
-          // A passkey link is a one-time code too: mint false makes none.
-          const mint = !(input && input.mint === false);
-          return { url: null, address, passkeyUrl: mint && address && HANDS_CODE.has(String(caller)) ? await passkeyUrl(address) : null, port: null, expires: null, user: os.userInfo().username };
+          return { url: null, address, port: null, expires: null, user: os.userInfo().username };
         }
         if (input && input.mint === false) {
           const p = lb.pending();
-          return { url: null, address, passkeyUrl: null, port: p ? p.port : null, expires: p ? p.expires : null, pending: Boolean(p), user: os.userInfo().username };
+          return { url: null, address, port: p ? p.port : null, expires: p ? p.expires : null, pending: Boolean(p), user: os.userInfo().username };
         }
         return { ...(await lb.link()), address, user: os.userInfo().username };
       },
@@ -834,6 +832,21 @@ export default {
     // An install whose assistant was named but never made (an earlier version, or a failure at finish) gets it now, once the agents module is up.
     const retry = setTimeout(() => { if (ob().assistant) ensureAssistant({ fallbackName: false }).catch(() => {}); }, 3000);
     if (typeof retry.unref === "function") retry.unref();
-    return { async stop() { clearTimeout(retry); if (typeof off === "function") off(); for (const o of offLink) if (typeof o === "function") o(); signin.stop(); await lb.close({ forget: false }); await indexing; } };
+    // 0.3: the owner arrives by pairing and nothing names the assistant, so it is made once there is an owner and a signed-in AI account (default name Juno), and until then Now says so.
+    // Checked once at start and when something it depends on changes, never on a timer: the owner is adopted or seen, an AI account is connected or disconnected (onboard.claude, or any
+    // provider's sign-in, which sessions announces as account.changed).
+    let checking = false, again = false;
+    const ready = async () => {
+      if (checking) { again = true; return; }
+      checking = true;
+      try { await assistantWhenReady({ tryCall, call, signedInOutside: () => Boolean(ob().claude), hasOwner: async () => Boolean(ob().person) || Boolean(await isOwned().catch(() => false)), ensure: ensureAssistant, state: () => ob().assistantState,
+        setState: s => save({ onboard: { assistantState: s } }) }); }
+      catch (e) { ctx.log("onboard: the assistant check failed: " + /** @type {Error} */ (e).message); }
+      finally { checking = false; if (again) { again = false; void ready(); } }
+    };
+    const readyFirst = setTimeout(() => { void ready(); }, 3000);
+    if (typeof readyFirst.unref === "function") readyFirst.unref();
+    const offReady = ["owner.adopted", "owner.seen", "owner.changed", "onboard.claude-changed", "account.changed"].map(type => ctx.events.on(type, () => { void ready(); }));
+    return { async stop() { clearTimeout(readyFirst); for (const o of offReady) if (typeof o === "function") o(); clearTimeout(retry); if (typeof off === "function") off(); for (const o of offLink) if (typeof o === "function") o(); signin.stop(); await lb.close({ forget: false }); await indexing; } };
   },
 };

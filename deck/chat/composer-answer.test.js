@@ -2,6 +2,7 @@
 // Who answers (model-picker.md): the chip names the provider, shows a chevron and a menu only with more than one account, and
 // choosing one asks the box to switch the thread (threads.switch), never starting a new session. Sample world only.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { install, $, $$, text } from "../test/fake-dom.js";

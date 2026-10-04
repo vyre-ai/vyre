@@ -1,5 +1,6 @@
 // @ts-check
 // A staging copy of the site points the setup page at another relay and install line, and production is left exactly as it is.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

@@ -1,4 +1,5 @@
 // The space-side checkpoint store: whole or nothing, fsynced, capped, authorized per call, and the two-machine hand-over.
+import "../../scripts/mac-test-guard.mjs";
 import "./testing/hosted-guard.js";
 import test from "node:test";
 import assert from "node:assert/strict";

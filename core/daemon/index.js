@@ -8,6 +8,7 @@
 
 import crypto from "node:crypto";
 import fs from "node:fs";
+import { execFile } from "node:child_process";
 import os from "node:os";
 import http from "node:http";
 import path from "node:path";
@@ -19,9 +20,11 @@ import { assertDaemonHost } from "./host-guard.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { Registry, discover, ownerDevice, currentCall } from "../modules/index.js";
-import { devSwitch, isPackaged } from "../../kernel/devbuild.js";
+import { devSwitch, isPackaged, PKG_ROOT } from "../../kernel/devbuild.js";
 import { build, swWithBuild, htmlWithBuild } from "./build.js";
 import { serveApp, associationFile } from "./app.js";
+import { watchForList } from "./release-watch.js";
+import { readReleaseList } from "../../kernel/modules/release-list.js";
 import { acquire } from "./lock.js";
 import { Presence, PERSON_ONLY, HUMAN_ONLY, SESSIONABLE, personOnly, fingerprint, parse as parsePresence, core as coreHolder } from "../presence/index.js";
 import { readCoreConfig, coreLink } from "../../lib/vyre-core-client.js";
@@ -163,7 +166,7 @@ async function startLocked(opts, root, p, release) {
   }
   // DEVELOPMENT ONLY: the automated walk's presence stand-in is on only for a development build whose home holds a file the owner made by hand (never config, never a tool).
   const devStandIn = () => !isPackaged(opts.packageRoot) && fs.existsSync(path.join(root, "dev-presence-stand-in"));
-  const presence = typeof opts.presence === "function" ? opts.presence({ db, events, log }) : opts.presence || new Presence({ db, events, log, role: cfg.machine, standIn: devStandIn, network: () => cfg.network || {} });
+  const presence = typeof opts.presence === "function" ? opts.presence({ db, events, log }) : opts.presence || new Presence({ db, events, log, role: cfg.machine, standIn: devStandIn, softwareOk: () => devSwitch(process.env.VYRE_SEAL_SOFTWARE, opts.packageRoot), network: () => cfg.network || {} });
   // Who is the person over the network, not only their device (core/presence/person.js).
   const people = new PersonSessions({ db });
   const started = Date.now();
@@ -256,7 +259,7 @@ async function startLocked(opts, root, p, release) {
       // Is this node already held by a session that is not a stand-in's? (signin.dev never makes one beside a real session.)
       nodeInUse: (/** @type {string} */ node) => people.list().some((/** @type {any} */ r) => r.node === node && r.label !== "stand-in"),
       // DEVELOPMENT ONLY (the module asks devStandIn first): an ordinary cookie person session for the walk's browser, on the node the harness names, marked as the stand-in's.
-      startStandIn: (/** @type {string} */ node) => people.start({ node, kind: "cookie", label: "stand-in" }) });
+      startStandIn: (/** @type {string} */ node) => { const s = people.start({ node, kind: "cookie", label: "stand-in" }); try { events.emit("presence", "presence.signed-in", { id: s.id, node, method: "stand-in" }); } catch { /* the session stands; the event is a notice */ } return s; } });
     closeFlowsHost = () => flowsHost.stop();
     // Devices enrol per Space (the user's ruling): the spaces module keeps the list and answers `spaces.devices.enrolled`; a build without that module has no list, so every device is enrolled.
     const deviceEnrolled = async (/** @type {string} */ space, /** @type {string} */ device) => {
@@ -267,6 +270,8 @@ async function startLocked(opts, root, p, release) {
     // What the runner module needs from this computer: the person it belongs to and this computer's device identity ({ deviceId, deviceKey }: the id the Offers name it by and its public key).
     // The identity comes from whoever owns it (`opts.deviceIdentity`: the Wink identity list's entry for this computer, tailnet and windows); until it is given the runner says it is not connected.
     // A session on this person's own server is sealed at every turn into the home's checkpoint store (core/daemon/ownserver-host.js), so the runner module can seal it and recover it.
+    // OWN-SERVER SEAL (sessions): a session on this person's own server is sealed at every turn into the home's checkpoint store (core/daemon/ownserver-host.js); the runner module reads `ownServer` off this host.
+    // Keep these lines (the import, ownServerHost and the getter) when merging the runner's { member, identity() } passthrough; test/ownserver-daemon.test.js fails if they go.
     const { createOwnServerHost } = await import("./ownserver-host.js");
     /** @type {any} */ let ownServerHost = null;
     const runnerHost = () => ({
@@ -288,7 +293,7 @@ async function startLocked(opts, root, p, release) {
       if (typeof device !== "string" || !device) return null;
       return createRemoteKernel({ space: id, transport: winkTransport({ sessionFor: async () => sf(device) }) });
     };
-    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, runnerHost, remote: remoteFor, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
+    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, onOwnerAdopted: (/** @type {string} */ owner, /** @type {string} */ previous) => events.emit("kernel", "owner.adopted", { owner, previous }), runnerHost, remote: remoteFor, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
       // A credentialed request run at the home: the vault's own forward (an internal tool only the lease module may call), under the Space's credential; the kernel has already authorized it.
       forwardCredential: async (/** @type {any} */ q) => {
         const r = q.request;
@@ -345,7 +350,12 @@ async function startLocked(opts, root, p, release) {
       const chat = q.chat || (q.rec && typeof q.rec.chat === "string" ? q.rec.chat : undefined);
       // A probe asks only: is this person in this chat? (the kernel's own check: not_found when they are not). The Switchboard asks before it queues or runs a chat turn.
       if (q.probe) { kernel.gateway.grants.chats.read(person, chat); return null; }
-      const s = await kernelSessions.open({ chain: person, ...(chat ? { chat } : {}), ...(q.agent ? { agent: q.agent } : {}), thread: q.thread });
+      // The home's assistant acts in the kernel as the one actor it has, the default "assistant" (core/tasks-tools seeds a task's doer as that id, and the Space adds that actor once at setup), whatever name the person
+      // gave it: a named assistant (juno) is not a member of the Space of its own, so its session token carried an agent hop the kernel could not find and every call of its own answered not_found.
+      let isAssistant = Boolean(q.rec && q.rec.agent_kind === "assistant");
+      if (q.agent && !isAssistant) { try { const sc = await registry.call("agents.scope", { name: q.agent }, "module:vyred"); isAssistant = Boolean(sc && sc.data && sc.data.kind === "assistant"); } catch { /* agents is not running: the name stands */ } }
+      const kernelAgent = q.agent && !isAssistant ? q.agent : undefined;
+      const s = await kernelSessions.open({ chain: person, ...(chat ? { chat } : {}), ...(kernelAgent ? { agent: kernelAgent } : {}), thread: q.thread });
       return { token: kernelSessions.tokenFor(s.id), end: () => kernelSessions.end(s.id) };
     };
     // The sandbox every Vyre-started session's agent runs in on this computer (the runner's home sandbox: planHome, selfTest, launch; core/sessions/ cannot import core/runner, so the
@@ -380,7 +390,21 @@ async function startLocked(opts, root, p, release) {
     registry.deps.moduleHost = kernel.moduleHost;
     registry.deps.kernelFor = kernel.kernelFor;
     // The relay's peer stream for a paired device (the one remote path to this home's kernel): the relay module reads it from its ctx, per channel, so a door set after it started is used from the next channel on.
-    { const { createPeerDoor } = await import("./peer-door.js"); const door = createPeerDoor({ kernel, registry, people, callerFacts, log }); registry.deps.peerDoor = () => door; }
+    {
+      const { createPeerDoor } = await import("./peer-door.js");
+      // the invitee door reads the identity's signed list from the spaces module (the names directory, as at pairing: spaces.identity.state, else a lookup by the claimed Vyre name) and this box's own id from the relay
+      const ask = async (/** @type {string} */ t, /** @type {any} */ i) => { try { const r = /** @type {any} */ (await registry.call(t, i, "module:vyred", { door: true })); return r && !r.error ? (r.data !== undefined ? r.data : r) : null; } catch { return null; } };
+      const identityEntry = async (/** @type {string} */ identity, /** @type {string} */ eid, /** @type {string} */ name) => {
+        let st = await ask("spaces.identity.state", { person: identity });
+        let entries = st && Array.isArray(st.entries) ? st.entries : [];
+        if (!entries.length && name) { st = await ask("spaces.identity.lookup", { name, id: identity }); entries = st && Array.isArray(st.entries) ? st.entries : []; }
+        const e = entries.find((/** @type {any} */ x) => x && x.eid === eid && x.kind === "device");
+        return e && typeof e.pub === "string" ? { pub: e.pub, ...(e.alg ? { alg: e.alg } : {}), ...(e.held ? { held: e.held } : {}) } : null;
+      };
+      const boxId = async () => { const r = /** @type {any} */ (await registry.call("relay.route.id", {}, "module:vyred", { door: true })); return r && r.data && r.data.box ? String(r.data.box) : null; };
+      const door = createPeerDoor({ kernel, registry, people, callerFacts, log, identityEntry, boxId });
+      registry.deps.peerDoor = () => door;
+    }
     // The gate's presence check asks the kernel whether a call is the person's own (exactly one person hop in the chain the daemon's proven facts build), never the caller's label.
     if (presence && typeof kernel.kernelFor === "function") {
       const gateKernel = kernel.kernelFor({ name: "presence-gate" });
@@ -432,8 +456,9 @@ async function startLocked(opts, root, p, release) {
     fs.rmSync(p.socket, { force: true });
   }
 
-  const terminalOf = opts.person || (sock => atTerminal(sock, registry, presence, devStandIn()));
-  const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, people, socket: true, terminalOf, kernelOf: () => kernel }).catch(e => fail(res, e)));
+  const terminalOf = opts.person || (sock => atTerminal(sock, registry, presence, devStandIn(), { log }));
+  /** @type {ReturnType<typeof watchForList> | null} */ let releaseWatch = null;
+  const server = http.createServer((req, res) => route(req, res, { finishing: () => (releaseWatch ? releaseWatch.state() : null), registry, events, cfg, started, streams, root, inflight, drain, people, socket: true, terminalOf, kernelOf: () => kernel }).catch(e => fail(res, e)));
   server.on("upgrade", async (req, socket, head) => {
     try { upgrade(req, socket, head, (await asTaken(socketCaller(req), /** @type {any} */ (socket), registry)).caller); }
     catch { socket.destroy(); }
@@ -443,11 +468,18 @@ async function startLocked(opts, root, p, release) {
   // which Node already restricts to this user by default; there is no file for chmod to touch.
   if (process.platform !== "win32") fs.chmodSync(p.socket, 0o600);
   fs.writeFileSync(p.pid, String(process.pid));
+  // A kernel-on packaged daemon with no signed module list yet (a server an old updater just updated: the list arrives in shell.json after this first start) waits for it and restarts once.
+  releaseWatch = kernel && isPackaged() ? watchForList({
+    read: () => readReleaseList(opts.packageRoot || PKG_ROOT, undefined),
+    onFound: () => { try { process.kill(process.pid, "SIGTERM"); } catch { /* the loop restarts a vyred that exits */ } },
+    log, pollMs: Number(process.env.VYRE_FINISH_POLL_MS) || 2000, waitMs: Number(process.env.VYRE_FINISH_MS) || 120_000,
+  }) : null;
   log(`vyred ${VERSION} up · role ${cfg.role} · ${registry.status().filter(m => m.state === "running").length} modules`);
 
   const stop = async () => {
     if (stopped) return; stopped = true;
     if (labelTimer) clearTimeout(labelTimer);
+    if (releaseWatch) releaseWatch.stop();
     if (closeKernelSessions) await closeKernelSessions().catch(() => {});
     if (closeFlowsHost) closeFlowsHost();
     // Stop taking calls, and give the ones running up to DRAIN_MS to finish: a write cut off
@@ -536,7 +568,7 @@ export const callId = v => (typeof v === "string" && /^[A-Za-z0-9_-]{1,128}$/.te
 // core/modules): threads.answer takes it only with the box's signed assertion checked.
 // "web:", "setup:" and "space:" are labels the relay and the spaces listener make (a waiting or browser pairing, the setup page, a visiting person); a socket client never gets them, nor the bare
 // class words that only a tool's callers list uses (reviewer-3 LB-1b).
-const FORBIDDEN_LABEL = /^(module:|tailnet:|tailnet-guest:|device:|link:|web:|setup:|space:|onboard$|hook$|web$|setup$|space$|device$|tailnet$|agent$)/;
+const FORBIDDEN_LABEL = /^(module:|tailnet:|tailnet-guest:|device:|link:|web:|setup:|space:|invitee:|onboard$|hook$|web$|setup$|space$|device$|tailnet$|agent$)/;
 
 /**
  * Who a socket request says it is. No label is "anonymous", which no tool's callers list names,
@@ -782,6 +814,12 @@ const SYSTEM_DIRS = ["/usr/", "/bin/", "/sbin/", "/Applications/", "/System/", "
 /** @param {any} server */
 export function isLoginServer(server) {
   const exe = server && typeof server.exe === "string" ? server.exe : "";
+  if (exe === "uid0") {
+    // vyred runs as the login user and the kernel hides /proc/<pid>/exe of a root process from it, so the walk records "uid0" with the process's comm and command line. A root-owned sshd or login
+    // is named by both, and the uid is the kernel's word that it is root's: a user process called sshd has its own uid, and tmux, screen and a daemonized shell are never uid 0.
+    const cmd = typeof server.cmd === "string" ? server.cmd : "";
+    return server.uid === 0 && LOGIN_SERVERS.has(String(server.comm || "")) && /^(?:\S*\/)?(?:sshd|login)(?::|\s|$)/.test(cmd);
+  }
   return Boolean(exe) && server.uid === 0 && LOGIN_SERVERS.has(path.basename(exe)) && SYSTEM_DIRS.some(d => exe.startsWith(d));
 }
 
@@ -798,28 +836,57 @@ export function isLoginServer(server) {
  * @param {import("node:net").Socket} socket @param {any} registry @param {any} presence
  * @returns {Promise<{ key: string, tty: string|null }|null>} tty: the caller's own terminal, where a notice goes
  */
-async function atTerminal(socket, registry, presence, standIn = false) {
+export async function atTerminal(socket, registry, presence, standIn = false, deps = {}) {
+  const d = { above, peerPid, loginOf, tmuxClients, insideClaude, loginFrom, ...deps };
+  /** Why no terminal, said once in the daemon log (never a secret: a pid, a tty name and the logins `who` lists). @param {string} why */
+  const no = why => { try { const say = typeof d.log === "function" ? d.log : registry.deps && typeof registry.deps.log === "function" ? registry.deps.log : null; if (say) say(`terminal: refused, ${why}`); } catch { /* logging never decides */ } return null; };
   // The development stand-in (a hand-made file in a development build) is the one thing that replaces this guard; a real build never passes it.
-  if (!standIn && await fromClaude(socket, registry)) return null;
-  const pid = await peerPid(socket);
-  if (!pid || !presence || typeof presence.who !== "function") return null;
+  /** @type {any} */ let who = null;
+  if (!standIn) {
+    who = await d.above(socket, registry);
+    if (who.nopid || who.inside || (who.unknown && !who.server)) return no("ancestry " + (who.nopid ? "has no peer pid" : who.inside ? "is inside a model" : "is unknown with no named server"));
+  }
+  const pid = await d.peerPid(socket);
+  if (!pid || !presence || typeof presence.who !== "function") return no(!pid ? "no peer pid" : "no presence.who");
   const logins = await presence.who();
-  const login = loginOf(pid);
-  if (login && logins.includes(login.tty)) return { key: login.key, tty: login.tty };
-  const clients = tmuxClients(pid);
-  if (!clients || !clients.length) return null;
+  // SG-1 (reviewer-2): the login the person types in is a root-owned login server (sshd, login) at the top, or a tmux the person attached to from one. A user-owned named server (a model that
+  // double-forked and kept the person's tty) is not a login, whatever `who` lists: only the walk's own `outside` (no server at all) or a login server passes for the caller itself.
+  const callerOk = standIn || !who.unknown || isLoginServer(who.server);
+  const login = d.loginOf(pid);
+  if (callerOk && login && logins.includes(login.tty)) return { key: login.key, tty: login.tty, from: await d.loginFrom(login.tty) };
+  const clients = d.tmuxClients(pid);
+  if (!clients || !clients.length) return no(`no login: ${callerOk ? "" : "a user-owned server is not a login; "}the caller's terminal is ${login ? login.tty : "none"} and who lists ${logins.join(",") || "nothing"}`);
   const r = await registry.call("threads.pids", {}, "module:vyred");
   const threads = (r.data && r.data.pids) || [];
   const keys = [];
+  let from = null;
   for (const c of clients) {
-    const l = insideClaude(c, { threads }).inside ? null : loginOf(c);
-    if (!l || !logins.includes(l.tty)) return null;
+    const ins = d.insideClaude(c, { threads });
+    // A client must read as the person's own: not inside a model, and not an unknown chain unless it tops out at a root login server.
+    if (ins.inside || (ins.unknown && !standIn && !isLoginServer(ins.server))) return no("a tmux client is not a person's login (inside a model or a user-owned server)");
+    const l = d.loginOf(c);
+    if (!l || !logins.includes(l.tty)) return no(`a tmux client is not a listed login (${l ? l.tty : "none"})`);
     keys.push(l.key);
+    from = from || await d.loginFrom(l.tty);
   }
-  return { key: "tmux:" + [...new Set(keys)].sort().join("+"), tty: controllingTty(pid) };
+  return { key: "tmux:" + [...new Set(keys)].sort().join("+"), tty: controllingTty(pid), from };
 }
 
-async function route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, people = null, socket = false, terminalOf = null, kernelOf = null }, /** @type {Policy} */ policy = {}) {
+/** Where the login on this terminal came from, as `who` records it ("203.0.113.9", "127.0.0.1"), or null when it lists none. @param {string} tty @returns {Promise<string|null>} */
+function loginFrom(tty) {
+  return new Promise(resolve => {
+    execFile("/usr/bin/who", [], { timeout: 3000 }, (err, stdout) => {
+      if (err) return resolve(null);
+      for (const line of String(stdout).split("\n")) {
+        const cols = line.trim().split(/\s+/);
+        if (cols[1] === tty) { const m = /\(([^)]*)\)\s*$/.exec(line); return resolve(m && m[1] ? m[1].slice(0, 80) : null); }
+      }
+      resolve(null);
+    });
+  });
+}
+
+async function route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, people = null, socket = false, terminalOf = null, kernelOf = null, finishing = () => null }, /** @type {Policy} */ policy = {}) {
   const url = new URL(req.url || "/", "http://vyred");
   // On the socket the header is only a label, and anything on the box can send it (Claude's own
   // processes included). "module:*" is what the registry uses between modules, "hook" is what the
@@ -958,7 +1025,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     // log, and a guessed cursor past the end drops every live event.
     const last = /** @type {any} */ (events.db.prepare("SELECT MAX(id) AS id FROM events").get());
     const b = build();
-    return send(res, 200, { data: { version: VERSION, commit: b.commit, dirty: b.dirty, pid: process.pid, role: cfg.role, machine: cfg.machine, uptime: Date.now() - started, supervisor: process.env.VYRE_SUPERVISOR || null, last_event: Number(last && last.id) || 0,
+    return send(res, 200, { data: { version: VERSION, commit: b.commit, dirty: b.dirty, pid: process.pid, role: cfg.role, machine: cfg.machine, uptime: Date.now() - started, supervisor: process.env.VYRE_SUPERVISOR || null, finishing: finishing(), last_event: Number(last && last.id) || 0,
       // How to run this vyred's own CLI (node and bin/vyre): the Capsule runs `vyre ...` typed in
       // its box by argv, never through a shell, and must run the same version.
       cli: [process.execPath, path.join(REPO, "bin", "vyre")],
@@ -1062,6 +1129,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const proof = parsePresence(req.headers["x-vyre-presence"]);
     // For a tool one proof covers, the CLI's terminal: its window is bound to it (core/presence).
     const terminal = socket && terminalOf && (SESSIONABLE.has(name) || SIGNIN_TOOLS.has(name)) && /^(cli|local)$/.test(caller) ? await terminalOf(req.socket) : null;
+    if (socket && SIGNIN_TOOLS.has(name) && !terminal) { try { if (typeof events.log === "function") events.log(`terminal: ${name} got no terminal key (${terminalOf ? `caller label ${caller}, ${/^(cli|local)$/.test(caller) ? "the terminal check refused: see the line above" : "not cli or local, so it was never asked"}` : "no terminal check in this daemon"})`); } catch { /* logging never decides */ } }
     // Only a caller vyred bound to a thread above says which chat tool call this is.
     const call = via.thread ? callId(req.headers["x-vyre-call-id"]) : null;
     // presence.capsule.pin judges the calling binary's own signature, read here from the socket's

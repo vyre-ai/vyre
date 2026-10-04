@@ -2,6 +2,7 @@
 // Task N: the stream on a real kernel, every message through chats.append (chat 0.3). A chat's token carries the chat from birth; a person's words and an
 // assistant's reply are written by the kernel BEFORE the stream stores or sends them; a refused reply is shown nowhere; nobody joins by a call; a cited field
 // is the kernel's own records.get drawn per viewer; and the room view agrees with the stream's own drop of an assistant's field value.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";

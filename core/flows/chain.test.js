@@ -1,6 +1,7 @@
 // Who the Flows tools run for is the kernel's answer, never a label: on a real daemon with the kernel on, a call that carries no session token and no facts the daemon proved gets the module's
 // own service chain from `ctx.kernel.chain(meta)`, and the module refuses it. Every label reviewer-2 listed (a plain mcp, the harness, an agent claim, a device that is not the owner's
 // confirmed device) is such a call. A verified session token's chain (a person's) is accepted, and the four person-only tools need exactly one person hop.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { start } from "../daemon/index.js";

@@ -4,6 +4,7 @@
 // untrusted one never reaches a prompt. The memory module against a stand-in for vyred, over the
 // shared fictional corpus (alex, Harlow Legal, Northwind Bakery, juno, kit, pax).
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

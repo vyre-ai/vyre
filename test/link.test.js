@@ -2,6 +2,7 @@
 // The link, end to end: two vyreds in two temp homes stand in for the Mac and the box, through
 // the harness in test/link-harness.js (the simulated tailnet at both ends).
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -412,4 +413,21 @@ test("link: link.health in the one reach shape, on the Mac, for a device over th
   assert.equal(typeof tn.since, "number");
   assert.equal(tn.path, "relay", "the old fields stay what the Wink node said for that peer");
   assert.equal((await s.boxCall("link.health")).data.reach, "none", "nothing named: none, with why");
+});
+
+test("link.macs.call: a write for the person (threads.send, threads.answer) is refused when the call really came from a model, an agent or a module acting alone, whatever `as` and `by` claim", async t => {
+  const s = await pair(t);
+  const send = (origin, extra = {}) => s.boxCall("link.macs.call", { tool: "threads.send", input: { thread: "t1", text: "hi" }, as: "person", by: { caller: "deck" }, ...extra }, "module:switchboard", origin === undefined ? {} : { origin });
+  for (const origin of ["mcp", "mcp:thread:t1", "mcp:agent:kit", "harness", "session:s1", "tailnet-guest:sam@harlow.example", "module:other"]) {
+    const r = await send(origin);
+    assert.equal(r.error && r.error.code, "denied", `origin ${origin} is refused`);
+  }
+  assert.equal((await send(undefined)).error?.code, "denied", "a module with no origin (a timer) is not the person");
+  // the person's own surface gets through the gate (no Mac is online in this world, so nothing is delivered)
+  for (const origin of ["cli", "deck", "capsule"]) assert.ok(!(await send(origin)).error, `origin ${origin} passes the person gate`);
+  // a phone answering a Mac's thread: its own paired device is the origin and the caller named in `by`
+  const phone = "device:abcdefghijklmnop";
+  const viaPhone = await send(phone, { by: { caller: phone, device: "abcdefghijklmnop" } });
+  assert.ok(!viaPhone.error, "a paired phone's own write passes the gate");
+  assert.ok(viaPhone.data.length === 1 && (!viaPhone.data[0].error || viaPhone.data[0].error.code !== "denied"), "and gets as far as the Mac (offline or slow in this world), not refused by the gate");
 });

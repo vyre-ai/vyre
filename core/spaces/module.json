@@ -123,6 +123,10 @@
     "effect": "write"
    },
    {
+    "name": "spaces.person.learn",
+    "reach": "modules"
+   },
+   {
     "name": "spaces.identity.name-of",
     "reach": "modules",
     "effect": "read"
@@ -302,6 +306,10 @@
    },
    {
     "name": "spaces.identity.device",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.identity.lookup",
     "reach": "modules"
    },
    {

@@ -10,7 +10,7 @@
 //
 // What it relies on: the kernel treats a Flow run's automation hop as a job label under its approving person (kernel/core/authorize.js), so a run can do exactly what its approver can
 // and no more, and the runner's declared caps narrow it further.
-import { createFlows, RecordsFlowStore } from "../../kernel/flows/index.js";
+import { createFlows, RecordsFlowStore, RecordsKitStore, KIT_TYPES } from "../../kernel/flows/index.js";
 import { createStages } from "../../kernel/flows/stages.js";
 
 const MIN_TICK_MS = 60_000;
@@ -80,7 +80,7 @@ export function createFlowsHost(o) {
       const { CORE_TYPES } = await import("../../records/core-types.js");
       const defType = (/** @type {string} */ name, /** @type {string} */ label) => ({ name, label, fields: [{ name: "name", kind: "text", label: "Name" }, { name: "body", kind: "text", label: "Definition" }, { name: "kit", kind: "text", label: "From Kit" }] });
       const kitStorage = [CORE_TYPES.find((/** @type {any} */ t) => t.name === "template"), defType("def-role", "Role definition"), defType("def-view", "View definition")].filter(Boolean);
-      const missing = [...FLOW_TYPES, ...kitStorage].filter(t => !have.has(t.name));
+      const missing = [...FLOW_TYPES, ...KIT_TYPES, ...kitStorage].filter(t => !have.has(t.name));
       if (missing.length) await gw.records.define(owner(), { add_types: [...missing] }).catch((/** @type {any} */ e) => { log(`flows: could not define the Flow record types for ${space}: ${e && e.message}`); });
     }
 
@@ -91,7 +91,10 @@ export function createFlowsHost(o) {
       isAdmin: async (/** @type {any} */ who) => (await roleHolders("owner")).concat(await roleHolders("admin")).some((/** @type {any} */ a) => a.id === who.id),
       applyTypes: async (/** @type {any} */ approver, /** @type {any} */ diff) => gw.records.define(personChain(approver.id), diff),
     };
-    const flows = createFlows({ kernel, chains, catalog, store, clock, emit, ports, proposals });
+    // Installed Kits and the proposals waiting for a yes are records (they survive a restart, with history and the log), written and removed by the Flows service's own chain: the kernel keeps those rows
+    // (kit-proposal, kit-install) to whoever made them or an owner or admin.
+    const kitStore = new RecordsKitStore({ kernel, chain: flowsChain() });
+    const flows = createFlows({ kernel, chains, catalog, store, kitStore, clock, emit, ports, proposals });
     const stages = createStages({ kernel: { ask: gw.ask, records: gw.records }, catalog, hook: true, ports: { roles: ports.roles }, clock, emit,
       chain: () => k.chains.appendService(owner(), "flows", true) });
 

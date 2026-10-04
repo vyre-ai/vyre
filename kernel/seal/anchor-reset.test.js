@@ -1,5 +1,6 @@
 // BL-2 / AN-1: the offline reset a restore from backup needs (scripts/admin-anchor-reset.mjs), against the REAL sealing process: the request names the exact act, a wrong or used proof changes
 // nothing, the owner's proof resets the anchor and leaves one sealed `anchor.reset` event in the home's log, and a model's or another person's proof is refused.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

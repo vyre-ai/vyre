@@ -2,12 +2,13 @@
 // An invite for an admin or owner waits for you to confirm the words the invitee reads to you (spaces.invites.confirm).
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
+import { useRouter } from "expo-router";
 import * as Clipboard from "expo-clipboard";
 import { Banner, Button, Card, Divider, EmptyState, Field, Row, Segmented, Text, showToast } from "@vyre/ui";
 import { Page } from "../places/Frame";
 import { useMembers } from "../spaces/state";
 import { tool, said } from "../../src/real/box";
-import { TEMP_DAYS, createInput, inviteRefusal, inviteRow, invitable, joinedLine, madeNote } from "./invite.js";
+import { TEMP_DAYS, createInput, inviteRefusal, liveServers, inviteRow, invitable, joinedLine, madeNote } from "./invite.js";
 
 const why = (e: unknown) => inviteRefusal((e as { code?: string }).code, said(e));
 
@@ -23,7 +24,10 @@ export function RealInvite() {
   const [busy, setBusy] = useState(false);
   const [made, setMade] = useState<ReturnType<typeof madeNote> | null>(null);
   const [words, setWords] = useState("");
+  const router = useRouter();
   const [problem, setProblem] = useState("");
+  // A space that lives on one computer cannot have invitees (code this_computer): the way forward the app has is a new space on a server.
+  const [onComputer, setOnComputer] = useState<"" | "server" | "pair">("");
   const [open, setOpen] = useState<ReturnType<typeof inviteRow>[] | null>(null);
   const [joined, setJoined] = useState<ReturnType<typeof inviteRow>[]>([]);
   useEffect(() => { if (roles.length && !roles.some((r) => r.id === role)) setRole(roles[roles.length - 1].id); }, [roles.length]);
@@ -39,7 +43,13 @@ export function RealInvite() {
     setProblem(""); setWords("");
     if (!anyone && !to.trim()) { setProblem("Name the person this is for, or choose Anyone with the link."); return; }
     setBusy(true);
-    tool("spaces.invites.create", createInput({ space: card.id, role, to, anyone, days: Number(days) })).then((r) => { setMade(madeNote(r)); refresh(); }).catch((e) => setProblem(why(e))).finally(() => setBusy(false));
+    tool("spaces.invites.create", createInput({ space: card.id, role, to, anyone, days: Number(days) })).then((r) => { setMade(madeNote(r)); refresh(); }).catch((e) => {
+      setProblem(why(e));
+      if ((e as { code?: string }).code !== "this_computer") return;
+      // The way forward depends on whether a server is paired (wink.access, rows of kind server): make a space on it, or pair one first.
+      setOnComputer("server");
+      void tool<any>("wink.access").then((a) => setOnComputer(liveServers(a).length ? "server" : "pair")).catch(() => {});
+    }).finally(() => setBusy(false));
   };
   const confirm = () => {
     if (!card || !made || !words.trim()) return;
@@ -78,6 +88,7 @@ export function RealInvite() {
           <Segmented label="Who may use it" value={anyone ? "anyone" : "named"} onChange={(v) => setAnyone(v === "anyone")} options={[["named", "One named person"], ["anyone", "Anyone with the link"]]} />
           {anyone ? <Banner tone="warn"><Text>Anyone who gets this link can join, so send it only to the person you mean. A named invite works for that person alone.</Text></Banner> : <Field label="Their Vyre name" help="Only that person can use the link." value={to} onChangeText={setTo} placeholder="sam.vyre.run" />}
           {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
+          {onComputer ? <View className="flex-row"><Button label={onComputer === "pair" ? "Pair a server first" : "Make a space on your server"} onPress={() => router.push((onComputer === "pair" ? "/u/wink/add" : "/u/install/create") as never)} /></View> : null}
           <View className="flex-row"><Button kind="primary" label={busy ? "Making" : "Make the invitation"} onPress={busy ? () => {} : make} /></View>
         </Card>
       )}

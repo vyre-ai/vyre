@@ -3,6 +3,7 @@
 // its own id, each row's trust control, the expiry, path and seen lines, and the vault's rows.
 // Loaded through Node's type stripping, so skipped on a Node without it. The module imports
 // nothing, so this runs from the repo root as well as from the app.
+import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 
 import { test } from "node:test";

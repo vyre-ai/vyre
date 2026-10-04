@@ -234,7 +234,7 @@ export default {
     // and agents.projects) rather than diverging here.
     /** A folder is inside one of these granted folders. Recall's own copy: no cross-feature import
      * (module boundary) — this is memory's teach.js `within`, restated. */
-    const within = (cwd, granted) => { const c = String(cwd || "").replace(/\/+$/, ""); return granted.some(f => { const base = String(f).replace(/\/+$/, ""); return !!base && (c === base || c.startsWith(base + "/")); }); };
+    const inFolders = (cwd, granted) => { const c = String(cwd || "").replace(/\/+$/, ""); return granted.some(f => { const base = String(f).replace(/\/+$/, ""); return !!base && (c === base || c.startsWith(base + "/")); }); };
     const denied = message => Object.assign(new Error(message), { code: "denied" });
     /** The user's own surfaces and modules see every session; only a named agent is scoped. */
     const OWNER = new Set(["deck", "cli", "local", "capsule"]);
@@ -312,7 +312,7 @@ export default {
       if (r.all) return r;
       const requested = (q.project_cwds || []).map(String);
       if (requested.length) {
-        const outside = requested.filter(c => !within(c, r.folders));
+        const outside = requested.filter(c => !inFolders(c, r.folders));
         if (outside.length) throw denied(`${r.agent} is not granted ${outside.join(", ")}`);
       } else {
         if (!r.folders.length) throw denied(`${r.agent} is not granted any project yet`);
@@ -332,7 +332,7 @@ export default {
         per_session: { type: "integer" }, prefix: { type: "boolean", description: "each word as a prefix, all of them, keyword only: for completion while typing" }, machines, ...agentField,
       } },
       callers: READERS,
-      run: async (input, { caller } = {}) => {
+      run: async (input, meta = {}) => { const caller = meta.caller;
         const { machines: _, ...q } = input;
         // sessions widens a scope, so only a module or the person's own surface may name them: a
         // model's scope is its folders (the MCP server holds an agent to its projects' folders).
@@ -342,14 +342,14 @@ export default {
         const scopeR = await scopeQuery(q, caller);
         // Defense in depth: q.project_cwds already carries the grant, so this is a no-op unless a
         // paired Mac is on an older build that does not scope its own side yet.
-        const scoped = hits => scopeR.all ? hits : hits.filter(h => within(h.cwd, scopeR.folders));
+        const scoped = hits => scopeR.all ? hits : hits.filter(h => inFolders(h.cwd, scopeR.folders));
         const here = async () => {
           // No model load for a corpus with no vectors yet: that would cost seconds and change nothing.
           const any = db.prepare("SELECT 1 FROM recall_vectors LIMIT 1").get();
           const e = q.hybrid === false || !any ? null : await embedder();
           return scoped((await search(db, q, e, dense)).hits);
         };
-        if (!wantsMacs(ctx, input, caller)) return here();
+        if (!(await wantsMacs(ctx, input, caller, meta))) return here();
         // On the box, for the person: the Macs' best turns too, by score, capped at the limit.
         const [own, answers] = await Promise.all([here(), askMacs(ctx, "recall.search", q)]);
         return mergeRows(ctx, own, answers, { rows: scoped, compare: (a, b) => b.score - a.score, limit: Math.max(1, Math.min(100, q.limit || 10)) });
@@ -361,7 +361,7 @@ export default {
       input: { type: "object", required: ["project_cwds", "text"], properties: {
         project_cwds: stringArray, text: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 3 } } },
       callers: OWNERS_ONLY,
-      run: async (input, { caller } = {}) => {
+      run: async (input, meta = {}) => { const caller = meta.caller;
         // Never an agent (OWNERS_ONLY already refuses one at the gate); reach() with no agent
         // still runs, so a caller kind that slips past OWNERS_ONLY some day is refused here too,
         // the same way recall.search's does.
@@ -372,7 +372,7 @@ export default {
         // Never an unmapped folder: at least one given folder must be a real project's own (or
         // inside one), never a raw path a caller made up.
         const projects = await projectList();
-        const mapped = cwds.filter(c => projects.some(p => within(c, p.folders)));
+        const mapped = cwds.filter(c => projects.some(p => inFolders(c, p.folders)));
         if (!mapped.length) return { hits: [] };
         const limit = Math.max(1, Math.min(3, input.limit || 3));
         const any = db.prepare("SELECT 1 FROM recall_vectors LIMIT 1").get();
@@ -388,27 +388,27 @@ export default {
         session: { type: "string" }, from: { type: "integer" }, limit: { type: "integer" }, machines,
         source: { type: "string", enum: ["box", "mac"] }, ...agentField } },
       callers: READERS,
-      run: async (input, { caller } = {}) => {
+      run: async (input, meta = {}) => { const caller = meta.caller;
         const { machines: _, source, agent, ...q } = input;
         const r = await reach(agent, caller);
         // A scoped agent reads a session only inside its granted projects' folders: not by naming
         // any session id it likes. Thrown the same way as "not found", so a scoped agent learns
         // nothing about a session it may not read (not even that it exists).
-        const gate = row => { if (!r.all && !within(row?.session?.cwd, r.folders)) throw new Error(`no session ${q.session}`); return row; };
+        const gate = row => { if (!r.all && !inFolders(row?.session?.cwd, r.folders)) throw new Error(`no session ${q.session}`); return row; };
         // Resolved among only what this caller may read, so an id or prefix outside its grant
         // never surfaces even as "more than one session starts with X" (reviewer's LOW: that
         // told a scoped agent such a session exists before the gate above ever ran).
         const resolveScoped = session => {
           if (r.all) return session;
           const exact = /** @type {any} */ (db.prepare("SELECT cwd FROM recall_sessions WHERE id = ?").get(session));
-          if (exact) { if (!within(exact.cwd, r.folders)) throw new Error(`no session ${session}`); return session; }
+          if (exact) { if (!inFolders(exact.cwd, r.folders)) throw new Error(`no session ${session}`); return session; }
           const like = /** @type {any[]} */ (db.prepare("SELECT id, cwd FROM recall_sessions WHERE substr(id, 1, ?) = ?").all(session.length, session))
-            .filter(row => within(row.cwd, r.folders));
+            .filter(row => inFolders(row.cwd, r.folders));
           if (!like.length) throw new Error(`no session ${session}`);
           if (like.length > 1) throw new Error(`more than one session starts with ${session}`);
           return like[0].id;
         };
-        if (!wantsMacs(ctx, input, caller)) return gate(thread(db, { ...q, session: resolveScoped(q.session) }));
+        if (!(await wantsMacs(ctx, input, caller, meta))) return gate(thread(db, { ...q, session: resolveScoped(q.session) }));
         // On the box, for the person: the box's own session first. A session the box does not
         // have, or one the caller says is on the Mac, is asked of the Macs, and the first that
         // has it answers. Its turns go back to the caller and are never stored here.
@@ -434,9 +434,9 @@ export default {
       // A person's surfaces only: tool output can hold anything the session read, so it is never
       // handed to Claude over MCP or to an agent. callers is an allowlist, so every "mcp" is out.
       callers: ["cli", "local", "deck", "capsule", "module"],
-      run: async (input, { caller } = {}) => {
+      run: async (input, meta = {}) => { const caller = meta.caller;
         const { machines: _, source, ...q } = input;
-        if (!wantsMacs(ctx, input, caller)) return transcript(q);
+        if (!(await wantsMacs(ctx, input, caller, meta))) return transcript(q);
         // On the box, for the person: a session the box does not have, or one the caller says is
         // on the Mac, is read from the Macs, as recall.thread does. The blocks go back to the
         // caller and are never stored here.
@@ -503,14 +503,14 @@ export default {
       input: { type: "object", properties: {
         cwd: { type: "string" }, since: { type: "number" }, human: { type: "boolean" }, limit: { type: "integer" }, ids: stringArray, machines, ...agentField } },
       callers: READERS,
-      run: async (input, { caller } = {}) => {
+      run: async (input, meta = {}) => { const caller = meta.caller;
         const { machines: _, agent, ...q } = input;
         const r = await reach(agent, caller);
-        if (!r.all && q.cwd && !within(q.cwd, r.folders)) throw denied(`${r.agent} is not granted ${q.cwd}`);
+        if (!r.all && q.cwd && !inFolders(q.cwd, r.folders)) throw denied(`${r.agent} is not granted ${q.cwd}`);
         // ids can name any session (the box's cross-project resolve for a Mac's picked ones): a
         // scoped agent's own list still narrows to what it is granted, never all of them.
-        const scoped = rows => r.all ? rows : rows.filter(row => within(row.cwd, r.folders));
-        if (!wantsMacs(ctx, input, caller)) return scoped(sessions(db, q));
+        const scoped = rows => r.all ? rows : rows.filter(row => inFolders(row.cwd, r.folders));
+        if (!(await wantsMacs(ctx, input, caller, meta))) return scoped(sessions(db, q));
         // On the box, for the person: the Macs' sessions too, newest first, capped at the limit.
         const [own, answers] = await Promise.all([sessions(db, q), askMacs(ctx, "recall.sessions", q)]);
         return mergeRows(ctx, scoped(own), answers, { rows: scoped, compare: (a, b) => (b.ended || 0) - (a.ended || 0), limit: Math.max(1, Math.min(1000, q.limit || 50)) });
@@ -643,7 +643,7 @@ export default {
         // A model load in flight writes into the home; let it settle before the home can go.
         // (This used to call `within`, the folder helper above, with a promise: it threw a TypeError, stop() ended there, the embedder's process was never closed and the daemon, and any
         // test that started one, never exited.) The embedder is closed whatever the wait does.
-        try { if (vec.loading) await Promise.race([vec.loading.catch(() => null), new Promise(r => setTimeout(r, 5000).unref())]); }
+        try { if (vec.loading) await within(vec.loading.catch(() => null), 5000); }
         finally { const e = /** @type {any} */ (vec.embedder); if (e && typeof e.close === "function") e.close(); }
       },
     };

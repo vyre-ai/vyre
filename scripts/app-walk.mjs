@@ -110,7 +110,7 @@ if (SIGNIN_NODE) {
 const world = {};
 for (const [k, tool, input] of [["spaces", "spaces.list"], ["types", "records.types"], ["flows", "flows.list"], ["kits", "flows.kit.list"], ["agents", "agents.list"], ["publish", "publish.list"], ["vault", "vault.list"], ["drive", "files.drive.status"], ["spaceDrive", "files.drive.space.list"], ["identity", "spaces.identity.status"]]) world[k] = await boxCall(tool, input);
 // What the box itself holds is never sample: a dev box seeded with a "Jane Doe" contact shows it for real. Read every type's rows and the tasks once, and drop any sample word the box holds.
-const boxHeld = JSON.stringify([world.spaces, world.agents, world.vault, world.flows, world.kits, await boxCall("tasks.list"), ...(await Promise.all(((world.types.data?.types ?? []).map((t) => t.name)).filter((n) => !/^(def-|flow-|kit-)/.test(n)).map((n) => boxCall("records.list", { type: n, limit: 200 }))))]);
+const boxHeld = JSON.stringify([world.spaces, world.agents, world.vault, world.flows, world.kits, await boxCall("tasks.list"), await boxCall("records.kits.library"), ...(await Promise.all(((world.types.data?.types ?? []).map((t) => t.name)).filter((n) => !/^(def-|flow-|kit-)/.test(n)).map((n) => boxCall("records.list", { type: n, limit: 200 }))))]);
 for (let i = SAMPLE.length - 1; i >= 0; i--) if (boxHeld.includes(SAMPLE[i])) SAMPLE.splice(i, 1);
 const has = (k) => !world[k].error;
 const spaceNames = has("spaces") && Array.isArray(world.spaces.data) ? world.spaces.data.map((s) => s.displayName || s.label || s.name) : [];
@@ -190,7 +190,7 @@ const T = world.types.data?.types ?? [];
 const firstType = T.find((t) => !/^(def-|flow-|kit-)/.test(t.name))?.name;
 const firstFlow = Array.isArray(world.flows.data) ? world.flows.data[0]?.id : undefined;
 
-await step("shell: the space switcher lists the box's spaces and the person", { expect: spaceNames.length ? [spaceNames[0]] : [] }, async () => { await go("u/now"); });
+await step("shell: the space switcher lists the box's spaces and the person", { expect: spaceNames.length ? [spaceNames[0]] : [] }, async () => { await go("u/now"); await click("All spaces", { exact: false }).catch(() => {}); });
 await step("now: opens", { note: "Now opened" }, async () => { await go("u/now"); });
 await step("records: first type lists its records", { skip: firstType ? undefined : "the box has no record type outside its own (def-flow, goal...): nothing to list" }, async () => { await go(`u/records/${firstType}`); });
 await step("projects: opens", {}, async () => { await go("u/projects"); });
@@ -233,7 +233,7 @@ await step("settings: notifications, switch a kind and back", {}, async () => {
   if (await sw.count()) { await sw.click(); await settle(); await sw.click(); await settle(); }
 });
 await step("settings: assistants", {}, async () => { await go("u/settings/assistants"); });
-await step("settings: AI accounts", {}, async () => { await go("u/settings/ai"); });
+await step("settings: AI accounts, the Claude card shows an honest state", { expect: [/Claude/] }, async () => { await go("u/settings/ai"); });
 await step("settings: account and recovery", { expect: [/ways in/i] }, async () => { await go("u/settings/account"); });
 await step("settings: account, make a new recovery code", { skip: "not walkable on a headless box: the recovery code replace needs a real person presence (lead ruling 4 Oct)", expect: [/I wrote it down/] }, async () => {
   await go("u/settings/account");
@@ -317,7 +317,9 @@ await step("setup: create a space on this computer, close partway, resume", { sk
   await click("Continue");
   await click("On this computer");
   await page.screenshot({ path: path.join(OUT, "setup-2-here.png") });
-  await click("Create it here", { settle: 4000 });
+  await click("Create it here", { settle: 1000 });
+  // Creating the space takes as long as the box takes: wait for the look step (up to 60 s) before judging.
+  await page.waitForFunction(() => /Give .* a look|did not finish|unreachable/.test(document.body.innerText), null, { timeout: 60_000 }).catch(() => {});
   await page.screenshot({ path: path.join(OUT, "setup-3-after-create.png") });
   const t3 = await text();
   if (!/Give .* a look/.test(t3)) throw new Error(`stopped after Create it here: ${t3.replace(/\s+/g, " ").slice(0, 300)}`);
@@ -332,8 +334,13 @@ await step("setup: create a space on this computer, close partway, resume", { sk
   const members = (await text()).replace(/\s+/g, " ").slice(0, 200);
   // Members has only Continue when nobody is waiting, else Later; Connectors has Later; Kit has Start empty (or Finish setup).
   const clickAny = async (labels) => { for (const l of labels) { const b = page.getByText(l, { exact: true }).first(); if (await b.count()) { await b.click(); await settle(1500); return l; } } return null; };
-  await clickAny(["Later", "Continue"]);
-  await clickAny(["Later", "Continue"]);
+  await clickAny(["Later", "Continue"]); // members
+  await page.screenshot({ path: path.join(OUT, "setup-5b-ai.png") });
+  const tAi = (await text()).replace(/\s+/g, " ");
+  if (!/Connect your AI accounts/.test(tAi)) throw new Error(`the AI accounts step did not follow members: ${tAi.slice(0, 200)}`);
+  if (!/Claude/.test(tAi) || !/Not connected|Connected|Cannot connect|Waiting|Did not connect|Pair first|On your phone/.test(tAi)) throw new Error(`the Claude card shows no honest state: ${tAi.slice(0, 240)}`);
+  await clickAny(["Later", "Continue"]); // ai
+  await clickAny(["Later", "Continue"]); // connectors
   await clickAny(["Start empty", "Finish setup"]);
   await page.screenshot({ path: path.join(OUT, "setup-6-done.png") });
   const t6 = await text();

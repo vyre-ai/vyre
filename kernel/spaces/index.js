@@ -111,6 +111,8 @@ export function createSpaceKernels(cfg) {
       // `id` lets a creation that was retired (a failed or cancelled spaces.create) be hosted again under the SAME id when the person resumes it; it must be well formed and not live or on disk.
       if (o.id !== undefined && (typeof o.id !== "string" || !SPACE_ID.test(o.id) || live.has(o.id) || fs.existsSync(ofDir(o.id)))) throw new KernelError("bad_input", "that Space id cannot be used");
       const id = o.id !== undefined ? o.id : `spc_${rand32(12)}`, d = ofDir(id);
+      // EVENT FIRST: the home's own log says a Space is being made (who it is for), before anything is created; a failed audit write refuses the creation.
+      if (typeof cfg.audit === "function") await cfg.audit("space.hosting", { space: id, owner: o.owner, ...(o.name ? { name: String(o.name).slice(0, 80) } : {}) });
       fs.mkdirSync(d, { recursive: true, mode: 0o700 });
       if (!cfg.sealer) { if (cfg.fileKey !== true) throw new KernelError("key_custody", "a hosted Space's kernel key must live in the sealing process: give the registry the home's sealer"); fs.writeFileSync(path.join(d, "kernel.key"), crypto.randomBytes(32).toString("hex"), { mode: 0o600 }); }
       fs.writeFileSync(path.join(d, "space.json"), JSON.stringify({ space: id, owner: o.owner, ...(o.name ? { name: String(o.name).slice(0, 80) } : {}), ...(o.accept_builtin_store === true ? { accept_builtin_store: true } : {}), made_at: (cfg.clock || Date.now)() }), { mode: 0o600 });
@@ -118,6 +120,7 @@ export function createSpaceKernels(cfg) {
       let k;
       try { k = await open(id); } catch (e) { fs.rmSync(d, { recursive: true, force: true }); throw e; }
       live.set(id, k);
+      if (typeof cfg.audit === "function") { try { await cfg.audit("space.hosted", { space: id, owner: o.owner }); } catch { /* the first event stands */ } }
       return hostedHandle(id, k);
     },
     /**
@@ -149,6 +152,7 @@ export function createSpaceKernels(cfg) {
         try { const db = dbs.get(id); if (db) verifyEmpty(db, d, id); } catch (e) { if (e instanceof KernelError) { try { const again = await open(id); if (again) live.set(id, again); } catch { /* the folder stays either way */ } throw e; } }
         dbs.delete(id);
         fs.rmSync(d, { recursive: true, force: true });
+        if (typeof cfg.audit === "function") { try { await cfg.audit("space.retired", { space: id }); } catch { /* the folder is gone either way */ } }
         return { retired: true };
       });
     },
@@ -176,10 +180,10 @@ export function createSpaceKernels(cfg) {
       for (const [id, k] of live) {
         if (id === cfg.personal.space || !k || !k.grants || typeof k.adoptOwner !== "function") continue;
         const ad = typeof k.grants.adopted === "function" ? k.grants.adopted() : null;
-        if (ad && ad.to === to) { const r = await k.adoptOwner(to); if (r && r.changed) moved.push(id); continue; }
+        if (ad && ad.to === to) { const r = await k.adoptOwner(to, from); if (r && r.changed) moved.push(id); continue; }
         if (ad) continue;
         if (k.grants.roleOf({ kind: "person", id: from, space: id }) !== "owner") continue;
-        const r = await k.adoptOwner(to);
+        const r = await k.adoptOwner(to, from);
         if (r && r.changed) moved.push(id);
       }
       return moved;

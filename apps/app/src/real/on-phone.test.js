@@ -1,4 +1,5 @@
 // @ts-check
+import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -30,6 +31,19 @@ test("a browser names what the person does on the phone", () => {
   assert.equal(onPhoneFor("seal.reveal"), "Reveal it in Vyre on your phone.");
   assert.equal(onPhoneFor("tasks.decide"), "Approve it in Vyre on your phone.");
   assert.equal(onPhoneFor("something.else"), ON_PHONE);
+  assert.equal(onPhoneFor("onboard.claude"), "Connect it in Vyre on your phone.");
   assert.equal(actWords("rules.remove"), "Remove a rule");
   assert.equal(actWords("nope"), "");
+});
+
+test("the line says the method the person has: Touch ID in a Mac window, the phone elsewhere", () => {
+  assert.equal(onPhoneFor("seal.reveal", "touchid"), "Reveal it with Touch ID.");
+  assert.equal(onPhoneFor("seal.reveal", "phone"), "Reveal it in Vyre on your phone.");
+  assert.equal(onPhoneFor("something.else", "touchid"), "Do this with Touch ID.");
+  assert.equal(onPhoneFor("onboard.claude", "touchid"), "Connect it with Touch ID.");
+});
+
+test("a browser asked to unlock the personal vault says to do it on the phone", () => {
+  assert.equal(onPhoneFor("vault.account.unlock-phone", "phone"), "Unlock it in Vyre on your phone.");
+  assert.equal(onPhoneFor("vault.account.unlock-phone", "touchid"), "Unlock it with Touch ID.");
 });

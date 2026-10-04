@@ -2,10 +2,14 @@
 // Pairing: devices belong to the identity, never to a space (DESIGN-wink.md sections 3, 4 and 7). A fake ctx (in-memory store, a tool
 // table, an event list), a fake directory (who administers what) and fake typing ports: no relay, no kernel, no network.
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { createPairing, pairToMessage, MIGRATIONS, PEER_MIGRATIONS, POLL_MS, KIND_OFFERS, parseQr, qrPayload, parseServerQr, serverQrPayload, parsePhoneQr, phoneQrPayload } from "./pairing.js";
 import { FORBIDDEN, words, removed } from "./cards.js";
 import { pairWords, nonceCommit, ticketTag, newNonce } from "../../relay/client/pairwords.js";
@@ -21,7 +25,7 @@ function world(o = {}) {
   const tools = new Map();
   const events = /** @type {any[]} */ ([]);
   const drops = /** @type {any[]} */ ([]);
-  const ctx = { store: { db }, config: { name: "alex" }, log() {}, events: { emit: (n, d) => events.push([n, d]) }, tool: (n, def) => tools.set(n, def), call: async (tool, input) => { if (tool === "relay.route.id") return { data: { box: o.box || "Qm94S2V5" } }; drops.push([tool, input]); return { data: { closed: true } }; } };
+  const ctx = { store: { db }, config: { name: "alex" }, log() {}, events: { emit: (n, d) => events.push([n, d]) }, tool: (n, def) => tools.set(n, def), call: async (tool, input) => { if (o.call) { const r = await o.call(tool, input); if (r !== undefined) return r; } if (tool === "relay.route.id") return { data: { box: o.box || "Qm94S2V5" } }; drops.push([tool, input]); return { data: { closed: true } }; } };
   const typed = /** @type {any[]} */ ([]);
   const finishes = /** @type {any[]} */ ([]);
   const minted = /** @type {any[]} */ ([]);
@@ -37,7 +41,7 @@ function world(o = {}) {
     openCode: async flow => ({ offer: `wo_${flow}`, code: "WINK-ZZZZ-ZZZZ", expires: 1 }), ack: async () => ({ ok: true }),
     owner: (m, what) => { if (m && (m.agent || String(m.caller).startsWith("agent:"))) throw Object.assign(new Error(what), { code: "denied" }); }, dropMs: 0, relayUrl: async () => "ws://relay.test", keyFile: o.keyFile,
     // existing tests adopt in one step and type codes; the Q-1 tests below turn the confirmation on and the typed code off, as a release build has them
-    confirmAdopt: o.confirm === true, typedCode: o.typedCode ?? true, askHoldMs: o.askHoldMs ?? 0, askMs: o.askMs, askPollMs: 1, releaseMaxMs: o.releaseMaxMs, identityEntry: o.identityEntry, signIdentity: o.signIdentity, vyreName: o.vyreName, mintMs: o.mintMs, pairWordsFor: o.pairWordsFor === null ? undefined : (o.pairWordsFor || (async d => `amber coral ${d}`)), spaceNow: () => HARLOW,
+    confirmAdopt: o.confirm === true, requireProof: o.requireProof ?? false, buildRoot: o.buildRoot, releaseProof: "releaseProof" in o ? o.releaseProof : false, typedCode: o.typedCode ?? true, askHoldMs: o.askHoldMs ?? 0, askMs: o.askMs, askPollMs: 1, releaseMaxMs: o.releaseMaxMs, identityEntry: o.identityEntry, signIdentity: o.signIdentity, vyreName: o.vyreName, mintMs: o.mintMs, looseOwnerIds: o.exactIds ? false : true, pairWordsFor: o.pairWordsFor === null ? undefined : (o.pairWordsFor || (async d => `amber coral ${d}`)), spaceNow: () => HARLOW,
   });
   p.tools();
   const call = (name, input = {}, meta = {}) => tools.get(name).run(input, { caller: "device:x", ...meta });
@@ -934,7 +938,10 @@ test("Q-3, app side: the app signs this pairing's box and device with a key on i
   const q = await w.call("wink.pair.server", { payload: serverQrPayload(new Uint8Array(16).fill(3), "ws://relay.test"), target: { kind: "identity", id: ME } });
   await new Promise(x => setTimeout(x, 80));
   assert.equal((await w.call("wink.pair.status", { pairing: q.pairing })).state, "done");
-  assert.deepEqual(seen[0].proof, r.proof(DEV), "the proof is the signature over this pairing's box and device");
+  // PI-3: the message also names this pairing's own ticket tag, so the proof is good for this pairing only
+  const tag = await ticketTag(Buffer.from(new Uint8Array(16).fill(3)).toString("base64url"));
+  assert.ok(crypto.verify(null, pairToMessage(BOX, DEV, tag), r.k.publicKey, Buffer.from(seen[0].proof.sig, "base64url")), "the proof is the signature over this pairing's box, device and ticket tag");
+  assert.equal(seen[0].proof.eid, "eid1");
   assert.ok(await r.identityEntry(ME, seen[0].proof.eid), "by a key on the list");
 });
 
@@ -1375,9 +1382,12 @@ test("SP-1 and SP-2: an owner id must have an id's shape; a proof offered with n
   await assert.rejects(() => adoptAs(w, "device:app1", { owner: { kind: "identity", id: "NOT-A-PERSON-ID; rm -rf", name: "Alex" }, identity: "x" }), e => e.code === "bad_input");
   await assert.rejects(() => adoptAs(w, "device:app1", { owner: { kind: "space", id: "per_aaaa", name: "Alex" } }), e => e.code === "bad_input", "a space owner needs a space id");
   assert.equal(w.p.meta.get("owner"), null, "nothing stored for a malformed id");
-  // a proof by a key that is not on that identity's list is refused at once, with no --pair-to
+  // a proof by a key that is not on that identity's list is refused at once, with no --pair-to (the entry is known, the signature is not its)
   const w2 = world({ confirm: true, identityEntry: r.identityEntry });
-  await assert.rejects(() => adoptAs(w2, "device:app1", { ...ASKED, proof: r.proof("app1", r.other.privateKey) }), e => e.code === "denied");
+  await assert.rejects(() => adoptAs(w2, "device:app1", { ...ASKED, proof: r.proof("app1", r.other.privateKey) }), e => e.code === "denied_wrong_proof");
+  // an identity the directory does not know is refused too: no fallback to the three words (lead, G-2)
+  const w2b = world({ confirm: true, identityEntry: async () => null });
+  await assert.rejects(() => adoptAs(w2b, "device:app1", { ...ASKED, proof: { eid: "eid-unknown", sig: "x".repeat(86) } }), e => e.code === "denied_wrong_proof");
   assert.equal(w2.p.meta.get("owner"), null);
   // the right proof: the question is still asked (the person's yes stays the check), then the name is stored clean
   const w3 = world({ confirm: true, identityEntry: r.identityEntry });
@@ -1393,4 +1403,168 @@ test("SP-1 and SP-2: an owner id must have an id's shape; a proof offered with n
   assert.equal(stored, "Alex2J0pwnedgnp.exe");
   assert.doesNotMatch(stored, /[\u0000-\u001f\u007f-\u009f\u202a-\u202e]/);
   assert.equal((await atServer(w3, "wink.server.status")).space, "Alex2J0pwnedgnp.exe");
+});
+
+test("SP-1 exact ids: in production an owner id is per_ plus 26 base32 or spc_ plus 12 or 26; per_a and a 25 character id are refused", async () => {
+  const w = world({ exactIds: true });
+  const bad = id => assert.rejects(() => adoptAs(w, "device:app1", { owner: { kind: "identity", id, name: "Alex" } }), e => e.code === "bad_input");
+  await bad("per_a"); await bad("per_" + "a".repeat(25)); await bad("per_" + "a".repeat(27)); await bad("PER_" + "a".repeat(26));
+  await assert.rejects(() => adoptAs(w, "device:app1", { owner: { kind: "space", id: "spc_" + "a".repeat(11), name: "H" } }), e => e.code === "bad_input");
+  assert.equal(w.p.meta.get("owner"), null);
+  assert.equal((await adoptAs(w, "device:app1", { owner: { kind: "identity", id: "per_" + "a".repeat(26), name: "Alex" } })).owner.kind, "identity");
+  const w2 = world({ exactIds: true });
+  assert.equal((await adoptAs(w2, "device:app1", { owner: { kind: "space", id: "spc_" + "a".repeat(12), name: "H" } })).owner.kind, "space");
+});
+
+test("wink.server.probe: a paired server answers; a server that let the device go answers refused; an unknown device says so", async () => {
+  let refuse = false;
+  const w = world({ callServer: async (_p, tool) => { if (refuse) throw Object.assign(new Error("the server answered 401"), { remote: "device_removed" }); return { tool }; } });
+  w.p.meta.set("probe:srv1", { relay: "ws://relay.test", route: "route1", box: "box1" });
+  assert.deepEqual(await w.call("wink.server.probe", { device: "srv1" }), { reachable: true, answered: true });
+  refuse = true;
+  const gone = await w.call("wink.server.probe", { device: "srv1" });
+  assert.equal(gone.reachable, false);
+  assert.equal(gone.code, "device_removed");
+  assert.equal((await w.call("wink.server.probe", { device: "nope" })).code, "unknown");
+});
+
+// ---- G-2 (lead, 4 Oct): becoming an owner always needs the identity proof, checked against the identity's chain ----
+
+test("owner needs a verified proof: none, another identity's, and an unreachable directory each refuse in their own words and nothing is owned; the right proof owns", async () => {
+  const kp = crypto.generateKeyPairSync("ed25519");
+  const pub = kp.publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("base64url");
+  const sign = (box, device) => crypto.sign(null, pairToMessage(box, device), kp.privateKey).toString("base64url");
+  let down = false, claimedSeen = null;
+  const identityEntry = async (id, eid, claimed) => { claimedSeen = claimed; if (down) throw Object.assign(new Error("x"), { code: "unreachable" }); return id === ME && eid === "e1" ? { eid: "e1", kind: "device", pub, identity: ME } : null; };
+  const w = world({ confirm: true, requireProof: true, identityEntry });
+  const base = { owner: { kind: "identity", id: ME, name: "Alex", vyre: "alex" }, identity: ME };
+  const box = "Qm94S2V5";
+  const asked = async (input, caller = "device:app1") => w.tools.get("wink.server.adopt").run(input, { caller });
+  await assert.rejects(() => asked(base), e => e.code === "denied_no_proof" && /did not prove which Vyre identity/.test(e.message) && !/waiting to pair/.test(e.message));
+  await assert.rejects(() => asked({ ...base, proof: { eid: "e1", sig: crypto.sign(null, pairToMessage(box, "other"), kp.privateKey).toString("base64url") } }), e => e.code === "denied_wrong_proof" && /did not prove it/.test(e.message) && !/waiting to pair/.test(e.message));
+  down = true;
+  await assert.rejects(() => asked({ ...base, proof: { eid: "e1", sig: sign(box, "app1") } }), e => /cannot check who is asking right now/.test(e.message));
+  down = false;
+  assert.equal(w.p.meta.get("owner"), null, "nothing was owned by any refusal");
+  const good = { ...base, proof: { eid: "e1", sig: sign(box, "app1") } };
+  assert.equal((await asked(good)).pending, true);
+  assert.equal(claimedSeen, "alex", "the directory is asked by the claimed name");
+});
+
+test("G-1: a device that says it is a computer, a phone or a browser gets no compute offer, no storage and no node-peer admission; only the owner's own act changes that", async () => {
+  const w = world();
+  for (const kind of ["computer", "phone", "web"]) {
+    const d = w.p.devices.add({ id: `d_${kind}`, identity: ME, kind, name: kind, target: { kind: "identity", id: ME } });
+    assert.notEqual(d.offers.compute, true, `${kind} offers no compute until the owner turns it on`);
+    assert.notEqual(d.offers.storage, true, `${kind} offers no storage`);
+    assert.equal(w.p.peers.allow(`d_${kind}`), false, `${kind} is not a server peer of this home`);
+    assert.equal((await w.p.computeAllowed({ device: `d_${kind}`, space: HARLOW })).ok, false);
+  }
+});
+
+
+// ---- PI-1 to PI-3 (lead ruling, 4 Oct): who owns a server proves it from a hardware-held key, for this pairing only ----
+
+test("PI-1: on a release build the owner's proof must come from a phone's hardware-held entry with its Face ID signature; a software key, a web-held entry and a missing esig are refused; a development build takes a software key and says so", async () => {
+  const soft = crypto.generateKeyPairSync("ed25519"), enc = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const rawPub = k => k.publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("base64url");
+  const encPt = enc.publicKey.export({ format: "jwk" });
+  const enclave = Buffer.concat([Buffer.from([4]), Buffer.from(encPt.x, "base64url"), Buffer.from(encPt.y, "base64url")]).toString("base64url");
+  const entries = { soft: { eid: "e_soft", kind: "device", pub: rawPub(soft), identity: ME }, phone: { eid: "e_phone", kind: "device", pub: rawPub(soft), identity: ME, enclave }, web: { eid: "e_web", kind: "device", pub: rawPub(soft), identity: ME, held: "web" } };
+  const identityEntry = async (_id, eid) => Object.values(entries).find(e => e.eid === eid) || null;
+  const BOX = "Qm94S2V5", TAG = "t".repeat(43);
+  const msg = pairToMessage(BOX, "app1", TAG);
+  const proof = (eid, esig) => ({ eid, sig: crypto.sign(null, msg, soft.privateKey).toString("base64url"), ...(esig ? { esig } : {}) });
+  const esigOf = () => crypto.sign("sha256", msg, { key: enc.privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url");
+  const base = { owner: { kind: "identity", id: ME, name: "Alex", vyre: "alex", pin: { id: ME, seq: 1, head: "h" } }, identity: ME, pairing: { commit: "0".repeat(64), tag: TAG } };
+  const attempt = async (releaseProof, p) => { const w = world({ confirm: true, requireProof: true, releaseProof, identityEntry }); try { return { ok: await w.tools.get("wink.server.adopt").run({ ...base, proof: p }, { caller: "device:app1" }), w }; } catch (e) { return { err: e, w }; } };
+  // a release build
+  assert.equal((await attempt(true, proof("e_soft"))).err.code, "not_hardware");
+  assert.match((await attempt(true, proof("e_soft"))).err.message, /Pair this server from Vyre on your phone/);
+  assert.equal((await attempt(true, proof("e_web"))).err.code, "not_hardware");
+  assert.equal((await attempt(true, proof("e_phone"))).err.code, "denied_wrong_proof", "an enclave entry's proof without its Face ID signature");
+  assert.equal((await attempt(true, proof("e_phone", "A".repeat(86)))).err.code, "denied_wrong_proof", "a wrong esig");
+  assert.equal((await attempt(true, proof("e_phone", esigOf()))).ok.pending, true, "with its Face ID signature it is asked");
+  // PI-2: a release build refuses a pairing with no pin; a development build takes it and says so
+  const nopin = { ...base, owner: { kind: "identity", id: ME, name: "Alex", vyre: "alex" } };
+  const wNo = world({ confirm: true, requireProof: true, releaseProof: true, identityEntry });
+  await assert.rejects(() => wNo.tools.get("wink.server.adopt").run({ ...nopin, proof: proof("e_phone", esigOf()) }, { caller: "device:app1" }), e => e.code === "no_pin");
+  const wDev = world({ confirm: true, requireProof: true, releaseProof: false, identityEntry });
+  assert.equal((await wDev.tools.get("wink.server.adopt").run({ ...nopin, proof: proof("e_soft") }, { caller: "device:app1" })).pending, true);
+  // a proof with no pairing tag is no proof on a release build
+  const w0 = world({ confirm: true, requireProof: true, releaseProof: true, identityEntry });
+  await assert.rejects(() => w0.tools.get("wink.server.adopt").run({ ...base, pairing: { commit: "0".repeat(64) }, proof: proof("e_phone", esigOf()) }, { caller: "device:app1" }), e => e.code === "denied_wrong_proof");
+  // a proof made for another pairing's tag
+  const other = await attempt(true, { ...proof("e_phone", esigOf()) });
+  assert.ok(other.ok);
+  const w1 = world({ confirm: true, requireProof: true, releaseProof: true, identityEntry });
+  await assert.rejects(() => w1.tools.get("wink.server.adopt").run({ ...base, pairing: { commit: "0".repeat(64), tag: "u".repeat(43) }, proof: proof("e_phone", esigOf()) }, { caller: "device:app1" }), e => e.code === "denied_wrong_proof", "PI-3: a proof from an earlier pairing");
+  // a development build
+  const dev = await attempt(false, proof("e_soft"));
+  assert.equal(dev.ok.pending, true);
+});
+
+test("PI-2: the app's pin goes to the directory lookup, and a refused refusal leaves no ask", async () => {
+  let seenPin = null;
+  const w = world({ confirm: true, requireProof: true, releaseProof: false, identityEntry: async (_i, _e, _n, pin) => { seenPin = pin; return null; } });
+  const pin = { id: ME, seq: 3, head: "h" };
+  await assert.rejects(() => w.tools.get("wink.server.adopt").run({ owner: { kind: "identity", id: ME, vyre: "alex", pin }, identity: ME, pairing: { commit: "0".repeat(64), tag: "t".repeat(43) }, proof: { eid: "e1", sig: "x".repeat(86) } }, { caller: "device:app1" }), e => e.code === "denied_wrong_proof");
+  assert.deepEqual(seenPin, pin);
+  assert.equal(w.p.meta.get("owner"), null);
+  assert.equal((await w.tools.get("wink.server.pairing").run({}, { caller: "cli" })).asking, false, "no ask is left");
+  assert.ok(w.drops.some(d => d[0] === "relay.devices.drop" && d[1].id === "app1"), "the refused device's relay row is dropped");
+});
+
+test("the owner record is written BEFORE spaces.owner.adopt asks for it (windows' check reads wink.server.owner): adoption never refuses for an order bug", async () => {
+  const kp = crypto.generateKeyPairSync("ed25519");
+  const pub = kp.publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("base64url");
+  const BOX = "Qm94S2V5", TAG = "t".repeat(43);
+  let ownerAtAdopt = "unset";
+  let wref;
+  const w = world({ confirm: true, requireProof: true, releaseProof: false, identityEntry: async (_i, eid) => (eid === "e1" ? { eid: "e1", kind: "device", pub, identity: ME } : null),
+    call: async (tool, input) => {
+      if (tool === "relay.pair.pending.confirm") return { data: { key: crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7 } };
+      if (tool === "relay.device.presence") return { data: { key: "pk1" } };
+      if (tool === "spaces.owner.adopt") { ownerAtAdopt = wref.p.meta.get("owner"); return { data: { owner: input.person } }; }
+      return undefined;
+    } });
+  wref = w;
+  const proof = { eid: "e1", sig: crypto.sign(null, pairToMessage(BOX, "app1", TAG), kp.privateKey).toString("base64url") };
+  const input = { owner: { kind: "identity", id: ME, name: "Alex", vyre: "alex" }, identity: ME, deviceKind: "phone", proof, pairing: { commit: "0".repeat(64), tag: TAG } };
+  const run = () => w.tools.get("wink.server.adopt").run(input, { caller: "device:app1" });
+  assert.equal((await run()).pending, true);
+  await atServer(w, "wink.server.pair.answer", await rightYes(w, "amber coral app1").catch(() => ({ yes: true, pick: 1 })));
+  const done = await run().catch(e => e);
+  if (process.env.NEVER) console.log("DBG", JSON.stringify(done), JSON.stringify(w.p.meta.get("owner")), JSON.stringify(w.p.devices.get("app1")), JSON.stringify(w.events.map(e => e[0])), "PROOF", w.p.meta.get("owner_proof"), JSON.stringify(w.drops.map(d => d[0])));
+  assert.ok(ownerAtAdopt && ownerAtAdopt.identity === ME, `the owner record named the identity when adopt asked: ${JSON.stringify(ownerAtAdopt)}`);
+});
+
+
+const fixtureBuild = (kind) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `bk-${kind}-`));
+  fs.mkdirSync(path.join(dir, "lib"));
+  fs.writeFileSync(path.join(dir, "lib", "build-kind.js"), kind !== "release" ? 'export const BUILD_KIND = "development";\n' : 'export const BUILD_KIND = "release";\n');
+  if (kind === "dev-image") fs.writeFileSync(path.join(dir, "vyre.tgz"), "x");   // a dev-kind image is packed, but its KIND is still development
+  return dir;
+};
+
+test("the build KIND decides release behaviour, on three builds: a checkout and a packaged dev-kind image take a software prover and the software signer switch; a release-stamped copy refuses the prover and ignores the switch", async () => {
+  const saved = process.env.VYRE_SEAL_SOFTWARE;
+  try {
+    process.env.VYRE_SEAL_SOFTWARE = "1";
+    const soft = crypto.generateKeyPairSync("ed25519");
+    const entry = { eid: "e_soft", kind: "device", pub: soft.publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("base64url"), identity: ME };
+    const BOX = "Qm94S2V5", TAG = "t".repeat(43);
+    const proof = { eid: "e_soft", sig: crypto.sign(null, pairToMessage(BOX, "app1", TAG), soft.privateKey).toString("base64url") };
+    const input = { owner: { kind: "identity", id: ME, name: "Alex", vyre: "alex", pin: { id: ME, seq: 1, head: "h" } }, identity: ME, proof, pairing: { commit: "0".repeat(64), tag: TAG } };
+    for (const [name, root] of [["a checkout", undefined], ["a packaged dev-kind image", fixtureBuild("dev-image")]]) {
+      const w = world({ confirm: true, requireProof: true, identityEntry: async () => entry, buildRoot: root, releaseProof: undefined });
+      assert.equal(w.p.autoPresence, true, `${name}: the software signer switch is honoured`);
+      assert.equal((await w.tools.get("wink.server.adopt").run(input, { caller: "device:app1" })).pending, true, `${name}: a software prover is asked`);
+    }
+    const rel = fixtureBuild("release");
+    const w = world({ confirm: true, requireProof: true, identityEntry: async () => entry, buildRoot: rel, releaseProof: undefined });
+    assert.equal(w.p.autoPresence, false, "a release-stamped copy ignores the switch");
+    await assert.rejects(() => w.tools.get("wink.server.adopt").run(input, { caller: "device:app1" }), e => e.code === "not_hardware");
+  } finally { if (saved === undefined) delete process.env.VYRE_SEAL_SOFTWARE; else process.env.VYRE_SEAL_SOFTWARE = saved; }
 });

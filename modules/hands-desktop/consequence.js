@@ -45,8 +45,8 @@ export const OBSERVABLE = [
 export const VETO = /(?:^|[^a-z])(?:authori[sz]e|allow|accept|agree|grant|consent|continue|proceed|enable|apply|order|yes|ok|okay|connect|install|approve|confirm|send|log\s?in|login|sign|pay|buy|checkout|purchase|subscribe|delete|remove|submit|save|done|finish|complete|start|trust|unlock|share|invite|publish|post|merge|push|deploy|release|transfer|upgrade|activate|verify|reset|clear|erase|discard|revoke|disconnect|unsubscribe)/i;
 /** A link that leaves for a consent, sign-in, payment or deletion page. */
 export const RISKY_HREF = /oauth|authori[sz]e|consent|checkout|payment|delete|logout|signout|sign-out|billing|grant/i;
-/** Controls that hold a value or a place and do nothing by themselves; the page names the role, so this alone decides nothing. */
-export const PASSIVE_ROLES = /^(?:entry|textbox|text field|text|searchbox|search field|combobox|combo box|tab|tab list|tabpanel|listbox|list box|option|list item|row|cell|column header|tree item|scroll bar|scrollbar|slider|label|heading)$/i;
+/** Input controls only. The page names the role, so it is believed for typing and focusing in a field and never to make a click on a named control observable (HD-6c). */
+export const PASSIVE_ROLES = /^(?:entry|textbox|text field|searchbox|search field|combobox|combo box|slider)$/i;
 
 /**
  * What kind of action is this?

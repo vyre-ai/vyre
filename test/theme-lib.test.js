@@ -1,4 +1,5 @@
 // lib/theme: the token source and the theme rules as a pure library vyred runs (ADR 0033).
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

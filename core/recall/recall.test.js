@@ -3,6 +3,7 @@
 // Vectors use a fake embedder: tests never download a model, and pass whether or not the
 // optional package is installed.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

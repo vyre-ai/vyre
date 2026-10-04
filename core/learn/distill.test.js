@@ -1,6 +1,7 @@
 // @ts-check
 // The new check kinds (tool, path, after, and paths on any check) and the shapes distill() knows
 // (ADR 0007, decision 7). Pure: no store, no daemon.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { distill, invalid, atTool, atStop, loosens, CODE, TESTS } from "./checks.js";

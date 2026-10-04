@@ -1,5 +1,6 @@
 // The Kernel port core/work is written against, on the REAL kernel (createKernel): only a module that declares `needs.kernel.work` has it, chainFor refuses a call that holds no person,
 // chainForPerson is a member's [viewer, service] chain and nothing wider, and tasks.forRecord reads through the caller's own chain. Stand-in: SHIM(presence), as the other kernel tests.
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createKernel } from "./index.js";

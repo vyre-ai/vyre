@@ -478,6 +478,7 @@ prepare_run() {
   esac
   [ -f "$RUN/compose.yml" ] || die "root's copy of the compose file is missing; run: sudo vyre updater install"
   [ "$BUILDF" = 0 ] || [ -f "$RUN/compose.build.yml" ] || die "root's copy of compose.build.yml is missing; run: sudo vyre updater install"
+  # (VYRE_SEAL_DEV and VYRE_SEAL_SOFTWARE are passed on because a release-kind build ignores them: kernel/seal devSwitch is false there, so they only matter on a development-kind install, where a walk needs them in the admin one-off runs.)
   # root's env file: only these, each in the shape it must have; anything else in .env (an image, a path, a capability list) is not passed on.
   ce="$RUN/compose.env.new"
   # (the key is spelled in two parts so the release build, which must not name any test override, stays checkable by grep)
@@ -486,12 +487,12 @@ prepare_run() {
       sed -n 's/^DOCKER_GID=\([0-9][0-9]*\)$/DOCKER_GID=\1/p; s/^VYRE_DRIVE_ACCESS=ro$/VYRE_DRIVE_ACCESS=ro/p; s/^VYRE_DRIVE_ACCESS=rw$/VYRE_DRIVE_ACCESS=rw/p; s/^VYRE_TS_HOSTNAME=\([A-Za-z0-9-]\{1,63\}\)$/VYRE_TS_HOSTNAME=\1/p; s/^TS_AUTHKEY=\([A-Za-z0-9_-]\{1,200\}\)$/TS_AUTHKEY=\1/p' "$DIR/.env"
     fi; } >"$ce"
   chmod 600 "$ce"; rename_over "$ce" "$RUN/compose.env"
-  if [ -f "$DIR/vyre.env" ] && [ ! -L "$DIR/vyre.env" ]; then grep -E '^(CLOUDFLARE_[A-Z0-9_]+|VYRE_SETUP_CODE|VYRE_SETUP_CODE_AT|VYRE_EGRESS_[A-Z0-9_]+|VYRE_KERNEL|VYRE_STORE)=[^$`]*$' "$DIR/vyre.env" >"$RUN/vyre.env.new" || true
+  if [ -f "$DIR/vyre.env" ] && [ ! -L "$DIR/vyre.env" ]; then grep -E '^(CLOUDFLARE_[A-Z0-9_]+|VYRE_SETUP_CODE|VYRE_SETUP_CODE_AT|VYRE_EGRESS_[A-Z0-9_]+|VYRE_KERNEL|VYRE_STORE|VYRE_SEAL_DEV|VYRE_SEAL_SOFTWARE)=[^$`]*$' "$DIR/vyre.env" >"$RUN/vyre.env.new" || true
   else : >"$RUN/vyre.env.new"; fi
   chmod 600 "$RUN/vyre.env.new"; rename_over "$RUN/vyre.env.new" "$RUN/vyre.env"
   # Nothing is dropped silently: the names (never the values) of what a root run did not pass on.
   skipped=$( { sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' "$DIR/.env" 2>/dev/null | grep -Evx 'DOCKER_GID|TS_AUTHKEY|VYRE_DRIVE_ACCESS|VYRE_TS_HOSTNAME|COMPOSE_PROJECT_NAME|COMPOSE_FILE|VYRE_SOURCE|VYRE_CHANNEL|VYRE_SETUP_CODE|VYRE_SETUP_CODE_AT' || true
-    sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' "$DIR/vyre.env" 2>/dev/null | grep -Evx 'CLOUDFLARE_[A-Z0-9_]+|VYRE_SETUP_CODE|VYRE_SETUP_CODE_AT|VYRE_EGRESS_[A-Z0-9_]+|VYRE_KERNEL|VYRE_STORE' || true; } | sort -u | head -n 12 | tr '\n' ' ')
+    sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' "$DIR/vyre.env" 2>/dev/null | grep -Evx 'CLOUDFLARE_[A-Z0-9_]+|VYRE_SETUP_CODE|VYRE_SETUP_CODE_AT|VYRE_EGRESS_[A-Z0-9_]+|VYRE_KERNEL|VYRE_STORE|VYRE_SEAL_DEV|VYRE_SEAL_SOFTWARE' || true; } | sort -u | head -n 12 | tr '\n' ' ')
   [ -z "$skipped" ] || echo "vyre: an update run by root ignores these settings from $DIR/.env and vyre.env (root passes on only the few it checks; start the stack yourself with them set, or see vyre.env.example): $skipped" >&2
 }
 
@@ -1780,7 +1781,7 @@ admin() {
         MSG=""; sp_fw_del "$nm" >/dev/null 2>&1 || true
         rm -rf -- "${d:?}"
       done
-      compose run --rm --no-deps -T --entrypoint node vyre /opt/vyre/scripts/admin-wipe.mjs || die "the vault and sealing wipe failed; the daemon is stopped. Nothing was started. Fix the line above and run this again."
+      compose run --rm --no-deps -T -u vyre --entrypoint node vyre /opt/vyre/scripts/admin-wipe.mjs || die "the vault and sealing wipe failed; the daemon is stopped. Nothing was started. Fix the line above and run this again."
       # What the host kept: database backups (they hold keys) and the releases set aside for a rollback.
       for f in "$UPD_PRIV/backups" "$UPD_PRIV/release.prev" "$UPD_PRIV/release.bad" "$UPD_PRIV/src.prev" "$SRCDIR.prev" "$BOXPREV"; do
         [ -e "$f" ] || [ -L "$f" ] || continue
@@ -1791,6 +1792,8 @@ admin() {
       say "wiped. Vyre is running again, new and empty, with no owner. Pair a device to claim it."
       ;;
     anchor-reset)
+      # `-u vyre` on both one-off runs: the service runs as 0:0 with every capability dropped but SETUID/SETGID (its entrypoint drops to vyre), so a one-off `--entrypoint node` is root without DAC_OVERRIDE and
+      # cannot read the vyre-owned home (0700): the script said "no Vyre home" (found on a real --from install, testbox6, 5 Oct).
       # Offline: the daemon is stopped, then scripts/admin-anchor-reset.mjs (kernel-2's) starts ONLY the sealing process from a one-off container of the same image and prints one request line.
       # The owner's device signs that request (a proof made after the line was printed: the sealing process takes none older, and one lives under a minute) and the signed proof comes back as
       # one line on this terminal's input. A refused, expired or replayed proof changes nothing; the script exits non-zero and the daemon is started again either way.
@@ -1798,9 +1801,9 @@ admin() {
       pf=$(compose run --rm --no-deps -T --entrypoint test vyre -f /opt/vyre/scripts/admin-anchor-reset.mjs 2>&1) || die "this release has no anchor-reset step (scripts/admin-anchor-reset.mjs in the image), or the image could not be run: $pf; nothing was changed"
       compose stop vyre >/dev/null 2>&1 || die "the daemon could not be stopped; nothing was changed"
       echo "Vyre will print one request line. Approve it on your device, then paste the proof your device gives back and press Enter. It is good for under a minute."
-      if compose run --rm --no-deps -i --entrypoint node vyre /opt/vyre/scripts/admin-anchor-reset.mjs --home /home/vyre/.vyre; then rs=0; else rs=1; fi
+      if compose run --rm --no-deps -i -u vyre --entrypoint node vyre /opt/vyre/scripts/admin-anchor-reset.mjs --home /home/vyre/.vyre; then rs=0; else rs=1; fi
       compose up -d >/dev/null 2>&1 || die "the daemon did not start; run: vyre up"
-      [ "$rs" = 0 ] || die "the anchor was not reset (see the line above); Vyre was started again and will refuse again until it is"
+      [ "$rs" = 0 ] || die "the anchor was not reset (see the line above); Vyre was started again"
       say "the anchor is reset and Vyre is running again."
       ;;
     purge-space)

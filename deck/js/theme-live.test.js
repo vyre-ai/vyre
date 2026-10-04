@@ -2,6 +2,7 @@
 // js/theme-live.js: the Deck follows the settings hub's theme (ADR 0035 section 5) with no reload
 // and no flash, reads again only when rev moved, and leaves a box without the hub as it was.
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { themeHref, schemeFor, repaints, followTheme } from "./theme-live.js";

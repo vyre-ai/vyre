@@ -1,3 +1,4 @@
+import "../../scripts/mac-test-guard.mjs";
 import "./testing/hosted-guard.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -320,4 +321,20 @@ test("HS-7: a workdir or temp folder that is, or contains, the shared temp folde
     }
     assert.doesNotThrow(() => checkEntries({ ...base, workdirs: [proj], temp: path.join(r, "t") }));
   } finally { fs.rmSync(r, { recursive: true, force: true }); }
+});
+
+test("HS-10: a session's temp lives outside the Vyre home, beside it, and the session reads and writes exactly its own folder there and cannot see a sibling session's", { skip: SKIP, timeout: 60_000 }, async t => {
+  const r = await rig(t);
+  const sessions = path.join(path.dirname(r.home), path.basename(r.home) + ".sessions", "tmp"); t.after(() => rm(path.dirname(sessions)));
+  const mine = path.join(sessions, "s-mine"), theirs = path.join(sessions, "s-theirs"); fs.mkdirSync(mine, { recursive: true }); fs.mkdirSync(theirs, { recursive: true });
+  fs.writeFileSync(path.join(theirs, "secret.txt"), "SIBLING-SECRET");
+  const script = `const fs=require("fs");const o={};try{fs.writeFileSync(process.argv[1]+"/mine.txt","x");o.write=fs.readFileSync(process.argv[1]+"/mine.txt","utf8")}catch(e){o.write=e.code}
+    try{o.sibling=fs.readFileSync(process.argv[2]+"/secret.txt","utf8")}catch(e){o.sibling=e.code}try{o.list=fs.readdirSync(process.argv[3]).join(",")}catch(e){o.list=e.code}console.log(JSON.stringify(o))`;
+  const p = planHome({ platform: process.platform, command: process.execPath, args: ["-e", script, mine, theirs, sessions], home: r.home, vyreHome: path.join(r.home, ".vyre"), sessionSocket: r.own, workdirs: [r.proj], temp: mine, readOnly: [path.dirname(process.execPath)], agent: r.agent, probes: r.probes });
+  const c = launch(p, { cwd: p.cwd }); let out = ""; c.stdout.on("data", d => out += d);
+  await new Promise(res => c.on("close", res));
+  const o = JSON.parse(out.trim().split("\n").pop());
+  assert.equal(o.write, "x", "the session writes and reads its own folder");
+  assert.notEqual(o.sibling, "SIBLING-SECRET", "a sibling session's temp is not readable");
+  assert.ok(!String(o.list).includes("s-theirs"), "a sibling session's folder is not even listed: " + o.list);
 });

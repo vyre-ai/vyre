@@ -7,6 +7,7 @@
 // passkey from the Deck. Enrolling, removing and minting need presence themselves; they are on
 // the floor's list, and they say so here too.
 
+import { devSwitch } from "../../kernel/devbuild.js";
 import { Presence } from "./index.js";
 import { PersonSessions } from "./person.js";
 import { isServer } from "../config/index.js";
@@ -20,7 +21,8 @@ const obj = (properties, required = []) => ({ type: "object", properties, requir
 export default {
   async start(ctx) {
     // Rows only: challenges and nonces live in vyred's own verifier, not in this one.
-    const presence = new Presence({ db: ctx.store.db, log: m => ctx.log(m) });
+    // `softwareOk`: a development-kind build behind VYRE_SEAL_SOFTWARE takes a device key as presence (marked software); a release-kind one never does (PW-1), and a device key opens no session there (PS-1).
+    const presence = new Presence({ db: ctx.store.db, log: m => ctx.log(m), softwareOk: () => devSwitch(process.env.VYRE_SEAL_SOFTWARE) });
 
     ctx.tool("presence.keys", {
       effect: "read", callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module"], // key names and ids are the person's, not a model's
@@ -32,9 +34,9 @@ export default {
 
     ctx.tool("presence.enroll", {
       effect: "write",
-      // The person's surfaces and modules, stated rather than defaulted: the relay enrols a device's presence key at pairing from its own listener, where no running call exists to name an origin, so the
-      // default's "original caller of a module hop" check refused it (no_such_tool) and no paired device had a presence key. The presence floor still needs a proof for anyone but the relay's own hop.
-      callers: ["cli", "local", "deck", "capsule", "mobile", "module"],
+      // Listed, not defaulted: the relay enrolls a paired device's key from its listener, where no person is the original caller, so the registry's origin check on a defaulted tool would hide it.
+      // The presence floor still needs a proof from every caller but a first-party module, and a device's passkey is enrolled by module:relay only (checked in the body).
+      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent", "module"],
       description: "Enroll a Capsule key (P-256 in the Secure Enclave, alg -7), a device key (P-256 with alg -7, or RSA of 2048 bits or more with alg -257, as Windows Hello makes) or a passkey, by its public key as base64url SPKI DER, a JWK or a Windows BCRYPT RSA blob. Needs presence.",
       presence: { summary: async input => `Enroll a ${input.kind === "passkey" ? "passkey" : input.kind === "device" ? "device key" : "Capsule key"} named "${String(input.name || input.kind)}"` },
       input: obj({ kind: { type: "string", enum: ["capsule", "passkey", "device"] }, name: str, public_key: str, alg: { type: "integer" }, rp_id: str, credential_id: str,
@@ -69,6 +71,9 @@ export default {
 
     ctx.tool("presence.remove", {
       effect: "write",
+      // Listed, not defaulted, like presence.enroll: the relay takes a device's presence key away when the device goes (a removal, the end of a setup session) from its own code, where no person is the
+      // original caller, so the registry's origin check on a defaulted tool refused it and the key stayed enrolled after its device was gone. A person still needs the presence proof.
+      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent", "module"],
       description: "Remove an enrolled Capsule key, device key or passkey by id. Needs presence.",
       presence: { summary: async input => `Remove the presence key ${String(input.id)}` },
       input: obj({ id: str }, ["id"]),
@@ -232,12 +237,54 @@ export default {
         if (!device) throw refuse();
         const s = people.startPaired({ device, sig: String(input.sig), label: input.label || null });
         if ("refused" in s) {
-          if (s.deleted) ctx.events.emit("presence.refused", { device, why: "pairing grant withdrawn after three wrong attempts" });
+          if (s.deleted) { locked.set(device, Date.now() + LOCK_MS); ctx.events.emit("presence.refused", { device, why: "pairing grant withdrawn after three wrong attempts" }); }
           throw refuse();
         }
         ctx.events.emit("presence.signed-in", { id: s.id, node: input.label || device });
         return { kind: "bearer", id: s.id, token: s.token, expires: s.expires };
       },
+    });
+
+    // ---- renewal (lead ruling, 4 Oct): a paired session is RENEWED, not re-paired -------------------------------------------------------------------------
+    // A device that lapsed (its session idle past its time) and still holds the key the owner confirmed at pairing asks for its challenge and answers it with that key: the server makes the one-use grant
+    // itself, from the pairing record wink keeps (confirmed by the owner, key on it, device not removed). No owner step. Three wrong answers lock the device for fifteen minutes; the owner lifts that
+    // from their own device with `presence.person.renew-allow` (their presence). A removed device has no key on its record, so there is nothing to renew: re-pairing is for a removed device only.
+    const LOCK_MS = 15 * 60_000;
+    // The lock lives in the store, so a restart does not give a locked device fresh guesses.
+    const locked = {
+      get: (/** @type {string} */ d) => { const r = /** @type {any} */ (ctx.store.db.prepare("SELECT until FROM presence_renew_lock WHERE device = ?").get(String(d))); return r ? Number(r.until) : undefined; },
+      set: (/** @type {string} */ d, /** @type {number} */ until) => { ctx.store.db.prepare("INSERT OR REPLACE INTO presence_renew_lock (device, until) VALUES (?, ?)").run(String(d), until); },
+      delete: (/** @type {string} */ d) => { ctx.store.db.prepare("DELETE FROM presence_renew_lock WHERE device = ?").run(String(d)); },
+      /** The locks still in the future, for the owner's Devices list. */
+      live: () => /** @type {any[]} */ (ctx.store.db.prepare("SELECT device, until FROM presence_renew_lock WHERE until > ? ORDER BY until").all(Date.now())).map(r => ({ device: String(r.device), until: Number(r.until) })),
+    };
+    const renewGrant = async (/** @type {string} */ device) => {
+      if (people.holds(device)) return;
+      const until = locked.get(device);
+      if (until && until > Date.now()) return;
+      const r = await ctx.call("wink.device.record", { id: device }).catch(() => null);
+      const rec = r && r.data;
+      if (!rec || rec.id !== device || !rec.confirmed || !rec.owner || rec.confirmedBy !== rec.owner || !rec.key || !["phone", "computer", "web"].includes(String(rec.kind))) return;
+      try { people.grant({ device, keyId: String(rec.confirmKeyId || `pairing:${device}`), deviceKey: rec.key, software: rec.hardware !== true }); } catch { /* no grant: the device gets the random challenge */ }
+    };
+    ctx.tool("presence.person.locked", {
+      effect: "read",
+      description: "The paired devices that are locked after wrong sign-in answers, each with the time the lock ends by itself (ms): { locked: [{ device, until }] }. For the owner's Devices list; a removed device is never listed.",
+      callers: ["cli", "local", "deck", "capsule", "mobile"],
+      input: obj({}),
+      run: async () => {
+        const out = [];
+        for (const l of locked.live()) { const r = await ctx.call("wink.device.record", { id: l.device }).catch(() => null); if (r && r.data && r.data.id === l.device) out.push(l); }
+        return { locked: out };
+      },
+    });
+    ctx.tool("presence.person.renew-allow", {
+      effect: "write",
+      description: "Lift the lock on a paired device that answered its sign-in challenge wrongly three times, from the owner's own device. The device then renews itself with its key.",
+      presence: { summary: async input => `Let ${String((input && input.device) || "that device")} sign in again` },
+      callers: ["cli", "local", "deck", "capsule", "mobile"],
+      input: obj({ device: str }, ["device"]),
+      run: async input => { locked.delete(String(input.device)); return { allowed: String(input.device) }; },
     });
 
     ctx.tool("presence.person.pair-challenge", {
@@ -248,7 +295,9 @@ export default {
       run: async (_, meta = {}) => {
         const peer = meta.peer;
         if (!(peer && peer.kind === "device")) throw Object.assign(new Error("this device cannot sign in that way; sign in with its key"), { code: "denied" });
-        return { challenge: people.challengeFor(nodeOf(meta)) };
+        const device = nodeOf(meta);
+        await renewGrant(device);
+        return { challenge: people.challengeFor(device) };
       },
     });
 

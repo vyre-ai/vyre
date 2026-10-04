@@ -1,4 +1,5 @@
 // Checkpoint I/O: what is on disk before a checkpoint is reported done, a full disk, a torn line, a crash in the middle.
+import "../../scripts/mac-test-guard.mjs";
 import "./testing/hosted-guard.js";
 import test from "node:test";
 import assert from "node:assert/strict";

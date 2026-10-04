@@ -118,7 +118,7 @@ const HUMAN = ["cli", "deck", "capsule"];
 /** Declared lists (the registry would otherwise default these writes to the person and modules). The hooks reach learn.signal, observe and check through harness (module). */
 const HOOKS_ONLY = ["module"];
 /** learn.add makes a lesson active at once: the person's surfaces and modules only. DESIGN CHOICE (see the report): the /vyre lesson command reaches it as a model. */
-const ADDERS = [...OWNER, "module"];
+const ADDERS = [...OWNER, "module", "mcp"];
 /** learn.edit only tightens (learn.relax is the person's), so a model may do it. */
 const TIGHTENERS = [...OWNER, "module", "mcp", "harness"];
 /**
@@ -520,13 +520,21 @@ export default {
       description: "Add a lesson the user wrote or asked for (/vyre remember). From text alone, a known shape (a banned character, a file to update with code, tests before commit) becomes a check; anything else is a reminder.",
       callers: ADDERS,
       input: { type: "object", properties: { text: { type: "string" }, rule: { type: "string" }, when: { type: "string" }, level: { type: "string", enum: LEVELS }, scope: scopeSchema, check: checkSchema, session: { type: "string" } } },
-      run: async ({ text, rule, when, level, scope, check, session }) => {
+      run: async ({ text, rule, when, level, scope, check, session }, extra = {}) => {
         const d = text && !rule ? distill(text) : null;
         if (!rule && !d && !text) throw new Error("say the lesson: text, or rule");
+        // A lesson steers every later session, so only the PERSON makes one outright. With the kernel on that is the call's chain (one person, no agent, no session-token hop); a model's
+        // `/vyre lesson` (a session calling as itself) makes a PROPOSED lesson the person accepts with learn.accept from their own surface. SHIM(legacy labels): with the kernel off, the
+        // model's labels (`mcp`, `harness`) are the model.
+        let person;
+        if (ctx.kernel && typeof ctx.kernel.chain === "function") {
+          const c = await ctx.kernel.chain(extra).catch(() => null);
+          person = Boolean(c && Array.isArray(c.hops) && c.hops.length === 1 && c.hops[0].actor && c.hops[0].actor.kind === "person" && c.viewer !== true && c.delegated !== true && !c.room);
+        } else person = !/^(?:mcp|harness)(?::|\s|$)/.test(String(extra.caller || ""));
         const l = create({ rule: rule || (d ? d.rule : String(text)), when: when || (d && d.when) || "always", level: level || (d ? d.level : undefined),
-          scope: await slugged(scope), check: check !== undefined ? check : d ? d.check : null, source: { kind: "remember", session: session || null, text: text || rule } }, "active");
-        ctx.events.emit("lesson.learned", { lesson: l.id, rule: l.rule, level: l.level, checked: Boolean(l.check) });
-        await snap();
+          scope: await slugged(scope), check: check !== undefined ? check : d ? d.check : null, source: { kind: "remember", session: session || null, text: text || rule, ...(person ? {} : { proposedBy: "session" }) } }, person ? "active" : "proposed");
+        if (person) { ctx.events.emit("lesson.learned", { lesson: l.id, rule: l.rule, level: l.level, checked: Boolean(l.check) }); await snap(); }
+        else ctx.events.emit("lesson.proposed", { lesson: l.id, rule: l.rule, checked: Boolean(l.check) }, { thread: session || undefined });
         return l;
       },
     });

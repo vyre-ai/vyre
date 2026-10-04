@@ -1,7 +1,8 @@
 // @ts-check
 // The owner's adoption of the claimed identity (reviewer-2's AO-1 to AO-4, the lead's AO-6): once, logged, serialised, repaired at boot from the log, and everything keyed by the old
 // owner's id still belongs to the person. Real daemons on a temp home, kernel on (a test box, never a Mac).
-import { test } from "node:test";
+import "../scripts/mac-test-guard.mjs";
+import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -14,7 +15,10 @@ process.env.VYRE_KERNEL_PATH_RULE = "1";
 const A = "per_aaaaaaaaaaaaaaaaaaaaaaaaaa", B = "per_bbbbbbbbbbbbbbbbbbbbbbbbbb";
 const spacesNeed = { name: "spaces", needs: { kernel: { actions: [], spaces: true } } };
 const logs = /** @type {string[]} */ ([]);
-const boot = (/** @type {string} */ root) => start({ root, log: (/** @type {string} */ m) => { logs.push(m); }, kernel: true });
+const started = /** @type {any[]} */ ([]);
+// every daemon a test starts is stopped when the test ends, pass or fail (a test that failed mid-way once left one running and the file never exited)
+afterEach(async () => { for (const d of started.splice(0)) await d.stop().catch(() => {}); });
+const boot = async (/** @type {string} */ root) => { const d = await start({ root, log: (/** @type {string} */ m) => { logs.push(m); }, kernel: true }); started.push(d); return d; };
 const person = (/** @type {any} */ d, /** @type {string} */ id) => d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-adopt", person: id, path: "direct", session: "s" });
 const events = (/** @type {any} */ d, /** @type {string} */ type) => d.kernel.log.read({ type });
 
@@ -23,26 +27,26 @@ test("AO-1, AO-2: adoption is once, with an owner.adopted marker and one owner.c
   let d = await boot(root);
   const old = d.kernel.id.owner;
   const h = d.kernel.kernelFor(spacesNeed);
-  assert.deepEqual(await h.adoptOwner(A), { owner: A, previous: old, changed: true });
+  assert.deepEqual(await h.adoptOwner(A, old), { owner: A, previous: old, changed: true });
   assert.equal(h.owner, A);
   assert.equal(events(d, "owner.adopted").length, 1);
   assert.equal(events(d, "owner.changed").filter((/** @type {any} */ e) => e.data.owner_change && e.data.owner_change.from === old).length, 1, "one owner.changed names from and to");
-  assert.deepEqual(await h.adoptOwner(A), { owner: A, previous: old, changed: false }, "the same id again changes nothing");
-  await assert.rejects(() => h.adoptOwner(B), { code: "already_adopted" });
+  assert.deepEqual(await h.adoptOwner(A, old), { owner: A, previous: old, changed: false }, "the same id again changes nothing");
+  await assert.rejects(() => h.adoptOwner(B, old), { code: "already_adopted" });
   assert.equal(h.owner, A, "state unchanged");
   assert.equal(events(d, "owner.adopted").length, 1);
   await d.stop();
   d = await boot(root);
   t.after(() => d.stop());
   assert.equal(d.kernel.id.owner, A, "the next start reads the adoption from the log");
-  await assert.rejects(() => d.kernel.kernelFor(spacesNeed).adoptOwner(B), { code: "already_adopted" }, "still refused after a restart and rebuild");
+  await assert.rejects(() => d.kernel.kernelFor(spacesNeed).adoptOwner(B, old), { code: "already_adopted" }, "still refused after a restart and rebuild");
 });
 
 test("AO-3: space.json put back to the old owner (a crash between the log and the file) is repaired at boot from the log; owner acts work", { timeout: 120_000 }, async t => {
   const root = tempHome(t);
   let d = await boot(root);
   const old = d.kernel.id.owner;
-  await d.kernel.kernelFor(spacesNeed).adoptOwner(A);
+  await d.kernel.kernelFor(spacesNeed).adoptOwner(A, old);
   await d.stop();
   const f = path.join(root, "kernel", "space.json");
   const j = JSON.parse(fs.readFileSync(f, "utf8"));
@@ -60,8 +64,9 @@ test("AO-4: five calls at once right after the claim make one adoption", { timeo
   const root = tempHome(t);
   const d = await boot(root);
   t.after(() => d.stop());
+  const old = d.kernel.id.owner;
   const h = d.kernel.kernelFor(spacesNeed);
-  const r = await Promise.all([1, 2, 3, 4, 5].map(() => h.adoptOwner(A)));
+  const r = await Promise.all([1, 2, 3, 4, 5].map(() => h.adoptOwner(A, old)));
   assert.equal(r.filter((/** @type {any} */ x) => x.changed).length, 1);
   assert.equal(events(d, "owner.adopted").length, 1);
   assert.equal(events(d, "owner.changed").filter((/** @type {any} */ e) => e.data.owner_change && e.data.owner_change.op === "adopt").length, 1);
@@ -81,7 +86,7 @@ test("AO-6: what was keyed by the old owner (tasks, records) is still listed for
   const assistant = { kind: "agent", id: "assistant", space };
   const task = await gw.ask.request(oldMe, { title: "Check this", doer: assistant, checker: { kind: "person", id: old, space }, output: { kind: "decision" }, record: rec.urn });
   assert.equal((await gw.ask.list(oldMe, {})).length, 1, "listed before");
-  await d.kernel.kernelFor(spacesNeed).adoptOwner(A);
+  await d.kernel.kernelFor(spacesNeed).adoptOwner(A, old);
   const me = person(d, A);
   assert.equal((await gw.records.get(me, "note", rec.id)).data.title === "before" ? 1 : 0, 1, "records survive");
   const listed = await gw.ask.list(me, {});
@@ -98,7 +103,8 @@ test("AO-6: the walk's seeded tasks (one waiting for the person's check, one an 
   const gw = d.kernel.gateway;
   const before = (await gw.ask.list(oldMe, {})).map((/** @type {any} */ x) => x.id).sort();
   assert.equal(before.length, 2, "two seeded tasks before");
-  await d.kernel.kernelFor(spacesNeed).adoptOwner(A);
+  const old = d.kernel.id.owner;
+  await d.kernel.kernelFor(spacesNeed).adoptOwner(A, old);
   const me = person(d, A);
   assert.deepEqual((await gw.ask.list(me, {})).map((/** @type {any} */ x) => x.id).sort(), before, "both still listed");
   assert.deepEqual((await gw.ask.needsYou(me)).map((/** @type {any} */ x) => x.id), [seeded.tasks.approval], "the approval still waits for the identity");
@@ -112,7 +118,7 @@ test("AO-5: a room the old owner made is the identity's room after adoption, and
   const chats = d.kernel.gateway.grants.chats;
   const chat = await chats.create(oldMe, {});
   const verBefore = chat.ver;
-  await d.kernel.kernelFor(spacesNeed).adoptOwner(A);
+  await d.kernel.kernelFor(spacesNeed).adoptOwner(A, old);
   const me = person(d, A);
   const room = await chats.read(me, chat.id);
   assert.deepEqual(room.people, [A], "the identity is in the room, the old id is not");
@@ -137,7 +143,7 @@ test("AO-3 boot repair: the process dies right after the owner.adopted marker; t
   let k = await boot(limited);
   const old = k.id.owner;
   gate.cut = true; gate.left = 1; // armed: the marker's own seal passes, every grants event after it fails
-  await assert.rejects(() => k.kernelFor(spacesNeed).adoptOwner(A), /process died/);
+  await assert.rejects(() => k.kernelFor(spacesNeed).adoptOwner(A, old), /process died/);
   assert.equal(k.log.read({ type: "owner.adopted" }).length, 1, "the marker was written");
   assert.equal(k.grants.roleOf({ kind: "person", id: A, space: k.id.space }), null, "the move did not happen");
   await k.stop();
@@ -162,7 +168,7 @@ test("hosted Spaces: adoption reaches the kernel of a Space made before the clai
   const theirs = await d.kernel.spaces.host({ owner: OTHER_OWNER, name: "theirs" });
   const roleIn = (/** @type {any} */ dd, /** @type {string} */ space, /** @type {string} */ p) => dd.kernel.spaces.hosted(space).kernel.grants.roleOf({ kind: "person", id: p, space });
   assert.equal(roleIn(d, mine.space, old), "owner");
-  await d.kernel.kernelFor(spacesNeed).adoptOwner(A);
+  await d.kernel.kernelFor(spacesNeed).adoptOwner(A, old);
   assert.equal(roleIn(d, mine.space, A), "owner", "the created Space took the identity at the claim: " + logs.filter(l => /owner|adopt|hosted/i.test(l)).join(" | "));
   assert.equal(roleIn(d, mine.space, old), null);
   assert.equal(roleIn(d, theirs.space, OTHER_OWNER), "owner", "someone else's Space is left alone");
@@ -186,11 +192,31 @@ test("hosted Spaces at boot: a restart after the home's adoption leaves a Space 
   const old = d.kernel.id.owner;
   const mine = await d.kernel.spaces.host({ owner: old, name: "late" });
   // adopt in the HOME's kernel directly, then take the hosted Space back to its old state on disk and in its log by hosting a second Space the old way: a Space opened fresh next boot
-  await d.kernel.adoptOwner(A);
+  await d.kernel.adoptOwner(A, old);
   await d.stop();
   d = await boot(root);
   t.after(() => d.stop());
   const k = d.kernel.spaces.hosted(mine.space).kernel;
   assert.equal(k.grants.roleOf({ kind: "person", id: A, space: mine.space }), "owner", "the boot caught the Space up from the home's adoption");
   assert.equal(k.grants.roleOf({ kind: "person", id: old, space: mine.space }), null);
+});
+
+test("HA-1: adoptOwner names the owner it replaces and refuses unless that is exactly the Space's owner now: another person's hosted Space is never taken, with the home's old owner named or none named", { timeout: 180_000 }, async t => {
+  const root = tempHome(t);
+  const d = await boot(root);
+  t.after(() => d.stop());
+  const old = d.kernel.id.owner, OTHER_OWNER = "per_eeeeeeeeeeeeeeeeeeeeeeeeee";
+  const theirs = await d.kernel.spaces.host({ owner: OTHER_OWNER, name: "theirs" });
+  const hosted = d.kernel.spaces.hosted(theirs.space).kernel;
+  const roleIn = (/** @type {string} */ p) => hosted.grants.roleOf({ kind: "person", id: p, space: theirs.space });
+  const h = hosted.kernelFor(spacesNeed);
+  await assert.rejects(() => h.adoptOwner(A), { code: "bad_input" }, "no owner named");
+  await assert.rejects(() => h.adoptOwner(A, old), { code: "not_allowed" }, "the home's old owner is not this Space's owner");
+  await assert.rejects(() => h.adoptOwner(A, A), { code: "not_allowed" });
+  assert.equal(roleIn(OTHER_OWNER), "owner"); assert.equal(roleIn(A), null);
+  // the home's own: the wrong owner named is refused too, and nothing moved
+  const home = d.kernel.kernelFor(spacesNeed);
+  await assert.rejects(() => home.adoptOwner(A, OTHER_OWNER), { code: "not_allowed" });
+  assert.equal(d.kernel.id.owner, old);
+  assert.equal((await home.adoptOwner(A, old)).changed, true);
 });

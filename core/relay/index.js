@@ -23,7 +23,7 @@ import { routeId, base32, TICKET_BYTES, TICKET_TTL, ticketDerive, ticketMac, tic
 import { SetupSession, setupGate } from "./setup.js";
 import { relayLink } from "./link.js";
 import { bridge } from "./bridge.js";
-import { peersFor } from "./peers.js";
+import { peersFor, inviteesFor } from "./peers.js";
 import { pairUrl, parsePairUrl } from "./pairing.js";
 import { knownBuild, findRelease, newestRelease } from "./releases.js";
 import { agentClaim, ownerDevice } from "../modules/index.js";
@@ -284,6 +284,8 @@ export default {
       if (c.startsWith("tailnet-guest:")) throw fail("denied", `${what} is the owner's; a guest never sees the box's devices`);
       if ((meta && meta.agent) || agentClaim(c)) throw fail("denied", `"${c}" is an agent; ${what} is the owner's`);
       if (["anonymous", "hook"].includes(c)) throw fail("denied", `${what} is the owner's`);
+      // a bare model session ("mcp", "harness") and a Vyre-owned session are not the owner either (platform-3: relay.status let a bare mcp through)
+      if (/^(mcp|harness|session)(?=$|[\s:])/.test(c) || /(?:^|[\s:])thread:/.test(c)) throw fail("denied", `${what} is the owner's, not a model's`);
     };
 
     // ---- the link ----
@@ -313,6 +315,9 @@ export default {
       // the setup session already admitted, is checked against the setup code's key and nothing else.
       const existing = /** @type {any} */ (db.prepare("SELECT kind FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
       if ((hello && hello.setup && typeof hello.setup === "object") || (existing && existing.kind === "setup")) return admitSetup(pub, hello, id, existing);
+      // An invitee (DESIGN-spaces-first.md): a person who is not a member of any space here reaches the home for one purpose. The channel makes no device row, no presence key and no session; it may
+      // open only the invitee peer stream, whose door (core/daemon/peer-door.js) checks the identity proof and the invite. A key that is a paired device here is not an invitee on this hello.
+      if (hello && hello.invitee === true && !existing && !pendingPairs.has(id)) return { v: 1, box: { name: boxName() }, invitee: id };
       if (hello && typeof hello.pair === "string") {
         const match = takeLiveSecret(hello.pair);
         if (!match) throw new Error("this pairing code has expired or was already used; make a new one on the box");
@@ -443,10 +448,12 @@ export default {
       return h;
     };
     /** Ends a waiting pairing: its channels close and a reconnect finds nothing. @returns {boolean} whether one was waiting */
+    // How long a waiting pairing's app may be gone before it is dropped: long enough for a phone on a bad network to reconnect (its client backs off from 1 s), short enough that an abandoned ask does not hold the server for minutes.
+    const ABANDON_MS = seam.abandonMs ?? 30_000;
     const pendingDrop = (id, why) => {
       const p = pendingPairs.get(id);
       if (!p) return false;
-      pendingPairs.delete(id); clearTimeout(p.timer);
+      pendingPairs.delete(id); clearTimeout(p.timer); clearTimeout(p.gone);
       for (const ch of p.channels) { try { ch.close(4401, why); } catch { /* closed */ } }
       return true;
     };
@@ -572,6 +579,15 @@ export default {
     const callerLabel = (kind, id) => kind === "app" ? `device:${id}` : kind === "web" ? `web:${id}` : kind === "setup" ? `setup:${id}` : null;
     let handle = null, webHandle = null, upgrade = null;
     function onchannel(channel, { reply }) {
+      if (reply && reply.invitee) {
+        const door = inviteesFor(ctx);
+        if (!door) { channel.close(4401, "this box does not take invitees"); return; }
+        const iid = String(reply.invitee);
+        // no HTTP-like request reaches anything for an invitee: every one is refused; the one door is the peer stream
+        const refuse = (/** @type {any} */ _req, /** @type {any} */ res) => { try { res.writeHead(403, { "content-type": "application/json" }); res.end(JSON.stringify({ error: { code: "denied", message: "an invite opens one door" } })); } catch { /* gone */ } };
+        bridge(channel, { handler: refuse, caller: `invitee:${iid}`, peer: { node: "invitee", stableId: iid, login: null, tags: [], caps: {}, kind: "device" }, log: m => ctx.log(m), invitees: door });
+        return;
+      }
       if (reply && reply.pending) {
         // A waiting pairing (X-1): a channel with one door, the tool its own pairing needs. No device row, no presence key, no upgrade, no peer stream.
         const pid = String(reply.pending), p = pendingPairs.get(pid);
@@ -580,8 +596,18 @@ export default {
         // an unconfirmed redeemer is `web:<id>`: it reaches only the tools that name that class (its own pairing's), and becomes `device:<id>` only at the confirm (BR-2)
         bridge(channel, { handler: pendingHandler(p.gate), caller: `web:${pid}`, peer, log: m => ctx.log(m) });
         p.channels.add(channel);
+        clearTimeout(p.gone);
         const closed0 = channel.onclose;
-        channel.onclose = reason => { closed0(reason); p.channels.delete(channel); };
+        // Every channel of a waiting pairing closed and none came back within the grace: the app is gone (the browser was closed before the yes). The pairing is dropped and the wink module
+        // told, so a server does not keep answering "busy" to the next scanner until it restarts.
+        channel.onclose = reason => {
+          closed0(reason); p.channels.delete(channel);
+          if (p.channels.size === 0 && pendingPairs.get(pid) === p) {
+            clearTimeout(p.gone);
+            p.gone = setTimeout(() => { if (p.channels.size === 0 && pendingPairs.get(pid) === p) { pendingDrop(pid, "abandoned"); try { ctx.events.emit("pairing.abandoned", { device: pid }); } catch { /* no listener */ } } }, ABANDON_MS);
+            if (p.gone.unref) p.gone.unref();
+          }
+        };
         return;
       }
       const id = String(reply.device);

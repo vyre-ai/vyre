@@ -1,5 +1,6 @@
 // The Estate planning Kit and the core types, through the real kernel gateway (authorize, events, versions) over the Twenty store.
 // Against the fake Twenty here; the same file runs against a real Twenty from stores/twenty/live (see host-live.mjs).
+import "../../scripts/mac-test-guard.mjs";
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

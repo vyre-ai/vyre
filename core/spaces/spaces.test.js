@@ -2,6 +2,7 @@
 // spaces: the module through the real registry, with a real names directory Worker on the fake runtime (no network), temp homes only.
 // Sample world: alex (the owner), juno and kit (people), Harlow Legal and Northwind Bakery (spaces).
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -76,8 +77,8 @@ async function device(t, { records = false, wink = false, kernelFor = undefined 
     const dir = fs.mkdtempSync(path.join(path.dirname(root), "wink-"));
     t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
     fs.mkdirSync(path.join(dir, "wink"));
-    fs.writeFileSync(path.join(dir, "wink", "module.json"), JSON.stringify({ name: "wink", version: "0.0.1", roles: ["box"], requires: [], does: { tools: [{ name: "wink.server.paired", reach: "modules" }, { name: "wink.server.call", reach: "modules" }] }, watches: { emits: [] }, needs: {}, teaches: {} }));
-    fs.writeFileSync(path.join(dir, "wink", "index.js"), "globalThis.__winkCalls = []; export default { async start(ctx) { ctx.tool('wink.server.paired', { description: 'x', input: { type: 'object' }, run: async i => ({ paired: i.device === 'srv_paired0000000001' }) }); ctx.tool('wink.server.call', { description: 'x', input: { type: 'object' }, run: async i => { globalThis.__winkCalls.push(i); if (globalThis.__winkRefuse) throw Object.assign(new Error('the server said no'), { code: 'forbidden' }); globalThis.__hn = (globalThis.__hn || 0) + 1; return i.tool === 'spaces.host-here' ? { space: 'spc_' + 'abcdefghjkl' + 'mnopqrstuvwx'[globalThis.__hn - 1], existed: false } : { retired: true }; } }); return { async stop() {} }; } };\n");
+    fs.writeFileSync(path.join(dir, "wink", "module.json"), JSON.stringify({ name: "wink", version: "0.0.1", roles: ["box"], requires: [], does: { tools: [{ name: "wink.server.paired", reach: "modules" }] }, watches: { emits: [] }, needs: {}, teaches: {} }));
+    fs.writeFileSync(path.join(dir, "wink", "index.js"), "globalThis.__winkCalls = []; export default { async start(ctx) { ctx.tool('wink.server.paired', { description: 'x', input: { type: 'object' }, run: async i => ({ paired: i.device === 'srv_paired0000000001' }) }); return { async stop() {} }; } };\n");
     found.push(...discover([dir], { firstPartyRoots: [dir] }).filter(f => f.manifest && f.manifest.name === "wink"));
   }
   const db = open(p.db);
@@ -819,6 +820,11 @@ test("kernel mode: an invite is the Space kernel's: the link carries its id and 
   const s = await d.ok("spaces.create", { name: "harlow", displayName: "Harlow Legal", home: { kind: "this-computer", confirmed: true } });
   const space = s.space;
   const sign = (call, ...a) => ({ payload_hash: proofRequest(KSPACE, call, ...a).payload_hash, nonce: Math.random().toString(36) });
+  // a space that lives on this computer makes no link: nobody else can reach it
+  const refused = await d.call("spaces.invites.create", { space, role: "member", to: kit.id }, "cli", { token, kernel_proof: sign("inviteCreate", { role: "member", invitee: kit.id }) });
+  assert.equal(refused.error && refused.error.code, "this_computer");
+  assert.match(refused.error.message, /^This space lives on this computer, so other people cannot join it\. Move it to your server first\.$/);
+  hooks.livesHere = false; t.after(() => { hooks.livesHere = null; });
   // the admin makes an invite for kit: a grant act with the admin's proof; the link is the kernel invite's id plus the pin
   const made = await d.call("spaces.invites.create", { space, role: "member", to: kit.id }, "cli", { token, kernel_proof: sign("inviteCreate", { role: "member", invitee: kit.id }) });
   assert.ok(!made.error, JSON.stringify(made.error));
@@ -851,6 +857,72 @@ test("kernel mode: an invite is the Space kernel's: the link carries its id and 
   assert.equal(adm.needs_confirm, true);
   const conf = await d.call("spaces.invites.confirm", { space, id: adm.id, words: card.fingerprint_words }, "cli", { token, kernel_proof: sign("inviteConfirm", adm.id, { words: card.fingerprint_words }) });
   assert.ok(!conf.error, JSON.stringify(conf.error));
+});
+
+test("a second person joins a space that lives on a server: the record carries the home's route, the invitee opens the stream with a signed hello and reads the card and accepts through the home's kernel", async t => {
+  const { createKernel } = await import("../../kernel/index.js");
+  const { payloadHash } = await import("../../kernel/seal/wire.js");
+  const { proofRequest } = await import("../../kernel/remote/proof.js");
+  const { createRemoteServer } = await import("../../kernel/remote/server.js");
+  const { KERNEL_CALL_TOOL } = await import("../../kernel/remote/wink.js");
+  const w = world(t);
+  const KSPACE = "spc_aaaaaaaaaaaa";
+  /** @type {any} */ let K = null;
+  const handles = new Map();
+  const used = new Set();
+  const presenceK = { check: async ({ chain, op, fields, proof }) => (chain && proof && proof.payload_hash === payloadHash(op, chain.space, fields) && !used.has(proof.nonce) && (used.add(proof.nonce), true) ? null : "bad_proof") };
+  const real = m => { if (!handles.has(m.name)) handles.set(m.name, K.kernelFor(m)); return handles.get(m.name); };
+  const kernelFor = remote => m => ({ for: () => (remote ? null : real(m).for(KSPACE)), chain: meta => real(m).chain(meta), proofFrom: meta => real(m).proofFrom(meta), serviceChain: () => real(m).serviceChain(), acceptProofRequest: (c, p) => real(m).acceptProofRequest(c, p), membership: p => real(m).membership(p, KSPACE) });
+  const d = await device(t, { kernelFor: kernelFor(false) }), kitDev = await device(t, { kernelFor: kernelFor(true) });
+  const alex = await d.ok("spaces.identity.create", { name: "alex" });
+  const kit = await kitDev.ok("spaces.identity.create", { name: "kit" });
+  K = await createKernel({ space: KSPACE, owner: alex.id, owner_uid: 501, key: Buffer.alloc(32, 9), clock: () => w.clock.t, presence: presenceK, hasPresenceSession: () => true });
+  const token = (await K.surfaces.open(K.chains.fromFacts({ kind: "socket", surface: "deck", uid: 501, pid: 1, inside_model_process: false, capsule_verified: true }))).token;
+  const kitToken = (await K.surfaces.open(K.chains.fromFacts({ kind: "invitee", person: kit.id, vouched: true }))).token;
+  const ROUTE = { relay: "https://relay.example", route: "rt-harlow", box: "bx-harlow" };
+  hooks.livesHere = false; hooks.route = () => ROUTE;
+  t.after(() => { hooks.livesHere = null; hooks.route = null; hooks.inviteeSessionFor = null; });
+  const s = await d.ok("spaces.create", { name: "harlow", displayName: "Harlow Legal", home: { kind: "this-computer", confirmed: true } });
+  const sign = (call, ...a) => ({ payload_hash: proofRequest(KSPACE, call, ...a).payload_hash, nonce: Math.random().toString(36) });
+  const made = await d.ok("spaces.invites.create", { space: s.space, role: "member", to: kit.id }, "cli", { token, kernel_proof: sign("inviteCreate", { role: "member", invitee: kit.id }) });
+  // kit's device does not host the space: without a stream it is told why
+  const noStream = await kitDev.call("spaces.invites.preview", { link: made.link }, "cli", { token: kitToken });
+  assert.equal(noStream.error && noStream.error.code, "unreachable");
+  assert.match(noStream.error.message, /^This space lives on alex's computer and cannot be reached from here\./, "the record names the owner");
+  assert.match(noStream.error.message, /cannot be reached from here\. Ask them to move it to their server\.$/);
+  // the home's end: the kernel's remote server, with the peer the door admitted from the hello
+  // this test's module-made space id is not the kernel's (a stand-in kernelFor); a real home answers under one id
+  const server = createRemoteServer({ space: KSPACE, kernel: K });
+  const hellos = [];
+  hooks.inviteeSessionFor = async (channel, hello) => {
+    hellos.push({ channel, hello });
+    return { call: async (tool, request) => { assert.equal(tool, KERNEL_CALL_TOOL); const r = JSON.parse(JSON.stringify(await server.serve({ ...JSON.parse(JSON.stringify(request)), space: KSPACE }, { person: hello.identity, device_key_id: `inv-${hello.nonce}`, path: "wink" }))); return r; } };
+  };
+  const card = await kitDev.ok("spaces.invites.preview", { link: made.link }, "cli", { token: kitToken });
+  assert.deepEqual([card.role, card.status, card.invitee], ["member", "pending", kit.id]);
+  assert.deepEqual(hellos[0].channel, ROUTE, "the route came from the space's directory record");
+  const h = hellos[0].hello;
+  assert.deepEqual([h.space, h.invite, h.identity], [s.space, made.id, kit.id]);
+  assert.match(h.sig, /^[A-Za-z0-9_-]+$/);
+  const first = await kitDev.ok("spaces.invites.accept", { link: made.link }, "cli", { token: kitToken });
+  assert.equal(first.needs_proof, true);
+  const joined = await kitDev.call("spaces.invites.accept", { link: made.link }, "cli", { token: kitToken, kernel_proof: { payload_hash: first.request.payload_hash, nonce: "n-kit-r1" } });
+  assert.ok(!joined.error, JSON.stringify(joined.error));
+  assert.equal(joined.data.joined, true);
+  assert.equal(joined.data.membership.role, "member");
+});
+
+test("an op made a moment before it is applied is accepted when the clock keeps moving (adding a device entry on a real clock)", async t => {
+  const w = world(t);
+  const d = await device(t), d2 = await device(t);
+  await d.ok("spaces.identity.create", { name: "tickalex" });
+  // every read of the clock is a millisecond later than the last, as a real clock is between building an op and applying it
+  let n = 0;
+  hooks.now = () => w.clock.t + n++;
+  const key = fileIdentityStore(d2.space).newDeviceKey();
+  const added = await d.call("spaces.identity.enrol", { publicKey: key.publicKey, label: "alex's phone" }, "module:wink");
+  assert.equal(added.error, undefined, JSON.stringify(added.error));
+  assert.equal(added.data.eid, key.eid);
 });
 
 test("the transport's ports: a paired device is an entry, the entry port answers live and a removed device answers null at its next call, and the device signs only the transport's proof", async t => {
@@ -967,6 +1039,7 @@ test("setup in progress: kept with the space, claimed by another device of the p
   assert.equal((await d.ok("spaces.setup.save", { space, setup: { step: "members" } }, "cli", laptop)).setup.started, saved.setup.started);
   assert.equal((await d.ok("spaces.setup.claim", { space }, "cli", laptop)).moved, false);
   assert.equal((await d.call("spaces.setup.claim", { space: "nope" }, "cli", laptop)).error?.code, "not_found");
+  assert.equal((await d.ok("spaces.setup.save", { space, setup: { step: "ai" } }, "cli", laptop)).setup.step, "ai", "the AI accounts step is a setup step");
   assert.equal((await d.ok("spaces.setup.save", { space, setup: null }, "cli", laptop)).setup, null);
   assert.equal((await d.ok("spaces.get", { space })).setup, null);
   assert.equal((await d.call("spaces.setup.claim", { space }, "cli", laptop)).error?.code, "no_setup");
@@ -1003,7 +1076,7 @@ test("device enrolment: no list means every space, pairing sets the list, a new 
   const asDevice = { kernelFacts: { kind: "device", device_key_id: eid } };
   const a = await d.ok("spaces.create", { name: "harlow", home: { kind: "this-computer", confirmed: true } });
   const b = await d.ok("spaces.create", { name: "northwind", home: { kind: "this-computer", confirmed: true } });
-  assert.equal((await d.ok("spaces.devices.enrolled", { device: eid, space: a.space }, "module:x")).enrolled, true, "no list yet: enrolled everywhere");
+  assert.equal((await d.ok("spaces.devices.enrolled", { device: eid, space: a.space }, "module:vyred")).enrolled, true, "no list yet: enrolled everywhere");
   // pairing: every space pre-ticked, the person unticks northwind
   const set = await d.ok("spaces.devices.set", { device: eid, spaces: [a.space] });
   assert.deepEqual(set.spaces, [a.space]);
@@ -1172,7 +1245,12 @@ test("a space whose home is a PAIRED server is hosted by the server: the device 
   const w = world(t);
   const d = await device(t, { wink: true });
   await d.ok("spaces.identity.create", { name: "alex" });
-  const calls = () => /** @type {any[]} */ (/** @type {any} */ (globalThis).__winkCalls);
+  const { hooks } = await import("./index.js");
+  /** @type {any[]} */ const recorded = [];
+  let counter = 0;
+  hooks.sessionFor = async dev => ({ call: async (tool, input) => { recorded.push({ device: dev, tool, input, proof: input.proof }); if (/** @type {any} */ (globalThis).__winkRefuse) throw Object.assign(new Error("the server said no"), { code: "forbidden" }); counter++; return tool === "spaces.host-here" ? { space: "spc_" + "abcdefghjkl" + "mnopqrstuvwx"[counter - 1], existed: false } : { retired: true }; } });
+  t.after(() => { hooks.sessionFor = null; });
+  const calls = () => recorded;
   const home = { kind: "server", device: { id: "srv_paired0000000001", name: "walker server", alwaysOn: true }, confirmed: true };
   const made = await d.call("spaces.create", { name: "servedspace", home }, "cli", { kernel_proof: { op: "t" } });
   assert.ok(!made.error, JSON.stringify(made.error));

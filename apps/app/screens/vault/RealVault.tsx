@@ -1,15 +1,16 @@
 // Vault from the real vyred. A list of the box's own items (names, kinds, who has them, how they were used), and Reveal per field, which is a
 // person's own call: the box asks for presence, the app's person session answers it, and the value lives in this screen's state for 30 seconds.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 import { Banner, Button, Card, Chip, Divider, EmptyState, Field, IconTile, Row, SealedMask, Segmented, Sheet, Tabs, Text, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { usePhone } from "../places/Page";
 import { Footnote, Frame, Sec } from "../places/Frame";
 import { REVEAL_MS } from "./logic.js";
-import { listReal, putReal, revealReal, revokeReal, stateReal, unlockReal, usesReal } from "./real";
+import { listReal, putReal, revealReal, revokeReal, stateReal, unlockPersonalReal, unlockReal, usesReal } from "./real";
 import { claimBlocked } from "../shell/rc";
-import { ON_PHONE } from "../../src/real/on-phone.js";
-import { NEW_KINDS, itemsOf, kindWord, putInput, putRefusal, revealRefusal, useCount, usesLine, type ListRow, type NewItem, type RealItem, type Tab, type UseRow } from "./real-model";
+import { ON_PHONE, howApprove } from "../../src/real/on-phone.js";
+import { presenceText } from "../shell/FaceIdSheet";
+import { NEW_KINDS, personalUnlockRefusal, itemsOf, kindWord, putInput, putRefusal, revealRefusal, useCount, usesLine, type ListRow, type NewItem, type RealItem, type Tab, type UseRow } from "./real-model";
 
 const say = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
 
@@ -21,6 +22,9 @@ export default function RealVault() {
   const [err, setErr] = useState("");
   const [sel, setSel] = useState<string | null>(null);
   const [pushed, setPushed] = useState(false);
+  const [personal, setPersonal] = useState("none");
+  const [pw, setPw] = useState("");
+  const [pwProblem, setPwProblem] = useState("");
   const [unlock, setUnlock] = useState<"passphrase" | "none">("none");
   const [pass, setPass] = useState("");
   const [adding, setAdding] = useState<NewItem | null>(null);
@@ -34,7 +38,7 @@ export default function RealVault() {
 
   const load = useCallback(() => {
     setErr("");
-    listReal().then((r) => { setRows(r.items); setLocked(r.locked); }).catch((e) => setErr(say(e, "The vault did not answer.")));
+    listReal().then((r) => { setRows(r.items); setLocked(r.locked); setPersonal(r.personal); }).catch((e) => setErr(say(e, "The vault did not answer.")));
     stateReal().then((s) => { if (s) setUnlock(s.unlock); }).catch(() => {});
   }, []);
   useEffect(load, [load]);
@@ -54,11 +58,15 @@ export default function RealVault() {
         timer.current = setTimeout(hide, REVEAL_MS);
         setUses((m) => { const { [item.id]: _gone, ...rest } = m; return rest; });
       })
-      .catch((e) => showToast(revealRefusal((e as { code?: string }).code, say(e, ""))));
+      .catch((e) => showToast(revealRefusal((e as { code?: string }).code, say(e, ""), Platform.OS === "web" ? (howApprove() === "touchid" ? "touchid" : "browser") : "phone")));
   };
   const remove = (item: RealItem, who: string) =>
     revokeReal(item.id, who).then(() => { showToast(`${who} no longer has ${item.name}.`); load(); }).catch((e) => showToast(say(e, "That did not work.")));
 
+  const doUnlockPersonal = () => {
+    setBusy(true); setPwProblem("");
+    unlockPersonalReal(pw).then(() => { setPw(""); showToast("Your personal vault is open."); load(); }).catch((e) => setPwProblem(personalUnlockRefusal((e as { code?: string }).code, (e as { detail?: { retry_after_s?: number } }).detail))).finally(() => setBusy(false));
+  };
   const doUnlock = () => {
     if (!pass) return;
     setBusy(true); setProblem("");
@@ -133,6 +141,15 @@ export default function RealVault() {
     <Frame title="Vault" sub="Logins, keys and cards.">
       <Footnote icon="shield">Assistants never see a credential. Every use is logged.</Footnote>
       <Tabs<Tab> value={tab} onChange={(t) => { hide(); setSel(null); setTab(t); }} items={[["Login", "Logins"], ["Key", "Keys"], ["Card", "Cards"]]} />
+      {!err && rows && !locked && personal === "locked" ? <Card><View className="gap-s3">
+        <Text strong>Your personal vault is locked</Text>
+        {claimBlocked() ? <Text tone="muted">{ON_PHONE.replace("Do this", "Unlock it")}</Text> : <>
+          <Text tone="muted">{presenceText("Enter its password and confirm with Face ID.")}</Text>
+          <Field label="Password" value={pw} onChangeText={setPw} kind="password" />
+          {pwProblem ? <Banner tone="warn"><Text>{pwProblem}</Text></Banner> : null}
+          <View className="self-start"><Button kind="primary" label={busy ? "Opening" : "Unlock"} disabled={busy || !pw} onPress={doUnlockPersonal} /></View>
+        </>}
+      </View></Card> : null}
       {!err && rows && !locked ? (claimBlocked() ? <Text size="caption" tone="label">{ON_PHONE.replace("Do this", "Add items")}</Text> : <View className="self-start"><Button kind="primary" icon="plus" label="Add an item" onPress={() => { setProblem(""); setAdding({ kind: "login", name: "", username: "", secret: "", url: "" }); }} /></View>) : null}
       {err ? <Card flush><EmptyState title="The vault did not answer" body={err} action={{ label: "Try again", onPress: load }} /></Card> : null}
       {!err && rows === null ? <Card flush><EmptyState title="Loading" body="Asking your Vyre." /></Card> : null}
@@ -140,11 +157,12 @@ export default function RealVault() {
         unlock === "passphrase" ? (
           <Card><View className="gap-s3">
             <Text strong>The vault is locked</Text>
+            <Text tone="muted">Enter its passphrase to open it.</Text>
             <Field label="Passphrase" value={pass} onChangeText={setPass} kind="password" help="The first time, the passphrase you type becomes the vault's." />
             {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
-            <View className="self-start"><Button kind="primary" label={busy ? "Opening" : "Unlock"} onPress={busy || !pass ? () => {} : doUnlock} /></View>
+            <View className="self-start"><Button kind="primary" label={busy ? "Opening" : "Unlock"} disabled={busy || !pass} onPress={doUnlock} /></View>
           </View></Card>
-        ) : <Card flush><EmptyState title="The vault is locked" body="Unlock it on your home, then come back." action={{ label: "Try again", onPress: load }} /></Card>
+        ) : <Card flush><ErrorState title="The vault has not answered" reason="Try again in a moment." retry={load} /></Card>
       ) : null}
       {!err && rows && !locked ? (
         <View className={phone ? "gap-s4" : "flex-row items-start gap-s4"}>
@@ -155,7 +173,7 @@ export default function RealVault() {
                   <Row dense chevron={phone} selected={!phone && cur?.id === v.id} lead={<IconTile name={v.tab === "Card" ? "file" : "key"} />} title={v.name}
                     sub={uses[v.id] ? `${v.line} · ${useCount(uses[v.id], Date.now())} uses today` : v.line} onPress={() => { hide(); setSel(v.id); setPushed(true); }} />
                 </View>
-              )) : <EmptyState title="Nothing here yet" body={rows.length ? `No ${tab.toLowerCase()}s in the vault.` : "No items yet. Add one from your home's terminal with vyre vault put."} />}
+              )) : <EmptyState title="Nothing here yet" body={rows.length ? `No ${tab.toLowerCase()}s in the vault.` : claimBlocked() ? "No items yet. Add items in Vyre on your phone." : "No items yet. Use Add an item."} />}
             </Card>
           </View>
           {phone ? null : <View className="min-w-pane min-w-0 flex-[1.2]">{detail}</View>}

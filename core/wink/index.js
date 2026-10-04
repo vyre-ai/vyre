@@ -60,6 +60,7 @@ function owner(meta, what) {
  *   typedCode   true switches the short typed code on (development; also VYRE_WINK_TYPED_CODE=1 or config wink.typedCode); off in a release build
  *   confirmAdopt false skips the person-at-the-server confirmation of a first adoption (a test seam; always on in a real box)
  *   releaseMaxMs how long a release the server never confirmed is retried before it is given up and the person is told (default 30 days)
+ *   looseOwnerIds true (tests only) accepts owner ids of any length
  *   vyreName (identity) => the Vyre name the directory has claimed for that identity (e.g. "alex.vyre.run") or null: shown beside the asker's display name at the server
  *   identityEntry (identity, eid) => the entry on that identity's list ({ eid, kind, pub, identity? }) or null: proves the app for a server installed with --pair-to (Q-3)
  *   signIdentity (message) => { eid, sig }: this app's signature with a key on its own identity list, sent when it adopts a server (Q-3)
@@ -289,7 +290,7 @@ export function createWink(inject = {}) {
       releaseMaxMs: inject.releaseMaxMs,
       // Q-3: the identity port (the entry on an identity's list, read live) that checks the proof of a server installed to pair to one identity, and the app's own signer for that proof. A box given
       // neither refuses every unattended pairing ("cannot check who is asking"): naming an identity is never enough.
-      identityEntry, signIdentity,
+      identityEntry, signIdentity, identityVyre: inject.identityVyre || (async () => { const r = /** @type {any} */ (await ctx.call("spaces.identity.self", {}).catch(() => null)); return r && r.data && r.data.name ? String(r.data.name) : null; }),
       // The Vyre name for an identity id comes from the directory through the spaces module, which checks a name the app CLAIMS (owner.vyre) against the directory; a bare claim is never shown as a name.
       vyreName: inject.vyreName || (async (/** @type {string} */ id, /** @type {string | undefined} */ claimed) => { try { const r = await ctx.call("spaces.identity.name-of", { id, ...(claimed ? { claimed } : {}) }); return (r && r.data && typeof r.data.name === "string" && r.data.name) || null; } catch { return null; } }),
       // Who may pair to a space: the kernel's grants store when ctx.kernel offers it (work/kernel), else a fake that makes the box owner the owner of its own space.
@@ -306,7 +307,7 @@ export function createWink(inject = {}) {
     live = pairing.peers;
     liveLinks = pairing.serverLinks;
     // handed up by name (core/modules provideOnce): the spaces and runner modules reach a paired server's peer session and kernel through ctx.sessionFor and ctx.remoteKernel
-    try { ctx.provide("winkSessionFor", (/** @type {string} */ id) => pairing.serverLinks().sessionFor(id)); ctx.provide("remoteKernel", (/** @type {string} */ id, /** @type {string} */ sp) => pairing.serverLinks().remoteKernel(id, sp)); } catch { /* provided already (a restart in one process), or no daemon (a test ctx) */ }
+    try { ctx.provide("winkSessionFor", (/** @type {string} */ id) => pairing.serverLinks().sessionFor(id)); ctx.provide("winkInviteeSessionFor", (/** @type {any} */ channel, /** @type {any} */ hello) => pairing.serverLinks().inviteeSessionFor(channel, hello)); ctx.provide("remoteKernel", (/** @type {string} */ id, /** @type {string} */ sp) => pairing.serverLinks().remoteKernel(id, sp)); } catch { /* provided already (a restart in one process), or no daemon (a test ctx) */ }
     /** A space's own name for a card, never its id. */
     const spaceName = async (/** @type {string} */ id) => {
       try { const m = (await directory.memberships(await owner1())).find(x => x.space === id); if (m && m.name) return String(m.name); } catch {}
@@ -318,6 +319,8 @@ export function createWink(inject = {}) {
     // A device that paired (a typed code, or a confirmed pairing) is registered under the identity with its kind. No grant is written in any space.
     // The relay marks how a device came (`via` in device.paired, `gate` too for a gated ticket) and a gated ticket makes no device until the person has picked the right words
     // (X-1): its redeemer is a waiting pairing (`pairing.pending`), held for the question below; this module confirms it to the relay only after that answer.
+    // a waiting pairing's app went away and did not come back (the browser closed before the yes): drop its ask now, so the next scanner is not told "busy until restart"
+    const offAbandoned = ctx.events.on("pairing.abandoned", (/** @type {any} */ e) => { try { pairing.abandoned(String((e.payload || e).device || "")); } catch { /* nothing waiting */ } });
     const offPending = ctx.events.on("pairing.pending", async (/** @type {any} */ e) => {
       const p = e.payload || e;
       try {
@@ -351,7 +354,12 @@ export function createWink(inject = {}) {
       adopted = true;
       const g = await grants();
       const identity = await owner1();
-      for (const x of await g.list({ status: "active", source: "wink:W" })) {
+      /** @type {any[]} */ let legacy;
+      // An event handler has no running call to build the kernel chain from, so the kernel refuses the list. That is the only error taken here, once, in one plain line: a server made by this build has no
+      // legacy grants to adopt, and the pairing never waits on it (the device is registered first). Any other error still propagates.
+      try { legacy = await g.list({ status: "active", source: "wink:W" }); }
+      catch (e) { if (/kernel-built chain/.test(String(/** @type {Error} */ (e).message))) { ctx.log("wink: legacy device grants were not looked for (an event has no chain to ask the kernel with); a server made by this build has none"); return; } throw e; }
+      for (const x of legacy) {
         const sub = x.subject.kind === "actor" ? x.subject.actor : null;
         if (!sub || sub.kind !== "device" || !x.actions.includes("space.act")) continue;
         const who = String(x.reason || "").split(", ");
@@ -359,7 +367,7 @@ export function createWink(inject = {}) {
         await g.revoke(x.id, "devices belong to your identity now");
       }
     };
-    const offPaired = ctx.events.on("device.paired", async (/** @type {any} */ e) => { try { await adoptLegacy(); await registerDevice(e.payload || e); } catch (err) { ctx.log(`wink: device registration failed: ${/** @type {Error} */ (err).message}`); } });
+    const offPaired = ctx.events.on("device.paired", async (/** @type {any} */ e) => { try { await registerDevice(e.payload || e); await adoptLegacy(); } catch (err) { ctx.log(`wink: device registration failed: ${/** @type {Error} */ (err).message}`); } });
     const offRemoved = ctx.events.on("device.removed", async (/** @type {any} */ e) => {
       const p = e.payload || e;
       try {
@@ -694,7 +702,7 @@ export function createWink(inject = {}) {
         try { stopStorage(); } catch {}
         if (poolTimer) clearInterval(poolTimer);
         for (const off of offStorage) { try { off(); } catch {} }
-        for (const off of [offCode, offPaired, offRemoved, offInvite, offPending]) { try { off(); } catch {} }
+        for (const off of [offCode, offPaired, offRemoved, offInvite, offPending, offAbandoned]) { try { off(); } catch {} }
         try { code?.cancel(); } catch {}
         try { pairing.stop(); } catch {}
       },

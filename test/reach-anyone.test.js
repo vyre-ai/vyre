@@ -3,6 +3,7 @@
 // "anyone" with no reason in test/reach-anyone.json, on a reason that does not name a guard when the tool's
 // name carries a mutating verb ("read-only" does not count for those), and on a stale line. A PENDING reason
 // is tracked for the owner to replace. It reads files only.
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

@@ -3,6 +3,7 @@
 // the real Swift helper on a private named pasteboard), and the pbcopy path runs fake pbcopy and
 // pbpaste found first on PATH. The value is a canary that must never show up in a result.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

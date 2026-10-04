@@ -11,6 +11,7 @@
 // git-safe, and not through cloneRepo): that stands in for "a repo Vyre already cloned", the state
 // worktreeAdd and worktreeRemove actually operate on.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";

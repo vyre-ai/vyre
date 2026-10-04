@@ -1,8 +1,9 @@
 // @ts-check
+import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { payloadHash as kernelHash } from "../../../../kernel/seal/wire.js";
+import { payloadHash as kernelHash } from "./payload-hash.js";
 import { answerRefusal, approveCard, askedLine, cardsFrom, factLines, refuseCard } from "./phone-approve.js";
 
 const FIELDS = { resource: "vyre://s/rule/r1", input_hash: "abc" };
@@ -54,21 +55,26 @@ test("AP-1: a card whose hash is not the hash of the fields it shows is refused 
   assert.match(answerRefusal("hash_mismatch"), /does not match/);
 });
 
-test("the app's payload hash is the kernel's, byte for byte, on several shapes", async () => {
-  const { payloadHash } = await import("./payload-hash.js");
-  for (const [op, space, fields] of [["grant.rule_set", "spc_aaaaaaaaaaaa", { resource: "r", input_hash: "h" }], ["grant.role", "spc_bbbbbbbbbbbb", { n: 1, list: [1, { z: 2, a: null }], s: "é\"" }], ["task.decide", "spc_cccccccccccc", {}]])
-    assert.equal(payloadHash(/** @type {string} */ (op), /** @type {string} */ (space), /** @type {any} */ (fields)), kernelHash(/** @type {string} */ (op), /** @type {string} */ (space), /** @type {any} */ (fields)));
+test("the app's payload hash reproduces platform's vector file, case by case (canonical and hash)", async () => {
+  const fs = await import("node:fs");
+  const { canonical, payloadHash } = await import("./payload-hash.js");
+  const file = JSON.parse(fs.readFileSync(new URL("../../../../kernel/seal/payloadhash-vectors.json", import.meta.url), "utf8"));
+  assert.ok(file.vectors.length >= 7);
+  for (const v of file.vectors) {
+    assert.equal(canonical({ op: v.op, space: v.space, fields: v.fields }), v.canonical, v.name);
+    assert.equal(payloadHash(v.op, v.space, v.fields), v.hash, v.name);
+  }
 });
 
-test("WH-1: a card whose fields carry an op or space key is refused before Face ID, and nothing is signed", async () => {
-  let signed = 0;
-  const signer = { signPresence: async (/** @type {any} */ r) => { signed++; return { payload_hash: r.payload_hash }; } };
-  const call = async () => { throw new Error("must not be called"); };
-  // (op a, fields {op: b}) hashes like (op b, fields {}): the hash matches, the card would still show the wrong act.
-  const evil = { ...CARD, op: "grant.rule_disable", fields: { op: "grant.rule_remove" }, payload_hash: kernelHash("grant.rule_remove", CARD.space, {}) };
-  await assert.rejects(approveCard(evil, signer, call, header, "per_a"), (/** @type {any} */ e) => e.code === "hash_mismatch");
-  await assert.rejects(approveCard({ ...CARD, fields: { ...FIELDS, space: "spc_zzzzzzzzzzzz" } }, signer, call, header, "per_a"), (/** @type {any} */ e) => e.code === "hash_mismatch");
-  assert.equal(signed, 0);
+test("WH-1 (nested form): fields named op or space cannot stand in for the real ones", async () => {
+  const { payloadHash } = await import("./payload-hash.js");
+  assert.notEqual(payloadHash("a", "spc_aaaaaaaaaaaa", { op: "b" }), payloadHash("b", "spc_aaaaaaaaaaaa", {}));
+  const card = { ...CARD, op: "grant.role", fields: { op: "grant.invite", space: "spc_bbbbbbbbbbbb" }, payload_hash: payloadHash("grant.role", CARD.space, { op: "grant.invite", space: "spc_bbbbbbbbbbbb" }) };
+  const signer = { signPresence: async (/** @type {any} */ r) => ({ payload_hash: r.payload_hash }) };
+  assert.deepEqual(await approveCard(card, signer, async () => ({ answered: "approved" }), header, "per_a"), { answered: "approved" });
+  // and a hash that is not the nested hash of what the card shows is refused
+  const old = { ...card, payload_hash: "p7RnC0xh9eBykRqVvO7qWpbuYDGEgyOAdJkbiN57LEo" };
+  await assert.rejects(approveCard(old, signer, async () => ({}), header, "per_a"), (/** @type {any} */ e) => e.code === "hash_mismatch");
 });
 
 test("the key module needs the person's id, so a phone that does not know it signs nothing", async () => {

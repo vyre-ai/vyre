@@ -9,10 +9,10 @@ export function canonical(v) {
   return `{${Object.keys(v).filter(k => v[k] !== undefined).sort().map(k => `${JSON.stringify(k)}:${canonical(v[k])}`).join(",")}}`;
 }
 export const sha256b64 = s => crypto.createHash("sha256").update(s).digest("base64url");
-/** sha-256 (base64url) of the canonical payload a person approves: `{ op, space, ...fields }`, for example op "seal.reveal" with ref and purpose. */
+/** sha-256 (base64url) of the canonical payload a person approves: `{ op, space, fields }` (the fields NESTED, so a field named op or space can never stand for the real one), for example op "seal.reveal" with ref and purpose. */
 /** What a device's identity-chain key signs to vouch for a presence key: the person, the key id and the key. The native signer uses this too. */
 export const bindBytes = (person, key_id, spki) => Buffer.from(`vyre-presence-bind-v1\n${person}\n${key_id}\n${sha256b64(spki)}`);
-export const payloadHash = (op, space, fields) => sha256b64(canonical({ op, space, ...fields }));
+export const payloadHash = (op, space, fields) => sha256b64(canonical({ op, space, fields }));
 /** The bytes a presence proof signs: the proof without its signature and without its App Attest assertion (B2: the assertion is a second signature over these same bytes, made by the app's own key). */
 export const proofBytes = proof => { const { signature, assertion, ...rest } = proof; return Buffer.from(canonical(rest)); };
 /** The chain summary the kernel hands the sealing process (it cannot see the branded Chain across a process). */

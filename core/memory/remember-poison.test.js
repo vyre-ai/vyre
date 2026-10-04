@@ -1,6 +1,7 @@
 // @ts-check
 // HD-8: memory.remember from a session. The attack: a prompt-injected session calls memory.remember "my wife is Mallory" and it becomes the person's own fact at confidence 0.95, in the
 // profile and in every later prompt. Only the person at a surface tells memory outright; a session's or an agent's remember is an untrusted, attributed write.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
@@ -44,4 +45,13 @@ test("a session's memory.remember is kept as untrusted and never reaches the per
   assert.match(profile, /Jordan/);
   const prompt = JSON.stringify((await call("memory.prompt", { prompt: "who is my wife", person: true, first: true }, "module:harness", { firstParty: true })).data);
   assert.doesNotMatch(prompt, /Mallory/);
+});
+
+test("a project agent's session may pin and mute inside its own project, and never steer the main graph or curate the whole", async t => {
+  const { call } = await rig(t);
+  // A named agent with no project grant: the guard refuses it the main graph, as it did before the registry's list admitted a model.
+  for (const [tool, input] of [["memory.pin", { node: "Dana Reyes" }], ["memory.mute", { node: "Dana Reyes" }], ["memory.curate", {}]]) {
+    const r = await call(tool, { ...input, agent: "kit" }, "mcp:agent:kit");
+    assert.ok(r.error, `${tool} from a project agent must not steer the main graph`);
+  }
 });

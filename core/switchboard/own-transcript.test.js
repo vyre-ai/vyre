@@ -1,5 +1,6 @@
 // @ts-check
 // threads.own-transcript: what the sessions side tells the runner so each finished turn of a session on the person's own server is sealed (ports.ownServer.resolve).
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

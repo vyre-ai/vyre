@@ -28,6 +28,7 @@ import { findSubreaper, groupAlive, usesSpawner } from "../sessions/spawn.js";
 import { openThreadSocket, DIR as THREAD_SOCKETS } from "../daemon/threadsock.js";
 import { prepareSandbox } from "../../lib/agent-sandbox.js";
 import { keyUuid } from "../modules/idempotency.js";
+import { sessionTempDir } from "../../lib/session-temp.js";
 import { ownerDevice, ownerOverTailnet } from "../modules/index.js";
 import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
@@ -714,6 +715,13 @@ export class Switchboard {
       id = rec.id;
       if (rec.archived) throw Object.assign(new Error(`${rec.name || String(id).slice(0, 8)} is archived: unarchive it to continue`), { code: "archived" });
       if (this.live.has(id)) { if (o.prompt) this.write(id, o.prompt); return this.launched(id); }
+      // A session whose process was KILLED (it ended failed, not stopped) may have a torn transcript tail and an unfinished turn: when the runner seals this home's sessions per turn, put the file back to
+      // exactly the last sealed turn before `claude --resume` reads it. Only a crashed thread, and only while no process of it runs (checked above); no runner, an unsealed session or any refusal changes nothing.
+      const stopReason = /** @type {any} */ (this.db.prepare("SELECT stopped_reason FROM threads_runs WHERE id = ?").get(id))?.stopped_reason;
+      // Unclean ends: the process was killed (failed), or the daemon itself died under it (recover() at the next start marks such a thread stopped with reason "restart").
+      if ((rec.canonical_status === "failed" || rec.status === "failed" || this.states.get(id) === "failed" || stopReason === "restart") && (rec.provider || "claude") === "claude") {
+        try { const r = /** @type {any} */ (await this.deps.call("runner.recover", { session: id })); if (r && r.data && r.data.turn !== undefined) this.deps.log(`threads: ${String(id).slice(0, 8)} was put back to its last sealed turn (${r.data.turn}) before resuming`); } catch { /* no runner here */ }
+      }
       const row = /** @type {any} */ (this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
       if (row && row.opts) o = { ...JSON.parse(String(row.opts)), ...o };
     } else {
@@ -971,7 +979,7 @@ export class Switchboard {
     if (!sock) throw Object.assign(new Error("Vyre did not start this session because it has no socket of its own to reach Vyre through."), { code: "sandbox_failed" });
     const provider = rec.provider || o.provider || "claude";
     const pickEnv = (/** @type {string[]} */ names) => Object.fromEntries(names.filter(n => o.env && o.env[n]).map(n => [n, o.env[n]]));
-    const r = await prepareSandbox({ ...cfg, temp: this.sessionTemp(id), credentials: cfg.credentials ? async (/** @type {string} */ p) => { const v = await cfg.credentials(p); return typeof v === "string" ? v : v || pickEnv(["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"]); } : (() => pickEnv(["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"])) }, { provider, command: cfg.binFor ? cfg.binFor(provider) : this.bin, sessionSocket: sock.path, workdirs: [rec.cwd], ...(o.gitEnv ? { trustedEnv: o.gitEnv } : {}) });
+    const r = await prepareSandbox({ ...cfg, temp: this.sessionTemp(id), credentials: cfg.credentials ? async (/** @type {string} */ p) => { const v = await cfg.credentials(p); return typeof v === "string" ? v : v || pickEnv(["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"]); } : (() => pickEnv(["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"])) }, { provider, command: absoluteBin(cfg.binFor ? cfg.binFor(provider) : this.bin), sessionSocket: sock.path, workdirs: [rec.cwd], ...(o.gitEnv ? { trustedEnv: o.gitEnv } : {}) });
     if (r.sandboxed) {
       if (r.release) { const old = this.releases.get(id); this.releases.set(id, r.release); if (old) old().catch(() => {}); }
       // Partly sandboxed (a provider that cannot move its settings folder keeps its own): said on this session's log, and once per machine and provider in words.
@@ -1004,8 +1012,26 @@ export class Switchboard {
    * nothing another will load and another user cannot pre-create it. A leftover or a link at the path is removed first. Removed when the session's socket closes.
    * @param {string} id
    */
+  /**
+   * Whether a model agent's session may start where it asks: the folder (or the named project's home) must resolve, through symlinks and `..`, inside a mapped project's home or workspace folder.
+   * @param {unknown} project @param {unknown} cwd @param {unknown} [granted] the agent's stored grant: "*" or a list of project slugs @returns {Promise<{ ok: boolean, why: string }>}
+   */
+  async projectFolders(project, cwd, granted) {
+    const r = /** @type {any} */ (await this.deps.call("projects.list", {}).catch(() => null));
+    const all = r && r.data && Array.isArray(r.data.projects) ? r.data.projects : (r && Array.isArray(r.data) ? r.data : []);
+    // only the projects THIS agent is granted ("*" is every mapped project; no grant is none)
+    const rows = granted === "*" ? all : Array.isArray(granted) ? all.filter((/** @type {any} */ p) => granted.includes(p.slug)) : [];
+    const roots = [];
+    for (const p of rows) for (const f of [p.home, ...(Array.isArray(p.workspaces) ? p.workspaces.map((/** @type {any} */ w) => (w && w.path) || w) : [])]) { try { if (typeof f === "string" && f) roots.push(fs.realpathSync(f)); } catch { /* gone */ } }
+    const want = typeof cwd === "string" && cwd ? cwd : (() => { const p = rows.find((/** @type {any} */ x) => x.slug === project || x.name === project); return p ? p.home : ""; })();
+    if (!want) return { ok: false, why: "name a project or a folder inside one: an agent's session does not start anywhere else" };
+    let real; try { real = fs.realpathSync(String(want)); } catch { return { ok: false, why: "that folder does not exist" }; }
+    const inside = roots.some(root => real === root || real.startsWith(root.endsWith(path.sep) ? root : root + path.sep));
+    return inside ? { ok: true, why: "" } : { ok: false, why: "an agent's session starts only inside a project folder it can see" };
+  }
+
   sessionTemp(id) {
-    const dir = path.join(String(this.deps.root || ""), "run", "session-tmp", String(id).replace(/[^\w-]/g, ""));
+    const dir = sessionTempDir(String(this.deps.root || ""), id);
     try { const st = fs.lstatSync(dir); if (st.isSymbolicLink() || !st.isDirectory()) fs.rmSync(dir, { recursive: true, force: true }); } catch { /* not there */ }
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     fs.chmodSync(dir, 0o700);
@@ -1017,7 +1043,7 @@ export class Switchboard {
     const sock = this.socks.get(id);
     if (!sock) { void this.endKernelSession(id); return; }
     this.socks.delete(id);
-    const dir = path.join(String(this.deps.root || ""), "run", "session-tmp", String(id).replace(/[^\w-]/g, ""));
+    const dir = sessionTempDir(String(this.deps.root || ""), id);
     sock.close().catch(() => {}).finally(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* already gone */ } });
   }
 
@@ -1126,6 +1152,9 @@ export class Switchboard {
     // it, as this thread, whatever they claim. Without one, VYRE_SOCKET is not inherited.
     const sock = this.socks.get(id);
     if (sock) env.VYRE_SOCKET = sock.path; else delete env.VYRE_SOCKET;
+    // With its own socket the session reaches vyred ONLY through it: a session that inherited the daemon's VYRE_HOME (an unsandboxed development run) would find vyred's main socket from it and call as
+    // a bare caller, with no kernel session, so its calls would carry no person. The sandbox hides the home anyway; this makes the unsandboxed path behave the same.
+    if (sock) delete env.VYRE_HOME;
     const rec = this.must(id);
     // Learned skills load with the Harness; a job without the plugin gets only what it names.
     const plugins = [...(o.plugin === false ? [] : learnedDirs(this.deps.root, rec.project, rec.agent)), ...(o.plugins || [])];
@@ -3069,6 +3098,14 @@ export function surfaceFor(input, caller, owner, kc, kernelOwner) {
   return fromLink(caller) && !s.startsWith("box:") ? `box:${s}` : s;
 }
 
+/** The sandbox runs an absolute program path: a bare `claude` is looked up on PATH the way a shell would, and left as it is when it is not found (the check then says so). @param {string} cmd */
+function absoluteBin(cmd) {
+  const c = String(cmd || "");
+  if (!c || path.isAbsolute(c) || c.includes("/")) return c;
+  for (const dir of String(process.env.PATH || "").split(path.delimiter)) { if (!dir) continue; const f = path.join(dir, c); try { fs.accessSync(f, fs.constants.X_OK); return f; } catch { /* not here */ } }
+  return c;
+}
+
 export const fromLink = caller => /^link:/.test(String(caller || ""));
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
@@ -3180,7 +3217,9 @@ export default {
       canonicalPerson: ctx.kernel && typeof ctx.kernel.canonicalPerson === "function" ? ctx.kernel.canonicalPerson : null,
       sandbox: ctx.sandbox || null,
       threadSocket: cfg.thread_socket === "off" ? null
-        : async (/** @type {any} */ o) => cfg.thread_socket === "on" || usesSpawner()
+        // A session that runs in the sandbox reaches Vyre only through its own socket (sandboxFor refuses one that has none), so whenever the sandbox is in force the socket is made, whatever
+        // "auto" would say: on a home that is not a spawner box (a checkout, a Mac) "auto" alone left EVERY session, a person's included, refused with "no socket of its own".
+        : async (/** @type {any} */ o) => cfg.thread_socket === "on" || usesSpawner() || Boolean(ctx.kernelSession) || Boolean(ctx.sandbox && !ctx.sandbox.off && !ctx.sandbox.unavailable)
           ? openThreadSocket({ handler: ctx.handler, log: ctx.log, ...o,
             dir: usesSpawner() ? THREAD_SOCKETS : path.join(privateSocketDir(), `t-${crypto.createHash("sha256").update(String(root)).digest("hex").slice(0, 12)}`) })
           : null,
@@ -3239,9 +3278,10 @@ export default {
     const calls = new AsyncLocalStorage();
     const guard = (caller, what) => {
       if (fromLink(caller)) return;
-      const agent = agentOf(caller);
-      if (!agent) return;
+      // Decided on what vyred verified (meta.agent, meta.agentKind), never on the label: on an agent's own thread socket the label is the client's to choose.
       const v = /** @type {any} */ (calls.getStore());
+      const agent = (v && v.agent) || agentOf(caller);
+      if (!agent) return;
       if (v && v.agent === agent && v.agentKind === "assistant") return;
       throw new Error(`only the assistant can ${what}; ${agent} is an agent`);
     };
@@ -3261,8 +3301,11 @@ export default {
     const sessionMay = async (meta, target, mutating, tool = "") => {
       const m = meta || {};
       const caller = String(m.caller || "");
-      if (!/^(?:mcp|harness)(?::|$)/.test(caller) || fromLink(caller)) return true;
-      if (m.agent) return true; // an agent: guard() and mayReach decide; the assistant passes through its verified meta.agent
+      // A model call is known by what vyred verified (an agent, a thread), or by the label of a plain session; a label alone is only a claim, so it never LOWERS the checks below.
+      const modelish = Boolean(m.agent) || (typeof m.thread === "string" && m.thread !== "") || /^(?:mcp|harness)(?::|$)/.test(caller);
+      if (!modelish || fromLink(caller)) return true;
+      if (m.agent && m.agentKind === "assistant") return true; // the assistant, from its verified meta.agent: guard() and mayReach decide
+      // any other named agent is held like a session: its own thread and the threads it started (below)
       if (typeof m.thread !== "string" || !m.thread) {
         // The person's own Claude Code through Vyre's MCP, no verified thread: like a session, and known by the kernel (meta.peerSession is the claude
         // process and its start time, meta.peerCwd its folder, both read by vyred from the socket peer). It starts threads and stops, archives or
@@ -3297,7 +3340,10 @@ export default {
         return run(i, meta, ...rest);
       }
       : run;
-    const tool = (name, description, input, run, callers, extra = {}) => { const inner = scoped(name, run); return ctx.tool(name, { description, input, run: async (i, m, ...r) => { const kchain = ctx.kernel && typeof ctx.kernel.chain === "function" ? await Promise.resolve(ctx.kernel.chain(m)).catch(() => null) : undefined; return calls.run({ ...m, kchain }, () => inner(i, m, ...r)); }, callers, ...extra }); };
+    // The tools a model session reaches (SESSION_MUTATING and SESSION_READS) are scoped in their body by sessionMay (a session its own thread and the threads it started, a project's reads): the registry
+    // would otherwise default every write tool to a person's surfaces and modules, which refused the assistant that starts and drives sessions, so they declare who may CALL them and the body decides.
+    const MODEL_REACH = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "link", "link:box", "mcp", "harness"];
+    const tool = (name, description, input, run, callers0, extra = {}) => { const callers = callers0 === undefined && (SESSION_MUTATING.has(name) || SESSION_READS.has(name)) ? MODEL_REACH : callers0; const inner = scoped(name, run); return ctx.tool(name, { description, input, run: async (i, m, ...r) => { const kchain = ctx.kernel && typeof ctx.kernel.chain === "function" ? await Promise.resolve(ctx.kernel.chain(m)).catch(() => null) : undefined; return calls.run({ ...m, kchain }, () => inner(i, m, ...r)); }, callers, ...extra }); };
 
     const spendGate = (caller, provider) => spendCheck(ctx, caller, provider);
     /** An admin: the owner's own surface (no verified peer) or the peer signed in as the box's owner. */
@@ -3314,7 +3360,7 @@ export default {
         mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: str, id: str, name: str } }, description: "The # tags the composer picked ({kind, id}) for the first prompt, from a person's own surface only; as threads.send." },
         pasted: { type: "array", maxItems: 20, items: str, description: "The spans of the prompt the person pasted: a #Name inside one tags nothing. As threads.send." },
         parent: { type: "string", description: "First-party modules only: the thread this one is started for (a teammate's thread for a person's). A session starting one is its own parent, from what vyred verified." } } },
-      async (i, { caller, thread, firstParty, agent, peerSession }) => {
+      async (i, { caller, thread, firstParty, agent, peerSession, granted }) => {
         guard(caller, "start sessions");
         await spendGate(caller, i.provider);
         // The parent is the calling session's own verified thread, or (a first-party module starting it
@@ -3326,6 +3372,17 @@ export default {
         // HD-2: a model's call (a session, an agent, an mcp or harness caller) starts a NEW thread with the declared fields only. resume (writes into any live thread), fork, agent and agent_kind
         // (another agent's credentials and project grants), env, scope, account and the rest are the person's surfaces' and first-party modules'.
         const modelCall = Boolean(thread || agent || agentOf(caller) || /^(?:mcp|harness)(?::|$)/.test(String(caller || "")));
+        // A model session with no named agent behind it has no grants of its own to act under (a model caller is never the person): it starts nothing. The assistant and the agents the person made are named
+        // (meta.agent, from the daemon's own record of the session), and a first-party module acts for its own purpose.
+        if (modelCall && !firstParty && !agent) throw Object.assign(new Error("an unnamed model session starts no sessions: it has no agent grants of its own to act under"), { code: "denied" });
+        // SW-1: "every project" is every MAPPED project, not the disk. A named agent's (the assistant's included) session starts in a folder that, after symlinks and `..`, lies inside a project it is
+        // granted (its home or a workspace folder); anything else, `/` and `/etc` included, is refused. A person's own threads.start keeps today's rule.
+        // A model does not pick a session's PURPOSE beyond the ordinary three: capsule, job, teammate, memory, planner, learn and helper pick other models, plugins and permission profiles.
+        if (modelCall && !firstParty && i.purpose !== undefined && !["chat", "agent", "project"].includes(String(i.purpose))) throw Object.assign(new Error("a model session starts a chat, agent or project session only"), { code: "denied" });
+        if (modelCall && !firstParty && agent) {
+          const folders = await sb.projectFolders(i.project, i.cwd, granted);
+          if (!folders.ok) throw Object.assign(new Error(folders.why), { code: "denied" });
+        }
         const rest = modelCall && !firstParty ? Object.fromEntries(Object.entries(restAll).filter(([k]) => START_FIELDS.has(k))) : restAll;
         const plain = /^(?:mcp|harness)(?::|$)/.test(String(caller || "")) && !thread && !agent;
         const person = personTurn(caller) && i.prompt ? { chips: Array.isArray(mentions) ? mentions : [], pasted: Array.isArray(pasted) ? pasted.filter(x => typeof x === "string").slice(0, 20) : [] } : null;
@@ -3456,11 +3513,11 @@ export default {
         model: { type: "string", description: "Switch the thread to this model first (as threads.model): the Capsule's Cmd-Return, deeper. A person's surface only." },
         effort: { type: "string", enum: EFFORTS, description: "Set this effort first (as threads.effort). A person's surface only." } } },
       // Only a person's words are queued for a session open in a terminal: a model's are refused.
-      async (i, { caller, idempotencyKey, firstParty, peer }) => {
+      async (i, meta = {}) => { const { caller, idempotencyKey, firstParty, peer } = meta;
         guard(caller, "type into sessions");
         { const rec = sb.record(i.thread); await spendGate(caller, rec && rec.provider); }
         // Only the person's own callers reach a Mac; agents, MCP, guests and modules get the box's answer.
-        if (wantsMacs(ctx, {}, caller) && !sb.knows(i.thread)) {
+        if ((await wantsMacs(ctx, {}, caller, meta)) && !sb.knows(i.thread)) {
           const mac = await sendToMac(i, caller);
           if (mac) return mac;
         }
@@ -3501,7 +3558,7 @@ export default {
         const { caller } = meta;
         guard(caller, "list sessions");
         const { machines: _, ...q } = i;
-        if (!wantsMacs(ctx, i, caller)) { const rows = sb.list(q); if (!Array.isArray(rows)) return rows; const ok = await Promise.all(rows.map(r => sessionMay(meta, r && r.id, false))); return rows.filter((_, k) => ok[k]); }
+        if (!(await wantsMacs(ctx, i, caller, meta))) { const rows = sb.list(q); if (!Array.isArray(rows)) return rows; const ok = await Promise.all(rows.map(r => sessionMay(meta, r && r.id, false))); return rows.filter((_, k) => ok[k]); }
         // On the box, for the person: the Macs' threads too, newest first, each labelled with its machine.
         const answers = await askMacs(ctx, "threads.list", q);
         return mergeRows(ctx, sb.list(q), answers, { compare: (a, b) => (b.last || 0) - (a.last || 0) });
@@ -3533,15 +3590,16 @@ export default {
 
     tool("threads.release", "Give the keyboard back. Releasing a lease you do not hold changes nothing.",
       { type: "object", required: ["thread"], properties: { thread: str, surface: str } },
-      async (i, { caller }) => { guard(caller, "release a session"); return sb.release(i.thread, surfaceOf(i, caller)); });
+      async (i, { caller }) => { guard(caller, "release a session"); return sb.release(i.thread, surfaceOf(i, caller)); },
+      ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module"]); // the computers' keyboard lease lapses on a timer, with no person as original caller
 
     tool("threads.asks", "Questions and permission asks waiting on the user, oldest first (kind: only questions or only permissions). Each has its kind, what a card shows (questions, or detail), who asks (agent, thread_name), where it sits in the session (anchor: tool_use_id and its ask.raised event id), what always allow is on offer (always, always_project), and what answering takes (presence: required, covered). A surface that reconnects reads these; events alone cannot say what is open now. On a box, for the person, the paired Macs' open asks too, labelled source and machine (machines: \"local\" for the box's own only).",
       { type: "object", properties: { thread: str, kind: { type: "string", enum: ["question", "permission"] }, machines: { type: "string", enum: ["all", "local"] } } },
-      async (i, { caller, peer }) => {
+      async (i, meta = {}) => { const { caller, peer } = meta;
         guard(caller, "read questions");
         const { machines: _, ...q } = i;
         const own = await withPresence(sb.asks.open(q.thread, q.kind).map(({ request_id, ...a }) => a), peer);
-        if (!wantsMacs(ctx, i, caller)) return own;
+        if (!(await wantsMacs(ctx, i, caller, meta))) return own;
         // On a box, for the person: the paired Macs' open asks too, each labelled with its machine,
         // so a surface that reconnects has one list to reconcile from. What answering one takes is
         // the box's rule, not the Mac's: a gated ask needs a fresh proof here (gatedOnMac), and the
@@ -3564,7 +3622,7 @@ export default {
         const a = sb.asks.get(i.ask);
         if (a && thread && a.thread === thread) throw Object.assign(new Error("an ask is answered by the person, not from the session that raised it"), { code: "denied" });
         // Only the person's own callers reach a Mac (a module never: it passes no `machines`).
-        if (!a && !thread && wantsMacs(ctx, {}, caller)) {
+        if (!a && !thread && (await wantsMacs(ctx, {}, caller, meta))) {
           const mac = await answerOnMac(i, caller, peer, meta);
           if (mac) return mac;
         }

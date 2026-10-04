@@ -73,22 +73,24 @@ export async function createKernel(cfg) {
   // The log decides who the owner is (AO-3): an adoption it holds wins over what the home's own file says, a move a crash cut short is finished here, and the file is rewritten from it.
   if (grantsStore && cfg.bootstrap !== false && typeof grantsStore.adopted === "function" && grantsStore.adopted()) {
     const ad = /** @type {{ from: string, to: string }} */ (grantsStore.adopted());
-    await grantsStore.adoptOwner(ad.to);
+    await grantsStore.adoptOwner(ad.to, ad.from);
     if (ownerRef.id !== ad.to) { const from = ownerRef.id; ownerRef.id = ad.to; if (typeof cfg.onOwnerAdopted === "function") await cfg.onOwnerAdopted(ad.to, from); }
   }
   // A presence session (the person signed in with their passkey on this device) stands for admin acts only for a chain that is exactly one person.
   /** @type {any} */ let gateway;
   const members = grantsStore ? grantsStore.members : cfg.members;
   const tasks = createTasks({
-    canonicalPerson: (/** @type {string} */ id) => (grantsStore ? grantsStore.canonicalPerson(id) : id),
+    canonicalPerson: (/** @type {string} */ id) => (grantsStore ? grantsStore.canonicalPerson(id) : id), texts: cfg.texts,
     space: cfg.space, log, chains, clock, presence: presence || { check: async () => "no_presence_verifier" }, members: { has: (/** @type {any} */ a) => members.has(a), roleOf: (/** @type {any} */ a) => (grantsStore ? grantsStore.roleOf(a) : null) },
     authorizer: { authorize: (/** @type {any} */ i) => gateway.authorize(i), get actions() { return gateway.registry; } },
     approver: () => ({ kind: "person", id: ownerRef.id, space: cfg.space }), resolve: cfg.resolve, enforce: (/** @type {any} */ c, /** @type {any} */ d) => limits.enforce(c, d),
   });
   const roomPort = grantsStore ? createRoomPort({ grantsStore }) : null;
   // An approved Kit install is presence for that install (kernel/tasks/kit-apply.js); the gateway's authorizer asks `waives`, the install asks `begin`.
-  const kitApply = createKitApply({ space: cfg.space, tasks, log, chains, clock });
+  const kitApply = createKitApply({ space: cfg.space, tasks, log, chains, clock, types: () => store.types() });
   gateway = createGateway({
+    // The stored attributes are the whole truth about a type's owner and project only where no module supplies them and the home has no attribute function: then a store may filter by them.
+    attrPush: (/** @type {string} */ type) => !cfg.attrs && !attrProviders.has(type),
     kitApply, waives: (/** @type {any} */ w, /** @type {any} */ q) => kitApply.waives(w, q),
     room: roomPort,
     space: cfg.space, store, log, chains, clock, limits, tasks, approvedAct: (/** @type {any} */ q) => tasks.useApproval(q), get owner() { return ownerRef.id; }, presence, hasPresenceSession, expr: cfg.expr === undefined ? defaultExpr : cfg.expr,
@@ -112,9 +114,10 @@ export async function createKernel(cfg) {
     try { return (await cfg.deviceEnrolled(space, facts.device_key_id)) !== false; } catch { return false; }
   };
   /** The one adoption path (the handle's call and the boot repair share it). The grants store serialises it and reads the owner it replaces itself, so two callers at once make one adoption. */
-  const adoptNow = async (/** @type {string} */ to) => {
-    const r = await grantsStore.adoptOwner(to);
-    if (r.owner !== ownerRef.id) { const from = ownerRef.id; ownerRef.id = r.owner; if (typeof cfg.onOwnerAdopted === "function") await cfg.onOwnerAdopted(r.owner, from); }
+  const adoptNow = async (/** @type {string} */ to, /** @type {any} */ fromArg) => {
+    const from = fromArg && typeof fromArg === "object" ? fromArg.from : fromArg; // `adoptOwner(to, { from })` (windows' shape) or `adoptOwner(to, from)`
+    const r = await grantsStore.adoptOwner(to, from);
+    if (r.owner !== ownerRef.id) { const was = ownerRef.id; ownerRef.id = r.owner; if (typeof cfg.onOwnerAdopted === "function") await cfg.onOwnerAdopted(r.owner, was); }
     return r;
   };
   const kernelFor = (/** @type {any} */ m) => {
@@ -125,7 +128,12 @@ export async function createKernel(cfg) {
     const ready = Promise.all([installed, Array.isArray(needs.types) && needs.types.length ? store.define({ add_types: needs.types }) : Promise.resolve()]);
     // A failure here (the sealing process went away) surfaces on the module's first call, not as an unhandled rejection nobody can catch.
     ready.catch(() => {});
-    const records = new Proxy(gateway.records, { get: (t, k) => (typeof t[k] === "function" ? async (/** @type {any[]} */ ...a) => { await ready; return t[k](...a); } : t[k]) });
+    // A Proxy over a COPY of the gateway's (frozen) records: a Proxy over a frozen target must answer with the target's own values, and these answers wait for `ready`. The handle is read only: nothing
+    // may assign to it, delete from it or redefine a method on it, so no holder can replace what another caller gets.
+    const records = new Proxy({ ...gateway.records }, {
+      get: (t, k) => (typeof t[k] === "function" ? async (/** @type {any[]} */ ...a) => { await ready; return t[k](...a); } : t[k]),
+      set: () => false, defineProperty: () => false, deleteProperty: () => false, setPrototypeOf: () => false,
+    });
     /** @type {any} */ const handle = {
       space: cfg.space, get owner() { return ownerRef.id; },
       /** A person id as the Space knows them now (the owner an adoption replaced is the identity that replaced them): a module that keyed anything by person id reads it through this. */
@@ -278,9 +286,9 @@ export async function createKernel(cfg) {
     }
     if (needs.spaces === true) {
       /** The claimed identity's id becomes the owner's id here (once, logged): the one person of this Space. */
-      handle.adoptOwner = (/** @type {string} */ to) => {
+      handle.adoptOwner = (/** @type {string} */ to, /** @type {any} */ from) => {
         if (!grantsStore) throw new KernelError("unavailable", "this kernel has no grants store");
-        return adoptNow(to);
+        return adoptNow(to, from);
       };
 
       const reg = () => { if (!spaces) throw new KernelError("unavailable", "this kernel has no Spaces registry"); return spaces; };
