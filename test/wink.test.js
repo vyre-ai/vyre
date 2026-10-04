@@ -1579,3 +1579,19 @@ test("a box-less client makes its first space on a paired server: the server hos
   await assert.rejects(() => claimServerSpace({ identity, name: "nopeproof", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (spacesHooks.fetch), now: () => f.ident.clock.t, host: a => session.call("spaces.host-here", a) }), e => e.code === "presence_required");
   assert.equal((await dir.check("nopeproof")).status, "ok");
 });
+
+test("host-here on a server too small for the larger store asks for the owner's word, in the kernel's words, and hosts only when asked again with it", async t => {
+  const f = await pairFreshServer(t);
+  const links = linksFor(t, f);
+  await links.startPaired("srv");
+  const session = links.sessionFor("srv");
+  const sp = f.w.d.kernel.spaces;
+  spacesHooks.storePlan = async () => ({ store: "sqlite", confirm: { text: "This server is small: the space will use the built-in store.", choices: ["create", "cancel"] } });
+  t.after(() => { spacesHooks.storePlan = null; });
+  const before = sp.list().length;
+  await assert.rejects(() => session.call("spaces.host-here", { name: "smallroom", proof: { key: "k1" } }), e => e.code === "needs_store_confirmation" && /built-in store/.test(e.message));
+  assert.equal(sp.list().length, before, "nothing was hosted before the owner agreed");
+  const made = await session.call("spaces.host-here", { name: "smallroom", acceptBuiltinStore: true, proof: { key: "k2" } });
+  assert.match(made.space, /^spc_[a-z2-7]{12}$/);
+  assert.ok(sp.hosts(made.space));
+});

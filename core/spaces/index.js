@@ -50,6 +50,7 @@ export const hooks = {
   /** @type {any} */ vpsDeps: null,
   /** @type {((channel: { relay: string, route: string, box: string }, hello: any) => Promise<{ call(tool: string, input: any): Promise<any> }> | { call(tool: string, input: any): Promise<any> }) | null} an invitee's peer session to the home a space's record names (the daemon wires it); a test sets it */ inviteeSessionFor: null,
   /** @type {((spaceId: string) => { relay: string, route: string, box: string } | null) | null} the home's route for a space's directory record (read at call time) */ route: null,
+  /** @type {(() => Promise<any>) | null} replaces the kernel's store plan in host-here (read at call time) */ storePlan: null,
   /** @type {boolean | null} when set, answers "does this space live on this computer" for every space (read at call time) */ livesHere: null,
   /** @type {((device: string) => Promise<{ call(tool: string, input: any): Promise<any> }>) | null} the open Wink peer session to a paired server (the daemon wires it); a test sets it */ sessionFor: null,
 };
@@ -665,7 +666,15 @@ export default {
         if (i.home && i.home.kind === "server" && i.home.device && typeof i.home.device.id === "string" && await pairedServer(i.home.device.id)) remoteServer = i.home.device.id;
         const KS = !remoteServer && K && K.spaces && typeof K.spaces.host === "function" ? K.spaces : null;
         if (remoteServer) {
-          const made = await remoteCall(remoteServer, "spaces.host-here", { name: label }, meta);
+          let made;
+          try { made = await remoteCall(remoteServer, "spaces.host-here", { name: label, ...(i.storeChoice === "create" ? { acceptBuiltinStore: true } : {}) }, meta); }
+          catch (e) {
+            if (/** @type {any} */ (e).code === "needs_store_confirmation") {
+              if (i.storeChoice === "cancel") return { status: "cancelled", reason: "You chose not to create it on this server." };
+              return { status: "needs_confirmation", confirm: { text: String(/** @type {any} */ (e).message), choices: ["create", "cancel"] } };
+            }
+            throw e;
+          }
           if (!made || typeof made.space !== "string" || !/^spc_[a-z2-7]{12}$/.test(made.space)) throw refuse("The server did not give the space an id. Nothing was made.", "server_refused");
           spaceId = made.space;
           await kv.put(`server-hosted/${spaceId}`, { device: remoteServer, at: now() });
@@ -1047,7 +1056,7 @@ export default {
       if (!K || !K.spaces || typeof K.spaces.retire !== "function") throw refuse("This home has no kernel to change.", "unavailable");
       try { return await K.spaces.retire(String(i.id)); } catch (e) { throw plainKernelError(e); }
     }, { presence: { summary: (/** @type {any} */ i) => `Take back the space ${i && i.id} on this server` } });
-    tool("spaces.host-here", "On a server: host a new space in THIS home's kernel for its owner (called by the owner's device over the paired session when a space is made with this server as its home). Answers { space }. Idempotent when given the id.", obj({ name: str, id: str }, ["name"]), async (i, meta) => {
+    tool("spaces.host-here", "On a server: host a new space in THIS home's kernel for its owner (called by the owner's device over the paired session when a space is made with this server as its home). Answers { space }. Idempotent when given the id.", obj({ name: str, id: str, acceptBuiltinStore: { type: "boolean" } }, ["name"]), async (i, meta) => {
       if (!K || !K.spaces || typeof K.spaces.host !== "function" || typeof K.owner !== "string") throw refuse("This home has no kernel to host a space.", "unavailable");
       let person = null;
       try { const c = await K.chain(meta); const h = c && c.hops && c.hops.length === 1 ? c.hops[0].actor : null; person = h && h.kind === "person" ? String(h.id) : null; } catch { person = null; }
@@ -1058,7 +1067,11 @@ export default {
         if (!/^spc_[a-z2-7]{12}$/.test(i.id)) throw refuse("That is not a space id.", "bad_input");
         if (K.spaces.hosts(i.id) === true) return { space: i.id, existed: true };
       }
-      try { const h = await K.spaces.host({ owner: K.owner, name: label, ...(typeof i.id === "string" && i.id ? { id: i.id } : {}) }); return { space: h.space || h.id, existed: false }; } catch (e) { throw plainKernelError(e); }
+      // A server too small for the larger store needs the owner's word first, in the kernel's own words (the same confirmation a local creation shows). The refusal carries that text; asking again with acceptBuiltinStore hosts it.
+      const plan = typeof hooks.storePlan === "function" ? await hooks.storePlan() : typeof K.spaces.storePlan === "function" ? await K.spaces.storePlan().catch(() => null) : null;
+      const confirm = plan && plan.confirm ? plan.confirm : null;
+      if (confirm && i.acceptBuiltinStore !== true) throw refuse(String(confirm.text || "This server needs your OK to use the built-in store."), "needs_store_confirmation");
+      try { const h = await K.spaces.host({ owner: K.owner, name: label, ...(confirm ? { accept_builtin_store: true } : {}), ...(typeof i.id === "string" && i.id ? { id: i.id } : {}) }); return { space: h.space || h.id, existed: false }; } catch (e) { throw plainKernelError(e); }
     }, { presence: { summary: (/** @type {any} */ i) => `Make the space ${i && i.name} on this server` } });
     // Which paired server hosts a space this device made with a server as its home (null for a space hosted here): for the module that opens the remote path to that Space.
     tool("spaces.server-of", "The paired server's device id that hosts a space this device made, or null. For modules.", obj({ space: str }, ["space"]), async (i, meta) => { onlyModules(meta, ["wink", "runner", "vyred"]); return { device: await serverOf(String(i.space)) }; }, { internal: true });
