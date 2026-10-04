@@ -13,7 +13,6 @@ import { withKernelCall, KERNEL_CALL_TOOL } from "../../kernel/remote/wink.js";
 import { INVITEE_CALLS, WIRE_VERSION, PRESENCE_CODES } from "../../kernel/remote/wire.js";
 import { verifyDevice } from "../wink/node/peer-wire.js";
 import crypto from "node:crypto";
-import { devSwitch } from "../../kernel/devbuild.js";
 
 /** The stream's `space` head: this home, not one of its hosted Spaces (a kernel call names its Space in the request). */
 export const PEER_HOME = "home";
@@ -28,7 +27,6 @@ const err = (/** @type {string} */ code, /** @type {string} */ message) => Objec
  */
 export function createPeerDoor(o) {
   const log = o.log || (() => {});
-  const softwareOk = o.softwareOk || (() => devSwitch(process.env.VYRE_SEAL_SOFTWARE));
   /** @type {Map<string, any>} */ const servers = new Map();
   const kernelOf = (/** @type {string} */ space) => (space === o.kernel.id.space ? o.kernel : (o.kernel.spaces && typeof o.kernel.spaces.for === "function" ? (() => { try { const h = o.kernel.spaces.for(space); return h && h.hosted === true ? h.kernel : null; } catch { return null; } })() : null));
   const serverFor = (/** @type {string} */ space) => {
@@ -36,7 +34,7 @@ export function createPeerDoor(o) {
     const k = kernelOf(space);
     if (!k) { servers.delete(space); return null; }
     let s = servers.get(space);
-    if (!s || s.k !== k) { s = { k, server: createRemoteServer({ space, home: o.kernel.id.space, kernel: k, identityEvidence: async (/** @type {{ person: string, name?: string }} */ w) => { try { const r = await o.registry.call("spaces.identity.evidence", w, "module:vyred", { door: true }); return r && !r.error && r.data && Array.isArray(r.data.ops) ? r.data : null; } catch { return null; } }, attest: async nonce => { const r = await o.registry.call("spaces.attest", { space, nonce }, "module:vyred"); return r && r.data && !r.error ? r.data : null; } }) }; servers.set(space, s); }
+    if (!s || s.k !== k) { s = { k, server: createRemoteServer({ space, home: o.kernel.id.space, kernel: k, log, identityEvidence: async (/** @type {{ person: string, name?: string }} */ w) => { try { const r = await o.registry.call("spaces.identity.evidence", w, "module:vyred", { door: true }); return r && !r.error && r.data && Array.isArray(r.data.ops) ? r.data : null; } catch { return null; } }, attest: async nonce => { const r = await o.registry.call("spaces.attest", { space, nonce }, "module:vyred"); return r && r.data && !r.error ? r.data : null; } }) }; servers.set(space, s); }
     return s.server;
   };
   /** The device's own row at the relay, now: an app device that is not removed, or null. @param {string} id */
@@ -61,13 +59,16 @@ export function createPeerDoor(o) {
     const facts = await factsOf(id, person);
     if (!facts) throw err("denied", "this device is not paired here any more");
     const body = input && typeof input === "object" && !Array.isArray(input) ? { ...input } : {};
+    // an approval id (a card the owner's phone answered) rides beside the call, never into the tool's input
+    const approval = typeof body.approval === "string" ? body.approval : undefined;
+    if (!(tool && o.registry.tools && o.registry.tools.get(tool) && o.registry.tools.get(tool).input && o.registry.tools.get(tool).input.properties && Object.hasOwn(o.registry.tools.get(tool).input.properties, "approval"))) delete body.approval;
     /** @type {any} */ let proof;
     // PD-1: a tool that takes `proof` as a parameter of its own (a pairing's identity proof) keeps it in its input and gets nothing in meta; for any other tool `proof` is the owner's presence proof
     const declared = (() => { try { const t = o.registry.tools && o.registry.tools.get(tool); return Boolean(t && t.input && t.input.properties && Object.hasOwn(t.input.properties, "proof")); } catch { return false; } })();
     if (!declared && body.proof && typeof body.proof === "object") { try { if (JSON.stringify(body.proof).length <= 4096) proof = body.proof; } catch { /* no proof */ } delete body.proof; }
     // the owner's proof rides input.proof: the registry's presence floor reads it as `proof`, and the kernel as `kernel_proof` (each checks its own shape; neither is trusted here)
-    const r = await o.registry.call(tool, body, caller, { ...(person ? { person } : {}), ...(peerStream ? { peerStream } : {}), kernelFacts: facts, ...(proof ? { proof, kernel_proof: proof } : {}) });
-    if (r && r.error) throw err(String(r.error.code || "internal"), String(r.error.message || "the call failed"));
+    const r = await o.registry.call(tool, body, caller, { ...(person ? { person } : {}), ...(peerStream ? { peerStream } : {}), kernelFacts: facts, ...(proof ? { proof, kernel_proof: proof } : {}), ...(approval ? { approval } : {}) });
+    if (r && r.error) throw Object.assign(err(String(r.error.code || "internal"), String(r.error.message || "the call failed")), r.error.detail ? { detail: r.error.detail } : {});
     return r ? r.data : null;
   };
 
@@ -135,14 +136,7 @@ export function createPeerDoor(o) {
   };
   /** A kernel request for one of the two invitee calls on this invite, as the invitee. @param {string} space @param {string} call @param {any[]} args @param {number} now */
   const inviteeRequest = (space, call, args, now) => ({ v: WIRE_VERSION, space, id: `inv-${crypto.randomBytes(8).toString("hex")}`, ts: now, call, args });
-  const dispatchFor = (/** @type {any} */ peerStream) => withKernelCall((/** @type {string} */ c, /** @type {string} */ t, /** @type {any} */ i) => asDevice(c, t, i, peerStream), { serverFor, personOf: (/** @type {string} */ d) => personOf(d), sessionOf: (/** @type {string} */ d) => {
-    // a software-marked paired session (a device key nobody had to touch) is presence for an admin act only where the presence module itself takes software proofs: a development build behind its switch, never a release build
-    const s = sessionOf(d);
-    if (!s) return null;
-    if (s.software && !softwareOk()) { log(`peer door: ${d} holds a software-strength session: not presence for an admin act here`); return null; }
-    log(`peer door: ${d} session counts as presence, strength ${s.software ? "software (development switch)" : "enclave or phone-approved"}`);
-    return s.software ? { id: s.id, software: true } : s.id;
-  }, pathOf: () => "relay" });
+  const dispatchFor = (/** @type {any} */ peerStream) => withKernelCall((/** @type {string} */ c, /** @type {string} */ t, /** @type {any} */ i) => asDevice(c, t, i, peerStream), { serverFor, personOf: (/** @type {string} */ d) => personOf(d), pathOf: () => "relay" });
   /** @type {Map<string, number>} device -> its open streams, across its peer streams */
   const openByDevice = new Map();
   /** @type {Set<{ id: string, check: () => void }>} the accepted peer streams with streams open, re-checked when a device is removed or a session ends (PS-C: an event, not a fast poll) */

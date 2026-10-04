@@ -16,15 +16,13 @@ test("a long code is read, for a server or a phone", { skip: !strip }, async () 
   assert.deepEqual(parseWinkCode(offer), { ok: true, kind: "offer", offer });
 });
 
-test("a short typed code is refused in plain words", { skip: !strip }, async () => {
+test("a short typed code is a code, in any case and with or without dashes; the old wink/1 form is refused in plain words", { skip: !strip }, async () => {
   const { parseWinkCode, SAY } = await import("./wink-code.ts");
-  for (const t of ["WINK-7K4Q-M2XD", "wink7k4qm2xd", "vyre://wink/1?c=WINK-7K4Q-M2XD"]) {
-    const r = parseWinkCode(t);
-    assert.equal(r.ok, false);
-    assert.equal(!r.ok && r.reason, "typed");
-    assert.equal(!r.ok && r.say, SAY.typed);
-  }
-  assert.match(SAY.typed, /switched off in this release/);
+  for (const t of ["WINK-7K4Q-M2XD", "wink7k4qm2xd", " wink-7k4q-m2xd\n", "WINK 7K4Q M2XD"]) assert.deepEqual(parseWinkCode(t), { ok: true, kind: "typed", code: "WINK-7K4Q-M2XD" }, t);
+  const r = parseWinkCode("vyre://wink/1?c=WINK-7K4Q-M2XD");
+  assert.equal(r.ok, false);
+  assert.equal(!r.ok && r.reason, "typed");
+  assert.equal(!r.ok && r.say, SAY.typed);
 });
 
 test("nothing, a short secret and plain text are refused", { skip: !strip }, async () => {
@@ -39,7 +37,8 @@ test("nothing, a short secret and plain text are refused", { skip: !strip }, asy
 test("a scan reads a long code, and each code only once", { skip: !strip }, async () => {
   const { readCode, onceEach } = await import("./../native/scan-model.ts");
   assert.deepEqual(readCode(LONG), { kind: "wink", ticket: "SGVsbG9TYW1wbGVTZWNyZQ", relay: "wss://relay.example", for: "server" });
-  assert.equal(readCode("WINK-7K4Q-M2XD")?.kind, "other");
+  assert.deepEqual(readCode("wink-7k4q-m2xd"), { kind: "typed", code: "WINK-7K4Q-M2XD" });
+  assert.equal(readCode("hello")?.kind, "other");
   const seen = [];
   let t = 0;
   const once = onceEach((c) => seen.push(c), 1500, () => t);

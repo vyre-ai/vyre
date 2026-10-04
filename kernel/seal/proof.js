@@ -3,8 +3,8 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import { proofBytes, payloadHash, sha256b64, bindBytes, joinBytes } from "./wire.js";
-import { bindAttestation, assertProof } from "./appattest.js";
-import { strengthOf, strengthRefusal, methodOf } from "./strength.js";
+import { bindAttestation, assertProof, assertProofDry } from "./appattest.js";
+import { strengthOf, strengthRefusal, methodOf, UNATTESTED_SIGNERS, isUnattestedEnclave } from "./strength.js";
 // The identity chain verifier lives in kernel/identity (windows authors it, its hash is pinned there): the root of trust for devices.
 import { verifyChain, checkAnswer, pinOf, verifyWith, youngAt } from "../identity/chain.js";
 
@@ -90,7 +90,7 @@ export class Presence {
     } else if (attestation && this.verifiers[attestation.format]) {
       if (this.verifiers[attestation.format](attestation, Buffer.from(spki, "base64")) !== signer) return { refused: "bad_attestation" };
       attested = true;
-    } else if (signer === SOFTWARE) { /* allowed above: a development build only */ } else if (!this.allowUnattested) return { refused: "unattested" };
+    } else if (signer === SOFTWARE) { /* allowed above: a development build only */ } else if (!this.allowUnattested && !UNATTESTED_SIGNERS.has(signer)) return { refused: "unattested" };
     this.keys.set(key_id, { person, signer, attested, spki, device: pin ? bind.eid : undefined, since: this.now(), founder: !this.have(person), ...(aa ? { aa } : {}), key: crypto.createPublicKey({ key: Buffer.from(spki, "base64"), format: "der", type: "spki" }) });
     this.ever.add(person); this.save();
     return { attested };
@@ -172,7 +172,7 @@ export class Presence {
     } else if (attestation && this.verifiers[attestation.format]) {
       if (this.verifiers[attestation.format](attestation, Buffer.from(spki, "base64")) !== signer) return { refused: "bad_attestation" };
       attested = true;
-    } else if (signer === SOFTWARE) { /* allowed above: a development build only */ } else if (!this.allowUnattested) return { refused: "unattested" };
+    } else if (signer === SOFTWARE) { /* allowed above: a development build only */ } else if (!this.allowUnattested && !UNATTESTED_SIGNERS.has(signer)) return { refused: "unattested" };
     const { st, pin } = await this.evidence(person, ops);
     if (!await this.bindOk(st, person, bind, key_id, spki)) return { refused: "bad_bind" };
     this.keys.set(key_id, { person, signer, attested, spki, device: bind.eid, since: this.now(), founder: false, ...(aa ? { aa } : {}), key: crypto.createPublicKey({ key: Buffer.from(spki, "base64"), format: "der", type: "spki" }) });
@@ -214,7 +214,7 @@ export class Presence {
     } else if (attestation && this.verifiers[attestation.format]) {
       if (this.verifiers[attestation.format](attestation, Buffer.from(spki, "base64")) !== signer) return { refused: "bad_attestation" };
       attested = true;
-    } else if (signer === SOFTWARE) { /* allowed above: a development build only */ } else if (!this.allowUnattested) return { refused: "unattested" };
+    } else if (signer === SOFTWARE) { /* allowed above: a development build only */ } else if (!this.allowUnattested && !UNATTESTED_SIGNERS.has(signer)) return { refused: "unattested" };
     this.keys.set(key_id, { person, signer, attested, spki, device: bind.eid, since: this.now(), founder: false, ...(aa ? { aa } : {}), key: crypto.createPublicKey({ key: Buffer.from(spki, "base64"), format: "der", type: "spki" }) });
     this.pins.set(person, ev.pin); this.ever.add(person); this.joined.set(key_id, { person, invite }); this.save();
     return { attested, device: bind.eid };
@@ -233,14 +233,16 @@ export class Presence {
     this.save();
     return { undone: true };
   }
-  /** @returns {string|null} the reason a proof is refused, or null when it stands. */
-  refuse(proof, { op, space, fields, ctx }) {
+  /** @param {any} proof @param {{ op: string, space: string, fields: any, ctx: any, dry?: boolean }} a `dry`: do every check (key, signature, payload, expiry, the replay lookup, the app key's assertion) and record nothing: the nonce stays unspent and the app key's counter does not move, so the real call that follows still passes once. @returns {string|null} the reason a proof is refused, or null when it stands. */
+  refuse(proof, { op, space, fields, ctx, dry = false }) {
     if (!proof || typeof proof !== "object") return "no_proof";
     if (!ctx.one_person || !ctx.person) return "chain_not_person";
     const k = this.keys.get(proof.key_id);
     if (!k || k.person !== ctx.person || k.signer !== proof.signer) return "unknown_key";
     // The ONE strength rule (strength.js, shared with the registry): a software key satisfies presence only where a dev switch is on, and is marked method software.
-    const why = strengthRefusal(strengthOf(k.attested), k.signer === SOFTWARE ? this.allowSoftware : this.allowUnattested); if (why) return why; // each dev switch admits only its own kind of key
+    // UY-2: a phone's unattested secure-chip key is admitted on release too, and marked unattested; every other unattested key needs the dev switch
+    const unattested = isUnattestedEnclave(k);
+    const why = unattested ? null : strengthRefusal(strengthOf(k.attested), k.signer === SOFTWARE ? this.allowSoftware : this.allowUnattested); if (why) return why; // each dev switch admits only its own kind of key
     // V-3: a key from before the chain was pinned and never bound has a day after the first pin to be bound by a sync; after that it proves nothing.
     const pin = this.pins.get(ctx.person);
     if (!k.device && pin?.first !== undefined && this.now() - pin.first > UNBOUND_GRACE_MS) return "needs_bind";
@@ -256,11 +258,11 @@ export class Presence {
     } catch { ok = false; }
     if (!ok) return "bad_signature";
     // B2 (App Attest, appattest.js assertProof): the proof also carries the app key's assertion over the same bytes; the new counter is written BEFORE the proof is accepted.
-    if (k.aa && k.aa.required) { const why = assertProof(this.appattest, k, proof, proofBytes(proof), () => this.save()); if (why) return why; }
-    for (const [n, e] of this.used) if (e < t) this.used.delete(n);
-    if (this.used.has(proof.nonce)) return "replayed";
-    this.used.set(proof.nonce, proof.expires_at);
-    this.lastMethod = methodOf(strengthOf(k.attested)); this.lastStrength = strengthOf(k.attested);
+    if (k.aa && k.aa.required) { const why = dry ? assertProofDry(this.appattest, k, proof, proofBytes(proof)) : assertProof(this.appattest, k, proof, proofBytes(proof), () => this.save()); if (why) return why; }
+    if (!dry) for (const [n, e] of this.used) if (e < t) this.used.delete(n);
+    if (this.used.has(proof.nonce) && this.used.get(proof.nonce) >= t) return "replayed";
+    if (!dry) this.used.set(proof.nonce, proof.expires_at);
+    this.lastMethod = unattested ? "unattested" : methodOf(strengthOf(k.attested)); this.lastStrength = unattested ? "unattested" : strengthOf(k.attested);
     return null;
   }
 }

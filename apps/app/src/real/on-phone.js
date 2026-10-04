@@ -13,6 +13,13 @@ export const needsPerson = (error) => Boolean(error) && ["presence_required", "n
  */
 export const howApprove = () => (typeof window !== "undefined" && /** @type {any} */ (window).__vyreShell ? "touchid" : "phone");
 
+/**
+ * The word for how a person proves it is them on THIS device, for lines that must be true on every platform: Android says fingerprint, an iPhone Face ID or Touch ID, a Mac window Touch ID,
+ * and a browser passkey. @param {string} [os] Platform.OS: "ios", "android", "web" or "macos" @param {boolean} [shell] a Mac window of Vyre
+ */
+export const howWord = (os = "web", shell = typeof window !== "undefined" && Boolean(/** @type {any} */ (window).__vyreShell)) =>
+  os === "android" ? "fingerprint" : os === "ios" ? "Face ID or Touch ID" : shell ? "Touch ID" : "passkey";
+
 /** A line that ends "in Vyre on your phone." said for the method the person has. @param {string} line @param {"touchid" | "phone"} how */
 const said = (line, how) => (how === "touchid" ? line.replace(/ in Vyre on your phone\.$/, " with Touch ID.") : line);
 

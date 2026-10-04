@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { serverSay } from "../install/flow.js";
+import { pairSayHere } from "../../src/real/pair-say";
 import { View } from "react-native";
 import { Banner, Button, Card, Chip, Text } from "@vyre/ui";
 import { Page } from "../places/Frame";
@@ -10,15 +11,17 @@ import { PairEntry, PairWatch, PairWords, type LongCode } from "./PairParts";
 import { phoneAsk, targetsOf } from "./real.js";
 import { COPY, stepWords, type DeviceKind } from "./wink.js";
 import { useDevices } from "./state";
+import { WinkCode } from "../../src/ui/WinkCode";
+import { AckCode } from "./TypeCode";
 
-type Opened = { qr: string | null; link?: string; art?: string; expires?: number };
+type Opened = { qr: string | null; code?: string | null; code_expires?: number | null; code_offer?: string | null; link?: string; art?: string; expires?: number };
 type Ask = { name: string; line: string; words: [string, string, string] };
 
 /**
  * Adding a device against the real box: only the side this device is. A server: scan or paste what it printed, see the three words, say yes
  * at the server. A phone or computer: show the code, type the three words the new device shows. Nothing is added until the box says so.
  */
-export function RealAdd({ kind, onBack, onDone }: { kind: DeviceKind; onBack: () => void; onDone: () => void }) {
+export function RealAdd({ kind, onBack, onDone, first }: { kind: DeviceKind; onBack: () => void; onDone: () => void; first?: { title: string; sub: string; skipLabel: string; onSkip: () => void } }) {
   const load = useDevices((s) => s.load);
   const [said1, setSaid] = useState("");
   const [session, setSession] = useState<PairingSession | null>(null);
@@ -47,6 +50,9 @@ export function RealAdd({ kind, onBack, onDone }: { kind: DeviceKind; onBack: ()
     return () => clearInterval(t);
   }, [kind, opened, done, ask]);
 
+  // First run: the code is up as soon as the screen is, with Skip in place of Back.
+  const auto = useRef(false);
+  useEffect(() => { if (first && kind !== "server" && !auto.current) { auto.current = true; showCode(); } });
   const reset = (say = "") => { setSession(null); setAsk(null); setOpened(null); setSaid(say); };
   const finish = () => { setDone(true); void load(); };
 
@@ -55,7 +61,7 @@ export function RealAdd({ kind, onBack, onDone }: { kind: DeviceKind; onBack: ()
     const s = serverSession(c, target);
     setSaid("");
     setBusy(true);
-    s.ready!().then(() => { if (live.current) setSession(s); }).catch((e: Error) => reset((e as { code?: string }).code ? serverSay(e) : e.message || COPY.ended)).finally(() => setBusy(false));
+    s.ready!().then(() => { if (live.current) setSession(s); }).catch((e: Error) => reset((e as { code?: string }).code ? pairSayHere(serverSay(e)) : e.message || COPY.ended)).finally(() => setBusy(false));
   };
   const showCode = () => {
     setBusy(true);
@@ -81,13 +87,24 @@ export function RealAdd({ kind, onBack, onDone }: { kind: DeviceKind; onBack: ()
     body = (
       <Card className="items-center gap-s3">
         <Text strong>{`Open Vyre on the ${noun}, then scan this or paste the long code.`}</Text>
-        {opened.art ? <Text mono selectable style={{ fontSize: 7, lineHeight: 7, letterSpacing: 0 }}>{opened.art}</Text> : null}
-        {opened.qr ? <Text mono size="caption" selectable className="text-center">{opened.qr}</Text> : <Text tone="warn">The relay could not take the code. Try again.</Text>}
+        {opened.qr ? <WinkCode text={opened.qr} kind="device" typed={opened.code ?? null} expires={opened.code_expires ?? null} /> : null}
+        {opened.qr ? <Text mono size="caption" selectable className="w-full text-center" style={{ wordBreak: "break-all" } as never}>{opened.qr}</Text> : <Text tone="warn">The relay could not take the code. Try again.</Text>}
+        {opened.code && opened.code_offer ? <AckCode offer={opened.code_offer} onDone={() => setDone(true)} /> : null}
         <Text tone="muted">Waiting for the new device. Good for 5 minutes.</Text>
       </Card>
     );
   } else {
     body = <Card className="items-center gap-s3"><Text tone="muted" className="text-center">{stepWords(kind, 0)}</Text><Button kind="primary" icon="plus" label={`Show the code for a ${noun}`} loading={busy} onPress={showCode} /></Card>;
+  }
+  if (first) {
+    return (
+      <View className="gap-s4">
+        <View className="gap-s1"><Text size="page" strong>{first.title}</Text><Text tone="muted">{first.sub}</Text></View>
+        {said1 ? <Banner tone="warn">{said1}</Banner> : null}
+        {body}
+        {done ? null : <Button kind="ghost" label={first.skipLabel} onPress={first.onSkip} />}
+      </View>
+    );
   }
   return (
     <Page title={`Add a ${noun}`} sub={kind === "server" ? "Scan or paste, then say yes at the server" : "Scan or paste on the new device, then type its three words"}>

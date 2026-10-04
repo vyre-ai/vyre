@@ -29,15 +29,15 @@ done
 # Listeners in this network namespace, read twice 0.3 s apart and reported only when present both times: a resolver's short-lived UDP socket must not look like a service.
 #   TCP (state 0A), UDP (07) and ABSTRACT unix sockets (names starting with @: no file mode protects them); a session shares the box's namespace, so all of them are reachable.
 # 127.0.0.11 (0B00007F, little-endian) is Docker's embedded DNS resolver in every container's namespace (found by the hosted run: root-owned, TCP and UDP, ephemeral ports). A session needs it to resolve
-# names, it is not ours, and it is skipped by address, not by port.
+# names, it is not ours, and it is skipped by address and only when root owns the socket.
 listeners() {
   for f in /proc/net/tcp /proc/net/tcp6; do
     [ -r "$f" ] || continue
-    while read -r _ local _ st _; do [ "$st" = 0A ] && [ "${local%%:*}" != 0B00007F ] && echo "listen $((0x${local##*:}))"; done < "$f"
+    while read -r _ local _ st _ _ _ luid _; do [ "$st" = 0A ] && ! { [ "${local%%:*}" = 0B00007F ] && [ "$luid" = 0 ]; } && echo "listen $((0x${local##*:}))"; done < "$f"
   done
   for f in /proc/net/udp /proc/net/udp6; do
     [ -r "$f" ] || continue
-    while read -r _ local _ st _; do [ "$st" = 07 ] && [ "${local%%:*}" != 0B00007F ] && echo "udp $((0x${local##*:}))"; done < "$f"
+    while read -r _ local _ st _ _ _ luid _; do [ "$st" = 07 ] && ! { [ "${local%%:*}" = 0B00007F ] && [ "$luid" = 0 ]; } && echo "udp $((0x${local##*:}))"; done < "$f"
   done
   if [ -r /proc/net/unix ]; then
     while read -r _ _ _ _ _ _ _ name; do case "$name" in @*) echo "abstract $name" ;; esac; done < /proc/net/unix

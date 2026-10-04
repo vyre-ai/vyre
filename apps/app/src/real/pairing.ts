@@ -107,9 +107,10 @@ async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticke
   // Continue under "Pair this server to <name>?" (the install page) is the person's yes before anything is redeemed.
   if (await loadPairing()) return null;
   const { connect, disconnect } = await import("../api/box");
-  // A phone whose Secure Enclave key stands behind Face ID (the simulator's software key does not count) answers as hardware; the chain entry's `enclave` is what the server checks it against.
+  // A phone whose Secure Enclave key (iPhone) or Android Keystore key (StrongBox or the TEE) stands behind Face ID or the fingerprint (a software key does not count) answers as hardware; the chain entry's `enclave` is what the server checks it against.
   const { hasKeys, keyStorage, signListChange } = await import("../keys");
-  const phoneKeys = (await hasKeys()).presence && (await keyStorage()).presence === "secure-enclave";
+  const kind = (await keyStorage()).presence;
+  const phoneKeys = (await hasKeys()).presence && (kind === "secure-enclave" || kind === "keystore");
   let words: [string, string, string] = ["", "", ""];
   let wake: () => void = () => {};
   const seen = new Promise<void>((r) => { wake = r; });
@@ -167,12 +168,12 @@ const toB64u = (b: Uint8Array): string => { let s = ""; for (const x of b) s += 
 /** After the yes: this device's person session (presence.person.pair-challenge, then start-paired), kept for the box so every request carries it. */
 async function openPairedSession(r: { relay: string; route: string; box: string; device: string; name: string }): Promise<void> {
   const { startPaired, channelCall } = await import("../auth/paired");
-  const { personKey, keepToken } = await import("../auth/person.web");
+  const { pairedKey } = await import("../auth/paired-key");
   const { relayCrypto, relayKeyStore, about, deviceName } = await import("../api/relay");
   const ch = await channelCall({ relay: r.relay, route: r.route, box: r.box, name: deviceName() }, { crypto: relayCrypto(), keyStore: relayKeyStore(), about });
   try {
-    const key = await personKey();
-    const s = await startPaired({ device: r.device, call: ch.call, privateKey: key.privateKey, label: deviceName() });
-    await keepToken(location.origin, s.token);
+    const key = await pairedKey();
+    const s = await startPaired({ device: r.device, call: ch.call, sign: key.sign, signEnclave: key.signEnclave, label: deviceName() });
+    await key.keep(r.route, s.token);
   } finally { ch.close(); }
 }

@@ -67,7 +67,7 @@ Vyre reads these when they are set. None is needed for normal use.
 
 | Variable | What it does | Read in |
 | --- | --- | --- |
-| `VYRE_ACCOUNTS_HOME` | Not described yet. | `core/config/index.js`, `core/daemon/index.js`, `core/recall/indexer.js`, `core/sessions/index.js`, `core/sessions/spawn.js`, `core/spawner/main.js`, `core/switchboard/index.js` |
+| `VYRE_ACCOUNTS_HOME` | Not described yet. | `core/config/index.js`, `core/daemon/index.js`, `core/daemon/ownserver-host.js`, `core/recall/indexer.js`, `core/sessions/index.js`, `core/sessions/spawn.js`, `core/spawner/main.js`, `core/switchboard/index.js` |
 | `VYRE_ACCOUNT_UID_MAX` | Not described yet. | `core/spawner/main.js`, `core/switchboard/index.js` |
 | `VYRE_ACCOUNT_UID_MIN` | Not described yet. | `core/spawner/main.js`, `core/switchboard/index.js` |
 | `VYRE_ACME_DIRECTORY` | The ACME server certificates come from, in place of Let's Encrypt. With it set, Vyre does not wait for DNS. | `core/names/index.js` |
@@ -147,7 +147,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_RELEASES_API` | Where `vyre update` reads releases. Default `https://api.github.com`. Tests point it at a local server. | `core/cli/commands/update.js`, `core/update/index.js` |
 | `VYRE_RELEASES_REPO` | Not described yet. | `core/update/index.js` |
 | `VYRE_SCREEN_BIN` | Not described yet. | `local/screen-mac/index.js` |
-| `VYRE_SEAL_SOFTWARE` | Not described yet. | `core/daemon/index.js`, `core/daemon/peer-door.js`, `core/presence/module.js`, `core/wink/pairing.js` |
+| `VYRE_SEAL_SOFTWARE` | Not described yet. | `core/daemon/index.js`, `core/presence/module.js`, `core/spaces/index.js`, `core/wink/pairing.js` |
 | `VYRE_SESSIONS_DRIVER` | Not described yet. | `core/sessions/config.js` |
 | `VYRE_SESSIONS_SDK_DIR` | Not described yet. | `core/sessions/config.js`, `core/spawner/main.js` |
 | `VYRE_SESSIONS_SDK_INSTALL` | Not described yet. | `core/sessions/sdk.js` |
@@ -160,7 +160,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_SSH_BIN` | The `ssh` binary to run. | `core/cli/ssh.js` |
 | `VYRE_STORE` | Not described yet. | `core/daemon/index.js` |
 | `VYRE_STREAM_TEST_HOLD` | Not described yet. | `core/stream/group.js` |
-| `VYRE_SUPERVISOR` | What runs vyred: `docker` inside the box container, which changes how `vyre up` restarts it. | `bin/vyre`, `core/cli/commands/module.js`, `core/cli/commands/up.js`, `core/cli/commands/update.js`, `core/cli/daemonctl.js`, `core/daemon/index.js`, `core/switchboard/index.js` |
+| `VYRE_SUPERVISOR` | What runs vyred: `docker` inside the box container, which changes how `vyre up` restarts it. | `bin/vyre`, `core/cli/commands/module.js`, `core/cli/commands/up.js`, `core/cli/commands/update.js`, `core/cli/daemonctl.js`, `core/daemon/index.js`, `core/daemon/ownserver-host.js`, `core/switchboard/index.js` |
 | `VYRE_TAILSCALE_BIN` | The `tailscale` binary to run. A path that does not exist means no tailnet. | `core/cli/tailnet.js`, `core/link/mac.js`, `core/link/transport.js`, `core/relay/tailnet.js` |
 | `VYRE_TAILSCALE_UP_FLAGS` | Extra flags for `tailscale up`, space separated. | `core/names/tailscale.js` |
 | `VYRE_TEST` | Not described yet. | `core/names/directory.js` |

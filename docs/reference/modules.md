@@ -20,7 +20,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`about`](#about) | `core/about` | `box`, `local` | 1 | 0 | cli |
 | [`agents`](#agents) | `core/agents` | `box`, `local` | 13 | 0 | cli |
 | [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
-| [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 5 | 0 | cli |
+| [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 6 | 0 | cli |
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
 | [`artifacts`](#artifacts) | `core/artifacts` | `box` | 28 | 10 | capsule, cli, deck |
 | [`assistant`](#assistant) | `core/assistant` | `box`, `local` | 8 | 3 | cli |
@@ -57,14 +57,14 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`onboard`](#onboard) | `core/onboard` | `box`, `local` | 14 | 3 | none |
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 15 | 7 | capsule, cli, deck |
 | [`pluginagent`](#pluginagent) | `core/pluginagent` | `box`, `local` | 9 | 4 | cli |
-| [`presence`](#presence) | `core/presence` | `box`, `local` | 25 | 8 | capsule, cli, deck |
+| [`presence`](#presence) | `core/presence` | `box`, `local` | 21 | 6 | capsule, cli, deck |
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 22 | 5 | cli |
 | [`providers`](#providers) | `core/providers` | `box`, `local` | 1 | 0 | cli |
 | [`publish`](#publish) | `core/publish` | `box` | 17 | 6 | capsule, cli, deck |
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 4 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 14 | 5 | cli |
 | [`records`](#records) | `core/records-tools` | `box`, `local` | 20 | 0 | cli |
-| [`relay`](#relay) | `core/relay` | `box`, `local` | 41 | 23 | capsule, cli, deck |
+| [`relay`](#relay) | `core/relay` | `box`, `local` | 42 | 23 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
 | [`rules`](#rules) | `core/rules-tools` | `box`, `local` | 10 | 0 | cli |
 | [`runner`](#runner) | `core/runner` | `local`, `box` | 7 | 7 | capsule, cli, deck |
@@ -93,7 +93,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 20 | 7 | capsule, cli, deck |
-| [`wink`](#wink) | `core/wink` | `box` | 57 | 34 | capsule, cli, deck |
+| [`wink`](#wink) | `core/wink` | `box` | 59 | 34 | capsule, cli, deck |
 | [`work`](#work) | `core/work` | `box`, `local` | 15 | 0 | cli |
 
 ## about
@@ -137,7 +137,7 @@ Approve on your phone: a session that cannot give a presence proof (the web app'
 - Folder: `core/approvals`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [5](tools.md#approvals)
+- Tools: [6](tools.md#approvals), 1 of them only for other modules
 - Emits: no events
 - Shows on: cli
 - Needs kernel: `{"actions":[]}`
@@ -554,8 +554,8 @@ Claude Code on this computer, as a named agent the person grants once: the plugi
 - Folder: `core/presence`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [25](tools.md#presence), 5 of them only for other modules
-- Emits: [8 events](events.md#presence)
+- Tools: [21](tools.md#presence), 5 of them only for other modules
+- Emits: [6 events](events.md#presence)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
@@ -632,7 +632,7 @@ A second way to reach the box besides Tailscale: the box dials out to a relay, a
 - Folder: `core/relay`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [41](tools.md#relay), 14 of them only for other modules
+- Tools: [42](tools.md#relay), 14 of them only for other modules
 - Emits: [23 events](events.md#relay)
 - Shows on: capsule, cli, deck
 - Needs daemon: `tunnelEnd`
@@ -973,7 +973,7 @@ Pairing as grants: every way in is a Wink (scan a code, or type two-sided codes)
 - Folder: `core/wink`, version 0.1.0
 - Runs on: `box`
 - Requires: `relay`
-- Tools: [57](tools.md#wink), 8 of them only for other modules
+- Tools: [59](tools.md#wink), 9 of them only for other modules
 - Emits: [34 events](events.md#wink)
 - Listens for: `relay.code-asked`, `relay.invite-redeemed`, `device.paired`, `device.removed`
 - Shows on: capsule, cli, deck

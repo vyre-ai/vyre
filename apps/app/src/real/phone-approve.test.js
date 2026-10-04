@@ -94,3 +94,24 @@ test("the canonical bytes the app hashes are the bytes in vault's fixed proofbyt
     assert.equal(canonical(rest), v.bytes);
   }
 });
+
+test("a device card is shown by the server's line and signs its `sign` exactly", async () => {
+  const sign = { op: "task.vault_use", space: "spc_abcdefghijkl", fields: { what: "vault.reveal", name: "Bank" } };
+  const [c] = cardsFrom({ approvals: [{ id: "ap_1", moment: "vault", line: "Vyre on browser wants to reveal \"Bank\" in your vault", request: { op: "vault.reveal", fields: { name: "Bank" } }, sign }] });
+  assert.equal(c.title, "Vyre on browser wants to reveal \"Bank\" in your vault");
+  assert.equal(c.payload_hash, kernelHash(sign.op, sign.space, sign.fields));
+  /** @type {any[]} */ const signed = [];
+  await approveCard(c, { signPresence: async (r) => { signed.push(r); return { payload_hash: r.payload_hash }; } }, async () => ({}), () => "h", "per_1");
+  assert.equal(signed[0].op, "task.vault_use"); assert.equal(signed[0].space, sign.space); assert.deepEqual(signed[0].fields, sign.fields);
+});
+
+test("the refusal lines name the method of this device: fingerprint on Android, never a hardcoded Face ID", async () => {
+  const { howWord } = await import("./on-phone.js");
+  assert.equal(howWord("android"), "fingerprint");
+  assert.equal(howWord("ios"), "Face ID or Touch ID");
+  assert.equal(howWord("web", false), "passkey");
+  assert.equal(howWord("web", true), "Touch ID");
+  assert.equal(answerRefusal("ERR_BIOMETRIC", howWord("android")), "Fingerprint did not work. Nothing was approved.");
+  assert.doesNotMatch(answerRefusal("ERR_KEY_INVALIDATED", howWord("android")), /Face ID/);
+  assert.match(answerRefusal("ERR_BIOMETRIC", howWord("ios")), /Face ID or Touch ID did not work/);
+});

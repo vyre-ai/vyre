@@ -9,7 +9,7 @@
 // steps are the Deck's phone-setup.js subscribePush: permission, push.key, subscribe, push.subscribe.
 
 import { beacon, call } from "../api/box";
-import { fromB64url } from "../auth/person";
+import { fromB64url } from "../auth/person.ts"; // the explicit file: "../auth/person" resolves to person.web.ts on the web, which exports no fromB64url
 import { APP_BASE, navigateTarget, seenReporter } from "./model";
 import type { PushStatus } from "./pwa.d";
 

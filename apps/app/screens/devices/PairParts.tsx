@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { CAMERA_SCAN } from "../install/first-run.js";
 import { Platform, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { Banner, Button, Card, Field, Text } from "@vyre/ui";
@@ -7,22 +8,24 @@ import { parseWinkCode, type WinkCode } from "../../src/api/wink-code";
 import { openPairing, wordsLine, type PairingSession } from "../../src/api/pairing-session";
 import { COPY } from "./wink.js";
 import { serverSay } from "../install/flow.js";
+import { pairSayHere } from "../../src/real/pair-say";
 
 /** A scanned code as the text the parser reads. */
-const textOf = (c: ScannedCode) => (c.kind === "wink" ? `vyre://wink/2?t=${c.ticket}&r=${encodeURIComponent(c.relay)}${c.for === "phone" ? "&k=phone" : ""}` : c.kind === "pair" ? c.offer : c.text);
+const textOf = (c: ScannedCode) => (c.kind === "wink" ? `vyre://wink/2?t=${c.ticket}&r=${encodeURIComponent(c.relay)}${c.for === "phone" ? "&k=phone" : ""}` : c.kind === "pair" ? c.offer : c.kind === "typed" ? c.code : c.text);
 
-export type LongCode = Extract<WinkCode, { ok: true }>;
+export type LongCode = Exclude<Extract<WinkCode, { ok: true }>, { kind: "typed" }>;
 
 /** Scan the code with the camera, or paste the long one. Both go through parseWinkCode; a short typed code is refused in plain words. */
 export function PairEntry({ onCode, sample }: { onCode: (c: LongCode) => void; sample?: string }) {
   const [text, setText] = useState("");
   const [say, setSay] = useState("");
   const [cam, setCam] = useState<ScanSupport | null>(null);
-  useEffect(() => { if (canScanLive) requestCamera().then(setCam).catch(() => {}); }, []);
+  useEffect(() => { if (CAMERA_SCAN && canScanLive) requestCamera().then(setCam).catch(() => {}); }, []);
 
   const take = (raw: string) => {
     const r = parseWinkCode(raw);
-    if (r.ok) { setSay(""); onCode(r); } else setSay(r.say);
+    if (r.ok && r.kind === "typed") setSay("That is a short code. Type it in the Type the code field instead.");
+    else if (r.ok) { setSay(""); onCode(r); } else setSay(r.say);
   };
   const scan = useMemo(() => scanProps((c) => take(textOf(c))),
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -42,9 +45,9 @@ export function PairEntry({ onCode, sample }: { onCode: (c: LongCode) => void; s
 
   return (
     <View className="w-full gap-s3">
-      {canScanLive && ScanCamera && cam?.state === "granted" ? (
+      {CAMERA_SCAN && canScanLive && ScanCamera && cam?.state === "granted" ? (
         <View className="h-48 w-full overflow-hidden rounded-card"><ScanCamera style={{ flex: 1 }} {...scan} /></View>
-      ) : cam && cam.state !== "granted" ? <Text size="caption" tone="muted">{cam.say}</Text> : null}
+      ) : CAMERA_SCAN && cam && cam.state !== "granted" ? <Text size="caption" tone="muted">{cam.say}</Text> : null}
       <Field label="Or paste the long code" name="Long code" value={text} onChangeText={(v) => { setText(v); if (say) setSay(""); }} placeholder="vyre://wink/2?..." mono error={say || undefined} />
       <View className="flex-row flex-wrap gap-s2">
         <Button kind="primary" size="sm" label="Continue" onPress={() => take(text)} />
@@ -96,7 +99,7 @@ export { openPairing };
 export function PairWatch({ session, who, onConfirmed, onRejected }: { session: PairingSession; who: string; onConfirmed: () => void; onRejected: (say: string) => void }) {
   useEffect(() => {
     let live = true;
-    session.confirm().then(() => { if (live) onConfirmed(); }).catch((e: Error) => { if (live) onRejected(e.message === "rejected" ? COPY.rejected : (e as { code?: string }).code ? serverSay(e) : e.message || COPY.ended); });
+    session.confirm().then(() => { if (live) onConfirmed(); }).catch((e: Error) => { if (live) onRejected(e.message === "rejected" ? COPY.rejected : (e as { code?: string }).code ? pairSayHere(serverSay(e)) : e.message || COPY.ended); });
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
@@ -119,7 +122,7 @@ export function PairServer({ session, who, onConfirmed, onRejected }: { session:
   useEffect(() => {
     if (ready) return;
     let live = true;
-    session.ready!().then(() => { if (live) setReady(true); }).catch((e: Error) => { if (live) onRejected(serverSay(e)); });
+    session.ready!().then(() => { if (live) setReady(true); }).catch((e: Error) => { if (live) onRejected(pairSayHere(serverSay(e))); });
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);

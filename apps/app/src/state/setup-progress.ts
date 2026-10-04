@@ -24,3 +24,22 @@ export async function writeProgress(raw: string | null): Promise<void> {
     if (raw === null) await S.deleteItemAsync(KEY); else await S.setItemAsync(KEY, raw);
   } catch { /* nothing kept; setup starts at the top next time */ }
 }
+
+const SKIPPED = "vyre.setup.skipped";
+
+/** Did the person choose "Not now" on "I don't have Vyre running yet"? The gate then lets the not-connected landing open. Cleared when a pairing is saved or setup is begun again. */
+export async function readSkipped(): Promise<boolean> {
+  try {
+    if (Platform.OS === "web") return false;
+    const S = await import("expo-secure-store");
+    return (await S.getItemAsync(SKIPPED)) === "1";
+  } catch { return false; }
+}
+
+export async function writeSkipped(on: boolean): Promise<void> {
+  try {
+    if (Platform.OS === "web") return;
+    const S = await import("expo-secure-store");
+    if (on) await S.setItemAsync(SKIPPED, "1"); else await S.deleteItemAsync(SKIPPED);
+  } catch { /* nothing kept; the gate asks for setup again */ }
+}

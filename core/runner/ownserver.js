@@ -131,6 +131,10 @@ export function createTurnSeal(o) {
         // vyred's own, and the session's uid could neither read nor append to it. A crash in the middle just runs recover again (the checkpoint is the truth); the common case keeps the atomic rename.
         let foreign = false; try { foreign = typeof process.getuid === "function" && fsx.lstatSync(o.file).uid !== process.getuid(); } catch { /* no file yet */ }
         if (foreign) {
+          // The folders above the file belong to the session's uid, so a link could be swapped in after the earlier checks: right before the write the folder is the pinned one, the file's real path is its
+          // own, and its owner is the owner of its folder (the account's uid), or nothing is written.
+          sameDir(pinned.dir);
+          if (fsx.realpathSync(o.file) !== o.file || fsx.lstatSync(o.file).uid !== fsx.lstatSync(dir).uid) throw err("refused", "the transcript is not the account's own file in its own folder");
           const src = fsx.openSync(tmp, "r"), dst = fsx.openSync(o.file, fs.constants.O_WRONLY | fs.constants.O_NOFOLLOW);
           try {
             const size = fsx.fstatSync(src).size, buf = Buffer.alloc(1 << 16); let off = 0;

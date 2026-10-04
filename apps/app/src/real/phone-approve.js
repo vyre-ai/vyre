@@ -2,13 +2,23 @@
 // The phone's side of "Approve on your phone" (platform's core/approvals): the pending asks as cards, what a card shows, and answering one by signing its payload hash with the person's
 // device key behind Face ID. The key is native-core's iOS key module (signPresence); it is behind the `signer` argument here, so a test (and a phone without the module yet) uses a fake.
 
-import { hashMatches } from "./payload-hash.js";
+import { hashMatches, payloadHash } from "./payload-hash.js";
 
 /** @typedef {{ id: string, title: string, body: string, op: string, space: string, fields: Record<string, any>, payload_hash: string, asked_from?: string, expires_in_s?: number }} Pending */
 /** @typedef {{ signPresence(req: { op: string, space: string, fields: Record<string, any>, payload_hash: string, prompt: string, person: string }): Promise<any> }} Signer */
 
 /** The cards from approvals.pending, newest asks last as the box lists them. @param {any} answer @returns {Pending[]} */
-export const cardsFrom = (answer) => (Array.isArray(answer?.approvals) ? answer.approvals.filter((/** @type {any} */ a) => a && typeof a.id === "string" && typeof a.payload_hash === "string") : []);
+export const cardsFrom = (answer) => (Array.isArray(answer?.approvals) ? answer.approvals.filter((/** @type {any} */ a) => a && typeof a.id === "string" && (typeof a.payload_hash === "string" || signOf(a))).map(normalize) : []);
+
+/** A card made for a device's yes (wink-2: moment, request, line, sign { op, space, fields }): what the key signs is `sign`, verbatim. @param {any} c */
+const signOf = (c) => (c && c.sign && typeof c.sign.op === "string" && typeof c.sign.space === "string" && c.sign.fields && typeof c.sign.fields === "object" ? /** @type {{ op: string, space: string, fields: Record<string, any> }} */ (c.sign) : null);
+
+/** A device card is shown by the server's own line, signs its `sign` exactly, and has its hash computed here from that. @param {any} c @returns {Pending} */
+function normalize(c) {
+  const sg = signOf(c);
+  if (!sg) return c;
+  return { ...c, title: String(c.line || c.title || "A device is asking for your yes"), body: c.body || "Approving signs exactly this with the key on this phone. If you did not just ask for it, deny it.", op: sg.op, space: sg.space, fields: sg.fields, payload_hash: payloadHash(sg.op, sg.space, sg.fields) };
+}
 
 /** What the card shows as given: each field name and value, nothing summarised away, because those are what is being signed. @param {Pending} c */
 export function factLines(c) {
@@ -20,11 +30,11 @@ export function factLines(c) {
 /** The line under a card: where it was asked from and how long it lasts. @param {Pending} c */
 export const askedLine = (c) => [c.asked_from ? `Asked from ${c.asked_from}` : "", c.expires_in_s ? `ends in ${Math.max(1, Math.round(c.expires_in_s / 60))} min` : ""].filter(Boolean).join(", ");
 
-/** The words for how an answer went. @param {string | undefined} code */
-export function answerRefusal(code) {
+/** The words for how an answer went. @param {string | undefined} code @param {string} [how] the method on this device (on-phone.js howWord): "fingerprint", "Face ID or Touch ID", "passkey" */
+export function answerRefusal(code, how = "Face ID or Touch ID") {
   if (code === "ERR_CANCELED" || code === "cancelled") return "Cancelled. Nothing was approved.";
-  if (code === "ERR_BIOMETRIC" || code === "ERR_NO_BIOMETRICS") return "Face ID did not work. Nothing was approved.";
-  if (code === "ERR_KEY_INVALIDATED") return "Your Face ID changed, so this phone's key must be set up again. Sign in to Vyre again.";
+  if (code === "ERR_BIOMETRIC" || code === "ERR_NO_BIOMETRICS") return `${how.charAt(0).toUpperCase()}${how.slice(1)} did not work. Nothing was approved.`;
+  if (code === "ERR_KEY_INVALIDATED") return `Your ${how} changed, so this phone's key must be set up again. Sign in to Vyre again.`;
   if (code === "no_signer") return "This phone cannot approve yet. Update Vyre.";
   if (code === "not_found") return "That request ended before you answered.";
   if (code === "no_person" || code === "ERR_NO_PERSON") return "This phone does not know who you are yet. Open Vyre and sign in, then try again.";

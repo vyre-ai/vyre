@@ -220,10 +220,22 @@ The person's answer: { id, approve: true } with the presence proof signed over t
 Ask the person's paired phone to approve an act this session cannot prove itself. Give the op and fields the kernel will verify (grant.* or task.decide, as the proof request for the act builds them). Answers { id, payload_hash, expires_in_s }; read the outcome with approvals.status. Open for 5 minutes; at most 5 open.
 
 - Input:
-  - `fields` object, required
-  - `op` string, required
-  - `space` string, required
+  - `fields` object
+  - `moment` one of "pair", "vault", "outward"
+  - `op` string
+  - `request` object
+  - `space` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`
+
+### `approvals.hold`
+
+The registry's own: hold an outward call from a caller that is not you as a card on your phone. Answers { id, line }.
+
+- Input:
+  - `fields` object, required
+  - `from` string, required
+  - `tool` string, required
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `approvals.pending`
 
@@ -5542,39 +5554,6 @@ A paired device's session gets a new secret, signed by the device's key. The old
   - `t` string, required
 - Callers: `device`, `relay`, `tailnet`
 
-### `presence.person.session-answer`
-
-The owner answers a device's sign-in ask from their own device, with their presence: yes lets that device sign in once, with the strength of this proof.
-
-- Input:
-  - `id` string, required
-  - `yes` boolean, required
-- Callers: `capsule`, `cli`, `deck`, `local`, `mobile`
-- Needs a person present.
-
-### `presence.person.session-ask`
-
-A paired device with no live session asks its owner's phone to let it sign in: { id, expires_in_s }. One open ask per device. The owner answers with presence.person.session-answer from their own device; then the device signs in as usual and its session has the approving proof's strength.
-
-- Input:
-  - `label` string
-- Callers: `device`, `relay`, `tailnet`
-
-### `presence.person.session-pending`
-
-The sign-in asks still waiting for the owner, for their phone: { asks: [{ id, device, label, asked_at }] }, newest first. An ask lasts 5 minutes, then it is gone (so one made while the app was closed is still there when it opens).
-
-- Input: none
-- Callers: `capsule`, `cli`, `deck`, `local`, `mobile`
-
-### `presence.person.session-status`
-
-The state of this device's own sign-in ask: waiting, approved, refused, none (no such ask) or timeout.
-
-- Input:
-  - `id` string, required
-- Callers: `device`, `relay`, `tailnet`
-
 ### `presence.person.sessions`
 
 The browsers and apps signed in as the person: id, how (cookie or app), device, made, last used, when it lapses. Never a secret.
@@ -6510,6 +6489,13 @@ Bind a new tagged tailnet node to the paired desktop whose bind code it presents
   - `stableId` string, required
   - `node` string
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
+
+### `relay.devices.clear-leftover`
+
+On a server nobody owns: let go of every paired device row left by a pairing that never completed ownership, so a new owner's pairing is not refused by them. Only the Wink module asks, and only while the server is unowned. Answers { cleared }.
+
+- Input: none
+- Callers: any caller
 
 ### `relay.devices.drop`
 
@@ -8234,6 +8220,11 @@ For the pairing module, after it has PROVED the identity: make this home's owner
 - Input:
   - `person` string, required
   - `name` string
+  - `presence_key` object
+    - `device` string, required
+    - `key_id` string, required
+    - `signer` string, required
+    - `spki` string, required
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `spaces.owner.claimed`
@@ -11559,12 +11550,35 @@ Development only (the typed code is switched off in a release build; a phone, a 
 - Callers: any caller
 - Needs a person present.
 
+### `wink.code.carry`
+
+For the spaces module: show a short typed code that carries an invitation's link to the person who types it (and whose ack is typed back with wink.code.ack). Answers { code, offer, expires } or { code: null }. One typed code shows at a time: this replaces the one showing.
+
+- Input:
+  - `link` string, required
+  - `space` string
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
+
 ### `wink.code.open`
 
-Development only: show a short typed Wink code for a new computer or server (two-sided: the new device then shows a code to type back here, wink.code.ack). Switched off in a release build: it is refused unless VYRE_WINK_TYPED_CODE=1 or the config wink.typedCode is set; scan the QR or paste the long code instead. Answers { offer, code, expires }. The code is a secret: it is returned here and never put on the event bus.
+Show a short typed Wink code for a new computer or server (two-sided: the new device then shows a code to type back here, wink.code.ack). Switched off in a release build: it is refused unless VYRE_WINK_TYPED_CODE=1 or the config wink.typedCode is set; scan the QR or paste the long code instead. Answers { offer, code, expires }. The code is a secret: it is returned here and never put on the event bus.
 
 - Input:
   - `flow` one of "W1", "W2", "W3"
+- Callers: any caller
+- Needs a person present.
+
+### `wink.code.redeem`
+
+Use a typed Wink code (WINK-NNPP-PPPP). Answers { pairing, ack, expires }: show `ack` ('type this on your other device'); the person types it there. Then wink.pair.status says `done`. For an invitation (`for` omitted or "invite") it carries `invite: { link }`, which goes to spaces.invites.accept like a pasted link. `for` phone, server or storage pairs this app with that device (target as in wink.pair.server). One try per code: a wrong code closes it. Codes last 10 minutes.
+
+- Input:
+  - `code` string, required
+  - `for` one of "invite", "phone", "server", "storage"
+  - `name` string
+  - `target` object
+    - `id` string
+    - `kind` "identity" or "space"
 - Callers: any caller
 - Needs a person present.
 

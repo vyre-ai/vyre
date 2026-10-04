@@ -36,6 +36,9 @@ import { seedFromKey } from "../../relay/client/join.js";
 
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 const OFFER_TTL = 5 * 60_000;
+/** A typed code lives 10 minutes, and three wrong tries close it (a fresh one replaces it). */
+const TYPED_TTL = 10 * 60_000;
+const TYPED_TRIES = 3;
 const INVITE_TTL_DAYS = 7;
 const ROLES = new Set(["member", "contributor", "guest", "admin"]);
 const SENSITIVE_ROLES = new Set(["admin"]);
@@ -154,7 +157,7 @@ export function createWink(inject = {}) {
       if (code) return code;
       const route = await ensureRoute();
       code = createWinkCode({
-        route, twoSided: true, level: 2,
+        route, twoSided: true, level: 2, ttlMs: TYPED_TTL, maxAttempts: TYPED_TRIES,
         allocate: async () => { const r = /** @type {any} */ (await ctx.call("relay.code.alloc", {})); allocFail = r && r.error ? r.error : null; return r && r.data ? r.data : null; },
         release: () => { void ctx.call("relay.code.release", {}); },
         emit: (name, data) => {
@@ -175,14 +178,18 @@ export function createWink(inject = {}) {
       await ctx.call("relay.code.reply", { q: String(m.q), ...(out ? { m: out.m } : {}) });
     });
 
-    /** Opens (or replaces) the showing code for one flow. @param {"W1" | "W2" | "W3"} flow */
-    const openCode = async flow => {
+    /** What a code carries to the typist once the ack is typed back (an invitation's link), by offer id. Memory only: a restart ends the code with it. @type {Map<string, any>} */
+    const carried = new Map();
+    /** Opens (or replaces) the showing code for one flow. @param {"W1" | "W2" | "W3" | "W5"} flow @param {any} [carry] sealed into the ticket the right ack makes */
+    const openCode = async (flow, carry) => {
       sweep();
       const c = await ensureCode();
       // A new code always replaces the old one: the abandoned code is closed (its rendezvous goes back) and its offer is closed, so typing the old one fails plainly.
       if (codeOffer) { const prev = readOffer(codeOffer); if (prev && ["offered", "found", "joining"].includes(prev.state)) writeOffer(codeOffer, "closed", { why: "replaced" }); }
       c.cancel();
-      codeOffer = newOffer(flow, "code", {});
+      carried.clear();
+      codeOffer = newOffer(flow, "code", {}, TYPED_TTL);
+      if (carry) carried.set(codeOffer, carry);
       const made = await c.open();
       if (!made) { writeOffer(codeOffer, "closed", {}); throw fail("unavailable", allocFail ? relayWords(allocFail) : words("relayNoCode")); }
       shown = { code: made.code, expires: made.expires };
@@ -199,21 +206,42 @@ export function createWink(inject = {}) {
       if (!r.ok) { writeOffer(o.id, "closed", { why: "wrong_code" }); ctx.events.emit("wink.declined", { offer: o.id, why: "wrong_code" }); return { ok: false }; }
       // Both ends hold the same key: the ticket's seed is derived from it, so the relay never sees it and nothing else is carried.
       const seed = Buffer.from(seedFromKey(r.key)).toString("base64url");
-      const t = /** @type {any} */ (await ctx.call("relay.ticket.mint", { seed }));
+      const carry = carried.get(o.id);
+      const t = /** @type {any} */ (await ctx.call("relay.ticket.mint", { seed, ...(carry ? { offer: carry } : {}) }));
       if (!t || t.error) { writeOffer(o.id, "closed", { why: "relay" }); throw fail("unavailable", relayWords(t && t.error)); }
+      carried.delete(o.id);
       writeOffer(o.id, "joining", { pick: null });
+      if (!carry && pairing.phone && pairing.phone.codeUsed) pairing.phone.codeUsed();
       ctx.events.emit("wink.confirmed", { offer: o.id });
       return { ok: true };
     };
 
     ctx.tool("wink.code.open", {
-      description: "Development only: show a short typed Wink code for a new computer or server (two-sided: the new device then shows a code to type back here, wink.code.ack). Switched off in a release build: it is refused unless VYRE_WINK_TYPED_CODE=1 or the config wink.typedCode is set; scan the QR or paste the long code instead. Answers { offer, code, expires }. The code is a secret: it is returned here and never put on the event bus.",
+      description: "Show a short typed Wink code for a new computer or server (two-sided: the new device then shows a code to type back here, wink.code.ack). Switched off in a release build: it is refused unless VYRE_WINK_TYPED_CODE=1 or the config wink.typedCode is set; scan the QR or paste the long code instead. Answers { offer, code, expires }. The code is a secret: it is returned here and never put on the event bus.",
       input: obj({ flow: { type: "string", enum: ["W1", "W2", "W3"] } }),
       presence: { summary: async () => "Show a code to add a new device to this server" },
       run: async (input, meta = {}) => {
         owner(meta, "adding a device");
         if (!typedCodeOn()) throw fail("typed_code_off", words("typedCodeOff"));
         return openCode(input.flow || "W2");
+      },
+    });
+
+    // An invitation's typed code (RC1): spaces.invites.create hands the invite's own link here and gets a short code for it. Whoever types the code, and whose ack the person types back here, receives that link inside
+    // the ticket's sealed record (the long code, carried by the PAKE). It adds no way in: the link is the same one, and accepting it is the same accept. A code that cannot be made answers { code: null }.
+    ctx.tool("wink.code.carry", {
+      internal: true,
+      description: "For the spaces module: show a short typed code that carries an invitation's link to the person who types it (and whose ack is typed back with wink.code.ack). Answers { code, offer, expires } or { code: null }. One typed code shows at a time: this replaces the one showing.",
+      input: obj({ link: str, space: str }, ["link"]),
+      run: async (input, meta = {}) => {
+        if (String((meta && meta.caller) || "") !== "module:spaces") throw fail("denied", "only the spaces module carries an invitation");
+        if (!typedCodeOn()) return { code: null };
+        const link = String(input.link || "");
+        if (link.length > 1500 || !/^https:\/\/[^\s]+$/.test(link)) throw fail("bad_input", "the link is an https address");
+        try {
+          const c = await openCode("W5", { v: 1, kind: "space-invite", link, ...(input.space ? { space: String(input.space).slice(0, 64) } : {}) });
+          return { code: c.code, offer: c.offer, expires: c.expires };
+        } catch { return { code: null }; }
       },
     });
 
@@ -280,13 +308,18 @@ export function createWink(inject = {}) {
     };
     // The short typed code is switched off in a release build (ruling, 4 Oct 2026; its cryptography still needs an independent review, team/0.3/PAKE-choice.md). One flag
     // for development: the env var VYRE_WINK_TYPED_CODE=1, or `wink.typedCode: true` in the config. Scan and paste always work.
-    const typedCodeOn = () => inject.typedCode !== undefined ? Boolean(inject.typedCode) : (process.env.VYRE_WINK_TYPED_CODE === "1" || Boolean(ctx.config && ctx.config.wink && ctx.config.wink.typedCode === true));
+    // RC1 (user ruling, 5 Oct 2026): the typed code is allowed on a release build, with a 10 minute life, three wrong tries per code and one use. `typedCodeOn` says it is allowed (config `wink.typedCode: false`, or VYRE_WINK_TYPED_CODE=0,
+    // is the kill switch). `typedCodeDefault` is the older development switch: the install flow shows a typed code in place of the QR only when that is on.
+    const typedCodeOn = () => inject.typedCode !== undefined ? Boolean(inject.typedCode) : !(process.env.VYRE_WINK_TYPED_CODE === "0" || (ctx.config && ctx.config.wink && ctx.config.wink.typedCode === false));
+    const typedCodeDefault = () => inject.typedCodeDefault !== undefined ? Boolean(inject.typedCodeDefault) : (process.env.VYRE_WINK_TYPED_CODE === "1" || Boolean(ctx.config && ctx.config.wink && ctx.config.wink.typedCode === true));
     // The home's identity list and this device's signer, by the spaces module's own internal tools (read live every call, never cached). Given by `inject` first, so a test can pass fakes.
     const ports = identityPorts({ call: ctx.call.bind(ctx), space: spaceId });
     const identityEntry = inject.identityEntry || ports.identityEntry;
     const signIdentity = inject.signIdentity || ports.signIdentity;
     const pairing = createPairing({
-      ctx, now, identity: owner1, space: spaceId, openCode, ack: ackOffer, owner, typedCode: typedCodeOn, confirmAdopt: inject.confirmAdopt,
+      ctx, now, identity: owner1, space: spaceId, openCode, ack: ackOffer, owner, typedCode: typedCodeOn, typedDefault: typedCodeDefault,
+      codeNow: () => { const o1 = codeOffer ? readOffer(codeOffer) : null; return shown && o1 && o1.state === "offered" ? { code: shown.code, expires: shown.expires, offer: codeOffer } : null; },
+      cancelCode: () => { const o1 = codeOffer ? readOffer(codeOffer) : null; if (code && o1 && o1.flow === "W1" && ["offered", "found"].includes(o1.state)) { code.cancel(); writeOffer(codeOffer, "closed", { why: "used" }); } }, confirmAdopt: inject.confirmAdopt,
       releaseMaxMs: inject.releaseMaxMs,
       // Q-3: the identity port (the entry on an identity's list, read live) that checks the proof of a server installed to pair to one identity, and the app's own signer for that proof. A box given
       // neither refuses every unattended pairing ("cannot check who is asking"): naming an identity is never enough.

@@ -68,6 +68,8 @@ const body = () => page.locator("body").innerText();
 
 let alive = await check("install: the name step is open (the web claim flag is on)", async () => {
   await page.goto(`${BASE}/app/u/install`, { waitUntil: "networkidle" });
+  // First run opens on the welcome: Get started goes to the name.
+  await page.getByText("Get started", { exact: true }).first().click({ timeout: 25000 });
   await page.getByText("Choose your Vyre name").first().waitFor({ timeout: 25000 }).catch(() => {}); // the app retries the missing box for a few seconds before it draws
   if (!(await body()).includes("Choose your Vyre name")) throw new Error("the page does not offer the claim (built from a tree whose rc.ts says browserClaim: false, or from a cached bundle)");
 });

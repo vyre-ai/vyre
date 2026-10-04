@@ -8,7 +8,7 @@ import { tokens } from "../theme/tokens";
 import { type } from "../theme/type";
 import { Avatar } from "./Avatar";
 import { BackButton } from "./BackButton";
-import { focusData } from "./Button";
+import { Button, focusData } from "./Button";
 
 /**
  * A page: the phone header and a body. Layout branches on width only, never the platform. A tab
@@ -16,7 +16,7 @@ import { focusData } from "./Button";
  * pushed place carries Back instead, named for `backTo` (the page it came from) when the caller
  * knows it, else for the page under it in the stack.
  */
-export function Screen({ title, back, backTo, children }: { title: string; back?: boolean; backTo?: string; children?: ReactNode }) {
+export function Screen({ title, back, backTo, action, children }: { title: string; back?: boolean; backTo?: string; action?: { label: string; onPress: () => void; testID?: string }; children?: ReactNode }) {
   const { color } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -28,6 +28,7 @@ export function Screen({ title, back, backTo, children }: { title: string; back?
         <Text accessibilityRole="header" numberOfLines={1} style={[type.title, styles.title, { color: color.text }]}>
           {title}
         </Text>
+        {action ? <Button kind="secondary" size="sm" label={action.label} onPress={action.onPress} testID={action.testID} /> : null}
         {back ? null : <PlacesButton name={me} onPress={() => router.push("/places")} />}
       </View>
       <View style={styles.body}>{children}</View>
@@ -52,12 +53,14 @@ function PlacesButton({ name, onPress }: { name: string; onPress: () => void }) 
   );
 }
 
-/** The quiet empty state: one line, the label colour. */
-export function Empty({ text }: { text: string }) {
+/** The quiet empty state: one line, the label colour. With `action` it says what is missing and gives the one thing that fixes it, so a screen is never blank. */
+export function Empty({ text, line, action }: { text: string; line?: string; action?: { label: string; onPress: () => void } }) {
   const { color } = useTheme();
   return (
     <View style={styles.empty}>
       <Text style={[type.read, { color: color.label }]}>{text}</Text>
+      {line ? <Text style={[type.base, styles.line, { color: color.label }]}>{line}</Text> : null}
+      {action ? <View style={styles.action}><Button kind="secondary" label={action.label} onPress={action.onPress} /></View> : null}
     </View>
   );
 }
@@ -76,4 +79,6 @@ const styles = StyleSheet.create({
   avatarHit: { width: tokens.control.touch, height: tokens.control.touch, alignItems: "flex-end", justifyContent: "center" },
   body: { flex: 1 },
   empty: { flex: 1, alignItems: "center", justifyContent: "center", padding: tokens.layout.gutterPhone },
+  line: { textAlign: "center", marginTop: tokens.space[2] },
+  action: { marginTop: tokens.space[4] },
 });

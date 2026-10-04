@@ -7,7 +7,7 @@ import { payloadHash } from "../../kernel/seal/wire.js";
 const SPACE = "spc_aaaaaaaaaaaa";
 async function world() {
   const tools = new Map(), clock = { t: 1_000_000 };
-  await mod.start({ tool: (n, d) => tools.set(n, d), now: () => clock.t, kernel: { proofFrom: m => (m.proof ? { presence: m.proof } : undefined) } });
+  await mod.start({ tool: (n, d) => tools.set(n, d), now: () => clock.t, modules: { isOutward: n => n === "mail.send" }, kernel: { proofFrom: m => (m.proof ? { presence: m.proof } : undefined) } });
   return { tools, clock, run: (n, i, m = {}) => tools.get(n).run(i, m) };
 }
 const FIELDS = { resource: `vyre://${SPACE}/invite/new`, input_hash: "h1" };
@@ -59,4 +59,15 @@ test("approvals.request returns exactly the kernel's proof request for an act, a
   assert.equal(asked.payload_hash, r.payload_hash);
   await assert.rejects(() => w.run("approvals.request", { space: SPACE, call: "nope", args: [] }, { caller: "deck" }), { code: "bad_input" });
   await assert.rejects(() => w.run("approvals.request", { space: "x", call: "setRole", args }, { caller: "deck" }), { code: "bad_input" });
+});
+
+test("approvals.hold: only the registry holds a call, only for an outward tool, the card names the asker, and the same call is one card", async () => {
+  const w = await world();
+  const f = { to: "juno", input_sha256: "a".repeat(32) };
+  await assert.rejects(() => w.run("approvals.hold", { tool: "mail.send", fields: f, from: "mcp:agent:kit" }, { caller: "cli" }), { code: "denied" });
+  await assert.rejects(() => w.run("approvals.hold", { tool: "notes.add", fields: f, from: "mcp:agent:kit" }, { caller: "module:registry" }), { code: "bad_input" });
+  const a = await w.run("approvals.hold", { tool: "mail.send", fields: f, from: "mcp:agent:kit" }, { caller: "module:registry" });
+  assert.deepEqual(await w.run("approvals.hold", { tool: "mail.send", fields: f, from: "mcp:agent:kit" }, { caller: "module:registry" }), a);
+  const [card] = (await w.run("approvals.pending", {}, { caller: "device:phone" })).approvals;
+  assert.equal(card.id, a.id); assert.equal(card.moment, "outward"); assert.match(card.line, /kit/); assert.equal(card.request.fields.input_sha256, f.input_sha256);
 });

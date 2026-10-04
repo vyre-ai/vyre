@@ -25,6 +25,9 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
     var socket = ""
     var presence: CapsulePresence?
 
+    /// A server Mac (FirstRun.swift): no local vyred, so the window serves the web build inside this app and the page connects to its server over the relay.
+    private(set) var boxless = false
+
     private(set) var window: NSWindow?
     private var web: WKWebView?
     private let proxy = BoxSchemeHandler()
@@ -32,10 +35,14 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
 
     var isOpen: Bool { window?.isVisible ?? false }
 
-    /// Open the window, or bring it forward. Never starts anything else.
-    func show() {
+    /// Open the window, or bring it forward. Never starts anything else. `boxless` is a server Mac's window (the web build carried in this app, no vyred socket);
+    /// a window already open in the other mode is closed and made again.
+    func show(boxless: Bool = false) {
+        if window != nil, self.boxless != boxless { window?.close() }
+        self.boxless = boxless
         if window == nil { build() }
         proxy.socket = socket
+        proxy.bundleDir = boxless ? BundledApp.locate() : nil
         if NSApp.activationPolicy() != .regular { NSApp.setActivationPolicy(.regular) }
         if priorMenu == nil { priorMenu = NSApp.mainMenu }
         NSApp.mainMenu = VyreMenu.make(self)
@@ -47,6 +54,8 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         let cfg = WKWebViewConfiguration()
         cfg.setURLSchemeHandler(proxy, forURLScheme: Self.scheme)
         cfg.userContentController.add(WeakScriptHandler(self), name: "vyre")
+        // A boxless window says so before the bridge is made, so the page can start as a browser with no box of its own.
+        if boxless { cfg.userContentController.addUserScript(WKUserScript(source: "window.__vyreBoxless = true;", injectionTime: .atDocumentStart, forMainFrameOnly: true)) }
         cfg.userContentController.addUserScript(WKUserScript(source: Self.bridgeSource, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         let view = WKWebView(frame: .zero, configuration: cfg)
         view.navigationDelegate = self
@@ -165,6 +174,7 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
       }
       window.__vyreShell = {
         kind: "mac",
+        boxless: !!window.__vyreBoxless,
         presence: function (tool, input, summary) { return call("presence", { tool: tool, input: input, summary: summary }).then(function (r) { return r.header; }); },
         notify: function (title, body) { return call("notify", { title: title, body: body }); },
         open: function (url) { return call("open", { url: url }); },
@@ -189,6 +199,8 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
 /// queue, as the Capsule's own VyredClient does; a long stream stays open until the page stops it.
 final class BoxSchemeHandler: NSObject, WKURLSchemeHandler, @unchecked Sendable {
     var socket = ""
+    /// Set for a server Mac: the web build's folder inside the app. Requests are answered from it, and nothing goes to a socket.
+    var bundleDir: String?
     private let lock = NSLock()
     private var stopped = Set<ObjectIdentifier>()
 
@@ -198,6 +210,7 @@ final class BoxSchemeHandler: NSObject, WKURLSchemeHandler, @unchecked Sendable 
     func webView(_ webView: WKWebView, stop task: WKURLSchemeTask) { lock.lock(); stopped.insert(ObjectIdentifier(task)); lock.unlock() }
 
     func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
+        if let dir = bundleDir { return serveBundled(task, dir: dir) }
         guard let url = task.request.url, !socket.isEmpty else { return task.didFailWithError(URLError(.cannotConnectToHost)) }
         var path = url.path.isEmpty ? "/" : url.path
         if let q = url.query { path += "?" + q }
@@ -236,6 +249,19 @@ final class BoxSchemeHandler: NSObject, WKURLSchemeHandler, @unchecked Sendable 
                 }
             }
         }
+    }
+
+    /// A server Mac's window: the app's own files from the folder carried inside this app (BundledApp.swift). A call to a box has no vyred here and fails.
+    private func serveBundled(_ task: WKURLSchemeTask, dir: String) {
+        guard let url = task.request.url, (task.request.httpMethod ?? "GET") == "GET" else { return task.didFailWithError(URLError(.cannotConnectToHost)) }
+        let path = url.path.isEmpty ? "/" : url.path
+        guard case .file(let file, let mime) = BundledApp.resolve(path: path, in: dir), let data = FileManager.default.contents(atPath: file) else {
+            let gone = HTTPURLResponse(url: url, statusCode: 404, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "text/plain"])!
+            task.didReceive(gone); task.didReceive(Data()); task.didFinish()
+            return
+        }
+        let ok = HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": mime, "Content-Length": String(data.count), "Cache-Control": "no-store"])!
+        task.didReceive(ok); task.didReceive(data); task.didFinish()
     }
 
     /// The request's body, from its data or its stream.

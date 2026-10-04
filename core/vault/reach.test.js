@@ -55,12 +55,15 @@ test("person-reach vault tools refuse a model, an agent and a module at the door
   assert.equal(checked, PERSON.length);
 });
 
-test("an added module that lists the vault's put, totp and relay in needs.tools is still refused them (not_declared)", async t => {
+// With the kernel on, an ADDED module runs in the sandbox supervisor (`export const handlers`, no ctx: kernel/modules/child.js), so it cannot call any vault tool: the refusal is structural. Without the kernel it is the legacy
+// in-process module and the registry's not_declared; the positive control (vault.list is not refused as not_declared) applies only there.
+const KERNEL_ON = process.env.VYRE_KERNEL === "1";
+test("an added module that lists the vault's put, totp and relay in needs.tools is still refused them", { skip: KERNEL_ON && process.platform !== "linux" ? "the added-module sandbox needs bwrap (linux)" : false, timeout: 90_000 }, async t => {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", vault: { keystore: "file" } }));
   const TOOLS = { "vault.put": { name: "bakery-key", value: "x" }, "vault.totp": { name: "bakery-key" }, "vault.relay": { item: "x", request: { url: "https://example.com" } } };
   writeModule(path.join(root, "modules"), "bakery", { vyre: "1", description: "A bakery's orders.", does: { tools: [{ name: "bakery.try", reach: "anyone" }] },
-    needs: { tools: [...Object.keys(TOOLS), "vault.list"] } }, `export default { async start(ctx) {
+    needs: { tools: [...Object.keys(TOOLS), "vault.list"] } }, KERNEL_ON ? `export const handlers = { "bakery.try": async () => ({ ctx: typeof ctx }) };` : `export default { async start(ctx) {
     ctx.tool("bakery.try", { input: { type: "object", properties: { tool: { type: "string" }, input: { type: "object" } } },
       run: async ({ tool, input }) => { const r = await ctx.call(tool, input || {}); return { code: r.error && r.error.code }; } });
     return { async stop() {} };
@@ -68,6 +71,14 @@ test("an added module that lists the vault's put, totp and relay in needs.tools 
   const d = await start({ presence: present, root, log: () => {} });
   t.after(() => d.stop());
   assert.equal(d.registry.status().find(m => m.name === "bakery")?.state, "running");
+  if (KERNEL_ON) {
+    for (const [tool, input] of Object.entries(TOOLS)) {
+      const r = await d.registry.call("bakery.try", { tool, input }, "local");
+      assert.equal(r.data && r.data.ctx, "undefined", `${tool}: the sandbox gives an added module no ctx, so there is no vault tool to call: ${JSON.stringify(r)}`);
+    }
+    assert.equal((await d.registry.call("vault.list", {}, "local")).data.items.length, 0, "nothing was put");
+    return;
+  }
   for (const [tool, input] of Object.entries(TOOLS)) {
     const r = await d.registry.call("bakery.try", { tool, input }, "local");
     assert.equal(r.data && r.data.code, "not_declared", `${tool}: ${JSON.stringify(r)}`);

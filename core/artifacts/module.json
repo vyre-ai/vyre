@@ -24,7 +24,7 @@
       { "name": "artifacts.share", "summary": "make a public link to an artifact", "reach": "anyone", "effect": "write", "outward": "post" },
       { "name": "artifacts.unshare", "summary": "stop a public link", "reach": "anyone", "effect": "write" },
       { "name": "artifacts.public.status", "summary": "whether public links are on", "reach": "anyone", "effect": "read" },
-      { "name": "artifacts.public.set", "summary": "turn public links on or off", "reach": "person", "effect": "write" },
+      { "name": "artifacts.public.set", "outward": true, "summary": "turn public links on or off", "reach": "person", "effect": "write" },
       { "name": "artifacts.public.base", "summary": "the public address links use (network setup)", "reach": "modules" },
       { "name": "artifacts.mention.search", "summary": "the # picker's artifact results", "reach": "person", "effect": "read" },
       { "name": "artifacts.mention.resolve", "summary": "an artifact tagged with #, as a reference for the thread", "reach": "modules" },

@@ -22,7 +22,17 @@ export function createInput(o) {
 export function madeNote(r) {
   const until = Number(r?.valid_until);
   const when = until ? new Date(until).toLocaleDateString([], { day: "numeric", month: "short" }) : "";
-  return { link: String(r?.link ?? ""), id: String(r?.id ?? ""), needsConfirm: r?.needs_confirm === true, line: when ? `Good until ${when}. The link works once for one person.` : "The link works once for one person." };
+  return { code: typeof r?.code === "string" && r.code ? r.code : null, codeExpires: Number(r?.code_expires) || null, codeOffer: typeof r?.code_offer === "string" && r.code_offer ? r.code_offer : null, link: String(r?.link ?? ""), id: String(r?.id ?? ""), needsConfirm: r?.needs_confirm === true, line: when ? `Good until ${when}. The link works once for one person.` : "The link works once for one person." };
+}
+
+/**
+ * "Email it": a mailto the person's own mail app opens (or the share sheet's text on a phone). Vyre sends nothing itself.
+ * @param {string} space @param {string} link
+ */
+export function emailIt(space, link) {
+  const subject = `Join ${space} on Vyre`;
+  const body = `You are invited to ${space} on Vyre. Open this link on your phone to see who invited you and join:\n\n${link}`;
+  return { subject, body, mailto: `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}` };
 }
 
 /** One row of spaces.invites.list as a line, whatever fields the box gives it (never the link). @param {any} i */
