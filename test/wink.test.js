@@ -1761,3 +1761,71 @@ test("the three-strikes count is in the store too: two wrong answers, a restart,
   await call(d2, "presence.person.start-paired", { sig: "AAAA" });
   assert.ok((await d2.registry.call("presence.person.locked", {}, "cli", PROOF)).data.locked.some(l => l.device === id), "the count survived the restart: the third wrong answer locks");
 });
+
+// ---- Add this device from another device: the joining side (relay/client/phonepair.js), a box-less device with its own identity key ----
+test("add this device from another device, real daemon: a box-less device redeems the code, the words match, the person says yes, and the identity's list takes the device's key", async t => {
+  const { addThisDevice, parsePhonePayload } = await import("../relay/client/phonepair.js");
+  await standinIdentity(t); // the shared fake names directory (the module's fetch)
+  spacesHooks.stretch = { memoryKiB: 64, passes: 1 };
+  t.after(() => { spacesHooks.stretch = null; });
+  const savedTyped = process.env.VYRE_WINK_TYPED_CODE;
+  delete process.env.VYRE_WINK_TYPED_CODE;
+  t.after(() => { if (savedTyped !== undefined) process.env.VYRE_WINK_TYPED_CODE = savedTyped; });
+  const w = await world(t);
+  const me = (await w.call("spaces.identity.create", { name: "kit", password: "four plain words here", deviceLabel: "Kit's laptop" })).data;
+  assert.match(String(me && me.id), /^per_/);
+  const open = (await w.call("wink.phone.open", {})).data;
+  assert.ok(parsePhonePayload(open.qr), "the code reads as a device-adding code");
+  assert.equal(parsePhonePayload(open.qr.replace("&k=phone", "")), null, "and a server's code does not");
+  const key = crypto.generateKeyPairSync("ed25519");
+  const publicKey = key.publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("base64url");
+  const before = (await w.call("spaces.identity.entries")).data;
+  /** @type {string} */ let shown = "";
+  const joining = addThisDevice({ payload: open.qr, key: { publicKey, label: "Kit's phone" }, name: "Kit's phone", crypto: nodeCrypto(), keyStore: keystore(t), pollMs: 50, onWords: x => { shown = x; } });
+  joining.catch(() => {});
+  const asked = await until(async () => { const q = (await w.call("wink.phone.pairing")).data; return q && q.asking ? q : null; });
+  await until(async () => shown);
+  assert.equal(asked.name, "Kit's phone");
+  assert.ok(asked.choices.includes(shown), "the computer's choices hold the words this device shows");
+  assert.equal((await w.call("spaces.identity.entries")).data.length ?? (await w.call("spaces.identity.entries")).data.entries?.length, before.length ?? before.entries?.length, "nothing is on the list before the yes");
+  const yes = (await w.call("wink.phone.pair.answer", { yes: true, pick: asked.choices.indexOf(shown) + 1 })).data;
+  assert.equal(yes.yes, true, JSON.stringify(yes));
+  assert.equal(yes.enrolled, true);
+  const done = await joining;
+  assert.equal(done.paired, true);
+  assert.equal(done.enrolled, true);
+  const after = (await w.call("spaces.identity.entries")).data;
+  const list = after.entries || after;
+  assert.ok(list.some(e => e.kind === "device" && e.label === "Kit's phone"), JSON.stringify(list));
+});
+
+test("add this device from another device: a no, a wrong pick, a used code and a server's code each add nothing", async t => {
+  const { addThisDevice } = await import("../relay/client/phonepair.js");
+  await standinIdentity(t);
+  spacesHooks.stretch = { memoryKiB: 64, passes: 1 };
+  t.after(() => { spacesHooks.stretch = null; });
+  const savedTyped = process.env.VYRE_WINK_TYPED_CODE;
+  delete process.env.VYRE_WINK_TYPED_CODE;
+  t.after(() => { if (savedTyped !== undefined) process.env.VYRE_WINK_TYPED_CODE = savedTyped; });
+  const w = await world(t);
+  await w.call("spaces.identity.create", { name: "kit", password: "four plain words here", deviceLabel: "Kit's laptop" });
+  const publicKey = () => crypto.generateKeyPairSync("ed25519").publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("base64url");
+  const count = async () => { const d = (await w.call("spaces.identity.entries")).data; return (d.entries || d).length; };
+  const n0 = await count();
+  for (const answer of [{ yes: false }, { yes: true, words: "wrong wrong wrong" }]) {
+    const open = (await w.call("wink.phone.open", {})).data;
+    const p = addThisDevice({ payload: open.qr, key: { publicKey: publicKey() }, name: "Sam's phone", crypto: nodeCrypto(), keyStore: keystore(t), pollMs: 50 });
+    p.catch(() => {});
+    await until(async () => { const q = (await w.call("wink.phone.pairing")).data; return q && q.asking; });
+    assert.equal((await w.call("wink.phone.pair.answer", answer)).data.yes, false);
+    await assert.rejects(() => p, e => e.code === "denied");
+    assert.equal(await count(), n0, "nothing was added");
+  }
+  const open = (await w.call("wink.phone.open", {})).data;
+  const used = await pairTicket(parsePhoneQr(open.qr).seed, { relay: w.status.url, name: "first", crypto: nodeCrypto(), keyStore: keystore(t) });
+  assert.ok(used.pending);
+  await assert.rejects(() => addThisDevice({ payload: open.qr, key: { publicKey: publicKey() }, name: "second", crypto: nodeCrypto(), keyStore: keystore(t) }), e => e.code === "taken");
+  await assert.rejects(() => addThisDevice({ payload: "vyre://wink/2?t=AAAAAAAAAAAAAAAAAAAAAA&r=ws%3A%2F%2Fx", key: { publicKey: publicKey() } }), e => e.code === "bad_code");
+  await assert.rejects(() => addThisDevice({ payload: open.qr, key: { publicKey: "short" } }), e => e.code === "bad_code");
+  assert.equal(await count(), n0);
+});
