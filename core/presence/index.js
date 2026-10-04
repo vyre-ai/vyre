@@ -420,6 +420,9 @@ export const MIGRATIONS = [`
 `, `
   -- The strength a pairing grant carries into the session it opens (written from what the server verified at pairing or at the owner's approval, never from an app's claim).
   ALTER TABLE presence_pair_grants ADD COLUMN strength TEXT;
+`, `
+  -- A sign-in a phone approved lasts at most this many ms (12 hours): the browser's session then ends and the next sign-in asks again.
+  ALTER TABLE presence_pair_grants ADD COLUMN cap_ms INTEGER;
 `];
 
 const CHALLENGE_TTL = 120_000;

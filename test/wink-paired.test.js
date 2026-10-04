@@ -1428,6 +1428,8 @@ test("SW-1 on a release-kind build (software switch off): a software paired sess
     assert.match(await defineOn(f, links), /needs_presence|presence/, "a software session is refused");
     const ask = await links.askSignIn("srv", "Alex's browser");
     assert.equal((await links.signInStatus("srv", ask.id)).state, "waiting");
+    // SA-1: the browser itself (a software session) cannot read the owner's pending asks
+    await assert.rejects(() => links.sessionFor("srv").call("presence.person.session-pending", {}), e => /denied|owner/.test(`${e.code} ${e.message}`), "a software session cannot list sign-in asks");
     const pending = (await f.w.d.registry.call("presence.person.session-pending", {}, "cli", PROOF)).data.asks;
     assert.deepEqual(pending.map(a => [a.id, a.label]), [[ask.id, "Alex's browser"]], "the owner's phone can list the waiting ask");
     assert.match(await defineOn(f, links), /needs_presence|presence/, "asking is not approval");
@@ -1436,11 +1438,22 @@ test("SW-1 on a release-kind build (software switch off): a software paired sess
     assert.equal((await links.signInStatus("srv", ask.id)).state, "approved");
     await links.startPaired("srv");
     assert.equal(await defineOn(f, links), "ok", "the phone-approved session passes");
+    // SA-4: what a phone approval gives lasts for that session, at most 12 hours
+    const cap = f.w.d.registry.deps.db.prepare("SELECT max FROM presence_people WHERE paired = 1 AND node = ? AND strength = 'passkey'").get(f.done.device);
+    assert.ok(cap && cap.max <= Date.now() + 12 * 3600_000 + 5000 && cap.max > Date.now() + 11 * 3600_000, "the approved session is capped at 12 hours");
     const all = (await f.w.d.registry.call("presence.person.sessions", {}, "cli", PROOF)).data; assert.ok((all.sessions || all).some(s => s.strength === "passkey"), "it carries the approving proof's strength"); }
   // a refused ask grants nothing
   { const f = await pairFreshServer(t, { kind: "web", about: { kind: "web" }, presenceStorage: "software" }); const links = linksFor(t, f); await links.startPaired("srv");
     const ask = await links.askSignIn("srv");
     assert.equal((await f.w.d.registry.call("presence.person.session-answer", { id: ask.id, yes: false }, "cli", PROOF)).data.state, "refused");
     assert.equal((await links.signInStatus("srv", ask.id)).state, "refused");
+    // SA-2: a declined device cannot ask again for 10 minutes
+    await assert.rejects(() => links.askSignIn("srv"), e => /rate_limited/.test(String(e.code)), "no new ask right after a no");
     assert.match(await defineOn(f, links), /needs_presence|presence/, "a refused ask leaves the session software"); }
+  // SA-3: removing a device's sessions clears its asks
+  { const f = await pairFreshServer(t, { kind: "web", about: { kind: "web" }, presenceStorage: "software" }); const links = linksFor(t, f); await links.startPaired("srv");
+    const ask = await links.askSignIn("srv");
+    await f.w.d.registry.call("presence.person.end-paired", { device: f.done.device }, "module:wink");
+    await links.startPaired("srv");
+    assert.equal((await links.signInStatus("srv", ask.id)).state, "none", "the ask went with the device's sessions"); }
 });
