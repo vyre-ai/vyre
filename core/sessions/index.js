@@ -26,6 +26,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { isPerson } from "../../lib/caller.js";
+import { callerKind } from "../modules/index.js";
 import { Routes, ROUTES_MIGRATION } from "./routes.js";
 import { usesSpawner } from "./spawn.js";
 import { grokProvider } from "./drivers/grok.js";
