@@ -64,6 +64,12 @@
         "effect": "write"
       },
       {
+        "name": "team.charter.accept",
+        "projectArg": "project",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
         "name": "team.charter.draft",
         "projectArg": "project",
         "reach": "anyone",

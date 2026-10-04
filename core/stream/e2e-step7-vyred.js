@@ -13,6 +13,8 @@ import { start } from "../daemon/index.js";
 import * as config from "../config/index.js";
 import { open } from "../store/index.js";
 import { homeIdentity } from "../../kernel/home.js";
+import net from "node:net";
+import { fileURLToPath } from "node:url";
 
 import { present } from "../../test/helpers.js";
 
@@ -24,7 +26,31 @@ process.env.VYRE_NO_DIALOGS = "1";
 const stateFile = path.join(root, "e2e-state.json");
 /** @type {{ chat?: string }} */ let state = {};
 try { state = JSON.parse(fs.readFileSync(stateFile, "utf8")); } catch { /* first boot */ }
-const ALEX_ID = homeIdentity(root).owner, CAROL = "per_carol";
+const ALEX_ID = homeIdentity(root).owner;
+// carol is a REAL claimed identity (the real path for a second person's device, windows' member-device enrolment in core/spaces, the shape of test/one-registry.test.js): her name is claimed at a
+// stand-in names directory this harness starts (its storage kept in --state, so a restart of this harness keeps every claim), made by her own home on the same directory, and the Space finds
+// her identity list there.
+const { spawn } = await import("node:child_process");
+const { call: callTool } = await import("../daemon/client.js");
+const dirPort = await new Promise(res => { const n = net.createServer(); n.listen(0, "127.0.0.1", () => { const p = /** @type {any} */ (n.address()).port; n.close(() => res(p)); }); });
+const dirChild = spawn(process.execPath, [path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "scripts", "standin-directory.mjs"), "--port", String(dirPort), "--state", path.join(root, "dir-state.bin"), "--claims-per-ip", "50"], { stdio: ["ignore", "pipe", "inherit"] });
+process.on("exit", () => { try { dirChild.kill("SIGTERM"); } catch { /* gone */ } });
+await new Promise((res, rej) => { dirChild.stdout.on("data", d => { if (String(d).includes("stand-in names directory")) res(null); }); dirChild.on("exit", c => rej(new Error(`the stand-in directory exited early (${c})`))); });
+/** @type {{ chat?: string, carol?: { id: string, eid: string } }} */
+const carolState = state;
+if (!carolState.carol) {
+  const carolRoot = path.join(root, "carol-home");
+  fs.mkdirSync(carolRoot, { recursive: true });
+  fs.writeFileSync(path.join(carolRoot, "config.json"), JSON.stringify({ name: "carol-home", transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${dirPort}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  const carolDaemon = await start({ root: carolRoot, kernel: true, log: () => {} });
+  const made = /** @type {any} */ (await callTool("spaces.identity.create", { name: "carolwalk" }, { root: carolRoot, caller: "cli" }));
+  if (made.error) { console.error("carol: " + JSON.stringify(made.error)); process.exit(1); }
+  carolState.carol = { id: made.data.id, eid: made.data.eid };
+  await carolDaemon.stop();
+  fs.writeFileSync(stateFile, JSON.stringify(carolState));
+}
+const carolId = carolState.carol;
+const CAROL = carolId.id;
 if (!state.chat) {
   // The home is seeded once, BEFORE the daemon starts, by a kernel booted on the same home with a sealing process that allows an unattested software key (the daemon's own sealer cannot:
   // no production path enrols one). The owner's signer is that key; the one held act (a member joining) carries a real signed proof the real sealer checks. The daemon then boots on the
@@ -54,11 +80,12 @@ if (!state.chat) {
   await sealer.close();
   sdb.close();
 }
-// Devices enrol per Space (the spaces module answers spaces.devices.enrolled, and a device not enrolled gets no kernel chain). This harness has no claimed identity to enrol carol's paired device
-// with, so the spaces module is switched off for this home: with no list every device is enrolled (core/daemon deviceEnrolled). A stand-in, named in team/0.3/E2E-RUN.md.
-{ const cp = path.join(root, "config.json"); /** @type {any} */ let c = {}; try { c = JSON.parse(fs.readFileSync(cp, "utf8")); } catch { /* none yet */ } c.modules = { ...(c.modules || {}), disable: [...new Set([...((c.modules && c.modules.disable) || []), "spaces"])] }; fs.writeFileSync(cp, JSON.stringify(c)); }
+// The home's names directory is the stand-in started above (the Space reads carol's identity list from it); the spaces module stays ON.
+{ const cp = path.join(root, "config.json"); /** @type {any} */ let c = {}; try { c = JSON.parse(fs.readFileSync(cp, "utf8")); } catch { /* none yet */ } c.names = { ...(c.names || {}), directory: `http://127.0.0.1:${dirPort}` }; fs.writeFileSync(cp, JSON.stringify(c)); }
 const d = await start({ root, presence: present, kernel: true, log: m => console.log(`${new Date().toISOString()} ${m}`) }).catch(e => { console.error("vyred: " + e.stack); process.exit(1); });
 const k = /** @type {any} */ (d.kernel);
+// the Space has verified carol's name (written when an invite is redeemed): the one row the member-device enrolment reads
+d.registry.deps.db.prepare("INSERT OR REPLACE INTO spaces_kv (key, value) VALUES (?, ?)").run(`person-name/${CAROL}`, JSON.stringify("carolwalk"));
 const ALEX = k.id.owner;
 const ownerChain = k.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: ALEX, path: "direct", session: "s" });
 const G = k.gateway.grants;
@@ -66,7 +93,7 @@ const G = k.gateway.grants;
 // harness stands in for the listener that proved them; a person's call carries FACTS, never a session token (a token is an assistant session's, and a session's chain may not open another).
 /** @type {Record<string, any>} */ const facts = {
   alex: { kind: "socket", surface: "deck", uid: process.getuid ? process.getuid() : 0, pid: 0, inside_model_process: false, capsule_verified: false },
-  carol: { kind: "device", device_key_id: "d-carol", person: CAROL, path: "wink" } };
+  carol: { kind: "device", device_key_id: carolId.eid, person: CAROL, path: "wink" } };
 
 const body = (/** @type {any} */ req) => new Promise(res => { /** @type {Buffer[]} */ const b = []; req.on("data", (/** @type {Buffer} */ c) => b.push(c)); req.on("end", () => { try { res(JSON.parse(Buffer.concat(b).toString() || "{}")); } catch { res({}); } }); });
 const send = (/** @type {any} */ res, /** @type {any} */ o) => { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify(o)); };
