@@ -4,7 +4,7 @@ import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { payloadHash as kernelHash } from "./payload-hash.js";
-import { ACTS, askPhone, endLine, heldAsk, phoneRoute, proofHeader, askYes } from "./approvals.js";
+import { ACTS, askPhone, endLine, heldAsk, momentOf, phoneRoute, proofHeader, askYes } from "./approvals.js";
 
 /** @param {any[]} statuses */
 function box(statuses, tamper = "") {
@@ -62,11 +62,14 @@ test("AP-1 on the asking side: a proof request or an ask whose hash is not the h
   await assert.rejects(askPhone(box([{ state: "waiting" }], "ask").call, { tool: "rules.enable", input: { id: "r" }, space: "spc_abcdefghijkl", ...FAST }), (/** @type {any} */ e) => e.code === "hash_mismatch");
 });
 
-test("a held act names its moment and request, nothing else counts", () => {
-  assert.deepEqual(heldAsk({ code: "held", detail: { moment: "vault", request: { op: "vault.reveal", fields: { name: "Bank" } } } }), { moment: "vault", request: { op: "vault.reveal", fields: { name: "Bank" } } });
-  assert.equal(heldAsk({ code: "held", detail: { moment: "nope", request: { op: "x" } } }), null);
-  assert.equal(heldAsk({ code: "needs_presence", detail: { moment: "vault", request: { op: "x" } } }), null);
-  assert.equal(heldAsk(null), null);
+test("presence_required on a vault, pairing or outward tool is the trigger, with the tool and its plain input as the request", () => {
+  assert.deepEqual(heldAsk({ code: "presence_required" }, "vault.reveal", { name: "Bank" }), { moment: "vault", request: { op: "vault.reveal", fields: { name: "Bank" } } });
+  assert.equal(heldAsk({ code: "presence_required" }, "wink.pair.server", {}).moment, "pair");
+  assert.equal(heldAsk({ code: "presence_required" }, "mail.send", { to: "a" }).moment, "outward");
+  assert.equal(heldAsk({ code: "presence_required" }, "records.list", {}), null);
+  assert.equal(heldAsk({ code: "not_found" }, "vault.reveal", {}), null);
+  assert.equal(heldAsk(null, "vault.reveal", {}), null);
+  assert.equal(momentOf("social.post"), "outward"); assert.equal(momentOf("rules.define"), null);
 });
 
 test("asking for the yes: ask, poll, and return the approval id for one retry, with no proof carried", async () => {

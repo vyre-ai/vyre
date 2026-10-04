@@ -38,8 +38,9 @@ export async function tool<T = unknown>(name: string, given: Record<string, unkn
     catch (e) {
       const x = e as { code?: string; message?: string; detail?: unknown };
       // An act held for the owner's yes: the phone approves it, the server runs it, and the result comes back here (no proof is carried by this browser).
-      const held = heldAsk(x);
-      if (held) return yesThenRetry<T>(held, name, input, (t, i) => peerCall<any>(t, i ?? {}));
+      const held = heldAsk(x, name, input);
+      // The same act again with the approval id beside it, as an extra input key on the peer wire (the door strips it before the tool sees it).
+      if (held) return yesThenRetry<T>(held, (t, i) => peerCall<any>(t, i ?? {}), (approval) => peerCall<T>(name, { ...input, approval }));
       throw new BoxError(x.code ?? "error", x.message ?? "");
     }
   }
@@ -56,8 +57,14 @@ export async function tool<T = unknown>(name: string, given: Record<string, unkn
       r = await call<T>(name, input, { kernelProof: proofHeader(out.proof) }).catch((e: Error) => ({ error: { code: "offline", message: e.message } }) as const);
     } finally { useApproval.getState().hide(); }
   }
-  // An act held for the owner's yes (design 6e03707): wait for the phone, then the server's result.
-  { const held = r.error ? heldAsk(r.error) : null; if (held) return yesThenRetry<T>(held, name, input, async (t, i) => { const x = await call<any>(t, i ?? {}); if (x.error) throw Object.assign(new Error(x.error.message), { code: x.error.code }); return x.data; }); }
+  // A browser that cannot prove the yes itself asks the phone, then sends the act again with the approval id in the x-vyre-approval header (never inside the tool's own input).
+  if (r.error && claimBlocked()) {
+    const held = heldAsk(r.error, name, input);
+    if (held) {
+      const raw = async (t: string, i?: Record<string, unknown>) => { const x = await call<any>(t, i ?? {}); if (x.error) throw Object.assign(new Error(x.error.message), { code: x.error.code }); return x.data; };
+      return yesThenRetry<T>(held, raw, async (approval) => { const x = await call<T>(name, input, { approval }); if (x.error) throw Object.assign(new Error(x.error.message), { code: x.error.code }); return x.data as T; });
+    }
+  }
   // RC1: a browser does not answer a person-only ask (vault secrets, pairing a device, an outbound send): the person does it in Vyre on their phone.
   if (r.error && claimBlocked() && needsPerson(r.error)) throw new BoxError("on_phone", onPhoneFor(name));
   // A human-only call: the box asks for presence, and in a browser the person's passkey answers it. Once, for this call.
@@ -81,14 +88,14 @@ export async function tool<T = unknown>(name: string, given: Record<string, unkn
   return r.data as T;
 }
 
-/** An act held for the owner's yes: ask the phone, wait with "Approve this in Vyre on your phone" and Stop waiting, then send the act again carrying the approval id (spent once). */
-async function yesThenRetry<T>(held: { moment: string; request: unknown }, name: string, input: Record<string, unknown>, ask: (tool: string, input?: Record<string, unknown>) => Promise<any>): Promise<T> {
+/** An act that needs the owner's yes: ask the phone, wait with "Approve this in Vyre on your phone" and Stop waiting, then send the act again with the approval id (spent once). */
+async function yesThenRetry<T>(held: { moment: string; request: unknown }, ask: (tool: string, input?: Record<string, unknown>) => Promise<any>, retry: (approval: string) => Promise<T>): Promise<T> {
   const st = useApproval.getState();
   st.show(softwareKeyLine());
   try {
     const out = await askYes(ask, { moment: held.moment, request: held.request, signal: st.signal, onWaiting: (line) => { if (line) useApproval.getState().show(line); } });
     if ("ended" in out) throw new BoxError("not_approved", endLine(out.ended));
-    return (await ask(name, { ...input, approval: out.approval })) as T;
+    return await retry(out.approval);
   } catch (e) {
     if (e instanceof BoxError) throw e;
     const x = e as { code?: string; message?: string };

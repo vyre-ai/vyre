@@ -84,14 +84,23 @@ export async function askPhone(call, o) {
 }
 
 
+/** The moment a tool belongs to when it needs the owner's fresh yes (wink-2, b78a3962b): vault secrets, pairing, and outward send, post, pay, publish, reply, forward. @param {string} tool @returns {"vault" | "pair" | "outward" | null} */
+export const momentOf = (tool) => {
+  const t = String(tool);
+  if (/^vault\./.test(t)) return "vault";
+  if (/^(wink|presence)\./.test(t)) return "pair";
+  if (/^[a-z][a-z0-9]*\.(send|post|pay|publish|reply|forward)[a-z0-9.-]*$/.test(t)) return "outward";
+  return null;
+};
+
 /**
- * An act that needs the owner's fresh yes (pair a device, a vault secret, an outward send): the server answers code "held" with detail { moment, request: { op, fields } } (the shape is a PROPOSAL until the
- * server's held sites exist; wink-2: they do not read `approval` yet). The browser carries no proof. @param {any} error
- * @returns {{ moment: string, request: { op: string, fields: Record<string, any> } } | null}
+ * An act that needs a yes and carries no approval answers the ordinary floor error `presence_required` (the server has no "held" error). On those tools that is the trigger: the browser asks the owner's phone for the
+ * yes over { op: the tool name, fields: its plain input }, then sends the same act again with the approval id. @param {any} error @param {string} tool @param {Record<string, unknown>} [input]
+ * @returns {{ moment: "vault" | "pair" | "outward", request: { op: string, fields: Record<string, any> } } | null}
  */
-export const heldAsk = (error) => {
-  const d = error && error.code === "held" ? error.detail : null;
-  return d && ["pair", "vault", "outward"].includes(d.moment) && d.request && typeof d.request.op === "string" ? { moment: d.moment, request: { op: d.request.op, fields: d.request.fields && typeof d.request.fields === "object" ? d.request.fields : {} } } : null;
+export const heldAsk = (error, tool, input = {}) => {
+  const moment = momentOf(tool);
+  return error && error.code === "presence_required" && moment ? { moment, request: { op: String(tool), fields: input } } : null;
 };
 
 /**
