@@ -721,7 +721,11 @@ test("Q-1: a first adoption by a paired device is a question at the server: who 
   assert.deepEqual(done.owner, { kind: "identity", id: ME });
   assert.equal(w.p.meta.get("owner").identity, ME);
   assert.equal(w.p.meta.get("adopter"), "device:app1");
-  assert.equal((await atServer(w, "wink.server.pairing")).asking, false, "the question is closed");
+  const after = await atServer(w, "wink.server.pairing");
+  assert.equal(after.asking, false, "the question is closed");
+  assert.equal(after.paired, true, "once there is an owner the server says so, for the installer's closing line");
+  assert.equal(typeof after.owner, "string");
+  assert.ok(!/key|secret|authKey/i.test(JSON.stringify(after)), "a name in words only");
 });
 
 test("Q-1: a second scanner is refused while one is asking, and cannot ride the first one's yes", async () => {
