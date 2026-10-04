@@ -23,6 +23,9 @@ const MIGRATIONS = [
 /** Tools that change files, and where each keeps the path it changed. */
 const WRITERS = { Write: "file_path", Edit: "file_path", MultiEdit: "file_path", NotebookEdit: "notebook_path" };
 
+/** The hooks of a model's own session (mcp, harness), the person's surfaces and modules; each body scopes a hook to its own session. */
+const HOOK_CALLERS = ["mcp", "harness", "cli", "local", "deck", "capsule", "module"];
+
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
   async start(ctx) {
@@ -107,6 +110,7 @@ export default {
 
     ctx.tool("harness.brief", {
       description: "SessionStart: what Claude should know about the project this thread is in. Empty outside a project.",
+      callers: HOOK_CALLERS,
       input: { type: "object", properties: { cwd: { type: "string" }, session: { type: "string" }, source: { type: "string" }, project: { type: "string" }, projects: { type: "string" }, headless: { type: "boolean" } } },
       run: async ({ cwd, session, source, project, projects, headless }, meta) => {
         await own(meta, session, { brief: true });
@@ -156,6 +160,7 @@ export default {
 
     ctx.tool("harness.enrich", {
       description: "UserPromptSubmit: memory relevant to this prompt, marked as memory with its source. Empty when nothing is relevant.",
+      callers: HOOK_CALLERS,
       input: { type: "object", required: ["prompt"], properties: { prompt: { type: "string" }, cwd: { type: "string" }, session: { type: "string" }, prompt_id: { type: "string" }, agent: { type: "string" }, projects: { type: "string" },
         interactive: { type: "boolean" } } },
       run: async ({ prompt, cwd, session, prompt_id, agent: named, projects, interactive }, { caller, ...meta } = {}) => {
@@ -163,8 +168,9 @@ export default {
         const agent = agentOf(named, caller);
         // Every prompt starts a turn for Learning, slash commands included; it may also be a correction.
         // interactive: the hook saw a person's Claude Code (a terminal, no -p); only then may a
-        // plain yes or no answer a lesson. An agent's thread never is.
-        const learned = session ? await ask("learn.signal", { session, prompt_id, prompt, cwd, agent, interactive: interactive === true && !agent }) : null;
+        // plain yes or no answer a lesson. An agent's thread never is, and a model's own call (caller mcp)
+        // cannot claim it: only the hook's harness label, or a person's surface, can.
+        const learned = session ? await ask("learn.signal", { session, prompt_id, prompt, cwd, agent, interactive: interactive === true && !agent && !/^mcp(?::|$)/.test(String(caller || "")) }) : null;
         const lessons = learned && typeof learned.text === "string" ? learned.text : "";
         // A lesson broken last turn opens this one, ahead of memory.
         const first = Boolean(learned && Array.isArray(learned.broke) && learned.broke.length);
@@ -206,6 +212,7 @@ export default {
 
     ctx.tool("harness.rules", {
       description: "PreToolUse: the security floor's verdict on a tool call, then the lessons'. null means no opinion; Claude Code's own permissions decide.",
+      callers: HOOK_CALLERS,
       input: { type: "object", required: ["tool_name"], properties: { tool_name: { type: "string" }, tool_input: { type: "object" }, cwd: { type: "string" }, session: { type: "string" }, prompt_id: { type: "string" }, agent: { type: "string" }, tool_use_id: { type: "string" },
         plugin_root: { type: "string" } } },
       run: async ({ tool_name, tool_input, cwd, session, prompt_id, agent: named, tool_use_id, plugin_root }, { caller, ...meta } = {}) => {
@@ -244,6 +251,7 @@ export default {
     const touch = db.prepare("INSERT INTO harness_files (session, path, tool, at) VALUES (?,?,?,?) ON CONFLICT DO UPDATE SET at = excluded.at");
     ctx.tool("harness.learn", {
       description: "PostToolUse and PostToolUseFailure: record which files a tool changed, so every change is visible (security floor rule 5), and tell Learning what became of the call (ok false: it failed).",
+      callers: HOOK_CALLERS,
       input: { type: "object", required: ["tool_name"], properties: { tool_name: { type: "string" }, tool_input: { type: "object" }, cwd: { type: "string" }, session: { type: "string" },
         tool_use_id: { type: "string" }, ok: { type: "boolean" }, error_head: { type: "string" }, interrupted: { type: "boolean" } } },
       run: async ({ tool_name, tool_input, cwd, session, tool_use_id, ok = true, error_head, interrupted }, meta) => {
@@ -270,12 +278,14 @@ export default {
 
     ctx.tool("harness.touched", {
       description: "Files changed in a thread, newest first.",
+      callers: HOOK_CALLERS,
       input: { type: "object", required: ["session"], properties: { session: { type: "string" }, limit: { type: "integer" } } },
       run: async ({ session, limit }, meta) => { await own(meta, session); return db.prepare("SELECT path, tool, at FROM harness_files WHERE session = ? ORDER BY at DESC LIMIT ?").all(session, limit || 100); },
     });
 
     ctx.tool("harness.stop", {
       description: "Stop: the lessons' output checks, then words queued for this session from another surface, then the turn is complete for every surface watching this thread. decision block sends the turn back to Claude with the reason.",
+      callers: HOOK_CALLERS,
       input: { type: "object", properties: { session: { type: "string" }, prompt_id: { type: "string" }, cwd: { type: "string" }, agent: { type: "string" }, text: { type: "string" }, stop_hook_active: { type: "boolean" },
         headless: { type: "boolean" } } },
       run: async ({ session, ...turn }, { caller, ...meta } = {}) => {
