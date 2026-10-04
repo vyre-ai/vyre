@@ -2,9 +2,6 @@
  "apps/app/src/identity/identity.test.js": {
   "owner": "chat"
  },
- "core/artifacts/artifacts.test.js": {
-  "owner": "vault"
- },
  "core/cli/commands/agents.test.js": {
   "owner": "launch"
  },
@@ -20,17 +17,11 @@
  "core/cli/screen/screen-live.test.js": {
   "owner": "launch"
  },
- "core/files/drive.test.js": {
-  "owner": "vault"
- },
  "core/glass/glass.test.js": {
   "owner": "tailnet"
  },
  "core/hooks/hooks.test.js": {
   "owner": "launch"
- },
- "core/mentions/mentions.test.js": {
-  "owner": "vault"
  },
  "core/publish/publish.test.js": {
   "owner": "launch"
