@@ -69,7 +69,25 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         w.setFrameAutosaveName("VyreApp")
         if w.frame.origin == .zero { w.center() }
         window = w
-        view.load(URLRequest(url: Self.start))
+        prepare(view)
+    }
+
+    /// Check the signed list first (AppBuildGate.swift); the page loads only if it verifies. A refusal is shown in the window in plain words.
+    private func prepare(_ view: WKWebView) {
+        let sock = socket
+        proxy.appMode = .closed
+        DispatchQueue.global(qos: .userInitiated).async {
+            let outcome = AppBuildGate.fetch(socket: sock)
+            DispatchQueue.main.async { [weak self, weak view] in
+                guard let self, let view, view === self.web else { return }
+                switch outcome {
+                case .verified(let b): self.proxy.appMode = .checked(b); view.load(URLRequest(url: Self.start))
+                case .unchecked: self.proxy.appMode = .unchecked; view.load(URLRequest(url: Self.start))
+                case .refused(let why):
+                    view.loadHTMLString("<body style='font:15px -apple-system;padding:32px;color:#444'><h2>Vyre will not open this app</h2><p>\(why)</p><p>Update Vyre, or reinstall it from vyre.run.</p></body>", baseURL: nil)
+                }
+            }
+        }
     }
 
     func windowWillClose(_ notification: Notification) {
@@ -240,6 +258,9 @@ final class BoxSchemeHandler: NSObject, WKURLSchemeHandler, @unchecked Sendable 
     var socket = ""
     /// Only the Vyre app window's own web view may use this handler: the scheme is registered on that configuration alone, and this checks it again.
     var isOurs: (WKWebView) -> Bool = { _ in false }
+    /// What may be served under /app/: nothing until the signed list has verified (AppBuildGate.swift), then only files that match it; a development build with no list serves it unchecked.
+    enum AppMode { case closed, unchecked, checked(AppBuild) }
+    var appMode: AppMode = .closed
     private let lock = NSLock()
     private var stopped = Set<ObjectIdentifier>()
 
@@ -298,14 +319,31 @@ final class BoxSchemeHandler: NSObject, WKURLSchemeHandler, @unchecked Sendable 
         for k in ["x-vyre-presence", "x-vyre-presence-keep", "idempotency-key", "last-event-id"] { if let v = task.request.value(forHTTPHeaderField: k) { headers[k] = v } }
         let accept = task.request.value(forHTTPHeaderField: "Accept") ?? "*/*"
         let stream = accept.contains("text/event-stream")
+        // The app's own files are held back until their hash has been checked against the signed list.
+        let isApp = AppBuildGate.listedName(path.split(separator: "?", maxSplits: 1).first.map(String.init) ?? path) != nil
+        var verifyAgainst: AppBuild?
+        if isApp {
+            switch appMode {
+            case .closed:
+                task.didReceive(HTTPURLResponse(url: url, statusCode: 403, httpVersion: "HTTP/1.1", headerFields: ["content-type": "text/plain"]) ?? URLResponse(url: url, mimeType: nil, expectedContentLength: 0, textEncodingName: nil))
+                task.didReceive(Data("The app build has not been verified.".utf8))
+                task.didFinish()
+                return
+            case .unchecked: break
+            case .checked(let b): verifyAgainst = b
+            }
+        }
         guard take(stream: stream) else { return task.didFailWithError(URLError(.resourceUnavailable)) }
         let sock = socket
         let id = ObjectIdentifier(task)
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
             var sent = false
+            var heldHead: HTTPHead?
+            var heldBody = Data()
             let result = VyHTTP.exchange(socket: sock, method: method, path: path, body: body, timeout: stream ? 24 * 3600 : 60, headers: headers, accept: accept,
                 onHead: { head in
+                    if verifyAgainst != nil { heldHead = head; return }
                     var h: [String: String] = [:]
                     for (k, v) in head.headers where !["transfer-encoding", "content-length", "connection"].contains(k) { h[k] = v }
                     DispatchQueue.main.async {
@@ -317,8 +355,26 @@ final class BoxSchemeHandler: NSObject, WKURLSchemeHandler, @unchecked Sendable 
                     }
                 },
                 onBody: { data in
+                    if verifyAgainst != nil { heldBody.append(data); return }
                     DispatchQueue.main.async { if !self.isStopped(task) { task.didReceive(data) } }
                 })
+            if let build = verifyAgainst, case .success = result, let head = heldHead {
+                // Verified before a byte reaches the page: a 200 must match its hash (or be the single-page app's index.html for a route), anything else is refused.
+                let ok = head.status != 200 || AppBuildGate.allows(build, path: String(path.split(separator: "?", maxSplits: 1).first ?? ""), body: heldBody)
+                DispatchQueue.main.async {
+                    guard !self.isStopped(task) else { return }
+                    if ok {
+                        var h: [String: String] = [:]
+                        for (k, v) in head.headers where !["transfer-encoding", "content-length", "connection"].contains(k) { h[k] = v }
+                        task.didReceive(HTTPURLResponse(url: url, statusCode: head.status, httpVersion: "HTTP/1.1", headerFields: h) ?? URLResponse(url: url, mimeType: nil, expectedContentLength: -1, textEncodingName: nil))
+                        task.didReceive(heldBody)
+                    } else {
+                        task.didReceive(HTTPURLResponse(url: url, statusCode: 403, httpVersion: "HTTP/1.1", headerFields: ["content-type": "text/plain"]) ?? URLResponse(url: url, mimeType: nil, expectedContentLength: 0, textEncodingName: nil))
+                        task.didReceive(Data("This file does not match the signed app build.".utf8))
+                    }
+                    sent = true
+                }
+            }
             DispatchQueue.main.async {
                 self.lock.lock(); let gone = self.stopped.remove(id) != nil; self.lock.unlock()
                 self.release(stream: stream)

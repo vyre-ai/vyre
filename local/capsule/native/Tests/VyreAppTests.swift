@@ -2,6 +2,7 @@
 // The Vyre app window's pure parts: the menu's shortcuts are unique and name real places, and the strings sent to the page are valid JSON.
 
 import AppKit
+import CryptoKit
 import Foundation
 
 let vyreAppSuite = Suite("vyre app window") { t in
@@ -51,7 +52,35 @@ let vyreAppSuite = Suite("vyre app window") { t in
         }
     }
 
+    t.test("the signed app list: a good one verifies, and a wrong key, a changed list, a changed file and an unlisted file are refused") {
+        let priv = Curve25519.Signing.PrivateKey()
+        let der = Data([0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00]) + priv.publicKey.rawRepresentation
+        let spki = der.base64EncodedString()
+        let index = Data("<html>app</html>".utf8), js = Data("console.log(1)".utf8)
+        let list = ["files": ["index.html": AppBuildGate.sha256Hex(index), "_expo/a.js": AppBuildGate.sha256Hex(js)], "tree": "t1"] as [String: Any]
+        let ab = (try? JSONSerialization.data(withJSONObject: list)) ?? Data()
+        let sums = "\(AppBuildGate.sha256Hex(ab))  appbuild.json\n0000  other\n"
+        let sig = (try? priv.signature(for: Data(("vyre-release-sums\n" + sums).utf8))) ?? Data()
+        guard case .verified(let build) = AppBuildGate.verify(appbuild: ab, sums: sums, sig: sig, key: spki) else { return t.ok(false, "a good list verifies") }
+        t.ok(AppBuildGate.allows(build, path: "/app/", body: index) && AppBuildGate.allows(build, path: "/app/_expo/a.js", body: js))
+        t.ok(AppBuildGate.allows(build, path: "/app/u/now", body: index), "a route of the app is the listed index.html")
+        t.ok(!AppBuildGate.allows(build, path: "/app/_expo/a.js", body: Data("console.log(2)".utf8)), "a changed file is refused")
+        t.ok(!AppBuildGate.allows(build, path: "/app/u/now", body: Data("<html>x</html>".utf8)), "an unlisted path that is not index.html is refused")
+        t.ok(!AppBuildGate.allows(build, path: "/v1/tools/x", body: index), "nothing outside /app/")
+        let other = Curve25519.Signing.PrivateKey()
+        let otherDer = (Data([0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00]) + other.publicKey.rawRepresentation).base64EncodedString()
+        t.ok(AppBuildGate.verify(appbuild: ab, sums: sums, sig: sig, key: otherDer) != .unchecked && !isVerified(AppBuildGate.verify(appbuild: ab, sums: sums, sig: sig, key: otherDer)), "another key refuses")
+        t.ok(!isVerified(AppBuildGate.verify(appbuild: Data("{}".utf8), sums: sums, sig: sig, key: spki)), "a list that is not in the signed sums is refused")
+        t.ok(!isVerified(AppBuildGate.verify(appbuild: ab, sums: sums + "x", sig: sig, key: spki)), "changed sums are refused")
+        t.eq(AppBuildGate.verify(appbuild: ab, sums: sums, sig: sig, key: AppBuildGate.placeholderKey), .unchecked, "the placeholder key is a development build")
+        t.eq(AppBuildGate.listedName("/app/"), "index.html")
+        t.eq(AppBuildGate.listedName("/app/_expo/a.js"), "_expo/a.js")
+        t.eq(AppBuildGate.listedName("/v1/x"), nil)
+    }
+
     t.test("the page's bridge names every call the window answers") {
         for op in ["presence", "notify", "_reply", "_command", "onCommand", "socket", "_ws", "ws.open", "ws.send", "ws.close"] { t.ok(VyreAppWindow.bridgeSource.contains(op), op) }
     }
 }
+
+private func isVerified(_ o: AppBuildGate.Outcome) -> Bool { if case .verified = o { return true }; return false }
