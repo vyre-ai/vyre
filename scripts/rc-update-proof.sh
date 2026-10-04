@@ -98,7 +98,8 @@ do_update() { # LABEL STORE: STORE is none (an untouched box: no VYRE_STORE appe
   case "$2" in
     kept) docker exec vyre-vyre-1 env | grep -qx 'VYRE_STORE=auto' || fail "$1: after the update VYRE_STORE=auto is not kept" ;;
     none) docker exec vyre-vyre-1 env | grep -q '^VYRE_STORE=' && fail "$1: the update added a VYRE_STORE the box never had (a silent switch of store)"
-          [ -z "$(docker ps -q --filter name=twenty)" ] || fail "$1: a Twenty store started on a box that never chose one" ;;
+          # (compared with what ran before this update: a shared test box may hold other people's Twenty stacks)
+          [ "$(docker ps -q --filter name=twenty | sort | tr '\n' ' ')" = "$TWENTY_BEFORE" ] || fail "$1: a Twenty store started on a box that never chose one" ;;
   esac
   every_module "$1"
   # records' store line (/v1/health records_store, when this candidate carries it): an untouched box is on the built-in store by default and it answers.
@@ -113,6 +114,7 @@ do_update() { # LABEL STORE: STORE is none (an untouched box: no VYRE_STORE appe
   vyre call planner.list '{}' 2>&1 | grep -q 'retainer draft' || fail "$1: the planner note written before the update is not read back"
   [ "$(docker exec vyre-vyre-1 cat /home/vyre/.vyre/rc-marker 2>/dev/null)" = rc-marker-1 ] || fail "$1: the data written before the update is gone"
 }
+TWENTY_BEFORE=$(docker ps -q --filter name=twenty | sort | tr '\n' ' ')
 do_update "2 update" none
 # A record written after the update is read back after a restart.
 vyre call memory.remember '{"text":"My daughter is Lina"}' >/dev/null 2>&1 || fail "2: could not write a record after the update"
