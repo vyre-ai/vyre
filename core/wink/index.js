@@ -68,6 +68,7 @@ function owner(meta, what) {
 export function createWink(inject = {}) {
   /** @type {any} */
   let live = null;
+  /** @type {(() => any) | null} */ let liveLinks = null;
   const mod = {
   async start(ctx) {
     if (ctx.config.role !== "box") return { async stop() {} };
@@ -303,6 +304,9 @@ export function createWink(inject = {}) {
     pairing.tools();
     registerReset({ ctx, pairing, now, identity: owner1, dropMs: inject.dropMs, dataStores: inject.dataStores || ctx.dataStores });
     live = pairing.peers;
+    liveLinks = pairing.serverLinks;
+    // handed up by name (core/modules provideOnce): the spaces and runner modules reach a paired server's peer session and kernel through ctx.sessionFor and ctx.remoteKernel
+    try { ctx.provide("winkSessionFor", (/** @type {string} */ id) => pairing.serverLinks().sessionFor(id)); ctx.provide("remoteKernel", (/** @type {string} */ id, /** @type {string} */ sp) => pairing.serverLinks().remoteKernel(id, sp)); } catch { /* provided already (a restart in one process), or no daemon (a test ctx) */ }
     /** A space's own name for a card, never its id. */
     const spaceName = async (/** @type {string} */ id) => {
       try { const m = (await directory.memberships(await owner1())).find(x => x.space === id); if (m && m.name) return String(m.name); } catch {}
@@ -573,7 +577,9 @@ export function createWink(inject = {}) {
           pairing.devices.remove(d.id);
           // Its relay connections close at once through relay.devices.drop (a module's door to the relay's own removal); `closed` says what happened.
           let closed = false;
-          if (d.kind !== "server" && d.kind !== "storage") { const rr = /** @type {any} */ (await ctx.call("relay.devices.drop", { id: d.id })); closed = !rr.error && Boolean(rr.data && rr.data.closed); }
+          // a server that let go (release "released") has ended its side of the channel itself, so the connection is closed then too
+          if (d.kind === "server" || d.kind === "storage") closed = release === "released";
+          else { const rr = /** @type {any} */ (await ctx.call("relay.devices.drop", { id: d.id })); closed = !rr.error && Boolean(rr.data && rr.data.closed); }
           ctx.events.emit("wink.removed", { device: d.id });
           return { removed: d.id, closed, ...(release ? { release } : {}), prompt: removal({ what: "device", name: d.name }).prompt, done: removed({ what: "device", name: d.name, release }) };
         }
@@ -683,6 +689,7 @@ export function createWink(inject = {}) {
       ownHandover: () => pairing.ownHandover(),
       async stop() {
         live = null;
+        liveLinks = null;
         clearInterval(timer);
         try { stopStorage(); } catch {}
         if (poolTimer) clearInterval(poolTimer);
@@ -700,6 +707,11 @@ export function createWink(inject = {}) {
   Object.defineProperty(mod, "holds", { enumerable: false, get() { if (!live) throw fail("unavailable", "the wink module has not started"); return live.holds; } });
   Object.defineProperty(mod, "bridgeServe", { enumerable: false, get() { if (!live) throw fail("unavailable", "the wink module has not started"); return live.bridgeServe; } });
   // What this server was handed when it was adopted, WITH the secrets (auth key, peer secret), for core/wink/compose.js only: it is not a tool, so no other module can ask.
+  // This device's open peer session to a server it paired (the one remote path): `wink.sessionFor(serverId)` -> { call(tool, input), close() }, `wink.remoteKernel(serverId, space)` the kernel's own
+  // remote client over it, and `wink.startPaired(serverId)` this device's sign-in to that server (needs the app's key signer). Not tools: no other module can ask a tool for a session.
+  Object.defineProperty(mod, "sessionFor", { enumerable: false, value: (/** @type {string} */ sid) => { if (!liveLinks) throw fail("unavailable", "the wink module has not started"); return liveLinks().sessionFor(sid); } });
+  Object.defineProperty(mod, "remoteKernel", { enumerable: false, value: (/** @type {string} */ sid, /** @type {string} */ space) => { if (!liveLinks) throw fail("unavailable", "the wink module has not started"); return liveLinks().remoteKernel(sid, space); } });
+  Object.defineProperty(mod, "startPaired", { enumerable: false, value: (/** @type {string} */ sid) => { if (!liveLinks) throw fail("unavailable", "the wink module has not started"); return liveLinks().startPaired(sid); } });
   Object.defineProperty(mod, "ownHandover", { enumerable: false, value: () => { if (!live) throw fail("unavailable", "the wink module has not started"); return live.ownHandover(); } });
   Object.defineProperty(mod, "homeServe", { enumerable: false, value: (/** @type {any} */ inner) => { if (!live) throw fail("unavailable", "the wink module has not started"); return homeServe(live, inner); } });
   return mod;

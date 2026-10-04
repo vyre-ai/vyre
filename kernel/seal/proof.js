@@ -3,6 +3,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import { proofBytes, payloadHash, sha256b64, bindBytes } from "./wire.js";
+import { bindAttestation, assertProof } from "./appattest.js";
 // The identity chain verifier lives in kernel/identity (windows authors it, its hash is pinned there): the root of trust for devices.
 import { verifyChain, checkAnswer, pinOf, verifyWith } from "../identity/chain.js";
 
@@ -16,8 +17,8 @@ export const NEWCOMER_MS = 24 * 3_600_000;
 
 export class Presence {
   /** @param {() => number} [now] @param {{ verifiers?: Record<string, (att: any, spki: Buffer) => string | null>, allowUnattested?: boolean }} [o] a verifier checks a platform attestation (App Attest, Android key attestation, a TPM quote, WebAuthn) and returns the signer class it proves, or null */
-  constructor(now = Date.now, { verifiers = {}, allowUnattested = false, allowSoftware = false, file = null, custody = null } = {}) {
-    this.keys = new Map(); this.used = new Map(); this.tokens = new Map(); this.now = now; this.since = now(); this.verifiers = verifiers; this.allowUnattested = allowUnattested; this.allowSoftware = allowSoftware;
+  constructor(now = Date.now, { verifiers = {}, allowUnattested = false, allowSoftware = false, appattest = null, file = null, custody = null } = {}) {
+    this.keys = new Map(); this.used = new Map(); this.tokens = new Map(); this.now = now; this.since = now(); this.verifiers = verifiers; this.allowUnattested = allowUnattested; this.allowSoftware = allowSoftware; this.appattest = appattest;
     this.file = file; this.pins = new Map(); this.barred = new Set(); this.ever = new Set(); this.v = 0; this.recovery = false; this.custody = custody;
     // Enrolled keys, and the persons who ever enrolled one, live in the sealing folder (public keys only), MACed under a key derived from the master and
     // anchored by a sealed marker (a version counter and the persons) in the encrypted store. A file that is missing while the anchor exists, fails its
@@ -32,7 +33,7 @@ export class Presence {
       if (raw.mac !== this.custody.mac(raw.body) || anchor === "bad") return this.fail(anchor);
       const j = JSON.parse(raw.body);
       if (!anchor || anchor.v !== j.v || j.v < 1) return this.fail(anchor);
-      for (const [id, k] of Object.entries(j.keys)) this.keys.set(id, { person: k.person, signer: k.signer, attested: k.attested, spki: k.spki, device: k.device, since: k.since ?? 0, founder: k.founder ?? true, key: crypto.createPublicKey({ key: Buffer.from(k.spki, "base64"), format: "der", type: "spki" }) });
+      for (const [id, k] of Object.entries(j.keys)) this.keys.set(id, { person: k.person, signer: k.signer, attested: k.attested, spki: k.spki, device: k.device, since: k.since ?? 0, founder: k.founder ?? true, ...(k.aa ? { aa: k.aa } : {}), key: crypto.createPublicKey({ key: Buffer.from(k.spki, "base64"), format: "der", type: "spki" }) });
       for (const p of j.ever) this.ever.add(p);
       for (const [p, x] of Object.entries(j.pins || {})) this.pins.set(p, x);
       for (const d of j.barred || []) this.barred.add(d);
@@ -43,7 +44,7 @@ export class Presence {
   save() {
     if (!this.file) return;
     this.v++;
-    const keys = Object.fromEntries([...this.keys].map(([id, k]) => [id, { person: k.person, signer: k.signer, attested: k.attested, spki: k.spki, device: k.device, since: k.since, founder: k.founder }]));
+    const keys = Object.fromEntries([...this.keys].map(([id, k]) => [id, { person: k.person, signer: k.signer, attested: k.attested, spki: k.spki, device: k.device, since: k.since, founder: k.founder, ...(k.aa ? { aa: k.aa } : {}) }]));
     const pins = Object.fromEntries(this.pins), barred = [...this.barred];
     const body = JSON.stringify({ v: this.v, keys, ever: [...this.ever], pins, barred });
     // The anchor goes first: a crash between the two leaves the file one version behind, which reads as recovery (fail closed), never as a reset.
@@ -80,15 +81,21 @@ export class Presence {
     // Once a chain is pinned for the person, every key is vouched for by a listed device (item R8-3): no bind, no key.
     const pin = this.pins.get(person);
     if (pin && !this.bindPinned(pin, person, bind, key_id, spki)) return { refused: "needs_bind" };
-    let attested = false;
-    if (attestation && this.verifiers[attestation.format]) {
+    let attested = false, aa;
+    if (attestation && attestation.format === "apple-appattest") {
+      const a = this.attestApple(attestation, spki, signer, token, key_id);
+      if ("refused" in a) return { refused: a.refused };
+      attested = true; aa = a.aa;
+    } else if (attestation && this.verifiers[attestation.format]) {
       if (this.verifiers[attestation.format](attestation, Buffer.from(spki, "base64")) !== signer) return { refused: "bad_attestation" };
       attested = true;
     } else if (signer === SOFTWARE) { /* allowed above: a development build only */ } else if (!this.allowUnattested) return { refused: "unattested" };
-    this.keys.set(key_id, { person, signer, attested, spki, device: pin ? bind.eid : undefined, since: this.now(), founder: !this.have(person), key: crypto.createPublicKey({ key: Buffer.from(spki, "base64"), format: "der", type: "spki" }) });
+    this.keys.set(key_id, { person, signer, attested, spki, device: pin ? bind.eid : undefined, since: this.now(), founder: !this.have(person), ...(aa ? { aa } : {}), key: crypto.createPublicKey({ key: Buffer.from(spki, "base64"), format: "der", type: "spki" }) });
     this.ever.add(person); this.save();
     return { attested };
   }
+  /** Apple App Attest at enrol or recover: kernel/seal/appattest.js bindAttestation (attested only from the verifier, secure_enclave only, one App Attest key per Secure Enclave key). */
+  attestApple(attestation, spki, signer, token, key_id) { return bindAttestation(this.appattest, this.keys, attestation, spki, signer, token, key_id); }
   /** Taking a key away needs a presence proof from a key of the same person (the one being revoked may sign): a person's chain alone is not enough. @returns {string|null} the reason it is refused */
   revoke(key_id, ctx, proof) {
     const k = this.keys.get(key_id);
@@ -156,14 +163,18 @@ export class Presence {
     if (this.have(person) && (!this.pins.has(person) || this.pins.get(person).devices?.[bind?.eid])) return { refused: "has_keys" };
     if (!this.pins.has(person)) return { refused: "no_pin" };
     if (!this.have(person) && !this.ever.has(person) && !this.recovery) return { refused: "not_in_recovery" };
-    let attested = false;
-    if (attestation && this.verifiers[attestation.format]) {
+    let attested = false, aa;
+    if (attestation && attestation.format === "apple-appattest") {
+      const a = this.attestApple(attestation, spki, signer, token, key_id);
+      if ("refused" in a) return { refused: a.refused };
+      attested = true; aa = a.aa;
+    } else if (attestation && this.verifiers[attestation.format]) {
       if (this.verifiers[attestation.format](attestation, Buffer.from(spki, "base64")) !== signer) return { refused: "bad_attestation" };
       attested = true;
     } else if (signer === SOFTWARE) { /* allowed above: a development build only */ } else if (!this.allowUnattested) return { refused: "unattested" };
     const { st, pin } = await this.evidence(person, ops);
     if (!await this.bindOk(st, person, bind, key_id, spki)) return { refused: "bad_bind" };
-    this.keys.set(key_id, { person, signer, attested, spki, device: bind.eid, since: this.now(), founder: false, key: crypto.createPublicKey({ key: Buffer.from(spki, "base64"), format: "der", type: "spki" }) });
+    this.keys.set(key_id, { person, signer, attested, spki, device: bind.eid, since: this.now(), founder: false, ...(aa ? { aa } : {}), key: crypto.createPublicKey({ key: Buffer.from(spki, "base64"), format: "der", type: "spki" }) });
     this.pins.set(person, pin); this.recovery = [...this.ever].some(p => !this.have(p)); this.save();
     return { attested, device: bind.eid };
   }
@@ -188,6 +199,8 @@ export class Presence {
       ok = crypto.verify("sha256", proofBytes(proof), { key: k.key, dsaEncoding: sig.length === 64 ? "ieee-p1363" : "der" }, sig);
     } catch { ok = false; }
     if (!ok) return "bad_signature";
+    // B2 (App Attest, appattest.js assertProof): the proof also carries the app key's assertion over the same bytes; the new counter is written BEFORE the proof is accepted.
+    if (k.aa && k.aa.required) { const why = assertProof(this.appattest, k, proof, proofBytes(proof), () => this.save()); if (why) return why; }
     for (const [n, e] of this.used) if (e < t) this.used.delete(n);
     if (this.used.has(proof.nonce)) return "replayed";
     this.used.set(proof.nonce, proof.expires_at);
