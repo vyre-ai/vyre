@@ -2,11 +2,11 @@
 // one person in the chain, over exactly this payload, fresh, used once. The process trusts the kernel only for who is in the chain.
 import crypto from "node:crypto";
 import fs from "node:fs";
-import { proofBytes, payloadHash, sha256b64, bindBytes } from "./wire.js";
+import { proofBytes, payloadHash, sha256b64, bindBytes, joinBytes } from "./wire.js";
 import { bindAttestation, assertProof } from "./appattest.js";
 import { strengthOf, strengthRefusal, methodOf } from "./strength.js";
 // The identity chain verifier lives in kernel/identity (windows authors it, its hash is pinned there): the root of trust for devices.
-import { verifyChain, checkAnswer, pinOf, verifyWith } from "../identity/chain.js";
+import { verifyChain, checkAnswer, pinOf, verifyWith, youngAt } from "../identity/chain.js";
 
 export const SIGNERS = new Set(["secure_enclave", "tpm", "windows_hello", "strongbox", "webauthn_platform"]);
 /** A software key, for the automated walk on a development-kind build only (ruling 4, 5 Oct): the process takes it only when started with `allowSoftware`, which main sets only for a development build, and every use is named method "software". */
@@ -177,6 +177,41 @@ export class Presence {
     if (!await this.bindOk(st, person, bind, key_id, spki)) return { refused: "bad_bind" };
     this.keys.set(key_id, { person, signer, attested, spki, device: bind.eid, since: this.now(), founder: false, ...(aa ? { aa } : {}), key: crypto.createPublicKey({ key: Buffer.from(spki, "base64"), format: "der", type: "spki" }) });
     this.pins.set(person, pin); this.recovery = [...this.ever].some(p => !this.have(p)); this.save();
+    return { attested, device: bind.eid };
+  }
+  /**
+   * The first key of a person this process has never met, from an invite (RC1, the ruling on the invitee's key): the person is not a member of this server yet, so no earlier key can vouch and no
+   * recovery is under way. The evidence is the person's identity chain (`ops`, which THIS process verifies, the kernel having read it from the names directory and never from the caller) and a signature
+   * by a device listed on it over exactly this invite, this Space, this identity and this key (joinBytes). The device must be listed and not barred (`not_listed`), the signature must hold (`bad_bind`), and
+   * a device the list gained under 24 hours ago is refused (`young_device`, the newcomer rule: the person's founding device is exempt). Nothing is enrolled unless every check holds. The key is a newcomer for 24
+   * hours, like any first key from chain evidence. A person this process has met before (`known_person`) enrols further devices the ordinary way (a proof from a key already enrolled).
+   * @returns {Promise<{ attested: boolean, device: string } | { refused: string }>}
+   */
+  async join({ person, ops, bind, invite, key_id, spki, signer, attestation, ctx }) {
+    if (!SIGNERS.has(signer) && signer !== SOFTWARE) return { refused: "bad_signer" };
+    if (signer === SOFTWARE && !this.allowSoftware) return { refused: "software_refused" };
+    if (!ctx?.one_person || ctx.model_originated || ctx.person !== person) return { refused: "chain_not_person" };
+    if (typeof invite !== "string" || !invite || typeof key_id !== "string" || typeof spki !== "string" || !bind || typeof bind.eid !== "string" || typeof bind.sig !== "string") return { refused: "bad_binding" };
+    if (this.recovery) return { refused: "needs_recovery" };
+    if (this.keys.has(key_id)) return { refused: "exists" };
+    if (this.have(person) || this.ever.has(person) || this.pins.has(person)) return { refused: "known_person" };
+    let ev;
+    try { ev = await this.evidence(person, ops); } catch (e) { return { refused: /** @type {any} */ (e).code || "bad_chain" }; }
+    const e = ev.st.entries.find((/** @type {any} */ x) => x.eid === bind.eid && x.kind === "device");
+    if (!e || this.barred.has(e.eid)) return { refused: "not_listed" };
+    if (youngAt(e, this.now())) return { refused: "young_device" };
+    if (!await verifyWith(e.pub, joinBytes(invite, ctx.space, person, key_id, spki), bind.sig)) return { refused: "bad_binding" };
+    let attested = false, aa;
+    if (attestation && attestation.format === "apple-appattest") {
+      const a = this.attestApple(attestation, spki, signer, "join:" + invite, key_id);
+      if ("refused" in a) return { refused: a.refused };
+      attested = true; aa = a.aa;
+    } else if (attestation && this.verifiers[attestation.format]) {
+      if (this.verifiers[attestation.format](attestation, Buffer.from(spki, "base64")) !== signer) return { refused: "bad_attestation" };
+      attested = true;
+    } else if (signer === SOFTWARE) { /* allowed above: a development build only */ } else if (!this.allowUnattested) return { refused: "unattested" };
+    this.keys.set(key_id, { person, signer, attested, spki, device: bind.eid, since: this.now(), founder: false, ...(aa ? { aa } : {}), key: crypto.createPublicKey({ key: Buffer.from(spki, "base64"), format: "der", type: "spki" }) });
+    this.pins.set(person, ev.pin); this.ever.add(person); this.save();
     return { attested, device: bind.eid };
   }
   /** @returns {string|null} the reason a proof is refused, or null when it stands. */
