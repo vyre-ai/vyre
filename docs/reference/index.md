@@ -2320,7 +2320,7 @@ generated: scripts/gen-docs-reference
 - `VYRE_CHROME_SOCK` environment variable, [explained](config.md#set-by-vyre). No mentions.
 - `VYRE_CHROME_TEST` environment variable, [explained](config.md#set-by-vyre). No mentions.
 - `VYRE_CHROME_TEST_NOFETCH` environment variable, [explained](config.md#environment-variables). No mentions.
-- `VYRE_CLAUDE_BIN` environment variable, [explained](config.md#environment-variables). 1 mention: contributing/testing.md [76](../contributing/testing.md#fakes-for-outside-services)
+- `VYRE_CLAUDE_BIN` environment variable, [explained](config.md#set-by-vyre). 1 mention: contributing/testing.md [76](../contributing/testing.md#fakes-for-outside-services)
 - `VYRE_CLAUDE_HOME` environment variable, [explained](config.md#environment-variables). No mentions.
 - `VYRE_CLOUDFLARE_API` environment variable, [explained](config.md#environment-variables). No mentions.
 - `VYRE_CODE` environment variable, not explained on any page yet. 2 mentions: get-started/install.md [61](../get-started/install.md#2-run-the-line-on-your-server); using/windows.md [74](../using/windows.md#the-windows-app)
@@ -2440,7 +2440,7 @@ generated: scripts/gen-docs-reference
 - `VYRE_SEAL_UNATTESTED` environment variable, not explained on any page yet. No mentions.
 - `VYRE_SERVER_DIR` environment variable, not explained on any page yet. No mentions.
 - `VYRE_SESSION_SANDBOX_OFF` environment variable, [explained](config.md#environment-variables). No mentions.
-- `VYRE_SESSIONS_DRIVER` environment variable, [explained](config.md#environment-variables). No mentions.
+- `VYRE_SESSIONS_DRIVER` environment variable, [explained](config.md#set-by-vyre). No mentions.
 - `VYRE_SESSIONS_SDK_DIR` environment variable, [explained](config.md#environment-variables). No mentions.
 - `VYRE_SESSIONS_SDK_INSTALL` environment variable, [explained](config.md#environment-variables). No mentions.
 - `VYRE_SESSIONS_SPAWNER` environment variable, [explained](config.md#set-by-vyre). 1 mention: adr/0032-person-and-device.md [164](../adr/0032-person-and-device.md#3-on-the-box-a-model-cannot-reach-the-persons-socket)
