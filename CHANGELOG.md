@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(hands): the click guard matches the whole name and vetoes grant, accept, send and leave words anywhere in it (HD-6b); a page's own role no longer makes a control observable, and a native submit or a consent, checkout or deletion link is consequential. presence.enroll and agents.rollover list `module` so the relay's pairing-time enrol and the assistant's daily roll reach them with no person as original caller.
 - fix(hands): the click guard is an allow-list (group D HD-6). A control is observable only when it is passive (an entry, a tab, a row) or named for moving, showing or selecting; Authorize, Allow, Accept, Save, Continue, Grant, Enable, Apply, Order, Log in and every unreadable name are consequential, so an agent cannot approve an OAuth screen by clicking. test: modules/hands-chrome/consequence.test.js.
 - test: reads are reads (test/reads-are-reads.test.js). Every tool that declares `effect: "read"` is called twice as the person with no input and must change no row, emit no event and call no write tool; six known writers are listed to be redeclared by their owners.
 - fix: undeclared input keys. The Deck and the app sent keys their tools never read and the registry now refuses (agents.ask model, team.ask surface, threads.mode surface, threads.list project, threads.unqueue uuid, vault.reveal purpose, watchers.list agent): dropped at the call sites. wink.server.adopt lists `proof` (the pairing app sends it).

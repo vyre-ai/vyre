@@ -115,7 +115,7 @@ Start a fresh thread for an agent (the assistant's daily thread) and make it the
 - Input:
   - `agent` string, required
   - `seed` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `local`, `module`
 
 ### `agents.scope`
 
@@ -5385,7 +5385,7 @@ Enroll a Capsule key (P-256 in the Secure Enclave, alg -7), a device key (P-256 
   - `device` string
   - `name` string
   - `rp_id` string
-- Callers: any caller
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `module`, `space`, `tailnet`
 - Needs a person present.
 
 ### `presence.grant.mint`
