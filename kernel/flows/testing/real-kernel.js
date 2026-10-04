@@ -77,7 +77,8 @@ export class RealKernel {
     this.gw = createGateway({
       space: this.space, owner: this.owner, store: this.store, log: this.logw, chains: this.chains, clock: this.clock, actions: this.actions,
       grants: { forSubject: a => [...this.gatewayGrants.values()].filter(g => sameActor(g.subject.actor, a)), get: id => this.gatewayGrants.get(id) },
-      members: { has: a => this.members.has(`${a.kind}:${a.id}`) },
+      // `membership` is what the gateway's protected types (the Kits' own rows) ask: the space's owner is an owner, everyone else added here a member
+      members: { has: a => this.members.has(`${a.kind}:${a.id}`), membership: a => (this.members.has(`${a.kind}:${a.id}`) ? { role: a.kind === "person" && a.id === this.owner ? "owner" : "member" } : null) },
       hasPresenceSession: () => true, verifyPresence: () => true,
       // stage gates: the rule evaluator is records' expression language; the stage hooks are set by whoever runs the stages module
       expr: { parseExpr, evalExpr },
