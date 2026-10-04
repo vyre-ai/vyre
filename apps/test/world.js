@@ -114,12 +114,15 @@ await makeProjects(w);
 await makeAgents(root);
 // An agent's item names it by caller. One that names a thread comes in as the Deck world's does,
 // with no caller at all: vyred confirms a thread only for a session it launched.
-const agentCaller = body => (body && typeof body.thread === "string" ? "anonymous" : body && typeof body.agent === "string" ? `mcp:agent:${body.agent}` : "mcp");
+// gate.request declares its callers (core/gate/index.js) and "anonymous" is not among them, so a thread item comes in as a plain mcp caller.
+const agentCaller = body => (body && typeof body.agent === "string" && typeof body.thread !== "string" ? `mcp:agent:${body.agent}` : "mcp");
 // The Deck world's items, with the billing request pointed at the local fake host.
 const local = item => item.via !== "billing" ? item
   : { ...item, to: [OUT], content: { ...item.content, url: OUT + new URL(item.content.url).pathname } };
 for (const item of heldItems(w.threads).map(local)) {
-  const r = await d.registry.call("gate.request", item, agentCaller(item));
+  // A thread is confirmed only for a session vyred launched, which this world has none of: the item is held without it (the registry refuses an unconfirmable thread).
+  const { thread: _thread, ...held } = item;
+  const r = await d.registry.call("gate.request", held, agentCaller(item));
   if (r.error) console.error(`mobile world: could not hold an item: ${r.error.message}`);
 }
 
@@ -131,7 +134,8 @@ const reply = (res, r) => json(res, r.error ? 400 : 200, r);
 
 /** The test endpoints. Each calls the registry directly, as a module or a model would. */
 const TEST = {
-  "/__test/code": async () => d.registry.call("presence.code", {}, "module:test"),
+  // presence.code is no longer open to module callers (it needs the person), so the world mints the code on the presence store itself, as a test helper.
+  "/__test/code": async () => ({ data: await d.registry.deps.presence.mintCode() }),
   "/__test/outbox": async () => ({ data: sent }),
   "/__test/hold": async body => {
     const item = body && body.kind ? body : { kind: "send", via: "mail", to: ["dana@harlowlegal.com"], project: "harlow-legal",

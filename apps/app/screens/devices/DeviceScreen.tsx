@@ -8,6 +8,7 @@ import { lendInfo, useDevices } from "./state";
 import { REINSTALL_LINE, lendState, removeText } from "./wink.js";
 import { MOCK, said } from "../../src/real/box";
 import { RealDeviceSpaces } from "./RealDeviceSpaces";
+import { RealLock } from "./RealLock";
 
 /** One device: what it is, which spaces it is in, share it with a space, remove it. */
 /** Computers already lent once this session: the first grant is a pairing (Face ID), later ones are not asked again (lead ruling 4 Oct). */
@@ -62,6 +63,7 @@ export function DeviceScreen() {
           </Card>
         </Group>
       ) : null}
+      {MOCK ? null : <RealLock device={d.id} name={d.name} />}
       <Group title="Remove">
         {d.device === "phone" ? <Text size="caption" tone="label">{REINSTALL_LINE}</Text> : null}
         <Text size="caption" tone="label">{removeText("Device", d.name)}</Text>

@@ -180,10 +180,10 @@ export function createSpaceKernels(cfg) {
       for (const [id, k] of live) {
         if (id === cfg.personal.space || !k || !k.grants || typeof k.adoptOwner !== "function") continue;
         const ad = typeof k.grants.adopted === "function" ? k.grants.adopted() : null;
-        if (ad && ad.to === to) { const r = await k.adoptOwner(to); if (r && r.changed) moved.push(id); continue; }
+        if (ad && ad.to === to) { const r = await k.adoptOwner(to, from); if (r && r.changed) moved.push(id); continue; }
         if (ad) continue;
         if (k.grants.roleOf({ kind: "person", id: from, space: id }) !== "owner") continue;
-        const r = await k.adoptOwner(to);
+        const r = await k.adoptOwner(to, from);
         if (r && r.changed) moved.push(id);
       }
       return moved;
