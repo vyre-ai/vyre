@@ -31,6 +31,7 @@ if (a[0] === "inspect") {
   if (name === CTR) {
     if (fmt === "{{.State.Pid}}") out(rd("ctr-pid", "4242"));
     if (fmt === "{{.Image}}") out("sha256:" + "a".repeat(64));
+    if (fmt === "{{.Id}}") out(rd("ctr-id", "abcdef012345") + "0".repeat(52));
     if (fmt.includes(".Mounts")) out(has("no-mounts") ? "" : "/work|/var/lib/docker/volumes/w/_data\\n/home/vyre/.vyre|" + F + "/lend");
     out(rd("joined").split("\\n").join(" ") + " ");
   }
@@ -96,7 +97,9 @@ if (cmd[0] === "setpriv") {
   const daemon = fs.readFileSync(F + "/daemon-uid", "utf8").trim();
   if (has("store-dead")) process.exit(uid === daemon ? 1 : 124);
   if (uid === daemon) process.exit(0);
-  const blocked = !has("fw-ineffective") && rules().some(l => l.includes("-d 172.30.4.0/24"));
+  // A rule blocks a uid when the uid is inside its range; the daemon's uid is inside none of the helper's two ranges.
+  const inRange = (l, u) => { const m = /--uid-owner (\\d+)-(\\d+)/.exec(l); return !!m && Number(u) >= Number(m[1]) && Number(u) <= Number(m[2]); };
+  const blocked = !has("fw-ineffective") && rules().some(l => l.includes("-d 172.30.4.0/24") && inRange(l, uid));
   process.exit(blocked ? 1 : 0);
 }
 process.exit(0);
@@ -161,6 +164,7 @@ function rig(t) {
 }
 
 const UID = process.getuid();
+const ranges = (/** @type {string} */ n) => [`-d 172.30.4.0/24 -m owner --uid-owner 0-${UID - 1} -m comment --comment vyre:${n} -j REJECT`, `-d 172.30.4.0/24 -m owner --uid-owner ${UID + 1}-4294967294 -m comment --comment vyre:${n} -j REJECT`].sort();
 const opts = { skip: !LINUX && "the helper's stat -c and the fakes are Linux only" };
 
 test("space helper: up makes root-only secrets, a linted compose, the join and the rule BEFORE the store starts, and proves the firewall", opts, async t => {
@@ -179,7 +183,7 @@ test("space helper: up makes root-only secrets, a linted compose, the join and t
   assert.ok(!/env_file|privileged|ports:|network_mode|unless-stopped/.test(compose));
   assert.match(compose, /^    restart: "no"$/m, "RH-7: a store never starts by itself");
   assert.ok(compose.match(/^    image: .*$/gm).every(l => /@sha256:[0-9a-f]{64}$/.test(l)), "every image in root's copy is by digest: " + compose.match(/^    image: .*$/gm));
-  assert.deepEqual(r.rules(), [`-d 172.30.4.0/24 -m owner ! --uid-owner ${UID} -m comment --comment vyre:harlow -j REJECT`]);
+  assert.deepEqual(r.rules().sort(), ranges("harlow"));
   const calls = r.calls();
   // The order: create, join, then the store starts; the proof comes after.
   const at = (/** @type {RegExp} */ re) => calls.search(re);
@@ -196,7 +200,7 @@ test("space helper: up makes root-only secrets, a linted compose, the join and t
   await r.helper();
   assert.equal(r.status(id2).state, "ok");
   assert.equal(fs.readFileSync(path.join(d, "secrets.env"), "utf8"), before);
-  assert.equal(r.rules().length, 1, "applying twice leaves one rule");
+  assert.equal(r.rules().length, 2, "applying twice leaves the same two rules");
 });
 
 test("space helper: every request that is not exactly `<verb> <name>` is refused before anything runs", opts, async t => {
@@ -311,31 +315,31 @@ test("space helper: firewall-del is refused while the project runs, then removes
   const r = rig(t);
   await r.prime();
   r.ask("up harlow\n"); r.ask("up northwind\n"); await r.helper();
-  assert.equal(r.rules().length, 2);
+  assert.equal(r.rules().length, 4);
   const early = r.ask("firewall-del harlow\n"); await r.helper();
   assert.equal(r.status(early).state, "failed"); assert.match(r.status(early).message, /running/);
-  assert.equal(r.rules().length, 2);
+  assert.equal(r.rules().length, 4);
   const down = r.ask("down harlow\n"); await r.helper();
   assert.equal(r.status(down).state, "ok");
   assert.match(r.status(down).message, /data is kept/);
   assert.ok(!/ -v/.test(r.calls().split("\n").filter(l => /harlow.* down/.test(l)).join("\n")), "down never takes the volumes");
-  assert.equal(r.rules().length, 2, "the rule stays until firewall-del");
+  assert.equal(r.rules().length, 4, "the rules stay until firewall-del");
   const del = r.ask("firewall-del harlow\n"); await r.helper();
   assert.equal(r.status(del).state, "ok");
-  assert.deepEqual(r.rules(), [`-d 172.30.4.0/24 -m owner ! --uid-owner ${UID} -m comment --comment vyre:northwind -j REJECT`], "only harlow's rule is gone");
+  assert.deepEqual(r.rules().sort(), ranges("northwind"), "only harlow's rules are gone");
 });
 
 test("space helper RH-3: a recreated vyre container has no join and no rule; up re-applies with a fresh pid and proves it; a rule that does not block fails the up and stops the store", opts, async t => {
   const r = rig(t);
   await r.prime();
   r.ask("up harlow\n"); await r.helper();
-  assert.equal(r.rules("4242").length, 1);
+  assert.equal(r.rules("4242").length, 2);
   // The container is recreated: new pid, no network joins, an empty namespace.
   r.flag("ctr-pid", "5151"); fs.writeFileSync(path.join(r.F, "joined"), "");
   assert.deepEqual(r.rules("5151"), []);
   const id = r.ask("up harlow\n"); await r.helper();
   assert.equal(r.status(id).state, "ok");
-  assert.equal(r.rules("5151").length, 1, "the rule went into the NEW namespace");
+  assert.equal(r.rules("5151").length, 2, "the rules went into the NEW namespace");
   assert.match(r.calls(), /nsenter -t 5151 /, "the pid is read fresh");
   // The rule is accepted but does not block (RH-4): the probe sees the agent connect, so the up fails and the store is stopped.
   r.flag("ctr-pid", "6262"); fs.writeFileSync(path.join(r.F, "joined"), ""); r.flag("fw-ineffective");
@@ -363,7 +367,7 @@ test("space helper: `space-helper reattach` joins and firewalls again a Space th
   r.flag("ctr-pid", "9191"); fs.writeFileSync(path.join(r.F, "joined"), "");
   const ok = /** @type {any} */ (await r.run(["space-helper", "reattach"]));
   assert.equal(ok.code, 0, ok.out);
-  assert.equal(r.rules("9191").length, 1);
+  assert.equal(r.rules("9191").length, 2);
   r.flag("ctr-pid", "9292"); fs.writeFileSync(path.join(r.F, "joined"), ""); r.flag("fw-ineffective");
   const bad = /** @type {any} */ (await r.run(["space-helper", "reattach"]));
   assert.match(bad.out, /the Space harlow was stopped/);
@@ -469,7 +473,8 @@ test("space helper RH-6: the rule refuses every uid but the daemon's, so nothing
   const r = rig(t);
   await r.prime();
   r.ask("up harlow\n"); await r.helper();
-  assert.match(r.rules()[0], new RegExp(`-m owner ! --uid-owner ${UID} `));
+  assert.deepEqual(r.rules().sort(), ranges("harlow"), "two positive ranges, either side of the daemon uid: a negated match would drop the kernel's own REJECT reply");
+  assert.ok(!r.rules().some(l => l.includes("!")));
   // The sessions uid connecting is a failure of the proof, like an agent's.
   assert.match(r.calls(), new RegExp(`--reuid=${UID + 1} `));
 });
@@ -482,7 +487,7 @@ test("space helper RH-7: `space-helper watch` reattaches after the vyre containe
   r.flag("ctr-pid", "3131"); fs.writeFileSync(path.join(r.F, "joined"), ""); r.flag("events");
   const ok = /** @type {any} */ (await r.run(["space-helper", "watch"], { VYRE_SPACES_WATCH_ONCE: "1" }));
   assert.equal(ok.code, 0, ok.out);
-  assert.equal(r.rules("3131").length, 1, "the rule is back in the new namespace");
+  assert.equal(r.rules("3131").length, 2, "the rules are back in the new namespace");
   assert.match(r.calls(), /events --filter container=vyre-vyre-1 --filter event=start/);
   r.flag("ctr-pid", "3232"); fs.writeFileSync(path.join(r.F, "joined"), ""); r.flag("fw-add-fails");
   const bad = /** @type {any} */ (await r.run(["space-helper", "watch"], { VYRE_SPACES_WATCH_ONCE: "1" }));
@@ -518,39 +523,44 @@ test("space helper SH-2 and SH-3: a family the network lacks (`invalid IP`) is i
   r.flag("fw-del-fails");
   const stuck = r.ask("firewall-del harlow\n"); await r.helper();
   assert.equal(r.status(stuck).state, "failed"); assert.match(r.status(stuck).message, /still there/);
-  assert.equal(r.rules().length, 1);
+  assert.equal(r.rules().length, 2);
 });
 
-test("space helper SH-1: status/subnets lists what the helper firewalled, and core/spawner/space-wall.sh puts those rules in at every container start, failing the start when one cannot be added", opts, async t => {
+test("space helper SH-1: the host writes a marker that names the container instance after it proved the rules; space-wall.sh holds the daemon back until its own instance's marker is there", opts, async t => {
   const r = rig(t);
   await r.prime();
-  r.ask("up harlow\n"); r.ask("up northwind\n"); await r.helper();
+  r.ask("up harlow\n"); await r.helper();
   const list = path.join(r.SP, "status", "subnets");
-  assert.equal(fs.readFileSync(list, "utf8").trim().split("\n").sort().join("\n"), "harlow 172.30.4.0/24\nnorthwind 172.30.4.0/24");
-  // The wall script, run as the container's entry does (as root with NET_ADMIN there; here a fake iptables with its own rule file).
-  const dir = fs.mkdtempSync(path.join(SCRATCH, "wall-")); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  const bin = path.join(dir, "bin"); fs.mkdirSync(bin);
-  fs.writeFileSync(path.join(bin, "iptables"), `#!/bin/sh\nF="${dir}/rules"; touch "$F"; shift\nop=$1; shift; [ "$op" = -I ] && shift\nshift\nrule="$*"\ncase "$op" in -C) grep -qxF -- "$rule" "$F" ;; -I) [ -f "${dir}/refuse" ] && exit 1; echo "$rule" >>"$F" ;; esac\n`, { mode: 0o755 });
-  const run = () => spawnSync("sh", [path.join(REPO, "core/spawner/space-wall.sh")], { env: { PATH: `${bin}:${process.env.PATH}`, VYRE_SPACES_STATE: path.join(r.SP, "status"), VYRE_DAEMON_UID: "1000" }, encoding: "utf8" });
-  let w = run();
-  assert.equal(w.status, 0, w.stderr);
-  const got = fs.readFileSync(path.join(dir, "rules"), "utf8").trim().split("\n");
-  assert.equal(got.length, 2);
-  assert.match(got[0], /^-d 172\.30\.4\.0\/24 -m owner ! --uid-owner 1000 -m comment --comment vyre:/);
-  // Run again (a restart): nothing doubles.
-  assert.equal(run().status, 0); assert.equal(fs.readFileSync(path.join(dir, "rules"), "utf8").trim().split("\n").length, 2);
-  // A rule that cannot be added stops the container's start.
-  fs.rmSync(path.join(dir, "rules")); fs.writeFileSync(path.join(dir, "refuse"), "1");
-  w = run();
-  assert.equal(w.status, 1); assert.match(w.stderr, /not starting the daemon/);
-  // No list, nothing to do; a line that is not the helper's shape is skipped and said, never run.
+  assert.equal(fs.readFileSync(list, "utf8").trim(), "harlow 172.30.4.0/24");
+  // The wall script reads the container's own hostname: a fake `hostname` on PATH stands in for Docker's (the first 12 characters of the container id).
+  const bin = fs.mkdtempSync(path.join(SCRATCH, "wallbin-")); t.after(() => fs.rmSync(bin, { recursive: true, force: true }));
+  const as = (/** @type {string} */ host) => { fs.writeFileSync(path.join(bin, "hostname"), `#!/bin/sh\necho ${host}\n`, { mode: 0o755 }); return spawnSync("sh", [path.join(REPO, "core/spawner/space-wall.sh")], { env: { PATH: `${bin}:${process.env.PATH}`, VYRE_SPACES_STATE: path.join(r.SP, "status"), VYRE_WALL_WAIT: "2" }, encoding: "utf8" }); };
+  // A container that was started and has no marker yet: refused, the daemon does not start.
+  let w = as("abcdef012345");
+  assert.equal(w.status, 1); assert.match(w.stderr, /the daemon is not starting/);
+  // The watcher (or reattach) proves the rules for the running container and names it.
+  const ok = /** @type {any} */ (await r.run(["space-helper", "reattach"])); assert.equal(ok.code, 0, ok.out);
+  assert.equal(fs.readFileSync(path.join(r.SP, "status", "wall-ready"), "utf8").trim(), "abcdef012345");
+  assert.equal(as("abcdef012345").status, 0);
+  // A container started later has another id: the old marker does not pass.
+  w = as("fedcba543210");
+  assert.equal(w.status, 1);
+  r.flag("ctr-id", "fedcba543210");
+  assert.equal((/** @type {any} */ (await r.run(["space-helper", "reattach"]))).code, 0);
+  assert.equal(as("fedcba543210").status, 0, "after the host proved the new instance");
+  // Nothing firewalled, nothing to wait for.
   fs.rmSync(list);
-  assert.equal(run().status, 0);
-  fs.writeFileSync(list, "harlow 172.30.4.0/24 ; reboot\n$(id) 10.0.0.0/8\n");
-  fs.rmSync(path.join(dir, "refuse"));
-  w = run();
-  assert.equal(w.status, 0); assert.match(w.stderr, /not one the helper writes/);
-  assert.ok(!fs.existsSync(path.join(dir, "rules")) || fs.readFileSync(path.join(dir, "rules"), "utf8") === "");
+  assert.equal(as("0123456789ab").status, 0);
+});
+
+test("space helper: the vyre container's compose is never privileged and keeps NET_ADMIN only for the entry step, which drops it before the daemon runs", async () => {
+  const compose = fs.readFileSync(path.join(REPO, "box/compose.yml"), "utf8");
+  const vyre = compose.slice(compose.indexOf("\n  vyre:"), compose.indexOf("\n  docker-api:") > 0 ? compose.indexOf("\n  docker-api:") : undefined);
+  assert.ok(!/privileged:\s*true/.test(compose), "no service is privileged");
+  assert.ok(!/network_mode:\s*host|pid:\s*host/.test(vyre));
+  const entry = fs.readFileSync(path.join(REPO, "core/spawner/wall-entry.sh"), "utf8");
+  assert.match(entry, /--bounding-set=-net_admin/, "NET_ADMIN leaves the bounding set before the spawner runs");
+  assert.match(entry, /space-wall\.sh\s*\|\|\s*exit 1/, "the entry waits for the host's marker and stops when it does not come");
 });
 
 test("space helper: the images are pulled and recorded by digest at install; a failed pull stops the install; a refreshed record (an update) changes what `up` runs", opts, async t => {
@@ -567,4 +577,69 @@ test("space helper: the images are pulled and recorded by digest at install; a f
   r.ask("up harlow\n"); await r.helper();
   const d2 = fs.readFileSync(path.join(r.SP, "private", "spaces", "harlow", "compose.yml"), "utf8").match(/redis@sha256:[0-9a-f]{64}/)[0];
   assert.notEqual(d1, d2);
+});
+
+test("space helper RH-8: a writer that holds the request open and rewrites it after the checks never gets a second line, a path or anything but one valid request through (thousands of tries)", opts, async t => {
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "race-")); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  // The two functions, as they are in the wrapper, run in one sh against a file a node process keeps rewriting through its own open descriptor.
+  const src = WRAPPER_SRC;
+  const fnText = (/** @type {string} */ name, /** @type {string} */ until) => { const a = src.indexOf(`\n${name}() {`); const b = src.indexOf(until, a); return src.slice(a, b); };
+  const funcs = fnText("sp_name_ok", "# sp_do ID VERB NAME:");
+  const file = path.join(dir, "claimed");
+  fs.mkdirSync(path.join(dir, "priv"));
+  fs.writeFileSync(file, "up abc\n", { mode: 0o600 });
+  const racer = spawn("node", ["-e", `
+    const fs = require("fs"); const fd = fs.openSync(process.argv[1], "r+");
+    const A = Buffer.from("up abc\\n"), B = Buffer.from("up abc\\n../../zzz\\nup x\\n"), C = Buffer.from("up abc\\n\\n");
+    let i = 0; const stop = Date.now() + 25000;
+    while (Date.now() < stop) { const b = [A, B, C][i++ % 3]; fs.ftruncateSync(fd, 0); fs.writeSync(fd, b, 0, b.length, 0); }
+  `, file], { stdio: "ignore" });
+  t.after(() => racer.kill());
+  const script = `
+    SP_PRIV='${path.join(dir, "priv")}'; DAEMON_UID=${UID}; SP_NAME_RE='[a-z][a-z0-9-]{0,30}'
+    ${funcs}
+    i=0; ok=0; bad=0
+    while [ $i -lt 4000 ]; do
+      i=$((i + 1)); LINE=""; MSG=""
+      if sp_read_claimed '${file}'; then
+        ok=$((ok + 1))
+        case "$LINE" in "up abc") ;; *) bad=$((bad + 1)); printf 'ACCEPTED %s\\n' "$LINE" >&2 ;; esac
+        case "$LINE" in *"
+"*) bad=$((bad + 1)); echo "ACCEPTED A NEWLINE" >&2 ;; esac
+      fi
+    done
+    echo "tries=$i accepted=$ok bad=$bad"
+    [ "$bad" = 0 ]`;
+  const r = spawnSync("sh", ["-c", script], { encoding: "utf8", timeout: 120_000 });
+  racer.kill();
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /tries=4000 accepted=\d+ bad=0/);
+});
+
+test("space helper RH-8: names that could reach another path are refused wherever a name is used (a slash, dots, a newline, a NUL, a space, a capital, 32 characters)", opts, async t => {
+  const r = rig(t);
+  await r.prime();
+  const bad = ["up ../../etc", "up a/b", "up ..", "up .", "up a b", "up A", "up -x", "up a\nup b", "up " + "a".repeat(32)];
+  const ids = bad.map(x => r.ask(x + "\n"));
+  ids.push(r.ask(Buffer.from("up a\0b\n")));
+  await r.helper();
+  for (const id of ids) assert.equal(r.status(id).state, "failed");
+  assert.ok(!fs.existsSync(path.join(r.SP, "private", "spaces")) || fs.readdirSync(path.join(r.SP, "private", "spaces")).length === 0);
+  assert.ok(!/compose|network/.test(r.calls()));
+  // And a queue entry built by anything else is refused at the top of sp_do: the function is only ever given validated words, and checks again.
+  assert.match(WRAPPER_SRC, /Everything is checked again here/);
+});
+
+test("space helper RH-9: a directory or a link named like a request is removed, never moved, and cannot swallow the next request", opts, async t => {
+  const r = rig(t);
+  await r.prime();
+  const d1 = r.hex(); fs.mkdirSync(r.spool(d1)); fs.writeFileSync(path.join(r.spool(d1), "inner"), "x");
+  const good = r.ask("up harlow\n");
+  fs.mkdirSync(path.join(r.SP, "private", "claim"), { recursive: true });
+  const stuck = r.hex(); fs.mkdirSync(path.join(r.SP, "private", "claim", "req-" + stuck)); fs.writeFileSync(path.join(r.SP, "private", "claim", "req-" + stuck, "f"), "x");
+  await r.helper();
+  assert.equal(r.status(good).state, "ok");
+  assert.equal(r.status(stuck).message, "interrupted");
+  assert.deepEqual(fs.readdirSync(path.join(r.SP, "private", "claim")), [], "nothing is left in claim");
+  assert.deepEqual(fs.readdirSync(path.join(r.SP, "spool")), []);
 });

@@ -1211,11 +1211,12 @@ hdock() { env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" 
 # sp_dc NAME ARGS: compose for one Space, only on root's own copy, the project name fixed from the validated name.
 sp_dc() {
   n=$1; shift
+  sp_name_ok "$n" || return 1
   d=$SP_PRIV/spaces/$n
   timeout 900 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker compose --project-directory "$d" --project-name "vyre-$n-twenty" \
     --env-file "$d/secrets.env" -f "$d/compose.yml" "$@"
 }
-sp_known() { [ -f "$SP_PRIV/spaces/$1/record" ] && [ ! -L "$SP_PRIV/spaces/$1/record" ]; }
+sp_known() { sp_name_ok "$1" && [ -f "$SP_PRIV/spaces/$1/record" ] && [ ! -L "$SP_PRIV/spaces/$1/record" ]; }
 sp_running() { [ -n "$(hdock ps -q --filter "label=com.docker.compose.project=vyre-$1-twenty" 2>/dev/null || true)" ]; }
 # sp_pid: the vyre container's pid, taken fresh on every call (a recreated container has a new one and a new, empty network namespace).
 sp_pid() {
@@ -1231,7 +1232,11 @@ sp_fw_each() {
   fam=$1; pid=$2; shift 2
   timeout 20 nsenter -t "$pid" -n "$fam" -w "$@"
 }
-# sp_fw_apply NAME: every subnet of the Space's store network gets the rule (reviewer-3's shape): -C first, then inserted at position 1, then verified with -C.
+# sp_ranges: the two uid ranges either side of the daemon's uid, one rule each. A single negated owner match (`! --uid-owner D`) also matches the kernel's own REJECT reply, which
+# has no socket owner and goes to the container's address inside the store subnet, so the reply is dropped and every refused connect times out instead of being refused (reviewer-3,
+# on real iptables). Two positive ranges never match an ownerless packet.
+sp_ranges() { printf '0-%s\n%s-4294967294\n' $((DAEMON_UID - 1)) $((DAEMON_UID + 1)); }
+# sp_fw_apply NAME: every subnet of the Space's store network gets the two rules (reviewer-3's shape): -C first, then inserted at position 1, then verified with -C.
 sp_fw_apply() {
   n=$1
   pid=$(sp_pid) || { MSG="the vyre container is not running"; return 1; }
@@ -1240,10 +1245,12 @@ sp_fw_apply() {
   for s in $subs; do
     sp_subnet_ok "$s" || { MSG="a subnet of the Space's network is not one the helper accepts"; return 1; }
     fam=$(sp_ipt "$s")
-    if ! sp_fw_each "$fam" "$pid" -C OUTPUT -d "$s" -m owner ! --uid-owner "$DAEMON_UID" -m comment --comment "vyre:$n" -j REJECT >/dev/null 2>&1; then
-      sp_fw_each "$fam" "$pid" -I OUTPUT 1 -d "$s" -m owner ! --uid-owner "$DAEMON_UID" -m comment --comment "vyre:$n" -j REJECT >/dev/null 2>&1 || { MSG="the firewall rule could not be added"; return 1; }
-    fi
-    sp_fw_each "$fam" "$pid" -C OUTPUT -d "$s" -m owner ! --uid-owner "$DAEMON_UID" -m comment --comment "vyre:$n" -j REJECT >/dev/null 2>&1 || { MSG="the firewall rule is not there after it was added"; return 1; }
+    for rg in $(sp_ranges); do
+      if ! sp_fw_each "$fam" "$pid" -C OUTPUT -d "$s" -m owner --uid-owner "$rg" -m comment --comment "vyre:$n" -j REJECT >/dev/null 2>&1; then
+        sp_fw_each "$fam" "$pid" -I OUTPUT 1 -d "$s" -m owner --uid-owner "$rg" -m comment --comment "vyre:$n" -j REJECT >/dev/null 2>&1 || { MSG="the firewall rule could not be added"; return 1; }
+      fi
+      sp_fw_each "$fam" "$pid" -C OUTPUT -d "$s" -m owner --uid-owner "$rg" -m comment --comment "vyre:$n" -j REJECT >/dev/null 2>&1 || { MSG="the firewall rule is not there after it was added"; return 1; }
+    done
     sp_sub_set "$n" "$s"
   done
 }
@@ -1266,8 +1273,8 @@ sp_probe() {
     if ! timeout 8 nsenter -t "$pid" -n setpriv --reuid="$DAEMON_UID" --regid="$DAEMON_UID" --clear-groups -- timeout 4 bash -c "exec 3<>/dev/tcp/$ip/3000" >/dev/null 2>&1; then
       MSG="the control connect (the daemon's uid) did not reach the store, so the firewall could not be proved"; return 1
     fi
-    # Every uid but the daemon's is refused: an agent's (2000) and a Vyre session's (the daemon's uid plus one), so nothing else can reach Twenty's first-user signup (RH-6).
-    for ou in 2000 $((DAEMON_UID + 1)); do
+    # Every uid but the daemon's is refused: root (0), an agent's (2000) and a Vyre session's (the daemon's uid plus one), so nothing else can reach Twenty's first-user signup (RH-6).
+    for ou in 0 2000 $((DAEMON_UID + 1)); do
       prc=0
       timeout 8 nsenter -t "$pid" -n setpriv --reuid="$ou" --regid="$ou" --clear-groups -- timeout 4 bash -c "exec 3<>/dev/tcp/$ip/3000" >/dev/null 2>&1 || prc=$?
       [ "$prc" = 1 ] || { MSG="uid $ou can reach the store (or the answer was not a refusal)"; return 1; }
@@ -1295,7 +1302,7 @@ sp_fw_del() {
     lines=$(timeout 20 nsenter -t "$pid" -n "$fam" -w -S OUTPUT 2>/dev/null | grep -E -- "vyre:$n([^a-z0-9-]|\$)" || true)
     [ -n "$lines" ] || continue
     printf '%s\n' "$lines" | while IFS= read -r l; do
-      printf '%s\n' "$l" | grep -Eqx -- "-A OUTPUT -d [0-9a-f:./]+ -m owner ! --uid-owner $DAEMON_UID -m comment --comment \"?vyre:$n\"? -j REJECT( --reject-with [a-z0-9-]+)?" || continue
+      printf '%s\n' "$l" | grep -Eqx -- "-A OUTPUT -d [0-9a-f:./]+ -m owner --uid-owner [0-9]+-[0-9]+ -m comment --comment \"?vyre:$n\"? -j REJECT( --reject-with [a-z0-9-]+)?" || continue
       rest=$(printf '%s' "${l#-A OUTPUT }" | tr -d '"')
       set -f
       # shellcheck disable=SC2086 # the words of a line that matched the strict pattern above, quotes removed
@@ -1398,6 +1405,7 @@ space_helper_record() {
 }
 sp_up() {
   n=$1
+  sp_name_ok "$n" || { MSG="not a Space name"; return 1; }
   if ! sp_known "$n"; then
     [ "$(find "$SP_PRIV/spaces" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)" -lt "$SPACES_CAP" ] || { MSG="too many Spaces on this server"; return 1; }
     # shellcheck disable=SC2015 # A && B || C on purpose: C is the refusal
@@ -1423,7 +1431,15 @@ sp_fw_add() {
   if sp_running "$1"; then sp_probe "$1" || return 1; fi
   MSG="the firewall is in place"
 }
-# sp_read_claimed FILE: LINE is the request, or nothing and a reason in MSG. stat of the claimed copy first; only then is it read.
+# sp_name_ok NAME: the one test for a Space name, used before a name is turned into any path or any command: lowercase letters, digits and dashes, a letter first, at most 31
+# characters, and one line (grep -x on a variable that holds a newline would accept a matching line anywhere in it, so the length and the absence of a newline are checked first).
+sp_name_ok() {
+  case "$1" in ""|*[!a-z0-9-]*) return 1 ;; esac
+  [ "${#1}" -le 31 ] || return 1
+  case "$1" in [a-z]*) return 0 ;; *) return 1 ;; esac
+}
+# sp_read_claimed FILE: LINE is the request, or nothing and a reason in MSG. stat of the claimed file first (it is in a folder only root can write, but its owner can still hold an
+# open descriptor and write to it): then the file is read ONCE, at most 65 bytes, into a copy only root can reach, and every later check is on that copy. The original is never read again.
 sp_read_claimed() {
   c=$1
   st=$(stat -c '%F|%u|%h|%s|%a|%Y' "$c" 2>/dev/null) || { MSG="unreadable"; return 1; }
@@ -1433,19 +1449,34 @@ STAT
   case "$ft" in "regular file") ;; *) MSG="not a regular file"; return 1 ;; esac
   [ "$uid" = "$DAEMON_UID" ] || { MSG="not made by the daemon's uid"; return 1; }
   [ "$nl" = 1 ] || { MSG="more than one link"; return 1; }
-  # shellcheck disable=SC2015 # A && B || C on purpose: C is the refusal
-  [ "$sz" -ge 2 ] && [ "$sz" -le 64 ] || { MSG="wrong size"; return 1; }
   [ $((0$mode & 077)) -eq 0 ] || { MSG="mode allows group or others"; return 1; }
   [ $(($(date +%s) - mt)) -le 300 ] || { MSG="stale"; return 1; }
-  [ "$(LC_ALL=C tr -d '\040-\176\n' <"$c" | wc -c)" = 0 ] || { MSG="bytes outside printable ASCII"; return 1; }
+  cp_=$SP_PRIV/claim-read
+  rm -f "$cp_"
+  head -c 65 -- "$c" >"$cp_" 2>/dev/null || { MSG="unreadable"; return 1; }
+  sz=$(wc -c <"$cp_")
   # shellcheck disable=SC2015 # A && B || C on purpose: C is the refusal
-  [ "$(wc -l <"$c")" = 1 ] && [ "$(tail -c 1 "$c" | od -An -tx1 | tr -d ' \n')" = 0a ] || { MSG="not exactly one line"; return 1; }
-  LINE=$(cat -- "$c")
-  printf '%s\n' "$LINE" | grep -Eqx "(up|stop|down|firewall-add|firewall-del) $SP_NAME_RE" || { MSG="not a request the helper knows"; return 1; }
+  [ "$sz" -ge 2 ] && [ "$sz" -le 64 ] || { rm -f "$cp_"; MSG="wrong size"; return 1; }
+  [ "$(LC_ALL=C tr -d '\040-\176\n' <"$cp_" | wc -c)" = 0 ] || { rm -f "$cp_"; MSG="bytes outside printable ASCII"; return 1; }
+  # Exactly one line: one newline, and it is the last byte. So LINE below can never hold a newline.
+  # shellcheck disable=SC2015 # A && B || C on purpose: C is the refusal
+  [ "$(wc -l <"$cp_")" = 1 ] && [ "$(tail -c 1 "$cp_" | od -An -tx1 | tr -d ' \n')" = 0a ] || { rm -f "$cp_"; MSG="not exactly one line"; return 1; }
+  LINE=$(cat -- "$cp_")
+  rm -f "$cp_"
+  case "$LINE" in *"
+"*) MSG="not exactly one line"; return 1 ;; esac
+  v_=${LINE%% *}; n_=${LINE#* }
+  case "$v_" in up|stop|down|firewall-add|firewall-del) ;; *) MSG="not a request the helper knows"; return 1 ;; esac
+  [ "$LINE" = "$v_ $n_" ] && sp_name_ok "$n_" || { MSG="not a request the helper knows"; return 1; }
 }
 # sp_do ID VERB NAME: one request, with its status before and after, one Space at a time, and the up lane rate limited.
 sp_do() {
   id=$1; v=$2; n=$3; MSG=""
+  # Everything is checked again here, whatever put it in the queue: nothing below builds a path or a command from anything that has not passed.
+  case "$id" in *[!0-9a-f]*|"") return 0 ;; esac
+  [ "${#id}" = 32 ] || return 0
+  case "$v" in up|stop|down|firewall-add|firewall-del) ;; *) sp_status "$id" failed "not a request the helper knows"; return 0 ;; esac
+  sp_name_ok "$n" || { sp_status "$id" failed "not a request the helper knows"; sp_log "refused $v: a name that is not one"; return 0; }
   case "$n" in *-twenty*) sp_status "$id" failed "that name is not allowed"; sp_log "refused $v: a name with -twenty"; return 0 ;; esac
   if [ "$v" != up ] && ! sp_known "$n"; then sp_status "$id" failed "no such Space"; sp_log "refused $v: unknown Space"; return 0; fi
   if [ "$v" = up ]; then
@@ -1473,7 +1504,9 @@ space_helper_run() {
   # A request claimed by a run that did not finish is answered "interrupted", never replayed.
   for c in "$SP_PRIV"/claim/req-*; do
     [ -e "$c" ] || continue
-    b=${c##*/}; sp_status "${b#req-}" failed "interrupted"; rm -f -- "$c"
+    b=${c##*/}; h=${b#req-}
+    case "$h" in *[!0-9a-f]*|"") ;; *) [ "${#h}" != 32 ] || sp_status "$h" failed "interrupted" ;; esac
+    rm -rf -- "$c"
   done
   n=0; cleanup_q=""; other_q=""
   for f in "$SP_SPOOL"/* "$SP_SPOOL"/.[!.]*; do
@@ -1484,22 +1517,33 @@ space_helper_run() {
     n=$((n + 1))
     if [ "$n" -gt "$SPACES_SPOOL_CAP" ]; then rm -f -- "$f" 2>/dev/null || true; sp_log "dropped: spool over its cap"; continue; fi
     # Claimed by rename (which never follows a link at the last name) into a folder only root can use, then looked at there.
-    mv -- "$f" "$SP_PRIV/claim/$b" 2>/dev/null || continue
+    # RH-9: only a plain file is claimed (a directory or a link named like a request is removed, never moved), the claim name is cleared first, and mv -T never moves into a directory.
+    if [ ! -f "$f" ] || [ -L "$f" ]; then rm -rf -- "$f" 2>/dev/null || true; sp_log "dropped an entry that is not a plain file"; continue; fi
+    rm -rf -- "${SP_PRIV:?}/claim/$b" 2>/dev/null || true
+    mv -T -- "$f" "$SP_PRIV/claim/$b" 2>/dev/null || continue
     if sp_read_claimed "$SP_PRIV/claim/$b"; then
       v=${LINE%% *}; nm=${LINE#* }
       case "$v" in stop|down|firewall-del) cleanup_q="$cleanup_q $h:$v:$nm" ;; *) other_q="$other_q $h:$v:$nm" ;; esac
     else
-      sp_status "$h" failed "refused: $MSG"; sp_log "refused: $MSG"; rm -f -- "$SP_PRIV/claim/$b"
+      sp_status "$h" failed "refused: $MSG"; sp_log "refused: $MSG"; rm -rf -- "${SP_PRIV:?}/claim/$b"
     fi
   done
   # The cleanup lane first, so a flood of up never delays a stop, a down or a firewall-del.
   for q in $cleanup_q $other_q; do
     h=${q%%:*}; r=${q#*:}; v=${r%%:*}; nm=${r#*:}
     sp_do "$h" "$v" "$nm"
-    rm -f -- "$SP_PRIV/claim/req-$h"
+    rm -rf -- "${SP_PRIV:?}/claim/req-$h"
   done
   [ -z "$cleanup_q$other_q" ] || sleep 1
   exit 0
+}
+# sp_wall_ready: after the rules were put in and proved for this container, a read-only marker names THIS container instance (the first 12 characters of its id, which is the hostname
+# Docker gives it), so the entry of a container started later cannot pass on an earlier container's marker (core/spawner/space-wall.sh).
+sp_wall_ready() {
+  id=$(hdock inspect -f '{{.Id}}' "$CTR_NAME" 2>/dev/null | cut -c1-12 || true)
+  case "$id" in ""|*[!0-9a-f]*) return 0 ;; esac
+  # shellcheck disable=SC2015 # A && B || C on purpose: C is "carry on"
+  printf '%s\n' "$id" >"$SP_STATE/wall-ready.new" && chmod 644 "$SP_STATE/wall-ready.new" && rename_over "$SP_STATE/wall-ready.new" "$SP_STATE/wall-ready" || true
 }
 # space_helper_reattach: after an update the vyre container is a new one with no network joins and no rules: every recorded Space whose containers still run is
 # joined and firewalled again and proved. A Space that fails is stopped (never left running unfirewalled) and said.
@@ -1517,6 +1561,7 @@ space_helper_reattach() {
       sp_log "stopped after update: ${MSG:-}"
     fi
   done
+  sp_wall_ready
 }
 # space_helper install|remove|status: the path unit, root's. DirectoryNotEmpty on the spool; trigger limits off, so a flood cannot disable the unit that does
 # the cleanup (the helper itself throttles).

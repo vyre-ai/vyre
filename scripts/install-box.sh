@@ -172,11 +172,13 @@ finish() {
     if [ "$LINK_ONLY" = 1 ]; then
       say "  The setup link went to stdout for the program that asked."
     else
-      if [ -n "$CODE" ]; then
+      if [ "$PAIRED" = 1 ]; then
+        say "  Connected to ${BOLD}${PAIRED_NAME}${RESET}. Finish setting up on your device."
+      elif [ -n "$CODE" ]; then
         say "  Done. Back to your browser."
       else
-        say "  Next: open the link above. If it came with an ssh -L line,"
-        say "  run that on your own computer first, then open the link there."
+        say "  Next: finish pairing from your device (the long code above), or open the link above."
+        say "  If it came with an ssh -L line, run that on your own computer first."
       fi
     fi
   fi
@@ -639,19 +641,12 @@ show_words() {
   done
 }
 
-# intake_code: the setup code, from VYRE_CODE or asked for on a terminal (hidden, Enter skips it).
-# Never an argument, never echoed. The shape is base64url of 32 bytes: 43 characters.
+# intake_code: the setup code from VYRE_CODE, for a program that installs for someone (the old browser setup page). It is never asked for on the terminal any more: the only
+# thing this installer asks a person is the pairing (pair_server), by the user's ruling of 4 Oct. Never an argument, never echoed. The shape is base64url of 32 bytes: 43 characters.
 intake_code() {
   CODE=${VYRE_CODE:-}
   unset VYRE_CODE
   [ "$UNINSTALL" = 1 ] && { CODE=""; return 0; }
-  if [ -z "$CODE" ] && [ "$DRY" = 0 ] && [ "$YES" = 0 ] && [ "$LINK_ONLY" = 0 ] && (: </dev/tty) 2>/dev/null; then
-    printf '%sPaste the setup code from your browser (Enter to skip): %s' "$BEACON" "$RESET" >/dev/tty
-    stty -echo </dev/tty 2>/dev/null || true
-    read -r CODE </dev/tty || CODE=""
-    stty echo </dev/tty 2>/dev/null || true
-    printf '\n' >/dev/tty
-  fi
   [ -n "$CODE" ] || return 0
   printf '%s' "$CODE" | grep -Eq '^[A-Za-z0-9_-]{43}$' \
     || die "that setup code does not look right. Copy the install line from your browser again."
@@ -692,6 +687,71 @@ write_code() {
   chmod 600 "$TMP/vyre.env"
   printf 'VYRE_SETUP_CODE_AT=%s\nVYRE_SETUP_CODE=%s\n' "$(date +%s)" "$CODE" >>"$TMP/vyre.env"
   put "$TMP/vyre.env" "$DIR/vyre.env" 0600
+}
+
+# pair_server: the last step, and the only question this terminal ever asks (the user's ruling, 4 Oct: the server's part is one command and the pairing, nothing else; members,
+# connectors and everything inside a space are set up on the person's own device). It shows the pairing QR and the long code, waits for a device to ask, shows who is asking and
+# three sets of three words, takes the pick of the set the device shows, and ends with the line the person acts on. A step that fails says why and offers to try again on a
+# terminal; nothing is created before the pick, so nothing is left half-made. Under --yes or with no terminal it prints the code and the way back and ends.
+# The tools are the daemon's (wink.server.code, wink.server.pairing, wink.server.pair.answer); VYRE_PAIR_TO names the one identity an unattended install is for.
+PAIRED=0; PAIRED_NAME=""
+tool() { dk env "VYRE_DIR=$DIR" "$WRAPPER" call "$@" 2>/dev/null | tr -d '\n'; }
+json_str() { printf '%s' "$1" | sed -n "s/.*\"$2\": *\"\\(\\([^\"\\\\]\\|\\\\.\\)*\\)\".*/\\1/p"; }
+pair_server() {
+  [ "$DRY" = 0 ] && [ "$LINK_ONLY" = 0 ] || return 0
+  tries=0
+  while :; do
+    tries=$((tries + 1))
+    if [ -n "${VYRE_PAIR_TO:-}" ]; then pt=$(printf '%s' "$VYRE_PAIR_TO" | tr -d "\"\\\\"); input="{\"qr\":true,\"pairTo\":\"$pt\"}"; else input='{"qr":true}'; fi
+    out=$(tool wink.server.code "$input" || true)
+    qr=$(json_str "$out" qr)
+    if [ -z "$qr" ]; then
+      why=$(json_str "$out" message)
+      say "  Pairing could not start: ${why:-the pairing is not ready on this server}."
+      if [ "$YES" = 0 ] && (: </dev/tty) 2>/dev/null && ask "Try again?"; then continue; fi
+      say "  Pair it from your device later: open Vyre, add a server, and run on this server: ${BOLD}vyre call wink.server.code '{\"qr\":true}'${RESET}"
+      return 0
+    fi
+    art=$(json_str "$out" art | sed 's/\\n/\n/g; s/\\\\/\\/g')
+    say ""
+    say "  Pair this server from your Vyre app: scan this with your phone,"
+    say "  or paste the long code into the app on a computer."
+    [ -z "$art" ] || printf '%s\n' "$art"
+    say "  Long code: $BOLD$qr$RESET"
+    say "  It is good for five minutes."
+    if [ -n "${VYRE_PAIR_TO:-}" ]; then say "  This install is for ${BOLD}${VYRE_PAIR_TO}${RESET} only. Finish setting up on that identity's device."; return 0; fi
+    if [ "$YES" = 1 ] || ! (: </dev/tty) 2>/dev/null; then say "  Finish setting up on your device once it has paired."; return 0; fi
+    end=$(( $(date +%s) + 300 ))
+    while [ "$(date +%s)" -lt "$end" ]; do
+      q=$(tool wink.server.pairing '{}' || true)
+      case "$q" in
+        *'"asking": true'*|*'"asking":true'*)
+          nm=$(json_str "$q" name)
+          # The three sets, one per line (a JSON array of three strings).
+          sets=$(printf '%s' "$q" | sed -n 's/.*"choices": *\[\([^]]*\)\].*/\1/p' | sed 's/", *"/\n/g; s/"//g')
+          say ""
+          say "  ${BOLD}${nm:-Someone}${RESET} is asking to pair this server. Pick the three words your app shows:"
+          i=0; printf '%s\n' "$sets" | while IFS= read -r l; do i=$((i + 1)); printf '    %s) %s\n' "$i" "$l"; done
+          printf '%sWhich one? (1, 2 or 3, Enter to refuse) %s' "$BEACON" "$RESET" >/dev/tty
+          read -r pick </dev/tty || pick=""
+          case "$pick" in
+            1|2|3) ans=$(tool wink.server.pair.answer "{\"yes\":true,\"pick\":$pick}" || true) ;;
+            *) ans=$(tool wink.server.pair.answer '{"yes":false}' || true); say "  Refused. Nothing was paired."; return 0 ;;
+          esac
+          case "$ans" in
+            *'"yes": true'*|*'"yes":true'*) PAIRED=1; PAIRED_NAME=${nm:-your space}; return 0 ;;
+            *) say "  Those were not the words the app shows, so nothing was paired."
+               if (: </dev/tty) 2>/dev/null && ask "Try again?"; then continue 2; fi
+               return 0 ;;
+          esac
+          ;;
+      esac
+      sleep 2
+    done
+    say "  The code ran out before a device asked. Nothing was paired."
+    if (: </dev/tty) 2>/dev/null && ask "Make a new code?"; then continue; fi
+    return 0
+  done
 }
 
 # one_install: an install that is already running here is updated, never replaced.
@@ -950,7 +1010,7 @@ main() {
   else
     step "Starting Vyre"
     start
-    if [ "$DRY" = 1 ]; then done_step "nothing started (dry run)"; else verify_up; install_space_helper; done_step "Vyre is up"; fi
+    if [ "$DRY" = 1 ]; then done_step "nothing started (dry run)"; else verify_up; install_space_helper; done_step "Vyre is up"; pair_server; fi
     show_words
   fi
   finish
