@@ -137,7 +137,7 @@ async function registry(t, { role, cfg = {}, link = undefined, seam = undefined,
     globalThis.__driveLinks = globalThis.__driveLinks || new Map();
     globalThis.__driveLinks.set(root, link);
     t.after(() => globalThis.__driveLinks.delete(root));
-    writeModule(mods, "link", { roles: ["local"], does: { tools: ["link.remote", "link.status"] } },
+    writeModule(mods, "link", { roles: ["local"], does: { tools: [{ name: "link.remote", reach: "modules" }, { name: "link.status", reach: "anyone" }] } },
       `export default { async start(ctx) {
         const l = () => globalThis.__driveLinks.get(ctx.paths.root);
         ctx.tool("link.remote", { run: async ({ tool, input }) => ({ result: await l().remote(tool, input) }) });
