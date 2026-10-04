@@ -45,6 +45,7 @@ export const hooks = {
   /** @type {number | null} */ syncMs: null,
   /** @type {{ memoryKiB: number, passes: number } | null} the recovery stretch, lowered by tests only */ stretch: null,
   /** @type {any} */ vpsDeps: null,
+  /** @type {((device: string) => Promise<{ call(tool: string, input: any): Promise<any> }>) | null} the open Wink peer session to a paired server (the daemon wires it); a test sets it */ sessionFor: null,
 };
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -176,6 +177,15 @@ export default {
     /** Ask a PAIRED SERVER to run one of its spaces tools, over the owner's paired session, with the owner's presence proof beside the call (the server's own registry verifies it, nothing here is trusted).
      * The carrier is Wink's: `wink.server.call { device, tool, input, proof? }` (tailnet). Any failure is a refusal; a space is never hosted locally as a fallback. */
     const remoteCall = async (/** @type {string} */ device, /** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ meta) => {
+      // ONE remote path (lead's ruling): the Wink peer wire to the paired server, as a session `{ call(tool, input) }` that a port supplies (`hooks.sessionFor(device)`, the daemon's wiring of the open
+      // joinPeer session); the owner's proof rides in the input's `proof` for the SERVER's registry to verify. Until a port is wired, the Wink module's `wink.server.call` tool is tried.
+      if (typeof hooks.sessionFor === "function") {
+        let session; try { session = await hooks.sessionFor(device); } catch { throw refuse("The server could not be reached. Nothing was made.", "server_unreachable"); }
+        if (!session || typeof session.call !== "function") throw refuse("The server could not be reached. Nothing was made.", "server_unreachable");
+        let pr; try { pr = await session.call(tool, { ...input, ...(meta && (meta.proof || meta.kernel_proof) ? { proof: meta.proof || meta.kernel_proof } : {}) }); } catch (e) { throw refuse(String(/** @type {any} */ (e).message || "The server did not do that. Nothing was made.").slice(0, 160), String(/** @type {any} */ (e).code || "server_refused")); }
+        if (!pr || pr.ok === false) throw refuse(pr && pr.error && pr.error.message ? String(pr.error.message).slice(0, 160) : "The server did not do that. Nothing was made.", (pr && pr.error && pr.error.code) || "server_refused");
+        return pr.data !== undefined ? pr.data : pr;
+      }
       let r; try { r = await ctx.call("wink.server.call", { device, tool, input, ...(meta && (meta.proof || meta.kernel_proof) ? { proof: meta.proof || meta.kernel_proof } : {}) }); } catch { throw refuse("The server could not be reached. Nothing was made.", "server_unreachable"); }
       if (!r || r.error) throw refuse(r && r.error && r.error.message ? String(r.error.message).slice(0, 160) : "The server did not do that. Nothing was made.", (r && r.error && r.error.code) || "server_refused");
       return r.data;

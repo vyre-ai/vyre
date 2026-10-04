@@ -1193,3 +1193,21 @@ test("a space whose home is a PAIRED server is hosted by the server: the device 
   assert.ok(!(await d.ok("spaces.list")).some(x => x.name === "refusedone.vyre.run"), "nothing was made here as a fallback");
   void w;
 });
+
+test("the device reaches the paired server over the Wink peer session when the daemon supplies one: the proof rides in the input, the server's answer is THE id, a closed session refuses", async t => {
+  const w = world(t);
+  const d = await device(t, { wink: true });
+  const { hooks } = await import("./index.js");
+  /** @type {any[]} */ const seen = [];
+  hooks.sessionFor = async dev => ({ call: async (tool, input) => { seen.push([dev, tool, input]); return { ok: true, data: { space: "spc_" + "mnpqrstuvwxy", existed: false } }; } });
+  t.after(() => { hooks.sessionFor = null; });
+  await d.ok("spaces.identity.create", { name: "alex" });
+  const made = await d.call("spaces.create", { name: "overwire", home: { kind: "server", device: { id: "srv_paired0000000001", name: "s", alwaysOn: true }, confirmed: true } }, "cli", { proof: "touch" });
+  assert.ok(!made.error, JSON.stringify(made.error));
+  assert.equal(made.data.space, "spc_mnpqrstuvwxy");
+  assert.deepEqual(seen.map(x => [x[0], x[1], x[2].name, x[2].proof]), [["srv_paired0000000001", "spaces.host-here", "overwire", "touch"]]);
+  hooks.sessionFor = async () => { throw new Error("closed"); };
+  const down = await d.call("spaces.create", { name: "nowire", home: { kind: "server", device: { id: "srv_paired0000000001", name: "s", alwaysOn: true } } }, "cli", { proof: "touch" });
+  assert.equal(down.error?.code, "server_unreachable");
+  void w;
+});
