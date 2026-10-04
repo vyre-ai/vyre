@@ -24,7 +24,7 @@ async function rig(t) {
   const g = k.gateway.grants, role = { person: BOB, role: "member" };
   await g.setRole(owner, role, { presence: proof("grants.role", role, `vyre://${SPACE}/member/${BOB}`) });
   const mk = (chain, o) => g.offers.offer(chain, o, { presence: proof("grants.offer", o, `vyre://${SPACE}/offer/new`) });
-  const un = (chain, id) => g.offers.unoffer(chain, id, { presence: proof("grants.offer", { revoke: id }, `vyre://${SPACE}/offer/${id}`) });
+  const un = (chain, id) => g.offers.unoffer(chain, id, { presence: proof("grants.unoffer", { revoke: id }, `vyre://${SPACE}/offer/${id}`) });
   const both = async () => { await mk(owner, { side: "space_allows", member: BOB }); return mk(bob, { side: "member_accepts", member: BOB, device: "dev_laptop", device_key: "KEY_LAPTOP" }); };
   return { k, sealer, owner, bob, g, mk, un, both, L: k.gateway.leases, live: (chain, id) => sealer.lease.check({ chain, id }).then(() => true, () => false) };
 }

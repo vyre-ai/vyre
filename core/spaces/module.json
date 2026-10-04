@@ -14,6 +14,10 @@
     "reach": "person"
    },
    {
+    "name": "spaces.identity.id",
+    "reach": "modules"
+   },
+   {
     "name": "spaces.identity.create",
     "reach": "person"
    },
@@ -86,6 +90,78 @@
     "reach": "person"
    },
    {
+    "name": "spaces.presence.begin",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.presence.recover",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.presence.sync",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.devices.spaces",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.devices.list",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.devices.lend",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.devices.lend.status",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.identity.republish",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.identity.name-of",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.admin-list",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.owner.adopt",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.devices.remove",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.devices.restore",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.devices.enrol",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.devices.set",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.devices.enrolled",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.setup.save",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.setup.claim",
+    "reach": "person"
+   },
+   {
     "name": "spaces.resume",
     "reach": "person"
    },
@@ -95,7 +171,7 @@
    },
    {
     "name": "spaces.code.submit",
-    "reach": "anyone"
+    "reach": "anyone", "callers": ["device", "module"]
    },
    {
     "name": "spaces.server.install",
@@ -171,7 +247,7 @@
    },
    {
     "name": "spaces.invites.redeem",
-    "reach": "anyone"
+    "reach": "anyone", "callers": ["device", "module"]
    },
    {
     "name": "spaces.compute.allow",
@@ -199,6 +275,10 @@
    },
    {
     "name": "spaces.identity.state",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.identity.self",
     "reach": "modules"
    },
    {
@@ -244,6 +324,11 @@
    "space.vps-created",
    "space.vps-destroyed",
    "space.warning",
+   "space.setup-moved",
+   "space.device-removed",
+   "space.device-lent",
+   "space.device-restored",
+   "space.device-enrolment-set",
    "member.added",
    "member.role-changed",
    "member.removed",
@@ -267,7 +352,8 @@
  },
  "needs": {
   "kernel": {
-   "membership": true
+   "membership": true,
+   "spaces": true
   }
  },
  "teaches": {}

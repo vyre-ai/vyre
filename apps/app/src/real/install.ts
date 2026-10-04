@@ -1,0 +1,80 @@
+// The install flow's calls to the box (screens/install/real.js maps the answers). Each is one tool through src/real/box.ts.
+
+import { said, tool } from "./box";
+import { claimBlocked } from "../../screens/shell/rc";
+import { claimIdentity } from "../identity/claim.js";
+import { loadIdentity, saveIdentity } from "../identity/store";
+import { createdFrom, directoryAnswer, identityFrom, nameAnswer } from "../../screens/install/real.js";
+
+type Created = { state: "done" | "running" | "asking" | "failed"; id: string; address: string; say: string };
+
+/** This device's claimed name, or null. */
+export const readIdentity = async (): Promise<{ id: string; label: string; address: string } | null> => {
+  // The identity this device made comes first (it needs no box); a paired box's own answer is the fallback, and no box is not an error here.
+  // A blocked browser (RC1) ignores a key an earlier build left in IndexedDB: that key was never meant to be used here, and the person pairs instead.
+  const mine = claimBlocked() ? null : await loadIdentity();
+  if (mine) return { id: mine.id, label: mine.name, address: `${mine.name}.vyre.run` };
+  try { return identityFrom(await tool("spaces.identity.status")); } catch { return null; }
+};
+
+/**
+ * Where the names directory is: the public service, never a box. The identity comes first (a name, then a space, then a server), so
+ * a name is checked before there is any box to ask. EXPO_PUBLIC_VYRE_NAMES_DIRECTORY points a walk at a stand-in (read as process.env.NAME exactly: Expo inlines only that form, so an optional chain left the override out of the web build).
+ */
+export const DIRECTORY: string = ((typeof process !== "undefined" && process.env.EXPO_PUBLIC_VYRE_NAMES_DIRECTORY) || "https://names.vyre.run").replace(/\/+$/, "");
+
+/** Is a name free in the directory? Asked of the directory itself, no box. An answer that is neither found nor not_found is "unknown". */
+export async function checkName(name: string): Promise<"free" | "taken" | "unknown"> {
+  try {
+    const r = await fetch(`${DIRECTORY}/v1/ids/resolve?name=${encodeURIComponent(name)}`, { headers: { accept: "application/json" }, cache: "no-store" });
+    const body = await r.json().catch(() => null);
+    return nameAnswer(directoryAnswer(r.status, body));
+  } catch {
+    // A browser cannot read an answer from a directory that sends no CORS headers: that is also "unknown", never a guess.
+    return "unknown";
+  }
+}
+
+/**
+ * Claim the person's name from this device, with no box: the key is made here, the claim goes to the names directory, and the identity is kept
+ * here. The recovery code is in this answer only: the caller shows it once and drops it.
+ */
+export async function createIdentity(name: string, deviceLabel: string, password = ""): Promise<{ name: string; id: string; recoveryCode: string; software: boolean }> {
+  // RC1: a browser never makes a name (KP-1): refused before any key is made, any storage is opened or the directory is asked.
+  if (claimBlocked()) throw new Error("Create your name on your iPhone, then pair this browser to it.");
+  const made = await claimIdentity({ name, password, deviceLabel, base: DIRECTORY });
+  await saveIdentity({ name: made.name, id: made.id, eid: made.eid, ops: made.ops, pin: made.pin, key: made.key });
+  return { name: made.name, id: made.id, recoveryCode: made.recoveryCode, software: made.software };
+}
+
+export async function createSpace(input: Record<string, unknown>): Promise<Created> {
+  return createdFrom(await tool("spaces.create", input));
+}
+export async function resumeSpace(space: string): Promise<Created> {
+  return createdFrom(await tool("spaces.resume", { space }));
+}
+
+export const listSpaces = () => tool<any[]>("spaces.list");
+export const saveSetup = (space: string, setup: Record<string, unknown> | null) => tool("spaces.setup.save", { space, setup });
+export const claimSetup = (space: string) => tool<{ space: string; setup: any; moved?: boolean }>("spaces.setup.claim", { space });
+export const previewInvite = (link: string) => tool<any>("spaces.invites.preview", { link });
+export const acceptInvite = (link: string) => tool<any>("spaces.invites.accept", { link });
+
+/** The Kits the box offers a new space (flows.kit.library). null when the box has no such tool: the step then offers none. */
+export async function kitChoices(): Promise<{ id: string; label: string; sub: string }[] | null> {
+  try {
+    const r = await tool<any>("records.kits.library").catch(() => tool<any>("flows.kit.library"));
+    const rows: any[] = Array.isArray(r) ? r : Array.isArray(r?.kits) ? r.kits : [];
+    return rows.map((k) => ({ id: String(k.id), label: String(k.name ?? k.id), sub: String(k.description ?? "") }));
+  } catch { return null; }
+}
+
+/** Ask to install the picked Kit in the new space. It lands as a card in Now for a person to approve; nothing installs until then. */
+export async function proposeKitFor(space: string, id: string): Promise<{ ok: boolean; text: string }> {
+  try {
+    const got = await tool<any>("records.kits.get", { id }).catch(() => tool<any>("flows.kit.library.get", { id }));
+    const kit = got && typeof got === "object" && got.kit ? got.kit : got;
+    const r = await tool<any>("flows.kit.propose", { space, kit });
+    return r?.ok === false ? { ok: false, text: r.errors?.[0]?.message ?? "The Kit cannot be installed." } : { ok: true, text: "waiting" };
+  } catch (e) { return { ok: false, text: said(e) }; }
+}

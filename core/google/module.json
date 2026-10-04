@@ -4,6 +4,7 @@
   "roles": ["box", "local"],
   "requires": ["vault", "gate"],
   "does": {
+    "reads": ["google.calendar.list", "google.calendar.search", "google.find", "google.mail.read", "google.mail.search"],
     "tools": [
       { "name": "google.accounts", "reach": "anyone" }, { "name": "google.add", "reach": "anyone" }, { "name": "google.remove", "reach": "anyone" }, { "name": "google.test", "reach": "anyone" },
       { "name": "google.connect", "reach": "anyone" }, { "name": "google.connect.finish", "reach": "anyone" }, { "name": "google.connect.cancel", "reach": "anyone" },

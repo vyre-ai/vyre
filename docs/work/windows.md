@@ -97,6 +97,8 @@ are not in the set.
 
 ## Windows peer identity (what vyred can and cannot tell on Windows)
 
+**LB-3 (reviewer-2), stated plainly:** the Windows local transport is a named pipe (`\\.\pipe\vyre-<user>`) whose ACL grants the signed-in user alone (lib/owner-only.js, the pipe token). vyred verifies the peer's USER by that ACL and the pipe token and nothing else: there is no pid, no process ancestry and no code-signature read on Windows (`canReadPeers` is false there), so it cannot tell the person from a model or a script running as the same user. Consequence and rule: on Windows a caller's LABEL is only a claim, so no person facts may come from a label there (platform-2 builds that rule in `callerFacts`); a Windows PC acts as a person only through the paired Noise channel and the passkey on the server it pairs with. `core/daemon/peer-identity.test.js` pins that peers are unreadable off macOS and Linux and that nothing is verified for a win32 peer.
+
 vyred decides "the person" versus "an agent" by asking the kernel which process is on the other end of the
 socket and walking its ancestry (core/daemon/peer.js). That read exists for macOS and Linux only. On Windows
 the local socket is a named pipe, and there is NO process-ancestry read: vyred gets no pid, so
@@ -441,3 +443,13 @@ app.
   aware ACL helpers left - `ensureWindowsSocketDir`/`currentUserPrincipal` are gone).
 - core/daemon/index.js: skips `fs.chmodSync` on `win32` (a named pipe has no file to chmod).
 - local/capsule/native-win/: new, `hotkey.rs` + tests, not yet wired into `local/capsule/index.js`.
+
+
+## Spaces session, 4 Oct (windows, work/spaces)
+- BR-1 on a real kernel-on vyred (test/walk-identity-space.test.js); BR-2 fixed (214b43672): the person comes only from ctx.kernel.chain(meta) in core/bridges and core/publish, no label checks left in spaces, bridges or publish; spaces.self takes the kernel person and answers only for the home owner (kernel handle `owner`).
+- E2E steps 2 and 3 walked on testbox3 (team/0.3/E2E-RUN.md).
+- Setup in progress: spaces.setup.save/claim, `setup` on spaces.get/list; spaces.list shows only spaces that have their home.
+- One identity: spaces owns the id (spaces.identity.id); pairing reads it. Members carry `name`. spaces.devices.spaces/remove/restore for Access (enforced in the spaces module; the kernel's own calls need a per-space device bar from platform).
+- A refusal from records.workspace.create fails the workspace step on a kernel-hosted space; other spaces still warn.
+- Left: delete the legacy membership store; invites on the kernel; spaces.label; presence.recover; Publish ingress (Caddy). golden.json/allow.json need re-recording (platform-2 told).
+- Test finding: `--test-force-exit` silently drops tests mid-file (platform-2 fixing the flag).

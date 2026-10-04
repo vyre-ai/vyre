@@ -13,10 +13,11 @@ import fs from "node:fs";
 import path from "node:path";
 import dns from "node:dns/promises";
 import { createPublisher, PublishError } from "../../lib/publish/index.js";
-import { composeText, assertIsolated } from "../../lib/publish/edge.js";
+import { composeText, assertIsolated, caddyDockerfile, IMAGES } from "../../lib/publish/edge.js";
+import { joinPageHtml } from "../../lib/publish/join.js";
+import { writeSiteFiles, volumeFill, siteFolder, sweepSites } from "../../lib/publish/site-write.js";
 import { checkBuildForSealed } from "../../lib/publish/secrets.js";
 import { createRoleAuthorize } from "../../lib/spaces/authz.js";
-import { isPerson, agentName } from "../../lib/caller.js";
 import { NO_BUILDER } from "./builder-plan.js";
 
 export { buildctlArgs } from "./builder-plan.js";
@@ -32,6 +33,9 @@ export const MIGRATIONS = [
   CREATE TABLE publish_tasks (space TEXT NOT NULL, id TEXT NOT NULL, body TEXT NOT NULL, PRIMARY KEY (space, id));
   `,
 ];
+
+/** The site folders the live deployments (Preview, Approved, Production) name; the rest are swept. @param {any[]} records */
+const liveSiteNames = records => new Set(records.filter(d => ["Preview", "Approved", "Production"].includes(d.stage) && d.site && typeof d.site.name === "string").map(d => d.site.name));
 
 const TABLES = /** @type {Record<string, string>} */ ({ deployments: "publish_deployments", domains: "publish_domains", holds: "publish_holds", tasks: "publish_tasks" });
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
@@ -85,21 +89,24 @@ export default {
     }
     const authorize = createRoleAuthorize({ membership: member });
 
-    /** The space and person a call is for. @param {any} input @param {any} meta */
+    /** The hops after the person in a call's own chain (an assistant's session adds its agent hop), set by whoIs for the call's meta object. @type {WeakMap<object, {kind: string, id: string}[]>} */
+    const extras = new WeakMap();
+    /** The space and person a call is for. The person comes from the call's own kernel chain (ctx.kernel.chain(meta)) and nothing else: never a caller label. No chain, a service chain or a viewer chain is nobody. @param {any} input @param {any} meta */
     async function whoIs(input, meta) {
-      const r = await call("spaces.self", { caller: String((meta && meta.caller) || ""), ...(input && input.space ? { space: input.space } : {}) });
+      let chain = null;
+      try { chain = ctx.kernel && typeof ctx.kernel.chain === "function" ? await ctx.kernel.chain(meta || {}) : null; } catch { chain = null; }
+      const first = chain && Array.isArray(chain.hops) && chain.hops[0] ? chain.hops[0] : null;
+      if (!first || !first.actor || first.actor.kind !== "person" || chain.viewer === true) throw refuse("only a person, or their own assistant, can do that", "forbidden");
+      const r = await call("spaces.self", { person: String(first.actor.id), ...(input && input.space ? { space: input.space } : {}) });
       if (r.missing || !r.data || !r.data.space || !r.data.person) throw refuse("no space is set up on this machine yet", "no_space");
+      if (meta && typeof meta === "object") extras.set(meta, chain.hops.slice(1).map((/** @type {any} */ h) => ({ kind: String(h.actor.kind), id: String(h.actor.id) })));
       return { space: /** @type {{ id: string, name: string }} */ (r.data.space), person: String(r.data.person) };
     }
 
-    /** The chain for a call: the person, then a model or automation when that is who is acting. @param {string} spaceId @param {string} person @param {any} meta */
+    /** The chain for a call: the person, then the hops the call's own chain carries after them (an assistant, an automation). @param {string} spaceId @param {string} person @param {any} meta */
     function chainOf(spaceId, person, meta) {
-      const caller = String((meta && meta.caller) || "");
       const hops = [{ actor: { kind: "person", id: person, space: spaceId }, entered_by: "surface" }];
-      if (!isPerson(meta)) {
-        const name = agentName(meta);
-        hops.push({ actor: { kind: name ? "agent" : "automation", id: name || caller || "automation", space: spaceId }, entered_by: "registry" });
-      }
+      for (const h of (meta && typeof meta === "object" && extras.get(meta)) || []) hops.push({ actor: { kind: h.kind, id: h.id, space: spaceId }, entered_by: "registry" });
       return { space: spaceId, hops, labels: { trust: "member", red: "internal", source_spaces: [spaceId] }, built_at: Date.now() };
     }
 
@@ -219,6 +226,14 @@ export default {
         },
         names: { owns: async (host, spaceId) => { const r = await call("names.owns", { host, space: spaceId }); return !r.missing && !!(r.data && (r.data === true || r.data.owns === true)); } },
         builder,
+        // The checked files of a static build go into a fresh folder under the space's publish folder (private, 0700); `publish.edge` hands the box the copy into the site volume.
+        site: { write: async (/** @type {string} */ _id, /** @type {any[]} */ files) => {
+          const sites = path.join(publishDir(space.id), "sites");
+          fs.mkdirSync(sites, { recursive: true, mode: 0o700 });
+          // Folders no live deployment names (retired, rolled back, superseded, left by a refused build) go before a new one is made, and the total is capped.
+          sweepSites(sites, liveSiteNames(await storeFor(space.id).list("deployments")));
+          return { dir: writeSiteFiles(sites, files) };
+        } },
       });
       p = { pub, ledger: led, lock: Promise.resolve() };
       publishers.set(space.id, p);
@@ -309,8 +324,8 @@ export default {
       input: obj({ task: str, approve: { type: "boolean" }, plan_hash: str }, ["task", "approve"]),
       presence: true,
       run: async (i, meta) => {
-        if (!isPerson(meta)) throw refuse("a person decides this, not a model", "model_cannot_approve");
         const { space, person } = await whoIs(i, meta);
+        if ((extras.get(meta) || []).length) throw refuse("a person decides this, not a model", "model_cannot_approve");
         const m = await member(space.id, person);
         if (!m) throw refuse("you are not a member of this space", "forbidden");
         const st = storeFor(space.id);
@@ -426,7 +441,7 @@ export default {
     });
 
     ctx.tool("publish.edge", {
-      description: "Write the edge for what is live now: a compose project and a Caddyfile in <home>/publish/<space>/, and the runtime secret files its sites were granted. It does not start anything.",
+      description: "Write the edge for what is live now: a compose project, a Caddyfile and the Dockerfile of its Caddy image in <home>/publish/<space>/, and the runtime secret files its sites were granted. It does not start anything.",
       input: obj({}),
       run: async (i, meta) => {
         const b = await begin(i, meta);
@@ -442,12 +457,29 @@ export default {
         };
         await put("compose.yaml", composeText(compose), 0o644);
         await put("Caddyfile", caddyfile, 0o644);
+        await put("caddy.Dockerfile", caddyDockerfile(), 0o644);
+        await put("join.html", joinPageHtml(), 0o644);
         // Runtime secrets: only the deployments in the compose, only what each was granted for runtime.
         for (const d of await storeFor(b.space.id).list("deployments")) {
-          if (!compose.services["w-" + d.id.replace(/^dep_/, "")]) continue;
+          if (!compose.services["w-" + d.id.replace(/^dep_/, "")] || (d.runtime && d.runtime.kind === "static")) continue;
           for (const s of d.secrets || []) if (s.use.includes("runtime")) await put(path.join("secrets", d.id, s.name), await files.read(s.ref), 0o600);
         }
-        return { dir, files: written, compose, caddyfile };
+        // What starts the project (it is not this module) builds the edge image first: `docker build -t <image> -f caddy.Dockerfile .` in `dir`.
+        // Where each live static site's files wait, and the docker call that copies them into the site's volume (the box runs it; this module starts nothing).
+        const fills = [];
+        const sitesRoot = path.join(publishDir(b.space.id), "sites");
+        const records = await storeFor(b.space.id).list("deployments");
+        for (const d of records) {
+          const slug = d.id.replace(/^dep_/, "");
+          if (!compose.services["w-" + slug] || !(d.runtime && d.runtime.kind === "static") || !d.site) continue;
+          // The record names a folder; the path is rebuilt here and the folder checked, so an edited record cannot point the copy anywhere else (reviewer-3, FF-1).
+          const folder = siteFolder(sitesRoot, d.site.name);
+          if (!folder) continue;
+          const volume = `${compose.name}_site-${slug}`;
+          fills.push({ deployment: d.id, volume, docker: volumeFill(folder, volume, sitesRoot) });
+        }
+        sweepSites(sitesRoot, liveSiteNames(records));
+        return { dir, files: written, compose, caddyfile, fills, build: { image: IMAGES.caddy, dockerfile: "caddy.Dockerfile" } };
       },
     });
 

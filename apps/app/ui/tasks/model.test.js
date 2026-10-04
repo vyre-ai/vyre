@@ -1,8 +1,9 @@
+import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createMockStore } from "../../../../deck/ui/mock-store.js";
 import { runClientPays } from "../../../../deck/ui/scenario.js";
-import { cardFor, nowModel, stageGroups, teamOf, liveLine, createdLine, draftOf, taskFacts, progressText, stateWord, whenLabel } from "./model.js";
+import { isRawId, plainLine, cardFor, nowModel, stageGroups, teamOf, liveLine, createdLine, draftOf, taskFacts, progressText, stateWord, whenLabel } from "./model.js";
 import { loadWorld } from "./world.js";
 
 const NOW = Date.parse("2026-10-01T13:00:00");
@@ -105,4 +106,17 @@ test("task facts: doer, checker, output, how, inputs", async () => {
   assert.equal(f.output.label, "A sent item");
   assert.equal(f.how, "Assistant tailors the template");
   assert.deepEqual(f.inputs.slice(0, 2), ["Research notes on Doe estate plan", "Template: Welcome"]);
+});
+
+test("Now never greets a raw id, and Recent is plain sentences with kernel housekeeping left out", () => {
+  const id = "per_pbiglgp6ji6jzrnbskpuzw77np";
+  const w = { me: id, actors: [{ id, name: id, family: "person" }], spaces: [{ id: "spc_1", name: "Home" }], types: new Map(), tasks: [], events: [], calendar: [], records: new Map(), now: NOW };
+  assert.equal(isRawId(id), true);
+  assert.equal(isRawId("Devbox"), false);
+  assert.equal(nowModel(w).greeting, "Good afternoon, there");
+  assert.equal(nowModel({ ...w, actors: [{ id, name: "Devbox", family: "person" }] }).greeting, "Good afternoon, Devbox");
+  assert.deepEqual(plainLine(w, { what: "owner.changed", actor: "Vyre", record: "vyre://spc_1/space/x" }), { what: "became the owner of Home", actor: "You", record: "vyre://spc_1/space/x" });
+  assert.equal(plainLine(w, { what: "member.set", actor: "Vyre" }), null);
+  assert.equal(plainLine(w, { what: "grant.created", actor: "Vyre" }), null);
+  assert.deepEqual(plainLine(w, { what: "sent the Welcome email", actor: "Intake" }), { what: "sent the Welcome email", actor: "Intake" });
 });
