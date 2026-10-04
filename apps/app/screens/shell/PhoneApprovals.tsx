@@ -41,12 +41,14 @@ export function PhoneApprovals() {
       <Card flush>
         {cards.map((c, i) => (
           <View key={c.id}>{i ? <Divider /> : null}
-            <Row title={c.title} sub={askedLine(c)} />
+            <Row title={c.title} sub={c.body || "Approving makes this change. Nothing changes until you do."} />
             <View className="gap-s1 px-s4 pb-s2">
+              {askedLine(c) ? <Text size="caption" tone="label">{askedLine(c)}</Text> : null}
+              {factLines(c).length ? <Text size="caption" strong tone="label">What you are signing</Text> : null}
               {factLines(c).map((l) => <Text key={l} size="caption" tone="label" mono>{l}</Text>)}
               <View className="flex-row gap-s2 pt-s2">
-                {canSign ? <Button kind="primary" size="sm" icon="faceid" label={busy === c.id ? "Waiting" : "Approve"} onPress={busy ? () => {} : () => void approve(c)} /> : <Text size="caption" tone="label">This phone cannot approve yet. Update Vyre.</Text>}
-                <Button kind="ghost" size="sm" label="No" onPress={busy ? () => {} : () => void no(c)} />
+                {canSign ? <Button kind="primary" size="sm" icon="faceid" label={busy === c.id ? "Waiting" : "Approve"} disabled={!!busy} onPress={() => void approve(c)} /> : <Text size="caption" tone="label">This phone cannot approve yet. Update Vyre.</Text>}
+                <Button kind="ghost" size="sm" label="Deny" disabled={!!busy} onPress={() => void no(c)} />
               </View>
             </View>
           </View>

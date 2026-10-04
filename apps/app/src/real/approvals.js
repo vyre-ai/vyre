@@ -25,6 +25,18 @@ export function proofHeader(proof) {
 }
 
 export const APPROVE_ON_PHONE = "Approve on your phone";
+
+/** What a web session is asking to do, in words, for the waiting sheet (the phone card shows the box's own body). */
+export const ACT_WORDS = {
+  "rules.define": "Add or change a rule",
+  "rules.enable": "Turn a rule on",
+  "rules.disable": "Turn a rule off",
+  "rules.remove": "Remove a rule",
+  "rules.accept": "Accept a proposed rule",
+  "rules.dismiss": "Turn down a proposed rule",
+};
+/** @param {string} tool */
+export const actWords = (tool) => /** @type {Record<string, string>} */ (ACT_WORDS)[tool] ?? "";
 export const WAITING_LINE = "Open Vyre on your phone and approve it there. Nothing changes until you do.";
 
 /** The words for how an ask ended. @param {"approved" | "refused" | "none" | "timeout"} state */
