@@ -7743,6 +7743,15 @@ This device's permanent identity id, or null when none is claimed yet. The one p
 - Input: none
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
+### `spaces.identity.lookup`
+
+A claimed Vyre name's identity list from the directory, verified, and only if it is the given id's: { entries }. Nothing is kept. For the pairing module.
+
+- Input:
+  - `id` string, required
+  - `name` string, required
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
+
 ### `spaces.identity.name-of`
 
 The claimed Vyre name for a person's id, verified: { name: 'alex.vyre.run' | null }. For modules.
@@ -11565,6 +11574,7 @@ On a server that was just paired: record who it belongs to, an identity or a spa
     - `id` string, required
     - `kind` "identity" or "space", required
     - `name` string
+    - `vyre` string
   - `deviceKind` one of "phone", "computer", "web"
   - `deviceName` string
   - `handover` object
@@ -11688,6 +11698,7 @@ On this server, from the owner's own screen with presence: change who it belongs
     - `id` string, required
     - `kind` "identity" or "space", required
     - `name` string
+    - `vyre` string
   - `deviceKind` one of "phone", "computer", "web"
   - `deviceName` string
   - `handover` object

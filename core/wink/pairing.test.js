@@ -37,7 +37,7 @@ function world(o = {}) {
     openCode: async flow => ({ offer: `wo_${flow}`, code: "WINK-ZZZZ-ZZZZ", expires: 1 }), ack: async () => ({ ok: true }),
     owner: (m, what) => { if (m && (m.agent || String(m.caller).startsWith("agent:"))) throw Object.assign(new Error(what), { code: "denied" }); }, dropMs: 0, relayUrl: async () => "ws://relay.test", keyFile: o.keyFile,
     // existing tests adopt in one step and type codes; the Q-1 tests below turn the confirmation on and the typed code off, as a release build has them
-    confirmAdopt: o.confirm === true, typedCode: o.typedCode ?? true, askHoldMs: o.askHoldMs ?? 0, askMs: o.askMs, askPollMs: 1, releaseMaxMs: o.releaseMaxMs, identityEntry: o.identityEntry, signIdentity: o.signIdentity, vyreName: o.vyreName, mintMs: o.mintMs, looseOwnerIds: o.exactIds ? false : true, pairWordsFor: o.pairWordsFor === null ? undefined : (o.pairWordsFor || (async d => `amber coral ${d}`)), spaceNow: () => HARLOW,
+    confirmAdopt: o.confirm === true, requireProof: o.requireProof ?? false, typedCode: o.typedCode ?? true, askHoldMs: o.askHoldMs ?? 0, askMs: o.askMs, askPollMs: 1, releaseMaxMs: o.releaseMaxMs, identityEntry: o.identityEntry, signIdentity: o.signIdentity, vyreName: o.vyreName, mintMs: o.mintMs, looseOwnerIds: o.exactIds ? false : true, pairWordsFor: o.pairWordsFor === null ? undefined : (o.pairWordsFor || (async d => `amber coral ${d}`)), spaceNow: () => HARLOW,
   });
   p.tools();
   const call = (name, input = {}, meta = {}) => tools.get(name).run(input, { caller: "device:x", ...meta });
@@ -1419,4 +1419,38 @@ test("wink.server.probe: a paired server answers; a server that let the device g
   assert.equal(gone.reachable, false);
   assert.equal(gone.code, "device_removed");
   assert.equal((await w.call("wink.server.probe", { device: "nope" })).code, "unknown");
+});
+
+// ---- G-2 (lead, 4 Oct): becoming an owner always needs the identity proof, checked against the identity's chain ----
+
+test("owner needs a verified proof: none, another identity's, and an unreachable directory each refuse in their own words and nothing is owned; the right proof owns", async () => {
+  const kp = crypto.generateKeyPairSync("ed25519");
+  const pub = kp.publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("base64url");
+  const sign = (box, device) => crypto.sign(null, pairToMessage(box, device), kp.privateKey).toString("base64url");
+  let down = false, claimedSeen = null;
+  const identityEntry = async (id, eid, claimed) => { claimedSeen = claimed; if (down) throw Object.assign(new Error("x"), { code: "unreachable" }); return id === ME && eid === "e1" ? { eid: "e1", kind: "device", pub, identity: ME } : null; };
+  const w = world({ confirm: true, requireProof: true, identityEntry });
+  const base = { owner: { kind: "identity", id: ME, name: "Alex", vyre: "alex" }, identity: ME };
+  const box = "Qm94S2V5";
+  const asked = async (input, caller = "device:app1") => w.tools.get("wink.server.adopt").run(input, { caller });
+  await assert.rejects(() => asked(base), e => e.code === "denied" && /did not prove which Vyre identity/.test(e.message) && !/waiting to pair/.test(e.message));
+  await assert.rejects(() => asked({ ...base, proof: { eid: "e1", sig: crypto.sign(null, pairToMessage(box, "other"), kp.privateKey).toString("base64url") } }), e => e.code === "denied" && /did not prove it/.test(e.message) && !/waiting to pair/.test(e.message));
+  down = true;
+  await assert.rejects(() => asked({ ...base, proof: { eid: "e1", sig: sign(box, "app1") } }), e => /cannot check who is asking right now/.test(e.message));
+  down = false;
+  assert.equal(w.p.meta.get("owner"), null, "nothing was owned by any refusal");
+  const good = { ...base, proof: { eid: "e1", sig: sign(box, "app1") } };
+  assert.equal((await asked(good)).pending, true);
+  assert.equal(claimedSeen, "alex", "the directory is asked by the claimed name");
+});
+
+test("G-1: a device that says it is a computer, a phone or a browser gets no compute offer, no storage and no node-peer admission; only the owner's own act changes that", async () => {
+  const w = world();
+  for (const kind of ["computer", "phone", "web"]) {
+    const d = w.p.devices.add({ id: `d_${kind}`, identity: ME, kind, name: kind, target: { kind: "identity", id: ME } });
+    assert.notEqual(d.offers.compute, true, `${kind} offers no compute until the owner turns it on`);
+    assert.notEqual(d.offers.storage, true, `${kind} offers no storage`);
+    assert.equal(w.p.peers.allow(`d_${kind}`), false, `${kind} is not a server peer of this home`);
+    assert.equal((await w.p.computeAllowed({ device: `d_${kind}`, space: HARLOW })).ok, false);
+  }
 });

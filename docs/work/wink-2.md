@@ -18,3 +18,12 @@ Unit: core/wink/pairing.test.js (3 new). Real daemon, relay, presence and kernel
 
 ## Changed contracts
 - `wink.server.adopt` input gains `device: { kind: phone | computer | web, name }`; `relay.pair.pending.confirm` gains `pick`; new internal tool `presence.device.enroll-paired`; `KINDS` gains `web`; `streamPipe` hands Buffers.
+
+## The owner rule (lead, 4 Oct)
+- Becoming a home's owner always needs the identity proof: the app's identity key signs `vyre-wink-pair-to-v1`, this pairing's box and device; the server reads the claimed Vyre name's chain from the names directory (`spaces.identity.lookup`, pinned and verified, kept only when it is that id's) and checks the signature. The three words confirm the DEVICE to the person at the server; the proof confirms the IDENTITY to the server. A missing proof, another identity's, and a directory out of reach each refuse in their own words (no "waiting to pair to" on a server with no pair-to) and own nothing. `spaces.owner.adopt` runs only on a verified proof.
+- First pairing of a server with no owner: the grant needs no presence (nobody can give any yet); the paired session is bound to the device's own presence key, else to the pairing itself. Any later device on an owned server goes through the owner's presence (`wink.server.adopt` refuses without it; the phone and computer flows ask the owner). `wink.server.pair.answer` is the box's own CLI only (Q-2).
+- The adopt answer carries `session: false` when the device record or grant failed.
+
+## What each device kind gets (G-1)
+- phone, computer, web: a row in wink_devices as the owner's device, a paired session (person session for that one device, bound to the key it offered; hardware is never believed from the app's word), and a Wink peer stream to this home's door as `device:<id>`.
+- Compute offers, storage and node-peer admission are not granted by kind: compute needs the owner's offer and the space's, storage and server peers are servers and storage devices only (`peers.allow` answers only for a server). Test: core/wink/pairing.test.js "G-1".
