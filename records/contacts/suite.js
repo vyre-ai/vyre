@@ -51,6 +51,14 @@ export function contactsSuite(make, { test, assert }, label = "store") {
   const code = (/** @type {string} */ c) => (/** @type {any} */ e) => { assert.equal(e && e.code, c, `expected ${c}, got ${e && e.code}: ${e && e.message}`); return true; };
   const urn = (/** @type {any} */ rec) => rec.urn;
 
+  T("a datetime is one exact UTC instant on every store, and anything else is refused the same way", async ({ r, o }) => {
+    const bad = ["2026-10-01T10:00:00Z", "2026-10-01T10:00:00+02:00", "2026-10-01", "2026-10-01T10:00", "yesterday", "2026-13-40T10:00:00.000Z"];
+    const messages = new Set();
+    for (const v of bad) await assert.rejects(() => r.create(o, "communication", { kind: "email", direction: "inbound", occurred_at: v }), (e) => { messages.add(e.message); return e.code === "invalid" || e.code === "bad_input"; }, v);
+    assert.equal(messages.size <= 2, true, "one wording for the instant rule (an unparseable date may differ)");
+    assert.ok(await r.create(o, "communication", { kind: "email", direction: "inbound", occurred_at: "2026-10-01T10:00:00.000Z" }));
+  });
+
   // ---- core types --------------------------------------------------------------------------------
   T("the core people types exist, and a unique field is reported as indexed", async ({ store }) => {
     const names = (await store.types()).map((t) => t.name);

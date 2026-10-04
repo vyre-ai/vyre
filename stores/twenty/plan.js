@@ -84,9 +84,6 @@ export function selection(p) {
   return ["id", "createdAt", "updatedAt", "deletedAt", VERSION_FIELD, ...p.fields.map((f) => (f.type === "CURRENCY" ? `${f.twenty} { amountMicros currencyCode }` : f.twenty))].join(" ");
 }
 
-/** The exact UTC form of an instant (Date.toISOString), or null. @param {string} v */
-const exactInstant = (v) => { try { return new Date(v).toISOString(); } catch { return null; } };
-
 /**
  * Validate a whole data object against the definition, with the kernel's own validators so every store agrees on what is valid.
  * Returns an error string, "sealed_value_refused", or null. @param {TypePlan} p @param {Record<string, any>} data
@@ -99,8 +96,6 @@ export function checkData(p, data) {
     if (err) return { code: "invalid", message: err };
     const v = data[f.vyre];
     if (v !== null && v !== undefined) {
-      // Twenty keeps an instant, not the text it was written as, so only the form it hands back survives the gateway's check of what the store returned
-      if (f.kind === "datetime" && exactInstant(v) !== v) return { code: "invalid", message: `${f.vyre} must be written as an exact UTC time, 2026-10-02T09:30:00.000Z (Date.toISOString())` };
       if (f.kind === "date" && !/^\d{4}-\d{2}-\d{2}$/.test(v)) return { code: "invalid", message: `${f.vyre} must be a date written YYYY-MM-DD` };
       if (f.kind === "sealed" && Object.keys(v).some((k) => !["sealed", "ref", "present", "valid_format", "set_at", "hint"].includes(k))) return { code: "sealed_value_refused", message: `${f.vyre} holds a reference only` };
     }

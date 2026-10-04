@@ -6,6 +6,7 @@ const isObj = (/** @type {any} */ v) => v !== null && typeof v === "object" && !
 const strArr = (/** @type {any} */ v) => Array.isArray(v) && v.every(x => typeof x === "string");
 export const isSealedRef = (/** @type {any} */ v) => isObj(v) && typeof v.sealed === "string" && typeof v.ref === "string" && typeof v.present === "boolean";
 export const isSealedShape = (/** @type {any} */ v) => isObj(v) && typeof v.sealed === "string";
+const instant = (/** @type {string} */ v) => { try { return new Date(v).toISOString(); } catch { return null; } };
 const ISO = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?$/;
 
 /** Returns an error string, or null when `v` is a valid value for `def`. @param {any} def @param {any} v */
@@ -18,7 +19,9 @@ export function checkValue(def, v) {
     case "number": return typeof v === "number" && Number.isFinite(v) ? null : `${def.name} must be a number`;
     case "money": return isObj(v) && Number.isFinite(v.amount) && typeof v.currency === "string" && /^[A-Z]{3}$/.test(v.currency) ? null : `${def.name} must be { amount, currency }`;
     case "boolean": return typeof v === "boolean" ? null : `${def.name} must be true or false`;
-    case "date": case "datetime": return typeof v === "string" && ISO.test(v) ? null : `${def.name} must be an ISO date`;
+    case "date": return typeof v === "string" && ISO.test(v) ? null : `${def.name} must be an ISO date`;
+    // an instant is written one way on every store, Date.toISOString(): a store that keeps an instant (Twenty) hands back that text, and the gateway compares what a store returned with what was asked
+    case "datetime": return typeof v === "string" && instant(v) === v ? null : `${def.name} must be an exact UTC time, 2026-10-02T09:30:00.000Z (Date.toISOString())`;
     case "choice": case "stage": return typeof v === "string" && (!def.options || def.options.includes(v)) ? null : `${def.name} must be one of its options`;
     case "multi_choice": return strArr(v) && (!def.options || v.every((/** @type {string} */ x) => def.options.includes(x))) ? null : `${def.name} must be a list of its options`;
     case "rating": return Number.isInteger(v) && v >= 1 && v <= 5 ? null : `${def.name} must be 1 to 5`;

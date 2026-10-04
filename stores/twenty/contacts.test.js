@@ -24,14 +24,3 @@ contactsSuite(async () => {
   return store;
 }, { test, assert }, "twenty (fake twenty)");
 
-test("twenty: a datetime that is not the exact UTC form is refused as invalid, not reported later as a disagreement", async () => {
-  const { rig } = await import("../../records/contacts/suite.js");
-  fake.reset();
-  const dir = fs.mkdtempSync(path.join(SCRATCH, "tw-contacts-")); dirs.push(dir);
-  const client = new TwentyClient({ url: fake.url, key: () => fake.key, sleep: async () => {} });
-  const store = createTwentyStore({ client, space: "harlow", dir, webhookSecret: crypto.randomBytes(16).toString("hex"), graceMs: 0 });
-  await store.registerWebhook("fn:store");
-  const { r, o } = await rig(store);
-  await assert.rejects(() => r.create(o, "communication", { kind: "email", direction: "inbound", occurred_at: "2026-10-01T10:00:00Z" }), { code: "invalid" });
-  assert.ok(await r.create(o, "communication", { kind: "email", direction: "inbound", occurred_at: "2026-10-01T10:00:00.000Z" }));
-});
