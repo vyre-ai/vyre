@@ -70,6 +70,15 @@ test("the sealing verifier's verdicts reach the caller through the gateway door 
     assert.doesNotMatch(r.error.message, /wrong_|unknown_key|bad_signature|dk_/, `${name}: the message stays our own text`);
     assert.equal(await stateOf(task.id), "needs_check", `${name}: the task is still waiting`);
   }
+  // the same on a gated act (a standing rule): the grant path's verifier answers { ok, reason } too, so its refusal carries the reason beside needs_presence
+  const rule = { kind: "never", binds: ["assistants"], covers: { actions: ["records.remove"] }, label: "Assistants never delete a record" };
+  const define = (/** @type {any} */ proof, r = rule) => call("rules.define", { rule: r }, { root, caller: "cli", ...(proof ? { headers: header(proof) } : {}) });
+  const forRule = sign(["--space", space, "--call", "ruleSet", "--args", JSON.stringify([rule])]);
+  const wrongKey = await define({ ...forRule, key_id: "dk_00000000" });
+  assert.equal(wrongKey.error && wrongKey.error.code, "needs_presence", JSON.stringify(wrongKey));
+  assert.equal(wrongKey.error.detail && wrongKey.error.detail.reason, "unknown_key", JSON.stringify(wrongKey));
+  const otherRule = await define(forRule, { ...rule, label: "Assistants never delete anything at all" });
+  assert.equal(otherRule.error && otherRule.error.detail && otherRule.error.detail.reason, "wrong_payload", JSON.stringify(otherRule));
   // none of the refusals used up the good proof's nonce: it still stands, once
   const ok = await decide(task.id, good);
   assert.ok(!ok.error, JSON.stringify(ok));
