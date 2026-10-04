@@ -1,7 +1,9 @@
 // The install flow's calls to the box (screens/install/real.js maps the answers). Each is one tool through src/real/box.ts.
 
 import { said, tool } from "./box";
+import { Platform } from "react-native";
 import { claimBlocked } from "../../screens/shell/rc";
+import { enclavePublic } from "../keys";
 import { claimIdentity } from "../identity/claim.js";
 import { forgetIdentity, loadIdentity, saveIdentity } from "../identity/store";
 import { createdFrom, directoryAnswer, identityFrom, nameAnswer } from "../../screens/install/real.js";
@@ -44,9 +46,14 @@ export async function createIdentity(name: string, deviceLabel: string, password
   if (claimBlocked()) throw new Error("Create your name on your iPhone, then pair this browser to it.");
   // Save first, then claim: the key is kept and read back BEFORE the name is claimed, so a failed save claims nothing and never loses the recovery code.
   let kept = false;
+  // On an iPhone the device entry also names the Secure Enclave key (NK-2): every later change to who speaks for this name needs that key's Face ID signature too. No Face ID, no name.
+  let enclave: string | undefined;
+  if (Platform.OS === "ios") {
+    try { enclave = await enclavePublic(); } catch { throw Object.assign(new Error("Set up Face ID or Touch ID on this iPhone, then create your name."), { code: "no_biometrics" }); }
+  }
   try {
     const made = await claimIdentity({
-      name, password, deviceLabel, base: DIRECTORY,
+      name, password, deviceLabel, base: DIRECTORY, ...(enclave ? { enclave } : {}),
       beforeClaim: async (m) => {
         await saveIdentity({ name: m.name, id: m.id, eid: m.eid, ops: m.ops, pin: m.pin, key: m.key });
         const back = await loadIdentity();

@@ -76,14 +76,17 @@ jobs:
           launch; match & mpid=$!; sleep 20; wait "$mpid" || true
           xcrun simctl io "$udid" screenshot "$out/1-first.png"
           # 2: kill, relaunch
-          xcrun simctl terminate "$udid" sh.vyre.app; sleep 3
+          xcrun simctl terminate "$udid" sh.vyre.app || echo "terminate: the app was not running (crashed?)"; sleep 3
           launch; match & mpid=$!; sleep 20; wait "$mpid" || true
           xcrun simctl io "$udid" screenshot "$out/2-after-kill.png"
           # 3: kill again, relaunch
-          xcrun simctl terminate "$udid" sh.vyre.app; sleep 3
+          xcrun simctl terminate "$udid" sh.vyre.app || echo "terminate: the app was not running (crashed?)"; sleep 3
           launch; match & mpid=$!; sleep 20; wait "$mpid" || true
           xcrun simctl io "$udid" screenshot "$out/3-after-second-kill.png"
-          xcrun simctl spawn "$udid" log show --last 15m --predicate 'process == "Vyre"' --style compact 2>&1 | grep -E "KEYCHECK" > "$out/keycheck.log" || true
+          xcrun simctl spawn "$udid" log show --last 15m --predicate 'process == "Vyre"' --style compact > "$out/vyre-all.log" 2>&1 || true
+          grep -E "KEYCHECK" "$out/vyre-all.log" > "$out/keycheck.log" || true
+          tail -60 "$out/vyre-all.log" | cut -c1-300 || true
+          mkdir -p "$out/crash"; cp "$HOME"/Library/Logs/DiagnosticReports/*Vyre* "$out/crash/" 2>/dev/null || true
           cat "$out/keycheck.log" || true
           xcrun simctl shutdown all || true
       - uses: actions/upload-artifact@v4
