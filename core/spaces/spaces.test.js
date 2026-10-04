@@ -1119,3 +1119,41 @@ test("an invite made `to` a person refuses another person at redeem (forbidden),
   assert.deepEqual([row.accepted_by, row.joined_by_label, row.joined_device, row.to], [[named.id], [null], null, named.id]);
   void w;
 });
+
+test("spaces.admin-list gives the pairing module the finished spaces a person owns or administers, under the kernel ids' names, and the identity's own name", async t => {
+  const w = world(t);
+  const { d, alex, space } = await harlow(t, w);
+  const r = await d.ok("spaces.admin-list", { person: alex.id }, "module:wink");
+  assert.deepEqual(r.spaces.map(x => [x.space, x.name, x.role]), [[space, "Harlow Legal", "owner"]]);
+  assert.deepEqual(r.identity, { id: alex.id, name: "alex" });
+  const other = await d.ok("spaces.admin-list", { person: person().id }, "module:wink");
+  assert.deepEqual([other.spaces, other.identity], [[], null]);
+  void w;
+});
+
+test("spaces.identity.name-of: this device's own claimed name, a verified name the home knows, else null (never an unchecked claim)", async t => {
+  const w = world(t);
+  const { d, alex } = await harlow(t, w);
+  assert.equal((await d.ok("spaces.identity.name-of", { id: alex.id }, "module:wink")).name, "alex.vyre.run");
+  const stranger = person().id;
+  assert.equal((await d.ok("spaces.identity.name-of", { id: stranger }, "module:wink")).name, null);
+  assert.equal((await d.ok("spaces.identity.name-of", { id: stranger, claimed: "alex.vyre.run" }, "module:wink")).name, null, "a claimed name that the directory does not resolve to this id is not shown");
+  d.db.prepare("INSERT INTO spaces_kv (key, value) VALUES (?, ?)").run(`person-name/${stranger}`, JSON.stringify("kit"));
+  assert.equal((await d.ok("spaces.identity.name-of", { id: stranger }, "module:wink")).name, "kit.vyre.run");
+  assert.equal((await d.call("spaces.identity.name-of", { id: alex.id }, "cli")).error?.code !== undefined, true, "modules only");
+  void w;
+});
+
+test("spaces.identity.name-of: a claimed name the directory confirms for that id is shown; one it does not confirm is not", async t => {
+  const w = world(t);
+  const { d, alex } = await harlow(t, w);          // alex claims "alex" in the directory
+  const bobby = await actAs(d, "bobby");            // this device is now bobby's: alex is a stranger to it
+  const confirmed = await d.ok("spaces.identity.name-of", { id: alex.id, claimed: "alex.vyre.run" }, "module:wink");
+  assert.equal(confirmed.name, "alex.vyre.run", "the directory resolves alex to exactly this id");
+  assert.equal((await d.ok("spaces.identity.name-of", { id: alex.id, claimed: "alex" }, "module:wink")).name, "alex.vyre.run", "with or without the zone");
+  assert.equal((await d.ok("spaces.identity.name-of", { id: bobby.id, claimed: "alex.vyre.run" }, "module:wink")).name, "bobby.vyre.run", "bobby's own id gets bobby's own name, never the claimed alex");
+  const other = person().id;
+  assert.equal((await d.ok("spaces.identity.name-of", { id: other, claimed: "alex.vyre.run" }, "module:wink")).name, null, "alex's name claimed for another id is not confirmed");
+  assert.equal((await d.ok("spaces.identity.name-of", { id: alex.id, claimed: "nosuchname" }, "module:wink")).name, null, "a name the directory does not know is not shown");
+  void w;
+});

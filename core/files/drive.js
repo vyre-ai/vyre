@@ -38,6 +38,7 @@ import { run as tailscale } from "../names/tailscale.js";
 import * as config from "../config/index.js";
 import { looksLikeKey, secretName, HOME_DENIED } from "./safety.js";
 import { reach, within } from "./access.js";
+import { createDoor } from "../../lib/gateway-door.js";
 import { classify, KINDS } from "./kinds.js";
 import { walk as searchWalk, defaults as searchDefaults } from "./search.js";
 import { picker } from "./picker.js";
@@ -397,9 +398,15 @@ export function drive(ctx, { role, guard: g, roots }) {
     };
 
     async function driveStatus() {
-      const st = await status();
       const configured = Object.entries(specs()).map(([name, s]) => ({ name, path: s.path, access: s.access }));
       const access = overall();
+      // Nothing in 0.3 depends on Tailscale: a box with none still answers, with the shared folders off (`tailnet: false`) and no error. The Space's own Drive does not use it.
+      let st;
+      try { st = await status(); } catch (e) {
+        if (/** @type {any} */ (e).code !== "no_tailscale") throw e;
+        return { enabled: false, tailnet: false, why: "this box has no tailnet, so its folders are not shared over VyreDrive; the Space's own Drive does not need one", access,
+          shares: configured.map(s => ({ ...s, shared: false })), list: [] };
+      }
       if (!hasCap(st, "drive:share")) {
         return { enabled: false, why: "the tailnet policy does not let this box share folders (no drive:share node attribute)", fix: FIX_SHARE,
           access, shares: configured.map(s => ({ ...s, shared: false })), list: [] };
@@ -448,11 +455,21 @@ export function drive(ctx, { role, guard: g, roots }) {
       return { ok: findings.length === 0 && unsafe.length === 0, findings, unsafe, checked: peers.length };
     }
 
+    /** The Space's own Drive (versions, restore; no tailnet): is one wired on this home, and can the caller read the top of it? { enabled, files?, more?, why? }. Never throws. */
+    const spaceDriveState = async (/** @type {any} */ meta) => {
+      try {
+        const d = await createDoor(ctx).open({}, meta);
+        if (!d.gateway.drive) return { enabled: false, why: "this Space has no Drive yet" };
+        try { const r = await d.gateway.drive.listPage(d.chain, "", { limit: 1000 }); return { enabled: true, files: r.entries.length, more: r.next !== null }; }
+        catch (e) { return { enabled: true, readable: false, why: "you may not list this Drive" }; }
+      } catch (e) { return { enabled: null, why: "the Drive's state is for a signed-in person" }; }
+    };
+
     ctx.tool("files.drive.status", {
       description: "VyreDrive (built on Tailscale's Taildrive) on the box: whether this box may share folders with the paired Mac, the shares it offers (config files.drive.shares), and what is shared now. A named agent (Vyre Drive step 5) sees only the shares whose folder falls inside one of its own granted projects; a share outside that is simply left off the list, the same as an ungranted project elsewhere.",
       input: { type: "object", properties: {} },
       run: async (input, meta = {}) => {
-        const st = await driveStatus();
+        const st = { ...(await driveStatus()), space: await spaceDriveState(meta) };
         const scope = await reach(ctx, meta && meta.caller, meta);
         if (scope.all) return st;
         const mine = p => within(p, scope.folders);

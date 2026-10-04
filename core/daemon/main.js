@@ -17,11 +17,15 @@ let stopping = false;
 const quit = async () => {
   if (stopping) return;
   stopping = true;
-  if (d) await d.stop();
+  // Still starting (d is null): do not exit here. The line after start() stops it once it has started, so a half-started daemon never leaves a socket or a pid file behind.
+  if (!d) return;
+  await d.stop();
   process.exit(0);
 };
 process.on("SIGTERM", quit);
 process.on("SIGINT", quit);
+// A supervisor or a test that started this with an IPC channel hears that stops are now handled, so it never has to guess how long node takes to boot (no channel, no message).
+if (typeof process.send === "function") process.send({ vyred: "stop-handlers-installed" }, () => {});
 
 const { start } = await import("./index.js");
 // On a Mac with vyre-core installed, the relay's keys (box, route and device) live in core, not in a

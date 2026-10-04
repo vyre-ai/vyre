@@ -23,6 +23,7 @@ import { card, removal, FORBIDDEN } from "../core/wink/cards.js";
 import { peerDoor, composeWinkHome } from "../core/wink/index.js";
 import { parseServerQr, parsePhoneQr } from "../core/wink/pairing.js";
 import { pairWords, nonceCommit, ticketTag, newNonce } from "../relay/client/pairwords.js";
+import { pairServer, parseServerPayload } from "../relay/client/serverpair.js";
 
 // The short typed code is off in a release build; these tests exercise it, so they turn the development flag on (the daemon reads it at call time).
 process.env.VYRE_WINK_TYPED_CODE = "1";
@@ -1069,4 +1070,33 @@ test("PS-4 and sessions scope, on the real kernel: a paired session lists only i
   assert.deepEqual(await list("cli", PROOF), [a.sessionId, b.sessionId].sort(), "the owner's surface sees both");
   assert.deepEqual(await list("deck", { person: { id: a.sessionId } }), [a.sessionId], "a paired session sees only itself");
   assert.deepEqual(await list("deck", { person: { id: b.sessionId } }), [b.sessionId]);
+});
+
+test("a device with no box pairs a fresh server through pairServer: the claimed identity and its name become the owner, only after the right pick at the server", async t => {
+  const w = await world(t);
+  const saved = process.env.VYRE_WINK_TYPED_CODE;
+  delete process.env.VYRE_WINK_TYPED_CODE;
+  t.after(() => { if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
+  const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
+  assert.deepEqual(parseServerPayload(made.qr)?.seed, parseServerQr(made.qr).seed, "the client's parser reads what the box prints");
+  assert.equal(parseServerPayload("vyre://wink/2?t=AAAA"), null);
+  const owner = { id: "per_" + "q".repeat(26), name: "Alex" };
+  let shown = "";
+  const pairing = pairServer({ payload: made.qr, owner, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: keystore(t), pollMs: 100, onWords: x => { shown = x; } });
+  pairing.catch(() => {});
+  const q = await until(async () => { const x = (await w.call("wink.server.pairing", {}, "cli", PROOF)).data; return x && x.asking ? x : null; });
+  assert.match(q.name, /^Alex \(id q{6}\)$/, "the person at the server sees the claimed name and the start of its id");
+  assert.equal((await w.call("wink.server.status", {}, "cli", PROOF)).data.owned, false, "nobody owns the server before the yes");
+  await until(async () => shown);
+  assert.ok(q.choices.includes(shown), "the words the device shows are one of the server's three");
+  assert.equal((await w.call("wink.server.pair.answer", { yes: true, pick: q.choices.indexOf(shown) + 1 }, "cli", PROOF)).data.yes, true);
+  const done = await pairing;
+  assert.equal(done.paired, true);
+  assert.deepEqual([done.owner.kind, done.owner.id], ["identity", owner.id]);
+  const st = (await w.call("wink.server.status", {}, "cli", PROOF)).data;
+  assert.equal(st.owned, true);
+  assert.equal(st.space, "Alex", "the owner is the claimed identity with its name, not a default space or You");
+  assert.equal(st.device, "Alex's iPhone");
+  // a second device scanning the used ticket is refused as taken
+  await assert.rejects(pairServer({ payload: made.qr, owner, name: "Eve", crypto: nodeCrypto(), keyStore: keystore(t) }), e => e.code === "taken" || e.code === "unreachable");
 });

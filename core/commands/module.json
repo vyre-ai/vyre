@@ -5,7 +5,7 @@
   "description": "Every CLI verb the running modules declare, in one list any surface can draw.",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "tools": ["commands.list"] },
+  "does": { "reads": ["commands.list"], "tools": ["commands.list"] },
   "watches": {},
   "shows": {},
   "needs": {},

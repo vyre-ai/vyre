@@ -43,7 +43,7 @@ const same = (/** @type {any} */ a, /** @type {any} */ b) => JSON.stringify(a) =
  *   fieldDef?: (type: string, field: string) => { kind?: string, required?: boolean }|null|undefined, ownerOf?: (record: string) => any,
  *   autoAccept?: boolean|{ grant?: string }|null, personChain?: ((person: any) => any)|null }} o
  */
-export function createFacts({ kernel, db, clock, space, chainFor, redactors = [], fieldDef = () => null, ownerOf = () => null, autoAccept = null, personChain = null }) {
+export function createFacts({ kernel, db, clock, space, chainFor, redactors = [], fieldDef = () => null, ownerOf = () => null, autoAccept = null, personChain = null, canCite = async (/** @type {any} */ _chain, /** @type {string} */ _citation) => true }) {
   /** @param {any} r */
   const sug = r => ({ id: Number(r.id), record: String(r.record), field: r.field ? String(r.field) : null, note: Boolean(r.note), value: String(r.value), citations: JSON.parse(r.citations),
     labels: { trust: r.trust, red: r.red, source_spaces: JSON.parse(r.spaces) }, person: String(r.person), private: Boolean(r.private), state: String(r.state), from: String(r.source_label), at: Number(r.at) });
@@ -109,10 +109,12 @@ export function createFacts({ kernel, db, clock, space, chainFor, redactors = []
     const def = fieldDef(p.type, f.field) || {};
     const current = rec.data[f.field];
     const sealed = def.kind === "sealed" || isSealedValue(current);
-    if (sealed || def.required) return { outcome: "task", fact: f, ...(await raiseTask(wc, f, sealed ? "sealed field" : "required field", sealed)) };
+    // KW-2: a task needs a chain that may request one; the read-only viewer chain may not, so a refused task is kept as the person's own suggestion, never thrown out of the pass.
+    const asTask = async (/** @type {string} */ why, /** @type {boolean} */ sl) => { try { return { outcome: "task", fact: f, ...(await raiseTask(wc, f, why, sl)) }; } catch { return { outcome: "private_suggestion", fact: f, suggestion: keepSuggestion(f, true) }; } };
+    if (sealed || def.required) return asTask(sealed ? "sealed field" : "required field", sealed);
     if (!empty(current)) {
       if (same(current, f.value)) return { outcome: "noop", fact: f };
-      return { outcome: "task", fact: f, ...(await raiseTask(wc, f, "changes an existing value", false)) };
+      return asTask("changes an existing value", false);
     }
     // An empty field. Without write on the record the fact stays the person's own suggestion.
     // May the PERSON write it? Asked of the person's own chain: with the service beside them the answer would also be about the service's grants.
@@ -164,7 +166,12 @@ export function createFacts({ kernel, db, clock, space, chainFor, redactors = []
       const out = [];
       for (const s of rows) {
         if (s.private) { if (s.person === personId(chain)) out.push(s); continue; }
-        if ((await kernel.authorize({ chain, action: "records.read", resource: s.record })).effect !== "deny") out.push(s);
+        if ((await kernel.authorize({ chain, action: "records.read", resource: s.record })).effect === "deny") continue;
+        // KW-3: a shared suggestion shows only to someone who may read every source it was drawn from, so a fact extracted from the owner's private session is not handed to a member
+        // because they can read the record it would go on. A citation this reader cannot check is withheld.
+        let all = true;
+        for (const c of s.citations) { if (!(await canCite(chain, c))) { all = false; break; } }
+        if (all) out.push(s);
       }
       return out;
     },

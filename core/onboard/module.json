@@ -7,6 +7,7 @@
   ],
   "requires": [],
   "does": {
+    "reads": ["onboard.status"],
     "tools": [
       "onboard.status",
       "onboard.you",
