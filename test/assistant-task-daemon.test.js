@@ -1,6 +1,7 @@
 // @ts-check
 // How the assistant (the doer) starts and submits a task a person asked for, on a real daemon with the fake provider: the person asks with tasks.request (doer "assistant", the owner or a second
 // person checks), the assistant's own session calls tasks.move and tasks.submit, and the task reaches needs_check for the checker.
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
