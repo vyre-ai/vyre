@@ -2,9 +2,10 @@
 // The whole 0.3 memory path on a REAL vyred with the kernel ON (the lead's ask): a person's session is indexed by Recall, Recall hands its scrubbed lines to the work module's capture port,
 // and a teammate (a kernel agent actor holding a session token) in a LATER session recalls the decision from the Space's memory with its citation. Another project's teammate gets nothing, and
 // a sealed value (an SSN the person typed) is never in any answer or in the stored lines. Stand-ins, each labelled:
-//   SHIM(presence): `kernelPresence` accepts any proof for the owner's grants acts (a headless test has no hardware signer), as the other real-daemon suites do;
+//   SHIM(presence): `kernelPresence` accepts any proof for the owner's grants acts (a headless test has no hardware signer), as the other real-daemon suites do; the proof rides beside the
+//   request (`meta.kernel_proof`) and work.team.add carries it to the kernel, which verifies;
 //   SHIM(model): no model answers here; `work.know.search` is the retrieval an answer cites from, and it is what is asserted;
-//   a teammate's per-session read grant stands for the project-to-session link Recall does not make yet (capture passes no record, so a line's read gate is `vyre://<space>/session/<id>`).
+//   (the teammate's grant is on the PROJECT's record: Recall names the session's project when it captures, and the work module reads the session's lines under that record).
 // Run it on a test box, never on a person's Mac.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -42,6 +43,7 @@ test("seed a session, a teammate in a later session recalls its decision from th
   const ownerMeta = { kernelFacts: callerFacts("cli", {}, {}, d.kernel, false, null, { inside: false }) };
   const ask = (/** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ meta = ownerMeta, caller = "cli") => d.registry.call(tool, input, caller, meta);
 
+  assert.ok(!(await ask("projects.create", { name: "Harlow Legal", home: cwd })).error);
   const idx = await ask("recall.index", {});
   assert.ok(!idx.error, JSON.stringify(idx.error));
   // Space memory holds the session's lines now, scrubbed.
@@ -51,13 +53,20 @@ test("seed a session, a teammate in a later session recalls its decision from th
   assert.ok(hit, JSON.stringify(mine.data.hits.map((/** @type {any} */ h) => h.source)));
   assert.match(hit.snippet, /Vercel/);
 
-  // Two teammates, each a kernel agent actor; only juno is given the Harlow session (SHIM: the project-to-session link).
+  // Two teammates, each a kernel agent actor. juno is ADDED BY THE PERSON through work.team.add from a role (its grants are narrowings of the adder's, on the Harlow PROJECT, which covers its
+  // sessions); kit is an agent of the Space with no access to Harlow.
   const space = d.kernel.id.space;
-  const presence = () => ({ op: "x", fields: {}, n: Math.random() });
-  for (const name of ["juno", "kit"]) await d.kernel.gateway.grants.addActor(owner, { kind: "agent", id: name, space }, { presence: presence() });
-  await d.kernel.gateway.grants.create(owner, { subject: { kind: "actor", actor: { kind: "agent", id: "juno", space } }, actions: ["records.read"], resource: { prefix: `vyre://${space}/session/${sid}` }, conditions: {}, source: "team", reason: "Harlow teammate" }, { presence: presence() });
+  const proj = `vyre://${space}/project/harlow-legal`;
+  const role = { name: "Harlow research", instructions: "Read about Harlow and report with sources.", wanted: [{ actions: ["records.read"], prefix: proj }] };
+  const cardOnly = await ask("work.team.add", { project: proj, role });
+  assert.ok(!cardOnly.error && cardOnly.data.card, "without approved the tool returns the card and creates nothing");
+  const proof = { op: "stand-in", fields: {}, n: 1 };
+  for (const name of ["harlow-research.harlow-legal", "kit"]) await d.kernel.gateway.grants.addActor(owner, { kind: "agent", id: name, space }, { presence: proof });
+  const added = await ask("work.team.add", { project: proj, role, approved: true }, { ...ownerMeta, kernel_proof: proof });
+  assert.ok(!added.error, JSON.stringify(added.error));
+  assert.equal(added.data.grants.length, 1);
   const tokenOf = async (/** @type {string} */ agent) => (await d.kernel.surfaces.open(owner, { agent })).token;
-  const juno = await ask("work.know.search", { query: "where is Harlow hosted and who owns the account" }, { token: await tokenOf("juno") }, "mcp:thread:t-juno");
+  const juno = await ask("work.know.search", { query: "where is Harlow hosted and who owns the account" }, { token: await tokenOf("harlow-research.harlow-legal") }, "mcp:thread:t-juno");
   assert.ok(!juno.error, JSON.stringify(juno.error));
   assert.ok(juno.data.hits.some((/** @type {any} */ h) => /Vercel/.test(h.snippet) && String(h.source).startsWith(`line:${sid}#`)), "the Harlow teammate recalls the decision from the earlier session, with its address");
   const kit = await ask("work.know.search", { query: "where is Harlow hosted and who owns the account" }, { token: await tokenOf("kit") }, "mcp:thread:t-kit");
