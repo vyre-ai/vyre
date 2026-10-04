@@ -83,7 +83,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`tasks`](#tasks) | `core/tasks-tools` | `box`, `local` | 6 | 0 | cli |
 | [`team`](#team) | `core/team` | `box`, `local` | 31 | 10 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 3 | none |
-| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 56 | 36 | cli |
+| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 57 | 36 | cli |
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 3 | 2 | cli |
@@ -852,7 +852,7 @@ Project teammates (ADR 0031): a named, persistent agent per role per project, a 
 - Folder: `core/switchboard`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [56](tools.md#threads), 19 of them only for other modules
+- Tools: [57](tools.md#threads), 20 of them only for other modules
 - Emits: [36 events](events.md#threads)
 - Shows on: cli
 - Needs daemon: `kernelSession`, `sandbox`, `credentials`
