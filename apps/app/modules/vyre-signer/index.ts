@@ -126,7 +126,14 @@ export async function appAttestSupported(): Promise<boolean> {
 export async function enrolAttestation(token: string): Promise<{ format: "apple-appattest"; key_id: string; attestation: string } | null> {
   if (!(await appAttestSupported())) return null;
   const k = await presenceKey();
-  const keyId = await native.appAttestGenerateKey!();
+  // A build signed without the App Attest entitlement (a sideloaded build on a personal team) reports the service as supported and then refuses the key: the presence key stays
+  // a Secure Enclave key, unattested, and no assertion is added to proofs. Only the missing entitlement and an unsupported device are treated so; any other failure still throws.
+  let keyId: string;
+  try { keyId = await native.appAttestGenerateKey!(); } catch (e) {
+    const m = String((e as { code?: string; message?: string })?.code ?? "") + " " + String((e as Error)?.message ?? "");
+    if (/ERR_APPATTEST|entitlement|not supported|DCError|serverUnavailable|featureUnsupported/i.test(m)) return null;
+    throw e;
+  }
   await SecureStore.setItemAsync(APPATTEST_KEY, keyId, ONLY_HERE);
   const attestation = b64(fromB64url(await native.appAttestAttest!(keyId, b64url(enrolClientData(token, k.spki)))));
   return { format: "apple-appattest", key_id: keyId, attestation };
