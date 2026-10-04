@@ -395,7 +395,7 @@ async function startLocked(opts, root, p, release) {
     // The packaged box (ruling 4 Oct, "b"): no bubblewrap there. A session is confined by the container, a uid of its own (never vyred's, never root) and the wall, and that proves itself
     // before every start, as that uid (core/spawner/confine.js). Only under the box's own supervisor with a spawner to ask; anywhere else a missing bwrap still refuses the start.
     else if (process.platform === "linux" && process.env.VYRE_SUPERVISOR === "docker" && (await import("../spawner/client.js")).available()) {
-      const { confineSelfTest } = await import("../spawner/confine.js");
+      const { confineSelfTest, ownListeners } = await import("../spawner/confine.js");
       const userHome = process.env.VYRE_USER_HOME || os.homedir();
       const accounts = process.env.VYRE_ACCOUNTS_HOME || "/home/acct", agentHome = process.env.VYRE_AGENT_HOME || "/home/vyre-agent";
       const spawnerSocket = process.env.VYRE_SPAWNER_SOCKET || "/run/vyre/spawner.sock";
@@ -405,11 +405,12 @@ async function startLocked(opts, root, p, release) {
           let other = agentHome;
           if (o.account == null) { try { other = fs.readdirSync(accounts).map(n => path.join(accounts, n)).find(f => fs.statSync(f).isDirectory()) || ""; } catch { other = ""; } }
           else { const mine = path.join(accounts, String(o.account)); try { const o2 = fs.readdirSync(accounts).map(n => path.join(accounts, n)).find(f => f !== mine && fs.statSync(f).isDirectory()); if (o2) other = o2; } catch { /* the box's one agent's home stands */ } }
-          return confineSelfTest({ ...o, vyreUid: process.getuid ? process.getuid() : -1, out: [
+          const own = ownListeners();   // vyred's own listeners are the box's expected ones; any other listener, UDP port or abstract socket refuses the start, with its port named
+          return confineSelfTest({ ...o, vyreUid: process.getuid ? process.getuid() : -1, refuseListen: true, allowListen: [...own.tcp, ...own.udp], allowAbstract: own.abstract, out: [
             { name: "Vyre's own home", path: userHome }, { name: "the vault and keys", path: path.join(root, "kernel") }, { name: "the daemon's socket", path: p.socket },
             { name: "the spawner's socket", path: spawnerSocket }, { name: "the spawner's folder", path: path.dirname(spawnerSocket) }, { name: "the box's secrets folder", path: "/var/lib/vyre-secrets" },
             { name: "the key file", path: path.join(root, "kernel", "space.json") }, { name: "the list of accounts", path: accounts, list: true },
-            ...(other ? [{ name: "another agent's home", path: other }] : []) ] }).then(r => { if (r.results.listening.length) log(`confinement: a session's uid can connect to port(s) ${[...new Set(r.results.listening)].join(", ")}, which something in the box listens on (reported, not refused)`); return r; });
+            ...(other ? [{ name: "another agent's home", path: other }] : []) ] }).then(r => { if (r.results.listening.length) log(`confinement: a session's uid can connect to port(s) ${[...new Set(r.results.listening)].join(", ")}, which something in the box listens on`); return r; });
         } } };
     }
     else if (process.platform === "darwin" || process.platform === "linux") {
