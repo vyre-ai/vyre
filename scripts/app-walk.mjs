@@ -217,7 +217,7 @@ await step("settings: notifications, switch a kind and back", {}, async () => {
 await step("settings: assistants", {}, async () => { await go("u/settings/assistants"); });
 await step("settings: AI accounts", {}, async () => { await go("u/settings/ai"); });
 await step("settings: account and recovery", { expect: [/ways in/i] }, async () => { await go("u/settings/account"); });
-await step("settings: account, make a new recovery code", { needs: "presence", expect: [/I wrote it down/] }, async () => {
+await step("settings: account, make a new recovery code", { skip: "not walkable on a headless box: the recovery code replace needs a real person presence (lead ruling 4 Oct)", expect: [/I wrote it down/] }, async () => {
   await go("u/settings/account");
   await press("Make a new recovery code");
   await settle(1500);
