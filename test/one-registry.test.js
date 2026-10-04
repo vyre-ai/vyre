@@ -86,7 +86,8 @@ test("the claimed identity is the home kernel's owner at once (no spaces call af
   const a = tempHome(t); cfg(a, "fresh-box");
   const da = await start({ root: a, kernel: true, log: () => {} });
   t.after(() => da.stop());
-  assert.ok(!(await call("spaces.identity.create", { name: "casey" }, { root: a, caller: "deck" })).error);
+  const casey = await call("spaces.identity.create", { name: "casey" }, { root: a, caller: "deck" });
+  assert.ok(!casey.error, JSON.stringify(casey.error));
   await agree(a, da, "fresh home");
   // existing home: claimed with the kernel off, then started with it on
   const b = tempHome(t); cfg(b, "existing-box");
