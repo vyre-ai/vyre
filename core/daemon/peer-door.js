@@ -22,7 +22,7 @@ const err = (/** @type {string} */ code, /** @type {string} */ message) => Objec
 export function createPeerDoor(o) {
   const log = o.log || (() => {});
   /** @type {Map<string, any>} */ const servers = new Map();
-  const kernelOf = (/** @type {string} */ space) => (space === o.kernel.id.space ? o.kernel : (o.kernel.spaces && typeof o.kernel.spaces.for === "function" ? (() => { try { return o.kernel.spaces.for(space); } catch { return null; } })() : null));
+  const kernelOf = (/** @type {string} */ space) => (space === o.kernel.id.space ? o.kernel : (o.kernel.spaces && typeof o.kernel.spaces.for === "function" ? (() => { try { const h = o.kernel.spaces.for(space); return h && h.hosted === true ? h.kernel : null; } catch { return null; } })() : null));
   const serverFor = (/** @type {string} */ space) => {
     const k = kernelOf(space);
     if (!k) { servers.delete(space); return null; }
