@@ -418,6 +418,10 @@ const PERSON_CALLERS = Object.freeze([...SURFACE_LABELS, "tailnet", "device", "s
  * or `"write"` (manifest entry or `ctx.tool` definition); undeclared, a tool whose last name segment is a plain read verb is a read and everything else is a write.
  */
 const READ_VERBS = new Set(["get", "list", "status", "show", "read", "search", "find", "info", "check", "peek", "tail", "whoami", "me", "describe", "explain", "preview", "count", "has", "query", "history", "view", "inspect", "doctor", "detect", "lookup", "resolve", "verify", "stats", "summary", "ls", "cat", "available", "enabled", "tools", "types", "url", "version", "health", "ping", "events", "log", "logs", "whois", "targets", "pending", "mine", "current", "overview"]);
+/** The tools a module hop must not reach on behalf of a model: credentials, names, grants and devices. */
+const ORIGIN_CHECKED = Object.freeze([/^vault\.(put|get|release|fetch|import|export|pass\.|account\.|agent\.|emergency\.)/, /^names\.claim$/, /^grants\./, /^spaces\.devices\./, /^spaces\.(create|invites?\.|members?\.|roles?\.)/]);
+/** The caller class a call came from, past any module hops: `meta.origin` when a module relayed it, else the caller itself. For a tool with an explicit callers list that wants to check it. @param {any} meta */
+export const originClass = (meta) => (meta && (meta.origin || meta.caller)) || "unknown";
 export const effectOf = (/** @type {string} */ name, /** @type {any} */ declared) => (declared === "read" || declared === "write" ? declared : READ_VERBS.has(String(name).split(".").pop() || "") ? "read" : "write");
 
 export const callerKind = caller => {
@@ -1064,7 +1068,7 @@ export class Registry {
         const effect = effectOf(name, def.effect || (e && e.effect));
         // the once-only default: a state-changing tool open to anyone that declares no callers list is the person's surfaces and modules, with the original caller checked on a module hop
         const defaulted = reach === "anyone" && !Array.isArray(def.callers) && effect === "write" && !def.hook && !def.internal;
-        this.tools.set(name, { module: m.name, description: def.description || "", input: def.input || { type: "object" }, run: def.run, effect, defaulted,
+        this.tools.set(name, { module: m.name, description: def.description || "", input: def.input || { type: "object" }, run: def.run, effect, defaulted, effectDeclared: Boolean(def.effect || (e && e.effect)),
           internal: Boolean(def.internal) || reach === "modules",
           callers: reach === "person" ? [...PERSON_CALLERS] : Array.isArray(def.callers) ? def.callers : defaulted ? [...PERSON_CALLERS, "module"] : null,
           hook: Boolean(def.hook) || reach === "hook", presence: def.presence || false, core: Boolean(def.core),
@@ -1190,6 +1194,11 @@ export class Registry {
     // A tool the registry defaulted to person-only checks the ORIGINAL caller on a module hop: a module acting for an agent is still an agent call.
     if (def.defaulted && String(caller).startsWith("module:") && meta.origin && !callerAllowed(def.callers, meta.origin)) {
       return { error: { code: "denied", message: `${tool} is not available to ${callerKind(meta.origin)} callers, through a module or not` } };
+    }
+    // The tools that hand out credentials, names, access or devices check the ORIGINAL caller on a module hop whatever their callers list says (a module relaying for an agent is not the person).
+    // Owners of other tools read `meta.origin` themselves (`originClass(meta)`); a loader door call (vault.fetch for a tool's own credential) is its own check.
+    if (!door && String(caller).startsWith("module:") && meta.origin && ORIGIN_CHECKED.some(re => re.test(tool)) && !callerAllowed([...PERSON_CALLERS], meta.origin)) {
+      return { error: { code: "denied", message: `${tool} is the person's own: a module acting for ${callerKind(meta.origin)} callers may not use it` } };
     }
     const problems = checkInput(def.input, input);
     if (problems.length) return { error: { code: "bad_input", message: problems.join("; ") } };
