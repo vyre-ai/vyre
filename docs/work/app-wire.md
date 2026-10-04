@@ -9,15 +9,15 @@ Legend: REAL = reads the box through `call`/`send` (or the Store adapter) with n
 | /u/records/[type], record/[id] (records/, ui/views) | REAL (native-core) | records.types, list, get, create, update, define, sees-as, seal-put, reveal (presence), events |
 | /u/projects, project/[id] (projects/) | REAL (4 Oct): a type with a stage field now holds work (viewDefOf fallback); not seen on a real space, none has such a type yet. Was PARTLY | Store: records of the types the view defs mark as holding work (matter, project, trip by NAME in deck/ui/view-defs.js); a space with other type names shows none. Next: projects.list (box projects: folders, threads) is a different thing and is not shown |
 | /u/flows, flows/[id] | REAL | flows.list, graph, get, card, approve (presence), runs, run, start, retry, pause, resume |
-| /u/kits, kits/[id], kit update (flows/KitsScreen, KitUpdateScreen) | SAMPLE | flows.kit.list, flows.kit.card, flows.kit.propose, flows.kit.remove |
-| /u/engineer (flows/EngineerScreen) | SAMPLE | agents.ask to the Engineer, flows.compile-text, flows.define, flows.card |
+| /u/kits, kits/[id], kit update (flows/KitsScreen, KitUpdateScreen) | REAL for installed + Remove (4 Oct); no Kit library or update diff on the box | flows.kit.list, flows.kit.card, flows.kit.propose, flows.kit.remove |
+| /u/engineer (flows/EngineerScreen) | REAL as "write a Flow in text" (4 Oct); the @Engineer assistant chat is not wired | agents.ask to the Engineer, flows.compile-text, flows.define, flows.card |
 | /u/memory | REAL | memory.facts, correct, uncorrect, ask, graph, pin, mute, corrections |
 | /u/vault | REAL except the Held fields tab | vault.list, uses, reveal (presence), revoke. Held fields (sealed record fields): no tool lists them; Share: grants are a module's act (vault.grant) |
 | /u/drive | REAL except upload, versions, shared links | files.drive.status, list, read. Upload, version history, links: no tool on the box (vault was asked) |
 | /u/calendar | REAL, not run on a real Event type | records.types, records.list over every dated type; waits on records for the Event type's fields |
 | /u/sites, sites/[id] (sites/) | WIRED (4 Oct), not yet seen on a box with Publish | publish.list, status, create, preview, plan, approve (publish.decide for the person), publish, rollback, domain.add, domain.verify, secret.grant, retire |
 | /u/settings (SettingsHome) | REAL for the space name; rows are fixed routes | space name from the shell; device count from chat's devices state |
-| /u/appearance | SAMPLE (local state) | settings.get, settings.set, settings.snapshot (appearance.theme, appearance.scheme, appearance.tokens exist) |
+| /u/appearance | PARTLY (4 Oct): Theme is appearance.scheme on the account; density, font, motion and space looks are device-only, no setting on the box | settings.get, settings.set, settings.snapshot (appearance.theme, appearance.scheme, appearance.tokens exist) |
 | /u/settings/account, ai, assistants, notifications, updates, seeing, privacy, about | REAL | see the Settings entries below |
 | /u/settings/rules | WIRED, no tools on the box | rules.list, set, propose, accept, dismiss, remove (kernel has them, no gateway tools yet) |
 | /u/settings/customize, customize/[type] | SAMPLE, native-core is on it | records.types, records.define |
@@ -51,6 +51,8 @@ Connect the 0.3 app's Vault, Memory (graph, pins, corrections), Flows (start, a 
 - Projects (4 Oct): the screens already read the Store; the gap was deck/ui/view-defs.js viewDefOf, which only let the three named types hold work. Fallback added (stage field means holdsWork, with a board by it), tested in screens/projects/work.test.js (2 of 2), deck/ui types.test.js 3 of 3 and ui/views 14 of 14 still pass on the test box. The dev box has no type with a stage field and records.define needs presence, so I could not seed one: not seen on a real space.
 
 - Shell (4 Oct): screens/shell/{real-model,real-source,real,shared}.ts, UiShell loads on mount, real.test.js 10 of 10 on the test box (with the old spaces tests). Dev box spaces.list answered 3 spaces (Harlow Legal, Northwind Bakery, Harlow Estate Planning, all owner) and spaces.identity.status devbox.vyre.run, the shapes the model reads. Not walked in the app.
+
+- Kits, Engineer, Appearance (4 Oct): screens/flows/{kits-*,RealKits,engineer-*,RealEngineer}, screens/settings/appearance-*; tests 14 of 14 in screens/flows and 18 of 18 in screens/settings on the test box. Dev box via `vyre call`: flows.kit.list [] (no Kits), flows.compile-text answered the kernel's real error ("only @vyre/sdk may be imported"), settings.get appearance.scheme answered (system, source default). settings.set is human-only from the CLI (no_terminal), so a theme write is not seen.
 
 ## Doing
 - All Settings pages that are mine are wired except where the box has no tool. Waiting on platform for rules.* tools.
