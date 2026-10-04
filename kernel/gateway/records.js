@@ -458,9 +458,23 @@ export function createRecords(cfg) {
       await checkComputed(diff);
       const unrequire = (/** @type {any} */ t) => (t.fields || []).some((/** @type {any} */ f) => (f.hidden === true || f.computed) && (f.required || f.unique)) ? { ...t, fields: t.fields.map((/** @type {any} */ f) => ((f.hidden === true || f.computed) && (f.required || f.unique) ? { ...f, required: false, unique: false } : f)) } : t;
       diff = { ...diff, ...(diff.add_types ? { add_types: diff.add_types.map(unrequire) } : {}), ...(diff.change_types ? { change_types: diff.change_types.map(unrequire) } : {}) };
+      // The definition changes in the store and then its event is written; an event the log refuses puts the definitions back, so a defined type never stands without its line in the log.
+      let was = null;
+      try { was = typeof store.types === "function" ? await store.types() : null; } catch { was = null; }
       let res;
       try { res = await store.define(diff); } catch (e) { throw mapError(e); }
-      if (res.applied) log.append(chain, { type: "types.defined", sv: 1, subject: `vyre://${space}/definition/types`, data: { changes: res.changes } }, { decision: d.decision });
+      if (res.applied) {
+        try { log.append(chain, { type: "types.defined", sv: 1, subject: `vyre://${space}/definition/types`, data: { changes: res.changes } }, { decision: d.decision }); }
+        catch (e) {
+          if (was) {
+            const had = new Map(was.map((/** @type {any} */ t) => [t.name, t]));
+            const names = new Set([...(diff.add_types || []), ...(diff.change_types || [])].map((/** @type {any} */ t) => t.name).concat(diff.remove_types || []));
+            const back = { add_types: [...names].filter(n => had.has(n)).map(n => had.get(n)), remove_types: [...names].filter(n => !had.has(n)) };
+            try { await store.define(back); } catch { /* the type stays defined; the caller is still told it failed */ }
+          }
+          throw e;
+        }
+      }
       return res;
     },
 
