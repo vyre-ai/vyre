@@ -1,5 +1,12 @@
 # app-wire
 
+## RESUME 5 Oct (third session): first-run screens
+- DONE and pushed on origin/work/app-wire (09d39f5f8): Welcome, Mac where-then-Add-your-phone, browser "Open Vyre on your phone" (scan or paste) and not-set-up, Who it is for, phone-safe pairing words (screens/install/first-run.js), no-blank Now/Chats/Agents/Places (src/ui/EmptyHere.tsx), invites and Add your device drawn as Wink codes (src/ui/WinkCode.tsx, deck/vendor/vyrecode) with Copy link and Email it, a test that no screen imports a QR component. Walk: scripts/app-walk-firstrun.mjs, 8 of 8 on awbox (stand-ins named in the script).
+- CAVEAT: the drawn ring holds 8 bytes hashed from the code text; the box still issues the long vyre://wink/2 code and the scanner reads text only, so the drawing is not scannable yet (ADR 0045's 64-bit ticket and a ring decoder are not built). Copy link and paste work.
+- NOT walked: the Mac's "Where should Vyre run?" (needs a fresh identity with no space).
+- DOING: the approval-flow walk step. Blocked on a stand-in phone: the browser asks (approvals.ask moment), the phone's yes is a kernel presence proof signed by an enrolled key (softwareProof in core/spaces/presence-signer.js on a development build), and awbox's stand-in covers presence-less calls, not this. Needs: an enrolled software key for the owner on awbox and a helper that lists approvals.pending and answers with softwareProof (chain_hash = proofChainHash(space, person)).
+- Changed contracts: core/spaces/index.js spaces.setup.save keeps `picks.who` (team, client, personal).
+
 ## INVENTORY: what is real and what is still sample (4 Oct, from the code at work/app-wire d5965808d; "seen" means a call was run on the dev box, not that the screen was walked)
 Legend: REAL = reads the box through `call`/`send` (or the Store adapter) with no sample data outside a mock build. PARTLY = real in part, the rest named. SAMPLE = still sample data.
 
