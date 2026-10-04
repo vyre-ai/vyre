@@ -25,5 +25,5 @@ test("the copy is ui-ux's final text", () => {
   assert.equal(HAVE.lostKeyTitle, "This iPhone no longer has your key");
   assert.equal(HAVE.go, "Bring my name here");
   assert.equal(successToast("alex"), "Welcome back, alex.");
-  assert.match(HAVE.spacesLine, /joins each of your spaces when you approve it/);
+  assert.equal(HAVE.spacesLine, "This iPhone should join your spaces on its own. It can take up to a minute.");
 });
