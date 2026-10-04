@@ -21,7 +21,7 @@ function world(o = {}) {
   const tools = new Map();
   const events = /** @type {any[]} */ ([]);
   const drops = /** @type {any[]} */ ([]);
-  const ctx = { store: { db }, config: { name: "alex" }, log() {}, events: { emit: (n, d) => events.push([n, d]) }, tool: (n, def) => tools.set(n, def), call: async (tool, input) => { if (tool === "relay.route.id") return { data: { box: o.box || "Qm94S2V5" } }; drops.push([tool, input]); return { data: { closed: true } }; } };
+  const ctx = { store: { db }, config: { name: "alex" }, log(m) { if (process.env.DBG) console.log("LOG", m); }, events: { emit: (n, d) => events.push([n, d]) }, tool: (n, def) => tools.set(n, def), call: async (tool, input) => { if (o.call) { const r = await o.call(tool, input); if (r !== undefined) return r; } if (tool === "relay.route.id") return { data: { box: o.box || "Qm94S2V5" } }; drops.push([tool, input]); return { data: { closed: true } }; } };
   const typed = /** @type {any[]} */ ([]);
   const finishes = /** @type {any[]} */ ([]);
   const minted = /** @type {any[]} */ ([]);
@@ -1360,4 +1360,61 @@ test("wink.server.paired: a module asks whether a device is a server paired to t
   assert.deepEqual(await ask("nope"), { paired: false });
   await assert.rejects(ask("srv1", ME, "cli"), e => e.code === "denied");
   await assert.rejects(ask("srv1", ME, "device:aaaaaaaaaaaaaaaa"), e => e.code === "denied");
+});
+
+
+// ---- device-first pairing leaves the device usable (wink-2, 4 Oct): recorded, granted, enrolled ----
+
+const devFirst = (kind, extra = {}) => {
+  const calls = [];
+  const P256 = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey;
+  const spki = P256.export({ format: "der", type: "spki" }).toString("base64url");
+  const w = world({ confirm: true, call: async (tool, input) => {
+    calls.push([tool, input]);
+    if (tool === "relay.pair.pending.confirm") return { data: { key: spki, alg: -7, storage: kind === "phone" ? "hardware" : "software", ...(kind === "web" ? { web: true } : {}) } };
+    if (tool === "relay.device.presence") return { data: { key: "pk_dev1" } };
+    if (tool === "presence.person.pair-grant") { const rec = (await w.tools.get("wink.device.record").run({ id: input.device }, { caller: "module:presence" })); calls.push(["record", rec]); return { data: { granted: true } }; }
+    return { data: {} };
+  }, ...extra });
+  return { w, calls };
+};
+const finishAs = async (w, input, caller = "device:app1") => { await adoptAs(w, caller, input); await atServer(w, "wink.server.pair.answer", await rightYes(w)); return adoptAs(w, caller, input); };
+
+test("device-first: the pick of the words records the device with its kind, key and storage, makes the grant and enrols it", async () => {
+  const { w, calls } = devFirst("phone");
+  await finishAs(w, { ...ASKED, device: { kind: "phone", name: "Alex's iPhone" } });
+  const d = w.p.devices.get("app1");
+  assert.equal(d.kind, "phone");
+  assert.equal(d.identity, ME);
+  assert.equal(d.name, "Alex's iPhone");
+  const rec = calls.find(c => c[0] === "record")[1];
+  assert.equal(rec.confirmed, true);
+  assert.equal(rec.confirmedBy, ME, "the owner confirmed it, by picking the words");
+  assert.equal(rec.confirmKeyId, "pk_dev1", "the key the paired session is bound to is the device's own enrolled key");
+  assert.equal(rec.key.kty, "EC");
+  assert.ok(calls.some(c => c[0] === "presence.person.pair-grant" && c[1].device === "app1"));
+  assert.ok(calls.some(c => c[0] === "spaces.owner.adopt" && c[1].person === ME), "the claimed identity becomes the home's owner");
+  assert.ok(calls.some(c => c[0] === "spaces.devices.enrolled" && c[1].device === "app1" && c[1].space === HARLOW), "enrolled in the home space");
+  assert.ok(w.db.prepare("SELECT key_storage FROM wink_devices WHERE id = 'app1'").get().key_storage === "hardware");
+});
+
+test("device-first: a web device is recorded as web with software storage and gets no device-key grant", async () => {
+  const { w, calls } = devFirst("web");
+  await finishAs(w, { ...ASKED, device: { kind: "web", name: "Alex's browser" } });
+  assert.equal(w.p.devices.get("app1").kind, "web");
+  assert.ok(!calls.some(c => c[0] === "presence.person.pair-grant"), "no grant for a browser");
+  assert.equal(w.db.prepare("SELECT key_storage FROM wink_devices WHERE id = 'app1'").get().key_storage, "software");
+  const confirm = calls.find(c => c[0] === "relay.pair.pending.confirm");
+  assert.ok(!confirm[1].trusted, "a browser is not trusted fully");
+});
+
+test("device-first: a second device cannot ride the first one's pairing, and a no records nothing", async () => {
+  const { w, calls } = devFirst("computer");
+  await adoptAs(w, "device:app1", ASKED);
+  await assert.rejects(() => adoptAs(w, "device:evil", { ...ASKED, device: { kind: "phone" } }), e => e.code === "busy");
+  await atServer(w, "wink.server.pair.answer", { yes: false });
+  await assert.rejects(() => adoptAs(w, "device:app1", ASKED), e => e.code === "denied");
+  assert.equal(w.p.devices.get("app1"), null);
+  assert.equal(w.p.devices.get("evil"), null);
+  assert.ok(!calls.some(c => c[0] === "presence.person.pair-grant"));
 });
