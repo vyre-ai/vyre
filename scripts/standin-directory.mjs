@@ -29,11 +29,14 @@ const APP_ORIGINS = arg("app-origins", "https://app.vyre.run,http://localhost:51
 // The daily claim limit per address (the live directory's is 5). A test box that walks many installs from one address raises it here: `--claims-per-ip 50`.
 const CLAIMS_PER_IP_PER_DAY = arg("claims-per-ip", "5");
 const STATE = arg("state", ""), RESTORE_TIME = process.argv.includes("--restore-time");
-/** @type {number | null} */ let clockAt = null;
+let replay = false;
+// While a chain older than a minute is being published again, the Worker judges it as a copy, not as a live op (`live: false`): nothing else about the claim is relaxed.
+const idLive = /** @type {any} */ (W.Directory.prototype).idLive;
+/** @type {any} */ (W.Directory.prototype).idLive = function () { const c = idLive.call(this); return replay ? { ...c, live: false } : c; };
 const dns = fakeDns();
 const rt = createRuntime({
   worker, Class: W.Directory, classes: { DIRECTORY: W.Directory },
-  env: { APP_ORIGINS, CLAIMS_PER_IP_PER_DAY, CF_API_TOKEN: dns.token, CF_ZONE_ID: dns.zoneId, CF_API: dns.api, CF_FETCH: dns.fetch, ZONE, NOW: () => clockAt ?? Date.now(), ORIGIN: `http://${HOST}:${PORT}`,
+  env: { APP_ORIGINS, CLAIMS_PER_IP_PER_DAY, CF_API_TOKEN: dns.token, CF_ZONE_ID: dns.zoneId, CF_API: dns.api, CF_FETCH: dns.fetch, ZONE, ORIGIN: `http://${HOST}:${PORT}`,
     RESOLVE_TXT: async (/** @type {string} */ name) => { try { return (JSON.parse(fs.readFileSync(TXT, "utf8"))[name] || []).map(String); } catch { return []; } } },
 });
 
@@ -56,15 +59,15 @@ const server = http.createServer(async (req, res) => {
   headers.set("cf-connecting-ip", req.socket.remoteAddress || "127.0.0.1");
   let restoring = false;
   if (RESTORE_TIME && req.method === "POST" && String(req.url).startsWith("/v1/ids/claim")) {
-    try { const ts = Number(JSON.parse(body.toString("utf8")).rec.ts); if (Number.isFinite(ts) && ts < Date.now()) { clockAt = ts; restoring = true; } } catch { /* an ordinary claim */ }
+    try { const ops = JSON.parse(body.toString("utf8")).ops; const last = Number(ops[ops.length - 1].ts); if (Number.isFinite(last) && last < Date.now() - 60_000) { restoring = true; replay = true; } } catch { /* an ordinary claim */ }
   }
   try {
     const r = await worker.fetch(new Request(`http://${HOST}:${PORT}${req.url}`, { method: req.method, headers, body: ["GET", "HEAD"].includes(String(req.method)) || !body.length ? undefined : body }), rt.env);
     res.writeHead(r.status, Object.fromEntries(r.headers));
     res.end(Buffer.from(await r.arrayBuffer()));
-    if (restoring) clockAt = null;
+    if (restoring) replay = false;
   } catch (e) {
-    if (restoring) clockAt = null;
+    if (restoring) replay = false;
     res.writeHead(500, { "content-type": "application/json" });
     res.end(JSON.stringify({ error: { code: "standin_failed", message: String(/** @type {Error} */ (e).message) } }));
   }
