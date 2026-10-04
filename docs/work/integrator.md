@@ -81,3 +81,10 @@ Never the test box (now the user's real server) and never the user's Mac. Tests 
 - sessions: work/sessions-node24 sent to a reviewer; the uid-per-account contract (names, range).
 - watchers: the watcher child uid, and which network it may reach (none).
 - lead and user: a protected GitHub environment "release" (reviewers: the lead and me); a minisign key made by the user, with the backup printed offline (6A10); a scoped Cloudflare token for the site deploy (6A2).
+
+
+## 0.3 (integrator resume, 4 Oct 2026)
+
+Worktree vyre-int-03, branch work/v0.3 (head in team/0.3/E2E-RUN.md run log, newest first). Doing: merging reviewed heads (script: scratchpad mg.sh, merge one branch, resolve docs conflicts by `node scripts/gen-docs-reference`, push), then the boot check and the unit run on a hosted runner without --test-force-exit (workflow .github/workflows/int-03.yml, triggered by bumping .github/int-run.txt on work/v0.3), then the walk on testbox3 (homes under ~/int-walk, helper psign.mjs signs a software device key; stand-in directory on 127.0.0.1:8789, launch's relay on 8787).
+Done: round 1 and 2 merges (records now in, conflict resolutions in CHAT.md 4 Oct); boot 74 of 74 kernel 0 and 1; walk READY 5 of 15 (2, 3, 6, 7, 14); issues #84 (space id), #85 (pairing identity), #86 (no way to give kernel presence on a headless box).
+Next: take kernel-query after reviewer-2 passes it, test-integrity when platform-2 posts it; re-run the walk on the new head; step 1 needs a free box; steps 5, 9, 10 wait on #86.
