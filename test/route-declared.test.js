@@ -12,14 +12,14 @@ import { start } from "../core/daemon/index.js";
 test("a route with no declaration is refused at registration, and a writing route does not answer GET", async t => {
   const root = tempHome(t);
   writeModule(path.join(root, "modules"), "probe", { does: { tools: ["probe.noop", "probe.refused"] } }, `export default { async start(ctx) {
-    ctx.tool("probe.noop", { input: { type: "object" }, run: async () => ({}) });
+    ctx.tool("probe.noop", { effect: "read", input: { type: "object" }, run: async () => ({}) });
     ctx.route("reads", (req, res) => { res.writeHead(200); res.end("read"); }, { readOnly: true });
     ctx.route("writes", (req, res) => { res.writeHead(200); res.end("wrote"); }, { methods: ["PUT"] });
     let refused = "";
     try { ctx.route("undeclared", () => {}); } catch (e) { refused = e.message; }
     try { ctx.route("both", () => {}, { readOnly: true, methods: ["PUT"] }); } catch (e) { refused += "|" + e.message; }
     try { ctx.route("getter", () => {}, { methods: ["GET"] }); } catch (e) { refused += "|" + e.message; }
-    ctx.tool("probe.refused", { input: { type: "object" }, run: async () => ({ refused }) });
+    ctx.tool("probe.refused", { effect: "read", input: { type: "object" }, run: async () => ({ refused }) });
     return {};
   } };`);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));

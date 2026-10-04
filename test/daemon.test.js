@@ -236,14 +236,14 @@ test("daemon: on the socket, x-vyre-caller is a label and cannot claim another i
   // Modules' own calls (Memory's curator, on its timer) go through the rules too; only the socket's count here.
   const d = await start({ root, log: () => {}, rules: async c => { if (!String(c.caller).startsWith("module:")) seen.push(c.caller); return { allow: true }; } });
   t.after(() => d.stop());
-  for (const forged of ["module:vault", "tailnet:alex@example.com", "onboard", "hook", "cli", "capsule"]) {
+  for (const forged of ["module:vault", "tailnet:alex@example.com", "onboard", "hook", "setup:aaaaaaaaaaaaaaaa", "web:aaaaaaaaaaaaaaaa", "space:alex@harlow", "link:x", "setup", "web", "device", "cli", "capsule"]) {
     await call("system.echo", { text: "x" }, { root, caller: forged });
   }
-  assert.deepEqual(seen, ["anonymous", "anonymous", "anonymous", "anonymous", "cli", "capsule"]);
+  assert.deepEqual(seen, ["anonymous", "anonymous", "anonymous", "anonymous", "anonymous", "anonymous", "anonymous", "anonymous", "anonymous", "anonymous", "anonymous", "cli", "capsule"]);
   // Naming an agent without that agent's thread key is refused outright, before any rule runs.
   const agent = await call("system.echo", { text: "x" }, { root, caller: "mcp:agent:kit" });
   assert.equal(agent.error && agent.error.code, "denied");
-  assert.equal(seen.length, 6);
+  assert.equal(seen.length, 13);
 });
 
 test("daemon: a socket request with no caller label is anonymous, not a person", async t => {
@@ -312,7 +312,7 @@ function raw(socketPath, pathname, payload, headers) {
 test("daemon: vyred checks presence, so a forged caller cannot run a human-only tool, and a Capsule signature can", async t => {
   const root = tempHome(t);
   writeModule(path.join(root, "modules"), "held", { does: { tools: ["held.release"] } },
-    `export default { async start(ctx) { ctx.tool("held.release", { presence: true, input: { type: "object" }, run: async i => ({ released: i.id }) }); return {}; } };`);
+    `export default { async start(ctx) { ctx.tool("held.release", { effect: "read", presence: true, input: { type: "object" }, run: async i => ({ released: i.id }) }); return {}; } };`);
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   const sock = d.paths.socket;
@@ -364,7 +364,7 @@ test("daemon: the presence challenge route refuses what it cannot start", async 
 test("daemon: every non-person call passes the floor's rules, not only Claude Code's hook (SPEC 5.3)", async t => {
   const root = tempHome(t);
   writeModule(path.join(root, "modules"), "probe", { does: { tools: ["probe.echo"] } }, `export default { async start(ctx) {
-    ctx.tool("probe.echo", { input: { type: "object", properties: { path: { type: "string" }, command: { type: "string" } } }, run: async input => ({ got: input }) });
+    ctx.tool("probe.echo", { effect: "read", input: { type: "object", properties: { path: { type: "string" }, command: { type: "string" } } }, run: async input => ({ got: input }) });
     return { async stop() {} };
   } };`);
   const d = await start({ root, log: () => {} });

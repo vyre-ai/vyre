@@ -6,8 +6,8 @@
 
 /** @type {Record<string, SpaceLook>} */
 export const DEFAULT_LOOKS = {
-  mine: { accent: "violet", tint: "accent", density: "default", font: "sans", corners: "default" },
-  harlow: { accent: "amber", tint: "accent", density: "compact", font: "sans", corners: "default" },
+  mine: { accent: "violet", tint: "accent", density: "default", font: "system", corners: "default" },
+  harlow: { accent: "amber", tint: "accent", density: "compact", font: "system", corners: "default" },
 };
 
 /** The space whose look applies when `id` is showing. */

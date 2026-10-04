@@ -40,6 +40,11 @@ Pin a session to the server to keep it running when you close the laptop.
 
 ## Limits
 
+File names are encrypted but file sizes, counts and times are not hidden by this encryption. If this computer uses swap or hibernation, the contents of an unlocked workspace can be written to disk outside it; Vyre tells you once and you can turn swap off or encrypt it. On Linux, only file permissions (owner-only folders) protect an unlocked workspace from other users on the same computer.
+
+A session reaches the internet only if the space allows it; if it does, its traffic leaves from this computer's connection, never to this computer's own network (private and local addresses are refused).
+
+
 You can read what your session can read. This protects against loss, theft and access after removal, not against
 a member copying data on purpose. A computer that was open at the moment of removal can read until its lease ends
 (at most an hour). Phones and tablets do not run sessions.

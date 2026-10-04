@@ -104,7 +104,7 @@ for (const [vyre, message] of [
 
 test("module api compat: a module naming 1.0 with keys this Vyre doesn't know loads, and the keys only warn", async t => {
   const { mod, mark } = trap(t, "1.0");
-  fs.writeFileSync(path.join(mod, "index.js"), `export default { async start(ctx) { ctx.tool("harlow.docket", { input: { type: "object" }, examples: [{ input: {} }], run: () => ({ cases: 0 }) }); return { async stop() {} }; } };\n`);
+  fs.writeFileSync(path.join(mod, "index.js"), `export default { async start(ctx) { ctx.tool("harlow.docket", { effect: "read", input: { type: "object" }, examples: [{ input: {} }], run: () => ({ cases: 0 }) }); return { async stop() {} }; } };\n`);
   const r = await conformModuleFull(mod);
   assert.deepEqual(r.failures, []);
   assert.ok(r.warnings.some(w => /does\.timeline is not a key in module contract 1\.0/.test(w)), r.warnings.join("; "));

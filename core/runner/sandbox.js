@@ -11,6 +11,7 @@
 // plan() is pure: it returns the argv to run and what to clean up, so tests read the profile without running it.
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { planWin } from "./sandbox-win.js";
@@ -97,6 +98,7 @@ export function seatbeltProfile(o) {
     '(allow process-exec (subpath "/Library/Developer/CommandLineTools") (subpath "/Applications/Xcode.app/Contents/Developer"))',
     `(allow file-read* file-write* (subpath ${q(ws)}))`,
     `(allow process-exec (subpath ${q(ws)}))`,
+    ...(o.internet ? [`(allow file-read* (literal ${q(PROXYCMD)}))`] : []),
     ...ro.map(d => `(allow file-read* (subpath ${q(d)}))\n(allow process-exec (subpath ${q(d)}))`),
     ...[...meta].map(d => `(allow file-read-metadata (literal ${q(d)}))`),
   ];
@@ -122,7 +124,7 @@ function planDarwin(o) {
   const base = proxyUrl(o.proxy.port);
   const dd = developerDir();
   const env = { ...cleanEnv(o.env), ...(dd ? { DEVELOPER_DIR: dd } : {}), HOME: home, TMPDIR: tmp, PATH: "/usr/bin:/bin:" + [...(o.readOnly || [])].map(d => path.join(real(d), "bin")).join(":"), ...proxyEnv(base, o.internet) };
-  return { argv: ["/usr/bin/sandbox-exec", "-p", seatbeltProfile(o), o.command, ...(o.args || [])], env, cwd: path.join(ws, "files"), cleanup() {}, profile: seatbeltProfile(o) };
+  return { argv: ["/usr/bin/sandbox-exec", "-p", seatbeltProfile(o), "/bin/sh", "-c", 'umask 077; exec "$0" "$@"', o.command, ...(o.args || [])], env, cwd: path.join(ws, "files"), cleanup() {}, profile: seatbeltProfile(o) };
 }
 
 /**
@@ -141,18 +143,18 @@ function planLinux(o) {
   needTool(o.command, ro, ["/usr"]);
   const home = "/work/home";
   const base = proxyUrl(inner);
-  const env = { ...cleanEnv(o.env), HOME: home, TMPDIR: "/work/tmp", PATH: "/usr/local/bin:/usr/bin:/bin:" + ro.map(d => path.join(d, "bin")).join(":"), ...proxyEnv(base, o.internet) };
+  const env = { ...cleanEnv(o.env), HOME: home, TMPDIR: "/work/tmp", PATH: "/usr/local/bin:/usr/bin:/bin:" + ro.map(d => path.join(d, "bin")).join(":"), ...proxyEnv(base, o.internet, "/opt/vyre-proxycmd.js") };
   const argv = [
     "bwrap", "--die-with-parent", "--new-session", "--unshare-all", "--clearenv",
     "--ro-bind", "/usr", "/usr", "--symlink", "usr/bin", "/bin", "--symlink", "usr/lib", "/lib", "--symlink", "usr/lib64", "/lib64",
     "--ro-bind-try", "/etc/ssl", "/etc/ssl", "--ro-bind-try", "/etc/alternatives", "/etc/alternatives",
     "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/run", "--unshare-user", "--cap-drop", "ALL", "--disable-userns",
     ...ro.flatMap(d => ["--ro-bind", d, d]),
-    "--ro-bind", SHIM, "/opt/vyre-shim.js",
+    "--ro-bind", SHIM, "/opt/vyre-shim.js", "--ro-bind", PROXYCMD, "/opt/vyre-proxycmd.js", "--ro-bind", fakePasswd(home), "/etc/passwd",
     "--bind", ws, "/work", "--chdir", "/work/files",
     ...(sock ? ["--ro-bind", sock, "/run/egress.sock"] : []),
     ...Object.entries(env).flatMap(([k, v]) => ["--setenv", k, v]),
-    node, "/opt/vyre-shim.js", "--listen", String(inner), "--to", "/run/egress.sock", "--", o.command, ...(o.args || []),
+    node, "/opt/vyre-shim.js", "--listen", String(inner), "--to", "/run/egress.sock", "--", "/bin/sh", "-c", 'umask 077; exec "$0" "$@"', o.command, ...(o.args || []),
   ];
   // The deny-list filter goes in over fd 3 (see launch()).
   const sc = seccompFilter();
@@ -174,7 +176,18 @@ export function launch(p, opts = {}) {
 
 const proxyUrl = port => `http://127.0.0.1:${port}`;
 /** The session talks to the provider and the space through the proxy; the key it is given is a worthless session token. */
-const proxyEnv = (base, internet) => ({ ANTHROPIC_BASE_URL: `${base}/provider`, VYRE_SPACE_URL: `${base}/space`, ...(internet ? { HTTPS_PROXY: `http://vyre:${internet.token}@${base.replace(/^http:\/\//, "")}`, HTTP_PROXY: `http://vyre:${internet.token}@${base.replace(/^http:\/\//, "")}`, NO_PROXY: "" } : {}) });
+/** ssh (git over ssh) cannot use an HTTP proxy by itself: its ProxyCommand does the CONNECT. The node binary and proxycmd.js are in the sandbox (the shim path is bound on Linux). */
+/** A one-line /etc/passwd for the sandbox (ssh and some tools want the current user to exist): this user only, no one else's name. */
+export function fakePasswd(home) {
+  const uid = process.getuid?.() ?? 1000, gid = process.getgid?.() ?? 1000;
+  const f = path.join(os.tmpdir(), `vyre-passwd-${uid}`);
+  const body = `vyre:x:${uid}:${gid}:vyre:${home}:/bin/sh\n`;
+  try { if (fs.readFileSync(f, "utf8") !== body) throw 0; } catch { fs.writeFileSync(f, body, { mode: 0o644 }); }
+  return f;
+}
+export const PROXYCMD = path.join(path.dirname(fileURLToPath(import.meta.url)), "proxycmd.js");
+export const sshCommand = (base, token, script = PROXYCMD) => `ssh -o StrictHostKeyChecking=accept-new -o ProxyCommand='${process.execPath} ${script} ${base.replace(/^http:\/\//, "")} ${token} %h %p'`;
+const proxyEnv = (base, internet, script) => ({ ANTHROPIC_BASE_URL: `${base}/provider`, VYRE_SPACE_URL: `${base}/space`, ...(internet ? { HTTPS_PROXY: `http://vyre:${internet.token}@${base.replace(/^http:\/\//, "")}`, HTTP_PROXY: `http://vyre:${internet.token}@${base.replace(/^http:\/\//, "")}`, NO_PROXY: "", GIT_SSH_COMMAND: sshCommand(base, internet.token, script) } : {}) });
 
 /**
  * @param {PlanOpts} o

@@ -39,6 +39,9 @@ The kernel is not implemented yet (platform builds it on work/kernel), so everyt
 - Roles: FOUND a real gap, manager held `records.define`; fixed in kernel/grants/roles.js with test/roles-enforced.test.js (kernel-owned file, smallest change, listed under Changed contracts).
 - Publish tunnel, our half: lib/publish/tunnel.js and the `tunnel` option of edgeCompose/caddyfile. Waits on tailnet for the relay stream transport (no reply yet; my proposal stands in CHAT).
 
+## Publish state (user ruling 5 Oct: Publish moves to 0.3.1 with live certificates; stopped)
+Pushed and UNWIRED on this branch: lib/publish/tunnel.js (box end of the tunnel: fixed loopback target, SNI check, per-direction caps), edge tunnel mode (loopback 18443, auto_https off, certificate files, strict_sni_host), lib/publish/certs.js ensureSpaceCert (DNS-01 by signed directory acts, CAA pin before the order), names directory acme/acme-clear/caa acts and client calls. Nothing calls ensureSpaceCert; own domains are refused over the tunnel; relay items PT-2 to PT-6, PT-8 and CT monitoring are not built. Resume in 0.3.1.
+
 ## Doing
 - Nothing in flight. Publish (core/publish, lib/publish) is built from an earlier session but not touched in this round; the lead said publish comes later.
 

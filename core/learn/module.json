@@ -3,7 +3,7 @@
   "version": "0.2.0",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "tools": ["learn.lessons", "learn.add", "learn.accept", "learn.edit", "learn.relax", "learn.retire", "learn.signal", { "name": "learn.check", "cwdArg": "cwd" },
+  "does": { "reads": ["learn.check", "learn.stats"], "tools": ["learn.lessons", "learn.add", "learn.accept", "learn.edit", "learn.relax", "learn.retire", "learn.signal", { "name": "learn.check", "cwdArg": "cwd" },
     "learn.observe", "learn.signals", "learn.stats", "learn.skills", "learn.skill-install", "learn.skill-retire", "learn.skill-dismiss"] },
   "watches": { "emits": ["lesson.proposed", "lesson.learned", "lesson.caught", "lesson.broken", "lesson.escalated", "lesson.retired", "lesson.tampered",
     "lesson.dormant", "lesson.allowed", "skill.proposed", "skill.installed", "skill.retired", "distill.finished"] },

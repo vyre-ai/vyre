@@ -32,7 +32,7 @@ export default {
     const needKernel = () => { if (typeof ctx.modulesListReset !== "function" || !ctx.kernel) throw refuse("this build runs without its kernel, so there is no module list to reset", "unavailable"); };
     const reset = async (/** @type {any} */ meta, /** @type {string} */ askId) => {
       const chain = await ctx.kernel.chain(meta);
-      const proof = ctx.kernel.proofFrom(meta);
+      const given = ctx.kernel.proofFrom(meta), proof = given && given.presence ? given.presence : null; // proofFrom answers `{ presence }` (or `{}`), the option a kernel call takes
       const r = await ctx.modulesListReset(chain, proof || null, askId);
       if (!r || r.ok !== true) {
         const why = String((r && r.why) || "refused");

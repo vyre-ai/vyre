@@ -15,7 +15,7 @@ export function WinkHome() {
   const router = useRouter();
   const { faster, setFaster } = useDevices();
   return (
-    <Page title="Wink" sub="The one way anything joins. Vyre picks scan, code or words. You never pick, and there is nothing to configure." back="/u/settings">
+    <Page title="Wink" sub="The one way anything joins. Scan a code or paste a long one, then confirm the same three words on both screens." back="/u/settings">
       <View className="flex-row flex-wrap gap-s3">
         {VERBS.map((v) => (
           <Card key={v.id} className="min-w-menu flex-1 gap-s2">

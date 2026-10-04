@@ -14,6 +14,7 @@ const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Ob
 const WHAT = {
   "flows.define": "Write a Flow, as text or in its stored form. Nothing runs until a person approves it.",
   "flows.approve": "Approve one version of a Flow, by its hash: a person, in their own name, and only what the card showed.",
+  "flows.propose": "Ask an owner or an admin to approve a draft: a stored Flow version, or a change to the record types ({ what: \"types\", diff }). It becomes one task in Now; nothing is applied until they say yes.",
   "flows.card": "The approval card for a Flow version: what it can do, what it needs, what changed.",
   "flows.get": "One Flow version as stored.",
   "flows.list": "The Flows of a Space.",
@@ -28,7 +29,7 @@ const WHAT = {
   "flows.run": "One run: its trigger, its steps, what it did.",
   "flows.retry": "Retry a failed run. A person's own.",
   "flows.kit.card": "The install card for a Kit.",
-  "flows.kit.propose": "Propose a Kit for approval: its types, templates, roles and Flows. A person's own.",
+  "flows.kit.propose": "Propose a Kit for approval: its types, templates, roles and Flows. A person, or their assistant for them; the person is asked and nothing installs until they say yes.",
   "flows.kit.remove": "Remove a Kit. A person's own.",
   "flows.kit.list": "The Kits of a Space.",
 };

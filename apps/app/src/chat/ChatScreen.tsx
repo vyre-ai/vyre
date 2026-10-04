@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Chip, Icon, Text, useUiTheme } from "@vyre/ui";
+import { Chip, Icon, Text, allowsMock, useUiTheme } from "@vyre/ui";
 import { Transcript } from "../session/Transcript";
 import type { TranscriptRow } from "../session/model";
 import { ChatComposer, type ComposerProps } from "./ChatComposer";
@@ -234,6 +234,7 @@ export function ChatScreen(p: ChatScreenProps) {
 
       <View style={{ paddingBottom: insets.bottom }}>
         <ChatComposer
+          draftKey={p.sessionId}
           state={meta.state}
           phone={phone}
           autoFocus={p.autoFocusComposer}
@@ -241,9 +242,9 @@ export function ChatScreen(p: ChatScreenProps) {
           onSend={onSend}
           editing={editing}
           onCancelEdit={() => setEditing(null)}
-          people={people ?? [{ name: "juno", family: "assistant" }, { name: "kit", family: "assistant" }, { name: "alex", family: "person" }, { name: "Dana Okafor", family: "person" }]}
-          records={[{ name: "Northwind Bakery", type: "Matter", sealed: 1 }, { name: "Harlow Legal intake", type: "Project", sealed: 0 }, { name: "Okafor estate", type: "Matter", sealed: 2 }]}
-          models={[{ id: "sonnet", label: "Sonnet", fit: 92 }, { id: "opus", label: "Opus", fit: 97 }, { id: "local", label: "Local model", fit: 61 }]}
+          people={people ?? (allowsMock() ? [{ name: "juno", family: "assistant" }, { name: "kit", family: "assistant" }, { name: "alex", family: "person" }, { name: "Dana Okafor", family: "person" }] : [])}
+          records={allowsMock() ? [{ name: "Northwind Bakery", type: "Matter", sealed: 1 }, { name: "Harlow Legal intake", type: "Project", sealed: 0 }, { name: "Okafor estate", type: "Matter", sealed: 2 }] : []}
+          models={allowsMock() ? [{ id: "sonnet", label: "Sonnet", fit: 92 }, { id: "opus", label: "Opus", fit: 97 }, { id: "local", label: "Local model", fit: 61 }] : []}
           model="sonnet"
           runsOn={runsOn}
           onRunsOn={() => setRunsOn((w) => (w === "mac" ? "server" : "mac"))}

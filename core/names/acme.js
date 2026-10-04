@@ -69,10 +69,11 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
  * @param {{ names: string[], directory: string, accountKey: string, certKey?: string, email?: string,
  *   dns: { set(fqdn: string, value: string): Promise<any>, clear(handle: any): Promise<any> },
  *   fetch?: typeof globalThis.fetch, log?: (msg: string) => void,
- *   waitDns?: (fqdn: string, value: string) => Promise<any>, pollMs?: number, timeoutMs?: number }} opts
- * @returns {Promise<{ cert: string, key: string, expires: number }>}
+ *   waitDns?: (fqdn: string, value: string) => Promise<any>, onAccount?: (accountUri: string) => Promise<any>, pollMs?: number, timeoutMs?: number }} opts
+ *   `onAccount` runs once the ACME account exists and BEFORE the order, with its URI: a CAA record that pins issuance to this account is set there (PT-1).
+ * @returns {Promise<{ cert: string, key: string, expires: number, accountUri: string }>}
  */
-export async function issue({ names, directory, accountKey, certKey, email, dns, fetch = globalThis.fetch, log = () => {}, waitDns, pollMs = 2000, timeoutMs = 180000 }) {
+export async function issue({ names, directory, accountKey, certKey, email, dns, fetch = globalThis.fetch, log = () => {}, waitDns, onAccount, pollMs = 2000, timeoutMs = 180000 }) {
   if (!Array.isArray(names) || names.length === 0) throw new Error("issue needs at least one name");
   const deadline = Date.now() + timeoutMs;
   const account = crypto.createPrivateKey(accountKey);
@@ -139,6 +140,7 @@ export async function issue({ names, directory, accountKey, certKey, email, dns,
   kid = accRes.headers.get("location");
   if (!kid) throw new Error("ACME newAccount gave no account URL");
   log(`acme: account ${accRes.status === 201 ? "created" : "found"}`);
+  if (onAccount) await onAccount(kid);
 
   // Order.
   const orderRes = await post(dir.newOrder, { identifiers: names.map(value => ({ type: "dns", value })) });
@@ -181,5 +183,5 @@ export async function issue({ names, directory, accountKey, certKey, email, dns,
   const certRes = await post(order.certificate, null, { accept: "application/pem-certificate-chain" });
   const cert = await certRes.text();
   log("acme: certificate issued");
-  return { cert, key: certPem, expires: expiry(cert) };
+  return { cert, key: certPem, expires: expiry(cert), accountUri: /** @type {string} */ (kid) };
 }
