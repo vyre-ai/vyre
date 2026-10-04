@@ -63,17 +63,18 @@ async function world(t, opt = {}) {
   const relay = createRelay();
   const url = await relay.listen();
   t.after(() => relay.close());
+  const logs = [];
   const root = tempHome(t);
   if (opt.seam) { seams.set(root, { ...(seams.get(root) || {}), ...opt.seam }); t.after(() => seams.delete(root)); }
   if (opt.pendingMs || opt.abandonMs) { seams.set(root, { ...(opt.pendingMs ? { pendingMs: opt.pendingMs } : {}), ...(opt.abandonMs ? { abandonMs: opt.abandonMs } : {}) }); t.after(() => seams.delete(root)); }
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [], network: { name: "alex" }, relay: { enabled: true, url }, modules: { disable: ["names", "onboard"] } }));
-  const d = await start({ ...(opt.realPresence ? {} : { presence: lenient }), root, log: m => { if (process.env.WLOG) console.error(m); }, coreKeys: macCore(), ...(opt.kernel ? { kernel: true } : {}) });
+  const d = await start({ ...(opt.realPresence ? {} : { presence: lenient }), root, log: m => { logs.push(String(m)); if (process.env.WLOG) console.error(m); }, coreKeys: macCore(), ...(opt.kernel ? { kernel: true } : {}) });
   t.after(() => d.stop());
   const events = [];
   d.events.on("*", e => events.push([e.type, e.payload]));
   const call = (tool, input = {}, caller = SCREEN, meta = A) => d.registry.call(tool, input, caller, meta);
   const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
-  return { d, url, root, events, call, status };
+  return { d, url, root, events, call, status, logs };
 }
 const until = async (f, ms = 8000) => { const t0 = Date.now(); for (;;) { const v = await f(); if (v) return v; if (Date.now() - t0 > ms) throw new Error("timed out"); await new Promise(r => setTimeout(r, 25)); } };
 const keystore = t => fileKeyStore(path.join(tempHome(t), "k.json"));
@@ -1198,3 +1199,23 @@ async function attemptPairing(t, ident, { sign = ident.sign, owner = { id: ident
 
 
 // ---- IV-5 (reviewer-3): invitee channels have a pool and a life of their own ----
+
+// ---- walker (4 Oct): an unowned server with a leftover paired device refused a new pairing silently ----
+test("an unowned server lets go of devices left by a pairing that never completed ownership when a new pairing starts, and every refused hello is logged with its reason", async t => {
+  process.env.VYRE_TEST_UNGATED_RING = "1";
+  t.after(() => { delete process.env.VYRE_TEST_UNGATED_RING; });
+  const w = await world(t);
+  const crypt = nodeCrypto();
+  const minted = await w.d.registry.call("relay.pair.ticket", {}, "cli", PROOF);
+  const left = await pairTicket(fromBase64url(minted.data.ticket), { relay: w.status.url, name: "Leftover phone", crypto: crypt, keyStore: keystore(t) });
+  assert.equal(await relayHas(w, left.device), true, "the leftover phone has a row");
+  // a refused hello says why in the log
+  const strangerKeys = await clientDeviceKey({ keyStore: keystore(t), crypto: crypt });
+  await assert.rejects(() => openChannel({ relay: w.status.url, route: left.route, box: Buffer.from(left.box, "base64url"), keys: strangerKeys, hello: { v: 1, pair: "x".repeat(22) }, crypto: crypt, WebSocket: globalThis.WebSocket }));
+  assert.ok(w.logs.some(l => /relay: refused a hello \(this pairing code has expired or was already used/.test(l)), "the refusal is in the log");
+  // a new owner pairing starts: the leftover is let go
+  const made = await w.call("wink.server.code", { qr: true }, "cli", PROOF);
+  assert.ok(made.data && made.data.qr, JSON.stringify(made.error));
+  assert.equal(await relayHas(w, left.device), false, "the leftover row is gone");
+  assert.ok(w.logs.some(l => /let go of 1 leftover device/.test(l)));
+});
