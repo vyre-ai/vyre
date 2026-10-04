@@ -9,7 +9,7 @@
 import { createGateway } from "./gateway/index.js";
 import { createMemoryStore } from "./store/memory.js";
 import { createEventLog } from "./core/events.js";
-import { createChainBuilder, isExactlyPerson } from "./core/chain.js";
+import { createChainBuilder, isExactlyPerson, isChain } from "./core/chain.js";
 import { createGrantsStore } from "./grants/index.js";
 import { createLimits } from "./core/limits.js";
 import { createTasks } from "./tasks/tasks.js";
@@ -51,15 +51,22 @@ export async function createKernel(cfg) {
   const baseHas = cfg.hasPresenceSession || ((/** @type {any} */ chain) => isExactlyPerson(chain) && Boolean(chain.hops[0].via && chain.hops[0].via.session));
   const hasPresenceSession = (/** @type {any} */ chain) => baseHas(chain) || (standIn() === true && isExactlyPerson(chain) && (standInUse("session"), true));
   const presence0 = cfg.presence || (cfg.sealer ? sealerPresence(cfg.sealer) : undefined);
-  const presence = presence0 && typeof cfg.standIn === "function" ? Object.freeze({ check: async (/** @type {any} */ i) => { if (i && i.proof && i.proof.method === "stand-in" && standIn() === true && isChain(i.chain) && isExactlyPerson(i.chain)) { standInUse(String(i.op)); return null; } return presence0.check(i); } }) : presence0;
+  const presence = typeof cfg.standIn === "function" ? Object.freeze({ check: async (/** @type {any} */ i) => { if (i && i.proof && i.proof.method === "stand-in" && standIn() === true && isChain(i.chain) && isExactlyPerson(i.chain)) { standInUse(String(i.op)); return null; } return presence0 ? presence0.check(i) : "no_presence"; } }) : presence0;
   const grantsStore = own ? undefined : cfg.grantsStore || createGrantsStore({ snapshot_every: cfg.snapshot_every, legacyKeys: cfg.legacyKeys, space: cfg.space, log, chains, seal, clock, presence, label: () => (label ? label() : {}) });
   const limits = createLimits({ space: cfg.space, log, clock });
   let fresh = false, migrated = false;
   if (grantsStore && cfg.bootstrap !== false) { if (log.latestSeq() === 0) { await grantsStore.bootstrap({ owner: cfg.owner }); fresh = true; } else { migrated = (await grantsStore.rebuild()).migrated; limits.rebuild(); } }
+  // The log decides who the owner is (AO-3): an adoption it holds wins over what the home's own file says, a move a crash cut short is finished here, and the file is rewritten from it.
+  if (grantsStore && cfg.bootstrap !== false && typeof grantsStore.adopted === "function" && grantsStore.adopted()) {
+    const ad = /** @type {{ from: string, to: string }} */ (grantsStore.adopted());
+    await grantsStore.adoptOwner(ad.to);
+    if (ownerRef.id !== ad.to) { const from = ownerRef.id; ownerRef.id = ad.to; if (typeof cfg.onOwnerAdopted === "function") await cfg.onOwnerAdopted(ad.to, from); }
+  }
   // A presence session (the person signed in with their passkey on this device) stands for admin acts only for a chain that is exactly one person.
   /** @type {any} */ let gateway;
   const members = grantsStore ? grantsStore.members : cfg.members;
   const tasks = createTasks({
+    canonicalPerson: (/** @type {string} */ id) => (grantsStore ? grantsStore.canonicalPerson(id) : id),
     space: cfg.space, log, chains, clock, presence: presence || { check: async () => "no_presence_verifier" }, members: { has: (/** @type {any} */ a) => members.has(a), roleOf: (/** @type {any} */ a) => (grantsStore ? grantsStore.roleOf(a) : null) },
     authorizer: { authorize: (/** @type {any} */ i) => gateway.authorize(i), get actions() { return gateway.registry; } },
     approver: () => ({ kind: "person", id: ownerRef.id, space: cfg.space }), resolve: cfg.resolve, enforce: (/** @type {any} */ c, /** @type {any} */ d) => limits.enforce(c, d),
@@ -97,7 +104,10 @@ export async function createKernel(cfg) {
     ready.catch(() => {});
     const records = new Proxy(gateway.records, { get: (t, k) => (typeof t[k] === "function" ? async (/** @type {any[]} */ ...a) => { await ready; return t[k](...a); } : t[k]) });
     /** @type {any} */ const handle = {
-      space: cfg.space, get owner() { return ownerRef.id; }, records, events: gateway.events, grants: gateway.grants, tasks: gateway.ask, audit: gateway.audit, authorize: gateway.authorize, limits: gateway.limits,
+      space: cfg.space, get owner() { return ownerRef.id; },
+      /** A person id as the Space knows them now (the owner an adoption replaced is the identity that replaced them): a module that keyed anything by person id reads it through this. */
+      canonicalPerson: (/** @type {string} */ id) => (grantsStore ? grantsStore.canonicalPerson(id) : id),
+      records, events: gateway.events, grants: gateway.grants, tasks: gateway.ask, audit: gateway.audit, authorize: gateway.authorize, limits: gateway.limits,
       model: surfaces.model,
       /** The `{ presence }` option from what a surface sent beside the request (`meta.kernel_proof`), and what that surface must sign for a grants call. The kernel's verifier checks it. */
       /** Any Space by id: this one, another this home hosts, or a remote client with the same gateway API (the chain argument carries no authority across). */
@@ -133,6 +143,7 @@ export async function createKernel(cfg) {
        * person id named; nothing here lists or reaches another Space (`for` and `chainIn` do that, under a chain).
        */
       ...(needs.spaces === true ? { spaces: Object.freeze({
+        retire: async (/** @type {string} */ id) => { if (!spaces) throw new KernelError("unavailable", "this kernel has no Spaces registry"); return spaces.retire(id); },
         storePlan: () => { if (!spaces) throw new KernelError("unavailable", "this kernel has no Spaces registry"); return spaces.storePlan(); },
         host: async (/** @type {{ owner: string, name?: string, accept_builtin_store?: boolean }} */ o) => { if (!spaces) throw new KernelError("unavailable", "this kernel has no Spaces registry"); const h = await spaces.host(o); return { space: h.space || h.id, id: h.space || h.id }; },
       }) } : {}),
@@ -176,19 +187,23 @@ export async function createKernel(cfg) {
     };
     // Only the spaces module (`needs.kernel.spaces: true`) may make or list Spaces: `spaces.create` makes the Space HERE, in the kernel's registry, and the kernel's id (`spc_` and 12 base32
     // characters) is the Space's id everywhere. One registry, one id; the store is attached at that moment (the kernel opens the built-in store for every hosted Space).
+    /** The one adoption path (the handle's call and the boot repair share it). The grants store serialises it and reads the owner it replaces itself, so two callers at once make one adoption. */
+    const adoptNow = async (/** @type {string} */ to) => {
+      const r = await grantsStore.adoptOwner(to);
+      if (r.owner !== ownerRef.id) { const from = ownerRef.id; ownerRef.id = r.owner; if (typeof cfg.onOwnerAdopted === "function") await cfg.onOwnerAdopted(r.owner, from); }
+      return r;
+    };
     if (needs.spaces === true) {
       /** The claimed identity's id becomes the owner's id here (once, logged): the one person of this Space. */
-      handle.adoptOwner = async (/** @type {string} */ to) => {
+      handle.adoptOwner = (/** @type {string} */ to) => {
         if (!grantsStore) throw new KernelError("unavailable", "this kernel has no grants store");
-        const from = ownerRef.id;
-        const r = await grantsStore.adoptOwner(from, to);
-        if (r.changed) { ownerRef.id = to; if (typeof cfg.onOwnerAdopted === "function") await cfg.onOwnerAdopted(to, from); }
-        return r;
+        return adoptNow(to);
       };
 
       const reg = () => { if (!spaces) throw new KernelError("unavailable", "this kernel has no Spaces registry"); return spaces; };
       handle.spaces = Object.freeze({
         host: (/** @type {any} */ o) => reg().host(o),
+        retire: (/** @type {string} */ id) => reg().retire(id),
         storePlan: () => reg().storePlan(),
         list: () => reg().list(),
         hosts: (/** @type {string} */ id) => reg().hosts(id),

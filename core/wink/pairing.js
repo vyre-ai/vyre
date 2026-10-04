@@ -16,6 +16,7 @@
 // The module wiring (index.js) owns the Wink code state machine and hands this file the pieces it needs.
 
 import crypto from "node:crypto";
+import { deviceIdOf } from "../../lib/caller.js";
 import { ROLE_IDS } from "../../kernel/contracts/index.js";
 import { typeWinkCode, finishJoin } from "../../relay/client/join.js";
 import { parseCode, b64url, unb64url } from "../../relay/client/code.js";
@@ -550,6 +551,12 @@ export function createPairing(o) {
     if (typeof ctx.call !== "function") return;
     Promise.resolve(ctx.call("presence.person.end-paired", device ? { device } : {})).catch(() => null);
   };
+  /** The same, awaited: a removal or a reset that cannot end the paired sessions fails instead of leaving them (reviewer-2 PS-2). No presence module (a bare test ctx) is nothing to end. @param {string} [device] */
+  const endPairedNow = async device => {
+    if (typeof ctx.call !== "function") return;
+    const r = /** @type {any} */ (await ctx.call("presence.person.end-paired", device ? { device } : {}));
+    if (r && r.error && r.error.code !== "no_such_tool") throw fail("sessions_not_ended", `the paired sessions could not be ended (${r.error.message || r.error.code}); nothing was removed`);
+  };
   /** A P-256 public key as base64url SPKI DER to the JWK the paired session binds to; null for anything else. @param {unknown} spki */
   const jwkOf = spki => {
     try {
@@ -572,6 +579,9 @@ export function createPairing(o) {
       if (!(g && g.data && g.data.granted)) ctx.log(`wink: no paired session for ${device}: ${g && g.error ? g.error.message : "refused"}`);
     } catch (e) { ctx.log(`wink: no paired session for ${device}: ${/** @type {Error} */ (e).message}`); }
   };
+
+  /** The waiting redeemer of an unconfirmed pairing is `web:<id>` at the relay; it is the device `device:<id>` it will become, so wink compares and records that. @param {string} c */
+  const canonDevice = c => (/^web:[a-z2-7]{16}$/.test(c) ? `device:${c.slice(4)}` : c);
 
   /** Registers this box's own tools. */
   function tools() {
@@ -656,14 +666,31 @@ export function createPairing(o) {
       input: obj({ offer: str, typed: str }, ["offer", "typed"]),
       run: async (input, meta = {}) => { owner(meta, "adding this server"); const r = await o.ack(String(input.offer), String(input.typed)); return r && r.ok ? { ...r, message: words("codeMatched") } : r; },
     });
+    ctx.tool("wink.server.status", {
+      description: "At the server: has it been paired yet? Answers { owned: false } or { owned: true, space, device }: `space` is the name of what it belongs to (a space's name, or Personal for an identity) and `device` the name of the device that paired it, so the installer can say \"Connected to <space>. Finish setting up on your <device>.\" Only this server's own screen or terminal (cli, local, deck, capsule) reads it.",
+      input: obj(),
+      run: async (_, meta0 = {}) => {
+        owner(meta0, "the server's owner");
+        atServer(meta0);
+        const cur = meta.get("owner"), by = String(meta.get("adopter") || "");
+        if (!cur) return { owned: false };
+        const dev = deviceIdOf(by) !== null ? devices.get(/** @type {string} */ (deviceIdOf(by))) : null;
+        return { owned: true, space: await ownerWords({ ...cur, identity: cur.identity }), device: (dev && dev.name) || (cur.name ? String(cur.name) : "device") };
+      },
+    });
     ctx.tool("wink.server.pairing", {
-      description: "At the server: is a device asking to pair this server right now? Answers { asking: false } or { asking: true, name, choices, until, line }: `name` is who is asking, `choices` three sets of three words (one is what the app shows, two are decoys, in an order made fresh for this pairing), and `line` the question to put to the person (answer with wink.server.pair.answer). Only this server's own screen or terminal (the command line, the local console, the deck or the capsule) sees it: never a paired device, the tailnet, the relay, a module, a session, a hook or an agent, and never a model client (mcp or harness).",
+      description: "At the server: is a device asking to pair this server right now? Answers { asking: false } (with { paired: true, owner, device? } once the server has an owner: a name in words) or { asking: true, name, choices, until, line }: `name` is who is asking, `choices` three sets of three words (one is what the app shows, two are decoys, in an order made fresh for this pairing), and `line` the question to put to the person (answer with wink.server.pair.answer). Only this server's own screen or terminal (the command line, the local console, the deck or the capsule) sees it: never a paired device, the tailnet, the relay, a module, a session, a hook or an agent, and never a model client (mcp or harness).",
       input: obj(),
       run: async (_, meta0 = {}) => {
         owner(meta0, "the pairing question");
         atServer(meta0);
         const a = askLive();
-        if (!a || a.state !== "waiting" || !a.words) return { asking: false, ...(meta.get("pair_to") ? { pairTo: meta.get("pair_to") } : {}) };
+        if (!a || a.state !== "waiting" || !a.words) {
+          // Once the server has an owner, say whose it is in words (the installer's closing line, "Connected to <space>"): a name only, never a key or a hand-over.
+          const cur = meta.get("owner");
+          const paired = cur && meta.get("adopter") ? { paired: true, owner: await ownerWords(cur), ...(meta.get("adopter_name") ? { device: meta.get("adopter_name") } : {}) } : {};
+          return { asking: false, ...paired, ...(meta.get("pair_to") ? { pairTo: meta.get("pair_to") } : {}) };
+        }
         return { asking: true, name: a.name, choices: a.choices, until: a.until, line: words("pairAsk", { name: a.name, choices: a.choices }) };
       },
     });
@@ -721,7 +748,14 @@ export function createPairing(o) {
     let ask = null;
     const norm = (/** @type {unknown} */ x) => String(x ?? "").trim().toLowerCase();
     /** The name the person sees for who is asking: the target's own name from the app, else the identity's id. @param {any} input */
-    const askName = (input) => String((input.owner && input.owner.name) || input.identity || (input.owner && input.owner.id) || "someone").replace(/[^\p{L}\p{N} ._@:-]/gu, "").slice(0, 64) || "someone";
+    // The name is the asker's own claim, and a look-alike letter (a Cyrillic "a" in "alex") reads the same, so what the person at the server sees always carries the first characters of the
+    // identity id, which a claim cannot fake (reviewer-3 PA-2). The three words stay the real proof.
+    const askName = (input) => {
+      const claimed = String((input.owner && input.owner.name) || "").replace(/[^\p{L}\p{N} ._@:-]/gu, "").slice(0, 48);
+      const id = String(input.identity || (input.owner && input.owner.id) || "");
+      const tag = id.replace(/^[a-z]+_/, "").replace(/[^A-Za-z0-9]/g, "").slice(0, 6);
+      return claimed ? (tag ? `${claimed} (id ${tag})` : claimed) : (id.replace(/[^\p{L}\p{N} ._@:-]/gu, "").slice(0, 64) || "someone");
+    };
     /**
      * Q-3: an unattended install named one identity (`pairTo`), and completing the pairing needs PROOF that the one asking is that identity, never a claim. Everything the caller
      * supplies about itself (identity, owner.id, owner.name) is a claim and is ignored here. The proof is a signature by a key on that identity's list over this pairing's box and
@@ -830,6 +864,9 @@ export function createPairing(o) {
       const first = !meta.get("owner") || !meta.get("adopter");
       meta.set("owner", { ...t, identity: ident, ...(ownerName ? { name: ownerName } : {}) });
       if (first) meta.set("adopter", caller);
+      // The device's own name for itself, sent in the pairing exchange, so the server can say "Finish setting up on your <device>" (letters, digits, spaces and a few marks only).
+      const dn = input.deviceName ? String(input.deviceName).replace(/[^\p{L}\p{N} ._'-]/gu, "").trim().slice(0, 48) : "";
+      if (first && dn) meta.set("adopter_name", dn);
       if (input.peerSecret && /^[A-Za-z0-9_-]{20,80}$/.test(String(input.peerSecret))) meta.set("peer_secret", String(input.peerSecret));
       const h = cleanHandover(input.handover);
       if (h) meta.set("handover", h);
@@ -838,33 +875,35 @@ export function createPairing(o) {
       ctx.events.emit("wink.server-adopted", { owner: t });
       return { owner: t };
     };
-    const adoptInput = obj({ pairing: obj({ commit: str, reveal: str, tag: str, cancel: { type: "boolean" } }), owner: obj({ kind: { type: "string", enum: ["identity", "space"] }, id: str, name: str }, ["kind", "id"]), identity: str, peerSecret: str, handover: obj({ home: str, box: str, controlUrl: str, authKey: str, relay: str, space: str, device: str }) }, ["owner"]);
+    const adoptInput = obj({ pairing: obj({ commit: str, reveal: str, tag: str, cancel: { type: "boolean" } }), owner: obj({ kind: { type: "string", enum: ["identity", "space"] }, id: str, name: str }, ["kind", "id"]), deviceName: str, identity: str, peerSecret: str, handover: obj({ home: str, box: str, controlUrl: str, authKey: str, relay: str, space: str, device: str }) }, ["owner"]);
     ctx.tool("wink.server.adopt", {
+      callers: ["web"],
       description: "On a server that was just paired: record who it belongs to, an identity or a space { kind, id }, and the identity that paired it. Called by the pairing app over the paired channel. On a server with no owner the person at the server must say yes first (the server shows who asks and three words; no answer in 5 minutes pairs nothing): the call answers { pending, words, until } until then, and call it again to hear the result; a server installed with a named identity (pairTo) takes only that identity and asks no one. After that it cannot be repeated over the paired channel; the person changes the owner on this box with wink.server.retarget (their own presence), and only the one that adopted it, or a screen on this box, may. Answers { owner }.",
       input: adoptInput,
       // No presence gate in front: the platform would turn a stranger away before this ran, and its relay device row would stay on the box.
       // The same rule is kept here: once there is an owner, a change needs the owner's fresh presence (meta0.presence) from the one that adopted it.
       run: async (input, meta0 = {}) => {
         owner(meta0, "adopting a server");
-        const caller = String((meta0 && meta0.caller) || "anonymous");
+        // A scanner whose pairing is not yet confirmed arrives as `web:<id>` (the relay, BR-2); the adopter is recorded, and later compared, as the device it becomes: `device:<id>`.
+        const caller = canonDevice(String((meta0 && meta0.caller) || "anonymous"));
         const prior = meta.get("owner"), adopter = meta.get("adopter");
         if (prior) {
           // Once there is an owner, a change needs the owner's fresh presence, and comes from the one that adopted it or from a screen on this box.
           // A refused device that is not the adopter leaves nothing behind: its relay device goes (after the refusal has been answered).
-          const stranger = caller.startsWith("device:") && adopter !== caller;
+          const stranger = (deviceIdOf(caller) !== null) && adopter !== caller;
           if (stranger) dropLater(caller);
           if (!meta0.presence) throw fail("presence_required", words("serverOwned", { owner: await ownerWords(prior) }));
           if (stranger) throw fail("denied", words("serverOwned", { owner: await ownerWords(prior) }));
         }
-        else if (confirmAdopt && caller.startsWith("device:")) return firstAdopt(input, caller);
+        else if (confirmAdopt && (deviceIdOf(caller) !== null)) return firstAdopt(input, caller);
         return applyAdopt(input, caller);
       },
     });
     /** Takes a paired app's relay device off this box, so it no longer reaches it as an owner device. Waits a moment so the answer to the call that asked still travels. @param {any} caller */
     function dropLater(caller) {
       const c = String(caller || "");
-      if (!c.startsWith("device:") || typeof ctx.call !== "function") return;
-      const id = c.slice(7);
+      if (!(deviceIdOf(c) !== null) || typeof ctx.call !== "function") return;
+      const id = /** @type {string} */ (deviceIdOf(c));
       const go = () => { Promise.resolve(ctx.call("relay.devices.drop", { id })).catch(() => null); };
       const wait = o.dropMs ?? 750;
       if (!wait) { go(); return; }
@@ -874,7 +913,7 @@ export function createPairing(o) {
     /** Clears who owns this server: owner, adopter, the hand-over and the peer secret, and its own row. Its own keys stay. The one that adopted it loses its device here too. */
     const clearOwner = () => {
       const adopter = meta.get("adopter");
-      for (const k of ["owner", "adopter", "handover", "peer_secret"]) meta.del(k);
+      for (const k of ["owner", "adopter", "adopter_name", "handover", "peer_secret"]) meta.del(k);
       dropLater(adopter);
       db.prepare("UPDATE wink_devices SET removed_at = ?, sign_key = NULL WHERE id = 'self' AND removed_at IS NULL").run(now());
       ctx.events.emit("wink.server-released", {});
@@ -887,8 +926,8 @@ export function createPairing(o) {
         owner(meta0, "letting a server go");
         const caller = String((meta0 && meta0.caller) || "anonymous");
         // an unowned server answers `already` to a paired device only: a stranger who can reach it must not learn that it is unowned (reviewer-3, LOW)
-        if (!meta.get("owner")) { if (!caller.startsWith("device:")) throw fail("denied", "Only a device paired to this server may ask it to let go."); return { released: true, already: true }; }
-        if (!caller.startsWith("device:") || meta.get("adopter") !== caller) throw fail("denied", words("releaseDenied", { owner: await ownerWords(meta.get("owner")) }));
+        if (!meta.get("owner")) { if (!(deviceIdOf(caller) !== null)) throw fail("denied", "Only a device paired to this server may ask it to let go."); return { released: true, already: true }; }
+        if (!(deviceIdOf(caller) !== null) || meta.get("adopter") !== caller) throw fail("denied", words("releaseDenied", { owner: await ownerWords(meta.get("owner")) }));
         clearOwner();
         return { released: true };
       },
@@ -921,7 +960,7 @@ export function createPairing(o) {
         owner(meta0, "changing a server's owner");
         const caller = String(meta0.caller || "anonymous");
         if (!meta0.presence) throw fail("presence_required", "changing a server's owner needs the owner's presence on this box");
-        if (caller.startsWith("device:") && meta.get("adopter") !== caller) throw fail("denied", "only the one that adopted this server may change its owner");
+        if ((deviceIdOf(caller) !== null) && meta.get("adopter") !== caller) throw fail("denied", "only the one that adopted this server may change its owner");
         return applyAdopt(input, caller);
       },
     });
@@ -1053,12 +1092,13 @@ export function createPairing(o) {
       },
     });
     ctx.tool("wink.phone.wait", {
+      callers: ["web"],
       description: "From the phone that scanned the QR, over its own paired connection: where the question stands, and the way the three words are made. The phone sends `commit` (the hash of its fresh nonce) and its own `name`, hears this computer's nonce `nb`, then sends `reveal` (its nonce); the words appear only then. Answers { state: waiting | yes | no | expired, nb, words?, until }. Only that phone gets an answer.",
       input: obj({ commit: str, reveal: str, tag: str, name: str }),
       run: async (input, meta = {}) => {
         owner(meta, "the phone's wait");
         const a = phoneLive();
-        if (!a || String((meta && meta.caller) || "") !== `device:${a.device}`) throw fail("denied", words("phoneNotYours"));
+        if (!a || canonDevice(String((meta && meta.caller) || "")) !== `device:${a.device}`) throw fail("denied", words("phoneNotYours"));
         const i = input || {};
         if (!a.named && i.name) { const n = cleanPhoneName(i.name); if (n) a.name = n; a.named = true; }
         if (a.state === "waiting" && !a.words) {
@@ -1106,7 +1146,7 @@ export function createPairing(o) {
 
   /** Lets a waiting pairing go: the relay closes its channels and forgets it (relay.devices.drop answers for a device that never existed). @param {string} device */
   const dropPending = async device => { if (typeof ctx.call === "function") await ctx.call("relay.devices.drop", { id: String(device) }); };
-  return { devices, targets, checkTarget, phone, computeAllowed, compute, dropPending, tools: () => { tools(); startRetries(); }, startTyping, pending, peers, meta, clearOwner: () => clearOwnerHook(), releaseServer, retryReleases, stop, ownHandover: () => ownHandover() };
+  return { devices, endPairedNow, targets, checkTarget, phone, computeAllowed, compute, dropPending, tools: () => { tools(); startRetries(); }, startTyping, pending, peers, meta, clearOwner: () => clearOwnerHook(), releaseServer, retryReleases, stop, ownHandover: () => ownHandover() };
 }
 
 /** The QR a computer shows for a phone: the code and where to meet. @param {string} code @param {string} relay */
@@ -1177,4 +1217,19 @@ export function ownDirectory(o) {
     async memberships(identity) { return identity === await o.identity() ? [{ space: await o.space(), name: o.name(), role: "owner" }] : []; },
     async label() { return null; },
   };
+}
+
+/**
+ * The line a person reads for who is asking to pair (PA-2): the asker's NAME is a claim, so it is never alone. The identity id's first characters stand beside it, and a name that mixes scripts
+ * (a Cyrillic letter in `alex`) is shown as the id alone, so a look-alike cannot pass for the person's own name. The words check stays the real proof.
+ * @param {any} input
+ */
+export function askNameOf(input) {
+  const raw = String((input && input.owner && input.owner.name) || (input && input.identity) || (input && input.owner && input.owner.id) || "someone");
+  const clean = raw.replace(/[^\p{L}\p{N} ._@:-]/gu, "").slice(0, 64) || "someone";
+  const id = String((input && input.owner && input.owner.id) || (input && input.identity) || "");
+  const short = /^per_[a-z2-7]{26}$/.test(id) ? id.slice(0, 10) : "";
+  const scripts = new Set(["Latin", "Cyrillic", "Greek", "Armenian", "Hebrew", "Arabic", "Han", "Hangul", "Hiragana", "Katakana"].filter(sc => new RegExp(`\\p{Script=${sc}}`, "u").test(clean)));
+  if (scripts.size > 1) return short ? short : "someone";
+  return short && clean !== id ? `${clean} (${short})` : clean;
 }

@@ -58,7 +58,7 @@ test("a paid checkout finds or creates the contact and the matter through the ki
   assert.deepEqual(r.body.steps.map((s) => s.id), ["client", "matter"]);
   const contacts = (await q(store, "contact")).rows, matters = (await q(store, "matter")).rows;
   assert.equal(contacts.length, 1); assert.equal(matters.length, 1);
-  assert.equal(contacts[0].data.full_name, "Sam Rivera");
+  assert.equal(contacts[0].data.name, "Sam Rivera");
   assert.equal(contacts[0].data.email, "sam@example.test");
   assert.equal(contacts[0].data.stripe_customer, "cus_test_1");
   assert.equal(matters[0].data.title, "Estate plan for Sam Rivera");

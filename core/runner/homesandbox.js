@@ -15,10 +15,11 @@ import fs from "node:fs";
 import path from "node:path";
 import net from "node:net";
 import os from "node:os";
-import { spawn } from "node:child_process";
-import { launch } from "./sandbox.js";
+import crypto from "node:crypto";
+import { spawn, spawnSync } from "node:child_process";
+import { launch, sshCommand, fakePasswd } from "./sandbox.js";
 import { filter as seccompFilter } from "./seccomp.js";
-import { SHIM } from "./sandbox.js";
+import { SHIM, PROXYCMD } from "./sandbox.js";
 
 const real = p => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
 const q = s => JSON.stringify(String(s));
@@ -37,8 +38,9 @@ const SECRET_DIRS = [".ssh", ".aws", ".gnupg", ".kube", ".docker", ".netrc", ".g
  * @property {string[]} [workdirs] folders the session may read and write (the project)
  * @property {{ command: string, args?: string[], private?: { from: string, env: string, credentialFiles: string[] }, hosts?: string[], versionArgs?: string[] }} [agent]  the provider's agent. `private` is REQUIRED: each session gets its OWN config folder holding only the credential files, seeded from the person's real folder `from` (which is never bound), through the env var the provider reads (CLAUDE_CONFIG_DIR). A provider without it does not start sandboxed. `hosts` are what it needs to reach, `versionArgs` make it print its version
  * @property {string} [temp]  the session's own temp folder (read-write)
+ * @property {number[]} [daemonPorts]  the daemon's own TCP ports: refused on every address (macOS)
  * @property {string[]} [passEnv]  names of environment variables the caller deliberately passes through (a credential the agent needs); everything else not on the allow-list is dropped
- * @property {{ socket?: string, port?: number, token?: string }} [proxy] Linux: the egress proxy the provider is reached through (a CONNECT tunnel to the agent's hosts only; the token is its password)
+ * @property {{ socket?: string, port?: number, token?: string }} [proxy] macOS: a loopback port, the only network the profile allows; Linux: the egress proxy the provider is reached through (a CONNECT tunnel to the agent's hosts only; the token is its password)
  */
 
 /** What a session's environment may hold: the basics, Vyre's own thread variables, and only the credential names the caller lists. No token by default. */
@@ -98,6 +100,7 @@ const allowed = o => [...new Set([...(o.workdirs || []), ...(o.temp ? [o.temp] :
 /** What the session may WRITE: its project, its temp folder and its private config (inside temp). Nothing else on the disk is writable. @param {HomeOpts} o */
 const writable = o => [...new Set([...(o.workdirs || []), ...(o.temp ? [o.temp] : [])].map(real))];
 /** This machine's own non-loopback addresses: a daemon port bound to all interfaces is reachable on them, and "localhost" does not cover them (reviewer-2 ES-2). */
+const ownV6 = () => Object.values(os.networkInterfaces()).flat().filter(a => a && !a.internal && a.family === "IPv6").map(a => a.address.replace(/%.*$/, ""));
 const lanAddrs = () => Object.values(os.networkInterfaces()).flat().filter(a => a && !a.internal && a.family === "IPv4").map(a => a.address);
 const ancestors = p => { const out = []; for (let d = path.dirname(p); d !== path.dirname(d); d = path.dirname(d)) out.push(d); return out; };
 
@@ -112,24 +115,41 @@ export function homeSeatbelt(o) {
     "(version 1)", "(allow default)",
     // Nothing on the disk is writable except what is allowed back below (reviewer-2 ES-1): a user-owned /opt/homebrew, /usr/local, a bundle in
     // /Applications or /private/tmp would otherwise let a session plant a tool that later runs outside the sandbox.
-    "(deny file-write*)", '(allow file-write* (subpath "/dev"))',
+    "(deny file-write*)", '(allow file-write* (literal "/dev/null") (literal "/dev/zero") (literal "/dev/random") (literal "/dev/urandom") (literal "/dev/dtracehelper") (literal "/dev/tty") (subpath "/dev/fd"))',
     // The home folder and the places other people's and external files live are denied whole; the Vyre home and secret folders are inside them.
     ...[...new Set([h, v, "/Users", "/Volumes"])].map(d => `(deny file* (subpath ${q(d)}))`),
     ...SECRET_DIRS.map(d => `(deny file* (subpath ${q(path.join(h, d))}))`),
+    // The network is closed (reviewer-2, Mac gap 3): the only way out is the runner's egress proxy on one loopback port (public addresses only, the same decision as on Linux),
+    // allowed back at the end. Seatbelt cannot name hosts, so without the proxy a session would reach the whole internet and every LAN device.
+    "(deny network-outbound)",
+    // The person's per-user temp and cache folders and /private/tmp hold other apps' scratch files and caches: unreadable, the session's own folders allowed back below.
+    ...["/private/var/folders", "/private/tmp"].map(d => `(deny file-read* (subpath ${q(d)}))`),
     // Every unix socket and every loopback connection is refused...
     "(deny network-outbound (remote unix-socket))",
     '(deny network-outbound (remote ip "localhost:*"))',
-    ...lanAddrs().map(a => `(deny network-outbound (remote ip "${a}:*"))`),
+    // The daemon's ports are denied on EVERY address directly (an address that appears later, a VPN or a Wi-Fi change, is covered too); the address list is a second layer.
+    ...(o.daemonPorts || []).map(p => `(deny network-outbound (remote ip "*:${Number(p)}"))`),
+    // (No rule per LAN address: seatbelt accepts only "*" or "localhost" as the host of a network address, so "(remote ip \"192.168.64.4:*\")" is a
+    // profile error and nothing starts; measured on a hosted Mac, run 37162622014. The port rule above is what covers every address.)
     // ...then the session gets back only what it needs (these come last, so they win).
-    ...writable(o).map(d => `(allow file* (subpath ${q(d)}))`),
+    // The blanket `(deny file-write*)` above is not overridden by a later `(allow file* ...)` on macOS 14 (hosted run 37167578152: variant A failed, the same rule with the
+    // write operations named, F, passed), so each writable folder gets its write operations spelled out as well.
+    ...writable(o).flatMap(d => [`(allow file* (subpath ${q(d)}))`, `(allow file-write-create file-write-data file-write-unlink file-write-mode file-write-flags file-write-times file-write-xattr (subpath ${q(d)}))`]),
     ...ok.filter(d => !writable(o).includes(d)).map(d => `(allow file-read* (subpath ${q(d)}))`),
     ...[...new Set(ok.flatMap(ancestors))].map(d => `(allow file-read-metadata (literal ${q(d)}))`),
     // The protected places are denied AGAIN after the allows, so no allowed folder can re-open them.
     ...[v, ...SECRET_DIRS.map(d => path.join(h, d))].map(d => `(deny file* (subpath ${q(d)}))`),
+    // (Name lookup stays allowed here, unlike the lent profile: a home session reaches its provider by name, and without the DNS services the real claude
+    // cannot resolve api.anthropic.com. Hosted Mac run 37165284079, ENOTFOUND.)
     // The way into other processes of the same user: their arguments and environment, signals, and the services that hold the
     // pasteboard, the keychain, Apple events and the window server (the same list the lent-computer profile denies).
     "(deny signal)", "(allow signal (target self) (target children))", "(deny process-info* (target others))", '(deny sysctl-read (sysctl-name "kern.procargs2"))',
-    '(deny mach-lookup (global-name "com.apple.dnssd.service") (global-name "com.apple.SystemConfiguration.DNSConfiguration") (global-name "com.apple.coreservices.appleevents") (global-name "com.apple.pasteboard.1") (global-name "com.apple.SecurityServer") (global-name "com.apple.securityd.xpc") (global-name "com.apple.secd") (global-name "com.apple.windowserver.active") (global-name "com.apple.lsd.open") (global-name "com.apple.coreservices.launchservicesd"))',
+    '(deny mach-lookup (global-name "com.apple.coreservices.appleevents") (global-name "com.apple.pasteboard.1") (global-name "com.apple.SecurityServer") (global-name "com.apple.securityd.xpc") (global-name "com.apple.secd") (global-name "com.apple.windowserver.active") (global-name "com.apple.lsd.open") (global-name "com.apple.coreservices.launchservicesd"))',
+    // launchd: `launchctl submit` or `bootstrap` asks launchd to run a job, and a launchd job is NOT inside this profile (it could write anywhere the user can). The preferences daemon
+    // answers reads of other apps' preferences past the file rules. Denied by name and by prefix, and proved by running them (the self-test).
+    '(deny mach-lookup (global-name-prefix "com.apple.xpc.launchd") (global-name "com.apple.cfprefsd.daemon") (global-name "com.apple.cfprefsd.agent") (global-name "com.apple.cfprefsd.xpc.daemon"))',
+    '(deny process-exec (literal "/bin/launchctl"))',
+    ...(o.proxy && o.proxy.port ? [`(allow network-outbound (remote ip "localhost:${Number(o.proxy.port)}"))`] : []),
     `(allow network-outbound (remote unix-socket (path-literal ${q(sock)})))`,
     `(allow file-read-metadata (literal ${q(sock)}))`,
   ].join("\n") + "\n";
@@ -144,7 +164,9 @@ function planDarwin(o) {
   const t = o.temp ? real(o.temp) : null;
   const redirects = t ? { TMPDIR: path.join(t, "tmp"), XDG_CACHE_HOME: path.join(t, "cache"), npm_config_cache: path.join(t, "npm"), PIP_CACHE_DIR: path.join(t, "pip"), HOMEBREW_CACHE: path.join(t, "brew"), CARGO_HOME: path.join(t, "cargo"), GOCACHE: path.join(t, "gocache") } : {};
   for (const d of Object.values(redirects)) { try { fs.mkdirSync(d, { recursive: true }); } catch {} }
-  const env = { ...homeEnv(o.env, o.passEnv), ...(dd ? { DEVELOPER_DIR: dd } : {}), ...redirects, ...(cfg ? cfg.env : {}), VYRE_SOCKET: o.sessionSocket };
+  const px = o.proxy && o.proxy.port ? `http://vyre:${o.proxy.token || ""}@127.0.0.1:${o.proxy.port}` : null;
+  const proxyEnv = px ? { HTTPS_PROXY: px, HTTP_PROXY: px, https_proxy: px, http_proxy: px, NO_PROXY: "", GIT_SSH_COMMAND: sshCommand(`127.0.0.1:${o.proxy.port}`, o.proxy.token || "", PROXYCMD) } : {};
+  const env = { ...homeEnv(o.env, o.passEnv), ...(dd ? { DEVELOPER_DIR: dd } : {}), ...redirects, ...(cfg ? cfg.env : {}), ...proxyEnv, VYRE_SOCKET: o.sessionSocket };
   return { argv: ["/usr/bin/sandbox-exec", "-p", homeSeatbelt(o), o.command, ...(o.args || [])], env: { ...env, HOME: o.home }, cwd: o.workdirs?.[0], cleanup() {}, profile: homeSeatbelt(o), fd3: undefined, socket: o.sessionSocket };
 }
 
@@ -156,19 +178,19 @@ function planLinux(o) {
   const sc = seccompFilter(); if (!sc) throw new Error(`no seccomp filter for this CPU (${process.arch}): a session is not started without one`);
   const ro = [...new Set(o.readOnly || [])].map(real);
   const rw = [...new Set([...(o.workdirs || []), ...(o.temp ? [o.temp] : []), ...(cfg ? [cfg.dir] : [])])].map(d => { try { fs.mkdirSync(d, { recursive: true }); } catch {} return real(d); });
-  const env = { ...homeEnv(o.env, o.passEnv), ...(cfg ? cfg.env : {}), VYRE_SOCKET: sock, HOME: h, PATH: "/usr/local/bin:/usr/bin:/bin", ...(o.proxy ? { HTTPS_PROXY: `http://vyre:${o.proxy.token || ""}@127.0.0.1:${inner}`, HTTP_PROXY: `http://vyre:${o.proxy.token || ""}@127.0.0.1:${inner}`, NO_PROXY: "" } : {}) };
+  const env = { ...homeEnv(o.env, o.passEnv), ...(cfg ? cfg.env : {}), VYRE_SOCKET: sock, HOME: h, PATH: "/usr/local/bin:/usr/bin:/bin", ...(o.proxy ? { HTTPS_PROXY: `http://vyre:${o.proxy.token || ""}@127.0.0.1:${inner}`, HTTP_PROXY: `http://vyre:${o.proxy.token || ""}@127.0.0.1:${inner}`, NO_PROXY: "", GIT_SSH_COMMAND: sshCommand(`127.0.0.1:${inner}`, o.proxy.token || "", "/opt/vyre-proxycmd.js") } : {}) };
   const argv = [
     "bwrap", "--seccomp", "3", "--die-with-parent", "--new-session", "--unshare-all", "--unshare-user", "--cap-drop", "ALL", "--disable-userns", "--clearenv",
     "--ro-bind", "/usr", "/usr", "--symlink", "usr/bin", "/bin", "--symlink", "usr/lib", "/lib", "--symlink", "usr/lib64", "/lib64",
     "--ro-bind-try", "/etc/ssl", "/etc/ssl", "--ro-bind-try", "/etc/alternatives", "/etc/alternatives", "--ro-bind-try", "/etc/resolv.conf", "/etc/resolv.conf",
-    "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/run", "--tmpfs", "/tmp",
+    "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/run", "--tmpfs", "/tmp", "--ro-bind", fakePasswd(h), "/etc/passwd",
     // The home is a fresh empty folder first; then the read-only tools (they may live under the home), the project, the settings and the temp folder come back.
     "--tmpfs", h,
     ...ro.flatMap(d => ["--ro-bind", d, d]),
     ...rw.flatMap(d => ["--bind", d, d]),
     ...(o.workdirs?.[0] ? ["--chdir", real(o.workdirs[0])] : []),
     ...(fs.existsSync(o.sessionSocket) ? ["--bind", real(o.sessionSocket), sock] : []),
-    ...(o.proxy?.socket ? ["--ro-bind", o.proxy.socket, "/run/egress.sock", "--ro-bind", SHIM, "/opt/vyre-shim.js"] : []),
+    ...(o.proxy?.socket ? ["--ro-bind", o.proxy.socket, "/run/egress.sock", "--ro-bind", SHIM, "/opt/vyre-shim.js", "--ro-bind", PROXYCMD, "/opt/vyre-proxycmd.js"] : []),
     ...Object.entries(env).flatMap(([k, val]) => ["--setenv", k, val]),
     ...(o.proxy?.socket ? [process.execPath, "/opt/vyre-shim.js", "--listen", String(inner), "--to", "/run/egress.sock", "--"] : []),
     o.command, ...(o.args || []),
@@ -203,11 +225,15 @@ const conn=(t)=>new Promise(res=>{const s=typeof t==="number"?net.connect(t,"127
  // The connects run together: a refusal is instant, and a connect that would succeed does so at once, so a short timeout loses nothing.
  const [a,b,c,...ports]=await Promise.all([conn(P.personSocket),conn(P.otherSocket),conn(P.ownSocket),...P.daemonPorts.map(conn)]);
  out.personSocket=a;out.otherSocket=b;out.ownSocket=c;out.daemonPorts=ports;
- out.writes=[];for(const d of P.writable){try{fs.mkdirSync(d,{recursive:true});const f=d+"/.vyre-selftest";fs.writeFileSync(f,"x");fs.readFileSync(f);fs.rmSync(f);out.writes.push("ok")}catch(e){out.writes.push(e.code||"error")}}
+ out.writes=[];for(const d of P.writable){try{fs.mkdirSync(d,{recursive:true});const f=d+"/.vyre-selftest";fs.writeFileSync(f,"x");fs.readFileSync(f);fs.rmSync(f);out.writes.push("ok")}catch(e){out.writes.push(e.code||"error");(out.writeDetail=out.writeDetail||[]).push([e.code,e.syscall,e.path].join(" "))}}
  out.hosts=[];for(const h of P.hosts){const [host,port]=h.split(":");if(P.proxyPort){out.hosts.push(await new Promise(res=>{const s=net.connect(P.proxyPort,"127.0.0.1");let d=false,b="";const f=v=>{if(!d){d=true;try{s.destroy()}catch{}res(v)}};s.on("connect",()=>s.write("CONNECT "+host+":"+(port||443)+" HTTP/1.1\\r\\nHost: "+host+"\\r\\nProxy-Authorization: Basic "+Buffer.from("vyre:"+P.proxyToken).toString("base64")+"\\r\\n\\r\\n"));s.on("data",x=>{b+=x;if(b.includes("\\r\\n"))f(/ 200 /.test(b.split("\\r\\n")[0])?"connected":"refused")});s.on("error",e=>f(e.code||"error"));setTimeout(()=>f("timeout"),4000)}));continue}out.hosts.push(await new Promise(res=>{const s=net.connect(Number(port||443),host);let d=false;const f=v=>{if(!d){d=true;try{s.destroy()}catch{}res(v)}};s.on("connect",()=>f("connected"));s.on("error",e=>f(e.code||"error"));setTimeout(()=>f("timeout"),4000)}))}
  out.noWrite=[];for(const d of (P.mustNotWrite||[])){try{fs.writeFileSync(d+"/.vyre-write-probe","x");fs.rmSync(d+"/.vyre-write-probe",{force:true});out.noWrite.push("WROTE")}catch(e){out.noWrite.push(e.code||"error")}}
  out.addrs=[];for(const [a,p] of (P.addrPorts||[])){out.addrs.push(await new Promise(res=>{const s=net.connect(p,a);let d=false;const f=v=>{if(!d){d=true;try{s.destroy()}catch{}res(v)}};s.on("connect",()=>f("connected"));s.on("error",e=>f(e.code||"error"));setTimeout(()=>f("timeout"),800)}))}
  if(P.daemonPid){try{process.kill(P.daemonPid,"SIGCONT");out.signal="ok"}catch(e){out.signal=e.code}try{const r=require("child_process").execFileSync("/bin/ps",["eww","-p",String(P.daemonPid)],{encoding:"utf8",stdio:["ignore","pipe","ignore"]});out.psEnv=r.includes(String(P.daemonPid))?"READ":"empty"}catch(e){out.psEnv="refused"}}
+ if(P.launchLabel){const cp=require("child_process");try{cp.execFileSync("/bin/launchctl",["submit","-l",P.launchLabel,"--","/usr/bin/touch",P.launchMarker],{stdio:"ignore"});out.launchctl="submitted"}catch(e){out.launchctl="refused"}
+  try{const r=cp.execFileSync("/usr/bin/defaults",["read","com.apple.dock"],{encoding:"utf8",stdio:["ignore","pipe","ignore"]});out.defaults=r.length>10?"READ":"empty"}catch(e){out.defaults="refused"}}
+ if(P.hostTmp){try{fs.readFileSync(P.hostTmp);out.hostTmp="READ"}catch(e){out.hostTmp=e.code}}
+ if(P.direct){out.direct=await new Promise(res=>{const s=net.connect(443,P.direct);let d=false;const f=v=>{if(!d){d=true;try{s.destroy()}catch{}res(v)}};s.on("connect",()=>f("connected"));s.on("error",e=>f(e.code||"error"));setTimeout(()=>f("timeout"),2500)})}
  try{fs.readFileSync(P.homeFile);out.homeFile="READ"}catch(e){out.homeFile=e.code}
  try{fs.readFileSync(P.keyFile);out.keyFile="READ"}catch(e){out.keyFile=e.code}
  try{fs.readdirSync(P.vyreHome);out.vyreHome="LISTED"}catch(e){out.vyreHome=e.code}
@@ -249,6 +275,7 @@ export async function selfTest(o) {
   const old = await stale(o);
   const staleMs = Date.now() - ts;
   if (old.length) return { ok: false, failures: ["the self-test is stale: " + old.join("; ")], results: null };
+  o = { ...o, daemonPorts: o.probes.daemonPorts };
   const base = planHome({ ...o, command: node, args: [], readOnly: [...(o.readOnly || []), path.dirname(node)] });
   // The session reaches its socket at the path the sandbox gives it (VYRE_SOCKET), which is not the host path on Linux.
   // Folders a session must NOT be able to write, but this user can: the probe means something only where the writer really could (checked from outside).
@@ -256,8 +283,14 @@ export async function selfTest(o) {
   const mustNotWrite = [...new Set([...(o.probes.mustNotWrite || []), ...(o.platform === "darwin" ? [path.dirname(process.execPath), "/private/tmp", "/usr/local/bin", "/opt/homebrew/bin", "/Applications"] : [])])].filter(d => fs.existsSync(d) && writableByUser(d) && !(o.workdirs || []).some(w => real(w).startsWith(real(d))) && !(o.temp && real(o.temp).startsWith(real(d))));
   // The daemon's ports on every address a machine has: loopback, ::1 and the LAN address. Only the ones the host itself can reach are probed.
   const addrPorts = [];
-  for (const port of o.probes.daemonPorts) for (const a of ["::1", ...lanAddrs()]) if (await hostConnectAddr(a, port)) addrPorts.push([a, port]);
-  const probes = { ...o.probes, mustNotWrite, addrPorts, ownSocket: base.socket, vyreHome: o.vyreHome || path.join(o.home, ".vyre"), writable: [...(o.temp ? [o.temp] : []), ...(o.workdirs || [])], hosts: o.agent?.hosts || [], proxyPort: o.platform === "linux" && o.proxy ? 18443 : 0, proxyToken: o.proxy?.token || "" };
+  for (const port of o.probes.daemonPorts) for (const a of ["::1", ...lanAddrs(), ...ownV6()]) if (await hostConnectAddr(a, port)) addrPorts.push([a, port]);
+  // macOS: what the profile must keep closed although its text could be wrong (reviewer-2): a launchd job started from inside, another app's preferences through the preferences daemon,
+  // the person's per-user temp, and a direct connection to the internet. Each is tried from inside, never read off the profile text.
+  const rnd = crypto.randomBytes(4).toString("hex");
+  const hostTmpProbe = o.platform === "darwin" ? path.join(os.tmpdir(), `vyre-hosttmp-${rnd}`) : "";
+  const launchLabel = o.platform === "darwin" ? `vyre.selftest.${rnd}` : "", launchMarker = o.platform === "darwin" ? `/private/tmp/vyre-escape-${rnd}` : "";
+  if (hostTmpProbe) fs.writeFileSync(hostTmpProbe, "host temp");
+  const probes = { ...o.probes, mustNotWrite, addrPorts, direct: o.platform === "darwin" ? "1.1.1.1" : "", ownSocket: base.socket, vyreHome: o.vyreHome || path.join(o.home, ".vyre"), writable: [...(o.temp ? [o.temp] : []), ...(o.workdirs || [])], hosts: o.agent?.hosts || [], proxyPort: o.platform === "linux" && o.proxy ? 18443 : (o.platform === "darwin" && o.proxy?.port ? o.proxy.port : 0), hostTmp: o.platform === "darwin" ? hostTmpProbe : "", launchLabel: o.platform === "darwin" ? launchLabel : "", launchMarker: o.platform === "darwin" ? launchMarker : "", proxyToken: o.proxy?.token || "" };
   const p = planHome({ ...o, command: node, args: ["-e", PROBE, JSON.stringify(probes)], readOnly: [...(o.readOnly || []), path.dirname(node)] });
   // The agent check and the probes run at the same time; the stale check ran first because a stale probe makes the rest meaningless.
   const t0 = Date.now();
@@ -274,7 +307,19 @@ export async function selfTest(o) {
   const agent = await agentCheck;
   const probeMs = Date.now() - t0;
   let res; try { res = JSON.parse(out.trim().split("\n").pop() || ""); } catch { return { ok: false, failures: ["the self-test did not run: " + err.trim().slice(0, 200)], results: null }; }
+  if (hostTmpProbe) fs.rmSync(hostTmpProbe, { force: true });
+  let escaped = false;
+  if (launchLabel) {
+    if (res.launchctl === "submitted") await new Promise(r => setTimeout(r, 2500));   // a job that was really started has time to run
+    escaped = fs.existsSync(launchMarker);
+    try { spawnSync("/bin/launchctl", ["remove", launchLabel], { stdio: "ignore" }); } catch {}
+    fs.rmSync(launchMarker, { force: true });
+  }
   const failures = [];
+  if (escaped) failures.push("a launchd job started from inside the session ran outside the sandbox");
+  if (res.defaults === "READ") failures.push("the session can read another app's preferences through the preferences daemon");
+  if (res.hostTmp === "READ") failures.push("the person's per-user temp folder can be read");
+  if (res.direct === "connected") failures.push("the session reaches the internet directly, not through the proxy");
   if (res.personSocket === "connected") failures.push("the person's own socket is reachable");
   if (res.otherSocket === "connected") failures.push("another session's socket is reachable");
   res.daemonPorts.forEach((r, i) => { if (r === "connected") failures.push(`the daemon's loopback port ${o.probes.daemonPorts[i]} is reachable`); });
@@ -287,7 +332,7 @@ export async function selfTest(o) {
   if (res.vyreHome === "LISTED") failures.push("the Vyre home can be listed");
   if (res.ownSocket !== "connected") failures.push(`the session's own socket does not work (${res.ownSocket})`);
   // The other half of the proof: the provider's agent can still start and sign in.
-  (res.writes || []).forEach((w, i) => { if (w !== "ok") failures.push(`the agent cannot use ${probes.writable[i]} (${w})`); });
+  (res.writes || []).forEach((w, i) => { if (w !== "ok") failures.push(`the agent cannot use ${probes.writable[i]} (${w}${res.writeDetail?.[i] ? ": " + res.writeDetail[i] : ""})`); });
   (res.hosts || []).forEach((h, i) => { if (h !== "connected") failures.push(`the agent cannot reach ${probes.hosts[i]} (${h})`); });
   if (agent && agent.code !== 0) failures.push(`the agent does not start inside the sandbox (exit ${agent.code}${agent.e2 ? ": " + agent.e2.trim().slice(0, 120) : ""})`);
   return { ok: failures.length === 0, failures, results: res, timings: { staleMs, probeMs } };

@@ -4,7 +4,7 @@
 // on the fake Workers runtime the Worker's own tests use (relay/worker/fake-cf.js): in-memory Durable Object storage, a fake DNS zone (nothing is published anywhere),
 // a fake DNS-over-HTTPS (own-domain aliases read their TXT from a file you control, below), and a request clock that is the real one. State lives as long as this process.
 //
-//   node scripts/standin-directory.mjs [--port 8787] [--host 127.0.0.1] [--zone vyre.test] [--txt-file ./txt.json] [--app-origins "https://app.vyre.run,http://localhost:5173"]
+//   node scripts/standin-directory.mjs [--port 8787] [--host 127.0.0.1] [--zone vyre.test] [--txt-file ./txt.json] [--app-origins "https://app.vyre.run,http://localhost:5173"] [--claims-per-ip 5]
 //
 // A box points at it with ONE config line (the home's config.json, or `vyre config set`):  "names": { "directory": "http://127.0.0.1:8787" }
 // The client refuses to talk to a non-loopback http directory from a test process, so for a walk on two machines run this on the box that hosts the stand-ins and give the
@@ -22,10 +22,12 @@ const PORT = Number(arg("port", "8787")), HOST = arg("host", "127.0.0.1"), ZONE 
 // The Vyre app's browser origins allowed to claim and update identities (the identity's own signature authenticates; CORS for resolve is open to any origin, as in the real worker).
 // Default: the real app, and the dev servers the web app uses on a test box. `--app-origins "https://a.example,http://localhost:5173"` replaces them.
 const APP_ORIGINS = arg("app-origins", "https://app.vyre.run,http://localhost:5173,http://127.0.0.1:5173,http://localhost:8081,http://localhost:3000");
+// The daily claim limit per address (the live directory's is 5). A test box that walks many installs from one address raises it here: `--claims-per-ip 50`.
+const CLAIMS_PER_IP_PER_DAY = arg("claims-per-ip", "5");
 const dns = fakeDns();
 const rt = createRuntime({
   worker, Class: W.Directory, classes: { DIRECTORY: W.Directory },
-  env: { APP_ORIGINS, CF_API_TOKEN: dns.token, CF_ZONE_ID: dns.zoneId, CF_API: dns.api, CF_FETCH: dns.fetch, ZONE, ORIGIN: `http://${HOST}:${PORT}`,
+  env: { APP_ORIGINS, CLAIMS_PER_IP_PER_DAY, CF_API_TOKEN: dns.token, CF_ZONE_ID: dns.zoneId, CF_API: dns.api, CF_FETCH: dns.fetch, ZONE, ORIGIN: `http://${HOST}:${PORT}`,
     RESOLVE_TXT: async (/** @type {string} */ name) => { try { return (JSON.parse(fs.readFileSync(TXT, "utf8"))[name] || []).map(String); } catch { return []; } } },
 });
 

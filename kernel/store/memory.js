@@ -7,7 +7,7 @@ import { checkValue } from "./values.js";
 import { page, aggregate as agg, fieldOf } from "./query.js";
 
 /** The conformance suite revision this store last passed. Bump with the suite. */
-export const CONFORMANCE_REVISION = 4;
+export const CONFORMANCE_REVISION = 5;
 
 const clone = (/** @type {any} */ v) => structuredClone(v);
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
@@ -16,7 +16,7 @@ const fail = (/** @type {string} */ code, /** @type {string} */ message) => Obje
  * One type's rows. The reference store keeps them in a Map; a durable store (kernel/store/sqlite.js) pages them from its database behind a small LRU, so the rows it holds in
  * memory are the hot ones, not all of them. `candidates` and `searchCandidates` may return a SUPERSET of what a query or a search needs (the database narrows by an equality
  * filter or a word); the same code then applies the exact rules, so an answer is the same either way.
- * @typedef {{ get(id: string): any, has(id: string): boolean, set(id: string, r: any): void, values(): Iterable<any>, candidates(spec: any): Iterable<any>, searchCandidates(words: string[]): Iterable<any> }} Table
+ * @typedef {{ get(id: string): any, has(id: string): boolean, set(id: string, r: any): void, values(): Iterable<any>, searchTop?(words: string[], n: number, after?: { score: number, id: string }): Iterable<any> | null, pageQuery?(spec: any): any, aggregateQuery?(spec: any): any, candidates(spec: any): Iterable<any>, searchCandidates(words: string[]): Iterable<any> }} Table
  */
 /** @returns {Table} */
 function mapTable() {
@@ -148,6 +148,9 @@ export function createMemoryStore(cfg = {}) {
     },
     async query(type, spec) {
       touch("query", [type, spec]);
+      const fast = table(type).pageQuery ? table(type).pageQuery(spec) : null;
+      if (fast && fast.error) throw fail("invalid", fast.error);
+      if (fast) return clone(fast);
       const all = (function* (/** @type {Iterable<any>} */ it) { for (const r of it) if (spec.include_deleted || !r.deleted_at) yield r; })(table(type).candidates(spec));
       const p = page(all, spec);
       if (p.error) throw fail("invalid", p.error);
@@ -155,6 +158,12 @@ export function createMemoryStore(cfg = {}) {
     },
     async aggregate(type, spec) {
       touch("aggregate", [type, spec]);
+      // A sealed field is never grouped or measured: there is no value to group by.
+      const sealedField = (/** @type {any} */ f) => typeof f === "string" && types.get(type).fields.some((/** @type {any} */ d) => d.name === f && d.kind === "sealed");
+      for (const g of spec.group_by || []) if (sealedField(g)) throw fail("invalid", `${g} is sealed: it cannot be grouped by`);
+      for (const m of spec.measures || []) if (m && sealedField(m.field)) throw fail("invalid", `${m.field} is sealed: it cannot be measured`);
+      const fast = table(type).aggregateQuery ? table(type).aggregateQuery(spec) : null;
+      if (fast) return clone(fast);
       return clone(agg((function* (/** @type {Iterable<any>} */ it) { for (const r of it) if (!r.deleted_at) yield r; })(table(type).candidates(spec)), spec));
     },
     async create(type, id, data) {
@@ -220,20 +229,44 @@ export function createMemoryStore(cfg = {}) {
         hits.splice(lo, 0, h);
         if (hits.length > spec.page.limit) hits.pop();
       };
-      for (const [type, t] of rows) {
-        if (spec.types && !spec.types.includes(type)) continue;
-        const def = types.get(type);
-        for (const r of t.searchCandidates(words)) {
-          if (r.deleted_at) continue;
-          let score = 0, snippet;
-          for (const f of def.fields) {
-            if (f.kind === "sealed") continue;
-            const v = fieldOf(r, f.name);
-            const text = typeof v === "string" ? v : Array.isArray(v) && v.every(x => typeof x === "string") ? v.join(" ") : "";
-            const low = text.toLowerCase();
-            for (const w of words) if (low.includes(w)) { score += 1; snippet = snippet || text.slice(0, 80); }
+      const hitOf = (/** @type {string} */ type, /** @type {any} */ def, /** @type {any} */ r) => {
+        let score = 0, snippet;
+        for (const f of def.fields) {
+          if (f.kind === "sealed") continue;
+          const v = fieldOf(r, f.name);
+          const text = typeof v === "string" ? v : Array.isArray(v) && v.every(x => typeof x === "string") ? v.join(" ") : "";
+          const low = text.toLowerCase();
+          for (const w of words) if (low.includes(w)) { score += 1; snippet = snippet || text.slice(0, 80); }
+        }
+        return score ? { type, id: r.id, score, ...(snippet ? { snippet } : {}) } : null;
+      };
+      const scope = [...rows].filter(([type]) => !spec.types || spec.types.includes(type));
+      // A later page of a ranked search, when the store can rank by itself: the hits strictly after the cursor's hit in (score, id) order, `limit + 1` of them, ranked by the store. The
+      // cursor's own hit is found and scored here; if it is gone (changed, removed) the whole list is used, as before.
+      if (!top && scope.length && scope.every(([, t]) => t.searchTop)) {
+        let cur = null;
+        for (const [type, t] of scope) { const r = t.get(spec.page.cursor); if (r && !r.deleted_at) { cur = hitOf(type, types.get(type), r); if (cur) break; } }
+        if (cur) {
+          /** @type {any[]} */ const got = [];
+          let ok = true;
+          for (const [type, t] of scope) {
+            const list = t.searchTop(words, spec.page.limit + 1, { score: cur.score, id: cur.id });
+            if (!list) { ok = false; break; }
+            for (const r of list) { if (r.deleted_at) continue; const h = hitOf(type, types.get(type), r); if (h) got.push(h); }
           }
-          if (score) add({ type, id: r.id, score, ...(snippet ? { snippet } : {}) });
+          if (ok) {
+            got.sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : 1));
+            const slice = got.slice(0, spec.page.limit);
+            return { rows: slice, ...(got.length > spec.page.limit && slice.length ? { next_cursor: slice[slice.length - 1].id } : {}) };
+          }
+        }
+      }
+      for (const [type, t] of scope) {
+        const def = types.get(type);
+        for (const r of (top && t.searchTop && t.searchTop(words, spec.page.limit + 1)) || t.searchCandidates(words)) {
+          if (r.deleted_at) continue;
+          const h = hitOf(type, def, r);
+          if (h) add(h);
         }
       }
       if (top) return { rows: hits, ...(counted > spec.page.limit && hits.length ? { next_cursor: hits[hits.length - 1].id } : {}) };
@@ -261,6 +294,13 @@ export function createMemoryStore(cfg = {}) {
         const records = all.slice(i, i + 100);
         yield { seq: seq++, records, done: i + 100 >= all.length, checksum: sha256(canonical(records)) };
       }
+    },
+    /** Forget the values these fields held in the change log (a field was sealed: its old plain values must not survive here). Stores with a durable log do the same through `cfg.persist.scrub`. */
+    async scrub(type, fields) {
+      touch("scrub", [type, fields]);
+      // the change log is read in slices (it may be backed by a table); a slice of the in-memory log holds the live entries, and a backed log is scrubbed by `cfg.persist.scrub` below
+      for (let i = 0; i < changes.length; i += 500) for (const e of changes.slice(i, i + 500)) if (e.type === type) for (const f of fields) { if (e.before) delete e.before[f]; if (e.after) delete e.after[f]; }
+      if (cfg.persist && typeof cfg.persist.scrub === "function") cfg.persist.scrub(type, fields);
     },
     features() { return { aggregate: true, search: true, changes: true, cursor_paging: /** @type {const} */ (true) }; },
   };

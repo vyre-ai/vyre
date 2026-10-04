@@ -6,6 +6,7 @@
 // Light by default: a text "ping" every 60 s (the relay answers it without waking), and two
 // unanswered pings end the socket. Reconnects back off from 1 s to 5 minutes. Nothing polls.
 
+import { EventEmitter } from "node:events";
 import { boxSide } from "./channel.js";
 import { authMessage, signRoute, CLOSE } from "./wire.js";
 
@@ -25,6 +26,7 @@ const closeCode = code => code === 1000 || (code >= 3000 && code <= 4999) ? code
  *   onchannel: (channel: import("./channel.js").Channel, info: { hello: any, reply: any }) => void,
  *   onstate?: (state: "connected"|"disconnected", why?: string) => void,
  *   oncode?: (msg: { q: string, rv: string, s: string, n: number, m: string }) => void,
+ *   ontunnel?: (stream: any, visitor: { host: string, ip: string, port: number }) => void,
  *   log?: (m: string) => void, WebSocket?: any, pingMs?: number }} o
  */
 export function relayLink(o) {
@@ -132,6 +134,7 @@ export function relayLink(o) {
       else if (m.t === "code.allocated") { const a = m.error ? null : { rv: String(m.rv), exp: Number(m.exp) }; for (const f of codeWaiters.splice(0)) f(a); }
       else if (m.t === "code.msg") { try { o.oncode?.({ q: String(m.q), rv: String(m.rv), s: String(m.s), n: Number(m.n), m: String(m.m) }); } catch (err) { log(`relay: code handler failed: ${/** @type {Error} */ (err).message}`); } }
       else if (m.t === "open") openData(String(m.c));
+      else if (m.t === "tunnel") openTunnel(m);
       else if (m.t === "close") { data.get(String(m.c))?.close(1000); data.delete(String(m.c)); }
     };
     const gone = e => {
@@ -171,6 +174,30 @@ export function relayLink(o) {
     ws.onclose = e => end(e && e.reason ? String(e.reason) : "relay closed the connection");
     ws.onerror = () => end("could not reach the relay");
     side.ready.then(({ channel, hello, reply }) => o.onchannel(channel, { hello, reply }), e => log(`relay: refused a device: ${e.message}`));
+  }
+
+  /** A Publish tunnel stream (relay/node/tunnel.js): the relay names a visitor on its control channel and the box opens a data socket for the raw bytes, which go to `ontunnel` as a duplex.
+   * The name and address come from the relay's authenticated control message; the box end (lib/publish/tunnel.js) still checks the name against its own Space. @param {any} m */
+  function openTunnel(m) {
+    const c = String(m.c);
+    if (stopped || !o.ontunnel || data.has(c) || !/^[A-Za-z0-9_-]{1,64}$/.test(c)) return;
+    const ip = String(m.ip || ""), port = Number(m.port) || 0;
+    if (!/^[0-9a-fA-F:.]{2,45}$/.test(ip)) return;
+    const ws = new WS(`${base}/v1/box?route=${o.route}&c=${encodeURIComponent(c)}&t=${encodeURIComponent(ticket)}`);
+    ws.binaryType = "arraybuffer";
+    data.set(c, ws);
+    const stream = new EventEmitter();
+    let ended = false;
+    const end = why => { if (ended) return; ended = true; if (data.get(c) === ws) data.delete(c); try { ws.close(); } catch {} stream.emit("close", why); };
+    Object.assign(stream, {
+      // Bytes to the visitor. A relay that stops reading for good leaves a growing buffer: past 4 MB the stream ends rather than hold it.
+      write: (/** @type {Buffer} */ b) => { if (ended) return false; try { ws.send(b); } catch { end("send"); return false; } if (ws.bufferedAmount > 4 * 1024 * 1024) { end("stalled"); return false; } return true; },
+      end: () => end("ended"), destroy: () => end("destroyed"), pause() {}, resume() {},
+    });
+    ws.onmessage = e => { if (typeof e.data !== "string") stream.emit("data", Buffer.from(e.data)); };
+    ws.onclose = () => end("closed");
+    ws.onerror = () => end("error");
+    ws.onopen = () => { try { o.ontunnel?.(stream, { host: String(m.host || ""), ip, port }); } catch (err) { log(`relay: tunnel handler failed: ${/** @type {Error} */ (err).message}`); end("handler"); } };
   }
 
   connect();

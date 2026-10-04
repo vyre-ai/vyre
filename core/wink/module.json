@@ -99,6 +99,10 @@
         "reach": "person"
       },
       {
+        "name": "wink.server.status",
+        "reach": "person"
+      },
+      {
         "name": "wink.server.pair.answer",
         "reach": "person"
       },

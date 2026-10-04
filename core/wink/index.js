@@ -94,7 +94,11 @@ export function createWink(inject = {}) {
     const grantsStore = createGrants({ ctx, space: () => spaceCache, now });
     const grants = async () => { spaceCache = await spaceId(); return grantsStore; };
     const actor = async (/** @type {"person" | "device"} */ kind, /** @type {string} */ id) => ({ kind, id, space: await spaceId() });
-    const owner0 = async () => actor("person", `per_${base32(sha(`person\n${await ensureRoute()}`), 26)}`);
+    /** The ONE identity of the person (DESIGN-wink 1): the spaces module owns it, claimed once through the names directory, so Wink reads it live and never makes a second one. A box whose home has no identity yet (a server before it is paired) falls back to an id derived from its route. */
+    const identityId = async () => {
+      try { const r = /** @type {any} */ (await ctx.call("spaces.identity.self", {})); return r && r.data && typeof r.data.id === "string" && r.data.id ? r.data.id : null; } catch { return null; }
+    };
+    const owner0 = async () => actor("person", (await identityId()) || `per_${base32(sha(`person\n${await ensureRoute()}`), 26)}`);
 
     // ---- offers: what is on screen right now, never a secret ----
     /** @param {string} flow @param {string} via @param {any} body @param {number} [ttl] */
@@ -549,6 +553,7 @@ export function createWink(inject = {}) {
           // A server or storage device is told to let go of its owner over the channel the app paired it on, so it can be paired again. The owner's
           // presence was given for this remove. One that cannot be reached keeps a pending release, applied when it next answers or is paired again.
           const release = d.kind === "server" || d.kind === "storage" ? await pairing.releaseServer(d.id) : undefined;
+          await pairing.endPairedNow(d.id);
           pairing.devices.remove(d.id);
           // Its relay connections close at once through relay.devices.drop (a module's door to the relay's own removal); `closed` says what happened.
           let closed = false;

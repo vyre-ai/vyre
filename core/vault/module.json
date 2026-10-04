@@ -134,6 +134,8 @@
       { "name": "vault.credential.tokens", "reach": "modules" },
       { "name": "vault.forward", "reach": "modules" },
       { "name": "vault.forward.file", "reach": "modules" },
+      { "name": "vault.service.forward", "reach": "modules" },
+      { "name": "vault.service.catalog", "reach": "modules" },
       { "name": "vault.provider.set", "reach": "person" },
       { "name": "vault.provider.remove", "reach": "person" },
       { "name": "vault.provider.status", "reach": "person" }

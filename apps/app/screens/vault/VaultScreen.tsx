@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { View } from "react-native";
-import { Avatar, Button, Card, Chip, Divider, EmptyState, IconTile, Menu, Row, SealedMask, Tabs, Text, showToast, type IconName, markRef } from "@vyre/ui";
+import { Avatar, Button, Card, Chip, Divider, EmptyState, IconTile, Menu, Row, SealedMask, Tabs, Text, allowsMock, showToast, type IconName, markRef } from "@vyre/ui";
+import RealVault from "./RealVault";
 import { FaceIdSheet, usePhone } from "../places/Page";
 import { Footnote, Frame, Sec } from "../places/Frame";
 import { SpaceBadge } from "../places/badge";
@@ -25,7 +26,7 @@ function useReveal() {
   return { shown, ask, request: setAsk, cancel: () => setAsk(null), approve: () => { setShown(ask); setAsk(null); }, hide: () => setShown(null) };
 }
 
-export default function VaultScreen() {
+function SampleVaultScreen() {
   const scope = useScope((s) => s.scope);
   const phone = usePhone();
   const [tab, setTab] = useState<Tab>("Login");
@@ -136,4 +137,9 @@ export default function VaultScreen() {
       {faceSheet}
     </Frame>
   );
+}
+
+/** The sample world in a mock build; the vyred's own Vault everywhere else. */
+export default function VaultScreen() {
+  return allowsMock() ? <SampleVaultScreen /> : <RealVault />;
 }

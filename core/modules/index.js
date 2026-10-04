@@ -29,7 +29,11 @@ import { within } from "../../lib/within.js";
 const LOADER_FEATURES = ["modules.status"];
 
 /** Tools a tailnet device reaches without a person session: signing in, and the first passkey. */
-const PERSON_FREE = new Set(["presence.person.start", "presence.enroll"]);
+// wink.server.adopt, wink.server.release and wink.phone.wait are the pairing steps a device takes before it has any person session: each checks its own caller and the owner's presence (core/wink/pairing.js).
+// relay.devices.path is a device reporting its own connection path (it names no one but its caller), made on every connect, before any sign-in.
+// presence.person.status is how a surface learns whether anyone is signed in at all, so it must answer before sign-in.
+// relay.setup.claim is the browser's first claim at the box's address, made before any sign-in exists: the one-time claim token the setup page minted is its proof.
+const PERSON_FREE = new Set(["presence.person.start", "presence.enroll", "wink.server.adopt", "wink.server.release", "wink.phone.wait", "relay.setup.claim", "relay.devices.path", "presence.person.status"]);
 
 const NAME = /^[a-z][a-z0-9-]{1,40}$/;
 /** Vyre's own modules live here; a module installed into a home never does. */
@@ -287,7 +291,7 @@ function checkCredentials(list) {
  */
 export function provideOnce(deps, module, name, value) {
   if (!(name === "credentialsPort" && module === "vault")) throw new Error(`${module} may not provide ${String(name).slice(0, 40)}`);
-  deps[name] = value ?? null;
+  deps[name] = value;
 }
 
 /** The vault items a module's needs.credentials names: `item`, or `<module>-<id>`. @param {any} m */
@@ -415,7 +419,8 @@ const PERSON_CALLERS = Object.freeze([...SURFACE_LABELS, "tailnet", "device", "s
 export const callerKind = caller => {
   const c = String(caller);
   // "mcp:agent:<name>" and "mcp:thread:<id>" (a Vyre-owned session, ADR 0030) are both "mcp".
-  return c.startsWith("module:") ? "module" : c.replace(/[\s:](agent|thread):.*$/s, "");
+  // a browser `web:<id>` and a setup page `setup:<id>` (the relay listener, BR-2) are classes of their own, named only by a tool that lists them
+  return c.startsWith("module:") ? "module" : /^web:[a-z2-7]{16}$/.test(c) ? "web" : /^setup:[a-z2-7]{16}$/.test(c) ? "setup" : c.replace(/[\s:](agent|thread):.*$/s, "");
 };
 
 /**
@@ -470,7 +475,7 @@ export const agentAskFirst = (/** @type {string} */ tool, /** @type {any} */ cal
  * it as a label.
  * @param {string[]|null|undefined} callers
  */
-export const callerAllowed = (callers, caller) => !callers || (callers.includes(callerKind(caller)) && !CLASS_ONLY.has(callerKind(caller)))
+export const callerAllowed = (callers, caller) => !callers || callerKind(caller) === "setup" || (callers.includes(callerKind(caller)) && !CLASS_ONLY.has(callerKind(caller)))
   || (callers.includes("deck") && ownerDevice(caller))
   || (callers.includes("tailnet") && ownerDevice(caller))
   || (callers.includes("device") && deviceLabel(caller));
@@ -1029,7 +1034,7 @@ export class Registry {
       // What only the daemon can hand a module comes by DECLARATION, not by a name: a first-party module lists it under needs.daemon and gets exactly that on ctx. kernelSession is the
       // maker of a Vyre-started session's kernel credential, sandbox the confined spawner for those sessions (the runner's home sandbox, composed by the daemon because core/sessions
       // cannot import core/runner), flowsHost the Flows assembly (core/daemon/flows-host.js).
-      ...Object.fromEntries((Array.isArray(m.needs && m.needs.daemon) ? m.needs.daemon : []).filter((/** @type {string} */ n) => ["kernelSession", "kernelThreads", "sandbox", "flowsHost", "credentials", "modulesListReset", "dataStores", "devStandIn"].includes(n) && this.deps[n]).map((/** @type {string} */ n) => [n, this.deps[n]])),
+      ...Object.fromEntries((Array.isArray(m.needs && m.needs.daemon) ? m.needs.daemon : []).filter((/** @type {string} */ n) => ["kernelSession", "kernelThreads", "sandbox", "flowsHost", "credentials", "modulesListReset", "dataStores", "devStandIn", "tunnelEnd"].includes(n) && this.deps[n]).map((/** @type {string} */ n) => [n, this.deps[n]])),
       tool: (name, def) => {
         if (!declared.has(name)) throw new Error(`${m.name} registered tool ${name}, which its manifest does not declare under does.tools`);
         if (this.tools.has(name)) throw new Error(`tool ${name} is already registered`);
@@ -1049,7 +1054,8 @@ export class Registry {
         const e = entries.get(name), reach = e ? e.reach : "anyone";
         this.tools.set(name, { module: m.name, description: def.description || "", input: def.input || { type: "object" }, run: def.run,
           internal: Boolean(def.internal) || reach === "modules",
-          callers: reach === "person" ? [...PERSON_CALLERS] : Array.isArray(def.callers) ? def.callers : null,
+          // a `person` tool is open to the person's classes only; the one class a tool may add by name is `web` (a browser, `web:<id>`: BR-2), never `device`, `space` or `agent`
+          callers: reach === "person" ? [...PERSON_CALLERS, ...(Array.isArray(def.callers) ? def.callers.filter(c => c === "web") : [])] : Array.isArray(def.callers) ? def.callers : null,
           hook: Boolean(def.hook) || reach === "hook", presence: def.presence || false, core: Boolean(def.core),
           reach, outward: (e && e.outward) || null, target: (e && e.target) || null, projectArg: (e && e.projectArg) || null, cwdArg: (e && e.cwdArg) || null, declaredReach: objectForm.has(name) });
       },
@@ -1150,7 +1156,12 @@ export class Registry {
       }
       if (def.internal && !String(caller).startsWith("module:")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
       if (Boolean(def.hook) !== (caller === "hook")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
+      // a browser (`web:<id>`) is none of the person's classes: a tool that lists callers (every person tool) does not exist for it unless it names `web` (BR-2); a tool open to anyone stays open. A setup page (`setup:<id>`) is held to a list of names by the relay's own
+      // setup gate (core/relay/setup.js) before a call gets here, so the registry only lets that class through.
+      if (callerKind(caller) === "web" && Array.isArray(def.callers) && !def.callers.includes("web")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
       if (!(callerAllowed(def.callers, caller) || agentOpensPerson(tool, def, caller, meta)) || personRefusesAgent(tool, def, caller, meta)) return { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
+      // An agent that only proposes (the Engineer: agents.scope names its `only` list, vyred puts it on meta.agentOnly from the stored row, never from the call) reaches those tools and no others.
+      if (Array.isArray(meta.agentOnly) && !meta.agentOnly.includes(tool)) return { error: { code: "denied", message: `${tool} is not one of the tools this assistant works with: it drafts and proposes, and a person approves` } };
       // A guest from another tailnet is never a person proving they are here, whatever proof it
       // carries: presence is the owner's (ADR 0014 part 8), and so is the keyboard of an agent's
       // computer, which needs no proof (PERSON_ONLY). The router already hides these tools.

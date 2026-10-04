@@ -12,7 +12,7 @@ export default function NowListScreen({ kind }: { kind: "needs" | "doing" }) {
   const open = (t: any) => void run(t, "open");
   return (
     <ScrollView contentContainerClassName="pb-s12 max-w-page w-full self-center">
-      {q.error && !q.data ? <ErrorState title="Could not load Now." reason={q.error.message} retry={q.reload} />
+      {q.error && !q.data ? <ErrorState title="Now did not load" reason={q.error.message} retry={q.reload} />
         : !q.data ? <SkeletonRows rows={4} />
         : kind === "needs" ? <NeedsPage world={q.data} onAction={(t, id, input) => void run(t, id, input)} onOpen={open} onBack={back} />
         : q.data.tasks ? <DoingPage world={q.data} onOpen={open} onBack={back} /> : <EmptyState title="Nothing is running" />}

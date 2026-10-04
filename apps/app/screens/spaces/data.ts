@@ -1,7 +1,7 @@
 // Spaces and members, sample data (public sample world). `loadSpaces()` and `loadMembers()` are the reads; a real source replaces them.
 import type { Role } from "./roles.js";
 
-export type SpaceCard = { id: string; name: string; address: string; role: "owner" | "admin"; home: string };
+export type SpaceCard = { id: string; name: string; address: string; role: string; home: string; setup?: { step: string; device: { id: string; name: string }; [k: string]: unknown } | null };
 export type Member = { id: string; name: string; sub?: string; role: Role; scope?: string; end?: string; left?: number };
 export type Teammate = { id: string; name: string; sub: string };
 

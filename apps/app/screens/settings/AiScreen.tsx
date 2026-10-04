@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { View } from "react-native";
-import { Avatar, Banner, Button, Card, Chip, Divider, Meter, Segmented, Sheet, Text, showToast, markRef } from "@vyre/ui";
+import { Avatar, Banner, Button, Card, Chip, Divider, Meter, Segmented, Sheet, Text, showToast, markRef , allowsMock} from "@vyre/ui";
 import { Page } from "../places/Frame";
+import { RealAi } from "./RealAgents";
 import { useSettings } from "./state";
 import { BUDGET_STEPS, budgetLine, money, overLine, usedPercent, usedShare } from "./logic.js";
 
 /** AI accounts: yours, with a monthly budget each. Nobody's work runs on someone else's account. */
-export function AiScreen() {
+export function SampleAiScreen() {
   const { ai, setBudget, toggleAi } = useSettings();
   const [sheet, setSheet] = useState<string | null>(null);
   const acct = ai.find((a) => a.name === sheet);
@@ -50,4 +51,9 @@ export function AiScreen() {
       </Sheet>
     </Page>
   );
+}
+
+/** The sample page in a mock build; the box's own agents and accounts everywhere else. */
+export function AiScreen() {
+  return allowsMock() ? <SampleAiScreen /> : <RealAi />;
 }

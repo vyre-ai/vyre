@@ -3,7 +3,7 @@
 // other local user can reach it. Request { id, op, ctx, ... } gets { id, ok, result } or { id, ok: false, error: { code } }. An error carries a
 // stable code and nothing from the input, so no value reaches a log or a stack trace. The language is Node for now: the protocol in this file
 // (ops, fields, codes) is the interface a Rust process can implement later.
-//   ops: init, put, use, deliver, reveal, derived.read, detect, save, session.end, lookup, drop, presence.enrol, presence.revoke, presence.check, spacekey.pub, spacekey.sign, health
+//   ops: init, put, use, deliver, reveal, derived.read, detect, save, session.end, lookup, match, drop, presence.enrol, presence.revoke, presence.check, spacekey.pub, spacekey.sign, health
 // ctx is the kernel's summary of the chain (wire.chainCtx). This process trusts the kernel for who is in the chain and checks the rest itself.
 // `approver` (use and deliver) is the chain of the person who approved: the act may run under an assistant's or a Flow's chain, but the proof
 // must come from exactly one person, and the process verifies it against that chain.
@@ -19,7 +19,7 @@ import { Presence } from "./proof.js";
 import { SealStore } from "./store.js";
 
 export const HUMAN_SURFACES = new Set(["deck", "capsule", "mobile"]);
-const REVEAL_MS = 30_000, LOOKUP_PER_MIN = 10, MAX_VALUE = 8192, MAX_BODY = 1 << 20;
+const REVEAL_MS = 30_000, LOOKUP_PER_MIN = 10, MATCH_PER_MIN = 5, MATCH_PER_DAY = 100, MATCH_SPACE_PER_DAY = 200, MATCH_MIN = 4, MAX_VALUE = 8192, MAX_BODY = 1 << 20;
 /** Every address an envelope names: to, cc and bcc, a string or a list, case and spacing folded. */
 export const recipientsOf = env => ["to", "cc", "bcc"].flatMap(k => (Array.isArray(env[k]) ? env[k] : env[k] == null ? [] : [env[k]])).map(x => String(x).trim().toLowerCase());
 /** True only when the whole recipient set is the one verified contact the value was merged for. A document destination has no recipient, so any recipient is unverified. */
@@ -157,6 +157,34 @@ export class Sealer {
     const bi = this.store.blind(ctx.space, r.field, r.class, compact(r.value));
     return { refs: this.store.metas("values", ctx.space).filter(m => m.field === r.field && m.class === r.class && m.blind === bi).map(m => m.ref), event: { type: "seal.lookup", field: r.field, class: r.class } };
   }
+  /**
+   * `seal.detect` (assistant's ask): does this one candidate equal a sealed field's current value in this Space? A yes or no, nothing else: no field, record,
+   * class or ref comes back. Equality is the same keyed blind index the write-time `unique` check and `lookup` use, so no new store. For the first-party
+   * modules the kernel names (`caller.first_party`), never a chain with a model in it, one candidate per call, at least MATCH_MIN characters, MATCH_PER_MIN a
+   * minute and MATCH_PER_DAY a day per (Space, module) and MATCH_SPACE_PER_DAY a day for the Space. The counters live in this process (a restart resets them,
+   * and a restart is the operator's act). The event names the module and today's count, never the candidate or the answer.
+   */
+  match(r) {
+    const ctx = this.ctxOf(r.ctx), c = r.caller;
+    need(c && c.first_party === true && typeof c.module === "string" && /^[a-z0-9][a-z0-9._-]{0,63}$/.test(c.module), "first_party_only");
+    need(!ctx.model_originated, "human_only");
+    need(typeof r.value === "string" && r.value.length <= MAX_VALUE && compact(r.value).length >= MATCH_MIN, "bad_input");
+    const t = this.now(), day = Math.floor(t / 86_400_000), mk = `${ctx.space}\0${c.module}`, sk = `${ctx.space}\0*`;
+    // The per-day counts are sealed on disk, so a restart does not reset a limit; the per-minute window is memory only (a restart gives at most one minute's worth back).
+    const saved = this.store.matchRead();
+    const days = saved && saved.day === day ? saved.counts : {};
+    const m = this.matches || (this.matches = new Map());
+    const hits = (m.get(mk) || []).filter(x => x > t - 60_000);
+    need(hits.length < MATCH_PER_MIN && (days[mk] || 0) < MATCH_PER_DAY && (days[sk] || 0) < MATCH_SPACE_PER_DAY, "rate_limited");
+    hits.push(t); m.set(mk, hits); days[mk] = (days[mk] || 0) + 1; days[sk] = (days[sk] || 0) + 1;
+    this.store.matchWrite({ day, counts: days });
+    const cv = compact(r.value), all = this.store.metas("values", ctx.space), pairs = new Set(all.map(x => `${x.field}\0${x.class}`));
+    // The records whose sealed fields hold this value. The kernel's side filters them by what the person may read and returns only the yes or no; they never leave the kernel.
+    const records = new Set();
+    for (const pr of pairs) { const [field, cls] = pr.split("\0"); const b = this.store.blind(ctx.space, field, cls, cv); for (const x of all) if (x.field === field && x.class === cls && x.blind === b) records.add(x.record); }
+    const yes = records.size > 0;
+    return { match: yes, records: [...records], event: { type: "seal.detect", module: c.module, count: days[mk] } };
+  }
   drop(r) { const ctx = this.ctxOf(r.ctx); this.open(ctx, r.ref); return { dropped: this.store.drop("values", r.ref) }; }
 
   /**
@@ -182,7 +210,7 @@ export class Sealer {
       case "put": return this.put(req); case "use": return this.use(req); case "deliver": return this.deliver(req);
       case "reveal": return this.reveal(req); case "derived.read": return this.reveal(req, true);
       case "detect": return this.detect(req); case "save": return this.save(req); case "session.end": return this.sessionEnd(req);
-      case "lookup": return this.lookup(req); case "drop": return this.drop(req);
+      case "lookup": return this.lookup(req); case "match": return this.match(req); case "drop": return this.drop(req);
       case "presence.begin": { const ctx = this.ctxOf(req.ctx); need(ctx.one_person && !ctx.model_originated && ctx.person === req.person, "chain_not_person"); return this.presence.begin(req); }
       case "presence.enrol": {
         const ctx = this.ctxOf(req.ctx);
@@ -212,6 +240,27 @@ export class Sealer {
       case "lease.reinstate": { const c = this.ctxOf(req.ctx); const why = this.presence.refuse(req.proof, { op: "lease.reinstate", space: c.space, fields: { member: req.member, device: req.device }, ctx: c }); if (why) throw err(why === "no_proof" ? "needs_presence" : why); return this.leases.reinstate({ space: c.space, member: req.member, device: req.device }); }
       case "lease.check": { const c = this.ctxOf(req.ctx); return this.leases.check({ id: req.lease, member: c.person }); }
       // The kernel's own channel only: this process's pipes belong to the kernel, and a call that says a model started it is refused. The key never leaves.
+      // The log anchor (kernel-2, BL-2): the latest (seq, head) of a Space's event log the kernel showed this process, kept in its own sealed store, moving only forward. The kernel calls advance
+      // when it signs a checkpoint and reads it at boot, so a log with its newest events deleted no longer verifies. Kernel channel only, never a model's chain.
+      case "anchor.advance": case "anchor.read": {
+        const ctx = this.ctxOf(req.ctx); need(!ctx.model_originated, "human_only");
+        const meta = { ref: `seal_la${crypto.createHash("sha256").update(ctx.space).digest("hex").slice(0, 30)}`, space: ctx.space, record: "_", field: "logAnchor", class: "logAnchor" };
+        const held = (() => { const r = this.store.read("values", meta.ref, ctx.space); return r ? JSON.parse(r.plaintext) : null; })();
+        if (req.op === "anchor.read") return { anchor: held };
+        need(Number.isSafeInteger(req.seq) && req.seq >= 0 && typeof req.head === "string" && /^[A-Za-z0-9_=+\/-]{16,128}$/.test(req.head), "bad_input");
+        if (held) { need(req.seq >= held.seq, "anchor_behind"); if (req.seq === held.seq) { need(req.head === held.head, "anchor_split"); return { anchor: held, event: null }; } }
+        this.store.write("values", meta, JSON.stringify({ seq: req.seq, head: req.head }));
+        return { anchor: { seq: req.seq, head: req.head }, event: null };
+      }
+      // The person's own reset of a Space's anchor (BL-2a): after a restore from backup or a bad advance the log would otherwise never boot. Needs the person's presence on this exact act.
+      case "anchor.reset": {
+        const c = this.ctxOf(req.ctx); need(!c.model_originated, "human_only");
+        const why = this.presence.refuse(req.proof, { op: "anchor.reset", space: c.space, fields: {}, ctx: c });
+        if (why) throw err(why === "no_proof" ? "needs_presence" : why);
+        const ref = `seal_la${crypto.createHash("sha256").update(c.space).digest("hex").slice(0, 30)}`;
+        this.store.write("values", { ref, space: c.space, record: "_", field: "logAnchor", class: "logAnchor" }, "null");
+        return { anchor: null };
+      }
       case "kernel.mac": { need(!req.ctx?.model_originated && /^[a-z0-9_.-]{1,40}$/.test(req.purpose) && typeof req.data === "string" && req.data.length <= 2_000_000, "bad_input"); return { mac: this.store.kernelMac(req.purpose, req.data) }; }
       case "kernel.verify": { need(!req.ctx?.model_originated && /^[a-z0-9_.-]{1,40}$/.test(req.purpose) && typeof req.data === "string" && req.data.length <= 2_000_000 && typeof req.mac === "string", "bad_input"); const a = Buffer.from(this.store.kernelMac(req.purpose, req.data)), b = Buffer.from(req.mac); return { ok: a.length === b.length && crypto.timingSafeEqual(a, b) }; }
       case "pool.key": { need(!req.ctx?.model_originated && /^(per|spc)_[a-z0-9]{8,40}$/.test(req.owner), "bad_input"); return { key: this.store.poolKey(req.owner).toString("base64") }; }
