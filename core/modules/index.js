@@ -399,6 +399,10 @@ const PLACEHOLDER = /\{\{field:[^}]+\}\}/;
 const callStore = new AsyncLocalStorage();
 /** The running call's meta, or null: once the call has returned, work it started (a timer, a floating promise) no longer sees it, so a turn's token cannot outlive the turn. */
 export const currentCall = () => { const b = callStore.getStore(); return b && b.live ? b.meta : null; };
+/** The caller class the running call came from, past module hops, or undefined when nothing is running (a timer, a start). A module that stores work to do later stores this beside it. */
+export const captureOrigin = () => { const m = currentCall(); if (!m) return undefined; return m.origin || (m.caller && !String(m.caller).startsWith("module:") ? m.caller : undefined); };
+/** Run `f` as the call `origin` came from (the origin a module stored with a job or an event), so what it calls is judged as that caller class. With no origin it is a plain call. @param {string | undefined} origin @param {() => any} f */
+export const withOrigin = (origin, f) => (origin ? runInTurn({ ...(currentCall() || {}), origin }, async () => f()) : f());
 const runInTurn = async (/** @type {any} */ meta, /** @type {() => Promise<any>} */ f) => {
   // A module the running turn calls (ctx.call) is still in that turn: it inherits the outer turn's token unless the call brought its own from the daemon.
   const outer = callStore.getStore();
@@ -422,7 +426,9 @@ const READ_VERBS = new Set(["get", "list", "status", "show", "read", "search", "
 const ORIGIN_CHECKED = Object.freeze([/^vault\.(put|get|release|fetch|import|export|pass\.|account\.|agent\.|emergency\.)/, /^names\.claim$/, /^grants\./, /^spaces\.devices\./, /^spaces\.(create|invites?\.|members?\.|roles?\.)/]);
 /** The caller class a call came from, past any module hops: `meta.origin` when a module relayed it, else the caller itself. For a tool with an explicit callers list that wants to check it. @param {any} meta */
 export const originClass = (meta) => (meta && (meta.origin || meta.caller)) || "unknown";
-export const effectOf = (/** @type {string} */ name, /** @type {any} */ declared) => (declared === "read" || declared === "write" ? declared : READ_VERBS.has(String(name).split(".").pop() || "") ? "read" : "write");
+export const effectOf = (/** @type {string} */ name, /** @type {any} */ declared, /** @type {string} */ reach = "anyone") => (declared === "read" || declared === "write" ? declared : reach === "person" && READ_VERBS.has(String(name).split(".").pop() || "") ? "read" : "write");
+/** The tools a module's manifest says change nothing (`does.reads`). @param {any} m */
+const readsOf = (m) => new Set(m && m.does && Array.isArray(m.does.reads) ? m.does.reads.filter((/** @type {any} */ x) => typeof x === "string") : []);
 
 export const callerKind = caller => {
   const c = String(caller);
@@ -877,7 +883,10 @@ export class Registry {
           if (!allowed.includes(type)) throw new Error(`${m.name} emitted ${type}, which its manifest does not declare under watches.emits`);
           return events.emit(m.name, type, payload, where);
         },
-        on: (pattern, fn) => events.on(pattern, fn),
+        // A handler hears the event as the call that raised it was made (RG-2): a model-originated call that emits an event does not become the module's own authority in the handler.
+        on: (pattern, fn) => events.on(pattern, (/** @type {any} */ ev) => { const o = captureOrigin(); if (!o) return fn(ev); const r = withOrigin(o, () => fn(ev)); if (r && typeof r.catch === "function") r.catch(() => {}); }),
+        origin: () => captureOrigin(),
+        withOrigin: (/** @type {string | undefined} */ o, /** @type {() => any} */ f) => withOrigin(o, f),
         since: (id, opts) => events.since(id, opts),
         // The cursor a read is current to (ADR 0029 R1): a view that loads through a tool, then
         // follows the stream from this id, has no gap.
@@ -949,8 +958,7 @@ export class Registry {
         if (!as) {
           // A module hop carries the caller class the running call came from (reviewer-2's group D, 2): a tool the registry defaulted to person-only checks the ORIGINAL caller, so a module acting
           // for an agent is still an agent call. A call with no running call (a timer, a start) has no origin and is the module's own.
-          const running = currentCall();
-          const origin = running ? (running.origin || (running.caller && !String(running.caller).startsWith("module:") ? running.caller : undefined)) : undefined;
+          const origin = captureOrigin();
           return this.call(tool, input, `module:${m.name}`, { firstParty: fp, ...(origin ? { origin } : {}), ...(opts && typeof opts.onPartial === "function" ? { partial: opts.onPartial } : {}) });
         }
         // The capsule module sits in local/capsule (the Mac app's), and is first party there.
@@ -1065,12 +1073,15 @@ export class Registry {
         // route, and person is the person's own surfaces and devices only. anyone and asked stay
         // open here; the asked check and outward routing are later build steps (plans/platform.md).
         const e = entries.get(name), reach = e ? e.reach : "anyone";
-        const effect = effectOf(name, def.effect || (e && e.effect));
+        // RG-1: every tool open to anyone declares what it does. `does.reads` names the tools that change nothing (or `effect` on a tool entry, or on `ctx.tool`); a tool that declares nothing is a WRITE,
+        // so it is the person's surfaces and modules until its owner says otherwise. The read-verb guess survives only for a person-reach tool, which is person-only anyway.
+        const declaredEffect = def.effect || (e && e.effect) || (readsOf(m).has(name) ? "read" : undefined);
+        const effect = effectOf(name, declaredEffect, reach);
         // the once-only default: a state-changing tool open to anyone that declares no callers list is the person's surfaces and modules, with the original caller checked on a module hop
         const defaulted = reach === "anyone" && !Array.isArray(def.callers) && effect === "write" && !def.hook && !def.internal;
-        this.tools.set(name, { module: m.name, description: def.description || "", input: def.input || { type: "object" }, run: def.run, effect, defaulted, effectDeclared: Boolean(def.effect || (e && e.effect)),
+        this.tools.set(name, { module: m.name, description: def.description || "", input: def.input || { type: "object" }, run: def.run, effect, defaulted, effectDeclared: Boolean(declaredEffect),
           internal: Boolean(def.internal) || reach === "modules",
-          callers: reach === "person" ? [...PERSON_CALLERS] : Array.isArray(def.callers) ? def.callers : defaulted ? [...PERSON_CALLERS, "module"] : null,
+          callers: reach === "person" ? [...PERSON_CALLERS] : Array.isArray(def.callers) ? def.callers : defaulted ? [...PERSON_CALLERS] : null,
           hook: Boolean(def.hook) || reach === "hook", presence: def.presence || false, core: Boolean(def.core),
           reach, outward: (e && e.outward) || null, target: (e && e.target) || null, projectArg: (e && e.projectArg) || null, cwdArg: (e && e.cwdArg) || null, declaredReach: objectForm.has(name) });
       },
@@ -1132,11 +1143,15 @@ export class Registry {
     if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     // `origin` is set only by a module's own ctx.call (the caller class the running call came from); nothing a client sends is ever one.
     if (!String(caller).startsWith("module:")) delete meta.origin;
+    // A tool the registry defaulted to person-only is reached by a module only when the module is acting FOR a person (the call it relays came from one): a module with no origin (a timer, a start,
+    // a direct call) is not that person, and must have its tool declare `callers: ["module"]` to be allowed (RG-2). The daemon's own calls (module:vyred) are the daemon.
+    const hop = def.defaulted && String(caller).startsWith("module:") && caller !== "module:vyred";
+    const gateCaller = hop ? (meta.origin || "module-without-origin") : caller;
     // The static permission gates, up to the input schema. With deps.gates (the kernel retrofit, kernel/retrofit/gates.js)
     // they are decided by `authorize` over grants compiled from the rules below; without it the rules below run as written.
     // The golden set (kernel/golden) proves the two give the same answer for every tool, caller and world.
     if (this.deps.gates) {
-      const refused = await this.deps.gates.before({ tool, def, caller, meta, input, door });
+      const refused = await this.deps.gates.before({ tool, def, caller: gateCaller, meta, input, door });
       if (refused) return refused;
     } else {
       // Default-deny for an added module (ADR 0047, reviews/platform.md H4): it reaches only a tool
@@ -1173,7 +1188,7 @@ export class Registry {
       }
       if (def.internal && !String(caller).startsWith("module:")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
       if (Boolean(def.hook) !== (caller === "hook")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
-      if (!(callerAllowed(def.callers, caller) || agentOpensPerson(tool, def, caller, meta)) || personRefusesAgent(tool, def, caller, meta)) return { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
+      if (!(callerAllowed(def.callers, gateCaller) || agentOpensPerson(tool, def, gateCaller, meta)) || personRefusesAgent(tool, def, gateCaller, meta)) return { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
       // A guest from another tailnet is never a person proving they are here, whatever proof it
       // carries: presence is the owner's (ADR 0014 part 8), and so is the keyboard of an agent's
       // computer, which needs no proof (PERSON_ONLY). The router already hides these tools.
@@ -1190,10 +1205,6 @@ export class Registry {
         && (PERSON_ONLY.has(tool) || def.reach === "person" || (this.deps.presence ? this.deps.presence.required(tool, def, input) : Boolean(def.presence)))) {
         return { error: { code: "person_session_required", message: `${tool} is the person's own action: sign in on this device with your passkey first` } };
       }
-    }
-    // A tool the registry defaulted to person-only checks the ORIGINAL caller on a module hop: a module acting for an agent is still an agent call.
-    if (def.defaulted && String(caller).startsWith("module:") && meta.origin && !callerAllowed(def.callers, meta.origin)) {
-      return { error: { code: "denied", message: `${tool} is not available to ${callerKind(meta.origin)} callers, through a module or not` } };
     }
     // The tools that hand out credentials, names, access or devices check the ORIGINAL caller on a module hop whatever their callers list says (a module relaying for an agent is not the person).
     // Owners of other tools read `meta.origin` themselves (`originClass(meta)`); a loader door call (vault.fetch for a tool's own credential) is its own check.
