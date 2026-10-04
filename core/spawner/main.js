@@ -55,6 +55,8 @@ if (!process.getuid || process.getuid() !== 0) {
     if ((st.mode & 0o007) !== 0) asVyre("chmod", "o-rwx", WORK);
   } catch (e) { log(`spawner: ${WORK} is not fully shared: ${/** @type {Error} */ (e).message}`); }
   try { asVyre("chmod", "700", env.VYRE_USER_HOME || "/home/vyre"); } catch {}
+  // The accounts folder is entered, never listed: a session's uid learns no other account's uid from it (each home is closed to everyone else). vyred and the spawner need only to pass through.
+  try { fs.chmodSync(env.VYRE_ACCOUNTS_HOME || "/home/acct", 0o711); } catch (e) { log(`spawner: ${env.VYRE_ACCOUNTS_HOME || "/home/acct"} could not be made unlistable: ${/** @type {Error} */ (e).message}`); }
 
   // Claude Code: the global install, and the Agent SDK's own binary (ADR 0030) where it is bundled.
   // It lives in the image's own node_modules, or where sessions installs it (/opt/vyre-sessions-sdk).
