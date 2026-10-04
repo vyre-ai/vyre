@@ -35,6 +35,7 @@ import {
 } from "./store.js";
 import { fileIdentityStore, signerOf, personIdOf } from "./identity.js";
 import { spaceFiles } from "./host.js";
+import fs from "node:fs";
 import path from "node:path";
 
 /** Test seams. Nothing here is a setting: a test sets them before the module starts. */
@@ -441,9 +442,17 @@ export default {
       if (!K || typeof K.adoptOwner !== "function") return;
       let s; try { s = identity.status(); } catch { return; }
       if (!s || !s.exists || !s.id || s.id === K.owner) return;
+      try { if (typeof K.owner === "string" && !(await kv.get("home-first-owner"))) await kv.put("home-first-owner", K.owner); } catch { /* the space.json record still names it */ }
       try { await K.adoptOwner(s.id); } catch (e) { ctx.log.warn(`the kernel could not take your identity as its owner: ${String(/** @type {any} */ (e).message || e).slice(0, 160)}`); }
     };
     /** Every Space this home hosts has the claimed identity as its owner too (a Space made before the claim, or by an older build, still has the first-start id): the same once-only adoption in each hosted kernel. */
+    /** The ids this home's owner has had before the claimed identity: the home kernel's space.json says it (previous_owner) and the module keeps what it saw at the first adoption. */
+    const firstOwners = () => {
+      const out = new Set();
+      try { const j = JSON.parse(fs.readFileSync(path.join(ctx.paths.root, "kernel", "space.json"), "utf8")); if (typeof j.previous_owner === "string") out.add(j.previous_owner); if (typeof j.owner === "string" && K && j.owner !== K.owner) out.add(j.owner); } catch { /* none */ }
+      if (K && typeof K.owner === "string") { try { const r = /** @type {any} */ (db.prepare("SELECT value FROM spaces_kv WHERE key = 'home-first-owner'").get()); if (r) out.add(JSON.parse(r.value)); } catch { /* none */ } }
+      return out;
+    };
     /** @type {Set<string>} */ const hostedAdopted = new Set();
     const adoptHosted = async () => {
       if (!K || !K.spaces || typeof K.spaces.list !== "function") return;
@@ -455,7 +464,8 @@ export default {
         if (!k || typeof k.kernelFor !== "function" || id === (K.space) || hostedAdopted.has(id + s.id)) continue;
         try {
           const hk = k.kernelFor({ name: "spaces", needs: { kernel: { spaces: true } } });
-          if (hk && typeof hk.adoptOwner === "function" && hk.owner !== s.id) await hk.adoptOwner(s.id);
+          // ONLY a space hosted for this home's own first-start owner takes the claimed identity: a space hosted for somebody else (a person's own space this home hosts for them) is never touched.
+          if (hk && typeof hk.adoptOwner === "function" && hk.owner !== s.id && firstOwners().has(String(hk.owner))) await hk.adoptOwner(s.id);
           hostedAdopted.add(id + s.id);
         } catch (e) { ctx.log.warn(`a hosted space could not take your identity as its owner (${id}): ${String(/** @type {any} */ (e).message || e).slice(0, 120)}`); }
       }
