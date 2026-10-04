@@ -32,6 +32,14 @@ export const GRANT_ACTIONS = Object.freeze([
   { action: "rules.dismiss", resource_type: "rule", risk: "grant", label: "turn down a proposed rule", gloss: "Dismiss a proposed rule." },
   { action: "rules.propose", resource_type: "rule", risk: "write", label: "propose a standing rule", gloss: "Suggest a rule. It does nothing until an owner accepts it." },
   { action: "rules.list", resource_type: "rule", risk: "read", label: "see the standing rules", gloss: "List the rules of the Space and the proposals." },
+  // Kits (kernel/flows/kits.js): an owner or admin may ask for a Kit (an assistant acting for them too, which is how the Engineer proposes); installing and removing one are admin acts of a person.
+  { action: "kits.propose", resource_type: "kit", risk: "write", label: "ask to install a Kit", gloss: "Put a Kit's install card in front of an owner or admin. Nothing changes until they say yes." },
+  { action: "kits.install", resource_type: "kit", risk: "admin", label: "install a Kit", gloss: "Add the types, fields, stages and Flows of a Kit." },
+  { action: "kits.remove", resource_type: "kit", risk: "admin", label: "remove a Kit", gloss: "Take a Kit's parts out. Records stay." },
+  { action: "rules.get", resource_type: "rule", risk: "read", label: "see one standing rule", gloss: "Read one rule or proposal in plain words." },
+  { action: "rules.test", resource_type: "rule", risk: "read", label: "try a standing rule", gloss: "See what the rules would do to an act, without doing it." },
+  { action: "rules.enable", resource_type: "rule", risk: "grant", label: "turn a standing rule on", gloss: "Make a rule you switched off bind again." },
+  { action: "rules.disable", resource_type: "rule", risk: "grant", label: "turn a standing rule off", gloss: "Stop a rule binding without deleting it." },
 ].map(a => Object.freeze(a)));
 
 
@@ -100,12 +108,35 @@ export function createGrantsStore(cfg) {
   /** @type {Set<string>} agent, service and automation actors that belong to the Space */ const actors = new Set();
   /** @type {Map<string, any>} pending, single-use invitations an admin approved */ const invites = new Map();
   /** @type {Map<string, any>} compute offers: the two grants a member's computer runs a Space's work under */ const offers = new Map();
+  /** @type {{ from: string, to: string } | null} the owner's adoption of the claimed identity, once (`owner.adopted`) */ let adopted = null;
   /** @type {Map<string, any>} standing rules of the Space (never, draft only, always ask) */ const rules = new Map();
   /** @type {Map<string, any>} rules a Kit proposed: no effect until an owner accepts */ const proposals = new Map();
   /** @type {Map<string, any>} chats: the people (and assistants) in a room, which is the audience a turn in it writes for and the readers of its stream */ const chats = new Map();
   /** @type {Set<(e: { id: string, side: string, member: string, device: string | null, reason: string }) => void>} */ const revokeListeners = new Set();
   const tell = (/** @type {any} */ o, /** @type {string} */ reason, /** @type {any} */ by) => { for (const f of revokeListeners) { try { f({ id: o.id, side: o.side, member: o.member, device: o.device, reason }, by); } catch { /* a listener never blocks a change */ } } };
   /** @type {{ gate: any, allowed: any, registry: () => Map<string, any> } | null} */ let bound = null;
+
+  // A chain with a person in it is bound by the rules that name members; a chain with an assistant (an agent or an automation) in it by the rules that name assistants; an
+  // assistant acting for a person is both, so it is bound by whichever of the two is stricter, never by the weaker only.
+  const chainWho = (/** @type {any} */ chain) => /** @type {[boolean, boolean]} */ ([chain.hops.some((/** @type {any} */ h) => h.actor.kind === "person"), chain.hops.some((/** @type {any} */ h) => h.actor.kind === "agent" || h.actor.kind === "automation")]);
+  const bindsWho = (/** @type {any} */ r, /** @type {boolean} */ member, /** @type {boolean} */ assistant) => (member && r.binds.includes("members")) || (assistant && r.binds.includes("assistants"));
+  const matching = (/** @type {boolean} */ member, /** @type {boolean} */ assistant, /** @type {string} */ action, /** @type {string} */ resource) => [...rules.values()].filter(r => r.status === "active" && bindsWho(r, member, assistant) && r.covers.actions.includes(action) && (!r.covers.resource || urnMatches(r.covers.resource, resource)));
+
+  /** Switch a rule off (it stays, binds nothing) or on again. An owner's act with presence, like every change to the rules. */
+  async function switchRule(/** @type {any} */ chain, /** @type {string} */ id, /** @type {boolean} */ on, /** @type {{ presence?: any }} */ o = {}) {
+    const issuer = person(chain);
+    const action = on ? "rules.enable" : "rules.disable";
+    const d = await gate(chain, action, urn("rule", String(id)), { id }, o.presence);
+    if (roleOf(issuer) !== "owner") throw new KernelError("not_allowed", `only an owner turns a standing rule ${on ? "on" : "off"}`);
+    const r = rules.get(String(id));
+    if (!r) throw new KernelError("not_found", "no such rule");
+    const status = on ? "active" : "disabled";
+    if (r.status === status) return r;
+    const rec = freeze({ ...structuredClone(r), status, switched_by: issuer.id, switched_at: clock() });
+    rules.set(rec.id, rec);
+    await note(chain, on ? "rule.enabled" : "rule.disabled", urn("rule", rec.id), { id: rec.id, by: issuer.id }, d.decision);
+    return rec;
+  }
 
   const reg = () => (bound ? bound.registry() : new Map([...(cfg.actions ? cfg.actions() : [])].map(a => [a.action, a])));
   const since = (/** @type {string} */ a) => reg().get(a)?.since || 0;
@@ -606,31 +637,55 @@ export function createGrantsStore(cfg) {
     },
 
     /**
-     * The kernel's own owner change, for the day the person claims their identity: the home's owner (a local id made at first start) becomes the claimed identity's id, so the Space has ONE person for
-     * its owner. Not a chain's act (nothing can ask for it but the spaces module through the kernel's handle): the new id is made the owner, the old one is taken out, every grant of the old
-     * one is revoked and the owner's role grants are made again, each as an ordinary sealed event, so a rebuild from the log reaches the same state. Once; the same id again changes nothing.
-     * @param {string} from @param {string} to @returns {Promise<{ owner: string, previous: string, changed: boolean }>}
+     * The home's claimed identity becomes THE owner, once. The Space has one owner (its first, a local id); when the person claims an identity, that identity's id takes the owner's place: the old
+     * owner's grants are revoked and the owner role grants made again for the identity, each as an ordinary sealed event, so a rebuild reaches the same state. `owner.adopted` is written FIRST
+     * and is the once-marker the rebuild reads (a snapshot carries it): any other `to` afterwards is refused `already_adopted`. A crash after the marker leaves the owner moved only in part; the next call
+     * with the same `to` (the kernel makes it at boot) finishes the move, so the Space repairs itself. `owner.changed` closes it, naming from and to. The first adoption needs no presence (the person
+     * claiming is the first person there is, and boot adoption has none to ask); a different identity later is never adopted, with or without a proof.
+     * @param {string} to @returns {Promise<{ owner: string, previous: string, changed: boolean }>}
      */
-    async adoptOwner(from, to) {
+    async adoptOwner(to) {
       if (typeof to !== "string" || !/^per_[a-z2-7]{26}$/.test(to)) throw new KernelError("bad_input", "an owner is a person id");
+      if (adopted && adopted.to !== to) throw new KernelError("already_adopted", "this Space's owner already took the claimed identity");
+      const owners = [...memberships.values()].filter(m => m.role === "owner").map(m => m.person);
+      const from = adopted ? adopted.from : owners.length === 1 ? owners[0] : null;
+      if (!from) throw new KernelError("not_allowed", "this Space has no single owner to replace");
       if (from === to) return { owner: to, previous: from, changed: false };
+      if (adopted && memberships.get(to)?.role === "owner" && !memberships.has(from) && [...grants.values()].every(g => !(g.status === "active" && g.subject.kind === "actor" && g.subject.actor.kind === "person" && g.subject.actor.id === from))) return { owner: to, previous: from, changed: false };
       const prior = memberships.get(from);
-      if (!prior || prior.role !== "owner") throw new KernelError("not_allowed", "only the Space's owner can be replaced this way");
+      if (!adopted && (!prior || prior.role !== "owner")) throw new KernelError("not_allowed", "only the Space's owner can be replaced this way");
       const k = kernelChain();
+      if (!adopted) { await note(k, "owner.adopted", urn("member", to), { from, to }); adopted = freeze({ from, to }); }
       for (const g of [...grants.values()]) if (g.status === "active" && g.subject.kind === "actor" && g.subject.actor.kind === "person" && g.subject.actor.id === from) {
         const n = freeze({ ...g, status: "revoked", revoked_at: clock(), reason: "owner adopted the claimed identity" }); grants.set(n.id, n);
         await note(k, "grant.revoked", urn("grant", n.id), { id: n.id, reason: "owner adopted the claimed identity" });
       }
-      memberships.delete(from);
-      await note(k, "member.removed", urn("member", from), { person: from });
-      const membership = freeze({ space: cfg.space, person: to, role: "owner", added_by: "kernel", added_at: clock() });
-      memberships.set(to, membership);
-      await note(k, "member.set", urn("member", to), { membership });
-      const g = freeze({ id: `gr_${mintUuid(clock())}`, space: cfg.space, subject: { kind: "actor", actor: { kind: "person", id: to, space: cfg.space } }, actions: [...ROLE_ACTIONS.owner], action_set_version: version, resource: { prefix: `vyre://${cfg.space}/*/*` }, conditions: { delegate: { allowed: true, max_depth: 2 } }, issuer: { kind: "service", id: "grants", space: cfg.space }, source: "role:owner", status: "active", created_at: clock() });
-      grants.set(g.id, g);
-      await note(k, "grant.created", urn("grant", g.id), { grant: g });
+      if (memberships.has(from)) { memberships.delete(from); await note(k, "member.removed", urn("member", from), { person: from }); }
+      if (memberships.get(to)?.role !== "owner") {
+        const membership = freeze({ space: cfg.space, person: to, role: "owner", added_by: "kernel", added_at: clock() });
+        memberships.set(to, membership);
+        await note(k, "member.set", urn("member", to), { membership });
+      }
+      if (![...grants.values()].some(g => g.status === "active" && g.source === "role:owner" && g.subject.kind === "actor" && g.subject.actor.kind === "person" && g.subject.actor.id === to)) {
+        const g = freeze({ id: `gr_${mintUuid(clock())}`, space: cfg.space, subject: { kind: "actor", actor: { kind: "person", id: to, space: cfg.space } }, actions: [...ROLE_ACTIONS.owner], action_set_version: version, resource: { prefix: `vyre://${cfg.space}/*/*` }, conditions: { delegate: { allowed: true, max_depth: 2 } }, issuer: { kind: "service", id: "grants", space: cfg.space }, source: "role:owner", status: "active", created_at: clock() });
+        grants.set(g.id, g);
+        await note(k, "grant.created", urn("grant", g.id), { grant: g });
+      }
+      // The owner's rooms: the identity takes the old id's place in each, as an ordinary chat change (a new version; messages written before it still go to the same person, see chatPeopleAt).
+      for (const c of [...chats.values()]) if (c.people.includes(from)) {
+        const people = [...new Set(c.people.map((/** @type {string} */ x) => (x === from ? to : x)))];
+        const ver = (c.ver || 1) + 1;
+        const n = freeze({ ...c, people, ver, h: [...(c.h || [{ ver: c.ver || 1, people: c.people }]), { ver, people: [...people] }].slice(-HISTORY) });
+        chats.set(c.id, n);
+        await note(k, "chat.changed", urn("chat", c.id), { id: c.id, people: n.people, assistants: n.assistants, ver, joined: people.includes(to) && !c.people.includes(to) ? [to] : [], left: [from] }, null);
+      }
+      await note(k, "owner.changed", urn("member", to), { owner_change: { op: "adopt", person: to, from, by: "kernel", space: cfg.space } }, null, "space");
       return { owner: to, previous: from, changed: true };
     },
+    /** The adoption the log records, or null: `{ from, to }`. The kernel reads it at boot to take the owner from the log, and to finish a move a crash cut short. */
+    adopted() { return adopted; },
+    /** A person id as the Space knows them now: the owner it replaced is the identity that replaced them, so what was keyed by the old id still belongs to its person. @param {string} id */
+    canonicalPerson(id) { return adopted && id === adopted.from ? adopted.to : id; },
 
     /** The first owner of a new Space, written by the kernel itself (no chain can give the first grant). Once only. */
     async bootstrap({ owner }) {
@@ -660,11 +715,13 @@ export function createGrantsStore(cfg) {
     /** The rules that bind this chain for this action and resource, in the order they were made. @param {any} chain @param {string} action @param {string} resource */
     rulesFor(chain, action, resource) {
       if (!rules.size || !isChain(chain)) return [];
-      // A chain with a person in it is bound by the rules that name members; a chain with an assistant (an agent or an automation) in it by the rules that name assistants; an
-      // assistant acting for a person is both, so it is bound by whichever of the two is stricter, never by the weaker only.
-      const assistant = chain.hops.some((/** @type {any} */ h) => h.actor.kind === "agent" || h.actor.kind === "automation");
-      const member = chain.hops.some((/** @type {any} */ h) => h.actor.kind === "person");
-      return [...rules.values()].filter(r => r.status === "active" && ((member && r.binds.includes("members")) || (assistant && r.binds.includes("assistants"))) && r.covers.actions.includes(action) && (!r.covers.resource || urnMatches(r.covers.resource, resource)));
+      return matching(...chainWho(chain), action, resource);
+    },
+    /** Is any active standing rule bound to this chain for this action, whatever resource it names? (A caller that totals rows needs to know no rule could treat two rows differently.) @param {any} chain @param {string} action */
+    rulesTouch(chain, action) {
+      if (!rules.size || !isChain(chain)) return false;
+      const [member, assistant] = chainWho(chain);
+      return [...rules.values()].some(r => r.status === "active" && bindsWho(r, member, assistant) && r.covers.actions.includes(action));
     },
     /** The rules and the proposals, for a manager and above. @param {any} chain */
     async rulesList(chain) {
@@ -672,7 +729,7 @@ export function createGrantsStore(cfg) {
       await bound.gate(chain, "rules.list", urn("rule", "*"));
       // The view an owner reads is built from the rule's structured fields (kind, who it binds, the actions, the resource, the approver), never from the label a proposer wrote.
       const viewed = (/** @type {any} */ r) => ({ ...r, view: describeRule(r) });
-      return { rules: [...rules.values()].filter(r => r.status === "active").map(viewed), proposals: [...proposals.values()].map(viewed) };
+      return { rules: [...rules.values()].map(viewed), proposals: [...proposals.values()].map(viewed) };
     },
     /** @param {any} chain @param {any} r @param {{ presence?: any }} [o] */
     async ruleSet(chain, r, o = {}) {
@@ -736,6 +793,50 @@ export function createGrantsStore(cfg) {
       await note(chain, "rule.dismissed", urn("rule", String(id)), { id: String(id), by: issuer.id }, d.decision);
       return { dismissed: String(id) };
     },
+
+    /** One rule or proposal in plain words, for a manager and above. @param {any} chain @param {string} id */
+    async ruleGet(chain, id) {
+      reader(chain);
+      await bound.gate(chain, "rules.get", urn("rule", String(id)));
+      const r = rules.get(String(id)) || proposals.get(String(id));
+      if (!r) throw new KernelError("not_found", "no such rule");
+      return { ...r, view: describeRule(r) };
+    },
+    /**
+     * What the rules would do to an act, without doing it. `as` is who the act is by (an assistant, a member, or an assistant acting for a member, which both kinds of rule bind),
+     * `action` and `resource` the act. `id` tries one stored rule (on or off) alone; `rule` tries a rule nobody has set yet, together with the ones in force. Nothing is written.
+     * The outcome is the strictest kind that binds: never, then always_ask, then draft_only, else none.
+     * @param {any} chain @param {{ as?: string, action?: string, resource?: string, id?: string, rule?: any }} [probe]
+     */
+    async ruleTest(chain, probe = {}) {
+      reader(chain);
+      await bound.gate(chain, "rules.test", urn("rule", "*"));
+      const p = probe || {};
+      const as = p.as === undefined ? "assistant" : p.as;
+      if (!["assistant", "member", "assistant_for_member"].includes(as)) throw new KernelError("bad_input", "as is assistant, member or assistant_for_member");
+      if (typeof p.action !== "string" || !/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/.test(p.action)) throw new KernelError("bad_input", "name the action to try, exactly");
+      if (p.resource !== undefined && (typeof p.resource !== "string" || !segments(p.resource) || spaceOf(p.resource) !== cfg.space)) throw new KernelError("bad_input", "a resource is a urn in this Space");
+      if (p.id !== undefined && p.rule !== undefined) throw new KernelError("bad_input", "try a stored rule or a new one, not both");
+      const member = as !== "assistant", assistant = as !== "member";
+      const resource = p.resource || "";
+      /** @type {any[]} */ let pool;
+      if (p.id !== undefined) {
+        const r = rules.get(String(p.id));
+        if (!r) throw new KernelError("not_found", "no such rule");
+        pool = [r];
+      } else {
+        pool = [...rules.values()].filter(r => r.status === "active");
+        if (p.rule !== undefined) { const c = checkRule(p.rule); checkDraftable(c, a => reg().get(a)); pool.push({ ...c, id: null, status: "candidate" }); }
+      }
+      const hit = pool.filter(r => bindsWho(r, member, assistant) && r.covers.actions.includes(p.action) && (!r.covers.resource || (resource !== "" && urnMatches(r.covers.resource, resource))));
+      const rank = { never: 3, always_ask: 2, draft_only: 1 };
+      const outcome = hit.reduce((/** @type {string} */ o, r) => (rank[/** @type {"never"} */ (r.kind)] > (rank[/** @type {"never"} */ (o)] || 0) ? r.kind : o), "none");
+      return { outcome, binds: hit.map(r => ({ id: r.id, kind: r.kind, label: r.label, status: r.status, view: describeRule(r) })), note: p.id !== undefined && hit.length === 0 ? "that rule does not bind this act" : undefined };
+    },
+    /** @param {any} chain @param {string} id @param {{ presence?: any }} [o] */
+    ruleEnable(chain, id, o = {}) { return switchRule(chain, id, true, o); },
+    /** @param {any} chain @param {string} id @param {{ presence?: any }} [o] */
+    ruleDisable(chain, id, o = {}) { return switchRule(chain, id, false, o); },
 
     // ---- chats: who is in a room (the kernel's own list, never a module's) ----
     // A chat is a list of people and assistants. The kernel keeps it because three decisions depend on it and none may be a module's word: who may READ the chat's stream
@@ -814,7 +915,7 @@ export function createGrantsStore(cfg) {
       if (!h || !h.length || !(ver >= h[0].ver)) return null;
       let at = h[0];
       for (const x of h) if (x.ver <= ver) at = x;
-      return [...at.people];
+      return [...new Set(at.people.map((/** @type {string} */ x) => (adopted && x === adopted.from ? adopted.to : x)))];
     },
     /** The chat's assistants, for the append check. @param {string} id @returns {string[] | null} */
     chatAssistants(id) { const c = chats.get(String(id)); return c ? [...c.assistants] : null; },
@@ -851,7 +952,7 @@ export function createGrantsStore(cfg) {
      * A snapshot is a point the log can be read from: events before it are not needed once it exists.
      */
     async snapshot() {
-      const state = { grants: [...grants.values()], memberships: [...memberships.values()], actors: [...actors], offers: [...offers.values()], invites: [...invites.values()], chats: [...chats.values()], rules: [...rules.values()], proposals: [...proposals.values()] };
+      const state = { adopted, grants: [...grants.values()], memberships: [...memberships.values()], actors: [...actors], offers: [...offers.values()], invites: [...invites.values()], chats: [...chats.values()], rules: [...rules.values()], proposals: [...proposals.values()] };
       await note(kernelChain(), "grants.snapshot", urn("grant", "snapshot"), { state });
       snapAt = gseq;
       return { grants: state.grants.length, memberships: state.memberships.length };
@@ -869,6 +970,7 @@ export function createGrantsStore(cfg) {
       try { return await api.rebuildFromLog(); } catch (e) { restore(keep); throw e; }
     },
     async rebuildFromLog() {
+      adopted = null;
       grants.clear(); memberships.clear(); actors.clear(); offers.clear(); invites.clear(); chats.clear(); rules.clear(); proposals.clear();
       gseq = 0; gprev = "genesis";
       // Boot reads what it needs, not the whole log: the newest snapshot that verifies is the starting state, and only the grants events written after it are read, by type
@@ -882,7 +984,7 @@ export function createGrantsStore(cfg) {
       }
       const since = snap ? snap.e.seq : 0;
       /** @type {any[]} */ const tail = [];
-      for (const t of ["grant.*", "member.*", "actor.*", "offer.*", "invite.*", "chat.*", "rule.*", "owner.changed"]) for (const e of rd({ type: t, since })) if (e.data && typeof e.data === "object") tail.push(e);
+      for (const t of ["grant.*", "member.*", "actor.*", "offer.*", "invite.*", "chat.*", "rule.*", "owner.changed", "owner.adopted"]) for (const e of rd({ type: t, since })) if (e.data && typeof e.data === "object") tail.push(e);
       tail.sort((a, b) => a.seq - b.seq);
       const items = tail.map(toItem);
       // 1. Verify the new-style events after the snapshot, in pipelined batches.
@@ -900,6 +1002,7 @@ export function createGrantsStore(cfg) {
         else if (e.type === "grant.revoked") { const g = grants.get(d.id); if (g) grants.set(d.id, freeze({ ...g, status: "revoked", revoked_at: e.time, reason: d.reason })); }
         else if (e.type === "member.set") memberships.set(d.membership.person, freeze(structuredClone(d.membership)));
         else if (e.type === "member.removed") memberships.delete(d.person);
+        else if (e.type === "owner.adopted") { if (!adopted && d && typeof d.from === "string" && typeof d.to === "string") adopted = freeze({ from: d.from, to: d.to }); }
         else if (e.type === "invite.created") invites.set(d.invite.id, freeze(structuredClone(d.invite)));
         else if (e.type === "invite.used") { const v = invites.get(d.id); if (v) invites.set(d.id, freeze({ ...v, status: "used", used_by: d.by })); }
         else if (e.type === "invite.confirmed") { const v = invites.get(d.id); if (v) invites.set(d.id, freeze({ ...v, confirmed: true })); }
@@ -910,6 +1013,7 @@ export function createGrantsStore(cfg) {
         else if (e.type === "offer.revoked") { const o = offers.get(d.id); if (o) offers.set(d.id, freeze({ ...o, status: "revoked", revoked_at: e.time })); }
         else if (e.type === "rule.set") { rules.set(d.rule.id, freeze(structuredClone(d.rule))); if (d.from) proposals.delete(d.from); }
         else if (e.type === "rule.removed") rules.delete(d.id);
+        else if (e.type === "rule.enabled" || e.type === "rule.disabled") { const r = rules.get(d.id); if (r) rules.set(d.id, freeze({ ...structuredClone(r), status: e.type === "rule.enabled" ? "active" : "disabled" })); }
         else if (e.type === "rule.proposed") proposals.set(d.proposal.id, freeze(structuredClone(d.proposal)));
         else if (e.type === "rule.dismissed") proposals.delete(d.id);
         else if (e.type === "chat.created") { if (!chats.has(d.chat.id)) chats.set(d.chat.id, freeze(structuredClone(d.chat))); }
@@ -917,6 +1021,7 @@ export function createGrantsStore(cfg) {
       };
       if (snap) {
         const st = snap.core.state;
+        adopted = st.adopted && typeof st.adopted.to === "string" ? freeze({ from: st.adopted.from, to: st.adopted.to }) : null;
         for (const g of st.grants) grants.set(g.id, freeze(structuredClone(g)));
         for (const m of st.memberships) memberships.set(m.person, freeze(structuredClone(m)));
         for (const a of st.actors) actors.add(a);
@@ -950,8 +1055,9 @@ export function createGrantsStore(cfg) {
   };
 
   /** The whole in-memory state, by reference (every record in it is frozen), so a failed call can put it back even when the log cannot be read. */
-  const capture = () => ({ grants: new Map(grants), memberships: new Map(memberships), actors: new Set(actors), offers: new Map(offers), invites: new Map(invites), chats: new Map(chats), rules: new Map(rules), proposals: new Map(proposals), gseq, gprev });
+  const capture = () => ({ adopted, grants: new Map(grants), memberships: new Map(memberships), actors: new Set(actors), offers: new Map(offers), invites: new Map(invites), chats: new Map(chats), rules: new Map(rules), proposals: new Map(proposals), gseq, gprev });
   const restore = (/** @type {any} */ c) => {
+    adopted = c.adopted || null;
     grants.clear(); for (const [k, v] of c.grants) grants.set(k, v);
     memberships.clear(); for (const [k, v] of c.memberships) memberships.set(k, v);
     actors.clear(); for (const v of c.actors) actors.add(v);
@@ -966,14 +1072,17 @@ export function createGrantsStore(cfg) {
   // the log refused) restores the store from the log, which is the durable copy, so memory never shows a change the log does not hold, and the caller is told it failed.
   // A refusal the call itself makes before changing anything (a KernelError) needs no restore.
   let lock = Promise.resolve();
-  for (const name of ["create", "revoke", "narrow", "setRole", "transferOwner", "adoptOwner", "inviteRevoke", "removeMember", "addActor", "offer", "unoffer", "inviteCreate", "inviteConfirm", "inviteAccept", "sweep", "installModule", "chatCreate", "chatChange", "ruleSet", "ruleRemove", "ruleAccept", "ruleDismiss", "rulePropose"]) {
+  for (const name of ["create", "revoke", "narrow", "setRole", "transferOwner", "adoptOwner", "bootstrap", "inviteRevoke", "removeMember", "addActor", "offer", "unoffer", "inviteCreate", "inviteConfirm", "inviteAccept", "sweep", "installModule", "chatCreate", "chatChange", "ruleSet", "ruleRemove", "ruleAccept", "ruleDismiss", "rulePropose", "ruleEnable", "ruleDisable"]) {
     const f = /** @type {(...a: any[]) => Promise<any>} */ (/** @type {any} */ (api)[name]);
     /** @type {any} */ (api)[name] = (/** @type {any[]} */ ...a) => {
       const run = async () => {
-        const before = capture();
+        const before = capture(), seq0 = cfg.log.latestSeq();
         try { const r = await f(...a); if (gseq - snapAt >= SNAP_EVERY) { try { await api.snapshot(); } catch { /* the next call tries again */ } } return r; } catch (e) {
-          // A failure while writing: put the store back from the log; if the log cannot be read either, put back the state this call started from, never an empty store.
-          if (!(e instanceof KernelError)) { try { await api.rebuild(); } catch { restore(before); } }
+          // WF-1: memory never shows a change the log does not hold. If the log did not move, nothing was written, so memory goes back exactly to what the call started from (a refusal, or a
+          // sealing process that failed under the event). If events were written before it failed (a change made of several), the log is the truth: rebuild from it, and only if it cannot be
+          // read put back the state this call started from, never an empty store.
+          if (cfg.log.latestSeq() === seq0) restore(before);
+          else { try { await api.rebuild(); } catch { restore(before); } }
           throw e;
         }
       };

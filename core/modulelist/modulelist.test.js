@@ -56,14 +56,14 @@ const P = { op: "grant.modules_list_reset", space: "spc_x", fields: { counter: 7
 
 test("rollback approval route: the box asks, the phone sees the card and signs, one answer resets, and every other path changes nothing", async () => {
   const resets = [];
-  const w = await whole({ reset: async (chain, proof) => { resets.push(proof); return proof ? { ok: true } : { ok: false, why: "needs_presence" }; }, payload: () => P });
+  const w = await whole({ reset: async (chain, proof) => { resets.push(proof); return proof ? { ok: true } : { ok: false, why: "needs_presence" }; }, payload: ask => ({ ...P, fields: { ...P.fields, ask } }) });
   for (const n of ["modules.list.reset.ask", "modules.list.reset.status"]) assert.deepEqual(w.t.get(n).callers, ["cli", "local"], `${n}: the box's own surfaces only`);
   for (const n of ["modules.list.reset.ask", "modules.list.reset.pending", "modules.list.reset.answer", "modules.list.reset.status"]) assert.equal(w.t.get(n).callers.includes("mcp"), false, `${n}: never a model`);
   assert.deepEqual(await w.run("modules.list.reset.pending", {}), { none: true });
   const { id } = await w.run("modules.list.reset.ask", {});
   assert.deepEqual(await w.run("modules.list.reset.ask", {}).then(r => r.id), id, "one ask at a time");
   const card = await w.run("modules.list.reset.pending", {});
-  assert.equal(card.id, id); assert.equal(card.payload_hash, "h7"); assert.deepEqual(card.fields, { counter: 7 }); assert.equal(card.op, "grant.modules_list_reset");
+  assert.equal(card.id, id); assert.equal(card.payload_hash, "h7"); assert.deepEqual(card.fields, { counter: 7, ask: id }); assert.equal(card.op, "grant.modules_list_reset");
   assert.deepEqual(await w.run("modules.list.reset.status", { id }), { state: "waiting" });
   // wrong id, and a no: nothing is reset
   await assert.rejects(() => w.run("modules.list.reset.answer", { id: "rr_other", approve: true }, { who: "owner", proof: { n: 1 } }), { code: "not_found" });
@@ -74,22 +74,29 @@ test("rollback approval route: the box asks, the phone sees the card and signs, 
   // approved with a proof: one reset, then no ask is open
   assert.deepEqual(await w.run("modules.list.reset.answer", { id, approve: true }, { who: "owner", proof: { n: 2 } }), { answered: "approved" });
   assert.deepEqual(await w.run("modules.list.reset.status", { id }), { state: "approved" });
+  assert.deepEqual(await w.run("modules.list.reset.status", { id }), { state: "none" }, "read once, then cleared");
   assert.deepEqual(await w.run("modules.list.reset.pending", {}), { none: true });
+  await assert.rejects(() => w.run("modules.list.reset.ask", {}), { code: "rate_limited" }, "a new ask within 10 minutes is refused");
   await assert.rejects(() => w.run("modules.list.reset.answer", { id, approve: true }, { who: "owner", proof: { n: 3 } }), { code: "not_found" });
   assert.equal(resets.length, 2);
 });
 
 test("rollback approval route: a no, a timeout and a changed list each change nothing", async () => {
   let hash = "h7"; let resets = 0;
-  const w = await whole({ reset: async () => { resets++; return { ok: true }; }, payload: () => ({ ...P, payload_hash: hash }) });
+  const w = await whole({ reset: async () => { resets++; return { ok: true }; }, payload: ask => ({ ...P, fields: { ...P.fields, ask }, payload_hash: hash }) });
   let { id } = await w.run("modules.list.reset.ask", {});
-  assert.deepEqual(await w.run("modules.list.reset.answer", { id, approve: false }, { who: "owner" }), { answered: "refused" });
+  const ignored = await w.run("modules.list.reset.answer", { id, approve: false }, { who: "someone-with-a-label" });
+  assert.equal(ignored.answered, "ignored", "a no from a label with no person session cancels nothing");
+  assert.deepEqual(await w.run("modules.list.reset.status", { id }), { state: "waiting" });
+  assert.deepEqual(await w.run("modules.list.reset.answer", { id, approve: false }, { who: "owner", person: "per_alex" }), { answered: "refused" });
   assert.deepEqual(await w.run("modules.list.reset.status", { id }), { state: "refused" });
+  w.clock.t += 10 * 60_000 + 1;
   ({ id } = await w.run("modules.list.reset.ask", {}));
   w.clock.t += 5 * 60_000 + 1;
   assert.deepEqual(await w.run("modules.list.reset.pending", {}), { none: true }, "timed out");
   assert.deepEqual(await w.run("modules.list.reset.status", { id }), { state: "none" });
   await assert.rejects(() => w.run("modules.list.reset.answer", { id, approve: true }, { who: "owner", proof: { n: 1 } }), { code: "not_found" });
+  w.clock.t += 10 * 60_000 + 1;
   ({ id } = await w.run("modules.list.reset.ask", {}));
   hash = "h8";
   await assert.rejects(() => w.run("modules.list.reset.answer", { id, approve: true }, { who: "owner", proof: { n: 1 } }), { code: "stale" });

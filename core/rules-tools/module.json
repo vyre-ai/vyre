@@ -1,0 +1,26 @@
+{
+  "name": "rules",
+  "version": "0.1.0",
+  "description": "The app's way into a Space's standing rules: one tool per call on the kernel's rule store, each under the caller's own chain in the Space it names. Nothing here decides; the kernel does.",
+  "roles": ["box", "local"],
+  "requires": [],
+  "needs": { "kernel": { "actions": [] } },
+  "does": {
+    "tools": [
+      { "name": "rules.list", "reach": "person" },
+      { "name": "rules.get", "reach": "person" },
+      { "name": "rules.define", "reach": "person" },
+      { "name": "rules.test", "reach": "person" },
+      { "name": "rules.enable", "reach": "person" },
+      { "name": "rules.disable", "reach": "person" },
+      { "name": "rules.remove", "reach": "person" },
+      { "name": "rules.propose", "reach": "person" },
+      { "name": "rules.accept", "reach": "person" },
+      { "name": "rules.dismiss", "reach": "person" }
+    ]
+  },
+  "watches": { "emits": [] },
+  "shows": { "cli": [] },
+  "teaches": { "tips": [] },
+  "settings": []
+}
