@@ -296,6 +296,15 @@ process.stderr.write("the fake does not do " + args[0] + "\\n"); process.exit(1)
   return { calls: () => { try { return fs.readFileSync(path.join(dir, "calls.log"), "utf8").trim().split("\n").filter(Boolean); } catch { return []; } } };
 }
 
+
+/** The box reads its links from the Wink node (network.wink.status), not the Tailscale CLI: stand one in with the peers a test names (eid, via, since). */
+function winkStub(s, peers) {
+  const def = s.box.registry.tools.get("network.wink.status");
+  const was = def.run;
+  def.run = async () => ({ identity: null, spaces: [{ id: "spc_harlow", state: "connected", path: "direct", since: 1, peerList: peers }], relay: null, storage: [], clock: null });
+  return () => { def.run = was; };
+}
+
 test("link: link.health on the Mac is the box's node, and on the box the calling device or a paired Mac", async t => {
   const s = await pair(t);
   const node = (id, ip, extra = {}) => ({ ID: id, HostName: id, DNSName: `${id}.tail0000.ts.net.`, TailscaleIPs: [ip], Online: true,
@@ -322,11 +331,11 @@ test("link: link.health on the Mac is the box's node, and on the box the calling
   assert.equal(ts.calls().filter(c => c.startsWith("ping")).length, 1);
   assert.ok(ts.calls().includes("ping --c 1 --until-direct=false --timeout 3s 100.64.0.5"));
 
-  // The box: the calling device by default (the Mac over the tailnet), relayed.
+  // The box: the calling device by default (the Mac over the tailnet), relayed, as the Wink node reports its peers.
+  winkStub(s, [{ eid: "nMAC", via: "relay", since: 5 }, { eid: "nPHONE", via: "relay", since: null }]);
   const self = await s.boxCall("link.health", {}, `tailnet:${OWNER}`, { peer: MAC });
   assert.equal(self.data.path, "relay");
-  assert.equal(self.data.relay, "fra");
-  assert.equal(self.data.latencyMs, 80);
+  assert.equal(self.data.lastHandshake, 5);
   // A paired Mac by node id, from the box's terminal; its id is in link.peers.
   const peers = (await s.boxCall("link.peers")).data;
   assert.equal(peers[0].stable_id, "nMAC");
@@ -334,7 +343,7 @@ test("link: link.health on the Mac is the box's node, and on the box the calling
   // Another node is not a paired Mac, unless it is the caller itself or a module asks.
   assert.match((await s.boxCall("link.health", { node: "nPHONE" })).error.message, /not a paired Mac/);
   const phone = await s.boxCall("link.health", {}, `tailnet:${OWNER}`, { peer: PHONE });
-  assert.equal(phone.data.latencyMs, 95);
+  assert.equal(phone.data.path, "relay");
   assert.equal(phone.data.lastHandshake, null, "never shook hands: null, not year one");
   assert.equal((await s.boxCall("link.health", { node: "nPHONE" }, "module:glass")).data.cached, true);
   // Modules and the owner only: a guest, an agent's node, an agent at the box and another login are refused.
@@ -377,12 +386,13 @@ test("link: link.health in the one reach shape, on the Mac, for a device over th
   // (1) The Mac: direct with its tailnet detail, and the old fields beside.
   const mac = (await s.macCall("link.health")).data;
   assert.equal(mac.reach, "direct");
-  assert.match(mac.why, /Tailscale/);
+  assert.match(mac.why, /direct/);
   assert.deepEqual(mac.tailnet, { path: "direct", latencyMs: 12 });
   assert.equal(typeof mac.since, "number");
   assert.equal(mac.path, "direct");
   assert.equal(mac.fix, undefined);
 
+  winkStub(s, [{ eid: "nMAC", via: "relay", since: 5 }]);
   // (2) The box. A device over the relay channel is "relay", whatever the tailnet says.
   const dev = (await s.boxCall("link.health", {}, "device:d1")).data;
   assert.equal(dev.reach, "relay");
@@ -400,6 +410,6 @@ test("link: link.health in the one reach shape, on the Mac, for a device over th
   assert.equal(tn.reach, "direct");
   assert.equal(tn.fix, undefined);
   assert.equal(typeof tn.since, "number");
-  assert.equal(tn.path, "relay", "the old fields stay what Tailscale said (DERP from status)");
+  assert.equal(tn.path, "relay", "the old fields stay what the Wink node said for that peer");
   assert.equal((await s.boxCall("link.health")).data.reach, "none", "nothing named: none, with why");
 });
