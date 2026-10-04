@@ -403,6 +403,14 @@ export function createRecords(cfg) {
       const vs = await viewersOf(chain);
       await guardSealed(chain, type, spec, vs);
       const readDec = await countRead(chain, type);
+      // When every row of the type gets this chain's answer (rowUniform: the grants cover the whole type, no rule or room or privileged record can tell two rows apart) every row the store
+      // returns is allowed, so the store's own page and cursor are the answer: no row is asked about, and no second page is read to look ahead.
+      if (readDec && !vs && typeof authorizer.rowUniform === "function" && !hasPrivileged(type) && await authorizer.rowUniform({ chain, action: "records.read", type })) {
+        let p;
+        try { p = await store.query(type, { ...spec, build_index: true, page: { limit: spec.page.limit, ...(spec.page.cursor ? { cursor: spec.page.cursor } : {}) } }); } catch (e) { throw mapError(e); }
+        const lim = { allow: allowList(readDec), hidden: (await hiddenFields(chain, type)) || new Set() };
+        return { rows: p.rows.filter((/** @type {any} */ r) => r.type === type).map((/** @type {any} */ r) => shape(chain, r, lim)), ...(p.next_cursor ? { next_cursor: p.next_cursor } : {}) };
+      }
       let cursor = spec.page.cursor, out = [], next;
       for (let pages = 0; pages < 10; pages++) {
         let p;
@@ -479,6 +487,28 @@ export function createRecords(cfg) {
       for (const t of spec.types || []) checkType(t);
       spec = checkPage(spec);
       const vs = await viewersOf(chain);
+      // Row-uniform on every type searched (see query): the store's page and cursor are the answer, no row is asked about and no page is read ahead.
+      if (!vs && Array.isArray(spec.types) && spec.types.length && spec.types.length <= 8 && typeof authorizer.rowUniform === "function") {
+        /** @type {Map<string, any>} */ const decs = new Map();
+        for (const t of spec.types) {
+          const d = await countRead(chain, t);
+          if (!d || hasPrivileged(t) || !(await authorizer.rowUniform({ chain, action: "records.read", type: t }))) { decs.clear(); break; }
+          decs.set(t, d);
+        }
+        if (decs.size === spec.types.length) {
+          let u;
+          try { u = await store.search(spec); } catch (e) { throw mapError(e); }
+          const out = [];
+          for (const h of u.rows) {
+            const d = decs.get(h.type);
+            if (!d) continue;
+            const limited = allowList(d) !== null || ((await hiddenFields(chain, h.type)) || new Set([1])).size > 0;
+            const { snippet: _s, ...bare } = h;
+            out.push(limited ? bare : h);
+          }
+          return { rows: out, ...(u.next_cursor ? { next_cursor: u.next_cursor } : {}) };
+        }
+      }
       let p;
       try { p = await store.search(spec); } catch (e) { throw mapError(e); }
       const rows = [];
