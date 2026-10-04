@@ -5,7 +5,7 @@
 cd "$(dirname "$0")/.." || exit 1
 export PATH=$HOME/node24/bin:$PATH
 PER=${PER:-100}; TOTAL=${TOTAL:-480}; RESULT=${RESULT:-/tmp/devbox-smoke.result}; : > "$RESULT"
-files="test/daemon-smoke.test.js test/modules-boot.test.js test/signin.test.js test/one-registry.test.js kernel/gateway/gateway.test.js core/work/know-daemon.test.js $(ls core/spaces/*.test.js)"
+files="test/daemon-smoke.test.js test/modules-boot.test.js test/signin.test.js test/one-registry.test.js test/ownserver-daemon.test.js kernel/gateway/gateway.test.js core/work/know-daemon.test.js $(ls core/spaces/*.test.js)"
 start=$(date +%s); pass=0; fail=0; hung=0; skipped=0; bad=""
 for f in $files; do
   now=$(date +%s)
