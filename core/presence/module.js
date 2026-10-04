@@ -211,6 +211,23 @@ export default {
     const ASK_MS = 5 * 60_000;
     /** A device the owner declined cannot ask again for 10 minutes. @type {Map<string, number>} */
     const refusedUntil = new Map();
+    /** What a card may ask for, by moment (the phone shows exactly what yes() will be asked about): the op's shape and plain fields only. */
+    const CARD_OPS = { pair: /^(wink|presence)\.[a-z0-9.-]{1,60}$/, vault: /^vault\.[a-z0-9.-]{1,60}$/, outward: /^[a-z][a-z0-9]*\.(send|post|pay|publish|reply|forward)[a-z0-9.-]{0,40}$/ };
+    /** @param {string} moment @param {any} request @returns {{ op: string, fields: Record<string, string | number | boolean> } | null} */
+    const cardRequest = (moment, request) => {
+      if (!request || typeof request !== "object" || Array.isArray(request) || typeof request.op !== "string" || !CARD_OPS[/** @type {"pair"} */ (moment)] || !CARD_OPS[/** @type {"pair"} */ (moment)].test(request.op)) return null;
+      const f = request.fields && typeof request.fields === "object" && !Array.isArray(request.fields) ? request.fields : {};
+      const keys = Object.keys(f);
+      if (keys.length > 12) return null;
+      /** @type {Record<string, string | number | boolean>} */ const fields = {};
+      for (const k of keys) { const v = f[k]; if (!/^[a-z][a-z0-9_]{0,31}$/.test(k) || !(typeof v === "number" || typeof v === "boolean" || (typeof v === "string" && v.length <= 200))) return null; fields[k] = v; }
+      return { op: request.op, fields };
+    };
+    /** The line the owner's phone shows, made HERE from the validated request and this server's own name for the device: what is asked, of what, by which device. */
+    const cardLine = (/** @type {string} */ moment, /** @type {{ op: string, fields: Record<string, any> }} */ r, /** @type {string} */ deviceName) => {
+      const what = moment === "vault" ? `reveal or use ${r.fields.name ? `"${String(r.fields.name).slice(0, 80)}"` : "a secret"} in your vault` : moment === "pair" ? "pair a new device" : `${r.op.split(".").pop()} ${Object.entries(r.fields).slice(0, 4).map(([k, v]) => `${k}: ${String(v).slice(0, 80)}`).join(", ")}`.trim();
+      return `${deviceName} wants to ${what}`;
+    };
     /** @type {Map<string, { id: string, device: string, label: string, state: "waiting" | "approved" | "refused", moment: string, request: any, proof?: any, asked?: number, expires: number }>} */
     const asks = new Map();
     const liveAsk = (/** @type {string} */ device) => { const a = asks.get(device); if (a && a.expires <= Date.now()) { asks.delete(device); return null; } return a || null; };
@@ -311,7 +328,7 @@ export default {
       effect: "write",
       description: "A paired device that cannot sign a yes itself (a browser) asks its owner's phone for the yes one of the three moments needs (pair, vault, outward): { id, expires_in_s }. One open ask per device. The owner answers with presence.person.session-answer from their own device; the device reads the signed yes back with presence.person.session-status.",
       callers: RELAY_DEVICE_CALLERS,
-      input: obj({ label: str, moment: { type: "string", enum: ["pair", "vault", "outward"] }, request: { type: "object" } }, ["moment"]),
+      input: obj({ moment: { type: "string", enum: ["pair", "vault", "outward"] }, request: { type: "object" } }, ["moment", "request"]),
       run: async (input, meta = {}) => {
         const peer = meta.peer;
         if (!(peer && peer.kind === "device")) throw Object.assign(new Error("this device cannot ask that way"), { code: "denied" });
@@ -321,11 +338,18 @@ export default {
         if (!rec || rec.id !== device || !rec.confirmed || !rec.owner || rec.confirmedBy !== rec.owner) throw Object.assign(new Error("this device is not paired to an owner"), { code: "denied" });
         const hold = refusedUntil.get(device);
         if (hold && hold > Date.now()) throw Object.assign(new Error("the owner said no to this device a moment ago; try again in a few minutes"), { code: "rate_limited" });
+        const moment = String(input.moment);
+        const request = cardRequest(moment, input.request);
+        if (!request) throw Object.assign(new Error("that request does not fit this kind of card"), { code: "bad_input" });
         const open = liveAsk(device);
-        if (open && open.state === "waiting") return { id: open.id, expires_in_s: Math.max(1, Math.round((open.expires - Date.now()) / 1000)) };
-        const a = { id: `ask_${crypto.randomBytes(9).toString("base64url")}`, device, label: String(input.label || "a device").slice(0, 64), state: /** @type {const} */ ("waiting"), moment: String(input.moment), request: input.request && typeof input.request === "object" && JSON.stringify(input.request).length <= 4096 ? input.request : null, asked: Date.now(), expires: Date.now() + ASK_MS };
+        if (open && open.state === "waiting") {
+          // one card at a time per device: the same card again is the same card, a different one is refused with the open one named
+          if (open.moment === moment && JSON.stringify(open.request) === JSON.stringify(request)) return { id: open.id, expires_in_s: Math.max(1, Math.round((open.expires - Date.now()) / 1000)) };
+          throw Object.assign(new Error("another card from this device is still waiting"), { code: "conflict", data: { open: { id: open.id, moment: open.moment } } });
+        }
+        const a = { id: `ask_${crypto.randomBytes(9).toString("base64url")}`, device, label: cardLine(moment, request, String(rec.name || "a device")), state: /** @type {const} */ ("waiting"), moment, request, asked: Date.now(), expires: Date.now() + ASK_MS };
         asks.set(device, a);
-        ctx.events.emit("presence.session-asked", { id: a.id, device, label: a.label, moment: a.moment });
+        ctx.events.emit("presence.session-asked", { id: a.id, device, moment: a.moment, line: a.label });
         return { id: a.id, expires_in_s: ASK_MS / 1000 };
       },
     });
@@ -347,15 +371,21 @@ export default {
     });
     ctx.tool("presence.person.session-pending", {
       effect: "read",
-      description: "The sign-in asks still waiting for the owner, for their phone: { asks: [{ id, device, label, moment, request, asked_at }] }, newest first. An ask lasts 5 minutes, then it is gone (so one made while the app was closed is still there when it opens).",
+      description: "The sign-in asks still waiting for the owner, for their phone: { asks: [{ id, device, line, moment, request, asked_at }] } (`line` is made by this server from the request and its own name for the device, never the asker's words), newest first. An ask lasts 5 minutes, then it is gone (so one made while the app was closed is still there when it opens).",
       callers: ["cli", "local", "deck", "capsule", "mobile"],
       input: obj({}),
       run: async (_i, meta = {}) => {
         // a paired device may read the list only with its own non-software session (the owner's phone); a software or no session sees nothing, and another device's ask is never shown to a browser
         const caller = String((meta && meta.caller) || "");
-        if (caller.startsWith("device:")) { const sid = meta && meta.person && meta.person.id; const st = sid ? people.strength(String(sid)) : null; if (!isNotSoftware(st)) throw Object.assign(new Error("only the owner's own signed-in phone can see sign-in asks"), { code: "denied" }); }
+        if (caller.startsWith("device:")) {
+          // a paired device lists the cards only as the owner's own phone: a session of a real key, or a device the app registered with hardware key storage (this only decides who may SEE a card; the yes is checked where it is used)
+          const sid = meta && meta.person && meta.person.id;
+          let ok = Boolean(sid) && isNotSoftware(people.strength(String(sid)));
+          if (!ok) { const wr = await ctx.call("wink.device.record", { id: caller.slice(7) }).catch(() => null); ok = Boolean(wr && wr.data && wr.data.keyStorage === "hardware"); }
+          if (!ok) throw Object.assign(new Error("only the owner's own phone can see these cards"), { code: "denied" });
+        }
         const out = [];
-        for (const a of [...asks.values()]) { if (a.expires <= Date.now()) { asks.delete(a.device); continue; } if (a.state === "waiting") out.push({ id: a.id, device: a.device, label: a.label, moment: a.moment, request: a.request, asked_at: a.asked || 0 }); }
+        for (const a of [...asks.values()]) { if (a.expires <= Date.now()) { asks.delete(a.device); continue; } if (a.state === "waiting") out.push({ id: a.id, device: a.device, line: a.label, moment: a.moment, request: a.request, asked_at: a.asked || 0 }); }
         out.sort((x, y) => y.asked_at - x.asked_at);
         return { asks: out };
       },
@@ -363,15 +393,17 @@ export default {
     ctx.tool("presence.person.session-answer", {
       effect: "write",
       description: "The owner answers a device's card from their own device: yes carries the owner's signed yes (`proof`, over the exact request on the card) back to the device that asked.",
-      presence: { summary: async input => `Let a device go ahead (${String((input && input.id) || "").slice(0, 24)})` },
       callers: ["cli", "local", "deck", "capsule", "mobile"],
       input: obj({ id: str, yes: { type: "boolean" }, proof: { type: "object" } }, ["id", "yes"]),
       run: async (input, meta = {}) => {
         const a = [...asks.values()].find(x => x.id === String(input.id));
         if (!a || a.expires <= Date.now()) throw Object.assign(new Error("that sign-in ask is gone"), { code: "not_found" });
+        // the phone's yes on the card is the one prompt: this call carries it (`proof`, a signed yes over the exact request), and the device that asked never answers its own card. The proof is checked where it is used (yes()).
+        if (String((meta && meta.caller) || "") === `device:${a.device}`) throw Object.assign(new Error("a device cannot answer its own card"), { code: "denied" });
         if (a.state !== "waiting") return { state: a.state };
         if (input.yes !== true) { a.state = "refused"; refusedUntil.set(a.device, Date.now() + 10 * 60_000); return { state: "refused" }; }
-        a.proof = input.proof && typeof input.proof === "object" && JSON.stringify(input.proof).length <= 8192 ? input.proof : null;
+        if (!(input.proof && typeof input.proof === "object" && !Array.isArray(input.proof) && JSON.stringify(input.proof).length <= 8192)) throw Object.assign(new Error("a yes carries the owner's signed proof"), { code: "bad_input" });
+        a.proof = input.proof;
         a.state = "approved";
         a.expires = Date.now() + ASK_MS;
         ctx.events.emit("presence.session-approved", { id: a.id, device: a.device });

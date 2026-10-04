@@ -5551,7 +5551,6 @@ The owner answers a device's card from their own device: yes carries the owner's
   - `yes` boolean, required
   - `proof` object
 - Callers: `capsule`, `cli`, `deck`, `local`, `mobile`
-- Needs a person present.
 
 ### `presence.person.session-ask`
 
@@ -5559,13 +5558,12 @@ A paired device that cannot sign a yes itself (a browser) asks its owner's phone
 
 - Input:
   - `moment` one of "pair", "vault", "outward", required
-  - `label` string
-  - `request` object
+  - `request` object, required
 - Callers: `device`, `relay`, `tailnet`
 
 ### `presence.person.session-pending`
 
-The sign-in asks still waiting for the owner, for their phone: { asks: [{ id, device, label, moment, request, asked_at }] }, newest first. An ask lasts 5 minutes, then it is gone (so one made while the app was closed is still there when it opens).
+The sign-in asks still waiting for the owner, for their phone: { asks: [{ id, device, line, moment, request, asked_at }] } (`line` is made by this server from the request and its own name for the device, never the asker's words), newest first. An ask lasts 5 minutes, then it is gone (so one made while the app was closed is still there when it opens).
 
 - Input: none
 - Callers: `capsule`, `cli`, `deck`, `local`, `mobile`

@@ -23,6 +23,8 @@ const isChainOfOnePerson = chain => Boolean(chain && Array.isArray(chain.hops) &
 export function isYou(subject) {
   if (subject && typeof subject === "object" && Array.isArray(subject.hops)) return isChainOfOnePerson(subject);
   if (subject && typeof subject === "object" && subject.chain && Array.isArray(subject.chain.hops)) return isChainOfOnePerson(subject.chain);
+  // a call that carries an agent or a thread is a model's, whatever its label says (a label is only a claim)
+  if (subject && typeof subject === "object" && (subject.agent || subject.thread || subject.model)) return false;
   try { return isPerson(subject); } catch { return false; }
 }
 
@@ -68,13 +70,17 @@ export async function yes(moment, request, proof, via = {}) {
   const softwareOk = via.softwareOk || state.softwareOk;
   /** @type {any} */ let r;
   try { r = await verify({ ...(request.chain ? { chain: request.chain } : {}), op: request.op, fields: request.fields, proof, moment }); } catch { return { ok: false, reason: "no_proof" }; }
-  if (r === null || r === undefined) return { ok: true };
+  // only `null` means the proof stands (the sealing process's own answer); `undefined`, a bare boolean or anything else is a refusal
+  if (r === null) return { ok: true };
+  if (r === undefined) return { ok: false, reason: "no_proof" };
   if (typeof r === "string") return { ok: false, reason: yesReason(r) };
   if (r && typeof r === "object") {
     if (r.ok === true) {
       // a software key is a yes only where the build takes software keys
-      if (r.strength === "software" && !(() => { try { return softwareOk() === true; } catch { return false; } })()) return { ok: false, reason: "software_key" };
-      return { ok: true, ...(r.strength ? { strength: r.strength } : {}) };
+      // a result that does not say how strong the key was counts as software: refused unless this build takes software keys
+      const strong = r.strength === "real" || r.strength === "hardware";
+      if (!strong && !(() => { try { return softwareOk() === true; } catch { return false; } })()) return { ok: false, reason: "software_key" };
+      return { ok: true, strength: strong ? "real" : "software" };
     }
     return { ok: false, reason: yesReason(r.code || r.reason) };
   }

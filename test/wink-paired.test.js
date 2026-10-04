@@ -64,17 +64,18 @@ async function world(t, opt = {}) {
   const relay = createRelay();
   const url = await relay.listen();
   t.after(() => relay.close());
+  const logs = [];
   const root = tempHome(t);
   if (opt.seam) { seams.set(root, { ...(seams.get(root) || {}), ...opt.seam }); t.after(() => seams.delete(root)); }
   if (opt.pendingMs || opt.abandonMs) { seams.set(root, { ...(opt.pendingMs ? { pendingMs: opt.pendingMs } : {}), ...(opt.abandonMs ? { abandonMs: opt.abandonMs } : {}) }); t.after(() => seams.delete(root)); }
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [], network: { name: "alex" }, relay: { enabled: true, url }, modules: { disable: ["names", "onboard"] } }));
-  const d = await start({ ...(opt.realPresence ? {} : { presence: lenient }), root, log: m => { if (process.env.WLOG) console.error(m); }, coreKeys: macCore(), ...(opt.kernel ? { kernel: true } : {}) });
+  const d = await start({ ...(opt.realPresence ? {} : { presence: lenient }), root, log: m => { logs.push(String(m)); if (process.env.WLOG) console.error(m); }, coreKeys: macCore(), ...(opt.kernel ? { kernel: true } : {}), ...(opt.kernelSealer ? { kernelSealer: opt.kernelSealer } : {}) });
   t.after(() => d.stop());
   const events = [];
   d.events.on("*", e => events.push([e.type, e.payload]));
   const call = (tool, input = {}, caller = SCREEN, meta = A) => d.registry.call(tool, input, caller, meta);
   const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
-  return { d, url, root, events, call, status };
+  return { d, url, root, events, call, status, logs };
 }
 const until = async (f, ms = 8000) => { const t0 = Date.now(); for (;;) { const v = await f(); if (v) return v; if (Date.now() - t0 > ms) throw new Error("timed out"); await new Promise(r => setTimeout(r, 25)); } };
 const keystore = t => fileKeyStore(path.join(tempHome(t), "k.json"));
@@ -339,7 +340,7 @@ async function standinIdentity(t) {
 }
 
 /** A box-less device pairs a fresh server and picks the words; resolves what the device then holds. */
-async function pairFreshServer(t, { kind = "phone", about, presenceStorage = "hardware", ident = null, devKey = null, realPresence = false } = {}) {
+async function pairFreshServer(t, { kind = "phone", about, presenceStorage = "hardware", ident = null, devKey = null, realPresence = false, kernelSealer = null } = {}) {
   ident = ident || await standinIdentity(t);
   // the real rule: a server is owned only with the identity proof, checked against the directory
   const noProof = process.env.VYRE_TEST_PAIR_NO_PROOF;
@@ -350,7 +351,7 @@ async function pairFreshServer(t, { kind = "phone", about, presenceStorage = "ha
   const saved = process.env.VYRE_WINK_TYPED_CODE;
   delete process.env.VYRE_WINK_TYPED_CODE;
   t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
-  const w = await world(t, { kernel: true, realPresence });
+  const w = await world(t, { kernel: true, realPresence, kernelSealer });
   const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   const ks = keystore(t);
   const presenceKey = devKey ? devKey.presenceKey : { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: presenceStorage };
@@ -1397,28 +1398,50 @@ test("the session strength is proven at each sign-in (the identity entry's encla
   { const f = await pairFreshServer(t, { kind: "web", about: { kind: "web" }, presenceStorage: "software" }); const links = linksFor(t, f); await links.startPaired("srv");
     await assert.rejects(() => links.askSignIn("srv", { moment: "admin" }), e => /bad_input|moment|enum/i.test(`${e.code} ${e.message}`), "a card is for one of the three moments");
     const request = { op: "vault.reveal", fields: { name: "northwind-mail" } };
-    const ask = await links.askSignIn("srv", { moment: "vault", request, label: "Alex's browser" });
+    // OY-1: the asker's own words are not the card: its label is dropped, the phone shows the server's name for the device and a line the server writes
+    await assert.rejects(() => links.askSignIn("srv", { moment: "vault", request, label: "Alex's iPhone (the owner's own phone)" }), e => /bad_input|not take|unknown|label/i.test(`${e.code} ${e.message}`), "the asker has no say in what the card says");
+    // OY-2: the request must fit the moment
+    await assert.rejects(() => links.askSignIn("srv", { moment: "vault", request: { op: "email.send", fields: {} } }), e => /bad_input/.test(String(e.code)), "a vault card asks for a vault op");
+    await assert.rejects(() => links.askSignIn("srv", { moment: "outward", request: { op: "vault.reveal", fields: { name: "x" } } }), e => /bad_input/.test(String(e.code)));
+    await assert.rejects(() => links.askSignIn("srv", { moment: "vault", request: { op: "vault.reveal", fields: { name: { nested: true } } } }), e => /bad_input/.test(String(e.code)), "plain field values only");
+    const ask = await links.askSignIn("srv", { moment: "vault", request });
     assert.equal((await links.signInStatus("srv", ask.id)).state, "waiting");
+    // OY-3: the same card again is the same card; a different one while it waits is refused naming the open one
+    assert.equal((await links.askSignIn("srv", { moment: "vault", request })).id, ask.id);
+    await assert.rejects(() => links.askSignIn("srv", { moment: "vault", request: { op: "vault.reveal", fields: { name: "another-secret" } } }), e => /conflict/.test(String(e.code)), "a second, different card does not get the first one's id");
     await assert.rejects(() => links.sessionFor("srv").call("presence.person.session-pending", {}), e => /denied|owner/.test(`${e.code} ${e.message}`), "a software session cannot list the owner's cards");
     const pending = (await f.w.d.registry.call("presence.person.session-pending", {}, "cli", PROOF)).data.asks;
     assert.deepEqual(pending.map(a => [a.id, a.moment, a.request.op]), [[ask.id, "vault", "vault.reveal"]], "the owner's phone lists the card");
+    assert.equal(pending[0].line, "Alexs iPhone wants to reveal or use \"northwind-mail\" in your vault", "a line the server wrote, with its own name for the device");
+    assert.equal(pending[0].label, undefined, "the asker's words are not on the card");
     const yes = { op: "vault.reveal", sig: "signed-by-the-phone" };
-    assert.equal((await f.w.d.registry.call("presence.person.session-answer", { id: ask.id, yes: true, proof: yes }, "cli", PROOF)).data.state, "approved");
+    // the phone's signed yes on the card is the one prompt: the answer call needs no second presence floor, and the device that asked cannot answer its own card
+    const noProofAnswer = await f.w.d.registry.call("presence.person.session-answer", { id: ask.id, yes: true }, "cli");
+    assert.equal(noProofAnswer.error && noProofAnswer.error.code, "bad_input", "a yes carries the signed proof");
+    const selfAnswer = await f.w.d.registry.call("presence.person.session-answer", { id: ask.id, yes: true, proof: yes }, `device:${f.done.device}`, { peer: { kind: "device", stableId: f.done.device, node: f.done.device } });
+    assert.ok(selfAnswer.error, "a device cannot answer its own card");
+    assert.equal((await f.w.d.registry.call("presence.person.session-answer", { id: ask.id, yes: true, proof: yes }, "cli")).data.state, "approved");
     const first = await links.signInStatus("srv", ask.id);
     assert.deepEqual([first.state, first.proof], ["approved", yes], "the browser reads the phone's yes back");
     assert.equal((await links.signInStatus("srv", ask.id)).proof, undefined, "once");
     assert.deepEqual(await strengthsOf(f), ["software"], "nothing about the browser's own session changed"); }
+  // CD-1: the owner's own phone (the app registered hardware key storage) can list the cards, though its own session is software in this harness
+  { const f = await pairFreshServer(t, { presenceStorage: "hardware" }); const links = linksFor(t, f); await links.startPaired("srv");
+    const cards = await links.sessionFor("srv").call("presence.person.session-pending", {});
+    assert.deepEqual(cards.asks, [], "the phone can read the list (empty here)"); }
   // a refused card holds the device for 10 minutes; ending a device's sessions clears its cards
   { const f = await pairFreshServer(t, { kind: "web", about: { kind: "web" }, presenceStorage: "software" }); const links = linksFor(t, f); await links.startPaired("srv");
-    const ask = await links.askSignIn("srv", { moment: "outward" });
-    assert.equal((await f.w.d.registry.call("presence.person.session-answer", { id: ask.id, yes: false }, "cli", PROOF)).data.state, "refused");
+    const outward = { moment: "outward", request: { op: "email.send", fields: { to: "jane@example.com" } } };
+    const ask = await links.askSignIn("srv", outward);
+    assert.equal((await f.w.d.registry.call("presence.person.session-answer", { id: ask.id, yes: false }, "cli")).data.state, "refused");
     assert.equal((await links.signInStatus("srv", ask.id)).state, "refused");
-    await assert.rejects(() => links.askSignIn("srv", { moment: "outward" }), e => /rate_limited/.test(String(e.code)), "no new card right after a no");
+    await assert.rejects(() => links.askSignIn("srv", outward), e => /rate_limited/.test(String(e.code)), "no new card right after a no");
     await f.w.d.registry.call("presence.person.end-paired", { device: f.done.device }, "module:wink");
     await links.startPaired("srv");
     assert.equal((await links.signInStatus("srv", ask.id)).state, "none", "the card went with the device's sessions"); }
 });
 
+// ---- the join, end to end (tailnet, 4 Oct; the invitee's first key from the accept itself, vault): two real daemons, a space hosted on the server, an invite, a second person's device that is not a member ----
 test("join end to end: a second identity's device previews and accepts an invite through the invitee door of a real server, on the real kernel; each refusal is the kernel's or the door's", { timeout: 180_000 }, async t => {
   const { claimServerSpace } = await import("../apps/app/src/identity/claim-space.js");
   const { startSealer } = await import("../kernel/seal/client.js");

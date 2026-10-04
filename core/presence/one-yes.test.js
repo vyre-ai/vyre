@@ -16,6 +16,9 @@ test("isYou: a chain of exactly one person, a person surface and a paired device
   assert.equal(isYou({ caller: "mcp" }), false);
   assert.equal(isYou({ caller: "module:vault" }), false);
   assert.equal(isYou(null), false);
+  // YY-3: a call that carries an agent or a thread is a model's, whatever its label says
+  assert.equal(isYou({ caller: "cli", agent: "kit" }), false);
+  assert.equal(isYou({ caller: "cli", thread: "thr_1" }), false);
 });
 
 test("yes: the three moments, the six reasons, software only where the build takes it, and nothing configured is refused", async () => {
@@ -34,6 +37,12 @@ test("yes: the three moments, the six reasons, software only where the build tak
     assert.ok(YES_REASONS.includes(/** @type {any} */ (r).reason));
   }
   assert.deepEqual(await yes("pair", req, proof, { verify: async () => ({ ok: true, strength: "software" }), softwareOk: () => false }), { ok: false, reason: "software_key" }, "a software key on a release build");
+  // YY-1: only null means the proof stands
+  for (const bad of [undefined, true, "ok", { ok: "yes" }, 0]) assert.equal((await yes("pair", req, proof, { verify: async () => bad })).ok, false, String(JSON.stringify(bad)));
+  assert.deepEqual(await yes("pair", req, proof, verdict(undefined)), { ok: false, reason: "no_proof" });
+  // YY-2: a result that does not say how strong the key was counts as software
+  assert.deepEqual(await yes("pair", req, proof, { verify: async () => ({ ok: true }), softwareOk: () => false }), { ok: false, reason: "software_key" });
+  assert.deepEqual(await yes("pair", req, proof, { verify: async () => ({ ok: true }), softwareOk: () => true }), { ok: true, strength: "software" });
   assert.deepEqual(await yes("pair", req, proof, { verify: async () => ({ ok: true, strength: "software" }), softwareOk: () => true }), { ok: true, strength: "software" }, "a development build takes it");
   assert.deepEqual(await yes("pair", req, proof, verdict({ ok: true, strength: "real" })), { ok: true, strength: "real" });
   assert.deepEqual(await yes("pair", req, proof, { verify: async () => { throw new Error("down"); } }), { ok: false, reason: "no_proof" }, "a verifier that throws is a refusal");
