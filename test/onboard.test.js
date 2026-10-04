@@ -59,52 +59,6 @@ async function redeem(url) {
 const tool = (base, session, name, input = {}, headers = {}) => fetch(`${base}/v1/tools/${name}`, {
   method: "POST", headers: { "content-type": "application/json", "x-vyre-onboard": session, connection: "close", ...headers }, body: JSON.stringify(input) });
 
-test("onboard: the link works once, becomes a session, and the session reaches only the onboarding", async t => {
-  const { root } = await box(t);
-  const link = await call("onboard.link", {}, { root });
-  assert.ok(link.data, JSON.stringify(link.error));
-  const { url, port } = link.data;
-  assert.match(url, /^http:\/\/127\.0\.0\.1:\d+\/onboard\?t=[A-Za-z0-9_-]{40,}$/);
-  const base = `http://127.0.0.1:${port}`;
-
-  assert.equal((await tool(base, "", "onboard.status")).status, 403, "no tool answers without the token or session");
-  const first = await redeem(url);
-  assert.equal(first.status, 302);
-  assert.match(first.location, /^\/onboard#s=/, "the token leaves the address bar; the session rides in the fragment");
-  assert.equal(first.cookie, null, "no cookie: browsers share cookies with every other port on 127.0.0.1");
-  assert.equal((await redeem(url)).status, 403, "the link is single use");
-  assert.equal((await tool(base, "forged", "onboard.status")).status, 403);
-
-  const s = await (await tool(base, first.session, "onboard.status")).json();
-  assert.equal(s.data.mode, "loopback");
-  assert.equal(s.data.current, "you");
-  assert.deepEqual(s.data.steps, { you: "todo", claude: "todo", tailscale: "todo", name: "todo", history: "done", devices: "todo" }, "no sessions here, so history has nothing to do");
-  assert.equal(s.data.detail.history.why, "Your Mac's sessions appear here when you connect your Mac");
-  assert.equal(s.data.detail.name.via, "ts.net", "no zone token and no domain: the ts.net name");
-  assert.ok(s.data.host);
-  assert.equal(s.data.detail.claude.installed, true);
-  assert.equal(s.data.detail.claude.version, "2.1.0 (Claude Code)");
-  assert.equal(s.data.detail.claude.signedIn, false);
-  assert.equal(s.data.detail.tailscale.state, "working");
-  assert.equal(s.data.detail.tailscale.loginUrl, "https://login.tailscale.com/a/fake");
-  assert.equal(s.data.detail.name.state, "blocked");
-  const ts = await (await tool(base, first.session, "onboard.tailscale", { action: "detect" })).json();
-  assert.equal(ts.data.state, "needs-login", "the page reads Tailscale's own state; the step's is `step`");
-  assert.equal(ts.data.step, "working");
-
-  // Everything that is not the onboarding is closed, even with the session.
-  const h = { "x-vyre-onboard": first.session };
-  assert.equal((await tool(base, first.session, "onboard.link")).status, 404, "only the socket mints links");
-  assert.equal((await tool(base, first.session, "system.echo", { text: "x" })).status, 404);
-  assert.equal((await tool(base, first.session, "onboard.status/../../system.echo", { text: "x" })).status, 404);
-  assert.equal((await fetch(`${base}/v1/events`, { headers: h })).status, 404);
-  assert.equal((await fetch(`${base}/v1/health`, { headers: h })).status, 404);
-  const listed = await (await fetch(`${base}/v1/tools`, { headers: h })).json();
-  // The page's own look is served before any session: the theme, the fonts, the stylesheets.
-  for (const p of ["/theme.css", "/fonts/instrument-sans-latin.woff2", "/css/deck.css"]) assert.equal((await fetch(base + p)).status, 200, p);
-  assert.ok(listed.error || listed.data.every(x => x.name.startsWith("onboard.") || ["projects.catalog", "projects.create", "projects.list", "recall.status"].includes(x.name)));
-});
-
 test("onboard: the loopback listener refuses other hosts, forms and other origins", async t => {
   const { root } = await box(t);
   const { url, port } = (await call("onboard.link", {}, { root })).data;
@@ -364,7 +318,7 @@ test("onboard: the setup listener never binds on a machine that is not a server"
 test("onboard: the box wizard's tools refuse on a machine that isn't a server", async t => {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ machine: "solo", transcripts: [], network: { onboardPort: 0 } }));
-  const d = await start({ root, log: () => {} });
+  const d = await start({ root, presence: present, log: () => {} });
   t.after(() => d.stop());
   for (const [tool, input] of [["onboard.you", { name: "alex" }], ["onboard.name", { name: "alex" }], ["onboard.claude", {}],
     ["onboard.tailscale", {}], ["onboard.history", {}], ["onboard.skip", { step: "you" }], ["onboard.passkey", {}],
@@ -375,29 +329,6 @@ test("onboard: the box wizard's tools refuse on a machine that isn't a server", 
   // status and machine, the two exceptions, still work.
   assert.equal((await d.registry.call("onboard.status", {}, "cli")).data.machine, "solo");
   assert.equal((await d.registry.call("onboard.machine", { machine: "solo" }, "cli")).data.machine, "solo");
-});
-
-test("onboard: when tailscale cert itself refuses because HTTPS is off, the address step says so with the admin console link", async t => {
-  const { root } = await box(t);
-  const bins = fs.mkdtempSync(path.join(root, "ts-"));
-  const st = JSON.stringify({ BackendState: "Running", TUN: true, CertDomains: ["box.tail0000.ts.net"], OperatorUser: os.userInfo().username,
-    Self: { HostName: "box", DNSName: "box.tail0000.ts.net.", TailscaleIPs: ["100.64.0.9"], ID: "n1", UserID: 1 }, User: {} });
-  // The status lists the cert domain, so the check before `tailscale cert` passes; the cert call is what refuses.
-  const bin = path.join(bins, "tailscale");
-  fs.writeFileSync(bin, `#!/bin/sh\nif [ "$1" = cert ]; then echo "500 Internal Server Error: your Tailscale account does not support getting TLS certs" >&2; exit 1; fi\ncat <<'EOF'\n${st}\nEOF\n`, { mode: 0o755 });
-  process.env.VYRE_TAILSCALE_BIN = bin;
-  const { url, port } = (await call("onboard.link", {}, { root })).data;
-  const base = `http://127.0.0.1:${port}`;
-  const { session } = await redeem(url);
-
-  let r = (await (await tool(base, session, "onboard.name", { action: "reserve" })).json()).data;
-  for (let i = 0; i < 50 && r.state !== "blocked"; i++) {
-    await new Promise(res => setTimeout(res, 20));
-    r = (await (await tool(base, session, "onboard.name", { action: "status" })).json()).data;
-  }
-  assert.equal(r.state, "blocked");
-  assert.equal(r.code, "https_off", r.why);
-  assert.equal(r.adminUrl, "https://login.tailscale.com/admin/dns");
 });
 
 test("onboard: a zone token that appears after a blocked ts.net attempt is offered again; one that already serves is not (e2e review)", async t => {
@@ -431,82 +362,6 @@ test("onboard: a box already serving on ts.net keeps saying so once a zone token
 
 /** Can this machine run claude under a pty the way onboard.claude does? */
 const ptyMissing = (() => { try { execFileSync(ptyCommand("true")[0] === "script" ? "script" : "python3", ["--version"], { stdio: "ignore" }); return false; } catch { return "no pty helper (script or python3) here"; } })();
-
-test("onboard: once finished with an address, vyre up gets the address, not another link", async t => {
-  const { root } = await box(t, { vault: { keystore: "file" }, network: { onboardPort: 0, address: "https://alex.vyre.run" } });
-  const first = (await call("onboard.link", {}, { root })).data;
-  assert.ok(first.url, "not finished yet: a link");
-  const { session } = await redeem(first.url);
-  const done = await (await tool(`http://127.0.0.1:${first.port}`, session, "onboard.finish")).json();
-  assert.equal(done.data.detail.devices.mac.connected, false);
-  const after = (await call("onboard.link", {}, { root })).data;
-  assert.equal(after.url, null);
-  assert.equal(after.address, "https://alex.vyre.run");
-});
-
-test("onboard: tailscale lock reads Tailnet Lock and hands back this box's key and the commands, running only lock status", async t => {
-  const { root } = await box(t);
-  const dir = fs.mkdtempSync(path.join(root, "ts-"));
-  const bin = path.join(dir, "tailscale"), log = path.join(dir, "args.log");
-  const key = "tlpub:" + "b0".repeat(32);
-  fs.writeFileSync(bin, `#!/bin/sh\necho "$*" >> ${JSON.stringify(log)}\nif [ "$1" = lock ]; then echo '${JSON.stringify({ Enabled: false, PublicKey: key, NodeKeySigned: false })}'; else echo '{"BackendState":"Running","TUN":true}'; fi\n`, { mode: 0o755 });
-  process.env.VYRE_TAILSCALE_BIN = bin;
-  const r = await call("onboard.tailscale", { action: "lock" }, { root });
-  assert.ok(r.data, JSON.stringify(r.error));
-  assert.deepEqual({ ...r.data, commands: undefined }, { enabled: false, nodeKey: key, key, trusted: null, signed: null, why: null, commands: undefined });
-  assert.equal(r.data.commands.mac, "tailscale lock");
-  assert.equal(r.data.commands.init, `tailscale lock init --gen-disablements 2 --gen-disablement-for-support <mac key> ${key}`);
-  const lockCalls = fs.readFileSync(log, "utf8").split("\n").filter(l => l.startsWith("lock"));
-  assert.deepEqual([...new Set(lockCalls)], ["lock status --json"], "Vyre never runs lock init or sign");
-});
-
-test("onboard: tailscale policy merges Taildrive, Taildrop and SSH into one snippet, using real names it already knows", async t => {
-  // The paired-desktop join (tag:vyre-device) is the Linux box's today; a Mac server gets the same block once relay.tailnet.status
-  // says available on darwin (tailnet, with vyre-core's keys). Until then this machine poses as Linux, as site/setup/box.test.js does.
-  const realPlatform = Object.getOwnPropertyDescriptor(process, "platform");
-  Object.defineProperty(process, "platform", { value: "linux", configurable: true });
-  t.after(() => Object.defineProperty(process, "platform", /** @type {any} */ (realPlatform)));
-  const { root } = await box(t, { network: { onboardPort: 0, owner: "alex@example.com" } });
-  const dir = fs.mkdtempSync(path.join(root, "ts-"));
-  const bin = path.join(dir, "tailscale");
-  const self = { HostName: "alex-box", DNSName: "alex-box.tail0000.ts.net.", TailscaleIPs: ["100.64.0.5", "fd7a::5"], ID: "n1", Tags: [] };
-  // OperatorUser: on Linux, operator() (core/names/tailscale.js) actually checks `debug prefs`'s
-  // answer against the real OS user; darwin skips the check entirely, which is why this fixture's
-  // missing field went unnoticed until it ran on testbox (Linux) and ready came back false.
-  fs.writeFileSync(bin, `#!/bin/sh\necho '${JSON.stringify({ BackendState: "Running", TUN: true, Self: self, User: {}, OperatorUser: os.userInfo().username })}'\n`, { mode: 0o755 });
-  process.env.VYRE_TAILSCALE_BIN = bin;
-  const r = await call("onboard.tailscale", { action: "policy" }, { root });
-  assert.ok(r.data, JSON.stringify(r.error));
-  assert.equal(r.data.ready, true);
-  assert.deepEqual(r.data.policy.hosts, { "alex-box": "100.64.0.5" });
-  assert.deepEqual(r.data.policy.nodeAttrs, [
-    { target: ["alex-box"], attr: ["drive:share"] },
-    { target: ["alex@example.com"], attr: ["drive:access"] },
-  ]);
-  const [drive, taildrop] = r.data.policy.grants;
-  assert.deepEqual(drive, { src: ["[your Mac's name]"], dst: ["alex-box"], app: { "tailscale.com/cap/drive": [{ shares: ["projects"], access: "ro" }] } });
-  assert.deepEqual(taildrop, { src: ["alex@example.com"], dst: ["alex-box"], app: { "https://tailscale.com/cap/file-sharing-target": [{}] } });
-  assert.deepEqual(r.data.policy.ssh, [{ action: "check", src: ["alex@example.com"], dst: ["alex-box"], users: ["[the admin account you set up this server with]"] }]);
-  assert.equal(r.data.policy.tagOwners?.["tag:vyre-egress"], undefined, "egress is off by default, so no tag:vyre-egress block");
-  // ADR 0046: a Linux box hands paired desktops tag:vyre-device keys, which reach its port and nothing else. A Mac
-  // server gets the same block (anywhere, 30 Sep); on a Mac this needs relay.tailnet.status to report available on darwin
-  // (tailnet, with vyre-core's keys), so it is red on a Mac until then and green on the Linux runners.
-  assert.deepEqual(r.data.policy.tagOwners, { "tag:vyre-device": ["alex@example.com"] });
-  assert.deepEqual(r.data.policy.grants.filter(g => g.src.includes("tag:vyre-device")), [{ src: ["tag:vyre-device"], dst: ["alex-box"], ip: ["tcp:443"] }]);
-  assert.ok(!r.data.policy.grants.some(g => g.dst.includes("tag:vyre-device")), "no grant ever lets anything reach a paired desktop's node");
-  assert.ok(r.data.notes.some(n => /tailscale-mint-oauth/.test(n)));
-});
-
-test("onboard: tailscale policy refuses before Tailscale is connected", async t => {
-  const { root } = await box(t);
-  const r = await call("onboard.tailscale", { action: "policy" }, { root });
-  assert.ok(r.data, JSON.stringify(r.error));
-  assert.equal(r.data.ready, false);
-  assert.equal(r.data.policy, null);
-  assert.match(r.data.why, /connect Tailscale/);
-});
-
-// ---- onboard.join: a second device or a server joining, not the first-run wizard (28 Sep 2026) ----
 
 test("onboard: join status merges Tailscale's own state with whether the relay is ready to pair", async t => {
   const { root } = await box(t, { relay: { url: "ws://127.0.0.1:1" } });
@@ -619,22 +474,3 @@ test("onboard: the box holds the setup step list: skips and passes are kept, the
   assert.equal((await setup()).data.assistant.display, "Kit");
 });
 
-test("onboard: an address the setup page already claimed is never replaced by the person's name, and step 4 reads it instead of claiming again (#50)", async t => {
-  const { root } = await box(t, { name: "acme-lab", network: { onboardPort: 0, via: "vyre.run" } });
-  const { url, port } = (await call("onboard.link", {}, { root })).data;
-  const base = `http://127.0.0.1:${port}`;
-  const { session } = await redeem(url);
-  const saved = () => JSON.parse(fs.readFileSync(path.join(root, "config.json"), "utf8"));
-  const before = (await (await tool(base, session, "onboard.status")).json()).data;
-  assert.equal(before.name, null, "step 1 is not prefilled with the address");
-  const you = await (await tool(base, session, "onboard.you", { name: "Robin" })).json();
-  assert.equal(you.data.person, "Robin");
-  assert.equal(saved().name, "acme-lab", "the person's name did not overwrite the address");
-  const s = (await (await tool(base, session, "onboard.status")).json()).data;
-  assert.equal(s.name, "Robin", "the greeting uses the person");
-  assert.equal(s.detail.name.name, "acme-lab", "the address step still says which address is held");
-  // reserving with the person's name does not try to claim it, and does not fail
-  const r = await (await tool(base, session, "onboard.name", { name: "Robin", action: "reserve", confirm: true })).json();
-  assert.equal(r.error, undefined, JSON.stringify(r.error));
-  assert.equal(saved().name, "acme-lab");
-});

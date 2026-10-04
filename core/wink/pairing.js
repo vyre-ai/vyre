@@ -963,6 +963,16 @@ export function createPairing(o) {
         return d ? { paired: true, name: d.name } : { paired: false };
       },
     });
+    ctx.tool("wink.server.owned", {
+      internal: true,
+      description: "Does this server have an owner yet (a device paired and was confirmed)? Answers { owned: boolean }, nothing else. Asked by the onboarding module, which refuses every sign-in and name before it is true.",
+      input: obj(),
+      run: async (_, meta0 = {}) => {
+        const c = String((meta0 && meta0.caller) || "");
+        if (!c.startsWith("module:")) throw fail("denied", "this is for the server's own modules");
+        return { owned: Boolean(meta.get("owner") && meta.get("adopter")) };
+      },
+    });
     ctx.tool("wink.server.handover", {
       internal: true,
       description: "What this server was handed when it was adopted, to reach its home: { home, box, controlUrl, authKey, relay, space, device } (any may be missing), and the peer secret. The auth key joins the control plane and the peer secret proves this server to its home, so this answers only the Wink module itself, never another module, a person or a device, and never a caller that is not named. Answers { handover } or { handover: null }.",
