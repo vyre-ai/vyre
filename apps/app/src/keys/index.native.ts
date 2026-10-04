@@ -3,6 +3,7 @@
 //   presence key  P-256 in the Secure Enclave (vyre.human), Face ID on every signature; in the simulator a software key, and keyStorage() says "software".
 //   Android       the presence key is not in RC1 (signPresence rejects ERR_NOT_IN_RC1); the identity seed is in the Keystore-backed secure store like iOS's Keychain.
 
+import { Platform } from "react-native";
 import { createIdentityKey, hasIdentity, identityKey, forgetIdentity } from "../identity/store.native";
 import * as Signer from "../../modules/vyre-signer";
 
@@ -41,6 +42,17 @@ export function listChangeSigners(prompt: string): { sign: (m: Uint8Array) => Pr
     return last.done;
   };
   return { sign: async m => (await both(m)).sig, esign: async m => (await both(m)).esig };
+}
+
+/**
+ * What recoverIdentity / claimIdentity need from this device so its new entry carries the Secure Enclave key (RX-1, NK-2): on an iPhone `{ enclave, requireEnclave: true }` (the call refuses
+ * rather than make a phone entry whose seed alone could change the list; no Face ID or no enrolled face means no enclave key, and the error says so); elsewhere nothing.
+ */
+export async function recoveryKeyOptions(): Promise<{ enclave?: string; requireEnclave?: boolean }> {
+  if (Platform.OS !== "ios") return {};
+  try { return { enclave: await Signer.enclavePublic(), requireEnclave: true }; } catch (e) {
+    throw Object.assign(new Error("Set up Face ID or Touch ID on this iPhone, then try again."), { code: "no_biometrics", cause: e });
+  }
 }
 
 export async function hasKeys(): Promise<{ identity: boolean; presence: boolean }> {
