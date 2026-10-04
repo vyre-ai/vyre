@@ -387,6 +387,32 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal((await w.tool("sessions.accounts.remove", { id: login.id })).error, undefined);
   });
 
+  test(`${driver}: threads.start takes agent, agent_kind and account from the person, and refuses them from a model as bad_input`, { skip }, async t => {
+    const w = await boot(t, { driver, sessions: { thread_socket: "on" }, vault: { "work-token": "fake-work-value" } });
+    await w.tool("projects.create", { name: "work", home: w.work }).catch(() => null);
+    assert.equal((await w.tool("agents.create", { name: "kit", projects: "*" })).error, undefined);
+    assert.equal((await w.tool("agents.create", { name: "juno", kind: "assistant" })).error, undefined);
+    const acct = (await w.tool("sessions.accounts.add", { provider: "claude", label: "Work", kind: "setup-token", vault_item: "work-token" })).data;
+    // the person's own call passes the input check with each of them
+    const asAgent = await w.tool("threads.start", { cwd: w.work, agent: "kit", agent_kind: "agent", prompt: "hello", surface: "deck" });
+    assert.equal(asAgent.error, undefined, JSON.stringify(asAgent.error));
+    assert.equal((await w.tool("threads.get", { thread: asAgent.data.id })).data.thread.agent, "kit");
+    const onAccount = await w.tool("threads.start", { cwd: w.work, account: acct.id, prompt: "hello", surface: "deck" });
+    assert.equal(onAccount.error, undefined, JSON.stringify(onAccount.error));
+    assert.equal((await w.tool("threads.get", { thread: onAccount.data.id })).data.thread.account, acct.id);
+    // a model's call (a plain session, a label, the assistant's own session) naming any of them is bad_input, whatever else it passes
+    const th = onAccount.data.id;
+    for (const [caller, meta] of [["mcp", {}], [`mcp:thread:${th}`, { thread: th }], ["mcp:agent:juno", { agent: "juno", agentKind: "assistant", granted: "*", thread: th }]]) {
+      for (const extra of [{ agent: "kit" }, { agent_kind: "assistant" }, { account: acct.id }]) {
+        const r = await w.d.registry.call("threads.start", { cwd: w.work, prompt: "x", ...extra }, caller, meta);
+        assert.ok(r.error && r.error.code !== undefined, `${caller} ${JSON.stringify(extra)}: ${JSON.stringify(r)}`);
+        assert.ok(["bad_input", "denied"].includes(r.error.code), `${caller} ${JSON.stringify(extra)}: ${JSON.stringify(r.error)}`);
+      }
+    }
+    const named = await w.d.registry.call("threads.start", { cwd: w.work, prompt: "x", account: acct.id }, "mcp:agent:juno", { agent: "juno", agentKind: "assistant", granted: "*", thread: th });
+    assert.equal(named.error && named.error.code, "bad_input", JSON.stringify(named));
+  });
+
   test(`${driver}: providers: Grok runs a thread on the ACP driver, providers.list names them all, and a resume loads the agent's own session`, { skip }, async t => {
     const w = await boot(t, { driver });
     noMemoryBlocks(w);
