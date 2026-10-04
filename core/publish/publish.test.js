@@ -498,9 +498,30 @@ test("publish: a retired or superseded deployment's site folder is removed, and 
   const first = fs.readdirSync(sitesDir);
   assert.equal(first.length, 1);
   fs.mkdirSync(path.join(sitesDir, "site-ORPHAN"), { mode: 0o700 });
+  const longAgo = new Date(Date.now() - 2 * 86_400_000);
+  fs.utimesSync(path.join(sitesDir, "site-ORPHAN"), longAgo, longAgo);
+  fs.mkdirSync(path.join(sitesDir, "site-YOUNG1"), { mode: 0o700 });
   const id2 = (await b.ok("publish.create", { ...DRAFT, name: "kit" })).deployment.id;
   await b.ok("publish.preview", { deployment: id2 });
   const now = fs.readdirSync(sitesDir).sort();
-  assert.ok(!now.includes("site-ORPHAN"), "an unnamed folder is swept");
-  assert.ok(now.includes(first[0]) && now.length === 2, "both live previews keep theirs");
+  assert.ok(!now.includes("site-ORPHAN"), "an old unnamed folder is swept");
+  assert.ok(now.includes("site-YOUNG1"), "a young one is not: it may be a preview still being stored");
+  assert.ok(now.includes(first[0]) && now.length === 3, "both live previews keep theirs");
+});
+
+test("publish: two previews at once keep both site folders (a folder is written before its record exists)", async t => {
+  const b = await boxRegistry(t);
+  const sitesDir = path.join(b.publishRoot, "sites");
+  const ids = [];
+  for (const name of ["one", "two", "three", "four"]) ids.push((await b.ok("publish.create", { ...DRAFT, name })).deployment.id);
+  b.pf.build = async () => ({ digest: "sha256:" + "f".repeat(64), files: [{ path: "index.html", content: "<p>x</p>" }], logs: "" });
+  await Promise.all(ids.map(id => b.call("publish.preview", { deployment: id })));
+  const records = (await Promise.all(ids.map(id => b.ok("publish.status", { deployment: id }))));
+  assert.equal(fs.readdirSync(sitesDir).length, 4);
+  void records;
+  const db = b.reg.deps.db;
+  for (const id of ids) {
+    const row = JSON.parse(db.prepare("SELECT body FROM publish_deployments WHERE id = ?").get(id).body);
+    assert.ok(row.site && fs.existsSync(path.join(sitesDir, row.site.name)), `${id}'s folder is there`);
+  }
 });
