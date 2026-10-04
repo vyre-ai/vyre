@@ -84,28 +84,34 @@ export async function askPhone(call, o) {
 }
 
 
-/** Is this refusal an act held for the owner's yes? The server answers code "held" with detail.approval, the id of the approval the phone's list shows (design 6e03707). @param {any} error */
-export const heldApproval = (error) => (error && error.code === "held" && error.detail && typeof error.detail.approval === "string" ? { id: String(error.detail.approval), line: typeof error.detail.line === "string" ? error.detail.line : "" } : null);
+/**
+ * An act that needs the owner's fresh yes (pair a device, a vault secret, an outward send): the server answers code "held" with detail { moment, request: { op, fields } } (the shape is a PROPOSAL until the
+ * server's held sites exist; wink-2: they do not read `approval` yet). The browser carries no proof. @param {any} error
+ * @returns {{ moment: string, request: { op: string, fields: Record<string, any> } } | null}
+ */
+export const heldAsk = (error) => {
+  const d = error && error.code === "held" ? error.detail : null;
+  return d && ["pair", "vault", "outward"].includes(d.moment) && d.request && typeof d.request.op === "string" ? { moment: d.moment, request: { op: d.request.op, fields: d.request.fields && typeof d.request.fields === "object" ? d.request.fields : {} } } : null;
+};
 
 /**
- * A held act: the browser carries no proof. It waits while the phone answers the approval, then reads what the server did: `approvals.status` gives { state: "waiting" | "done" | "refused" | "timeout" | "none", result?, error? }.
- * Resolves { result } when the server ran the act, or { ended } (how the ask ended); an act that failed after the yes rejects with the server's code.
+ * Ask the owner's phone for the yes (approvals.ask { moment, request } -> { id, expires_in_s, line }), then wait while the phone answers: approvals.status gives { state } and NO proof (the server verifies and spends
+ * the phone's proof itself). Resolves { approval, line } when approved: the caller retries its act with `approval: <id>` once. Or { ended }.
  * @param {(tool: string, input?: Record<string, unknown>) => Promise<any>} call
- * @param {{ id: string, onWaiting?: () => void, signal?: { stopped: boolean }, sleep?: (ms: number) => Promise<void>, now?: () => number, pollMs?: number, limitMs?: number }} o
- * @returns {Promise<{ result: any } | { ended: "refused" | "none" | "timeout" }>}
+ * @param {{ moment: string, request: any, onWaiting?: (line: string) => void, signal?: { stopped: boolean }, sleep?: (ms: number) => Promise<void>, now?: () => number, pollMs?: number, limitMs?: number }} o
+ * @returns {Promise<{ approval: string } | { ended: "refused" | "none" | "timeout" }>}
  */
-export async function waitHeld(call, o) {
+export async function askYes(call, o) {
   const sleep = o.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
   const now = o.now ?? Date.now;
-  o.onWaiting?.();
+  const ask = await call("approvals.ask", { moment: o.moment, request: o.request });
+  if (!ask || typeof ask.id !== "string") throw Object.assign(new Error("the ask did not open"), { code: "ask_failed" });
+  o.onWaiting?.(typeof ask.line === "string" ? ask.line : "");
   const start = now();
   for (;;) {
     if (o.signal?.stopped) return { ended: "none" };
-    const s = await call("approvals.status", { id: o.id });
-    if (s.state === "done" || s.state === "approved") {
-      if (s.error) throw Object.assign(new Error(String(s.error.message || "")), { code: String(s.error.code || "error") });
-      return { result: s.result };
-    }
+    const s = await call("approvals.status", { id: ask.id });
+    if (s.state === "approved") return { approval: ask.id };
     if (s.state === "refused" || s.state === "none" || s.state === "timeout") return { ended: s.state };
     if (now() - start > (o.limitMs ?? 300_000)) return { ended: "timeout" };
     await sleep(o.pollMs ?? 2000);

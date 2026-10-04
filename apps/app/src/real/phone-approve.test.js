@@ -94,3 +94,13 @@ test("the canonical bytes the app hashes are the bytes in vault's fixed proofbyt
     assert.equal(canonical(rest), v.bytes);
   }
 });
+
+test("a device card is shown by the server's line and signs its `sign` exactly", async () => {
+  const sign = { op: "task.vault_use", space: "spc_abcdefghijkl", fields: { what: "vault.reveal", name: "Bank" } };
+  const [c] = cardsFrom({ approvals: [{ id: "ap_1", moment: "vault", line: "Vyre on browser wants to reveal \"Bank\" in your vault", request: { op: "vault.reveal", fields: { name: "Bank" } }, sign }] });
+  assert.equal(c.title, "Vyre on browser wants to reveal \"Bank\" in your vault");
+  assert.equal(c.payload_hash, kernelHash(sign.op, sign.space, sign.fields));
+  /** @type {any[]} */ const signed = [];
+  await approveCard(c, { signPresence: async (r) => { signed.push(r); return { payload_hash: r.payload_hash }; } }, async () => ({}), () => "h", "per_1");
+  assert.equal(signed[0].op, "task.vault_use"); assert.equal(signed[0].space, sign.space); assert.deepEqual(signed[0].fields, sign.fields);
+});

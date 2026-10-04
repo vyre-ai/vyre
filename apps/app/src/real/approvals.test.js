@@ -4,7 +4,7 @@ import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { payloadHash as kernelHash } from "./payload-hash.js";
-import { ACTS, askPhone, endLine, heldApproval, phoneRoute, proofHeader, waitHeld } from "./approvals.js";
+import { ACTS, askPhone, endLine, heldAsk, phoneRoute, proofHeader, askYes } from "./approvals.js";
 
 /** @param {any[]} statuses */
 function box(statuses, tamper = "") {
@@ -62,26 +62,30 @@ test("AP-1 on the asking side: a proof request or an ask whose hash is not the h
   await assert.rejects(askPhone(box([{ state: "waiting" }], "ask").call, { tool: "rules.enable", input: { id: "r" }, space: "spc_abcdefghijkl", ...FAST }), (/** @type {any} */ e) => e.code === "hash_mismatch");
 });
 
-test("a held act: the approval id and line are read from the refusal", () => {
-  assert.deepEqual(heldApproval({ code: "held", detail: { approval: "ap_1", line: "Send the draft" } }), { id: "ap_1", line: "Send the draft" });
-  assert.equal(heldApproval({ code: "held" }), null);
-  assert.equal(heldApproval({ code: "needs_presence", detail: { approval: "x" } }), null);
-  assert.equal(heldApproval(null), null);
+test("a held act names its moment and request, nothing else counts", () => {
+  assert.deepEqual(heldAsk({ code: "held", detail: { moment: "vault", request: { op: "vault.reveal", fields: { name: "Bank" } } } }), { moment: "vault", request: { op: "vault.reveal", fields: { name: "Bank" } } });
+  assert.equal(heldAsk({ code: "held", detail: { moment: "nope", request: { op: "x" } } }), null);
+  assert.equal(heldAsk({ code: "needs_presence", detail: { moment: "vault", request: { op: "x" } } }), null);
+  assert.equal(heldAsk(null), null);
 });
 
-test("waiting on a held act ends with the server's result, a no, or a timeout, and carries no proof", async () => {
+test("asking for the yes: ask, poll, and return the approval id for one retry, with no proof carried", async () => {
   const calls = [];
-  const states = [{ state: "waiting" }, { state: "waiting" }, { state: "done", result: { sent: true } }];
+  const states = [{ state: "waiting" }, { state: "approved" }];
   let i = 0;
-  const call = async (t, input) => { calls.push([t, input]); return states[Math.min(i++, states.length - 1)]; };
-  assert.deepEqual(await waitHeld(call, { id: "ap_1", sleep: async () => {}, pollMs: 0 }), { result: { sent: true } });
-  assert.deepEqual(calls[0], ["approvals.status", { id: "ap_1" }]);
-  assert.deepEqual(await waitHeld(async () => ({ state: "refused" }), { id: "a", sleep: async () => {} }), { ended: "refused" });
-  let t = 0;
-  assert.deepEqual(await waitHeld(async () => ({ state: "waiting" }), { id: "a", sleep: async () => {}, now: () => (t += 200_000), limitMs: 300_000 }), { ended: "timeout" });
-  assert.deepEqual(await waitHeld(async () => ({ state: "waiting" }), { id: "a", signal: { stopped: true } }), { ended: "none" });
+  const call = async (t, input) => { calls.push([t, input]); return t === "approvals.ask" ? { id: "ap_1", line: "Vyre on browser wants to reveal a secret" } : states[Math.min(i++, 1)]; };
+  let said = "";
+  assert.deepEqual(await askYes(call, { moment: "vault", request: { op: "vault.reveal", fields: {} }, sleep: async () => {}, pollMs: 0, onWaiting: (l) => { said = l; } }), { approval: "ap_1" });
+  assert.deepEqual(calls[0], ["approvals.ask", { moment: "vault", request: { op: "vault.reveal", fields: {} } }]);
+  assert.deepEqual(calls[1], ["approvals.status", { id: "ap_1" }]);
+  assert.match(said, /wants to reveal/);
 });
 
-test("an act that failed after the yes rejects with the server's code", async () => {
-  await assert.rejects(waitHeld(async () => ({ state: "done", error: { code: "conflict", message: "m" } }), { id: "a" }), (e) => e.code === "conflict");
+test("a no, a timeout and Stop waiting end it without an approval", async () => {
+  const ask = (state) => async (t) => (t === "approvals.ask" ? { id: "a" } : { state });
+  const o = { moment: "outward", request: { op: "mail.send", fields: {} }, sleep: async () => {} };
+  assert.deepEqual(await askYes(ask("refused"), o), { ended: "refused" });
+  assert.deepEqual(await askYes(ask("timeout"), o), { ended: "timeout" });
+  assert.deepEqual(await askYes(ask("waiting"), { ...o, signal: { stopped: true } }), { ended: "none" });
+  await assert.rejects(askYes(async () => ({}), o), (e) => e.code === "ask_failed");
 });

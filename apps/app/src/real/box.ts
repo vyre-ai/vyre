@@ -8,7 +8,7 @@ import { peerCall, peerWanted } from "./peer";
 import { wantsPasskey } from "./presence-model.js";
 import { claimBlocked } from "../../screens/shell/rc";
 import { needsPerson, onPhoneFor, reasonLine, softwareKeyLine } from "./on-phone.js";
-import { APPROVE_ON_PHONE, actWords, askPhone, endLine, heldApproval, phoneRoute, proofHeader, waitHeld } from "./approvals.js";
+import { APPROVE_ON_PHONE, actWords, askPhone, endLine, heldAsk, phoneRoute, proofHeader, askYes } from "./approvals.js";
 import { useApproval } from "./approval-state";
 import { Platform } from "react-native";
 import { passkeyProof, PresenceError } from "./presence";
@@ -38,8 +38,8 @@ export async function tool<T = unknown>(name: string, given: Record<string, unkn
     catch (e) {
       const x = e as { code?: string; message?: string; detail?: unknown };
       // An act held for the owner's yes: the phone approves it, the server runs it, and the result comes back here (no proof is carried by this browser).
-      const held = heldApproval(x);
-      if (held) return waitOnPhone<T>(held, (t, i) => peerCall<any>(t, i ?? {}));
+      const held = heldAsk(x);
+      if (held) return yesThenRetry<T>(held, name, input, (t, i) => peerCall<any>(t, i ?? {}));
       throw new BoxError(x.code ?? "error", x.message ?? "");
     }
   }
@@ -57,7 +57,7 @@ export async function tool<T = unknown>(name: string, given: Record<string, unkn
     } finally { useApproval.getState().hide(); }
   }
   // An act held for the owner's yes (design 6e03707): wait for the phone, then the server's result.
-  { const held = r.error ? heldApproval(r.error) : null; if (held) return waitOnPhone<T>(held, async (t, i) => { const x = await call<any>(t, i ?? {}); if (x.error) throw Object.assign(new Error(x.error.message), { code: x.error.code }); return x.data; }); }
+  { const held = r.error ? heldAsk(r.error) : null; if (held) return yesThenRetry<T>(held, name, input, async (t, i) => { const x = await call<any>(t, i ?? {}); if (x.error) throw Object.assign(new Error(x.error.message), { code: x.error.code }); return x.data; }); }
   // RC1: a browser does not answer a person-only ask (vault secrets, pairing a device, an outbound send): the person does it in Vyre on their phone.
   if (r.error && claimBlocked() && needsPerson(r.error)) throw new BoxError("on_phone", onPhoneFor(name));
   // A human-only call: the box asks for presence, and in a browser the person's passkey answers it. Once, for this call.
@@ -81,14 +81,14 @@ export async function tool<T = unknown>(name: string, given: Record<string, unkn
   return r.data as T;
 }
 
-/** The sheet "Approve this in Vyre on your phone" with Stop waiting while a held act waits, then its result. */
-async function waitOnPhone<T>(held: { id: string; line: string }, ask: (tool: string, input?: Record<string, unknown>) => Promise<any>): Promise<T> {
+/** An act held for the owner's yes: ask the phone, wait with "Approve this in Vyre on your phone" and Stop waiting, then send the act again carrying the approval id (spent once). */
+async function yesThenRetry<T>(held: { moment: string; request: unknown }, name: string, input: Record<string, unknown>, ask: (tool: string, input?: Record<string, unknown>) => Promise<any>): Promise<T> {
   const st = useApproval.getState();
-  st.show(held.line || softwareKeyLine());
+  st.show(softwareKeyLine());
   try {
-    const out = await waitHeld(ask, { id: held.id, signal: st.signal });
+    const out = await askYes(ask, { moment: held.moment, request: held.request, signal: st.signal, onWaiting: (line) => { if (line) useApproval.getState().show(line); } });
     if ("ended" in out) throw new BoxError("not_approved", endLine(out.ended));
-    return out.result as T;
+    return (await ask(name, { ...input, approval: out.approval })) as T;
   } catch (e) {
     if (e instanceof BoxError) throw e;
     const x = e as { code?: string; message?: string };
