@@ -53,7 +53,8 @@ export async function pairServer(o) {
   const stop = () => { try { conn.close(); } catch { /* closed */ } };
   /** @param {any} input */
   const adopt = async input => {
-    const r = await Promise.race([conn.fetch("/v1/tools/wink.server.adopt", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) }), new Promise((_, rej) => setTimeout(() => rej(fail("unreachable", "The server did not answer.")), 15_000))]);
+    /** @type {any} */ let to;
+    const r = await Promise.race([conn.fetch("/v1/tools/wink.server.adopt", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) }), new Promise((_, rej) => { to = setTimeout(() => rej(fail("unreachable", "The server did not answer.")), 15_000); })]).finally(() => clearTimeout(to));
     const body = /** @type {any} */ (await /** @type {any} */ (r).json().catch(() => null));
     return { status: /** @type {any} */ (r).status, body };
   };
