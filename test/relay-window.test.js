@@ -2,6 +2,7 @@
 // The pairing window: one proof opens up to 10 minutes of renewing the Wink code from one screen, and a phone that redeems a
 // code is enrolled only after that screen confirms it. A real vyred, the Node relay, a fake clock for the window. 127.0.0.1 only.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

@@ -3,6 +3,7 @@
 // Run with sh against a temp folder standing in for /var/lib/vyre-spaces. docker, nsenter (with a tiny iptables that keeps one rule list per pid, the
 // container's namespace) and the other host tools are fakes on PATH; the compose file is the REAL one, from stores/twenty/provision.js. Linux only (stat -c).
 // A request from another uid and a real iptables owner match need a real box: see docs/work/space-helper.md for the box test list.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

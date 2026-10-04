@@ -1,6 +1,7 @@
 // @ts-check
 // The session wake in the runtime: what a watcher may post into a session, and when it may not. No child
 // runs here: wake() is called directly with the items a run just filed.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

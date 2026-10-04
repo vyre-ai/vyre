@@ -7,6 +7,7 @@
 //
 // VYRE_SCREEN_CAPTURES=<dir> saves the screen as text at each step, for a report.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

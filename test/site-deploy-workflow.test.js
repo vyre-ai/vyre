@@ -1,5 +1,6 @@
 // @ts-check
 // .github/workflows/site-deploy.yml (#16): vyre.run follows a stable release, behind the deploy environment's reviewer, and is checked afterwards.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

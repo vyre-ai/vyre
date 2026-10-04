@@ -2,6 +2,7 @@
 // The names service against fakes: the claim flow, the listener's identity rule, the claim code
 // for a tagged box, renewal. Nothing here reaches Tailscale, Cloudflare or Let's Encrypt.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

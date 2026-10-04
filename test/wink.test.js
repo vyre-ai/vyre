@@ -3,6 +3,7 @@
 // sharing a computer is a node.host grant; removal takes the grant and the device with it. A real vyred, the Node relay, a real typing
 // device (relay/client/join.js). 127.0.0.1 only. Run on a runner or the test server (daemon tests never run on the person's Mac).
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

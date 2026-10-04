@@ -13,6 +13,7 @@
 // 2026-09-27; it only shrinks. A new edge needs the lead's OK. An entry nothing uses any more
 // fails too, so a fixed edge comes off the list. docs/architecture/boundaries.md explains each.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

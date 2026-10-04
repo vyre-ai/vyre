@@ -8,6 +8,7 @@
 //    todo, so they show in every run without failing it. Once a target is met and the baseline
 //    is rewritten (npm run eval:memory -- --write-baseline), its todo drops and it holds.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

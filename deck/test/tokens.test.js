@@ -4,6 +4,7 @@
 // (and config's /theme.css after both, so a user's colours win), and every colour deck.css names
 // is defined by one of the two.
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

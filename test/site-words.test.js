@@ -3,6 +3,7 @@
 // and llms.txt) never says "vyred", "switchboard", "no such tool" or "as Claude Code does": a person reads "Vyre", "the box", "sessions".
 // The same word list as test/no-internal-words.test.js (native-core's, for the Deck). Generated and copied folders are not the site's copy.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

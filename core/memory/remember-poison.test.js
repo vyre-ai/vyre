@@ -1,6 +1,7 @@
 // @ts-check
 // HD-8: memory.remember from a session. The attack: a prompt-injected session calls memory.remember "my wife is Mallory" and it becomes the person's own fact at confidence 0.95, in the
 // profile and in every later prompt. Only the person at a surface tells memory outright; a session's or an agent's remember is an untrusted, attributed write.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

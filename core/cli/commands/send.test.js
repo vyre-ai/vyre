@@ -4,6 +4,7 @@
 // tailscale is a fake that knows the box as a peer and records `file cp` instead of sending
 // anything. Nothing leaves this machine.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";

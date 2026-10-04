@@ -4,6 +4,7 @@
 // goes away once the words are actually sent. Sample world only, real random thread ids per test
 // so this file never collides with another test's drafts in the same localStorage.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { install } from "../test/fake-dom.js";

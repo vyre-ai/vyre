@@ -4,6 +4,7 @@
 // a numbered milestone list; Esc cancels. The engine (tracking it, notifying on each milestone) is
 // sessions' - this only builds and sends the message. Sample world only.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { install, $, $$, text } from "../test/fake-dom.js";

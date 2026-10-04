@@ -2,6 +2,7 @@
 // owner device signed in reads personal memory; an unsigned one gets the sign-in hint; a web device, a setup device, a removed device and an id never paired get the plain refusal with
 // no hint. The person session id is a stand-in (SHIM(person session): vault's pairing-opened session is on work/paired-session); the chain only needs the daemon to carry it as a fact.
 // Run it on a test box, never on a person's Mac.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { start } from "../daemon/index.js";

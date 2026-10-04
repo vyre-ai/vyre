@@ -1,5 +1,6 @@
 // @ts-check
 // The runner's start, stop, lock and move are the person's, and the person comes only from the kernel chain: a label never grants (kernel on).
+import "../../scripts/mac-test-guard.mjs";
 import "./testing/hosted-guard.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";

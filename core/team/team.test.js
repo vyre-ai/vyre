@@ -9,6 +9,7 @@
 // take `request` as optional and default to the caller's one running request, so a teammate's
 // script never needs to know the id ADR 0031 gave the request before it existed.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

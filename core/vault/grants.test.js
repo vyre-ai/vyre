@@ -5,6 +5,7 @@
 // the policy says. Also the warning on a new pass, the whois meta, and vault.grants.status
 // against a fake tailscale binary. Every vault lives under the checkout's scratch dir.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

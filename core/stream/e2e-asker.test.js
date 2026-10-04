@@ -2,6 +2,7 @@
 // SS-1 on a REAL vyred process with two real members (alex the owner, carol a member; presence is the test verifier `kernelPresence`, which accepts any proof for a grants act: a stand-in, said
 // plainly in team/0.3/E2E-RUN.md): a turn belongs to its asker for its whole run. carol's turn is running when alex speaks: alex's message is queued as the NEXT turn, never steers carol's,
 // the kernel still holds carol's open turn while hers runs (it is not swapped for alex's), and alex's turn then runs as alex. Skipped unless VYRE_E2E=1 (see e2e-step7.test.js for how to run).
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

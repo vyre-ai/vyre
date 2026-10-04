@@ -1,5 +1,6 @@
 // @ts-check
 // The one labelling rule: the assistant's name (or an agent's own), "you", another surface's name, never claude.
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { labelFor, isAssistant, readNames, OURS } from "./names.js";

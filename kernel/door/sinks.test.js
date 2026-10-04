@@ -2,6 +2,7 @@
 // "Nothing else may reach a model" (contract 8.4): CI fails if a file outside the sink registry names a model provider's host. A new file
 // that talks to a model is a new sink: it goes in sinks.json with reviewer-2's sign-off and calls kernel/door. The list may only shrink
 // (retrofit_pending empties as sessions and voice move behind the door).
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

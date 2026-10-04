@@ -1,6 +1,7 @@
 // @ts-check
 // import: discovery reads metadata only, suggests what is the person's own work, and a plan says
 // exactly what an import would take. A real vyred on a temp home with fixture sessions.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

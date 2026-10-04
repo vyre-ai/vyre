@@ -1,5 +1,6 @@
 // @ts-check
 // `vyre setup --name <n> --yes` against a fake vyred: the same two tools the page calls, the recovery code once, and the refusals.
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";

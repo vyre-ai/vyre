@@ -1,6 +1,7 @@
 // The signed module list (kernel/modules/release-list.js buildModuleList) is keyed by module name, so two module folders with one name make a release that cannot be built and a list that
 // could be read two ways. This fails at build time on a duplicate name. The one known duplicate is named in scripts/packaged-boot-known.txt (launch's file; this test and that file
 // agree on the folder), with a line saying who rules on it; the exception goes stale loudly, so deleting the duplicate removes the line.
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

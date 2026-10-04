@@ -3,6 +3,7 @@
 // and conflicts, read-only members, removal with a new key and rotation flags, and what a peer
 // refuses. Each vault is a real Vault in a temp home; sync goes straight to the home's handler.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

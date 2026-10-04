@@ -1,6 +1,7 @@
 // memory.sealscan with the ledger on a REAL daemon, a real kernel and the REAL sealing process (SD-3). A value sealed in a record that has no class shape (a medical record number) is found in
 // memory's held text by the sealing process's yes or no and reported by table and column only. Run it on a test box, never on a person's Mac. Stand-in, labelled:
 //   SHIM(person chain): the owner's chain is the daemon's own `callerFacts` for the `cli` surface (a person's terminal), the same chain a real CLI call gets.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

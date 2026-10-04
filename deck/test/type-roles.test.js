@@ -4,6 +4,7 @@
 // the older stylesheets are on a shrink-only list (deck/test/type-roles.baseline.json): they may not gain an off-role size, and each screen's pass
 // takes its entry down to nothing. Regenerate the list after a pass with `node deck/test/type-roles.test.js --write`.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

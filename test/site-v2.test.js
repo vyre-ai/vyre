@@ -3,6 +3,7 @@
 // the structured data parses; every internal link and asset resolves to a file; the sitemap lists exactly the pages; no em dash or
 // section sign reaches a reader; the page is within the size budget. The served installers and the setup page are not generated here.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

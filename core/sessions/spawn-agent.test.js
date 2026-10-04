@@ -5,6 +5,7 @@
 // takes the whole group, and an agent's folder moves to the agent's own home. The uid change
 // itself is checked in the box image by scripts/e2e-split/check.sh.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

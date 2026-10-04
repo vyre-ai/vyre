@@ -1,6 +1,7 @@
 // @ts-check
 // What `npm pack` ships must hold every file the daemon imports: a packaged box once died at boot ("Cannot find module /opt/vyre/kernel/devbuild.js") because the 0.3
 // folders were not in package.json's "files". This walks the packaged folders' non-test sources, follows their relative imports, and checks each target is inside what is packed.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

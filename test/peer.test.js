@@ -2,6 +2,7 @@
 // Claude session, however it labels itself. A fake `claude` (a node script by that name, as `ps`
 // shows a real one) runs the client; the same client run straight from the test is allowed.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

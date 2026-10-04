@@ -1,6 +1,7 @@
 // @ts-check
 // The address gate lets loopback in (a computer's own processes), which is only safe while nothing inside a computer forwards
 // remote traffic to loopback. These checks read what the image installs and starts; the J7 matrix step 7.5c checks the running computer.
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

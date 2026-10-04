@@ -1,6 +1,7 @@
 // @ts-check
 // The phone's Needs you rows: titles, lines, labels and swipe releases (docs/design/phone.md 4, 5, 12).
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { plainSummary, requestFacts, askTitle, draftTitle, titleOf, secondLine, thirdLine, ago, agoLong, ariaLabel, presenceWord, sessionHref,

@@ -1,5 +1,6 @@
 // @ts-check
 // Flow text ("See as code") and @Engineer against a fake box.
+import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";

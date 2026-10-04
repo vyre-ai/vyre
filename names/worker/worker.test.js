@@ -2,6 +2,7 @@
 // The name directory against a fake Workers runtime (relay/worker/fake-cf.js) and a fake Cloudflare
 // DNS API (fake-dns.js): claim, point, ACME, recover, tombstones, limits, and the request checks.
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

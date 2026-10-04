@@ -1,6 +1,7 @@
 // @ts-check
 // `irm https://vyre.run/w | iex` runs scripts/install-windows.ps1: build-site.sh puts it at site/w, site/_headers serves it as plain text, release-check
 // compares it, and the script itself points at a real release (a stable tag's VyreSetup.exe and SHA256SUMS) and says what it does not verify.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

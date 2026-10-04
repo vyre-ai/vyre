@@ -1,6 +1,7 @@
 // @ts-check
 // The Engineer on a REAL vyred (kernel on): a built-in agent in agents.list that only proposes. Its session reaches a short list of tools and no others; a Flow it writes is a draft, a proposal
 // is one task for the admin, and an assistant's chain cannot approve, install or define anything.
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { start } from "../core/daemon/index.js";

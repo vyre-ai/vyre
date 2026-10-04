@@ -1,6 +1,7 @@
 // @ts-check
 // Tasks survive a restart (devbox, 4 Oct): they lived in memory only, so every redeploy emptied tasks.list while records stayed. The log now carries each task after every change and the kernel
 // rebuilds them at start. A real daemon on a temp home, restarted; a test box, never a Mac.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { tempHome } from "./helpers.js";

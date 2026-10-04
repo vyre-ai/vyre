@@ -7,6 +7,7 @@
 //   SHIM(model): no model answers here; `work.know.search` is the retrieval an answer cites from, and it is what is asserted;
 //   (the teammate's grant is on the PROJECT's record: Recall names the session's project when it captures, and the work module reads the session's lines under that record).
 // Run it on a test box, never on a person's Mac.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
