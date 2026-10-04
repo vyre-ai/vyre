@@ -155,7 +155,7 @@ export default function RealVault() {
                   <Row dense chevron={phone} selected={!phone && cur?.id === v.id} lead={<IconTile name={v.tab === "Card" ? "file" : "key"} />} title={v.name}
                     sub={uses[v.id] ? `${v.line} · ${useCount(uses[v.id], Date.now())} uses today` : v.line} onPress={() => { hide(); setSel(v.id); setPushed(true); }} />
                 </View>
-              )) : <EmptyState title="Nothing here yet" body={rows.length ? `No ${tab.toLowerCase()}s in the vault.` : "No items yet. Add one from your home's terminal with vyre vault put."} />}
+              )) : <EmptyState title="Nothing here yet" body={rows.length ? `No ${tab.toLowerCase()}s in the vault.` : claimBlocked() ? "No items yet. Add items in Vyre on your phone." : "No items yet. Use Add an item."} />}
             </Card>
           </View>
           {phone ? null : <View className="min-w-pane min-w-0 flex-[1.2]">{detail}</View>}

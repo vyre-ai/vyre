@@ -232,8 +232,8 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
     );
   } else if (step === "scan") {
     body = (
-      <Page title="Scan from your other device" sub="Open Vyre on a device that has your name and scan this, or paste the long code on it.">
-        <View className="w-ring self-center"><Ring seed={4} /></View>
+      <Page title="Scan from your other device" sub={MOCK ? "Open Vyre on a device that has your name and scan this, or paste the long code on it." : "Open Vyre on a device that has your name and choose Add a device. Scan the code it shows with this camera, or paste its long code here."}>
+        {MOCK ? <View className="w-ring self-center"><Ring seed={4} /></View> : null}
         {MOCK ? <Button kind="primary" label="Simulate the scan" onPress={() => { setSession(openPairing(parseSample())); setStep("scanwords"); }} /> : <PairEntry onCode={(c: LongCode) => { setSession(openPairing(c)); setStep("scanwords"); }} />}
       </Page>
     );
