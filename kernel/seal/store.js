@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const hk = (master, info) => Buffer.from(crypto.hkdfSync("sha256", master, Buffer.alloc(0), info, 32));
-const ANCHOR = "seal_anchor0000000000000000";
+const ANCHOR = "seal_anchor0000000000000000", MATCHDAY = "seal_matchday000000000000000";
 const REF = /^(seal|out)_[a-z0-9]{20,40}$/;
 
 export class SealStore {
@@ -26,6 +26,9 @@ export class SealStore {
   /** A sealed marker in the encrypted store, beside the values: what the presence file must agree with, so deleting or rolling it back is detected. */
   anchorRead() { const r = this.read("values", ANCHOR, "_system"); return r ? JSON.parse(r.plaintext) : null; }
   anchorWrite(obj) { this.write("values", { ref: ANCHOR, space: "_system", record: "_", field: "anchor", class: "anchor" }, JSON.stringify(obj)); }
+  /** The per-day seal.detect counts, sealed beside the values so a restart does not reset a limit: { day, counts: { "<space>\0<module>": n } }. */
+  matchRead() { const r = this.read("values", MATCHDAY, "_system"); return r ? JSON.parse(r.plaintext) : null; }
+  matchWrite(obj) { this.write("values", { ref: MATCHDAY, space: "_system", record: "_", field: "matchday", class: "matchday" }, JSON.stringify(obj)); }
   /** A keyed index for the one allowed equality: a uniqueness check at write time and a rate-limited human lookup. */
   blind(space, field, cls, compactValue) { return crypto.createHmac("sha256", hk(this.master, `vyre seal index v1 ${space}`)).update(`${field}\0${cls}\0${compactValue}`).digest("base64url"); }
   newRef(kind) { return `${kind}_${crypto.randomBytes(15).toString("hex")}`; }

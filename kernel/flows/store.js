@@ -180,6 +180,9 @@ export class RecordsFlowStore {
     return { flow: id, version, hash, approver, at };
   }
 
+  /** A Flow that was never defined has no state to change: pausing or resuming it stores nothing. @param {string} id */
+  async #known(id) { if (!(await this.#find("def-flow", "flow_id", id)).length) throw Object.assign(new Error("no such Flow"), { code: "not_found" }); }
+
   /** @param {string} id @param {{ status: string, active?: number|null, reason?: string, since?: number }} s */
   async #setState(id, s) {
     const rows = await this.#find("flow-state", "flow_id", id);
@@ -214,9 +217,9 @@ export class RecordsFlowStore {
     return out;
   }
   /** @param {string} id @param {string} reason @param {number} at */
-  async pause(id, reason, at) { await this.#setState(id, { status: "paused", reason, since: at, active: undefined }); }
+  async pause(id, reason, at) { await this.#known(id); await this.#setState(id, { status: "paused", reason, since: at, active: undefined }); }
   /** @param {string} id */
-  async resume(id) { await this.#setState(id, { status: "active", reason: "", since: 0, active: undefined }); }
+  async resume(id) { await this.#known(id); await this.#setState(id, { status: "active", reason: "", since: 0, active: undefined }); }
   /** @param {string} id */
   async disable(id) { await this.#setState(id, { status: "disabled", active: null }); }
   async list() {

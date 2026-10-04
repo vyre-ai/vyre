@@ -1,3 +1,4 @@
+import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { AUTONOMY, BUDGET_STEPS, budgetLine, money, overLine, settingsGroups, toggleAccount, usedPercent, usedShare } from "./logic.js";

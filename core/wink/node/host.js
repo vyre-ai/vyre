@@ -21,6 +21,7 @@
 // it is up, and the relay stream is closed when it is no longer the way in. A dead direct path is
 // retried at most once a minute while the relay carries the work.
 
+import { deviceIdOf } from "../../../lib/caller.js";
 import net from "node:net";
 import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs";
@@ -93,7 +94,7 @@ export function createHost(deps) {
   /** @type {Map<string, Set<SpaceLink>>} */
   const linksOf = new Map();
   const noteSession = (/** @type {string} */ space, /** @type {string} */ caller, /** @type {"direct" | "relay"} */ via, /** @type {string | null} */ addr, /** @type {any} */ session) => {
-    const eid = String(caller).replace(/^device:/, "");
+    const eid = deviceIdOf(caller) || String(caller);
     for (const [k, v] of peersSeen) if (v.session.closed) peersSeen.delete(k);
     peersSeen.set(`${space}\n${eid}`, { space, eid, via, addr, since: Date.now(), session });
   };

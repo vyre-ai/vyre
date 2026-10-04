@@ -1,4 +1,5 @@
 // @ts-check
+import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { streamSource, stateOf } from "./stream-source.js";

@@ -1,18 +1,19 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Avatar, Button, Card, Chip, Divider, EmptyState, Row, Text, showToast, markRef, spaceRef } from "@vyre/ui";
 import { Group, Page } from "../places/Frame";
 import { FaceIdSheet, type FaceAsk } from "../shell/FaceIdSheet";
-import { SPACE_NAMES, glyph } from "./data";
 import { lendInfo, useDevices } from "./state";
 import { lendState, removeText } from "./wink.js";
+import { MOCK, said } from "../../src/real/box";
 
 /** One device: what it is, which spaces it is in, share it with a space, remove it. */
 export function DeviceScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { items, devSpaces, addToSpace, removeFromSpace, removeItem, meLends, setLend } = useDevices();
+  const { items, devSpaces, spaceNames: SPACE_NAMES, addToSpace, removeFromSpace, removeItem, meLends, setLend, load } = useDevices();
+  useEffect(() => { void load(); }, [load]);
   const [face, setFace] = useState<FaceAsk | null>(null);
   const d = items.find((i) => i.id === id);
   if (!d) return <Page title="Device" back="/u/settings/devices"><Card><EmptyState title="That device is not here" body="It may have been removed." action={{ label: "Back to Devices", onPress: () => router.push("/u/settings/devices" as never) }} /></Card></Page>;
@@ -23,7 +24,7 @@ export function DeviceScreen() {
   return (
     <Page title={d.name} sub={`Since ${d.since} · last used ${d.last}`} back="/u/settings/devices">
       <Card><Row lead={<Avatar of={{ ...markRef("device", d.name, d.id), device: d.device }} size={40} />} title={d.name} sub={d.allows} className="px-0" /></Card>
-      <Group title="Spaces">
+      {MOCK ? <Group title="Spaces">
         <Card flush>
           {cur.map((k, i) => (
             <View key={k}>{i ? <Divider /> : null}
@@ -38,8 +39,12 @@ export function DeviceScreen() {
             </View>
           ))}
         </Card>
-      </Group>
-      {d.device === "computer" ? (
+      </Group> : (
+        <Group title="Spaces">
+          <Card flush>{Object.entries(SPACE_NAMES).map(([k, n], i) => <View key={k}>{i ? <Divider /> : null}<Row lead={<Avatar of={spaceRef(n)} size={40} />} title={n} sub="Reaches it through your identity" /></View>)}</Card>
+        </Group>
+      )}
+      {MOCK && d.device === "computer" ? (
         <Group title="Share this computer">
           <Card className="gap-s3">
             <Text strong>{`Lend a computer`}</Text>
@@ -59,7 +64,7 @@ export function DeviceScreen() {
       ) : null}
       <Group title="Remove">
         <Text size="caption" tone="label">{removeText("Device", d.name)}</Text>
-        <View className="flex-row"><Button kind="hold" label={`Remove ${d.name}`} onPress={() => { removeItem(d.id); showToast(`${d.name} was removed.`); router.push("/u/settings/devices" as never); }} /></View>
+        <View className="flex-row"><Button kind="hold" label={`Remove ${d.name}`} onPress={() => { removeItem(d.id).then(() => { showToast(`${d.name} was removed.`); router.push("/u/settings/devices" as never); }).catch((e) => showToast(said(e))); }} /></View>
       </Group>
       <FaceIdSheet ask={face} onClose={() => setFace(null)} />
     </Page>

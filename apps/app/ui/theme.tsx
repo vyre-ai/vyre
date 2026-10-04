@@ -39,8 +39,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const phone = width < PHONE_MAX;
   const ctx = useMemo<UiCtx>(() => {
     const resolved: Resolved = resolveTheme({ space, person, system });
-    // The font is the platform's own (SF, Roboto, Inter on the web) until a space or a person picks one.
-    if (!space.font && !person.font) resolved.font = "system";
+    // The font is the platform's own (SF, Roboto, the system font on the web) until a space or a person picks Serif; the older "sans" reads as the system font.
+    if (resolved.font === "sans") resolved.font = "system";
     const map: Record<string, string | number> = themeVars(resolved, { phone, os: Platform.OS });
     const color: Record<string, string> = {};
     for (const [k, v] of Object.entries(map)) if (typeof v === "string") color[k.slice(2)] = v;

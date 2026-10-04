@@ -1754,7 +1754,7 @@ for (const driver of ["cli", "sdk"]) {
     const bin = path.join(w.root, "fakebin");
     fs.mkdirSync(bin);
     const calls = path.join(w.root, "terminal.jsonl");
-    fs.writeFileSync(path.join(bin, "claude"), `#!${process.execPath}\nrequire("node:fs").appendFileSync(${JSON.stringify(calls)}, JSON.stringify(process.argv.slice(2)) + "\\n");\n`, { mode: 0o755 });
+    fs.writeFileSync(path.join(bin, "claude"), `#!${process.execPath}\nprocess.getBuiltinModule("node:fs").appendFileSync(${JSON.stringify(calls)}, JSON.stringify(process.argv.slice(2)) + "\\n");\n`, { mode: 0o755 });
     const PATH = process.env.PATH;
     process.env.PATH = bin + path.delimiter + PATH;
     t.after(() => { process.env.PATH = PATH; });
