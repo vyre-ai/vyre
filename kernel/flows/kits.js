@@ -14,6 +14,7 @@ import { compileFlow } from "./compile.js";
 import { ROLE_BUNDLES } from "../contracts/index.js";
 import { newId } from "./store.js";
 import { taskIdOf } from "./stages.js";
+import { canonical as kcanonical, sha256 as ksha } from "../core/canonical.js";
 
 export const KIT_FORMAT = 1;
 const NAME_RE = /^[a-z][a-z0-9_-]{0,63}$/;
@@ -46,6 +47,9 @@ export function kitParts(kit) {
 }
 
 export const kitHash = (/** @type {any} */ kit) => flowHash(kit);
+/** What the kernel's approved-Kit waiver is bound to (kernel/tasks/kit-apply.js): the Kit's id, version, content hash and the type definitions it defines, byte for byte. @param {any} kit */
+export const waiverKit = kit => ({ id: kit.id, version: kit.version, hash: kitHash(kit), types: kitParts(kit).filter(x => x.kind === "type").map(x => x.def) });
+export const waiverHash = (/** @type {any} */ kit) => ksha(kcanonical(waiverKit(kit)));
 
 /** @param {any} kit @param {import('./compile.js').Catalog} cat @returns {{ ok: boolean, errors: { path: string, message: string }[], cat: import('./compile.js').Catalog }} */
 export function checkKit(kit, cat) {
@@ -271,7 +275,7 @@ export class KitManager {
     const task = await this.k.ask.request(this.#chain(cat, kit.id, approver), {
       title: installed ? `Update ${kit.name} to version ${kit.version}?` : `Install ${kit.name}?`, output: { kind: "decision" }, source: "manual",
       ...(doerChain ? { doer: { kind: "service", id: "flows", space: cat.space }, checker: approver } : { doer: approver }),
-      form: { kind: "kit_install", proposal: id, card, diff },
+      form: { kind: "kit_install", proposal: id, kit_hash: waiverHash(kit), card, diff },
     }, { idem: `kit:${kit.id}:${kit.version}:${kitHash(kit)}` });
     if (doerChain) for (const [step, arg] of [["start"], ["complete", { answer: "yes", reason: `${kit.name} version ${kit.version} is waiting for your yes` }]]) {
       try { await (step === "start" ? this.k.ask.start(doerChain, task.id) : this.k.ask.complete(doerChain, task.id, arg)); } catch (e) { if (!e || !["bad_state", "not_allowed"].includes(/** @type {any} */ (e).code)) throw e; }
@@ -288,7 +292,7 @@ export class KitManager {
     if (!id) return null;
     const p = await this.store.proposalByTask(id);
     if (!p) return null;
-    const cat = this.catalogFn();
+    const cat = await this.catalogFn();
     const row = await this.k.ask.get(this.#chain(cat, p.kit.id, p.approver), id);
     if (!row || row.state !== "done") return null;
     if (row.outcome !== "approved") { await this.store.delProposal(p.id); return { declined: p.kit.id }; }
@@ -319,7 +323,12 @@ export class KitManager {
       const old = prior ? new Set(kitParts(prior.kit).filter(x => x.kind === "type").map(x => x.name)) : new Set();
       const add = types.filter(t => !old.has(t.name) && !cat.types[t.name]);
       const change = types.filter(t => old.has(t.name) || cat.types[t.name]);
-      await this.k.records.define(chain, { ...(add.length ? { add_types: add } : {}), ...(change.length ? { change_types: change } : {}) });
+      // The kernel's approved-Kit waiver (kernel/tasks/kit-apply.js): the owner's approval of THIS task, which signed the form's kit_hash, stands for the admin presence the type definitions ask
+      // for, once. A resumed install whose types are already defined (the ledger says so) asks for nothing, so a spent approval never blocks the rest.
+      const need = types.some(t => !row.added.includes(`type:${t.name}`));
+      const waiver = need && this.k.kits && p.task ? await this.k.kits.begin({ chain, task: p.task, kit: waiverKit(kit) }) : undefined;
+      if (need) await this.k.records.define(chain, { ...(add.length ? { add_types: add } : {}), ...(change.length ? { change_types: change } : {}) }, waiver ? { waiver } : undefined);
+      if (waiver && this.k.kits) await this.k.kits.end(waiver);
       for (const t of types) if (!row.added.includes(`type:${t.name}`)) row.added.push(`type:${t.name}`);
     }
     for (const part of parts) {
@@ -362,7 +371,7 @@ export class KitManager {
 
   /** The types a Kit's roles and views are stored as, made once when the first one is installed (the kernel's type names are lowercase with hyphens). @param {any} chain @param {string} type */
   async #ensureDefType(chain, type) {
-    if (this.catalogFn().types[type]) return;
+    if ((await this.catalogFn()).types[type]) return;
     try { await this.k.records.define(chain, { add_types: [{ name: type, label: type === "def-role" ? "Role definition" : "View definition", fields: [{ name: "name", kind: "text", label: "Name" }, { name: "body", kind: "text", label: "Definition" }, { name: "kit", kind: "text", label: "From Kit" }] }] }); }
     catch (e) { if (!e || !["already_exists", "conflict", "bad_input"].includes(/** @type {any} */ (e).code)) throw e; }
   }

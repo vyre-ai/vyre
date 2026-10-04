@@ -57,7 +57,7 @@ try {
   const dbFile = path.join(home, "vyre.db");
   if (!fs.existsSync(dbFile)) throw new Refused("no_home", "this home has no database to record the reset in");
   const dev = process.env.VYRE_SEAL_DEV === "1";
-  const sealer = startSealer({ dir: sealDir, dev, ...(dev && process.env.VYRE_SEAL_UNATTESTED === "1" ? { unattested: true } : {}), ...(process.env.VYRE_SEAL_PROFILE ? { profile: process.env.VYRE_SEAL_PROFILE } : {}) });
+  const sealer = startSealer({ dir: sealDir, dev, ...(dev && process.env.VYRE_SEAL_UNATTESTED === "1" ? { unattested: true } : {}), ...(dev && process.env.VYRE_SEAL_SOFTWARE === "1" ? { software: true } : {}), ...(process.env.VYRE_SEAL_PROFILE ? { profile: process.env.VYRE_SEAL_PROFILE } : {}) });
   try {
     await sealer.health?.();
     if (typeof sealer.anchor?.reset !== "function") throw new Refused("unsupported", "this sealing process has no anchor.reset");
