@@ -2,6 +2,7 @@
 // A handler in core/switchboard/index.js that uses `meta` must take it: a half-merge once left two handlers destructuring `{ caller }` while their bodies called wantsMacs(..., meta), and every
 // threads.send answered "meta is not defined". This reads the file the way a reviewer would: each `async (i, <second argument>) => {` handler, its body by brace matching, and fails when the
 // body names `meta` and the argument list does not bind it (and the body does not declare it). Every wantsMacs call must also pass meta as its last argument.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

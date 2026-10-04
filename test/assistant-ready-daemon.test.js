@@ -1,5 +1,6 @@
 // A fresh dev home, a real vyred: nothing names the assistant (the 0.3 order has no first-run page), but once the server has an owner and an AI account is connected the assistant exists,
 // made by the onboard module on its own check. Stand-in: the owner and the connected account are config (`onboard.person`, `onboard.claude`), not a real pairing and sign-in.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

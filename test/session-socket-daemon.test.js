@@ -1,6 +1,7 @@
 // @ts-check
 // A session starts on a plain home with the sandbox in force and thread_socket left at "auto" (a checkout, not a spawner box): it gets its own socket. Before, sandboxFor refused every session,
 // a person's included, with "Vyre did not start this session because it has no socket of its own to reach Vyre through".
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
