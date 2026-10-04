@@ -926,15 +926,28 @@ export default {
     tool("spaces.devices.enrolled", "Whether a device is enrolled in a space (true when the device has no list yet). For the kernel and other modules, which refuse a device that is not.", obj({ device: str, space: str }, ["device", "space"]),
       async i => {
         // A Space this module has no row for (the home's own Space, which the kernel makes before any space is created here) is asked by its id as given: no list means enrolled.
+        // The device argument comes from other modules and the kernel (internal is reach, not trust): only the shapes a device id has are looked up (a relay device id or an enrolment entry id).
+        if (!/^[A-Za-z0-9_-]{8,64}$/.test(String(i.device))) return { enrolled: false };
         let id = String(i.space);
         let known = true;
-        try { id = spaceOf(i.space).id; } catch { known = false; }
+        let rowStatus = "done";
+        try { const r0 = spaceOf(i.space); id = r0.id; rowStatus = r0.status; } catch { known = false; }
+        // A space this module has marked cancelled, or one still being made, is no space to be enrolled in.
+        if (known && rowStatus !== "done") return { enrolled: false };
         // FAIL CLOSED: a space this module has no row for is enrolled only if the KERNEL hosts it (the home, or one it hosts) and the home's person belongs to it. "No list means every space" is
         // every space the person BELONGS to, never an id nobody here has heard of.
         if (!known) {
           if (!K || typeof K.space !== "string") return { enrolled: false };
           const hosted = id === K.space || (K.spaces && typeof K.spaces.hosts === "function" && K.spaces.hosts(id) === true);
           if (!hosted) return { enrolled: false };
+          let who = null; try { const st = identity.status(); who = st && st.exists ? st.id : null; } catch { who = null; }
+          const person = who || (typeof K.owner === "string" ? K.owner : null);
+          let member = false;
+          if (person && typeof K.membership === "function") { try { member = (await K.membership(person, id)).member === true; } catch { member = false; } }
+          if (!member) return { enrolled: false };
+        }
+        // Belonging is asked of the kernel NOW (a removed, expired, revoked member is not enrolled anywhere): for a space with a kernel, whoever this home's person is must be an active member.
+        if (known && K && kernelHandle(id)) {
           let who = null; try { const st = identity.status(); who = st && st.exists ? st.id : null; } catch { who = null; }
           const person = who || (typeof K.owner === "string" ? K.owner : null);
           let member = false;

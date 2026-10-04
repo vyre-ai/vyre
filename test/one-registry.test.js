@@ -343,4 +343,16 @@ test("spaces.devices.enrolled is fail-closed: an unknown space is enrolled only 
   const other = "per_" + "b".repeat(26);
   const theirs = await d.kernel.spaces.host({ owner: other, name: "theirs" });
   assert.equal(await enrolled(dev, theirs.space), false, "a hosted space the person is not a member of");
+  // the device argument must have a device id's shape; nothing else is looked up
+  for (const bad of ["", "a b", "x".repeat(200), "dev/../x", "short"]) assert.equal(await enrolled(bad, d.kernel.space), false, JSON.stringify(bad));
+  // a creation that was cancelled is no space to be enrolled in, and neither is one still being made
+  const mine = (await deck("spaces.identity.create", { name: "alex" })).data;
+  assert.ok(mine.id);
+  const w = (await deck("spaces.create", { name: "cancelme", home: { kind: "this-computer" } })).data;
+  assert.equal(await enrolled(dev, w.space), false, "still being made");
+  assert.ok(!(await deck("spaces.cancel", { space: w.space })).error);
+  assert.equal(await enrolled(dev, w.space), false, "cancelled");
+  // a finished space of the person's: enrolled, and not once the kernel says the person is no longer a member of it
+  const fin = (await deck("spaces.create", { name: "finishedone", home: { kind: "this-computer", confirmed: true } })).data;
+  assert.equal(await enrolled(dev, fin.space), true);
 });
