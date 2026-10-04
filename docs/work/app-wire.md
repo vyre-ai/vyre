@@ -48,7 +48,7 @@ Connect the 0.3 app's Vault, Memory (graph, pins, corrections), Flows (start, a 
 
 - Sites (4 Oct): screens/sites/{real-model,real-source,real,RealSites}, real.test.js 9 of 9 (with the old logic test) on the test box. Tools: publish.list, status, create, preview, plan via the held answer, approve, publish, rollback, decide (presence), retire, domain.add/verify/remove, secret.grant/revoke, vault.list for the secret picker. Dev box has no publish module (publish.list is not a tool there), so nothing real seen; waiting on windows for Publish on testbox2.
 
-- Projects (4 Oct): the screens already read the Store; the gap was deck/ui/view-defs.js viewDefOf, which only let the three named types hold work. Fallback added (stage field means holdsWork, with a board by it), tested in screens/projects/work.test.js (2 of 2), deck/ui types.test.js 3 of 3 and ui/views 14 of 14 still pass on the test box. The dev box has no type with a stage field and records.define needs presence, so I could not seed one: not seen on a real space.
+- Projects (4 Oct): my view-defs.js edits were reverted at the lead's ruling; native-core owns the `kind: "project"` change (work/ui-customize e5398ee84). The Projects screens themselves are unchanged and read the Store.
 
 - Shell (4 Oct): screens/shell/{real-model,real-source,real,shared}.ts, UiShell loads on mount, real.test.js 10 of 10 on the test box (with the old spaces tests). Dev box spaces.list answered 3 spaces (Harlow Legal, Northwind Bakery, Harlow Estate Planning, all owner) and spaces.identity.status devbox.vyre.run, the shapes the model reads. Not walked in the app.
 
