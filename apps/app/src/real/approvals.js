@@ -94,11 +94,14 @@ export const momentOf = (tool) => {
 };
 
 /**
- * An act that needs a yes and carries no approval answers the ordinary floor error `presence_required` (the server has no "held" error). On those tools that is the trigger: the browser asks the owner's phone for the
- * yes over { op: the tool name, fields: its plain input }, then sends the same act again with the approval id. @param {any} error @param {string} tool @param {Record<string, unknown>} [input]
+ * An act that needs the owner's yes and carries no approval answers error code `held` with detail { moment, request: { op, fields } } (wink-2, 113aea6ce): the request is exactly what approvals.ask takes. An older
+ * server answers the ordinary floor error `presence_required` on those tools instead; that is the trigger too. The browser asks the phone, then sends the same act again with the approval id.
+ * @param {any} error @param {string} tool @param {Record<string, unknown>} [input]
  * @returns {{ moment: "vault" | "pair" | "outward", request: { op: string, fields: Record<string, any> } } | null}
  */
 export const heldAsk = (error, tool, input = {}) => {
+  const d = error && error.code === "held" ? error.detail : null;
+  if (d && ["pair", "vault", "outward"].includes(d.moment) && d.request && typeof d.request.op === "string") return { moment: d.moment, request: { op: d.request.op, fields: d.request.fields && typeof d.request.fields === "object" ? d.request.fields : {} } };
   const moment = momentOf(tool);
   return error && error.code === "presence_required" && moment ? { moment, request: { op: String(tool), fields: input } } : null;
 };

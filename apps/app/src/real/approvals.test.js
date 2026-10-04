@@ -62,6 +62,13 @@ test("AP-1 on the asking side: a proof request or an ask whose hash is not the h
   await assert.rejects(askPhone(box([{ state: "waiting" }], "ask").call, { tool: "rules.enable", input: { id: "r" }, space: "spc_abcdefghijkl", ...FAST }), (/** @type {any} */ e) => e.code === "hash_mismatch");
 });
 
+test("a `held` answer carries its own moment and request, and wins over the tool's name", () => {
+  const detail = { moment: "outward", request: { op: "mail.send", fields: { to: "a@b.c" } } };
+  assert.deepEqual(heldAsk({ code: "held", detail }, "mail.send", { to: "ignored" }), detail);
+  assert.equal(heldAsk({ code: "held", detail: { moment: "nope", request: { op: "x" } } }, "records.list", {}), null);
+  assert.equal(heldAsk({ code: "held" }, "records.list", {}), null);
+});
+
 test("presence_required on a vault, pairing or outward tool is the trigger, with the tool and its plain input as the request", () => {
   assert.deepEqual(heldAsk({ code: "presence_required" }, "vault.reveal", { name: "Bank" }), { moment: "vault", request: { op: "vault.reveal", fields: { name: "Bank" } } });
   assert.equal(heldAsk({ code: "presence_required" }, "wink.pair.server", {}).moment, "pair");

@@ -58,7 +58,7 @@ export async function tool<T = unknown>(name: string, given: Record<string, unkn
     } finally { useApproval.getState().hide(); }
   }
   // A browser that cannot prove the yes itself asks the phone, then sends the act again with the approval id in the x-vyre-approval header (never inside the tool's own input).
-  if (r.error && claimBlocked()) {
+  if (r.error && (claimBlocked() || r.error.code === "held")) {
     const held = heldAsk(r.error, name, input);
     if (held) {
       const raw = async (t: string, i?: Record<string, unknown>) => { const x = await call<any>(t, i ?? {}); if (x.error) throw Object.assign(new Error(x.error.message), { code: x.error.code }); return x.data; };
