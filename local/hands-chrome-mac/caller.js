@@ -17,7 +17,7 @@ export const agentClaim = caller => {
   return m ? m[1] || "(unnamed)" : null;
 };
 
-/** The standalone package carries no daemon code, so this is the sanctioned copy of lib/person-surfaces.js PERSON_SURFACES; caller.test.js fails the day they differ. */
+/** The standalone package carries no daemon code, so this is the sanctioned copy of core/presence PERSON_SURFACES; caller.test.js fails the day they differ. */
 export const SURFACES = new Set(["cli", "local", "deck", "capsule"]);
 const THREAD = /(?:^|[\s:])thread:/;
 
