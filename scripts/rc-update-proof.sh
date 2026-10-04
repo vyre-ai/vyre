@@ -101,6 +101,13 @@ do_update() { # LABEL STORE: STORE is none (an untouched box: no VYRE_STORE appe
           [ -z "$(docker ps -q --filter name=twenty)" ] || fail "$1: a Twenty store started on a box that never chose one" ;;
   esac
   every_module "$1"
+  # records' store line (/v1/health records_store, when this candidate carries it): an untouched box is on the built-in store by default and it answers.
+  if [ "$2" = none ]; then
+    rs=$(vyre status --json 2>/dev/null | tr -d '\n ' || true)
+    case "$rs" in
+      *'"records_store"'*) printf '%s' "$rs" | grep -q '"records_store":{[^}]*"store":"builtin"' && printf '%s' "$rs" | grep -q '"from":"default"' && printf '%s' "$rs" | grep -q '"reachable":true' || fail "$1: the records store line is not built-in, default and reachable: $rs" ;;
+    esac
+  fi
   # The records written before the update are read back, and the box is still on the store they live in (the built-in one: there is no status line for the store, so: no Twenty stack, and the data reads).
   vyre call memory.me '{}' 2>&1 | grep -q Robin || fail "$1: the memory fact written before the update is not read back"
   vyre call planner.list '{}' 2>&1 | grep -q 'retainer draft' || fail "$1: the planner note written before the update is not read back"
