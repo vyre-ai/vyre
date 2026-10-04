@@ -29,7 +29,7 @@ export const WAITING_TITLE = APPROVE_ON_PHONE;
 export async function tool<T = unknown>(name: string, input: Record<string, unknown> = {}): Promise<T> {
   let r = await call<T>(name, input).catch((e: Error) => ({ error: { code: "offline", message: e.message } }) as const);
   // A kernel act a person signs (a rule, say), asked from the web app: the paired phone approves it ("Approve on your phone"), then the act goes again with the proof it signed.
-  if (r.error && Platform.OS === "web" && phoneRoute(name, r.error)) {
+  if (r.error && Platform.OS === "web" && phoneRoute(name, r.error, input)) {
     const space = typeof input.space === "string" && input.space ? input.space : String(((await call<{ space?: string }>("records.me")).data as { space?: string } | undefined)?.space ?? "");
     const st = useApproval.getState();
     const ask = (t: string, i?: Record<string, unknown>) => call<any>(t, i ?? {}).then((x) => { if (x.error) throw new BoxError(x.error.code ?? "error", x.error.message ?? ""); return x.data; });
