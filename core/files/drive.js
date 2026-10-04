@@ -530,7 +530,8 @@ export function drive(ctx, { role, guard: g, roots }) {
     });
 
     ctx.tool("files.drive.audit", {
-      callers: PERSON_AND_MODULE,
+      // The box sees who asks: a named agent is refused in the body (reach), a bare session is the person's own Claude and is not.
+      callers: [...PERSON_AND_MODULE, "mcp", "harness"],
       description: "Check the tailnet policy from the box's side: every online node the policy lets into this box's VyreDrive shares that is not a paired Mac is a finding. A tailnet-wide security report, not a per-folder read: never an agent (Vyre Drive step 5), same as share/unshare/access above.",
       input: { type: "object", properties: {} },
       run: async (input, meta = {}) => {
