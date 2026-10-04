@@ -4,7 +4,7 @@ import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { ON_PHONE, needsPerson, onPhoneFor } from "./on-phone.js";
+import { ON_PHONE, needsPerson, onPhoneFor, softwareKeyLine } from "./on-phone.js";
 import { actWords } from "./approvals.js";
 
 test("RC1: a person-only ask in a blocked browser says to do it on the phone, for each way the box asks", () => {
