@@ -1428,6 +1428,20 @@ test("wink.server.probe: a paired server answers; a server that let the device g
   assert.equal((await w.call("wink.server.probe", { device: "nope" })).code, "unknown");
 });
 
+test("wink.server.probe: once the person removed a server (released or not), the probe answers removed and never the old route", async () => {
+  const w = world({ callServer: async (_p, tool) => ({ tool, released: true }) });
+  const ch = { relay: "ws://relay.test", route: "route1", box: "box1" };
+  w.p.meta.set("channel:srv1", ch); w.p.meta.set("probe:srv1", ch);
+  assert.equal((await w.call("wink.server.probe", { device: "srv1" })).reachable, true);
+  assert.equal(await w.p.releaseServer("srv1"), "released");
+  const gone = await w.call("wink.server.probe", { device: "srv1" });
+  assert.deepEqual([gone.reachable, gone.code], [false, "removed"]);
+  const w2 = world({ callServer: async () => { throw Object.assign(new Error("down"), { remote: "" }); }, releaseRetryMs: 0 });
+  w2.p.meta.set("channel:srv2", ch); w2.p.meta.set("probe:srv2", ch);
+  assert.equal(await w2.p.releaseServer("srv2"), "pending");
+  assert.equal((await w2.call("wink.server.probe", { device: "srv2" })).code, "removed", "a release that could not be delivered still stops the probe from using the old route");
+});
+
 // ---- G-2 (lead, 4 Oct): becoming an owner always needs the identity proof, checked against the identity's chain ----
 
 test("owner needs a verified proof: none, another identity's, and an unreachable directory each refuse in their own words and nothing is owned; the right proof owns", async () => {

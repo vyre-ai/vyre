@@ -1960,3 +1960,17 @@ test("an invitee link pointed at a box whose key is not the record's route.box s
   assert.equal(heads.length, 1, "the right box key opens the channel and the head goes");
   assert.deepEqual(heads[0].invitee, hello);
 });
+
+// ---- step 13 (walker): a removed server's route is refused ----
+test("after the adopter lets a server go, its device is dropped at the relay: the relay refuses the old key and the peer door has no row for it", async t => {
+  const f = await pairFreshServer(t);
+  const id = f.done.device;
+  const row = async () => (await f.w.d.registry.call("relay.device.info", { id }, "module:vyred")).data;
+  assert.equal((await row()).removed, false);
+  const rel = await f.w.d.registry.call("wink.server.release", {}, `device:${id}`, {});
+  assert.equal(rel.data && rel.data.released, true, JSON.stringify(rel));
+  await until(async () => (await row()).removed === true, 6000);
+  const crypt = nodeCrypto();
+  const keys = await clientDeviceKey({ keyStore: f.ks, crypto: crypt });
+  await assert.rejects(() => openChannel({ relay: f.w.status.url, route: f.done.route, box: Buffer.from(f.done.box, "base64url"), keys, hello: { v: 1 }, crypto: crypt, WebSocket: globalThis.WebSocket }), /removed|not a paired|closed|refused/i, "the old key reaches nothing");
+});
