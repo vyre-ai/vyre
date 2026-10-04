@@ -392,6 +392,7 @@ Listens for: `floor.wrote`, `thread.deleted`
 | Event | Fields |
 | --- | --- |
 | `pluginagent.asked` | `computer`, `id` |
+| `pluginagent.declined` | none |
 | `pluginagent.granted` | `agent`, `computer` |
 | `pluginagent.revoked` | `agent` |
 
