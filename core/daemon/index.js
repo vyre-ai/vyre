@@ -367,7 +367,7 @@ async function startLocked(opts, root, p, release) {
     fs.rmSync(p.socket, { force: true });
   }
 
-  const terminalOf = opts.person || (sock => atTerminal(sock, registry, presence));
+  const terminalOf = opts.person || (sock => atTerminal(sock, registry, presence, devStandIn()));
   const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, socket: true, terminalOf, kernelOf: () => kernel }).catch(e => fail(res, e)));
   server.on("upgrade", async (req, socket, head) => {
     try { upgrade(req, socket, head, (await asTaken(socketCaller(req), /** @type {any} */ (socket), registry)).caller); }
@@ -686,8 +686,9 @@ const taken = new WeakMap();
  * @param {import("node:net").Socket} socket @param {any} registry @param {any} presence
  * @returns {Promise<{ key: string, tty: string|null }|null>} tty: the caller's own terminal, where a notice goes
  */
-async function atTerminal(socket, registry, presence) {
-  if (await fromClaude(socket, registry)) return null;
+async function atTerminal(socket, registry, presence, standIn = false) {
+  // The development stand-in (a hand-made file in a development build) is the one thing that replaces this guard; a real build never passes it.
+  if (!standIn && await fromClaude(socket, registry)) return null;
   const pid = await peerPid(socket);
   if (!pid || !presence || typeof presence.who !== "function") return null;
   const logins = await presence.who();
