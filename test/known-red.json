@@ -11,20 +11,12 @@
   "owner": "assistant",
   "seen": "integrator run 37181895537 (FAIL)"
  },
- "core/agents/job.test.js": {
-  "owner": "assistant",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
  "core/artifacts/artifacts.test.js": {
   "owner": "vault",
   "seen": "integrator run 37181895537 (FAIL)"
  },
  "core/cli/commands/agents.test.js": {
   "owner": "launch",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "core/cli/commands/home.test.js": {
-  "owner": "assistant",
   "seen": "integrator run 37181895537 (FAIL)"
  },
  "core/cli/commands/phone.test.js": {
@@ -35,40 +27,16 @@
   "owner": "launch",
   "seen": "integrator run 37181895537 (FAIL)"
  },
- "core/context/context.test.js": {
-  "owner": "assistant",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "core/files/drive.test.js": {
-  "owner": "vault",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "core/github/index.test.js": {
-  "owner": "platform",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
  "core/glass/glass.test.js": {
   "owner": "tailnet",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "core/goals/goals.test.js": {
-  "owner": "assistant",
   "seen": "integrator run 37181895537 (FAIL)"
  },
  "core/hooks/hooks.test.js": {
   "owner": "launch",
   "seen": "integrator run 37181895537 (FAIL)"
  },
- "core/memory/personal/answer.test.js": {
-  "owner": "assistant",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
  "core/names/system.test.js": {
   "owner": "launch",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "core/relay/setup.test.js": {
-  "owner": "tailnet",
   "seen": "integrator run 37181895537 (FAIL)"
  },
  "core/runner/lent-wire.test.js": {
@@ -91,38 +59,6 @@
   "owner": "platform",
   "seen": "integrator run 37181895537 (FAIL)"
  },
- "core/spaces/spaces.test.js": {
-  "owner": "windows",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "core/suggest/suggest.test.js": {
-  "owner": "assistant",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "core/switchboard/kernel-turn.test.js": {
-  "owner": "sessions",
-  "seen": "integrator run 37181895537 (HUNG)"
- },
- "core/switchboard/person-label.test.js": {
-  "owner": "sessions",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "core/switchboard/start-inputs.test.js": {
-  "owner": "sessions",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "core/switchboard/switchboard.test.js": {
-  "owner": "sessions",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "core/vault/module.test.js": {
-  "owner": "vault",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "core/vault/said.test.js": {
-  "owner": "vault",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
  "core/watchers/reach.test.js": {
   "owner": "platform",
   "seen": "integrator run 37181895537 (FAIL)"
@@ -135,20 +71,8 @@
   "owner": "chat",
   "seen": "integrator run 37181895537 (FAIL)"
  },
- "kernel/adopt.test.js": {
-  "owner": "platform",
-  "seen": "integrator run 37181895537 (HUNG)"
- },
  "kernel/golden/golden.test.js": {
   "owner": "platform",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "kernel/home.test.js": {
-  "owner": "platform",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "local/capsule/views.test.js": {
-  "owner": "native-core",
   "seen": "integrator run 37181895537 (FAIL)"
  },
  "test/chrome-flags.test.js": {
@@ -163,10 +87,6 @@
   "owner": "tailnet",
   "seen": "integrator run 37181895537 (FAIL)"
  },
- "test/harness.test.js": {
-  "owner": "assistant",
-  "seen": "integrator run 37181895537 (HUNG)"
- },
  "test/mobile-tailnet.test.js": {
   "owner": "tailnet",
   "seen": "integrator run 37181895537 (FAIL)"
@@ -179,10 +99,6 @@
   "owner": "launch",
   "seen": "integrator run 37181895537 (FAIL)"
  },
- "test/pack-imports.test.js": {
-  "owner": "launch",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
  "test/peer-race.test.js": {
   "owner": "platform",
   "seen": "integrator run 37181895537 (FAIL)"
@@ -191,27 +107,7 @@
   "owner": "platform",
   "seen": "integrator run 37181895537 (FAIL)"
  },
- "test/person.test.js": {
-  "owner": "windows",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "test/presence-bypass.test.js": {
-  "owner": "platform",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
  "test/project-arg.test.js": {
-  "owner": "platform",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "test/projects-cli.test.js": {
-  "owner": "assistant",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "test/reach-module-calls.test.js": {
-  "owner": "platform",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "test/redteam/vault.test.js": {
   "owner": "platform",
   "seen": "integrator run 37181895537 (FAIL)"
  },

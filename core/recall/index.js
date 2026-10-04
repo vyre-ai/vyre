@@ -41,6 +41,7 @@ import { transcriptFolders } from "../config/index.js";
 import { wantsMacs, askMacs, mergeRows, boxLabel, macLabel } from "../modules/federate.js";
 import { ownerDevice } from "../modules/index.js";
 import { within } from "../../lib/within.js";
+import { isPerson, isDevice, modelKey } from "../../lib/caller.js";
 
 /** @type {import("./embed.js").Embedder | null} */
 let injected = null;
@@ -237,11 +238,9 @@ export default {
     const inFolders = (cwd, granted) => { const c = String(cwd || "").replace(/\/+$/, ""); return granted.some(f => { const base = String(f).replace(/\/+$/, ""); return !!base && (c === base || c.startsWith(base + "/")); }); };
     const denied = message => Object.assign(new Error(message), { code: "denied" });
     /** The user's own surfaces and modules see every session; only a named agent is scoped. */
-    const OWNER = new Set(["deck", "cli", "local", "capsule"]);
-    const owner = caller => OWNER.has(String(caller)) || String(caller).startsWith("module:");
-    /** A model's own session: a bare "mcp", or "mcp:thread:<id>" (a session Vyre runs for the
-     * user, ADR 0030). Neither names an agent, so it reads as the user's own surfaces do. */
-    const ownSession = caller => /^mcp(?::thread:[A-Za-z0-9_-]+)?$/.test(String(caller || ""));
+    const owner = caller => (isPerson(caller) && !isDevice(caller)) || modelKey(caller) === "caller:module";
+    /** A model's session that names no agent: a bare "mcp", or "mcp:thread:<id>". It is NOT the person (reviewer-2's recall verdict, MS-1/KW-1): reach() holds it to its own thread's project. */
+    const unnamedModel = caller => modelKey(caller) === "caller:mcp";
     /** Every tool a caller kind may reach, checked before run() at all (core/modules/index.js's
      * callerAllowed): the person's surfaces, first-party modules, and "mcp" (a model's own
      * session, or a named agent — reach() below tells those apart and scopes the latter). Not
@@ -281,12 +280,46 @@ export default {
      * they must agree. When agents cannot be checked, a named agent is refused.
      * @param {string|undefined} agent @param {string|undefined} caller
      */
-    const reach = async (agent, caller) => {
-      const said = /(?:^|[\s:])agent:([A-Za-z0-9_-]+)/.exec(String(caller || ""))?.[1] || null;
+    const reach = async (agent, caller, meta = {}) => {
+      // A kernel session token (set by the daemon from a vouched socket only, never by the call) says which person this is and which agent it runs as: the route a person's own Claude takes.
+      // [person] or [person, assistant] with the person the home's owner is the person: all of it. [person, <named agent>] is that agent, scoped below. Anything else: not the person.
+      let tokenAgent = null;
+      if (ctx.kernel && typeof ctx.kernel.chain === "function" && meta && typeof meta.token === "string" && meta.token) {
+        const c = await ctx.kernel.chain(meta).catch(() => null);
+        const hops = c && Array.isArray(c.hops) ? c.hops : [];
+        const first = hops[0] && hops[0].actor;
+        const canon = typeof ctx.kernel.canonicalPerson === "function" ? (/** @type {string} */ id) => ctx.kernel.canonicalPerson(id) : (/** @type {string} */ id) => id;
+        if (first && first.kind === "person" && canon(first.id) === canon(String(ctx.kernel.owner)) && !hops.slice(1).some((/** @type {any} */ h) => h.actor.kind === "person") && !(c.room)) {
+          const rest = hops.slice(1).filter((/** @type {any} */ h) => h.actor.kind === "agent");
+          const named = rest.map((/** @type {any} */ h) => String(h.actor.id)).filter((/** @type {string} */ n) => n !== "assistant");
+          if (!named.length && hops.slice(1).every((/** @type {any} */ h) => h.actor.kind === "agent")) return { all: true, agent: null, folders: [] };
+          if (named.length === 1) tokenAgent = named[0];
+        }
+      }
+      const said = tokenAgent || /(?:^|[\s:])agent:([A-Za-z0-9_-]+)/.exec(String(caller || ""))?.[1] || null;
       if (said && agent && said !== agent) throw denied(`the call came from agent ${said} but names agent ${agent}`);
       const who = said || agent || null;
       if (!who) {
-        if (owner(caller) || ownSession(caller) || ownerDevice(caller)) return { all: true, agent: null, folders: [] };
+        if (owner(caller) || ownerDevice(caller)) return { all: true, agent: null, folders: [] };
+        // An unnamed model session (`mcp`, `mcp:thread:<id>`: every model's shell) is never the person (MS-1, KW-1): it reads its OWN thread's project and nothing else, held to that project's
+        // folders like a named agent with one project. A bare `mcp` with no thread of its own has no project, so no folders, so no read.
+        if (unnamedModel(caller)) {
+          // The thread is what the DAEMON vouched (meta.thread, set from the session's own socket or key), never the `:thread:<id>` text of the label: a model sends any label it likes (RC-1).
+          const thread = typeof meta.thread === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(meta.thread) ? meta.thread : null;
+          /** @type {string[]} */ let folders = [];
+          if (thread) {
+            const t = await ctx.call("threads.get", { thread, limit: 1 });
+            const rec = t && !t.error && t.data && t.data.thread ? t.data.thread : null;
+            if (rec && rec.project) folders = (await projectList()).filter(p => p.slug === String(rec.project)).flatMap(p => p.folders);
+            else if (rec && rec.cwd) folders = [String(rec.cwd)];
+            else {
+              // A terminal session bound to its claude process is no Vyre thread: its own transcript says where it runs, so it reads that project (or just that folder).
+              const row = /** @type {any} */ (sessionRow(db, thread));
+              if (row && row.cwd) { const inP = (await projectList()).filter(p => inFolders(String(row.cwd), p.folders)); folders = inP.length ? inP.flatMap(p => p.folders) : [String(row.cwd)]; }
+            }
+          }
+          return { all: false, agent: "an unnamed model session", folders };
+        }
         throw denied(`recall is for the user's own surfaces, modules and named agents, not ${String(caller || "an unnamed caller").slice(0, 60)}`);
       }
       const r = await ctx.call("agents.list", {});
@@ -308,8 +341,8 @@ export default {
       return { all: false, agent: who, folders: checked.filter(Boolean).flatMap(p => p.folders) };
     };
     /** Narrows q.project_cwds to what a scoped agent may read, or throws. Owners/modules pass through. */
-    const scopeQuery = async (q, caller) => {
-      const r = await reach(q.agent, caller);
+    const scopeQuery = async (q, caller, meta = {}) => {
+      const r = await reach(q.agent, caller, meta);
       delete q.agent;
       if (r.all) return r;
       const requested = (q.project_cwds || []).map(String);
@@ -341,7 +374,7 @@ export default {
         if (q.sessions && !/^(?:module:|deck$|cli$|local$|capsule$)/.test(String(caller || ""))) delete q.sessions;
         // A named agent (a project-scoped one, or one asked for by a module on its behalf) reads
         // only its granted projects' folders: no project_cwds, no cross-project cwds, no whole corpus.
-        const scopeR = await scopeQuery(q, caller);
+        const scopeR = await scopeQuery(q, caller, meta);
         // Defense in depth: q.project_cwds already carries the grant, so this is a no-op unless a
         // paired Mac is on an older build that does not scope its own side yet.
         const scoped = hits => scopeR.all ? hits : hits.filter(h => inFolders(h.cwd, scopeR.folders));
@@ -367,7 +400,7 @@ export default {
         // Never an agent (OWNERS_ONLY already refuses one at the gate); reach() with no agent
         // still runs, so a caller kind that slips past OWNERS_ONLY some day is refused here too,
         // the same way recall.search's does.
-        if (!(await reach(undefined, caller)).all) return { hits: [] };
+        if (!(await reach(undefined, caller, meta)).all) return { hits: [] };
         const text = String(input.text || "").trim();
         const cwds = [...new Set((input.project_cwds || []).map(String).filter(Boolean))];
         if (!text || !cwds.length) return { hits: [] };
@@ -392,7 +425,7 @@ export default {
       callers: READERS,
       run: async (input, meta = {}) => { const caller = meta.caller;
         const { machines: _, source, agent, ...q } = input;
-        const r = await reach(agent, caller);
+        const r = await reach(agent, caller, meta);
         // A scoped agent reads a session only inside its granted projects' folders: not by naming
         // any session id it likes. Thrown the same way as "not found", so a scoped agent learns
         // nothing about a session it may not read (not even that it exists).
@@ -507,7 +540,7 @@ export default {
       callers: READERS,
       run: async (input, meta = {}) => { const caller = meta.caller;
         const { machines: _, agent, ...q } = input;
-        const r = await reach(agent, caller);
+        const r = await reach(agent, caller, meta);
         if (!r.all && q.cwd && !inFolders(q.cwd, r.folders)) throw denied(`${r.agent} is not granted ${q.cwd}`);
         // ids can name any session (the box's cross-project resolve for a Mac's picked ones): a
         // scoped agent's own list still narrows to what it is granted, never all of them.
