@@ -129,9 +129,11 @@ export function createGateway(cfg) {
     const has = (/** @type {any} */ v) => typeof v === "string" && v.length > 0;
     let moved = 0;
     /** @type {Set<string>} the plain values that move: what the task texts are searched for afterwards */ const plain = new Set();
+    /** @type {string[]} */ const touched = [];
     for (const row of await all()) {
       if (!has(row.data[i.field])) continue;
       plain.add(row.data[i.field]);
+      touched.push(`vyre://${cfg.space}/${i.type}/${row.id}`);
       const u = `vyre://${cfg.space}/${i.type}/${row.id}`;
       const binned = Boolean(row.deleted_at);
       let version = row.version;
@@ -144,10 +146,10 @@ export function createGateway(cfg) {
     const left = (await all()).filter((/** @type {any} */ r) => has(r.data[i.field])).length;
     if (left) throw new KernelError("unavailable", `${left} records still hold the plain value; nothing was hidden`);
     await records.define(chain, { change_types: [{ ...withField, fields: withField.fields.map((/** @type {any} */ x) => (x.name === i.field ? { ...x, hidden: true, required: false } : x)) }] });
-    let erased = 0;
+    let erased = 0, taskTextsCleared = 0;
     if (i.scrub_history !== false) {
       // Free text a task kept (a form, a draft, an answer) may quote a value: it is cleared BEFORE the store's scrub, whose last step rewrites the file, so nothing survives in free pages.
-      if (plain.size && cfg.tasks) await cfg.tasks.scrubTexts({ values: [...plain] });
+      if (plain.size && cfg.tasks) taskTextsCleared = (await cfg.tasks.scrubTexts({ values: [...plain], records: touched })).cleared;
       if (typeof cfg.store.scrub === "function") await cfg.store.scrub(i.type, [i.field]);
       const prefix = `vyre://${cfg.space}/${i.type}/`;
       for (const e of cfg.log.read()) {
@@ -158,7 +160,7 @@ export function createGateway(cfg) {
       }
     }
     cfg.log.append(chain, { type: "records.field-sealed", sv: 1, subject: `vyre://${cfg.space}/definition/types`, data: { type: i.type, field: i.field, sealed_field: name, moved, erased_events: erased } }, { decision: dec.decision });
-    return { sealed_field: name, moved, erased_events: erased };
+    return { sealed_field: name, moved, erased_events: erased, task_texts_cleared: taskTextsCleared };
   }
 
   return Object.freeze({
