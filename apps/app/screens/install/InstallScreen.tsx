@@ -320,6 +320,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
         {MOCK ? <View className="w-ring self-center"><Ring seed={4} /></View> : null}
         {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
         {MOCK ? <Button kind="primary" label="Simulate the scan" onPress={() => { setSession(openPairing(parseSample())); setStep("scanwords"); }} /> : <PairEntry onCode={(c: LongCode) => { try { setSession(claimBlocked() ? openPairing(c) : addThisDevice(c, { deviceLabel: device })); setStep("scanwords"); } catch (e) { setWrong(recoverRefusal((e as { code?: string }).code)); } }} />}
+        {isPhone(dk) && !MOCK ? <TypeCode kind="phone" onDone={() => { noId.current = false; setStep("spaces"); }} /> : null}
         {offersNoVyre(dk, MOCK) ? <Button kind="ghost" label={NO_VYRE.have} onPress={() => setStep("novyre")} /> : null}
       </Page>
     );

@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(app): a phone's connect step offers `TypeCode kind="phone"` (app-wire's typed-code field, the box side is platform-3's wink.code.redeem) under the pasted code, above "I don't have Vyre running yet". A finished typing goes to the spaces step.
 - test(app): `src/identity/restore-store.test.js`: recovery asks the store it was handed (a phone-store stand-in refuses a second name before any directory call), and the root layout wires `./store` (the platform file), not `./store.ts`. Run with restore.test.js on the full repo on testbox3.
 - test(app): the phone's connect screen has tests (screens/install/phone-novyre.test.js): no camera view in RC1 (`CAMERA_SCAN` is now in first-run.js and guards PairEntry's permission request, camera and permission line), "I don't have Vyre running yet" only on a phone (`offersNoVyre`), the share text is the setup link with no install command, and the step shares it through the system share sheet with "Not now" keeping the skip flag then opening the landing.
 - fix(app): recovering a name on a phone now reads and writes the phone's identity store. restore.ts named the web store (IndexedDB) explicitly so its Node test could load it, so on a phone the recovery never touched the Keychain. It now holds a swappable store (`useIdentityStore`), and `src/identity/restore-wire.ts`, imported by the root layout, hands it the platform's `./store` (store.native.ts on a phone).
