@@ -175,7 +175,7 @@ rs=$(vyre call runner.status 2>&1) || { echo "$rs"; echo "runner.status did not 
 printf '%s\n' "$rs" | grep -Eq '"?ownServer"?[: ]+true' || { echo "$rs"; echo "the runner on a box does not say it seals its own sessions"; exit 1; }
 # The box's root has no capability to read or change files in uid 1000's home (cap_drop ALL): stage through /tmp, finish as uid 1000, and only /usr/local/bin as root.
 docker cp "$HERE/core/switchboard/testing/fake-claude.js" vyre-vyre-1:/tmp/fake-claude-src.mjs
-docker exec -u 1000 vyre-vyre-1 sh -c 'cp /tmp/fake-claude-src.mjs /home/vyre/fake-claude.mjs && chmod 755 /home/vyre/fake-claude.mjs && mkdir -p /home/vyre/.claude/projects /work/sealwork'
+docker exec -u 1000 vyre-vyre-1 sh -c 'cp /tmp/fake-claude-src.mjs /home/vyre/fake-claude.mjs && chmod 755 /home/vyre/fake-claude.mjs && mkdir -p /home/vyre/.claude/projects && (umask 002; mkdir -p /work/sealwork) && chmod g+rwx /work/sealwork'
 docker exec -u 0 vyre-vyre-1 sh -c 'printf "#!/bin/sh\nexport FAKE_CLAUDE_TRANSCRIPTS=/home/vyre/.claude/projects\nexec node /home/vyre/fake-claude.mjs \"\$@\"\n" > /usr/local/bin/claude && chmod 755 /usr/local/bin/claude'
 # The fake claude is the account's provider: a login account, no credential of anyone's in CI. A box session needs an account (no account is refused at once, no_account).
 acct=$(vyre call sessions.accounts.add '{"provider":"claude","label":"proof","kind":"login","is_default":true}' 2>&1) || { echo "$acct"; echo "an account could not be added to the box"; exit 1; }
