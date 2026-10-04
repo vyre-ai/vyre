@@ -573,7 +573,9 @@ export function createWink(inject = {}) {
           pairing.devices.remove(d.id);
           // Its relay connections close at once through relay.devices.drop (a module's door to the relay's own removal); `closed` says what happened.
           let closed = false;
-          if (d.kind !== "server" && d.kind !== "storage") { const rr = /** @type {any} */ (await ctx.call("relay.devices.drop", { id: d.id })); closed = !rr.error && Boolean(rr.data && rr.data.closed); }
+          // a server that let go (release "released") has ended its side of the channel itself, so the connection is closed then too
+          if (d.kind === "server" || d.kind === "storage") closed = release === "released";
+          else { const rr = /** @type {any} */ (await ctx.call("relay.devices.drop", { id: d.id })); closed = !rr.error && Boolean(rr.data && rr.data.closed); }
           ctx.events.emit("wink.removed", { device: d.id });
           return { removed: d.id, closed, ...(release ? { release } : {}), prompt: removal({ what: "device", name: d.name }).prompt, done: removed({ what: "device", name: d.name, release }) };
         }
