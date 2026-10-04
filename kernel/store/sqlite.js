@@ -219,6 +219,7 @@ export function createSqliteStore(cfg) {
       get(id) { const c = cache.get(id); if (c) return keep(id, c); const r = getRow.get(type, id); return r ? keep(id, parse(r)) : undefined; },
       has(id) { return cache.has(id) || Boolean(hasRow.get(type, id)); },
       set(id, r) { keep(id, r); },
+      drop(id) { cache.delete(id); },
       values() { return rows(allRows.iterate(type)); },
       /**
        * One page of a query as ONE indexed statement, when the planner can prove it answers exactly what the reference code would (kernel/store/sqlite-query.js); null otherwise, and
@@ -339,6 +340,7 @@ export function createSqliteStore(cfg) {
   const changes = {
     get length() { return changeCount; },
     push() { changeCount++; },
+    pop() { changeCount--; },
     slice(/** @type {number} */ from, /** @type {number} */ to) { return /** @type {any[]} */ (changeRange.all(from, to)).map(r => JSON.parse(r.entry)); },
   };
 
@@ -388,15 +390,16 @@ export function createSqliteStore(cfg) {
       // The record and its change entry are one transaction: the memory store calls them back to back.
       record: r => { pending = r; },
       change: e => {
-        db.exec("BEGIN");
+        // A savepoint, not BEGIN: standing alone it is a transaction of its own (one commit), and inside the gateway's unit of work (the record and its event, kernel/boot.js `createUnit`) it joins that one.
+        db.exec("SAVEPOINT kchange");
         try {
           const r = /** @type {any} */ (pending);
           noteWrite(r);
           putRec.run(r.type, r.id, r.version, JSON.stringify(r.data), r.created_at, r.updated_at, r.deleted_at ?? null);
           ftsSync(r);
           putChange.run(Number(e.cursor.slice(1)), JSON.stringify(e));
-          db.exec("COMMIT");
-        } catch (err) { db.exec("ROLLBACK"); throw err; }
+          db.exec("RELEASE kchange");
+        } catch (err) { db.exec("ROLLBACK TO kchange"); db.exec("RELEASE kchange"); throw err; }
         pending = null;
       },
     }),
