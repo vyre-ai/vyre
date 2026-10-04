@@ -36,7 +36,7 @@ export async function findContact(kernel, chain, address) {
  * a contact is made for them only when `createUnknown` says so (off by default: the logging Flow's switch).
  * @param {{ records: any }} kernel @param {any} chain
  * @param {{ kind: string, direction?: string, at: string, subject?: string, excerpt?: string, body?: string, original_url?: string, thread?: string, source_key: string, mailbox?: string,
- *   record?: string, people: { address: string, how: string, name?: string }[], createUnknown?: boolean }} item
+ *   record?: string, attrs?: { owner?: string, project?: string, sensitivity?: string }, people: { address: string, how: string, name?: string }[], createUnknown?: boolean }} item
  * @returns {Promise<{ communication: any, created: boolean, participants: { address: string, how: string, contact: string | null }[] }>}
  */
 export async function logCommunication(kernel, chain, item) {
@@ -45,8 +45,11 @@ export async function logCommunication(kernel, chain, item) {
     ...(item.direction ? { direction: item.direction } : {}), ...(item.subject ? { subject: item.subject } : {}), ...(item.excerpt ? { excerpt: item.excerpt } : {}),
     ...(item.body ? { body: item.body } : {}), ...(item.original_url ? { original_url: item.original_url } : {}), ...(item.thread ? { thread: item.thread } : {}),
     ...(item.mailbox ? { mailbox: item.mailbox } : {}), ...(item.record ? { record: { urn: item.record } } : {}) };
+  // Who may see it follows where it came through (kernel-2's visibility rule). The kernel attributes a grant can name today are owner, project and sensitivity: the caller
+  // passes the ones it wants on the communication and its participants (`attrs`); a `source` attribute for the mailbox is kernel-2's to add.
+  const opts = item.attrs ? { attrs: item.attrs } : {};
   let communication, created = true;
-  try { communication = await R.create(chain, "communication", data); }
+  try { communication = await R.create(chain, "communication", data, opts); }
   catch (e) {
     if (!e || e.code !== "unique_violation") throw e;
     created = false;
@@ -71,7 +74,7 @@ export async function logCommunication(kernel, chain, item) {
       const k = kindOf(address);
       contact = await R.create(chain, "contact", { name: person.name || address, [k]: address }).then((/** @type {any} */ c) => ({ urn: c.urn, id: c.id }), async (/** @type {any} */ e) => { if (e && e.code === "unique_violation") return findContact(kernel, chain, address); throw e; });
     }
-    if (!have.has(`${person.how}|${address}`)) await R.create(chain, "participant", { communication: { urn: communication.urn }, how: person.how, address, ...(contact ? { contact: { urn: contact.urn } } : {}) });
+    if (!have.has(`${person.how}|${address}`)) await R.create(chain, "participant", { communication: { urn: communication.urn }, how: person.how, address, ...(contact ? { contact: { urn: contact.urn } } : {}) }, opts);
     participants.push({ address, how: person.how, contact: contact ? contact.urn : null });
   }
   return { communication, created, participants };

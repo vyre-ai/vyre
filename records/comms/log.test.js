@@ -10,7 +10,7 @@ import { logCommunication, findContact, timelineOf, normalizeEmail, normalizePho
 const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner";
 let T = 1_800_000_000_000;
 const clock = () => ++T;
-const chains = createChainBuilder({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 3), clock });
+const chains = createChainBuilder({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 3), clock, is_person: p => p === OWNER || p === "per_bob" });
 const owner = () => chains.fromFacts({ kind: "socket", surface: "deck", uid: 501, pid: 1, inside_model_process: false, capsule_verified: true });
 const grant = { id: "gr_0001", space: SPACE, subject: { kind: "actor", actor: { kind: "person", id: OWNER, space: SPACE } }, actions: ["records.*", "records.define", "events.read"], action_set_version: 9, resource: { prefix: `vyre://${SPACE}/*/*` }, conditions: {}, issuer: { kind: "person", id: OWNER, space: SPACE }, source: "test", status: "active", created_at: 0 };
 
@@ -59,4 +59,19 @@ test("logging twice makes one communication and fills in what was missing; creat
   await logCommunication(kernel, owner(), { kind: "email", at: "2026-10-03T09:00:00.000Z", source_key: "gmail:z", subject: "Later", people: [{ address: "jane@harlow.test", how: "to" }] });
   const tl = await timelineOf(kernel, owner(), jane.urn);
   assert.deepEqual(tl.map(x => x.communication.data.source_key), ["gmail:z", "gcal:m1"]);
+});
+
+test("who may see a communication follows the attributes it was logged with: a grant on that project sees it, one without does not", async () => {
+  const log = createEventLog({ space: SPACE, clock });
+  const bob = { kind: "person", id: "per_bob", space: SPACE };
+  const g = (id, subject, actions, extra = {}) => ({ id, space: SPACE, subject: { kind: "actor", actor: subject }, actions, action_set_version: 9, resource: { prefix: `vyre://${SPACE}/*/*`, ...extra }, conditions: {}, issuer: { kind: "person", id: OWNER, space: SPACE }, source: "test", status: "active", created_at: 0 });
+  const grants = [grant, g("gr_bob1", bob, ["records.read"], { where: [{ attr: "project", op: "eq", value: "shared" }] })];
+  const kernel = createGateway({ space: SPACE, store: createMemoryStore({ clock }), log, chains, clock, hasPresenceSession: () => true,
+    grants: { forSubject: a => grants.filter(x => x.subject.actor.kind === a.kind && x.subject.actor.id === a.id), get: id => grants.find(x => x.id === id) }, members: { has: a => a.id === OWNER || a.id === "per_bob" } });
+  await kernel.records.define(owner(), { add_types: [...CORE_TYPES] });
+  await logCommunication(kernel, owner(), { kind: "email", at: "2026-10-01T09:00:00.000Z", source_key: "gmail:shared", mailbox: "info@harlow.test", attrs: { project: "shared" }, people: [{ address: "a@x.test", how: "from" }] });
+  await logCommunication(kernel, owner(), { kind: "email", at: "2026-10-01T10:00:00.000Z", source_key: "gmail:private", mailbox: "alex@harlow.test", attrs: { project: "alex" }, people: [{ address: "a@x.test", how: "from" }] });
+  const bobChain = chains.fromFacts({ kind: "device", device_key_id: "d-bob", person: "per_bob", path: "direct" });
+  assert.deepEqual((await kernel.records.query(bobChain, "communication", { page: { limit: 10 } })).rows.map(r => r.data.source_key), ["gmail:shared"]);
+  assert.equal((await kernel.records.query(bobChain, "participant", { page: { limit: 10 } })).rows.length, 1, "and only that one's participants");
 });
