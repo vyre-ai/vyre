@@ -387,6 +387,39 @@ export function createSqliteStore(cfg) {
           try { db.exec("PRAGMA wal_checkpoint(TRUNCATE)"); } catch { /* not in WAL mode, or the checkpoint is blocked by a reader: the next one does it */ }
         }
       },
+      /**
+       * A record was forgotten (the gateway's `forget`): its row goes, what the change log holds of it loses its data (the entry keeps its envelope), the full-text index is rebuilt without it, and
+       * the file is vacuumed and its write-ahead log truncated so the values do not survive in free pages. @param {string} type @param {string} id
+       */
+      destroy: (type, id) => {
+        const was = /** @type {any} */ (db.prepare("PRAGMA secure_delete").get());
+        db.exec("PRAGMA secure_delete = ON");
+        try {
+          const upd = db.prepare("UPDATE kernel_changes SET entry = ? WHERE seq = ?");
+          let from = 0;
+          for (;;) {
+            const rows = /** @type {any[]} */ (db.prepare("SELECT seq, entry FROM kernel_changes WHERE seq > ? ORDER BY seq LIMIT 500").all(from));
+            if (!rows.length) break;
+            db.exec("BEGIN");
+            try {
+              for (const r of rows) {
+                from = r.seq;
+                const e = JSON.parse(r.entry);
+                if (e.type !== type || e.id !== id) continue;
+                delete e.before; delete e.after; e.erased = true;
+                upd.run(JSON.stringify(e), r.seq);
+              }
+              db.exec("COMMIT");
+            } catch (err) { db.exec("ROLLBACK"); throw err; }
+          }
+          db.prepare("DELETE FROM kernel_records WHERE type = ? AND id = ?").run(type, id);
+          ftsRestart();
+          try { db.exec("VACUUM"); } catch { /* inside a transaction of the caller's: the freed pages stay until the next vacuum */ }
+        } finally {
+          db.exec(`PRAGMA secure_delete = ${was && was.secure_delete ? was.secure_delete : 0}`);
+          try { db.exec("PRAGMA wal_checkpoint(TRUNCATE)"); } catch { /* the next checkpoint does it */ }
+        }
+      },
       // The record and its change entry are one transaction: the memory store calls them back to back.
       record: r => { pending = r; },
       change: e => {

@@ -81,6 +81,11 @@ export default {
       try { return { kit: kitFromLibrary(String(i.id)) }; } catch (e) { throw refuse(/** @type {any} */ (e).message, "not_found"); }
     });
 
+    tool("records.forget", "Forget one record for good: the text of every task about it is emptied, the store destroys it and its history, its events lose their data. Cannot be undone. Customize-level (admin and owner), the person's own act.", obj({ urn: str }, ["urn"]), async (i, d) => {
+      const u = parseUrn(i.urn);
+      return d.gateway.migrate.forget(d.chain, { type: u.type, id: u.id });
+    }, byUrn);
+
     // ---- sealed values and the event feed ----
     tool("records.seal-put", "Put a value into a record's sealed field. It goes straight to the sealing process and never rides the record; the record keeps only the reference. The person's own act.", obj({ urn: str, field: str, value: str, class: str }, ["urn", "field", "value"]), async (i, d) => {
       const u = parseUrn(i.urn);
