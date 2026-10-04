@@ -282,6 +282,7 @@
   "watches": {
     "emits": [
       "thread.started",
+      "thread.sandbox",
       "thread.sent",
       "thread.text",
       "thread.tool",
