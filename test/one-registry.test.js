@@ -291,7 +291,7 @@ test("the kernel's home space is a space in the device lists: pairing's list inc
   let d = await start({ root, kernel: true, log: () => {} });
   const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "deck" });
   const made = (await deck("spaces.identity.create", { name: "alex" })).data;
-  const home = d.kernel.space;
+  const home = d.kernel.id.space;
   assert.match(home, /^spc_/);
   assert.ok((await deck("spaces.list")).data.every((/** @type {any} */ x) => x.id !== home), "the home is not listed as a space the person made");
   const sp = (await deck("spaces.create", { name: "homelist", home: { kind: "this-computer", confirmed: true } })).data;
@@ -312,7 +312,7 @@ test("the kernel's home space is a space in the device lists: pairing's list inc
   d = await start({ root, kernel: true, log: () => {} });
   t.after(() => d.stop());
   await new Promise(r => setTimeout(r, 1500));
-  assert.equal((await d.registry.call("spaces.devices.enrolled", { device: made.eid, space: d.kernel.space }, "module:vyred", { door: true })).data.enrolled, true, "enrolled in the home after the boot migration");
+  assert.equal((await d.registry.call("spaces.devices.enrolled", { device: made.eid, space: d.kernel.id.space }, "module:vyred", { door: true })).data.enrolled, true, "enrolled in the home after the boot migration");
 });
 
 test("spaces.devices.enrolled is fail-closed: an unknown space is enrolled only when the kernel hosts it and the person belongs; and a server with no identity lists the spaces its kernel hosts for its owner", async t => {
@@ -334,9 +334,9 @@ test("spaces.devices.enrolled is fail-closed: an unknown space is enrolled only 
   const listed = await deck("spaces.list");
   assert.ok(!listed.error, JSON.stringify(listed.error));
   assert.ok(listed.data.some((/** @type {any} */ x) => x.id === hosted.space && x.name === "serverspace.vyre.run" && x.role === "owner"), JSON.stringify(listed.data));
-  assert.ok(listed.data.some((/** @type {any} */ x) => x.id === d.kernel.space));
+  assert.ok(listed.data.some((/** @type {any} */ x) => x.id === d.kernel.id.space));
   const dev = "devicexxxxxxxxxx1";
-  assert.equal(await enrolled(dev, d.kernel.space), true, "the home, a device with no list");
+  assert.equal(await enrolled(dev, d.kernel.id.space), true, "the home, a device with no list");
   assert.equal(await enrolled(dev, hosted.space), true, "a hosted space the owner belongs to");
   assert.equal(await enrolled(dev, "spc_aaaaaaaaaaaa"), false, "a space nobody here hosts");
   assert.equal(await enrolled(dev, "not-a-space"), false);
@@ -344,7 +344,7 @@ test("spaces.devices.enrolled is fail-closed: an unknown space is enrolled only 
   const theirs = await d.kernel.spaces.host({ owner: other, name: "theirs" });
   assert.equal(await enrolled(dev, theirs.space), false, "a hosted space the person is not a member of");
   // the device argument must have a device id's shape; nothing else is looked up
-  for (const bad of ["", "a b", "x".repeat(200), "dev/../x", "short"]) assert.equal(await enrolled(bad, d.kernel.space), false, JSON.stringify(bad));
+  for (const bad of ["", "a b", "x".repeat(200), "dev/../x", "short"]) assert.equal(await enrolled(bad, d.kernel.id.space), false, JSON.stringify(bad));
   // a creation that was cancelled is no space to be enrolled in, and neither is one still being made
   const mine = (await deck("spaces.identity.create", { name: "alex" })).data;
   assert.ok(mine.id);
