@@ -1,0 +1,90 @@
+{
+ "note": "payloadHash(op, space, fields) = base64url(SHA-256(UTF-8 of canonical({ op, space, fields }))), `fields` NESTED; canonical = JSON with keys sorted at every level, no whitespace, undefined dropped. Every implementation (kernel/seal/wire.js, native-core's signer, app-wire's apps/app/src/real/payload-hash.js) must reproduce `hash` and `canonical` for each case.",
+ "vectors": [
+  {
+   "name": "empty fields",
+   "op": "grant.invite",
+   "space": "spc_aaaaaaaaaaaa",
+   "fields": {},
+   "canonical": "{\"fields\":{},\"op\":\"grant.invite\",\"space\":\"spc_aaaaaaaaaaaa\"}",
+   "hash": "ZLy1LQwY-00KVALmtNpi45C5M8X9spxqjZhoPnmqLA8"
+  },
+  {
+   "name": "the WH-1 case: fields named op and space",
+   "op": "grant.role",
+   "space": "spc_aaaaaaaaaaaa",
+   "fields": {
+    "op": "grant.invite",
+    "space": "spc_bbbbbbbbbbbb"
+   },
+   "canonical": "{\"fields\":{\"op\":\"grant.invite\",\"space\":\"spc_bbbbbbbbbbbb\"},\"op\":\"grant.role\",\"space\":\"spc_aaaaaaaaaaaa\"}",
+   "hash": "p7RnC0xh9eBykRqVvO7qWpbuYDGEgyOAdJkbiN57LEo"
+  },
+  {
+   "name": "the real op b with empty fields (must differ from the case above)",
+   "op": "b",
+   "space": "spc_aaaaaaaaaaaa",
+   "fields": {},
+   "canonical": "{\"fields\":{},\"op\":\"b\",\"space\":\"spc_aaaaaaaaaaaa\"}",
+   "hash": "OFVh6ZeulHoaofcmnM3flpfRVXVWmbrED7nc_wloyOM"
+  },
+  {
+   "name": "nested objects and arrays with unsorted keys",
+   "op": "grant.create",
+   "space": "spc_aaaaaaaaaaaa",
+   "fields": {
+    "z": [
+     3,
+     1,
+     {
+      "b": 2,
+      "a": 1
+     }
+    ],
+    "a": {
+     "y": true,
+     "x": null
+    },
+    "m": "x"
+   },
+   "canonical": "{\"fields\":{\"a\":{\"x\":null,\"y\":true},\"m\":\"x\",\"z\":[3,1,{\"a\":1,\"b\":2}]},\"op\":\"grant.create\",\"space\":\"spc_aaaaaaaaaaaa\"}",
+   "hash": "Q4A8Ag3Jc55-5gzsziYtvU55xGMznLQu-0WL_z_Rwns"
+  },
+  {
+   "name": "unicode and quotes",
+   "op": "task.decide",
+   "space": "spc_aaaaaaaaaaaa",
+   "fields": {
+    "name": "Zoë \"Z\" — 日本",
+    "slash": "a\\b",
+    "nl": "line\nbreak"
+   },
+   "canonical": "{\"fields\":{\"name\":\"Zoë \\\"Z\\\" — 日本\",\"nl\":\"line\\nbreak\",\"slash\":\"a\\\\b\"},\"op\":\"task.decide\",\"space\":\"spc_aaaaaaaaaaaa\"}",
+   "hash": "vuZFEVsDU1cWSk8DSXSW4euc6bxD2Y2Eq-TYx7-n-vo"
+  },
+  {
+   "name": "a null value and a number",
+   "op": "grant.revoke",
+   "space": "spc_aaaaaaaaaaaa",
+   "fields": {
+    "reason": null,
+    "n": 7,
+    "f": 1.5,
+    "t": false
+   },
+   "canonical": "{\"fields\":{\"f\":1.5,\"n\":7,\"reason\":null,\"t\":false},\"op\":\"grant.revoke\",\"space\":\"spc_aaaaaaaaaaaa\"}",
+   "hash": "PfBg3ohMZQ084gw3AElyS6a5kDdZ3fb0KYWeBTyUZvo"
+  },
+  {
+   "name": "resource and input_hash as the kernel builds them",
+   "op": "grant.invite",
+   "space": "spc_aaaaaaaaaaaa",
+   "fields": {
+    "resource": "vyre://spc_aaaaaaaaaaaa/invite/new",
+    "input_hash": "h1"
+   },
+   "canonical": "{\"fields\":{\"input_hash\":\"h1\",\"resource\":\"vyre://spc_aaaaaaaaaaaa/invite/new\"},\"op\":\"grant.invite\",\"space\":\"spc_aaaaaaaaaaaa\"}",
+   "hash": "pd_tK4VAQ6GQoJosNypLZeWMLmR5HfAl7Q8MvQXwBKQ"
+  }
+ ]
+}
