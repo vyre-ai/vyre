@@ -31,3 +31,22 @@ test("registerAttrs exists only for a module that declared needs.kernel.attrs", 
   const plain = rig.k.kernelFor({ name: "notes", needs: { kernel: { actions: [] } } });
   assert.equal(typeof plain.registerAttrs, "undefined");
 });
+
+test("installModule takes actions per prefix: a service is narrowed to its own types, a change replaces its grants, the same again changes nothing", async () => {
+  const rig = await createRig({ space: SPACE, defs: [] });
+  const gs = rig.k.grants;
+  const mine = (/** @type {string} */ name) => [...gs.list ? [] : []];
+  const may = async (/** @type {string} */ svc, /** @type {string} */ action, /** @type {string} */ resource) => (await rig.k.gateway.authorize({ chain: rig.k.gateway.serviceChain(svc), action, resource })).effect !== "deny";
+  await gs.installModule("flows", { actions: [], grants: [{ prefix: "flow/*", actions: ["records.read", "records.create"] }, { prefix: "run/*", actions: ["records.read"] }] });
+  assert.equal(await may("flows", "records.create", `vyre://${SPACE}/flow/f1`), true);
+  assert.equal(await may("flows", "records.create", `vyre://${SPACE}/run/r1`), false, "run is read only");
+  assert.equal(await may("flows", "records.read", `vyre://${SPACE}/run/r1`), true);
+  assert.equal(await may("flows", "records.read", `vyre://${SPACE}/contact/c1`), false, "nothing outside its own types");
+  void mine;
+  const before = rig.k.log.read({ type: "grant.created" }).length;
+  await gs.installModule("flows", { actions: [], grants: [{ prefix: "flow/*", actions: ["records.read", "records.create"] }, { prefix: "run/*", actions: ["records.read"] }] });
+  assert.equal(rig.k.log.read({ type: "grant.created" }).length, before, "the same grants again write nothing");
+  await gs.installModule("flows", { actions: [], grants: [{ prefix: "flow/*", actions: ["records.read"] }] });
+  assert.equal(await may("flows", "records.create", `vyre://${SPACE}/flow/f1`), false, "narrowed: create is gone");
+  assert.equal(await may("flows", "records.read", `vyre://${SPACE}/run/r1`), false, "and run with it");
+});

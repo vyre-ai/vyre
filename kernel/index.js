@@ -113,7 +113,7 @@ export async function createKernel(cfg) {
     if (!grantsStore) throw new Error("ctx.kernel needs the kernel's own grants store");
     const needs = (m.needs && m.needs.kernel) || { actions: [] };
     // Only a module that declared `needs.kernel` is made a service of the Space (one sealed event each); the rest get a handle that can do nothing.
-    const installed = m.needs && m.needs.kernel ? grantsStore.installModule(m.name, { actions: Array.isArray(needs.actions) ? needs.actions : [], prefixes: Array.isArray(needs.prefixes) ? needs.prefixes : undefined }) : Promise.resolve();
+    const installed = m.needs && m.needs.kernel ? grantsStore.installModule(m.name, { actions: Array.isArray(needs.actions) ? needs.actions : [], prefixes: Array.isArray(needs.prefixes) ? needs.prefixes : undefined, ...(Array.isArray(needs.grants) ? { grants: needs.grants.filter((/** @type {any} */ e) => e && typeof e.prefix === "string" && Array.isArray(e.actions)) } : {}) }) : Promise.resolve();
     const ready = Promise.all([installed, Array.isArray(needs.types) && needs.types.length ? store.define({ add_types: needs.types }) : Promise.resolve()]);
     // A failure here (the sealing process went away) surfaces on the module's first call, not as an unhandled rejection nobody can catch.
     ready.catch(() => {});
