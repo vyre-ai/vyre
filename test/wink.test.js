@@ -1246,3 +1246,11 @@ test("device-first, real daemon: the owner's device calls spaces.host-here on th
   assert.match(made.space, /^spc_[a-z2-7]{12}$/);
   assert.ok(w.d.kernel.spaces.hosts(made.space), "the space is hosted by the SERVER's kernel");
 });
+
+test("guard: a daemon with the kernel mounts the relay peer door (a merge once dropped the line and every peer stream was refused)", async t => {
+  const w = await world(t, { kernel: true });
+  const door = /** @type {any} */ (w.d.registry.deps).peerDoor && /** @type {any} */ (w.d.registry.deps).peerDoor();
+  assert.ok(door && door.space === "home" && typeof door.accept === "function" && typeof door.allow === "function", "registry.deps.peerDoor() answers the door");
+  assert.equal(door.allow("abcdefghijklmnop"), true);
+  assert.equal(door.allow("../etc"), false);
+});
