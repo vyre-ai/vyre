@@ -131,8 +131,11 @@ async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticke
     answer: async () => false,
     async confirm() {
       const r = await run;
+      // paired but the server made no session for this device (pairServer says session:false): say so in a code the install page words (no_session), pairing stays saved
+      const noSession = (r as { session?: boolean }).session === false;
       await savePairing({ relay: r.relay, route: r.route, box: r.box, name: r.name, device: r.device, presence: null } as never);
       // The server made this device's one-use grant at the yes: sign in over the channel and keep the token, so the owner's next calls (spaces.create, Now) carry a person session.
+      if (noSession) { const { usePeer } = await import("./peer"); usePeer(false); throw Object.assign(new Error("Paired, but this device has no sign-in with the server yet."), { code: "no_session" }); }
       // From now on this device reaches the server over the peer wire (src/real/peer.ts); the paired session is opened first, as the server asks.
       (await import("./peer")).usePeer(true);
       await openPairedSession(r).catch((e: Error) => { throw new Error(`Paired, but this browser could not sign in to the server: ${e.message}`); });

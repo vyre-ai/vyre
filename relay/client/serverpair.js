@@ -10,7 +10,7 @@
 //           needs `proof` (an identity-list key's signature, see core/wink/pairing.js proveIdentity); pass it as `proof: { eid, sig }`.
 // onWords   called once with the three words this device derived. Show them: the person at the server picks the same words from three sets, and only then is anything paired.
 // Resolves { paired: true, relay, route, box, device, name, owner }: persist relay, route, box and the key store; `connect()` from client.js then reaches the server as a paired device. Rejects with
-// an Error whose `code` is one of: cannot_check (the server could not reach the names directory to check who this is: try again), bad_code, bad_owner (the server refused the identity or its id), taken (the code was already used or expired), busy, denied (the person said no or picked other words), expired (nobody answered in time),
+// an Error whose `code` is one of: bad_code, bad_owner (the server refused the identity or its id), taken (the code was already used or expired), busy, denied (the person said no or picked other words), expired (nobody answered in time),
 // unreachable (the relay or the server did not answer), cancelled.
 import { pairTicket, connect } from "./client.js";
 import { nonceCommit, ticketTag, newNonce, pairWords } from "./pairwords.js";
@@ -66,7 +66,7 @@ export async function pairServer(o) {
   const refuse = (/** @type {any} */ r) => {
     const e = r.body && r.body.error;
     const code = e && e.code;
-    throw fail(code === "busy" ? "busy" : code === "expired" ? "expired" : code === "denied" ? "denied" : code === "bad_input" ? "bad_owner" : code === "unavailable" ? "cannot_check" : "unreachable", (e && e.message) || "The server refused.");
+    throw fail(code === "busy" ? "busy" : code === "expired" ? "expired" : code === "denied" ? "denied" : code === "bad_input" ? "bad_owner" : "unreachable", (e && e.message) || "The server refused.");
   };
   try {
     const na = newNonce(), commit = await nonceCommit(na), tag = await ticketTag(ticket);
