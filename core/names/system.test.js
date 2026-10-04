@@ -254,7 +254,9 @@ function setup(t, extra) {
   // /dev/null stands in for /dev/net/tun: a character device on every system.
   // No Docker socket unless a test makes one, so no DOCKER_GID line unless a test asks for it.
   const env = { PATH: `${bin}:${systemPath(base, Object.keys(extra || {}).filter(k => extra[k] === null))}`, HOME: base, VYRE_DIR: dir, VYRE_WRAPPER: wrapper,
-    VYRE_DOCKER_SOCK: path.join(base, "no-docker.sock") };
+    VYRE_DOCKER_SOCK: path.join(base, "no-docker.sock"),
+    // The stub docker runs no daemon and packs nothing: no checkout signing, no wait for modules.
+    VYRE_DEV_SIGN: "0", VYRE_MODULES_TRIES: "0" };
   const calls = () => fs.readFileSync(log, "utf8").trim().split("\n").filter(Boolean);
   return { base, dir, wrapper, site: www, env, calls };
 }

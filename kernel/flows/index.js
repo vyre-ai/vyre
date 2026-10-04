@@ -9,7 +9,7 @@
 //   a watcher     -> flows.watcherItem({ watcher, item }) a watcher's new item (bridgeWatchers adapts the watchers module's events)
 
 import { FlowRunner } from "./runner.js";
-import { KitManager, MemoryKitStore, installCard, diffKits } from "./kits.js";
+import { KitManager, MemoryKitStore, RecordsKitStore, KIT_TYPES, installCard, diffKits } from "./kits.js";
 import { MemoryFlowStore } from "./store.js";
 import { createStages, taskIdOf } from "./stages.js";
 import { Proposals, proposerOf } from "./proposals.js";
@@ -27,6 +27,7 @@ export { printFlow, parseFlowText, parseFlowTextBounded, normalizeFlow, sameFlow
 export { defineFlow, step, expr } from "./sdk.js";
 export { RecordsFlowStore, FLOW_TYPES } from "./store.js";
 export { Proposals, proposerOf, assistantOf } from "./proposals.js";
+export { RecordsKitStore, KIT_TYPES } from "./kits.js";
 export { graph, paintRun, seeAsCode, fromCode, flowChanges, describeStep, describeTrigger, ops } from "./canvas.js";
 
 /**

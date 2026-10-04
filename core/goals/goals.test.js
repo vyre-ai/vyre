@@ -14,7 +14,7 @@ async function boot(t) {
   const home = tempHome(t);
   const root = path.join(home, "mods");
   // Fake threads.get: session "s1" is in project "harlow-legal", "s2" in "northwind".
-  writeModule(root, "threads", { does: { tools: ["threads.get"] } }, `
+  writeModule(root, "threads", { does: { reads: ["threads.get"], tools: ["threads.get"] } }, `
     export default { async start(ctx) {
       ctx.tool("threads.get", { run: async ({ thread }) => ({ thread: { id: thread, project: thread === "s1" ? "harlow-legal" : thread === "s2" ? "northwind" : null } }) });
       return {};

@@ -39,18 +39,26 @@ for (const size of sizes) {
   const t0 = performance.now();
   while (n < size) { await Promise.all(Array.from({ length: Math.min(32, size - n) }, () => { const i = n++; return gwOn.records.create(owner(), "matter", { title: `Harlow ${i}`, stage: ["intake", "open", "closed"][i % 3], fee: i % 1000 }, { attrs: { project: `p${1 + (i % 5)}` } }); })); }
   console.error(`seeded ${n} in ${Math.round((performance.now() - t0) / 1000)} s`);
+  {
+    // the owner's count by stage: the store's kept counts (or its scan, on a store without them)
+    const own = [];
+    for (let i = 0; i < 30; i++) { const s0 = performance.now(); await gwOn.records.aggregate(owner(), "matter", { group_by: ["stage"], measures: [{ fn: "count" }] }); own.push(performance.now() - s0); }
+    console.log(JSON.stringify({ records: n, path: "owner count by stage", count_p50_ms: Math.round(pct(own, 0.5) * 10) / 10, count_p95_ms: Math.round(pct(own, 0.95) * 10) / 10 }));
+  }
   for (const [label, gw] of [["pushed (attr_filter)", gwOn], ["row by row", gwOff]]) {
     const count = [], list = [], reps = label.startsWith("row") ? 3 : 20;
-    let rows = 0, err = null;
+    let rows = 0, err = null, firstCount = null, firstList = null;
     for (let i = 0; i < reps; i++) {
       let s = performance.now();
       try { const r = await gw.records.aggregate(member(), "matter", { group_by: ["stage"], measures: [{ fn: "count" }] }); rows = r.reduce((a, g) => a + g.values.count, 0); } catch (e) { err = e.code; }
+      if (i === 0) firstCount = performance.now() - s;
       count.push(performance.now() - s);
       s = performance.now();
       await gw.records.query(member(), "matter", { sort: [{ field: "fee", dir: "desc" }], page: { limit: 20 } });
+      if (i === 0) firstList = performance.now() - s;
       list.push(performance.now() - s);
     }
-    console.log(JSON.stringify({ records: n, path: label, counted: rows, count_error: err, count_p50_ms: Math.round(pct(count, 0.5)), count_p95_ms: Math.round(pct(count, 0.95)), list_p50_ms: Math.round(pct(list, 0.5)), list_p95_ms: Math.round(pct(list, 0.95)), runs: reps }));
+    console.log(JSON.stringify({ records: n, path: label, counted: rows, count_error: err, first_count_ms: Math.round(firstCount || 0), first_list_ms: Math.round(firstList || 0), steady_count_p50_ms: Math.round(pct(count.slice(1), 0.5)), steady_count_p95_ms: Math.round(pct(count.slice(1), 0.95)), steady_list_p50_ms: Math.round(pct(list.slice(1), 0.5)), steady_list_p95_ms: Math.round(pct(list.slice(1), 0.95)), runs: reps }));
   }
 }
 fs.rmSync(dir, { recursive: true, force: true });

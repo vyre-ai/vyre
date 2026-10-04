@@ -38,8 +38,8 @@ const SIGHT = `export default { async start(ctx) {
 async function world(t, { projects = true, sight = false, now = /** @type {(() => number)|undefined} */ (undefined) } = {}) {
   const home = tempHome(t);
   const root = path.join(home, "mods");
-  if (projects) writeModule(root, "projects", { roles: ["box", "local"], does: { tools: ["projects.of", "projects.poke"] }, watches: { emits: ["project.changed"] } }, PROJECTS);
-  if (sight) writeModule(root, "sight", { roles: ["box", "local"], does: { tools: ["sight.now"] }, watches: { emits: [] } }, SIGHT);
+  if (projects) writeModule(root, "projects", { roles: ["box", "local"], does: { reads: ["projects.of"], tools: ["projects.of", "projects.poke"] }, watches: { emits: ["project.changed"] } }, PROJECTS);
+  if (sight) writeModule(root, "sight", { roles: ["box", "local"], does: { reads: ["sight.now"], tools: ["sight.now"] }, watches: { emits: [] } }, SIGHT);
   const db = open(path.join(home, "vyre.db"));
   const events = new Events(db);
   const reg = new Registry({ db, events, config: { role: "local", context: { intervalMs: INTERVAL, ...(now ? { now } : {}) } }, paths: { root: home }, log: () => {} });

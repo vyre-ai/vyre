@@ -3,6 +3,7 @@
 // throwaway home, and must write nothing: no event emitted, no row changed in the daemon's database, no call to a tool that declares `effect: "write"`. A tool that needs input fails on its own
 // check before it writes, which proves nothing either way, so this is a floor and not a proof: it catches a read that writes on its first call (a lazy migration, a seen marker, an index kick).
 // A tool that must write on a read declares `effect: "write"` and says who may call it. KNOWN_WRITERS is today's exceptions and only shrinks. A test box, never a Mac.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { tempHome } from "./helpers.js";
@@ -13,7 +14,6 @@ import path from "node:path";
 /** Reads that write today, by name, each to be redeclared `write` (with callers) or fixed by its owner. Never add one. */
 const KNOWN_WRITERS = new Set([
   "appearance.resolve", "settings.get", "settings.snapshot", // three existing settings rows change on every call (settings)
-  "vault.health", // appends to vault_audit (vault)
 ]);
 
 test("a tool declared effect read changes no state when called with no input", { timeout: 280_000 }, async t => {

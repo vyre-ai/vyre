@@ -35,6 +35,8 @@ import crypto from "node:crypto";
 import { friendlyDeviceName, cleanLabel } from "../../lib/devicename.js";
 import { createHealth, unknown, shaped, sinceTracker } from "./health.js";
 import { ALLOW, WRITE, FOLLOWED, ASKS } from "./allow.js";
+import { originClass } from "../modules/index.js";
+import { isPerson } from "../../lib/caller.js";
 import { boxKey, signAnswer } from "./assert.js";
 import { companionSide } from "./companion.js";
 
@@ -124,7 +126,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
   });
 
   ctx.tool("link.pending", {
-    effect: "read", callers: BOX_PEOPLE,
+    effect: "read", callers: [...BOX_PEOPLE, "module"], // waiting counts pairing requests from an event
     description: "Pairing requests waiting for approval on this box. The codes are never listed: they are on the Mac's screen.",
     input: { type: "object", properties: {} },
     run: async () => { sweep(); return [...pending.values()].filter(p => !p.key && !p.denied).map(p => ({ id: p.id, name: p.name, login: p.login, node: p.peer ? p.peer.node : null, kind: p.kind || "mac", created: p.created, expires: p.expires })); },
@@ -423,11 +425,14 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
     input: { type: "object", properties: { tool: { type: "string" }, input: { type: "object" }, timeout: { type: "number" }, mac: { type: "string" }, as: { type: "string" },
       by: { type: "object", properties: { caller: { type: "string" }, device: { type: "string" }, person: { type: "string" }, presence: { type: "string" } } } }, required: ["tool"] },
     internal: true,
-    run: async ({ tool, input = {}, timeout, mac: only, as, by }) => {
+    run: async ({ tool, input = {}, timeout, mac: only, as, by }, meta = {}) => {
       // A read list widened by a test seam to take a write sends it as a read, without `as`: how
       // the Mac's own refusal is reached. Production's list never holds a write.
       const write = WRITE.includes(tool) && !allow.includes(tool);
       // A write is the person's only: the switchboard says so for the person's own callers.
+      // The caller named in `by` is the switchboard's claim. What decides is who the call really came from past its module hop (`meta.origin`): a model, an agent or a timer that went through a module
+      // is never the person, whatever `as` and `by` say (platform-3, HD-3's twin).
+      if (write && !isPerson(originClass(meta))) throw Object.assign(new Error(`${tool} is sent to a Mac only for the person, not for a model or a module acting alone`), { code: "denied" });
       if (write && as !== "person") throw Object.assign(new Error(`${tool} is sent to a Mac only for the person`), { code: "denied" });
       if (!write && !allow.includes(tool)) throw Object.assign(new Error(`${tool} is not asked of a Mac through the link`), { code: "denied" });
       // A send that resumes a stopped session headless takes longer than a read.

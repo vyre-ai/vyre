@@ -4,7 +4,7 @@
   "description": "Screen context on macOS: the front app, window, focused control, URL and visible text, kept current by accessibility notifications, redacted in secure fields and blind in the floor's places. On demand screenshots.",
   "roles": ["local"],
   "requires": [],
-  "does": { "tools": [{ "name": "screen.context", "reach": "anyone" }, { "name": "screen.shot", "reach": "anyone" }] },
+  "does": { "tools": [{ "name": "screen.context", "effect": "read", "reach": "anyone" }, { "name": "screen.shot", "effect": "read", "reach": "anyone" }] },
   "watches": { "emits": [] },
   "shows": {},
   "needs": {},

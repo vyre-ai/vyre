@@ -1,38 +1,42 @@
 // @ts-check
+import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { clearNotice, noteEnded, noteExpires, noteStorageRefused, sessionNotice, snapshot, subscribe } from "./notice.js";
+import { clearNotice, failureOf, noteRenewFailed, noteRenewed, noteStorageRefused, renewWords, sessionNotice, snapshot, subscribe } from "./notice.js";
 
-const NOW = 1_800_000_000_000, DAY = 86_400_000;
-const S = (/** @type {any} */ p) => ({ storageRefused: false, expires: null, ended: false, ...p });
+const S = (/** @type {any} */ p) => ({ storageRefused: false, renewFailed: null, ...p });
 
-test("nothing to say while the session is healthy and the browser keeps it", () => {
-  assert.equal(sessionNotice(S({}), NOW), null);
-  assert.equal(sessionNotice(S({ expires: NOW + 20 * DAY }), NOW), null);
+test("nothing is said while renewal works: no expiry countdown, no sign-in-again", () => {
+  assert.equal(sessionNotice(S({})), null);
 });
 
-test("a session that ends within three days says how many, and one that has ended says to sign in again from the phone", () => {
-  assert.match(/** @type {any} */ (sessionNotice(S({ expires: NOW + 2 * DAY }), NOW)).text, /ends in 2 days/);
-  assert.match(/** @type {any} */ (sessionNotice(S({ expires: NOW + DAY / 2 }), NOW)).text, /ends in 1 day\./);
-  assert.match(/** @type {any} */ (sessionNotice(S({ expires: NOW - 1 }), NOW)).text, /has ended.*from your phone/);
-  assert.match(/** @type {any} */ (sessionNotice(S({ ended: true }), NOW)).text, /has ended/);
+test("a failed renewal says why in the words for its kind, never the server's text, and never tells the person to sign in from the phone when the phone lifts a lock", () => {
+  assert.equal(failureOf("denied"), "denied");
+  assert.equal(failureOf("offline"), "unreachable");
+  assert.equal(failureOf("timeout"), "unreachable");
+  assert.equal(failureOf("anything else"), "other");
+  assert.match(renewWords("unreachable"), /Cannot reach your server right now. You stay signed in; this will retry\./);
+  assert.match(renewWords("denied"), /could not sign in again.*locked after failed sign-ins, it unlocks by itself in 15 minutes.*removed, pair it again from your phone/);
+  assert.doesNotMatch(renewWords("denied"), /Sign in again from your phone/);
+  assert.match(renewWords("other"), /pair this device again from your phone/);
+  assert.equal(sessionNotice(S({ renewFailed: "unreachable" }))?.tone, "plain");
+  assert.equal(sessionNotice(S({ renewFailed: "denied" }))?.tone, "warn");
 });
 
-test("a browser that refuses storage says the sign-in ends with the tab, but an ended or ending session comes first", () => {
-  assert.match(/** @type {any} */ (sessionNotice(S({ storageRefused: true }), NOW)).text, /ends when you close this tab/);
-  assert.match(/** @type {any} */ (sessionNotice(S({ storageRefused: true, ended: true }), NOW)).text, /has ended/);
+test("the storage notice stays, and a failed renewal comes first", () => {
+  assert.match(/** @type {any} */ (sessionNotice(S({ storageRefused: true }))).text, /ends when you close this tab/);
+  assert.match(/** @type {any} */ (sessionNotice(S({ storageRefused: true, renewFailed: "denied" }))).text, /could not sign in again/);
 });
 
-test("the store tells subscribers, a new expiry lifts an ended state, and clear forgets it", () => {
+test("the store tells subscribers, a renewal lifts the failure, and clear forgets it", () => {
   let n = 0;
   const off = subscribe(() => { n++; });
   noteStorageRefused(); noteStorageRefused();
-  assert.equal(snapshot().storageRefused, true);
-  noteEnded(); assert.equal(snapshot().ended, true);
-  noteExpires(NOW + 30 * DAY); assert.deepEqual([snapshot().ended, snapshot().expires], [false, NOW + 30 * DAY]);
-  noteExpires(Number.NaN); assert.equal(snapshot().expires, NOW + 30 * DAY);
-  clearNotice(); assert.equal(snapshot().expires, null);
+  noteRenewFailed("denied"); assert.equal(snapshot().renewFailed, "denied");
+  noteRenewed(); assert.equal(snapshot().renewFailed, null);
+  noteRenewed();
+  noteRenewFailed("offline"); clearNotice(); assert.equal(snapshot().renewFailed, null);
   off();
-  assert.equal(n, 4);
+  assert.equal(n, 5);
 });

@@ -5,15 +5,18 @@
 // `peer.session` is set ONLY by a transport that has itself verified a presence session on that connection (a passkey sign-in on that device); nothing the device sends
 // can supply it, and this server reads nothing but `peer` for who is calling.
 import { KernelError } from "../core/errors.js";
-import { CALLS, INVITEE_CALLS, WIRE_VERSION, MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, REPLAY_WINDOW_MS, pathOf } from "./wire.js";
+import crypto from "node:crypto";
+import { CALLS, INVITEE_CALLS, WIRE_VERSION, MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, REPLAY_WINDOW_MS, MAX_PROOF_BYTES, CHALLENGE_TTL_MS, PRESENCE_CODES, pathOf } from "./wire.js";
+import { proofRequest, PROOF_CALLS } from "./proof.js";
+import { canonical, sha256 } from "../core/canonical.js";
 
-const fail = (/** @type {any} */ id, /** @type {string} */ code, /** @type {string} */ message) => ({ v: WIRE_VERSION, id, ok: false, error: { code, message } });
+const fail = (/** @type {any} */ id, /** @type {string} */ code, /** @type {string} */ message, /** @type {any} */ challenge = undefined) => ({ v: WIRE_VERSION, id, ok: false, error: { code, message, ...(challenge ? { challenge } : {}) } });
 const MAX_STORED_BYTES = 8 * 1024 * 1024;
 const INVITEE_RESPONSE_BYTES = 16 * 1024;
 const RATE = Object.freeze({ member: 300, invitee: 30, window_ms: 60_000, peers: 10_000 });
 
 /**
- * @param {{ space: string, kernel: any, clock?: () => number, rate?: { member?: number, invitee?: number }, services?: Record<string, any> }} cfg `kernel` is the home's kernel for this Space (createKernel / bootKernel's result)
+ * @param {{ space: string, home?: string, kernel: any, clock?: () => number, rate?: { member?: number, invitee?: number }, services?: Record<string, any> }} cfg `kernel` is the home's kernel for this Space (createKernel / bootKernel's result)
  */
 export function createRemoteServer(cfg) {
   const clock = cfg.clock || Date.now;
@@ -21,6 +24,30 @@ export function createRemoteServer(cfg) {
   const limit = { member: cfg.rate?.member ?? RATE.member, invitee: cfg.rate?.invitee ?? RATE.invitee };
   /** @type {Map<string, { at: number, bytes: number, done: boolean, p: Promise<any> }>} the calls in flight and answered, oldest first */ const seen = new Map();
   let stored = 0;
+  /** @type {Map<string, { device: string, call: string, args: string, exp: number }>} the challenges issued and not yet used, by nonce */ const challenges = new Map();
+  const argsHash = (/** @type {any[]} */ a) => sha256(canonical(a));
+  /** What a device must sign to do this call: the call, the space, this home, a fresh one-use nonce for this device, call and arguments, and what a presence proof covers when the call has one. */
+  function challengeFor(/** @type {string} */ device, /** @type {string} */ call, /** @type {any[]} */ args, /** @type {number} */ now) {
+    for (const [n, c] of challenges) if (c.exp <= now) challenges.delete(n);
+    // PW-3: a device holds at most 8 live challenges and evicts its own oldest, so one device asking again and again cannot invalidate another's
+    const mine = [...challenges].filter(([, c]) => c.device === device);
+    for (let i = 0; i <= mine.length - 8; i++) challenges.delete(mine[i][0]);
+    while (challenges.size >= 4000) challenges.delete(challenges.keys().next().value);
+    const nonce = crypto.randomBytes(16).toString("base64url");
+    const ah = argsHash(args);
+    challenges.set(nonce, { device, call, args: ah, exp: now + CHALLENGE_TTL_MS });
+    const short = call.split(".").slice(1).join(".");
+    /** @type {any} */ let cover = {};
+    if (call.startsWith("grants.") && PROOF_CALLS.includes(short)) { try { const r = proofRequest(cfg.space, short, ...args); cover = { op: r.op, fields: r.fields, payload_hash: r.payload_hash }; } catch { cover = {}; } }
+    return { call, space: cfg.space, home: cfg.home || cfg.space, nonce, expires: now + CHALLENGE_TTL_MS, args_hash: ah, ...cover };
+  }
+  /** The nonce the device echoes: live, issued here for this device, call and arguments, and used up now whatever the kernel then says. */
+  function spend(/** @type {any} */ nonce, /** @type {string} */ device, /** @type {string} */ call, /** @type {any[]} */ args, /** @type {number} */ now) {
+    const c = typeof nonce === "string" ? challenges.get(nonce) : undefined;
+    if (!c) return false;
+    challenges.delete(String(nonce));
+    return c.exp > now && c.device === device && c.call === call && c.args === argsHash(args);
+  }
   /** @type {Map<string, number[]>} device -> the times of its recent requests */ const rate = new Map();
   // A group is the gateway's, the Surfaces door's, or a SERVICE the home registered (`cfg.services`, e.g. the lent computer's): a service group that is not registered answers no_such_call.
   const tree = (/** @type {string} */ group) => (cfg.services && Object.hasOwn(cfg.services, group) ? cfg.services[group] : group === "lent" ? undefined : group === "tasks" ? k.gateway.ask : group === "surfaces" ? k.surfaces : k.gateway[group]);
@@ -96,13 +123,24 @@ export function createRemoteServer(cfg) {
         const entry = { at: now, bytes: 0, done: false, p: /** @type {Promise<any>} */ (Promise.resolve()) };
         entry.p = (async () => {
           try {
-            const result = await target.fn(who.chain, ...request.args);
+            // presence over the wire: a proof beside the args goes to the kernel as its `{ presence }` option (merged into a trailing options object, else appended) once its nonce is ours and live
+            let callArgs = request.args;
+            const hasProof = request.proof !== undefined && request.proof !== null;
+            if (hasProof) {
+              let size = 0; try { size = Buffer.byteLength(JSON.stringify(request.proof)); } catch { size = Infinity; }
+              if (typeof request.proof !== "object" || Array.isArray(request.proof) || size > MAX_PROOF_BYTES) return fail(id, "bad_input", "that proof is not usable");
+              if (!spend(request.challenge, peer.device_key_id, request.call, request.args, now)) return fail(id, "bad_challenge", "that proof was not made for a challenge this home issued for this call; ask again");
+              // the proof is the trailing `{ presence }` option on its own, never merged into one of the caller's own arguments (PW-4)
+              callArgs = [...callArgs, { presence: request.proof }];
+            }
+            const result = await target.fn(who.chain, ...callArgs);
             const out = JSON.stringify(result === undefined ? null : result);
             return out.length > cap ? fail(id, "too_large", "that answer is too large") : { v: WIRE_VERSION, id, ok: true, result: JSON.parse(out) };
           } catch (e) {
             // Only the code and the message cross; a reason the kernel kept hidden stays in the home's log.
             const err = /** @type {any} */ (e);
-            return fail(id, err && typeof err.code === "string" ? err.code : "unavailable", err && err instanceof KernelError ? err.message : "the home could not do that");
+            const code = err && typeof err.code === "string" ? err.code : "unavailable";
+            return fail(id, code, err && err instanceof KernelError ? err.message : "the home could not do that", PRESENCE_CODES.has(code) && who.member ? challengeFor(peer.device_key_id, request.call, request.args, clock()) : undefined);
           }
         })();
         seen.set(dedupe, entry);

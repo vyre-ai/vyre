@@ -112,7 +112,7 @@ test("hooks: a broken lesson sends the turn back from Stop, in Claude Code's top
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   const env = { VYRE_HOME: root };
-  assert.ok((await d.registry.call("learn.add", { text: "never use em dashes in anything you write" })).data.id);
+  assert.ok((await d.registry.call("learn.add", { text: "never use em dashes in anything you write" }, "cli")).data.id);
   // Exactly the fields Claude Code 2.1.283 sends to a Stop hook.
   const payload = {
     session_id: "s1", transcript_path: path.join(root, "s1.jsonl"), cwd: "/w/harlow-site", prompt_id: "p1",
@@ -132,8 +132,8 @@ test("hooks: a broken lesson sends the turn back from Stop, in Claude Code's top
 test("hooks: with vyred down, the accepted lessons still hold, from the snapshot in the home", async t => {
   const root = tempHome(t);
   const d = await start({ root, log: () => {} });
-  assert.equal((await d.registry.call("learn.add", { text: "never use em dashes in anything you write" })).data.id, 1);
-  assert.equal((await d.registry.call("learn.add", { text: "update CHANGELOG.md whenever you change code" })).data.id, 2);
+  assert.equal((await d.registry.call("learn.add", { text: "never use em dashes in anything you write" }, "cli")).data.id, 1);
+  assert.equal((await d.registry.call("learn.add", { text: "update CHANGELOG.md whenever you change code" }, "cli")).data.id, 2);
   await d.stop();
   const env = { VYRE_HOME: root };
   // Exactly the fields Claude Code 2.1.283 sends to a Stop hook.
@@ -162,7 +162,7 @@ test("hooks: with vyred down, the accepted lessons still hold, from the snapshot
 test("hooks: with vyred down and lessons.json deleted, the lessons still hold, read from vyre.db", async t => {
   const root = tempHome(t);
   const d = await start({ root, log: () => {} });
-  assert.equal((await d.registry.call("learn.add", { text: "never use em dashes in anything you write" })).data.id, 1);
+  assert.equal((await d.registry.call("learn.add", { text: "never use em dashes in anything you write" }, "cli")).data.id, 1);
   await d.stop();
   fs.rmSync(path.join(root, "lessons.json"));
   const env = { VYRE_HOME: root };
@@ -224,6 +224,11 @@ let out = ""; p.stdout.on("data", c => { out += c; }); p.on("close", () => fs.wr
 
 test("hooks: a plain yes accepts a lesson only when a person typed it into an interactive claude", { skip: !["darwin", "linux"].includes(process.platform) }, async t => {
   const root = tempHome(t);
+  // HD-4b: the person's "yes" counts only when the session's own transcript has it as the last user line; Claude Code writes that line, a model cannot.
+  const projects = path.join(root, "claude-projects");
+  fs.mkdirSync(path.join(projects, "-w"), { recursive: true });
+  fs.writeFileSync(path.join(projects, "-w", "s1.jsonl"), JSON.stringify({ type: "user", sessionId: "s1", cwd: "/w", message: { role: "user", content: "yes" } }) + "\n");
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ transcripts: [projects] }));
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   const env = { VYRE_HOME: root, VYRE_THREAD: "", VYRE_AGENT: "" };
