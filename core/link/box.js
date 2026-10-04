@@ -104,7 +104,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
   const peerOf = meta => (meta && meta.peer) || null;
 
   ctx.tool("link.pair.request", {
-    effect: "write", callers: ["tailnet"],
+    effect: "write", callers: BOX_PEOPLE,
     description: "Start pairing a device with this box. Called by the device's vyred over the tailnet; the code it returns is shown on the device only. kind: \"mac\" (the default, the full link feature set) or \"device\" (a peer paired only to import its own sessions).",
     input: { type: "object", properties: { name: { type: "string" }, kind: { type: "string", enum: ["mac", "device"] } }, required: ["name"] },
     run: async ({ name, kind }, meta) => {
@@ -194,7 +194,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
   });
 
   ctx.tool("link.pair.poll", {
-    effect: "write", callers: ["tailnet"],
+    effect: "write", callers: BOX_PEOPLE,
     description: "The Mac asks whether its pairing was approved; the link key is handed over once.",
     input: { type: "object", properties: { id: { type: "string" }, secret: { type: "string" } }, required: ["id", "secret"] },
     run: async ({ id, secret }, meta) => {
@@ -223,7 +223,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
   };
 
   ctx.tool("link.hello", {
-    effect: "write", callers: ["tailnet"],
+    effect: "write", callers: BOX_PEOPLE,
     description: "A paired Mac checks in. Answers who this box is, or unpaired when the key is not known here.",
     input: { type: "object", properties: { key: { type: "string" } }, required: ["key"] },
     run: async ({ key }, meta) => {
@@ -381,7 +381,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
     || [...asks.values()].some(a => a.mac === macId && a.sent);
 
   ctx.tool("link.serve", {
-    effect: "write", callers: ["tailnet"],
+    effect: "write", callers: BOX_PEOPLE,
     description: "A paired Mac waits here for the box's next question. Answers { id, tool, input }, or null when there was none for a while.",
     input: { type: "object", properties: { key: { type: "string" } }, required: ["key"] },
     run: async ({ key }, meta) => {
@@ -401,7 +401,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
   });
 
   ctx.tool("link.reply", {
-    effect: "write", callers: ["tailnet"],
+    effect: "write", callers: BOX_PEOPLE,
     description: "A paired Mac answers one of the box's questions: result is { data } or { error }.",
     input: { type: "object", properties: { key: { type: "string" }, id: { type: "string" }, result: { type: "object" } }, required: ["key", "id", "result"] },
     run: async ({ key, id, result }, meta) => {
@@ -494,7 +494,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
   };
 
   ctx.tool("link.events", {
-    effect: "write", callers: ["tailnet"],
+    effect: "write", callers: BOX_PEOPLE,
     description: "A paired Mac sends the events of a thread the box sent to, and of every ask it raises: { key, events: [{ type, thread, project, at, payload }] }. The box re-emits each, labelled with the Mac.",
     input: { type: "object", properties: { key: { type: "string" }, events: { type: "array", items: { type: "object" } } }, required: ["key", "events"] },
     run: async ({ key, events }, meta) => {
