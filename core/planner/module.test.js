@@ -2,6 +2,7 @@
 // The planner inside a real vyred: found among the core modules, reached through the real
 // registry and its callers, and ringing on a fake clock into the event log every surface reads.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

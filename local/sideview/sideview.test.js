@@ -3,6 +3,7 @@
 // order, close putting every frame back, the floor, Glass, and the module through the Registry.
 // No window is read or moved and no app is launched.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

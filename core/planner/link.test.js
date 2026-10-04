@@ -4,6 +4,7 @@
 // Mac vyred run in one process on the link's test harness; the box's planner runs on a fake clock
 // with a hand-driven timer, so the alarm rings the moment the test says, not after a real wait.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

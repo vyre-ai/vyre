@@ -24,6 +24,8 @@ NEWPUB=$(cat "$WORK/proof.pub")
 
 # The candidate: this checkout, its pinned key swapped (as packaged-boot-proof does), built like a release.
 tar -C "$HERE" --exclude=.git --exclude=node_modules --exclude=site/box -cf - . | tar -C "$WORK/new" -xf -
+# The candidate must be above the old line (the updater never goes back): the copy is stamped as a release candidate of the next minor.
+node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));p.version=process.argv[2];fs.writeFileSync(process.argv[1],JSON.stringify(p,null,2)+"\n")' "$WORK/new/package.json" "${NEW_VERSION:-0.3.0-rc.1}"
 CANDKEY=$(sed -n 's/^export const RELEASE_KEY = "\(.*\)";/\1/p' "$HERE/lib/release-sig.js")
 [ -n "$CANDKEY" ] || fail "could not read the candidate's pinned key"
 for f in core/vyre-core/release.js box/vyre lib/release-sig.js scripts/install-mac-server.sh deck/sw.js; do [ -f "$WORK/new/$f" ] && sed -i "s#$CANDKEY#$NEWPUB#g" "$WORK/new/$f"; done

@@ -2,6 +2,7 @@
 // The module through the real Registry, with a fake app in place of the helper: the tools
 // register under the names the manifest declares, act re-observes, and the event is recorded.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

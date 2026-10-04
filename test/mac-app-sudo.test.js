@@ -3,6 +3,7 @@
 // made from scripts/install-mac-server.sh at build time; this test makes them the same way and then feeds the check the exact
 // arguments the installer passes to $SUDO, built by the shell from the installer's own literals, so a change to the root step in
 // the installer without a rebuild of the pins fails here.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

@@ -716,7 +716,9 @@ export class Switchboard {
       if (this.live.has(id)) { if (o.prompt) this.write(id, o.prompt); return this.launched(id); }
       // A session whose process was KILLED (it ended failed, not stopped) may have a torn transcript tail and an unfinished turn: when the runner seals this home's sessions per turn, put the file back to
       // exactly the last sealed turn before `claude --resume` reads it. Only a crashed thread, and only while no process of it runs (checked above); no runner, an unsealed session or any refusal changes nothing.
-      if ((rec.canonical_status === "failed" || rec.status === "failed" || this.states.get(id) === "failed") && (rec.provider || "claude") === "claude") {
+      const stopReason = /** @type {any} */ (this.db.prepare("SELECT stopped_reason FROM threads_runs WHERE id = ?").get(id))?.stopped_reason;
+      // Unclean ends: the process was killed (failed), or the daemon itself died under it (recover() at the next start marks such a thread stopped with reason "restart").
+      if ((rec.canonical_status === "failed" || rec.status === "failed" || this.states.get(id) === "failed" || stopReason === "restart") && (rec.provider || "claude") === "claude") {
         try { const r = /** @type {any} */ (await this.deps.call("runner.recover", { session: id })); if (r && r.data && r.data.turn !== undefined) this.deps.log(`threads: ${String(id).slice(0, 8)} was put back to its last sealed turn (${r.data.turn}) before resuming`); } catch { /* no runner here */ }
       }
       const row = /** @type {any} */ (this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
@@ -3461,7 +3463,7 @@ export default {
         model: { type: "string", description: "Switch the thread to this model first (as threads.model): the Capsule's Cmd-Return, deeper. A person's surface only." },
         effort: { type: "string", enum: EFFORTS, description: "Set this effort first (as threads.effort). A person's surface only." } } },
       // Only a person's words are queued for a session open in a terminal: a model's are refused.
-      async (i, { caller, idempotencyKey, firstParty, peer }) => {
+      async (i, meta = {}) => { const { caller, idempotencyKey, firstParty, peer } = meta;
         guard(caller, "type into sessions");
         { const rec = sb.record(i.thread); await spendGate(caller, rec && rec.provider); }
         // Only the person's own callers reach a Mac; agents, MCP, guests and modules get the box's answer.
@@ -3542,8 +3544,7 @@ export default {
 
     tool("threads.asks", "Questions and permission asks waiting on the user, oldest first (kind: only questions or only permissions). Each has its kind, what a card shows (questions, or detail), who asks (agent, thread_name), where it sits in the session (anchor: tool_use_id and its ask.raised event id), what always allow is on offer (always, always_project), and what answering takes (presence: required, covered). A surface that reconnects reads these; events alone cannot say what is open now. On a box, for the person, the paired Macs' open asks too, labelled source and machine (machines: \"local\" for the box's own only).",
       { type: "object", properties: { thread: str, kind: { type: "string", enum: ["question", "permission"] }, machines: { type: "string", enum: ["all", "local"] } } },
-      async (i, meta = {}) => {
-        const { caller, peer } = meta;
+      async (i, meta = {}) => { const { caller, peer } = meta;
         guard(caller, "read questions");
         const { machines: _, ...q } = i;
         const own = await withPresence(sb.asks.open(q.thread, q.kind).map(({ request_id, ...a }) => a), peer);

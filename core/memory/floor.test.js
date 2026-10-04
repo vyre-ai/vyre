@@ -3,6 +3,7 @@
 // project never draws another client's facts), the updated cursor, the caps, and who may see
 // the main graph.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

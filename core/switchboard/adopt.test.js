@@ -1,5 +1,6 @@
 // @ts-check
 // Adoption (the owner claims an identity and the kernel replaces the owner's local id): sessions and queued words written under the old id are still the person's. Real daemon, kernel on.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

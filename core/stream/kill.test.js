@@ -3,6 +3,7 @@
 // times, direct and through a relay-like hop. The reassembled text must equal the emitted text:
 // nothing lost, nothing repeated, cursors delivered strictly in order.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { SessionLog } from "./log.js";

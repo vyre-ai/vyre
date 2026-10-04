@@ -5,6 +5,7 @@
 // nothing else (another path, a write, a send) is refused to it, never held; a module that is not a
 // reader still needs a grant; and only a person's own surface can write the list at all.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

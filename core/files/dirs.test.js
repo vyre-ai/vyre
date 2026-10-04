@@ -3,6 +3,7 @@
 // modules: listing, refusals, hidden folders, symlinks out, a bounded name search, recent
 // folders filtered through the guard, and the Mac forwarding both to the box.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -61,7 +62,7 @@ async function registry(t, { role, files, home, fakes = {}, link = undefined, va
   globalThis.__dirsFakes = globalThis.__dirsFakes || new Map();
   globalThis.__dirsFakes.set(key, { ...fakes, link });
   t.after(() => globalThis.__dirsFakes.delete(key));
-  const fake = (name, tool, body) => writeModule(mods, name, { roles: ["box", "local"], does: { tools: [tool] } },
+  const fake = (name, tool, body) => writeModule(mods, name, { roles: ["box", "local"], does: { tools: [{ name: tool, reach: "modules" }] } },
     `export default { async start(ctx) {
       const f = () => globalThis.__dirsFakes.get(ctx.paths.root);
       ctx.tool("${tool}", { run: async ({ ...i }) => { ${body} } });

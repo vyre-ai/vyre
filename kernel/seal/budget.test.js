@@ -2,6 +2,7 @@
 // The kernel's line budget for K3 (KERNEL-brief.md section 6: sealing process about 800 lines, inference door and ledger about 700), and the
 // dependency rule: nothing here imports a module, a library or the vault. Only node: built-ins and files inside kernel/. Counted as non-blank,
 // non-comment lines of non-test files; a new file or a raised cap needs reviewer-2's sign-off.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

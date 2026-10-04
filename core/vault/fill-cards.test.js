@@ -3,6 +3,7 @@
 // live session, a card (reprompt by default) only within 60 seconds of the proof, the wrong kind
 // refused, and no card number, code, holder or street in any audit row.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

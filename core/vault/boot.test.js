@@ -1,5 +1,6 @@
 // The vault module starts in a real vyred: every tool it registers is declared in its manifest (the registry refuses to start a module that registers one it does not declare),
 // the tools added for the forward, files and provider tokens included.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

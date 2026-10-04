@@ -3,6 +3,7 @@
 // (ids, change lines, a crash, a timeout), the cache and its invalidation, redaction done again
 // in node, the floor's blind places, and screenshots, all without reading a real screen.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

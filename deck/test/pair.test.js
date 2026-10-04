@@ -2,6 +2,7 @@
 // The /pair screen's pure parts (deck/js/pair-steps.js): the one-time code, and each row's state
 // from what the page knows. The view itself (deck/views/pair.js) only draws these.
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { normalCode, showCode, pairSteps } from "../js/pair-steps.js";

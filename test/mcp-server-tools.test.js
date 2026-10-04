@@ -2,6 +2,7 @@
 // The plugin's MCP server offers a session only the tools it can call: never the person's own
 // (answering, approving, presence, a session's mode), which vyred refuses from any session.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

@@ -1,6 +1,7 @@
 // @ts-check
 // Recall's index never keeps a value shaped like a sealed class: scrubbed on the way in, reported by a scan (counts, never a value), and rewritten by the owner-run scrub (only the
 // matched spans change, the vectors made from a changed turn go, one log row without a value is kept). Synthetic values only.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

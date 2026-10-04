@@ -2,6 +2,7 @@
 // (it was `LIKE ? ESCAPE`) scanned and parsed every event: 4 s at 100,000 events, 39 s at 1,000,000. This builds a 100,000-event database directly (rows inserted in one transaction, so it takes a
 // second, not minutes) and holds the restart to a bound that the scan missed by a wide margin and the index meets by a wide margin (528 ms on the test box; the scan was about 4,000 ms).
 // The budget (team/0.3/KERNEL-size.md) is 3 s and 200 MB at 1,000,000 events, measured by kernel/store/bench/boot-bench.mjs; this is the smaller check that runs every time.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

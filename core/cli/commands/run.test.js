@@ -1,6 +1,7 @@
 // @ts-check
 // `vyre run`: the arguments it hands to vault run, and ./.env picked up only when it holds refs.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

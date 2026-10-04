@@ -2,6 +2,7 @@
 // The floor, the hold, the commit, the stop: everything that decides whether an act happens at
 // all, driven with a fake app and a fake overlay so no screen is needed.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

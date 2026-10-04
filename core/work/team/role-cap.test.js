@@ -2,6 +2,7 @@
 // A teammate acts under the grants of the person who added them, capped by that person's role (contract 9.4, R6-8), on the REAL kernel (test/kernel-rig.js). The cap is by role, not
 // by one grant: an admin's teammate holds at most what the admin's role gives; when the owner narrows, demotes or removes the adder, the teammate loses the same power at the next
 // decision, with nothing to re-add. Only the presence verifier is a stand-in (SHIM(presence)).
+import "../../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRig } from "../../../test/kernel-rig.js";

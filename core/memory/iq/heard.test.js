@@ -2,6 +2,7 @@
 // iq/heard: an agent corrects memory only with the person's own, fresh words in its own thread,
 // naming what is corrected; anything else waits as a suggestion. The memory module against a
 // stand-in for vyred and the switchboard.
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

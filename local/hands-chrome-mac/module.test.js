@@ -4,6 +4,7 @@
 // agent is refused, an agent must post a plan, the floor and Esc apply, a held act becomes a Gate
 // card and is released (or refused as changed), and results arrive redacted.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

@@ -1,6 +1,7 @@
 // @ts-check
 // The CLI as a user runs it: a real process, a real vyred, a temp home.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";

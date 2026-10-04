@@ -1,4 +1,5 @@
 // @ts-check
+import "../../scripts/mac-test-guard.mjs";
 import { isOwnerOnly } from "../../lib/owner-only.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";

@@ -4,6 +4,7 @@
 // discovery, kinds, refusals, and what happens when a client or Chrome goes away mid-call. No
 // process, no network.
 
+import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { PassThrough } from "node:stream";

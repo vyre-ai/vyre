@@ -3,6 +3,7 @@
 // exists, the manifest's icons and the iOS launch screens are really there, and the service
 // worker still never caches a tool call beyond its two offline reads.
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

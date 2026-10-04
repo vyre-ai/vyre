@@ -1,4 +1,5 @@
 // What a tool call's name says about what it brings into a thread, across Claude's, Codex's and Grok's spellings.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { taintOf, taintOfCall, commandReachesNetwork } from "./index.js";

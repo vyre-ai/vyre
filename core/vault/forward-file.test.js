@@ -1,6 +1,7 @@
 // @ts-check
 // Files through the forward: a Drive file sent by reference (a plain body or a multipart form), a download saved straight into the Drive, per-route size, content-type and Drive
 // path limits, outward sends held with the files named and pinned to their versions, streams that never sit whole in memory, and no credential value anywhere.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

@@ -4,6 +4,7 @@
 //   SHIM(provider): the provider is the fake ACP agent (core/sessions/testing/fake-acp.js), which echoes the prompt it was given, so what the model would SEE is what the test reads;
 //   SHIM(kernel off): this daemon runs the 0.2 memory path (no kernel); the 0.3 kernel path for Space memory is core/work, which has no feed from sessions on a daemon yet.
 // Run it on a test box, never on a person's Mac.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

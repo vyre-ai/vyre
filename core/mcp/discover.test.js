@@ -8,6 +8,7 @@
 // <root>/claude/plugins/. This is the case discover() is meant to prove itself against (e2e
 // review, 2026-09-28): a fixture root reads only its own fixture files, never the real machine's.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

@@ -2,6 +2,7 @@
 // No empty rows (the user's Deck drew six empty replies and a turn with no words): in its own mounted session view, an event with no words
 // draws no row and no header for it, and an item kind the Deck has no drawing for draws a labelled line. Sample world only.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { install, text, $, $$ } from "../test/fake-dom.js";

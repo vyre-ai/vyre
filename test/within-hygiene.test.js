@@ -1,6 +1,7 @@
 // A promise raced against a clock goes through lib/within.js. A hand-rolled race with an unref'd
 // timer let the event loop drain with the call still pending (macOS, Node 22): the runner then
 // cancelled the rest of the file. This reads the source only; it boots nothing.
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

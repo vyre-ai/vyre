@@ -1,3 +1,4 @@
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote, MAX_MENTIONS, NOTE_MAX } from "./said.js";

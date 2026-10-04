@@ -1,6 +1,7 @@
 // @ts-check
 // door.stream events as frames: text, tool_call, cut and done, with the asker's chain as author and
 // acts_for, and the provisional tail the door's hold-back leaves until text-done.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createDoorAdapter, pipeDoor, drainDoor, validate, settle, HOLDBACK } from "./index.js";

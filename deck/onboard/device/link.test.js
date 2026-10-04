@@ -2,6 +2,7 @@
 // The pure parts of /onboard/device (ADR 0018 section 3): reading the app's link, refusing any
 // return but vyre://, and the exact presence.enroll input the proof is bound to.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

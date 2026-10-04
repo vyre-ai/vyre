@@ -2,6 +2,7 @@
 // One Vyre-owned session's socket (core/daemon/threadsock.js): the caller is vyred's to bind,
 // only the session's own processes get in, and nothing person-only or human-only is reachable.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

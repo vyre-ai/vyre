@@ -2,6 +2,7 @@
 // The sight module against fake computers, hands-desktop, chrome, hands and screen modules in a
 // temp home. Nothing here reads a real screen: every screen is a fake that answers fixed text.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

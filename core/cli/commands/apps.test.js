@@ -3,6 +3,7 @@
 // which tool each path calls, that a send goes through the person's proof after its preview is
 // shown, and how results print.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

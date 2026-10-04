@@ -3,6 +3,7 @@
 // person-only tool of that module, is the proof). Origin is set by vyred at put, so the module can never delete a person's
 // item or another module's, and an added module never deletes anything. Boots a vyred in a temp home.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
