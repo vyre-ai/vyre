@@ -10,6 +10,9 @@
 //   node scripts/dev-sign-proof.mjs --home <dir> [--space <spc_...>] --call <name> --args '<json array>'
 //        the same act by the kernel's own request builder (kernel/remote/proof.js proofRequest: create, revoke, narrow, setRole, ruleSet, ruleRemove, inviteCreate, ...), e.g. --call ruleSet --args '[{...the rule}]'. Prefer this
 //        for any grants or rules act: the op, resource and input hash come from the kernel's own table, not a second list.
+//   node scripts/dev-sign-proof.mjs --home <dir> --yes <pair|vault|outward> --tool <tool> [--input '<json>']
+//        ONE YES for a tool call (lib/one-yes.js): the proof for relay.enable, relay.pair.start, wink.phone.open and the other tools a moment lists, over exactly the plain fields of --input. With --header this prints
+//        the value for `x-vyre-presence`: `yes proof=<base64url>` (a development build takes it as software strength; a release build refuses it with software_key).
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -42,6 +45,12 @@ if (take("--request")) {
     if (!resource) die(64, "--resource is required for this act (the urn the kernel gates, vyre://<space>/...)");
     op = opOf(action);
     fields = { resource, input_hash: sha256(canonical({ action, input })) };
+  } else if (take("--yes")) {
+    const tool = take("--tool"); if (!tool) die(64, "--yes needs --tool");
+    const { signOf, plainFieldsOf } = await import("../lib/one-yes.js"); // only this form needs it, so a bare tree that carries just the signer still runs the others
+    const plain = plainFieldsOf(take("--input") ? JSON.parse(/** @type {string} */ (take("--input"))) : {});
+    if (!plain) die(64, "--input must be plain fields (numbers, booleans, strings up to 200 characters)");
+    const sg = signOf(/** @type {string} */ (take("--yes")), { op: tool, fields: plain }); op = sg.op; fields = sg.fields;
   } else {
     op = take("--op"); if (!op) die(64, "--op, --gate or --request is required");
     fields = take("--fields") ? JSON.parse(/** @type {string} */ (take("--fields"))) : {};
@@ -53,4 +62,5 @@ const now = Date.now(), proof = { signer: "software", key_id: k.key_id, payload_
 const key = crypto.createPrivateKey({ key: Buffer.from(k.private_pkcs8, "base64"), format: "der", type: "pkcs8" });
 const out = { ...proof, signature: crypto.sign("sha256", proofBytes(proof), { key, dsaEncoding: "ieee-p1363" }).toString("base64url") };
 // --header: the value for the daemon's `x-vyre-kernel-proof` request header (base64url of the proof JSON), instead of the JSON itself.
-process.stdout.write((argv.includes("--header") ? Buffer.from(JSON.stringify(out)).toString("base64url") : JSON.stringify(out)) + "\n");
+const asHeader = argv.includes("--header") && take("--yes") ? `yes proof=${Buffer.from(JSON.stringify(out)).toString("base64url")}` : argv.includes("--header") ? Buffer.from(JSON.stringify(out)).toString("base64url") : JSON.stringify(out);
+process.stdout.write(asHeader + "\n");
