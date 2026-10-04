@@ -3,7 +3,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import { proofBytes, payloadHash, sha256b64, bindBytes, joinBytes } from "./wire.js";
-import { bindAttestation, assertProof } from "./appattest.js";
+import { bindAttestation, assertProof, assertProofDry } from "./appattest.js";
 import { strengthOf, strengthRefusal, methodOf } from "./strength.js";
 // The identity chain verifier lives in kernel/identity (windows authors it, its hash is pinned there): the root of trust for devices.
 import { verifyChain, checkAnswer, pinOf, verifyWith, youngAt } from "../identity/chain.js";
@@ -233,8 +233,8 @@ export class Presence {
     this.save();
     return { undone: true };
   }
-  /** @returns {string|null} the reason a proof is refused, or null when it stands. */
-  refuse(proof, { op, space, fields, ctx }) {
+  /** @param {any} proof @param {{ op: string, space: string, fields: any, ctx: any, dry?: boolean }} a `dry`: do every check (key, signature, payload, expiry, the replay lookup, the app key's assertion) and record nothing: the nonce stays unspent and the app key's counter does not move, so the real call that follows still passes once. @returns {string|null} the reason a proof is refused, or null when it stands. */
+  refuse(proof, { op, space, fields, ctx, dry = false }) {
     if (!proof || typeof proof !== "object") return "no_proof";
     if (!ctx.one_person || !ctx.person) return "chain_not_person";
     const k = this.keys.get(proof.key_id);
@@ -256,10 +256,10 @@ export class Presence {
     } catch { ok = false; }
     if (!ok) return "bad_signature";
     // B2 (App Attest, appattest.js assertProof): the proof also carries the app key's assertion over the same bytes; the new counter is written BEFORE the proof is accepted.
-    if (k.aa && k.aa.required) { const why = assertProof(this.appattest, k, proof, proofBytes(proof), () => this.save()); if (why) return why; }
-    for (const [n, e] of this.used) if (e < t) this.used.delete(n);
-    if (this.used.has(proof.nonce)) return "replayed";
-    this.used.set(proof.nonce, proof.expires_at);
+    if (k.aa && k.aa.required) { const why = dry ? assertProofDry(this.appattest, k, proof, proofBytes(proof)) : assertProof(this.appattest, k, proof, proofBytes(proof), () => this.save()); if (why) return why; }
+    if (!dry) for (const [n, e] of this.used) if (e < t) this.used.delete(n);
+    if (this.used.has(proof.nonce) && this.used.get(proof.nonce) >= t) return "replayed";
+    if (!dry) this.used.set(proof.nonce, proof.expires_at);
     this.lastMethod = methodOf(strengthOf(k.attested)); this.lastStrength = strengthOf(k.attested);
     return null;
   }
