@@ -6,12 +6,10 @@
 // reading it back is a separate act (unseal, with presence). A temp member gets it only where a grant of theirs names it; the sealing process refuses a chain with a model in it, so an assistant fills a sealed
 // field only through the placeholder path.
 const MEMBER = ["records.read", "records.create", "records.update", "records.remove", "records.restore", "seal.put", "events.read", "tasks.request", "tasks.read", "tasks.work", "tasks.decide", "grants.offer"];
-const MANAGER = [...MEMBER, "grants.list", "rules.list", "rules.propose"];
-const ADMIN = [...MANAGER, "records.define", "grants.create", "grants.revoke", "grants.narrow", "grants.role", "grants.invite", "drive.read", "drive.write", "drive.restore", "rules.set", "rules.remove", "rules.accept", "rules.dismiss"];
+const MANAGER = [...MEMBER, "grants.list", "rules.list", "rules.get", "rules.test", "rules.propose"];
+const ADMIN = [...MANAGER, "records.define", "grants.create", "grants.revoke", "grants.narrow", "grants.role", "grants.invite", "drive.restore", "kits.propose", "kits.install", "kits.remove", "rules.set", "rules.enable", "rules.disable", "rules.remove", "rules.accept", "rules.dismiss"];
 export const ROLE_ACTIONS = Object.freeze({
-  // The owner alone holds the two checkpoint actions so that the owner's chain can mint a per-session grant of them (a grant must lie inside its giver's own authority);
-  // no role uses them directly on another person's session, and no other role has them.
-  owner: Object.freeze([...ADMIN, "checkpoint.write", "checkpoint.read"]),
+  owner: Object.freeze([...ADMIN]),
   admin: Object.freeze([...ADMIN]),
   manager: Object.freeze([...MANAGER]),
   member: Object.freeze([...MEMBER]),

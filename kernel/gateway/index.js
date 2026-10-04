@@ -3,7 +3,6 @@ import { createAuthorizer } from "../core/authorize.js";
 import { createRecords, RECORD_ACTIONS } from "./records.js";
 import { createSealing } from "./sealing.js";
 import { ACTIONS as SEAL_ACTIONS } from "../seal/uses.js";
-import { CHECKPOINT_ACTIONS } from "./checkpoints.js";
 import { TASK_ACTIONS } from "../tasks/tasks.js";
 import { createApprovals } from "../tasks/approvals.js";
 import { createGate } from "../core/gate.js";
@@ -30,8 +29,8 @@ export function createGateway(cfg) {
   const attrs = (/** @type {string} */ u) => ({ ...((cfg.attrs && cfg.attrs(u)) || {}), ...((records && records.attrsOf(u)) || {}) });
   // `authorize` reads grants and members from the kernel's grants store when one is given; otherwise from the caller (the retrofit path).
   const gs = cfg.grantsStore;
-  const wiring = gs ? { grants: gs.provider, members: gs.members, rules: { match: ({ chain, action, resource }) => gs.rulesFor(chain, action, resource) }, ...(cfg.presence ? { verifyPresence: grantProofVerifier(cfg.presence) } : {}) } : {};
-  const rawAuthorizer = createAuthorizer({ ...cfg, ...wiring, attrs, actions: [...RECORD_ACTIONS, ...SEAL_ACTIONS, ...TASK_ACTIONS, ...GRANT_ACTIONS, ...CHECKPOINT_ACTIONS, ...(cfg.actions || [])] });
+  const wiring = gs ? { grants: gs.provider, members: gs.members, rules: { match: ({ chain, action, resource }) => gs.rulesFor(chain, action, resource), touches: (chain, action) => gs.rulesTouch(chain, action) }, ...(cfg.presence ? { verifyPresence: grantProofVerifier(cfg.presence) } : {}) } : {};
+  const rawAuthorizer = createAuthorizer({ ...cfg, ...wiring, attrs, actions: [...RECORD_ACTIONS, ...SEAL_ACTIONS, ...TASK_ACTIONS, ...GRANT_ACTIONS, ...(cfg.actions || [])] });
   // A group session's reads are the room's: every gated read below goes through this (kernel/core/room.js roomedAuthorizer).
   const authorizer = cfg.room && cfg.chains ? roomedAuthorizer(rawAuthorizer, cfg.room, cfg.chains) : rawAuthorizer;
   if (gs) gs.bind({ enforce, authorizer, registry: () => authorizer.actions });
@@ -165,7 +164,7 @@ export function createGateway(cfg) {
     registry: authorizer.actions,
     limits,
     ...(seal ? { seal } : {}),
-    ...(gs ? { grants: Object.freeze({ create: gs.create, revoke: gs.revoke, narrow: gs.narrow, list: gs.list, setRole: gs.setRole, removeMember: gs.removeMember, transferOwner: gs.transferOwner, rules: Object.freeze({ list: gs.rulesList, set: gs.ruleSet, remove: gs.ruleRemove, propose: gs.rulePropose, accept: gs.ruleAccept, dismiss: gs.ruleDismiss }), addActor: gs.addActor, removeActor: gs.removeActor, sweep: gs.sweep, members: Object.freeze({ list: gs.membersList, get: gs.membersGet }), invites: Object.freeze({ create: gs.inviteCreate, confirm: gs.inviteConfirm, accept: gs.inviteAccept, get: gs.invitesGet, revoke: (/** @type {any} */ chain, /** @type {string} */ id, /** @type {any} */ proof) => gs.inviteRevoke(chain, id, { presence: proof }), list: gs.inviteList }), rebuild: gs.rebuild, defaultAssistant: Object.freeze({ present: gs.hasDefaultAssistant, add: (chain, o) => gs.addActor(chain, { kind: "agent", id: "assistant", space: cfg.space }, o), remove: (chain, o) => gs.removeActor(chain, { kind: "agent", id: "assistant", space: cfg.space }, o) }), chats: Object.freeze({ create: gs.chatCreate, change: gs.chatChange, read: gs.chatRead }), offers: Object.freeze({ offer: gs.offer, unoffer: gs.unoffer, active: gs.active, find: gs.find, onRevoke: gs.onRevoke }) }) } : {}),
+    ...(gs ? { grants: Object.freeze({ create: gs.create, revoke: gs.revoke, narrow: gs.narrow, list: gs.list, setRole: gs.setRole, removeMember: gs.removeMember, transferOwner: gs.transferOwner, rules: Object.freeze({ list: gs.rulesList, get: gs.ruleGet, test: gs.ruleTest, enable: gs.ruleEnable, disable: gs.ruleDisable, set: gs.ruleSet, remove: gs.ruleRemove, propose: gs.rulePropose, accept: gs.ruleAccept, dismiss: gs.ruleDismiss }), addActor: gs.addActor, removeActor: gs.removeActor, sweep: gs.sweep, members: Object.freeze({ list: gs.membersList, get: gs.membersGet }), invites: Object.freeze({ create: gs.inviteCreate, confirm: gs.inviteConfirm, accept: gs.inviteAccept, get: gs.invitesGet, revoke: (/** @type {any} */ chain, /** @type {string} */ id, /** @type {any} */ proof) => gs.inviteRevoke(chain, id, { presence: proof }), list: gs.inviteList }), rebuild: gs.rebuild, defaultAssistant: Object.freeze({ present: gs.hasDefaultAssistant, add: (chain, o) => gs.addActor(chain, { kind: "agent", id: "assistant", space: cfg.space }, o), remove: (chain, o) => gs.removeActor(chain, { kind: "agent", id: "assistant", space: cfg.space }, o) }), chats: Object.freeze({ create: gs.chatCreate, change: gs.chatChange, read: gs.chatRead }), offers: Object.freeze({ offer: gs.offer, unoffer: gs.unoffer, active: gs.active, find: gs.find, onRevoke: gs.onRevoke }) }) } : {}),
     /** The Space's type definitions, read through authorize like any record read (the tool surface and Customize list from here). */
     async definitions(chain) {
       await gate(chain, "records.read", `vyre://${cfg.space}/definition/types`);

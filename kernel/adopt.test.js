@@ -118,3 +118,36 @@ test("AO-5: a room the old owner made is the identity's room after adoption, and
   assert.ok(room.ver > verBefore);
   assert.deepEqual(d.kernel.grants.chatPeopleAt(chat.id, verBefore), [A], "the version written before names the same person");
 });
+
+import os from "node:os";
+import { DatabaseSync } from "node:sqlite";
+import { bootHomeKernel } from "./home.js";
+import { startSealer } from "./seal/client.js";
+
+test("AO-3 boot repair: the process dies right after the owner.adopted marker; the restarted kernel finishes the move, the owner is the identity and space.json is rewritten", { timeout: 180_000 }, async t => {
+  const root = tempHome(t), dbFile = path.join(root, "k.db");
+  const sdir = fs.mkdtempSync(path.join(os.tmpdir(), "ao-seal-"));
+  const sealer = startSealer({ dir: sdir, dev: true, unattested: true, timeoutMs: 8000 });
+  t.after(async () => { await sealer.close(); fs.rmSync(sdir, { recursive: true, force: true }); });
+  // the same sealing process, but once `cut` is set it seals exactly one more event (the marker) and then fails: a process that died after it
+  const gate = { cut: false, left: 0 };
+  const limited = new Proxy(sealer, { get: (target, key) => key === "kernel" ? { ...target.kernel, mac: async (/** @type {any} */ i) => { if (gate.cut && i.purpose === "grants-event-v1") { if (String(i.data).includes("owner.adopted")) gate.left = 0; else if (gate.left === 0) throw new Error("the process died"); } return target.kernel.mac(i); }, verify: target.kernel.verify.bind(target.kernel) } : /** @type {any} */ (target)[key] });
+  const boot = (/** @type {any} */ s) => bootHomeKernel({ db: new DatabaseSync(dbFile), root, sealer: s, log: () => {}, isFirstParty: () => false });
+  let k = await boot(limited);
+  const old = k.id.owner;
+  gate.cut = true; gate.left = 1; // armed: the marker's own seal passes, every grants event after it fails
+  await assert.rejects(() => k.kernelFor(spacesNeed).adoptOwner(A), /process died/);
+  assert.equal(k.log.read({ type: "owner.adopted" }).length, 1, "the marker was written");
+  assert.equal(k.grants.roleOf({ kind: "person", id: A, space: k.id.space }), null, "the move did not happen");
+  await k.stop();
+  const file = path.join(root, "kernel", "space.json");
+  assert.equal(JSON.parse(fs.readFileSync(file, "utf8")).owner, old, "the file still names the old owner");
+  gate.cut = false;
+  k = await boot(sealer);
+  t.after(() => k.stop());
+  assert.equal(k.id.owner, A, "the restarted kernel's owner is the identity");
+  assert.equal(k.grants.roleOf({ kind: "person", id: A, space: k.id.space }), "owner", "the move was finished at boot");
+  assert.equal(k.grants.roleOf({ kind: "person", id: old, space: k.id.space }), null);
+  assert.equal(JSON.parse(fs.readFileSync(file, "utf8")).owner, A, "space.json is rewritten from the log");
+  assert.equal(k.log.read({ type: "owner.adopted" }).length, 1, "the marker is not written twice");
+});

@@ -27,3 +27,18 @@ test("a created Space accepts its owner's admin act under the development stand-
   assert.equal(await defineInCreated(t, false), "needs_presence", "no stand-in file: presence is asked for");
   assert.equal(await defineInCreated(t, true), "applied", "the stand-in file reaches the created Space's own kernel");
 });
+
+test("a real person session reaches a created Space through chainIn with no stand-in: the owner's device that signed in defines a type there, and the same device with no session is asked for presence", { timeout: 120_000 }, async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {}, kernel: true });
+  t.after(() => d.stop());
+  const owner = d.kernel.id.owner;
+  const handle = d.kernel.kernelFor({ name: "spaces", needs: { kernel: { actions: [], spaces: true } } });
+  const h = await d.kernel.spaces.host({ owner, name: "created" });
+  const as = (/** @type {any} */ extra) => handle.chainIn(h.space, { kernelFacts: { kind: "device", device_key_id: "d-phone", person: owner, path: "relay", ...extra } });
+  const signedIn = await as({ session: "ps_1" });
+  await h.gateway.records.define(signedIn, { add_types: [TYPE] });
+  assert.ok((await h.gateway.records.create(signedIn, "note", { title: "from the phone" })).urn, "the signed-in owner device works in the created Space");
+  const noSession = await as({});
+  await assert.rejects(() => h.gateway.records.define(noSession, { add_types: [{ ...TYPE, name: "other" }] }), { code: "needs_presence" });
+});
