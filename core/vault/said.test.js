@@ -6,6 +6,7 @@
 // or module:assistant and every other caller kind is refused by name; the person's tools list and
 // revoke; and a row edited in vyre.db stops matching. Every name and address is a sample.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

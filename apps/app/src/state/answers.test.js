@@ -3,6 +3,7 @@
 // Undo only while unsent; a refusal brings the row back with its reason. Time and delivery are
 // fakes, so every step is exact.
 
+import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 

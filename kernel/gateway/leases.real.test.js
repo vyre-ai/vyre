@@ -1,6 +1,7 @@
 // The kernel's lease wiring against the REAL sealing process (kernel/gateway/leases.test.js uses a fake process that imitates it). What is still a stand-in is labelled:
 //   SHIM(presence): the kernel's own grants and offers acts use the allow-all presence stand-in the other gateway tests use (a real one needs a hardware proof per act);
 //   the lease reinstatement below DOES use a real hardware-signed proof, checked by the real process.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

@@ -1,6 +1,7 @@
 // @ts-check
 // Identity names in the directory: a person (a permanent id with a signed, chained list) and a space (a list of owners) claim names in the
 // same namespace as the boxes, resolve exactly by name, grow their lists by verified ops, alias an own domain by a signed TXT, and release.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

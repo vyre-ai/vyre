@@ -1,6 +1,7 @@
 // @ts-check
 // The floor tiers, judged from URLs alone (extension/lib/floor.js), and through ctx.floorAllows
 // with the person's lists in chrome.storage.local.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { decide, tierOf } from "./extension/lib/floor.js";

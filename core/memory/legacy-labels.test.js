@@ -1,6 +1,7 @@
 // MA-5: the kernel-off label branch (SHIM(legacy labels) in core/memory/index.js, site.js, write.js and the label fallbacks beside them) is reachable only while the daemon runs
 // with the kernel OFF. That is today's default (VYRE_KERNEL is not set), so every build can run it until work/kernel-default-on lands. THIS TEST FAILS the day a daemon with no
 // option and no VYRE_KERNEL boots with the kernel on: then delete every SHIM(legacy labels) branch (grep for it) and this file. Runs a real daemon: a test box, never a Mac.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { start } from "../daemon/index.js";

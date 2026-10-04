@@ -4,6 +4,7 @@
 // URL, calls the box's router as device:<id>, follows the event stream, and survives the relay
 // dropping its socket mid-stream. A second world puts a recording box behind the same relay to
 // see the Idempotency-Key retry. Everything on 127.0.0.1.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

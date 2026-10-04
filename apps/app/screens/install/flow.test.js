@@ -1,3 +1,4 @@
+import "../../../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { backOf, homeLine, nameNote, nameStatus, pickNumber, serverLines, slug, startStep, SERVER_NUMBER } from "./flow.js";

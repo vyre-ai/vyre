@@ -1,3 +1,4 @@
+import "../../../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { canFallback, deviceLine, lastStep, lendState, list, pick, removeText, stepCount, stepLine, stepWords } from "./wink.js";

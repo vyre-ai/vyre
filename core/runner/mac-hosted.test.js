@@ -1,5 +1,6 @@
 // Behaviour probes for the macOS Mach-service denies (reviewer-3 HS-4 low): the clipboard, the keychain and Apple events must be unreachable
 // from inside the home sandbox. These can raise permission dialogs, so they run ONLY on a hosted macOS runner (VYRE_TEST_HOSTED=1), never on a person's Mac.
+import "../../scripts/mac-test-guard.mjs";
 import "./testing/hosted-guard.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";

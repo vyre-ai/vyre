@@ -2,6 +2,7 @@
 // memory.answer: questions parsed by rules, answered from personal facts, the graph, then the
 // user's own words; silent when it does not know; refused to a project's agent.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

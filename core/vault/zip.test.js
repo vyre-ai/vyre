@@ -1,5 +1,6 @@
 // @ts-check
 // Every archive here is built by the test with the tiny writer below; the contents are fictional.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import zlib from "node:zlib";

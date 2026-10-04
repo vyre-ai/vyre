@@ -1,5 +1,6 @@
 // @ts-check
 // The take-over input rules that do not need a browser: keysyms for typed text and the paste cap.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { keysymFor, capBytes, PASTE_CAP } from "./input.js";

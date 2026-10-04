@@ -2,6 +2,7 @@
 // VYRE_TWENTY_LIVE_URL is set. It runs inside a container on the Space's internal network (see
 // run-on-testbox.sh) because Twenty has no published port. A real Twenty may only call a webhook host
 // listed in OUTBOUND_HTTP_ALLOWED_INTERNAL_HOSTS, so the listener's hostname is VYRE_TWENTY_LIVE_HOOK_HOST.
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";

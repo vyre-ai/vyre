@@ -2,6 +2,7 @@
 // The sealing process (K3) against invariants 4, 5 and 6: a sealed value exists only inside the sealing process and the person's reveal view;
 // it goes only to the record's own verified contact point or a document for it; reveal and delivery are human-only, with a hardware-signed
 // proof over exactly this payload. Real child processes, temp folders, a real unix socket for the egress sink.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

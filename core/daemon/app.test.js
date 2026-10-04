@@ -2,6 +2,7 @@
 // The one app at /app/ (ADR 0027): its files from dist as a single-page app, its service worker
 // made from dist/precache.json, and its manifest.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

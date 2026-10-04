@@ -4,6 +4,7 @@
 // encoding is checked the way vyred checks it (docs/adr/0004-presence.md). A real platform
 // passkey cannot be made headless; this is as close as node gets.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

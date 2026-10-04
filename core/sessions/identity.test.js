@@ -1,4 +1,5 @@
 // Who an account is signed in as: the non-secret email and org only, never a token.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

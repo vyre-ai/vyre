@@ -3,6 +3,7 @@
 // stream-json (./testing/fake-claude.js), two SSE clients watching, and every tool called the
 // way a surface calls it. The real Claude Code run is recorded in docs/work/switchboard.md.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

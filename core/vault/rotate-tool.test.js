@@ -3,6 +3,7 @@
 // dropped, the reminder for it is done, a guided provider returns its page, and no value is said.
 // A fake GitLab on loopback stands in for the real one.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

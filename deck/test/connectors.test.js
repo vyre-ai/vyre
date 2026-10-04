@@ -1,5 +1,6 @@
 // @ts-check
 // Settings > Connections > "Add a service": the connectors catalog and its connect steps. Sample world only.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { install, text, $, $$ } from "./fake-dom.js";

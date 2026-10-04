@@ -5,6 +5,7 @@
 // tools are called directly — presence and caller enforcement themselves are the registry's job
 // and are covered generically by core/harness/floor.test.js and test/mcp-server-tools.test.js.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

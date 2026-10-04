@@ -3,6 +3,7 @@
 // a named agent stays one tap, and revoking never asks. The proof is bound to the exact permission (its summary names the kind, the
 // recipients and the cap). Inside a real vyred; presence is a stand-in that applies the tool's own `when` and accepts a proof object.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

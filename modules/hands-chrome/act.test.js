@@ -3,6 +3,7 @@
 // are testable without Chrome. The real path (a live DOM through cdp.js) is covered end to end
 // in chrome.test.js.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as act from "./act.js";

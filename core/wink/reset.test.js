@@ -1,5 +1,6 @@
 // @ts-check
 // Reset from the server's own console (core/wink/reset.js): a one-time code made by the command line, only its hash reaches the daemon.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

@@ -3,6 +3,7 @@
 // through streams that stand in for a terminal, against a real vyred in a temp home and a fake
 // `claude` first on PATH that records how it was started.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

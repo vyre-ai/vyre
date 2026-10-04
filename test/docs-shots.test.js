@@ -3,6 +3,7 @@
 // than the code it shows, a PNG nobody recorded, a record whose PNG is gone. No Chrome here:
 // scripts/docs-shots takes the pictures, on testbox; this only checks what it wrote down.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

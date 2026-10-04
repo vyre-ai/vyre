@@ -2,6 +2,7 @@
 // Pairing: devices belong to the identity, never to a space (DESIGN-wink.md sections 3, 4 and 7). A fake ctx (in-memory store, a tool
 // table, an event list), a fake directory (who administers what) and fake typing ports: no relay, no kernel, no network.
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";

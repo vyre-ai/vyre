@@ -2,6 +2,7 @@
 // The module contract version (ADR 0047 section 8): a module names its contract in "vyre", this
 // Vyre says in plain words when it can't run one, and deprecated usages warn without failing.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { CONTRACT, parseContract, supports, moduleContract, newestOf } from "../packages/module-sdk/contract.js";

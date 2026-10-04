@@ -8,6 +8,7 @@
 // vyred), the kernel's chats and appendOpen, the WebSockets, the process kill and restart. Not real: no provider is called (the fake claude echoes), the presence of a person is a test
 // verifier (`kernelPresence`), and the daemon's own unix socket is not used: a harness in e2e-step7-vyred.js fronts it on 127.0.0.1. The scripted adapter of scripts/eval/assistant-fit is
 // a MODEL adapter for the work assistant (core/work); a chat turn goes through the Switchboard and a provider, so the fake claude stands in for the provider and no adapter is involved.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

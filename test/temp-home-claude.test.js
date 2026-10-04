@@ -5,6 +5,7 @@
 // NODE_TEST_CONTEXT cleared, since a dev world is not a test; the child refuses and records any
 // fs call on a .claude path under the fake home or the real one, so nothing real is ever read.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

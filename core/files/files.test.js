@@ -3,6 +3,7 @@
 // direction a path can arrive, preview, chunked fetch, and the Mac's federated search and pull
 // across a fake link to a second, box-role registry in the same process.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

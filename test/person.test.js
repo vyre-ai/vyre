@@ -4,6 +4,7 @@
 // as the owner is only the owner's device; a script on it (no cookie, no signed token) cannot
 // answer an ask, approve, open a terminal or reach a human-only tool.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

@@ -5,6 +5,7 @@
 // registry does: the ctx doors reach their owners as module:bakery, outward is held for a model,
 // and a missing owner answers not_available instead of crashing a tool.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

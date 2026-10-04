@@ -4,6 +4,7 @@
 // runs the Noise handshake and makes requests through the box's own router. Everything on
 // 127.0.0.1; no Tailscale, no Cloudflare.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

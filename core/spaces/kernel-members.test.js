@@ -1,5 +1,6 @@
 // @ts-check
 // spaces: roles, memberships and invites as calls on a real Space kernel (in memory): the module only translates, the kernel decides.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createKernel } from "../../kernel/index.js";

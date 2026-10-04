@@ -1,6 +1,7 @@
 // @ts-check
 // The about module against fake agents, projects and memory modules in a temp home.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

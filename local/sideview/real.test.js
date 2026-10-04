@@ -4,6 +4,7 @@
 // and both windows close within two seconds. Runs only with VYRE_MAC_REAL=1 (the lead says when
 // the Mac is free), the helpers built, and the Accessibility grant in place.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

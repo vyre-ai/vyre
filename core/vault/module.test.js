@@ -3,6 +3,7 @@
 // ctx.vault.fetch, who may call what, the keystores, and the promise the whole thing rests on,
 // that no value appears in an event, a log, a listing, the MCP server or a file on disk.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

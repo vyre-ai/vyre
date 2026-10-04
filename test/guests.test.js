@@ -3,6 +3,7 @@
 // real names listener's request path, with whois simulated, in front of a real vyred router. Only
 // the WireGuard source address says who is calling; the headers each request carries are ignored.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

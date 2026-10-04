@@ -1,3 +1,4 @@
+import "../../../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { ROLES, assignable, ownerMoveLine, canManage, endDate, endingSoon, extend, tempLine, withRole } from "./roles.js";

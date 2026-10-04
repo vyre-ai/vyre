@@ -1,5 +1,6 @@
 // @ts-check
 // The charter-changed notice: who, the diff on request, a one-tap Revert. Sample world only.
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { install, text, $, $$ } from "../../test/fake-dom.js";

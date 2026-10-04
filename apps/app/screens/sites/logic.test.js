@@ -1,3 +1,4 @@
+import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { flowText, goLive, grantedOf, liveOf, previewOf, publishNew, rollBack, setSecret, statusOf, waitingOnYou } from "./logic.js";

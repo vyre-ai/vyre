@@ -3,6 +3,7 @@
 // vyred with the real Gate and a fake mail server. Each route must be refused with nothing sent,
 // and the person's own routes (a signed Capsule call, a code typed at a login terminal) must work.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

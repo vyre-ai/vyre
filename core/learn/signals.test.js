@@ -1,6 +1,7 @@
 // @ts-check
 // More signals, behaviour proposals, scope, jobs, metrics and skills, through the Registry with
 // the real Harness (ADR 0007, decisions 6 to 10). Fictional people and folders only.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

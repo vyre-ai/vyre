@@ -1,6 +1,7 @@
 // @ts-check
 // Pure logic of the motion kit: the springs come from the tokens, reduced motion follows the person AND the system, the stagger is capped,
 // the swipe model offers only what a card has. node:test, no React.
+import "../../../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

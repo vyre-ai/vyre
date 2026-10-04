@@ -2,6 +2,7 @@
 // The assistant module against fake waiting, agents, memory, settings and context modules in a
 // temp home. Nothing here reads real memory, real agents or a real clock.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

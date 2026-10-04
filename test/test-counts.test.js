@@ -1,4 +1,5 @@
 // The test-count guard (scripts/test-counts.mjs) fails when a test file ran fewer tests than it declares or than the last recorded run.
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { declared, problems } from "../scripts/test-counts.mjs";

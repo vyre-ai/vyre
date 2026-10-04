@@ -3,6 +3,7 @@
 // the session's life, the allowlist gate, and end to end against a real vyred and the Node relay
 // with the setup page played by relay/client/setup.js. The six refusal checks of tailnet plan
 // 3.6b condition 6 are the ones named "refusal" below.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

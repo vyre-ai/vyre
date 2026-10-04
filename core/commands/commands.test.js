@@ -1,6 +1,7 @@
 // @ts-check
 // commands.list: the running modules' declared verbs, only those the caller can run, sorted.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

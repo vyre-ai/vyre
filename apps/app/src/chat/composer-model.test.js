@@ -1,4 +1,5 @@
 // @ts-check
+import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { triggerAt, rankByName, sealedChip, pick, sendIntent, runsOnLabel } from "./composer-model.js";

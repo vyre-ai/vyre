@@ -1,6 +1,7 @@
 // @ts-check
 // The statusline module against fake gate, threads, link and agents modules in a temp home.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

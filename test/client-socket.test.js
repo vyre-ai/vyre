@@ -2,6 +2,7 @@
 // Inside a session Vyre started, the client talks on the session's own socket (VYRE_SOCKET, ADR
 // 0030 phase 3), and never starts a vyred from there. An explicit root or socket wins.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
