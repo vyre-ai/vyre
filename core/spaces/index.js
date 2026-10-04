@@ -602,7 +602,7 @@ export default {
             if (i.storeChoice === "cancel") return { status: "cancelled", reason: "You chose not to create it on this server." };
             if (i.storeChoice !== "create") return { status: "needs_confirmation", confirm: { text: confirm.text, choices: ["create", "cancel"] } };
           }
-          const hosted = await KS.host({ owner: (K && typeof K.owner === "string" ? K.owner : s.id), name: label, ...(confirm ? { accept_builtin_store: true } : {}) });
+          const hosted = await KS.host({ owner: s.id, name: label, ...(confirm ? { accept_builtin_store: true } : {}) });
           spaceId = hosted.space || hosted.id;
         }
         const home = { ...i.home };
