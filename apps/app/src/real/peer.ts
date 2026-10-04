@@ -34,6 +34,14 @@ export async function openPeer(): Promise<Peer> {
 
 /** One tool call over the peer wire. Resolves the tool's data; rejects with { code, message } in the server's words. */
 export async function peerCall<T = unknown>(tool: string, input: Record<string, unknown> = {}): Promise<T> {
+  const { withPairedSession } = await import("./paired-retry.js");
+  const { snapshot } = await import("../auth/notice.js");
+  const { howApprove } = await import("./on-phone.js");
+  // An admin act with no live paired session: start one with the device key and make the call once more (lead's ruling ea835cb).
+  return withPairedSession({ call: () => peerCallOnce<T>(tool, input), renew: () => renewSession(), failure: () => snapshot().renewFailed, how: howApprove() });
+}
+
+async function peerCallOnce<T = unknown>(tool: string, input: Record<string, unknown> = {}): Promise<T> {
   let p = await openPeer();
   try { return (await p.call(tool, input)) as T; }
   catch (e) {
