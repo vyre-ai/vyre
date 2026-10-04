@@ -3,6 +3,7 @@ import { createAuthorizer } from "../core/authorize.js";
 import { createRecords, RECORD_ACTIONS } from "./records.js";
 import { createSealing } from "./sealing.js";
 import { ACTIONS as SEAL_ACTIONS } from "../seal/uses.js";
+import { CHECKPOINT_ACTIONS } from "./checkpoints.js";
 import { TASK_ACTIONS } from "../tasks/tasks.js";
 import { createApprovals } from "../tasks/approvals.js";
 import { createGate } from "../core/gate.js";
@@ -30,7 +31,7 @@ export function createGateway(cfg) {
   // `authorize` reads grants and members from the kernel's grants store when one is given; otherwise from the caller (the retrofit path).
   const gs = cfg.grantsStore;
   const wiring = gs ? { grants: gs.provider, members: gs.members, rules: { match: ({ chain, action, resource }) => gs.rulesFor(chain, action, resource) }, ...(cfg.presence ? { verifyPresence: grantProofVerifier(cfg.presence) } : {}) } : {};
-  const rawAuthorizer = createAuthorizer({ ...cfg, ...wiring, attrs, actions: [...RECORD_ACTIONS, ...SEAL_ACTIONS, ...TASK_ACTIONS, ...GRANT_ACTIONS, ...(cfg.actions || [])] });
+  const rawAuthorizer = createAuthorizer({ ...cfg, ...wiring, attrs, actions: [...RECORD_ACTIONS, ...SEAL_ACTIONS, ...TASK_ACTIONS, ...GRANT_ACTIONS, ...CHECKPOINT_ACTIONS, ...(cfg.actions || [])] });
   // A group session's reads are the room's: every gated read below goes through this (kernel/core/room.js roomedAuthorizer).
   const authorizer = cfg.room && cfg.chains ? roomedAuthorizer(rawAuthorizer, cfg.room, cfg.chains) : rawAuthorizer;
   if (gs) gs.bind({ enforce, authorizer, registry: () => authorizer.actions });

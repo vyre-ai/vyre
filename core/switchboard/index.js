@@ -435,6 +435,8 @@ export class Switchboard {
     this.closing = false;
     /** @type {Map<string, { path: string, close: () => Promise<void> }>} each live thread's own socket to vyred (deps.threadSocket) */
     this.socks = new Map();
+    /** @type {Map<string, () => Promise<void>>} the session's egress proxy stopper, run when its socket closes */
+    this.releases = new Map();
     /** @type {Map<string, string>} the last status said per thread, for thread.state */
     this.states = new Map();
     /** @type {Map<string, string[]>} `!` shell output waiting to go with a thread's next message */
@@ -970,6 +972,7 @@ export class Switchboard {
     const pickEnv = (/** @type {string[]} */ names) => Object.fromEntries(names.filter(n => o.env && o.env[n]).map(n => [n, o.env[n]]));
     const r = await prepareSandbox({ ...cfg, temp: this.sessionTemp(id), credentials: cfg.credentials ? async (/** @type {string} */ p) => { const v = await cfg.credentials(p); return typeof v === "string" ? v : v || pickEnv(["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"]); } : (() => pickEnv(["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"])) }, { provider, command: cfg.binFor ? cfg.binFor(provider) : this.bin, sessionSocket: sock.path, workdirs: [rec.cwd], ...(o.gitEnv ? { trustedEnv: o.gitEnv } : {}) });
     if (r.sandboxed) {
+      if (r.release) { const old = this.releases.get(id); this.releases.set(id, r.release); if (old) old().catch(() => {}); }
       // Partly sandboxed (a provider that cannot move its settings folder keeps its own): said on this session's log, and once per machine and provider in words.
       if (r.partial) {
         this.emit("thread.sandbox", { sandboxed: "partial", reason: r.partial.reason, provider, folder: r.partial.folder.map(f => path.basename(f)) }, id, rec.project);
@@ -1009,6 +1012,7 @@ export class Switchboard {
   }
 
   closeSocket(id) {
+    const rel = this.releases.get(id); if (rel) { this.releases.delete(id); rel().catch(() => {}); }   // the session's egress proxy goes with its socket
     const sock = this.socks.get(id);
     if (!sock) { void this.endKernelSession(id); return; }
     this.socks.delete(id);

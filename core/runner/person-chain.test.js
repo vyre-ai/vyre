@@ -11,13 +11,13 @@ const person = id => ({ hops: [{ actor: { kind: "person", id } }] });
 const TOOLS = [["runner.stop", { space: "harlow", session: "s1" }], ["runner.lock", { space: "harlow" }], ["runner.move", { space: "harlow", session: "s1" }], ["runner.start", { space: "harlow", session: "s1" }]];
 
 /** Starts the module against a stub context whose kernel answers `chainFor(meta)`. */
-async function boot(t, chainFor) {
+async function boot(t, chainFor, kernelExtra = {}) {
   const sp = fakeSpace();
   const root = `/tmp/runner-person-${process.pid}-${Math.random().toString(36).slice(2)}`;
   seams.set(root, { ports: { device: "dev_kit", vault: sp.vault, sync: sp.sync, grants: () => ({ spaceAllows: true, memberAccepts: true }), spec: async () => null } });
   t.after(() => seams.delete(root));
   /** @type {Map<string, any>} */ const tools = new Map();
-  const ctx = { paths: { root }, events: { emit() {} }, tool: (name, def) => tools.set(name, def), kernel: chainFor ? { chain: async meta => chainFor(meta) } : undefined };
+  const ctx = { paths: { root }, events: { emit() {} }, tool: (name, def) => tools.set(name, def), kernel: chainFor ? { owner: "per_a", ...kernelExtra, chain: async meta => chainFor(meta) } : undefined };
   const h = await mod.start(ctx);
   t.after(() => h.stop());
   return (tool, meta) => tools.get(tool).run(TOOLS.find(x => x[0] === tool)[1], meta);
@@ -49,4 +49,11 @@ test("kernel on: the person's own chain passes the person check whatever the lab
 test("kernel off (legacy labels): the old refusal of agents, modules and guests still holds", async t => {
   const call = await boot(t, null);
   for (const caller of ["cli:agent:kit", "module:rogue", "tailnet:guest-1"]) await assert.rejects(call("runner.lock", { caller }), e => e.code === "denied");
+});
+
+test("RN-2: another member's person chain is not this computer's person: refused for every tool, the owner's passes", async t => {
+  const call = await boot(t, () => person("per_bob"));
+  for (const [tool] of TOOLS) await assert.rejects(call(tool, { caller: "cli" }), e => e.code === "denied", `${tool} refused for a second member`);
+  const noOwner = await boot(t, () => person("per_a"), { owner: undefined });
+  await assert.rejects(noOwner("runner.lock", { caller: "cli" }), e => e.code === "denied", "an unknown owner is a refusal");
 });

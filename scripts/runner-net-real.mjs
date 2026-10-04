@@ -40,6 +40,7 @@ async function runHome() {
   const ownSock = path.join(run, "s.sock"); const sv = net.createServer(c => c.end()); await new Promise(r => sv.listen(ownSock, r));
   let proxy;
   if (process.platform === "linux") { const sock = path.join(home, "egress.sock"); const eg = createEgress({ routes: [], vault: {}, session: "s", token: "tok", internet: true }); await eg.listen({ socket: sock }); proxy = { socket: sock, token: "tok" }; }
+  else if (process.platform === "darwin") { const eg = createEgress({ routes: [], vault: {}, session: "s", token: "tok", internet: true }); const r = await eg.listen({}); proxy = { port: r.port, token: "tok" }; }
   const ro = [path.dirname(process.execPath)].filter(d => !["/usr/bin", "/bin"].includes(d));
   const p = planHome({ platform: process.platform, command: "/bin/sh", args: ["-c", script], home, vyreHome: path.join(home, ".vyre"), sessionSocket: ownSock, workdirs: [path.join(home, "proj")], temp: path.join(home, "t"), readOnly: ro, ...(proxy ? { proxy } : {}), passEnv: [],
     agent: { command: "/bin/sh", hosts: [], private: { from: path.join(home, ".realcfg"), env: "AGENT_CONFIG_DIR", credentialFiles: [] } } });

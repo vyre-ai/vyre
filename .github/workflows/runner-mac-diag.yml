@@ -1,0 +1,22 @@
+name: runner-mac-diag
+# One short hosted-Mac job (a few minutes): runs scripts/runner-mac-diag.mjs, which tries variants of the home seatbelt profile. Runs only on work/runner-diag.
+on:
+  push:
+    branches: [work/runner-diag]
+permissions:
+  contents: read
+jobs:
+  mac:
+    runs-on: macos-14
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/runner-mac-diag.mjs 2>&1 | tee diag.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: runner-mac-diag
+          path: diag.txt
