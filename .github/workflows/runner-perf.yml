@@ -22,6 +22,7 @@ jobs:
           node-version: 22
       - name: image formats (which encrypted image is fastest for small files)
         if: always()
+        timeout-minutes: 6
         run: node scripts/runner-fs-bench-mac.mjs | tee fs-formats.json
       - name: sandbox tests (the home sandbox and the lent sandbox, on a macOS runner)
         if: always()
@@ -31,16 +32,19 @@ jobs:
         run: node --test --test-reporter=spec core/runner/homesandbox.test.js core/runner/mac-hosted.test.js core/runner/home-network.test.js core/runner/rv2-seatbelt.test.js core/runner/runner.test.js core/runner/hardening.test.js core/runner/checkpoint-io.test.js core/runner/checkpoint-store.test.js 2>&1 | tee sandbox-tests.txt
       - name: real commands through the sandbox network (git clone, npm ci, pip install, git over ssh, refusals)
         if: always()
+        timeout-minutes: 10
         run: |
           node scripts/runner-net-real.mjs home 2>&1 | tee net-home.txt
           node scripts/runner-net-real.mjs lent 2>&1 | tee net-lent.txt
       - name: the real claude inside the home sandbox (does it start with every write denied?)
         if: always()
+        timeout-minutes: 6
         run: |
           npm install -g @anthropic-ai/claude-code >/dev/null 2>&1 || true
           node scripts/runner-mac-claude.mjs 2>&1 | tee claude-run.txt || true
       - name: git inside the lent sandbox (why does a clone fail?)
         if: always()
+        timeout-minutes: 4
         run: |
           mkdir -p /tmp/gitprobe/files && cd /tmp/gitprobe && cat > p.mjs <<'EOF2'
           const { plan, launch } = await import(process.env.GITHUB_WORKSPACE + '/core/runner/sandbox.js');

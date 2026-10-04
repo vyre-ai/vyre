@@ -979,7 +979,7 @@ export class Switchboard {
     if (!sock) throw Object.assign(new Error("Vyre did not start this session because it has no socket of its own to reach Vyre through."), { code: "sandbox_failed" });
     const provider = rec.provider || o.provider || "claude";
     const pickEnv = (/** @type {string[]} */ names) => Object.fromEntries(names.filter(n => o.env && o.env[n]).map(n => [n, o.env[n]]));
-    const r = await prepareSandbox({ ...cfg, temp: this.sessionTemp(id), credentials: cfg.credentials ? async (/** @type {string} */ p) => { const v = await cfg.credentials(p); return typeof v === "string" ? v : v || pickEnv(["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"]); } : (() => pickEnv(["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"])) }, { provider, command: cfg.binFor ? cfg.binFor(provider) : this.bin, sessionSocket: sock.path, workdirs: [rec.cwd], ...(o.gitEnv ? { trustedEnv: o.gitEnv } : {}) });
+    const r = await prepareSandbox({ ...cfg, temp: this.sessionTemp(id), credentials: cfg.credentials ? async (/** @type {string} */ p) => { const v = await cfg.credentials(p); return typeof v === "string" ? v : v || pickEnv(["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"]); } : (() => pickEnv(["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"])) }, { provider, command: absoluteBin(cfg.binFor ? cfg.binFor(provider) : this.bin), sessionSocket: sock.path, workdirs: [rec.cwd], ...(o.gitEnv ? { trustedEnv: o.gitEnv } : {}) });
     if (r.sandboxed) {
       if (r.release) { const old = this.releases.get(id); this.releases.set(id, r.release); if (old) old().catch(() => {}); }
       // Partly sandboxed (a provider that cannot move its settings folder keeps its own): said on this session's log, and once per machine and provider in words.
@@ -3078,6 +3078,14 @@ export function surfaceFor(input, caller, owner, kc, kernelOwner) {
   // terminal's (cli:<pid>), the link's (box:x) or another agent's, and re-taking "your own" lease is not a conflict.
   else s = asked && asked !== c ? `via:${c || "vyre"}` : (c || "vyre");
   return fromLink(caller) && !s.startsWith("box:") ? `box:${s}` : s;
+}
+
+/** The sandbox runs an absolute program path: a bare `claude` is looked up on PATH the way a shell would, and left as it is when it is not found (the check then says so). @param {string} cmd */
+function absoluteBin(cmd) {
+  const c = String(cmd || "");
+  if (!c || path.isAbsolute(c) || c.includes("/")) return c;
+  for (const dir of String(process.env.PATH || "").split(path.delimiter)) { if (!dir) continue; const f = path.join(dir, c); try { fs.accessSync(f, fs.constants.X_OK); return f; } catch { /* not here */ } }
+  return c;
 }
 
 export const fromLink = caller => /^link:/.test(String(caller || ""));
