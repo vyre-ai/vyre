@@ -5,6 +5,9 @@
 // openPairing() below is the ONE place that hands out a session, and it hands out the mock.
 
 import type { WinkCode } from "./wink-code.ts";
+import { serverSession } from "../real/pairing.ts";
+
+const realSession = serverSession;
 
 export type PairingSession = {
   /** The three words both screens show. */
@@ -17,6 +20,10 @@ export type PairingSession = {
   confirm(): Promise<void>;
   /** The person says they do not match. Nothing is paired. */
   reject(): void;
+  /** "answer" (default): the person answers here with the words. "watch": the person says yes on the other device and this screen only shows the words until confirm() resolves. */
+  kind?: "answer" | "watch";
+  /** Real sessions only: resolves when the words are known (the box answered), rejects with the reason in plain words. */
+  ready?(): Promise<void>;
 };
 
 const MOCK_WORDS: [string, string, string][] = [
@@ -47,9 +54,10 @@ export function mockPairingSession(code: Extract<WinkCode, { ok: true }>): Pairi
   };
 }
 
-/** The one place a session is opened. Swap the body for the Wink module call when the app can reach it. */
+/** The one place a session is opened: the box's own wink tools (src/real/pairing.ts), or the mock in a development build with EXPO_PUBLIC_VYRE_MOCK=1. */
 export function openPairing(code: Extract<WinkCode, { ok: true }>): PairingSession {
-  return mockPairingSession(code);
+  if (typeof process !== "undefined" && process.env?.EXPO_PUBLIC_VYRE_MOCK === "1") return mockPairingSession(code);
+  return realSession(code);
 }
 
 /** "amber, river, lantern" for a line of text. */

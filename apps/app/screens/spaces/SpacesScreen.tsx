@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { Avatar, Banner, Button, Card, IconButton, Menu, Chip, Divider, Field, Row, Segmented, Sheet, Text, showToast, markRef, spaceRef, haptic } from "@vyre/ui";
@@ -6,30 +6,37 @@ import { Footnote, Page, Sec } from "../places/Frame";
 import { usePhone } from "../places/Page";
 import { FaceIdSheet, type FaceAsk } from "../shell/FaceIdSheet";
 import { useSpaces } from "../shell/state";
-import { loadMembers, loadSpaces, loadTeammates, ME, TEMP_PROJECTS, type Member } from "./data";
+import { loadTeammates, TEMP_PROJECTS, type Member } from "./data";
+import { MOCK, said, tool } from "../../src/real/box";
 import { useMembers } from "./state";
 import { loadSetupElsewhere } from "../install/data";
 import { CONTINUE_HERE, packProgress, setupElsewhere } from "../install/flow.js";
 import { writeProgress } from "../../src/state/setup-progress";
 import { EXTENSIONS, ROLES, TEMP_ENDS, endDate as endDateOf, assignable, canManage, ownerMoveLine, roleLabel, type Role } from "./roles.js";
 
-const SPACES = loadSpaces();
-const TEAM = loadTeammates();
-const MY_ROLE: Role = "admin";
-const ELSEWHERE = loadSetupElsewhere();
-const OWNER = loadMembers().find((m) => m.role === "owner")?.name ?? "its owner";
+const TEAM = MOCK ? loadTeammates() : [];
+const ROLE_IDS = ["owner", "admin", "manager", "member", "temp"];
 
 type Sheetv = null | { kind: "role"; id: string; role: Role; scope: string; days: string } | { kind: "extend"; id: string } | { kind: "temp"; name: string; scope: string; days: string };
 
 export function SpacesScreen() {
   const router = useRouter();
   const phone = usePhone();
-  const { members, setRole, remove, extendBy, addTemp } = useMembers();
+  const { members, spaces: SPACES, projects, warnings, error, loading, space, selfId, deviceId, load, setRole, remove, extendBy, addTemp } = useMembers();
+  useEffect(() => { void load(); }, [load]);
+  const cur = SPACES.find((x) => x.id === space);
+  const MY_ROLE = (MOCK ? "admin" : ROLE_IDS.includes(cur?.role ?? "") ? cur!.role : "member") as Role;
+  const ME = MOCK ? "alex" : selfId ?? "";
+  const OWNER = members.find((m) => m.role === "owner")?.name ?? "its owner";
+  const projectNames = MOCK ? TEMP_PROJECTS : projects.map((p) => p.name);
+  const spaceName = cur?.name ?? "this space";
+  const ELSEWHERE = MOCK ? loadSetupElsewhere() : (() => { const s = SPACES.find((x) => x.setup && x.setup.device.id !== deviceId); return s?.setup ? { device: s.setup.device.name, space: s.id, spaceName: s.name } : null; })();
+  const fail = (m: string | null) => { if (m) showToast(m); return m === null; };
   const setShowing = useSpaces((s) => s.setShowing);
   const [sheet, setSheet] = useState<Sheetv>(null);
   const [face, setFace] = useState<FaceAsk | null>(null);
   const member = (id: string) => members.find((m) => m.id === id);
-  const open = (m: Member) => setSheet({ kind: "role", id: m.id, role: m.role, scope: m.scope ?? TEMP_PROJECTS[0], days: String(m.left && m.left > 30 ? 90 : m.left && m.left > 7 ? 30 : 7) });
+  const open = (m: Member) => setSheet({ kind: "role", id: m.id, role: m.role, scope: m.scope ?? projectNames[0] ?? "", days: String(m.left && m.left > 30 ? 90 : m.left && m.left > 7 ? 30 : 7) });
   const allowed = assignable(MY_ROLE);
 
   return (
@@ -40,20 +47,22 @@ export function SpacesScreen() {
           <View className="gap-s2">
             <Text strong>{setupElsewhere(ELSEWHERE.device)}</Text>
             <Text size="caption" tone="muted">{`${ELSEWHERE.spaceName} is paired. The rest of its setup carries on from there, or from here.`}</Text>
-            <View className="self-start"><Button size="sm" label={CONTINUE_HERE} onPress={() => { writeProgress(packProgress({ step: "look", name: "alex", spaceName: ELSEWHERE.spaceName, addr: ELSEWHERE.space, look: "amber", where: "server", pairTo: "me", device: "this" })).then(() => router.push("/u/install/create" as never)); }} /></View>
+            <View className="self-start"><Button size="sm" label={CONTINUE_HERE} onPress={() => { const go = () => writeProgress(packProgress({ step: "look", name: MOCK ? "alex" : "", spaceName: ELSEWHERE.spaceName, addr: ELSEWHERE.space, look: "amber", where: "server", pairTo: "me", device: "this" })).then(() => router.push("/u/install/create" as never)); if (MOCK) { void go(); return; } void tool("spaces.setup.claim", { space: ELSEWHERE.space }).then(go, (e) => showToast(said(e))); }} /></View>
           </View>
         </Banner>
       ) : null}
+      {error ? <Banner icon="refresh"><Text tone="warn">{error}</Text></Banner> : null}
+      {!MOCK && !loading && !error && !SPACES.length ? <Card><Text tone="muted">No spaces yet. Create one, or join one from a link.</Text></Card> : null}
       <View className="flex-row flex-wrap gap-s3">
         {SPACES.map((s) => (
           <Card flush key={s.id} className="min-w-menu flex-1">
             <Row lead={<Avatar of={spaceRef(s.name)} size={56} />} title={s.name} chevron className="py-s3"
-              sub={<View className="gap-s1"><Text mono tone="label" numberOfLines={1} style={{ fontSize: 13, lineHeight: 18 }}>{s.address}</Text><Text size="secondary" tone="label" numberOfLines={1}>{`${s.role === "owner" ? "Owner" : "Admin"}, lives on ${s.home}`}</Text></View>}
+              sub={<View className="gap-s1"><Text mono tone="label" numberOfLines={1} style={{ fontSize: 13, lineHeight: 18 }}>{s.address}</Text><Text size="secondary" tone="label" numberOfLines={1}>{`${roleLabel(s.role as Role)}, lives on ${s.home}`}</Text></View>}
               onPress={() => { setShowing(s.id); router.push("/u/now" as never); }} />
           </Card>
         ))}
       </View>
-      <Sec title="Members of Harlow Legal">
+      <Sec title={`Members of ${spaceName}`}>
         <Card flush>
           {members.map((m, i) => {
             const self = m.id === ME;
@@ -78,15 +87,16 @@ export function SpacesScreen() {
         </Card>
         <View className="gap-s1 pt-s3">
           <Button kind="primary" size="lg" className={phone ? undefined : "self-start"} icon="plus" label="Invite someone" onPress={() => router.push("/u/wink/invite" as never)} />
-          <Button kind="ghost" label="Add a temp member" onPress={() => setSheet({ kind: "temp", name: "", scope: TEMP_PROJECTS[0], days: "7" })} />
+          <Button kind="ghost" label="Add a temp member" onPress={() => setSheet({ kind: "temp", name: "", scope: projectNames[0] ?? "", days: "7" })} />
         </View>
       </Sec>
+      {warnings.map((w) => <Footnote key={w}>{w}</Footnote>)}
       <Footnote>Temp access ends on its date. One tap extends it, with Face ID.</Footnote>
 
       <Sheet open={sheet?.kind === "role"} onClose={() => setSheet(null)} title={sheet?.kind === "role" ? member(sheet.id)?.name : undefined}>
         {sheet?.kind === "role" ? (
           <>
-            <Text tone="muted">Role in Harlow Legal</Text>
+            <Text tone="muted">{`Role in ${spaceName}`}</Text>
             <View>
               {ROLES.filter((r) => allowed.includes(r.id) || r.id === "owner" || r.id === member(sheet.id)?.role).map((r) => (
                 <Row key={r.id} title={r.label} sub={<Text size="secondary" tone="label">{r.id === "owner" ? ownerMoveLine(OWNER) : r.line}</Text>} selected={sheet.role === r.id} onPress={allowed.includes(r.id) ? () => setSheet({ ...sheet, role: r.id }) : undefined} />
@@ -94,15 +104,15 @@ export function SpacesScreen() {
             </View>
             {sheet.role === "temp" ? (
               <View className="gap-s3">
-                <Segmented label="Only this project" value={sheet.scope} onChange={(v) => setSheet({ ...sheet, scope: v })} options={TEMP_PROJECTS.map((p) => [p, p] as [string, string])} />
+                <Segmented label="Only this project" value={sheet.scope} onChange={(v) => setSheet({ ...sheet, scope: v })} options={projectNames.map((p) => [p, p] as [string, string])} />
                 <Segmented label="Ends" value={sheet.days} onChange={(v) => setSheet({ ...sheet, days: v })} options={TEMP_ENDS as [string, string][]} />
               </View>
             ) : null}
             <View className="flex-row flex-wrap gap-s2">
-              <Button kind="primary" label="Save" onPress={() => { const m = member(sheet.id)!; setRole(m.id, sheet.role, { scope: sheet.scope, days: Number(sheet.days) }); setSheet(null); haptic.approve(); showToast(`${m.name} is now ${roleLabel(sheet.role)}.`); }} />
+              <Button kind="primary" label="Save" onPress={() => { const m = member(sheet.id)!; const to = sheet.role; setSheet(null); void setRole(m.id, to, { scope: sheet.scope, days: Number(sheet.days) }).then((e) => { if (fail(e)) { haptic.approve(); showToast(`${m.name} is now ${roleLabel(to)}.`); } }); }} />
               <Button kind="ghost" label="Cancel" onPress={() => setSheet(null)} />
               <View className="flex-1" />
-              <Button kind="hold" label={`Remove ${member(sheet.id)?.name}`} onPress={() => { const m = member(sheet.id)!; remove(m.id); setSheet(null); showToast(`${m.name} was removed from Harlow Legal.`); }} />
+              <Button kind="hold" label={`Remove ${member(sheet.id)?.name}`} onPress={() => { const m = member(sheet.id)!; setSheet(null); void remove(m.id).then((e) => { if (fail(e)) showToast(`${m.name} was removed from ${spaceName}.`); }); }} />
             </View>
           </>
         ) : null}
@@ -118,7 +128,7 @@ export function SpacesScreen() {
                 {EXTENSIONS.map(([d, label]) => (
                   <Row key={d} title={label} onPress={() => {
                     setSheet(null);
-                    setFace({ title: "Extend access", body: `Face ID confirms it is you. ${m.name} keeps seeing ${m.scope} for ${d} more days.`, onApprove: () => { extendBy(m.id, Number(d)); showToast("Access extended."); } });
+                    setFace({ title: "Extend access", body: `Face ID confirms it is you. ${m.name} keeps seeing ${m.scope} for ${d} more days.`, onApprove: () => { void extendBy(m.id, Number(d)).then((e) => { if (fail(e)) showToast("Access extended."); }); } });
                   }} />
                 ))}
               </View>
@@ -132,14 +142,14 @@ export function SpacesScreen() {
         {sheet?.kind === "temp" ? (
           <>
             <Text tone="muted">They see one project until the end date.</Text>
-            <Field label="Name" value={sheet.name} onChangeText={(v) => setSheet({ ...sheet, name: v })} placeholder="Their name" />
-            <Segmented label="Only this project" value={sheet.scope} onChange={(v) => setSheet({ ...sheet, scope: v })} options={TEMP_PROJECTS.map((p) => [p, p] as [string, string])} />
+            <Field label={MOCK ? "Name" : "Their Vyre name"} value={sheet.name} onChangeText={(v) => setSheet({ ...sheet, name: v })} placeholder={MOCK ? "Their name" : "name.vyre.run"} />
+            <Segmented label="Only this project" value={sheet.scope} onChange={(v) => setSheet({ ...sheet, scope: v })} options={projectNames.map((p) => [p, p] as [string, string])} />
             <Segmented label="Ends" value={sheet.days} onChange={(v) => setSheet({ ...sheet, days: v })} options={TEMP_ENDS as [string, string][]} />
             <View className="flex-row gap-s2">
-              <Button kind="primary" label="Send invite" disabled={!sheet.name.trim()} onPress={() => {
+              <Button kind="primary" label={MOCK ? "Send invite" : "Add"} disabled={!sheet.name.trim() || (!MOCK && !projectNames.length)} onPress={() => {
                 const name = sheet.name.trim();
-                addTemp(withTemp(name, sheet.scope, Number(sheet.days)));
-                setSheet(null); showToast(`Invite sent to ${name}.`);
+                setSheet(null);
+                void addTemp({ ...withTemp(name, sheet.scope, Number(sheet.days)), person: name }).then((e) => { if (fail(e)) showToast(MOCK ? `Invite sent to ${name}.` : `${name} was added.`); });
               }} />
               <Button kind="ghost" label="Cancel" onPress={() => setSheet(null)} />
             </View>
