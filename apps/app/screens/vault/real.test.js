@@ -61,7 +61,7 @@ test("a reveal the box refuses for presence keeps its code and gets plain words,
   const b = box({ reveal: { error: { code: "presence_required", message: "vault.reveal needs presence" } } });
   await assert.rejects(vaultSource(b.call).revealReal("Gmail", "password"), (/** @type {any} */ e) => {
     assert.equal(e.code, "presence_required");
-    assert.match(revealRefusal(e.code, e.message), /Face ID or your fingerprint/);
+    assert.match(revealRefusal(e.code, e.message), /Approve on this device/);
     return true;
   });
 });
