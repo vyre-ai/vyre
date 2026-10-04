@@ -1074,8 +1074,16 @@ test("the session strength is proven at each sign-in (the identity entry's encla
     assert.ok(selfAnswer.error, "a device cannot answer its own card");
     assert.equal((await f.w.d.registry.call("presence.person.session-answer", { id: ask.id, yes: true, proof: yes }, "cli")).data.state, "approved");
     const first = await links.signInStatus("srv", ask.id);
-    assert.deepEqual([first.state, first.proof], ["approved", yes], "the browser reads the phone's yes back");
-    assert.equal((await links.signInStatus("srv", ask.id)).proof, undefined, "once");
+    assert.deepEqual([first.state, first.card, first.proof], ["approved", ask.id, undefined], "the browser gets the card, never the phone's proof");
+    // the card is spent ONCE by the asking device's act (the phone's proof was spent when it answered, so it is never replayed at the moment)
+    const { yes: yesAt } = await import("../core/presence/index.js");
+    const act = { op: "vault.reveal", fields: { name: "northwind-mail" }, device: f.done.device };
+    assert.deepEqual(await yesAt("vault", { op: "vault.reveal", fields: { name: "another-secret" }, device: f.done.device }, { card: ask.id }), { ok: false, reason: "wrong_request" }, "a card is for exactly the request on it");
+    assert.deepEqual(await yesAt("vault", { ...act, device: "someotherdevice" }, { card: ask.id }), { ok: false, reason: "wrong_request" }, "and for the device that asked");
+    assert.deepEqual(await yesAt("outward", act, { card: ask.id }), { ok: false, reason: "wrong_request" }, "and for its moment");
+    assert.deepEqual(await yesAt("vault", act, { card: ask.id }), { ok: true, strength: "real" }, "the asking device's act spends it");
+    assert.deepEqual(await yesAt("vault", act, { card: ask.id }), { ok: false, reason: "replayed" }, "once");
+    assert.deepEqual(await yesAt("vault", act, { card: "ask_unknown" }), { ok: false, reason: "no_proof" });
     assert.deepEqual(await strengthsOf(f), ["software"], "nothing about the browser's own session changed"); }
   // CD-1: the owner's own phone (the app registered hardware key storage) can list the cards, though its own session is software in this harness
   { const f = await pairFreshServer(t, { presenceStorage: "hardware" }); const links = linksFor(t, f); await links.startPaired("srv");
@@ -1094,3 +1102,27 @@ test("the session strength is proven at each sign-in (the identity entry's encla
 });
 
 // ---- the join, end to end (tailnet, 4 Oct; the invitee's first key from the accept itself, vault): two real daemons, a space hosted on the server, an invite, a second person's device that is not a member ----
+
+test("the daemon wires yes() to the kernel's own verifier: a real-key yes stands once, and a replay, another request and an unknown key are refused", async t => {
+  const { startSealer } = await import("../kernel/seal/client.js");
+  const { signer: sealSigner, enrolDevice, tmp } = await import("../kernel/seal/testing.js");
+  const ident = await standinIdentity(t);
+  const sealDir = tmp("yes-wired-seal");
+  const sealer = startSealer({ dir: sealDir, timeoutMs: 8000, dev: true, unattested: true });
+  t.after(async () => { await sealer.close().catch(() => {}); fs.rmSync(sealDir, { recursive: true, force: true }); });
+  const f = await pairFreshServer(t, { ident, kernelSealer: sealer });
+  const owner = sealSigner(ident.id);
+  await enrolDevice(sealer, owner);
+  const chain = f.w.d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-yes", person: ident.id, path: "direct" });
+  const { yes, signOf } = await import("../core/presence/index.js");
+  const req = { op: "vault.reveal", fields: { name: "northwind-mail" } };
+  const sg = signOf("vault", req);
+  const proof = owner.proof(chain, sg.op, sg.fields);
+  assert.deepEqual(await yes("vault", { chain, ...req }, proof), { ok: true }, "the owner's real key says yes");
+  assert.deepEqual(await yes("vault", { chain, ...req }, proof), { ok: false, reason: "replayed" }, "the same proof twice");
+  const other = owner.proof(chain, sg.op, { ...sg.fields, what: "vault.copy" });
+  assert.equal((await yes("vault", { chain, ...req }, other)).ok, false, "a proof over another request does not stand");
+  const stranger = sealSigner(ident.id);
+  assert.deepEqual(await yes("vault", { chain, ...req }, stranger.proof(chain, sg.op, sg.fields)), { ok: false, reason: "unknown_key" }, "a key the server never enrolled");
+  assert.deepEqual(await yes("admin", { chain, ...req }, proof), { ok: false, reason: "wrong_request" }, "only the three moments");
+});

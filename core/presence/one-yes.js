@@ -13,6 +13,21 @@ export const MOMENTS = Object.freeze(["pair", "vault", "outward"]);
 /** Why a yes was refused. */
 export const YES_REASONS = Object.freeze(["no_proof", "expired", "replayed", "wrong_request", "software_key", "unknown_key"]);
 
+/**
+ * What the owner's key signs for a moment: the sealing process takes `task.*` and `grant.*` acts, so each moment has one act word, and the card's own op and plain fields ride in the fields.
+ * The card shows this (`sign`), the phone signs exactly it, and the verifier checks exactly it.
+ * @param {string} moment @param {{ op: string, fields: any }} request @returns {{ op: string, fields: Record<string, any> }}
+ */
+export function signOf(moment, request) {
+  const act = moment === "pair" ? "grant.pair_device" : moment === "vault" ? "task.vault_use" : "task.outward_act";
+  return { op: act, fields: { what: request.op, ...(request.fields && typeof request.fields === "object" ? request.fields : {}) } };
+}
+
+/** The card store's redeemer, set by the presence module: a card the owner's phone approved (its proof already verified when it was given) is spent ONCE by the asking device's act. @type {null | ((id: string, moment: string, request: { op: string, fields: any }, device: string | null) => "ok" | "replayed" | "wrong_request" | "no_proof")} */
+let redeemCard = null;
+/** @param {typeof redeemCard} fn */
+export function setCardRedeemer(fn) { redeemCard = typeof fn === "function" ? fn : null; }
+
 /** @param {any} chain */
 const isChainOfOnePerson = chain => Boolean(chain && Array.isArray(chain.hops) && chain.viewer !== true && chain.hops.length === 1 && chain.hops[0] && chain.hops[0].actor && chain.hops[0].actor.kind === "person");
 
@@ -28,7 +43,7 @@ export function isYou(subject) {
   try { return isPerson(subject); } catch { return false; }
 }
 
-/** @typedef {(i: { chain?: any, op: string, fields: any, proof: any, moment: string, dry?: boolean }) => Promise<null | string | { ok: boolean, code?: string, reason?: string, strength?: string }> | null | string | { ok: boolean, code?: string, reason?: string, strength?: string }} Verifier */
+/** @typedef {(i: { chain?: any, op: string, fields: any, proof: any, moment: string, request?: { op: string, fields: any }, dry?: boolean }) => Promise<null | string | { ok: boolean, code?: string, reason?: string, strength?: string }> | null | string | { ok: boolean, code?: string, reason?: string, strength?: string }} Verifier */
 /** @type {{ verify: Verifier | null, softwareOk: () => boolean }} */
 const state = { verify: null, softwareOk: () => false };
 
@@ -56,7 +71,7 @@ export function yesReason(code) {
 /**
  * A fresh yes for one of the three moments.
  * @param {string} moment one of MOMENTS
- * @param {{ chain?: any, op: string, fields: any }} request the exact thing the proof was made over
+ * @param {{ chain?: any, op: string, fields: any, device?: string }} request the exact thing the proof was made over (`device`: the paired device whose act this is, for a card)
  * @param {any} proof the signed proof object
  * @param {{ verify?: Verifier | null, softwareOk?: () => boolean, dry?: boolean }} [via] a test seam (and `dry`); the daemon's configuration is the default. `dry: true` asks the verifier to CHECK the proof without spending it (a card's answer is checked when it is given and spent when it is used)
  * @returns {Promise<{ ok: true, strength?: string } | { ok: false, reason: string }>}
@@ -65,11 +80,16 @@ export async function yes(moment, request, proof, via = {}) {
   if (!MOMENTS.includes(/** @type {any} */ (moment))) return { ok: false, reason: "wrong_request" };
   if (!request || typeof request !== "object" || typeof request.op !== "string" || !/^[a-z][a-z0-9_.-]{1,80}$/.test(request.op) || !request.fields || typeof request.fields !== "object" || Array.isArray(request.fields)) return { ok: false, reason: "wrong_request" };
   if (!proof || typeof proof !== "object" || Array.isArray(proof)) return { ok: false, reason: "no_proof" };
+  // a card the owner's phone already approved: its proof was checked (and spent) when the phone gave it; the asking device's act spends the card, once, for exactly that request
+  if (typeof proof.card === "string") {
+    const r = redeemCard ? redeemCard(proof.card, moment, { op: request.op, fields: request.fields }, typeof request.device === "string" ? request.device : null) : "no_proof";
+    return r === "ok" ? { ok: true, strength: "real" } : { ok: false, reason: r };
+  }
   const verify = via.verify !== undefined ? via.verify : state.verify;
   if (typeof verify !== "function") return { ok: false, reason: "no_proof" };
   const softwareOk = via.softwareOk || state.softwareOk;
   /** @type {any} */ let r;
-  try { r = await verify({ ...(request.chain ? { chain: request.chain } : {}), op: request.op, fields: request.fields, proof, moment, ...(via.dry === true ? { dry: true } : {}) }); } catch { return { ok: false, reason: "no_proof" }; }
+  try { r = await verify({ ...(request.chain ? { chain: request.chain } : {}), op: request.op, fields: request.fields, proof, moment, request: { op: request.op, fields: request.fields }, ...(via.dry === true ? { dry: true } : {}) }); } catch { return { ok: false, reason: "no_proof" }; }
   // only `null` means the proof stands (the sealing process's own answer); `undefined`, a bare boolean or anything else is a refusal
   if (r === null) return { ok: true };
   if (r === undefined) return { ok: false, reason: "no_proof" };

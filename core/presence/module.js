@@ -10,7 +10,7 @@
 import crypto from "node:crypto";
 import { devSwitch } from "../../kernel/devbuild.js";
 import { STRENGTHS, isNotSoftware } from "./strengths.js";
-import { yes } from "./one-yes.js";
+import { yes, signOf, setCardRedeemer } from "./one-yes.js";
 import { Presence } from "./index.js";
 import { PersonSessions } from "./person.js";
 import { isServer } from "../config/index.js";
@@ -229,8 +229,17 @@ export default {
       const what = moment === "vault" ? `reveal or use ${r.fields.name ? `"${String(r.fields.name).slice(0, 80)}"` : "a secret"} in your vault` : moment === "pair" ? "pair a new device" : `${r.op.split(".").pop()} ${Object.entries(r.fields).slice(0, 4).map(([k, v]) => `${k}: ${String(v).slice(0, 80)}`).join(", ")}`.trim();
       return `${deviceName} wants to ${what}`;
     };
-    /** @type {Map<string, { id: string, device: string, label: string, state: "waiting" | "approved" | "refused", moment: string, request: any, proof?: any, asked?: number, expires: number }>} */
+    /** @type {Map<string, { id: string, device: string, label: string, state: "waiting" | "approved" | "refused", moment: string, request: any, verified?: boolean, used?: boolean, asked?: number, expires: number }>} */
     const asks = new Map();
+    const canon = (/** @type {any} */ o) => JSON.stringify(Object.keys(o).sort().map(k => [k, o[k]]));
+    setCardRedeemer((id, moment, request, device) => {
+      const a = [...asks.values()].find(x => x.id === id);
+      if (!a || a.expires <= Date.now() || a.state !== "approved" || !a.verified) return "no_proof";
+      if (a.used) return "replayed";
+      if (a.moment !== moment || a.request.op !== request.op || canon(a.request.fields) !== canon(request.fields && typeof request.fields === "object" ? request.fields : {}) || (device && device !== a.device)) return "wrong_request";
+      a.used = true;
+      return "ok";
+    });
     const liveAsk = (/** @type {string} */ device) => { const a = asks.get(device); if (a && a.expires <= Date.now()) { asks.delete(device); return null; } return a || null; };
 
     // ---- an owner-paired device (ADR 0032 section 2d) ----------------------------------------------
@@ -365,14 +374,14 @@ export default {
         const a = asks.get(nodeOf(meta));
         if (!a || a.id !== String(input.id)) return { state: "none" };
         if (a.expires <= Date.now()) { asks.delete(a.device); return { state: "timeout" }; }
-        // the signed yes goes back once, to the device that asked
-        if (a.state === "approved" && a.proof) { const proof = a.proof; a.proof = undefined; return { state: a.state, proof }; }
+        // approved: the card's id is what the asking device attaches to its act (`{ card: id }` as the proof of yes()); the phone's proof was verified when it was given and is never handed on
+        if (a.state === "approved" && a.verified && !a.used) return { state: a.state, card: a.id };
         return { state: a.state };
       },
     });
     ctx.tool("presence.person.session-pending", {
       effect: "read",
-      description: "The sign-in asks still waiting for the owner, for their phone: { asks: [{ id, device, line, moment, request, asked_at }] } (`line` is made by this server from the request and its own name for the device, never the asker's words), newest first. An ask lasts 5 minutes, then it is gone (so one made while the app was closed is still there when it opens).",
+      description: "The sign-in asks still waiting for the owner, for their phone: { asks: [{ id, device, line, moment, request, sign: { op, fields } (exactly what the phone's key signs), asked_at }] } (`line` is made by this server from the request and its own name for the device, never the asker's words), newest first. An ask lasts 5 minutes, then it is gone (so one made while the app was closed is still there when it opens).",
       callers: ["cli", "local", "deck", "capsule", "mobile"],
       input: obj({}),
       run: async (_i, meta = {}) => {
@@ -381,7 +390,7 @@ export default {
         // a paired device is you: any of the owner's paired sessions lists the cards, so a card always reaches the phone. The safety is in the answer: only a yes signed by a real key counts (session-answer, yes()).
         if (caller.startsWith("device:") && !(meta && meta.person && meta.person.id)) throw Object.assign(new Error("sign in to list these cards"), { code: "denied" });
         const out = [];
-        for (const a of [...asks.values()]) { if (a.expires <= Date.now()) { asks.delete(a.device); continue; } if (a.state === "waiting") out.push({ id: a.id, device: a.device, line: a.label, moment: a.moment, request: a.request, asked_at: a.asked || 0 }); }
+        for (const a of [...asks.values()]) { if (a.expires <= Date.now()) { asks.delete(a.device); continue; } if (a.state === "waiting") out.push({ id: a.id, device: a.device, line: a.label, moment: a.moment, request: a.request, sign: signOf(a.moment, a.request), asked_at: a.asked || 0 }); }
         out.sort((x, y) => y.asked_at - x.asked_at);
         return { asks: out };
       },
@@ -402,11 +411,11 @@ export default {
         if (a.state !== "waiting") return { state: a.state };
         if (input.yes !== true) { a.state = "refused"; refusedUntil.set(a.device, Date.now() + 10 * 60_000); return { state: "refused" }; }
         if (!(input.proof && typeof input.proof === "object" && !Array.isArray(input.proof) && JSON.stringify(input.proof).length <= 8192)) throw Object.assign(new Error("a yes carries the owner's signed proof"), { code: "bad_input" });
-        // only a yes signed by a real key over the exact request the server wrote on the card counts (yes(): enclave, keystore, passkey, Touch ID; a software key is refused software_key on a release build); it is CHECKED here and spent where the act uses it (dry), so any device answering with junk is refused
+        // only a yes signed by a real key over the exact request the server wrote on the card counts (yes(): enclave, keystore, passkey, Touch ID; a software key is refused software_key on a release build); it is CHECKED and spent HERE (the sealing process uses a proof up); the card, not the proof, is what the asking device's act then spends, once (the redeemer below), so a proof is never replayed at the moment
         /** @type {any} */ let chain; try { chain = ctx.kernel && typeof ctx.kernel.chain === "function" ? await ctx.kernel.chain(meta) : undefined; } catch { chain = undefined; }
-        const v = await yes(a.moment, { ...(chain ? { chain } : {}), op: a.request.op, fields: a.request.fields }, input.proof, { dry: true });
+        const v = await yes(a.moment, { ...(chain ? { chain } : {}), op: a.request.op, fields: a.request.fields }, input.proof);
         if (!v.ok) throw Object.assign(new Error(v.reason === "software_key" ? "approve this with the key in your phone: a software key cannot say yes here" : "that yes did not stand"), { code: v.reason });
-        a.proof = input.proof;
+        a.verified = true;
         a.state = "approved";
         a.expires = Date.now() + ASK_MS;
         ctx.events.emit("presence.session-approved", { id: a.id, device: a.device });

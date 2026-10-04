@@ -342,6 +342,15 @@ async function startLocked(opts, root, p, release) {
       stageFactory: async (/** @type {string} */ space, /** @type {any} */ k, /** @type {any} */ meta) => (await flowsHost.attach(space, k, meta.owner)).stages });
     stages = (await flowsHost.attach(kernel.id.space, kernel, () => kernel.id.owner)).stages;
     if (typeof kernel.bindCalls === "function") kernel.bindCalls(currentCall);
+    // ONE yes (DESIGN-one-yes): the three moments' proofs are checked by the kernel's own presence verifier (the sealing process; it spends the proof). The card's act and fields are the vocabulary the sealer accepts
+    // (signOf in core/presence/one-yes.js); a software key is refused by the sealer on a release build, and a result that does not say how strong the key was never counts as real.
+    if (kernel.presence && typeof kernel.presence.check === "function") {
+      const { configureYes, signOf } = await import("../presence/one-yes.js");
+      configureYes({
+        verify: async (/** @type {any} */ i) => { const sg = signOf(i.moment, { op: i.request ? i.request.op : i.op, fields: i.request ? i.request.fields : i.fields }); return kernel.presence.check({ ...(i.chain ? { chain: i.chain } : {}), op: sg.op, fields: sg.fields, proof: i.proof }); },
+        softwareOk: () => devSwitch(process.env.VYRE_SEAL_SOFTWARE, opts.packageRoot),
+      });
+    }
     // The session credential of a session vyred starts (lib/kernel-session.js): the kernel opens a token for the owner this home runs as, with the thread's chat written
     // in by the kernel after it checks the owner is in it; vyred holds it and the thread's own socket stamps it on every call, so the session never sees it. An unnamed thread
     // runs as the default assistant. A thread with no chat of its own gets a session of no chat. Only the Switchboard is handed this (core/modules/index.js context).

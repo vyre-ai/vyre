@@ -5563,7 +5563,7 @@ A paired device that cannot sign a yes itself (a browser) asks its owner's phone
 
 ### `presence.person.session-pending`
 
-The sign-in asks still waiting for the owner, for their phone: { asks: [{ id, device, line, moment, request, asked_at }] } (`line` is made by this server from the request and its own name for the device, never the asker's words), newest first. An ask lasts 5 minutes, then it is gone (so one made while the app was closed is still there when it opens).
+The sign-in asks still waiting for the owner, for their phone: { asks: [{ id, device, line, moment, request, sign: { op, fields } (exactly what the phone's key signs), asked_at }] } (`line` is made by this server from the request and its own name for the device, never the asker's words), newest first. An ask lasts 5 minutes, then it is gone (so one made while the app was closed is still there when it opens).
 
 - Input: none
 - Callers: `capsule`, `cli`, `deck`, `local`, `mobile`
