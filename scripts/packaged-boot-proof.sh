@@ -154,17 +154,21 @@ docker exec -u 0 vyre-vyre-1 sh -c 'sed -i "$ d" /opt/vyre/apps/app/dist/index.h
 
 # The runner on a server (own-server sealing): the module runs on the box, says what the box does, and a session on the server is SEALED AT EVERY TURN into the home's checkpoint store
 # (core/runner/ownserver.js, the daemon's core/daemon/ownserver-host.js). A stand-in `claude` (the repo's fake, copied in like the probes above) writes the transcript the way Claude Code does.
-rs=$(vyre call runner.status 2>&1) || { echo "$rs"; echo "runner.status did not answer on the box"; exit 1; }
+# in-container as the box's own user: from the host, the daemon cannot read who is calling through compose exec (caller_unknown)
+vc() { docker exec -u 1000 vyre-vyre-1 vyre call "$@"; }
+rs=$(vc runner.status 2>&1) || { echo "$rs"; echo "runner.status did not answer on the box"; exit 1; }
 printf '%s\n' "$rs" | grep -Eq '"?ownServer"?[: ]+true' || { echo "$rs"; echo "the runner on a box does not say it seals its own sessions"; exit 1; }
 docker cp "$HERE/core/switchboard/testing/fake-claude.js" vyre-vyre-1:/tmp/fake-claude-src.mjs
 docker exec -u 1000 vyre-vyre-1 sh -c 'cp /tmp/fake-claude-src.mjs /home/vyre/fake-claude.mjs && chmod 755 /home/vyre/fake-claude.mjs && mkdir -p /home/vyre/.claude/projects /tmp/sealwork'
 docker exec -u 0 vyre-vyre-1 sh -c 'printf "#!/bin/sh\nexport FAKE_CLAUDE_TRANSCRIPTS=/home/vyre/.claude/projects\nexec node /home/vyre/fake-claude.mjs \"\$@\"\n" > /usr/local/bin/claude && chmod 755 /usr/local/bin/claude'
-tid=$(vyre call threads.start '{"cwd":"/tmp/sealwork","prompt":"first","surface":"deck"}' 2>&1 | sed -n 's/.*"id": *"\([^"]*\)".*/\1/p' | head -n 1)
-[ -n "$tid" ] || { echo "a session could not be started on the box (is its sandbox refusing?)"; vyre call threads.start '{"cwd":"/tmp/sealwork","prompt":"first","surface":"deck"}' 2>&1 | tail -5; echo "--- in-container call:"; docker exec -u 1000 vyre-vyre-1 vyre call threads.start '{"cwd":"/tmp/sealwork","prompt":"first","surface":"deck"}' 2>&1 | tail -5; echo "--- log:"; docker exec -u 1000 vyre-vyre-1 sh -c 'grep -hE "ancestry|start step|threads|sandbox" /home/vyre/.vyre/logs/*.log | tail -25'; exit 1; }
+acct=$(vc sessions.accounts.add '{"provider":"claude","label":"proof","kind":"login","is_default":true}' 2>&1) || { echo "$acct"; echo "an AI account could not be added to the box"; exit 1; }
+echo "account: $acct" | head -c 300; echo
+tid=$(vc threads.start '{"cwd":"/tmp/sealwork","prompt":"first","surface":"deck"}' 2>&1 | sed -n 's/.*"id": *"\([^"]*\)".*/\1/p' | head -n 1)
+[ -n "$tid" ] || { echo "a session could not be started on the box (is its sandbox refusing?)"; vc threads.start '{"cwd":"/tmp/sealwork","prompt":"first","surface":"deck"}' 2>&1 | tail -5; echo "--- in-container call:"; vc threads.start '{"cwd":"/tmp/sealwork","prompt":"first","surface":"deck"}' 2>&1 | tail -5; echo "--- log:"; docker exec -u 1000 vyre-vyre-1 sh -c 'grep -hE "ancestry|start step|threads|sandbox" /home/vyre/.vyre/logs/*.log | tail -25'; exit 1; }
 sealed() { docker exec -u 1000 vyre-vyre-1 sh -c 'cat /home/vyre/.vyre/checkpoints/*/CURRENT 2>/dev/null' | grep -o '"turn":[0-9]*' | grep -o '[0-9]*' | sort -n | tail -n 1; }
 i=0; until [ "$(sealed)" = 1 ]; do i=$((i + 1)); [ $i -lt 40 ] || { echo "turn 1 was not sealed (sealed: $(sealed))"; docker exec -u 1000 vyre-vyre-1 sh -c 'tail -5 /home/vyre/.vyre/logs/*.log'; exit 1; }; sleep 1; done
 sleep 3
-vyre call threads.send "{\"thread\":\"$tid\",\"text\":\"second\",\"surface\":\"deck\"}" >/dev/null 2>&1
+vc threads.send "{\"thread\":\"$tid\",\"text\":\"second\",\"surface\":\"deck\"}" >/dev/null 2>&1
 i=0; until [ "$(sealed)" = 2 ]; do i=$((i + 1)); [ $i -lt 40 ] || { echo "turn 2 was not sealed (sealed: $(sealed))"; exit 1; }; sleep 1; done
 echo "ok: a session on the server is sealed at every turn (turn 1 and turn 2 are checkpoints in the home's store)"
 
@@ -180,8 +184,8 @@ docker start vyre-vyre-1 >/dev/null
 ready || { echo "vyred did not come back after the kill"; exit 1; }
 docker exec -u 1000 vyre-vyre-1 sh -c "printf '%s\n%s' '{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"UNFINISHED\"}}' '{\"type\":\"assistant\",\"mess' >> $tfile"
 docker exec -u 1000 vyre-vyre-1 sh -c "grep -q UNFINISHED $tfile" || { echo "could not leave the kill's leftovers in the transcript"; exit 1; }
-vyre call threads.send "{\"thread\":\"$tid\",\"text\":\"back after the crash\",\"surface\":\"deck\"}" >/dev/null 2>&1
-i=0; until [ "$(sealed)" = 3 ]; do i=$((i + 1)); [ $i -lt 60 ] || { echo "the resumed turn was not sealed (sealed: $(sealed)); status:"; vyre call threads.get "{\"thread\":\"$tid\"}" 2>&1 | tail -5; exit 1; }; sleep 1; done
+vc threads.send "{\"thread\":\"$tid\",\"text\":\"back after the crash\",\"surface\":\"deck\"}" >/dev/null 2>&1
+i=0; until [ "$(sealed)" = 3 ]; do i=$((i + 1)); [ $i -lt 60 ] || { echo "the resumed turn was not sealed (sealed: $(sealed)); status:"; vc threads.get "{\"thread\":\"$tid\"}" 2>&1 | tail -5; exit 1; }; sleep 1; done
 docker exec -u 1000 vyre-vyre-1 sh -c "grep -q UNFINISHED $tfile" && { echo "the killed turn's leftovers reached the resumed session"; exit 1; }
 docker exec -u 1000 vyre-vyre-1 sh -c "head -c \$(wc -c < /tmp/sealed-copy.jsonl) $tfile | cmp -s - /tmp/sealed-copy.jsonl" || { echo "the resumed transcript does not start with the last sealed turns"; exit 1; }
 echo "ok: a session on the server survives a crash (killed, restarted, put back to its last sealed turn, resumed, and the next turn sealed)"
