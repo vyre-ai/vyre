@@ -32,6 +32,7 @@ test("HD-2: a session's threads.start cannot resume another live thread, fork it
   const a = await d.registry.call("threads.start", { cwd: work, prompt: "hello", surface: "deck" }, "cli");
   // the attack, both ways: a bare model session starts nothing at all; the home's assistant (proven) is refused the person's-only fields (resume, fork, agent, agent_kind, env, account) outright
   await d.registry.call("agents.create", { name: "assistant", kind: "assistant", projects: "*" }, "cli");
+  await d.registry.call("projects.create", { name: "Work", home: work }, "cli");
   const evilFields = { cwd: work, prompt: "INJECTED INTO B", resume: b.data.id, fork: b.data.id, agent: "assistant", agent_kind: "assistant", env: { X: "1" }, account: "other" };
   const bare = await d.registry.call("threads.start", evilFields, "mcp", { thread: a.data.id });
   assert.ok(bare.error && ["denied", "bad_input"].includes(bare.error.code), `a bare model session starts nothing: ${JSON.stringify(bare)}`);

@@ -4,7 +4,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createInput, inviteRefusal, inviteRow, invitable, joinedLine, madeNote } from "./invite.js";
+import { createInput, inviteRefusal, inviteRow, liveServers, invitable, joinedLine, madeNote } from "./invite.js";
 
 test("an owner invites as admin, manager, member or temp; an admin below admin; anyone else cannot", () => {
   assert.deepEqual(invitable("owner").map((r) => r.id), ["admin", "manager", "member", "temp"]);
@@ -45,4 +45,10 @@ test("a space on one person's computer says why nobody can join it", async () =>
   assert.equal(inviteRefusal("this_computer", "x"), "This space lives on this computer, so other people cannot join it. To invite people, make a space on your server.");
   assert.equal(inviteRefusal("unreachable", "x", "Chris"), "This space lives on Chris's computer and cannot be reached from here. Ask them to invite you to a space on their server.");
   assert.equal(inviteRefusal("unreachable", "x"), "This space lives on its owner's computer and cannot be reached from here. Ask them to invite you to a space on their server.");
+});
+
+test("a person has a server when wink.access lists a live one", () => {
+  assert.deepEqual(liveServers({ devices: [{ id: "d1", kind: "phone" }, { id: "d2", kind: "server", removed: true }] }), []);
+  assert.equal(liveServers({ devices: [{ id: "d3", kind: "server", removed: false }] }).length, 1);
+  assert.deepEqual(liveServers(null), []);
 });

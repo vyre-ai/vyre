@@ -1012,6 +1012,24 @@ export class Switchboard {
    * nothing another will load and another user cannot pre-create it. A leftover or a link at the path is removed first. Removed when the session's socket closes.
    * @param {string} id
    */
+  /**
+   * Whether a model agent's session may start where it asks: the folder (or the named project's home) must resolve, through symlinks and `..`, inside a mapped project's home or workspace folder.
+   * @param {unknown} project @param {unknown} cwd @param {unknown} [granted] the agent's stored grant: "*" or a list of project slugs @returns {Promise<{ ok: boolean, why: string }>}
+   */
+  async projectFolders(project, cwd, granted) {
+    const r = /** @type {any} */ (await this.deps.call("projects.list", {}).catch(() => null));
+    const all = r && r.data && Array.isArray(r.data.projects) ? r.data.projects : (r && Array.isArray(r.data) ? r.data : []);
+    // only the projects THIS agent is granted ("*" is every mapped project; no grant is none)
+    const rows = granted === "*" ? all : Array.isArray(granted) ? all.filter((/** @type {any} */ p) => granted.includes(p.slug)) : [];
+    const roots = [];
+    for (const p of rows) for (const f of [p.home, ...(Array.isArray(p.workspaces) ? p.workspaces.map((/** @type {any} */ w) => (w && w.path) || w) : [])]) { try { if (typeof f === "string" && f) roots.push(fs.realpathSync(f)); } catch { /* gone */ } }
+    const want = typeof cwd === "string" && cwd ? cwd : (() => { const p = rows.find((/** @type {any} */ x) => x.slug === project || x.name === project); return p ? p.home : ""; })();
+    if (!want) return { ok: false, why: "name a project or a folder inside one: an agent's session does not start anywhere else" };
+    let real; try { real = fs.realpathSync(String(want)); } catch { return { ok: false, why: "that folder does not exist" }; }
+    const inside = roots.some(root => real === root || real.startsWith(root.endsWith(path.sep) ? root : root + path.sep));
+    return inside ? { ok: true, why: "" } : { ok: false, why: "an agent's session starts only inside a project folder it can see" };
+  }
+
   sessionTemp(id) {
     const dir = sessionTempDir(String(this.deps.root || ""), id);
     try { const st = fs.lstatSync(dir); if (st.isSymbolicLink() || !st.isDirectory()) fs.rmSync(dir, { recursive: true, force: true }); } catch { /* not there */ }
@@ -3260,9 +3278,10 @@ export default {
     const calls = new AsyncLocalStorage();
     const guard = (caller, what) => {
       if (fromLink(caller)) return;
-      const agent = agentOf(caller);
-      if (!agent) return;
+      // Decided on what vyred verified (meta.agent, meta.agentKind), never on the label: on an agent's own thread socket the label is the client's to choose.
       const v = /** @type {any} */ (calls.getStore());
+      const agent = (v && v.agent) || agentOf(caller);
+      if (!agent) return;
       if (v && v.agent === agent && v.agentKind === "assistant") return;
       throw new Error(`only the assistant can ${what}; ${agent} is an agent`);
     };
@@ -3282,8 +3301,11 @@ export default {
     const sessionMay = async (meta, target, mutating, tool = "") => {
       const m = meta || {};
       const caller = String(m.caller || "");
-      if (!/^(?:mcp|harness)(?::|$)/.test(caller) || fromLink(caller)) return true;
-      if (m.agent) return true; // an agent: guard() and mayReach decide; the assistant passes through its verified meta.agent
+      // A model call is known by what vyred verified (an agent, a thread), or by the label of a plain session; a label alone is only a claim, so it never LOWERS the checks below.
+      const modelish = Boolean(m.agent) || (typeof m.thread === "string" && m.thread !== "") || /^(?:mcp|harness)(?::|$)/.test(caller);
+      if (!modelish || fromLink(caller)) return true;
+      if (m.agent && m.agentKind === "assistant") return true; // the assistant, from its verified meta.agent: guard() and mayReach decide
+      // any other named agent is held like a session: its own thread and the threads it started (below)
       if (typeof m.thread !== "string" || !m.thread) {
         // The person's own Claude Code through Vyre's MCP, no verified thread: like a session, and known by the kernel (meta.peerSession is the claude
         // process and its start time, meta.peerCwd its folder, both read by vyred from the socket peer). It starts threads and stops, archives or
@@ -3338,7 +3360,7 @@ export default {
         mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: str, id: str, name: str } }, description: "The # tags the composer picked ({kind, id}) for the first prompt, from a person's own surface only; as threads.send." },
         pasted: { type: "array", maxItems: 20, items: str, description: "The spans of the prompt the person pasted: a #Name inside one tags nothing. As threads.send." },
         parent: { type: "string", description: "First-party modules only: the thread this one is started for (a teammate's thread for a person's). A session starting one is its own parent, from what vyred verified." } } },
-      async (i, { caller, thread, firstParty, agent, peerSession }) => {
+      async (i, { caller, thread, firstParty, agent, peerSession, granted }) => {
         guard(caller, "start sessions");
         await spendGate(caller, i.provider);
         // The parent is the calling session's own verified thread, or (a first-party module starting it
@@ -3353,6 +3375,14 @@ export default {
         // A model session with no named agent behind it has no grants of its own to act under (a model caller is never the person): it starts nothing. The assistant and the agents the person made are named
         // (meta.agent, from the daemon's own record of the session), and a first-party module acts for its own purpose.
         if (modelCall && !firstParty && !agent) throw Object.assign(new Error("an unnamed model session starts no sessions: it has no agent grants of its own to act under"), { code: "denied" });
+        // SW-1: "every project" is every MAPPED project, not the disk. A named agent's (the assistant's included) session starts in a folder that, after symlinks and `..`, lies inside a project it is
+        // granted (its home or a workspace folder); anything else, `/` and `/etc` included, is refused. A person's own threads.start keeps today's rule.
+        // A model does not pick a session's PURPOSE beyond the ordinary three: capsule, job, teammate, memory, planner, learn and helper pick other models, plugins and permission profiles.
+        if (modelCall && !firstParty && i.purpose !== undefined && !["chat", "agent", "project"].includes(String(i.purpose))) throw Object.assign(new Error("a model session starts a chat, agent or project session only"), { code: "denied" });
+        if (modelCall && !firstParty && agent) {
+          const folders = await sb.projectFolders(i.project, i.cwd, granted);
+          if (!folders.ok) throw Object.assign(new Error(folders.why), { code: "denied" });
+        }
         const rest = modelCall && !firstParty ? Object.fromEntries(Object.entries(restAll).filter(([k]) => START_FIELDS.has(k))) : restAll;
         const plain = /^(?:mcp|harness)(?::|$)/.test(String(caller || "")) && !thread && !agent;
         const person = personTurn(caller) && i.prompt ? { chips: Array.isArray(mentions) ? mentions : [], pasted: Array.isArray(pasted) ? pasted.filter(x => typeof x === "string").slice(0, 20) : [] } : null;
