@@ -13,7 +13,7 @@ import { codeKey as nodeCodeKey } from "../../../../core/spaces/recovery.js";
 import { sealRecord as nodeSeal, openRecord as nodeOpen, idDirectory, memorySeen, memorySigner } from "../../../../lib/identity/directory.js";
 import { newCode, codeKey, normalizeCode, codeLooksRight, STRETCH } from "./recovery.js";
 import { sealRecord, openRecord } from "./seal.js";
-import { generateDeviceKey, fromSeed, restoreDeviceKey } from "./keys.js";
+import { generateDeviceKey, fromSeed, restoreDeviceKey, wrapKept } from "./keys.js";
 import { claimIdentity } from "./claim.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
@@ -77,6 +77,32 @@ test("a device key is non-extractable where WebCrypto has Ed25519, and the noble
     assert.equal(await C.verifyWith(key.publicKey, msg, C.b64u(sig)), true);
     assert.equal(key.eid, await C.eidOf(key.publicKey));
   }
+});
+
+test("KP-2: a software key is stored sealed under a non-extractable key, never as the 32 seed bytes, and restores to the same eid", async () => {
+  const seed = crypto.getRandomValues(new Uint8Array(32));
+  const k = await fromSeed(seed);
+  const kept = /** @type {any} */ (await wrapKept(k.keep()));
+  assert.equal(kept.kind, "wrapped-seed");
+  assert.equal(kept.wk.extractable, false);
+  await assert.rejects(crypto.subtle.exportKey("raw", kept.wk));
+  const hex = x => Buffer.from(x).toString("hex");
+  for (const [name, v] of Object.entries(kept)) if (v instanceof Uint8Array) assert.notEqual(hex(v), hex(seed), `${name} is not the seed`);
+  assert.equal(JSON.stringify(kept, (_, v) => (v instanceof Uint8Array ? hex(v) : v)).includes(hex(seed)), false, "the seed's bytes are nowhere in the stored record");
+  assert.equal((await restoreDeviceKey(kept)).eid, k.eid);
+  const webcrypto = { kind: "webcrypto", pair: {} };
+  assert.equal(await wrapKept(webcrypto), webcrypto, "a WebCrypto key pair is stored as it is");
+});
+
+test("KP-3: the key is kept before the name is claimed; a failed keep claims nothing", async () => {
+  let fetched = 0;
+  const fetch = async () => { fetched++; return /** @type {any} */ ({ ok: true, json: async () => ({ data: {} }) }); };
+  await assert.rejects(claimIdentity({ name: "alex", base: "http://x", fetch, params: { memoryKiB: 8, passes: 1 }, beforeClaim: async () => { throw new Error("quota"); } }), /quota/);
+  assert.equal(fetched, 0, "nothing was sent to the directory");
+  let seen = null;
+  await claimIdentity({ name: "alex", base: "http://x", fetch, params: { memoryKiB: 8, passes: 1 }, beforeClaim: async m => { seen = m; assert.equal(fetched, 0, "the keep comes first"); } });
+  assert.equal(fetched, 1);
+  assert.ok(seen && /** @type {any} */ (seen).key && /** @type {any} */ (seen).ops.length === 1);
 });
 
 const freePort = () => new Promise(res => { const s = net.createServer(); s.listen(0, "127.0.0.1", () => { const p = /** @type {any} */ (s.address()).port; s.close(() => res(p)); }); });
