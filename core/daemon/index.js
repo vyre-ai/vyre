@@ -1049,8 +1049,19 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       memory: Object.fromEntries(Object.entries(process.memoryUsage()).map(([k, v]) => [k, Math.round(v / 1048576 * 10) / 10])),
       modules: { running: mods.filter(m => m.state === "running").length, failed: mods.filter(m => ["failed", "invalid"].includes(m.state)).length } } });
   }
+  // The plugin agent reaches the tool door and nothing else (no events, hooks, challenges or module listing): its grant names tools, and the tool door is where the grant is checked.
+  if (pluginAgent && !((req.method === "GET" && url.pathname === "/v1/tools") || (req.method === "POST" && url.pathname.startsWith("/v1/tools/")))) return send(res, 403, { error: { code: "not_in_grant", message: "Claude Code on this computer reaches only the tools its grant names" } });
   if (req.method === "GET" && url.pathname === "/v1/modules") return send(res, 200, { data: registry.status() });
-  if (req.method === "GET" && url.pathname === "/v1/tools") return send(res, 200, { data: registry.listTools(caller, via).filter(t => !policy.tool || policy.tool(t.name)) });
+  if (req.method === "GET" && url.pathname === "/v1/tools") {
+    let data = registry.listTools(caller, via).filter(t => !policy.tool || policy.tool(t.name));
+    // The plugin agent is offered only what its grant names.
+    if (pluginAgent) {
+      const ask = await registry.call("pluginagent.allows", { tools: data.map(t => t.name) }, "module:vyred").catch(() => null);
+      const ok = new Set(ask && ask.data && Array.isArray(ask.data.allowed) ? ask.data.allowed : []);
+      data = data.filter(t => ok.has(t.name));
+    }
+    return send(res, 200, { data });
+  }
   if (device && req.method === "POST" && url.pathname === "/v1/person/token") {
     // The hosted app trades the sign-in page's one-time code, its PKCE verifier and the public
     // half of its key for a bearer session. The one call from another origin that needs none.
@@ -1108,6 +1119,13 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const name = decodeURIComponent(url.pathname.slice("/v1/tools/".length));
     if (drain.on) { res.setHeader("retry-after", "2"); return send(res, 503, { error: { code: "restarting", message: "vyred is restarting; try again in a moment" } }); }
     const input = await body(req);
+    // The plugin agent holds only what its grant names (pluginagent.ALLOWED, decided in core/pluginagent): any other tool, link.call's carried one included, is refused here, before anything runs.
+    if (pluginAgent) {
+      const carried = name === "link.call" && input && typeof input.tool === "string" ? input.tool : null;
+      const ask = await registry.call("pluginagent.allows", { tools: carried ? [name, carried] : [name] }, "module:vyred").catch(() => null);
+      const ok = ask && ask.data && Array.isArray(ask.data.allowed) && ask.data.allowed.includes(name) && (!carried || ask.data.allowed.includes(carried));
+      if (!ok) return send(res, 403, { error: { code: "not_in_grant", message: `Claude Code on this computer was not given ${carried || name}: it reads memory, recall and the sessions of your projects, and suggests to memory` } });
+    }
     // A person's action on the socket: a person-only tool, one that needs presence for this input,
     // or any call carrying a presence proof or session.
     const def = registry.tools.get(name);

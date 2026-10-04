@@ -14,7 +14,6 @@
 
 import readline from "node:readline";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { request, call } from "../../core/daemon/client.js";
 import { ensureUp } from "../../core/cli/daemonctl.js";
@@ -61,7 +60,7 @@ let asked = false;
 function askOnce() {
   if (asked || AGENT || process.env.VYRE_SOCKET || ident().headers) return;
   asked = true;
-  call("pluginagent.ask", { computer: os.hostname() }, { caller: CALLER }).catch(() => null);
+  call("pluginagent.ask", {}, { caller: CALLER }).catch(() => null);
 }
 const DRIVES = /^(threads|agents)\./;
 // Nor the person's own tools (answering, approving, presence, a session's mode): vyred refuses

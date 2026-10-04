@@ -61,7 +61,7 @@ test("not granted: the plugin reads only its own session's project; another OS u
   assert.ok(!JSON.stringify(via.get(2)).includes("Jordan"), "the plugin's own server, not granted, reads no personal memory");
 
   // 2. Granted, then another OS user. Their plugin has its own home (no key file); the key file and the daemon's socket are the owner's alone.
-  const asked = (await call("pluginagent.ask", { computer: "alex-laptop" }, { root, caller: "mcp" })).data;
+  const asked = (await call("pluginagent.ask", {}, { root, caller: "mcp" })).data;
   const g = await call("pluginagent.grant", { id: asked.id }, proof);
   assert.ok(!g.error, JSON.stringify(g));
   const file = path.join(root, "plugin-agent.json");
