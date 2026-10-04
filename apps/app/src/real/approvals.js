@@ -84,18 +84,21 @@ export async function askPhone(call, o) {
 }
 
 
-/** The moment a tool belongs to when it needs the owner's fresh yes (wink-2, b78a3962b): vault secrets, pairing, and outward send, post, pay, publish, reply, forward. @param {string} tool @returns {"vault" | "pair" | "outward" | null} */
+/** The moment a tool belongs to when it needs the owner's fresh yes: vault secrets (reveal, copy, totp, inject, resolve, render), pairing, and outward send, post, pay, publish, reply, forward. @param {string} tool @returns {"vault" | "pair" | "outward" | null} */
 export const momentOf = (tool) => {
   const t = String(tool);
-  if (/^vault\./.test(t)) return "vault";
-  if (/^(wink|presence)\./.test(t)) return "pair";
+  if (VAULT_TOOLS.has(t)) return "vault";
+  if (PAIR_TOOLS.has(t)) return "pair";
   if (/^[a-z][a-z0-9]*\.(send|post|pay|publish|reply|forward)[a-z0-9.-]*$/.test(t)) return "outward";
   return null;
 };
+// Each moment covers an explicit tool list (wink-2, f0409aa1b); anything else is bad_input at ask, so a floor refusal on another tool is never turned into an ask.
+const VAULT_TOOLS = new Set(["vault.reveal", "vault.copy", "vault.totp", "vault.inject", "vault.resolve", "vault.render"]);
+const PAIR_TOOLS = new Set(["presence.enroll", "link.pair.approve", "wink.phone.pair.answer", "wink.server.pair.answer", "wink.pair.server"]);
 
 /**
- * An act that needs the owner's yes and carries no approval answers error code `held` with detail { moment, request: { op, fields } } (wink-2, 113aea6ce): the request is exactly what approvals.ask takes. An older
- * server answers the ordinary floor error `presence_required` on those tools instead; that is the trigger too. The browser asks the phone, then sends the same act again with the approval id.
+ * An act that needs the owner's yes and carries no approval answers the ordinary floor error `presence_required` on a moment tool (wink-2, f0409aa1b; the earlier `held` answer was withdrawn, and is still
+ * read here if a server sends it: detail { moment, request } is exactly what approvals.ask takes). The browser asks the phone, then sends the same act again with the approval id.
  * @param {any} error @param {string} tool @param {Record<string, unknown>} [input]
  * @returns {{ moment: "vault" | "pair" | "outward", request: { op: string, fields: Record<string, any> } } | null}
  */

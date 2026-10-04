@@ -74,6 +74,9 @@ test("presence_required on a vault, pairing or outward tool is the trigger, with
   assert.equal(heldAsk({ code: "presence_required" }, "wink.pair.server", {}).moment, "pair");
   assert.equal(heldAsk({ code: "presence_required" }, "mail.send", { to: "a" }).moment, "outward");
   assert.equal(heldAsk({ code: "presence_required" }, "records.list", {}), null);
+  assert.equal(heldAsk({ code: "presence_required" }, "vault.list", {}), null, "a vault tool outside the list is not an ask");
+  assert.equal(heldAsk({ code: "presence_required" }, "wink.pair.server", {}).moment, "pair");
+  assert.equal(heldAsk({ code: "presence_required" }, "vault.totp", {}).moment, "vault");
   assert.equal(heldAsk({ code: "not_found" }, "vault.reveal", {}), null);
   assert.equal(heldAsk(null, "vault.reveal", {}), null);
   assert.equal(momentOf("social.post"), "outward"); assert.equal(momentOf("rules.define"), null);
