@@ -24,6 +24,14 @@ test("events: names must read as noun.past-verb", t => {
   assert.throws(() => ev.emit("x", "FireWatcher", {}), /noun.past-verb/);
 });
 
+test("events: a random id is not a secret (FL-1), a real token after a space or an equals sign still is", t => {
+  const ev = fresh(t);
+  // Each of these used to match: a token prefix inside a longer word or a base64url id. Built at runtime so no literal looks like a secret.
+  const ids = ["task" + "-abcdefghijklmnopqrstuvwx", "n8" + "-sk" + "-AbCdEfGhIjKlMnOpQrSt", "x" + "AKIA" + "1234567890ABCDEF", "Q2" + "_ghp" + "_" + "a".repeat(24), "desk" + "-" + "b".repeat(20)];
+  for (const id of ids) assert.doesNotThrow(() => ev.emit("wink", "wink.adopted", { id, device: id }), id);
+  for (const text of ["Bearer sk" + "-" + "a".repeat(24), "token=ghp" + "_" + "a".repeat(24), "key AKIA" + "1234567890ABCDEF"]) assert.throws(() => ev.emit("x", "thing.happened", { text }), /looks like a secret/, text);
+});
+
 test("events: a payload that looks like a secret is refused", t => {
   const ev = fresh(t);
   assert.throws(() => ev.emit("x", "thing.happened", { key: "sk" + "-" + "a".repeat(24) }), /looks like a secret/);

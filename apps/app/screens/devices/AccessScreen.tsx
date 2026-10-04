@@ -6,7 +6,8 @@ import { Page } from "../places/Frame";
 import { ACCESS_FILTERS, glyph } from "./data";
 import { useDevices } from "./state";
 import { removeText } from "./wink.js";
-import { said } from "../../src/real/box";
+import { said, MOCK } from "../../src/real/box";
+import { RealPlugin } from "./RealPlugin";
 
 /** Everything that can reach your things: devices, people, assistants, Kits and Flows, with a held Remove. */
 export function AccessScreen() {
@@ -18,6 +19,7 @@ export function AccessScreen() {
   return (
     <Page title="Access" sub="Who and what can reach your spaces." back="/u/settings"
       actions={<Button kind="primary" size="sm" icon="plus" label="Add or invite" onPress={() => router.push("/u/wink" as never)} />}>
+      {MOCK ? null : <RealPlugin onChanged={() => void load()} />}
       <Segmented label="Show" value={f} onChange={setF} options={ACCESS_FILTERS} />
       <Card flush>
         {rows.length ? rows.map((a, i) => (

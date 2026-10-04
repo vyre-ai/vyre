@@ -1,4 +1,5 @@
 // @ts-check
+import { softwareKeyLine } from "../../src/real/on-phone.js";
 // A device the server locked after three wrong sign-in answers (wink-2, work/wink-session): the owner's phone shows it and lets it sign in again before the lock lifts by itself.
 // Reads presence.person.locked -> { locked: [{ device, until }] }; the control is presence.person.renew-allow { device } with the owner's presence. Pure.
 
@@ -26,7 +27,7 @@ export const lockedToast = (/** @type {string} */ device) => `${device} can sign
 /** The words for a refused unlock. The server's text is never shown. @param {string | undefined} code @param {string} [until] the time the lock lifts by itself, as shown ("14:20") */
 export function unlockRefusal(code, until) {
   if (code === "not_allowed" || code === "denied" || code === "forbidden") return "Only the owner can let a device sign in again.";
-  if (code === "presence_required" || code === "needs_presence") return "That needs you. Approve on this device, then try again.";
+  if (code === "presence_required" || code === "needs_presence") return softwareKeyLine();
   if (code === "no_such_tool") return `Your home cannot lift a lock yet.${until ? ` It unlocks by itself at ${until}.` : " It unlocks by itself."}`;
   if (code === "on_phone") return "Let it sign in again in Vyre on your phone.";
   return "That did not work. Nothing was changed.";

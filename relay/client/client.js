@@ -327,7 +327,8 @@ export async function pairTicket(ticket, o) {
  * @param {{ relay: string, route: string, box: string|Uint8Array, name?: string, about?: { kind?: "app"|"web", release?: string, manifest?: string },
  *   keyStore?: import("./webcrypto.js").KeyStore, crypto?: import("./noise.js").CryptoProvider, WebSocket?: any,
  *   visibility?: Visibility, pingMs?: number, backoff?: { min?: number, max?: number }, timeout?: number,
- *   rekeyEvery?: number, random?: () => number }} o
+ *   rekeyEvery?: number, random?: () => number, invitee?: boolean }} o
+ * `invitee: true` says in every hello that this channel is a person's who is not paired here (the box makes no device row for it and admits only the invitee peer stream).
  */
 export function connect(o) {
   return new Connection(o);
@@ -391,7 +392,7 @@ export class Connection {
     this.setState("connecting");
     try {
       const keys = await deviceKey(this.o);
-      const hello = { v: 1, ...about(this.o.about), ...(this.o.name ? { name: this.o.name } : {}) };
+      const hello = { v: 1, ...about(this.o.about), ...(this.o.name ? { name: this.o.name } : {}), ...(this.o.invitee === true ? { invitee: true } : {}) };
       const { channel, reply, ws } = await openChannel({ ...this.o, keys, hello, onpong: () => { this.outstanding = false; this.missed = 0; } });
       this.dialing = false;
       if (this.closed) { channel.close(1000, "closed"); return; }
@@ -451,6 +452,8 @@ export class Connection {
     const delay = this.backoff * (0.8 + 0.4 * this.random());
     this.backoff = Math.min(this.backoff * 2, this.max);
     this.retryTimer = globalThis.setTimeout(() => { this.retryTimer = null; this.dial(); }, delay);
+    // a pause between tries never keeps a Node process alive by itself (an open socket does); a browser timer has no unref
+    if (this.retryTimer && typeof this.retryTimer.unref === "function") this.retryTimer.unref();
   }
 
   /** Reconnect now if we are not connected (a wake, the network came back, the app came to the front). */
