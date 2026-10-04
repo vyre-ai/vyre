@@ -654,3 +654,33 @@ test("lend (ruling 5 Oct): without a live person session even withdrawing is ref
   await assert.rejects(() => g.offers.unlend(agentChain("juno"), { member: BOB, device: "dev_laptop" }));
   await assert.rejects(() => g.offers.lend(agentChain("juno"), b, pr));
 });
+
+test("lend (ruling 5 Oct): after the member's own off, on again needs only the live session; after anyone else's off, a removal or a role change it is a first grant and takes the proof again; a rebuild keeps the difference", async () => {
+  const { g, gs } = await rig();
+  const set = m => g.setRole(owner(), m, P.role(m));
+  await set({ person: ALICE, role: "admin" });
+  await set({ person: BOB, role: "member" });
+  const l = { member: BOB, device: "dev_laptop", device_key: "KEY_B" };
+  const withProof = { presence: proof("grants.offer", { lend: l }, `vyre://${SPACE}/offer/lend`) };
+  await g.offers.lend(personChain(BOB), l, withProof);
+  await g.offers.unlend(personChain(BOB), { member: BOB, device: "dev_laptop" });
+  // the person's own off: on again with no proof at all
+  await g.offers.lend(personChain(BOB), l, {});
+  assert.equal(g.offers.active({ member: BOB, device: "dev_laptop", device_key: "KEY_B" }).memberAccepts, true);
+  await gs.rebuild();
+  await g.offers.unlend(personChain(BOB), { member: BOB, device: "dev_laptop" });
+  await gs.rebuild();
+  await g.offers.lend(personChain(BOB), l, {});
+  // an admin's off of the member's side: the next lend is a first grant again
+  await g.offers.unlend(personChain(ALICE), { member: BOB, device: "dev_laptop" });
+  await assert.rejects(() => g.offers.lend(personChain(BOB), l, {}), "needs the proof again");
+  await gs.rebuild();
+  await assert.rejects(() => g.offers.lend(personChain(BOB), l, {}), "and still after a rebuild");
+  await g.offers.lend(personChain(BOB), l, { presence: proof("grants.offer", { lend: l }, `vyre://${SPACE}/offer/lend`) });
+  // a role change ends the offer without the member's own act: first grant again
+  await g.setRole(owner(), { person: BOB, role: "manager" }, P.role({ person: BOB, role: "manager" }));
+  assert.equal(g.offers.active({ member: BOB, device: "dev_laptop", device_key: "KEY_B" }).memberAccepts, false);
+  await assert.rejects(() => g.offers.lend(personChain(BOB), l, {}));
+  // a different computer key is a different grant
+  await assert.rejects(() => g.offers.lend(personChain(BOB), { ...l, device_key: "OTHER" }, {}));
+});
