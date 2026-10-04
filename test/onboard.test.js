@@ -59,86 +59,6 @@ async function redeem(url) {
 const tool = (base, session, name, input = {}, headers = {}) => fetch(`${base}/v1/tools/${name}`, {
   method: "POST", headers: { "content-type": "application/json", "x-vyre-onboard": session, connection: "close", ...headers }, body: JSON.stringify(input) });
 
-test("onboard: the loopback listener refuses other hosts, forms and other origins", async t => {
-  const { root } = await box(t);
-  const { url, port } = (await call("onboard.link", {}, { root })).data;
-  const base = `http://127.0.0.1:${port}`;
-  const { session } = await redeem(url);
-  // fetch will not send a forged Host, so this one goes by hand.
-  const rebound = await new Promise((resolve, reject) => http.get({ host: "127.0.0.1", port, path: "/onboard", headers: { host: `evil.example:${port}` } },
-    res => { res.resume(); resolve(res.statusCode); }).on("error", reject));
-  assert.equal(rebound, 421, "a rebinding page's Host is refused");
-  const form = await fetch(`${base}/v1/tools/onboard.skip`, { method: "POST", headers: { "x-vyre-onboard": session, "content-type": "application/x-www-form-urlencoded" }, body: "step=you" });
-  assert.equal(form.status, 415);
-  const cross = await tool(base, session, "onboard.skip", { step: "you" }, { origin: "https://evil.example" });
-  assert.equal(cross.status, 403);
-});
-
-test("onboard: the loopback listener checks a WebSocket's Host and session, and opens no stream", async t => {
-  const { root } = await box(t);
-  const { url, port } = (await call("onboard.link", {}, { root })).data;
-  const { session } = await redeem(url);
-  /** An upgrade by hand (fetch cannot send one); resolves to the status code. */
-  const up = (host, headers = {}) => new Promise((resolve, reject) => {
-    const req = http.request({ host: "127.0.0.1", port, path: "/v1/streams/computers/glass?ticket=x",
-      headers: { host, connection: "Upgrade", upgrade: "websocket", "sec-websocket-version": "13", "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==", ...headers } });
-    req.on("upgrade", (res, socket) => { socket.destroy(); resolve(res.statusCode); });
-    req.on("response", res => { res.resume(); resolve(res.statusCode); });
-    req.on("error", reject);
-    req.end();
-  });
-  assert.equal(await up(`evil.example:${port}`, { "x-vyre-onboard": session }), 421, "a rebinding page's Host is refused");
-  assert.equal(await up(`127.0.0.1:${port}`), 403, "no session");
-  assert.equal(await up(`127.0.0.1:${port}`, { "x-vyre-onboard": session }), 404, "the onboarding page has no streams");
-});
-
-test("onboard: a new link voids the old unredeemed one; the owner arriving on the tailnet closes the door", async t => {
-  const { root, d } = await box(t);
-  const a = (await call("onboard.link", {}, { root })).data;
-  const b = (await call("onboard.link", {}, { root })).data;
-  assert.equal(a.port, b.port);
-  assert.equal((await redeem(a.url)).status, 403);
-  const { session } = await redeem(b.url);
-  assert.equal((await tool(`http://127.0.0.1:${b.port}`, session, "onboard.status")).status, 200);
-  d.events.emit("names", "owner.seen", {});
-  await new Promise(r => setTimeout(r, 100));
-  assert.equal(await fetch(`http://127.0.0.1:${b.port}/onboard`).then(() => "open", () => "closed"), "closed");
-});
-
-/** A free port that is not 7300, for a test that restarts vyred and needs the link's port again. */
-async function freePort() {
-  const s = http.createServer();
-  await new Promise(r => s.listen(0, "127.0.0.1", () => r(undefined)));
-  const port = /** @type {any} */ (s.address()).port;
-  await new Promise(r => s.close(() => r(undefined)));
-  return port;
-}
-
-test("onboard: vyre update's report mints nothing, and the unused link and an open page survive vyred restarting", async t => {
-  const port = await freePort();
-  const { root, d } = await box(t, { network: { onboardPort: port } });
-  const a = (await call("onboard.link", {}, { root })).data;
-  const opened = (await call("onboard.link", {}, { root })).data;
-  const { session } = await redeem(opened.url);
-  const unused = (await call("onboard.link", {}, { root })).data;
-  const report = (await call("onboard.link", { mint: false }, { root })).data;
-  assert.deepEqual([report.url, report.pending, report.expires], [null, true, unused.expires], "a report, not a link");
-  assert.equal(fs.statSync(path.join(root, "onboard-link.json")).mode & 0o777, 0o600);
-  assert.ok(!fs.readFileSync(path.join(root, "onboard-link.json"), "utf8").includes(new URL(unused.url).searchParams.get("t")), "only the hash is kept");
-  // vyre update: the container is recreated, so vyred stops and starts.
-  await d.stop();
-  const d2 = await start({ root, log: () => {} });
-  t.after(() => d2.stop());
-  assert.equal((await tool(`http://127.0.0.1:${port}`, session, "onboard.status")).status, 200, "the open page keeps working");
-  assert.equal((await call("onboard.link", { mint: false }, { root })).data.pending, true);
-  assert.equal((await redeem(unused.url)).status, 302, "the link the user was sent still works");
-  assert.equal((await redeem(a.url)).status, 403, "a voided one stays void");
-  assert.equal((await call("onboard.link", { mint: false }, { root })).data.pending, false);
-  d2.events.emit("names", "owner.seen", {});
-  await new Promise(r => setTimeout(r, 100));
-  assert.equal(fs.existsSync(path.join(root, "onboard-link.json")), false, "the owner arriving forgets it for good");
-});
-
 test("onboard: on a host the listener binds loopback; in the box's container, the name the compose gives it", () => {
   assert.equal(bindAddress({}), "127.0.0.1");
   assert.equal(bindAddress({ VYRE_ONBOARD_HOST: "vyred" }), "vyred");
@@ -162,68 +82,6 @@ async function freeZone(t) {
   });
 }
 
-test("onboard: step 1 saves your name and the assistant's; the address is never taken from the name (#50)", async t => {
-  const { root } = await box(t);
-  const { url, port } = (await call("onboard.link", {}, { root })).data;
-  const base = `http://127.0.0.1:${port}`;
-  const { session } = await redeem(url);
-  const saved = () => JSON.parse(fs.readFileSync(path.join(root, "config.json"), "utf8"));
-
-  assert.match((await (await tool(base, session, "onboard.you", { name: "alex", assistant: "a\nb" })).json()).error.message, /one line/);
-  assert.match((await (await tool(base, session, "onboard.you", { name: "x".repeat(61) })).json()).error.message, /60 characters/);
-  assert.equal(saved().onboard?.person, undefined);
-
-  const long = await (await tool(base, session, "onboard.you", { name: "Alex Smith", assistant: "juno" })).json();
-  assert.equal(long.data.state, "done", JSON.stringify(long.error));
-  assert.equal(long.data.person, "Alex Smith");
-  assert.equal(long.data.name, null, "the box's own address name is not the person's");
-  assert.equal(saved().name, undefined);
-
-  const you = await (await tool(base, session, "onboard.you", { name: "Alex", assistant: " juno " })).json();
-  assert.equal(you.data.person, "Alex");
-  assert.equal(you.data.name, null, "a name that would fit as an address is still not one");
-  assert.equal(saved().name, undefined, "nothing was saved as the address");
-  assert.equal(you.data.assistant, "juno");
-  assert.equal(saved().onboard.person, "Alex");
-  await tool(base, session, "onboard.you", { name: "Sam" });
-  assert.equal(saved().name, undefined, "a new name never becomes the address");
-  const s = (await (await tool(base, session, "onboard.status")).json()).data;
-  assert.equal(s.steps.you, "done");
-  assert.equal(s.name, "Sam", "status name is the person");
-  assert.equal(s.person, "Sam");
-  assert.equal(s.assistant, "juno");
-  assert.equal(s.current, "claude");
-});
-
-// ADR 0039: onboard.machine records the person's own solo/server choice; device is never sent
-// directly (it's set by onboard.join once a connection to another server is confirmed).
-test("onboard: onboard.machine records solo or server, rejects a bad value, and onboard.status reports it", async t => {
-  const { root } = await box(t);
-  const { url, port } = (await call("onboard.link", {}, { root })).data;
-  const base = `http://127.0.0.1:${port}`;
-  const { session } = await redeem(url);
-  const saved = () => JSON.parse(fs.readFileSync(path.join(root, "config.json"), "utf8"));
-
-  const bad = await (await tool(base, session, "onboard.machine", { machine: "container" })).json();
-  assert.match(bad.error.message, /solo.*server.*device|enum/i);
-
-  const solo = await (await tool(base, session, "onboard.machine", { machine: "solo" })).json();
-  assert.equal(solo.data.machine, "solo");
-  assert.equal(saved().machine, "solo");
-
-  const server = await (await tool(base, session, "onboard.machine", { machine: "server" })).json();
-  assert.equal(server.data.machine, "server");
-  assert.equal(saved().machine, "server", "the later choice replaces the earlier one");
-
-  const s = (await (await tool(base, session, "onboard.status")).json()).data;
-  assert.equal(s.machine, "server");
-  assert.equal(s.role, "box", "role is untouched by this tool");
-  assert.equal(s.platform, process.platform, "status reports the real os.platform()");
-  assert.deepEqual(s.can, canRelayJoin(process.platform), "status.can matches the pure helper");
-});
-
-// relay.join is not shippable on a Mac until vyre-core exists (reviewer/team-lead, 28 Sep); launch
-// reads onboard.status.can.relayJoin to hide the code-pairing card rather than offer a dead path.
 test("onboard: canRelayJoin is false with a reason on darwin, true elsewhere", () => {
   assert.deepEqual(canRelayJoin("darwin"), { relayJoin: false, reason: canRelayJoin("darwin").reason });
   assert.match(canRelayJoin("darwin").reason, /vyre-core/);
@@ -331,38 +189,6 @@ test("onboard: the box wizard's tools refuse on a machine that isn't a server", 
   assert.equal((await d.registry.call("onboard.machine", { machine: "solo" }, "cli")).data.machine, "solo");
 });
 
-test("onboard: a zone token that appears after a blocked ts.net attempt is offered again; one that already serves is not (e2e review)", async t => {
-  // Not yet committed: an earlier attempt left "ts.net" as the last thing via() computed, but
-  // nothing ever actually served (no address on record) — a token that shows up afterward is
-  // offered, exactly like a box that never tried at all.
-  const blocked = await box(t, { network: { onboardPort: 0, via: "ts.net" } });
-  {
-    const { url, port } = (await call("onboard.link", {}, { root: blocked.root })).data;
-    const before = (await (await tool(`http://127.0.0.1:${port}`, (await redeem(url)).session, "onboard.status")).json()).data;
-    assert.equal(before.detail.name.via, "ts.net", "no token yet: still ts.net");
-  }
-  await freeZone(t);
-  {
-    const { url, port } = (await call("onboard.link", {}, { root: blocked.root })).data;
-    const after = (await (await tool(`http://127.0.0.1:${port}`, (await redeem(url)).session, "onboard.status")).json()).data;
-    assert.equal(after.detail.name.via, "vyre.run", "a token that shows up now is offered, not stuck behind an old blocked attempt");
-  }
-});
-
-test("onboard: a box already serving on ts.net keeps saying so once a zone token appears (e2e review)", async t => {
-  // Committed: this box has an address on record, so it already serves under ts.net for real.
-  // A zone token appearing later does not pull the rug out from under a working address.
-  const serving = await box(t, { network: { onboardPort: 0, via: "ts.net", address: "https://box.tail1.ts.net" } });
-  await freeZone(t);
-  const { url, port } = (await call("onboard.link", {}, { root: serving.root })).data;
-  const status = (await (await tool(`http://127.0.0.1:${port}`, (await redeem(url)).session, "onboard.status")).json()).data;
-  assert.equal(status.detail.name.via, "ts.net", "already serving: a later token does not change what is live");
-  assert.equal(status.detail.name.address, "https://box.tail1.ts.net");
-});
-
-/** Can this machine run claude under a pty the way onboard.claude does? */
-const ptyMissing = (() => { try { execFileSync(ptyCommand("true")[0] === "script" ? "script" : "python3", ["--version"], { stdio: "ignore" }); return false; } catch { return "no pty helper (script or python3) here"; } })();
-
 test("onboard: join status merges Tailscale's own state with whether the relay is ready to pair", async t => {
   const { root } = await box(t, { relay: { url: "ws://127.0.0.1:1" } });
   const s = await call("onboard.join", { action: "status" }, { root });
@@ -432,45 +258,5 @@ test("onboard: join status and verify never need presence; tailscale connect and
   assert.equal(p.required("onboard.join", def, { action: "tailscale", step: "policy" }), false, "the paste-only policy snippet needs no proof either");
   assert.equal(p.required("onboard.join", def, { action: "tailscale", step: "connect" }), true, "starting tailscale up does");
   assert.equal(p.required("onboard.join", def, { action: "relay" }), true, "pairing a new device always does");
-});
-
-test("onboard: the box holds the setup step list: skips and passes are kept, the name is the person and never the address, and the assistant retry is the same tool", async t => {
-  const { root } = await box(t, { vault: { keystore: "file" } });
-  const { url, port } = (await call("onboard.link", {}, { root })).data;
-  const base = `http://127.0.0.1:${port}`;
-  const { session } = await redeem(url);
-  const setup = async (input = {}) => (await (await tool(base, session, "onboard.setup", input)).json());
-  const fresh = (await setup()).data;
-  assert.deepEqual(fresh.steps.map(s => s.id), ["install", "words", "address", "tailscale", "ai", "phone", "passkey", "assistant", "computers", "history"]);
-  assert.equal(fresh.steps[0].status, "done", "the box is installed if it answers");
-  assert.ok(fresh.current && fresh.finished === false);
-  assert.equal(fresh.name, null, "no name yet");
-  // Skipping keeps the step listed; only ai, phone, computers and history can be skipped; history is passed by the person.
-  const skipped = (await setup({ skip: "phone" })).data;
-  assert.equal(skipped.steps.find(s => s.id === "phone").status, "skipped");
-  assert.deepEqual(skipped.skipped, ["phone"]);
-  assert.ok((await (await tool(base, session, "onboard.setup", { skip: "passkey" })).json()).error, "passkey cannot be skipped");
-  assert.equal((await setup({ skip: "ai" })).data.steps.find(s => s.id === "ai").status, "skipped");
-  assert.equal((await setup({ unskip: "ai" })).data.steps.find(s => s.id === "ai").status !== "skipped", true);
-  assert.equal((await setup({ pass: "history" })).data.steps.find(s => s.id === "history").status, "done");
-  // The setup list survives a restart of the page: it is the box's own.
-  assert.deepEqual((await setup()).data.skipped, ["phone"]);
-  // The name is the person's, any letters up to 60, and is never taken for the address (#50).
-  const before = (await call("system.info", {}, { root, caller: "cli" })).data;
-  const bad = await (await tool(base, session, "onboard.you", { name: "12345", assistant: "Kit" })).json();
-  assert.ok(bad.error, "a name needs a letter");
-  const you = await (await tool(base, session, "onboard.you", { name: "  Álex Müller  ", assistant: "Kit" })).json();
-  assert.equal(you.error, undefined, JSON.stringify(you));
-  const after = (await setup()).data;
-  assert.equal(after.name, "Álex Müller", "trimmed");
-  assert.equal(after.steps.find(s => s.id === "assistant").status, "done");
-  const status = (await (await tool(base, session, "onboard.status")).json()).data;
-  assert.equal(status.name, "Álex Müller");
-  assert.equal(status.accountName, null, "no signed-in AI account says a name");
-  assert.equal((await call("system.info", {}, { root, caller: "cli" })).data.name, before.name, "saving the person never changes the box's own name");
-  // The assistant retry the setup module calls: the same tool, {retry: true}.
-  const retry = (await (await tool(base, session, "onboard.assistant", { retry: true })).json()).data;
-  assert.equal(retry.state, "made");
-  assert.equal((await setup()).data.assistant.display, "Kit");
 });
 

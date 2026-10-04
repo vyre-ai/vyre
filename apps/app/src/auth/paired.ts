@@ -4,6 +4,7 @@
 // 64 bytes (r||s, what WebCrypto emits), base64url, and trades it for a bearer token. The token is kept where webPerson reads it; every request after carries
 // `authorization: Vyre <token>` and a signed x-vyre-proof (person.ts), and the token rotates before 30 days (presence.person.rotate, not here yet).
 
+import { noteExpires } from "./notice.js";
 import { b64url } from "./person.ts";
 
 /** One tool call over the paired channel: the relay client's connection, injected so Node tests it with a fake. */
@@ -21,7 +22,9 @@ export async function startPaired(o: { device: string; call: ChannelCall; privat
   const r = await o.call("presence.person.start-paired", { sig: b64url(sig), ...(o.label ? { label: o.label.slice(0, 64) } : {}) });
   const d = r.data;
   if (!d || typeof d.token !== "string") throw new Error(r.error?.message || "The server would not sign this device in.");
-  return { token: d.token, id: String(d.id ?? ""), expires: Number(d.expires ?? 0) };
+  const expires = Number(d.expires ?? 0);
+  noteExpires(expires); // the person is told when this session is about to end (src/auth/notice.js)
+  return { token: d.token, id: String(d.id ?? ""), expires };
 }
 
 /** The channel call over the relay for a pairing just made: a short-lived connection of the relay client (browser and phone). */
