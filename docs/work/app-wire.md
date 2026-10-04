@@ -10,7 +10,7 @@ Legend: REAL = reads the box through `call`/`send` (or the Store adapter) with n
 | /u/projects, project/[id] (projects/) | REAL (4 Oct): a type holds work when its definition says kind "project" (viewDefOf fallback; a stage alone only gives a board); not seen on a real space, none has such a type yet. Was PARTLY | Store: records of the types the view defs mark as holding work (matter, project, trip by NAME in deck/ui/view-defs.js); a space with other type names shows none. Next: projects.list (box projects: folders, threads) is a different thing and is not shown |
 | /u/flows, flows/[id] | REAL | flows.list, graph, get, card, approve (presence), runs, run, start, retry, pause, resume |
 | /u/kits, kits/[id], kit update (flows/KitsScreen, KitUpdateScreen) | REAL for installed + Remove (4 Oct); no Kit library or update diff on the box | flows.kit.list, flows.kit.card, flows.kit.propose, flows.kit.remove |
-| /u/engineer (flows/EngineerScreen) | REAL as "write a Flow in text" (4 Oct); the @Engineer assistant chat is not wired | agents.ask to the Engineer, flows.compile-text, flows.define, flows.card |
+| /u/engineer (flows/EngineerScreen) | WIRED (4 Oct) as a chat with the Engineer agent over the app's chat; needs the Engineer to exist and be granted (asked sessions in CHAT.md). "See as code" is on each Flow | agents.ask to the Engineer, flows.compile-text, flows.define, flows.card |
 | /u/memory | REAL | memory.facts, correct, uncorrect, ask, graph, pin, mute, corrections |
 | /u/vault | REAL except the Held fields tab | vault.list, uses, reveal (presence), revoke. Held fields (sealed record fields): no tool lists them; Share: grants are a module's act (vault.grant) |
 | /u/drive | REAL except upload, versions, shared links | files.drive.status, list, read. Upload, version history, links: no tool on the box (vault was asked) |
@@ -54,6 +54,8 @@ Connect the 0.3 app's Vault, Memory (graph, pins, corrections), Flows (start, a 
 
 - Kits, Engineer, Appearance (4 Oct): screens/flows/{kits-*,RealKits,engineer-*,RealEngineer}, screens/settings/appearance-*; tests 14 of 14 in screens/flows and 18 of 18 in screens/settings on the test box. Dev box via `vyre call`: flows.kit.list [] (no Kits), flows.compile-text answered the kernel's real error ("only @vyre/sdk may be imported"), settings.get appearance.scheme answered (system, source default). settings.set is human-only from the CLI (no_terminal), so a theme write is not seen.
 
+- @Engineer (4 Oct, lead's correction): flows/{assistant-model,assistant-source,assistant,RealEngineer,FlowCode}; engineer.test.js 4 of 4 and screens/flows 16 of 16 on the test box. The text page is now "See as code" on a Flow (FlowCode in RealFlow). The chat is src/chat ChatScreen on the Engineer's thread. Not seen: the dev box has no agents (agents.list []), I did not create one there, and what grants the Engineer its tools is unanswered. Kits: there is no Kit library on the box yet; records owns the first Kit.
+
 ## Doing
 - All Settings pages that are mine are wired except where the box has no tool. Waiting on platform for rules.* tools.
 - Calendar: waiting on records for the Event type's exact fields, and on the dev box being updated to work/kernel to run it.
@@ -69,3 +71,4 @@ Connect the 0.3 app's Vault, Memory (graph, pins, corrections), Flows (start, a 
 - records: exact Event fields, and whether Event is in every new space.
 - native-core: a nav entry to /u/calendar, "today" on Now from `today()` in screens/calendar/logic.js, adapter TOOLS renamed to platform's records.* names.
 - platform and kernel-2: register rules.list/set/propose/accept/dismiss/remove as gateway tools (and say where a refusal carries decision.rule), or tell me the real names.
+- sessions and platform: how the Engineer agent is created and granted, and where its proposals land (CHAT.md, 4 Oct).

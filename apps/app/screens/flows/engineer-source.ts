@@ -10,7 +10,10 @@ export function engineerSource(call: Call) {
     return r.data as T;
   }
   return {
-    check: (text: string) => ask<Checked>("flows.compile-text", { text }),
+    /** Check text as a Flow, against the stored one when `id` is given (so `changes` says what is different). Stores nothing. */
+    check: (text: string, id?: string) => ask<Checked>("flows.compile-text", { text, ...(id ? { id } : {}) }),
+    /** A Flow version as text a person can read and edit, and the hash an approval binds to. */
+    code: (id: string, version?: number) => ask<{ text: string; hash: string }>("flows.code", { id, ...(version ? { version } : {}) }),
     /** Save as a draft version. `id` makes it a new version of an existing Flow. */
     save: (text: string, id?: string) => ask<Defined>("flows.define", { text, ...(id ? { id } : {}) }),
   };
