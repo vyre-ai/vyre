@@ -147,6 +147,7 @@ export const OPEN_NOTES = Object.freeze({
 
 /** What each flows tool does, in its own words (the descriptions in core/flows/index.js). */
 export const FLOWS_NOTES = Object.freeze({
+  "flows.propose": "proposes a Flow for the person to approve: nothing runs, nothing is installed, until a person approves it",
   "flows.define": "writes a Flow as text or stored form, and nothing runs until a person approves it",
   "flows.card": "the approval card for a Flow version, a read",
   "flows.get": "reads one Flow version as stored",
