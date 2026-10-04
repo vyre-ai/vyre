@@ -73,7 +73,7 @@ export function Button({ label, kind = "secondary", size = "md", icon, onPress, 
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
     setHolding(false);
-    Animated.timing(fill, { toValue: 0, duration: 120, useNativeDriver: false }).start();
+    Animated.timing(fill, { toValue: 0, duration: 160, useNativeDriver: false }).start();
   };
   const start = () => {
     if (disabled || loading || timer.current) return;
