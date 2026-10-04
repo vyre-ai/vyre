@@ -67,16 +67,22 @@ enrol_owner() {
   [ "$OWNER" = 0 ] || return 0
   img=$(docker inspect -f '{{.Config.Image}}' vyre-vyre-1)
   docker stop vyre-vyre-1 >/dev/null || fail "could not stop the box to enrol the owner's key"
-  docker run --rm -u 1000 --volumes-from vyre-vyre-1 -e VYRE_HOME=/home/vyre/.vyre --entrypoint node "$img" /opt/vyre/scripts/dev-enrol-software-key.mjs --home /home/vyre/.vyre >"$WORK/enrol.log" 2>&1 || { cat "$WORK/enrol.log"; fail "the owner's software key could not be enrolled"; }
+  docker run --rm -u 1000 --volumes-from vyre-vyre-1 -v "$HERE/scripts/dev-enrol-software-key.mjs:/opt/vyre/scripts/dev-enrol-software-key.mjs:ro" -e VYRE_HOME=/home/vyre/.vyre --entrypoint node "$img" /opt/vyre/scripts/dev-enrol-software-key.mjs --home /home/vyre/.vyre >"$WORK/enrol.log" 2>&1 || { cat "$WORK/enrol.log"; fail "the owner's software key could not be enrolled"; }
   grep -q '^VYRE_SEAL_DEV=1' /srv/vyre/vyre.env || printf 'VYRE_SEAL_DEV=1\nVYRE_SEAL_SOFTWARE=1\n' >>/srv/vyre/vyre.env
   vyre up >"$WORK/up-owner.log" 2>&1 || { tail -20 "$WORK/up-owner.log"; fail "the box did not start with the developer switches"; }
   ready || fail "the box did not come back with the owner's key"
   sleep 10
   OWNER=1
 }
+put_probes() { # the package carries no developer scripts: the signer and the sign-in probe are copied into the running box (as root, readable by the box user)
+  docker exec vyre-vyre-1 mkdir -p /opt/vyre/scripts || fail "could not make the scripts folder in the box"
+  docker cp "$HERE/scripts/dev-sign-proof.mjs" vyre-vyre-1:/opt/vyre/scripts/dev-sign-proof.mjs
+  docker cp "$HERE/scripts/packaged-probes/signin-approve.mjs" vyre-vyre-1:/tmp/signin-approve.mjs
+  docker exec vyre-vyre-1 chmod 644 /opt/vyre/scripts/dev-sign-proof.mjs /tmp/signin-approve.mjs
+}
 person_call() { # TOOL JSON: the call from a signed-in terminal inside the box; prints the call's answer
   enrol_owner
-  docker cp "$HERE/scripts/packaged-probes/signin-approve.mjs" vyre-vyre-1:/tmp/signin-approve.mjs
+  put_probes
   docker exec -u 1000 -e VYRE_HOME=/home/vyre/.vyre vyre-vyre-1 node /tmp/signin-approve.mjs /opt/vyre "$1" "$2" >"$WORK/person.out" 2>&1 || true
   if grep -q '^RESULT:' "$WORK/person.out"; then sed '1,/^RESULT:/d' "$WORK/person.out"; else cat "$WORK/person.out"; fi
 }
@@ -192,7 +198,7 @@ say "4 ok: updated again with VYRE_STORE=auto kept, every module runs, records i
 # process owns its folder), then started with the two developer switches that let its own sealing process accept the software key.
 if [ "${DEV_KIND:-0}" = 1 ]; then
   enrol_owner # (normally done already by the person reads of step 2)
-  docker cp "$HERE/scripts/packaged-probes/signin-approve.mjs" vyre-vyre-1:/tmp/signin-approve.mjs
+  put_probes
   docker exec -u 1000 -e VYRE_HOME=/home/vyre/.vyre vyre-vyre-1 node /tmp/signin-approve.mjs /opt/vyre >"$WORK/signin.log" 2>&1 || { cat "$WORK/signin.log"; docker logs vyre-vyre-1 2>&1 | grep -Ei 'signin|presence|sealer|software' | tail -15; fail "5: the sign-in with the owner's signed proof did not work"; }
   cat "$WORK/signin.log"
   say "5 ok: the owner's software key signed vyre signin, and a person-only call answered after it"
