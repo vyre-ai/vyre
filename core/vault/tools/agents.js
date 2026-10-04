@@ -5,7 +5,7 @@
 // a username, and modules may not lend logins at all.
 
 import { presence } from "./presence.js";
-import { callerKind } from "../../modules/index.js";
+import { callerKind, agentClaim } from "../../modules/index.js";
 import { parseExpiry } from "../vault.js";
 
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -29,12 +29,20 @@ export function register({ vault, tool }) {
     presence("Let an agent sign in with a vault login", input => vault.agents.summary(input, parseExpiry),
       { skip: ({ caller }) => callerKind(caller) === "mcp" }));
 
-  tool("vault.agent.grants", null, "Agent logins, active, pending, expired and revoked, with the last use and a use count. Names and origins only.",
-    obj({ agent: str, item: str }), input => vault.agents.list(input));
+  tool("vault.agent.grants", ["cli", "local", "deck", "capsule", "tailnet", "device", "module", "mcp", "harness"], "Agent logins, active, pending, expired and revoked, with the last use and a use count. Names and origins only.",
+    obj({ agent: str, item: str }), (input, { caller } = {}) => {
+      // A model reads only its own agent's logins; a model that names no agent has none to read.
+      if (["mcp", "harness"].includes(callerKind(caller))) {
+        const own = agentClaim(String(caller || ""));
+        if (!own) throw Object.assign(new Error("a model session that names no agent has no agent logins to list"), { code: "denied" });
+        return vault.agents.list({ ...input, agent: own });
+      }
+      return vault.agents.list(input);
+    });
 
   tool("vault.agent.revoke", null, "Take an agent login away. Needs no one: taking access away is always allowed.",
     obj({ id: str }, ["id"]), (input, { caller }) => vault.agents.revoke(input, caller));
 
-  tool("vault.uses", null, "Every use of an item: when, which item, which agent or device, which origin and surface, and whether it was allowed. Never a value.",
+  tool("vault.uses", ["cli", "local", "deck", "capsule", "tailnet", "device", "module"], "Every use of an item: when, which item, which agent or device, which origin and surface, and whether it was allowed. Never a value.",
     obj({ item: str, agent: str, since: { description: "ms since epoch or an ISO date" }, limit: int }), input => vault.agents.uses(input));
 }
