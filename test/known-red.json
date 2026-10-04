@@ -44,9 +44,6 @@
  "core/sessions/api-key.test.js": {
   "owner": "sessions"
  },
- "core/sessions/drivers/acp.test.js": {
-  "owner": "sessions"
- },
  "core/sessions/sessions-turns.test.js": {
   "owner": "sessions"
  },
