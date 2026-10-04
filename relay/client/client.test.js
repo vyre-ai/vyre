@@ -2,6 +2,7 @@
 // The client's connection over an in-memory relay (testing.js), with node:test's fake timers:
 // reconnect and backoff, keepalive and stalls, hidden pages, the Idempotency-Key retry, SSE
 // resume and dedupe, and the pairing URL.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { connect, parsePairUrl, keyFingerprint, resolveTicket } from "./client.js";

@@ -7,6 +7,7 @@
 // contract is confirmed (docs/work/federation.md) but the engine itself is not built yet, so the
 // fixture is what this test (and the Deck) reads.
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

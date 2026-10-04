@@ -1,6 +1,7 @@
 // @ts-check
 // The guard that keeps test daemons off the person's Mac. Pure: nothing here boots a vyred.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { daemonHost, assertDaemonHost, REFUSAL } from "./host-guard.js";

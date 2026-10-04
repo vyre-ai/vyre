@@ -2,6 +2,7 @@
 // The guard on its own: path rules, the deny list at any depth, symlinks, and what a listing
 // hides. Everything runs in a temp folder.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

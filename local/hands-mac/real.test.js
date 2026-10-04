@@ -8,6 +8,7 @@
 // granted (checked by preflight, which never prompts). Skipped cleanly off macOS, without the
 // builds, or without the Accessibility grant.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

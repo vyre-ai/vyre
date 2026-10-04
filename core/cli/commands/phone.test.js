@@ -4,6 +4,7 @@
 // terminal), a fake push service on 127.0.0.1, and a phone played by the test (push.subscribe and
 // presence.enroll as the Deck would send them). adb is a fake binary. No network, no dialogs.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

@@ -3,6 +3,7 @@
 // the probe passes only when every attempt is refused, the status file is what the spawner trusts, and a watcher spawn is
 // refused until it says ok. The real rule, real uids and a real container restart are scripts/matrix/watcher-wall.sh on a runner.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

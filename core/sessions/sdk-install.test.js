@@ -2,6 +2,7 @@
 // Installing the Agent SDK on first use (core/sessions/sdk.js): only in the person's own home, and
 // an install in flight ends with vyred, leaving nothing half written.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

@@ -1,6 +1,7 @@
 // @ts-check
 // The Engineer on a REAL vyred (kernel on): a built-in agent in agents.list that only proposes. Its session reaches a short list of tools and no others; a Flow it writes is a draft, a proposal
 // is one task for the admin, and an assistant's chain cannot approve, install or define anything.
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { start } from "../core/daemon/index.js";
@@ -116,4 +117,19 @@ test("RC1 walk: the Engineer proposes a Kit from records.kits.library, a task wa
   const kitRow = async () => ((await d.registry.call("flows.kit.list", {}, "cli", await ownerMeta())).data || []).find((/** @type {any} */ k) => k.kit_id === id || k.id === id);
   const done = await until(async () => { const k = await kitRow(); return k && k.status !== "installing" ? k : null; }, `the install to finish (${logs.filter(m => /flows|kit|install/i.test(m)).slice(0, 3).join(" | ")})`);
   assert.equal(done.status, "installed", JSON.stringify(done));
+});
+
+test("KT-2: a role or view definition record made by hand is data, not authority: no role, member or grant changes", { timeout: 120_000 }, async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {}, kernel: true });
+  t.after(() => d.stop());
+  const owner = d.kernel.id.owner;
+  const personChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s" });
+  await new Promise(r => setTimeout(r, 1500));
+  const grantsBefore = JSON.stringify((await d.kernel.gateway.grants.list(personChain)).filter((/** @type {any} */ g) => g.subject && g.subject.kind === "actor" && g.subject.actor.kind === "person" || g.subject.kind === "role").map((/** @type {any} */ g) => [g.subject, g.actions, g.resource, g.status]));
+  const membersBefore = JSON.stringify(await d.kernel.gateway.grants.members.list(personChain).catch(() => null));
+  await d.kernel.gateway.records.create(personChain, "def-role", { name: "everything", body: JSON.stringify({ name: "everything", base: "owner", abilities: ["space.delete", "members.manage_all"] }), kit: "hand-made" });
+  await d.kernel.gateway.records.create(personChain, "def-view", { name: "all", body: "{}", kit: "hand-made" });
+  assert.equal(JSON.stringify((await d.kernel.gateway.grants.list(personChain)).filter((/** @type {any} */ g) => g.subject && g.subject.kind === "actor" && g.subject.actor.kind === "person" || g.subject.kind === "role").map((/** @type {any} */ g) => [g.subject, g.actions, g.resource, g.status])), grantsBefore, "no grant was made or changed");
+  assert.equal(JSON.stringify(await d.kernel.gateway.grants.members.list(personChain).catch(() => null)), membersBefore, "no member's role changed");
 });

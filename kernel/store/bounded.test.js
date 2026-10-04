@@ -1,5 +1,6 @@
 // The kernel's memory follows the working set, not the history: the event log keeps a recent window and reads the rest from SQLite; the built-in store keeps hot rows
 // and the change feed on disk. These tests hold the bound and hold that nothing else changes: a bounded log answers every read exactly as the unbounded one does.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";

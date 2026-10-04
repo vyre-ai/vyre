@@ -2,6 +2,7 @@
 // Spend caps in memory (core/spend): at the provider's cap memory answers from facts and search and says why;
 // below it, each model dollar goes to the one ledger. Fictional data only (alex, Harlow Legal, Northwind Bakery, juno, kit).
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

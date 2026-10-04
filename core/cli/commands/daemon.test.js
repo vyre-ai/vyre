@@ -1,6 +1,7 @@
 // @ts-check
 // The memory line of `vyre status`: what memory knows about the user and how much of today's plan share reading used.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";

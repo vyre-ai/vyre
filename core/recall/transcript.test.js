@@ -2,6 +2,7 @@
 // recall.transcript inside a real vyred: a session found by id or prefix read as blocks, and the
 // tool kept to a person's own surfaces.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

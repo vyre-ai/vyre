@@ -1,5 +1,6 @@
 // @ts-check
 // The one formatter for how the box reaches this device (link.health), and its dot's colour.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 

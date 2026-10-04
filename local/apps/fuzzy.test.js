@@ -2,6 +2,7 @@
 // fuzzy: the scores that decide which people a typed name offers, and when one of them is strong
 // enough for "Did you mean ...?".
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { distance, score, rank, STRONG } from "./fuzzy.js";

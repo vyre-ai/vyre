@@ -2,6 +2,7 @@
 // The showing device's typed-code state machine: the rules of spec 6.5, with a fake clock and
 // transport and the real PAKE from relay/client/code.js.
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import * as client from "../../relay/client/code.js";

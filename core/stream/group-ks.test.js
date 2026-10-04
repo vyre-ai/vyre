@@ -2,6 +2,7 @@
 // The stream on the sessions' kernel-session seam (chat 0.3 task S): on the daemon path the assistant's kernel session is vyred's, and the stream only asks for calls on a thread's
 // session (`ks.forThread(thread)`: beginTurn, appendOpen), never a token and never a session of its own for an assistant. These tests stand in for lib/kernel-session.js with the
 // same shape over the in-memory chat of fake-reply-port.js: the seam opens the thread's session from the person's send (the test's threads.start and threads.send), and the stream asks.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as config from "../config/index.js";

@@ -17,6 +17,7 @@
 // OPT_OUT itself may only shrink -- growing it needs the reviewer's own sign-off, same shape as
 // test/boundaries.test.js's ALLOW.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { harvest } from "../scripts/lib/docs/reference.js";

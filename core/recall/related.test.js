@@ -5,6 +5,7 @@
 // real, mapped project: project_cwds must name a real project's own folder, or it gets nothing,
 // never the whole corpus and never an unmapped folder.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

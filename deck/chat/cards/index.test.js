@@ -1,6 +1,7 @@
 // @ts-check
 // The card registry (index.js): which tool results and asks become which card, from sample data.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { install } from "../../test/fake-dom.js";

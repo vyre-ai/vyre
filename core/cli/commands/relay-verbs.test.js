@@ -6,6 +6,7 @@
 // person. A browser from the web app, played by the test, pairs through the QR code's address.
 // No Tailscale, no Cloudflare, no dialogs.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";

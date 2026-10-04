@@ -1,4 +1,5 @@
 // reviewer-2 repros HD-1 to HD-3 against origin/work/v0.3 (drop into test/). Each must fail today and pass with its fix.
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

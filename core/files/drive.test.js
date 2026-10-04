@@ -4,6 +4,7 @@
 // files guard on a share's folder, the audit of who else the policy lets in, and the Mac's URL,
 // mount, open and path mapping through seams, so nothing is ever mounted or opened.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

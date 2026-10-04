@@ -5,6 +5,7 @@
 // memory.answer tool, it must also clear the bar: overall 0.9 or more, no confident wrong answer,
 // and p95 under 150 ms a question.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { runEval, correct } from "../../scripts/eval-answer.js";

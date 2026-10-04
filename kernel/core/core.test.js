@@ -1,3 +1,4 @@
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mintUuid, mintId, isUuid, timeOf } from "./ids.js";

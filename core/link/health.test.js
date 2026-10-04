@@ -2,6 +2,7 @@
 // Connection health: the ping and status parsers, and the checker's one-check-a-minute cache,
 // with a fake clock and a fake `run` in place of the tailscale CLI.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parsePing, peerFromStatus, createHealth, describe } from "./health.js";

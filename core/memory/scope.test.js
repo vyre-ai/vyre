@@ -4,6 +4,7 @@
 // sessions know; a folder belongs to the most specific project that holds it; only the user's
 // surfaces and agents granted everything read the main graph. Fictional data only.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

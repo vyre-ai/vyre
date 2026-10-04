@@ -1,5 +1,6 @@
 // @ts-check
 // Reset with wipe: keys first, then rows and folders; refused while the daemon holds the home's lock; and no tool, module, daemon file or session can reach it.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

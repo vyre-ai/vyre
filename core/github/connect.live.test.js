@@ -6,6 +6,7 @@
 // the pinned gh still prints the code and address in the shape connect.js parses, that the flags
 // connect.js passes are accepted, and that cancelling stops gh and removes its private folder.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";

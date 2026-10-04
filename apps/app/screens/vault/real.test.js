@@ -1,5 +1,6 @@
 // @ts-check
 // Vault's real source against a fake box: the tool names and inputs, the refusal codes, and that a value comes back only from vault.reveal.
+import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";

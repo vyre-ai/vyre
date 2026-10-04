@@ -4,6 +4,7 @@
 // an env file of references, edit, the SSH agent through the real ssh-add, and real
 // `git credential fill` going through bin/git-credential-vyre.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

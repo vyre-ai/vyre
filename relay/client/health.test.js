@@ -1,5 +1,6 @@
 // @ts-check
 // health(): the reach shape from a paths object or a Connection, and since only moving with the reach.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { health, watch } from "./health.js";

@@ -1,5 +1,6 @@
 // The runner on the real gateway and tasks (testing/real-kernel.js), for the paths where the fake could hide a mismatch: record events,
 // idempotency, the automation chain through authorize, the ask task and its approval with a real presence proof, and corr on events.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { world, install, settle, ALEX } from "./testing/world.js";

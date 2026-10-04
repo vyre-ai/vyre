@@ -1,5 +1,6 @@
 // @ts-check
 // The live screen's quality levels, which need no browser: by device, and by how the box reaches it.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 

@@ -2,6 +2,7 @@
 // An API credential is never read back, so the Deck offers "Replace the key" for it and never Edit;
 // replacing sends only the new key through vault.put, which keeps the credential's hosts and readers.
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 
