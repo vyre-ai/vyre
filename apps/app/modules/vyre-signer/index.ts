@@ -6,7 +6,7 @@ import { requireNativeModule } from "expo";
 import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
 import { sha256 } from "@noble/hashes/sha256";
-import { b64, b64url, fromB64url, keyIdOf, p1363FromDer, proofBody, proofBytes, spkiFromXY, enrolClientData } from "./presence-proof.js";
+import { b64, b64url, fromB64url, keyIdOf, lowS, p1363FromDer, proofBody, proofBytes, spkiFromXY, enrolClientData } from "./presence-proof.js";
 
 /** Signs every request's x-vyre-proof; no user auth. */
 export const PERSON = "vyre.person";
@@ -166,11 +166,11 @@ export async function enclavePublic(): Promise<string> {
   return b64url(pt);
 }
 
-/** The Enclave key's ECDSA P-256 SHA-256 signature over `message`, behind Face ID, as r||s base64url: the `esig` of a list change. */
-export async function enclaveSign(message: Uint8Array, prompt: string): Promise<string> {
+/** The Enclave key's ECDSA P-256 SHA-256 signature over `message`, behind Face ID: the raw 64 bytes r||s with s in the low half, the one form the chain accepts as `esig` (NE-1). */
+export async function enclaveSign(message: Uint8Array, prompt: string): Promise<Uint8Array> {
   iosOnly();
   await ensureKey(HUMAN, { biometric: true });
-  return b64url(p1363FromDer(fromB64url(await native.sign(HUMAN, new TextDecoder().decode(message), { prompt }))));
+  return lowS(p1363FromDer(fromB64url(await native.sign(HUMAN, new TextDecoder().decode(message), { prompt }))));
 }
 
 /** Forget every key of this phone's signer: the presence key, the person (request) key and the App Attest key id. */
