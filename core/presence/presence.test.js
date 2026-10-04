@@ -872,3 +872,19 @@ test("paired: a software-key device is recorded as one, and a standing rule give
     assert.equal(max > clock + 91 * 86_400_000, !cap, cap ? "the standing rule restores the cap" : "the default has none");
   }
 });
+
+test("PS-4: removing a presence key also deletes the pending pair grants it confirmed, and leaves another key's grants alone", async t => {
+  const home = tempHome(t), db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const { PersonSessions } = await import("./person.js");
+  const people = new PersonSessions({ db, now: () => Date.now() });
+  const jwk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "jwk" });
+  const ins = db.prepare("INSERT INTO presence_keys (id, kind, name, public_key, alg, sign_count, created) VALUES (?,?,?,?,?,0,?)");
+  ins.run("pkA", "device", "Mac A", "x", -7, Date.now()); ins.run("pkB", "device", "Mac B", "y", -7, Date.now());
+  const p = new Presence({ db, platform: "linux", touchid: null, webauthn: null, who: async () => [] });
+  people.grant({ device: "devA", keyId: "pkA", deviceKey: jwk }); people.grant({ device: "devB", keyId: "pkB", deviceKey: jwk });
+  const grants = () => db.prepare("SELECT device FROM presence_pair_grants ORDER BY device").all().map(r => r.device);
+  assert.deepEqual(grants(), ["devA", "devB"]);
+  assert.equal(p.remove("pkA"), true);
+  assert.deepEqual(grants(), ["devB"], "the removed key's grant is gone at once, the other's stays");
+});

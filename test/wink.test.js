@@ -32,7 +32,7 @@ delete process.env.VYRE_TEST_UNGATED_RING;
 /** Takes any presence proof: refusals below are about who calls and what the module decides. */
 const lenient = {
   required: (tool, def, input) => HUMAN_ONLY.has(tool) || Boolean(def && def.presence && (typeof def.presence.when !== "function" || input === undefined || def.presence.when(input))),
-  verify: async ({ proof }) => (proof ? { ok: true, method: "passkey", keyId: "k1" } : { ok: false, message: "needs a person", methods: ["passkey"] }),
+  verify: async ({ proof }) => (proof ? { ok: true, method: "passkey", keyId: proof.key || "k1" } : { ok: false, message: "needs a person", methods: ["passkey"] }),
   challenge: async () => ({ error: { code: "bad_input", message: "no challenges here" } }),
   summary: async () => "",
   covered: () => false,
@@ -762,11 +762,11 @@ test("paired session on the real kernel: pair, pick, start-paired, then memory.g
 
 
 /** A paired phone with a live person session on the real kernel, and the call a daemon makes for it. */
-async function pairedOnKernel(t) {
+async function pairedOnKernel(t, { confirmWithRealKey = false } = {}, shared = null) {
   process.env.VYRE_SEAL_DEV = "1";
   process.env.VYRE_KERNEL_PATH_RULE = "1";
   t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
-  const w = await world(t, { kernel: true });
+  const w = shared || await world(t, { kernel: true });
   const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   const ks = keystore(t);
   const presenceKey = { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: "hardware" };
@@ -774,7 +774,14 @@ async function pairedOnKernel(t) {
   const paired = await pairTicket(fromBase64url(minted.data.ticket), { relay: w.status.url, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: ks, presenceKey });
   const mine = await askPhone(w, paired.device, new Uint8Array(0), "Alex's iPhone");
   const q = await until(async () => { const x = (await w.call("wink.phone.pairing")).data; return x && x.asking ? x : null; });
-  assert.equal((await w.call("wink.phone.pair.answer", { yes: true, pick: q.choices.indexOf(mine.words) + 1 })).data.yes, true);
+  // The owner's confirming key: the stub's fixed "k1", or (confirmWithRealKey) a key really enrolled in presence_keys, so removing it can end the session bound to it.
+  let ownerKey = null;
+  if (confirmWithRealKey) {
+    const ok = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+    ownerKey = (await w.d.registry.call("presence.enroll", { kind: "device", name: "Alex's Mac", public_key: ok.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7 }, "cli", PROOF)).data.id;
+    assert.ok(ownerKey, "an owner key is enrolled");
+  }
+  assert.equal((await w.call("wink.phone.pair.answer", { yes: true, pick: q.choices.indexOf(mine.words) + 1 }, SCREEN, ownerKey ? { ...A, proof: { method: "passkey", key: ownerKey } } : A)).data.yes, true);
   await until(async () => relayHas(w, paired.device));
   const c = connect({ relay: w.status.url, route: paired.route, box: paired.box, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: ks });
   t.after(() => c.close());
@@ -791,7 +798,7 @@ async function pairedOnKernel(t) {
   assert.ok(!(await read()).error, "the paired session reads memory with no prompt");
   const live = async () => { const x = (await w.d.registry.call("presence.person.sessions", {}, "cli", PROOF)).data; return (x.sessions || x).some(y => y.id === sessionId); };
   assert.equal(await live(), true);
-  return { w, paired, sessionId, read, live };
+  return { w, paired, sessionId, read, live, ownerKey };
 }
 
 test("paired session ends, on the real kernel: a revoked session id is gone at once", async t => {
@@ -940,4 +947,23 @@ test("X-1 and the ring, real daemon and relay: device.paired says how the device
   assert.notEqual(open2.pending, true, "with no confirmer the ring pairs as it always did");
   await until(() => paired().length === 4);
   assert.deepEqual([paired().at(-1).via, paired().at(-1).gate], ["ring", undefined]);
+});
+
+test("paired session ends, on the real kernel: removing the owner key that confirmed the pairing ends the session at once, and a key that confirmed nothing does not", async t => {
+  const a = await pairedOnKernel(t, { confirmWithRealKey: true });
+  const other = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const otherId = (await a.w.d.registry.call("presence.enroll", { kind: "device", name: "Spare", public_key: other.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7 }, "cli", PROOF)).data.id;
+  assert.equal((await a.w.d.registry.call("presence.remove", { id: otherId }, "cli", PROOF)).data.removed, otherId);
+  assert.equal(await a.live(), true, "removing a key that confirmed nothing leaves the session alone");
+  assert.equal((await a.w.d.registry.call("presence.remove", { id: a.ownerKey }, "cli", PROOF)).data.removed, a.ownerKey);
+  assert.equal(await a.live(), false, "the session bound to the removed key is gone at once");
+});
+
+test("PS-4 and sessions scope, on the real kernel: a paired session lists only itself, a person's own surface lists every one", async t => {
+  const a = await pairedOnKernel(t);
+  const b = await pairedOnKernel(t, {}, a.w);
+  const list = async (caller, meta) => { const x = (await a.w.d.registry.call("presence.person.sessions", {}, caller, meta)).data; return (x.sessions || x).map(y => y.id).sort(); };
+  assert.deepEqual(await list("cli", PROOF), [a.sessionId, b.sessionId].sort(), "the owner's surface sees both");
+  assert.deepEqual(await list("deck", { person: { id: a.sessionId } }), [a.sessionId], "a paired session sees only itself");
+  assert.deepEqual(await list("deck", { person: { id: b.sessionId } }), [b.sessionId]);
 });

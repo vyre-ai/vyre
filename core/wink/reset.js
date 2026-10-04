@@ -118,6 +118,12 @@ export function registerReset(o) {
       }
       // the box may have changed since begin: a box that holds data is never reset here
       if (owned()) { const h = await holdsData(); if (h.holds) { meta.del(BEGUN); throw fail("holds_data", `This server holds data (${h.names.join(", ")}). Nothing was reset. To erase it, run sudo vyre admin wipe on the server.`); } }
+      // Every paired person session and grant ends with the owner (ADR 0032 2d: a reset is a recovery reset), AWAITED and BEFORE anything is forgotten: a reset that cannot end them fails and
+      // changes nothing (the code stays good), because phones signed in as the old owner must not outlive it. A box with no presence module has none to end.
+      if (typeof ctx.call === "function") {
+        const ended = /** @type {any} */ (await Promise.resolve(ctx.call("presence.person.end-paired", {})).catch((/** @type {any} */ e) => ({ error: { code: "failed", message: String(e && e.message) } })));
+        if (ended && ended.error && ended.error.code !== "no_such_tool") throw fail("unavailable", "Could not sign out the phones that are signed in as the current owner, so nothing was reset. Try again.");
+      }
       meta.del(BEGUN); meta.del(GUARD);
       const at = now();
       const om = meta.get("owner");
@@ -130,8 +136,6 @@ export function registerReset(o) {
       const adopter = String(meta.get("adopter") || "");
       pairing.clearOwner(); // drops the adopter's relay device
       for (const d of devs) { pairing.devices.remove(d.id); if (`device:${d.id}` !== adopter) dropDevice(d.id); }
-      // every paired person session and grant ends with the owner (ADR 0032 2d): a reset is a recovery reset
-      if (typeof ctx.call === "function") Promise.resolve(ctx.call("presence.person.end-paired", {})).catch(() => null);
       return { reset: true, had };
     },
   });

@@ -270,7 +270,11 @@ export default {
       description: "The browsers and apps signed in as the person: id, how (cookie or app), device, made, last used, when it lapses. Never a secret.",
       callers: ["cli", "local", "deck", "capsule"],
       input: obj({}),
-      run: async () => ({ sessions: people.list() }),
+      // A paired phone's own session sees only itself: it is not a window onto every other device's session.
+      run: async (_input, meta = {}) => {
+        const all = people.list(), me = meta && meta.person ? all.find(x => x.id === meta.person.id) : null;
+        return { sessions: me && me.paired ? [me] : all };
+      },
     });
 
     ctx.tool("presence.person.revoke", {
