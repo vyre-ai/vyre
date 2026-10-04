@@ -75,8 +75,11 @@ export function messageOf(op) {
   const { sig: _s, esig: _e, approvals: _a, ...body } = op;
   return enc.encode(`${CHAIN_TAG}\n${canonical(body)}`);
 }
-/** The hash a next op names as `prev`. @param {any} op */
-export const hashOf = op => sha256hex(canonical(op));
+/**
+ * The hash a next op names as `prev`. A WebAuthn assertion (a `sig` longer than an Ed25519 signature's 86 characters) is left out of it: an authenticator's ECDSA signature has a high-s twin that
+ * anyone can make without the key, and an op hash that covered it would fork the head between whoever holds one form and whoever holds the other. The op body it signs is still covered (NE-1).
+ */
+export const hashOf = op => { if (op && typeof op.sig === "string" && op.sig.length > 100) { const { sig: _s, ...rest } = op; return sha256hex(canonical({ ...rest, sig: null })); } return sha256hex(canonical(op)); };
 
 async function verifySig(pubText, message, sigText) {
   const pub = unb64(pubText), sig = unb64(sigText);
@@ -105,7 +108,7 @@ async function verifyWebAuthn(pubText, rp, message, sigText) {
     const want = b64u(new Uint8Array(await crypto.subtle.digest("SHA-256", /** @type {BufferSource} */ (message))));
     if (client.challenge !== want) return false;
     const raw = derToRaw(der);
-    if (!raw || !lowS(raw)) return false; // the authenticator's s must be the canonical low form too (one assertion, one op hash)
+    if (!raw) return false;
     const signed = new Uint8Array(ad.length + 32);
     signed.set(ad, 0); signed.set(new Uint8Array(await crypto.subtle.digest("SHA-256", /** @type {BufferSource} */ (cd))), ad.length);
     const key = await crypto.subtle.importKey("raw", /** @type {BufferSource} */ (pub), { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]);

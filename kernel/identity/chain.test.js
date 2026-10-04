@@ -416,3 +416,24 @@ test("NK-2: a device with no enclave key and no web hold (a Mac or a server) sti
   w = await step(w, { type: "add", entry: friend.entry("device") }, mac, T0 + 30 * H);
   assert.ok(w.state.entries.some(e => e.eid === friend.eid));
 });
+
+test("NE-1: a passkey op's head does not depend on the assertion's signature bytes; an esig has one canonical form, so one op has one hash", async () => {
+  const pk = await passkey("alex's passkey"), friend = await key("friend");
+  const w = await person(pk);
+  const op = await C.makeOp(w.state, { type: "add", entry: friend.entry("device") }, { by: pk.eid, ts: T0 + 25 * H, sign: pk.sign });
+  // the high-s twin of the authenticator's signature: anyone can make it, and it verifies, so the head must not change with it
+  const env = JSON.parse(Buffer.from(op.sig, "base64url").toString());
+  const der = Buffer.from(env.s, "base64url");
+  const rLen = der[3], sOff = 4 + rLen + 2, sLen = der[4 + rLen + 1];
+  const n = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n;
+  let s = 0n; for (const b of der.subarray(sOff, sOff + sLen)) s = (s << 8n) | BigInt(b);
+  const twin = n - s;
+  const hex = twin.toString(16).padStart(64, "0");
+  let sb = Buffer.from(hex, "hex"); if (sb[0] & 0x80) sb = Buffer.concat([Buffer.from([0]), sb]);
+  const r = der.subarray(4, 4 + rLen);
+  const body = Buffer.concat([Buffer.from([2, r.length]), r, Buffer.from([2, sb.length]), sb]);
+  const twinDer = Buffer.concat([Buffer.from([0x30, body.length]), body]);
+  const twinOp = { ...op, sig: C.b64u(Buffer.from(JSON.stringify({ ...env, s: twinDer.toString("base64url") }))) };
+  const a = await C.applyOp(w.state, op, { now: T0 + 25 * H }), b = await C.applyOp(w.state, twinOp, { now: T0 + 25 * H });
+  assert.equal(a.head, b.head, "both forms are valid and give the same head");
+});
