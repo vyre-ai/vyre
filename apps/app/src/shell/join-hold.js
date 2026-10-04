@@ -17,3 +17,10 @@ export function withoutToken(link) { return link.replace(/\/join\/.*$/, "/join/â
 
 /** The address a page shows after the token is taken out: the same path, no query, no fragment. @param {string} href */
 export function cleanAddress(href) { try { const u = new URL(href); return u.pathname; } catch { return "/"; } }
+
+/** A link carried in the fragment (`#link=<url-encoded https join link>`): a fragment is never sent to a server, so this is the form a hosted page should hand over. @param {string} hash */
+export function linkFromHash(hash) {
+  const m = /^#?(?:.*&)?link=([^&]*)/.exec(String(hash || ""));
+  if (!m) return null;
+  try { return decodeURIComponent(m[1]); } catch { return null; }
+}

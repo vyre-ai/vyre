@@ -3,7 +3,7 @@ import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { joinLink, joinTarget } from "./join-link.js";
-import { cleanAddress, holdJoin, takeJoin, withoutToken } from "./join-hold.js";
+import { cleanAddress, holdJoin, linkFromHash, takeJoin, withoutToken } from "./join-hold.js";
 
 test("only an https join link of a space is passed on, encoded once or twice", () => {
   const good = "https://harlow.vyre.run/join/7Kq2-M9";
@@ -37,4 +37,14 @@ test("JL-1: the token is held in memory once, never in the address, and never sh
 
 test("JL-2: a vyre:// open is untrusted: only an https join path of a space goes on, whatever host", () => {
   for (const bad of ["vyre://join?link=x", "https://evil.example/join/..%2f", "file:///join/a.b", "https://h.vyre.run/join/a b"]) assert.equal(joinLink(bad), null, bad);
+});
+
+test("JL-1 leftovers: a fragment carries the link without a server ever seeing it, and the install route's own query is dropped", () => {
+  const tok = "https://h.vyre.run/join/eyJ2IjoxfQ.c2ln";
+  assert.equal(linkFromHash(`#link=${encodeURIComponent(tok)}`), tok);
+  assert.equal(linkFromHash(`#x=1&link=${encodeURIComponent(tok)}`), tok);
+  assert.equal(linkFromHash(""), null);
+  assert.equal(linkFromHash("#other=1"), null);
+  assert.equal(cleanAddress(`https://app.vyre.run/u/install/join?link=${encodeURIComponent(tok)}`), "/u/install/join");
+  assert.equal(takeJoin(), null, "a link in the install route's query holds nothing: only holdJoin fills the hold");
 });

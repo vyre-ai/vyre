@@ -7,7 +7,7 @@ import { Banner, Button, Card, Divider, EmptyState, Field, Row, Segmented, Text,
 import { Page } from "../places/Frame";
 import { useMembers } from "../spaces/state";
 import { tool, said } from "../../src/real/box";
-import { TEMP_DAYS, createInput, inviteRefusal, inviteRow, invitable, madeNote } from "./invite.js";
+import { TEMP_DAYS, createInput, inviteRefusal, inviteRow, invitable, joinedLine, madeNote } from "./invite.js";
 
 const why = (e: unknown) => inviteRefusal((e as { code?: string }).code, said(e));
 
@@ -19,23 +19,27 @@ export function RealInvite() {
   const [role, setRole] = useState("member");
   const [days, setDays] = useState("7");
   const [to, setTo] = useState("");
+  const [anyone, setAnyone] = useState(false);
   const [busy, setBusy] = useState(false);
   const [made, setMade] = useState<ReturnType<typeof madeNote> | null>(null);
   const [words, setWords] = useState("");
   const [problem, setProblem] = useState("");
   const [open, setOpen] = useState<ReturnType<typeof inviteRow>[] | null>(null);
+  const [joined, setJoined] = useState<ReturnType<typeof inviteRow>[]>([]);
   useEffect(() => { if (roles.length && !roles.some((r) => r.id === role)) setRole(roles[roles.length - 1].id); }, [roles.length]);
 
   const refresh = useCallback(() => {
     if (!space) return;
-    tool<{ invites?: unknown[] }>("spaces.invites.list", { space }).then((r) => setOpen((r?.invites ?? []).map(inviteRow).filter((i) => i.open))).catch(() => setOpen([]));
+    tool<{ invites?: unknown[] }>("spaces.invites.list", { space }).then((r) => { const rows = (r?.invites ?? []).map(inviteRow); setOpen(rows.filter((i) => i.open)); setJoined(rows.filter((i) => !i.open && i.who)); }).catch(() => setOpen([]));
   }, [space]);
   useEffect(refresh, [refresh]);
 
   const make = () => {
     if (!card) return;
-    setBusy(true); setProblem(""); setWords("");
-    tool("spaces.invites.create", createInput({ space: card.id, role, to, days: Number(days) })).then((r) => { setMade(madeNote(r)); refresh(); }).catch((e) => setProblem(why(e))).finally(() => setBusy(false));
+    setProblem(""); setWords("");
+    if (!anyone && !to.trim()) { setProblem("Name the person this is for, or choose Anyone with the link."); return; }
+    setBusy(true);
+    tool("spaces.invites.create", createInput({ space: card.id, role, to, anyone, days: Number(days) })).then((r) => { setMade(madeNote(r)); refresh(); }).catch((e) => setProblem(why(e))).finally(() => setBusy(false));
   };
   const confirm = () => {
     if (!card || !made || !words.trim()) return;
@@ -71,7 +75,8 @@ export function RealInvite() {
           <Segmented label="What they can do" value={role} onChange={setRole} options={roles.map((r) => [r.id, r.label] as [string, string])} />
           <Text size="caption" tone="label">{roles.find((r) => r.id === role)?.line}</Text>
           {role === "temp" ? <Segmented label="Access lasts" value={days} onChange={setDays} options={TEMP_DAYS as [string, string][]} /> : null}
-          <Field label="Their Vyre name (optional)" help="Only that person can use the link." value={to} onChangeText={setTo} placeholder="sam.vyre.run" />
+          <Segmented label="Who may use it" value={anyone ? "anyone" : "named"} onChange={(v) => setAnyone(v === "anyone")} options={[["named", "One named person"], ["anyone", "Anyone with the link"]]} />
+          {anyone ? <Banner tone="warn"><Text>Anyone who gets this link can join, so send it only to the person you mean. A named invite works for that person alone.</Text></Banner> : <Field label="Their Vyre name" help="Only that person can use the link." value={to} onChangeText={setTo} placeholder="sam.vyre.run" />}
           {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
           <View className="flex-row"><Button kind="primary" label={busy ? "Making" : "Make the invitation"} onPress={busy ? () => {} : make} /></View>
         </Card>
@@ -80,6 +85,12 @@ export function RealInvite() {
       {open === null ? <Card><EmptyState title="Loading" body="Asking your Vyre." /></Card> : open.length === 0 ? <Card><EmptyState title="No open invitations" body="A link you make shows here until it is used or ends." /></Card> : (
         <Card flush>{open.map((i, k) => <View key={i.id}>{k ? <Divider /> : null}<Row title={i.title} sub={i.sub} end={<Button kind="holdText" size="sm" label="Revoke" onPress={() => void revoke(i.id)} />} /></View>)}</Card>
       )}
+      {joined.length ? (
+        <>
+          <Text size="caption" strong tone="label">Recently joined</Text>
+          <Card flush>{joined.map((i, k) => <View key={i.id}>{k ? <Divider /> : null}<Row title={i.title} sub={joinedLine(i)} /></View>)}</Card>
+        </>
+      ) : null}
     </Page>
   );
 }
