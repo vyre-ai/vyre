@@ -5,6 +5,8 @@ import { useRouter } from "expo-router";
 import { AskCard, Banner, Button, Card, Chip, Divider, EmptyState, FlowCanvas, Row, Text, haptic, showToast } from "@vyre/ui";
 import { Block } from "../places/Page";
 import { Frame, Sec } from "../places/Frame";
+import { retryReal, startReal } from "./run";
+import { canRetry, recordLines, startRefusal } from "./run-model";
 import { approveReal, cardReal, getReal, graphReal, runReal, runsReal, type Card as FlowCard, type Graph, type RunRow } from "./real";
 
 const when = (ms: number | null) => (ms ? new Date(ms).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "");
@@ -56,6 +58,20 @@ export function RealFlow({ id }: { id: string }) {
     finally { setBusy(false); }
   };
 
+  const runNow = async () => {
+    setBusy(true);
+    try { const r = await startReal(id, `app-${id}-${Date.now()}`); showToast("Started."); setN((x) => x + 1); if (r.id || r.run) setRunId(r.id ?? r.run); }
+    catch (e) { showToast(startRefusal((e as { code?: string }).code, e instanceof Error ? e.message : "")); }
+    finally { setBusy(false); }
+  };
+  const retry = async (run: string) => {
+    setBusy(true);
+    try { await retryReal(run); showToast("Retrying."); setN((x) => x + 1); }
+    catch (e) { showToast(e instanceof Error ? e.message : "That did not work."); }
+    finally { setBusy(false); }
+  };
+  const picked_run = runs.find((r) => r.id === runId);
+
   return (
     <Frame back="/u/flows" title={id} sub={`${g.trigger} · v${meta.version}`}>
       <Card flush><FlowCanvas nodes={nodes} edges={g.edges} selected={picked} onSelect={(x) => setPicked(x === picked ? undefined : x)} /></Card>
@@ -66,6 +82,15 @@ export function RealFlow({ id }: { id: string }) {
           <AskCard title={`Approve version ${card.version}`} why={card.changes.length ? card.changes.join(" ") : "Nothing runs until you approve this exact version."}
             actions={[{ label: busy ? "Approving" : "Approve with Face ID", kind: "primary", icon: "faceid", onPress: busy ? () => {} : approve }]} />
           <Block label="See as code">{card.text}</Block>
+        </Sec>
+      ) : null}
+      {!waiting ? <View className="self-start"><Button kind="primary" size="sm" icon="play" label={busy ? "Starting" : "Run now"} onPress={busy ? () => {} : runNow} /></View> : null}
+      {painted && picked_run ? (
+        <Sec title={`What run ${picked_run.id.slice(0, 8)} did`}>
+          <Card flush>
+            {recordLines(painted).map((l, i) => <View key={l.id}>{i ? <Divider /> : null}<Row dense title={l.title} sub={l.sub} /></View>)}
+          </Card>
+          {canRetry(picked_run.state) ? <View className="self-start pt-s2"><Button size="sm" label={busy ? "Retrying" : "Retry this run"} onPress={busy ? () => {} : () => retry(picked_run.id)} /></View> : null}
         </Sec>
       ) : null}
       <Sec title="Run history">

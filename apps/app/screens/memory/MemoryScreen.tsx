@@ -6,6 +6,7 @@ import { Footnote, Frame } from "../places/Frame";
 import { SPACES, useScope } from "../places/scope";
 import { memoryRepo, SUBJECTS, type Fact } from "./data";
 import { editReal, forgetReal, loadReal, undoReal } from "./real";
+import { RealAsk, RealExtras } from "./RealExtras";
 import { answer, edit, forget, group, restore, visible } from "./logic.js";
 
 const SRC_ICON: Record<Fact["src"]["kind"], IconName> = { record: "records", file: "file", chat: "chat", email: "mail", flow: "flows" };
@@ -83,9 +84,10 @@ export default function MemoryScreen() {
 
   return (
     <Frame title="Memory" sub="What Vyre knows, and where each fact came from." scope>
-      {scope === "mine" ? <Footnote icon="shield">This is the Mine boundary. Facts from Harlow Legal never show here, and your assistants do not carry them into Mine.</Footnote> : null}
-      {scope === "harlow" ? <Footnote icon="shield">This is the Harlow Legal boundary. Facts here stay in Harlow Legal. Your own Mine facts are not shown.</Footnote> : null}
+      {!real && scope === "mine" ? <Footnote icon="shield">This is the Mine boundary. Facts from Harlow Legal never show here, and your assistants do not carry them into Mine.</Footnote> : null}
+      {!real && scope === "harlow" ? <Footnote icon="shield">This is the Harlow Legal boundary. Facts here stay in Harlow Legal. Your own Mine facts are not shown.</Footnote> : null}
 
+      {real ? <RealAsk /> : (
       <View className="gap-s3 pt-s2">
         <Composer label="Ask Memory" placeholder="Ask about a person or project" value={q} onChangeText={setQ} onSend={() => setAsked(q)} />
         <View className="flex-row flex-wrap gap-s2"><Chip onPress={() => ask("Jane")}>What do we know about Jane</Chip></View>
@@ -103,6 +105,7 @@ export default function MemoryScreen() {
         {ans?.kind === "boundary" ? <Footnote icon="shield">{`Nothing in ${scope === "all" ? "this view" : SPACES[scope].name} about "${asked}". Memory does not cross spaces unless a space shares it. Switch the space to ask there.`}</Footnote> : null}
         {ans?.kind === "none" ? <Text tone="muted">Nothing remembered about {ans.name}.</Text> : null}
       </View>
+      )}
 
       {undo ? (
         <Banner>
@@ -123,6 +126,8 @@ export default function MemoryScreen() {
           <Card flush>{s.facts.map((f, i) => <View key={f.id}>{i ? <Divider /> : null}{row(f)}</View>)}</Card>
         </View>
       )) : <Card><EmptyState title={load.state === "loading" ? "Loading Memory" : load.state === "error" ? "Memory did not answer" : "Nothing here yet"} body={load.state === "error" ? (load.say ?? "Try again in a moment.") : load.state === "loading" ? "Asking your Vyre." : real ? "Nothing is remembered yet. Facts appear as your assistants learn them." : `No ${mode} facts in this space.`} /></Card>}
+
+      {real ? <RealExtras /> : null}
 
       {sealed.length ? (
         <Footnote icon="sealed">{`Sealed fields are never read into Memory: ${sealed.map((s) => `${s.subject} has ${s.labels.length}`).join(", ")}. Assistants see "SSN on file, sealed" and nothing more.`}</Footnote>
