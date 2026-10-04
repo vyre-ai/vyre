@@ -2,7 +2,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { assistantWhenReady, WAITING } from "./assistant-ready.js";
+import { assistantWhenReady, WAITING, NO_ACCOUNT } from "./assistant-ready.js";
 
 function world(o = {}) {
   const calls = [];
@@ -20,6 +20,7 @@ function world(o = {}) {
   };
 }
 const signed = [{ id: "claude", accounts: [{ id: "a", signed_in: true }] }];
+const machineOnly = [{ id: "claude", accounts: [{ id: "default", kind: "login", signed_in: true }] }];
 const unsigned = [{ id: "claude", accounts: [{ id: "a", signed_in: false }] }, { id: "codex", accounts: [] }];
 
 test("an assistant that exists is left alone", async () => {
@@ -52,4 +53,19 @@ test("an owner and a signed-in AI account: the assistant is made, named Juno unl
   assert.deepEqual(w.calls, [["ensure", { fallbackName: true }]]);
   assert.equal(await world({ providers: unsigned, outside: true }).run(), "made", "the machine's own Claude sign-in counts");
   assert.equal(await world({ providers: signed, made: false }).run(), "failed");
+});
+
+test("the machine's own default Claude login row is a stand-in, not a connection", async () => {
+  const w = world({ providers: machineOnly });
+  assert.equal(await w.run(), "waiting");
+});
+test("an assistant whose account is disconnected later stays and says it has no account; reconnecting clears it", async () => {
+  const agents = [{ name: "juno", kind: "assistant" }];
+  const w = world({ agents, providers: unsigned });
+  assert.equal(await w.run(), "no_account");
+  assert.equal(w.state.why, NO_ACCOUNT);
+  assert.deepEqual(w.calls, [], "nothing is made or removed");
+  const back = world({ agents, providers: signed, state: w.state });
+  assert.equal(await back.run(), "exists");
+  assert.equal(back.state, null);
 });

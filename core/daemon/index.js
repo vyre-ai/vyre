@@ -291,7 +291,7 @@ async function startLocked(opts, root, p, release) {
       if (typeof device !== "string" || !device) return null;
       return createRemoteKernel({ space: id, transport: winkTransport({ sessionFor: async () => sf(device) }) });
     };
-    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, runnerHost, remote: remoteFor, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
+    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, onOwnerAdopted: (/** @type {string} */ owner, /** @type {string} */ previous) => events.emit("kernel", "owner.adopted", { owner, previous }), runnerHost, remote: remoteFor, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
       // A credentialed request run at the home: the vault's own forward (an internal tool only the lease module may call), under the Space's credential; the kernel has already authorized it.
       forwardCredential: async (/** @type {any} */ q) => {
         const r = q.request;
