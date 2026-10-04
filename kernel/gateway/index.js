@@ -160,7 +160,7 @@ export function createGateway(cfg) {
       }
     }
     cfg.log.append(chain, { type: "records.field-sealed", sv: 1, subject: `vyre://${cfg.space}/definition/types`, data: { type: i.type, field: i.field, sealed_field: name, moved, erased_events: erased } }, { decision: dec.decision });
-    return { sealed_field: name, moved, erased_events: erased, task_texts_cleared: taskTextsCleared };
+    return { sealed_field: name, moved, erased_events: erased, task_texts_cleared: taskTextsCleared, task_texts_note: "Task texts that quote a value, in any spacing or case, were cleared whole, and so was every task about a changed record. Text typed anywhere else (a note, a message, another system) is not searched." };
   }
 
   return Object.freeze({

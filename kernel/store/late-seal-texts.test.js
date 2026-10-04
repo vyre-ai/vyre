@@ -74,6 +74,7 @@ test("SC-1: the task texts that quote a sealed value in another spelling are cle
   const rows = () => db.prepare("SELECT task, text FROM kernel_task_texts").all();
   assert.ok(quoting.every(q => rows().some(r => r.task === q.id)), "every text is stored before the seal");
   const out = await k.gateway.migrate.sealField(owner, { type: "person", field: "legal", class: "legal-name" });
+  assert.match(out.task_texts_note, /not searched/, "the answer says what is not covered");
   assert.ok(out.task_texts_cleared >= quoting.length, `the result says what was cleared (${out.task_texts_cleared})`);
   for (const q of quoting) assert.equal(rows().some(r => r.task === q.id), false, `task "${q.title}" lost its text`);
   assert.ok(rows().some(r => r.task === keep.id), "an unrelated task keeps its text");
