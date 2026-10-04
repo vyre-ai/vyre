@@ -14,6 +14,8 @@ import { tempHome, writeModule } from "../../test/helpers.js";
 import { Curator } from "./curator.js";
 import { Graph } from "./graph.js";
 import { lesson } from "./teach.js";
+// The kernel is the daemon's only source of "who is calling": these tests start a real vyred, so they run it with the kernel on (the default once VYRE_KERNEL is flipped).
+process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
 
 function world(t, { recall = true } = {}) {
   const db = open(path.join(tempHome(t), "vyre.db"));
@@ -157,7 +159,7 @@ test("teach: through ctx.memory.teach in a real vyred, and never from outside a 
         run: async ({ name }) => ({ taught: await ctx.memory.teach("people.person", { subject: name, rel: "works_at", object: "Northwind Bakery" }) }) });
       return {};
     } };`);
-  const d = await start({ root, log: () => {} });
+  const d = await start({ root, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
   t.after(() => d.stop());
   assert.deepEqual((await call("people.add", { name: "Tomas Berg" }, { root })).data, { taught: true });
   await call("memory.curate", {}, { root });
@@ -170,7 +172,7 @@ test("teach: through ctx.memory.teach in a real vyred, and never from outside a 
   assert.ok(!(await request("GET", "/v1/tools", undefined, { root })).data.some(x => x.name === "memory.teach"));
   // A module cannot teach in another module's name.
   const spoof = await d.registry.call("memory.teach", { kind: "people.person", fact: { subject: "A" }, from: "people" }, "module:other");
-  assert.match(spoof.error.message, /arrived as module:other/);
+  assert.match(spoof.error.message, /arrived as module:other|no kernel chain/, "refused: by the kernel gate first (not a module the loader vouches for), and by the name check beside it");
   assert.ok(fs.existsSync(d.paths.db));
 });
 

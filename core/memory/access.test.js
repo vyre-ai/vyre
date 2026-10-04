@@ -4,6 +4,7 @@
 // for vyred, over the shared fictional corpus.
 
 import { test } from "node:test";
+import { labeled } from "./testing/label-who.js";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { open } from "../store/index.js";
@@ -31,7 +32,7 @@ async function module_(t) {
     name: "memory", config: { me: { domains: ["riverastudio.com"] } }, paths: {}, store: { db, migrate: () => {} }, log: () => {},
     events: { on: () => () => {}, emit: () => {}, since: () => [], prune: () => 0 },
     call: async (tool, input) => fakeReachCall(tool, input, { agents: AGENTS, projects: PROJECTS }),
-    tool: (name, def) => tools.set(name, def),
+    tool: (name, def) => tools.set(name, labeled(def)),
   };
   const handle = await memory.start(ctx);
   t.after(() => handle.stop());
@@ -104,7 +105,7 @@ test("agents.projects is not the only door any more: projects.access also has to
     name: "memory", config: { me: { domains: ["riverastudio.com"] } }, paths: {}, store: { db, migrate: () => {} }, log: () => {},
     events: { on: () => () => {}, emit: () => {}, since: () => [], prune: () => 0 },
     call: async (tool, input) => fakeReachCall(tool, input, { agents: AGENTS, projects: PROJECTS, access }),
-    tool: (name, def) => tools.set(name, def),
+    tool: (name, def) => tools.set(name, labeled(def)),
   };
   const memory = (await import("./index.js")).default;
   const handle = await memory.start(ctx);
@@ -123,32 +124,32 @@ test("agents.projects is not the only door any more: projects.access also has to
   assert.equal(refused.code, "denied", JSON.stringify(refused));
 });
 
-test("tailnet: the user's other devices read as the owner, and correct only with a person session", async t => {
+test("devices: the user's other devices read and correct as the owner only once signed in (ruling 6 Oct); an unsigned device is told to sign in", async t => {
   const { call } = await module_(t);
+  const SIGNED = { person: { id: "s1", kind: "cookie" } };
   for (const [tool, input] of [["memory.graph", {}], ["memory.facts", { about: "Dana Reyes" }], ["memory.facts", { thread: SITE }],
     ["memory.why", { fact: WORKS }], ["memory.stats", {}], ["memory.corrections", {}]]) {
-    const r = await call(tool, input, TAILNET);
+    const r = await call(tool, input, TAILNET, SIGNED);
     assert.ok(!r.error, `${tool}: ${r.error}`);
+    assert.equal((await call(tool, input, TAILNET)).code, "person_session_required", `${tool} unsigned`);
   }
-  assert.equal((await call("memory.graph", {}, TAILNET)).data.scope, "main");
+  assert.equal((await call("memory.graph", {}, TAILNET, SIGNED)).data.scope, "main");
   for (const [tool, input] of [["memory.correct", { fact: WORKS, action: "wrong" }], ["memory.merge", { node: "Dana Reyes", into: "Sam Okafor" }],
     ["memory.split", { node: "Dana Reyes", other: "Sam Okafor" }], ["memory.uncorrect", { id: 1 }]]) {
     const r = await call(tool, input, TAILNET);
     assert.equal(r.code, "person_session_required", `${tool}: ${JSON.stringify(r)}`);
   }
-  // Signed in with a passkey on that device (ADR 0032), the person corrects there too.
-  const signed = await call("memory.correct", { fact: WORKS, action: "confirm" }, TAILNET, { person: { id: "s1", kind: "cookie" } });
+  const signed = await call("memory.correct", { fact: WORKS, action: "confirm" }, TAILNET, SIGNED);
   assert.ok(!signed.error, JSON.stringify(signed));
-  assert.equal((await call("memory.correct", { fact: WORKS, action: "confirm" }, "tailnet:agent:kit", { person: { id: "s1" } })).code, "denied", "an agent's node never corrects");
+  assert.equal((await call("memory.correct", { fact: WORKS, action: "confirm" }, "tailnet:agent:kit", { person: { id: "s1" } })).data?.applied, false, "an agent's node never corrects, it only suggests");
   // Find on the owner's phone searches memory by meaning, account-wide, as the Deck does.
-  const rel = await call("memory.relevant", { text: "email Dana Reyes" }, TAILNET);
+  const rel = await call("memory.relevant", { text: "email Dana Reyes" }, TAILNET, SIGNED);
   assert.ok(!rel.error && !rel.code, `memory.relevant: ${JSON.stringify(rel)}`);
-  assert.equal((await call("memory.relevant", { text: "email Dana Reyes" }, "tailnet:")).code, "denied", "not a login");
+  assert.equal((await call("memory.relevant", { text: "email Dana Reyes" }, "tailnet:", SIGNED)).code, "denied", "not a login");
   // A caller that merely looks like one, or names an agent, is not the owner.
-  // An agent's own tailnet node, and a guest from another tailnet, are not the user either.
-  for (const caller of ["tailnet:", "xtailnet:alex@example.com", "mcp tailnet:alex", "tailnet:agent:kit", "tailnet-guest:sam@harlow.example"]) assert.equal((await call("memory.stats", {}, caller)).code, "denied", caller);
-  assert.equal((await call("memory.corrections", {}, "tailnet:alex@example.com agent:kit")).code, "denied");
-  assert.equal((await call("memory.corrections", {}, "mcp")).code, "denied");
+  for (const caller of ["tailnet:", "xtailnet:alex@example.com", "mcp tailnet:alex", "tailnet:agent:kit", "tailnet-guest:sam@harlow.example"]) assert.equal((await call("memory.stats", {}, caller, SIGNED)).code, "denied", caller);
+  assert.equal((await call("memory.corrections", {}, "tailnet:alex@example.com agent:kit", SIGNED)).code, "denied");
+  assert.equal((await call("memory.corrections", {}, "mcp", SIGNED)).code, "denied");
 });
 
 test("presence: correct, merge and split are the user's own, with no prompt; agents stay refused", async t => {
@@ -160,7 +161,7 @@ test("presence: correct, merge and split are the user's own, with no prompt; age
   for (const caller of ["module:harness", "tailnet-guest:sam@harlow.example"]) assert.equal((await call("memory.correct", { fact: WORKS, action: "wrong" }, caller, { person: { id: "s1" } })).code, "denied", caller);
   // A model (mcp) with no words of the person's behind it only suggests (core/memory/iq/heard.js).
   assert.equal((await call("memory.correct", { fact: WORKS, action: "wrong" }, "mcp", { person: { id: "s1" } })).data.applied, false);
-  assert.equal((await call("memory.correct", { fact: WORKS, action: "wrong" }, "deck agent:kit")).code, "denied");
+  assert.equal((await call("memory.correct", { fact: WORKS, action: "wrong" }, "deck agent:kit")).data?.applied, false, "an agent hop only suggests");
 });
 
 test("today: a project's brief line, its last session and what memory learned lately, no personal facts", async t => {

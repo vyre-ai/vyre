@@ -337,15 +337,15 @@ export default {
     // unscoped" rule at all.
     const NOTHING = ["/dev/null/vyre-assistant-has-no-mapped-projects"];
     /** The user's own surfaces. Only these, modules, and a verified all-projects agent read the main graph. */
-    const OWNER = new Set(["deck", "cli", "local", "capsule"]);
-    const owner = caller => { const w = whoNow(); return w ? (w.ownerSurface || w.module !== null) : OWNER.has(String(caller)) || String(caller).startsWith("module:"); }; // SHIM(legacy labels): the label side runs only with the kernel off
+    /** The user's own surfaces and Vyre's own modules, as the kernel chain says it (the registry's caller list is `callers: OWNERS`; no label is read here). */
+    const owner = () => { const w = whoNow(); return Boolean(w && (w.ownerSurface || w.module !== null)); };
     /**
      * The user on another of their devices: vyred's tailnet listener sets "tailnet:<login>" from
      * Tailscale's whois, and no caller can claim it. It reads as the owner does (graph, facts,
      * why, stats, corrections) but never corrects, merges or splits.
      */
     // An agent's own node ("tailnet:agent:<name>") is an agent, not the user on another device.
-    const viaTailnet = caller => { const w = whoNow(); return w ? (w.device && w.signedIn) : /^tailnet:(?!agent:)[^\s]+$/.test(String(caller || "")); }; // SHIM(legacy labels): the label branch goes with the kernel-off path. With a chain, one of the OWNER's own devices reads as the owner only when signed in (a person session), over Wink or the relay alike (ruling, 6 Oct)
+    const viaTailnet = () => { const w = whoNow(); return Boolean(w && w.device && w.signedIn); };
     const reader = caller => owner(caller) || viaTailnet(caller);
     /**
      * The one plain hint, for a READ refused on the OWNER's own paired device that is not signed in: sign in once on this device (ruling 6 Oct, option B). Only for that device: the kernel
@@ -553,7 +553,7 @@ export default {
      * @param {(input: any, extra: { caller?: string }) => Promise<any>} run
      */
     /** Whether the caller is an agent: the kernel chain has an agent hop (a label naming one, `agent:<name>`, only when the kernel is off). */
-    const namesAgent = caller => { const w = whoNow(); return w ? w.agent !== null : /(?:^|[\s:])agent:/.test(String(caller || "")); }; // SHIM(legacy labels): the label side runs only with the kernel off
+    const namesAgent = () => { const w = whoNow(); return Boolean(w && w.agent !== null); };
     const ownerOnly = run => async (input, extra = {}) => {
       if (namesAgent(extra.caller)) throw denied("corrections are the user's: an agent proposes one as a lesson instead");
       return run(input, extra);
@@ -565,15 +565,11 @@ export default {
      */
     const personWrites = (caller, meta) => {
       const w = whoNow();
-      if (w) return w.agent === null && (w.ownerSurface || (w.device && w.signedIn));
-      const c = String(caller || ""); // SHIM(legacy labels): the label branch goes with the kernel-off path
-      if (/(?:^|[\s:])agent:/.test(c)) return false;
-      if (OWNERS.includes(c)) return true;
-      return /^(?:tailnet:(?!agent:).|device:[a-z2-7]{16}$)/.test(c) && Boolean(meta && meta.person);
+      return Boolean(w && w.agent === null && (w.ownerSurface || (w.device && w.signedIn)));
     };
     const ownerWrite = run => ownerOnly(async (input, extra = {}) => {
       if (!personWrites(extra.caller, extra)) {
-        const device = whoNow() ? Boolean(whoNow()?.device) && !namesAgent(extra.caller) : /^(?:tailnet:|device:)/.test(String(extra.caller || "")) && !/agent:/.test(String(extra.caller));
+        const device = Boolean(whoNow()?.device) && !namesAgent();
         throw Object.assign(new Error(device ? "corrections are the person's own: sign in on this device with your passkey first"
           : `corrections are made from the user's own surfaces, not ${plain(extra.caller || "an unnamed caller", 60)}`), { code: device ? "person_session_required" : "denied" });
       }
@@ -614,7 +610,7 @@ export default {
     };
     // ---- an agent corrects only with the person's own words behind it (core/memory/iq/heard.js)
     /** A model's caller: the user's own Claude Code session, a thread's, or a named agent's. */
-    const agentCaller = caller => { const w = whoNow(); return w ? (w.agent !== null || w.ownSession) : /^mcp(?::|$)/.test(String(caller || "")) || /^harness:agent:/.test(String(caller || "")); };
+    const agentCaller = () => { const w = whoNow(); return !w || w.agent !== null || w.ownSession; }; // no chain is read as a model: it may not correct on its own
     /** Caps (e2e, 28 Sep): a thread applies at most this many an hour; suggestions wait this many a thread and in all, for this long. */
     const AGENT = { perHour: 3, openPerThread: 5, openTotal: 50, expireMs: 14 * 86_400_000 };
     /** What a suggestion is about, as it reads now: if it changes before the person decides, the suggestion expires. */
@@ -815,7 +811,7 @@ export default {
     // A bare "mcp" caller is the user's own Claude Code session, and "mcp:thread:<id>" a session
     // Vyre runs for the user (ADR 0030; an agent's says mcp:agent:<name>), so both ask about the
     // user's life as the user's surfaces do.
-    const ownSession = caller => { const w = whoNow(); return w ? w.ownSession : /^mcp(?::thread:[A-Za-z0-9_-]+)?$/.test(String(caller)); };
+    const ownSession = () => { const w = whoNow(); return Boolean(w && w.ownSession); };
     const personalOnly = async (input, caller, name) => {
       const r = await reach(input.agent, caller);
       // THE assistant rule: it keeps personal facts (distilled, not raw), even though it no

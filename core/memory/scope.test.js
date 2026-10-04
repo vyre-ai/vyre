@@ -5,6 +5,7 @@
 // surfaces and agents granted everything read the main graph. Fictional data only.
 
 import { test } from "node:test";
+import { labeled } from "./testing/label-who.js";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { open } from "../store/index.js";
@@ -174,7 +175,7 @@ async function module_(t, { projects, agents = [], sessions = SESSIONS }) {
     name: "memory", config: { me: { domains: ["riverastudio.com"] } }, paths: {}, store: { db, migrate: () => {} }, log: () => {},
     events: { on: () => () => {}, emit: (type, payload) => events.push({ type, payload }), since: () => [], prune: () => 0 },
     call: async (tool, input) => fakeReachCall(tool, input, { agents, projects }),
-    tool: (name, def) => tools.set(name, def),
+    tool: (name, def) => tools.set(name, labeled(def)),
   };
   const handle = await memory.start(ctx);
   t.after(() => handle.stop());
@@ -243,7 +244,10 @@ test("scope: the user's own tools refuse any caller that names an agent", async 
   for (const caller of ["deck agent:kit", "cli:agent:kit", "capsule agent:kit"]) {
     for (const [tool, input] of [["memory.correct", { fact: WORKS, action: "wrong" }], ["memory.corrections", {}], ["memory.uncorrect", { id: 1 }],
       ["memory.merge", { node: "Dana Reyes", into: "Sam Okafor" }], ["memory.split", { node: "Dana Reyes", other: "Sam Okafor" }]]) {
-      assert.match((await call(tool, input, caller)).error || "", /agent/, `${tool} from ${caller}`);
+      const r = await call(tool, input, caller);
+      // An agent hop on the chain never corrects on its own: memory.correct only records a suggestion for the person (applied: false); the rest refuse by name.
+      if (tool === "memory.correct") assert.equal(r.data && r.data.applied, false, `${tool} from ${caller}`);
+      else assert.match(r.error || "", /agent/, `${tool} from ${caller}`);
     }
   }
   assert.ok(!(await call("memory.corrections", {}, "deck")).error);

@@ -11,6 +11,8 @@ import { start } from "../daemon/index.js";
 import { call, request } from "../daemon/client.js";
 import { SESSIONS, seedRecall } from "../../test/fixtures/corpus.js";
 import { tempHome } from "../../test/helpers.js";
+// The kernel is the daemon's only source of "who is calling": these tests start a real vyred, so they run it with the kernel on (the default once VYRE_KERNEL is flipped).
+process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
 
 function seeded(t, { recall = true } = {}) {
   const root = tempHome(t);
@@ -153,29 +155,30 @@ test("memory module: an IQ answer corrected where it is shown is the answer next
   assert.equal((await call("memory.stats", {}, { root })).data.iq.corrected, 0);
 });
 
-test("memory module: the person corrects from their phone only with a person session; agents never", async t => {
+test("memory module: the person corrects from their phone only signed in; a device with no chain, or an agent's, never", async t => {
   const root = seeded(t);
-  const d = await start({ root, log: () => {} });
+  const d = await start({ root, log: () => {}, kernel: true });
   t.after(() => d.stop());
   await call("memory.curate", {}, { root });
   await call("memory.remember", { text: "my wife is Jordan" }, { root });
   const a = (await call("memory.ask", { question: "what is my wife's name?" }, { root })).data;
-  const phone = "tailnet:alex@example.com", signed = { person: { id: "s1", kind: "cookie" } };
+  const phone = "device:abcdefghijklmnop";
+  // The registry asks for the person's own session beside the kernel's facts, the way vyred's router sets both for a signed-in device.
+  const facts = (signedIn) => ({ ...(signedIn ? { person: { id: "s1", kind: "cookie" } } : {}), kernelFacts: { kind: "device", device_key_id: "abcdefghijklmnop", person: d.kernel.id.owner, path: "relay", ...(signedIn ? { session: "s1" } : {}) } });
 
-  const bare = await d.registry.call("memory.correct", { answer: a.answer_id, action: "wrong" }, phone, {});
+  const bare = await d.registry.call("memory.correct", { answer: a.answer_id, action: "wrong" }, phone, facts(false));
   assert.equal(bare.error?.code, "person_session_required", JSON.stringify(bare));
-  const graphBare = await d.registry.call("memory.correct", { subject: "Dana Reyes", rel: "works_at", object: "Harlow Legal", action: "confirm" }, phone, {});
+  const graphBare = await d.registry.call("memory.correct", { subject: "Dana Reyes", rel: "works_at", object: "Harlow Legal", action: "confirm" }, phone, facts(false));
   assert.equal(graphBare.error?.code, "person_session_required", "graph corrections follow the same rule");
-  for (const agent of ["tailnet:agent:kit", "device:abcdefghijklmnop agent:kit"]) {
-    const r = await d.registry.call("memory.correct", { answer: a.answer_id, action: "wrong" }, agent, signed);
-    assert.ok(r.error, `${agent} corrected`);
-  }
+  // A device the kernel built no chain for (a label alone) corrects nothing.
+  const noChain = await d.registry.call("memory.correct", { answer: a.answer_id, action: "wrong" }, "tailnet:alex@example.com", { person: { id: "s1", kind: "cookie" } });
+  assert.equal(noChain.error?.code, "denied", JSON.stringify(noChain));
 
-  const ok = await d.registry.call("memory.correct", { answer: a.answer_id, action: "wrong" }, phone, signed);
+  const ok = await d.registry.call("memory.correct", { answer: a.answer_id, action: "wrong" }, phone, facts(true));
   assert.equal(ok.data?.fix?.action, "wrong", JSON.stringify(ok));
-  const graph = await d.registry.call("memory.correct", { subject: "Dana Reyes", rel: "works_at", object: "Harlow Legal", action: "confirm" }, phone, signed);
+  const graph = await d.registry.call("memory.correct", { subject: "Dana Reyes", rel: "works_at", object: "Harlow Legal", action: "confirm" }, phone, facts(true));
   assert.ok(graph.data?.correction, JSON.stringify(graph));
-  const undo = await d.registry.call("memory.uncorrect", { fix: ok.data.fix.id }, "device:abcdefghijklmnop", signed);
+  const undo = await d.registry.call("memory.uncorrect", { fix: ok.data.fix.id }, phone, facts(true));
   assert.equal(undo.data?.fix?.undone > 0, true, JSON.stringify(undo));
 });
 

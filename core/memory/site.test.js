@@ -2,6 +2,7 @@
 // site.*: the store for what Vyre for Chrome learns. Fictional data only (a made-up GoHighLevel-like app).
 
 import { test } from "node:test";
+import { labeled } from "./testing/label-who.js";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { open } from "../store/index.js";
@@ -25,7 +26,7 @@ async function world(t, settings = {}, homeOverride = null) {
     name: "memory", config: { me: { domains: [] } }, paths: { root: homeOverride || home }, store: { db, migrate: () => {} }, log: () => {}, now: () => clock.now,
     events: { on: () => () => {}, emit: (type, payload) => emitted.push({ type, payload }), since: () => [], prune: () => 0 },
     call: async (tool, input) => tool === "settings.get" ? (set.__fail ? { error: { code: "failed", message: "hub down" } } : { data: { value: set[input.key] } }) : tool === "recall.search" ? { data: [] } : tool === "recall.thread" ? { data: { turns: [] } } : fakeReachCall(tool, input, { agents: AGENTS, projects: [] }),
-    tool: (name, def) => tools.set(name, def),
+    tool: (name, def) => tools.set(name, labeled(def)),
     iqRunner: null, memoryRunner: null,
   };
   const handle = await memory.start(ctx);
@@ -273,8 +274,8 @@ test("settings fail closed: an error from the hub keeps the last value, or off; 
 test("a phone paired through the relay (device:<id>) is a person's surface", async t => {
   const w = await world(t);
   await w.call("memory.site.put", { origin: ORIGIN, patch: patch() });
-  assert.equal((await w.call("memory.site.list", {}, "device:phone-1")).data.sites.length, 1);
-  assert.equal((await w.call("memory.site.forget", { key: ORIGIN }, "device:phone-1")).data.forgotten, 1);
+  assert.equal((await w.call("memory.site.list", {}, "device:aaaaaaaaaaaaaaaa")).data.sites.length, 1);
+  assert.equal((await w.call("memory.site.forget", { key: ORIGIN }, "device:aaaaaaaaaaaaaaaa")).data.forgotten, 1);
 });
 
 const Q = "what do you know about GoHighLevel?";

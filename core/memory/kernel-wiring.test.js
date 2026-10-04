@@ -107,18 +107,6 @@ test("c. a call with no kernel chain is refused: the caller label decides nothin
   assert.equal((await w.call("memory.stats", {}, "capsule")).code, "denied", "the Capsule label alone is no proof");
 });
 
-test("c. with no kernel on the daemon nothing changes: the 0.2 rules stand alone", async t => {
-  const db = open(path.join(tempHome(t), "vyre.db"));
-  t.after(() => db.close());
-  seedRecall(db, SESSIONS);
-  const tools = new Map();
-  const ctx = { name: "memory", config: { me: { domains: ["riverastudio.com"] } }, paths: {}, store: { db, migrate: () => {} }, log: () => {}, events: { on: () => () => {}, emit: () => {}, since: () => [], prune: () => 0 },
-    call: async (tool, input) => tool === "recall.search" ? { data: [] } : fakeReachCall(tool, input, { agents: AGENTS, projects: [] }), tool: (n, d) => tools.set(n, d), memoryRunner: null };
-  const h = await memory.start(ctx);
-  t.after(() => h.stop());
-  assert.ok(await tools.get("memory.stats").run({}, { caller: "deck" }));
-});
-
 test("b. a value shaped like a sealed class is scrubbed on the way in, from every door", async t => {
   const w = await world(t);
   assert.deepEqual(scrubIn(`my ssn is ${SSN}, ok`).classes, ["us-ssn"]);

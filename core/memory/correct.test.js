@@ -16,6 +16,8 @@ import { fileURLToPath } from "node:url";
 import { tempHome, present } from "../../test/helpers.js";
 import { Curator } from "./curator.js";
 import { Graph } from "./graph.js";
+// The kernel is the daemon's only source of "who is calling": these tests start a real vyred, so they run it with the kernel on (the default once VYRE_KERNEL is flipped).
+process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
 
 const W = `${HOME}/Work`;
 const T0 = Date.parse("2026-09-01T09:00:00Z");

@@ -1,6 +1,5 @@
 // @ts-check
-// Memory's access layer decided from the kernel chain's facts, not label strings (CUTOVER section H). Every caller class gets the SAME answer from the chain (kernel on) as it
-// got from its label (kernel off): the table's rows, run both ways. Only the model and the projects.reach stand-in (a 0.2 module this one asks) are stand-ins.
+// Memory's access layer decided from the kernel chain's facts, not label strings (CUTOVER section H). Every caller class gets the answer the table says, from its chain. Only the model and the projects.reach stand-in (a 0.2 module this one asks) are stand-ins.
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
@@ -47,30 +46,29 @@ const YES = { graph: "yes", corrections: "yes", me: "yes", correct: "yes", pin: 
 const NO_READS = { graph: "person_session_required", corrections: "person_session_required", me: "person_session_required" }; // the plain sign-in hint, only for the owner's own unsigned device
 const UNSIGNED = { ...YES, ...NO_READS, correct: "person_session_required", write: "person_session_required" };
 
-test("each caller class does exactly what its label did: the table's rows, by the chain and by the label", async t => {
+test("each caller class does what the table says, by its chain", async t => {
   const rig = await createRig({ agents: ["kit", "assistant"] });
   const handle = rig.k.kernelFor({ name: "memory", needs: { kernel: { membership: true } } });
-  const on = await boot(t, { kernel: handle }), off = await boot(t);
+  const on = await boot(t, { kernel: handle });
   const bind = token => () => rig.k.bindCalls(() => (token ? { token } : null));
   const own = (await rig.k.surfaces.open(rig.person("per_alex"), {})).token;
   const agent = (await rig.k.surfaces.open(rig.person("per_alex"), { agent: "kit" })).token;
   const assistant = (await rig.k.surfaces.open(rig.person("per_alex"), { agent: "assistant" })).token;
   const rows = [
-    ["the person at this machine (deck)", await on.can("deck", { kernelFacts: socket("deck") }), await off.can("deck"), YES],
-    ["the person at this machine (cli)", await on.can("cli", { kernelFacts: socket("cli") }), await off.can("cli"), YES],
-    ["the Capsule (pinned-binary proof)", await on.can("capsule", { kernelFacts: socket("capsule") }), await off.can("capsule"), YES],
-    ["the person on another device over Wink (was tailnet:), signed in", await on.can("tailnet:alex@example.com", { kernelFacts: device("s1") }), await off.can("tailnet:alex@example.com", { person: { id: "s1" } }), YES],
-    ["the same device, not signed in (CHANGED by the ruling: no personal reads)", await on.can("tailnet:alex@example.com", { kernelFacts: device() }), null, UNSIGNED],
-    ["the person's device over the relay, signed in (CHANGED by the ruling: it reads as the owner)", await on.can("device:abcdefghijklmnop", { kernelFacts: device("s1", "relay") }), null, YES],
-    ["the same relay device, not signed in", await on.can("device:abcdefghijklmnop", { kernelFacts: device(undefined, "relay") }), null, UNSIGNED],
-    ["the person's own session or thread", await on.can("mcp:thread:t1", { token: own }, bind(own)), await off.can("mcp:thread:t1"), null],
-    ["a named agent (kit)", await on.can("mcp:agent:kit", { token: agent, agent: "kit", granted: "*" }, bind(agent)), await off.can("mcp:agent:kit", { agent: "kit", granted: "*" }), null],
+    ["the person at this machine (deck)", await on.can("deck", { kernelFacts: socket("deck") }), YES],
+    ["the person at this machine (cli)", await on.can("cli", { kernelFacts: socket("cli") }), YES],
+    ["the Capsule (pinned-binary proof)", await on.can("capsule", { kernelFacts: socket("capsule") }), YES],
+    ["the person on another device over Wink (was tailnet:), signed in", await on.can("tailnet:alex@example.com", { kernelFacts: device("s1") }), YES],
+    ["the same device, not signed in (CHANGED by the ruling: no personal reads)", await on.can("tailnet:alex@example.com", { kernelFacts: device() }), UNSIGNED],
+    ["the person's device over the relay, signed in (CHANGED by the ruling: it reads as the owner)", await on.can("device:abcdefghijklmnop", { kernelFacts: device("s1", "relay") }), YES],
+    ["the same relay device, not signed in", await on.can("device:abcdefghijklmnop", { kernelFacts: device(undefined, "relay") }), UNSIGNED],
+    ["the person's own session or thread", await on.can("mcp:thread:t1", { token: own }, bind(own)), null],
+    ["a named agent (kit)", await on.can("mcp:agent:kit", { token: agent, agent: "kit", granted: "*" }, bind(agent)), null],
     // The person's own Claude: the kernel's token chain is [person, agent:assistant] (no fact tells a thread from the assistant), and the label forms it replaces were mcp:thread:<id> and mcp:agent:assistant
-    ["the person's own Claude (assistant token) against the thread label", await on.can("mcp:thread:t1", { token: assistant }, bind(assistant)), await off.can("mcp:thread:t1"), null],
-    ["the person's own Claude (assistant token) against the assistant label", await on.can("mcp:agent:assistant", { token: assistant, agent: "assistant", granted: "*" }, bind(assistant)), await off.can("mcp:agent:assistant", { agent: "assistant", granted: "*" }), null],
+    ["the person's own Claude (assistant token) against the thread label", await on.can("mcp:thread:t1", { token: assistant }, bind(assistant)), null],
+    ["the person's own Claude (assistant token) against the assistant label", await on.can("mcp:agent:assistant", { token: assistant, agent: "assistant", granted: "*" }, bind(assistant)), null],
   ];
-  for (const [name, after, before, expected] of rows) {
-    if (before) assert.deepEqual(after, before, `${name}: the chain and the label disagree`);
+  for (const [name, after, expected] of rows) {
     if (expected) assert.deepEqual(after, expected, name);
   }
   // spot-check the rows with no declared expectation: an own session may not steer the main graph, read corrections, correct or use the site store

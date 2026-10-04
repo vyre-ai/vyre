@@ -3,6 +3,7 @@
 // below it, each model dollar goes to the one ledger. Fictional data only (alex, Harlow Legal, Northwind Bakery, juno, kit).
 
 import { test } from "node:test";
+import { labeled } from "./testing/label-who.js";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { open } from "../store/index.js";
@@ -47,7 +48,7 @@ async function module_(t, { capped = false, runner = null } = {}) {
     name: "memory", config: { me: { domains: ["riverastudio.com"] } }, paths: {}, store: { db, migrate: () => {} }, log: () => {},
     events: { on: () => () => {}, emit: () => {}, since: () => [], prune: () => 0 },
     call: async (tool, input) => tool === "spend.check" ? { capped } : tool === "spend.record" ? (recorded.push(input), {}) : tool === "recall.search" ? { data: [{ session: WORLD[4].id, seq: 0, role: "user", ts: T0 + 12 * DAY, text: "sam says their pos is square. switch payments to square", name: null, cwd: `${W}/northwind` }] } : tool === "recall.thread" ? { data: { turns: [] } } : fakeReachCall(tool, input, { agents: AGENTS, projects: PROJECTS }),
-    tool: (name, def) => tools.set(name, def),
+    tool: (name, def) => tools.set(name, labeled(def)),
     iqRunner: runner, memoryRunner: null,
   };
   const handle = await memory.start(ctx);

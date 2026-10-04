@@ -5,6 +5,7 @@
 // shared fictional corpus (alex, Harlow Legal, Northwind Bakery, juno, kit, pax).
 
 import { test } from "node:test";
+import { labeled } from "./testing/label-who.js";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { open } from "../store/index.js";
@@ -34,7 +35,7 @@ async function module_(t) {
     events: { on: () => () => {}, emit: (type, payload) => events.push({ type, payload }), since: () => [], prune: () => 0 },
     call: async (tool, input) => tool === "recall.search" ? { data: [] } : tool === "recall.thread" ? { data: { turns: [] } }
       : fakeReachCall(tool, input, { agents: AGENTS, projects: PROJECTS }),
-    tool: (name, def) => tools.set(name, def),
+    tool: (name, def) => tools.set(name, labeled(def)),
     // memory.ask's model: records the prompt, always abstains. Never a real model.
     iqRunner: async ({ prompt }) => { prompts.push(prompt); return { text: NO_ANSWER, usd: 0 }; },
     memoryRunner: null,

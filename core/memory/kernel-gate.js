@@ -5,7 +5,7 @@
 //      `ctx.kernel.audienceFor` (no argument names it). A call with no session of its own is not in a chat. A call WITH a session whose room cannot be built is refused.
 //   c. whose: when the kernel built a chain with a person in it, that person is the owner of this home (kernel membership: role owner) and no other person is in the chain;
 //      only that person's own assistants (agent hops) may stand beside them. A chain with no person (a module or the daemon calling) is not decided here: the legacy rules stand.
-// With no kernel on the daemon (`ctx.kernel` absent) nothing changes. The 0.2 reach rules (projects.reach, agent project grants) still run after this, and only narrow.
+// With no kernel on the daemon (`ctx.kernel` absent) there is no `Who`, and every access predicate answers no. The 0.2 reach rules (projects.reach, agent project grants) still run after this, and only narrow.
 
 /** Tools a person asks the ONE Ask door through: in a room they are answered from the Space's memory alone, not refused. */
 export const ROOM_ANSWERS = new Set(["memory.ask"]);

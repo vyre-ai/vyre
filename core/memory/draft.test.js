@@ -4,6 +4,7 @@
 // Fictional data only (Northwind Bakery).
 
 import { test } from "node:test";
+import { labeled } from "./testing/label-who.js";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { open } from "../store/index.js";
@@ -43,7 +44,7 @@ async function module_(t, reply) {
     name: "memory", config: { me: { domains: ["riverastudio.com"] } }, paths: {}, store: { db, migrate: () => {} }, log: () => {},
     events: { on: () => () => {}, emit: (type, payload) => bus.push({ type, payload }), since: () => [], prune: () => 0 },
     call: async (tool, input) => tool === "recall.search" ? { data: [HIT] } : tool === "recall.thread" ? { data: { turns: [] } } : fakeReachCall(tool, input, { agents: [], projects: [] }),
-    tool: (name, def) => tools.set(name, def),
+    tool: (name, def) => tools.set(name, labeled(def)),
     // A streaming model: the reply arrives in pieces, 120 ms apart.
     iqRunner: async ({ onText }) => {
       let soFar = "";

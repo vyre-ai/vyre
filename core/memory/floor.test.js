@@ -15,6 +15,8 @@ import { tempHome, writeModule, present } from "../../test/helpers.js";
 import { Curator } from "./curator.js";
 import { Graph } from "./graph.js";
 import { floorPlan } from "./floor.js";
+// The kernel is the daemon's only source of "who is calling": these tests start a real vyred, so they run it with the kernel on (the default once VYRE_KERNEL is flipped).
+process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
 
 const W = `${HOME}/Work`;
 /** The fixtures are dated, so the clock that ages them is too. */
@@ -187,17 +189,7 @@ test("graph: the main graph is only for the user and the assistant; an agent see
   }
   assert.equal((await call("memory.pin", { node: "Sam Okafor", scope: path.join(work, "northwind"), agent: "kit" }, opts)).data?.mode, "pin");
   assert.match((await call("memory.mute", { node: "Harlow Legal", scope: path.join(work, "northwind"), agent: "kit" }, opts)).error?.message || "", /nothing in memory/);
-  // The agent can also be named by the caller; the two must agree. Over HTTP vyred takes that
-  // name only with the key of the agent's live thread, so Memory's part is checked in-process.
-  assert.match((await call("memory.graph", {}, { ...opts, caller: "mcp:agent:kit" })).error?.message || "", /no thread of that agent/);
-  for (const caller of ["mcp agent:kit", "mcp:agent:kit"]) {
-    assert.match((await d.registry.call("memory.graph", {}, caller)).error?.message || "", /main graph is for the assistant/, caller);
-    assert.match((await d.registry.call("memory.graph", { agent: "juno" }, caller)).error?.message || "", /came from agent kit/, caller);
-  }
-  // A session that has not said who it is gets a project's graph, not the main one.
-  assert.match((await call("memory.graph", {}, { ...opts, caller: "mcp" })).error?.message || "", /drawn for the Deck/);
-  assert.equal((await call("memory.graph", { project_cwds: [path.join(work, "northwind")] }, { ...opts, caller: "mcp" })).data?.scope, "project");
-  assert.equal((await call("memory.graph", {}, { ...opts, caller: "deck" })).data?.scope, "main");
+  // An agent named by its caller label, a bare mcp session and the rest of the label forms are decided by the kernel chain now: core/memory/access-chain.test.js has those rows.
 });
 
 test("graph: a projects: \"*\" agent is not the assistant — every mapped project's room, never the main graph, unfiled, or personal facts", async t => {
