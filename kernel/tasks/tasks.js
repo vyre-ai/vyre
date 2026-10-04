@@ -79,6 +79,9 @@ export async function checkOutput(task, evidence, facts) {
  */
 export function createTasks(cfg) {
   const clock = cfg.clock || Date.now;
+  /** A person id as the Space knows them now: the owner an adoption replaced is the identity that replaced them, so a task keyed by the old id is still its person's. */
+  const canon = (/** @type {string} */ id) => (typeof cfg.canonicalPerson === "function" ? cfg.canonicalPerson(id) : id);
+  const same = (/** @type {any} */ a, /** @type {any} */ b) => Boolean(a && b) && a.kind === b.kind && (a.kind === "person" ? canon(a.id) === canon(b.id) : a.id === b.id);
   const { gate } = createGate({ authorizer: cfg.authorizer, log: cfg.log, enforce: cfg.enforce });
   const roleHolders = cfg.roleHolders || (() => []);
   /** @type {Map<string, any>} */ const tasks = new Map();
@@ -88,7 +91,7 @@ export function createTasks(cfg) {
     if (!rule || !rule.approver) return true;
     const h = by && by.approver_chain && by.approver_chain.hops && by.approver_chain.hops.length === 1 ? by.approver_chain.hops[0].actor : null;
     if (!h || h.kind !== "person") return false;
-    if (rule.approver.person !== undefined) return h.id === rule.approver.person;
+    if (rule.approver.person !== undefined) return canon(h.id) === canon(rule.approver.person);
     return Boolean(cfg.members && typeof cfg.members.roleOf === "function" && cfg.members.roleOf(h) === rule.approver.role);
   };
   /** @type {Map<string, { approver_chain: any, use_proof: any }>} who approved a task and the sealed-use proof they signed with it (the sealing process verifies that proof itself) */ const approvedBy = new Map();
@@ -235,8 +238,8 @@ export function createTasks(cfg) {
       const out = [];
       for (const t of [...tasks.values()].sort((a, b) => (a.id < b.id ? -1 : 1))) {
         if (q.record && t.record !== q.record) continue;
-        if (q.doer && t.doer.id !== q.doer) continue;
-        if (q.checker && !checkersOf(t).some((/** @type {any} */ c) => c.id === q.checker)) continue;
+        if (q.doer && canon(t.doer.id) !== canon(q.doer)) continue;
+        if (q.checker && !checkersOf(t).some((/** @type {any} */ c) => canon(c.id) === canon(q.checker))) continue;
         if (Array.isArray(q.state) && q.state.length && !q.state.includes(t.state)) continue;
         try { await gate(chain, "tasks.read", urnOf(cfg.space, t.id)); } catch (e) { if (e instanceof KernelError && e.code === "not_found") continue; throw e; }
         out.push(t);
