@@ -9,13 +9,13 @@
 // must come from exactly one person, and the process verifies it against that chain.
 import { Leases } from "./leases.js";
 import crypto from "node:crypto";
+import { devSwitch } from "../devbuild.js";
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import readline from "node:readline";
 import { CLASSES, hintOf, redact } from "./classes.js";
 import { compact, ledgerEntries } from "./normalise.js";
-import { devSwitch } from "../devbuild.js";
 import { Presence } from "./proof.js";
 import { SealStore } from "./store.js";
 
@@ -308,6 +308,13 @@ export function hostCheck({ profile = process.env.VYRE_SEAL_PROFILE || "desktop"
 }
 
 /** Serve requests on stdin and stdout. Anything unexpected is a generic code: the message of an exception may hold input, so it is never sent. */
+/**
+ * Is a SOFTWARE signer (no platform attestation) accepted for presence? Only in a development build, and only when asked for with VYRE_SEAL_UNATTESTED=1: a release-kind build ignores the variable
+ * and takes attested signers only (the same rule as the development stand-in). The proofs such a signer gives are recorded with its own signer name ("software"), never as an attested one.
+ * @param {Record<string, string | undefined>} env @param {string} [root] a package folder of either kind, for tests
+ */
+export const unattestedAllowed = (env, root) => devSwitch(env.VYRE_SEAL_UNATTESTED, root);
+
 export function serve({ dir, master = (hostCheck(), fileMaster(dir)), sinks = {}, input = process.stdin, output = process.stdout, verifiers = {}, allowUnattested = false, allowSoftware = false } = {}) {
   const sealer = new Sealer({ dir, master, sinks, verifiers, allowUnattested, allowSoftware });
   if (allowSoftware) process.stderr.write("seal: software presence keys are accepted (development build); every use is method software\n");
@@ -328,6 +335,6 @@ if (process.argv[1] && process.argv[1].endsWith("kernel/seal/process.js") && pro
   process.stdin.on("end", () => process.exit(0)); process.stdin.on("close", () => process.exit(0));
   let verifiers = {};
   if (process.env.VYRE_SEAL_VERIFIERS) verifiers = (await import(process.env.VYRE_SEAL_VERIFIERS)).default;
-  try { serve({ dir: process.env.VYRE_SEAL_DIR, sinks: JSON.parse(process.env.VYRE_SEAL_SINKS || "{}"), verifiers, allowUnattested: devSwitch(process.env.VYRE_SEAL_UNATTESTED), allowSoftware: devSwitch(process.env.VYRE_SEAL_SOFTWARE) }); }
+  try { serve({ dir: process.env.VYRE_SEAL_DIR, sinks: JSON.parse(process.env.VYRE_SEAL_SINKS || "{}"), verifiers, allowUnattested: unattestedAllowed(process.env), allowSoftware: devSwitch(process.env.VYRE_SEAL_SOFTWARE) }); }
   catch (e) { process.stderr.write(`seal: ${e?.safe ? e.message : "internal error"}\n`); process.exit(70); }
 }

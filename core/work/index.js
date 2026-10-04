@@ -53,6 +53,20 @@ export default {
       if (typeof room.read !== "function" || typeof room.canRead !== "function") throw unknown("this is a group chat and its audience is not known, so nothing is built for it");
       return room;
     };
+    // KW-1 (kernel side): a `session` resource is read only by the person its `owner` attribute names, and no attribute means nobody. This module holds a session's lines, so it says whose they
+    // are: the Space's owner (Recall indexes the owner's own sessions), and the project when the lines sit under one. Only for its own type, only `owner` and `project` (AT-1).
+    if (ctx.kernel && typeof ctx.kernel.registerAttrs === "function") {
+      ctx.kernel.registerAttrs("session", (/** @type {string} */ urn) => {
+        const m = /^vyre:\/\/[^/]+\/session\/([A-Za-z0-9_.:-]{1,128})$/.exec(String(urn));
+        if (!m) return {};
+        try {
+          const meta = engineOf().lines.meta(m[1]);
+          if (!meta) return {};
+          const p = /^vyre:\/\/[^/]+\/project\/([a-z0-9][a-z0-9_-]{0,79})$/i.exec(meta.record);
+          return { owner: String(ctx.kernel.owner), ...(p ? { project: p[1] } : {}) };
+        } catch { return {}; }
+      });
+    }
     const surfaceOf = () => surface || (surface = createToolSurface({ kernel: kernelOf(), space: kernelOf().space, types: async c => (kernelOf().definitions ? kernelOf().definitions(c) : []), actions: () => (kernelOf().actions ? kernelOf().actions() : []) }));
     const engineOf = () => {
       if (engine) return engine;
