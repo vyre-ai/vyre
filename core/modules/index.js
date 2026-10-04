@@ -1082,7 +1082,7 @@ export class Registry {
         sessionForReady: () => typeof (/** @type {any} */ (this.deps)).winkSessionFor === "function",
         sessionFor: (/** @type {string} */ id) => { const f = (/** @type {any} */ (this.deps)).winkSessionFor; if (typeof f !== "function") throw Object.assign(new Error("this device has no way to reach a paired server yet"), { code: "unavailable" }); return f(id); },
         // an invitee's session to the home a space's directory record names (the spaces module only; the hello is signed by the invitee's identity)
-        ...(m.name === "spaces" ? { inviteeSessionFor: (/** @type {any} */ channel, /** @type {any} */ hello) => { const f = (/** @type {any} */ (this.deps)).winkInviteeSessionFor; if (typeof f !== "function") throw Object.assign(new Error("this device has no way to reach that space yet"), { code: "unavailable" }); return f(channel, hello); } } : {}),
+        ...(m.name === "spaces" ? { inviteeSessionFor: (/** @type {any} */ channel, /** @type {any} */ hello, /** @type {any} */ about) => { const f = (/** @type {any} */ (this.deps)).winkInviteeSessionFor; if (typeof f !== "function") throw Object.assign(new Error("this device has no way to reach that space yet"), { code: "unavailable" }); return f(channel, hello, about); } } : {}),
         remoteKernel: (/** @type {string} */ id, /** @type {string} */ space) => { const f = (/** @type {any} */ (this.deps)).remoteKernel; if (typeof f !== "function") throw Object.assign(new Error("this device has no way to reach a paired server yet"), { code: "unavailable" }); return f(id, space); },
       } : {}),
       ...(m.name === "relay" ? { peerDoor: () => (/** @type {any} */ (this.deps)).peerDoor ? (/** @type {any} */ (this.deps)).peerDoor() : undefined } : {}),

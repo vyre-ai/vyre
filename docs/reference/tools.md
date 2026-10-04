@@ -11661,6 +11661,9 @@ From the phone that scanned the QR, over its own paired connection: where the qu
 
 - Input:
   - `commit` string
+  - `entry` object
+    - `label` string
+    - `publicKey` string
   - `name` string
   - `reveal` string
   - `tag` string
