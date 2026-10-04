@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":340,"tool":1137,"event":449,"config":254,"env":224,"screen":20,"concept":43},
+  "counts": {"command":340,"tool":1140,"event":449,"config":254,"env":224,"screen":20,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -342,6 +342,8 @@
     {"kind":"tool","name":"files.drive.search","definedIn":"core/files/drive.js","page":"reference/tools.md#filesdrivesearch","module":"files","mentions":[]},
     {"kind":"tool","name":"files.drive.share","definedIn":"core/files/drive.js","page":"reference/tools.md#filesdriveshare","module":"files","mentions":[{"page":"get-started/tailscale.md","line":371,"anchor":"vyredrive-the-box-folders-on-your-mac"},{"page":"concepts/presence.md","line":34,"anchor":"which-tools-need-it"},{"page":"design/onboarding-v2.md","line":168,"anchor":"step-8-vyre-drive"},{"page":"design/drive-onboarding.md","line":17,"anchor":"drive-onboarding"}]},
     {"kind":"config","name":"files.drive.shares","definedIn":"core/files/drive.js","page":null,"mentions":[{"page":"get-started/tailscale.md","line":345,"anchor":"vyredrive-the-box-folders-on-your-mac"},{"page":"adr/0014-tailnet.md","line":44,"anchor":"1-taildrive-the-boxs-folders-on-the-mac"}]},
+    {"kind":"tool","name":"files.drive.space.list","definedIn":"core/files/space-drive.js","page":"reference/tools.md#filesdrivespacelist","module":"files","mentions":[]},
+    {"kind":"tool","name":"files.drive.space.read","definedIn":"core/files/space-drive.js","page":"reference/tools.md#filesdrivespaceread","module":"files","mentions":[]},
     {"kind":"tool","name":"files.drive.status","definedIn":"core/files/drive.js","page":"reference/tools.md#filesdrivestatus","module":"files","mentions":[]},
     {"kind":"tool","name":"files.drive.unmount","definedIn":"core/files/drive.js","page":"reference/tools.md#filesdriveunmount","module":"files","mentions":[]},
     {"kind":"tool","name":"files.drive.unshare","definedIn":"core/files/drive.js","page":"reference/tools.md#filesdriveunshare","module":"files","mentions":[{"page":"concepts/presence.md","line":34,"anchor":"which-tools-need-it"}]},
@@ -1741,6 +1743,7 @@
     {"kind":"tool","name":"vault.ssh.forget","definedIn":"core/vault/tools/cli.js","page":"reference/tools.md#vaultsshforget","module":"vault","mentions":[]},
     {"kind":"tool","name":"vault.ssh.generate","definedIn":"core/vault/tools/cli.js","page":"reference/tools.md#vaultsshgenerate","module":"vault","mentions":[]},
     {"kind":"tool","name":"vault.ssh.keys","definedIn":"core/vault/tools/cli.js","page":"reference/tools.md#vaultsshkeys","module":"vault","mentions":[]},
+    {"kind":"tool","name":"vault.state","definedIn":"core/vault/index.js","page":"reference/tools.md#vaultstate","module":"vault","mentions":[]},
     {"kind":"tool","name":"vault.sweep","definedIn":"core/vault/index.js","page":"reference/tools.md#vaultsweep","module":"vault","mentions":[{"page":"adr/0028-vault-everywhere.md","line":248,"anchor":"4b-built-27-sep-2026"}]},
     {"kind":"event","name":"vault.sync-conflicted","definedIn":"core/vault/devices.js","page":"reference/events.md#vault","module":"vault","mentions":[{"page":"adr/0006-vault-next.md","line":239,"anchor":"7-contract-fit"}]},
     {"kind":"config","name":"vault.testHelpers","definedIn":"core/vault/prove.js","page":null,"mentions":[]},
