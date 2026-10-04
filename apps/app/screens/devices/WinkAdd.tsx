@@ -8,6 +8,8 @@ import { COPY, DEFAULT_NAMES, lastStep, showsRing, stepLine, stepWords, wordsSte
 import { PairEntry, PairWords, openPairing, type LongCode } from "./PairParts";
 import { SAMPLE_CODE } from "../../src/api/wink-code";
 import { wordsLine, type PairingSession } from "../../src/api/pairing-session";
+import { MOCK } from "../../src/real/box";
+import { RealAdd } from "./RealAdd";
 
 const KINDS: { id: DeviceKind; icon: IconName; title: string; body: string }[] = [
   { id: "phone", icon: "phone", title: "A phone", body: "Open Vyre on it and scan." },
@@ -45,6 +47,7 @@ export function WinkAdd() {
       </Page>
     );
   }
+  if (!MOCK) return <RealAdd kind={kind} onBack={reset} onDone={() => { reset(); router.push("/u/settings/devices" as never); }} />;
   const name = DEFAULT_NAMES[kind];
   const noun = kind === "phone" ? "phone" : kind === "server" ? "server" : "computer";
   const newCap = `New ${noun}`;

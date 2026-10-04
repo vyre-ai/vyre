@@ -1,0 +1,53 @@
+name: runner-perf
+# What lending costs on a hosted macOS machine: the same work in a plain folder and inside the runner's sandbox on the encrypted,
+# leased workspace (scripts/runner-perf.mjs). Runs only on the work/runner-perf branch, never on a person's own Mac.
+on:
+  push:
+    branches: [work/runner-perf]
+permissions:
+  contents: read
+jobs:
+  mac:
+    runs-on: macos-14
+    timeout-minutes: 40
+    env:
+      VYRE_TEST_HOSTED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: measure
+        env:
+          VYRE_NO_WATCHDOG: "1"
+        run: node scripts/runner-perf.mjs --reps 5 --out perf-mac.json
+      - name: image formats (which encrypted image is fastest for small files)
+        if: always()
+        run: node scripts/runner-fs-bench-mac.mjs | tee fs-formats.json
+      - name: sandbox tests (the home sandbox and the lent sandbox, on a macOS runner)
+        if: always()
+        env:
+          VYRE_NO_WATCHDOG: ""
+        run: node --test --test-force-exit --test-reporter=spec core/runner/homesandbox.test.js core/runner/mac-hosted.test.js core/runner/runner.test.js core/runner/hardening.test.js
+      - name: the real claude inside the home sandbox (does it start with every write denied?)
+        if: always()
+        run: |
+          npm install -g @anthropic-ai/claude-code >/dev/null 2>&1 || true
+          node scripts/runner-mac-claude.mjs || true
+      - name: git inside the lent sandbox (why does a clone fail?)
+        if: always()
+        run: |
+          mkdir -p /tmp/gitprobe/files && cd /tmp/gitprobe && cat > p.mjs <<'EOF2'
+          const { plan, launch } = await import(process.env.GITHUB_WORKSPACE + '/core/runner/sandbox.js');
+          const p = plan({ platform: 'darwin', workspace: '/tmp/gitprobe', command: '/bin/sh', args: ['-c', 'git --version; git init -q x && echo init-ok; which git; ls -la /usr/bin/git'], readOnly: [], proxy: { port: 5999 } });
+          const c = launch(p, {}); c.stdout.on('data', d => process.stdout.write(d)); c.stderr.on('data', d => process.stdout.write('ERR ' + d)); c.on('close', code => console.log('exit', code));
+          EOF2
+          node p.mjs || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: runner-perf-mac
+          path: |
+            perf-mac.json
+            fs-formats.json
+

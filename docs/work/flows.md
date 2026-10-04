@@ -31,6 +31,13 @@ All code under `kernel/flows/` (pure ES modules, built on kernel/contracts types
 - kernel/flows/stages.js: stages made of tasks, a module over record.stage-entered and task state events (tasks made once per entry, depends_on wired, advance once when required tasks are done, hand-moved records left alone, re-entry makes new tasks). Registered in createFlows (`stages: { approver }`). stages.test.js runs on both kernels.
 - kernel/flows/e2e/estate.e2e.test.js: Estate planning kit (records' kit.ts compiled by their compiler) from a Stripe payment to the next stage on the real kernel. 93 of 93 on testbox.
 
+## Triggers (5 Oct, fork T)
+- kernel/flows/triggers.js is the trigger registry: five kinds and no others, each one entry (stored `on` values, shape check, plain words, expression scope, source label, how it is armed). schema, compile, canvas and the text form read it. watcher = `watcher`, schedule = `time`, record event = `event` and `stage`, form or hook = `web`, person or assistant = `manual`.
+- Watcher: `{ on: "watcher", watcher, where? }`. `runner.watcherItem({ watcher, item })` starts the Flows armed on it, once per item, tainted `external`, item as `trigger.item`. kernel/flows/watcher-bridge.js adapts the watchers module (`watcher.fired`, then `watchers.items`) through injected ports; core/watchers is untouched. The host (daemon) must call `bridgeWatchers({ runner, on: ctx.events.on, call: ctx.call })`.
+- Schedule: cron is read in the Space's zone (`catalog.tz`, or `trigger.tz`, default UTC; kernel/flows/zone.js, DST rules written there: a gap runs once after it, an overlap runs once at the first occurrence). The last run is kept in the store (`getSchedule` and `putSchedule`; record type `flow-schedule`), so a restart catches up ONCE (`caught_up`, `missed`). Existing homes need `store.define()` again for the new type.
+- Every run records `trigger: { kind, source, at, input (capped at 64 KB, sealed values replaced), key, caught_up?, missed?, tz? }`; `paintRun` returns `why` and `fired` on the trigger node.
+- Not done: the daemon wiring of `bridgeWatchers` and a `catalog.tz` from the Space's setting (both host side); the canvas component for trigger nodes (native-core).
+
 ## Doing
 All six relaunch items have a first cut (4 Oct): real-kernel harness + stages + Estate e2e (kernel/flows), sessions under Wink (core/space-sessions, docs/work/sessions-spaces.md), door retrofit (docs/work/door-retrofit.md). Waiting on platform for the gateway gaps listed in team/0.2/CHAT.md (sessions -> platform, 3 Oct).
 

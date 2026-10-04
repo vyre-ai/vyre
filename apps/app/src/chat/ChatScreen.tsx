@@ -25,6 +25,7 @@ import { useSessionStream, type PerfSink } from "./store";
 import { ChatHeader } from "./ChatHeader";
 import { AboutSheet, type AboutInfo } from "./AboutSheet";
 import { StatusLine } from "./StatusLine";
+import { addHighlight, chipLabel, makeHighlight, removeHighlight, withQuotes, type Highlight } from "./highlight.js";
 import { markSealedNoteSeen, sealedNoteSeen, sealedNoteText } from "./group.js";
 
 export type ChatScreenProps = {
@@ -63,7 +64,7 @@ function JumpPill({ go, count, base, bottom }: { go: () => void; count: number; 
   const { color } = useUiTheme();
   const s = follow(follow(createFollow(), { type: "scroll", atBottom: false }), { type: "rows", added: count - base });
   return (
-    <View pointerEvents="box-none" style={{ position: "absolute", left: 0, right: 0, bottom, alignItems: "center" }}>
+    <View pointerEvents="box-none" style={{ position: "absolute", left: 0, right: 0, bottom, alignItems: "center", zIndex: 10, elevation: 10 }}>
       <Pressable accessibilityRole="button" accessibilityLabel={pillLabel(s.unread)} onPress={go} style={{ minHeight: 40, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, borderRadius: 20, backgroundColor: color["surface-3"], borderWidth: 1, borderColor: color["edge-strong"] }}>
         <Text strong size="caption">{pillLabel(s.unread)}</Text>
         <Icon name="download" />
@@ -86,6 +87,7 @@ export function ChatScreen(p: ChatScreenProps) {
   // The sealed note shows once per chat, on its first open. Storage can be missing or throw: then it shows again, never hides.
   const [sealedNote, setSealedNote] = useState(() => p.showSealedNote ?? !sealedNoteSeen(storage(), p.sessionId));
   useEffect(() => { if (sealedNote) markSealedNoteSeen(storage(), p.sessionId); }, [sealedNote, p.sessionId]);
+  const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [editing, setEditing] = useState<{ id: number; uuid: string; text: string } | null>(null);
   const actions = store.actions;
   const { onBranched } = p;
@@ -105,6 +107,7 @@ export function ChatScreen(p: ChatScreenProps) {
           }
         : {}),
       onReplyTo: (message: string, name: string) => setReplyTo({ message, name }),
+      onHighlight: (o: { from: string; text: string; selected?: string; kind?: "message" | "terminal" }) => setHighlights((l) => addHighlight(l, makeHighlight(o))),
       ...(p.onOpenTerminal ? { onOpenTerminal: () => p.onOpenTerminal?.() } : {}),
       ...p.handlers,
     }),
@@ -122,10 +125,13 @@ export function ChatScreen(p: ChatScreenProps) {
       store.social.markRead(store.group.last); // sending says you have read everything above
       const parent = replyTo?.message;
       setReplyTo(null);
-      const why = o && (o.to.length || o.fanout || parent) ? await store.sendTo(text, { to: o.to, fanout: o.fanout, parent }) : await store.send(text);
+      // What the person highlighted is quoted into the message they send now, and the chips clear: nothing was sent before this.
+      const body = withQuotes(text, highlights);
+      setHighlights([]);
+      const why = o && (o.to.length || o.fanout || parent) ? await store.sendTo(body, { to: o.to, fanout: o.fanout, parent }) : await store.send(body);
       if (why) setNote(why);
     },
-    [store, editing, actions, replyTo],
+    [store, editing, actions, replyTo, highlights],
   );
   const renderRow = useCallback((row: TranscriptRow) => <ChatRow store={store} row={row as never} ctx={ctx} />, [store, ctx]);
   const base = useRef(rows.length);
@@ -141,13 +147,6 @@ export function ChatScreen(p: ChatScreenProps) {
   return (
     <View style={{ flex: 1, backgroundColor: color["surface-1"], paddingTop: insets.top }}>
       <ChatHeader title={p.title ?? "Session"} participants={faces} viewer={viewer} line={line} phone={phone} onBack={p.onBack} onOpen={() => setAboutOpen(true)} />
-      {sealedNote ? (
-        <Pressable accessibilityRole="button" accessibilityLabel="Dismiss the sealed note" onPress={() => setSealedNote(false)} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 40, paddingVertical: 6, paddingHorizontal: phone ? 16 : 24, backgroundColor: color["surface-2"], borderBottomWidth: 1, borderBottomColor: color.edge }}>
-          <Icon name="shield" />
-          <Text size="caption" tone="muted" style={{ flex: 1 }}>{sealedNoteText({ sealed: info.sealed, assistants: assistantsHere })}</Text>
-          <Text size="caption" tone="label" strong>Got it</Text>
-        </Pressable>
-      ) : null}
       <AboutSheet
         open={aboutOpen}
         onClose={() => setAboutOpen(false)}
@@ -174,8 +173,12 @@ export function ChatScreen(p: ChatScreenProps) {
             renderRow={renderRow}
             hasMore={false}
             onNearTop={() => {}}
-            head={<View style={{ height: 12 }} />}
-            jump={(go) => <JumpPill go={go} count={rows.length} base={base.current} bottom={12} />}
+            head={<View>{sealedNote ? <Pressable accessibilityRole="button" accessibilityLabel="Dismiss the sealed note" onPress={() => setSealedNote(false)} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 40, paddingVertical: 6, paddingHorizontal: phone ? 16 : 24, marginBottom: 8, backgroundColor: color["surface-2"], borderBottomWidth: 1, borderBottomColor: color.edge }}>
+          <Icon name="shield" />
+          <Text size="caption" tone="muted" style={{ flex: 1 }}>{sealedNoteText({ sealed: info.sealed, assistants: assistantsHere })}</Text>
+          <Text size="caption" tone="label" strong>Got it</Text>
+        </Pressable> : null}<View style={{ height: 12 }} /></View>}
+            jump={(go) => <JumpPill go={go} count={rows.length} base={base.current} bottom={16} />}
           />
         )}
       </View>
@@ -186,7 +189,7 @@ export function ChatScreen(p: ChatScreenProps) {
             <View key={q.key} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 36, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: color.edge, backgroundColor: color["surface-2"] }}>
               <View style={{ alignSelf: "center" }}><Chip icon="clock">Queued</Chip></View>
               <Text numberOfLines={1} style={{ flex: 1 }}>{q.text}</Text>
-              <Text size="caption" tone="label">after this step</Text>
+              <Text size="caption" tone="label">waiting for the current reply</Text>
             </View>
           ))}
         </View>
@@ -214,6 +217,18 @@ export function ChatScreen(p: ChatScreenProps) {
           <Icon name="chat" />
           <Text size="caption" tone="muted" style={{ flex: 1 }} numberOfLines={1}>{`Replying in a thread to ${replyTo.name}`}</Text>
           <Pressable accessibilityRole="button" accessibilityLabel="Cancel reply" onPress={() => setReplyTo(null)} style={{ minHeight: phone ? 44 : 32, justifyContent: "center", paddingHorizontal: 8 }}><Text size="caption" strong>Cancel</Text></Pressable>
+        </View>
+      ) : null}
+
+      {highlights.length ? (
+        <View accessibilityLabel="Highlighted for the assistant" style={{ width: "100%", maxWidth: 860, alignSelf: "center", paddingHorizontal: phone ? 12 : 20, paddingTop: 6, gap: 6 }}>
+          {highlights.map((h) => (
+            <View key={h.id} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: phone ? 44 : 36, paddingLeft: 12, borderRadius: 12, borderWidth: 1, borderColor: color.edge, backgroundColor: color["surface-2"] }}>
+              <Icon name="chat" tone="label" />
+              <Text size="caption" numberOfLines={1} style={{ flex: 1 }}>{chipLabel(h)}</Text>
+              <Pressable accessibilityRole="button" accessibilityLabel={`Remove highlight: ${chipLabel(h)}`} onPress={() => setHighlights((l) => removeHighlight(l, h.id))} style={{ minHeight: phone ? 44 : 36, minWidth: phone ? 44 : 36, alignItems: "center", justifyContent: "center", paddingHorizontal: 12 }}><Text size="caption" strong>Remove</Text></Pressable>
+            </View>
+          ))}
         </View>
       ) : null}
 

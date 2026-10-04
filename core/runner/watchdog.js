@@ -4,7 +4,7 @@
 // outside the runner. It holds no key and does no work except one thing: it unmounts the workspace when the runner is gone, or
 // when the wall-clock deadline in its file has passed. The runner moves the deadline forward on every lease renewal.
 //
-//   node watchdog.js <platform> <space dir> <runner pid> <deadline file> <generation>
+//   node watchdog.js <platform> <space dir> <runner pid> <deadline file> <generation> [driver]
 //
 // The file holds { gen, at }. A watchdog belongs to one opening of the workspace (its generation): when the runner opens it again
 // the file carries a new generation and the old watchdog exits without touching the new mount.
@@ -42,6 +42,6 @@ export async function watch(o) {
 }
 
 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href && process.argv.length >= 7) {
-  const [, , platform, dir, pid, deadlineFile, gen] = process.argv;
-  watch({ driver: driverFor(platform), dir, pid: Number(pid), deadlineFile, gen }).then(() => process.exit(0));
+  const [, , platform, dir, pid, deadlineFile, gen, driverName] = process.argv;
+  watch({ driver: driverFor(platform, { prefer: driverName === "fscrypt" ? "fscrypt" : "gocryptfs" }), dir, pid: Number(pid), deadlineFile, gen }).then(() => process.exit(0));
 }

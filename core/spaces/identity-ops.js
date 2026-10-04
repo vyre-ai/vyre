@@ -131,7 +131,7 @@ export function createIdentityOps({ store, dir, seen, now, emit = () => {}, stre
       const alerts = C.alertsSince(r.ops, since).filter(a => a.by !== mine);
       store.setAlerted(r.state.seq);
       const removed = !r.state.entries.some(e => e.eid === mine);
-      for (const a of alerts) emit(a.type === "remove" ? "identity.entry-removed" : "identity.entry-added", { name, ...a, at: now() });
+      for (const a of alerts) emit(a.type === "remove" ? "identity.entry-removed" : "identity.entry-added", { name, ...a, ...(a.type === "remove" ? { eid: a.target } : {}), at: now() });
       if (removed) emit("identity.device-removed", { name, eid: mine, at: now() });
       return { ok: true, alerts, removed, seq: r.state.seq };
     },

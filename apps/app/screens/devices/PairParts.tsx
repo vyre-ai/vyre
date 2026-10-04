@@ -58,7 +58,7 @@ export function PairEntry({ onCode, sample }: { onCode: (c: LongCode) => void; s
 /** The other screen shows three words. Pick the set it shows, or type all three. A wrong answer pairs nothing. */
 export function PairWords({ session, who, onConfirmed, onRejected }: { session: PairingSession; who: string; onConfirmed: () => void; onRejected: () => void }) {
   const [busy, setBusy] = useState(false);
-  const [typing, setTyping] = useState(false);
+  const [typing, setTyping] = useState(() => session.choices().length === 0);
   const [typed, setTyped] = useState("");
   const [err, setErr] = useState("");
   const choices = useMemo(() => session.choices(), [session]);
@@ -82,7 +82,7 @@ export function PairWords({ session, who, onConfirmed, onRejected }: { session: 
         </View>
       )}
       <View className="w-full flex-row flex-wrap justify-center gap-s2">
-        <Button kind="ghost" size="sm" label={typing ? "Pick from three sets" : "Type the three words"} onPress={() => setTyping(!typing)} />
+        {choices.length ? <Button kind="ghost" size="sm" label={typing ? "Pick from three sets" : "Type the three words"} onPress={() => setTyping(!typing)} /> : null}
         <Button kind="ghost" size="sm" label="Not the same" onPress={() => { session.reject(); onRejected(); }} />
       </View>
     </Card>
@@ -90,3 +90,21 @@ export function PairWords({ session, who, onConfirmed, onRejected }: { session: 
 }
 
 export { openPairing };
+
+/** A server asks its own person: this app shows the same three words and waits for the yes at the server. */
+export function PairWatch({ session, who, onConfirmed, onRejected }: { session: PairingSession; who: string; onConfirmed: () => void; onRejected: (say: string) => void }) {
+  useEffect(() => {
+    let live = true;
+    session.confirm().then(() => { if (live) onConfirmed(); }).catch((e: Error) => { if (live) onRejected(e.message === "rejected" ? COPY.rejected : e.message || COPY.ended); });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]);
+  return (
+    <Card className="w-full items-center gap-s3">
+      <Text strong className="text-center">{`${who} is asking to pair.`}</Text>
+      <Text mono size="title" strong className="text-center">{wordsLine(session.words())}</Text>
+      <Text tone="muted" className="text-center">Say yes at the server only if it shows the same three words.</Text>
+      <Button kind="ghost" size="sm" label="Not the same" onPress={() => { session.reject(); onRejected(COPY.rejected); }} />
+    </Card>
+  );
+}

@@ -5,7 +5,8 @@ import { Avatar, Banner, Button, Card, Chip, Composer, Divider, EmptyState, Fiel
 import { Footnote, Frame } from "../places/Frame";
 import { SPACES, useScope } from "../places/scope";
 import { memoryRepo, SUBJECTS, type Fact } from "./data";
-import { editReal, forgetReal, loadReal, undoReal } from "./real";
+import { editReal, forgetReal, loadReal } from "./real";
+import { uncorrectReal } from "./extras";
 import { RealAsk, RealExtras } from "./RealExtras";
 import { answer, edit, forget, group, restore, visible } from "./logic.js";
 
@@ -111,7 +112,7 @@ export default function MemoryScreen() {
         <Banner>
           <View className="flex-row flex-wrap items-center gap-s3">
             <Text className="min-w-0 flex-1">Forgot one fact. It is gone from Memory and from what assistants recall.</Text>
-            <Button size="sm" label="Undo" onPress={() => { const u = undo; (real && u.cid != null ? undoReal(u.cid) : Promise.resolve()).then(() => { setFacts((xs) => restore(xs, u)); setUndo(null); }).catch((e) => showToast(e instanceof Error ? e.message : "That did not work.")); }} />
+            <Button size="sm" label="Undo" onPress={() => { const u = undo; (real && u.cid != null ? uncorrectReal(u.cid) : Promise.resolve()).then(() => { setFacts((xs) => restore(xs, u)); setUndo(null); }).catch((e) => showToast(e instanceof Error ? e.message : "That did not work.")); }} />
           </View>
         </Banner>
       ) : null}

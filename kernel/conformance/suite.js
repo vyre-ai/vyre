@@ -5,7 +5,7 @@
 import { mintUuid } from "../core/ids.js";
 import { canonical, sha256 } from "../core/canonical.js";
 
-export const SUITE_REVISION = 3;
+export const SUITE_REVISION = 4;
 
 export const CONTACT = Object.freeze({
   name: "contact", label: "Contact",
@@ -17,6 +17,16 @@ export const CONTACT = Object.freeze({
     { name: "fee", kind: "money", label: "Fee" },
     { name: "born", kind: "date", label: "Born" },
     { name: "ssn", kind: "sealed", label: "SSN", seal: { level: "ai", class: "ssn" } },
+  ],
+});
+
+/** A type with a unique field, for the unique cases (revision 4). */
+export const ACCOUNT = Object.freeze({
+  name: "account", label: "Account",
+  fields: [
+    { name: "name", kind: "text", label: "Name", required: true },
+    { name: "handle", kind: "text", label: "Handle", unique: true },
+    { name: "seats", kind: "number", label: "Seats" },
   ],
 });
 
@@ -200,6 +210,54 @@ export function conformance(make, { test, assert }, label = "store") {
   T("types lists every definition the store holds", async s => {
     await s.define({ add_types: [CONTACT] });
     assert.deepEqual((await s.types()).map((/** @type {any} */ t) => t.name), ["contact"]);
+  });
+
+  // ---- revision 4: unique fields ----
+  const acct = (/** @type {any} */ s, /** @type {any} */ data) => s.create("account", mintUuid(), data);
+
+  T("unique: two concurrent creates with the same value make one record and one clean refusal", async s => {
+    await s.define({ add_types: [ACCOUNT] });
+    const results = await Promise.allSettled([acct(s, { name: "A", handle: "harlow" }), acct(s, { name: "B", handle: "harlow" }), acct(s, { name: "C", handle: "harlow" })]);
+    assert.equal(results.filter(r => r.status === "fulfilled").length, 1, "exactly one create wins");
+    for (const r of results.filter(r => r.status === "rejected")) assert.equal(/** @type {any} */ (r).reason.code, "unique_violation");
+    assert.equal((await s.query("account", { page: { limit: 10 } })).rows.length, 1);
+  });
+
+  T("unique: an update into a taken value is refused and the record keeps its value and version", async s => {
+    await s.define({ add_types: [ACCOUNT] });
+    await acct(s, { name: "A", handle: "harlow" });
+    const b = await acct(s, { name: "B", handle: "northwind" });
+    await assert.rejects(() => s.update("account", b.id, { handle: "harlow" }, 1), code("unique_violation"));
+    const again = await s.get("account", b.id);
+    assert.equal(again.data.handle, "northwind"); assert.equal(again.version, 1);
+    assert.equal((await s.update("account", b.id, { handle: "northwind", seats: 3 }, 1)).version, 2, "keeping its own value is not a collision");
+  });
+
+  T("unique: a removed record frees its value, and restoring it is refused while the value is taken", async s => {
+    await s.define({ add_types: [ACCOUNT] });
+    const a = await acct(s, { name: "A", handle: "harlow" });
+    await s.remove("account", a.id, 1);
+    const b = await acct(s, { name: "B", handle: "harlow" });
+    await assert.rejects(() => s.restore("account", a.id), code("unique_violation"));
+    await s.remove("account", b.id, 1);
+    assert.equal((await s.restore("account", a.id)).data.handle, "harlow");
+  });
+
+  T("unique: null and absent values never collide", async s => {
+    await s.define({ add_types: [ACCOUNT] });
+    await acct(s, { name: "A" }); await acct(s, { name: "B" });
+    const c = await acct(s, { name: "C", handle: "x" });
+    await s.update("account", c.id, { handle: null }, 1);
+    await acct(s, { name: "D", handle: "x" });
+    assert.equal((await s.query("account", { page: { limit: 10 } })).rows.length, 4);
+  });
+
+  T("unique: turning it on over existing duplicates is refused and changes nothing", async s => {
+    await s.define({ add_types: [{ ...ACCOUNT, fields: ACCOUNT.fields.map(f => (f.name === "handle" ? { ...f, unique: false } : f)) }] });
+    await acct(s, { name: "A", handle: "dup" }); await acct(s, { name: "B", handle: "dup" });
+    await assert.rejects(() => s.define({ change_types: [ACCOUNT] }), code("unique_violation"));
+    await acct(s, { name: "C", handle: "dup" });
+    assert.equal((await s.query("account", { page: { limit: 10 } })).rows.length, 3, "the type is unchanged, so duplicates are still allowed");
   });
 
   T("health, version and features are honest", async s => {

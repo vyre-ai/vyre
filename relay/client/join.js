@@ -30,9 +30,11 @@ export async function typeWinkCode(o) {
 
 /**
  * Second half: wait for the showing device's person to type the ack back (the ticket then appears at the relay), then pair.
- * @param {{ relay: string, seed: Uint8Array, name?: string, waitMs?: number, pollMs?: number, fetch?: typeof fetch, pairOptions?: object,
+ * `once`: the ticket came from a QR the showing device printed, so it is already at the relay. If the relay says it is gone, someone else used it or it ran out, and there
+ * is nothing to wait for: answer `gone` at once (a typed code's ticket only appears after the ack, so that path keeps polling).
+ * @param {{ relay: string, seed: Uint8Array, name?: string, waitMs?: number, pollMs?: number, fetch?: typeof fetch, pairOptions?: object, once?: boolean,
  *   sleep?: (ms: number) => Promise<void> }} o
- * @returns {Promise<{ ok: true, paired: any } | { ok: false, reason: "offline" | "refused" | "expired" }>}
+ * @returns {Promise<{ ok: true, paired: any } | { ok: false, reason: "offline" | "refused" | "expired" | "gone" }>}
  */
 export async function finishJoin(o) {
   const sleep = o.sleep || (ms => new Promise(r => setTimeout(r, ms)));
@@ -44,6 +46,7 @@ export async function finishJoin(o) {
       return { ok: true, paired };
     } catch (e) {
       const code = /** @type {any} */ (e).code;
+      if (o.once && code === "ticket_gone") return { ok: false, reason: "gone" };
       if (code !== "ticket_gone" && code !== "rate_limited") return { ok: false, reason: code === "bad_record" || code === "contested" ? "refused" : "offline" };
     }
     if (Date.now() >= until) return { ok: false, reason: "expired" };

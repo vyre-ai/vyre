@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { Card, Divider, IconTile, Row, Text, type IconName } from "@vyre/ui";
@@ -15,6 +16,8 @@ export function SettingsHome() {
   const router = useRouter();
   const space = useSpaces((s) => s.space);
   const devices = useDevices((s) => s.items.filter((i) => i.kind === "Device").length);
+  const loadDevices = useDevices((s) => s.load);
+  useEffect(() => { void loadDevices(); }, [loadDevices]);
   const name = (SPACES.find((s) => s.id === space && s.id !== "all") ?? SPACES.find((s) => s.id === "harlow"))!.name;
   const state = (href: string) => (href === "/u/settings/devices" ? `${devices} ${devices === 1 ? "device" : "devices"}` : undefined);
   return (

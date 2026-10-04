@@ -84,6 +84,15 @@ test("status sets the header state and leaves a line only for the ones that end 
   assert.equal(f.rows[0].kind, "notice");
 });
 
+test("a failed status that says it could not resume shows \"Couldn't resume. Ask again.\"; an unknown note changes nothing", () => {
+  cur = 0;
+  const f = createFolder();
+  f.apply(fr("status", { state: "failed", note: "couldn't resume, ask again" }));
+  assert.equal(f.item(f.rows[0].key)?.text, "Couldn't resume. Ask again.");
+  f.apply(fr("status", { state: "failed", note: "something else" }));
+  assert.equal(f.item(f.rows[1].key)?.text, "The session failed.");
+});
+
 test("a reset clears the rows and takes its cursor", () => {
   cur = 0;
   const f = createFolder();
@@ -299,4 +308,23 @@ test("frames: a private message (enc) is a row that says Private message, never 
   assert.equal(f.item("u:p1")?.text, "Private message");
   assert.equal(f.item("u:p1")?.private, true);
   assert.ok(!JSON.stringify(f.item("u:p1")).includes("SECRETCT"));
+});
+
+test("a person who joined late sees the chat from their join: placeholders hold the cursor, who was there is roster only, their join is the one marker", () => {
+  cur = 0;
+  const f = createFolder();
+  const hid = (/** @type {number} */ cu, /** @type {number} */ span) => ({ v: 1, id: "h" + cu, cur: cu, ...(span > 1 ? { span } : {}), session: "s", turn: null, type: "session.hidden", time: 0, corr: null, data: {} });
+  // what the server sends a viewer whose join is at cursor 8: the earlier messages as one placeholder run, earlier joins as quiet roster frames
+  const joined = (/** @type {number} */ cu, /** @type {string} */ who, /** @type {any} */ extra = {}) => ({ v: 1, id: "j" + cu, cur: cu, session: "s", turn: null, type: "session.participant-joined", time: 0, corr: null, data: { who, name: who.split(":")[1], ...extra } });
+  assert.equal(f.apply(joined(1, "person:alex", { quiet: true })).gap, false);
+  assert.equal(f.apply(joined(2, "assistant:kit", { quiet: true })).gap, false);
+  assert.equal(f.apply(hid(7, 5)).gap, false, "one placeholder covers cursors 3 to 7, so the cursor stays gapless");
+  f.apply(joined(8, "person:chris"));
+  assert.deepEqual(f.participants(), ["person:alex", "assistant:kit", "person:chris"], "the roster is whole");
+  assert.deepEqual(f.rows.map((r) => f.item(r.key)?.text), ["chris joined"], "one quiet line, nothing above it");
+  // a reply that streamed while they joined arrives as placeholders only, and the next message is whole
+  f.apply(hid(9, 1)); f.apply(hid(10, 1));
+  f.apply({ v: 1, id: "u", cur: 11, session: "s", turn: null, type: "session.user-message", time: 0, corr: null, author: "person:alex", data: { message: "u2", text: "and now?", state: "sent" } });
+  assert.deepEqual(f.rows.map((r) => f.item(r.key)?.text), ["chris joined", "and now?"]);
+  assert.equal(f.last, 11);
 });

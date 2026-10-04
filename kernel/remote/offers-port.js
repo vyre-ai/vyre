@@ -5,6 +5,7 @@
 //   set(space, device, side, on, { member, device_key, meta })      side "space" | "member"; meta is the tool call's meta (token, kernel_proof)
 // The chain is the caller's (`kernel.chain(meta)`) and the proof is `kernel.proofFrom(meta)`, checked by the one verifier; this file decides nothing.
 import { KernelError } from "../core/errors.js";
+import { isExactlyPerson } from "../core/chain.js";
 
 const SIDE = Object.freeze({ space: "space_allows", member: "member_accepts" });
 
@@ -26,10 +27,15 @@ export function createOffersPort(kernel) {
     /** @param {string} space @param {string} device @param {"space" | "member"} side @param {boolean} on @param {{ member?: string, device_key?: string, meta?: any }} [x] */
     async set(space, device, side, on, x = {}) {
       const kside = /** @type {"space_allows" | "member_accepts"} */ (SIDE[side]);
-      if (!kside || !x || typeof x.member !== "string" || !x.member) throw new KernelError("bad_input", "an offer needs a side and the member whose computer it is");
+      if (!kside || !x) throw new KernelError("bad_input", "an offer needs a side and the member whose computer it is");
       const offers = offersOf(space);
       const chain = await kernel.chain(x.meta);
       const opt = kernel.proofFrom(x.meta);
+      // The member's own side is the PROVEN caller's: the member comes from the chain, never from an argument, so a call cannot accept for someone else. The Space's side names
+      // the member it lets work run for (an admin's act), so that one is the argument.
+      const caller = isExactlyPerson(chain) ? chain.hops[0].actor.id : null;
+      if (kside === "member_accepts") { if (!caller || (x.member !== undefined && x.member !== caller)) throw new KernelError("not_allowed", "only the member accepts work on their own computer"); x = { ...x, member: caller }; }
+      if (typeof x.member !== "string" || !x.member) throw new KernelError("bad_input", "an offer needs a side and the member whose computer it is");
       // The Space's side covers the member's computers by id; the member's side is bound to the one computer's key.
       const at = { side: kside, member: x.member, device };
       const have = offers.find(at);

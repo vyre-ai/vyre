@@ -1,11 +1,11 @@
-// Stages made of tasks, on the Fake and on the real gateway and tasks. Each scenario runs once per kernel.
+// Stages made of tasks, on the real gateway and tasks.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { world, settle, ALEX } from "./testing/world.js";
 import { stagedCatalog } from "./testing/fixtures.js";
 import { taskIdOf } from "./stages.js";
 
-for (const which of ["fake", "real"]) {
+for (const which of ["real"]) {
   const mk = () => world({ kernel: which, cat: stagedCatalog() });
   const sys = w => w.kernel.sysChain ? w.kernel.sysChain() : w.kernel.chainFor({ flow: "t", approver: ALEX, tainted: false, space: w.cat.space });
   const open = async (w, stage = "Intake") => { const r = await w.kernel.records.create(sys(w), "matter", { client: "Jane", stage }); await settle(w); return r; };

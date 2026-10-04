@@ -164,7 +164,9 @@ export default {
      */
     const release = async (a, name) => {
       let v;
-      try { v = await ctx.vault.fetch(name); }
+      // The two provider sign-in items come through the credentials port, never a module grant; anything else an agent names is still the agent's own grant.
+      const launcherProvider = name === "claude-setup-token" ? "claude" : name === "anthropic-api-key" ? "anthropic" : null;
+      try { v = launcherProvider && ctx.credentials ? await ctx.credentials(launcherProvider) : undefined; if (v === undefined) v = await ctx.vault.fetch(name); }
       catch (e) { throw new Error(`${a.name} cannot start: ${/** @type {Error} */ (e).message}`); }
       if (!v) throw new Error(`${a.name} cannot start: the vault has no value for ${name}`);
       return String(v);

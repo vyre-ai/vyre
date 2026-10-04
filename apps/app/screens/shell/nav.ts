@@ -11,6 +11,7 @@ export const NAV: NavDef = {
     { id: "sites", label: "Sites", icon: "globe", href: "/u/sites" },
   ],
   more: [
+    { id: "calendar", label: "Calendar", icon: "cal", href: "/u/calendar" },
     { id: "memory", label: "Memory", icon: "memory", href: "/u/memory" },
     { id: "vault", label: "Vault", icon: "vault", href: "/u/vault" },
     { id: "flows", label: "Flows", icon: "flows", href: "/u/flows" },

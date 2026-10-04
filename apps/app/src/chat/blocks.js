@@ -7,8 +7,8 @@
 
 /**
  * @typedef {{ label: string, kind: string, value: string, sealed?: false } | { label: string, kind: "sealed", sealed: true, cls: string, present: boolean }} RecordField
- * @typedef {{ block: "terminal", command: string, output: string, exit: number | null, running: boolean }
- *  | { block: "diff", files: DiffFile[] }
+ * @typedef {{ block: "terminal", command: string, output: string, exit: number | null, running: boolean, note?: string }
+ *  | { block: "diff", files: DiffFile[], note?: string }
  *  | { block: "record", urn: string | null, type: string, title: string, fields: RecordField[] }
  *  | { block: "task", id: string, title: string, doer: string | null, state: string, why: string | null, face: boolean, approve: string, tags: string[] }
  *  | { block: "draft", kind: string, to: string | null, subject: string | null, body: string }
@@ -22,6 +22,8 @@
 
 const str = (/** @type {unknown} */ v, max = 8000) => (typeof v === "string" ? v.slice(0, max) : "");
 const arr = (/** @type {unknown} */ v) => (Array.isArray(v) ? v : []);
+/** The quiet line the server sets on a block shown to a room of more than one person ("visible to everyone in this chat"). Never made here. @param {Record<string, any>} o */
+const noteOf = (o) => (typeof o.note === "string" && o.note.trim() ? { note: o.note.trim().slice(0, 120) } : {});
 const rec = (/** @type {unknown} */ v) => (v && typeof v === "object" && !Array.isArray(v) ? /** @type {Record<string, any>} */ (v) : null);
 
 /** A short sentence for a block that could not be drawn: its own words, else the fallback. @param {unknown} raw @param {string} fallback */
@@ -39,7 +41,7 @@ export function normalizeBlock(raw, fallback = "Done") {
   if (!o || typeof o.block !== "string") return text();
   switch (o.block) {
     case "terminal":
-      return { block: "terminal", command: str(o.command, 400), output: str(o.output, 200000), exit: typeof o.exit === "number" ? o.exit : null, running: Boolean(o.running) };
+      return { block: "terminal", command: str(o.command, 400), output: str(o.output, 200000), exit: typeof o.exit === "number" ? o.exit : null, running: Boolean(o.running), ...noteOf(o) };
     case "diff":
     case "files": {
       const files = arr(o.files).map((f) => rec(f)).filter(Boolean).map((f) => {
@@ -47,7 +49,7 @@ export function normalizeBlock(raw, fallback = "Done") {
         const c = diff ? countDiff(diff) : { add: Number(f?.add) || 0, del: Number(f?.del) || 0 };
         return { path: str(f?.path, 300), op: ["create", "edit", "delete"].includes(f?.op) ? f?.op : "edit", diff, add: c.add, del: c.del };
       });
-      return files.length ? { block: "diff", files: /** @type {DiffFile[]} */ (files) } : text();
+      return files.length ? { block: "diff", files: /** @type {DiffFile[]} */ (files), ...noteOf(o) } : text();
     }
     case "record": {
       const title = str(o.title, 200);

@@ -1,0 +1,122 @@
+// @ts-check
+// The install flow against the real box: pure mappings from what spaces.* answers to what the screens show, and from the screen's state to
+// what spaces.setup.save keeps. No React, no calls: the screen calls the box (src/real/box.ts) and hands the answers here.
+
+import { MIN_NAME, SETUP_STEPS, slug } from "./flow.js";
+
+/** spaces.identity.status: the person's name on this device, or null when none is claimed yet. @param {any} s */
+export function identityFrom(s) {
+  if (!s || s.exists !== true) return null;
+  const label = typeof s.label === "string" && s.label ? s.label : String(s.name ?? "").replace(/\.vyre\.run$/, "");
+  return { id: String(s.id ?? ""), label, address: String(s.name ?? `${label}.vyre.run`) };
+}
+
+/**
+ * Whether a name can be claimed, from the directory's answer to spaces.identity.resolve: a name that resolves is taken, `not_found` is free,
+ * anything else (offline, a refusal) is unknown and says so instead of guessing.
+ * @param {{ ok: true } | { ok: false, code: string }} answer
+ * @returns {"free"|"taken"|"unknown"}
+ */
+export function nameAnswer(answer) {
+  if (answer.ok) return "taken";
+  return answer.code === "not_found" ? "free" : "unknown";
+}
+
+/**
+ * The state under a name field when the directory decides. `remote` is null while the check has not come back.
+ * @param {string} raw @param {"free"|"taken"|"unknown"|null} remote @param {string[]} [also] names this person already holds
+ * @returns {{ slug: string, state: "empty"|"short"|"checking"|"taken"|"unknown"|"ok", address: string }}
+ */
+export function nameStatusReal(raw, remote, also = []) {
+  const s = slug(raw);
+  const address = s ? `${s}.vyre.run` : "";
+  if (!s) return { slug: s, state: "empty", address };
+  if (s.length < MIN_NAME) return { slug: s, state: "short", address };
+  if (also.map(slug).includes(s)) return { slug: s, state: "taken", address };
+  if (remote === null) return { slug: s, state: "checking", address };
+  if (remote === "taken") return { slug: s, state: "taken", address };
+  if (remote === "unknown") return { slug: s, state: "unknown", address };
+  return { slug: s, state: "ok", address };
+}
+
+/** The words under the name field for the states the directory adds. @param {ReturnType<typeof nameStatusReal>} st @param {boolean} space */
+export function nameNoteReal(st, space) {
+  if (st.state === "checking") return "Checking the name.";
+  if (st.state === "unknown") return "Cannot check this name right now. Try again.";
+  if (st.state === "taken") return `${st.address} is taken.${space ? " People and spaces share names." : ""}`;
+  if (st.state === "short") return "Use at least three letters.";
+  if (st.state === "ok") return `${st.address} is yours to take.`;
+  return "";
+}
+
+/** The input of spaces.create. @param {{ slug: string, name: string, where: "server"|"vps"|"here" }} o */
+export function createInput(o) {
+  const home = o.where === "here" ? { kind: "this-computer", confirmed: true } : { kind: o.where };
+  return { name: o.slug, displayName: o.name, home };
+}
+
+/**
+ * spaces.create or spaces.resume answered: done, or something the person has to see. A step that failed is `failed` with the box's words.
+ * @param {any} r
+ * @returns {{ state: "done"|"running"|"asking"|"failed", id: string, address: string, say: string }}
+ */
+export function createdFrom(r) {
+  const id = String(r?.spaceId ?? r?.id ?? "");
+  const address = String(r?.domain ?? "");
+  const st = String(r?.status ?? "");
+  if (st === "done") return { state: "done", id, address, say: "" };
+  if (st === "failed" || st === "cancelled") return { state: "failed", id, address, say: String(r?.message ?? r?.error ?? "Setting up the space did not finish.") };
+  if (st === "needs-input" || st === "asking" || r?.ask) return { state: "asking", id, address, say: String(r?.message ?? r?.ask?.message ?? "The space needs an answer to carry on.") };
+  return { state: "running", id, address, say: "" };
+}
+
+/**
+ * What spaces.setup.save keeps, from the screen's state. No secret, code or key: only these fields.
+ * @param {{ step: string, name: string, addr: string | null, look: string, where: string, connectors: string[], kit: string | null }} s
+ */
+export function setupFrom(s) {
+  return { step: s.step, name: s.name, address: s.addr, look: s.look, where: s.where, picks: { connectors: s.connectors, kit: s.kit } };
+}
+
+/** Steps whose arrival is written to the box. */
+export const savesAt = (/** @type {string} */ step) => SETUP_STEPS.includes(step);
+
+/**
+ * Spaces (spaces.list rows) with setup unfinished, for "Setup in progress on your <device>". `here` is true when this device began it, which the
+ * screen knows from the progress it kept itself (the box names the device but the app does not know its own device id).
+ * @param {any[]} list @param {string | null} hereSpace the space this device is setting up, if any
+ */
+export function setupElsewhere(list, hereSpace) {
+  return (Array.isArray(list) ? list : [])
+    .filter((r) => r && r.setup && typeof r.setup === "object" && r.id !== hereSpace)
+    .map((r) => ({ space: String(r.id), spaceName: String(r.displayName || r.label || r.name || r.id), device: String(r.setup.device?.name || "device"), setup: r.setup }));
+}
+
+/** What a claimed setup (spaces.setup.claim) puts back on the screen. @param {any} a */
+export function applyClaim(a) {
+  const s = a?.setup;
+  if (!s) return null;
+  return {
+    space: String(a.space),
+    step: String(s.step),
+    name: String(s.name ?? ""),
+    addr: s.address ? String(s.address).replace(/\.vyre\.run$/, "") : null,
+    look: String(s.look ?? "amber"),
+    where: s.where === "vps" || s.where === "here" ? s.where : "server",
+    connectors: Array.isArray(s.picks?.connectors) ? s.picks.connectors.map(String) : [],
+    kit: s.picks?.kit ? String(s.picks.kit) : null,
+  };
+}
+
+/** spaces.invites.preview, as the invite card shows it. @param {any} p @param {string} link */
+export function inviteFrom(p, link) {
+  const sp = p?.space ?? {};
+  const label = String(sp.label ?? sp.name ?? sp.id ?? "");
+  const name = String(sp.displayName ?? label);
+  const role = String(p?.role ?? "member");
+  const Role = role.charAt(0).toUpperCase() + role.slice(1);
+  return {
+    space: name, address: label ? (label.includes(".") ? label : `${label}.vyre.run`) : "", from: String(p?.from?.name ?? p?.issuer?.name ?? ""), role: Role, link,
+    roleLine: String(p?.role_line ?? ""), sees: String(p?.sees ?? ""), status: String(p?.status ?? "pending"),
+  };
+}
