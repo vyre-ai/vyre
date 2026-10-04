@@ -35,3 +35,14 @@ test("a member cannot change or remove another's row of a protected type, can of
   const free = await R.create(owner, "plain", { body: "x" });
   assert.equal((await R.update(bob, "plain", free.id, { body: "y" }, free.version)).data.body, "y", "an ordinary type is unchanged");
 });
+
+test("a module's kernel handle (a Proxy over the gateway's records) works: define, create, get and query through createKernel's kernelFor", async () => {
+  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 9), presence });
+  const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
+  const handle = k.kernelFor({ name: "probe", needs: { kernel: { actions: ["records.read"] } } });
+  await handle.records.define(owner, { add_types: [FREE, PROPOSAL] });
+  const row = await handle.records.create(owner, "plain", { body: "x" });
+  assert.equal((await handle.records.get(owner, "plain", row.id)).data.body, "x");
+  assert.equal((await handle.records.query(owner, "plain", { page: { limit: 5 } })).rows.length, 1);
+  assert.equal((await handle.records.query(owner, "kit-proposal", { page: { limit: 5 } })).rows.length, 0);
+});
