@@ -901,7 +901,9 @@ test("a second person joins a space that lives on a server: the record carries t
   const attest = { fn: attestWith(heldPub, held) };
   const server = createRemoteServer({ space: KSPACE, kernel: K, attest: n => attest.fn(n) });
   const hellos = [];
-  hooks.inviteeSessionFor = async (channel, hello) => {
+  hooks.inviteeSessionFor = async (channel, helloFor) => {
+    const hello = typeof helloFor === "function" ? await helloFor("kitchannelaaaaaa") : helloFor;
+    assert.equal(hello.channel, "kitchannelaaaaaa", "the hello names the channel's own key id");
     hellos.push({ channel, hello });
     return { call: async (tool, request) => { assert.equal(tool, KERNEL_CALL_TOOL); const r = JSON.parse(JSON.stringify(await server.serve({ ...JSON.parse(JSON.stringify(request)), space: KSPACE }, { person: hello.identity, device_key_id: `inv-${hello.nonce}`, path: "wink" }))); return r; } };
   };

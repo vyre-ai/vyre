@@ -63,6 +63,7 @@ async function world(t, opt = {}) {
   const url = await relay.listen();
   t.after(() => relay.close());
   const root = tempHome(t);
+  if (opt.standIn) fs.writeFileSync(path.join(root, "dev-presence-stand-in"), "walk\n");
   if (opt.pendingMs || opt.abandonMs) { seams.set(root, { ...(opt.pendingMs ? { pendingMs: opt.pendingMs } : {}), ...(opt.abandonMs ? { abandonMs: opt.abandonMs } : {}) }); t.after(() => seams.delete(root)); }
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [], network: { name: "alex" }, relay: { enabled: true, url }, modules: { disable: ["names", "onboard"] } }));
   const d = await start({ ...(opt.realPresence ? {} : { presence: lenient }), root, log: m => { if (process.env.WLOG) console.error(m); }, coreKeys: macCore(), ...(opt.kernel ? { kernel: true } : {}) });
@@ -1141,7 +1142,7 @@ async function standinIdentity(t) {
 }
 
 /** A box-less device pairs a fresh server and picks the words; resolves what the device then holds. */
-async function pairFreshServer(t, { kind = "phone", about, presenceStorage = "hardware", ident = null, devKey = null, realPresence = false } = {}) {
+async function pairFreshServer(t, { kind = "phone", about, presenceStorage = "hardware", ident = null, devKey = null, realPresence = false, standIn = false } = {}) {
   ident = ident || await standinIdentity(t);
   // the real rule: a server is owned only with the identity proof, checked against the directory
   const noProof = process.env.VYRE_TEST_PAIR_NO_PROOF;
@@ -1152,7 +1153,7 @@ async function pairFreshServer(t, { kind = "phone", about, presenceStorage = "ha
   const saved = process.env.VYRE_WINK_TYPED_CODE;
   delete process.env.VYRE_WINK_TYPED_CODE;
   t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
-  const w = await world(t, { kernel: true, realPresence });
+  const w = await world(t, { kernel: true, realPresence, standIn });
   const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   const ks = keystore(t);
   const presenceKey = devKey ? devKey.presenceKey : { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: presenceStorage };
@@ -1777,4 +1778,37 @@ test("an invitee link pointed at a box whose key is not the record's route.box s
   await assert.rejects(() => links2.inviteeSessionFor({ ...ch, box: f.done.box }, hello).call("grants.invites.get", {}));
   assert.equal(heads.length, 1, "the right box key opens the channel and the head goes");
   assert.deepEqual(heads[0].invitee, hello);
+});
+
+// ---- the join, end to end (tailnet, 4 Oct): two real daemons, a space hosted on the server, an invite, a second person's device that is not a member ----
+test("join end to end: a second identity's device previews and accepts an invite through the invitee door of a real server, on the real kernel; each refusal is the kernel's or the door's", { timeout: 180_000 }, async t => {
+  const { claimServerSpace } = await import("../apps/app/src/identity/claim-space.js");
+  const f = await pairFreshServer(t, { standIn: true });
+  const links = linksFor(t, f);
+  await links.startPaired("srv");
+  const session = links.sessionFor("srv");
+  const st = f.ident.store;
+  const identity = { id: f.ident.id, name: "alex", eid: st.status().eid, ops: st.ops(), key: { sign: async m => new Uint8Array(await st.sign(Buffer.from(m))) } };
+  const ROUTE = { relay: f.w.status.url, route: f.done.route, box: f.done.box };
+  const made = await claimServerSpace({ identity, name: "harlow", displayName: "Harlow Legal", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (spacesHooks.fetch), now: () => f.ident.clock.t, route: ROUTE,
+    host: a => session.call("spaces.host-here", { ...a, proof: { key: "k1" } }) });
+  assert.ok(f.w.d.kernel.spaces.hosts(made.space));
+  // kit: a second real daemon with its own identity, in the same names directory (the module's fetch is the shared fake)
+  spacesHooks.stretch = { memoryKiB: 64, passes: 1 };
+  t.after(() => { spacesHooks.stretch = null; });
+  const k = await world(t, { kernel: true });
+  const kit = (await k.call("spaces.identity.create", { name: "kit", password: "four plain words here", deviceLabel: "Kit's laptop" })).data;
+  assert.match(String(kit && kit.id), /^per_/);
+  // alex's side: the invite is the hosted kernel's, made as the owner (the owner's own device and presence are the walk's step; the door is what is under test here)
+  const hosted = f.w.d.kernel.spaces.hosted(made.space);
+  const ownerChain = hosted.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-walk", person: f.owner.id, path: "direct" });
+  const rkFp = crypto.createHash("sha256").update(`vyre-space-fingerprint-v1\n${made.pin.id}\n${made.rootPublic}`).digest("hex").slice(0, 32);
+  const linkFor = async (to, extra = {}) => {
+    const inv = await hosted.gateway.grants.invites.create(ownerChain, { role: "member", invitee: to, ...extra });
+    return { id: inv.id, link: `https://harlow.vyre.run/join/${inv.id}.${Buffer.from(JSON.stringify({ chain: made.pin, rk: rkFp })).toString("base64url")}` };
+  };
+  const mine = await linkFor(kit.id);
+  const preview = await k.call("spaces.invites.preview", { link: mine.link });
+  assert.ok(!preview.error, JSON.stringify(preview.error));
+  assert.deepEqual([preview.data.role, preview.data.status], ["member", "pending"]);
 });

@@ -1450,11 +1450,11 @@ export default {
     const isKernelToken = (/** @type {string} */ t) => /^inv_[0-9a-f]{32}\.[A-Za-z0-9_-]+$/.test(String(t));
     /** @type {Map<string, any>} */ const remoteHandles = new Map();
     /** The invitee's signed hello for the home's door: their identity key over the box, the space and the invite (core/wink/serverlink.js carries it in the stream head). @param {{ box: string }} channel @param {string} space @param {string} invite */
-    const inviteeHello = async (channel, space, invite) => {
+    const inviteeHello = async (channel, space, invite, channelKey) => {
       const who = me();
       const ts = now(), nonce = crypto.randomBytes(12).toString("base64url");
-      const sig = b64u(await identity.sign(`vyre-invitee-hello-v1\n${channel.box}\n${space}\n${invite}\n${who.id}\n${who.eid}\n${ts}\n${nonce}`));
-      return { space, invite, identity: who.id, ...(who.name ? { name: `${String(who.name).replace(/\.vyre\.run$/, "")}.vyre.run` } : {}), entry: who.eid, ts, nonce, sig };
+      const sig = b64u(await identity.sign(`vyre-invitee-hello-v2\n${channel.box}\n${space}\n${invite}\n${who.id}\n${who.eid}\n${ts}\n${nonce}\n${channelKey}`));
+      return { space, invite, channel: channelKey, identity: who.id, ...(who.name ? { name: `${String(who.name).replace(/\.vyre\.run$/, "")}.vyre.run` } : {}), entry: who.eid, ts, nonce, sig };
     };
     /** The card for a kernel invite, from the Space's own kernel, after the link's pin and fingerprint are checked against the identity list. @param {any} i @param {any} p @param {any} meta */
     const kernelCard = async (i, p, meta) => {
@@ -1477,8 +1477,9 @@ export default {
         const sf = typeof hooks.inviteeSessionFor === "function" ? hooks.inviteeSessionFor : typeof ctx.inviteeSessionFor === "function" ? ctx.inviteeSessionFor : null;
         if (have && now() - have.at < 60_000) h = have.h; // the open stream is reused inside the hello's two-minute life
         else if (sf) {
-          const hello = await inviteeHello(channel, r.payload.id, invId);
-          h = createRemoteKernel({ space: r.payload.id, transport: winkTransport({ sessionFor: async () => sf(channel, hello) }) });
+          // the hello is signed over the channel's own key id, which only the link knows once it has made the channel's key, so the link asks for it (and signs a new one for every stream it opens)
+          const helloFor = (/** @type {string} */ channelKey) => inviteeHello(channel, r.payload.id, invId, channelKey);
+          h = createRemoteKernel({ space: r.payload.id, transport: winkTransport({ sessionFor: async () => sf(channel, helloFor, { invite: invId }) }) });
         }
         if (h) {
           await kv.put(`invitee-route/${r.payload.id}`, { channel, invite: invId, name: `${label}.vyre.run`, at: now() });
