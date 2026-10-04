@@ -45,7 +45,6 @@
     "deck",
     "modules",
     "names/worker/id-messages.js",
-    "kernel",
     "stores",
     "records",
     "box",
