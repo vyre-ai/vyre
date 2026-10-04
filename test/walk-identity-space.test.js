@@ -54,7 +54,7 @@ test("walk steps 2 and 3 on a real vyred against the stand-in directory, and BR-
   const sp = await deck("spaces.create", { name: "harlow", displayName: "Harlow Legal", home: { kind: "this-computer", confirmed: true } });
   assert.ok(!sp.error, JSON.stringify(sp.error));
   assert.equal(sp.data.status, "done", JSON.stringify(sp.data));
-  const got = await deck("spaces.get", { space: "harlow" });
+  const got = await as("cli")("spaces.get", { space: "harlow" }); // a terminal is the person through the stand-in; the deck label is not a terminal
   assert.ok(!got.error, JSON.stringify(got.error));
   assert.deepEqual([got.data.name, got.data.role, got.data.owners], ["harlow.vyre.run", "owner", 1]);
   const rs = await deck("spaces.identity.resolve", { name: "harlow" });
