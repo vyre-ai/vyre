@@ -29,7 +29,7 @@ export function RealKits() {
             {shown.map((k, i) => (
               <View key={k.id}>{i ? <Divider /> : null}
                 <Row lead={<IconTile icon="box" />} title={kitName(k.id)} sub={kitLine(k)}
-                  end={k.status === "installed" ? <Button kind="holdText" size="sm" label="Remove" onPress={busy ? () => {} : () => remove(k)} /> : <Chip>{statusWord(k.status)}</Chip>} />
+                  end={k.status === "installed" ? <Button kind="holdText" size="sm" label="Remove" disabled={busy} onPress={() => remove(k)} /> : <Chip>{statusWord(k.status)}</Chip>} />
               </View>
             ))}
           </Card>

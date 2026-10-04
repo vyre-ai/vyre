@@ -114,7 +114,7 @@ export default function RealVault() {
       <Tabs<Tab> value={tab} onChange={(t) => { hide(); setSel(null); setTab(t); }} items={[["Login", "Logins"], ["Key", "Keys"], ["Card", "Cards"]]} />
       {err ? <Card flush><EmptyState title="The vault did not answer" body={err} action={{ label: "Try again", onPress: load }} /></Card> : null}
       {!err && rows === null ? <Card flush><EmptyState title="Loading" body="Asking your Vyre." /></Card> : null}
-      {!err && rows && locked ? <Card flush><EmptyState title="The vault is locked" body="Unlock it on the box, then come back." action={{ label: "Try again", onPress: load }} /></Card> : null}
+      {!err && rows && locked ? <Card flush><EmptyState title="The vault is locked" body="Unlock it on your home, then come back." action={{ label: "Try again", onPress: load }} /></Card> : null}
       {!err && rows && !locked ? (
         <View className={phone ? "gap-s4" : "flex-row items-start gap-s4"}>
           <View className={phone ? "" : "min-w-0 flex-1"}>
@@ -124,7 +124,7 @@ export default function RealVault() {
                   <Row dense chevron={phone} selected={!phone && cur?.id === v.id} lead={<IconTile name={v.tab === "Card" ? "file" : "key"} />} title={v.name}
                     sub={uses[v.id] ? `${v.line} · ${useCount(uses[v.id], Date.now())} uses today` : v.line} onPress={() => { hide(); setSel(v.id); setPushed(true); }} />
                 </View>
-              )) : <EmptyState title="Nothing here" body={rows.length ? `No ${tab.toLowerCase()}s on this box.` : "No items yet. Add one with vyre vault put."} />}
+              )) : <EmptyState title="Nothing here" body={rows.length ? `No ${tab.toLowerCase()}s in the vault.` : "No items yet. Add one from your home's terminal with vyre vault put."} />}
             </Card>
           </View>
           {phone ? null : <View className="min-w-pane min-w-0 flex-[1.2]">{detail}</View>}
