@@ -124,7 +124,7 @@ test("SV-2c: a spent approval stays spent across a restart (the vault's own data
 test("Drive paths get the one-form refusal at the vault entry: dot segments, backslash, absolute, empty segments and encoded dots or slashes never reach the Drive", async t => {
   const touched = [], files = { read: async p => { touched.push(p); throw new Error("no drive here"); }, save: async p => { touched.push(p); throw new Error("no drive here"); } };
   const m = await mk(t, files); await put(m, { allow: [{ method: "POST", path: "/v4/documents" }, { method: "GET", path: "/v4/documents/*" }] }, { endpoints: [{ method: "POST", path: "/v4/documents", kind: "send" }] });
-  const bad = ["Clients/A/../B/x", "Clients/A/./x", "Clients\\A\\x", "/Clients/A/x", "Clients//A/x", "Clients/%2e%2e/B", "Clients/A%2fB", "Clients/A\u0000/x", "Clients/A\t/x", "~/x", "C:/x", "Clients/A:stream", "Clients/A\u202e/x", "Clients/\u200bA/x"];
+  const bad = ["Clients/A/../B/x", "Clients/A/./x", "Clients\\A\\x", "/Clients/A/x", "Clients//A/x", "Clients/%2e%2e/B", "Clients/A%2fB", "Clients/A\u0000/x", "Clients/A\t/x", " Clients/A", "Clients/A ", "Clients/ A/x", "~/x", "C:/x", "Clients/A:stream", "Clients/A\u202e/x", "Clients/\u200bA/x"];
   const out = [];
   for (const p of bad) {
     out.push(await m.run("vault.service.forward", { connector: "clio", request: { method: "POST", path: "/v4/documents", upload: { drive: { path: p } } } }).then(() => "sent", e => `${e.code}: ${e.message}`));
