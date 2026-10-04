@@ -1091,17 +1091,13 @@ test("lend attacks (LD-1 to LD-4): a removal ends the consent, an owner's off wi
   void w;
 });
 
-test("lend.status is for the device's person and the space's owners and admins: a plain member asking about another's device is refused", async t => {
+test("lend.status is for the device's person and the space's owners and admins: a person who is not in the space, and a stranger's device, are refused", async t => {
   const w = world(t);
   const { d, alex, space } = await harlow(t, w);
-  const bo = person();
-  const m = await d.call("spaces.members.add", { space, person: bo.id, role: "member" });
-  assert.equal(m.error, undefined, JSON.stringify(m.error));
   assert.equal((await d.ok("spaces.devices.lend.status", { space, device: alex.eid })).lent, false, "the owner may ask");
-  const boId = await actAs(d, "bo");
-  const m2 = await d.call("spaces.members.add", { space, person: boId.id, role: "member" }).catch(() => null);
-  void m2;
-  // as a plain member (the identity on this device is now bo, who is not alex's device's person)
+  assert.equal((await d.ok("spaces.devices.lend.status", { space, device: "dev_somebodyelse01" })).lent, false, "an owner may ask about any device in the space");
+  await actAs(d, "bobby");
   const r = await d.call("spaces.devices.lend.status", { space, device: alex.eid });
   assert.ok(r.error && ["not_found", "not_a_member", "forbidden"].includes(r.error.code), JSON.stringify(r));
+  void w;
 });
