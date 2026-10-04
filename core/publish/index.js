@@ -43,6 +43,10 @@ const NO_TOOL = new Set(["no_such_tool", "not_available"]);
 const str = { type: "string" };
 const obj = (/** @type {any} */ properties, /** @type {string[]} */ required = []) => ({ type: "object", properties: { space: str, ...properties }, required });
 const MAX_CANDIDATES = 400_000;
+/** The person's own surfaces and Vyre's modules. A tool that builds, names a domain, hands out a secret or writes the edge is theirs: a model asks through the held acts below, or the person does it. */
+const PEOPLE = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module"];
+/** The draft and the three held acts (approve, publish, rollback): a model may start a draft and ask, and the publisher holds every act for a person's decision (publish.decide), so a model alone puts nothing live. */
+const WITH_MODELS = [...PEOPLE, "mcp", "harness"];
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
@@ -271,6 +275,7 @@ export default {
 
     // ---- tools ----
     ctx.tool("publish.create", {
+      callers: WITH_MODELS,
       description: "Start a new site or app as a draft: a name, where its source is, and how it builds. Env entries are secret references, never values.",
       input: obj({ name: str, source: { type: "object" }, build: { type: "object" }, env: { type: "object" }, project: str, approver: str }, ["name", "source"]),
       run: async (i, meta) => {
@@ -281,6 +286,7 @@ export default {
     });
 
     ctx.tool("publish.preview", {
+      callers: PEOPLE,
       description: "Build a draft and put it at a private preview address. Refused if a sealed value or one of its own secrets is in the build output.",
       input: obj({ deployment: str }, ["deployment"]),
       run: async (i, meta) => {
@@ -304,16 +310,19 @@ export default {
       return { deployment: shown(r.deployment), ...(r.retired !== undefined ? { retired: shown(r.retired) } : {}) };
     };
     ctx.tool("publish.approve", {
+      callers: WITH_MODELS,
       description: "Approve a preview. The first call asks and holds; a person's decision (publish.decide) completes it, or call again with the task once it is decided.",
       input: obj({ deployment: str, task: str }, ["deployment"]),
       run: heldTool("approve"),
     });
     ctx.tool("publish.publish", {
+      callers: WITH_MODELS,
       description: "Put an approved version on the internet. Held for a person every time: the first call asks, a person decides with publish.decide.",
       input: obj({ deployment: str, task: str }, ["deployment"]),
       run: heldTool("publish"),
     });
     ctx.tool("publish.rollback", {
+      callers: WITH_MODELS,
       description: "Put the previous version back. Give the live deployment. Held for a person every time.",
       input: obj({ deployment: str, task: str }, ["deployment"]),
       run: heldTool("rollback"),
@@ -394,6 +403,7 @@ export default {
     });
 
     ctx.tool("publish.domain.add", {
+      callers: PEOPLE,
       description: "Start connecting a domain to a site. Returns the DNS record to add; nothing serves until it is verified and the site is published.",
       input: obj({ host: str, deployment: str, canonical: { type: "string", enum: ["apex", "www"] }, www: { type: "boolean" } }, ["host", "deployment"]),
       run: async (i, meta) => {
@@ -403,6 +413,7 @@ export default {
       },
     });
     ctx.tool("publish.domain.verify", {
+      callers: PEOPLE,
       description: "Check the DNS record (or the name you own) for a connected domain.",
       input: obj({ host: str }, ["host"]),
       run: async (i, meta) => {
@@ -418,6 +429,7 @@ export default {
     });
 
     ctx.tool("publish.secret.grant", {
+      callers: PEOPLE,
       description: "Let one deployment use one vault secret, as an environment name. A real secret is held for a person; nothing is shared with other deployments.",
       input: obj({ deployment: str, ref: str, name: str, use: { type: "array", items: { type: "string", enum: ["build", "runtime"] } }, task: str }, ["deployment", "ref", "name"]),
       run: async (i, meta) => {
@@ -429,6 +441,7 @@ export default {
       },
     });
     ctx.tool("publish.secret.revoke", {
+      callers: PEOPLE,
       description: "Take a secret away from a deployment and delete its file.",
       input: obj({ deployment: str, name: str }, ["deployment", "name"]),
       run: async (i, meta) => {
@@ -441,6 +454,7 @@ export default {
     });
 
     ctx.tool("publish.edge", {
+      callers: PEOPLE,
       description: "Write the edge for what is live now: a compose project, a Caddyfile and the Dockerfile of its Caddy image in <home>/publish/<space>/, and the runtime secret files its sites were granted. It does not start anything.",
       input: obj({}),
       run: async (i, meta) => {
