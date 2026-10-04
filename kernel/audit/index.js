@@ -16,11 +16,14 @@ const SUBJECT = (/** @type {string} */ space) => `vyre://${space}/audit/log`;
 /** The bytes a checkpoint signature covers. @param {{ space: string, seq: number, hash: string, time: number, key_id: string }} c */
 export const checkpointBytes = c => Buffer.from("vyre-checkpoint-v1\n" + canonical({ space: c.space, seq: c.seq, hash: c.hash, time: c.time, key_id: c.key_id }));
 
+/** A public key as a key object: an object stays, PEM text is read, and any other text is the base64 DER the sealing process returns (`spacekey.pub`). @param {crypto.KeyObject | string} k */
+const asKey = k => (typeof k !== "string" ? k : k.includes("BEGIN") ? crypto.createPublicKey(k) : crypto.createPublicKey({ key: Buffer.from(k, "base64"), format: "der", type: "spki" }));
+
 /** Is this checkpoint signed by this key? A bad signature or shape is false, never a throw. @param {any} cp @param {crypto.KeyObject | string} publicKey */
 export function verifyCheckpoint(cp, publicKey) {
   try {
     if (!cp || typeof cp.signature !== "string" || !Number.isInteger(cp.seq) || cp.seq < 0 || typeof cp.hash !== "string" || typeof cp.space !== "string" || typeof cp.key_id !== "string") return false;
-    const key = typeof publicKey === "string" ? crypto.createPublicKey(publicKey) : publicKey;
+    const key = asKey(publicKey);
     return crypto.verify(null, checkpointBytes(cp), key, Buffer.from(cp.signature, "base64url"));
   } catch { return false; }
 }
@@ -30,7 +33,10 @@ export const ed25519Signer = privateKey => (/** @type {Buffer} */ bytes) => cryp
 
 /**
  * The home's side: sign and append checkpoints.
- * @param {{ publicKey?: crypto.KeyObject | string, space: string, log: any, chains: any, sign: (bytes: Buffer) => string | Promise<string>, key_id: string, clock?: () => number, every_events?: number, every_ms?: number }} cfg
+ * @param {{ publicKey?: crypto.KeyObject | string, space: string, log: any, chains: any, sign: (bytes: Buffer) => string | Promise<string>, key_id: string, clock?: () => number, every_events?: number, every_ms?: number, anchor?: { advance(i: { seq: number, head: string }): Promise<any> } }} cfg
+ *   anchor (BL-2): the sealing process's copy of the newest (seq, head) it was shown, outside the database, moving only forward. Each checkpoint first verifies the log up to
+ *   its head, then advances the anchor to that head and only then is signed into the log: a log that was rolled back since is refused by the anchor (`anchor_behind`), so no checkpoint is written for it,
+ *   and a head that did not verify is never the one the anchor keeps (one bad advance would otherwise brick every later boot).
  */
 export function createCheckpointer(cfg) {
   const clock = cfg.clock || Date.now;
@@ -42,9 +48,15 @@ export function createCheckpointer(cfg) {
   const api = {
     /** Sign the log's head now and append `checkpoint.signed`. The checkpoint covers the head BEFORE its own event, so it never names itself. */
     async sign() {
+      if (cfg.anchor) {
+        // The head the anchor keeps is one just verified: from the last signed checkpoint (or the start of a young log) to the head, in the same turn that reads it.
+        const v = cfg.publicKey ? verifyTail({ space: cfg.space, log: cfg.log, publicKey: cfg.publicKey }) : cfg.log.verify();
+        if (!v.ok) throw new KernelError("log_broken", `the log does not verify (${/** @type {any} */ (v).why || "broken"}); no checkpoint is signed and the anchor stays where it was`);
+      }
       const seq = cfg.log.latestSeq(), hash = cfg.log.head(), time = clock();
       const body = { space: cfg.space, seq, hash, time, key_id: cfg.key_id };
       const signature = await cfg.sign(checkpointBytes(body));
+      if (cfg.anchor && seq > 0) await cfg.anchor.advance({ seq, head: hash });
       const cp = Object.freeze({ ...body, signature });
       cfg.log.append(kernelChain(), { type: "checkpoint.signed", sv: 1, subject: SUBJECT(cfg.space), data: { checkpoint: cp }, vis: "space", red: "public" });
       last = { seq, time };
@@ -118,6 +130,23 @@ export function verifyTail(cfg) {
   if (!at || at.hash !== cp.hash) return { ok: false, from: cp.seq, checked: 0, why: "history_differs" };
   const v = cfg.log.verify({ from: cp.seq, prev: cp.hash });
   return v.ok ? { ok: true, from: cp.seq, checked: v.seq - cp.seq } : { ok: false, from: cp.seq, checked: 0, why: v.why };
+}
+
+/**
+ * The restart's second check (BL-2): the log against the anchor the sealing process keeps outside the database. A log shorter than the anchor, or with another event at the
+ * anchor's position, was rolled back or rewritten with its checkpoints; the checkpoints inside the log cannot say so, because they went back with it. No anchor (a fresh home) is fine:
+ * the first checkpoint writes it. The anchor defends against the database alone being put back; it does not defend against a whole-home restore, or someone who holds the sealing folder.
+ * @param {{ log: any, anchor: { read(): Promise<{ seq: number, head: string } | null> } }} cfg
+ * @returns {Promise<{ ok: boolean, seq: number | null, why?: string }>}
+ */
+export async function anchorCheck(cfg) {
+  let a;
+  try { a = await cfg.anchor.read(); } catch { return { ok: false, seq: null, why: "anchor_unreadable" }; }
+  if (!a) return { ok: true, seq: null };
+  if (cfg.log.latestSeq() < a.seq) return { ok: false, seq: a.seq, why: "anchor_rolled_back" };
+  const at = eventAt(cfg.log, a.seq);
+  if (!at || at.hash !== a.head) return { ok: false, seq: a.seq, why: "anchor_history_differs" };
+  return { ok: true, seq: a.seq };
 }
 
 /**

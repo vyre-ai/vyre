@@ -60,7 +60,7 @@ export function planCard(ask, opts = {}) {
     // Approved: the plan is answered whatever the mode call says; a failure is said, not undone.
     const thread = opts.thread ?? ask.thread;
     if (act === "start" && thread) {
-      const m = await attempt("threads.mode", { thread, mode: state.mode, surface: "deck" });
+      const m = await attempt("threads.mode", { thread, mode: state.mode });
       if (m.error) state.modeError = m.error;
     }
     state.busy = null;
