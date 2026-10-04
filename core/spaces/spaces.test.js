@@ -18,7 +18,7 @@ import worker, * as W from "../../names/worker/index.js";
 import { createRuntime } from "../../relay/worker/fake-cf.js";
 import { fakeDns } from "../../names/worker/fake-dns.js";
 import spacesModule, { hooks } from "./index.js";
-import { newKeyPair, personIdOf, fileIdentityStore } from "./identity.js";
+import { newKeyPair, personIdOf, fileIdentityStore, privateKeyOf } from "./identity.js";
 import { createIdentityOps } from "./identity-ops.js";
 import { idDirectory, memorySeen } from "../../lib/identity/directory.js";
 
@@ -892,12 +892,29 @@ test("a second person joins a space that lives on a server: the record carries t
   assert.match(noStream.error.message, /cannot be reached from here\. Ask them to move it to their server\.$/);
   // the home's end: the kernel's remote server, with the peer the door admitted from the hello
   // this test's module-made space id is not the kernel's (a stand-in kernelFor); a real home answers under one id
-  const server = createRemoteServer({ space: KSPACE, kernel: K });
+  // the home's proof that it holds the space: its signature over the joiner's nonce with the key whose public half the record names (the module made that key on this device for the test; a real server makes it in host-here)
+  const attestWith = (pub, priv) => async nonce => ({ pub, sig: crypto.sign(null, Buffer.from(`vyre-space-attest-v1\n${s.space}\n${nonce}`), priv).toString("base64url") });
+  const held = privateKeyOf(fs.readFileSync(path.join(d.space, s.space, "root.key"), "utf8").trim());
+  const heldPub = crypto.createPublicKey(held).export({ format: "der", type: "spki" }).subarray(-32).toString("base64url");
+  const other = crypto.generateKeyPairSync("ed25519");
+  const otherPub = other.publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("base64url");
+  const attest = { fn: attestWith(heldPub, held) };
+  const server = createRemoteServer({ space: KSPACE, kernel: K, attest: n => attest.fn(n) });
   const hellos = [];
-  hooks.inviteeSessionFor = async (channel, hello) => {
+  hooks.inviteeSessionFor = async (channel, helloFor) => {
+    const hello = typeof helloFor === "function" ? await helloFor("kitchannelaaaaaa") : helloFor;
+    assert.equal(hello.channel, "kitchannelaaaaaa", "the hello names the channel's own key id");
     hellos.push({ channel, hello });
     return { call: async (tool, request) => { assert.equal(tool, KERNEL_CALL_TOOL); const r = JSON.parse(JSON.stringify(await server.serve({ ...JSON.parse(JSON.stringify(request)), space: KSPACE }, { person: hello.identity, device_key_id: `inv-${hello.nonce}`, path: "wink" }))); return r; } };
   };
+  // a server that signs with a key that is not the record's rootPublic is refused before any card is shown
+  attest.fn = attestWith(otherPub, other.privateKey);
+  const wrong = await kitDev.call("spaces.invites.preview", { link: made.link }, "cli", { token: kitToken });
+  assert.equal(wrong.error && wrong.error.code, "server_not_proven");
+  // and one that gives no proof at all
+  attest.fn = async () => null;
+  assert.equal((await kitDev.call("spaces.invites.preview", { link: made.link }, "cli", { token: kitToken })).error?.code, "server_not_proven");
+  attest.fn = attestWith(heldPub, held);
   const card = await kitDev.ok("spaces.invites.preview", { link: made.link }, "cli", { token: kitToken });
   assert.deepEqual([card.role, card.status, card.invitee], ["member", "pending", kit.id]);
   assert.deepEqual(hellos[0].channel, ROUTE, "the route came from the space's directory record");

@@ -392,7 +392,21 @@ async function startLocked(opts, root, p, release) {
     registry.deps.moduleHost = kernel.moduleHost;
     registry.deps.kernelFor = kernel.kernelFor;
     // The relay's peer stream for a paired device (the one remote path to this home's kernel): the relay module reads it from its ctx, per channel, so a door set after it started is used from the next channel on.
-    { const { createPeerDoor } = await import("./peer-door.js"); const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log }); registry.deps.peerDoor = () => door; }
+    {
+      const { createPeerDoor } = await import("./peer-door.js");
+      // the invitee door reads the identity's signed list from the spaces module (the names directory, as at pairing: spaces.identity.state, else a lookup by the claimed Vyre name) and this box's own id from the relay
+      const ask = async (/** @type {string} */ t, /** @type {any} */ i) => { try { const r = /** @type {any} */ (await registry.call(t, i, "module:vyred", { door: true })); return r && !r.error ? (r.data !== undefined ? r.data : r) : null; } catch { return null; } };
+      const identityEntry = async (/** @type {string} */ identity, /** @type {string} */ eid, /** @type {string} */ name) => {
+        let st = await ask("spaces.identity.state", { person: identity });
+        let entries = st && Array.isArray(st.entries) ? st.entries : [];
+        if (!entries.length && name) { st = await ask("spaces.identity.lookup", { name, id: identity }); entries = st && Array.isArray(st.entries) ? st.entries : []; }
+        const e = entries.find((/** @type {any} */ x) => x && x.eid === eid && x.kind === "device");
+        return e && typeof e.pub === "string" ? { pub: e.pub, ...(e.alg ? { alg: e.alg } : {}), ...(e.held ? { held: e.held } : {}) } : null;
+      };
+      const boxId = async () => { const r = /** @type {any} */ (await registry.call("relay.route.id", {}, "module:vyred", { door: true })); return r && r.data && r.data.box ? String(r.data.box) : null; };
+      const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log, identityEntry, boxId });
+      registry.deps.peerDoor = () => door;
+    }
     // The gate's presence check asks the kernel whether a call is the person's own (exactly one person hop in the chain the daemon's proven facts build), never the caller's label.
     if (presence && typeof kernel.kernelFor === "function") {
       const gateKernel = kernel.kernelFor({ name: "presence-gate" });
@@ -556,7 +570,7 @@ export const callId = v => (typeof v === "string" && /^[A-Za-z0-9_-]{1,128}$/.te
 // core/modules): threads.answer takes it only with the box's signed assertion checked.
 // "web:", "setup:" and "space:" are labels the relay and the spaces listener make (a waiting or browser pairing, the setup page, a visiting person); a socket client never gets them, nor the bare
 // class words that only a tool's callers list uses (reviewer-3 LB-1b).
-const FORBIDDEN_LABEL = /^(module:|tailnet:|tailnet-guest:|device:|link:|web:|setup:|space:|onboard$|hook$|web$|setup$|space$|device$|tailnet$|agent$)/;
+const FORBIDDEN_LABEL = /^(module:|tailnet:|tailnet-guest:|device:|link:|web:|setup:|space:|invitee:|onboard$|hook$|web$|setup$|space$|device$|tailnet$|agent$)/;
 
 /**
  * Who a socket request says it is. No label is "anonymous", which no tool's callers list names,

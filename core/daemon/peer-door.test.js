@@ -56,6 +56,150 @@ test("a well-formed id with no row gets a refused call and a closed session", as
   assert.equal(x.seen.length, 0);
 });
 
+// ---- the invitee door ----
+import crypto from "node:crypto";
+import { peerSession } from "../wink/node/peer-wire.js";
+const SPACE = "spc_harlowharlow";
+const INVITE = "inv_" + "a".repeat(32);
+const PERSON = "per_" + "q".repeat(26);
+const BOX = "Qm94S2V5MTIzNDU2Nzg5MA";
+const INVITEE = "zyxwvutsrqponmlk";
+
+function inviteeWorld({ status = "pending", entry = true, addressedTo = null, limits, askPresence = false } = {}) {
+  const key = crypto.generateKeyPairSync("ed25519");
+  const raw = key.publicKey.export({ format: "der", type: "spki" }).subarray(-32);
+  const served = [];
+  const server = { serve: async (request, peer) => {
+    served.push({ request, peer });
+    if (request.call === "grants.invites.get") return addressedTo && addressedTo !== peer.person ? { v: 1, id: request.id, ok: false, error: { code: "not_found", message: "no such invite" } } : { v: 1, id: request.id, ok: true, result: { id: request.args[0], status, space: { id: SPACE } } };
+    if (askPresence && request.call === "grants.invites.accept" && !(request.proof)) return { v: 1, id: request.id, ok: false, error: { code: "needs_presence", message: "needs presence", challenge: { nonce: "n" } } };
+    return { v: 1, id: request.id, ok: true, result: { accepted: true } };
+  } };
+  const registry = { call: async () => ({ data: null }) };
+  const kernel = { id: { space: "spc_aaaaaaaaaaaa", owner: "per_x" }, spaces: { for: () => null } };
+  let clock = 1_000_000;
+  const d = createPeerDoor({ kernel, registry, people: { list: () => [] }, now: () => clock, callerFacts: () => null, serverFor: space => (space === SPACE ? server : null), boxId: async () => BOX,
+    identityEntry: async (identity, eid) => (entry && identity === PERSON && eid === "e".repeat(26) ? { pub: Buffer.from(raw).toString("base64url") } : null), ...(limits ? { inviteeLimits: limits } : {}) });
+  const hello = (over = {}) => {
+    const h = { space: SPACE, invite: INVITE, identity: PERSON, entry: "e".repeat(26), ts: clock, nonce: crypto.randomBytes(12).toString("base64url"), channel: INVITEE, ...over };
+    const msg = Buffer.from(`vyre-invitee-hello-v2\n${over.box || BOX}\n${h.space}\n${h.invite}\n${h.identity}\n${h.entry}\n${h.ts}\n${h.nonce}\n${h.channel}`);
+    if (!h.sig) h.sig = crypto.sign(null, msg, key.privateKey).toString("base64url");
+    delete h.box;
+    return h;
+  };
+  const open = async (head) => {
+    const s = { ondata() {}, onend() {}, onreset() {}, respond() {}, ch: { transport: {} }, write: b => queueMicrotask(() => c.ondata(Buffer.from(b))), end() {}, reset() {} };
+    const c = { ondata() {}, onclose() {}, buffered: () => 0, write: b => queueMicrotask(() => s.ondata(new Uint8Array(b))), end() {}, destroy() {} };
+    d.acceptInvitee(s, { inviteeId: INVITEE }, head);
+    return peerSession(c, { first: 1 });
+  };
+  const kcall = (client, call, args, space = SPACE) => client.call("kernel.call", { v: 1, space, id: "c" + Math.random().toString(36).slice(2), ts: clock, call, args }, { timeoutMs: 3000 });
+  return { d, hello, open, kcall, served, tick: ms => { clock += ms; } };
+}
+
+test("invitee door: a fresh hello with the identity's signature and a live invite reads the preview and accepts, and accepting ends the stream", async () => {
+  const w = inviteeWorld();
+  const c = await w.open(w.hello());
+  const prev = await w.kcall(c, "grants.invites.get", [INVITE]);
+  assert.equal(prev.ok, true);
+  assert.equal(prev.result.status, "pending");
+  assert.deepEqual(w.served.every(x => x.peer.person === PERSON && x.peer.device_key_id === INVITEE), true, "the kernel is told the proven person and the channel's id");
+  const done = await w.kcall(c, "grants.invites.accept", [INVITE, { seen: {}, proof: {} }]);
+  assert.equal(done.ok, true);
+  await new Promise(r => setTimeout(r, 120));
+  const after = await Promise.race([w.kcall(c, "grants.invites.get", [INVITE]).then(() => "answered", () => "refused"), new Promise(r => setTimeout(() => r("closed"), 1500))]);
+  assert.notEqual(after, "answered", "the stream is closed after accept");
+});
+
+test("invitee door: every other call, another invite, another space, any registry tool and a person session are refused at the door", async () => {
+  const w = inviteeWorld();
+  const c = await w.open(w.hello());
+  await w.kcall(c, "grants.invites.get", [INVITE]);
+  const n = w.served.length;
+  for (const [call, args] of [["grants.members.list", []], ["grants.invites.create", [{}]], ["records.query", [{}]], ["grants.invites.get", ["inv_" + "b".repeat(32)]], ["grants.invites.accept", ["inv_" + "b".repeat(32), {}]], ["grants.invites.get", []]]) {
+    await assert.rejects(() => w.kcall(c, call, args), e => e.code === "denied", `${call} ${JSON.stringify(args).slice(0, 30)}`);
+  }
+  await assert.rejects(() => w.kcall(c, "grants.invites.get", [INVITE], "spc_" + "z".repeat(12)), e => e.code === "denied");
+  await assert.rejects(() => c.call("system.info", {}, { timeoutMs: 3000 }), e => e.code === "denied");
+  await assert.rejects(() => c.call("vault.reveal", { name: "x" }, { timeoutMs: 3000 }), e => e.code === "denied");
+  assert.equal(w.served.length, n, "nothing past the two calls for this invite reached the kernel");
+});
+
+test("invitee door: a bad proof, a stale or replayed hello, an unknown identity, another box, a spent or expired invite and an invite for someone else each close the stream and reach the kernel for nothing but the preview", async () => {
+  const cases = {
+    "a signature by another key": () => { const w = inviteeWorld(); const h = w.hello(); h.sig = h.sig.slice(0, -4) + "AAAA"; return [w, h]; },
+    "a hello for another box": () => { const w = inviteeWorld(); return [w, w.hello({ box: "AnotherBoxIdXXXXXXXXXX" })]; },
+    "a stale hello": () => { const w = inviteeWorld(); return [w, w.hello({ ts: 1_000_000 - 3 * 60_000 })]; },
+    "an identity the directory has no such entry for": () => [inviteeWorld({ entry: false }), null],
+    "a spent invite": () => [inviteeWorld({ status: "used" }), null],
+    "an expired invite": () => [inviteeWorld({ status: "expired" }), null],
+    "an invite meant for another identity": () => [inviteeWorld({ addressedTo: "per_" + "x".repeat(26) }), null],
+    "a space this home does not host": () => { const w = inviteeWorld(); return [w, w.hello({ space: "spc_" + "n".repeat(12) })]; },
+    "a hello signed for another channel": () => { const w = inviteeWorld(); return [w, w.hello({ channel: "aaaabbbbccccdddd" })]; },
+    "a malformed invite id": () => { const w = inviteeWorld(); return [w, w.hello({ invite: "inv_nope" })]; },
+  };
+  for (const [why, make] of Object.entries(cases)) {
+    const [w, h] = make();
+    const c = await w.open(h || w.hello());
+    await assert.rejects(() => w.kcall(c, "grants.invites.get", [INVITE]), e => e.code === "denied", why);
+    assert.ok(w.served.every(x => x.request.call === "grants.invites.get"), `${why}: nothing but the preview ever reached the kernel`);
+  }
+  // a replayed hello (same nonce) is refused the second time
+  const w = inviteeWorld();
+  const h = w.hello();
+  const first = await w.open(h);
+  assert.equal((await w.kcall(first, "grants.invites.get", [INVITE])).ok, true);
+  const again = await w.open(h);
+  await assert.rejects(() => w.kcall(again, "grants.invites.get", [INVITE]), e => e.code === "denied", "a replayed nonce");
+});
+
+test("invitee door: rates are held per invite and per identity", async () => {
+  const w = inviteeWorld({ limits: { perInvite: 3, perIdentity: 100 } });
+  let refused = 0;
+  for (let i = 0; i < 6; i++) { const c = await w.open(w.hello()); try { await w.kcall(c, "grants.invites.get", [INVITE]); } catch { refused++; } }
+  assert.equal(refused, 3, "the fourth hello for one invite inside a minute is refused");
+  const w2 = inviteeWorld({ limits: { perInvite: 100, perIdentity: 2 } });
+  let refused2 = 0;
+  for (let i = 0; i < 4; i++) { const c = await w2.open(w2.hello()); try { await w2.kcall(c, "grants.invites.get", [INVITE]); } catch { refused2++; } }
+  assert.equal(refused2, 2, "and the third for one identity");
+});
+
+test("invitee door: junk hellos naming a victim do not spend the victim's allowance, and a missed entry is remembered", async () => {
+  const w = inviteeWorld({ limits: { perInvite: 100, perIdentity: 2, perChannel: 1000 } });
+  for (let i = 0; i < 6; i++) { const c = await w.open(w.hello({ sig: "A".repeat(86) })); await assert.rejects(() => w.kcall(c, "grants.invites.get", [INVITE]), e => e.code === "denied"); }
+  const ok = await w.open(w.hello());
+  assert.equal((await w.kcall(ok, "grants.invites.get", [INVITE])).ok, true, "the real person still gets in after six forgeries naming them");
+});
+
+test("invitee door: directory lookups from invitee channels are capped box-wide and an unknown entry is asked once a minute", async () => {
+  let asked = 0;
+  const kernel = { id: { space: "spc_aaaaaaaaaaaa", owner: "per_x" }, spaces: { for: () => null } };
+  let clock = 1_000_000;
+  const d = createPeerDoor({ kernel, registry: { call: async () => ({ data: null }) }, people: { list: () => [] }, now: () => clock, callerFacts: () => null, serverFor: () => null, boxId: async () => BOX,
+    identityEntry: async () => { asked++; return null; }, inviteeLimits: { perBox: 3, perChannel: 1000 } });
+  const open = async head => {
+    const s = { ondata() {}, onend() {}, onreset() {}, respond() {}, ch: { transport: {} }, write: b => queueMicrotask(() => c.ondata(Buffer.from(b))), end() {}, reset() {} };
+    const c = { ondata() {}, onclose() {}, buffered: () => 0, write: b => queueMicrotask(() => s.ondata(new Uint8Array(b))), end() {}, destroy() {} };
+    d.acceptInvitee(s, { inviteeId: INVITEE }, head);
+    return peerSession(c, { first: 1 });
+  };
+  const hello = n => ({ space: SPACE, invite: INVITE, identity: "per_" + n.toString().padStart(26, "q").replace(/[0189]/g, "q"), entry: "e".repeat(26), ts: clock, nonce: crypto.randomBytes(12).toString("base64url"), channel: INVITEE, sig: "A".repeat(86) });
+  const go = async h => { const c = await open(h); await c.call("kernel.call", { v: 1, space: SPACE, id: "x", ts: clock, call: "grants.invites.get", args: [INVITE] }, { timeoutMs: 3000 }).catch(() => {}); };
+  for (let i = 0; i < 5; i++) await go(hello(2));
+  assert.equal(asked, 1, "the same unknown entry is asked of the directory once");
+  for (let i = 0; i < 8; i++) await go(hello(i + 2 + 100));
+  assert.ok(asked <= 3, `the box-wide cap holds (${asked})`);
+});
+
+test("invitee door: the nonce store drops the oldest first instead of forgetting every nonce", async () => {
+  const w = inviteeWorld({ limits: { perInvite: 1e6, perIdentity: 1e6, perChannel: 1e6, nonceMax: 3 } });
+  const hs = [];
+  for (let i = 0; i < 5; i++) { const h = w.hello(); hs.push(h); const c = await w.open(h); assert.equal((await w.kcall(c, "grants.invites.get", [INVITE])).ok, true); }
+  const newest = await w.open(hs[4]);
+  await assert.rejects(() => w.kcall(newest, "grants.invites.get", [INVITE]), e => e.code === "denied", "a recent nonce is still remembered");
+  const oldest = await w.open(hs[0]);
+  assert.equal((await w.kcall(oldest, "grants.invites.get", [INVITE])).ok, true, "only the oldest ones were dropped");
+});
 
 // ---- streams over the peer wire (lead ruling, 4 Oct): a call opens one, frames travel as server-to-device messages, the device closes its own, a dropped peer stream ends them ----
 
@@ -199,4 +343,21 @@ test("PS-D: a flood of small frames ends the stream slow and a call on the same 
   assert.ok(ended.includes("slow"));
   assert.deepEqual(await peer.call("chat.say", { id: "x" }), { ok: true }, "calls on the same peer stream are unaffected");
   peer.close();
+});
+
+test("invitee door: accepting finishes the stream at once (no call is served inside the close), and the home asking for presence keeps it open for the signed retry", async () => {
+  const w = inviteeWorld();
+  const c = await w.open(w.hello());
+  await w.kcall(c, "grants.invites.get", [INVITE]);
+  assert.equal((await w.kcall(c, "grants.invites.accept", [INVITE, {}])).ok, true);
+  const n = w.served.length;
+  await assert.rejects(() => w.kcall(c, "grants.invites.get", [INVITE]), e => e.code === "denied", "a call right after accept is not served");
+  assert.equal(w.served.length, n);
+  const p = inviteeWorld({ askPresence: true });
+  const c2 = await p.open(p.hello());
+  const ask = await p.kcall(c2, "grants.invites.accept", [INVITE, {}]);
+  assert.equal(ask.ok, false);
+  assert.equal(ask.error.code, "needs_presence");
+  const signed = await c2.call("kernel.call", { v: 1, space: SPACE, id: "r", ts: 1_000_000, call: "grants.invites.accept", args: [INVITE, {}], proof: { p: 1 } }, { timeoutMs: 3000 });
+  assert.equal(signed.ok, true, "the signed retry rides the same stream");
 });

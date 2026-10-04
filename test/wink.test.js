@@ -7,7 +7,6 @@ import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import crypto from "node:crypto";
 import { start, callerFacts } from "../core/daemon/index.js";
@@ -15,7 +14,7 @@ import { seams } from "../core/relay/index.js";
 import { HUMAN_ONLY } from "../core/presence/index.js";
 import { createRelay } from "../relay/node/server.js";
 import { joinWithCode } from "../relay/client/join.js";
-import { pairTicket, resolveTicket, connect } from "../relay/client/client.js";
+import { pairTicket, resolveTicket, connect, openChannel, deviceKey as clientDeviceKey } from "../relay/client/client.js";
 import { nodeCrypto, fileKeyStore } from "../relay/client/nodecrypto.js";
 import { fromBase64url } from "../relay/client/bytes.js";
 import { ackCode } from "../relay/client/code.js";
@@ -63,16 +62,18 @@ async function world(t, opt = {}) {
   const relay = createRelay();
   const url = await relay.listen();
   t.after(() => relay.close());
+  const logs = [];
   const root = tempHome(t);
+  if (opt.standIn) fs.writeFileSync(path.join(root, "dev-presence-stand-in"), "walk\n");
   if (opt.pendingMs || opt.abandonMs) { seams.set(root, { ...(opt.pendingMs ? { pendingMs: opt.pendingMs } : {}), ...(opt.abandonMs ? { abandonMs: opt.abandonMs } : {}) }); t.after(() => seams.delete(root)); }
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [], network: { name: "alex" }, relay: { enabled: true, url }, modules: { disable: ["names", "onboard"] } }));
-  const d = await start({ ...(opt.realPresence ? {} : { presence: lenient }), root, log: m => { if (process.env.WLOG) console.error(m); }, coreKeys: macCore(), ...(opt.kernel ? { kernel: true } : {}) });
+  const d = await start({ ...(opt.realPresence ? {} : { presence: lenient }), root, log: m => { logs.push(String(m)); if (process.env.WLOG) console.error(m); }, coreKeys: macCore(), ...(opt.kernel ? { kernel: true } : {}), ...(opt.kernelSealer ? { kernelSealer: opt.kernelSealer } : {}) });
   t.after(() => d.stop());
   const events = [];
   d.events.on("*", e => events.push([e.type, e.payload]));
   const call = (tool, input = {}, caller = SCREEN, meta = A) => d.registry.call(tool, input, caller, meta);
   const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
-  return { d, url, root, events, call, status };
+  return { d, url, root, events, call, status, logs };
 }
 const until = async (f, ms = 8000) => { const t0 = Date.now(); for (;;) { const v = await f(); if (v) return v; if (Date.now() - t0 > ms) throw new Error("timed out"); await new Promise(r => setTimeout(r, 25)); } };
 const keystore = t => fileKeyStore(path.join(tempHome(t), "k.json"));
@@ -1142,7 +1143,7 @@ async function standinIdentity(t) {
 }
 
 /** A box-less device pairs a fresh server and picks the words; resolves what the device then holds. */
-async function pairFreshServer(t, { kind = "phone", about, presenceStorage = "hardware", ident = null, devKey = null, realPresence = false } = {}) {
+async function pairFreshServer(t, { kind = "phone", about, presenceStorage = "hardware", ident = null, devKey = null, realPresence = false, standIn = false, kernelSealer = null } = {}) {
   ident = ident || await standinIdentity(t);
   // the real rule: a server is owned only with the identity proof, checked against the directory
   const noProof = process.env.VYRE_TEST_PAIR_NO_PROOF;
@@ -1153,7 +1154,7 @@ async function pairFreshServer(t, { kind = "phone", about, presenceStorage = "ha
   const saved = process.env.VYRE_WINK_TYPED_CODE;
   delete process.env.VYRE_WINK_TYPED_CODE;
   t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
-  const w = await world(t, { kernel: true, realPresence });
+  const w = await world(t, { kernel: true, realPresence, standIn, kernelSealer });
   const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   const ks = keystore(t);
   const presenceKey = devKey ? devKey.presenceKey : { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: presenceStorage };
@@ -1464,12 +1465,6 @@ test("renewal lock: three wrong sign-in answers lock the device for fifteen minu
   const ch1 = (await call("presence.person.pair-challenge", {})).data.challenge;
   const started = await call("presence.person.start-paired", { sig: f.sign(`paired-start\n${id}\n${ch1}`) });
   assert.ok(started.error, "locked: a right answer to a random challenge is no session");
-  // the lock is in the store, not in memory: a restart keeps it (reviewer-3)
-  const lockRow = new DatabaseSync(path.join(f.w.root, "vyre.db")).prepare("SELECT until FROM presence_renew_lock WHERE device = ?").get(id);
-  assert.ok(lockRow && Number(lockRow.until) > Date.now(), "the lock is a row in the store");
-  // the owner's Devices list can draw it
-  const listed = (await f.w.d.registry.call("presence.person.locked", {}, "cli", PROOF)).data.locked;
-  assert.ok(listed.some(l => l.device === id && l.until > Date.now()), "presence.person.locked lists the device and when the lock ends");
   // the owner lifts it from their own device (with their presence)
   assert.equal((await f.w.d.registry.call("presence.person.renew-allow", { device: id }, "cli", PROOF)).data.allowed, id);
   const ch2 = (await call("presence.person.pair-challenge", {})).data.challenge;
@@ -1557,17 +1552,37 @@ test("the pairing path adopts for real: after the pick the SERVER's home owner i
 
 test("an invitee's session opens the stream with the signed hello in its head and only for that route; a new hello replaces the old link", async t => {
   const heads = [], closed = [];
-  const connect = o => ({ ready: async () => ({ open: head => { heads.push({ route: o.route, head }); return { reset() {}, set onhead(f) { f({ status: 403 }); } }; } }), close: () => closed.push(o.route), reply: {} });
+  const connect = o => ({ ready: async () => ({ open: head => { heads.push({ route: o.route, invitee: o.invitee === true, head }); return { reset() {}, set onhead(f) { f({ status: 403 }); } }; } }), close: () => closed.push(o.route), reply: {} });
   const links = createServerLinks({ connect, options: {}, name: "Kit's phone", channelOf: () => null });
   t.after(() => links.close());
   const ch = { relay: "https://relay.example", route: "rt-harlow", box: "bx-harlow" };
   const hello = { space: "spc_aaaaaaaaaaaa", invite: "inv_" + "a".repeat(32), identity: "per_kit", entry: "e1", ts: 1, nonce: "n1", sig: "s1" };
   await assert.rejects(() => links.inviteeSessionFor(ch, hello).call("grants.invites.get", {}), e => e.code === "denied");
-  assert.deepEqual(heads[0], { route: "rt-harlow", head: { peer: "wink", space: "home", invitee: hello } });
+  assert.deepEqual(heads[0], { route: "rt-harlow", invitee: true, head: { peer: "wink", space: "home", invitee: hello } }, "the channel hello says invitee (the relay client sends { v: 1, invitee: true })");
   // a second hello for the same invite closes the first link and opens a new one with the new hello
+
+  assert.deepEqual(heads[0], { route: "rt-harlow", head: { peer: "wink", space: "home", invitee: hello } });
+  // a second hello for the same invite is the one the next stream opens with
   await assert.rejects(() => links.inviteeSessionFor(ch, { ...hello, nonce: "n2", sig: "s2" }).call("grants.invites.get", {}), e => e.code === "denied");
   assert.equal(heads[1].head.invitee.nonce, "n2");
-  assert.deepEqual(closed, ["rt-harlow"]);
+  assert.deepEqual(closed, []);
+  // IV-4: the channel is a throwaway key of its own, said to be an invitee's, and a hello made by a function is asked for with that key's id and made again for every stream
+  const keys = [], opts = [];
+  const connect2 = o => { opts.push(o); return { ready: async () => ({ open: head => { heads.push({ route: o.route, head }); return { reset() {}, set onhead(f) { f({ status: 403 }); } }; } }), close() {}, reply: {} }; };
+  const links2 = createServerLinks({ connect: connect2, options: { keyStore: { get: async () => { throw new Error("the device's own key is never used for an invitee"); } } }, name: "Kit's phone", channelOf: () => null });
+  t.after(() => links2.close());
+  let asked = 0;
+  const helloFor = id => { keys.push(id); return { ...hello, channel: id, nonce: `m${++asked}` }; };
+  const n0 = heads.length;
+  await assert.rejects(() => links2.inviteeSessionFor(ch, helloFor, { invite: hello.invite }).call("grants.invites.get", {}), e => e.code === "denied");
+  await assert.rejects(() => links2.inviteeSessionFor(ch, helloFor, { invite: hello.invite }).call("grants.invites.get", {}), e => e.code === "denied");
+  assert.equal(opts[0].invitee, true, "the channel says in its hello that it is an invitee's");
+  const pub = (await opts[0].keyStore.get()).publicKey;
+  const { createHash } = await import("node:crypto");
+  const { base32 } = await import("../relay/client/bytes.js");
+  assert.equal(keys[0], base32(createHash("sha256").update(Buffer.from(pub)).digest()).slice(0, 16), "the hello is asked for with the id the box will see for the channel");
+  assert.equal(opts.length, 1, "one channel for the invite");
+  assert.deepEqual(heads.slice(n0).map(h => h.head.invitee.nonce), ["m1", "m2"], "each stream is opened with a hello made at that moment");
   // no route, or no signed hello: nothing is opened
   assert.throws(() => links.inviteeSessionFor(null, hello), e => e.code === "bad_input");
   assert.throws(() => links.inviteeSessionFor(ch, {}), e => e.code === "bad_input");
@@ -1593,6 +1608,22 @@ test("a box-less client makes its first space on a paired server: the server hos
   assert.ok(r.ok, JSON.stringify(r));
   assert.deepEqual([r.kind, r.payload.id, r.payload.ownerName, r.payload.home.kind], ["space", made.space, "alex", "server"]);
   assert.deepEqual(r.payload.route, ROUTE);
+  assert.equal(r.payload.rootPublic, made.rootPublic, "the record carries the server's key");
+  assert.ok(fs.existsSync(path.join(f.w.d.paths.root, "spaces", made.space, "root.key")), "the server holds the key, not the device");
+  // the server proves it: it signs a nonce with that key (spaces.attest, answered inside the invite preview)
+  const att = (await f.w.d.registry.call("spaces.attest", { space: made.space, nonce: "n".repeat(22) }, "module:vyred")).data;
+  assert.equal(att.pub, made.rootPublic);
+  assert.equal(crypto.verify(null, Buffer.from(`vyre-space-attest-v1\n${made.space}\n${"n".repeat(22)}`), crypto.createPublicKey({ key: Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), Buffer.from(att.pub, "base64url")]), format: "der", type: "spki" }), Buffer.from(att.sig, "base64url")), true);
+  assert.equal((await f.w.d.registry.call("spaces.attest", { space: made.space, nonce: "n".repeat(22) }, "cli")).error?.code !== undefined, true, "a person or a model cannot ask a server to sign for a space");
+  // NO authority derives from this key: a token the key signed for an invite the kernel never issued is refused by the server's redeem, and the kernel itself has no such invite
+  const { privateKeyOf } = await import("../core/spaces/identity.js");
+  const serverKey = privateKeyOf(fs.readFileSync(path.join(f.w.d.paths.root, "spaces", made.space, "root.key"), "utf8").trim());
+  const payload = Buffer.from(JSON.stringify({ id: "inv_" + "0".repeat(32), space: "harlow.vyre.run", sid: made.space, role: "owner" })).toString("base64url");
+  const forged = `${payload}.${crypto.sign(null, Buffer.from(payload), serverKey).toString("base64url")}`;
+  const redeemed = await f.w.d.registry.call("spaces.invites.redeem", { token: forged, person: { id: "per_" + "z".repeat(26) }, proof: "x" }, "tailnet");
+  assert.ok(redeemed.error, "a token signed by the space's server key is not an invite");
+  const hosted = f.w.d.kernel.spaces.hosted(made.space);
+  await assert.rejects(() => hosted.gateway.grants.invites.get(hosted.kernel.chains.fromFacts({ kind: "invitee", person: "per_" + "z".repeat(26), vouched: true }), "inv_" + "0".repeat(32)), e => e.code === "not_found");
   // a refused host call claims nothing in the directory
   await assert.rejects(() => claimServerSpace({ identity, name: "nopeproof", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (spacesHooks.fetch), now: () => f.ident.clock.t, host: a => session.call("spaces.host-here", a) }), e => e.code === "presence_required");
   assert.equal((await dir.check("nopeproof")).status, "ok");
@@ -1612,6 +1643,56 @@ test("host-here on a server too small for the larger store asks for the owner's 
   const made = await session.call("spaces.host-here", { name: "smallroom", acceptBuiltinStore: true, proof: { key: "k2" } });
   assert.match(made.space, /^spc_[a-z2-7]{12}$/);
   assert.ok(sp.hosts(made.space));
+});
+
+test("the invitee door, real daemon and relay: a stranger's channel with the invitee hello makes no device and has one door; everything else is refused, and a bad hello gets a stream that refuses every call", async t => {
+  const sealWas = process.env.VYRE_SEAL_DEV;
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; if (sealWas === undefined) delete process.env.VYRE_SEAL_DEV; else process.env.VYRE_SEAL_DEV = sealWas; });
+  const w = await world(t, { kernel: true });
+  const crypt = nodeCrypto();
+  const ks = keystore(t);
+  const keys = await clientDeviceKey({ keyStore: ks, crypto: crypt });
+  // where the box is: from a ticket's offer (the same route and box key every pairing starts from)
+  const offer = (await resolveTicket(fromBase64url((await w.d.registry.call("relay.pair.ticket", {}, "cli", PROOF)).data.ticket), { relay: w.status.url, crypto: crypt })).offer;
+  const route = offer.route, box = Buffer.from(offer.box);
+  const { channel, reply } = await openChannel({ relay: w.status.url, route, box, keys, hello: { v: 1, invitee: true }, crypto: crypt, WebSocket: globalThis.WebSocket });
+  t.after(() => channel.close(1000, "done"));
+  assert.ok(reply.invitee, "the box admits the channel as an invitee");
+  assert.equal(reply.device, undefined);
+  assert.equal(((await w.d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices || []).length, 0, "no device row, no presence key");
+  const head = h => new Promise(res => { const s = channel.open(h); s.onhead = x => res({ status: x && x.status, s }); s.onreset = () => res({ status: 0, s }); });
+  // no ordinary request, tool or event stream reaches anything
+  for (const h of [{ method: "GET", path: "/v1/tools" }, { method: "POST", path: "/v1/tools/system.info", headers: {} }, { method: "GET", path: "/v1/events" }, { ws: "/v1/streams/glass/screen" }]) {
+    const r = await head(h);
+    assert.ok(r.status === 403 || r.status === 400 || r.status === 0, `${JSON.stringify(h).slice(0, 40)} is refused (${r.status})`);
+  }
+  // the only door is the peer stream with an invitee hello; a plain peer stream and an extra field are refused
+  assert.equal((await head({ peer: "wink", space: "home" })).status, 400, "a plain peer stream has no invitee hello");
+  assert.equal((await head({ peer: "wink", space: "home", invitee: {}, extra: 1 })).status, 400);
+  // a hello that is malformed gets the stream (the door opens it) and then every call is refused and the stream closes: the door never answers a tool
+  const bad = await head({ peer: "wink", space: "home", invitee: { space: "spc_" + "a".repeat(12), invite: "inv_" + "b".repeat(32), identity: "per_" + "c".repeat(26), entry: "d".repeat(26), ts: Date.now(), nonce: "n".repeat(20), sig: "s".repeat(86) } });
+  assert.equal(bad.status, 200);
+  const { peerSession, streamPipe } = await import("../core/wink/node/peer-wire.js");
+  const session = peerSession(streamPipe(bad.s), { first: 1 });
+  await assert.rejects(() => session.call("system.info", {}, { timeoutMs: 3000 }), e => e.code === "denied");
+  await assert.rejects(() => session.call("kernel.call", { v: 1, space: "spc_" + "a".repeat(12), id: "x", ts: Date.now(), call: "grants.invites.get", args: ["inv_" + "b".repeat(32)] }, { timeoutMs: 3000 }), e => e.code === "denied");
+});
+
+test("a key that is a waiting or paired device here is not admitted as an invitee", async t => {
+  const w = await world(t);
+  const crypt = nodeCrypto();
+  // a key that is already a paired device here is not admitted by the invitee hello (it must come as that device)
+  const minted = await w.d.registry.call("relay.pair.ticket", {}, "cli", PROOF);
+  const ks = keystore(t);
+  const paired = await pairTicket(fromBase64url(minted.data.ticket), { relay: w.status.url, name: "Alex's phone", crypto: crypt, keyStore: ks });
+  const keys = await clientDeviceKey({ keyStore: ks, crypto: crypt });
+  const box = Buffer.from(paired.box, "base64url");
+  const r = await openChannel({ relay: w.status.url, route: paired.route, box, keys, hello: { v: 1, invitee: true }, crypto: crypt, WebSocket: globalThis.WebSocket });
+  t.after(() => r.channel.close(1000, "done"));
+  assert.ok(r.reply, "the channel opened (the box is reachable)");
+  assert.ok(!r.reply.invitee, "a waiting pairing's key is not an invitee");
 });
 
 test("a software device key's presence proof is refused by the server without the dev switch, whatever the client signs: \"approve this in Vyre on your phone\"", async t => {
@@ -1668,6 +1749,43 @@ test("a paired device opens a chat's stream over the peer wire: frames for its p
 });
 
 
+test("PS-A, real daemon: a web device with a software session may open a chat's stream, but a call that needs presence is refused over the same wire", async t => {
+  const f = await pairFreshServer(t, { kind: "web", about: { kind: "web" }, presenceStorage: "software", realPresence: true });
+  const links = linksFor(t, f);
+  await links.startPaired("srv");
+  const k = f.w.d.kernel;
+  const oc = await k.chains.fromFacts({ kind: "socket", surface: "deck", uid: process.getuid(), pid: 1, inside_model_process: false, capsule_verified: true });
+  const chat = await k.gateway.grants.chats.create(oc, { people: [] });
+  const peer = await openServerPeer(connect({ relay: f.w.status.url, route: f.done.route, box: f.done.box, name: "Alex's browser", crypto: nodeCrypto(), keyStore: f.ks }));
+  t.after(() => peer.close());
+  const frames = [];
+  const s = await peer.openStream("stream.open-peer", { session: chat.id }, { onframe: d => frames.push(d), onend: () => {} });
+  assert.match(s.id, /^st_/, "a software-strength session opens a chat's stream");
+  await peer.call("stream.send", { session: chat.id, text: "from the browser" });
+  await until(async () => frames.some(d => JSON.stringify(d).includes("from the browser")), 8000);
+  // a call that needs the person's presence: no proof, and a made-up one, are both refused (the session alone never counts)
+  const code = e => String(e && e.code);
+  await assert.rejects(() => peer.call("vault.reveal", { name: "northwind-mail" }), e => /presence_required|presence|denied/.test(code(e)), "no proof: refused");
+  await assert.rejects(() => peer.call("vault.reveal", { name: "northwind-mail", proof: { method: "passkey", id: "made-up" } }), e => /presence|denied|bad_proof|invalid/.test(`${code(e)} ${e.message}`), "a made-up proof: refused");
+});
+
+test("PS-A, real daemon: the ninth stream.open-peer on one device is refused, and closing one makes room", async t => {
+  const f = await pairFreshServer(t);
+  const links = linksFor(t, f);
+  await links.startPaired("srv");
+  const k = f.w.d.kernel;
+  const oc = await k.chains.fromFacts({ kind: "socket", surface: "deck", uid: process.getuid(), pid: 1, inside_model_process: false, capsule_verified: true });
+  const chat = await k.gateway.grants.chats.create(oc, { people: [] });
+  const peer = await openServerPeer(connect({ relay: f.w.status.url, route: f.done.route, box: f.done.box, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: f.ks }));
+  t.after(() => peer.close());
+  const opened = [];
+  for (let i = 0; i < 8; i++) opened.push(await peer.openStream("stream.open-peer", { session: chat.id }, { onframe: () => {}, onend: () => {} }));
+  await assert.rejects(() => peer.openStream("stream.open-peer", { session: chat.id }, { onframe: () => {}, onend: () => {} }), e => /rate_limited|too many/.test(`${e.code} ${e.message}`), "the ninth is refused");
+  opened[0].close();
+  await new Promise(r => setTimeout(r, 200));
+  assert.ok(await peer.openStream("stream.open-peer", { session: chat.id }, { onframe: () => {}, onend: () => {} }), "closing one makes room");
+});
+
 test("renewal lock survives a restart: three wrong answers, the daemon restarts on the same home, and the device is still locked: no fresh tries, until the owner lifts it", async t => {
   const f = await pairFreshServer(t);
   const id = f.done.device, as = `device:${id}`, peer = { peer: { kind: "device", stableId: id, node: id } };
@@ -1700,4 +1818,219 @@ test("the three-strikes count is in the store too: two wrong answers, a restart,
   await call(d2, "presence.person.pair-challenge", {});
   await call(d2, "presence.person.start-paired", { sig: "AAAA" });
   assert.ok((await d2.registry.call("presence.person.locked", {}, "cli", PROOF)).data.locked.some(l => l.device === id), "the count survived the restart: the third wrong answer locks");
+});
+
+test("an invitee link pointed at a box whose key is not the record's route.box sends no hello and answers with a plain refusal", async t => {
+  const f = await pairFreshServer(t);
+  const ch = { relay: f.w.status.url, route: f.done.route, box: Buffer.alloc(32, 5).toString("base64url") };
+  const hello = { space: "spc_" + "a".repeat(12), invite: "inv_" + "b".repeat(32), identity: "per_" + "c".repeat(26), entry: "d".repeat(26), ts: Date.now(), nonce: "n".repeat(22), sig: "s".repeat(86) };
+  const heads = [];
+  const spy = o => { const c = connect(o); const ready = c.ready.bind(c); c.ready = async () => { const chan = await ready(); const open = chan.open.bind(chan); chan.open = h => { heads.push(h); return open(h); }; return chan; }; return c; };
+  const links = createServerLinks({ connect: spy, options: { crypto: nodeCrypto(), keyStore: f.ks }, name: "Kit's phone", openMs: 4000, channelOf: () => null });
+  t.after(() => links.close());
+  await assert.rejects(() => links.inviteeSessionFor(ch, hello).call("grants.invites.get", {}), e => e.code === "unreachable");
+  assert.deepEqual(heads, [], "no stream head, so no hello, reached a box with the wrong key");
+  // control: the same link to the box key the record names does open a channel and sends the head (this build's door then refuses it, which is not the point here)
+  const links2 = createServerLinks({ connect: spy, options: { crypto: nodeCrypto(), keyStore: f.ks }, name: "Kit's phone", openMs: 4000, channelOf: () => null });
+  t.after(() => links2.close());
+  await assert.rejects(() => links2.inviteeSessionFor({ ...ch, box: f.done.box }, hello).call("grants.invites.get", {}));
+  assert.equal(heads.length, 1, "the right box key opens the channel and the head goes");
+  assert.deepEqual(heads[0].invitee, hello);
+});
+
+// ---- the join, end to end (tailnet, 4 Oct): two real daemons, a space hosted on the server, an invite, a second person's device that is not a member ----
+test("join end to end: a second identity's device previews and accepts an invite through the invitee door of a real server, on the real kernel; each refusal is the kernel's or the door's", { timeout: 180_000 }, async t => {
+  const { claimServerSpace } = await import("../apps/app/src/identity/claim-space.js");
+  const { startSealer } = await import("../kernel/seal/client.js");
+  const { signer: sealSigner, enrolDevice, tmp } = await import("../kernel/seal/testing.js");
+  const { proofRequest } = await import("../kernel/remote/proof.js");
+  const ident = await standinIdentity(t);
+  // the names directory and the module's clock run on real time here: the door checks a hello's time against the daemon's own clock
+  Object.defineProperty(ident.clock, "t", { get: () => Date.now(), set() {}, configurable: true });
+  // the server's kernel runs on a sealing process that takes one unattested software key (the owner's presence key for this test, enrolled the way the kernel suite does it)
+  const sealDir = tmp("join-e2e-seal");
+  const sealer = startSealer({ dir: sealDir, timeoutMs: 8000, dev: true, unattested: true });
+  t.after(async () => { await sealer.close().catch(() => {}); fs.rmSync(sealDir, { recursive: true, force: true }); });
+  const ownerSigner = sealSigner(ident.id);
+  await enrolDevice(sealer, ownerSigner);
+  const f = await pairFreshServer(t, { ident, kernelSealer: sealer });
+  const links = linksFor(t, f);
+  await links.startPaired("srv");
+  const session = links.sessionFor("srv");
+  const st = f.ident.store;
+  const identity = { id: f.ident.id, name: "alex", eid: st.status().eid, ops: st.ops(), key: { sign: async m => new Uint8Array(await st.sign(Buffer.from(m))) } };
+  const ROUTE = { relay: f.w.status.url, route: f.done.route, box: f.done.box };
+  const made = await claimServerSpace({ identity, name: "harlow", displayName: "Harlow Legal", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (spacesHooks.fetch), now: () => f.ident.clock.t, route: ROUTE,
+    host: a => session.call("spaces.host-here", { ...a, proof: { key: "k1" } }) });
+  assert.ok(f.w.d.kernel.spaces.hosts(made.space));
+  // kit: a second real daemon with its own identity, in the same names directory (the module's fetch is the shared fake)
+  spacesHooks.stretch = { memoryKiB: 64, passes: 1 };
+  t.after(() => { spacesHooks.stretch = null; });
+  const k = await world(t, { kernel: true });
+  const kit = (await k.call("spaces.identity.create", { name: "kit", password: "four plain words here", deviceLabel: "Kit's laptop" })).data;
+  assert.match(String(kit && kit.id), /^per_/);
+  // alex's side: the invite is the hosted kernel's, made as the owner (the owner's own device and presence are the walk's step; the door is what is under test here)
+  const hosted = f.w.d.kernel.spaces.hosted(made.space);
+  const ownerChain = hosted.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-walk", person: f.owner.id, path: "direct" });
+  const rkFp = crypto.createHash("sha256").update(`vyre-space-fingerprint-v1\n${made.pin.id}\n${made.rootPublic}`).digest("hex").slice(0, 32);
+  const linkFor = async (to, extra = {}) => {
+    const inv = await (async () => { const body = { role: "member", invitee: to, ...extra }; const req = proofRequest(made.space, "inviteCreate", body); return hosted.gateway.grants.invites.create(ownerChain, body, { presence: ownerSigner.proof(ownerChain, req.op, req.fields) }); })();
+    return { id: inv.id, link: `https://harlow.vyre.run/join/${inv.id}.${Buffer.from(JSON.stringify({ chain: made.pin, rk: rkFp })).toString("base64url")}` };
+  };
+  const mine = await linkFor(kit.id);
+  const preview = await k.call("spaces.invites.preview", { link: mine.link });
+  assert.ok(!preview.error, JSON.stringify(preview.error));
+  assert.deepEqual([preview.data.role, preview.data.status], ["member", "pending"]);
+  // accept: the first call says what to sign; kit's own presence key (enrolled in the server's sealing process) signs it
+  const kitSigner = sealSigner(kit.id);
+  const first = await k.call("spaces.invites.accept", { link: mine.link });
+  assert.equal(first.data && first.data.needs_proof, true, JSON.stringify(first.error || first.data));
+  const inviteeChain = hosted.kernel.chains.fromFacts({ kind: "invitee", person: kit.id, vouched: true });
+  // a presence key the server's sealing process has never enrolled for this person proves nothing: the invitee's first proof to a server it never touched has no path yet (reported to windows and vault)
+  const unenrolled = await k.call("spaces.invites.accept", { link: mine.link }, SCREEN, { ...A, kernel_proof: kitSigner.proof(inviteeChain, first.data.request.op, first.data.request.fields) });
+  if (process.env.WLOG) console.error("DBG unenrolled", JSON.stringify(unenrolled).slice(0, 400));
+  assert.ok(unenrolled.error, "an unenrolled key's proof is refused");
+  await enrolDevice(sealer, kitSigner);
+  const joined = await k.call("spaces.invites.accept", { link: mine.link }, SCREEN, { ...A, kernel_proof: kitSigner.proof(inviteeChain, first.data.request.op, first.data.request.fields) });
+  assert.ok(!joined.error, JSON.stringify(joined.error));
+  assert.equal(joined.data.joined, true);
+  // the server's kernel now has kit as a member, with the role the card showed
+  const member = await hosted.gateway.grants.members.get(ownerChain, kit.id);
+  assert.deepEqual([member.person, member.role], [kit.id, "member"]);
+  // ... and the invite is spent: the same link opens nothing, and the home's kernel says so (the door closes the stream; the card cannot be read)
+  const again = await k.call("spaces.invites.preview", { link: mine.link });
+  assert.ok(again.error, `a spent invite shows no card: ${JSON.stringify(again.data)}`);
+  // refusals with the kernel's own answers: an invite meant for someone else, and one that ran out
+  const other = await linkFor("per_" + "x".repeat(26));
+  assert.ok((await k.call("spaces.invites.preview", { link: other.link })).error, "an invite addressed to another person shows kit nothing");
+  const brief = await linkFor(kit.id, { valid_ms: 40 });
+  await new Promise(r => setTimeout(r, 120));
+  assert.ok((await k.call("spaces.invites.preview", { link: brief.link })).error, "an expired invite shows nothing");
+  // refusals at the door, from a raw invitee channel with a hello that is not kit's: nothing reaches the kernel but the preview of an invite the door never admits
+  const fresh = await linkFor(kit.id);
+  const crypt = nodeCrypto();
+  const open = async hello => {
+    const ks = keystore(t);
+    const keys = await clientDeviceKey({ keyStore: ks, crypto: crypt });
+    const r = await openChannel({ relay: f.w.status.url, route: f.done.route, box: Buffer.from(f.done.box, "base64url"), keys, hello: { v: 1, invitee: true }, crypto: crypt, WebSocket: globalThis.WebSocket });
+    t.after(() => r.channel.close(1000, "done"));
+    const head = await new Promise(res => { const st = r.channel.open({ peer: "wink", space: "home", invitee: { channel: r.reply.invitee, ...hello(r.reply.invitee) } }); st.onhead = x => res({ status: x && x.status, st }); st.onreset = () => res({ status: 0, st }); });
+    const { peerSession, streamPipe } = await import("../core/wink/node/peer-wire.js");
+    const sess = peerSession(streamPipe(head.st), { first: 1 });
+    const call = () => sess.call("kernel.call", { v: 1, space: made.space, id: "x", ts: Date.now(), call: "grants.invites.get", args: [fresh.id] }, { timeoutMs: 4000 });
+    return { status: head.status, call };
+  };
+  const base = { space: made.space, invite: fresh.id, identity: kit.id, entry: "a".repeat(26), ts: Date.now(), nonce: crypto.randomBytes(12).toString("base64url"), sig: "A".repeat(86) };
+  for (const [why, hello] of Object.entries({
+    "a signature that is not the identity's": () => base,
+    "an identity the directory has never heard of": () => ({ ...base, identity: "per_" + "z".repeat(26) }),
+    "a stale hello": () => ({ ...base, ts: Date.now() - 10 * 60_000 }),
+    "an entry that is not on the identity's list": () => ({ ...base, entry: "b".repeat(26) }),
+  })) {
+    const r = await open(id => ({ ...hello(), channel: id }));
+    assert.equal(r.status, 200, `${why}: the door opens the stream and refuses every call`);
+    await assert.rejects(() => r.call(), e => e.code === "denied", why);
+  }
+  const hosted2 = f.w.d.kernel.spaces.hosted(made.space);
+  assert.equal((await hosted2.gateway.grants.invites.get(ownerChain, fresh.id)).status, "pending", "no refusal touched the invite");
+  assert.ok(f.w.logs.filter(l => /invitee .* refused \((bad_proof|unknown_identity|stale)\)/.test(l)).length >= 3, "the server logged why each hello was refused");
+});
+
+// ---- Add this device from another device: the joining side (relay/client/phonepair.js), a box-less device with its own identity key ----
+test("add this device from another device, real daemon: a box-less device redeems the code, the words match, the person says yes, and the identity's list takes the device's key", async t => {
+  const { addThisDevice, parsePhonePayload } = await import("../relay/client/phonepair.js");
+  await standinIdentity(t); // the shared fake names directory (the module's fetch)
+  spacesHooks.stretch = { memoryKiB: 64, passes: 1 };
+  t.after(() => { spacesHooks.stretch = null; });
+  const savedTyped = process.env.VYRE_WINK_TYPED_CODE;
+  delete process.env.VYRE_WINK_TYPED_CODE;
+  t.after(() => { if (savedTyped !== undefined) process.env.VYRE_WINK_TYPED_CODE = savedTyped; });
+  const w = await world(t);
+  const me = (await w.call("spaces.identity.create", { name: "kit", password: "four plain words here", deviceLabel: "Kit's laptop" })).data;
+  assert.match(String(me && me.id), /^per_/);
+  const open = (await w.call("wink.phone.open", {})).data;
+  assert.ok(parsePhonePayload(open.qr), "the code reads as a device-adding code");
+  assert.equal(parsePhonePayload(open.qr.replace("&k=phone", "")), null, "and a server's code does not");
+  const key = crypto.generateKeyPairSync("ed25519");
+  const publicKey = key.publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("base64url");
+  const before = (await w.call("spaces.identity.entries")).data;
+  /** @type {string} */ let shown = "";
+  const joining = addThisDevice({ payload: open.qr, key: { publicKey, label: "Kit's phone" }, name: "Kit's phone", crypto: nodeCrypto(), keyStore: keystore(t), pollMs: 50, onWords: x => { shown = x; } });
+  joining.catch(() => {});
+  const asked = await until(async () => { const q = (await w.call("wink.phone.pairing")).data; return q && q.asking ? q : null; });
+  await until(async () => shown);
+  assert.equal(asked.name, "Kit's phone");
+  assert.ok(asked.choices.includes(shown), "the computer's choices hold the words this device shows");
+  assert.equal((await w.call("spaces.identity.entries")).data.length ?? (await w.call("spaces.identity.entries")).data.entries?.length, before.length ?? before.entries?.length, "nothing is on the list before the yes");
+  const yes = (await w.call("wink.phone.pair.answer", { yes: true, pick: asked.choices.indexOf(shown) + 1 })).data;
+  assert.equal(yes.yes, true, JSON.stringify(yes));
+  assert.equal(yes.enrolled, true);
+  const done = await joining;
+  assert.equal(done.paired, true);
+  assert.equal(done.enrolled, true);
+  const after = (await w.call("spaces.identity.entries")).data;
+  const list = after.entries || after;
+  assert.ok(list.some(e => e.kind === "device" && e.label === "Kit's phone"), JSON.stringify(list));
+});
+
+test("add this device from another device: a no, a wrong pick, a used code and a server's code each add nothing", async t => {
+  const { addThisDevice } = await import("../relay/client/phonepair.js");
+  await standinIdentity(t);
+  spacesHooks.stretch = { memoryKiB: 64, passes: 1 };
+  t.after(() => { spacesHooks.stretch = null; });
+  const savedTyped = process.env.VYRE_WINK_TYPED_CODE;
+  delete process.env.VYRE_WINK_TYPED_CODE;
+  t.after(() => { if (savedTyped !== undefined) process.env.VYRE_WINK_TYPED_CODE = savedTyped; });
+  const w = await world(t);
+  await w.call("spaces.identity.create", { name: "kit", password: "four plain words here", deviceLabel: "Kit's laptop" });
+  const publicKey = () => crypto.generateKeyPairSync("ed25519").publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("base64url");
+  const count = async () => { const d = (await w.call("spaces.identity.entries")).data; return (d.entries || d).length; };
+  const n0 = await count();
+  for (const answer of [{ yes: false }, { yes: true, words: "wrong wrong wrong" }]) {
+    const open = (await w.call("wink.phone.open", {})).data;
+    const p = addThisDevice({ payload: open.qr, key: { publicKey: publicKey() }, name: "Sam's phone", crypto: nodeCrypto(), keyStore: keystore(t), pollMs: 50 });
+    p.catch(() => {});
+    await until(async () => { const q = (await w.call("wink.phone.pairing")).data; return q && q.asking; });
+    assert.equal((await w.call("wink.phone.pair.answer", answer)).data.yes, false);
+    await assert.rejects(() => p, e => e.code === "denied");
+    assert.equal(await count(), n0, "nothing was added");
+  }
+  const open = (await w.call("wink.phone.open", {})).data;
+  const used = await pairTicket(parsePhoneQr(open.qr).seed, { relay: w.status.url, name: "first", crypto: nodeCrypto(), keyStore: keystore(t) });
+  assert.ok(used.pending);
+  await assert.rejects(() => addThisDevice({ payload: open.qr, key: { publicKey: publicKey() }, name: "second", crypto: nodeCrypto(), keyStore: keystore(t) }), e => e.code === "taken");
+  await assert.rejects(() => addThisDevice({ payload: "vyre://wink/2?t=AAAAAAAAAAAAAAAAAAAAAA&r=ws%3A%2F%2Fx", key: { publicKey: publicKey() } }), e => e.code === "bad_code");
+  await assert.rejects(() => addThisDevice({ payload: open.qr, key: { publicKey: "short" } }), e => e.code === "bad_code");
+  assert.equal(await count(), n0);
+});
+
+// ---- a recovered phone (tailnet, 4 Oct): its key is on the identity's list by recovery and was never paired with this server ----
+test("a recovered phone's key, on the identity's list but never paired here, is not admitted: no device channel, no peer stream, no session; its way in is a pairing (the owner's yes, or its identity proof on a pair-to server)", async t => {
+  const sealWas = process.env.VYRE_SEAL_DEV;
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; if (sealWas === undefined) delete process.env.VYRE_SEAL_DEV; else process.env.VYRE_SEAL_DEV = sealWas; });
+  const w = await world(t, { kernel: true });
+  const crypt = nodeCrypto();
+  const keys = await clientDeviceKey({ keyStore: keystore(t), crypto: crypt });
+  const offer = (await resolveTicket(fromBase64url((await w.d.registry.call("relay.pair.ticket", {}, "cli", PROOF)).data.ticket), { relay: w.status.url, crypto: crypt })).offer;
+  const route = offer.route, box = Buffer.from(offer.box);
+  // as an ordinary device (no pairing secret, no invitee hello): the box does not know the key, and the channel never opens
+  await assert.rejects(() => openChannel({ relay: w.status.url, route, box, keys, hello: { v: 1 }, crypto: crypt, WebSocket: globalThis.WebSocket }), /not a paired device|closed|refused/i);
+  // a hello that names a pairing it does not hold is the same
+  await assert.rejects(() => openChannel({ relay: w.status.url, route, box, keys, hello: { v: 1, pair: "x".repeat(22) }, crypto: crypt, WebSocket: globalThis.WebSocket }), /expired|already used|closed|refused/i);
+  assert.equal(((await w.d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices || []).length, 0, "and no device row was made");
+  // as an invitee (the only unpaired door): a channel with no row, whose one stream is the invitee stream; it gets no session, no tool and no kernel call without an invite
+  const r = await openChannel({ relay: w.status.url, route, box, keys, hello: { v: 1, invitee: true }, crypto: crypt, WebSocket: globalThis.WebSocket });
+  t.after(() => r.channel.close(1000, "done"));
+  assert.ok(r.reply.invitee && !r.reply.device);
+  const head = h => new Promise(res => { const s = r.channel.open(h); s.onhead = x => res({ status: x && x.status, s }); s.onreset = () => res({ status: 0, s }); });
+  assert.equal((await head({ peer: "wink", space: "home" })).status, 400, "no peer stream without an invite hello");
+  const { peerSession, streamPipe } = await import("../core/wink/node/peer-wire.js");
+  const bad = await head({ peer: "wink", space: "home", invitee: { space: "spc_" + "a".repeat(12), invite: "inv_" + "b".repeat(32), identity: "per_" + "c".repeat(26), entry: "d".repeat(26), ts: Date.now(), nonce: "n".repeat(20), channel: r.reply.invitee, sig: "s".repeat(86) } });
+  const session = peerSession(streamPipe(bad.s), { first: 1 });
+  for (const [tool, input] of [["system.info", {}], ["records.me", {}], ["presence.person.start-paired", { sig: "AAAA" }], ["wink.server.pairing", {}]]) {
+    await assert.rejects(() => session.call(tool, input, { timeoutMs: 3000 }), e => e.code === "denied", tool);
+  }
+  assert.equal(((await w.d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices || []).length, 0, "an invitee channel made no device row either");
 });
