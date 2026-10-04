@@ -34,7 +34,14 @@ test("late sealing clears the task texts that quote the old values, and no copy 
   assert.equal(out.moved, 2);
   assert.equal(rows().some(r => PLAIN.some(p => r.text.includes(p))), false, "no task text quotes a value any more");
   assert.ok(rows().some(r => r.task === plainTask.id), "a task that quoted nothing keeps its text");
+  // a restart: the value is in no task (the log's text hash resolves to nothing) and in no event
   db.close();
+  const db2 = new DatabaseSync(file);
+  const again = await bootKernel({ db: db2, space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 7), sealer });
+  const chain2 = again.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
+  assert.equal(JSON.stringify(await again.gateway.ask.list(chain2, {})).includes(PLAIN[0]), false, "no task shows a value after a restart");
+  assert.equal(JSON.stringify(again.log.read()).includes(PLAIN[0]), false, "no event holds a value");
+  db2.close();
   const bytes = fs.readFileSync(file, "latin1") + (fs.existsSync(file + "-wal") ? fs.readFileSync(file + "-wal", "latin1") : "");
   for (const p of PLAIN) assert.equal(bytes.includes(p), false, `${p} is not anywhere in the file or its log`);
   void a; void b; void quoting;
