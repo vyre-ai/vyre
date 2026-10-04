@@ -2951,8 +2951,11 @@ export class Switchboard {
    * so the next turn runs: the queue hands over the leading messages of one asker, opening THAT asker's kernel session first. Nothing is lost, and nothing runs under anyone else's authority.
    */
   async resumeQueuedChats() {
-    const rows = /** @type {any[]} */ (this.db.prepare("SELECT DISTINCT thread FROM threads_inbox WHERE delivered_at IS NULL AND kturn IS NOT NULL").all());
-    for (const r of rows) { try { if (!this.live.has(String(r.thread))) await this.launch({ resume: String(r.thread) }); } catch (e) { this.deps.log(`threads: could not run the queued chat messages of ${String(r.thread).slice(0, 8)} (${/** @type {Error} */ (e).message})`); } }
+    if (this.closing) return;
+    let rows;
+    try { rows = /** @type {any[]} */ (this.db.prepare("SELECT DISTINCT thread FROM threads_inbox WHERE delivered_at IS NULL AND kturn IS NOT NULL").all()); } catch { return; } // the home closed before the timer fired: nothing to run
+    for (const r of rows) {
+      if (this.closing) return; try { if (!this.live.has(String(r.thread))) await this.launch({ resume: String(r.thread) }); } catch (e) { this.deps.log(`threads: could not run the queued chat messages of ${String(r.thread).slice(0, 8)} (${/** @type {Error} */ (e).message})`); } }
   }
 
   /** vyred is stopping: every live thread ends with reason "restart" (ADR 0029 R7), so a surface says why. */
@@ -3151,7 +3154,7 @@ export default {
     });
     sb.recover();
     // chat messages queued behind a turn the restart cut off run now, each under its own asker (the queue is durable)
-    setTimeout(() => { void sb.resumeQueuedChats(); }, 1500).unref?.();
+    setTimeout(() => { void sb.resumeQueuedChats().catch(() => {}); }, 1500).unref?.();
     // ADR 0041 section 5, end side (start side is where()'s github.session.worktree call above):
     // a github project's worktree is cleaned up once its session reaches "finished" - a one-shot's
     // own natural completion (threads.launch's own purpose: "job", once: true; never resumed by
