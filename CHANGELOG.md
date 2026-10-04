@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- test(app): scripts/app-walk-firstrun.mjs walks the first-run screens in headless Chromium against a real vyred (browser start, welcome, Who it is for, the Wink codes, the empty states); the two proofs a headless page cannot give (wink.phone.open, and an invitation to a this-computer space) are answered by named stand-ins beside their steps. fix(app): the long code under the Add your device code wraps.
+
 - feat(app): no plain QR anywhere (ADR 0043). An invitation and the Mac's "Add your phone" show a Wink code (src/ui/WinkCode.tsx: the drawn avatar with its ring from the Deck's own renderer, unique per code, under its kind's words "Join <space>" or "Add your device"); a test fails if any screen imports a generic QR component. The browser screen reads "On your phone, open Vyre, then Devices, then Add a device, and scan or paste its code here." Invites keep "Copy link", and "Email it" opens the person's own mail app (a mailto on the web, the share sheet on a phone) with the link in it. Vyre sends nothing itself.
 
 - feat(app): no blank landing screens. Now, Chats and Agents each say one thing and give one action when empty (src/ui/EmptyHere.tsx, copy in screens/install/first-run.js): what is missing on this device comes first (a phone or browser with no Vyre: "Not connected" with Scan the code; a Mac with no phone paired: "Nothing can approve yet" with Add your phone), then a box that has not answered ("Your Vyre has not answered yet", Try again), then the screen's own line. The Places sheet leads with the same row when something is missing. `Empty` (src/ui/Screen.tsx) takes a second line and an action.

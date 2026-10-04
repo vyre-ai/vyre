@@ -87,7 +87,7 @@ export function RealAdd({ kind, onBack, onDone, first }: { kind: DeviceKind; onB
       <Card className="items-center gap-s3">
         <Text strong>{`Open Vyre on the ${noun}, then scan this or paste the long code.`}</Text>
         {opened.qr ? <WinkCode text={opened.qr} kind="device" /> : null}
-        {opened.qr ? <Text mono size="caption" selectable className="text-center">{opened.qr}</Text> : <Text tone="warn">The relay could not take the code. Try again.</Text>}
+        {opened.qr ? <Text mono size="caption" selectable className="w-full text-center" style={{ wordBreak: "break-all" } as never}>{opened.qr}</Text> : <Text tone="warn">The relay could not take the code. Try again.</Text>}
         <Text tone="muted">Waiting for the new device. Good for 5 minutes.</Text>
       </Card>
     );
