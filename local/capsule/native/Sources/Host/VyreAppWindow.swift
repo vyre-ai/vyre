@@ -31,6 +31,7 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
     private var priorMenu: NSMenu?
     /// The page's open streams (the WebSocket relay below), by the id the page gave them.
     private var streams: [Int: VyredStream] = [:]
+    private var presenceBusy = false
 
     var isOpen: Bool { window?.isVisible ?? false }
 
@@ -112,20 +113,23 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         let args = box.value
         switch op {
         case "presence":
+            // The words on the Touch ID sheet are the Capsule's own (defaultSummary of the tool and its input), never the page's: a script cannot ask for a proof
+            // while the sheet reads something harmless. One ask at a time, and only while this window is the one the person is looking at.
             guard let p = presence, let tool = args["tool"] as? String else { return reply(id, ["error": "Touch ID is not set up on this Mac yet."]) }
+            guard window?.isKeyWindow == true, NSApp.isActive else { return reply(id, ["error": "Bring the Vyre window to the front to approve this."]) }
+            guard !presenceBusy else { return reply(id, ["error": "Another approval is waiting for you."]) }
+            presenceBusy = true
+            defer { presenceBusy = false }
             let input = args["input"] as? [String: Any] ?? [:]
-            switch await p.proofFromAnyThread(tool: tool, input: UncheckedBox(input), summary: args["summary"] as? String) {
+            switch await p.proofFromAnyThread(tool: tool, input: UncheckedBox(input), summary: nil) {
             case .success(let header): reply(id, ["header": header])
             case .failure(let f): reply(id, ["error": f.message])
             }
         case "notify":
             Notifier.shared.post(title: args["title"] as? String ?? "Vyre", body: args["body"] as? String ?? "")
             reply(id, ["ok": true])
-        case "open":
-            if let s = args["url"] as? String, let u = URL(string: s), ["http", "https"].contains(u.scheme ?? "") { NSWorkspace.shared.open(u) }
-            reply(id, ["ok": true])
         case "ws.open":
-            guard let sid = args["sid"] as? Int, let path = args["path"] as? String, path.hasPrefix("/v1/streams/") else { return reply(id, ["error": "That is not a stream of this Vyre."]) }
+            guard let sid = args["sid"] as? Int, let path = args["path"] as? String, let clean = BoxSchemeHandler.cleanPath(path.components(separatedBy: "?")[0]), clean.hasPrefix("/v1/streams/") else { return reply(id, ["error": "That is not a stream of this Vyre."]) }
             let sock = socket
             let result: Result<VyredStream, VyredStreamFailure> = await withCheckedContinuation { k in
                 DispatchQueue.global(qos: .userInitiated).async {
@@ -168,7 +172,8 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let url = action.request.url else { return decisionHandler(.cancel) }
         if url.scheme == Self.scheme || url.scheme == "about" { return decisionHandler(.allow) }
-        if ["http", "https", "mailto"].contains(url.scheme ?? "") { NSWorkspace.shared.open(url) }
+        // An https link opens in the browser only when the person clicked it in the main frame; a script cannot open anything.
+        if action.navigationType == .linkActivated, action.targetFrame?.isMainFrame ?? true, ["http", "https"].contains(url.scheme ?? "") { NSWorkspace.shared.open(url) }
         decisionHandler(.cancel)
     }
 
@@ -196,7 +201,6 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         kind: "mac",
         presence: function (tool, input, summary) { return call("presence", { tool: tool, input: input, summary: summary }).then(function (r) { return r.header; }); },
         notify: function (title, body) { return call("notify", { title: title, body: body }); },
-        open: function (url) { return call("open", { url: url }); },
         // A WebSocket-like object for one of vyred's streams, backed by the native relay (VyreAppWindow.swift): the page's chat and terminal streams use it.
         socket: function (path) {
           var sid = nextSocket++, ws = { readyState: 0, onopen: null, onmessage: null, onclose: null, onerror: null };
@@ -239,6 +243,35 @@ final class BoxSchemeHandler: NSObject, WKURLSchemeHandler, @unchecked Sendable 
     private let lock = NSLock()
     private var stopped = Set<ObjectIdentifier>()
 
+    // At most this many requests at once, so a page that loops cannot hold every thread (streams are counted apart: the app opens a few).
+    private var running = 0, streaming = 0
+    static let maxRequests = 32, maxStreams = 8
+    private func take(stream: Bool) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        if stream { guard streaming < Self.maxStreams else { return false }; streaming += 1 }
+        else { guard running < Self.maxRequests else { return false }; running += 1 }
+        return true
+    }
+    private func release(stream: Bool) { lock.lock(); if stream { streaming -= 1 } else { running -= 1 }; lock.unlock() }
+
+    /// The request path as one safe string, or nil: no ".." or "." segment, no empty segment, no backslash or control character, and no encoded dot, slash or backslash
+    /// (%2e %2f %5c, in any case), so what is checked is what vyred sees. @param raw the percent-encoded path
+    static func cleanPath(_ raw: String) -> String? {
+        let path = raw.isEmpty ? "/" : raw
+        guard path.hasPrefix("/"), !path.contains("\\"), !path.unicodeScalars.contains(where: { $0.value < 0x20 || $0.value == 0x7f }) else { return nil }
+        let lower = path.lowercased()
+        for bad in ["%2e", "%2f", "%5c", "%00"] where lower.contains(bad) { return nil }
+        let segments = path.split(separator: "/", omittingEmptySubsequences: false).dropFirst()
+        for (i, seg) in segments.enumerated() {
+            if seg == "." || seg == ".." { return nil }
+            if seg.isEmpty && i != segments.count - 1 { return nil }   // an empty segment in the middle (//); a trailing slash is fine
+        }
+        return path
+    }
+
+    /// What the page may reach: the app's own files and vyred's API.
+    static func allowed(_ clean: String) -> Bool { clean == "/app" || clean.hasPrefix("/app/") || clean.hasPrefix("/v1/") }
+
     func stopAll() { lock.lock(); stopped.removeAll(); lock.unlock() }
     private func isStopped(_ t: WKURLSchemeTask) -> Bool { lock.lock(); defer { lock.unlock() }; return stopped.contains(ObjectIdentifier(t)) }
 
@@ -246,20 +279,13 @@ final class BoxSchemeHandler: NSObject, WKURLSchemeHandler, @unchecked Sendable 
 
     func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
         guard isOurs(webView), let url = task.request.url, url.host == "box", !socket.isEmpty else { return task.didFailWithError(URLError(.cannotConnectToHost)) }
-        // The page may reach the app's own files and vyred's API, and nothing else of vyred's.
-        guard url.path.hasPrefix("/app/") || url.path == "/app" || url.path.hasPrefix("/v1/") else {
-            task.didReceive(HTTPURLResponse(url: url, statusCode: 404, httpVersion: "HTTP/1.1", headerFields: ["content-type": "text/plain"]) ?? URLResponse(url: url, mimeType: nil, expectedContentLength: 0, textEncodingName: nil))
-            task.didFinish()
-            return
-        }
-        var path = url.path.isEmpty ? "/" : url.path
-        if let q = url.query { path += "?" + q }
         let method = task.request.httpMethod ?? "GET"
         let body = BoxSchemeHandler.body(of: task.request)
         var headers: [String: String] = [:]
         for k in ["x-vyre-presence", "x-vyre-presence-keep", "idempotency-key", "last-event-id"] { if let v = task.request.value(forHTTPHeaderField: k) { headers[k] = v } }
         let accept = task.request.value(forHTTPHeaderField: "Accept") ?? "*/*"
         let stream = accept.contains("text/event-stream")
+        guard take(stream: stream) else { return task.didFailWithError(URLError(.resourceUnavailable)) }
         let sock = socket
         let id = ObjectIdentifier(task)
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -282,6 +308,7 @@ final class BoxSchemeHandler: NSObject, WKURLSchemeHandler, @unchecked Sendable 
                 })
             DispatchQueue.main.async {
                 self.lock.lock(); let gone = self.stopped.remove(id) != nil; self.lock.unlock()
+                self.release(stream: stream)
                 if gone { return }
                 switch result {
                 case .success: if sent { task.didFinish() } else { task.didFailWithError(URLError(.badServerResponse)) }

@@ -31,7 +31,17 @@ let vyreAppSuite = Suite("vyre app window") { t in
         t.eq(VyreAppWindow.json(NSObject()), "null")
     }
 
+    t.test("a request path is cleaned once: traversal, encoded dots and slashes, and empty segments are refused") {
+        for bad in ["/app/../x", "/app/./x", "/v1/%2e%2e/x", "/v1/%2E%2e/x", "/app/a%2fb", "/app/a%5Cb", "/app//x", "/app/a\\b", "/v1/tools/x%00"] {
+            t.eq(BoxSchemeHandler.cleanPath(bad), nil, bad)
+        }
+        t.eq(BoxSchemeHandler.cleanPath("/app/"), "/app/")
+        t.eq(BoxSchemeHandler.cleanPath("/v1/tools/chats.list"), "/v1/tools/chats.list")
+        t.ok(BoxSchemeHandler.allowed("/app/index.html") && BoxSchemeHandler.allowed("/v1/events/stream"))
+        t.ok(!BoxSchemeHandler.allowed("/") && !BoxSchemeHandler.allowed("/theme.css") && !BoxSchemeHandler.allowed("/application"))
+    }
+
     t.test("the page's bridge names every call the window answers") {
-        for op in ["presence", "notify", "open", "_reply", "_command", "onCommand", "socket", "_ws", "ws.open", "ws.send", "ws.close"] { t.ok(VyreAppWindow.bridgeSource.contains(op), op) }
+        for op in ["presence", "notify", "_reply", "_command", "onCommand", "socket", "_ws", "ws.open", "ws.send", "ws.close"] { t.ok(VyreAppWindow.bridgeSource.contains(op), op) }
     }
 }
