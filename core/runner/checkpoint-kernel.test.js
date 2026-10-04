@@ -37,6 +37,9 @@ test("registered, in no role, and granted per session to that session's own chai
 
   const dir = fs.mkdtempSync(path.join(SCRATCH, "ck-")); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const store = createCheckpointStore({ space: SPACE, root: dir, authorize: i => k.gateway.authorize(i) });
+  // the person's default assistant acting for them (entered from a surface, no session of its own) never reaches a session's history, even with the owner's role behind it
+  const delegated = k.chains.fromFacts({ kind: "socket", surface: "mcp", uid: 501 });
+  for (const c of [delegated]) { try { await store.appendTranscript(c, "s1", [{ seq: 9, line: "x" }]); assert.fail("accepted"); } catch (e) { assert.equal(e.code, "not_found"); } }
   assert.deepEqual(await store.appendTranscript(asst(), "s1", [{ seq: 1, line: "a" }]), { acked: 1 });
   await assert.rejects(store.appendTranscript(asst(), "s2", [{ seq: 1, line: "a" }]), { code: "not_found" }, "another session is not reachable with it");
   await assert.rejects(store.appendTranscript(bob, "s1", [{ seq: 1, line: "a" }]), { code: "not_found" });

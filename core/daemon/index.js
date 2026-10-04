@@ -319,8 +319,8 @@ async function startLocked(opts, root, p, release) {
     if ((process.platform === "darwin" || process.platform === "linux") && devSwitch(process.env.VYRE_SESSION_SANDBOX_OFF)) registry.deps.sandbox = { off: true };
     else if (process.platform === "darwin" || process.platform === "linux") {
       try {
-        const [{ planHome, selfTest }, { launch }] = await Promise.all([import("../runner/homesandbox.js"), import("../runner/sandbox.js")]);
-        registry.deps.sandbox = { sandbox: { planHome, selfTest, launch }, platform: process.platform, home: os.homedir(), vyreHome: root,
+        const [{ planHome, selfTest }, { launch }, { startHomeProxy }] = await Promise.all([import("../runner/homesandbox.js"), import("../runner/sandbox.js"), import("../runner/homeproxy.js")]);
+        registry.deps.sandbox = { sandbox: { planHome, selfTest, launch, homeProxy: o => startHomeProxy({ platform: o && o.platform, dir: path.join(root, "run") }) }, platform: process.platform, home: os.homedir(), vyreHome: root,
           // Real targets, made for each self-test and torn down after it: a unix socket standing in for another session's, and a loopback listener standing in for a daemon port. The
           // sandboxed probe must fail to connect to every one of them, and a probe target that does not exist is refused by the runner's own check.
           probes: async () => {

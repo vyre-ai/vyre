@@ -65,6 +65,8 @@ export function createCheckpointStore(o) {
 
   const ok = async (chain, action, session) => {
     if (!SESSION.test(String(session)) || !chain || chain.space !== o.space) throw err("not_found", "not found");
+    // Only a session's own chain: an assistant acting for the person (an agent hop entered from a surface, with no session of its own) never reaches a session's history.
+    for (const h of chain.hops || []) if (h.actor && h.actor.kind === "agent" && !(h.via && typeof h.via.session === "string" && h.via.session)) throw err("not_found", "not found");
     const r = await o.authorize({ chain, action, resource: `vyre://${o.space}/session/${session}` });
     if (!r || r.effect !== "allow") throw err("not_found", "not found");
   };

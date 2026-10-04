@@ -179,3 +179,46 @@ test("RN-1: a 100 MB transcript, sealed in 50 turns: memory stays flat and each 
   assert.ok(Math.max(...perTurn) < 3 * 100 * 1024, `a turn read ${Math.max(...perTurn)} bytes for about 100 KB of new lines`);
   const cp = await h.port.getCheckpoint(S); assert.equal(cp.turn, 51); assert.equal(cp.seq, 100_000 + 5000);
 });
+
+test("RN-3b: the file swapped for a link between the check and the open is never read, and a folder swapped before the recover rename is never written into", async t => {
+  const h = mk(t), secret = path.join(h.dir, "daemon-only"); fs.writeFileSync(secret, "TOP-SECRET-LINE\n");
+  fs.writeFileSync(h.file, line(1) + "\n");
+  let swapped = false;
+  const fsx = { ...fs, openSync: (p, ...a) => { if (!swapped && p === h.file) { swapped = true; fs.rmSync(h.file); fs.symlinkSync(secret, h.file); } return fs.openSync(p, ...a); } };
+  await assert.rejects(createTurnSeal({ port: h.port, session: S, file: h.file, root: h.dir, fs: fsx }).seal({ state: {} }), e => e.code === "refused");
+  assert.equal(await h.port.getCheckpoint(S), null);
+  assert.deepEqual((await h.port.getTranscript(S, 1)).map(e => e.line), [], "nothing of the secret was stored");
+  // a different file with the same name put in place (not a link): identity differs from what was checked
+  fs.rmSync(h.file); fs.writeFileSync(h.file, line(1) + "\n"); fs.linkSync(h.file, h.file + ".keep");   // the old file stays alive, so its inode number cannot be reused by the new one
+  let n = 0;
+  const fsy = { ...fs, openSync: (p, ...a) => { if (n++ === 0 && p === h.file) { fs.rmSync(h.file); fs.writeFileSync(h.file, "TOP-SECRET-LINE\n"); } return fs.openSync(p, ...a); } };
+  await assert.rejects(createTurnSeal({ port: h.port, session: S, file: h.file, root: h.dir, fs: fsy }).seal({ state: {} }), e => e.code === "refused");
+  // the project folder swapped for a link to another folder right before recover's rename
+  fs.rmSync(h.file); fs.rmSync(h.file + ".keep"); fs.writeFileSync(h.file, line(1) + "\n"); await h.seal().seal({ state: {} });
+  const elsewhere = path.join(h.dir, "elsewhere"); fs.mkdirSync(elsewhere);
+  const proj = path.dirname(h.file), moved = proj + "-real";
+  let opens = 0;
+  const fsw = { ...fs, openSync: (p, ...a) => { if (String(p).includes(".tmp-") && opens++ === 0) { fs.renameSync(proj, moved); fs.symlinkSync(elsewhere, proj); } return fs.openSync(p, ...a); } };
+  await assert.rejects(createTurnSeal({ port: h.port, session: S, file: h.file, root: h.dir, fs: fsw }).recover(), e => e.code === "refused");
+  assert.deepEqual(fs.readdirSync(elsewhere), [], "nothing was written into the folder the session chose");
+});
+
+test("RN-3b loop: another process swaps the transcript and its folder for links to a secret while the owner seals 300 turns; no line of the secret is ever stored", { timeout: 120_000 }, async t => {
+  const { spawn } = await import("node:child_process");
+  const h = mk(t), secret = path.join(h.dir, "daemon-only"); fs.writeFileSync(secret, "TOP-SECRET-LINE\n");
+  const secretDir = path.join(h.dir, "secretdir"); fs.mkdirSync(secretDir); fs.writeFileSync(path.join(secretDir, `${S}.jsonl`), "TOP-SECRET-LINE\n");
+  const proj = path.dirname(h.file), real = h.file + ".real";
+  fs.writeFileSync(h.file, line(0) + "\n"); fs.copyFileSync(h.file, real);
+  const swapper = spawn(process.execPath, ["-e", `const fs=require("fs");const [f,real,sec,proj,sd]=process.argv.slice(1);let i=0;
+    setInterval(()=>{for(let k=0;k<50;k++){try{if(i++%2){fs.rmSync(f,{force:true});fs.symlinkSync(sec,f)}else{fs.rmSync(f,{force:true});fs.copyFileSync(real,f)}}catch{}}},1);`, h.file, real, secret, proj, secretDir], { stdio: "ignore" });
+  t.after(() => swapper.kill("SIGKILL"));
+  const s = h.seal(); let sealed = 0;
+  for (let i = 1; i <= 300; i++) {
+    try { fs.appendFileSync(real, line(i) + "\n"); } catch {}
+    try { await s.seal({ state: {} }); sealed++; } catch (e) { assert.ok(["refused", "rewritten", "not_found"].includes(e.code), `unexpected ${e.code}: ${e.message}`); }
+  }
+  swapper.kill("SIGKILL");
+  const stored = (await h.port.getTranscript(S, 1)).map(e => e.line);
+  assert.ok(!stored.some(l => l.includes("TOP-SECRET")), "a line of the secret was stored");
+  assert.ok(sealed > 0, "at least some seals went through between swaps");
+});
