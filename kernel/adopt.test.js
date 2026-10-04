@@ -158,9 +158,7 @@ test("AO-3 boot repair: the process dies right after the owner.adopted marker; t
   assert.equal(k.log.read({ type: "owner.adopted" }).length, 1, "the marker is not written twice");
 });
 
-// TODO(platform): at the CLAIM (not at boot, and not when the hosted kernel is asked directly) a Space this test hosts straight through K.spaces.host does not take the identity on the current trunk:
-// its kernel is left with the old owner and an empty `adopted()`, while a direct call to its adoptOwner then answers changed:false. Not explained yet; the boot path and the HA-1 guard are green.
-test("hosted Spaces: adoption reaches the kernel of a Space made before the claim, at the claim and at boot; a Space someone else owns is left alone", { timeout: 180_000, todo: "claim-time hosted adoption: open, see the comment above" }, async t => {
+test("hosted Spaces: adoption reaches the kernel of a Space made before the claim, at the claim and at boot; a Space someone else owns is left alone", { timeout: 180_000 }, async t => {
   const root = tempHome(t);
   let d = await boot(root);
   const old = d.kernel.id.owner;
