@@ -173,7 +173,18 @@ export default {
     const K = ctx.kernel && typeof ctx.kernel.for === "function" ? ctx.kernel : null;
     const kernelHandle = (/** @type {string} */ id) => { if (!K) return null; try { return K.for(id) || null; } catch { return null; } };
     /** Creation is all or nothing, the kernel's registry included (PA-1): a creation that failed or was cancelled takes back the Space the kernel started for it (never one with content), and resume hosts it again under the same id. */
-    const retireHosted = async (/** @type {string} */ id) => {
+    /** Ask a PAIRED SERVER to run one of its spaces tools, over the owner's paired session, with the owner's presence proof beside the call (the server's own registry verifies it, nothing here is trusted).
+     * The carrier is Wink's: `wink.server.call { device, tool, input, proof? }` (tailnet). Any failure is a refusal; a space is never hosted locally as a fallback. */
+    const remoteCall = async (/** @type {string} */ device, /** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ meta) => {
+      let r; try { r = await ctx.call("wink.server.call", { device, tool, input, ...(meta && (meta.proof || meta.kernel_proof) ? { proof: meta.proof || meta.kernel_proof } : {}) }); } catch { throw refuse("The server could not be reached. Nothing was made.", "server_unreachable"); }
+      if (!r || r.error) throw refuse(r && r.error && r.error.message ? String(r.error.message).slice(0, 160) : "The server did not do that. Nothing was made.", (r && r.error && r.error.code) || "server_refused");
+      return r.data;
+    };
+    /** The device of a space whose home is a server and which the SERVER hosts (set when it was made there). */
+    const serverOf = async (/** @type {string} */ spaceId) => { const v = await kv.get(`server-hosted/${spaceId}`); return v && typeof v.device === "string" ? v.device : null; };
+    const retireHosted = async (/** @type {string} */ id, /** @type {any} */ meta) => {
+      const srv = await serverOf(id);
+      if (srv) { try { await remoteCall(srv, "spaces.retire-here", { id }, meta); await kv.delete(`server-hosted/${id}`); } catch (e) { ctx.log.warn(`the server kept a space that did not finish being made (${id}): ${String(/** @type {any} */ (e).message || e).slice(0, 120)}`); } return; }
       if (!K || !K.spaces || typeof K.spaces.retire !== "function" || !kernelHandle(id)) return;
       try { await K.spaces.retire(id); } catch (e) { ctx.log.warn(`the kernel kept a space that did not finish being made (${id}): ${String(/** @type {any} */ (e).message || e).slice(0, 120)}`); }
     };
@@ -622,7 +633,17 @@ export default {
         let spaceId = `spc_${crypto.randomBytes(8).toString("hex")}`;
         // A Space the kernel hosts here is made by the kernel (its own id, store and key). The kernel says first what store it would use: on a server too small for the larger one
         // it needs the person's confirmation, in the kernel's own words, and only on "create" is the Space made, with the flag that says they accepted the built-in store.
-        const KS = K && K.spaces && typeof K.spaces.host === "function" ? K.spaces : null;
+        // A space whose home is a PAIRED SERVER is hosted by that server (DESIGN-spaces-first, "Where a space is hosted"): the server's kernel makes it (key, store, log, files there) and answers THE id;
+        // this device keeps only the row. A server that is not yet paired goes through the code step as before. "On this computer" stays local.
+        let remoteServer = null;
+        if (i.home && i.home.kind === "server" && i.home.device && typeof i.home.device.id === "string" && await pairedServer(i.home.device.id)) remoteServer = i.home.device.id;
+        const KS = !remoteServer && K && K.spaces && typeof K.spaces.host === "function" ? K.spaces : null;
+        if (remoteServer) {
+          const made = await remoteCall(remoteServer, "spaces.host-here", { name: label }, meta);
+          if (!made || typeof made.space !== "string" || !/^spc_[a-z2-7]{12}$/.test(made.space)) throw refuse("The server did not give the space an id. Nothing was made.", "server_refused");
+          spaceId = made.space;
+          await kv.put(`server-hosted/${spaceId}`, { device: remoteServer, at: now() });
+        }
         if (KS) {
           const plan = typeof KS.storePlan === "function" ? await KS.storePlan() : null;
           const confirm = plan && plan.confirm ? plan.confirm : null;
@@ -638,8 +659,8 @@ export default {
         spaces.insert({ id: spaceId, name: `${label}.vyre.run`, label, displayName: i.displayName ? String(i.displayName).slice(0, 80) : null, createdBy: /** @type {string} */ (s.id), status: "running", now: now() });
         spaces.patch(spaceId, { home: { kind: home.kind, ...(home.device ? { device: home.device } : {}) } }, now());
         /** @type {any} */ let view;
-        try { view = await flow.createSpace({ spaceId, name: label, displayName: i.displayName, personId: s.id, home, headscale: i.headscale === true }, { vpsToken: home.token }); } catch (e) { if (KS) await retireHosted(spaceId); throw e; }
-        if (KS && view && view.status === "failed") await retireHosted(spaceId);
+        try { view = await flow.createSpace({ spaceId, name: label, displayName: i.displayName, personId: s.id, home, headscale: i.headscale === true }, { vpsToken: home.token }); } catch (e) { if (KS || remoteServer) await retireHosted(spaceId, meta); throw e; }
+        if ((KS || remoteServer) && view && view.status === "failed") await retireHosted(spaceId, meta);
         // The device that made the space is enrolled in it; the person's other devices see it as "Add to this device".
         { const eid = ownDeviceEid(meta), l = await enrolledList(eid); if (l !== null && !l.includes(spaceId)) await kv.put(`device-spaces/${eid}`, [...l, spaceId]); }
         return sync(spaceId, view);
@@ -944,6 +965,18 @@ export default {
     const homePerson = () => { let who = null; try { const st = identity.status(); who = st && st.exists ? st.id : null; } catch { who = null; } return who || (K && typeof K.owner === "string" ? K.owner : null); };
     // The SERVER's half of "a space whose home is this server": the creating device asks over the paired session and THIS home's kernel hosts the Space (kernel, store, key, log live here), for this
     // home's owner (the identity that paired it). Idempotent for a given id. Only the owner person acts: a chain that is not exactly the home's owner is refused.
+    /** Only exactly this home's owner (one person on the chain, equal to the kernel's owner). @param {any} meta */
+    const ownerOnly = async meta => {
+      if (!K || typeof K.owner !== "string") throw refuse("This home has no kernel to host a space.", "unavailable");
+      let person = null;
+      try { const c = await K.chain(meta); const h = c && c.hops && c.hops.length === 1 ? c.hops[0].actor : null; person = h && h.kind === "person" ? String(h.id) : null; } catch { person = null; }
+      if (!person || person !== K.owner) throw refuse("Only this home's owner can have it host a space.", "forbidden");
+    };
+    tool("spaces.retire-here", "On a server: take back a space that was only started here (a failed or cancelled create). Refuses a space with content (fail closed).", obj({ id: str }, ["id"]), async (i, meta) => {
+      await ownerOnly(meta);
+      if (!K || !K.spaces || typeof K.spaces.retire !== "function") throw refuse("This home has no kernel to change.", "unavailable");
+      try { return await K.spaces.retire(String(i.id)); } catch (e) { throw plainKernelError(e); }
+    }, { presence: { summary: (/** @type {any} */ i) => `Take back the space ${i && i.id} on this server` } });
     tool("spaces.host-here", "On a server: host a new space in THIS home's kernel for its owner (called by the owner's device over the paired session when a space is made with this server as its home). Answers { space }. Idempotent when given the id.", obj({ name: str, id: str }, ["name"]), async (i, meta) => {
       if (!K || !K.spaces || typeof K.spaces.host !== "function" || typeof K.owner !== "string") throw refuse("This home has no kernel to host a space.", "unavailable");
       let person = null;
@@ -956,7 +989,7 @@ export default {
         if (K.spaces.hosts(i.id) === true) return { space: i.id, existed: true };
       }
       try { const h = await K.spaces.host({ owner: K.owner, name: label, ...(typeof i.id === "string" && i.id ? { id: i.id } : {}) }); return { space: h.space || h.id, existed: false }; } catch (e) { throw plainKernelError(e); }
-    });
+    }, { presence: { summary: (/** @type {any} */ i) => `Make the space ${i && i.name} on this server` } });
     tool("spaces.devices.enrolled", "Whether a device is enrolled in a space (true when the device has no list yet). For the kernel and other modules, which refuse a device that is not.", obj({ device: str, space: str }, ["device", "space"]),
       async i => {
         // A Space this module has no row for (the home's own Space, which the kernel makes before any space is created here) is asked by its id as given: no list means enrolled.
@@ -1028,7 +1061,7 @@ export default {
         // A space is listed once it has its home. One still being made (or whose server step failed) is not a space yet: its steps are spaces.status and spaces.resume.
         if (row.status !== "done") continue;
         if (await notRemoved(row.id, meta).then(() => false, () => true)) continue;
-        out.push({ id: row.id, name: row.name, label: row.label, displayName: row.displayName, status: row.status, home: row.home, role: m ? m.role : null, aliases: row.aliases, workspaceId: row.workspaceId, warnings: row.warnings, createdAt: row.createdAt, setup: await setupView(row, s) });
+        out.push({ ...(row.home && row.home.kind === "server" && K && K.spaces && K.spaces.hosts(row.id) === true && !(await serverOf(row.id)) ? { hostedHere: true, note: "hosted on this device, home says server" } : {}), id: row.id, name: row.name, label: row.label, displayName: row.displayName, status: row.status, home: row.home, role: m ? m.role : null, aliases: row.aliases, workspaceId: row.workspaceId, warnings: row.warnings, createdAt: row.createdAt, setup: await setupView(row, s) });
       }
       return out;
     });
@@ -1073,7 +1106,7 @@ export default {
       obj({ space: str, vpsToken: str }, ["space"]), async i => {
         const { row } = mine(i.space);
         const r = await flow.cancel(row.id, i.vpsToken ? { vpsToken: String(i.vpsToken) } : {});
-        if (r.cancelled) { spaces.patch(row.id, { status: "cancelled" }, now()); await kv.delete(`setup/${row.id}`); await retireHosted(row.id); }
+        if (r.cancelled) { spaces.patch(row.id, { status: "cancelled" }, now()); await kv.delete(`setup/${row.id}`); await retireHosted(row.id, undefined); }
         return { ...r, space: row.id };
       });
 
