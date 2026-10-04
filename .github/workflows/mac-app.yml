@@ -108,8 +108,10 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Version
         id: v
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          v="${{ inputs.version }}"
+          v="$INPUT_VERSION"
           [ -n "$v" ] || v="$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' package.json | head -1)"
           v="${v#v}"
           echo "version=$v" >> "$GITHUB_OUTPUT"; echo "Lumen app version $v"
@@ -154,7 +156,10 @@ jobs:
           test -f "$app/Contents/Resources/app/index.html" && echo "dmg holds the web app"
           ver="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")"; echo "app version $ver"
           [ "$ver" = "${{ steps.v.outputs.version }}" ]
-          case "$ver" in *-*) test -f "$app/Contents/Resources/setup/box-url" && cat "$app/Contents/Resources/setup/box-url" ;; esac
+          case "$ver" in
+            *-*) test -f "$app/Contents/Resources/setup/box-url" && cat "$app/Contents/Resources/setup/box-url" ;;
+            *) test ! -e "$app/Contents/Resources/setup/box-url" && echo "stable: no box-url, the installer uses vyre.run/box" ;;
+          esac
           codesign -dv "$app" 2>&1 | grep -E "Identifier|Authority|Signature" || true
           hdiutil detach "$mnt" >/dev/null
       - name: Status
