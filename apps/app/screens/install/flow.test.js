@@ -133,3 +133,10 @@ test("a server that is not yet the person's is never quoted: an unknown code wit
   // No code and nothing we recognise: our own sentence, not the server's.
   assert.equal(serverSay(new Error(long)), SERVER_FAILED.ended);
 });
+
+test("Back from the recovery steps returns to the choice they came from", () => {
+  assert.equal(backOf("have"), "name");
+  assert.equal(backOf("recover"), "have");
+  assert.equal(backOf("scan"), "name");
+  assert.equal(backOf("scan", { have: true }), "have");
+});

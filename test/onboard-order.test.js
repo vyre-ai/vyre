@@ -8,7 +8,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import net from "node:net";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { start } from "../core/daemon/index.js";
+import { call } from "../core/daemon/client.js";
 import { tempHome, present } from "./helpers.js";
 
 process.env.VYRE_SEAL_DEV = "1";
@@ -90,4 +94,46 @@ test("there is no first-passkey path: onboard.passkey refuses with the pairing m
     const link = await d.registry.call("onboard.link", { mint: false }, "cli");
     assert.ok(!JSON.stringify(link).includes("passkeyUrl"), "the link answer offers none either");
   }
+});
+
+test("`owned` follows whichever way the machine's owner exists: a paired server, a this-computer home after the identity is claimed, and a fresh home of either kind is not owned (and says the first step)", { timeout: 90_000 }, async t => {
+  // A fresh server: not owned; the first step is to pair. A paired one (the tailnet owner flag stands in for the pairing): owned, no first step.
+  const fresh = await box(t);
+  const f = (await fresh.registry.call("onboard.status", {}, "deck")).data;
+  assert.deepEqual([f.owned, f.ownerFirst], [false, "pair"]);
+  const paired = await box(t, { ownerSeen: true });
+  const p = (await paired.registry.call("onboard.status", {}, "deck")).data;
+  assert.deepEqual([p.owned, p.ownerFirst], [true, null]);
+  // A this-computer home (solo: no pairing): not owned until the person claims their identity there, then owned.
+  const script = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "scripts", "standin-directory.mjs");
+  const port = await new Promise(res => { const sv = net.createServer(); sv.listen(0, "127.0.0.1", () => { const pt = /** @type {any} */ (sv.address()).port; sv.close(() => res(pt)); }); });
+  const child = spawn(process.execPath, [script, "--port", String(port)], { stdio: ["ignore", "pipe", "inherit"] });
+  t.after(() => { child.kill("SIGTERM"); });
+  await new Promise((res, rej) => { child.stdout.on("data", d => { if (String(d).includes("stand-in names directory")) res(null); }); child.on("exit", c => rej(new Error(`the stand-in exited early (${c})`))); });
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "mac", machine: "solo", transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${port}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  const d = await start({ root, kernel: true, presence: present, log: () => {} });
+  t.after(() => d.stop());
+  const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "deck" });
+  const before = (await deck("onboard.status")).data;
+  assert.deepEqual([before.owned, before.ownerFirst], [false, "name"], "a fresh this-computer home: not owned, the first step is the name");
+  assert.equal(((await deck("onboard.claude", { mode: "api-key", key: "sk-ant-api03-" + "c".repeat(60) })).error || {}).code, "not_a_server", "with no owner a computer still refuses like any non-server");
+  const made = await deck("spaces.identity.create", { name: "alex" });
+  assert.ok(!made.error, JSON.stringify(made.error));
+  const after = (await deck("onboard.status")).data;
+  assert.deepEqual([after.owned, after.ownerFirst], [true, null], "after the claim the owner exists");
+  // The owner of a this-computer home connects Claude from their own session, with their presence; a model still cannot.
+  const KEY2 = "sk-ant-api03-" + "b".repeat(60);
+  const put = await deck("onboard.claude", { mode: "api-key", key: KEY2 });
+  assert.ok(put.data, JSON.stringify(put.error));
+  assert.equal(put.data.signedIn, true);
+  const st = (await deck("onboard.status")).data;
+  assert.equal(st.detail.claude.signedIn, true);
+  const model = await call("onboard.claude", { mode: "api-key", key: KEY2 }, { root, caller: "mcp" });
+  assert.ok(model.error, "a model is refused on a this-computer home too");
+  const off = await deck("onboard.claude", { mode: "disconnect" });
+  assert.ok(off.data, JSON.stringify(off.error));
+  assert.notEqual((await deck("onboard.status")).data.steps.claude, "done");
 });

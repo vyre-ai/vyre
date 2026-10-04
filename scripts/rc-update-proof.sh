@@ -59,6 +59,8 @@ docker exec -u 1000 vyre-vyre-1 sh -c 'echo rc-marker-1 > /home/vyre/.vyre/rc-ma
 vyre call memory.remember '{"text":"My wife is Robin"}' >/dev/null 2>&1 || fail "could not write a memory fact into the old release"
 vyre call planner.add '{"kind":"note","text":"Marlow and Finch retainer draft"}' >/dev/null 2>&1 || fail "could not write a planner note into the old release"
 vyre call memory.me '{}' 2>&1 | grep -q Robin && vyre call planner.list '{}' 2>&1 | grep -q 'retainer draft' || fail "the seed is not readable on the old release"
+# What the person's own config already enabled (a module off by default that the old home turned on stays on after an update: that is their choice, not a difference from a fresh install).
+docker exec -u 1000 vyre-vyre-1 cat /home/vyre/.vyre/config.json >"$WORK/old-config.json" 2>/dev/null || echo '{}' >"$WORK/old-config.json"
 docker exec vyre-vyre-1 env | grep -q '^VYRE_STORE=' && fail "the old install already has VYRE_STORE (this proof starts from an untouched 0.2 box)"
 say "1 ok: $OLDV installed untouched (no VYRE_STORE), data written and read back"
 
@@ -69,18 +71,21 @@ every_module() {
   node -e '
 const fs = require("fs");
 const listed = Object.keys(JSON.parse(fs.readFileSync(process.argv[1], "utf8")).modules).sort();
-const off = fs.readFileSync(process.argv[2], "utf8").split("\n").filter(l => l && !l.startsWith("#")).sort();
+let kept = []; try { const c = JSON.parse(fs.readFileSync(process.argv[4], "utf8")); kept = (c.modules && Array.isArray(c.modules.enable)) ? c.modules.enable : []; } catch {}
+const off = fs.readFileSync(process.argv[2], "utf8").split("\n").filter(l => l && !l.startsWith("#") && !kept.includes(l)).sort();
 const state = {};
 for (const l of fs.readFileSync(process.argv[3], "utf8").split("\n")) { const m = /^\s+(\S+)\s+\S+\s+(\S+)/.exec(l); if (m) state[m[1]] = m[2]; }
 const running = listed.filter(n => state[n] === "running").sort(), failed = listed.filter(n => state[n] === "failed" || state[n] === "invalid");
 const want = listed.filter(n => !off.includes(n)).sort();
 const problems = [];
 if (failed.length) problems.push("failed: " + failed.join(", "));
-if (JSON.stringify(running) !== JSON.stringify(want)) problems.push("running " + running.length + " of " + want.length + " expected; missing: " + want.filter(n => !running.includes(n)).join(", "));
+if (JSON.stringify(running) !== JSON.stringify(want)) problems.push("running " + running.length + " of " + want.length + " expected; missing: " + want.filter(n => !running.includes(n)).join(", ") + "; unexpected: " + running.filter(n => !want.includes(n)).join(", "));
 if (problems.length) { console.error(problems.join("; ")); process.exit(1); }
 console.log(running.length + " modules run, none failed");
-' "$WORK/new/site/box/modules.json" "$HERE/scripts/packaged-boot-expected.txt" "$WORK/modules.txt" || { cat "$WORK/modules.txt" | head -80; fail "$1: the modules that run are not the candidate's fresh-install set"; }
+' "$WORK/new/site/box/modules.json" "$HERE/scripts/packaged-boot-expected.txt" "$WORK/modules.txt" "$WORK/old-config.json" || { cat "$WORK/modules.txt" | head -80; fail "$1: the modules that run are not the candidate's fresh-install set"; }
   ! docker logs vyre-vyre-1 2>&1 | grep -Ei 'migration .* failed' || { docker logs vyre-vyre-1 2>&1 | grep -Ei 'migration .* failed' | head -5; fail "$1: a migration failed"; }
+  # core/store repairs a duplicate-column migration and says so; on a box upgraded from a RELEASED version that repair must never be needed (only a dev home that ran a mis-ordered list needs it).
+  ! docker logs vyre-vyre-1 2>&1 | grep -E 'migration .* v[0-9]+: column already present, treated as applied' || { docker logs vyre-vyre-1 2>&1 | grep -E 'column already present' | head -5; fail "$1: an upgrade from a released version needed the duplicate-column repair"; }
 }
 # do_update LABEL: the update to the candidate, the way the root unit does it (a hand run of its step), with the throwaway key trusted for this run.
 do_update() { # LABEL STORE: STORE is none (an untouched box: no VYRE_STORE appears, no Twenty stack starts) or kept (VYRE_STORE is still there)
@@ -98,7 +103,8 @@ do_update() { # LABEL STORE: STORE is none (an untouched box: no VYRE_STORE appe
   case "$2" in
     kept) docker exec vyre-vyre-1 env | grep -qx 'VYRE_STORE=auto' || fail "$1: after the update VYRE_STORE=auto is not kept" ;;
     none) docker exec vyre-vyre-1 env | grep -q '^VYRE_STORE=' && fail "$1: the update added a VYRE_STORE the box never had (a silent switch of store)"
-          [ -z "$(docker ps -q --filter name=twenty)" ] || fail "$1: a Twenty store started on a box that never chose one" ;;
+          # (a shared test box may hold other people's Twenty stacks, so the question is whether THIS box asked for one: its helper has recorded no Space store)
+          [ -z "$(sudo ls /var/lib/vyre-spaces/private/spaces 2>/dev/null)" ] || fail "$1: a Space store was set up on a box that never chose one" ;;
   esac
   every_module "$1"
   # records' store line (/v1/health records_store, when this candidate carries it): an untouched box is on the built-in store by default and it answers.
