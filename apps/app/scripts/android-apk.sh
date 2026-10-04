@@ -68,7 +68,8 @@ open(p,'w').write(s)
 PY
 grep -q "signingConfigs.vyreSideload" "$g" || { echo "android-apk: could not point the release build at the local key" >&2; exit 1; }
 export VYRE_KEYSTORE=$KEYS/sideload.keystore VYRE_STOREPASS=$pw
-(cd android && nice -n 10 ./gradlew --no-daemon -PreactNativeArchitectures=arm64-v8a assembleRelease)
+# The box is shared and small: cap gradle's and kotlin's memory and workers so the daemon is not killed (it was, once, at the default sizes).
+(cd android && nice -n 10 ./gradlew --no-daemon --max-workers=2 -Dorg.gradle.jvmargs='-Xmx2g -XX:MaxMetaspaceSize=512m' -Pkotlin.daemon.jvmargs=-Xmx1g -Pkotlin.compiler.execution.strategy=in-process -PreactNativeArchitectures=arm64-v8a assembleRelease)
 
 apk=$(ls android/app/build/outputs/apk/release/*.apk | head -1)
 mkdir -p dist-android; cp "$apk" dist-android/vyre-release.apk

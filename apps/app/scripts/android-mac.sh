@@ -2,7 +2,9 @@
 # Run the Android APK on this Mac, in an emulator (RC1 launch: Android is an APK on the person's Mac). The APK itself is built on a Linux box (scripts/android-apk.sh).
 #
 #   scripts/android-mac.sh setup            install the emulator once: JDK 17, the command line tools and one arm64 system image through Homebrew, and one AVD named vyre-pixel
-#   scripts/android-mac.sh install [APK]    start the emulator (if it is not running) and install the APK (default ./dist-android/vyre-release.apk) with adb
+#   scripts/android-mac.sh install [APK]    install the APK (default ./dist-android/vyre-release.apk) with adb: on a phone plugged in by USB if there is one (USB debugging on),
+#                                           otherwise in the emulator, started if it is not running
+#   scripts/android-mac.sh phone [APK]      same, but only on a USB phone (needs only adb: `brew install --cask android-platform-tools`, no emulator setup)
 #   scripts/android-mac.sh stop             shut the emulator down
 #
 # Everything lives under $HOME/vyre-android-sdk (about 6 GB with the system image; the Mac's disk is tight, `rm -rf` that folder to undo it). It does not install or start Vyre itself
@@ -36,12 +38,21 @@ setup() {
   echo "ready. Next: scripts/android-mac.sh install"
 }
 
+usb_phone() { adb devices 2>/dev/null | awk '$2=="device" && $1 !~ /^emulator-/ {print $1; exit}'; }
 running() { adb devices 2>/dev/null | grep -q '^emulator-.*device$'; }
 
 install() {
   local apk=${1:-dist-android/vyre-release.apk}
   [ -f "$apk" ] || { echo "android-mac: no APK at $apk (build it with scripts/android-apk.sh --remote <host>)" >&2; exit 1; }
-  command -v emulator >/dev/null || { echo "android-mac: run scripts/android-mac.sh setup first" >&2; exit 1; }
+  command -v adb >/dev/null || { echo "android-mac: adb is not installed (run setup, or brew install --cask android-platform-tools)" >&2; exit 1; }
+  local phone; phone=$(usb_phone)
+  if [ -n "$phone" ]; then
+    adb -s "$phone" install -r "$apk"
+    adb -s "$phone" shell monkey -p sh.vyre.app -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
+    echo "installed sh.vyre.app on $phone"; return 0
+  fi
+  [ "${ONLY_PHONE:-}" = 1 ] && { echo "android-mac: no phone found. Plug it in, turn on USB debugging, accept the prompt on the phone." >&2; exit 1; }
+  command -v emulator >/dev/null || { echo "android-mac: no phone connected and no emulator; run scripts/android-mac.sh setup first" >&2; exit 1; }
   if ! running; then
     nohup emulator -avd "$AVD" -no-snapshot-save -no-boot-anim -gpu auto >"$SDK/emulator.log" 2>&1 &
     echo "starting the emulator"
@@ -55,4 +66,4 @@ install() {
 
 stop() { adb -e emu kill 2>/dev/null || true; }
 
-case "${1:-}" in setup) setup ;; install) install "${2:-}" ;; stop) stop ;; *) echo "usage: $0 setup | install [APK] | stop" >&2; exit 2 ;; esac
+case "${1:-}" in setup) setup ;; phone) ONLY_PHONE=1 install "${2:-}" ;; install) install "${2:-}" ;; stop) stop ;; *) echo "usage: $0 setup | install [APK] | stop" >&2; exit 2 ;; esac
