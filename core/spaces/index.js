@@ -927,11 +927,35 @@ export default {
       async i => {
         // A Space this module has no row for (the home's own Space, which the kernel makes before any space is created here) is asked by its id as given: no list means enrolled.
         let id = String(i.space);
-        try { id = spaceOf(i.space).id; } catch { /* not one of ours: the id as given */ }
+        let known = true;
+        try { id = spaceOf(i.space).id; } catch { known = false; }
+        // FAIL CLOSED: a space this module has no row for is enrolled only if the KERNEL hosts it (the home, or one it hosts) and the home's person belongs to it. "No list means every space" is
+        // every space the person BELONGS to, never an id nobody here has heard of.
+        if (!known) {
+          if (!K || typeof K.space !== "string") return { enrolled: false };
+          const hosted = id === K.space || (K.spaces && typeof K.spaces.hosts === "function" && K.spaces.hosts(id) === true);
+          if (!hosted) return { enrolled: false };
+          let who = null; try { const st = identity.status(); who = st && st.exists ? st.id : null; } catch { who = null; }
+          const person = who || (typeof K.owner === "string" ? K.owner : null);
+          let member = false;
+          if (person && typeof K.membership === "function") { try { member = (await K.membership(person, id)).member === true; } catch { member = false; } }
+          if (!member) return { enrolled: false };
+        }
         return { enrolled: await isEnrolled(String(i.device), id) };
       }, { internal: true });
 
-    tool("spaces.list", "Spaces on this device that you created or belong to, with your role in each. For a space with a kernel the role is the kernel's answer.", obj(), async (_i, meta) => {
+    tool("spaces.list", "Spaces on this device that you created or belong to, with your role in each. For a space with a kernel the role is the kernel's answer. On a server that has no identity of its own (paired to yours), the spaces its kernel hosts for its owner.", obj(), async (_i, meta) => {
+      let st0 = null; try { st0 = identity.status(); } catch { st0 = null; }
+      if ((!st0 || !st0.exists) && K && K.spaces && typeof K.spaces.list === "function" && typeof K.owner === "string") {
+        const mine = [];
+        for (const id of K.spaces.list()) {
+          const m = await membershipOf(id, K.owner, meta).catch(() => null);
+          if (!m) continue;
+          const d0 = typeof K.spaces.describe === "function" ? K.spaces.describe(id) : null;
+          mine.push({ id, name: d0 && d0.name ? `${String(d0.name).replace(/\.vyre\.run$/, "")}.vyre.run` : null, label: d0 && d0.name ? String(d0.name).replace(/\.vyre\.run$/, "") : null, displayName: null, status: "done", home: id === K.space ? { kind: "this-computer" } : null, role: m.role, aliases: [], workspaceId: null, warnings: [], hosted: true });
+        }
+        return mine;
+      }
       const s = me();
       const rows = [];
       for (const row of spaces.all()) rows.push({ row, m: await membershipOf(row.id, /** @type {string} */ (s.id), meta).catch(() => null) });
