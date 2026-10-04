@@ -114,7 +114,7 @@ async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticke
   const abort = new AbortController();
   // The relay client does the pairing (relay/client/serverpair.js): redeem the code, show the words, the person at the server picks the same words, the server records this identity as its owner.
   const run = pairServer({
-    payload: textOf(code), owner: { id: mine.id, name: plainName(mine.name) },
+    payload: textOf(code), owner: { id: mine.id, name: plainName(mine.name), vyre: mine.name },
     // the identity's proof is sent in the first adopt call, made from this pairing's own box and device (reviewer-3 PD-B)
     signIdentity: async (m: Uint8Array) => ({ eid: mine.key.eid, sig: toB64u(await mine.key.sign(m)) }), name: deviceName(),
     crypto: relayCrypto(), keyStore: relayKeyStore(), about, presenceKey: await presenceKey(), signal: abort.signal,

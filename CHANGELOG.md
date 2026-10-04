@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(0.3, app, pairing, 4 Oct): the box-less pairing sends the claimed Vyre name as owner.vyre (the server reads that name's chain from the names directory and checks the identity proof; the directory has no lookup by id), serverpair.js from work/wink-session efccc3e33.
 - fix(0.3, stream e2e, 4 Oct): the step 7 harness enrols carol's paired device the real way (windows' member-device enrolment): the spaces module stays ON, carol is a real identity claimed at a stand-in names directory the harness starts (kept in --state, so a restart keeps it) by her own home, her device eid is on her list, her name is verified in the Space. e2e-step7, e2e-sigterm and e2e-asker 3 of 3 on testbox. Replaces the earlier spaces-off stand-in.
 - feat(0.3, onboard): `onboard.claude {mode:"disconnect"}` removes the AI sign-in from the vault (the person's own, with presence; a model is refused), and `onboard.status` answers `owned` (boolean) so an app can show "pair first" before a tap.
 - fix(0.3, package): scripts/admin-wipe.mjs and scripts/admin-anchor-reset.mjs are in package.json "files", so `vyre admin wipe` and `anchor-reset` have their script in every packaged image; test/package-files.test.js derives the list from the scripts box/vyre runs in the image.

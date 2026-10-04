@@ -2,7 +2,7 @@
 export function parseServerPayload(s: string): { seed: Uint8Array; relay: string } | null;
 export function pairServer(o: {
   payload: string;
-  owner: { id: string; name?: string; kind?: "identity" | "space" };
+  owner: { id: string; name?: string; vyre?: string; kind?: "identity" | "space" };
   name?: string;
   proof?: { eid: string; sig: string };
   deviceKind?: "phone" | "computer" | "web"; keyStorage?: "hardware" | "software";
