@@ -92,3 +92,16 @@ test("kits.propose: an assistant's chain asks for a Kit for the person it acts f
   await assert.rejects(f.tools["kits.propose"](w.kernel.moduleChain({ module: "flows", approver: ALEX }), { kit: estateKit(2) }), e => e.code === "chain_not_person");
   await assert.rejects(f.tools["kits.remove"](assistant, { id: "estate-planning" }), e => e.code === "chain_not_person", "removing stays a person's own");
 });
+
+test("PR-4: two events for one approved task apply one change", async () => {
+  const { w, proposals, assistant, applied } = await pworld();
+  const diff = { add_types: [{ name: "twice-note", label: "Twice note", fields: [{ name: "body", kind: "text", label: "Body" }] }] };
+  const p = await proposals.propose(assistant, { what: "types", diff });
+  await settle(w);
+  w.kernel.completeTask(p.task, { outcome: "approved" });
+  await settle(w);
+  const ev = { type: "task.completed", subject: `vyre://${w.cat.space}/task/${p.task}`, data: { task: p.task } };
+  await Promise.all([proposals.onEvent(ev), proposals.onEvent(ev), proposals.onEvent(ev)]);
+  await new Promise(r => setImmediate(r)); await settle(w);
+  assert.equal(applied.length, 1);
+});

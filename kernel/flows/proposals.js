@@ -34,7 +34,7 @@ export class Proposals {
    *   isAdmin?: ((who: any) => Promise<boolean> | boolean) | null, clock?: () => number, log?: (m: string) => void }} o
    */
   constructor(o) { this.k = o.kernel; this.runner = o.runner; this.store = o.store; this.chain = o.chain; this.chains = o.chains; this.catalogFn = o.catalog; this.applyTypes = o.applyTypes || null;
-    this.isAdmin = o.isAdmin || null; this.now = o.clock || Date.now; this.log = o.log || (() => {}); /** @type {Set<string>} tasks already applied or dropped in this process */ this.settled = new Set(); }
+    this.isAdmin = o.isAdmin || null; /** @type {Map<string, Promise<any>>} per task, events are handled one after another */ this.queue = new Map(); this.now = o.clock || Date.now; this.log = o.log || (() => {}); /** @type {Set<string>} tasks already applied or dropped in this process */ this.settled = new Set(); }
 
   /**
    * Put a draft in front of an owner or an admin as one task in Now. The proposer is the person the call is for (an assistant's chain narrowed from them); they must be an owner or an
@@ -78,25 +78,65 @@ export class Proposals {
     return { ok: true, task: task.id, what: form.what, approver: approver.id, ...(by ? { by } : {}) };
   }
 
-  /** A task event from the kernel: an approved proposal is applied as its approver; a rejected one is left alone. @param {any} env */
+  /** The card a proposal's task must carry, recomputed from the store and the form's own data, never taken from the form's words. @param {any} form @returns {Promise<string | null>} the title, or null when the form does not describe a stored draft */
+  async titleOf(form) {
+    if (form.what === "flow") {
+      const v = await this.store.getVersion(String(form.flow || ""), Number(form.version));
+      if (!v || v.approver || v.hash !== form.hash) return null;
+      return `Approve the Flow "${String(v.flow.label || v.flow.name || v.id).slice(0, 120)}"?`.slice(0, 200);
+    }
+    if (form.what === "types") {
+      const names = namesOf(form.diff);
+      if (!names) return null;
+      return `Change your definitions: ${names.slice(0, 4).join(", ")}${names.length > 4 ? " and more" : ""}?`.slice(0, 200);
+    }
+    return null;
+  }
+
+  /**
+   * A task event from the kernel. Only a task that is a proposal AND checks out is acted on: done and approved; the CHECKER is an owner or an admin (never the doer, never nobody: a task a
+   * person wrote and completed for themselves applies nothing); the title says what the stored draft really is (a card that names one Flow and points at another applies nothing); the form's
+   * hash is the stored version's. Applied as the checker, once: the task is claimed before anything is awaited, so two events for one task apply one change.
+   * @param {any} env
+   */
   async onEvent(env) {
     if (!/^task\./.test(env.type)) return null;
     const id = (env.data && (env.data.task || env.data.id)) || (typeof env.subject === "string" && /\/task\/[^/]+$/.test(env.subject) ? env.subject.slice(env.subject.lastIndexOf("/") + 1) : null);
     if (!id || this.settled.has(id)) return null;
-    // Read the task as the Flows service of this Space (the way stages do); only a proposal task says anything here.
-    const row = await this.k.ask.get(this.chain(), id).catch(() => null);
-    const form = row && row.form;
-    if (!form || form.kind !== "proposal" || row.state !== "done") return null;
-    this.settled.add(id);
-    if (row.outcome !== "approved") return { declined: form.what };
-    const approver = row.checker && row.checker.kind === "person" ? row.checker : row.doer;
-    if (!approver) return null;
-    try {
-      if (form.what === "flow") await this.runner.approve(form.flow, form.version, approver, form.hash);
-      else if (form.what === "types") { if (!this.applyTypes) throw bad("this Space cannot apply definition changes here", "unavailable"); await this.applyTypes(approver, form.diff); }
-      return { applied: form.what, task: id };
-    } catch (e) { this.log(`proposal ${id} could not be applied: ${/** @type {Error} */ (e).message}`); return { failed: form.what, task: id, error: /** @type {Error} */ (e).message }; }
+    // One task's events are handled one after another, so two events for one approved task apply one change.
+    const run = (this.queue.get(id) || Promise.resolve()).then(() => this.#handle(id));
+    this.queue.set(id, run.catch(() => {}));
+    try { return await run; } finally { if (this.settled.has(id)) this.queue.delete(id); }
   }
+
+  /** @param {string} id */
+  async #handle(id) {
+    if (this.settled.has(id)) return null;
+    {
+      const row = await this.k.ask.get(this.chain(), id).catch(() => null);
+      const form = row && row.form;
+      if (!form || form.kind !== "proposal" || row.state !== "done") return null;
+      if (this.settled.has(id)) return null;
+      this.settled.add(id);
+      if (row.outcome !== "approved") return { declined: form.what };
+      const checker = row.checker;
+      if (!checker || checker.kind !== "person" || (row.doer && row.doer.kind === "person" && row.doer.id === checker.id) || (this.isAdmin && !(await this.isAdmin(checker)))) { this.log(`proposal ${id} ignored: its checker is not an owner or an admin`); return { ignored: "not_admin_checked" }; }
+      const want = await this.titleOf(form);
+      if (want === null || want !== row.title) { this.log(`proposal ${id} ignored: its card does not match the stored draft`); return { ignored: "card_mismatch" }; }
+      try {
+        if (form.what === "flow") await this.runner.approve(form.flow, form.version, checker, form.hash);
+        else if (form.what === "types") { if (!this.applyTypes) throw bad("this Space cannot apply definition changes here", "unavailable"); await this.applyTypes(checker, form.diff); }
+        return { applied: form.what, task: id };
+      } catch (e) { this.log(`proposal ${id} could not be applied: ${/** @type {Error} */ (e).message}`); return { failed: form.what, task: id, error: /** @type {Error} */ (e).message }; }
+    }
+  }
+}
+
+/** The type names a definition diff adds or changes, or null when it is not one. @param {any} d */
+function namesOf(d) {
+  if (!d || typeof d !== "object" || Array.isArray(d)) return null;
+  const names = [...(d.add_types || []), ...(d.change_types || [])].map((/** @type {any} */ t) => t && t.name);
+  return names.length && names.every((/** @type {any} */ n) => typeof n === "string" && TYPE_NAME.test(n)) ? names : null;
 }
 
 /** @param {string} s */
