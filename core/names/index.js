@@ -78,8 +78,8 @@ export default {
     // during a live setup). A model session, an agent, a hook, a guest or any other module is refused, so no session can
     // claim <name>.vyre.run for the box for good, release it or reassign its owner. Declared with the surface kinds the router
     // lets through (callers); this is the check that narrows "a module" to the three that may.
-    const SURFACES = ["cli", "local", "deck", "capsule"];
-    const WHO = ["cli", "local", "deck", "capsule", "tailnet", "module"];
+    const SURFACES = ["cli", "local", "deck", "capsule", "mobile"];
+    const WHO = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "module"];
     const steward = (/** @type {string[]} */ modules) => (/** @type {any} */ meta) => {
       const c = String((meta && meta.caller) || "");
       const ok = !(meta && meta.agent) && agentClaim(c) === null

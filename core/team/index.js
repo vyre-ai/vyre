@@ -927,7 +927,7 @@ export default {
     /** Writing a charter is the person's own: their surfaces and modules, never a model (an agent or a session is mcp). */
     const CHARTER_WRITERS = ["cli", "local", "deck", "capsule", "module"];
     /** The tools a teammate or a session in the project uses in its own work (ask, cancel, close, notes): the person's surfaces, modules and a model session. Each body checks who it is and which project. */
-    const TEAM_USE = ["cli", "local", "deck", "capsule", "tailnet", "device", "space", "agent", "module", "mcp"];
+    const TEAM_USE = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent", "module", "mcp"];
     const charterRef = { teammate: { type: "string" }, project: { type: "string" }, role: { type: "string" } };
 
     ctx.tool("team.charter.get", {

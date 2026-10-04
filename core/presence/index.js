@@ -9,7 +9,6 @@
 // Every touch point with the OS (who, the terminal device, the Touch ID helper, WebAuthn) is
 // injectable, so tests never open a dialog or write to a real terminal.
 
-import { PERSON_SURFACES as PERSON_SURFACE_LIST } from "../../lib/person-surfaces.js";
 import { strengthOfMethod, strengthRefusal } from "../../kernel/seal/strength.js";
 import crypto from "node:crypto";
 import { normalizePublicKey, checkRsa } from "./keys.js";
@@ -140,7 +139,7 @@ export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach"
  */
 /** The only tools a development build's stand-in satisfies without the caller offering it. */
 const STAND_IN_AUTO = new Set(["vault.put", "vault.reveal"]);
-export const PERSON_SURFACES = new Set(PERSON_SURFACE_LIST);
+export const PERSON_SURFACES = new Set(["cli", "local", "deck", "capsule"]);
 
 /**
  * A tool whose callers are person-only surfaces reads as person-only, but until now only

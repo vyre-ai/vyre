@@ -23,7 +23,7 @@
   },
   "apps.list": {
    "module": "apps",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "apps.route": {
    "module": "apps",
@@ -31,7 +31,7 @@
   },
   "apps.send": {
    "module": "apps",
-   "default": "callers admit a model"
+   "default": "limited by callers in code"
   },
   "apps.setup": {
    "module": "apps",
@@ -39,7 +39,7 @@
   },
   "apps.targets": {
    "module": "apps",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "capsule.act": {
    "module": "capsule",
@@ -59,7 +59,7 @@
   },
   "capsule.status": {
    "module": "capsule",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "capsule.view": {
    "module": "capsule",

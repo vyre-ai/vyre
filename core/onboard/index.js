@@ -71,7 +71,7 @@ const joinOwnerOnly = (caller, meta, what) => {
 // HD-1: the tools that write the assistant's sign-in, claim a name, set up Tailscale, index sessions or finish onboarding are the person's own. The callers they have today are the
 // person's surfaces, the onboarding page on the loopback address ("onboard"), a paired device or tailnet peer, and this module and launch; a model client (mcp, a thread, an agent) and any
 // other module are refused. Before the server has an owner (a paired device) every write is refused ("pair_first"); afterwards the registry asks for presence (the tools declare presence.when).
-const SURFACES = ["cli", "local", "deck", "capsule", "onboard", "web", "setup"];
+const SURFACES = ["cli", "local", "deck", "capsule", "mobile", "onboard", "web", "setup"];
 export const ownerWrite = (/** @type {unknown} */ caller, /** @type {any} */ meta, /** @type {string} */ what, /** @type {boolean} */ owned, writes = true) => {
   const c = String(caller || "");
   const ok = SURFACES.includes(c) || /^(device|setup|tailnet):[\w.-]+$/.test(c) || c === "module:onboard" || c === "module:launch";
@@ -98,7 +98,7 @@ export const slug = s => {
 const obj = (properties = {}, required = []) => ({ type: "object", properties, required });
 
 /** Who may reach the setup tools at all: the person's surfaces, the owner's devices, the setup page's own loopback ("onboard") and modules. A model session is not one; each tool that changes something also checks personOnly(caller), which refuses an agent riding a person's label. */
-const ONBOARD_CALLERS = Object.freeze(["cli", "local", "deck", "capsule", "tailnet", "device", "onboard", "module"]);
+const ONBOARD_CALLERS = Object.freeze(["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "onboard", "module"]);
 
 /** `claude --version`, remembered for half a minute: the page asks every couple of seconds. */
 let known = { at: 0, version: /** @type {Promise<string|null>|null} */ (null) };

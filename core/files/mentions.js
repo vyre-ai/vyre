@@ -64,7 +64,7 @@ export function mentions(ctx, { folder, shares, resolveIn }) {
   ctx.tool("files.mentions.search", {
     description: "Files on the box's VyreDrive shares whose name matches what you typed after #, for tagging one in a chat. Runs as the person asking.",
     input: { type: "object", properties: { q: { type: "string" }, limit: { type: "integer" } } },
-    callers: ["cli", "local", "deck", "capsule", "tailnet", "device", "space", "agent"],
+    callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent"],
     run: async ({ q = "", limit = 30 }) => {
       q = String(q || "").trim();
       limit = Math.min(50, Math.max(1, Number(limit) || 30));

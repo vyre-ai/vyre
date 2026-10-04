@@ -16,7 +16,7 @@ export const RESERVED = new Set([
   "root", "ns1", "ns2", "dev", "staging", "test", "download", "install", "login", "auth", "directory",
   "relay", "setup", "phone", "acme", "names", "team", "account", "secure", "billing", "signin", "signup",
   "password", "verify", "update", "security", "webmaster", "postmaster", "hostmaster", "abuse", "noreply", "ftp", "smtp", "imap", "pop",
-  "capsule", "glass", "chat", "desktop", "web", "surface", "artifacts", "sessions", "computers", "agent", "agents", "box", "server",
+  "capsule", "glass", "chat", "desktop", "mobile", "web", "surface", "artifacts", "sessions", "computers", "agent", "agents", "box", "server",
   "tailnet", "vault", "platform", "launch", "assistant", "integrator", "reviewer", "sight", "iq", "main", "lead", "nexus",
   "tailscale", "cloudflare", "letsencrypt", "zerossl", "railway",
 ]);

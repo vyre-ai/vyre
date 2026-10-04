@@ -190,7 +190,7 @@ export default {
     ctx.tool("undo.run", {
       effect: "write",
       // The person, and an agent or module for its own rows only (the body checks sameActor); the inverse runs as module:undo, never outward or person-only.
-      callers: ["cli", "local", "deck", "capsule", "tailnet", "device", "module", "mcp", "harness"],
+      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"],
       description: "Undo one recorded action: runs the inverse its module declared. The person may undo any row; an agent or module only its own. A row already undone answers {already: true}.",
       input: { type: "object", required: ["id"], properties: { id: { type: "string" } } },
       examples: [{ id: "u_abc" }],
