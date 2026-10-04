@@ -3,9 +3,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import net from "node:net";
+import os from "node:os";
 import path from "node:path";
 import { SCRATCH } from "../../test/scratch.mjs";
-import { planHome, selfTest, homeSeatbelt, seedConfig, discardConfig } from "./homesandbox.js";
+import { planHome, selfTest, homeSeatbelt, seedConfig, discardConfig, checkEntries } from "./homesandbox.js";
 import { launch } from "./sandbox.js";
 import { spawn } from "node:child_process";
 import { unavailable } from "./sandbox.js";
@@ -307,4 +308,16 @@ test("NG-1 end to end: CONNECT and absolute-URL HTTP to every form of the host's
     const r = await absolute(`http://${f}:${lport}/`); assert.ok(!r.includes("PONG"), "HTTP " + f + " got " + r);
   }
   assert.equal(hits, 0, "the listener on the host's loopback was never contacted");
+});
+
+test("HS-7: a workdir or temp folder that is, or contains, the shared temp folder is refused; a fresh subfolder of it is fine", () => {
+  const r = fs.mkdtempSync(path.join(os.tmpdir(), "hs7-")); const proj = path.join(r, "proj"); fs.mkdirSync(proj);
+  const base = { platform: process.platform === "darwin" ? "darwin" : "linux", command: process.execPath, home: path.join(r, "home"), vyreHome: path.join(r, "home", ".vyre"), sessionSocket: path.join(r, "s.sock") };
+  try {
+    for (const bad of [os.tmpdir(), "/tmp", path.dirname(os.tmpdir()), "/"]) {
+      assert.throws(() => checkEntries({ ...base, workdirs: [bad] }), /temp folder|home folder|above/, `workdir ${bad} refused`);
+      assert.throws(() => checkEntries({ ...base, workdirs: [proj], temp: bad }), /temp folder|home folder|above/, `temp ${bad} refused`);
+    }
+    assert.doesNotThrow(() => checkEntries({ ...base, workdirs: [proj], temp: path.join(r, "t") }));
+  } finally { fs.rmSync(r, { recursive: true, force: true }); }
 });
