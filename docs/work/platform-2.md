@@ -12,10 +12,11 @@ Four items from reviewer-2's review of work/kernel a148d874e: the golden allow f
 - Item 4: test/module-names.test.js fails on a duplicate module name; the chrome pair is set aside in scripts/packaged-boot-known.txt.
 
 ## Doing
-Merged origin/work/kernel 90bbaa725; running the test set on testbox2 before the push.
+Resumed 4 Oct after the team restart. Item 3 re-applied on work/refuse-kernel-off 7e0c18fe5 (off origin/work/v0.3, which carries launch's env fix 6c20fffc7); kernel/devbuild + core/daemon tests pass on testbox, test/boundaries is red on v0.3 for core/daemon -> core/runner/homeproxy.js (runner's, not frozen).
+Test integrity: work/test-integrity 38816d5fc (no force-exit, one process per file with a 300 s limit, counts guard); the hosted sweep (run 37168802529) found 11 hanging and 29 failing files, listed in CHAT.md. Reach classes: work/reach-classes 123d902b4. test/person-label-hygiene FROZEN: nothing lowered yet, 13 files listed in CHAT.md.
 
 ## Next
-Push, send the sha to platform and reviewer-2, report to team-lead.
+Record test/test-counts.json from the first full hosted run (artifact test-counts-run), triage failures by owner, lower FROZEN as owners fix.
 
 ## Needs
 - platform: rule on the duplicate module name `chrome` (local/hands-chrome-mac and modules/hands-chrome). scripts/modules-manifest.mjs refuses it. Neither is renamed here; key the signed list by role or path. Delete the line in scripts/packaged-boot-known.txt when fixed.
