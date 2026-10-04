@@ -754,17 +754,19 @@ export default {
     const lendSync = (/** @type {string} */ key) => { try { const r = /** @type {any} */ (db.prepare("SELECT value FROM spaces_kv WHERE key = ?").get(key)); return r ? JSON.parse(r.value) : null; } catch { return null; } };
     /** The kernel's compute offers for a lent computer, the ONE mechanism: the Space's side (an owner or admin) and the member's own side, bound to the computer's key. A Space with no kernel has only the stored record. */
     const kernelOffers = async (/** @type {string} */ spaceId, /** @type {any} */ dev, /** @type {boolean} */ on, /** @type {any} */ meta, /** @type {any} */ role) => {
-      const port = K && typeof K.offersPort === "function" && kernelHandle(spaceId) ? K.offersPort() : null;
-      if (!port) return false;
+      const h = kernelHandle(spaceId);
+      const offers = h && h.gateway && h.gateway.grants && h.gateway.grants.offers;
+      if (!offers) return false;
       const s = me();
-      const x = { member: /** @type {string} */ (s.id), device_key: dev.eid, meta };
+      // the person's chain IN that Space (a hosted Space has its own key), and the proof that comes with the call
+      const k = await kctxOf(meta, spaceId);
+      const sides = role === "owner" || role === "admin" ? ["space_allows", "member_accepts"] : ["member_accepts"];
       try {
-        if (on) {
-          if (role === "owner" || role === "admin") await port.set(spaceId, dev.eid, "space", true, x);
-          await port.set(spaceId, dev.eid, "member", true, x);
-        } else {
-          await port.set(spaceId, dev.eid, "member", false, x);
-          if (role === "owner" || role === "admin") await port.set(spaceId, dev.eid, "space", false, x);
+        for (const side of on ? sides : [...sides].reverse()) {
+          const at = { side, member: /** @type {string} */ (s.id), device: dev.eid };
+          const have = offers.find(at);
+          if (on) { if (!have) await offers.offer(k.chain, { ...at, ...(side === "member_accepts" ? { device_key: dev.eid } : {}) }, k.proof); }
+          else if (have) await offers.unoffer(k.chain, have.id, k.proof);
         }
       } catch (e) { throw plainKernelError(e); }
       return true;
