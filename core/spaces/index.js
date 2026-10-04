@@ -165,7 +165,9 @@ export default {
       if (kernelHandle(spaceId)) {
         // The kernel's answer: a member (and, for temp, one whose time has not run out) is let in; what they may DO is the kernel's to decide on each call.
         const m = await membershipOf(spaceId, /** @type {string} */ (s.id), meta).catch(() => null);
-        if (!m) throw refuse("You are not a member of this space.", "not_a_member");
+        // A space on a SERVER that did not answer who belongs (down, or the read came back empty) still lets in the person who made it from this device: the server's kernel decides each call.
+        const h0 = kernelHandle(spaceId), r0 = spaces.get(spaceId);
+        if (!m && !(h0 && h0.hosted === false && r0 && r0.createdBy === s.id)) throw refuse("You are not a member of this space.", "not_a_member");
         return s;
       }
       const d = await authorize({ chain: personChain({ space: spaceId, person: /** @type {string} */ (s.id) }), action });
