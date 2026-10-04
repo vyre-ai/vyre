@@ -981,3 +981,27 @@ test("a device's spaces: the Access screen lists them, a space can remove one de
   assert.ok(!(await d.call("spaces.get", { space: a.space }, "cli", asDevice)).error);
   void w;
 });
+
+test("device enrolment: no list means every space, pairing sets the list, a new space reaches only the device that made it, and enrol is one call", async t => {
+  const w = world(t);
+  const d = await device(t);
+  const me = await d.ok("spaces.identity.create", { name: "alex" });
+  const eid = me.eid;
+  const asDevice = { kernelFacts: { kind: "device", device_key_id: eid } };
+  const a = await d.ok("spaces.create", { name: "harlow", home: { kind: "this-computer", confirmed: true } });
+  const b = await d.ok("spaces.create", { name: "northwind", home: { kind: "this-computer", confirmed: true } });
+  assert.equal((await d.ok("spaces.devices.enrolled", { device: eid, space: a.space }, "module:x")).enrolled, true, "no list yet: enrolled everywhere");
+  // pairing: every space pre-ticked, the person unticks northwind
+  const set = await d.ok("spaces.devices.set", { device: eid, spaces: [a.space] });
+  assert.deepEqual(set.spaces, [a.space]);
+  assert.deepEqual((await d.ok("spaces.devices.spaces", { device: eid })).spaces.map(x => [x.label, x.enrolled]).sort(), [["harlow", true], ["northwind", false]]);
+  assert.equal((await d.call("spaces.get", { space: b.space }, "cli", asDevice)).error?.code, "device_removed");
+  // a space made later is enrolled on the device that made it
+  const c = await d.ok("spaces.create", { name: "juno", home: { kind: "this-computer", confirmed: true } }, "cli", asDevice);
+  assert.ok(!(await d.call("spaces.get", { space: c.space }, "cli", asDevice)).error);
+  // "Add to this device": one call
+  assert.equal((await d.ok("spaces.devices.enrol", { space: b.space, device: eid })).enrolled, true);
+  assert.ok(!(await d.call("spaces.get", { space: b.space }, "cli", asDevice)).error);
+  assert.deepEqual((await d.ok("spaces.devices.set", { device: eid, spaces: [a.space, "spc_nope"].slice(0, 1) })).spaces, [a.space]);
+  void w;
+});

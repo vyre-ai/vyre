@@ -2,9 +2,10 @@
 // pairing: devices belong to the IDENTITY, never to spaces (team/0.3/DESIGN-wink.md sections 3, 4 and 7).
 //
 //   Registry     wink_devices: one row per device, keyed by the identity that holds it, with a kind (phone, computer, server, storage)
-//                and per-device offers. A server or storage device may be owned by a space its identity administers. A device reaches
-//                every space its identity holds a grant for by itself; there is no per-space device enrolment and a device is never
-//                a member of a space.
+//                and per-device offers. A server or storage device may be owned by a space its identity administers. A device is never a
+//                member of a space, but it is enrolled per space (ruling 4 Oct, DESIGN-spaces-first section 3): the spaces module keeps each
+//                device's list (spaces.devices.set at pairing, every space pre-ticked; spaces.devices.enrolled is what the kernel asks), and a
+//                device not enrolled in a space gets no chain for it.
 //   Targets      wink.pair.targets: "Pair to:" choices, the identity plus the spaces the person administers (read through the
 //                directory port below: the kernel's memberships and roles, or a fake until the real directory is merged).
 //   Pairing      two ways: scan a QR, or paste the long code; both confirmed by the same three words. A phone pairs to

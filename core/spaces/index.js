@@ -133,12 +133,13 @@ export default {
     const authorize = createRoleAuthorize({ membership: (space, person) => mstore.get(space, person), now });
     const REASONS = /** @type {Record<string, string>} */ ({ not_a_member: "You are not a member of this space.", expired: "Your access to this space has ended.", no_grant: "Your role cannot do that.", chain_not_person: "Only a person can do that." });
     /** Is the acting person an active member who may do `action`? Returns the person. @param {string} spaceId @param {string} [action] */
-    /** Devices this space has removed (the device's entry id on the person's list), kept per space. A removed device is refused here and shown as removed on the Access screen; its other spaces are untouched. */
-    const barredIn = async (/** @type {string} */ spaceId) => /** @type {string[]} */ ((await kv.get(`device-bar/${spaceId}`)) || []);
-    /** Refuse a call that comes from a device this space removed. @param {string} spaceId @param {any} meta */
+    /** The spaces a device is enrolled in: an explicit list per device (the device's entry id on the person's list). A device with no list yet is enrolled in every space (nothing was ever chosen); the list is made the first time it is changed or at pairing. */
+    const enrolledList = async (/** @type {string} */ eid) => /** @type {string[]|null} */ ((await kv.get(`device-spaces/${eid}`)) || null);
+    const isEnrolled = async (/** @type {string} */ eid, /** @type {string} */ spaceId) => { const l = await enrolledList(eid); return l === null || l.includes(spaceId); };
+    /** Refuse a call that comes from a device that is not enrolled in this space. @param {string} spaceId @param {any} meta */
     const notRemoved = async (spaceId, meta) => {
       const dev = meta && meta.kernelFacts && meta.kernelFacts.kind === "device" ? String(meta.kernelFacts.device_key_id || "") : "";
-      if (dev && (await barredIn(spaceId)).includes(dev)) throw refuse("This device was removed from this space.", "device_removed");
+      if (dev && !(await isEnrolled(dev, spaceId))) throw refuse("This device is not enrolled in this space.", "device_removed");
     };
     const gate = async (spaceId, action = "views.read", meta) => {
       const s = me();
@@ -543,7 +544,7 @@ export default {
 
     // 2. spaces
     tool("spaces.create", "Create a space and say where it will live: a server you have (the one command, then a code), a new server (DigitalOcean) or this computer. Runs step by step and can be resumed or cancelled.",
-      obj({ name: str, displayName: str, home: HOME, headscale: { type: "boolean" }, storeChoice: { type: "string", enum: ["create", "cancel"] } }, ["name", "home"]), async i => {
+      obj({ name: str, displayName: str, home: HOME, headscale: { type: "boolean" }, storeChoice: { type: "string", enum: ["create", "cancel"] } }, ["name", "home"]), async (i, meta) => {
         const s = me();
         const label = String(i.name || "").trim().toLowerCase().replace(/\.vyre\.run$/, "");
         if (!label) throw refuse("Give the space a name.", "bad_name");
@@ -566,6 +567,8 @@ export default {
         spaces.insert({ id: spaceId, name: `${label}.vyre.run`, label, displayName: i.displayName ? String(i.displayName).slice(0, 80) : null, createdBy: /** @type {string} */ (s.id), status: "running", now: now() });
         spaces.patch(spaceId, { home: { kind: home.kind, ...(home.device ? { device: home.device } : {}) } }, now());
         const view = await flow.createSpace({ spaceId, name: label, displayName: i.displayName, personId: s.id, home, headscale: i.headscale === true }, { vpsToken: home.token });
+        // The device that made the space is enrolled in it; the person's other devices see it as "Add to this device".
+        { const eid = ownDeviceEid(meta), l = await enrolledList(eid); if (l !== null && !l.includes(spaceId)) await kv.put(`device-spaces/${eid}`, [...l, spaceId]); }
         return sync(spaceId, view);
       });
 
@@ -633,7 +636,13 @@ export default {
       if (!e) throw refuse("That is not one of your devices.", "not_found");
       return e;
     };
-    tool("spaces.devices.spaces", "The spaces a device of yours reaches, each with your role there and whether the space has removed this device. Leave device out for the device you are on.",
+    /** The ids of every space this person is in (finished or not), for the default list of a device. @param {any} s @param {any} meta */
+    const personSpaceIds = async (s, meta) => {
+      const ids = [];
+      for (const row of spaces.all()) { const m = await membershipOf(row.id, /** @type {string} */ (s.id), meta).catch(() => null); if (m || row.createdBy === s.id) ids.push(row.id); }
+      return ids;
+    };
+    tool("spaces.devices.spaces", "The spaces a device of yours can reach, each with your role there and whether this device is enrolled in it (`enrolled: false` is the space's \"Add to this device\"). Leave device out for the device you are on.",
       obj({ device: str }), async (i, meta) => {
         const s = me();
         const dev = await deviceOf(i.device, meta);
@@ -642,23 +651,39 @@ export default {
           if (row.status !== "done") continue;
           const m = await membershipOf(row.id, /** @type {string} */ (s.id), meta).catch(() => null);
           if (!m && row.createdBy !== s.id) continue;
-          out2.push({ space: row.id, name: row.name, label: row.label, displayName: row.displayName, role: m ? m.role : "owner", removed: (await barredIn(row.id)).includes(dev.eid) });
+          const enrolled = await isEnrolled(dev.eid, row.id);
+          out2.push({ space: row.id, name: row.name, label: row.label, displayName: row.displayName, role: m ? m.role : "owner", enrolled, removed: !enrolled });
         }
         return { device: { eid: dev.eid, label: dev.label || null, self: dev.eid === ownDeviceEid(meta) }, spaces: out2 };
       });
-    const setBar = async (/** @type {any} */ i, /** @type {any} */ meta, /** @type {boolean} */ bar) => {
+    /** Change the list: enrol (on) or remove (off) one space for a device. Enrolling one of the person's own devices asks for nothing more. */
+    const setEnrol = async (/** @type {any} */ i, /** @type {any} */ meta, /** @type {boolean} */ on) => {
       const s = me();
       const row = spaceOf(i.space);
       const m = await membershipOf(row.id, /** @type {string} */ (s.id), meta).catch(() => null);
       if (!m && row.createdBy !== s.id) throw refuse("You are not a member of this space.", "not_a_member");
       const dev = await deviceOf(i.device, meta);
-      const cur = await barredIn(row.id);
-      const next = bar ? [...new Set([...cur, dev.eid])] : cur.filter(x => x !== dev.eid);
-      if (next.length !== cur.length) { await kv.put(`device-bar/${row.id}`, next); emit(bar ? "space.device-removed" : "space.device-restored", { space: row.id, device: dev.eid }); }
-      return { space: row.id, device: dev.eid, removed: bar };
+      const cur = (await enrolledList(dev.eid)) || await personSpaceIds(s, meta);
+      const next = on ? [...new Set([...cur, row.id])] : cur.filter(x => x !== row.id);
+      await kv.put(`device-spaces/${dev.eid}`, next);
+      if (next.length !== cur.length) emit(on ? "space.device-restored" : "space.device-removed", { space: row.id, device: dev.eid });
+      return { space: row.id, device: dev.eid, enrolled: on, removed: !on };
     };
-    tool("spaces.devices.remove", "Remove one of your devices from one space. The space refuses it from then on; your other spaces and the device's other access are untouched.", obj({ space: str, device: str }, ["space", "device"]), (i, meta) => setBar(i, meta, true));
-    tool("spaces.devices.restore", "Let a device you removed from a space reach it again.", obj({ space: str, device: str }, ["space", "device"]), (i, meta) => setBar(i, meta, false));
+    tool("spaces.devices.remove", "Remove one of your devices from one space. The space (and the kernel) refuse it from then on; your other spaces and the device's other access are untouched.", obj({ space: str, device: str }, ["space", "device"]), (i, meta) => setEnrol(i, meta, false));
+    tool("spaces.devices.restore", "Enrol a device of yours in a space again (the same as spaces.devices.enrol).", obj({ space: str, device: str }, ["space", "device"]), (i, meta) => setEnrol(i, meta, true));
+    tool("spaces.devices.enrol", "Enrol a device of yours in a space: \"Add to this device\", one tap, nothing more asked. Leave device out for the device you are on.", obj({ space: str, device: str }, ["space"]), (i, meta) => setEnrol(i, meta, true));
+    tool("spaces.devices.set", "Set the whole list of spaces a device is enrolled in, as pairing does: every space you are in comes pre-ticked and the person unticks the ones to leave out. Leave device out for the device you are on.",
+      obj({ device: str, spaces: { type: "array", items: str } }, ["spaces"]), async (i, meta) => {
+        const s = me();
+        const dev = await deviceOf(i.device, meta);
+        const mineIds = new Set(await personSpaceIds(s, meta));
+        const ids = [...new Set(i.spaces.map((/** @type {any} */ x) => spaceOf(x).id))].filter(x => mineIds.has(x));
+        await kv.put(`device-spaces/${dev.eid}`, ids);
+        emit("space.device-enrolment-set", { device: dev.eid, spaces: ids.length });
+        return { device: dev.eid, spaces: ids };
+      });
+    tool("spaces.devices.enrolled", "Whether a device is enrolled in a space (true when the device has no list yet). For the kernel and other modules, which refuse a device that is not.", obj({ device: str, space: str }, ["device", "space"]),
+      async i => ({ enrolled: await isEnrolled(String(i.device), spaceOf(i.space).id) }), { internal: true });
 
     tool("spaces.list", "Spaces on this device that you created or belong to, with your role in each. For a space with a kernel the role is the kernel's answer.", obj(), async (_i, meta) => {
       const s = me();
