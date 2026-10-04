@@ -1480,6 +1480,11 @@ test("SERVER-HOSTED SPACE end to end: a device daemon with a spaces module asks 
   const droot = tempHome(t);
   fs.writeFileSync(path.join(droot, "config.json"), JSON.stringify({ name: "device-box", transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${names}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
   let silent = false; // a server that stops answering (down, rebuilt)
+  // the names directory the device's spaces module talks to can be made unreachable for one attempt (read when the module starts)
+  const { hooks: dirHooks } = await import("../core/spaces/index.js");
+  let dirDown = false;
+  dirHooks.fetch = (/** @type {any} */ u, /** @type {any} */ o) => (dirDown ? Promise.reject(new Error("the directory is down")) : globalThis.fetch(u, o));
+  t.after(() => { dirHooks.fetch = null; });
   const device = await start({ root: droot, kernel: true, presence: lenient, sessionFor: async () => (silent ? { call: () => new Promise(() => {}) } : links.sessionFor("srv")), log: () => {} });
   const { hooks: spacesHooks } = await import("../core/spaces/index.js");
   spacesHooks.sessionFor = async () => links.sessionFor("srv");
@@ -1565,6 +1570,17 @@ test("SERVER-HOSTED SPACE end to end: a device daemon with a spaces module asks 
   assert.ok(dup.error || (dup.data && dup.data.status !== "done"), `the second create of the same name does not finish: ${JSON.stringify(dup).slice(0, 160)}`);
   assert.equal(server.kernel.spaces.list().length, before, "the failed create was retired on the server");
   assert.equal((await dcall("spaces.list")).data.filter((/** @type {any} */ x) => x.name === "harlowsrv.vyre.run").length, 1, "the device lists the one space");
+  // a create that is refused part way retires what the server started and frees the name; the same person asking again for it resumes the pending attempt and finishes
+  const base = server.kernel.spaces.list().length;
+  dirDown = true;
+  const refused = await dcall("spaces.create", { name: "retryname", home: { kind: "server", device: { id: "srv", name: "srv", alwaysOn: true }, confirmed: true } }, proofHeader);
+  dirDown = false;
+  assert.ok(refused.error || (refused.data && refused.data.status !== "done"), `the attempt with the directory down does not finish: ${JSON.stringify(refused).slice(0, 200)}`);
+  assert.equal(server.kernel.spaces.list().length, base, "what the server started was given back, so the name is free there");
+  const retried = await dcall("spaces.create", { name: "retryname", home: { kind: "server", device: { id: "srv", name: "srv", alwaysOn: true }, confirmed: true } }, proofHeader);
+  assert.ok(!retried.error && retried.data.status === "done", `the retry finishes: ${JSON.stringify(retried).slice(0, 300)}`);
+  assert.equal(server.kernel.spaces.list().length, base + 1, "the server hosts the one space");
+  assert.equal((await dcall("spaces.list")).data.filter((/** @type {any} */ x) => x.name === "retryname.vyre.run").length, 1, "the device lists one space for the name, not two");
 });
 
 test("the pairing path adopts for real: after the pick the SERVER's home owner is the identity its own pairing record names (spaces.owner.adopt from module:wink); another identity, an added module and a second adoption change nothing", async t => {
