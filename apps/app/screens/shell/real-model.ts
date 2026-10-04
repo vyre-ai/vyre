@@ -18,8 +18,11 @@ export const spaceSub = (s: SpaceRow): string => (s.status && s.status !== "done
 export const ALL: ShellSpace = { id: "all", name: "All spaces", sub: "One list, everything" };
 
 /** The switcher's rows: All spaces first (only when there is more than one), then each space the person belongs to. */
+/** A space whose creation failed or was cancelled never got a home, so it is not listed (DESIGN-spaces-first.md, "A server step that fails"). */
+export const isListed = (s: SpaceRow): boolean => s.status !== "failed" && s.status !== "cancelled";
+
 export function spacesFrom(rows: SpaceRow[]): ShellSpace[] {
-  const own = rows.map((s) => ({ id: s.id, name: spaceName(s), sub: spaceSub(s) }));
+  const own = rows.filter(isListed).map((s) => ({ id: s.id, name: spaceName(s), sub: spaceSub(s) }));
   return own.length > 1 ? [ALL, ...own] : own.length ? own : [ALL];
 }
 

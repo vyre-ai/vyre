@@ -138,6 +138,8 @@ export function writeModule(root, name, manifest, source) {
 export const present = {
   required: () => false,
   verify: async () => ({ ok: true, method: "test" }),
+  // The daemon asks the real verifier for the Capsule's pin when it cannot classify a caller (a call from an ssh session with no terminal); a fixture pins nothing.
+  capsulePin: () => null,
   challenge: async () => ({ error: { code: "bad_input", message: "presence is not checked in this test" } }),
 };
 

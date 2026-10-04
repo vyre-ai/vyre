@@ -43,6 +43,10 @@ echo "the signed list names $listed modules"
 unpacked="$WORK/tgz-root"; mkdir -p "$unpacked"; tar -xzf "$SRC/site/box/vyre.tgz" -C "$unpacked" --strip-components=1
 node "$SRC/scripts/verify-list-trees.mjs" "$unpacked" "$SRC/site/box/modules.json"
 
+# DP-1: the packed tree says release, and its own isPackaged() agrees; the development stand-in file is refused there.
+grep -qx 'export const BUILD_KIND = "release";' "$unpacked/lib/build-kind.js" || { echo "the packed lib/build-kind.js does not say release"; exit 1; }
+node --input-type=module -e 'const { isPackaged } = await import(process.argv[1] + "/kernel/devbuild.js"); if (isPackaged(process.argv[1]) !== true) { console.error("the packed tree is not a packaged build"); process.exit(1); }' "$unpacked" || exit 1
+
 ( cd "$SRC/site/box" && python3 -m http.server 18090 --bind 127.0.0.1 >/dev/null 2>&1 & echo $! >"$WORK/http.pid" )
 trap 'kill "$(cat "$WORK/http.pid" 2>/dev/null)" 2>/dev/null || true; vyre uninstall --delete-data --yes >/dev/null 2>&1 || true' EXIT
 i=0; until curl -fs http://127.0.0.1:18090/SHA256SUMS >/dev/null 2>&1; do i=$((i + 1)); [ $i -lt 30 ] || { echo "no local release server" >&2; exit 1; }; sleep 1; done
@@ -97,11 +101,21 @@ docker exec vyre-vyre-1 env | grep -qx 'VYRE_KERNEL=1' || { echo "after a root-r
 docker exec vyre-vyre-1 env | grep -qx 'VYRE_STORE=auto' || { echo "after a root-run update the daemon lost VYRE_STORE=auto"; exit 1; }
 check_modules
 
+# A box is a server: the daemon reports machine server, so no server module is switched off by a wrong config.
+docker exec -u 1000 vyre-vyre-1 sh -c 'cat /home/vyre/.vyre/config.json 2>/dev/null' | grep -q '"machine": *"\(device\|solo\|local\)"' && { echo "the box's config says it is not a server"; exit 1; }
+vyre status | grep -q ' box' || { echo "vyre status does not say this is a box"; exit 1; }
+# DP-1 on the running image: the container's build is a release build, and a dev-presence-stand-in file in its home does not make it a development one.
+docker exec -u 0 vyre-vyre-1 grep -qx 'export const BUILD_KIND = "release";' /opt/vyre/lib/build-kind.js || { echo "the image's lib/build-kind.js does not say release"; exit 1; }
+docker exec -u 0 vyre-vyre-1 node --input-type=module -e 'const d = await import("/opt/vyre/kernel/devbuild.js"); if (!d.isPackaged() || d.devSwitch("1")) process.exit(1)' || { echo "the running image honours a developer switch"; exit 1; }
+
 # MW-5: the web app build is signed too. /app/ answers 200 from the signed build, and one changed file under it is refused (503, app_build_changed) by the daemon that serves it.
 sock=$(docker exec -u 1000 vyre-vyre-1 sh -c 'ls /home/vyre/.vyre/*.sock 2>/dev/null | head -n 1')
 appcode() { docker exec -u 1000 vyre-vyre-1 node -e 'require("http").get({socketPath:process.argv[1],path:"/app/",headers:{"x-vyre-caller":"anonymous"}},r=>{console.log(r.statusCode);r.resume()}).on("error",()=>console.log("err"))' "$sock"; }
 appwhy() { docker exec -u 1000 vyre-vyre-1 node -e 'let b="";require("http").get({socketPath:process.argv[1],path:"/app/",headers:{"x-vyre-caller":"anonymous"}},r=>{r.on("data",d=>b+=d);r.on("end",()=>console.log(b.slice(0,300)))})' "$sock"; }
 [ "$(appcode)" = 200 ] || { echo "the signed web app is not served (/app/ answered $(appcode)): $(appwhy)"; docker exec vyre-vyre-1 ls -l /opt/vyre/appbuild.json /opt/vyre/SHA256SUMS 2>&1 | head -3; exit 1; }
+swcode() { docker exec -u 1000 vyre-vyre-1 node -e 'require("http").get({socketPath:process.argv[1],path:"/app/"+process.argv[2],headers:{"x-vyre-caller":"anonymous"}},r=>{console.log(r.statusCode);r.resume()}).on("error",()=>console.log("err"))' "$sock" "$1"; }
+[ "$(swcode sw.js)" = 200 ] || { echo "the signed sw.js is not served (answered $(swcode sw.js))"; exit 1; }
+[ "$(swcode manifest.webmanifest)" = 200 ] || { echo "the signed manifest is not served (answered $(swcode manifest.webmanifest))"; exit 1; }
 docker exec -u 0 vyre-vyre-1 sh -c 'echo "<!-- tampered -->" >> /opt/vyre/apps/app/dist/index.html'
 [ "$(appcode)" = 503 ] || { echo "a changed file of the web app was served (/app/ answered $(appcode))"; exit 1; }
 docker exec -u 0 vyre-vyre-1 sh -c 'sed -i "$ d" /opt/vyre/apps/app/dist/index.html'

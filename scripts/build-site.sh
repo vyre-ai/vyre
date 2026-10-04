@@ -125,8 +125,9 @@ sh "$here/scripts/build-app.sh" --src "$src"
 if [ -f "$src/lib/build-kind.js" ]; then
   kind_keep=$(mktemp)
   cp "$src/lib/build-kind.js" "$kind_keep"
-  sed -i.bak 's/BUILD_KIND = "development"/BUILD_KIND = "release"/' "$src/lib/build-kind.js" && rm -f "$src/lib/build-kind.js.bak"
   trap 'cp -f "$kind_keep" "$src/lib/build-kind.js" 2>/dev/null; rm -f "$kind_keep"' EXIT
+  # Fails the build when the file does not say release afterwards (DP-1); the same two lines kernel/devbuild.js reads (lib/build-kind-text.js).
+  node "$src/scripts/stamp-build-kind.mjs" "$src/lib/build-kind.js" || exit 1
 fi
 # npm pack writes the tarball's name on its last line of stdout.
 name=$(cd "$src" && npm pack --silent --pack-destination "$out" | tail -n 1)

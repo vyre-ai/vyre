@@ -33,5 +33,5 @@ test("choosing a theme is one settings.set at account level; a refusal keeps its
   await appearanceSource(b.call).setScheme("dark");
   assert.deepEqual(b.seen, [{ tool: "settings.set", input: { key: "appearance.scheme", value: "dark", level: "account" } }]);
   const bad = box({ "settings.set": { error: { code: "bad_input", message: "x" } } });
-  await assert.rejects(appearanceSource(bad.call).setScheme("dark"), (/** @type {any} */ e) => e.code === "bad_input" && /not a theme/.test(m.appearanceRefusal(e.code, e.message)));
+  await assert.rejects(appearanceSource(bad.call).setScheme("dark"), (/** @type {any} */ e) => e.code === "bad_input" && /does not know that theme/.test(m.appearanceRefusal(e.code, e.message)));
 });

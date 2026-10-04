@@ -26,22 +26,17 @@ jobs:
         run: VYRE_KERNEL=1 VYRE_KERNEL_FILE_KEY=1 VYRE_KERNEL_PATH_RULE=1 node scripts/boot-check.mjs
   unit:
     runs-on: ubuntu-latest
-    timeout-minutes: 55
+    timeout-minutes: 80
     env: { VYRE_NO_DIALOGS: "1" }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 24, cache: npm }
       - run: npm ci --no-audit --no-fund
-      - name: unit suite, no force exit
-        run: |
-          set +e
-          node --test --test-reporter=spec "core/**/*.test.js" "kernel/**/*.test.js" "records/**/*.test.js" "stores/**/*.test.js" "test/**/*.test.js" "deck/**/*.test.js" "modules/**/*.test.js" "local/*/*.test.js" "relay/**/*.test.js" "names/**/*.test.js" "apps/test/*.test.js" "apps/app/**/*.test.js" "lib/**/*.test.js" > unit.log 2>&1
-          echo "exit=$?" > unit.exit
-          tail -n 14 unit.log
-          grep -E "^(✖|  ✖)" unit.log | sort | uniq | head -80
+      - name: unit suite, one process per file, no force exit
+        run: scripts/int-unit.sh 300 4
       - uses: actions/upload-artifact@v4
         if: always()
-        with: { name: unit-log, path: "unit.log" }
+        with: { name: unit-results, path: "unit-results.txt\nunit-summary.txt\nunit-logs" }
       - name: result
-        run: cat unit.exit; grep -q "exit=0" unit.exit
+        run: cat unit-summary.txt; grep -q "FAIL=0 HUNG=0" unit-summary.txt

@@ -17,7 +17,7 @@ export function homeWords(/** @type {any} */ home) {
 /** @param {any} data spaces.list: an array, only spaces that have their home. */
 export function shapeSpaces(data) {
   if (!Array.isArray(data)) return [];
-  return data.filter((s) => s && typeof s.id === "string").map((s) => ({
+  return data.filter((s) => s && typeof s.id === "string" && s.status !== "failed" && s.status !== "cancelled").map((s) => ({
     id: s.id,
     name: s.displayName || s.label || s.name,
     address: s.name,

@@ -10,6 +10,7 @@ import { Pressable, TextInput, View, type NativeSyntheticEvent, type TextInputSe
 import { Chip, Icon, Text, useUiTheme } from "@vyre/ui";
 import { Face } from "./Face";
 import { COMMANDS } from "../../../../deck/chat/core/commands.js";
+import { readDraft, writeDraft } from "./drafts";
 import { pick, rankByName, rankCommands, runsOnLabel, sealedChip, sendIntent, sendTargets, triggerAt } from "./composer-model.js";
 
 export type Person = { name: string; family: "person" | "assistant" };
@@ -36,6 +37,8 @@ export type ComposerProps = {
   autoFocus?: boolean;
   /** Called on every keystroke with performance.now(); the perf script reads it. */
   onKey?: (t: number) => void;
+  /** The thread this composer writes to: what is typed and not sent is kept under it. */
+  draftKey?: string;
 };
 
 const T = 44;
@@ -51,7 +54,7 @@ function Tool({ icon, label, onPress, big }: { icon: any; label: string; onPress
 
 export function ChatComposer(p: ComposerProps) {
   const { color } = useUiTheme();
-  const [text, setText] = useState("");
+  const [text, setText] = useState(() => (p.draftKey ? readDraft(p.draftKey) : ""));
   const [caret, setCaret] = useState(0);
   const [focused, setFocused] = useState(false);
   const [models, setModels] = useState(false);
@@ -67,6 +70,7 @@ export function ChatComposer(p: ComposerProps) {
     input.current?.focus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editId]);
+  useEffect(() => { if (p.draftKey) writeDraft(p.draftKey, text); }, [p.draftKey, text]);
   const intent = sendIntent({ text, state: p.state });
   const expanded = !p.phone || focused || text.length > 0 || !!trig || models;
   const big = p.phone;

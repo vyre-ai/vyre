@@ -14,7 +14,7 @@ export function worksLine(projects: unknown): string {
 export const roleOf = (a: Agent): string => (a.kind === "assistant" ? "Your assistant" : "Agent");
 /** The line under a name: its job now, model and how it signs in. */
 export function agentLine(a: Agent): string {
-  const auth = a.auth === "subscription" ? "your subscription" : a.auth === "api-key" ? "an API key" : "the account on this machine";
+  const auth = a.auth === "subscription" ? "your subscription" : a.auth === "api-key" ? "an API key" : "the account on your home";
   return [a.doing ?? "not started", a.model || "default model", `uses ${auth}`, worksLine(a.projects)].join(", ");
 }
 /** Paused is a stopped thread: agents.stop stops every running thread and agents.resume starts the latest again. */

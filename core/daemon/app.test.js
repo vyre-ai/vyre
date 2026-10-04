@@ -232,3 +232,18 @@ test("app: the manifest is scoped to /app/, or is the export's own", t => {
   fs.writeFileSync(path.join(dir, "manifest.webmanifest"), JSON.stringify({ name: "Own", scope: "/app/" }));
   assert.equal(JSON.parse(appManifest({ dir })).name, "Own");
 });
+
+test("the verified-link files: absent until the signing identities are set, then exactly the app's package and paths", async () => {
+  const { associationFile } = await import("./app.js");
+  assert.equal(associationFile("/.well-known/apple-app-site-association", {}), null);
+  assert.equal(associationFile("/.well-known/assetlinks.json", {}), null);
+  assert.equal(associationFile("/.well-known/other", { VYRE_APPLE_TEAM_ID: "ABCDE12345" }), null);
+  const a = JSON.parse(/** @type {string} */ (associationFile("/.well-known/apple-app-site-association", { VYRE_APPLE_TEAM_ID: "ABCDE12345" })));
+  assert.deepEqual(a.applinks.details[0].appIDs, ["ABCDE12345.sh.vyre.app"]);
+  assert.deepEqual(a.applinks.details[0].components, [{ "/": "/app/join*" }, { "/": "/app/pair*" }]);
+  assert.equal(associationFile("/.well-known/apple-app-site-association", { VYRE_APPLE_TEAM_ID: "bad" }), null);
+  const fp = Array.from({ length: 32 }, (_, i) => i.toString(16).padStart(2, "0")).join(":").toUpperCase();
+  const l = JSON.parse(/** @type {string} */ (associationFile("/.well-known/assetlinks.json", { VYRE_ANDROID_CERT_SHA256: fp })));
+  assert.equal(l[0].target.package_name, "sh.vyre.app"); assert.deepEqual(l[0].target.sha256_cert_fingerprints, [fp]);
+  assert.equal(associationFile("/.well-known/assetlinks.json", { VYRE_ANDROID_CERT_SHA256: "12:34" }), null);
+});

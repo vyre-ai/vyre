@@ -220,6 +220,7 @@ export async function createKernel(cfg) {
        * person id named; nothing here lists or reaches another Space (`for` and `chainIn` do that, under a chain).
        */
       ...(needs.spaces === true ? { spaces: Object.freeze({
+        retire: async (/** @type {string} */ id) => { if (!spaces) throw new KernelError("unavailable", "this kernel has no Spaces registry"); return spaces.retire(id); },
         storePlan: () => { if (!spaces) throw new KernelError("unavailable", "this kernel has no Spaces registry"); return spaces.storePlan(); },
         host: async (/** @type {{ owner: string, name?: string, accept_builtin_store?: boolean }} */ o) => { if (!spaces) throw new KernelError("unavailable", "this kernel has no Spaces registry"); const h = await spaces.host(o); return { space: h.space || h.id, id: h.space || h.id }; },
       }) } : {}),
@@ -263,6 +264,10 @@ export async function createKernel(cfg) {
     };
     // Only the spaces module (`needs.kernel.spaces: true`) may make or list Spaces: `spaces.create` makes the Space HERE, in the kernel's registry, and the kernel's id (`spc_` and 12 base32
     // characters) is the Space's id everywhere. One registry, one id; the store is attached at that moment (the kernel opens the built-in store for every hosted Space).
+    if (needs.presence === true) {
+      /** Check a presence proof for an act the module asks about (`needs.kernel.presence`): the kernel's one verifier, once (the proof is used up). Resolves null when it stands, else a short reason. */
+      handle.verifyProof = async (/** @type {{ chain: any, op: string, fields: Record<string, unknown>, proof: any }} */ i) => { if (!presence) return "no_presence_verifier"; try { return await presence.check(i); } catch { return "unavailable"; } };
+    }
     if (needs.attrs === true) {
       /** Say whose a resource of this type is (`{ owner, project }` by its URN): the kernel then lets only the owner read a type it scopes by owner (`session`). Fail-safe: a throw is no attributes. */
       const mayType = new Set([...OWNER_SCOPED_TYPES, ...(Array.isArray(needs.attrTypes) ? needs.attrTypes.map(String) : [])]);
@@ -278,6 +283,7 @@ export async function createKernel(cfg) {
       const reg = () => { if (!spaces) throw new KernelError("unavailable", "this kernel has no Spaces registry"); return spaces; };
       handle.spaces = Object.freeze({
         host: (/** @type {any} */ o) => reg().host(o),
+        retire: (/** @type {string} */ id) => reg().retire(id),
         storePlan: () => reg().storePlan(),
         list: () => reg().list(),
         hosts: (/** @type {string} */ id) => reg().hosts(id),

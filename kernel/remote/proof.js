@@ -36,7 +36,9 @@ const CALLS = {
   removeActor: (s, actor) => ({ action: "grants.role", resource: urn(s, "member", actor.id), input: { remove_actor: actor } }),
   addActor: (s, actor) => ({ action: "grants.role", resource: urn(s, "member", actor.id), input: { actor } }),
   offer: (s, o) => ({ action: "grants.offer", resource: urn(s, "offer"), input: o }),
-  unoffer: (s, id) => ({ action: "grants.offer", resource: urn(s, "offer", id), input: { revoke: id } }),
+  unoffer: (s, id) => ({ action: "grants.unoffer", resource: urn(s, "offer", id), input: { revoke: id } }),
+  lend: (s, o) => ({ action: "grants.offer", resource: urn(s, "offer", "lend"), input: { lend: { member: o.member, device: o.device, device_key: o.device_key } } }),
+  unlend: (s, o) => ({ action: "grants.unoffer", resource: urn(s, "offer", "lend"), input: { unlend: { member: o.member, device: o.device } } }),
   inviteCreate: (s, i) => ({ action: "grants.invite", resource: urn(s, "invite"), input: i }),
   inviteConfirm: (s, id, c) => ({ action: "grants.invite", resource: urn(s, "invite", id), input: { confirm: id, words: c && c.words } }),
 };

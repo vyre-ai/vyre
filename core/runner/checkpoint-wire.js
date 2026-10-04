@@ -28,7 +28,7 @@ export function createCheckpointServer(o) {
       const S = o.store;
       let data;
       if (op === "appendTranscript") data = await S.appendTranscript(chain, args.session, args.entries);
-      else if (op === "getTranscript") data = await S.getTranscript(chain, args.session, args.from);
+      else if (op === "getTranscript") data = await S.getTranscript(chain, args.session, args.from, args.limit);
       else if (op === "putFile") data = await S.putFile(chain, args.session, args.rel, args.deleted ? null : new Uint8Array(body));
       else if (op === "getFile") { const b = await S.getFile(chain, args.session, args.rel, args.version); return send(200, b, { "content-type": "application/octet-stream" }); }
       else if (op === "putCheckpoint") data = await S.putCheckpoint(chain, args.session, args.cp);
@@ -62,7 +62,7 @@ export function remoteSync(o) {
   }
   return {
     appendTranscript: (session, entries) => call("appendTranscript", { session, entries }),
-    getTranscript: (session, from) => call("getTranscript", { session, from }),
+    getTranscript: (session, from, limit) => call("getTranscript", { session, from, limit }),
     putFile: (session, rel, bytes) => call("putFile", { session, rel, deleted: bytes === null }, bytes === null ? Buffer.alloc(0) : bytes),
     getFile: (session, rel, version) => call("getFile", { session, rel, version }),
     putCheckpoint: (session, cp) => call("putCheckpoint", { session, cp }),

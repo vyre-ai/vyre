@@ -85,12 +85,19 @@ export function serveApp(res, pathname, { dir: d = APP_DIST, deckManifest, build
   const head = (/** @type {string} */ type, cache = "no-cache", extra = {}) => ({ "content-type": type, "cache-control": cache,
     "x-content-type-options": "nosniff", "content-security-policy": CSP, ...extra });
   if (rel === "sw.js") {
+    // The two generated files are on the signed list too (MW-5): what this daemon makes must hash to what the release signed.
+    const sw = appWorker({ dir, build });
+    const refusedSw = gate.check("sw.js", Buffer.from(sw));
+    if (refusedSw) return send(res, 503, { error: refusedSw });
     res.writeHead(200, head("text/javascript", "no-cache", { "service-worker-allowed": "/app/" }));
-    return res.end(appWorker({ dir, build }));
+    return res.end(sw);
   }
   if (rel === "manifest.webmanifest") {
+    const mf = appManifest({ dir, deckManifest });
+    const refusedMf = gate.check("manifest.webmanifest", Buffer.from(mf));
+    if (refusedMf) return send(res, 503, { error: refusedMf });
     res.writeHead(200, head(TYPES[".webmanifest"]));
-    return res.end(appManifest({ dir, deckManifest }));
+    return res.end(mf);
   }
   let file = path.resolve(dir, rel);
   if (!file.startsWith(dir + path.sep) && file !== dir) return send(res, 404, { error: { code: "not_found", message: pathname } });
@@ -107,4 +114,25 @@ export function serveApp(res, pathname, { dir: d = APP_DIST, deckManifest, build
   const hashed = pathname.startsWith("/app/_expo/static/") && file !== path.join(dir, "index.html");
   res.writeHead(200, head(TYPES[path.extname(file)] || "application/octet-stream", hashed ? IMMUTABLE : "no-cache"));
   res.end(buf);
+}
+
+/**
+ * The two files that let the iPhone and Android apps open https join and pair links at this origin (app-wire's verified links): /.well-known/apple-app-site-association and
+ * /.well-known/assetlinks.json for the app sh.vyre.app, paths /app/join and /app/pair. The signing identities are not in the code: the Apple team id comes from VYRE_APPLE_TEAM_ID and the
+ * Android certificate fingerprint(s) from VYRE_ANDROID_CERT_SHA256 (comma separated, colon-hex), set where the app origin is deployed. Missing, the file is absent (a 404), never a guess.
+ * @param {string} pathname @param {NodeJS.ProcessEnv} [env] @returns {string | null}
+ */
+export function associationFile(pathname, env = process.env) {
+  const APP = "sh.vyre.app";
+  if (pathname === "/.well-known/apple-app-site-association") {
+    const team = String(env.VYRE_APPLE_TEAM_ID || "");
+    if (!/^[A-Z0-9]{10}$/.test(team)) return null;
+    return JSON.stringify({ applinks: { details: [{ appIDs: [`${team}.${APP}`], components: [{ "/": "/app/join*" }, { "/": "/app/pair*" }] }] } }, null, 2);
+  }
+  if (pathname === "/.well-known/assetlinks.json") {
+    const fps = String(env.VYRE_ANDROID_CERT_SHA256 || "").split(",").map(x => x.trim().toUpperCase()).filter(Boolean);
+    if (!fps.length || !fps.every(x => /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/.test(x))) return null;
+    return JSON.stringify([{ relation: ["delegate_permission/common.handle_all_urls"], target: { namespace: "android_app", package_name: APP, sha256_cert_fingerprints: fps } }], null, 2);
+  }
+  return null;
 }

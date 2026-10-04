@@ -92,5 +92,6 @@ test("a closed app resumes on the same step, and a pairing in progress resumes a
 
 test("other devices and the server say the same thing in plain words", () => {
   assert.equal(setupElsewhere("iPhone"), "Setup in progress on your iPhone");
+  assert.equal(setupElsewhere("this computer"), "Setup in progress on this computer");
   assert.equal(connectedLine("Northwind", "iPhone"), "Connected to Northwind. Finish setting up on your iPhone.");
 });
