@@ -57,7 +57,13 @@ export const viewDefs = {
 
 /** The view definition of a type, or a plain one (title is the first field, five columns) for a type this table does not know. @param {{ name: string, label?: string, fields: readonly { name: string }[] }} def @param {Record<string, ViewDefinition>} [table] @returns {ViewDefinition} */
 export function viewDefOf(def, table = viewDefs) {
-  return table[def.name] || { plural: `${def.label || def.name}s`, titleField: def.fields[0]?.name || "name", list: { columns: def.fields.slice(1, 5).map(f => f.name) } };
+  if (table[def.name]) return table[def.name];
+  // A type this table does not know (a space's own, or one a Kit added): a plain list, and a type with a stage field holds work, so it shows under Projects with its own board.
+  const stage = def.fields.find(f => f.kind === "stage");
+  return {
+    plural: `${def.label || def.name}s`, titleField: def.fields[0]?.name || "name", list: { columns: def.fields.slice(1, 5).map(f => f.name) },
+    ...(stage ? { holdsWork: true, board: { groupBy: stage.name, card: def.fields.filter(f => f !== stage).slice(0, 3).map(f => f.name) } } : {}),
+  };
 }
 
 /** A private copy, so a test or a screen that edits a view leaves the shared table alone. */

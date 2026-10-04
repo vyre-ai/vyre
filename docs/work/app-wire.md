@@ -7,7 +7,7 @@ Legend: REAL = reads the box through `call`/`send` (or the Store adapter) with n
 |---|---|---|
 | /u/now, now/doing, now/needs, task/[id] (now/) | REAL (native-core), unwalked by me | tasks.list, tasks.get, tasks.request, tasks.decide (presence), tasks.move, tasks.submit, records.me; Now's calendar from records.list |
 | /u/records/[type], record/[id] (records/, ui/views) | REAL (native-core) | records.types, list, get, create, update, define, sees-as, seal-put, reveal (presence), events |
-| /u/projects, project/[id] (projects/) | PARTLY | Store: records of the types the view defs mark as holding work (matter, project, trip by NAME in deck/ui/view-defs.js); a space with other type names shows none. Next: projects.list (box projects: folders, threads) is a different thing and is not shown |
+| /u/projects, project/[id] (projects/) | REAL (4 Oct): a type with a stage field now holds work (viewDefOf fallback); not seen on a real space, none has such a type yet. Was PARTLY | Store: records of the types the view defs mark as holding work (matter, project, trip by NAME in deck/ui/view-defs.js); a space with other type names shows none. Next: projects.list (box projects: folders, threads) is a different thing and is not shown |
 | /u/flows, flows/[id] | REAL | flows.list, graph, get, card, approve (presence), runs, run, start, retry, pause, resume |
 | /u/kits, kits/[id], kit update (flows/KitsScreen, KitUpdateScreen) | SAMPLE | flows.kit.list, flows.kit.card, flows.kit.propose, flows.kit.remove |
 | /u/engineer (flows/EngineerScreen) | SAMPLE | agents.ask to the Engineer, flows.compile-text, flows.define, flows.card |
@@ -47,6 +47,8 @@ Connect the 0.3 app's Vault, Memory (graph, pins, corrections), Flows (start, a 
 - Settings, Account, Seeing, Privacy, About: screens/settings/{account-model,RealAccount}.ts(x); real.test.js now 16 of 16 on the test box. Dev box via `vyre call`: spaces.identity.status (devbox.vyre.run) and entries (this device plus a recovery code) answered in the shape the screen reads; records.types answered (no sealed fields). I did NOT call spaces.identity.code.replace on the dev box, since that would replace its recovery code. Reveal-style presence on code.replace, entry.remove and rules.* is the box's call and the app's person session answers it, not yet seen.
 
 - Sites (4 Oct): screens/sites/{real-model,real-source,real,RealSites}, real.test.js 9 of 9 (with the old logic test) on the test box. Tools: publish.list, status, create, preview, plan via the held answer, approve, publish, rollback, decide (presence), retire, domain.add/verify/remove, secret.grant/revoke, vault.list for the secret picker. Dev box has no publish module (publish.list is not a tool there), so nothing real seen; waiting on windows for Publish on testbox2.
+
+- Projects (4 Oct): the screens already read the Store; the gap was deck/ui/view-defs.js viewDefOf, which only let the three named types hold work. Fallback added (stage field means holdsWork, with a board by it), tested in screens/projects/work.test.js (2 of 2), deck/ui types.test.js 3 of 3 and ui/views 14 of 14 still pass on the test box. The dev box has no type with a stage field and records.define needs presence, so I could not seed one: not seen on a real space.
 
 ## Doing
 - All Settings pages that are mine are wired except where the box has no tool. Waiting on platform for rules.* tools.
