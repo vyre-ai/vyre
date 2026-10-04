@@ -17,7 +17,7 @@ import * as config from "../config/index.js";
 import { themeCss } from "../config/theme.js";
 import { isRealHome } from "../config/dialogs.js";
 import { assertDaemonHost } from "./host-guard.js";
-import { open } from "../store/index.js";
+import { open, setRepairLog } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { Registry, discover, ownerDevice, currentCall } from "../modules/index.js";
 import { devSwitch, isPackaged, PKG_ROOT } from "../../kernel/devbuild.js";
@@ -169,6 +169,8 @@ async function startLocked(opts, root, p, release) {
   for (const problem of cfg.problems) log("config: " + problem);
 
   const db = open(p.db);
+  // A migration step that found its column already there is a repair for a mis-ordered list: say so in the log (launch's update proof fails on this line for a released upgrade).
+  setRepairLog(line => log(line));
   const events = new Events(db);
   events.log = log;
   // vyred always checks presence. A test may pass a verifier, or a function that builds one on
@@ -406,7 +408,7 @@ async function startLocked(opts, root, p, release) {
     registry.deps.moduleHost = kernel.moduleHost;
     registry.deps.kernelFor = kernel.kernelFor;
     // The relay's peer stream for a paired device (the one remote path to this home's kernel): the relay module reads it from its ctx, per channel, so a door set after it started is used from the next channel on.
-    { const { createPeerDoor } = await import("./peer-door.js"); const door = createPeerDoor({ kernel, registry, people, callerFacts, log }); registry.deps.peerDoor = () => door; }
+    { const { createPeerDoor } = await import("./peer-door.js"); const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log }); registry.deps.peerDoor = () => door; }
     // The gate's presence check asks the kernel whether a call is the person's own (exactly one person hop in the chain the daemon's proven facts build), never the caller's label.
     if (presence && typeof kernel.kernelFor === "function") {
       const gateKernel = kernel.kernelFor({ name: "presence-gate" });

@@ -409,6 +409,9 @@ export const MIGRATIONS = [`
   INSERT INTO presence_people_v2 (id, hash, kind, node, label, key, created, last_used, max, key_id, paired, rotated, software) SELECT id, hash, kind, node, label, key, created, last_used, max, key_id, paired, rotated, software FROM presence_people;
   DROP TABLE presence_people;
   ALTER TABLE presence_people_v2 RENAME TO presence_people;
+`, `
+  -- A paired device locked after three wrong sign-in answers (core/presence/module.js, presence.person.renew-allow lifts it): the lock lives here so a restart keeps it.
+  CREATE TABLE presence_renew_lock (device TEXT PRIMARY KEY, until INTEGER NOT NULL);
 `];
 
 const CHALLENGE_TTL = 120_000;

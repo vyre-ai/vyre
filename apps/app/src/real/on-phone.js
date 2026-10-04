@@ -33,3 +33,6 @@ function lineFor(tool) {
   // No restore control exists in the app yet (the space Drive has no screen): this file names an action only when a control for it exists.
   return ON_PHONE;
 }
+
+/** The refusal for a presence proof made with a software key (platform: code `software_key` on a release server). The words are ours, never the server's. @param {"touchid" | "phone"} [how] */
+export const softwareKeyLine = (how = howApprove()) => said("Approve this in Vyre on your phone.", how);

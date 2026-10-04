@@ -25,7 +25,7 @@
 
 import crypto from "node:crypto";
 import { agentClaim, callerKind } from "../modules/index.js";
-import { isPerson as callerIsPerson } from "../../lib/caller.js";
+import { isPerson as isPersonCaller } from "../../lib/caller.js";
 import { HUMAN_ONLY, PERSON_ONLY, personOnly } from "../presence/index.js";
 
 const DAY = 24 * 60 * 60_000;
@@ -68,7 +68,7 @@ const plain = (/** @type {unknown} */ v) => Boolean(v) && typeof v === "object" 
 export const prune = (db, now = Date.now()) => Number(db.prepare("DELETE FROM undo_acted WHERE at < ?").run(now - KEEP_MS).changes || 0);
 
 /** The person on one of their own surfaces or devices, never an agent naming one. @param {string} caller */
-export const isPerson = caller => !agentClaim(caller) && callerIsPerson(caller);
+export const isPerson = caller => isPersonCaller(caller);
 
 /** The same actor, however its transport labels it ("mcp:agent:juno" and "harness:agent:juno"). @param {string} a @param {string} b */
 export const sameActor = (a, b) => {

@@ -84,6 +84,8 @@ if (problems.length) { console.error(problems.join("; ")); process.exit(1); }
 console.log(running.length + " modules run, none failed");
 ' "$WORK/new/site/box/modules.json" "$HERE/scripts/packaged-boot-expected.txt" "$WORK/modules.txt" "$WORK/old-config.json" || { cat "$WORK/modules.txt" | head -80; fail "$1: the modules that run are not the candidate's fresh-install set"; }
   ! docker logs vyre-vyre-1 2>&1 | grep -Ei 'migration .* failed' || { docker logs vyre-vyre-1 2>&1 | grep -Ei 'migration .* failed' | head -5; fail "$1: a migration failed"; }
+  # core/store repairs a duplicate-column migration and says so; on a box upgraded from a RELEASED version that repair must never be needed (only a dev home that ran a mis-ordered list needs it).
+  ! docker logs vyre-vyre-1 2>&1 | grep -E 'migration .* v[0-9]+: column already present, treated as applied' || { docker logs vyre-vyre-1 2>&1 | grep -E 'column already present' | head -5; fail "$1: an upgrade from a released version needed the duplicate-column repair"; }
 }
 # do_update LABEL: the update to the candidate, the way the root unit does it (a hand run of its step), with the throwaway key trusted for this run.
 do_update() { # LABEL STORE: STORE is none (an untouched box: no VYRE_STORE appears, no Twenty stack starts) or kept (VYRE_STORE is still there)
@@ -101,8 +103,8 @@ do_update() { # LABEL STORE: STORE is none (an untouched box: no VYRE_STORE appe
   case "$2" in
     kept) docker exec vyre-vyre-1 env | grep -qx 'VYRE_STORE=auto' || fail "$1: after the update VYRE_STORE=auto is not kept" ;;
     none) docker exec vyre-vyre-1 env | grep -q '^VYRE_STORE=' && fail "$1: the update added a VYRE_STORE the box never had (a silent switch of store)"
-          # (compared with what ran before this update: a shared test box may hold other people's Twenty stacks)
-          [ "$(docker ps -q --filter name=twenty | sort | tr '\n' ' ')" = "$TWENTY_BEFORE" ] || fail "$1: a Twenty store started on a box that never chose one" ;;
+          # (a shared test box may hold other people's Twenty stacks, so the question is whether THIS box asked for one: its helper has recorded no Space store)
+          [ -z "$(sudo ls /var/lib/vyre-spaces/private/spaces 2>/dev/null)" ] || fail "$1: a Space store was set up on a box that never chose one" ;;
   esac
   every_module "$1"
   # records' store line (/v1/health records_store, when this candidate carries it): an untouched box is on the built-in store by default and it answers.
@@ -117,7 +119,6 @@ do_update() { # LABEL STORE: STORE is none (an untouched box: no VYRE_STORE appe
   vyre call planner.list '{}' 2>&1 | grep -q 'retainer draft' || fail "$1: the planner note written before the update is not read back"
   [ "$(docker exec vyre-vyre-1 cat /home/vyre/.vyre/rc-marker 2>/dev/null)" = rc-marker-1 ] || fail "$1: the data written before the update is gone"
 }
-TWENTY_BEFORE=$(docker ps -q --filter name=twenty | sort | tr '\n' ' ')
 do_update "2 update" none
 # A record written after the update is read back after a restart.
 vyre call memory.remember '{"text":"My daughter is Lina"}' >/dev/null 2>&1 || fail "2: could not write a record after the update"
