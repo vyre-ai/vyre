@@ -13,6 +13,7 @@ export const PERSON_ONLY = new Map([
   ["signin.pending", "needs the person's Face ID or presence: the card the phone signs"],
   ["signin.answer", "needs the person's Face ID or presence: the person's approval of a sign-in"],
   ["signin.status", "needs the person's Face ID or presence: it hands the credential only to the terminal that asked"],
+  ["signin.dev", "development builds only: a person session for the walk, from a caller already counted as the owner"],
   ["signin.end", "the person's own sign-out of their terminal"],
   ["memory.sealscan", "the person's own audit of where sensitive-looking values sit in memory: counts only, but it is the person's to ask"],
   ["vault.provider.set", "needs the person's Face ID or presence: changes which provider holds the Space's secrets"],

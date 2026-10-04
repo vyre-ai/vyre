@@ -74,14 +74,18 @@ req.end("{}");`);
 });
 
 test("the development stand-in makes a surface label that is not inside a model the owner; a model's shell and a release build never are", () => {
-  const unread = { model: false, outside: false }, inside = { model: true, outside: false }, outside = { model: false, outside: true };
+  const unread = { model: false, outside: false }, ssh = { model: false, outside: false, server: { exe: "/usr/sbin/sshd", pid: 9, started: "x" } }, tmpSsh = { model: false, outside: false, server: { exe: "/tmp/sshd", pid: 9, started: "x" } }, sh = { model: false, outside: false, server: { exe: "/bin/sh", pid: 9, started: "x" } }, inside = { model: true, outside: false }, outside = { model: false, outside: true };
   assert.deepEqual(surfaceAncestry(unread, false), { inside: false, outside: false }, "no stand-in: an unreadable ancestry is no person");
-  assert.deepEqual(surfaceAncestry(unread, true), { inside: false, outside: true }, "stand-in: a terminal over ssh is the owner");
+  assert.deepEqual(surfaceAncestry(unread, true), { inside: false, outside: false }, "stand-in: an unknown is still no person (SI-1)");
+  assert.deepEqual(surfaceAncestry(sh, true), { inside: false, outside: false }, "stand-in: a bare sh at the top (a setsid'd model) is no person");
+  assert.deepEqual(surfaceAncestry(tmpSsh, true), { inside: false, outside: false }, "stand-in: an sshd copied somewhere a model can write is no person");
+  assert.deepEqual(surfaceAncestry(ssh, true), { inside: false, outside: true }, "stand-in: a login over sshd is the owner");
+  assert.deepEqual(surfaceAncestry(ssh, false), { inside: false, outside: false }, "no stand-in file or a release build: never");
   assert.deepEqual(surfaceAncestry(outside, false), { inside: false, outside: true });
   assert.deepEqual(surfaceAncestry(inside, true), { inside: true, outside: false }, "a model's shell stays one");
   for (const label of LABELS) {
     assert.equal(callerFacts(label, {}, null, k, false, null, surfaceAncestry(unread, false)), null);
-    assert.equal(/** @type {any} */ (callerFacts(label, {}, null, k, false, null, surfaceAncestry(unread, true))).inside_model_process, false);
+    assert.equal(/** @type {any} */ (callerFacts(label, {}, null, k, false, null, surfaceAncestry(ssh, true))).inside_model_process, false);
     assert.equal(callerFacts(label, {}, null, k, false, null, surfaceAncestry(inside, true))?.inside_model_process, true);
   }
 });

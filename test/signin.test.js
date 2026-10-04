@@ -15,14 +15,14 @@ import { readSession, writeSession, clearSession, sessionFile } from "../lib/cli
 import { tempHome, writeModule } from "./helpers.js";
 
 /** The module's tools with a fake kernel, fake session store and a clock. */
-async function mod({ checkOk = true } = {}) {
+async function mod({ checkOk = true, dev = false, person = true } = {}) {
   /** @type {Record<string, any>} */ const tools = {};
   let t = 1_000_000; const started = [], ended = [];
   const ctx = {
-    now: () => t, kernel: { chain: async () => ({}), proofFrom: () => ({ p: 1 }) },
+    now: () => t, kernel: { chain: async () => (person ? { hops: [{ actor: { kind: "person", id: "per_x" } }] } : { hops: [{ actor: { kind: "agent", id: "a" } }] }), proofFrom: () => ({ p: 1 }) }, devStandIn: () => dev, events: { emit: () => {} },
     cliSigninPayload: (/** @type {string} */ ask, /** @type {string} */ term) => ({ op: "grant.cli_signin", space: "spc", fields: { ask, terminal: term.slice(0, 4) }, payload_hash: `h(${ask})` }),
     cliSigninCheck: async () => (checkOk ? { ok: true } : { ok: false, why: "bad" }),
-    cliSessions: { start: (/** @type {string} */ k) => { started.push(k); return { token: "id12345678.secret0123456789abcdef", expires: t + 1000 }; }, end: (/** @type {string} */ k) => { ended.push(k); return 1; } },
+    cliSessions: { startStandIn: (/** @type {string} */ n) => { started.push("dev:" + n); return { id: "id1", token: "id12345678.secret0123456789abcdef", expires: t + 1000 }; }, start: (/** @type {string} */ k) => { started.push(k); return { token: "id12345678.secret0123456789abcdef", expires: t + 1000 }; }, end: (/** @type {string} */ k) => { ended.push(k); return 1; } },
     tool: (/** @type {string} */ name, /** @type {any} */ def) => { tools[name] = def.run; },
   };
   await signin.start(ctx);
@@ -145,4 +145,15 @@ req.on("error", () => process.exit(0)); req.end("{}");`);
   await new Promise(r => spawn(process.execPath, [path.join(fakeDir, "claude")], { stdio: "ignore", env: { ...process.env, TOK: d.registry.deps.cliSessions.start("ttys001#1@1").token } }).on("close", r));
   assert.equal(globalThis.__sess.length, before, "a call from under a claude never reaches a cli-only tool, session or not: " + JSON.stringify(globalThis.__sess));
   assert.deepEqual(globalThis.__sess.slice(0, 5), ["cli", "none", "none", "none", "none"], "the right login with the right secret is the only one; another login, no secret, a wrong secret and a signed-out session are not");
+});
+
+test("signin.dev makes the walk's person session only on a dev build with the stand-in file, from a caller counted as the owner", async () => {
+  let m = await mod({ dev: false });
+  await assert.rejects(() => m.tools["signin.dev"]({ node: "n1" }, {}), { code: "dev_only" });
+  m = await mod({ dev: true, person: false });
+  await assert.rejects(() => m.tools["signin.dev"]({ node: "n1" }, {}), { code: "denied" });
+  m = await mod({ dev: true });
+  await assert.rejects(() => m.tools["signin.dev"]({ node: "bad node!" }, {}), { code: "bad_input" });
+  const r = await m.tools["signin.dev"]({ node: "n1" }, {});
+  assert.equal(r.kind, "cookie"); assert.equal(r.method, "stand-in"); assert.deepEqual(m.started, ["dev:n1"]);
 });

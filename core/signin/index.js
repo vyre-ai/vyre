@@ -110,6 +110,27 @@ export default {
         return { ended: ctx.cliSessions.end(key) };
       },
     });
+
+    // DEVELOPMENT ONLY, for the app walk: the walk runs in a browser, which is never under sshd, so on a development build whose home holds the hand-made stand-in file a CLI the daemon already counts as the
+    // owner (surfaceAncestry: a named login server on the system list, never any unknown) mints an ordinary cookie person session for the browser's node, marked "stand-in", which the harness hands the
+    // browser like any signed-in session. A release-kind build refuses it: devStandIn is false there.
+    ctx.tool("signin.dev", {
+      description: "Development builds only: make a person session (a cookie) for the owner on the device node you name, marked as the stand-in's. Needs the dev stand-in file and a caller the daemon already counts as the owner.",
+      input: obj({ node: { type: "string" }, label: { type: "string" } }, ["node"]),
+      callers: ["cli", "local"],
+      run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
+        need();
+        if (typeof ctx.devStandIn !== "function" || ctx.devStandIn() !== true || typeof ctx.cliSessions.startStandIn !== "function") throw refuse("this build takes no sign-in stand-in", "dev_only");
+        let c = null; try { c = await ctx.kernel.chain(meta); } catch { c = null; }
+        const hops = c && Array.isArray(c.hops) ? c.hops : [];
+        if (hops.length !== 1 || !hops[0].actor || hops[0].actor.kind !== "person") throw refuse("this call is not from a signed-in person", "denied");
+        const node = String(input.node || "");
+        if (!/^[A-Za-z0-9_.:@-]{1,128}$/.test(node)) throw refuse("node must name the device the browser connects from", "bad_input");
+        const s = ctx.cliSessions.startStandIn(node);
+        ctx.events.emit("presence.signed-in", { id: s.id, node: String(input.label || node), method: "stand-in" });
+        return { kind: "cookie", id: s.id, token: s.token, expires: s.expires, method: "stand-in" };
+      },
+    });
     return { async stop() { ask = null; } };
   },
 };

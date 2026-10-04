@@ -246,7 +246,9 @@ async function startLocked(opts, root, p, release) {
     // The command line's sign-in (core/signin): the kernel's op for the phone to sign, and the person sessions the daemon holds, so the module can make and end one for a terminal login.
     registry.deps.cliSigninPayload = (/** @type {string} */ ask, /** @type {string} */ terminal) => kernel.cliSigninPayload(ask, terminal);
     registry.deps.cliSigninCheck = (/** @type {any} */ chain, /** @type {any} */ proof, /** @type {string} */ ask, /** @type {string} */ terminal) => kernel.cliSigninCheck(chain, proof, ask, terminal);
-    registry.deps.cliSessions = Object.freeze({ start: (/** @type {string} */ terminal) => people.start({ node: `cli:${terminal}`, kind: "cli", label: "command line" }), end: (/** @type {string} */ terminal) => people.revokeNode(`cli:${terminal}`) });
+    registry.deps.cliSessions = Object.freeze({ start: (/** @type {string} */ terminal) => people.start({ node: `cli:${terminal}`, kind: "cli", label: "command line" }), end: (/** @type {string} */ terminal) => people.revokeNode(`cli:${terminal}`),
+      // DEVELOPMENT ONLY (the module asks devStandIn first): an ordinary cookie person session for the walk's browser, on the node the harness names, marked as the stand-in's.
+      startStandIn: (/** @type {string} */ node) => people.start({ node, kind: "cookie", label: "stand-in" }) });
     closeFlowsHost = () => flowsHost.stop();
     // Devices enrol per Space (the user's ruling): the spaces module keeps the list and answers `spaces.devices.enrolled`; a build without that module has no list, so every device is enrolled.
     const deviceEnrolled = async (/** @type {string} */ space, /** @type {string} */ device) => {
@@ -678,15 +680,16 @@ export async function asTaken(caller, socket, registry, thread, deps) {
       model: Boolean(w.inside || (w.nopid && canReadPeers)),
       definite: Boolean(!w.unreadable && (w.inside || (!w.unknown && !w.nopid))),
       outside: Boolean(!w.inside && !w.unreadable && !w.unknown && !w.nopid && !w.server && canReadPeers),
+      server: !w.inside && w.server ? w.server : null,
     }));
     v = mine;
     taken.set(socket, mine);
     mine.then(a => { if (!a.definite && taken.get(socket) === mine) taken.delete(socket); }, () => { if (taken.get(socket) === mine) taken.delete(socket); });
   }
   const a = await v;
-  return a.model ? { caller: thread ? `mcp:thread:${thread}` : "mcp", model: true, outside: false } : { caller, model: false, outside: a.outside };
+  return a.model ? { caller: thread ? `mcp:thread:${thread}` : "mcp", model: true, outside: false } : { caller, model: false, outside: a.outside, server: a.server };
 }
-/** @type {WeakMap<object, Promise<{ model: boolean, definite: boolean, outside: boolean }>>} */
+/** @type {WeakMap<object, Promise<{ model: boolean, definite: boolean, outside: boolean, server: any }>>} */
 const taken = new WeakMap();
 
 /** The tools that need the calling terminal's login, never a model's shell: the command line's sign-in. */
@@ -697,10 +700,20 @@ const SIGNIN_TOOLS = new Set(["signin.ask", "signin.status", "signin.end"]);
  * release-kind build, see devStandIn) a call that is not inside a model counts as outside too, so a CLI at a terminal over ssh is the signed-in owner on a dev box and can seed and walk it. A caller
  * inside a model has already been relabelled `mcp` and never gets person facts, stand-in or not. `cliSession` is a live command-line session (`vyre signin`) carried by this call and pinned to the
  * terminal login the daemon measured for it: the same person facts, on a release build too.
- * @param {{ model: boolean, outside?: boolean }} shell @param {boolean} standIn @param {boolean} [cliSession] @returns {{ inside: boolean, outside: boolean }}
+ * @param {{ model: boolean, outside?: boolean, server?: any }} shell @param {boolean} standIn @param {boolean} [cliSession] @returns {{ inside: boolean, outside: boolean }}
  */
 export function surfaceAncestry(shell, standIn, cliSession = false) {
-  return { inside: shell.model === true, outside: shell.outside === true || (shell.model !== true && (standIn === true || cliSession === true)) };
+  const named = standIn === true && shell.model !== true && isLoginServer(shell.server);
+  return { inside: shell.model === true, outside: shell.outside === true || (shell.model !== true && (cliSession === true || named)) };
+}
+
+/** What the development stand-in is for: a login a person opened, over ssh or in a terminal. A named server at the top of the chain whose program is one of these, run from a system folder (a copy a model put in /tmp does not count). Any other unknown, a bare sh or node whose parent is init (a setsid'd model), is not (SI-1). */
+const LOGIN_SERVERS = new Set(["sshd", "tmux", "screen", "login", "mosh-server", "Terminal", "iTerm2", "iTerm", "ghostty", "Ghostty", "Warp", "WezTerm", "wezterm-gui", "kitty", "alacritty", "gnome-terminal-server", "konsole", "xterm"]);
+const SYSTEM_DIRS = ["/usr/", "/bin/", "/sbin/", "/opt/homebrew/", "/Applications/", "/System/", "/Library/"];
+/** @param {any} server */
+export function isLoginServer(server) {
+  const exe = server && typeof server.exe === "string" ? server.exe : "";
+  return Boolean(exe) && LOGIN_SERVERS.has(path.basename(exe)) && SYSTEM_DIRS.some(d => exe.startsWith(d));
 }
 
 /**
