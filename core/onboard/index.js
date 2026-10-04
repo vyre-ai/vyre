@@ -11,7 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import * as config from "../config/index.js";
-import { isPerson } from "../../lib/caller.js";
+import { isPerson, onTailnet } from "../../lib/caller.js";
 import { loopback } from "./loopback.js";
 import { setupToken } from "./setup-token.js";
 import { SETUP_STEPS, SKIPPABLE, PASSABLE, setupList } from "../../lib/setup-steps.js";
@@ -289,7 +289,7 @@ export default {
       const current = STEPS.find(k => steps[k] === "todo") || null;
       // The signed-in AI account's own display name, to prefill the person's name (editable; null when it says none).
       const accountName = await aiAccount().then(a => a.name).catch(() => null);
-      const mode = caller === "onboard" ? "loopback" : String(caller).startsWith("tailnet:") ? "tailnet" : "local";
+      const mode = caller === "onboard" ? "loopback" : onTailnet({ caller }) ? "tailnet" : "local";
       // can: what this machine is actually able to do, for launch's cards to gate on rather than
       // guess from role/machine. relayJoin is false on darwin until vyre-core exists (see
       // RELAY_JOIN_DARWIN_REASON above); every other platform can already join a relay today.
