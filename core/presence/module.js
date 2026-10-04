@@ -106,8 +106,6 @@ export default {
       effect: "write",
       description: "A one-time code, valid 10 minutes, that enrolls one passkey from the Deck. Needs presence.",
       presence: { summary: async () => "Make a one-time code to enroll a passkey" },
-      // the person's surfaces, and the onboarding module that hands the first code to the person (the registry denies a module a tool whose callers do not name it)
-      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module"],
       input: obj({}),
       run: async () => presence.mintCode(),
     });
