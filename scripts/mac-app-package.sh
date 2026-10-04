@@ -39,13 +39,6 @@ nodev="$(sed -n 's/^NODE_VERSION=//p' "$installer" | head -1)"
 [ -f "${VYRE_NODE_TGZ:-}" ] || { echo "VYRE_NODE_TGZ must be the Node $nodev darwin-$na tarball" >&2; exit 1; }
 [ "$(shasum -a 256 "$VYRE_NODE_TGZ" | cut -d' ' -f1)" = "$want" ] || { echo "the Node tarball does not match the checksum pinned in install-mac-server.sh" >&2; exit 1; }
 cp "$VYRE_NODE_TGZ" "$setup/node-$nodev-darwin-$na.tar.gz"
-# The web build of the app (apps/app: `expo export -p web`, baseUrl /app), for a Mac whose Vyre runs on a server: its window serves these files itself
-# (Host/BundledApp.swift) and the page pairs to the server over the relay. VYRE_APP_EXPORT is that dist folder; without it the app has no server mode.
-if [ -n "${VYRE_APP_EXPORT:-}" ]; then
-  [ -f "$VYRE_APP_EXPORT/index.html" ] || { echo "VYRE_APP_EXPORT has no index.html" >&2; exit 1; }
-  rm -rf "$stage/Contents/Resources/app"; mkdir -p "$stage/Contents/Resources/app"
-  cp -R "$VYRE_APP_EXPORT"/. "$stage/Contents/Resources/app/"
-fi
 cp "$installer" "$setup/install-mac-server.sh"; cp "$here/mac-app/askpass" "$here/mac-app/vyre-sudo" "$setup/"
 sh "$here/mac-app/make-pins.sh" "$arch" "$setup/vyre-sudo-check"
 chmod 755 "$setup/install-mac-server.sh" "$setup/askpass" "$setup/vyre-sudo" "$setup/vyre-sudo-check"
