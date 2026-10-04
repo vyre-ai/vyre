@@ -115,7 +115,8 @@ do_update() { # LABEL STORE: STORE is none (an untouched box: no VYRE_STORE appe
     esac
   fi
   # The records written before the update are read back, and the box is still on the store they live in (the built-in one: there is no status line for the store, so: no Twenty stack, and the data reads).
-  vyre call memory.me '{}' 2>&1 | grep -q Robin || fail "$1: the memory fact written before the update is not read back"
+  mo=$(vyre call memory.me '{}' 2>&1 || true)
+  printf '%s' "$mo" | grep -q Robin || { echo "--- memory.me answered:"; printf '%s\n' "$mo" | head -20; echo "--- status:"; vyre status --json 2>&1 | head -c 1500; echo; echo "--- daemon log:"; docker logs vyre-vyre-1 2>&1 | grep -Ei 'memory|records|kernel|migrat|store' | tail -25; fail "$1: the memory fact written before the update is not read back"; }
   vyre call planner.list '{}' 2>&1 | grep -q 'retainer draft' || fail "$1: the planner note written before the update is not read back"
   [ "$(docker exec vyre-vyre-1 cat /home/vyre/.vyre/rc-marker 2>/dev/null)" = rc-marker-1 ] || fail "$1: the data written before the update is gone"
 }

@@ -139,7 +139,7 @@ docker cp "$HERE/kernel/seal/testing.js" vyre-vyre-1:/tmp/probe/kernel/seal/test
 docker cp "$HERE/test/scratch.mjs" vyre-vyre-1:/tmp/probe/test/scratch.mjs
 docker cp "$HERE/scripts/packaged-probes/software-release.mjs" vyre-vyre-1:/tmp/software-release.mjs
 docker exec -u 1000 vyre-vyre-1 node /tmp/software-release.mjs /tmp/probe || { echo "a release-kind build accepted a software key (or the probe could not run)"; soft; }
-docker exec -u 1000 vyre-vyre-1 rm -rf /tmp/probe /tmp/software-release.mjs
+docker exec -u 0 vyre-vyre-1 rm -rf /tmp/probe /tmp/software-release.mjs # docker cp leaves root-owned files in /tmp (sticky), uid 1000 cannot remove them
 
 # MW-5: the web app build is signed too. /app/ answers 200 from the signed build, and one changed file under it is refused (503, app_build_changed) by the daemon that serves it.
 sock=$(docker exec -u 1000 vyre-vyre-1 sh -c 'ls /home/vyre/.vyre/*.sock 2>/dev/null | head -n 1')
