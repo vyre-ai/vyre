@@ -10,7 +10,8 @@
     "tools": [
       {
         "name": "publish.create",
-        "reach": "anyone"
+        "reach": "anyone",
+        "projectArg": "project"
       },
       {
         "name": "publish.preview",

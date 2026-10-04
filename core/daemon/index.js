@@ -225,6 +225,12 @@ async function startLocked(opts, root, p, release) {
       return resolveFields({ input: q.input, read: async (/** @type {string} */ urn) => { const [, type, id] = urn.replace("vyre://", "").split("/"); return kernel.gateway.records.get(asker, type, id); } });
     };
     // The owner's reset of the accepted module list (core/modulelist): the kernel checks the chain is exactly the owner and the presence proof; this only hands it over.
+    // Everything on this box that holds data, for `vyre wink reset` (core/wink/reset.js): a reset of an owned box refuses while any entry holds data. The vault's own read (lib/vault-wipe.js) is
+    // used when this build has it; without it the vault counts as holding data.
+    const { createDataStores } = await import("../../lib/data-stores.js");
+    /** @type {any} */ let vaultHolds;
+    try { vaultHolds = (await import(/* @vite-ignore */ "../../lib/vault-wipe.js")).vaultHolds; } catch { vaultHolds = undefined; }
+    registry.deps.dataStores = createDataStores({ home: root, db, kernelEvents: () => kernel.log.read(), ...(vaultHolds ? { vaultHolds } : {}) });
     registry.deps.modulesListReset = (/** @type {any} */ chain, /** @type {any} */ proof) => kernel.resetModulesList(chain, proof);
     closeFlowsHost = () => flowsHost.stop();
     kernel = await bootHomeKernel({ db, root, log, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
@@ -747,6 +753,10 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       /** @type {any} */ (req).vyreRaw = raw;
     }
     const c = people.check({ headers: req.headers, node: nodeId, method: req.method, path: url.pathname + url.search, raw });
+    if (c && c.ok && c.rotateOnly && url.pathname !== "/v1/tools/presence.person.rotate") {
+      // A paired session past its rotation plus grace: the secret is good for the one call that replaces it.
+      return send(res, 401, { error: { code: "person_session_required", message: "this device's sign-in must be renewed before anything else; it renews itself, or sign in again" } });
+    }
     if (c && c.ok) person = { id: c.id, kind: c.kind };
     // The credential this box issued, for a device whose key was since removed: said once, in plain
     // words, with its own code (only the holder of the real credential gets it, person.js check).

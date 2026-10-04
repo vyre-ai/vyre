@@ -63,7 +63,7 @@ function NameField({ value, onChange, label, also, space, real }: { value: strin
 }
 
 /** The install flow, one thing per screen. `start` is the route: first run, create a space, or join one. */
-export function InstallScreen({ start }: { start?: "create" | "join" }) {
+export function InstallScreen({ start, link: linkIn }: { start?: "create" | "join"; link?: string }) {
   const router = useRouter();
   const first = !start;
   const [step, setStep] = useState(startStep(start));
@@ -87,7 +87,15 @@ export function InstallScreen({ start }: { start?: "create" | "join" }) {
   const [recovery, setRecovery] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [elsewhere, setElsewhere] = useState<ReturnType<typeof setupElsewhere>>([]);
-  const [link, setLink] = useState("");
+  const [link, setLink] = useState(linkIn ?? "");
+  // A link that opened the app (vyre://join?link=... or /join?link=...): read the card at once, no paste.
+  const opened = useRef<string | null>(null);
+  useEffect(() => {
+    if (MOCK || !linkIn || opened.current === linkIn) return;
+    opened.current = linkIn;
+    setLink(linkIn); setBusy(true); setWrong("");
+    previewInvite(linkIn.trim()).then((p) => { setInvite(inviteFrom(p, linkIn.trim())); setStep("invite"); }).catch((e) => setWrong(said(e))).finally(() => setBusy(false));
+  }, [linkIn]);
   const [invite, setInvite] = useState<ReturnType<typeof inviteFrom> | null>(null);
   const device = Platform.OS === "ios" ? "iPhone" : Platform.OS === "android" ? "phone" : "computer";
   const me = MOCK ? nameStatus(name) : nameStatusReal(name, taken[slug(name)] ?? null);
@@ -142,7 +150,10 @@ export function InstallScreen({ start }: { start?: "create" | "join" }) {
         const mine = kept ? all.find((r) => r.setup && (r.displayName || r.label) === kept.spaceName)?.id ?? null : null;
         if (mine) setSpaceId(mine);
         setElsewhere(setupElsewhere(all, mine));
-      } catch (e) { setWrong(said(e)); }
+      } catch (e) {
+        // First run, naming yourself: there is no box yet, and none is needed (the name goes to the directory). Say nothing about it.
+        if (!(first && step === "name")) setWrong(said(e));
+      }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -386,8 +397,9 @@ export function InstallScreen({ start }: { start?: "create" | "join" }) {
       <Card className="gap-s3">
         {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
         <Row lead={<Avatar of={spaceRef(inv.space)} size={56} />} title={inv.space} sub={inv.address} />
-        <Text tone="muted">{`${inv.from} invited you.`}</Text>
+        {inv.from ? <Text tone="muted">{`${inv.from} invited you.`}</Text> : null}
         <Text mono size="caption" tone="label">{inv.link}</Text>
+        {"words" in inv && inv.words ? <View className="gap-s1"><Text size="caption" strong tone="label">Check these words with whoever invited you</Text><Text mono strong>{inv.words}</Text></View> : null}
         <View className="gap-s1"><Text size="caption" strong tone="label">You join as</Text><View className="flex-row"><Chip tone="accent">{inv.role}</Chip></View><Text size="caption" tone="muted">{inv.roleLine}</Text></View>
         <View className="gap-s1"><Text size="caption" strong tone="label">You will see</Text><Text size="caption" tone="muted">{inv.sees}</Text></View>
         <Button kind="primary" icon="faceid" label={`Join ${inv.space}`}

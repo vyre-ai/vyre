@@ -1,25 +1,47 @@
 // The install flow's calls to the box (screens/install/real.js maps the answers). Each is one tool through src/real/box.ts.
 
-import { BoxError, tool } from "./box";
-import { createdFrom, identityFrom, nameAnswer } from "../../screens/install/real.js";
+import { tool } from "./box";
+import { claimIdentity } from "../identity/claim.js";
+import { loadIdentity, saveIdentity } from "../identity/store";
+import { createdFrom, directoryAnswer, identityFrom, nameAnswer } from "../../screens/install/real.js";
 
 type Created = { state: "done" | "running" | "asking" | "failed"; id: string; address: string; say: string };
 
 /** This device's claimed name, or null. */
-export const readIdentity = async (): Promise<{ id: string; label: string; address: string } | null> => identityFrom(await tool("spaces.identity.status"));
+export const readIdentity = async (): Promise<{ id: string; label: string; address: string } | null> => {
+  // The identity this device made comes first (it needs no box); a paired box's own answer is the fallback, and no box is not an error here.
+  const mine = await loadIdentity();
+  if (mine) return { id: mine.id, label: mine.name, address: `${mine.name}.vyre.run` };
+  try { return identityFrom(await tool("spaces.identity.status")); } catch { return null; }
+};
 
-/** Is a name free in the directory? An answer that is neither found nor not_found is "unknown". */
+/**
+ * Where the names directory is: the public service, never a box. The identity comes first (a name, then a space, then a server), so
+ * a name is checked before there is any box to ask. EXPO_PUBLIC_VYRE_NAMES_DIRECTORY points a walk at a stand-in.
+ */
+export const DIRECTORY: string = ((typeof process !== "undefined" && process.env?.EXPO_PUBLIC_VYRE_NAMES_DIRECTORY) || "https://names.vyre.run").replace(/\/+$/, "");
+
+/** Is a name free in the directory? Asked of the directory itself, no box. An answer that is neither found nor not_found is "unknown". */
 export async function checkName(name: string): Promise<"free" | "taken" | "unknown"> {
   try {
-    await tool("spaces.identity.resolve", { name });
-    return nameAnswer({ ok: true });
-  } catch (e) {
-    return nameAnswer({ ok: false, code: e instanceof BoxError ? e.code : "offline" });
+    const r = await fetch(`${DIRECTORY}/v1/ids/resolve?name=${encodeURIComponent(name)}`, { headers: { accept: "application/json" }, cache: "no-store" });
+    const body = await r.json().catch(() => null);
+    return nameAnswer(directoryAnswer(r.status, body));
+  } catch {
+    // A browser cannot read an answer from a directory that sends no CORS headers: that is also "unknown", never a guess.
+    return "unknown";
   }
 }
 
-/** Claim the person's name. The recovery code is in this answer only: the caller shows it once and drops it. */
-export const createIdentity = (name: string, deviceLabel: string) => tool<{ name: string; id: string; recoveryCode: string }>("spaces.identity.create", { name, deviceLabel });
+/**
+ * Claim the person's name from this device, with no box: the key is made here, the claim goes to the names directory, and the identity is kept
+ * here. The recovery code is in this answer only: the caller shows it once and drops it.
+ */
+export async function createIdentity(name: string, deviceLabel: string, password = ""): Promise<{ name: string; id: string; recoveryCode: string; software: boolean }> {
+  const made = await claimIdentity({ name, password, deviceLabel, base: DIRECTORY });
+  await saveIdentity({ name: made.name, id: made.id, eid: made.eid, ops: made.ops, pin: made.pin, key: made.key });
+  return { name: made.name, id: made.id, recoveryCode: made.recoveryCode, software: made.software };
+}
 
 export async function createSpace(input: Record<string, unknown>): Promise<Created> {
   return createdFrom(await tool("spaces.create", input));

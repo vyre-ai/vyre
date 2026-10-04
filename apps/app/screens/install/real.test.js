@@ -1,7 +1,7 @@
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { identityFrom, nameAnswer, nameStatusReal, nameNoteReal, createInput, createdFrom, setupFrom, savesAt, setupElsewhere, applyClaim, inviteFrom } from "./real.js";
+import { identityFrom, nameAnswer, nameStatusReal, nameNoteReal, createInput, createdFrom, setupFrom, savesAt, setupElsewhere, applyClaim, inviteFrom, directoryAnswer } from "./real.js";
 
 // Shapes captured from a real kernel-on vyred (spaces.identity.status, spaces.list, spaces.setup.*).
 const STATUS = { exists: true, name: "devbox.vyre.run", label: "devbox", id: "per_pbiglgp6ji6jzrnbskpuzw77np", eid: "e", keyId: "e", pending: false, seq: 0, store: "file" };
@@ -68,4 +68,21 @@ test("a claim puts the saved state back on the screen", () => {
 test("an invite card reads the space, the role and the sender", () => {
   const c = inviteFrom({ id: "inv_1", role: "member", status: "pending", space: { id: "spc_1", label: "harlow" } }, "harlow.vyre.run/join/x");
   assert.deepEqual([c.space, c.address, c.role, c.status], ["harlow", "harlow.vyre.run", "Member", "pending"]);
+});
+
+test("the real invite card: the display name, the address, the role label, what is seen and the check words", () => {
+  const real = { space: "harlowdev.vyre.run", label: "Harlow Legal", role: "member", role_label: "Member", sees: { scope: [], expires: null }, valid_until: 1791678820968, fingerprint: "5d57", button: "Join Harlow Legal", fingerprint_words: "front ribbon army more" };
+  const c = inviteFrom(real, "https://harlowdev.vyre.run/join/t");
+  assert.deepEqual([c.space, c.address, c.role, c.words, c.from], ["Harlow Legal", "harlowdev.vyre.run", "Member", "front ribbon army more", ""]);
+  assert.match(c.sees, /Member role/);
+  const t = inviteFrom({ ...real, role: "temp", role_label: "Temp", sees: { scope: ["Doe estate plan"], expires: Date.UTC(2026, 9, 14) } }, "l");
+  assert.equal(t.sees, "Doe estate plan, until 2026-10-14");
+});
+
+test("the directory's answer: a chain is taken, not_found is free, a limit or garbage is unknown", () => {
+  assert.equal(nameAnswer(directoryAnswer(200, { data: { name: "devbox", kind: "person", ops: [] } })), "taken");
+  assert.equal(nameAnswer(directoryAnswer(404, { error: { code: "not_found", message: "no such name" } })), "free");
+  assert.equal(nameAnswer(directoryAnswer(429, { error: { code: "rate_limited" } })), "unknown");
+  assert.equal(nameAnswer(directoryAnswer(200, null)), "unknown");
+  assert.equal(nameAnswer(directoryAnswer(500, undefined)), "unknown");
 });
