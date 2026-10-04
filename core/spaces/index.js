@@ -46,6 +46,7 @@ export const hooks = {
   /** @type {number | null} */ syncMs: null,
   /** @type {{ memoryKiB: number, passes: number } | null} the recovery stretch, lowered by tests only */ stretch: null,
   /** @type {any} */ vpsDeps: null,
+  /** @type {boolean | null} when set, answers "does this space live on this computer" for every space (read at call time) */ livesHere: null,
   /** @type {((device: string) => Promise<{ call(tool: string, input: any): Promise<any> }>) | null} the open Wink peer session to a paired server (the daemon wires it); a test sets it */ sessionFor: null,
 };
 
@@ -191,6 +192,12 @@ export default {
       throw refuse("This device has no way to reach a paired server. Nothing was made.", "server_unreachable");
     };
     /** The device of a space whose home is a server and which the SERVER hosts (set when it was made there). */
+    /** True when this daemon is a person's own computer (it has an identity) and the space is not hosted on a paired server. */
+    const livesOnThisComputer = async (/** @type {string} */ spaceId) => {
+      if (typeof hooks.livesHere === "boolean") return hooks.livesHere;
+      let st = null; try { st = identity.status(); } catch { st = null; }
+      return !!(st && st.exists) && !(await serverOf(spaceId));
+    };
     const serverOf = async (/** @type {string} */ spaceId) => { const v = await kv.get(`server-hosted/${spaceId}`); return v && typeof v.device === "string" ? v.device : null; };
     const retireHosted = async (/** @type {string} */ id, /** @type {any} */ meta) => {
       const srv = await serverOf(id);
@@ -1283,6 +1290,8 @@ export default {
       async (i, meta) => {
         const row = spaceOf(i.space);
         const s = await gate(row.id, undefined, meta);
+        // A space that lives on this person's own computer cannot be reached by anyone else (no relay path in 0.3.0), so no link is made for it.
+        if (kernelHandle(row.id) && await livesOnThisComputer(row.id)) throw refuse("This space lives on this computer, so other people cannot join it. Move it to your server first.", "this_computer");
         if (kernelHandle(row.id)) {
           // The Space's kernel makes the invite (a grant act under the admin's own proof) and holds it; the link carries only its id and this device's pin.
           const k = await kctxOf(meta, row.id);
@@ -1377,7 +1386,10 @@ export default {
       if (!r.ok || r.kind !== "space" || !r.payload) throw refuse("That space could not be verified. Ask for a new invite.", "wrong_space");
       if (carried.rk && spaceFingerprint(r.id, r.payload.rootPublic) !== carried.rk) throw refuse("This invite could not be verified. Ask for a new one.", "forged");
       const h = kernelHandle(r.payload.id);
-      if (!h) throw refuse("This device cannot reach that space yet.", "unreachable");
+      if (!h) {
+        const owner = r.payload.ownerName || r.payload.owner_name || null;
+        throw refuse(`This space lives on ${owner ? `${owner}'s` : "its owner's"} computer and cannot be reached from here. Ask them to move it to their server.`, "unreachable");
+      }
       const k = await kctxOf(meta, r.payload.id);
       const card = await kernelMembers({ handle: h, now }).invites.get(k, invId);
       return { card, invId, spaceId: r.payload.id, handle: h, k, fingerprint: carried.rk || null };
