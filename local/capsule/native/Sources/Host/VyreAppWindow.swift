@@ -147,7 +147,7 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
             Notifier.shared.post(title: args["title"] as? String ?? "Vyre", body: args["body"] as? String ?? "")
             reply(id, ["ok": true])
         case "ws.open":
-            guard let sid = args["sid"] as? Int, let path = args["path"] as? String, let clean = BoxSchemeHandler.cleanPath(path.components(separatedBy: "?")[0]), clean.hasPrefix("/v1/streams/") else { return reply(id, ["error": "That is not a stream of this Vyre."]) }
+            guard let sid = args["sid"] as? Int, let raw = args["path"] as? String, let path = BoxSchemeHandler.streamPath(raw) else { return reply(id, ["error": "That is not a stream of this Vyre."]) }
             let sock = socket
             let result: Result<VyredStream, VyredStreamFailure> = await withCheckedContinuation { k in
                 DispatchQueue.global(qos: .userInitiated).async {
@@ -297,6 +297,21 @@ final class BoxSchemeHandler: NSObject, WKURLSchemeHandler, @unchecked Sendable 
         return comps.percentEncodedQuery.map { clean + "?" + $0 } ?? clean
     }
 
+    /// A stream's path and query from the page, checked as a whole: the path by cleanPath and /v1/streams/, the query by cleanQuery. nil to refuse. The returned string is what is sent.
+    static func streamPath(_ raw: String) -> String? {
+        let parts = raw.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
+        guard let clean = cleanPath(parts[0]), clean.hasPrefix("/v1/streams/") else { return nil }
+        if parts.count == 1 { return clean }
+        guard let q = cleanQuery(parts[1]) else { return nil }
+        return q.isEmpty ? clean : clean + "?" + q
+    }
+
+    /// A percent-encoded query with no space, control character, `#`, backslash or non-ASCII character: nothing that could end or split the request line.
+    static func cleanQuery(_ q: String) -> String? {
+        for u in q.unicodeScalars where u.value <= 0x20 || u.value >= 0x7f || u == "#" || u == "\\" { return nil }
+        return q
+    }
+
     /// What the page may reach: the app's own files and vyred's API.
     static func allowed(_ clean: String) -> Bool { clean == "/app" || clean.hasPrefix("/app/") || clean.hasPrefix("/v1/") }
 
@@ -360,7 +375,10 @@ final class BoxSchemeHandler: NSObject, WKURLSchemeHandler, @unchecked Sendable 
                 })
             if let build = verifyAgainst, case .success = result, let head = heldHead {
                 // Verified before a byte reaches the page: a 200 must match its hash (or be the single-page app's index.html for a route), anything else is refused.
-                let ok = head.status != 200 || AppBuildGate.allows(build, path: String(path.split(separator: "?", maxSplits: 1).first ?? ""), body: heldBody)
+                // Only a 200 whose body matches is passed on. Any other answer (404, 500, a redirect) is dropped, headers and body, and replaced by a fixed text: a changed vyred
+                // must not get script into vyreapp://box through an error page.
+                let ok = head.status == 200 && AppBuildGate.allows(build, path: String(path.split(separator: "?", maxSplits: 1).first ?? ""), body: heldBody)
+                let plain = head.status == 200 ? 403 : 404
                 DispatchQueue.main.async {
                     guard !self.isStopped(task) else { return }
                     if ok {
@@ -369,8 +387,9 @@ final class BoxSchemeHandler: NSObject, WKURLSchemeHandler, @unchecked Sendable 
                         task.didReceive(HTTPURLResponse(url: url, statusCode: head.status, httpVersion: "HTTP/1.1", headerFields: h) ?? URLResponse(url: url, mimeType: nil, expectedContentLength: -1, textEncodingName: nil))
                         task.didReceive(heldBody)
                     } else {
-                        task.didReceive(HTTPURLResponse(url: url, statusCode: 403, httpVersion: "HTTP/1.1", headerFields: ["content-type": "text/plain"]) ?? URLResponse(url: url, mimeType: nil, expectedContentLength: 0, textEncodingName: nil))
-                        task.didReceive(Data("This file does not match the signed app build.".utf8))
+                        let fixed = ["content-type": "text/plain; charset=utf-8", "x-content-type-options": "nosniff"]
+                        task.didReceive(HTTPURLResponse(url: url, statusCode: plain, httpVersion: "HTTP/1.1", headerFields: fixed) ?? URLResponse(url: url, mimeType: nil, expectedContentLength: 0, textEncodingName: nil))
+                        task.didReceive(Data((plain == 403 ? "This file does not match the signed app build." : "Not available.").utf8))
                     }
                     sent = true
                 }

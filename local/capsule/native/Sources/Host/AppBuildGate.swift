@@ -18,6 +18,8 @@ import Foundation
 struct AppBuild: Equatable, Sendable {
     var files: [String: String]
     var tree: String
+    var version: String
+    var counter: Int
 }
 
 enum AppBuildGate {
@@ -40,7 +42,7 @@ enum AppBuildGate {
     static func sha256Hex(_ d: Data) -> String { SHA256.hash(data: d).map { String(format: "%02x", $0) }.joined() }
 
     /// The signed list, checked. `key` is the SPKI the build was made with.
-    static func verify(appbuild: Data, sums: String, sig: Data, key: String) -> Outcome {
+    static func verify(appbuild: Data, sums: String, sig: Data, key: String, minCounter: Int = releaseMinAppCounter) -> Outcome {
         if key == placeholderKey { return .unchecked }
         guard let pub = publicKey(spki: key) else { return .refused("This Vyre was built without a valid release key.") }
         guard pub.isValidSignature(sig, for: Data(("vyre-release-sums\n" + sums).utf8)) else { return .refused("The release list is not signed by Vyre's key.") }
@@ -53,7 +55,11 @@ enum AppBuildGate {
         guard let j = VJ.decode(appbuild) as? [String: Any], let files = j["files"] as? [String: String], !files.isEmpty, let index = files["index.html"], !index.isEmpty else {
             return .refused("The app build list is unreadable.")
         }
-        return .verified(AppBuild(files: files.mapValues { $0.lowercased() }, tree: VJ.s(j["tree"])))
+        // A list signed by the right key can still be an old release's, with an old build's holes: refuse one below the lowest this Lumen accepts (releaseMinAppCounter,
+        // from the release counter the build was made at). The counter is signed with the list (appbuild.json), so a changed vyred cannot lower it.
+        let counter = (j["counter"] as? Int) ?? -1
+        guard counter >= minCounter else { return .refused("This app build is older than this Vyre accepts.") }
+        return .verified(AppBuild(files: files.mapValues { $0.lowercased() }, tree: VJ.s(j["tree"]), version: VJ.s(j["version"]), counter: counter))
     }
 
     /// The listed name of a served path: "/app/" is index.html, "/app/_expo/x.js" is "_expo/x.js". nil for anything outside /app/. The path has no query.

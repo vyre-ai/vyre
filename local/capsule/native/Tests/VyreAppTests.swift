@@ -57,7 +57,7 @@ let vyreAppSuite = Suite("vyre app window") { t in
         let der = Data([0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00]) + priv.publicKey.rawRepresentation
         let spki = der.base64EncodedString()
         let index = Data("<html>app</html>".utf8), js = Data("console.log(1)".utf8)
-        let list = ["files": ["index.html": AppBuildGate.sha256Hex(index), "_expo/a.js": AppBuildGate.sha256Hex(js)], "tree": "t1"] as [String: Any]
+        let list = ["files": ["index.html": AppBuildGate.sha256Hex(index), "_expo/a.js": AppBuildGate.sha256Hex(js)], "tree": "t1", "version": "0.3.0", "counter": 7] as [String: Any]
         let ab = (try? JSONSerialization.data(withJSONObject: list)) ?? Data()
         let sums = "\(AppBuildGate.sha256Hex(ab))  appbuild.json\n0000  other\n"
         let sig = (try? priv.signature(for: Data(("vyre-release-sums\n" + sums).utf8))) ?? Data()
@@ -72,10 +72,20 @@ let vyreAppSuite = Suite("vyre app window") { t in
         t.ok(AppBuildGate.verify(appbuild: ab, sums: sums, sig: sig, key: otherDer) != .unchecked && !isVerified(AppBuildGate.verify(appbuild: ab, sums: sums, sig: sig, key: otherDer)), "another key refuses")
         t.ok(!isVerified(AppBuildGate.verify(appbuild: Data("{}".utf8), sums: sums, sig: sig, key: spki)), "a list that is not in the signed sums is refused")
         t.ok(!isVerified(AppBuildGate.verify(appbuild: ab, sums: sums + "x", sig: sig, key: spki)), "changed sums are refused")
+        t.ok(!isVerified(AppBuildGate.verify(appbuild: ab, sums: sums, sig: sig, key: spki, minCounter: 8)), "an older release's list is refused")
+        t.ok(isVerified(AppBuildGate.verify(appbuild: ab, sums: sums, sig: sig, key: spki, minCounter: 7)), "the minimum itself is fine")
         t.eq(AppBuildGate.verify(appbuild: ab, sums: sums, sig: sig, key: AppBuildGate.placeholderKey), .unchecked, "the placeholder key is a development build")
         t.eq(AppBuildGate.listedName("/app/"), "index.html")
         t.eq(AppBuildGate.listedName("/app/_expo/a.js"), "_expo/a.js")
         t.eq(AppBuildGate.listedName("/v1/x"), nil)
+    }
+
+    t.test("a stream's path and query are checked as a whole") {
+        t.eq(BoxSchemeHandler.streamPath("/v1/streams/stream/session?ticket=abc&x=1"), "/v1/streams/stream/session?ticket=abc&x=1")
+        t.eq(BoxSchemeHandler.streamPath("/v1/streams/stream/session"), "/v1/streams/stream/session")
+        for bad in ["/v1/streams/x?a=b\r\nHost: evil", "/v1/streams/x?a=b c", "/v1/streams/x?a=b#c", "/v1/streams/../tools/x", "/v1/tools/x", "/v1/streams/x?a=\u{e9}"] {
+            t.eq(BoxSchemeHandler.streamPath(bad), nil, bad)
+        }
     }
 
     t.test("the page's bridge names every call the window answers") {
