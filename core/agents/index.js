@@ -547,9 +547,11 @@ export default {
     ctx.tool("agents.delete", {
       description: "Remove an agent's record and its spend. Refused while one of its threads is running (agents.stop first), and for the assistant. Its threads' transcripts and events stay.",
       input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },
-      callers: ["cli", "local", "deck", "capsule"],
-      run: async ({ agent }) => {
+      callers: ["cli", "local", "deck", "capsule", "module"],
+      run: async ({ agent }, { caller } = {}) => {
         const a = must(agent);
+        // One module may delete, and only the personal agent it made itself: pluginagent.revoke ends "Claude Code on this computer" (a person's act it carries, with presence). Any other module is refused.
+        if (String(caller || "").startsWith("module:") && !(caller === "module:pluginagent" && a.personal === true)) throw Object.assign(new Error("only the person deletes an agent"), { code: "denied" });
         if (a.builtin) throw Object.assign(new Error(`${a.name} is built in and stays`), { code: "denied" });
         if (a.kind === "assistant") throw new Error(`${a.name} is the assistant; there must be one, so change it with agents.update instead`);
         const running = (await use("threads.list", { agent })).filter(t => t.status !== "stopped");

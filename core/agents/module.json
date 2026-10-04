@@ -72,7 +72,7 @@
       },
       {
         "name": "agents.delete",
-        "reach": "person",
+        "reach": "anyone",
         "effect": "write"
       }
     ]
