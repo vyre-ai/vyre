@@ -153,6 +153,7 @@ do_update() { # LABEL STORE: STORE is none (an untouched box: no VYRE_STORE appe
   if [ "${DEV_KIND:-0}" = 1 ]; then
     docker exec -u 1000 vyre-vyre-1 sh -c 'grep -q "development" /opt/vyre/lib/build-kind.js' || fail "$1: DEV_KIND=1 but the candidate is not development-kind"
     docker exec -u 1000 vyre-vyre-1 touch /home/vyre/.vyre/dev-presence-stand-in || fail "$1: could not place the owner stand-in"
+    enrol_owner # here, not inside person_call: that runs in a subshell, and a flag set there is lost (the key would be enrolled twice)
   fi
   # records' store line (/v1/health records_store, when this candidate carries it): an untouched box is on the built-in store by default and it answers.
   if [ "$2" = none ]; then
