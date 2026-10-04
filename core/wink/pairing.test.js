@@ -707,7 +707,7 @@ test("Q-1: a first adoption by a paired device is a question at the server: who 
   assert.equal(first.words, "amber coral app1", "the words come from the server's keys and this device");
   assert.equal(w.p.meta.get("owner"), null, "asking does not own");
   const q = await atServer(w, "wink.server.pairing");
-  assert.deepEqual({ asking: q.asking, name: q.name, words: q.words }, { asking: true, name: "Alex", words: undefined }, "the question never shows the right words, only choices");
+  assert.deepEqual({ asking: q.asking, name: q.name, words: q.words }, { asking: true, name: "Alex (per_aaaaaa)", words: undefined }, "the question never shows the right words, only choices");
   assert.equal(q.choices.length, 3);
   assert.equal(new Set(q.choices).size, 3);
   assert.ok(q.choices.includes("amber coral app1"), "the right words are one of the three");
