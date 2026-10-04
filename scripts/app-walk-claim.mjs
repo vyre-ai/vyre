@@ -67,8 +67,10 @@ let alive = await check("install: the name step is open (the web claim flag is o
 });
 alive = alive && await check(`a free name is offered: ${NAME}`, async () => { await page.locator("input").first().fill(NAME); await page.getByText(/is yours to take/).waitFor({ timeout: 10000 }); });
 alive = alive && await check("Face ID sheet opens, Create makes the identity and shows the recovery code once", async () => {
-  await page.getByRole("button", { name: /Continue with Face ID/ }).click();
-  await page.getByRole("button", { name: /Create with (Face ID|your passkey)/ }).click();
+  // the name step's button is "Create my name" (no biometric sheet) in newer builds, "Continue with Face ID" then a sheet in older ones
+  await page.getByRole("button", { name: /Create my name|Continue with Face ID/ }).first().click();
+  const sheet = page.getByRole("button", { name: /Create with (Face ID|your passkey)/ });
+  if (await sheet.count().catch(() => 0)) await sheet.first().click();
   await page.getByText("Save your recovery code").waitFor({ timeout: 30000 });
   const t = await body();
   if (!/[a-z0-9]{4}(-[a-z0-9]{4}){5}-[a-z0-9]{2}/i.test(t)) throw new Error("no recovery code on screen");
