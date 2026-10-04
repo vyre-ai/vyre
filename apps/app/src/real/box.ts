@@ -24,4 +24,4 @@ export async function tool<T = unknown>(name: string, input: Record<string, unkn
 }
 
 /** The words to show for a failed call. */
-export const said = (e: unknown): string => (e instanceof BoxError ? (e.code === "offline" ? "Cannot reach your server right now." : e.message) : "Something went wrong.");
+export const said = (e: unknown): string => (e instanceof BoxError ? (e.code === "offline" || /no JSON/i.test(e.message) ? "Cannot reach your server right now." : e.message) : "Something went wrong.");
