@@ -16,13 +16,12 @@ test("records.*: a signed-in device creates and queries records in its Space und
   const ok = async (tool, input, caller = "cli") => { const r = await call(tool, input, { root, caller }); assert.ok(!r.error, `${tool}: ${JSON.stringify(r)}`); return r.data; };
   // the owner's own surface: define a type, make and read a record
   const noProof = await call("records.define", { diff: { add_types: [CONTACT] } }, { root, caller: "cli" });
-  assert.equal(noProof.error && noProof.error.code, "needs_presence", "changing the types is the person's act, with their presence");
-  // the development stand-in (the owner's hand-made file): the same call now goes through, and the log says it was a stand-in
+  assert.ok(!noProof.error, "one rule (7bf5dd47a): the owner's own surface is the person, so changing the types needs no presence: " + JSON.stringify(noProof));
+  // with the stand-in file present the same call still goes through; the one rule never asks the stand-in, so nothing is logged as one
   const fsx = await import("node:fs"), pathx = await import("node:path");
   fsx.writeFileSync(pathx.join(root, "dev-presence-stand-in"), "");
   const viaStandIn = await call("records.define", { diff: { add_types: [CONTACT] } }, { root, caller: "cli" });
   assert.ok(!viaStandIn.error, JSON.stringify(viaStandIn));
-  assert.ok(d.kernel.log.read({ type: "presence.stand-in" }).length >= 1 && d.kernel.log.read({ type: "presence.stand-in" }).every(e => e.data.method === "stand-in"), "every use is recorded as a stand-in");
   fsx.rmSync(pathx.join(root, "dev-presence-stand-in"));
   const ownerChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
   await d.kernel.gateway.records.define(ownerChain, { add_types: [CONTACT] }).catch(() => {});
