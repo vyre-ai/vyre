@@ -629,3 +629,24 @@ test("WF-1 on tasks: a change whose event cannot be written does not stay in mem
   assert.equal(done.state, "done");
   assert.equal(r.released.length, 1, "WF-2: the second approval did not send again");
 });
+
+test("PR-2: the form a Flow sent with a task is bound into what the checker's proof covers: same evidence under another form is another payload hash, and a proof for the other form does not approve", async () => {
+  const r = rig();
+  const A = alice();
+  const evidence = { answer: "yes", reason: "the diff is fine" };
+  const mk = async form => {
+    const t = await r.tasks.request(owner(), draftTask({ checker: actor("person", ALICE), output: { kind: "decision" }, doer: actor("agent", "research"), flow: "fl_proposal", form }));
+    await r.tasks.start(agentChain("research"), t.id);
+    return r.tasks.complete(agentChain("research"), t.id, evidence);
+  };
+  const one = await mk({ kind: "proposal", diff: "add a stage" });
+  const two = await mk({ kind: "proposal", diff: "add a stage and delete a type" });
+  assert.equal(one.state, "needs_check");
+  assert.notEqual(one.payload.payload_hash, two.payload.payload_hash, "another form, another hash");
+  // a proof over the other form's hash, for this task and decision, is not a proof for this task
+  const forTwo = r.sign(A, ALICE, "task.decide", { task: two.id, payload_hash: one.payload.payload_hash, decision: two.payload.decision });
+  await assert.rejects(() => r.tasks.decide(A, two.id, { outcome: "approved", proof: forTwo }), { code: "needs_presence" });
+  assert.equal((await r.tasks.get(owner(), two.id)).state, "needs_check", "nothing was approved");
+  const good = r.proof(A, ALICE, two);
+  assert.equal((await r.tasks.decide(A, two.id, { outcome: "approved", proof: good })).state, "done");
+});
