@@ -104,6 +104,12 @@ test("records.dev-seed: refused unless the presence stand-in is on; with it, the
   const tasks = (await call("tasks.list", {}, { root, caller: "cli" })).data.tasks;
   assert.deepEqual(tasks.map(x => x.state).sort(), ["needs_check", "working"], JSON.stringify(tasks.map(x => [x.title, x.state])));
   assert.equal(tasks.find(x => x.state === "needs_check").checker.id, d.kernel.id.owner, "waiting for the person");
+  // a second run adds only what is missing: nothing
+  const again = await call("records.dev-seed", {}, { root, caller: "cli" });
+  assert.ok(!again.error, JSON.stringify(again));
+  assert.equal((await call("records.list", { type: "contact" }, { root, caller: "cli" })).data.rows.length, 3);
+  assert.equal((await call("records.list", { type: "matter" }, { root, caller: "cli" })).data.rows.length, 4);
+  assert.equal((await call("tasks.list", {}, { root, caller: "cli" })).data.tasks.length, 2);
 });
 
 test("records.linked and records.kits.*: the reverse of a link under the caller's chain, and the Kit library with a Kit a person can take to the install card", async t => {
