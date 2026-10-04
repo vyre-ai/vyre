@@ -478,6 +478,7 @@ prepare_run() {
   esac
   [ -f "$RUN/compose.yml" ] || die "root's copy of the compose file is missing; run: sudo vyre updater install"
   [ "$BUILDF" = 0 ] || [ -f "$RUN/compose.build.yml" ] || die "root's copy of compose.build.yml is missing; run: sudo vyre updater install"
+  # (VYRE_SEAL_DEV and VYRE_SEAL_SOFTWARE are passed on because a release-kind build ignores them: kernel/seal devSwitch is false there, so they only matter on a development-kind install, where a walk needs them in the admin one-off runs.)
   # root's env file: only these, each in the shape it must have; anything else in .env (an image, a path, a capability list) is not passed on.
   ce="$RUN/compose.env.new"
   # (the key is spelled in two parts so the release build, which must not name any test override, stays checkable by grep)
@@ -486,12 +487,12 @@ prepare_run() {
       sed -n 's/^DOCKER_GID=\([0-9][0-9]*\)$/DOCKER_GID=\1/p; s/^VYRE_DRIVE_ACCESS=ro$/VYRE_DRIVE_ACCESS=ro/p; s/^VYRE_DRIVE_ACCESS=rw$/VYRE_DRIVE_ACCESS=rw/p; s/^VYRE_TS_HOSTNAME=\([A-Za-z0-9-]\{1,63\}\)$/VYRE_TS_HOSTNAME=\1/p; s/^TS_AUTHKEY=\([A-Za-z0-9_-]\{1,200\}\)$/TS_AUTHKEY=\1/p' "$DIR/.env"
     fi; } >"$ce"
   chmod 600 "$ce"; rename_over "$ce" "$RUN/compose.env"
-  if [ -f "$DIR/vyre.env" ] && [ ! -L "$DIR/vyre.env" ]; then grep -E '^(CLOUDFLARE_[A-Z0-9_]+|VYRE_SETUP_CODE|VYRE_SETUP_CODE_AT|VYRE_EGRESS_[A-Z0-9_]+|VYRE_KERNEL|VYRE_STORE)=[^$`]*$' "$DIR/vyre.env" >"$RUN/vyre.env.new" || true
+  if [ -f "$DIR/vyre.env" ] && [ ! -L "$DIR/vyre.env" ]; then grep -E '^(CLOUDFLARE_[A-Z0-9_]+|VYRE_SETUP_CODE|VYRE_SETUP_CODE_AT|VYRE_EGRESS_[A-Z0-9_]+|VYRE_KERNEL|VYRE_STORE|VYRE_SEAL_DEV|VYRE_SEAL_SOFTWARE)=[^$`]*$' "$DIR/vyre.env" >"$RUN/vyre.env.new" || true
   else : >"$RUN/vyre.env.new"; fi
   chmod 600 "$RUN/vyre.env.new"; rename_over "$RUN/vyre.env.new" "$RUN/vyre.env"
   # Nothing is dropped silently: the names (never the values) of what a root run did not pass on.
   skipped=$( { sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' "$DIR/.env" 2>/dev/null | grep -Evx 'DOCKER_GID|TS_AUTHKEY|VYRE_DRIVE_ACCESS|VYRE_TS_HOSTNAME|COMPOSE_PROJECT_NAME|COMPOSE_FILE|VYRE_SOURCE|VYRE_CHANNEL|VYRE_SETUP_CODE|VYRE_SETUP_CODE_AT' || true
-    sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' "$DIR/vyre.env" 2>/dev/null | grep -Evx 'CLOUDFLARE_[A-Z0-9_]+|VYRE_SETUP_CODE|VYRE_SETUP_CODE_AT|VYRE_EGRESS_[A-Z0-9_]+|VYRE_KERNEL|VYRE_STORE' || true; } | sort -u | head -n 12 | tr '\n' ' ')
+    sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' "$DIR/vyre.env" 2>/dev/null | grep -Evx 'CLOUDFLARE_[A-Z0-9_]+|VYRE_SETUP_CODE|VYRE_SETUP_CODE_AT|VYRE_EGRESS_[A-Z0-9_]+|VYRE_KERNEL|VYRE_STORE|VYRE_SEAL_DEV|VYRE_SEAL_SOFTWARE' || true; } | sort -u | head -n 12 | tr '\n' ' ')
   [ -z "$skipped" ] || echo "vyre: an update run by root ignores these settings from $DIR/.env and vyre.env (root passes on only the few it checks; start the stack yourself with them set, or see vyre.env.example): $skipped" >&2
 }
 
