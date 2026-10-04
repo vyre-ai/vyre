@@ -76,7 +76,7 @@ export function createdFrom(r) {
   const address = String(r?.domain ?? "");
   const st = String(r?.status ?? "");
   if (st === "done") return { state: "done", id, address, say: "" };
-  if (st === "failed" || st === "cancelled") return { state: "failed", id, address, say: String(r?.message ?? r?.error ?? "Setting up the space did not finish.") };
+  if (st === "failed" || st === "cancelled") return { state: "failed", id, address, say: String(r?.failed?.reason ?? r?.message ?? r?.error ?? "Setting up the space did not finish.") };
   if (st === "needs-input" || st === "asking" || r?.ask) return { state: "asking", id, address, say: String(r?.message ?? r?.ask?.message ?? "The space needs an answer to carry on.") };
   return { state: "running", id, address, say: "" };
 }

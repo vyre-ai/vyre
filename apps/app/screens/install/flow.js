@@ -77,7 +77,7 @@ export function unpackProgress(/** @type {string | null | undefined} */ raw) {
 }
 
 /** What another of the person's devices says while setup is unfinished elsewhere. */
-export const setupElsewhere = (/** @type {string} */ device) => `Setup in progress on your ${device}`;
+export const setupElsewhere = (/** @type {string} */ device) => (/^this (computer|device)$/i.test(device.trim()) ? `Setup in progress on ${device.trim().toLowerCase()}` : `Setup in progress on your ${device}`);
 export const CONTINUE_HERE = "Continue here";
 /** The line a server prints once it is paired: it asks nothing more. */
 export const connectedLine = (/** @type {string} */ space, /** @type {string} */ device) => `Connected to ${space}. Finish setting up on your ${device}.`;

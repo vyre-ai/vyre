@@ -158,7 +158,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
     void (async () => {
       try {
         const who = await readIdentity();
-        if (who) { setName(who.label); if (first && step === "name") setStep("spaces"); }
+        if (who) { setName(who.label); setStep((s) => (first && s === "name" ? "spaces" : s)); }
         // Identity first: a device with no name cannot create or join a space, so any other way in starts at the name. A kept invite waits for it.
         else { noId.current = true; setStep((s) => (["scan", "scanwords", "recovery"].includes(s) ? s : "name")); }
         // The box names the device a setup is on but the app does not know its own device id: a setup this device began is the one whose name matches the progress it kept.

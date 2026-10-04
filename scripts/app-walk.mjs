@@ -46,7 +46,11 @@ const ERROR_WORDS = /(did not answer|did not open|could not be|could not load|co
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".woff2": "font/woff2", ".woff": "font/woff", ".ttf": "font/ttf", ".json": "application/json", ".ico": "image/x-icon", ".svg": "image/svg+xml", ".map": "application/json" };
 /** Every box answer to a tool call, in order, so a step can say which refusals it saw. */
 const answers = [];
+/** The tools that ask for a person's proof. A header on any other call would turn a plain read into a proof check, so only these get it. @param {string} t */
+const needsProof = (t) => /^(vault\.(reveal|put|unlock)|spaces\.identity\.(code\.replace|entry\.remove)|settings\.set|rules\.(define|enable|disable|remove|accept|dismiss)|tasks\.decide|records\.reveal|flows\.approve|spaces\.members\.|spaces\.devices\.lend|files\.drive\.restore)/.test(decodeURIComponent(t));
 function forward(req, res) {
+  // With --presence the dev box's hand-made stand-in answers every proof ask (method "stand-in", logged as such on the box); it is honoured only on a development build.
+  if (PRESENCE && !req.headers["x-vyre-presence"] && needsProof(/^\/v1\/tools\/([^/?#]+)/.exec(req.url)?.[1] ?? "")) req.headers["x-vyre-presence"] = "stand-in";
   const opts = SOCKET ? { socketPath: SOCKET, path: req.url, method: req.method, headers: { ...req.headers, host: "localhost", "x-vyre-caller": CALLER } }
     : { host: new URL(BOX_URL).hostname, port: new URL(BOX_URL).port, path: req.url, method: req.method, headers: { ...req.headers, host: new URL(BOX_URL).host, "x-vyre-caller": CALLER } };
   const up = http.request(opts, (r) => {
@@ -83,7 +87,7 @@ const BASE = `http://127.0.0.1:${server.address().port}/app`;
 function boxCall(tool, input = {}) {
   return new Promise((resolve) => {
     const body = JSON.stringify(input);
-    const opts = SOCKET ? { socketPath: SOCKET, path: `/v1/tools/${tool}`, method: "POST", headers: { host: "localhost", "x-vyre-caller": CALLER, "content-type": "application/json", "content-length": Buffer.byteLength(body) } }
+    const opts = SOCKET ? { socketPath: SOCKET, path: `/v1/tools/${tool}`, method: "POST", headers: { host: "localhost", "x-vyre-caller": CALLER, ...(PRESENCE && needsProof(tool) ? { "x-vyre-presence": "stand-in" } : {}), "content-type": "application/json", "content-length": Buffer.byteLength(body) } }
       : { host: new URL(BOX_URL).hostname, port: new URL(BOX_URL).port, path: `/v1/tools/${tool}`, method: "POST", headers: { "x-vyre-caller": CALLER, "content-type": "application/json", "content-length": Buffer.byteLength(body) } };
     const r = http.request(opts, (x) => { let s = ""; x.on("data", (c) => (s += c)); x.on("end", () => { try { const j = JSON.parse(s); resolve(j.error ? { error: j.error } : { data: j.data ?? j }); } catch { resolve({ error: { code: "bad_reply", message: s.slice(0, 120) } }); } }); });
     r.on("error", (e) => resolve({ error: { code: "unreachable", message: String(e.message) } }));
@@ -104,6 +108,10 @@ const spaceNames = has("spaces") && Array.isArray(world.spaces.data) ? world.spa
 const browser = await chromium.launch();
 const ctx = await browser.newContext({ viewport: { width: WIDTH, height: 900 }, colorScheme: "dark", serviceWorkers: "block" });
 const page = await ctx.newPage();
+// The stand-in names directory (testbox3) sends no CORS headers yet (windows' fix 489ea442f is not on it), so a browser cannot read its answer. The walk adds the header on the way back;
+// the answer itself is the directory's, untouched.
+const DIRECTORY = process.env.WALK_NAMES_DIRECTORY || "";
+if (DIRECTORY) await ctx.route(`${DIRECTORY}/**`, async (route) => { const r = await route.fetch(); await route.fulfill({ response: r, headers: { ...r.headers(), "access-control-allow-origin": "*" } }); });
 let consoleErrors = [];
 page.on("pageerror", (e) => consoleErrors.push(`pageerror: ${e}`));
 page.on("console", (m) => { if (m.type() === "error") consoleErrors.push(m.text()); });
@@ -203,7 +211,7 @@ await step("settings: notifications, switch a kind and back", {}, async () => {
 await step("settings: assistants", {}, async () => { await go("u/settings/assistants"); });
 await step("settings: AI accounts", {}, async () => { await go("u/settings/ai"); });
 await step("settings: account and recovery", { expect: [/ways in/i] }, async () => { await go("u/settings/account"); });
-await step("settings: account, make a new recovery code", { needs: "presence", expect: [/new recovery code/i] }, async () => {
+await step("settings: account, make a new recovery code", { needs: "presence", expect: [/I wrote it down/] }, async () => {
   await go("u/settings/account");
   await press("Make a new recovery code");
   await settle(1500);
@@ -227,7 +235,7 @@ await step("settings: devices (chat's)", {}, async () => { await go("u/settings/
 
 await step("setup: create a space on this computer, close partway, resume", { skip: SETUP ? undefined : "starts a real space on the dev box: pass --setup" }, async () => {
   await go("u/install/create");
-  await page.getByLabel("Name").first().fill("Walk Space");
+  await page.getByLabel("Name").first().fill(`Walk ${Date.now().toString(36).slice(-4)}`);
   await settle(1500);
   await page.screenshot({ path: path.join(OUT, "setup-1-name.png") });
   await click("Continue");
@@ -237,11 +245,19 @@ await step("setup: create a space on this computer, close partway, resume", { sk
   await page.screenshot({ path: path.join(OUT, "setup-3-after-create.png") });
   const t3 = await text();
   if (!/Give .* a look/.test(t3)) throw new Error(`stopped after Create it here: ${t3.replace(/\s+/g, " ").slice(0, 300)}`);
-  // Close partway: a fresh page, and setup must resume at the look step.
+  // Close partway: leave the flow and open it again; setup must resume at the look step, with no second sign-in.
   await go("u/spaces");
+  await go("u/install");
   await page.screenshot({ path: path.join(OUT, "setup-4-reopened.png") });
   const t4 = await text();
-  if (!/Setup in progress|Continue here|a look/.test(t4)) throw new Error(`no resume offered after closing: ${t4.replace(/\s+/g, " ").slice(0, 300)}`);
+  if (!/Give .* a look/.test(t4)) throw new Error(`setup did not resume at the look step after closing: ${t4.replace(/\s+/g, " ").slice(0, 300)}`);
+  await click("Continue");
+  await page.screenshot({ path: path.join(OUT, "setup-5-members.png") });
+  const members = (await text()).replace(/\s+/g, " ").slice(0, 200);
+  for (const later of ["Later", "Later", "Start empty"]) { await click(later, { settle: 1500 }).catch(() => {}); }
+  await page.screenshot({ path: path.join(OUT, "setup-6-done.png") });
+  const t6 = await text();
+  if (!/is ready/.test(t6)) throw new Error(`setup did not reach its done page (members step said: ${members}): ${t6.replace(/\s+/g, " ").slice(0, 300)}`);
 });
 
 await browser.close();

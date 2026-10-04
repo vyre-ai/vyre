@@ -94,3 +94,8 @@ test("the done page says what is still pending: a Kit waiting in Now, a Kit not 
   assert.match(pendingLines({ kit, kitResult: { ok: false, text: "no_such_tool" }, connectors: [] })[0], /was not asked for: no_such_tool. Install it later from Kits./);
   assert.deepEqual(pendingLines({ kit: null, kitResult: null, connectors: [] }), []);
 });
+
+test("a failed space says the box's own reason, from failed.reason", () => {
+  assert.deepEqual(createdFrom({ spaceId: "spc_1", status: "failed", failed: { step: "claim", reason: "too many names claimed from this address today" } }), { state: "failed", id: "spc_1", address: "", say: "too many names claimed from this address today" });
+  assert.equal(createdFrom({ status: "failed" }).say, "Setting up the space did not finish.");
+});
