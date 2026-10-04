@@ -62,6 +62,11 @@ export interface AuditApi {
 export interface Kernel {
   authorize(input: AuthorizeInput): Promise<AuthorizeOutput>;
   readonly records: RecordsApi;
+  /** Operations that change what a field is under existing data. */
+  readonly migrate: {
+    /** Seal a plain text field that holds values: they move into a new sealed field `<field>_sealed` through seal.put, the plain field is removed from view, and the old values are scrubbed from the store's change log and snapshots, Twenty's timeline and the event log (an erased event keeps its envelope). Needs records.define, records.update and seal.put. */
+    sealField(chain: Chain, input: { readonly type: string; readonly field: string; readonly class: string; readonly level?: 'ai' | 'human'; readonly name?: string; readonly scrub_history?: boolean }): Promise<{ readonly sealed_field: string; readonly moved: number; readonly erased_events: number }>;
+  };
   readonly grants: GrantsApi;
   readonly ask: TaskApi;
   readonly model: ModelApi;
