@@ -55,9 +55,17 @@ export const viewDefs = {
   },
 };
 
-/** The view definition of a type, or a plain one (title is the first field, five columns) for a type this table does not know. @param {{ name: string, label?: string, fields: readonly { name: string }[] }} def @param {Record<string, ViewDefinition>} [table] @returns {ViewDefinition} */
+/** The view definition of a type, or a plain one (title is the first field, five columns) for a type this table does not know. @param {{ name: string, label?: string, kind?: string, fields: readonly { name: string, kind?: string }[] }} def @param {Record<string, ViewDefinition>} [table] @returns {ViewDefinition} */
 export function viewDefOf(def, table = viewDefs) {
-  return table[def.name] || { plural: `${def.label || def.name}s`, titleField: def.fields[0]?.name || "name", list: { columns: def.fields.slice(1, 5).map(f => f.name) } };
+  if (table[def.name]) return table[def.name];
+  // A type this table does not know (a space's own, or one a Kit added): a plain list. It holds work, and shows under Projects, only when its definition says so
+  // (`kind: "project"`, set in Customize or by a Kit). Having a stage is not enough: a role such as a Prospect has stages and is not a project.
+  const stage = def.fields.find(f => f.kind === "stage");
+  return {
+    plural: `${def.label || def.name}s`, titleField: def.fields[0]?.name || "name", list: { columns: def.fields.slice(1, 5).map(f => f.name) },
+    ...(def.kind === "project" ? { holdsWork: true } : {}),
+    ...(stage ? { board: { groupBy: stage.name, card: def.fields.filter(f => f !== stage).slice(0, 3).map(f => f.name) } } : {}),
+  };
 }
 
 /** A private copy, so a test or a screen that edits a view leaves the shared table alone. */
