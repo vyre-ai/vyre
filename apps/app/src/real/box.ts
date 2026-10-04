@@ -4,6 +4,7 @@
 // state when it has nothing, and an error line when it cannot be reached. Never sample people.
 
 import { call } from "../api/box";
+import { peerCall, peerWanted } from "./peer";
 import { wantsPasskey } from "./presence-model.js";
 import { claimBlocked } from "../../screens/shell/rc";
 import { needsPerson, onPhoneFor } from "./on-phone.js";
@@ -27,6 +28,11 @@ export class BoxError extends Error {
 /** The words a screen shows while the phone is asked. */
 export const WAITING_TITLE = APPROVE_ON_PHONE;
 export async function tool<T = unknown>(name: string, input: Record<string, unknown> = {}): Promise<T> {
+  // A device paired to its server over the relay (device-first install) calls it over the peer wire: the server runs the call as this device with its paired session.
+  if (peerWanted()) {
+    try { return await peerCall<T>(name, input); }
+    catch (e) { const x = e as { code?: string; message?: string }; throw new BoxError(x.code ?? "error", x.message ?? ""); }
+  }
   let r = await call<T>(name, input).catch((e: Error) => ({ error: { code: "offline", message: e.message } }) as const);
   // A kernel act a person signs (a rule, say), asked from the web app: the paired phone approves it ("Approve on your phone"), then the act goes again with the proof it signed.
   if (r.error && Platform.OS === "web" && phoneRoute(name, r.error)) {

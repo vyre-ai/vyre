@@ -223,6 +223,7 @@ export const NARROWABLE = new Set(["gate.approve", "vault.account.unlock"]);
  * caller reaches a HUMAN_ONLY tool only with a person session as well (ADR 0032; the registry's
  * gate runs first), so a script on that device cannot borrow the node's identity here.
  */
+// SHIM(legacy labels): the kernel-off fallback; with a kernel the registry asks `personOf` (the chain) instead.
 const vaultSessionCaller = caller => {
   const c = String(caller || "");
   if (/(?:^|[\s:])agent:/.test(c)) return false;
