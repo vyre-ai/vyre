@@ -45,7 +45,7 @@ export default {
     // that is "not connected yet", never a module that fails to start (walk step 11, 4 Oct).
     const ports = () => {
       if (seam.ports) return seam.ports;
-      try { return ctx.kernel?.runnerPorts?.(ctx.kernel?.runnerHost?.()) || null; } catch { return null; }
+      try { const h = ctx.kernel?.runnerHost?.(); return (h && h.ports) || ctx.kernel?.runnerPorts?.(h) || null; } catch { return null; }
     };
     // A workspace left open by a runner that died must not stay readable: close any nobody holds a lease for.
     try { await reconcile({ base: ctx.paths.root + "/runner", platform: seam.platform }); } catch {}
@@ -59,7 +59,7 @@ export default {
       let r = runners.get(space);
       if (!r) {
         r = createRunner({ platform: seam.platform, base: ctx.paths.root + "/runner", space, device: p.device, vault: p.vault, sync: p.sync,
-          grants: () => p.grants(space), server: () => p.server?.(space), requestServer: s => p.requestServer?.(space, s), onEvent: e => emit(space, e) });
+          grants: () => p.grants(space), ...(p.lenderCap ? { lenderCap: p.lenderCap } : {}), server: () => p.server?.(space), requestServer: s => p.requestServer?.(space, s), onEvent: e => emit(space, e) });
         runners.set(space, r);
       }
       return r;
