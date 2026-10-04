@@ -32,6 +32,10 @@ export const GRANT_ACTIONS = Object.freeze([
   { action: "rules.dismiss", resource_type: "rule", risk: "grant", label: "turn down a proposed rule", gloss: "Dismiss a proposed rule." },
   { action: "rules.propose", resource_type: "rule", risk: "write", label: "propose a standing rule", gloss: "Suggest a rule. It does nothing until an owner accepts it." },
   { action: "rules.list", resource_type: "rule", risk: "read", label: "see the standing rules", gloss: "List the rules of the Space and the proposals." },
+  { action: "rules.get", resource_type: "rule", risk: "read", label: "see one standing rule", gloss: "Read one rule or proposal in plain words." },
+  { action: "rules.test", resource_type: "rule", risk: "read", label: "try a standing rule", gloss: "See what the rules would do to an act, without doing it." },
+  { action: "rules.enable", resource_type: "rule", risk: "grant", label: "turn a standing rule on", gloss: "Make a rule you switched off bind again." },
+  { action: "rules.disable", resource_type: "rule", risk: "grant", label: "turn a standing rule off", gloss: "Stop a rule binding without deleting it." },
 ].map(a => Object.freeze(a)));
 
 
@@ -107,6 +111,28 @@ export function createGrantsStore(cfg) {
   /** @type {Set<(e: { id: string, side: string, member: string, device: string | null, reason: string }) => void>} */ const revokeListeners = new Set();
   const tell = (/** @type {any} */ o, /** @type {string} */ reason, /** @type {any} */ by) => { for (const f of revokeListeners) { try { f({ id: o.id, side: o.side, member: o.member, device: o.device, reason }, by); } catch { /* a listener never blocks a change */ } } };
   /** @type {{ gate: any, allowed: any, registry: () => Map<string, any> } | null} */ let bound = null;
+
+  // A chain with a person in it is bound by the rules that name members; a chain with an assistant (an agent or an automation) in it by the rules that name assistants; an
+  // assistant acting for a person is both, so it is bound by whichever of the two is stricter, never by the weaker only.
+  const chainWho = (/** @type {any} */ chain) => /** @type {[boolean, boolean]} */ ([chain.hops.some((/** @type {any} */ h) => h.actor.kind === "person"), chain.hops.some((/** @type {any} */ h) => h.actor.kind === "agent" || h.actor.kind === "automation")]);
+  const bindsWho = (/** @type {any} */ r, /** @type {boolean} */ member, /** @type {boolean} */ assistant) => (member && r.binds.includes("members")) || (assistant && r.binds.includes("assistants"));
+  const matching = (/** @type {boolean} */ member, /** @type {boolean} */ assistant, /** @type {string} */ action, /** @type {string} */ resource) => [...rules.values()].filter(r => r.status === "active" && bindsWho(r, member, assistant) && r.covers.actions.includes(action) && (!r.covers.resource || urnMatches(r.covers.resource, resource)));
+
+  /** Switch a rule off (it stays, binds nothing) or on again. An owner's act with presence, like every change to the rules. */
+  async function switchRule(/** @type {any} */ chain, /** @type {string} */ id, /** @type {boolean} */ on, /** @type {{ presence?: any }} */ o = {}) {
+    const issuer = person(chain);
+    const action = on ? "rules.enable" : "rules.disable";
+    const d = await gate(chain, action, urn("rule", String(id)), { id }, o.presence);
+    if (roleOf(issuer) !== "owner") throw new KernelError("not_allowed", `only an owner turns a standing rule ${on ? "on" : "off"}`);
+    const r = rules.get(String(id));
+    if (!r) throw new KernelError("not_found", "no such rule");
+    const status = on ? "active" : "disabled";
+    if (r.status === status) return r;
+    const rec = freeze({ ...structuredClone(r), status, switched_by: issuer.id, switched_at: clock() });
+    rules.set(rec.id, rec);
+    await note(chain, on ? "rule.enabled" : "rule.disabled", urn("rule", rec.id), { id: rec.id, by: issuer.id }, d.decision);
+    return rec;
+  }
 
   const reg = () => (bound ? bound.registry() : new Map([...(cfg.actions ? cfg.actions() : [])].map(a => [a.action, a])));
   const since = (/** @type {string} */ a) => reg().get(a)?.since || 0;
@@ -685,18 +711,13 @@ export function createGrantsStore(cfg) {
     /** The rules that bind this chain for this action and resource, in the order they were made. @param {any} chain @param {string} action @param {string} resource */
     rulesFor(chain, action, resource) {
       if (!rules.size || !isChain(chain)) return [];
-      // A chain with a person in it is bound by the rules that name members; a chain with an assistant (an agent or an automation) in it by the rules that name assistants; an
-      // assistant acting for a person is both, so it is bound by whichever of the two is stricter, never by the weaker only.
-      const assistant = chain.hops.some((/** @type {any} */ h) => h.actor.kind === "agent" || h.actor.kind === "automation");
-      const member = chain.hops.some((/** @type {any} */ h) => h.actor.kind === "person");
-      return [...rules.values()].filter(r => r.status === "active" && ((member && r.binds.includes("members")) || (assistant && r.binds.includes("assistants"))) && r.covers.actions.includes(action) && (!r.covers.resource || urnMatches(r.covers.resource, resource)));
+      return matching(...chainWho(chain), action, resource);
     },
     /** Is any active standing rule bound to this chain for this action, whatever resource it names? (A caller that totals rows needs to know no rule could treat two rows differently.) @param {any} chain @param {string} action */
     rulesTouch(chain, action) {
       if (!rules.size || !isChain(chain)) return false;
-      const assistant = chain.hops.some((/** @type {any} */ h) => h.actor.kind === "agent" || h.actor.kind === "automation");
-      const member = chain.hops.some((/** @type {any} */ h) => h.actor.kind === "person");
-      return [...rules.values()].some(r => r.status === "active" && ((member && r.binds.includes("members")) || (assistant && r.binds.includes("assistants"))) && r.covers.actions.includes(action));
+      const [member, assistant] = chainWho(chain);
+      return [...rules.values()].some(r => r.status === "active" && bindsWho(r, member, assistant) && r.covers.actions.includes(action));
     },
     /** The rules and the proposals, for a manager and above. @param {any} chain */
     async rulesList(chain) {
@@ -704,7 +725,7 @@ export function createGrantsStore(cfg) {
       await bound.gate(chain, "rules.list", urn("rule", "*"));
       // The view an owner reads is built from the rule's structured fields (kind, who it binds, the actions, the resource, the approver), never from the label a proposer wrote.
       const viewed = (/** @type {any} */ r) => ({ ...r, view: describeRule(r) });
-      return { rules: [...rules.values()].filter(r => r.status === "active").map(viewed), proposals: [...proposals.values()].map(viewed) };
+      return { rules: [...rules.values()].map(viewed), proposals: [...proposals.values()].map(viewed) };
     },
     /** @param {any} chain @param {any} r @param {{ presence?: any }} [o] */
     async ruleSet(chain, r, o = {}) {
@@ -768,6 +789,50 @@ export function createGrantsStore(cfg) {
       await note(chain, "rule.dismissed", urn("rule", String(id)), { id: String(id), by: issuer.id }, d.decision);
       return { dismissed: String(id) };
     },
+
+    /** One rule or proposal in plain words, for a manager and above. @param {any} chain @param {string} id */
+    async ruleGet(chain, id) {
+      reader(chain);
+      await bound.gate(chain, "rules.get", urn("rule", String(id)));
+      const r = rules.get(String(id)) || proposals.get(String(id));
+      if (!r) throw new KernelError("not_found", "no such rule");
+      return { ...r, view: describeRule(r) };
+    },
+    /**
+     * What the rules would do to an act, without doing it. `as` is who the act is by (an assistant, a member, or an assistant acting for a member, which both kinds of rule bind),
+     * `action` and `resource` the act. `id` tries one stored rule (on or off) alone; `rule` tries a rule nobody has set yet, together with the ones in force. Nothing is written.
+     * The outcome is the strictest kind that binds: never, then always_ask, then draft_only, else none.
+     * @param {any} chain @param {{ as?: string, action?: string, resource?: string, id?: string, rule?: any }} [probe]
+     */
+    async ruleTest(chain, probe = {}) {
+      reader(chain);
+      await bound.gate(chain, "rules.test", urn("rule", "*"));
+      const p = probe || {};
+      const as = p.as === undefined ? "assistant" : p.as;
+      if (!["assistant", "member", "assistant_for_member"].includes(as)) throw new KernelError("bad_input", "as is assistant, member or assistant_for_member");
+      if (typeof p.action !== "string" || !/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/.test(p.action)) throw new KernelError("bad_input", "name the action to try, exactly");
+      if (p.resource !== undefined && (typeof p.resource !== "string" || !segments(p.resource) || spaceOf(p.resource) !== cfg.space)) throw new KernelError("bad_input", "a resource is a urn in this Space");
+      if (p.id !== undefined && p.rule !== undefined) throw new KernelError("bad_input", "try a stored rule or a new one, not both");
+      const member = as !== "assistant", assistant = as !== "member";
+      const resource = p.resource || "";
+      /** @type {any[]} */ let pool;
+      if (p.id !== undefined) {
+        const r = rules.get(String(p.id));
+        if (!r) throw new KernelError("not_found", "no such rule");
+        pool = [r];
+      } else {
+        pool = [...rules.values()].filter(r => r.status === "active");
+        if (p.rule !== undefined) { const c = checkRule(p.rule); checkDraftable(c, a => reg().get(a)); pool.push({ ...c, id: null, status: "candidate" }); }
+      }
+      const hit = pool.filter(r => bindsWho(r, member, assistant) && r.covers.actions.includes(p.action) && (!r.covers.resource || (resource !== "" && urnMatches(r.covers.resource, resource))));
+      const rank = { never: 3, always_ask: 2, draft_only: 1 };
+      const outcome = hit.reduce((/** @type {string} */ o, r) => (rank[/** @type {"never"} */ (r.kind)] > (rank[/** @type {"never"} */ (o)] || 0) ? r.kind : o), "none");
+      return { outcome, binds: hit.map(r => ({ id: r.id, kind: r.kind, label: r.label, status: r.status, view: describeRule(r) })), note: p.id !== undefined && hit.length === 0 ? "that rule does not bind this act" : undefined };
+    },
+    /** @param {any} chain @param {string} id @param {{ presence?: any }} [o] */
+    ruleEnable(chain, id, o = {}) { return switchRule(chain, id, true, o); },
+    /** @param {any} chain @param {string} id @param {{ presence?: any }} [o] */
+    ruleDisable(chain, id, o = {}) { return switchRule(chain, id, false, o); },
 
     // ---- chats: who is in a room (the kernel's own list, never a module's) ----
     // A chat is a list of people and assistants. The kernel keeps it because three decisions depend on it and none may be a module's word: who may READ the chat's stream
@@ -944,6 +1009,7 @@ export function createGrantsStore(cfg) {
         else if (e.type === "offer.revoked") { const o = offers.get(d.id); if (o) offers.set(d.id, freeze({ ...o, status: "revoked", revoked_at: e.time })); }
         else if (e.type === "rule.set") { rules.set(d.rule.id, freeze(structuredClone(d.rule))); if (d.from) proposals.delete(d.from); }
         else if (e.type === "rule.removed") rules.delete(d.id);
+        else if (e.type === "rule.enabled" || e.type === "rule.disabled") { const r = rules.get(d.id); if (r) rules.set(d.id, freeze({ ...structuredClone(r), status: e.type === "rule.enabled" ? "active" : "disabled" })); }
         else if (e.type === "rule.proposed") proposals.set(d.proposal.id, freeze(structuredClone(d.proposal)));
         else if (e.type === "rule.dismissed") proposals.delete(d.id);
         else if (e.type === "chat.created") { if (!chats.has(d.chat.id)) chats.set(d.chat.id, freeze(structuredClone(d.chat))); }
@@ -1002,7 +1068,7 @@ export function createGrantsStore(cfg) {
   // the log refused) restores the store from the log, which is the durable copy, so memory never shows a change the log does not hold, and the caller is told it failed.
   // A refusal the call itself makes before changing anything (a KernelError) needs no restore.
   let lock = Promise.resolve();
-  for (const name of ["create", "revoke", "narrow", "setRole", "transferOwner", "adoptOwner", "bootstrap", "inviteRevoke", "removeMember", "addActor", "offer", "unoffer", "inviteCreate", "inviteConfirm", "inviteAccept", "sweep", "installModule", "chatCreate", "chatChange", "ruleSet", "ruleRemove", "ruleAccept", "ruleDismiss", "rulePropose"]) {
+  for (const name of ["create", "revoke", "narrow", "setRole", "transferOwner", "adoptOwner", "bootstrap", "inviteRevoke", "removeMember", "addActor", "offer", "unoffer", "inviteCreate", "inviteConfirm", "inviteAccept", "sweep", "installModule", "chatCreate", "chatChange", "ruleSet", "ruleRemove", "ruleAccept", "ruleDismiss", "rulePropose", "ruleEnable", "ruleDisable"]) {
     const f = /** @type {(...a: any[]) => Promise<any>} */ (/** @type {any} */ (api)[name]);
     /** @type {any} */ (api)[name] = (/** @type {any[]} */ ...a) => {
       const run = async () => {
