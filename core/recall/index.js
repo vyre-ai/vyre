@@ -99,7 +99,17 @@ export default {
       // Each new vector goes straight into the dense index, so a pass never forces a rebuild.
       // A rewrite moves the generation, and the index rebuilds itself on the next search.
       onVector: item => dense.add(item),
+      // The capture port: after a batch of a session's turns is indexed (already scrubbed), the work module's engine keeps the same lines for the Space's memory, once, in chunks of
+      // at most 2000. A session whose turns were rewritten is forgotten there first. No work module, or a refusal, is not an error: the Space just has no memory of conversations.
+      capture: async ({ session, rewritten, lines }) => {
+        if (rewritten) await ctx.call("work.know.forget", { session });
+        for (let i = 0; i < lines.length; i += 2000) {
+          const r = await ctx.call("work.know.capture", { session, lines: lines.slice(i, i + 2000) });
+          if (r && r.error) { if (!captureWarned) { captureWarned = true; ctx.log(`recall: the Space's memory takes no conversations (${r.error.code || "refused"})`); } return; }
+        }
+      },
     });
+    let captureWarned = false;
 
     let stopped = false;
     const isStopped = () => stopped;
@@ -499,7 +509,12 @@ export default {
       internal: true,
       description: "Forget these sessions outright: turns, vectors and rows. For memory, when a device's synced sessions are revoked; the files are already gone.",
       input: { type: "object", required: ["sessions"], properties: { sessions: stringArray } },
-      run: async ({ sessions: ids }) => { const n = indexer.forget(ids.map(String)); dense.invalidate(); return { forgot: n }; },
+      run: async ({ sessions: ids }) => {
+        const n = indexer.forget(ids.map(String)); dense.invalidate();
+        // The Space's memory forgets what it kept of them too (a refusal or no work module is fine: there is nothing to forget).
+        for (const id of ids.map(String)) { try { await ctx.call("work.know.forget", { session: id }); } catch { /* nothing kept */ } }
+        return { forgot: n };
+      },
     });
     ctx.tool("recall.index", {
       description: "Index new and changed transcripts now. Returns what the pass did.",
@@ -566,7 +581,9 @@ export default {
       }, SOON_MS));
     };
     const offs = [ctx.events.on("turn.completed", indexSoon), ctx.events.on("thread.started", indexSoon),
-      ctx.events.on("turn.completed", (/** @type {any} */ e) => { const id = e?.payload?.session; if (typeof id === "string" && id) watches.stopped(id); })];
+      ctx.events.on("turn.completed", (/** @type {any} */ e) => { const id = e?.payload?.session; if (typeof id === "string" && id) watches.stopped(id); }),
+      // A deleted session is erased from the Space's memory too (work.know.forget); Recall's own rows follow the transcript file, which a provider keeps.
+      ctx.events.on("thread.deleted", (/** @type {any} */ e) => { const id = e?.payload?.thread; if (typeof id === "string" && id) Promise.resolve(ctx.call("work.know.forget", { session: id })).catch(() => {}); })];
 
     // After start returns, so vyred's startup never waits on a pass.
     const first = setTimeout(() => { pass().catch(() => {}); }, 0);

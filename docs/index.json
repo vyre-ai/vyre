@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":340,"tool":1133,"event":449,"config":254,"env":224,"screen":20,"concept":43},
+  "counts": {"command":340,"tool":1134,"event":449,"config":254,"env":224,"screen":20,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -376,6 +376,7 @@
     {"kind":"tool","name":"flows.kit.remove","definedIn":"core/flows/index.js","page":"reference/tools.md#flowskitremove","module":"flows","mentions":[]},
     {"kind":"tool","name":"flows.list","definedIn":"core/flows/index.js","page":"reference/tools.md#flowslist","module":"flows","mentions":[]},
     {"kind":"tool","name":"flows.pause","definedIn":"core/flows/index.js","page":"reference/tools.md#flowspause","module":"flows","mentions":[]},
+    {"kind":"tool","name":"flows.propose","definedIn":"core/flows/index.js","page":"reference/tools.md#flowspropose","module":"flows","mentions":[]},
     {"kind":"tool","name":"flows.resume","definedIn":"core/flows/index.js","page":"reference/tools.md#flowsresume","module":"flows","mentions":[]},
     {"kind":"tool","name":"flows.retry","definedIn":"core/flows/index.js","page":"reference/tools.md#flowsretry","module":"flows","mentions":[]},
     {"kind":"tool","name":"flows.run","definedIn":"core/flows/index.js","page":"reference/tools.md#flowsrun","module":"flows","mentions":[]},
