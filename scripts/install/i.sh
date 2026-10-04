@@ -195,7 +195,7 @@ wait_connected() {
     st=$(vyre_call wink.server.status '{}' || true)
     case "$st" in
       *'"owned":true'*|*'"owned": true'*)
-        sp=$(printf '%s' "$st" | json_field space); dv=$(printf '%s' "$st" | json_field device)
+        sp=$(printf '%s' "$st" | json_field space | LC_ALL=C tr -d '\000-\037\177'); dv=$(printf '%s' "$st" | json_field device | LC_ALL=C tr -d '\000-\037\177')
         say ""
         say "  Connected to ${sp:-your space}. Finish setting up on your ${dv:-device}."
         return 0 ;;
