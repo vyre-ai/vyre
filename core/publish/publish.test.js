@@ -195,7 +195,9 @@ test("publish: a model chain can create, preview and request, never decide, appr
   const juno = "mcp:agent:juno";
   const { deployment } = await b.ok("publish.create", DRAFT, juno);
   const id = deployment.id;
-  await b.ok("publish.preview", { deployment: id }, juno);
+  // a preview leaves Vyre, so it is outward: an agent's call is held in the approvals queue (never run) and the person's own call runs
+  assert.equal((await b.call("publish.preview", { deployment: id }, juno)).error?.code, "held_unavailable");
+  await b.ok("publish.preview", { deployment: id });
 
   const a = await b.ok("publish.approve", { deployment: id }, juno);
   assert.equal(a.held, true, "a model's approve is a request");

@@ -23,6 +23,10 @@
         "reach": "person"
       },
       {
+        "name": "approvals.hold", "effect": "write",
+        "reach": "modules"
+      },
+      {
         "name": "approvals.pending", "effect": "read",
         "reach": "person"
       },
