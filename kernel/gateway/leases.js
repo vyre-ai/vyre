@@ -136,7 +136,7 @@ export function createLeases(cfg) {
       else throw new KernelError("bad_input", "name a session or a connector");
       const action = ["GET", "HEAD"].includes(method) ? "service.read" : "service.call";
       const d = await cfg.authorize({ chain, action, resource: `vyre://${cfg.space}/service/${encodeURIComponent(connector)}`, ...(i.approval ? { approval: String(i.approval) } : {}) });
-      if (d.effect === "ask") return { held: true, kind: action, summary: `${method} ${connector}${path}`, decision: d.decision, ...(typeof i.session !== "string" ? { bind: requestBind({ connector, method, path, query: i.query, body: i.body }) } : {}) };
+      if (d.effect === "ask") return { held: true, kind: action, summary: `${method} ${connector}${path}`, decision: d.decision, ...(typeof i.session !== "string" ? { bind: requestBind({ connector, method, path, query: i.query, body: i.body, headers: i.headers, upload: i.upload, saveTo: i.saveTo }) } : {}) };
       if (d.effect !== "allow") throw new KernelError("not_found", "that request is not open to this caller");
       const files = [[i.upload && i.upload.drive && i.upload.drive.path, "drive.read"], [i.saveTo, "drive.write"]];
       for (const [fp, act] of files) {

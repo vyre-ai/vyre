@@ -31,7 +31,7 @@ export function routeAllowed(rules, method, pathname) {
 }
 
 /** @param {ReturnType<typeof import("./request.js").ApiRequests.prototype.constructor>} _ */
-export function registerService({ api, vault, internal, forwardFile, obj, str }) {
+export function registerService({ api, vault, internal, forwardFile, forwardHeaders, obj, str }) {
   /** idem key -> { at, result }: an outward call made once per `<run>:<step>`, so a retry after a crash returns the first answer instead of sending again. In memory: a restart forgets it, and the ask-first approval still guards the act. */
   const done = new Map();
   const remember = (k, result) => {
@@ -41,7 +41,7 @@ export function registerService({ api, vault, internal, forwardFile, obj, str })
     done.set(k, { at: t, result });
   };
   /** approval id -> the request it was spent on (SV-2): single use, and only for the request the held decision bound it to. In memory; a restart forgets, and the kernel's own approval still expires. */
-  const spent = new Map();
+  const inflight = new Map();
   const callerOk = c => c === "kernel:leases" || c === "module:leases";
 
   internal("vault.service.catalog", "The connectors a Flow may call: { connectors: { <name>: { allow: [{ method?, path }], deny: [{ method?, path }] } } }, the credential's own `service` rules. No host, no secret. Only the kernel's lease module asks.",
@@ -73,45 +73,65 @@ export function registerService({ api, vault, internal, forwardFile, obj, str })
       if (path === null || !routeAllowed(config.service, method, path)) { audit(false, `${method} refused by the connector's rules`); throw bad("that request is not open to this caller", "not_found"); }
       const host = config.hosts.find(h => !h.startsWith("*."));
       if (!host) throw bad("this connector names no exact host, so a Flow cannot reach it", "not_found");
-      // SV-2: an approval releases ONE request. The held decision carried `bind` (connector, method, canonical path, query, body hash); the retry must pass it back, the vault recomputes it
-      // from what it is about to send, and an approval id is spent once (a replay of the same idem returns the first answer below).
-      let approval = null;
-      if (input.approval) {
-        let mine; try { mine = requestBind({ connector: name, method, path, query: r.query, body: r.body }); } catch { mine = null; }
-        const id = String(input.approval).slice(0, 80), t = Date.now();
-        for (const [k, v] of spent) if (v.at < t - APPROVAL_TTL_MS) spent.delete(k);
-        if (!mine || typeof input.bind !== "string" || input.bind !== mine) { audit(false, `${method} refused: the approval is not bound to this request`); throw bad("that request is not open to this caller", "not_found"); }
-        const prior = spent.get(id);
-        if (prior && !(input.idem && prior.idem === String(input.idem))) { audit(false, `${method} refused: the approval was already used`); throw bad("that request is not open to this caller", "not_found"); }
-        if (!prior) spent.set(id, { at: t, idem: input.idem ? String(input.idem) : null, bind: mine });
-        approval = id;
-      }
-      const key = input.idem ? `${name}\0${String(input.idem)}` : null;
-      if (key && done.has(key) && method !== "GET" && method !== "HEAD") return done.get(key).result;
-      const base = { credential: name, method, url: `https://${host}${path}`, ...(r.query ? { query: r.query } : {}), ...(r.headers ? { headers: r.headers } : {}), ...(r.body !== undefined ? { body: r.body } : {}) };
-      const who = `flow:${String(input.idem || "run").slice(0, 80)}`;
-      let out;
-      if (r.upload || r.saveTo) {
-        if (!api.deps.files) throw bad("the Drive is not wired to this vault", "unavailable");
-        // Drive paths get the same one-form refusal as request paths (dot segments, backslash, encoded slash, control characters, empty segments): `/Clients/A/../B/x` must not pass as under `Clients/A`.
-        const fileRefused = () => bad("that file is not open to this caller", "not_found");
-        const dp = x => { try { return safePath(String(x)); } catch { throw fileRefused(); } };
+      // Drive paths first, so the bind below covers the canonical forms: the same one-form refusal as request paths (dot segments, backslash, encoded slash, control characters, empty segments, and
+      // here also a colon, a leading `~` and bidi or zero-width marks): `/Clients/A/../B/x` must not pass as under `Clients/A`.
+      const files = Boolean(r.upload || r.saveTo);
+      if (files) {
+        const dp = x => { let q; try { q = safePath(String(x)); } catch { q = null; } if (q === null || /[:\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]|^~/.test(q)) throw bad("that file is not open to this caller", "not_found"); return q; };
         if (r.upload?.drive?.path !== undefined) r.upload.drive.path = dp(r.upload.drive.path);
         if (Array.isArray(r.upload?.multipart)) for (const p of r.upload.multipart) if (p && p.drive && p.drive.path !== undefined) p.drive.path = dp(p.drive.path);
         if (r.saveTo !== undefined) r.saveTo = dp(r.saveTo);
-        const drive = { read: [r.upload?.drive?.path, ...(Array.isArray(r.upload?.multipart) ? r.upload.multipart.map(p => p?.drive?.path) : [])].filter(x => typeof x === "string"), write: r.saveTo ? [String(r.saveTo)] : [] };
-        const x = await forwardFile(api, { files: api.deps.files }, { ...base, ...(r.upload ? { upload: r.upload } : {}), ...(r.saveTo ? { saveTo: r.saveTo } : {}), drive }, { caller: who });
-        out = x.held ? x : { ...x, ...(x.body ? { body: x.body.toString("base64") } : {}) };
-      } else if (approval && method !== "GET" && method !== "HEAD") {
-        // The kernel saw the ask-first task approved, so the person is asked once: run exactly this request, re-checked, with the approval named in the audit row.
-        const plan = await api.plan({ ...base, headers: (await import("./request.js")).forwardHeaders(r.headers) }, name);
-        const x = await api.execute(plan, { who, released: approval, raw: true });
-        out = { ...x, body: x.body.toString("base64"), kind: plan.kind };
-      } else {
-        const x = await api.forward(base, { caller: who });
-        out = x.held ? x : { ...x, body: x.body.toString("base64") };
       }
-      if (key && !out.held) remember(key, out);
-      return out;
+      const outward = method !== "GET" && method !== "HEAD";
+      const key = input.idem ? `${name}\0${String(input.idem)}` : null;
+      const base = { credential: name, method, url: `https://${host}${path}`, ...(r.query ? { query: r.query } : {}), ...(r.headers ? { headers: r.headers } : {}), ...(r.body !== undefined ? { body: r.body } : {}) };
+      const who = `flow:${String(input.idem || "run").slice(0, 80)}`;
+      /** What actually goes out, once. */
+      const execute = async (/** @type {string | null} */ approval) => {
+        let out;
+        if (files) {
+          if (!api.deps.files) throw bad("the Drive is not wired to this vault", "unavailable");
+          const drive = { read: [r.upload?.drive?.path, ...(Array.isArray(r.upload?.multipart) ? r.upload.multipart.map(p => p?.drive?.path) : [])].filter(x => typeof x === "string"), write: r.saveTo ? [String(r.saveTo)] : [] };
+          const x = await forwardFile(api, { files: api.deps.files }, { ...base, ...(r.upload ? { upload: r.upload } : {}), ...(r.saveTo ? { saveTo: r.saveTo } : {}), drive }, { caller: who });
+          out = x.held ? x : { ...x, ...(x.body ? { body: x.body.toString("base64") } : {}) };
+        } else if (approval && outward) {
+          // The kernel saw the ask-first task approved, so the person is asked once: run exactly this request, re-checked, with the approval named in the audit row.
+          const plan = await api.plan({ ...base, headers: forwardHeaders(r.headers) }, name);
+          const x = await api.execute(plan, { who, released: approval, raw: true });
+          out = { ...x, body: x.body.toString("base64"), kind: plan.kind };
+        } else {
+          const x = await api.forward(base, { caller: who });
+          out = x.held ? x : { ...x, body: x.body.toString("base64") };
+        }
+        if (key && outward && !out.held) remember(key, out);
+        return out;
+      };
+      const refuse = why => { audit(false, `${method} refused: ${why}`); return bad("that request is not open to this caller", "not_found"); };
+      const runOnce = async (/** @type {string | null} */ approval) => {
+        // From here to the call there is NO await: the claim, the in-flight record and the start of the request are one synchronous step, so two callers cannot both send.
+        const p = execute(approval);
+        if (key && outward) inflight.set(key, p);
+        try { return await p; } finally { if (key && outward) inflight.delete(key); }
+      };
+
+      // SV-2: an approval releases ONE request: everything that changes what is sent is in the bind (connector, method, canonical path, query, body, headers, upload sources, saveTo); the held
+      // decision carried it, the retry passes it back, and the vault recomputes it from what it is about to send. The id is claimed atomically in the vault's own database (spent for good, kept
+      // 24 h, surviving a restart); a replay of the same idem and bind gets the first call's answer, in flight or finished, never a second send.
+      if (input.approval) {
+        let mine; try { mine = requestBind({ connector: name, method, path, query: r.query, body: r.body, headers: r.headers, upload: r.upload, saveTo: r.saveTo }); } catch { mine = null; }
+        if (!mine || typeof input.bind !== "string" || input.bind !== mine) throw refuse("the approval is not bound to this request");
+        const id = String(input.approval).slice(0, 80), t = Date.now(), idem = input.idem ? String(input.idem) : null;
+        vault.db.prepare("DELETE FROM vault_meta WHERE key LIKE 'svc-approval:%' AND CAST(json_extract(value, '$.at') AS INTEGER) < ?").run(t - APPROVAL_TTL_MS);
+        const got = vault.db.prepare("INSERT INTO vault_meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO NOTHING").run(`svc-approval:${id}`, JSON.stringify({ at: t, idem, bind: mine }));
+        if (Number(got.changes) === 1) return runOnce(id);
+        let prior = null; try { prior = JSON.parse(String(vault.db.prepare("SELECT value FROM vault_meta WHERE key = ?").get(`svc-approval:${id}`)?.value)); } catch { /* unreadable: spent */ }
+        if (key && prior && prior.idem === idem && prior.bind === mine) {
+          if (inflight.has(key)) return inflight.get(key);
+          if (done.has(key)) return done.get(key).result;
+        }
+        throw refuse("the approval was already used");
+      }
+      if (key && outward) { if (done.has(key)) return done.get(key).result; if (inflight.has(key)) return inflight.get(key); }
+      return runOnce(null);
     });
 }

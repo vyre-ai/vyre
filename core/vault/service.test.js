@@ -18,19 +18,20 @@ import { SCRATCH } from "../../test/scratch.mjs";
 const fake = label => `fixture-${label}-${crypto.randomBytes(12).toString("hex")}`;
 const json = (status, body) => ({ status, headers: { "content-type": "application/json" }, body: Buffer.from(JSON.stringify(body)) });
 
-async function mk(t, files = undefined) {
-  const home = fs.mkdtempSync(path.join(SCRATCH, "vyre-svc-")), db = open(path.join(home, "vyre.db"));
-  migrate(db, "vault", MIGRATIONS);
+async function mk(t, files = undefined, again = null) {
+  const home = again ? again.home : fs.mkdtempSync(path.join(SCRATCH, "vyre-svc-")), db = again ? again.db : open(path.join(home, "vyre.db"));
+  if (!again) migrate(db, "vault", MIGRATIONS);
   const v = new Vault({ db, dir: path.join(home, "vault"), config: { name: "harlow-box", vault: { keystore: "file" } }, emit: () => {}, log: () => {} });
-  t.after(() => { db.close(); fs.rmSync(home, { recursive: true, force: true }); });
+  if (!again) t.after(() => { db.close(); fs.rmSync(home, { recursive: true, force: true }); });
   const net = { calls: /** @type {any[]} */ ([]) };
   const transport = async r => { net.calls.push({ host: r.url.hostname, path: r.url.pathname, method: r.method, headers: r.headers }); return json(200, { ok: true }); };
   const tools = new Map(), tool = (n, c, d, i, run) => tools.set(n, { run }), internal = (n, d, i, run) => tools.set(n, { run });
   const said = saidTools.register({ vault: v, internal });
   register({ vault: v, tool, internal, call: async () => ({ error: { code: "no_such_tool", message: "no gate" } }), said, deps: { lookup: async () => [{ address: "203.0.113.10", family: 4 }], transport, now: () => 1_800_000_000_000, ...(files ? { files } : {}) } });
   const run = (n, i, caller = "module:leases") => tools.get(n).run(i, { caller });
-  return { v, net, run, db };
+  return { v, net, run, db, home };
 }
+const mkOn = (t, m) => mk(t, undefined, m);
 const SECRET = fake("clio");
 const put = (m, service, extra = {}) => m.v.put({ name: "clio", kind: "api-credential", fields: { config: JSON.stringify({ auth: { type: "bearer" }, hosts: ["api.clio.test"], ...(service ? { service } : {}), ...extra }), secret: SECRET } }, "cli");
 
@@ -79,7 +80,7 @@ test("forward: an allowed read runs with the key added and the base64 body comes
   assert.equal(m.net.calls[1].headers.authorization, `Bearer ${SECRET}`, "the Flow's own Authorization header is dropped");
 });
 
-test("SV-2: an approval releases one request only: it needs the bind from the held decision, a different call is refused, and an id is spent once (a replay of the same idem returns the first answer)", async t => {
+test("SV-2: an approval releases one request only: it needs the bind from the held decision, a different call is refused, an id is spent once, and truly concurrent calls send once", async t => {
   const m = await mk(t); await put(m, { allow: [{ method: "POST", path: "/v4/notes" }, { method: "DELETE", path: "/v4/matters/*" }] }, { endpoints: [{ method: "POST", path: "/v4/notes", kind: "send" }, { method: "DELETE", path: "/v4/matters/*", kind: "delete" }] });
   const req = { method: "POST", path: "/v4/notes", body: { text: "hello" } };
   const bind = requestBind({ connector: "clio", ...req }), refusal = "not_found: that request is not open to this caller";
@@ -88,19 +89,42 @@ test("SV-2: an approval releases one request only: it needs the bind from the he
   assert.equal(await go({ ...req, body: { text: "other" } }), refusal, "a different body");
   assert.equal(await go({ method: "DELETE", path: "/v4/matters/1" }), refusal, "a different call");
   assert.equal(await go({ ...req, path: "/v4/notes/../users/1" }), refusal);
+  // everything that changes what is sent is in the bind: headers, upload sources, saveTo
+  assert.equal(await go({ ...req, headers: { "x-matter-id": "m9" } }), refusal, "headers are bound");
+  assert.equal(await go({ ...req, saveTo: "Clients/A/out.pdf" }), refusal, "saveTo is bound");
+  assert.equal(await go({ ...req, upload: { drive: { path: "Clients/A/in.pdf" } } }), refusal, "an upload source is bound");
   assert.equal(m.net.calls.length, 0);
-  const a = await go(req), b = await go(req);
-  assert.equal(a.status, 200); assert.deepEqual(b, a, "the same idem replays the first answer"); assert.equal(m.net.calls.length, 1);
+  // two truly concurrent calls with the same approval and idem: one send, both get the one answer
+  const [a, b] = await Promise.all([go(req), go(req)]);
+  assert.equal(a.status, 200); assert.deepEqual(b, a); assert.equal(m.net.calls.length, 1, "sent once");
+  assert.deepEqual(await go(req), a, "a later replay of the same idem returns the first answer");
   assert.equal(await go(req, { idem: "run9:step3" }), refusal, "the id is spent");
   assert.equal(m.net.calls.length, 1);
+  // concurrent callers with the same approval and DIFFERENT idem keys: exactly one sends
+  const c1 = { ...req, body: { text: "second" } }, bind2 = requestBind({ connector: "clio", ...c1 });
+  const two = await Promise.all([go(c1, { approval: "tsk_approved2", bind: bind2, idem: "r:a" }), go(c1, { approval: "tsk_approved2", bind: bind2, idem: "r:b" })]);
+  assert.equal(two.filter(x => typeof x === "object").length, 1); assert.equal(two.filter(x => x === refusal).length, 1); assert.equal(m.net.calls.length, 2);
   const audit = JSON.stringify(m.db.prepare("SELECT * FROM vault_audit").all());
   assert.ok(audit.includes("released:tsk_approved1")); assert.ok(audit.includes("approval was already used")); assert.ok(!audit.includes(SECRET));
+});
+
+test("SV-2c: a spent approval stays spent across a restart (the vault's own database), and without an approval concurrent outward calls with one idem send once", async t => {
+  const m = await mk(t); await put(m, { allow: [{ method: "POST", path: "/v4/notes" }] }, { endpoints: [{ method: "POST", path: "/v4/notes", kind: "send" }] });
+  const req = { method: "POST", path: "/v4/notes", body: { text: "hello" } }, bind = requestBind({ connector: "clio", ...req });
+  const q = { connector: "clio", request: req, idem: "run1:s1", approval: "tsk_p1", bind };
+  assert.equal((await m.run("vault.service.forward", q)).status, 200);
+  const row = m.db.prepare("SELECT value FROM vault_meta WHERE key = 'svc-approval:tsk_p1'").get();
+  assert.ok(row && JSON.parse(row.value).bind === bind, "the spend is in the database, not in memory");
+  // a fresh process (new in-memory state, same database) does not run it again
+  const m2 = await mkOn(t, m);
+  await assert.rejects(m2.run("vault.service.forward", q), /not open to this caller/);
+  assert.equal(m2.net.calls.length, 0);
 });
 
 test("Drive paths get the one-form refusal at the vault entry: dot segments, backslash, absolute, empty segments and encoded dots or slashes never reach the Drive", async t => {
   const touched = [], files = { read: async p => { touched.push(p); throw new Error("no drive here"); }, save: async p => { touched.push(p); throw new Error("no drive here"); } };
   const m = await mk(t, files); await put(m, { allow: [{ method: "POST", path: "/v4/documents" }, { method: "GET", path: "/v4/documents/*" }] }, { endpoints: [{ method: "POST", path: "/v4/documents", kind: "send" }] });
-  const bad = ["Clients/A/../B/x", "Clients/A/./x", "Clients\\A\\x", "/Clients/A/x", "Clients//A/x", "Clients/%2e%2e/B", "Clients/A%2fB", "Clients/A\u0000/x", "Clients/A\t/x"];
+  const bad = ["Clients/A/../B/x", "Clients/A/./x", "Clients\\A\\x", "/Clients/A/x", "Clients//A/x", "Clients/%2e%2e/B", "Clients/A%2fB", "Clients/A\u0000/x", "Clients/A\t/x", "~/x", "C:/x", "Clients/A:stream", "Clients/A\u202e/x", "Clients/\u200bA/x"];
   const out = [];
   for (const p of bad) {
     out.push(await m.run("vault.service.forward", { connector: "clio", request: { method: "POST", path: "/v4/documents", upload: { drive: { path: p } } } }).then(() => "sent", e => `${e.code}: ${e.message}`));

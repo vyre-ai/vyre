@@ -726,7 +726,7 @@ export function register({ vault, tool, internal, call, said, deps = {}, log }) 
       return r.held || r.stream ? r : { ...r, ...(r.body ? { body: r.body.toString("base64") } : {}) };
     });
 
-  registerService({ api, vault, internal, forwardFile, obj, str });
+  registerService({ api, vault, internal, forwardFile, forwardHeaders, obj, str });
 
   tool("vault.request", ["cli", "local", "deck", "capsule", "mcp", "module"],
     "One HTTP call to a vendor API with an api-credential from the vault, which adds the key and never shows it. A read runs at once. A send, payment or deletion runs at once only if you asked for exactly it; otherwise it is held at the Gate with a card Vyre builds from the request's parsed fields. The response has every value the credential touched removed.",

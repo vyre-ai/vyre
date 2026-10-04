@@ -68,11 +68,11 @@ export function canonicalPath(raw) {
 /**
  * The binding of an approval to ONE request (SV-2): a hash of the connector, the method, the canonical path, the query and the body. The held decision carries it, the retry with an
  * approval passes it back, and the vault recomputes it from the request it is about to send, so an approved id cannot release a different call. Throws `bad_input` on a path that is not canonical.
- * @param {{ connector: string, method: string, path: string, query?: any, body?: any }} r @returns {string}
+ * @param {{ connector: string, method: string, path: string, query?: any, body?: any, headers?: any, upload?: any, saveTo?: any }} r @returns {string}
  */
 export function requestBind(r) {
   const canon = v => (v === null || typeof v !== "object" ? JSON.stringify(v) : Array.isArray(v) ? `[${v.map(canon).join(",")}]` : `{${Object.keys(v).filter(k => v[k] !== undefined).sort().map(k => `${JSON.stringify(k)}:${canon(v[k])}`).join(",")}}`);
-  return crypto.createHash("sha256").update(canon({ c: String(r.connector), m: String(r.method).toUpperCase(), p: canonicalPath(String(r.path).split(/[?#]/)[0]), q: r.query ?? null, b: r.body === undefined ? null : r.body })).digest("base64url");
+  return crypto.createHash("sha256").update(canon({ c: String(r.connector), m: String(r.method).toUpperCase(), p: canonicalPath(String(r.path).split(/[?#]/)[0]), q: r.query ?? null, b: r.body === undefined ? null : r.body, h: r.headers ? Object.fromEntries(Object.entries(r.headers).map(([k, v]) => [String(k).toLowerCase(), v])) : null, u: r.upload ?? null, s: r.saveTo ?? null })).digest("base64url");
 }
 /** One URN segment (a credential name): no slash, dot segment, encoding or control character. */
 export function segment(x) { const s = String(x ?? ""); if (!s || /[/\\%]|^\.+$|[\u0000-\u001f\u007f]/.test(s)) throw Object.assign(new Error("bad_input"), { code: "bad_input" }); return s; }
