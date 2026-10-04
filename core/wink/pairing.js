@@ -28,6 +28,7 @@ import { WORDS as WORDLIST } from "../../relay/client/words.js";
 import { verifyDevice } from "./node/peer-wire.js";
 import { base32 } from "./grants.js";
 import { words, removed } from "./cards.js";
+import { createServerLinks } from "./serverlink.js";
 
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 const sha = (/** @type {string} */ s) => crypto.createHash("sha256").update(s).digest();
@@ -437,7 +438,7 @@ export function createPairing(o) {
   let retryTimer = null;
   /** The timer that applies pending releases; the module's stop() ends it. */
   const startRetries = () => { if (retryTimer || !retryEvery) return; retryTimer = setInterval(() => { void retryReleases().catch(() => {}); }, retryEvery); if (retryTimer.unref) retryTimer.unref(); };
-  const stop = () => { if (retryTimer) clearInterval(retryTimer); retryTimer = null; };
+  const stop = () => { if (retryTimer) clearInterval(retryTimer); retryTimer = null; if (links) { try { links.close(); } catch { /* closed */ } links = null; } };
 
   /** Keeps what the relay answered with, so a refusal can be told from a missing connection. */
   const watchFetch = () => {
@@ -814,6 +815,11 @@ export function createPairing(o) {
         // the key that stands for the confirmation is the device's own presence key (the one it offered when it paired), since the pick at the server carries no proof of its own
         const pk = /** @type {any} */ (await ctx.call("relay.device.presence", { id: device }).catch(() => null));
         await openPairedSession(device, identity, { keyId: pk && pk.data && pk.data.key ? String(pk.data.key) : null }, { ...(confirmed || {}), ...(input.keyStorage && !(confirmed && confirmed.storage) ? { storage: input.keyStorage } : {}) });
+        // the claimed identity is now this home's owner (the pick at the server confirmed it, ruling 1), and the device is enrolled in the home space by an explicit list (written at first ask)
+        const adopted = /** @type {any} */ (await ctx.call("spaces.owner.adopt", { person: identity }).catch(() => null));
+        if (adopted && adopted.error && adopted.error.code !== "no_such_tool") ctx.log(`wink: the home's owner stays as it was: ${adopted.error.message || adopted.error.code}`);
+        const space = await Promise.resolve(o.space()).catch(() => "");
+        if (space) await ctx.call("spaces.devices.enrolled", { device, space }).catch(() => null);
       } catch (e) { ctx.log(`wink: could not record ${device} as the owner's device: ${/** @type {Error} */ (e).message}`); }
     };
     /**
@@ -984,6 +990,16 @@ export function createPairing(o) {
         if (!String((meta0 && meta0.caller) || "").startsWith("module:")) throw fail("denied", "this is for modules");
         const d = devices.list(String(input.identity)).find((/** @type {any} */ x) => x.id === String(input.device) && x.kind === "server");
         return d ? { paired: true, name: d.name } : { paired: false };
+      },
+    });
+    ctx.tool("wink.server.owned", {
+      internal: true,
+      description: "Does this server have an owner yet (a device paired and was confirmed)? Answers { owned: boolean }, nothing else. Asked by the onboarding module, which refuses every sign-in and name before it is true.",
+      input: obj(),
+      run: async (_, meta0 = {}) => {
+        const c = String((meta0 && meta0.caller) || "");
+        if (!c.startsWith("module:")) throw fail("denied", "this is for the server's own modules");
+        return { owned: Boolean(meta.get("owner") && meta.get("adopter")) };
       },
     });
     ctx.tool("wink.device.paired", {
@@ -1201,7 +1217,11 @@ export function createPairing(o) {
 
   /** Lets a waiting pairing go: the relay closes its channels and forgets it (relay.devices.drop answers for a device that never existed). @param {string} device */
   const dropPending = async device => { if (typeof ctx.call === "function") await ctx.call("relay.devices.drop", { id: String(device) }); };
-  return { devices, abandoned: (/** @type {string} */ d) => abandonHook(String(d)), endPairedNow, targets, checkTarget, phone, computeAllowed, compute, dropPending, tools: () => { tools(); startRetries(); }, startTyping, pending, peers, meta, clearOwner: () => clearOwnerHook(), releaseServer, retryReleases, stop, ownHandover: () => ownHandover() };
+  /** @type {ReturnType<typeof createServerLinks> | null} */ let links = null;
+  /** This device's open peer session to a server it paired, by the server's device id, and the kernel's remote client over it; made on first use. */
+  const serverLinks = () => links || (links = createServerLinks({ connect: relayConnect, options: pairOptions, name: String(ctx.config.name || "a device"), log: m => ctx.log(m), ...(o.signDevice ? { sign: o.signDevice } : {}),
+    channelOf: sid => { const c = meta.get(`channel:${sid}`); return c && c.route ? { relay: String(c.relay || ""), route: String(c.route), box: String(c.box || "") } : null; } }));
+  return { serverLinks, devices, abandoned: (/** @type {string} */ d) => abandonHook(String(d)), endPairedNow, targets, checkTarget, phone, computeAllowed, compute, dropPending, tools: () => { tools(); startRetries(); }, startTyping, pending, peers, meta, clearOwner: () => clearOwnerHook(), releaseServer, retryReleases, stop, ownHandover: () => ownHandover() };
 }
 
 /** The QR a computer shows for a phone: the code and where to meet. @param {string} code @param {string} relay */
