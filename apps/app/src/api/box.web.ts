@@ -5,6 +5,7 @@
 // direct path by itself; at another origin every request is signed with the person session
 // (src/auth/person.web.ts), over the box's own path so a relay route never enters the proof.
 
+import { shell } from "../shell/shell";
 import { cursorStore, idbStore, lifecycle, over } from "@vyre/resilience/web.js";
 import { createPaths } from "@vyre/relay-client/paths.js";
 import { finishSignIn, startSignIn, webPerson } from "../auth/person.web";
@@ -52,7 +53,8 @@ const b = makeBox(async () => {
     base: origin,
     // One path for follow(): which way the box is reached is the paths layer's job.
     paths: ["box"],
-    socket: (path) => p.socket(path),
+    // In the Mac app's window a custom scheme cannot carry a WebSocket, so the window relays the stream (src/shell).
+    socket: (path) => { const mac = shell(); return mac ? mac.socket(path) : p.socket(path); },
     open: o.open,
     caller: (_base, co) => o.caller(co),
     outboxStore: idbStore(name),

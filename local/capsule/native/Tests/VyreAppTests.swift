@@ -32,6 +32,6 @@ let vyreAppSuite = Suite("vyre app window") { t in
     }
 
     t.test("the page's bridge names every call the window answers") {
-        for op in ["presence", "notify", "open", "_reply", "_command", "onCommand"] { t.ok(VyreAppWindow.bridgeSource.contains(op), op) }
+        for op in ["presence", "notify", "open", "_reply", "_command", "onCommand", "socket", "_ws", "ws.open", "ws.send", "ws.close"] { t.ok(VyreAppWindow.bridgeSource.contains(op), op) }
     }
 }

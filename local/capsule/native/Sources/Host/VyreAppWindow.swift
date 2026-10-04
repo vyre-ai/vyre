@@ -29,6 +29,8 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
     private var web: WKWebView?
     private let proxy = BoxSchemeHandler()
     private var priorMenu: NSMenu?
+    /// The page's open streams (the WebSocket relay below), by the id the page gave them.
+    private var streams: [Int: VyredStream] = [:]
 
     var isOpen: Bool { window?.isVisible ?? false }
 
@@ -36,6 +38,7 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
     func show() {
         if window == nil { build() }
         proxy.socket = socket
+        proxy.isOurs = { [weak self] w in w === self?.web }
         if NSApp.activationPolicy() != .regular { NSApp.setActivationPolicy(.regular) }
         if priorMenu == nil { priorMenu = NSApp.mainMenu }
         NSApp.mainMenu = VyreMenu.make(self)
@@ -71,6 +74,8 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
     func windowWillClose(_ notification: Notification) {
         web?.stopLoading()
         proxy.stopAll()
+        for s in streams.values { s.close() }
+        streams.removeAll()
         web = nil
         window = nil
         NSApp.mainMenu = priorMenu
@@ -119,10 +124,34 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         case "open":
             if let s = args["url"] as? String, let u = URL(string: s), ["http", "https"].contains(u.scheme ?? "") { NSWorkspace.shared.open(u) }
             reply(id, ["ok": true])
+        case "ws.open":
+            guard let sid = args["sid"] as? Int, let path = args["path"] as? String, path.hasPrefix("/v1/streams/") else { return reply(id, ["error": "That is not a stream of this Vyre."]) }
+            let sock = socket
+            let result: Result<VyredStream, VyredStreamFailure> = await withCheckedContinuation { k in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    k.resume(returning: VyredSocketStream.open(socket: sock, path: path,
+                        onMessage: { obj in DispatchQueue.main.async { VyreAppWindow.shared.pushSocket(sid, "message", Self.json(obj)) } },
+                        onClose: { DispatchQueue.main.async { VyreAppWindow.shared.pushSocket(sid, "close", "null"); VyreAppWindow.shared.streams[sid] = nil } }))
+                }
+            }
+            switch result {
+            case .success(let st): streams[sid] = st; reply(id, ["ok": true])
+            case .failure(let f): reply(id, ["error": f.message])
+            }
+        case "ws.send":
+            if let sid = args["sid"] as? Int, let text = args["data"] as? String, let d = text.data(using: .utf8),
+               let obj = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] { streams[sid]?.sendJSON(obj) }
+            reply(id, ["ok": true])
+        case "ws.close":
+            if let sid = args["sid"] as? Int { streams[sid]?.close(); streams[sid] = nil }
+            reply(id, ["ok": true])
         default:
             reply(id, ["error": "Unknown call \(op)."])
         }
     }
+
+    /// A stream event to the page: kind "message" (data is the frame's JSON) or "close".
+    private func pushSocket(_ sid: Int, _ kind: String, _ data: String) { run("window.__vyreShell && window.__vyreShell._ws(\(sid), \(Self.js(kind)), \(data))") }
 
     private func reply(_ id: Int, _ value: [String: Any]) { run("window.__vyreShell && window.__vyreShell._reply(\(id), \(Self.json(value)))") }
     private func run(_ script: String) { web?.evaluateJavaScript(script, completionHandler: nil) }
@@ -155,7 +184,7 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
     static let bridgeSource = """
     (function () {
       if (window.__vyreShell) return;
-      var pending = {}, next = 1, commands = [];
+      var pending = {}, next = 1, commands = [], sockets = {}, nextSocket = 1;
       function call(op, args) {
         return new Promise(function (resolve, reject) {
           var id = next++;
@@ -168,8 +197,24 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         presence: function (tool, input, summary) { return call("presence", { tool: tool, input: input, summary: summary }).then(function (r) { return r.header; }); },
         notify: function (title, body) { return call("notify", { title: title, body: body }); },
         open: function (url) { return call("open", { url: url }); },
+        // A WebSocket-like object for one of vyred's streams, backed by the native relay (VyreAppWindow.swift): the page's chat and terminal streams use it.
+        socket: function (path) {
+          var sid = nextSocket++, ws = { readyState: 0, onopen: null, onmessage: null, onclose: null, onerror: null };
+          sockets[sid] = ws;
+          ws.send = function (data) { if (ws.readyState === 1) call("ws.send", { sid: sid, data: String(data) }); };
+          ws.close = function () { if (ws.readyState < 2) { ws.readyState = 2; call("ws.close", { sid: sid }); } };
+          return call("ws.open", { sid: sid, path: path }).then(function () {
+            ws.readyState = 1; if (ws.onopen) ws.onopen({});
+            return ws;
+          }, function (e) { delete sockets[sid]; throw e; });
+        },
         onCommand: function (fn) { commands.push(fn); return function () { commands = commands.filter(function (f) { return f !== fn; }); }; },
         _reply: function (id, value) { var p = pending[id]; if (!p) return; delete pending[id]; if (value && value.error) p.reject(new Error(value.error)); else p.resolve(value); },
+        _ws: function (sid, kind, data) {
+          var ws = sockets[sid]; if (!ws) return;
+          if (kind === "message") { if (ws.onmessage) ws.onmessage({ data: JSON.stringify(data) }); }
+          else { ws.readyState = 3; delete sockets[sid]; if (ws.onclose) ws.onclose({}); }
+        },
         _command: function (name) { commands.forEach(function (f) { try { f(name); } catch (e) {} }); }
       };
     })();
@@ -189,6 +234,8 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
 /// queue, as the Capsule's own VyredClient does; a long stream stays open until the page stops it.
 final class BoxSchemeHandler: NSObject, WKURLSchemeHandler, @unchecked Sendable {
     var socket = ""
+    /// Only the Vyre app window's own web view may use this handler: the scheme is registered on that configuration alone, and this checks it again.
+    var isOurs: (WKWebView) -> Bool = { _ in false }
     private let lock = NSLock()
     private var stopped = Set<ObjectIdentifier>()
 
@@ -198,7 +245,13 @@ final class BoxSchemeHandler: NSObject, WKURLSchemeHandler, @unchecked Sendable 
     func webView(_ webView: WKWebView, stop task: WKURLSchemeTask) { lock.lock(); stopped.insert(ObjectIdentifier(task)); lock.unlock() }
 
     func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
-        guard let url = task.request.url, !socket.isEmpty else { return task.didFailWithError(URLError(.cannotConnectToHost)) }
+        guard isOurs(webView), let url = task.request.url, url.host == "box", !socket.isEmpty else { return task.didFailWithError(URLError(.cannotConnectToHost)) }
+        // The page may reach the app's own files and vyred's API, and nothing else of vyred's.
+        guard url.path.hasPrefix("/app/") || url.path == "/app" || url.path.hasPrefix("/v1/") else {
+            task.didReceive(HTTPURLResponse(url: url, statusCode: 404, httpVersion: "HTTP/1.1", headerFields: ["content-type": "text/plain"]) ?? URLResponse(url: url, mimeType: nil, expectedContentLength: 0, textEncodingName: nil))
+            task.didFinish()
+            return
+        }
         var path = url.path.isEmpty ? "/" : url.path
         if let q = url.query { path += "?" + q }
         let method = task.request.httpMethod ?? "GET"

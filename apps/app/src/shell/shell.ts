@@ -8,6 +8,8 @@ export type MacShell = {
   presence(tool: string, input: Record<string, unknown>, summary?: string): Promise<string>;
   notify(title: string, body: string): Promise<unknown>;
   open(url: string): Promise<unknown>;
+  /** One of vyred's streams (/v1/streams/...) as a WebSocket-like object, relayed by the window: a custom scheme cannot carry a WebSocket itself. */
+  socket(path: string): Promise<WebSocket>;
   /** Menu commands: a route, or "back" and "forward". Returns the stop. */
   onCommand(fn: (name: string) => void): () => void;
 };
