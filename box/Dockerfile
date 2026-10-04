@@ -84,7 +84,9 @@ RUN groupadd -g 1002 vyre-work \
  && usermod -aG vyre-work vyre \
  && chown 1000:1002 /work && chmod 2770 /work \
  && chmod 700 /home/vyre \
- && chown 1001:1002 /home/vyre-agent && chmod 2750 /home/vyre-agent \
+ # The box agent's home belongs to the agent's OWN group (1001), not the /work group (1002): an account's session that works under /work joins 1002 and must not read it (the confinement self-test
+ # found that). vyred reads it through group 1001 (core/spawner/main.js adds it to vyred's groups).
+ && chown 1001:1001 /home/vyre-agent && chmod 2750 /home/vyre-agent \
  && mkdir -p /run/vyre && chown 0:1000 /run/vyre && chmod 2750 /run/vyre \
  && mkdir -p /run/vyre-threads && chown 1000:1002 /run/vyre-threads && chmod 2710 /run/vyre-threads \
  && mkdir -p /var/lib/vyre-secrets && chown 1000:1000 /var/lib/vyre-secrets && chmod 700 /var/lib/vyre-secrets

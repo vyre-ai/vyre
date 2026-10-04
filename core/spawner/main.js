@@ -55,6 +55,11 @@ if (!process.getuid || process.getuid() !== 0) {
     if ((st.mode & 0o007) !== 0) asVyre("chmod", "o-rwx", WORK);
   } catch (e) { log(`spawner: ${WORK} is not fully shared: ${/** @type {Error} */ (e).message}`); }
   try { asVyre("chmod", "700", env.VYRE_USER_HOME || "/home/vyre"); } catch {}
+  // The box agent's home is its own group's (an older volume has it in the /work group, which an account's session under /work joins): the agent, who owns it, moves it, with no capability.
+  try {
+    const ah = env.VYRE_AGENT_HOME || "/home/vyre-agent";
+    if (fs.statSync(ah).gid !== AGENT.gid) { const asAgentUid = (...argv) => execFileSync("/usr/bin/setpriv", [`--reuid=${AGENT.uid}`, `--regid=${AGENT.gid}`, "--clear-groups", "--inh-caps=-all", "--", ...argv], { stdio: "ignore" }); asAgentUid("chgrp", "-R", String(AGENT.gid), ah); asAgentUid("chmod", "2750", ah); }
+  } catch (e) { log(`spawner: the agent's home is not closed to the /work group: ${/** @type {Error} */ (e).message}`); }
   // The accounts folder is entered, never listed: a session's uid learns no other account's uid from it (each home is closed to everyone else). vyred and the spawner need only to pass through.
   try { fs.chmodSync(env.VYRE_ACCOUNTS_HOME || "/home/acct", 0o711); } catch (e) { log(`spawner: ${env.VYRE_ACCOUNTS_HOME || "/home/acct"} could not be made unlistable: ${/** @type {Error} */ (e).message}`); }
 
@@ -85,7 +90,7 @@ if (!process.getuid || process.getuid() !== 0) {
   // vyred is in every account's group (gid = uid, 2000-2063), so it can read each account's
   // transcripts through the group and no account can read another's.
   const accountGids = []; for (let g = accounts.min; g <= accounts.max; g++) accountGids.push(g);
-  const child = runLoop(["/usr/bin/setpriv", `--reuid=${VYRE}`, `--regid=${VYRE}`, `--groups=${[SHARED, ...accountGids].join(",")}`, "--inh-caps=-all", "--",
+  const child = runLoop(["/usr/bin/setpriv", `--reuid=${VYRE}`, `--regid=${VYRE}`, `--groups=${[SHARED, AGENT.gid, ...accountGids].join(",")}`, "--inh-caps=-all", "--",
     "/bin/sh", "-c", 'umask 002; exec "$@"', "sh", "/bin/sh", LOOP], { ...env, HOME: env.VYRE_USER_HOME || "/home/vyre", VYRE_SPAWNER_SOCKET: SOCKET });
   child.on("exit", async (code, signal) => { await srv.close(); process.exit(code ?? (signal ? 1 : 0)); });
 }
