@@ -27,6 +27,7 @@ import { parseServerQr, parsePhoneQr } from "../core/wink/pairing.js";
 import { pairWords, nonceCommit, ticketTag, newNonce } from "../relay/client/pairwords.js";
 import { pairServer, parseServerPayload } from "../relay/client/serverpair.js";
 import { createServerLinks } from "../core/wink/serverlink.js";
+import { openServerPeer } from "../relay/client/peerclient.js";
 import { deviceKey } from "../core/wink/devicekey.js";
 import workerDir, * as WD from "../names/worker/index.js";
 import { createRuntime } from "../relay/worker/fake-cf.js";
@@ -1617,4 +1618,66 @@ test("a software device key's presence proof is refused by the server without th
     channelOf: sid => (sid === "srv" ? { relay: f.w.status.url, route: f.done.route, box: f.done.box } : null) });
   t.after(() => links.close());
   await assert.rejects(() => links.sessionFor("srv").call("spaces.host-here", { name: "harlow" }), e => /software|phone/i.test(e.message));
+});
+
+
+test("a paired device opens a chat's stream over the peer wire: frames for its person in order, a message by call, a dropped peer stream resumes from the last frame, an ended session gets nothing more", async t => {
+  const f = await pairFreshServer(t);
+  const links = linksFor(t, f);
+  await links.startPaired("srv");
+  const k = f.w.d.kernel;
+  const oc = await k.chains.fromFacts({ kind: "socket", surface: "deck", uid: process.getuid(), pid: 1, inside_model_process: false, capsule_verified: true });
+  const chat = await k.gateway.grants.chats.create(oc, { people: [] });
+  const mkPeer = async () => openServerPeer(connect({ relay: f.w.status.url, route: f.done.route, box: f.done.box, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: f.ks }));
+  let peer = await mkPeer();
+  const frames = [], ended = [];
+  const open = async from => peer.openStream("stream.open-peer", { session: chat.id, ...(from ? { from } : {}) }, { onframe: d => frames.push(d), onend: w => ended.push(w) });
+  const s = await open();
+  assert.match(s.id, /^st_/);
+  // a message by call on the same wire (the person is this device's own, from the server's chain)
+  await peer.call("stream.send", { session: chat.id, text: "hello from the phone" });
+  await until(async () => frames.some(d => JSON.stringify(d).includes("hello from the phone")), 8000);
+  const seen = frames.length;
+  // another viewer's session id is refused: a thread this person is not in gives no stream
+  await assert.rejects(() => peer.call("stream.open-peer", { session: "t_not_mine_at_all" }), e => /not_found|no such session/i.test(`${e.code} ${e.message}`));
+  // the peer stream drops: the app is told, reopens and resumes from the last cursor it saw
+  const cursor = Math.max(0, ...frames.map(d => Number(d && (d.cursor ?? d.seq ?? d.n)) || 0));
+  peer.close();
+  await new Promise(r => setTimeout(r, 100));
+  assert.ok(ended.includes("closed"), "the dropped peer stream ended the stream on the device");
+  peer = await mkPeer();
+  const again = [];
+  await peer.openStream("stream.open-peer", { session: chat.id, from: cursor }, { onframe: d => again.push(d), onend: () => {} });
+  await peer.call("stream.send", { session: chat.id, text: "after the resume" });
+  await until(async () => again.some(d => JSON.stringify(d).includes("after the resume")), 8000);
+  assert.ok(seen > 0);
+  // the paired session ends: nothing more is sent
+  const before = again.length;
+  await f.w.d.registry.call("presence.person.end-paired", { device: f.done.device }, "module:wink");
+  await new Promise(r => setTimeout(r, 800));
+  await peer.call("stream.send", { session: chat.id, text: "too late" }).catch(() => null);
+  await new Promise(r => setTimeout(r, 400));
+  assert.ok(!again.slice(before).some(d => JSON.stringify(d).includes("too late")), "no frame after the session ended");
+  peer.close();
+});
+
+
+test("renewal lock survives a restart: three wrong answers, the daemon restarts on the same home, and the device is still locked: no fresh tries, until the owner lifts it", async t => {
+  const f = await pairFreshServer(t);
+  const id = f.done.device, as = `device:${id}`, peer = { peer: { kind: "device", stableId: id, node: id } };
+  const call = (d, tool, input) => d.registry.call(tool, input, as, peer);
+  for (let i = 0; i < 3; i++) { await call(f.w.d, "presence.person.pair-challenge", {}); await call(f.w.d, "presence.person.start-paired", { sig: "AAAA" }); }
+  assert.ok((await f.w.d.registry.call("presence.person.locked", {}, "cli", PROOF)).data.locked.some(l => l.device === id), "locked before the restart");
+  // restart on the same home
+  await f.w.d.stop();
+  const d2 = await start({ presence: lenient, root: f.w.root, log: () => {}, coreKeys: macCore(), kernel: true });
+  t.after(() => d2.stop());
+  assert.ok((await d2.registry.call("presence.person.locked", {}, "cli", PROOF)).data.locked.some(l => l.device === id), "still locked after the restart");
+  const ch = (await call(d2, "presence.person.pair-challenge", {})).data.challenge;
+  const started = await call(d2, "presence.person.start-paired", { sig: f.sign(`paired-start\n${id}\n${ch}`) });
+  assert.ok(started.error, "a right answer is still no session while locked: the restart gave no fresh tries");
+  // the owner lifts it from their own device
+  assert.equal((await d2.registry.call("presence.person.renew-allow", { device: id }, "cli", PROOF)).data.allowed, id);
+  const ch2 = (await call(d2, "presence.person.pair-challenge", {})).data.challenge;
+  assert.ok((await call(d2, "presence.person.start-paired", { sig: f.sign(`paired-start\n${id}\n${ch2}`) })).data, "after renew-allow the device renews with its key");
 });

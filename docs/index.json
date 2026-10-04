@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":342,"tool":1192,"event":454,"config":254,"env":244,"screen":20,"concept":43},
+  "counts": {"command":342,"tool":1193,"event":454,"config":254,"env":244,"screen":20,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -1397,6 +1397,7 @@
     {"kind":"config","name":"stream.maxBytes","definedIn":"core/stream/index.js","page":null,"mentions":[]},
     {"kind":"config","name":"stream.maxFrames","definedIn":"core/stream/index.js","page":null,"mentions":[]},
     {"kind":"tool","name":"stream.open","definedIn":"core/stream/index.js","page":"reference/tools.md#streamopen","module":"stream","mentions":[{"page":"adr/0052-session-stream.md","line":18,"anchor":"decision"},{"page":"adr/0052-session-stream.md","line":54,"anchor":"resume"},{"page":"adr/0052-session-stream.md","line":135,"anchor":"authority-the-reviewers-gate-3-oct-2026"}]},
+    {"kind":"tool","name":"stream.open-peer","definedIn":"core/stream/index.js","page":"reference/tools.md#streamopen-peer","module":"stream","mentions":[]},
     {"kind":"tool","name":"stream.pin","definedIn":"core/stream/index.js","page":"reference/tools.md#streampin","module":"stream","mentions":[]},
     {"kind":"tool","name":"stream.react","definedIn":"core/stream/index.js","page":"reference/tools.md#streamreact","module":"stream","mentions":[]},
     {"kind":"config","name":"stream.retainHours","definedIn":"core/stream/index.js","page":null,"mentions":[{"page":"adr/0052-session-stream.md","line":153,"anchor":"authority-the-reviewers-gate-3-oct-2026"}]},
