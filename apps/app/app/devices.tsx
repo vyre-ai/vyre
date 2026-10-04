@@ -29,7 +29,7 @@ export default function Devices() {
   if (!devices) {
     return (
       <Screen title="Devices" back>
-        <Empty text={error ? `The box did not answer: ${error}` : " "} />
+        <Empty text={error ? `Your home did not answer: ${error}` : " "} />
       </Screen>
     );
   }
@@ -76,7 +76,7 @@ function DeviceRow({ d, self, viewer, now }: { d: Device; self: boolean; viewer:
       <Text style={[type.base, { color: color.text2 }]}>{[kindText(d), pathText(d)].join(" · ")}</Text>
       {powers ? <Text style={[type.base, { color: color.text2 }]}>{powers}</Text> : null}
       <Text style={[type.meta, { color: color.label }]}>
-        {[seenText(d, now), d.kind === "web" ? (d.build === "unknown" ? `Release ${d.release ?? "unknown"} · not in this box's releases` : "Build known") : null, expiry]
+        {[seenText(d, now), d.kind === "web" ? (d.build === "unknown" ? `Release ${d.release ?? "unknown"} · not in your home's releases` : "Build known") : null, expiry]
           .filter(Boolean)
           .join(" · ")}
       </Text>

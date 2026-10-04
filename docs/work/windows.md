@@ -97,6 +97,8 @@ are not in the set.
 
 ## Windows peer identity (what vyred can and cannot tell on Windows)
 
+**LB-3 (reviewer-2), stated plainly:** the Windows local transport is a named pipe (`\\.\pipe\vyre-<user>`) whose ACL grants the signed-in user alone (lib/owner-only.js, the pipe token). vyred verifies the peer's USER by that ACL and the pipe token and nothing else: there is no pid, no process ancestry and no code-signature read on Windows (`canReadPeers` is false there), so it cannot tell the person from a model or a script running as the same user. Consequence and rule: on Windows a caller's LABEL is only a claim, so no person facts may come from a label there (platform-2 builds that rule in `callerFacts`); a Windows PC acts as a person only through the paired Noise channel and the passkey on the server it pairs with. `core/daemon/peer-identity.test.js` pins that peers are unreadable off macOS and Linux and that nothing is verified for a win32 peer.
+
 vyred decides "the person" versus "an agent" by asking the kernel which process is on the other end of the
 socket and walking its ancestry (core/daemon/peer.js). That read exists for macOS and Linux only. On Windows
 the local socket is a named pipe, and there is NO process-ancestry read: vyred gets no pid, so

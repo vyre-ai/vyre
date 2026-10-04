@@ -30,7 +30,7 @@ Every write is a compare-and-set on `vyreVersion` and on Twenty's `updatedAt`. A
 
 ## Run
 
-- Offline: `node --test --test-force-exit "stores/**/*.test.js"` (the live file skips itself).
+- Offline: `node --test "stores/**/*.test.js"` (the live file skips itself).
 - Live, on testbox: `stores/twenty/live/run-on-testbox.sh twspike` (any Space's compose project, with the volume that holds `twenty.key`).
 - Needs on the machine: Docker with compose, the images `twentycrm/twenty:v2.44.0`, `postgres:16`, `redis:7`.
 

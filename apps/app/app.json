@@ -9,10 +9,14 @@
     "newArchEnabled": true,
     "ios": {
       "bundleIdentifier": "sh.vyre.app",
-      "supportsTablet": true
+      "supportsTablet": true,
+      "associatedDomains": ["applinks:app.vyre.run"]
     },
     "android": {
       "package": "sh.vyre.app",
+      "intentFilters": [
+        { "action": "VIEW", "autoVerify": true, "data": [{ "scheme": "https", "host": "app.vyre.run", "pathPrefix": "/app/join" }, { "scheme": "https", "host": "app.vyre.run", "pathPrefix": "/app/pair" }], "category": ["BROWSABLE", "DEFAULT"] }
+      ],
       "edgeToEdgeEnabled": true,
       "permissions": [
         "android.permission.CAMERA",
@@ -65,16 +69,6 @@
       "expo-router",
       "expo-web-browser",
       "expo-secure-store",
-      [
-        "expo-font",
-        {
-          "fonts": [
-            "./assets/fonts/instrument-sans/InstrumentSans-Regular.ttf",
-            "./assets/fonts/instrument-sans/InstrumentSans-SemiBold.ttf",
-            "./assets/fonts/jetbrains-mono/JetBrainsMono-Regular.ttf"
-          ]
-        }
-      ],
       "expo-asset",
       [
         "expo-camera",

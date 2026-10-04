@@ -26,10 +26,7 @@ function styleFor(ctx: UiCtx, size: string, tone: string, weight: "regular" | "m
   const fs = Number.parseFloat(String(ctx.map[`--fs-${size}`]));
   const lh = Number.parseFloat(String(ctx.map[`--lh-${size}`]));
   const em = TRACKING[size as keyof typeof TRACKING];
-  // Instrument Sans SemiBold's space is 0.17em (regular's is 0.22em), which glues words together in titles on the web; give it back the difference.
-  // (The native builds embed the ttf, which does not have the problem; React Native has no wordSpacing.)
-  const gap = Platform.OS === "web" && ctx.resolved.font === "sans" && (weight === "strong" || weight === "medium") ? { wordSpacing: `${Math.max(1, Math.round(fs * 0.06 * 10) / 10)}px` } : null;
-  st = { ...faces[weight], color: ctx.color[TONE[tone] ?? "text"], fontSize: fs, lineHeight: lh, ...(em ? { letterSpacing: Math.round(fs * em * 100) / 100 } : null), ...gap };
+  st = { ...faces[weight], color: ctx.color[TONE[tone] ?? "text"], fontSize: fs, lineHeight: lh, ...(em && Platform.OS !== "ios" ? { letterSpacing: Math.round(fs * em * 100) / 100 } : null) };
   m.set(key, st);
   return st;
 }

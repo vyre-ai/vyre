@@ -298,3 +298,71 @@ test("chain (reviewer-2 W-1): a newcomer's age never comes from a time its adder
   const plain = await C.verifyChain(w1.ops, { now: now + 600 * H });
   assert.equal(plain.entries.find(e => e.eid === thief.eid).since, now);
 });
+
+// KP-1: a key a web origin can reach has no say over who speaks for the identity; a passkey signs each op with user verification.
+const webKey = async label => { const k = await key(label); return { ...k, entry: kind => ({ ...k.entry(kind), held: "web" }) }; };
+
+/** A software passkey: a P-256 key that signs assertions the way an authenticator does. `uv` and `rp`/`origin` can be bent for the refusals. */
+async function passkey(label, rp = "app.vyre.run") {
+  const { publicKey, privateKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const pub = publicKey.export({ format: "der", type: "spki" }).subarray(-65);
+  const pubText = Buffer.from(pub).toString("base64url");
+  const eid = await C.eidOf(pub);
+  const assert1 = (m, o = {}) => {
+    const rpHash = crypto.createHash("sha256").update(o.rp ?? rp).digest();
+    const ad = Buffer.concat([rpHash, Buffer.from([o.flags ?? 0x05]), Buffer.from([0, 0, 0, 1])]);
+    const cd = Buffer.from(JSON.stringify({ type: "webauthn.get", challenge: o.challenge ?? crypto.createHash("sha256").update(Buffer.from(m)).digest().toString("base64url"), origin: o.origin ?? `https://${rp}`, crossOrigin: false }));
+    const signed = Buffer.concat([ad, crypto.createHash("sha256").update(cd).digest()]);
+    const s = crypto.sign("sha256", signed, privateKey); // DER, as an authenticator gives it
+    return Buffer.from(JSON.stringify({ ad: ad.toString("base64url"), cd: cd.toString("base64url"), s: s.toString("base64url") }));
+  };
+  const sign = (m, o) => assert1(m, o);
+  return { label, pub: pubText, eid, sign, with: o => m => assert1(m, o), entry: () => ({ eid, kind: "device", pub: pubText, alg: "webauthn-es256", rp, label }) };
+}
+
+test("KP-1: a founder key held on the web signs nothing about the list (the probe: add, replace-code, remove), and the paper code still gets a way back", async () => {
+  const web = await webKey("browser"), code = await key("paper"), attacker = await key("attacker"), phone = await key("phone");
+  let w = await person(web);
+  // the genesis is its own: a web key may make the identity
+  assert.equal(w.state.entries[0].held, "web");
+  const later = T0 + 48 * H; // past every newcomer window: the old rule would have allowed all of this
+  await refused(step(w, { type: "add", entry: attacker.entry("device") }, web, later), "web_key");
+  await refused(step(w, { type: "add", entry: code.entry("code") }, web, later), "web_key");
+  await refused(step(w, { type: "remove", target: web.eid }, web, later), "web_key");
+  // a passkey is the way to hold the list from a browser; here a founder passkey adds the code and a phone
+  const pk = await passkey("alex's passkey");
+  w = await person(pk);
+  w = await step(w, { type: "add", entry: code.entry("code") }, pk, T0 + 25 * H);
+  w = await step(w, { type: "add", entry: phone.entry("device") }, pk, T0 + 26 * H);
+  assert.deepEqual(w.state.entries.map(e => e.kind), ["device", "code", "device"]);
+  // a web-held device added later (the browser's own key) is on the list for the pairing it does, but cannot change the list
+  const web2 = await webKey("browser 2");
+  w = await step(w, { type: "add", entry: web2.entry("device") }, pk, T0 + 27 * H);
+  await refused(step(w, { type: "add", entry: attacker.entry("device") }, web2, T0 + 80 * H), "web_key");
+  await refused(step(w, { type: "remove", target: phone.eid }, web2, T0 + 80 * H), "web_key");
+  const replaceWith = await key("new paper");
+  await refused(step(w, { type: "replace-code", entry: replaceWith.entry("code") }, web2, T0 + 80 * H), "web_key");
+  // the paper code still adds a device (the way back), and a web-held one asked for by itself is still not authority
+  const back = await key("back in");
+  const w2 = await step(w, { type: "add", entry: back.entry("device") }, code, T0 + 90 * H);
+  assert.ok(w2.state.entries.some(e => e.eid === back.eid));
+});
+
+test("KP-1: a passkey assertion must carry user verification, name this op, and come from its own rp and origin", async () => {
+  const pk = await passkey("alex's passkey"), friend = await key("friend"), other = await key("other");
+  const w = await person(pk);
+  const add = (k, o, ts = T0 + 25 * H) => step(w, { type: "add", entry: k.entry("device") }, { ...pk, sign: m => (o ? pk.sign(m, o) : pk.sign(m)) }, ts);
+  const ok = await add(friend);
+  assert.ok(ok.state.entries.some(e => e.eid === friend.eid));
+  await refused(add(friend, { flags: 0x01 }), "bad_signature"); // present, not verified
+  await refused(add(friend, { rp: "evil.example" }), "bad_signature"); // another rp's hash
+  await refused(add(friend, { origin: "https://evil.example" }), "bad_signature");
+  await refused(add(friend, { challenge: crypto.randomBytes(32).toString("base64url") }), "bad_signature");
+  // an assertion made for one op does not carry to another
+  const forOther = pk.sign(C.messageOf(await C.makeOp(w.state, { type: "add", entry: friend.entry("device") }, { by: pk.eid, ts: T0 + 25 * H })));
+  const swapped = await C.makeOp(w.state, { type: "add", entry: other.entry("device") }, { by: pk.eid, ts: T0 + 25 * H });
+  await refused(C.applyOp(w.state, { ...swapped, sig: C.b64u(forOther) }, { now: T0 + 25 * H }), "bad_signature");
+  // a malformed passkey entry is refused at the shape
+  await refused(C.makeGenesis({ kind: "person", entry: { ...pk.entry(), rp: "" }, nonce: "n-badrp1234", ts: T0, sign: pk.sign }).then(g => C.verifyChain([g], { now: T0 })), "bad_entry");
+  await refused(C.makeGenesis({ kind: "person", entry: { ...pk.entry(), held: "web" }, nonce: "n-badrp1235", ts: T0, sign: pk.sign }).then(g => C.verifyChain([g], { now: T0 })), "bad_entry");
+});

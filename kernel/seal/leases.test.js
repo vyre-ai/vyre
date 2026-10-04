@@ -58,6 +58,13 @@ test("the sealing process: only a person asks, reinstating needs presence, no ke
   assert.equal(await code(s.lease.reinstate({ chain: ch, member: "per_alex", device: "d1" })), "needs_presence");
   assert.equal((await s.lease.reinstate({ chain: ch, member: "per_alex", device: "d1", proof: alex.proof(ch, "lease.reinstate", { member: "per_alex", device: "d1" }) })).reinstated, true);
   const b = await s.lease.issue({ chain: ch, space: SP, device: "d1", allowed: true }); assert.notEqual(b.key, a.key);
+  const h = c => c.repeat(20);
+  await s.anchor.advance({ space: SP, seq: 5, head: h("a") });
+  assert.equal(await code(s.anchor.reset({ chain: ch })), "needs_presence");
+  assert.equal(await code(s.anchor.reset({ chain: withAgent() })), "human_only", "a model cannot reset the anchor");
+  await s.anchor.reset({ chain: ch, proof: alex.proof(ch, "anchor.reset", {}) });
+  assert.equal(await s.anchor.read({ space: SP }), null, "the person's reset reads null, and a fresh advance is accepted");
+  assert.equal((await s.anchor.advance({ space: SP, seq: 2, head: h("b") })).seq, 2);
   for (const f of fs.readdirSync(dir, { recursive: true })) { const p = `${dir}/${f}`; if (fs.statSync(p).isFile() && !p.endsWith("master.key")) assert.equal(fs.readFileSync(p).includes(Buffer.from(b.key, "base64").toString("hex")) || fs.readFileSync(p).includes(b.key), false); }
 });
 

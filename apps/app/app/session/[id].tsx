@@ -6,7 +6,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ThemeProvider, useUiTheme } from "@vyre/ui";
+import { Text as UiText, ThemeProvider, useUiTheme } from "@vyre/ui";
 import ChatDemo from "../chat-demo";
 import { call, boxOrigin } from "../../src/api/box";
 import { ChatScreen } from "../../src/chat/ChatScreen";
@@ -89,7 +89,7 @@ function BoxSession({ thread }: { thread: string }) {
       ) : null}
       {termNote ? (
         <View pointerEvents="none" style={{ position: "absolute", left: 16, right: 16, bottom: 96 }}>
-          <Text style={{ color: "#999", fontSize: 13, textAlign: "center" }}>{termNote}</Text>
+          <UiText size="caption" tone="label" style={{ textAlign: "center" }}>{termNote}</UiText>
         </View>
       ) : null}
     </View>

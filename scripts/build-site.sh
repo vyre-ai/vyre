@@ -125,8 +125,9 @@ sh "$here/scripts/build-app.sh" --src "$src"
 if [ -f "$src/lib/build-kind.js" ]; then
   kind_keep=$(mktemp)
   cp "$src/lib/build-kind.js" "$kind_keep"
-  sed -i.bak 's/BUILD_KIND = "development"/BUILD_KIND = "release"/' "$src/lib/build-kind.js" && rm -f "$src/lib/build-kind.js.bak"
   trap 'cp -f "$kind_keep" "$src/lib/build-kind.js" 2>/dev/null; rm -f "$kind_keep"' EXIT
+  # Fails the build when the file does not say release afterwards (DP-1); the same two lines kernel/devbuild.js reads (lib/build-kind-text.js).
+  node "$src/scripts/stamp-build-kind.mjs" "$src/lib/build-kind.js" || exit 1
 fi
 # npm pack writes the tarball's name on its last line of stdout.
 name=$(cd "$src" && npm pack --silent --pack-destination "$out" | tail -n 1)
@@ -134,6 +135,19 @@ mv "$out/$name" "$out/vyre.tgz"
 
 # The version the tarball carries, for the /start page and the installer's messages.
 node -e 'process.stdout.write(require(process.argv[1]).version + "\n")' "$src/package.json" >"$out/VERSION"
+
+# The signed list of first-party modules (kernel/modules/release-list.js): the hash of every module folder of the UNPACKED tarball, so the hashes are of what a box will hold,
+# made here with no key and listed in SHA256SUMS below, so the release key's one signature covers it. The counter is made from the version (scripts/release-counter.mjs):
+# it orders as semver does and so only ever goes up. A source without the kernel's list code (an older line) makes no list.
+if [ -f "$src/scripts/modules-manifest.mjs" ] && [ -f "$src/kernel/modules/release-list.js" ]; then
+  unpacked=$(mktemp -d)
+  tar -xzf "$out/vyre.tgz" -C "$unpacked" --strip-components=1
+  ver=$(cat "$out/VERSION")
+  node "$src/scripts/modules-manifest.mjs" "$unpacked" --counter "$(node "$src/scripts/release-counter.mjs" "$ver")" --release "$ver" --out "$out/modules.json" || exit 1
+  # The web app's files (lib/app-build.js): the daemon serves a file of /app/ only when it matches this list, so it is signed with the rest (MW-5). No apps/app/dist, no list.
+  if [ -f "$src/scripts/appbuild-manifest.mjs" ]; then node "$src/scripts/appbuild-manifest.mjs" "$unpacked" --release "$ver" --counter "$(node "$src/scripts/release-counter.mjs" "$ver")" --out "$out/appbuild.json" || exit 1; fi
+  rm -rf "$unpacked"
+fi
 
 (
   cd "$out"

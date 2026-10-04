@@ -24,7 +24,7 @@ export function identityPorts(o) {
     },
     network: {
       entry: async (/** @type {string} */ eid) => { const e = await ask("spaces.identity.entry", { space: await o.space(), eid }); return e ? { eid: String(e.eid), kind: String(e.kind), ...(e.identity ? { identity: String(e.identity) } : {}) } : null; },
-      self: async () => { const st = await ask("spaces.identity.status", {}); return st && st.exists ? { signedIn: true, name: st.label || st.name, id: st.id } : { signedIn: false }; },
+      self: async () => { const st = await ask("spaces.identity.self", {}); return st && st.id ? { signedIn: true, name: st.label || st.name, id: st.id } : { signedIn: false }; },
     },
   };
 }

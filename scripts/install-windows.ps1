@@ -172,4 +172,5 @@ Start-Process -FilePath $app
 
 Write-Host ""
 Write-Host "Vyre is starting. A window will open to finish setup."
+Write-Host "About your keys: Sealed data on this PC is only as protected as this PC's own Windows account: any program running as you can read the key file."
 Write-Host ""

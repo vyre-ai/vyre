@@ -2,6 +2,7 @@
 # identity, refused for an unsigned image and for another signer; a moved tag does not move the pinned digest.
 name: cosign-refusals
 on:
+  workflow_call:
   workflow_dispatch:
   push:
     paths: ["scripts/cosign-refusals-proof.sh", "scripts/install-box.sh", ".github/workflows/cosign-refusals.yml"]

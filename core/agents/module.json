@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "roles": ["box", "local"],
   "requires": ["threads"],
-  "does": { "tools": [{ "name": "agents.scope", "reach": "modules" }, { "name": "agents.list", "reach": "anyone" }, { "name": "agents.create", "reach": "anyone" }, { "name": "agents.update", "reach": "anyone" }, { "name": "agents.ask", "reach": "anyone" }, { "name": "agents.rollover", "reach": "anyone" }, { "name": "agents.job", "reach": "modules" }, { "name": "agents.threads", "reach": "anyone" }, { "name": "agents.stop", "reach": "anyone" }, { "name": "agents.resume", "reach": "anyone" }, { "name": "agents.history", "reach": "anyone" }, { "name": "agents.usage", "reach": "anyone" }, { "name": "agents.delete", "reach": "person" }] },
+  "does": { "reads": ["agents.history", "agents.list"], "tools": [{ "name": "agents.scope", "reach": "modules" }, { "name": "agents.list", "reach": "anyone" }, { "name": "agents.create", "reach": "anyone" }, { "name": "agents.update", "reach": "anyone" }, { "name": "agents.ask", "reach": "anyone" }, { "name": "agents.rollover", "reach": "anyone" }, { "name": "agents.job", "reach": "modules" }, { "name": "agents.threads", "reach": "anyone" }, { "name": "agents.stop", "reach": "anyone" }, { "name": "agents.resume", "reach": "anyone" }, { "name": "agents.history", "reach": "anyone" }, { "name": "agents.usage", "reach": "anyone" }, { "name": "agents.delete", "reach": "person" }] },
   "watches": { "emits": [] },
   "shows": { "cli": ["agents"] },
   "needs": { "vault": ["per-agent"], "daemon": ["credentials"] },

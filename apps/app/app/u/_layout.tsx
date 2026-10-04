@@ -2,6 +2,7 @@
 // The install flow is a full screen of its own, so it skips the shell.
 import { Stack, usePathname } from "expo-router";
 import { ThemeProvider, useReducedMotion, useUiTheme } from "@vyre/ui";
+import "../../src/api/store-link";
 import { UiShell } from "../../screens/shell/UiShell";
 
 function UiStack() {

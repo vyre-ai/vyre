@@ -165,6 +165,10 @@ jobs:
             cp "site/box/$f" dist/
           done
           [ "$(cat dist/VERSION)" = "${{ steps.v.outputs.version }}" ]
+          # the signed list of first-party modules (scripts/modules-manifest.mjs, by build-site.sh): one more file in the list SHA256SUMS covers
+          [ -f site/box/modules.json ] && cp site/box/modules.json dist/ || { echo "build-site made no modules.json"; exit 1; }
+          # the signed list of the web app's files (scripts/appbuild-manifest.mjs, lib/app-build.js): the daemon serves /app/ only from files on it
+          [ -f site/box/appbuild.json ] && cp site/box/appbuild.json dist/ || { echo "build-site made no appbuild.json"; exit 1; }
           # what vyre.run serves for the setup page and the install line, hashed into the signed release (check-served.mjs reads it)
           node scripts/setup-hashes.mjs dist
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -475,6 +479,18 @@ jobs:
           node scripts/pin-release-compose.mjs dist/compose.yml "$BOX" "$COMPUTER"
           grep -q "image: $BOX\$" dist/compose.yml || { echo "compose.yml did not take the box digest"; exit 1; }
           grep -q "$COMPUTER" dist/compose.yml || { echo "compose.yml did not take the computer digest"; exit 1; }
+      - name: The signed module list matches the tarball and the BUILT image (one byte of difference bricks that module on every box)
+        run: |
+          # The list is made from the unpacked vyre.tgz; the image is built from a context that is not the tarball. The kernel's own check (kernel/modules/release-list.js
+          # verifyTrees) runs on both, and the release fails on any difference. On a dry run there is no pushed image: the packaged-boot job covers the image.
+          d=$(mktemp -d); tar -xzf dist/vyre.tgz -C "$d" --strip-components=1
+          node scripts/verify-list-trees.mjs "$d" dist/modules.json
+          if [ "$PUBLISH" = true ] && [ -n "$BOX" ]; then
+            docker pull -q "$BOX" >/dev/null
+            id=$(docker create "$BOX"); mkdir -p "$RUNNER_TEMP/image-root"
+            docker cp "$id:/opt/vyre/." "$RUNNER_TEMP/image-root/"; docker rm "$id" >/dev/null
+            node scripts/verify-list-trees.mjs "$RUNNER_TEMP/image-root" dist/modules.json
+          fi
       - name: release.json, SHA256SUMS, and on a publish the Ed25519 signature every updater reads
         env:
           VYRE_SIGNING_KEY: ${{ env.PUBLISH == 'true' && secrets.VYRE_RELEASE_SIGNING_KEY || '' }}
@@ -494,9 +510,9 @@ jobs:
         run: |
           # MAC_FLAG is --mac only when the Mac step put signed dmgs in dist (the step above sets it).
           if [ "$PUBLISH" = true ]; then
-            node scripts/check-release-dist.mjs dist --pulled --installer --setup ${MAC_FLAG:-} --pubkey "$(sed -n 's/^RELEASE_KEY=//p' dist/vyre)"
+            node scripts/check-release-dist.mjs dist --pulled --modules --installer --setup ${MAC_FLAG:-} --pubkey "$(sed -n 's/^RELEASE_KEY=//p' dist/vyre)"
           else
-            node scripts/check-release-dist.mjs dist --installer --setup ${MAC_FLAG:-}
+            node scripts/check-release-dist.mjs dist --modules --installer --setup ${MAC_FLAG:-}
           fi
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:

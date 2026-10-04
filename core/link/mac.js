@@ -571,6 +571,9 @@ export function macSide(ctx, seam = {}) {
   ctx.tool("link.call", {
     description: "Call a tool on your box from this Mac (threads, agents, files). Answers box_unreachable when the box is away.",
     input: { type: "object", properties: { tool: { type: "string" }, input: { type: "object" } }, required: ["tool"] },
+    // The box sees this Mac as the owner's device, so a model or an agent must never ride it: only the person's own surfaces and modules call it (reviewer-2 HD-3). A model that needs a box tool
+    // asks through its own tools, which the box gates by the model's own caller.
+    callers: ["cli", "local", "deck", "capsule", "mobile", "module"],
     run: async ({ tool, input }, meta) => {
       const r = await remote(tool, input || {}, meta && meta.caller);
       if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code });

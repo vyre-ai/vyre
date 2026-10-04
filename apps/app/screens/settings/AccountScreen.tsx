@@ -1,15 +1,16 @@
 import { useState } from "react";
 import { View } from "react-native";
-import { Avatar, Button, Card, Chip, Divider, Row, Switch, Text, showToast, markRef } from "@vyre/ui";
+import { Avatar, Button, Card, Chip, Divider, Row, Switch, Text, showToast, markRef , allowsMock} from "@vyre/ui";
 import { Group, Page } from "../places/Frame";
 import { FaceIdSheet, type FaceAsk } from "../shell/FaceIdSheet";
 import { loadAccount } from "./data";
 import { useSettings } from "./state";
+import { RealAccount } from "./RealAccount";
 
 const A = loadAccount();
 
 /** Your identity: a permanent id and a short signed list of who can speak for you (DESIGN-wink.md section 2). */
-export function AccountScreen() {
+function SampleAccountScreen() {
   const { newCode, setNewCode, pin, setPin } = useSettings();
   const [face, setFace] = useState<FaceAsk | null>(null);
   return (
@@ -38,4 +39,9 @@ export function AccountScreen() {
       <FaceIdSheet ask={face} onClose={() => setFace(null)} />
     </Page>
   );
+}
+
+/** The sample page in a mock build; the box's own identity everywhere else. */
+export function AccountScreen() {
+  return allowsMock() ? <SampleAccountScreen /> : <RealAccount />;
 }

@@ -44,6 +44,40 @@ const canon = m => JSON.stringify(Object.keys(m).sort().map(k => [k, m[k].hash, 
 const transcriptHash = (lines, seq) => sha(lines.filter(e => e.seq <= seq).sort((a, b) => a.seq - b.seq).map(e => `${e.seq}:${e.line}\n`).join(""));
 export const coverOf = (manifest, lines, seq, turn) => ({ turn, seq, manifest: sha(canon(manifest)), transcript: transcriptHash(lines, seq) });
 
+/** Disk-full and quota errors become one plain refusal. */
+const full = e => ["ENOSPC", "EDQUOT"].includes(e?.code);
+const refusal = e => full(e) ? Object.assign(new Error("this computer's disk is full, so the session's progress cannot be saved here"), { code: "disk_full" }) : e;
+/** Write a file so a reader sees the old whole file or the new whole file, never half of one: temp file, fsync, rename, fsync of the folder. A failure leaves no temp file. */
+export function atomicWrite(file, data, fsx = fs) {
+  const tmp = `${file}.tmp-${process.pid}`;
+  let fd = -1;
+  try {
+    fd = fsx.openSync(tmp, "w", 0o600);
+    fsx.writeSync(fd, data);
+    fsx.fsyncSync(fd);
+    fsx.closeSync(fd); fd = -1;
+    fsx.renameSync(tmp, file);
+  } catch (e) {
+    if (fd >= 0) try { fsx.closeSync(fd); } catch {}
+    try { fsx.unlinkSync(tmp); } catch {}
+    throw refusal(e);
+  }
+  try { const d = fsx.openSync(path.dirname(file), "r"); try { fsx.fsyncSync(d); } finally { fsx.closeSync(d); } } catch {}
+}
+/** The complete lines of the transcript file. A torn last line (a crash or a full disk in the middle of an append) is cut off. */
+function readTranscript(file, fsx = fs) {
+  let text; try { text = fsx.readFileSync(file, "utf8"); } catch { return []; }
+  const out = []; let good = 0, pos = 0;
+  for (const l of text.split("\n")) {
+    const end = pos + l.length + 1; pos = end;
+    if (!l) { good = Math.min(end, text.length); continue; }
+    if (end > text.length) break;   // no newline after it: torn
+    try { const e = JSON.parse(l); if (typeof e?.seq === "number") { out.push(e); good = end; } } catch { break; }
+  }
+  if (good < text.length) { try { fsx.truncateSync(file, Buffer.byteLength(text.slice(0, good))); } catch {} }
+  return out;
+}
+
 /** @typedef {(req: { roots: typeof ROOTS, have: Record<string, { hash: string, size: number, mtimeMs: number }>, maxBytes?: number }, onFile: (f: { rel: string, hash: string, size: number, len: number, mtimeMs: number, bytes: Buffer|null, deferred?: boolean }) => Promise<void>) => Promise<{ truncated: boolean }>} Reader */
 
 /**
@@ -65,23 +99,27 @@ export const localReaderFor = work => async ({ roots, have, maxBytes = 1e8 }, on
  */
 export function createSessionSync(o) {
   const roots = o.roots || ROOTS;
+  const fsx = o.fs || fs;
   const meta = path.join(o.state, o.session);
   fs.mkdirSync(meta, { recursive: true, mode: 0o700 });
+  // A temp file left by a process that was killed mid-write is not part of anything: remove it.
+  try { for (const f of fs.readdirSync(meta)) if (/\.tmp-\d+$/.test(f)) fs.rmSync(path.join(meta, f), { force: true }); } catch {}
   const tFile = path.join(meta, "transcript.jsonl");
   const cFile = path.join(meta, "checkpoint.json");
   const readJson = (f, d) => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { return d; } };
 
-  let seq = 0, acked = 0, turn = 0;
+  let seq = 0, acked = 0, turn = 0, /** @type {string|null} */ refused = null;
   /** manifest of what the space holds: remote path -> { hash, version } */
   let manifest = readJson(cFile, { manifest: {} }).manifest || {};
   /** transcript lines not yet acknowledged by the space (the outbox), kept in the workspace so a restart resends them */
   const outbox = [];
-  try {
-    for (const l of fs.readFileSync(tFile, "utf8").split("\n").filter(Boolean)) { const e = JSON.parse(l); seq = Math.max(seq, e.seq); }
+  {
+    const lines = readTranscript(tFile);
+    for (const e of lines) seq = Math.max(seq, e.seq);
     acked = readJson(cFile, { seq: 0 }).seq || 0;
-    for (const l of fs.readFileSync(tFile, "utf8").split("\n").filter(Boolean)) { const e = JSON.parse(l); if (e.seq > acked) outbox.push(e); }
+    for (const e of lines) if (e.seq > acked) outbox.push(e);
     turn = readJson(cFile, { turn: 0 }).turn || 0;
-  } catch {}
+  }
 
   async function flush() {
     if (!outbox.length) return true;
@@ -129,25 +167,39 @@ export function createSessionSync(o) {
     get acked() { return acked; },
     /** One transcript line from the session process: written locally (encrypted at rest) and queued for the space. */
     async line(line) {
-      const e = { seq: ++seq, line };
-      fs.appendFileSync(tFile, JSON.stringify(e) + "\n", { mode: 0o600 });
+      const e = { seq: seq + 1, line };
+      let size = 0; try { size = fsx.statSync(tFile).size; } catch {}
+      try { fsx.appendFileSync(tFile, JSON.stringify(e) + "\n", { mode: 0o600 }); }
+      catch (err) {
+        // A full disk leaves no half line and no gap in the numbers: cut the file back to what it was and refuse this line.
+        try { fsx.truncateSync(tFile, size); } catch {}
+        throw refusal(err);
+      }
+      seq = e.seq;
       outbox.push(e);
       if (outbox.length >= 20) await flush();
     },
     /** A turn ended: flush, upload changed files, record the checkpoint with the space. Returns true once acknowledged. */
     async checkpoint(state = {}) {
+      refused = null;
       const sent = await flush();
       if (!sent) return false;
       try {
+        // The transcript is on this disk, not only in the page cache, before the space is told the checkpoint exists.
+        try { const fd = fsx.openSync(tFile, "r"); try { fsx.fsyncSync(fd); } finally { fsx.closeSync(fd); } } catch (e) { if (e?.code !== "ENOENT") throw refusal(e); }
         await syncFiles();
-        const all = fs.readFileSync(tFile, "utf8").split("\n").filter(Boolean).map(l => JSON.parse(l));
+        const all = readTranscript(tFile, fsx);
         const cp = { turn: turn + 1, seq, manifest, state: o.seal({ ...state, cover: coverOf(manifest, all, seq, turn + 1) }) };
         await o.space.putCheckpoint(o.session, cp);
         turn = cp.turn;
-        fs.writeFileSync(cFile, JSON.stringify(cp), { mode: 0o600 });
+        // The space holds the checkpoint now. If this computer cannot record that (disk full) the checkpoint still stands; the next
+        // start resends what the space already has, which it ignores.
+        try { atomicWrite(cFile, JSON.stringify(cp), fsx); } catch (e) { o.log?.("checkpoint kept by the space, not recorded here: " + e.message); }
         return true;
-      } catch (e) { o.log?.("checkpoint not acknowledged: " + e.message); return false; }
+      } catch (e) { refused = e?.code === "disk_full" || full(e) ? "disk_full" : null; o.log?.("checkpoint not acknowledged: " + e.message); return false; }
     },
+    /** Why the last checkpoint was refused here, when it was this computer's doing: "disk_full", else null. */
+    get refused() { return refused; },
     flush,
   };
 }
@@ -172,15 +224,16 @@ export async function restore(o) {
   const lines = await o.space.getTranscript(o.session, 1);
   const want = cp.state?.cover, got = coverOf(cp.manifest || {}, lines, cp.seq, cp.turn);
   if (!want || want.manifest !== got.manifest || want.transcript !== got.transcript || want.seq !== cp.seq || want.turn !== cp.turn) throw bad();
-  fs.writeFileSync(path.join(meta, "transcript.jsonl"), lines.filter(e => e.seq <= cp.seq).map(e => JSON.stringify(e)).join("\n") + (lines.length ? "\n" : ""), { mode: 0o600 });
+  const kept = lines.filter(e => e.seq <= cp.seq);
+  atomicWrite(path.join(meta, "transcript.jsonl"), kept.map(e => JSON.stringify(e)).join("\n") + (kept.length ? "\n" : ""));
   let refused = 0;
   for (const [remote, m] of Object.entries(cp.manifest || {})) {
     const root = roots.find(r => remote.startsWith(r.remote + "/"));
     if (!root || m.hash === "deleted") continue;
     let rel; try { rel = parts(remote.slice(root.remote.length + 1)).join("/"); } catch { continue; }
     // A link planted in the workspace refuses that one file (and is counted), it never redirects the write.
-    try { writeInside(o.work, `${root.dir}/${rel}`, Buffer.from(await o.space.getFile(o.session, remote, m.version))); } catch (e) { if (!/unsafe_path|EEXIST|ENOTDIR|ELOOP/.test(String(e.code))) throw e; refused++; }
+    try { writeInside(o.work, `${root.dir}/${rel}`, Buffer.from(await o.space.getFile(o.session, remote, m.version))); } catch (e) { if (!/unsafe_path|EEXIST|ENOTDIR|ELOOP/.test(String(e.code))) throw refusal(e); refused++; }
   }
-  fs.writeFileSync(path.join(meta, "checkpoint.json"), JSON.stringify(cp), { mode: 0o600 });
+  atomicWrite(path.join(meta, "checkpoint.json"), JSON.stringify(cp));
   return { turn: cp.turn, seq: cp.seq, state: cp.state };
 }

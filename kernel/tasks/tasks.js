@@ -152,7 +152,8 @@ export function createTasks(cfg) {
   const guarded = guardedSkip;
   const appendOrUndo = (/** @type {string} */ id, /** @type {any} */ chain, /** @type {any} */ ev, /** @type {any} */ opt) => { try { const e = cfg.log.append(chain, ev, opt); pending.delete(id); return e; } catch (e) { unstage(id); throw e; } };
   const note = (/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ t, /** @type {any} */ data, /** @type {any} */ decision) => {
-    try { const e = cfg.log.append(chain, { type, sv: 1, subject: urnOf(cfg.space, t.id), data: { ...data, state: t.state } }, decision ? { decision } : {}); pending.delete(t.id); return e; } catch (e) { unstage(t.id); throw e; }
+    // The event carries the task as it stands after the change (never the canonical body: that holds the draft, which the log must not), so the log alone rebuilds every task at the next start (`rebuild` below): tasks used to live in memory only.
+    try { const now = tasks.get(t.id) || t; const e = cfg.log.append(chain, { type, sv: 1, subject: urnOf(cfg.space, t.id), data: { ...data, state: t.state, task: now } }, decision ? { decision } : {}); pending.delete(t.id); return e; } catch (e) { unstage(t.id); throw e; }
   };
 
   /** The transition table is the one source: ask it which rule applies, and check the caller's role is the rule's. */
@@ -310,7 +311,7 @@ export function createTasks(cfg) {
       const payload = freeze({ payload_hash: sha256(canonical(body)), decision, draft_hash: sha256(canonical(evidence)), ...(t.form !== undefined ? { form_hash: sha256(canonical(t.form)) } : {}) });
       bodies.set(id, body);
       const n = put(t, { state: "needs_check", payload });
-      note(chain, "task.needs-check", n, { payload_hash: payload.payload_hash, decision });
+      note(chain, "task.needs-check", n, { payload_hash: payload.payload_hash, decision, ...(["decision", "fields", "note"].includes(t.output.kind) ? { evidence: body.evidence } : {}) });
       return n;
     },
 
@@ -529,6 +530,25 @@ export function createTasks(cfg) {
       return Boolean(b && b.payload && Array.isArray(b.payload.sealed_slots) && b.payload.sealed_slots.some((/** @type {any} */ s) => s.use_hash === payload_hash));
     },
   };
+  // The tasks the log holds, at start: the newest event of each task carries the task as it was after that change (never its canonical body, which holds the draft). A task that was waiting for a check had its draft only in memory: it goes back to `ready` so its doer makes the draft again, rather than waiting for a card nobody can open. An event from before this was written (no `task`) adds nothing.
+  /** @type {Map<string, any>} */ const evidence = new Map();
+  try {
+    const f = { type: "task.*" };
+    const evs = cfg.log && typeof cfg.log.read === "function" ? (cfg.log.iterate ? [...cfg.log.iterate(f)] : cfg.log.read(f)) : [];
+    for (const e of evs) {
+      const d = e && e.data;
+      if (!d || !d.task || typeof d.task.id !== "string" || d.task.space !== cfg.space) continue;
+      tasks.set(d.task.id, deepFreeze(structuredClone(d.task)));
+      if (e.type === "task.created" && typeof d.proposal_for === "string") proposals.set(d.task.id, d.proposal_for);
+      if (e.type === "task.needs-check" && d.evidence !== undefined) evidence.set(d.task.id, d.evidence);
+    }
+    // A decision, fields or note waiting for its check has its answer in its needs-check event (as a completed one always did): its canonical body is rebuilt from it, and used only if it hashes to what was shown.
+    for (const [id, t] of tasks) if (t.state === "needs_check" && !bodies.has(id) && t.payload && evidence.has(id) && ["decision", "fields", "note"].includes(t.output.kind)) {
+      const body = deepFreeze({ task: id, kind: t.output.kind, evidence: deepFreeze(structuredClone(evidence.get(id))) });
+      if (sha256(canonical(body)) === t.payload.payload_hash) bodies.set(id, body);
+    }
+    for (const [id, t] of tasks) if (t.state === "needs_check" && !bodies.has(id)) { const { payload, ...rest } = t; tasks.set(id, deepFreeze({ ...rest, state: "ready" })); }
+  } catch { /* a log that cannot be read leaves no tasks, never a half set */ tasks.clear(); bodies.clear(); proposals.clear(); }
   const { _decideOnce, _requestOnce, ...pub } = api;
   const frozen = Object.freeze(pub);
   VIEWS.set(frozen, (/** @type {string} */ record, /** @type {string} */ stage) => [...tasks.values()].filter(t => t.record === record && t.stage === stage).map(t => ({ title: t.title, state: t.state, required: Boolean(t.required) })));

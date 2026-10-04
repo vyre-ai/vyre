@@ -298,3 +298,139 @@ test("ids: the directory refuses an op made at an old time, so an adder cannot h
   const now = await alex.append({ type: "add", entry: thief.entry("device") }, phone);
   assert.equal(data(await alex.post("/v1/ids/append", { name: "alex", ops: [now] })).seq, 1);
 });
+
+// ---- CORS for the browser app (lead's ruling 4 Oct): resolve is public read-only data; claim, append and update carry their own signature and take the app's origins ----
+
+const raw = async (w, method, path, { origin, headers = {}, body } = {}) => {
+  const text = body === undefined ? undefined : JSON.stringify(body);
+  const res = await worker.fetch(new Request(BASE + path, { method, headers: { ...(origin ? { origin } : {}), ...(body === undefined ? {} : { "content-type": "application/json" }), "cf-connecting-ip": "203.0.113.9", ...headers }, body: text }), w.env);
+  return { status: res.status, h: n => res.headers.get(n), json: await res.json().catch(() => null) };
+};
+
+test("cors: resolve answers any origin, read-only, no credentials, and a preflight for it", async t => {
+  const w = world(t);
+  const alex = await person(w);
+  data(await alex.claim("alex"));
+  for (const origin of ["https://app.vyre.run", "https://evil.example", "null"]) {
+    const r = await raw(w, "GET", "/v1/ids/resolve?name=alex", { origin, headers: { "sec-fetch-site": "cross-site" } });
+    assert.equal(r.status, 200, origin);
+    assert.equal(r.h("access-control-allow-origin"), "*");
+    assert.equal(r.h("access-control-allow-credentials"), null, "never with credentials");
+    assert.equal(r.json.data.name, "alex");
+  }
+  const pre = await raw(w, "OPTIONS", "/v1/ids/resolve?name=alex", { origin: "https://app.vyre.run", headers: { "access-control-request-method": "GET" } });
+  assert.equal(pre.status, 204);
+  assert.equal(pre.h("access-control-allow-origin"), "*");
+  assert.match(pre.h("access-control-allow-methods"), /GET/);
+  assert.equal((await raw(w, "GET", "/v1/ids/resolve?name=nobody", { origin: "https://evil.example" })).h("access-control-allow-origin"), "*", "an unknown name answers CORS too");
+});
+
+test("cors: claim, append and update accept the app's origin (and only its exact origin), answer it, and keep their limits; everything else still refuses a foreign Origin", async t => {
+  const w = world(t, { APP_ORIGINS: "https://app.vyre.run, http://localhost:5173" });
+  const alex = await person(w);
+  const body = { name: "alex", ops: alex.ops, ...alex.sealRecord("alex", "c2VhbGVk") };
+  const ok = await raw(w, "POST", "/v1/ids/claim", { origin: "https://app.vyre.run", headers: { "sec-fetch-site": "cross-site" }, body });
+  assert.equal(ok.status, 200, JSON.stringify(ok.json));
+  assert.equal(ok.h("access-control-allow-origin"), "https://app.vyre.run");
+  assert.equal(ok.h("vary"), "origin");
+  assert.equal(ok.h("access-control-allow-credentials"), null);
+  const bob = await person(w);
+  const dev = await raw(w, "POST", "/v1/ids/claim", { origin: "http://localhost:5173", body: { name: "bob", ops: bob.ops, ...bob.sealRecord("bob", "c2VhbGVk") } });
+  assert.equal(dev.status, 200, "the stand-in's origin from APP_ORIGINS");
+  for (const origin of ["https://evil.example", "https://app.vyre.run.evil.example", "http://app.vyre.run", "https://vyre.run", "null"]) {
+    const r = await raw(w, "POST", "/v1/ids/claim", { origin, body });
+    assert.equal(r.status, 403, origin);
+    assert.equal(r.h("access-control-allow-origin"), null, "a foreign origin gets no CORS answer");
+  }
+  // preflights: the app origin for the three routes, nothing for others
+  for (const p of ["/v1/ids/claim", "/v1/ids/append", "/v1/ids/update"]) {
+    const pre = await raw(w, "OPTIONS", p, { origin: "https://app.vyre.run", headers: { "access-control-request-method": "POST", "access-control-request-headers": "content-type" } });
+    assert.equal(pre.status, 204, p);
+    assert.equal(pre.h("access-control-allow-origin"), "https://app.vyre.run");
+    assert.equal((await raw(w, "OPTIONS", p, { origin: "https://evil.example", headers: { "access-control-request-method": "POST" } })).status, 405, p);
+  }
+  for (const [method, p] of [["POST", "/v1/ids/alias"], ["DELETE", "/v1/ids/alias"], ["POST", "/v1/ids/release"], ["POST", "/v1/names/claim"], ["POST", "/v1/names/release"], ["POST", "/v1/names/recover"]]) {
+    assert.equal((await raw(w, "OPTIONS", p, { origin: "https://app.vyre.run", headers: { "access-control-request-method": method } })).status, 405, `${method} ${p} has no preflight`);
+    const r = await raw(w, method, p, { origin: "https://app.vyre.run", body: { name: "alex" } });
+    assert.equal(r.status, 403, `${method} ${p} still refuses a foreign Origin`);
+  }
+});
+
+test("cors: the per-IP claim limit applies to claims from the app origin too", async t => {
+  const w = world(t);
+  const results = [];
+  for (let i = 0; i < 7; i++) {
+    const p = await person(w);
+    const r = await raw(w, "POST", "/v1/ids/claim", { origin: "https://app.vyre.run", body: { name: `name${i}x`, ops: p.ops, ...p.sealRecord(`name${i}x`, "c2VhbGVk") } });
+    results.push(r.status === 200 ? "ok" : code(r));
+  }
+  assert.equal(results.filter(x => x === "ok").length, 5, JSON.stringify(results));
+  assert.ok(results.slice(5).every(x => x !== "ok"));
+});
+
+test("cors: the name availability check answers any origin like resolve (no credentials), and the claim limit per address is configurable", async t => {
+  const w = world(t, { CLAIMS_PER_IP_PER_DAY: "8" });
+  for (const origin of ["https://app.vyre.run", "http://localhost:5173", "https://evil.example"]) {
+    const r = await raw(w, "GET", "/v1/names/check?name=freshname", { origin, headers: { "sec-fetch-site": "cross-site" } });
+    assert.equal(r.status, 200, origin);
+    assert.equal(r.h("access-control-allow-origin"), "*");
+    assert.equal(r.h("access-control-allow-credentials"), null);
+    assert.equal(r.json.data.status, "ok");
+  }
+  const pre = await raw(w, "OPTIONS", "/v1/names/check?name=x", { origin: "https://app.vyre.run", headers: { "access-control-request-method": "GET" } });
+  assert.equal(pre.status, 204);
+  const results = [];
+  for (let i = 0; i < 9; i++) { const p = await person(w); const r = await raw(w, "POST", "/v1/ids/claim", { origin: "https://app.vyre.run", body: { name: `limit${i}x`, ops: p.ops, ...p.sealRecord(`limit${i}x`, "c2VhbGVk") } }); results.push(r.status === 200 ? "ok" : code(r)); }
+  assert.equal(results.filter(x => x === "ok").length, 8, JSON.stringify(results));
+});
+
+test("CO-1: the live config pins APP_ORIGINS to exactly one https origin, and no dev or wildcard origin", async () => {
+  const fs = await import("node:fs"), url = await import("node:url"), path = await import("node:path");
+  const toml = fs.readFileSync(path.join(path.dirname(url.fileURLToPath(import.meta.url)), "wrangler.toml"), "utf8");
+  const m = /^APP_ORIGINS\s*=\s*"([^"]*)"/m.exec(toml);
+  assert.ok(m, "APP_ORIGINS is set in [vars]");
+  assert.match(m[1], /^https:\/\/[a-z0-9.-]+$/);
+  assert.ok(!/localhost|127\.0\.0\.1|\*|,/.test(m[1]), m[1]);
+  assert.equal(m[1], "https://app.vyre.run");
+});
+
+test("PT-1: certificates for a Space's names are DNS-01 only: the Space signs, the directory writes the TXT and one CAA that pins the ACME account; nobody else can", async t => {
+  const w = world(t);
+  const alex = await person(w);
+  data(await alex.claim("alex"));
+  const harlow = await identity(w, alex.first, { kind: "space", ctxFor: async id => id === alex.state.id ? alex.ops : null });
+  await harlow.genesis({ eid: alex.state.id, kind: "owner", subject: alex.state.id, label: "Alex" }, alex.first.eid);
+  data(await harlow.claim("harlow", "aG9tZQ", alex.first, alex.first.eid));
+  w.clock.t += 25 * HOUR; // the signing device is no newcomer
+  const spaceAct = async (action, subject, signer = alex.first) => ({ by: alex.state.id, via: signer.eid, ts: w.clock.t, sig: signer.sig64(I.actMessage({ action, name: "harlow", domain: subject, ts: w.clock.t })) });
+  const TOKEN = "x".repeat(43);
+  const ok = data(await harlow.post("/v1/ids/acme", { name: "harlow", token: TOKEN, act: await spaceAct("acme", TOKEN) }));
+  assert.equal(ok.fqdn, "_acme-challenge.harlow.vyre.run");
+  assert.deepEqual(w.dns.at("_acme-challenge.harlow.vyre.run", "TXT").map(r => r.content), [`"${TOKEN}"`]);
+  // the CAA pin: issue and issuewild name the one account, nothing else, and a second pin replaces the first
+  const acct = "https://acme-v02.api.letsencrypt.org/acme/acct/123456";
+  data(await harlow.post("/v1/ids/caa", { name: "harlow", accounturi: acct, act: await spaceAct("caa", acct) }));
+  const caa = w.dns.at("harlow.vyre.run", "CAA");
+  assert.deepEqual(caa.map(r => [r.data.tag, r.data.value]).sort(), [["issue", `letsencrypt.org; accounturi=${acct}`], ["issuewild", `letsencrypt.org; accounturi=${acct}`]]);
+  const acct2 = "https://acme-v02.api.letsencrypt.org/acme/acct/777";
+  data(await harlow.post("/v1/ids/caa", { name: "harlow", accounturi: acct2, act: await spaceAct("caa", acct2) }));
+  assert.equal(w.dns.at("harlow.vyre.run", "CAA").length, 2);
+  assert.ok(w.dns.at("harlow.vyre.run", "CAA").every(r => r.data.value.endsWith("/777")));
+  // refusals: an act for another token or action, a stranger's key, a bad token, a person's name, an unknown name
+  assert.equal(code(await harlow.post("/v1/ids/acme", { name: "harlow", token: "y".repeat(43), act: await spaceAct("acme", TOKEN) })), "bad_signature", "an act for one token is not an act for another");
+  assert.equal(code(await harlow.post("/v1/ids/acme", { name: "harlow", token: TOKEN, act: await spaceAct("caa", TOKEN) })), "bad_signature", "nor for another action");
+  const stranger = await key("stranger");
+  assert.equal(code(await harlow.post("/v1/ids/acme", { name: "harlow", token: TOKEN, act: await spaceAct("acme", TOKEN, stranger) })), "not_yours");
+  assert.equal(code(await harlow.post("/v1/ids/acme", { name: "harlow", token: "short", act: await spaceAct("acme", "short") })), "bad_token");
+  assert.equal(code(await harlow.post("/v1/ids/caa", { name: "harlow", accounturi: "http://evil.example/x", act: await spaceAct("caa", "http://evil.example/x") })), "bad_account");
+  const pAct = { by: alex.first.eid, ts: w.clock.t, sig: alex.first.sig64(I.actMessage({ action: "acme", name: "alex", domain: TOKEN, ts: w.clock.t })) };
+  assert.equal(code(await alex.post("/v1/ids/acme", { name: "alex", token: TOKEN, act: pAct })), "not_a_space", "a person's name gets no certificate through this");
+  assert.equal(code(await harlow.post("/v1/ids/acme", { name: "nosuch", token: TOKEN, act: await spaceAct("acme", TOKEN) })), "not_found");
+  assert.equal(w.dns.at("_acme-challenge.alex.vyre.run").length, 0);
+  // the TXT is cleared by the Space, and only by it
+  assert.equal(code(await harlow.del("/v1/ids/acme", { name: "harlow", act: await spaceAct("acme-clear", undefined, stranger) })), "not_yours");
+  data(await harlow.del("/v1/ids/acme", { name: "harlow", act: await spaceAct("acme-clear", undefined) }));
+  assert.equal(w.dns.at("_acme-challenge.harlow.vyre.run", "TXT").length, 0);
+  // a challenge written for one Space is under that Space's label only, whatever the token says
+  assert.deepEqual(w.dns.records.filter(r => r.type === "TXT").map(r => r.name), []);
+});

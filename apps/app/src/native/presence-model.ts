@@ -46,6 +46,9 @@ export const refusal = (reason: PresenceFail): PresenceResult => ({ ok: false, r
 /** Where the key lives, for a settings line: true for hardware, false for software or none. */
 export const inHardware = (level: string): boolean => level === "strongbox" || level === "tee" || level === "secure-enclave";
 
+/** What the pairing hello reports about the key (`storage`): "hardware" for the Secure Enclave, StrongBox or the TEE, "software" when the platform's own key API says the key is in software, nothing when it is not known. Self-reported, display only. */
+export const keyStorage = (level: string | null | undefined): "hardware" | "software" | undefined => (level && inHardware(level) ? "hardware" : level === "software" ? "software" : undefined);
+
 export function levelWords(level: string): string {
   switch (level) {
     case "strongbox": return "A dedicated security chip holds the key.";
