@@ -78,7 +78,7 @@ test("temp: only inside its scope, and everything ends at the expiry with no swe
   const after = await read(u("contact", "c1"));
   assert.equal(after.effect, "deny", "at the expiry");
   for (const a of ["records.create", "records.update", "tasks.read", "tasks.work"]) assert.equal(await held("temp", a, u("contact", "c1")), false, `${a} ends too`);
-  assert.equal((await rig.k.gateway.members.list(rig.ownerChain)).some((/** @type {any} */ m) => m.person === "per_tmp"), false, "the member list does not show an expired temp");
+  assert.equal((await rig.k.gateway.grants.members.list(rig.ownerChain)).some((/** @type {any} */ m) => m.person === "per_tmp"), false, "the member list does not show an expired temp");
   // a temp cannot make or extend its own membership
   const r = { person: "per_tmp", role: "temp", scope: [u("contact", "*")], expires: T + 10_000_000 };
   await assert.rejects(() => rig.k.gateway.grants.setRole(chain("temp"), r, { presence: rig.proof("grants.role", r, u("member", "per_tmp")) }), e => e.code === "not_allowed" || e.code === "not_found");
