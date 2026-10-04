@@ -66,7 +66,7 @@ if (a[0] === "volume" && a[1] === "rm") { fs.rmSync(F + "/vol-content", { force:
 if (a[0] === "run" && a[a.indexOf("--network") + 1] === "none" && !a.includes("-e")) {
   // publish-fill: the throwaway container. The last argument is the shell command it runs.
   const cmd = a[a.length - 1];
-  if (cmd.startsWith("cp -R")) { if (has("fill-fails")) process.exit(1); fs.writeFileSync(F + "/vol-content", "/srv/index.html"); fs.appendFileSync(F + "/filled", a.join(" ") + "\\n"); process.exit(0); }
+  if (cmd.startsWith("cp -R")) { if (has("fill-hangs")) { fs.appendFileSync(F + "/hung", "1"); setTimeout(() => {}, 60000); return; } if (has("fill-fails")) process.exit(1); fs.writeFileSync(F + "/vol-content", "/srv/index.html"); fs.appendFileSync(F + "/filled", a.join(" ") + "\\n"); process.exit(0); }
   if (cmd.includes("-links +1")) out(has("post-dirty") ? "/srv/x" : "");
   out(rd("vol-content"));
 }
@@ -707,10 +707,11 @@ test("space helper publish-fill: the folder is claimed, checked as root, copied 
   assert.match(fills, /-v \S*private\/publish-claim\/fill:\/in:ro/, "the copy reads root's claimed folder, never the daemon's");
   assert.ok(!fills.includes(r.F + "/lend"), "no daemon path reaches the container");
   assert.equal(fillCalls(r).length, 3, "looked at, filled, checked");
-  assert.ok(fs.existsSync(path.join(dir, "index.html")) && fs.existsSync(path.join(dir, "a", "b.css")), "the folder is back where the daemon left it");
+  assert.ok(!fs.existsSync(dir), "PF-2: the folder is not moved back through the daemon's path");
   assert.ok(!fs.existsSync(path.join(r.SP, "private", "publish-claim", "fill")), "nothing is left in the claim folder");
   assert.ok(!fs.existsSync(r.spool(id)), "the request was consumed");
   // Asked again, the volume already holds the files: nothing is copied twice, the check still runs.
+  site(r);
   const id2 = r.ask(REQ); await r.helper();
   assert.equal(r.status(id2).state, "ok");
   assert.equal(fs.readFileSync(path.join(r.F, "filled"), "utf8").split("\n").filter(Boolean).length, 1, "one copy only");
@@ -734,7 +735,7 @@ test("space helper publish-fill: only the exact three tokens pass; a path, a vol
   assert.equal(fillCalls(r).length, 0, "no container was started for any of them");
 });
 
-test("space helper publish-fill: a link, a second hard link, a swapped-in link or a folder that is not the daemon's is refused, nothing is copied, and the folder goes back", opts, async t => {
+test("space helper publish-fill: a link, a second hard link, a swapped-in link or a folder that is not the daemon's is refused, nothing is copied, and the claim is deleted", opts, async t => {
   const r = rig(t);
   await r.prime();
   // a symlink inside the site
@@ -742,7 +743,7 @@ test("space helper publish-fill: a link, a second hard link, a swapped-in link o
   fs.symlinkSync("/etc/passwd", path.join(dir, "link"));
   let id = r.ask(REQ); await r.helper();
   assert.equal(r.status(id).state, "failed"); assert.match(r.status(id).message, /not a plain file or folder/);
-  assert.ok(fs.lstatSync(path.join(dir, "link")).isSymbolicLink(), "the folder was put back as it was");
+  assert.ok(!fs.existsSync(dir), "the claim was deleted, not put back");
   fs.rmSync(dir, { recursive: true, force: true });
   // a file with a second link
   dir = site(r);
@@ -772,10 +773,11 @@ test("space helper publish-fill: a copy that fails, or a volume that does not pa
   assert.equal(r.status(id).state, "failed"); assert.match(r.status(id).message, /could not be copied/);
   assert.match(fs.readFileSync(path.join(r.F, "vol-rm"), "utf8"), new RegExp(VOL), "the volume was removed");
   fs.rmSync(path.join(r.F, "fill-fails"));
+  site(r);
   r.flag("post-dirty");
   id = r.ask(REQ); await r.helper();
   assert.equal(r.status(id).state, "failed"); assert.match(r.status(id).message, /did not pass its check, so it was removed/);
-  assert.ok(fs.existsSync(path.join(r.F, "lend", "publish", SPC, "sites", SITE, "index.html")), "the daemon's folder is back");
+  assert.ok(!fs.existsSync(path.join(r.F, "lend", "publish", SPC, "sites", SITE)), "the claim is gone");
 });
 
 test("space helper: `vyre uninstall` removes the helper's units too, so nothing keeps running a wrapper that is gone", opts, async t => {
@@ -785,4 +787,20 @@ test("space helper: `vyre uninstall` removes the helper's units too, so nothing 
   const u = /** @type {any} */ (await r.run(["uninstall", "--delete-data", "--yes"], { VYRE_SYSTEMD_SEAM: "1" }));
   assert.ok(!fs.existsSync(path.join(r.UNITS, "vyre-spaces.path")), u.out);
   assert.ok(!fs.existsSync(path.join(r.UNITS, "vyre-spaces-watch.service")), u.out);
+});
+
+test("space helper PF-1: a copy that hangs is stopped at the time limit, the container is removed by name, the lock is released and the next request runs", opts, async t => {
+  const r = rig(t);
+  await r.prime();
+  site(r);
+  r.flag("fill-hangs");
+  const id = r.ask(REQ);
+  const h = /** @type {any} */ (await r.run(["space-helper-run"], { VYRE_PUBLISH_TIMEOUT: "2" }));
+  assert.equal(h.code, 0, h.out);
+  assert.equal(r.status(id).state, "failed");
+  assert.match(r.calls(), /rm -f vyre-publish-fill/, "removed by its fixed name");
+  assert.match(r.calls(), /--name vyre-publish-fill/);
+  assert.ok(!fs.existsSync(path.join(r.SP, "private", "lock-publish-fill")), "the lock is released");
+  const id2 = r.ask("firewall-add harlow\n"); await r.helper();
+  assert.notEqual(r.status(id2), null, "the next request was handled");
 });

@@ -21,7 +21,7 @@ import { Events } from "../events/index.js";
 import { Registry, discover, ownerDevice, currentCall } from "../modules/index.js";
 import { devSwitch, isPackaged } from "../../kernel/devbuild.js";
 import { build, swWithBuild, htmlWithBuild } from "./build.js";
-import { serveApp } from "./app.js";
+import { serveApp, associationFile } from "./app.js";
 import { acquire } from "./lock.js";
 import { Presence, PERSON_ONLY, HUMAN_ONLY, SESSIONABLE, personOnly, fingerprint, parse as parsePresence, core as coreHolder } from "../presence/index.js";
 import { readCoreConfig, coreLink } from "../../lib/vyre-core-client.js";
@@ -1111,6 +1111,11 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   // section 6, a project tile's bytes) and lib/caps-flags (PLAN.md C14b, provider capabilities).
   // Exact paths only, nothing else in lib/.
   if (req.method === "GET" && DECK_LIBS.has(url.pathname)) return serveFile(res, path.join(REPO, ...url.pathname.slice(1).split("/")), cfg);
+  // The verified-link files for the iPhone and Android apps (app-wire): public, tiny, and absent until the deploy sets the signing identities.
+  if (req.method === "GET" && url.pathname.startsWith("/.well-known/")) {
+    const body = associationFile(url.pathname);
+    if (body) { res.writeHead(200, { "content-type": "application/json", "cache-control": "public, max-age=300", "x-content-type-options": "nosniff" }); return res.end(body); }
+  }
   // The one app (ADR 0027), beside the Deck until it takes over /. Once config app.root flips
   // (mobile's client-side migration, off by default: core/config/index.js), /app/* is a 301 to
   // the same path under "/" instead, so an installed /app/ Home Screen icon or a stale bookmark
