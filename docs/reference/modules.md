@@ -64,7 +64,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`records`](#records) | `core/records-tools` | `box`, `local` | 15 | 0 | cli |
 | [`relay`](#relay) | `core/relay` | `box`, `local` | 41 | 22 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
-| [`runner`](#runner) | `core/runner` | `local` | 6 | 5 | capsule, cli, deck |
+| [`runner`](#runner) | `core/runner` | `local` | 6 | 7 | capsule, cli, deck |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
 | [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 38 | 8 | cli |
 | [`settings`](#settings) | `core/settings` | `box`, `local` | 10 | 2 | cli, deck |
@@ -630,7 +630,7 @@ Runs a space's AI sessions on this computer: sandboxed, in an encrypted workspac
 - Runs on: `local`
 - Requires: none
 - Tools: [6](tools.md#runner)
-- Emits: [5 events](events.md#runner)
+- Emits: [7 events](events.md#runner)
 - Shows on: capsule, cli, deck
 
 ## screen

@@ -6,16 +6,30 @@
 import { createRunner, reconcile } from "./runner.js";
 import { unavailable } from "./sandbox.js";
 import { workspaceUnavailable } from "./workspace.js";
+import { createTurnSeal } from "./ownserver.js";
 
 /** Test and wiring seam, keyed by the module's root folder: { ports: { vault, sync, grants, server, requestServer }, platform }. */
 export const seams = new Map();
 
-/** The caller must be the person this device belongs to: never a module, a guest, an agent, or a chain carrying an agent (an assistant's claim on the CLI, `cli:agent:<name>`, is an agent). */
+/**
+ * The caller must be the person this device belongs to: never a module, a guest, an agent (not even the person's own assistant), or a chain carrying one.
+ * With the kernel on, the person comes from `ctx.kernel.chain(meta)` and nothing else (a verified token's chain, or the facts the daemon proved about the connection):
+ * a chain whose only hop is a person, no viewer chain, no agent or service hop. A caller label decides nothing: a web, setup or unknown `device:` label gets no chain and is refused.
+ * SHIM(legacy labels): with the kernel off there is no chain, so the old label refusal stays until the cut-over removes it.
+ */
 const AGENT = /(?:^|[\s:])agent:/;
-const person = (caller, meta, what) => {
-  const c = String(caller || "");
-  if ((meta && (meta.agent || meta.assistant)) || AGENT.test(c) || /^(module|hook|anonymous|onboard|mcp|harness)\b/.test(c) || c.startsWith("tailnet:guest"))
-    throw Object.assign(new Error(`"${c}" is not the person this computer belongs to; ${what} is theirs`), { code: "denied" });
+const denied = (c, what) => Object.assign(new Error(`"${c}" is not the person this computer belongs to; ${what} is theirs`), { code: "denied" });
+const person = async (ctx, meta, what) => {
+  const c = String((meta && meta.caller) || "");
+  if (ctx.kernel && typeof ctx.kernel.chain === "function") {
+    let chain = null;
+    try { chain = await ctx.kernel.chain(meta || {}); } catch { chain = null; }
+    const hops = chain && Array.isArray(chain.hops) ? chain.hops : [];
+    if (!hops.length || chain.viewer === true || hops.some(h => !h || !h.actor || h.actor.kind !== "person")) throw denied(c, what);
+    return String(hops[0].actor.id);
+  }
+  if ((meta && (meta.agent || meta.assistant)) || AGENT.test(c) || /^(module|hook|anonymous|onboard|mcp|harness)\b/.test(c) || c.startsWith("tailnet:guest")) throw denied(c, what);
+  return null;
 };
 const obj = (properties = {}, required = []) => ({ type: "object", properties, required });
 const str = { type: "string" };
@@ -59,7 +73,7 @@ export default {
       description: "Start a session here. The space's own definition of the session decides the program, the routes and the credentials it may use; the caller names only the space and the session. Needs both grants and a held key lease.",
       input: obj({ space: str, session: str, resume: { type: "boolean" } }, ["space", "session"]),
       run: async ({ space, session, resume }, meta) => {
-        person(meta && meta.caller, meta, "starting a session here");
+        await person(ctx, meta, "starting a session here");
         const p = ports(); const r = forSpace(space);
         const spec = await p.spec({ space, session });
         if (!spec || !spec.command || !Array.isArray(spec.routes)) throw Object.assign(new Error("the space has no definition for that session"), { code: "not_found" });
@@ -69,19 +83,33 @@ export default {
     });
     ctx.tool("runner.stop", { description: "Stop a session running here.", input: obj({ space: str, session: str }, ["space", "session"]),
       run: async ({ space, session }, meta) => {
-        person(meta && meta.caller, meta, "stopping a session here"); await forSpace(space).stop(session); return { stopped: true }; } });
+        await person(ctx, meta, "stopping a session here"); await forSpace(space).stop(session); return { stopped: true }; } });
     ctx.tool("runner.lock", { description: "Close the workspace on this computer. The data stays encrypted.", input: obj({ space: str }, ["space"]),
       run: async ({ space }, meta) => {
-        person(meta && meta.caller, meta, "closing the workspace"); await forSpace(space).lock(); return { locked: true }; } });
+        await person(ctx, meta, "closing the workspace"); await forSpace(space).lock(); return { locked: true }; } });
     ctx.tool("runner.move", { description: "Move a session to the space's server, after a last checkpoint here.", input: obj({ space: str, session: str }, ["space", "session"]),
       run: async ({ space, session }, meta) => {
-        person(meta && meta.caller, meta, "moving a session"); await forSpace(space).moveToServer(session); return { moved: true }; } });
+        await person(ctx, meta, "moving a session"); await forSpace(space).moveToServer(session); return { moved: true }; } });
 
     // Revoking is the kernel's reaction to a withdrawn offer or a removed member, never a tool anyone can call.
     const off = ports()?.onRevoke?.(async () => {
       for (const [space, r] of runners) { const g = ports().grants(space); if (!g.spaceAllows || !g.memberAccepts) { try { await r.revoke(); } catch {} } }
     });
 
-    return { async stop() { try { off?.(); } catch {} for (const r of runners.values()) { try { await r.stopAll(); await r.lock(); } catch {} } runners.clear(); } };
+    // A session on this person's own server is sealed at every turn into the same checkpoint store (ownserver.js). The sessions side says which
+    // transcript a finished turn belongs to: ports.ownServer.resolve(event) -> { space, session, file, turn, state } | null, and .port(space) is the store's port.
+    const seals = new Map();
+    const offTurns = ports()?.ownServer ? ctx.events.on("thread.finished", async e => {
+      const o = ports()?.ownServer; let r = null;
+      try { r = o && await o.resolve(e); } catch { r = null; }
+      if (!r) return;
+      const key = `${r.space}/${r.session}`;
+      let seal = seals.get(key);
+      if (!seal) { seal = createTurnSeal({ port: o.port(r.space), session: r.session, file: r.file }); seals.set(key, seal); }
+      try { const done = await seal.seal({ turn: r.turn, state: r.state }); emit(r.space, { type: "sealed", session: r.session, ...done }); }
+      catch (err) { seals.delete(key); emit(r.space, { type: "seal-failed", session: r.session, code: err.code || "error", message: String(err.message || err).slice(0, 200) }); }
+    }) : null;
+
+    return { async stop() { try { off?.(); } catch {} try { offTurns?.(); } catch {} for (const r of runners.values()) { try { await r.stopAll(); await r.lock(); } catch {} } runners.clear(); } };
   },
 };

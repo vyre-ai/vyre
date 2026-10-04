@@ -23,7 +23,7 @@ for D in $DELAYS; do
   RT=$(echo "$OUT" | grep -o 'resumed {"turn":[0-9]*' | grep -o '[0-9]*$'); NOTES=$(echo "$OUT" | grep '"type":"resumed"')
   AFTER=$(ssh $RESUME_BOX "cd runner-ckpt-e2e/src && SESSION=$S node scripts/runner-ckpt-e2e.mjs peek $URL" | sed 's/.*"turn":\([0-9]*\).*/\1/')
   # The session must resume from exactly the checkpoint the home held, with that checkpoint's files, and move on from it.
-  WANT=$(case $T in 3) echo 'alpha\\nbravo\\ncharlie\\n';; 2) echo 'alpha\\nbravo\\n';; *) echo UNEXPECTED;; esac)
+  if [ "$T" = 3 ]; then WANT='alpha\nbravo\ncharlie\n'; elif [ "$T" = 2 ]; then WANT='alpha\nbravo\n'; else WANT=UNEXPECTED; fi
   if [ "$RT" = "$T" ] && echo "$NOTES" | grep -qF "\"notes\":\"$WANT\"" && [ "$AFTER" = "$((T+1))" ]; then echo "PASS round $D: resumed from checkpoint $T, files match it, next checkpoint $AFTER"; else echo "FAIL round $D: held $T, resumed $RT, after $AFTER, $NOTES"; FAIL=1; fi
 done
 echo "== the home's files"; ssh $HOME_BOX "du -sh runner-ckpt-e2e/home; echo stray temp files: \$(find runner-ckpt-e2e/home -name '*.tmp-*' | wc -l)"
