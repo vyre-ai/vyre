@@ -112,3 +112,11 @@ export function serverLines(vps, spaceName, stage, o = {}) {
   if (stage === "code") return code;
   return [...code, "", `${o.who ?? "A phone"} is asking to pair this server to ${o.to ?? "you"}.`, `The words are: ${o.words ?? ""}`, "Waiting for yes."];
 }
+
+/** What the person reads when the server step does not finish. Both sides say the same thing; nothing is created and nothing is listed. */
+export const SERVER_FAILED = {
+  rejected: "Nothing was paired. The three words were not the same. Run the install line on your server again to get a new code.",
+  ended: "The pairing ended before it was confirmed, so nothing was paired. Run the install line on your server again to get a new code.",
+  /** The server's own terminal says this on its side when the pairing fails. */
+  serverLine: "Pairing failed. Nothing was set up. Run the install line again.",
+};

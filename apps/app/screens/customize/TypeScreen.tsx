@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Button, Card, Chip, Divider, EmptyState, Field, Menu, Row, Sheet, Switch, Text, showToast, Banner } from "@vyre/ui";
+import { Button, Card, Chip, Divider, EmptyState, Field, Menu, Row, Sheet, Switch, Text, showToast, Banner, LoadingState } from "@vyre/ui";
 import { Group, Page } from "../places/Frame";
 import { useTypes } from "./state";
 import { KINDS, addField, addStage, callThemCases, fieldLine, kindLabel, moveStage, rename, renameStage, sealField } from "./logic.js";
@@ -20,7 +20,7 @@ export function TypeScreen() {
   const [field, setField] = useState<null | { label: string; kind: string }>(null);
   const [edit, setEdit] = useState<string | null>(null);
   useEffect(() => { if (t) { setOne(t.label); setMany(t.plural); setStages(t.stages); } }, [t?.id]);
-  if (!t && loading) return <Page title="Customize" back="/u/settings/customize"><Card><EmptyState title="Loading" body="Asking your Vyre." /></Card></Page>;
+  if (!t && loading) return <Page title="Customize" back="/u/settings/customize"><LoadingState rows={3} /></Page>;
   if (!t) return <Page title="Customize" back="/u/settings/customize"><Card><EmptyState title="That type is not here" action={{ label: "Back to Customize", onPress: () => router.push("/u/settings/customize" as never) }} /></Card></Page>;
   const put = (n: TypeDef) => update(n);
   const editing = t.fields.find((f) => f.key === edit);

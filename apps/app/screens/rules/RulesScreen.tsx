@@ -3,7 +3,7 @@
 // nothing until an owner accepts it.
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
-import { Banner, Button, Card, Chip, Divider, EmptyState, Field, Row, Segmented, Sheet, Text, showToast } from "@vyre/ui";
+import { Banner, Button, Card, Chip, Divider, EmptyState, Field, Row, Segmented, Sheet, Text, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { Footnote, Frame, Sec } from "../places/Frame";
 import { acceptReal, disableReal, dismissReal, enableReal, listReal, proposeReal, removeReal, roleReal, setReal } from "./real";
 import { KINDS, ROLES, build, disabled, groups, proposer, ruleRefusal, type Draft, type Listing } from "./model";
@@ -50,8 +50,8 @@ export default function RulesScreen() {
   return (
     <Frame title="Rules" sub="What assistants and members may never do, only draft, or always ask about." top>
       <Footnote icon="shield">A rule only tightens. No rule grants anything, and a grant never waives a rule.</Footnote>
-      {err ? <Card flush><EmptyState title="Rules did not answer" body={err} action={{ label: "Try again", onPress: load }} /></Card> : null}
-      {!err && data === null ? <Card flush><EmptyState title="Loading" body="Asking your Vyre." /></Card> : null}
+      {err ? <Card flush><ErrorState title="Rules did not load" reason={err} retry={load} /></Card> : null}
+      {!err && data === null ? <LoadingState rows={3} /> : null}
 
       {data?.proposals.length ? (
         <Sec title="Waiting for an owner">
@@ -73,7 +73,7 @@ export default function RulesScreen() {
           <Card flush>
             {k.rules.map((r, i) => (
               <View key={r.id}>{i ? <Divider /> : null}
-                <Row title={r.view} sub={r.label} end={owner ? <View className="flex-row gap-s2"><Button kind="ghost" size="sm" label="Turn off" onPress={busy ? () => {} : () => act(() => disableReal(r.id), "Turned off. It binds nothing until you turn it on.")} /><Button kind="holdText" size="sm" label="Remove" onPress={busy ? () => {} : () => act(() => removeReal(r.id), "The rule is gone.")} /></View> : undefined} />
+                <Row title={r.view} sub={r.label} end={owner ? <View className="flex-row gap-s2"><Button kind="ghost" size="sm" label="Turn off" disabled={busy} onPress={() => act(() => disableReal(r.id), "Turned off. It binds nothing until you turn it on.")} /><Button kind="holdText" size="sm" label="Remove" disabled={busy} onPress={() => act(() => removeReal(r.id), "The rule is gone.")} /></View> : undefined} />
               </View>
             ))}
           </Card>
@@ -85,7 +85,7 @@ export default function RulesScreen() {
           <Card flush>
             {off.map((r, i) => (
               <View key={r.id}>{i ? <Divider /> : null}
-                <Row title={r.view} sub={r.label} end={owner ? <View className="flex-row gap-s2"><Button kind="ghost" size="sm" label="Turn on" onPress={busy ? () => {} : () => act(() => enableReal(r.id), "Turned on. The rule is in force.")} /><Button kind="holdText" size="sm" label="Remove" onPress={busy ? () => {} : () => act(() => removeReal(r.id), "The rule is gone.")} /></View> : undefined} />
+                <Row title={r.view} sub={r.label} end={owner ? <View className="flex-row gap-s2"><Button kind="ghost" size="sm" label="Turn on" disabled={busy} onPress={() => act(() => enableReal(r.id), "Turned on. The rule is in force.")} /><Button kind="holdText" size="sm" label="Remove" disabled={busy} onPress={() => act(() => removeReal(r.id), "The rule is gone.")} /></View> : undefined} />
               </View>
             ))}
           </Card>

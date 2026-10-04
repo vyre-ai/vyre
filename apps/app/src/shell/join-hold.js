@@ -34,3 +34,6 @@ export function linkFromHash(hash) {
   if (!m) return null;
   try { return decodeURIComponent(m[1]); } catch { return null; }
 }
+
+/** Forget the link and its short re-read window: after a successful join, a cancel, or leaving the join steps. */
+export function clearJoin() { held = null; taken = null; }

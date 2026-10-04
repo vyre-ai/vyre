@@ -9,8 +9,6 @@ import { useSites } from "./store";
 import type { Site } from "./data";
 import { liveOf, previewOf, publishNew, SOURCES, statusOf } from "./logic.js";
 import { RealSites } from "./RealSites";
-import { PUBLISH_ON } from "../../src/real/flags.js";
-import { NotYet } from "./NotYet";
 
 const HOW: { kind: keyof typeof SOURCES; title: string; body: string; name: string }[] = [
   { kind: "github", title: "From a GitHub repo", body: "Builds on every push to the branch you pick.", name: "Referral form" },
@@ -51,6 +49,5 @@ function SampleSitesScreen() {
 
 /** The sample site in a mock build; the box's own publishing everywhere else. */
 export default function SitesScreen() {
-  if (!allowsMock() && !PUBLISH_ON) return <NotYet />;
   return allowsMock() ? <SampleSitesScreen /> : <RealSites />;
 }

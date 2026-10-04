@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Avatar, Banner, Button, Card, Chip, Composer, Divider, EmptyState, Field, Icon, IconButton, Menu, Row, Segmented, Sheet, SpaceMark, Text, allowsMock, showToast, markRef, spaceRef, type IconName } from "@vyre/ui";
+import { Avatar, Banner, Button, Card, Chip, Composer, Divider, EmptyState, Field, Icon, IconButton, Menu, Row, Segmented, Sheet, SpaceMark, Text, allowsMock, showToast, markRef, spaceRef, type IconName, ErrorState, LoadingState } from "@vyre/ui";
 import { Footnote, Frame } from "../places/Frame";
 import { SPACES, useScope } from "../places/scope";
 import { memoryRepo, SUBJECTS, type Fact } from "./data";
@@ -126,7 +126,9 @@ export default function MemoryScreen() {
             name={mode === "space" ? SPACES[s.sp as "mine"].name : subjects[s.subj] ?? s.subj} count={s.facts.length} />
           <Card flush>{s.facts.map((f, i) => <View key={f.id}>{i ? <Divider /> : null}{row(f)}</View>)}</Card>
         </View>
-      )) : <Card><EmptyState title={load.state === "loading" ? "Loading Memory" : load.state === "error" ? "Memory did not answer" : "Nothing here yet"} body={load.state === "error" ? (load.say ?? "Try again in a moment.") : load.state === "loading" ? "Asking your Vyre." : real ? "Nothing is remembered yet. Facts appear as your assistants learn them." : `No ${mode} facts in this space.`} /></Card>}
+      )) : load.state === "loading" ? <LoadingState rows={3} />
+        : load.state === "error" ? <ErrorState title="Memory did not load" reason={load.say ?? "Try again in a moment."} />
+        : <Card><EmptyState title="Nothing here yet" body={real ? "Nothing is remembered yet. Facts appear as your assistants learn them." : `No ${mode} facts in this space.`} /></Card>}
 
       {real ? <RealExtras /> : null}
 

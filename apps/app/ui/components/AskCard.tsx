@@ -1,4 +1,4 @@
-import { Platform, View } from "react-native";
+import { View, type ViewStyle } from "react-native";
 import { Card } from "./Card";
 import { Chip } from "./Chip";
 import { Text } from "./Text";
@@ -25,9 +25,9 @@ export function AskCard({ lead, title, why, tags, actions = [], needsYou = true,
   const t = <Text strong size={big ? "title" : "headline"}>{title}</Text>;
   const chips = (tags ?? []).slice(0, 2);
   const stack = phone && big;
-  // Android drew a square band behind the rounded corners when the swipe container clipped the card's outline shadow (capture 37166610302); inside a swipe the card keeps its edge and no elevation there.
+  // A square band showed behind the rounded corners on iOS (37164502912) and Android (37166610302): the swipe container clips the card's shadow to a rectangle. Inside a swipe the card keeps its edge and casts no shadow.
   const card = (
-    <Card hero={big} style={swipe && Platform.OS === "android" ? { elevation: 0 } : undefined}>
+    <Card hero={big} style={swipe ? ({ elevation: 0, boxShadow: [] } as ViewStyle) : undefined}>
       <View className="flex-row items-start gap-s3">
         {lead ? <View className="flex-none">{lead}</View> : null}
         <View className="min-w-0 flex-1 gap-s2">

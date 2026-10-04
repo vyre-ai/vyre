@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { presenceText } from "../shell/FaceIdSheet";
 import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { AskCard, Banner, Button, Card, Chip, Divider, EmptyState, Field, IconTile, Row, Segmented, Sheet, StageSteps, Switch, Tabs, Text, showToast } from "@vyre/ui";
+import { AskCard, Banner, Button, Card, Chip, Divider, EmptyState, Field, IconTile, Row, Segmented, Sheet, StageSteps, Switch, Tabs, Text, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { Block } from "../places/Page";
 import { Footnote, Frame, Sec } from "../places/Frame";
 import { act, create, decide, domainAdd, domainRemove, domainVerify, list, preview, retire, secretGrant, secretRevoke, status as statusOf, vaultItems } from "./real";
@@ -32,8 +32,8 @@ export function RealSites() {
   const rows = deps ? sites(deps) : [];
   return (
     <Frame title="Sites" sub="Sites and apps you publish, each one on its own." actions={<Button kind="primary" icon="plus" label="Publish" onPress={() => { setProblem(""); setDraft({ ...BLANK }); }} />}>
-      {err ? <Card flush><EmptyState title="Publish did not answer" body={err} action={{ label: "Try again", onPress: load }} /></Card> : null}
-      {deps === null && !err ? <Card flush><EmptyState title="Loading" body="Asking your Vyre." /></Card> : null}
+      {err ? <Card flush><ErrorState title="Publish did not load" reason={err} retry={load} /></Card> : null}
+      {deps === null && !err ? <LoadingState rows={3} /> : null}
       {deps && !rows.length ? <Card flush><EmptyState title="Nothing published in this space" body="Publish a site from a repo or a Drive folder. Nothing goes live until you say so." action={{ label: "Publish", onPress: () => setDraft({ ...BLANK }) }} /></Card> : null}
       {rows.length ? (
         <Card flush>
@@ -96,8 +96,8 @@ export function RealSite() {
     decide(decision(held, approve)).then((r) => { showToast(approve ? "Done." : "Declined."); setHeld(null); load(); void r; }).catch((e) => showToast(say(e))).finally(() => setBusy(false));
   };
 
-  if (err) return <Frame title="Sites" back="/u/sites"><EmptyState title="Publish did not answer" body={err} action={{ label: "Try again", onPress: load }} /></Frame>;
-  if (deps === null) return <Frame title="Sites" back="/u/sites"><EmptyState title="Loading" body="Asking your Vyre." /></Frame>;
+  if (err) return <Frame title="Sites" back="/u/sites"><ErrorState title="Publish did not load" reason={err} retry={load} /></Frame>;
+  if (deps === null) return <Frame title="Sites" back="/u/sites"><LoadingState rows={3} /></Frame>;
   if (!site || !cur) return <Frame title="Sites" back="/u/sites"><EmptyState title="That site is not here" body="It may have been retired. Open Sites to see what is published." action={{ label: "Open Sites", onPress: () => router.push("/u/sites" as never) }} /></Frame>;
   const next = nextStep(st && st.id === cur.id ? st : cur);
   const hold = held ? planLines(held.plan) : null;

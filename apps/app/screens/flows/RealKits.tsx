@@ -2,7 +2,7 @@
 // (flows.kit.library, when the box has it): read the install card, then ask to install, which lands as a card in Now for a person to approve.
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
-import { Banner, Button, Card, Chip, Divider, EmptyState, Row, Sheet, Text, showToast } from "@vyre/ui";
+import { Banner, Button, Card, Chip, Divider, EmptyState, Row, Sheet, Text, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { IconTile } from "../places/Page";
 import { Frame, Sec } from "../places/Frame";
 import { addsLine, available, cardLines, kitLine, kitName, kitRefusal, listed, proposeNote, statusWord, type KitRow, type LibraryKit } from "./kits-model";
@@ -35,8 +35,8 @@ export function RealKits() {
   return (
     <Frame back="/u/flows" title="Kits" sub="Ready-made record types, Flows and views for a kind of work. Installing one is a grant you approve.">
       <Sec title="Installed">
-        {err ? <Card flush><EmptyState title="Kits did not answer" body={err} action={{ label: "Try again", onPress: load }} /></Card> : null}
-        {rows === null && !err ? <Card flush><EmptyState title="Loading" body="Asking your Vyre." /></Card> : null}
+        {err ? <Card flush><ErrorState title="Kits did not load" reason={err} retry={load} /></Card> : null}
+        {rows === null && !err ? <LoadingState rows={3} /> : null}
         {rows && !shown.length ? <Card><EmptyState title="No Kits installed" body={offer.length ? "Pick one below to read what it adds. Removing one later takes its definitions away and never your records." : "A Kit proposed to this space waits for your yes in Now. Removing one later takes its definitions away and never your records."} /></Card> : null}
         {shown.length ? (
           <Card flush>

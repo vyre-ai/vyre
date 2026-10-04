@@ -2,7 +2,7 @@
 // person's own call: the box asks for presence, the app's person session answers it, and the value lives in this screen's state for 30 seconds.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { View } from "react-native";
-import { Banner, Button, Card, Chip, Divider, EmptyState, Field, IconTile, Row, SealedMask, Segmented, Sheet, Tabs, Text, showToast } from "@vyre/ui";
+import { Banner, Button, Card, Chip, Divider, EmptyState, Field, IconTile, Row, SealedMask, Segmented, Sheet, Tabs, Text, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { usePhone } from "../places/Page";
 import { Footnote, Frame, Sec } from "../places/Frame";
 import { REVEAL_MS } from "./logic.js";
@@ -142,7 +142,7 @@ export default function RealVault() {
             {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
             <View className="self-start"><Button kind="primary" label={busy ? "Opening" : "Unlock"} onPress={busy || !pass ? () => {} : doUnlock} /></View>
           </View></Card>
-        ) : <Card flush><EmptyState title="The vault is locked" body="Unlock it on the box, then come back." action={{ label: "Try again", onPress: load }} /></Card>
+        ) : <Card flush><EmptyState title="The vault is locked" body="Unlock it on your home, then come back." action={{ label: "Try again", onPress: load }} /></Card>
       ) : null}
       {!err && rows && !locked ? (
         <View className={phone ? "gap-s4" : "flex-row items-start gap-s4"}>
@@ -153,7 +153,7 @@ export default function RealVault() {
                   <Row dense chevron={phone} selected={!phone && cur?.id === v.id} lead={<IconTile name={v.tab === "Card" ? "file" : "key"} />} title={v.name}
                     sub={uses[v.id] ? `${v.line} · ${useCount(uses[v.id], Date.now())} uses today` : v.line} onPress={() => { hide(); setSel(v.id); setPushed(true); }} />
                 </View>
-              )) : <EmptyState title="Nothing here" body={rows.length ? `No ${tab.toLowerCase()}s on this box.` : "No items yet. Add the first one below."} />}
+              )) : <EmptyState title="Nothing here yet" body={rows.length ? `No ${tab.toLowerCase()}s in the vault.` : "No items yet. Add one from your home's terminal with vyre vault put."} />}
             </Card>
           </View>
           {phone ? null : <View className="min-w-pane min-w-0 flex-[1.2]">{detail}</View>}

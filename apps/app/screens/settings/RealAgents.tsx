@@ -2,7 +2,7 @@
 // No autonomy dial and no budget editor here: the box has no tool for either yet, so there is no control that would not work.
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
-import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, Meter, Text, markRef, showToast } from "@vyre/ui";
+import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, Meter, Text, markRef, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { Page } from "../places/Frame";
 import { agentLine, budgetLine, isStopped, money, providerRows, roleOf, totalSpent, usedShare, type Agent, type Provider, type Usage } from "./agents-model";
 import { agentResume, agentStop, agentsList, agentsUsage, providers } from "./real";
@@ -21,9 +21,9 @@ export function RealAssistants() {
   };
   return (
     <Page title="Assistants" back="/u/settings">
-      {err ? <Card flush><EmptyState title="Assistants did not answer" body={err} action={{ label: "Try again", onPress: load }} /></Card> : null}
+      {err ? <Card flush><ErrorState title="Assistants did not load" reason={err} retry={load} /></Card> : null}
       {list && !list.length ? <Card><EmptyState title="No assistants yet" body="Your assistant and any agents you make appear here." /></Card> : null}
-      {list === null && !err ? <Card flush><EmptyState title="Loading" body="Asking your Vyre." /></Card> : null}
+      {list === null && !err ? <LoadingState rows={3} /> : null}
       {list && list.length ? (
         <Card flush>
           {list.map((a, i) => (
@@ -55,8 +55,8 @@ export function RealAi() {
   return (
     <Page title="AI accounts" back="/u/settings">
       <Banner>Nobody's work runs on someone else's account. Your sessions use your accounts and count against your budget.</Banner>
-      {err ? <Card flush><EmptyState title="AI accounts did not answer" body={err} action={{ label: "Try again", onPress: load }} /></Card> : null}
-      {ps === null && !err ? <Card flush><EmptyState title="Loading" body="Asking your Vyre." /></Card> : null}
+      {err ? <Card flush><ErrorState title="AI accounts did not load" reason={err} retry={load} /></Card> : null}
+      {ps === null && !err ? <LoadingState rows={3} /> : null}
       {ps ? (
         <Card flush>
           {rows.map((r, i) => (

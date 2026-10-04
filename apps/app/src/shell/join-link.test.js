@@ -3,7 +3,7 @@ import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { joinLink, joinTarget } from "./join-link.js";
-import { cleanAddress, holdJoin, linkFromHash, takeJoin, withoutToken } from "./join-hold.js";
+import { clearJoin, cleanAddress, holdJoin, linkFromHash, takeJoin, withoutToken } from "./join-hold.js";
 
 test("only an https join link of a space is passed on, encoded once or twice", () => {
   const good = "https://harlow.vyre.run/join/7Kq2-M9";
@@ -49,4 +49,11 @@ test("JL-1 leftovers: a fragment carries the link without a server ever seeing i
   assert.equal(linkFromHash("#other=1"), null);
   assert.equal(cleanAddress(`https://app.vyre.run/u/install/join?link=${encodeURIComponent(tok)}`), "/u/install/join");
   assert.equal(takeJoin(), null, "a link in the install route's query holds nothing: only holdJoin fills the hold");
+});
+
+test("the held link does not survive an accept or a cancel", () => {
+  holdJoin("https://h.vyre.run/join/a.b");
+  assert.equal(takeJoin(10), "https://h.vyre.run/join/a.b");
+  clearJoin();
+  assert.equal(takeJoin(20), null, "even inside the double-run window nothing is left after clearJoin");
 });
