@@ -25,7 +25,8 @@ test("one identity: spaces.identity.status and wink.pair.targets report the same
   await new Promise((res, rej) => { child.stdout.on("data", d => { if (String(d).includes("stand-in names directory")) res(null); }); child.on("exit", c => rej(new Error(`the stand-in exited early (${c})`))); });
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "one-id-box", transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${port}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
-  const d = await start({ root, kernel: true, log: () => {} });
+  const lines = /** @type {string[]} */ ([]);
+  const d = await start({ root, kernel: true, log: m => lines.push(String(m)) });
   t.after(() => d.stop());
   const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "deck" });
   const wink = d.registry.modules.get("wink");
@@ -42,6 +43,6 @@ test("one identity: spaces.identity.status and wink.pair.targets report the same
   assert.equal(me.id, made.data.id, "pairing answers for the identity the person claimed");
   await deck("spaces.create", { name: "harlow", home: { kind: "this-computer", confirmed: true } });
   const list = await deck("spaces.list");
-  assert.equal(list.data.length, 1);
+  assert.equal(list.data.length, 1, lines.filter(l => /records/.test(l)).join(" ; "));
   assert.equal((await deck("wink.pair.targets")).data.targets[0].id, made.data.id);
 });

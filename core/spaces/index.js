@@ -348,10 +348,12 @@ export default {
         async provisionWorkspace(/** @type {{ spaceId: string, name: string }} */ a) {
           const r = await ctx.call("records.workspace.create", { space: a.spaceId, name: a.name });
           if (r.error) {
-            if (r.error.code === "no_such_tool" || r.error.code === "not_available") {
+            // With the kernel hosting here every Space has its built-in store, so a refusal from the records tool is a failed step, not a warning; a space the kernel does not host has no store to attach, so it only warns.
+            if ((r.error.code === "no_such_tool" || r.error.code === "not_available" || r.error.code === "not_found") && !(K && K.spaces && typeof K.spaces.host === "function")) {
               warn(a.spaceId, { code: "records_driver_missing", message: "records driver not installed" });
               return { workspaceId: null };
             }
+            ctx.log.warn(`records.workspace.create refused: ${r.error.code}: ${r.error.message}`);
             throw new Error(r.error.message);
           }
           const id = (r.data && (r.data.workspaceId || r.data.id)) || null;

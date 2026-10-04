@@ -882,7 +882,7 @@ test("space creation asks the kernel which store it would use: a server too smal
       storePlan: async () => (small ? { store: "builtin", confirm: { text: TEXT, choices: ["create", "cancel"] } } : { store: "twenty" }),
       host: async o => { if (small && !o.accept_builtin_store) throw Object.assign(new Error("needs confirmation"), { code: "needs_confirmation" }); hosts.push(o); return { space: `spc_${"b".repeat(12)}`.replace(/b/g, hosts.length === 1 ? "b" : "c") }; },
     } };
-  const d = await device(t, { kernelFor: () => kernel });
+  const d = await device(t, { kernelFor: () => kernel, records: true });
   await d.ok("spaces.identity.create", { name: "alex" });
   const args = { name: "harlow", displayName: "Harlow Legal", home: { kind: "this-computer", confirmed: true } };
   // too small: nothing is made, and the person is shown exactly the kernel's words and the two choices
@@ -969,10 +969,10 @@ test("a device's spaces: the Access screen lists them, a space can remove one de
   const eid = me.eid;
   const asDevice = { kernelFacts: { kind: "device", device_key_id: eid } };
   const mine = await d.ok("spaces.devices.spaces", {}, "cli", asDevice);
-  assert.deepEqual([mine.device.self, mine.spaces.map(x => [x.label, x.removed])], [true, [["harlow", false], ["northwind", false]]]);
+  assert.deepEqual([mine.device.self, mine.spaces.map(x => [x.label, x.removed]).sort()], [true, [["harlow", false], ["northwind", false]]]);
   assert.equal((await d.call("spaces.devices.spaces", { device: "nope" })).error?.code, "not_found");
   assert.equal((await d.ok("spaces.devices.remove", { space: a.space, device: eid })).removed, true);
-  assert.deepEqual((await d.ok("spaces.devices.spaces", { device: eid })).spaces.map(x => [x.label, x.removed]), [["harlow", true], ["northwind", false]]);
+  assert.deepEqual((await d.ok("spaces.devices.spaces", { device: eid })).spaces.map(x => [x.label, x.removed]).sort(), [["harlow", true], ["northwind", false]]);
   assert.equal((await d.call("spaces.get", { space: a.space }, "cli", asDevice)).error?.code, "device_removed");
   assert.ok(!(await d.call("spaces.get", { space: b.space }, "cli", asDevice)).error, "the other space is untouched");
   assert.deepEqual((await d.ok("spaces.list", {}, "cli", asDevice)).map(x => x.label), ["northwind"]);
