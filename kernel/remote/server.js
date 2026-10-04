@@ -29,7 +29,10 @@ export function createRemoteServer(cfg) {
   /** What a device must sign to do this call: the call, the space, this home, a fresh one-use nonce for this device, call and arguments, and what a presence proof covers when the call has one. */
   function challengeFor(/** @type {string} */ device, /** @type {string} */ call, /** @type {any[]} */ args, /** @type {number} */ now) {
     for (const [n, c] of challenges) if (c.exp <= now) challenges.delete(n);
-    while (challenges.size >= 1000) challenges.delete(challenges.keys().next().value);
+    // PW-3: a device holds at most 8 live challenges and evicts its own oldest, so one device asking again and again cannot invalidate another's
+    const mine = [...challenges].filter(([, c]) => c.device === device);
+    for (let i = 0; i <= mine.length - 8; i++) challenges.delete(mine[i][0]);
+    while (challenges.size >= 4000) challenges.delete(challenges.keys().next().value);
     const nonce = crypto.randomBytes(16).toString("base64url");
     const ah = argsHash(args);
     challenges.set(nonce, { device, call, args: ah, exp: now + CHALLENGE_TTL_MS });
@@ -127,9 +130,8 @@ export function createRemoteServer(cfg) {
               let size = 0; try { size = Buffer.byteLength(JSON.stringify(request.proof)); } catch { size = Infinity; }
               if (typeof request.proof !== "object" || Array.isArray(request.proof) || size > MAX_PROOF_BYTES) return fail(id, "bad_input", "that proof is not usable");
               if (!spend(request.challenge, peer.device_key_id, request.call, request.args, now)) return fail(id, "bad_challenge", "that proof was not made for a challenge this home issued for this call; ask again");
-              // the caller's own options object (it held other options beside `presence`) is named by `opts`; otherwise the proof is the trailing `{ presence }` option on its own
-              const at = Number.isInteger(request.opts) ? request.opts : -1;
-              callArgs = at >= 0 && at < callArgs.length && callArgs[at] && typeof callArgs[at] === "object" && !Array.isArray(callArgs[at]) ? callArgs.map((a, i) => (i === at ? { ...a, presence: request.proof } : a)) : [...callArgs, { presence: request.proof }];
+              // the proof is the trailing `{ presence }` option on its own, never merged into one of the caller's own arguments (PW-4)
+              callArgs = [...callArgs, { presence: request.proof }];
             }
             const result = await target.fn(who.chain, ...callArgs);
             const out = JSON.stringify(result === undefined ? null : result);
