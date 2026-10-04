@@ -8,6 +8,7 @@
 import type { PairingSession } from "../api/pairing-session";
 import type { WinkCode } from "../api/wink-code";
 import { added, pairPhase, payloadOf, targetsOf } from "../../screens/devices/real.js";
+import { pairServerDirect } from "./pair-direct.js";
 
 const box = () => import("./box");
 const POLL_MS = 2000;
@@ -16,6 +17,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export type Target = { id: string; kind: "identity" | "space"; label?: string };
 
 export function serverSession(code: Extract<WinkCode, { ok: true }>, target?: Target): PairingSession {
+  // A device that has claimed an identity but has no box of its own (the install order: identity first, then the server) pairs the server itself, over the relay.
+  let direct: PairingSession | null = null;
   let stopped = false;
   let words: [string, string, string] = ["", "", ""];
   let pairing = "";
@@ -36,6 +39,11 @@ export function serverSession(code: Extract<WinkCode, { ok: true }>, target?: Ta
     kind: "watch",
     async ready() {
       const { tool, BoxError } = await box();
+      if (!direct && code.kind === "ticket" && !(await boxReachable(tool))) {
+        const mine = await directSessionFor(code);
+        if (mine) { direct = mine; await mine.ready!(); return; }
+      }
+      if (direct) return direct.ready!();
       let t = target;
       if (!t) {
         const first = targetsOf(await tool("wink.pair.targets"))[0];
@@ -46,11 +54,11 @@ export function serverSession(code: Extract<WinkCode, { ok: true }>, target?: Ta
       pairing = r.pairing;
       await until("words");
     },
-    words: () => words,
+    words: () => (direct ? direct.words() : words),
     choices: () => [],
     answer: async () => false,
-    async confirm() { if (!finished) await until("done"); },
-    reject() { stopped = true; },
+    async confirm() { if (direct) return direct.confirm(); if (!finished) await until("done"); },
+    reject() { stopped = true; if (direct) direct.reject(); },
   };
 }
 
@@ -69,5 +77,46 @@ export function phoneAnswerSession(words: [string, string, string]): PairingSess
     },
     confirm: () => (over ? Promise.resolve() : Promise.reject(new Error("rejected"))),
     reject() { void box().then(({ tool }) => tool("wink.phone.pair.answer", { yes: false })).catch(() => {}); },
+  };
+}
+
+/** Can this app reach a box of its own right now? A call that says "offline" or that needs no box answer means there is none. */
+async function boxReachable(tool: (name: string, input?: Record<string, unknown>) => Promise<unknown>): Promise<boolean> {
+  try { await tool("wink.pair.targets"); return true; } catch (e) { return (e as { code?: string })?.code !== "offline" && (e as { code?: string })?.code !== "unreachable"; }
+}
+
+/**
+ * The server pairing for a device with no box: this identity's key signs for it, the relay client pairs, and the three words show here while the person at the server says yes.
+ * Null when this device has no identity of its own yet (the caller then falls back to the box's tools and says what is missing).
+ */
+async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticket" }>): Promise<PairingSession | null> {
+  const { loadIdentity } = await import("../identity/store");
+  const mine = await loadIdentity();
+  if (!mine) return null;
+  const { relayCrypto, relayKeyStore, about, deviceName, savePairing } = await import("../api/relay");
+  const { connect } = await import("../api/box");
+  let words: [string, string, string] = ["", "", ""];
+  let wake: () => void = () => {};
+  const seen = new Promise<void>((r) => { wake = r; });
+  let failed: Error | null = null;
+  const run = pairServerDirect({
+    ticket: code.ticket, relay: code.relay, deviceName: deviceName(),
+    identity: { id: mine.id, name: mine.name, eid: mine.key.eid, sign: (m) => mine.key.sign(m) },
+    pairOptions: { crypto: relayCrypto(), keyStore: relayKeyStore(), about },
+    onWords: (w) => { const p = w.split(" "); if (p.length === 3) { words = [p[0], p[1], p[2]]; wake(); } },
+  });
+  run.catch((e: Error) => { failed = e; wake(); });
+  return {
+    kind: "watch",
+    async ready() { await seen; if (failed) throw failed; },
+    words: () => words,
+    choices: () => [],
+    answer: async () => false,
+    async confirm() {
+      const r = await run;
+      await savePairing(r.paired);
+      connect().catch(() => {});
+    },
+    reject() { /* the server's side drops this device when nothing is answered */ },
   };
 }

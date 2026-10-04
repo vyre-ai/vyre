@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // app-walk-claim: the browser claims a Vyre name against a STAND-IN names directory, in headless Chromium. TEST ONLY.
 //
-//   node scripts/app-walk-claim.mjs --dist <web export built with EXPO_PUBLIC_VYRE_BROWSER_CLAIM=1 EXPO_PUBLIC_VYRE_NAMES_DIRECTORY=/names> --names http://host:port [--out dir]
+//   node scripts/app-walk-claim.mjs --dist <web export built with rc.ts browserClaim flipped on a test copy, EXPO_PUBLIC_VYRE_NAMES_DIRECTORY=/names> --names http://host:port [--out dir]
 //
-// Stand-ins, written beside the step (the walk's rule): (1) the test-only flag EXPO_PUBLIC_VYRE_BROWSER_CLAIM=1 (RC1 builds hide the web claim); (2) the names directory is a stand-in
+// Stand-ins, written beside the step (the walk's rule): (1) the web claim is hidden in RC1 by screens/shell/rc.ts (`browserClaim: false`); a TEST copy of the tree is built with that one line flipped to true (sed on the copy, never on a release tree), plus EXPO_PUBLIC_VYRE_NAMES_DIRECTORY=/names; (2) the names directory is a stand-in
 // (scripts/standin-directory.mjs on a test box), reached through this script's own same-origin /names proxy, which STRIPS Origin, Referer and Sec-Fetch headers, because the stand-in
 // refuses a browser Origin it was not told ("not for browsers"); the real directory's CORS is the devbox team's. Build with `npx expo export -p web --clear`: a cached bundle keeps the old flag.
 // Steps: install page shows the name step; the typed name is "yours to take"; Face ID sheet; Create; the recovery code shows; the directory now resolves the name. Exit 0 when all hold.
@@ -57,7 +57,7 @@ const body = () => page.locator("body").innerText();
 
 let alive = await check("install: the name step is open (the web claim flag is on)", async () => {
   await page.goto(`${BASE}/app/u/install`, { waitUntil: "networkidle" });
-  if (!(await body()).includes("Choose your Vyre name")) throw new Error("the page does not offer the claim (built without EXPO_PUBLIC_VYRE_BROWSER_CLAIM=1, or from a cached bundle)");
+  if (!(await body()).includes("Choose your Vyre name")) throw new Error("the page does not offer the claim (built from a tree whose rc.ts says browserClaim: false, or from a cached bundle)");
 });
 alive = alive && await check(`a free name is offered: ${NAME}`, async () => { await page.locator("input").first().fill(NAME); await page.getByText(/is yours to take/).waitFor({ timeout: 10000 }); });
 alive = alive && await check("Face ID sheet opens, Create makes the identity and shows the recovery code once", async () => {

@@ -4,8 +4,7 @@ import { Platform } from "react-native";
 
 export const RC = {
   sites: false,
-  // OFF in every release build. A TEST build turns it on with EXPO_PUBLIC_VYRE_BROWSER_CLAIM=1 (written as a plain process.env read, the only form the bundler inlines) to walk the claim against a stand-in directory.
-  browserClaim: process.env.EXPO_PUBLIC_VYRE_BROWSER_CLAIM === "1",
+  browserClaim: false,
 };
 
 /** True when this build is a browser and may not claim a name. */

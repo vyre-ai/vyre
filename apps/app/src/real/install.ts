@@ -40,6 +40,8 @@ export async function checkName(name: string): Promise<"free" | "taken" | "unkno
  * here. The recovery code is in this answer only: the caller shows it once and drops it.
  */
 export async function createIdentity(name: string, deviceLabel: string, password = ""): Promise<{ name: string; id: string; recoveryCode: string; software: boolean }> {
+  // RC1: a browser never makes a name (KP-1): refused before any key is made, any storage is opened or the directory is asked.
+  if (claimBlocked()) throw new Error("Create your name on your iPhone, then pair this browser to it.");
   // Save first, then claim: the key is kept and read back BEFORE the name is claimed, so a failed save claims nothing and never loses the recovery code.
   let kept = false;
   try {
