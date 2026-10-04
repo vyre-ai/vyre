@@ -17,7 +17,7 @@ export function CustomizeScreen() {
   const real = !allowsMock();
   const showing = useSpaces((s) => s.space);
   const shell = useShell((s) => s.data);
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { void load(real && showing !== "all" ? showing : undefined); }, [showing]);
   const [space, setSpace] = useState("harlow");
   const [sheet, setSheet] = useState<null | { tpl: string; name: string; work: boolean }>(null);
   const list = real ? types : types.filter((t) => t.spaces.includes(space));

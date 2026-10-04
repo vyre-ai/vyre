@@ -22,7 +22,7 @@ export function RealEngineer() {
   const [err, setErr] = useState("");
   const load = useCallback(() => {
     setErr("");
-    myRole().then(setRole).catch(() => setRole("member"));
+    myRole().then(setRole).catch((e) => setErr(said(e)));
     listAgents().then((a) => setAgent(findEngineer(a))).catch((e) => { setErr(said(e)); setAgent(null); });
     Promise.all([listFlowRows().catch(() => []), listKitRows().catch(() => []), listTaskRows().catch(() => [])]).then(([f, k, t]) => setWaiting(proposals(f, k, t)));
   }, []);

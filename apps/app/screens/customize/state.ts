@@ -7,7 +7,7 @@ import { loadTypes } from "./data";
 import type { TypeDef } from "./logic.js";
 import { diffFor, isOwn, toTypeDef } from "./real-model.js";
 
-type S = { types: TypeDef[]; loading: boolean; error: string; load: () => Promise<void>; update: (t: TypeDef) => void; add: (t: TypeDef) => void };
+type S = { types: TypeDef[]; loading: boolean; error: string; load: (space?: string) => Promise<void>; update: (t: TypeDef) => void; add: (t: TypeDef) => void };
 
 /** The kernel's definitions as last read, by type name: what a change is applied onto. */
 let kernel: Record<string, unknown> = {};
@@ -18,14 +18,14 @@ export const useTypes = create<S>((set, get) => ({
   types: real() ? [] : loadTypes(),
   loading: real(),
   error: "",
-  async load() {
+  async load(want) {
     if (!real()) return;
     set({ loading: true, error: "" });
     try {
       const store = useStore();
-      const [spaces, defs] = await Promise.all([store.spaces(), store.types()]);
+      const [spaces, defs] = await Promise.all([store.spaces(), store.types(want)]);
       kernel = Object.fromEntries(defs.map((t: any) => [t.name, t]));
-      const space = (spaces[0] as any)?.id ?? "";
+      const space = want ?? (spaces[0] as any)?.id ?? "";
       set({ types: defs.filter(isOwn).map((t: any) => toTypeDef(t, space)), loading: false });
     } catch (e) { set({ loading: false, error: say(e) }); }
   },
