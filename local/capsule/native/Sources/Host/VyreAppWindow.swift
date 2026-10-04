@@ -219,7 +219,7 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         kind: "mac",
         presence: function (tool, input, summary) { return call("presence", { tool: tool, input: input, summary: summary }).then(function (r) { return r.header; }); },
         notify: function (title, body) { return call("notify", { title: title, body: body }); },
-        // A WebSocket-like object for one of vyred's streams, backed by the native relay (VyreAppWindow.swift): the page's chat and terminal streams use it.
+        // A WebSocket-like object for one of the server's streams, backed by the native relay (VyreAppWindow.swift): the page's chat and terminal streams use it.
         socket: function (path) {
           var sid = nextSocket++, ws = { readyState: 0, onopen: null, onmessage: null, onclose: null, onerror: null };
           sockets[sid] = ws;
