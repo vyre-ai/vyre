@@ -48,6 +48,15 @@ test("a Space made through spaces.create is the kernel's Space (one id, a store 
   const rec = await ok("records.create", { space, type: "contact", data: { name: "Jane", age: 40 } });
   assert.ok(rec.record.urn.startsWith(`vyre://${space}/`));
   assert.equal((await ok("records.list", { space, type: "contact" })).rows.length, 1);
+  assert.deepEqual(rec.acted_in, { id: space, label: "estatedev" }, "records.create names the space it acted in");
+  assert.deepEqual((await ok("records.list", { space, type: "contact" })).acted_in, { id: space, label: "estatedev" });
+  // with no `space` a call acts in the home's own space and says so; a made-up id is refused, not answered empty
+  const homeMe = await ok("records.me");
+  assert.deepEqual(homeMe.acted_in, { id: d.kernel.space, label: "home" }, "no space given: the home's own space, named");
+  assert.notEqual(homeMe.acted_in.id, space);
+  assert.equal((await ok("records.me", { space })).acted_in.id, space, "records.me with the created id acts in it");
+  const bogus = await deck("records.types", { space: "spc_aaaaaaaaaaaa" });
+  assert.equal(bogus.error && bogus.error.code, "not_found", JSON.stringify(bogus).slice(0, 200));
   assert.deepEqual((await ok("tasks.list", { space })).tasks, []);
   // one id for the space everywhere
   const listed = (await ok("spaces.list")).spaces || (await ok("spaces.list"));
