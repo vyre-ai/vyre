@@ -178,7 +178,7 @@ export default {
         const refuse = msg => { vault.refuse("put", input.name, caller, msg); throw new Error(msg); };
         for (const g of grants || []) if (!validModuleName(g)) refuse(`"${String(g).slice(0, 60)}" is not a module name`);
         // A provider sign-in token takes no module grant once the launcher reads it through the credentials port: refuse before anything is written, never after.
-        if (grants && launcherItem(String(input.name)) && vault.launcherOnly) refuse(`${input.name} is a provider sign-in token; no module is granted it, the session launcher is handed it by vyred itself`);
+        if (grants && launcherItem(String(input.name)) && vault.launcherOnly) refuse(`${input.name} is a provider sign-in token; no module is granted it, the session launcher is handed it by the box itself`);
         // `<vault>/<item>` goes into a shared vault (shared.js); modules put only their own items.
         const slash = String(input.name).indexOf("/");
         if (slash > 0) {

@@ -55,20 +55,12 @@
   "owner": "launch",
   "seen": "integrator run 37181895537 (FAIL)"
  },
- "test/cohesion-drift.test.js": {
-  "owner": "platform-2",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
  "test/federation-send.test.js": {
   "owner": "tailnet",
   "seen": "integrator run 37181895537 (FAIL)"
  },
  "test/mobile-tailnet.test.js": {
   "owner": "tailnet",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "test/no-internal-words.test.js": {
-  "owner": "platform-2",
   "seen": "integrator run 37181895537 (FAIL)"
  },
  "test/onboard-page.test.js": {
