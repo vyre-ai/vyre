@@ -5,6 +5,8 @@
 
 import { call } from "../api/box";
 import { wantsPasskey } from "./presence-model.js";
+import { claimBlocked } from "../../screens/shell/rc";
+import { ON_PHONE, needsPerson } from "./on-phone.js";
 import { passkeyProof, PresenceError } from "./presence";
 
 /** True only in a development build started with EXPO_PUBLIC_VYRE_MOCK=1. */
@@ -21,6 +23,8 @@ export class BoxError extends Error {
 /** One tool call; resolves the data, throws BoxError with the box's own code and words. */
 export async function tool<T = unknown>(name: string, input: Record<string, unknown> = {}): Promise<T> {
   let r = await call<T>(name, input).catch((e: Error) => ({ error: { code: "offline", message: e.message } }) as const);
+  // RC1: a browser does not answer a person-only ask (vault secrets, pairing a device, an outbound send): the person does it in Vyre on their phone.
+  if (r.error && claimBlocked() && needsPerson(r.error)) throw new BoxError("on_phone", ON_PHONE);
   // A human-only call: the box asks for presence, and in a browser the person's passkey answers it. Once, for this call.
   if (r.error && wantsPasskey(r.error)) {
     try {
