@@ -14,14 +14,15 @@ const full = homeSeatbelt(o);
 console.log("realpath(base):", fs.realpathSync(base), " base:", base);
 console.log("---- profile\n" + full + "----");
 const lines = full.split("\n");
-const lastAllow = lines.findLastIndex(l => l.startsWith("(allow file* (subpath"));
+const drop = re => lines.filter(l => !re.test(l));
 const variants = {
   A_full: lines,
-  B_no_final_denies: lines.filter((l, i) => !(i > lastAllow && l.startsWith("(deny file*"))),
-  C_no_home_denies: lines.filter((l, i) => !(i < lastAllow && l.startsWith("(deny file*"))),
-  D_no_blanket_write_deny: lines.filter(l => l !== "(deny file-write*)" && !l.startsWith('(allow file-write* (literal "/dev/null")')),
-  E_allow_write_only: lines.map(l => l.startsWith("(allow file* (subpath") ? l.replace("(allow file* ", "(allow file-write* ") : l),
-  F_allow_write_and_read: lines.flatMap(l => l.startsWith("(allow file* (subpath") ? [l, l.replace("(allow file* ", "(allow file-write-create file-write-data file-write-unlink file-write-mode ")] : [l]),
+  B_no_var_folders_read_deny: drop(/^\(deny file-read\* \(subpath "\/private\/var\/folders"\)\)/),
+  C_no_private_tmp_read_deny: drop(/^\(deny file-read\* \(subpath "\/private\/tmp"\)\)/),
+  D_no_both_read_denies: drop(/^\(deny file-read\* \(subpath "\/private\/(var\/folders|tmp)"\)\)/),
+  E_no_launchd_mach: drop(/com\.apple\.xpc\.launchd/),
+  F_no_launchctl_exec: drop(/process-exec/),
+  G_no_network_deny: drop(/^\(deny network-outbound\)$/),
 };
 for (const [name, ls] of Object.entries(variants)) {
   const f = path.join(base, name + ".sb"); fs.writeFileSync(f, ls.join("\n") + "\n");
