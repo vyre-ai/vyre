@@ -16,14 +16,14 @@ Legend: REAL = reads the box through `call`/`send` (or the Store adapter) with n
 | /u/drive | REAL except upload, versions, shared links | files.drive.status, list, read. Upload, version history, links: no tool on the box (vault was asked) |
 | /u/calendar | REAL, not run on a real Event type | records.types, records.list over every dated type; waits on records for the Event type's fields |
 | /u/sites, sites/[id] (sites/) | WIRED (4 Oct), not yet seen on a box with Publish | publish.list, status, create, preview, plan, approve (publish.decide for the person), publish, rollback, domain.add, domain.verify, secret.grant, retire |
-| /u/settings (SettingsHome) | PARTLY | rows are fixed; the space name and device count read sample shell data (shell/data.ts loadShell) |
+| /u/settings (SettingsHome) | REAL for the space name; rows are fixed routes | space name from the shell; device count from chat's devices state |
 | /u/appearance | SAMPLE (local state) | settings.get, settings.set, settings.snapshot (appearance.theme, appearance.scheme, appearance.tokens exist) |
 | /u/settings/account, ai, assistants, notifications, updates, seeing, privacy, about | REAL | see the Settings entries below |
 | /u/settings/rules | WIRED, no tools on the box | rules.list, set, propose, accept, dismiss, remove (kernel has them, no gateway tools yet) |
 | /u/settings/customize, customize/[type] | SAMPLE, native-core is on it | records.types, records.define |
 | /u/settings/devices, device/[id], /u/access, /u/wink/* (devices/) | PARTLY (chat) | relay.devices.list, spaces.list, wink.pair.targets, wink.phone.pairing, wink.* ; Spaces, lend and some device rows are MOCK-only |
 | /u/spaces, /u/install/* (spaces/, install/) | PARTLY (chat) | spaces.list, create, status, resume, setup.save, setup.claim, identity.*, invites.*; teammates and setup-elsewhere read sample data only in a mock build |
-| Shell: space switcher, nav, me (shell/UiShell, shell/data.ts) | SAMPLE | spaces.list, records.me, spaces.identity.status |
+| Shell: space switcher, me (shell/UiShell) | REAL (4 Oct); nav rows are fixed routes | spaces.list, spaces.identity.status. Not yet: screens do not filter by the showing space (the Store merges every space) |
 
 Sheets and dialogs: Vault Reveal (REAL: the box asks for presence, the person session answers), Face ID sheets on Drive links and Memory-adjacent sample pages (SAMPLE, in the mock Drive and Vault only), Rules add (WIRED), Account new code (REAL, shown once), Calendar none, Flow approve (REAL, presence), Record seal and Add a field sheets (REAL via records.seal-put and records.define), Pairing and install sheets (chat's).
 Known gaps with no tool behind them: Vault Held fields and Share; Drive upload, versions and shared links; assistant autonomy and per-provider budgets; privacy defaults and retention; PIN on the recovery code.
@@ -49,6 +49,8 @@ Connect the 0.3 app's Vault, Memory (graph, pins, corrections), Flows (start, a 
 - Sites (4 Oct): screens/sites/{real-model,real-source,real,RealSites}, real.test.js 9 of 9 (with the old logic test) on the test box. Tools: publish.list, status, create, preview, plan via the held answer, approve, publish, rollback, decide (presence), retire, domain.add/verify/remove, secret.grant/revoke, vault.list for the secret picker. Dev box has no publish module (publish.list is not a tool there), so nothing real seen; waiting on windows for Publish on testbox2.
 
 - Projects (4 Oct): the screens already read the Store; the gap was deck/ui/view-defs.js viewDefOf, which only let the three named types hold work. Fallback added (stage field means holdsWork, with a board by it), tested in screens/projects/work.test.js (2 of 2), deck/ui types.test.js 3 of 3 and ui/views 14 of 14 still pass on the test box. The dev box has no type with a stage field and records.define needs presence, so I could not seed one: not seen on a real space.
+
+- Shell (4 Oct): screens/shell/{real-model,real-source,real,shared}.ts, UiShell loads on mount, real.test.js 10 of 10 on the test box (with the old spaces tests). Dev box spaces.list answered 3 spaces (Harlow Legal, Northwind Bakery, Harlow Estate Planning, all owner) and spaces.identity.status devbox.vyre.run, the shapes the model reads. Not walked in the app.
 
 ## Doing
 - All Settings pages that are mine are wired except where the box has no tool. Waiting on platform for rules.* tools.
