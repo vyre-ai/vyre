@@ -1437,6 +1437,12 @@ test("SERVER-HOSTED SPACE end to end: a device daemon with a spaces module asks 
   // and the record is on the SERVER, not on the device
   const onServer = server.kernel.spaces.hosted(id);
   assert.ok(JSON.stringify(await onServer.gateway.records.query(onServer.kernel.chains.fromFacts({ kind: "device", device_key_id: "x1", person: server.kernel.id.owner, path: "direct", session: "s" }), "contact", { page: { limit: 50 } })).includes("Jane"), "the record lives in the server's store");
+  // a create that fails after the server hosted the space gives it back ON THE SERVER (the name is taken, so the claim step refuses): the server hosts no extra space and the device lists none
+  const before = server.kernel.spaces.list().length;
+  const dup = await dcall("spaces.create", { name: "harlowsrv", home: { kind: "server", device: { id: "srv", name: "srv", alwaysOn: true }, confirmed: true } }, proofHeader);
+  assert.ok(dup.error || (dup.data && dup.data.status !== "done"), `the second create of the same name does not finish: ${JSON.stringify(dup).slice(0, 160)}`);
+  assert.equal(server.kernel.spaces.list().length, before, "the failed create was retired on the server");
+  assert.equal((await dcall("spaces.list")).data.filter((/** @type {any} */ x) => x.name === "harlowsrv.vyre.run").length, 1, "the device lists the one space");
 });
 
 test("the pairing path adopts for real: after the pick the SERVER's home owner is the identity its own pairing record names (spaces.owner.adopt from module:wink); another identity, an added module and a second adoption change nothing", async t => {
