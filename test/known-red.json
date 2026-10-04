@@ -67,7 +67,7 @@
   "seen": "hosted run 37176623881"
  },
  "core/github/index.test.js": {
-  "owner": "unassigned",
+  "owner": "launch",
   "seen": "hosted run 37176623881"
  },
  "core/glass/glass.test.js": {
@@ -105,7 +105,7 @@
   "seen": "hosted run 37176623881"
  },
  "core/projects/cwd-grant.test.js": {
-  "owner": "unassigned",
+  "owner": "platform",
   "seen": "hosted run 37176623881"
  },
  "core/recall/origin.test.js": {
@@ -116,7 +116,7 @@
   "owner": "tailnet"
  },
  "core/runner/lent-wire.test.js": {
-  "owner": "unassigned",
+  "owner": "runner",
   "seen": "hosted run 37176623881"
  },
  "core/sessions/api-key.test.js": {
@@ -126,11 +126,11 @@
   "owner": "sessions"
  },
  "core/settings/hub.test.js": {
-  "owner": "unassigned",
+  "owner": "platform",
   "seen": "hosted run 37176623881"
  },
  "core/sight/sight.test.js": {
-  "owner": "unassigned",
+  "owner": "windows",
   "seen": "hosted run 37176623881"
  },
  "core/stream/access.test.js": {
@@ -143,7 +143,7 @@
   "owner": "chat"
  },
  "core/suggest/suggest.test.js": {
-  "owner": "unassigned",
+  "owner": "launch",
   "seen": "hosted run 37176623881"
  },
  "core/switchboard/kernel-turn.test.js": {
@@ -184,7 +184,7 @@
   "seen": "hosted run 37176623881"
  },
  "core/waiting/waiting.test.js": {
-  "owner": "unassigned",
+  "owner": "app-wire",
   "seen": "hosted run 37176623881"
  },
  "core/watchers/reach.test.js": {
@@ -224,11 +224,11 @@
   "owner": "platform"
  },
  "local/apps/module.test.js": {
-  "owner": "unassigned",
+  "owner": "app-wire",
   "seen": "hosted run 37176623881"
  },
  "local/capsule/views.test.js": {
-  "owner": "unassigned",
+  "owner": "native-core",
   "seen": "hosted run 37176623881"
  },
  "local/hands-chrome-mac/module.test.js": {
@@ -248,11 +248,11 @@
   "seen": "hosted run 37176623881"
  },
  "test/boundaries.test.js": {
-  "owner": "unassigned",
+  "owner": "platform",
   "seen": "hosted run 37176623881"
  },
  "test/cc-plugin.test.js": {
-  "owner": "unassigned",
+  "owner": "assistant",
   "seen": "hosted run 37176623881"
  },
  "test/chrome-flags.test.js": {
@@ -262,7 +262,7 @@
   "owner": "platform-2"
  },
  "test/created-space-presence.test.js": {
-  "owner": "unassigned",
+  "owner": "windows",
   "seen": "hosted run 37176623881"
  },
  "test/docs-check.test.js": {
@@ -275,15 +275,15 @@
   "owner": "tailnet"
  },
  "test/harness.test.js": {
-  "owner": "unassigned",
+  "owner": "assistant",
   "seen": "hosted run 37176623881"
  },
  "test/journey.test.js": {
-  "owner": "unassigned",
+  "owner": "launch",
   "seen": "hosted run 37176623881"
  },
  "test/mobile-tailnet.test.js": {
-  "owner": "unassigned",
+  "owner": "tailnet",
   "seen": "hosted run 37176623881"
  },
  "test/module-sdk.test.js": {
@@ -293,11 +293,11 @@
   "owner": "platform-2"
  },
  "test/no-lime.test.js": {
-  "owner": "unassigned",
+  "owner": "ui-ux",
   "seen": "hosted run 37176623881"
  },
  "test/onboard.test.js": {
-  "owner": "unassigned",
+  "owner": "launch",
   "seen": "hosted run 37176623881"
  },
  "test/one-registry.test.js": {
@@ -325,11 +325,11 @@
   "seen": "hosted run 37176623881"
  },
  "test/project-arg.test.js": {
-  "owner": "unassigned",
+  "owner": "platform",
   "seen": "hosted run 37176623881"
  },
  "test/projects-cli.test.js": {
-  "owner": "unassigned",
+  "owner": "launch",
   "seen": "hosted run 37176623881"
  },
  "test/reach-anyone.test.js": {
@@ -343,7 +343,7 @@
   "seen": "hosted run 37176623881"
  },
  "test/registry-default.test.js": {
-  "owner": "unassigned",
+  "owner": "platform",
   "seen": "hosted run 37176623881"
  },
  "test/relay.test.js": {
@@ -356,7 +356,7 @@
   "owner": "platform"
  },
  "test/vault-labels-daemon.test.js": {
-  "owner": "unassigned",
+  "owner": "vault",
   "seen": "hosted run 37176623881"
  },
  "test/walk-identity-space.test.js": {
