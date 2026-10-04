@@ -44,3 +44,13 @@ test("store: a failed migration rolls back and is not recorded", t => {
   assert.equal(db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE name='notes_a'").get().n, 0, "half a migration was left behind");
   db.close();
 });
+
+test("store: a step that adds a column the box already has is not an error (an upgrade whose list was numbered differently), but any other failure still is", t => {
+  const db = open(path.join(tempHome(t), "vyre.db"));
+  migrate(db, "notes", ["CREATE TABLE notes_a (id INTEGER)"]);
+  db.exec("ALTER TABLE notes_a ADD COLUMN title TEXT");
+  migrate(db, "notes", ["CREATE TABLE notes_a (id INTEGER)", "ALTER TABLE notes_a ADD COLUMN title TEXT; ALTER TABLE notes_a ADD COLUMN body TEXT"]);
+  assert.deepEqual(db.prepare("PRAGMA table_info(notes_a)").all().map(c => c.name), ["id", "title", "body"]);
+  assert.throws(() => migrate(db, "notes", ["CREATE TABLE notes_a (id INTEGER)", "ALTER TABLE notes_a ADD COLUMN title TEXT; ALTER TABLE notes_a ADD COLUMN body TEXT", "ALTER TABLE notes_nope ADD COLUMN x TEXT"]), /no such table/);
+  db.close();
+});
