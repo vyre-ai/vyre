@@ -468,7 +468,7 @@ test("Q-1 and typed code OFF, real daemon: the box makes a QR and a long code wi
   assert.ok(asked.choices.includes(right), "the server's choices hold the same words, among two decoys");
   assert.ok(!(await w.call("wink.access")).data.devices.some(d => d.id === "self"), "no owner while the question is open");
   // a stranger cannot answer, a person at the server can
-  assert.equal((await w.call("wink.server.pair.answer", { yes: true, pick: 1 }, `device:${paired.device}`, {})).error?.code, "denied");
+  assert.equal((await w.call("wink.server.pair.answer", { yes: true, pick: 1 }, `device:${paired.device}`, {})).error?.code, "person_session_required", "a paired device with no person session is refused before the tool runs (reach person)");
   assert.equal((await w.call("wink.server.pair.answer", { yes: true, pick: asked.choices.indexOf(right) + 1 }, "cli", PROOF)).data.answered, true);
   const fin = await mine.again();
   assert.ok(fin.data?.owner, JSON.stringify(fin.error));
@@ -943,7 +943,7 @@ test("X-1, real daemon and relay: the yes makes the device (row, presence key, b
   assert.equal(row.presence, true, "its presence key is enrolled only now");
   // now it is a paired device: an ordinary connection is admitted and reaches the tools a paired device reaches
   const c = r2.open();
-  assert.equal((await over(c, "wink.access", {})).status, 200);
+  assert.equal((await over(c, "wink.access", {})).status, 401, "wink.access is the person's own: a device with no person session is asked to sign in");
   assert.equal((await over(c, "relay.status", {})).status, 200);
   assert.equal((await w.call("wink.access")).data.devices.length, 1);
 });

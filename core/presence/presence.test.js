@@ -903,6 +903,28 @@ test("paired: a software-key device is recorded as one, and a standing rule give
   }
 });
 
+test("stand-in (development walks only): taken only when the daemon says so, recorded as method stand-in, and a build that takes none ignores it with one log line", async t => {
+  const home = tempHome(t);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const events = new Events(db);
+  const logs = [];
+  let on = false;
+  const p = new Presence({ db, events, log: m => logs.push(m), standIn: () => on, platform: "linux", touchid: null, webauthn: null, who: async () => [] });
+  const ask = () => p.verify({ tool: "vault.reveal", input: { id: 1 }, caller: "cli", proof: { method: "stand-in" } });
+  const off1 = await ask();
+  assert.equal(off1.ok, false, "off: refused");
+  await ask();
+  assert.equal(logs.filter(l => /stand-in proof was offered and ignored/.test(l)).length, 1, "said once");
+  on = true;
+  const r = await ask();
+  assert.deepEqual([r.ok, r.method], [true, "stand-in"]);
+  assert.ok(events.since(0).some(e => e.type === "presence.proved" && e.payload.method === "stand-in"), "the event names the method");
+  // a real method is untouched by the switch
+  on = false;
+  assert.equal((await p.verify({ tool: "vault.reveal", input: { id: 1 }, caller: "cli", proof: { method: "tty" } })).ok, false);
+});
+
 test("PS-4: removing a presence key also deletes the pending pair grants it confirmed, and leaves another key's grants alone", async t => {
   const home = tempHome(t), db = open(path.join(home, "vyre.db"));
   t.after(() => db.close());

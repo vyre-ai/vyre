@@ -186,6 +186,8 @@ export const PERSON_ONLY = new Map([
 /** @type {ReadonlySet<string>} */
 export const OPEN = new Set([
   "vault.provider.status",
+  "network.wink.status",
+  "network.wink.whois",
   "artifacts.activity.log",
   "artifacts.mention.search",
   "bridges.get",

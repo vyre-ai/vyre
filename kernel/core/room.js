@@ -81,14 +81,16 @@ export function createRoom(cfg) {
     return t;
   }
 
-  /** @type {Map<string, { chat: string, ver: number }> | null} message id -> the chat and membership version it was written under, read back from the log on first use */ let seen = null;
-  const messages = () => {
-    if (!seen) {
-      seen = new Map();
-      for (const e of cfg.log.read({})) if ((e.type === "message.opened" || e.type === "message.added") && e.data && typeof e.data.id === "string" && typeof e.data.chat === "string" && Number.isInteger(e.data.ver)) seen.set(e.data.id, { chat: e.data.chat, ver: e.data.ver });
-    }
-    return seen;
-  };
+  /** @type {Map<string, { chat: string, ver: number }>} the messages seen lately: id -> the chat and membership version it was written under; the rest are looked up in the log by id, never loaded as a whole */ const seen = new Map();
+  const messages = () => ({
+    get(/** @type {string} */ id) {
+      const hit = seen.get(id);
+      if (hit) return hit;
+      for (const e of cfg.log.read({ type: "message.*", ref: id, limit: 2 })) if (e.data && e.data.id === id && typeof e.data.chat === "string" && Number.isInteger(e.data.ver)) { const m = { chat: e.data.chat, ver: e.data.ver }; this.set(id, m); return m; }
+      return undefined;
+    },
+    set(/** @type {string} */ id, /** @type {{ chat: string, ver: number }} */ m) { seen.set(id, m); if (seen.size > 2000) seen.delete(seen.keys().next().value); },
+  });
   /** @type {Map<string, number[]>} session -> times of its recent room questions */ const asked = new Map();
   /** One session may ask the room only so often: the answers are one bit about everyone else, and a loop of them is a probe. @param {string} session */
   function limited(session) {

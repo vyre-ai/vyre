@@ -12,7 +12,7 @@ import { fileKernelKey } from "./keys.js";
 import { createSpaceKernels } from "./spaces/index.js";
 import { KernelError } from "./core/errors.js";
 import { isExactlyPerson } from "./core/chain.js";
-import { sealerPresence } from "./core/presence.js";
+import { sealerPresence, payloadHash } from "./core/presence.js";
 import { createSupervisor } from "./modules/supervisor.js";
 import { createModuleHost } from "./modules/host.js";
 import { createEgress } from "./modules/egress.js";
@@ -59,8 +59,14 @@ export async function bootHomeKernel(cfg) {
     // moved only verifies what it already sealed; once that is read a snapshot is written under the new seal and the file is deleted.
     if (fs.existsSync(id.keyFile)) { try { legacyKeys = [Buffer.from(fs.readFileSync(id.keyFile, "utf8").trim(), "hex")]; } catch { /* unreadable: nothing to verify against */ } }
   } else { log("kernel: DEVELOPER file key in use (VYRE_KERNEL_FILE_KEY=1); never the default, never for a real home"); key = fileKernelKey(id.dir); }
+  /** The person claimed their identity: its id is the owner's id from now on, written beside the Space's own id so the next start reads it, and said once in the log. */
+  const adoptedOwner = (/** @type {string} */ to, /** @type {string} */ from) => {
+    id.owner = to;
+    try { fs.writeFileSync(path.join(id.dir, "space.json"), JSON.stringify({ space: id.space, owner: to, made_at: id.made_at, previous_owner: from }), { mode: 0o600 }); } catch (e) { (cfg.log || (() => {}))(`kernel: the owner's id could not be written beside the Space (${/** @type {Error} */ (e).message}); it will be adopted again at the next start`); }
+    (cfg.log || (() => {}))(`kernel: the owner is now the claimed identity ${to} (was ${from}), once`);
+  };
   const personalStore = cfg.storeFor ? await cfg.storeFor(id.space, { owner: id.owner, personal: true }) : undefined;
-  const k = await bootKernel({ db: cfg.db, space: id.space, ...(cfg.presence ? { presence: cfg.presence } : {}), owner: id.owner, owner_uid: process.getuid ? process.getuid() : 0, ...(key ? { key } : {}), legacyKeys, sealer, door: cfg.door, ...(cfg.forwardCredential ? { forwardCredential: cfg.forwardCredential } : {}), ...(personalStore ? { store: personalStore } : {}), ...(cfg.deviceEnrolled ? { deviceEnrolled: cfg.deviceEnrolled } : {}), ...(cfg.onStageEnter ? { onStageEnter: cfg.onStageEnter } : {}), ...(cfg.stageTasks ? { stageTasks: cfg.stageTasks } : {}) });
+  const k = await bootKernel({ db: cfg.db, space: id.space, ...(cfg.presence ? { presence: cfg.presence } : {}), owner: id.owner, owner_uid: process.getuid ? process.getuid() : 0, ...(key ? { key } : {}), legacyKeys, sealer, door: cfg.door, ...(cfg.forwardCredential ? { forwardCredential: cfg.forwardCredential } : {}), ...(personalStore ? { store: personalStore } : {}), ...(cfg.deviceEnrolled ? { deviceEnrolled: cfg.deviceEnrolled } : {}), ...(cfg.standIn ? { standIn: cfg.standIn } : {}), onOwnerAdopted: (/** @type {string} */ to, /** @type {string} */ from) => { adoptedOwner(to, from); }, ...(cfg.onStageEnter ? { onStageEnter: cfg.onStageEnter } : {}), ...(cfg.stageTasks ? { stageTasks: cfg.stageTasks } : {}) });
   // The migration pass ran inside the rebuild if there was anything to migrate; once the log holds a snapshot under the new seal the old key file has no use.
   if (sealer && legacyKeys.length && k.migrated) { try { fs.rmSync(id.keyFile, { force: true }); } catch { /* the file is harmless now */ } }
   // First party is a signature by the COMPILED release key (lib/release-sig.js), and a counter-signed list of minimum versions the release ships beside it
@@ -72,6 +78,8 @@ export async function bootHomeKernel(cfg) {
   const ALWAYS_RESERVED = new Set(["vault", "leases"]);
   /** @type {(name: string) => boolean} */ let reservedName = n => ALWAYS_RESERVED.has(n);
   /** @type {(chain: any, proof: any) => Promise<{ ok: boolean, why?: string }>} */ let resetModulesList = async () => ({ ok: false, why: "no_signed_list" });
+  /** What the owner's phone shows and signs to drop the accepted counter (a rollback): the op, the Space and the counter it forgets, with the hash the signer signs. Null when this build has no signed list. @type {() => { op: string, space: string, fields: { counter: number }, payload_hash: string } | null} */
+  let modulesListReset = () => null;
   if (!firstPartyCheck) {
     if (process.env.VYRE_KERNEL_PATH_RULE === "1" && !devSwitch("1")) log("kernel: VYRE_KERNEL_PATH_RULE ignored (this is a packaged daemon)");
     if (cfg.pathRule === true || devSwitch(process.env.VYRE_KERNEL_PATH_RULE)) (cfg.log || (() => {}))("kernel: DEVELOPER path rule for first-party modules (VYRE_KERNEL_PATH_RULE=1); never the default, never for a real home");
@@ -142,6 +150,7 @@ export async function bootHomeKernel(cfg) {
       reservedName = reserved;
       firstPartyCheck = listCheck ? (/** @type {string} */ dir) => (reserved(nameOf(dir)) ? listCheck(dir) : perModule(dir)) : perModule;
       /** The owner's reset of the counter, for a build older than the one accepted (a deliberate downgrade): presence-gated, one event, and the next boot reads the build's own list. */
+      modulesListReset = () => { const fields = { counter: accepted ? accepted.counter : 0 }; return { op: "grant.modules_list_reset", space: id.space, fields, payload_hash: payloadHash("grant.modules_list_reset", id.space, fields) }; };
       resetModulesList = async (/** @type {any} */ chain, /** @type {any} */ proof) => {
         if (!isExactlyPerson(chain) || chain.hops[0].actor.id !== id.owner) return { ok: false, why: "owner_only" };
         const why = !sealer ? "no_presence_verifier" : await sealerPresence(sealer).check({ chain, op: "grant.modules_list_reset", fields: { counter: accepted ? accepted.counter : 0 }, proof });
@@ -165,5 +174,5 @@ export async function bootHomeKernel(cfg) {
   // refuses a hosted Space unless this boot is the developer file-key one.
   const spaces = createSpaceKernels({ root: cfg.root, personal: { space: id.space, kernel: k }, openDb: (/** @type {string} */ f) => new DatabaseSync(f), ...(cfg.stageFactory ? { stageFactory: cfg.stageFactory } : {}), ...(sealer ? { sealer } : { fileKey: true }), ...(cfg.door ? { doorFor: () => cfg.door } : {}), ...(cfg.storeFor ? { storeFor: cfg.storeFor } : {}) });
   await spaces.start();
-  return Object.freeze({ ...k, spaces, id: { space: id.space, owner: id.owner }, kernelFor: k.kernelFor, firstPartyCheck, reservedName, resetModulesList, moduleHost: host, supervisor, moduleApprovals: approvals, stop: async () => { await spaces.stop(); await supervisor.stopAll(); if (ownSealer && sealer) await sealer.close(); } });
+  return Object.freeze({ ...k, spaces, id: Object.freeze({ space: id.space, get owner() { return id.owner; } }), kernelFor: k.kernelFor, firstPartyCheck, reservedName, resetModulesList, get modulesListReset() { return modulesListReset; }, moduleHost: host, supervisor, moduleApprovals: approvals, stop: async () => { await spaces.stop(); await supervisor.stopAll(); if (ownSealer && sealer) await sealer.close(); } });
 }

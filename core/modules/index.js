@@ -29,7 +29,8 @@ import { within } from "../../lib/within.js";
 const LOADER_FEATURES = ["modules.status"];
 
 /** Tools a tailnet device reaches without a person session: signing in, and the first passkey. */
-const PERSON_FREE = new Set(["presence.person.start", "presence.enroll"]);
+// wink.server.adopt, wink.server.release and wink.phone.wait are the pairing steps a device takes before it has any person session: each checks its own caller and the owner's presence (core/wink/pairing.js).
+const PERSON_FREE = new Set(["presence.person.start", "presence.enroll", "wink.server.adopt", "wink.server.release", "wink.phone.wait"]);
 
 const NAME = /^[a-z][a-z0-9-]{1,40}$/;
 /** Vyre's own modules live here; a module installed into a home never does. */
@@ -1030,7 +1031,7 @@ export class Registry {
       // What only the daemon can hand a module comes by DECLARATION, not by a name: a first-party module lists it under needs.daemon and gets exactly that on ctx. kernelSession is the
       // maker of a Vyre-started session's kernel credential, sandbox the confined spawner for those sessions (the runner's home sandbox, composed by the daemon because core/sessions
       // cannot import core/runner), flowsHost the Flows assembly (core/daemon/flows-host.js).
-      ...Object.fromEntries((Array.isArray(m.needs && m.needs.daemon) ? m.needs.daemon : []).filter((/** @type {string} */ n) => ["kernelSession", "kernelThreads", "sandbox", "flowsHost", "credentials", "modulesListReset", "dataStores"].includes(n) && this.deps[n]).map((/** @type {string} */ n) => [n, this.deps[n]])),
+      ...Object.fromEntries((Array.isArray(m.needs && m.needs.daemon) ? m.needs.daemon : []).filter((/** @type {string} */ n) => ["kernelSession", "kernelThreads", "sandbox", "flowsHost", "credentials", "modulesListReset", "dataStores", "devStandIn"].includes(n) && this.deps[n]).map((/** @type {string} */ n) => [n, this.deps[n]])),
       tool: (name, def) => {
         if (!declared.has(name)) throw new Error(`${m.name} registered tool ${name}, which its manifest does not declare under does.tools`);
         if (this.tools.has(name)) throw new Error(`tool ${name} is already registered`);
@@ -1164,11 +1165,12 @@ export class Registry {
       }
       // Over the tailnet a node signed in as the owner, and over the relay a paired device
       // (`device:<id>`), is the owner's device, and so is any script on it (ADR 0032). The person's
-      // own actions there need the person's session too (core/presence/person.js),
+      // own actions there need the person's session too (core/presence/person.js): every tool that declares `reach: person` is one (an owner's app device that has not signed in gets
+      // no deck-like surface from its label alone),
       // which only vyred's router sets, from a cookie or a signed bearer token. Signing in is the one
       // way to get it, and the first passkey is enrolled with onboarding's code.
       if (ownerDevice(caller) && !meta.person && !PERSON_FREE.has(tool) && !machineSelf(tool, input)
-        && (PERSON_ONLY.has(tool) || (this.deps.presence ? this.deps.presence.required(tool, def, input) : Boolean(def.presence)))) {
+        && (PERSON_ONLY.has(tool) || def.reach === "person" || (this.deps.presence ? this.deps.presence.required(tool, def, input) : Boolean(def.presence)))) {
         return { error: { code: "person_session_required", message: `${tool} is the person's own action: sign in on this device with your passkey first` } };
       }
     }
