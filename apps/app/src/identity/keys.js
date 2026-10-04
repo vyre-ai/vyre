@@ -36,5 +36,22 @@ export async function fromSeed(seed) {
   return { publicKey: b64u(pub), eid: await eidOf(pub), software: true, sign: async m => ed25519.sign(m, seed), keep: () => ({ kind: "seed", seed }) };
 }
 
-/** A key from what keep() gave. @param {any} kept @returns {Promise<DeviceKey>} */
-export const restoreDeviceKey = kept => (kept && kept.kind === "webcrypto" ? fromPair(kept.pair) : fromSeed(kept.seed));
+/**
+ * The software seed never sits in storage as bytes: it is sealed under an AES-GCM key that is NON-EXTRACTABLE and kept beside it, so one read of the
+ * stored record gives a script a CryptoKey it can only use in this browser, not a seed it can carry away. (This is a device key only.)
+ * @param {{ kind: string, seed?: Uint8Array }} kept
+ */
+export async function wrapKept(kept) {
+  if (!kept || kept.kind !== "seed" || !kept.seed) return kept;
+  const wk = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, wk, /** @type {BufferSource} */ (kept.seed)));
+  return { kind: "wrapped-seed", wk, iv, ct };
+}
+
+/** A key from what keep() gave, or from what wrapKept made of it. @param {any} kept @returns {Promise<DeviceKey>} */
+export async function restoreDeviceKey(kept) {
+  if (kept && kept.kind === "webcrypto") return fromPair(kept.pair);
+  if (kept && kept.kind === "wrapped-seed") return fromSeed(new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv: kept.iv }, kept.wk, kept.ct)));
+  return fromSeed(kept.seed);
+}

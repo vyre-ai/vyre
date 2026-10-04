@@ -994,7 +994,8 @@ export default {
       if ((!st0 || !st0.exists) && K && K.spaces && typeof K.spaces.list === "function" && typeof K.owner === "string") {
         const mine = [];
         for (const id of K.spaces.list()) {
-          const m = await membershipOf(id, K.owner, meta).catch(() => null);
+          // the kernel's own answer for the home's person (no caller chain needed: a terminal on a server is not always recognised as the person, and this list is the owner's own)
+          let m = null; try { const r = await K.membership(K.owner, id); if (r && r.member === true) m = { role: r.role }; } catch { m = null; }
           if (!m) continue;
           const d0 = typeof K.spaces.describe === "function" ? K.spaces.describe(id) : null;
           mine.push({ id, name: d0 && d0.name ? `${String(d0.name).replace(/\.vyre\.run$/, "")}.vyre.run` : null, label: d0 && d0.name ? String(d0.name).replace(/\.vyre\.run$/, "") : null, displayName: null, status: "done", home: id === K.space ? { kind: "this-computer" } : null, role: m.role, aliases: [], workspaceId: null, warnings: [], hosted: true });

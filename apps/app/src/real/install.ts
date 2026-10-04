@@ -3,7 +3,7 @@
 import { said, tool } from "./box";
 import { claimBlocked } from "../../screens/shell/rc";
 import { claimIdentity } from "../identity/claim.js";
-import { loadIdentity, saveIdentity } from "../identity/store";
+import { forgetIdentity, loadIdentity, saveIdentity } from "../identity/store";
 import { createdFrom, directoryAnswer, identityFrom, nameAnswer } from "../../screens/install/real.js";
 
 type Created = { state: "done" | "running" | "asking" | "failed"; id: string; address: string; say: string };
@@ -42,9 +42,25 @@ export async function checkName(name: string): Promise<"free" | "taken" | "unkno
 export async function createIdentity(name: string, deviceLabel: string, password = ""): Promise<{ name: string; id: string; recoveryCode: string; software: boolean }> {
   // RC1: a browser never makes a name (KP-1): refused before any key is made, any storage is opened or the directory is asked.
   if (claimBlocked()) throw new Error("Create your name on your iPhone, then pair this browser to it.");
-  const made = await claimIdentity({ name, password, deviceLabel, base: DIRECTORY });
-  await saveIdentity({ name: made.name, id: made.id, eid: made.eid, ops: made.ops, pin: made.pin, key: made.key });
-  return { name: made.name, id: made.id, recoveryCode: made.recoveryCode, software: made.software };
+  // Save first, then claim: the key is kept and read back BEFORE the name is claimed, so a failed save claims nothing and never loses the recovery code.
+  let kept = false;
+  try {
+    const made = await claimIdentity({
+      name, password, deviceLabel, base: DIRECTORY,
+      beforeClaim: async (m) => {
+        await saveIdentity({ name: m.name, id: m.id, eid: m.eid, ops: m.ops, pin: m.pin, key: m.key });
+        const back = await loadIdentity();
+        if (!back || back.eid !== m.eid) throw Object.assign(new Error("This browser would not keep your key, so no name was claimed. Try another browser or a private window turned off."), { code: "cannot_keep" });
+        kept = true;
+      },
+    });
+    return { name: made.name, id: made.id, recoveryCode: made.recoveryCode, software: made.software };
+  } catch (e) {
+    // The claim itself failed after the key was kept: take the key back out so no identity is left that names nothing.
+    // (An unreachable directory is ambiguous: the claim may have landed, so the key stays.)
+    if (kept && (e as { code?: string })?.code !== "unreachable") await forgetIdentity().catch(() => {});
+    throw e;
+  }
 }
 
 export async function createSpace(input: Record<string, unknown>): Promise<Created> {

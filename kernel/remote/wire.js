@@ -18,6 +18,10 @@ export const CALLS = Object.freeze({
   tasks: ["request", "get", "start", "complete", "revise", "decide", "stuck", "skip", "unblock", "card", "needsYou"],
   events: ["read"],
   surfaces: ["open", "revoke"],
+  // A member's computer running one of this Space's sessions (docs/work/runner.md, "The lent-computer wire"). `leases` is the gateway's (the lease is bound to the member, the device and its
+  // key and issued only while both Offers stand); `lent` is a SERVICE the home registers (core/runner/lent-home.js): the session's definition, its transcript, files (in chunks) and checkpoints.
+  leases: ["issue", "renew", "use"],
+  lent: ["status", "start", "stop", "appendTranscript", "getTranscript", "putFile", "getFile", "putCheckpoint", "getCheckpoint", "usage"],
 });
 
 /** The reads a device may keep a marked copy of for its screens. */
