@@ -7,6 +7,7 @@ import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import crypto from "node:crypto";
 import { start, callerFacts } from "../core/daemon/index.js";
@@ -1458,6 +1459,12 @@ test("renewal lock: three wrong sign-in answers lock the device for fifteen minu
   const ch1 = (await call("presence.person.pair-challenge", {})).data.challenge;
   const started = await call("presence.person.start-paired", { sig: f.sign(`paired-start\n${id}\n${ch1}`) });
   assert.ok(started.error, "locked: a right answer to a random challenge is no session");
+  // the lock is in the store, not in memory: a restart keeps it (reviewer-3)
+  const lockRow = new DatabaseSync(path.join(f.w.root, "vyre.db")).prepare("SELECT until FROM presence_renew_lock WHERE device = ?").get(id);
+  assert.ok(lockRow && Number(lockRow.until) > Date.now(), "the lock is a row in the store");
+  // the owner's Devices list can draw it
+  const listed = (await f.w.d.registry.call("presence.person.locked", {}, "cli", PROOF)).data.locked;
+  assert.ok(listed.some(l => l.device === id && l.until > Date.now()), "presence.person.locked lists the device and when the lock ends");
   // the owner lifts it from their own device (with their presence)
   assert.equal((await f.w.d.registry.call("presence.person.renew-allow", { device: id }, "cli", PROOF)).data.allowed, id);
   const ch2 = (await call("presence.person.pair-challenge", {})).data.challenge;
