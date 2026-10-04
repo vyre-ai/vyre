@@ -1519,6 +1519,17 @@ test("SERVER-HOSTED SPACE end to end: a device daemon with a spaces module asks 
   const viaTool = await dcall("records.list", { space: id, type: "contact" });
   assert.ok(!viaTool.error, JSON.stringify(viaTool.error));
   assert.ok(JSON.stringify(viaTool.data).includes("Jane"), "records.list on the device reads the record that lives on the server");
+  // the type list reads through the remote kernel too (the remote gateway has `definitions`), and a change of types from the device needs the person's proof: without it the home refuses, with it carried over the door it applies
+  const typesVia = await dcall("records.types", { space: id });
+  assert.ok(!typesVia.error && JSON.stringify(typesVia.data).includes("contact"), JSON.stringify(typesVia).slice(0, 200));
+  assert.equal(typesVia.data.acted_in.id, id);
+  const NOTE = { name: "note", label: "Note", fields: [{ name: "title", kind: "text", label: "Title" }] };
+  const noProof = await dcall("records.define", { space: id, diff: { add_types: [NOTE] } });
+  assert.equal(noProof.error && noProof.error.code, "needs_presence", "a change of types with no proof is refused by the home");
+  const withProofHdr = { "x-vyre-kernel-proof": Buffer.from(JSON.stringify({ method: "stand-in" })).toString("base64url") };
+  const defined = await dcall("records.define", { space: id, diff: { add_types: [NOTE] } }, withProofHdr);
+  assert.ok(!defined.error, JSON.stringify(defined).slice(0, 300));
+  assert.ok(JSON.stringify((await dcall("records.types", { space: id })).data).includes("note"), "the type the device defined is on the server");
   const stranger = await import("../core/daemon/client.js").then(m => m.call("records.list", { space: id, type: "contact" }, { root: droot, caller: "tailnet-guest:mallory@example.com" }));
   assert.ok(stranger.error, "a caller that is not the signed-in person is refused");
   // and the record is on the SERVER, not on the device

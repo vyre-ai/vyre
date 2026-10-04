@@ -53,6 +53,7 @@ export function createRemoteServer(cfg) {
   const tree = (/** @type {string} */ group) => (cfg.services && Object.hasOwn(cfg.services, group) ? cfg.services[group] : group === "lent" ? undefined : group === "tasks" ? k.gateway.ask : group === "surfaces" ? k.surfaces : k.gateway[group]);
   /** Calls whose local signature is not `(chain, ...args)` or that need the home's own check before they run. */
   const ADAPT = {
+    "records.definitions": () => (/** @type {any} */ chain) => k.gateway.definitions(chain),
     "surfaces.revoke": () => (/** @type {any} */ chain, /** @type {string} */ session) => k.surfaces.revoke(session, chain),
     "surfaces.open": () => async (/** @type {any} */ chain, /** @type {any} */ o = {}) => {
       // A session may name only an assistant this Space has; the chain it yields is [person, agent], so authority is still the intersection.
