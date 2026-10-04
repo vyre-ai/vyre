@@ -717,10 +717,11 @@ export function register({ vault, tool, internal, call, said, deps = {}, log }) 
 
   internal("vault.forward.file", "The kernel's lease module forwards one request that moves a file for a lent computer's program: { credential, method, url, query?, headers?, session, upload?: { drive: { path, version?, contentType } } or { multipart: [ { name, value } | { name, filename, contentType, drive: { path, version? } } ] }, saveTo?, stream?, limits?: { maxBytes, contentTypes }, drive?: { read, write } }. The file is read from, or saved to, the Space's Drive by reference at the home and moves a chunk at a time; an outward call is held for a person. Returns the response, { saved }, a stream or { held }; never a credential value.",
     obj({ credential: str, method: { type: "string", enum: METHODS }, url: str, headers: { type: "object" }, allow_headers: strs, query: { type: "object" }, upload: { type: "object" }, saveTo: str, stream: { type: "boolean" }, limits: { type: "object" }, drive: { type: "object" }, session: str }, ["credential", "method", "url", "session"]),
-    async (input, { caller }) => {
+    async (input, { caller, files: given }) => {
       if (caller !== "kernel:leases" && caller !== "module:leases") throw bad("only the kernel's lease module forwards a lent computer's request", "denied");
-      // FW-2: the Drive is reached AS THE LENT MEMBER. `deps.filesFor({ session })` is the kernel's Drive door under that session's member chain (so a route's Drive lists only ever narrow what the member may do); `deps.files` is the home's own handle for a rig with no kernel.
-      const files = api.deps.filesFor ? api.deps.filesFor({ session: String(input.session) }) : api.deps.files;
+      // FW-2: the Drive is reached AS THE LENT MEMBER. The kernel's own call hands `files` in-process (its Drive door under that member's chain, so a route's Drive lists only ever narrow what the member may do) and only the
+      // lease module's caller is believed; else `deps.filesFor({ session })`; `deps.files` is the home's own handle for a rig with no kernel.
+      const files = given || (api.deps.filesFor ? api.deps.filesFor({ session: String(input.session) }) : api.deps.files);
       if (!files) throw bad("the Drive is not wired to this vault", "failed");
       const r = await forwardFile(api, { files }, input, { caller: `runner:${String(input.session).slice(0, 80)}` });
       return r.held || r.stream ? r : { ...r, ...(r.body ? { body: r.body.toString("base64") } : {}) };

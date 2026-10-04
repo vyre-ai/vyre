@@ -365,6 +365,24 @@ export const MIGRATIONS = [`
     removed INTEGER NOT NULL,
     PRIMARY KEY (id, kind)
   );
+`, `
+  -- An owner-paired device's person session (ADR 0032 section 2d). The pairing writes one grant for
+  -- the device: the key the owner confirmed, the presence key whose proof confirmed it, and a short
+  -- life. The device's first start proves it holds that key, and turns the grant into a session
+  -- with no maximum life (paired = 1), which still ends after 30 days unused.
+  ALTER TABLE presence_people ADD COLUMN paired INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE presence_people ADD COLUMN rotated INTEGER;
+  ALTER TABLE presence_people ADD COLUMN software INTEGER NOT NULL DEFAULT 0;
+  CREATE TABLE presence_pair_grants (
+    device TEXT PRIMARY KEY,
+    key_id TEXT NOT NULL,
+    device_key TEXT NOT NULL,
+    challenge TEXT NOT NULL,
+    software INTEGER NOT NULL DEFAULT 0,
+    created INTEGER NOT NULL,
+    expires INTEGER NOT NULL,
+    tries INTEGER NOT NULL DEFAULT 0
+  );
 `];
 
 const CHALLENGE_TTL = 120_000;
@@ -1034,6 +1052,8 @@ export class Presence {
         this.db.prepare("INSERT OR REPLACE INTO presence_removed (id, kind, hash, key_id, removed) VALUES (?, 'session', ?, ?, ?)").run(r.id, r.hash, String(id), now);
       }
       this.db.prepare("DELETE FROM presence_people WHERE key_id = ?").run(String(id));
+      // PS-4: a grant for a device that the removed key confirmed is not left to be used for up to ten minutes.
+      try { this.db.prepare("DELETE FROM presence_pair_grants WHERE key_id = ?").run(String(id)); } catch { /* an older home without the table */ }
       this.db.prepare("INSERT OR REPLACE INTO presence_removed (id, kind, hash, key_id, removed) VALUES (?, 'key', NULL, ?, ?)").run(String(id), String(id), now);
     }
     return removed;

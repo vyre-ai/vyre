@@ -125,13 +125,12 @@ test("health: offline, unknown, timed out and no tailscale all answer in the con
 test("health: the one reach shape, direct with its tailnet detail, and none with a reason and a fix", async () => {
   const { toReach, shaped, sinceTracker } = await import("./health.js");
   const ok = { path: "relay", relay: "fra", latencyMs: 81, lastHandshake: null, online: true, checkedAt: 1, cached: false };
-  assert.deepEqual(toReach(ok, 500), { reach: "direct", why: "Connected over your Tailscale network (relayed via fra 81 ms).", since: 500,
+  assert.deepEqual(toReach(ok, 500), { reach: "direct", why: "Connected to your server (relayed via fra 81 ms).", since: 500,
     tailnet: { path: "relay", latencyMs: 81 } });
   const down = (why, extra = {}) => ({ path: "unknown", relay: null, latencyMs: null, lastHandshake: null, online: false, checkedAt: 1, cached: false, why, ...extra });
   assert.deepEqual(toReach(down("this Mac is not paired with a box"), 7),
     { reach: "none", why: "this Mac is not paired with a box", fix: { action: "pair", label: "Pair with your server" }, since: 7 });
-  assert.equal(toReach(down("Tailscale is not installed here"), 7).fix?.action, "install-tailscale");
-  assert.equal(toReach(down("Tailscale is Stopped here"), 7).fix?.action, "open-tailscale");
+  assert.equal(toReach(down("the link to this space is down"), 7).fix?.action, "retry", "no fix names another program any more");
   assert.equal(toReach(down("the node is offline"), 7).fix?.action, "retry");
   assert.equal(toReach(down("say which node: a paired Mac's node id"), 7).fix, undefined);
   // The path is known but the ping went unanswered: not reachable, and the detail says what status saw.
@@ -156,4 +155,34 @@ test("health: the one reach shape, direct with its tailnet detail, and none with
   assert.equal(s.latencyMs, 81);
   assert.equal(s.reach, "direct");
   assert.equal(s.since, 42);
+});
+
+test("health: with a ctx the answer is the Wink node's, by space, by connected peer, or the one space there is; the shape is the same", async () => {
+  const { fromWink } = await import("./health.js");
+  const st = { spaces: [
+    { id: "work", state: "relayed", path: "relay", latencyMs: 84, since: 5, peerList: [{ eid: "phone1", via: "relay", since: 7 }] },
+    { id: "home", state: "connected", path: "direct", latencyMs: 12, since: 6, peerList: [{ eid: "mac1", via: "direct", since: 9 }] },
+  ] };
+  const keys = ["cached", "checkedAt", "lastHandshake", "latencyMs", "online", "path", "relay"];
+  const bySpace = fromWink(st, { stableId: "home" }, 100);
+  assert.deepEqual(Object.keys(bySpace).sort(), keys);
+  assert.deepEqual([bySpace.path, bySpace.latencyMs, bySpace.online], ["direct", 12, true]);
+  const byPeer = fromWink(st, { stableId: "phone1" }, 100);
+  assert.deepEqual([byPeer.path, byPeer.lastHandshake], ["relay", 7]);
+  assert.equal(describe(byPeer), "relayed");
+  assert.equal(fromWink(st, { stableId: "ghost" }, 100).online, false);
+  assert.match(String(fromWink({ spaces: [{ id: "x", state: "offline", why: "no route", peerList: [] }] }, { stableId: "x" }, 1).why), /no route/);
+  assert.equal(fromWink({ spaces: [{ id: "only", state: "connected", path: "direct", latencyMs: 3, peerList: [] }] }, { stableId: "anything" }, 1).latencyMs, 3);
+
+  let asked = 0;
+  const calls = [];
+  const h = createHealth({ ctx: { call: async (tool, input) => { asked++; calls.push([tool, input]); return { data: st }; } }, now: () => 1 });
+  const first = await h.check({ stableId: "home" });
+  await h.check({ stableId: "home" });
+  assert.equal(first.path, "direct");
+  assert.equal(asked, 1, "one read a minute, and it is the Wink status, not the CLI");
+  assert.deepEqual(calls[0][0], "network.wink.status");
+  const failing = await createHealth({ ctx: { call: async () => { throw new Error("no such tool network.wink.status"); } } }).check({ stableId: "home" });
+  assert.equal(failing.online, false);
+  assert.match(String(failing.why), /no such tool/);
 });

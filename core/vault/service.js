@@ -57,7 +57,7 @@ export function registerService({ api, vault, internal, forwardFile, forwardHead
 
   internal("vault.service.forward", "A Flow's call through a connector: { connector, request: { method, path, query?, headers?, body?, upload?, saveTo? }, idem?, approval? }. Refused unless the connector's `service` rules allow the method and path. Returns { status, ok, headers, body (base64) }, or { saved } for a Drive save, or { held } when the vault itself must ask. Only the kernel's lease module calls it, after authorizing the caller's chain; `approval` is an ask-first task id the kernel has already seen approved.",
     obj({ connector: str, request: { type: "object" }, idem: str, approval: str }, ["connector", "request"]),
-    async (input, { caller }) => {
+    async (input, { caller, files: given }) => {
       if (!callerOk(String(caller))) throw bad("only the kernel's lease module forwards a Flow's call", "denied");
       const name = String(input.connector || ""), r = isObj(input.request) ? input.request : {};
       if (!CONNECTOR.test(name)) throw bad("name a connector");
@@ -90,9 +90,11 @@ export function registerService({ api, vault, internal, forwardFile, forwardHead
       const execute = async (/** @type {string | null} */ approval) => {
         let out;
         if (files) {
-          if (!api.deps.files) throw bad("the Drive is not wired to this vault", "unavailable");
+          // The Drive is THIS call's own door when the kernel hands one in (the caller's chain, FW-2), else the home's own handle (a rig with no kernel).
+          const driveHandle = given || api.deps.files;
+          if (!driveHandle) throw bad("the Drive is not wired to this vault", "unavailable");
           const drive = { read: [r.upload?.drive?.path, ...(Array.isArray(r.upload?.multipart) ? r.upload.multipart.map(p => p?.drive?.path) : [])].filter(x => typeof x === "string"), write: r.saveTo ? [String(r.saveTo)] : [] };
-          const x = await forwardFile(api, { files: api.deps.files }, { ...base, ...(r.upload ? { upload: r.upload } : {}), ...(r.saveTo ? { saveTo: r.saveTo } : {}), drive }, { caller: who });
+          const x = await forwardFile(api, { files: driveHandle }, { ...base, ...(r.upload ? { upload: r.upload } : {}), ...(r.saveTo ? { saveTo: r.saveTo } : {}), drive }, { caller: who });
           out = x.held ? x : { ...x, ...(x.body ? { body: x.body.toString("base64") } : {}) };
         } else if (approval && outward) {
           // The kernel saw the ask-first task approved, so the person is asked once: run exactly this request, re-checked, with the approval named in the audit row.

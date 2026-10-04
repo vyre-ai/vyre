@@ -107,3 +107,104 @@ test("release list at boot: the signed list makes modules first party, a rollbac
   assert.equal(k.firstPartyCheck(r.dir("beta")), true);
   await k.stop();
 });
+
+import { signModule } from "./firstparty.js";
+
+test("SG-1 and SG-2: the signed list decides for every name it holds (an old module.sig is no OR), and that name stays reserved so a failing folder is refused", { timeout: 120_000 }, async t => {
+  const r = release(t, { counter: 5 });
+  const root = tempHome(t), dbFile = path.join(root, "k.db");
+  const logs = [];
+  const k = await bootHomeKernel({ db: new DatabaseSync(dbFile), root, log: m => logs.push(m), isFirstParty: () => false, releaseKey: r.pub, packageRoot: r.root });
+  t.after(() => k.stop());
+  assert.equal(k.firstPartyCheck(r.dir("alpha")), true);
+  // alpha is edited after the list was signed, then given its OWN valid module.sig by the same release key: the list still says no
+  fs.appendFileSync(path.join(r.dir("alpha"), "index.js"), "\n// swapped");
+  signModule(r.dir("alpha"), r.key.privateKey);
+  assert.equal(k.firstPartyCheck(r.dir("alpha")), false, "a valid module.sig is not an OR with the list");
+  // a folder with a name the list holds is reserved even when it fails; a name the list does not hold is not
+  assert.equal(k.reservedName("alpha"), true);
+  assert.equal(k.reservedName("somebody-elses"), false);
+  // the host refuses the failing folder: a module folder named alpha that fails the list never loads as an added module, and a failing copy is not an OR either
+  const { Registry, discover } = await import("../../core/modules/index.js");
+  const { open } = await import("../../core/store/index.js");
+  const { Events } = await import("../../core/events/index.js");
+  const db = open(path.join(root, "vyre.db"));
+  t.after(() => db.close());
+  const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: () => {}, firstPartyCheck: k.firstPartyCheck, reservedName: k.reservedName });
+  await reg.start(discover([path.join(r.root, "core")]), { role: "local" });
+  const alpha = [...reg.modules.entries()].filter(([n]) => n === "alpha" || n.startsWith("alpha@"));
+  assert.ok(alpha.length >= 1 && alpha.every(([, v]) => v.state === "invalid"), "the failing alpha is refused, never loaded: " + JSON.stringify(alpha.map(([n, v]) => [n, v.state])));
+  assert.match(alpha[0][1].error, /belongs to a module shipped with Vyre/);
+  assert.equal(reg.modules.get("beta").state !== "invalid", true, "the listed, intact beta loads");
+});
+
+test("SG-3: the counter advances only after the listed modules verify, and an owner resets it only with presence", { timeout: 120_000 }, async t => {
+  const r = release(t, { counter: 5 });
+  const root = tempHome(t), dbFile = path.join(root, "k.db");
+  const boot = async (logs = []) => bootHomeKernel({ db: new DatabaseSync(dbFile), root, log: m => logs.push(m), isFirstParty: () => false, releaseKey: r.pub, packageRoot: r.root });
+  // a build whose folder was changed after signing never raises the counter
+  fs.appendFileSync(path.join(r.dir("alpha"), "index.js"), "\n// changed");
+  const logs = [];
+  let k = await boot(logs);
+  assert.equal(k.log.read({ type: "kernel.modules-list" }).length, 0, "nothing was accepted");
+  assert.ok(logs.some(m => /do not all match its signed list \(alpha\)/.test(m)), logs.join(" | "));
+  assert.equal(k.firstPartyCheck(r.dir("alpha")), false);
+  await k.stop();
+  // an intact build at counter 5 is accepted; a later intact one at 7 advances it
+  const r2 = release(t, { counter: 7, key: r.key });
+  k = await bootHomeKernel({ db: new DatabaseSync(dbFile), root, log: () => {}, isFirstParty: () => false, releaseKey: r.pub, packageRoot: r2.root });
+  assert.equal(k.log.read({ type: "kernel.modules-list" }).length, 1);
+  await k.stop();
+  // the older build is below 7: refused, and a reset needs the owner and a presence proof
+  const logs3 = [];
+  k = await boot(logs3);
+  assert.ok(logs3.some(m => /older than one already accepted/.test(m)), logs3.join(" | "));
+  assert.equal(k.firstPartyCheck(r.dir("alpha")), false, "the accepted list (7) holds the original alpha; the changed folder fails it");
+  const owner = k.chains.fromFacts({ kind: "socket", surface: "cli", uid: process.getuid() });
+  assert.equal((await k.resetModulesList(owner, null)).ok, false, "no proof");
+  const other = k.chains.fromFacts({ kind: "module", module: "x" });
+  assert.equal((await k.resetModulesList(other, null)).why, "owner_only");
+  await k.stop();
+});
+
+test("SG-6: a kernel.modules-list event not written by the home counts for nothing, even carrying a genuine newer list", { timeout: 120_000 }, async t => {
+  const r = release(t, { counter: 5 });
+  const newer = release(t, { counter: 50, key: r.key, mods: [["zeta", "1.0.0"]] });
+  const root = tempHome(t), dbFile = path.join(root, "k.db");
+  const boot = async (logs = []) => bootHomeKernel({ db: new DatabaseSync(dbFile), root, log: m => logs.push(m), isFirstParty: () => false, releaseKey: r.pub, packageRoot: r.root });
+  let k = await boot();
+  const raw = readReleaseList(newer.root, r.pub).raw;
+  const forger = k.chains.fromFacts({ kind: "module", module: "added-thing" });
+  await k.log.append(forger, { type: "kernel.modules-list", sv: 1, subject: `vyre://${k.id.space}/kernel/modules-list`, data: { counter: 50, raw }, vis: "owner", red: "internal" });
+  await k.stop();
+  const logs = [];
+  k = await boot(logs);
+  assert.ok(logs.some(m => /not written by the home/.test(m)), logs.join(" | "));
+  assert.equal(k.firstPartyCheck(r.dir("alpha")), true, "this build is not disabled by it");
+  await k.stop();
+});
+
+test("SG-5: the release also lists the kernel and lib trees; a build whose kernel or lib differs from them uses no first-party list from itself", { timeout: 120_000 }, async t => {
+  const r = release(t, { counter: 5 });
+  for (const n of ["kernel", "lib"]) { fs.mkdirSync(path.join(r.root, n), { recursive: true }); fs.writeFileSync(path.join(r.root, n, "x.js"), `export const n = "${n}";`); }
+  r.write(r.key, 5);
+  const list = readReleaseList(r.root, r.pub);
+  assert.equal(list.ok, true, JSON.stringify(list));
+  assert.deepEqual(Object.keys(list.trees).sort(), ["kernel", "lib"]);
+  const root = tempHome(t), dbFile = path.join(root, "k.db");
+  const boot = async (logs = []) => bootHomeKernel({ db: new DatabaseSync(dbFile), root, log: m => logs.push(m), isFirstParty: () => false, releaseKey: r.pub, packageRoot: r.root });
+  // intact: first party, counter accepted
+  let k = await boot();
+  assert.equal(k.firstPartyCheck(r.dir("alpha")), true);
+  assert.equal(k.log.read({ type: "kernel.modules-list" }).length, 1);
+  await k.stop();
+  // a changed lib file after signing: this build's list is not used and nothing is accepted from it (fresh home)
+  fs.rmSync(dbFile, { force: true });
+  fs.writeFileSync(path.join(r.root, "lib", "x.js"), "export const n = 'evil';");
+  const logs = [];
+  k = await boot(logs);
+  assert.ok(logs.some(m => /kernel or lib tree differs/.test(m)), logs.join(" | "));
+  assert.equal(k.firstPartyCheck(r.dir("alpha")), false, "no first-party list from a build whose lib was changed");
+  assert.equal(k.log.read({ type: "kernel.modules-list" }).length, 0);
+  await k.stop();
+});

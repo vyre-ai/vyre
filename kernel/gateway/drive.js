@@ -29,6 +29,28 @@ export function createDriveGateway(cfg) {
   };
 
   return Object.freeze({
+    /**
+     * The Drive as the vault's file seam for ONE chain (a lent member's request, `leases.forward`): the same `read(path, version)` and `write(path, source, { maxBytes })` the vault's
+     * `deps.files` has, but every call goes through the gate for this chain (`drive.read`, `drive.write`), so a route's Drive lists only ever narrow what the member may already do (FW-2).
+     * The bytes move a chunk at a time and one event says what happened, never the bytes.
+     */
+    files(chain) {
+      mustChain(chain);
+      return Object.freeze({
+        async read(/** @type {string} */ p, /** @type {number | null} */ version = null) {
+          const d = await gate(chain, "drive.read", file(p));
+          const st = await run(async () => cfg.drive.stat(p, { version }));
+          note(chain, "file.accessed", file(p), { path: p, version: st.version, what: "forward" }, d.decision);
+          return { ...st, stream: () => cfg.drive.stream(p, { version: st.version }) };
+        },
+        async write(/** @type {string} */ p, /** @type {AsyncIterable<Buffer>} */ source, /** @type {{ maxBytes: number, by?: string }} */ o) {
+          const d = await gate(chain, "drive.write", file(p));
+          const r = await run(() => cfg.drive.putStream(p, source, { by: actor(chain), maxBytes: o.maxBytes }));
+          note(chain, "file.written", file(p), { path: p, version: r.version, bytes: r.size, what: "forward" }, d.decision);
+          return { path: p, version: r.version, size: r.size, sha256: r.sha256 };
+        },
+      });
+    },
     async get(chain, /** @type {string} */ p, /** @type {{ version?: number | null }} */ o = {}) {
       if (o.version != null && (!Number.isInteger(o.version) || o.version < 1)) throw new KernelError("bad_input", "name a version number");
       return read(chain, "drive.read", file(p), () => cfg.drive.get(p, { version: o.version ?? null }), "file.accessed", { path: p, version: o.version ?? null }); },

@@ -16,6 +16,10 @@ import { setPeerHosting } from "../core/daemon/peer.js";
 process.env.VYRE_TEST_HOSTED = "1"; // for a vyred a test starts as a child (see peerHosting)
 setPeerHosting(true);
 
+// A ring ticket (relay.pair.ticket) is confirmed with three words by the Wink module once that module is up (X-1, 4 Oct 2026): the redeemer is a waiting pairing until the
+// person picks the right words. Tests of the relay's own pairing run with no one to confirm, so they take the one-step ring; test/wink.test.js unsets this and tests the gate.
+if (process.env.VYRE_TEST_UNGATED_RING === undefined) process.env.VYRE_TEST_UNGATED_RING = "1";
+
 // No test may run the machine's real tailscale: `vyre up` on a Mac with no box looks for one on
 // the tailnet (ADR 0008). A path that does not exist reads as "Tailscale is not installed". A test
 // that needs Tailscale sets its own fake, which replaces this.

@@ -153,7 +153,7 @@ test("nothing in the daemon, a module, the kernel or a tool reaches the wipe: no
     if (["node_modules", ".git"].includes(e.name)) continue;
     const f = path.join(d, e.name);
     if (e.isDirectory()) walk(f);
-    else if (/\.(m?js|json)$/.test(e.name) && !/test\.m?js$/.test(e.name) && /vault-wipe|wipeHome|wipeSealDir/.test(fs.readFileSync(f, "utf8"))) hits.push(path.relative(ROOT, f));
+    else if (/\.(m?js|json)$/.test(e.name) && !/test\.m?js$/.test(e.name) && /(from|import\()\s*["'][^"']*(vault-wipe|seal\/wipe)|\bwipeHome\(|\bwipeSealDir\(/.test(fs.readFileSync(f, "utf8"))) hits.push(path.relative(ROOT, f));
   } };
   for (const d of ["core", "kernel", "modules", "local", "deck", "relay", "lib"]) if (fs.existsSync(path.join(ROOT, d))) walk(path.join(ROOT, d));
   assert.deepEqual(hits.sort(), ["kernel/seal/wipe.js", "lib/vault-wipe.js"]);

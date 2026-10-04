@@ -9,15 +9,20 @@ import { DatabaseSync } from "node:sqlite";
 import { bootKernel } from "./boot.js";
 import { startSealer } from "./seal/client.js";
 import { fileKernelKey } from "./keys.js";
+import { Pool } from "./storage/pool.js";
+import { Drive } from "./storage/drive.js";
+import { dirBackend } from "./storage/backends.js";
 import { createSpaceKernels } from "./spaces/index.js";
 import { KernelError } from "./core/errors.js";
+import { isExactlyPerson } from "./core/chain.js";
+import { sealerPresence } from "./core/presence.js";
 import { createSupervisor } from "./modules/supervisor.js";
 import { createModuleHost } from "./modules/host.js";
 import { createEgress } from "./modules/egress.js";
 import { createFirstPartyCheck, acceptMinimums, verifyMinimums } from "./modules/firstparty.js";
 import { RELEASE_KEY } from "../lib/release-sig.js";
 import { devSwitch, PKG_ROOT } from "./devbuild.js";
-import { readReleaseList, verifyRawList, createListCheck } from "./modules/release-list.js";
+import { readReleaseList, verifyRawList, createListCheck, verifyTrees } from "./modules/release-list.js";
 
 const B32 = "abcdefghijklmnopqrstuvwxyz234567";
 const rand32 = (/** @type {number} */ n) => Array.from(crypto.randomBytes(n), b => B32[b & 31]).join("");
@@ -58,13 +63,24 @@ export async function bootHomeKernel(cfg) {
     if (fs.existsSync(id.keyFile)) { try { legacyKeys = [Buffer.from(fs.readFileSync(id.keyFile, "utf8").trim(), "hex")]; } catch { /* unreadable: nothing to verify against */ } }
   } else { log("kernel: DEVELOPER file key in use (VYRE_KERNEL_FILE_KEY=1); never the default, never for a real home"); key = fileKernelKey(id.dir); }
   const personalStore = cfg.storeFor ? await cfg.storeFor(id.space, { owner: id.owner, personal: true }) : undefined;
-  const k = await bootKernel({ db: cfg.db, space: id.space, ...(cfg.presence ? { presence: cfg.presence } : {}), owner: id.owner, owner_uid: process.getuid ? process.getuid() : 0, ...(key ? { key } : {}), legacyKeys, sealer, door: cfg.door, ...(cfg.forwardCredential ? { forwardCredential: cfg.forwardCredential } : {}), ...(personalStore ? { store: personalStore } : {}), ...(cfg.onStageEnter ? { onStageEnter: cfg.onStageEnter } : {}), ...(cfg.stageTasks ? { stageTasks: cfg.stageTasks } : {}) });
+  // The home Space's own Drive (versions, conflicts, backups): chunks encrypted under a pool key from the sealing process, one directory node on this home; other nodes attach later.
+  /** @type {any} */ let drive;
+  if (sealer) {
+    try {
+      const pool = new Pool({ dir: path.join(id.dir, "drive"), key: await sealer.poolKey({ owner: id.space }) });
+      pool.addNode({ id: "home", backend: dirBackend(path.join(id.dir, "drive", "node")), home: true });
+      drive = new Drive(pool);
+    } catch (e) { log(`kernel: no Drive on this home (${/** @type {Error} */ (e).message})`); }
+  }
+  const k = await bootKernel({ db: cfg.db, space: id.space, ...(drive ? { drive } : {}), ...(cfg.presence ? { presence: cfg.presence } : {}), owner: id.owner, owner_uid: process.getuid ? process.getuid() : 0, ...(key ? { key } : {}), legacyKeys, sealer, door: cfg.door, ...(cfg.forwardCredential ? { forwardCredential: cfg.forwardCredential } : {}), ...(personalStore ? { store: personalStore } : {}), ...(cfg.onStageEnter ? { onStageEnter: cfg.onStageEnter } : {}), ...(cfg.stageTasks ? { stageTasks: cfg.stageTasks } : {}) });
   // The migration pass ran inside the rebuild if there was anything to migrate; once the log holds a snapshot under the new seal the old key file has no use.
   if (sealer && legacyKeys.length && k.migrated) { try { fs.rmSync(id.keyFile, { force: true }); } catch { /* the file is harmless now */ } }
   // First party is a signature by the COMPILED release key (lib/release-sig.js), and a counter-signed list of minimum versions the release ships beside it
   // (`<home>/kernel/minimums.json`, written by the updater; never taken from a file that decides the key). There is no fallback to a path rule: a checkout whose modules are
   // not signed (development) must say so with VYRE_KERNEL_PATH_RULE=1, which is loud and never the default. A production kernel without a signature check does not start.
   /** @type {((dir: string) => boolean) | null} */ let firstPartyCheck = cfg.firstPartyCheck || null;
+  /** @type {(name: string) => boolean} */ let reservedName = () => false;
+  /** @type {(chain: any, proof: any) => Promise<{ ok: boolean, why?: string }>} */ let resetModulesList = async () => ({ ok: false, why: "no_signed_list" });
   if (!firstPartyCheck) {
     if (process.env.VYRE_KERNEL_PATH_RULE === "1" && !devSwitch("1")) log("kernel: VYRE_KERNEL_PATH_RULE ignored (this is a packaged daemon)");
     if (cfg.pathRule === true || devSwitch(process.env.VYRE_KERNEL_PATH_RULE)) (cfg.log || (() => {}))("kernel: DEVELOPER path rule for first-party modules (VYRE_KERNEL_PATH_RULE=1); never the default, never for a real home");
@@ -92,7 +108,13 @@ export async function bootHomeKernel(cfg) {
       // The release's signed list of first-party modules (kernel/modules/release-list.js): SHA256SUMS signed by the release key lists modules.json, which names every shipped module's
       // tree. The highest counter accepted, with the signed material that carried it, is kept in the sealed log and re-verified here, so a rollback or a missing file never relaxes it.
       /** @type {{ counter: number, modules: Record<string, any> } | null} */ let accepted = null;
-      for (const e of k.log.read({ type: "kernel.modules-list" })) {
+      const homeActor = `service:home@${id.space}`;
+      // Only the home's own chain writes these events (a forged event from another actor is ignored, SG-6), the list in one is re-verified against the release key, and an owner's
+      // reset (presence-gated, `resetModulesList` below) forgets everything before it.
+      for (const e of k.log.read({ type: "kernel.*" })) {
+        if (e.type !== "kernel.modules-list" && e.type !== "kernel.modules-list-reset") continue;
+        if (e.actor !== homeActor) { log("kernel: a kernel.modules-list event was not written by the home; ignored"); continue; }
+        if (e.type === "kernel.modules-list-reset") { accepted = null; continue; }
         const v = e.data ? verifyRawList(e.data.raw, relKey) : null;
         if (!v) { log("kernel: a kernel.modules-list event does not carry a list the release key signed; ignored"); continue; }
         if (!accepted || v.counter > accepted.counter) accepted = v;
@@ -103,12 +125,34 @@ export async function bootHomeKernel(cfg) {
       if (cur.ok) {
         if (!accepted || cur.counter >= accepted.counter) {
           active = { counter: cur.counter, modules: cur.modules };
-          if (!accepted || cur.counter > accepted.counter) await k.log.append(k.chains.fromFacts({ kind: "module", module: "home", first_party: true }), { type: "kernel.modules-list", sv: 1, subject: `vyre://${id.space}/kernel/modules-list`, data: { counter: cur.counter, raw: cur.raw }, vis: "owner", red: "internal" });
+          // SG-3: the counter moves up only after this build's own listed modules verify against the list; a build whose folders were changed never raises it.
+          if (!accepted || cur.counter > accepted.counter) {
+            const t = verifyTrees(root, cur);
+            if (t.ok) await k.log.append(k.chains.fromFacts({ kind: "module", module: "home", first_party: true }), { type: "kernel.modules-list", sv: 1, subject: `vyre://${id.space}/kernel/modules-list`, data: { counter: cur.counter, raw: cur.raw }, vis: "owner", red: "internal" });
+            else {
+              log(`kernel: this build's modules do not all match its signed list (${t.bad.join(", ")}); the list counter is not advanced`);
+              // SG-5: when the kernel's own code or the shared libraries differ from what the release signed, the list this build carries cannot be trusted to name first party: only the last accepted list (if any) stays.
+              if (t.bad.some((/** @type {string} */ n) => n === "kernel" || n === "lib")) { log(`kernel: the kernel or lib tree differs from the release's signed hashes; this build's module list is not used`); active = accepted; }
+            }
+          }
         } else log(`kernel: this build's module list (counter ${cur.counter}) is older than one already accepted (${accepted.counter}); the accepted one stays in force`);
       } else if (accepted) log(`kernel: ${cur.why}; the last accepted module list stays in force`);
       else log(`kernel: no first-party module list (${cur.why}); only a module carrying its own signature is first party`);
       const listCheck = active ? createListCheck(active, log) : null;
-      firstPartyCheck = listCheck ? (/** @type {string} */ dir) => perModule(dir) || listCheck(dir) : perModule;
+      // SG-1: the signed list decides for every name it contains. A listed name passes by the list alone (an old per-module signature is not an OR with it); a name it does not
+      // contain is decided by the per-module signature as before. SG-2: a listed name stays reserved (`reservedName`), so a folder that fails the list is refused, never loaded as an added module.
+      const nameOf = (/** @type {string} */ dir) => { try { return String(JSON.parse(fs.readFileSync(path.join(dir, "module.json"), "utf8")).name); } catch { return ""; } };
+      const reserved = (/** @type {string} */ n) => Boolean(active && Object.hasOwn(active.modules, n));
+      reservedName = reserved;
+      firstPartyCheck = listCheck ? (/** @type {string} */ dir) => (reserved(nameOf(dir)) ? listCheck(dir) : perModule(dir)) : perModule;
+      /** The owner's reset of the counter, for a build older than the one accepted (a deliberate downgrade): presence-gated, one event, and the next boot reads the build's own list. */
+      resetModulesList = async (/** @type {any} */ chain, /** @type {any} */ proof) => {
+        if (!isExactlyPerson(chain) || chain.hops[0].actor.id !== id.owner) return { ok: false, why: "owner_only" };
+        const why = !sealer ? "no_presence_verifier" : await sealerPresence(sealer).check({ chain, op: "grant.modules_list_reset", fields: { counter: accepted ? accepted.counter : 0 }, proof });
+        if (why) return { ok: false, why };
+        await k.log.append(k.chains.fromFacts({ kind: "module", module: "home", first_party: true }), { type: "kernel.modules-list-reset", sv: 1, subject: `vyre://${id.space}/kernel/modules-list`, data: { from: accepted ? accepted.counter : 0 }, vis: "owner", red: "internal" });
+        return { ok: true };
+      };
     }
   }
   /** @type {any} */ let host;
@@ -125,5 +169,5 @@ export async function bootHomeKernel(cfg) {
   // refuses a hosted Space unless this boot is the developer file-key one.
   const spaces = createSpaceKernels({ root: cfg.root, personal: { space: id.space, kernel: k }, openDb: (/** @type {string} */ f) => new DatabaseSync(f), ...(cfg.stageFactory ? { stageFactory: cfg.stageFactory } : {}), ...(sealer ? { sealer } : { fileKey: true }), ...(cfg.door ? { doorFor: () => cfg.door } : {}), ...(cfg.storeFor ? { storeFor: cfg.storeFor } : {}) });
   await spaces.start();
-  return Object.freeze({ ...k, spaces, id: { space: id.space, owner: id.owner }, kernelFor: k.kernelFor, firstPartyCheck, moduleHost: host, supervisor, moduleApprovals: approvals, stop: async () => { await spaces.stop(); await supervisor.stopAll(); if (ownSealer && sealer) await sealer.close(); } });
+  return Object.freeze({ ...k, spaces, id: { space: id.space, owner: id.owner }, kernelFor: k.kernelFor, firstPartyCheck, reservedName, resetModulesList, moduleHost: host, supervisor, moduleApprovals: approvals, stop: async () => { await spaces.stop(); await supervisor.stopAll(); if (ownSealer && sealer) await sealer.close(); } });
 }

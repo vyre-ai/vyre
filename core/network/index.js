@@ -16,6 +16,7 @@ import { GUEST_SAFE, allowedTools, grantedPatterns, listed, settings } from "../
 import { agentClaim } from "../modules/index.js";
 import { startFunnel } from "./funnel.js";
 import { startTailscale } from "./tailscale.js";
+import { registerWinkNetwork } from "./wink.js";
 
 const LOGIN = /^[^\s@]{1,128}@[^\s@]{1,128}$/;
 const str = { type: "string" };
@@ -141,6 +142,7 @@ export default {
     } });
 
     const tailscale = startTailscale(ctx);
+    registerWinkNetwork(ctx);
 
     return { async stop() { tailscale.stop(); await funnel.stop(); } };
   },
