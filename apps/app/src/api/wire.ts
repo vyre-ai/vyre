@@ -72,7 +72,7 @@ export function makeBox(platform: () => Promise<Platform>) {
       return socketOn(path);
     },
     /** A read, now. */
-    async call<T = unknown>(tool: string, input: Record<string, unknown> = {}, o?: { presence?: string }): Promise<Result<T>> {
+    async call<T = unknown>(tool: string, input: Record<string, unknown> = {}, o?: { presence?: string; kernelProof?: string }): Promise<Result<T>> {
       return (await client()).call<T>(tool, input, o);
     },
     /** A write: on screen as sending at once, delivered by the outbox, gone on the box's answer. */

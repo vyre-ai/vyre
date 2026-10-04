@@ -28,6 +28,9 @@ const WIDTH = Number(flag("--width", "1280"));
 const CALLER = flag("--caller", "deck");
 const PRESENCE = bool("--presence");
 const SETUP = bool("--setup");
+// --signin <node>: open the owner's person session with the dev tool signin.dev (dev box with the stand-in file, run from an ssh shell) and send it as the __Host-vyre_person cookie.
+const SIGNIN_NODE = flag("--signin", "");
+let PERSON_TOKEN = "";
 if (!SOCKET && !BOX_URL) { console.error("app-walk: give --socket <path to the box's vyred.sock> or --box-url <http://host:port>"); process.exit(2); }
 fs.mkdirSync(OUT, { recursive: true });
 
@@ -51,6 +54,7 @@ const needsProof = (t) => /^(vault\.(reveal|put|unlock)|spaces\.identity\.(code\
 function forward(req, res) {
   // With --presence the dev box's hand-made stand-in answers every proof ask (method "stand-in", logged as such on the box); it is honoured only on a development build.
   if (PRESENCE && !req.headers["x-vyre-presence"] && needsProof(/^\/v1\/tools\/([^/?#]+)/.exec(req.url)?.[1] ?? "")) req.headers["x-vyre-presence"] = "stand-in";
+  if (PERSON_TOKEN) req.headers.cookie = `__Host-vyre_person=${PERSON_TOKEN}`;
   const opts = SOCKET ? { socketPath: SOCKET, path: req.url, method: req.method, headers: { ...req.headers, host: "localhost", "x-vyre-caller": CALLER } }
     : { host: new URL(BOX_URL).hostname, port: new URL(BOX_URL).port, path: req.url, method: req.method, headers: { ...req.headers, host: new URL(BOX_URL).host, "x-vyre-caller": CALLER } };
   const up = http.request(opts, (r) => {
@@ -87,12 +91,19 @@ const BASE = `http://127.0.0.1:${server.address().port}/app`;
 function boxCall(tool, input = {}) {
   return new Promise((resolve) => {
     const body = JSON.stringify(input);
-    const opts = SOCKET ? { socketPath: SOCKET, path: `/v1/tools/${tool}`, method: "POST", headers: { host: "localhost", "x-vyre-caller": CALLER, ...(PRESENCE && needsProof(tool) ? { "x-vyre-presence": "stand-in" } : {}), "content-type": "application/json", "content-length": Buffer.byteLength(body) } }
+    const opts = SOCKET ? { socketPath: SOCKET, path: `/v1/tools/${tool}`, method: "POST", headers: { host: "localhost", "x-vyre-caller": CALLER, ...(PERSON_TOKEN ? { cookie: `__Host-vyre_person=${PERSON_TOKEN}` } : {}), ...(PRESENCE && needsProof(tool) ? { "x-vyre-presence": "stand-in" } : {}), "content-type": "application/json", "content-length": Buffer.byteLength(body) } }
       : { host: new URL(BOX_URL).hostname, port: new URL(BOX_URL).port, path: `/v1/tools/${tool}`, method: "POST", headers: { "x-vyre-caller": CALLER, "content-type": "application/json", "content-length": Buffer.byteLength(body) } };
     const r = http.request(opts, (x) => { let s = ""; x.on("data", (c) => (s += c)); x.on("end", () => { try { const j = JSON.parse(s); resolve(j.error ? { error: j.error } : { data: j.data ?? j }); } catch { resolve({ error: { code: "bad_reply", message: s.slice(0, 120) } }); } }); });
     r.on("error", (e) => resolve({ error: { code: "unreachable", message: String(e.message) } }));
     r.end(body);
   });
+}
+
+if (SIGNIN_NODE) {
+  const r = await boxCall("signin.dev", { node: SIGNIN_NODE, label: "app-walk" });
+  if (r.error || !r.data?.token) { console.error(`app-walk: signin.dev refused: ${JSON.stringify(r.error ?? r.data).slice(0, 300)}`); process.exit(4); }
+  PERSON_TOKEN = String(r.data.token);
+  console.log(`signed in as the owner (method ${r.data.method}); the token is sent as a cookie and never printed`);
 }
 
 // ---- what the box has, so each step knows its target ----
