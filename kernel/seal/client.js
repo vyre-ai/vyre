@@ -14,8 +14,8 @@ const PROCESS = path.join(path.dirname(fileURLToPath(import.meta.url)), "process
 export class SealError extends Error { constructor(code) { super(code); this.code = code; } }
 
 /** @param {{ dir: string, sinks?: Record<string,string>, timeoutMs?: number, execPath?: string }} o */
-export function startSealer({ dir, sinks = {}, timeoutMs = 20_000, execPath = process.execPath, profile, dev = false, unattested = false, software = false, verifiers = null }) {
-  const env = { VYRE_SEAL_DIR: dir, VYRE_SEAL_SINKS: JSON.stringify(sinks), PATH: process.env.PATH || "", ...(profile ? { VYRE_SEAL_PROFILE: profile } : {}), ...(dev ? { VYRE_SEAL_DEV: "1" } : {}), ...(unattested ? { VYRE_SEAL_UNATTESTED: "1" } : {}), ...(software ? { VYRE_SEAL_SOFTWARE: "1" } : {}), ...(verifiers ? { VYRE_SEAL_VERIFIERS: verifiers } : {}), ...(process.env.VYRE_AGENT_UIDS ? { VYRE_AGENT_UIDS: process.env.VYRE_AGENT_UIDS } : {}) };
+export function startSealer({ dir, sinks = {}, timeoutMs = 20_000, execPath = process.execPath, profile, dev = false, unattested = false, software = false, appattest = null, verifiers = null }) {
+  const env = { VYRE_SEAL_DIR: dir, VYRE_SEAL_SINKS: JSON.stringify(sinks), PATH: process.env.PATH || "", ...(profile ? { VYRE_SEAL_PROFILE: profile } : {}), ...(dev ? { VYRE_SEAL_DEV: "1" } : {}), ...(unattested ? { VYRE_SEAL_UNATTESTED: "1" } : {}), ...(software ? { VYRE_SEAL_SOFTWARE: "1" } : {}), ...(appattest ? { VYRE_SEAL_APPATTEST_DEV: "1", ...(appattest.rootPem ? { VYRE_SEAL_APPATTEST_ROOT: appattest.rootPem } : {}), ...(appattest.appIds ? { VYRE_SEAL_APPATTEST_APPS: appattest.appIds.join(",") } : {}) } : {}), ...(verifiers ? { VYRE_SEAL_VERIFIERS: verifiers } : {}), ...(process.env.VYRE_AGENT_UIDS ? { VYRE_AGENT_UIDS: process.env.VYRE_AGENT_UIDS } : {}) };
   const child = spawn(execPath, [PROCESS], { stdio: ["pipe", "pipe", "inherit"], env });
   const pending = new Map(); let n = 0, closed = false;
   readline.createInterface({ input: child.stdout }).on("line", line => {

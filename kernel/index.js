@@ -25,6 +25,7 @@ import { proofFrom, proofRequest, acceptProofRequest, proofChainHash } from "./r
 import { createOffersPort } from "./remote/offers-port.js";
 import { createKernelSeal } from "./core/seal.js";
 import { runnerPorts } from "./gateway/runner-ports.js";
+import { createKitApply } from "./tasks/kit-apply.js";
 
 /**
  * @param {{ space: string, owner: string, owner_uid: number, key?: Uint8Array | string, seal?: any, label?: () => { name?: string, words?: string }, clock?: () => number,
@@ -85,7 +86,10 @@ export async function createKernel(cfg) {
     approver: () => ({ kind: "person", id: ownerRef.id, space: cfg.space }), resolve: cfg.resolve, enforce: (/** @type {any} */ c, /** @type {any} */ d) => limits.enforce(c, d),
   });
   const roomPort = grantsStore ? createRoomPort({ grantsStore }) : null;
+  // An approved Kit install is presence for that install (kernel/tasks/kit-apply.js); the gateway's authorizer asks `waives`, the install asks `begin`.
+  const kitApply = createKitApply({ space: cfg.space, tasks, log, chains, clock });
   gateway = createGateway({
+    kitApply, waives: (/** @type {any} */ w, /** @type {any} */ q) => kitApply.waives(w, q),
     room: roomPort,
     space: cfg.space, store, log, chains, clock, limits, tasks, approvedAct: (/** @type {any} */ q) => tasks.useApproval(q), get owner() { return ownerRef.id; }, presence, hasPresenceSession, expr: cfg.expr === undefined ? defaultExpr : cfg.expr,
     ...(grantsStore ? { grantsStore } : { grants: cfg.grants, members: cfg.members }),
