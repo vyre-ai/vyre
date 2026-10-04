@@ -167,8 +167,8 @@ export default {
     // Reviewer, 28 Sep: onboard now loads on Solo too, so this can no longer resume
     // unconditionally -- on a Mac that would bind the setup listener with no server chosen and
     // nothing to onboard into. Belt and braces alongside the boxOnly() guard on onboard.link.
-    if (config.isServer(ctx.config.machine) && !net().ownerSeen) await lb.resume().catch(e => ctx.log(`onboard: the kept link did not reopen: ${e.message}`));
-    else keep.save(null);
+    // 0.3: a server has no first-run page. The listener is never opened (onboard.link refuses), so nothing listens on the onboarding port; a server is set up from the owner's app after pairing.
+    keep.save(null);
     let claimUrl = null;
     let indexing = null;
     let lastPhase = "idle";
@@ -812,6 +812,7 @@ export default {
       input: obj({ mint: { type: "boolean" } }),
       run: async (input, { caller }) => {
         boxOnly(); // revisit once the Solo Deck loopback design (docs/design/anywhere.md) lands and reuses this link
+        throw Object.assign(new Error("a server has no setup page: pair it from your Vyre app (the installer shows the code; or run vyre call wink.server.code)"), { code: "not_available" });
         if (!["cli", "local", "capsule"].includes(String(caller))) throw new Error("links are made only from the box's own terminal");
         const address = net().address || null;
         // Once the owner has come in over the tailnet, or onboarding is finished and the address
