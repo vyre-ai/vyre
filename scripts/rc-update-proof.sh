@@ -108,7 +108,7 @@ do_update() { # LABEL STORE: STORE is none (an untouched box: no VYRE_STORE appe
   ready || fail "$1: the candidate did not come up after the update"
   # A server an OLD updater updated starts the new image before that updater publishes the release's files: the daemon says "Finishing the update", takes the module list from the published
   # shell.json when it arrives and restarts once by itself. Wait for that (bounded), never for a manual restart.
-  i=0; until vyre status 2>/dev/null | grep -q '[1-9][0-9]* modules running'; do i=$((i + 1)); [ $i -lt 75 ] || { vyre status | tail -4; fail "$1: the box never started its modules by itself after the update"; }; sleep 2; done
+  i=0; until vyre status 2>/dev/null | grep -q '[1-9][0-9]* modules running'; do i=$((i + 1)); [ $i -lt 75 ] || { vyre status | tail -4; echo '--- update.log:'; tail -25 "$WORK/update.log"; echo '--- daemon log:'; docker logs vyre-vyre-1 2>&1 | tail -50; echo '--- env:'; docker exec vyre-vyre-1 env | grep '^VYRE_' | sed 's/KEY=.*/KEY=.../'; fail "$1: the box never started its modules by itself after the update"; }; sleep 2; done
   sleep 5
   [ "$(hostv)" = "$NEWV" ] || fail "$1: after the update the box holds $(hostv), not $NEWV"
   docker exec vyre-vyre-1 env | grep -qx 'VYRE_KERNEL=1' || fail "$1: after the update the kernel is not on (VYRE_KERNEL=1 is missing)"
@@ -133,7 +133,7 @@ do_update() { # LABEL STORE: STORE is none (an untouched box: no VYRE_STORE appe
   # The records written before the update are read back, and the box is still on the store they live in (the built-in one: there is no status line for the store, so: no Twenty stack, and the data reads).
   read_back Robin memory.me || { echo "--- memory.me:"; vyre call memory.me '{}' 2>&1 | head -5; fail "$1: the memory fact written before the update is not read back"; }
   read_back 'retainer draft' planner.list || fail "$1: the planner note written before the update is not read back"
-  [ "$(docker exec vyre-vyre-1 cat /home/vyre/.vyre/rc-marker 2>/dev/null)" = rc-marker-1 ] || fail "$1: the data written before the update is gone"
+  [ "$(docker exec -u 1000 vyre-vyre-1 cat /home/vyre/.vyre/rc-marker 2>/dev/null)" = rc-marker-1 ] || fail "$1: the data written before the update is gone"
 }
 do_update "2 update" none
 # A record written after the update is read back after a restart.
@@ -146,7 +146,7 @@ say "2 ok: updated to $NEWV with no VYRE_STORE added, kernel on, every module ru
 vyre update --rollback >"$WORK/rollback.log" 2>&1 || { tail -30 "$WORK/rollback.log"; fail "the rollback failed"; }
 ready || fail "the old release did not come back after the rollback"
 [ "$(docker exec vyre-vyre-1 node -p 'require("/opt/vyre/package.json").version')" = "$OLDV" ] || fail "after the rollback the box does not run $OLDV"
-[ "$(docker exec vyre-vyre-1 cat /home/vyre/.vyre/rc-marker 2>/dev/null)" = rc-marker-1 ] || fail "the data is gone after the rollback"
+[ "$(docker exec -u 1000 vyre-vyre-1 cat /home/vyre/.vyre/rc-marker 2>/dev/null)" = rc-marker-1 ] || fail "the data is gone after the rollback"
 say "3 ok: rolled back to $OLDV, data intact"
 
 # 4. the update again, from the rolled-back home, now on a box that HAS a VYRE_STORE (as a 0.3 install writes it): the setting is kept, and the same set runs (a migration that is not repeatable fails here).
