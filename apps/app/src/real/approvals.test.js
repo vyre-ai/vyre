@@ -60,3 +60,8 @@ test("AP-1 on the asking side: a proof request or an ask whose hash is not the h
   await assert.rejects(askPhone(box([{ state: "waiting" }], "request").call, { tool: "rules.enable", input: { id: "r" }, space: "spc_abcdefghijkl", ...FAST }), (/** @type {any} */ e) => e.code === "hash_mismatch");
   await assert.rejects(askPhone(box([{ state: "waiting" }], "ask").call, { tool: "rules.enable", input: { id: "r" }, space: "spc_abcdefghijkl", ...FAST }), (/** @type {any} */ e) => e.code === "hash_mismatch");
 });
+
+test("WH-1 on the asking side: a proof request whose fields carry op or space is refused", async () => {
+  const call = async (/** @type {string} */ tool) => tool === "approvals.request" ? { op: "grant.rule_enable", space: "spc_abcdefghijkl", fields: { op: "grant.rule_remove" }, payload_hash: kernelHash("grant.rule_remove", "spc_abcdefghijkl", {}) } : {};
+  await assert.rejects(askPhone(call, { tool: "rules.enable", input: { id: "r" }, space: "spc_abcdefghijkl", ...FAST }), (/** @type {any} */ e) => e.code === "hash_mismatch");
+});

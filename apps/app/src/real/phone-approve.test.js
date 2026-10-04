@@ -59,3 +59,14 @@ test("the app's payload hash is the kernel's, byte for byte, on several shapes",
   for (const [op, space, fields] of [["grant.rule_set", "spc_aaaaaaaaaaaa", { resource: "r", input_hash: "h" }], ["grant.role", "spc_bbbbbbbbbbbb", { n: 1, list: [1, { z: 2, a: null }], s: "é\"" }], ["task.decide", "spc_cccccccccccc", {}]])
     assert.equal(payloadHash(/** @type {string} */ (op), /** @type {string} */ (space), /** @type {any} */ (fields)), kernelHash(/** @type {string} */ (op), /** @type {string} */ (space), /** @type {any} */ (fields)));
 });
+
+test("WH-1: a card whose fields carry an op or space key is refused before Face ID, and nothing is signed", async () => {
+  let signed = 0;
+  const signer = { signPresence: async (/** @type {any} */ r) => { signed++; return { payload_hash: r.payload_hash }; } };
+  const call = async () => { throw new Error("must not be called"); };
+  // (op a, fields {op: b}) hashes like (op b, fields {}): the hash matches, the card would still show the wrong act.
+  const evil = { ...CARD, op: "grant.rule_disable", fields: { op: "grant.rule_remove" }, payload_hash: kernelHash("grant.rule_remove", CARD.space, {}) };
+  await assert.rejects(approveCard(evil, signer, call, header), (/** @type {any} */ e) => e.code === "hash_mismatch");
+  await assert.rejects(approveCard({ ...CARD, fields: { ...FIELDS, space: "spc_zzzzzzzzzzzz" } }, signer, call, header), (/** @type {any} */ e) => e.code === "hash_mismatch");
+  assert.equal(signed, 0);
+});
