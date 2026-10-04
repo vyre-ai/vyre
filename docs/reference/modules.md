@@ -50,7 +50,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 10 | 9 | cli, deck |
 | [`memory`](#memory) | `core/memory` | `box`, `local` | 46 | 15 | capsule, cli, deck |
 | [`mentions`](#mentions) | `core/mentions` | `box`, `local` | 3 | 0 | none |
-| [`modules`](#modules) | `core/modulelist` | `box`, `local` | 1 | 0 | cli |
+| [`modules`](#modules) | `core/modulelist` | `box`, `local` | 5 | 0 | cli |
 | [`names`](#names) | `core/names` | `box` | 12 | 12 | cli |
 | [`network`](#network) | `core/network` | `box` | 13 | 4 | capsule, cli, deck |
 | [`onboard`](#onboard) | `core/onboard` | `box`, `local` | 14 | 2 | none |
@@ -470,10 +470,10 @@ The owner's reset of the accepted first-party module list, for a deliberate down
 - Folder: `core/modulelist`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [1](tools.md#modules)
+- Tools: [5](tools.md#modules)
 - Emits: no events
 - Shows on: cli
-- Needs daemon: `modulesListReset`
+- Needs daemon: `modulesListReset`, `modulesListResetPayload`
 - Needs kernel: `{"actions":[]}`
 
 ## names

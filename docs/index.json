@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":337,"tool":1125,"event":449,"config":254,"env":212,"screen":20,"concept":43},
+  "counts": {"command":337,"tool":1129,"event":449,"config":254,"env":212,"screen":20,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -783,6 +783,10 @@
     {"kind":"config","name":"modules.disable","definedIn":"core/config/index.js","page":"reference/config.md#configjson","mentions":[{"page":"releases/0.1.0.md","line":113,"anchor":"known-limits"},{"page":"concepts/box-and-mac.md","line":37,"anchor":"one-process-per-machine"},{"page":"concepts/modules.md","line":35,"anchor":"how-vyred-loads-them"},{"page":"build/first-module.md","line":414,"anchor":"9-switch-it-off-and-on"}]},
     {"kind":"config","name":"modules.enable","definedIn":"core/config/index.js","page":"reference/config.md#configjson","mentions":[{"page":"concepts/box-and-mac.md","line":37,"anchor":"one-process-per-machine"},{"page":"concepts/modules.md","line":35,"anchor":"how-vyred-loads-them"},{"page":"build/first-module.md","line":433,"anchor":"9-switch-it-off-and-on"},{"page":"adr/0033-hackable-vyre.md","line":361,"anchor":"5-third-party-modules"}]},
     {"kind":"tool","name":"modules.list.reset","definedIn":"core/modulelist/index.js","page":"reference/tools.md#moduleslistreset","module":"modules","mentions":[]},
+    {"kind":"tool","name":"modules.list.reset.answer","definedIn":"core/modulelist/index.js","page":"reference/tools.md#moduleslistresetanswer","module":"modules","mentions":[]},
+    {"kind":"tool","name":"modules.list.reset.ask","definedIn":"core/modulelist/index.js","page":"reference/tools.md#moduleslistresetask","module":"modules","mentions":[]},
+    {"kind":"tool","name":"modules.list.reset.pending","definedIn":"core/modulelist/index.js","page":"reference/tools.md#moduleslistresetpending","module":"modules","mentions":[]},
+    {"kind":"tool","name":"modules.list.reset.status","definedIn":"core/modulelist/index.js","page":"reference/tools.md#moduleslistresetstatus","module":"modules","mentions":[]},
     {"kind":"config","name":"name","definedIn":"core/config/index.js","page":"reference/config.md#configjson","mentions":[{"page":"MODULES.md","line":72,"anchor":"modulejson"},{"page":"build/AGENT-BRIEF.md","line":119,"anchor":"modulejson-cheat-sheet"},{"page":"adr/0047-module-contract-v1.md","line":104,"anchor":"2-modulejson-v1"}]},
     {"kind":"event","name":"name.claimed","definedIn":"core/names/service.js","page":"reference/events.md#names","module":"names","mentions":[]},
     {"kind":"event","name":"name.moved","definedIn":"core/names/service.js","page":"reference/events.md#names","module":"names","mentions":[]},
