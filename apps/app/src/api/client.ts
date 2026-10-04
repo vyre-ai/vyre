@@ -91,7 +91,7 @@ export type Stream = ReturnType<typeof follow>;
 
 export type Client = {
   /** A read: one call now, never queued. Errors come back as {error}. */
-  call<T = unknown>(tool: string, input?: Record<string, unknown>, o?: { presence?: string; kernelProof?: string }): Promise<Result<T>>;
+  call<T = unknown>(tool: string, input?: Record<string, unknown>, o?: { presence?: string; kernelProof?: string; approval?: string }): Promise<Result<T>>;
   /**
    * A write: queued in the outbox with an Idempotency-Key, delivered in order, retried until the
    * box answers. `answered` resolves with that answer.
@@ -191,9 +191,9 @@ export async function createClient(d: ClientDeps): Promise<Client> {
   let stream: Stream | null = null;
 
   return {
-    async call<T>(tool: string, input: Record<string, unknown> = {}, o: { presence?: string; kernelProof?: string } = {}) {
+    async call<T>(tool: string, input: Record<string, unknown> = {}, o: { presence?: string; kernelProof?: string; approval?: string } = {}) {
       // A kernel proof (base64url JSON) a paired phone signed for this act rides beside the request, never in the input.
-      const r = await once(tool, input, "", { ...(o.presence ? { "x-vyre-presence": o.presence } : {}), ...(o.kernelProof ? { "x-vyre-kernel-proof": o.kernelProof } : {}) });
+      const r = await once(tool, input, "", { ...(o.presence ? { "x-vyre-presence": o.presence } : {}), ...(o.kernelProof ? { "x-vyre-kernel-proof": o.kernelProof } : {}), ...(o.approval ? { "x-vyre-approval": o.approval } : {}) });
       if (r.error?.code === PERSON) sessionRequired();
       return r as Result<T>;
     },
