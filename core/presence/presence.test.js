@@ -944,3 +944,49 @@ test("PS-4: removing a presence key also deletes the pending pair grants it conf
   assert.equal(p.remove("pkA"), true);
   assert.deepEqual(grants(), ["devB"], "the removed key's grant is gone at once, the other's stays");
 });
+
+test("person sessions report their key's strength: what the row recorded, else software for a paired row and the flag for any other, null for a stranger", async t => {
+  const home = tempHome(t);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  new Presence({ db, platform: "linux", touchid: null, webauthn: null, who: async () => [] });
+  const { PersonSessions } = await import("./person.js");
+  const people = new PersonSessions({ db });
+  const hw = people.start({ node: "n1", software: false }), sw = people.start({ node: "n2", software: true });
+  assert.equal(people.strength(hw.id), "enclave");
+  assert.equal(people.strength(sw.id), "software");
+  assert.equal(people.strength("nope"), null);
+  // A row that recorded its opening proof's strength answers with it: an unattested enclave key is not software.
+  const enc = people.start({ node: "n3", paired: true, software: false, strength: "enclave, unattested" });
+  assert.equal(people.strength(enc.id), "enclave, unattested");
+  const pk = people.start({ node: "n4", paired: true, strength: "passkey" });
+  assert.equal(people.strength(pk.id), "passkey");
+  // A paired row that recorded none (made before strength existed) fails closed.
+  const old = people.start({ node: "n5", paired: true, software: false });
+  assert.equal(people.strength(old.id), "software");
+});
+
+test("the strength migration marks every paired session made before it as software, and leaves the rest alone", async t => {
+  const home = tempHome(t);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const { migrate } = await import("../store/index.js");
+  const { MIGRATIONS } = await import("./index.js");
+  const at = MIGRATIONS.findIndex(m => m.includes("ADD COLUMN strength"));
+  assert.ok(at > 0, "the strength migration is in the list");
+  migrate(db, "presence", MIGRATIONS.slice(0, at));
+  const ins = db.prepare("INSERT INTO presence_people (id, hash, kind, node, created, last_used, max, paired, software) VALUES (?, 'h', ?, 'n', 1, 1, 9e15, ?, 0)");
+  ins.run("old-paired", "bearer", 1); ins.run("old-cookie", "cookie", 0);
+  migrate(db, "presence", MIGRATIONS);
+  const { PersonSessions } = await import("./person.js");
+  const people = new PersonSessions({ db });
+  assert.equal(people.strength("old-paired"), "software", "a paired device made before strength existed is software until it proves its key again");
+  assert.equal(people.strength("old-cookie"), "enclave", "a non-paired row keeps its flag");
+});
+
+test("the strength vocabulary is one list, and everything but software passes", async () => {
+  const { STRENGTHS, isNotSoftware } = await import("./strengths.js");
+  assert.deepEqual([...STRENGTHS], ["software", "enclave", "enclave, unattested", "passkey"]);
+  assert.deepEqual(STRENGTHS.filter(isNotSoftware), ["enclave", "enclave, unattested", "passkey"]);
+  for (const bad of ["hardware", "keystore", "", "Software", undefined]) assert.equal(isNotSoftware(bad), false, String(bad));
+});

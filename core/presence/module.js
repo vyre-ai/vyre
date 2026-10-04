@@ -9,6 +9,7 @@
 
 import crypto from "node:crypto";
 import { devSwitch } from "../../kernel/devbuild.js";
+import { STRENGTHS } from "./strengths.js";
 import { Presence } from "./index.js";
 import { PersonSessions } from "./person.js";
 import { isServer } from "../config/index.js";
@@ -205,9 +206,9 @@ export default {
     // `software` is a session made with a key nobody had to touch. A device whose own key lives in the phone's Secure Enclave or the Android keystore (what the app reported at pairing, accepted
     // unattested for now: ruling 6410c6a) opens a session that is NOT software; a software key opens a software one, which the peer door counts as presence only where software proofs are taken
     // (a development build behind its switch). A session a phone approved takes the approving proof's strength instead (below).
-    const strongKey = (/** @type {any} */ rec) => rec.hardware === true || rec.keyStorage === "hardware";
+    const verifiedStrength = (/** @type {any} */ rec) => (rec && typeof rec.proofStrength === "string" && STRENGTHS.includes(rec.proofStrength) && rec.proofStrength !== "software" ? rec.proofStrength : "software");
     /** The strength written on a paired session: from the key the device registered ("enclave, unattested": the app says Secure Enclave or keystore, no attestation verified), or the approving proof's when the owner's phone approved this sign-in. */
-    const strengthOf = (/** @type {string} */ device, /** @type {any} */ rec, peek = false) => approvedStrength(device, peek) || (strongKey(rec) ? "enclave, unattested" : "software");
+    const strengthOf = (/** @type {string} */ device, /** @type {any} */ rec, peek = false) => approvedStrength(device, peek) || verifiedStrength(rec);
     // ---- sign in approved on the owner's phone ---------------------------------------------------------------------------------------------------------------
     // A browser (software key, no passkey on the peer path) asks; the owner's phone shows "Let <device> sign in" and answers with its own proof; the browser then signs in as usual (pair-challenge, start-paired)
     // and that one session carries the strength of the approving proof (enclave, or unattested enclave), not the browser's key.
@@ -216,7 +217,7 @@ export default {
     const asks = new Map();
     const liveAsk = (/** @type {string} */ device) => { const a = asks.get(device); if (a && a.expires <= Date.now()) { asks.delete(device); return null; } return a || null; };
     /** An approved, unexpired ask of this device with a strong approving proof; `peek` leaves it (the grant uses it once). */
-    const approvedStrength = (/** @type {string} */ device, peek = false) => { const a = liveAsk(device); if (!a || a.state !== "approved" || !a.strong) return null; if (!peek) asks.delete(device); return a.method === "passkey" ? "passkey" : "enclave, unattested"; };
+    const approvedStrength = (/** @type {string} */ device, peek = false) => { const a = liveAsk(device); if (!a || a.state !== "approved" || !a.strong) return null; if (!peek) asks.delete(device); return a.method === "passkey" ? STRENGTHS[3] : STRENGTHS[2]; };
     const approvedStrong = (/** @type {string} */ device, peek = false) => approvedStrength(device, peek) !== null;
 
     // ---- an owner-paired device (ADR 0032 section 2d) ----------------------------------------------
@@ -401,6 +402,16 @@ export default {
     });
 
     // Removal of a device, its key leaving the identity list, a recovery reset or sign-out-everywhere: wink says so, here it ends.
+    ctx.tool("presence.person.strength", {
+      internal: true,
+      description: "The strength of a live person session, for a module that relays a paired device's act to a person-only tool: { strength: one of STRENGTHS | null }. Only pluginagent asks.",
+      input: obj({ id: str }, ["id"]),
+      run: async (input, meta = {}) => {
+        if (String((meta && meta.caller) || "") !== "module:pluginagent") throw Object.assign(new Error("only pluginagent asks a session's strength"), { code: "denied" });
+        return { strength: people.strength(String(input.id)) };
+      },
+    });
+
     ctx.tool("presence.person.end-paired", {
       internal: true,
       description: "End every paired session and grant of one device, or of all devices when none is named. Only the wink module asks.",

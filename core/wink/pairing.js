@@ -86,6 +86,8 @@ export const PEER_MIGRATIONS = [
   `ALTER TABLE wink_devices ADD COLUMN software INTEGER NOT NULL DEFAULT 0`,
   // Where the app SAYS it made the device key: hardware | software | unknown. Self-reported, display only; real attestation is 0.3.1.
   `ALTER TABLE wink_devices ADD COLUMN key_storage TEXT NOT NULL DEFAULT 'unknown'`,
+  // what the server VERIFIED about the owner proof that paired this device ("enclave, unattested", "software"): the strength of the sessions it opens, never the app's own claim about its key storage
+  `ALTER TABLE wink_devices ADD COLUMN proof_strength TEXT`,
 ];
 /** What a device offers to the pairing keys: polling slower than the relay's rate limit, and Node's own crypto and key file (0600). */
 export const POLL_MS = 1500;
@@ -180,12 +182,13 @@ export function createPairing(o) {
      */
     setConfirmed(id, c) { db.prepare("UPDATE wink_devices SET confirmed_by = ?, confirm_key = ?, device_key = ?, hardware = 0, software = 0 WHERE id = ? AND removed_at IS NULL").run(c.by, c.keyId, c.key ? JSON.stringify(c.key) : null, String(id)); },
     /** The app's own report of where its key lives. @param {string} id @param {unknown} storage */
+    setProofStrength(id, strength) { db.prepare("UPDATE wink_devices SET proof_strength = ? WHERE id = ? AND removed_at IS NULL").run(strength ? String(strength).slice(0, 40) : null, String(id)); },
     setKeyStorage(id, storage) { db.prepare("UPDATE wink_devices SET key_storage = ? WHERE id = ? AND removed_at IS NULL").run(storage === "hardware" || storage === "software" ? storage : "unknown", String(id)); },
     /** What the presence module reads to decide on a paired session: only what this module itself recorded at the owner's confirm. Null for a device never confirmed, or removed. @param {string} id */
     record(id) {
       const r = /** @type {any} */ (db.prepare("SELECT * FROM wink_devices WHERE id = ? AND removed_at IS NULL").get(String(id)));
       if (!r || !r.confirmed_by) return null;
-      return { id: r.id, kind: r.kind, owner: r.identity, confirmed: true, confirmedBy: r.confirmed_by, confirmKeyId: r.confirm_key || null, key: r.device_key ? JSON.parse(r.device_key) : null, hardware: r.hardware === 1, keyStorage: r.key_storage || "unknown" };
+      return { id: r.id, kind: r.kind, owner: r.identity, confirmed: true, confirmedBy: r.confirmed_by, confirmKeyId: r.confirm_key || null, key: r.device_key ? JSON.parse(r.device_key) : null, hardware: r.hardware === 1, keyStorage: r.key_storage || "unknown", proofStrength: r.proof_strength || null };
     },
     /** The owner's signing key for one of their devices (SPKI, base64url), used by wink.relay.apply. @param {string} id @param {string} key */
     setSignKey(id, key) { db.prepare("UPDATE wink_devices SET sign_key = ? WHERE id = ? AND removed_at IS NULL").run(key, String(id)); },
@@ -879,7 +882,7 @@ export function createPairing(o) {
      * straight to pair-challenge and start-paired. A web device gets the session and nothing more. A failure here leaves the device paired with no session, never a failed pairing.
      * @param {string} device @param {any} input @param {string} identity @param {{ kind: string, id: string }} target @param {any} confirmed
      */
-    const recordOwnerDevice = async (device, input, identity, target, confirmed, proven) => {
+    const recordOwnerDevice = async (device, input, identity, target, confirmed, proven, proofKind = null) => {
       const kind = String(input.deviceKind || "");
       if (!["phone", "computer", "web"].includes(kind)) return false;
       let session = false;
@@ -901,6 +904,8 @@ export function createPairing(o) {
       } else ctx.log(`wink: ${device} paired without a verified identity proof: the home's owner is unchanged`);
       try {
         if (input.keyStorage) devices.setKeyStorage(device, input.keyStorage);
+        // the strength of this device's sessions is what the server verified (the owner proof's key), never the storage the app says it uses
+        devices.setProofStrength(device, proofKind === "enclave, unattested" ? proofKind : "software");
         // The first pairing of a server with no owner: nobody can give presence yet, so the grant needs none. What stands for the confirmation is the three-word pick at this server's own terminal
         // (this code runs only after it) and the verified identity proof. The key the paired session is bound to is the device's own presence key when it offered one, else this pairing itself.
         const pk = /** @type {any} */ (await ctx.call("relay.device.presence", { id: device }).catch(() => null));
@@ -980,11 +985,13 @@ export function createPairing(o) {
         // the relay makes the app's device only now, after the person's check (X-1); the answer to this call still reaches the app over the waiting channel
         const confirmed = await confirmPending(caller.slice(7));
         // a proven identity is the owner's identity; what the caller said about itself is not
+        // what the server verified about this pairing's owner proof (set when the proof checked out, before adoption consumes it)
+        const ownerProofKind = proofKinds.get(caller) || null;
         const adopted = await applyAdopt(mine.proven ? { ...mine.input, identity: mine.proven } : mine.input, caller, Boolean(meta.get("owner")));
         // `session` says whether the device now has its paired session, so an app does not wait for one that is not coming (G-3)
         /** @type {boolean} */ let session;
         // The kernel refusing the owner fails the whole pairing and takes back what applyAdopt wrote (the owner record, the adopter and its relay device)
-        try { session = await recordOwnerDevice(caller.slice(7), mine.input, mine.proven || String(mine.input.identity || mine.input.owner.id), adopted.owner, confirmed, Boolean(mine.proven)); } catch (e) { clearOwner(); throw e; }
+        try { session = await recordOwnerDevice(caller.slice(7), mine.input, mine.proven || String(mine.input.identity || mine.input.owner.id), adopted.owner, confirmed, Boolean(mine.proven), ownerProofKind); } catch (e) { clearOwner(); throw e; }
         return { ...adopted, session };
       } catch (e) {
         // an error, a refusal or a no: nothing stays behind (a pending return above never gets here)

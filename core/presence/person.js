@@ -236,6 +236,18 @@ export class PersonSessions {
   }
 
   /**
+   * The strength of a live session, for a module that relays a paired device's act: one of STRENGTHS (core/presence/strengths.js: software, enclave, "enclave, unattested", passkey), or null when there is no such session. A row records its opening proof's strength (the `strength` column, startPaired's) and answers with that; an older paired row records none and reads as software (fail closed, so that device proves its key again), any other
+   * older row keeps its `software` flag. @param {string} id @returns {string|null}
+   */
+  strength(id) {
+    const row = /** @type {any} */ (this.db.prepare("SELECT software, strength, paired FROM presence_people WHERE id = ?").get(String(id)));
+    if (!row) return null;
+    if (typeof row.strength === "string" && row.strength) return row.strength;
+    // No recorded strength: a paired device's session proved nothing about its key (fail closed); any other row keeps its flag.
+    return row.paired || row.software ? "software" : "enclave";
+  }
+
+  /**
    * The pairing's one-use grant for a device. Written only by the pairing's owner-confirmed path
    * (the tool checks the caller and reads the pair record); a device with a live grant or a live
    * paired session is replaced, never stacked.
@@ -303,7 +315,7 @@ export class PersonSessions {
     try {
       const gone = this.db.prepare("DELETE FROM presence_pair_grants WHERE device = ? AND tries = ?").run(row.device, row.tries);
       if (!Number(gone.changes)) { this.db.exec("ROLLBACK"); return { refused: true }; }
-      s = this.start({ node: row.device, kind: "bearer", label, key: JSON.parse(row.device_key), keyId: row.key_id, paired: true, software: Boolean(row.software), strength: row.strength || null });
+      s = this.start({ node: row.device, kind: "bearer", label, key: JSON.parse(row.device_key), keyId: row.key_id, paired: true, software: Boolean(row.software), strength: row.software ? "software" : (typeof row.strength === "string" && row.strength) || "software" });
       this.db.exec("COMMIT");
     } catch (e) { try { this.db.exec("ROLLBACK"); } catch {} throw e; }
     return { id: s.id, token: s.token, expires: s.expires };

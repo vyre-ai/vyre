@@ -731,12 +731,11 @@ test("SERVER-HOSTED SPACE end to end: a device daemon with a spaces module asks 
   const standInFile = path.join(server.paths.root, "dev-presence-stand-in");
   fs.rmSync(standInFile); // the development stand-in off: only a real proof counts at the home
   const noProof = await dcall("records.define", { space: id, diff: { add_types: [NOTE] } });
-  // the device's paired session (an enclave-key one) is the person's presence for the act, carried by the home's door (SW-1): no proof header is needed
-  assert.ok(!noProof.error, `a change of types from a device with a live enclave-key paired session passes: ${JSON.stringify(noProof.error)}`);
+  // the device's own session (a software key, verified as such at pairing) is not presence for the act on a release-kind server: the home refuses without a proof
+  assert.equal(noProof.error && noProof.error.code, "needs_presence", "a change of types with no proof is refused by the home");
   fs.writeFileSync(standInFile, "");
   const withProofHdr = { "x-vyre-kernel-proof": Buffer.from(JSON.stringify({ method: "stand-in" })).toString("base64url") };
-  const MEMO = { name: "memo", label: "Memo", fields: [{ name: "title", kind: "text", label: "Title" }] };
-  const defined = await dcall("records.define", { space: id, diff: { add_types: [MEMO] } }, withProofHdr);
+  const defined = await dcall("records.define", { space: id, diff: { add_types: [NOTE] } }, withProofHdr);
   assert.ok(!defined.error, JSON.stringify(defined).slice(0, 300));
   assert.ok(JSON.stringify((await dcall("records.types", { space: id })).data).includes("note"), "the type the device defined is on the server");
   const stranger = await import("../core/daemon/client.js").then(m => m.call("records.list", { space: id, type: "contact" }, { root: droot, caller: "tailnet-guest:mallory@example.com" }));
@@ -1402,10 +1401,15 @@ test("SW-1 on a release-kind build (software switch off): a software paired sess
   delete process.env.VYRE_SEAL_SOFTWARE;
   const { CONTACT } = await import("../kernel/conformance/suite.js");
   const defineOn = (f, links) => links.remoteKernel("srv", f.w.d.kernel.id.space).gateway.records.define(null, { add_types: [CONTACT] }).then(() => "ok", e => String(e.code || e.message));
-  // an enclave key (the app reported hardware storage; unattested is accepted, ruling 6410c6a): not software, passes
-  { const f = await pairFreshServer(t, { presenceStorage: "hardware" }); const links = linksFor(t, f); await links.startPaired("srv");
-    const mine = (await f.w.d.registry.call("presence.person.sessions", {}, "cli", PROOF)).data; assert.ok(!(mine.sessions || mine).some(s => s.software === true), "an enclave-key session is not software-marked");
-    assert.ok((mine.sessions || mine).some(s => s.strength === "enclave, unattested"), "and says its strength");
+  // an enclave key (the owner proof's key is the app's enclave key, which the server verified: unattested is accepted, ruling 6410c6a): not software, passes. The harness's own proof is a software key, so
+  // the verified strength is set on the device's record the way an enclave owner proof sets it at pairing (pairing.test.js PI-1 covers the proof itself), and the device signs in again.
+  { const f = await pairFreshServer(t, { presenceStorage: "hardware" }); const links = linksFor(t, f);
+    await links.startPaired("srv");
+    assert.match(await defineOn(f, links), /needs_presence|presence/, "a software-verified session is refused on release");
+    f.w.d.registry.deps.db.prepare("UPDATE wink_devices SET proof_strength = 'enclave, unattested' WHERE id = ?").run(f.done.device);
+    await f.w.d.registry.call("presence.person.end-paired", { device: f.done.device }, "module:wink");
+    await links.startPaired("srv");
+    const mine = (await f.w.d.registry.call("presence.person.sessions", {}, "cli", PROOF)).data; assert.ok((mine.sessions || mine).some(s => s.strength === "enclave, unattested" && !s.software), "an enclave-key session is not software-marked and says its strength");
     assert.equal(await defineOn(f, links), "ok", "an enclave-key session passes"); }
   // a software-key browser: refused, until the owner's phone approves its sign-in
   { const f = await pairFreshServer(t, { kind: "web", about: { kind: "web" }, presenceStorage: "software" }); const links = linksFor(t, f); await links.startPaired("srv");
