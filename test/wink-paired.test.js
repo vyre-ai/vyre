@@ -1409,12 +1409,22 @@ test("the session strength is proven at each sign-in (the identity entry's encla
     // OY-3: the same card again is the same card; a different one while it waits is refused naming the open one
     assert.equal((await links.askSignIn("srv", { moment: "vault", request })).id, ask.id);
     await assert.rejects(() => links.askSignIn("srv", { moment: "vault", request: { op: "vault.reveal", fields: { name: "another-secret" } } }), e => /conflict/.test(String(e.code)), "a second, different card does not get the first one's id");
-    await assert.rejects(() => links.sessionFor("srv").call("presence.person.session-pending", {}), e => /denied|owner/.test(`${e.code} ${e.message}`), "a software session cannot list the owner's cards");
+    // CD-1: a paired device is you, so any paired session lists the cards (the card always reaches the phone); the safety is in the answer
+    assert.deepEqual((await links.sessionFor("srv").call("presence.person.session-pending", {})).asks.map(a => a.id), [ask.id], "a software browser lists the card");
     const pending = (await f.w.d.registry.call("presence.person.session-pending", {}, "cli", PROOF)).data.asks;
     assert.deepEqual(pending.map(a => [a.id, a.moment, a.request.op]), [[ask.id, "vault", "vault.reveal"]], "the owner's phone lists the card");
     assert.equal(pending[0].line, "Alexs iPhone wants to reveal or use \"northwind-mail\" in your vault", "a line the server wrote, with its own name for the device");
     assert.equal(pending[0].label, undefined, "the asker's words are not on the card");
-    const yes = { op: "vault.reveal", sig: "signed-by-the-phone" };
+    // the answer counts only when it carries a yes signed by a real key over the exact request on the card (yes(): here a stand-in verifier that knows the two kinds of key)
+    const { configureYes } = await import("../core/presence/index.js");
+    configureYes({ verify: async ({ op, proof }) => (proof && proof.op === op && proof.signer === "secure_enclave" ? { ok: true, strength: "real" } : proof && proof.signer === "software" ? { ok: true, strength: "software" } : "unknown_key"), softwareOk: () => false });
+    t.after(() => configureYes({ verify: null }));
+    const yes = { op: "vault.reveal", signer: "secure_enclave", sig: "signed-by-the-phone" };
+    const softwareYes = await f.w.d.registry.call("presence.person.session-answer", { id: ask.id, yes: true, proof: { op: "vault.reveal", signer: "software", sig: "x" } }, "cli");
+    assert.equal(softwareYes.error && softwareYes.error.code, "software_key", "a software key's answer is refused on a release build");
+    const wrongRequest = await f.w.d.registry.call("presence.person.session-answer", { id: ask.id, yes: true, proof: { op: "vault.copy", signer: "secure_enclave", sig: "x" } }, "cli");
+    assert.ok(wrongRequest.error, "a yes over another request does not stand");
+    assert.equal((await links.signInStatus("srv", ask.id)).state, "waiting", "no refused answer approved the card");
     // the phone's signed yes on the card is the one prompt: the answer call needs no second presence floor, and the device that asked cannot answer its own card
     const noProofAnswer = await f.w.d.registry.call("presence.person.session-answer", { id: ask.id, yes: true }, "cli");
     assert.equal(noProofAnswer.error && noProofAnswer.error.code, "bad_input", "a yes carries the signed proof");

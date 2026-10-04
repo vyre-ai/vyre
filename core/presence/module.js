@@ -9,7 +9,8 @@
 
 import crypto from "node:crypto";
 import { devSwitch } from "../../kernel/devbuild.js";
-import { STRENGTHS, isNotSoftware } from "./strengths.js";
+import { STRENGTHS } from "./strengths.js";
+import { yes } from "./one-yes.js";
 import { Presence } from "./index.js";
 import { PersonSessions } from "./person.js";
 import { isServer } from "../config/index.js";
@@ -377,13 +378,8 @@ export default {
       run: async (_i, meta = {}) => {
         // a paired device may read the list only with its own non-software session (the owner's phone); a software or no session sees nothing, and another device's ask is never shown to a browser
         const caller = String((meta && meta.caller) || "");
-        if (caller.startsWith("device:")) {
-          // a paired device lists the cards only as the owner's own phone: a session of a real key, or a device the app registered with hardware key storage (this only decides who may SEE a card; the yes is checked where it is used)
-          const sid = meta && meta.person && meta.person.id;
-          let ok = Boolean(sid) && isNotSoftware(people.strength(String(sid)));
-          if (!ok) { const wr = await ctx.call("wink.device.record", { id: caller.slice(7) }).catch(() => null); ok = Boolean(wr && wr.data && wr.data.keyStorage === "hardware"); }
-          if (!ok) throw Object.assign(new Error("only the owner's own phone can see these cards"), { code: "denied" });
-        }
+        // a paired device is you: any of the owner's paired sessions lists the cards, so a card always reaches the phone. The safety is in the answer: only a yes signed by a real key counts (session-answer, yes()).
+        if (caller.startsWith("device:") && !(meta && meta.person && meta.person.id)) throw Object.assign(new Error("sign in to list these cards"), { code: "denied" });
         const out = [];
         for (const a of [...asks.values()]) { if (a.expires <= Date.now()) { asks.delete(a.device); continue; } if (a.state === "waiting") out.push({ id: a.id, device: a.device, line: a.label, moment: a.moment, request: a.request, asked_at: a.asked || 0 }); }
         out.sort((x, y) => y.asked_at - x.asked_at);
@@ -403,6 +399,10 @@ export default {
         if (a.state !== "waiting") return { state: a.state };
         if (input.yes !== true) { a.state = "refused"; refusedUntil.set(a.device, Date.now() + 10 * 60_000); return { state: "refused" }; }
         if (!(input.proof && typeof input.proof === "object" && !Array.isArray(input.proof) && JSON.stringify(input.proof).length <= 8192)) throw Object.assign(new Error("a yes carries the owner's signed proof"), { code: "bad_input" });
+        // only a yes signed by a real key over the exact request the server wrote on the card counts (yes(): enclave, keystore, passkey, Touch ID; a software key is refused software_key on a release build)
+        /** @type {any} */ let chain; try { chain = ctx.kernel && typeof ctx.kernel.chain === "function" ? await ctx.kernel.chain(meta) : undefined; } catch { chain = undefined; }
+        const v = await yes(a.moment, { ...(chain ? { chain } : {}), op: a.request.op, fields: a.request.fields }, input.proof);
+        if (!v.ok) throw Object.assign(new Error(v.reason === "software_key" ? "approve this with the key in your phone: a software key cannot say yes here" : "that yes did not stand"), { code: v.reason });
         a.proof = input.proof;
         a.state = "approved";
         a.expires = Date.now() + ASK_MS;
