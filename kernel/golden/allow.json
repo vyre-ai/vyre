@@ -108,8 +108,16 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): stops sharing a folder over VyreDrive, which only takes access away"
  },
  {
+  "tool": "files.drive.upload",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): puts a file in the Space drive under the caller's own chain; the kernel decides who may, and a version, never an overwrite"
+ },
+ {
   "tool": "files.drive.url",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (leaves the Space: makes a link)"
+ },
+ {
+  "tool": "files.drive.versions",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists a drive file's versions the caller may read; the kernel decides"
  },
  {
   "tool": "files.mentions.search",
@@ -162,6 +170,10 @@
  {
   "tool": "flows.list",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; lists the Flows of a Space; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
+ },
+ {
+  "tool": "flows.propose",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; proposes a Flow for the person to approve: nothing runs, nothing is installed, until a person approves it; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
  },
  {
   "tool": "flows.retry",
