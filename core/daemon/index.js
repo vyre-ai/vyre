@@ -400,14 +400,16 @@ async function startLocked(opts, root, p, release) {
       const accounts = process.env.VYRE_ACCOUNTS_HOME || "/home/acct", agentHome = process.env.VYRE_AGENT_HOME || "/home/vyre-agent";
       const spawnerSocket = process.env.VYRE_SPAWNER_SOCKET || "/run/vyre/spawner.sock";
       registry.deps.sandbox = { platform: process.platform, home: os.homedir(), vyreHome: root, temp: os.tmpdir(), uid: { confinedBy: "uid",
-        selfTest: (/** @type {{ account?: number | null, shared?: boolean, cwd: string, signal?: AbortSignal }} */ o) => {
+        selfTest: (/** @type {{ account?: number | null, shared?: boolean, workdirs: string[], signal?: AbortSignal }} */ o) => {
           // Another agent's home: the box's one agent for an account's session, and the first other account's for the agent itself.
           let other = agentHome;
           if (o.account == null) { try { other = fs.readdirSync(accounts).map(n => path.join(accounts, n)).find(f => fs.statSync(f).isDirectory()) || ""; } catch { other = ""; } }
           else { const mine = path.join(accounts, String(o.account)); try { const o2 = fs.readdirSync(accounts).map(n => path.join(accounts, n)).find(f => f !== mine && fs.statSync(f).isDirectory()); if (o2) other = o2; } catch { /* the box's one agent's home stands */ } }
           return confineSelfTest({ ...o, vyreUid: process.getuid ? process.getuid() : -1, out: [
             { name: "Vyre's own home", path: userHome }, { name: "the vault and keys", path: path.join(root, "kernel") }, { name: "the daemon's socket", path: p.socket },
-            { name: "the spawner's socket", path: spawnerSocket }, ...(other ? [{ name: "another agent's home", path: other }] : []) ] });
+            { name: "the spawner's socket", path: spawnerSocket }, { name: "the spawner's folder", path: path.dirname(spawnerSocket) }, { name: "the box's secrets folder", path: "/var/lib/vyre-secrets" },
+            { name: "the key file", path: path.join(root, "kernel", "space.json") }, { name: "the list of accounts", path: accounts, list: true },
+            ...(other ? [{ name: "another agent's home", path: other }] : []) ] });
         } } };
     }
     else if (process.platform === "darwin" || process.platform === "linux") {
