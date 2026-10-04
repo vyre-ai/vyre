@@ -5,6 +5,7 @@
 // needs and connect, and voice key through vault.connect.
 // Every value is made at run time; none may appear in any output.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";

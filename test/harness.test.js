@@ -2,6 +2,7 @@
 // The Harness plugin as Claude Code runs it: hook processes fed JSON on stdin, and the MCP
 // server spoken to over stdio, against a real vyred in a temp home.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

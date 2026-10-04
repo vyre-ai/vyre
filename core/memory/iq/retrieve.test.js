@@ -1,5 +1,6 @@
 // @ts-check
 // iq/retrieve: the passages Vyre Memory reads (ADR 0034, phase 2).
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { retriever, timeWindow, contentWords } from "./retrieve.js";

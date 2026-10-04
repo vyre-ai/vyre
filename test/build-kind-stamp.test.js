@@ -1,5 +1,6 @@
 // @ts-check
 // DP-1: the release stamp cannot fail open. scripts/stamp-build-kind.mjs stops the build unless the file says release afterwards, and isPackaged reads the same line.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

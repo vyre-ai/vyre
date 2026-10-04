@@ -5,6 +5,7 @@
 // person at the Mac sets VYRE_MAC_REAL=1, because compiling loads Notes' and Reminders'
 // dictionaries.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

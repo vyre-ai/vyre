@@ -2,6 +2,7 @@
 // onboard.status's tailnet devices: only the owner's own, untagged nodes, with the fields step 6
 // and Settings > Devices use.
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { parsePeers } from "./index.js";

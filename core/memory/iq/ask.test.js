@@ -1,5 +1,6 @@
 // @ts-check
 // iq/ask: cited answers or an abstention, checked by code (ADR 0034, phase 3).
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

@@ -2,6 +2,7 @@
 // The memory engine on the REAL kernel (test/kernel-rig.js: createKernel, the real grants store, tasks and gateway): the three outcomes of 7.9, the intersection rule,
 // sealed values never in a row or a citation, per-source authorization, Space isolation, label inheritance, erasure and the sweep limit. Only the model provider is
 // a stand-in (SHIM(model)); the `note` record type is defined by the rig because records' core types do not have it yet (SHIM(note type)).
+import "../../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

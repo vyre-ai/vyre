@@ -1,5 +1,6 @@
 // reviewer-2 repro HD-4b against work/memory-access 9379afb82 (drop into core/harness/): after the label fix, `interactive` is believed from the label "harness" with no thread and a session Vyre does not hold as headless.
 // "harness" is also a label any process can send on the socket (MODEL_LABEL keeps it as is), and a terminal session's model shares that terminal, so it can forge a person's "yes" for its own session.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import harness from "./index.js";

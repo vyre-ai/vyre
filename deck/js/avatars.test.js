@@ -4,6 +4,7 @@
 // missing (never a crash, never a ring from a made-up seed); and the tap's hop honouring Reduce
 // Motion. Synthetic ids only (the sample world: alex, kit, juno).
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";

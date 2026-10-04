@@ -1,6 +1,7 @@
 // @ts-check
 // Per viewer, on the server (reviewer gate C-3, chat-03): the viewer is part of the connection and every frame is drawn for
 // them before conn.send, in serve, serveSSE and the replay path. A client never decides what it may see.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";

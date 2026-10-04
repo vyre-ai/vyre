@@ -3,6 +3,7 @@
 // v2/v3 structure parsed back and checked with node:crypto by a verifier that shares no code with
 // the signer, and (b) apksigner's own verdict when this machine has one (skipped otherwise).
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

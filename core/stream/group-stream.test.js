@@ -4,6 +4,7 @@
 // people who were in the chat at that version; someone who joins mid-reply gets no frame of it and sees the chat from their own join; someone who leaves stops
 // receiving. Run against both ports: the in-memory one that follows the ruling for kernel-2's chats.appendOpen (fake-reply-port.js) and the stand-in the stream
 // uses until that lands (it stamps with the log's cursor and reads the kernel's list at open).
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as config from "../config/index.js";

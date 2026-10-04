@@ -9,6 +9,7 @@
 // not depend on which of those it was: past grace + one more beat, stop waiting and destroy our
 // own pipes to the child, so vyred's event loop lets go of it regardless.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { run } from "./runner.js";

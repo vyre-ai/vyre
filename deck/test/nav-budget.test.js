@@ -3,6 +3,7 @@
 // needs in at most two rounds, never a chain of three, and the same read asked for twice at once must be one request. The unit is rounds, not
 // milliseconds, so a slow runner cannot make it flaky: round n starts when the first call of round n-1 ended. Sample world only.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { install } from "./fake-dom.js";

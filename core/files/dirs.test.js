@@ -3,6 +3,7 @@
 // modules: listing, refusals, hidden folders, symlinks out, a bounded name search, recent
 // folders filtered through the guard, and the Mac forwarding both to the box.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

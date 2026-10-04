@@ -1,5 +1,6 @@
 // Sealing a field late must leave no copy of the old values anywhere the kernel keeps free text or history: the change log, the event log, and the task texts (a form or a title that quoted a value).
 // Raw bytes of the database file and its write-ahead log are searched afterwards, as in the scrub test in sqlite.test.js.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

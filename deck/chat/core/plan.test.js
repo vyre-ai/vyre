@@ -2,6 +2,7 @@
 // Reading a plan (ExitPlanMode's markdown) into the plan card's parts: several shapes a plan comes
 // in, and one with none of the sections. Nothing is made up. Sample world only.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parsePlan, fileOf, filesSummary, fileCounts, inlinePieces, planText, isPlanAsk, PLAN_MODES, planModeLabel } from "./plan.js";

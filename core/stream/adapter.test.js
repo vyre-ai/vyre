@@ -2,6 +2,7 @@
 // adapter: real event shapes from the repo (the switchboard's thread.* vocabulary as
 // deck/chat/core/session-state.test.js feeds it, the transcripts fixture, core/term's ring) become frames.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

@@ -4,6 +4,7 @@
 // error and offline lines, collaborator comments (collapsed, text only), and no agent path to
 // approve. Sample world only.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { install, text, $, $$ } from "../../test/fake-dom.js";

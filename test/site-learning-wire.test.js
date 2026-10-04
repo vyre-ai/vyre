@@ -2,6 +2,7 @@
 // Site learning is ON by default, so the device's wire and the box's store must agree end to end: what Vyre for Chrome's
 // sitecache sends in a site.put is what lib/site-knowledge.js (the box's memory.site.put) keeps, with the evidence fields
 // (container, siblings, nameVisits, identifierVisits) in the shapes both sides read, and a canary never survives either side.
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createSiteCache } from "../local/hands-chrome-mac/extension/lib/sitecache.js";

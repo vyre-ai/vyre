@@ -1,6 +1,7 @@
 // @ts-check
 // Interop: the client's channel (WebCrypto) against the box's, core/relay/channel.js, over an
 // in-memory wire a test can watch and tamper with, as core/relay/channel.test.js does.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { keyPair } from "../../core/relay/noise.js";

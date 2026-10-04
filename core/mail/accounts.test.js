@@ -3,6 +3,7 @@
 // which adapter serves a connection, IMAP settings, and which account a send goes from (ADR 0016
 // decision 8). Pure.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { callerFor, filingFor, adapterOf, imapConfig, pickFor, view } from "./accounts.js";

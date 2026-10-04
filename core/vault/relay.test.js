@@ -2,6 +2,7 @@
 // relay tests: encoding, envelope checks, the host allowlist, substitution, scrubbing, the
 // outbound send and the listener. Every server here binds to 127.0.0.1.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";

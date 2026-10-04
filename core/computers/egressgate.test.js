@@ -3,6 +3,7 @@
 // the test controls), a fake sidecar SOCKS5 server that records what it is sent and relays to a
 // fake target, and the target itself. Nothing here reaches a real tailnet or the internet.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

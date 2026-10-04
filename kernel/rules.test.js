@@ -1,4 +1,5 @@
 // Standing rules for a Space (DESIGN-flows-joints 5a): set by an owner with presence, an event in the log, checked BEFORE grants, only ever tightening.
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createKernel } from "./index.js";

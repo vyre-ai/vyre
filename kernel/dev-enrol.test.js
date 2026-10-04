@@ -1,6 +1,7 @@
 // @ts-check
 // The walk's recipe: scripts/dev-enrol-software-key.mjs puts an owner's software presence key into a home's sealing folder, scripts/dev-sign-proof.mjs signs a proof the sealing process accepts (method "software"), a second enrol
 // is refused, and on a release-stamped copy of the tree both scripts refuse.
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

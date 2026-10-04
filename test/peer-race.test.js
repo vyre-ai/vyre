@@ -5,6 +5,7 @@
 // served from the shared snapshot, retries read fresh, a peer that already exited is a model's,
 // and only a definite answer is kept for a connection.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

@@ -1,3 +1,4 @@
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parse, run, roots, stepRefs, ExprError } from "./expr.js";

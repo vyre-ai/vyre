@@ -4,6 +4,7 @@
 // todo check, the fired banner and its Done and Snooze, the /planner/<firing> focus card, and
 // that events redraw only while the page is visible.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { install, text, $, $$ } from "./fake-dom.js";

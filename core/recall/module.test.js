@@ -2,6 +2,7 @@
 // The recall module inside a real vyred: tools over the socket, events in the log, background
 // indexing that does not hold up startup, and the guard that keeps tests off real transcripts.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
