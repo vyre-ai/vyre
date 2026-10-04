@@ -40,6 +40,15 @@ jobs:
         run: VYRE_TEST_CONCURRENCY=2 npm test
       - if: ${{ runner.environment == 'github-hosted' }}
         run: npm test
+        env:
+          VYRE_TEST_COUNTS_KEEP: ${{ runner.temp }}/test-counts-run.json
+      - if: ${{ always() && runner.environment == 'github-hosted' && matrix.node == 24 }}
+        # The counts of this run, to record into test/test-counts.json (node scripts/test-counts.mjs update <file>).
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-counts-run
+          path: ${{ runner.temp }}/test-counts-run.json
+          if-no-files-found: ignore
       - if: ${{ github.event_name == 'pull_request' && matrix.node == 24 }}
         # A test count that fell must come with a deleted test( or it( in the diff (scripts/test-counts.mjs).
         run: git fetch --no-tags --depth=1 origin ${{ github.base_ref }} && node scripts/test-counts.mjs diff origin/${{ github.base_ref }}
