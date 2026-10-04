@@ -81,14 +81,14 @@ export async function tool<T = unknown>(name: string, given: Record<string, unkn
   return r.data as T;
 }
 
-/** An act held for the owner's yes: ask the phone, wait with "Approve this in Vyre on your phone" and Stop waiting, then send the act again carrying the card id (spent once). */
+/** An act held for the owner's yes: ask the phone, wait with "Approve this in Vyre on your phone" and Stop waiting, then send the act again carrying the approval id (spent once). */
 async function yesThenRetry<T>(held: { moment: string; request: unknown }, name: string, input: Record<string, unknown>, ask: (tool: string, input?: Record<string, unknown>) => Promise<any>): Promise<T> {
   const st = useApproval.getState();
   st.show(softwareKeyLine());
   try {
     const out = await askYes(ask, { moment: held.moment, request: held.request, signal: st.signal, onWaiting: (line) => { if (line) useApproval.getState().show(line); } });
     if ("ended" in out) throw new BoxError("not_approved", endLine(out.ended));
-    return (await ask(name, { ...input, card: out.card })) as T;
+    return (await ask(name, { ...input, approval: out.approval })) as T;
   } catch (e) {
     if (e instanceof BoxError) throw e;
     const x = e as { code?: string; message?: string };

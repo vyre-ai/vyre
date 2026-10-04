@@ -95,23 +95,23 @@ export const heldAsk = (error) => {
 };
 
 /**
- * Ask the owner's phone for the yes (presence.person.session-ask { moment, request } -> { id, expires_in_s }), then wait while the phone answers: presence.person.session-status gives { state, card } and NO proof (the server
- * verifies the phone's proof when it answers and spends it once). Resolves { card } when approved: the caller retries its act with `card: <id>` once (wink-2, 997cdbd50). Or { ended }.
+ * Ask the owner's phone for the yes (approvals.ask { moment, request } -> { id, expires_in_s, line }), then wait while the phone answers: approvals.status gives { state } and NO proof (the server verifies and spends
+ * the phone's proof itself). Resolves { approval, line } when approved: the caller retries its act with `approval: <id>` once. Or { ended }.
  * @param {(tool: string, input?: Record<string, unknown>) => Promise<any>} call
  * @param {{ moment: string, request: any, onWaiting?: (line: string) => void, signal?: { stopped: boolean }, sleep?: (ms: number) => Promise<void>, now?: () => number, pollMs?: number, limitMs?: number }} o
- * @returns {Promise<{ card: string } | { ended: "refused" | "none" | "timeout" }>}
+ * @returns {Promise<{ approval: string } | { ended: "refused" | "none" | "timeout" }>}
  */
 export async function askYes(call, o) {
   const sleep = o.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
   const now = o.now ?? Date.now;
-  const ask = await call("presence.person.session-ask", { moment: o.moment, request: o.request });
+  const ask = await call("approvals.ask", { moment: o.moment, request: o.request });
   if (!ask || typeof ask.id !== "string") throw Object.assign(new Error("the ask did not open"), { code: "ask_failed" });
   o.onWaiting?.(typeof ask.line === "string" ? ask.line : "");
   const start = now();
   for (;;) {
     if (o.signal?.stopped) return { ended: "none" };
-    const s = await call("presence.person.session-status", { id: ask.id });
-    if (s.state === "approved" && typeof s.card === "string") return { card: s.card };
+    const s = await call("approvals.status", { id: ask.id });
+    if (s.state === "approved") return { approval: ask.id };
     if (s.state === "refused" || s.state === "none" || s.state === "timeout") return { ended: s.state };
     if (now() - start > (o.limitMs ?? 300_000)) return { ended: "timeout" };
     await sleep(o.pollMs ?? 2000);
