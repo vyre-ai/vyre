@@ -1,18 +1,88 @@
-// The ways an existing name comes back onto this device (chat builds these; this file is the agreed surface, and chat's version replaces it).
-//   recoverIdentity: with the recovery code, box-less (resolve the name, check the code's key is on the chain, make this device's key, sign the "add" op, append, keep).
-//   addThisDevice:   this phone's half of "add from another device": a pairing session whose confirm() resolves once this device's key is on the chain and saved.
-//   hadIdentity:     a marker (never the key) that this device once held a name, so a phone that lost its key after a restart says so.
+// Getting an existing name onto a new or wiped device, with no box (team/0.3/UX-AUDIT.md, "Getting an existing name onto a new or wiped phone"). The same steps as
+// core/spaces/identity-ops.js recoverWithCode, built from the pieces claim.js uses: resolve the name's chain at the names directory, check the recovery code's key is on it, make this
+// device's own key, append an `add` op signed by the code's key, publish it, keep the chain. The screen shows its own sentence for each `.code`; it never renders `.message`.
+//
+//   not_found    no such name at the directory
+//   not_a_person the name belongs to a space
+//   wrong_code   the code (or password) is not the one for this name; nothing was changed
+//   unreachable  the directory did not answer (or answered something that is not a chain)
+//   rate_limited the directory asked us to slow down
+//   newcomer     the chain refuses the change from this entry (too new to do it)
+//   rolled_back  the directory's chain is older than one this device has seen (the pin)
+//   exists       this device already holds a different name
+
+import * as C from "../../../../kernel/identity/chain.js";
+import { codeLooksRight, codeSigner, STRETCH } from "./recovery.js";
+import { generateDeviceKey } from "./keys.js";
+import { forgetIdentity, hadIdentity, loadIdentity, saveIdentity } from "./store.ts";
 import type { PairingSession } from "../api/pairing-session";
 import type { WinkCode } from "../api/wink-code";
 
-export type RestoreErrorCode = "not_found" | "not_a_person" | "wrong_code" | "unreachable" | "rate_limited" | "newcomer";
+export { hadIdentity };
 
-const todo = (message: string): never => { throw Object.assign(new Error(message), { code: "unreachable" }); };
+const DIRECTORY = (process.env.EXPO_PUBLIC_VYRE_NAMES_DIRECTORY || "https://names.vyre.run").replace(/\/+$/, "");
+const fail = (code: string, message: string) => Object.assign(new Error(message), { code });
 
-export async function recoverIdentity(_o: { name: string; code: string; password?: string; deviceLabel: string; base?: string }): Promise<{ name: string; id: string }> {
-  return todo("recovering a name on this device is not built yet");
+type Opts = {
+  name: string; code: string; password?: string; deviceLabel: string; base?: string;
+  /** What this device saw of the chain before (an earlier sighting): a directory that answers older than this is refused. */
+  pin?: { id: string; seq: number; head: string };
+  fetch?: typeof fetch; now?: () => number; params?: { memoryKiB: number; passes: number };
+  /** This device's key (the phone's Keychain key from keys/createIdentityKey); a browser or a test makes one here. */
+  key?: Awaited<ReturnType<typeof generateDeviceKey>>;
+  /** The phone's Secure Enclave public key (NK-2) for the new entry, when this device has one. */
+  enclave?: string;
+};
+
+async function directory(f: typeof fetch, base: string, method: "GET" | "POST", target: string, body?: unknown): Promise<{ status: number; data: any }> {
+  let res: Response;
+  try { res = await f(`${base}${target}`, { method, headers: { accept: "application/json", ...(body ? { "content-type": "application/json" } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) }); }
+  catch { throw fail("unreachable", "The names directory did not answer."); }
+  let json: any = null;
+  try { json = await res.json(); } catch { /* not JSON */ }
+  if (res.status === 429) throw fail("rate_limited", "Too many tries. Wait and try again.");
+  if (res.status === 404 || (json && json.error && /^(not_found|no_such_name)$/.test(String(json.error.code)))) throw fail("not_found", "There is no such name.");
+  if (!res.ok || !json || json.error || !json.data) throw fail(json && json.error && json.error.code === "rate_limited" ? "rate_limited" : "unreachable", (json && json.error && json.error.message) || `The directory answered ${res.status}.`);
+  return { status: res.status, data: json.data };
 }
+
+export async function recoverIdentity(o: Opts): Promise<{ name: string; id: string }> {
+  const name = String(o.name).trim().toLowerCase().replace(/\.vyre\.run$/, "");
+  if (!codeLooksRight(o.code)) throw fail("wrong_code", "That is not a recovery code.");
+  const f = o.fetch ?? globalThis.fetch;
+  const base = (o.base ?? DIRECTORY).replace(/\/+$/, "");
+  const now = o.now ?? Date.now;
+  // A second recovery on the same device is idempotent: the name is already here.
+  const mine = await loadIdentity().catch(() => null);
+  if (mine) { if (mine.name === name) return { name: mine.name, id: mine.id }; throw fail("exists", "This device already holds a different name."); }
+  const r = await directory(f, base, "GET", `/v1/ids/resolve?name=${encodeURIComponent(name)}`);
+  const ops: any[] = Array.isArray(r.data.ops) ? r.data.ops : [];
+  if (r.data.kind !== "person") throw fail("not_a_person", "That name does not belong to a person.");
+  let state: any;
+  try { state = await C.verifyChain(ops, { now: now() + C.SKEW_MS }); } catch { throw fail("unreachable", "The directory's list for this name did not check out."); }
+  if (state.id !== r.data.id || state.kind !== "person") throw fail("unreachable", "The directory's list is not for the identity it named.");
+  if (o.pin) { const seen = await C.checkAnswer(o.pin, ops); if (!seen.ok) throw fail("rolled_back", "The directory's list is older than one this device has seen."); }
+  const ck = await codeSigner(o.code, o.password ?? "", o.params ?? STRETCH);
+  if (!state.entries.some((e: any) => e.kind === "code" && e.eid === ck.eid)) throw fail("wrong_code", "That code (or password) is not the one for this name.");
+  const key = o.key ?? (await generateDeviceKey());
+  const entry = { eid: key.eid, kind: "device", pub: key.publicKey, label: o.deviceLabel ? String(o.deviceLabel).slice(0, 60) : undefined, ...(o.enclave ? { enclave: o.enclave } : {}) };
+  let op: any, next: any;
+  try {
+    op = await C.makeOp(state, { type: "add", entry }, { by: ck.eid, ts: Math.max(now(), state.ts), sign: (m: Uint8Array) => ck.sign(m) });
+    next = await C.applyOp(state, op, { now: now() + C.SKEW_MS });
+  } catch (e) { throw fail(/new|young|old/i.test(String((e as { code?: string }).code ?? "")) ? "newcomer" : "unreachable", String((e as Error).message)); }
+  // Keep the key first, then publish: if keeping fails nothing was appended (the code is not spent on a lost key).
+  await saveIdentity({ name, id: state.id, eid: key.eid, ops: [...ops, op], pin: C.pinOf(next), key });
+  try { await directory(f, base, "POST", "/v1/ids/append", { name, ops: [op] }); }
+  catch (e) { await forgetIdentity().catch(() => {}); throw e; }
+  return { name, id: state.id };
+}
+
+/**
+ * This phone's half of "Add this phone from another device": the existing device shows a code (wink.phone.open); this phone redeems it, shows the three words, and when the person at
+ * the other device says yes that device appends this phone's key to the identity's list. NOT BUILT: it needs the phone-side client of the relay (the counterpart of relay/client/serverpair.js,
+ * which tailnet owns) and the list change signed by the existing device; asked of tailnet in CHAT.md. Until then it refuses with the code `not_built`.
+ */
 export function addThisDevice(_code: Extract<WinkCode, { ok: true }>, _o: { deviceLabel: string }): PairingSession {
-  return todo("adding this device is not built yet");
+  throw Object.assign(new Error("Adding this device from another device is not built yet."), { code: "not_built" });
 }
-export async function hadIdentity(): Promise<boolean> { return false; }
