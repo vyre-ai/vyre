@@ -93,6 +93,9 @@ async function harness(t, extra = []) {
   const core = discover([path.join(path.dirname(new URL(import.meta.url).pathname), "..")]).filter(f => f.manifest?.name === "harness");
   await reg.start([...core, ...discover([root], { firstPartyRoots: [root] })], { role: "local" });
   t.after(() => db.close());
+  // The hooks call as the hook's own label; a call with no caller is no caller the tools admit.
+  const call = reg.call.bind(reg);
+  reg.call = (tool, input, caller = "harness", meta) => call(tool, input, caller, meta);
   return { reg, events, home };
 }
 
@@ -125,12 +128,13 @@ test("harness: brief and enrich use projects and memory when they are running", 
     return {};
   } };`;
   const { reg, events } = await harness(t, [
-    ["projects", { version: "0.1.0", does: { tools: ["projects.of", "projects.context"] } }, projects],
-    ["memory", { version: "0.1.0", does: { tools: ["memory.relevant"] } }, memory],
-    ["team", { version: "0.1.0", does: { tools: ["team.project-append"] } }, team],
-    ["style", { version: "0.1.0", does: { tools: ["style.append"] } }, style],
+    ["projects", { version: "0.1.0", does: { reads: ["projects.of", "projects.context"], tools: ["projects.of", "projects.context"] } }, projects],
+    ["memory", { version: "0.1.0", does: { reads: ["memory.relevant"], tools: ["memory.relevant"] } }, memory],
+    ["team", { version: "0.1.0", does: { reads: ["team.project-append"], tools: ["team.project-append"] } }, team],
+    ["style", { version: "0.1.0", does: { reads: ["style.append"], tools: ["style.append"] } }, style],
   ]);
-  const b = await reg.call("harness.brief", { cwd: "/w/harlow-site", session: "s1", source: "startup" });
+  // thread.started is said only for a verified caller (a person's surface here); the hook label alone is not verified.
+  const b = await reg.call("harness.brief", { cwd: "/w/harlow-site", session: "s1", source: "startup" }, "cli");
   // The house voice comes first, then the team nudge, then the project's own brief. In scope:
   // style gets the project, so its (project rules) text is the one that shows.
   assert.equal(b.data.text, "Write plainly, no em dashes (project rules).\n\nThis project has teammates: design.\n\nProject harlow-legal. People: Dana Reyes.");
@@ -164,9 +168,9 @@ test("harness: the style-plus-team nudge is capped at APPEND_TOTAL_MAX, ellipsis
     return {};
   } };`;
   const { reg } = await harness(t, [
-    ["projects", { version: "0.1.0", does: { tools: ["projects.context"] } }, projects],
-    ["style", { version: "0.1.0", does: { tools: ["style.append"] } }, longStyle],
-    ["team", { version: "0.1.0", does: { tools: ["team.project-append"] } }, longTeam],
+    ["projects", { version: "0.1.0", does: { reads: ["projects.context"], tools: ["projects.context"] } }, projects],
+    ["style", { version: "0.1.0", does: { reads: ["style.append"], tools: ["style.append"] } }, longStyle],
+    ["team", { version: "0.1.0", does: { reads: ["team.project-append"], tools: ["team.project-append"] } }, longTeam],
   ]);
   const text = (await reg.call("harness.brief", { cwd: "/w/harlow-site" })).data.text;
   const nudge = text.slice(0, text.indexOf("\n\nProject harlow-legal."));
@@ -181,7 +185,7 @@ test("harness: brief's team nudge is null-safe - team.default off, or core/team 
     return {};
   } };`;
   // core/team absent entirely: ask() fails closed to null, same as any other missing module.
-  const { reg: withoutTeam } = await harness(t, [["projects", { version: "0.1.0", does: { tools: ["projects.context"] } }, projects]]);
+  const { reg: withoutTeam } = await harness(t, [["projects", { version: "0.1.0", does: { reads: ["projects.context"], tools: ["projects.context"] } }, projects]]);
   assert.equal((await withoutTeam.call("harness.brief", { cwd: "/w/harlow-site" })).data.text, "Project harlow-legal.");
   // core/team running, but this project's person turned team.default off (its own tool says so).
   const teamOff = `export default { async start(ctx) {
@@ -189,8 +193,8 @@ test("harness: brief's team nudge is null-safe - team.default off, or core/team 
     return {};
   } };`;
   const { reg: withTeamOff } = await harness(t, [
-    ["projects", { version: "0.1.0", does: { tools: ["projects.context"] } }, projects],
-    ["team", { version: "0.1.0", does: { tools: ["team.project-append"] } }, teamOff],
+    ["projects", { version: "0.1.0", does: { reads: ["projects.context"], tools: ["projects.context"] } }, projects],
+    ["team", { version: "0.1.0", does: { reads: ["team.project-append"], tools: ["team.project-append"] } }, teamOff],
   ]);
   assert.equal((await withTeamOff.call("harness.brief", { cwd: "/w/harlow-site" })).data.text, "Project harlow-legal.");
   // core/style running, but the person turned it off (its own tool says so).
@@ -199,8 +203,8 @@ test("harness: brief's team nudge is null-safe - team.default off, or core/team 
     return {};
   } };`;
   const { reg: withStyleOff } = await harness(t, [
-    ["projects", { version: "0.1.0", does: { tools: ["projects.context"] } }, projects],
-    ["style", { version: "0.1.0", does: { tools: ["style.append"] } }, styleOff],
+    ["projects", { version: "0.1.0", does: { reads: ["projects.context"], tools: ["projects.context"] } }, projects],
+    ["style", { version: "0.1.0", does: { reads: ["style.append"], tools: ["style.append"] } }, styleOff],
   ]);
   assert.equal((await withStyleOff.call("harness.brief", { cwd: "/w/harlow-site" })).data.text, "Project harlow-legal.");
 });
@@ -265,8 +269,8 @@ test("harness: an assistant outside any project reads the whole account for its 
     return {};
   } };`;
   const { reg } = await harness(t, [
-    ["projects", { version: "0.1.0", does: { tools: ["projects.of", "projects.context"] } }, projects],
-    ["memory", { version: "0.1.0", does: { tools: ["memory.relevant"] } }, memory],
+    ["projects", { version: "0.1.0", does: { reads: ["projects.of", "projects.context"], tools: ["projects.of", "projects.context"] } }, projects],
+    ["memory", { version: "0.1.0", does: { reads: ["memory.relevant"], tools: ["memory.relevant"] } }, memory],
   ]);
   const asked = () => /** @type {any[]} */ (/** @type {any} */ (globalThis).__asked);
   const a = (await reg.call("harness.enrich", { prompt: "how should you reply to me?", cwd: "/home/alex", projects: "*" })).data.text;
