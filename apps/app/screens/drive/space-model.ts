@@ -62,6 +62,7 @@ export const MAX_UPLOAD = 8 * 1024 * 1024;
 
 export function spaceDriveRefusal(code: string | undefined, message: string): string {
   if (code === "unavailable") return "This space has no Drive yet.";
+  if (code === "no_such_tool") return "This box does not have the space's Drive yet. Update your Vyre.";
   if (code === "too_large") return "That file is bigger than 8 MB. The app sends files up to 8 MB.";
   if (code === "denied") return "You may not do that in this space's Drive.";
   if (code === "not_found") return "That file is not there, or you may not read it.";
