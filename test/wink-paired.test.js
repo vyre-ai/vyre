@@ -329,13 +329,14 @@ async function standinIdentity(t) {
   const state = { down: false };
   const fetchDir = async (url, init) => { if (state.down) throw new Error("unreachable"); return workerDir.fetch(new Request(url, { ...init, headers: { ...(init.headers || {}), "cf-connecting-ip": `198.51.${(n >> 8) & 255}.${n++ & 255}` } }), rt.env); };
   const seen = memorySeen();
-  const store = fileIdentityStore(path.join(tempHome(t), "spaces"));
+  const home = tempHome(t);
+  const store = fileIdentityStore(path.join(home, "spaces"));
   const ops = createIdentityOps({ store, dir: idDirectory({ base: "http://127.0.0.1:1", fetch: fetchDir, now: () => clock.t, seen }), seen, now: () => clock.t, emit() {}, stretch: { memoryKiB: 64, passes: 1 } });
   await ops.create({ name: "alex", password: "four plain words here", deviceLabel: "Alex's phone" });
   spacesHooks.fetch = /** @type {any} */ (fetchDir);
   spacesHooks.now = () => clock.t;
   t.after(async () => { spacesHooks.fetch = null; spacesHooks.now = null; await rt.settle(); });
-  return { id: store.status().id, state, store, ops: () => store.ops(), clock,
+  return { id: store.status().id, home, state, store, ops: () => store.ops(), clock,
     sign: async m => ({ eid: store.status().eid, sig: Buffer.from(await store.sign(Buffer.from(m))).toString("base64url") }) };
 }
 
@@ -364,7 +365,7 @@ async function pairFreshServer(t, { kind = "phone", about, presenceStorage = "ha
   await until(async () => shown);
   assert.equal((await w.call("wink.server.pair.answer", { yes: true, pick: q.choices.indexOf(shown) + 1 }, "cli", PROOF)).data.yes, true);
   const done = await pairing;
-  return { w, dk, ks, ident, owner, done, made, sign: m => crypto.sign("sha256", Buffer.from(m), { key: dk.privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url") };
+  return { w, dk, ks, ident, owner, done, made, sign: m => devKey ? devKey.sign(m) : crypto.sign("sha256", Buffer.from(m), { key: dk.privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url") };
 }
 const linksFor = (t, f) => {
   const links = createServerLinks({ connect, options: { crypto: nodeCrypto(), keyStore: f.ks }, name: "Alex's iPhone", sign: f.sign,
@@ -887,3 +888,53 @@ async function pairSecondDevice(t, f, { kind = "computer", name = "Alex's Mac" }
   } };
 }
 
+
+test("M1 invites to a space on its server: the home's one-use challenge is answered with the person's own key (a software key on a development build), and a release-kind build refuses a software key", async t => {
+  const { startSealer } = await import("../kernel/seal/client.js");
+  const { tmp } = await import("../kernel/seal/testing.js");
+  const { softwareKey } = await import("../core/spaces/presence-signer.js");
+  const softSaved = process.env.VYRE_SEAL_SOFTWARE;
+  process.env.VYRE_SEAL_SOFTWARE = "1";
+  t.after(() => { if (softSaved === undefined) delete process.env.VYRE_SEAL_SOFTWARE; else process.env.VYRE_SEAL_SOFTWARE = softSaved; });
+  // the server's kernel runs on a real sealing process that takes software keys (a development build)
+  const sealDir = tmp("m1-invite-seal");
+  const sealer = startSealer({ dir: sealDir, timeoutMs: 8000, dev: true, unattested: true, software: true });
+  t.after(async () => { await sealer.close().catch(() => {}); fs.rmSync(sealDir, { recursive: true, force: true }); });
+  const ident = await standinIdentity(t);
+  // M1's own device key (the file its Wink module offers in every pairing hello): pairing it as the owner's computer is what enrols it in the home's sealing process
+  const devKey = deviceKey(path.join(ident.home, "wink-keys.json.device"));
+  const f = await pairFreshServer(t, { ident, kernelSealer: sealer, kind: "computer", presenceStorage: "software", devKey });
+  const server = f.w.d;
+  const links = linksFor(t, f);
+  await links.startPaired("srv");
+  // M1: a computer with the SAME identity the server is owned by (the identity file is copied in, so its device key and id are the claimed ones)
+  const droot = ident.home;
+  fs.writeFileSync(path.join(droot, "config.json"), JSON.stringify({ name: "m1", transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  const { hooks: spacesHooks } = await import("../core/spaces/index.js");
+  const device = await start({ root: droot, kernel: true, presence: lenient, sessionFor: async () => links.sessionFor("srv"), log: () => {} });
+  spacesHooks.sessionFor = async () => links.sessionFor("srv");
+  t.after(() => { spacesHooks.sessionFor = null; spacesHooks.buildRoot = undefined; });
+  t.after(() => device.stop());
+  const dcall = (/** @type {string} */ tool, /** @type {any} */ input = {}, /** @type {any} */ headers = {}) => import("../core/daemon/client.js").then(m => m.call(tool, input, { root: droot, caller: "cli", headers }));
+  device.registry.deps.db.prepare("INSERT INTO wink_devices (id, identity, kind, name, owner_kind, owner_id, created) VALUES (?, ?, 'server', 'srv', 'identity', ?, 1)").run("srv", ident.id, ident.id);
+  const proofHeader = { "x-vyre-kernel-proof": Buffer.from(JSON.stringify({ key: "k1" })).toString("base64url"), "x-vyre-presence": "passkey id=x" };
+  const made = await dcall("spaces.create", { name: "harlowinv", displayName: "Harlow Legal", home: { kind: "server", device: { id: "srv", name: "srv", alwaysOn: true }, confirmed: true } }, proofHeader);
+  assert.ok(!made.error && made.data.status === "done", JSON.stringify(made).slice(0, 300));
+  const id = made.data.space;
+  assert.equal(server.kernel.spaces.hosts(id), true, "the SERVER's kernel hosts it");
+  // the pairing itself enrolled M1's key for the owner (nothing was enrolled by hand): the sealing process knows exactly this key
+  const key = softwareKey(path.join(droot, "wink-keys.json.device"));
+  assert.notEqual(await sealer.presenceCheck({ chain: { space: id, hops: [{ actor: { kind: "person", id: ident.id, space: id }, via: {} }] }, op: "x", fields: {}, proof: { signer: "software", key_id: key.key_id } }), "unknown_key", "the key is enrolled: the sealing process knows it (it refuses this empty proof for another reason)");
+  // a release-kind build never answers with a software key: the call is handed back as a request to sign, and nothing is made
+  const releaseRoot = tempHome(t);
+  spacesHooks.buildRoot = releaseRoot;
+  const refused = await dcall("spaces.invites.create", { space: id, role: "member" });
+  assert.ok(!refused.error && refused.data.needs_proof === true && refused.data.request.challenge && refused.data.request.home, `release kind: ${JSON.stringify(refused).slice(0, 300)}`);
+  // a development build answers the home's challenge with the person's software key and the invite is made in the one call
+  spacesHooks.buildRoot = undefined;
+  const made1 = await dcall("spaces.invites.create", { space: id, role: "member" });
+  assert.ok(!made1.error && /\/join\/inv_/.test(made1.data.link), `dev kind: ${JSON.stringify(made1).slice(0, 400)}`);
+  // and the home knows the invite
+  const invs = await server.kernel.spaces.hosted(id).gateway.grants.invites.list(server.kernel.spaces.hosted(id).kernel.chains.fromFacts({ kind: "device", device_key_id: "x", person: ident.id, path: "direct", session: "s" }), {}).catch(() => null);
+  if (invs) assert.ok(JSON.stringify(invs).includes(made1.data.id), "the home holds the invite");
+});

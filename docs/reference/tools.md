@@ -8220,6 +8220,11 @@ For the pairing module, after it has PROVED the identity: make this home's owner
 - Input:
   - `person` string, required
   - `name` string
+  - `presence_key` object
+    - `device` string, required
+    - `key_id` string, required
+    - `signer` string, required
+    - `spki` string, required
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `spaces.owner.claimed`

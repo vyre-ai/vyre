@@ -294,6 +294,21 @@ export async function createKernel(cfg) {
       /** The identity that took this Space's owner place (claimed at the server's own screen or by a pairing), or null while the owner is still the first-start id. First owner wins: nothing else may become the owner. */
       handle.ownerClaimed = () => { const a = grantsStore && typeof grantsStore.adopted === "function" ? grantsStore.adopted() : null; return a ? String(a.to) : null; };
 
+      /**
+       * The owner's first presence key, enrolled in the sealing process inside the pairing that made this person the owner: the home builds the owner's chain itself (never a module) and only for
+       * the identity that took the owner place. The sealing process then does the rest: one chain-person, a one-use token for this key, no key yet for the person (a further device needs a proof from
+       * an enrolled key), and a software key only on a development build.
+       * @param {{ person: string, device: string, key_id: string, spki: string, signer: string }} o
+       */
+      handle.enrolOwnerKey = async o => {
+        if (!cfg.sealer || typeof cfg.sealer.begin !== "function" || typeof cfg.sealer.enrol !== "function") throw new KernelError("unavailable", "this home has no sealing process to enrol a key in");
+        const a = grantsStore && typeof grantsStore.adopted === "function" ? grantsStore.adopted() : null;
+        if (!a || String(a.to) !== String(o.person)) throw new KernelError("not_allowed", "only the identity that owns this home gets its first presence key here");
+        const chain = chains.fromFacts({ kind: "device", device_key_id: String(o.device), person: String(o.person), path: "direct" });
+        const { token } = await cfg.sealer.begin({ chain, person: o.person, key_id: o.key_id, spki: o.spki });
+        return cfg.sealer.enrol({ chain, person: o.person, key_id: o.key_id, spki: o.spki, signer: o.signer, token });
+      };
+
       const reg = () => { if (!spaces) throw new KernelError("unavailable", "this kernel has no Spaces registry"); return spaces; };
       handle.spaces = Object.freeze({
         host: (/** @type {any} */ o) => reg().host(o),
