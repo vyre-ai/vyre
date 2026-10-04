@@ -94,6 +94,12 @@ export async function createKernel(cfg) {
     if (!cfg.deviceEnrolled || !facts || facts.kind !== "device" || typeof facts.device_key_id !== "string") return true;
     try { return (await cfg.deviceEnrolled(space, facts.device_key_id)) !== false; } catch { return false; }
   };
+  /** The one adoption path (the handle's call and the boot repair share it). The grants store serialises it and reads the owner it replaces itself, so two callers at once make one adoption. */
+  const adoptNow = async (/** @type {string} */ to) => {
+    const r = await grantsStore.adoptOwner(to);
+    if (r.owner !== ownerRef.id) { const from = ownerRef.id; ownerRef.id = r.owner; if (typeof cfg.onOwnerAdopted === "function") await cfg.onOwnerAdopted(r.owner, from); }
+    return r;
+  };
   const kernelFor = (/** @type {any} */ m) => {
     if (!grantsStore) throw new Error("ctx.kernel needs the kernel's own grants store");
     const needs = (m.needs && m.needs.kernel) || { actions: [] };
@@ -186,12 +192,6 @@ export async function createKernel(cfg) {
     };
     // Only the spaces module (`needs.kernel.spaces: true`) may make or list Spaces: `spaces.create` makes the Space HERE, in the kernel's registry, and the kernel's id (`spc_` and 12 base32
     // characters) is the Space's id everywhere. One registry, one id; the store is attached at that moment (the kernel opens the built-in store for every hosted Space).
-    /** The one adoption path (the handle's call and the boot repair share it). The grants store serialises it and reads the owner it replaces itself, so two callers at once make one adoption. */
-    const adoptNow = async (/** @type {string} */ to) => {
-      const r = await grantsStore.adoptOwner(to);
-      if (r.owner !== ownerRef.id) { const from = ownerRef.id; ownerRef.id = r.owner; if (typeof cfg.onOwnerAdopted === "function") await cfg.onOwnerAdopted(r.owner, from); }
-      return r;
-    };
     if (needs.spaces === true) {
       /** The claimed identity's id becomes the owner's id here (once, logged): the one person of this Space. */
       handle.adoptOwner = (/** @type {string} */ to) => {
@@ -252,5 +252,5 @@ export async function createKernel(cfg) {
   // The check a restart makes (incremental): the last signed checkpoint against the event at its position, then the chain from there to the head, not from event zero. Reported
   // for the daemon to act on (`boot.tamper`); it never throws here.
   const boot = cfg.checkpointKey && cfg.bootCheck !== false ? verifyTail({ space: cfg.space, log, publicKey: cfg.checkpointKey }) : null;
-  return Object.freeze({ boot, setLabel: (/** @type {() => { name?: string, words?: string }} */ f) => { label = f; }, bindCalls: (/** @type {() => any} */ fn) => { if (room) room.bindCalls(fn); }, recordStorageIndex, storageIndexHead, gateway, log, store, chains, grants: grantsStore, limits, tasks, surfaces, kernelFor, bindSpaces, fresh, migrated });
+  return Object.freeze({ boot, adoptOwner: adoptNow, setLabel: (/** @type {() => { name?: string, words?: string }} */ f) => { label = f; }, bindCalls: (/** @type {() => any} */ fn) => { if (room) room.bindCalls(fn); }, recordStorageIndex, storageIndexHead, gateway, log, store, chains, grants: grantsStore, limits, tasks, surfaces, kernelFor, bindSpaces, fresh, migrated });
 }
