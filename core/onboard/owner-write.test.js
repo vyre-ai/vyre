@@ -11,14 +11,13 @@ test("HD-1: a model client, an agent, a hook or another module is refused whethe
     assert.equal(code(() => ownerWrite(c, {}, "x", false)), "denied", c);
     assert.equal(code(() => ownerWrite(c, {}, "x", true)), "denied", c);
   }
-  assert.equal(code(() => ownerWrite("deck", { agent: "kit" }, "x", false)), "denied", "a person surface carrying an agent claim");
+  assert.equal(code(() => ownerWrite("deck", { agent: "kit" }, "x", true)), "denied", "a person surface carrying an agent claim");
 });
 
-test("HD-1: before an owner exists the person's surfaces and the onboarding page may write; afterwards it needs presence", () => {
+test("HD-1: no write before the server has an owner (pair_first); afterwards the person's surfaces pass (the registry asks their presence)", () => {
   for (const c of ["cli", "local", "deck", "capsule", "mobile", "onboard", "device:abc", "setup:ab12", "tailnet:mac", "module:onboard"]) {
-    assert.equal(code(() => ownerWrite(c, {}, "x", false)), "ok", c);
-    assert.equal(code(() => ownerWrite(c, {}, "x", true)), "presence_required", c);
-    assert.equal(code(() => ownerWrite(c, { presence: { ok: true } }, "x", true)), "ok", c);
+    assert.equal(code(() => ownerWrite(c, {}, "x", false)), "pair_first", c);
+    assert.equal(code(() => ownerWrite(c, {}, "x", true)), "ok", c);
   }
-  assert.equal(code(() => ownerWrite("deck", {}, "x", true, false)), "ok", "a read-only action never needs presence");
+  assert.equal(code(() => ownerWrite("deck", {}, "x", false, false)), "ok", "a read-only action needs no owner");
 });
