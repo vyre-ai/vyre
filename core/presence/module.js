@@ -192,16 +192,18 @@ export default {
           } else throw Object.assign(new Error("a paired device signs in with its own device key or passkey"), { code: "denied" });
           const k = input.key;
           if (!k || k.kty !== "EC" || k.crv !== "P-256" || typeof k.x !== "string" || typeof k.y !== "string" || k.d) throw Object.assign(new Error("key must be the public JWK of an ES256 key"), { code: "bad_input" });
-          const s = people.start({ node, kind: "bearer", label, key: { kty: "EC", crv: "P-256", x: k.x, y: k.y }, keyId: meta.presence.keyId || null });
+          const s = people.start({ node, kind: "bearer", label, key: { kty: "EC", crv: "P-256", x: k.x, y: k.y }, keyId: meta.presence.keyId || null, strength: openedBy(meta.presence.method) });
           ctx.events.emit("presence.signed-in", { id: s.id, node: label });
           return { kind: "bearer", id: s.id, token: s.token, expires: s.expires };
         }
-        const s = people.start({ node, kind: "cookie", label, keyId: meta.presence.keyId || null });
+        const s = people.start({ node, kind: "cookie", label, keyId: meta.presence.keyId || null, strength: openedBy(meta.presence.method) });
         ctx.events.emit("presence.signed-in", { id: s.id, node: label });
         return { kind: "cookie", id: s.id, token: s.token, expires: s.expires };
       },
     });
 
+    /** The strength a session records from the proof that opened it (what the server verified): a passkey with user verification is `passkey` (never `enclave`), Touch ID through the pinned Capsule is `enclave`, a device key is `software`. @param {string} method */
+    const openedBy = method => (method === "passkey" ? STRENGTHS[3] : method === "touchid" || method === "capsule" ? STRENGTHS[1] : STRENGTHS[0]);
     // ---- a paired session's strength ----------------------------------------------------------------------------------------------------------------
     // `software` is a session made with a key nobody had to touch. A device whose own key lives in the phone's Secure Enclave or the Android keystore (what the app reported at pairing, accepted
     // unattested for now: ruling 6410c6a) opens a session that is NOT software; a software key opens a software one, which the peer door counts as presence only where software proofs are taken
