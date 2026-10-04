@@ -20,6 +20,7 @@ import { coerce, read, write, whereIs, needsConfirm } from "../config/settings.j
 import { claudeHome } from "../config/index.js";
 import { readHub, writeHub, hubPath, digest, levelOf } from "./hub.js";
 import { withinOrThrow } from "../../lib/within.js";
+import { isOwnerDevice } from "../../lib/caller.js";
 import { settingTo } from "../../lib/said/setting.js";
 
 const PEOPLE = ["cli", "local", "deck", "capsule"];
@@ -72,7 +73,7 @@ export const isPerson = (caller, meta) => {
   const c = String(caller);
   if (/(?:^|[\s:])agent:/.test(c)) return false;
   if (PEOPLE.includes(c)) return true;
-  return /^(?:tailnet:(?!agent:).|device:[a-z2-7]{16}$)/.test(c) && Boolean(meta && meta.person);
+  return isOwnerDevice({ caller: c }) && Boolean(meta && meta.person);
 };
 
 /**
@@ -88,7 +89,7 @@ export const asPerson = caller => {
   if (PEOPLE.includes(c)) return c;
   // The owner's own Deck over the tailnet or the relay (it has a person session, or the registry
   // would have refused the call) is the Deck. Nothing else is a person, and never passes as one.
-  if (/^tailnet:(?!agent:)[^\s:]+$/.test(c) || /^device:[a-z2-7]{16}$/.test(c)) return "deck";
+  if (isOwnerDevice({ caller: c })) return "deck";
   throw Object.assign(new Error(`${c} is not a person's surface`), { code: "denied" });
 };
 
@@ -177,7 +178,7 @@ export default {
         const v = JSON.parse(String(r.value)), sc = String(r.scope);
         if (sc === "account") h.account[r.key] = v;
         else if (sc.startsWith("project:")) (h.projects[sc.slice(8)] ||= {})[r.key] = v;
-        else if (sc.startsWith("device:")) (h.devices[sc.slice(7)] ||= {})[r.key] = v;
+        else if (sc.slice(0, sc.indexOf(":") + 1) === "device:") (h.devices[sc.slice(sc.indexOf(":") + 1)] ||= {})[r.key] = v; // a settings SCOPE ("device:<id>"), not a caller label
       }
       return h;
     };
@@ -318,7 +319,7 @@ export default {
       let device = i.device == null || i.device === "" ? null : String(i.device);
       if (device && !DEVICE.test(device)) throw Object.assign(new Error("device is a device's id"), { code: "bad_input" });
       const caller = String((meta && meta.caller) || "");
-      const own = !device && /^(?:tailnet:(?!agent:)[^\s:]+|device:[a-z2-7]{16})$/.test(caller) && (await personCall(meta));
+      const own = !device && isOwnerDevice({ caller }) && (await personCall(meta));
       if (own) device = caller;
       const session = i.session == null || i.session === "" ? null : String(i.session);
       if (session && !THREAD.test(session)) throw Object.assign(new Error("session is a thread's id"), { code: "bad_input" });
