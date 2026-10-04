@@ -578,6 +578,9 @@ export function createPairing(o) {
     } catch (e) { ctx.log(`wink: no paired session for ${device}: ${/** @type {Error} */ (e).message}`); }
   };
 
+  /** The waiting redeemer of an unconfirmed pairing is `web:<id>` at the relay; it is the device `device:<id>` it will become, so wink compares and records that. @param {string} c */
+  const canonDevice = c => (/^web:[a-z2-7]{16}$/.test(c) ? `device:${c.slice(4)}` : c);
+
   /** Registers this box's own tools. */
   function tools() {
     const { owner } = o;
@@ -857,13 +860,15 @@ export function createPairing(o) {
     };
     const adoptInput = obj({ pairing: obj({ commit: str, reveal: str, tag: str, cancel: { type: "boolean" } }), owner: obj({ kind: { type: "string", enum: ["identity", "space"] }, id: str, name: str }, ["kind", "id"]), identity: str, peerSecret: str, handover: obj({ home: str, box: str, controlUrl: str, authKey: str, relay: str, space: str, device: str }) }, ["owner"]);
     ctx.tool("wink.server.adopt", {
+      callers: ["web"],
       description: "On a server that was just paired: record who it belongs to, an identity or a space { kind, id }, and the identity that paired it. Called by the pairing app over the paired channel. On a server with no owner the person at the server must say yes first (the server shows who asks and three words; no answer in 5 minutes pairs nothing): the call answers { pending, words, until } until then, and call it again to hear the result; a server installed with a named identity (pairTo) takes only that identity and asks no one. After that it cannot be repeated over the paired channel; the person changes the owner on this box with wink.server.retarget (their own presence), and only the one that adopted it, or a screen on this box, may. Answers { owner }.",
       input: adoptInput,
       // No presence gate in front: the platform would turn a stranger away before this ran, and its relay device row would stay on the box.
       // The same rule is kept here: once there is an owner, a change needs the owner's fresh presence (meta0.presence) from the one that adopted it.
       run: async (input, meta0 = {}) => {
         owner(meta0, "adopting a server");
-        const caller = String((meta0 && meta0.caller) || "anonymous");
+        // A scanner whose pairing is not yet confirmed arrives as `web:<id>` (the relay, BR-2); the adopter is recorded, and later compared, as the device it becomes: `device:<id>`.
+        const caller = canonDevice(String((meta0 && meta0.caller) || "anonymous"));
         const prior = meta.get("owner"), adopter = meta.get("adopter");
         if (prior) {
           // Once there is an owner, a change needs the owner's fresh presence, and comes from the one that adopted it or from a screen on this box.
@@ -1070,12 +1075,13 @@ export function createPairing(o) {
       },
     });
     ctx.tool("wink.phone.wait", {
+      callers: ["web"],
       description: "From the phone that scanned the QR, over its own paired connection: where the question stands, and the way the three words are made. The phone sends `commit` (the hash of its fresh nonce) and its own `name`, hears this computer's nonce `nb`, then sends `reveal` (its nonce); the words appear only then. Answers { state: waiting | yes | no | expired, nb, words?, until }. Only that phone gets an answer.",
       input: obj({ commit: str, reveal: str, tag: str, name: str }),
       run: async (input, meta = {}) => {
         owner(meta, "the phone's wait");
         const a = phoneLive();
-        if (!a || String((meta && meta.caller) || "") !== `device:${a.device}`) throw fail("denied", words("phoneNotYours"));
+        if (!a || canonDevice(String((meta && meta.caller) || "")) !== `device:${a.device}`) throw fail("denied", words("phoneNotYours"));
         const i = input || {};
         if (!a.named && i.name) { const n = cleanPhoneName(i.name); if (n) a.name = n; a.named = true; }
         if (a.state === "waiting" && !a.words) {

@@ -848,6 +848,29 @@ test("BR-2 over the relay: a browser's channel is web:<id> (it may ask to be tru
   assert.ok(none.status === 0 || none.status === 404 || none.status === 401, `an unknown id reaches nothing (${none.status})`);
 });
 
+test("one pairing path for a browser: unconfirmed it is web:<id> and reaches wink.phone.wait only; confirmed with the three words its row is kind app with a software key, and it is device:<id>", async t => {
+  const w = await world(t);
+  const ks = keystore(t);
+  const minted = await w.d.registry.call("relay.pair.ticket", {}, "cli", PROOF);
+  const paired = await pairTicket(fromBase64url(minted.data.ticket), { relay: w.status.url, name: "Alex's browser", crypto: nodeCrypto(), keyStore: ks, about: { kind: "web", release: "0.3.0" } });
+  assert.equal(paired.pending, true);
+  const c = connect({ relay: w.status.url, route: paired.route, box: paired.box, name: "Alex's browser", crypto: nodeCrypto(), keyStore: ks });
+  t.after(() => c.close());
+  assert.equal((await over(c, "wink.phone.wait", { name: "Alex's browser" })).status, 200, "its own pairing wait");
+  assert.equal((await over(c, "relay.devices.ask-trust", {})).status, 404, "an unconfirmed browser has the pairing calls only");
+  const mine = await askPhone(w, paired.device, new Uint8Array(0), "Alex's browser");
+  const q = await until(async () => { const x = (await w.call("wink.phone.pairing")).data; return x && x.asking ? x : null; });
+  assert.equal((await w.call("wink.phone.pair.answer", { yes: true, pick: q.choices.indexOf(mine.words) + 1 })).data.yes, true);
+  await until(async () => relayHas(w, paired.device));
+  const row = await deviceRow(w, paired.device);
+  assert.deepEqual([row.kind, row.storage], ["app", "software"], "a confirmed browser is a device like any other, its key in software");
+  assert.equal((await w.d.registry.call("relay.device.info", { id: paired.device }, "module:vyred")).data.kind, "app");
+  const c2 = connect({ relay: w.status.url, route: paired.route, box: paired.box, name: "Alex's browser", crypto: nodeCrypto(), keyStore: ks });
+  t.after(() => c2.close());
+  const asked = await over(c2, "relay.devices.ask-trust", {});
+  assert.notEqual(asked.status, 200, "device:<id> is not a browser with limits to lift");
+});
+
 test("X-1, real daemon and relay: the yes makes the device (row, presence key, bridge session) and only the yes; a wrong pick makes nothing", async t => {
   const w = await world(t);
   const open = (await w.call("wink.phone.open", {})).data;

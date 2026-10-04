@@ -359,7 +359,9 @@ export default {
      * @param {Buffer} pub @param {string} id @param {string} name @param {any} hello @param {any} match
      */
     async function enrol(pub, id, name, hello, match) {
-      const kind = hello.kind === "web" ? "web" : "app";
+      // One pairing path (lead ruling, 4 Oct 2026): a browser that completed it, three words confirmed, is one of the person's devices like any other: a row of kind app, whose key is
+      // software (WebCrypto). Only the older one-step pairings (the classic QR, no gate) still make a limited `web` row.
+      const kind = hello.kind === "web" && !(match && match.gate) ? "web" : "app";
       // A desktop asks to join the tailnet in its pairing hello (ADR 0046 section 3). The grant
       // is what makes a later key possible at all, so it only ever comes from a pairing, which a
       // present person started; a web device never gets one.
@@ -373,7 +375,7 @@ export default {
         if (r && r.data && (r.data.keyId || r.data.id)) { presenceKey = String(r.data.keyId || r.data.id); presence = { enrolled: true, reason: "" }; }
         else presence = { enrolled: false, reason: (r && r.error && r.error.message) || "presence would not enroll this key" };
       }
-      const storage = pk && ["hardware", "software"].includes(pk.storage) ? pk.storage : "unknown";
+      const storage = hello.kind === "web" ? "software" : pk && ["hardware", "software"].includes(pk.storage) ? pk.storage : "unknown";
       db.prepare(`INSERT INTO relay_devices (id, name, pub, presence_key, paired_at, last_seen, removed_at, kind, release, manifest, trusted, join_grant, join_mints, join_last, key_storage) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, 0, ?, 0, NULL, ?)
         ON CONFLICT(id) DO UPDATE SET name = excluded.name, pub = excluded.pub, presence_key = excluded.presence_key, paired_at = excluded.paired_at, last_seen = excluded.last_seen, removed_at = NULL,
           kind = excluded.kind, release = excluded.release, manifest = excluded.manifest, trusted = 0, join_grant = excluded.join_grant, join_mints = 0, join_last = NULL,
@@ -561,7 +563,8 @@ export default {
         const pid = String(reply.pending), p = pendingPairs.get(pid);
         if (!p) { channel.close(4401, "this pairing is over"); return; }
         const peer = { node: p.name, stableId: pid, login: null, tags: [], caps: {}, kind: "device" };
-        bridge(channel, { handler: pendingHandler(p.gate), caller: `device:${pid}`, peer, log: m => ctx.log(m) });
+        // an unconfirmed redeemer is `web:<id>`: it reaches only the tools that name that class (its own pairing's), and becomes `device:<id>` only at the confirm (BR-2)
+        bridge(channel, { handler: pendingHandler(p.gate), caller: `web:${pid}`, peer, log: m => ctx.log(m) });
         p.channels.add(channel);
         const closed0 = channel.onclose;
         channel.onclose = reason => { closed0(reason); p.channels.delete(channel); };
