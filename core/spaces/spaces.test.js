@@ -877,7 +877,7 @@ test("space creation asks the kernel which store it would use: a server too smal
   const TEXT = "This server has room for the built-in store only. Everything works, and very large record sets will be slower. A space can't be moved to the larger store yet, so add memory first if you expect this space to grow.";
   const hosts = [];
   let small = true;
-  const kernel = { for: () => ({ space: "spc_bbbbbbbbbbbb", hosted: true, gateway: {} }), chain: async () => ({}), proofFrom: () => ({}), serviceChain: () => ({}),
+  const kernel = { space: "spc_bbbbbbbbbbbb", for: () => ({ space: "spc_bbbbbbbbbbbb", hosted: true, gateway: {} }), chain: async () => ({}), proofFrom: () => ({}), serviceChain: () => ({}),
     spaces: {
       storePlan: async () => (small ? { store: "builtin", confirm: { text: TEXT, choices: ["create", "cancel"] } } : { store: "twenty" }),
       host: async o => { if (small && !o.accept_builtin_store) throw Object.assign(new Error("needs confirmation"), { code: "needs_confirmation" }); hosts.push(o); return { space: `spc_${"b".repeat(12)}`.replace(/b/g, hosts.length === 1 ? "b" : "c") }; },
@@ -898,6 +898,10 @@ test("space creation asks the kernel which store it would use: a server too smal
   const made = await d.ok("spaces.create", { ...args, storeChoice: "create" });
   assert.equal(made.status, "done", JSON.stringify(made));
   assert.deepEqual(hosts.map(h => [h.name, h.accept_builtin_store === true]), [["harlow", true]]);
+  // the join card's label: with no space named, this home's own Space (the one the kernel keeps here), its name and four words
+  const label = await d.ok("spaces.label", {}, "module:vyred");
+  assert.equal(label.name, "harlow.vyre.run");
+  assert.match(label.words, /^\w+ \w+ \w+ \w+$/);
   // a server with room for the larger store: no question, no flag
   small = false;
   const big = await d.ok("spaces.create", { name: "northwind", home: { kind: "this-computer", confirmed: true } });
@@ -979,5 +983,29 @@ test("a device's spaces: the Access screen lists them, a space can remove one de
   assert.ok(!(await d.call("spaces.get", { space: a.space })).error, "the person's own socket still reaches it");
   assert.equal((await d.ok("spaces.devices.restore", { space: a.space, device: eid })).removed, false);
   assert.ok(!(await d.call("spaces.get", { space: a.space }, "cli", asDevice)).error);
+  void w;
+});
+
+test("device enrolment: no list means every space, pairing sets the list, a new space reaches only the device that made it, and enrol is one call", async t => {
+  const w = world(t);
+  const d = await device(t);
+  const me = await d.ok("spaces.identity.create", { name: "alex" });
+  const eid = me.eid;
+  const asDevice = { kernelFacts: { kind: "device", device_key_id: eid } };
+  const a = await d.ok("spaces.create", { name: "harlow", home: { kind: "this-computer", confirmed: true } });
+  const b = await d.ok("spaces.create", { name: "northwind", home: { kind: "this-computer", confirmed: true } });
+  assert.equal((await d.ok("spaces.devices.enrolled", { device: eid, space: a.space }, "module:x")).enrolled, true, "no list yet: enrolled everywhere");
+  // pairing: every space pre-ticked, the person unticks northwind
+  const set = await d.ok("spaces.devices.set", { device: eid, spaces: [a.space] });
+  assert.deepEqual(set.spaces, [a.space]);
+  assert.deepEqual((await d.ok("spaces.devices.spaces", { device: eid })).spaces.map(x => [x.label, x.enrolled]).sort(), [["harlow", true], ["northwind", false]]);
+  assert.equal((await d.call("spaces.get", { space: b.space }, "cli", asDevice)).error?.code, "device_removed");
+  // a space made later is enrolled on the device that made it
+  const c = await d.ok("spaces.create", { name: "juno", home: { kind: "this-computer", confirmed: true } }, "cli", asDevice);
+  assert.ok(!(await d.call("spaces.get", { space: c.space }, "cli", asDevice)).error);
+  // "Add to this device": one call
+  assert.equal((await d.ok("spaces.devices.enrol", { space: b.space, device: eid })).enrolled, true);
+  assert.ok(!(await d.call("spaces.get", { space: b.space }, "cli", asDevice)).error);
+  assert.deepEqual((await d.ok("spaces.devices.set", { device: eid, spaces: [a.space, "spc_nope"].slice(0, 1) })).spaces, [a.space]);
   void w;
 });

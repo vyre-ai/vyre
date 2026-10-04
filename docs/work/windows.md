@@ -441,3 +441,13 @@ app.
   aware ACL helpers left - `ensureWindowsSocketDir`/`currentUserPrincipal` are gone).
 - core/daemon/index.js: skips `fs.chmodSync` on `win32` (a named pipe has no file to chmod).
 - local/capsule/native-win/: new, `hotkey.rs` + tests, not yet wired into `local/capsule/index.js`.
+
+
+## Spaces session, 4 Oct (windows, work/spaces)
+- BR-1 on a real kernel-on vyred (test/walk-identity-space.test.js); BR-2 fixed (214b43672): the person comes only from ctx.kernel.chain(meta) in core/bridges and core/publish, no label checks left in spaces, bridges or publish; spaces.self takes the kernel person and answers only for the home owner (kernel handle `owner`).
+- E2E steps 2 and 3 walked on testbox3 (team/0.3/E2E-RUN.md).
+- Setup in progress: spaces.setup.save/claim, `setup` on spaces.get/list; spaces.list shows only spaces that have their home.
+- One identity: spaces owns the id (spaces.identity.id); pairing reads it. Members carry `name`. spaces.devices.spaces/remove/restore for Access (enforced in the spaces module; the kernel's own calls need a per-space device bar from platform).
+- A refusal from records.workspace.create fails the workspace step on a kernel-hosted space; other spaces still warn.
+- Left: delete the legacy membership store; invites on the kernel; spaces.label; presence.recover; Publish ingress (Caddy). golden.json/allow.json need re-recording (platform-2 told).
+- Test finding: `--test-force-exit` silently drops tests mid-file (platform-2 fixing the flag).

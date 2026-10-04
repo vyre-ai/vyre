@@ -102,6 +102,18 @@
     "reach": "person"
    },
    {
+    "name": "spaces.devices.enrol",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.devices.set",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.devices.enrolled",
+    "reach": "modules"
+   },
+   {
     "name": "spaces.setup.save",
     "reach": "person"
    },
@@ -271,6 +283,7 @@
    "space.setup-moved",
    "space.device-removed",
    "space.device-restored",
+   "space.device-enrolment-set",
    "member.added",
    "member.role-changed",
    "member.removed",

@@ -40,6 +40,22 @@ test("records.*: a signed-in device creates and queries records in its Space und
   // not a record reference, and a Space that is not here
   assert.equal((await call("records.get", { urn: "nonsense" }, { root, caller: "cli" })).error.code, "bad_input");
   assert.equal((await call("records.list", { type: "contact", space: "spc_zzzzzzzzzzzz" }, { root, caller: "cli" })).error.code, "not_found");
+  // sealed values: the person seals a value in, the record keeps a reference, an assistant sees a placeholder, a reveal needs the person's presence, the feed shows what happened
+  const sealed = await call("records.seal-put", { urn: made.urn, field: "ssn", value: "123-45-6789", class: "us-ssn" }, { root, caller: "cli" });
+  assert.ok(!sealed.error, JSON.stringify(sealed));
+  const ref = sealed.data.record.data.ssn;
+  assert.ok(ref && ref.ref && ref.sealed, "the record holds only a reference");
+  assert.ok(!JSON.stringify(sealed).includes("123-45-6789"), "the plaintext is nowhere in the answer");
+  const asPerson = (await ok("records.sees-as", { urn: made.urn, who: "person" })).data;
+  assert.ok(asPerson.ssn && asPerson.ssn.present === true);
+  const asAssistant = (await ok("records.sees-as", { urn: made.urn, who: "assistant" })).data;
+  assert.equal(asAssistant.ssn && asAssistant.ssn.ref, undefined, "an assistant sees a placeholder, never the reference");
+  const noProofReveal = await call("records.reveal", { urn: made.urn, field: "ssn", purpose: "check" }, { root, caller: "cli" });
+  assert.ok(noProofReveal.error && !JSON.stringify(noProofReveal).includes("123-45-6789"), JSON.stringify(noProofReveal));
+  assert.equal((await call("records.seal-put", { urn: made.urn, field: "name", value: "x" }, { root, caller: "cli" })).error.code, "bad_input", "not a sealed field");
+  const feed = (await ok("records.events", { record: made.urn })).events;
+  assert.ok(feed.length >= 2 && feed.every(e => e.subject.startsWith(made.urn)), "the record's own events");
+  assert.ok(feed.some(e => e.type === "contact.created"));
   // a second Space this home hosts: the same device acts there under THAT Space's own chain, and a stranger's Space is not reachable
   const second = await d.kernel.spaces.host({ owner: d.kernel.id.owner, name: "second" });
   const ownerIn2 = second.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
