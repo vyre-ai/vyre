@@ -70,18 +70,21 @@ export default {
     });
 
     ctx.tool("connectors.catalog", {
+      effect: "read",
       description: "Every app Vyre can connect, each run by the vendor's own hosted server: id, label, group, who can use it, how the sign-in goes (setup: none, app or token; modes oauth and token), and which of the person's connections already use it. { all: true } adds the vendors checked and ruled out, each with the reason. Never a value.",
       input: obj({ group: str, all: { type: "boolean" } }),
       run: input => conn.catalog(input),
     });
 
     ctx.tool("connectors.list", {
+      effect: "read",
       description: "The person's connections: name, the app, how it signs in, and when it was made.",
       input: obj({}),
       run: () => conn.list(),
     });
 
     ctx.tool("connectors.connect", {
+      effect: "write",
       description: "Connect an app from the catalog. { preset, label? } starts the sign-in. It answers { step: \"open\", id, url }: open the address in a browser and the sign-in finishes when the vendor sends the browser back (connectors.connect.finish takes the address for a browser on another device). Or { step: \"needs\", needs: \"token\" | \"client\", ... }: ask the person for a token (pass it as `token`, with `extra` for any extra fields) or for their own OAuth app: the answer carries a `guide` (steps and links, with a prefilled app link where the vendor has one) and the two `fields` to ask for; pass them as `app` { client_id, client_secret }, or name a vault item holding them as `client`. `scope` { projects, agents } is who may use it, the shape a server carries; left out, a server is open to every project and agent and a credential (Microsoft, personal Google) is for you and the assistant only. `label` makes a second account of the same app. `mode` picks oauth or token when both exist.",
       input: obj({ preset: str, label: str, name: str, mode: { type: "string", enum: ["oauth", "token"] }, client: str, scope: { type: "object" }, app: { type: "object" }, token: str, extra: { type: "object" }, replace: { type: "boolean" } }, ["preset"]),
       callers: PEOPLE,
@@ -89,6 +92,7 @@ export default {
     });
 
     ctx.tool("connectors.connect.finish", {
+      effect: "write",
       description: "Finish a sign-in with the whole address the browser landed on (for a browser on another device).",
       input: obj({ id: str, url: str }, ["id", "url"]),
       callers: PEOPLE,
@@ -96,6 +100,7 @@ export default {
     });
 
     ctx.tool("connectors.connect.cancel", {
+      effect: "write",
       description: "Cancel an open sign-in.",
       input: obj({ id: str }, ["id"]),
       callers: PEOPLE,
@@ -116,6 +121,7 @@ export default {
     });
 
     ctx.tool("connectors.disconnect", {
+      effect: "write",
       description: "Disconnect an app: its server leaves the hub. The vault item stays; the vault removes items.",
       input: obj({ name: str }, ["name"]),
       callers: PEOPLE,
@@ -125,6 +131,7 @@ export default {
     // The # picker's connector kind (platform's core/mentions calls these two: search as the asking person,
     // resolve as sessions or the assistant on the person's own turn). The manifest's `mentions` entry names them.
     ctx.tool("connectors.mention.search", {
+      effect: "read",
       description: "The # picker's connectors: connected apps by name, then a \"Connect <name>\" row for each app not yet connected. { q?, limit? } -> [{ kind, id, name, hint, icon }]. A connect: id means open the connect flow (connectors.connect), not a tag.",
       input: obj({ q: str, limit: { type: "integer" } }),
       callers: PEOPLE,
@@ -147,6 +154,7 @@ export default {
     /** @type {{ key: string, at: number, value: any } | null} */
     let cached = null;
     ctx.tool("connectors.calendar.today", {
+      effect: "read",
       description: "Today's next meetings across every connected calendar, for a next-meeting line: { events: [{ id, account, title, start, end, when, join?, link }] }. Empty when none is connected. Read only; cached for a minute.",
       input: obj({ limit: { type: "integer" } }),
       run: async ({ limit } = {}) => {

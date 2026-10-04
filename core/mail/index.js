@@ -36,6 +36,8 @@ const obj = (properties, required = []) => ({ type: "object", properties, requir
 const emails = { anyOf: [str, { type: "array", items: str }], description: "an address, a comma list, or a list" };
 const PEOPLE = ["cli", "local", "deck", "capsule", "module"];
 const MANAGERS = ["cli", "local", "deck", "module"];
+/** mail.send only holds a message at the Gate, from accounts this caller may use, so a model session may ask for one. */
+const WITH_MODELS = [...PEOPLE, "mcp", "harness"];
 const account = { type: "string", description: "a mail account id from mail.accounts (a vault connection id); reads default to every account this caller may use" };
 const behalf = obj({ surface: { type: "string", enum: ["capsule", "chat", "agent", "phone"] }, thread: str, agent: str },
   []);
@@ -317,6 +319,7 @@ export default {
     };
 
     ctx.tool("mail.send", {
+      callers: WITH_MODELS,
       description: "Send an email as the user from one of their accounts. It is always held at the Gate until the user approves it (and may edit it); returns { held, account, message }. With several accounts, name one from mail.accounts; a send never guesses.",
       input: obj(mailInput, ["to", "subject", "body"]),
       run: async (input, meta) => {

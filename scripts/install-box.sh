@@ -388,12 +388,12 @@ dev_sign() {
   say "packing the checkout and signing it with a throwaway key (this install only)"
   dk docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$FROM:/from:ro" -v "$TMP:/out" "$nodeimg" sh -c '
     set -e
-    mkdir /w /u && cd /from && tar --exclude=.git --exclude=node_modules --exclude=./site/box -cf - . | tar -C /w -xf -
-    cd /w && npm pack --silent --pack-destination /tmp >/dev/null
-    tar -xzf /tmp/vyre-*.tgz -C /u --strip-components=1
-    node /u/scripts/dev-sign.mjs --root /u --out /out
-    cp /u/box/vyre /out/vyre
-    tar -czf /out/vyre.tgz --transform "s,^\./,package/," -C /u .
+    mkdir /tmp/w /tmp/u && cd /from && tar --exclude=.git --exclude=node_modules --exclude=./site/box -cf - . | tar -C /tmp/w -xf -
+    cd /tmp/w && npm pack --silent --pack-destination /tmp >/dev/null
+    tar -xzf /tmp/*.tgz -C /tmp/u --strip-components=1
+    node /from/scripts/dev-sign.mjs --root /tmp/u --out /out
+    cp /tmp/u/box/vyre /out/vyre
+    tar -czf /out/vyre.tgz --transform "s,^\./,package/," -C /tmp/u .
   ' || die "could not pack and sign the checkout (see the lines above); nothing was installed"
   [ -s "$TMP/vyre.tgz" ] && [ -s "$TMP/SHA256SUMS.sig" ] || die "the packed checkout is incomplete; nothing was installed"
   TGZ=1; DEVSIGNED=1

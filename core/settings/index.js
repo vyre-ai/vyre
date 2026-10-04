@@ -397,6 +397,7 @@ export default {
     };
 
     ctx.tool("settings.schema", {
+      effect: "read",
       description: "Every setting the running modules declare: key, owning module, group, label, type and choices (a module may name them at run time), the levels it may be set at (account, project, device, session), when a change applies (live, next session, restart), whether Claude Code's own files hold it (owner C), and whether changing it loosens security (a proof) or needs a confirm. hub says where the hub file is and its rev.",
       input: { type: "object", properties: {} },
       run: async () => {
@@ -506,6 +507,7 @@ export default {
     const LEVEL = { type: "string", enum: ["account", "project", "device", "session"] };
 
     ctx.tool("settings.set", {
+      effect: "write",
       description: "Change a setting at account level, or for one project, device or session (give it). The value is checked against the setting's type, and by its module when it names a check. preview: true returns what would change and writes nothing, with confirm naming what it widens or loosens. No confirm step and no proof: every change is logged (settings.changes) and can be undone (settings.undo). Returns the value now in effect.",
       input: { type: "object", required: ["key", "value"], properties: { key: str, value: {}, level: LEVEL, ...where,
         preview: { type: "boolean" }, confirm: { type: "boolean" } } },
@@ -517,6 +519,7 @@ export default {
     });
 
     ctx.tool("settings.reset", {
+      effect: "write",
       description: "Remove a setting's value at one level, so the next level down (then the default) applies again. Logged and undoable like settings.set.",
       input: { type: "object", required: ["key"], properties: { key: str, level: LEVEL, ...where, preview: { type: "boolean" }, confirm: { type: "boolean" } } },
       callers: PEOPLE,
@@ -554,6 +557,7 @@ export default {
 
     // Undo one change: the value before it comes back at the same level, with no prompt (C25).
     ctx.tool("settings.undo", {
+      effect: "write",
       description: "Undo one settings change (its id from settings.changed or settings.changes): the value before it comes back at the same level. No confirm and no proof.",
       input: { type: "object", required: ["change"], properties: { change: str } },
       callers: PEOPLE,
@@ -573,6 +577,7 @@ export default {
 
     // Recent changes, newest first: what the Deck shows as "Changed by <who>, <when>" with Undo.
     ctx.tool("settings.changes", {
+      effect: "read",
       description: "Recent settings changes, newest first: {id, key, level, target, by, said, at, undone}. Give key for one setting's history.",
       input: { type: "object", properties: { key: str, limit: { type: "number" } } },
       run: async (i) => {

@@ -9,11 +9,11 @@
   "requires": [],
   "does": {
     "tools": [
-      { "name": "sight.targets", "reach": "anyone" },
-      { "name": "sight.now", "reach": "anyone" },
-      { "name": "sight.watch", "reach": "anyone" },
-      { "name": "sight.frame", "reach": "anyone" },
-      { "name": "sight.steps", "reach": "anyone" }
+      { "name": "sight.targets", "reach": "anyone", "effect": "read" },
+      { "name": "sight.now", "reach": "anyone", "effect": "read" },
+      { "name": "sight.watch", "reach": "anyone", "effect": "write" },
+      { "name": "sight.frame", "reach": "anyone", "effect": "read" },
+      { "name": "sight.steps", "reach": "anyone", "effect": "read" }
     ]
   },
   "watches": {

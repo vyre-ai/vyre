@@ -4,7 +4,7 @@
   "description": "The Android app from the box: CI's unsigned APK, signed with the owner's own key, served to the owner's devices at /apps/.",
   "roles": ["box"],
   "requires": ["vault"],
-  "does": { "tools": [{ "name": "releases.cert", "reach": "anyone" }, { "name": "releases.sign", "reach": "anyone" }] },
+  "does": { "tools": [{ "name": "releases.cert", "reach": "anyone", "effect": "write" }, { "name": "releases.sign", "reach": "anyone", "effect": "write" }] },
   "watches": { "emits": [] },
   "shows": { "cli": [] },
   "needs": { "vault": ["android-release-key"] },

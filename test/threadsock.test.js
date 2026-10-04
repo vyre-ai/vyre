@@ -252,9 +252,14 @@ test("a person's own surface call carries a kernel chain in a module: the owner'
   const d = await start({ root, log: () => {}, kernel: true, firstPartyRoots: [fp] });
   t.after(() => d.stop());
   const owner = d.kernel.id.owner;
-  for (const label of ["cli", "local", "deck", "mobile"]) {
+  for (const label of ["cli", "local"]) {
     const r = /** @type {any} */ (await call("zz-who.me", {}, { root, caller: label }));
     assert.deepEqual(r.data && r.data.hops, [["person", owner, label]], `${label}: ${JSON.stringify(r)}`);
+  }
+  // deck and mobile reach a daemon through their own listeners: as a socket label they are a claim, never the person
+  for (const label of ["deck", "mobile"]) {
+    const r = /** @type {any} */ (await call("zz-who.me", {}, { root, caller: label }));
+    assert.ok(r.data ? r.data.hops.every(h => h[0] !== "person") : r.error, `${label}: ${JSON.stringify(r)}`);
   }
   // the Capsule label with no pinned binary behind it gets no person chain (a label is not a proof)
   const cap = /** @type {any} */ (await call("zz-who.me", {}, { root, caller: "capsule" }));

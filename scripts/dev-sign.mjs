@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // scripts/dev-sign.mjs --root <unpacked package root> --out <dir>: what an install from a checkout (install-box.sh --from) does so its box boots its modules with no path rule and no
-// development switch. A throwaway Ed25519 key is made here and never leaves this process; its public half replaces the pinned release key in the files that carry it (in THIS tree only:
+// development switch. (It runs from the checkout's scripts/: the package does not ship them.) A throwaway Ed25519 key is made here and never leaves this process; its public half replaces the pinned release key in the files that carry it (in THIS tree only:
 // the checkout is never touched), then the module list (scripts/modules-manifest.mjs) is made from the tree as it now is and signed. The result is the three files a release carries:
 // modules.json, SHA256SUMS and SHA256SUMS.sig, written to --out. The real release key is not used and nothing here can sign for it.
 import crypto from "node:crypto";
@@ -34,7 +34,7 @@ let counter = 1;
 try { const { releaseCounter } = await import(path.join(HERE, "release-counter.mjs")); counter = releaseCounter(pkg.version); } catch { /* a development version: counter 1 */ }
 fs.mkdirSync(out, { recursive: true });
 const modules = path.join(out, "modules.json");
-const r = spawnSync(process.execPath, [path.join(root, "scripts", "modules-manifest.mjs"), root, "--counter", String(counter), "--release", pkg.version, "--out", modules], { encoding: "utf8" });
+const r = spawnSync(process.execPath, [path.join(HERE, "modules-manifest.mjs"), root, "--counter", String(counter), "--release", pkg.version, "--out", modules], { encoding: "utf8" });
 if (r.status !== 0) { console.error("dev-sign: the module list could not be made: " + (r.stderr || r.stdout).trim()); process.exit(1); }
 const sums = `${crypto.createHash("sha256").update(fs.readFileSync(modules)).digest("hex")}  modules.json\n`;
 fs.writeFileSync(path.join(out, "SHA256SUMS"), sums);
