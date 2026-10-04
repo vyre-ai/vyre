@@ -122,7 +122,7 @@ export function registerReset(o) {
       // changes nothing (the code stays good), because phones signed in as the old owner must not outlive it. A box with no presence module has none to end.
       if (typeof ctx.call === "function") {
         const ended = /** @type {any} */ (await Promise.resolve(ctx.call("presence.person.end-paired", {})).catch((/** @type {any} */ e) => ({ error: { code: "failed", message: String(e && e.message) } })));
-        if (ended && ended.error && ended.error.code !== "no_such_tool") throw fail("unavailable", "Could not sign out the phones that are signed in as the current owner, so nothing was reset. Try again.");
+        if (!ended || ended.error) throw fail("unavailable", "Could not sign out the phones that are signed in as the current owner, so nothing was reset. Try again.");
       }
       meta.del(BEGUN); meta.del(GUARD);
       const at = now();

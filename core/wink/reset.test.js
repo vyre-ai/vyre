@@ -292,8 +292,9 @@ test("recovery reset ends every paired person session first and awaits it: a res
   assert.equal(f.events.some(e => e[0] === "wink.server-reset"), false, "no reset card was sent");
   down = false;
   assert.deepEqual(await f.call("wink.server.reset.confirm", { code: g.code }), { reset: true, had: true }, "the same code works once presence is back");
-  // a box with no presence module has none to end
+  // a missing presence module is a failure too, never "nothing to end": the reset refuses and changes nothing
   const n = box({ callResult: t => (t === "presence.person.end-paired" ? { error: { code: "no_such_tool", message: "no" } } : { data: {} }) }); n.own();
   const h = await n.begin();
-  assert.deepEqual(await n.call("wink.server.reset.confirm", { code: h.code }), { reset: true, had: true });
+  await assert.rejects(n.call("wink.server.reset.confirm", { code: h.code }), e => /** @type {any} */ (e).code === "unavailable");
+  assert.ok(n.p.meta.get("owner"), "the owner is still in place");
 });

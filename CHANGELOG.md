@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(wink): a reset where presence is missing (`no_such_tool`) now fails closed like any other failure to end the paired sessions, never "nothing to end".
 - fix(presence): `presence.person.start-paired`, `pair-challenge` and `rotate` declare `callers: ["tailnet", "relay", "device"]` (a paired phone's relay or tailnet channel), so no model, guest or MCP caller reaches them (platform's golden refresh).
 - fix(wink, presence): end paths of a paired person session. A recovery reset now AWAITS `presence.person.end-paired` for every device before it forgets anything, and fails (`unavailable`, nothing reset, the code still good) if presence cannot end them; a box with no presence module has none to end. Removing a presence key also deletes the pending pair grants it confirmed (PS-4). `presence.person.sessions` called by a paired session lists only that session. Tests: core/wink/reset.test.js, core/presence/presence.test.js, test/wink.test.js (revoke, sign-out-everywhere, owner-key removal with a really enrolled key, sessions scope).
 - test(wink): two more end paths of a paired person session on a real vyred and kernel (test/wink.test.js): a revoked session id is gone at once, and sign-out-everywhere (`presence.person.end-paired` with no device, module:wink only) ends it while any other caller is refused. Shared setup `pairedOnKernel`.
