@@ -777,6 +777,8 @@ export default {
         const s = me();
         const dev = await deviceOf(i.device, meta);
         const out2 = [];
+        const hr = homeRow(s);
+        if (hr) { const m = await membershipOf(hr.id, /** @type {string} */ (s.id), meta).catch(() => null); if (m) { const enrolled = await isEnrolled(dev.eid, hr.id); out2.push({ space: hr.id, name: hr.name, label: hr.label, displayName: null, role: m.role, enrolled, removed: !enrolled, lent: false, home: true }); } }
         for (const row of spaces.all()) {
           if (row.status !== "done") continue;
           const m = await membershipOf(row.id, /** @type {string} */ (s.id), meta).catch(() => null);
@@ -991,7 +993,7 @@ export default {
         const deviceId = String(i.device);
         // Migration by contact: a device that is asked about and has no explicit list yet gets one written NOW (the spaces its person belongs to at this moment), logged once. From then on a space the
         // person joins later is not added to it by itself: "Add to this device" is the person's own tap.
-        if (known && (await enrolledList(deviceId)) === null && K && typeof K.membership === "function") {
+        if ((await enrolledList(deviceId)) === null && K && typeof K.membership === "function") {
           try {
             const person = homePerson();
             if (person) {
