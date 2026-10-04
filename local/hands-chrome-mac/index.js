@@ -494,7 +494,8 @@ export default {
     }
 
     /** @param {string} name @param {string} description @param {any} input @param {(i: any, m: any) => Promise<any>} run @param {any} [extra] */
-    const tool = (name, description, input, run, extra = {}) => ctx.tool(name, { description, input, run: async (/** @type {any} */ i, /** @type {any} */ m) => run(i || {}, m || {}), ...extra });
+    // The agent-facing tools admit a model (its grant and plan are checked in the body: "not granted" is refused before Chrome); the person-only ones pass `callers: PEOPLE`.
+    const tool = (name, description, input, run, extra = {}) => ctx.tool(name, { description, input, callers: [...PEOPLE, "module", "mcp", "harness"], run: async (/** @type {any} */ i, /** @type {any} */ m) => run(i || {}, m || {}), ...extra });
 
     const pass = (/** @type {string} */ name, /** @type {string} */ op, /** @type {string} */ description, /** @type {any} */ props) =>
       tool(name, description, obj({ tab, timeoutMs: timeout, ...props }), (i, m) => dispatch(op, i, m));

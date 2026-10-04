@@ -50,7 +50,7 @@ test("module: bad input is refused by the Registry's schema check", async t => {
   const f = fakeApp({ elements: [] });
   const reg = new Registry({ db, events: new Events(db), log: () => {}, config: { role: "local", hands: { runner: f.run } } });
   await reg.start(discover([path.dirname(HERE)]).filter(m => m.dir === HERE), { role: "local" });
-  assert.equal((await reg.call("hands.act", { selector: { role: "AXButton" }, kind: "drag" })).error.code, "bad_input");
+  assert.equal((await reg.call("hands.act", { selector: { role: "AXButton" }, kind: "drag" }, "cli")).error.code, "bad_input");
   assert.equal(f.calls.length, 0);
 });
 
@@ -169,7 +169,7 @@ test("hold: the destination string has control and bidi characters in a window t
   const gateDir = path.join(home, "mods", "gate");
   fs.mkdirSync(gateDir, { recursive: true });
   fs.writeFileSync(path.join(gateDir, "module.json"), JSON.stringify({ name: "gate", version: "0.0.1", roles: ["local"], does: { tools: ["gate.offer", "gate.request"] } }));
-  fs.writeFileSync(path.join(gateDir, "index.js"), `export default { async start(ctx) { ctx.tool("gate.offer", { description: "x", input: { type: "object" }, run: async () => ({ ok: true }) }); ctx.tool("gate.request", { description: "x", input: { type: "object" }, run: async i => { globalThis.__hto = i; return { id: "g1" }; } }); return {}; } };`);
+  fs.writeFileSync(path.join(gateDir, "index.js"), `export default { async start(ctx) { ctx.tool("gate.offer", { effect: "read", description: "x", input: { type: "object" }, run: async () => ({ ok: true }) }); ctx.tool("gate.request", { effect: "read", description: "x", input: { type: "object" }, run: async i => { globalThis.__hto = i; return { id: "g1" }; } }); return {}; } };`);
   const found = [...discover([path.dirname(HERE)]).filter(m => m.dir === HERE), ...discover([path.join(home, "mods")])];
   const firstParty = reg.isFirstParty.bind(reg);
   reg.isFirstParty = (/** @type {string} */ d) => d.startsWith(path.join(home, "mods")) || firstParty(d);

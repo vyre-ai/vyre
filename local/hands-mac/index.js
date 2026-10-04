@@ -189,6 +189,7 @@ export default {
     };
 
     ctx.tool("hands.observe", {
+      callers: [...PEOPLE, "module", "mcp", "harness"], // an agent drives its own grant; the body checks it
       description: "Read the accessibility tree of the frontmost app (or a named app or pid): its window title, a bounded list of controls, each with a selector to hand to hands.act, its value, enabled and focus state, frame and actions, and the text on screen. truncated says the list was capped. In a place Vyre may not look (its own surfaces, sign-in dialogs, password managers, security settings) it returns the app and window only, with blind saying why.",
       input: { type: "object", properties: { ...where, limit: { type: "integer", description: "Most controls to return, 1-500. Default 120." },
         match: { type: "object", properties: filter, description: "Return only the controls that match, read from up to 500 so a match past the default cap is still found." } } },
@@ -196,6 +197,7 @@ export default {
     });
 
     ctx.tool("hands.find", {
+      callers: [...PEOPLE, "module", "mcp", "harness"], // an agent drives its own grant; the body checks it
       description: "Find controls in an app by role, label and nearness without reading the whole list: the same as hands.observe with match. Returns the app, window, whether it is in front (front), and the matching controls with selectors for hands.act, closest to near first. Works on an app in the background without raising it. The floor applies as in hands.observe.",
       input: { type: "object", properties: { ...where, ...filter } },
       run: gated(async input => {
@@ -207,12 +209,14 @@ export default {
     });
 
     ctx.tool("hands.act", {
+      callers: [...PEOPLE, "module", "mcp", "harness"], // an agent drives its own grant; the body checks it
       description: "Do one thing to one control, found by selector in a fresh observation: press it, set its value, focus it, perform one of its accessibility actions, type text into it, or send it a key. The app is never raised or activated: press, set, focus and type work on an app in the background, but a key needs the app in front and is refused with code needs_front otherwise (press the control instead). Then observe again and verify the effect. verified is true only when the re-observation shows it. An act that sends something as the person (a Send button, Return in a chat) is held, not done: the answer has held: true and an id, and the person approves it at the Gate (gate.approve) like any other send; hands.commit with the same input is the older direct path, kept for a caller that wants to drive it itself. Refuses with code floor where Vyre may not act, secure on a password field (use vault.fill), stopped after the person stopped Vyre (pass resume: true only after asking them), and no_indicator when the on-screen indicator cannot be shown.",
       input: actInput,
       run: gated(counted((input, meta) => hands.act(input, { thread: meta.thread, commit: asked(meta.caller) }))),
     });
 
     ctx.tool("hands.commit", {
+      callers: [...PEOPLE, "module", "mcp", "harness"], // an agent drives its own grant; the body checks it
       description: "Do an act that hands.act held because it sends something as the person, with the same input. Needs a person's proof; they are shown what will be pressed or sent, in which app and window. The floor still applies: it never acts where hands.act may not. Prefer letting the person approve the held item at the Gate (gate.held / gate.approve) instead: this tool exists for a caller that wants to drive the approval itself.",
       input: actInput,
       presence: { summary: input => hands.summary(input) },
@@ -237,6 +241,7 @@ export default {
     });
 
     ctx.tool("hands.stop", {
+      callers: [...PEOPLE, "module", "mcp", "harness"], // an agent drives its own grant; the body checks it
       description: "Stop controlling the Mac now, as Escape does: the act in flight is cut short and later acts are refused until one passes resume: true.",
       input: { type: "object", properties: {} },
       run: gated(async () => { runs.clear(); return hands.halt("tool"); }),
