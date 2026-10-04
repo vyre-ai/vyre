@@ -26,7 +26,7 @@ export function winkTransport(o) {
  * The home's end: wrap the peer door's dispatcher so `kernel.call` goes to the Space's remote server with the proven device as peer, and every other tool is the registry's, as before.
  * @param {(caller: string, tool: string, input: any) => Promise<any>} next
  * @param {{ serverFor: (space: string) => { serve(request: any, peer: any): Promise<any> } | null | undefined,
- *   personOf: (device: string, space: string) => Promise<string | null | undefined> | string | null | undefined, sessionOf?: (device: string) => Promise<string | null | undefined> | string | null | undefined, pathOf: (caller: string) => "wink" | "relay" }} o
+ *   personOf: (device: string, space: string) => Promise<string | null | undefined> | string | null | undefined, sessionOf?: (device: string) => Promise<string | { id: string, software?: boolean } | null | undefined> | string | { id: string, software?: boolean } | null | undefined, pathOf: (caller: string) => "wink" | "relay" }} o
  *   `sessionOf(device)` (optional) answers the id of the live paired person session this device holds on this home (the one start-paired made, bound to the device's key and person), or null. It is
  *   asked on every call and the id goes to the server as `peer.session` ONLY while it is live: a call with no session has none, and one that was revoked or expired has none at its next call.
  *   `pathOf` is REQUIRED: the chain records how the call arrived (a Wink node, or the relay surface), and a grant pinned to a node must not be satisfiable by a relay call.
@@ -47,8 +47,9 @@ export function withKernelCall(next, o) {
     let person = null;
     try { person = await o.personOf(m[1], space); } catch { /* no person */ }
     if (typeof person !== "string" || !person) return refuse("not_a_member", "no chain for this connection");
-    /** @type {string | null | undefined} */ let session = null;
-    if (typeof o.sessionOf === "function") { try { session = await o.sessionOf(m[1]); } catch { session = null; } }
-    return server.serve(input, { device_key_id: m[1], person, path: o.pathOf(String(caller)) === "wink" ? "wink" : "relay", ...(typeof session === "string" && session ? { session } : {}) });
+    /** @type {any} */ let held = null;
+    if (typeof o.sessionOf === "function") { try { held = await o.sessionOf(m[1]); } catch { held = null; } }
+    const session = typeof held === "string" ? held : held && typeof held.id === "string" ? held.id : "";
+    return server.serve(input, { device_key_id: m[1], person, path: o.pathOf(String(caller)) === "wink" ? "wink" : "relay", ...(session ? { session } : {}), ...(session && held && held.software === true ? { software: true } : {}) });
   };
 }

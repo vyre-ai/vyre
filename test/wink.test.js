@@ -1856,6 +1856,9 @@ test("FO-1: adopt never changes the owner of an owned server: the adopter naming
 });
 
 test("a paired device's live presence session rides the kernel call: an admin act is refused needs_presence without a session, passes after start-paired, and is refused again once the session is revoked", async t => {
+  // a development build: the paired session of a software key is presence for an admin act (the SW-1 test below has the switch off)
+  const savedSw = process.env.VYRE_SEAL_SOFTWARE; process.env.VYRE_SEAL_SOFTWARE = "1";
+  t.after(() => { if (savedSw === undefined) delete process.env.VYRE_SEAL_SOFTWARE; else process.env.VYRE_SEAL_SOFTWARE = savedSw; });
   const f = await pairFreshServer(t);
   const links = linksFor(t, f);
   const { CONTACT } = await import("../kernel/conformance/suite.js");
@@ -1867,4 +1870,21 @@ test("a paired device's live presence session rides the kernel call: an admin ac
   assert.equal(await define(), "ok", "with the device's paired session the admin act passes");
   await f.w.d.registry.call("presence.person.end-paired", { device: f.done.device }, "module:wink");
   assert.match(await define(), /needs_presence|presence|not_a_member|session/, "the session was revoked: refused again at the next call");
+});
+
+test("SW-1: a software-marked paired session is presence over the door only where the presence module takes software proofs (the development switch); a hardware-marked one passes either way", async t => {
+  const f = await pairFreshServer(t, { presenceStorage: "software" });
+  const links = linksFor(t, f);
+  const { CONTACT } = await import("../kernel/conformance/suite.js");
+  const rk = links.remoteKernel("srv", f.w.d.kernel.id.space);
+  const define = () => rk.gateway.records.define(null, { add_types: [CONTACT] }).then(() => "ok", e => String(e.code || e.message));
+  await links.startPaired("srv");
+  const mine = (await f.w.d.registry.call("presence.person.sessions", {}, "cli", PROOF)).data;
+  assert.ok((mine.sessions || mine).some(s => s.software === true), "the paired session is software-marked");
+  const saved = process.env.VYRE_SEAL_SOFTWARE;
+  t.after(() => { if (saved === undefined) delete process.env.VYRE_SEAL_SOFTWARE; else process.env.VYRE_SEAL_SOFTWARE = saved; });
+  delete process.env.VYRE_SEAL_SOFTWARE;
+  assert.match(await define(), /needs_presence|presence/, "switch off: a software session is not presence for an admin act");
+  process.env.VYRE_SEAL_SOFTWARE = "1";
+  assert.equal(await define(), "ok", "switch on (a development build): it passes");
 });
