@@ -718,7 +718,7 @@ export class Presence {
    * the client could use instead.
    * @param {{ tool: string, input: any, caller: string, proof: any, def?: any, peer?: any, terminal?: string|{ key: string, tty?: string|null }|null }} a terminal: the login vyred saw the caller in (key) and the terminal to write a notice to (tty)
    */
-  async verify({ tool, input, caller, proof, def, peer = null, terminal = null }) {
+  async verify({ tool, input, caller, proof, def, peer = null, terminal = null, meta = null }) {
     const method = proof && typeof proof.method === "string" ? proof.method : null;
     // A call with no proof is how a client learns what to offer, so only a failed proof is an event.
     const refuse = async message => {
@@ -858,7 +858,9 @@ export class Presence {
 
     if (method === "session") {
       if (!SESSIONABLE.has(tool)) return refuse(`${tool} needs its own proof, not a session`);
-      if (tool.startsWith("vault.") && !vaultSessionCaller(caller)) return refuse(`${tool} asks for its own proof from here; a session serves the Deck and the Capsule, and a terminal has its own window`);
+      // A session proves a vault tool only for the person: the kernel's chain for the call says so (`personOf`, set by the presence module from ctx.kernel), never the caller's label. With no
+      // kernel (development) the old label rule stays: SHIM(legacy labels).
+      if (tool.startsWith("vault.") && !(this.personOf ? await this.personOf(meta || { caller }) : vaultSessionCaller(caller))) return refuse(`${tool} asks for its own proof from here; a session serves the Deck and the Capsule, and a terminal has its own window`);
       const ok = def && def.presence && typeof def.presence.session === "function" ? await Promise.resolve(def.presence.session(input)).catch(() => false) : false;
       if (ok !== true) return refuse("this item needs its own proof every time");
       const row = /** @type {any} */ (this.db.prepare("SELECT * FROM presence_sessions WHERE id = ?").get(String(proof.id || "")));

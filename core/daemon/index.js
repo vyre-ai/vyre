@@ -326,6 +326,13 @@ async function startLocked(opts, root, p, release) {
     }
     registry.deps.moduleHost = kernel.moduleHost;
     registry.deps.kernelFor = kernel.kernelFor;
+    // The gate's presence check asks the kernel whether a call is the person's own (exactly one person hop in the chain the daemon's proven facts build), never the caller's label.
+    if (presence && typeof kernel.kernelFor === "function") {
+      const gateKernel = kernel.kernelFor({ name: "presence-gate" });
+      presence.personOf = async (/** @type {any} */ meta) => {
+        try { const c = await gateKernel.chain(meta); return Boolean(c && Array.isArray(c.hops) && c.hops.length === 1 && c.hops[0].actor && c.hops[0].actor.kind === "person"); } catch { return false; }
+      };
+    }
     if (kernel.firstPartyCheck) registry.deps.firstPartyCheck = kernel.firstPartyCheck;
     if (kernel.reservedName) registry.deps.reservedName = kernel.reservedName;
     registry.deps.moduleApprovals = kernel.moduleApprovals;

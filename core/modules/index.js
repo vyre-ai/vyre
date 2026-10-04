@@ -1248,7 +1248,7 @@ export class Registry {
     if (def.core && coreHolder.link) {
       meta = { ...meta, coreProof: proof ? formatProof(proof) : undefined };
     } else if (presence && (this.deps.gates ? await this.deps.gates.needsPresence({ tool, def, caller, meta, input }) : callerKind(caller) !== "module" && presence.required(tool, def, input))) {
-      const v = await presence.verify({ tool, input, caller, proof, def, peer: meta.peer || null, terminal: typeof terminal === "string" || (terminal && typeof terminal === "object") ? terminal : null });
+      const v = await presence.verify({ tool, input, caller, proof, def, meta, peer: meta.peer || null, terminal: typeof terminal === "string" || (terminal && typeof terminal === "object") ? terminal : null });
       if (!v.ok) return { error: { code: v.code === "no_dialog" ? "no_dialog" : "presence_required", message: v.message, methods: v.methods } };
       // The tool learns how the person proved it (and with which enrolled key), never the proof.
       meta = { ...meta, presence: { method: v.method, keyId: v.keyId ?? null, ...(v.where ? { where: v.where } : {}) } };
