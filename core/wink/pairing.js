@@ -115,6 +115,7 @@ export const POLL_MS = 1500;
  *   handover?: Handover, releaseMs?: number, dropMs?: number, releaseRetryMs?: number, releaseMaxMs?: number,
  *   looseOwnerIds?: boolean (tests only: owner ids of any length, for fixtures with short made-up ids),
  *   vyreName?: (identity: string, claimed?: string) => Promise<string | null> | string | null,
+ *   identityPin?: () => Promise<{ id: string, seq: number, head: string } | null> | { id: string, seq: number, head: string } | null,
  *   signIdentity?: (message: Buffer) => Promise<{ eid: string, sig: string } | null> | { eid: string, sig: string } | null,
  *   identityEntry?: (identity: string, eid: string) => Promise<{ eid: string, kind?: string, pub: string, identity?: string } | null | undefined> | { eid: string, kind?: string, pub: string, identity?: string } | null | undefined,
  *   confirmPending?: (device: string, trusted?: boolean) => Promise<any>,
@@ -251,7 +252,7 @@ export function createPairing(o) {
   /** One step of a pairing, bounded: a step that does not answer in `stepMs` ends the call with words for the person and a log line naming the step. @template T @param {string} name @param {Promise<T>} p @returns {Promise<T>} */
   const stepOf = (name, p) => {
     /** @type {any} */ let timer;
-    const limit = new Promise((_, rej) => { timer = setTimeout(() => { ctx.log(`wink: pairing is stuck at "${name}" (no answer in ${Math.round(stepMs / 1000)} s)`); rej(fail("unavailable", words("pairStuck", { step: name }))); }, stepMs); if (timer.unref) timer.unref(); });
+    const limit = new Promise((_, rej) => { timer = setTimeout(() => { ctx.log(`wink: pairing is stuck at "${name}" (no answer in ${Math.round(stepMs / 1000)} s)`); rej(fail("unavailable", words("pairStuck", { step: name }))); }, stepMs); });
     return Promise.race([p, limit]).finally(() => clearTimeout(timer));
   };
   /** Checks a target for a kind of device and returns it; throws a plain reason. @param {string} identity @param {string} kind @param {any} t */
@@ -323,7 +324,9 @@ export function createPairing(o) {
     if (ports.adopt) return ports.adopt(paired, target, x);
     const hand = x.handover && typeof x.handover === "object" ? { ...x.handover, device: x.device } : { device: x.device };
     const vyre = typeof o.identityVyre === "function" ? await Promise.resolve(o.identityVyre()).catch(() => null) : null;
-    const input = { owner: { ...target, ...(x.ownerName ? { name: String(x.ownerName).slice(0, 64) } : {}), ...(vyre ? { vyre: String(vyre) } : {}) }, identity: x.identity, peerSecret: x.peerSecret, handover: hand, deviceKind: "computer", deviceName: String(ctx.config.name || "a computer").slice(0, 64) };
+    // The head and length of the identity chain this computer last verified: a release server asks for it (PI-2) of whoever proves the identity, a computer as much as a phone
+    const pin = typeof o.identityPin === "function" ? await Promise.resolve(o.identityPin()).catch(() => null) : null;
+    const input = { owner: { ...target, ...(x.ownerName ? { name: String(x.ownerName).slice(0, 64) } : {}), ...(vyre ? { vyre: String(vyre) } : {}), ...(pin && pin.head ? { pin: { id: String(pin.id), seq: Number(pin.seq), head: String(pin.head) } } : {}) }, identity: x.identity, peerSecret: x.peerSecret, handover: hand, deviceKind: "computer", deviceName: String(ctx.config.name || "a computer").slice(0, 64) };
     // A server installed to pair to one identity asks for proof that this app IS that identity: a signature by a key on its list over this pairing's box and device (Q-3).
     if (typeof o.signIdentity === "function" && paired && paired.box && paired.device) {
       const sigTag = x.seed ? await ticketTag(b64url(x.seed)) : "";
