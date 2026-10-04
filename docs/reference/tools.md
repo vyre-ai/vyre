@@ -43,7 +43,7 @@ Talk to an agent: the text goes to its current thread (started if needed) and th
   - `pasted` list of string: The spans of the text the person pasted: a #Name inside one tags nothing.
   - `surface` string
   - `wait` boolean
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`, `tailnet`
 
 ### `agents.create`
 
@@ -8959,7 +8959,7 @@ Put a thread away: it stops, its session worktree is cleaned up by github (the b
 
 - Input:
   - `thread` string, required
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `link`, `link:box`, `local`, `mcp`, `mobile`, `module`, `tailnet`
 
 ### `threads.asks`
 
@@ -8969,7 +8969,7 @@ Questions and permission asks waiting on the user, oldest first (kind: only ques
   - `kind` "question" or "permission"
   - `machines` "all" or "local"
   - `thread` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `link`, `link:box`, `local`, `mcp`, `mobile`, `module`, `tailnet`
 
 ### `threads.bind`
 
@@ -8989,7 +8989,7 @@ Branch from any point: a new thread with the conversation up to (not including) 
   - `at` string: A message uuid or a turn id.
   - `prompt` string
   - `surface` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `link`, `link:box`, `local`, `mcp`, `mobile`, `module`, `tailnet`
 
 ### `threads.busy`
 
@@ -9032,7 +9032,7 @@ Carry a paired Mac's session on in a new thread on this box: its conversation co
   - `thread` string, required: The Mac session's id.
   - `machine` string: The paired Mac's name or id, when more than one could hold it.
   - `surface` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `link`, `link:box`, `local`, `mcp`, `mobile`, `module`, `tailnet`
 
 ### `threads.delete`
 
@@ -9040,7 +9040,7 @@ Delete a thread for good: it stops, and its record, questions, queued words and 
 
 - Input:
   - `thread` string, required
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `link`, `link:box`, `local`, `mcp`, `mobile`, `module`, `tailnet`
 
 ### `threads.edit`
 
@@ -9068,7 +9068,7 @@ Edit and retry a message, one call: the conversation goes back to just before th
   - `message` string: The user message's uuid (thread.turn's uuid). Omitted: the last message a person typed.
   - `restore` one of "conversation", "code", "both": As threads.rewind: the conversation (the default), the files its tools changed since (code), or both.
   - `surface` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `link`, `link:box`, `local`, `mcp`, `mobile`, `module`, `tailnet`
 
 ### `threads.effort`
 
@@ -9077,7 +9077,7 @@ Set a thread's reasoning effort, as /effort does in Claude Code: low, medium, hi
 - Input:
   - `thread` string, required
   - `effort` one of "low", "medium", "high", "xhigh", "max"
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `link`, `link:box`, `local`, `mcp`, `mobile`, `module`, `tailnet`
 
 ### `threads.fork`
 
@@ -9089,7 +9089,7 @@ Continue a session as a copy: a new thread with the same conversation so far, in
   - `name` string
   - `prompt` string
   - `surface` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `link`, `link:box`, `local`, `mcp`, `mobile`, `module`, `tailnet`
 
 ### `threads.get`
 
@@ -9099,7 +9099,7 @@ One thread: its record, its open permission questions, and its recent events (si
   - `thread` string, required
   - `limit` integer
   - `since` integer
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `link`, `link:box`, `local`, `mcp`, `mobile`, `module`, `tailnet`
 
 ### `threads.halt`
 
@@ -9136,7 +9136,7 @@ Stop the turn a thread is running, as Escape does in Claude Code. The thread sta
 
 - Input:
   - `thread` string, required
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `link`, `link:box`, `local`, `mcp`, `mobile`, `module`, `tailnet`
 
 ### `threads.interrupt-in`
 
@@ -9154,7 +9154,7 @@ A thread as the items a card list draws, oldest first, from its stored events: w
   - `thread` string, required
   - `limit` integer
   - `since` integer
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `link`, `link:box`, `local`, `mcp`, `mobile`, `module`, `tailnet`
 
 ### `threads.kill-task`
 
@@ -9247,7 +9247,7 @@ Switch a thread's model, as /model does in Claude Code: an alias (opus, sonnet, 
 - Input:
   - `model` string, required
   - `thread` string, required
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `link`, `link:box`, `local`, `mcp`, `mobile`, `module`, `tailnet`
 
 ### `threads.notice`
 
@@ -9308,7 +9308,7 @@ The words queued for a thread and not handed over yet, oldest first: queued (the
 
 - Input:
   - `thread` string, required
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `link`, `link:box`, `local`, `mcp`, `mobile`, `module`, `tailnet`
 
 ### `threads.quick`
 
@@ -9331,7 +9331,7 @@ Give the keyboard back. Releasing a lease you do not hold changes nothing.
 - Input:
   - `thread` string, required
   - `surface` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `link`, `link:box`, `local`, `mcp`, `mobile`, `module`, `tailnet`
 
 ### `threads.remember`
 
@@ -9361,7 +9361,7 @@ Retry a message with the same words: as threads.edit-retry with the message's ow
   - `message` string: The user message's uuid (thread.turn's uuid). Omitted: the last message a person typed.
   - `restore` one of "conversation", "code", "both": As threads.rewind: the conversation (the default), the files its tools changed since (code), or both.
   - `surface` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `link`, `link:box`, `local`, `mcp`, `mobile`, `module`, `tailnet`
 
 ### `threads.rewind`
 
@@ -9371,7 +9371,7 @@ Go back to a message, as a double Esc does in Claude Code: the session continues
   - `thread` string, required
   - `uuid` string, required
   - `restore` one of "conversation", "code", "both"
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `link`, `link:box`, `local`, `mcp`, `mobile`, `module`, `tailnet`
 
 ### `threads.send`
 
@@ -9395,7 +9395,7 @@ Type into a thread. Only the surface holding its lease may type; a free thread i
   - `pasted` list of string: The spans of the text the person pasted (an email, a ticket): a #Name inside one tags nothing, since someone else wrote it; only a picked chip does.
   - `surface` string
   - `uuid` string: First-party modules only: the message's own id, so a delivery they retry (core/stream group chats) is handed over once. Anyone else's is ignored; use an Idempotency-Key.
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `link`, `link:box`, `local`, `mcp`, `mobile`, `module`, `tailnet`
 
 ### `threads.send-now`
 
@@ -9405,7 +9405,7 @@ Send queued words now: they join the running turn at Claude's next step instead 
   - `queued` integer, required
   - `thread` string, required
   - `surface` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `link`, `link:box`, `local`, `mcp`, `mobile`, `module`, `tailnet`
 
 ### `threads.shell`
 
@@ -9440,7 +9440,7 @@ Start a headless Claude Code session in a folder or a project's home, owned by v
   - `provider` string: The session provider: claude (the default), or one a module added.
   - `purpose` one of "chat", "agent", "project", "teammate", "capsule", "job", "memory", "planner", "learn", "helper": What kind of session: picks its model (sessions.models.get). Default: chat, or project in a project.
   - `surface` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `link`, `link:box`, `local`, `mcp`, `mobile`, `module`, `tailnet`
 
 ### `threads.stop`
 
@@ -9448,7 +9448,7 @@ Stop a headless thread. Its transcript stays; threads.send resumes it.
 
 - Input:
   - `thread` string, required
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `link`, `link:box`, `local`, `mcp`, `mobile`, `module`, `tailnet`
 
 ### `threads.switch`
 
@@ -9460,7 +9460,7 @@ Continue a thread on another provider (and account), between turns: the same thr
   - `account` string
   - `model` string
   - `text` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `link`, `link:box`, `local`, `mcp`, `mobile`, `module`, `tailnet`
 
 ### `threads.tasks`
 
@@ -9468,7 +9468,7 @@ A running thread's background tasks (shell commands run in the background, subag
 
 - Input:
   - `thread` string, required
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `link`, `link:box`, `local`, `mcp`, `mobile`, `module`, `tailnet`
 
 ### `threads.thinking`
 
@@ -9477,7 +9477,7 @@ Thinking on (the model decides how much) or off, for a running thread.
 - Input:
   - `on` boolean, required
   - `thread` string, required
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `link`, `link:box`, `local`, `mcp`, `mobile`, `module`, `tailnet`
 
 ### `threads.unarchive`
 
@@ -9485,7 +9485,7 @@ Bring an archived thread back into the list; its worktree is made again on the s
 
 - Input:
   - `thread` string, required
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `link`, `link:box`, `local`, `mcp`, `mobile`, `module`, `tailnet`
 
 ### `threads.unqueue`
 
@@ -9503,7 +9503,7 @@ Stop waiting on a watch.
 
 - Input:
   - `watch` string, required
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `link`, `link:box`, `local`, `mcp`, `mobile`, `module`, `tailnet`
 
 ### `threads.usage`
 
@@ -9533,7 +9533,7 @@ Tell me once when a thread finishes a turn, asks a question, or stops: emits thr
   - `note` string
   - `notify` string
   - `until` one of "finished", "asks", "either"
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `link`, `link:box`, `local`, `mcp`, `mobile`, `module`, `tailnet`
 
 ## tips
 
