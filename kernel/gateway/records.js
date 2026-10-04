@@ -486,8 +486,13 @@ export function createRecords(cfg) {
   }
 
   const api = {
-    async define(chain, diff) {
-      const d = await gate(chain, "records.define", `vyre://${space}/definition/types`);
+    /**
+     * @param {any} chain @param {any} diff
+     * @param {{ waiver?: object }} [o] the waiver of an approved Kit install (kernel/tasks/kit-apply.js): it stands for the presence this admin act asks for, and only for a diff of exactly the types that Kit lists
+     */
+    async define(chain, diff, o = {}) {
+      if (o.waiver !== undefined && !(cfg.kitApply && cfg.kitApply.coversDefine(o.waiver, chain, diff))) throw new KernelError("not_allowed", "the approved Kit does not cover this definition");
+      const d = await gate(chain, "records.define", `vyre://${space}/definition/types`, o.waiver !== undefined ? { waiver: o.waiver } : {});
       for (const t of [...(diff.add_types || []), ...(diff.change_types || [])]) if (!TYPE_NAME.test(t.name)) throw new KernelError("bad_input", `bad type name ${t.name}`);
       checkKinds(diff); await checkRoles(diff);
       // A removed field is never required (new records could not be written without it); its data stays.
