@@ -23,7 +23,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 5 | 0 | cli |
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
 | [`artifacts`](#artifacts) | `core/artifacts` | `box` | 28 | 10 | capsule, cli, deck |
-| [`assistant`](#assistant) | `core/assistant` | `box`, `local` | 8 | 4 | cli |
+| [`assistant`](#assistant) | `core/assistant` | `box`, `local` | 8 | 3 | cli |
 | [`bridges`](#bridges) | `core/bridges` | `box`, `local` | 17 | 16 | capsule, cli, deck |
 | [`capsule`](#capsule) | `local/capsule` | `local` | 6 | 2 | capsule, cli |
 | [`chrome`](#chrome) | `local/hands-chrome-mac` | `local` | 37 | 16 | none |
@@ -83,7 +83,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`tasks`](#tasks) | `core/tasks-tools` | `box`, `local` | 6 | 0 | cli |
 | [`team`](#team) | `core/team` | `box`, `local` | 31 | 10 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 3 | none |
-| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 56 | 36 | cli |
+| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 57 | 36 | cli |
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 3 | 2 | cli |
@@ -174,7 +174,7 @@ The one assistant's own tools: a daily digest and triage from waiting.list and a
 - Runs on: `box`, `local`
 - Requires: none
 - Tools: [8](tools.md#assistant)
-- Emits: [4 events](events.md#assistant)
+- Emits: [3 events](events.md#assistant)
 - Shows on: cli
 
 ## bridges
@@ -852,7 +852,7 @@ Project teammates (ADR 0031): a named, persistent agent per role per project, a 
 - Folder: `core/switchboard`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [56](tools.md#threads), 19 of them only for other modules
+- Tools: [57](tools.md#threads), 20 of them only for other modules
 - Emits: [36 events](events.md#threads)
 - Shows on: cli
 - Needs daemon: `kernelSession`, `sandbox`, `credentials`

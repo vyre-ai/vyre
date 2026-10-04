@@ -9,6 +9,7 @@ import { discover, Registry } from "../modules/index.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
+import { personTypes } from "../../test/typed-line.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { softCorrection, wordsKey } from "./signals.js";
 import { parseAnswer } from "./jobs.js";
@@ -73,6 +74,7 @@ async function learning(t, { projects = false, switchboard = false, memory = fal
   const where = projects ? fakeProjects(home, t) : null;
   const extra = [...(projects ? discover([path.join(home, "mods")], { firstPartyRoots: [path.join(home, "mods")] }) : []), ...(switchboard ? fakeSwitchboard(home) : []), ...(memory ? fakeMemory(home) : [])];
   await reg.start([...core, ...extra], { role: "local" });
+  personTypes(reg);
   t.after(async () => { await reg.stop(); db.close(); });
   const of = type => events.since(0, { limit: 5000 }).filter(e => e.type === type);
   const lessons = async () => (await reg.call("learn.lessons", { status: "all" }, "cli")).data;
