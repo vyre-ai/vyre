@@ -51,6 +51,6 @@ test("on a kernel-on daemon the keyboard holder follows the chain: a web, setup,
   }
   // the owner at a verified session: the person's own surface, whatever label carries it
   const token = (await d.kernel.surfaces.open(d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s" }), {})).token;
-  const mine = await lease("web", { token });
+  const mine = await lease("cli", { token });
   assert.equal(mine && mine.holder, "deck", JSON.stringify(mine));
 });

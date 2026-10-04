@@ -2,6 +2,7 @@ import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { SCRATCH } from "../../test/scratch.mjs";
@@ -135,4 +136,36 @@ test("sqlite store counts: count by stage is read from kept counts and always eq
   // anything but a plain count by one stage field is not answered from the counts
   assert.deepEqual((await s.aggregate("matter", { group_by: ["stage"], measures: [{ fn: "count" }], filter: { field: "stage", op: "eq", value: "open" } })).map(g => g.group.stage), ["open"]);
   db.close();
+});
+
+test("sqlite store counts: two writers changing a stage at the same moment, and a kill between the row write and the count upsert, both leave the kept count equal to the scan", async () => {
+  const f = file();
+  const MATTER = { name: "matter", label: "Matter", fields: [{ name: "stage", kind: "stage", label: "Stage", options: ["intake", "open", "closed"] }] };
+  const db = new DatabaseSync(f);
+  db.exec("PRAGMA journal_mode = WAL");
+  const s = createSqliteStore({ db });
+  await s.define({ add_types: [MATTER] });
+  const id = i => `0190c3f2-1111-4abc-8def-${String(i + 1).padStart(12, "0")}`;
+  const spec = { group_by: ["stage"], measures: [{ fn: "count" }] };
+  const same = async (st, what) => assert.deepEqual(await st.aggregate("matter", spec), await st.aggregate("matter", { ...spec, filter: { and: [] } }), what);
+  for (let i = 0; i < 30; i++) await s.create("matter", id(i), { stage: ["intake", "open", "closed"][i % 3] });
+  await same(s, "built");
+  // many writers at once, several on the same record (the losers get version_conflict) and several on different ones
+  const moves = [];
+  for (let w = 0; w < 60; w++) moves.push((async () => { const i = w % 10, r = await s.get("matter", id(i)); try { await s.update("matter", id(i), { stage: ["open", "closed", "intake"][w % 3] }, r.version); } catch (e) { if (e.code !== "version_conflict") throw e; } })());
+  await Promise.all(moves);
+  await same(s, "after concurrent stage changes");
+  db.close();
+  // a kill between the row write and the count upsert: neither moved
+  const f2 = file();
+  const child = spawnSync(process.execPath, [path.join(path.dirname(new URL(import.meta.url).pathname), "counts-crash.child.mjs"), f2], { encoding: "utf8" });
+  assert.equal(child.signal, "SIGKILL", `the child was killed mid-write: ${child.stderr}`);
+  assert.doesNotMatch(child.stdout, /survived/);
+  const db2 = new DatabaseSync(f2);
+  db2.function("die", () => 0);   // the child's triggers name it; here it does nothing
+  const after = createSqliteStore({ db: db2 });
+  assert.equal((await after.get("matter", id(0))).data.stage, "intake", "the row did not move");
+  const kept = await after.aggregate("matter", spec);
+  assert.deepEqual(kept, await after.aggregate("matter", { ...spec, filter: { and: [] } }), "the kept count equals the scan");
+  assert.deepEqual(kept.map(g => [g.group.stage, g.values.count]), [["intake", 3], ["open", 3]]);
 });
