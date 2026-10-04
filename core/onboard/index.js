@@ -303,7 +303,7 @@ export default {
       // guess from role/machine. relayJoin is false on darwin until vyre-core exists (see
       // RELAY_JOIN_DARWIN_REASON above); every other platform can already join a relay today.
       const can = canRelayJoin(process.platform);
-      return { mode, role: ctx.config.role, machine: ctx.config.machine, platform: process.platform, can,
+      return { mode, role: ctx.config.role, machine: ctx.config.machine, platform: process.platform, can, owned: await isOwned(),
         owner: net().owner || null, address: n && n.phase === "serving" ? n.address : null,
         host: (t && t.node && t.node.name) || os.hostname(), name: personOrPage(caller) ? ob().person || null : null, accountName: personOrPage(caller) ? accountName : null, person: personOrPage(caller) ? ob().person || null : null, assistant: ob().assistant || null, assistantState: ob().assistantState || null,
         // arrived: the owner has reached the address over the tailnet (the page's Switch), so the
@@ -513,13 +513,19 @@ export default {
       effect: "write", callers: ONBOARD_CALLERS,
       description: "Store Claude Code's sign-in in the Vault: a subscription setup token or an API key. The value is never returned. setup-token alone starts `claude setup-token` and returns its sign-in url; setup-token with the code the page showed finishes it.",
       presence: { when: () => true, summary: async () => "Sign this server in to Claude" },
-      input: obj({ mode: { type: "string", enum: ["detect", "setup-token", "api-key"] }, key: { type: "string" }, code: { type: "string" },
+      input: obj({ mode: { type: "string", enum: ["detect", "setup-token", "api-key", "disconnect"] }, key: { type: "string" }, code: { type: "string" },
         kind: { type: "string", enum: ["subscription", "api-key"] }, token: { type: "string" } }),
       run: async ({ mode, key, code, kind, token }, { caller, ...meta }) => {
         boxOnly();
         ownerWrite(caller, meta, "signing in to Claude", await isOwned());
         // Only a read (no mode, or detect, and nothing to store) is open to a non-person; storing a key or starting the sign-in is the person's (HD-1).
         if (mode !== "detect" && (mode || key || code || kind || token)) personOnly(caller);
+        if (mode === "disconnect") {
+          // The person disconnects the AI account: both sign-in items leave the vault (a missing one is fine) and the step reads as not signed in. Assistants on it stop and ask. The account itself is not touched.
+          for (const name of Object.values(VAULT_ITEM)) await call("vault.delete", { name }).catch(() => null);
+          save({ onboard: { claude: null } });
+          return stepOf("claude", caller);
+        }
         if (mode === "setup-token" && !key && !token) {
           if (!code) return { ...(await stepOf("claude", caller)), url: await signin.start(), needsCode: true };
           [kind, token] = ["subscription", await signin.finish(code)];

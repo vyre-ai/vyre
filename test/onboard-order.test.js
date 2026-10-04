@@ -25,6 +25,7 @@ async function box(t, network = {}) {
 
 test("a server with no owner takes no sign-in, no name and no finish, from any caller", { timeout: 60_000 }, async t => {
   const d = await box(t);
+  assert.equal((await d.registry.call("onboard.status", {}, "deck")).data.owned, false, "a fresh server says it has no owner");
   for (const caller of ["deck", "cli", "local", "module:onboard", "mcp", "module:other"]) {
     for (const [tool, input] of [["onboard.claude", { mode: "api-key", key: KEY }], ["onboard.name", { action: "claim", name: "alexbox", confirm: true }], ["onboard.finish", {}]]) {
       const r = await d.registry.call(/** @type {string} */ (tool), input, caller);
@@ -40,6 +41,7 @@ test("once the server has an owner, the person's own session signs the AI accoun
   const d = await box(t, { ownerSeen: true });
   const before = await d.registry.call("onboard.status", {}, "deck");
   assert.ok(before.data, JSON.stringify(before.error));
+  assert.equal(before.data.owned, true);
   const put = await d.registry.call("onboard.claude", { mode: "api-key", key: KEY }, "deck");
   assert.ok(put.data, `the owner's session: ${JSON.stringify(put.error)}`);
   assert.equal(put.data.state, "done", JSON.stringify(put.data)); assert.equal(put.data.signedIn, true, JSON.stringify(put.data)); assert.equal(put.data.via, "api-key");
@@ -48,8 +50,16 @@ test("once the server has an owner, the person's own session signs the AI accoun
   const c = after.detail && after.detail.claude;
   assert.ok(c && c.signedIn === true && c.state === "done" && c.via === "api-key", JSON.stringify(after.detail));
   assert.equal(after.steps.claude, "done");
+  assert.equal(after.owned, true, "the status says the server has an owner, so the app can show the chip before any tap");
   const items = (await d.registry.call("vault.list", {}, "cli")).data.items;
   assert.ok(items.some((/** @type {any} */ i) => i.name === "anthropic-api-key"), "the credential is in the vault");
+  // Disconnect: the credential leaves the vault and the step reads as not signed in.
+  const off = await d.registry.call("onboard.claude", { mode: "disconnect" }, "deck");
+  assert.ok(off.data, JSON.stringify(off.error));
+  assert.ok(!(await d.registry.call("vault.list", {}, "cli")).data.items.some((/** @type {any} */ i) => i.name === "anthropic-api-key"), "the credential is gone");
+  const gone = (await d.registry.call("onboard.status", {}, "deck")).data;
+  assert.notEqual(gone.steps.claude, "done");
+  assert.equal(code(await d.registry.call("onboard.claude", { mode: "disconnect" }, "mcp")), "denied", "a model cannot disconnect");
 });
 
 test("with an owner, a model, another module, an agent and a second person's label still cannot sign in or claim a name", { timeout: 60_000 }, async t => {
