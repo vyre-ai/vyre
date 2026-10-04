@@ -143,19 +143,56 @@ export class Pool {
     const buf = Buffer.from(bytes);
     if (meter && this.quotas[meter] !== undefined && (this.ix.meters[meter] ?? 0) + buf.length > this.quotas[meter]) throw err("quota", `${meter} is over its limit`);
     const id = crypto.randomBytes(16).toString("hex"), ids = []; let atRisk = false;
-    for (let o = 0; o < Math.max(buf.length, 1); o += this.chunk) {
-      const { id: cid, blob } = this.seal(buf.subarray(o, o + this.chunk)); ids.push(cid);
-      const c = this.ix.chunks[cid] ??= { size: blob.length, nodes: [], refs: {} };
-      c.refs[id] = cls;
-      let r = await this.ensure(cid, blob);
-      if (r.missing && !c.nodes.length) { await this.evict(c.size); r = await this.ensure(cid, blob); }
-      if (!c.nodes.length) { await this.drop(ids, id); throw err("no_room", "no node has room for this"); }
-      atRisk ||= r.missing;
-    }
-    this.ix.manifests[id] = { size: buf.length, chunks: ids, class: cls, meter, at: this.now() };
-    if (meter) this.ix.meters[meter] = (this.ix.meters[meter] ?? 0) + buf.length;
-    this.dirty += buf.length; this.ix.log.push([this.now(), buf.length]); this.ix.log = this.ix.log.filter(([t]) => t > this.now() - 14 * 86_400_000); this.save();
-    return { id, size: buf.length, atRisk };
+    for (let o = 0; o < Math.max(buf.length, 1); o += this.chunk) atRisk = (await this.storeChunk(buf.subarray(o, o + this.chunk), cls, id, ids)) || atRisk;
+    return this.commit(id, ids, buf.length, cls, meter, atRisk);
+  }
+  /** Seal one chunk, give it its copies, and note it in `ids`. A chunk that cannot be placed anywhere drops everything stored for this object and throws. @returns {Promise<boolean>} true when it has fewer copies than its class wants */
+  async storeChunk(plain, cls, id, ids) {
+    const { id: cid, blob } = this.seal(plain); ids.push(cid);
+    const c = this.ix.chunks[cid] ??= { size: blob.length, nodes: [], refs: {} };
+    c.refs[id] = cls;
+    let r = await this.ensure(cid, blob);
+    if (r.missing && !c.nodes.length) { await this.evict(c.size); r = await this.ensure(cid, blob); }
+    if (!c.nodes.length) { await this.drop(ids, id); throw err("no_room", "no node has room for this"); }
+    return r.missing;
+  }
+  commit(id, ids, size, cls, meter, atRisk) {
+    this.ix.manifests[id] = { size, chunks: ids, class: cls, meter, at: this.now() };
+    if (meter) this.ix.meters[meter] = (this.ix.meters[meter] ?? 0) + size;
+    this.dirty += size; this.ix.log.push([this.now(), size]); this.ix.log = this.ix.log.filter(([t]) => t > this.now() - 14 * 86_400_000); this.save();
+    return { id, size, atRisk };
+  }
+  /**
+   * Store a stream of bytes without holding more than one chunk of it in memory (a file from a vendor, a large upload). `maxBytes` stops it early; a failure or a stop
+   * drops every chunk already stored for it. The sha-256 of the whole content comes back with the id.
+   * @param {AsyncIterable<Buffer | Uint8Array>} source
+   */
+  async putStream(source, { class: cls = "cold", meter = null, maxBytes = Infinity } = {}) {
+    if (cls === "hot") throw err("hot_not_pooled", "the record database, the log and keys stay on the home");
+    if (!CLASSES[cls]) throw err("bad_class");
+    const id = crypto.randomBytes(16).toString("hex"), ids = [], hash = crypto.createHash("sha256"); let size = 0, atRisk = false, pend = [], pendLen = 0;
+    const flush = async last => {
+      while (pendLen >= this.chunk || (last && pendLen > 0)) {
+        const all = Buffer.concat(pend), take = all.subarray(0, Math.min(this.chunk, all.length)), rest = all.subarray(take.length);
+        pend = rest.length ? [rest] : []; pendLen = rest.length;
+        atRisk = (await this.storeChunk(Buffer.from(take), cls, id, ids)) || atRisk;
+      }
+    };
+    try {
+      for await (const part of source) {
+        const b = Buffer.from(part); size += b.length;
+        if (size > maxBytes) throw err("too_large", "the stream is larger than its limit");
+        if (meter && this.quotas[meter] !== undefined && (this.ix.meters[meter] ?? 0) + size > this.quotas[meter]) throw err("quota", `${meter} is over its limit`);
+        hash.update(b); pend.push(b); pendLen += b.length; if (pendLen >= this.chunk) await flush(false);
+      }
+      await flush(true); if (!ids.length) await this.storeChunk(Buffer.alloc(0), cls, id, ids);
+    } catch (e) { await this.drop(ids, id); throw e; }
+    return { ...this.commit(id, ids, size, cls, meter, atRisk), sha256: hash.digest("hex") };
+  }
+  /** The object as a stream of its chunks, one in memory at a time. */
+  async *getStream(id) {
+    const m = this.ix.manifests[id]; if (!m) throw err("not_found");
+    for (const cid of m.chunks) { const blob = await this.fetch(cid), p = blob && this.open(cid, blob); if (!p) throw err("unavailable", "no healthy copy of part of this is reachable right now"); yield p; }
   }
   async get(id) {
     const m = this.ix.manifests[id]; if (!m) throw err("not_found");

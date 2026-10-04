@@ -12,13 +12,13 @@ import { Vault, MIGRATIONS } from "./vault.js";
 import * as saidTools from "./said.js";
 import { register } from "./request.js";
 import { SCRATCH } from "../../test/scratch.mjs";
-import { Leases } from "../../kernel/seal/leases.js";
-import { SealStore } from "../../kernel/seal/store.js";
+import { startSealer } from "../../kernel/seal/client.js";
+import { person } from "../../kernel/seal/testing.js";
 import { leasedForward, normalizeRoute, routeAllows } from "../../kernel/seal/uses.js";
 
 const fake = label => `fixture-${label}-${crypto.randomBytes(12).toString("hex")}`;
 const json = (status, body, extra = {}) => ({ status, headers: { "content-type": "application/json", ...extra }, body: Buffer.from(JSON.stringify(body)) });
-const SP = "spc_harlowharlowharlow", SESSION = "sess1", MEMBER = "per_alexalexalexalex";
+const SESSION = "sess1";
 const TOKEN_URI = "https://login.clio.test/oauth/token", GOOGLE_TOKEN = "https://oauth2.googleapis.com/token";
 
 async function mk(t, { gate = null } = {}) {
@@ -34,13 +34,16 @@ async function mk(t, { gate = null } = {}) {
   const said = saidTools.register({ vault: v, internal });
   register({ vault: v, tool, internal, call: gate ?? (async () => ({ error: { code: "no_such_tool", message: "no gate" } })), said, deps: { lookup, transport, now: () => clock } });
   const run = (name, input, caller = "cli") => tools.get(name).run(input, { caller });
-  // The kernel side: a real lease store and the real route check; `forward` is the vault's internal tool, callable only as kernel:leases.
-  const store = new SealStore(fs.mkdtempSync(path.join(SCRATCH, "vyre-fwdseal-")), crypto.randomBytes(32)), leases = new Leases(store, () => clock);
-  const lease = leases.issue({ space: SP, member: MEMBER, device: "dev_mac", allowed: true });
+  // The kernel side: the REAL sealing process holds the lease and a REAL kernel chain stands for the person (kernel/core/chain.js); the route check is the real one and `forward` is the vault's
+  // internal tool, callable only as kernel:leases. SHIM(gateway-forward): `leasedForward` is composed here because the kernel's gateway has no `leases.forward` yet (it still has `use`, which returns
+  // a credential); SHIM(authorize): no kernel `authorize` check on vault.read / vault.call is run in this composition.
+  const sealer = startSealer({ dir: fs.mkdtempSync(path.join(SCRATCH, "vyre-fwdseal-")), timeoutMs: 8000, dev: true }); t.after(() => sealer.close());
+  const who = person("per_alex"), lease = await sealer.lease.issue({ chain: who, device: "dev_mac", allowed: true });
+  const leases = { revoke: () => sealer.lease.revoke({ chain: who, member: "per_alex", device: "dev_mac" }) };
   const bound = new Map([[SESSION, lease.id]]), routes = new Map();
   const audits = () => /** @type {any[]} */ (db.prepare("SELECT * FROM vault_audit").all());
-  const go = (chain = null) => leasedForward({ chain, leaseOf: s => bound.get(s) ?? null, check: async ({ id }) => leases.check({ id, member: MEMBER }), routesOf: s => routes.get(s) ?? [],
-    forward: async i => { const r = await run("vault.forward", { credential: i.ref, method: i.method, url: `https://${i.route}${i.path}`, query: i.query, headers: i.headers, body: i.body, session: i.session }, "kernel:leases"); return r; }, emit: () => {} });
+  const go = (chain = who) => leasedForward({ chain, leaseOf: s => bound.get(s) ?? null, check: ({ id }) => sealer.lease.check({ chain: who, id }), routesOf: s => routes.get(s) ?? [],
+    forward: async i => { const r = await run("vault.forward", { credential: i.ref, method: i.method, url: `https://${i.route}${i.path}`, query: i.query, headers: i.headers, allow_headers: i.allow_headers, body: i.body, session: i.session }, "kernel:leases"); return r; }, emit: () => {} });
   const call = (o, session = SESSION) => go()({ session, route: o.route, method: o.method ?? "GET", path: o.path, query: o.query, headers: o.headers, body: o.body });
   const wire = async (o, session) => { const r = await call(o, session); return r.body === undefined || r.held ? r : { ...r, body: Buffer.from(r.body, "base64") }; };
   return { v, net, run, tick: ms => { clock += ms; }, leases, lease, bound, routes, call: wire, audits, db };
@@ -51,7 +54,7 @@ async function addKey(m, S) { await m.v.put({ name: "dropsign", kind: "api-crede
 
 test("a plain API key: the read runs at the home with the key added, the device gets the response only, and nothing leaks into it or the audit", async t => {
   const m = await mk(t), S = fake("dropsign"); await addKey(m, S);
-  m.routes.set(SESSION, [normalizeRoute({ route: "api.hellosign.test", ref: "dropsign", allow: [{ method: "GET", path: "/v3/*" }] })]);
+  m.routes.set(SESSION, [normalizeRoute({ route: "api.hellosign.test", ref: "dropsign", allow: [{ method: "GET", path: "/v3/*" }], headers: ["x-matter-id"] })]);
   m.net.script = r => json(200, { requests: [1, 2] }, { "set-cookie": "sid=abc", "x-request-id": "r1" });
   const out = await m.call({ route: "api.hellosign.test", path: "/v3/signature_request/list", query: { page: "1" }, headers: { accept: "application/json", authorization: "Bearer attacker", "x-api-key": "attacker", "x-matter-id": "m42" } });
   assert.equal(out.status, 200); assert.deepEqual(JSON.parse(out.body.toString()), JSON.parse('{"requests":[1,2]}')); assert.equal(out.headers["set-cookie"], undefined);
@@ -75,7 +78,7 @@ test("an OAuth sign-in that expires: refreshed at the home with the sealed refre
   let rt2 = fake("rt2"), at2 = fake("at2");
   m.net.script = r => (r.url.hostname === "login.clio.test" ? json(200, { access_token: at2, refresh_token: rt2, expires_in: 3600 }) : json(200, { matters: [] }));
   await m.call({ route: "app.clio.test", path: "/api/v4/matters" }); assert.equal(m.net.calls.at(-1).headers.authorization, `Bearer ${first.access_token}`, "the stored token while it is good");
-  m.tick(3_700_000); m.leases.live.get(m.lease.id).exp = 1e15; const out = await m.call({ route: "app.clio.test", path: "/api/v4/matters" });
+  m.tick(3_700_000); const out = await m.call({ route: "app.clio.test", path: "/api/v4/matters" });
   assert.ok(m.net.calls.some(c => c.host === "login.clio.test"), "refreshed at the token endpoint"); assert.equal(m.net.calls.at(-1).headers.authorization, `Bearer ${at2}`);
   const sealed = JSON.parse((await m.v.apiCredential("clio")).secret); assert.equal(sealed.refresh_token, rt2, "the rotated refresh token is sealed in the vault");
   for (const s of [first.access_token, first.refresh_token, at2, rt2]) { assert.equal(JSON.stringify(out).includes(s), false); assert.equal(everything(m).includes(s), false); }
@@ -118,7 +121,7 @@ test("limits are plain: a request body over 1 MB, a binary upload and a response
   await assert.rejects(m.call({ route: "api.hellosign.test", path: "/v3/x" }, "no-such-session"), { code: "no_lease" });
   for (const who of ["cli", "mcp", "module:connectors", "runner:sess1"]) await assert.rejects(m.run("vault.forward", { credential: "dropsign", method: "GET", url: "https://api.hellosign.test/v3/x", session: SESSION }, who), /only the kernel/, who);
   // A revoked lease ends it at once.
-  m.leases.revoke({ space: SP, member: MEMBER, device: "dev_mac" }); await assert.rejects(m.call({ route: "api.hellosign.test", path: "/v3/x" }), { code: "no_lease" });
+  await m.leases.revoke(); await assert.rejects(m.call({ route: "api.hellosign.test", path: "/v3/x" }), { code: "no_lease" });
 });
 
 test("routeAllows: exact pairs, prefix paths, deny wins, the default is no, and shorthand still works", () => {
@@ -128,4 +131,29 @@ test("routeAllows: exact pairs, prefix paths, deny wins, the default is no, and 
   assert.equal(routeAllows(normalizeRoute({ route: "a.test", ref: "c" }), "GET", "/a"), false, "no paths, no access");
   const old = normalizeRoute({ route: "a.test", ref: "c", paths: ["/v1/*", "/me"] }); assert.equal(routeAllows(old, "GET", "/v1/x"), true); assert.equal(routeAllows(old, "HEAD", "/me"), true); assert.equal(routeAllows(old, "POST", "/me"), false);
   assert.throws(() => normalizeRoute({ route: "a.test", ref: "c", allow: [{ method: "GET", path: "/a*b" }] }), { code: "bad_input" });
+});
+
+test("FW-1: request headers are an allow-list: a safe default plus the route's own named headers, and the rewrite, override, forwarding and credential families never pass, whatever the route says", async t => {
+  const m = await mk(t), S = fake("dropsign"); await addKey(m, S);
+  const probe = { accept: "application/json", "content-type": "application/json", "if-none-match": "abc", "x-matter-id": "m42", "x-custom": "1",
+    "x-http-method-override": "DELETE", "x-http-method": "DELETE", "x-method-override": "DELETE", "x-original-url": "/v3/admin", "x-rewrite-url": "/v3/admin", "x-forwarded-host": "evil.test", "x-forwarded-for": "1.2.3.4",
+    "x-real-ip": "1.2.3.4", "x-host": "evil.test", "x-goog-iam-authorization-token": "tok", "x-amz-security-token": "tok", "x-ms-authorization-auxiliary": "tok", authorization: "Bearer attacker", cookie: "sid=1",
+    host: "evil.test", "x-api-key": "attacker", "proxy-authorization": "x", "sec-fetch-mode": "cors", "x-vyre-token": "t", "x-access-token": "t", "x-oauth-token": "t", "x-session-id": "s", "x-goog-api-key": "k", forwarded: "for=1.2.3.4", "content-length": "9", "transfer-encoding": "chunked" };
+  const seen = async routeHeaders => { m.routes.set(SESSION, [normalizeRoute({ route: "api.hellosign.test", ref: "dropsign", allow: [{ method: "GET", path: "/v3/*" }], ...(routeHeaders ? { headers: routeHeaders } : {}) })]); m.net.calls.length = 0; await m.call({ route: "api.hellosign.test", path: "/v3/x", headers: probe }); const h = { ...m.net.calls[0].headers }; delete h.authorization; delete h.host; return Object.keys(h).filter(k => !["accept", "content-type", "if-none-match"].includes(k)).sort(); };
+  assert.deepEqual(await seen(null), ["content-type"].filter(() => false), "by default only the safe set reaches the vendor (the credential's own authorization is the home's)");
+  assert.equal(m.net.calls[0].headers.authorization, `Bearer ${S}`, "the home added the key, not the program");
+  assert.deepEqual(await seen(["x-matter-id"]), ["x-matter-id"], "a header the route names passes");
+  const naming = ["x-matter-id", "x-http-method-override", "x-original-url", "x-forwarded-host", "x-amz-security-token", "authorization", "cookie", "x-rewrite-url", "x-goog-iam-authorization-token", "x-access-token", "x-oauth-token", "x-session-id", "x-goog-api-key"];
+  assert.deepEqual(await seen(naming), ["x-matter-id"], "naming a dangerous header on the route does not let it through");
+  assert.throws(() => normalizeRoute({ route: "a.test", ref: "c", headers: ["bad name"] }), { code: "bad_input" });
+});
+
+test("FW-3: the route, its limits, its Drive lists and its header names come from the home's record only; what the program adds to the request is ignored", async t => {
+  const m = await mk(t), S = fake("dropsign"); await addKey(m, S);
+  m.routes.set(SESSION, [normalizeRoute({ route: "api.hellosign.test", ref: "dropsign", allow: [{ method: "GET", path: "/v3/*" }] })]);
+  await m.v.put({ name: "other", kind: "api-credential", fields: { config: JSON.stringify({ auth: { type: "bearer" }, hosts: ["api.hellosign.test"] }), secret: fake("other") } }, "cli");
+  m.net.calls.length = 0;
+  await m.call({ route: "api.hellosign.test", path: "/v3/x", ref: "other", credential: "other", allow_headers: ["x-anything"], headers: { "x-anything": "1" }, limits: { maxBytes: 1e9 }, drive: { read: ["*"], write: ["*"] }, allow: [{ method: "DELETE", path: "/*" }] });
+  assert.equal(m.net.calls.length, 1); assert.equal(m.net.calls[0].headers.authorization, `Bearer ${S}`, "the route's own credential, not the one the program named"); assert.equal(m.net.calls[0].headers["x-anything"], undefined);
+  await assert.rejects(m.call({ route: "api.hellosign.test", method: "DELETE", path: "/v3/x", allow: [{ method: "DELETE", path: "/*" }] }), { code: "not_found" }, "a program cannot widen the route");
 });

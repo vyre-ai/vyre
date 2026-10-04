@@ -24,7 +24,7 @@ export const RECORD_ACTIONS = Object.freeze([
   { action: "records.define", resource_type: "definition", risk: "admin", label: "change types", gloss: "Add or change the kinds of record and their fields." },
 ].map(a => Object.freeze(a)));
 
-const TYPE_NAME = /^[a-z][a-z0-9-]*$/;
+const TYPE_NAME = /^[a-z][a-z0-9_-]*$/;
 /** Intents older than this are not replayed: they close as `unresolved` for a person to look at (K1 item 8b, K2-11). */
 const INTENT_MAX_AGE = 24 * 3600 * 1000;
 const checkType = (/** @type {any} */ t) => { if (typeof t !== "string" || !TYPE_NAME.test(t)) throw new KernelError("bad_input", "bad type name"); };
@@ -101,6 +101,28 @@ export function createRecords(cfg) {
     return new Set(def.fields.filter((/** @type {any} */ f) => f.hidden === true || (Array.isArray(f.hidden_from) && role !== undefined && f.hidden_from.includes(role)) || (f.kind === "sealed" && f.seal && f.seal.level === "human" && !(role && (f.seal.reveal_roles || []).includes(role)))).map((/** @type {any} */ f) => f.name));
   }
   const limitsOf = async (/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ d) => ({ allow: allowList(d), hidden: (await hiddenFields(chain, type)) || new Set() });
+  // ---- the room's view (CH-8): a session whose token names a chat with more than one person reads what EVERYONE in it may read, whoever asks and however it asks ----
+  /** The viewer chains of the chain's room when it is a group (the chat's live participants), else null. `not_found` when the person the session is for has left the chat. */
+  async function viewersOf(/** @type {any} */ chain) {
+    const people = cfg.room ? cfg.room.peopleOf(chain) : null;
+    if (!people) return null;
+    cfg.room.noteRead(chain);
+    return Promise.all(people.map(async (/** @type {string} */ person) => chains.fromFacts({ kind: "viewer", person, vouched: true })));
+  }
+  /** What the whole room may read of one record: null when anyone cannot read it (a record someone cannot see is not in the room's view), else the fields everyone is allowed (`allow`, null for no limit) and any hidden from anyone. */
+  async function roomLim(/** @type {any[]} */ vs, /** @type {string} */ type, /** @type {string} */ u, /** @type {boolean} */ probe = false) {
+    /** @type {Set<string> | null} */ let allow = null;
+    const hidden = new Set();
+    let ok = true;
+    for (const v of vs) {
+      const d = await check(v, "records.read", u, probe ? { probe: true } : {});
+      if (!d && !probe) { ok = false; continue; }
+      const l = await limitsOf(v, type, d);
+      if (l.allow) allow = allow === null ? new Set(l.allow) : new Set([...allow].filter(f => /** @type {Set<string>} */ (l.allow).has(f)));
+      for (const h of l.hidden) hidden.add(h);
+    }
+    return ok ? { allow, hidden } : null;
+  }
   const refuseOutside = (/** @type {Set<string> | null} */ allow, /** @type {any} */ data) => { if (allow) for (const k of Object.keys(data || {})) if (!allow.has(k)) throw new KernelError("field_not_allowed", `${k} is outside what this access allows`); };
 
   /** A role type points at one contact or organization through one required link, and names stages that already exist. */
@@ -219,9 +241,17 @@ export function createRecords(cfg) {
    * included): that is an equality oracle on a value the model must never learn (invariants 5, 6). The definition comes
    * from the store; if it cannot be read, the query is refused rather than guessed.
    */
-  async function guardSealed(/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ spec) {
+  async function guardSealed(/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ spec, /** @type {any[] | null} */ vs = null) {
     const heads = fieldHeads(spec);
     if (!heads.size) return;
+    // A group session may filter, sort, group or measure only on fields the whole room may read, and never on a sealed field: anything else is an oracle on one person's reach.
+    if (vs) {
+      const rl = await roomLim(vs, type, urn(type, "*"), true);
+      let sealedNames = new Set();
+      try { const def = typeof store.describe === "function" ? await store.describe(type) : undefined; if (def && Array.isArray(def.fields)) sealedNames = new Set(def.fields.filter((/** @type {any} */ f) => f.kind === "sealed").map((/** @type {any} */ f) => f.name)); else throw new Error("no describe"); } catch { throw new KernelError("unsupported", "cannot check the fields of this type, so a group session may not query by field"); }
+      for (const h of heads) if (rl && (rl.hidden.has(h) || (rl.allow && !rl.allow.has(h) && !["id", "version", "type", "created_at", "updated_at"].includes(h)))) throw new KernelError("bad_input", `${h} is outside what everyone in this room may read`);
+      for (const h of heads) if (sealedNames.has(h)) throw new KernelError("bad_input", `${h} is sealed: it cannot be filtered, sorted, grouped or measured in a group chat`);
+    }
     // A field the access does not allow, or that is hidden from this chain, cannot be filtered, sorted or grouped on either: that would be an oracle.
     const probe = await check(chain, "records.read", urn(type, "*"), { probe: true });
     const lim = await limitsOf(chain, type, probe);
@@ -274,7 +304,7 @@ export function createRecords(cfg) {
   }
 
   /** Shape a stored row for the caller: checked, labelled, and with sealed values as placeholders when a model is in the chain. */
-  function shape(/** @type {any} */ chain, /** @type {any} */ r, /** @type {{ allow: Set<string> | null, hidden: Set<string> } | undefined} */ lim) {
+  function shape(/** @type {any} */ chain, /** @type {any} */ r, /** @type {{ allow: Set<string> | null, hidden: Set<string> } | undefined} */ lim, /** @type {{ allow: Set<string> | null, hidden: Set<string> } | undefined} */ room = undefined) {
     const u = urn(r.type, r.id);
     const known = index.get(u);
     const hash = versionHash(r);
@@ -282,7 +312,9 @@ export function createRecords(cfg) {
     // Placeholders by destination (8.4): a model in the chain, or a declared model sink anywhere in it.
     const model = isModel(chain);
     const cut = (/** @type {any} */ o) => (lim ? Object.fromEntries(Object.entries(o).filter(([k]) => !lim.hidden.has(k) && (!lim.allow || lim.allow.has(k)))) : o);
-    const base = cut(r.data);
+    const own = cut(r.data);
+    // A group session: a field is a value only when everyone in the room may read it and it is not sealed; any other field this chain could see is a placeholder the kernel fills at the moment of an action.
+    const base = room ? Object.fromEntries(Object.entries(own).map(([k, v]) => [k, room.hidden.has(k) || (room.allow && !room.allow.has(k)) || isSealedShape(v) ? `{{field:${u}#${k}}}` : v])) : own;
     const data = model ? Object.fromEntries(Object.entries(base).map(([k, v]) => [k, isSealedShape(v) ? { sealed: /** @type {any} */ (v).sealed, present: Boolean(/** @type {any} */ (v).present), valid_format: Boolean(/** @type {any} */ (v).valid_format) } : v])) : base;
     return Object.freeze({ ...r, data, urn: u, labels: { trust: modified ? "external" : "member", red: "internal", source_spaces: [space] }, ...(modified ? { modified_outside: true } : {}) });
   }
@@ -393,14 +425,18 @@ export function createRecords(cfg) {
       let r;
       try { r = await store.get(type, id); } catch (e) { throw mapError(e); }
       if (!(r && r.id === id && r.type === type)) return null;
+      const vs = await viewersOf(chain);
+      const room = vs ? await roomLim(vs, type, u) : undefined;
+      if (room === null) return null;
       const lim = await limitsOf(chain, type, dec);
-      return (await withComputed(chain, type, [{ rec: shape(chain, r, lim), lim }]))[0];
+      return (await withComputed(chain, type, [{ rec: shape(chain, r, lim, room), lim }]))[0];
     },
 
     async query(chain, type, spec) {
       if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
       checkType(type);
-      await guardSealed(chain, type, spec);
+      const vs = await viewersOf(chain);
+      await guardSealed(chain, type, spec, vs);
       await refuseComputed(type, spec);
       await countRead(chain, type);
       let cursor = spec.page.cursor, out = [], next;
@@ -412,7 +448,11 @@ export function createRecords(cfg) {
         for (const r of p.rows) {
           if (r.type !== type) continue;
           const dec = await check(chain, "records.read", urn(r.type, r.id));
-          if (dec) { const lim = { allow: allowList(dec), hidden: hiddenSet || new Set() }; out.push(shape(chain, r, lim)); lims.push(lim); }
+          if (!dec) continue;
+          const room = vs ? await roomLim(vs, type, urn(r.type, r.id)) : undefined;
+          if (room === null) continue;
+          const lim = { allow: allowList(dec), hidden: hiddenSet || new Set() };
+          out.push(shape(chain, r, lim, room)); lims.push(lim);
         }
         next = p.next_cursor;
         if (out.length || !next) break;
@@ -423,7 +463,7 @@ export function createRecords(cfg) {
       for (let ahead = 0; next && !more && ahead < 10; ahead++) {
         let p;
         try { p = await store.query(type, { ...spec, page: { limit: spec.page.limit, cursor: next } }); } catch (e) { throw mapError(e); }
-        for (const r of p.rows) if (r.type === type && await allowed(chain, "records.read", urn(r.type, r.id))) { more = true; break; }
+        for (const r of p.rows) if (r.type === type && await allowed(chain, "records.read", urn(r.type, r.id)) && (!vs || await roomLim(vs, type, urn(r.type, r.id)))) { more = true; break; }
         if (!more) next = p.next_cursor;
       }
       return { rows: await withComputed(chain, type, out.map((rec, i) => ({ rec, lim: lims[i] }))), ...(more ? { next_cursor: next } : {}) };
@@ -432,7 +472,8 @@ export function createRecords(cfg) {
     async aggregate(chain, type, spec) {
       if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
       checkType(type);
-      await guardSealed(chain, type, spec);
+      const vs = await viewersOf(chain);
+      await guardSealed(chain, type, spec, vs);
       await refuseComputed(type, spec);
       await countRead(chain, type);
       // A store cannot hide rows from a total, so the gateway folds in only the rows it has itself allowed. It folds page by page and keeps
@@ -447,8 +488,11 @@ export function createRecords(cfg) {
           if (r.type !== type) continue;
           const dec = await check(chain, "records.read", urn(r.type, r.id));
           if (!dec) continue;
+          const room = vs ? await roomLim(vs, type, urn(r.type, r.id)) : undefined;
+          if (room === null) continue;
           const al = allowList(dec);
-          agg.add(al || (hiddenSet && hiddenSet.size) ? { ...r, data: Object.fromEntries(Object.entries(r.data).filter(([k]) => !(hiddenSet && hiddenSet.has(k)) && (!al || al.has(k)))) } : r);
+          const cutRow = (/** @type {string} */ k) => !(hiddenSet && hiddenSet.has(k)) && (!al || al.has(k)) && !(room && (room.hidden.has(k) || (room.allow && !room.allow.has(k)) || isSealedShape(r.data[k])));
+          agg.add(al || (hiddenSet && hiddenSet.size) || room ? { ...r, data: Object.fromEntries(Object.entries(r.data).filter(([k]) => cutRow(k))) } : r);
         }
         if (!p.next_cursor) return agg.result();
         cursor = p.next_cursor;
@@ -458,6 +502,7 @@ export function createRecords(cfg) {
     async search(chain, spec) {
       if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
       for (const t of spec.types || []) checkType(t);
+      const vs = await viewersOf(chain);
       let p;
       try { p = await store.search(spec); } catch (e) { throw mapError(e); }
       const words = String(spec.text ?? "").toLowerCase().split(/\s+/).filter(Boolean);
@@ -479,9 +524,10 @@ export function createRecords(cfg) {
       for (const h of p.rows) {
         const dec = await check(chain, "records.read", urn(h.type, h.id));
         if (!dec) continue;
+        if (vs && !(await roomLim(vs, h.type, urn(h.type, h.id)))) continue;
         // A snippet is text from some field: it is shown only when the access has no field limit and no field is hidden from this chain.
         const al = allowList(dec), hid = (await hiddenFields(chain, h.type)) || new Set([1]);
-        const limited = al !== null || hid.size > 0;
+        const limited = vs !== null || al !== null || hid.size > 0;
         // A caller with a field limit may only find a record by text in a field it may read: a hit that came from a field outside the limit is an oracle on that field.
         if (limited && !(await matchesWithin(h, al, hid, words))) continue;
         const { snippet: _s, ...bare } = h;
@@ -492,7 +538,7 @@ export function createRecords(cfg) {
       for (let ahead = 0; next && !more && ahead < 10; ahead++) {
         let q;
         try { q = await store.search({ ...spec, page: { ...spec.page, cursor: next } }); } catch (e) { throw mapError(e); }
-        for (const h of q.rows) if (await allowed(chain, "records.read", urn(h.type, h.id))) { more = true; break; }
+        for (const h of q.rows) if (await allowed(chain, "records.read", urn(h.type, h.id)) && (!vs || await roomLim(vs, h.type, urn(h.type, h.id)))) { more = true; break; }
         if (!more) next = q.next_cursor;
       }
       return { rows, ...(more ? { next_cursor: next } : {}) };
@@ -522,6 +568,11 @@ export function createRecords(cfg) {
       if (!type || !TYPE_NAME.test(type)) return e;
       const dec = await check(chain, "records.read", e.subject);
       const lim = await limitsOf(chain, type, dec);
+      // A group session sees the room's view of an event too: fields not every person may read are cut from the diff.
+      const vs = await viewersOf(chain);
+      const rl = vs ? await roomLim(vs, type, e.subject) : null;
+      if (vs && rl === null) return Object.freeze({ ...e, data: { type: e.data && e.data.type }, redacted_view: true });
+      if (rl) { if (rl.allow) lim.allow = lim.allow ? new Set([...lim.allow].filter(f => /** @type {Set<string>} */ (rl.allow).has(f))) : rl.allow; for (const h of rl.hidden) lim.hidden.add(h); }
       if (!lim.allow && !lim.hidden.size) return e;
       const keep = (/** @type {string} */ k) => !lim.hidden.has(k) && (!lim.allow || lim.allow.has(k));
       const cut = (/** @type {any} */ o) => (o ? Object.fromEntries(Object.entries(o).filter(([k]) => keep(k))) : o);

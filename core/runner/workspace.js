@@ -52,6 +52,25 @@ export function fscryptSupported(dir) {
   return r.status === 0;
 }
 
+/** The line shown when this folder's filesystem cannot encrypt natively and the runner uses gocryptfs instead. */
+export const SLOWER_LINE = "Your files for this space are encrypted with a slower method on this computer's disk format (file-heavy work can take several times longer).";
+
+/**
+ * What the installer's root helper must do ONCE for the runner's folder (setup, "use this computer for a space"), and what happens
+ * without it. Measured on a test box: on ext4, `tune2fs -O encrypt <device>` works on the MOUNTED filesystem, with no remount and no
+ * reboot, and the next unprivileged probe succeeds. f2fs can only be changed offline; btrfs, xfs, zfs and network disks cannot, so
+ * those use gocryptfs and show SLOWER_LINE (a refusal would leave the member with no lending at all, which is worse than slower).
+ * @param {string} base @param {(cmd: string, args: string[]) => { status: number|null, stdout: string }} [runCmd] @param {(dir: string) => boolean} [supported]
+ * @returns {{ state: "ready"|"needs-admin"|"unsupported", fstype: string, device: string, command?: string[], fallback?: "gocryptfs", line?: string }}
+ */
+export function fscryptSetupPlan(base, runCmd = (c, a) => spawnSync(c, a, { encoding: "utf8", timeout: 10_000 }), supported = fscryptSupported) {
+  if (supported(base)) return { state: "ready", fstype: "", device: "" };
+  const r = runCmd("findmnt", ["-no", "FSTYPE,SOURCE", "--target", base]);
+  const [fstype = "", device = ""] = String(r.stdout || "").trim().split(/\s+/);
+  if (r.status === 0 && fstype === "ext4" && device.startsWith("/dev/")) return { state: "needs-admin", fstype, device, command: ["tune2fs", "-O", "encrypt", device], fallback: "gocryptfs", line: SLOWER_LINE };
+  return { state: "unsupported", fstype, device, fallback: "gocryptfs", line: SLOWER_LINE };
+}
+
 /** @param {"darwin"|"linux"|"win32"|string} platform @param {{ sizeGb?: number, base?: string, prefer?: "fscrypt"|"gocryptfs" }} [opts] */
 export function driverFor(platform, opts = {}) {
   if (platform === "darwin") return macDriver(opts);
@@ -80,7 +99,9 @@ export function workspaceUnavailable(platform = process.platform, opts = undefin
 }
 
 function macDriver({ sizeGb = 8 } = {}) {
-  const img = dir => path.join(dir, "vol.sparseimage");
+  // A sparse BUNDLE (many small band files), not a single sparse image: measured on a hosted Mac, small-file work in the bundle is
+  // about 1.0x of a plain folder, against 2.1x to 2.6x for the single-file image.
+  const img = dir => path.join(dir, "vol.sparsebundle");
   const mnt = dir => path.join(dir, "mnt");
   return {
     name: "hdiutil-aes256",
@@ -88,7 +109,7 @@ function macDriver({ sizeGb = 8 } = {}) {
     isMounted: dir => mountedPaths().includes(real(mnt(dir))),
     async create(dir, key) {
       fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-      const r = await runWithPass("/usr/bin/hdiutil", ["create", "-size", `${sizeGb}g`, "-type", "SPARSE", "-fs", "APFS", "-encryption", "AES-256", "-stdinpass", "-volname", "vyre-space", "-quiet", path.join(dir, "vol")], passphrase(key));
+      const r = await runWithPass("/usr/bin/hdiutil", ["create", "-size", `${sizeGb}g`, "-type", "SPARSEBUNDLE", "-fs", "APFS", "-encryption", "AES-256", "-stdinpass", "-volname", "vyre-space", "-quiet", path.join(dir, "vol")], passphrase(key));
       if (r.code !== 0) throw new Error("could not create the workspace: " + r.err.trim().slice(0, 200));
     },
     async mount(dir, key) {

@@ -104,7 +104,9 @@ test("a v1 card is pinned but shares nothing until verified; from an agent a car
   const asked = await o.v.share.addPerson({ card }, "mcp");
   assert.ok("pending" in asked);
   assert.equal(o.v.share.row("sam"), undefined, "nothing pinned yet");
-  await assert.rejects(o.v.createPass({ holder: "sam", card, items: ["db-password"] }, "mcp"), /waits for a person to approve it/);
+  await assert.rejects(o.v.createPass({ holder: "sam", card, items: ["db-password"], mode: "sealed" }, "mcp"), /waits for a person to approve it/);
+  // A pass that would be refused for another reason is refused before the card is queued or pinned: nothing is changed by a refused call.
+  await assert.rejects(o.v.createPass({ holder: "sam", card, items: ["db-password"] }, "mcp"), /no hosts it may be sent to/);
   const pend = o.v.pending();
   assert.equal(pend.people.length, 2);
   const approved = await o.v.approve({ id: /** @type {any} */ (asked).pending.id }, "cli");

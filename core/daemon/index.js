@@ -19,6 +19,7 @@ import { assertDaemonHost } from "./host-guard.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { Registry, discover, ownerDevice, currentCall } from "../modules/index.js";
+import { devSwitch, isPackaged } from "../../kernel/devbuild.js";
 import { build, swWithBuild, htmlWithBuild } from "./build.js";
 import { serveApp } from "./app.js";
 import { acquire } from "./lock.js";
@@ -57,6 +58,27 @@ function kernelProof(req) {
   try { const o = JSON.parse(Buffer.from(h, "base64url").toString("utf8")); return o && typeof o === "object" && !Array.isArray(o) ? o : undefined; } catch { return undefined; }
 }
 /**
+ * What the kernel may build a person's own chain from, for a call that arrived on a connection the daemon itself proved: a person's surface on the 0600 socket (only the owner can
+ * connect, so the uid is the daemon's own; Capsule calls wait for the code-signature check to be wired and get none), or a paired device or a signed-in owner device on a listener
+ * (the listener established who it is; the person is the home's owner while a home has one). Set here only, never from anything a client sends; `ctx.kernel.chain(meta)` builds the chain
+ * from it with the kernel's own builder, which refuses what does not hold. Null when there is nothing to prove.
+ * @param {string} caller @param {any} policy @param {any} via @param {any} k the kernel @param {boolean} [capsuleVerified] the peer on this socket is the pinned Capsule binary @param {{ kind: string, removed: boolean } | null} [device] the home's OWN row for a `device:<id>` caller (relay.device.info), never what the relay says about it
+ */
+export function callerFacts(caller, policy, via, k, capsuleVerified = false, device = null) {
+  if (!k || !k.id) return null;
+  // The Capsule is the person only when its own binary is the pinned one (`verifiedCapsule`: the cdhash the person pinned, checked per connection and bound to the pid's start time). An unproven one gets no chain.
+  if (!policy.caller && caller === "capsule") return capsuleVerified === true ? { kind: "socket", surface: "capsule", uid: typeof process.getuid === "function" ? process.getuid() : 0, pid: 0, inside_model_process: false, capsule_verified: true } : null;
+  if (!policy.caller && ["cli", "local", "deck", "mobile"].includes(caller)) return { kind: "socket", surface: caller, uid: typeof process.getuid === "function" ? process.getuid() : 0, pid: 0, inside_model_process: false, capsule_verified: false };
+  // PH-1: a `device:<id>` is the owner's only if THIS home holds a row for it: paired (a gated pairing makes no row before its confirm), not removed, and an app device. A web browser (trusted or
+  // not), a setup page, an id the home never paired and a removed device get no person facts; the relay's say-so is never enough. (tailnet nodes are the tailnet listener's own identity, X-1.)
+  if (policy.caller && String(policy.caller).startsWith("device:") && !(device && device.kind === "app" && device.removed === false)) return null;
+  if (policy.caller && ownerDevice(policy.caller)) {
+    const deviceId = String(policy.caller).startsWith("device:") ? String(policy.caller).slice(7) : String((policy.peer && (policy.peer.stableId || policy.peer.node)) || "owner");
+    return { kind: "device", device_key_id: deviceId, person: k.id.owner, path: String(policy.caller).startsWith("device:") ? "relay" : "wink", ...(via && via.person ? { session: String(via.person.id) } : {}) };
+  }
+  return null;
+}
+/**
  * The session token a request carries (`x-vyre-kernel-session`), which the registry hands the tool as `meta.token` and nowhere else. It is set here only: the daemon checks the
  * token with the kernel's own Surfaces door, and a tool's input, a module's `ctx.call` and every other header never supply one. No header is simply no session
  * (`undefined`). A header that is present but malformed, invalid, expired or revoked is `null`: the call is REFUSED, never run as if it carried none (reviewer-2 KS-4). The
@@ -82,7 +104,7 @@ export function moduleRoots(root) {
 
 /**
  * Start vyred. Returns a handle with the running registry and a stop() for tests.
- * @param {{ root?: string, log?: (m: string, x?: any) => void, rules?: any, presence?: any,
+ * @param {{ root?: string, log?: (m: string, x?: any) => void, rules?: any, presence?: any, kernelPresence?: any,
  *   kernel?: boolean, coreKeys?: any, person?: (socket: import("node:net").Socket) => Promise<string|{ key: string, tty: string|null }|null> }} [opts] person: a test's stand-in for atTerminal
  */
 export async function start(opts = {}) {
@@ -128,7 +150,9 @@ async function startLocked(opts, root, p, release) {
     coreHolder.link = c ? coreLink(c) : null;
     if (c) log(`presence: keys and proofs are vyre-core's (${c.socket})`);
   }
-  const presence = typeof opts.presence === "function" ? opts.presence({ db, events, log }) : opts.presence || new Presence({ db, events, log, role: cfg.machine, network: () => cfg.network || {} });
+  // DEVELOPMENT ONLY: the automated walk's presence stand-in is on only for a development build whose home holds a file the owner made by hand (never config, never a tool).
+  const devStandIn = () => !isPackaged(opts.packageRoot) && fs.existsSync(path.join(root, "dev-presence-stand-in"));
+  const presence = typeof opts.presence === "function" ? opts.presence({ db, events, log }) : opts.presence || new Presence({ db, events, log, role: cfg.machine, standIn: devStandIn, network: () => cfg.network || {} });
   // Who is the person over the network, not only their device (core/presence/person.js).
   const people = new PersonSessions({ db });
   const started = Date.now();
@@ -174,6 +198,8 @@ async function startLocked(opts, root, p, release) {
   // Space and a first owner, a durable log and store, and the module host: modules from outside Vyre then run only under the supervisor (core/modules/index.js).
   /** @type {any} */ let kernel = null;
   /** @type {(() => Promise<void>) | null} */ let closeKernelSessions = null;
+  /** @type {(() => void) | null} */ let reopenLater = null;
+  /** @type {(() => void) | null} */ let closeFlowsHost = null;
   if (opts.kernel === true || (opts.kernel === undefined && process.env.VYRE_KERNEL === "1")) {
     const { bootHomeKernel } = await import("../../kernel/home.js");
     // The record store: VYRE_STORE=sqlite (the default), auto or twenty (stores/twenty/space-store.js). With auto or twenty each Space's records live in its own Twenty, provisioned
@@ -187,48 +213,134 @@ async function startLocked(opts, root, p, release) {
     // Stages made of tasks (kernel/flows/stages.js): entering a stage makes its tasks in the kernel's own task store, and finished tasks move the record on. The gateway calls the two
     // hooks, which are bound late because the module needs the booted kernel. Tasks live only in the kernel store (no task record in Twenty).
     /** @type {any} */ let stages = null;
-    kernel = await bootHomeKernel({ db, root, log, isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
-      onStageEnter: (/** @type {any} */ e) => (stages ? stages.onStageEnter(e) : Promise.resolve()), stageTasks: (/** @type {string} */ u, /** @type {string} */ st) => (stages ? stages.stageTasks(u, st) : []) });
-    {
-      const { createStages } = await import("../../kernel/flows/stages.js");
-      const sh = kernel.kernelFor({ name: "stages", needs: { kernel: { actions: ["tasks.request", "tasks.read", "records.read", "records.update"], prefixes: ["*/*"] } } });
-      const owner = () => kernel.chains.fromFacts({ kind: "session_person", person: kernel.id.owner, session: "stages", vouched: true });
-      stages = createStages({ kernel: { ask: sh.tasks, records: sh.records }, hook: true, emit: (/** @type {string} */ type, /** @type {any} */ data) => { if (type === "stage.error") log(`stages: ${JSON.stringify(data)}`); },
-        catalog: async () => ({ space: kernel.id.space, types: Object.fromEntries((await kernel.store.types()).map((/** @type {any} */ t) => [t.name, t])) }),
-        chain: () => kernel.chains.appendService(owner(), "stages", true) });
-      kernel.log.subscribe("stages", {}, (/** @type {any} */ e) => stages.onEvent(e));
-    }
+    // Flows and stages made of tasks run in ONE assembly per Space (core/daemon/flows-host.js): the home's own Space here, and every hosted Space through the Spaces registry's
+    // `stageFactory`. The `flows` module only registers the tools over it. A Flow's "Call a service" step reaches the vault's forward after the kernel has allowed it.
+    const { createFlowsHost } = await import("./flows-host.js");
+    const flowsHost = createFlowsHost({ log, tzFor: () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" });
+    registry.deps.flowsHost = flowsHost;
+    // `{{field:...}}` in an outward action: resolved from the record under the person the session's turn is for (their own grants, not the room's view), by the kernel's resolveFields.
+    const { resolveFields } = await import("../../kernel/core/fields.js");
+    registry.deps.resolveFields = async (/** @type {{ input: any, meta: any }} */ q) => {
+      // RF-1: under the turn token's OWN chain (its agent, its grants: an agent narrowed to one project reads only that project), with the chat left out so it is the person's reading and
+      // not the room's. Never a full person chain: a field the session itself cannot read refuses the whole action.
+      const asker = await kernel.surfaces.chainFor(q.meta.token, { noChat: true });
+      return resolveFields({ input: q.input, read: async (/** @type {string} */ urn) => { const [, type, id] = urn.replace("vyre://", "").split("/"); return kernel.gateway.records.get(asker, type, id); } });
+    };
+    // The owner's reset of the accepted module list (core/modulelist): the kernel checks the chain is exactly the owner and the presence proof; this only hands it over.
+    // Everything on this box that holds data, for `vyre wink reset` (core/wink/reset.js): a reset of an owned box refuses while any entry holds data. The vault's own read (lib/vault-wipe.js) is
+    // used when this build has it; without it the vault counts as holding data.
+    const { createDataStores } = await import("../../lib/data-stores.js");
+    /** @type {any} */ let vaultHolds;
+    try { vaultHolds = (await import(/* @vite-ignore */ "../../lib/vault-wipe.js")).vaultHolds; } catch { vaultHolds = undefined; }
+    registry.deps.devStandIn = devStandIn;
+    registry.deps.dataStores = createDataStores({ home: root, db, kernelEvents: () => kernel.log.read(), ...(vaultHolds ? { vaultHolds } : {}) });
+    registry.deps.modulesListReset = (/** @type {any} */ chain, /** @type {any} */ proof) => kernel.resetModulesList(chain, proof);
+    closeFlowsHost = () => flowsHost.stop();
+    // Devices enrol per Space (the user's ruling): the spaces module keeps the list and answers `spaces.devices.enrolled`; a build without that module has no list, so every device is enrolled.
+    const deviceEnrolled = async (/** @type {string} */ space, /** @type {string} */ device) => {
+      const r = /** @type {any} */ (await registry.call("spaces.devices.enrolled", { device, space }, "module:vyred", { door: true }));
+      if (r && r.error) { if (r.error.code === "no_such_tool" || r.error.code === "not_available") return true; return false; }
+      return !r || !r.data || r.data.enrolled !== false;
+    };
+    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
+      // A credentialed request run at the home: the vault's own forward (an internal tool only the lease module may call), under the Space's credential; the kernel has already authorized it.
+      forwardCredential: async (/** @type {any} */ q) => {
+        if (!q.route) throw Object.assign(new Error("that connector's route table is the vault's and is not exposed to the kernel yet"), { code: "unavailable" });
+        const r = q.request;
+        // A file request goes to vault.forward.file with the route's limits and Drive lists, and the Drive is this call's own door (q.files: the kernel's Drive under the caller's chain, FW-2),
+        // handed in-process as meta, never as data a module could name. A plain request carries the route's header names.
+        const base = { credential: q.ref, method: r.method, url: `https://${q.route}${r.path}`, ...(r.query ? { query: r.query } : {}), ...(r.headers ? { headers: r.headers } : {}), ...(q.allow_headers ? { allow_headers: q.allow_headers } : {}), session: q.session || q.idem || "home" };
+        const out = q.file
+          ? await registry.call("vault.forward.file", { ...base, ...(r.upload ? { upload: r.upload } : {}), ...(r.saveTo ? { saveTo: r.saveTo } : {}), ...(q.limits ? { limits: q.limits } : {}), ...(q.drive ? { drive: q.drive } : {}) }, "module:leases", { files: q.files })
+          : await registry.call("vault.forward", { ...base, ...(r.body !== undefined ? { body: r.body } : {}) }, "module:leases");
+        if (out.error) throw Object.assign(new Error(out.error.message), { code: out.error.code });
+        return out.data;
+      },
+      onStageEnter: (/** @type {any} */ e) => (stages ? stages.onStageEnter(e) : Promise.resolve()), stageTasks: (/** @type {string} */ u, /** @type {string} */ st) => (stages ? stages.stageTasks(u, st) : []),
+      stageFactory: async (/** @type {string} */ space, /** @type {any} */ k, /** @type {any} */ meta) => (await flowsHost.attach(space, k, meta.owner)).stages });
+    stages = (await flowsHost.attach(kernel.id.space, kernel, () => kernel.id.owner)).stages;
     if (typeof kernel.bindCalls === "function") kernel.bindCalls(currentCall);
     // The session credential of a session vyred starts (lib/kernel-session.js): the kernel opens a token for the owner this home runs as, with the thread's chat written
     // in by the kernel after it checks the owner is in it; vyred holds it and the thread's own socket stamps it on every call, so the session never sees it. An unnamed thread
     // runs as the default assistant. A thread with no chat of its own gets a session of no chat. Only the Switchboard is handed this (core/modules/index.js context).
     const { createKernelSessions } = await import("../../lib/kernel-session.js");
-    const kernelSessions = createKernelSessions({ kernel });
+    // The open turns survive a restart as { person, chat, agent } (never a token) in the home's own database; on start each is reopened for its person, or given up and forgotten.
+    db.exec("CREATE TABLE IF NOT EXISTS kernel_turns (thread TEXT PRIMARY KEY, body TEXT NOT NULL)");
+    const turns = { durable: true,
+      get: (/** @type {string} */ t) => { const r = /** @type {any} */ (db.prepare("SELECT body FROM kernel_turns WHERE thread = ?").get(t)); return r ? JSON.parse(r.body) : undefined; },
+      set: (/** @type {string} */ t, /** @type {any} */ rec) => { db.prepare("INSERT INTO kernel_turns (thread, body) VALUES (?, ?) ON CONFLICT (thread) DO UPDATE SET body = excluded.body").run(t, JSON.stringify(rec)); },
+      delete: (/** @type {string} */ t) => { db.prepare("DELETE FROM kernel_turns WHERE thread = ?").run(t); },
+      all: () => /** @type {any[]} */ (db.prepare("SELECT thread, body FROM kernel_turns").all()).map(r => /** @type {[string, any]} */ ([r.thread, JSON.parse(r.body)])) };
+    const kernelSessions = createKernelSessions({ kernel, turns, chats: kernel.kernelFor({ name: "kernel-sessions" }).chats });
+    // A chain of exactly that person, built by the kernel as a DEVICE chain of this home (vyred's own key), never from session facts: a chain made from a session token is delegated and may not mint a session (CH-7), so the opener must not be one. A person who is no longer a member gets none.
+    const personChainFor = async (/** @type {string} */ person) => kernel.chains.fromFacts({ kind: "device", device_key_id: "vyred", person, path: "direct" });
+    // What the stream is given of it (needs.daemon "kernelThreads", core/stream): calls on a thread's session and the restart's reopening, never a token and never a way to open a session.
+    // The stream reopens the open turns itself at its start so a turn it cannot resume says so in its chat; when no stream asks (it is off), the daemon reopens them once its modules are up.
+    let reopenCalled = false;
+    const reopenOpts = (/** @type {any} */ o) => ({ personChainFor, ...o });
+    registry.deps.kernelThreads = Object.freeze({
+      forThread: (/** @type {string} */ thread) => kernelSessions.forThread(thread),
+      reopenPending: (/** @type {any} */ o) => { reopenCalled = true; return kernelSessions.reopenPending(reopenOpts(o)); },
+    });
+    reopenLater = () => { if (!reopenCalled) void kernelSessions.reopenPending(reopenOpts({ timeoutMs: 10_000, onGiveUp: (/** @type {string} */ thread, /** @type {string} */ why) => log(`sessions: could not resume ${thread.slice(0, 8)} (${why})`) })).catch(() => {}); };
     closeKernelSessions = () => kernelSessions.closeAll();
-    registry.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any }} */ q) => {
-      const person = kernel.chains.fromFacts({ kind: "session_person", person: kernel.id.owner, session: `thread:${q.thread}`, vouched: true });
-      const s = await kernelSessions.open({ chain: person, ...(q.rec && typeof q.rec.chat === "string" ? { chat: q.rec.chat } : {}), ...(q.agent ? { agent: q.agent } : {}), thread: q.thread });
+    registry.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any, chat?: string, asker?: string, probe?: boolean }} */ q) => {
+      // A chat turn: the Switchboard passes `chat` and `asker` only from module:stream (threads.start and threads.send), so the session is the asker's, in that chat, and the kernel checks they are in it.
+      // Anything else is the home owner's own thread, as before.
+      const person = await personChainFor(q.asker || kernel.id.owner);
+      const chat = q.chat || (q.rec && typeof q.rec.chat === "string" ? q.rec.chat : undefined);
+      // A probe asks only: is this person in this chat? (the kernel's own check: not_found when they are not). The Switchboard asks before it queues or runs a chat turn.
+      if (q.probe) { kernel.gateway.grants.chats.read(person, chat); return null; }
+      const s = await kernelSessions.open({ chain: person, ...(chat ? { chat } : {}), ...(q.agent ? { agent: q.agent } : {}), thread: q.thread });
       return { token: kernelSessions.tokenFor(s.id), end: () => kernelSessions.end(s.id) };
     };
     // The sandbox every Vyre-started session's agent runs in on this computer (the runner's home sandbox: planHome, selfTest, launch; core/sessions/ cannot import core/runner, so the
     // daemon composes it for the Switchboard, behind the kernel flag). It confines a session to its workspace, its provider's own sign-in paths and its own socket, and keeps
     // the person's socket, other sessions' sockets, the daemon's ports and Vyre's key files out of reach; the self-test runs before each session and a failure stops it with a plain
-    // reason. Linux and macOS only; VYRE_SESSION_SANDBOX=0 turns it off.
-    if (process.env.VYRE_SESSION_SANDBOX !== "0" && (process.platform === "darwin" || process.platform === "linux")) {
-      const [{ planHome, selfTest }, { launch }] = await Promise.all([import("../runner/homesandbox.js"), import("../runner/sandbox.js")]);
-      registry.deps.sandbox = { sandbox: { planHome, selfTest, launch }, platform: process.platform, home: os.homedir(), vyreHome: root,
-        probes: { personSocket: p.socket, otherSocket: path.join(root, "run", "sessions", "other.sock"), daemonPorts: [], keyFile: path.join(root, "kernel", "space.json") },
-        temp: os.tmpdir() };
+    // reason.
+    // On macOS and Linux a Vyre-started session is always confined: a sandbox that cannot be built is a refusal to start the session (with the reason), never a silent unconfined start
+    // (reviewer-3 E-2). Only a development build can opt out (VYRE_SESSION_SANDBOX_OFF=1). Windows starts unsandboxed in 0.3, with the notice the user approved.
+    if ((process.platform === "darwin" || process.platform === "linux") && devSwitch(process.env.VYRE_SESSION_SANDBOX_OFF)) registry.deps.sandbox = { off: true };
+    else if (process.platform === "darwin" || process.platform === "linux") {
+      try {
+        const [{ planHome, selfTest }, { launch }] = await Promise.all([import("../runner/homesandbox.js"), import("../runner/sandbox.js")]);
+        registry.deps.sandbox = { sandbox: { planHome, selfTest, launch }, platform: process.platform, home: os.homedir(), vyreHome: root,
+          // Real targets, made for each self-test and torn down after it: a unix socket standing in for another session's, and a loopback listener standing in for a daemon port. The
+          // sandboxed probe must fail to connect to every one of them, and a probe target that does not exist is refused by the runner's own check.
+          probes: async () => {
+            const net = await import("node:net");
+            const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-probe-"));
+            const other = path.join(dir, "other.sock");
+            const servers = /** @type {import("node:net").Server[]} */ ([net.createServer(c => c.destroy()), net.createServer(c => c.destroy())]);
+            await new Promise(r => servers[0].listen(other, () => r(undefined)));
+            await new Promise(r => servers[1].listen(0, "127.0.0.1", () => r(undefined)));
+            const port = /** @type {any} */ (servers[1].address()).port;
+            return { personSocket: p.socket, otherSocket: other, daemonPorts: [port], keyFile: path.join(root, "kernel", "space.json"),
+              release: async () => { for (const s of servers) await new Promise(r => s.close(() => r(undefined))); fs.rmSync(dir, { recursive: true, force: true }); } };
+          },
+          temp: os.tmpdir() };
+      } catch (e) {
+        registry.deps.sandbox = { unavailable: `Vyre could not set up the sandbox for sessions on this computer (${/** @type {Error} */ (e).message}), so it does not start them.` };
+      }
     }
     registry.deps.moduleHost = kernel.moduleHost;
     registry.deps.kernelFor = kernel.kernelFor;
     if (kernel.firstPartyCheck) registry.deps.firstPartyCheck = kernel.firstPartyCheck;
+    if (kernel.reservedName) registry.deps.reservedName = kernel.reservedName;
     registry.deps.moduleApprovals = kernel.moduleApprovals;
     log(`kernel on · space ${kernel.id.space}${kernel.fresh ? " (new)" : ""}`);
   }
   // The eight box-only modules gate on cfg.machine (ADR 0039: solo/server/device), not the
   // legacy cfg.role -- that's what lets a Mac chosen as the server run them.
+  // The provider sign-in token for the launcher modules (threads, agents), by declaration (needs.daemon: credentials): from the credentials port taken below, never a module grant on the vault
+  // items. Late-bound, because the port is taken after the vault starts; until then it answers undefined and the caller keeps its old grant-based read.
+  registry.deps.credentials = (/** @type {string} */ provider) => (registry.deps.credentialsPort ? registry.deps.credentialsPort.credentials(provider) : Promise.resolve(undefined));
   await registry.start(discover(moduleRoots(root), { firstPartyRoots }), { role: cfg.machine, ...cfg.modules });
+  if (reopenLater) reopenLater();
+  // The session launcher's way to a provider sign-in token: the vault provided it to the registry once, at its own start (`ctx.provide`, core/modules/index.js), so no import of the vault is needed here.
+  // It goes to the sandbox the Switchboard reads per session (`lib/agent-sandbox.js` calls `credentials(provider)`). Where the vault did not start (a Mac whose vault is vyre-core's) there is none.
+  // Late-bound: if the vault restarts it provides a fresh port, and the sandbox must ask that one, never the port of a stopped vault.
+  if (registry.deps.credentialsPort && registry.deps.sandbox) registry.deps.sandbox.credentials = (/** @type {string} */ p) => { const port = registry.deps.credentialsPort; if (!port) throw new Error("the vault is not running, so no sign-in token is available"); return port.credentials(p); };
   // The join card shows the Space's name and fingerprint words. The module that holds the Space's identity (spaces) answers them through `spaces.label` once it has the Space's
   // root key; until then the card has none. Asked at start, then every 30 s until it answers, then every 10 minutes (a rename shows up), never keeping the daemon alive.
   let stopped = false;
@@ -255,7 +367,7 @@ async function startLocked(opts, root, p, release) {
     fs.rmSync(p.socket, { force: true });
   }
 
-  const terminalOf = opts.person || (sock => atTerminal(sock, registry, presence));
+  const terminalOf = opts.person || (sock => atTerminal(sock, registry, presence, devStandIn()));
   const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, socket: true, terminalOf, kernelOf: () => kernel }).catch(e => fail(res, e)));
   server.on("upgrade", async (req, socket, head) => {
     try { upgrade(req, socket, head, (await asTaken(socketCaller(req), /** @type {any} */ (socket), registry)).caller); }
@@ -272,6 +384,7 @@ async function startLocked(opts, root, p, release) {
     if (stopped) return; stopped = true;
     if (labelTimer) clearTimeout(labelTimer);
     if (closeKernelSessions) await closeKernelSessions().catch(() => {});
+    if (closeFlowsHost) closeFlowsHost();
     // Stop taking calls, and give the ones running up to DRAIN_MS to finish: a write cut off
     // mid-way looks to its client like a failure it will retry (ADR 0029, R7).
     drain.on = true;
@@ -573,8 +686,9 @@ const taken = new WeakMap();
  * @param {import("node:net").Socket} socket @param {any} registry @param {any} presence
  * @returns {Promise<{ key: string, tty: string|null }|null>} tty: the caller's own terminal, where a notice goes
  */
-async function atTerminal(socket, registry, presence) {
-  if (await fromClaude(socket, registry)) return null;
+async function atTerminal(socket, registry, presence, standIn = false) {
+  // The development stand-in (a hand-made file in a development build) is the one thing that replaces this guard; a real build never passes it.
+  if (!standIn && await fromClaude(socket, registry)) return null;
   const pid = await peerPid(socket);
   if (!pid || !presence || typeof presence.who !== "function") return null;
   const logins = await presence.who();
@@ -649,6 +763,10 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       /** @type {any} */ (req).vyreRaw = raw;
     }
     const c = people.check({ headers: req.headers, node: nodeId, method: req.method, path: url.pathname + url.search, raw });
+    if (c && c.ok && c.rotateOnly && url.pathname !== "/v1/tools/presence.person.rotate") {
+      // A paired session past its rotation plus grace: the secret is good for the one call that replaces it.
+      return send(res, 401, { error: { code: "person_session_required", message: "this device's sign-in must be renewed before anything else; it renews itself, or sign in again" } });
+    }
     if (c && c.ok) person = { id: c.id, kind: c.kind };
     // The credential this box issued, for a device whose key was since removed: said once, in plain
     // words, with its own code (only the holder of the real credential gets it, person.js check).
@@ -727,7 +845,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       modules: { running: mods.filter(m => m.state === "running").length, failed: mods.filter(m => ["failed", "invalid"].includes(m.state)).length } } });
   }
   if (req.method === "GET" && url.pathname === "/v1/modules") return send(res, 200, { data: registry.status() });
-  if (req.method === "GET" && url.pathname === "/v1/tools") return send(res, 200, { data: registry.listTools(caller).filter(t => !policy.tool || policy.tool(t.name)) });
+  if (req.method === "GET" && url.pathname === "/v1/tools") return send(res, 200, { data: registry.listTools(caller, via).filter(t => !policy.tool || policy.tool(t.name)) });
   if (device && req.method === "POST" && url.pathname === "/v1/person/token") {
     // The hosted app trades the sign-in page's one-time code, its PKCE verifier and the public
     // half of its key for a bearer session. The one call from another origin that needs none.
@@ -857,7 +975,18 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     }
     const sessionToken = await kernelSession(req, kernelOf);
     if (sessionToken === null) return send(res, 401, { error: { code: "no_session", message: "this call carries a session credential that is not valid, so it was not made" } });
-    const result = await registry.call(name, input, caller, { ...via, proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
+    // The Capsule's chain needs its own proof (the pinned binary on this connection), asked only for a Capsule label on the socket and only when a kernel is on.
+    let capsuleOk = false;
+    if (socket && !policy.caller && caller === "capsule" && kernelOf && kernelOf() && registry.deps.presence && typeof registry.deps.presence.capsulePin === "function") {
+      try { capsuleOk = (await verifiedCapsule(req.socket, await peerPid(req.socket).catch(() => null), registry.deps.presence.capsulePin(), registry.deps.capsuleSeam)) === true; } catch { capsuleOk = false; }
+    }
+    // The home's own row for a relay device, asked of the relay module's internal tool; null when none, removed, or the relay is off.
+    let deviceRow = null;
+    if (policy.caller && String(policy.caller).startsWith("device:") && kernelOf && kernelOf()) {
+      try { const r = await registry.call("relay.device.info", { id: String(policy.caller).slice(7) }, "module:vyred"); deviceRow = r && r.data ? r.data : null; } catch { deviceRow = null; }
+    }
+    const facts = callerFacts(caller, policy, via, kernelOf ? kernelOf() : null, capsuleOk, deviceRow);
+    const result = await registry.call(name, input, caller, { ...via, ...(facts ? { kernelFacts: facts } : {}), proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
       keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req), ...(kernelProof(req) ? { kernel_proof: kernelProof(req) } : {}), ...(sessionToken ? { token: sessionToken } : {}) });
     // A new person session for the Deck goes in the cookie, never in the body a script could read.
     if (name === "presence.person.start" && result.data && result.data.kind === "cookie" && result.data.token) {

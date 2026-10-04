@@ -121,7 +121,6 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_HEADSCALE_BIN` | The `headscale` binary a space's network control plane runs. Under node --test there is none unless `VYRE_WINK_REAL=1`. | `core/wink/control/headscale.js` |
 | `VYRE_HOME` | Where Vyre keeps its data. Default `~/.vyre`. | `core/agents/index.js`, `core/config/dialogs.js`, `core/config/index.js`, `core/daemon/peer.js`, `core/harness/rules.js`, `core/learn/checks.js`, `core/sessions/index.js`, `core/sessions/spawn.js`, `core/switchboard/index.js`, `harness/lib/vyre.js`, `local/hands-chrome-mac/native-host/host.js`, `local/hands-chrome-mac/native-host/install.js` |
 | `VYRE_HOST_USER` | The user name in the `ssh -L` line `vyre up` prints for reaching the box. | `core/cli/commands/up.js` |
-| `VYRE_KERNEL` | Not described yet. | `core/daemon/index.js` |
 | `VYRE_LEGACY_DIRECT_MODEL` | Not described yet. | `core/sessions/index.js`, `local/voice/index.js` |
 | `VYRE_MODULE_SDK` | A folder holding the module SDK's testing.js, for a module's own tests made by `vyre module new` before the SDK is on npm. | `core/cli/commands/module.js` |
 | `VYRE_NAMES_DEV_CLOUDFLARE` | Not described yet. | `core/names/index.js` |
@@ -146,7 +145,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_SESSIONS_SDK_DIR` | Not described yet. | `core/sessions/config.js`, `core/spawner/main.js` |
 | `VYRE_SESSIONS_SDK_INSTALL` | Not described yet. | `core/sessions/sdk.js` |
 | `VYRE_SESSIONS_THREAD_SOCKET` | Not described yet. | `core/sessions/config.js` |
-| `VYRE_SESSION_SANDBOX` | Not described yet. | `core/daemon/index.js` |
+| `VYRE_SESSION_SANDBOX_OFF` | Not described yet. | `core/daemon/index.js` |
 | `VYRE_SETUP_CODE` | Not described yet. | `core/relay/index.js` |
 | `VYRE_SETUP_CODE_AT` | Not described yet. | `core/relay/index.js` |
 | `VYRE_SPAWNER_ALLOW` | Not described yet. | `core/spawner/main.js` |
@@ -177,6 +176,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_WATCH_WORK` | Not described yet. | `core/watchers/spawner-wall.js` |
 | `VYRE_WINDOWS_LENDING` | Not described yet. | `core/runner/sandbox.js`, `core/runner/workspace.js` |
 | `VYRE_WINK_REAL` | `1`: let a test run the real Headscale and tailscaled (test server only). | `core/wink/control/headscale.js` |
+| `VYRE_WINK_TYPED_CODE` | Not described yet. | `core/wink/index.js` |
 | `VYRE_WORK` | Not described yet. | `core/spawner/main.js`, `core/switchboard/index.js` |
 | `VYRE_WORK_DIR` | Not described yet. | `core/config/index.js` |
 | `VYRE_WORK_GID` | Not described yet. | `bin/vyre`, `core/spawner/main.js` |
@@ -216,3 +216,4 @@ vyred sets these for the threads and helpers it starts, and the Harness reads th
 | `VYRE_TEST_HOST` | Not described yet. | `core/daemon/host-guard.js` |
 | `VYRE_TEST_HOSTED` | `1`: for a vyred a test starts over a temp home, count its parent test process as the person's side. Never read for `~/.vyre`. | `core/daemon/host-guard.js`, `core/daemon/peer.js` |
 | `VYRE_TEST_REAL_TAILSCALE` | `1`: let a test use the real tailscale binary. | `core/link/transport.js`, `core/relay/tailnet.js` |
+| `VYRE_TEST_UNGATED_RING` | Not described yet. | `core/relay/index.js` |

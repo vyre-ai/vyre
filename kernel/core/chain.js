@@ -68,6 +68,9 @@ export function createChainBuilder(cfg) {
   const base = () => ({ trust: "member", red: "public", source_spaces: [space] });
   const refuse = (/** @type {string} */ why) => { throw new KernelError("not_a_member", "no chain for this connection", why); };
 
+  /** The chat a session token names (the kernel wrote it into the token): a chain made from a session carries it, so the gateway can answer a group session with the room's view. */
+  const roomOf = (/** @type {any} */ f) => (f.from_token === true && typeof f.chat === "string" && f.chat && typeof f.session === "string" ? { chat: f.chat, session: f.session } : null);
+
   /** @param {any} f SurfaceFacts */
   function fromFacts(f) {
     if (!f || typeof f !== "object") return refuse("no facts");
@@ -97,7 +100,7 @@ export function createChainBuilder(cfg) {
         if (!f.vouched) return refuse("agent claim not vouched by the kernel's own session");
         const who = f.person ?? cfg.owner;
         if (who !== cfg.owner && !isMember(who)) return refuse("the session's person is not a member");
-        return make([hop("person", who, "session", { session: f.session }), hop("agent", f.agent, "session", { session: f.session })], base());
+        return make([hop("person", who, "session", { session: f.session }), hop("agent", f.agent, "session", { session: f.session })], base(), { ...(f.from_token === true ? { delegated: true } : {}), ...(roomOf(f) ? { room: roomOf(f) } : {}) });
       }
       case "invitee": {
         // Someone who holds an invite and is not a member yet: the Surfaces door verified who they are. Their chain can do one thing, accept the invite
@@ -110,7 +113,7 @@ export function createChainBuilder(cfg) {
         // presence session: no passkey was shown, so an admin act still needs the person's own proof.
         if (!f.vouched) return refuse("session not vouched by the kernel's own token");
         if (f.person !== cfg.owner && !isMember(f.person)) return refuse("the session's person is not a member");
-        return make([hop("person", f.person, "session", { node: `session:${f.session}` })], base());
+        return make([hop("person", f.person, "session", { node: `session:${f.session}` })], base(), { ...(f.from_token === true ? { delegated: true } : {}), ...(roomOf(f) ? { room: roomOf(f) } : {}) });
       }
       case "viewer": {
         // One person in the room an assistant writes for. Built by the kernel from the chat's own list (kernel/index.js audienceFor), never from a module's word. It reads
@@ -140,6 +143,8 @@ export function createChainBuilder(cfg) {
    */
   function forFlow(o) {
     if (!isChain(o.approver) || o.approver.hops.length !== 1 || o.approver.hops[0].actor.kind !== "person") return refuse("a Flow runs under one person's approval");
+    // FL-1: the approver is the person's OWN act. A viewer chain (a person in a room an assistant writes for), a delegated chain (made from a session token) and a room chain are not: a run built on one would carry more than the person gave.
+    if (o.approver.viewer === true || o.approver.delegated === true || o.approver.room) return refuse("a Flow runs under a person's own approval, not a viewer's, a session's or a room's");
     if (typeof o.flow !== "string" || !o.flow || typeof o.run !== "string" || !o.run) return refuse("a Flow run needs its flow and its run id");
     const labels = o.tainted ? mergeLabels(o.approver.labels, { trust: "external", red: "public", source_spaces: [space] }) : o.approver.labels;
     return make([...o.approver.hops, hop("automation", o.flow, "job")], labels, { job: o.run });
@@ -205,7 +210,7 @@ export function createLegacyChainBuilder(cfg) {
     /** @param {{ kind: "person" | "agent" | "service", id: string, legacy: string, person_session?: boolean, device?: string }} p */
     fromLegacy(p) {
       if (!["person", "agent", "service"].includes(p.kind) || typeof p.id !== "string" || !p.id) throw new KernelError("not_a_member", "no chain for this connection", "bad legacy caller");
-      const hop = { actor: { kind: p.kind, id: p.id, space: LEGACY_SPACE }, entered_by: "registry", via: { legacy: p.legacy, ...(p.person_session ? { session: "person" } : {}), ...(p.device ? { device: p.device } : {}) } };
+      const hop = { actor: { kind: p.kind, id: p.id, space: LEGACY_SPACE }, entered_by: "registry", via: { legacy: p.legacy, ...(p.person_session ? { session: "person" } : {}), ...(p.device ? { device: p.device } : {}), ...(p.thread ? { thread: p.thread } : {}) } };
       const c = deepFreeze({ space: LEGACY_SPACE, hops: [hop], labels: { trust: "member", red: "public", source_spaces: [LEGACY_SPACE] }, built_at: clock() });
       BUILT.add(c);
       return /** @type {any} */ (c);

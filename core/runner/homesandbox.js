@@ -14,6 +14,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import net from "node:net";
+import os from "node:os";
 import { spawn } from "node:child_process";
 import { launch } from "./sandbox.js";
 import { filter as seccompFilter } from "./seccomp.js";
@@ -41,7 +42,7 @@ const SECRET_DIRS = [".ssh", ".aws", ".gnupg", ".kube", ".docker", ".netrc", ".g
  */
 
 /** What a session's environment may hold: the basics, Vyre's own thread variables, and only the credential names the caller lists. No token by default. */
-const HOME_ENV = /^(PATH|LANG|LC_[A-Z]+|TERM|TZ|NO_COLOR|FORCE_COLOR|USER|LOGNAME|SHELL|VYRE_[A-Z0-9_]+)$/;
+const HOME_ENV = /^(DEVELOPER_DIR|PATH|LANG|LC_[A-Z]+|TERM|TZ|NO_COLOR|FORCE_COLOR|USER|LOGNAME|SHELL|VYRE_[A-Z0-9_]+)$/;
 /** @param {Record<string, string|undefined>} env @param {string[]} [pass] */
 export function homeEnv(env = {}, pass = []) {
   const ok = new Set(pass);
@@ -94,6 +95,10 @@ export function seedConfig(o) {
 
 /** The paths a session may touch besides the system: its project, the agent's own settings, its temp folder, the agent's install folder. @param {HomeOpts} o */
 const allowed = o => [...new Set([...(o.workdirs || []), ...(o.temp ? [o.temp] : []), ...(o.readOnly || [])].map(real))];
+/** What the session may WRITE: its project, its temp folder and its private config (inside temp). Nothing else on the disk is writable. @param {HomeOpts} o */
+const writable = o => [...new Set([...(o.workdirs || []), ...(o.temp ? [o.temp] : [])].map(real))];
+/** This machine's own non-loopback addresses: a daemon port bound to all interfaces is reachable on them, and "localhost" does not cover them (reviewer-2 ES-2). */
+const lanAddrs = () => Object.values(os.networkInterfaces()).flat().filter(a => a && !a.internal && a.family === "IPv4").map(a => a.address);
 const ancestors = p => { const out = []; for (let d = path.dirname(p); d !== path.dirname(d); d = path.dirname(d)) out.push(d); return out; };
 
 /**
@@ -105,14 +110,19 @@ export function homeSeatbelt(o) {
   const ok = allowed(o);
   return [
     "(version 1)", "(allow default)",
+    // Nothing on the disk is writable except what is allowed back below (reviewer-2 ES-1): a user-owned /opt/homebrew, /usr/local, a bundle in
+    // /Applications or /private/tmp would otherwise let a session plant a tool that later runs outside the sandbox.
+    "(deny file-write*)", '(allow file-write* (subpath "/dev"))',
     // The home folder and the places other people's and external files live are denied whole; the Vyre home and secret folders are inside them.
     ...[...new Set([h, v, "/Users", "/Volumes"])].map(d => `(deny file* (subpath ${q(d)}))`),
     ...SECRET_DIRS.map(d => `(deny file* (subpath ${q(path.join(h, d))}))`),
     // Every unix socket and every loopback connection is refused...
     "(deny network-outbound (remote unix-socket))",
     '(deny network-outbound (remote ip "localhost:*"))',
+    ...lanAddrs().map(a => `(deny network-outbound (remote ip "${a}:*"))`),
     // ...then the session gets back only what it needs (these come last, so they win).
-    ...ok.map(d => `(allow file* (subpath ${q(d)}))`),
+    ...writable(o).map(d => `(allow file* (subpath ${q(d)}))`),
+    ...ok.filter(d => !writable(o).includes(d)).map(d => `(allow file-read* (subpath ${q(d)}))`),
     ...[...new Set(ok.flatMap(ancestors))].map(d => `(allow file-read-metadata (literal ${q(d)}))`),
     // The protected places are denied AGAIN after the allows, so no allowed folder can re-open them.
     ...[v, ...SECRET_DIRS.map(d => path.join(h, d))].map(d => `(deny file* (subpath ${q(d)}))`),
@@ -129,8 +139,13 @@ export function homeSeatbelt(o) {
 function planDarwin(o) {
   const cfg = seedConfig(o);
   o = { ...o, workdirs: [...(o.workdirs || []), ...(cfg ? [cfg.dir] : [])] };
-  const env = { ...homeEnv(o.env, o.passEnv), ...(cfg ? cfg.env : {}), VYRE_SOCKET: o.sessionSocket };
-  return { argv: ["/usr/bin/sandbox-exec", "-p", homeSeatbelt(o), o.command, ...(o.args || [])], env: { ...env, HOME: o.home }, cwd: undefined, cleanup() {}, profile: homeSeatbelt(o), fd3: undefined, socket: o.sessionSocket };
+  const dd = ["/Library/Developer/CommandLineTools", "/Applications/Xcode.app/Contents/Developer"].find(d => fs.existsSync(d));
+  // Tools that keep caches or scratch files outside the project would fail with writes denied: point each into the session's own temp folder.
+  const t = o.temp ? real(o.temp) : null;
+  const redirects = t ? { TMPDIR: path.join(t, "tmp"), XDG_CACHE_HOME: path.join(t, "cache"), npm_config_cache: path.join(t, "npm"), PIP_CACHE_DIR: path.join(t, "pip"), HOMEBREW_CACHE: path.join(t, "brew"), CARGO_HOME: path.join(t, "cargo"), GOCACHE: path.join(t, "gocache") } : {};
+  for (const d of Object.values(redirects)) { try { fs.mkdirSync(d, { recursive: true }); } catch {} }
+  const env = { ...homeEnv(o.env, o.passEnv), ...(dd ? { DEVELOPER_DIR: dd } : {}), ...redirects, ...(cfg ? cfg.env : {}), VYRE_SOCKET: o.sessionSocket };
+  return { argv: ["/usr/bin/sandbox-exec", "-p", homeSeatbelt(o), o.command, ...(o.args || [])], env: { ...env, HOME: o.home }, cwd: o.workdirs?.[0], cleanup() {}, profile: homeSeatbelt(o), fd3: undefined, socket: o.sessionSocket };
 }
 
 /** @param {HomeOpts} o */
@@ -151,6 +166,7 @@ function planLinux(o) {
     "--tmpfs", h,
     ...ro.flatMap(d => ["--ro-bind", d, d]),
     ...rw.flatMap(d => ["--bind", d, d]),
+    ...(o.workdirs?.[0] ? ["--chdir", real(o.workdirs[0])] : []),
     ...(fs.existsSync(o.sessionSocket) ? ["--bind", real(o.sessionSocket), sock] : []),
     ...(o.proxy?.socket ? ["--ro-bind", o.proxy.socket, "/run/egress.sock", "--ro-bind", SHIM, "/opt/vyre-shim.js"] : []),
     ...Object.entries(env).flatMap(([k, val]) => ["--setenv", k, val]),
@@ -189,6 +205,8 @@ const conn=(t)=>new Promise(res=>{const s=typeof t==="number"?net.connect(t,"127
  out.personSocket=a;out.otherSocket=b;out.ownSocket=c;out.daemonPorts=ports;
  out.writes=[];for(const d of P.writable){try{fs.mkdirSync(d,{recursive:true});const f=d+"/.vyre-selftest";fs.writeFileSync(f,"x");fs.readFileSync(f);fs.rmSync(f);out.writes.push("ok")}catch(e){out.writes.push(e.code||"error")}}
  out.hosts=[];for(const h of P.hosts){const [host,port]=h.split(":");if(P.proxyPort){out.hosts.push(await new Promise(res=>{const s=net.connect(P.proxyPort,"127.0.0.1");let d=false,b="";const f=v=>{if(!d){d=true;try{s.destroy()}catch{}res(v)}};s.on("connect",()=>s.write("CONNECT "+host+":"+(port||443)+" HTTP/1.1\\r\\nHost: "+host+"\\r\\nProxy-Authorization: Basic "+Buffer.from("vyre:"+P.proxyToken).toString("base64")+"\\r\\n\\r\\n"));s.on("data",x=>{b+=x;if(b.includes("\\r\\n"))f(/ 200 /.test(b.split("\\r\\n")[0])?"connected":"refused")});s.on("error",e=>f(e.code||"error"));setTimeout(()=>f("timeout"),4000)}));continue}out.hosts.push(await new Promise(res=>{const s=net.connect(Number(port||443),host);let d=false;const f=v=>{if(!d){d=true;try{s.destroy()}catch{}res(v)}};s.on("connect",()=>f("connected"));s.on("error",e=>f(e.code||"error"));setTimeout(()=>f("timeout"),4000)}))}
+ out.noWrite=[];for(const d of (P.mustNotWrite||[])){try{fs.writeFileSync(d+"/.vyre-write-probe","x");fs.rmSync(d+"/.vyre-write-probe",{force:true});out.noWrite.push("WROTE")}catch(e){out.noWrite.push(e.code||"error")}}
+ out.addrs=[];for(const [a,p] of (P.addrPorts||[])){out.addrs.push(await new Promise(res=>{const s=net.connect(p,a);let d=false;const f=v=>{if(!d){d=true;try{s.destroy()}catch{}res(v)}};s.on("connect",()=>f("connected"));s.on("error",e=>f(e.code||"error"));setTimeout(()=>f("timeout"),800)}))}
  if(P.daemonPid){try{process.kill(P.daemonPid,"SIGCONT");out.signal="ok"}catch(e){out.signal=e.code}try{const r=require("child_process").execFileSync("/bin/ps",["eww","-p",String(P.daemonPid)],{encoding:"utf8",stdio:["ignore","pipe","ignore"]});out.psEnv=r.includes(String(P.daemonPid))?"READ":"empty"}catch(e){out.psEnv="refused"}}
  try{fs.readFileSync(P.homeFile);out.homeFile="READ"}catch(e){out.homeFile=e.code}
  try{fs.readFileSync(P.keyFile);out.keyFile="READ"}catch(e){out.keyFile=e.code}
@@ -209,6 +227,8 @@ const hostConnect = t => new Promise(res => { const s = typeof t === "number" ? 
  * HS-3): a stale path would otherwise "fail" every must-fail probe by not existing, and the proof would pass over a hole.
  * @returns {Promise<string[]>} what is stale
  */
+const hostConnectAddr = (a, port) => new Promise(res => { const s = net.connect(port, a); const f = v => { try { s.destroy(); } catch {} res(v); }; s.on("connect", () => f(true)); s.on("error", () => f(false)); setTimeout(() => f(false), 1500); });
+
 async function stale(o) {
   const p = o.probes, out = [];
   const home = o.vyreHome || path.join(o.home, ".vyre");
@@ -223,13 +243,21 @@ async function stale(o) {
 
 export async function selfTest(o) {
   const node = o.node || process.execPath;
+  // The folders the session is given exist before the proof (a missing one cannot be created inside a denied home).
+  for (const d of [...(o.workdirs || []), ...(o.temp ? [o.temp] : [])]) { try { fs.mkdirSync(d, { recursive: true }); } catch {} }
   const ts = Date.now();
   const old = await stale(o);
   const staleMs = Date.now() - ts;
   if (old.length) return { ok: false, failures: ["the self-test is stale: " + old.join("; ")], results: null };
   const base = planHome({ ...o, command: node, args: [], readOnly: [...(o.readOnly || []), path.dirname(node)] });
   // The session reaches its socket at the path the sandbox gives it (VYRE_SOCKET), which is not the host path on Linux.
-  const probes = { ...o.probes, ownSocket: base.socket, vyreHome: o.vyreHome || path.join(o.home, ".vyre"), writable: [...(o.temp ? [o.temp] : []), ...(o.workdirs || [])], hosts: o.agent?.hosts || [], proxyPort: o.platform === "linux" && o.proxy ? 18443 : 0, proxyToken: o.proxy?.token || "" };
+  // Folders a session must NOT be able to write, but this user can: the probe means something only where the writer really could (checked from outside).
+  const writableByUser = d => { try { fs.accessSync(d, fs.constants.W_OK); return true; } catch { return false; } };
+  const mustNotWrite = [...new Set([...(o.probes.mustNotWrite || []), ...(o.platform === "darwin" ? [path.dirname(process.execPath), "/private/tmp", "/usr/local/bin", "/opt/homebrew/bin", "/Applications"] : [])])].filter(d => fs.existsSync(d) && writableByUser(d) && !(o.workdirs || []).some(w => real(w).startsWith(real(d))) && !(o.temp && real(o.temp).startsWith(real(d))));
+  // The daemon's ports on every address a machine has: loopback, ::1 and the LAN address. Only the ones the host itself can reach are probed.
+  const addrPorts = [];
+  for (const port of o.probes.daemonPorts) for (const a of ["::1", ...lanAddrs()]) if (await hostConnectAddr(a, port)) addrPorts.push([a, port]);
+  const probes = { ...o.probes, mustNotWrite, addrPorts, ownSocket: base.socket, vyreHome: o.vyreHome || path.join(o.home, ".vyre"), writable: [...(o.temp ? [o.temp] : []), ...(o.workdirs || [])], hosts: o.agent?.hosts || [], proxyPort: o.platform === "linux" && o.proxy ? 18443 : 0, proxyToken: o.proxy?.token || "" };
   const p = planHome({ ...o, command: node, args: ["-e", PROBE, JSON.stringify(probes)], readOnly: [...(o.readOnly || []), path.dirname(node)] });
   // The agent check and the probes run at the same time; the stale check ran first because a stale probe makes the rest meaningless.
   const t0 = Date.now();
@@ -250,6 +278,8 @@ export async function selfTest(o) {
   if (res.personSocket === "connected") failures.push("the person's own socket is reachable");
   if (res.otherSocket === "connected") failures.push("another session's socket is reachable");
   res.daemonPorts.forEach((r, i) => { if (r === "connected") failures.push(`the daemon's loopback port ${o.probes.daemonPorts[i]} is reachable`); });
+  (res.noWrite || []).forEach((w, i) => { if (w === "WROTE") failures.push(`the session can write to ${probes.mustNotWrite[i]}, outside its own folders`); });
+  (res.addrs || []).forEach((r, i) => { if (r === "connected") failures.push(`the daemon port ${probes.addrPorts[i][1]} is reachable at ${probes.addrPorts[i][0]}`); });
   if (res.signal === "ok") failures.push("the session can signal the daemon's process");
   if (res.psEnv === "READ") failures.push("the session can read the daemon's process arguments and environment");
   if (res.keyFile === "READ") failures.push("a key file in the Vyre home can be read");

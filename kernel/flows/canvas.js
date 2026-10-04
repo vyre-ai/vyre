@@ -5,9 +5,11 @@
 
 import { printFlow, parseFlowText } from "./text.js";
 import { compileFlow } from "./compile.js";
+import { describeTrigger, kindOf, whyRan } from "./triggers.js";
+export { describeTrigger };
 import { canonical, flowHash, walkSteps, BLOCK_KINDS } from "./schema.js";
 
-const ICON = { find: "search", pick: "search", filter: "filter", create: "plus", update: "edit", upsert: "edit", remove: "trash", decide: "branch", repeat: "loop", wait: "clock", ask: "question", assign: "person", agent: "assistant", call: "send", stage: "stage", classify: "tag", http: "globe", fn: "code" };
+const ICON = { find: "search", pick: "search", filter: "filter", create: "plus", update: "edit", upsert: "edit", remove: "trash", decide: "branch", repeat: "loop", wait: "clock", ask: "question", assign: "person", agent: "assistant", call: "send", stage: "stage", classify: "tag", service: "globe", fn: "code" };
 
 /** @param {import('./compile.js').Catalog} cat @param {string} type */
 const typeLabel = (cat, type) => ((cat.types[type] && cat.types[type].label) || type).toLowerCase();
@@ -46,21 +48,9 @@ export function describeStep(s, cat) {
     case "call": return act.charAt(0).toUpperCase() + act.slice(1);
     case "stage": return `Move the ${typeLabel(cat, s.type)} to ${s.to}`;
     case "classify": return "Sort the text into a label";
-    case "http": return `Call ${(() => { try { return new URL(s.url).host; } catch { return "a web address"; } })()}`;
+    case "service": return `Call ${s.connector}${s.method === "GET" || s.method === "HEAD" ? "" : " (needs a yes)"}`;
     case "fn": return "Run a small piece of code";
     default: return s.kind;
-  }
-}
-
-/** @param {any} t */
-export function describeTrigger(t) {
-  switch (t.on) {
-    case "event": return `When ${t.event} happens${t.where ? " and the condition holds" : ""}`;
-    case "stage": return `When a ${t.type} enters ${t.stage}`;
-    case "time": return t.cron ? `On a schedule (${t.cron})` : t.every_ms ? `Every ${span(t.every_ms)}` : "At a set time";
-    case "web": return `When something calls /${t.path}`;
-    case "manual": return "When someone runs it";
-    default: return t.on;
   }
 }
 
@@ -72,7 +62,7 @@ export function graph(flow, cat) {
   const compiled = compileFlow(flow, cat);
   const risky = new Set(compiled.effects.outward.map(o => o.step));
   const sealed = new Set(compiled.effects.sealed_uses.map(u => u.path.replace(/\.[^.]*$/, "")));
-  /** @type {any[]} */ const nodes = [{ id: "trigger", kind: "trigger", label: describeTrigger(flow.trigger), icon: "bolt", x: 0, y: 0, lane: 0 }];
+  /** @type {any[]} */ const nodes = [{ id: "trigger", kind: "trigger", trigger_kind: (kindOf(flow.trigger) || {}).kind, label: describeTrigger(flow.trigger), icon: (kindOf(flow.trigger) || {}).icon || "bolt", x: 0, y: 0, lane: 0 }];
   /** @type {any[]} */ const edges = [];
   let row = 1;
   /** @param {any[]} steps @param {number} lane @param {string} from @param {string} edgeKind @returns {string} the last node id in this lane */
@@ -106,7 +96,7 @@ export function paintRun(flow, run, cat) {
   /** @param {string} id @returns {any[]} */
   const entries = id => Object.entries(run.steps).filter(([k]) => !k.includes("?") && k.replace(/@.*$/, "") === id).map(([, v]) => v);
   const nodes = g.nodes.map(n => {
-    if (n.id === "trigger") return { ...n, state: "done", note: run.tainted ? "Started from outside this Space" : undefined };
+    if (n.id === "trigger") return { ...n, state: "done", note: run.tainted ? "Started from outside this Space" : undefined, why: whyRan(run.trigger), fired: run.trigger ? { kind: run.trigger.kind, source: run.trigger.source, at: run.trigger.at, caught_up: run.trigger.caught_up, missed: run.trigger.missed } : undefined };
     const es = entries(n.id);
     const ask = Object.entries(run.steps).filter(([k]) => k.startsWith(n.id) && k.endsWith("?ask")).map(([, v]) => v)[0];
     let state = "pending", note;
@@ -117,7 +107,7 @@ export function paintRun(flow, run, cat) {
     if (run.error && run.error.step === n.id && run.error.code && run.error.code !== "note" && ["failed", "paused"].includes(run.state)) { state = run.state === "paused" ? "paused" : "failed"; note = run.error.message; }
     return { ...n, state, count: es.length > 1 ? es.length : undefined, note };
   });
-  return { nodes, edges: g.edges, state: run.state, error: run.error && run.error.code && run.error.code !== "note" ? run.error : null, tainted: run.tainted };
+  return { nodes, edges: g.edges, trigger: run.trigger || null, why: whyRan(run.trigger), state: run.state, error: run.error && run.error.code && run.error.code !== "note" ? run.error : null, tainted: run.tainted };
 }
 
 /** "See as code": the Flow as TypeScript text, and the hash that an approval binds to. @param {any} flow */

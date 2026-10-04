@@ -52,7 +52,7 @@ function rig(over = {}) {
   const state = { roles };
   const tasks = createTasks({
     space: SPACE, authorizer, log, presence, chains, clock,
-    members: { has: a => members.has(`${a.kind}:${a.id}`) }, roleHolders: r => state.roles[r] || [], approver: () => actor("person", OWNER),
+    members: { has: a => members.has(`${a.kind}:${a.id}`), roleOf: a => (over.roleOf ? over.roleOf(a) : null) }, roleHolders: r => state.roles[r] || [], approver: () => actor("person", OWNER),
     responsible: (p, doer) => p.id === OWNER, responsibleFor: () => actor("person", OWNER),
     resolve: { template: async (id, v) => (v === 1 ? { body: "Hello {{sealed:ssn}}" } : null), contact: async (record, address) => address === "verified@example.com", sealed: async ref => (ref === "sv_1" ? { class: "us-ssn", record: `vyre://${SPACE}/contact/c1` } : null) },
     facts: { record: async () => ({ data: { size: 12, partner: "x", empty: "" } }), exists: async u => u.startsWith("vyre://") },
@@ -543,4 +543,64 @@ test("approval on authorize: an approved held-act task allows exactly that act b
   await r.tasks.decide(alice(), t2.id, { outcome: "approved", proof: r.proof(alice(), ALICE, t2) });
   T += 25 * 3600_000;
   assert.equal(r.tasks.useApproval({ id: t2.id, ...act }), false, "an approval older than 24 hours is no approval");
+});
+
+test("approval under an always-ask rule: only the named approver's approval stands", async () => {
+  const r = rig();
+  const t = await toNeedsCheck(r);
+  await r.tasks.decide(alice(), t.id, { outcome: "approved", proof: r.proof(alice(), ALICE, t) });
+  const act = { chain: asIntake(), action: "email.send", resource: `vyre://${SPACE}/message/m1` };
+  assert.equal(r.tasks.approvedAct({ id: t.id, ...act, rule: { id: "r1", approver: { person: ALICE } } }), true, "approved by the named person");
+  assert.equal(r.tasks.approvedAct({ id: t.id, ...act, rule: { id: "r1", approver: { person: "per_someone_else" } } }), false, "approved by someone else");
+  assert.equal(r.tasks.approvedAct({ id: t.id, ...act, rule: { id: "r1", approver: { role: "owner" } } }), false, "no role lookup wired here: a role approver cannot be confirmed, so it fails closed");
+  assert.equal(r.tasks.approvedAct({ id: t.id, ...act }), true, "no rule: any approval stands");
+});
+
+test("approval under an always-ask rule that names a ROLE: it stands only when the approver holds that role now", async () => {
+  let roles = { [ALICE]: "owner" };
+  const r = rig({ roleOf: a => roles[a.id] ?? null });
+  const t = await toNeedsCheck(r);
+  await r.tasks.decide(alice(), t.id, { outcome: "approved", proof: r.proof(alice(), ALICE, t) });
+  const act = { chain: asIntake(), action: "email.send", resource: `vyre://${SPACE}/message/m1` };
+  assert.equal(r.tasks.approvedAct({ id: t.id, ...act, rule: { id: "r1", approver: { role: "owner" } } }), true, "the approver is an owner");
+  assert.equal(r.tasks.approvedAct({ id: t.id, ...act, rule: { id: "r1", approver: { role: "admin" } } }), false, "another role");
+  roles = { [ALICE]: "member" };                                    // the role is read when the act is checked: she is no longer an owner
+  assert.equal(r.tasks.approvedAct({ id: t.id, ...act, rule: { id: "r1", approver: { role: "owner" } } }), false, "a role the approver no longer holds");
+  roles = { [ALICE]: "owner" };
+  assert.equal(r.tasks.useApproval({ id: t.id, ...act, rule: { id: "r1", approver: { role: "owner" } } }), true);
+  assert.equal(r.tasks.useApproval({ id: t.id, ...act, rule: { id: "r1", approver: { role: "owner" } } }), false, "once");
+});
+
+test("a task's answer reaches whoever asked: stored on done and carried on task.completed for decision, fields and note outputs (a Flow's ask and agent steps read it back); capped, and none for other kinds", async () => {
+  const r = rig();
+  const t = await r.tasks.request(owner(), { title: "Send the engagement letter?", doer: actor("agent", "research"), output: { kind: "decision" } });
+  await r.tasks.start(agentChain("research"), t.id);
+  const done = await r.tasks.complete(agentChain("research"), t.id, { answer: "yes", reason: "the fee was agreed" });
+  assert.equal(done.state, "done");
+  assert.deepEqual(done.answer, { answer: "yes", reason: "the fee was agreed" });
+  assert.deepEqual((await r.tasks.get(owner(), t.id)).answer, { answer: "yes", reason: "the fee was agreed" });
+  const ev = r.log.read({ type: "task.completed" }).find(e => e.subject.endsWith(`/${t.id}`));
+  assert.deepEqual(ev.data.answer, { answer: "yes", reason: "the fee was agreed" });
+  assert.ok(Object.isFrozen(done.answer));
+  const f = await r.tasks.request(owner(), { title: "Research", doer: actor("agent", "research"), output: { kind: "note" } });
+  await r.tasks.start(agentChain("research"), f.id);
+  assert.deepEqual((await r.tasks.complete(agentChain("research"), f.id, { note: "found it", sources: ["https://x"] })).answer, { note: "found it", sources: ["https://x"] });
+  const big = await r.tasks.request(owner(), { title: "Big", doer: actor("agent", "research"), output: { kind: "note" } });
+  await r.tasks.start(agentChain("research"), big.id);
+  await assert.rejects(() => r.tasks.complete(agentChain("research"), big.id, { note: "x".repeat(9000), sources: ["https://x"] }), { code: "bad_input" });
+});
+
+test("list: filtered by record, doer, checker and state, oldest first; a hand-made chain is refused", async () => {
+  const r = rig();
+  const a = await r.tasks.request(owner(), draftTask());
+  const b = await r.tasks.request(owner(), draftTask({ record: `vyre://${SPACE}/contact/c2` }));
+  assert.deepEqual((await r.tasks.list(owner())).map(t => t.id), [a.id, b.id].sort());
+  assert.deepEqual((await r.tasks.list(owner(), { record: `vyre://${SPACE}/contact/c2` })).map(t => t.id), [b.id]);
+  assert.equal((await r.tasks.list(owner(), { doer: "intake" })).length, 2);
+  assert.equal((await r.tasks.list(owner(), { doer: "nobody" })).length, 0);
+  assert.equal((await r.tasks.list(owner(), { checker: ALICE })).length, 2);
+  assert.equal((await r.tasks.list(owner(), { state: ["working"] })).length, 0);
+  await r.tasks.start(asIntake(), a.id);
+  assert.deepEqual((await r.tasks.list(owner(), { state: ["working"] })).map(t => t.id), [a.id]);
+  await assert.rejects(() => r.tasks.list({ hops: [], space: SPACE }), { code: "bad_input" });
 });

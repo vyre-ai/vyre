@@ -78,10 +78,26 @@ try {
   const socks = []; for (const n of ["own", "other", "person"]) { const sv = net.createServer(c => { c.on("error", () => {}); c.end(); }); await new Promise(r => sv.listen(path.join(run, n + ".sock"), r)); socks.push(sv); }
   const dsv = net.createServer(c => { c.on("error", () => {}); c.end(); }); await new Promise(r => dsv.listen(0, "127.0.0.1", r));
   const ts = performance.now();
-  const st = await selfTest({ platform: process.platform, command: process.execPath, home, vyreHome: path.join(home, ".vyre"), sessionSocket: path.join(run, "own.sock"), workdirs: [path.join(home, "proj")], temp: path.join(home, "tmp"), agent: { command: process.execPath, versionArgs: ["-v"], settingsPaths: [], hosts: [] }, probes: { personSocket: path.join(run, "person.sock"), otherSocket: path.join(run, "other.sock"), daemonPorts: [dsv.address().port], keyFile: path.join(home, ".vyre/keys/k") } });
+  const st = await selfTest({ platform: process.platform, command: process.execPath, home, vyreHome: path.join(home, ".vyre"), sessionSocket: path.join(run, "own.sock"), workdirs: [path.join(home, "proj")], temp: path.join(home, "tmp"), agent: { command: process.execPath, versionArgs: ["-v"], hosts: [], private: { from: path.join(home, ".realcfg"), env: "AGENT_CONFIG_DIR", credentialFiles: [".credentials.json"] } }, probes: { personSocket: path.join(run, "person.sock"), otherSocket: path.join(run, "other.sock"), daemonPorts: [dsv.address().port], keyFile: path.join(home, ".vyre/keys/k") } });
   result.start.self_test = performance.now() - ts; result.start.self_test_ok = st.ok; result.start.self_test_failures = st.failures; result.start.self_test_parts = st.timings;
   socks.forEach(x => x.close()); dsv.close();
 } catch (e) { result.start.self_test_error = e.message; }
+
+// ---- the common case: a session on the person's own computer, in the home sandbox, no encrypted workspace, no lease --------------
+try {
+  const hm = path.join(root, "hm"); const wd = path.join(hm, "proj"); fs.mkdirSync(path.join(hm, ".vyre/run"), { recursive: true }); fs.mkdirSync(wd, { recursive: true }); fs.mkdirSync(path.join(hm, "tmp"), { recursive: true });
+  const realCfg = path.join(hm, ".realcfg"); fs.mkdirSync(realCfg, { recursive: true }); fs.writeFileSync(path.join(realCfg, ".credentials.json"), "{}");
+  const sockp = path.join(hm, ".vyre/run/s.sock"); const net = await import("node:net"); const sv = net.createServer(c => c.end()); await new Promise(r => sv.listen(sockp, r));
+  const { planHome } = await import("../core/runner/homesandbox.js"); const { launch } = await import("../core/runner/sandbox.js");
+  const tH = performance.now();
+  const hp = planHome({ platform: process.platform, command: process.execPath, args: [path.join(worker, "worker.mjs")], home: hm, vyreHome: path.join(hm, ".vyre"), sessionSocket: sockp, workdirs: [wd], temp: path.join(hm, "tmp"), readOnly: [worker, path.dirname(process.execPath)], agent: { command: process.execPath, hosts: [], private: { from: realCfg, env: "AGENT_CONFIG_DIR", credentialFiles: [".credentials.json"] } } });
+  const hc = launch(hp, { cwd: hp.cwd }); const hnext = lines(hc); await hnext();
+  result.start.home_sandbox_ready = performance.now() - tH;
+  const home = {};
+  for (const s of SCEN) { home[s] = []; for (let i = 0; i < (s === "extract" || s === "clone" ? Math.min(reps, 3) : reps); i++) home[s].push((await turn(l => hc.stdin.write(l + "\n"), hnext, "run " + s)).ms); }
+  hc.kill(); sv.close();
+  result.home_rows = SCEN.map(s => ({ scenario: s, plain_median: med(plain[s]), home_median: med(home[s]), ratio: med(home[s]) / med(plain[s]) }));
+} catch (e) { result.home_error = e.message; }
 
 for (const s of [...SCEN, "calls"]) result.rows.push({ scenario: s, plain_median: med(plain[s]), plain_max: Math.max(...plain[s]), lent_median: med(lent[s]), lent_max: Math.max(...lent[s]), ratio: med(lent[s]) / med(plain[s]), note: notes[s], note: notes[s], checkpoint_pause_median: med(ckpt[s]), checkpoint_pause_max: Math.max(...ckpt[s]) });
 console.log(JSON.stringify(result, null, 1));

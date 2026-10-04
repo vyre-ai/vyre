@@ -445,3 +445,74 @@ test("transferOwner: one proof hands the Space on; a failure between the two ste
   assert.deepEqual(await owners(), [ALICE]);
   assert.equal((await g.members.get(personChain(ALICE), OWNER)).role, "admin");
 });
+
+test("R4: every state-changing call that fails while writing its sealed event leaves memory showing the OLD state and tells the caller it failed", async () => {
+  let fail = false;
+  const { g, gs, log } = await rig(real => ({ ...real, append: (c, e, ...r) => { if (fail && e.type !== "grants.snapshot") throw new Error("killed"); return real.append(c, e, ...r); } }));
+  const down = async f => { fail = true; try { await assert.rejects(f, /killed/); } finally { fail = false; } };
+  const members = async () => (await g.members.list(owner())).map(m => `${m.person}:${m.role}`).sort();
+  await g.setRole(owner(), { person: ALICE, role: "admin" }, P.role({ person: ALICE, role: "admin" }));
+  await g.setRole(owner(), { person: BOB, role: "member" }, P.role({ person: BOB, role: "member" }));
+  const base = await members();
+  const grantsNow = async () => JSON.stringify((await g.list(owner())).map(x => [x.id, x.status, x.actions.length, x.resource.prefix, x.resource.fields || null]));
+  const g0 = await grantsNow();
+  const i = input();
+  // create
+  await down(() => g.create(owner(), i, P.create(i)));
+  assert.equal(await grantsNow(), g0, "create: nothing was created");
+  const made = await g.create(owner(), i, P.create(i));
+  const g1 = await grantsNow();
+  // narrow
+  await down(() => g.narrow(owner(), made.id, { actions: ["records.read"] }, P.narrow(made.id, { actions: ["records.read"] })));
+  assert.equal(await grantsNow(), g1, "narrow: the grant is as wide as before");
+  // revoke: the worst case, a revoke that undoes itself
+  await down(() => g.revoke(owner(), made.id, "no", P.revoke(made.id, "no")));
+  assert.equal(await grantsNow(), g1, "revoke: the grant is still active, and the caller was told it failed");
+  assert.equal((await g.list(owner())).find(x => x.id === made.id).status, "active");
+  // setRole
+  await down(() => g.setRole(owner(), { person: BOB, role: "admin" }, P.role({ person: BOB, role: "admin" })));
+  assert.deepEqual(await members(), base, "setRole: bob is still a member");
+  assert.equal(await grantsNow(), g1);
+  // removeMember
+  await down(() => g.removeMember(owner(), { person: BOB }, P.role({ remove: BOB })));
+  assert.deepEqual(await members(), base, "removeMember: bob is still a member");
+  assert.equal(await grantsNow(), g1);
+  // addActor
+  const kit = actor("agent", "kit");
+  await down(() => g.addActor(owner(), kit, P.actor(kit)));
+  assert.equal(gs.members.has(kit), false, "addActor: no such actor");
+  // offer, unoffer
+  const q = { member: BOB, device: "dev1" };
+  const o1 = { side: "space_allows", member: BOB, device: "dev1" };
+  await down(() => g.offers.offer(owner(), o1, { presence: proof("grants.offer", o1, `vyre://${SPACE}/offer/new`) }));
+  assert.deepEqual(g.offers.active(q), { spaceAllows: false, memberAccepts: false }, "offer: nothing offered");
+  const off = await g.offers.offer(owner(), o1, { presence: proof("grants.offer", o1, `vyre://${SPACE}/offer/new`) });
+  assert.equal(g.offers.active(q).spaceAllows, true);
+  await down(() => g.offers.unoffer(owner(), off.id, { presence: proof("grants.offer", { revoke: off.id }, `vyre://${SPACE}/offer/${off.id}`) }));
+  assert.equal(g.offers.active(q).spaceAllows, true, "unoffer: the offer is still active");
+  // invites: create, confirm, accept
+  const ip = (action, inp, res) => ({ presence: proof(action, inp, res) });
+  const ic = { role: "admin" };
+  await down(() => g.invites.create(owner(), ic, ip("grants.invite", ic, `vyre://${SPACE}/invite/new`)));
+  const inv = await g.invites.create(owner(), ic, ip("grants.invite", ic, `vyre://${SPACE}/invite/new`));
+  const cf = { confirm: inv.id, words: "amber tiger" };
+  await down(() => g.invites.confirm(owner(), inv.id, { words: "amber tiger" }, ip("grants.invite", cf, `vyre://${SPACE}/invite/${inv.id}`)));
+  assert.equal((await g.invites.get(owner(), inv.id)).confirmed, false, "confirm: still unconfirmed");
+  await g.invites.confirm(owner(), inv.id, { words: "amber tiger" }, ip("grants.invite", cf, `vyre://${SPACE}/invite/${inv.id}`));
+  const guest = chains.fromFacts({ kind: "invitee", person: "per_frank", vouched: true });
+  const seen = { role: inv.role, scope: inv.scope, expires: inv.expires, invitee: inv.invitee };
+  const acc = () => ({ op: "grant.accept", fields: { invite: inv.id, hash: inv.hash, person: "per_frank" }, n: Math.random() });
+  await down(() => g.invites.accept(guest, inv.id, { seen, proof: acc() }));
+  assert.deepEqual(await members(), base, "accept: frank did not join");
+  assert.equal((await g.invites.get(guest, inv.id)).status, "pending", "accept: the invite is still unused");
+  assert.equal((await g.invites.accept(guest, inv.id, { seen, proof: acc() })).membership.role, "admin");
+  // sweep (the kernel's own clean-up of expired power)
+  const t = { person: "per_tina", role: "temp", scope: [`vyre://${SPACE}/contact/*`], expires: T + 1000 };
+  await g.setRole(owner(), t, P.role(t));
+  T += 5000;
+  const before = await members();
+  await down(() => g.sweep());
+  assert.deepEqual(await members(), before, "sweep: the expired member is still listed until the sweep is written");
+  assert.equal((await g.sweep()).removed >= 1, true);
+  void log;
+});

@@ -2,6 +2,8 @@
 // process holds, and implements the SealApi stud from kernel/contracts/seal.d.ts plus the calls the inference door and the gateway need.
 // Plaintext crosses here once (put, as the person types it) and on a human reveal (it is passed through to the reveal view and never kept).
 import { spawn } from "node:child_process";
+import crypto from "node:crypto";
+import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 import { fileURLToPath } from "node:url";
@@ -73,6 +75,14 @@ export function startSealer({ dir, sinks = {}, timeoutMs = 20_000, execPath = pr
     },
     /** The storage pool's key for one owner (a person or Space id), derived from the home's master for that purpose only; the pool encrypts chunks with it in the home's process. */
     poolKey: i => call("pool.key", { owner: i.owner }).then(r => Buffer.from(r.key, "base64")),
+    /** Service credentials the kernel's own modules hold (a Space's Twenty API key), sealed here instead of in a 0600 file: `put` (also how a rotation lands), `get` at the point of use, `delete`, `list` (names only). `adopt` moves an existing file in once and shreds it. */
+    service: {
+      put: i => call("service.put", { name: i.name, value: i.value }),
+      get: i => call("service.get", { name: i.name }).then(r => r.value),
+      delete: i => call("service.delete", { name: i.name }),
+      list: () => call("service.list").then(r => r.names),
+      adopt: async i => { const v = fs.readFileSync(i.file, "utf8").trim(); await call("service.put", { name: i.name, value: v }); const n = fs.statSync(i.file).size; fs.writeFileSync(i.file, crypto.randomBytes(n)); fs.unlinkSync(i.file); return { adopted: true }; },
+    },
     health: () => call("health"),
     close: () => new Promise(res => { if (closed) return res(); child.once("exit", () => res()); child.stdin.end(); setTimeout(() => child.kill(), 2000).unref(); }),
   };

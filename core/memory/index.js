@@ -27,6 +27,10 @@ import { heard, contentWords } from "./iq/heard.js";
 import { catchCorrection, groundedAnswer } from "./iq/chatfix.js";
 import { userWords, devTalk, vyreFolder, sessionTrust } from "./personal/trust.js";
 import { register as registerSite } from "./site.js";
+import { createKernelGate } from "./kernel-gate.js";
+import { whoStore, current as whoNow } from "./who.js";
+import { mergeSpace, spaceHits, spaceOnlyAnswer } from "./iq/space.js";
+import { scanRows } from "./sealed.js";
 import { writeStore, register as registerWrites, passages as writePassages, relevantLines, quoted as quotedWrite } from "./write.js";
 
 /** How long to wait after a session.indexed event before curating, so a burst of turns is one pass. */
@@ -45,14 +49,23 @@ export default {
     // so a tool never scopes by a filter the agent supplies. A via.agent with no granted is granted
     // nothing. The person's own surfaces (no via.agent) keep input.agent as a convenience.
     const callMeta = new AsyncLocalStorage();
+    // 0.3 minimum (CUTOVER section G): the kernel decides the room and whose memory this is, before the 0.2 rules below, which only narrow. No kernel, no change.
+    const kernelGate = createKernelGate(rawCtx, { denied: message => Object.assign(new Error(message), { code: "denied" }) });
     const ctx = Object.assign(Object.create(rawCtx), {
       tool: (name, def) => rawCtx.tool(name, {
         ...def,
-        run: (input = {}, extra = {}) => {
-          if (!extra || !extra.agent) return def.run(input, extra);
-          const { agent: _a, project_cwds: _p, ...rest } = input || {};
-          const granted = extra.granted === "*" ? "*" : Array.isArray(extra.granted) ? extra.granted.map(String) : [];
-          return callMeta.run({ granted }, () => def.run(rest, extra));
+        run: async (input = {}, extra = {}) => {
+          const gated = await kernelGate(name, extra);
+          // The one Ask door: in a chat with more than one person it is answered from the Space's memory alone.
+          if (gated && gated.group) return spaceOnlyAnswer((tool, i) => rawCtx.call(tool, i), String((input || {}).question || ""));
+          const exec = () => {
+            if (!extra || !extra.agent) return def.run(input, extra);
+            const { agent: _a, project_cwds: _p, ...rest } = input || {};
+            const granted = extra.granted === "*" ? "*" : Array.isArray(extra.granted) ? extra.granted.map(String) : [];
+            return callMeta.run({ granted }, () => def.run(rest, extra));
+          };
+          // Who is calling, as the kernel's chain says it, is what the access predicates below read for the length of this call (core/memory/who.js).
+          return gated && gated.who ? whoStore.run(gated.who, exec) : exec();
         },
       }),
     });
@@ -325,15 +338,26 @@ export default {
     const NOTHING = ["/dev/null/vyre-assistant-has-no-mapped-projects"];
     /** The user's own surfaces. Only these, modules, and a verified all-projects agent read the main graph. */
     const OWNER = new Set(["deck", "cli", "local", "capsule"]);
-    const owner = caller => OWNER.has(String(caller)) || String(caller).startsWith("module:");
+    const owner = caller => { const w = whoNow(); return w ? (w.ownerSurface || w.module !== null) : OWNER.has(String(caller)) || String(caller).startsWith("module:"); };
     /**
      * The user on another of their devices: vyred's tailnet listener sets "tailnet:<login>" from
      * Tailscale's whois, and no caller can claim it. It reads as the owner does (graph, facts,
      * why, stats, corrections) but never corrects, merges or splits.
      */
     // An agent's own node ("tailnet:agent:<name>") is an agent, not the user on another device.
-    const viaTailnet = caller => /^tailnet:(?!agent:)[^\s]+$/.test(String(caller || ""));
+    const viaTailnet = caller => { const w = whoNow(); return w ? (w.device && w.signedIn) : /^tailnet:(?!agent:)[^\s]+$/.test(String(caller || "")); }; // SHIM(legacy labels): the label branch goes with the kernel-off path. With a chain, one of the OWNER's own devices reads as the owner only when signed in (a person session), over Wink or the relay alike (ruling, 6 Oct)
     const reader = caller => owner(caller) || viaTailnet(caller);
+    /**
+     * The one plain hint, for a READ refused on the OWNER's own paired device that is not signed in: sign in once on this device (ruling 6 Oct, option B). Only for that device: the kernel
+     * gate has already refused another person's device, an agent and a group chat with the plain refusal, and `Who` says no agent or Flow stands beside it, so the hint never tells
+     * a stranger that a sign-in would help. Null (the plain refusal stands) for everyone else, and with the kernel off.
+     * @returns {Error|null}
+     */
+    const signInHint = () => {
+      const w = whoNow();
+      if (!w || !w.device || w.signedIn || w.agent !== null || w.acting !== null || w.module !== null) return null;
+      return Object.assign(new Error("memory is read from this device once you sign in with your passkey"), { code: "person_session_required" });
+    };
     /**
      * Throws unless the caller may read these folders' graph or this room (none: the main
      * graph). The main graph is for the user's own surfaces, modules and the assistant only
@@ -354,7 +378,7 @@ export default {
       const cwds = clean(project_cwds);
       const scoped = Boolean((room && room !== "*") || cwds.length);
       if (r.all) {
-        if (!scoped && !whole && !r.agent && !(tailnet ? reader(caller) : owner(caller))) throw denied("the main graph is drawn for the Deck and the assistant; pass room (a project's slug, or unfiled) or project_cwds");
+        if (!scoped && !whole && !r.agent && !(tailnet ? reader(caller) : owner(caller))) throw signInHint() || denied("the main graph is drawn for the Deck and the assistant; pass room (a project's slug, or unfiled) or project_cwds");
         return { ...r, cwds: project_cwds };
       }
       // THE assistant rule: unfiled is never the assistant's either, only the true owner's
@@ -528,8 +552,10 @@ export default {
      * that names an agent is an agent, whatever surface carried it.
      * @param {(input: any, extra: { caller?: string }) => Promise<any>} run
      */
+    /** Whether the caller is an agent: the kernel chain has an agent hop (a label naming one, `agent:<name>`, only when the kernel is off). */
+    const namesAgent = caller => { const w = whoNow(); return w ? w.agent !== null : /(?:^|[\s:])agent:/.test(String(caller || "")); };
     const ownerOnly = run => async (input, extra = {}) => {
-      if (/(?:^|[\s:])agent:/.test(String(extra.caller || ""))) throw denied("corrections are the user's: an agent proposes one as a lesson instead");
+      if (namesAgent(extra.caller)) throw denied("corrections are the user's: an agent proposes one as a lesson instead");
       return run(input, extra);
     };
     /**
@@ -538,14 +564,16 @@ export default {
      * an agent, an agent's node, or a device nobody signed in on.
      */
     const personWrites = (caller, meta) => {
-      const c = String(caller || "");
+      const w = whoNow();
+      if (w) return w.agent === null && (w.ownerSurface || (w.device && w.signedIn));
+      const c = String(caller || ""); // SHIM(legacy labels): the label branch goes with the kernel-off path
       if (/(?:^|[\s:])agent:/.test(c)) return false;
       if (OWNERS.includes(c)) return true;
       return /^(?:tailnet:(?!agent:).|device:[a-z2-7]{16}$)/.test(c) && Boolean(meta && meta.person);
     };
     const ownerWrite = run => ownerOnly(async (input, extra = {}) => {
       if (!personWrites(extra.caller, extra)) {
-        const device = /^(?:tailnet:|device:)/.test(String(extra.caller || "")) && !/agent:/.test(String(extra.caller));
+        const device = whoNow() ? Boolean(whoNow()?.device) && !namesAgent(extra.caller) : /^(?:tailnet:|device:)/.test(String(extra.caller || "")) && !/agent:/.test(String(extra.caller));
         throw Object.assign(new Error(device ? "corrections are the person's own: sign in on this device with your passkey first"
           : `corrections are made from the user's own surfaces, not ${plain(extra.caller || "an unnamed caller", 60)}`), { code: device ? "person_session_required" : "denied" });
       }
@@ -553,7 +581,7 @@ export default {
     });
     /** Reading corrections: the owner's surfaces, or the user on a tailnet device. Never an agent. */
     const readerOnly = (run, name = "memory.corrections") => ownerOnly(async (input, extra = {}) => {
-      if (!reader(extra.caller)) throw denied(`${name} is for the user's own surfaces, not ${plain(extra.caller || "an unnamed caller", 60)}`);
+      if (!reader(extra.caller)) throw signInHint() || denied(`${name} is for the user's own surfaces, not ${plain(extra.caller || "an unnamed caller", 60)}`);
       return run(input, extra);
     });
     /** The scope a correction applies in: a room's slug, or '*' for everywhere. */
@@ -586,7 +614,7 @@ export default {
     };
     // ---- an agent corrects only with the person's own words behind it (core/memory/iq/heard.js)
     /** A model's caller: the user's own Claude Code session, a thread's, or a named agent's. */
-    const agentCaller = caller => /^mcp(?::|$)/.test(String(caller || "")) || /^harness:agent:/.test(String(caller || ""));
+    const agentCaller = caller => { const w = whoNow(); return w ? (w.agent !== null || w.ownSession) : /^mcp(?::|$)/.test(String(caller || "")) || /^harness:agent:/.test(String(caller || "")); };
     /** Caps (e2e, 28 Sep): a thread applies at most this many an hour; suggestions wait this many a thread and in all, for this long. */
     const AGENT = { perHour: 3, openPerThread: 5, openTotal: 50, expireMs: 14 * 86_400_000 };
     /** What a suggestion is about, as it reads now: if it changes before the person decides, the suggestion expires. */
@@ -787,14 +815,14 @@ export default {
     // A bare "mcp" caller is the user's own Claude Code session, and "mcp:thread:<id>" a session
     // Vyre runs for the user (ADR 0030; an agent's says mcp:agent:<name>), so both ask about the
     // user's life as the user's surfaces do.
-    const ownSession = caller => /^mcp(?::thread:[A-Za-z0-9_-]+)?$/.test(String(caller));
+    const ownSession = caller => { const w = whoNow(); return w ? w.ownSession : /^mcp(?::thread:[A-Za-z0-9_-]+)?$/.test(String(caller)); };
     const personalOnly = async (input, caller, name) => {
       const r = await reach(input.agent, caller);
       // THE assistant rule: it keeps personal facts (distilled, not raw), even though it no
       // longer reaches the unfiled room most of them are drawn from. r.all is never true for a
       // named caller (only !who gets it), so this is r.assistant or refuse, for any agent.
       if (r.agent ? !r.assistant : !(reader(caller) || ownSession(caller))) {
-        throw denied(r.agent ? `personal facts are not a project's: only the assistant reads them, not ${r.agent}` : `${name} is for the user's own surfaces and the assistant, not ${plain(caller || "an unnamed caller", 60)}`);
+        throw (!r.agent && signInHint()) || denied(r.agent ? `personal facts are not a project's: only the assistant reads them, not ${r.agent}` : `${name} is for the user's own surfaces and the assistant, not ${plain(caller || "an unnamed caller", 60)}`);
       }
     };
     // ---- agent, module and watcher writes (core/memory/write.js, plan 3.4)
@@ -1021,7 +1049,7 @@ export default {
     const LIFE = new Set(["kin", "of", "birthday", "car", "carFate", "diet", "lives", "born", "myname", "owns"]);
     const trustOf = ctx.store.db.prepare("SELECT ok FROM memory_me_trust WHERE session = ?");
     const humanOf = () => { try { return ctx.store.db.prepare("SELECT human FROM recall_sessions WHERE id = ?"); } catch { return null; } };
-    const ask = asker({ db: ctx.store.db, answer, decide, site: q => siteStore.answer(q), retrieve: async i => withWrites(await retrieve(i), i.question, i.writes || null), fixes: fixed,
+    const ask = asker({ db: ctx.store.db, answer, decide, site: q => siteStore.answer(q), retrieve: async i => { const base = withWrites(await retrieve(i), i.question, i.writes || null); return rawCtx.kernel && i.personal ? mergeSpace(base, await spaceHits((tool, x) => rawCtx.call(tool, x), i.question)) : base; }, fixes: fixed,
       personalQ: q => {
         // About the user's own life: a relative, their car, home, diet, birthday, name. Work
         // questions that the personal parser also reads ("who's priya") stay work questions.
@@ -1466,6 +1494,11 @@ export default {
         return { machine: m, sessions: ids.length, turns: one("SELECT COUNT(*) n FROM recall_turns WHERE session IN (SELECT value FROM json_each(?))"),
           facts: Number(/** @type {any} */ (db.prepare(`SELECT COUNT(*) n FROM (${only})`).get(list))?.n || 0), people: nodes("person"), orgs: nodes("org") };
       }, "memory.device"),
+    });
+    ctx.tool("memory.sealscan", {
+      description: "One look at what memory already holds that has the shape of a sealed value (an SSN, a card or bank number, an IBAN and the rest): which table and column, how many rows and which classes, never a value. It changes nothing; the person decides what to do. From now on such values are scrubbed on the way in.",
+      input: { type: "object", properties: {} },
+      run: async () => ({ found: scanRows(ctx.store.db), note: "Counts only. Nothing was changed. Matching a value that is sealed in a record today needs the sealing process's ledger, which memory does not hold." }),
     });
     ctx.tool("memory.stats", {
       description: "How much memory holds: nodes, edges, facts, evidence, by kind and role, and the last curator run.",

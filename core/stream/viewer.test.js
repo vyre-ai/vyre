@@ -75,3 +75,14 @@ test("a cited field the server did not resolve is a chip, never a value; a resol
   const gone = /** @type {any} */ (await resolveRefs(f, { id: "p", roles: ["manager"], resolve: async () => { throw new Error("x"); } })).data.blocks[0];
   assert.equal(gone.placeholder, true, "a failed lookup is a chip");
 });
+
+test("the room note on a terminal, diff or files block reaches the viewer as the server set it, and is never added or filtered otherwise", () => {
+  const NOTE = "visible to everyone in this chat";
+  const tool = (/** @type {any} */ result) => ({ v: 1, id: "f1", cur: 1, session: "s", type: "session.tool-finished", data: { tool_id: "t", ok: true, result } });
+  for (const b of [{ block: "terminal", command: "ls", output: "a", note: NOTE }, { block: "diff", path: "a.md", hunks: [], note: NOTE }, { block: "files", files: [{ path: "a.md" }], note: NOTE, detail: "1 found" }]) {
+    assert.deepEqual(/** @type {any} */ (render(tool(b), BOB)).data.result, b, `${b.block}: the note and the rest, untouched`);
+    assert.deepEqual(/** @type {any} */ (forViewer(tool(b), BOB)).data.result, b);
+  }
+  const plain = { block: "terminal", command: "ls", output: "a" };
+  assert.ok(!("note" in /** @type {any} */ (render(tool(plain), BOB)).data.result), "a block with no note gets none");
+});

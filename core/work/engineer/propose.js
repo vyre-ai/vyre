@@ -49,15 +49,19 @@ async function existingDefinitions(kernel, chain) {
 }
 
 /**
- * A role it defines cannot give what the importing admin does not hold (the narrowing rule, R6-15). Returns what exceeds.
- * @param {any} kernel @param {any} chain the Engineer's chain, whose first hop is the admin @param {Compiled} compiled
+ * A role it defines cannot give what the importing admin does not hold (the narrowing rule, R6-15). Asked of the kernel's own `authorize` under the admin's OWN chain
+ * (`grants.list` answers only to exactly one person, and a role's wildcard grants are the kernel's to read). Returns what exceeds.
+ * @param {any} kernel @param {any} adminChain the admin's own chain @param {Compiled} compiled
  */
-async function exceeding(kernel, chain, compiled) {
-  const admin = chain.hops[0].actor;
-  const held = (await kernel.grants.list(chain, { subject: { kind: "actor", actor: admin }, status: "active" })).filter((/** @type {any} */ g) => g.status === "active");
+async function exceeding(kernel, adminChain, compiled) {
   const out = [];
   for (const r of compiled.roles || []) for (const g of r.grants || []) for (const a of g.actions || []) {
-    if (!held.some((/** @type {any} */ h) => (h.actions.includes(a) || h.actions.includes("*")) && String(g.resource_prefix || "").startsWith(h.resource.prefix))) out.push({ role: r.name, action: a, resource: g.resource_prefix });
+    const prefix = String(g.resource_prefix || "");
+    // A prefix of one or two segments names a kind of resource, not one: probe a resource inside it.
+    const probe = /^vyre:\/\/[^/]+\/[^/]+\/[^/]+/.test(prefix) ? prefix : `${prefix.replace(/\/$/, "")}/probe`.replace("vyre://", "vyre://");
+    let held = false;
+    try { held = (await kernel.authorize({ chain: adminChain, action: a, resource: probe })).effect !== "deny"; } catch { held = false; }
+    if (!held) out.push({ role: r.name, action: a, resource: g.resource_prefix });
   }
   return out;
 }
@@ -65,7 +69,7 @@ async function exceeding(kernel, chain, compiled) {
 /**
  * @param {{ kernel: any, compile: CompilePort, simulate?: import("./simulate.js").SimulatePort|null, chain: any, request: string, model?: { provider: string, model: string } }} o
  */
-export async function propose({ kernel, compile, simulate, chain, request, model = { provider: "claude", model: "sonnet" } }) {
+export async function propose({ kernel, compile, simulate, chain, adminChain = chain, request, model = { provider: "claude", model: "sonnet" } }) {
   const text = typeof request === "string" ? request.trim() : "";
   if (!text) throw refusal("bad_input", "say what should change");
   if (text.length > MAX_REQUEST) throw refusal("bad_input", `a request is up to ${MAX_REQUEST} characters`);
@@ -74,7 +78,7 @@ export async function propose({ kernel, compile, simulate, chain, request, model
     messages: [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: `Existing definitions:\n${context}\n\nRequest from an admin:\n${text}` }] });
   const { source, note } = parseReply(String(reply.content || ""));
   if (!source) throw refusal("empty", "the Engineer wrote nothing");
-  return { ...(await evaluate({ kernel, compile, simulate, chain, source })), note };
+  return { ...(await evaluate({ kernel, compile, simulate, chain, adminChain, source })), note };
 }
 
 /**
@@ -82,12 +86,12 @@ export async function propose({ kernel, compile, simulate, chain, request, model
  * (revise) goes through the same path as the model's draft.
  * @param {{ kernel: any, compile: CompilePort, simulate?: import("./simulate.js").SimulatePort|null, chain: any, source: string, authorship?: "model-drafted"|"edited" }} o
  */
-export async function evaluate({ kernel, compile, simulate, chain, source, authorship = "model-drafted" }) {
+export async function evaluate({ kernel, compile, simulate, chain, adminChain = chain, source, authorship = "model-drafted" }) {
   const guard = declarativeGuard(source);
   if (!guard.ok) throw refusal("guard", `the draft is not a declarative definition: line ${guard.errors[0].line}: ${guard.errors[0].msg}`, { errors: guard.errors });
   /** @type {Compiled} */ const compiled = await compile(source);
   if (compiled.errors && compiled.errors.length) throw refusal("compile", `the draft does not compile: line ${compiled.errors[0].line}: ${compiled.errors[0].msg}`, { errors: compiled.errors });
-  const over = await exceeding(kernel, chain, compiled);
+  const over = await exceeding(kernel, adminChain, compiled);
   if (over.length) throw refusal("exceeds_admin", `a role in the draft gives ${over[0].action}, which you do not hold`, { exceeding: over });
   const simulation = await runSimulation({ simulate, diff: compiled.diff });
   const labels = joinLabels([chain.labels]);

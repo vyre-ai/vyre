@@ -20,6 +20,7 @@ import http from "node:http";
 import https from "node:https";
 import crypto from "node:crypto";
 import net from "node:net";
+import { resolvePublic } from "./netguard.js";
 import fs from "node:fs";
 
 /** Headers the proxy owns: the session's token and the real credential never pass through from the client. */
@@ -32,7 +33,7 @@ const same = (a, b) => { const x = Buffer.from(String(a)), y = Buffer.from(Strin
 /**
  * @param {{ routes: { prefix: string, upstream: string, credential?: { header: string, prefix?: string }, allow?: { method: string, path: string }[] }[],
  *   vault: { credential(o: { session: string, route: string, lease?: string, method: string, path: string }): Promise<string> },
- *   session: string, token: string, connect?: string[], lease?: () => string, onEvent?: (e: { route: string, status: number, ms: number, error?: string }) => void,
+ *   session: string, token: string, connect?: string[], internet?: boolean, lookup?: any, dial?: (ip: string, port: number) => any, lease?: () => string, onEvent?: (e: { route: string, status: number, ms: number, error?: string }) => void,
  *   request?: typeof http.request }} o
  */
 export function createEgress(o) {
@@ -46,6 +47,22 @@ export function createEgress(o) {
     const t0 = Date.now();
     const refuse = (code, why, route = "-") => { if (!res.headersSent) { res.writeHead(code, { "content-type": "text/plain" }); } res.end(why + "\n"); o.onEvent?.({ route, status: code, ms: Date.now() - t0, error: why }); };
     try {
+      // Internet mode, plain HTTP: a proxy request carries an absolute URL (pip's index, apt, a git http remote). Same rules as CONNECT.
+      if (o.internet && req.url && /^http:\/\//i.test(req.url) && req.method !== "CONNECT") {
+        const pm = /^Basic\s+(.+)$/i.exec(String(req.headers["proxy-authorization"] || ""));
+        const ppass = pm ? Buffer.from(pm[1], "base64").toString().split(":").slice(1).join(":") : "";
+        if (!same(ppass, o.token)) { res.writeHead(407, { "proxy-authenticate": 'Basic realm="vyre"' }); return res.end("unknown session\n"); }
+        const pu = new URL(req.url); const pport = Number(pu.port || 80);
+        if (pport === 25) return refuse(403, "not allowed");
+        let ip; try { ip = await resolvePublic(pu.hostname.replace(/^\[|\]$/g, ""), { lookup: o.lookup }); } catch { return refuse(403, "that address is not public"); }
+        const hdrs = {}; for (const [k, v] of Object.entries(req.headers)) if (!STRIP_IN.has(k.toLowerCase())) hdrs[k] = v;
+        hdrs.host = pu.host;
+        const up2 = http.request({ hostname: ip, port: pport, method: req.method, path: pu.pathname + pu.search, headers: hdrs });
+        up2.on("response", ur => { res.writeHead(ur.statusCode || 502, Object.fromEntries(Object.entries(ur.headers).filter(([k]) => !STRIP_IN.has(k)))); ur.pipe(res); });
+        up2.on("error", () => refuse(502, "the host did not answer"));
+        res.on("close", () => up2.destroy()); req.pipe(up2);
+        return;
+      }
       if (req.method === "CONNECT" || !req.url || !req.url.startsWith("/")) return refuse(403, "only the granted routes are reachable");
       const u = new URL(req.url, "http://proxy");
       const route = routes.find(r => u.pathname === r.prefix || u.pathname.startsWith(r.prefix + "/"));
@@ -96,15 +113,24 @@ export function createEgress(o) {
     const m = /^Basic\s+(.+)$/i.exec(String(req.headers["proxy-authorization"] || ""));
     const pass = m ? Buffer.from(m[1], "base64").toString().split(":").slice(1).join(":") : "";
     const target = String(req.url || "").toLowerCase();
-    if (!tunnel.has(target) || !same(pass, o.token)) return deny();
     const [host, port] = [target.slice(0, target.lastIndexOf(":")), Number(target.slice(target.lastIndexOf(":") + 1))];
+    // Clients such as libcurl (git, npm) send the proxy password only after a 407: ask for it.
+    if (!same(pass, o.token)) return sock.end('HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm="vyre"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n');
+    if (!(port > 0 && port < 65536)) return deny();
+    if (!o.internet && !tunnel.has(target)) return deny();
+    if (o.internet && (port === 25 || port === 465 || port === 587)) return deny();   // no mail relay
     if (tunnels >= MAX_TUNNELS) return deny();
     tunnels++;
-    const up = net.connect(port, host, () => { sock.write("HTTP/1.1 200 Connection Established\r\n\r\n"); if (head && head.length) up.write(head); up.pipe(sock); sock.pipe(up); });
-    // An allowed host cannot be used to hold sockets open for ever: idle tunnels are closed, and there is a cap per session.
-    sock.setTimeout(TUNNEL_IDLE_MS, () => sock.destroy()); up.setTimeout(TUNNEL_IDLE_MS, () => up.destroy());
     let done = false; const end = () => { if (!done) { done = true; tunnels--; } };
-    up.on("error", () => sock.destroy()); sock.on("close", () => { end(); up.destroy(); }); up.on("close", () => { end(); sock.destroy(); });
+    sock.on("close", end);
+    // Internet mode: resolve the name HERE, refuse anything that is not a public address, and connect to the address that was checked.
+    const opened = o.internet ? resolvePublic(host.replace(/^\[|\]$/g, ""), { lookup: o.lookup }).then(ip => (o.dial ? o.dial(ip, port) : net.connect(port, ip))) : Promise.resolve(net.connect(port, host));
+    opened.then(up => {
+      up.once("connect", () => { sock.write("HTTP/1.1 200 Connection Established\r\n\r\n"); if (head && head.length) up.write(head); up.pipe(sock); sock.pipe(up); });
+      // An allowed host cannot be used to hold sockets open for ever: idle tunnels are closed, and there is a cap per session.
+      sock.setTimeout(TUNNEL_IDLE_MS, () => sock.destroy()); up.setTimeout(TUNNEL_IDLE_MS, () => up.destroy());
+      up.on("error", () => sock.destroy()); sock.on("close", () => up.destroy()); up.on("close", () => { end(); sock.destroy(); });
+    }, () => { end(); deny(); });
   });
   return {
     /** Listen on a loopback port (macOS) or a unix socket (Linux). @param {{ socket?: string }} [where] */
