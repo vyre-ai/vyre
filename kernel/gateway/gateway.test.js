@@ -668,6 +668,21 @@ test("forget: tasks' text is emptied first, then the store destroys the record a
   await assert.rejects(() => gw.migrate.forget(owner(), { type: "person", id: a.id }), { code: "not_found" });
 });
 
+test("forget is a presence act: a chain that holds an agent is refused even with the grants, and nothing is touched; sealed values are dropped and files counted", async () => {
+  const dropped = [];
+  const { r, gw, store, log } = rig({ grants: [G({ actions: ["records.*", "records.define", "events.read"] }), G({ subject: { kind: "actor", actor: actor("agent", "kit") }, actions: ["records.define", "records.remove", "records.read"] })], members: ["agent:kit"], sealer: { api: {}, drop: async i => { dropped.push(i.ref); return { dropped: true }; } } });
+  await r.define(owner(), { add_types: [{ name: "person", label: "Person", fields: [{ name: "name", kind: "text", label: "Name" }, { name: "ssn", kind: "sealed", label: "SSN", seal: { class: "us-ssn" } }, { name: "scan", kind: "file", label: "Scan" }] }] });
+  const id = "0190c3f2-1111-4abc-8def-0000000000aa";
+  await store.create("person", id, { name: "Jane", ssn: { sealed: "us-ssn", ref: "ref-1", present: true }, scan: { file: "f1", name: "id.pdf", bytes: 10 } });
+  await assert.rejects(() => gw.migrate.forget(agent(), { type: "person", id }), e => ["needs_presence", "not_found"].includes(e.code));
+  assert.ok(await store.get("person", id), "the agent's attempt touched nothing");
+  assert.deepEqual(dropped, []);
+  const out = await gw.migrate.forget(owner(), { type: "person", id });
+  assert.deepEqual([out.sealed_dropped, out.sealed_left, out.files_kept], [1, 0, 1]);
+  assert.deepEqual(dropped, ["ref-1"]);
+  assert.equal(log.read({ type: "records.forgotten" })[0].data.files_kept, 1);
+});
+
 // ---- stage gates ----
 import { parseExpr, evalExpr } from "../../records/language/expr.js";
 const DEAL = { name: "deal", label: "Deal", fields: [{ name: "title", kind: "text", label: "Title" }, { name: "signed", kind: "boolean", label: "Signed" }, { name: "stage", kind: "stage", label: "Stage", options: ["Intake", "Drafting", "Done"] }],

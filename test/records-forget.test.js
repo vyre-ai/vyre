@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { tempHome } from "./helpers.js";
+import { tempHome, present } from "./helpers.js";
 import { start } from "../core/daemon/index.js";
 
 process.env.VYRE_SEAL_DEV = "1";
@@ -18,7 +18,9 @@ const dbs = (/** @type {string} */ dir) => fs.readdirSync(dir, { withFileTypes: 
 
 test("records.forget: the task text about the record is emptied before the store scrub, and after a restart the value is nowhere a person or a tool can read it", { timeout: 180_000 }, async t => {
   const root = tempHome(t);
-  let d = await start({ root, log: () => {}, kernel: true });
+  fs.writeFileSync(path.join(root, "dev-presence-stand-in"), ""); // the development stand-in for Face ID: every use is logged
+  const standIn = { "x-vyre-kernel-proof": Buffer.from(JSON.stringify({ method: "stand-in" })).toString("base64url") };
+  let d = await start({ root, log: () => {}, kernel: true, presence: present });
   const me = (/** @type {any} */ x) => x.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-f", person: x.kernel.id.owner, path: "direct", session: "s" });
   const space = d.kernel.id.space, gw = d.kernel.gateway, VALUE = "Zephyrine-4471-needle";
   const assistant = { kind: "agent", id: "assistant", space };
@@ -44,10 +46,23 @@ test("records.forget: the task text about the record is emptied before the store
   };
   await check(d, "before the restart");
   await d.stop();
-  d = await start({ root, log: () => {}, kernel: true });
+  d = await start({ root, log: () => {}, kernel: true, presence: present });
   t.after(() => d.stop());
   await check(d, "after the restart");
   const { call } = await import("../core/daemon/client.js");
   const found = await call("recall.search", { query: VALUE }, { root, caller: "cli" });
   assert.equal(JSON.stringify(found).includes(VALUE.replace(/-needle$/, "")) && JSON.stringify(found.data || {}).includes("Jane"), false, "recall finds nothing about it");
+  // the tool the person uses: the answer counts what it did and says what it did not search
+  const second = await d.kernel.gateway.records.create(me(d), "client", { name: "Sam Second" });
+  const said = /** @type {any} */ ((await call("records.forget", { urn: second.urn }, { root, caller: "cli", headers: standIn })).data);
+  assert.equal(said.forgotten, second.urn, JSON.stringify(said));
+  assert.equal(typeof said.sessions_mentioning, "number", "Recall answered, so the count is a number: " + said.message);
+  assert.match(said.message, /Sessions that quoted this record are not searched\. Forget them in Memory\./);
+  assert.match(said.message, /no sealed values/);
+  assert.equal(await d.kernel.gateway.records.get(me(d), "client", second.id), null);
+  // an assistant only proposes: nothing is forgotten, a task is made
+  const third = await d.kernel.gateway.records.create(me(d), "client", { name: "Tess Third" });
+  const asked = /** @type {any} */ (await call("records.forget", { urn: third.urn }, { root, caller: "cli:agent:kit" }));
+  assert.ok(asked.error, "an assistant cannot forget");
+  assert.ok(await d.kernel.gateway.records.get(me(d), "client", third.id), "the record is still there");
 });

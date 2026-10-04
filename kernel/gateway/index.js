@@ -167,21 +167,35 @@ export function createGateway(cfg) {
    * its data, (4) one `records.forgotten` event says it happened, with the counts and never a value. The caller's chain needs `records.define` (Customize: admin and owner) and `records.remove` on the record.
    * Links held by other records stay and point at nothing. A database keeps dead pages until it is vacuumed (the operator's step).
    */
-  async function forget(/** @type {any} */ chain, /** @type {{ type: string, id: string }} */ i) {
+  async function forget(/** @type {any} */ chain, /** @type {{ type: string, id: string, presence?: any }} */ i) {
     if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
     if (!i || typeof i.type !== "string" || typeof i.id !== "string") throw new KernelError("bad_input", "forget needs a type and an id");
     if (typeof cfg.store.destroy !== "function") throw new KernelError("unavailable", "this store cannot destroy a record");
     const u = `vyre://${cfg.space}/${i.type}/${i.id}`;
-    const dec = await gate(chain, "records.define", `vyre://${cfg.space}/definition/types`);
+    // Permanent, so a presence act: `records.define` is an admin act (a presence session or a signed proof, never inherited by a chain that holds an agent), and the proof rides here.
+    const dec = await gate(chain, "records.define", `vyre://${cfg.space}/definition/types`, i.presence ? { presence: i.presence } : {});
     await gate(chain, "records.remove", u);
     let there; try { there = await cfg.store.get(i.type, i.id, { include_deleted: true }); } catch (e) { throw new KernelError("unavailable", "the store could not read the record"); }
     if (!there) throw new KernelError("not_found", "no such record");
+    // What the record holds that lives outside the store: sealed values (in the sealing process, by reference) and files (in Files, by id).
+    /** @type {string[]} */ const refs = []; let files = 0;
+    try {
+      const def = (await cfg.store.types()).find((/** @type {any} */ t) => t.name === i.type);
+      for (const f of (def && def.fields) || []) {
+        const v = there.data ? there.data[f.name] : undefined;
+        if (f.kind === "sealed" && v && typeof v === "object" && typeof v.ref === "string") refs.push(v.ref);
+        else if (f.kind === "file" && v && typeof v === "object" && typeof v.file === "string") files++;
+      }
+    } catch { /* the counts are best effort; the forget itself does not depend on them */ }
     const tasks = cfg.tasks && typeof cfg.tasks.scrubTexts === "function" ? cfg.tasks.scrubTexts({ record: u }) : { cleared: 0 };
     try { await cfg.store.destroy(i.type, i.id); } catch (e) { throw new KernelError("unavailable", "the store could not destroy the record; its tasks' text is already removed"); }
+    // Its sealed values are destroyed in the sealing process (overwritten, then removed); a value the process cannot drop is counted, never hidden.
+    let sealed_dropped = 0;
+    for (const ref of refs) { try { if (cfg.sealer && typeof cfg.sealer.drop === "function" && (await cfg.sealer.drop({ chain, ref })).dropped) sealed_dropped++; } catch { /* counted below */ } }
     let erased = 0;
     for (const e of cfg.log.read()) if (e.subject === u && !(e.data && e.data.erased === true)) { cfg.log.erase(e.seq); erased++; }
-    cfg.log.append(chain, { type: "records.forgotten", sv: 1, subject: u, data: { type: i.type, id: i.id, erased_events: erased, tasks_cleared: tasks.cleared || 0 } }, { decision: dec.decision });
-    return { forgotten: u, erased_events: erased, tasks_cleared: tasks.cleared || 0 };
+    cfg.log.append(chain, { type: "records.forgotten", sv: 1, subject: u, data: { type: i.type, id: i.id, erased_events: erased, tasks_cleared: tasks.cleared || 0, sealed_dropped, sealed_left: refs.length - sealed_dropped, files_kept: files } }, { decision: dec.decision });
+    return { forgotten: u, erased_events: erased, tasks_cleared: tasks.cleared || 0, sealed_dropped, sealed_left: refs.length - sealed_dropped, files_kept: files };
   }
 
   return Object.freeze({
