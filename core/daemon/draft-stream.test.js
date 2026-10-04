@@ -2,6 +2,7 @@
 // A live draft goes to the connection that asked for it (Accept: application/x-ndjson) and nowhere
 // else: not the events bus, not a caller that didn't ask, not a module's ctx.call.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";

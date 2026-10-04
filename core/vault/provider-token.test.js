@@ -1,6 +1,7 @@
 // @ts-check
 // A provider's session sign-in token, on the items Vyre already has (claude-setup-token and anthropic-api-key, made by core/onboard and chosen per session by sessions): the person
 // sets, replaces and removes one with presence, the app learns "stored, added when" and never the value, and the session launcher reads it through a port taken once.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

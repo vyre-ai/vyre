@@ -1,6 +1,7 @@
 // @ts-check
 // A page chooses the names in the URLs, form bodies and console lines Vyre reads. None of them may
 // crash the redactor, and a bad frame may never take the bridge (or the daemon) down.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

@@ -5,6 +5,7 @@
 // everything. Writes on one device reach the others (pushed, then poked); a delete travels too.
 // The Secret Key and every value stay out of events, logs, audit rows and plain text on disk.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

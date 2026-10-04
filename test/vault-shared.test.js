@@ -4,6 +4,7 @@
 // removed, the key changes, everything she could read is flagged, and her copy goes. No value
 // shows up in plain text anywhere on any of the three disks, or in what vyred says.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

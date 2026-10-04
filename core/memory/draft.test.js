@@ -3,6 +3,7 @@
 // apart, and is taken back (an empty draft) when the check fails. It never rides the events bus.
 // Fictional data only (Northwind Bakery).
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import { labeled } from "./testing/label-who.js";
 import assert from "node:assert/strict";

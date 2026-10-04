@@ -5,6 +5,7 @@
 // that chat with its name above a message field, and pressing Send (only through hands.commit)
 // records the words and empties the field.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

@@ -3,6 +3,7 @@
 // "Now / Before", an agent's write, and what never becomes a decision. Fictional data only
 // (alex, Harlow Legal, Northwind Bakery, juno, kit, pax).
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import { labeled } from "./testing/label-who.js";
 import assert from "node:assert/strict";

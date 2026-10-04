@@ -1,5 +1,6 @@
 // @ts-check
 // Memory's graph, pins, corrections and Ask against a fake box: tool names and inputs, and the lines the screen shows.
+import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";

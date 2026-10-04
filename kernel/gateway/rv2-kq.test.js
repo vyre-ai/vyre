@@ -1,4 +1,5 @@
 // reviewer-2 repros for kernel-query 25f5ccb20: KQ-1 (no grant on the type still totals it), KQ-2 (slow aggregate path holds every row).
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";

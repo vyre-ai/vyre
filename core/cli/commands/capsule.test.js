@@ -1,6 +1,7 @@
 // @ts-check
 // `vyre capsule`: the native app is Lumen. Where it can run, and what the command accepts.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

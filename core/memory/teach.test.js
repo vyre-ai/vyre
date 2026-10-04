@@ -2,6 +2,7 @@
 // Facts other modules teach through ctx.memory.teach: checked, folded into the same graph as the
 // transcripts, sourced to {module, kind}, idempotent, and reachable only from modules.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

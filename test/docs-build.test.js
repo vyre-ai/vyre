@@ -2,6 +2,7 @@
 // scripts/build-docs and scripts/lib/docs: the Markdown renderer, front matter, the URL scheme,
 // and a whole build of a small docs tree in a temp folder.
 
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

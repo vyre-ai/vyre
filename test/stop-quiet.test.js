@@ -5,6 +5,7 @@
 // Each start runs in a child process (stop-quiet-child.mjs), so an error after stop is ours to record.
 // Found by the projects module's auto-seed, which kept retrying and writing after stop.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

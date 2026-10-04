@@ -4,6 +4,7 @@
 // 2026-11-01 (02:00 goes back to 01:00). The apps router's time cases run below as fixtures, at
 // its own moment (15:00 in Karachi), so the two readers stay alike.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parse, parseDuration, utcFor } from "./parse.js";

@@ -2,6 +2,7 @@
 // The 0.3 minimum for core/memory (CUTOVER section G): on a REAL kernel (test/kernel-rig.js), personal memory is refused to a group chat, readable only by its person and that
 // person's own assistant (decided by the kernel's chain, not the 0.2 caller label), and sealed values never enter it. Corrections, pins, taught facts, agent writes and site rows
 // survive a schema change. Only the projects.reach stand-in (a 0.2 module this one asks) and the model are stand-ins.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

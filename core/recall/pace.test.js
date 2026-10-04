@@ -1,6 +1,7 @@
 // @ts-check
 // Recall's background work is light: paced, paused when the machine cannot spare it, and the
 // model in a niced process of its own on one thread. The last test measures it.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

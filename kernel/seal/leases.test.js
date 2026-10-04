@@ -1,5 +1,6 @@
 // @ts-check
 // Key leases (DESIGN-local-runner section 3): an hour, renewed while access holds, never issued after a revoke, keys that change after a revoke.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

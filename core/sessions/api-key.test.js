@@ -1,4 +1,5 @@
 // "Sign in to your AI" with an API key: three kinds, a cheap check, the Vault, an account bound to its address, and a thread that sends the key only there.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";

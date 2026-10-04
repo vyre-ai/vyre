@@ -5,6 +5,7 @@
 // IDs: P-M7 (reviews/vault.md M7, the RSA branch), P-CAP (a Capsule key is ES256 and nothing else), P-PROOF (replay, age, binding),
 // P-CODE (one-time codes), P-GRANT (the first-passkey grant), P-SESSION (a session proves only what and where it should).
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

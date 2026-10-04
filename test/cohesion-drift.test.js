@@ -7,6 +7,7 @@
 // freezes today's copies in ALLOWED. A new copy fails. A copy that goes away must leave the list
 // too, so the list only shrinks.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

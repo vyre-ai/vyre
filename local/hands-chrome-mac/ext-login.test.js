@@ -1,5 +1,6 @@
 // @ts-check
 // login: the wall is found, the tab is handed to the person once, and the run resumes when they are in.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import login, { check, onFailure, appName, highlightScript } from "./extension/caps/login.js";

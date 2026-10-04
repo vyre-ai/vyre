@@ -1,5 +1,6 @@
 // @ts-check
 // The vendored decoder reads the codes this repo draws, at the sizes and margins a phone camera gives.
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import jsQR from "./jsqr.js";

@@ -3,6 +3,7 @@
 // latest release only after the signature and every file's hash check out. A fake release site on disk, signed
 // with a THROWAWAY key, and a stub installer; no network, no Docker, nothing started. It needs OpenSSL 3 (Ed25519
 // raw verify) and sha256sum, as the Ubuntu image has, so it skips elsewhere (a Mac's LibreSSL).
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

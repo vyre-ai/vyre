@@ -54,7 +54,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`modules`](#modules) | `core/modulelist` | `box`, `local` | 5 | 0 | cli |
 | [`names`](#names) | `core/names` | `box` | 12 | 12 | cli |
 | [`network`](#network) | `core/network` | `box` | 13 | 4 | capsule, cli, deck |
-| [`onboard`](#onboard) | `core/onboard` | `box`, `local` | 14 | 2 | none |
+| [`onboard`](#onboard) | `core/onboard` | `box`, `local` | 14 | 3 | none |
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 15 | 7 | capsule, cli, deck |
 | [`presence`](#presence) | `core/presence` | `box`, `local` | 18 | 6 | capsule, cli, deck |
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 22 | 5 | cli |
@@ -521,7 +521,7 @@ Who besides the owner the box's tailnet listener serves: guests from other tailn
 - Runs on: `box`, `local`
 - Requires: none
 - Tools: [14](tools.md#onboard)
-- Emits: [2 events](events.md#onboard)
+- Emits: [3 events](events.md#onboard)
 - Shows on: no surface
 
 ## planner

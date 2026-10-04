@@ -1,6 +1,7 @@
 // @ts-check
 // The Windows app's Rust updater and vyre-core's verifySums must agree on the same signed
 // SHA256SUMS bytes: this pins the fixture the Rust tests read.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

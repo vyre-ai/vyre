@@ -2,6 +2,7 @@
 // The hub's rules without a vyred: which tools are reads, how names are aggregated, what a row
 // may hold, and how calls retry and release, against a fake connect and an in-memory store.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";

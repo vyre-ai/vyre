@@ -2,6 +2,7 @@
 // memory.brief (plan 3.1C): at most 600 characters, the project's current decisions, never an
 // untrusted write, never another project. Fictional data only (alex, Harlow Legal, Northwind Bakery, juno, kit).
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import { labeled } from "./testing/label-who.js";
 import assert from "node:assert/strict";

@@ -1,5 +1,6 @@
 // @ts-check
 // scripts/check-release-lineage.mjs: a release commit off main and stage must be a proper patch of the newest published stable release.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { lineage, nextPatchTag, newestStable } from "../scripts/check-release-lineage.mjs";

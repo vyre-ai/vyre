@@ -21,9 +21,14 @@ export function createKitApply(cfg) {
   const clock = cfg.clock || Date.now;
   /** @type {Set<string>} tasks whose approval was spent on an install (read back from the log at start, so a restart does not make it new again) */ const used = new Set();
   try { for (const e of cfg.log.read({ type: "kit.applying" })) if (e && e.data && typeof e.data.task === "string") used.add(e.data.task); } catch { /* an empty log */ }
-  /** @type {Set<string>} tasks whose install was resumed once (a crash after `kit.applying` and before the types were defined) */ const resumed = new Set();
-  try { for (const e of cfg.log.read({ type: "kit.resumed" })) if (e && e.data && typeof e.data.task === "string") resumed.add(e.data.task); } catch { /* an empty log */ }
-  /** @type {WeakMap<object, { chain: string, types: Map<string, string>, expires: number }>} */ const live = new WeakMap();
+  /** @type {Map<string, number>} resumes made per task (an install that stopped after `kit.applying` may be resumed again and again: one approval, one content) */ const resumed = new Map();
+  try { for (const e of cfg.log.read({ type: "kit.resumed" })) if (e && e.data && typeof e.data.task === "string") resumed.set(e.data.task, Math.max(resumed.get(e.data.task) || 0, Number(e.data.attempt) || 1)); } catch { /* an empty log */ }
+  /** @type {Set<string>} tasks whose install is complete (`kit.installed` is in the log) */ const installed = new Set();
+  try { for (const e of cfg.log.read({ type: "kit.installed" })) if (e && e.data && typeof e.data.task === "string") installed.add(e.data.task); } catch { /* an empty log */ }
+  const kitChain = () => cfg.chains.fromFacts({ kind: "module", module: "kits", first_party: true });
+  /** @param {string} task @param {any} extra */
+  const markInstalled = (task, extra) => { if (installed.has(task)) return; cfg.log.append(kitChain(), { type: "kit.installed", sv: 1, subject: `vyre://${cfg.space}/kit/${task}`, data: { task, ...extra }, vis: "owner", red: "internal" }); installed.add(task); };
+  /** @type {WeakMap<object, { task: string, chain: string, types: Map<string, string>, expires: number }>} */ const live = new WeakMap();
   const bad = (/** @type {string} */ why) => new KernelError("not_allowed", why);
 
   /** Everything an install needs to be true, short of being unused. @param {{ chain: any, task: string, kit: any }} i */
@@ -43,10 +48,10 @@ export function createKitApply(cfg) {
     if (!approver || !mine || mine.actor.id !== approver.id) throw bad("only the person who approved it applies it");
     return { a, mine, task, kit };
   }
-  /** A waiver for exactly these types, for this chain. @param {any} chain @param {any[]} types */
-  function mint(chain, types) {
+  /** A waiver for exactly these types, for this chain. @param {string} task @param {any} chain @param {any[]} types */
+  function mint(task, chain, types) {
     const waiver = Object.freeze({ id: `kw_${mintUuid(clock())}` });
-    live.set(waiver, { chain: actorsOf(chain), types: new Map(types.map((/** @type {any} */ t) => [String(t && t.name), canonical(t)])), expires: clock() + WAIVER_LIFE_MS });
+    live.set(waiver, { task, chain: actorsOf(chain), types: new Map(types.map((/** @type {any} */ t) => [String(t && t.name), canonical(t)])), expires: clock() + WAIVER_LIFE_MS });
     return waiver;
   }
 
@@ -61,25 +66,28 @@ export function createKitApply(cfg) {
       // Event first: once this line is in the log the approval is spent, whatever happens next.
       cfg.log.append(cfg.chains.fromFacts({ kind: "module", module: "kits", first_party: true }), { type: "kit.applying", sv: 1, subject: `vyre://${cfg.space}/kit/${String(task)}`, data: { task, kit_hash: a.form.kit_hash, by: mine.actor.id }, vis: "owner", red: "internal" });
       used.add(task);
-      return mint(i.chain, kit.types);
+      if (!kit.types.length) markInstalled(task, { attempt: 0 });
+      return mint(task, i.chain, kit.types);
     },
     /**
-     * Finish an install that stopped (a crash after `kit.applying`, before every type was defined). Once per task, within a day of the approval, by the approver's own chain, for a task whose
-     * `kit.applying` is in the log, for the Kit that was approved, and only for the Kit's types that are not defined yet; an updated type is never resumed (an update is a new approval).
-     * `kit.resumed` is written first.
+     * Finish an install that stopped (a crash after `kit.applying`, or a define that failed). Repeatable: as often as it takes, with the one approval, within a day of it, by the approver's own
+     * chain, for a task whose `kit.applying` is in the log, for the Kit that was approved (its content must still hash to the approved `kit_hash`), and only for the Kit's types that are not
+     * defined yet; an updated type is never resumed (an update is a new approval). `kit.resumed` (with the attempt number) is written first; `kit.installed` when nothing is missing; a resume with
+     * nothing missing defines nothing and answers `{ already_installed: true }`.
      * @param {{ chain: any, task: string, kit: { types?: any[] } & Record<string, any> }} i
      */
     async resume(i) {
       const { a, mine, task, kit } = check(i);
       if (!used.has(task)) throw bad("that approval was never applied; begin it");
-      if (resumed.has(task)) throw bad("that install was already resumed once");
       let have;
       try { have = new Set(typeof cfg.types === "function" ? (await cfg.types()).map(t => t.name) : []); } catch { throw new KernelError("unavailable", "the types could not be listed"); }
       const missing = kit.types.filter((/** @type {any} */ t) => !have.has(String(t && t.name)));
-      if (!missing.length) throw bad("every type of that Kit is already defined: nothing to resume");
-      cfg.log.append(cfg.chains.fromFacts({ kind: "module", module: "kits", first_party: true }), { type: "kit.resumed", sv: 1, subject: `vyre://${cfg.space}/kit/${String(task)}`, data: { task, kit_hash: a.form.kit_hash, by: mine.actor.id, types: missing.map((/** @type {any} */ t) => String(t.name)) }, vis: "owner", red: "internal" });
-      resumed.add(task);
-      return mint(i.chain, missing);
+      // Nothing missing: the Kit is installed. No waiver, nothing defined; the answer says so (and the record of it is written if it is not there yet).
+      if (!missing.length) { markInstalled(task, { attempt: resumed.get(task) || 0 }); return Object.freeze({ already_installed: true }); }
+      const attempt = (resumed.get(task) || 0) + 1;
+      cfg.log.append(kitChain(), { type: "kit.resumed", sv: 1, subject: `vyre://${cfg.space}/kit/${String(task)}`, data: { task, kit_hash: a.form.kit_hash, by: mine.actor.id, attempt, types: missing.map((/** @type {any} */ t) => String(t.name)) }, vis: "owner", red: "internal" });
+      resumed.set(task, attempt);
+      return mint(task, i.chain, missing);
     },
     /**
      * Does this waiver cover exactly this definition by this chain? A type may be defined once under it, and only as the Kit lists it; anything else in the diff refuses the whole call.
@@ -96,7 +104,9 @@ export function createKitApply(cfg) {
     /** The define went through: those types are spent under this waiver (a refused define strands nothing). @param {object} waiver @param {any} diff */
     spend(waiver, diff) {
       const s = live.get(waiver);
-      if (s) for (const t of [...(diff.add_types || []), ...(diff.change_types || [])]) s.types.delete(String(t.name));
+      if (!s) return;
+      for (const t of [...(diff.add_types || []), ...(diff.change_types || [])]) s.types.delete(String(t.name));
+      if (!s.types.size) markInstalled(s.task, { attempt: resumed.get(s.task) || 0 });
     },
     /** What `authorize` asks for the presence it would otherwise need: a live waiver, for this chain and one of the waived actions. @param {any} waiver @param {{ chain: any, action: string }} q */
     waives(waiver, q) {

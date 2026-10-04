@@ -1008,6 +1008,16 @@ export function createPairing(o) {
         return devices.record(String(input.id));
       },
     });
+    ctx.tool("wink.server.owner", {
+      internal: true,
+      description: "For the spaces module: the identity this server's own pairing record names as its owner, { identity, kind, id, name? }, or null. Read only; it is how spaces.owner.adopt knows the identity came from the pairing and not from a caller.",
+      input: obj(),
+      run: async (_i, meta0 = {}) => {
+        if (String((meta0 && meta0.caller) || "") !== "module:spaces") throw fail("denied", "this is for the spaces module");
+        const o2 = meta.get("owner");
+        return o2 && typeof o2.identity === "string" ? { identity: o2.identity, kind: o2.kind, id: o2.id, ...(o2.name ? { name: o2.name } : {}) } : null;
+      },
+    });
     ctx.tool("wink.server.paired", {
       internal: true,
       description: "For the spaces module: is this device a server paired to this identity, and still paired? Answers { paired, name? }. Modules only, read only; it names no one else's devices.",

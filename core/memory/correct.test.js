@@ -3,6 +3,7 @@
 // confirm, add, and the merge and split of nodes. Applied in derive after the votes, so no
 // transcript can derive them away; undoable; owner callers only. Fictional data only.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

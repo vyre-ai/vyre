@@ -3,6 +3,7 @@
 // log, with a hand-driven timer, so every ring is checked at the exact instant it is due. Callers
 // are checked as the registry does (callerAllowed) and then inside each tool.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
