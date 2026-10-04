@@ -21,7 +21,7 @@ const fail = (/** @type {string} */ code, /** @type {string} */ message) => Obje
 /** @returns {Table} */
 function mapTable() {
   /** @type {Map<string, any>} */ const m = new Map();
-  return { get: id => m.get(id), has: id => m.has(id), set: (id, r) => { m.set(id, r); }, values: () => [...m.values()], candidates: () => [...m.values()], searchCandidates: () => [...m.values()] };
+  return { get: id => m.get(id), has: id => m.has(id), set: (id, r) => { m.set(id, r); }, delete: id => { m.delete(id); }, values: () => [...m.values()], candidates: () => [...m.values()], searchCandidates: () => [...m.values()] };
 }
 
 /**
@@ -294,6 +294,20 @@ export function createMemoryStore(cfg = {}) {
         const records = all.slice(i, i + 100);
         yield { seq: seq++, records, done: i + 100 >= all.length, checksum: sha256(canonical(records)) };
       }
+    },
+    /**
+     * Destroy one record for good (the gateway's `forget`): its row, its index entries and what the change log holds of it. The log keeps an entry's envelope (type, id, kind, version, time)
+     * and loses its data, so the cursors still line up. A table that cannot delete a row has it blanked (data emptied, kept as a tombstone in the bin); `cfg.persist.destroy` does the same on disk.
+     */
+    async destroy(type, id) {
+      touch("destroy", [type, id]);
+      const t = table(type), r = t.get(id);
+      if (!r) throw fail("not_found", `no ${type} ${id}`);
+      if (!r.deleted_at) indexSet(type, r, false);
+      for (let i = 0; i < changes.length; i += 500) for (const e of changes.slice(i, i + 500)) if (e.type === type && e.id === id) { delete e.before; delete e.after; e.erased = true; }
+      if (typeof t.delete === "function") t.delete(id);
+      else { r.data = {}; r.deleted_at = r.deleted_at || clock(); r.version += 1; r.updated_at = clock(); t.set(id, r); if (cfg.persist) cfg.persist.record(clone(r)); }
+      if (cfg.persist && typeof cfg.persist.destroy === "function") cfg.persist.destroy(type, id);
     },
     /** Forget the values these fields held in the change log (a field was sealed: its old plain values must not survive here). Stores with a durable log do the same through `cfg.persist.scrub`. */
     async scrub(type, fields) {

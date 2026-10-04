@@ -157,6 +157,29 @@ export function createGateway(cfg) {
     return { sealed_field: name, moved, erased_events: erased };
   }
 
+  /**
+   * Forget one record for good: the erasure a person asks for (a client leaves, a law says so). In this order: (1) the text of every task that concerned it is emptied (`tasks.scrubTexts({ record })`, the
+   * tasks service's own call), (2) the store destroys the row and what it keeps of it (its snapshot, its change log data, Twenty's timeline), (3) every event about the record keeps its envelope and loses
+   * its data, (4) one `records.forgotten` event says it happened, with the counts and never a value. The caller's chain needs `records.define` (Customize: admin and owner) and `records.remove` on the record.
+   * Links held by other records stay and point at nothing. A database keeps dead pages until it is vacuumed (the operator's step).
+   */
+  async function forget(/** @type {any} */ chain, /** @type {{ type: string, id: string }} */ i) {
+    if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
+    if (!i || typeof i.type !== "string" || typeof i.id !== "string") throw new KernelError("bad_input", "forget needs a type and an id");
+    if (typeof cfg.store.destroy !== "function") throw new KernelError("unavailable", "this store cannot destroy a record");
+    const u = `vyre://${cfg.space}/${i.type}/${i.id}`;
+    const dec = await gate(chain, "records.define", `vyre://${cfg.space}/definition/types`);
+    await gate(chain, "records.remove", u);
+    let there; try { there = await cfg.store.get(i.type, i.id, { include_deleted: true }); } catch (e) { throw new KernelError("unavailable", "the store could not read the record"); }
+    if (!there) throw new KernelError("not_found", "no such record");
+    const tasks = cfg.tasks && typeof cfg.tasks.scrubTexts === "function" ? cfg.tasks.scrubTexts({ record: u }) : { cleared: 0 };
+    try { await cfg.store.destroy(i.type, i.id); } catch (e) { throw new KernelError("unavailable", "the store could not destroy the record; its tasks' text is already removed"); }
+    let erased = 0;
+    for (const e of cfg.log.read()) if (e.subject === u && !(e.data && e.data.erased === true)) { cfg.log.erase(e.seq); erased++; }
+    cfg.log.append(chain, { type: "records.forgotten", sv: 1, subject: u, data: { type: i.type, id: i.id, erased_events: erased, tasks_cleared: tasks.cleared || 0 } }, { decision: dec.decision });
+    return { forgotten: u, erased_events: erased, tasks_cleared: tasks.cleared || 0 };
+  }
+
   return Object.freeze({
     authorize: authorizer.authorize,
     ...(drive ? { drive } : {}),
@@ -183,7 +206,7 @@ export function createGateway(cfg) {
     ...(cfg.tasks ? { tasks: Object.freeze({ list: (/** @type {any} */ chain) => cfg.tasks.needsYou(chain) }), ask: groupTasks(cfg.tasks) } : {}),
     ...(cfg.door ? { model: Object.freeze({ call: (/** @type {any} */ i) => cfg.door.call(i) }) } : {}),
     records,
-    migrate: Object.freeze({ sealField }),
+    migrate: Object.freeze({ sealField, forget }),
     events: Object.freeze({ read, latestSeq: cfg.log.latestSeq, subscribe }),
     audit: Object.freeze({
       verify: async () => {

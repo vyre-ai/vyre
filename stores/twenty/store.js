@@ -515,6 +515,23 @@ export class TwentyStore {
     await this.#t(() => this.client.gql("graphql", "mutation PurgeTimeline($f: TimelineActivityFilterInput) { destroyTimelineActivities(filter: $f) { id } }", { f: { or: [{ deletedAt: { is: "NULL" } }, { deletedAt: { is: "NOT_NULL" } }] } }));
   }
 
+  /**
+   * Destroy one record for good: the row (Twenty's own destroy, not its bin), Twenty's timeline, this store's snapshot and what its change log holds of it (an entry keeps its envelope and
+   * loses its data). A database keeps dead pages until it is vacuumed; that is the operator's step. @param {string} type @param {string} id
+   */
+  async destroy(type, id) {
+    const p = this.#plan(type);
+    if (!isUuid(id)) throw new StoreError("not_found", `no ${type} ${id}`);
+    this.searchKept.clear();
+    const row = await this.#row(p, id, "any");
+    if (!row) throw new StoreError("not_found", `no ${type} ${id}`);
+    await this.#t(() => this.client.gql("graphql", `mutation Destroy_${p.plural}($f: ${pascal(p.singular)}FilterInput) { destroy${pascal(p.plural)}(filter: $f) { id } }`, { f: { id: { eq: id } } }));
+    for (const e of this.log) if (e.type === type && e.id === id) { delete e.before; delete e.after; e.erased = true; }
+    if (this.logFile && fs.existsSync(this.logFile)) { const tmp = this.logFile + ".tmp"; fs.writeFileSync(tmp, this.log.map((e) => JSON.stringify(e)).join("\n") + (this.log.length ? "\n" : ""), { mode: 0o600 }); fs.renameSync(tmp, this.logFile); }
+    this.snaps.set(p.vyre, id, null); this.snaps.compact();
+    await this.#t(() => this.client.gql("graphql", "mutation PurgeTimeline($f: TimelineActivityFilterInput) { destroyTimelineActivities(filter: $f) { id } }", { f: { or: [{ deletedAt: { is: "NULL" } }, { deletedAt: { is: "NOT_NULL" } }] } }));
+  }
+
   // ---- what happened, and trust ----------------------------------------------------------------
   /** @param {string | null} since @param {number} limit */
   async changes(since, limit) {

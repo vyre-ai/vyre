@@ -156,6 +156,12 @@ export class FakeTwenty {
       const page = list.slice(start, start + first);
       return { [name]: { edges: page.map((r) => ({ node: r })), pageInfo: { hasNextPage: start + first < list.length, endCursor: page.length ? Buffer.from(page[page.length - 1].id).toString("base64") : null }, totalCount: list.length } };
     }
+    if (kind === "Destroy") {
+      const { obj, rows } = this.#objByPlural(name);
+      const gone = [...rows.values()].filter((r) => this.#match(r, v.f));
+      for (const r of gone) rows.delete(r.id);
+      return { [`destroy${obj.namePlural[0].toUpperCase()}${obj.namePlural.slice(1)}`]: gone.map((r) => ({ id: r.id })) };
+    }
     if (kind === "Agg") {
       const { rows } = this.#objByPlural(name);
       const dims = v.g.map((x) => Object.keys(x)[0]);
