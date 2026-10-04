@@ -56,3 +56,32 @@ test("TR-1: free text (a title, a note, an answer, a reason) with a sensitive va
   assert.deepEqual(await (async () => (await d.kernel.gateway.ask.list(me(d), {})).map((/** @type {any} */ x) => [x.id, x.state, x.title, x.answer === undefined ? null : JSON.stringify(x.answer)]).sort())(), before, "titles, states and answers are back from the task store");
   assert.ok(!JSON.stringify(d.kernel.log.read({ type: "task.*" })).includes(ssn), "and still not in the log");
 });
+
+test("scrub: a value that moved into a sealed field (or a record that was forgotten) is taken out of the task store: the text is gone, a restart finds no text behind the log's hash, and nothing else is touched", { timeout: 180_000 }, async t => {
+  const root = tempHome(t);
+  let d = await start({ root, log: () => {}, kernel: true });
+  const me = (/** @type {any} */ x) => x.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-r", person: x.kernel.id.owner, path: "direct", session: "s" });
+  const space = d.kernel.id.space, gw = d.kernel.gateway, ssn = "987-65-4321";
+  const assistant = { kind: "agent", id: "assistant", space };
+  await gw.records.define(me(d), { add_types: [{ name: "note", label: "Note", fields: [{ name: "title", kind: "text", label: "Title" }] }] });
+  const rec = await gw.records.create(me(d), "note", { title: "x" });
+  const quoting = await gw.ask.request(me(d), { title: `Call about ${ssn}`, doer: assistant, output: { kind: "decision" }, record: rec.urn });
+  const other = await gw.ask.request(me(d), { title: "Nothing sensitive here", doer: assistant, output: { kind: "decision" } });
+  const aboutRecord = await gw.ask.request(me(d), { title: "About the forgotten record", doer: assistant, output: { kind: "decision" }, record: rec.urn });
+  const one = d.kernel.tasks.scrubTexts({ values: [ssn] });
+  assert.equal(one.cleared, 1, "only the task whose stored text quotes the value");
+  const titles = async () => Object.fromEntries((await gw.ask.list(me(d), {})).map((/** @type {any} */ x) => [x.id, x.title]));
+  let now = await titles();
+  assert.match(now[quoting.id], /removed/); assert.equal(now[other.id], "Nothing sensitive here"); assert.equal(now[aboutRecord.id], "About the forgotten record");
+  assert.equal(d.kernel.tasks.scrubTexts({ record: rec.urn }).cleared, 2, "every task about the forgotten record (the one already scrubbed is counted again, harmlessly)");
+  now = await titles();
+  assert.match(now[aboutRecord.id], /removed/); assert.equal(now[other.id], "Nothing sensitive here");
+  await d.stop();
+  d = await start({ root, log: () => {}, kernel: true });
+  t.after(() => d.stop());
+  now = Object.fromEntries((await d.kernel.gateway.ask.list(me(d), {})).map((/** @type {any} */ x) => [x.id, x.title]));
+  assert.match(now[quoting.id], /no longer available/, "the log's hash resolves to nothing: the text is gone from the store");
+  assert.match(now[aboutRecord.id], /no longer available/);
+  assert.equal(now[other.id], "Nothing sensitive here", "an unrelated task keeps its text across the restart");
+  assert.ok(!JSON.stringify(d.kernel.log.read({ type: "task.*" })).includes(ssn));
+});

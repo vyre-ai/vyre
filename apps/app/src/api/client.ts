@@ -14,6 +14,7 @@
 // can load this file as it is. The platform pieces come in through createClient (box.web.ts,
 // box.native.ts).
 
+import { noteEnded } from "../auth/notice.js";
 import { follow } from "../../../../core/resilience/stream.js";
 import { outbox as makeOutbox } from "../../../../core/resilience/outbox.js";
 import type { Open, StreamState, VyreEvent } from "../../../../core/resilience/stream.js";
@@ -130,6 +131,7 @@ export async function createClient(d: ClientDeps): Promise<Client> {
   const presence = new Map<string, string>();
 
   function sessionRequired(): void {
+    if (auth) noteEnded();
     auth?.required();
     d.onSignIn?.();
   }
