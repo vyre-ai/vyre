@@ -5,6 +5,7 @@ import { useRouter } from "expo-router";
 import { AskCard, Banner, Button, Card, Chip, Divider, EmptyState, FlowCanvas, Row, Text, haptic, showToast } from "@vyre/ui";
 import { Block } from "../places/Page";
 import { Frame, Sec } from "../places/Frame";
+import { FlowCode } from "./FlowCode";
 import { retryReal, startReal } from "./run";
 import { canRetry, recordLines, startRefusal } from "./run-model";
 import { approveReal, cardReal, getReal, graphReal, runReal, runsReal, type Card as FlowCard, type Graph, type RunRow } from "./real";
@@ -93,6 +94,7 @@ export function RealFlow({ id }: { id: string }) {
           {canRetry(picked_run.state) ? <View className="self-start pt-s2"><Button size="sm" label={busy ? "Retrying" : "Retry this run"} onPress={busy ? () => {} : () => retry(picked_run.id)} /></View> : null}
         </Sec>
       ) : null}
+      <FlowCode id={id} version={meta.version} onSaved={() => setN((x) => x + 1)} />
       <Sec title="Run history">
         {runs.length ? (
           <Card flush>

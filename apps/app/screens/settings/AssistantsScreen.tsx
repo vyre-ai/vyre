@@ -1,12 +1,13 @@
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Avatar, Button, Card, Chip, Divider, Segmented, Text, showToast, markRef } from "@vyre/ui";
+import { Avatar, Button, Card, Chip, Divider, Segmented, Text, showToast, markRef , allowsMock} from "@vyre/ui";
 import { Page } from "../places/Frame";
+import { RealAssistants } from "./RealAgents";
 import { useSettings } from "./state";
 import { AUTONOMY } from "./logic.js";
 
 /** Assistants: how much each does alone. Pausing keeps its notes. */
-export function AssistantsScreen() {
+export function SampleAssistantsScreen() {
   const router = useRouter();
   const { assistants, setAutonomy, setPaused } = useSettings();
   return (
@@ -34,4 +35,9 @@ export function AssistantsScreen() {
       </Card>
     </Page>
   );
+}
+
+/** The sample page in a mock build; the box's own agents and accounts everywhere else. */
+export function AssistantsScreen() {
+  return allowsMock() ? <SampleAssistantsScreen /> : <RealAssistants />;
 }
