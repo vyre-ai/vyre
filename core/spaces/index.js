@@ -200,7 +200,12 @@ export default {
       try { await K.spaces.retire(id); } catch (e) { ctx.log.warn(`the kernel kept a space that did not finish being made (${id}): ${String(/** @type {any} */ (e).message || e).slice(0, 120)}`); }
     };
     /** The caller's chain IN that Space (a hosted Space has its own key: the home's chain is not a member of it), and the proof beside the call. */
-    const kctxOf = async (/** @type {any} */ meta, /** @type {string} */ space) => ({ chain: space && typeof K.chainIn === "function" ? await K.chainIn(space, meta) : await K.chain(meta), proof: K.proofFrom(meta) });
+    const kctxOf = async (/** @type {any} */ meta, /** @type {string} */ space) => {
+      // A space the SERVER hosts is reached through a RemoteKernel: the chain argument never leaves this device (the server mints the chain from the peer it proved), so none is built here.
+      const h = space ? kernelHandle(space) : null;
+      if (h && h.hosted === false) return { chain: null, proof: K.proofFrom(meta) };
+      return { chain: space && typeof K.chainIn === "function" ? await K.chainIn(space, meta) : await K.chain(meta), proof: K.proofFrom(meta) };
+    };
     /** The members service for a space: the kernel's (under the caller's chain and proof) when there is one, else the local table's. @param {string} id @param {any} [meta] */
     const members = async (id, meta) => {
       const h = kernelHandle(id);
@@ -1145,12 +1150,14 @@ export default {
         if (i.name) ctx2.name = String(i.name).trim().toLowerCase().replace(/\.vyre\.run$/, "");
         if (i.confirmThisComputer) ctx2.confirmThisComputer = true;
         if (i.vpsToken) ctx2.vpsToken = String(i.vpsToken);
-        // a creation that failed gave its kernel Space back: host it again under the same id before going on
-        if (row.status !== "done" && K && K.spaces && typeof K.spaces.host === "function" && /^spc_[a-z2-7]{12}$/.test(row.id) && !kernelHandle(row.id)) {
+        // a creation that failed gave its Space back: host it again under the same id before going on (on the SERVER when that is its home)
+        const srvDevice = await serverOf(row.id);
+        if (srvDevice && row.status !== "done") await remoteCall(srvDevice, "spaces.host-here", { name: row.label, id: row.id }, meta);
+        else if (row.status !== "done" && K && K.spaces && typeof K.spaces.host === "function" && /^spc_[a-z2-7]{12}$/.test(row.id) && !kernelHandle(row.id)) {
           try { await K.spaces.host({ owner: /** @type {string} */ (me().id), name: row.label, id: row.id }); } catch (e) { ctx.log.warn(`the kernel could not start the space again: ${String(/** @type {any} */ (e).message || e).slice(0, 120)}`); }
         }
         const rv = await flow.resume(row.id, ctx2);
-        if (rv && rv.status === "failed") await retireHosted(row.id);
+        if (rv && rv.status === "failed") await retireHosted(row.id, meta);
         return sync(row.id, rv);
       });
 
