@@ -27,6 +27,7 @@
 //
 // Not here yet: deleting a shared item, and multi-device join (ADR 0006: next wave).
 
+import { launcherItem } from "./vault.js";
 import crypto from "node:crypto";
 import { canonical, sign, verify, sealFor, openFrom, keyObject, newVaultKey, sealItemV2, openItemV2, rewrapItemKey } from "./crypto.js";
 import { writeSealed, removeSealed } from "./store.js";
@@ -539,11 +540,13 @@ export class Shared {
     if (m.members.some(x => x.sign === p.sign)) throw new Error(`${person} is already in ${v.name}`);
     const member = { name: String(person), sign: p.sign, box: p.box, role };
     const next = this.next(m, me, { members: [...m.members, member] });
-    await this.submitAdmin(v, { manifest: next, wraps: [this.wrapFor(v.id, m.kv, await this.vk(v.id, m.kv), member)] }, me);
-    this.vault.audit("member-add", null, caller, true, `${v.name}: ${person} as ${role}`);
-    this.vault.emit("vault.member-added", { vault: v.name, member: String(person), role });
+    // Everything that can fail is made before the member is added, so no one is added without an invite.
+    const wrap = this.wrapFor(v.id, m.kv, await this.vk(v.id, m.kv), member);
     const invite = encodeInvite({ v: 1, vault: v.id, name: v.name, home: v.home, owner: v.owner_sign, inviterCard: (await this.vault.share.myCard()).card,
       member: { name: String(person), sign: p.sign }, seq: next.seq }, me.id.sign.private);
+    await this.submitAdmin(v, { manifest: next, wraps: [wrap] }, me);
+    this.vault.audit("member-add", null, caller, true, `${v.name}: ${person} as ${role}`);
+    this.vault.emit("vault.member-added", { vault: v.name, member: String(person), role });
     return { invite, vault: v.name, member: String(person), role };
   }
 
@@ -742,6 +745,8 @@ export class Shared {
 
   /** Move a local item into a shared vault. The local copy goes once the shared one is written. */
   async move({ name, to }, caller) {
+    // A provider sign-in token is the person's own and goes only to the session launcher: never into a shared vault, where a team could use it.
+    if (launcherItem(String(name))) { const why = `${name} is a provider sign-in token; it is never moved into a shared vault`; this.vault.refuse("move", name, caller, why); throw new Error(why); }
     const r = this.vault.mustRow(name);
     if (String(r.vault).startsWith("shared:")) throw new Error(`${name} is already in a shared vault`);
     // The local copy is removed after the shared one is written, and remove refuses an item in a live pass: check that first, so a refusal leaves nothing half moved.

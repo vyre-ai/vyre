@@ -52,47 +52,86 @@ export function sorted(/** @type {any[]} */ rows, /** @type {any[] | undefined} 
 const keyOf = (/** @type {any} */ r, /** @type {any[] | undefined} */ sort) => [...(sort || []).map(k => fieldOf(r, k.field)), r.id];
 export const encodeCursor = (/** @type {any} */ r, /** @type {any} */ sort) => Buffer.from(JSON.stringify(keyOf(r, sort))).toString("base64url");
 
-/** Keyset page: rows strictly after the cursor's position in the total order. Inserts and removals between pages never repeat or skip a row. */
-export function page(/** @type {any[]} */ all, /** @type {any} */ spec) {
+/**
+ * Keyset page: rows strictly after the cursor's position in the total order. Inserts and removals between pages never repeat or skip a row. It takes any iterable of rows and
+ * keeps only the page it is building (at most `limit` rows, found by insertion into a small sorted list), so a type of any size is paged in constant memory.
+ */
+export function page(/** @type {Iterable<any>} */ all, /** @type {any} */ spec) {
   const sort = spec.sort;
-  const rows = sorted(all.filter(r => matches(spec.filter, r)), sort);
-  let start = 0;
+  const keys = [...(sort || []), { field: "id", dir: "asc" }];
+  /** @type {any[] | null} */ let key = null;
   if (spec.page.cursor) {
-    let key;
     try { key = JSON.parse(Buffer.from(spec.page.cursor, "base64url").toString()); } catch { key = null; }
-    if (!Array.isArray(key) || key.length !== (sort || []).length + 1) return { error: "invalid cursor" };
-    const keys = [...(sort || []), { field: "id", dir: "asc" }];
-    start = rows.findIndex(r => {
-      const rk = keyOf(r, sort);
-      for (let i = 0; i < keys.length; i++) { const c = cmp(rk[i], key[i]); if (c) return keys[i].dir === "desc" ? c < 0 : c > 0; }
-      return false;
-    });
-    if (start === -1) start = rows.length;
+    if (!Array.isArray(key) || key.length !== keys.length) return { error: "invalid cursor" };
   }
+  const order = (/** @type {any} */ a, /** @type {any} */ b) => { for (const k of keys) { const c = cmp(fieldOf(a, k.field), fieldOf(b, k.field)); if (c) return k.dir === "desc" ? -c : c; } return 0; };
+  const after = (/** @type {any} */ r) => {
+    if (!key) return true;
+    const rk = keyOf(r, sort);
+    for (let i = 0; i < keys.length; i++) { const c = cmp(rk[i], key[i]); if (c) return keys[i].dir === "desc" ? c < 0 : c > 0; }
+    return false;
+  };
   const limit = Math.max(1, Math.min(spec.page.limit, 500));
-  const slice = rows.slice(start, start + limit);
-  const more = start + limit < rows.length;
-  return { rows: slice, ...(more && slice.length ? { next_cursor: encodeCursor(slice[slice.length - 1], sort) } : {}) };
+  /** @type {any[]} */ const best = [];
+  let counted = 0;
+  for (const r of all) {
+    if (!matches(spec.filter, r) || !after(r)) continue;
+    counted++;
+    if (best.length === limit && order(r, best[limit - 1]) >= 0) continue;
+    let lo = 0, hi = best.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (order(best[mid], r) <= 0) lo = mid + 1; else hi = mid; }
+    best.splice(lo, 0, r);
+    if (best.length > limit) best.pop();
+  }
+  const more = counted > limit;
+  return { rows: best, ...(more && best.length ? { next_cursor: encodeCursor(best[best.length - 1], sort) } : {}) };
 }
 
-/** Group and measure. Group keys keep their JSON shape; `avg` and `sum` skip nulls; an empty measure is null. */
-export function aggregate(/** @type {any[]} */ all, /** @type {any} */ spec) {
+/**
+ * Group and measure, one row at a time: `add(row)` folds a row into a running figure per group and measure and keeps nothing of the row, so memory is the number of groups, never
+ * the number of rows. `maxGroups` stops a group-by on a unique field from being its own memory problem (`unsupported`). `avg` and `sum` skip nulls; an empty measure is null.
+ * @param {any} spec @param {{ maxGroups?: number }} [o]
+ */
+export function createAggregator(spec, o = {}) {
+  const measures = spec.measures;
   const groups = new Map();
-  for (const r of all.filter(r => matches(spec.filter, r))) {
-    const g = Object.fromEntries((spec.group_by || []).map((/** @type {string} */ f) => [f, fieldOf(r, f)]));
-    const k = canonical(g);
-    if (!groups.has(k)) groups.set(k, { group: g, rows: [] });
-    groups.get(k).rows.push(r);
-  }
-  if (!groups.size && !(spec.group_by || []).length) groups.set("{}", { group: {}, rows: [] });
-  return [...groups.values()].sort((a, b) => (canonical(a.group) < canonical(b.group) ? -1 : 1)).map(({ group, rows }) => ({
-    group,
-    values: Object.fromEntries(spec.measures.map((/** @type {any} */ m) => {
-      const name = m.field ? `${m.fn}:${m.field}` : m.fn;
-      if (m.fn === "count") return [name, m.field ? rows.filter(r => fieldOf(r, m.field) !== null).length : rows.length];
-      const nums = rows.map(r => fieldOf(r, m.field)).filter(v => typeof v === "number");
-      if (!nums.length) return [name, null];
-      return [name, m.fn === "sum" ? nums.reduce((a, b) => a + b, 0) : m.fn === "min" ? Math.min(...nums) : m.fn === "max" ? Math.max(...nums) : nums.reduce((a, b) => a + b, 0) / nums.length];
-    })),
-  }));
+  const fresh = () => measures.map(() => ({ n: 0, sum: 0, min: Infinity, max: -Infinity, nonnull: 0 }));
+  return {
+    add(/** @type {any} */ r) {
+      if (!matches(spec.filter, r)) return;
+      const g = Object.fromEntries((spec.group_by || []).map((/** @type {string} */ f) => [f, fieldOf(r, f)]));
+      const k = canonical(g);
+      let grp = groups.get(k);
+      if (!grp) {
+        if (o.maxGroups && groups.size >= o.maxGroups) throw Object.assign(new Error(`more than ${o.maxGroups} groups; group by something coarser`), { code: "unsupported" });
+        grp = { group: g, n: 0, acc: fresh() }; groups.set(k, grp);
+      }
+      grp.n++;
+      measures.forEach((/** @type {any} */ m, /** @type {number} */ i) => {
+        if (!m.field) return;
+        const v = fieldOf(r, m.field), a = grp.acc[i];
+        if (v !== null) a.nonnull++;
+        if (typeof v === "number") { a.n++; a.sum += v; if (v < a.min) a.min = v; if (v > a.max) a.max = v; }
+      });
+    },
+    result() {
+      if (!groups.size && !(spec.group_by || []).length) groups.set("{}", { group: {}, n: 0, acc: fresh() });
+      return [...groups.values()].sort((a, b) => (canonical(a.group) < canonical(b.group) ? -1 : 1)).map(({ group, n, acc }) => ({
+        group,
+        values: Object.fromEntries(measures.map((/** @type {any} */ m, /** @type {number} */ i) => {
+          const name = m.field ? `${m.fn}:${m.field}` : m.fn, a = acc[i];
+          if (m.fn === "count") return [name, m.field ? a.nonnull : n];
+          if (!a.n) return [name, null];
+          return [name, m.fn === "sum" ? a.sum : m.fn === "min" ? a.min : m.fn === "max" ? a.max : a.sum / a.n];
+        })),
+      }));
+    },
+  };
+}
+
+/** Group and measure a whole list. @param {Iterable<any>} all @param {any} spec */
+export function aggregate(all, spec) {
+  const agg = createAggregator(spec);
+  for (const r of all) agg.add(r);
+  return agg.result();
 }

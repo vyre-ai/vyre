@@ -13,8 +13,21 @@ const clone = (/** @type {any} */ v) => structuredClone(v);
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 
 /**
+ * One type's rows. The reference store keeps them in a Map; a durable store (kernel/store/sqlite.js) pages them from its database behind a small LRU, so the rows it holds in
+ * memory are the hot ones, not all of them. `candidates` and `searchCandidates` may return a SUPERSET of what a query or a search needs (the database narrows by an equality
+ * filter or a word); the same code then applies the exact rules, so an answer is the same either way.
+ * @typedef {{ get(id: string): any, has(id: string): boolean, set(id: string, r: any): void, values(): Iterable<any>, searchTop?(words: string[], n: number, after?: { score: number, id: string }): Iterable<any> | null, pageQuery?(spec: any): any, aggregateQuery?(spec: any): any, candidates(spec: any): Iterable<any>, searchCandidates(words: string[]): Iterable<any> }} Table
+ */
+/** @returns {Table} */
+function mapTable() {
+  /** @type {Map<string, any>} */ const m = new Map();
+  return { get: id => m.get(id), has: id => m.has(id), set: (id, r) => { m.set(id, r); }, values: () => [...m.values()], candidates: () => [...m.values()], searchCandidates: () => [...m.values()] };
+}
+
+/**
  * @param {{ clock?: () => number, hook?: (op: string, args: any[]) => void,
  *   initial?: { types: any[], records: any[], changes: any[] },
+ *   backing?: { table(type: string): Table, changes: { readonly length: number, push(e: any): void, slice(from: number, to: number): any[] } },
  *   persist?: { type(name: string, def: any | null): void, record(r: any): void, change(e: any): void } }} [cfg]
  *   hook: tests throw from it to simulate a crash or an outage. initial and persist make the store durable (kernel/store/sqlite.js): the state it starts from, and a
  *   write-through for every change, called after the in-memory change is made.
@@ -22,12 +35,14 @@ const fail = (/** @type {string} */ code, /** @type {string} */ message) => Obje
 export function createMemoryStore(cfg = {}) {
   const clock = cfg.clock || Date.now;
   /** @type {Map<string, any>} */ const types = new Map();
-  /** @type {Map<string, Map<string, any>>} */ const rows = new Map();
-  /** @type {any[]} */ const changes = [];
+  /** @type {Map<string, Table>} */ const rows = new Map();
+  const makeTable = (/** @type {string} */ name) => (cfg.backing ? cfg.backing.table(name) : mapTable());
+  /** @type {{ readonly length: number, push(e: any): void, slice(from: number, to: number): any[] }} */
+  const changes = cfg.backing ? cfg.backing.changes : (() => { /** @type {any[]} */ const a = []; return { get length() { return a.length; }, push: (/** @type {any} */ e) => { a.push(e); }, slice: (/** @type {number} */ f, /** @type {number} */ t) => a.slice(f, t) }; })();
   if (cfg.initial) {
-    for (const t of cfg.initial.types) { types.set(t.name, t); rows.set(t.name, new Map()); }
+    for (const t of cfg.initial.types) { types.set(t.name, t); rows.set(t.name, makeTable(t.name)); }
     for (const r of cfg.initial.records) rows.get(r.type)?.set(r.id, r);
-    changes.push(...cfg.initial.changes);
+    if (!cfg.backing) for (const e of cfg.initial.changes) changes.push(e);
   }
   // (the unique indexes for a loaded store are rebuilt below, once the helpers exist)
   const touch = (/** @type {string} */ op, /** @type {any[]} */ args) => cfg.hook && cfg.hook(op, args);
@@ -96,7 +111,7 @@ export function createMemoryStore(cfg = {}) {
         if (had && canonical(had) === canonical(t)) continue;
         types.set(t.name, clone(t));
         if (cfg.persist) cfg.persist.type(t.name, clone(t));
-        if (!rows.has(t.name)) rows.set(t.name, new Map());
+        if (!rows.has(t.name)) rows.set(t.name, makeTable(t.name));
         rebuildUnique(t.name);
         changesMade.push(had ? `changed type ${t.name}` : `added type ${t.name}`);
       }
@@ -111,7 +126,7 @@ export function createMemoryStore(cfg = {}) {
       }
       for (const name of diff.remove_types || []) {
         if (!types.has(name)) continue;
-        if ([...rows.get(name).values()].some(r => !r.deleted_at)) throw fail("invalid", `type ${name} still has records`);
+        if ([.../** @type {Table} */ (rows.get(name)).values()].some((/** @type {any} */ r) => !r.deleted_at)) throw fail("invalid", `type ${name} still has records`);
         types.delete(name); rows.delete(name);
         if (cfg.persist) cfg.persist.type(name, null);
         changesMade.push(`removed type ${name}`);
@@ -133,14 +148,23 @@ export function createMemoryStore(cfg = {}) {
     },
     async query(type, spec) {
       touch("query", [type, spec]);
-      const all = [...table(type).values()].filter(r => spec.include_deleted || !r.deleted_at);
+      const fast = table(type).pageQuery ? table(type).pageQuery(spec) : null;
+      if (fast && fast.error) throw fail("invalid", fast.error);
+      if (fast) return clone(fast);
+      const all = (function* (/** @type {Iterable<any>} */ it) { for (const r of it) if (spec.include_deleted || !r.deleted_at) yield r; })(table(type).candidates(spec));
       const p = page(all, spec);
       if (p.error) throw fail("invalid", p.error);
       return clone(p);
     },
     async aggregate(type, spec) {
       touch("aggregate", [type, spec]);
-      return clone(agg([...table(type).values()].filter(r => !r.deleted_at), spec));
+      // A sealed field is never grouped or measured: there is no value to group by.
+      const sealedField = (/** @type {any} */ f) => typeof f === "string" && types.get(type).fields.some((/** @type {any} */ d) => d.name === f && d.kind === "sealed");
+      for (const g of spec.group_by || []) if (sealedField(g)) throw fail("invalid", `${g} is sealed: it cannot be grouped by`);
+      for (const m of spec.measures || []) if (m && sealedField(m.field)) throw fail("invalid", `${m.field} is sealed: it cannot be measured`);
+      const fast = table(type).aggregateQuery ? table(type).aggregateQuery(spec) : null;
+      if (fast) return clone(fast);
+      return clone(agg((function* (/** @type {Iterable<any>} */ it) { for (const r of it) if (!r.deleted_at) yield r; })(table(type).candidates(spec)), spec));
     },
     async create(type, id, data) {
       touch("create", [type, id, data]);
@@ -191,23 +215,61 @@ export function createMemoryStore(cfg = {}) {
     async search(spec) {
       touch("search", [spec]);
       const words = spec.text.toLowerCase().split(/\s+/).filter(Boolean);
-      const hits = [];
-      for (const [type, t] of rows) {
-        if (spec.types && !spec.types.includes(type)) continue;
-        const def = types.get(type);
-        for (const r of t.values()) {
-          if (r.deleted_at) continue;
-          let score = 0, snippet;
-          for (const f of def.fields) {
-            if (f.kind === "sealed") continue;
-            const v = fieldOf(r, f.name);
-            const text = typeof v === "string" ? v : Array.isArray(v) && v.every(x => typeof x === "string") ? v.join(" ") : "";
-            const low = text.toLowerCase();
-            for (const w of words) if (low.includes(w)) { score += 1; snippet = snippet || text.slice(0, 80); }
+      // The first page keeps only the best `limit` hits as it goes (a small sorted list); a later page (a cursor is a position in the whole ranking) needs the whole list.
+      const top = !spec.page.cursor;
+      const better = (/** @type {any} */ a, /** @type {any} */ b) => a.score - b.score ? b.score - a.score : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+      /** @type {any[]} */ const hits = [];
+      let counted = 0;
+      const add = (/** @type {any} */ h) => {
+        if (!top) { hits.push(h); return; }
+        counted++;
+        if (hits.length === spec.page.limit && better(h, hits[hits.length - 1]) >= 0) return;
+        let lo = 0, hi = hits.length;
+        while (lo < hi) { const mid = (lo + hi) >> 1; if (better(hits[mid], h) <= 0) lo = mid + 1; else hi = mid; }
+        hits.splice(lo, 0, h);
+        if (hits.length > spec.page.limit) hits.pop();
+      };
+      const hitOf = (/** @type {string} */ type, /** @type {any} */ def, /** @type {any} */ r) => {
+        let score = 0, snippet;
+        for (const f of def.fields) {
+          if (f.kind === "sealed") continue;
+          const v = fieldOf(r, f.name);
+          const text = typeof v === "string" ? v : Array.isArray(v) && v.every(x => typeof x === "string") ? v.join(" ") : "";
+          const low = text.toLowerCase();
+          for (const w of words) if (low.includes(w)) { score += 1; snippet = snippet || text.slice(0, 80); }
+        }
+        return score ? { type, id: r.id, score, ...(snippet ? { snippet } : {}) } : null;
+      };
+      const scope = [...rows].filter(([type]) => !spec.types || spec.types.includes(type));
+      // A later page of a ranked search, when the store can rank by itself: the hits strictly after the cursor's hit in (score, id) order, `limit + 1` of them, ranked by the store. The
+      // cursor's own hit is found and scored here; if it is gone (changed, removed) the whole list is used, as before.
+      if (!top && scope.length && scope.every(([, t]) => t.searchTop)) {
+        let cur = null;
+        for (const [type, t] of scope) { const r = t.get(spec.page.cursor); if (r && !r.deleted_at) { cur = hitOf(type, types.get(type), r); if (cur) break; } }
+        if (cur) {
+          /** @type {any[]} */ const got = [];
+          let ok = true;
+          for (const [type, t] of scope) {
+            const list = t.searchTop(words, spec.page.limit + 1, { score: cur.score, id: cur.id });
+            if (!list) { ok = false; break; }
+            for (const r of list) { if (r.deleted_at) continue; const h = hitOf(type, types.get(type), r); if (h) got.push(h); }
           }
-          if (score) hits.push({ type, id: r.id, score, ...(snippet ? { snippet } : {}) });
+          if (ok) {
+            got.sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : 1));
+            const slice = got.slice(0, spec.page.limit);
+            return { rows: slice, ...(got.length > spec.page.limit && slice.length ? { next_cursor: slice[slice.length - 1].id } : {}) };
+          }
         }
       }
+      for (const [type, t] of scope) {
+        const def = types.get(type);
+        for (const r of (top && t.searchTop && t.searchTop(words, spec.page.limit + 1)) || t.searchCandidates(words)) {
+          if (r.deleted_at) continue;
+          const h = hitOf(type, def, r);
+          if (h) add(h);
+        }
+      }
+      if (top) return { rows: hits, ...(counted > spec.page.limit && hits.length ? { next_cursor: hits[hits.length - 1].id } : {}) };
       hits.sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : 1));
       let start = 0;
       if (spec.page.cursor) { const i = hits.findIndex(h => h.id === spec.page.cursor); start = i === -1 ? hits.length : i + 1; }

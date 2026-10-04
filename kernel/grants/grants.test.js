@@ -516,3 +516,91 @@ test("R4: every state-changing call that fails while writing its sealed event le
   assert.equal((await g.sweep()).removed >= 1, true);
   void log;
 });
+
+// WF-1 (reviewer-2): a change is written to the log FIRST and applied in memory second, so a sealing process that fails under the event leaves memory as it was, and a rebuild from the log agrees.
+import { createKernelSeal } from "../core/seal.js";
+test("WF-1: a seal.mac that rejects once leaves the store exactly as it was, and a rebuild from the log agrees, after each of revoke, removeMember, setRole, adoptOwner, bootstrap and chatChange", async () => {
+  const real = createKernelSeal({ key: Buffer.alloc(32, 5) });
+  let fails = 0;
+  const seal = { sync: false, verify: real.verify, verifyMany: real.verifyMany, mac: async (p, d) => { if (fails > 0) { fails--; throw new Error("the sealing process is restarting"); } return real.mac(p, d); } };
+  const log = createEventLog({ space: SPACE, clock });
+  const gs = createGrantsStore({ space: SPACE, log, chains, clock, seal, presence });
+  const gw = createGateway({ space: SPACE, store: createMemoryStore({ clock }), log, chains, clock, grantsStore: gs, presence, owner: OWNER, hasPresenceSession: () => true });
+  /** The state a reader sees: every grant's status, the members and their roles, the chats. */
+  const view = () => JSON.stringify({ grants: [...gs.list(owner ? undefined : undefined) || []] });
+  void view;
+  const shape = async () => JSON.stringify({ members: gs.members.list ? await gs.members.list(owner()) : null, owner: gs.adopted() });
+  void shape;
+  const snap = () => capture(gs);
+  async function capture(g) { return JSON.stringify({ roles: ["per_owner", ALICE, BOB].map(p => g.roleOf({ kind: "person", id: p, space: SPACE })), active: (await g.list(owner())).filter(x => x.status === "active").map(x => x.id).sort(), adopted: g.adopted() }); }
+  const againstRebuild = async (what) => { const live = await snap(); await gs.rebuild(); assert.equal(await snap(), live, `${what}: a rebuild from the log agrees with the live store`); return live; };
+  // bootstrap fails once: nothing is made, then it works
+  fails = 1;
+  await assert.rejects(() => gs.bootstrap({ owner: OWNER }), /sealing process/);
+  assert.equal(gs.roleOf({ kind: "person", id: OWNER, space: SPACE }), null, "a failed bootstrap leaves no owner in memory");
+  await gs.bootstrap({ owner: OWNER });
+  await gw.grants.setRole(owner(), { person: ALICE, role: "admin" }, P.role({ person: ALICE, role: "admin" }));
+  await gw.grants.setRole(owner(), { person: BOB, role: "member" }, P.role({ person: BOB, role: "member" }));
+  const made = await gw.grants.create(owner(), input(), P.create(input()));
+  let at = await againstRebuild("after setup");
+  // revoke
+  fails = 1;
+  await assert.rejects(() => gw.grants.revoke(owner(), made.id, "leaked", P.revoke(made.id, "leaked")), /sealing process/);
+  assert.equal(await snap(), at, "a failed revoke changed nothing in memory");
+  await againstRebuild("failed revoke");
+  // setRole
+  fails = 1;
+  await assert.rejects(() => gw.grants.setRole(owner(), { person: BOB, role: "admin" }, P.role({ person: BOB, role: "admin" })), /sealing process/);
+  assert.equal(await snap(), at, "a failed setRole changed nothing");
+  await againstRebuild("failed setRole");
+  // removeMember
+  fails = 1;
+  await assert.rejects(() => gw.grants.removeMember(owner(), { person: BOB }, P.role({ remove: BOB })), /sealing process/);
+  assert.equal(await snap(), at, "a failed removeMember changed nothing: BOB is still a member");
+  await againstRebuild("failed removeMember");
+  // a chat change
+  const chat = await gw.grants.chats.create(owner(), { people: [ALICE] });
+  fails = 1;
+  await assert.rejects(() => gw.grants.chats.change(owner(), chat.id, { add_people: [BOB] }), /sealing process/);
+  assert.deepEqual(gs.chatPeopleAt(chat.id, chat.ver), [OWNER, ALICE].sort().length ? gs.chatPeopleAt(chat.id, chat.ver) : null);
+  assert.equal(gs.chatVersion(chat.id).ver, chat.ver, "a failed chat change did not move the room's version");
+  await againstRebuild("failed chat change");
+  // adoptOwner (a change of several events: the marker first, then the moves; the log decides)
+  const NEW = "per_cccccccccccccccccccccccccc";
+  fails = 1;
+  await assert.rejects(() => gs.adoptOwner(NEW), /sealing process/);
+  assert.equal(gs.adopted(), null, "a failed adoption left no marker in memory");
+  await againstRebuild("failed adoption");
+  // and each of them, once the sealing process is back, works
+  await gw.grants.revoke(owner(), made.id, "leaked", P.revoke(made.id, "leaked"));
+  await againstRebuild("revoke after the failure");
+});
+
+test("AO-3: a crash right after the owner.adopted marker (the owner moved only in part) is finished by the next adoptOwner with the same id, and a rebuild agrees; another id is still refused", async () => {
+  const real = createKernelSeal({ key: Buffer.alloc(32, 5) });
+  let allow = Infinity;
+  const seal = { sync: false, verify: real.verify, verifyMany: real.verifyMany, mac: async (p, d) => { if (allow <= 0) throw new Error("the process died"); allow--; return real.mac(p, d); } };
+  const log = createEventLog({ space: SPACE, clock });
+  const gs = createGrantsStore({ space: SPACE, log, chains, clock, seal, presence });
+  await gs.bootstrap({ owner: OWNER });
+  const NEW = "per_cccccccccccccccccccccccccc", OTHER = "per_dddddddddddddddddddddddddd";
+  const role = p => gs.roleOf({ kind: "person", id: p, space: SPACE });
+  allow = 1; // the marker is sealed and written, then the process dies
+  await assert.rejects(() => gs.adoptOwner(NEW), /process died/);
+  allow = Infinity;
+  assert.deepEqual(gs.adopted(), { from: OWNER, to: NEW }, "the marker is in the log and in memory");
+  assert.equal(role(OWNER), "owner", "the move did not happen");
+  assert.equal(role(NEW), null);
+  await assert.rejects(() => gs.adoptOwner(OTHER), { code: "already_adopted" }, "a different id is refused while the first is unfinished");
+  // a restart: the rebuild reads the marker, and the boot repair (kernel/index.js) calls adoptOwner with it
+  await gs.rebuild();
+  assert.deepEqual(gs.adopted(), { from: OWNER, to: NEW });
+  const done = await gs.adoptOwner(NEW);
+  assert.deepEqual(done, { owner: NEW, previous: OWNER, changed: true });
+  assert.equal(role(NEW), "owner"); assert.equal(role(OWNER), null);
+  assert.equal(log.read({ type: "owner.adopted" }).length, 1, "the marker is not written twice");
+  const live = JSON.stringify([role(NEW), role(OWNER)]);
+  await gs.rebuild();
+  assert.equal(JSON.stringify([role(NEW), role(OWNER)]), live, "a rebuild agrees");
+  assert.deepEqual(await gs.adoptOwner(NEW), { owner: NEW, previous: OWNER, changed: false });
+});

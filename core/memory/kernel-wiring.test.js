@@ -13,7 +13,6 @@ import { createRig } from "../../test/kernel-rig.js";
 import { MIGRATIONS } from "./schema.js";
 import { scrubIn, scanRows } from "./sealed.js";
 import memory from "./index.js";
-import { CAPSULE_EXCEPTION } from "./kernel-gate.js";
 
 const AGENTS = [{ name: "kit", kind: "assistant", projects: "*" }];
 const SSN = "123-45-6789";
@@ -59,7 +58,7 @@ test("a. a group chat is refused personal memory, a one to one chat is not, and 
     assert.equal(r.code, "denied", `${tool}: ${r.error}`);
     assert.match(r.error, /not shared in a group chat/);
   }
-  assert.ok(!(await w.call("memory.stats", {}, "deck", ts)).error, "alone with the owner it answers");
+  assert.ok(!(await w.call("memory.stats", {}, "deck", ts, surface("deck"))).error, "alone with the owner it answers");
   assert.ok(!(await w.call("memory.stats", {}, "deck", undefined, surface("deck"))).error, "a person's own surface with no chat session is not in a chat");
   void G;
 });
@@ -76,8 +75,8 @@ test("a. a session whose room cannot be built is refused, not answered", async t
 test("c. personal memory is read only by its person and that person's own assistant, decided by the kernel's chain", async t => {
   const w = await world(t);
   // the owner, alone, and the owner's own assistant standing beside them
-  assert.ok(!(await w.call("memory.stats", {}, "deck", await w.session("per_alex"))).error);
-  assert.ok(!(await w.call("memory.stats", {}, "deck", await w.session("per_alex", { agent: "kit" }))).error, "the owner's own assistant");
+  assert.ok(!(await w.call("memory.stats", {}, "deck", await w.session("per_alex"), surface("deck"))).error);
+  assert.ok(!(await w.call("memory.stats", {}, "mcp:agent:kit", await w.session("per_alex", { agent: "kit" }), { agent: "kit", granted: "*" })).error, "the owner's own assistant");
   // another member of the Space, or their assistant: refused whatever the caller label says
   for (const [who, agent] of [["per_bob", undefined], ["per_bob", "kit"]]) {
     const tok = await w.session(who, agent ? { agent } : {});
@@ -101,10 +100,11 @@ test("c. a call with no kernel chain is refused: the caller label decides nothin
   assert.equal((await w.call("memory.stats", {}, "cli", undefined, surface("cli", 0))).code, "denied");
   // a person's own surface, proven by the daemon, is the owner
   for (const label of ["cli", "local", "deck"]) assert.ok(!(await w.call("memory.stats", {}, label, undefined, surface(label))).error, label);
-  // the named exceptions: a first-party module's own call (the registry's flag), and the Capsule until platform wires it
+  // the named exception: a first-party module's own call (the registry's flag). The Capsule is a surface like the rest: its chain needs the daemon's proof, and without it the call is refused.
   assert.ok(!(await w.call("memory.stats", {}, "module:assistant", undefined, { firstParty: true })).error);
   assert.equal((await w.call("memory.stats", {}, "module:assistant")).code, "denied", "a module that is not flagged first-party is no exception");
-  assert.ok(!(await w.call("memory.stats", {}, CAPSULE_EXCEPTION)).error, "the Capsule exception");
+  assert.ok(!(await w.call("memory.stats", {}, "capsule", undefined, surface("capsule"))).error, "the Capsule with the pinned-binary proof");
+  assert.equal((await w.call("memory.stats", {}, "capsule")).code, "denied", "the Capsule label alone is no proof");
 });
 
 test("c. with no kernel on the daemon nothing changes: the 0.2 rules stand alone", async t => {
