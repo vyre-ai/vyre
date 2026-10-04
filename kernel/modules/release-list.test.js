@@ -314,30 +314,37 @@ test("L-2 rollback route with a REAL sealing process: ask, the phone's proof ove
   const phone = signer(k.id.owner);
   await enrolDevice(sealer, phone);
   const tools = new Map();
-  await modulesTool.start({ tool: (n, d) => tools.set(n, d), modulesListReset: k.resetModulesList, modulesListResetPayload: k.modulesListReset, kernel: { chain: async m => m.chain, proofFrom: m => m.proof } });
+  const clock = { t: Date.now() };
+  await modulesTool.start({ tool: (n, d) => tools.set(n, d), now: () => clock.t, modulesListReset: k.resetModulesList, modulesListResetPayload: k.modulesListReset, kernel: { chain: async m => m.chain, proofFrom: m => m.proof } });
   const run = (n, i, m = {}) => tools.get(n).run(i, m);
   const owner = k.chains.fromFacts({ kind: "socket", surface: "cli", uid: process.getuid() });
   const op = "grant.modules_list_reset";
   const { id } = await run("modules.list.reset.ask", {});
   const card = await run("modules.list.reset.pending", {});
-  assert.deepEqual(card.fields, { counter: 7 }, "the card names the counter that is dropped");
+  assert.deepEqual(card.fields, { counter: 7, ask: id }, "the card names the counter that is dropped and the ask it answers");
   const resets = () => k.log.read({ type: "kernel.modules-list-reset" }).length;
   // refused, each with nothing changed
   await assert.rejects(() => run("modules.list.reset.answer", { id, approve: true }, { chain: owner }), { code: "needs_presence" }, "no proof");
-  await assert.rejects(() => run("modules.list.reset.answer", { id, approve: true }, { chain: owner, proof: phone.proof(owner, op, { counter: 5 }) }), { code: "needs_presence" }, "a proof over another counter");
+  await assert.rejects(() => run("modules.list.reset.answer", { id, approve: true }, { chain: owner, proof: phone.proof(owner, op, { counter: 5, ask: id }) }), { code: "needs_presence" }, "a proof over another counter");
+  await assert.rejects(() => run("modules.list.reset.answer", { id, approve: true }, { chain: owner, proof: phone.proof(owner, op, { counter: 7 }) }), { code: "needs_presence" }, "a proof with no ask id (the direct form) does not answer an ask");
+  await assert.rejects(() => run("modules.list.reset.answer", { id, approve: true }, { chain: owner, proof: phone.proof(owner, op, { counter: 7, ask: "rr_otherask" }) }), { code: "needs_presence" }, "a proof made for another ask");
   const other = k.chains.fromFacts({ kind: "module", module: "x" });
-  await assert.rejects(() => run("modules.list.reset.answer", { id, approve: true }, { chain: other, proof: phone.proof(owner, op, { counter: 7 }) }), { code: "denied" }, "a non-owner chain");
+  await assert.rejects(() => run("modules.list.reset.answer", { id, approve: true }, { chain: other, proof: phone.proof(owner, op, { counter: 7, ask: id }) }), { code: "denied" }, "a non-owner chain");
   assert.equal(resets(), 0, "nothing was reset");
   assert.deepEqual(await run("modules.list.reset.status", { id }), { state: "waiting" });
   // the owner's phone approves once
-  const good = phone.proof(owner, op, { counter: 7 });
+  const good = phone.proof(owner, op, { counter: 7, ask: id });
   assert.deepEqual(await run("modules.list.reset.answer", { id, approve: true }, { chain: owner, proof: good }), { answered: "approved" });
   assert.equal(resets(), 1);
   assert.deepEqual(await run("modules.list.reset.status", { id }), { state: "approved" });
   // a replay of the same proof on a new ask does nothing
   await assert.rejects(() => run("modules.list.reset.answer", { id, approve: true }, { chain: owner, proof: good }), { code: "not_found" });
+  await assert.rejects(() => run("modules.list.reset.ask", {}), { code: "rate_limited" }, "one new ask per 10 minutes");
+  // The signed payload carries the ask's id, so a captured proof can never satisfy a later ask, whatever the sealing process remembers (its single-use window, a restart, the counter coming back to 7).
+  clock.t += 10 * 60_000 + 1;
   const again = await run("modules.list.reset.ask", {});
-  await assert.rejects(() => run("modules.list.reset.answer", { id: again.id, approve: true }, { chain: owner, proof: good }), { code: "needs_presence" }, "a used proof is used up");
+  await assert.rejects(() => run("modules.list.reset.answer", { id: again.id, approve: true }, { chain: owner, proof: good }), { code: "needs_presence" }, "the proof made for the first ask does not answer the second");
+  assert.equal(resets(), 1, "the replay reset nothing");
   assert.equal(resets(), 1, "the replay reset nothing");
   await k.stop();
   // after the reset the older build's own list is in force
