@@ -923,11 +923,30 @@ export default {
       const known = await kv.get(`person-name/${id}`);
       return { name: typeof known === "string" && known ? `${known}.vyre.run` : null };
     }, { internal: true });
+    /** Is this id a device the box actually knows as the person's paired device? An ACTIVE relay_devices row of kind app (the table the relay trusts for `device:<id>` labels), or an active wink_devices row of that identity, or an entry on the identity's own list. Any other id (invented, removed, another person's) is not. */
+    const isPairedDevice = async (/** @type {string} */ device, /** @type {string | null} */ person) => {
+      try { if (db.prepare("SELECT 1 FROM relay_devices WHERE id = ? AND removed_at IS NULL AND kind = 'app'").get(device)) return true; } catch { /* no relay table */ }
+      try { if (person && db.prepare("SELECT 1 FROM wink_devices WHERE id = ? AND identity = ? AND removed_at IS NULL").get(device, person)) return true; } catch { /* no wink table */ }
+      try { const st = identity.status(); if (st && st.exists && (st.eid === device || (await idops.entries()).some((/** @type {any} */ e) => e.kind === "device" && e.eid === device))) return true; } catch { /* no identity */ }
+      return false;
+    };
+    /** The spaces a person belongs to right now, by the kernel (the home first). */
+    const kernelSpacesOf = async (/** @type {string} */ person) => {
+      const ids = [];
+      if (K && typeof K.membership === "function") {
+        if (typeof K.space === "string" && (await K.membership(person, K.space).catch(() => ({ member: false }))).member === true) ids.push(K.space);
+        for (const row of spaces.all()) if (row.status === "done" && kernelHandle(row.id) && (await K.membership(person, row.id).catch(() => ({ member: false }))).member === true) ids.push(row.id);
+      }
+      return [...new Set(ids)];
+    };
+    const homePerson = () => { let who = null; try { const st = identity.status(); who = st && st.exists ? st.id : null; } catch { who = null; } return who || (K && typeof K.owner === "string" ? K.owner : null); };
     tool("spaces.devices.enrolled", "Whether a device is enrolled in a space (true when the device has no list yet). For the kernel and other modules, which refuse a device that is not.", obj({ device: str, space: str }, ["device", "space"]),
       async i => {
         // A Space this module has no row for (the home's own Space, which the kernel makes before any space is created here) is asked by its id as given: no list means enrolled.
         // The device argument comes from other modules and the kernel (internal is reach, not trust): only the shapes a device id has are looked up (a relay device id or an enrolment entry id).
         if (!/^[A-Za-z0-9_-]{8,64}$/.test(String(i.device))) return { enrolled: false };
+        // Only a device the box knows as this person's paired device is ever enrolled anywhere, with a list or without; an id in none of the tables answers false and writes nothing.
+        if (K && !(await isPairedDevice(String(i.device), homePerson()))) return { enrolled: false };
         let id = String(i.space);
         let known = true;
         let rowStatus = "done";
@@ -959,13 +978,10 @@ export default {
         // person joins later is not added to it by itself: "Add to this device" is the person's own tap.
         if (known && (await enrolledList(deviceId)) === null && K && typeof K.membership === "function") {
           try {
-            let who = null; try { const st = identity.status(); who = st && st.exists ? st.id : null; } catch { who = null; }
-            const person = who || (typeof K.owner === "string" ? K.owner : null);
+            const person = homePerson();
             if (person) {
-              const ids = [];
-              if (typeof K.space === "string" && (await K.membership(person, K.space).catch(() => ({ member: false }))).member === true) ids.push(K.space);
-              for (const row of spaces.all()) if (row.status === "done" && kernelHandle(row.id) && (await K.membership(person, row.id).catch(() => ({ member: false }))).member === true) ids.push(row.id);
-              await kv.put(`device-spaces/${deviceId}`, [...new Set(ids)]);
+              const ids = await kernelSpacesOf(person);
+              await kv.put(`device-spaces/${deviceId}`, ids);
               ctx.log.warn(`device ${deviceId} had no space list: now enrolled in ${ids.length} space(s) it belonged to at first contact`);
             }
           } catch { /* the answer below stands without a list */ }
@@ -1467,6 +1483,17 @@ export default {
           if (Array.isArray(list) && !list.includes(hid)) { await kv.put(String(r.key), [hid, ...list]); n++; }
         }
         if (n) (ctx.log.info || ctx.log.warn).call(ctx.log, `${n} device list(s) now include the home space (${hid})`);
+        // Paired devices with NO list (paired before per-space lists): an explicit list of the spaces the person belongs to now, once, logged with the count. After this no list means no device the box knows.
+        const person = homePerson();
+        if (person) {
+          let m = 0;
+          const ids = [];
+          try { for (const r of /** @type {any[]} */ (db.prepare("SELECT id FROM relay_devices WHERE removed_at IS NULL AND kind = 'app'").all())) ids.push(String(r.id)); } catch { /* no relay table */ }
+          try { for (const r of /** @type {any[]} */ (db.prepare("SELECT id FROM wink_devices WHERE identity = ? AND removed_at IS NULL").all(person))) ids.push(String(r.id)); } catch { /* no wink table */ }
+          const have = await kernelSpacesOf(person);
+          for (const dv of new Set(ids)) if ((await enrolledList(dv)) === null) { await kv.put(`device-spaces/${dv}`, have); m++; }
+          if (m) (ctx.log.info || ctx.log.warn).call(ctx.log, `${m} paired device(s) without a space list were given one at boot (${have.length} space(s) each)`);
+        }
       } catch (e) { ctx.log.warn(`the home space could not be added to the device lists: ${String(/** @type {any} */ (e).message || e).slice(0, 120)}`); }
     })();
     return { async stop() { clearInterval(timer); clearTimeout(first); clearInterval(syncTimer); } };
