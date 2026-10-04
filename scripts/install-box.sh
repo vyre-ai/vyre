@@ -570,6 +570,18 @@ verify_up() {
   why=$(dk_quiet logs --tail 40 vyre-vyre-1 2>&1 | sed -n 's/.*\(modules from outside Vyre run only under[^"]*\).*/\1/p' | head -n 1)
   die "Vyre is running but none of its modules started${why:+ ($why)}. A box built from a checkout (--from) has no signed module list, so it cannot run them: install a release, or build one with scripts/build-site.sh and install from that. Nothing is set up on this server."
 }
+# verify_running_build: the container that is running must be the build just laid out. An install from a tree (--from, or a tgz) builds its image from DIR/src; a stale image left by an earlier
+# install would otherwise run the OLD tree while this installer reports the new one. The kind and the pinned key (lib/build-kind.js, lib/release-sig.js) and the version are compared byte for byte.
+verify_running_build() {
+  [ -d "$DIR/src/lib" ] || return 0
+  [ "$TGZ" = 1 ] || [ -n "$FROM" ] || return 0
+  for f in lib/build-kind.js lib/release-sig.js package.json; do
+    [ -f "$DIR/src/$f" ] || continue
+    want=$(sha256 "$DIR/src/$f")
+    got=$(dk docker exec vyre-vyre-1 sha256sum "/opt/vyre/$f" 2>/dev/null | cut -d' ' -f1)
+    [ "$want" = "$got" ] || die "the server is running an older build than the one installed ($f differs from the copy in $DIR/src). Remove the old image (docker image rm -f vyre:local), then run this installer again. Nothing is set up."
+  done
+}
 start() {
   say ""
   # A root run of `vyre up` refuses a box built from a checkout (--from) once the updater has recorded it, so when the installer runs as
@@ -1058,7 +1070,7 @@ main() {
   else
     step "Starting Vyre"
     start
-    if [ "$DRY" = 1 ]; then done_step "nothing started (dry run)"; else verify_up; install_space_helper; done_step "Vyre is up"; pair_server; fi
+    if [ "$DRY" = 1 ]; then done_step "nothing started (dry run)"; else verify_up; verify_running_build; install_space_helper; done_step "Vyre is up"; pair_server; fi
     show_words
   fi
   finish
