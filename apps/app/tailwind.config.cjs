@@ -10,7 +10,7 @@ const kebab = (s) => s.replace(/[A-Z0-9]/g, (c) => "-" + c.toLowerCase());
 const colors = Object.fromEntries(roles.map((r) => [kebab(r), `var(--${kebab(r)})`]));
 const space = Object.fromEntries(tokens.v3.spaceSteps.map((n) => [`s${n}`, `var(--s-${n})`]));
 const radii = Object.fromEntries([...tokens.v3.corners.applies, "full"].map((r) => [r, `var(--r-${r})`]));
-const sizes = ["caption", "secondary", "body", "headline", "read", "title", "page", "display"];
+const sizes = ["caption", "secondary", "body", "headline", "control", "read", "title", "page", "display", "micro"];
 
 /** @type {import('tailwindcss').Config} */
 module.exports = {
