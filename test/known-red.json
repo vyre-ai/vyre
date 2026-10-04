@@ -19,10 +19,6 @@
   "owner": "vault",
   "seen": "integrator run 37181895537 (FAIL)"
  },
- "core/artifacts/backup.test.js": {
-  "owner": "vault",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
  "core/cli/commands/agents.test.js": {
   "owner": "launch",
   "seen": "integrator run 37181895537 (FAIL)"
@@ -43,15 +39,7 @@
   "owner": "assistant",
   "seen": "integrator run 37181895537 (FAIL)"
  },
- "core/files/dirs.test.js": {
-  "owner": "vault",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
  "core/files/drive.test.js": {
-  "owner": "vault",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "core/files/generated-real.test.js": {
   "owner": "vault",
   "seen": "integrator run 37181895537 (FAIL)"
  },
@@ -103,10 +91,6 @@
   "owner": "platform",
   "seen": "integrator run 37181895537 (FAIL)"
  },
- "core/sight/sight.test.js": {
-  "owner": "platform-3",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
  "core/spaces/spaces.test.js": {
   "owner": "windows",
   "seen": "integrator run 37181895537 (FAIL)"
@@ -139,10 +123,6 @@
   "owner": "vault",
   "seen": "integrator run 37181895537 (FAIL)"
  },
- "core/waiting/waiting.test.js": {
-  "owner": "platform-3",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
  "core/watchers/reach.test.js": {
   "owner": "platform",
   "seen": "integrator run 37181895537 (FAIL)"
@@ -167,24 +147,8 @@
   "owner": "platform",
   "seen": "integrator run 37181895537 (FAIL)"
  },
- "local/apps/module.test.js": {
-  "owner": "platform-3",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
  "local/capsule/views.test.js": {
   "owner": "native-core",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "local/hands-chrome-mac/module.test.js": {
-  "owner": "platform-3",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "local/hands-mac/control.test.js": {
-  "owner": "platform-3",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "local/hands-mac/module.test.js": {
-  "owner": "platform-3",
   "seen": "integrator run 37181895537 (FAIL)"
  },
  "test/chrome-flags.test.js": {
@@ -193,10 +157,6 @@
  },
  "test/cohesion-drift.test.js": {
   "owner": "platform-2",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "test/created-space-presence.test.js": {
-  "owner": "windows",
   "seen": "integrator run 37181895537 (FAIL)"
  },
  "test/federation-send.test.js": {
@@ -265,10 +225,6 @@
  },
  "test/threadsock.test.js": {
   "owner": "platform",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "test/vault-labels-daemon.test.js": {
-  "owner": "vault",
   "seen": "integrator run 37181895537 (FAIL)"
  },
  "test/walk-identity-space.test.js": {
