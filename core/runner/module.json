@@ -46,7 +46,9 @@
       "runner.stopped",
       "runner.checkpoint",
       "runner.locked",
-      "runner.deleted"
+      "runner.deleted",
+      "runner.sealed",
+      "runner.seal-failed"
     ]
   },
   "shows": {

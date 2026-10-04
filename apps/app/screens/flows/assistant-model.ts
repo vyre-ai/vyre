@@ -4,13 +4,9 @@
 export type Agent = { name: string; kind: string; status?: string; doing?: string; thread?: string | null };
 export type FlowRow = { id: string; name?: string; status: string; active?: boolean; versions?: number };
 export type KitRow = { id: string; version: number; status: string };
+export type TaskRow = { id: string; kind?: string; title?: string; state?: string; form?: { kind?: string; what?: string }; by?: unknown };
 
 export const ENGINEER = "engineer";
-
-export const INSTRUCTIONS =
-  "You are @Engineer. You help a space's admins describe how their work runs, and you propose the definitions for it: Flows, record types and Kits. " +
-  "You only propose: nothing you write runs or changes the space until a person approves it. You never send, pay, publish or read the vault. " +
-  "Ask what you need to know, say in plain words what you would change, then write the draft.";
 
 /** The Engineer agent, if the space has one. */
 export const findEngineer = (agents: Agent[]): Agent | null => agents.find((a) => a.name.toLowerCase() === ENGINEER) ?? null;
@@ -21,11 +17,15 @@ export const mayTalk = (role: string | undefined): boolean => role === "owner" |
 /** What the page shows for the Engineer's state. */
 export function stateOf(a: Agent | null): "none" | "new" | "ready" { return !a ? "none" : a.thread ? "ready" : "new"; }
 
-/** Proposals waiting on a person, as cards: a Flow version not yet approved, a Kit waiting for a yes. */
-export function proposals(flows: FlowRow[], kits: KitRow[]): { key: string; title: string; sub: string; href: string | null }[] {
+/** An open task the Engineer put in Now as a proposal: its form kind is "proposal" (sessions confirmed; `form.what` is flow or types). Done, skipped and rejected ones are over. */
+export const openProposals = (tasks: TaskRow[]): TaskRow[] => tasks.filter((t) => t.form?.kind === "proposal" && t.state !== "done" && t.state !== "skipped" && t.state !== "rejected");
+
+/** Proposals waiting on a person, as cards: each proposal task in Now (opens its approve card), a Flow version not yet approved, a Kit waiting for a yes. */
+export function proposals(flows: FlowRow[], kits: KitRow[], tasks: TaskRow[] = []): { key: string; title: string; sub: string; href: string | null }[] {
+  const t = openProposals(tasks).map((x) => ({ key: `task:${x.id}`, title: x.title || "A proposal", sub: "A proposal waiting for your approval", href: `/u/task/${x.id}` }));
   const f = flows.filter((x) => x.status !== "approved").map((x) => ({ key: `flow:${x.id}`, title: x.name || x.id, sub: "A Flow waiting for your approval", href: `/u/flows/${x.id}` }));
   const k = kits.filter((x) => x.status === "pending").map((x) => ({ key: `kit:${x.id}`, title: x.id.replace(/[-_]+/g, " "), sub: "A Kit waiting for your yes", href: null }));
-  return [...f, ...k];
+  return [...t, ...f, ...k];
 }
 
 export function engineerRefusal(code: string | undefined, message: string): string {

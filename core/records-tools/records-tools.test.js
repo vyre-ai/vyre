@@ -104,4 +104,38 @@ test("records.dev-seed: refused unless the presence stand-in is on; with it, the
   const tasks = (await call("tasks.list", {}, { root, caller: "cli" })).data.tasks;
   assert.deepEqual(tasks.map(x => x.state).sort(), ["needs_check", "working"], JSON.stringify(tasks.map(x => [x.title, x.state])));
   assert.equal(tasks.find(x => x.state === "needs_check").checker.id, d.kernel.id.owner, "waiting for the person");
+  // a second run adds only what is missing: nothing
+  const again = await call("records.dev-seed", {}, { root, caller: "cli" });
+  assert.ok(!again.error, JSON.stringify(again));
+  assert.equal((await call("records.list", { type: "contact" }, { root, caller: "cli" })).data.rows.length, 3);
+  assert.equal((await call("records.list", { type: "matter" }, { root, caller: "cli" })).data.rows.length, 4);
+  assert.equal((await call("tasks.list", {}, { root, caller: "cli" })).data.tasks.length, 2);
+});
+
+test("records.linked and records.kits.*: the reverse of a link under the caller's chain, and the Kit library with a Kit a person can take to the install card", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {}, kernel: true });
+  t.after(() => d.stop());
+  const { call } = await import("../daemon/client.js");
+  const ok = async (tool, input, caller = "cli") => { const r = await call(tool, input, { root, caller }); assert.ok(!r.error, `${tool}: ${JSON.stringify(r)}`); return r.data; };
+  const ownerChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
+  await d.kernel.gateway.records.define(ownerChain, { add_types: [CONTACT, { name: "matter", label: "Matter", kind: "project", fields: [{ name: "title", kind: "text", label: "Title" }, { name: "client", kind: "link", to: "contact", label: "Client" }] }] });
+  const jane = (await ok("records.create", { type: "contact", data: { name: "Jane" } })).record;
+  const m = (await ok("records.create", { type: "matter", data: { title: "Doe estate plan", client: { urn: jane.urn } } })).record;
+  const got = await ok("records.linked", { urn: jane.urn });
+  assert.deepEqual(got.rows.map(x => [x.type, x.field, x.record.id]), [["matter", "client", m.id]]);
+  assert.equal(got.truncated, false);
+  assert.equal((await ok("records.linked", { urn: jane.urn, type: "contact" })).rows.length, 0);
+  assert.equal((await call("records.linked", { urn: "nonsense" }, { root, caller: "cli" })).error.code, "bad_input");
+  for (const caller of ["mcp", "tailnet-guest:x", "anonymous"]) assert.ok((await call("records.linked", { urn: jane.urn }, { root, caller })).error, `${caller} is refused`);
+  const lib = (await ok("records.kits.library", {})).kits;
+  const estate = lib.find(k => k.id === "estate-planning");
+  assert.ok(estate && estate.adds.types.includes("matter") && estate.adds.sealed_fields.includes("contact.ssn"));
+  const kit = (await ok("records.kits.get", { id: "estate-planning" })).kit;
+  assert.equal(kit.id, "estate-planning");
+  assert.equal((await call("records.kits.get", { id: "nope" }, { root, caller: "cli" })).error.code, "not_found");
+  assert.ok((await call("records.kits.library", {}, { root, caller: "mcp" })).error, "a model caller is refused");
 });

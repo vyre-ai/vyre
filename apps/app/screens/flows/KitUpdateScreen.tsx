@@ -34,5 +34,5 @@ function SampleKitUpdateScreen() {
 export default function KitUpdateScreen() {
   const router = useRouter();
   if (allowsMock()) return <SampleKitUpdateScreen />;
-  return <Frame title="Kits" back="/u/kits"><EmptyState title="No update for that Kit" body="This box has no Kit library to offer updates from." action={{ label: "Open Kits", onPress: () => router.push("/u/kits" as never) }} /></Frame>;
+  return <Frame title="Kits" back="/u/kits"><EmptyState title="No update for that Kit" body="This space has no Kit library to offer updates from." action={{ label: "Open Kits", onPress: () => router.push("/u/kits" as never) }} /></Frame>;
 }

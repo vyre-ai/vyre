@@ -27,7 +27,7 @@ export default function CalendarScreen() {
   const open = (i: Item) => router.push(`/u/record/${i.id}` as never);
   const go = (n: number) => { setAnchor(step(view, anchor, n)); setPicked(null); };
 
-  if (error && !world) return <Frame title="Calendar"><ErrorState title="Could not load the calendar" reason={error.message} retry={reload} /></Frame>;
+  if (error && !world) return <Frame title="Calendar"><ErrorState title="Calendar did not load" reason={error.message} retry={reload} /></Frame>;
   if (loading && !world) return <Frame title="Calendar"><LoadingState rows={5} /></Frame>;
 
   const line = (i: Item) => (

@@ -21,6 +21,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
+import { windowsShellGuard } from "../../lib/agent-sandbox.js";
 import { available as spawnerHere, spawnAsAgent } from "../spawner/client.js";
 
 /** tini on this machine, if any: the box image puts it in /usr/bin. */
@@ -44,6 +45,8 @@ export const usesSpawner = () => process.env.VYRE_SESSIONS_SPAWNER === "on" && p
  *           uid?: number, gid?: number, account?: { uid: number, shared?: boolean }, seed?: Record<string, string>, onSpawn?: (g: { pid: number, pgid: number, sid: number }) => void, sandboxSpawn?: (command: string, args: string[], env: Record<string, string|undefined>, cwd?: string, opts?: any) => any }} o
  */
 export function spawnSession(command, args, o = {}) {
+  // On Windows (no session sandbox in 0.3) an agent process gets no shell tool, or does not start (reviewer-2 ENG-1; lib/agent-sandbox.js).
+  if (!o.sandboxSpawn) args = windowsShellGuard(command, args, /** @type {any} */ (o).platform);
   // A session confined by the runner's home sandbox (lib/agent-sandbox.js): the prepared spawner plans and launches this process under the same rules, its group
   // recorded for the peer check. The subreaper and the uid split are the unconfined path's; the sandbox replaces them here.
   if (o.sandboxSpawn) {

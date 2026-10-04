@@ -86,3 +86,35 @@ test("F-2: restore and restoreBackup are their own admin act: a drive.write gran
   await assert.rejects(() => D.get(bob, "proj/a.txt", { version: 1.5 }), { code: "bad_input" });
   await assert.rejects(() => D.put(bob, "proj/a.txt", "text"), { code: "bad_input" });
 });
+
+test("DR-1: a read with maxBytes is refused from the Drive's metadata before any byte is read, 10 in parallel the same", async () => {
+  const drive = fakeDrive(); let reads = 0;
+  drive.stat = (/** @type {string} */ p) => ({ version: 1, size: p.startsWith("big/") ? 100 * 1048576 : 5, sha256: null });
+  const get = drive.get; drive.get = async (/** @type {any[]} */ ...a) => { reads++; return get.apply(drive, /** @type {any} */ (a)); };
+  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 3), presence, drive });
+  const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
+  drive.files.set("big/a.bin", [{ ver: 1, bytes: new Uint8Array(1), by: "x" }]); drive.files.set("small.txt", [{ ver: 1, bytes: new Uint8Array(5), by: "x" }]);
+  const D = k.gateway.drive;
+  const codes = await Promise.all(Array.from({ length: 10 }, () => D.get(owner, "big/a.bin", { maxBytes: 8 * 1048576 }).then(() => "read", (/** @type {any} */ e) => e.code)));
+  assert.deepEqual(codes, Array(10).fill("too_large"));
+  assert.equal(reads, 0, "no byte of the large file was read");
+  assert.equal((await D.get(owner, "small.txt", { maxBytes: 8 * 1048576 })).length, 5);
+  assert.equal(reads, 1);
+});
+
+test("DR-2: a listing is one authorization of the folder and a bounded page with a cursor; 5,000 files page through without losing or repeating one", async () => {
+  const drive = fakeDrive();
+  for (let n = 0; n < 5000; n++) drive.files.set(`many/f${String(n).padStart(5, "0")}.txt`, [{ ver: 1, bytes: new Uint8Array(1), by: "x" }]);
+  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 3), presence, drive });
+  const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
+  const D = k.gateway.drive;
+  const first = await D.listPage(owner, "many/");
+  assert.equal(first.entries.length, 500, "the default page");
+  assert.equal(first.next, first.entries[499].path);
+  assert.equal((await D.listPage(owner, "many/", { limit: 100000 })).entries.length, 1000, "a page is never more than 1,000");
+  const seen = []; let after = null;
+  for (let guard = 0; guard < 20; guard++) { const r = await D.listPage(owner, "many/", { limit: 1000, after }); seen.push(...r.entries.map((/** @type {any} */ e) => e.path)); if (!r.next) break; after = r.next; }
+  assert.equal(seen.length, 5000);
+  assert.equal(new Set(seen).size, 5000);
+  assert.equal((await D.list(owner, "many/")).length, 5000, "list still returns everything, a page at a time inside");
+});

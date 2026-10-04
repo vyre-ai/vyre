@@ -45,6 +45,9 @@ All code under `kernel/flows/` (pure ES modules, built on kernel/contracts types
 - OPEN for platform: the real gateway has no `kits.install` / `kits.remove` action (only the harness defines them), so a Kit proposal is refused `unknown_action` on a real vyred for anyone. Needs the action table and the owner/admin role bundles (and the golden).
 - Not done: applying a types proposal needs the approver's presence session on the real kernel (`records.define` is admin risk); proven on the harness only.
 
+- HD-7 (github.session.push, undo, redo): a model call, the assistant included, pushes and undoes only the session whose thread it is (`meta.thread`). The assistant has no thread of its own for another session, so it can no longer push or roll back another session's branch; the person does that from their own surface.
+- PR-2 (the approval proof binding the proposal's hash) is open until kernel-2 or platform says where task evidence is bound.
+
 ## Doing
 All six relaunch items have a first cut (4 Oct): real-kernel harness + stages + Estate e2e (kernel/flows), sessions under Wink (core/space-sessions, docs/work/sessions-spaces.md), door retrofit (docs/work/door-retrofit.md). Waiting on platform for the gateway gaps listed in team/0.2/CHAT.md (sessions -> platform, 3 Oct).
 

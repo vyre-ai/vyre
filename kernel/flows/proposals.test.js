@@ -65,7 +65,7 @@ test("proposals: a rejected proposal changes nothing; a non-admin or a Flow's ow
 test("proposals: a definition change is held in the task and defined as the approver, only after the yes", async () => {
   const { w, proposals, assistant, applied } = await pworld();
   const diff = { add_types: [{ name: "intake-note", label: "Intake note", fields: [{ name: "body", kind: "text", label: "Body" }] }] };
-  await assert.rejects(proposals.propose(assistant, { what: "types", diff: { add_types: [{ name: "Bad Name" }] } }), /names the types/);
+  await assert.rejects(proposals.propose(assistant, { what: "types", diff: { add_types: [{ name: "Bad Name" }] } }), /naming the types/);
   const p = await proposals.propose(assistant, { what: "types", diff });
   await settle(w);
   assert.deepEqual(applied, []);
@@ -91,4 +91,28 @@ test("kits.propose: an assistant's chain asks for a Kit for the person it acts f
   assert.equal(w.kernel.tables.get("estate-matter"), undefined, "nothing installed before the yes");
   await assert.rejects(f.tools["kits.propose"](w.kernel.moduleChain({ module: "flows", approver: ALEX }), { kit: estateKit(2) }), e => e.code === "chain_not_person");
   await assert.rejects(f.tools["kits.remove"](assistant, { id: "estate-planning" }), e => e.code === "chain_not_person", "removing stays a person's own");
+});
+
+test("PR-4: two events for one approved task apply one change", async () => {
+  const { w, proposals, assistant, applied } = await pworld();
+  const diff = { add_types: [{ name: "twice-note", label: "Twice note", fields: [{ name: "body", kind: "text", label: "Body" }] }] };
+  const p = await proposals.propose(assistant, { what: "types", diff });
+  await settle(w);
+  w.kernel.completeTask(p.task, { outcome: "approved" });
+  await settle(w);
+  const ev = { type: "task.completed", subject: `vyre://${w.cat.space}/task/${p.task}`, data: { task: p.task } };
+  await Promise.all([proposals.onEvent(ev), proposals.onEvent(ev), proposals.onEvent(ev)]);
+  await new Promise(r => setImmediate(r)); await settle(w);
+  assert.equal(applied.length, 1);
+});
+
+test("flows.start: a run an assistant's chain starts is tainted (its input is a model's); a person's own is not", async () => {
+  const { w, assistant } = await pworld();
+  const d = await w.runner.define(null, { format: 1, name: "manual_probe", label: "Probe", authorship: "human", trigger: { on: "manual" }, steps: [] }, ALEX);
+  await w.runner.approve(d.id, d.version, ALEX, d.hash);
+  const a = await w.runner.start(d.id, { x: 1 }, assistant, "k1");
+  const p = await w.runner.start(d.id, { x: 1 }, w.kernel.as(ALEX), "k2");
+  await w.runner.drain();
+  assert.equal((await w.store.getRun(a.run)).tainted, true);
+  assert.equal((await w.store.getRun(p.run)).tainted, false);
 });
