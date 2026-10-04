@@ -5,6 +5,7 @@
 // This module decides nothing and checks no signature: a wrong or replayed proof is refused by the act itself. The same shape as the rollback route (core/modulelist), for any op.
 import { randomBytes } from "node:crypto";
 import { payloadHash } from "../../kernel/seal/wire.js";
+import { proofRequest, PROOF_CALLS } from "../../kernel/remote/proof.js";
 
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
 const SURFACES = ["cli", "local", "deck", "capsule", "mobile", "device"];
@@ -23,6 +24,19 @@ export default {
     const card = (/** @type {any} */ a) => ({ id: a.id, title: WORDS[/** @type {keyof typeof WORDS} */ (a.op)] || a.op, body: "Approve with Face ID on this phone, or say no and nothing changes.", op: a.op, space: a.space, fields: a.fields, payload_hash: a.payload_hash, asked_from: a.from, expires_in_s: Math.max(0, Math.round((ASK_MS - (now() - a.at)) / 1000)) });
     const mine = (/** @type {any} */ meta, /** @type {any} */ a) => a && meta && a.from === String(meta.caller || "");
 
+    ctx.tool("approvals.request", {
+      description: "The exact proof request for a kernel act, so no client re-implements the kernel's hashing: give the space, the act's name (one of the grants and rules calls, see `calls` in the answer to a call with no name) and its arguments as that call takes them. Answers { op, space, fields, payload_hash }: ask with these (approvals.ask) and have the phone sign payload_hash. Changes nothing.",
+      input: obj({ space: { type: "string" }, call: { type: "string" }, args: { type: "array" } }, ["space", "call"]),
+      callers: SURFACES,
+      run: async (/** @type {any} */ input) => {
+        if (!/^spc_[a-z2-7]{12}$/.test(String(input.space || ""))) throw refuse("name the space the act is in", "bad_input");
+        if (!PROOF_CALLS.includes(String(input.call))) throw refuse(`no such act: ${PROOF_CALLS.join(", ")}`, "bad_input");
+        const args = Array.isArray(input.args) ? input.args : [];
+        if (JSON.stringify(args).length > 8192) throw refuse("the arguments are too large", "bad_input");
+        try { const r = proofRequest(String(input.space), String(input.call), ...args); return { op: r.op, space: r.space, fields: r.fields, payload_hash: r.payload_hash }; }
+        catch (e) { throw refuse(String(/** @type {any} */ (e).message || e).slice(0, 200), "bad_input"); }
+      },
+    });
     ctx.tool("approvals.ask", {
       description: "Ask the person's paired phone to approve an act this session cannot prove itself. Give the op and fields the kernel will verify (grant.* or task.decide, as the proof request for the act builds them). Answers { id, payload_hash, expires_in_s }; read the outcome with approvals.status. Open for 5 minutes; at most 5 open.",
       input: obj({ op: { type: "string" }, space: { type: "string" }, fields: { type: "object" } }, ["op", "space", "fields"]),
