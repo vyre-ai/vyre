@@ -115,3 +115,11 @@ Hackable Vyre (ADR 0033): a stable, versioned module API; extension points for e
 - Capsule steps 11 (hub Tools command) and 12 (install card lines, widened for command/slot) built locally. Tests: capsule.test.js 9.
 
 - reach asked wired (local, work/platform): registry.saidMatch asks vault.said.match {kind act_out, via <module>, to [tool], thread, lineage from threads.lineage, agent} as module:vyred, fails closed. Test in modules.test.js. Waiting on vault to agree the shape in CHAT.md and allow module:vyred as caller.
+
+## Kernel on by default, RC1 rerun (5 Oct 2026, work/kernel-on-rc1)
+Trunk devbox + work/kernel-default-on-k2 (module trust by build kind, KM-1 in kernel/home.js) with the kernel on, 28 files rerun on a test box. Most reds were stale test assumptions and are fixed with the reason in each commit: fixtures in a temp home are third party and sandboxed (`firstPartyRoots`), person-surface calls go through the socket, a session in a temp home takes the dev sandbox opt-out, and `kernel_events` audit rows are not state a read wrote.
+Still red, with owners:
+- core/settings/settings.test.js test 20: the settings module's call to a home module's tool arrives labelled `local` (a person surface) instead of `module:settings`. Kernel/platform to say whether that label is right.
+- test/harness.test.js test 11: a plain "yes" accepts a lesson only when a person typed it; with the kernel on, hook.js reaches vyred as `harness`, so `typedBy` never sets (core/harness/index.js ~198). Needs a ruling (assistant/harness).
+- test/federation-reads.test.js: 5 of 8 fail; wantsMacs takes the person from the kernel chain only and the harness boxCall has none. Needs a paired-person caller in test/link-harness.js (tailnet).
+Weakened or pinned for the kernel path: core/stream/group-live pins VYRE_KERNEL=0 (group-ks-live covers the kernel); two switchboard label tests pin the kernel off; core/mcp/module checks on_behalf by caller label only.

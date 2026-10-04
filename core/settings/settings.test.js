@@ -24,7 +24,7 @@ async function world(t, { disable = [] } = {}) {
   const claudeDir = path.join(root, "claude");
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: ["recall", "memory", "learn", ...disable] },
     projectsDir: projects, settings: { claude_dir: claudeDir } }));
-  const d = await start({ root, log: () => {} });
+  const d = await start({ root, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
   t.after(() => d.stop());
   const c = (/** @type {string} */ tool, input = {}) => call(tool, input, { root });
   return { root, home, claudeDir, c, d };
@@ -291,7 +291,8 @@ export default { async start(ctx) {
   return { async stop() {} };
 } };`);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
-  const d = await start({ root, log: () => {} });
+  // A home module is third party here (the kernel runs it in its sandbox); the second start below trusts the home's folder so the oven, written for the in-process API, can run.
+  let d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   const c = (/** @type {string} */ tool, input = {}) => call(tool, input, { root });
 
@@ -302,7 +303,9 @@ export default { async start(ctx) {
   assert.match(bakery.error, /store\.tool\.set must be one of bakery's own tools/);
   const keys = (await c("settings.schema")).data.keys.map(k => k.key);
   assert.ok(!keys.some(k => k.startsWith("bakery.")), "an invalid module's settings never appear");
-  assert.ok(keys.includes("oven.heat"));
+  await d.stop();
+  d = await start({ root, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
+  assert.ok((await c("settings.schema")).data.keys.some((/** @type {any} */ k) => k.key === "oven.heat"));
 
   let r = await c("settings.set", { key: "oven.heat", value: 200 });
   assert.equal(r.error, undefined, r.error && r.error.message);
@@ -313,7 +316,7 @@ export default { async start(ctx) {
 });
 
 test("only a person changes a setting: agent labels, mcp, anonymous and an unsigned owner device are refused, and confirm is no proof", { timeout: 30_000 }, async t => {
-  const { d } = await world(t);
+  const { d, c } = await world(t);
   const as = (/** @type {string} */ caller, /** @type {string} */ tool, /** @type {any} */ input) => d.registry.call(tool, input, caller);
   for (const tool of ["settings.set", "settings.reset"]) {
     const input = tool === "settings.set" ? { key: "sessions.mode", value: "bypassPermissions", confirm: true } : { key: "sessions.mode" };
@@ -328,7 +331,8 @@ test("only a person changes a setting: agent labels, mcp, anonymous and an unsig
   const mode = (await d.registry.call("settings.get", { key: "sessions.mode" }, "cli")).data;
   assert.notEqual(mode.value, "bypassPermissions", "no refused call changed the mode");
   // A person with confirm goes through.
-  assert.ok(!(await as("cli", "settings.set", { key: "sessions.mode", value: "bypassPermissions", confirm: true })).error);
+  // The person's own surface is the socket (with the kernel on a registry call labelled "cli" has no person chain).
+  assert.ok(!(await c("settings.set", { key: "sessions.mode", value: "bypassPermissions", confirm: true })).error);
 });
 
 test("settings passes the person on only to the getters and setters first-party settings declare", { timeout: 30_000 }, async t => {
@@ -347,7 +351,7 @@ test("settings passes the person on only to the getters and setters first-party 
 });
 
 test("a secret setting's values reach only the person: agents and a device without a session see names, never values", { timeout: 30_000 }, async t => {
-  const { d, claudeDir } = await world(t);
+  const { d, c, claudeDir } = await world(t);
   fs.mkdirSync(claudeDir, { recursive: true });
   fs.writeFileSync(path.join(claudeDir, "settings.json"), JSON.stringify({ env: { NORTHWIND_TOKEN: "nw-secret-123", LOG_LEVEL: "debug" } }));
   const get = (/** @type {string} */ caller, /** @type {any} */ opts = {}) => d.registry.call("settings.get", { key: "sessions.env" }, caller, opts);
@@ -362,8 +366,8 @@ test("a secret setting's values reach only the person: agents and a device witho
   const all = await d.registry.call("settings.get", {}, "mcp:agent:kit");
   assert.ok(!JSON.stringify(all).includes("nw-secret-123"), "the list leaks nothing");
   // The person, on the box's own surfaces or on their device with a person session, sees values.
-  assert.equal((await get("cli")).data.value.NORTHWIND_TOKEN, "nw-secret-123");
-  assert.equal((await get("tailnet:alex", { person: { id: "p1" } })).data.value.NORTHWIND_TOKEN, "nw-secret-123");
+  assert.equal((await c("settings.get", { key: "sessions.env" })).data.value.NORTHWIND_TOKEN, "nw-secret-123");
+  // A device's person session is a kernel chain: a registry call carries no chain, so the paired-device read is covered by the kernel's own tests.
   // A plain key is not masked for anyone.
   assert.equal((await d.registry.call("settings.get", { key: "sessions.mode" }, "mcp:agent:kit")).data.value, "default");
 });
