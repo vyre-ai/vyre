@@ -84,6 +84,8 @@ if (problems.length) { console.error(problems.join("; ")); process.exit(1); }
 console.log(running.length + " modules run, none failed");
 ' "$WORK/new/site/box/modules.json" "$HERE/scripts/packaged-boot-expected.txt" "$WORK/modules.txt" "$WORK/old-config.json" || { cat "$WORK/modules.txt" | head -80; fail "$1: the modules that run are not the candidate's fresh-install set"; }
   ! docker logs vyre-vyre-1 2>&1 | grep -Ei 'migration .* failed' || { docker logs vyre-vyre-1 2>&1 | grep -Ei 'migration .* failed' | head -5; fail "$1: a migration failed"; }
+  # core/store repairs a duplicate-column migration and says so; on a box upgraded from a RELEASED version that repair must never be needed (only a dev home that ran a mis-ordered list needs it).
+  ! docker logs vyre-vyre-1 2>&1 | grep -E 'migration .* v[0-9]+: column already present, treated as applied' || { docker logs vyre-vyre-1 2>&1 | grep -E 'column already present' | head -5; fail "$1: an upgrade from a released version needed the duplicate-column repair"; }
 }
 # do_update LABEL: the update to the candidate, the way the root unit does it (a hand run of its step), with the throwaway key trusted for this run.
 do_update() { # LABEL STORE: STORE is none (an untouched box: no VYRE_STORE appears, no Twenty stack starts) or kept (VYRE_STORE is still there)
