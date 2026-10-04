@@ -865,6 +865,8 @@ export function createPairing(o) {
       const h = cleanHandover(input.handover);
       if (h) meta.set("handover", h);
       devices.setSelf({ identity: ident, name: String(ctx.config.name || "this server"), target: t });
+      // The server's own owner becomes the CLAIMED identity (its id; the name stays in the owner record), so records.me and the pair targets here name the person, not a first-start id (ruling 7).
+      if (/^per_[a-z2-7]{26}$/.test(ident) && ctx.call) { try { await ctx.call("spaces.owner.adopt", { person: ident }); } catch { /* no spaces module or no kernel: the owner record above still stands */ } }
       meta.del("pair_to");
       ctx.events.emit("wink.server-adopted", { owner: t });
       return { owner: t };
@@ -1184,7 +1186,7 @@ export function parseQr(s) {
  * The real directory: the kernel's grants store knows who holds which role in the space this box runs (work/kernel, kernel/grants/index.js:
  * `roleOf(actor)` and `isAdmin(actor)` on the store; the module surface may also offer `roles.isAdmin(person, space)`). PORT: until the kernel is
  * merged into this tree the call shape is the one above, and tests pass a fake with the same shape. One role is read here, never written.
- * @param {{ kernel: any, space: () => Promise<string>, name: () => string }} o @returns {Directory}
+ * @param {{ kernel: any, space: () => Promise<string>, name: () => string, label?: (identity: string) => Promise<string | null> | string | null }} o @returns {Directory}
  */
 export function kernelDirectory(o) {
   const k = o.kernel;
@@ -1199,7 +1201,7 @@ export function kernelDirectory(o) {
       else if (k && k.roles && typeof k.roles.isAdmin === "function") role = (await k.roles.isAdmin(identity, space)) ? "admin" : null;
       return role ? [{ space, name: o.name(), role }] : [];
     },
-    async label() { return null; },
+    async label(identity) { return o.label ? (await o.label(identity)) || null : null; },
   };
 }
 /** True when the kernel offers a way to read a role (any of the shapes kernelDirectory reads). @param {any} k */
