@@ -82,7 +82,7 @@ export async function createKernel(cfg) {
     ready.catch(() => {});
     const records = new Proxy(gateway.records, { get: (t, k) => (typeof t[k] === "function" ? async (/** @type {any[]} */ ...a) => { await ready; return t[k](...a); } : t[k]) });
     /** @type {any} */ const handle = {
-      space: cfg.space, records, events: gateway.events, grants: gateway.grants, tasks: gateway.ask, audit: gateway.audit, authorize: gateway.authorize, limits: gateway.limits,
+      space: cfg.space, owner: cfg.owner, records, events: gateway.events, grants: gateway.grants, tasks: gateway.ask, audit: gateway.audit, authorize: gateway.authorize, limits: gateway.limits,
       model: surfaces.model,
       /** The `{ presence }` option from what a surface sent beside the request (`meta.kernel_proof`), and what that surface must sign for a grants call. The kernel's verifier checks it. */
       /** Any Space by id: this one, another this home hosts, or a remote client with the same gateway API (the chain argument carries no authority across). */
@@ -142,6 +142,19 @@ export async function createKernel(cfg) {
         await ready;
         return gateway.serviceChain(m.name);
       },
+    };
+    /**
+     * The chain of the call itself, in ANY Space this home hosts (the app's one call names a Space): this Space's is `chain(meta)`; another hosted Space builds the chain from the same proved
+     * facts (or its own session token) under THAT Space's own key, so the call is a member of that Space or nothing. A Space this home does not host has no chain here.
+     * @param {string} space @param {any} meta
+     */
+    handle.chainIn = async (space, meta) => {
+      if (space === cfg.space) return handle.chain(meta);
+      const h = spaces && typeof spaces.hosted === "function" ? spaces.hosted(space) : null;
+      if (!h || !h.kernel) throw new KernelError("not_found", "no such space here");
+      if (meta && typeof meta.token === "string") return h.surfaces.chainFor(meta.token);
+      if (meta && meta.kernelFacts && typeof meta.kernelFacts === "object") { try { return h.kernel.chains.fromFacts(meta.kernelFacts); } catch { /* no person chain for this connection */ } }
+      throw new KernelError("not_a_member", "no chain for this connection");
     };
     /** Wink's `offers` port over this Space's grants.offers (kernel/remote/offers-port.js): the caller's chain and proof come from the call's meta. */
     handle.offersPort = () => createOffersPort(handle);

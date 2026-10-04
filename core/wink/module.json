@@ -259,6 +259,7 @@
   "needs": {
     "vault": [
       "per-storage"
-    ]
+    ],
+    "daemon": ["dataStores"]
   }
 }

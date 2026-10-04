@@ -219,10 +219,19 @@ async function startLocked(opts, root, p, release) {
     // `{{field:...}}` in an outward action: resolved from the record under the person the session's turn is for (their own grants, not the room's view), by the kernel's resolveFields.
     const { resolveFields } = await import("../../kernel/core/fields.js");
     registry.deps.resolveFields = async (/** @type {{ input: any, meta: any }} */ q) => {
-      const t = await kernel.surfaces.verify(q.meta.token);
-      const asker = kernel.chains.fromFacts({ kind: "device", device_key_id: "vyred", person: t.person, path: "direct" });
+      // RF-1: under the turn token's OWN chain (its agent, its grants: an agent narrowed to one project reads only that project), with the chat left out so it is the person's reading and
+      // not the room's. Never a full person chain: a field the session itself cannot read refuses the whole action.
+      const asker = await kernel.surfaces.chainFor(q.meta.token, { noChat: true });
       return resolveFields({ input: q.input, read: async (/** @type {string} */ urn) => { const [, type, id] = urn.replace("vyre://", "").split("/"); return kernel.gateway.records.get(asker, type, id); } });
     };
+    // The owner's reset of the accepted module list (core/modulelist): the kernel checks the chain is exactly the owner and the presence proof; this only hands it over.
+    // Everything on this box that holds data, for `vyre wink reset` (core/wink/reset.js): a reset of an owned box refuses while any entry holds data. The vault's own read (lib/vault-wipe.js) is
+    // used when this build has it; without it the vault counts as holding data.
+    const { createDataStores } = await import("../../lib/data-stores.js");
+    /** @type {any} */ let vaultHolds;
+    try { vaultHolds = (await import(/* @vite-ignore */ "../../lib/vault-wipe.js")).vaultHolds; } catch { vaultHolds = undefined; }
+    registry.deps.dataStores = createDataStores({ home: root, db, kernelEvents: () => kernel.log.read(), ...(vaultHolds ? { vaultHolds } : {}) });
+    registry.deps.modulesListReset = (/** @type {any} */ chain, /** @type {any} */ proof) => kernel.resetModulesList(chain, proof);
     closeFlowsHost = () => flowsHost.stop();
     kernel = await bootHomeKernel({ db, root, log, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
       // A credentialed request run at the home: the vault's own forward (an internal tool only the lease module may call), under the Space's credential; the kernel has already authorized it.
@@ -266,7 +275,7 @@ async function startLocked(opts, root, p, release) {
     });
     reopenLater = () => { if (!reopenCalled) void kernelSessions.reopenPending(reopenOpts({ timeoutMs: 10_000, onGiveUp: (/** @type {string} */ thread, /** @type {string} */ why) => log(`sessions: could not resume ${thread.slice(0, 8)} (${why})`) })).catch(() => {}); };
     closeKernelSessions = () => kernelSessions.closeAll();
-    registry.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any, chat?: string, asker?: string }} */ q) => {
+    registry.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any, chat?: string, asker?: string, probe?: boolean }} */ q) => {
       // A chat turn: the Switchboard passes `chat` and `asker` only from module:stream (threads.start and threads.send), so the session is the asker's, in that chat, and the kernel checks they are in it.
       // Anything else is the home owner's own thread, as before.
       const person = await personChainFor(q.asker || kernel.id.owner);

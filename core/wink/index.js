@@ -29,6 +29,7 @@ import { createStorageDevices, registerStorageTools, MIGRATIONS as STORAGE_MIGRA
 import { storageGrants } from "./storage/grants.js";
 import { attachPool } from "./storage/pool.js";
 import { registerNetwork } from "./network.js";
+import { identityPorts } from "./identity-ports.js";
 import { createBridgeSecrets, createBridgeEndpoint, acceptDrive, bridgeServe, bridgeMakeBackend, pairFromHome, BRIDGE_TOOL, ACCEPT_TOOL, DRIVE_TOOL } from "./storage/bridge.js";
 import { createHolds } from "./storage/hold.js";
 import { seedFromKey } from "../../relay/client/join.js";
@@ -253,12 +254,16 @@ export function createWink(inject = {}) {
     // The short typed code is switched off in a release build (ruling, 4 Oct 2026; its cryptography still needs an independent review, team/0.3/PAKE-choice.md). One flag
     // for development: the env var VYRE_WINK_TYPED_CODE=1, or `wink.typedCode: true` in the config. Scan and paste always work.
     const typedCodeOn = () => inject.typedCode !== undefined ? Boolean(inject.typedCode) : (process.env.VYRE_WINK_TYPED_CODE === "1" || Boolean(ctx.config && ctx.config.wink && ctx.config.wink.typedCode === true));
+    // The home's identity list and this device's signer, by the spaces module's own internal tools (read live every call, never cached). Given by `inject` first, so a test can pass fakes.
+    const ports = identityPorts({ call: ctx.call.bind(ctx), space: spaceId });
+    const identityEntry = inject.identityEntry || ports.identityEntry;
+    const signIdentity = inject.signIdentity || ports.signIdentity;
     const pairing = createPairing({
       ctx, now, identity: owner1, space: spaceId, openCode, ack: ackOffer, owner, typedCode: typedCodeOn, confirmAdopt: inject.confirmAdopt,
       releaseMaxMs: inject.releaseMaxMs,
       // Q-3: the identity port (the entry on an identity's list, read live) that checks the proof of a server installed to pair to one identity, and the app's own signer for that proof. A box given
       // neither refuses every unattended pairing ("cannot check who is asking"): naming an identity is never enough.
-      identityEntry: inject.identityEntry, signIdentity: inject.signIdentity,
+      identityEntry, signIdentity,
       // Who may pair to a space: the kernel's grants store when ctx.kernel offers it (work/kernel), else a fake that makes the box owner the owner of its own space.
       directory,
       ports: inject.ports,
@@ -269,7 +274,7 @@ export function createWink(inject = {}) {
       relayUrl: async () => { const r = /** @type {any} */ (await ctx.call("relay.status", {})); return String((r && r.data && r.data.url) || (ctx.config.relay && ctx.config.relay.url) || ""); },
     });
     pairing.tools();
-    registerReset({ ctx, pairing, now, identity: owner1, dropMs: inject.dropMs, dataStores: inject.dataStores });
+    registerReset({ ctx, pairing, now, identity: owner1, dropMs: inject.dropMs, dataStores: inject.dataStores || ctx.dataStores });
     live = pairing.peers;
     /** A space's own name for a card, never its id. */
     const spaceName = async (/** @type {string} */ id) => {
@@ -589,7 +594,9 @@ export function createWink(inject = {}) {
     };
     const storage = createStorageDevices({ ctx, grants: storageGrants({ ctx, space: () => spaceCache }), vault: storageVault, admin: storageAdmin, space: spaceId });
     registerStorageTools(ctx, storage, "wink.storage");
-    registerNetwork(ctx, { ...(inject.network || {}), storage });
+    // `vyre doctor`'s Wink checks read the identity list through this port (a device on the list, by its entry id, in this home's space) and this device's own entry. The node host and the
+    // relay clock stay absent here (they say "unknown", never a guess) until the daemon composes the node host (composeWinkHome).
+    registerNetwork(ctx, { identity: ports.network, ...(inject.network || {}), storage });
     const stopStorage = storage.startTimer();
     // The pool engine (work/sealing kernel/storage) is a library, not a module: a box that runs it passes the Pool and a backend factory (inject.pool,
     // inject.poolBackend; PORT until it is merged). Devices join the pool, usage and drains flow back, on every pairing and removal and once a minute.
