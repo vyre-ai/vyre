@@ -137,3 +137,40 @@ test("lend is the one switch: it makes the kernel's compute offers (the space's 
   assert.equal(off.lent, false);
   assert.deepEqual(hosted.gateway.grants.offers.active(q), { spaceAllows: false, memberAccepts: false }, "off withdrew both");
 });
+
+test("PA-1: creating a space is all or nothing in the kernel's registry too: a refused name, ten failures and a cancel leave no hosted Space and no folder; resume hosts the same id again", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const port = await freePort();
+  const child = spawn(process.execPath, [SCRIPT, "--port", String(port)], { stdio: ["ignore", "pipe", "inherit"] });
+  t.after(() => { child.kill("SIGTERM"); });
+  await new Promise((res, rej) => { child.stdout.on("data", d => { if (String(d).includes("stand-in names directory")) res(null); }); child.on("exit", c => rej(new Error(`the stand-in exited early (${c})`))); });
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "pa1-box", transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${port}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  const d = await start({ root, kernel: true, log: () => {} });
+  t.after(() => d.stop());
+  const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "deck" });
+  assert.ok(!(await deck("spaces.identity.create", { name: "alex" })).error);
+  const hostedCount = () => d.kernel.spaces.list().length;
+  const folders = () => { try { return fs.readdirSync(path.join(root, "kernel", "spaces")).length; } catch { return 0; } };
+  const first = await deck("spaces.create", { name: "harlow", home: { kind: "this-computer", confirmed: true } });
+  assert.equal(first.data && first.data.status, "done", JSON.stringify(first));
+  const base = [hostedCount(), folders()];
+  // the same name again is refused: nothing is left behind, however often it is tried
+  for (let i = 0; i < 10; i++) {
+    const r = await deck("spaces.create", { name: "harlow", home: { kind: "this-computer", confirmed: true } });
+    assert.ok(r.error || (r.data && r.data.status !== "done"), `try ${i}: ${JSON.stringify(r)}`);
+    assert.deepEqual([hostedCount(), folders()], base, `try ${i} left a hosted Space behind: ${JSON.stringify(r).slice(0, 200)}`);
+  }
+  // a creation that is waiting (this computer not yet confirmed) holds one Space; cancel gives it back
+  const w = await deck("spaces.create", { name: "northwind", home: { kind: "this-computer" } });
+  assert.ok(!w.error, JSON.stringify(w.error));
+  const wid = w.data.space;
+  const cancelled = await deck("spaces.cancel", { space: wid });
+  assert.ok(!cancelled.error, JSON.stringify(cancelled.error));
+  assert.deepEqual([hostedCount(), folders()], base, "cancel took the kernel's Space back");
+  assert.ok(!(await deck("spaces.list")).data.some((/** @type {any} */ x) => x.id === wid), "and it is not listed");
+  // the finished space still works
+  assert.ok(!(await deck("spaces.get", { space: first.data.space })).error);
+});
