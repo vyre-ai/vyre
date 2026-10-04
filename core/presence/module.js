@@ -208,7 +208,7 @@ export default {
         const r = await ctx.call("wink.device.record", { id: String(input.device) }).catch(() => null);
         const rec = r && r.data;
         if (!rec || rec.id !== input.device || !rec.confirmed || !rec.owner || rec.confirmedBy !== rec.owner) throw Object.assign(new Error("that device was not confirmed by its owner"), { code: "denied" });
-        if (!["phone", "computer"].includes(String(rec.kind))) throw Object.assign(new Error("only a phone or a computer paired to its owner gets a person session"), { code: "denied" });
+        if (!["phone", "computer", "web"].includes(String(rec.kind))) throw Object.assign(new Error("only a phone, a computer or a browser paired to its owner gets a person session"), { code: "denied" });
         // Believed in hardware only when the pair record says so (platform attestation, wink's side); anything else is recorded as a software key, with no prompt (the sessions list shows it).
         const software = rec.hardware !== true;
         // The confirming key is the one the presence layer verified in the pairing's own call; the record is the fallback only for a pairing confirmed before this call.
