@@ -86,6 +86,17 @@ export function check(dir, { pulled = false, pubkey = "", installer = false, mac
         }
       } catch (e) { problems.push(`modules.json cannot be read: ${/** @type {Error} */ (e).message}`); }
     }
+    // shell.json carries the module list (and the app record) as exact text, for an old updater that knows only shell.json (lib/release-shell.js): it must be listed, and its text must be the files' bytes.
+    const shellRaw = read("shell.json");
+    if (shellRaw === null || !listed.has("shell.json")) problems.push("shell.json is not in the release (a 0.2.x server updated to it would receive no module list)");
+    else {
+      try {
+        const sj = JSON.parse(shellRaw.toString("utf8"));
+        if (raw !== null && sj.modulesJson !== raw.toString("utf8")) problems.push("shell.json does not carry modules.json as exact text");
+        const ab = read("appbuild.json");
+        if (ab !== null && sj.appbuildJson !== ab.toString("utf8")) problems.push("shell.json does not carry appbuild.json as exact text");
+      } catch { problems.push("shell.json is not JSON"); }
+    }
   }
 
   // setup.json: the hashes of what vyre.run serves for the setup page and the install line, signed by being listed in SHA256SUMS.

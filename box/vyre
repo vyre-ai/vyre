@@ -1803,7 +1803,7 @@ admin() {
       echo "Vyre will print one request line. Approve it on your device, then paste the proof your device gives back and press Enter. It is good for under a minute."
       if compose run --rm --no-deps -i -u vyre --entrypoint node vyre /opt/vyre/scripts/admin-anchor-reset.mjs --home /home/vyre/.vyre; then rs=0; else rs=1; fi
       compose up -d >/dev/null 2>&1 || die "the daemon did not start; run: vyre up"
-      [ "$rs" = 0 ] || die "the anchor was not reset (see the line above); Vyre was started again and will refuse again until it is"
+      [ "$rs" = 0 ] || die "the anchor was not reset (see the line above); Vyre was started again"
       say "the anchor is reset and Vyre is running again."
       ;;
     purge-space)
