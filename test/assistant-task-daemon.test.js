@@ -33,9 +33,9 @@ test("the assistant's session starts and submits a task: ready, working, needs_c
   assert.equal(task.state, "ready");
   // the assistant's own session (the fake provider) calls the tools the way the MCP server does inside its thread
   // the home's assistant (onboarding makes one; a fresh test home has none)
-  const made = await d.registry.call("agents.create", { name: "juno", kind: "assistant" }, "cli");
+  const made = await d.registry.call("agents.create", { name: "assistant", kind: "assistant", projects: "*" }, "cli");
   assert.ok(!made.error, JSON.stringify(made));
-  const name = "juno";
+  const name = "assistant";
   const ask = async (/** @type {string} */ text) => d.registry.call("agents.ask", { agent: name, text, wait: false, surface: "deck" }, "cli");
   const first = await ask(`vyre-sock tasks.move ${JSON.stringify({ id: task.id, to: "working" })}`);
   assert.ok(!first.error, JSON.stringify(first));

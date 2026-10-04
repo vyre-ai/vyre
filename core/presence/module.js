@@ -69,6 +69,9 @@ export default {
 
     ctx.tool("presence.remove", {
       effect: "write",
+      // Listed, not defaulted, like presence.enroll: the relay takes a device's presence key away when the device goes (a removal, the end of a setup session) from its own code, where no person is the
+      // original caller, so the registry's origin check on a defaulted tool refused it and the key stayed enrolled after its device was gone. A person still needs the presence proof.
+      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent", "module"],
       description: "Remove an enrolled Capsule key, device key or passkey by id. Needs presence.",
       presence: { summary: async input => `Remove the presence key ${String(input.id)}` },
       input: obj({ id: str }, ["id"]),
@@ -232,12 +235,37 @@ export default {
         if (!device) throw refuse();
         const s = people.startPaired({ device, sig: String(input.sig), label: input.label || null });
         if ("refused" in s) {
-          if (s.deleted) ctx.events.emit("presence.refused", { device, why: "pairing grant withdrawn after three wrong attempts" });
+          if (s.deleted) { locked.set(device, Date.now() + LOCK_MS); ctx.events.emit("presence.refused", { device, why: "pairing grant withdrawn after three wrong attempts" }); }
           throw refuse();
         }
         ctx.events.emit("presence.signed-in", { id: s.id, node: input.label || device });
         return { kind: "bearer", id: s.id, token: s.token, expires: s.expires };
       },
+    });
+
+    // ---- renewal (lead ruling, 4 Oct): a paired session is RENEWED, not re-paired -------------------------------------------------------------------------
+    // A device that lapsed (its session idle past its time) and still holds the key the owner confirmed at pairing asks for its challenge and answers it with that key: the server makes the one-use grant
+    // itself, from the pairing record wink keeps (confirmed by the owner, key on it, device not removed). No owner step. Three wrong answers lock the device for fifteen minutes; the owner lifts that
+    // from their own device with `presence.person.renew-allow` (their presence). A removed device has no key on its record, so there is nothing to renew: re-pairing is for a removed device only.
+    const LOCK_MS = 15 * 60_000;
+    /** @type {Map<string, number>} device -> locked until (ms) */
+    const locked = new Map();
+    const renewGrant = async (/** @type {string} */ device) => {
+      if (people.holds(device)) return;
+      const until = locked.get(device);
+      if (until && until > Date.now()) return;
+      const r = await ctx.call("wink.device.record", { id: device }).catch(() => null);
+      const rec = r && r.data;
+      if (!rec || rec.id !== device || !rec.confirmed || !rec.owner || rec.confirmedBy !== rec.owner || !rec.key || !["phone", "computer", "web"].includes(String(rec.kind))) return;
+      try { people.grant({ device, keyId: String(rec.confirmKeyId || `pairing:${device}`), deviceKey: rec.key, software: rec.hardware !== true }); } catch { /* no grant: the device gets the random challenge */ }
+    };
+    ctx.tool("presence.person.renew-allow", {
+      effect: "write",
+      description: "Lift the lock on a paired device that answered its sign-in challenge wrongly three times, from the owner's own device. The device then renews itself with its key.",
+      presence: { summary: async input => `Let ${String((input && input.device) || "that device")} sign in again` },
+      callers: ["cli", "local", "deck", "capsule", "mobile"],
+      input: obj({ device: str }, ["device"]),
+      run: async input => { locked.delete(String(input.device)); return { allowed: String(input.device) }; },
     });
 
     ctx.tool("presence.person.pair-challenge", {
@@ -248,7 +276,9 @@ export default {
       run: async (_, meta = {}) => {
         const peer = meta.peer;
         if (!(peer && peer.kind === "device")) throw Object.assign(new Error("this device cannot sign in that way; sign in with its key"), { code: "denied" });
-        return { challenge: people.challengeFor(nodeOf(meta)) };
+        const device = nodeOf(meta);
+        await renewGrant(device);
+        return { challenge: people.challengeFor(device) };
       },
     });
 
