@@ -424,4 +424,9 @@ test("link.macs.call: a write for the person (threads.send, threads.answer) is r
   assert.equal((await send(undefined)).error?.code, "denied", "a module with no origin (a timer) is not the person");
   // the person's own surface gets through the gate (no Mac is online in this world, so nothing is delivered)
   for (const origin of ["cli", "deck", "capsule"]) assert.ok(!(await send(origin)).error, `origin ${origin} passes the person gate`);
+  // a phone answering a Mac's thread: its own paired device is the origin and the caller named in `by`
+  const phone = "device:abcdefghijklmnop";
+  const viaPhone = await send(phone, { by: { caller: phone, device: "abcdefghijklmnop" } });
+  assert.ok(!viaPhone.error, "a paired phone's own write passes the gate");
+  assert.equal(viaPhone.data[0].error.code, "mac_offline", "and gets as far as the Mac, which is offline in this world");
 });
