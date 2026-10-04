@@ -4,7 +4,7 @@
   "description": "providers.list: every session provider on this machine, each with its own accounts and models, so a picker (Chat, the Capsule, the CLI) builds itself from one call. Assembles what each provider's own module reports; holds no state of its own.",
   "roles": ["box", "local"],
   "requires": ["sessions"],
-  "does": { "tools": [{ "name": "providers.list", "reach": "anyone" }] },
+  "does": { "tools": [{ "name": "providers.list", "reach": "anyone", "effect": "read" }] },
   "watches": { "emits": [] },
   "shows": { "cli": [] },
   "needs": {}
