@@ -579,6 +579,7 @@ export default {
       callers: PEOPLE_AND_AGENTS,
       run: async ({ project, session, allow_secret }, meta = {}) => {
         inGrant(project, meta);
+        ownSession(session, meta);
         // The secret scan is the person's to override: their own call, or an agent's call the Gate
         // marked asked (their own words said "push it anyway"). An agent alone cannot lift it.
         const override = Boolean(allow_secret) && (!isModelCaller(meta) || Boolean(meta.asked));
@@ -609,6 +610,10 @@ export default {
     }
     /** A model caller (an agent over MCP); the push's secret override needs the person's own words for it. */
     function isModelCaller(meta = {}) { return String(meta.caller || "").startsWith("mcp"); }
+    /** A model works on its own session's branch only: the session id is its own thread's id (group D audit HD-7), so it cannot push, undo or redo another session's work or interrupt that session. */
+    function ownSession(session, meta = {}) {
+      if (isModelCaller(meta) && String(meta.thread || "") !== String(session)) throw fail("a model may push, undo or redo only its own session's branch", "denied");
+    }
     const prErr = (e, target) => {
       if (e && e.code === "token_invalid") ctx.events.emit("github.token-invalid", { name: target.account });
       return e;
@@ -839,6 +844,7 @@ export default {
       callers: [...PEOPLE_AND_AGENTS, "module"],
       run: async ({ project, session, to }, meta = {}) => {
         inGrant(project, meta);
+        ownSession(session, meta);
         checkModuleCaller("github.session.undo", meta, SESSION_ONLY);
         const repo = await repoOf(project);
         if (!repo) throw fail(`${project} has no git repo`, "not_found");
@@ -865,6 +871,7 @@ export default {
       callers: [...PEOPLE_AND_AGENTS, "module"],
       run: async ({ project, session, n }, meta = {}) => {
         inGrant(project, meta);
+        ownSession(session, meta);
         checkModuleCaller("github.session.redo", meta, SESSION_ONLY);
         const repo = await repoOf(project);
         if (!repo) throw fail(`${project} has no git repo`, "not_found");

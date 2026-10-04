@@ -1322,3 +1322,17 @@ test("the old ring (relay.pair.ticket) is held for the same words: nothing is re
   assert.equal((await w.call("wink.phone.pairing")).asking, false, "a ring phone that cannot show words is never asked about");
   assert.deepEqual(await w.call("wink.phone.pair.answer", { yes: true }), { answered: false });
 });
+
+test("wink.server.status: not owned before the pairing, then the space and the pairing device's name for the installer's last line; the server's own surfaces only", async () => {
+  const w = world({ confirm: true });
+  assert.deepEqual(await atServer(w, "wink.server.status"), { owned: false });
+  await adoptAs(w, "device:app1");
+  const choices = (await atServer(w, "wink.server.pairing")).choices;
+  assert.equal((await atServer(w, "wink.server.pair.answer", { yes: true, pick: choices.indexOf("amber coral app1") + 1 })).yes, true);
+  await adoptAs(w, "device:app1");
+  const st = await atServer(w, "wink.server.status");
+  assert.equal(st.owned, true);
+  assert.equal(st.space, "Personal");
+  assert.equal(typeof st.device, "string");
+  await assert.rejects(() => w.call("wink.server.status", {}, "device:app1"), e => e.code === "denied");
+});

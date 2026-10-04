@@ -156,6 +156,65 @@ export async function createKernel(cfg) {
         return Object.freeze({ member: role !== null, role });
       } } : {}),
       /**
+       * Only for a first-party module that declares `needs.kernel.sealDetect: true` (memory, recall): is this ONE candidate the current value of a sealed field the chain's person may read.
+       * Yes or no and nothing else; the sealing process counts and limits the calls per module and Space. The module name comes from the registry (`m.name`), never from the call, and
+       * a record the chain may not read counts for nothing. Each answer is one owner-visible event naming the module and the count, never the candidate.
+       * @param {any} chain the caller's chain (`chain(meta)`) @param {string} value
+       */
+      ...(needs.sealDetect === true && cfg.sealer && typeof cfg.sealer.detectValue === "function" ? { sealDetect: async (/** @type {any} */ chain, /** @type {string} */ value) => {
+        await ready;
+        const r = await cfg.sealer.detectValue({ chain, caller: { module: m.name, first_party: true }, value,
+          canRead: async (/** @type {string} */ resource) => { try { return (await gateway.authorize({ chain, action: "records.read", resource })).effect === "allow"; } catch { return false; } } });
+        try { log.append(gateway.serviceChain(m.name), { type: "seal.detect", sv: 1, subject: `vyre://${cfg.space}/module/${m.name}`, data: { module: m.name, count: r.event ? r.event.count : null }, vis: "owner", red: "internal" }); } catch { /* the answer stands; a log that cannot be written says so on the next write */ }
+        return Object.freeze({ match: r.match === true });
+      } } : {}),
+      /**
+       * Only for a first-party module that declares `needs.kernel.work: true` (core/work: Space memory, teammates, the tool surface). It is the Kernel port core/work is written against,
+       * made from the kernel's own pieces. What it does NOT give: another person's chain, anything the caller's own chain could not do, or the Engineer's compile and simulate ports
+       * (records and sessions own those; the Engineer answers `unavailable` until they are wired).
+       *  - chainFor(extra): the chain of THIS call, which must hold a person (a session token's, or the person's own surface). The module's own service chain is refused: a work tool
+       *    acts for someone.
+       *  - chainForPerson(person): `[person, service:<this module>]` for a CURRENT member of this Space, to READ as that person with the service's reach (what a fact is proposed from).
+       *    It is a viewer chain plus the module's service hop: authorize refuses every act above read for it and it never stands for presence, so a proposed fact is kept as a
+       *    suggestion for the person to accept under their own chain, never written on their behalf.
+       *  - serviceChain(name): the module's own service chain (the name is the module's, never another's).
+       *  - tasks.list(chain): the queue of the person the chain acts for; tasks.forRecord(chain, urn): the open tasks on a record, read through the caller's own chain.
+       */
+      ...(needs.work === true ? (() => {
+        const personOnly = async (/** @type {any} */ meta) => {
+          const c = await handle.chain(meta || {});
+          if (!c || !Array.isArray(c.hops) || !c.hops.length || c.hops.every((/** @type {any} */ h) => h.actor.kind === "service")) throw new KernelError("not_allowed", "this call carries no person, so there is nothing to act for");
+          return c;
+        };
+        const viewer = (/** @type {string} */ person) => chains.fromFacts({ kind: "viewer", person, vouched: true });
+        return {
+          chainFor: personOnly,
+          chainForPerson: (/** @type {string} */ person) => {
+            if (typeof person !== "string" || !/^per_[A-Za-z0-9_-]{1,64}$/.test(person)) throw new KernelError("bad_input", "name one person");
+            if (!grantsStore.roleOf({ kind: "person", id: person, space: cfg.space })) throw new KernelError("not_found", "not a member of this Space");
+            return chains.appendService(viewer(person), m.name, true);
+          },
+          serviceChain: (/** @type {string} */ _name) => gateway.serviceChain(m.name),
+          ask: gateway.ask,
+          definitions: gateway.definitions,
+          actions: gateway.actions,
+          registry: () => gateway.actions(),
+          members: gateway.members,
+          tasks: Object.freeze({
+            list: (/** @type {any} */ chain) => gateway.tasks.list(viewer(String(chain.hops[0].actor.id))),
+            forRecord: async (/** @type {any} */ chain, /** @type {string} */ recordUrn) => {
+              const out = [];
+              for (const e of await gateway.events.read(chain, { type: "task.created" })) {
+                const id = String(e.subject).split("/").pop();
+                const t = await gateway.ask.get(chain, /** @type {string} */ (id)).catch(() => null);
+                if (t && t.record === recordUrn) out.push(t);
+              }
+              return out;
+            },
+          }),
+        };
+      })() : {}),
+      /**
        * Only for a first-party module that declares `needs.kernel.spaces: true` (the module that creates Spaces): what a Space made here would be stored in (`storePlan`, with the confirmation to
        * show BEFORE it is made) and starting to host one (`host({ owner, name, accept_builtin_store })` -> `{ space }`, the kernel's own `spc_` plus 12 base32 id). The Space's first owner is the
        * person id named; nothing here lists or reaches another Space (`for` and `chainIn` do that, under a chain).

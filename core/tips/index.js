@@ -159,6 +159,7 @@ export default {
     };
 
     ctx.tool("tips.next", {
+      effect: "write",
       description: "The one tip a surface may show now, or none and why (off, busy, gap, spread, cap, none). Pass the surface, and in context the module the person is in (else context.now's view for that surface), first on the surface's very first open (one welcome tip, once), idle when they have paused, busy while an ask, a prompt or a running turn is on screen (anything in waiting.count counts as busy too). mark: true records it as shown, for a surface that draws it at once (the CLI); otherwise call tips.seen when it is drawn.",
       callers: PEOPLE,
       input: { type: "object", required: ["surface"], properties: {
@@ -180,6 +181,7 @@ export default {
     });
 
     ctx.tool("tips.seen", {
+      effect: "write",
       description: "A surface drew this tip: it counts toward the gap, the daily cap and the tip's two showings. acted: true when the person followed it (Show me, or ran the command), which retires it.",
       callers: PEOPLE,
       input: { type: "object", required: ["id", "surface"], properties: { id: str, surface: surfaceIn, acted: { type: "boolean" } } },
@@ -192,6 +194,7 @@ export default {
     });
 
     ctx.tool("tips.used", {
+      effect: "write",
       description: "The person used this module (opened its view, ran its verb), without asking for a tip. First-use tips give way to power tips after three uses, and a used module gets no never-used tips.",
       callers: PEOPLE,
       input: { type: "object", required: ["module"], properties: { module: str } },
@@ -199,6 +202,7 @@ export default {
     });
 
     ctx.tool("tips.dismiss", {
+      effect: "write",
       description: "Never show this tip again, or with module every tip about that module.",
       callers: PEOPLE,
       input: { type: "object", properties: { id: str, module: str } },
@@ -212,6 +216,7 @@ export default {
     });
 
     ctx.tool("tips.whatsnew", {
+      effect: "write",
       description: "Tips that came after the version the person last saw (or after `since`), newest first, for the page `vyre update` prints and the Deck's one quiet card. ack: true records that they saw it, so these stop counting as new.",
       callers: PEOPLE,
       input: { type: "object", properties: { since: str, surface: surfaceIn, ack: { type: "boolean" } } },
@@ -227,6 +232,7 @@ export default {
     });
 
     ctx.tool("tips.list", {
+      effect: "read",
       description: "Every tip the running modules declare, with how often each was shown and whether it was dismissed. For Settings and `vyre tips`.",
       callers: [...PEOPLE, "mcp", "module"],
       input: { type: "object", properties: { module: str, surface: surfaceIn } },
@@ -238,6 +244,7 @@ export default {
     });
 
     ctx.tool("tips.reset", {
+      effect: "write",
       description: "Bring every tip back: forget what was shown, dismissed and used. Settings' \"Show tips again\".",
       callers: PEOPLE,
       input: { type: "object", properties: {} },

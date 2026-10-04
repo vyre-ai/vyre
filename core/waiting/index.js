@@ -170,6 +170,7 @@ export default {
     ctx.tool("waiting.list", {
       description: "Everything waiting on the user, newest first: session asks (ask), held drafts (draft), ringing reminders (reminder) and pairing requests (pairing). Each row: id, kind, title, detail?, project?, thread?, at, source, and answer {tool, input, fill}: the owner's tool that settles it, the input it already has, and what the person still gives. Also count and by_kind over all rows, and partial: the sources that could not be read.",
       input: { type: "object", properties: { limit: int } },
+      effect: "read",
       callers,
       run: async (input = {}) => {
         const r = await now();
@@ -181,6 +182,7 @@ export default {
     ctx.tool("waiting.count", {
       description: "How many things wait on the user, and how many of each kind (ask, draft, reminder, pairing).",
       input: { type: "object", properties: {} },
+      effect: "read",
       callers,
       run: async () => {
         const r = cache && !timer && !running ? cache : await now();

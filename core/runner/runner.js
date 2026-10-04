@@ -16,7 +16,7 @@ import crypto from "node:crypto";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { createLease } from "./lease.js";
-import { driverFor, SLOWER_LINE } from "./workspace.js";
+import { driverFor, SLOWER_LINE, SWAP_LINE, SIZES_LINE, swapInfo } from "./workspace.js";
 import { plan, launch, unavailable } from "./sandbox.js";
 import { ensureLauncher, prepare as prepareWin, cleanup as cleanupWin } from "./sandbox-win.js";
 import { createEgress } from "./egress.js";
@@ -25,6 +25,13 @@ import { sandboxReader } from "./readerhost.js";
 import { place, deviceState } from "./placement.js";
 
 const WATCHDOG = path.join(path.dirname(fileURLToPath(import.meta.url)), "watchdog.js");
+/** What a lent session may reach when the Space has not said: the internet (a lent session that cannot clone or install is not usable). The one place to flip it. */
+export const LENT_NETWORK_DEFAULT = "internet";
+/** Shown when the lender offers the machine and in its settings. */
+export const LENDER_NETWORK_LINE = "Sessions you lend can reach the internet from your connection. Sites see your address. You can limit them to the assistant's provider and the space.";
+/** The Space's setting, capped by the lender: the lender's cap "provider" always wins (it is their connection and their address). */
+export const effectiveNetwork = (space, lenderCap) => (lenderCap === "provider" ? "provider" : (space === "provider" || space === "internet" ? space : LENT_NETWORK_DEFAULT));
+
 const spaceDir = (base, space) => path.join(base, "spaces", crypto.createHash("sha256").update(space).digest("hex").slice(0, 16));
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -57,7 +64,7 @@ export async function reconcile(o) {
  * @param {{ platform?: "darwin"|"linux"|"win32", base: string, space: string, device: string,
  *   vault: any, sync: any, grants: () => { spaceAllows: boolean, memberAccepts: boolean },
  *   limits?: any, server?: () => { available: boolean, hasRoom: boolean, why?: string }, requestServer?: (session: string) => Promise<void>|void,
- *   reader?: any, sessionState?: (session: string) => any, labels?: (session: string) => any, sealState?: (state: any) => any, verifyState?: (state: any) => boolean,
+ *   lenderCap?: "provider"|"internet", reader?: any, sessionState?: (session: string) => any, labels?: (session: string) => any, sealState?: (state: any) => any, verifyState?: (state: any) => boolean,
  *   driver?: any, state?: () => any, onEvent?: (e: any) => void, retryMs?: number, watchdog?: boolean, lockRetryMs?: number,
  *   setTimer?: typeof setTimeout, clearTimer?: typeof clearTimeout, now?: () => number }} o
  */
@@ -72,6 +79,7 @@ export function createRunner(o) {
   const deadlineFile = path.join(o.base, "run", crypto.createHash("sha256").update(o.space).digest("hex").slice(0, 16) + ".deadline");
   let gen = crypto.randomBytes(6).toString("hex");   // one per opening of the workspace; its watchdog belongs to it
   const winPrepFile = path.join(o.base, "run", crypto.createHash("sha256").update(o.space).digest("hex").slice(0, 16) + ".winprep");
+  /** @type {{ swap: boolean, hibernation: boolean, line: string }} */ let swap = { swap: false, hibernation: false, line: "" };
   let winPrep = null;   // what prepare() touched on Windows, for cleanup at revoke
   let pending = null;   // a retry timer while the workspace could not be closed yet
   const workOf = m => path.join(m, "work");
@@ -145,6 +153,8 @@ export function createRunner(o) {
     // A mount left by a runner that died is closed first, so this runner owns the one that is open.
     if (driver.isMounted(dir)) { try { await driver.unmount(dir); } catch {} }
     mnt = await driver.mount(dir, key);
+    swap = swapInfo();
+    if (swap.line) emit({ type: "swap-warning", line: swap.line, swap: swap.swap, hibernation: swap.hibernation });   // told once to the lender, kept in status
     startWatchdog();
     for (const d of ["work/files", "work/home", "work/tmp", "state"]) fs.mkdirSync(path.join(mnt, d), { recursive: true, mode: 0o700 });
     return mnt;
@@ -182,7 +192,7 @@ export function createRunner(o) {
     const reader = o.reader || sandboxReader({ platform, space: o.space, work, base: o.base });
     const sy = createSessionSync({ space: o.sync, session: s.session, work, state, reader, seal: o.sealState || (st => st), log: m => emit({ type: "sync", session: s.session, m }) });
     const token = crypto.randomBytes(24).toString("base64url");
-    const internet = s.network === "internet" ? { token } : undefined;   // the Space's choice: provider-and-space only (default), or the internet from this computer's connection
+    const internet = effectiveNetwork(s.network, o.lenderCap) === "internet" ? { token } : undefined;   // the Space's choice: provider-and-space only (default), or the internet from this computer's connection
     const eg = createEgress({ routes, vault: o.vault, session: s.session, token, internet: Boolean(internet), lease: () => lease.id, onEvent: e => emit({ type: "egress", session: s.session, ...e }) });
     const runDir = path.join(o.base, "run");
     fs.mkdirSync(runDir, { recursive: true, mode: 0o700 });
@@ -210,7 +220,7 @@ export function createRunner(o) {
         const line = buf.slice(0, i); buf = buf.slice(i + 1);
         if (!line) continue;
         h.queue = h.queue.then(async () => {
-          await sy.line(line);
+          try { await sy.line(line); } catch (e) { emit({ type: "checkpoint", session: s.session, ok: false, reason: e?.code === "disk_full" ? "disk_full" : "error", turn: sy.turn }); return; }
           if (!endsTurn(line)) return;
           // The reader runs inside the sandbox (reader.js), so a racing helper cannot reach a host file, and it reads only files whose size or
           // modification time changed. The session is NOT paused: stopping it for the length of the read blocked every write (measured:
@@ -220,7 +230,7 @@ export function createRunner(o) {
             h.labels = cur;
             const st = { labels: cur, routes: routes.map(r => r.prefix), session: o.sessionState?.(s.session) };
             const ok = await sy.checkpoint(st);
-            emit({ type: "checkpoint", session: s.session, ok, turn: sy.turn });
+            emit({ type: "checkpoint", session: s.session, ok, ...(ok || !sy.refused ? {} : { reason: sy.refused }), turn: sy.turn });
           }
         }).catch(() => {});
       }
@@ -278,7 +288,7 @@ export function createRunner(o) {
       await o.requestServer?.(session);
       emit({ type: "moved", session, to: "server" });
     },
-    status() { return { workspace: driver.name, ...(driver.name === "gocryptfs" ? { notice: SLOWER_LINE } : {}), state: lease.state, expiresAt: lease.expiresAt, open: !!mnt && driver.isMounted(dir), mounted: driver.isMounted(dir), sessions: [...live.keys()], dir }; },
+    status() { return { workspace: driver.name, notices: [LENDER_NETWORK_LINE, ...(driver.name === "gocryptfs" ? [SLOWER_LINE] : []), ...(swap.line ? [SWAP_LINE] : []), SIZES_LINE], swap: swap.swap || swap.hibernation, state: lease.state, expiresAt: lease.expiresAt, open: !!mnt && driver.isMounted(dir), mounted: driver.isMounted(dir), sessions: [...live.keys()], dir }; },
     get lease() { return lease; },
     get dir() { return dir; },
     get mnt() { return mnt; },

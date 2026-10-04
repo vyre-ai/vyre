@@ -7,140 +7,655 @@
   ],
   "requires": [],
   "does": {
-    "reads": ["vault.account.status", "vault.device.list", "vault.emergency.list", "vault.health", "vault.history", "vault.list", "vault.pass.list", "vault.search", "vault.vaults.list"],
+    "reads": [
+      "vault.account.status",
+      "vault.device.list",
+      "vault.emergency.list",
+      "vault.health",
+      "vault.history",
+      "vault.list",
+      "vault.pass.list",
+      "vault.search",
+      "vault.vaults.list"
+    ],
     "tools": [
-      { "name": "vault.put", "reach": "anyone" },
-      { "name": "vault.list", "reach": "anyone" },
-      { "name": "vault.delete", "reach": "anyone" },
-      { "name": "vault.grant", "reach": "anyone" },
-      { "name": "vault.revoke", "reach": "anyone" },
-      { "name": "vault.pending", "reach": "anyone" },
-      { "name": "vault.approve", "reach": "person" },
-      { "name": "vault.release", "reach": "modules" },
-      { "name": "vault.inject", "reach": "anyone" },
-      { "name": "vault.totp", "reach": "anyone" },
-      { "name": "vault.codes", "reach": "anyone" },
-      { "name": "vault.codes.import", "reach": "anyone" },
-      { "name": "vault.sweep", "reach": "anyone" },
-      { "name": "vault.remind.run", "reach": "anyone" },
-      { "name": "vault.rotation", "reach": "anyone" },
-      { "name": "vault.rotate", "reach": "person" },
-      { "name": "vault.generate", "reach": "anyone" },
-      { "name": "vault.import", "reach": "anyone" },
-      { "name": "vault.import.preview", "reach": "anyone" },
-      { "name": "vault.audit", "reach": "anyone" },
-      { "name": "vault.match", "reach": "anyone" },
-      { "name": "vault.unlock", "reach": "anyone" },
-      { "name": "vault.lock", "reach": "person" },
-      { "name": "vault.identity", "reach": "anyone" },
-      { "name": "vault.pass.create", "reach": "anyone" },
-      { "name": "vault.pass.list", "reach": "anyone" },
-      { "name": "vault.grants.status", "reach": "anyone" },
-      { "name": "vault.pass.revoke", "reach": "person" },
-      { "name": "vault.pass.accept", "reach": "anyone" },
-      { "name": "vault.relay", "reach": "anyone" },
-      { "name": "vault.emergency.add", "reach": "person" },
-      { "name": "vault.emergency.refresh", "reach": "person" },
-      { "name": "vault.emergency.deny", "reach": "person" },
-      { "name": "vault.emergency.remove", "reach": "person" },
-      { "name": "vault.emergency.list", "reach": "anyone" },
-      { "name": "vault.emergency.request", "reach": "person" },
-      { "name": "vault.emergency.status", "reach": "person" },
-      { "name": "vault.offboard", "reach": "person" },
-      { "name": "vault.backup", "reach": "anyone" },
-      { "name": "vault.restore", "reach": "anyone" },
-      { "name": "vault.device.code", "reach": "anyone" },
-      { "name": "vault.devices", "reach": "anyone" },
-      { "name": "vault.device.revoke", "reach": "person" },
-      { "name": "vault.device.unlock", "reach": "anyone" },
-      { "name": "vault.unlock-passphrase", "reach": "anyone" },
-      { "name": "vault.account.create", "reach": "anyone" },
-      { "name": "vault.account.unlock", "reach": "anyone" },
-      { "name": "vault.account.lock", "reach": "person" },
-      { "name": "vault.people", "reach": "anyone" },
-      { "name": "vault.person.add", "reach": "anyone" },
-      { "name": "vault.people.verify", "reach": "anyone" },
-      { "name": "vault.fingerprint", "reach": "anyone" },
-      { "name": "vault.kit", "reach": "anyone" },
-      { "name": "vault.item", "reach": "anyone" },
-      { "name": "vault.resolve", "reach": "anyone" },
-      { "name": "vault.render", "reach": "anyone" },
-      { "name": "vault.edit", "reach": "anyone" },
-      { "name": "vault.git", "reach": "anyone" },
-      { "name": "vault.ssh.keys", "reach": "anyone" },
-      { "name": "vault.ssh.generate", "reach": "anyone" },
-      { "name": "vault.ssh.add", "reach": "anyone" },
-      { "name": "vault.ssh.approvals", "reach": "anyone" },
-      { "name": "vault.ssh.approve", "reach": "anyone" },
-      { "name": "vault.ssh.forget", "reach": "person" },
-      { "name": "vault.session.open", "reach": "anyone" },
-      { "name": "vault.session.close", "reach": "anyone" },
-      { "name": "vault.session.status", "reach": "anyone" },
-      { "name": "vault.reveal", "reach": "anyone" },
-      { "name": "vault.copy", "reach": "anyone" },
-      { "name": "vault.fill.native", "reach": "anyone" },
-      { "name": "vault.caps", "reach": "anyone" },
-      { "name": "vault.health", "reach": "anyone" },
-      { "name": "vault.breach.check", "reach": "anyone" },
-      { "name": "vault.update", "reach": "anyone" }, { "name": "vault.verify", "reach": "anyone" },
-      { "name": "vault.clipboard.clear", "reach": "anyone" },
-      { "name": "vault.vaults.create", "reach": "anyone" },
-      { "name": "vault.vaults.list", "reach": "anyone" },
-      { "name": "vault.vaults.sync", "reach": "person" },
-      { "name": "vault.members.invite", "reach": "anyone" },
-      { "name": "vault.members.accept", "reach": "anyone" },
-      { "name": "vault.members.role", "reach": "anyone" },
-      { "name": "vault.members.remove", "reach": "anyone" },
-      { "name": "vault.vaults.rotate", "reach": "anyone" },
-      { "name": "vault.move", "reach": "anyone" },
-      { "name": "vault.search", "reach": "anyone" },
-      { "name": "vault.device.join", "reach": "anyone" },
-      { "name": "vault.device.approve", "reach": "anyone" },
-      { "name": "vault.device.list", "reach": "anyone" },
-      { "name": "vault.device.sync", "reach": "person" },
-      { "name": "vault.account.enroll-touchid", "reach": "anyone" },
-      { "name": "vault.account.status", "reach": "anyone" },
-      { "name": "vault.history", "reach": "anyone" },
-      { "name": "vault.revert", "reach": "person" },
-      { "name": "vault.migrate-key", "reach": "anyone" },
-      { "name": "vault.agent.grant", "reach": "anyone" },
-      { "name": "vault.agent.grants", "reach": "anyone" },
-      { "name": "vault.agent.revoke", "reach": "person" },
-      { "name": "vault.uses", "reach": "anyone" },
-      { "name": "vault.need", "reach": "anyone" },
-      { "name": "vault.connect", "reach": "person" },
-      { "name": "vault.connections.list", "reach": "anyone" },
-      { "name": "vault.connections.get", "reach": "modules" },
-      { "name": "vault.connections.grant", "reach": "person" },
-      { "name": "vault.connections.revoke", "reach": "anyone" },
-      { "name": "vault.connections.update", "reach": "person" },
-      { "name": "vault.connections.sync", "reach": "person" },
-      { "name": "vault.connections.register", "reach": "modules" },
-      { "name": "vault.connections.unregister", "reach": "modules" },
-      { "name": "vault.connections.allowed", "reach": "modules" },
-      { "name": "vault.said.record", "reach": "modules" },
-      { "name": "vault.said.match", "reach": "modules" },
-      { "name": "vault.said.add", "reach": "modules" },
-      { "name": "vault.items.names", "reach": "anyone" },
-      { "name": "vault.env.scan", "reach": "anyone" },
-      { "name": "vault.mention.search", "reach": "anyone" },
-      { "name": "vault.mention.resolve", "reach": "modules" },
-      { "name": "vault.use.check", "reach": "modules" },
-      { "name": "vault.use.note", "reach": "modules" },
-      { "name": "vault.said.list", "reach": "modules" },
-      { "name": "vault.said.revoke", "reach": "modules" },
-      { "name": "vault.request", "reach": "anyone" },
-      { "name": "vault.api.send", "reach": "modules" },
-      { "name": "vault.credential.tokens", "reach": "modules" },
-      { "name": "vault.forward", "reach": "modules" },
-      { "name": "vault.forward.file", "reach": "modules" },
-      { "name": "vault.provider.set", "reach": "person" },
-      { "name": "vault.provider.remove", "reach": "person" },
-      { "name": "vault.provider.status", "reach": "person" }
+      {
+        "name": "vault.put",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.list",
+        "reach": "anyone"
+      },
+      {
+        "name": "vault.delete",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.grant",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.revoke",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.pending",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "vault.approve",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "vault.release",
+        "reach": "modules"
+      },
+      {
+        "name": "vault.inject",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.totp",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.codes",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.codes.import",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.sweep",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "vault.remind.run",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.rotation",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "vault.rotate",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "vault.generate",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.import",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.import.preview",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "vault.audit",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "vault.match",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "vault.unlock",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.lock",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "vault.identity",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "vault.pass.create",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.pass.list",
+        "reach": "anyone"
+      },
+      {
+        "name": "vault.grants.status",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "vault.pass.revoke",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "vault.pass.accept",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.relay",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.emergency.add",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "vault.emergency.refresh",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "vault.emergency.deny",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "vault.emergency.remove",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "vault.emergency.list",
+        "reach": "anyone"
+      },
+      {
+        "name": "vault.emergency.request",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "vault.emergency.status",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "vault.offboard",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "vault.backup",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.restore",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.device.code",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.devices",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "vault.device.revoke",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "vault.device.unlock",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.unlock-passphrase",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.account.create",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.account.unlock",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.account.lock",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "vault.people",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "vault.person.add",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.people.verify",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.fingerprint",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "vault.kit",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.item",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "vault.resolve",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.render",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.edit",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.git",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.ssh.keys",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "vault.ssh.generate",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.ssh.add",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.ssh.approvals",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "vault.ssh.approve",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.ssh.forget",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "vault.session.open",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.session.close",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.session.status",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "vault.reveal",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.copy",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.fill.native",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.caps",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "vault.health",
+        "reach": "anyone"
+      },
+      {
+        "name": "vault.breach.check",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.update",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.verify",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.clipboard.clear",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.vaults.create",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.vaults.list",
+        "reach": "anyone"
+      },
+      {
+        "name": "vault.vaults.sync",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "vault.members.invite",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.members.accept",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.members.role",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.members.remove",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.vaults.rotate",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.move",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.search",
+        "reach": "anyone"
+      },
+      {
+        "name": "vault.device.join",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.device.approve",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.device.list",
+        "reach": "anyone"
+      },
+      {
+        "name": "vault.device.sync",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "vault.account.enroll-touchid",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.account.status",
+        "reach": "anyone"
+      },
+      {
+        "name": "vault.history",
+        "reach": "anyone"
+      },
+      {
+        "name": "vault.revert",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "vault.migrate-key",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.agent.grant",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.agent.grants",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "vault.agent.revoke",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "vault.uses",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "vault.need",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "vault.connect",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "vault.connections.list",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "vault.connections.get",
+        "reach": "modules"
+      },
+      {
+        "name": "vault.connections.grant",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "vault.connections.revoke",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.connections.update",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "vault.connections.sync",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "vault.connections.register",
+        "reach": "modules"
+      },
+      {
+        "name": "vault.connections.unregister",
+        "reach": "modules"
+      },
+      {
+        "name": "vault.connections.allowed",
+        "reach": "modules"
+      },
+      {
+        "name": "vault.said.record",
+        "reach": "modules"
+      },
+      {
+        "name": "vault.said.match",
+        "reach": "modules"
+      },
+      {
+        "name": "vault.said.add",
+        "reach": "modules"
+      },
+      {
+        "name": "vault.items.names",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "vault.env.scan",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "vault.mention.search",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "vault.mention.resolve",
+        "reach": "modules"
+      },
+      {
+        "name": "vault.use.check",
+        "reach": "modules"
+      },
+      {
+        "name": "vault.use.note",
+        "reach": "modules"
+      },
+      {
+        "name": "vault.said.list",
+        "reach": "modules"
+      },
+      {
+        "name": "vault.said.revoke",
+        "reach": "modules"
+      },
+      {
+        "name": "vault.request",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "vault.api.send",
+        "reach": "modules"
+      },
+      {
+        "name": "vault.credential.tokens",
+        "reach": "modules"
+      },
+      {
+        "name": "vault.forward",
+        "reach": "modules"
+      },
+      {
+        "name": "vault.forward.file",
+        "reach": "modules"
+      },
+      {
+        "name": "vault.service.forward",
+        "reach": "modules"
+      },
+      {
+        "name": "vault.service.catalog",
+        "reach": "modules"
+      },
+      {
+        "name": "vault.provider.set",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "vault.provider.remove",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "vault.provider.status",
+        "reach": "person",
+        "effect": "read"
+      }
     ]
   },
   "mentions": [
-    { "kind": "vault", "label": "Vault", "icon": "key", "search": "vault.mention.search", "resolve": "vault.mention.resolve" }
+    {
+      "kind": "vault",
+      "label": "Vault",
+      "icon": "key",
+      "search": "vault.mention.search",
+      "resolve": "vault.mention.resolve"
+    }
   ],
   "watches": {
     "emits": [
@@ -231,20 +746,169 @@
   "needs": {},
   "teaches": {
     "tips": [
-      {"id": "put-hidden", "text": "Store a secret with `vyre vault put harlow-stripe`. It asks for the value at a hidden prompt, never on the command line.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre vault put <name>", "docs": "using/vault.md#store-an-item"},
-      {"id": "host-origin", "text": "Give `--host` a whole origin, like `https://api.stripe.com`. The item is only ever sent there, and a relayed pass needs it.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "key": "--host", "docs": "using/vault.md#store-an-item"},
-      {"id": "copy-clears", "text": "`vyre vault get harlow-stripe --copy` puts the value on the clipboard after Touch ID, and vyred clears it 90 seconds later.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "key": "--copy", "docs": "using/vault.md#show-copy-or-fill-a-value-yourself"},
-      {"id": "capsule-fill", "text": "Press Control twice, type a login's name and press Enter to fill it into the app in front. The value never reaches the Capsule.", "surfaces": ["capsule"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "key": "Control Control", "docs": "using/vault.md#show-copy-or-fill-a-value-yourself"},
-      {"id": "run-with-secret", "text": "`vyre vault run harlow-stripe -- npm run deploy` puts the value in `HARLOW_STRIPE` for that one command and scrubs it from the output.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre vault run <item> -- <command>", "docs": "using/vault.md#use-an-item-in-a-script"},
-      {"id": "approve-pending", "text": "When Claude asks for a grant, it only waits. Run `vyre vault pending`, then `vyre vault approve <id>` to allow it.", "surfaces": ["cli", "deck"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre vault pending", "docs": "using/vault.md#let-an-agent-module-or-watcher-use-an-item"},
-      {"id": "watchtower", "text": "Open Watchtower in the Deck's Vault to find weak, reused or old passwords, and logins with no two-factor.", "surfaces": ["deck"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "docs": "using/vault.md#see-what-you-have"},
-      {"id": "lock-now", "text": "Stepping away? `vyre vault lock` ends the reveal session now instead of after 10 idle minutes.", "surfaces": ["cli"], "level": "power", "trigger": "idle", "since": "0.1.0", "command": "vyre vault lock", "docs": "using/vault.md#show-copy-or-fill-a-value-yourself"}
+      {
+        "id": "put-hidden",
+        "text": "Store a secret with `vyre vault put harlow-stripe`. It asks for the value at a hidden prompt, never on the command line.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "first-use",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "command": "vyre vault put <name>",
+        "docs": "using/vault.md#store-an-item"
+      },
+      {
+        "id": "host-origin",
+        "text": "Give `--host` a whole origin, like `https://api.stripe.com`. The item is only ever sent there, and a relayed pass needs it.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "first-use",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "key": "--host",
+        "docs": "using/vault.md#store-an-item"
+      },
+      {
+        "id": "copy-clears",
+        "text": "`vyre vault get harlow-stripe --copy` puts the value on the clipboard after Touch ID, and vyred clears it 90 seconds later.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "first-use",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "key": "--copy",
+        "docs": "using/vault.md#show-copy-or-fill-a-value-yourself"
+      },
+      {
+        "id": "capsule-fill",
+        "text": "Press Control twice, type a login's name and press Enter to fill it into the app in front. The value never reaches the Capsule.",
+        "surfaces": [
+          "capsule"
+        ],
+        "level": "first-use",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "key": "Control Control",
+        "docs": "using/vault.md#show-copy-or-fill-a-value-yourself"
+      },
+      {
+        "id": "run-with-secret",
+        "text": "`vyre vault run harlow-stripe -- npm run deploy` puts the value in `HARLOW_STRIPE` for that one command and scrubs it from the output.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "power",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "command": "vyre vault run <item> -- <command>",
+        "docs": "using/vault.md#use-an-item-in-a-script"
+      },
+      {
+        "id": "approve-pending",
+        "text": "When Claude asks for a grant, it only waits. Run `vyre vault pending`, then `vyre vault approve <id>` to allow it.",
+        "surfaces": [
+          "cli",
+          "deck"
+        ],
+        "level": "power",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "command": "vyre vault pending",
+        "docs": "using/vault.md#let-an-agent-module-or-watcher-use-an-item"
+      },
+      {
+        "id": "watchtower",
+        "text": "Open Watchtower in the Deck's Vault to find weak, reused or old passwords, and logins with no two-factor.",
+        "surfaces": [
+          "deck"
+        ],
+        "level": "discovery",
+        "trigger": "never-used",
+        "since": "0.1.0",
+        "docs": "using/vault.md#see-what-you-have"
+      },
+      {
+        "id": "lock-now",
+        "text": "Stepping away? `vyre vault lock` ends the reveal session now instead of after 10 idle minutes.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "power",
+        "trigger": "idle",
+        "since": "0.1.0",
+        "command": "vyre vault lock",
+        "docs": "using/vault.md#show-copy-or-fill-a-value-yourself"
+      }
     ]
   },
   "settings": [
-    {"key": "vault.lock_idle", "group": "vault", "label": "Lock after idle", "help": "Like 10m or 1h.", "type": "string", "default": "10m", "levels": ["account"], "apply": "restart", "security": "loosens", "loosens": "Your vault stays unlocked for longer.", "store": {"config": "vault.lock.idle"}},
-    {"key": "vault.lock_max", "group": "vault", "label": "Lock after at most", "type": "string", "default": "12h", "levels": ["account"], "apply": "restart", "security": "loosens", "loosens": "Your vault stays unlocked for longer.", "store": {"config": "vault.lock.max"}},
-    {"key": "vault.lock_on_sleep", "group": "vault", "label": "Lock when the Mac sleeps", "type": "bool", "default": true, "levels": ["account"], "apply": "restart", "security": "loosens", "loosens": "Your vault stays unlocked for longer.", "store": {"config": "vault.lock.onSleep"}},
-    {"key": "vault.lock_on_screen_lock", "group": "vault", "label": "Lock when the screen locks", "type": "bool", "default": true, "levels": ["account"], "apply": "restart", "security": "loosens", "loosens": "Your vault stays unlocked for longer.", "store": {"config": "vault.lock.onScreenLock"}}
+    {
+      "key": "vault.lock_idle",
+      "group": "vault",
+      "label": "Lock after idle",
+      "help": "Like 10m or 1h.",
+      "type": "string",
+      "default": "10m",
+      "levels": [
+        "account"
+      ],
+      "apply": "restart",
+      "security": "loosens",
+      "loosens": "Your vault stays unlocked for longer.",
+      "store": {
+        "config": "vault.lock.idle"
+      }
+    },
+    {
+      "key": "vault.lock_max",
+      "group": "vault",
+      "label": "Lock after at most",
+      "type": "string",
+      "default": "12h",
+      "levels": [
+        "account"
+      ],
+      "apply": "restart",
+      "security": "loosens",
+      "loosens": "Your vault stays unlocked for longer.",
+      "store": {
+        "config": "vault.lock.max"
+      }
+    },
+    {
+      "key": "vault.lock_on_sleep",
+      "group": "vault",
+      "label": "Lock when the Mac sleeps",
+      "type": "bool",
+      "default": true,
+      "levels": [
+        "account"
+      ],
+      "apply": "restart",
+      "security": "loosens",
+      "loosens": "Your vault stays unlocked for longer.",
+      "store": {
+        "config": "vault.lock.onSleep"
+      }
+    },
+    {
+      "key": "vault.lock_on_screen_lock",
+      "group": "vault",
+      "label": "Lock when the screen locks",
+      "type": "bool",
+      "default": true,
+      "levels": [
+        "account"
+      ],
+      "apply": "restart",
+      "security": "loosens",
+      "loosens": "Your vault stays unlocked for longer.",
+      "store": {
+        "config": "vault.lock.onScreenLock"
+      }
+    }
   ]
 }

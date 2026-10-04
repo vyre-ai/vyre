@@ -2,27 +2,122 @@
   "name": "work",
   "version": "0.1.0",
   "description": "The work layer on the kernel: the native assistant's tool surface and situation, teammates, the three-layer memory and the Engineer. Every call goes through the kernel with the chain the kernel builds for the caller; nothing here holds authority.",
-  "roles": ["box", "local"],
+  "roles": [
+    "box",
+    "local"
+  ],
   "requires": [],
-  "does": { "reads": ["work.know.search", "work.tools"], "tools": [
-    {"name": "work.tools", "summary": "the tools this caller may use in this Space, generated from its definitions", "reach": "anyone"},
-    {"name": "work.call", "summary": "run one of those tools; an outward act comes back held for approval", "reach": "anyone"},
-    {"name": "work.situation", "summary": "where the caller is: the Space, role, record, team, open tasks, what waits and what is sealed", "reach": "anyone"},
-    {"name": "work.team.context", "summary": "what a teammate starts with for a project, minus sealed fields", "reach": "anyone"},
-    {"name": "work.team.add", "summary": "add an assistant teammate from a Kit role, with grants no wider than the adder's", "reach": "person"},
-    {"name": "work.team.doing", "summary": "what each teammate is doing right now", "reach": "anyone"},
-    {"name": "work.know.search", "summary": "search records, events and session lines by meaning, only what the caller may read", "reach": "anyone"},
-    {"name": "work.know.answer", "summary": "answer a question from the Space's own records and history, with citations", "reach": "anyone"},
-    {"name": "work.know.suggestions", "summary": "facts memory proposes for a record, with the lines they came from", "reach": "anyone"},
-    {"name": "work.know.capture", "summary": "keep a session's lines so the Space's memory can answer from what was said; first-party modules only", "reach": "modules"},
-    {"name": "work.know.forget", "summary": "erase a session's lines and the index rows made from them; first-party modules only", "reach": "modules"},
-    {"name": "work.know.accept", "summary": "accept a proposed fact onto its record", "reach": "person"},
-    {"name": "work.engineer.talk", "summary": "ask the Engineer to explain or change this Space's definitions; admins only", "reach": "person"},
-    {"name": "work.engineer.revise", "summary": "edit the Engineer's proposed definition yourself; the earlier approval is void", "reach": "person"},
-    {"name": "work.engineer.approve", "summary": "approve or reject the Engineer's change with your own presence proof", "reach": "person"}
-  ] },
-  "watches": { "emits": [] },
-  "shows": { "cli": [] },
-  "needs": {},
+  "does": {
+    "reads": [
+      "work.know.search",
+      "work.tools"
+    ],
+    "tools": [
+      {
+        "name": "work.tools",
+        "summary": "the tools this caller may use in this Space, generated from its definitions",
+        "reach": "anyone"
+      },
+      {
+        "name": "work.call",
+        "summary": "run one of those tools; an outward act comes back held for approval",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "work.situation",
+        "summary": "where the caller is: the Space, role, record, team, open tasks, what waits and what is sealed",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "work.team.context",
+        "summary": "what a teammate starts with for a project, minus sealed fields",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "work.team.add",
+        "summary": "add an assistant teammate from a Kit role, with grants no wider than the adder's",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "work.team.doing",
+        "summary": "what each teammate is doing right now",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "work.know.search",
+        "summary": "search records, events and session lines by meaning, only what the caller may read",
+        "reach": "anyone"
+      },
+      {
+        "name": "work.know.answer",
+        "summary": "answer a question from the Space's own records and history, with citations",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "work.know.suggestions",
+        "summary": "facts memory proposes for a record, with the lines they came from",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "work.know.capture",
+        "summary": "keep a session's lines so the Space's memory can answer from what was said; first-party modules only",
+        "reach": "modules"
+      },
+      {
+        "name": "work.know.forget",
+        "summary": "erase a session's lines and the index rows made from them; first-party modules only",
+        "reach": "modules"
+      },
+      {
+        "name": "work.know.accept",
+        "summary": "accept a proposed fact onto its record",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "work.engineer.talk",
+        "summary": "ask the Engineer to explain or change this Space's definitions; admins only",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "work.engineer.revise",
+        "summary": "edit the Engineer's proposed definition yourself; the earlier approval is void",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "work.engineer.approve",
+        "summary": "approve or reject the Engineer's change with your own presence proof",
+        "reach": "person",
+        "effect": "write"
+      }
+    ]
+  },
+  "watches": {
+    "emits": []
+  },
+  "shows": {
+    "cli": []
+  },
+  "needs": {
+    "kernel": {
+      "work": true,
+      "attrs": true,
+      "actions": [
+        "records.read",
+        "records.create",
+        "records.update",
+        "events.read"
+      ]
+    }
+  },
   "teaches": {}
 }

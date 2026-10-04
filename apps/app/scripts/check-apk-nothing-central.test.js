@@ -1,5 +1,6 @@
 // @ts-check
 // The nothing-central check as a pure function over strings.
+import "./test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { central, printable } from "./check-apk-nothing-central.mjs";

@@ -1,14 +1,15 @@
 import { useMemo, useState } from "react";
 import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { AskCard, Avatar, Banner, Button, Card, Chip, Divider, EmptyState, FlowCanvas, IconTile, Row, Switch, Text, showToast, markRef } from "@vyre/ui";
+import { AskCard, allowsMock, Avatar, Banner, Button, Card, Chip, Divider, EmptyState, FlowCanvas, IconTile, Row, Switch, Text, showToast, markRef } from "@vyre/ui";
 import { Block, FaceIdSheet } from "../places/Page";
 import { Frame, Sec } from "../places/Frame";
 import { flowsRepo, type Def } from "./data";
 import { useFlowsState } from "./store";
+import { RealFlow } from "./RealFlow";
 import { buildGraph, flowCode, paint, triggerIcon, triggerLine } from "./logic.js";
 
-export default function FlowScreen() {
+function SampleFlowScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { applied, off, setOn } = useFlowsState();
@@ -72,4 +73,10 @@ export default function FlowScreen() {
         onConfirm={() => { setAt((a) => ({ ...a, r41: "sign" })); showToast("Approved. The letter is out for signature."); }} />
     </Frame>
   );
+}
+
+/** The sample Flow in a mock build; the real one, from the vyred's flows.* tools, everywhere else. */
+export default function FlowScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  return allowsMock() ? <SampleFlowScreen /> : <RealFlow id={id ?? ""} />;
 }

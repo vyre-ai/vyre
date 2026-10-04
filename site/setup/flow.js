@@ -555,42 +555,10 @@ export function createFlow(o) {
     } catch (e) { upd({ step: "failed", paste: false, error: String(/** @type {Error} */ (e).message).slice(0, 200) }); }
   }
 
-  // ---- Devices: a phone pairs by scanning a ring drawn from the one ticket this page may make ----
-
-  /** "Add my phone": make the ticket (the setup key may make exactly one, good for five minutes) and wait for a phone to pair with it. */
-  async function addPhone() {
-    if (!chan || state.stage !== "devices" || (state.devices.phone !== "idle" && state.devices.phone !== "failed")) return;
-    const mine = run;
-    set({ devices: { ...state.devices, phone: "minting", error: null } });
-    let baseline = 0;
-    try {
-      // Anything already on record does not count: only a pairing after this moment.
-      const before = await chan.events("relay.paired", 0);
-      baseline = before.reduce((n, e) => Math.max(n, e.id), 0);
-      const r = await chan.call("relay.pair.ticket");
-      if (mine !== run) return;
-      ticket = String(r.ticket);
-      set({ devices: { ...state.devices, phone: "showing", expiresAt: Number(r.expiresAt) || now() + 5 * 60_000 } });
-    } catch (e) { if (mine === run) set({ devices: { ...state.devices, phone: "failed", error: String(/** @type {Error} */ (e).message).slice(0, 200) } }); return; }
-    watchPairing(mine, baseline);
-  }
-
-  /** Follows the one ticket until a phone pairs with it or it runs out. */
-  async function watchPairing(mine, baseline) {
-    while (mine === run && state.stage === "devices" && state.devices.phone === "showing") {
-      if (now() >= state.devices.expiresAt) { ticket = null; return set({ devices: { ...state.devices, phone: "expired" } }); }
-      try {
-        const got = await chan.events("relay.paired", baseline);
-        if (mine !== run) return;
-        if (got.length) {
-          ticket = null;
-          const name = got[0].payload && got[0].payload.name ? String(got[0].payload.name).slice(0, 60) : null;
-          return set({ devices: { ...state.devices, phone: "paired", paired: name } });
-        }
-      } catch { /* a dropped poll: ask again */ }
-      await sleep(Math.min(pollMs, Math.max(50, state.devices.expiresAt - now())));
-    }
-  }
+  // ---- Devices: this page makes no pairing ticket. The first device pairs through the install terminal's own gated flow (a QR or a long code, then three words), and
+  // everything after that is set up on the person's device, never here (the user's ruling, 4 Oct 2026; one pairing path). `addPhone` stays so the screen's button table is
+  // unchanged, and does nothing.
+  async function addPhone() { /* no ticket is made here */ }
 
   // ---- Arrive and claim: a one-time link to the person's own address, where the passkey is made ----
 
@@ -639,7 +607,7 @@ export function createFlow(o) {
   return {
     get state() { return state; },
     setName, claim, confirmWords, denyWords, markSaved, openDomain, setDomain, checkDomain,
-    continueToClaim, mintClaim, continueToDevices, addPhone, currentTicket: () => ticket,
+    continueToClaim, mintClaim, continueToDevices, addPhone, currentTicket: () => null,
     continueToAi, continueToTailscale, skipAi, connectTailscale, startAi, submitAiCode, openAiKey, submitAiKey,
     /** Start (or start again): a new key and a new code; the old one is forgotten. */
     begin,

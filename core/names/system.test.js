@@ -168,6 +168,7 @@ function stubs(dir, log, site, extra = {}) {
     id: `case "$1" in -u) echo 1000 ;; -un) echo alex ;; -gn) echo alex ;; alex) echo "uid=1000(alex)" ;; *) exit 1 ;; esac`,
     docker: `case "$1 $2" in
   "compose version") echo 2.29.1 ;;
+  "ps -q") echo vyrecontainer ;;
   "volume ls") echo vyre_vyre-home; echo vyre_vyre-work; echo vyre_tailscale-state ;;
 esac
 # The update's signature check runs Node in the image: docker run ... --entrypoint node IMAGE -e CODE KEY SIG.
@@ -251,7 +252,7 @@ function setup(t, extra) {
   fs.writeFileSync(log, "");
   // /dev/null stands in for /dev/net/tun: a character device on every system.
   // No Docker socket unless a test makes one, so no DOCKER_GID line unless a test asks for it.
-  const env = { PATH: `${bin}:${systemPath(base, Object.keys(extra || {}).filter(k => extra[k] === null))}`, HOME: base, VYRE_DIR: dir, VYRE_WRAPPER: wrapper, VYRE_TUN: "/dev/null",
+  const env = { PATH: `${bin}:${systemPath(base, Object.keys(extra || {}).filter(k => extra[k] === null))}`, HOME: base, VYRE_DIR: dir, VYRE_WRAPPER: wrapper,
     VYRE_DOCKER_SOCK: path.join(base, "no-docker.sock") };
   const calls = () => fs.readFileSync(log, "utf8").trim().split("\n").filter(Boolean);
   return { base, dir, wrapper, site: www, env, calls };
@@ -423,6 +424,7 @@ test("install-box.sh: uninstall dry run, and --purge lists the volumes and asks"
 
 const NO_IMAGE = { docker: `case "$1 $2" in
   "compose version") echo 2.29.1 ;;
+  "ps -q") echo vyrecontainer ;;
   "manifest inspect") exit 1 ;;
 esac
 exit 0` };
@@ -545,6 +547,7 @@ test("box/vyre: update of a checkout build leaves the source alone", t => {
 /** docker whose `compose exec ... vyre up` prints the file named by VYRE_TEST_UP. */
 const UP_PRINTS = { docker: `case "$1 $2" in
   "compose version") echo 2.29.1 ;;
+  "ps -q") echo vyrecontainer ;;
   "compose exec") for a; do last=$a; done; [ "$last" = up ] && [ -n "\${VYRE_TEST_UP:-}" ] && cat "$VYRE_TEST_UP" ;;
 esac
 exit 0` };

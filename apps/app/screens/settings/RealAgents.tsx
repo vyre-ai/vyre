@@ -1,0 +1,83 @@
+// Assistants and AI accounts from the real box: agents.list and agents.usage, agents.stop and agents.resume for pause, providers.list for the accounts.
+// No autonomy dial and no budget editor here: the box has no tool for either yet, so there is no control that would not work.
+import { useCallback, useEffect, useState } from "react";
+import { View } from "react-native";
+import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, Meter, Text, markRef, showToast } from "@vyre/ui";
+import { Page } from "../places/Frame";
+import { agentLine, budgetLine, isStopped, money, providerRows, roleOf, totalSpent, usedShare, type Agent, type Provider, type Usage } from "./agents-model";
+import { agentResume, agentStop, agentsList, agentsUsage, providers } from "./real";
+
+const say = (e: unknown, f = "That did not work.") => (e instanceof Error ? e.message : f);
+
+export function RealAssistants() {
+  const [list, setList] = useState<Agent[] | null>(null);
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const load = useCallback(() => { setErr(""); agentsList().then(setList).catch((e) => setErr(say(e, "Assistants did not answer."))); }, []);
+  useEffect(load, [load]);
+  const flip = (a: Agent) => {
+    setBusy(a.name);
+    (isStopped(a) ? agentResume(a.name) : agentStop(a.name)).then(() => { showToast(isStopped(a) ? `${a.name} is working again.` : `Paused ${a.name}. It keeps its notes.`); load(); }).catch((e) => showToast(say(e))).finally(() => setBusy(null));
+  };
+  return (
+    <Page title="Assistants" back="/u/settings">
+      {err ? <Card flush><EmptyState title="Assistants did not answer" body={err} action={{ label: "Try again", onPress: load }} /></Card> : null}
+      {list && !list.length ? <Card><EmptyState title="No assistants yet" body="Your assistant and any agents you make appear here." /></Card> : null}
+      {list === null && !err ? <Card flush><EmptyState title="Loading" body="Asking your Vyre." /></Card> : null}
+      {list && list.length ? (
+        <Card flush>
+          {list.map((a, i) => (
+            <View key={a.name}>{i ? <Divider /> : null}
+              <View className="flex-row items-center gap-s3 p-s3">
+                <Avatar of={markRef(a.kind === "assistant" ? "assistant" : "teammate", a.name)} size={40} />
+                <View className="min-w-0 flex-1 gap-s1">
+                  <View className="flex-row flex-wrap items-center gap-s2"><Text strong>{a.name}</Text>{isStopped(a) ? <Chip tone="warn">Paused</Chip> : null}</View>
+                  <Text size="caption" tone="label">{`${roleOf(a)}. ${agentLine(a)}`}</Text>
+                </View>
+                {a.thread ? <Button kind="ghost" size="sm" label={isStopped(a) ? "Resume" : "Pause"} onPress={busy === a.name ? () => {} : () => flip(a)} /> : null}
+              </View>
+            </View>
+          ))}
+        </Card>
+      ) : null}
+    </Page>
+  );
+}
+
+export function RealAi() {
+  const [ps, setPs] = useState<Provider[] | null>(null);
+  const [us, setUs] = useState<Usage[]>([]);
+  const [err, setErr] = useState("");
+  const load = useCallback(() => { setErr(""); providers().then(setPs).catch((e) => setErr(say(e, "AI accounts did not answer."))); agentsUsage().then(setUs).catch(() => setUs([])); }, []);
+  useEffect(load, [load]);
+  const rows = ps ? providerRows(ps) : [];
+  const budgeted = us.filter((u) => u.agent && u.budget_usd != null);
+  return (
+    <Page title="AI accounts" back="/u/settings">
+      <Banner>Nobody's work runs on someone else's account. Your sessions use your accounts and count against your budget.</Banner>
+      {err ? <Card flush><EmptyState title="AI accounts did not answer" body={err} action={{ label: "Try again", onPress: load }} /></Card> : null}
+      {ps === null && !err ? <Card flush><EmptyState title="Loading" body="Asking your Vyre." /></Card> : null}
+      {ps ? (
+        <Card flush>
+          {rows.map((r, i) => (
+            <View key={r.id}>{i ? <Divider /> : null}
+              <View className="flex-row items-center gap-s3 p-s3">
+                <Avatar of={markRef("agent", r.name)} size={40} />
+                <View className="min-w-0 flex-1 gap-s1"><View className="flex-row flex-wrap items-center gap-s2"><Text strong>{r.name}</Text>{r.on ? <Chip tone="ok">Connected</Chip> : <Chip>Not connected</Chip>}</View><Text size="caption" tone="label">{r.line}</Text></View>
+              </View>
+            </View>
+          ))}
+        </Card>
+      ) : null}
+      {us.length ? (
+        <Card className="gap-s2">
+          <Text strong>{`${money(us.reduce((n, u) => n + (u.spent_usd || 0), 0))} spent by agents`}</Text>
+          {budgeted.map((u) => (
+            <View key={u.agent} className="gap-s1"><Text size="secondary">{`${u.agent}: ${budgetLine(u)}`}</Text><Meter value={usedShare(u)} label={`${u.agent} budget used`} /></View>
+          ))}
+          <Text size="caption" tone="label">Set a budget per agent with vyre agents update. Connect an account with vyre providers.</Text>
+        </Card>
+      ) : null}
+    </Page>
+  );
+}

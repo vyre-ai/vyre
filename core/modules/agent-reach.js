@@ -51,6 +51,7 @@ export const PERSON_ONLY = new Map([
   ["wink.server.reset.confirm", "only the person at the server's own console: resetting a server"],
   ["network.wink.join", "changes this computer's own network: bringing a link up"],
   ["network.wink.leave", "changes this computer's own network: taking a link down"],
+  ["wink.server.status", "the server's own console: who owns it and which device paired it; a model session has no part in pairing"],
   ["wink.phone.pairing", "needs the person's Face ID or presence: pairing and devices"],
   ["wink.phone.pair.answer", "needs the person's Face ID or presence: pairing and devices"],
   ["wink.phone.wait", "needs the person's Face ID or presence: pairing and devices"],
