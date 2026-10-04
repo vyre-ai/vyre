@@ -59,8 +59,8 @@ function productionRules() {
   assert.deepEqual(insideClaude(311, o), { inside: true, by: 300 }, "a model's Bash under a terminal claude");
   assert.deepEqual(insideClaude(610, o), { inside: true, by: 600 }, "a headless thread's child, whatever its command line says");
   assert.deepEqual(insideClaude(210, o), { inside: false }, "the person's own terminal: a login the kernel names");
-  assert.deepEqual(insideClaude(802, o), { inside: false, unknown: true, server: { exe: "/usr/sbin/sshd", pid: 800, started: "t1" } }, "the person over ssh: a server they prove once");
-  assert.deepEqual(insideClaude(902, o), { inside: false, unknown: true, server: { exe: "/usr/bin/tmux", pid: 900, started: "t1" } }, "the person's shell in tmux: the same");
+  assert.deepEqual(insideClaude(802, o), { inside: false, unknown: true, server: { exe: "/usr/sbin/sshd", pid: 800, started: "t1", uid: 501 } }, "the person over ssh: a server they prove once");
+  assert.deepEqual(insideClaude(902, o), { inside: false, unknown: true, server: { exe: "/usr/bin/tmux", pid: 900, started: "t1", uid: 501 } }, "the person's shell in tmux: the same");
   assert.deepEqual(insideClaude(912, o), { inside: true, by: 911 }, "claude in a tmux pane");
   assert.deepEqual(insideClaude(940, o), { inside: true, by: 600 }, "an orphan in a thread's process group");
   assert.deepEqual(insideClaude(951, o), { inside: false, unknown: true, unreadable: true }, "an orphan of a shell that is gone: refused as unknown");
@@ -83,9 +83,9 @@ function productionRules() {
   // Everything else with a start time is named as a server rather than flatly refused (the lead's
   // decision, 28 Sep: nobody with a real, unlisted terminal gets locked out) -- sshd included.
   assert.deepEqual(insideClaude(960, { ...o, exe: () => "/usr/sbin/sshd", started: () => "t1" }),
-    { inside: false, unknown: true, server: { exe: "/usr/sbin/sshd", pid: 960, started: "t1" } }, "sshd, off the allowlist now, is named as a server, not flatly refused");
+    { inside: false, unknown: true, server: { exe: "/usr/sbin/sshd", pid: 960, started: "t1", uid: 501 } }, "sshd, off the allowlist now, is named as a server, not flatly refused");
   assert.deepEqual(insideClaude(960, { ...o, exe: () => "/usr/bin/script", started: () => "t1" }),
-    { inside: false, unknown: true, server: { exe: "/usr/bin/script", pid: 960, started: "t1" } }, "a fresh tty from `script` proves nothing: still judged on the binary, named as a server too");
+    { inside: false, unknown: true, server: { exe: "/usr/bin/script", pid: 960, started: "t1", uid: 501 } }, "a fresh tty from `script` proves nothing: still judged on the binary, named as a server too");
   assert.deepEqual(insideClaude(921, o), { inside: true, by: 300 }, "a tmux a model started");
   assert.deepEqual(insideClaude(500, o), { inside: true, by: 500 }, "vyred itself, or anything under it that is not the person's own hosting: a model's");
   assert.deepEqual(insideClaude(410, { ...o, look: pid => (pid === 410 ? { ppid: 500, args: "node mcp-hub-child.js" } : look(pid)) }), { inside: true, by: 500 }, "a descendant of vyred that is not in the thread list (an MCP child, a worker)");
@@ -147,7 +147,7 @@ test("peer: every real person surface still reads as the person (or as a server 
     // On Linux a root login anchors a chain; on macOS it never does (F3), only the Terminal binary at the top.
     const iterm = { ...trusted, exe: pid => (pid === 10 ? "/Applications/iTerm.app/Contents/MacOS/iTerm2" : pid === 11 ? "/usr/bin/login" : null) };
     if (process.platform === "darwin") {
-      assert.deepEqual(insideClaude(13, iterm), { inside: false, unknown: true, server: { exe: "/Applications/iTerm.app/Contents/MacOS/iTerm2", pid: 10, started: "t" } }, "iTerm on macOS: a named server, its login proves nothing");
+      assert.deepEqual(insideClaude(13, iterm), { inside: false, unknown: true, server: { exe: "/Applications/iTerm.app/Contents/MacOS/iTerm2", pid: 10, started: "t", uid: me } }, "iTerm on macOS: a named server, its login proves nothing");
       // F3: a same-uid process runs `login -pfl $USER cmd` with no password. sh -> login (root) -> a detached helper at ppid 1.
       const forge = {
         900: { ppid: 1, pgid: 900, uid: me, start: 100, args: "perl -e exec-login" },
@@ -164,14 +164,14 @@ test("peer: every real person surface still reads as the person (or as a server 
     // Ghostty, VS Code, Warp and any app that starts the shell itself, with no login: a server the person proves once, never a model.
     const direct = { ...terminal, 11: undefined, 12: { ppid: 10, pgid: 12, uid: me, start: 102, args: "-zsh" } };
     const vscode = { look: pid => direct[pid] || null, threads: [], self: 200, exe: pid => (pid === 10 ? "/Applications/Visual Studio Code.app/Contents/MacOS/Electron" : null), started: () => "t", uid: () => me };
-    assert.deepEqual(insideClaude(13, vscode), { inside: false, unknown: true, server: { exe: "/Applications/Visual Studio Code.app/Contents/MacOS/Electron", pid: 10, started: "t" } }, "an app that starts the shell itself: named as a server");
+    assert.deepEqual(insideClaude(13, vscode), { inside: false, unknown: true, server: { exe: "/Applications/Visual Studio Code.app/Contents/MacOS/Electron", pid: 10, started: "t", uid: me } }, "an app that starts the shell itself: named as a server");
     // A Mac server (vyred under launchd), the person over ssh: sshd's listener (root, launchd's child) -> sshd [priv] (root) -> sshd (person) -> -zsh -> vyre.
     const ssh = {
       300: { ppid: 1, pgid: 300, uid: 0, start: 10, args: "/usr/sbin/sshd -D" }, 301: { ppid: 300, pgid: 301, uid: 0, start: 100, args: "sshd: alex [priv]" },
       302: { ppid: 301, pgid: 301, uid: me, start: 101, args: "sshd: alex@ttys001" }, 303: { ppid: 302, pgid: 303, uid: me, start: 102, args: "-zsh" }, 304: { ppid: 303, pgid: 304, uid: me, start: 103, args: "vyre call notes.list" },
     };
     const sshd = { look: pid => ssh[pid] || null, threads: [], self: 200, exe: () => "/usr/sbin/sshd", started: () => "t", uid: () => 0 };
-    assert.deepEqual(insideClaude(304, sshd), { inside: false, unknown: true, server: { exe: "/usr/sbin/sshd", pid: 300, started: "t" } }, "the CLI over ssh to a Mac server: a server the person proves once");
+    assert.deepEqual(insideClaude(304, sshd), { inside: false, unknown: true, server: { exe: "/usr/sbin/sshd", pid: 300, started: "t", uid: 0 } }, "the CLI over ssh to a Mac server: a server the person proves once");
     // Capsule.app: it connects itself and proves itself by the pinned cdhash, checked before the walk's own answer.
     const capsule = { 20: row(1, "/Applications/Vyre.app/Contents/MacOS/Vyre"), 200: terminal[200] };
     const registry = { call: async () => ({ data: { pids: [] } }), deps: { presence: { capsulePin: () => ({ cdhash: "a".repeat(40) }) } } };
@@ -346,7 +346,9 @@ test("peer: a person's label from under a claude is the session's own, for every
   for (const label of [...SURFACE_LABELS, "phone", "glass-now"]) {
     const headers = { "x-vyre-caller": label };
     assert.equal((await client(dir, socket, "probe.who", {}, { underClaude: true, headers })).body.data.caller, "mcp", label);
-    assert.equal((await client(dir, socket, "probe.who", {}, { headers })).body.data.caller, label, label);
+    // from outside each known surface stays what it said; a label no surface uses (phone, glass-now) is refused on every tool (core/modules KNOWN_LABELS), never a person
+    const out = await client(dir, socket, "probe.who", {}, { headers });
+    if (SURFACE_LABELS.includes(label)) assert.equal(out.body.data.caller, label, label); else assert.equal(out.body.error && out.body.error.code, "denied", label);
   }
   // A model's own label is not traced and not changed; a person-only tool from inside is still
   // refused out loud, never run as the model's.
@@ -710,7 +712,7 @@ test("peer: a leader whose exe cannot be read is a server keyed uid0 only when r
   const lk = pid => leader[pid] || null;
   const common = { look: lk, exe: () => null, started: () => "Mon Sep 28 08:00:00 2026", self: 999999 };
   assert.deepEqual(insideClaude(32, { ...common, uid: () => 0 }),
-    { inside: false, unknown: true, server: { exe: "uid0", pid: 30, started: "Mon Sep 28 08:00:00 2026" } });
+    { inside: false, unknown: true, server: { exe: "uid0", pid: 30, started: "Mon Sep 28 08:00:00 2026", uid: 0 } });
   assert.deepEqual(insideClaude(32, { ...common, uid: () => 1000 }), { inside: false, unknown: true, unreadable: true });
   assert.deepEqual(insideClaude(32, { ...common, uid: () => null }), { inside: false, unknown: true, unreadable: true });
   // No readable start time, no key: refused flat rather than trusting a pid that could be reused.

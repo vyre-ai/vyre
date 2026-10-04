@@ -235,7 +235,7 @@ test("profile: second-person lines that still hold, strongest first, nothing sen
 test("remember: told outright, kept at once, answered at once, no prompt", async t => {
   const { call, ask } = await world(t);
   assert.equal((await ask("what is my brother's name")).answer, null);
-  const r = await call("memory.remember", { text: "My brother Leo lives in Denver.", room: "harlow" }, "mcp:agent:juno");
+  const r = await call("memory.remember", { text: "My brother Leo lives in Denver.", room: "harlow" }, "cli");
   assert.ok(!r.error, r.error);
   assert.equal(typeof r.data.id, "number");
   assert.equal(r.data.text, "My brother Leo lives in Denver.");
@@ -262,10 +262,11 @@ test("remember: told outright, kept at once, answered at once, no prompt", async
   assert.equal((await ask("who is my brother")).answer, "Your brother is Leo.");
 
   for (const caller of ["mcp:agent:kit", "harness", "tailnet:agent:kit"]) assert.equal((await call("memory.remember", { text: "My brother is Max." }, caller)).code, "denied", caller);
-  // The user's own Claude Code session (/vyre remember through the plugin) keeps a fact.
+  // The user's own Claude Code session (/vyre remember through the plugin) is a model (HD-8): its fact is kept PENDING, not as the person's own, so it never answers as theirs.
   const cc = await call("memory.remember", { text: "My sister Ana lives in Austin." }, "mcp");
   assert.ok(!cc.error, cc.error);
-  assert.match(String((await ask("who is my sister")).answer), /Ana/);
+  assert.equal(cc.data.pending, true);
+  assert.doesNotMatch(String((await ask("who is my sister")).answer), /Ana/);
   assert.match(String((await call("memory.remember", { text: "  " })).error), /needs the fact/);
 });
 

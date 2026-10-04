@@ -179,7 +179,6 @@ finish() {
         say "  Done. Back to your browser."
       else
         say "  Next: finish pairing from your device (the long code above), or open the link above."
-        say "  If it came with an ssh -L line, run that on your own computer first."
       fi
     fi
   fi

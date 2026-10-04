@@ -50,3 +50,12 @@ export async function forgetIdentity(): Promise<void> {
   if (!db) return;
   await new Promise<void>((resolve) => { const tx = db.transaction("identity", "readwrite"); tx.objectStore("identity").delete(KEY); tx.oncomplete = () => resolve(); tx.onerror = () => resolve(); });
 }
+
+/** Is there an identity key on this device? */
+export async function hasIdentity(): Promise<boolean> { return (await loadIdentity()) !== null; }
+
+/** The identity key made before a claim (the browser keeps it with the record, so the claim makes its own): none. */
+export const createIdentityKey = async (): Promise<DeviceKey | undefined> => undefined;
+
+/** The key kept on this device, or null. */
+export async function identityKey(): Promise<DeviceKey | null> { return (await loadIdentity())?.key ?? null; }
