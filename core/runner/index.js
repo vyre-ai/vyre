@@ -41,7 +41,12 @@ const str = { type: "string" };
 export default {
   async start(ctx) {
     const seam = (ctx.paths && seams.get(ctx.paths.root)) || {};
-    const ports = () => seam.ports || ctx.kernel?.runnerPorts?.() || null;
+    // The kernel's own ports need the host's answers (the person's chain, this computer's device id and key, the sync and spec ports). Until the host gives them, building them throws:
+    // that is "not connected yet", never a module that fails to start (walk step 11, 4 Oct).
+    const ports = () => {
+      if (seam.ports) return seam.ports;
+      try { return ctx.kernel?.runnerPorts?.(ctx.kernel?.runnerHost?.()) || null; } catch { return null; }
+    };
     // A workspace left open by a runner that died must not stay readable: close any nobody holds a lease for.
     try { await reconcile({ base: ctx.paths.root + "/runner", platform: seam.platform }); } catch {}
     /** @type {Map<string, any>} one runner per space */
