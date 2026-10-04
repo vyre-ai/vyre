@@ -136,3 +136,15 @@ test("other VPN: running means a Running backend; missing, stopped or unreadable
   assert.equal(await otherVpnRunning({ run: run({ code: 0, out: "not json", err: "" }) }), false);
   assert.equal(await otherVpnRunning({ run: async () => { throw new Error("x"); } }), false);
 });
+
+test("PA-2: who is asking to pair is shown with the identity id's first characters, and a mixed-script look-alike name is shown as the id alone", async () => {
+  const { askNameOf } = await import("./pairing.js");
+  const id = "per_abcdefghijklmnopqrstuvwxyz".slice(0, 30);
+  const real = "per_" + "abcdefghijklmnopqrstuvwxyz".slice(0, 26);
+  assert.equal(askNameOf({ owner: { name: "alex", id: real } }), `alex (${real.slice(0, 10)})`);
+  assert.equal(askNameOf({ owner: { name: "alеx", id: real } }), real.slice(0, 10), "a Cyrillic e inside Latin letters");
+  assert.equal(askNameOf({ owner: { name: "alеx" } }), "someone");
+  assert.equal(askNameOf({}), "someone");
+  assert.equal(askNameOf({ owner: { name: "alex<script>", id: real } }), `alexscript (${real.slice(0, 10)})`);
+  void id;
+});

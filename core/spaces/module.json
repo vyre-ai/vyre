@@ -118,6 +118,10 @@
     "reach": "person"
    },
    {
+    "name": "spaces.owner.adopt",
+    "reach": "modules"
+   },
+   {
     "name": "spaces.devices.remove",
     "reach": "person"
    },

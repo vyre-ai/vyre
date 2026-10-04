@@ -1218,3 +1218,18 @@ export function ownDirectory(o) {
     async label() { return null; },
   };
 }
+
+/**
+ * The line a person reads for who is asking to pair (PA-2): the asker's NAME is a claim, so it is never alone. The identity id's first characters stand beside it, and a name that mixes scripts
+ * (a Cyrillic letter in `alex`) is shown as the id alone, so a look-alike cannot pass for the person's own name. The words check stays the real proof.
+ * @param {any} input
+ */
+export function askNameOf(input) {
+  const raw = String((input && input.owner && input.owner.name) || (input && input.identity) || (input && input.owner && input.owner.id) || "someone");
+  const clean = raw.replace(/[^\p{L}\p{N} ._@:-]/gu, "").slice(0, 64) || "someone";
+  const id = String((input && input.owner && input.owner.id) || (input && input.identity) || "");
+  const short = /^per_[a-z2-7]{26}$/.test(id) ? id.slice(0, 10) : "";
+  const scripts = new Set(["Latin", "Cyrillic", "Greek", "Armenian", "Hebrew", "Arabic", "Han", "Hangul", "Hiragana", "Katakana"].filter(sc => new RegExp(`\\p{Script=${sc}}`, "u").test(clean)));
+  if (scripts.size > 1) return short ? short : "someone";
+  return short && clean !== id ? `${clean} (${short})` : clean;
+}
