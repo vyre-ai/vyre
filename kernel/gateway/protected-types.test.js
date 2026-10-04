@@ -55,3 +55,18 @@ test("a module's kernel handle (a Proxy over the gateway's records) works: defin
   assert.equal((await handle.records.query(owner, "plain", { page: { limit: 5 } })).rows.length, 1);
   assert.equal((await handle.records.query(owner, "kit-proposal", { page: { limit: 5 } })).rows.length, 0);
 });
+
+test("FZ-1: nobody can replace a records method: the gateway's records are frozen, and a module's handle is a read-only view (assign, delete and defineProperty all refuse)", async () => {
+  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 9), presence });
+  const handle = k.kernelFor({ name: "probe", needs: { kernel: { actions: ["records.read"] } } });
+  assert.equal(Object.isFrozen(k.gateway.records), true);
+  assert.throws(() => { k.gateway.records.query = async () => ({ rows: [] }); }, TypeError);
+  assert.throws(() => { delete k.gateway.records.query; }, TypeError);
+  assert.throws(() => Object.defineProperty(k.gateway.records, "query", { value: () => 1 }), TypeError);
+  const real = handle.records.query;
+  assert.throws(() => { handle.records.query = async () => ({ rows: [] }); }, TypeError);
+  assert.throws(() => { delete handle.records.query; }, TypeError);
+  assert.throws(() => Object.defineProperty(handle.records, "query", { value: () => 1 }), TypeError);
+  assert.throws(() => Object.setPrototypeOf(handle.records, {}), TypeError);
+  assert.equal(typeof handle.records.query, typeof real, "the method is still the kernel's");
+});

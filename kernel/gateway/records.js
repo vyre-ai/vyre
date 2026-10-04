@@ -1019,8 +1019,8 @@ export function createRecords(cfg) {
   };
   // A protected type is read and created only by an owner or admin (as themselves or through a service) and only the rows they or a service made are shown: a member who can write the type
   // cannot plant a row that a lookup finds first, and cannot read what the Kits keep.
-  // (not frozen: kernel/index.js proxies this object for a module's handle, and a Proxy may not answer differently for a frozen target's properties)
-  return {
+  // Frozen: nobody who holds the gateway can replace a method. (kernel/index.js hands a module a Proxy over a COPY of this object, so the Proxy's own answers are not bound by this freeze.)
+  return Object.freeze({
     ...api,
     async get(/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id) {
       if (typeof type === "string" && await isProtectedType(type)) { if (!adminish(chain)) return null; const r = await api.get(chain, type, id); return r && madeByTrusted(urn(type, id)) ? r : null; }
@@ -1040,5 +1040,5 @@ export function createRecords(cfg) {
       for (const h of r.rows) keep.push(!(await isProtectedType(h.type)) || (adminish(chain) && madeByTrusted(urn(h.type, h.id))));
       return { ...r, rows: r.rows.filter((/** @type {any} */ _h, /** @type {number} */ i) => keep[i]) };
     },
-  };
+  });
 }

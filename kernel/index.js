@@ -127,7 +127,12 @@ export async function createKernel(cfg) {
     const ready = Promise.all([installed, Array.isArray(needs.types) && needs.types.length ? store.define({ add_types: needs.types }) : Promise.resolve()]);
     // A failure here (the sealing process went away) surfaces on the module's first call, not as an unhandled rejection nobody can catch.
     ready.catch(() => {});
-    const records = new Proxy(gateway.records, { get: (t, k) => (typeof t[k] === "function" ? async (/** @type {any[]} */ ...a) => { await ready; return t[k](...a); } : t[k]) });
+    // A Proxy over a COPY of the gateway's (frozen) records: a Proxy over a frozen target must answer with the target's own values, and these answers wait for `ready`. The handle is read only: nothing
+    // may assign to it, delete from it or redefine a method on it, so no holder can replace what another caller gets.
+    const records = new Proxy({ ...gateway.records }, {
+      get: (t, k) => (typeof t[k] === "function" ? async (/** @type {any[]} */ ...a) => { await ready; return t[k](...a); } : t[k]),
+      set: () => false, defineProperty: () => false, deleteProperty: () => false, setPrototypeOf: () => false,
+    });
     /** @type {any} */ const handle = {
       space: cfg.space, get owner() { return ownerRef.id; },
       /** A person id as the Space knows them now (the owner an adoption replaced is the identity that replaced them): a module that keyed anything by person id reads it through this. */
