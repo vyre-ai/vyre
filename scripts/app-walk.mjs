@@ -111,6 +111,14 @@ const page = await ctx.newPage();
 // The stand-in names directory (testbox3) sends no CORS headers yet (windows' fix 489ea442f is not on it), so a browser cannot read its answer. The walk adds the header on the way back;
 // the answer itself is the directory's, untouched.
 const DIRECTORY = process.env.WALK_NAMES_DIRECTORY || "";
+// The LIVE names directory is never touched by a walk: any request to it is aborted and counted, and a walk that claims names (--setup) refuses to start unless the build holds the stand-in host.
+let liveNameCalls = 0;
+await ctx.route(/^https:\/\/names\.vyre\.run\//, (route) => { liveNameCalls++; return route.abort(); });
+if (SETUP) {
+  const js = fs.readdirSync(path.join(DIST, "_expo/static/js/web")).filter((f) => f.startsWith("entry-")).map((f) => fs.readFileSync(path.join(DIST, "_expo/static/js/web", f), "utf8")).join("");
+  const host = DIRECTORY.replace(/^https?:\/\//, "");
+  if (!DIRECTORY || !js.includes(host)) { console.error(`app-walk: --setup needs WALK_NAMES_DIRECTORY and a build made with EXPO_PUBLIC_VYRE_NAMES_DIRECTORY set to it (the build does not hold "${host}"); refusing to start so no name is claimed on the live directory`); process.exit(3); }
+}
 if (DIRECTORY) await ctx.route(`${DIRECTORY}/**`, async (route) => { const r = await route.fetch(); await route.fulfill({ response: r, headers: { ...r.headers(), "access-control-allow-origin": "*" } }); });
 let consoleErrors = [];
 page.on("pageerror", (e) => consoleErrors.push(`pageerror: ${e}`));
@@ -263,6 +271,7 @@ await step("setup: create a space on this computer, close partway, resume", { sk
 await browser.close();
 server.close();
 fs.writeFileSync(path.join(OUT, "report.json"), JSON.stringify({ at: new Date().toISOString(), box: SOCKET || BOX_URL, presence: PRESENCE, spaces: spaceNames, report }, null, 2));
+if (liveNameCalls) console.log(`NOTE: ${liveNameCalls} request(s) to the live names directory were blocked`);
 const count = (s) => report.filter((r) => r.status === s).length;
 console.log(`\n${report.length} steps: ${count("PASS")} passed, ${count("HONEST")} honest refusals, ${count("SKIP")} skipped, ${count("FAIL")} failed. Report and screenshots in ${OUT}`);
 process.exit(count("FAIL") ? 1 : 0);
