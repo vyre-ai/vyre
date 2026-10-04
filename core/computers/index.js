@@ -256,12 +256,13 @@ export default {
 
     tool("computers.limits", `Set an agent's processor cores (cpus, ${LIMITS.cpus.min} to ${LIMITS.cpus.max}) and memory (memory_gb, ${LIMITS.memoryGb.min} to ${LIMITS.memoryGb.max}). They apply at the next restart. A person's or the assistant's to set, never an agent's own.`,
       obj({ agent: str, cpus: { type: "number" }, memory_gb: { type: "number" } }), async (i, { caller }) => {
+        ownOnly(caller);
         const agent = await resolve(i, caller);
         const claim = agentClaim(caller);
         if (claim && (await kindOf(claim)) !== "assistant") throw new Error(`${claim} cannot change a computer's limits; the user sets them`);
         await pool.allowed(agent);
         return pool.limits(agent, { cpus: i.cpus, memory_gb: i.memory_gb });
-      });
+      }, { callers: OWN });
 
     tool("computers.stats", "One CPU/RAM/network sample for an agent's computer (docker stats, one buffered request, never a streaming connection). Every field null when the computer is not running or this machine has no driver. Internal: vitals reads this, not the Deck.", obj({ agent: str }),
       async (i, { caller }) => {
@@ -280,16 +281,17 @@ export default {
 
     tool("computers.takeover", "Take the keyboard of an agent's computer for a person's screen. The agent's hands stop, and the thread's lease moves to that screen. Call again to renew; it lapses after 90 s unrenewed.",
       obj({ agent: str, surface: str }, ["surface"]), async (i, { caller }) => {
+        ownOnly(caller);
         const agent = await resolve(i, caller);
         if (!driver) throw new Error(NO_DRIVER);
         const surface = await ownSurface(i, caller);
         // Nobody types into a computer the Vault is signing in on; the fill ends in seconds.
         if (fills.has(agent)) throw Object.assign(new Error(`${agent}'s computer is busy: a sign-in is being filled; try again in a few seconds`), { code: "busy" });
         return keyboard.takeover(agent, surface, caller);
-      });
+      }, { callers: OWN });
 
     tool("computers.giveback", "Hand the keyboard back to the agent.", obj({ agent: str, surface: str }, ["surface"]),
-      async (i, { caller }) => keyboard.giveback(await resolve(i, caller), await ownSurface(i, caller), caller));
+      async (i, { caller }) => { ownOnly(caller); return keyboard.giveback(await resolve(i, caller), await ownSurface(i, caller), caller); }, { callers: OWN });
 
     tool("computers.watch", "A one-use ticket (30 s) to open an agent's screen in Glass. slow: the viewer's link is relayed or slow, so send fewer frames.",
       obj({ agent: str, surface: str, slow: { type: "boolean" } }, ["surface"]),
