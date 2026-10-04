@@ -1038,7 +1038,9 @@ export default {
         const c = String((meta && meta.caller) || "");
         const me = c.startsWith("device:") ? /** @type {any} */ (db.prepare("SELECT kind, trusted FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(c.slice(7))) : null;
         const withAsk = !(me && me.kind === "web" && !me.trusted);
-        return { devices: rows.map((d, i) => view(d, rtts[i], withAsk)) };
+        // PA-4: a web caller (a legacy browser) reads ITS OWN row and no other device's name, last seen or presence; the owner's surfaces see them all
+        const own = me && me.kind === "web" ? c.slice(7) : null;
+        return { devices: rows.map((d, i) => ({ d, i })).filter(x => own === null || x.d.id === own).map(x => view(x.d, rtts[x.i], withAsk)) };
       },
     });
 

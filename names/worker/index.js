@@ -22,7 +22,7 @@
 // sha256. The route id must be the hash of the key (core/relay/wire.js routeId), the clock within
 // 60 seconds, and the nonce unused. No dependencies: WebCrypto only.
 //
-// Nothing here serves user content, sets a cookie or reads one. CORS is narrow: `GET /v1/ids/resolve` is public read-only data and answers any origin (no credentials). `POST /v1/ids/claim`,
+// Nothing here serves user content, sets a cookie or reads one. CORS is narrow: `GET /v1/ids/resolve` and the name availability check `GET /v1/names/check` are public read-only data and answer any origin (no credentials). `POST /v1/ids/claim`,
 // `/v1/ids/append` and `/v1/ids/update` carry their own proof (the identity's own signature is the authentication), so they also accept the Vyre app's origins (env.APP_ORIGINS, default
 // https://app.vyre.run) and answer that exact origin. Every other state-changing request that carries a foreign Origin (a browser's) is refused; a box sends none.
 
@@ -205,7 +205,7 @@ const appOrigins = env => new Set(String((env && env.APP_ORIGINS) || "https://ap
 /** The CORS headers for this request on this route, or null. resolve: any origin, never credentials. App routes: the exact allowed origin only. */
 function corsHeaders(request, env, op) {
   const origin = request.headers.get("origin");
-  if (op === "idResolve") return { "access-control-allow-origin": "*", "access-control-allow-methods": "GET", "access-control-allow-headers": "content-type", "access-control-max-age": "600" };
+  if (op === "idResolve" || op === "check") return { "access-control-allow-origin": "*", "access-control-allow-methods": "GET", "access-control-allow-headers": "content-type", "access-control-max-age": "600" };
   if (APP_OPS.has(op) && origin !== null && appOrigins(env).has(origin)) return { "access-control-allow-origin": origin, "vary": "origin", "access-control-allow-methods": "POST", "access-control-allow-headers": "content-type", "access-control-max-age": "600" };
   return null;
 }
@@ -527,7 +527,7 @@ export class Directory {
       if (held.name === v.name) return { name: v.name, mine: true, code: null };
       throw err(409, "one_per_route", `this server already holds ${held.name}`);
     }
-    await this.count("ip", ip, LIMITS.claimsPerIp, "too many names claimed from this address today");
+    await this.count("ip", ip, Number(this.env.CLAIMS_PER_IP_PER_DAY) || LIMITS.claimsPerIp, "too many names claimed from this address today");
     const max = Number(this.env.GLOBAL_CLAIMS_PER_DAY) || LIMITS.claimsGlobal;
     const total = await this.count("all", "all", max, "the directory is busy today; try again tomorrow").catch(e => {
       console.warn(`names: ALERT the daily claim ceiling (${max}) is reached`);

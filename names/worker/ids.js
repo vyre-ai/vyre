@@ -134,7 +134,7 @@ export const idOps = {
     const sig = await this.idCheckRecord(rec0, state, b.rec, b.sealed);
     // One namespace: a name used by a box, or by any identity, is taken.
     if (await this.load(v.name) || await this.idLoad(v.name)) throw err(409, "taken", "someone else has that name");
-    await this.count("ip", ip, 5, "too many names claimed from this address today");
+    await this.count("ip", ip, Number(this.env.CLAIMS_PER_IP_PER_DAY) || 5, "too many names claimed from this address today");
     const max = Number(this.env.GLOBAL_CLAIMS_PER_DAY) || 500;
     await this.count("all", "all", max, "the directory is busy today; try again tomorrow");
     const rec = { v: 2, name: v.name, kind: state.kind, id: state.id, ops, eids: this.eidsOf(state), sealed: b.sealed, rec: sig, state: "live", claimedAt: this.now(), aliases: [], notices: [], log: [] };
