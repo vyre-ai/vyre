@@ -3,6 +3,7 @@
 # (a folder missing from package.json "files", two modules with one name) is caught the day it is made. The real release key is never here.
 name: packaged-boot
 on:
+  workflow_call:
   workflow_dispatch:
   push:
     branches: ["work/rc-*", "work/v0.3", "work/launch-03"]

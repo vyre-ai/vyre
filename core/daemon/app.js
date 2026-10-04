@@ -115,3 +115,24 @@ export function serveApp(res, pathname, { dir: d = APP_DIST, deckManifest, build
   res.writeHead(200, head(TYPES[path.extname(file)] || "application/octet-stream", hashed ? IMMUTABLE : "no-cache"));
   res.end(buf);
 }
+
+/**
+ * The two files that let the iPhone and Android apps open https join and pair links at this origin (app-wire's verified links): /.well-known/apple-app-site-association and
+ * /.well-known/assetlinks.json for the app sh.vyre.app, paths /app/join and /app/pair. The signing identities are not in the code: the Apple team id comes from VYRE_APPLE_TEAM_ID and the
+ * Android certificate fingerprint(s) from VYRE_ANDROID_CERT_SHA256 (comma separated, colon-hex), set where the app origin is deployed. Missing, the file is absent (a 404), never a guess.
+ * @param {string} pathname @param {NodeJS.ProcessEnv} [env] @returns {string | null}
+ */
+export function associationFile(pathname, env = process.env) {
+  const APP = "sh.vyre.app";
+  if (pathname === "/.well-known/apple-app-site-association") {
+    const team = String(env.VYRE_APPLE_TEAM_ID || "");
+    if (!/^[A-Z0-9]{10}$/.test(team)) return null;
+    return JSON.stringify({ applinks: { details: [{ appIDs: [`${team}.${APP}`], components: [{ "/": "/app/join*" }, { "/": "/app/pair*" }] }] } }, null, 2);
+  }
+  if (pathname === "/.well-known/assetlinks.json") {
+    const fps = String(env.VYRE_ANDROID_CERT_SHA256 || "").split(",").map(x => x.trim().toUpperCase()).filter(Boolean);
+    if (!fps.length || !fps.every(x => /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/.test(x))) return null;
+    return JSON.stringify([{ relation: ["delegate_permission/common.handle_all_urls"], target: { namespace: "android_app", package_name: APP, sha256_cert_fingerprints: fps } }], null, 2);
+  }
+  return null;
+}
