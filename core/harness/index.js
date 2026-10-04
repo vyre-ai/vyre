@@ -164,7 +164,14 @@ export default {
         // Every prompt starts a turn for Learning, slash commands included; it may also be a correction.
         // interactive: the hook saw a person's Claude Code (a terminal, no -p); only then may a
         // plain yes or no answer a lesson. An agent's thread never is.
-        const learned = session ? await ask("learn.signal", { session, prompt_id, prompt, cwd, agent, interactive: interactive === true && !agent }) : null;
+        // HD-4: `interactive` is a claim in the input, so it counts for nothing by itself. It is believed only from the hook's own label (`harness`, never `mcp`), with no Vyre
+        // thread behind the call (a thread is a program's session), and for a session Vyre does not hold as a headless thread.
+        let terminal = false;
+        if (interactive === true && !agent && session && String(caller || "") === "harness" && !(typeof meta.thread === "string" && meta.thread)) {
+          const claimed = await ask("threads.claimed", { session: String(session) });
+          terminal = !(claimed && claimed.headless);
+        }
+        const learned = session ? await ask("learn.signal", { session, prompt_id, prompt, cwd, agent, interactive: terminal }) : null;
         const lessons = learned && typeof learned.text === "string" ? learned.text : "";
         // A lesson broken last turn opens this one, ahead of memory.
         const first = Boolean(learned && Array.isArray(learned.broke) && learned.broke.length);

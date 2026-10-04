@@ -16,6 +16,10 @@ import path from "node:path";
 import * as transcripts from "../transcripts/index.js";
 import { REDACTIONS, REDACT_VERSION, redact, redactLinks } from "../../lib/secret-shapes.js";
 import { chunks, encode } from "./embed.js";
+import { scrubText } from "./sealed.js";
+
+/** Credentials, then values shaped like a sealed class (core/recall/sealed.js): the one cleaning every turn and title gets on the way in. @param {string} text */
+const clean = text => scrubText(redact(text)).text;
 
 /** Let the event loop breathe between files, so vyred keeps answering while it indexes. */
 const breathe = () => new Promise(r => setImmediate(r));
@@ -140,9 +144,9 @@ export class Indexer {
     this.db.exec("BEGIN");
     try {
       for (const r of rows) {
-        const clean = redact(r.text);
-        if (clean === r.text) continue;
-        upd.run(clean, r.rowid); dv.run(r.session, r.seq); n++;
+        const cleaned = redact(r.text);
+        if (cleaned === r.text) continue;
+        upd.run(cleaned, r.rowid); dv.run(r.session, r.seq); n++;
       }
       if (n) this.q.generation.run();
       this.q.meta.run("redact", rows.length < batch ? REDACT_VERSION : `${REDACT_VERSION}-working:${rows[rows.length - 1].rowid}`);
@@ -219,7 +223,7 @@ export class Indexer {
     }
     const t = transcripts.read(entry.file, { id: entry.id, parent: entry.parent });
     if (!t) { s.failed++; return; }
-    for (const turn of t.turns) turn.text = redact(turn.text);
+    for (const turn of t.turns) turn.text = clean(turn.text);
 
     const have = prev ? Number(prev.turns) : 0;
     let from = 0, rewritten = false;
@@ -242,7 +246,7 @@ export class Indexer {
         this.q.generation.run();
       }
       for (const turn of t.turns.slice(from)) this.q.addTurn.run(entry.id, turn.seq, turn.role, turn.ts, turn.text, turn.provider || "claude", turn.model || null);
-      this.q.put.run(entry.id, entry.file, t.cwd, t.name, t.title, t.started || null, t.ended || null,
+      this.q.put.run(entry.id, entry.file, t.cwd, t.name == null ? t.name : clean(t.name), t.title == null ? t.title : clean(t.title), t.started || null, t.ended || null,
         t.turns.length, human === null ? t.human : (human && t.human ? 1 : 0), t.parent, entry.size, entry.mtime);
       this.db.exec("COMMIT");
     } catch (e) { this.db.exec("ROLLBACK"); throw e; }
