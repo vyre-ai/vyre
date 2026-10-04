@@ -955,3 +955,25 @@ test("setup in progress: kept with the space, claimed by another device of the p
   assert.equal((await d.call("spaces.setup.claim", { space }, "cli", laptop)).error?.code, "no_setup");
   void w;
 });
+
+test("a device's spaces: the Access screen lists them, a space can remove one device without touching the others, and the removed device is refused there", async t => {
+  const w = world(t);
+  const d = await device(t);
+  const me = await d.ok("spaces.identity.create", { name: "alex" });
+  const a = await d.ok("spaces.create", { name: "harlow", home: { kind: "this-computer", confirmed: true } });
+  const b = await d.ok("spaces.create", { name: "northwind", home: { kind: "this-computer", confirmed: true } });
+  const eid = me.eid;
+  const asDevice = { kernelFacts: { kind: "device", device_key_id: eid } };
+  const mine = await d.ok("spaces.devices.spaces", {}, "cli", asDevice);
+  assert.deepEqual([mine.device.self, mine.spaces.map(x => [x.label, x.removed])], [true, [["harlow", false], ["northwind", false]]]);
+  assert.equal((await d.call("spaces.devices.spaces", { device: "nope" })).error?.code, "not_found");
+  assert.equal((await d.ok("spaces.devices.remove", { space: a.space, device: eid })).removed, true);
+  assert.deepEqual((await d.ok("spaces.devices.spaces", { device: eid })).spaces.map(x => [x.label, x.removed]), [["harlow", true], ["northwind", false]]);
+  assert.equal((await d.call("spaces.get", { space: a.space }, "cli", asDevice)).error?.code, "device_removed");
+  assert.ok(!(await d.call("spaces.get", { space: b.space }, "cli", asDevice)).error, "the other space is untouched");
+  assert.deepEqual((await d.ok("spaces.list", {}, "cli", asDevice)).map(x => x.label), ["northwind"]);
+  assert.ok(!(await d.call("spaces.get", { space: a.space })).error, "the person's own socket still reaches it");
+  assert.equal((await d.ok("spaces.devices.restore", { space: a.space, device: eid })).removed, false);
+  assert.ok(!(await d.call("spaces.get", { space: a.space }, "cli", asDevice)).error);
+  void w;
+});

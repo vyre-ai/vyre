@@ -90,6 +90,18 @@
     "reach": "person"
    },
    {
+    "name": "spaces.devices.spaces",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.devices.remove",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.devices.restore",
+    "reach": "person"
+   },
+   {
     "name": "spaces.setup.save",
     "reach": "person"
    },
@@ -257,6 +269,8 @@
    "space.vps-destroyed",
    "space.warning",
    "space.setup-moved",
+   "space.device-removed",
+   "space.device-restored",
    "member.added",
    "member.role-changed",
    "member.removed",

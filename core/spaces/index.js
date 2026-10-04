@@ -133,8 +133,16 @@ export default {
     const authorize = createRoleAuthorize({ membership: (space, person) => mstore.get(space, person), now });
     const REASONS = /** @type {Record<string, string>} */ ({ not_a_member: "You are not a member of this space.", expired: "Your access to this space has ended.", no_grant: "Your role cannot do that.", chain_not_person: "Only a person can do that." });
     /** Is the acting person an active member who may do `action`? Returns the person. @param {string} spaceId @param {string} [action] */
+    /** Devices this space has removed (the device's entry id on the person's list), kept per space. A removed device is refused here and shown as removed on the Access screen; its other spaces are untouched. */
+    const barredIn = async (/** @type {string} */ spaceId) => /** @type {string[]} */ ((await kv.get(`device-bar/${spaceId}`)) || []);
+    /** Refuse a call that comes from a device this space removed. @param {string} spaceId @param {any} meta */
+    const notRemoved = async (spaceId, meta) => {
+      const dev = meta && meta.kernelFacts && meta.kernelFacts.kind === "device" ? String(meta.kernelFacts.device_key_id || "") : "";
+      if (dev && (await barredIn(spaceId)).includes(dev)) throw refuse("This device was removed from this space.", "device_removed");
+    };
     const gate = async (spaceId, action = "views.read", meta) => {
       const s = me();
+      await notRemoved(spaceId, meta);
       if (kernelHandle(spaceId)) {
         // The kernel's answer: a member (and, for temp, one whose time has not run out) is let in; what they may DO is the kernel's to decide on each call.
         const m = await membershipOf(spaceId, /** @type {string} */ (s.id), meta).catch(() => null);
@@ -615,6 +623,41 @@ export default {
         return { space: row.id, setup: next, moved: true, from: cur.device };
       });
 
+    // ---- a device's spaces (the Access screen): which spaces a device of the person's reaches, and removing it from one without touching the others ----
+    const ownDeviceEid = (/** @type {any} */ meta) => (meta && meta.kernelFacts && meta.kernelFacts.kind === "device" && meta.kernelFacts.device_key_id) || String(me().eid);
+    const deviceOf = async (/** @type {any} */ id, /** @type {any} */ meta) => {
+      const eid = String(id || ownDeviceEid(meta));
+      const e = (await idops.entries()).find((/** @type {any} */ x) => x.eid === eid && x.kind === "device");
+      if (!e) throw refuse("That is not one of your devices.", "not_found");
+      return e;
+    };
+    tool("spaces.devices.spaces", "The spaces a device of yours reaches, each with your role there and whether the space has removed this device. Leave device out for the device you are on.",
+      obj({ device: str }), async (i, meta) => {
+        const s = me();
+        const dev = await deviceOf(i.device, meta);
+        const out2 = [];
+        for (const row of spaces.all()) {
+          if (row.status !== "done") continue;
+          const m = await membershipOf(row.id, /** @type {string} */ (s.id), meta).catch(() => null);
+          if (!m && row.createdBy !== s.id) continue;
+          out2.push({ space: row.id, name: row.name, label: row.label, displayName: row.displayName, role: m ? m.role : "owner", removed: (await barredIn(row.id)).includes(dev.eid) });
+        }
+        return { device: { eid: dev.eid, label: dev.label || null, self: dev.eid === ownDeviceEid(meta) }, spaces: out2 };
+      });
+    const setBar = async (/** @type {any} */ i, /** @type {any} */ meta, /** @type {boolean} */ bar) => {
+      const s = me();
+      const row = spaceOf(i.space);
+      const m = await membershipOf(row.id, /** @type {string} */ (s.id), meta).catch(() => null);
+      if (!m && row.createdBy !== s.id) throw refuse("You are not a member of this space.", "not_a_member");
+      const dev = await deviceOf(i.device, meta);
+      const cur = await barredIn(row.id);
+      const next = bar ? [...new Set([...cur, dev.eid])] : cur.filter(x => x !== dev.eid);
+      if (next.length !== cur.length) { await kv.put(`device-bar/${row.id}`, next); emit(bar ? "space.device-removed" : "space.device-restored", { space: row.id, device: dev.eid }); }
+      return { space: row.id, device: dev.eid, removed: bar };
+    };
+    tool("spaces.devices.remove", "Remove one of your devices from one space. The space refuses it from then on; your other spaces and the device's other access are untouched.", obj({ space: str, device: str }, ["space", "device"]), (i, meta) => setBar(i, meta, true));
+    tool("spaces.devices.restore", "Let a device you removed from a space reach it again.", obj({ space: str, device: str }, ["space", "device"]), (i, meta) => setBar(i, meta, false));
+
     tool("spaces.list", "Spaces on this device that you created or belong to, with your role in each. For a space with a kernel the role is the kernel's answer.", obj(), async (_i, meta) => {
       const s = me();
       const rows = [];
@@ -624,6 +667,7 @@ export default {
         if (!m && row.createdBy !== s.id) continue;
         // A space is listed once it has its home. One still being made (or whose server step failed) is not a space yet: its steps are spaces.status and spaces.resume.
         if (row.status !== "done") continue;
+        if (await notRemoved(row.id, meta).then(() => false, () => true)) continue;
         out.push({ id: row.id, name: row.name, label: row.label, displayName: row.displayName, status: row.status, home: row.home, role: m ? m.role : null, aliases: row.aliases, workspaceId: row.workspaceId, warnings: row.warnings, createdAt: row.createdAt, setup: await setupView(row, s) });
       }
       return out;
@@ -632,6 +676,7 @@ export default {
     tool("spaces.get", "One space: its name, home, owners and warnings.", obj({ space: str }, ["space"]), async (i, meta) => {
       const row = spaceOf(i.space);
       const s = me();
+      await notRemoved(row.id, meta);
       if (row.createdBy !== s.id) await gate(row.id, undefined, meta);
       const m = await members(row.id, meta);
       const all = await m.list();
