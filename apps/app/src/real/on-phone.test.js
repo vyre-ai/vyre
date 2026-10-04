@@ -4,7 +4,7 @@ import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { ON_PHONE, needsPerson, onPhoneFor } from "./on-phone.js";
+import { ON_PHONE, needsPerson, onPhoneFor, softwareKeyLine } from "./on-phone.js";
 import { actWords } from "./approvals.js";
 
 test("RC1: a person-only ask in a blocked browser says to do it on the phone, for each way the box asks", () => {
@@ -41,4 +41,18 @@ test("the line says the method the person has: Touch ID in a Mac window, the pho
   assert.equal(onPhoneFor("seal.reveal", "phone"), "Reveal it in Vyre on your phone.");
   assert.equal(onPhoneFor("something.else", "touchid"), "Do this with Touch ID.");
   assert.equal(onPhoneFor("onboard.claude", "touchid"), "Connect it with Touch ID.");
+});
+
+test("a browser asked to unlock the personal vault says to do it on the phone", () => {
+  assert.equal(onPhoneFor("vault.account.unlock-phone", "phone"), "Unlock it in Vyre on your phone.");
+  assert.equal(onPhoneFor("vault.account.unlock-phone", "touchid"), "Unlock it with Touch ID.");
+});
+
+test("a proof made with a software key says to approve on the phone, in our words, and tool() maps the code before the generic throw", () => {
+  assert.equal(softwareKeyLine("phone"), "Approve this in Vyre on your phone.");
+  assert.equal(softwareKeyLine("touchid"), "Approve this with Touch ID.");
+  const box = fs.readFileSync(new URL("./box.ts", import.meta.url), "utf8");
+  const i = box.indexOf('r.error?.code === "software_key"');
+  assert.ok(i > 0 && i < box.indexOf('if (r.error) throw new BoxError(r.error.code'), "the software_key mapping comes first");
+  assert.ok(!box.includes("r.error.message ?? \"\"); // software"), "the server's text is not shown for it");
 });

@@ -169,6 +169,8 @@ jobs:
           [ -f site/box/modules.json ] && cp site/box/modules.json dist/ || { echo "build-site made no modules.json"; exit 1; }
           # the signed list of the web app's files (scripts/appbuild-manifest.mjs, lib/app-build.js): the daemon serves /app/ only from files on it
           [ -f site/box/appbuild.json ] && cp site/box/appbuild.json dist/ || { echo "build-site made no appbuild.json"; exit 1; }
+          # shell.json carries the module list and the app record as exact text (scripts/shell-hashes.mjs, lib/release-shell.js): the one file an OLD updater fetches and publishes, so a 0.2.x server updated to this release still receives them
+          [ -f site/box/shell.json ] && cp site/box/shell.json dist/ || { echo "build-site made no shell.json"; exit 1; }
           # what vyre.run serves for the setup page and the install line, hashed into the signed release (check-served.mjs reads it)
           node scripts/setup-hashes.mjs dist
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

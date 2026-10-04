@@ -1313,12 +1313,14 @@ for (const driver of ["cli", "sdk"]) {
 
   test(`${driver}: threads.lineage lists the threads a thread was started for, from what vyred verified and never from a claim`, { skip }, async t => {
     const w = await boot(t, { driver });
+    await w.tool("projects.create", { name: "work", home: w.work }).catch(() => null); // an agent's session starts only inside a mapped project folder (SW-1)
     const root = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
     const lineage = id => w.d.registry.call("threads.lineage", { thread: id }, "module:vyred").then(r => r.data.lineage);
     assert.deepEqual(await lineage(root.id), [], "a person's own thread has none");
     // A session starting a thread (its calls carry the thread vyred verified) is that thread's parent.
-    const mate = (await w.d.registry.call("threads.start", { cwd: w.work, prompt: "hello", purpose: "teammate" }, `mcp:thread:${root.id}`, { thread: root.id })).data;
-    const sub = (await w.d.registry.call("threads.start", { cwd: w.work, prompt: "hello", purpose: "teammate" }, `mcp:thread:${mate.id}`, { thread: mate.id })).data;
+    // (an unnamed model session starts nothing since the 5 Oct ruling; a first-party module starts a teammate's thread for a person's, naming the thread it is for)
+    const mate = (await w.d.registry.call("threads.start", { cwd: w.work, prompt: "hello", purpose: "teammate", parent: root.id }, "module:team")).data;
+    const sub = (await w.d.registry.call("threads.start", { cwd: w.work, prompt: "hello", purpose: "teammate", parent: mate.id }, "module:team")).data;
     assert.deepEqual(await lineage(sub.id), [mate.id, root.id]);
     assert.equal((await w.tool("threads.get", { thread: sub.id })).data.thread.parent, mate.id);
     // A claim in the input is dropped: the person's surface and a plain session cannot name a parent.
@@ -1407,6 +1409,7 @@ for (const driver of ["cli", "sdk"]) {
 
   test(`${driver}: accounts: an agent is refused, the assistant may only start an account (project-scoped, pending, unusable until the person finishes), remove is the person's, bind is limited to the asked project`, { skip }, async t => {
     const w = await boot(t, { driver, sessions: { thread_socket: "on" }, vault: { "work-token": "fake-work-value" } });
+    await w.tool("projects.create", { name: "work", home: w.work }).catch(() => null); // an agent's session starts only inside a mapped project folder (SW-1)
     assert.equal((await w.tool("agents.create", { name: "kit", projects: [] })).error, undefined);
     assert.equal((await w.tool("agents.create", { name: "juno", kind: "assistant" })).error, undefined);
     assert.equal((await w.tool("projects.create", { name: "Harlow Legal", home: path.join(w.work, "harlow") })).error, undefined);
@@ -1616,6 +1619,7 @@ for (const driver of ["cli", "sdk"]) {
 
   test(`${driver}: generated media a tool call returns is saved as an artifact of the thread: bytes in the stream as they are, a provider's file read as the account, nothing else`, { skip }, async t => {
     const w = await boot(t, { driver });
+    await w.tool("projects.create", { name: "work", home: w.work }).catch(() => null); // an agent's session starts only inside a mapped project folder (SW-1)
     const acct = (await w.tool("sessions.accounts.add", { provider: "claude", label: "Second", kind: "login" })).data;
     const dir = path.join(w.root, "accounts", acct.id, ".grok", "sessions", "x", "abc", "images"); fs.mkdirSync(dir, { recursive: true });
     const jpg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4, 5]);
@@ -1654,6 +1658,7 @@ for (const driver of ["cli", "sdk"]) {
 
   test(`${driver}: a generated file from a Grok account is registered with that account's privacy mode (zdr when on, off when off)`, { skip }, async t => {
     const w = await boot(t, { driver });
+    await w.tool("projects.create", { name: "work", home: w.work }).catch(() => null); // an agent's session starts only inside a mapped project folder (SW-1)
     withGrok(t, w);
     noMemoryBlocks(w);
     const g = (await w.tool("sessions.accounts.add", { provider: "grok", label: "Grok", kind: "login" })).data;
@@ -1666,7 +1671,9 @@ for (const driver of ["cli", "sdk"]) {
     };
     for (const [on, want] of [[true, "zdr"], [false, "off"]]) {
       assert.equal((await w.tool("sessions.accounts.set", { account: g.id, privacy: on })).error, undefined);
-      const th = (await w.tool("threads.start", { cwd: w.work, provider: "grok", account: g.id, prompt: "imagecodex", surface: "deck" })).data;
+      const thr = await w.tool("threads.start", { cwd: w.work, provider: "grok", account: g.id, prompt: "imagecodex", surface: "deck" });
+      if (thr.error) throw new Error(JSON.stringify(thr.error));
+      const th = thr.data;
       await w.finished(th.id);
       for (let i = 0; i < 50 && registered.length < (on ? 1 : 2); i++) await new Promise(r => setTimeout(r, 40));
       assert.equal(registered.at(-1).privacy, want);
@@ -1694,6 +1701,7 @@ for (const driver of ["cli", "sdk"]) {
 
   test(`${driver}: a label never grants the assistant's powers: a client labelled mcp:agent:juno with no verified agent is refused, the real assistant with no thread record yet passes`, { skip }, async t => {
     const w = await boot(t, { driver });
+    await w.tool("projects.create", { name: "work", home: w.work }).catch(() => null); // an agent's session starts only inside a mapped project folder (SW-1)
     assert.equal((await w.tool("agents.create", { name: "juno", kind: "assistant" })).error, undefined); // no thread record yet
     assert.equal((await w.tool("agents.create", { name: "kit", projects: [] })).error, undefined);
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
@@ -1902,9 +1910,12 @@ for (const driver of ["cli", "sdk"]) {
         return { async stop() {} };
       } };` };
     const w = await boot(t, { driver, sessions: { thread_socket: "on" }, modules: [whoami] });
+    await w.tool("projects.create", { name: "work", home: w.work }).catch(() => null); // an agent's session starts only inside a mapped project folder (SW-1)
     assert.equal((await w.tool("projects.create", { name: "Harlow Legal", home: path.join(w.work, "harlow") })).error, undefined);
     assert.equal((await w.tool("agents.create", { name: "kit", projects: ["harlow-legal"] })).error, undefined);
-    const th = (await w.tool("threads.start", { cwd: w.work, agent: "kit", prompt: 'vyre-sock whoami.me {"projects":"*"}', surface: "deck" })).data;
+    const thr = await w.tool("threads.start", { cwd: w.work, agent: "kit", prompt: 'vyre-sock whoami.me {"projects":"*"}', surface: "deck" });
+    if (thr.error) throw new Error(JSON.stringify(thr.error));
+    const th = thr.data;
     await w.finished(th.id);
     // The input said "*"; the daemon says what agents_agents holds.
     const first = JSON.parse((await w.said(th.id)).at(-1));

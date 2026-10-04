@@ -392,7 +392,7 @@ Listens for: `floor.wrote`, `thread.deleted`
 | Event | Fields |
 | --- | --- |
 | `presence.enrolled` | `id`, `kind`, `name` |
-| `presence.proved` | `caller`, `method`, `tool` |
+| `presence.proved` | `caller`, `method`, `tool`; sometimes `strength` |
 | `presence.refused` | none; sometimes `caller`, `device`, `method`, `tool`, `why` |
 | `presence.removed` | `id` |
 | `presence.signed-in` | `id`, `node` |

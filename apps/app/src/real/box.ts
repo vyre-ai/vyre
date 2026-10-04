@@ -7,7 +7,7 @@ import { call } from "../api/box";
 import { peerCall, peerWanted } from "./peer";
 import { wantsPasskey } from "./presence-model.js";
 import { claimBlocked } from "../../screens/shell/rc";
-import { needsPerson, onPhoneFor } from "./on-phone.js";
+import { needsPerson, onPhoneFor, softwareKeyLine } from "./on-phone.js";
 import { APPROVE_ON_PHONE, actWords, askPhone, endLine, phoneRoute, proofHeader } from "./approvals.js";
 import { useApproval } from "./approval-state";
 import { Platform } from "react-native";
@@ -58,6 +58,8 @@ export async function tool<T = unknown>(name: string, input: Record<string, unkn
       throw e;
     }
   }
+  // A presence proof made with a software key (a computer's key file) is refused on a release server: the person approves it on their phone, in our words.
+  if (r.error?.code === "software_key") throw new BoxError("software_key", softwareKeyLine());
   if (r.error) throw new BoxError(r.error.code ?? "error", r.error.message ?? "");
   return r.data as T;
 }

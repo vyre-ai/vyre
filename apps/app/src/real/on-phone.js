@@ -29,6 +29,10 @@ function lineFor(tool) {
   if (/^(grants|spaces\.roles|spaces\.members)\./.test(t)) return "Change who can use this in Vyre on your phone.";
   if (/^wink\./.test(t)) return "Pair it in Vyre on your phone.";
   if (/^onboard\./.test(t)) return "Connect it in Vyre on your phone.";
+  if (/^vault\.account\.unlock/.test(t)) return "Unlock it in Vyre on your phone.";
   // No restore control exists in the app yet (the space Drive has no screen): this file names an action only when a control for it exists.
   return ON_PHONE;
 }
+
+/** The refusal for a presence proof made with a software key (platform: code `software_key` on a release server). The words are ours, never the server's. @param {"touchid" | "phone"} [how] */
+export const softwareKeyLine = (how = howApprove()) => said("Approve this in Vyre on your phone.", how);
