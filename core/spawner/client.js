@@ -91,3 +91,22 @@ export async function wipeAccount(account, { socket = SOCKET } = {}) {
 
 /** Start a watcher's runner behind the wall: argv[0] is node, ro the paths it reads, and nothing else reaches it. @param {string[]} argv @param {{ ro?: string[], cwd?: string, socket?: string }} [o] */
 export const spawnAsWatcher = (argv, { ro, cwd, socket } = {}) => spawnAsAgent(argv, { role: "watcher", ro, cwd, ...(socket ? { socket } : {}) });
+
+/**
+ * Make one session transcript of an account group-readable for vyred (the spawner checks the path: a .jsonl under that account's own .claude/projects, no link).
+ * @param {number} account @param {string} file @param {{ socket?: string }} [o]
+ */
+export async function shareTranscript(account, file, { socket = SOCKET } = {}) {
+  const c = /** @type {net.Socket} */ (await connect(socket));
+  const answer = new Promise((resolve, reject) => {
+    let buf = "";
+    c.setEncoding("utf8");
+    c.on("data", d => { buf += d; });
+    c.on("end", () => { try { resolve(JSON.parse(buf.split("\n")[0])); } catch { reject(new Error("spawner: no answer")); } });
+    c.on("error", reject);
+  });
+  c.write(JSON.stringify({ op: "share", account, path: file }) + "\n");
+  const r = /** @type {any} */ (await answer);
+  if (r.error) throw new Error(`spawner: ${r.error}`);
+  return true;
+}
