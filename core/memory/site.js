@@ -21,6 +21,7 @@ import {
 import { current as whoNow } from "./who.js";
 
 const PERSON = new Set(["deck", "cli", "local", "capsule"]);
+// SHIM(legacy labels): read only with the kernel off (isPerson below asks the kernel's Who first)
 const PERSON_LABEL = /^(?:tailnet:(?!agent:)|device:)\S+$/;
 const GONE_MS = 365 * 24 * 3_600_000;
 const UNDO_MS = 24 * 3_600_000;
