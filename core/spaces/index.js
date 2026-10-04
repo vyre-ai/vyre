@@ -416,8 +416,25 @@ export default {
       if (!s || !s.exists || !s.id || s.id === K.owner) return;
       try { await K.adoptOwner(s.id); } catch (e) { ctx.log.warn(`the kernel could not take your identity as its owner: ${String(/** @type {any} */ (e).message || e).slice(0, 160)}`); }
     };
+    /** Every Space this home hosts has the claimed identity as its owner too (a Space made before the claim, or by an older build, still has the first-start id): the same once-only adoption in each hosted kernel. */
+    /** @type {Set<string>} */ const hostedAdopted = new Set();
+    const adoptHosted = async () => {
+      if (!K || !K.spaces || typeof K.spaces.list !== "function") return;
+      let s; try { s = identity.status(); } catch { return; }
+      if (!s || !s.exists || !s.id) return;
+      for (const id of K.spaces.list()) {
+        const h = kernelHandle(id);
+        const k = h && h.hosted === true ? h.kernel : null;
+        if (!k || typeof k.kernelFor !== "function" || id === (K.space) || hostedAdopted.has(id + s.id)) continue;
+        try {
+          const hk = k.kernelFor({ name: "spaces", needs: { kernel: { spaces: true } } });
+          if (hk && typeof hk.adoptOwner === "function" && hk.owner !== s.id) await hk.adoptOwner(s.id);
+          hostedAdopted.add(id + s.id);
+        } catch (e) { ctx.log.warn(`a hosted space could not take your identity as its owner (${id}): ${String(/** @type {any} */ (e).message || e).slice(0, 120)}`); }
+      }
+    };
     // single-flight: callers that arrive while one is running wait for it; the slot is cleared only AFTER the promise is stored (an early return must not leave a finished promise in it)
-    const adoptOwner = () => { if (adopting) return adopting; const p = adoptOnce(); adopting = p; const clear = () => { if (adopting === p) adopting = null; }; p.then(clear, clear); return p; };
+    const adoptOwner = () => { if (adopting) return adopting; const p = adoptOnce().then(adoptHosted); adopting = p; const clear = () => { if (adopting === p) adopting = null; }; p.then(clear, clear); return p; };
     const guarded = (/** @type {(i: any, meta: any) => any} */ fn) => async (/** @type {any} */ i, /** @type {any} */ meta) => {
       await adoptOwner();
       try { const out = await fn(i || {}, meta || {}); await adoptOwner(); return out; } catch (e) { // after too: a call that claims or recovers the identity makes it the kernel's owner at once, not at the next call

@@ -174,3 +174,28 @@ test("PA-1: creating a space is all or nothing in the kernel's registry too: a r
   // the finished space still works
   assert.ok(!(await deck("spaces.get", { space: first.data.space })).error);
 });
+
+test("a Space this home hosted with the first-start owner (made before the claim, or by an older build) takes the claimed identity as its owner too (devbox)", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const port = await freePort();
+  const child = spawn(process.execPath, [SCRIPT, "--port", String(port)], { stdio: ["ignore", "pipe", "inherit"] });
+  t.after(() => { child.kill("SIGTERM"); });
+  await new Promise((res, rej) => { child.stdout.on("data", d => { if (String(d).includes("stand-in names directory")) res(null); }); child.on("exit", c => rej(new Error(`the stand-in exited early (${c})`))); });
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "hosted-box", transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${port}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  const d = await start({ root, kernel: true, log: () => {} });
+  t.after(() => d.stop());
+  const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "deck" });
+  // a Space hosted for the home's first-start owner, before any identity exists
+  const old = d.kernel.id.owner;
+  const stale = await d.kernel.spaces.host({ owner: old, name: "stale" });
+  assert.equal((await stale.gateway.grants.members.list(stale.kernel.chains.fromFacts({ kind: "device", device_key_id: "d", person: old, path: "direct", session: "s" }))).map((/** @type {any} */ m) => m.person)[0], old);
+  const made = await deck("spaces.identity.create", { name: "alex" });
+  assert.ok(!made.error, JSON.stringify(made.error));
+  assert.ok(!(await deck("spaces.list")).error);
+  const chain = stale.kernel.chains.fromFacts({ kind: "device", device_key_id: "d", person: made.data.id, path: "direct", session: "s" });
+  const members = await stale.gateway.grants.members.list(chain);
+  assert.deepEqual(members.map((/** @type {any} */ m) => [m.person, m.role]), [[made.data.id, "owner"]], "the hosted Space's owner is the identity, the old id is gone");
+});
