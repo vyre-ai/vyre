@@ -2,7 +2,7 @@
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { NO_ACCOUNT_SAY, aiRefusal, claudeOf, claudeState, codeInput, keyInput, safeLink, startInput } from "./ai-connect.js";
+import { DISCONNECT_NOTE, NO_ACCOUNT_SAY, disconnectInput, aiRefusal, claudeOf, claudeState, codeInput, keyInput, safeLink, startInput } from "./ai-connect.js";
 
 test("each honest state: not connected, blocked with the reason, waiting, connected, failed with the reason", () => {
   assert.deepEqual(claudeState({ state: "todo", signedIn: false }), { state: "not_connected", line: "Your assistant has no AI account yet. Sign in to Claude to give it one." });
@@ -42,4 +42,9 @@ test("UX-86 and UX-88: a browser says to connect on the phone and a server with 
   assert.match(claudeState({ state: "todo" }, { pairFirst: true, onPhone: true }).line, /Pair this server/);
   assert.equal(claudeState({ state: "done", signedIn: true }, { onPhone: true, pairFirst: true }).state, "connected");
   assert.equal(claudeState({ state: "todo" }, { onPhone: true, failed: "x" }).state, "on_phone", "no failure sentence after a tap that was never offered");
+});
+
+test("disconnect is one onboard.claude input with the consequence line", () => {
+  assert.deepEqual(disconnectInput(), { mode: "disconnect" });
+  assert.match(DISCONNECT_NOTE, /Your Claude account itself is not touched/);
 });

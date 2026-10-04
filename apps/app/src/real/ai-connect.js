@@ -32,6 +32,10 @@ export const codeInput = (code) => ({ mode: "setup-token", code: code.trim() });
 /** @param {string} key */
 export const keyInput = (key) => ({ mode: "api-key", key: key.trim() });
 
+/** Disconnect: removes the sign-in from the vault (person-only, with presence like connect). */
+export const disconnectInput = () => ({ mode: "disconnect" });
+export const DISCONNECT_NOTE = "Assistants on Claude stop and ask you. Your Claude account itself is not touched.";
+
 /** Is this a sign-in link the person may open? Only https, never anything else. @param {unknown} url */
 export const safeLink = (url) => { try { const u = new URL(String(url)); return u.protocol === "https:" ? u.toString() : null; } catch { return null; } };
 

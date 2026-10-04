@@ -5,7 +5,7 @@ import { Linking, View } from "react-native";
 import { Button, Card, Chip, Field, LoadingState, Text, showToast } from "@vyre/ui";
 import { tool } from "../../src/real/box";
 import { claimBlocked } from "../shell/rc";
-import { aiRefusal, claudeOf, claudeState, codeInput, keyInput, safeLink, startInput } from "../../src/real/ai-connect.js";
+import { DISCONNECT_NOTE, aiRefusal, claudeOf, claudeState, codeInput, disconnectInput, keyInput, safeLink, startInput } from "../../src/real/ai-connect.js";
 
 // tool() answers a presence ask the way this build does (the phone's biometric; a browser says to do it on the phone), so onboard.claude, which needs the person's presence, works from here.
 const ask = (name: string, input: Record<string, unknown> = {}) => tool<any>(name, input);
@@ -33,6 +33,7 @@ export function ConnectClaude({ onConnected }: { onConnected?: () => void }) {
   };
   const start = () => run(startInput(), (d) => { const l = safeLink(d?.url); if (l) setLink(l); else setFailed("The home did not give a sign-in link."); });
   const finish = () => run(codeInput(code), () => { setLink(null); setCode(""); showToast("Claude is connected."); });
+  const disconnect = () => run(disconnectInput(), () => { setLink(null); showToast("Claude is disconnected."); });
   const useKey = () => run(keyInput(key), () => { setKey(""); showToast("Claude is connected."); });
 
   return (
@@ -40,6 +41,12 @@ export function ConnectClaude({ onConnected }: { onConnected?: () => void }) {
       <View className="flex-row flex-wrap items-center gap-s2"><Text strong>Claude</Text><Chip tone={st.state === "connected" ? "ok" : st.state === "failed" || st.state === "blocked" || st.state === "pair_first" ? "warn" : "plain"}>{{ not_connected: "Not connected", blocked: "Cannot connect yet", waiting: "Waiting for you", connected: "Connected", failed: "Did not connect", pair_first: "Pair first", on_phone: "On your phone" }[st.state]}</Chip></View>
       <Text tone="muted">{st.line}</Text>
       {!loaded ? <LoadingState rows={1} /> : null}
+      {st.state === "connected" && !claimBlocked() ? (
+        <View className="gap-s2">
+          <Text size="caption" tone="label">{DISCONNECT_NOTE}</Text>
+          <View className="self-start"><Button kind="hold" size="sm" label={busy ? "Disconnecting" : "Disconnect"} onPress={busy ? () => {} : () => void disconnect()} /></View>
+        </View>
+      ) : null}
       {loaded && (st.state === "not_connected" || st.state === "waiting" || st.state === "failed") ? (
         <View className="gap-s3">
           {link ? (
