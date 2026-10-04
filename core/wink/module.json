@@ -262,6 +262,11 @@
         "effect": "read"
       },
       {
+        "name": "wink.server.owner",
+        "reach": "modules",
+        "effect": "read"
+      },
+      {
         "name": "wink.server.paired",
         "reach": "modules"
       },

@@ -126,7 +126,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
   });
 
   ctx.tool("link.pending", {
-    effect: "read", callers: BOX_PEOPLE,
+    effect: "read", callers: [...BOX_PEOPLE, "module"], // waiting counts pairing requests from an event
     description: "Pairing requests waiting for approval on this box. The codes are never listed: they are on the Mac's screen.",
     input: { type: "object", properties: {} },
     run: async () => { sweep(); return [...pending.values()].filter(p => !p.key && !p.denied).map(p => ({ id: p.id, name: p.name, login: p.login, node: p.peer ? p.peer.node : null, kind: p.kind || "mac", created: p.created, expires: p.expires })); },

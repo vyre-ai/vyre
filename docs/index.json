@@ -2506,6 +2506,7 @@
     {"kind":"tool","name":"wink.server.confirm","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkserverconfirm","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.server.handover","definedIn":"core/wink/compose.js","page":"reference/tools.md#winkserverhandover","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.server.owned","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkserverowned","module":"wink","mentions":[]},
+    {"kind":"tool","name":"wink.server.owner","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkserverowner","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.server.pair.answer","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkserverpairanswer","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.server.paired","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkserverpaired","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.server.pairing","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkserverpairing","module":"wink","mentions":[]},

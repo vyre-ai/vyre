@@ -2583,6 +2583,7 @@ generated: scripts/gen-docs-reference
 - `wink.server.confirm` tool, [explained](tools.md#winkserverconfirm). No mentions.
 - `wink.server.handover` tool, [explained](tools.md#winkserverhandover). No mentions.
 - `wink.server.owned` tool, [explained](tools.md#winkserverowned). No mentions.
+- `wink.server.owner` tool, [explained](tools.md#winkserverowner). No mentions.
 - `wink.server.pair.answer` tool, [explained](tools.md#winkserverpairanswer). No mentions.
 - `wink.server.paired` tool, [explained](tools.md#winkserverpaired). No mentions.
 - `wink.server.pairing` tool, [explained](tools.md#winkserverpairing). No mentions.
