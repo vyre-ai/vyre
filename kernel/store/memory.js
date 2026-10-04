@@ -7,7 +7,7 @@ import { checkValue } from "./values.js";
 import { page, aggregate as agg, fieldOf } from "./query.js";
 
 /** The conformance suite revision this store last passed. Bump with the suite. */
-export const CONFORMANCE_REVISION = 4;
+export const CONFORMANCE_REVISION = 5;
 
 const clone = (/** @type {any} */ v) => structuredClone(v);
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
@@ -305,6 +305,13 @@ export function createMemoryStore(cfg = {}) {
         const records = all.slice(i, i + 100);
         yield { seq: seq++, records, done: i + 100 >= all.length, checksum: sha256(canonical(records)) };
       }
+    },
+    /** Forget the values these fields held in the change log (a field was sealed: its old plain values must not survive here). Stores with a durable log do the same through `cfg.persist.scrub`. */
+    async scrub(type, fields) {
+      touch("scrub", [type, fields]);
+      // the change log is read in slices (it may be backed by a table); a slice of the in-memory log holds the live entries, and a backed log is scrubbed by `cfg.persist.scrub` below
+      for (let i = 0; i < changes.length; i += 500) for (const e of changes.slice(i, i + 500)) if (e.type === type) for (const f of fields) { if (e.before) delete e.before[f]; if (e.after) delete e.after[f]; }
+      if (cfg.persist && typeof cfg.persist.scrub === "function") cfg.persist.scrub(type, fields);
     },
     features() { return { aggregate: true, search: true, changes: true, cursor_paging: /** @type {const} */ (true) }; },
   };

@@ -47,6 +47,8 @@ export function createSpaceKernels(cfg) {
     /** @type {{ stages: any }} */ const late = { stages: null };
     const hooks = cfg.stageFactory ? { onStageEnter: (/** @type {any} */ e) => (late.stages ? late.stages.onStageEnter(e) : Promise.resolve()), stageTasks: (/** @type {string} */ u, /** @type {string} */ st) => (late.stages ? late.stages.stageTasks(u, st) : []) } : {};
     const booted = tell(await boot({ db: cfg.openDb(path.join(d, "kernel.db")), space: id, ...hooks, owner: meta.owner, ...(store ? { store } : {}), owner_uid: process.getuid ? process.getuid() : 0, ...custody, clock: cfg.clock,
+      // A hosted Space that takes the claimed identity as its owner keeps that beside its own id, like the home's (the log is the truth at boot; the file follows it).
+      onOwnerAdopted: (/** @type {string} */ to, /** @type {string} */ from) => { try { fs.writeFileSync(f, JSON.stringify({ ...meta, owner: to, previous_owner: from }), { mode: 0o600 }); } catch { /* the next boot rewrites it from the log */ } },
       ...(cfg.doorFor ? { door: cfg.doorFor(id) } : {}), ...(cfg.bootOptions || {}) }));
     if (cfg.stageFactory) late.stages = await cfg.stageFactory(id, booted, meta);
     return booted;
@@ -65,7 +67,9 @@ export function createSpaceKernels(cfg) {
      */
     async host(o) {
       if (!o || typeof o.owner !== "string" || !/^per_[a-z2-7]{26}$/.test(o.owner)) throw new KernelError("bad_input", "a Space is hosted for one first owner (a person id)");
-      const id = `spc_${rand32(12)}`, d = ofDir(id);
+      // `id` lets a creation that was retired (a failed or cancelled spaces.create) be hosted again under the SAME id when the person resumes it; it must be well formed and not live or on disk.
+      if (o.id !== undefined && (typeof o.id !== "string" || !SPACE_ID.test(o.id) || live.has(o.id) || fs.existsSync(ofDir(o.id)))) throw new KernelError("bad_input", "that Space id cannot be used");
+      const id = o.id !== undefined ? o.id : `spc_${rand32(12)}`, d = ofDir(id);
       fs.mkdirSync(d, { recursive: true, mode: 0o700 });
       if (!cfg.sealer) { if (cfg.fileKey !== true) throw new KernelError("key_custody", "a hosted Space's kernel key must live in the sealing process: give the registry the home's sealer"); fs.writeFileSync(path.join(d, "kernel.key"), crypto.randomBytes(32).toString("hex"), { mode: 0o600 }); }
       fs.writeFileSync(path.join(d, "space.json"), JSON.stringify({ space: id, owner: o.owner, ...(o.name ? { name: String(o.name).slice(0, 80) } : {}), ...(o.accept_builtin_store === true ? { accept_builtin_store: true } : {}), made_at: (cfg.clock || Date.now)() }), { mode: 0o600 });
@@ -75,6 +79,31 @@ export function createSpaceKernels(cfg) {
       live.set(id, k);
       return hostedHandle(id, k);
     },
+    /**
+     * Take back a Space that was only started (a failed or cancelled create): stop its kernel, remove its folder (key, store, log) and forget it. Refused for the personal Space and for a Space that
+     * has anything in it beyond its first owner (a record, a task, a chat, an invite, an offer, another member): that is somebody's data and is never deleted here.
+     * @param {string} id @returns {Promise<{ retired: boolean }>}
+     */
+    async retire(id) {
+      if (id === cfg.personal.space) throw new KernelError("not_allowed", "the personal Space is never retired");
+      if (!SPACE_ID.test(id)) throw new KernelError("bad_input", "not a Space id");
+      const d = ofDir(id);
+      let k = live.get(id);
+      if (!k && !fs.existsSync(d)) return { retired: false };
+      if (!k) { k = await open(id); if (k) live.set(id, k); }
+      if (k && k.log && typeof k.log.read === "function") {
+        const owner = (() => { try { return JSON.parse(fs.readFileSync(path.join(d, "space.json"), "utf8")).owner; } catch { return null; } })();
+        for (const e of k.log.read({})) {
+          const t = String(e.type);
+          const other = t === "member.set" && e.data && e.data.membership && e.data.membership.person !== owner && e.data.membership.role !== "owner";
+          if (/^(record|task|chat|invite|offer)\./.test(t) || other) throw new KernelError("not_allowed", "that Space has content and is not retired");
+        }
+      }
+      live.delete(id);
+      if (k && typeof k.stop === "function") await k.stop();
+      fs.rmSync(d, { recursive: true, force: true });
+      return { retired: true };
+    },
     /** What a Space made here now would be stored in, and the confirmation to show BEFORE it is made (`confirm`: text and choices). Nothing is created. */
     storePlan: () => (cfg.storeFor && /** @type {any} */ (cfg.storeFor).plan ? /** @type {any} */ (cfg.storeFor).plan() : Promise.resolve({ store: "sqlite", reasons: [] })),
     /** Open every Space this home hosts (at start); after this `for` answers without waiting. */
@@ -83,6 +112,24 @@ export function createSpaceKernels(cfg) {
     async open(/** @type {string} */ id) {
       if (!live.has(id)) { if (!SPACE_ID.test(id)) return null; const k = await open(id); if (!k) return null; live.set(id, k); }
       return hostedHandle(id, live.get(id));
+    },
+    /**
+     * The home's owner took the claimed identity (`from` -> `to`): every hosted Space whose single owner is that same person takes it too, once each (a Space someone else owns is left alone).
+     * Called at the claim and at every boot, so a Space made before the claim, or one a restart cut short, ends with the identity as its owner. @param {string} to @param {string} from
+     * @returns {Promise<string[]>} the Spaces that were moved
+     */
+    async adoptOwner(to, from) {
+      /** @type {string[]} */ const moved = [];
+      for (const [id, k] of live) {
+        if (id === cfg.personal.space || !k || !k.grants || typeof k.adoptOwner !== "function") continue;
+        const ad = typeof k.grants.adopted === "function" ? k.grants.adopted() : null;
+        if (ad && ad.to === to) { const r = await k.adoptOwner(to); if (r && r.changed) moved.push(id); continue; }
+        if (ad) continue;
+        if (k.grants.roleOf({ kind: "person", id: from, space: id }) !== "owner") continue;
+        const r = await k.adoptOwner(to);
+        if (r && r.changed) moved.push(id);
+      }
+      return moved;
     },
     /** The kernel this home hosts for a Space and has open, or null. */
     hosted: (/** @type {string} */ id) => (live.has(id) ? hostedHandle(id, live.get(id)) : null),

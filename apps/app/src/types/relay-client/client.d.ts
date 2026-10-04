@@ -10,6 +10,6 @@ export const PAIR_BASE: string;
 export function parsePairUrl(url: string): { relay: string; route: string; box: Uint8Array; secret: string; name: string } | null;
 export function pair(
   offerUrl: string,
-  o?: { name?: string; presenceKey?: { public_key: string; alg?: number }; about?: About; keyStore?: KeyStore; crypto?: CryptoProvider; WebSocket?: unknown; timeout?: number },
+  o?: { name?: string; presenceKey?: { public_key: string; alg?: number; storage?: "hardware" | "software" }; about?: About; keyStore?: KeyStore; crypto?: CryptoProvider; WebSocket?: unknown; timeout?: number },
 ): Promise<{ relay: string; route: string; box: string; name: string; device: string | null; presence: { enrolled: boolean; reason?: string } | null }>;
 export type { KeyPair };

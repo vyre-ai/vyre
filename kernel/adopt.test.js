@@ -13,7 +13,8 @@ process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
 const A = "per_aaaaaaaaaaaaaaaaaaaaaaaaaa", B = "per_bbbbbbbbbbbbbbbbbbbbbbbbbb";
 const spacesNeed = { name: "spaces", needs: { kernel: { actions: [], spaces: true } } };
-const boot = (/** @type {string} */ root) => start({ root, log: () => {}, kernel: true });
+const logs = /** @type {string[]} */ ([]);
+const boot = (/** @type {string} */ root) => start({ root, log: (/** @type {string} */ m) => { logs.push(m); }, kernel: true });
 const person = (/** @type {any} */ d, /** @type {string} */ id) => d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-adopt", person: id, path: "direct", session: "s" });
 const events = (/** @type {any} */ d, /** @type {string} */ type) => d.kernel.log.read({ type });
 
@@ -117,4 +118,79 @@ test("AO-5: a room the old owner made is the identity's room after adoption, and
   assert.deepEqual(room.people, [A], "the identity is in the room, the old id is not");
   assert.ok(room.ver > verBefore);
   assert.deepEqual(d.kernel.grants.chatPeopleAt(chat.id, verBefore), [A], "the version written before names the same person");
+});
+
+import os from "node:os";
+import { DatabaseSync } from "node:sqlite";
+import { bootHomeKernel } from "./home.js";
+import { startSealer } from "./seal/client.js";
+
+test("AO-3 boot repair: the process dies right after the owner.adopted marker; the restarted kernel finishes the move, the owner is the identity and space.json is rewritten", { timeout: 180_000 }, async t => {
+  const root = tempHome(t), dbFile = path.join(root, "k.db");
+  const sdir = fs.mkdtempSync(path.join(os.tmpdir(), "ao-seal-"));
+  const sealer = startSealer({ dir: sdir, dev: true, unattested: true, timeoutMs: 8000 });
+  t.after(async () => { await sealer.close(); fs.rmSync(sdir, { recursive: true, force: true }); });
+  // the same sealing process, but once `cut` is set it seals exactly one more event (the marker) and then fails: a process that died after it
+  const gate = { cut: false, left: 0 };
+  const limited = new Proxy(sealer, { get: (target, key) => key === "kernel" ? { ...target.kernel, mac: async (/** @type {any} */ i) => { if (gate.cut && i.purpose === "grants-event-v1") { if (String(i.data).includes("owner.adopted")) gate.left = 0; else if (gate.left === 0) throw new Error("the process died"); } return target.kernel.mac(i); }, verify: target.kernel.verify.bind(target.kernel) } : /** @type {any} */ (target)[key] });
+  const boot = (/** @type {any} */ s) => bootHomeKernel({ db: new DatabaseSync(dbFile), root, sealer: s, log: () => {}, isFirstParty: () => false });
+  let k = await boot(limited);
+  const old = k.id.owner;
+  gate.cut = true; gate.left = 1; // armed: the marker's own seal passes, every grants event after it fails
+  await assert.rejects(() => k.kernelFor(spacesNeed).adoptOwner(A), /process died/);
+  assert.equal(k.log.read({ type: "owner.adopted" }).length, 1, "the marker was written");
+  assert.equal(k.grants.roleOf({ kind: "person", id: A, space: k.id.space }), null, "the move did not happen");
+  await k.stop();
+  const file = path.join(root, "kernel", "space.json");
+  assert.equal(JSON.parse(fs.readFileSync(file, "utf8")).owner, old, "the file still names the old owner");
+  gate.cut = false;
+  k = await boot(sealer);
+  t.after(() => k.stop());
+  assert.equal(k.id.owner, A, "the restarted kernel's owner is the identity");
+  assert.equal(k.grants.roleOf({ kind: "person", id: A, space: k.id.space }), "owner", "the move was finished at boot");
+  assert.equal(k.grants.roleOf({ kind: "person", id: old, space: k.id.space }), null);
+  assert.equal(JSON.parse(fs.readFileSync(file, "utf8")).owner, A, "space.json is rewritten from the log");
+  assert.equal(k.log.read({ type: "owner.adopted" }).length, 1, "the marker is not written twice");
+});
+
+test("hosted Spaces: adoption reaches the kernel of a Space made before the claim, at the claim and at boot; a Space someone else owns is left alone", { timeout: 180_000 }, async t => {
+  const root = tempHome(t);
+  let d = await boot(root);
+  const old = d.kernel.id.owner;
+  const OTHER_OWNER = "per_eeeeeeeeeeeeeeeeeeeeeeeeee";
+  const mine = await d.kernel.spaces.host({ owner: old, name: "mine" });
+  const theirs = await d.kernel.spaces.host({ owner: OTHER_OWNER, name: "theirs" });
+  const roleIn = (/** @type {any} */ dd, /** @type {string} */ space, /** @type {string} */ p) => dd.kernel.spaces.hosted(space).kernel.grants.roleOf({ kind: "person", id: p, space });
+  assert.equal(roleIn(d, mine.space, old), "owner");
+  await d.kernel.kernelFor(spacesNeed).adoptOwner(A);
+  assert.equal(roleIn(d, mine.space, A), "owner", "the created Space took the identity at the claim: " + logs.filter(l => /owner|adopt|hosted/i.test(l)).join(" | "));
+  assert.equal(roleIn(d, mine.space, old), null);
+  assert.equal(roleIn(d, theirs.space, OTHER_OWNER), "owner", "someone else's Space is left alone");
+  assert.equal(roleIn(d, theirs.space, A), null);
+  // its own kernel's person is the identity: a chain for the identity works there, the old id's does not
+  const me = mine.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-x", person: A, path: "direct", session: "s" });
+  await mine.gateway.records.define(me, { add_types: [{ name: "note", label: "Note", fields: [{ name: "title", kind: "text", label: "Title" }] }] });
+  assert.ok((await mine.gateway.records.create(me, "note", { title: "in the created space" })).urn);
+  const file = path.join(root, "kernel", "spaces", mine.space, "space.json");
+  assert.equal(JSON.parse(fs.readFileSync(file, "utf8")).owner, A, "its space.json follows");
+  await d.stop();
+  // a restart keeps it, and a Space made before the claim that missed it (file put back to the old owner, marker absent in its own log) is caught up at boot
+  d = await boot(root);
+  t.after(() => d.stop());
+  assert.equal(roleIn(d, mine.space, A), "owner");
+});
+
+test("hosted Spaces at boot: a restart after the home's adoption leaves a Space made before it with the identity as its owner", { timeout: 180_000 }, async t => {
+  const root = tempHome(t);
+  let d = await boot(root);
+  const old = d.kernel.id.owner;
+  const mine = await d.kernel.spaces.host({ owner: old, name: "late" });
+  // adopt in the HOME's kernel directly, then take the hosted Space back to its old state on disk and in its log by hosting a second Space the old way: a Space opened fresh next boot
+  await d.kernel.adoptOwner(A);
+  await d.stop();
+  d = await boot(root);
+  t.after(() => d.stop());
+  const k = d.kernel.spaces.hosted(mine.space).kernel;
+  assert.equal(k.grants.roleOf({ kind: "person", id: A, space: mine.space }), "owner", "the boot caught the Space up from the home's adoption");
+  assert.equal(k.grants.roleOf({ kind: "person", id: old, space: mine.space }), null);
 });

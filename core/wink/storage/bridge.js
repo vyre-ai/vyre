@@ -14,6 +14,7 @@
 // So any record of a call's inputs (a registry's call log, a trace) holds ciphertext that only the device's short-lived private key opens.
 // Direction: the DEVICE holds one connection open to the home (hold.js) and the home calls back on it; the home never dials a drive's device.
 // Chunks are ciphertext before they reach this code, so the frames carry nothing readable either way.
+import { deviceIdOf } from "../../../lib/caller.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -142,7 +143,7 @@ export function createBridgeEndpoint({ createBridge, secrets, live = () => true,
     async serve({ offer, dir, capacity, caller, guard }) {
       const secret = await secrets.get(offer);
       if (!secret) throw err("no_secret", "This device has no secret for that drive, so it cannot serve it.");
-      if (!/^device:[A-Za-z0-9_-]{1,64}$/.test(caller)) throw err("bad_input", "Name the device that may ask, like device:dev_abc.");
+      if (deviceIdOf(caller) === null) throw err("bad_input", "Name the device that may ask, like device:dev_abc.");
       serving.set(offer, { caller, ...(guard ? { guard } : {}), bridge: createBridge({ dir, secret, capacity }) });
     },
     /** @param {string} offer */

@@ -17,6 +17,8 @@ routes = [{ pattern = "names.vyre.run", custom_domain = true }]
 [vars]
 ZONE = "vyre.run"
 ORIGIN = "https://names.vyre.run"
+# The Vyre app's browser origin: exactly one https origin (a test pins it; a dev origin never ships by editing this file).
+APP_ORIGINS = "https://app.vyre.run"
 GLOBAL_CLAIMS_PER_DAY = "500"
 
 # One object holds every name (claims, limits and recoveries must not race). The free plan needs

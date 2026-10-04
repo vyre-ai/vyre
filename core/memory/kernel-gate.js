@@ -49,7 +49,9 @@ export function createKernelGate(ctx, { denied }) {
     const first = hops[0];
     if (first.kind !== "person" || hops.slice(1).some((/** @type {any} */ a) => a.kind === "person")) throw denied(`${tool}: personal memory is read only by its person and that person's own assistant`);
     let m = null;
-    try { m = typeof k.membership === "function" ? await k.membership(first.id) : null; } catch { m = null; }
+    // After owner adoption the home's owner id is the identity's, and a chain minted before it (a session token) still names the old id: ask the kernel who that is now.
+    const canon = typeof k.canonicalPerson === "function" ? (/** @type {string} */ id) => k.canonicalPerson(id) : (/** @type {string} */ id) => id;
+    try { m = typeof k.membership === "function" ? await k.membership(canon(first.id)) : null; } catch { m = null; }
     if (!m || m.member !== true || m.role !== "owner") throw denied(`${tool}: personal memory is read only by its person and that person's own assistant`);
     const who = whoOfChain(chain, await surfaceOf(extra));
     if (who.conflict) throw denied(`${tool}: this chain names more than one agent, so it is not known which is asking`);

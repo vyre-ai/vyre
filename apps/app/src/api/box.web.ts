@@ -16,6 +16,8 @@ import { makeBox } from "./wire";
 let base = "";
 let paths: string[] | undefined;
 let person: PersonSession | null = null;
+/** The paths layer's fetch (direct, then the relay): what post() uses for the few routes that are not tool calls. */
+let pathFetch: ReturnType<typeof createPaths>["fetch"] | null = null;
 
 /** The box's origin; "" (the default) is this page's origin, where the box serves the app. */
 export function configure(o: { base?: string; paths?: string[] }): void {
@@ -42,6 +44,7 @@ const b = makeBox(async () => {
     paths: pairing ? [...direct, { kind: "relay" as const, ...pairing, about, keyStore: relayKeyStore(), crypto: relayCrypto() }] : direct,
   });
   const o = over(p.fetch);
+  pathFetch = p.fetch;
   // Which path answers, for what may not go over the relay (Glass stills).
   p.onstate = (st) => connection.path(st.kind);
   connection.path(p.current);
@@ -75,6 +78,23 @@ const b = makeBox(async () => {
 });
 
 export const { connect, listen, call, send, prove, disconnect, socket } = b;
+
+/**
+ * One POST of JSON to a box route that is not a tool call (the presence challenge), on whichever path
+ * answers, signed as the person like every other request. Resolves the parsed body, never throws on a status.
+ */
+export async function post(path: string, input: Record<string, unknown>): Promise<{ data?: unknown; error?: { code?: string; message?: string } }> {
+  await connect();
+  if (!pathFetch) return { error: { code: "offline", message: "no path to the box" } };
+  const body = JSON.stringify(input);
+  const h = person ? await person.headers("POST", path, body) : {};
+  try {
+    const r = await pathFetch(path, { method: "POST", cache: "no-store", headers: { "content-type": "application/json", ...h }, body });
+    return JSON.parse(await r.text()) as never;
+  } catch (e) {
+    return { error: { code: "offline", message: (e as Error).message } };
+  }
+}
 
 /**
  * A hint the page may not outlive (push.seen on hide): straight to the box's origin with

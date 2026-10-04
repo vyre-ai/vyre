@@ -10,4 +10,4 @@ HERE="$(cd "$(dirname "$0")/../../.." && pwd)"
 rsync -a --delete --exclude node_modules --exclude .git "$HERE"/ testbox:vyre-ci/records/
 ssh testbox "docker run --rm --network ${PROJECT}_store --network-alias gateway -v \$HOME/vyre-ci/records:/repo:ro -v ${KEYVOL}:/data:ro -w /repo \
   -e VYRE_FEED_DEBUG=${VYRE_FEED_DEBUG:-} -e VYRE_TWENTY_LIVE_URL=http://server:3000 -e VYRE_TWENTY_LIVE_KEY_FILE=/data/twenty.key node:22-alpine \
-  node --test --test-force-exit --test-timeout=120000 --test-reporter=spec stores/twenty/live/live.test.js"
+  node --test --test-timeout=120000 --test-reporter=spec stores/twenty/live/live.test.js"

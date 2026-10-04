@@ -19,6 +19,7 @@
     "typecheck": "tsc --noEmit",
     "icons": "node scripts/gen-ui-icons.mjs",
     "test": "node --test \"perf/*.test.js\" \"scripts/*.test.js\" \"src/**/*.test.js\" \"ui/**/*.test.js\" \"screens/**/*.test.js\"",
+    "export:web:mock": "EXPO_PUBLIC_VYRE_MOCK=1 npm run export:web",
     "lint:ui": "node scripts/check-ui-imports.mjs"
   },
   "dependencies": {
