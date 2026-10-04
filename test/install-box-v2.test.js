@@ -37,7 +37,7 @@ function box(t, opts = {}) {
   const env = {
     PATH: `${bin}:/usr/bin:/bin`, HOME: base, VYRE_DIR: path.join(base, "srv", "vyre"),
     VYRE_WRAPPER: path.join(base, "bin-out", "vyre"), VYRE_DOCKER_SOCK: path.join(base, "none"),
-    VYRE_NO_UP: "1",
+    VYRE_NO_UP: "1", VYRE_MODULES_TRIES: "0", VYRE_DEV_SIGN: "0",
     // Never the real relay: a closed local port, so a code's progress lines go nowhere in tests.
     VYRE_RELAY: "http://127.0.0.1:9",
   };
@@ -61,7 +61,7 @@ function site(base, { images = true, pin = true } = {}) {
   fs.mkdirSync(dir, { recursive: true });
   const compose = pin ? `services:\n  vyre:\n    image: ${DIGEST}\n    environment:\n      - VYRE_COMPUTERS_IMAGE=\${VYRE_COMPUTERS_IMAGE:-${COMPUTER}}\n` : "image: ghcr.io/vyre-ai/vyre:latest\n";
   const files = {
-    "compose.yml": compose, "compose.build.yml": "# build\n", "vyre.env.example": "# env\n", vyre: "#!/bin/sh\n# vyre on a Docker box\n",
+    "compose.yml": compose, "compose.build.yml": "# build\n", "vyre.env.example": "# env\n", vyre: "#!/bin/sh\n# vyre on a Docker box\n[ \"$1\" = status ] && echo \"  3 modules running\"\nexit 0\n",
     "release.json": JSON.stringify({ version: "0.2.0", channel: "stable", ...(images ? { images: { box: { ref: DIGEST, platforms: ["linux/amd64"] }, computer: { ref: COMPUTER, platforms: ["linux/amd64"] } } } : {}) }, null, 2),
   };
   for (const [n, c] of Object.entries(files)) fs.writeFileSync(path.join(dir, n), c);
@@ -478,3 +478,4 @@ test("install-box.sh v2: on a Mac it fetches install-mac-server.sh, checks it ag
   assert.match(x.stderr, /SHA256SUMS has no line for install-mac-server\.sh/);
   assert.ok(!fs.existsSync(out));
 });
+

@@ -6,8 +6,8 @@
 import { call } from "../api/box";
 import { wantsPasskey } from "./presence-model.js";
 import { claimBlocked } from "../../screens/shell/rc";
-import { ON_PHONE, needsPerson } from "./on-phone.js";
-import { APPROVE_ON_PHONE, askPhone, endLine, phoneRoute, proofHeader } from "./approvals.js";
+import { needsPerson, onPhoneFor } from "./on-phone.js";
+import { APPROVE_ON_PHONE, actWords, askPhone, endLine, phoneRoute, proofHeader } from "./approvals.js";
 import { useApproval } from "./approval-state";
 import { Platform } from "react-native";
 import { passkeyProof, PresenceError } from "./presence";
@@ -33,7 +33,7 @@ export async function tool<T = unknown>(name: string, input: Record<string, unkn
     const space = typeof input.space === "string" && input.space ? input.space : String(((await call<{ space?: string }>("records.me")).data as { space?: string } | undefined)?.space ?? "");
     const st = useApproval.getState();
     const ask = (t: string, i?: Record<string, unknown>) => call<any>(t, i ?? {}).then((x) => { if (x.error) throw new BoxError(x.error.code ?? "error", x.error.message ?? ""); return x.data; });
-    st.show();
+    st.show(actWords(name));
     try {
       const out = await askPhone(ask, { tool: name, input, space, signal: st.signal });
       if ("ended" in out) throw new BoxError("not_approved", endLine(out.ended));
@@ -41,7 +41,7 @@ export async function tool<T = unknown>(name: string, input: Record<string, unkn
     } finally { useApproval.getState().hide(); }
   }
   // RC1: a browser does not answer a person-only ask (vault secrets, pairing a device, an outbound send): the person does it in Vyre on their phone.
-  if (r.error && claimBlocked() && needsPerson(r.error)) throw new BoxError("on_phone", ON_PHONE);
+  if (r.error && claimBlocked() && needsPerson(r.error)) throw new BoxError("on_phone", onPhoneFor(name));
   // A human-only call: the box asks for presence, and in a browser the person's passkey answers it. Once, for this call.
   if (r.error && wantsPasskey(r.error)) {
     try {

@@ -32,6 +32,7 @@ export function listCommands(status, callable) {
 export default {
   async start(ctx) {
     ctx.tool("commands.list", {
+      effect: "read",
       description: "Every command the running modules offer that this caller can run, sorted by verb: { module, verb, tool, summary, args }. `vyre <module> <verb>` runs `tool`, with positional args filling `args` in order. `surface` names who is asking; today every surface gets the same list.",
       input: { type: "object", properties: { surface: { type: "string", enum: SURFACES } } },
       run: async (_input, meta) => listCommands(ctx.modules.status(), new Set(ctx.modules.tools(meta.caller).map(t => t.name))),

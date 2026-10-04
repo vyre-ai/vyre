@@ -20,3 +20,14 @@ test("the sealing process's devSwitch equals kernel/devbuild.js for development,
   for (const root of trees) for (const v of ["1", "0", "", undefined]) assert.equal(sealSwitch(v, root), kernelSwitch(v, root), `${root} ${v}`);
   assert.equal(sealSwitch("1"), kernelSwitch("1"), "this checkout");
 });
+
+test("the default root survives a checkout path with a space", async t => {
+  const { pathToFileURL } = await import("node:url");
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "bk space-")); t.after(() => fs.rmSync(base, { recursive: true, force: true }));
+  const here = path.dirname(new URL(import.meta.url).pathname.replace(/%20/g, " ")), root = path.resolve(here, "..", "..");
+  for (const d of ["kernel", "lib"]) fs.cpSync(path.join(root, d), path.join(base, d), { recursive: true, filter: f => !/\.test\.js$/.test(f) });
+  fs.writeFileSync(path.join(base, "package.json"), '{"type":"module"}');
+  fs.writeFileSync(path.join(base, "lib", "build-kind.js"), 'export const BUILD_KIND = "development";\n');
+  const m = await import(pathToFileURL(path.join(base, "kernel", "seal", "process.js")).href);
+  assert.equal(m.devSwitch("1"), true, "a development tree under a path with a space is development");
+});

@@ -1,7 +1,4 @@
 {
- "apps/app/src/identity/identity.test.js": {
-  "owner": "chat"
- },
  "core/artifacts/artifacts.test.js": {
   "owner": "vault"
  },
