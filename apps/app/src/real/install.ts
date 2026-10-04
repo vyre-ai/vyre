@@ -1,20 +1,28 @@
 // The install flow's calls to the box (screens/install/real.js maps the answers). Each is one tool through src/real/box.ts.
 
 import { BoxError, tool } from "./box";
-import { createdFrom, identityFrom, nameAnswer } from "../../screens/install/real.js";
+import { createdFrom, directoryAnswer, identityFrom, nameAnswer } from "../../screens/install/real.js";
 
 type Created = { state: "done" | "running" | "asking" | "failed"; id: string; address: string; say: string };
 
 /** This device's claimed name, or null. */
 export const readIdentity = async (): Promise<{ id: string; label: string; address: string } | null> => identityFrom(await tool("spaces.identity.status"));
 
-/** Is a name free in the directory? An answer that is neither found nor not_found is "unknown". */
+/**
+ * Where the names directory is: the public service, never a box. The identity comes first (a name, then a space, then a server), so
+ * a name is checked before there is any box to ask. EXPO_PUBLIC_VYRE_NAMES_DIRECTORY points a walk at a stand-in.
+ */
+export const DIRECTORY: string = ((typeof process !== "undefined" && process.env?.EXPO_PUBLIC_VYRE_NAMES_DIRECTORY) || "https://names.vyre.run").replace(/\/+$/, "");
+
+/** Is a name free in the directory? Asked of the directory itself, no box. An answer that is neither found nor not_found is "unknown". */
 export async function checkName(name: string): Promise<"free" | "taken" | "unknown"> {
   try {
-    await tool("spaces.identity.resolve", { name });
-    return nameAnswer({ ok: true });
-  } catch (e) {
-    return nameAnswer({ ok: false, code: e instanceof BoxError ? e.code : "offline" });
+    const r = await fetch(`${DIRECTORY}/v1/ids/resolve?name=${encodeURIComponent(name)}`, { headers: { accept: "application/json" }, cache: "no-store" });
+    const body = await r.json().catch(() => null);
+    return nameAnswer(directoryAnswer(r.status, body));
+  } catch {
+    // A browser cannot read an answer from a directory that sends no CORS headers: that is also "unknown", never a guess.
+    return "unknown";
   }
 }
 

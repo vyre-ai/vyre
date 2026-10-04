@@ -150,7 +150,10 @@ export function InstallScreen({ start, link: linkIn }: { start?: "create" | "joi
         const mine = kept ? all.find((r) => r.setup && (r.displayName || r.label) === kept.spaceName)?.id ?? null : null;
         if (mine) setSpaceId(mine);
         setElsewhere(setupElsewhere(all, mine));
-      } catch (e) { setWrong(said(e)); }
+      } catch (e) {
+        // First run, naming yourself: there is no box yet, and none is needed (the name goes to the directory). Say nothing about it.
+        if (!(first && step === "name")) setWrong(said(e));
+      }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

@@ -23,6 +23,17 @@ export function nameAnswer(answer) {
 }
 
 /**
+ * The directory's answer to GET /v1/ids/resolve?name=, as nameAnswer's input: a chain back is a name taken, `not_found` a free one,
+ * anything else (a limit, an outage, a body that is not JSON) is unknown. Only the status and code are read; the chain is not trusted here.
+ * @param {number} status @param {any} body @returns {{ ok: true } | { ok: false, code: string }}
+ */
+export function directoryAnswer(status, body) {
+  if (status === 200 && body && body.data && typeof body.data === "object") return { ok: /** @type {true} */ (true) };
+  const code = body && body.error && typeof body.error.code === "string" ? body.error.code : "unknown";
+  return { ok: /** @type {false} */ (false), code: status === 404 && code === "not_found" ? "not_found" : code };
+}
+
+/**
  * The state under a name field when the directory decides. `remote` is null while the check has not come back.
  * @param {string} raw @param {"free"|"taken"|"unknown"|null} remote @param {string[]} [also] names this person already holds
  * @returns {{ slug: string, state: "empty"|"short"|"checking"|"taken"|"unknown"|"ok", address: string }}
