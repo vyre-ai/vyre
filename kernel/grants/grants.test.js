@@ -575,3 +575,32 @@ test("WF-1: a seal.mac that rejects once leaves the store exactly as it was, and
   await gw.grants.revoke(owner(), made.id, "leaked", P.revoke(made.id, "leaked"));
   await againstRebuild("revoke after the failure");
 });
+
+test("AO-3: a crash right after the owner.adopted marker (the owner moved only in part) is finished by the next adoptOwner with the same id, and a rebuild agrees; another id is still refused", async () => {
+  const real = createKernelSeal({ key: Buffer.alloc(32, 5) });
+  let allow = Infinity;
+  const seal = { sync: false, verify: real.verify, verifyMany: real.verifyMany, mac: async (p, d) => { if (allow <= 0) throw new Error("the process died"); allow--; return real.mac(p, d); } };
+  const log = createEventLog({ space: SPACE, clock });
+  const gs = createGrantsStore({ space: SPACE, log, chains, clock, seal, presence });
+  await gs.bootstrap({ owner: OWNER });
+  const NEW = "per_cccccccccccccccccccccccccc", OTHER = "per_dddddddddddddddddddddddddd";
+  const role = p => gs.roleOf({ kind: "person", id: p, space: SPACE });
+  allow = 1; // the marker is sealed and written, then the process dies
+  await assert.rejects(() => gs.adoptOwner(NEW), /process died/);
+  allow = Infinity;
+  assert.deepEqual(gs.adopted(), { from: OWNER, to: NEW }, "the marker is in the log and in memory");
+  assert.equal(role(OWNER), "owner", "the move did not happen");
+  assert.equal(role(NEW), null);
+  await assert.rejects(() => gs.adoptOwner(OTHER), { code: "already_adopted" }, "a different id is refused while the first is unfinished");
+  // a restart: the rebuild reads the marker, and the boot repair (kernel/index.js) calls adoptOwner with it
+  await gs.rebuild();
+  assert.deepEqual(gs.adopted(), { from: OWNER, to: NEW });
+  const done = await gs.adoptOwner(NEW);
+  assert.deepEqual(done, { owner: NEW, previous: OWNER, changed: true });
+  assert.equal(role(NEW), "owner"); assert.equal(role(OWNER), null);
+  assert.equal(log.read({ type: "owner.adopted" }).length, 1, "the marker is not written twice");
+  const live = JSON.stringify([role(NEW), role(OWNER)]);
+  await gs.rebuild();
+  assert.equal(JSON.stringify([role(NEW), role(OWNER)]), live, "a rebuild agrees");
+  assert.deepEqual(await gs.adoptOwner(NEW), { owner: NEW, previous: OWNER, changed: false });
+});
