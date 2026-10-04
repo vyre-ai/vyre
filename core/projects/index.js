@@ -113,8 +113,8 @@ export default {
     ctx.tool("projects.list", {
       description: "Every project: name, home, folders, people, avatar_seed (what its tile is drawn from), how many threads are in it (picked or by folder), the picked thread ids (picks), newest activity first.",
       input: { type: "object", properties: { machines, archived: { type: "boolean" } } },
-      run: async (input, { caller } = {}) => {
-        if (!wantsMacs(ctx, input, caller)) return P.list({ archived: Boolean(input.archived) });
+      run: async (input, meta = {}) => { const caller = meta.caller;
+        if (!(await wantsMacs(ctx, input, caller, meta))) return P.list({ archived: Boolean(input.archived) });
         // On the box, for the person: the box's projects, then each Mac's, every one labelled.
         const [own, answers] = await Promise.all([P.list({ archived: Boolean(input.archived) }), askMacs(ctx, "projects.list", { archived: Boolean(input.archived) })]);
         return { ...own, projects: mergeRows(ctx, own.projects, answers, { rows: d => d && d.projects }),
@@ -237,9 +237,9 @@ export default {
     ctx.tool("projects.catalog", {
       description: "Every session on this device for picking into projects, with its /rename name, first message, folder, last activity, projects, and live (a terminal has it open now). q searches names, first messages, folders and, through Recall, what was said.",
       input: { type: "object", properties: { q: str, limit: { type: "integer" }, human: { type: "boolean" }, machines } },
-      run: async (input, { caller } = {}) => {
+      run: async (input, meta = {}) => { const caller = meta.caller;
         const { machines: _, ...own } = input;
-        if (!wantsMacs(ctx, input, caller)) return withLive(ctx, await P.catalog(own));
+        if (!(await wantsMacs(ctx, input, caller, meta))) return withLive(ctx, await P.catalog(own));
         // On the box, for the person: every Mac's sessions too, in one list in the catalogue's
         // order, capped at the limit. total counts every machine; sources says who answered, and
         // each one's own total.
@@ -260,11 +260,11 @@ export default {
     ctx.tool("projects.threads", {
       description: "The threads in a project, newest first, each saying whether it was picked or ran in the project's folders.",
       input: { type: "object", required: ["project"], properties: { project: str, limit: { type: "integer" }, machines } },
-      run: async (input, { caller } = {}) => {
+      run: async (input, meta = {}) => { const caller = meta.caller;
         const { project, limit = 100 } = input;
         P.refresh();
         const rows = P.threadsOf(P.resolve(project));
-        if (!wantsMacs(ctx, input, caller)) return rows.slice(0, limit);
+        if (!(await wantsMacs(ctx, input, caller, meta))) return rows.slice(0, limit);
         // On the box, for the person: a pick the box has no session for may be a Mac session
         // picked from the Deck. The Macs are asked once, for those ids only, and what they have
         // comes back labelled and is never stored here. A pick no machine has stays missing.

@@ -32,6 +32,7 @@ export const gatedAsk = ask => Boolean(ask && ((typeof ask.tool === "string" && 
 /** The person's own callers: the Deck, the terminal, the Capsule. */
 const PERSON = new Set(["deck", "cli", "local", "capsule"]);
 /** The person on another of their devices. A guest is "tailnet-guest:<login>" and an agent carries "agent:", so neither matches. */
+// SHIM(legacy labels): read only with the kernel off (wantsMacs asks the kernel chain first)
 const TAILNET_PERSON = /^tailnet:(?!agent:)[^\s]+$/;
 
 /**
@@ -39,15 +40,19 @@ const TAILNET_PERSON = /^tailnet:(?!agent:)[^\s]+$/;
  * "local", and only for the person, or for a module that asks with machines: "all". Agents, MCP
  * and guests get the box's own rows. A module stays local unless it asks, which is also what keeps
  * the Mac (which runs the box's questions as module:link) from asking the box back.
- * @param {any} ctx @param {any} input @param {string | undefined} caller
+ * The person comes from the kernel's chain for this call when there is a kernel (exactly one person hop, never a label); only a build with no kernel reads the label.
+ * @param {any} ctx @param {any} input @param {string | undefined} caller @param {any} [meta] the call's meta, for the kernel chain
  */
-export function wantsMacs(ctx, input, caller) {
+export async function wantsMacs(ctx, input, caller, meta) {
   if (!ctx.config || ctx.config.role !== "box") return false;
   const machines = input && input.machines;
   if (machines === "local") return false;
   const c = String(caller || "");
   if (c.startsWith("module:")) return machines === "all";
-  return PERSON.has(c) || TAILNET_PERSON.test(c);
+  if (ctx.kernel && typeof ctx.kernel.chain === "function") {
+    try { const ch = await ctx.kernel.chain(meta || { caller }); return Boolean(ch && Array.isArray(ch.hops) && ch.hops.length === 1 && ch.hops[0].actor && ch.hops[0].actor.kind === "person"); } catch { return false; }
+  }
+  return PERSON.has(c) || TAILNET_PERSON.test(c); // SHIM(legacy labels): a build with no kernel
 }
 
 /**
