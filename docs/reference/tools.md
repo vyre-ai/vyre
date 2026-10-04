@@ -8876,7 +8876,7 @@ Take the keyboard of a thread for a surface. Always succeeds, and says who had i
 - Input:
   - `thread` string, required
   - `surface` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `module`, `tailnet`
 
 ### `threads.lineage`
 
