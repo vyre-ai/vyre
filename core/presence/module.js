@@ -31,7 +31,10 @@ export default {
     });
 
     ctx.tool("presence.enroll", {
-      effect: "write", // no callers list on purpose: the registry default (person surfaces + module, with the original caller checked on a module hop) is right, and the presence floor needs a proof too
+      effect: "write",
+      // Listed, not defaulted: the relay enrolls a paired device's key from its listener, where no person is the original caller, so the registry's origin check on a defaulted tool would hide it.
+      // The presence floor still needs a proof from every caller but a first-party module, and a device's passkey is enrolled by module:relay only (checked in the body).
+      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent", "module"],
       description: "Enroll a Capsule key (P-256 in the Secure Enclave, alg -7), a device key (P-256 with alg -7, or RSA of 2048 bits or more with alg -257, as Windows Hello makes) or a passkey, by its public key as base64url SPKI DER, a JWK or a Windows BCRYPT RSA blob. Needs presence.",
       presence: { summary: async input => `Enroll a ${input.kind === "passkey" ? "passkey" : input.kind === "device" ? "device key" : "Capsule key"} named "${String(input.name || input.kind)}"` },
       input: obj({ kind: { type: "string", enum: ["capsule", "passkey", "device"] }, name: str, public_key: str, alg: { type: "integer" }, rp_id: str, credential_id: str,

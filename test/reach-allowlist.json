@@ -23,7 +23,7 @@
   },
   "apps.list": {
    "module": "apps",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "apps.route": {
    "module": "apps",
@@ -39,7 +39,7 @@
   },
   "apps.targets": {
    "module": "apps",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "capsule.act": {
    "module": "capsule",
@@ -55,11 +55,11 @@
   },
   "capsule.show": {
    "module": "capsule",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "capsule.status": {
    "module": "capsule",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "capsule.view": {
    "module": "capsule",

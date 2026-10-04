@@ -636,13 +636,16 @@ export function createPairing(o) {
     phone.boxTicketLive = () => { for (const v of liveTickets.values()) if (v.until > now()) return true; return false; };
     const mintQr = async (/** @type {any} */ made) => {
       const seed = crypto.randomBytes(16);
+      // With no typed code to fall back on, a relay that does not answer is said plainly and soon, not left to the CLI's own timeout (walk, 4 Oct)
+      const unreachable = (/** @type {string} */ why) => (made && made.code ? { ...made, qr: null } : (() => { throw fail("unavailable", `This server cannot reach its relay${why ? ` (${why})` : ""}. Check its network, then run this again.`); })());
       try {
-        const t = /** @type {any} */ (await mint(seed, "server"));
-        if (!t || t.error) return { ...made, qr: null };
+        /** @type {any} */ let h;
+        const t = /** @type {any} */ (await Promise.race([mint(seed, "server"), new Promise(res => { h = setTimeout(() => res({ error: "no answer in 6 seconds" }), o.mintMs ?? 6000); })]).finally(() => clearTimeout(h)));
+        if (!t || t.error) return unreachable(t && t.error ? String(t.error).slice(0, 80) : "");
         const qr = serverQrPayload(seed, await o.relayUrl());
         await rememberTicket(b64url(seed));
         return { ...made, qr, art: qrArt(qr), expires: now() + 5 * 60_000 };
-      } catch { return { ...made, qr: null }; }
+      } catch (e) { if (/** @type {any} */ (e).code === "unavailable") throw e; return unreachable(""); }
     };
     ctx.tool("wink.server.code", {
       description: "On the new server: make a pairing ticket good for 5 minutes and answer { qr, art, expires }: `qr` is the text to paste into the Vyre app on a computer (the long code), and the same text drawn as a QR for a phone to scan is `art`; qr is null when the relay could not take the ticket. Scanning or pasting only gets the app talking to this server. The person at the server then confirms who is asking (wink.server.pairing shows it and the three words, wink.server.pair.answer says yes or no); no answer pairs nothing. `pairTo` (an identity id or name) is for an unattended install and is set only from this server's own command line (cli or local) at install time: only that identity can complete the pairing, no yes is asked, and the app must PROVE it is that identity with a signature by a key on that identity's list (naming it is not enough). A short typed code is switched off in this release; `typed: true` is refused unless the development flag VYRE_WINK_TYPED_CODE=1 is set.",
@@ -750,10 +753,12 @@ export function createPairing(o) {
     // What the person at the server reads for who is asking (lead ruling, 4 Oct): the display name the app sent, then the claimed Vyre name, the one thing a stranger cannot fake (the directory
     // answers it for the identity id: `o.vyreName`): `Alex (alex.vyre.run)`. No Vyre name known: the display name with the short id, `Alex (id aaaaaa)`. A look-alike display name (letters of
     // more than one script) is dropped: the Vyre name alone, or the short id alone. Never a raw `per_` id. The three words stay the real proof.
+    /** A name as the app sent it, reduced to letters, digits, space and . _ @ : - (no control, no bidi mark, no escape): what is shown at the server AND what is stored (reviewer-3 SP-2). @param {unknown} n @param {number} [max] */
+    const cleanName = (n, max = 48) => String(n || "").replace(/[^\p{L}\p{N} ._@:-]/gu, "").replace(/ {2,}/g, " ").trim().slice(0, max);
     const SCRIPTS = [/\p{Script=Latin}/u, /\p{Script=Cyrillic}/u, /\p{Script=Greek}/u, /\p{Script=Arabic}/u, /\p{Script=Hebrew}/u, /\p{Script=Han}/u, /\p{Script=Hangul}/u, /\p{Script=Devanagari}/u, /\p{Script=Armenian}/u, /\p{Script=Georgian}/u];
     const mixedScript = (/** @type {string} */ t) => SCRIPTS.filter(r => r.test(t)).length > 1;
     const askNameOf = async (/** @type {any} */ input) => {
-      const display = String((input.owner && input.owner.name) || "").replace(/[^\p{L}\p{N} ._@:-]/gu, "").trim().slice(0, 48);
+      const display = cleanName(input.owner && input.owner.name);
       const id = String(input.identity || (input.owner && input.owner.id) || "");
       const tag = id.replace(/^[a-z]+_/, "").replace(/[^A-Za-z0-9]/g, "").slice(0, 6);
       /** @type {string | null} */ let vyre = null;
@@ -813,6 +818,8 @@ export function createPairing(o) {
         if (!a) {
           let proven = "";
           if (to) { try { proven = await proveIdentity(to, input, caller); } catch (e) { dropLater(caller); throw e; } }
+          // A proof offered on a server with no --pair-to is checked too (SP-1): the claimed identity must be the one the key speaks for. No proof is the words check alone.
+          else if (input.proof && input.owner && input.owner.kind === "identity" && typeof o.identityEntry === "function") { try { proven = await proveIdentity(String(input.owner.id), input, caller); } catch (e) { dropLater(caller); throw e; } }
           const fresh = !to && !o.pairWordsFor;
           // WP-1: a ticket's memory is single use and goes at the first ask, whatever follows (a failed ask, a cancel, a bad commit): a stale tag cannot start a second ask
           const liveTicket = pr.tag ? liveTickets.get(String(pr.tag)) : undefined;
@@ -900,8 +907,9 @@ export function createPairing(o) {
     };
     const applyAdopt = async (/** @type {any} */ input, /** @type {string} */ caller) => {
       const t = { kind: String(input.owner.kind), id: String(input.owner.id) };
+      // An owner is a person identity or a space, by its id's own shape; anything else is refused before it is stored or shown (reviewer-3 SP-1)
       const ident = String(input.identity || (t.kind === "identity" ? t.id : "") || await o.identity());
-      const ownerName = input.owner.name ? String(input.owner.name).slice(0, 64) : "";
+      const ownerName = cleanName(input.owner.name, 64);
       const first = !meta.get("owner") || !meta.get("adopter");
       meta.set("owner", { ...t, identity: ident, ...(ownerName ? { name: ownerName } : {}) });
       if (first) meta.set("adopter", caller);
@@ -922,6 +930,8 @@ export function createPairing(o) {
       // The same rule is kept here: once there is an owner, a change needs the owner's fresh presence (meta0.presence) from the one that adopted it.
       run: async (input, meta0 = {}) => {
         owner(meta0, "adopting a server");
+        // An owner is a person identity or a space, by its id's own shape; anything else is refused before it is asked about, stored or shown (reviewer-3 SP-1)
+        if (!(input.owner.kind === "identity" ? /^per_[a-z2-7]{1,26}$/ : /^spc_[a-z2-7]{1,26}$/).test(String(input.owner.id))) throw fail("bad_input", "That is not an identity or space id. Pair again from the Vyre app.");
         // A scanner whose pairing is not yet confirmed arrives as `web:<id>` (the relay, BR-2); the adopter is recorded, and later compared, as the device it becomes: `device:<id>`.
         const caller = canonDevice(String((meta0 && meta0.caller) || "anonymous"));
         const prior = meta.get("owner"), adopter = meta.get("adopter");

@@ -18,8 +18,8 @@ import { _test } from "./index.js";
 
 const THREADS = `
   const T = { t1: { project: "harlow-legal", agent: "juno", provider: "grok" }, t2: { project: "harlow-legal", agent: "kit", provider: "codex" }, t3: { project: "northwind", agent: "nia", provider: "codex" } };
-  export default { async start(ctx) { ctx.tool("threads.get", { run: async ({ thread }) => ({ thread: { id: thread, ...(T[thread] || { project: null }) } }) }); return {}; } };`;
-const AGENTS = `export default { async start(ctx) { ctx.tool("agents.list", { run: async () => [{ name: "juno", kind: "agent" }, { name: "kit", kind: "agent" }, { name: "nia", kind: "agent" }] }); return {}; } };`;
+  export default { async start(ctx) { ctx.tool("threads.get", { effect: "read", run: async ({ thread }) => ({ thread: { id: thread, ...(T[thread] || { project: null }) } }) }); return {}; } };`;
+const AGENTS = `export default { async start(ctx) { ctx.tool("agents.list", { effect: "read", run: async () => [{ name: "juno", kind: "agent" }, { name: "kit", kind: "agent" }, { name: "nia", kind: "agent" }] }); return {}; } };`;
 
 // Real enough bytes for each format's magic check.
 const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from("fake png body ".repeat(50))]);

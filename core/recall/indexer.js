@@ -196,7 +196,11 @@ export class Indexer {
    * @param {transcripts.Entry} entry @returns {Promise<boolean|null>}
    */
   async humanOf(entry) {
-    if (!this.underAccounts(entry.file)) return null;
+    // Outside an account folder the transcript's own reading stands, EXCEPT that the Switchboard's own record of a thread a person started in the app makes it human whatever driver carried it
+    // (an Agent SDK session's transcript says it is programmatic; the person typed the turn).
+    if (!this.underAccounts(entry.file)) {
+      try { const r = this.origin ? await this.origin(entry.id) : null; return r && r.known === true && r.human === true ? true : null; } catch { return null; }
+    }
     const hit = this.origins.get(entry.id);
     if (hit && Date.now() - hit.at < ORIGIN_TTL_MS) return hit.human;
     let human = false;
@@ -247,7 +251,7 @@ export class Indexer {
       }
       for (const turn of t.turns.slice(from)) this.q.addTurn.run(entry.id, turn.seq, turn.role, turn.ts, turn.text, turn.provider || "claude", turn.model || null);
       this.q.put.run(entry.id, entry.file, t.cwd, t.name == null ? t.name : clean(t.name), t.title == null ? t.title : clean(t.title), t.started || null, t.ended || null,
-        t.turns.length, human === null ? t.human : (human && t.human ? 1 : 0), t.parent, entry.size, entry.mtime);
+        t.turns.length, human === null ? t.human : (human ? 1 : 0), t.parent, entry.size, entry.mtime);
       this.db.exec("COMMIT");
     } catch (e) { this.db.exec("ROLLBACK"); throw e; }
 

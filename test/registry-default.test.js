@@ -9,7 +9,7 @@ import { start } from "../core/daemon/index.js";
 import path from "node:path";
 
 // FROZEN: lower these when an owner declares `effect` or a properties list on a tool; never raise them. A name that ends in a read verb but writes is a bug for its owner.
-const NO_EFFECT_DECLARED = 2; // the test's own undeclared writes; every real tool declares its effect
+const NO_EFFECT_DECLARED = 1; // the test's own undeclared writes; every real tool declares its effect
 const NO_PROPERTIES_LIST = 0;
 
 async function world(t) {

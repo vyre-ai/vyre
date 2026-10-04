@@ -326,7 +326,7 @@ function phonePage(ctx, getWorld, getAll, openNew, form) {
 
   async function schedules() {
     const all = getAll();
-    const rs = await Promise.all(all.map(a => attempt("watchers.list", { agent: a.name })));
+    const rs = await Promise.all(all.map(a => attempt("watchers.list", {})));
     const out = [];
     rs.forEach((r, i) => {
       if (r.error) return;
@@ -699,7 +699,7 @@ function drawWakes(sec, a, w, ctx) {
     onclick: () => { note.hidden = !note.hidden; add.setAttribute("aria-expanded", String(!note.hidden)); } }, icon("plus", 13), "Add watcher");
   const body = h("div", { class: "rows" });
   put(sec, sectionHead("ab-wakes", `What wakes ${a.name}`, add), note, body);
-  attempt("watchers.list", { agent: a.name }).then(r => {
+  attempt("watchers.list", {}).then(r => {
     if (!ctx.alive()) return;
     if (r.error) { put(body, empty(`${a.name} wakes only when you talk to it.`, r.error)); return; }
     const list = (Array.isArray(r.data) ? r.data : r.data?.watchers || []).filter(x => !x.agent || x.agent === a.name);
