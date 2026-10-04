@@ -96,6 +96,34 @@ try {
     await ctx.close();
   }
 
+  // The rail menus: open each one on a desktop and record what the page threw. A menu that blanks the page is a blocker.
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, colorScheme: "dark" });
+    const page = await ctx.newPage();
+    const thrown = [];
+    page.on("pageerror", (e) => thrown.push(String(e).slice(0, 300)));
+    page.on("console", (m) => { if (m.type() === "error" && !/unsupported MIME type/.test(m.text())) thrown.push(m.text().slice(0, 300)); });
+    await page.goto(base + "u/now", { waitUntil: "load" }).catch(() => {});
+    await page.waitForLoadState("networkidle").catch(() => {});
+    await page.waitForTimeout(800);
+    for (const [name, sel] of [["space-switcher", '[aria-label^="Space:"]'], ["more-places", '[aria-label="More places"]']]) {
+      thrown.length = 0;
+      const el = page.locator(sel).first();
+      const found = await el.count();
+      if (found) await el.click({ timeout: 3000 }).catch((e) => thrown.push("click failed: " + String(e).slice(0, 120)));
+      await page.waitForTimeout(600);
+      const items = await page.locator('[role="menuitem"]').count();
+      const blank = await page.evaluate(() => document.body.innerText.trim().length < 20);
+      const file = `menu-${name}.png`;
+      await page.screenshot({ path: path.join(out, file) }).catch(() => {});
+      report.menus = [...(report.menus || []), { name, found, items, blank, thrown: [...thrown] }];
+      await page.keyboard.press("Escape").catch(() => {});
+      await page.waitForTimeout(300);
+      if (blank) await page.goto(base + "u/now", { waitUntil: "load" }).catch(() => {});
+    }
+    await ctx.close();
+  }
+
   // The keyboard pass: desktop, both themes. Tab through each route and screenshot the ring around what has focus.
   for (const theme of THEMES) {
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, colorScheme: theme === "paper" ? "light" : "dark" });
@@ -133,10 +161,12 @@ try {
   server.close();
 }
 fs.writeFileSync(path.join(out, "report.json"), JSON.stringify(report, null, 1));
+const menuBad = (report.menus || []).filter((m) => !m.found || !m.items || m.blank || m.thrown.length);
 const bad = report.pages.filter((p) => p.overflowX > 1 || p.errors?.length);
 const noring = report.focus.filter((f) => !f.ring);
 const md = [`# ux-shots`, `${report.shots} shots, ${report.pages.length} pages, ${report.focus.length} focus stops.`,
   `Pages with sideways overflow or console errors: ${bad.length}`, ...bad.slice(0, 40).map((p) => `- ${p.file}: overflow ${p.overflowX}px ${p.errors?.[0] ?? ""}`),
+  `Rail menus that did not open cleanly: ${menuBad.length}`, ...menuBad.map((m) => `- ${m.name}: found ${m.found}, items ${m.items}, blank ${m.blank} ${m.thrown[0] ?? ""}`),
   `Focus stops with no visible ring: ${noring.length}`, ...noring.slice(0, 40).map((f) => `- ${f.route} ${f.theme}: ${f.tag} "${f.label}"`)].join("\n");
 fs.writeFileSync(path.join(out, "summary.md"), md);
 console.log(md);

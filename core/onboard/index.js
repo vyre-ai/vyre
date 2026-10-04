@@ -138,8 +138,16 @@ export default {
   async start(ctx) {
     const save = patch => config.save(patch, ctx.paths.root, ctx.config);
     const ob = () => ctx.config.onboard || {};
-    /** Does this server have an owner (a paired device)? config's ownerSeen (the tailnet owner) counts too. */
-    const isOwned = async () => Boolean(net().ownerSeen) || Boolean(((await ctx.call("wink.server.owned", {}).catch(() => null)) || {}).owned);
+    /**
+     * Does this machine have an owner? On a SERVER: a device paired and was confirmed (wink.server.owned), or the tailnet owner arrived (ownerSeen). On a COMPUTER that is itself the person's Vyre
+     * (solo or device: no pairing), the owner exists once the person has claimed their identity there (spaces.identity.id answers an id): the home's owner was adopted to it. Whichever way,
+     * a fresh home with neither is not owned.
+     */
+    const isOwned = async () => {
+      if (config.isServer(ctx.config.machine)) return Boolean(net().ownerSeen) || Boolean(((await ctx.call("wink.server.owned", {}).catch(() => null)) || {}).owned);
+      const id = await ctx.call("spaces.identity.id", {}).catch(() => null);
+      return Boolean(id && (id.id || (id.data && id.data.id)));
+    };
     const skipped = () => new Set(ob().skipped || []);
     const net = () => ctx.config.network || {};
     /** The setup page (or an earlier step) already claimed a vyre.run address on this box: ctx.config.name is that address, not the person. */
@@ -302,7 +310,8 @@ export default {
       // guess from role/machine. relayJoin is false on darwin until vyre-core exists (see
       // RELAY_JOIN_DARWIN_REASON above); every other platform can already join a relay today.
       const can = canRelayJoin(process.platform);
-      return { mode, role: ctx.config.role, machine: ctx.config.machine, platform: process.platform, can, owned: await isOwned(),
+      const owned = await isOwned();
+      return { mode, role: ctx.config.role, machine: ctx.config.machine, platform: process.platform, can, owned, ownerFirst: owned ? null : config.isServer(ctx.config.machine) ? "pair" : "name",
         owner: net().owner || null, address: n && n.phase === "serving" ? n.address : null,
         host: (t && t.node && t.node.name) || os.hostname(), name: personOrPage(caller) ? ob().person || null : null, accountName: personOrPage(caller) ? accountName : null, person: personOrPage(caller) ? ob().person || null : null, assistant: ob().assistant || null, assistantState: ob().assistantState || null,
         // arrived: the owner has reached the address over the tailnet (the page's Switch), so the
