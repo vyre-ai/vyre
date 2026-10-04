@@ -8,6 +8,7 @@ import { createApprovals } from "../tasks/approvals.js";
 import { createGate } from "../core/gate.js";
 import { roomedAuthorizer } from "../core/room.js";
 import { GRANT_ACTIONS } from "../grants/index.js";
+import { CHECKPOINT_ACTIONS } from "./checkpoints.js";
 import { createLimits } from "../core/limits.js";
 import { verifyLog } from "../audit/index.js";
 import { createLeases } from "./leases.js";
