@@ -3417,6 +3417,9 @@ export default {
       { type: "object", properties: { project: str, cwd: str, prompt: str, name: str, model: str, surface: str, append: str,
         purpose: { type: "string", enum: ["chat", "agent", "project", "teammate", "capsule", "job", "memory", "planner", "learn", "helper"], description: "What kind of session: picks its model (sessions.models.get). Default: chat, or project in a project." },
         provider: { type: "string", description: "The session provider: claude (the default), or one a module added." },
+        agent: { type: "string", description: "A person's own surface only: start the session as this agent (its credentials and project grants). A model's call naming one is bad_input." },
+        agent_kind: { type: "string", description: "A person's own surface only: the kind of the agent named in `agent`. A model's call naming one is bad_input." },
+        account: { type: "string", description: "A person's own surface only: the AI account the session runs on (scope-checked, never a silent fallback). A model's call naming one is bad_input." },
         effort: { type: "string", enum: EFFORTS, description: "Reasoning effort, as /effort: low, medium, high, xhigh or max. Default: the model's own." },
         lean: { type: "boolean", description: "A one-question thread: no Vyre plugin, no tools, no MCP servers, none of the user's settings. Cheap to start." },
         chat: { type: "string", description: "First-party stream only: the chat this session's reply belongs to. Anyone else's is ignored." }, asker: { type: "string", description: "First-party stream only: the person id (per_...) of who asked (the kernel session is opened for them, in `chat`). Any other form is refused as bad_input. Anyone else's is ignored." },
@@ -3446,6 +3449,8 @@ export default {
           const folders = await sb.projectFolders(i.project, i.cwd, granted);
           if (!folders.ok) throw Object.assign(new Error(folders.why), { code: "denied" });
         }
+        // The person (and a first-party module) may name an agent and an account; a model may not, whatever it says: bad_input, never quietly dropped.
+        if (modelCall && !firstParty) { const named = ["agent", "agent_kind", "account"].filter(k => restAll[k] !== undefined); if (named.length) throw Object.assign(new Error(`threads.start does not take ${named.join(", ")} from a model session`), { code: "bad_input" }); }
         const rest = modelCall && !firstParty ? Object.fromEntries(Object.entries(restAll).filter(([k]) => START_FIELDS.has(k))) : restAll;
         const plain = /^(?:mcp|harness)(?::|$)/.test(String(caller || "")) && !thread && !agent;
         const person = personTurn(caller) && i.prompt ? { chips: Array.isArray(mentions) ? mentions : [], pasted: Array.isArray(pasted) ? pasted.filter(x => typeof x === "string").slice(0, 20) : [] } : null;
