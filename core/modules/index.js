@@ -1379,7 +1379,13 @@ export class Registry {
       if (approved) meta = { ...meta, presence: approved };
       else {
       const v = await presence.verify({ tool, input, caller, proof, def, meta, peer: meta.peer || null, terminal: typeof terminal === "string" || (terminal && typeof terminal === "object") ? terminal : null });
-      if (!v.ok) return { error: { code: v.code === "no_dialog" ? "no_dialog" : "presence_required", message: v.message, methods: v.methods } };
+      if (!v.ok) {
+        // A device that cannot give the yes on the spot (no proof beside the call) and is asking for one of the three moments is HELD: the answer names the moment and the exact request approvals.ask takes, and the
+        // retry carries `approval: <id>`. Anyone else, or a call that carried a proof which did not stand, gets the old refusal.
+        const mo = !proof && !String(caller).startsWith("module:") ? momentOf(tool) : null, dev = mo ? deviceIdOf(String(caller)) : null, plain = mo ? plainFieldsOf(input) : null;
+        if (mo && dev && plain) return { error: { code: "held", message: "This needs your yes: it is waiting for you on your phone.", detail: { moment: mo, request: { op: tool, fields: plain } } } };
+        return { error: { code: v.code === "no_dialog" ? "no_dialog" : "presence_required", message: v.message, methods: v.methods } };
+      }
       // The tool learns how the person proved it (and with which enrolled key), never the proof.
       meta = { ...meta, presence: { method: v.method, keyId: v.keyId ?? null, ...(v.where ? { where: v.where } : {}) } };
       }

@@ -1011,7 +1011,7 @@ test("one permission rule: a paired device is you: an admin act passes with no s
   assert.equal(await rk.gateway.records.define(null, { add_types: [{ name: "note", label: "Note", fields: [{ name: "title", kind: "text", label: "Title" }] }] }).then(() => "ok", e => String(e.code || e.message)), "ok", "and after its sessions ended");
   // the three moments still want a yes: a vault secret is not revealed for a paired device's say-so
   await links.startPaired("srv");
-  await assert.rejects(() => links.sessionFor("srv").call("vault.reveal", { name: "northwind-mail" }), e => /presence|denied/.test(`${e.code} ${e.message}`), "a vault reveal without a yes is refused");
+  await assert.rejects(() => links.sessionFor("srv").call("vault.reveal", { name: "northwind-mail" }), e => /presence|denied|held/.test(`${e.code} ${e.message}`), "a vault reveal without a yes is refused (held for the phone)");
 });
 
 test("the session strength is proven at each sign-in (the identity entry's enclave key over the challenge); a card for the owner's phone carries a browser's yes back once and upgrades nothing", async t => {
@@ -1044,7 +1044,7 @@ test("the session strength is proven at each sign-in (the identity entry's encla
     for (const [moment, op] of [["pair", "wink.remove"], ["pair", "wink.server.reset"], ["vault", "vault.delete"], ["vault", "vault.export"], ["vault", "vault.put"], ["vault", "vault.backup"]]) await assert.rejects(() => links.askApproval("srv", { moment, request: { op, fields: {} } }), e => /bad_input/.test(String(e.code)), `${moment}: ${op} is not a card`);
     // and at the floor: an approval never counts for such a tool
     const del = await links.sessionFor("srv").call("vault.delete", { name: "northwind-mail", approval: "ap_notacardatall1" }).then(() => null, e => e);
-    assert.ok(del && /presence|denied/.test(`${del.code} ${del.message}`) && true, "vault.delete is not a moment: the old floor");
+    assert.ok(del && /presence|denied/.test(`${del.code} ${del.message}`) && del.code !== "held", "vault.delete is not a moment: the old floor, no held answer");
     await assert.rejects(() => links.askApproval("srv", { moment: "vault", request: { op: "vault.reveal", fields: { name: { nested: true } } } }), e => /bad_input/.test(String(e.code)), "plain field values only");
     const ask = await links.askApproval("srv", { moment: "vault", request });
     assert.equal(ask.line, "Alexs iPhone wants to show \"northwind-mail\" from your vault", "a line the server wrote, with its own name for the device");
@@ -1089,8 +1089,11 @@ test("the session strength is proven at each sign-in (the identity entry's encla
     const used = await via();
     assert.ok(!used || !/presence/i.test(`${used.code} ${used.message}`), `an approved vault call passes the floor (what the vault says next is its own: ${used && used.code})`);
     const again = await via();
-    assert.ok(again && /presence/i.test(`${again.code} ${again.message}`), "the approval was spent: the same call is stopped by the floor again");
-    // a vault call with neither a proof nor an approval is stopped by the ordinary floor (presence_required): that is the app's trigger to ask for a card
+    assert.ok(again && /presence|held/i.test(`${again.code} ${again.message}`), "the approval was spent: the same call is stopped by the floor again");
+    // a vault call with neither a proof nor an approval is HELD: the answer names the moment and the exact request approvals.ask takes
+    const heldCall = await links.sessionFor("srv").call("vault.reveal", { name: "northwind-mail" }).then(() => null, e => e);
+    assert.equal(heldCall && heldCall.code, "held");
+    assert.deepEqual(heldCall && heldCall.detail, { moment: "vault", request: { op: "vault.reveal", fields: { name: "northwind-mail" } } });
     assert.deepEqual(await yesAt("vault", act, { card: ask.id }), { ok: false, reason: "replayed" }, "once");
     assert.deepEqual(await yesAt("vault", act, { card: "ap_unknown" }), { ok: false, reason: "no_proof" });
     assert.deepEqual(await strengthsOf(f), ["software"], "nothing about the browser's own session changed"); }
