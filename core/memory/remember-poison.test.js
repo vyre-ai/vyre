@@ -9,6 +9,7 @@ import { SESSIONS, seedRecall } from "../../test/fixtures/corpus.js";
 import { tempHome } from "../../test/helpers.js";
 import { fakeReachCall } from "../../test/fixtures/fake-reach.js";
 import memory from "./index.js";
+import { labeled } from "./testing/label-who.js";
 
 async function rig(t) {
   const db = open(path.join(tempHome(t), "vyre.db"));
@@ -17,7 +18,7 @@ async function rig(t) {
   const tools = new Map();
   const ctx = { name: "memory", config: { me: { domains: ["riverastudio.com"] } }, paths: {}, store: { db, migrate: () => {} }, log: () => {},
     events: { on: () => () => {}, emit: () => {}, since: () => [], prune: () => 0 },
-    call: async (tool, input) => fakeReachCall(tool, input, { agents: [], projects: [] }), tool: (n, d) => tools.set(n, d), memoryRunner: null };
+    call: async (tool, input) => fakeReachCall(tool, input, { agents: [], projects: [] }), tool: (n, d) => tools.set(n, labeled(d)), memoryRunner: null };
   const h = await memory.start(ctx);
   t.after(() => h.stop());
   const call = async (name, input, caller, meta = {}) => { try { return { data: await tools.get(name).run(input, { ...meta, caller }) }; } catch (e) { return { error: e.message, code: e.code || "failed" }; } };
