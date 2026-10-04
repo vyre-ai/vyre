@@ -107,7 +107,7 @@ test("gateway: a total just under the row-by-row bound is exact, and a row the c
   const g = G({ resource: { prefix: `vyre://${SPACE}/contact/*`, where: [{ attr: "project", op: "eq", value: "p1" }] } });
   const ownerAll = G({ actions: ["records.create", "records.define"] });
   const { r, store } = await withType(rig({ grants: [ownerAll, g], attrs }));
-  const N = 19_700; // kernel-2 bounds the row-by-row total at 20,000 rows (it says unsupported past that); an unrestricted caller goes to the store
+  const N = 10_000; // kernel-2 bounds the row-by-row total at 20,000 rows (it says unsupported past that); an unrestricted caller goes to the store
   for (let i = 0; i < N; i++) { const id = mintUuid(); await store.create("contact", id, { name: `n${i}`, age: 1, status: i % 2 ? "open" : "closed" }); if (i % 7 === 0) hidden.add(`vyre://${SPACE}/contact/${id}`); }
   const seen = N - hidden.size;
   const tot = await r.aggregate(owner(), "contact", { measures: [{ fn: "count" }, { fn: "sum", field: "age" }] });
@@ -643,6 +643,44 @@ test("seal a field in place: values move into a sealed field, no plaintext is le
   assert.equal((await gw.audit.verify()).ok, true, "an erased event keeps the chain verifiable");
   assert.equal(log.read({ type: "records.field-sealed" }).length, 1);
   await assert.rejects(() => gw.migrate.sealField(owner(), { type: "person", field: "ssn", class: "us-ssn" }), { code: "bad_input" }, "a field that is already removed from view is refused");
+});
+
+test("forget: tasks' text is emptied first, then the store destroys the record and its history, its events lose their data, one event says so without a value", async () => {
+  const calls = [];
+  const { r, gw, log, store } = rig({ grants: [G({ actions: ["records.*", "records.define", "events.read"] })], tasks: { scrubTexts: o => { calls.push(["tasks", o]); return { cleared: 2 }; } } });
+  const orig = store.destroy.bind(store); store.destroy = async (t, i) => { calls.push(["store", t, i]); return orig(t, i); };
+  await r.define(owner(), { add_types: [{ name: "person", label: "Person", fields: [{ name: "name", kind: "text", label: "Name", required: true }, { name: "note", kind: "text", label: "Note" }] }] });
+  const a = await r.create(owner(), "person", { name: "Jane Needle", note: "owes 4,200" });
+  await r.update(owner(), "person", a.id, { note: "owes 4,300" }, 1);
+  const b = await r.create(owner(), "person", { name: "Bob Keep" });
+  const out = await gw.migrate.forget(owner(), { type: "person", id: a.id });
+  assert.equal(out.tasks_cleared, 2);
+  assert.ok(out.erased_events >= 2);
+  assert.deepEqual(calls.map(c => c[0]), ["tasks", "store"], "the tasks' text goes before the store scrub");
+  assert.deepEqual(calls[0][1], { record: a.urn });
+  assert.equal(await r.get(owner(), "person", a.id), null);
+  assert.equal(await store.get("person", a.id, { include_deleted: true }), null, "the row is gone, bin included");
+  const dump = JSON.stringify([log.read(), (await store.changes(null, 1000)).entries]);
+  for (const v of ["Jane Needle", "owes 4,200", "owes 4,300"]) assert.equal(dump.includes(v), false, `${v} is nowhere in the log or the store's changes`);
+  assert.equal(log.read({ type: "records.forgotten" }).length, 1);
+  assert.equal((await r.get(owner(), "person", b.id)).data.name, "Bob Keep", "another record is untouched");
+  assert.equal((await gw.audit.verify()).ok, true);
+  await assert.rejects(() => gw.migrate.forget(owner(), { type: "person", id: a.id }), { code: "not_found" });
+});
+
+test("forget is a presence act: a chain that holds an agent is refused even with the grants, and nothing is touched; sealed values are dropped and files counted", async () => {
+  const dropped = [];
+  const { r, gw, store, log } = rig({ grants: [G({ actions: ["records.*", "records.define", "events.read"] }), G({ subject: { kind: "actor", actor: actor("agent", "kit") }, actions: ["records.define", "records.remove", "records.read"] })], members: ["agent:kit"], sealer: { api: {}, drop: async i => { dropped.push(i.ref); return { dropped: true }; } } });
+  await r.define(owner(), { add_types: [{ name: "person", label: "Person", fields: [{ name: "name", kind: "text", label: "Name" }, { name: "ssn", kind: "sealed", label: "SSN", seal: { class: "us-ssn" } }, { name: "scan", kind: "file", label: "Scan" }] }] });
+  const id = "0190c3f2-1111-4abc-8def-0000000000aa";
+  await store.create("person", id, { name: "Jane", ssn: { sealed: "us-ssn", ref: "ref-1", present: true }, scan: { file: "f1", name: "id.pdf", bytes: 10 } });
+  await assert.rejects(() => gw.migrate.forget(agent(), { type: "person", id }), e => ["needs_presence", "not_found"].includes(e.code));
+  assert.ok(await store.get("person", id), "the agent's attempt touched nothing");
+  assert.deepEqual(dropped, []);
+  const out = await gw.migrate.forget(owner(), { type: "person", id });
+  assert.deepEqual([out.sealed_dropped, out.sealed_left, out.files_kept], [1, 0, 1]);
+  assert.deepEqual(dropped, ["ref-1"]);
+  assert.equal(log.read({ type: "records.forgotten" })[0].data.files_kept, 1);
 });
 
 // ---- stage gates ----

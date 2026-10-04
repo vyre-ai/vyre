@@ -93,6 +93,45 @@ export default {
       try { return { kit: kitFromLibrary(String(i.id)) }; } catch (e) { throw refuse(/** @type {any} */ (e).message, "not_found"); }
     });
 
+    // Permanent, so the person's own act with their presence: a model or a session never runs it (it proposes through records.forget.propose), and the proof rides into the kernel's gate.
+    /** How many sessions on this machine mention the record (its id): counted, never searched for what they say. Null when Recall cannot answer. @param {string} id */
+    const sessionsMentioning = async id => {
+      try {
+        const r = /** @type {any} */ (await ctx.call("recall.search", { q: id, limit: 100, per_session: 1, hybrid: false }));
+        const hits = r && r.data;
+        const rows = r && r.error ? null : Array.isArray(hits) ? hits : Array.isArray(hits && hits.hits) ? hits.hits : null;
+        return rows ? new Set(rows.map((/** @type {any} */ h) => h.session)).size : null;
+      } catch { return null; }
+    };
+    ctx.tool("records.forget", {
+      description: "Forget one record for good: the text of every task about it is emptied, the store destroys it and its history, its events lose their data, and its sealed values are destroyed. Linked files stay in Files. Cannot be undone. Customize-level (admin and owner), the person's own act with their presence; an assistant proposes it with records.forget.propose.",
+      input: obj({ urn: str }, ["urn"]), callers: CALLERS, presence: true,
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        const u = parseUrn(i.urn);
+        const d = await door.open({ space: u.space }, meta);
+        const out = await d.gateway.migrate.forget(d.chain, { type: u.type, id: u.id, ...(d.proof ? { presence: d.proof } : {}) });
+        const sessions = await sessionsMentioning(u.id);
+        return {
+          ...out, sessions_mentioning: sessions,
+          message: [
+            `Forgot the record. ${out.tasks_cleared} task text${out.tasks_cleared === 1 ? "" : "s"} emptied, ${out.erased_events === 1 ? "1 event lost its" : `${out.erased_events} events lost their`} data.`,
+            out.sealed_dropped || out.sealed_left ? `${out.sealed_dropped} sealed value${out.sealed_dropped === 1 ? "" : "s"} destroyed${out.sealed_left ? `, ${out.sealed_left} could not be and still sit in the sealing store` : ""}.` : "It held no sealed values.",
+            out.files_kept ? `${out.files_kept} linked file${out.files_kept === 1 ? " stays" : "s stay"} in Files: forget ${out.files_kept === 1 ? "it" : "them"} there.` : "It linked no files.",
+            sessions === null ? "Memory could not be asked which sessions mention it." : `${sessions} session${sessions === 1 ? " mentions" : "s mention"} it.`,
+            "Sessions that quoted this record are not searched. Forget them in Memory.",
+          ].join(" "),
+        };
+      },
+    });
+    tool("records.forget.propose", "Ask the person to forget one record for good. Nothing is forgotten: a task goes to the person, who does it themselves with their presence. For an assistant, which may only propose.", obj({ urn: str, why: str }, ["urn"]), async (i, d) => {
+      const u = parseUrn(i.urn);
+      const rec = await d.gateway.records.get(d.chain, u.type, u.id);
+      if (!rec) throw refuse("no such record", "not_found");
+      const me = d.chain.hops[0].actor;
+      const task = await d.gateway.ask.request(d.chain, { title: `Forget ${u.type} ${u.id.slice(0, 8)}?`, record: i.urn, doer: me, output: { kind: "decision" }, note: `Proposed: forget this record for good. It cannot be undone.${i.why ? ` Why: ${String(i.why).slice(0, 300)}` : ""}` });
+      return { proposed: true, task: task.id, message: "Nothing was forgotten. The person has a task to decide it with their presence." };
+    }, byUrn);
+
     // ---- sealed values and the event feed ----
     tool("records.seal-put", "Put a value into a record's sealed field. It goes straight to the sealing process and never rides the record; the record keeps only the reference. The person's own act.", obj({ urn: str, field: str, value: str, class: str }, ["urn", "field", "value"]), async (i, d) => {
       const u = parseUrn(i.urn);
