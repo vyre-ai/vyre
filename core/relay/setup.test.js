@@ -683,8 +683,9 @@ test("PA-4: a web caller reads only its own row of relay.devices.list, the owner
   assert.ok(db, "the registry's database");
   const ins = (id, kind) => db.prepare("INSERT INTO relay_devices (id, name, pub, presence_key, paired_at, last_seen, removed_at, kind, release, manifest, trusted, join_grant, join_mints, join_last) VALUES (?, ?, ?, NULL, ?, ?, NULL, ?, NULL, NULL, 1, 0, 0, NULL)").run(id, `name-${id}`, Buffer.alloc(32, id.length).toString("base64url"), Date.now(), Date.now(), kind);
   ins("webone", "web"); ins("phone1", "phone"); ins("phone2", "phone");
-  const asWeb = (await w.d.registry.call("relay.devices.list", {}, "device:webone")).data;
-  assert.deepEqual((asWeb?.devices || []).map(d => d.id), ["webone"], JSON.stringify(asWeb));
+  const rw = await w.d.registry.call("relay.devices.list", {}, "device:webone");
+  assert.ok(!rw.error, JSON.stringify(rw.error));
+  assert.deepEqual(rw.data.devices.map(d => d.id), ["webone"]);
   const asOwner = (await w.d.registry.call("relay.devices.list", {}, "cli")).data.devices.map(d => d.id).sort();
   assert.deepEqual(asOwner, ["phone1", "phone2", "webone"]);
 });
