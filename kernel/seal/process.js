@@ -301,6 +301,18 @@ export function custodyNote(profile = process.env.VYRE_SEAL_PROFILE || "desktop"
   if (platform === "win32") return "Sealed data on this PC is only as protected as this PC's own Windows account: any program running as you can read the key file.";
   return "The sealing key is a file inside your Vyre folder, private to you. Vyre's own sessions are sandboxed away from it and your disk's encryption protects it at rest; root, or a program running as you outside Vyre's sandbox, can read it.";
 }
+/**
+ * Is an environment developer switch honoured here? Exactly "1" AND not a packaged build. Self-contained (this process imports no kernel code beyond kernel/seal): it reads the build stamp
+ * lib/build-kind.js as TEXT, the same rule as kernel/devbuild.js isPackaged (a missing or unreadable stamp, anything but "development", or a carried SHA256SUMS.sig means packaged);
+ * kernel/seal/buildkind.test.js pins that this equals devbuild's answer for every stamp. `root` is for that test.
+ * @param {string | undefined} value @param {string} [root]
+ */
+export function devSwitch(value, root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..")) {
+  if (value !== "1") return false;
+  let text = ""; try { text = fs.readFileSync(path.join(root, "lib", "build-kind.js"), "utf8"); } catch { return false; }
+  return /export const BUILD_KIND = "development";/.test(text) && !fs.existsSync(path.join(root, "SHA256SUMS.sig"));
+}
+
 export function hostCheck({ profile = process.env.VYRE_SEAL_PROFILE || "desktop", dev = devSwitch(process.env.VYRE_SEAL_DEV), uid = process.getuid?.() ?? -1, agentUids = process.env.VYRE_AGENT_UIDS } = {}) {
   if (dev || profile === "desktop") return;
   const agents = agentUids ? agentUids.split(",").map(Number) : Array.from({ length: 64 }, (_, i) => 2000 + i);
