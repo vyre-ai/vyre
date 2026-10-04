@@ -624,9 +624,8 @@ test("WF-1 on tasks: a change whose event cannot be written does not stay in mem
   const A = alice();
   await down(() => r.tasks.decide(A, w.id, { outcome: "approved", proof: r.proof(A, ALICE, w) }));
   assert.equal((await r.tasks.get(owner(), w.id)).state, "needs_check", "still waiting for its check");
-  assert.equal(r.released.length <= 1, true);
-  const releasedBefore = r.released.length;
+  assert.equal(r.released.length, 1, "the send ran once before the event was refused");
   const done = await r.tasks.decide(A, w.id, { outcome: "approved", proof: r.proof(A, ALICE, w) });
   assert.equal(done.state, "done");
-  assert.equal(r.released.length, releasedBefore + 1);
+  assert.equal(r.released.length, 1, "WF-2: the second approval did not send again");
 });
