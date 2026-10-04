@@ -87,7 +87,7 @@ export const isWho = (id) => WHO.options.some(([k]) => k === id);
  */
 export const EMPTY = {
   now: { title: "Nothing needs you", line: "Anything that waits on you shows here.", action: "Open Chats", route: "/chats" },
-  chats: { title: "No chats yet", line: "A chat starts in Vyre on a computer and shows here as it runs.", action: "Check again", route: "refresh" },
+  chats: { title: "No chats yet", line: "Start one with your assistant or an agent.", action: "New chat", route: "/new-chat" },
   agents: { title: "No assistants yet", line: "An assistant works on your own AI account.", action: "Connect your AI account", route: "/u/settings/ai" },
 };
 
