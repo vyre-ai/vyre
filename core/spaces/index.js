@@ -990,6 +990,8 @@ export default {
       if (!rec || rec.identity !== id) throw refuse("That is not the identity this server was paired to.", "forbidden");
       if (!/^per_[a-z2-7]{26}$/.test(id)) throw refuse("That is not a person id.", "bad_input");
       if (!K || typeof K.adoptOwner !== "function") throw refuse("This home has no kernel to change.", "unavailable");
+      // First owner wins: a home whose owner is already a claimed identity is never taken by another one
+      { const had = typeof K.ownerClaimed === "function" ? K.ownerClaimed() : null; if (had && had !== id) throw refuse("This server already belongs to another Vyre identity.", "owned_by_other"); }
       let r;
       try { r = await K.adoptOwner(id, { from: K.owner }); } catch (e) { throw plainKernelError(e); }
       // The owner's Vyre name, checked against the directory (the name is the pairing's word, the directory's answer is the proof), so this home can read the owner's own identity list later:
@@ -997,6 +999,12 @@ export default {
       const label = typeof i.name === "string" ? i.name.trim().toLowerCase().replace(/\.vyre\.run$/, "") : "";
       if (label) { try { const v = await dir.resolve(label); if (v.ok && v.kind === "person" && v.id === id) await kv.put(`person-name/${id}`, label); } catch { /* the name is learned later, when the owner is next verified */ } }
       return { owner: r.owner, previous: r.previous, changed: r.changed };
+    }, { internal: true });
+    // For the pairing module: the identity that already took this home's owner place, or null. Wink refuses to pair a different identity to a home that has one (first owner wins).
+    tool("spaces.owner.claimed", "For the pairing module: the identity id that took this home's owner place ({ claimed }), or { claimed: null } while the owner is still the first-start id. Read only.", obj(), async (_i, meta) => {
+      onlyModules(meta, ["wink"]);
+      if (!K || typeof K.ownerClaimed !== "function") return { claimed: null };
+      return { claimed: K.ownerClaimed() };
     }, { internal: true });
     // The spaces a person owns or administers, for the pairing module's "Pair to:" choices (one id: the kernel's space id, the name the person gave it, the person's role there).
     tool("spaces.admin-list", "The finished spaces a person owns or administers here: { spaces: [{ space, name, role }] }, and the identity's own name when it is this device's. For modules (pairing targets).", obj({ person: str }, ["person"]), async (i, meta) => {
@@ -1545,7 +1553,10 @@ export default {
         const nonce = b64u(crypto.randomBytes(16));
         let got;
         try { got = await h.gateway.grants.invites.get(null, invId, { attest: nonce }); }
-        catch (e) { remoteHandles.delete(`${r.payload.id}/${invId}`); const c = String(/** @type {any} */ (e).code || ""); if (/^(unavailable|unreachable|failed)$/.test(c) || !c) throw gone(); throw plainKernelError(e); }
+        catch (e) { remoteHandles.delete(`${r.payload.id}/${invId}`); const c = String(/** @type {any} */ (e).code || "");
+          // The home's door refusing this person (an invite made for someone else, spent, or not admitted) is not an outage: it gets its own plain answer and no reason (JE-1); the words also fit a spent or expired invite.
+          if (/^(denied|not_a_member|forbidden|not_allowed)$/.test(c)) throw refuse("This invite cannot be used.", "not_for_you");
+          if (/^(unavailable|unreachable|failed)$/.test(c) || !c) throw gone(); throw plainKernelError(e); }
         const { attest, ...bare } = got && typeof got === "object" ? got : /** @type {any} */ ({});
         let proven = false;
         try { proven = Boolean(r.payload.rootPublic) && Boolean(attest) && attest.pub === r.payload.rootPublic && typeof attest.sig === "string" && await C.verifyWith(String(attest.pub), Buffer.from(attestMessage(r.payload.id, nonce)), attest.sig); } catch { proven = false; }

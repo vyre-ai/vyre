@@ -8,7 +8,18 @@ Keep the dev box (testbox, `~/devbox`, unit `vyre-dev`) on the newest combined t
 - Conflicts: core/daemon/index.js (flows side, comment only); kernel/gateway/records.js and kernel/store/query.js (both sides kept: kernel-next's fast aggregate and rollback plus records' computed-field checks and addGroup); kernel/grants/roles.js (union: kits and rules actions plus drive.read and drive.write); kernel/gateway/index.js (union: rules touches plus CHECKPOINT_ACTIONS). Generated docs (docs/index.json, docs/reference/*) taken from the dev side; regenerate with `npm run docs:ref` on testbox.
 
 ## Doing
-Following team heads in team/0.2/CHAT.md (merge, redeploy, post).
+Stopped on the usage limit (4 Oct). Trunk origin/work/devbox is e9b23e36b: boot-gated, lint clean, deployed on the dev box, smoke pass=123 fail=0 hung=0. Gate each head in this order: merge with --no-commit, `scripts/devbox-merge-check.py --worktree`, commit, `scripts/devbox-merge-check.py HEAD`, regenerate docs on a test box (`npm run docs:ref`, copy back ALL of docs/reference and docs/index.json), `scripts/devbox-lint.sh <old trunk>`, `scripts/devbox-boot-check.sh testbox2`, docs tests, push, deploy, `scripts/devbox-smoke.sh` on testbox3. A pre-commit hook in this worktree refuses conflict markers (worktree core.hooksPath).
+
+## Queue (heads as last sent, check origin for newer; one head per branch)
+1. work/wink-session 1e3c6c587 (wink-2, TK-1 fixed: first-owner-wins; the earlier 07cf8acb0 broke 5 paired-session tests in test/wink.test.js, fixed by 1e3c6c587 per wink-2, not rerun by me). Run `node --test --test-name-pattern="a revoked session id" test/wink.test.js` and the paired-session and PS-4 tests before pushing. The lead closes the advisory once it is on trunk, so send the lead the sha.
+2. work/test-integrity a2c268fac (platform-2: wink.test.js split into wink.test.js and wink-paired.test.js, known-red cap 24).
+3. work/app-wire 1d2875d7b (plugin grant card; ui-ux copy), 3700b6236 before it.
+4. work/vault-labels 78dff2423 (replaces 824979454 and c27d06619).
+5. work/ui 2a20cf19d (native-core; merges fed6426ea with its 4 conflicts resolved; on the newer trunk keep trunk lines and ui's additions, owner.pin and esig in serverpair.d.ts).
+6. work/kernel-default-on-k2 0853d1a6a (kernel-2, module trust follows build kind) only when integrator says "kernel-on adds none" or the reds have owners; still 48 files red with kernel on, not module trust.
+7. work/records, work/memory-split, work/runner: take any newer head after e9b23e36b.
+HELD: kernel-default-on 1263898fa, memory-shim-removal, tailnet's work/join-e2e (scratch, never to trunk), reviewer-3's runner findings CF-1/CF-2/CF-3 (box uid confinement is not to be called confined in release notes until runner fixes them).
+Open: test/wink.test.js (or wink-paired) leaks timers and does not exit (platform-2 and wink-2 in CHAT.md); agent start on the dev box under bwrap needs runner's script-agent bind (54f4b2fe5 is on trunk, re-check: `vyre call threads.start` with agent on the dev box).
 
 ## Done (deploy)
 - Dev box (testbox, ~/devbox/src, unit vyre-dev) runs this branch; deploy = `rsync -a --delete --exclude node_modules --exclude .git ./ testbox:~/devbox/src/`, `npm ci --omit=dev`, `systemctl --user restart vyre-dev`. Probe a tool with a script that sets the unit's env (HOME=~/devbox/home) and runs `node bin/vyre call <tool> '<json>'`.
