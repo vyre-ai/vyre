@@ -6,12 +6,13 @@ import { Banner, Button, Card, Chip, Divider, EmptyState, IconTile, Row, Sheet, 
 import { Frame } from "../places/Frame";
 import { driveRefusal, entryLine, crumbs, isText, join, bytesOf, sizeWord, textOf, type Chunk, type Entry, type Listing, type Status } from "./real-model";
 import { listReal, readReal, statusReal } from "./real";
+import { SpaceDrive } from "./SpaceDrive";
 
-type Tab = "files" | "sharing";
+type Tab = "space" | "files" | "sharing";
 const say = (e: unknown) => driveRefusal((e as { code?: string }).code, e instanceof Error ? e.message : "");
 
 export default function RealDrive() {
-  const [tab, setTab] = useState<Tab>("files");
+  const [tab, setTab] = useState<Tab>("space");
   const [status, setStatus] = useState<Status | null>(null);
   const [share, setShare] = useState<string | null>(null);
   const [path, setPath] = useState("");
@@ -83,9 +84,9 @@ export default function RealDrive() {
   ) : <Card><EmptyState title="Loading" body="Asking your Vyre." /></Card>;
 
   return (
-    <Frame title="Drive" sub="Folders your home shares, as it allows them.">
-      <Tabs<Tab> value={tab} onChange={setTab} items={[["files", "Files"], ["sharing", "On your computer"]]} />
-      {tab === "files" ? files : sharing}
+    <Frame title="Drive" sub="The space's files with their versions, and the box's own folders.">
+      <Tabs<Tab> value={tab} onChange={setTab} items={[["space", "Space"], ["files", "Box folders"], ["sharing", "On your computer"]]} />
+      {tab === "space" ? <SpaceDrive /> : tab === "files" ? files : sharing}
       <Sheet open={!!open} onClose={() => setOpen(null)} title={open?.e.name}>
         {open ? (
           <View className="gap-s2">

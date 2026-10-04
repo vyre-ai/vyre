@@ -5,8 +5,8 @@ import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { Banner, Button, Card, Chip, Divider, EmptyState, Field, Row, Segmented, Sheet, Text, showToast } from "@vyre/ui";
 import { Footnote, Frame, Sec } from "../places/Frame";
-import { acceptReal, dismissReal, listReal, proposeReal, removeReal, roleReal, setReal } from "./real";
-import { KINDS, ROLES, build, groups, proposer, ruleRefusal, type Draft, type Listing } from "./model";
+import { acceptReal, disableReal, dismissReal, enableReal, listReal, proposeReal, removeReal, roleReal, setReal } from "./real";
+import { KINDS, ROLES, build, disabled, groups, proposer, ruleRefusal, type Draft, type Listing } from "./model";
 
 const say = (e: unknown) => ruleRefusal((e as { code?: string }).code, e instanceof Error ? e.message : "");
 const BLANK: Draft = { kind: "never", binds: ["assistants"], actions: "", resource: "", approverKind: "role", approver: "owner", label: "" };
@@ -46,6 +46,7 @@ export default function RulesScreen() {
   const kind = KINDS.find((k) => k.kind === draft?.kind);
 
   const g = data ? groups(data.rules) : [];
+  const off = data ? disabled(data.rules) : [];
   return (
     <Frame title="Rules" sub="What assistants and members may never do, only draft, or always ask about." top>
       <Footnote icon="shield">A rule only tightens. No rule grants anything, and a grant never waives a rule.</Footnote>
@@ -65,19 +66,31 @@ export default function RulesScreen() {
         </Sec>
       ) : null}
 
-      {data && !g.length && !err ? <Card><EmptyState title="No rules yet" body="Nothing is held back by a standing rule. Add one when something must never go out, only be drafted, or always be asked about." /></Card> : null}
+      {data && !g.length && !off.length && !err ? <Card><EmptyState title="No rules yet" body="Nothing is held back by a standing rule. Add one when something must never go out, only be drafted, or always be asked about." /></Card> : null}
       {g.map((k) => (
         <Sec key={k.kind} title={k.title}>
           <Text size="caption" tone="label">{k.help}</Text>
           <Card flush>
             {k.rules.map((r, i) => (
               <View key={r.id}>{i ? <Divider /> : null}
-                <Row title={r.view} sub={r.label} end={owner ? <Button kind="holdText" size="sm" label="Remove" disabled={busy} onPress={() => act(() => removeReal(r.id), "The rule is gone.")} /> : undefined} />
+                <Row title={r.view} sub={r.label} end={owner ? <View className="flex-row gap-s2"><Button kind="ghost" size="sm" label="Turn off" onPress={busy ? () => {} : () => act(() => disableReal(r.id), "Turned off. It binds nothing until you turn it on.")} /><Button kind="holdText" size="sm" label="Remove" onPress={busy ? () => {} : () => act(() => removeReal(r.id), "The rule is gone.")} /></View> : undefined} />
               </View>
             ))}
           </Card>
         </Sec>
       ))}
+      {off.length ? (
+        <Sec title="Turned off">
+          <Text size="caption" tone="label">Still listed, binding nothing.</Text>
+          <Card flush>
+            {off.map((r, i) => (
+              <View key={r.id}>{i ? <Divider /> : null}
+                <Row title={r.view} sub={r.label} end={owner ? <View className="flex-row gap-s2"><Button kind="ghost" size="sm" label="Turn on" onPress={busy ? () => {} : () => act(() => enableReal(r.id), "Turned on. The rule is in force.")} /><Button kind="holdText" size="sm" label="Remove" onPress={busy ? () => {} : () => act(() => removeReal(r.id), "The rule is gone.")} /></View> : undefined} />
+              </View>
+            ))}
+          </Card>
+        </Sec>
+      ) : null}
 
       <View className="self-start pt-s4"><Button kind="primary" icon="plus" label={owner ? "Add a rule" : "Propose a rule"} onPress={() => { setProblem(""); setDraft({ ...BLANK }); }} /></View>
       {!owner && data ? <Text size="caption" tone="label">Only an owner makes a rule. You can propose one.</Text> : null}
