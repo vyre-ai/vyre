@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(daemon): the member hello refuses a device under 24 hours on the identity's list unless it founded the list (MB-2). fix(wink): a released server still reports owned and names its owner, and a different identity is refused with the owner's name and how to reset. feat(kernel): `seal.reveal` is held by the owner and the admin by role.
+
 - fix(daemon): an open member stream re-checks the device's identity entry and the membership on every call and by a watcher, so a removed device or member is refused and its stream closed.
 
 - feat(kernel/remote,records): `seal.reveal` crosses to the home with the person's proof for the home's challenge, so a device on a server-hosted space can reveal with a yes (needs a wired inference door and a reveal grant). fix(wink): a pairing that does not finish says why in the server's log; the home logs the reason of every non-presence refusal.
