@@ -1,20 +1,4 @@
 {
- "apps/app/src/identity/identity.test.js": {
-  "owner": "chat",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "apps/test/world.test.js": {
-  "owner": "app-wire",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "core/agents/access.test.js": {
-  "owner": "assistant",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "core/artifacts/artifacts.test.js": {
-  "owner": "vault",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
  "core/cli/commands/agents.test.js": {
   "owner": "launch",
   "seen": "integrator run 37181895537 (FAIL)"
@@ -63,14 +47,6 @@
   "owner": "platform",
   "seen": "integrator run 37181895537 (FAIL)"
  },
- "deck/chat/plan-card.test.js": {
-  "owner": "chat",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "deck/chat/session.test.js": {
-  "owner": "chat",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
  "kernel/golden/golden.test.js": {
   "owner": "platform",
   "seen": "integrator run 37181895537 (FAIL)"
@@ -79,20 +55,12 @@
   "owner": "launch",
   "seen": "integrator run 37181895537 (FAIL)"
  },
- "test/cohesion-drift.test.js": {
-  "owner": "platform-2",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
  "test/federation-send.test.js": {
   "owner": "tailnet",
   "seen": "integrator run 37181895537 (FAIL)"
  },
  "test/mobile-tailnet.test.js": {
   "owner": "tailnet",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "test/no-internal-words.test.js": {
-  "owner": "platform-2",
   "seen": "integrator run 37181895537 (FAIL)"
  },
  "test/onboard-page.test.js": {

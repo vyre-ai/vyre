@@ -917,6 +917,15 @@ test("a second person joins a space that lives on a server: the record carries t
   // and one that gives no proof at all
   attest.fn = async () => null;
   assert.equal((await kitDev.call("spaces.invites.preview", { link: made.link }, "cli", { token: kitToken })).error?.code, "server_not_proven");
+  // the home's door refusing this person (not their invite, spent, not admitted) is its own plain answer, not "cannot be reached"; a real outage stays unreachable (JE-1)
+  { const keep = hooks.inviteeSessionFor;
+    for (const [code, want, text] of [["denied", "not_for_you", /^This invite cannot be used\.$/], ["unreachable", "unreachable", /reach|connect|server/i]]) {
+      hooks.inviteeSessionFor = async () => ({ call: async () => { throw Object.assign(new Error("closed"), { code }); } });
+      const r = await kitDev.call("spaces.invites.preview", { link: made.link }, "cli", { token: kitToken });
+      assert.equal(r.error && r.error.code, want, `${code}: ${JSON.stringify(r).slice(0, 200)}`);
+      assert.match(r.error.message, text);
+    }
+    hooks.inviteeSessionFor = keep; }
   attest.fn = attestWith(heldPub, held);
   const card = await kitDev.ok("spaces.invites.preview", { link: made.link }, "cli", { token: kitToken });
   assert.deepEqual([card.role, card.status, card.invitee], ["member", "pending", kit.id]);

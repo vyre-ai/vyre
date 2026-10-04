@@ -30,5 +30,5 @@ test("install-box.sh finish() ends on the next step, with no line after it but a
   const says = fn.split("\n").map(l => l.trim()).filter(l => l.startsWith("say "));
   assert.equal(says[says.length - 1], 'say ""', "finish() closes with one blank line");
   const lastText = says.filter(l => l !== 'say ""').pop() || "";
-  assert.match(lastText, /Run it again|Start it|run that on your own computer|Back to your browser|stdout/, "the last printed text says what to do next");
+  assert.match(lastText, /Run it again|Start it|run that on your own computer|Back to your browser|stdout|Next: finish pairing/, "the last printed text says what to do next");
 });

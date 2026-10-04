@@ -89,6 +89,13 @@ export function callerFacts(caller, policy, via, k, capsuleVerified = false, dev
   // not), a setup page, an id the home never paired and a removed device get no person facts; the relay's say-so is never enough. (tailnet nodes are the tailnet listener's own identity, X-1.)
   if (policy.caller && String(policy.caller).startsWith("device:") && !(device && device.kind === "app" && device.removed === false)) return null;
   if (policy.caller && ownerDevice(policy.caller)) {
+    // A paired device is a person only as the person its own row names (`device.person`, from Wink's record of who confirmed it), and only while that person is this home's owner: the owner is never
+    // handed to a device just because it is an owner device. A row that names nobody, or somebody else, gets no person facts.
+    // Once the home's owner is a claimed identity (the kernel's `owner.adopted`), the row must name exactly that identity; before any claim the owner is the home's own first-start id and a device's row names the home's own pre-claim identity.
+    if (String(policy.caller).startsWith("device:")) {
+      const claimed = k.grants && typeof k.grants.adopted === "function" ? k.grants.adopted() : null;
+      if (!device || typeof device.person !== "string" || !device.person || (claimed && device.person !== k.id.owner)) return null;
+    }
     const deviceId = String(policy.caller).startsWith("device:") ? String(policy.caller).slice(7) : String((policy.peer && (policy.peer.stableId || policy.peer.node)) || "owner");
     return { kind: "device", device_key_id: deviceId, person: k.id.owner, path: String(policy.caller).startsWith("device:") ? "relay" : "wink", ...(via && via.person ? { session: String(via.person.id) } : {}) };
   }
@@ -388,7 +395,7 @@ async function startLocked(opts, root, p, release) {
     // The packaged box (ruling 4 Oct, "b"): no bubblewrap there. A session is confined by the container, a uid of its own (never vyred's, never root) and the wall, and that proves itself
     // before every start, as that uid (core/spawner/confine.js). Only under the box's own supervisor with a spawner to ask; anywhere else a missing bwrap still refuses the start.
     else if (process.platform === "linux" && process.env.VYRE_SUPERVISOR === "docker" && (await import("../spawner/client.js")).available()) {
-      const { confineSelfTest } = await import("../spawner/confine.js");
+      const { confineSelfTest, ownListeners } = await import("../spawner/confine.js");
       const userHome = process.env.VYRE_USER_HOME || os.homedir();
       const accounts = process.env.VYRE_ACCOUNTS_HOME || "/home/acct", agentHome = process.env.VYRE_AGENT_HOME || "/home/vyre-agent";
       const spawnerSocket = process.env.VYRE_SPAWNER_SOCKET || "/run/vyre/spawner.sock";
@@ -398,11 +405,12 @@ async function startLocked(opts, root, p, release) {
           let other = agentHome;
           if (o.account == null) { try { other = fs.readdirSync(accounts).map(n => path.join(accounts, n)).find(f => fs.statSync(f).isDirectory()) || ""; } catch { other = ""; } }
           else { const mine = path.join(accounts, String(o.account)); try { const o2 = fs.readdirSync(accounts).map(n => path.join(accounts, n)).find(f => f !== mine && fs.statSync(f).isDirectory()); if (o2) other = o2; } catch { /* the box's one agent's home stands */ } }
-          return confineSelfTest({ ...o, vyreUid: process.getuid ? process.getuid() : -1, out: [
+          const own = ownListeners();   // vyred's own listeners are the box's expected ones; any other listener, UDP port or abstract socket refuses the start, with its port named
+          return confineSelfTest({ ...o, vyreUid: process.getuid ? process.getuid() : -1, refuseListen: true, allowListen: [...own.tcp, ...own.udp], allowAbstract: own.abstract, out: [
             { name: "Vyre's own home", path: userHome }, { name: "the vault and keys", path: path.join(root, "kernel") }, { name: "the daemon's socket", path: p.socket },
             { name: "the spawner's socket", path: spawnerSocket }, { name: "the spawner's folder", path: path.dirname(spawnerSocket) }, { name: "the box's secrets folder", path: "/var/lib/vyre-secrets" },
             { name: "the key file", path: path.join(root, "kernel", "space.json") }, { name: "the list of accounts", path: accounts, list: true },
-            ...(other ? [{ name: "another agent's home", path: other }] : []) ] }).then(r => { if (r.results.listening.length) log(`confinement: a session's uid can connect to port(s) ${[...new Set(r.results.listening)].join(", ")}, which something in the box listens on (reported, not refused)`); return r; });
+            ...(other ? [{ name: "another agent's home", path: other }] : []) ] }).then(r => { if (r.results.listening.length) log(`confinement: a session's uid can connect to port(s) ${[...new Set(r.results.listening)].join(", ")}, which something in the box listens on`); return r; });
         } } };
     }
     else if (process.platform === "darwin" || process.platform === "linux") {
@@ -1255,6 +1263,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     let deviceRow = null;
     if (policy.caller && String(policy.caller).startsWith("device:") && kernelOf && kernelOf()) {
       try { const r = await registry.call("relay.device.info", { id: String(policy.caller).slice(7) }, "module:vyred"); deviceRow = r && r.data ? r.data : null; } catch { deviceRow = null; }
+      if (deviceRow) { try { const w = await registry.call("wink.device.record", { id: String(policy.caller).slice(7) }, "module:vyred"); deviceRow = { ...deviceRow, person: w && w.data && typeof w.data.owner === "string" ? w.data.owner : null }; } catch { deviceRow = { ...deviceRow, person: null }; } }
     }
     // LB-1: a person's-surface label on the socket is a person only after the ancestry measurement `asTaken` made above (a model's shell was relabelled and never reaches here as a surface label);
     // `callerFacts` itself takes that measurement as input and gives nothing without it, so no new call path can build a person from the label alone.

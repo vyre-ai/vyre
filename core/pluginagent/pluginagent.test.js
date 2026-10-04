@@ -96,7 +96,7 @@ test("grant once: ask, approve, then the plugin's calls are that agent's, with i
   assert.ok((await call("memory.profile", {}, { ...as, headers: { ...as.headers, "x-vyre-kernel-session": "a.b" } })).data, "a token the client sends is replaced by the daemon's own");
 
   // 5. Revoked: the key is dead at once and the file is gone.
-  assert.ok(!(await call("pluginagent.revoke", {}, proof)).error);
+  { const rv = await call("pluginagent.revoke", {}, proof); assert.ok(!rv.error, JSON.stringify(rv)); }
   assert.ok(!fs.existsSync(file));
   assert.equal((await call("memory.profile", {}, as)).error.code, "denied");
 });

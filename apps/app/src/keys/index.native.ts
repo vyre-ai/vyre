@@ -22,12 +22,26 @@ export async function signIdentityOp(message: Uint8Array): Promise<Uint8Array> {
 
 /**
  * Sign a change to who speaks for this identity (add or remove a device, replace the recovery code, change the space owner): the Ed25519 seed signs it AND the Secure Enclave key signs
- * the same bytes behind Face ID (NK-2: the chain refuses such a change from a phone without `esig`). Pass the result to chain.js makeOp as sign and esign. Face ID is asked once.
+ * the same bytes behind Face ID (NK-2: the chain refuses such a change from a phone without `esig`). `esig` is the raw 64 bytes r||s with s in the low half, the one form the chain accepts.
+ * Face ID is asked once.
  */
-export async function signListChange(message: Uint8Array, prompt: string): Promise<{ sig: Uint8Array; esig: string }> {
+export async function signListChange(message: Uint8Array, prompt: string): Promise<{ sig: Uint8Array; esig: Uint8Array }> {
   const sig = await signIdentityOp(message);
   const esig = await Signer.enclaveSign(message, prompt);
   return { sig, esig };
+}
+
+/**
+ * The `sign` and `esign` that chain.js makeOp / makePairing take for a list change from this phone. makeOp calls both on the same message, so the pair shares one signListChange (one Face ID).
+ * A call with a different message signs afresh.
+ */
+export function listChangeSigners(prompt: string): { sign: (m: Uint8Array) => Promise<Uint8Array>; esign: (m: Uint8Array) => Promise<Uint8Array> } {
+  let last: { m: Uint8Array; done: Promise<{ sig: Uint8Array; esig: Uint8Array }> } | null = null;
+  const both = (m: Uint8Array) => {
+    if (!last || last.m.length !== m.length || last.m.some((x, i) => x !== m[i])) last = { m, done: signListChange(m, prompt) };
+    return last.done;
+  };
+  return { sign: async m => (await both(m)).sig, esign: async m => (await both(m)).esig };
 }
 
 /**

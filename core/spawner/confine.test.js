@@ -9,7 +9,9 @@ import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { spawn as nodeSpawn } from "node:child_process";
 import { SCRATCH } from "../../test/scratch.mjs";
-import { confineSelfTest, PROBE } from "./confine.js";
+import net from "node:net";
+import dgram from "node:dgram";
+import { confineSelfTest, ownListeners, PROBE } from "./confine.js";
 
 const tmp = () => fs.mkdtempSync(path.join(SCRATCH, "cf-"));
 /** A spawner stand-in that answers with the given probe output. */
@@ -83,4 +85,27 @@ test("confinement: every project folder is checked, and a port something listens
   assert.deepEqual(reported.failures, []); assert.deepEqual(reported.results.listening, [8080]);
   const expected = await confineSelfTest({ workdirs: [a], vyreUid: 1000, out: [], refuseListen: true, allowListen: [8080], spawn: /** @type {any} */ (saying("uid 2001\nproject rw\nlisten 8080\n")) });
   assert.deepEqual(expected.failures, []);
+});
+
+test("confinement: a UDP port and an abstract unix socket are refused too, unless the box lists them (CF-5)", async t => {
+  const a = tmp(); t.after(() => fs.rmSync(a, { recursive: true, force: true }));
+  const say = (/** @type {string} */ x) => /** @type {any} */ (saying(`uid 2001\nproject rw\n${x}`));
+  const udp = await confineSelfTest({ workdirs: [a], vyreUid: 1000, out: [], refuseListen: true, spawn: say("udp 5353\n") });
+  assert.match(udp.failures[0], /UDP port 5353/);
+  const abs = await confineSelfTest({ workdirs: [a], vyreUid: 1000, out: [], refuseListen: true, spawn: say("abstract @dbus-x\n") });
+  assert.match(abs.failures[0], /abstract socket @dbus-x/);
+  const ok = await confineSelfTest({ workdirs: [a], vyreUid: 1000, out: [], refuseListen: true, allowListen: [5353], allowAbstract: ["@dbus-x"], spawn: say("udp 5353\nabstract @dbus-x\n") });
+  assert.deepEqual(ok.failures, []);
+});
+
+test("confine-probe.sh reports a real TCP listener, UDP socket and abstract unix socket of another process; ownListeners knows this process's own", { skip: process.platform !== "linux" }, async t => {
+  const work = tmp(); t.after(() => fs.rmSync(work, { recursive: true, force: true }));
+  const tcp = net.createServer(); await new Promise(r => tcp.listen(0, "127.0.0.1", () => r(undefined))); t.after(() => tcp.close());
+  const u = dgram.createSocket("udp4"); await new Promise(r => u.bind(0, "127.0.0.1", () => r(undefined))); t.after(() => u.close());
+  const name = `vyre-test-${process.pid}`; const abs = net.createServer(); await new Promise(r => abs.listen("\0" + name, () => r(undefined))); t.after(() => abs.close());
+  const tp = /** @type {any} */ (tcp.address()).port, up = /** @type {any} */ (u.address()).port;
+  const text = String(await new Promise(res => { let o = ""; const c = nodeSpawn(PROBE, ["allow", work]); c.stdout.on("data", d => o += d); c.on("close", () => res(o)); }));
+  assert.match(text, new RegExp(`^listen ${tp}$`, "m")); assert.match(text, new RegExp(`^udp ${up}$`, "m")); assert.match(text, new RegExp(`^abstract @${name}$`, "m"));
+  const own = ownListeners();
+  assert.ok(own.tcp.includes(tp) && own.udp.includes(up) && own.abstract.includes("@" + name), JSON.stringify(own));
 });

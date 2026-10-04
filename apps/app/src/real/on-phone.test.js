@@ -48,6 +48,15 @@ test("a browser asked to unlock the personal vault says to do it on the phone", 
   assert.equal(onPhoneFor("vault.account.unlock-phone", "touchid"), "Unlock it with Touch ID.");
 });
 
+test("a phone's server pairing sends owner.pin and signs sig and esig together (one Face ID), as a hardware phone; a browser stays software with sig alone", () => {
+  const p = fs.readFileSync(new URL("./pairing.ts", import.meta.url), "utf8");
+  assert.match(p, /owner: \{ id: mine\.id, name: plainName\(mine\.name\), vyre: mine\.name, pin: mine\.pin \}/);
+  assert.match(p, /signListChange\(m, /);
+  assert.match(p, /esig: toB64u\(esig\)/);
+  assert.match(p, /deviceKind: phoneKeys \? "phone" : "web", keyStorage: phoneKeys \? "hardware" : "software"/);
+  assert.match(p, /\(await keyStorage\(\)\)\.presence === "secure-enclave"/);
+});
+
 test("a proof made with a software key says to approve on the phone, in our words, and tool() maps the code before the generic throw", () => {
   assert.equal(softwareKeyLine("phone"), "Approve this in Vyre on your phone.");
   assert.equal(softwareKeyLine("touchid"), "Approve this with Touch ID.");
