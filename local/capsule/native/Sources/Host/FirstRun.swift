@@ -59,3 +59,39 @@ public enum FirstRun {
         }
     }
 }
+
+/// The window's words (ui-ux, setup-prototype.html, the Mac column, rows 4 to 4d). Pure, so the tests hold them.
+public enum FirstRunWords {
+    public static let title = "Where should Vyre run?"
+    public static let line = "Vyre runs on a computer that stays on. Your phone and browser connect to it."
+    public static let hereTitle = "On this Mac"
+    public static let hereLine = "Vyre runs here, while this Mac is on."
+    public static let serverTitle = "On a server"
+    public static let serverLine = "Vyre runs on another computer that stays on. You type a code to connect."
+
+    public static let serverStepTitle = "Run this on your server"
+    public static let serverStepLine = "Open the server's terminal and paste the line. It shows a code when it is ready."
+    /// The one line a server runs (what vyre.run/i serves).
+    public static let installLine = "curl -fsSL vyre.run/i | sh"
+    public static let copyLine = "Copy the line"
+    public static let serverShowsCode = "My server shows a code"
+
+    public static let settingTitle = "Setting up Vyre on this Mac"
+    public static let settingLine = "This takes about a minute."
+    public static let settingSteps = ["Getting Vyre", "Starting Vyre on this Mac", "Getting your space ready"]
+    public static let passwordNote = "Your Mac asks for its password once. Vyre needs it so it can start by itself when you log in."
+
+    public struct Failure: Equatable { public let title: String; public let body: String }
+
+    /// What went wrong, in the words of rows 4d: the Mac password not entered, no internet, or anything else. `said` is what the setup said last (may be nil).
+    public static func failure(_ said: String?) -> Failure {
+        let m = (said ?? "").lowercased()
+        if m.contains("password") || m.contains("cancel") || m.contains("authoriz") || m.contains("askpass") || m.contains("not permitted") {
+            return Failure(title: "Vyre did not start", body: "The Mac password was not entered, so nothing was set up. Nothing was changed.")
+        }
+        if m.contains("download") || m.contains("network") || m.contains("internet") || m.contains("resolve") || m.contains("curl") || m.contains("connect") || m.contains("offline") {
+            return Failure(title: "Vyre could not finish setting up", body: "It could not get what it needs. Check your internet, then try again. Nothing was changed.")
+        }
+        return Failure(title: "Vyre could not finish setting up", body: "Setting up did not finish. Nothing was changed.")
+    }
+}

@@ -72,4 +72,18 @@ let firstRunSuite = Suite("first run") { t in
         t.eq(BundledApp.locate(env: [:], resources: nil), nil)
         t.eq(BundledApp.locate(env: [:], resources: vyScratch("no-app-\(UUID().uuidString.prefix(6))")), nil)
     }
+
+    t.test("a setup that ends badly says one of the three plain things, and the choices are worded as ui-ux has them") {
+        t.eq(FirstRunWords.failure("The administrator password was not entered").title, "Vyre did not start")
+        t.eq(FirstRunWords.failure("User canceled."), FirstRunWords.failure("password"))
+        t.eq(FirstRunWords.failure("could not download node").title, "Vyre could not finish setting up")
+        t.ok(FirstRunWords.failure("could not download node").body.hasSuffix("then try again. Nothing was changed."), "network words")
+        t.eq(FirstRunWords.failure("").body, "Setting up did not finish. Nothing was changed.")
+        t.eq(FirstRunWords.failure(nil), FirstRunWords.failure(""))
+        t.eq(FirstRunWords.installLine, "curl -fsSL vyre.run/i | sh")
+        t.eq(FirstRunWords.settingSteps.count, 3)
+        for w in [FirstRunWords.title, FirstRunWords.line, FirstRunWords.hereLine, FirstRunWords.serverLine, FirstRunWords.passwordNote] {
+            t.ok(!w.contains("\u{2014}") && !w.contains("port"), "no dash, no technical words: \(w)")
+        }
+    }
 }
