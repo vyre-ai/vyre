@@ -2332,7 +2332,7 @@
     {"kind":"env","name":"VYRE_SCREEN_BIN","definedIn":"local/screen-mac/index.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_SEAL_DEV","definedIn":"scripts/admin-anchor-reset.mjs","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_SEAL_PROFILE","definedIn":"scripts/admin-anchor-reset.mjs","page":null,"mentions":[]},
-    {"kind":"env","name":"VYRE_SEAL_SOFTWARE","definedIn":"core/wink/pairing.js","page":"reference/config.md#environment-variables","mentions":[]},
+    {"kind":"env","name":"VYRE_SEAL_SOFTWARE","definedIn":"core/daemon/index.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_SEAL_UNATTESTED","definedIn":"scripts/admin-anchor-reset.mjs","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_SERVER_DIR","definedIn":"scripts/install-mac-server.sh","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_SESSION_SANDBOX_OFF","definedIn":"core/daemon/index.js","page":"reference/config.md#environment-variables","mentions":[]},
