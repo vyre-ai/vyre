@@ -22,7 +22,7 @@ export function createInput(o) {
 export function madeNote(r) {
   const until = Number(r?.valid_until);
   const when = until ? new Date(until).toLocaleDateString([], { day: "numeric", month: "short" }) : "";
-  return { code: typeof r?.code === "string" && r.code ? r.code : null, link: String(r?.link ?? ""), id: String(r?.id ?? ""), needsConfirm: r?.needs_confirm === true, line: when ? `Good until ${when}. The link works once for one person.` : "The link works once for one person." };
+  return { code: typeof r?.code === "string" && r.code ? r.code : null, codeExpires: Number(r?.code_expires) || null, codeOffer: typeof r?.code_offer === "string" && r.code_offer ? r.code_offer : null, link: String(r?.link ?? ""), id: String(r?.id ?? ""), needsConfirm: r?.needs_confirm === true, line: when ? `Good until ${when}. The link works once for one person.` : "The link works once for one person." };
 }
 
 /**

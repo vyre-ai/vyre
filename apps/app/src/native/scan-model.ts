@@ -8,6 +8,7 @@ import { parseWinkCode } from "../api/wink-code.ts";
 export type ScannedCode =
   | { kind: "pair"; offer: string }
   | { kind: "wink"; ticket: string; relay: string; for: "server" | "phone" }
+  | { kind: "typed"; code: string }
   | { kind: "other"; text: string };
 
 /** The longest text kept from a code we do not know; a QR can hold far more than a person needs to see. */
@@ -18,6 +19,7 @@ export function readCode(text: string | null | undefined): ScannedCode | null {
   if (!raw) return null;
   const w = parseWinkCode(raw);
   if (w.ok && w.kind === "offer") return { kind: "pair", offer: w.offer };
+  if (w.ok && w.kind === "typed") return { kind: "typed", code: w.code };
   if (w.ok) return { kind: "wink", ticket: w.ticket, relay: w.relay, for: w.for };
   return { kind: "other", text: raw.slice(0, MAX_OTHER) };
 }
@@ -47,7 +49,7 @@ export function onceEach(handle: (c: ScannedCode) => void, hold = 1500, now: () 
   return (text: string | null | undefined) => {
     const c = readCode(text);
     if (!c) return;
-    const key = c.kind === "pair" ? c.offer : c.kind === "wink" ? c.ticket : c.text;
+    const key = c.kind === "pair" ? c.offer : c.kind === "wink" ? c.ticket : c.kind === "typed" ? c.code : c.text;
     const t = now();
     if (key === last && t - at < hold) return;
     last = key;

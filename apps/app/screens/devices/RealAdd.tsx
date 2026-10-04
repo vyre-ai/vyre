@@ -12,8 +12,9 @@ import { phoneAsk, targetsOf } from "./real.js";
 import { COPY, stepWords, type DeviceKind } from "./wink.js";
 import { useDevices } from "./state";
 import { WinkCode } from "../../src/ui/WinkCode";
+import { AckCode } from "./TypeCode";
 
-type Opened = { qr: string | null; code?: string; link?: string; art?: string; expires?: number };
+type Opened = { qr: string | null; code?: string | null; code_expires?: number | null; code_offer?: string | null; link?: string; art?: string; expires?: number };
 type Ask = { name: string; line: string; words: [string, string, string] };
 
 /**
@@ -86,8 +87,9 @@ export function RealAdd({ kind, onBack, onDone, first }: { kind: DeviceKind; onB
     body = (
       <Card className="items-center gap-s3">
         <Text strong>{`Open Vyre on the ${noun}, then scan this or paste the long code.`}</Text>
-        {opened.qr ? <WinkCode text={opened.qr} kind="device" typed={opened.code ?? null} /> : null}
+        {opened.qr ? <WinkCode text={opened.qr} kind="device" typed={opened.code ?? null} expires={opened.code_expires ?? null} /> : null}
         {opened.qr ? <Text mono size="caption" selectable className="w-full text-center" style={{ wordBreak: "break-all" } as never}>{opened.qr}</Text> : <Text tone="warn">The relay could not take the code. Try again.</Text>}
+        {opened.code && opened.code_offer ? <AckCode offer={opened.code_offer} onDone={() => setDone(true)} /> : null}
         <Text tone="muted">Waiting for the new device. Good for 5 minutes.</Text>
       </Card>
     );

@@ -11,9 +11,9 @@ import { serverSay } from "../install/flow.js";
 import { pairSayHere } from "../../src/real/pair-say";
 
 /** A scanned code as the text the parser reads. */
-const textOf = (c: ScannedCode) => (c.kind === "wink" ? `vyre://wink/2?t=${c.ticket}&r=${encodeURIComponent(c.relay)}${c.for === "phone" ? "&k=phone" : ""}` : c.kind === "pair" ? c.offer : c.text);
+const textOf = (c: ScannedCode) => (c.kind === "wink" ? `vyre://wink/2?t=${c.ticket}&r=${encodeURIComponent(c.relay)}${c.for === "phone" ? "&k=phone" : ""}` : c.kind === "pair" ? c.offer : c.kind === "typed" ? c.code : c.text);
 
-export type LongCode = Extract<WinkCode, { ok: true }>;
+export type LongCode = Exclude<Extract<WinkCode, { ok: true }>, { kind: "typed" }>;
 
 /** Scan the code with the camera, or paste the long one. Both go through parseWinkCode; a short typed code is refused in plain words. */
 export function PairEntry({ onCode, sample }: { onCode: (c: LongCode) => void; sample?: string }) {
@@ -24,7 +24,8 @@ export function PairEntry({ onCode, sample }: { onCode: (c: LongCode) => void; s
 
   const take = (raw: string) => {
     const r = parseWinkCode(raw);
-    if (r.ok) { setSay(""); onCode(r); } else setSay(r.say);
+    if (r.ok && r.kind === "typed") setSay("That is a short code. Type it in the Type the code field instead.");
+    else if (r.ok) { setSay(""); onCode(r); } else setSay(r.say);
   };
   const scan = useMemo(() => scanProps((c) => take(textOf(c))),
   // eslint-disable-next-line react-hooks/exhaustive-deps

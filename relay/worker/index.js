@@ -37,7 +37,7 @@ export const LIMITS = Object.freeze({ waiting: 8, open: 32, buffered: 64, frame:
 export const CLOSE = Object.freeze({ boxOffline: 4404, busy: 4429, refused: 4401, replaced: 4409, boxGone: 4410, deviceGone: 4411, tooBig: 1009 });
 export const ROUTE_RE = /^[a-z2-7]{26}$/;
 /** The typed Wink code's limits and alphabet; these repeat core/relay/wire.js (worker.test.js checks they match). */
-export const CODE = Object.freeze({ ttl: 5 * 60_000, sessionPerMin: 10, stepPerMin: 30, missPerMin: 30, msg: 200, waitMs: 10_000, pending: 64, allocPerMin: 20 });
+export const CODE = Object.freeze({ ttl: 10 * 60_000, sessionPerMin: 10, stepPerMin: 30, missPerMin: 30, msg: 200, waitMs: 10_000, pending: 64, allocPerMin: 20 });
 export const CODE_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 export const CODE_RV_RE = /^[0-9A-HJKMNP-TV-Z]{2}$/;
 const CODE_REFUSED = { error: "that code did not work" };

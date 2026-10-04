@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { leftOf } from "../../screens/devices/typed-model.js";
 import { View } from "react-native";
 import { SvgXml } from "react-native-svg";
 import { Chip, Text, useUiTheme } from "@vyre/ui";
@@ -8,7 +9,10 @@ import { KINDS, winkCodeSvg } from "./wink-code-source.js";
  * A Wink code: the drawn avatar with its ring of lines, unique per ticket, under the words for its kind ("Add your device", "Join <space>") with the kind's own
  * glyph and colour. There is no plain QR in the app (ADR 0043).
  */
-export function WinkCode({ text, kind, space = "", size = 220, typed }: { text: string; kind: keyof typeof KINDS; space?: string; size?: number; typed?: string | null }) {
+export function WinkCode({ text, kind, space = "", size = 220, typed, expires }: { text: string; kind: keyof typeof KINDS; space?: string; size?: number; typed?: string | null; expires?: number | null }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { if (!typed || !expires) return; const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, [typed, expires]);
+  const left = typed ? leftOf(expires, now) : "";
   const { resolved } = useUiTheme();
   const k = KINDS[kind];
   const xml = useMemo(() => winkCodeSvg(text, { scheme: resolved.scheme === "paper" ? "paper" : "dark", size }), [text, resolved.scheme, size]);
@@ -20,7 +24,7 @@ export function WinkCode({ text, kind, space = "", size = 220, typed }: { text: 
       {typed ? (
         <>
           <Text mono strong selectable size="title" className="text-center">{typed}</Text>
-          <Text size="caption" tone="muted" className="text-center">Type this code on your other device.</Text>
+          <Text size="caption" tone="muted" className="text-center">{left ? `Type this code on your other device. Good for ${left}.` : "Type this code on your other device."}</Text>
         </>
       ) : <Text size="caption" tone="muted" className="text-center">Copy the link, or paste the long code, on your other device.</Text>}
     </View>

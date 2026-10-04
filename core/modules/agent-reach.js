@@ -207,6 +207,7 @@ export const PERSON_ONLY = new Map([
   ["wink.cancel", "needs the person's Face ID or presence: pairing, devices, offers and sharing"],
   ["wink.code.ack", "needs the person's Face ID or presence: pairing, devices, offers and sharing"],
   ["wink.code.open", "needs the person's Face ID or presence: pairing, devices, offers and sharing"],
+  ["wink.code.redeem", "needs the person's Face ID or presence: pairing, devices, offers and sharing"],
   ["wink.decline", "needs the person's Face ID or presence: pairing, devices, offers and sharing"],
   ["wink.device.key", "needs the person's Face ID or presence: pairing, devices, offers and sharing"],
   ["wink.invite", "needs the person's Face ID or presence: pairing, devices, offers and sharing"],
