@@ -869,7 +869,7 @@ test("paired: a grant is made only through the tool, for the wink module, from a
   rec = good;
   await assert.rejects(grant("dev1", "module:relay"), /only the pairing/);
   await assert.rejects(grant("dev1", "cli"), /only the pairing/);
-  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM presence_pair_grants").get().n, 0, "no refusal wrote anything");
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM presence_pair_grants").get().n, 1, "no refusal wrote anything: the one row is the browser's grant");
   rec = { ...good, hardware: false };
   const sw = await grant("dev1", "module:wink");
   assert.deepEqual([sw.granted, sw.software], [true, true], "a software key is recorded as one, with no prompt and no refusal");
