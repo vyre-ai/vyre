@@ -68,6 +68,8 @@ const META_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_provider_meta (provi
 export function askedOnly(meta, what, { assistant = false } = {}) {
   const m = meta || {};
   if (isPerson(m)) return;
+  // The setup page before the box is claimed (`setup:<id>`, BR-2) is the person starting the box; the registry lets that class reach only its setup tools, sign-in and an API key among them.
+  if (/^setup:[a-z2-7]{16}$/.test(String(m.caller || ""))) return;
   if (m.asked) return;
   // The verified assistant (vyred's meta.agent, never the label) may start an account for the person; the account stays pending until the
   // person finishes it on their own device (accounts.js pending), so this lets it start, never finish.
