@@ -301,6 +301,10 @@
     "reach": "modules"
    },
    {
+    "name": "spaces.identity.device",
+    "reach": "modules"
+   },
+   {
     "name": "spaces.label",
     "reach": "modules"
    },
