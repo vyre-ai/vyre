@@ -19,4 +19,10 @@ export async function keyStorage(): Promise<KeyStorage> {
   const k = await identityKey();
   return { identity: !k ? "none" : k.software ? "software-indexeddb" : "webcrypto-indexeddb", presence: "passkey" };
 }
-export async function signPresence(): Promise<never> { throw Object.assign(new Error("a browser answers presence with a passkey, not this key"), { code: "ERR_NOT_ON_WEB" }); }
+const notOnWeb = (): never => { throw Object.assign(new Error("a browser answers presence with a passkey, not this key"), { code: "ERR_NOT_ON_WEB" }); };
+export const signPresence = async (_card: import("../../modules/vyre-signer/index").PresenceCard): Promise<import("../../modules/vyre-signer/index").PresenceProof> => notOnWeb();
+export const presenceKey = async (): Promise<never> => notOnWeb();
+export const enclavePublic = async (): Promise<never> => notOnWeb();
+export const enrolAttestation = async (_token: string): Promise<null> => null;
+export const setPersonProvider = (_f: () => Promise<string | null>): void => {};
+export const signListChange = async (_m: Uint8Array, _prompt: string): Promise<never> => notOnWeb();

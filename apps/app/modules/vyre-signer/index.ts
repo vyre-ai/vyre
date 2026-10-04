@@ -143,7 +143,7 @@ export async function signPresence(card: PresenceCard): Promise<PresenceProof> {
   const body = proofBody({ op: card.op, space: card.space, fields: card.fields as Record<string, unknown>, payload_hash: card.payload_hash, person }, { keyId: k.key_id, now: Date.now(), nonce: randomBytes(16) });
   const bytes = proofBytes(body);
   const der = await native.sign(HUMAN, new TextDecoder().decode(bytes), card.prompt ? { prompt: card.prompt } : {});
-  const proof: PresenceProof = { ...body, signature: b64url(p1363FromDer(fromB64url(der))) };
+  const proof: PresenceProof = { ...(body as Omit<PresenceProof, "signature" | "assertion">), signature: b64url(p1363FromDer(fromB64url(der))) };
   const keyId = await SecureStore.getItemAsync(APPATTEST_KEY);
   if (keyId && native.appAttestAssert) {
     proof.assertion = b64(fromB64url(await native.appAttestAssert(keyId, b64url(sha256(bytes)))));
@@ -155,4 +155,27 @@ export async function signPresence(card: PresenceCard): Promise<PresenceProof> {
 export function keyStorage(): { identity: "keychain" | "none"; presence: "secure-enclave" | "software" | "none" | "not-in-rc1" } {
   const level = Platform.OS === "ios" ? info().level : "none";
   return { identity: Platform.OS === "web" ? "none" : "keychain", presence: Platform.OS !== "ios" ? "not-in-rc1" : level === "secure-enclave" ? "secure-enclave" : level === "software" ? "software" : "none" };
+}
+
+/** The Secure Enclave key's public point, raw uncompressed (65 bytes, leading 0x04), base64url: the `enclave` field of this phone's device entry on the identity chain (NK-2). */
+export async function enclavePublic(): Promise<string> {
+  iosOnly();
+  const { x, y } = await ensureKey(HUMAN, { biometric: true });
+  const pt = new Uint8Array(65);
+  pt[0] = 4; pt.set(fromB64url(x), 1); pt.set(fromB64url(y), 33);
+  return b64url(pt);
+}
+
+/** The Enclave key's ECDSA P-256 SHA-256 signature over `message`, behind Face ID, as r||s base64url: the `esig` of a list change. */
+export async function enclaveSign(message: Uint8Array, prompt: string): Promise<string> {
+  iosOnly();
+  await ensureKey(HUMAN, { biometric: true });
+  return b64url(p1363FromDer(fromB64url(await native.sign(HUMAN, new TextDecoder().decode(message), { prompt }))));
+}
+
+/** Forget every key of this phone's signer: the presence key, the person (request) key and the App Attest key id. */
+export async function wipePresence(): Promise<void> {
+  await native.deleteKey(HUMAN);
+  await native.deleteKey(PERSON);
+  await SecureStore.deleteItemAsync(APPATTEST_KEY, ONLY_HERE);
 }

@@ -46,8 +46,8 @@ export function canonical(v) {
 /** @param {string | Uint8Array} s */
 export const sha256b64 = (s) => b64url(sha256(typeof s === "string" ? enc.encode(s) : s));
 
-/** The hash of what the person is shown: `{ op, space, ...fields }`. @param {string} op @param {string} space @param {Record<string, any>} fields */
-export const payloadHash = (op, space, fields) => sha256b64(canonical({ op, space, ...fields }));
+/** The hash of what the person is shown: canonical({ op, space, fields }), `fields` NESTED (kernel/seal/payloadhash-vectors.json). @param {string} op @param {string} space @param {Record<string, any>} fields */
+export const payloadHash = (op, space, fields) => sha256b64(canonical({ op, space, fields }));
 
 /** The hash of the chain the act runs under: one person, in this space. @param {string} person @param {string} space */
 export const chainHash = (person, space) => sha256b64(canonical([["person", person, space]]));

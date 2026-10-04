@@ -6,7 +6,7 @@ import { ed25519 } from "@noble/curves/ed25519";
 import { generateDeviceKey } from "../src/identity/keys.js";
 import { sealRecord, openRecord } from "../src/identity/seal.js";
 import { loadIdentity, saveIdentity } from "../src/identity/store";
-import { keyStorage, presenceKey, signPresence } from "../src/keys";
+import { createIdentityKey, keyStorage, presenceKey, signPresence } from "../src/keys";
 import { fromB64url, payloadHash } from "../modules/vyre-signer/presence-proof.js";
 
 const ON = process.env.EXPO_PUBLIC_VYRE_KEYCHECK === "1";
@@ -35,6 +35,7 @@ async function run(withPresence: boolean, say: (l: string) => void) {
     const ok = ed25519.verify(sig, m, fromB64url(id.key.publicKey));
     return `${ok ? "ok" : "BAD"} pub=${id.key.publicKey} same=${id.key.publicKey === pub}`;
   });
+  await step("create never overwrites", async () => { const k = await createIdentityKey(); return !k || k.publicKey === pub ? "ok" : `OVERWRITTEN ${k.publicKey}`; });
   await step("key storage", async () => JSON.stringify(await keyStorage()));
   await step("presence key", async () => { const k = await presenceKey(); return `key_id=${k.key_id} storage=${k.storage} spki=${k.spki.slice(0, 24)}...`; });
   if (withPresence) {

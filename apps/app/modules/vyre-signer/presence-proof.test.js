@@ -2,13 +2,34 @@ import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
-import { canonical as kc, payloadHash as kp, proofBytes as kb } from "../../../../kernel/seal/wire.js";
+import fs from "node:fs";
+import { canonical as kc, proofBytes as kb } from "../../../../kernel/seal/wire.js";
 import { canonical, payloadHash, chainHash, proofBytes, spkiFromXY, p1363FromDer, proofBody, keyIdOf, b64, b64url, fromB64url } from "./presence-proof.js";
 
-test("canonical, the payload hash and the proof bytes equal the kernel's own", () => {
+const vectors = (f) => JSON.parse(fs.readFileSync(new URL(`../../../../kernel/seal/${f}`, import.meta.url), "utf8")).vectors;
+
+test("the payload hash and its canonical form reproduce every vector in kernel/seal/payloadhash-vectors.json", () => {
+  const vs = vectors("payloadhash-vectors.json");
+  assert.ok(vs.length >= 7);
+  for (const v of vs) {
+    assert.equal(canonical({ op: v.op, space: v.space, fields: v.fields }), v.canonical, v.name);
+    assert.equal(payloadHash(v.op, v.space, v.fields), v.hash, v.name);
+  }
+});
+
+test("proofBytes reproduces every vector in kernel/seal/proofbytes-vectors.json byte for byte (one byte off locks every iPhone out)", () => {
+  const vs = vectors("proofbytes-vectors.json");
+  assert.ok(vs.length >= 1);
+  for (const v of vs) {
+    // The vectors may carry a signature and an assertion in `proof`: both are left out of the bytes.
+    assert.equal(Buffer.from(proofBytes(v.proof)).toString("utf8"), v.bytes);
+    assert.deepEqual(Buffer.from(proofBytes({ ...v.proof, signature: "sig", assertion: "as" })), Buffer.from(v.bytes, "utf8"));
+  }
+});
+
+test("canonical and the proof bytes equal the kernel's own", () => {
   const fields = { b: 2, a: { z: [1, "x"], y: null }, skip: undefined };
   assert.equal(canonical(fields), kc(fields));
-  assert.equal(payloadHash("grant.invite", "spc_1", fields), kp("grant.invite", "spc_1", fields));
   const proof = { signer: "secure_enclave", key_id: "k", payload_hash: "h", decision: "x", chain_hash: "c", issued_at: 1, expires_at: 2, nonce: "n", signature: "s", assertion: "a" };
   assert.deepEqual(Buffer.from(proofBytes(proof)), kb({ ...proof, assertion: undefined }));
 });
@@ -37,7 +58,7 @@ test("a DER signature becomes r||s and verifies as P1363 against the SPKI built 
 
 test("proofBody refuses a card whose fields do not hash to its payload_hash, and builds a body of at most 120 s", () => {
   const fields = { device: "alex-mac" };
-  const req = { op: "grant.signin", space: "spc_1", fields, payload_hash: kp("grant.signin", "spc_1", fields), person: "per_1" };
+  const req = { op: "grant.signin", space: "spc_1", fields, payload_hash: payloadHash("grant.signin", "spc_1", fields), person: "per_1" };
   const body = proofBody(req, { keyId: "se-1", now: 1000, nonce: "n1" });
   assert.equal(body.decision, "grant.signin"); assert.equal(body.signer, "secure_enclave");
   assert.ok(body.expires_at - body.issued_at <= 120000);

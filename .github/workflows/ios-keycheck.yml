@@ -1,3 +1,4 @@
+# The build is signed ad hoc (identity "-") on purpose: an unsigned simulator build has no entitlements and the Keychain answers "A required entitlement isn't present" (seen on run 37176585244).
 # Does the iPhone app keep its key across a kill and relaunch? On a hosted Mac simulator (never on a person's computer): a Release simulator build with the keycheck page on
 # (EXPO_PUBLIC_VYRE_KEYCHECK=1), opened by vyre://keycheck three times: first launch makes the identity key, a kill and relaunch must find the same public key and sign with it.
 # Presence: Face ID is enrolled in the simulator and matched when the prompt shows; the simulator has no Secure Enclave, so that proof is a software key's. Screenshots and the log are the artifact.
@@ -45,7 +46,7 @@ jobs:
           set -o pipefail
           xcodebuild -workspace "$ws" -scheme "$scheme" -configuration Release -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' -derivedDataPath ios/dd \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build 2>&1 | tee xcodebuild.log | tail -40
+            CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO build 2>&1 | tee xcodebuild.log | tail -40
       - name: Boot, install, make the key, kill, relaunch
         run: |
           set -u
