@@ -943,7 +943,7 @@
  "test/install-mac-server.test.js": 29,
  "test/install-windows-served.test.js": 2,
  "test/installer-copy.test.js": 2,
- "test/journey.test.js": 9,
+ "test/journey.test.js": 2,
  "test/link-cli.test.js": 2,
  "test/link-federation.test.js": 10,
  "test/link-guard.test.js": 2,
