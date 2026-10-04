@@ -6,6 +6,7 @@
 // config.json under "onboard". The steps call other modules' tools (names.*, vault.put,
 // recall.*, projects.*) and work without them: a missing module blocks its step and says why.
 
+import { assistantWhenReady } from "./assistant-ready.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -820,6 +821,12 @@ export default {
     // An install whose assistant was named but never made (an earlier version, or a failure at finish) gets it now, once the agents module is up.
     const retry = setTimeout(() => { if (ob().assistant) ensureAssistant({ fallbackName: false }).catch(() => {}); }, 3000);
     if (typeof retry.unref === "function") retry.unref();
-    return { async stop() { clearTimeout(retry); if (typeof off === "function") off(); for (const o of offLink) if (typeof o === "function") o(); signin.stop(); await lb.close({ forget: false }); await indexing; } };
+    // 0.3: the owner arrives by pairing and nothing names the assistant, so it is made once there is an owner and a signed-in AI account (default name Juno), and until then Now says so.
+    const ready = () => assistantWhenReady({ tryCall, call, signedInOutside: () => Boolean(ob().claude), hasOwner: () => Boolean(ob().person), ensure: ensureAssistant, state: () => ob().assistantState,
+      setState: s => save({ onboard: { assistantState: s } }) }).catch(e => ctx.log("onboard: the assistant check failed: " + /** @type {Error} */ (e).message));
+    const readyFirst = setTimeout(() => { void ready(); }, 4000);
+    const readyEvery = setInterval(() => { void ready(); }, 60_000);
+    for (const t of [readyFirst, readyEvery]) if (typeof t.unref === "function") t.unref();
+    return { async stop() { clearTimeout(readyFirst); clearInterval(readyEvery); clearTimeout(retry); if (typeof off === "function") off(); for (const o of offLink) if (typeof o === "function") o(); signin.stop(); await lb.close({ forget: false }); await indexing; } };
   },
 };
