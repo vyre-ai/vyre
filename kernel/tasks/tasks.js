@@ -106,6 +106,7 @@ export function createTasks(cfg) {
   // A task changes in memory and then its event is written; if the write fails the task goes back to what it was, so memory never shows a change the log does not hold (an approval
   // that was refused by the log must not stay live). `pending` keeps the state before the first change since the last event; `note` clears it on success and restores it on failure.
   /** @type {Map<string, any>} */ const pending = new Map();
+  /** @type {Set<string>} task|payload pairs already released (sent) whose approval event may not have been written yet */ const sent = new Set();
   const stage = (/** @type {string} */ id, /** @type {any} */ next) => { if (!pending.has(id)) pending.set(id, tasks.get(id)); tasks.set(id, next); return next; };
   const put = (/** @type {any} */ t, /** @type {any} */ patch) => stage(t.id, freeze({ ...t, ...patch, updated_at: clock() }));
   const unstage = (/** @type {string} */ id) => {
@@ -366,11 +367,15 @@ export function createTasks(cfg) {
       if (!p || await cfg.presence.check({ chain, op: "task.decide", fields: { task: id, payload_hash: t.payload.payload_hash, decision: t.payload.decision }, proof: p })) throw new KernelError("needs_presence", "approving needs your confirmation on this device, over exactly this");
       rule(t, "done", "checker_approval");
       if (outward(t) && cfg.release) {
-        try { await cfg.release(t, body, { person: person.id, key_id: p.key_id }); } catch (e) { throw new KernelError("unavailable", "it could not be sent, so it was not approved as sent", String(e && /** @type {any} */ (e).message)); }
+        // WF-2: the send happens before the event is written. If the event is refused the task goes back to waiting, and a second approval must not send again: the send is made once per
+        // task and payload (`sent`), and the release is told the same key so an egress can refuse a repeat too.
+        const idem = `${id}|${t.payload.payload_hash}`;
+        try { if (!sent.has(idem)) { await cfg.release(t, body, { person: person.id, key_id: p.key_id, idem }); sent.add(idem); } } catch (e) { throw new KernelError("unavailable", "it could not be sent, so it was not approved as sent", String(e && /** @type {any} */ (e).message)); }
       }
       const answer = !outward(t) && body && body.evidence !== undefined ? answerOf(t, body.evidence) : undefined;
       const n = put(t, { state: "done", outcome: "approved", ...(answer !== undefined ? { answer } : {}) });
       note(chain, "task.approved", n, { payload_hash: t.payload.payload_hash, key_id: p.key_id, ...(n.answer !== undefined ? { answer: n.answer } : {}) }, d.decision);
+      sent.delete(`${id}|${t.payload.payload_hash}`);
       approvedBy.set(id, { approver_chain: chain, use_proof: a.proofs && a.proofs.use ? a.proofs.use : null });
       const proposed = proposals.get(id);
       if (proposed) { const pt = tasks.get(proposed); if (pt && (pt.state === "ready" || pt.state === "stuck")) { rule(pt, "skipped", "proposal_for_person_with_presence"); note(chain, "task.skipped", put(pt, { state: "skipped" }), { by: "approved proposal" }); } }
