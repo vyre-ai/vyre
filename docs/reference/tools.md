@@ -71,7 +71,7 @@ Remove an agent's record and its spend. Refused while one of its threads is runn
 
 - Input:
   - `agent` string, required
-- Callers: `capsule`, `cli`, `deck`, `local`, `module`
+- Callers: `capsule`, `cli`, `deck`, `local`
 
 ### `agents.history`
 
