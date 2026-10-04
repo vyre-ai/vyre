@@ -253,16 +253,21 @@ test("hooks: a plain yes accepts a lesson only when a person typed it into an in
   assert.match(await tellThenYes({ tty: true, env: { VYRE_THREAD: "s1" } }), refused, "our own headless thread");
   assert.match(await tellThenYes({ tty: false }), refused, "no terminal");
   assert.equal(status(), "proposed");
-  // Only the hook of the person's own Claude Code (the surface `harness`, no agent, no thread, the transcript's own line) may set typedBy: the same enrich call from any other surface, or an assistant's label, changes nothing,
-  // and no other harness tool takes a yes at all.
-  for (const caller of ["mcp", "cli", "hook", "module:x", "tailnet:alex", "mcp:agent:kit", "harness:agent:juno", "cli agent:kit", "deck"]) {
-    await d.registry.call("harness.enrich", { session: "s1", cwd: "/w", prompt_id: `p-x-${caller}`, prompt: "yes", interactive: true }, caller);
-    assert.equal(status(), "proposed", `${caller} cannot make a plain yes count`);
+  // RC1 (lead ruling, reviewer-3 on HOLD): with the kernel on a plain yes never accepts a lesson, not even from a person at an interactive claude. The hook reaches vyred as `harness`, and a model's shell
+  // can replay the last user line through that path, so typedBy is never set from it. A lesson is kept by a tap in the app or by `vyre learn accept`. An unforgeable hook proof is BACKLOG 0.3.1.
+  const kernelOn = Boolean(d.kernel);
+  const answered = await tellThenYes({ tty: true });
+  if (kernelOn) {
+    assert.match(answered, refused, "a person at an interactive claude: still not accepted, the kernel is on");
+    assert.equal(status(), "proposed");
+    for (const caller of ["mcp", "cli", "hook", "module:x", "tailnet:alex", "mcp:agent:kit", "harness:agent:juno", "deck", "harness"]) {
+      await d.registry.call("harness.enrich", { session: "s1", cwd: "/w", prompt_id: `p-x-${caller}`, prompt: "yes", interactive: true }, caller);
+      assert.equal(status(), "proposed", `${caller} cannot make a plain yes count`);
+    }
+  } else {
+    assert.match(answered, /The user said yes: lesson 1 is in force now/, "a person at an interactive claude (kernel off)");
+    assert.equal(status(), "active");
   }
-  await d.registry.call("harness.stop", { session: "s1", cwd: "/w", prompt_id: "p-x-stop", last_assistant_message: "yes", interactive: true }, "harness");
-  assert.equal(status(), "proposed", "a harness event that is not the prompt cannot make a yes count");
-  assert.match(await tellThenYes({ tty: true }), /The user said yes: lesson 1 is in force now/, "a person at an interactive claude");
-  assert.equal(status(), "active");
 });
 
 test("mcp: initialize, list and call over stdio; harness tools are not offered", async t => {
