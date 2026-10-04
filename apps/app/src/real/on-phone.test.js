@@ -42,3 +42,8 @@ test("the line says the method the person has: Touch ID in a Mac window, the pho
   assert.equal(onPhoneFor("something.else", "touchid"), "Do this with Touch ID.");
   assert.equal(onPhoneFor("onboard.claude", "touchid"), "Connect it with Touch ID.");
 });
+
+test("a browser asked to unlock the personal vault says to do it on the phone", () => {
+  assert.equal(onPhoneFor("vault.account.unlock-phone", "phone"), "Unlock it in Vyre on your phone.");
+  assert.equal(onPhoneFor("vault.account.unlock-phone", "touchid"), "Unlock it with Touch ID.");
+});

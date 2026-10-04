@@ -1,12 +1,12 @@
 // Vault's calls, over whatever `call` it is given (the app's box connection, or a fake box in a test).
 import type { ListRow, UseRow } from "./real-model";
 
-export type Call = <T = unknown>(tool: string, input?: Record<string, unknown>) => Promise<{ data?: T; error?: { code: string; message: string } }>;
+export type Call = <T = unknown>(tool: string, input?: Record<string, unknown>) => Promise<{ data?: T; error?: { code: string; message: string; detail?: { retry_after_s?: number } } }>;
 
 export function vaultSource(call: Call) {
   async function ask<T>(tool: string, input: Record<string, unknown> = {}): Promise<T> {
     const r = await call<T>(tool, input);
-    if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code });
+    if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code, detail: r.error.detail });
     return r.data as T;
   }
   return {
@@ -29,6 +29,8 @@ export function vaultSource(call: Call) {
       if (r.error) return null;
       return { locked: Boolean(r.data?.locked), unlock: r.data?.unlock === "passphrase" ? "passphrase" : "none" };
     },
+    /** Unlock the PERSONAL vault from the phone: its password and the person's presence (vault.account.unlock-phone; the desk tool takes the password as the whole proof, a phone must not). */
+    unlockPersonalReal: (password: string) => ask<unknown>("vault.account.unlock-phone", { password }),
     /** Unlock a passphrase vault (the first unlock sets the passphrase). */
     unlockReal: (passphrase: string) => ask<unknown>("vault.unlock", { passphrase }),
     /** Add an item: a person's own call, the box asks for presence on this exact save. The value goes to the box and is not kept here. */

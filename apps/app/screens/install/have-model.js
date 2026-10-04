@@ -24,7 +24,8 @@ export const HAVE = {
   go: "Bring my name here",
   busy: "Checking",
   rather: "I would rather add this phone from another device",
-  spacesLine: "This iPhone joins each of your spaces when you approve it from a device that is already in it.",
+  // Unshown until wink-2 and tailnet verify the peer door admits an unpaired recovered key (windows: the enrolment decision is tested, the door is not). "Should", not "will".
+  spacesLine: "This iPhone should join your spaces on its own. It can take up to a minute.",
 };
 
 /** Each refusal's own sentence; the screen never shows the server's or the directory's text. @param {string | undefined} code */
@@ -35,6 +36,7 @@ export function recoverRefusal(code) {
     case "not_a_person": return "That name does not belong to a person.";
     case "wrong_code": return "That code, or the password, is not the one for this name. Nothing was changed.";
     case "unreachable": return "Cannot reach the names directory right now. Nothing was changed. Try again.";
+    case "not_built": return "This is not available in this build yet. Nothing was changed.";
     case "rate_limited": return "Too many tries from here. Try again later.";
     case "newcomer": return "A phone added in the last 24 hours cannot do that yet. Use an older device, or wait.";
     default: return "Nothing was changed. Try again.";
