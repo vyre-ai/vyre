@@ -1032,3 +1032,25 @@ test("presence recovery is carried: begin and recover reach the sealing process 
   assert.equal(calls.filter(c => c[0] === "sync").at(-1)[1].person, me.id);
   void w; void other;
 });
+
+test("lending a computer to a space is a stored grant: Face ID only at the first grant, never to stop, listed on the device, and only the person's own devices", async t => {
+  const w = world(t);
+  const d = await device(t);
+  const me = await d.ok("spaces.identity.create", { name: "alex" });
+  const a = await d.ok("spaces.create", { name: "harlow", home: { kind: "this-computer", confirmed: true } });
+  const eid = me.eid;
+  const st0 = await d.ok("spaces.devices.lend.status", { space: a.space, device: eid });
+  assert.deepEqual([st0.lent, st0.first_grant_at, st0.allowed_by], [false, null, null]);
+  assert.equal((await d.call("spaces.devices.lend", { space: a.space, device: eid, on: true })).error?.code, "presence_required", "the first grant asks");
+  const on = await d.ok("spaces.devices.lend", { space: a.space, device: eid, on: true }, "cli", { proof: "touch" });
+  assert.deepEqual([on.lent, typeof on.first_grant_at, on.allowed_by], [true, "number", me.id]);
+  const first = on.first_grant_at;
+  assert.equal((await d.ok("spaces.devices.lend.status", { space: a.space, device: eid })).lent, true);
+  assert.equal((await d.ok("spaces.devices.list", { device: eid })).spaces[0].lent, true);
+  const off = await d.ok("spaces.devices.lend", { space: a.space, device: eid, on: false });
+  assert.deepEqual([off.lent, off.first_grant_at], [false, first], "stopping never asks, and the first grant stays on record");
+  const again = await d.ok("spaces.devices.lend", { space: a.space, device: eid, on: true });
+  assert.deepEqual([again.lent, again.first_grant_at], [true, first], "after the first grant, on again asks nothing");
+  assert.equal((await d.call("spaces.devices.lend", { space: a.space, device: "nope", on: true }, "cli", { proof: "touch" })).error?.code, "not_found");
+  w && void 0;
+});

@@ -298,3 +298,72 @@ test("ids: the directory refuses an op made at an old time, so an adder cannot h
   const now = await alex.append({ type: "add", entry: thief.entry("device") }, phone);
   assert.equal(data(await alex.post("/v1/ids/append", { name: "alex", ops: [now] })).seq, 1);
 });
+
+// ---- CORS for the browser app (lead's ruling 4 Oct): resolve is public read-only data; claim, append and update carry their own signature and take the app's origins ----
+
+const raw = async (w, method, path, { origin, headers = {}, body } = {}) => {
+  const text = body === undefined ? undefined : JSON.stringify(body);
+  const res = await worker.fetch(new Request(BASE + path, { method, headers: { ...(origin ? { origin } : {}), ...(body === undefined ? {} : { "content-type": "application/json" }), "cf-connecting-ip": "203.0.113.9", ...headers }, body: text }), w.env);
+  return { status: res.status, h: n => res.headers.get(n), json: await res.json().catch(() => null) };
+};
+
+test("cors: resolve answers any origin, read-only, no credentials, and a preflight for it", async t => {
+  const w = world(t);
+  const alex = await person(w);
+  data(await alex.claim("alex"));
+  for (const origin of ["https://app.vyre.run", "https://evil.example", "null"]) {
+    const r = await raw(w, "GET", "/v1/ids/resolve?name=alex", { origin, headers: { "sec-fetch-site": "cross-site" } });
+    assert.equal(r.status, 200, origin);
+    assert.equal(r.h("access-control-allow-origin"), "*");
+    assert.equal(r.h("access-control-allow-credentials"), null, "never with credentials");
+    assert.equal(r.json.data.name, "alex");
+  }
+  const pre = await raw(w, "OPTIONS", "/v1/ids/resolve?name=alex", { origin: "https://app.vyre.run", headers: { "access-control-request-method": "GET" } });
+  assert.equal(pre.status, 204);
+  assert.equal(pre.h("access-control-allow-origin"), "*");
+  assert.match(pre.h("access-control-allow-methods"), /GET/);
+  assert.equal((await raw(w, "GET", "/v1/ids/resolve?name=nobody", { origin: "https://evil.example" })).h("access-control-allow-origin"), "*", "an unknown name answers CORS too");
+});
+
+test("cors: claim, append and update accept the app's origin (and only its exact origin), answer it, and keep their limits; everything else still refuses a foreign Origin", async t => {
+  const w = world(t, { APP_ORIGINS: "https://app.vyre.run, http://localhost:5173" });
+  const alex = await person(w);
+  const body = { name: "alex", ops: alex.ops, ...alex.sealRecord("alex", "c2VhbGVk") };
+  const ok = await raw(w, "POST", "/v1/ids/claim", { origin: "https://app.vyre.run", headers: { "sec-fetch-site": "cross-site" }, body });
+  assert.equal(ok.status, 200, JSON.stringify(ok.json));
+  assert.equal(ok.h("access-control-allow-origin"), "https://app.vyre.run");
+  assert.equal(ok.h("vary"), "origin");
+  assert.equal(ok.h("access-control-allow-credentials"), null);
+  const bob = await person(w);
+  const dev = await raw(w, "POST", "/v1/ids/claim", { origin: "http://localhost:5173", body: { name: "bob", ops: bob.ops, ...bob.sealRecord("bob", "c2VhbGVk") } });
+  assert.equal(dev.status, 200, "the stand-in's origin from APP_ORIGINS");
+  for (const origin of ["https://evil.example", "https://app.vyre.run.evil.example", "http://app.vyre.run", "https://vyre.run", "null"]) {
+    const r = await raw(w, "POST", "/v1/ids/claim", { origin, body });
+    assert.equal(r.status, 403, origin);
+    assert.equal(r.h("access-control-allow-origin"), null, "a foreign origin gets no CORS answer");
+  }
+  // preflights: the app origin for the three routes, nothing for others
+  for (const p of ["/v1/ids/claim", "/v1/ids/append", "/v1/ids/update"]) {
+    const pre = await raw(w, "OPTIONS", p, { origin: "https://app.vyre.run", headers: { "access-control-request-method": "POST", "access-control-request-headers": "content-type" } });
+    assert.equal(pre.status, 204, p);
+    assert.equal(pre.h("access-control-allow-origin"), "https://app.vyre.run");
+    assert.equal((await raw(w, "OPTIONS", p, { origin: "https://evil.example", headers: { "access-control-request-method": "POST" } })).status, 405, p);
+  }
+  for (const [method, p] of [["POST", "/v1/ids/alias"], ["DELETE", "/v1/ids/alias"], ["POST", "/v1/ids/release"], ["POST", "/v1/names/claim"], ["POST", "/v1/names/release"], ["POST", "/v1/names/recover"]]) {
+    assert.equal((await raw(w, "OPTIONS", p, { origin: "https://app.vyre.run", headers: { "access-control-request-method": method } })).status, 405, `${method} ${p} has no preflight`);
+    const r = await raw(w, method, p, { origin: "https://app.vyre.run", body: { name: "alex" } });
+    assert.equal(r.status, 403, `${method} ${p} still refuses a foreign Origin`);
+  }
+});
+
+test("cors: the per-IP claim limit applies to claims from the app origin too", async t => {
+  const w = world(t);
+  const results = [];
+  for (let i = 0; i < 7; i++) {
+    const p = await person(w);
+    const r = await raw(w, "POST", "/v1/ids/claim", { origin: "https://app.vyre.run", body: { name: `name${i}x`, ops: p.ops, ...p.sealRecord(`name${i}x`, "c2VhbGVk") } });
+    results.push(r.status === 200 ? "ok" : code(r));
+  }
+  assert.equal(results.filter(x => x === "ok").length, 5, JSON.stringify(results));
+  assert.ok(results.slice(5).every(x => x !== "ok"));
+});
