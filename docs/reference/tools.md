@@ -7752,6 +7752,7 @@ A claimed Vyre name's identity list from the directory, verified, and only if it
 - Input:
   - `id` string, required
   - `name` string, required
+  - `pin` object
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `spaces.identity.name-of`
@@ -11576,6 +11577,7 @@ On a server that was just paired: record who it belongs to, an identity or a spa
     - `id` string, required
     - `kind` "identity" or "space", required
     - `name` string
+    - `pin` object
     - `vyre` string
   - `deviceKind` one of "phone", "computer", "web"
   - `deviceName` string
@@ -11597,6 +11599,7 @@ On a server that was just paired: record who it belongs to, an identity or a spa
   - `peerSecret` string
   - `proof` object
     - `eid` string
+    - `esig` string
     - `sig` string
 - Callers: `web`
 
@@ -11700,6 +11703,7 @@ On this server, from the owner's own screen with presence: change who it belongs
     - `id` string, required
     - `kind` "identity" or "space", required
     - `name` string
+    - `pin` object
     - `vyre` string
   - `deviceKind` one of "phone", "computer", "web"
   - `deviceName` string
@@ -11721,6 +11725,7 @@ On this server, from the owner's own screen with presence: change who it belongs
   - `peerSecret` string
   - `proof` object
     - `eid` string
+    - `esig` string
     - `sig` string
 - Callers: any caller
 - Needs a person present.

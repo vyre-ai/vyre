@@ -26,6 +26,7 @@ import { parseServerQr, parsePhoneQr } from "../core/wink/pairing.js";
 import { pairWords, nonceCommit, ticketTag, newNonce } from "../relay/client/pairwords.js";
 import { pairServer, parseServerPayload } from "../relay/client/serverpair.js";
 import { createServerLinks } from "../core/wink/serverlink.js";
+import { deviceKey } from "../core/wink/devicekey.js";
 import workerDir, * as WD from "../names/worker/index.js";
 import { createRuntime } from "../relay/worker/fake-cf.js";
 import { fakeDns } from "../names/worker/fake-dns.js";
@@ -63,7 +64,7 @@ async function world(t, opt = {}) {
   const root = tempHome(t);
   if (opt.pendingMs || opt.abandonMs) { seams.set(root, { ...(opt.pendingMs ? { pendingMs: opt.pendingMs } : {}), ...(opt.abandonMs ? { abandonMs: opt.abandonMs } : {}) }); t.after(() => seams.delete(root)); }
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [], network: { name: "alex" }, relay: { enabled: true, url }, modules: { disable: ["names", "onboard"] } }));
-  const d = await start({ presence: lenient, root, log: m => { if (process.env.WLOG) console.error(m); }, coreKeys: macCore(), ...(opt.kernel ? { kernel: true } : {}) });
+  const d = await start({ ...(opt.realPresence ? {} : { presence: lenient }), root, log: m => { if (process.env.WLOG) console.error(m); }, coreKeys: macCore(), ...(opt.kernel ? { kernel: true } : {}) });
   t.after(() => d.stop());
   const events = [];
   d.events.on("*", e => events.push([e.type, e.payload]));
@@ -1139,7 +1140,7 @@ async function standinIdentity(t) {
 }
 
 /** A box-less device pairs a fresh server and picks the words; resolves what the device then holds. */
-async function pairFreshServer(t, { kind = "phone", about, presenceStorage = "hardware", ident = null } = {}) {
+async function pairFreshServer(t, { kind = "phone", about, presenceStorage = "hardware", ident = null, devKey = null, realPresence = false } = {}) {
   ident = ident || await standinIdentity(t);
   // the real rule: a server is owned only with the identity proof, checked against the directory
   const noProof = process.env.VYRE_TEST_PAIR_NO_PROOF;
@@ -1150,10 +1151,10 @@ async function pairFreshServer(t, { kind = "phone", about, presenceStorage = "ha
   const saved = process.env.VYRE_WINK_TYPED_CODE;
   delete process.env.VYRE_WINK_TYPED_CODE;
   t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
-  const w = await world(t, { kernel: true });
+  const w = await world(t, { kernel: true, realPresence });
   const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   const ks = keystore(t);
-  const presenceKey = { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: presenceStorage };
+  const presenceKey = devKey ? devKey.presenceKey : { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: presenceStorage };
   const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
   const owner = { id: ident.id, name: "Alex", vyre: "alex" };
   let shown = "";
@@ -1192,6 +1193,10 @@ test("device-first, real daemon, relay and kernel: the pick leaves the device re
   const session = links.sessionFor("srv");
   const me = await session.call("records.me", {});
   assert.ok(JSON.stringify(me).includes(owner.id), `records.me answers the owner: ${JSON.stringify(me).slice(0, 200)}`);
+  // PD-2: the door reaches what a person's paired device may call and nothing else: tools that are for modules only are refused over the stream
+  for (const tool of ["spaces.identity.state", "relay.device.info", "presence.person.end-paired", "wink.server.handover", "spaces.owner.adopt"]) {
+    await assert.rejects(() => session.call(tool, { person: owner.id, id: done.device }), e => /denied|not_found|no_such_tool|not available|callers/i.test(`${e.code} ${e.message}`), `${tool} is refused over the peer door`);
+  }
   // and a kernel call over the same session is the kernel's own remote path
   const rk = links.remoteKernel("srv", w.d.kernel.id.space);
   const members = await rk.gateway.grants.members.list(null);
@@ -1218,6 +1223,11 @@ test("device-first: a web device is recorded as web with software storage", asyn
   const rec = (await f.w.d.registry.call("wink.device.record", { id: f.done.device }, "module:presence")).data;
   assert.equal(rec ? rec.kind : null, "web");
   assert.equal((await deviceRow(f.w, f.done.device)).storage, "software");
+  // a browser that offered its key is granted its session like any owner device, and signs in with no manual step
+  assert.equal(f.done.session, true, "the adopt answer says the browser has its session");
+  const links = linksFor(t, f);
+  assert.ok((await links.startPaired("srv")).id, "start-paired works for a browser that offered a device key");
+  assert.ok(JSON.stringify(await links.sessionFor("srv").call("records.me", {})).includes(f.owner.id));
 });
 
 test("wink.server.adopt takes `proof` through the registry: a waiting redeemer's call with a proof is judged by the tool (denied, no identity port here), never refused as an unknown field", async t => {
@@ -1366,14 +1376,17 @@ test("owning a server needs the identity proof checked against the directory: th
   assert.equal(ok.result.ok && ok.result.ok.paired, true, String(ok.result.err && ok.result.err.message));
   assert.equal(ok.result.ok.session, true, "the adopt answer says the device has its session");
   assert.equal(ok.w.d.kernel.id.owner, ident.id, "the proven identity is the home's owner");
+  assert.equal((await ok.w.call("wink.server.status", {}, "cli", PROOF)).data.owner_proof, "software", "a development build takes a software key and says so");
   // no proof at all: refused, and a server installed with no pair-to is not waiting for anyone
   const none = await attemptPairing(t, ident, { sign: null });
+  assert.equal(none.result.err && none.result.err.code, "denied_no_proof");
   assert.match(String(none.result.err && none.result.err.message), /did not prove which Vyre identity/);
   assert.doesNotMatch(String(none.result.err && none.result.err.message), /waiting to pair/);
   assert.equal((await none.w.call("wink.server.status", {}, "cli", PROOF)).data.owned, false);
   // another identity's key on the claimed identity's name: not them
   const rogue = crypto.generateKeyPairSync("ed25519");
   const bad = await attemptPairing(t, ident, { sign: async m => ({ eid: "e".repeat(26), sig: crypto.sign(null, Buffer.from(m), rogue.privateKey).toString("base64url") }) });
+  assert.equal(bad.result.err && bad.result.err.code, "denied_wrong_proof");
   assert.match(String(bad.result.err && bad.result.err.message), /did not prove it/);
   assert.equal((await bad.w.call("wink.server.status", {}, "cli", PROOF)).data.owned, false);
   // the directory out of reach: said plainly, nothing paired
@@ -1395,4 +1408,34 @@ test("an owned server: a second device with no owner presence is granted nothing
   const second = await f.w.d.registry.call("wink.server.adopt", { owner: { kind: "identity", id: f.owner.id }, identity: f.owner.id, deviceKind: "phone" }, "device:zzzzzzzzzzzzzzzz", {});
   assert.ok(second.error, "an owned server takes no second adoption without the owner's presence");
   assert.equal((await f.w.d.registry.call("wink.device.record", { id: "zzzzzzzzzzzzzzzz" }, "module:presence")).data, null);
+});
+
+test("sessionFor signs the device in by itself when a call needs the person (no manual start-paired); a session the server ended is refused with the server's own reason", async t => {
+  const f = await pairFreshServer(t);
+  const links = linksFor(t, f);
+  const session = links.sessionFor("srv");
+  assert.ok(JSON.stringify(await session.call("records.me", {})).includes(f.owner.id), "the first call needed the person: the device signed in and the call went through");
+  // the grant is one use: a device whose session the server ended (sign out everywhere) is refused with the server's own reason, never a bare person_session_required
+  assert.ok((await f.w.d.registry.call("presence.person.end-paired", { device: f.done.device }, "module:wink")).data.ended >= 1);
+  await assert.rejects(() => session.call("records.me", {}), e => /could not sign in to the server/.test(e.message));
+});
+
+
+test("a computer's own device key makes the owner's proof for an act that needs presence over the peer wire: REAL presence on the server checks the key it enrolled at pairing", async t => {
+  const devKey = deviceKey(path.join(tempHome(t), "dev.json"));
+  const f = await pairFreshServer(t, { kind: "computer", presenceStorage: "software", devKey, realPresence: true });
+  assert.equal(f.done.session, true, "a first pairing on a real presence module still grants the session");
+  assert.equal((await deviceRow(f.w, f.done.device)).presence, true, "the server enrolled the computer's key as its presence key");
+  const links = createServerLinks({ connect, options: { crypto: nodeCrypto(), keyStore: f.ks }, name: "Alex's Mac", sign: m => devKey.sign(m), proveTool: devKey.proveTool,
+    channelOf: sid => (sid === "srv" ? { relay: f.w.status.url, route: f.done.route, box: f.done.box } : null) });
+  t.after(() => links.close());
+  const made = await links.sessionFor("srv").call("spaces.host-here", { name: "harlow" });
+  assert.match(made.space, /^spc_[a-z2-7]{12}$/, "host-here answered after the device signed the server's presence_required");
+  assert.ok(f.w.d.kernel.spaces.hosts(made.space), "the space is hosted by the server's kernel");
+  // a key the server never enrolled proves nothing
+  const stranger = deviceKey(path.join(tempHome(t), "stranger.json"));
+  const bad = createServerLinks({ connect, options: { crypto: nodeCrypto(), keyStore: f.ks }, name: "x", sign: m => devKey.sign(m), proveTool: stranger.proveTool,
+    channelOf: sid => (sid === "srv" ? { relay: f.w.status.url, route: f.done.route, box: f.done.box } : null) });
+  t.after(() => bad.close());
+  await assert.rejects(() => bad.sessionFor("srv").call("spaces.host-here", { name: "other" }), e => e.code === "presence_required");
 });
