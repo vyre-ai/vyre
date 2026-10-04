@@ -4,12 +4,12 @@
   "roles": ["box", "local"],
   "requires": [],
   "does": { "tools": [
-    { "name": "stream.open", "reach": "person" },
-    { "name": "stream.send", "reach": "person" },
-    { "name": "stream.react", "reach": "person" },
-    { "name": "stream.pin", "reach": "person" },
-    { "name": "stream.keep", "reach": "person" },
-    { "name": "stream.mark-read", "reach": "person" }
+    { "name": "stream.open", "reach": "person", "effect": "write" },
+    { "name": "stream.send", "reach": "person", "effect": "write" },
+    { "name": "stream.react", "reach": "person", "effect": "write" },
+    { "name": "stream.pin", "reach": "person", "effect": "write" },
+    { "name": "stream.keep", "reach": "person", "effect": "write" },
+    { "name": "stream.mark-read", "reach": "person", "effect": "write" }
   ] },
   "watches": { "emits": [] },
   "shows": { "streams": ["session"] },
