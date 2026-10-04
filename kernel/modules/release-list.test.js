@@ -289,3 +289,67 @@ test("build time: the repo's own modules make an unambiguous list; a name shared
   fs.appendFileSync(path.join(r.root, "local", "alpha-two", "index.js"), "// x");
   assert.equal(check(path.join(r.root, "local", "alpha-two")), false, "a changed copy still fails");
 });
+
+import { startSealer } from "../seal/client.js";
+import { signer, enrolDevice } from "../seal/testing.js";
+import modulesTool from "../../core/modulelist/index.js";
+
+test("L-2 rollback route with a REAL sealing process: ask, the phone's proof over the counter resets once; a proof for another counter, a replay, no proof and a non-owner change nothing; then the older list is accepted", { timeout: 180_000 }, async t => {
+  const r = release(t, { counter: 5 });
+  const r7 = release(t, { counter: 7, key: r.key });
+  const root = tempHome(t), dbFile = path.join(root, "k.db");
+  const sdir = fs.mkdtempSync(path.join(os.tmpdir(), "rr-seal-"));
+  const sealer = startSealer({ dir: sdir, dev: true, unattested: true, timeoutMs: 8000 });
+  t.after(async () => { await sealer.close(); fs.rmSync(sdir, { recursive: true, force: true }); });
+  const boot = async (pkg, logs = []) => bootHomeKernel({ db: new DatabaseSync(dbFile), root, sealer, log: m => logs.push(m), isFirstParty: () => false, releaseKey: r.pub, packageRoot: pkg.root });
+  // the healthy update: counter 7 is accepted
+  let k = await boot(r7);
+  assert.equal(k.log.read({ type: "kernel.modules-list" }).length, 1);
+  await k.stop();
+  // the rollback: the older build (5) is below the accepted counter
+  const logs = [];
+  k = await boot(r, logs);
+  t.after(() => k.stop());
+  assert.ok(logs.some(m => /older than one already accepted/.test(m)), logs.join(" | "));
+  const phone = signer(k.id.owner);
+  await enrolDevice(sealer, phone);
+  const tools = new Map();
+  const clock = { t: Date.now() };
+  await modulesTool.start({ tool: (n, d) => tools.set(n, d), now: () => clock.t, modulesListReset: k.resetModulesList, modulesListResetPayload: k.modulesListReset, kernel: { chain: async m => m.chain, proofFrom: m => m.proof } });
+  const run = (n, i, m = {}) => tools.get(n).run(i, m);
+  const owner = k.chains.fromFacts({ kind: "socket", surface: "cli", uid: process.getuid() });
+  const op = "grant.modules_list_reset";
+  const { id } = await run("modules.list.reset.ask", {});
+  const card = await run("modules.list.reset.pending", {});
+  assert.deepEqual(card.fields, { counter: 7, ask: id }, "the card names the counter that is dropped and the ask it answers");
+  const resets = () => k.log.read({ type: "kernel.modules-list-reset" }).length;
+  // refused, each with nothing changed
+  await assert.rejects(() => run("modules.list.reset.answer", { id, approve: true }, { chain: owner }), { code: "needs_presence" }, "no proof");
+  await assert.rejects(() => run("modules.list.reset.answer", { id, approve: true }, { chain: owner, proof: phone.proof(owner, op, { counter: 5, ask: id }) }), { code: "needs_presence" }, "a proof over another counter");
+  await assert.rejects(() => run("modules.list.reset.answer", { id, approve: true }, { chain: owner, proof: phone.proof(owner, op, { counter: 7 }) }), { code: "needs_presence" }, "a proof with no ask id (the direct form) does not answer an ask");
+  await assert.rejects(() => run("modules.list.reset.answer", { id, approve: true }, { chain: owner, proof: phone.proof(owner, op, { counter: 7, ask: "rr_otherask" }) }), { code: "needs_presence" }, "a proof made for another ask");
+  const other = k.chains.fromFacts({ kind: "module", module: "x" });
+  await assert.rejects(() => run("modules.list.reset.answer", { id, approve: true }, { chain: other, proof: phone.proof(owner, op, { counter: 7, ask: id }) }), { code: "denied" }, "a non-owner chain");
+  assert.equal(resets(), 0, "nothing was reset");
+  assert.deepEqual(await run("modules.list.reset.status", { id }), { state: "waiting" });
+  // the owner's phone approves once
+  const good = phone.proof(owner, op, { counter: 7, ask: id });
+  assert.deepEqual(await run("modules.list.reset.answer", { id, approve: true }, { chain: owner, proof: good }), { answered: "approved" });
+  assert.equal(resets(), 1);
+  assert.deepEqual(await run("modules.list.reset.status", { id }), { state: "approved" });
+  // a replay of the same proof on a new ask does nothing
+  await assert.rejects(() => run("modules.list.reset.answer", { id, approve: true }, { chain: owner, proof: good }), { code: "not_found" });
+  await assert.rejects(() => run("modules.list.reset.ask", {}), { code: "rate_limited" }, "one new ask per 10 minutes");
+  // The signed payload carries the ask's id, so a captured proof can never satisfy a later ask, whatever the sealing process remembers (its single-use window, a restart, the counter coming back to 7).
+  clock.t += 10 * 60_000 + 1;
+  const again = await run("modules.list.reset.ask", {});
+  await assert.rejects(() => run("modules.list.reset.answer", { id: again.id, approve: true }, { chain: owner, proof: good }), { code: "needs_presence" }, "the proof made for the first ask does not answer the second");
+  assert.equal(resets(), 1, "the replay reset nothing");
+  assert.equal(resets(), 1, "the replay reset nothing");
+  await k.stop();
+  // after the reset the older build's own list is in force
+  const logs2 = [];
+  const k2 = await boot(r, logs2);
+  t.after(() => k2.stop());
+  assert.equal(k2.firstPartyCheck(r.dir("alpha")), true, "the older release's modules are first party again: " + logs2.join(" | "));
+});
