@@ -9,6 +9,9 @@ import { lendState, removeText } from "./wink.js";
 import { MOCK, said } from "../../src/real/box";
 
 /** One device: what it is, which spaces it is in, share it with a space, remove it. */
+/** Computers already lent once this session: the first grant is a pairing (Face ID), later ones are not asked again (lead ruling 4 Oct). */
+const lentBefore = new Set<string>();
+
 export function DeviceScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -57,7 +60,7 @@ export function DeviceScreen() {
             <View className="flex-row flex-wrap items-center gap-s2">
               {lend === "sharing"
                 ? <><Chip tone="ok">Sharing</Chip><Button kind="ghost" size="sm" label="Stop sharing" onPress={() => { setLend(false); showToast("Stopped sharing."); }} /></>
-                : <Button kind="primary" size="sm" icon="faceid" label="Allow with Face ID" onPress={() => setFace({ title: "Share this computer", body: `${spaceName} runs its own work on ${d.name}. Only when it is idle, and nothing of yours.`, label: "Allow with Face ID", onApprove: () => setLend(true) })} />}
+                : <Button kind="primary" size="sm" icon="faceid" label="Allow with Face ID" onPress={() => { const grant = () => { lentBefore.add(d.id); setLend(true); }; if (lentBefore.has(d.id)) grant(); else setFace({ title: "Share this computer", body: `${spaceName} runs its own work on ${d.name}. Only when it is idle, and nothing of yours.`, label: "Allow with Face ID", onApprove: grant }); }} />}
             </View>
           </Card>
         </Group>

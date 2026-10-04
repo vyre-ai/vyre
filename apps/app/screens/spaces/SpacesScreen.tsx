@@ -4,7 +4,6 @@ import { useRouter } from "expo-router";
 import { Avatar, Banner, Button, Card, IconButton, Menu, Chip, Divider, Field, Row, Segmented, Sheet, Text, showToast, markRef, spaceRef, haptic } from "@vyre/ui";
 import { Footnote, Page, Sec } from "../places/Frame";
 import { usePhone } from "../places/Page";
-import { FaceIdSheet, type FaceAsk } from "../shell/FaceIdSheet";
 import { useSpaces } from "../shell/state";
 import { loadTeammates, TEMP_PROJECTS, type Member } from "./data";
 import { MOCK, said, tool } from "../../src/real/box";
@@ -35,7 +34,6 @@ export function SpacesScreen() {
   const fail = (m: string | null) => { if (m) showToast(m); return m === null; };
   const setShowing = useSpaces((s) => s.setShowing);
   const [sheet, setSheet] = useState<Sheetv>(null);
-  const [face, setFace] = useState<FaceAsk | null>(null);
   const member = (id: string) => members.find((m) => m.id === id);
   const open = (m: Member) => setSheet({ kind: "role", id: m.id, role: m.role, scope: m.scope ?? projectNames[0] ?? "", days: String(m.left && m.left > 30 ? 90 : m.left && m.left > 7 ? 30 : 7) });
   const allowed = assignable(MY_ROLE);
@@ -101,7 +99,7 @@ export function SpacesScreen() {
         ) : <Footnote>{`Your role in ${spaceName} is ${roleLabel(MY_ROLE)}. An owner or admin invites people and changes roles.`}</Footnote>}
       </Sec>
       {warnings.map((w) => <Footnote key={w}>{w}</Footnote>)}
-      <Footnote>Temp access ends on its date. An owner or admin can extend it, with Face ID.</Footnote>
+      <Footnote>Temp access ends on its date. An owner or admin can extend it with one tap.</Footnote>
 
       <Sheet open={sheet?.kind === "role"} onClose={() => setSheet(null)} title={sheet?.kind === "role" ? member(sheet.id)?.name : undefined}>
         {sheet?.kind === "role" ? (
@@ -137,8 +135,9 @@ export function SpacesScreen() {
               <View>
                 {EXTENSIONS.map(([d, label]) => (
                   <Row key={d} title={label} onPress={() => {
+                    // Lead ruling 4 Oct: a live person session is the presence. The tap is the grant change; the sign-in appears only if the session has lapsed.
                     setSheet(null);
-                    setFace({ title: "Extend access", body: `Face ID confirms it is you. ${m.name} keeps seeing ${m.scope} for ${d} more days.`, onApprove: () => { void extendBy(m.id, Number(d)).then((e) => { if (fail(e)) showToast("Access extended."); }); } });
+                    void extendBy(m.id, Number(d)).then((e) => { if (fail(e)) showToast(`${m.name} keeps access to ${m.scope} until ${endDateOf((m.left ?? 0) + Number(d))}.`); });
                   }} />
                 ))}
               </View>
@@ -166,7 +165,6 @@ export function SpacesScreen() {
           </>
         ) : null}
       </Sheet>
-      <FaceIdSheet ask={face} onClose={() => setFace(null)} />
     </Page>
   );
 }
