@@ -15,8 +15,10 @@ Connect the 0.3 app's Vault, Memory (graph, pins, corrections), Flows (start, a 
 
 - Settings, Updates, Notifications, Assistants, AI accounts: screens/settings/{real-model,real-source,real,RealMore,agents-model,RealAgents}, real.test.js (13 of 13 in screens/settings on the test box, with the existing logic test). On the dev box via `vyre call`: update.status and update.check answered (0.2.2, no newer, canApply false, auto notify), push.settings answered the kinds and a write of lesson true then false round-tripped, push.devices [], agents.list [], providers.list answered Claude signed in plus four unconnected, spaces.identity.status answered. So Updates and Notifications are seen against the real tools; Assistants has no agent on the box and AI shows only providers.
 
+- Settings, Account, Seeing, Privacy, About: screens/settings/{account-model,RealAccount}.ts(x); real.test.js now 16 of 16 on the test box. Dev box via `vyre call`: spaces.identity.status (devbox.vyre.run) and entries (this device plus a recovery code) answered in the shape the screen reads; records.types answered (no sealed fields). I did NOT call spaces.identity.code.replace on the dev box, since that would replace its recovery code. Reveal-style presence on code.replace, entry.remove and rules.* is the box's call and the app's person session answers it, not yet seen.
+
 ## Doing
-- Settings: Account, What my assistants can see, Privacy, About remain.
+- All Settings pages that are mine are wired except where the box has no tool. Waiting on platform for rules.* tools.
 - Calendar: waiting on records for the Event type's exact fields, and on the dev box being updated to work/kernel to run it.
 
 ## Next

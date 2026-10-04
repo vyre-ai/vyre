@@ -102,3 +102,43 @@ test("AI accounts: connected providers first with their plan, spend and budget i
   assert.equal(m.budgetLine(us[1]), "$50 of $50. At the limit: the agent stops and asks you.");
   assert.deepEqual([m.usedShare(us[0]), m.usedShare(us[1]), m.totalSpent(us)], [0, 1, 51.5]);
 });
+
+const ENTRIES = [
+  { eid: "d1", kind: "device", label: null, since: 1_790_000_000_000, self: true, newcomer: false },
+  { eid: "d2", kind: "device", label: "Alex's Mac", since: 1_790_100_000_000, self: false, newcomer: true },
+  { eid: "c1", kind: "code", label: null, since: 1_790_000_000_000, self: false, newcomer: false },
+  { eid: "k1", kind: "contact", label: "Chris Park", since: 1_790_000_000_000, self: false, newcomer: false },
+];
+
+test("account: the list splits into devices, the code and contacts; the device you are on cannot be removed", { skip: !strip }, async () => {
+  const { settingsSource } = await import("./real-source.ts");
+  const m = await import("./account-model.ts");
+  const b = box({ "spaces.identity.entries": { data: { id: "per_a", entries: ENTRIES } }, "spaces.identity.status": { data: { exists: true, name: "devbox.vyre.run", label: "devbox", pending: false } }, "spaces.identity.entry.remove": { data: {} } });
+  const s = settingsSource(b.call);
+  const es = await s.entries();
+  assert.deepEqual([m.devices(es).map((e) => e.eid), m.contacts(es).map((e) => e.eid), m.hasCode(es)], [["d1", "d2"], ["k1"], true]);
+  assert.deepEqual(es.map(m.removable), [false, true, false, true]);
+  assert.deepEqual([m.entryTitle(es[0]), m.entryTitle(es[1]), m.entryTitle(es[2])], ["This device", "Alex's Mac", "Recovery code"]);
+  assert.match(m.entryLine(es[1]), /^Device\. Added .*New sign-in, under 24 hours old$/);
+  assert.equal(m.identityLine(await s.identity()), "devbox.vyre.run");
+  await s.removeEntry("d2");
+  assert.deepEqual(b.seen.at(-1), { tool: "spaces.identity.entry.remove", input: { eid: "d2" } });
+});
+
+test("a new recovery code is one call, shown from the reply only, and never stored", { skip: !strip }, async () => {
+  const { settingsSource } = await import("./real-source.ts");
+  const { codeOf } = await import("./account-model.ts");
+  const b = box({ "spaces.identity.code.replace": { data: { code: "R7K4-Q2MX", passwordSet: false } } });
+  const r = await settingsSource(b.call).replaceCode();
+  assert.deepEqual(b.seen, [{ tool: "spaces.identity.code.replace", input: {} }]);
+  assert.equal(codeOf(r), "R7K4-Q2MX");
+  assert.equal(codeOf({ passwordSet: true }), null);
+});
+
+test("privacy lists the sealed fields from the record types, and nothing else", { skip: !strip }, async () => {
+  const { settingsSource } = await import("./real-source.ts");
+  const { sealedFields } = await import("./account-model.ts");
+  const b = box({ "records.types": { data: { types: [{ name: "contact", label: "Contact", fields: [{ name: "name", kind: "text" }, { name: "ssn", label: "SSN", kind: "sealed" }, { name: "acct", label: "Account", kind: "text", seal: { class: "bank" } }] }, { name: "trip", fields: [{ name: "where", kind: "text" }] }] } } });
+  const ts = await settingsSource(b.call).types();
+  assert.deepEqual(sealedFields(ts).map((x) => [x.typeLabel, x.label]), [["Contact", "SSN"], ["Contact", "Account"]]);
+});

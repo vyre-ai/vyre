@@ -2,6 +2,7 @@ import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { Banner, Button, Card, Divider, Row, Segmented, Switch, Text, allowsMock, showToast } from "@vyre/ui";
 import { RealNotifications, RealUpdates } from "./RealMore";
+import { RealAbout } from "./RealAccount";
 import { Group, Page } from "../places/Frame";
 import { CREDITS, VERSION } from "./data";
 import { NOTIFY_ROWS } from "./logic.js";
@@ -37,7 +38,7 @@ function SampleUpdatesScreen() {
   );
 }
 
-export function AboutScreen() {
+function SampleAboutScreen() {
   return (
     <Page title="About Vyre" sub={`Version ${VERSION}.`} back="/u/settings">
       <Group title="Open-source credits">
@@ -51,3 +52,4 @@ export function AboutScreen() {
 /** The sample page in a mock build; the box's own settings everywhere else. */
 export const NotificationsScreen = () => (allowsMock() ? <SampleNotificationsScreen /> : <RealNotifications />);
 export const UpdatesScreen = () => (allowsMock() ? <SampleUpdatesScreen /> : <RealUpdates />);
+export const AboutScreen = () => (allowsMock() ? <SampleAboutScreen /> : <RealAbout />);
