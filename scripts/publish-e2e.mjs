@@ -8,7 +8,7 @@ import path from "node:path";
 import os from "node:os";
 import { spawnSync } from "node:child_process";
 import assert from "node:assert/strict";
-import { siteTar } from "../lib/publish/site-tar.js";
+import { writeSiteFiles, volumeFill } from "../lib/publish/site-write.js";
 import { joinPageHtml } from "../lib/publish/join.js";
 import { edgeCompose, composeText, caddyfile, caddyDockerfile, IMAGES, serviceName, projectName } from "../lib/publish/edge.js";
 
@@ -38,17 +38,22 @@ try {
   assert.equal(built.code, 0, built.out);
   log(`built ${IMAGES.caddy}`);
   assert.equal(run("docker", ["volume", "create", vol]).code, 0);
-  // The site is filled the way Publish fills it: the build's files become a tar of regular files only (lib/publish/site-tar.js), extracted into the volume by a throwaway container with no network.
+  // The site is filled the way Publish fills it: the checked file list is written into a fresh folder (regular files only, O_NOFOLLOW|O_EXCL), then copied into the volume by a
+  // throwaway container with no network (lib/publish/site-write.js).
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "publish-fill-"));
   const put = (/** @type {string} */ html) => {
-    run("docker", ["run", "--rm", "-v", `${vol}:/srv`, "alpine:3", "sh", "-c", "rm -rf /srv/* /srv/.[!.]*"]);
-    const tar = Buffer.from(siteTar([{ path: "index.html", content: html }, { path: ".hidden", content: "secret" }, { path: "sub/page.html", content: "<p>page</p>" }]));
-    return run("docker", ["run", "--rm", "-i", "--network", "none", "--cap-drop", "ALL", "--cap-add", "CHOWN", "--cap-add", "DAC_OVERRIDE", "-v", `${vol}:/srv`, "alpine:3", "tar", "x", "-C", "/srv"], { input: tar });
+    run("docker", ["run", "--rm", "-v", `${vol}:/srv`, "alpine:3", "sh", "-c", "chmod -R u+w /srv; rm -rf /srv/* /srv/.[!.]*"]);
+    const dirIn = writeSiteFiles(scratch, [{ path: "index.html", content: html }, { path: ".hidden", content: "secret" }, { path: "sub/page.html", content: "<p>page</p>" }]);
+    const r = run("docker", volumeFill(dirIn, vol));
+    fs.rmSync(dirIn, { recursive: true, force: true });
+    return r;
   };
   // links never get that far: each one is refused before an archive exists
   for (const evil of [{ path: "p", type: "symlink", target: "/etc/passwd", content: "" }, { path: "e", symlink: ".env", content: "" }, { path: "g", symlink: "sub/.git/config", content: "" }, { path: "pe", symlink: "/proc/self/environ", content: "" }, { path: "sec", symlink: "/run/secrets/NAME", content: "" }]) {
-    assert.throws(() => siteTar([{ path: "index.html", content: "x" }, evil]), /link|only regular files/, evil.path);
+    assert.throws(() => writeSiteFiles(scratch, [{ path: "index.html", content: "x" }, evil]), /link|only regular files/, evil.path);
+    assert.deepEqual(fs.readdirSync(scratch), [], "nothing written for " + evil.path);
   }
-  log("links to .env, .git/config, /etc/passwd, /proc/self/environ and /run/secrets/NAME refused before any archive");
+  log("links to .env, .git/config, /etc/passwd, /proc/self/environ and /run/secrets/NAME refused before anything is written");
   assert.equal(put("<h1>Northwind v1</h1>").code, 0);
   const up = run("docker", ["compose", "-p", project, "up", "-d", "--no-deps", "caddy", svc]);
   log(up.out.trim().split("\n").slice(-6).join("\n"));
