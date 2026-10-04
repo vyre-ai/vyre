@@ -26,6 +26,8 @@ export function isPackaged(root) {
 export function devSwitch(value, root) { return value === "1" && !isPackaged(root); }
 
 /** The one line a packaged daemon prints when it is asked to start with the kernel off. */
+/** What a release-kind build says when VYRE_KERNEL=0 is set: it is ignored, and the kernel stays on. */
+export const KERNEL_FLAG_IGNORED = "VYRE_KERNEL=0 is ignored: this build always runs with the kernel on";
 export const KERNEL_OFF_REFUSAL = "This Vyre release does not run with its security layer off.";
 
 /**

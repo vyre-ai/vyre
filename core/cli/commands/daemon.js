@@ -54,6 +54,7 @@ export default [
       }
       out(`  vyred ${signal("running")} ${dim(`· ${label(d)} · ${d.role} · pid ${d.pid} · up ${Math.round(d.uptime / 1000)}s`)}`);
       out(`  ${d.modules.running} modules running${d.modules.failed ? beacon(` · ${d.modules.failed} failed (vyre modules)`) : ""}`);
+      if (d.kernel_note) out(dim(`  ${d.kernel_note}`));
       if (mem) out(`  ${mem}`);
       if (recall) out(dim(`  ${recall}`));
       return 0;

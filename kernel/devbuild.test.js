@@ -74,3 +74,17 @@ test("a software signer (no attestation) is taken only in a development build as
   assert.equal(unattestedAllowed({ VYRE_SEAL_UNATTESTED: "1" }, signed), false, "a carried release signature too");
   assert.equal(unattestedAllowed({ VYRE_SEAL_UNATTESTED: "1" }, make(null)), false, "no stamp means packaged");
 });
+
+import { start } from "../core/daemon/index.js";
+import { tempHome } from "../test/helpers.js";
+import { KERNEL_FLAG_IGNORED } from "./devbuild.js";
+test("a release-kind build with VYRE_KERNEL=0 does not refuse and does not turn the kernel off: it says the variable is ignored and runs with the kernel on", { timeout: 90_000 }, async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  const prior = process.env.VYRE_KERNEL; process.env.VYRE_KERNEL = "0";
+  t.after(() => { if (prior === undefined) delete process.env.VYRE_KERNEL; else process.env.VYRE_KERNEL = prior; });
+  const lines = /** @type {string[]} */ ([]);
+  const d = await start({ root: tempHome(t), packageRoot: make("release"), log: (/** @type {string} */ m) => { lines.push(m); } });
+  t.after(() => d.stop());
+  assert.ok(d.kernel, "the kernel is on");
+  assert.ok(lines.includes(KERNEL_FLAG_IGNORED), "one clear line at start: " + lines.slice(0, 5).join(" | "));
+});

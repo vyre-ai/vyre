@@ -19,7 +19,7 @@ import { assertDaemonHost } from "./host-guard.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { Registry, discover, ownerDevice, currentCall } from "../modules/index.js";
-import { devSwitch, isPackaged, kernelWanted, kernelOffRefusal } from "../../kernel/devbuild.js";
+import { devSwitch, isPackaged, kernelWanted, kernelOffRefusal, KERNEL_FLAG_IGNORED } from "../../kernel/devbuild.js";
 import { build, swWithBuild, htmlWithBuild } from "./build.js";
 import { serveApp, associationFile } from "./app.js";
 import { acquire } from "./lock.js";
@@ -215,6 +215,7 @@ async function startLocked(opts, root, p, release) {
   /** @type {(() => Promise<void>) | null} */ let closeKernelSessions = null;
   /** @type {(() => void) | null} */ let reopenLater = null;
   /** @type {(() => void) | null} */ let closeFlowsHost = null;
+  if (opts.kernel === undefined && process.env.VYRE_KERNEL === "0" && isPackaged(opts.packageRoot)) log(KERNEL_FLAG_IGNORED);
   if (kernelWanted(opts, process.env, opts.packageRoot)) {
     const { bootHomeKernel } = await import("../../kernel/home.js");
     // The record store: VYRE_STORE=sqlite (the default), auto or twenty (stores/twenty/space-store.js). With auto or twenty each Space's records live in its own Twenty, provisioned
@@ -962,7 +963,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     // log, and a guessed cursor past the end drops every live event.
     const last = /** @type {any} */ (events.db.prepare("SELECT MAX(id) AS id FROM events").get());
     const b = build();
-    return send(res, 200, { data: { version: VERSION, commit: b.commit, dirty: b.dirty, pid: process.pid, role: cfg.role, machine: cfg.machine, uptime: Date.now() - started, supervisor: process.env.VYRE_SUPERVISOR || null, last_event: Number(last && last.id) || 0,
+    return send(res, 200, { data: { ...(process.env.VYRE_KERNEL === "0" && isPackaged() ? { kernel_note: KERNEL_FLAG_IGNORED } : {}), version: VERSION, commit: b.commit, dirty: b.dirty, pid: process.pid, role: cfg.role, machine: cfg.machine, uptime: Date.now() - started, supervisor: process.env.VYRE_SUPERVISOR || null, last_event: Number(last && last.id) || 0,
       // How to run this vyred's own CLI (node and bin/vyre): the Capsule runs `vyre ...` typed in
       // its box by argv, never through a shell, and must run the same version.
       cli: [process.execPath, path.join(REPO, "bin", "vyre")],
