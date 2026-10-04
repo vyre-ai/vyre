@@ -64,7 +64,7 @@ export default function RealDrive() {
             <View key={e.name}>{i ? <Divider inset={60} /> : null}
               <Row dense chevron={e.dir} lead={<IconTile name={e.dir ? "drive" : "file"} />} title={e.name} sub={entryLine(e)} onPress={() => show(e)} />
             </View>
-          )) : <EmptyState title="Nothing here" body="This folder is empty, or everything in it is kept away from the app." />}
+          )) : <EmptyState title="Nothing here yet" body="This folder is empty, or everything in it is kept away from the app." />}
           {list.next != null ? <View className="p-s3"><Button kind="ghost" size="sm" label={`Show more (${entries.length} of ${list.total})`} onPress={() => share && load(share, path, list.next)} /></View> : null}
         </Card>
       ) : null}
