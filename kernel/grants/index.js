@@ -529,6 +529,8 @@ export function createGrantsStore(cfg) {
     async unlend(chain, o, opt = {}) {
       const issuer = person(chain);
       if (!o || typeof o.member !== "string" || typeof o.device !== "string") throw new KernelError("bad_input", "name the member and the computer");
+      // nothing lent for that computer: nothing to take away, and nothing to ask a person for
+      if (![...offers.values()].some(x => x.status === "active" && x.member === o.member && x.device === o.device)) return { withdrawn: 0 };
       const d = await gate(chain, "grants.unoffer", urn("offer", "lend"), { unlend: { member: o.member, device: o.device } }, opt.presence);
       let n = 0;
       for (const x of [...offers.values()]) {

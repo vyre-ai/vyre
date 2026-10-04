@@ -301,6 +301,12 @@ export default {
       emit("space.warning", { spaceId, code: w.code, message: w.message });
     };
     const vpsDeps = () => ({ emit, ...(hooks.vpsDeps || { fetch: hooks.fetch || globalThis.fetch }) });
+    /** Is this server already paired to this person (the pairing proved it)? Asked of the relay's device row and of Wink's whois; neither answering means no (the typed code step then runs). @param {string} id */
+    const pairedServer = async id => {
+      try { const r = await ctx.call("relay.device.info", { id }); if (r && r.data && !r.error && r.data.removed !== true && r.data.removed_at == null) return true; } catch { /* not a relay device */ }
+      try { const r = await ctx.call("wink.network.whois", { eid: id }); if (r && r.data && !r.error && r.data.kind === "server") return true; } catch { /* not asked */ }
+      return false;
+    };
     const deps = {
       store: kv,
       emit,
@@ -381,7 +387,7 @@ export default {
           return { ok: true };
         },
       },
-      pairing,
+      pairing: { ...pairing, alreadyPaired: pairedServer },
       homeHost: files.homeHost,
       pairingOptions: { ...PAIRING_DEFAULTS },
       get vpsDeps() { return vpsDeps(); },
@@ -416,8 +422,25 @@ export default {
       if (!s || !s.exists || !s.id || s.id === K.owner) return;
       try { await K.adoptOwner(s.id); } catch (e) { ctx.log.warn(`the kernel could not take your identity as its owner: ${String(/** @type {any} */ (e).message || e).slice(0, 160)}`); }
     };
+    /** Every Space this home hosts has the claimed identity as its owner too (a Space made before the claim, or by an older build, still has the first-start id): the same once-only adoption in each hosted kernel. */
+    /** @type {Set<string>} */ const hostedAdopted = new Set();
+    const adoptHosted = async () => {
+      if (!K || !K.spaces || typeof K.spaces.list !== "function") return;
+      let s; try { s = identity.status(); } catch { return; }
+      if (!s || !s.exists || !s.id) return;
+      for (const id of K.spaces.list()) {
+        const h = kernelHandle(id);
+        const k = h && h.hosted === true ? h.kernel : null;
+        if (!k || typeof k.kernelFor !== "function" || id === (K.space) || hostedAdopted.has(id + s.id)) continue;
+        try {
+          const hk = k.kernelFor({ name: "spaces", needs: { kernel: { spaces: true } } });
+          if (hk && typeof hk.adoptOwner === "function" && hk.owner !== s.id) await hk.adoptOwner(s.id);
+          hostedAdopted.add(id + s.id);
+        } catch (e) { ctx.log.warn(`a hosted space could not take your identity as its owner (${id}): ${String(/** @type {any} */ (e).message || e).slice(0, 120)}`); }
+      }
+    };
     // single-flight: callers that arrive while one is running wait for it; the slot is cleared only AFTER the promise is stored (an early return must not leave a finished promise in it)
-    const adoptOwner = () => { if (adopting) return adopting; const p = adoptOnce(); adopting = p; const clear = () => { if (adopting === p) adopting = null; }; p.then(clear, clear); return p; };
+    const adoptOwner = () => { if (adopting) return adopting; const p = adoptOnce().then(adoptHosted); adopting = p; const clear = () => { if (adopting === p) adopting = null; }; p.then(clear, clear); return p; };
     const guarded = (/** @type {(i: any, meta: any) => any} */ fn) => async (/** @type {any} */ i, /** @type {any} */ meta) => {
       await adoptOwner();
       try { const out = await fn(i || {}, meta || {}); await adoptOwner(); return out; } catch (e) { // after too: a call that claims or recovers the identity makes it the kernel's owner at once, not at the next call
@@ -723,7 +746,8 @@ export default {
       const cur = (await enrolledList(dev.eid)) || await personSpaceIds(s, meta);
       const next = on ? [...new Set([...cur, row.id])] : cur.filter(x => x !== row.id);
       await kv.put(`device-spaces/${dev.eid}`, next);
-      if (!on) clearLends(row.id, { device: dev.eid });
+      // taking the device out of the space takes its compute offers with it (kernel withdraw: a live session, no fresh proof), then the stored lend record goes
+      if (!on) { await kernelOffers(row.id, dev, false, meta, m ? m.role : "owner", /** @type {string} */ (s.id)); clearLends(row.id, { device: dev.eid }); }
       if (next.length !== cur.length) emit(on ? "space.device-restored" : "space.device-removed", { space: row.id, device: dev.eid });
       return { space: row.id, device: dev.eid, enrolled: on, removed: !on };
     };
@@ -737,7 +761,7 @@ export default {
         const mineIds = new Set(await personSpaceIds(s, meta));
         const ids = [...new Set(i.spaces.map((/** @type {any} */ x) => spaceOf(x).id))].filter(x => mineIds.has(x));
         await kv.put(`device-spaces/${dev.eid}`, ids);
-        for (const sid of mineIds) if (!ids.includes(sid)) clearLends(sid, { device: dev.eid });
+        for (const sid of mineIds) if (!ids.includes(sid)) { await kernelOffers(sid, dev, false, meta, "member", /** @type {string} */ (s.id)); clearLends(sid, { device: dev.eid }); }
         emit("space.device-enrolment-set", { device: dev.eid, spaces: ids.length });
         return { device: dev.eid, spaces: ids };
       });
@@ -850,6 +874,14 @@ export default {
       const cur = await kv.get(lendKey(row.id, String(i.device)));
       return { space: row.id, device: String(i.device), lent: Boolean(cur && cur.lent), first_grant_at: cur ? cur.first_grant_at : null, allowed_by: cur ? cur.allowed_by : null };
     });
+    // A server paired to a person's identity (Wink pairing, once the pairing proved the identity's own key over this pairing) has the person's id as its owner too, not its first-start id (walker, step 4).
+    // For the pairing module only: the kernel makes the change once, logged, and refuses a second one.
+    tool("spaces.owner.adopt", "For the pairing module, after it has PROVED the identity: make this home's owner (and its hosted Spaces') the person's identity id. Once only.", obj({ person: str }, ["person"]), async i => {
+      const id = String(i.person);
+      if (!/^per_[a-z2-7]{26}$/.test(id)) throw refuse("That is not a person id.", "bad_input");
+      if (!K || typeof K.adoptOwner !== "function") throw refuse("This home has no kernel to change.", "unavailable");
+      try { const r = await K.adoptOwner(id); return { owner: r.owner, previous: r.previous, changed: r.changed }; } catch (e) { throw plainKernelError(e); }
+    }, { internal: true });
     tool("spaces.devices.enrolled", "Whether a device is enrolled in a space (true when the device has no list yet). For the kernel and other modules, which refuse a device that is not.", obj({ device: str, space: str }, ["device", "space"]),
       async i => {
         // A Space this module has no row for (the home's own Space, which the kernel makes before any space is created here) is asked by its id as given: no list means enrolled.
@@ -1071,7 +1103,15 @@ export default {
       const row = spaceOf(i.space);
       const s = await gate(row.id, undefined, meta);
       if (kernelHandle(row.id)) return { invites: out(await kernelMembers({ handle: kernelHandle(row.id), now }).invites.list(await kctxOf(meta, row.id))) };
-      return { invites: out(await invitesFor(row).listInvites({ actor: s.id })) };
+      const rows = out(await invitesFor(row).listInvites({ actor: s.id }));
+      // who joined by it, for "Joined by <name> from <device>": the person ids (accepted_by), their names where this home knows them (joined_by_label, same order), and the device they joined from
+      // (joined_device: null until the redeeming call carries one). `to` is the person the invite was made for, if any.
+      for (const r of rows) {
+        const ids = Array.isArray(r.accepted_by) ? r.accepted_by : [];
+        r.joined_by_label = await Promise.all(ids.map(async (/** @type {string} */ id) => { const n = await kv.get(`person-name/${id}`); return typeof n === "string" ? n : null; }));
+        r.joined_device = null;
+      }
+      return { invites: rows };
     });
 
     /** This person's own list answers for themselves; everyone else is looked up by name inside the client. */

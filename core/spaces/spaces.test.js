@@ -1090,3 +1090,32 @@ test("lend attacks (LD-1 to LD-4): a removal ends the consent, an owner's off wi
   assert.equal(final, evs[evs.length - 1].lent, "the stored state is the last emitted event's");
   void w;
 });
+
+test("lend.status is for the device's person and the space's owners and admins: a person who is not in the space, and a stranger's device, are refused", async t => {
+  const w = world(t);
+  const { d, alex, space } = await harlow(t, w);
+  assert.equal((await d.ok("spaces.devices.lend.status", { space, device: alex.eid })).lent, false, "the owner may ask");
+  assert.equal((await d.ok("spaces.devices.lend.status", { space, device: "dev_somebodyelse01" })).lent, false, "an owner may ask about any device in the space");
+  await actAs(d, "bobby");
+  const r = await d.call("spaces.devices.lend.status", { space, device: alex.eid });
+  assert.ok(r.error && ["not_found", "not_a_member", "forbidden"].includes(r.error.code), JSON.stringify(r));
+  void w;
+});
+
+test("an invite made `to` a person refuses another person at redeem (forbidden), accepts the named one, and the list names who joined", async t => {
+  const w = world(t);
+  const { d, space } = await harlow(t, w);
+  const named = person(), other = person();
+  const made = await d.ok("spaces.invites.create", { space, role: "member", to: named.id });
+  const tok = made.token || (made.member && made.member.token);
+  assert.ok(tok, JSON.stringify(made));
+  const id = JSON.parse(Buffer.from(tok.split(".")[0], "base64url")).id;
+  const prove = p => crypto.sign(null, Buffer.from(`vyre-invite-accept-v1\n${id}\nharlow.vyre.run\n${p.id}`), crypto.createPrivateKey({ key: Buffer.from(p.privateKey, "base64url"), format: "der", type: "pkcs8" })).toString("base64url");
+  const wrong = await d.call("spaces.invites.redeem", { token: tok, person: { id: other.id, publicKey: other.publicKey }, proof: prove(other) }, "tailnet:x");
+  assert.equal(wrong.error?.code, "forbidden", JSON.stringify(wrong));
+  const right = await d.call("spaces.invites.redeem", { token: tok, person: { id: named.id, publicKey: named.publicKey }, proof: prove(named) }, "tailnet:x");
+  assert.ok(!right.error, JSON.stringify(right.error));
+  const row = (await d.ok("spaces.invites.list", { space })).invites.find(r => r.id === id);
+  assert.deepEqual([row.accepted_by, row.joined_by_label, row.joined_device, row.to], [[named.id], [null], null, named.id]);
+  void w;
+});
