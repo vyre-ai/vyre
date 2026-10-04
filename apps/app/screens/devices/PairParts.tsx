@@ -108,3 +108,21 @@ export function PairWatch({ session, who, onConfirmed, onRejected }: { session: 
     </Card>
   );
 }
+
+/**
+ * The words step for a SERVER: a "watch" session (the real one) is started here and shows the three words once the server has answered, then waits for the yes at the server;
+ * any other session (the mock) asks the person to pick or type the words as before.
+ */
+export function PairServer({ session, who, onConfirmed, onRejected }: { session: PairingSession; who: string; onConfirmed: () => void; onRejected: (say?: string) => void }) {
+  const [ready, setReady] = useState(session.kind !== "watch" || !session.ready);
+  useEffect(() => {
+    if (ready) return;
+    let live = true;
+    session.ready!().then(() => { if (live) setReady(true); }).catch((e: Error) => { if (live) onRejected(e.message || COPY.ended); });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]);
+  if (session.kind !== "watch") return <PairWords session={session} who={who} onConfirmed={onConfirmed} onRejected={() => onRejected()} />;
+  if (!ready) return <Card className="w-full items-center gap-s3"><Text tone="muted" className="text-center">Pairing with your server. This takes a few seconds.</Text></Card>;
+  return <PairWatch session={session} who={who} onConfirmed={onConfirmed} onRejected={(say) => onRejected(say)} />;
+}

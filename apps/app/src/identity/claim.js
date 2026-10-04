@@ -22,7 +22,8 @@ function plain(e) {
 
 /**
  * @param {{ name: string, password?: string, deviceLabel?: string, base: string, fetch?: typeof fetch, now?: () => number, random?: (n: number) => Uint8Array,
- *   params?: { memoryKiB: number, passes: number }, key?: import("./keys.js").DeviceKey, forceSoftware?: boolean, headers?: Record<string, string> }} o
+ *   params?: { memoryKiB: number, passes: number }, key?: import("./keys.js").DeviceKey, forceSoftware?: boolean, headers?: Record<string, string>,
+ *   beforeClaim?: (made: { name: string, id: string, eid: string, ops: any[], pin: any, key: import("./keys.js").DeviceKey }) => Promise<void> }} o
  */
 export async function claimIdentity(o) {
   const now = o.now ?? Date.now, random = o.random ?? (n => crypto.getRandomValues(new Uint8Array(n)));
@@ -41,6 +42,8 @@ export async function claimIdentity(o) {
   const sealedHash = await C.sha256hex(sealed);
   const sig = C.b64u(await key.sign(recordMessage({ name, id: state.id, by: key.eid, via: undefined, ts, sealedHash, vseq: undefined, vhead: undefined })));
   const body = { name, ops: [genesis], sealed, rec: { by: key.eid, ts, sig } };
+  // Keep the key BEFORE the name is claimed: a name held by an identity nobody can sign for cannot be taken back, so if keeping fails (quota, a private window) nothing is claimed.
+  if (o.beforeClaim) await o.beforeClaim({ name, id: state.id, eid: key.eid, ops: [genesis], pin: C.pinOf(state), key });
   let res;
   try {
     res = await f(`${o.base.replace(/\/+$/, "")}/v1/ids/claim`, { method: "POST", headers: { accept: "application/json", "content-type": "application/json", ...(o.headers ?? {}) }, body: JSON.stringify(body) });
