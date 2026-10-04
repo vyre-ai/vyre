@@ -990,3 +990,15 @@ test("the strength vocabulary is one list, and everything but software passes", 
   assert.deepEqual(STRENGTHS.filter(isNotSoftware), ["enclave", "enclave, unattested", "passkey"]);
   for (const bad of ["hardware", "keystore", "", "Software", undefined]) assert.equal(isNotSoftware(bad), false, String(bad));
 });
+
+test("paired sign-in: a signature by the identity entry's enclave key over the challenge makes the session `enclave, unattested`; the device key alone, or another key's signature, leaves it software", async t => {
+  const r = await pairedRig(t);
+  const dk = r.kp(), enc = r.kp(), other = r.kp();
+  const point = Buffer.concat([Buffer.from([4]), Buffer.from(enc.jwk.x, "base64url"), Buffer.from(enc.jwk.y, "base64url")]).toString("base64url");
+  const grant = device => r.people.grant({ device, keyId: "k1", deviceKey: dk.jwk, software: true, strength: "software" });
+  const run = (device, esigKey, enclaveKey = point) => { grant(device); const m = r.pairedStart(r.start(device)); const s = /** @type {any} */ (r.people.startPaired({ device, sig: r.sign(dk, m), ...(esigKey ? { esig: r.sign(esigKey, m), enclaveKey } : {}) })); return r.people.strength(s.id); };
+  assert.equal(run("d1", null), "software", "the device key alone");
+  assert.equal(run("d2", other), "software", "a signature by a key that is not the entry's enclave key");
+  assert.equal(run("d3", enc), "enclave, unattested", "the entry's enclave key signed this sign-in");
+  assert.equal(run("d4", enc, null), "software", "no enclave key on record: nothing to verify against");
+});

@@ -1419,10 +1419,10 @@ test("SW-1 on a release-kind build (software switch off): a software paired sess
     assert.deepEqual(await strengths(), ["software"], "a signature by a key that is not the identity entry's enclave key proves nothing");
     // the identity entry's enclave key signs this sign-in: enclave, unattested, passes
     await f.w.d.registry.call("presence.person.end-paired", { device: f.done.device }, "module:wink");
+    // the key is on record but no directory entry holds it (the harness's identity has no enclave entry): the check at sign-in fails closed
     links = linksWith(signWith(enc)); await links.startPaired("srv");
-    const mine = (await f.w.d.registry.call("presence.person.sessions", {}, "cli", PROOF)).data;
-    assert.ok((mine.sessions || mine).some(x => x.strength === "enclave, unattested" && !x.software), "an enclave-signed sign-in is enclave, unattested and not software-marked");
-    assert.equal(await defineOn(f, links), "ok", "an enclave-strength session passes"); }
+    assert.deepEqual(await strengths(), ["software"], "an enclave key that does not stand on the identity's directory list is software");
+    assert.match(await defineOn(f, links), /needs_presence|presence/, "and is refused on release (the live-entry positive case is core/wink/pairing.test.js and core/presence/presence.test.js)"); }
   // a software-key browser: refused, until the owner's phone approves its sign-in
   { const f = await pairFreshServer(t, { kind: "web", about: { kind: "web" }, presenceStorage: "software" }); const links = linksFor(t, f); await links.startPaired("srv");
     assert.match(await defineOn(f, links), /needs_presence|presence/, "a software session is refused");

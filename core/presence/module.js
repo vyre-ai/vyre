@@ -262,7 +262,10 @@ export default {
         const refuse = () => Object.assign(new Error("this device cannot sign in that way; sign in with its key"), { code: "denied" });
         if (!device) throw refuse();
         const wr = await ctx.call("wink.device.record", { id: device }).catch(() => null);
-        const s = people.startPaired({ device, sig: String(input.sig), label: input.label || null, esig: typeof input.esig === "string" ? input.esig : null, enclaveKey: wr && wr.data && typeof wr.data.enclaveKey === "string" ? wr.data.enclaveKey : null });
+        // the enclave key counts only while it still stands on the identity's directory list (a revoked phone's entry no longer does): wink checks it, cached for 10 minutes
+        const live = typeof input.esig === "string" ? await ctx.call("wink.device.enclave-live", { device }).catch(() => null) : null;
+        const enclaveStands = Boolean(live && live.data && live.data.ok === true);
+        const s = people.startPaired({ device, sig: String(input.sig), label: input.label || null, esig: typeof input.esig === "string" ? input.esig : null, enclaveKey: enclaveStands && wr && wr.data && typeof wr.data.enclaveKey === "string" ? wr.data.enclaveKey : null });
         if ("refused" in s) {
           if (s.deleted) { locked.set(device, Date.now() + LOCK_MS); ctx.events.emit("presence.refused", { device, why: "pairing grant withdrawn after three wrong attempts" }); }
           throw refuse();
