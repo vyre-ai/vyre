@@ -14,7 +14,7 @@ import { seams } from "../core/relay/index.js";
 import { HUMAN_ONLY } from "../core/presence/index.js";
 import { createRelay } from "../relay/node/server.js";
 import { joinWithCode } from "../relay/client/join.js";
-import { pairTicket, resolveTicket, connect } from "../relay/client/client.js";
+import { pairTicket, resolveTicket, connect, openChannel, deviceKey as clientDeviceKey } from "../relay/client/client.js";
 import { nodeCrypto, fileKeyStore } from "../relay/client/nodecrypto.js";
 import { fromBase64url } from "../relay/client/bytes.js";
 import { ackCode } from "../relay/client/code.js";
@@ -1510,4 +1510,53 @@ test("the pairing path adopts for real: after the pick the SERVER's home owner i
   const again = await reg.call("spaces.owner.adopt", { person: owner.id }, "module:wink");
   assert.ok(!again.error && again.data.changed === false, `adopting the same identity again changes nothing: ${JSON.stringify(again)}`);
   assert.equal(w.d.kernel.id.owner, owner.id, "still the identity");
+});
+
+test("the invitee door, real daemon and relay: a stranger's channel with the invitee hello makes no device and has one door; everything else is refused, and a bad hello gets a stream that refuses every call", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const w = await world(t, { kernel: true });
+  const crypt = nodeCrypto();
+  const ks = keystore(t);
+  const keys = await clientDeviceKey({ keyStore: ks, crypto: crypt });
+  // where the box is: from a ticket's offer (the same route and box key every pairing starts from)
+  const offer = (await resolveTicket(fromBase64url((await w.d.registry.call("relay.pair.ticket", {}, "cli", PROOF)).data.ticket), { relay: w.status.url, crypto: crypt })).offer;
+  const route = offer.route, box = Buffer.from(offer.box);
+  const { channel, reply } = await openChannel({ relay: w.status.url, route, box, keys, hello: { v: 1, invitee: true }, crypto: crypt, WebSocket: globalThis.WebSocket });
+  t.after(() => channel.close(1000, "done"));
+  assert.ok(reply.invitee, "the box admits the channel as an invitee");
+  assert.equal(reply.device, undefined);
+  assert.equal(((await w.d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices || []).length, 0, "no device row, no presence key");
+  const head = h => new Promise(res => { const s = channel.open(h); s.onhead = x => res({ status: x && x.status, s }); s.onreset = () => res({ status: 0, s }); });
+  // no ordinary request, tool or event stream reaches anything
+  for (const h of [{ method: "GET", path: "/v1/tools" }, { method: "POST", path: "/v1/tools/system.info", headers: {} }, { method: "GET", path: "/v1/events" }, { ws: "/v1/streams/glass/screen" }]) {
+    const r = await head(h);
+    assert.ok(r.status === 403 || r.status === 400 || r.status === 0, `${JSON.stringify(h).slice(0, 40)} is refused (${r.status})`);
+  }
+  // the only door is the peer stream with an invitee hello; a plain peer stream and an extra field are refused
+  assert.equal((await head({ peer: "wink", space: "home" })).status, 400, "a plain peer stream has no invitee hello");
+  assert.equal((await head({ peer: "wink", space: "home", invitee: {}, extra: 1 })).status, 400);
+  // a hello that is malformed gets the stream (the door opens it) and then every call is refused and the stream closes: the door never answers a tool
+  const bad = await head({ peer: "wink", space: "home", invitee: { space: "spc_" + "a".repeat(12), invite: "inv_" + "b".repeat(32), identity: "per_" + "c".repeat(26), entry: "d".repeat(26), ts: Date.now(), nonce: "n".repeat(20), sig: "s".repeat(86) } });
+  assert.equal(bad.status, 200);
+  const { peerSession, streamPipe } = await import("../core/wink/node/peer-wire.js");
+  const session = peerSession(streamPipe(bad.s), { first: 1 });
+  await assert.rejects(() => session.call("system.info", {}, { timeoutMs: 3000 }), e => e.code === "denied");
+  await assert.rejects(() => session.call("kernel.call", { v: 1, space: "spc_" + "a".repeat(12), id: "x", ts: Date.now(), call: "grants.invites.get", args: ["inv_" + "b".repeat(32)] }, { timeoutMs: 3000 }), e => e.code === "denied");
+});
+
+test("a key that is a waiting or paired device here is not admitted as an invitee", async t => {
+  const w = await world(t);
+  const crypt = nodeCrypto();
+  // a key that is already a paired device here is not admitted by the invitee hello (it must come as that device)
+  const minted = await w.d.registry.call("relay.pair.ticket", {}, "cli", PROOF);
+  const ks = keystore(t);
+  const paired = await pairTicket(fromBase64url(minted.data.ticket), { relay: w.status.url, name: "Alex's phone", crypto: crypt, keyStore: ks });
+  const keys = await clientDeviceKey({ keyStore: ks, crypto: crypt });
+  const box = Buffer.from(paired.box, "base64url");
+  const r = await openChannel({ relay: w.status.url, route: paired.route, box, keys, hello: { v: 1, invitee: true }, crypto: crypt, WebSocket: globalThis.WebSocket });
+  t.after(() => r.channel.close(1000, "done"));
+  assert.ok(r.reply, "the channel opened (the box is reachable)");
+  assert.ok(!r.reply.invitee, "a waiting pairing's key is not an invitee");
 });

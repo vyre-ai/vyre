@@ -23,7 +23,7 @@ import { routeId, base32, TICKET_BYTES, TICKET_TTL, ticketDerive, ticketMac, tic
 import { SetupSession, setupGate } from "./setup.js";
 import { relayLink } from "./link.js";
 import { bridge } from "./bridge.js";
-import { peersFor } from "./peers.js";
+import { peersFor, inviteesFor } from "./peers.js";
 import { pairUrl, parsePairUrl } from "./pairing.js";
 import { knownBuild, findRelease, newestRelease } from "./releases.js";
 import { agentClaim, ownerDevice } from "../modules/index.js";
@@ -315,6 +315,9 @@ export default {
       // the setup session already admitted, is checked against the setup code's key and nothing else.
       const existing = /** @type {any} */ (db.prepare("SELECT kind FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
       if ((hello && hello.setup && typeof hello.setup === "object") || (existing && existing.kind === "setup")) return admitSetup(pub, hello, id, existing);
+      // An invitee (DESIGN-spaces-first.md): a person who is not a member of any space here reaches the home for one purpose. The channel makes no device row, no presence key and no session; it may
+      // open only the invitee peer stream, whose door (core/daemon/peer-door.js) checks the identity proof and the invite. A key that is a paired device here is not an invitee on this hello.
+      if (hello && hello.invitee === true && !existing && !pendingPairs.has(id)) return { v: 1, box: { name: boxName() }, invitee: id };
       if (hello && typeof hello.pair === "string") {
         const match = takeLiveSecret(hello.pair);
         if (!match) throw new Error("this pairing code has expired or was already used; make a new one on the box");
@@ -576,6 +579,15 @@ export default {
     const callerLabel = (kind, id) => kind === "app" ? `device:${id}` : kind === "web" ? `web:${id}` : kind === "setup" ? `setup:${id}` : null;
     let handle = null, webHandle = null, upgrade = null;
     function onchannel(channel, { reply }) {
+      if (reply && reply.invitee) {
+        const door = inviteesFor(ctx);
+        if (!door) { channel.close(4401, "this box does not take invitees"); return; }
+        const iid = String(reply.invitee);
+        // no HTTP-like request reaches anything for an invitee: every one is refused; the one door is the peer stream
+        const refuse = (/** @type {any} */ _req, /** @type {any} */ res) => { try { res.writeHead(403, { "content-type": "application/json" }); res.end(JSON.stringify({ error: { code: "denied", message: "an invite opens one door" } })); } catch { /* gone */ } };
+        bridge(channel, { handler: refuse, caller: `invitee:${iid}`, peer: { node: "invitee", stableId: iid, login: null, tags: [], caps: {}, kind: "device" }, log: m => ctx.log(m), invitees: door });
+        return;
+      }
       if (reply && reply.pending) {
         // A waiting pairing (X-1): a channel with one door, the tool its own pairing needs. No device row, no presence key, no upgrade, no peer stream.
         const pid = String(reply.pending), p = pendingPairs.get(pid);
