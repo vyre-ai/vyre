@@ -42,7 +42,13 @@ export function createTurnSeal(o) {
     try { if (fsx.realpathSync(dir) !== dir) throw 0; } catch { throw refuse("the project folder is a link or missing"); }
     let st = null; try { st = fsx.lstatSync(o.file); } catch (e) { if (e.code !== "ENOENT") throw e; }
     if (st && (!st.isFile() || st.isSymbolicLink())) throw refuse("not a plain file");
-    return st;
+    let ds = null; try { ds = fsx.lstatSync(dir); } catch { throw refuse("the project folder is missing"); }
+    return { file: st, dir: ds };
+  }
+  /** The folder is still the one that was checked (same device and inode, not a link): the session can write its own projects folder and could swap it between the check and the use. */
+  function sameDir(was) {
+    let now; try { now = fsx.lstatSync(path.dirname(o.file)); } catch { throw err("refused", "not this session's own transcript: the project folder changed"); }
+    if (now.isSymbolicLink() || now.dev !== was.dev || now.ino !== was.ino) throw err("refused", "not this session's own transcript: the project folder changed");
   }
   const readAt = (fd, pos, len) => { const b = Buffer.allocUnsafe(len); let n = 0; while (n < len) { const r = fsx.readSync(fd, b, n, len - n, pos + n); if (!r) break; n += r; } return b.subarray(0, n); };
 
@@ -68,10 +74,14 @@ export function createTurnSeal(o) {
   return {
     /** @param {{ state?: any }} [a] */
     seal: ({ state } = {}) => serial(async () => {
-      pin();
+      const pinned = pin();
       let fd;
-      try { fd = fsx.openSync(o.file, "r"); } catch (e) { if (e.code === "ENOENT") throw err("not_found", "the session has no transcript yet"); throw e; }
+      // Opened without following a link, then the descriptor itself is checked against what pin() saw: whatever the path points at now, only that very file is read (reviewer-2 RN-3b).
+      try { fd = fsx.openSync(o.file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW); } catch (e) { if (e.code === "ENOENT") throw err("not_found", "the session has no transcript yet"); if (e.code === "ELOOP") throw err("refused", "not this session's own transcript: it is a link"); throw e; }
       try {
+        const fst = fsx.fstatSync(fd);
+        if (!fst.isFile() || (pinned.file && (fst.dev !== pinned.file.dev || fst.ino !== pinned.file.ino))) throw err("refused", "not this session's own transcript: the file changed");
+        sameDir(pinned.dir);
         fsx.fsyncSync(fd);                                            // what the provider wrote is on disk before the store says it holds it
         const size = fsx.fstatSync(fd).size;
         if (!cur) cur = await attach(fd, size);
@@ -98,13 +108,14 @@ export function createTurnSeal(o) {
     }),
 
     recover: () => serial(async () => {
-      pin();
+      const pinned = pin();
       const cp = await o.port.getCheckpoint(o.session);
       if (!cp) return null;
       const dir = path.dirname(o.file), tmp = `${o.file}.tmp-${process.pid}-${crypto.randomBytes(4).toString("hex")}`;
       fsx.mkdirSync(dir, { recursive: true });
       let fd = -1, n = 0, bytes = 0;
       try {
+        sameDir(pinned.dir);
         fd = fsx.openSync(tmp, "wx", 0o600);
         // The stored lines up to the checkpoint, written as they are read, never all held at once.
         for (let from = 1; from <= cp.seq;) {
@@ -115,6 +126,7 @@ export function createTurnSeal(o) {
         }
         if (n !== cp.seq) throw err("incomplete", "the stored transcript does not reach its checkpoint");
         fsx.fsyncSync(fd); fsx.closeSync(fd); fd = -1;
+        sameDir(pinned.dir);                                            // checked again just before the rename: a swapped folder is never written into
         fsx.renameSync(tmp, o.file);
       } catch (e) { if (fd >= 0) try { fsx.closeSync(fd); } catch {} try { fsx.unlinkSync(tmp); } catch {} throw e; }
       try { const d = fsx.openSync(dir, "r"); try { fsx.fsyncSync(d); } finally { fsx.closeSync(d); } } catch {}
