@@ -42,6 +42,8 @@ const fakeSource = `export default { async start(ctx) {
     t("builder.build", async i => pf().build(i));
   } else if (tools === "names") {
     t("names.owns", async i => ({ owns: pf().owns(i.host, i.space) }));
+  } else if (tools === "projects") {
+    t("projects.reach", async () => ({ all: true }));
   } else if (tools === "tasks") {
     t("tasks.create", async i => { pf().tasks.push(i); return { id: "tsk_" + pf().tasks.length }; });
   }
@@ -49,14 +51,14 @@ const fakeSource = `export default { async start(ctx) {
 } };`;
 
 const manifestOf = (/** @type {string} */ name, /** @type {string[]} */ tools) => ({ roles: ["box"], description: name, does: { tools: tools.map(n => ({ name: n, reach: "modules" })) } });
-const FAKE_TOOLS = { spaces: ["spaces.self", "spaces.membership"], vault: ["vault.release"], seal: ["seal.ledger.has"], builder: ["builder.build"], names: ["names.owns"], tasks: ["tasks.create"] };
+const FAKE_TOOLS = { projects: ["projects.reach"], spaces: ["spaces.self", "spaces.membership"], vault: ["vault.release"], seal: ["seal.ledger.has"], builder: ["builder.build"], names: ["names.owns"], tasks: ["tasks.create"] };
 
 /**
  * A real registry with publish and the chosen fakes. @param {any} t
  * @param {{ fakes?: string[] }} [o]
  */
 async function boxRegistry(t, o = {}) {
-  const fakes = o.fakes || ["spaces", "vault", "seal", "builder", "names"];
+  const fakes = o.fakes || ["spaces", "vault", "seal", "builder", "names", "projects"];
   const home = tempHome(t);
   const p = config.ensure(home);
   const extra = path.join(home, "fake-modules");
@@ -363,7 +365,7 @@ test("publish: edge writes the compose project and Caddyfile with their modes, i
 
   const e = await b.ok("publish.edge", {});
   assert.equal(e.dir, b.publishRoot);
-  assert.deepEqual(e.files.map((/** @type {any} */ f) => [f.path, f.mode]), [["compose.yaml", "0644"], ["Caddyfile", "0644"], [`secrets/${id}/STRIPE_KEY`, "0600"]]);
+  assert.deepEqual(e.files.map((/** @type {any} */ f) => [f.path, f.mode]), [["compose.yaml", "0644"], ["Caddyfile", "0644"], ["caddy.Dockerfile", "0644"], [`secrets/${id}/STRIPE_KEY`, "0600"]]);
   const mode = (/** @type {string} */ rel) => (fs.statSync(path.join(b.publishRoot, rel)).mode & 0o777).toString(8);
   assert.equal(mode("compose.yaml"), "644");
   assert.equal(mode("Caddyfile"), "644");

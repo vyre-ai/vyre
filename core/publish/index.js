@@ -13,7 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 import dns from "node:dns/promises";
 import { createPublisher, PublishError } from "../../lib/publish/index.js";
-import { composeText, assertIsolated } from "../../lib/publish/edge.js";
+import { composeText, assertIsolated, caddyDockerfile, IMAGES } from "../../lib/publish/edge.js";
 import { checkBuildForSealed } from "../../lib/publish/secrets.js";
 import { createRoleAuthorize } from "../../lib/spaces/authz.js";
 import { NO_BUILDER } from "./builder-plan.js";
@@ -428,7 +428,7 @@ export default {
     });
 
     ctx.tool("publish.edge", {
-      description: "Write the edge for what is live now: a compose project and a Caddyfile in <home>/publish/<space>/, and the runtime secret files its sites were granted. It does not start anything.",
+      description: "Write the edge for what is live now: a compose project, a Caddyfile and the Dockerfile of its Caddy image in <home>/publish/<space>/, and the runtime secret files its sites were granted. It does not start anything.",
       input: obj({}),
       run: async (i, meta) => {
         const b = await begin(i, meta);
@@ -444,12 +444,14 @@ export default {
         };
         await put("compose.yaml", composeText(compose), 0o644);
         await put("Caddyfile", caddyfile, 0o644);
+        await put("caddy.Dockerfile", caddyDockerfile(), 0o644);
         // Runtime secrets: only the deployments in the compose, only what each was granted for runtime.
         for (const d of await storeFor(b.space.id).list("deployments")) {
           if (!compose.services["w-" + d.id.replace(/^dep_/, "")]) continue;
           for (const s of d.secrets || []) if (s.use.includes("runtime")) await put(path.join("secrets", d.id, s.name), await files.read(s.ref), 0o600);
         }
-        return { dir, files: written, compose, caddyfile };
+        // What starts the project (it is not this module) builds the edge image first: `docker build -t <image> -f caddy.Dockerfile .` in `dir`.
+        return { dir, files: written, compose, caddyfile, build: { image: IMAGES.caddy, dockerfile: "caddy.Dockerfile" } };
       },
     });
 
