@@ -207,8 +207,6 @@ await step("drive: browse a folder and open a text file", { skip: has("drive") &
 });
 await step("drive: the space's own Drive opens (Space tab)", { honest: !has("spaceDrive"), expect: [/Drive is empty|Nothing here|did not open|no Drive yet/i] }, async () => { await go("u/drive"); await settle(1200); });
 await step("calendar: week, month, day", {}, async () => { await go("u/calendar"); await click("Month"); await click("Day"); await click("Week"); });
-await step("sites: list", { honest: !has("publish") }, async () => { await go("u/sites"); });
-await step("sites: publish a draft", { skip: has("publish") ? undefined : "the dev box has no publish module (windows is bringing Publish up on testbox3)" }, async () => {});
 await step("settings: home", {}, async () => { await go("u/settings"); });
 await step("settings: updates, check for updates", { expect: [/up to date|is out/] }, async () => { await go("u/settings/updates"); await press("Check for updates"); });
 await step("settings: notifications, switch a kind and back", {}, async () => {

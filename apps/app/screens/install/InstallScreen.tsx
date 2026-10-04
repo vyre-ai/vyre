@@ -12,6 +12,7 @@ import { parseWinkCode } from "../../src/api/wink-code";
 import { readProgress, writeProgress } from "../../src/state/setup-progress";
 import { wordsLine, type PairingSession } from "../../src/api/pairing-session";
 import { MOCK, said } from "../../src/real/box";
+import { NO_BROWSER_CLAIM, claimHere } from "../../src/real/flags.js";
 import { acceptInvite, checkName, claimSetup, createIdentity, createSpace, kitChoices, listSpaces, previewInvite, proposeKitFor, readIdentity, resumeSpace, saveSetup } from "../../src/real/install";
 import { applyClaim, createInput, inviteFrom, nameNoteReal, pendingLines, nameStatusReal, savesAt, setupElsewhere, setupFrom } from "./real.js";
 import { setupElsewhere as setupElsewhereLine } from "./flow.js";
@@ -206,7 +207,15 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
   const inv = MOCK ? DATA.invite : invite ?? { ...DATA.invite, space: "", address: "", from: "", role: "", roleLine: "", sees: "", link: "" };
 
   let body: React.ReactNode = null;
-  if (step === "name") {
+  if (step === "name" && !MOCK && !claimHere(Platform.OS)) {
+    // A browser pairs to a name made on the phone or computer app; it never makes one (RC1).
+    body = (
+      <Page title="Pair this browser to your name" sub={NO_BROWSER_CLAIM}>
+        <Banner>Open Vyre on your phone or computer, then scan or paste the code here.</Banner>
+        <Button kind="primary" label="Pair with a code" onPress={() => setStep("scan")} />
+      </Page>
+    );
+  } else if (step === "name") {
     body = (
       <Page title="Choose your Vyre name" sub="It is how people find you. You can add your own domain later.">
         {wrong ? <Banner tone="warn">{wrong}</Banner> : null}

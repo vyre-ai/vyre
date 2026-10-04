@@ -90,6 +90,6 @@ test("an added item is checked before the box is asked, and sent as vault.put wi
   assert.deepEqual(b.seen[1].input, { passphrase: "pass phrase" });
   assert.equal(await vaultSource(async () => ({ error: { code: "no_such_tool", message: "x" } })).stateReal(), null);
   assert.deepEqual(await vaultSource(async () => ({ data: { locked: true, unlock: "passphrase" } })).stateReal(), { locked: true, unlock: "passphrase" });
-  assert.match(m.putRefusal("presence_required", ""), /Face ID/);
+  assert.match(m.putRefusal("presence_required", ""), /Approve on this device/);
   assert.match(m.putRefusal("wrong_passphrase", ""), /not right/);
 });

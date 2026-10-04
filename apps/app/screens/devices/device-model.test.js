@@ -17,7 +17,7 @@ test("spaces split into those the device reaches and those it does not, and each
   assert.equal(removedToast("Mac", "Harlow"), "Mac no longer reaches Harlow. Its other spaces are untouched.");
 });
 test("refusals get plain words", () => {
-  assert.match(deviceRefusal("presence_required", ""), /Face ID/);
+  assert.match(deviceRefusal("presence_required", ""), /Approve on this device/);
   assert.match(deviceRefusal("device_removed", ""), /already removed/);
   assert.equal(deviceRefusal("x", "box words"), "box words");
 });

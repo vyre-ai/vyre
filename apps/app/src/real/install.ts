@@ -1,6 +1,8 @@
 // The install flow's calls to the box (screens/install/real.js maps the answers). Each is one tool through src/real/box.ts.
 
+import { Platform } from "react-native";
 import { said, tool } from "./box";
+import { NO_BROWSER_CLAIM, claimHere } from "./flags.js";
 import { claimIdentity } from "../identity/claim.js";
 import { loadIdentity, saveIdentity } from "../identity/store";
 import { createdFrom, directoryAnswer, identityFrom, nameAnswer } from "../../screens/install/real.js";
@@ -38,6 +40,8 @@ export async function checkName(name: string): Promise<"free" | "taken" | "unkno
  * here. The recovery code is in this answer only: the caller shows it once and drops it.
  */
 export async function createIdentity(name: string, deviceLabel: string, password = ""): Promise<{ name: string; id: string; recoveryCode: string; software: boolean }> {
+  // RC1: a browser never makes a name (KP-1): refused before any key is made, any storage is opened or the directory is asked.
+  if (!claimHere(Platform.OS)) throw new Error(NO_BROWSER_CLAIM);
   const made = await claimIdentity({ name, password, deviceLabel, base: DIRECTORY });
   await saveIdentity({ name: made.name, id: made.id, eid: made.eid, ops: made.ops, pin: made.pin, key: made.key });
   return { name: made.name, id: made.id, recoveryCode: made.recoveryCode, software: made.software };

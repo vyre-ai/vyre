@@ -82,7 +82,7 @@ export function putInput(n: NewItem): { input: Record<string, unknown> } | { err
 
 /** The words for a refused add or unlock. */
 export function putRefusal(code: string | undefined, message: string): string {
-  if (code === "presence_required") return "That needs you. Approve with Face ID or your fingerprint, then try again.";
+  if (code === "presence_required") return "That needs you. Approve on this device, then try again.";
   if (code === "denied" || code === "forbidden") return "This device may not add to the vault.";
   if (code === "locked" || code === "vault_locked") return "Unlock the vault first.";
   if (code === "bad_passphrase" || code === "wrong_passphrase") return "That passphrase is not right.";

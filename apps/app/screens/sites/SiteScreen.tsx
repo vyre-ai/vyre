@@ -112,6 +112,9 @@ function SampleSiteScreen() {
 }
 
 /** The sample site in a mock build; the box's own publishing everywhere else. */
+import { PUBLISH_ON } from "../../src/real/flags.js";
+import { NotYet } from "./NotYet";
 export default function SiteScreen() {
+  if (!allowsMock() && !PUBLISH_ON) return <NotYet />;
   return allowsMock() ? <SampleSiteScreen /> : <RealSite />;
 }

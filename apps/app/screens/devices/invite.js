@@ -38,7 +38,7 @@ export function inviteRow(i) {
 /** The words for a refused invite call. @param {string | undefined} code @param {string} message */
 export function inviteRefusal(code, message) {
   if (code === "not_allowed" || code === "denied") return "Only an owner or admin can invite people to this space.";
-  if (code === "presence_required") return "That needs you. Approve with Face ID or your fingerprint, then try again.";
+  if (code === "presence_required") return "That needs you. Approve on this device, then try again.";
   if (code === "not_found") return "That invite is already gone.";
   return message || "The invite did not go through.";
 }

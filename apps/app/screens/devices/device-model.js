@@ -24,6 +24,6 @@ export function deviceRefusal(code, message) {
   if (code === "not_a_member") return "You are not a member of that space.";
   if (code === "device_removed") return "That device was already removed from the space.";
   if (code === "not_found") return "The box does not know that device.";
-  if (code === "presence_required") return "That needs you. Approve with Face ID or your fingerprint, then try again.";
+  if (code === "presence_required") return "That needs you. Approve on this device, then try again.";
   return message || "The device change did not go through.";
 }

@@ -25,7 +25,7 @@ test("a made invite says the link and whether you must confirm words; a row name
 
 test("refusals get plain words", () => {
   assert.match(inviteRefusal("not_allowed", ""), /owner or admin/);
-  assert.match(inviteRefusal("presence_required", ""), /Face ID/);
+  assert.match(inviteRefusal("presence_required", ""), /Approve on this device/);
   assert.equal(inviteRefusal("x", "the box said"), "the box said");
 });
 
