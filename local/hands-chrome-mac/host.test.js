@@ -3,6 +3,7 @@
 // splits, {event:"no_module"} told once with a slow retry, and exit 0 when either side closes.
 // One test runs the real launcher against a socket that is not there (no Chrome involved).
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

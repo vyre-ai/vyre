@@ -2,6 +2,7 @@
 // js/glass-mini.js: one line per running agent computer on Now, from cohesion's sight (ADR 0036),
 // following sight.stepped, with no polling and nothing for the Mac's own screen.
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { install, text, $$ } from "../test/fake-dom.js";

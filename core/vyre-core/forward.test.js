@@ -4,6 +4,7 @@
 // forwards to core, refuses plain values outside the Capsule, and answers core_owned for every
 // slice that hasn't moved. Its old store is never opened.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

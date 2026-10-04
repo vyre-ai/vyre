@@ -1,6 +1,7 @@
 // @ts-check
 // The invisible password-field guard, run as the page would run it against a small fake DOM, and the
 // rings that must not outlive a page.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { passwordFieldScript } from "./extension/shared/guards.js";

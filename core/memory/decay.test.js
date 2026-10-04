@@ -3,6 +3,7 @@
 // freshness is computed when a fact is read, from the newest turn that supports it over all its
 // evidence. Fictional data only.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

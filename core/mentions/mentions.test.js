@@ -1,6 +1,7 @@
 // @ts-check
 // mentions: one search over every provider's names, grouped, fail-soft, as the asking person.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

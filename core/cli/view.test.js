@@ -3,6 +3,7 @@
 // (docs/reference/cli-json.md). The pure parts first, then the real bin/vyre in a temp home with
 // no vyred, as the Capsule runs it: a child with pipes, no terminal, no colour asked for.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";

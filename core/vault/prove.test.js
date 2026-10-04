@@ -2,6 +2,7 @@
 // prove.js: the interim presence gate. Every proof here is a test hook or the fake enclave
 // helper; no test shows a dialog.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

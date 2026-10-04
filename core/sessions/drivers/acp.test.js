@@ -3,6 +3,7 @@
 // whole scenario including the fixed safety set, bypass-shaped modes filtered, the client's fs and
 // terminal methods held to the floor and to the session's folder, and the per-provider hooks.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

@@ -1,5 +1,6 @@
 // reviewer-2 repro PR-1: Proposals.onEvent acts on ANY done+approved task whose form says kind "proposal", whoever created it. An assistant can request such a task itself
 // with a benign card name and a pointer at a different draft Flow; the admin's yes then approves the pointed-at Flow.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { world, settle, ALEX } from "./testing/world.js";

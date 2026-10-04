@@ -4,6 +4,7 @@
 // version, a token bound to the file, and no value in anything returned, audited or emitted.
 // Every value here is a made-up sample.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

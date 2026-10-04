@@ -2,6 +2,7 @@
 // `vyre box` end to end against fakes: an ssh that runs the "remote" command here, a remote PATH
 // with fake uname, docker, sudo and vyre, a fake Tailscale on the Mac and a fake browser. Nothing
 // real is reached: no server, no Docker, no Tailscale.
+import "../../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

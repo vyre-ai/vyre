@@ -6,6 +6,7 @@
 //
 // The hub tests need native-core's settings module (ADR 0035 steps 1 to 3) and skip without it.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

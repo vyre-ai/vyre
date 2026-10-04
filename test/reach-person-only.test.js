@@ -5,6 +5,7 @@
 // sets reach person and deletes the line, or replaces "pending" with the reason module callers need
 // it. This fails on a PERSON_ONLY tool that is neither reach person nor listed, and on a stale line.
 // It reads files only.
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

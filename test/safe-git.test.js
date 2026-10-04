@@ -2,6 +2,7 @@
 // safe git (lib/git-safe.js): a folder someone else can write to never runs its own commands
 // through vyred's git. A planted core.fsmonitor, textconv, filter driver or hook leaves a marker if
 // it runs; none may.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

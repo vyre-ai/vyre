@@ -1,4 +1,5 @@
 // Reading a generated file as the account that owns it: only a provider's media output folders, only media names, only media bytes, no links, capped.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

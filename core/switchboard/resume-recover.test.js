@@ -1,6 +1,7 @@
 // @ts-check
 // A thread whose process was killed, or whose daemon died under it, is put back to its last sealed turn before it resumes (runner.recover): the torn tail and the unfinished turn a kill left in
 // the provider's transcript never reach `claude --resume`.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

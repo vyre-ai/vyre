@@ -2,6 +2,7 @@
 // The person comes from the kernel's chain (ctx.kernel.chain(meta), the daemon's facts), or from core/modules/index.js ownerDevice for the registry's own checks. This test finds code that reads the
 // `device:` or `tailnet:` label shape with a regex or startsWith, and fails on a new one. The list below is today's exceptions, per file, and only shrinks: owners fix their own and lower the count.
 // Lines that only refuse a guest ("tailnet-guest:") or an agent are not counted. The kernel's own chain builders are allowed in full.
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

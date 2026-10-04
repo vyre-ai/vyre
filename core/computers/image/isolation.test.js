@@ -12,6 +12,7 @@
 // Each check runs as the agent (docker exec -u 1000:1000), the way anything the agent starts in
 // its own xterm would. python3 is the tool: the image purges curl, and python3 is there for AT-SPI.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";

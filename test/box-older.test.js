@@ -1,5 +1,6 @@
 // @ts-check
 // box/vyre's older(): semver order, including prereleases (#15). The function is cut out of the wrapper and run with sh.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

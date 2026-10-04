@@ -3,6 +3,7 @@
 // core's own keys with a method core can check itself. Runs on Linux; the _vyre account and
 // LOCAL_PEERCRED are a Mac check (docs/work/vyre-core-plan.md).
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

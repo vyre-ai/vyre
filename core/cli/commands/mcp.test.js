@@ -3,6 +3,7 @@
 // surface runs it (pipes, no terminal) and a fake `claude` on PATH that writes down its words.
 // Serving itself is tested in connect.test.js.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

@@ -5,6 +5,7 @@
 // Proves the ruling: credentials stay 0600 and owned by the account's uid; transcripts sit where
 // vyred (in every account's group) can read them and no other account can.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

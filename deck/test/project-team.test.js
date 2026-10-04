@@ -1,5 +1,6 @@
 // @ts-check
 // A project's Team tab: teammates, their pane, and the writes. Sample world only.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { install, text, $, $$ } from "./fake-dom.js";

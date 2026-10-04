@@ -3,6 +3,7 @@
 // speech provider on 127.0.0.1. No test reaches a real provider, holds a real key, or captures
 // real audio: the Swift mic is only compiled here, and its conversion checked on a synthetic sine.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";

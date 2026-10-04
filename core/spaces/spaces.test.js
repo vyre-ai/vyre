@@ -2,6 +2,7 @@
 // spaces: the module through the real registry, with a real names directory Worker on the fake runtime (no network), temp homes only.
 // Sample world: alex (the owner), juno and kit (people), Harlow Legal and Northwind Bakery (spaces).
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

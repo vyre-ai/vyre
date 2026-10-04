@@ -1,6 +1,7 @@
 // @ts-check
 // The terminal QR: the vendored encoder is the pinned file, the matrix is a real QR (structure checks here; a decode with jsQR was run once and is
 // recorded in docs/work/tailnet.md), and the art is two QR rows per text row in four glyphs.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";

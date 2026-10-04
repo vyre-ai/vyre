@@ -1,6 +1,7 @@
 // @ts-check
 // Runs of tool items as one overview row. Sample world only.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { groupItems, summarize, createGrouper } from "./grouping.js";
