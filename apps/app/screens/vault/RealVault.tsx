@@ -65,7 +65,7 @@ export default function RealVault() {
 
   const doUnlockPersonal = () => {
     setBusy(true); setPwProblem("");
-    unlockPersonalReal(pw).then(() => { setPw(""); showToast("Your personal vault is open."); load(); }).catch((e) => setPwProblem(personalUnlockRefusal((e as { code?: string }).code, say(e, "")))).finally(() => setBusy(false));
+    unlockPersonalReal(pw).then(() => { setPw(""); showToast("Your personal vault is open."); load(); }).catch((e) => setPwProblem(personalUnlockRefusal((e as { code?: string }).code))).finally(() => setBusy(false));
   };
   const doUnlock = () => {
     if (!pass) return;
