@@ -76,24 +76,48 @@ export function createCheckpointer(cfg) {
  * @param {{ space: string, log: any, publicKey: crypto.KeyObject | string }} cfg
  */
 export function verifyLog(cfg) {
-  const all = cfg.log.read({});
-  const chain = verifyEvents(cfg.space, all);
+  const chain = cfg.log.verify ? cfg.log.verify() : verifyEvents(cfg.space, cfg.log.read({}));
   /** @type {{ seq?: number, why: string }[]} */ const problems = [];
   if (!chain.ok) problems.push({ seq: chain.at, why: chain.why || "the hash chain is broken" });
   let prev = -1, n = 0;
-  for (const e of all) {
-    if (e.type !== "checkpoint.signed") continue;
+  // The checkpoints only, found by type (an index scan on a durable log); the event each names is fetched by its seq, so nothing here holds the log.
+  for (const e of cfg.log.read({ type: "checkpoint.signed" })) {
     const cp = e.data && e.data.checkpoint;
     n++;
     if (!verifyCheckpoint(cp, cfg.publicKey)) { problems.push({ seq: e.seq, why: "a checkpoint's signature does not verify" }); continue; }
     if (cp.space !== cfg.space) problems.push({ seq: e.seq, why: "a checkpoint is for another Space" });
     if (cp.seq < prev) problems.push({ seq: e.seq, why: "checkpoints go backwards" });
     prev = Math.max(prev, cp.seq);
-    const at = cp.seq === 0 ? null : all[cp.seq - 1];
+    const at = cp.seq === 0 ? null : eventAt(cfg.log, cp.seq);
     if (cp.seq > 0 && (!at || at.hash !== cp.hash)) problems.push({ seq: e.seq, why: "the event a checkpoint names is not in the log as signed" });
     if (cp.seq >= e.seq) problems.push({ seq: e.seq, why: "a checkpoint names an event at or after itself" });
   }
-  return { ok: problems.length === 0, events: all.length, checkpoints: n, problems };
+  return { ok: problems.length === 0, events: cfg.log.latestSeq ? cfg.log.latestSeq() : cfg.log.read({}).length, checkpoints: n, problems };
+}
+
+/** The event at a seq: by `get` when the log has it (a durable log reads one row), else by scanning (a plain list of events). @param {any} log @param {number} seq */
+function eventAt(log, seq) {
+  if (typeof log.get === "function") return log.get(seq);
+  return log.read({}).find((/** @type {any} */ x) => x.seq === seq);
+}
+
+/**
+ * The check a restart makes: not the whole chain, only what a trusted checkpoint does not already vouch for. Take the latest checkpoint that verifies under the Space's key,
+ * confirm the event at its position is the one it signed, and walk the chain from there to the head. A log shorter than the checkpoint, or with another event at its position,
+ * or a broken tail, is reported. With no checkpoint it falls back to the whole chain (a young log).
+ * @param {{ space: string, log: any, publicKey: crypto.KeyObject | string }} cfg
+ * @returns {{ ok: boolean, from: number, checked: number, why?: string }}
+ */
+export function verifyTail(cfg) {
+  let cp = null;
+  const list = cfg.log.read({ type: "checkpoint.signed" });
+  for (let i = list.length - 1; i >= 0; i--) { const c = list[i].data && list[i].data.checkpoint; if (c && c.space === cfg.space && verifyCheckpoint(c, cfg.publicKey)) { cp = c; break; } }
+  if (!cp || cp.seq === 0) { const v = cfg.log.verify(); return v.ok ? { ok: true, from: 0, checked: v.seq } : { ok: false, from: 0, checked: 0, why: v.why }; }
+  if (cfg.log.latestSeq() < cp.seq) return { ok: false, from: cp.seq, checked: 0, why: "rolled_back" };
+  const at = eventAt(cfg.log, cp.seq);
+  if (!at || at.hash !== cp.hash) return { ok: false, from: cp.seq, checked: 0, why: "history_differs" };
+  const v = cfg.log.verify({ from: cp.seq, prev: cp.hash });
+  return v.ok ? { ok: true, from: cp.seq, checked: v.seq - cp.seq } : { ok: false, from: cp.seq, checked: 0, why: v.why };
 }
 
 /**
@@ -134,7 +158,7 @@ export function createDeviceCheckpoints(cfg) {
       if (!cp) return { ok: true };
       if (log.latestSeq() < cp.seq) return { ok: false, why: "rolled_back" };
       if (cp.seq === 0) return { ok: true };
-      const e = log.read({}).find((/** @type {any} */ x) => x.seq === cp.seq);
+      const e = eventAt(log, cp.seq);
       return e && e.hash === cp.hash ? { ok: true } : { ok: false, why: "history_differs" };
     },
   });
@@ -152,8 +176,8 @@ export function compareCheckpoints(a, b, publicKey, log) {
   if (a.seq === b.seq) return a.hash === b.hash ? { ok: true } : { ok: false, why: "split_history" };
   if (!log) return { ok: true };
   const [lo, hi] = a.seq < b.seq ? [a, b] : [b, a];
-  const e = log.read({}).find((/** @type {any} */ x) => x.seq === lo.seq);
-  return e && e.hash === lo.hash && log.read({}).some((/** @type {any} */ x) => x.seq === hi.seq && x.hash === hi.hash) ? { ok: true } : { ok: false, why: "history_differs" };
+  const e = eventAt(log, lo.seq), h = eventAt(log, hi.seq);
+  return e && e.hash === lo.hash && h && h.hash === hi.hash ? { ok: true } : { ok: false, why: "history_differs" };
 }
 
 export { sha256, KernelError };
