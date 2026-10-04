@@ -11,7 +11,7 @@
   },
   "appearance.presets": {
    "module": "appearance",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "appearance.resolve": {
    "module": "appearance",
@@ -19,19 +19,19 @@
   },
   "apps.act": {
    "module": "apps",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "apps.list": {
    "module": "apps",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "apps.route": {
    "module": "apps",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "apps.send": {
    "module": "apps",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "apps.setup": {
    "module": "apps",
@@ -39,7 +39,7 @@
   },
   "apps.targets": {
    "module": "apps",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "capsule.act": {
    "module": "capsule",
@@ -55,11 +55,11 @@
   },
   "capsule.show": {
    "module": "capsule",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "capsule.status": {
    "module": "capsule",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "capsule.view": {
    "module": "capsule",
@@ -71,11 +71,11 @@
   },
   "connectors.calendar.today": {
    "module": "connectors",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "connectors.catalog": {
    "module": "connectors",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "connectors.connect": {
    "module": "connectors",
@@ -149,7 +149,7 @@
   },
   "learn.add": {
    "module": "learn",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "learn.check": {
    "module": "learn",
@@ -157,11 +157,11 @@
   },
   "learn.edit": {
    "module": "learn",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "learn.lessons": {
    "module": "learn",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "learn.observe": {
    "module": "learn",
@@ -199,7 +199,7 @@
   },
   "learn.skills": {
    "module": "learn",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "learn.stats": {
    "module": "learn",
@@ -211,7 +211,7 @@
   },
   "mcp.call": {
    "module": "mcp",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "mcp.grant": {
    "module": "mcp",
@@ -233,7 +233,7 @@
   },
   "mcp.servers": {
    "module": "mcp",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "mcp.test": {
    "module": "mcp",
@@ -249,55 +249,55 @@
   },
   "memory.answer": {
    "module": "memory",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "memory.ask": {
    "module": "memory",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "memory.brief": {
    "module": "memory",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "memory.card": {
    "module": "memory",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "memory.context": {
    "module": "memory",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "memory.contradictions": {
    "module": "memory",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "memory.correct": {
    "module": "memory",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "memory.corrections": {
    "module": "memory",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "memory.curate": {
    "module": "memory",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "memory.decisions": {
    "module": "memory",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "memory.device": {
    "module": "memory",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "memory.facts": {
    "module": "memory",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "memory.graph": {
    "module": "memory",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "memory.heard": {
    "module": "memory",
@@ -309,11 +309,11 @@
   },
   "memory.merge": {
    "module": "memory",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "memory.mute": {
    "module": "memory",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "memory.pace": {
    "module": "memory",
@@ -322,15 +322,15 @@
   },
   "memory.pin": {
    "module": "memory",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "memory.profile": {
    "module": "memory",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "memory.prompt": {
    "module": "memory",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "memory.read": {
    "module": "memory",
@@ -338,27 +338,27 @@
   },
   "memory.relevant": {
    "module": "memory",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "memory.remember": {
    "module": "memory",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "memory.retrieve": {
    "module": "memory",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "memory.settle": {
    "module": "memory",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "memory.site.detail": {
    "module": "memory",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "memory.site.forget": {
    "module": "memory",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "memory.site.get": {
    "module": "memory",
@@ -370,23 +370,23 @@
   },
   "memory.site.put": {
    "module": "memory",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "memory.site.report": {
    "module": "memory",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "memory.site.restore": {
    "module": "memory",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "memory.site.sync": {
    "module": "memory",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "memory.split": {
    "module": "memory",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "memory.stats": {
    "module": "memory",
@@ -394,7 +394,7 @@
   },
   "memory.suggest": {
    "module": "memory",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "memory.teach": {
    "module": "memory",
@@ -403,15 +403,15 @@
   },
   "memory.today": {
    "module": "memory",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "memory.uncorrect": {
    "module": "memory",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "memory.why": {
    "module": "memory",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "memory.write": {
    "module": "memory",
@@ -431,19 +431,19 @@
   },
   "onboard.assistant": {
    "module": "onboard",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "onboard.claude": {
    "module": "onboard",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "onboard.finish": {
    "module": "onboard",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "onboard.history": {
    "module": "onboard",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "onboard.join": {
    "module": "onboard",
@@ -451,7 +451,7 @@
   },
   "onboard.link": {
    "module": "onboard",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "onboard.machine": {
    "module": "onboard",
@@ -459,19 +459,19 @@
   },
   "onboard.name": {
    "module": "onboard",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "onboard.passkey": {
    "module": "onboard",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "onboard.setup": {
    "module": "onboard",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "onboard.skip": {
    "module": "onboard",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "onboard.status": {
    "module": "onboard",
@@ -479,11 +479,11 @@
   },
   "onboard.tailscale": {
    "module": "onboard",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "onboard.you": {
    "module": "onboard",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "projects.access.revoke": {
    "module": "projects",
@@ -527,7 +527,7 @@
   },
   "recall.eval": {
    "module": "recall",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "recall.forget": {
    "module": "recall",
@@ -536,7 +536,7 @@
   },
   "recall.index": {
    "module": "recall",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "recall.related": {
    "module": "recall",
@@ -552,7 +552,7 @@
   },
   "recall.setup": {
    "module": "recall",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "recall.status": {
    "module": "recall",
@@ -576,7 +576,7 @@
   },
   "settings.changes": {
    "module": "settings",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "settings.get": {
    "module": "settings",
@@ -597,7 +597,7 @@
   },
   "settings.schema": {
    "module": "settings",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "settings.set": {
    "module": "settings",
@@ -605,7 +605,7 @@
   },
   "settings.snapshot": {
    "module": "settings",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "settings.undo": {
    "module": "settings",
@@ -652,7 +652,7 @@
   },
   "system.echo": {
    "module": "system",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "system.info": {
    "module": "system",
@@ -700,7 +700,7 @@
   },
   "vitals.advice": {
    "module": "vitals",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "vitals.explain": {
    "module": "vitals",
@@ -716,7 +716,7 @@
   },
   "vitals.watch": {
    "module": "vitals",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "waiting.count": {
    "module": "waiting",
