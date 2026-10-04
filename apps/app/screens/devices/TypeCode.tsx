@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 import { Banner, Button, Card, Field, Text } from "@vyre/ui";
-import { redeemInviteCode } from "@vyre/relay-client/join.js";
+import { joinWithCode, redeemInviteCode } from "@vyre/relay-client/join.js";
+import { about, relayCrypto, relayKeyStore, savePairing } from "../../src/api/relay";
 import { tool } from "../../src/real/box";
 import { relayUrl } from "../../src/api/relay-url";
 import { parseWinkCode } from "../../src/api/wink-code";
@@ -15,6 +16,18 @@ export async function redeemInvite(code: string, onAck: (ack: string) => void): 
   const r = await redeemInviteCode({ relay: relayUrl(), input: code, onAck });
   if (!r.ok) throw new Error(inviteReasonSay(r.reason));
   return { invite: { link: r.link, ...(r.space ? { space: r.space } : {}) } };
+}
+
+/**
+ * A browser or phone with no box pairs to the person's server by the code the phone's Devices, Add a device screen shows (relay/client/join.js joinWithCode). The ack typed back on the phone is the
+ * yes; the pairing is kept so this device reaches that server.
+ */
+export async function redeemPairing(code: string, onAck: (ack: string) => void): Promise<Typed> {
+  const r = await joinWithCode({ relay: relayUrl(), input: code, name: about.kind === "web" ? "Vyre in a browser" : "Vyre on this phone", onState: (s) => { if (s.state === "ack" && s.code) onAck(s.code); },
+    pairOptions: { crypto: relayCrypto(), keyStore: relayKeyStore(), about } });
+  if (!r.ok) throw new Error(inviteReasonSay(r.reason === "closed" ? "refused" : r.reason));
+  await savePairing({ relay: r.paired.relay, route: r.paired.route, box: r.paired.box, name: r.paired.name, device: r.paired.device, presence: null });
+  return {};
 }
 
 /**

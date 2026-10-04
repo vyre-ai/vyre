@@ -8,7 +8,7 @@ import { loadInstall } from "./data";
 import { AFTER_HOME, CONTINUE_HERE, SERVER_FAILED, serverSay, RECOVERY_CODE, SERVER_LONG_CODE, WHERE_STEP, backOf, connectedLine, isResumable, nextSetup, packProgress, unpackProgress, homeLine, nameNote, nameStatus, pairToOptions, serverLines, slug, startStep } from "./flow.js";
 import { PairEntry, PairServer, PairWords, openPairing, type LongCode } from "../devices/PairParts";
 import { RealAdd } from "../devices/RealAdd";
-import { TypeCode, redeemInvite } from "../devices/TypeCode";
+import { TypeCode, redeemInvite, redeemPairing } from "../devices/TypeCode";
 import { shell } from "../../src/shell/shell";
 import { pairSayHere } from "../../src/real/pair-say";
 import { ADD_PHONE, BROWSER, MAC_WHERE, NO_VYRE, WELCOME, WHO, deviceKind, firstStep, isPhone, isWho, whoLine } from "./first-run.js";
@@ -274,6 +274,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
       <Page title={BROWSER.title} sub={BROWSER.line}>
         {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
         <PairEntry onCode={(c: LongCode) => { setWrong(""); setSession(openPairing(c)); setStep("scanwords"); }} />
+        {MOCK ? null : <TypeCode redeem={redeemPairing} onDone={() => { noId.current = false; setStep("spaces"); }} />}
         <Button kind="ghost" label={BROWSER.notSet} onPress={() => setStep("nosetup")} />
       </Page>
     );

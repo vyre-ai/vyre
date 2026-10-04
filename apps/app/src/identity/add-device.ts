@@ -12,6 +12,7 @@ import { addThisDevice as pair } from "@vyre/relay-client/phonepair.js";
 import { about, relayCrypto, relayKeyStore } from "../api/relay";
 import { savePairing } from "../api/relay";
 import { relayUrl } from "../api/relay-url";
+import { addDeviceCore } from "./add-device-core.js";
 import { generateDeviceKey } from "./keys.js";
 import { loadIdentity, saveIdentity } from "./store.ts";
 
@@ -34,31 +35,29 @@ export type AddOpts = {
 
 /** Add this device to the name held by another device. Resolves the name once this device holds it. */
 export async function addDeviceToName(o: AddOpts): Promise<{ name: string; id: string }> {
-  if (await loadIdentity().catch(() => null)) throw fail("exists", "This device already holds a name.");
   const f = o.fetch ?? globalThis.fetch;
   const base = (o.base ?? DIRECTORY).replace(/\/+$/, "");
   const now = o.now ?? Date.now;
-  const key = await generateDeviceKey();
-  const r = await pair({
-    ...(o.payload !== undefined ? { payload: o.payload } : { code: o.code, relay: relayUrl() }),
-    key: { publicKey: key.publicKey, label: o.deviceLabel.slice(0, 60) }, name: o.deviceLabel,
-    crypto: relayCrypto(), keyStore: relayKeyStore(), about,
-    ...(o.onWords ? { onWords: o.onWords } : {}), ...(o.onAck ? { onAck: o.onAck } : {}), ...(o.signal ? { signal: o.signal } : {}),
-  });
-  if (!r.enrolled) throw fail("not_enrolled", r.reason || "The other device could not add this one.");
-  // The name is the one the other device answers to; its list at the directory is what this device keeps.
-  const name = String(r.name).trim().toLowerCase().replace(/\.vyre\.run$/, "");
-  let res: Response;
-  try { res = await f(`${base}/v1/ids/resolve?name=${encodeURIComponent(name)}`, { headers: { accept: "application/json" } }); } catch { throw fail("unreachable", "The names directory did not answer."); }
-  const json: any = await res.json().catch(() => null);
-  const ops: any[] = json && json.data && Array.isArray(json.data.ops) ? json.data.ops : [];
-  let state: any;
-  try { state = await C.verifyChain(ops, { now: now() + C.SKEW_MS }); } catch { throw fail("not_listed", "The directory's list did not check out."); }
-  if (!state.entries.some((e: any) => e.eid === key.eid)) throw fail("not_listed", "This device is not on the list yet.");
-  await saveIdentity({ name, id: state.id, eid: key.eid, ops, pin: C.pinOf(state), key });
-  // The pairing also reaches that computer, so Now has something to show.
-  await savePairing({ relay: r.relay, route: r.route, box: r.box, name: r.name, device: r.device, presence: null }).catch(() => {});
-  return { name, id: state.id };
+  let key: Awaited<ReturnType<typeof generateDeviceKey>> | null = null;
+  return addDeviceCore({
+    held: async () => Boolean(await loadIdentity().catch(() => null)),
+    makeKey: async () => (key = await generateDeviceKey()),
+    pair: ({ key: k, onWords, onAck, signal }) => pair({
+      ...(o.payload !== undefined ? { payload: o.payload } : { code: o.code, relay: relayUrl() }),
+      key: k, name: o.deviceLabel, crypto: relayCrypto(), keyStore: relayKeyStore(), about,
+      ...(onWords ? { onWords } : {}), ...(onAck ? { onAck } : {}), ...(signal ? { signal } : {}),
+    }),
+    readList: async (name) => {
+      let res: Response;
+      try { res = await f(`${base}/v1/ids/resolve?name=${encodeURIComponent(name)}`, { headers: { accept: "application/json" } }); } catch { throw fail("unreachable", "The names directory did not answer."); }
+      const json: any = await res.json().catch(() => null);
+      const ops: any[] = json && json.data && Array.isArray(json.data.ops) ? json.data.ops : [];
+      try { const st = await C.verifyChain(ops, { now: now() + C.SKEW_MS }); return { ops, id: st.id, eids: st.entries.map((e: any) => e.eid), pin: C.pinOf(st) }; } catch { return null; }
+    },
+    save: (i) => saveIdentity({ ...i, key: key as NonNullable<typeof key> }),
+    // The pairing also reaches that computer, so Now has something to show.
+    keepPairing: (p) => savePairing({ ...p, presence: null }),
+  }, { deviceLabel: o.deviceLabel, onWords: o.onWords, onAck: o.onAck, signal: o.signal });
 }
 
 /** The words for each way adding this device can end. @param {string | undefined} code */
