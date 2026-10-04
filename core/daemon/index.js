@@ -17,7 +17,7 @@ import * as config from "../config/index.js";
 import { themeCss } from "../config/theme.js";
 import { isRealHome } from "../config/dialogs.js";
 import { assertDaemonHost } from "./host-guard.js";
-import { open } from "../store/index.js";
+import { open, setRepairLog } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { Registry, discover, ownerDevice, currentCall } from "../modules/index.js";
 import { devSwitch, isPackaged, PKG_ROOT } from "../../kernel/devbuild.js";
@@ -153,6 +153,8 @@ async function startLocked(opts, root, p, release) {
   for (const problem of cfg.problems) log("config: " + problem);
 
   const db = open(p.db);
+  // A migration step that found its column already there is a repair for a mis-ordered list: say so in the log (launch's update proof fails on this line for a released upgrade).
+  setRepairLog(line => log(line));
   const events = new Events(db);
   events.log = log;
   // vyred always checks presence. A test may pass a verifier, or a function that builds one on
