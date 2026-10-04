@@ -25,8 +25,9 @@ test("createIdentity refuses on a blocked browser before it makes a key, opens s
 
 test("the name step on a blocked browser offers only scan, and Sites is hidden from nav and routes", () => {
   const screen = read("../../screens/install/InstallScreen.tsx");
-  const blocked = screen.slice(screen.indexOf("claimBlocked()) {"), screen.indexOf('} else if (step === "name")'));
-  assert.ok(blocked.includes("HIDDEN.claimAction") && !/createIdentity/.test(blocked));
+  // A browser holds no key: its first screen is "Open Vyre on your phone" (scan or paste), never the claim.
+  const blocked = screen.slice(screen.indexOf('step === "browser" ||'), screen.indexOf('} else if (step === "nosetup")'));
+  assert.ok(blocked.includes("BROWSER.title") && blocked.includes("PairEntry") && !/createIdentity/.test(blocked));
   assert.match(read("../../screens/shell/nav.ts"), /RC\.sites \? \[/);
   assert.match(read("../../app/u/sites.tsx"), /RC\.sites \? SitesScreen : HiddenSites/);
 });
