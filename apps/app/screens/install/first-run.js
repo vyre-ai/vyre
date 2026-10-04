@@ -48,7 +48,7 @@ export const ADD_PHONE = {
 /** A browser holds no key: it connects from a phone, or says Vyre is not set up. */
 export const BROWSER = {
   title: "Open Vyre on your phone",
-  line: "Your phone holds your key. In Vyre on your phone choose Add a device, then A computer, and scan the code it shows or paste it here.",
+  line: "On your phone, open Vyre, then Devices, then Add a device, and scan or paste its code here.",
   notSet: "Vyre is not set up yet?",
   notSetTitle: "Set up Vyre on a computer or server first",
   notSetLine: "A browser connects to a Vyre that is already running. Install it on a computer or a server, then come back.",

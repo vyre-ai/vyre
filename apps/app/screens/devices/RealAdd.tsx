@@ -11,7 +11,7 @@ import { PairEntry, PairWatch, PairWords, type LongCode } from "./PairParts";
 import { phoneAsk, targetsOf } from "./real.js";
 import { COPY, stepWords, type DeviceKind } from "./wink.js";
 import { useDevices } from "./state";
-import { QrCode, qrFor } from "../../src/ui/QrCode";
+import { WinkCode } from "../../src/ui/WinkCode";
 
 type Opened = { qr: string | null; link?: string; art?: string; expires?: number };
 type Ask = { name: string; line: string; words: [string, string, string] };
@@ -86,7 +86,7 @@ export function RealAdd({ kind, onBack, onDone, first }: { kind: DeviceKind; onB
     body = (
       <Card className="items-center gap-s3">
         <Text strong>{`Open Vyre on the ${noun}, then scan this or paste the long code.`}</Text>
-        {opened.qr && qrFor(opened.qr) ? <QrCode text={opened.qr} /> : opened.art ? <Text mono selectable style={{ fontSize: 7, lineHeight: 7, letterSpacing: 0 }}>{opened.art}</Text> : null}
+        {opened.qr ? <WinkCode text={opened.qr} kind="device" /> : null}
         {opened.qr ? <Text mono size="caption" selectable className="text-center">{opened.qr}</Text> : <Text tone="warn">The relay could not take the code. Try again.</Text>}
         <Text tone="muted">Waiting for the new device. Good for 5 minutes.</Text>
       </Card>
