@@ -134,6 +134,17 @@ export function createRecords(cfg) {
     if (pg.limit > 500) return { ...spec, page: { ...pg, limit: 500 } };
     return spec;
   };
+  /**
+   * A restricted caller whose access is a set of attribute equalities (project, owner ...) on the type: the predicate the store can count and list by from its own attribute table (kernel/core/authorize.js
+   * `rowPredicate`), or null. Only where the attributes are the ones this gateway wrote with the records: no module supplies an owner or project for the type and the home has no attribute function (`cfg.attrPush`),
+   * the store declares `attr_filter`, and no record of the type is privileged.
+   * @param {any} chain @param {string} type
+   */
+  const attrFilterFor = async (chain, type) => {
+    if (typeof cfg.attrPush !== "function" || !cfg.attrPush(type) || typeof store.features !== "function" || store.features().attr_filter !== true || typeof authorizer.rowPredicate !== "function" || hasPrivileged(type)) return null;
+    const pr = await authorizer.rowPredicate({ chain, action: "records.read", type });
+    return pr ? { urn_prefix: urn(type, ""), any: pr.any } : null;
+  };
   const AGG_MAX_GROUPS = 10_000, AGG_MAX_PAGES = 40, AGG_MAX_MS = 8_000;
   const countRead = async (/** @type {any} */ chain, /** @type {string} */ type) => { const d = await check(chain, "records.read", urn(type, "*"), { probe: true }); if (d && cfg.enforce) cfg.enforce(chain, d); return d; };
   const members = cfg.members;
@@ -550,6 +561,26 @@ export function createRecords(cfg) {
         const lim = { allow: allowList(readDec), hidden: (await hiddenFields(chain, type)) || new Set() };
         return { rows: await withComputed(chain, type, p.rows.filter((/** @type {any} */ r) => r.type === type).map((/** @type {any} */ r) => ({ rec: shape(chain, r, lim), lim }))), ...(p.next_cursor ? { next_cursor: p.next_cursor } : {}) };
       }
+      // A restricted caller whose access is attribute equalities: the store lists under the same predicate, so its page and cursor are the answer; every row is still asked about (cheap: one page).
+      if (readDec && !vs) {
+        const af = await attrFilterFor(chain, type);
+        if (af) {
+          let p;
+          try { p = await store.query(type, { ...spec, attr_filter: af, build_index: true, page: { limit: spec.page.limit, ...(spec.page.cursor ? { cursor: spec.page.cursor } : {}) } }); } catch (e) { if (!(e && /** @type {any} */ (e).code === "unsupported")) throw mapError(e); p = null; }
+          if (p) {
+            const hiddenSet = await hiddenFields(chain, type);
+            /** @type {any[]} */ const items = [];
+            for (const r of p.rows) {
+              if (r.type !== type) continue;
+              const dec = await check(chain, "records.read", urn(r.type, r.id));
+              if (!dec) continue;
+              const lim = { allow: allowList(dec), hidden: hiddenSet || new Set() };
+              items.push({ rec: shape(chain, r, lim), lim });
+            }
+            return { rows: await withComputed(chain, type, items), ...(p.next_cursor ? { next_cursor: p.next_cursor } : {}) };
+          }
+        }
+      }
       let cursor = spec.page.cursor, out = [], next;
       /** @type {{ allow: Set<string> | null, hidden: Set<string> }[]} */ const lims = [];
       for (let pages = 0; pages < 10; pages++) {
@@ -595,6 +626,17 @@ export function createRecords(cfg) {
         const used = [...(spec.group_by || []), ...(spec.measures || []).map((/** @type {any} */ m) => m && m.field).filter(Boolean)];
         if (used.every((/** @type {string} */ k) => !lim.hidden.has(k) && (!lim.allow || lim.allow.has(k)))) {
           try { return await store.aggregate(type, { ...spec, build_index: true }); } catch (e) { throw mapError(e); }
+        }
+      }
+      // A restricted caller whose access is attribute equalities: the store counts natively under the same predicate (a store that cannot, says `unsupported` and the rows are totalled below).
+      if (typeDec && !vs && typeof store.aggregate === "function") {
+        const af = await attrFilterFor(chain, type);
+        if (af) {
+          const lim = await limitsOf(chain, type, typeDec);
+          const used = [...(spec.group_by || []), ...(spec.measures || []).map((/** @type {any} */ m) => m && m.field).filter(Boolean)];
+          if (used.every((/** @type {string} */ k) => !lim.hidden.has(k) && (!lim.allow || lim.allow.has(k)))) {
+            try { return await store.aggregate(type, { ...spec, attr_filter: af, build_index: true }); } catch (e) { if (!(e && /** @type {any} */ (e).code === "unsupported")) throw mapError(e); }
+          }
         }
       }
       // A store cannot hide rows from a total, so the gateway aggregates only the rows it has itself allowed. Rows are cut to the fields the total uses and the loop yields at every row.

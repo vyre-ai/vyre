@@ -89,6 +89,8 @@ export async function createKernel(cfg) {
   // An approved Kit install is presence for that install (kernel/tasks/kit-apply.js); the gateway's authorizer asks `waives`, the install asks `begin`.
   const kitApply = createKitApply({ space: cfg.space, tasks, log, chains, clock });
   gateway = createGateway({
+    // The stored attributes are the whole truth about a type's owner and project only where no module supplies them and the home has no attribute function: then a store may filter by them.
+    attrPush: (/** @type {string} */ type) => !cfg.attrs && !attrProviders.has(type),
     kitApply, waives: (/** @type {any} */ w, /** @type {any} */ q) => kitApply.waives(w, q),
     room: roomPort,
     space: cfg.space, store, log, chains, clock, limits, tasks, approvedAct: (/** @type {any} */ q) => tasks.useApproval(q), get owner() { return ownerRef.id; }, presence, hasPresenceSession, expr: cfg.expr === undefined ? defaultExpr : cfg.expr,

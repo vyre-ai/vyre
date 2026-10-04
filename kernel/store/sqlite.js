@@ -228,6 +228,7 @@ export function createSqliteStore(cfg) {
       pageQuery(spec) {
         const def = defs.get(type);
         const plan = planPage({ type, def, spec, ascii: field => isAscii(type, field) });
+        if (!plan && spec.attr_filter !== undefined) throw Object.assign(new Error("this query cannot be answered under an attribute filter here"), { code: "unsupported" });
         if (!plan) { counts.fell++; return null; }
         if ("error" in plan) return plan;
         counts.pushed++;
@@ -239,11 +240,12 @@ export function createSqliteStore(cfg) {
       /** An aggregate as one GROUP BY statement (rows come back grouped; the groups are ordered here as the reference orders them), or null to stream the rows instead. */
       aggregateQuery(spec) {
         const plan = planAggregate({ type, def: defs.get(type), spec, ascii: field => isAscii(type, field) });
+        if (!plan && spec.attr_filter !== undefined) throw Object.assign(new Error("this total cannot be answered under an attribute filter here"), { code: "unsupported" });
         if (!plan) { counts.fell++; return null; }
         counts.pushed++; counts.agg++;
         if (plan.index) slot(type, plan.index.name, plan.index.sql, spec.build_index !== false);
         // Without table statistics SQLite prefers the primary key to the covering index; the index was made for exactly this grouping, so it is named.
-        const sql = plan.index && indexed.has(plan.index.name) ? plan.sql.replace("FROM kernel_records WHERE", `FROM kernel_records INDEXED BY ${plan.index.name} WHERE`) : plan.sql;
+        const sql = plan.index && spec.attr_filter === undefined && indexed.has(plan.index.name) ? plan.sql.replace("FROM kernel_records WHERE", `FROM kernel_records INDEXED BY ${plan.index.name} WHERE`) : plan.sql;
         const got = /** @type {any[]} */ (db.prepare(sql).all(...plan.args));
         return got.map(row => ({
           group: Object.fromEntries(plan.groups.map((g, k) => [g.field, row[`g${k}`] === null || row[`g${k}`] === undefined ? null : g.bool ? row[`g${k}`] === 1 : row[`g${k}`]])),
@@ -421,5 +423,5 @@ export function createSqliteStore(cfg) {
   };
   // The memory store of this tree may not carry `scrub` (it arrives with records' merge); the store the gateway calls always does, and it forgets in memory and on disk.
   const scrub = /** @type {any} */ (store).scrub || (async (/** @type {string} */ type, /** @type {readonly string[]} */ fields) => { /** @type {any} */ (persistRef).scrub(type, fields); });
-  return { ...store, scrub, meta, /** What is held in memory: for the bound's tests and the load measurements. */ get ftsReady() { return ftsReady; }, stats: () => ({ fts_built: ftsBuilt, aggregate_pushed: counts.agg, query_pushed: counts.pushed, query_streamed: counts.fell, search_fast: counts.fast, hot_rows: caches.reduce((n, c) => n + c.size, 0), hot_attrs: attrCache.size, changes_in_memory: 0 }), async version() { return { store: "sqlite", version: "1", conformance: (await store.version()).conformance }; } };
+  return { ...store, scrub, meta, features: () => ({ ...store.features(), attr_filter: true }), /** What is held in memory: for the bound's tests and the load measurements. */ get ftsReady() { return ftsReady; }, stats: () => ({ fts_built: ftsBuilt, aggregate_pushed: counts.agg, query_pushed: counts.pushed, query_streamed: counts.fell, search_fast: counts.fast, hot_rows: caches.reduce((n, c) => n + c.size, 0), hot_attrs: attrCache.size, changes_in_memory: 0 }), async version() { return { store: "sqlite", version: "1", conformance: (await store.version()).conformance }; } };
 }
