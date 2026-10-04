@@ -7,6 +7,8 @@
 //   const r = await addThisDevice({ payload, key: { publicKey, label: "Kit's phone" }, name: "Kit's phone", crypto, keyStore, onWords: w => show(w) });
 //
 // payload   the text of the existing device's QR, or the long code pasted.
+// code      INSTEAD of payload: the typed WINK-NNPP-PPPP the existing device shows (with `relay`, the relay's address). This device runs the code's PAKE over the relay, shows `onAck(ack)` (the person types
+//           that on the existing device), and then the same pairing follows with the ticket both ends derived from the code's key. The code is the confirmation: the existing device does not ask for the three words.
 // key       THIS device's identity key: its public half (32 raw bytes, base64url) is sent to the existing device inside the pairing, over this device's own encrypted channel, so the yes at the
 //           words covers it. The private half never leaves the device.
 // onWords   called once with the three words this device derived. Show them: the person at the other device picks the same words from three sets.
@@ -14,6 +16,8 @@
 // change, for example an identity it does not hold); persist relay, route, box and the key store when the person wants this device paired to that computer too. Rejects with an Error whose
 // `code` is one of: bad_code, taken (the code was used, expired or never existed), busy, unreachable, denied (the person said no or the words did not match), expired, cancelled.
 import { pairTicket, connect } from "./client.js";
+import { typeWinkCode } from "./join.js";
+import { parseCode } from "./code.js";
 import { nonceCommit, ticketTag, newNonce, pairWords } from "./pairwords.js";
 
 const b64u = (/** @type {string} */ s) => { try { const t = atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)); return Uint8Array.from(t, c => c.charCodeAt(0)); } catch { return null; } };
@@ -32,10 +36,19 @@ export function parsePhonePayload(s) {
 
 /**
  * @param {{ payload: string, key: { publicKey: string, label?: string }, name?: string, crypto?: any, keyStore?: any, WebSocket?: any, relay?: string, about?: any,
+ *   code?: string, onAck?: (ack: string) => void, fetch?: typeof fetch,
  *   onWords?: (words: string) => void, signal?: AbortSignal, pollMs?: number, timeoutMs?: number }} o
  */
 export async function addThisDevice(o) {
-  const scan = parsePhonePayload(o.payload);
+  /** @type {{ seed: Uint8Array, relay: string } | null} */ let scan;
+  if (o.code !== undefined && o.payload === undefined) {
+    if (!parseCode(String(o.code))) throw fail("bad_code", "That is not a code. Type the code the other device shows, like WINK-K7QM-4P2X.");
+    if (!o.relay) throw fail("bad_code", "addThisDevice needs the relay's address to use a typed code");
+    const t = await typeWinkCode({ relay: o.relay, input: String(o.code), ...(o.fetch ? { fetch: o.fetch } : {}) });
+    if (!t.ok) throw fail(t.reason === "offline" ? "unreachable" : t.reason === "busy" ? "busy" : "taken", t.reason === "offline" ? "The relay could not be reached." : t.reason === "busy" ? "Too many tries; wait a minute." : "That code did not work. Check it on the other device, or ask for a new one.");
+    if (o.onAck) o.onAck(t.ack);
+    scan = { seed: t.seed, relay: o.relay };
+  } else scan = parsePhonePayload(String(o.payload));
   if (!scan) throw fail("bad_code", "That is not a code for adding a device. On the device that is already signed in, choose Add a device and scan or paste the code it shows.");
   const raw = o.key && typeof o.key.publicKey === "string" ? b64u(o.key.publicKey) : null;
   if (!raw || raw.length !== 32) throw fail("bad_code", "addThisDevice needs this device's identity key (32 bytes, base64url)");
@@ -44,7 +57,17 @@ export async function addThisDevice(o) {
   const deviceName = o.name || "a device";
   /** @type {any} */ let paired;
   try {
-    paired = await pairTicket(scan.seed, { relay, name: deviceName, crypto: o.crypto, keyStore: o.keyStore, WebSocket: o.WebSocket, ...(o.about ? { about: o.about } : {}) });
+    // A typed code's ticket appears at the relay only once the person has typed the ack back on the other device: ask until it does (or the wait runs out).
+    const until = Date.now() + (o.timeoutMs ?? 5 * 60_000);
+    for (;;) {
+      try {
+        paired = await pairTicket(scan.seed, { relay, name: deviceName, crypto: o.crypto, keyStore: o.keyStore, WebSocket: o.WebSocket, ...(o.about ? { about: o.about } : {}) });
+        break;
+      } catch (e) {
+        if (o.code === undefined || /** @type {any} */ (e).code !== "ticket_gone" || Date.now() > until || (o.signal && o.signal.aborted)) throw e;
+        await new Promise(res => setTimeout(res, o.pollMs ?? 1000));
+      }
+    }
   } catch (e) {
     const code = /** @type {any} */ (e).code;
     const said = String(/** @type {Error} */ (e).message || "");
