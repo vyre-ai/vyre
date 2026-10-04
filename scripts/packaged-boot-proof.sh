@@ -152,7 +152,7 @@ docker cp "$HERE/scripts/packaged-probes/software-release.mjs" vyre-vyre-1:/tmp/
 docker exec -u 1000 vyre-vyre-1 node /tmp/software-release.mjs /tmp/probe || { echo "a release-kind build accepted a software key (or the probe could not run)"; soft; }
 # The copy keeps the image's read-only folders (the owner makes them writable first; root here has no DAC_OVERRIDE), and the probe script docker cp left in sticky /tmp is root's own to remove.
 docker exec -u 1000 vyre-vyre-1 sh -c 'chmod -R u+w /tmp/probe 2>/dev/null; rm -rf /tmp/probe'
-docker exec -u 0 vyre-vyre-1 rm -f /tmp/software-release.mjs
+docker exec -u 0 vyre-vyre-1 rm -f /tmp/software-release.mjs || true
 fi
 
 # MW-5: the web app build is signed too. /app/ answers 200 from the signed build, and one changed file under it is refused (503, app_build_changed) by the daemon that serves it.
@@ -173,8 +173,12 @@ docker exec -u 1000 vyre-vyre-1 touch /home/vyre/.vyre/dev-presence-stand-in
 # (core/runner/ownserver.js, the daemon's core/daemon/ownserver-host.js). A stand-in `claude` (the repo's fake, copied in like the probes above) writes the transcript the way Claude Code does.
 rs=$(vyre call runner.status 2>&1) || { echo "$rs"; echo "runner.status did not answer on the box"; exit 1; }
 printf '%s\n' "$rs" | grep -Eq '"?ownServer"?[: ]+true' || { echo "$rs"; echo "the runner on a box does not say it seals its own sessions"; exit 1; }
-docker cp "$HERE/core/switchboard/testing/fake-claude.js" vyre-vyre-1:/home/vyre/fake-claude.mjs
-docker exec -u 0 vyre-vyre-1 sh -c 'printf "#!/bin/sh\nexport FAKE_CLAUDE_TRANSCRIPTS=/home/vyre/.claude/projects\nexec node /home/vyre/fake-claude.mjs \"\$@\"\n" > /usr/local/bin/claude && chmod 755 /usr/local/bin/claude /home/vyre/fake-claude.mjs && mkdir -p /home/vyre/.claude/projects /tmp/sealwork && chown -R 1000 /home/vyre/.claude /tmp/sealwork'
+# The box's root has no capability to read or change files in uid 1000's home (cap_drop ALL): stage through /tmp, finish as uid 1000, and only /usr/local/bin as root.
+docker cp "$HERE/core/switchboard/testing/fake-claude.js" vyre-vyre-1:/tmp/fake-claude-src.mjs
+docker exec -u 1000 vyre-vyre-1 sh -c 'cp /tmp/fake-claude-src.mjs /home/vyre/fake-claude.mjs && chmod 755 /home/vyre/fake-claude.mjs && mkdir -p /home/vyre/.claude/projects /tmp/sealwork'
+docker exec -u 0 vyre-vyre-1 sh -c 'printf "#!/bin/sh\nexport FAKE_CLAUDE_TRANSCRIPTS=/home/vyre/.claude/projects\nexec node /home/vyre/fake-claude.mjs \"\$@\"\n" > /usr/local/bin/claude && chmod 755 /usr/local/bin/claude'
+# The fake claude is the account's provider: a login account, no credential of anyone's in CI. A box session needs an account (no account is refused at once, no_account).
+acct=$(vyre call sessions.accounts.add '{"provider":"claude","label":"proof","kind":"login","is_default":true}' 2>&1) || { echo "$acct"; echo "an account could not be added to the box"; exit 1; }
 tid=$(vyre call threads.start '{"cwd":"/tmp/sealwork","prompt":"first","surface":"deck"}' 2>&1 | sed -n 's/.*"id": *"\([^"]*\)".*/\1/p' | head -n 1)
 [ -n "$tid" ] || { echo "a session could not be started on the box (is its sandbox refusing?)"; vyre call threads.start '{"cwd":"/tmp/sealwork","prompt":"first","surface":"deck"}' 2>&1 | tail -5; exit 1; }
 sealed() { docker exec -u 1000 vyre-vyre-1 sh -c 'cat /home/vyre/.vyre/checkpoints/*/CURRENT 2>/dev/null' | grep -o '"turn":[0-9]*' | grep -o '[0-9]*' | sort -n | tail -n 1; }
@@ -201,7 +205,25 @@ i=0; until [ "$(sealed)" = 3 ]; do i=$((i + 1)); [ $i -lt 60 ] || { echo "the re
 docker exec -u 1000 vyre-vyre-1 sh -c "grep -q UNFINISHED $tfile" && { echo "the killed turn's leftovers reached the resumed session"; exit 1; }
 docker exec -u 1000 vyre-vyre-1 sh -c "head -c \$(wc -c < /tmp/sealed-copy.jsonl) $tfile | cmp -s - /tmp/sealed-copy.jsonl" || { echo "the resumed transcript does not start with the last sealed turns"; exit 1; }
 echo "ok: a session on the server survives a crash (killed, restarted, put back to its last sealed turn, resumed, and the next turn sealed)"
-docker exec -u 0 vyre-vyre-1 rm -f /usr/local/bin/claude /home/vyre/fake-claude.mjs
+# Confinement in the box (ruling b): the session ran as its own uid, and the box says so on its record. The self-test itself, run as that uid through the real spawner: it passes for the protected
+# set the daemon uses, and it FAILS (naming the check) when told a folder the agent can reach is protected (the shared /work group folder), so a hole cannot pass.
+cb=$(vyre call threads.get "{\"thread\":\"$tid\"}" 2>&1 | sed -n 's/.*"confined_by": *"\([^"]*\)".*/\1/p' | head -n 1)
+[ "$cb" = uid ] || { echo "the session's record does not say confined_by uid (it says: ${cb:-nothing})"; vyre call threads.get "{\"thread\":\"$tid\"}" 2>&1 | tail -8; exit 1; }
+docker exec -u 1000 vyre-vyre-1 sh -c 'ls /home/vyre/.vyre/logs/*.log >/dev/null && grep -h "start step sandbox self-test" /home/vyre/.vyre/logs/*.log | tail -1' >/dev/null || true
+cat > "$WORK/confine-proof.mjs" <<'EOF'
+import { confineSelfTest } from "/opt/vyre/core/spawner/confine.js";
+import fs from "node:fs";
+const base = { cwd: "/work", vyreUid: process.getuid(), account: null, shared: true, timeoutMs: 20000 };
+const good = await confineSelfTest({ ...base, out: [{ name: "Vyre's own home", path: "/home/vyre" }, { name: "the vault and keys", path: "/home/vyre/.vyre/kernel" }] });
+if (!good.ok) { console.log("GOOD-FAILED " + JSON.stringify(good)); process.exit(1); }
+const hole = await confineSelfTest({ ...base, out: [{ name: "the shared work folder", path: "/work" }] });
+if (hole.ok || !hole.failures.some(f => /can reach the shared work folder/.test(f))) { console.log("HOLE-PASSED " + JSON.stringify(hole)); process.exit(1); }
+console.log("CONFINED uid=" + good.results.uid + " hole refused: " + hole.failures[0]);
+EOF
+docker cp "$WORK/confine-proof.mjs" vyre-vyre-1:/tmp/confine-proof.mjs
+cp_out=$(docker exec -u 1000 vyre-vyre-1 node /tmp/confine-proof.mjs 2>&1) || { echo "$cp_out"; echo "the box's confinement self-test did not hold"; exit 1; }
+echo "ok: $cp_out"
+docker exec -u 0 vyre-vyre-1 rm -f /usr/local/bin/claude; docker exec -u 1000 vyre-vyre-1 rm -f /home/vyre/fake-claude.mjs
 fi
 
 # One module file changed after it was signed: refused, plainly, and nothing else is.
