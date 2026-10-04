@@ -90,7 +90,7 @@ export function page(/** @type {Iterable<any>} */ all, /** @type {any} */ spec) 
 /**
  * An aggregation that folds one row at a time and keeps only a small state per group, so a total never needs the rows in memory (and has
  * no row cap). `add(row)` skips rows that do not match the filter; `result()` is what `aggregate` returns.
- * @param {any} spec
+ * @param {any} spec @param {{ maxGroups?: number }} [o]
  */
 export function createAggregator(spec, o = {}) {
   const measures = spec.measures || [], by = spec.group_by || [];
