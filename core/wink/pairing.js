@@ -743,7 +743,14 @@ export function createPairing(o) {
     let ask = null;
     const norm = (/** @type {unknown} */ x) => String(x ?? "").trim().toLowerCase();
     /** The name the person sees for who is asking: the target's own name from the app, else the identity's id. @param {any} input */
-    const askName = (input) => String((input.owner && input.owner.name) || input.identity || (input.owner && input.owner.id) || "someone").replace(/[^\p{L}\p{N} ._@:-]/gu, "").slice(0, 64) || "someone";
+    // The name is the asker's own claim, and a look-alike letter (a Cyrillic "a" in "alex") reads the same, so what the person at the server sees always carries the first characters of the
+    // identity id, which a claim cannot fake (reviewer-3 PA-2). The three words stay the real proof.
+    const askName = (input) => {
+      const claimed = String((input.owner && input.owner.name) || "").replace(/[^\p{L}\p{N} ._@:-]/gu, "").slice(0, 48);
+      const id = String(input.identity || (input.owner && input.owner.id) || "");
+      const tag = id.replace(/^[a-z]+_/, "").replace(/[^A-Za-z0-9]/g, "").slice(0, 6);
+      return claimed ? (tag ? `${claimed} (id ${tag})` : claimed) : (id.replace(/[^\p{L}\p{N} ._@:-]/gu, "").slice(0, 64) || "someone");
+    };
     /**
      * Q-3: an unattended install named one identity (`pairTo`), and completing the pairing needs PROOF that the one asking is that identity, never a claim. Everything the caller
      * supplies about itself (identity, owner.id, owner.name) is a claim and is ignored here. The proof is a signature by a key on that identity's list over this pairing's box and

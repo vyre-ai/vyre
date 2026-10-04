@@ -462,7 +462,7 @@ test("Q-1 and typed code OFF, real daemon: the box makes a QR and a long code wi
   const me = (await w.call("wink.pair.targets", {})).data.targets[0];
   const mine = await askServer(w, paired.device, scan.seed, { kind: "identity", id: me.id, name: "Alex" });
   const asked = await until(async () => { const q = (await w.call("wink.server.pairing", {}, "cli", PROOF)).data; return q && q.asking ? q : null; });
-  assert.equal(asked.name, "Alex");
+  assert.match(asked.name, /^Alex \(id [A-Za-z0-9]{1,6}\)$/, "the claimed name carries the first characters of the identity id");
   const right = await pairWords(paired.box, paired.device, { ticket: mine.ticket, nonceA: mine.na, nonceB: mine.nb });
   assert.equal(mine.words, right, "the app derives the words from the keys, the ticket and the two fresh nonces");
   assert.ok(asked.choices.includes(right), "the server's choices hold the same words, among two decoys");

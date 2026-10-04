@@ -1063,7 +1063,9 @@ export default {
         const c = String((meta && meta.caller) || "");
         const me = /^(device|web|setup):/.test(c) ? /** @type {any} */ (db.prepare("SELECT kind, trusted FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(c.slice(c.indexOf(":") + 1))) : null;
         const withAsk = !(me && me.kind === "web" && !me.trusted);
-        return { devices: rows.map((d, i) => view(d, rtts[i], withAsk)) };
+        // A legacy browser (kind web) reads its own row only: names, last seen and presence of the other devices are not its to see (reviewer-3 PA-4).
+        const mine = c.startsWith("web:") ? c.slice(4) : null;
+        return { devices: rows.map((d, i) => view(d, rtts[i], withAsk)).filter(d => mine === null || d.id === mine) };
       },
     });
 

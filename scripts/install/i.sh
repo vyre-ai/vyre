@@ -140,7 +140,8 @@ show_code() {
   say "         $qr"
   say ""
   say "    Then choose where the server goes under \"Pair to:\". Good for 5 minutes."
-  say "    Keep the code to yourself: anyone who has it can start pairing this server. Nobody can finish without your yes here."
+  say "    Keep the code to yourself: anyone who has it can start pairing this server, and a code printed in a terminal can end up in a screen share, a support chat or an install log."
+  say "    Nobody can finish without your yes here."
   if [ -n "$PAIR_TO" ]; then
     say ""
     say "  This server will only pair to $PAIR_TO. Nobody has to answer here: when that identity scans or pastes the code, the pairing finishes by itself."
@@ -170,7 +171,8 @@ show_code() {
         case "$ans" in
           1|2|3)
             if vyre_call wink.server.pair.answer "{\"yes\":true,\"pick\":$ans}" | grep -q '"yes": *true'; then
-              say "  Yes. The app finishes the pairing and tells you when this server is added; if it says it could not, follow what it says."
+              say "  Yes. The app is finishing the pairing."
+              wait_connected
             else say "  Those are not the words the app shows, or the question had run out. Nothing was paired. Run this line again."; return 1; fi ;;
           *) vyre_call wink.server.pair.answer '{"yes":false}' >/dev/null || true; say "  No. Nothing was paired." ;;
         esac
@@ -180,6 +182,24 @@ show_code() {
   done
   say "  Nobody asked within the time. Nothing was paired. Run this line again for a new code."
   return 1
+}
+
+# wait_connected: after the yes, the app finishes the pairing (wink.server.adopt); say where this server ended up, in the words the person will see on their device.
+wait_connected() {
+  t=0
+  while [ "$t" -lt "${VYRE_DONE_TRIES:-20}" ]; do
+    st=$(vyre_call wink.server.status '{}' || true)
+    case "$st" in
+      *'"owned":true'*|*'"owned": true'*)
+        sp=$(printf '%s' "$st" | json_field space); dv=$(printf '%s' "$st" | json_field device)
+        say ""
+        say "  Connected to ${sp:-your space}. Finish setting up on your ${dv:-device}."
+        return 0 ;;
+    esac
+    t=$((t + 1)); [ "$t" -lt "${VYRE_DONE_TRIES:-20}" ] && sleep 3
+  done
+  say "  The app has not finished yet. Open it and follow what it says; this server will show as added there."
+  return 0
 }
 
 # --pair-to NAME (or --pair-to=NAME): who an unattended install pairs to. It is taken out of the arguments before the rest go to the release installer.
