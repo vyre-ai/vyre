@@ -329,13 +329,14 @@ async function standinIdentity(t) {
   const state = { down: false };
   const fetchDir = async (url, init) => { if (state.down) throw new Error("unreachable"); return workerDir.fetch(new Request(url, { ...init, headers: { ...(init.headers || {}), "cf-connecting-ip": `198.51.${(n >> 8) & 255}.${n++ & 255}` } }), rt.env); };
   const seen = memorySeen();
-  const store = fileIdentityStore(path.join(tempHome(t), "spaces"));
+  const home = tempHome(t);
+  const store = fileIdentityStore(path.join(home, "spaces"));
   const ops = createIdentityOps({ store, dir: idDirectory({ base: "http://127.0.0.1:1", fetch: fetchDir, now: () => clock.t, seen }), seen, now: () => clock.t, emit() {}, stretch: { memoryKiB: 64, passes: 1 } });
   await ops.create({ name: "alex", password: "four plain words here", deviceLabel: "Alex's phone" });
   spacesHooks.fetch = /** @type {any} */ (fetchDir);
   spacesHooks.now = () => clock.t;
   t.after(async () => { spacesHooks.fetch = null; spacesHooks.now = null; await rt.settle(); });
-  return { id: store.status().id, state, store, ops: () => store.ops(), clock,
+  return { id: store.status().id, home, state, store, ops: () => store.ops(), clock,
     sign: async m => ({ eid: store.status().eid, sig: Buffer.from(await store.sign(Buffer.from(m))).toString("base64url") }) };
 }
 
@@ -976,4 +977,52 @@ test("the session strength is proven at each sign-in (the identity entry's encla
     await f.w.d.registry.call("presence.person.end-paired", { device: f.done.device }, "module:wink");
     await links.startPaired("srv");
     assert.equal((await links.signInStatus("srv", ask.id)).state, "none", "the card went with the device's sessions"); }
+});
+
+test("M1 invites to a space on its server: the home's one-use challenge is answered with the person's own key (a software key on a development build), and a release-kind build refuses a software key", async t => {
+  const { startSealer } = await import("../kernel/seal/client.js");
+  const { enrolDevice, tmp } = await import("../kernel/seal/testing.js");
+  const { softwareKey } = await import("../core/spaces/presence-signer.js");
+  const softSaved = process.env.VYRE_SEAL_SOFTWARE;
+  process.env.VYRE_SEAL_SOFTWARE = "1";
+  t.after(() => { if (softSaved === undefined) delete process.env.VYRE_SEAL_SOFTWARE; else process.env.VYRE_SEAL_SOFTWARE = softSaved; });
+  // the server's kernel runs on a real sealing process that takes software keys (a development build)
+  const sealDir = tmp("m1-invite-seal");
+  const sealer = startSealer({ dir: sealDir, timeoutMs: 8000, dev: true, unattested: true, software: true });
+  t.after(async () => { await sealer.close().catch(() => {}); fs.rmSync(sealDir, { recursive: true, force: true }); });
+  const ident = await standinIdentity(t);
+  const f = await pairFreshServer(t, { ident, kernelSealer: sealer });
+  const server = f.w.d;
+  const links = linksFor(t, f);
+  await links.startPaired("srv");
+  // M1: a computer with the SAME identity the server is owned by (the identity file is copied in, so its device key and id are the claimed ones)
+  const droot = ident.home;
+  fs.writeFileSync(path.join(droot, "config.json"), JSON.stringify({ name: "m1", transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  const { hooks: spacesHooks } = await import("../core/spaces/index.js");
+  const device = await start({ root: droot, kernel: true, presence: lenient, sessionFor: async () => links.sessionFor("srv"), log: () => {} });
+  spacesHooks.sessionFor = async () => links.sessionFor("srv");
+  t.after(() => { spacesHooks.sessionFor = null; spacesHooks.buildRoot = undefined; });
+  t.after(() => device.stop());
+  const dcall = (/** @type {string} */ tool, /** @type {any} */ input = {}, /** @type {any} */ headers = {}) => import("../core/daemon/client.js").then(m => m.call(tool, input, { root: droot, caller: "cli", headers }));
+  device.registry.deps.db.prepare("INSERT INTO wink_devices (id, identity, kind, name, owner_kind, owner_id, created) VALUES (?, ?, 'server', 'srv', 'identity', ?, 1)").run("srv", ident.id, ident.id);
+  const proofHeader = { "x-vyre-kernel-proof": Buffer.from(JSON.stringify({ key: "k1" })).toString("base64url"), "x-vyre-presence": "passkey id=x" };
+  const made = await dcall("spaces.create", { name: "harlowinv", displayName: "Harlow Legal", home: { kind: "server", device: { id: "srv", name: "srv", alwaysOn: true }, confirmed: true } }, proofHeader);
+  assert.ok(!made.error && made.data.status === "done", JSON.stringify(made).slice(0, 300));
+  const id = made.data.space;
+  assert.equal(server.kernel.spaces.hosts(id), true, "the SERVER's kernel hosts it");
+  // M1's own presence key is the one the home's sealing process knows for the owner
+  const key = softwareKey(path.join(droot, "spaces", "presence-key.json"));
+  await enrolDevice(sealer, { enrolment: { person: ident.id, key_id: key.key_id, signer: key.signer, spki: key.spki } });
+  // a release-kind build never answers with a software key: the call is handed back as a request to sign, and nothing is made
+  const releaseRoot = tempHome(t);
+  spacesHooks.buildRoot = releaseRoot;
+  const refused = await dcall("spaces.invites.create", { space: id, role: "member" });
+  assert.ok(!refused.error && refused.data.needs_proof === true && refused.data.request.challenge && refused.data.request.home, `release kind: ${JSON.stringify(refused).slice(0, 300)}`);
+  // a development build answers the home's challenge with the person's software key and the invite is made in the one call
+  spacesHooks.buildRoot = undefined;
+  const made1 = await dcall("spaces.invites.create", { space: id, role: "member" });
+  assert.ok(!made1.error && /\/join\/inv_/.test(made1.data.link), `dev kind: ${JSON.stringify(made1).slice(0, 400)}`);
+  // and the home knows the invite
+  const invs = await server.kernel.spaces.hosted(id).gateway.grants.invites.list(server.kernel.spaces.hosted(id).kernel.chains.fromFacts({ kind: "device", device_key_id: "x", person: ident.id, path: "direct", session: "s" }), {}).catch(() => null);
+  if (invs) assert.ok(JSON.stringify(invs).includes(made1.data.id), "the home holds the invite");
 });

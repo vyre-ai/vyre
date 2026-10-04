@@ -17,6 +17,9 @@ const MAX_STORED_BYTES = 8 * 1024 * 1024;
 const INVITEE_RESPONSE_BYTES = 16 * 1024;
 const RATE = Object.freeze({ member: 300, invitee: 30, window_ms: 60_000, peers: 10_000 });
 
+/** Gateway paths whose grants call has another name in the proof requests (kernel/remote/proof.js). */
+const WIRE_TO_PROOF = Object.freeze({ "grants.invites.create": "inviteCreate", "grants.invites.confirm": "inviteConfirm" });
+
 /**
  * @param {{ space: string, home?: string, kernel: any, clock?: () => number, rate?: { member?: number, invitee?: number }, services?: Record<string, any>, attest?: (nonce: string) => Promise<{ pub: string, sig: string } | null>, identityEvidence?: (who: { person: string, name?: string }) => Promise<{ ops: any[], entries: { eid: string, kind: string, pub: string, founder: boolean, since: number }[] } | null> }} cfg `kernel` is the home's kernel for this Space (createKernel / bootKernel's result)
  */
@@ -38,7 +41,8 @@ export function createRemoteServer(cfg) {
     const nonce = crypto.randomBytes(16).toString("base64url");
     const ah = argsHash(args);
     challenges.set(nonce, { device, call, args: ah, exp: now + CHALLENGE_TTL_MS });
-    const short = call.split(".").slice(1).join(".");
+    // the wire names a call by its gateway path (grants.invites.create); the proof request is named by the grants call (inviteCreate)
+    const short = WIRE_TO_PROOF[call] || call.split(".").slice(1).join(".");
     /** @type {any} */ let cover = {};
     if (call.startsWith("grants.") && PROOF_CALLS.includes(short)) { try { const r = proofRequest(cfg.space, short, ...args); cover = { op: r.op, fields: r.fields, payload_hash: r.payload_hash }; } catch { cover = {}; } }
     return { call, space: cfg.space, home: cfg.home || cfg.space, nonce, expires: now + CHALLENGE_TTL_MS, args_hash: ah, ...cover };

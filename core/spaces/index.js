@@ -35,6 +35,8 @@ import { createCompute } from "../../lib/spaces/compute.js";
 import { createKernelMembers } from "./kernel-members-compat.js";
 import { kernelMembers, plainKernelError } from "./kernel-members.js";
 import { createRemoteKernel } from "../../kernel/remote/client.js";
+import { devSwitch } from "../../kernel/devbuild.js";
+import { softwareProof, softwareKey } from "./presence-signer.js";
 import { winkTransport } from "../../kernel/remote/wink.js";
 import { acceptProofRequest } from "../../kernel/remote/proof.js";
 import { joinBytes } from "../../kernel/seal/wire.js";
@@ -59,6 +61,8 @@ export const hooks = {
   /** @type {number | null} how long a read of a SERVER-hosted space's members waits for the server before it counts as unknown (default 4000 ms; read at call time) */ remoteMs: null,
   /** @type {(() => Promise<any>) | null} replaces the kernel's store plan in host-here (read at call time) */ storePlan: null,
   /** @type {boolean | null} when set, answers "does this space live on this computer" for every space (read at call time) */ livesHere: null,
+  /** @type {((challenge: any, who: { space: string, person: string }) => Promise<any> | any) | null} the person's own signer (Touch ID, the Secure Enclave, a passkey): answers a space home's presence challenge with a proof carrying `home` and `challenge`, or null; a test sets it */ signer: null,
+  /** @type {string | undefined} a package root a test points at to be a release-kind or development-kind build for the software key's switch (read at call time) */ buildRoot: undefined,
   /** @type {((device: string) => Promise<{ call(tool: string, input: any): Promise<any> }>) | null} the open Wink peer session to a paired server (the daemon wires it); a test sets it */ sessionFor: null,
 };
 
@@ -236,6 +240,17 @@ export default {
       try { await K.spaces.retire(id); } catch (e) { ctx.log.warn(`the kernel kept a space that did not finish being made (${id}): ${String(/** @type {any} */ (e).message || e).slice(0, 120)}`); }
     };
     /** The caller's chain IN that Space (a hosted Space has its own key: the home's chain is not a member of it), and the proof beside the call. */
+    /** The person's own answer to a home's challenge, or null: the hardware signer a surface set, else this computer's software key, only on a development build behind VYRE_SEAL_SOFTWARE. @param {any} ch @param {string} space */
+    const answerChallenge = async (ch, space) => {
+      try {
+        const st = identity.status();
+        if (!st.exists || st.pending || !st.id) return null;
+        const full = { ...ch, space: ch.space || space };
+        if (typeof hooks.signer === "function") { const p = await hooks.signer(full, { space, person: st.id }); if (p && typeof p === "object") return p; }
+        if (!devSwitch(process.env.VYRE_SEAL_SOFTWARE, hooks.buildRoot)) return null;
+        return softwareProof(path.join(root, "presence-key.json"), st.id, full);
+      } catch { return null; }
+    };
     const kctxOf = async (/** @type {any} */ meta, /** @type {string} */ space) => {
       // A space the SERVER hosts is reached through a RemoteKernel: the chain argument never leaves this device (the server mints the chain from the peer it proved), so none is built here.
       const h = space ? kernelHandle(space) : null;
@@ -1433,13 +1448,16 @@ export default {
         if (kernelHandle(row.id)) {
           // The Space's kernel makes the invite (a grant act under the admin's own proof) and holds it; the link carries only its id and this device's pin.
           const k = await kctxOf(meta, row.id);
+          const body = { role: i.role, ...(i.scope ? { scope: i.scope } : {}), ...(i.expires ? { expires: i.expires } : {}), ...(i.to ? { invitee: await personRef(i.to) } : {}), ...(i.ttlDays ? { valid_ms: Number(i.ttlDays) * DAY } : {}) };
           /** @type {any} */ let rec;
-          try { rec = await kernelMembers({ handle: kernelHandle(row.id), now }).invites.create(k, { role: i.role, ...(i.scope ? { scope: i.scope } : {}), ...(i.expires ? { expires: i.expires } : {}), ...(i.to ? { invitee: await personRef(i.to) } : {}), ...(i.ttlDays ? { valid_ms: Number(i.ttlDays) * DAY } : {}) }); }
+          try { rec = await kernelMembers({ handle: kernelHandle(row.id), now }).invites.create(k, body); }
           catch (e) {
-            // A space on a server: the home asks for the person's yes on THIS invite with a one-use challenge. The person's device signs it (Touch ID or its own key) and the same call comes back with that proof, which carries `home` and `challenge`.
+            // A space on a server: the home asks for the person's yes on THIS invite with a one-use challenge. This computer answers it with the person's own key (the hardware signer, or a software key on a development build) and the same call goes again with that proof, which carries `home` and `challenge`. With no key to answer, it is handed back as a request to sign.
             const ch = /** @type {any} */ (e) && /** @type {any} */ (e).code === "presence_required" ? /** @type {any} */ (e).challenge : null;
             if (!ch || typeof ch.nonce !== "string") throw e;
-            return { needs_proof: true, request: { space: row.id, op: ch.op, fields: ch.fields, payload_hash: ch.payload_hash, home: ch.home, challenge: ch.nonce, expires: ch.expires } };
+            const proof = await answerChallenge(ch, row.id);
+            if (!proof) return { needs_proof: true, request: { space: row.id, op: ch.op, fields: ch.fields, payload_hash: ch.payload_hash, home: ch.home, challenge: ch.nonce, expires: ch.expires } };
+            rec = await kernelMembers({ handle: kernelHandle(row.id), now }).invites.create(await kctxOf({ ...meta, kernel_proof: proof }, row.id), body);
           }
           const pin = await invitePin(row);
           const token = `${rec.id}.${b64u(Buffer.from(JSON.stringify(pin)))}`;
