@@ -958,7 +958,6 @@ test("setup in progress: kept with the space, claimed by another device of the p
   assert.ok(!JSON.stringify(saved).includes("SECRETVALUE") && !JSON.stringify(saved).includes("123456"), "only the shape is kept");
   assert.equal((await d.ok("spaces.get", { space })).setup.step, "look");
   assert.equal((await d.ok("spaces.list"))[0].setup.device.id, "phone00000000001");
-  assert.equal((await d.call("spaces.setup.save", { space, setup: { step: "ai" } }, "cli", phone)).error, undefined, "the AI accounts step is a setup step");
   for (const bad of [{ step: "pairing" }, { step: "look", where: "moon" }, "look", [1]]) assert.equal((await d.call("spaces.setup.save", { space, setup: bad }, "cli", phone)).error?.code, "bad_input", JSON.stringify(bad));
   // another device may not write over it; it must claim
   assert.equal((await d.call("spaces.setup.save", { space, setup: { step: "members" } }, "cli", laptop)).error?.code, "setup_elsewhere");
@@ -968,6 +967,7 @@ test("setup in progress: kept with the space, claimed by another device of the p
   assert.equal((await d.ok("spaces.setup.save", { space, setup: { step: "members" } }, "cli", laptop)).setup.started, saved.setup.started);
   assert.equal((await d.ok("spaces.setup.claim", { space }, "cli", laptop)).moved, false);
   assert.equal((await d.call("spaces.setup.claim", { space: "nope" }, "cli", laptop)).error?.code, "not_found");
+  assert.equal((await d.ok("spaces.setup.save", { space, setup: { step: "ai" } }, "cli", laptop)).setup.step, "ai", "the AI accounts step is a setup step");
   assert.equal((await d.ok("spaces.setup.save", { space, setup: null }, "cli", laptop)).setup, null);
   assert.equal((await d.ok("spaces.get", { space })).setup, null);
   assert.equal((await d.call("spaces.setup.claim", { space }, "cli", laptop)).error?.code, "no_setup");
@@ -1004,7 +1004,7 @@ test("device enrolment: no list means every space, pairing sets the list, a new 
   const asDevice = { kernelFacts: { kind: "device", device_key_id: eid } };
   const a = await d.ok("spaces.create", { name: "harlow", home: { kind: "this-computer", confirmed: true } });
   const b = await d.ok("spaces.create", { name: "northwind", home: { kind: "this-computer", confirmed: true } });
-  assert.equal((await d.ok("spaces.devices.enrolled", { device: eid, space: a.space }, "module:x")).enrolled, true, "no list yet: enrolled everywhere");
+  assert.equal((await d.ok("spaces.devices.enrolled", { device: eid, space: a.space }, "module:vyred")).enrolled, true, "no list yet: enrolled everywhere");
   // pairing: every space pre-ticked, the person unticks northwind
   const set = await d.ok("spaces.devices.set", { device: eid, spaces: [a.space] });
   assert.deepEqual(set.spaces, [a.space]);
