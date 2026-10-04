@@ -13,4 +13,6 @@ for f in SHA256SUMS SHA256SUMS.sig modules.json appbuild.json; do
     if cp "$rel/$f" "$root/$f" && chmod 0644 "$root/$f"; then :; else echo "place-release: could not place $f at $root" >&2; rm -f "$root/$f"; fail=1; fi
   fi
 done
+# A release an old updater published has shell.json but no modules.json or appbuild.json: they are rebuilt from the signed shell.json that carries them (core/spawner/place-shell-list.mjs).
+if [ -f "$rel/shell.json" ] && [ -f "$root/core/spawner/place-shell-list.mjs" ] && command -v node >/dev/null 2>&1; then node "$root/core/spawner/place-shell-list.mjs" "$root" || true; fi
 exit "$fail"
