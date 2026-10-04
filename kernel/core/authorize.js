@@ -295,7 +295,8 @@ export function createAuthorizer(cfg) {
       const sessionOk = !(risk === "admin" || risk === "grant") || isExactlyPerson(chain);
       const presenceMet = presence === "none" || (presence === "session" && sessionOk && (cfg.hasPresenceSession ? cfg.hasPresenceSession(chain) : false))
         || (input.presence && cfg.verifyPresence ? await cfg.verifyPresence(input.presence, ctxEvidence) === true : false);
-      const out = [...obligations];
+      // The same obligation reached by two grants of a delegation chain (a child and the parent it came from) is one obligation.
+      const out = obligations.filter((o, i) => obligations.findIndex(x => JSON.stringify(x) === JSON.stringify(o)) === i);
       if (presence !== "none") out.push({ type: "presence", method: presence });
       if (ask) out.push({ type: "ask", kind: ask.kind, approver: ask.approver, checker_must_be_person: true, ...(askRule ? { rule: askRule.id, waivable: false } : {}) });
       // 7. Return. Approvals are K4's: an ask stays an ask until the kernel's task machinery records the approval.

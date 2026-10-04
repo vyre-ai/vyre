@@ -17,6 +17,7 @@ import { sealerPresence } from "./core/presence.js";
 import { expr as defaultExpr } from "./expr/index.js";
 import { KernelError } from "./core/errors.js";
 import { createSurfaces } from "./core/surfaces.js";
+import { verifyTail } from "./audit/index.js";
 import { createRoom, createRoomPort } from "./core/room.js";
 import { proofFrom, proofRequest, acceptProofRequest, proofChainHash } from "./remote/proof.js";
 import { createOffersPort } from "./remote/offers-port.js";
@@ -25,8 +26,9 @@ import { runnerPorts } from "./gateway/runner-ports.js";
 
 /**
  * @param {{ space: string, owner: string, owner_uid: number, key?: Uint8Array | string, seal?: any, label?: () => { name?: string, words?: string }, clock?: () => number,
- *   legacyKeys?: (Uint8Array | string)[], currentCall?: () => any, store?: any, log?: any, chains?: any, grantsStore?: any, grants?: any, members?: any, bootstrap?: boolean, presence?: any, sealer?: any, door?: any,
+ *   legacyKeys?: (Uint8Array | string)[], snapshot_every?: number, bootCheck?: boolean, currentCall?: () => any, store?: any, log?: any, chains?: any, grantsStore?: any, grants?: any, members?: any, bootstrap?: boolean, presence?: any, sealer?: any, door?: any,
  *   expr?: any, hasPresenceSession?: (chain: any) => boolean, onStageEnter?: any, stageTasks?: any, checkpointKey?: any,
+ *   deviceEnrolled?: (space: string, device: string) => Promise<boolean>, onOwnerAdopted?: (owner: string, previous: string) => Promise<void> | void,
  *   drive?: any, resolveCredential?: any, forwardCredential?: any, routeAction?: any, templates?: any, destinations?: any, resolve?: any, actions?: any[], attrs?: any, sinks?: Set<string> }} cfg
  *   grants and members together replace the grants store (the retrofit path and test rigs); otherwise a grants store is made and, on an empty log, its first owner
  */
@@ -36,28 +38,36 @@ export async function createKernel(cfg) {
   const store = cfg.store || createMemoryStore({ clock });
   // The one sealing handle (K-3): the sealing process when there is one, a development key when there is not. Only the chain builder and the grants store are given it.
   const seal = cfg.seal || createKernelSeal({ sealer: cfg.sealer, key: cfg.key });
-  const chains = cfg.chains || createChainBuilder({ space: cfg.space, owner: cfg.owner, owner_uid: cfg.owner_uid, seal, clock, is_person: () => true });
+  /** The Space's owner: a local id from first start until the person claims their identity, then THE identity's id (`adoptOwner`). Everything below reads it live. */
+  const ownerRef = { id: cfg.owner };
+  const chains = cfg.chains || createChainBuilder({ space: cfg.space, get owner() { return ownerRef.id; }, owner_uid: cfg.owner_uid, seal, clock, is_person: () => true });
   const own = Boolean(cfg.grants && cfg.members);
   /** The Space's name and fingerprint words for the join card: given at start, or later by the module that holds the Space's identity (`setLabel`). */
   /** @type {(() => { name?: string, words?: string }) | undefined} */ let label = cfg.label;
-  const grantsStore = own ? undefined : cfg.grantsStore || createGrantsStore({ legacyKeys: cfg.legacyKeys, space: cfg.space, log, chains, seal, clock, presence: cfg.presence || (cfg.sealer ? sealerPresence(cfg.sealer) : undefined), label: () => (label ? label() : {}) });
-  const presence = cfg.presence || (cfg.sealer ? sealerPresence(cfg.sealer) : undefined);
+  // DEVELOPMENT ONLY (`cfg.standIn`, true only in a development build whose home holds the owner's hand-made `dev-presence-stand-in`): the automated walk's presence. A one-person chain then counts as
+  // having a presence session, and a proof with method "stand-in" is taken; every use is a `presence.stand-in` event naming the method, so a walk is never mistaken for a real proof.
+  const standIn = typeof cfg.standIn === "function" ? cfg.standIn : () => false;
+  const standInUse = (/** @type {string} */ what) => { try { void Promise.resolve(log.append(chains.fromFacts({ kind: "module", module: "presence", first_party: true }), { type: "presence.stand-in", sv: 1, subject: `vyre://${cfg.space}/presence/stand-in`, data: { method: "stand-in", what }, vis: "owner", red: "internal" })).catch(() => {}); } catch { /* the walk goes on */ } };
+  const baseHas = cfg.hasPresenceSession || ((/** @type {any} */ chain) => isExactlyPerson(chain) && Boolean(chain.hops[0].via && chain.hops[0].via.session));
+  const hasPresenceSession = (/** @type {any} */ chain) => baseHas(chain) || (standIn() === true && isExactlyPerson(chain) && (standInUse("session"), true));
+  const presence0 = cfg.presence || (cfg.sealer ? sealerPresence(cfg.sealer) : undefined);
+  const presence = presence0 && typeof cfg.standIn === "function" ? Object.freeze({ check: async (/** @type {any} */ i) => { if (i && i.proof && i.proof.method === "stand-in" && standIn() === true && isChain(i.chain) && isExactlyPerson(i.chain)) { standInUse(String(i.op)); return null; } return presence0.check(i); } }) : presence0;
+  const grantsStore = own ? undefined : cfg.grantsStore || createGrantsStore({ snapshot_every: cfg.snapshot_every, legacyKeys: cfg.legacyKeys, space: cfg.space, log, chains, seal, clock, presence, label: () => (label ? label() : {}) });
   const limits = createLimits({ space: cfg.space, log, clock });
   let fresh = false, migrated = false;
   if (grantsStore && cfg.bootstrap !== false) { if (log.latestSeq() === 0) { await grantsStore.bootstrap({ owner: cfg.owner }); fresh = true; } else { migrated = (await grantsStore.rebuild()).migrated; limits.rebuild(); } }
   // A presence session (the person signed in with their passkey on this device) stands for admin acts only for a chain that is exactly one person.
-  const hasPresenceSession = cfg.hasPresenceSession || ((/** @type {any} */ chain) => isExactlyPerson(chain) && Boolean(chain.hops[0].via && chain.hops[0].via.session));
   /** @type {any} */ let gateway;
   const members = grantsStore ? grantsStore.members : cfg.members;
   const tasks = createTasks({
     space: cfg.space, log, chains, clock, presence: presence || { check: async () => "no_presence_verifier" }, members: { has: (/** @type {any} */ a) => members.has(a), roleOf: (/** @type {any} */ a) => (grantsStore ? grantsStore.roleOf(a) : null) },
     authorizer: { authorize: (/** @type {any} */ i) => gateway.authorize(i), get actions() { return gateway.registry; } },
-    approver: () => ({ kind: "person", id: cfg.owner, space: cfg.space }), resolve: cfg.resolve, enforce: (/** @type {any} */ c, /** @type {any} */ d) => limits.enforce(c, d),
+    approver: () => ({ kind: "person", id: ownerRef.id, space: cfg.space }), resolve: cfg.resolve, enforce: (/** @type {any} */ c, /** @type {any} */ d) => limits.enforce(c, d),
   });
   const roomPort = grantsStore ? createRoomPort({ grantsStore }) : null;
   gateway = createGateway({
     room: roomPort,
-    space: cfg.space, store, log, chains, clock, limits, tasks, approvedAct: (/** @type {any} */ q) => tasks.useApproval(q), owner: cfg.owner, presence, hasPresenceSession, expr: cfg.expr === undefined ? defaultExpr : cfg.expr,
+    space: cfg.space, store, log, chains, clock, limits, tasks, approvedAct: (/** @type {any} */ q) => tasks.useApproval(q), get owner() { return ownerRef.id; }, presence, hasPresenceSession, expr: cfg.expr === undefined ? defaultExpr : cfg.expr,
     ...(grantsStore ? { grantsStore } : { grants: cfg.grants, members: cfg.members }),
     sealer: cfg.sealer, door: cfg.door, onStageEnter: cfg.onStageEnter, stageTasks: cfg.stageTasks, checkpointKey: cfg.checkpointKey, templates: cfg.templates, destinations: cfg.destinations,
     actions: cfg.actions, attrs: cfg.attrs, sinks: cfg.sinks, drive: cfg.drive, resolveCredential: cfg.resolveCredential, forwardCredential: cfg.forwardCredential, routeAction: cfg.routeAction,
@@ -72,6 +82,11 @@ export async function createKernel(cfg) {
    * chain: a module never builds a chain. Record calls wait for the module's types to be defined.
    * @param {any} m the module's manifest
    */
+  /** Is this device (a `device` fact) still enrolled in this Space? The spaces module keeps the list (`cfg.deviceEnrolled`); with no port every device is (a build without the module). Any error is a no. */
+  const enrolledHere = async (/** @type {string} */ space, /** @type {any} */ facts) => {
+    if (!cfg.deviceEnrolled || !facts || facts.kind !== "device" || typeof facts.device_key_id !== "string") return true;
+    try { return (await cfg.deviceEnrolled(space, facts.device_key_id)) !== false; } catch { return false; }
+  };
   const kernelFor = (/** @type {any} */ m) => {
     if (!grantsStore) throw new Error("ctx.kernel needs the kernel's own grants store");
     const needs = (m.needs && m.needs.kernel) || { actions: [] };
@@ -82,7 +97,7 @@ export async function createKernel(cfg) {
     ready.catch(() => {});
     const records = new Proxy(gateway.records, { get: (t, k) => (typeof t[k] === "function" ? async (/** @type {any[]} */ ...a) => { await ready; return t[k](...a); } : t[k]) });
     /** @type {any} */ const handle = {
-      space: cfg.space, records, events: gateway.events, grants: gateway.grants, tasks: gateway.ask, audit: gateway.audit, authorize: gateway.authorize, limits: gateway.limits,
+      space: cfg.space, get owner() { return ownerRef.id; }, records, events: gateway.events, grants: gateway.grants, tasks: gateway.ask, audit: gateway.audit, authorize: gateway.authorize, limits: gateway.limits,
       model: surfaces.model,
       /** The `{ presence }` option from what a surface sent beside the request (`meta.kernel_proof`), and what that surface must sign for a grants call. The kernel's verifier checks it. */
       /** Any Space by id: this one, another this home hosts, or a remote client with the same gateway API (the chain argument carries no authority across). */
@@ -138,10 +153,50 @@ export async function createKernel(cfg) {
        */
       chain: async (/** @type {any} */ meta) => {
         if (meta && typeof meta.token === "string") return surfaces.chainFor(meta.token);
-        if (meta && meta.kernelFacts && typeof meta.kernelFacts === "object") { try { return chains.fromFacts(meta.kernelFacts); } catch { /* no person chain for this connection */ } }
+        if (meta && meta.kernelFacts && typeof meta.kernelFacts === "object") {
+          // A device the person removed from THIS Space has no chain in it (the user's ruling: devices enrol per Space); it keeps its chains in the Spaces it is still in.
+          if (!(await enrolledHere(cfg.space, meta.kernelFacts))) return gateway.serviceChain(m.name);
+          try { return chains.fromFacts(meta.kernelFacts); } catch { /* no person chain for this connection */ }
+        }
         await ready;
         return gateway.serviceChain(m.name);
       },
+    };
+    // Only the spaces module (`needs.kernel.spaces: true`) may make or list Spaces: `spaces.create` makes the Space HERE, in the kernel's registry, and the kernel's id (`spc_` and 12 base32
+    // characters) is the Space's id everywhere. One registry, one id; the store is attached at that moment (the kernel opens the built-in store for every hosted Space).
+    if (needs.spaces === true) {
+      /** The claimed identity's id becomes the owner's id here (once, logged): the one person of this Space. */
+      handle.adoptOwner = async (/** @type {string} */ to) => {
+        if (!grantsStore) throw new KernelError("unavailable", "this kernel has no grants store");
+        const from = ownerRef.id;
+        const r = await grantsStore.adoptOwner(from, to);
+        if (r.changed) { ownerRef.id = to; if (typeof cfg.onOwnerAdopted === "function") await cfg.onOwnerAdopted(to, from); }
+        return r;
+      };
+
+      const reg = () => { if (!spaces) throw new KernelError("unavailable", "this kernel has no Spaces registry"); return spaces; };
+      handle.spaces = Object.freeze({
+        host: (/** @type {any} */ o) => reg().host(o),
+        storePlan: () => reg().storePlan(),
+        list: () => reg().list(),
+        hosts: (/** @type {string} */ id) => reg().hosts(id),
+      });
+    }
+    /**
+     * The chain of the call itself, in ANY Space this home hosts (the app's one call names a Space): this Space's is `chain(meta)`; another hosted Space builds the chain from the same proved
+     * facts (or its own session token) under THAT Space's own key, so the call is a member of that Space or nothing. A Space this home does not host has no chain here.
+     * @param {string} space @param {any} meta
+     */
+    handle.chainIn = async (space, meta) => {
+      if (space === cfg.space) return handle.chain(meta);
+      const h = spaces && typeof spaces.hosted === "function" ? spaces.hosted(space) : null;
+      if (!h || !h.kernel) throw new KernelError("not_found", "no such space here");
+      if (meta && typeof meta.token === "string") return h.surfaces.chainFor(meta.token);
+      if (meta && meta.kernelFacts && typeof meta.kernelFacts === "object") {
+        if (!(await enrolledHere(space, meta.kernelFacts))) throw new KernelError("not_a_member", "this device is not enrolled in that space");
+        try { return h.kernel.chains.fromFacts(meta.kernelFacts); } catch { /* no person chain for this connection */ }
+      }
+      throw new KernelError("not_a_member", "no chain for this connection");
     };
     /** Wink's `offers` port over this Space's grants.offers (kernel/remote/offers-port.js): the caller's chain and proof come from the call's meta. */
     handle.offersPort = () => createOffersPort(handle);
@@ -169,5 +224,8 @@ export async function createKernel(cfg) {
     const e = all[all.length - 1];
     return e ? { ...e.data, unverified: !checkpoint } : null;
   }
-  return Object.freeze({ setLabel: (/** @type {() => { name?: string, words?: string }} */ f) => { label = f; }, bindCalls: (/** @type {() => any} */ fn) => { if (room) room.bindCalls(fn); }, recordStorageIndex, storageIndexHead, gateway, log, store, chains, grants: grantsStore, limits, tasks, surfaces, kernelFor, bindSpaces, fresh, migrated });
+  // The check a restart makes (incremental): the last signed checkpoint against the event at its position, then the chain from there to the head, not from event zero. Reported
+  // for the daemon to act on (`boot.tamper`); it never throws here.
+  const boot = cfg.checkpointKey && cfg.bootCheck !== false ? verifyTail({ space: cfg.space, log, publicKey: cfg.checkpointKey }) : null;
+  return Object.freeze({ boot, setLabel: (/** @type {() => { name?: string, words?: string }} */ f) => { label = f; }, bindCalls: (/** @type {() => any} */ fn) => { if (room) room.bindCalls(fn); }, recordStorageIndex, storageIndexHead, gateway, log, store, chains, grants: grantsStore, limits, tasks, surfaces, kernelFor, bindSpaces, fresh, migrated });
 }

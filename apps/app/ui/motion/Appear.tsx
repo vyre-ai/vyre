@@ -20,8 +20,11 @@ export function Appear({ children, index = 0, show = true, style }: { children: 
     const d = reduced ? 0 : staggerDelay(motion, index);
     if (show) {
       o.value = withDelay(d, reduced ? withTiming(1, { duration: motion.duration.state }) : withSpring(1, SPRING["effects.default"]));
-      y.value = withDelay(d, reduced ? 0 : withSpring(0, SPRING["spatial.default"]));
-      s.value = withDelay(d, reduced ? 1 : withSpring(1, SPRING["spatial.default"]));
+      // Reduced motion sets the value directly: withDelay needs an animation, and a plain number there throws on native (Reanimated 4).
+      if (reduced) { y.value = 0; s.value = 1; } else {
+        y.value = withDelay(d, withSpring(0, SPRING["spatial.default"]));
+        s.value = withDelay(d, withSpring(1, SPRING["spatial.default"]));
+      }
     } else {
       o.value = withTiming(0, { duration: motion.duration.state });
       y.value = reduced ? 0 : withSpring(e.dy, SPRING["spatial.fast"]);

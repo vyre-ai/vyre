@@ -311,6 +311,30 @@ test("K2-7: row policy reads kernel attributes the gateway wrote; a record it di
   await assert.rejects(() => r.create(owner(), "contact", { name: "x" }, { attrs: { created_by: "forged" } }), { code: "bad_input" });
 });
 
+test("BL-3: on the built-in store a record's attributes are the create event's, so editing kernel_attrs on disk changes nothing", async () => {
+  const { DatabaseSync } = await import("node:sqlite");
+  const { createSqliteStore } = await import("../store/sqlite.js");
+  const { createSqliteEventLog } = await import("../store/sqlite-log.js");
+  const where = [{ attr: "sensitivity", op: "ne", value: "privileged" }];
+  const grants = [G(), G({ subject: { kind: "actor", actor: actor("agent", "kit") }, actions: ["records.read"], resource: { prefix: `vyre://${SPACE}/contact/*`, where } })];
+  const db = new DatabaseSync(":memory:");
+  const store = createSqliteStore({ db, clock });
+  const log = createSqliteEventLog({ db, space: SPACE, clock });
+  const gw = createGateway({ space: SPACE, store, log, chains, clock, grants: { forSubject: a => grants.filter(g => g.subject.actor.kind === a.kind && g.subject.actor.id === a.id), get: id => grants.find(g => g.id === id) }, members: { has: a => `${a.kind}:${a.id}` === `person:${OWNER}` || `${a.kind}:${a.id}` === "agent:kit" }, hasPresenceSession: () => true });
+  const r = gw.records;
+  await r.define(owner(), { add_types: [CONTACT] });
+  const secret = await r.create(owner(), "contact", { name: "Secret" }, { attrs: { sensitivity: "privileged" } });
+  assert.equal(await r.get(agent(), "contact", secret.id), null);
+  // the write to the database: the record is now "internal" on disk
+  db.prepare("UPDATE kernel_attrs SET attrs = json_set(attrs, '$.sensitivity', 'internal') WHERE urn = ?").run(secret.urn);
+  assert.equal(JSON.parse(db.prepare("SELECT attrs FROM kernel_attrs WHERE urn = ?").get(secret.urn).attrs).sensitivity, "internal");
+  // a fresh gateway over the same database (a restart, so no cache): the log wins and the disk copy is repaired
+  const gw2 = createGateway({ space: SPACE, store: createSqliteStore({ db, clock }), log: createSqliteEventLog({ db, space: SPACE, clock }), chains, clock, grants: { forSubject: a => grants.filter(g => g.subject.actor.kind === a.kind && g.subject.actor.id === a.id), get: id => grants.find(g => g.id === id) }, members: { has: a => `${a.kind}:${a.id}` === `person:${OWNER}` || `${a.kind}:${a.id}` === "agent:kit" }, hasPresenceSession: () => true });
+  assert.equal(await gw2.records.get(agent(), "contact", secret.id), null, "still hidden");
+  assert.equal(gw2.records.attrsOf(secret.urn).sensitivity, "privileged");
+  assert.equal(JSON.parse(db.prepare("SELECT attrs FROM kernel_attrs WHERE urn = ?").get(secret.urn).attrs).sensitivity, "privileged", "the disk copy was repaired from the log");
+});
+
 test("K2-10: no cursor when only rows the chain cannot read remain", async () => {
   const where = [{ attr: "sensitivity", op: "eq", value: "internal" }];
   const grants = [G(), G({ subject: { kind: "actor", actor: actor("agent", "kit") }, actions: ["records.read"], resource: { prefix: `vyre://${SPACE}/contact/*`, where } })];

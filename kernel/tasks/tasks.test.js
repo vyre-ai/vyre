@@ -589,3 +589,18 @@ test("a task's answer reaches whoever asked: stored on done and carried on task.
   await r.tasks.start(agentChain("research"), big.id);
   await assert.rejects(() => r.tasks.complete(agentChain("research"), big.id, { note: "x".repeat(9000), sources: ["https://x"] }), { code: "bad_input" });
 });
+
+test("list: filtered by record, doer, checker and state, oldest first; a hand-made chain is refused", async () => {
+  const r = rig();
+  const a = await r.tasks.request(owner(), draftTask());
+  const b = await r.tasks.request(owner(), draftTask({ record: `vyre://${SPACE}/contact/c2` }));
+  assert.deepEqual((await r.tasks.list(owner())).map(t => t.id), [a.id, b.id].sort());
+  assert.deepEqual((await r.tasks.list(owner(), { record: `vyre://${SPACE}/contact/c2` })).map(t => t.id), [b.id]);
+  assert.equal((await r.tasks.list(owner(), { doer: "intake" })).length, 2);
+  assert.equal((await r.tasks.list(owner(), { doer: "nobody" })).length, 0);
+  assert.equal((await r.tasks.list(owner(), { checker: ALICE })).length, 2);
+  assert.equal((await r.tasks.list(owner(), { state: ["working"] })).length, 0);
+  await r.tasks.start(asIntake(), a.id);
+  assert.deepEqual((await r.tasks.list(owner(), { state: ["working"] })).map(t => t.id), [a.id]);
+  await assert.rejects(() => r.tasks.list({ hops: [], space: SPACE }), { code: "bad_input" });
+});

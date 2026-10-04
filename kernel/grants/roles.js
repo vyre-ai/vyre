@@ -1,7 +1,10 @@
 // kernel/grants/roles.js: the five roles as bundles of grants (contract section on roles; contracts roles.d.ts). A membership expands to grants
 // whose `source` is `role:<id>`; the abilities in ROLE_BUNDLES say what each bundle is for, and this table says which named actions carry them.
 // Only named actions, never wildcards (a wildcard never covers admin, grant or outward actions). Per-project overrides may narrow, never widen.
-const MEMBER = ["records.read", "records.create", "records.update", "records.remove", "records.restore", "events.read", "tasks.request", "tasks.read", "tasks.work", "tasks.decide", "grants.offer"];
+// `seal.put`: writing a value INTO a sealed field is part of being able to write that record (lead ruling 4 Oct). The value goes straight to the sealing process and is never stored or logged in the clear;
+// reading it back is a separate act (unseal, with presence). A temp member gets it only where a grant of theirs names it; the sealing process refuses a chain with a model in it, so an assistant fills a sealed
+// field only through the placeholder path.
+const MEMBER = ["records.read", "records.create", "records.update", "records.remove", "records.restore", "seal.put", "events.read", "tasks.request", "tasks.read", "tasks.work", "tasks.decide", "grants.offer"];
 const MANAGER = [...MEMBER, "records.define", "grants.list", "rules.list", "rules.propose"];
 const ADMIN = [...MANAGER, "grants.create", "grants.revoke", "grants.narrow", "grants.role", "grants.invite", "drive.restore", "rules.set", "rules.remove", "rules.accept", "rules.dismiss"];
 export const ROLE_ACTIONS = Object.freeze({

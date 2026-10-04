@@ -110,7 +110,7 @@ export function companionSide(ctx, { db, now, deviceInfo, box = () => null, maxN
   }
 
   ctx.tool("link.companion.pair", {
-    callers: ["deck", "tailnet"],
+    callers: ["deck", "tailnet", "device", "space", "agent"],
     description: "A paired desktop app asks the box to accept its local core as a companion: { core (its P-256 public key, base64url), name, nonce, ts }. Called over the app's own relay channel with a presence proof from the app device's key, which is the countersign. Answers { id, approved: window } inside 15 minutes of the app's pairing with no companion yet, else { pending, approved: false } for the person's one tap.",
     input: { type: "object", properties: { core: { type: "string" }, name: { type: "string" }, nonce: { type: "string" }, ts: { type: "number" } }, required: ["core", "nonce", "ts"] },
     presence: { when: () => true, summary: async i => `Let this app's local core join this box as its companion (key ${i && typeof i.core === "string" ? coreFingerprint(i.core) : "unknown"})` },
@@ -216,7 +216,7 @@ export function companionSide(ctx, { db, now, deviceInfo, box = () => null, maxN
   }
 
   ctx.tool("link.companion.hello", {
-    callers: ["tailnet"],
+    callers: ["tailnet", "device", "space", "agent"],
     description: "A paired companion core checks in, proving its own key: { token } signed for this tool with an empty input. Answers { paired: true, companion, device, box: { name, pub, id } }, or refuses. The box answers nothing the core could not already pin at pairing.",
     input: { type: "object", properties: { token: { type: "string" } }, required: ["token"] },
     run: async ({ token }) => {

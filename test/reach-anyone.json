@@ -889,6 +889,14 @@
    "module": "network",
    "reason": "the positive callers check allowed() in the tool (the person's own surfaces, devices and session); read-only"
   },
+  "network.wink.status": {
+   "module": "network",
+   "reason": "read-only; readers() in the tool refuses a guest and an anonymous caller; the work is the Wink module's wink.network.status, reach modules and callable only as module:network (core/network/wink.test.js)"
+  },
+  "network.wink.whois": {
+   "module": "network",
+   "reason": "read-only; readers() in the tool refuses a guest and an anonymous caller; the answer comes from the identity list and the connections the node host admitted, never from a tag or host name a peer sets (core/network/wink.test.js)"
+  },
   "planner.add": {
    "module": "planner",
    "reason": "guard: the item's source is stamped from the verified caller, an agent's task needs its own thread or a project it can reach (agentProjects), and an agent later changes only what it added (owns())"
@@ -964,6 +972,18 @@
   "presence.person.sessions": {
    "module": "presence",
    "reason": "callers limited in code to capsule, cli, deck, local"
+  },
+  "presence.person.start-paired": {
+   "module": "presence",
+   "reason": "callers are the relay, tailnet and device labels (a paired device presenting its own key, never a model, agent or assistant); the signature over the grant's challenge with the key the owner confirmed is the proof"
+  },
+  "presence.person.pair-challenge": {
+   "module": "presence",
+   "reason": "callers are the relay, tailnet and device labels; it answers a challenge for the paired grant (random for a device with no grant, so it says nothing about whether one exists) and only the confirmed key can sign it"
+  },
+  "presence.person.rotate": {
+   "module": "presence",
+   "reason": "callers are the relay, tailnet and device labels; the new secret is signed by the paired device's key and the old one stops working"
   },
   "presence.person.start": {
    "module": "presence",

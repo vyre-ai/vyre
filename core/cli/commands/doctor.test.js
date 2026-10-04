@@ -9,28 +9,28 @@ import { diagnose, lines, item, IDS, BUDGET_MS } from "./doctor.js";
 import { stripAnsi } from "../screen/width.js";
 import { tempHome } from "../../../test/helpers.js";
 
-const BOX = "https://vyre.tail0000.ts.net";
-const me = "alex@example.com";
+const BOX = "https://vyre.harlow.vyre.run";
 
-/** A tailnet as core/cli/tailnet.js parses it: alex's Mac, the box, and alex's phone. */
-const tailnet = (o = {}) => ({
-  installed: true, running: true, backend: "Running", login: me, userId: "1", why: null, magicDNS: true, certDomains: ["mac.tail0000.ts.net"],
-  self: { dnsName: "mac.tail0000.ts.net", hostName: "mac", ips: [] },
-  peers: [
-    { dnsName: "vyre.tail0000.ts.net", hostName: "vyre", ips: [], online: true, userId: "1", tagged: false, os: "linux", ssh: false },
-    { dnsName: "alex-phone.tail0000.ts.net", hostName: "alex-phone", ips: [], online: true, userId: "1", tagged: false, os: "iOS", ssh: false },
-  ],
+/** What network.wink.status answers on a Mac whose link to its server works, over the relay path or direct. */
+const wink = (o = {}) => ({
+  at: 1, otherVpn: false,
+  identity: { signedIn: true, name: "alex.vyre.run", devices: 3 },
+  spaces: [{ id: "personal", name: "Personal", state: "connected", node: "up", path: "direct", latencyMs: 12, peers: 2, peerList: [], door: { listening: false, refused: false } }],
+  relay: { enabled: true, reachable: true, latencyMs: 38 },
+  storage: [{ id: "s1", name: "nas-1", state: "online", reachable: true, capacity: 500e9, used: 88e9, free: 412e9 }],
+  clock: { skewMs: 800 },
   ...o,
 });
 
 /** Tools as a paired Mac's vyred answers them; `box` answers what link.call carries. */
-function tools({ link = {}, box = {} } = {}) {
+function tools({ link = {}, box = {}, status = {} } = {}) {
   const remote = {
-    "presence.keys": () => ({ data: [{ id: "k1", kind: "passkey", rp_id: "vyre.tail0000.ts.net" }] }),
+    "presence.keys": () => ({ data: [{ id: "k1", kind: "passkey", rp_id: "vyre.harlow.vyre.run" }] }),
     "onboard.status": () => ({ data: { detail: { claude: { installed: true, signedIn: true, via: "setup-token" } } } }),
     ...box,
   };
   return async (name, input) => {
+    if (name === "network.wink.status") return { data: wink(status) };
     if (name === "link.status") return { data: { role: "local", linked: true, reachable: true, box: { address: BOX, name: "vyre" }, pending: null, ...link } };
     if (name === "recall.status") return { data: { sessions: 5678, turns: 40000, indexing: true, progress: { sessions: { done: 1234, total: 5678 }, paused: null, priority: "low" }, vectors: { on: true, ready: false, embedded: 0, pending: 40000, why: "not loaded yet" } } };
     if (name === "link.call") return remote[input.tool] ? remote[input.tool]() : { error: { code: "no_such_tool", message: input.tool } };
@@ -40,45 +40,59 @@ function tools({ link = {}, box = {} } = {}) {
 
 const deps = (o = {}) => ({
   role: "local", health: async () => ({ version: "0.0.1", commit: "1a2b3c4d5e", dirty: false }),
-  tool: tools(), tailscale: async () => tailnet(), resolve: async () => ({ address: "100.64.0.2" }),
-  probe: async () => ({ version: "0.0.1", commit: "1a2b3c4d5e" }), capsuleApps: [], size: () => ({ bytes: 5_900_000, files: 450 }), path: () => ({ ours: true, others: [] }),
+  tool: tools(), capsuleApps: [], size: () => ({ bytes: 5_900_000, files: 450 }), path: () => ({ ours: true, others: [] }),
   modules: async () => ({ data: [{ name: "settings", state: "running" }, { name: "recall", state: "running" }] }),
   ...o,
 });
 const byId = r => Object.fromEntries(r.checks.map(c => [c.id, c]));
 
-test("doctor: a Mac where everything works is all ticks, with what it found", async () => {
+test("doctor: a Mac where everything works is all ticks, with what it found, in the plain words", async () => {
   const r = await diagnose(deps());
   const c = byId(r);
-  for (const id of ["vyred", "tailscale", "magicdns", "tailscale-box", "phone", "address", "paired", "passkey", "claude", "modules", "install"]) assert.equal(c[id].ok, true, `${id}: ${JSON.stringify(c[id])}`);
+  for (const id of ["vyred", "identity", "space-link", "path", "relay", "storage", "clock", "paired", "passkey", "claude", "modules", "install"]) assert.equal(c[id].ok, true, `${id}: ${JSON.stringify(c[id])}`);
   assert.equal(c.vyred.detail, "0.0.1 · 1a2b3c4");
-  assert.equal(c.tailscale.detail, `signed in as ${me}`);
-  assert.equal(c.phone.detail, "alex-phone");
-  assert.equal(c.passkey.detail, "vyre.tail0000.ts.net");
+  assert.deepEqual([c.identity.label, c.identity.detail], ["Signed in to Vyre", "alex.vyre.run, 3 devices"]);
+  assert.deepEqual([c["space-link"].label, c["space-link"].detail], ["Link to Personal", "up, 2 other devices seen"]);
+  assert.deepEqual([c.path.label, c.path.detail], ["Path to your server", "direct, 12 ms"]);
+  assert.equal(c.relay.detail, "answering, 38 ms");
+  assert.deepEqual([c.storage.label, c.storage.detail], ["Storage: nas-1", "reachable, 412 GB free"]);
+  assert.equal(c.clock.detail, "within 2 s of the relay");
+  assert.equal(c.door.ok, null, "a Mac has no door");
+  assert.equal(c.door.detail, "only a server has one");
+  assert.equal(c.passkey.detail, "vyre.harlow.vyre.run");
   assert.equal(c.modules.detail, "2 running");
   assert.equal(c.install.detail, "5.9 MB");
+  assert.equal(c["vyre-on-path"].ok, true);
   assert.equal(c.recall.detail, "indexing 1,234 of 5,678 sessions, low priority");
   assert.ok(r.ms < BUDGET_MS);
+  const words = JSON.stringify(r.checks);
+  assert.ok(!/tailscale|tailnet|wink|wireguard|derp|magicdns/i.test(words), "no word a person should not read");
 });
 
 test("doctor: each thing the user tripped on is a cross with the one thing to do", async () => {
   const c = byId(await diagnose(deps({
-    tailscale: async () => tailnet({ magicDNS: false, certDomains: [], peers: [
-      { dnsName: "vyre.tail0000.ts.net", hostName: "vyre", ips: [], online: true, userId: "9", tagged: false, os: "linux", ssh: false },
-      { dnsName: "alex-phone.tail0000.ts.net", hostName: "alex-phone", ips: [], online: false, userId: "1", tagged: false, os: "android", ssh: false },
-    ] }),
-    tool: tools({ box: {
-      "presence.keys": () => ({ data: [{ id: "k1", kind: "passkey", rp_id: "vyre.harlow.vyre.run" }] }),
+    tool: tools({ status: wink({
+      identity: { signedIn: false },
+      spaces: [{ id: "work", name: "Work", state: "offline", node: "up", path: null, latencyMs: null, peers: 0, peerList: [], why: "no path to the space", door: { listening: false, refused: true } }],
+      relay: { enabled: true, reachable: false, latencyMs: null },
+      storage: [{ id: "s2", name: "bucket-a", state: "unreachable", reachable: false }],
+      clock: { skewMs: 94_000 },
+    }), box: {
+      "presence.keys": () => ({ data: [{ id: "k1", kind: "passkey", rp_id: "other.vyre.run" }] }),
       "onboard.status": () => ({ data: { detail: { claude: { installed: true, signedIn: false } } } }),
     } }),
     size: () => ({ bytes: 750_000_000, files: 30_000 }),
   })));
-  assert.deepEqual([c.magicdns.ok, c.magicdns.detail], [false, "MagicDNS and HTTPS certificates off"]);
-  assert.match(c.magicdns.fix, /admin\/dns/);
-  assert.deepEqual([c["tailscale-box"].ok, c["tailscale-box"].detail], [false, "vyre is signed in to another account"]);
-  assert.match(c["tailscale-box"].fix, /sign in as alex@example\.com/);
-  assert.deepEqual([c.phone.ok, c.phone.detail], [false, "alex-phone is offline"]);
-  assert.deepEqual([c.passkey.ok, c.passkey.detail], [false, "passkeys exist, but none for vyre.tail0000.ts.net"]);
+  assert.deepEqual([c.identity.ok, c.identity.detail, c.identity.fix], [false, "this computer is not signed in", "open the Vyre app and sign in, or run: vyre up"]);
+  assert.deepEqual([c["space-link"].ok, c["space-link"].label, c["space-link"].fix], [false, "Link to Work", "the server is off or has no internet"]);
+  assert.deepEqual([c.path.ok, c.path.detail, c.path.fix], [false, "none", "check this computer's internet connection"]);
+  assert.deepEqual([c.relay.ok, c.relay.detail], [false, "not answering"]);
+  assert.match(c.relay.fix, /outbound HTTPS \(port 443\)/);
+  assert.deepEqual([c.door.ok, c.door.detail, c.door.fix], [false, "refused this device (not on the list)", "ask an owner to add it, or pair again with: vyre up"]);
+  assert.deepEqual([c.storage.ok, c.storage.label, c.storage.fix], [false, "Storage: bucket-a", "check the access details saved for it in the vault"]);
+  assert.deepEqual([c.clock.ok, c.clock.detail], [false, "94 s off, so pairing and device lists will be refused"]);
+  assert.match(c.clock.fix, /automatic date and time/);
+  assert.deepEqual([c.passkey.ok, c.passkey.detail], [false, "passkeys exist, but none for vyre.harlow.vyre.run"]);
   assert.match(c.passkey.fix, /vyre up/);
   assert.deepEqual([c.claude.ok, c.claude.detail], [false, "not signed in"]);
   assert.equal(c.install.ok, false);
@@ -86,6 +100,30 @@ test("doctor: each thing the user tripped on is a cross with the one thing to do
   const text = lines(c.passkey).map(stripAnsi);
   assert.match(text[0], /^  ✗ A passkey for the box's address · passkeys exist/);
   assert.match(text[1], /^      on the box: vyre up/);
+  const link = lines(c["space-link"]).map(stripAnsi);
+  assert.deepEqual(link, ["  ✗ Link to Work · down", "      the server is off or has no internet"]);
+});
+
+test("doctor: a relayed path with a working relay is a pass, through the relay, never an error; another VPN on this machine is a question, not a cross", async () => {
+  const relayed = byId(await diagnose(deps({ tool: tools({ status: wink({ spaces: [{ id: "personal", name: "Personal", state: "relayed", node: "up", path: "relay", latencyMs: 84, peers: 1, peerList: [], door: { listening: false, refused: false } }] }) }) })));
+  assert.deepEqual([relayed.path.ok, relayed.path.detail], [true, "through the relay, 84 ms (no direct path yet)"]);
+  assert.equal(relayed.relay.ok, true);
+  const vpn = byId(await diagnose(deps({ tool: tools({ status: wink({ otherVpn: true, spaces: [{ id: "personal", name: "Personal", state: "relayed", node: "down", path: "relay", latencyMs: null, peers: 0, peerList: [], relayOnly: "another VPN is running here", door: { listening: false, refused: false } }] }) }) })));
+  assert.deepEqual([vpn["space-link"].ok, vpn["space-link"].detail], [null, "using the relay, because another VPN is running here"]);
+  assert.equal(vpn.path.ok, true);
+});
+
+test("doctor: two spaces and two storage devices are one line each, and a missing relay or a clock that cannot be compared is a question", async () => {
+  const two = { id: "x", name: "Work", state: "connected", node: "up", path: "direct", latencyMs: 9, peers: 1, peerList: [], door: { listening: false, refused: false } };
+  const r = await diagnose(deps({ tool: tools({ status: wink({
+    spaces: [wink().spaces[0], two, { ...two, id: "y", name: "Harlow", state: "offline", why: "x" }],
+    storage: [wink().storage[0], { id: "s3", name: "bucket-a", state: "online", reachable: true, capacity: 4e12, used: 1e12, free: 3e12 }],
+    relay: { enabled: false, reachable: false, latencyMs: null }, clock: { skewMs: null } }) }) }));
+  assert.deepEqual(r.checks.filter(c => c.id === "space-link").map(c => [c.label, c.ok]), [["Link to Personal", true], ["Link to Work", true], ["Link to Harlow", false]]);
+  assert.deepEqual(r.checks.filter(c => c.id === "storage").map(c => c.detail), ["reachable, 412 GB free", "reachable, 3.0 TB free"]);
+  const c = byId(r);
+  assert.deepEqual([c.relay.ok, c.relay.detail], [null, "turned off on this server"]);
+  assert.deepEqual([c.clock.ok, c.clock.detail], [null, "could not reach the relay to compare"]);
 });
 
 test("doctor: a module whose manifest under-declares a tool or event is a named cross, not a silent gap", async () => {
@@ -114,7 +152,8 @@ test("doctor: more than one failed module names all of them, not just the first"
 test("doctor: with vyred down, it says start it, and what it cannot check is a question, not a cross", async () => {
   const c = byId(await diagnose(deps({ health: async () => null, tool: async () => ({ error: { code: "unreachable", message: "down" } }) })));
   assert.deepEqual([c.vyred.ok, c.vyred.fix], [false, "vyre up"]);
-  for (const id of ["passkey", "claude", "modules"]) assert.equal(c[id].ok, null, id);
+  for (const id of ["identity", "space-link", "path", "relay", "door", "clock", "passkey", "claude", "modules"]) assert.equal(c[id].ok, null, id);
+  assert.equal(c.identity.detail, "vyred is not running");
   assert.equal(c.paired.ok, null);
 });
 
@@ -127,13 +166,13 @@ test("doctor: an unpaired Mac waiting for approval says the code to approve", as
 test("doctor: a box that never answers costs its timeout, not a hang: the run stays under 2 s", async () => {
   const never = () => new Promise(() => {});
   const t0 = Date.now();
-  const r = await diagnose(deps({ probe: never, tailscale: never, tool: async (n, i) => (n === "link.call" ? never() : tools()(n, i)) }));
+  const r = await diagnose(deps({ tool: async (n, i) => (n === "link.call" || n === "network.wink.status" ? never() : tools()(n, i)) }));
   const took = Date.now() - t0;
   assert.ok(took < BUDGET_MS + 300, `took ${took} ms`);
   const c = byId(r);
-  assert.equal(c.address.ok, false);
-  assert.match(c.address.detail, /does not answer/);
-  assert.equal(c.tailscale.ok, null);
+  assert.equal(c.identity.ok, null);
+  assert.equal(c.identity.detail, "did not answer in 2 s");
+  assert.equal(c.passkey.ok, null);
 });
 
 test("doctor: on a box it checks the box's side: its address, its passkey, Claude, paired Macs", async () => {
@@ -144,8 +183,12 @@ test("doctor: on a box it checks the box's side: its address, its passkey, Claud
     "link.peers": { data: [{ id: "p1" }] },
   })[name] || { error: { code: "no_such_tool", message: name } };
   const c = byId(await diagnose(deps({ role: "box", tool })));
-  assert.equal(c.address.ok, true);
-  assert.equal(c["tailscale-box"], undefined, "a box does not check itself as a peer");
+  const boxTool = async name => (name === "network.wink.status" ? { data: wink({ spaces: [{ id: "personal", name: "Personal", state: "connected", node: "up", path: null, latencyMs: null, peers: 2, peerList: [], door: { listening: true, refused: false } }] }) } : tool(name));
+  const home = byId(await diagnose(deps({ role: "box", tool: boxTool })));
+  assert.deepEqual([home.door.ok, home.door.detail], [true, "accepting linked devices"]);
+  assert.equal(home.path, undefined, "a server that only hosts has no path to a server");
+  const shut = byId(await diagnose(deps({ role: "box", tool: async name => (name === "network.wink.status" ? { data: wink({ spaces: [{ id: "p", name: "Personal", state: "offline", node: "down", path: null, latencyMs: null, peers: 0, peerList: [], door: { listening: false, refused: false } }] }) } : tool(name)) })));
+  assert.deepEqual([shut.door.ok, shut.door.fix], [false, "on the server: restart Vyre"]);
   assert.equal(c.capsule, undefined);
   assert.deepEqual([c.passkey.ok, c.passkey.detail], [false, "none enrolled"]);
   assert.deepEqual([c.claude.ok, c.claude.detail], [true, "with an API key"]);
@@ -156,7 +199,7 @@ test("doctor: the real command against a temp home answers in under 2 s, as JSON
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ transcripts: [], vault: { keystore: "file" } }));
   const bin = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../bin/vyre");
-  const env = { ...process.env, VYRE_HOME: root, VYRE_NO_DIALOGS: "1", VYRE_TAILSCALE_BIN: path.join(root, "no-tailscale") };
+  const env = { ...process.env, VYRE_HOME: root, VYRE_NO_DIALOGS: "1" };
   const t0 = Date.now();
   const r = await new Promise(res => execFile(process.execPath, [bin, "doctor", "--json"], { env }, (e, stdout) => res({ code: e ? e.code : 0, out: stdout })));
   const took = Date.now() - t0;
@@ -164,7 +207,7 @@ test("doctor: the real command against a temp home answers in under 2 s, as JSON
   assert.equal(r.code, 1, "vyred is not running here, which fails");
   assert.equal(j.ok, false);
   assert.deepEqual(j.checks.find(c => c.id === "vyred"), { id: "vyred", label: "vyred is not running", ok: false, fix: "vyre up" });
-  assert.equal(j.checks.find(c => c.id === "tailscale").ok, false);
+  assert.equal(j.checks.find(c => c.id === "identity").ok, null);
   assert.ok(j.ms < BUDGET_MS, `diagnose took ${j.ms} ms`);
   assert.ok(took < BUDGET_MS + 1500, `the whole command took ${took} ms, node start included`);
 });
@@ -184,12 +227,12 @@ test("doctor: the Capsule reports Control-twice through capsule.report, and the 
 
 test("doctor: an old vyre on PATH is flagged, first or later, with the command that removes it", async t => {
   const c = byId(await diagnose(deps({ path: () => ({ ours: true, others: [{ path: "/Users/alex/.local/bin/vyre", target: "/Users/alex/proto/bin/vyre", first: true }] }) })));
-  assert.equal(c.path.ok, false);
-  assert.match(c.path.detail, /\.local\/bin\/vyre comes first on PATH/);
-  assert.match(c.path.fix, /^rm .*\.local\/bin\/vyre, then hash -r$/);
+  assert.equal(c["vyre-on-path"].ok, false);
+  assert.match(c["vyre-on-path"].detail, /\.local\/bin\/vyre comes first on PATH/);
+  assert.match(c["vyre-on-path"].fix, /^rm .*\.local\/bin\/vyre, then hash -r$/);
   const later = byId(await diagnose(deps({ path: () => ({ ours: true, others: [{ path: "/opt/old/vyre", target: "/opt/old/vyre", first: false }] }) })));
-  assert.equal(later.path.ok, false);
-  assert.match(later.path.detail, /another vyre is also on PATH/);
+  assert.equal(later["vyre-on-path"].ok, false);
+  assert.match(later["vyre-on-path"].detail, /another vyre is also on PATH/);
 
   // The real helper, over a PATH with a stand-in prototype before this install.
   const { shadows, OURS } = await import("../shadow.js");
@@ -207,9 +250,10 @@ test("doctor: onCheck hears every check as it answers, and item() makes a checks
   const r = await diagnose(deps({ onCheck: (i, c) => heard.push([IDS[i], c && c.id]) }));
   assert.equal(heard.length, IDS.length, "one call per check");
   for (const [id, got] of heard) assert.ok(got === null || got === id, `${id} heard as ${got}`);
-  assert.deepEqual(item({ id: "phone", label: "Your phone on the tailnet", ok: false, detail: "no phone signed in", fix: "install Tailscale on your phone" }),
-    { id: "phone", label: "Your phone on the tailnet", state: "failed", note: "no phone signed in · next: install Tailscale on your phone" });
-  assert.deepEqual(item({ id: "path", label: "This is the vyre your shell runs", ok: true }), { id: "path", label: "This is the vyre your shell runs", state: "ok" });
+  assert.ok(!IDS.some(id => /tailscale|magicdns|phone|address/.test(id)), "the old network checks are gone");
+  assert.deepEqual(item({ id: "relay", label: "Relay", ok: false, detail: "not answering", fix: "a firewall may block outbound HTTPS" }),
+    { id: "relay", label: "Relay", state: "failed", note: "not answering · next: a firewall may block outbound HTTPS" });
+  assert.deepEqual(item({ id: "vyre-on-path", label: "This is the vyre your shell runs", ok: true }), { id: "vyre-on-path", label: "This is the vyre your shell runs", state: "ok" });
   assert.equal(item({ id: "x", label: "x", ok: null, detail: "why" }).state, "unknown");
   assert.equal(r.checks.length, heard.filter(([, c]) => c).length);
 });
@@ -218,7 +262,7 @@ test("doctor --view: checks frames as each check answers, all waiting first, the
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ transcripts: [], vault: { keystore: "file" } }));
   const bin = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../bin/vyre");
-  const env = { ...process.env, VYRE_HOME: root, VYRE_NO_DIALOGS: "1", NO_COLOR: "1", VYRE_TAILSCALE_BIN: path.join(root, "no-tailscale") };
+  const env = { ...process.env, VYRE_HOME: root, VYRE_NO_DIALOGS: "1", NO_COLOR: "1" };
   const vyre = args => new Promise(res => execFile(process.execPath, [bin, ...args], { env }, (e, stdout) => res({ code: e ? e.code : 0, out: stdout })));
   const c = /** @type {any} */ (await vyre(["commands", "doctor", "--json"]));
   const doc = JSON.parse(c.out).commands[0];

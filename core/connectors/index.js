@@ -51,6 +51,11 @@ export default {
         const r = await ctx.call("vault.put", { name, kind: "api-credential", description, fields: { config: JSON.stringify(config), ...(secret ? { secret } : {}) } }, { as });
         if (r.error) throw fail(`could not save the credential in the vault: ${r.error.message}`, r.error.code || "vault");
       },
+      // Taken back as the person who started the sign-in, when its token store failed.
+      removeCredential: async (name, as) => {
+        const r = await ctx.call("vault.delete", { name }, { as });
+        if (r.error) throw fail(`could not remove the credential: ${r.error.message}`, r.error.code || "vault");
+      },
       grantThread: async (server, thread) => { data(await ctx.call("mcp.grant", { server, thread })); },
       storeTokens: async (name, tokens) => { data(await ctx.call("vault.credential.tokens", { name, tokens })); },
       // GitHub signs in through the github module; the catalog shows the accounts it holds.

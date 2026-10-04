@@ -365,6 +365,24 @@ export const MIGRATIONS = [`
     removed INTEGER NOT NULL,
     PRIMARY KEY (id, kind)
   );
+`, `
+  -- An owner-paired device's person session (ADR 0032 section 2d). The pairing writes one grant for
+  -- the device: the key the owner confirmed, the presence key whose proof confirmed it, and a short
+  -- life. The device's first start proves it holds that key, and turns the grant into a session
+  -- with no maximum life (paired = 1), which still ends after 30 days unused.
+  ALTER TABLE presence_people ADD COLUMN paired INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE presence_people ADD COLUMN rotated INTEGER;
+  ALTER TABLE presence_people ADD COLUMN software INTEGER NOT NULL DEFAULT 0;
+  CREATE TABLE presence_pair_grants (
+    device TEXT PRIMARY KEY,
+    key_id TEXT NOT NULL,
+    device_key TEXT NOT NULL,
+    challenge TEXT NOT NULL,
+    software INTEGER NOT NULL DEFAULT 0,
+    created INTEGER NOT NULL,
+    expires INTEGER NOT NULL,
+    tries INTEGER NOT NULL DEFAULT 0
+  );
 `];
 
 const CHALLENGE_TTL = 120_000;
@@ -506,8 +524,10 @@ export class Presence {
    *           role?: string, network?: () => { owner?: string, address?: string }, who?: () => Promise<string[]>, writeTty?: (file: string, text: string) => void, statTty?: (file: string) => any,
    *           touchid?: any, webauthn?: any, now?: () => number, env?: NodeJS.ProcessEnv, core?: CoreLink|null }} opts
    */
-  constructor({ db, events = null, log = () => {}, platform = process.platform, role = "local", network = () => ({}), who: whoFn, writeTty: write, statTty, touchid, webauthn, now, env = process.env, core: coreOpt }) {
+  constructor({ db, events = null, standIn = () => false, log = () => {}, platform = process.platform, role = "local", network = () => ({}), who: whoFn, writeTty: write, statTty, touchid, webauthn, now, env = process.env, core: coreOpt }) {
     this.db = db;
+    /** DEVELOPMENT ONLY: is the walk's presence stand-in on for this home? The daemon answers true only for a development build whose home holds a file the owner made by hand. */
+    this.standIn = standIn;
     /** A test's own link, or null for none; undefined reads the daemon's (core.link). */
     this.coreOpt = coreOpt;
     this.role = role;
@@ -725,6 +745,17 @@ export class Presence {
       this.windowNotice(tty, tool, input);
       this.emit("presence.proved", { tool, method: "window", caller });
       return { ok: /** @type {true} */ (true), method: "window", keyId: null, where: tty || null };
+    }
+    if (method === "stand-in") {
+      // The automated walk's stand-in for a person's proof: honoured only where the daemon says so (a development build with the owner's hand-made file). Every event and audit row that follows
+      // carries method "stand-in", so a walk can never be mistaken for a real proof. A packaged build says so once and refuses.
+      let on = false; try { on = this.standIn() === true; } catch { on = false; }
+      if (!on) {
+        if (!this.standInSaid) { this.standInSaid = true; this.log("presence: a stand-in proof was offered and ignored: this build takes none"); }
+        return refuse("this build takes no presence stand-in");
+      }
+      this.emit("presence.proved", { tool, method: "stand-in", caller });
+      return { ok: /** @type {true} */ (true), method: "stand-in", keyId: null };
     }
     if (!method) return refuse(`${tool} needs a person to prove they are here`);
     const hash = inputHash(input);
@@ -1034,6 +1065,8 @@ export class Presence {
         this.db.prepare("INSERT OR REPLACE INTO presence_removed (id, kind, hash, key_id, removed) VALUES (?, 'session', ?, ?, ?)").run(r.id, r.hash, String(id), now);
       }
       this.db.prepare("DELETE FROM presence_people WHERE key_id = ?").run(String(id));
+      // PS-4: a grant for a device that the removed key confirmed is not left to be used for up to ten minutes.
+      try { this.db.prepare("DELETE FROM presence_pair_grants WHERE key_id = ?").run(String(id)); } catch { /* an older home without the table */ }
       this.db.prepare("INSERT OR REPLACE INTO presence_removed (id, kind, hash, key_id, removed) VALUES (?, 'key', NULL, ?, ?)").run(String(id), String(id), now);
     }
     return removed;

@@ -47,7 +47,7 @@ const err = (status, code, message) => ({ status, code, message });
 const unb64 = C.unb64;
 
 export { recordMessage, aliasMessage, actMessage } from "./id-messages.js";
-import { recordMessage, aliasMessage } from "./id-messages.js";
+import { recordMessage, aliasMessage, actMessage } from "./id-messages.js";
 
 /** A hostname the directory will accept as an alias: letters, digits, dashes, at least two labels, no IP, nothing under vyre.run. @param {unknown} raw */
 export function aliasDomain(raw) {
