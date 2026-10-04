@@ -252,3 +252,74 @@ test("RU-3: an owner's view of a rule or a proposal is built from its structured
   assert.equal(p.view, "Never, for assistants: records.remove");
   assert.ok(!p.view.includes("harmless"), "the proposer's words are not in the view");
 });
+
+test("rules.get, rules.test, rules.disable and rules.enable: a rule can be read, tried before it is made, and switched off and on by an owner with presence; off binds nothing, and it survives a rebuild", async () => {
+  const { k, owner, g, asst, dev, setRule } = await rig();
+  const rid = id => ({ id });
+  const switchProof = (action, id) => ({ presence: proof(action, rid(id), `vyre://${SPACE}/rule/${id}`) });
+  const rule = await setRule(NEVER_REMOVE);
+  const alice = dev(ALICE, "d-a");
+  assert.equal((await g.rules.get(alice, rule.id)).view.startsWith("Never, for assistants"), true, "a manager and above reads one rule in plain words");
+  await assert.rejects(() => g.rules.get(alice, "rule_nope"), { code: "not_found" });
+  await assert.rejects(() => g.rules.get(dev(BOB, "d-b"), rule.id), e => ["not_found", "not_allowed"].includes(e.code));
+
+  // test: nothing is written, the strictest kind that binds wins, an unset rule can be tried beside the ones in force
+  const before = k.log.read({}).length;
+  const act = { as: "assistant", action: "records.remove", resource: `vyre://${SPACE}/contact/c1` };
+  assert.equal((await g.rules.test(alice, act)).outcome, "never");
+  assert.equal((await g.rules.test(alice, { ...act, as: "member" })).outcome, "none", "the rule names assistants only");
+  assert.equal((await g.rules.test(alice, { ...act, as: "assistant_for_member" })).outcome, "never");
+  const ask = { kind: "always_ask", binds: ["assistants"], covers: { actions: ["records.update"] }, approver: { role: "owner" }, label: "Ask before an edit" };
+  const tried = await g.rules.test(alice, { as: "assistant", action: "records.update", rule: ask });
+  assert.equal(tried.outcome, "always_ask");
+  assert.equal(tried.binds[0].status, "candidate");
+  assert.equal((await g.rules.list(owner)).rules.length, 1, "trying a rule makes none");
+  assert.equal((await g.rules.test(alice, { ...act, id: rule.id })).binds[0].id, rule.id);
+  await assert.rejects(() => g.rules.test(alice, { action: "nonsense" }), { code: "bad_input" });
+  await assert.rejects(() => g.rules.test(alice, { ...act, as: "robot" }), { code: "bad_input" });
+  await assert.rejects(() => g.rules.test(alice, { ...act, id: rule.id, rule: ask }), { code: "bad_input" });
+  assert.equal(k.log.read({}).length, before, "a test writes nothing");
+
+  // disable: owner only, with presence; the rule stays and binds nothing
+  await assert.rejects(() => g.rules.disable(owner, rule.id), { code: "needs_presence" });
+  await assert.rejects(() => g.rules.disable(alice, rule.id, switchProof("rules.disable", rule.id)), { code: "not_allowed" });
+  const off = await g.rules.disable(owner, rule.id, switchProof("rules.disable", rule.id));
+  assert.equal(off.status, "disabled");
+  assert.ok(k.log.read({}).some(e => e.type === "rule.disabled" && e.data.id === rule.id));
+  assert.deepEqual((await g.rules.list(owner)).rules.map(x => [x.id, x.status]), [[rule.id, "disabled"]], "still listed, marked off");
+  assert.equal((await g.rules.test(alice, act)).outcome, "none", "off binds nothing");
+  assert.equal((await g.rules.test(alice, { ...act, id: rule.id })).binds[0].status, "disabled", "a stored rule can be tried while it is off");
+  assert.equal((await k.gateway.authorize({ chain: asst(), action: "records.remove", resource: act.resource })).rule, undefined, "authorize sees no rule");
+  await g.rebuild();
+  assert.equal((await g.rules.list(owner)).rules[0].status, "disabled", "off survives a rebuild from the log");
+
+  // enable
+  await assert.rejects(() => g.rules.enable(alice, rule.id, switchProof("rules.enable", rule.id)), { code: "not_allowed" });
+  const on = await g.rules.enable(owner, rule.id, switchProof("rules.enable", rule.id));
+  assert.equal(on.status, "active");
+  assert.equal((await g.rules.test(alice, act)).outcome, "never");
+  assert.equal((await k.gateway.authorize({ chain: asst(), action: "records.remove", resource: act.resource })).reason, "rule_never", "authorize sees it again");
+  await g.rebuild();
+  assert.equal((await g.rules.list(owner)).rules[0].status, "active");
+  await assert.rejects(() => g.rules.enable(owner, "rule_nope", switchProof("rules.enable", "rule_nope")), { code: "not_found" });
+});
+
+test("R4 on rules.enable and rules.disable: a switch whose event cannot be written leaves the rule as it was, and the caller is told", async () => {
+  let fail = false;
+  const base = createEventLog({ space: SPACE });
+  const log = { ...base, append: (...a) => { if (fail && a[1] && String(a[1].type).startsWith("rule.")) throw new Error("log refused"); return base.append(...a); } };
+  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 9), presence, log });
+  const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
+  const g = k.gateway.grants;
+  const rule = await g.rules.set(owner, NEVER_REMOVE, { presence: proof("rules.set", normal(NEVER_REMOVE), `vyre://${SPACE}/rule/new`) });
+  const sw = (action, id) => ({ presence: proof(action, { id }, `vyre://${SPACE}/rule/${id}`) });
+  fail = true;
+  await assert.rejects(() => g.rules.disable(owner, rule.id, sw("rules.disable", rule.id)), /log refused/);
+  fail = false;
+  assert.equal((await g.rules.list(owner)).rules[0].status, "active", "still on: a rule is not turned off by a write that failed");
+  await g.rules.disable(owner, rule.id, sw("rules.disable", rule.id));
+  fail = true;
+  await assert.rejects(() => g.rules.enable(owner, rule.id, sw("rules.enable", rule.id)), /log refused/);
+  fail = false;
+  assert.equal((await g.rules.list(owner)).rules[0].status, "disabled", "still off");
+});

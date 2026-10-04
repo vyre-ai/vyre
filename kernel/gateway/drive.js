@@ -51,20 +51,33 @@ export function createDriveGateway(cfg) {
         },
       });
     },
-    async get(chain, /** @type {string} */ p, /** @type {{ version?: number | null }} */ o = {}) {
+    /** `maxBytes` refuses a file larger than that from the Drive's own metadata, before any chunk is read (`too_large`). */
+    async get(chain, /** @type {string} */ p, /** @type {{ version?: number | null, maxBytes?: number }} */ o = {}) {
       if (o.version != null && (!Number.isInteger(o.version) || o.version < 1)) throw new KernelError("bad_input", "name a version number");
-      return read(chain, "drive.read", file(p), () => cfg.drive.get(p, { version: o.version ?? null }), "file.accessed", { path: p, version: o.version ?? null }); },
+      return read(chain, "drive.read", file(p), async () => {
+        if (o.maxBytes != null && typeof cfg.drive.stat === "function") { const st = cfg.drive.stat(p, { version: o.version ?? null }); if (st.size > o.maxBytes) throw new KernelError("too_large", "that file is larger than this call returns"); }
+        return cfg.drive.get(p, { version: o.version ?? null });
+      }, "file.accessed", { path: p, version: o.version ?? null }); },
     async history(chain, /** @type {string} */ p) { return read(chain, "drive.read", file(p), async () => cfg.drive.history(p), "file.accessed", { path: p, what: "history" }); },
-    /** The listing shows only what the chain may read: each entry is asked about, and a hidden one is not there. */
-    async list(chain, /** @type {string} */ prefix = "") {
+    /** The listing shows only what the chain may read: the folder is authorized once, then each entry is asked about until a page is full. A page is at most 1,000 entries and a call looks at most 5,000, so the cost of one call is bounded whatever the folder holds. `after` is the last path the previous page covered. */
+    async listPage(chain, /** @type {string} */ prefix = "", /** @type {{ limit?: number, after?: string | null }} */ o = {}) {
       mustChain(chain);
-      // The folder as a resource: its own path and one more level, so a grant on `proj/*` covers listing `proj/`.
+      const limit = Math.min(Math.max(Number.isInteger(o.limit) ? /** @type {number} */ (o.limit) : 500, 1), 1000);
       const folder = String(prefix).replace(/\/+$/, "");
       await gate(chain, "drive.read", folder ? `${file(folder)}/*` : `vyre://${cfg.space}/file/*`);
-      const all = await run(async () => cfg.drive.list(prefix));
-      const out = [];
-      for (const e of all) if (await check(chain, "drive.read", file(e.path ?? e.name ?? String(e)))) out.push(e);
-      return out;
+      const all = (await run(async () => cfg.drive.list(prefix))).map((/** @type {any} */ e) => [String(e.path ?? e.name ?? e), e]).sort((/** @type {any} */ a, /** @type {any} */ b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+      const out = []; let scanned = 0, last = null, more = false;
+      for (const [path, e] of all) {
+        if (o.after != null && path <= o.after) continue;
+        if (out.length >= limit || scanned >= 5000) { more = true; break; }
+        scanned++; last = path;
+        if (await check(chain, "drive.read", file(path))) out.push(e);
+      }
+      return { entries: out, next: more ? last : null };
+    },
+    async list(chain, /** @type {string} */ prefix = "") {
+      const out = []; let after = null;
+      for (;;) { const r = await this.listPage(chain, prefix, { limit: 1000, after }); out.push(...r.entries); if (!r.next) return out; after = r.next; }
     },
     /** A version written by this chain: `by` is the chain's actor. Two writers on one file give two versions and `conflict: true` (no merge). */
     async put(chain, /** @type {string} */ p, /** @type {Uint8Array} */ bytes, /** @type {{ base?: number | null }} */ o = {}) {

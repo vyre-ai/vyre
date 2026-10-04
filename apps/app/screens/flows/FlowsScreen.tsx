@@ -1,6 +1,7 @@
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Button, Card, Divider, EmptyState, IconTile, Row, Switch, Text } from "@vyre/ui";
+import { Button, Card, Divider, EmptyState, IconTile, Row, Switch, Text, allowsMock } from "@vyre/ui";
+import { RealFlows } from "./RealFlows";
 import { Frame } from "../places/Frame";
 import { usePhone } from "../places/Page";
 import { inScope, useScope } from "../places/scope";
@@ -8,7 +9,7 @@ import { flowsRepo } from "./data";
 import { useFlowsState } from "./store";
 import { triggerIcon, triggerLine } from "./logic.js";
 
-export default function FlowsScreen() {
+function SampleFlowsScreen() {
   const router = useRouter();
   const phone = usePhone();
   const { applied, off, setOn, installed } = useFlowsState();
@@ -25,7 +26,7 @@ export default function FlowsScreen() {
             <View key={f.id}>{i ? <Divider inset={68} /> : null}
               <Row dense onPress={() => router.push(`/u/flows/${f.id}` as never)} lead={<IconTile size={40} name={triggerIcon(f)} />} title={f.name}
                 sub={waiting
-                  ? <View className="flex-row items-center gap-s2"><View className="rounded-full bg-accent" style={{ height: 6, width: 6 }} /><Text tone="accent" numberOfLines={1} style={{ fontSize: 14, lineHeight: 18 }}>Waiting on you</Text></View>
+                  ? <View className="flex-row items-center gap-s2"><View className="rounded-full bg-accent" style={{ height: 6, width: 6 }} /><Text size="secondary" tone="accent" numberOfLines={1}>Waiting on you</Text></View>
                   : triggerLine(f)}
                 chevron={waiting}
                 end={waiting ? undefined : <Switch label={`${f.name} is ${off[f.id] ? "off" : "on"}`} on={!off[f.id]} onChange={(on) => setOn(f.id, on)} />} />
@@ -39,4 +40,9 @@ export default function FlowsScreen() {
       <View className="pt-s4"><Button kind="primary" size="lg" className={phone ? undefined : "self-start"} icon="spark" label="Ask @Engineer to write one" onPress={() => router.push("/u/engineer" as never)} /></View>
     </Frame>
   );
+}
+
+/** The sample list in a mock build; the vyred's own Flows everywhere else. */
+export default function FlowsScreen() {
+  return allowsMock() ? <SampleFlowsScreen /> : <RealFlows />;
 }

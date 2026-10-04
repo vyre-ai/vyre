@@ -41,7 +41,7 @@ async function world(t, over = {}) {
   for (const g of engineerGrants(space)) await rig.grantTo(rig.actor("agent", "engineer"), [...g.actions], g.resource.prefix, { source: g.source });
   rig.script(over.model || (() => ({ content: "" })));
   const owner = rig.ownerChain;
-  const contact = await rig.kernel.records.create(owner, "contact", { full_name: "Jane Doe", email: "jane@example.com", ssn: sealedRef });
+  const contact = await rig.kernel.records.create(owner, "contact", { name: "Jane Doe", email: "jane@example.com", ssn: sealedRef });
   const matter = await rig.kernel.records.create(owner, "matter", { title: "Doe estate plan", stage: "Intake", client: { urn: contact.urn } });
   const surface = createToolSurface({ kernel: rig.kernel, space, types: c => rig.kernel.definitions(c), actions: () => rig.kernel.actions() });
   return { rk: { ...rig, surface, space, kernel: rig.kernel, modelCalls: rig.modelCalls, agent: (/** @type {string} */ n) => rig.assistant("per_alex", n) }, rig, owner, contact, matter, juno: rig.assistant("per_alex", "juno") };
@@ -54,7 +54,7 @@ test("the surface is the Estate Kit's own nouns; a model reads placeholders and 
   const names = (await rk.surface.list(juno)).map(x => x.name);
   for (const n of ["contacts.find", "matters.find", "matters.move_stage", "tasks.assign", "email.send"]) assert.ok(names.includes(n), n);
   assert.ok(!names.includes("research.find"));
-  const found = await rk.surface.call(juno, "contacts.find", { where: { full_name: "Jane Doe" } });
+  const found = await rk.surface.call(juno, "contacts.find", { where: { name: "Jane Doe" } });
   assert.equal(found.records.length, 1);
   assert.deepEqual(found.records[0].data.ssn, { sealed: "us-ssn", present: true, valid_format: true });
   assert.doesNotMatch(JSON.stringify(found), /seal_ssn_1|123-45/);

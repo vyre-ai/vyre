@@ -230,3 +230,22 @@ test("KS-6: a hosted Space's key lives in the sealing process, namespaced per Sp
   const bare = createSpaceKernels({ root, personal: { space: pid, kernel: personal }, openDb: () => new DatabaseSync(":memory:"), clock });
   await assert.rejects(() => bare.host({ owner: ME }), { code: "key_custody" });
 });
+
+test("retire (PA-1): a Space that was only started is taken back, folder and all, and can be hosted again under the same id; one with another member is refused and stays; the personal Space is never retired", async () => {
+  const { spaces, pid, root } = await home();
+  const a = await spaces.host({ owner: ME });
+  const folder = path.join(root, "kernel", "spaces", a.space);
+  assert.ok(fs.existsSync(folder));
+  assert.deepEqual(await spaces.retire(a.space), { retired: true });
+  assert.ok(!fs.existsSync(folder) && !spaces.list().includes(a.space) && spaces.hosted(a.space) === null);
+  assert.deepEqual(await spaces.retire(a.space), { retired: false }, "nothing there is not an error");
+  const again = await spaces.host({ owner: ME, id: a.space });
+  assert.equal(again.space, a.space, "resume hosts the same id");
+  await assert.rejects(() => spaces.host({ owner: ME, id: a.space }), { code: "bad_input" }, "an id in use cannot be hosted twice");
+  await assert.rejects(() => spaces.host({ owner: ME, id: "spc_../../etc" }), { code: "bad_input" });
+  const ca = await ownerChain(again.kernel, ME);
+  await again.gateway.grants.setRole(ca, { person: ALICE, role: "member" }, sign(again.space, "setRole", { person: ALICE, role: "member" }));
+  await assert.rejects(() => spaces.retire(again.space), { code: "not_allowed" });
+  assert.ok(spaces.list().includes(again.space) && fs.existsSync(path.join(root, "kernel", "spaces", again.space)), "a Space with content stays");
+  await assert.rejects(() => spaces.retire(pid), { code: "not_allowed" });
+});

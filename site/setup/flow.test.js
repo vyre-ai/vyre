@@ -498,40 +498,17 @@ async function atDevices(t, box, extra = {}) {
   return flow;
 }
 
-test("devices: one ticket, drawn but never written as text, and a pairing after it moves the page on", async t => {
+test("devices: the page makes no pairing ticket (one pairing path: the install terminal's); asking for a phone does nothing and the page moves on", async t => {
   const box = stepsBox();
   const flow = await atDevices(t, box);
   assert.equal(flow.state.stage, "devices");
-  assert.equal(flow.currentTicket(), null, "no ticket until the person asks");
-  await flow.addPhone();
-  assert.equal(flow.state.devices.phone, "showing");
-  assert.equal(flow.currentTicket(), "AAECAwQFBgc", "held only for drawing");
-  assert.ok(!JSON.stringify(flow.state).includes("AAECAwQFBgc"), "the ticket is not in the state the screen is built from");
-  // a phone pairs: an event after the moment the ticket was made
-  box.st.paired = [{ id: 7, type: "relay.paired", payload: { name: "Alex's iPhone", device: "d1" } }];
-  await until(() => flow.state.devices.phone === "paired");
-  assert.equal(flow.state.devices.paired, "Alex's iPhone");
-  assert.equal(flow.currentTicket(), null, "the ticket is dropped once it is spent");
-  await flow.addPhone();
-  assert.equal(box.calls.filter(c => c[0] === "relay.pair.ticket").length, 1, "only one ticket");
-  flow.stop();
-});
-
-test("devices: an earlier pairing does not count, and a ring that is not scanned in time says it expired", async t => {
-  const box = stepsBox({ ticketMs: 120, paired: [{ id: 3, type: "relay.paired", payload: { name: "old" } }] });
-  const flow = await atDevices(t, box);
-  await flow.addPhone();
-  await until(() => flow.state.devices.phone === "expired");
   assert.equal(flow.currentTicket(), null);
-  assert.equal(flow.state.devices.paired, null, "the earlier event was not taken for this pairing");
+  await flow.addPhone();
+  assert.equal(flow.state.devices.phone, "idle", "nothing was started");
+  assert.equal(box.calls.filter(c => c[0] === "relay.pair.ticket").length, 0, "the page never asks the box for a pairing ticket");
+  flow.continueToClaim();
+  assert.equal(flow.state.stage, "claim");
   flow.stop();
-
-  const failing = stepsBox({ ticketMade: true });
-  const f2 = await atDevices(t, failing);
-  await f2.addPhone();
-  assert.equal(f2.state.devices.phone, "failed");
-  assert.match(f2.state.devices.error, /already made its one pairing ticket/);
-  f2.stop();
 });
 
 test("devices: the screen draws the ring into its slot only while showing, and never prints the ticket", async t => {

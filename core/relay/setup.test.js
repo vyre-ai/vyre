@@ -82,14 +82,14 @@ test("setup session: the pairing secret is burned once, and only by a hello that
 });
 
 test("setup session: the allowlist is exactly the plan's, and the extension point never takes pairing, presence or vault tools", () => {
-  for (const name of ["relay.pair.ticket", "relay.setup.status", "network.tailscale.login", "network.tailscale.status", "network.tailscale.peers", "names.check", "names.claim", "names.status", "names.domain.check", "relay.setup.claim-token", "link.health", "system.info", "onboard.machine"]) {
+  for (const name of ["relay.setup.status", "network.tailscale.login", "network.tailscale.status", "network.tailscale.peers", "names.check", "names.claim", "names.status", "names.domain.check", "relay.setup.claim-token", "link.health", "system.info", "onboard.machine"]) {
     assert.equal(setupToolAllowed(name), true, name);
   }
   for (const name of ["network.tailscale.logout", "network.tailscale.authkey", "network.tailscale"]) assert.equal(setupToolAllowed(name), false, name);
-  for (const name of ["relay.setup.end", "relay.setup.begin", "relay.pair.start", "relay.pair.first", "relay.devices.list", "relay.devices.trust", "presence.enroll", "presence.person.start", "vault.reveal", "names.recover", "names.release", "network.tailscalex", "network.tailscale.", "network.other", "threads.send", "system.exec", ""]) {
+  for (const name of ["relay.pair.ticket", "relay.setup.end", "relay.setup.begin", "relay.pair.start", "relay.pair.first", "relay.devices.list", "relay.devices.trust", "presence.enroll", "presence.person.start", "vault.reveal", "names.recover", "names.release", "network.tailscalex", "network.tailscale.", "network.other", "threads.send", "system.exec", ""]) {
     assert.equal(setupToolAllowed(name), false, name);
   }
-  assert.deepEqual([...SETUP_TOOLS].sort(), ["link.health", "names.check", "names.claim", "names.domain.check", "names.status", "onboard.machine", "relay.pair.ticket", "relay.setup.claim-token", "relay.setup.status", "system.info"]);
+  assert.deepEqual([...SETUP_TOOLS].sort(), ["link.health", "names.check", "names.claim", "names.domain.check", "names.status", "onboard.machine", "relay.setup.claim-token", "relay.setup.status", "system.info"]);
   assert.equal(setupToolAllowed("sessions.accounts.signin"), false, "nothing extra unless the registry lists it");
   assert.equal(setupToolAllowed("sessions.accounts.signin", ["sessions.accounts.signin"]), true);
   for (const bad of ["relay.pair.start", "presence.enroll", "vault.reveal"]) assert.equal(setupToolAllowed(bad, [bad]), false, `${bad} is never taken, even if listed`);

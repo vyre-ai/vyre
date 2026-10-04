@@ -90,6 +90,7 @@ const memberOut = r => {
 };
 
 /** The MembershipStore lib/spaces/members.js wants: get, put, delete, list. @param {any} db */
+// SHIM(legacy labels): deleted in the kernel default-on commit; a Space the kernel hosts keeps its memberships in the kernel.
 export function membershipStore(db) {
   return {
     get(/** @type {string} */ space, /** @type {string} */ person) {

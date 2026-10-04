@@ -23,7 +23,7 @@ test("estate planning: payment, matter, tasks, research, approved welcome email,
 
   // 2. the matter exists at Intake, linked to its contact, with the fee
   const [contact] = await rows(w, "contact"), [matter] = await rows(w, "matter");
-  assert.equal(contact.data.full_name, "Sam Rivera");
+  assert.equal(contact.data.name, "Sam Rivera");
   assert.equal(matter.data.stage, "Intake");
   assert.deepEqual(matter.data.client, { urn: contact.urn ?? `vyre://${w.cat.space}/contact/${contact.id}` });
   assert.deepEqual(matter.data.fee, { amount: 3500, currency: "USD" });

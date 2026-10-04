@@ -443,3 +443,91 @@ test("lent network: provider-and-space only by default; the Space can allow the 
     assert.match(env(on).HTTPS_PROXY, /^http:\/\/vyre:tok@127\.0\.0\.1:\d+$/);
   } finally { rm(ws); }
 });
+
+import { swapInfo, SWAP_LINE } from "./workspace.js";
+import { spawnSync } from "node:child_process";
+test("FS-1: swap or a hibernation image is detected and reported with one plain line", () => {
+  const files = { "/proc/swaps": "Filename Type Size Used Priority\n/swapfile file 1048572 0 -2\n", "/sys/power/resume": "0:0\n" };
+  const read = p => files[p] ?? "";
+  assert.deepEqual(swapInfo({ platform: "linux", read }), { swap: true, hibernation: false, line: SWAP_LINE });
+  assert.equal(swapInfo({ platform: "linux", read: p => (p === "/proc/swaps" ? "Filename Type Size Used Priority\n" : "0:0") }).line, "");
+  assert.equal(swapInfo({ platform: "linux", read: p => (p === "/sys/power/resume" ? "259:3\n" : "Filename\n") }).hibernation, true);
+  assert.equal(swapInfo({ platform: "darwin", read }).line, "", "macOS encrypts swap by default");
+  assert.equal(swapInfo({ platform: "linux", read: p => (p === "/proc/swaps" ? "Filename Type Size Used Priority\n/dev/mapper/cryptswap1 partition 1 0 -2\n" : "0:0") }).swap, false, "dm-crypt swap is not a leak");
+  assert.equal(swapInfo({ platform: "linux", read: p => (p === "/proc/swaps" ? "Filename Type Size Used Priority\n/dev/dm-1 partition 1 0 -2\n" : p === "/sys/block/dm-1/dm/uuid" ? "CRYPT-LUKS2-abc\n" : "0:0") }).swap, false);
+  assert.equal(swapInfo({ platform: "linux", read: p => (p === "/proc/swaps" ? "Filename Type Size Used Priority\n/dev/dm-2 partition 1 0 -2\n" : p === "/sys/block/dm-2/dm/uuid" ? "LVM-xyz\n" : "0:0") }).swap, true, "plain LVM swap is");
+});
+
+test("FS-2: the session starts with umask 077", { skip: SKIP_UMASK() , timeout: 30_000 }, async t => {
+  const ws = tmp(); t.after(() => rm(ws));
+  fs.mkdirSync(path.join(ws, "files"), { recursive: true });
+  const platform = process.platform === "darwin" ? "darwin" : "linux";
+  const p = plan({ platform, workspace: ws, command: process.execPath, args: ["-e", 'const fs=require("fs");fs.writeFileSync("u.txt","x");console.log((fs.statSync("u.txt").mode&0o777).toString(8))'], readOnly: [path.dirname(process.execPath)], proxy: { port: 4567, socket: "" } });
+  const c = launch(p, { cwd: p.cwd }); let out = ""; c.stdout.on("data", d => out += d); await new Promise(r => c.on("close", r));
+  assert.equal(out.trim(), "600");
+});
+function SKIP_UMASK() { return !["darwin", "linux"].includes(process.platform) || unavailable() !== ""; }
+
+test("FS-2: another user cannot read an fscrypt workspace, unlocked or locked, and the folders above it are 0700", { skip: process.platform !== "linux" || !FSDIR || !fscryptSupported(FSDIR) || spawnSync("sudo", ["-n", "true"]).status !== 0, timeout: 60_000 }, async t => {
+  const base = fs.mkdtempSync(path.join(FSDIR, "fs2-")); t.after(() => rm(base));
+  const drv = driverFor("linux", { prefer: "fscrypt" });
+  const dir = path.join(base, "spaces", "w"); const key = crypto_.randomBytes(32);
+  await drv.create(dir, key);
+  const m = await drv.mount(dir, key);
+  fs.writeFileSync(path.join(m, "a.txt"), "OWNER-ONLY");
+  for (const d of [m, dir, path.dirname(dir)]) assert.equal(fs.statSync(d).mode & 0o077, 0, `${d} is owner-only`);
+  const other = () => spawnSync("sudo", ["-n", "-u", "nobody", "cat", path.join(m, "a.txt")], { encoding: "utf8" });
+  assert.notEqual(other().status, 0, "another user cannot read it while unlocked");
+  await drv.unmount(dir);
+  assert.notEqual(other().status, 0, "nor while locked");
+  await drv.destroy(dir);
+});
+
+import { effectiveNetwork, LENT_NETWORK_DEFAULT } from "./runner.js";
+test("lent network: the default is the internet, the Space can say provider, and the lender's cap always wins", () => {
+  assert.equal(LENT_NETWORK_DEFAULT, "internet");
+  assert.equal(effectiveNetwork(undefined, undefined), "internet");
+  assert.equal(effectiveNetwork("provider", undefined), "provider");
+  assert.equal(effectiveNetwork("internet", undefined), "internet");
+  assert.equal(effectiveNetwork("internet", "provider"), "provider", "the lender's cap beats the Space");
+  assert.equal(effectiveNetwork(undefined, "provider"), "provider");
+  assert.equal(effectiveNetwork("provider", "internet"), "provider", "a lender saying internet does not widen the Space's setting");
+  assert.equal(effectiveNetwork("bogus", undefined), "internet");
+});
+
+import { createEgress as mkEgress } from "./egress.js";
+import netmod from "node:net";
+import osmod from "node:os";
+test("internet mode refusals: a changing answer, a redirect, the machine's own address, IPv6 private and mapped forms, CONNECT to a LAN address", async t => {
+  const target = netmod.createServer(c => { c.on("error", () => {}); c.end("hi"); }); await new Promise(r => target.listen({ port: 0, host: "127.0.0.1" }, r)); t.after(() => target.close());
+  const tp = target.address().port, dialed = [];
+  let n = 0;
+  // A name that answers public to the check and private on the next lookup: the proxy looked once and dialled what it checked.
+  const eg = mkEgress({ routes: [], vault: {}, session: "s", token: "tok", internet: true, lookup: async h => (h === "flip.example" ? (n++ === 0 ? [{ address: "93.184.216.34" }] : [{ address: "10.0.0.1" }]) : h === "v6.example" ? [{ address: "fd00::5" }] : h === "map.example" ? [{ address: "::ffff:192.168.1.5" }] : h === "ll.example" ? [{ address: "fe80::1" }] : [{ address: "93.184.216.34" }]), dial: (ip, port) => { dialed.push(ip + ":" + port); return netmod.connect(tp, "127.0.0.1"); } });
+  const { port } = await eg.listen(); t.after(() => eg.close());
+  const ask = host => new Promise(res => { const s = netmod.connect(port, "127.0.0.1"); let b = ""; s.on("connect", () => s.write(`CONNECT ${host} HTTP/1.1\r\nHost: ${host}\r\nProxy-Authorization: Basic ${Buffer.from("vyre:tok").toString("base64")}\r\n\r\n`)); s.on("data", d => { b += d; if (b.includes("\r\n")) { s.destroy(); res(b.split("\r\n")[0]); } }); s.on("error", () => res("error")); setTimeout(() => res("timeout"), 3000); });
+  assert.match(await ask("flip.example:443"), / 200 /);
+  assert.deepEqual(dialed, ["93.184.216.34:443"], "it dialled the address it checked, not a later answer");
+  for (const h of ["v6.example:443", "map.example:443", "ll.example:443", "[fd00::1]:443", "[::ffff:10.0.0.1]:443", "169.254.169.254:80", "100.100.100.100:443"]) assert.match(await ask(h), / 403 /, h);
+  const lan = Object.values(osmod.networkInterfaces()).flat().find(a => a && !a.internal && a.family === "IPv4");
+  if (lan) assert.match(await ask(`${lan.address}:${tp}`), / 403 /, "this machine's own LAN address");
+  // a redirect to a private address is the client's next request through the same proxy, and is refused there
+  const redir = http.createServer((q, r) => { r.writeHead(302, { location: "http://10.0.0.1/secret" }); r.end(); }); await new Promise(r => redir.listen(0, "127.0.0.1", r)); t.after(() => redir.close());
+  const eg2 = mkEgress({ routes: [], vault: {}, session: "s", token: "tok", internet: true, lookup: async h => [{ address: h === "10.0.0.1" ? "10.0.0.1" : "93.184.216.34" }] }); const e2 = await eg2.listen(); t.after(() => eg2.close());
+  const get = url => new Promise(res => { const q = http.request({ hostname: "127.0.0.1", port: e2.port, path: url, headers: { host: new URL(url).host, "proxy-authorization": "Basic " + Buffer.from("vyre:tok").toString("base64") } }, m => { m.resume(); res(m.statusCode); }); q.on("error", () => res(0)); q.end(); });
+  assert.equal(await get("http://10.0.0.1/secret"), 403, "the redirect target is refused when the client follows it");
+});
+
+test("FS-3: a folder that was already there is never chmodded, and a world-writable one above is refused", { skip: process.platform !== "linux" || !FSDIR || !fscryptSupported(FSDIR), timeout: 60_000 }, async t => {
+  const outer = fs.mkdtempSync(path.join(FSDIR, "fs3-")); t.after(() => rm(outer));
+  fs.chmodSync(outer, 0o755); fs.writeFileSync(path.join(outer, "other-file.txt"), "kept");
+  const drv = driverFor("linux", { prefer: "fscrypt" });
+  const dir = path.join(outer, "vyre", "spaces", "w");
+  await drv.create(dir, crypto_.randomBytes(32));
+  assert.equal(fs.statSync(outer).mode & 0o777, 0o755, "the pre-existing folder's mode is unchanged");
+  assert.equal(fs.readFileSync(path.join(outer, "other-file.txt"), "utf8"), "kept");
+  assert.equal(fs.statSync(path.join(outer, "vyre")).mode & 0o077, 0, "the folders it created are owner-only");
+  await drv.destroy(dir);
+  const open_ = fs.mkdtempSync(path.join(FSDIR, "fs3w-")); t.after(() => rm(open_)); fs.chmodSync(open_, 0o777);
+  await assert.rejects(() => drv.create(path.join(open_, "spaces", "w"), crypto_.randomBytes(32)), /writable by other users/);
+});

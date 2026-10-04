@@ -1,5 +1,6 @@
 // The group writes in box-stream go to the server's stream.* tools with their inputs, through the box layer's send.
 import "../../../../scripts/mac-test-guard.mjs";
+import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

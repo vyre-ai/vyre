@@ -256,6 +256,16 @@ test("projects.reach: the true owner is unrestricted; an unnamed, unrecognised c
   }
 });
 
+test("projects.reach: with the kernel's `person` answer the label decides nothing: a person is the owner whatever the label, a non-person with an owner-looking label is refused", async t => {
+  const w = await started(t);
+  assert.deepEqual(await w.call("projects.reach", { caller: "tailnet-guest:x", person: true }), { all: true, agent: null });
+  for (const caller of ["cli", "deck", "capsule", "mcp", "unknown"]) {
+    const r = await w.call("projects.reach", { caller, person: false }).catch(e => e);
+    assert.equal(r.code, "denied", `${caller}: ${r.message}`);
+  }
+  assert.deepEqual(await w.call("projects.reach", { caller: "module:memory", person: false }), { all: true, agent: null }, "a module on its own behalf is still a module");
+});
+
 test("projects.reach: a named agent gets its own granted projects, intersected with projects.access, deny by default", async t => {
   const w = await started(t, { agents: [{ name: "kit", kind: "agent", projects: ["harlow-legal"] }] });
   // started() already ran the one-time auto-seed (2fb4258c), which backfills kit's own

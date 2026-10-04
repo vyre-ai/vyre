@@ -87,7 +87,7 @@ test("testing: the module is held to its manifest", async t => {
   const { h } = world(t);
   const { ctx } = h;
   assert.throws(() => ctx.tool(/** @type {any} */ ("kit.extra"), { run: () => 1 }), /does not declare under does\.tools/);
-  assert.throws(() => ctx.tool("kit.read", { run: () => 1 }), /already registered/);
+  assert.throws(() => ctx.tool("kit.read", { effect: "read", run: () => 1 }), /already registered/);
   assert.throws(() => ctx.events.emit("kit.gone", {}), /does not declare under watches\.emits/);
   assert.throws(() => ctx.events.on("planner.*", () => {}), /does not declare under watches\.on/);
   const got = [];
@@ -183,7 +183,7 @@ test("testing: testModule starts a module folder and stops it", async t => {
   fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ type: "module" }));
   fs.writeFileSync(path.join(root, "index.js"), `let stopped = 0;
 export default { async start(ctx) {
-  ctx.tool("kit.read", { input: { type: "object", required: ["id"], properties: { id: { type: "integer" } } }, run: ({ id }) => ({ id, size: 3 }) });
+  ctx.tool("kit.read", { effect: "read", input: { type: "object", required: ["id"], properties: { id: { type: "integer" } } }, run: ({ id }) => ({ id, size: 3 }) });
   return { async stop() { stopped++; globalThis.__kitStopped = stopped; } };
 } };
 `);
@@ -236,7 +236,7 @@ test("testing: a Gate item lets exactly one write through, and an approved held 
   t.after(() => h.stop());
   const post = (/** @type {any} */ body) => h.ctx.vault.request("mailer", { method: "POST", url: "https://api.juno.example/send", body });
   /** @type {any[]} */ const got = [];
-  h.ctx.tool("kit.mail", { input: { type: "object" }, run: async (_i, meta) => { got.push(await post({ to: "alex" }), await post({ to: "alex" })); return meta.gate; } });
+  h.ctx.tool("kit.mail", { effect: "read", input: { type: "object" }, run: async (_i, meta) => { got.push(await post({ to: "alex" }), await post({ to: "alex" })); return meta.gate; } });
   const r = await h.call("kit.mail", {});
   assert.deepEqual(r.data, { via: "person", item: "gate-1" });
   assert.equal(got[0].status, 200, "the first write inside the cleared run goes");

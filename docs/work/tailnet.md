@@ -9,6 +9,29 @@ helps. All ten parts of ADR 0014 are built. Each ships off, turns on with one sw
 nothing on the tailnet itself: every ACL, nodeAttr, grant, key, Lock and Funnel step is the user's,
 written out under "Steps for the user".
 
+## Wink, 4 Oct 2026 (after the team restart): labels, reviewer-3's findings, KP-1, the tunnel relay, measurement
+
+Done on work/wink-labels (tests on the test box with `node --test`, never on the Mac):
+- Label tests: a passkey is enrolled only for a browser (`hello.kind === "web"`), only after the three words, bound to its device id and the app's origin, and removed with the device; an unbound passkey proves for no relayed device (core/presence test), a browser whose passkey cannot be bound is paired without it, and a phone's offered passkey is never enrolled (test/wink.test.js).
+- Reviewer-3 LB-1b, LB-2, DS-1, PA-2, PA-3, PA-4 fixed with tests (CHANGELOG has the list). The kernel merge brought a `reach: person` session rule for device callers; the pairing steps and four self-calls are exempt in core/modules/index.js (PERSON_FREE) and five tests follow the rule.
+- KP-1 (kernel/identity/chain.js, re-pinned): `held: "web"` keys cannot change the list; passkey entries (`alg: "webauthn-es256"`) sign each op with user verification. Needs reviewer-3's gate; the browser side (chat) must create a passkey entry and send `held: "web"` for its WebCrypto key.
+- The relay half of the Publish tunnel (relay/node/tunnel.js and relay/node/server.js, core/relay/link.js `ontunnel`). Interface in CHAT.md. Not live.
+- The installer (scripts/install/i.sh) says "Connected to <space>. Finish setting up on your <device>." once `wink.server.status` reports an owner.
+
+Known red, not from this work: five "paired session on the real kernel" tests in test/wink.test.js (`memory.graph: this call carries no kernel chain`) fail the same on the kernel merge before any change of mine (checked on a clean extract of 3554c6c93).
+
+### Measurement plan: cellular networks and more than one relay (no purchase)
+
+What is unmeasured: every number above is loopback, the test boxes' datacenter links, or the hosted runners. Nothing has run over a carrier network (CGNAT, IPv6-only, aggressive idle NAT timeouts, HTTP-proxying carriers), and the product has exactly one relay.
+
+1. Cellular path, what to measure: (a) connect time to relay-up and to direct, (b) whether a direct path ever forms behind carrier CGNAT (the share of attempts that stay relayed), (c) round trip and throughput through the relay, 16 MB each way, (d) how long a quiet link survives before the NAT drops it (probe at 30 s, 1, 2, 5, 10 min) and the reconnect time after a drop, (e) behaviour on a network change (Wi-Fi to cellular) mid-call, (f) IPv6-only (NAT64) and a carrier that blocks UDP.
+   From where: the user's own phone on its own SIM (their data plan, no purchase), plus a laptop tethered to it for the scripted runs; a second carrier if anyone on the team has another SIM. Hosted runners are datacenter networks and say nothing about carriers.
+   With what: `scripts/install/redeemer.mjs` (already the raw redeemer for real-install runs) and the relay client's `connect` run from the tethered laptop in a temp home in a throwaway account, against a box on the test box; the box's `link.health` and `network.wink.status` give the path (direct or relay) and the round trip; a 30-line script steps the idle probe and writes one JSON line per step. Run each carrier condition 10 times at two times of day. Report medians and the worst run, not the best.
+2. More than one relay, what to measure: (a) the box fails over when its relay is unreachable (time to reconnect on a second URL), (b) a device that learned relay A reaches a box that moved to relay B (the pairing record carries one relay URL today: say what happens), (c) two boxes on different relays pair with each other, (d) relay restart: state lost (tickets, codes, mailboxes) and how the apps recover, (e) latency from three regions to each relay.
+   From where: two relay processes on the test box on different ports (a second relay is a second process, no purchase), a client on a hosted runner in another region (free hosted runners are in US and EU) for the cross-region numbers; the existing worker/node relay pair already speak one protocol.
+   With what: relay/node/server.js twice, `relay/client` `connect`, a kill of the first relay mid-call, a timing log. The answer to (b) is likely "no" today, which is the finding.
+3. What it decides: whether the relay-first iPhone route (the lead's ruling) holds on cellular, whether a second relay is needed before 0.3 ships, and what the card says about direct paths. Nothing here needs money: the one paid thing would be a second region's server, which this plan does not ask for.
+
 ## W-9 typed-code assurance (3 Oct 2026, work/wink)
 
 The short typed code does not guard real data until the user decides W-9 (team/0.3/PAKE-choice.md). Done and right under every outcome:

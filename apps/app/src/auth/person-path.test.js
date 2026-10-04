@@ -4,6 +4,7 @@
 // request checked as the box checks it (node:crypto, DER, inputHash of {key}); sign-out forgetting
 // both; a 401 on the relay starting the device flow, not the browser; a closed prompt not shown
 // again on its own for 60 s. Node only, no native module, no network.
+import "../../scripts/test-guard.mjs";
 
 import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";

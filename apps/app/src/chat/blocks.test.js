@@ -1,5 +1,6 @@
 // @ts-check
 import "../../../../scripts/mac-test-guard.mjs";
+import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { normalizeBlock, parseUnified, countDiff, sideBySide, fileTree, sealedCount } from "./blocks.js";

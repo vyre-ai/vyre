@@ -188,7 +188,7 @@ test("journey 3, door A refused: no --yes and no terminal prints the plan and to
     assert.equal(fs.existsSync(rig.env.server.VYRE_DIR), false, "no stack folder");
     assert.equal(fs.existsSync(rig.env.server.VYRE_WRAPPER), false, "no wrapper");
     assert.ok(!rig.ssh().some(l => / cat > /.test(l) || INSTALL_RUN.test(l)), "the installer never went over");
-    assert.deepEqual(rig.docker().filter(l => !/^(compose version|info|volume (ls|inspect))\b/.test(l)), [], "docker was only asked, never told");
+    assert.deepEqual(rig.docker().filter(l => !/^(compose version|info|ps -q|volume (ls|inspect))\b/.test(l)), [], "docker was only asked, never told");
     assert.equal(rig.opened().length, 0);
   } finally { await rig.close(); }
 });

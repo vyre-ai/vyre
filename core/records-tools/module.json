@@ -4,7 +4,7 @@
   "description": "The app's way into a Space's records: one tool per Store call over the kernel's gateway, each under the caller's own chain in the Space it names. Nothing here decides; the kernel does.",
   "roles": ["box", "local"],
   "requires": [],
-  "needs": { "kernel": { "actions": [] } },
+  "needs": { "kernel": { "actions": [] }, "daemon": ["devStandIn"] },
   "does": {
     "tools": [
       { "name": "records.workspace.create", "reach": "modules" },
@@ -16,7 +16,15 @@
       { "name": "records.list", "reach": "person" },
       { "name": "records.get", "reach": "person" },
       { "name": "records.create", "reach": "person" },
-      { "name": "records.update", "reach": "person" }
+      { "name": "records.update", "reach": "person" },
+      { "name": "records.linked", "reach": "person" },
+      { "name": "records.kits.library", "reach": "person" },
+      { "name": "records.kits.get", "reach": "person" },
+      { "name": "records.seal-put", "reach": "person" },
+      { "name": "records.reveal", "reach": "person" },
+      { "name": "records.sees-as", "reach": "person" },
+      { "name": "records.events", "reach": "person" },
+      { "name": "records.dev-seed", "reach": "person" }
     ]
   },
   "watches": { "emits": [] },

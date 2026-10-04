@@ -39,7 +39,7 @@ async function rig() {
   const role = { person: BOB, role: "member" };
   await g.setRole(owner, role, { presence: proof("grants.role", role, `vyre://${SPACE}/member/${BOB}`) });
   const mk = (chain, o) => g.offers.offer(chain, o, { presence: proof("grants.offer", o, `vyre://${SPACE}/offer/new`) });
-  return { k, sealer, owner, bob, g, mk, released, forwarded, drive, un: (chain, id) => g.offers.unoffer(chain, id, { presence: proof("grants.offer", { revoke: id }, `vyre://${SPACE}/offer/${id}`) }) };
+  return { k, sealer, owner, bob, g, mk, released, forwarded, drive, un: (chain, id) => g.offers.unoffer(chain, id, { presence: proof("grants.unoffer", { revoke: id }, `vyre://${SPACE}/offer/${id}`) }) };
 }
 
 test("leases: `allowed` is the kernel's answer from the two Offers, on every issue and renew, never the caller's", async () => {
@@ -159,7 +159,7 @@ test("runnerPorts: the runner's lease, access answer and revocation are the kern
   const told = [];
   ports.onRevoke(e => told.push(e.reason));
   const acceptId = await findAccept(r);
-  await r.k.gateway.grants.offers.unoffer(r.bob, acceptId, { presence: proof("grants.offer", { revoke: acceptId }, `vyre://${SPACE}/offer/${acceptId}`) });
+  await r.k.gateway.grants.offers.unoffer(r.bob, acceptId, { presence: proof("grants.unoffer", { revoke: acceptId }, `vyre://${SPACE}/offer/${acceptId}`) });
   await new Promise(res => setTimeout(res, 10));
   assert.deepEqual(told, ["withdrawn"]);
   // the runner never says `allowed` and never builds a chain

@@ -19,9 +19,9 @@ import { assertDaemonHost } from "./host-guard.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { Registry, discover, ownerDevice, currentCall } from "../modules/index.js";
-import { devSwitch } from "../../kernel/devbuild.js";
+import { devSwitch, isPackaged } from "../../kernel/devbuild.js";
 import { build, swWithBuild, htmlWithBuild } from "./build.js";
-import { serveApp } from "./app.js";
+import { serveApp, associationFile } from "./app.js";
 import { acquire } from "./lock.js";
 import { Presence, PERSON_ONLY, HUMAN_ONLY, SESSIONABLE, personOnly, fingerprint, parse as parsePresence, core as coreHolder } from "../presence/index.js";
 import { readCoreConfig, coreLink } from "../../lib/vyre-core-client.js";
@@ -62,13 +62,20 @@ function kernelProof(req) {
  * connect, so the uid is the daemon's own; Capsule calls wait for the code-signature check to be wired and get none), or a paired device or a signed-in owner device on a listener
  * (the listener established who it is; the person is the home's owner while a home has one). Set here only, never from anything a client sends; `ctx.kernel.chain(meta)` builds the chain
  * from it with the kernel's own builder, which refuses what does not hold. Null when there is nothing to prove.
- * @param {string} caller @param {any} policy @param {any} via @param {any} k the kernel @param {boolean} [capsuleVerified] the peer on this socket is the pinned Capsule binary @param {{ kind: string, removed: boolean } | null} [device] the home's OWN row for a `device:<id>` caller (relay.device.info), never what the relay says about it
+ * @param {string} caller @param {any} policy @param {any} via @param {any} k the kernel @param {boolean} [capsuleVerified] the peer on this socket is the pinned Capsule binary @param {{ inside: boolean, outside?: boolean } | undefined} [ancestry] what runs above the caller on the socket (a person's surface label gets facts only with this) @param {{ kind: string, removed: boolean } | null} [device] the home's OWN row for a `device:<id>` caller (relay.device.info), never what the relay says about it
  */
-export function callerFacts(caller, policy, via, k, capsuleVerified = false, device = null) {
+export function callerFacts(caller, policy, via, k, capsuleVerified = false, device = null, ancestry = undefined) {
   if (!k || !k.id) return null;
   // The Capsule is the person only when its own binary is the pinned one (`verifiedCapsule`: the cdhash the person pinned, checked per connection and bound to the pid's start time). An unproven one gets no chain.
   if (!policy.caller && caller === "capsule") return capsuleVerified === true ? { kind: "socket", surface: "capsule", uid: typeof process.getuid === "function" ? process.getuid() : 0, pid: 0, inside_model_process: false, capsule_verified: true } : null;
-  if (!policy.caller && ["cli", "local", "deck", "mobile"].includes(caller)) return { kind: "socket", surface: caller, uid: typeof process.getuid === "function" ? process.getuid() : 0, pid: 0, inside_model_process: false, capsule_verified: false };
+  // LB-1: the label is only a claim on a socket any process under this uid can open, so a person's surface gets facts ONLY after the daemon measured what runs above the caller (`ancestry`, from
+  // `above`): from under a Claude or a thread it is a model's (the builder then makes an agent chain, never a person), and with no measurement, or one that could not read the ancestry, there are none.
+  if (!policy.caller && ["cli", "local", "deck", "mobile"].includes(caller)) {
+    // Inside a model: facts that make an agent chain. Anything but a DEFINITE outside (an unreadable table, a named server above such as tmux or ssh, a `docker exec`, no peer read) gives none: that call is a person only with a person session (LB-2).
+    if (!ancestry || typeof ancestry.inside !== "boolean") return null;
+    if (!ancestry.inside && ancestry.outside !== true) return null;
+    return { kind: "socket", surface: caller, uid: typeof process.getuid === "function" ? process.getuid() : 0, pid: 0, inside_model_process: ancestry.inside, capsule_verified: false };
+  }
   // PH-1: a `device:<id>` is the owner's only if THIS home holds a row for it: paired (a gated pairing makes no row before its confirm), not removed, and an app device. A web browser (trusted or
   // not), a setup page, an id the home never paired and a removed device get no person facts; the relay's say-so is never enough. (tailnet nodes are the tailnet listener's own identity, X-1.)
   if (policy.caller && String(policy.caller).startsWith("device:") && !(device && device.kind === "app" && device.removed === false)) return null;
@@ -150,7 +157,9 @@ async function startLocked(opts, root, p, release) {
     coreHolder.link = c ? coreLink(c) : null;
     if (c) log(`presence: keys and proofs are vyre-core's (${c.socket})`);
   }
-  const presence = typeof opts.presence === "function" ? opts.presence({ db, events, log }) : opts.presence || new Presence({ db, events, log, role: cfg.machine, network: () => cfg.network || {} });
+  // DEVELOPMENT ONLY: the automated walk's presence stand-in is on only for a development build whose home holds a file the owner made by hand (never config, never a tool).
+  const devStandIn = () => !isPackaged(opts.packageRoot) && fs.existsSync(path.join(root, "dev-presence-stand-in"));
+  const presence = typeof opts.presence === "function" ? opts.presence({ db, events, log }) : opts.presence || new Presence({ db, events, log, role: cfg.machine, standIn: devStandIn, network: () => cfg.network || {} });
   // Who is the person over the network, not only their device (core/presence/person.js).
   const people = new PersonSessions({ db });
   const started = Date.now();
@@ -214,7 +223,9 @@ async function startLocked(opts, root, p, release) {
     // Flows and stages made of tasks run in ONE assembly per Space (core/daemon/flows-host.js): the home's own Space here, and every hosted Space through the Spaces registry's
     // `stageFactory`. The `flows` module only registers the tools over it. A Flow's "Call a service" step reaches the vault's forward after the kernel has allowed it.
     const { createFlowsHost } = await import("./flows-host.js");
-    const flowsHost = createFlowsHost({ log, tzFor: () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" });
+    const flowsHost = createFlowsHost({ log, tzFor: () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+      // The connectors a Flow may call, with their route rules (no host, no secret): the vault's own list.
+      connectors: async () => { const r = await registry.call("vault.service.catalog", {}, "module:leases"); return r.error ? {} : r.data.connectors; } });
     registry.deps.flowsHost = flowsHost;
     // `{{field:...}}` in an outward action: resolved from the record under the person the session's turn is for (their own grants, not the room's view), by the kernel's resolveFields.
     const { resolveFields } = await import("../../kernel/core/fields.js");
@@ -230,14 +241,27 @@ async function startLocked(opts, root, p, release) {
     const { createDataStores } = await import("../../lib/data-stores.js");
     /** @type {any} */ let vaultHolds;
     try { vaultHolds = (await import(/* @vite-ignore */ "../../lib/vault-wipe.js")).vaultHolds; } catch { vaultHolds = undefined; }
+    registry.deps.devStandIn = devStandIn;
     registry.deps.dataStores = createDataStores({ home: root, db, kernelEvents: () => kernel.log.read(), ...(vaultHolds ? { vaultHolds } : {}) });
-    registry.deps.modulesListReset = (/** @type {any} */ chain, /** @type {any} */ proof) => kernel.resetModulesList(chain, proof);
+    registry.deps.modulesListReset = (/** @type {any} */ chain, /** @type {any} */ proof, /** @type {string} */ ask) => kernel.resetModulesList(chain, proof, ask);
+    registry.deps.modulesListResetPayload = (/** @type {string} */ ask) => kernel.modulesListReset(ask);
     closeFlowsHost = () => flowsHost.stop();
-    kernel = await bootHomeKernel({ db, root, log, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
+    // Devices enrol per Space (the user's ruling): the spaces module keeps the list and answers `spaces.devices.enrolled`; a build without that module has no list, so every device is enrolled.
+    const deviceEnrolled = async (/** @type {string} */ space, /** @type {string} */ device) => {
+      const r = /** @type {any} */ (await registry.call("spaces.devices.enrolled", { device, space }, "module:vyred", { door: true }));
+      if (r && r.error) { if (r.error.code === "no_such_tool" || r.error.code === "not_available") return true; return false; }
+      return !r || !r.data || r.data.enrolled !== false;
+    };
+    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
       // A credentialed request run at the home: the vault's own forward (an internal tool only the lease module may call), under the Space's credential; the kernel has already authorized it.
       forwardCredential: async (/** @type {any} */ q) => {
-        if (!q.route) throw Object.assign(new Error("that connector's route table is the vault's and is not exposed to the kernel yet"), { code: "unavailable" });
         const r = q.request;
+        // A Flow's named connector: the vault holds the connector's route rules and host (vault.service.forward); the kernel has authorized the chain.
+        if (!q.route) {
+          const via = await registry.call("vault.service.forward", { connector: q.connector, request: r, ...(q.idem ? { idem: q.idem } : {}), ...(q.approval ? { approval: q.approval } : {}), ...(q.bind ? { bind: q.bind } : {}) }, "module:leases", q.files ? { files: q.files } : undefined);
+          if (via.error) throw Object.assign(new Error(via.error.message), { code: via.error.code });
+          return via.data;
+        }
         // A file request goes to vault.forward.file with the route's limits and Drive lists, and the Drive is this call's own door (q.files: the kernel's Drive under the caller's chain, FW-2),
         // handed in-process as meta, never as data a module could name. A plain request carries the route's header names.
         const base = { credential: q.ref, method: r.method, url: `https://${q.route}${r.path}`, ...(r.query ? { query: r.query } : {}), ...(r.headers ? { headers: r.headers } : {}), ...(q.allow_headers ? { allow_headers: q.allow_headers } : {}), session: q.session || q.idem || "home" };
@@ -249,7 +273,7 @@ async function startLocked(opts, root, p, release) {
       },
       onStageEnter: (/** @type {any} */ e) => (stages ? stages.onStageEnter(e) : Promise.resolve()), stageTasks: (/** @type {string} */ u, /** @type {string} */ st) => (stages ? stages.stageTasks(u, st) : []),
       stageFactory: async (/** @type {string} */ space, /** @type {any} */ k, /** @type {any} */ meta) => (await flowsHost.attach(space, k, meta.owner)).stages });
-    stages = (await flowsHost.attach(kernel.id.space, kernel, kernel.id.owner)).stages;
+    stages = (await flowsHost.attach(kernel.id.space, kernel, () => kernel.id.owner)).stages;
     if (typeof kernel.bindCalls === "function") kernel.bindCalls(currentCall);
     // The session credential of a session vyred starts (lib/kernel-session.js): the kernel opens a token for the owner this home runs as, with the thread's chat written
     // in by the kernel after it checks the owner is in it; vyred holds it and the thread's own socket stamps it on every call, so the session never sees it. An unnamed thread
@@ -264,7 +288,9 @@ async function startLocked(opts, root, p, release) {
       all: () => /** @type {any[]} */ (db.prepare("SELECT thread, body FROM kernel_turns").all()).map(r => /** @type {[string, any]} */ ([r.thread, JSON.parse(r.body)])) };
     const kernelSessions = createKernelSessions({ kernel, turns, chats: kernel.kernelFor({ name: "kernel-sessions" }).chats });
     // A chain of exactly that person, built by the kernel as a DEVICE chain of this home (vyred's own key), never from session facts: a chain made from a session token is delegated and may not mint a session (CH-7), so the opener must not be one. A person who is no longer a member gets none.
-    const personChainFor = async (/** @type {string} */ person) => kernel.chains.fromFacts({ kind: "device", device_key_id: "vyred", person, path: "direct" });
+    const canonPerson = (/** @type {string} */ p) => { const f = kernel.kernelFor({ name: "kernel-sessions" }).canonicalPerson; return typeof f === "function" ? f(p) : p; };
+    // A person id kept from before the owner adopted an identity (a stored turn, a queued message) opens as the identity: canonicalPerson maps the replaced id forward and leaves any other as given.
+    const personChainFor = async (/** @type {string} */ person) => kernel.chains.fromFacts({ kind: "device", device_key_id: "vyred", person: canonPerson(person), path: "direct" });
     // What the stream is given of it (needs.daemon "kernelThreads", core/stream): calls on a thread's session and the restart's reopening, never a token and never a way to open a session.
     // The stream reopens the open turns itself at its start so a turn it cannot resume says so in its chat; when no stream asks (it is off), the daemon reopens them once its modules are up.
     let reopenCalled = false;
@@ -275,6 +301,7 @@ async function startLocked(opts, root, p, release) {
     });
     reopenLater = () => { if (!reopenCalled) void kernelSessions.reopenPending(reopenOpts({ timeoutMs: 10_000, onGiveUp: (/** @type {string} */ thread, /** @type {string} */ why) => log(`sessions: could not resume ${thread.slice(0, 8)} (${why})`) })).catch(() => {}); };
     closeKernelSessions = () => kernelSessions.closeAll();
+    registry.deps.kernelSessionCount = () => kernelSessions.list().length; // how many are open now (a number, for tests and status: never a token or a way to open one)
     registry.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any, chat?: string, asker?: string, probe?: boolean }} */ q) => {
       // A chat turn: the Switchboard passes `chat` and `asker` only from module:stream (threads.start and threads.send), so the session is the asker's, in that chat, and the kernel checks they are in it.
       // Anything else is the home owner's own thread, as before.
@@ -294,8 +321,8 @@ async function startLocked(opts, root, p, release) {
     if ((process.platform === "darwin" || process.platform === "linux") && devSwitch(process.env.VYRE_SESSION_SANDBOX_OFF)) registry.deps.sandbox = { off: true };
     else if (process.platform === "darwin" || process.platform === "linux") {
       try {
-        const [{ planHome, selfTest }, { launch }] = await Promise.all([import("../runner/homesandbox.js"), import("../runner/sandbox.js")]);
-        registry.deps.sandbox = { sandbox: { planHome, selfTest, launch }, platform: process.platform, home: os.homedir(), vyreHome: root,
+        const [{ planHome, selfTest }, { launch }, { startHomeProxy }] = await Promise.all([import("../runner/homesandbox.js"), import("../runner/sandbox.js"), import("../runner/homeproxy.js")]);
+        registry.deps.sandbox = { sandbox: { planHome, selfTest, launch, homeProxy: o => startHomeProxy({ platform: o && o.platform, dir: path.join(root, "run") }) }, platform: process.platform, home: os.homedir(), vyreHome: root,
           // Real targets, made for each self-test and torn down after it: a unix socket standing in for another session's, and a loopback listener standing in for a daemon port. The
           // sandboxed probe must fail to connect to every one of them, and a probe target that does not exist is refused by the runner's own check.
           probes: async () => {
@@ -316,6 +343,13 @@ async function startLocked(opts, root, p, release) {
     }
     registry.deps.moduleHost = kernel.moduleHost;
     registry.deps.kernelFor = kernel.kernelFor;
+    // The gate's presence check asks the kernel whether a call is the person's own (exactly one person hop in the chain the daemon's proven facts build), never the caller's label.
+    if (presence && typeof kernel.kernelFor === "function") {
+      const gateKernel = kernel.kernelFor({ name: "presence-gate" });
+      presence.personOf = async (/** @type {any} */ meta) => {
+        try { const c = await gateKernel.chain(meta); return Boolean(c && Array.isArray(c.hops) && c.hops.length === 1 && c.hops[0].actor && c.hops[0].actor.kind === "person"); } catch { return false; }
+      };
+    }
     if (kernel.firstPartyCheck) registry.deps.firstPartyCheck = kernel.firstPartyCheck;
     if (kernel.reservedName) registry.deps.reservedName = kernel.reservedName;
     registry.deps.moduleApprovals = kernel.moduleApprovals;
@@ -326,6 +360,8 @@ async function startLocked(opts, root, p, release) {
   // The provider sign-in token for the launcher modules (threads, agents), by declaration (needs.daemon: credentials): from the credentials port taken below, never a module grant on the vault
   // items. Late-bound, because the port is taken after the vault starts; until then it answers undefined and the caller keeps its old grant-based read.
   registry.deps.credentials = (/** @type {string} */ provider) => (registry.deps.credentialsPort ? registry.deps.credentialsPort.credentials(provider) : Promise.resolve(undefined));
+  // A box's container is the server: a config that says "device" or "solo" there would switch off every box-only module without a word, so it stops here with the reason.
+  if (process.env.VYRE_SUPERVISOR === "docker" && !config.isServer(cfg.machine)) throw new Error(`this is a server's container but its config says machine "${cfg.machine}", which turns off every server module; set "machine": "server" in the home's config.json and start again`);
   await registry.start(discover(moduleRoots(root), { firstPartyRoots }), { role: cfg.machine, ...cfg.modules });
   if (reopenLater) reopenLater();
   // The session launcher's way to a provider sign-in token: the vault provided it to the registry once, at its own start (`ctx.provide`, core/modules/index.js), so no import of the vault is needed here.
@@ -358,7 +394,7 @@ async function startLocked(opts, root, p, release) {
     fs.rmSync(p.socket, { force: true });
   }
 
-  const terminalOf = opts.person || (sock => atTerminal(sock, registry, presence));
+  const terminalOf = opts.person || (sock => atTerminal(sock, registry, presence, devStandIn()));
   const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, socket: true, terminalOf, kernelOf: () => kernel }).catch(e => fail(res, e)));
   server.on("upgrade", async (req, socket, head) => {
     try { upgrade(req, socket, head, (await asTaken(socketCaller(req), /** @type {any} */ (socket), registry)).caller); }
@@ -460,7 +496,9 @@ export const callId = v => (typeof v === "string" && /^[A-Za-z0-9_-]{1,128}$/.te
 
 // "link:" is the paired box's person on a Mac, which only the link module may call as (CALL_AS in
 // core/modules): threads.answer takes it only with the box's signed assertion checked.
-const FORBIDDEN_LABEL = /^(module:|tailnet:|tailnet-guest:|device:|link:|onboard$|hook$)/;
+// "web:", "setup:" and "space:" are labels the relay and the spaces listener make (a waiting or browser pairing, the setup page, a visiting person); a socket client never gets them, nor the bare
+// class words that only a tool's callers list uses (reviewer-3 LB-1b).
+const FORBIDDEN_LABEL = /^(module:|tailnet:|tailnet-guest:|device:|link:|web:|setup:|space:|onboard$|hook$|web$|setup$|space$|device$|tailnet$|agent$)/;
 
 /**
  * Who a socket request says it is. No label is "anonymous", which no tool's callers list names,
@@ -638,13 +676,15 @@ async function serverTrusted(server, proofHeader, caller, registry) {
  * model's shell, so it is the session's own label ("mcp", or "mcp:thread:<id>" when the call
  * proved its session), for every tool: a label is only a claim (docs/work/e2e.md, the team
  * review). "anonymous" stays: the session could say "mcp" itself, so it gains nothing. An ancestry vyred cannot read (a `docker exec` on the box has parent 0) keeps its label
- * here; the person's own actions still refuse it (fromClaude). Asked once per connection.
+ * here, but a label alone is never a person: `outside` is false for it, so callerFacts builds no person chain for it, and it is a person only with a person session (LB-2). The person's own actions still refuse it (fromClaude). Asked once per connection.
  * @param {string} caller @param {import("node:net").Socket} socket @param {any} registry @param {string} [thread]
  * @param {Parameters<typeof above>[3]} [deps] test seams for above()
- * @returns {Promise<{ caller: string, model: boolean }>}
+ * `outside` is true only when the ancestry was read to the top and nothing above the caller is a model or a named server: the one answer from which a surface's label may become a person's chain (callerFacts).
+ * An unreadable table, a peer not found, a named server above the caller (tmux, ssh, a terminal app) or a `docker exec` with no parent is NOT outside: such a call is a person only with a person session, never by its label (LB-2).
+ * @returns {Promise<{ caller: string, model: boolean, outside: boolean }>}
  */
 export async function asTaken(caller, socket, registry, thread, deps) {
-  if (MODEL_LABEL.test(caller) || caller === "anonymous") return { caller, model: false };
+  if (MODEL_LABEL.test(caller) || caller === "anonymous") return { caller, model: false, outside: false };
   let v = taken.get(socket);
   // A peer vyred cannot read where it normally can (perl failed or timed out) is not taken on its
   // word: a surface's label then counts as a model's, so a stall never reopens the forged label.
@@ -654,14 +694,16 @@ export async function asTaken(caller, socket, registry, thread, deps) {
     const mine = above(socket, registry, undefined, deps).then(w => ({
       model: Boolean(w.inside || (w.nopid && canReadPeers)),
       definite: Boolean(!w.unreadable && (w.inside || (!w.unknown && !w.nopid))),
+      outside: Boolean(!w.inside && !w.unreadable && !w.unknown && !w.nopid && !w.server && canReadPeers),
     }));
     v = mine;
     taken.set(socket, mine);
     mine.then(a => { if (!a.definite && taken.get(socket) === mine) taken.delete(socket); }, () => { if (taken.get(socket) === mine) taken.delete(socket); });
   }
-  return (await v).model ? { caller: thread ? `mcp:thread:${thread}` : "mcp", model: true } : { caller, model: false };
+  const a = await v;
+  return a.model ? { caller: thread ? `mcp:thread:${thread}` : "mcp", model: true, outside: false } : { caller, model: false, outside: a.outside };
 }
-/** @type {WeakMap<object, Promise<{ model: boolean, definite: boolean }>>} */
+/** @type {WeakMap<object, Promise<{ model: boolean, definite: boolean, outside: boolean }>>} */
 const taken = new WeakMap();
 
 /**
@@ -677,8 +719,9 @@ const taken = new WeakMap();
  * @param {import("node:net").Socket} socket @param {any} registry @param {any} presence
  * @returns {Promise<{ key: string, tty: string|null }|null>} tty: the caller's own terminal, where a notice goes
  */
-async function atTerminal(socket, registry, presence) {
-  if (await fromClaude(socket, registry)) return null;
+async function atTerminal(socket, registry, presence, standIn = false) {
+  // The development stand-in (a hand-made file in a development build) is the one thing that replaces this guard; a real build never passes it.
+  if (!standIn && await fromClaude(socket, registry)) return null;
   const pid = await peerPid(socket);
   if (!pid || !presence || typeof presence.who !== "function") return null;
   const logins = await presence.who();
@@ -816,6 +859,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const g = await registry.call("agents.scope", { name: via.agent }, "module:vyred");
     /** @type {any} */ (via).granted = g && g.data ? g.data.projects : [];
     /** @type {any} */ (via).agentKind = g && g.data ? g.data.kind : null;
+    if (g && g.data && Array.isArray(g.data.only)) /** @type {any} */ (via).agentOnly = g.data.only;
   }
   // A person's label from a model's shell is the session's own, whatever the tool (asTaken).
   const shell = socket && !policy.caller ? await asTaken(caller, req.socket, registry, via.thread) : { caller, model: false };
@@ -975,7 +1019,11 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     if (policy.caller && String(policy.caller).startsWith("device:") && kernelOf && kernelOf()) {
       try { const r = await registry.call("relay.device.info", { id: String(policy.caller).slice(7) }, "module:vyred"); deviceRow = r && r.data ? r.data : null; } catch { deviceRow = null; }
     }
-    const facts = callerFacts(caller, policy, via, kernelOf ? kernelOf() : null, capsuleOk, deviceRow);
+    // LB-1: a person's-surface label on the socket is a person only after the ancestry measurement `asTaken` made above (a model's shell was relabelled and never reaches here as a surface label);
+    // `callerFacts` itself takes that measurement as input and gives nothing without it, so no new call path can build a person from the label alone.
+    /** @type {{ inside: boolean, outside: boolean } | undefined} */
+    const measured = socket && !policy.caller ? { inside: shell.model === true, outside: shell.outside === true } : undefined; // not `ancestry`: that is the imported function used earlier in this handler (a const here put it in its dead zone)
+    const facts = callerFacts(caller, policy, via, kernelOf ? kernelOf() : null, capsuleOk, deviceRow, measured);
     const result = await registry.call(name, input, caller, { ...via, ...(facts ? { kernelFacts: facts } : {}), proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
       keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req), ...(kernelProof(req) ? { kernel_proof: kernelProof(req) } : {}), ...(sessionToken ? { token: sessionToken } : {}) });
     // A new person session for the Deck goes in the cookie, never in the body a script could read.
@@ -1072,6 +1120,11 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   // section 6, a project tile's bytes) and lib/caps-flags (PLAN.md C14b, provider capabilities).
   // Exact paths only, nothing else in lib/.
   if (req.method === "GET" && DECK_LIBS.has(url.pathname)) return serveFile(res, path.join(REPO, ...url.pathname.slice(1).split("/")), cfg);
+  // The verified-link files for the iPhone and Android apps (app-wire): public, tiny, and absent until the deploy sets the signing identities.
+  if (req.method === "GET" && url.pathname.startsWith("/.well-known/")) {
+    const body = associationFile(url.pathname);
+    if (body) { res.writeHead(200, { "content-type": "application/json", "cache-control": "public, max-age=300", "x-content-type-options": "nosniff" }); return res.end(body); }
+  }
   // The one app (ADR 0027), beside the Deck until it takes over /. Once config app.root flips
   // (mobile's client-side migration, off by default: core/config/index.js), /app/* is a 301 to
   // the same path under "/" instead, so an installed /app/ Home Screen icon or a stale bookmark

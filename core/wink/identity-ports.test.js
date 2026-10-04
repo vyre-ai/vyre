@@ -11,7 +11,7 @@ test("Wink's identity ports read the spaces module live and answer null when it 
     "spaces.identity.state": i => ({ data: { entries: i.person === "per_alex" ? [{ eid: "e1", kind: "device", pub: "PUB" }, { eid: "r1", kind: "recovery", pub: "R" }] : [] } }),
     "spaces.identity.sign": i => ({ data: { eid: "e1", sig: "S:" + i.message } }),
     "spaces.identity.entry": i => (i.eid === "e1" ? { data: { eid: "e1", kind: "device", pub: "PUB" } } : { data: null }),
-    "spaces.identity.status": () => ({ data: { exists: true, label: "alex", id: "per_alex" } }),
+    "spaces.identity.self": () => ({ data: { label: "alex", id: "per_alex" } }),
   };
   const p = identityPorts({ call: async (t, i) => { calls.push(t); if (!spaces[t]) throw new Error("no such tool"); return spaces[t](i); }, space: async () => "harlow" });
   assert.deepEqual(await p.identityEntry("per_alex", "e1"), { eid: "e1", kind: "device", pub: "PUB", identity: "per_alex" });

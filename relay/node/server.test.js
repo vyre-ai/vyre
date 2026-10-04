@@ -3,6 +3,8 @@ import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRelay } from "./server.js";
+import { relayLink } from "../../core/relay/link.js";
+import { keyPair } from "../../core/relay/noise.js";
 import { newRouteKey, routeId, authMessage, signRoute, CLOSE, ticketSeal } from "../../core/relay/wire.js";
 
 /** A WebSocket that queues what it receives, so a test can await the next message or the close. */
@@ -495,4 +497,96 @@ test("code: a miss is charged again to its own address (30 a minute), and a hit 
   a.s.ws.send(JSON.stringify({ t: "code.reply", q: got.q, m: "Yb" }));
   assert.equal((await p).status, 200, "a live code is served to an address whose miss budget is spent");
   assert.equal((await step(http, { rv: free, s: SID, n: 1, m: "Y" }, "203.0.113.10")).status, 404, "another address still gets the plain miss");
+});
+
+test("publish tunnel: a visitor to a served name reaches the box's data socket as raw bytes, the box hears the name and address on its control channel, and every end frees its slot", async t => {
+  const net = await import("node:net");
+  const tls = await import("node:tls");
+  const names = new Map();
+  const relay = createRelay({ tunnel: { resolve: async host => (names.has(host) ? { route: names.get(host) } : null) } });
+  const base = await relay.listen();
+  const { tls: tlsPort, http: httpPort } = await relay.listenTunnel();
+  t.after(() => relay.close());
+  const b = await box(base);
+  const ready = await b.s.json();
+  assert.ok(ready.features.includes("tunnel"), "a relay with the tunnel says so");
+  names.set("harlow.vyre.run", b.route);
+
+  // a visitor starts a TLS handshake for the name; the box is told on its control channel
+  const visitor = tls.connect({ host: "127.0.0.1", port: tlsPort, servername: "harlow.vyre.run", rejectUnauthorized: false });
+  visitor.on("error", () => {});
+  const open = await b.s.json();
+  assert.equal(open.t, "tunnel");
+  assert.equal(open.host, "harlow.vyre.run");
+  assert.match(open.ip, /^127\.0\.0\.1$/);
+  // the box opens a data socket for it; what arrives is the visitor's ClientHello, byte for byte, with nothing in front
+  const data = sock(`${base}/v1/box?route=${b.route}&c=${open.c}&t=${encodeURIComponent(ready.ticket)}`);
+  await data.open();
+  const first = /** @type {Buffer} */ (await data.next());
+  assert.equal(first[0], 0x16, "a TLS handshake record");
+  assert.ok(first.includes(Buffer.from("harlow.vyre.run")));
+  assert.equal(relay.stats().conns, 1);
+  // the box answers with bytes (a stand-in for the server hello) and they reach the visitor's socket as they are
+  const seen = new Promise(res => visitor.once("error", e => res(String(e.code || e.message))));
+  data.ws.send(Buffer.from([0x15, 3, 3, 0, 2, 2, 40])); // a TLS alert: the visitor's handshake ends with a TLS error, proving the bytes arrived raw
+  assert.match(String(await seen), /ERR_SSL|SSL|alert|ERR_TLS/i);
+  await data.closed();
+  for (let i = 0; i < 50 && relay.stats().conns; i++) await new Promise(r => setTimeout(r, 20));
+  assert.equal(relay.stats().conns, 0, "the slot is free");
+
+  // a name nobody serves, a visitor with no name, and port 80 never reach the box
+  const stranger = tls.connect({ host: "127.0.0.1", port: tlsPort, servername: "evil.vyre.run", rejectUnauthorized: false });
+  stranger.on("error", () => {});
+  await new Promise(r => stranger.once("close", r));
+  const redirect = await new Promise(res => { const c = net.connect(httpPort, "127.0.0.1"); let out = ""; c.on("data", d => { out += d; }); c.on("close", () => res(out)); c.write("GET / HTTP/1.1\r\nHost: harlow.vyre.run\r\n\r\n"); });
+  assert.match(String(redirect), /^HTTP\/1\.1 308 /);
+  const ctl = await Promise.race([b.s.next(), new Promise(r => setTimeout(() => r("quiet"), 300))]);
+  assert.equal(ctl, "quiet", "the box heard nothing for the stranger or the plain-HTTP request");
+});
+
+test("publish tunnel: a box that does not answer an open, or is not connected, closes the visitor and leaves no slot", async t => {
+  const tls = await import("node:tls");
+  const relay = createRelay({ tunnel: { resolve: async host => ({ route: host === "gone.vyre.run" ? "r".repeat(26) : routeOfLater.route }), limits: { openMs: 800 } } });
+  const routeOfLater = { route: "" };
+  const base = await relay.listen();
+  const { tls: tlsPort } = await relay.listenTunnel();
+  t.after(() => relay.close());
+  const closedAfter = async name => { const v = tls.connect({ host: "127.0.0.1", port: tlsPort, servername: name, rejectUnauthorized: false }); v.on("error", () => {}); await new Promise(r => v.once("close", r)); };
+  await closedAfter("gone.vyre.run"); // no box at that route
+  const b = await box(base);
+  await b.s.json();
+  routeOfLater.route = b.route;
+  const asked = b.s.json();
+  const v = tls.connect({ host: "127.0.0.1", port: tlsPort, servername: "late.vyre.run", rejectUnauthorized: false });
+  v.on("error", () => {});
+  assert.equal((await asked).t, "tunnel");
+  await new Promise(r => v.once("close", r)); // the box never opens its data socket
+  assert.equal(relay.stats().conns, 0);
+  assert.equal(relay.tunnel?.open(), 0);
+});
+
+test("publish tunnel: the box's own link takes a tunnel stream as a duplex with the visitor's address, bytes both ways, and a link with no tunnel end ignores it", async t => {
+  const net = await import("node:net");
+  const tls = await import("node:tls");
+  const key = newRouteKey(), route = routeId(key.pub);
+  const relay = createRelay({ tunnel: { resolve: async host => (host === "harlow.vyre.run" ? { route } : null) } });
+  const base = await relay.listen();
+  const { tls: tlsPort } = await relay.listenTunnel();
+  t.after(() => relay.close());
+  const got = [];
+  /** @type {(v: any) => void} */ let handed = () => {};
+  const seen = new Promise(res => { handed = res; });
+  const link = relayLink({ url: base, route, routeKey: key, boxKey: keyPair(), admit: async () => ({ v: 1 }), onchannel: () => {},
+    ontunnel: (stream, visitor) => { stream.on("data", d => { got.push(d); stream.write(Buffer.from([0x15, 3, 3, 0, 2, 2, 40])); }); handed({ visitor, stream }); } });
+  t.after(() => link.stop());
+  assert.equal(await link.ready(), true);
+  const v = tls.connect({ host: "127.0.0.1", port: tlsPort, servername: "harlow.vyre.run", rejectUnauthorized: false });
+  const failed = new Promise(res => v.once("error", e => res(String(e.code || e.message))));
+  const { visitor, stream } = /** @type {any} */ (await Promise.race([seen, new Promise((_, rej) => setTimeout(() => rej(new Error("the box was never handed a stream")), 8000))]));
+  assert.equal(visitor.host, "harlow.vyre.run");
+  assert.match(visitor.ip, /^127\.0\.0\.1$/);
+  assert.match(String(await failed), /SSL|alert|TLS/i, "the box's bytes reached the visitor raw");
+  assert.equal(got[0][0], 0x16, "and the visitor's hello reached the box raw");
+  stream.destroy();
+  void net;
 });

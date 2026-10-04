@@ -1,5 +1,6 @@
 // The pure half of the field renderers: formatting, emptiness, filter and sort for every kind, the sealed phrases, the stage menu.
 import "../../../../scripts/mac-test-guard.mjs";
+import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { MASK, PICKABLE_KINDS, KIND_LOGIC, addrText, allowedStages, filterOps, fmtDate, fmtMoney, isEmpty, isRevealable, isSealedValue, marks, maskText, matches, normalizeKind, parseDay, parseNum, relDate, sealedPhrase, sampleFor, sortKey, sortRows, toDate } from "./logic.js";

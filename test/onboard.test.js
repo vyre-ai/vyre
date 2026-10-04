@@ -155,7 +155,7 @@ test("onboard: skipping and a bad token say why, a good token goes to the vault,
   assert.ok(!JSON.stringify(stored).includes(fine), "the token never comes back");
   const item = (await call("vault.list", {}, { root, caller: "cli" })).data.items.find(i => i.name === "anthropic-api-key");
   assert.equal(item.origin, "module:onboard");
-  assert.ok(JSON.stringify(item.grants).includes("agents"), "the agents module may read it");
+  assert.deepEqual(item.grants ?? [], [], "no module is granted the sign-in: launchers read it through the credentials port");
   const check = await (await tool(base, cookie, "onboard.name", { name: "alex" })).json();
   // No zone token: the address is the ts.net one, so there is nothing on vyre.run to check.
   assert.equal(check.data.valid, true);
@@ -547,7 +547,7 @@ process.stdin.on("data", d => {
   assert.ok(!JSON.stringify(done).includes(token), "the token never comes back");
   const item = (await call("vault.list", {}, { root, caller: "cli" })).data.items.find(i => i.name === "claude-setup-token");
   assert.ok(item, "the token is in the vault");
-  assert.ok(JSON.stringify(item.grants).includes("agents"));
+  assert.deepEqual(item.grants ?? [], [], "the stored sign-in carries no module grant: launchers read it through the credentials port");
   const events = fs.readdirSync(root, { recursive: true }).filter(f => /\.(jsonl|log|db)$/.test(String(f)));
   for (const f of events) assert.ok(!fs.readFileSync(path.join(root, String(f))).includes(token), `${f} holds the token`);
 });

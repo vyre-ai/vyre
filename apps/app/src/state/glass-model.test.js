@@ -1,6 +1,7 @@
 // @ts-check
 // The Glass mini-view as data (glass-model.js): targets and steps into one view per agent's
 // computer, the light rule for stills, the shield pause, maxWidth, and how a run leaves.
+import "../../scripts/test-guard.mjs";
 
 import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";

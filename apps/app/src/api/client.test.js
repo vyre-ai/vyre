@@ -2,6 +2,7 @@
 // The box client (client.ts) over the box's own resilience code, with web.js's caller against a
 // fake fetch and a fake open: no network. Imports client.ts through Node's type stripping, so it
 // is skipped on a Node without it.
+import "../../scripts/test-guard.mjs";
 
 import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";

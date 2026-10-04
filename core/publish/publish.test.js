@@ -17,7 +17,7 @@ import publishModule, { seams, buildctlArgs } from "./index.js";
 import { fakeKernelFor } from "../../test/fake-chain-kernel.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const SPACE = { id: "spc_a1b2c3d4e5f6", name: "harlow.vyre.run" };
+const SPACE = { id: "spc_abcdefghijkl", name: "harlow.vyre.run" };
 const STRIPE = "sk_live_FAKEFAKEFAKE1234";
 const SSN = "123-45-6789";
 const DRAFT = { name: "northwind", source: { kind: "repo", ref: "https://git.example.com/northwind.git#main" }, build: { image: "static" }, project: "bakery" };
@@ -43,6 +43,8 @@ const fakeSource = `export default { async start(ctx) {
     t("builder.build", async i => pf().build(i));
   } else if (tools === "names") {
     t("names.owns", async i => ({ owns: pf().owns(i.host, i.space) }));
+  } else if (tools === "projects") {
+    t("projects.reach", async () => ({ all: true }));
   } else if (tools === "tasks") {
     t("tasks.create", async i => { pf().tasks.push(i); return { id: "tsk_" + pf().tasks.length }; });
   }
@@ -50,14 +52,14 @@ const fakeSource = `export default { async start(ctx) {
 } };`;
 
 const manifestOf = (/** @type {string} */ name, /** @type {string[]} */ tools) => ({ roles: ["box"], description: name, does: { tools: tools.map(n => ({ name: n, reach: "modules" })) } });
-const FAKE_TOOLS = { spaces: ["spaces.self", "spaces.membership"], vault: ["vault.release"], seal: ["seal.ledger.has"], builder: ["builder.build"], names: ["names.owns"], tasks: ["tasks.create"] };
+const FAKE_TOOLS = { projects: ["projects.reach"], spaces: ["spaces.self", "spaces.membership"], vault: ["vault.release"], seal: ["seal.ledger.has"], builder: ["builder.build"], names: ["names.owns"], tasks: ["tasks.create"] };
 
 /**
  * A real registry with publish and the chosen fakes. @param {any} t
  * @param {{ fakes?: string[] }} [o]
  */
 async function boxRegistry(t, o = {}) {
-  const fakes = o.fakes || ["spaces", "vault", "seal", "builder", "names"];
+  const fakes = o.fakes || ["spaces", "vault", "seal", "builder", "names", "projects"];
   const home = tempHome(t);
   const p = config.ensure(home);
   const extra = path.join(home, "fake-modules");
@@ -281,7 +283,7 @@ test("publish: a secret granted to deployment A is absent from B, written 0400 f
   await b.ok("publish.preview", { deployment: a });
   await b.ok("publish.preview", { deployment: other });
   assert.equal(b.pf.seen[0].args.length, 2);
-  assert.match(b.pf.seen[0].args[1], /^id=STRIPE_KEY,src=.*\/publish\/spc_a1b2c3d4e5f6\/secrets\/dep_[0-9a-f]{16}\/STRIPE_KEY$/);
+  assert.match(b.pf.seen[0].args[1], /^id=STRIPE_KEY,src=.*\/publish\/spc_abcdefghijkl\/secrets\/dep_[0-9a-f]{16}\/STRIPE_KEY$/);
   assert.deepEqual(b.pf.seen[0].modes, ["400"]);
   assert.deepEqual(b.pf.seen[1].args, [], "B was granted nothing");
   assert.equal(fs.existsSync(path.join(b.publishRoot, "secrets", a, "STRIPE_KEY")), false, "the build file is removed after the build");
@@ -364,7 +366,7 @@ test("publish: edge writes the compose project and Caddyfile with their modes, i
 
   const e = await b.ok("publish.edge", {});
   assert.equal(e.dir, b.publishRoot);
-  assert.deepEqual(e.files.map((/** @type {any} */ f) => [f.path, f.mode]), [["compose.yaml", "0644"], ["Caddyfile", "0644"], [`secrets/${id}/STRIPE_KEY`, "0600"]]);
+  assert.deepEqual(e.files.map((/** @type {any} */ f) => [f.path, f.mode]), [["compose.yaml", "0644"], ["Caddyfile", "0644"], ["caddy.Dockerfile", "0644"], ["join.html", "0644"], [`secrets/${id}/STRIPE_KEY`, "0600"]]);
   const mode = (/** @type {string} */ rel) => (fs.statSync(path.join(b.publishRoot, rel)).mode & 0o777).toString(8);
   assert.equal(mode("compose.yaml"), "644");
   assert.equal(mode("Caddyfile"), "644");
@@ -384,7 +386,8 @@ test("publish: edge writes the compose project and Caddyfile with their modes, i
 test("publish: nothing sensitive leaves in events or returned objects", async t => {
   const b = await boxRegistry(t);
   const id = (await b.ok("publish.create", DRAFT)).deployment.id;
-  const g = await b.ok("publish.secret.grant", { deployment: id, ref: "vault://harlow/stripe", name: "STRIPE_KEY", use: ["build", "runtime"] });
+  assert.equal((await b.call("publish.secret.grant", { deployment: id, ref: "vault://harlow/stripe", name: "STRIPE_KEY", use: ["build", "runtime"] })).error?.code, "isolation", "a static site takes no runtime secret");
+  const g = await b.ok("publish.secret.grant", { deployment: id, ref: "vault://harlow/stripe", name: "STRIPE_KEY", use: ["build"] });
   await b.ok("publish.decide", { task: g.task, approve: true });
   b.pf.build = async () => ({ digest: "sha256:" + "f".repeat(64), files: [{ path: "index.html", content: "<p>x</p>" }], logs: `building with ${STRIPE}` });
   const pv = await b.ok("publish.preview", { deployment: id });
@@ -443,4 +446,83 @@ test("publish: the module's tables and tools are its own", () => {
   const m = JSON.parse(fs.readFileSync(path.join(HERE, "module.json"), "utf8"));
   assert.ok(m.does.tools.every((/** @type {any} */ x) => x.name.startsWith("publish.")));
   assert.deepEqual(m.does.tools.filter((/** @type {any} */ x) => x.reach === "person").map((/** @type {any} */ x) => x.name).sort(), ["publish.decide", "publish.domain.remove", "publish.retire"]);
+});
+
+test("publish: a build that hands over a link, or a path that climbs out, is refused before anything is previewed (a symlink in a site would serve /etc/passwd or a dotfile)", async t => {
+  const b = await boxRegistry(t);
+  const id = (await b.ok("publish.create", DRAFT)).deployment.id;
+  for (const evil of [{ path: "p", type: "symlink", target: "/etc/passwd", content: "" }, { path: "e", symlink: ".env", content: "" }, { path: "../x", content: "x" }]) {
+    b.pf.build = async () => ({ digest: "sha256:" + "f".repeat(64), files: [{ path: "index.html", content: "<p>x</p>" }, evil], logs: "" });
+    assert.equal((await b.call("publish.preview", { deployment: id })).error?.code, "bad_output", JSON.stringify(evil));
+  }
+  assert.equal((await b.ok("publish.status", { deployment: id })).stage, "Draft");
+});
+
+test("publish: a static build's files are written once checked, and the edge hands the box the copy into the site volume; a link in the build writes nothing", async t => {
+  const b = await boxRegistry(t);
+  const id = (await b.ok("publish.create", DRAFT)).deployment.id;
+  const sitesDir = path.join(b.publishRoot, "sites");
+  b.pf.build = async () => ({ digest: "sha256:" + "f".repeat(64), files: [{ path: "index.html", content: "<p>x</p>" }, { path: "p", type: "symlink", target: "/etc/passwd", content: "" }], logs: "" });
+  assert.equal((await b.call("publish.preview", { deployment: id })).error?.code, "bad_output");
+  assert.ok(!fs.existsSync(sitesDir) || fs.readdirSync(sitesDir).length === 0, "a link in the hand-off writes nothing");
+  b.pf.build = async () => ({ digest: "sha256:" + "f".repeat(64), files: [{ path: "index.html", content: "<h1>ok</h1>" }, { path: "a/b.css", content: "x" }], logs: "" });
+  await b.ok("publish.preview", { deployment: id });
+  const made = fs.readdirSync(sitesDir);
+  assert.equal(made.length, 1);
+  assert.equal(fs.readFileSync(path.join(sitesDir, made[0], "index.html"), "utf8"), "<h1>ok</h1>");
+  await goLive(b, id);
+  const e = await b.ok("publish.edge", {});
+  assert.equal(e.fills.length, 1);
+  assert.equal(e.fills[0].deployment, id);
+  assert.match(e.fills[0].volume, /_site-[0-9a-f]{16}$/);
+  // FF-1: edit the stored record to point anywhere else and the edge hands out no fill for it
+  const db = b.reg.deps.db;
+  const row = JSON.parse(db.prepare("SELECT body FROM publish_deployments WHERE id = ?").get(id).body);
+  const tamper = (/** @type {any} */ site) => db.prepare("UPDATE publish_deployments SET body = ? WHERE id = ?").run(JSON.stringify({ ...row, site }), id);
+  for (const evil of [{ dir: "/etc" }, { name: "/etc" }, { name: "../../etc" }, { name: "site-ABCDEF" }, { name: "site-../x" }, { name: 7 }]) {
+    tamper(evil);
+    assert.deepEqual((await b.ok("publish.edge", {})).fills, [], JSON.stringify(evil));
+  }
+  fs.symlinkSync("/etc", path.join(sitesDir, "site-LINK01"));
+  tamper({ name: "site-LINK01" });
+  assert.deepEqual((await b.ok("publish.edge", {})).fills, [], "a link named like a site folder");
+  tamper(row.site);
+  assert.ok(e.fills[0].docker.includes("--network") && e.fills[0].docker.includes(`${path.join(sitesDir, made[0])}:/in:ro`));
+});
+
+test("publish: a retired or superseded deployment's site folder is removed, and a folder no deployment names is swept", async t => {
+  const b = await boxRegistry(t);
+  const id = (await b.ok("publish.create", DRAFT)).deployment.id;
+  const sitesDir = path.join(b.publishRoot, "sites");
+  b.pf.build = async () => ({ digest: "sha256:" + "f".repeat(64), files: [{ path: "index.html", content: "<h1>1</h1>" }], logs: "" });
+  await b.ok("publish.preview", { deployment: id });
+  const first = fs.readdirSync(sitesDir);
+  assert.equal(first.length, 1);
+  fs.mkdirSync(path.join(sitesDir, "site-ORPHAN"), { mode: 0o700 });
+  const longAgo = new Date(Date.now() - 2 * 86_400_000);
+  fs.utimesSync(path.join(sitesDir, "site-ORPHAN"), longAgo, longAgo);
+  fs.mkdirSync(path.join(sitesDir, "site-YOUNG1"), { mode: 0o700 });
+  const id2 = (await b.ok("publish.create", { ...DRAFT, name: "kit" })).deployment.id;
+  await b.ok("publish.preview", { deployment: id2 });
+  const now = fs.readdirSync(sitesDir).sort();
+  assert.ok(!now.includes("site-ORPHAN"), "an old unnamed folder is swept");
+  assert.ok(now.includes("site-YOUNG1"), "a young one is not: it may be a preview still being stored");
+  assert.ok(now.includes(first[0]) && now.length === 3, "both live previews keep theirs");
+});
+
+test("publish: two previews at once keep both site folders (a folder is written before its record exists)", async t => {
+  const b = await boxRegistry(t);
+  const sitesDir = path.join(b.publishRoot, "sites");
+  const ids = [];
+  for (const name of ["one", "two", "three", "four"]) ids.push((await b.ok("publish.create", { ...DRAFT, name })).deployment.id);
+  b.pf.build = async () => ({ digest: "sha256:" + "f".repeat(64), files: [{ path: "index.html", content: "<p>x</p>" }], logs: "" });
+  await Promise.all(ids.map(id => b.call("publish.preview", { deployment: id })));
+  const records = (await Promise.all(ids.map(id => b.ok("publish.status", { deployment: id }))));
+  assert.equal(fs.readdirSync(sitesDir).length, 4);
+  void records;
+  const db = b.reg.deps.db;
+  for (const id of ids) {
+    const row = JSON.parse(db.prepare("SELECT body FROM publish_deployments WHERE id = ?").get(id).body);
+    assert.ok(row.site && fs.existsSync(path.join(sitesDir, row.site.name)), `${id}'s folder is there`);
+  }
 });

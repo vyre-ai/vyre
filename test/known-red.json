@@ -27,7 +27,7 @@
   "owner": "launch"
  },
  "core/recall/embed-install.test.js": {
-  "owner": "records"
+  "owner": "assistant"
  },
  "core/relay/setup.test.js": {
   "owner": "tailnet"
@@ -131,20 +131,11 @@
  "test/no-internal-words.test.js": {
   "owner": "platform-2"
  },
- "test/one-identity.test.js": {
-  "owner": "windows"
- },
- "test/one-registry.test.js": {
-  "owner": "windows"
- },
  "test/pack-imports.test.js": {
   "owner": "launch"
  },
  "test/person-label-hygiene.test.js": {
   "owner": "platform-2"
- },
- "test/person.test.js": {
-  "owner": "windows"
  },
  "test/reach-anyone.test.js": {
   "owner": "platform"
@@ -166,9 +157,6 @@
  },
  "test/threadsock.test.js": {
   "owner": "platform"
- },
- "test/walk-identity-space.test.js": {
-  "owner": "windows"
  },
  "test/wink.test.js": {
   "owner": "tailnet"

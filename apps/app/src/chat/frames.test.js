@@ -1,6 +1,7 @@
 // @ts-check
 // Row folding: frames in, rows and items out; dedupe by cursor; queued messages; asks; resets.
 import "../../../../scripts/mac-test-guard.mjs";
+import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createFolder, headerState, busyState } from "./frames.js";

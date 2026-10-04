@@ -55,7 +55,9 @@ test("presence: every value-out or access-giving tool declares it, with a summar
     // Connectors stores a finished sign-in in an oauth api-credential: internal (only module:connectors, and only from the token endpoint the person's own config names), it takes tokens in and gives nothing out, and it runs right after the sign-in the person just did, so it asks for no presence.
     "vault.credential.tokens",
     // The kernel's lease module forwards a lent computer's request (or file) to the home: internal, only kernel:leases, and an outward call is held for a person like vault.request.
-    "vault.forward", "vault.forward.file"]);
+    "vault.forward", "vault.forward.file",
+    // A Flow's "Call a service": internal, only kernel:leases; the kernel authorized the caller's chain first, an outward call is held for a person, and the catalog gives route rules only.
+    "vault.service.forward", "vault.service.catalog"]);
   for (const n of tools.keys()) assert.ok(known.has(n) || tools.get(n).presence, `${n} is new: decide whether it needs presence`);
 });
 

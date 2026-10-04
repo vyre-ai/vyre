@@ -4,6 +4,7 @@
 name: ios-app-capture
 on:
   push:
+    branches: ["main", "work/ui"]
     # On a team branch a push that touches this file is how it runs (a manual workflow is listed only from the default branch).
     paths:
       - ".github/workflows/ios-app-capture.yml"
@@ -37,6 +38,9 @@ jobs:
           xcodebuild -version
       - run: npx expo prebuild -p ios --clean
       - name: "Build for the simulator, Release so the bundle is inside the app, no signing"
+        env:
+          # The capture shows the sample world on purpose (deck/ui/store.js); a release build never sets this.
+          EXPO_PUBLIC_VYRE_MOCK: "1"
         run: |
           ws=$(ls -d ios/*.xcworkspace | head -1)
           scheme=$(basename "$ws" .xcworkspace)
@@ -73,9 +77,12 @@ jobs:
           shot record "vyre://u/record/01a05a43-fc00-4f98-ad05-d023d68e45fe" 10
           shot chat "vyre://chat-demo?at=4200&hold=1" 10
           shot now-again "vyre://u/now" 8
+          # The second card in full view ("Fix"), by the deep link's scroll offset (dp; honoured only in a mock build).
+          shot now-card2 "vyre://u/now?scroll=430" 10
           # The other theme: the app follows the system appearance.
           xcrun simctl ui "$udid" appearance dark; sleep 3
           shot now-dark "vyre://u/now" 8
+          shot now-card2-dark "vyre://u/now?scroll=430" 10
           shot chat-dark "vyre://chat-demo?at=4200&hold=1" 8
           xcrun simctl ui "$udid" appearance light; sleep 3
           xcrun simctl io "$udid" recordVideo --codec h264 "$out/now.mov" & rec=$!

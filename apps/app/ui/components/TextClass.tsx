@@ -20,7 +20,7 @@ const TRACKING = { display: -0.025, page: -0.02, title: -0.012, headline: -0.012
 /**
  * Text with a `className` (the slow path: NativeWind resolves the classes on every mount). Text.tsx is the one Text and takes this path only when a className is given. Type roles (caption, secondary, body, headline, read, title, page, display) and tones are token names; the sizes follow the platform
  * (ui-system.md section 2). Weights are 400, `medium` 500 (buttons) and `strong` 600 (titles), set as the face. The face follows the font setting:
- * the platform's own by default (SF, Roboto, bundled Inter on the web), Instrument Sans or the serif when a space or person chooses it.
+ * the platform's own by default (SF, Roboto, the system font on the web), or the serif when a space or person chooses it. Negative tracking is not applied on iOS: SF sets its own.
  */
 export function TextClass({ size, tone, mono, strong, medium, className, style, ...rest }: TextProps & TextStyleProps & { className?: string }) {
   const { resolved, map } = useUiTheme();
@@ -28,8 +28,5 @@ export function TextClass({ size, tone, mono, strong, medium, className, style, 
   const face = mono ? faces.mono : strong ? faces.strong : medium ? faces.medium : faces.regular;
   const em = size ? TRACKING[size as keyof typeof TRACKING] : undefined;
   const fs = em ? Number.parseFloat(String(map[`--fs-${size}`])) : 0;
-  // Instrument Sans SemiBold's space is 0.17em (regular's is 0.22em), which glues words together in titles on the web; give it back the difference.
-  // (The native builds embed the ttf, which does not have the problem; React Native has no wordSpacing.)
-  const gap = Platform.OS === "web" && resolved.font === "sans" && !mono && (strong || medium) ? { wordSpacing: `${Math.max(1, Math.round(Number.parseFloat(String(map[`--fs-${size ?? "body"}`])) * 0.06 * 10) / 10)}px` } : null;
-  return <RNText {...rest} style={[face, gap as object | null, em ? { letterSpacing: Math.round(fs * em * 100) / 100 } : null, style]} className={cn(text({ size, tone }), className)} />;
+  return <RNText {...rest} style={[face, em && Platform.OS !== "ios" ? { letterSpacing: Math.round(fs * em * 100) / 100 } : null, style]} className={cn(text({ size, tone }), className)} />;
 }

@@ -26,3 +26,5 @@ export function beacon(tool: string, input: Record<string, unknown>): Promise<vo
 export function signIn(): Promise<void>;
 /** End the person session on this box. */
 export function signOut(): Promise<void>;
+/** One POST of JSON to a box route that is not a tool call (the presence challenge), on whichever path answers. */
+export function post(path: string, input: Record<string, unknown>): Promise<{ data?: unknown; error?: { code?: string; message?: string } }>;

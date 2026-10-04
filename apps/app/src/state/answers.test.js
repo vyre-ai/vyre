@@ -2,6 +2,7 @@
 // The approve swipe's answers (answers.ts): held for the Undo window, then through the outbox;
 // Undo only while unsent; a refusal brings the row back with its reason. Time and delivery are
 // fakes, so every step is exact.
+import "../../scripts/test-guard.mjs";
 
 import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";

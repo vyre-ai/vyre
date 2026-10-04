@@ -41,7 +41,7 @@ function rig(over = {}) {
   const pr = new Presence(clock, { allowUnattested: true });
   for (const p of people) { const k = kp(); keys[p] = k.privateKey; pr.keys.set(`key-${p}`, { person: p, signer: "secure_enclave", attested: true, key: k.publicKey }); }
   const presence = { check: async ({ chain, op, fields, proof }) => (chain && proof ? pr.refuse(proof, { op, space: SPACE, fields, ctx: chainCtx(chain) }) : "no_proof") };
-  const log = createEventLog({ space: SPACE, clock });
+  const log = over.wrapLog ? over.wrapLog(createEventLog({ space: SPACE, clock })) : createEventLog({ space: SPACE, clock });
   const authorizer = createAuthorizer({
     space: SPACE, actions: [...TASK_ACTIONS, ...SEAL_ACTIONS, { action: "email.send", resource_type: "message", risk: "outward.send", label: "send", gloss: "" }], clock,
     grants: { forSubject: a => grants.filter(g => g.subject.actor.kind === a.kind && g.subject.actor.id === a.id).concat(a.kind === "person" ? [G(a, ["email.send"])] : []), get: () => undefined },
@@ -604,4 +604,30 @@ test("list: filtered by record, doer, checker and state, oldest first; a hand-ma
   await r.tasks.start(asIntake(), a.id);
   assert.deepEqual((await r.tasks.list(owner(), { state: ["working"] })).map(t => t.id), [a.id]);
   await assert.rejects(() => r.tasks.list({ hops: [], space: SPACE }), { code: "bad_input" });
+});
+
+test("WF-1 on tasks: a change whose event cannot be written does not stay in memory (a failed start, an approval the log refused, a refused creation)", async () => {
+  let fail = false;
+  const r = rig({ wrapLog: real => ({ ...real, append: (...a) => { if (fail) throw new Error("log refused"); return real.append(...a); } }) });
+  const down = async f => { fail = true; try { await assert.rejects(f, /log refused/); } finally { fail = false; } };
+  const count = async () => (await r.tasks.list(owner())).length;
+  // a creation that cannot be logged leaves no task
+  const before = await count();
+  await down(() => r.tasks.request(owner(), draftTask()));
+  assert.equal(await count(), before, "no task without its event");
+  // a start that cannot be logged leaves the task ready
+  const t = await r.tasks.request(owner(), draftTask());
+  await down(() => r.tasks.start(asIntake(), t.id));
+  assert.equal((await r.tasks.get(owner(), t.id)).state, "ready", "still ready");
+  assert.equal((await r.tasks.start(asIntake(), t.id)).state, "working", "and it can be started again");
+  // an approval that cannot be logged is not an approval: the task still waits and nothing was released
+  const w = await toNeedsCheck(r);
+  const A = alice();
+  await down(() => r.tasks.decide(A, w.id, { outcome: "approved", proof: r.proof(A, ALICE, w) }));
+  assert.equal((await r.tasks.get(owner(), w.id)).state, "needs_check", "still waiting for its check");
+  assert.equal(r.released.length <= 1, true);
+  const releasedBefore = r.released.length;
+  const done = await r.tasks.decide(A, w.id, { outcome: "approved", proof: r.proof(A, ALICE, w) });
+  assert.equal(done.state, "done");
+  assert.equal(r.released.length, releasedBefore + 1);
 });

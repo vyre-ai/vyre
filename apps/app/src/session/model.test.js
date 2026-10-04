@@ -2,6 +2,7 @@
 // The app's side of a session (model.ts) over chat's own core (deck/chat/core), as the app runs
 // it: threads.get's events into session-state, the header's words, and the transcript's rows with
 // runs of tools folded. Loaded through Node's type stripping, so skipped on a Node without it.
+import "../../scripts/test-guard.mjs";
 
 import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";

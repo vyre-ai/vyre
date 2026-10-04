@@ -81,3 +81,15 @@ test("kernel members: an invite goes through the kernel: the admin creates it wi
   const admin = await m.invites.create({ chain: ownerChain(), proof: sign("inviteCreate", { role: "admin" }) }, { role: "admin" });
   assert.equal(admin.needs_confirm, true);
 });
+
+test("invites.revoke and invites.list go to the kernel when it offers them, and say plainly when it does not", async () => {
+  const seen = [];
+  const grants = { invites: { revoke: async (chain, id, proof) => { seen.push(["revoke", id]); return { id, status: "revoked" }; }, list: async chain => { seen.push(["list"]); return [{ id: "inv_a", role: "member" }]; } } };
+  const m = kernelMembers({ handle: { space: "spc_x", hosted: true, gateway: { grants } } });
+  const k = { chain: { hops: [{ actor: { kind: "person", id: "per_x" } }] }, proof: {} };
+  assert.deepEqual(await m.invites.revoke(k, "inv_a"), { id: "inv_a", status: "revoked" });
+  assert.deepEqual((await m.invites.list(k)).map(x => x.id), ["inv_a"]);
+  const old = kernelMembers({ handle: { space: "spc_x", hosted: true, gateway: { grants: { invites: {} } } } });
+  await assert.rejects(old.invites.revoke(k, "inv_a"), e => e.code === "unavailable" && /cannot cancel/.test(e.message));
+  await assert.rejects(old.invites.list(k), e => e.code === "unavailable");
+});

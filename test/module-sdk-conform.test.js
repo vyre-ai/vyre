@@ -26,9 +26,9 @@ export default {
   async start(ctx) {
     ctx.store.migrate(["CREATE TABLE juno_items (id INTEGER PRIMARY KEY, title TEXT)"]);
     const ex = [{ input: {} }];
-    ctx.tool("juno.list", { description: "The reading list", input: { type: "object" }, examples: ex, run: () => ({ items: [] }) });
-    ctx.tool("juno.clear", { description: "Clear it", input: { type: "object" }, examples: ex, run: () => { ctx.events.emit("juno.cleared", {}); return { cleared: 0 }; } });
-    ctx.tool("juno.share", { description: "Share it", input: { type: "object" }, examples: ex, run: () => ({ shared: true }) });
+    ctx.tool("juno.list", { effect: "read", description: "The reading list", input: { type: "object" }, examples: ex, run: () => ({ items: [] }) });
+    ctx.tool("juno.clear", { effect: "read", description: "Clear it", input: { type: "object" }, examples: ex, run: () => { ctx.events.emit("juno.cleared", {}); return { cleared: 0 }; } });
+    ctx.tool("juno.share", { effect: "read", description: "Share it", input: { type: "object" }, examples: ex, run: () => ({ shared: true }) });
     return { async stop() {} };
   },
 };
@@ -79,8 +79,8 @@ test("conform: each broken rule is one line that says what to change", async t =
   const src = `export default {
   async start(ctx) {
     setInterval(() => {}, 5000);
-    ctx.tool("juno.list", { description: "The reading list", input: { type: "object" }, run: () => ({ at: new Date() }) });
-    ctx.tool("juno.clear", { input: { type: "object" }, examples: [{ input: { n: 1 } }, { input: {} }], run: () => { ctx.events.emit("juno.gone", {}); return {}; } });
+    ctx.tool("juno.list", { effect: "read", description: "The reading list", input: { type: "object" }, run: () => ({ at: new Date() }) });
+    ctx.tool("juno.clear", { effect: "read", input: { type: "object" }, examples: [{ input: { n: 1 } }, { input: {} }], run: () => { ctx.events.emit("juno.gone", {}); return {}; } });
     return { async stop() { setTimeout(() => {}, 30000); } };
   },
 };

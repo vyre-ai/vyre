@@ -23,7 +23,7 @@ const K = (name, hash) => `watchers.create:harlow-legal/${name}@${hash}`;
 
 const WATCHERS = `export default { async start(ctx) {
   ctx.tool("watchers.create.target", { internal: true, run: async ({ tool, input }) => { if (!input.hash) throw new Error("no hash"); return { to: [tool + ":harlow-legal/" + input.name + "@" + input.hash] }; } });
-  ctx.tool("watchers.create", { run: async i => { (globalThis.__created ||= []).push(i); return { created: i.name }; } });
+  ctx.tool("watchers.create", { effect: "read", run: async i => { (globalThis.__created ||= []).push(i); return { created: i.name }; } });
   return {};
 } };`;
 const VAULT = `export default { async start(ctx) {

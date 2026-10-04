@@ -2,7 +2,7 @@ import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
-import { createCheckpointer, verifyLog, verifyCheckpoint, createDeviceCheckpoints, compareCheckpoints, ed25519Signer } from "./index.js";
+import { createCheckpointer, verifyTail, verifyLog, verifyCheckpoint, createDeviceCheckpoints, compareCheckpoints, ed25519Signer } from "./index.js";
 import { createEventLog } from "../core/events.js";
 import { createChainBuilder } from "../core/chain.js";
 
@@ -116,4 +116,22 @@ test("device checkpoints: two devices holding one position with two hashes expos
   const other = createEventLog({ space: SPACE, clock });
   fill(other, 12, 300);
   assert.deepEqual(compareCheckpoints(a, c, publicKey, other), { ok: false, why: "history_differs" });
+});
+
+test("boot check: from the last signed checkpoint only: the event it names, then the chain to the head; a rollback, a rewrite below it and a broken tail are found", async () => {
+  const { log, cp, publicKey } = rig();
+  assert.deepEqual(verifyTail({ space: SPACE, log, publicKey }), { ok: true, from: 0, checked: 0 }, "an empty log");
+  fill(log, 30);
+  assert.equal(verifyTail({ space: SPACE, log, publicKey }).ok, true, "no checkpoint yet: the whole chain");
+  const c = await cp.sign();
+  fill(log, 12, 100);
+  const v = verifyTail({ space: SPACE, log, publicKey });
+  assert.deepEqual([v.ok, v.from, v.checked], [true, c.seq, log.latestSeq() - c.seq], "only what came after the checkpoint was walked");
+  // a log that lost its tail beyond the checkpoint (a rollback) and one whose event at the checkpoint differs
+  const shorter = { ...log, latestSeq: () => c.seq - 1, read: f => log.read(f), get: s => log.get(s), verify: o => log.verify(o) };
+  assert.equal(verifyTail({ space: SPACE, log: shorter, publicKey }).why, "rolled_back");
+  const rewritten = { ...log, get: s => (s === c.seq ? { ...log.get(s), hash: "x" } : log.get(s)) };
+  assert.equal(verifyTail({ space: SPACE, log: rewritten, publicKey }).why, "history_differs");
+  // a checkpoint signed by another key is not a start point: the whole chain is checked instead
+  assert.equal(verifyTail({ space: SPACE, log, publicKey: keys().publicKey }).from, 0);
 });

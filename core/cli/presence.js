@@ -42,13 +42,13 @@ const needsProof = r => r?.error?.code === "presence_required";
  * error other than presence_required comes back as it is.
  * @param {string} tool
  * @param {any} [input]
- * @param {{ root?: string, io?: PresenceIO, tty?: boolean, timeout?: number }} [opts] tty forces the terminal method.
+ * @param {{ root?: string, io?: PresenceIO, tty?: boolean, timeout?: number, headers?: Record<string, string> }} [opts] tty forces the terminal method; headers go on the first call (a kernel presence proof the person made on their own device).
  */
-export async function callAsPerson(tool, input = {}, { root, io = realIO, tty = false, timeout } = {}) {
+export async function callAsPerson(tool, input = {}, { root, io = realIO, tty = false, timeout, headers } = {}) {
   // root stays undefined unless given, so inside a session the client uses its VYRE_SOCKET.
   const t = timeout ? { timeout } : {};
   const as = (/** @type {string} */ proof) => call(tool, input, { root, ...t, headers: { "x-vyre-presence": proof } });
-  let r = await call(tool, input, { root, ...t });
+  let r = await call(tool, input, { root, ...t, ...(headers ? { headers } : {}) });
   if (!needsProof(r)) return r;
   const methods = r.error.methods || [];
 

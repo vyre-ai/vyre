@@ -21,17 +21,17 @@ const KINDS = ["mail", "calendar", "repo", "slack", "feed"];
 // The gated tools, as first-party modules with their own target tools (the registry accepts a target only from those).
 const WATCHERS = `export default { async start(ctx) {
   ctx.tool("watchers.create.target", { internal: true, run: async ({ tool, input }) => ({ to: input.hash ? [tool + ":harlow-legal/" + input.name + "@" + input.hash] : [] }) });
-  ctx.tool("watchers.create", { run: async i => { (globalThis.__made ||= []).push(["watcher", i]); return { created: i.name }; } });
+  ctx.tool("watchers.create", { effect: "read", run: async i => { (globalThis.__made ||= []).push(["watcher", i]); return { created: i.name }; } });
   return {};
 } };`;
 const TEAM = `export default { async start(ctx) {
   ctx.tool("team.act.target", { internal: true, run: async ({ tool, input }) => ({ to: input.project && input.role ? [tool + ":" + input.project + "/" + input.role] : [] }) });
-  ctx.tool("team.add", { run: async i => { (globalThis.__made ||= []).push(["team", i]); return { added: i.role }; } });
+  ctx.tool("team.add", { effect: "read", run: async i => { (globalThis.__made ||= []).push(["team", i]); return { added: i.role }; } });
   return {};
 } };`;
 // settings.request as the settings module asks it: the call's key, value and level become one string, matched against what the person said.
 const SETTINGS = `export default { async start(ctx) {
-  ctx.tool("settings.request", { run: async (i, meta) => {
+  ctx.tool("settings.request", { effect: "read", run: async (i, meta) => {
     const to = globalThis.__settingTo(i);
     const m = await ctx.call("vault.said.match", { kind: "setting", to: [to], consume: true, thread: meta.thread });
     if (!(m.data && m.data.matched)) throw Object.assign(new Error("changes only when the person asks"), { code: "not_asked" });

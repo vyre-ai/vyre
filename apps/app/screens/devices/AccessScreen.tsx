@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { Avatar, Button, Card, Chip, Divider, EmptyState, Segmented, Text, showToast, markRef, IconTile } from "@vyre/ui";
@@ -6,11 +6,13 @@ import { Page } from "../places/Frame";
 import { ACCESS_FILTERS, glyph } from "./data";
 import { useDevices } from "./state";
 import { removeText } from "./wink.js";
+import { said } from "../../src/real/box";
 
 /** Everything that can reach your things: devices, people, assistants, Kits and Flows, with a held Remove. */
 export function AccessScreen() {
   const router = useRouter();
-  const { items, removeItem } = useDevices();
+  const { items, removeItem, load, error } = useDevices();
+  useEffect(() => { void load(); }, [load]);
   const [f, setF] = useState("all");
   const rows = items.filter((i) => f === "all" || i.kind === f);
   return (
@@ -31,10 +33,10 @@ export function AccessScreen() {
                 </View>
               </View>
               <Text size="caption" tone="label">{removeText(a.kind, a.name)}</Text>
-              <View className="flex-row"><Button kind="hold" size="sm" label={`Remove ${a.name}`} onPress={() => { removeItem(a.id); showToast(`${a.name} was removed.`); }} /></View>
+              <View className="flex-row"><Button kind="hold" size="sm" label={`Remove ${a.name}`} onPress={() => { removeItem(a.id).then(() => showToast(`${a.name} was removed.`)).catch((e) => showToast(said(e))); }} /></View>
             </View>
           </View>
-        )) : <EmptyState title="Nothing here" body="Nothing of this kind can reach your spaces." />}
+        )) : <EmptyState title="Nothing here" body={error ?? "Nothing of this kind can reach your spaces."} />}
       </Card>
     </Page>
   );

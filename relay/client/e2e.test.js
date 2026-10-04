@@ -63,10 +63,13 @@ test("client e2e: pair from the QR URL, call the router as device:<id>, follow e
   const health = await conn.fetch("/v1/health");
   assert.equal(health.status, 200);
   await health.text();
+  // The device list is the person's own (reach person): a paired device with no person session is asked to sign in. An owner-only tool that is not person-reach answers device:<id>.
   const list = await conn.fetch("/v1/tools/relay.devices.list", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
-  assert.equal(list.status, 200);
-  const devicesSeen = (await list.json()).data.devices;
-  assert.deepEqual(devicesSeen.map(x => [x.id, x.name, x.online]), [[paired.device, "kit", true]], "an owner-only tool answers device:<id>");
+  assert.equal(list.status, 401);
+  await list.text();
+  const status = await conn.fetch("/v1/tools/relay.status", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+  assert.equal(status.status, 200, "an owner-only tool answers device:<id>");
+  await status.text();
 
   const got = [];
   let opened = 0;

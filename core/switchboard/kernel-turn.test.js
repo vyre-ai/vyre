@@ -177,3 +177,87 @@ test("SS-3: two askers sending to an idle thread at the same moment: one runs no
   assert.ok(behind.data && (behind.data.queued_id || behind.data.queued), `queued, not swapped in: ${JSON.stringify(behind)}`);
   assert.equal(turnOf(mine.data.id)?.chat ?? null, null, "the running turn keeps the session it has (no chat)");
 });
+
+test("the ordinary path the chat path shares code with: a plain threads.start and threads.send, no chat and no asker, on a real daemon with the kernel on", { timeout: 90_000 }, async t => {
+  const root = tempHome(t);
+  const d = await chatDaemon(t, root);
+  t.after(() => d.stop());
+  const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
+  t.after(() => fs.rmSync(work, { recursive: true, force: true }));
+  const events = async id => (await d.registry.call("threads.get", { thread: id, limit: 500 }, "cli")).data.events;
+  const fin = async (id, n) => until(async () => (await events(id)).filter(e => e.type === "thread.finished").length >= n, `turn ${n}`);
+  const r = await d.registry.call("threads.start", { cwd: work, prompt: "hello", surface: "deck" }, "cli");
+  assert.ok(r.data, JSON.stringify(r));
+  await fin(r.data.id, 1);
+  assert.ok((await events(r.data.id)).some(e => e.type === "thread.text" && e.payload.done && /echo: hello/.test(String(e.payload.text))), "the first turn answered");
+  const s = await d.registry.call("threads.send", { thread: r.data.id, text: "and again", surface: "deck" }, "cli");
+  assert.ok(s.data && s.data.sent === true, JSON.stringify(s));
+  await fin(r.data.id, 2);
+  assert.ok((await events(r.data.id)).some(e => e.type === "thread.text" && e.payload.done && /echo: and again/.test(String(e.payload.text))), "the second turn answered");
+  // the queued-message path that shares the name `sendNow` is still the queue's: sending a queued message now is its own tool
+  const q = await d.registry.call("threads.send-now", { thread: r.data.id, queued: 999999 }, "cli");
+  assert.ok(q.error || (q.data && q.data.sent === false), "send-now of a message that was never queued says so, not 'sent'");
+});
+
+const U = n => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+
+test("one send, one kernel session: a duplicate send changes nothing, and a send after a restart does not open the thread's session twice", { timeout: 120_000 }, async t => {
+  const root = tempHome(t);
+  let d = await chatDaemon(t, root);
+  const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
+  t.after(() => fs.rmSync(work, { recursive: true, force: true }));
+  const owner = d.kernel.id.owner;
+  const chat = await d.kernel.gateway.grants.chats.create(d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s1" }), {});
+  const count = () => d.registry.deps.kernelSessionCount();
+  const fin = async (id, n) => until(async () => (await d.registry.call("threads.get", { thread: id, limit: 500 }, "cli")).data.events.filter(e => e.type === "thread.finished").length >= n, `turn ${n}`);
+  assert.equal(count(), 0);
+  const r = await d.registry.call("threads.start", { cwd: work, prompt: "first", surface: "deck", chat: chat.id, asker: owner }, "module:stream");
+  await fin(r.data.id, 1);
+  assert.equal(count(), 1, "one thread, one session");
+  // the same send twice (the stream retries a delivery it did not hear back from): the second is answered as already handed over and opens nothing
+  const send = u => d.registry.call("threads.send", { thread: r.data.id, text: "again", surface: "deck", chat: chat.id, asker: owner, uuid: u }, "module:stream");
+  const a = await send(U(1));
+  assert.ok(a.data && a.data.sent === true, JSON.stringify(a));
+  await fin(r.data.id, 2);
+  const before = count();
+  const b = await send(U(1));
+  assert.ok(b.data && b.data.already === true, `a duplicate is already handed over: ${JSON.stringify(b)}`);
+  assert.equal(count(), before, "a duplicate opened no session");
+  // a restart: the open turn is reopened for its person (one session for the thread), and ONE send to the resumed thread leaves it at one
+  await d.stop();
+  d = await chatDaemon(t, root);
+  t.after(() => d.stop());
+  await new Promise(res => setTimeout(res, 1500));
+  assert.ok(count() <= 1, `after the restart at most the reopened one: ${count()}`);
+  const c = await d.registry.call("threads.send", { thread: r.data.id, text: "after the restart", surface: "deck", chat: chat.id, asker: owner, uuid: U(2) }, "module:stream");
+  assert.ok(c.data && c.data.sent === true, JSON.stringify(c));
+  await until(async () => (await d.registry.call("threads.get", { thread: r.data.id, limit: 500 }, "cli")).data.events.some(e => e.type === "thread.text" && e.payload.done && /echo: after the restart/.test(String(e.payload.text))), "the reply after the restart");
+  assert.equal(count(), 1, "one send across a restart: one session for the thread");
+});
+
+test("a chat message queued behind a turn survives a restart and then runs under its own asker", { timeout: 120_000 }, async t => {
+  const root = tempHome(t);
+  let d = await chatDaemon(t, root);
+  const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
+  t.after(() => fs.rmSync(work, { recursive: true, force: true }));
+  const owner = d.kernel.id.owner;
+  const chat = await d.kernel.gateway.grants.chats.create(d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s1" }), {});
+  // a turn with no chat is running ("demo" waits for an answer); the chat's message queues behind it
+  const mine = await d.registry.call("threads.start", { cwd: work, prompt: "demo", surface: "deck" }, "cli");
+  await until(async () => (await d.registry.call("threads.asks", { thread: mine.data.id }, "cli")).data.some(a => a.tool === "Edit"), "the turn to be busy");
+  const queued = await d.registry.call("threads.send", { thread: mine.data.id, text: "queued from the chat", surface: "deck", chat: chat.id, asker: owner, uuid: U(3) }, "module:stream");
+  assert.ok(queued.data && (queued.data.queued_id || queued.data.queued), JSON.stringify(queued));
+  const rows = () => { const h = new DatabaseSync(config.paths(root).db); try { return h.prepare("SELECT thread, text, kturn, delivered_at FROM threads_inbox").all(); } finally { h.close(); } };
+  await d.stop(); // the restart cuts the running turn off
+  const kept = rows();
+  assert.equal(kept.length, 1, "the queued message survived the stop");
+  assert.equal(JSON.parse(kept[0].kturn).asker, owner, "with its own asker");
+  assert.equal(kept[0].delivered_at, null, "not delivered, not lost");
+  d = await chatDaemon(t, root);
+  t.after(() => d.stop());
+  await until(async () => (await d.registry.call("threads.get", { thread: mine.data.id, limit: 500 }, "cli")).data.events.some(e => e.type === "thread.sent" && e.payload.via === "turn" && /queued from the chat/.test(String(e.payload.text))), "the queued message to run after the restart", 40_000);
+  // (thread.sent is said as the message is taken; its kernel session opens just before the words are written)
+  const turnOf = async () => { const r = d.registry.deps.db.prepare("SELECT body FROM kernel_turns WHERE thread = ?").get(mine.data.id); const b = r && JSON.parse(r.body); return b && b.chat ? b : null; };
+  const turn = await until(turnOf, "the queued message's own turn to be open", 20_000);
+  assert.deepEqual([turn.person, turn.chat], [owner, chat.id], "under its own asker, in its chat");
+});

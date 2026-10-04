@@ -20,7 +20,7 @@ import http from "node:http";
 import https from "node:https";
 import crypto from "node:crypto";
 import net from "node:net";
-import { resolvePublic } from "./netguard.js";
+import { resolvePublic, isPublicAddress } from "./netguard.js";
 import fs from "node:fs";
 
 /** Headers the proxy owns: the session's token and the real credential never pass through from the client. */
@@ -58,6 +58,7 @@ export function createEgress(o) {
         const hdrs = {}; for (const [k, v] of Object.entries(req.headers)) if (!STRIP_IN.has(k.toLowerCase())) hdrs[k] = v;
         hdrs.host = pu.host;
         const up2 = http.request({ hostname: ip, port: pport, method: req.method, path: pu.pathname + pu.search, headers: hdrs });
+        up2.on("socket", s => s.once("connect", () => { if (!o.dial && !isPublicAddress(String(s.remoteAddress))) s.destroy(); }));
         up2.on("response", ur => { res.writeHead(ur.statusCode || 502, Object.fromEntries(Object.entries(ur.headers).filter(([k]) => !STRIP_IN.has(k)))); ur.pipe(res); });
         up2.on("error", () => refuse(502, "the host did not answer"));
         res.on("close", () => up2.destroy()); req.pipe(up2);
@@ -126,10 +127,16 @@ export function createEgress(o) {
     // Internet mode: resolve the name HERE, refuse anything that is not a public address, and connect to the address that was checked.
     const opened = o.internet ? resolvePublic(host.replace(/^\[|\]$/g, ""), { lookup: o.lookup }).then(ip => (o.dial ? o.dial(ip, port) : net.connect(port, ip))) : Promise.resolve(net.connect(port, host));
     opened.then(up => {
-      up.once("connect", () => { sock.write("HTTP/1.1 200 Connection Established\r\n\r\n"); if (head && head.length) up.write(head); up.pipe(sock); sock.pipe(up); });
+      up.once("connect", () => {
+        // Re-test the address the socket actually connected to (internet mode): what was checked is what is connected.
+        if (o.internet && !o.dial && !isPublicAddress(String(up.remoteAddress))) { up.destroy(); sock.end("HTTP/1.1 403 Forbidden\r\n\r\n"); return; }
+        sock.write("HTTP/1.1 200 Connection Established\r\n\r\n"); if (head && head.length) up.write(head); up.pipe(sock); sock.pipe(up); });
       // An allowed host cannot be used to hold sockets open for ever: idle tunnels are closed, and there is a cap per session.
       sock.setTimeout(TUNNEL_IDLE_MS, () => sock.destroy()); up.setTimeout(TUNNEL_IDLE_MS, () => up.destroy());
-      up.on("error", () => sock.destroy()); sock.on("close", () => up.destroy()); up.on("close", () => { end(); sock.destroy(); });
+      let bin = 0, bout = 0; up.on("data", d => { bin += d.length; }); sock.on("data", d => { bout += d.length; });
+      // The destination and the byte counts per tunnel, never contents.
+      const logged = () => { if (!logged.done) { logged.done = true; o.onEvent?.({ route: "tunnel", host, port, bytesIn: bin, bytesOut: bout, status: 200, ms: 0 }); } };
+      up.on("error", () => sock.destroy()); sock.on("close", () => { logged(); up.destroy(); }); up.on("close", () => { logged(); end(); sock.destroy(); });
     }, () => { end(); deny(); });
   });
   return {

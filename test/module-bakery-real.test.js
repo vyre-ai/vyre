@@ -21,9 +21,9 @@ const EXAMPLES = path.join(ROOT, "examples", "modules");
 
 /** Fake owners: memory.write, push.offer and vault.request, each recording what reached it. */
 function owners(root, { memory = true } = {}) {
-  const record = name => `ctx.tool("${name}", { input: { type: "object" }, run: async (input, meta) => { globalThis.__owners.push({ tool: "${name}", input, caller: meta.caller }); return ${name === "push.offer" ? '"sent"' : name === "vault.request" ? "{ status: 201, headers: {}, body: { order: 'fc-1' } }" : "{ id: 'mem-1' }"}; } });`;
+  const record = name => `ctx.tool("${name}", { effect: "read", input: { type: "object" }, run: async (input, meta) => { globalThis.__owners.push({ tool: "${name}", input, caller: meta.caller }); return ${name === "push.offer" ? '"sent"' : name === "vault.request" ? "{ status: 201, headers: {}, body: { order: 'fc-1' } }" : "{ id: 'mem-1' }"}; } });`;
   writeModule(root, "memory", { vyre: "1", description: "A stand-in for memory.", does: { tools: memory ? [{ name: "memory.write", reach: "modules" }] : [{ name: "memory.ping" }] } },
-    `export default { async start(ctx) { ${memory ? record("memory.write") : 'ctx.tool("memory.ping", { run: async () => 1 });'} return {}; } };`);
+    `export default { async start(ctx) { ${memory ? record("memory.write") : 'ctx.tool("memory.ping", { effect: "read", run: async () => 1 });'} return {}; } };`);
   writeModule(root, "push", { vyre: "1", description: "A stand-in for push.", does: { tools: [{ name: "push.offer" }] } }, `export default { async start(ctx) { ${record("push.offer")} return {}; } };`);
   writeModule(root, "vault", { vyre: "1", description: "A stand-in for the vault.", does: { tools: [{ name: "vault.request" }] } }, `export default { async start(ctx) { ${record("vault.request")} return {}; } };`);
 }

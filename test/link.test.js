@@ -195,7 +195,7 @@ test("link: a listener's tailnet peer reaches the tool through vyred's router, n
   writeModule(path.join(root, "modules"), "peerprobe", { roles: ["box"], does: { tools: ["peerprobe.who"] } }, `
     import http from "node:http";
     export default { async start(ctx) {
-      ctx.tool("peerprobe.who", { input: { type: "object" }, run: async (input, meta) => ({ input, caller: meta.caller, peer: meta.peer || null }) });
+      ctx.tool("peerprobe.who", { effect: "read", input: { type: "object" }, run: async (input, meta) => ({ input, caller: meta.caller, peer: meta.peer || null }) });
       const handle = ctx.handler({});
       const server = http.createServer((req, res) => handle(req, res, "tailnet:owner@example.com", { node: "test-mac", stableId: "nMAC", login: "owner@example.com" }));
       await new Promise(r => server.listen(0, "127.0.0.1", r));
