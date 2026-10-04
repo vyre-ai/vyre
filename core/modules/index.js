@@ -21,7 +21,8 @@ import { PERSON_ONLY, machineSelf, core as coreHolder, format as formatProof } f
 import { validateDecls } from "../config/settings.js";
 import * as config from "../config/index.js";
 import { toolEntries, checkManifestFull } from "../../packages/module-sdk/manifest.js";
-import { isPerson } from "../../lib/caller.js";
+import { isPerson, deviceIdOf } from "../../lib/caller.js";
+import { yes, momentOf, plainFieldsOf } from "../../lib/one-yes.js";
 import { CONTRACT, supports, moduleContract, adapterFor } from "../../packages/module-sdk/contract.js";
 import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 import { within } from "../../lib/within.js";
@@ -1196,6 +1197,9 @@ export class Registry {
     // `meta.terminal`: the login terminal the daemon measured for this call (atTerminal), or null; only the daemon's own `terminal` argument sets it, never anything a client or a module sends in meta.
     delete meta.terminal;
     if (terminal && (typeof terminal === "string" || typeof terminal === "object")) meta.terminal = terminal;
+    // An approval id (a card the owner's phone answered, core/approvals) rides beside the call, never in its input: it is taken out here so no tool sees it, and only a device caller's is read.
+    const approval = typeof meta.approval === "string" && /^ap_[A-Za-z0-9_-]{6,40}$/.test(meta.approval) ? meta.approval : null;
+    delete meta.approval;
     // `standalone` says the caller is the standalone Chrome runtime's own MCP session (local/hands-chrome-mac/standalone/runtime.js hands it to a tool directly, never through here): nothing that comes
     // through the registry, from a client or a module, may claim it.
     delete meta.standalone;
@@ -1360,10 +1364,20 @@ export class Registry {
     if (def.core && coreHolder.link) {
       meta = { ...meta, coreProof: proof ? formatProof(proof) : undefined };
     } else if (presence && (this.deps.gates ? await this.deps.gates.needsPresence({ tool, def, caller, meta, input }) : callerKind(caller) !== "module" && presence.required(tool, def, input))) {
+      // One yes: a floor-bearing tool that is one of the three moments (vault, pairing a device, an outward send) also takes the owner's approval of exactly this call: a card the phone answered, bound to the
+      // asking device taken from the verified caller (never from input), spent once. Everything else, and everything that is not an approved card, goes on to the old proof check below.
+      /** @type {{ method: string, keyId: null } | null} */ let approved = null;
+      if (approval && !String(caller).startsWith("module:")) {
+        const mo = momentOf(tool), dev = deviceIdOf(String(caller)), plain = plainFieldsOf(input);
+        if (mo && dev && plain) { const r = await yes(mo, { op: tool, fields: plain, device: dev }, { card: approval }); if (r.ok) approved = { method: "approval", keyId: null }; }
+      }
+      if (approved) meta = { ...meta, presence: approved };
+      else {
       const v = await presence.verify({ tool, input, caller, proof, def, meta, peer: meta.peer || null, terminal: typeof terminal === "string" || (terminal && typeof terminal === "object") ? terminal : null });
       if (!v.ok) return { error: { code: v.code === "no_dialog" ? "no_dialog" : "presence_required", message: v.message, methods: v.methods } };
       // The tool learns how the person proved it (and with which enrolled key), never the proof.
       meta = { ...meta, presence: { method: v.method, keyId: v.keyId ?? null, ...(v.where ? { where: v.where } : {}) } };
+      }
     }
     // A call that carries an Idempotency-Key runs once per key; a retry gets the first answer.
     // The key reaches the tool too, so a tool that hands work on can carry it (threads.send uses

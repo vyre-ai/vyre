@@ -59,12 +59,15 @@ export function createPeerDoor(o) {
     const facts = await factsOf(id, person);
     if (!facts) throw err("denied", "this device is not paired here any more");
     const body = input && typeof input === "object" && !Array.isArray(input) ? { ...input } : {};
+    // an approval id (a card the owner's phone answered) rides beside the call, never into the tool's input
+    const approval = typeof body.approval === "string" ? body.approval : undefined;
+    if (!(tool && o.registry.tools && o.registry.tools.get(tool) && o.registry.tools.get(tool).input && o.registry.tools.get(tool).input.properties && Object.hasOwn(o.registry.tools.get(tool).input.properties, "approval"))) delete body.approval;
     /** @type {any} */ let proof;
     // PD-1: a tool that takes `proof` as a parameter of its own (a pairing's identity proof) keeps it in its input and gets nothing in meta; for any other tool `proof` is the owner's presence proof
     const declared = (() => { try { const t = o.registry.tools && o.registry.tools.get(tool); return Boolean(t && t.input && t.input.properties && Object.hasOwn(t.input.properties, "proof")); } catch { return false; } })();
     if (!declared && body.proof && typeof body.proof === "object") { try { if (JSON.stringify(body.proof).length <= 4096) proof = body.proof; } catch { /* no proof */ } delete body.proof; }
     // the owner's proof rides input.proof: the registry's presence floor reads it as `proof`, and the kernel as `kernel_proof` (each checks its own shape; neither is trusted here)
-    const r = await o.registry.call(tool, body, caller, { ...(person ? { person } : {}), ...(peerStream ? { peerStream } : {}), kernelFacts: facts, ...(proof ? { proof, kernel_proof: proof } : {}) });
+    const r = await o.registry.call(tool, body, caller, { ...(person ? { person } : {}), ...(peerStream ? { peerStream } : {}), kernelFacts: facts, ...(proof ? { proof, kernel_proof: proof } : {}), ...(approval ? { approval } : {}) });
     if (r && r.error) throw err(String(r.error.code || "internal"), String(r.error.message || "the call failed"));
     return r ? r.data : null;
   };

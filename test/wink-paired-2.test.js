@@ -1052,7 +1052,7 @@ test("the session strength is proven at each sign-in (the identity entry's encla
     assert.deepEqual(pending.map(a => [a.id, a.moment, a.request.op]), [[ask.id, "vault", "vault.reveal"]], "the owner's phone lists the card");
     assert.deepEqual(pending[0].sign.op, "task.vault_use");
     assert.equal(pending[0].sign.space, f.w.d.kernel.id.space, "the home's space");
-    assert.deepEqual(pending[0].sign.fields, { what: "vault.reveal", name: "northwind-mail" });
+    assert.deepEqual(pending[0].sign.fields, { what: "vault.reveal", fields: { name: "northwind-mail" } }, "fixed keys, the request nested: no field can override the op");
     const card = pending[0], hash = payloadHash(card.sign.op, card.sign.space, card.sign.fields);
     assert.equal(card.payload_hash, hash);
     // the answer counts only when it carries a yes signed by a real key over the card (yes(): here a stand-in verifier that knows the two kinds of key); it is checked and spent when given
@@ -1077,7 +1077,14 @@ test("the session strength is proven at each sign-in (the identity entry's encla
     assert.deepEqual(await yesAt("vault", { op: "vault.reveal", fields: { name: "another-secret" }, device: f.done.device }, { card: ask.id }), { ok: false, reason: "wrong_request" }, "an approval is for exactly the request on it");
     assert.deepEqual(await yesAt("vault", { ...act, device: "someotherdevice" }, { card: ask.id }), { ok: false, reason: "wrong_request" }, "and for the device that asked");
     assert.deepEqual(await yesAt("outward", act, { card: ask.id }), { ok: false, reason: "wrong_request" }, "and for its moment");
-    assert.deepEqual(await yesAt("vault", act, { card: ask.id }), { ok: true, strength: "real" }, "the asking device's act spends it");
+    const { device: _omit, ...noDevice } = act;
+    assert.deepEqual(await yesAt("vault", noDevice, { card: ask.id }), { ok: false, reason: "no_proof" }, "a redeem that names no device spends nothing (CI-1)");
+    // the vault tool itself: the browser calls it with the approval beside the call; the old presence floor does not stop it, and the approval is spent
+    const via = () => links.sessionFor("srv").call("vault.reveal", { name: "northwind-mail", approval: ask.id }).then(() => null, e => e);
+    const used = await via();
+    assert.ok(!used || !/presence/i.test(`${used.code} ${used.message}`), `an approved vault call passes the floor (what the vault says next is its own: ${used && used.code})`);
+    const again = await via();
+    assert.ok(again && /presence/i.test(`${again.code} ${again.message}`), "the approval was spent: the same call is stopped by the floor again");
     assert.deepEqual(await yesAt("vault", act, { card: ask.id }), { ok: false, reason: "replayed" }, "once");
     assert.deepEqual(await yesAt("vault", act, { card: "ap_unknown" }), { ok: false, reason: "no_proof" });
     assert.deepEqual(await strengthsOf(f), ["software"], "nothing about the browser's own session changed"); }
@@ -1218,4 +1225,14 @@ test("the daemon wires yes() to the kernel's own verifier: a real-key yes stands
   const stranger = sealSigner(ident.id);
   assert.deepEqual(await yes("vault", { chain, ...req }, stranger.proof(chain, sg.op, sg.fields)), { ok: false, reason: "unknown_key" }, "a key the server never enrolled");
   assert.deepEqual(await yes("admin", { chain, ...req }, proof), { ok: false, reason: "wrong_request" }, "only the three moments");
+  // each moment end to end on the real sealer (CS-3): the act words the sealing process takes, the card's op and fields inside
+  for (const [moment, r] of [["pair", { op: "wink.server.adopt", fields: { name: "Alex's phone" } }], ["outward", { op: "email.send", fields: { to: "jane@example.com" } }]]) {
+    const g = signOf(moment, r), p = owner.proof(chain, g.op, g.fields);
+    assert.deepEqual(await yes(moment, { chain, ...r }, p), { ok: true }, `${moment}: the real key says yes`);
+    assert.deepEqual(await yes(moment, { chain, ...r }, p), { ok: false, reason: "replayed" }, `${moment}: once`);
+  }
+  // CI-2: no field of any request can override the op in the signed bytes; two different requests never sign the same bytes
+  const a = signOf("outward", { op: "slack.post", fields: { x: 1 } }), b = signOf("outward", { op: "mail.send", fields: { what: "slack.post", x: 1 } });
+  assert.notDeepEqual(a.fields, b.fields);
+  assert.notEqual(JSON.stringify(signOf("outward", { op: "mail.send", fields: { what: "A" } }).fields), JSON.stringify(signOf("outward", { op: "mail.send", fields: { what: "B" } }).fields), "even a field called what is signed, not dropped");
 });
