@@ -20,6 +20,8 @@ const PERSON_PROXY = new Set([
   "switchboard:mentions.search",
   // The Windows app's own page (local/capsule/native-win/app/ui/link.js) asks the box through the person's signed-in panel; it is the person calling, not a module.
   "capsule:files.drive.address",
+  // pluginagent.revoke is the person's own act (it needs presence): the agent it made is deleted with the revoking caller (ctx.call as: meta.caller), so agents.delete's person-only rule decides, not the module.
+  "pluginagent:agents.delete",
 ]);
 
 function* files(dir) {
