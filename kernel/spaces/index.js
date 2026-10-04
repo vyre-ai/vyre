@@ -154,6 +154,11 @@ export function createSpaceKernels(cfg) {
     },
     /** What a Space made here now would be stored in, and the confirmation to show BEFORE it is made (`confirm`: text and choices). Nothing is created. */
     storePlan: () => (cfg.storeFor && /** @type {any} */ (cfg.storeFor).plan ? /** @type {any} */ (cfg.storeFor).plan() : Promise.resolve({ store: "sqlite", reasons: [] })),
+    /** What a hosted Space says about itself on disk: { name? } (its space.json). Nothing secret. @param {string} id */
+    describe(id) {
+      if (!SPACE_ID.test(id)) return null;
+      try { const j = JSON.parse(fs.readFileSync(path.join(ofDir(id), "space.json"), "utf8")); return { ...(typeof j.name === "string" ? { name: j.name } : {}) }; } catch { return null; }
+    },
     /** Open every Space this home hosts (at start); after this `for` answers without waiting. */
     async start() { for (const id of api.list()) await api.open(id); },
     /** Open one hosted Space, or null when this home does not host it. */

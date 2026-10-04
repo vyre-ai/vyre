@@ -280,6 +280,7 @@ export async function createKernel(cfg) {
       handle.spaces = Object.freeze({
         host: (/** @type {any} */ o) => reg().host(o),
         retire: (/** @type {string} */ id) => reg().retire(id),
+        describe: (/** @type {string} */ id) => reg().describe(id),
         storePlan: () => reg().storePlan(),
         list: () => reg().list(),
         hosts: (/** @type {string} */ id) => reg().hosts(id),
