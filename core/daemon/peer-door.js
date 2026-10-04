@@ -10,7 +10,7 @@
 import { peerSession, streamPipe, T } from "../wink/node/peer-wire.js";
 import { createRemoteServer } from "../../kernel/remote/server.js";
 import { withKernelCall, KERNEL_CALL_TOOL } from "../../kernel/remote/wink.js";
-import { INVITEE_CALLS, WIRE_VERSION } from "../../kernel/remote/wire.js";
+import { INVITEE_CALLS, WIRE_VERSION, PRESENCE_CODES } from "../../kernel/remote/wire.js";
 import { verifyDevice } from "../wink/node/peer-wire.js";
 import crypto from "node:crypto";
 
@@ -34,7 +34,7 @@ export function createPeerDoor(o) {
     const k = kernelOf(space);
     if (!k) { servers.delete(space); return null; }
     let s = servers.get(space);
-    if (!s || s.k !== k) { s = { k, server: createRemoteServer({ space, home: o.kernel.id.space, kernel: k, attest: async nonce => { const r = await o.registry.call("spaces.attest", { space, nonce }, "module:vyred"); return r && r.data && !r.error ? r.data : null; } }) }; servers.set(space, s); }
+    if (!s || s.k !== k) { s = { k, server: createRemoteServer({ space, home: o.kernel.id.space, kernel: k, attest: async (/** @type {string} */ nonce) => { try { const r = await o.registry.call("spaces.attest", { space, nonce }, "module:vyred"); return r && r.data && r.data.pub && r.data.sig ? { pub: String(r.data.pub), sig: String(r.data.sig) } : null; } catch { return null; } } }) }; servers.set(space, s); }
     return s.server;
   };
   /** The device's own row at the relay, now: an app device that is not removed, or null. @param {string} id */
@@ -145,25 +145,29 @@ export function createPeerDoor(o) {
       /** @type {Promise<{ ok: true, identity: string, space: string, invite: string } | { ok: false, why: string }> | null} */ let admitted = null;
       const admit = () => admitted || (admitted = (async () => {
         const c = await checkHello(head, inviteeId);
-        if (!c.identity) return { ok: false, why: String(c.why) };
+        if (!c.identity) { log(`peer door: invitee ${inviteeId} refused (${String(c.why)})`); return { ok: false, why: String(c.why) }; }
         const server = serverFor(head.space);
-        if (!server) return { ok: false, why: "not_found" };
+        if (!server) { log(`peer door: invitee ${inviteeId} refused (not_found)`); return { ok: false, why: "not_found" }; }
         // the space's own kernel decides whether this invite is live, unused and meant for this person: a preview is the proof (it is all the invitee may read before it accepts)
         const r = await server.serve(inviteeRequest(head.space, "grants.invites.get", [head.invite], (o.now || Date.now)()), { device_key_id: inviteeId, person: c.identity, path: "relay" });
-        if (!r || r.ok !== true || !r.result || r.result.status !== "pending") return { ok: false, why: "bad_invite" };
+        if (!r || r.ok !== true || !r.result || r.result.status !== "pending") { log(`peer door: invitee ${inviteeId} refused (bad_invite${r && r.error ? `: ${String(r.error.code)}` : ""})`); return { ok: false, why: "bad_invite" }; }
         return { ok: true, identity: c.identity, space: head.space, invite: head.invite };
       })());
+      // accepting (or a refusal of the invite itself) finishes the stream at once: no call after it is served, even inside the moment the close takes
+      let finished = false;
       session = peerSession(streamPipe(stream), { first: 2, serve: async (/** @type {string} */ tool, /** @type {any} */ input) => {
+        if (finished) throw err("denied", "this invite's stream is finished");
         const a = await admit();
-        if (!a.ok) { end("not admitted"); throw err("denied", "that invite cannot be used from here"); }
+        if (!a.ok) { finished = true; end("not admitted"); throw err("denied", "that invite cannot be used from here"); }
         if (tool !== KERNEL_CALL_TOOL || !input || typeof input !== "object") throw err("denied", "an invite opens two calls and nothing else");
         const args = Array.isArray(input.args) ? input.args : [];
         if (input.space !== a.space || !INVITEE_CALLS.has(String(input.call)) || args[0] !== a.invite) throw err("denied", "an invite opens two calls and nothing else");
         const server = serverFor(a.space);
         if (!server) { end("gone"); throw err("not_found", "no such space here"); }
         const r = await server.serve(input, { device_key_id: inviteeId, person: a.identity, path: "relay" });
-        // accepting ends the stream (a member session begins elsewhere); so does any refusal of the invite itself
-        if (input.call === "grants.invites.accept" || !r || r.ok !== true) end("done");
+        // accepting ends the stream (a member session begins elsewhere); so does any refusal of the invite itself. The home asking for the invitee's presence is not a refusal: the same stream carries the signed retry.
+        const asksPresence = Boolean(r && r.ok !== true && r.error && PRESENCE_CODES.has(String(r.error.code)));
+        if (!asksPresence && (input.call === "grants.invites.accept" || !r || r.ok !== true)) { finished = true; end("done"); }
         return r;
       } });
       log(`peer door: invitee ${inviteeId} opened a stream`);

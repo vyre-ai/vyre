@@ -65,13 +65,14 @@ const PERSON = "per_" + "q".repeat(26);
 const BOX = "Qm94S2V5MTIzNDU2Nzg5MA";
 const INVITEE = "zyxwvutsrqponmlk";
 
-function inviteeWorld({ status = "pending", entry = true, addressedTo = null, limits } = {}) {
+function inviteeWorld({ status = "pending", entry = true, addressedTo = null, limits, askPresence = false } = {}) {
   const key = crypto.generateKeyPairSync("ed25519");
   const raw = key.publicKey.export({ format: "der", type: "spki" }).subarray(-32);
   const served = [];
   const server = { serve: async (request, peer) => {
     served.push({ request, peer });
     if (request.call === "grants.invites.get") return addressedTo && addressedTo !== peer.person ? { v: 1, id: request.id, ok: false, error: { code: "not_found", message: "no such invite" } } : { v: 1, id: request.id, ok: true, result: { id: request.args[0], status, space: { id: SPACE } } };
+    if (askPresence && request.call === "grants.invites.accept" && !(request.proof)) return { v: 1, id: request.id, ok: false, error: { code: "needs_presence", message: "needs presence", challenge: { nonce: "n" } } };
     return { v: 1, id: request.id, ok: true, result: { accepted: true } };
   } };
   const registry = { call: async () => ({ data: null }) };
@@ -342,4 +343,21 @@ test("PS-D: a flood of small frames ends the stream slow and a call on the same 
   assert.ok(ended.includes("slow"));
   assert.deepEqual(await peer.call("chat.say", { id: "x" }), { ok: true }, "calls on the same peer stream are unaffected");
   peer.close();
+});
+
+test("invitee door: accepting finishes the stream at once (no call is served inside the close), and the home asking for presence keeps it open for the signed retry", async () => {
+  const w = inviteeWorld();
+  const c = await w.open(w.hello());
+  await w.kcall(c, "grants.invites.get", [INVITE]);
+  assert.equal((await w.kcall(c, "grants.invites.accept", [INVITE, {}])).ok, true);
+  const n = w.served.length;
+  await assert.rejects(() => w.kcall(c, "grants.invites.get", [INVITE]), e => e.code === "denied", "a call right after accept is not served");
+  assert.equal(w.served.length, n);
+  const p = inviteeWorld({ askPresence: true });
+  const c2 = await p.open(p.hello());
+  const ask = await p.kcall(c2, "grants.invites.accept", [INVITE, {}]);
+  assert.equal(ask.ok, false);
+  assert.equal(ask.error.code, "needs_presence");
+  const signed = await c2.call("kernel.call", { v: 1, space: SPACE, id: "r", ts: 1_000_000, call: "grants.invites.accept", args: [INVITE, {}], proof: { p: 1 } }, { timeoutMs: 3000 });
+  assert.equal(signed.ok, true, "the signed retry rides the same stream");
 });
