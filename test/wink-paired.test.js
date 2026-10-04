@@ -945,14 +945,7 @@ test("M1 invites to a space on its server: the home's one-use challenge is answe
   assert.ok(!put.error, String(JSON.stringify(put.error)));
   assert.ok(!JSON.stringify(put.data).includes("123-45-6789"), "the value is not in the record");
   // a reveal on the server's space: the home's sealing process checks the yes. No proof: the call says what to sign; the proof made for that challenge shows the value; a wrong one shows nothing
-  // revealing is a grant the owner gives (nobody holds it by role): the owner grants it to herself, signed by M1's own enrolled key
-  { const { proofRequest } = await import("../kernel/remote/proof.js");
-    const { softwareActProof } = await import("../core/spaces/presence-signer.js");
-    const hostedHere = server.kernel.spaces.hosted(id);
-    const ownerChain = hostedHere.kernel.chains.fromFacts({ kind: "device", device_key_id: "x-walk", person: ident.id, path: "direct", session: "s" });
-    const gin = { subject: { kind: "actor", actor: { kind: "person", id: ident.id, space: id } }, actions: ["seal.reveal"], resource: { prefix: urn }, source: "walk:reveal" };
-    const rq = proofRequest(id, "create", gin);
-    await hostedHere.gateway.grants.create(ownerChain, gin, { presence: softwareActProof(path.join(droot, "wink-keys.json.device"), ident.id, { op: rq.op, payload_hash: rq.payload_hash, space: id }) }); }
+  // the owner holds seal.reveal by role: no grant is made here
   const asked = await dcall("records.reveal", { urn, field: "ssn", purpose: "check the id" });
   assert.ok(!asked.error && asked.data.needs_proof === true && asked.data.request.op === "seal.reveal" && asked.data.request.challenge, JSON.stringify(asked).slice(0, 400));
   const { softwareProof } = await import("../core/spaces/presence-signer.js");
@@ -1010,6 +1003,9 @@ test("pair, release, then pair a browser as ANOTHER identity: refused with the s
   const q = await until(async () => { const x = (await w.call("wink.server.pairing", {}, "cli", PROOF)).data; return x && x.asking ? x : null; }, 6000).catch(() => null);
   if (q) { await until(async () => shown); await w.call("wink.server.pair.answer", { yes: true, pick: q.choices.indexOf(shown) + 1 }, "cli", PROOF); }
   const r = await pairing.then(() => "paired", e => `${e.code}: ${e.message}`);
-  assert.match(r, /^owned_by_other: This server already belongs to another Vyre identity/);
+  assert.match(r, /^owned_by_other: This server belongs to alex\.vyre\.run\. Ask them to add you to a space, or reset the server to start over/);
+  const st = (await w.call("wink.server.status", {}, "cli", PROOF)).data;
+  assert.equal(st.owned, true, "the server is still owned: the kernel keeps its owner");
+  assert.equal(st.released, true);
   await until(async () => w.logs.some(l => /a pairing from web:\S+ did not finish \(owned_by_other\)/.test(l)));
 });

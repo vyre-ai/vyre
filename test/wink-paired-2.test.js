@@ -804,10 +804,10 @@ test("a home that already has a claimed owner is not paired by a different ident
   const presenceKey = { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: "hardware" };
   const ks = keystore(t);
   const pairing = pairServer({ payload: code.qr, owner: { id: ident.id, name: "Carol", vyre: "alex" }, deviceKind: "phone", presenceKey, name: "Carol's iPhone", crypto: nodeCrypto(), keyStore: ks, pollMs: 100, signIdentity: ident.sign, onWords: () => {} });
-  await assert.rejects(() => pairing, e => e.code === "owned_by_other" && /already belongs to another/.test(e.message), "refused with its own words");
+  await assert.rejects(() => pairing, e => e.code === "owned_by_other" && /^This server belongs to .*Ask them to add you to a space, or reset the server to start over/.test(e.message), "refused with its own words");
   assert.equal(((await w.call("wink.server.pairing", {}, "cli", PROOF)).data || {}).asking || false, false, "the person at the server is never asked");
   const st = (await w.call("wink.server.status", {}, "cli", PROOF)).data;
-  assert.equal(st.owned, false, "the pairing record names no owner");
+  assert.equal(st.released, true, "the pairing record names no owner: the status is the kernel's owner, released from any app");
   assert.equal(w.d.kernel.id.owner, ownerAfterClaim, "the kernel owner is unchanged");
   await noOwnerDevices(w);
 });
@@ -834,7 +834,7 @@ test("a kernel that refuses the owner fails the pairing: the owner record is tak
   const ownerAfterClaim = w.d.kernel.id.owner;
   await w.call("wink.server.pair.answer", { yes: true, pick: q.choices.indexOf(shown) + 1 }, "cli", PROOF);
   await assert.rejects(() => pairing, e => e.code === "owned_by_other");
-  assert.equal((await w.call("wink.server.status", {}, "cli", PROOF)).data.owned, false, "the owner record was taken back");
+  assert.equal((await w.call("wink.server.status", {}, "cli", PROOF)).data.released, true, "the pairing's owner record was taken back (the status is only the kernel's owner)");
   assert.equal(w.d.kernel.id.owner, ownerAfterClaim);
   await noOwnerDevices(w);
 });

@@ -1083,6 +1083,8 @@ export default {
       const id = String(i.id);
       let st = null; try { st = identity.status(); } catch { st = null; }
       if (st && st.exists && st.id === id && st.name) return { name: `${st.name}.vyre.run` };
+      // a name this home learned and verified when the person paired it as their owner (spaces.owner.adopt)
+      { const known = /** @type {string | null} */ (await kv.get(`person-name/${id}`)); if (typeof known === "string" && known) return { name: `${known.replace(/\.vyre\.run$/, "")}.vyre.run` }; }
       const label = typeof i.claimed === "string" ? i.claimed.trim().toLowerCase().replace(/\.vyre\.run$/, "") : "";
       if (label && /^[a-z0-9][a-z0-9-]{1,30}$/.test(label)) { try { const r = await dir.resolve(label); if (r.ok && r.kind === "person" && r.id === id) return { name: `${label}.vyre.run` }; } catch { /* unreachable: no name */ } }
       const known = await kv.get(`person-name/${id}`);

@@ -787,7 +787,12 @@ export function createPairing(o) {
         owner(meta0, "the server's owner");
         atServer(meta0);
         const cur = meta.get("owner"), by = String(meta.get("adopter") || "");
-        if (!cur) return { owned: false };
+        if (!cur) {
+          // released by its app, but the kernel keeps its owner (an identity's spaces are never handed on silently): the server is still owned, and says by whom
+          const claimed = await claimedOwner().catch(() => null);
+          if (!claimed) return { owned: false };
+          return { owned: true, space: (await nameOf(claimed)) || "another Vyre identity", device: null, released: true, note: "The app that paired this server let go of it, but the server still belongs to that identity. The same identity can pair it again; to start over, reset the server at its console." };
+        }
         const dev = deviceIdOf(by) !== null ? devices.get(/** @type {string} */ (deviceIdOf(by))) : null;
         return { owned: true, space: await ownerWords({ ...cur, identity: cur.identity }), device: (dev && dev.name) || (cur.name ? String(cur.name) : "device"), ...(meta.get("owner_proof") ? { owner_proof: String(meta.get("owner_proof")), owner_pin: String(meta.get("owner_pin") || "none") } : {}) };
       },
@@ -942,6 +947,10 @@ export function createPairing(o) {
      * The identity that already took this home's owner place in the kernel (first owner wins), or null. The wink record alone does not say: a home whose person claimed an identity at its own
      * screen has an owner the pairing record never heard of. A build with no spaces module has none; any other failure to ask is a refusal, never a pass.
      */
+    /** The Vyre name of the identity that owns this home, for the words a refusal says (null when it cannot be read). @param {string} id */
+    const nameOf = async id => {
+      try { const r = /** @type {any} */ (await ctx.call("spaces.identity.name-of", { id })); const n = r && r.data && typeof r.data.name === "string" ? r.data.name : null; return n; } catch { return null; }
+    };
     const claimedOwner = async () => {
       /** @type {any} */ let r;
       try { r = await ctx.call("spaces.owner.claimed", {}); } catch (e) { r = { error: { code: String(/** @type {any} */ (e) && /** @type {any} */ (e).code || "failed") } }; }
@@ -984,7 +993,7 @@ export function createPairing(o) {
         if (adopted && adopted.error && adopted.error.code !== "no_such_tool") {
           ctx.log(`wink: the kernel refused ${identity} as this home's owner (${adopted.error.code}); nothing was paired`);
           try { devices.remove(device); } catch { /* none */ }
-          throw fail(["owned_by_other", "already_adopted", "not_allowed", "forbidden"].includes(adopted.error.code) ? "owned_by_other" : "unavailable", words(["owned_by_other", "already_adopted", "not_allowed", "forbidden"].includes(adopted.error.code) ? "pairOwnedByOther" : "pairOwnerFailed"));
+          throw fail(["owned_by_other", "already_adopted", "not_allowed", "forbidden"].includes(adopted.error.code) ? "owned_by_other" : "unavailable", words(["owned_by_other", "already_adopted", "not_allowed", "forbidden"].includes(adopted.error.code) ? "pairOwnedByOther" : "pairOwnerFailed", { name: await nameOf(await claimedOwner().catch(() => null) || "") }));
         }
       } else ctx.log(`wink: ${device} paired without a verified identity proof: the home's owner is unchanged`);
       try {
@@ -1121,7 +1130,7 @@ export function createPairing(o) {
         // First owner wins: a home whose kernel already has an owner is not paired by a different identity, whatever the pairing record says. This runs before any ask, ticket, relay device or session.
         const claimed = await claimedOwner().catch((/** @type {any} */ e) => { dropLater(caller); throw e; });
         const asked = String(input.identity || (input.owner.kind === "identity" ? input.owner.id : ""));
-        if (claimed && asked && asked !== claimed) { dropLater(caller); throw fail("owned_by_other", words("pairOwnedByOther")); }
+        if (claimed && asked && asked !== claimed) { dropLater(caller); throw fail("owned_by_other", words("pairOwnedByOther", { name: await nameOf(claimed) })); }
         const prior = meta.get("owner"), adopter = meta.get("adopter");
         if (prior) {
           // Adopt never changes who owns a server (handing it over is a separate act that needs the owner's presence and the new identity's accept): a different owner, whoever asks and whatever they hold,
