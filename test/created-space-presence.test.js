@@ -35,7 +35,9 @@ test("a real person session reaches a created Space through chainIn with no stan
   const owner = d.kernel.id.owner;
   const handle = d.kernel.kernelFor({ name: "spaces", needs: { kernel: { actions: [], spaces: true } } });
   const h = await d.kernel.spaces.host({ owner, name: "created" });
-  const as = (/** @type {any} */ extra) => handle.chainIn(h.space, { kernelFacts: { kind: "device", device_key_id: "d-phone", person: owner, path: "relay", ...extra } });
+  // the box knows this phone as the owner's paired device (an active relay_devices row): enrolment is for devices the box actually paired, never an invented id
+  d.registry.deps.db.prepare("INSERT INTO relay_devices (id, name, pub, paired_at, kind, trusted, removed_at) VALUES (?, ?, 'p', 1, 'app', 0, NULL)").run("dphonepaired00001", "phone");
+  const as = (/** @type {any} */ extra) => handle.chainIn(h.space, { kernelFacts: { kind: "device", device_key_id: "dphonepaired00001", person: owner, path: "relay", ...extra } });
   const signedIn = await as({ session: "ps_1" });
   await h.gateway.records.define(signedIn, { add_types: [TYPE] });
   assert.ok((await h.gateway.records.create(signedIn, "note", { title: "from the phone" })).urn, "the signed-in owner device works in the created Space");
