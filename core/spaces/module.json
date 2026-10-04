@@ -133,6 +133,11 @@
     "effect": "write"
    },
    {
+    "name": "spaces.server-of",
+    "reach": "modules",
+    "effect": "read"
+   },
+   {
     "name": "spaces.host-here",
     "reach": "person",
     "effect": "write"

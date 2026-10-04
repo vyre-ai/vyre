@@ -92,6 +92,10 @@
         "reach": "modules"
       },
       {
+        "name": "threads.own-transcript",
+        "reach": "modules"
+      },
+      {
         "name": "threads.lineage",
         "reach": "modules"
       },
