@@ -60,6 +60,7 @@ function owner(meta, what) {
  *   typedCode   true switches the short typed code on (development; also VYRE_WINK_TYPED_CODE=1 or config wink.typedCode); off in a release build
  *   confirmAdopt false skips the person-at-the-server confirmation of a first adoption (a test seam; always on in a real box)
  *   releaseMaxMs how long a release the server never confirmed is retried before it is given up and the person is told (default 30 days)
+ *   looseOwnerIds true (tests only) accepts owner ids of any length
  *   vyreName (identity) => the Vyre name the directory has claimed for that identity (e.g. "alex.vyre.run") or null: shown beside the asker's display name at the server
  *   identityEntry (identity, eid) => the entry on that identity's list ({ eid, kind, pub, identity? }) or null: proves the app for a server installed with --pair-to (Q-3)
  *   signIdentity (message) => { eid, sig }: this app's signature with a key on its own identity list, sent when it adopts a server (Q-3)
@@ -314,6 +315,8 @@ export function createWink(inject = {}) {
     // A device that paired (a typed code, or a confirmed pairing) is registered under the identity with its kind. No grant is written in any space.
     // The relay marks how a device came (`via` in device.paired, `gate` too for a gated ticket) and a gated ticket makes no device until the person has picked the right words
     // (X-1): its redeemer is a waiting pairing (`pairing.pending`), held for the question below; this module confirms it to the relay only after that answer.
+    // a waiting pairing's app went away and did not come back (the browser closed before the yes): drop its ask now, so the next scanner is not told "busy until restart"
+    const offAbandoned = ctx.events.on("pairing.abandoned", (/** @type {any} */ e) => { try { pairing.abandoned(String((e.payload || e).device || "")); } catch { /* nothing waiting */ } });
     const offPending = ctx.events.on("pairing.pending", async (/** @type {any} */ e) => {
       const p = e.payload || e;
       try {
@@ -689,7 +692,7 @@ export function createWink(inject = {}) {
         try { stopStorage(); } catch {}
         if (poolTimer) clearInterval(poolTimer);
         for (const off of offStorage) { try { off(); } catch {} }
-        for (const off of [offCode, offPaired, offRemoved, offInvite, offPending]) { try { off(); } catch {} }
+        for (const off of [offCode, offPaired, offRemoved, offInvite, offPending, offAbandoned]) { try { off(); } catch {} }
         try { code?.cancel(); } catch {}
         try { pairing.stop(); } catch {}
       },

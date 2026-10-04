@@ -50,7 +50,7 @@ async function world(t, opt = {}) {
   const url = await relay.listen();
   t.after(() => relay.close());
   const root = tempHome(t);
-  if (opt.pendingMs) { seams.set(root, { pendingMs: opt.pendingMs }); t.after(() => seams.delete(root)); }
+  if (opt.pendingMs || opt.abandonMs) { seams.set(root, { ...(opt.pendingMs ? { pendingMs: opt.pendingMs } : {}), ...(opt.abandonMs ? { abandonMs: opt.abandonMs } : {}) }); t.after(() => seams.delete(root)); }
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [], network: { name: "alex" }, relay: { enabled: true, url }, modules: { disable: ["names", "onboard"] } }));
   const d = await start({ presence: lenient, root, log: m => { if (process.env.WLOG) console.error(m); }, coreKeys: macCore(), ...(opt.kernel ? { kernel: true } : {}) });
   t.after(() => d.stop());
@@ -1151,4 +1151,43 @@ test("a box-less device pairs a fresh server, is recorded as the owner's device 
   const sig = crypto.sign("sha256", Buffer.from(`paired-start\n${done.device}\n${ch.body.data.challenge}`), { key: dk.privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url");
   const started = await over(c, "presence.person.start-paired", { sig });
   assert.equal(started.status, 200, JSON.stringify(started));
+});
+
+test("pairServer maps a refused owner to bad_owner, not a network error, and nothing is owned", async t => {
+  const w = await world(t);
+  const saved = process.env.VYRE_WINK_TYPED_CODE;
+  delete process.env.VYRE_WINK_TYPED_CODE;
+  t.after(() => { if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
+  const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
+  await assert.rejects(pairServer({ payload: made.qr, owner: { id: "per_a", name: "Alex" }, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: keystore(t) }), e => e.code === "bad_owner");
+  assert.equal((await w.call("wink.server.status", {}, "cli", PROOF)).data.owned, false);
+});
+
+test("a pairing whose app closed before the yes does not leave the server busy: the ask is dropped and the next scanner is asked", async t => {
+  const w = await world(t, { abandonMs: 200 });
+  const saved = process.env.VYRE_WINK_TYPED_CODE;
+  delete process.env.VYRE_WINK_TYPED_CODE;
+  t.after(() => { if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
+  const first = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
+  const owner = { kind: "identity", id: "per_" + "q".repeat(26), name: "Alex" };
+  // the first app redeems, commits, hears the server's nonce and then goes away (a closed tab)
+  const scan = parseServerQr(first.qr);
+  const r = await redeem(t, w, scan.seed, "Alex's browser");
+  const c = r.open();
+  const na = newNonce(), commit = await nonceCommit(na), tag = await ticketTag(Buffer.from(scan.seed).toString("base64url"));
+  assert.equal((await over(c, "wink.server.adopt", { owner, identity: owner.id, pairing: { commit, tag } })).status, 200);
+  c.close();
+  // a second scanner is told busy while the first is still there (inside the grace), and asked once the first is gone
+  const early = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
+  await assert.rejects(pairServer({ payload: early.qr, owner, name: "Eve", crypto: nodeCrypto(), keyStore: keystore(t) }), e => e.code === "busy");
+  await new Promise(r => setTimeout(r, 700)); // the grace (200 ms in this test) passes
+  const second = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
+  let done = null;
+  const pairing = pairServer({ payload: second.qr, owner, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: keystore(t), pollMs: 100, onWords: x => { done = x; } });
+  pairing.catch(() => {});
+  const q = await until(async () => { const x = (await w.call("wink.server.pairing", {}, "cli", PROOF)).data; return x && x.asking ? x : null; }, 10_000);
+  assert.ok(q.asking, "the second scanner is asked once the abandoned one is gone");
+  await w.call("wink.server.pair.answer", { yes: false }, "cli", PROOF);
+  await pairing.catch(() => null);
+  void done;
 });
