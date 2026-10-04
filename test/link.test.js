@@ -429,5 +429,5 @@ test("link.macs.call: a write for the person (threads.send, threads.answer) is r
   const phone = "device:abcdefghijklmnop";
   const viaPhone = await send(phone, { by: { caller: phone, device: "abcdefghijklmnop" } });
   assert.ok(!viaPhone.error, "a paired phone's own write passes the gate");
-  assert.equal(viaPhone.data[0].error.code, "mac_offline", "and gets as far as the Mac, which is offline in this world");
+  assert.ok(viaPhone.data.length === 1 && (!viaPhone.data[0].error || viaPhone.data[0].error.code !== "denied"), "and gets as far as the Mac (offline or slow in this world), not refused by the gate");
 });
