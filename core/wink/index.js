@@ -306,7 +306,7 @@ export function createWink(inject = {}) {
     live = pairing.peers;
     liveLinks = pairing.serverLinks;
     // handed up by name (core/modules provideOnce): the spaces and runner modules reach a paired server's peer session and kernel through ctx.sessionFor and ctx.remoteKernel
-    try { ctx.provide("sessionFor", (/** @type {string} */ id) => pairing.serverLinks().sessionFor(id)); ctx.provide("remoteKernel", (/** @type {string} */ id, /** @type {string} */ sp) => pairing.serverLinks().remoteKernel(id, sp)); } catch { /* provided already (a restart in one process), or no daemon (a test ctx) */ }
+    try { ctx.provide("winkSessionFor", (/** @type {string} */ id) => pairing.serverLinks().sessionFor(id)); ctx.provide("remoteKernel", (/** @type {string} */ id, /** @type {string} */ sp) => pairing.serverLinks().remoteKernel(id, sp)); } catch { /* provided already (a restart in one process), or no daemon (a test ctx) */ }
     /** A space's own name for a card, never its id. */
     const spaceName = async (/** @type {string} */ id) => {
       try { const m = (await directory.memberships(await owner1())).find(x => x.space === id); if (m && m.name) return String(m.name); } catch {}

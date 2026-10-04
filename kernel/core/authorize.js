@@ -163,6 +163,7 @@ export function clampTo(parent, child, since = () => 0, riskOf = () => undefined
  * @property {(service: string, action: string, resource: string) => boolean} [standing] whether a service declared a standing read of this family of resources; a service with no declaration gets nothing
  * @property {(i: { id: string, chain: any, action: string, resource: string }) => boolean | Promise<boolean>} [approvedAct] does this approval (an approved held-act task) cover exactly this act by this chain? It is USED here: the hook marks it spent atomically as it answers yes, so an approval is one decision, whoever calls `authorize` (the gate or a Flow runner), and cannot be replayed for a second act.
  * @property {{ match(i: { chain: any, action: string, resource: string }): any[] | Promise<any[]> }} [rules] the Space's standing rules (kernel/grants): asked BEFORE grants; a rule only tightens (never, always ask, draft only) and never allows
+ * @property {(waiver: any, q: { chain: any, action: string, resource: string }) => boolean} [waives] does a live Kit-install waiver stand for presence on this act
  * @property {(proof: any, ctx: any) => boolean | Promise<boolean>} [verifyPresence] the hardware-signer check (core/presence.js); default none
  * @property {(chain: any) => boolean} [hasPresenceSession]
  * @property {number} [policy_version]
@@ -304,7 +305,9 @@ export function createAuthorizer(cfg) {
       // A session stands for presence on admin and grant only when the chain is exactly one person: an assistant in the chain never inherits it.
       const sessionOk = !(risk === "admin" || risk === "grant") || isExactlyPerson(chain);
       const presenceMet = presence === "none" || (presence === "session" && sessionOk && (cfg.hasPresenceSession ? cfg.hasPresenceSession(chain) : false))
-        || (input.presence && cfg.verifyPresence ? await cfg.verifyPresence(input.presence, ctxEvidence) === true : false);
+        || (input.presence && cfg.verifyPresence ? await cfg.verifyPresence(input.presence, ctxEvidence) === true : false)
+        // The owner's approval of a Kit's install card, held by the kernel as a waiver only it can make (kernel/tasks/kit-apply.js): presence for that install and no other act.
+        || (input.waiver !== undefined && typeof cfg.waives === "function" ? cfg.waives(input.waiver, { chain, action, resource }) === true : false);
       // The same obligation reached by two grants of a delegation chain (a child and the parent it came from) is one obligation.
       const out = obligations.filter((o, i) => obligations.findIndex(x => JSON.stringify(x) === JSON.stringify(o)) === i);
       if (presence !== "none") out.push({ type: "presence", method: presence });
