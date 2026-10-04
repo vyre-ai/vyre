@@ -174,8 +174,8 @@ test("modules: every call passes through the rules, whoever makes it", async t =
     rules: async call => { seen.push(call.caller); return call.input.text === "rm -rf" ? { allow: false, reason: "held" } : { allow: true }; },
   });
   assert.equal((await reg.call("notes.add", { text: "ok" }, "mcp")).data.saved, "ok");
-  assert.deepEqual(await reg.call("notes.add", { text: "rm -rf" }, "http"), { error: { code: "denied", message: "held" } });
-  assert.deepEqual(seen, ["mcp", "http"]);
+  assert.deepEqual(await reg.call("notes.add", { text: "rm -rf" }, "cli"), { error: { code: "denied", message: "held" } });
+  assert.deepEqual(seen, ["mcp", "cli"]);
 });
 
 test("modules: bad input is refused before the tool runs", async t => {

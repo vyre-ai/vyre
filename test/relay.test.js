@@ -127,6 +127,8 @@ test("relay: the first device pairs during onboarding and reaches the box's rout
   const health = await p.request("GET", "/v1/health");
   assert.equal(health.status, 200);
 
+  assert.equal((await p.call("relay.devices.list")).status, 401, "the device list is the person's own: a device that has not signed in is asked to");
+  await p.signIn(d);
   const list = await p.call("relay.devices.list");
   assert.equal(list.status, 200, JSON.stringify(list));
   assert.deepEqual(list.data.devices.map(x => [x.id, x.name, x.online, x.path]), [[p.reply.device, "alex's phone", true, "relay"]]);
@@ -167,7 +169,7 @@ test("relay: a relayed device is a device; a person's action needs its person se
   const device = await p.call("relay.pair.start", {}, P);
   assert.equal(device.status, 401, JSON.stringify(device));
   assert.equal(device.error.code, "person_session_required");
-  assert.equal((await p.call("relay.devices.list")).status, 200, "reads stay the device's");
+  assert.equal((await p.call("relay.devices.list")).status, 401, "the device list is the person's own, so it too needs the session (reach person)");
   // Signed in with its own presence key, the device is the person, and presence still decides.
   await p.signIn(d);
   const bare = await p.call("relay.pair.start");
@@ -294,6 +296,7 @@ test("relay: an untrusted browser asks to be trusted once, about itself only, an
   assert.ok(listed.trustAsked > 0 && listed.trustAsked <= Date.now(), JSON.stringify(listed));
   assert.match(listed.fingerprint, /^[a-z2-7]{4} [a-z2-7]{4}$/);
   assert.equal((await web.call("relay.devices.list")).data.devices.find(x => x.id === web.reply.device).trustAsked, undefined, "a limited browser does not see who is waiting");
+  assert.deepEqual((await web.call("relay.devices.list")).data.devices.map(x => x.id), [web.reply.device], "a browser reads its own row only, not the other paired devices (PA-4)");
   assert.equal((await p.call("relay.devices.list")).data.devices.find(x => x.id === p.reply.device).trustAsked, undefined, "an app device has none");
   assert.deepEqual([asked[0].id, asked[0].name], [web.reply.device, "Harlow Legal laptop"]);
   assert.match(asked[0].fingerprint, /^[a-z2-7]{4} [a-z2-7]{4}$/);
@@ -401,6 +404,7 @@ test("relay: a device reports its path; the box measures the relay round trip an
   const r = await p.call("relay.devices.path", { path: "relay", rtt: 42 });
   assert.equal(r.status, 200, JSON.stringify(r));
   assert.match(r.data.link, /^[A-Za-z0-9_-]{22}$/);
+  await p.signIn(d);
   let me = (await p.call("relay.devices.list")).data.devices[0];
   assert.equal(me.path, "relay");
   assert.equal(typeof me.rtt, "number", "the box pinged the device over the channel");

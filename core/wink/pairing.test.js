@@ -706,11 +706,11 @@ test("Q-1: a first adoption by a paired device is a question at the server: who 
   assert.equal(first.words, "amber coral app1", "the words come from the server's keys and this device");
   assert.equal(w.p.meta.get("owner"), null, "asking does not own");
   const q = await atServer(w, "wink.server.pairing");
-  assert.deepEqual({ asking: q.asking, name: q.name, words: q.words }, { asking: true, name: "Alex", words: undefined }, "the question never shows the right words, only choices");
+  assert.deepEqual({ asking: q.asking, name: q.name, words: q.words }, { asking: true, name: "Alex (id aaaaaa)", words: undefined }, "the question never shows the right words, only choices; the claimed name carries the identity id's first characters");
   assert.equal(q.choices.length, 3);
   assert.equal(new Set(q.choices).size, 3);
   assert.ok(q.choices.includes("amber coral app1"), "the right words are one of the three");
-  assert.match(q.line, /^Pair this server to Alex\? Pick the three words the app shows: 1\) .+ 2\) .+ 3\) .+$/);
+  assert.match(q.line, /^Pair this server to Alex \(id aaaaaa\)\? Pick the three words the app shows: 1\) .+ 2\) .+ 3\) .+$/);
   assert.ok(w.events.some(e => e[0] === "wink.pair-asked" && e[1].choices.includes("amber coral app1") && e[1].words === undefined), "the event carries choices, never the right words");
   // asking again is the same ask, not a second owner
   assert.equal((await adoptAs(w, "device:app1")).pending, true);
@@ -1339,4 +1339,14 @@ test("wink.server.status: not owned before the pairing, then the space and the p
   assert.equal(st.space, "Personal");
   assert.equal(typeof st.device, "string");
   await assert.rejects(() => w.call("wink.server.status", {}, "device:app1"), e => e.code === "denied");
+});
+
+test("PA-2: a look-alike letter in the claimed name is shown beside the identity id, which a claim cannot fake", async () => {
+  const w = world({ confirm: true });
+  const lookalike = "\u0430lex"; // a Cyrillic "a" then "lex": it reads as alex
+  await adoptAs(w, "device:app1", { ...ASKED, owner: { ...ASKED.owner, name: lookalike } });
+  const q = await atServer(w, "wink.server.pairing");
+  assert.match(q.name, /\(id [A-Za-z0-9]{1,6}\)$/, "the id's first characters are always shown");
+  assert.notEqual(q.name, "alex");
+  assert.ok(q.line.includes("(id "), "and so is the line the person reads");
 });
