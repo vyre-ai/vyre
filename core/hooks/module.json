@@ -22,7 +22,7 @@
         "reach": "anyone"
       },
       {
-        "name": "hooks.open",
+        "name": "hooks.open", "outward": true,
         "reach": "person",
         "effect": "write"
       },
