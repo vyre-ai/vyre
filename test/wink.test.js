@@ -1492,8 +1492,8 @@ test("SERVER-HOSTED SPACE end to end: a device daemon with a spaces module asks 
   t.after(() => device.stop());
   const dcall = (/** @type {string} */ tool, /** @type {any} */ input = {}, /** @type {any} */ headers = {}) => import("../core/daemon/client.js").then(m => m.call(tool, input, { root: droot, caller: "cli", headers }));
   const proofHeader = { "x-vyre-kernel-proof": Buffer.from(JSON.stringify({ key: "k1" })).toString("base64url"), "x-vyre-presence": "passkey id=x" };
-  const me = (await dcall("spaces.identity.create", { name: "devalex" })).data;
-  assert.ok(me && me.id);
+  const meR = await dcall("spaces.identity.create", { name: "devalex" }); const me = meR.data;
+  assert.ok(me && me.id, JSON.stringify(meR).slice(0, 300));
   // the device knows the server as its paired server (its own record of it)
   device.registry.deps.db.prepare("INSERT INTO wink_devices (id, identity, kind, name, owner_kind, owner_id, created) VALUES (?, ?, 'server', 'srv', 'identity', ?, 1)").run("srv", me.id, me.id);
   const made = await dcall("spaces.create", { name: "harlowsrv", displayName: "Harlow Legal", home: { kind: "server", device: { id: "srv", name: "srv", alwaysOn: true }, confirmed: true } }, proofHeader);
