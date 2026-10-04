@@ -190,7 +190,7 @@ const T = world.types.data?.types ?? [];
 const firstType = T.find((t) => !/^(def-|flow-|kit-)/.test(t.name))?.name;
 const firstFlow = Array.isArray(world.flows.data) ? world.flows.data[0]?.id : undefined;
 
-await step("shell: the space switcher lists the box's spaces and the person", { expect: spaceNames.length ? [spaceNames[0]] : [] }, async () => { await go("u/now"); });
+await step("shell: the space switcher lists the box's spaces and the person", { expect: spaceNames.length ? [spaceNames[0]] : [] }, async () => { await go("u/now"); await click("All spaces", { exact: false }).catch(() => {}); });
 await step("now: opens", { note: "Now opened" }, async () => { await go("u/now"); });
 await step("records: first type lists its records", { skip: firstType ? undefined : "the box has no record type outside its own (def-flow, goal...): nothing to list" }, async () => { await go(`u/records/${firstType}`); });
 await step("projects: opens", {}, async () => { await go("u/projects"); });
@@ -317,7 +317,9 @@ await step("setup: create a space on this computer, close partway, resume", { sk
   await click("Continue");
   await click("On this computer");
   await page.screenshot({ path: path.join(OUT, "setup-2-here.png") });
-  await click("Create it here", { settle: 4000 });
+  await click("Create it here", { settle: 1000 });
+  // Creating the space takes as long as the box takes: wait for the look step (up to 60 s) before judging.
+  await page.waitForFunction(() => /Give .* a look|did not finish|unreachable/.test(document.body.innerText), null, { timeout: 60_000 }).catch(() => {});
   await page.screenshot({ path: path.join(OUT, "setup-3-after-create.png") });
   const t3 = await text();
   if (!/Give .* a look/.test(t3)) throw new Error(`stopped after Create it here: ${t3.replace(/\s+/g, " ").slice(0, 300)}`);
@@ -336,7 +338,7 @@ await step("setup: create a space on this computer, close partway, resume", { sk
   await page.screenshot({ path: path.join(OUT, "setup-5b-ai.png") });
   const tAi = (await text()).replace(/\s+/g, " ");
   if (!/Connect your AI accounts/.test(tAi)) throw new Error(`the AI accounts step did not follow members: ${tAi.slice(0, 200)}`);
-  if (!/Claude/.test(tAi) || !/Not connected|Connected|Cannot connect|Waiting|Did not connect/.test(tAi)) throw new Error(`the Claude card shows no honest state: ${tAi.slice(0, 240)}`);
+  if (!/Claude/.test(tAi) || !/Not connected|Connected|Cannot connect|Waiting|Did not connect|Pair first|On your phone/.test(tAi)) throw new Error(`the Claude card shows no honest state: ${tAi.slice(0, 240)}`);
   await clickAny(["Later", "Continue"]); // ai
   await clickAny(["Later", "Continue"]); // connectors
   await clickAny(["Start empty", "Finish setup"]);

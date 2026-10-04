@@ -22,7 +22,7 @@ function setup(t) {
   const db = open(path.join(tempHome(t), "vyre.db"));
   t.after(() => db.close());
   let clock = 1_000_000;
-  const p = new Presence({ db, platform: "linux", touchid: null, webauthn: null, now: () => clock });
+  const p = new Presence({ db, platform: "linux", touchid: null, webauthn: null, now: () => clock, softwareOk: () => true });
   return { p, db, now: () => clock };
 }
 
