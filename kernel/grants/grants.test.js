@@ -569,7 +569,7 @@ test("WF-1: a seal.mac that rejects once leaves the store exactly as it was, and
   // adoptOwner (a change of several events: the marker first, then the moves; the log decides)
   const NEW = "per_cccccccccccccccccccccccccc";
   fails = 1;
-  await assert.rejects(() => gs.adoptOwner(NEW), /sealing process/);
+  await assert.rejects(() => gs.adoptOwner(NEW, OWNER), /sealing process/);
   assert.equal(gs.adopted(), null, "a failed adoption left no marker in memory");
   await againstRebuild("failed adoption");
   // and each of them, once the sealing process is back, works
@@ -587,23 +587,23 @@ test("AO-3: a crash right after the owner.adopted marker (the owner moved only i
   const NEW = "per_cccccccccccccccccccccccccc", OTHER = "per_dddddddddddddddddddddddddd";
   const role = p => gs.roleOf({ kind: "person", id: p, space: SPACE });
   allow = 1; // the marker is sealed and written, then the process dies
-  await assert.rejects(() => gs.adoptOwner(NEW), /process died/);
+  await assert.rejects(() => gs.adoptOwner(NEW, OWNER), /process died/);
   allow = Infinity;
   assert.deepEqual(gs.adopted(), { from: OWNER, to: NEW }, "the marker is in the log and in memory");
   assert.equal(role(OWNER), "owner", "the move did not happen");
   assert.equal(role(NEW), null);
-  await assert.rejects(() => gs.adoptOwner(OTHER), { code: "already_adopted" }, "a different id is refused while the first is unfinished");
+  await assert.rejects(() => gs.adoptOwner(OTHER, OWNER), { code: "already_adopted" }, "a different id is refused while the first is unfinished");
   // a restart: the rebuild reads the marker, and the boot repair (kernel/index.js) calls adoptOwner with it
   await gs.rebuild();
   assert.deepEqual(gs.adopted(), { from: OWNER, to: NEW });
-  const done = await gs.adoptOwner(NEW);
+  const done = await gs.adoptOwner(NEW, OWNER);
   assert.deepEqual(done, { owner: NEW, previous: OWNER, changed: true });
   assert.equal(role(NEW), "owner"); assert.equal(role(OWNER), null);
   assert.equal(log.read({ type: "owner.adopted" }).length, 1, "the marker is not written twice");
   const live = JSON.stringify([role(NEW), role(OWNER)]);
   await gs.rebuild();
   assert.equal(JSON.stringify([role(NEW), role(OWNER)]), live, "a rebuild agrees");
-  assert.deepEqual(await gs.adoptOwner(NEW), { owner: NEW, previous: OWNER, changed: false });
+  assert.deepEqual(await gs.adoptOwner(NEW, OWNER), { owner: NEW, previous: OWNER, changed: false });
 });
 
 test("lend (ruling 5 Oct): the first lend takes ONE proof bound to the compound act and makes both sides; the proof covers nothing else; taking it away needs only a live session", async () => {
@@ -611,7 +611,7 @@ test("lend (ruling 5 Oct): the first lend takes ONE proof bound to the compound 
   const set = m => g.setRole(owner(), m, P.role(m));
   await set({ person: ALICE, role: "admin" });
   await set({ person: BOB, role: "member" });
-  const lendProof = o => ({ presence: proof("grants.offer", { lend: { member: o.member, device: o.device, device_key: o.device_key } }, `vyre://${SPACE}/offer/lend`) });
+  const lendProof = o => ({ presence: proof("grants.offer", { lend: { member: o.member, device: o.device, device_key: o.device_key, network_cap: o.network_cap ?? null } }, `vyre://${SPACE}/offer/lend`) });
   const q = (member, device, device_key) => ({ member, device, device_key });
   // a member lends their own computer: their side only, with one proof
   const b = { member: BOB, device: "dev_laptop", device_key: "KEY_B" };
@@ -648,7 +648,7 @@ test("lend (ruling 5 Oct): without a live person session even withdrawing is ref
   const set = m => g.setRole(owner(), m, P.role(m));
   await set({ person: BOB, role: "member" });
   const b = { member: BOB, device: "dev_laptop", device_key: "KEY_B" };
-  const pr = { presence: proof("grants.offer", { lend: { member: BOB, device: "dev_laptop", device_key: "KEY_B" } }, `vyre://${SPACE}/offer/lend`) };
+  const pr = { presence: proof("grants.offer", { lend: { member: BOB, device: "dev_laptop", device_key: "KEY_B", network_cap: null } }, `vyre://${SPACE}/offer/lend`) };
   await g.offers.lend(personChain(BOB), b, pr);
   await assert.rejects(() => g.offers.unlend(personChain(BOB), { member: BOB, device: "dev_laptop" }), "no session and no proof: refused");
   assert.equal(g.offers.active({ member: BOB, device: "dev_laptop", device_key: "KEY_B" }).memberAccepts, true, "still lent");
@@ -662,7 +662,7 @@ test("lend (ruling 5 Oct): after the member's own off, on again needs only the l
   await set({ person: ALICE, role: "admin" });
   await set({ person: BOB, role: "member" });
   const l = { member: BOB, device: "dev_laptop", device_key: "KEY_B" };
-  const withProof = { presence: proof("grants.offer", { lend: l }, `vyre://${SPACE}/offer/lend`) };
+  const withProof = { presence: proof("grants.offer", { lend: { ...l, network_cap: l.network_cap ?? null } }, `vyre://${SPACE}/offer/lend`) };
   await g.offers.lend(personChain(BOB), l, withProof);
   await g.offers.unlend(personChain(BOB), { member: BOB, device: "dev_laptop" });
   // the person's own off: on again with no proof at all
@@ -677,7 +677,7 @@ test("lend (ruling 5 Oct): after the member's own off, on again needs only the l
   await assert.rejects(() => g.offers.lend(personChain(BOB), l, {}), "needs the proof again");
   await gs.rebuild();
   await assert.rejects(() => g.offers.lend(personChain(BOB), l, {}), "and still after a rebuild");
-  await g.offers.lend(personChain(BOB), l, { presence: proof("grants.offer", { lend: l }, `vyre://${SPACE}/offer/lend`) });
+  await g.offers.lend(personChain(BOB), l, { presence: proof("grants.offer", { lend: { ...l, network_cap: l.network_cap ?? null } }, `vyre://${SPACE}/offer/lend`) });
   // removing the member ends the offer without their own act: back in, it is a first grant again
   await g.removeMember(owner(), { person: BOB }, P.role({ remove: BOB }));
   await set({ person: BOB, role: "member" });
@@ -685,4 +685,28 @@ test("lend (ruling 5 Oct): after the member's own off, on again needs only the l
   await assert.rejects(() => g.offers.lend(personChain(BOB), l, {}));
   // a different computer key is a different grant
   await assert.rejects(() => g.offers.lend(personChain(BOB), { ...l, device_key: "OTHER" }, {}));
+});
+
+test("lender's cap (reviewer-2 CAP-1..3): the lend proof binds the cap (stated or not stated), the tightest live cap wins, and a lend with another cap on an accepted computer is refused", async () => {
+  const { g } = await rig();
+  await g.setRole(owner(), { person: BOB, role: "member" }, P.role({ person: BOB, role: "member" }));
+  const lp = o => ({ presence: proof("grants.offer", { lend: { member: o.member, device: o.device, device_key: o.device_key, network_cap: o.network_cap ?? null } }, `vyre://${SPACE}/offer/lend`) });
+  const base = { member: BOB, device: "dev_a", device_key: "KEY_A" };
+  // CAP-1: a proof made for one cap is refused for another and for none; an invalid cap is bad_input
+  await assert.rejects(() => g.offers.lend(personChain(BOB), { ...base, network_cap: "internet" }, lp({ ...base, network_cap: "provider" })), "a proof for provider is refused for internet");
+  await assert.rejects(() => g.offers.lend(personChain(BOB), base, lp({ ...base, network_cap: "provider" })), "a proof for provider is refused for none stated");
+  await assert.rejects(() => g.offers.lend(personChain(BOB), { ...base, network_cap: "provider" }, lp(base)), "a proof for none stated is refused for provider");
+  await assert.rejects(() => g.offers.lend(personChain(BOB), { ...base, network_cap: "everything" }, lp({ ...base, network_cap: "everything" })), { code: "bad_input" });
+  await g.offers.lend(personChain(BOB), { ...base, network_cap: "provider" }, lp({ ...base, network_cap: "provider" }));
+  assert.equal(g.offers.capOf({ member: BOB, device: "dev_a" }), "provider");
+  // CAP-3: lending the accepted computer again with another cap (or none) is refused with a plain message, never silently kept at the old one
+  await assert.rejects(() => g.offers.lend(personChain(BOB), { ...base, network_cap: "internet" }, lp({ ...base, network_cap: "internet" })), /different network limit/);
+  await assert.rejects(() => g.offers.lend(personChain(BOB), base, lp(base)), /different network limit/);
+  // CAP-2: the tightest live cap wins, whatever the order, and an acceptance that states none never loosens one that does
+  const x = { side: "member_accepts", member: BOB, device: "dev_b", device_key: "KEY_B" };
+  const offer = (o) => g.offers.offer(personChain(BOB), o, { presence: proof("grants.offer", o, `vyre://${SPACE}/offer/new`) });
+  await offer(x); assert.equal(g.offers.capOf({ member: BOB, device: "dev_b" }), undefined);
+  await offer({ ...x, network_cap: "internet" }); assert.equal(g.offers.capOf({ member: BOB, device: "dev_b" }), "internet");
+  await offer({ ...x, network_cap: "provider" }); assert.equal(g.offers.capOf({ member: BOB, device: "dev_b" }), "provider");
+  await offer(x); assert.equal(g.offers.capOf({ member: BOB, device: "dev_b" }), "provider", "a later acceptance with none stated does not loosen it");
 });
