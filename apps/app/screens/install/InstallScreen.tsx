@@ -10,7 +10,7 @@ import { PairEntry, PairServer, PairWords, openPairing, type LongCode } from "..
 import { RealAdd } from "../devices/RealAdd";
 import { shell } from "../../src/shell/shell";
 import { pairSayHere } from "../../src/real/pair-say";
-import { ADD_PHONE, BROWSER, MAC_WHERE, NO_VYRE, WELCOME, WHO, deviceKind, firstStep, isPhone, isWho, whoLine } from "./first-run.js";
+import { ADD_PHONE, BROWSER, MAC_WHERE, NO_VYRE, WELCOME, WHO, deviceKind, firstStep, isPhone, isWho, offersNoVyre, whoLine } from "./first-run.js";
 import { COPY } from "../devices/wink.js";
 import { inviteRefusal } from "../devices/invite.js";
 import { parseWinkCode } from "../../src/api/wink-code";
@@ -318,7 +318,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
         {MOCK ? <View className="w-ring self-center"><Ring seed={4} /></View> : null}
         {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
         {MOCK ? <Button kind="primary" label="Simulate the scan" onPress={() => { setSession(openPairing(parseSample())); setStep("scanwords"); }} /> : <PairEntry onCode={(c: LongCode) => { try { setSession(claimBlocked() ? openPairing(c) : addThisDevice(c, { deviceLabel: device })); setStep("scanwords"); } catch (e) { setWrong(recoverRefusal((e as { code?: string }).code)); } }} />}
-        {isPhone(dk) && !MOCK ? <Button kind="ghost" label={NO_VYRE.have} onPress={() => setStep("novyre")} /> : null}
+        {offersNoVyre(dk, MOCK) ? <Button kind="ghost" label={NO_VYRE.have} onPress={() => setStep("novyre")} /> : null}
       </Page>
     );
   } else if (step === "novyre") {
