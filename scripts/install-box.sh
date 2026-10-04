@@ -397,6 +397,8 @@ dev_sign() {
   ' || die "could not pack and sign the checkout (see the lines above); nothing was installed"
   [ -s "$TMP/vyre.tgz" ] && [ -s "$TMP/SHA256SUMS.sig" ] || die "the packed checkout is incomplete; nothing was installed"
   TGZ=1; DEVSIGNED=1
+  # An image left from an earlier install is used as it is (compose never rebuilds a present vyre:local), so it would run the OLD tree with none of this signing: remove it, and the box is built fresh.
+  dk docker image rm -f vyre:local >/dev/null 2>&1 || true
   unpack
   WRAPPER_SRC="$TMP/vyre"
   done_step "the checkout is signed for this server only"
