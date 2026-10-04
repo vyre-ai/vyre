@@ -374,7 +374,7 @@ async function startLocked(opts, root, p, release) {
   }
 
   const terminalOf = opts.person || (sock => atTerminal(sock, registry, presence, devStandIn()));
-  const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, socket: true, terminalOf, kernelOf: () => kernel }).catch(e => fail(res, e)));
+  const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, people, socket: true, terminalOf, kernelOf: () => kernel }).catch(e => fail(res, e)));
   server.on("upgrade", async (req, socket, head) => {
     try { upgrade(req, socket, head, (await asTaken(socketCaller(req), /** @type {any} */ (socket), registry)).caller); }
     catch { socket.destroy(); }
@@ -835,6 +835,15 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   }
   // A person's label from a model's shell is the session's own, whatever the tool (asTaken).
   const shell = socket && !policy.caller ? await asTaken(caller, req.socket, registry, via.thread) : { caller, model: false };
+  // A command-line session (`vyre signin`): the credential rides as the bearer header, and counts only for a cli or local label that is not inside a model, from the terminal login it was made for. The login
+  // is what the daemon measures (terminalOf: the kernel's own view of the peer, a model's shell gets none), never anything the call says. A credential that does not fit is simply no session.
+  let cliSession = false;
+  if (socket && people && !policy.caller && !shell.model && /^(cli|local)$/.test(caller) && carried(req.headers)) {
+    const t = terminalOf ? await terminalOf(req.socket).catch(() => null) : null;
+    const key = t && typeof t === "object" ? t.key : t;
+    const c = key ? people.check({ headers: req.headers, node: `cli:${key}`, method: req.method, path: url.pathname + url.search, raw: "" }) : null;
+    if (c && c.ok && c.kind === "cli") { cliSession = true; via.person = { id: c.id, kind: "cli" }; }
+  }
   caller = shell.caller;
   if (req.method === "GET" && url.pathname === "/v1/health") {
     const mods = registry.status();
@@ -945,7 +954,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     done.then(() => inflight.delete(done));
     const proof = parsePresence(req.headers["x-vyre-presence"]);
     // For a tool one proof covers, the CLI's terminal: its window is bound to it (core/presence).
-    const terminal = socket && terminalOf && SESSIONABLE.has(name) && /^(cli|local)$/.test(caller) ? await terminalOf(req.socket) : null;
+    const terminal = socket && terminalOf && (SESSIONABLE.has(name) || SIGNIN_TOOLS.has(name)) && /^(cli|local)$/.test(caller) ? await terminalOf(req.socket) : null;
     // Only a caller vyred bound to a thread above says which chat tool call this is.
     const call = via.thread ? callId(req.headers["x-vyre-call-id"]) : null;
     // presence.capsule.pin judges the calling binary's own signature, read here from the socket's

@@ -162,6 +162,15 @@ export async function bootHomeKernel(cfg) {
       };
     }
   }
+  // The command line's sign-in (`vyre signin`): the owner's phone signs this and the daemon then gives that one terminal a person session. The terminal is named by a hash of the login key the daemon
+  // measured (never a label or anything the caller sends), so a proof made for one terminal's ask never satisfies another's. The sealing process checks and uses the proof like any other grant act.
+  const cliSigninFields = (/** @type {string} */ ask, /** @type {string} */ terminal) => ({ ask: String(ask), terminal: crypto.createHash("sha256").update(String(terminal)).digest("hex").slice(0, 32) });
+  const cliSigninPayload = (/** @type {string} */ ask, /** @type {string} */ terminal) => { const fields = cliSigninFields(ask, terminal); return { op: "grant.cli_signin", space: id.space, fields, payload_hash: payloadHash("grant.cli_signin", id.space, fields) }; };
+  const cliSigninCheck = async (/** @type {any} */ chain, /** @type {any} */ proof, /** @type {string} */ ask, /** @type {string} */ terminal) => {
+    if (!isExactlyPerson(chain) || chain.hops[0].actor.id !== id.owner) return { ok: false, why: "owner_only" };
+    const why = !sealer ? "no_presence_verifier" : await sealerPresence(sealer).check({ chain, op: "grant.cli_signin", fields: cliSigninFields(ask, terminal), proof });
+    return why ? { ok: false, why } : { ok: true };
+  };
   /** @type {any} */ let host;
   const egress = createEgress({ space: id.space, log: k.log, chains: k.chains, hostsOf: (/** @type {string} */ n) => host && host.hostsOf(n) });
   const supervisor = createSupervisor({ egress });
@@ -176,5 +185,5 @@ export async function bootHomeKernel(cfg) {
   // refuses a hosted Space unless this boot is the developer file-key one.
   const spaces = createSpaceKernels({ root: cfg.root, personal: { space: id.space, kernel: k }, openDb: (/** @type {string} */ f) => new DatabaseSync(f), ...(cfg.stageFactory ? { stageFactory: cfg.stageFactory } : {}), ...(sealer ? { sealer } : { fileKey: true }), ...(cfg.door ? { doorFor: () => cfg.door } : {}), ...(cfg.storeFor ? { storeFor: cfg.storeFor } : {}), ...(cfg.standIn ? { bootOptions: { standIn: cfg.standIn } } : {}) });
   await spaces.start();
-  return Object.freeze({ ...k, spaces, id: Object.freeze({ space: id.space, get owner() { return id.owner; } }), kernelFor: k.kernelFor, firstPartyCheck, reservedName, resetModulesList, get modulesListReset() { return modulesListReset; }, moduleHost: host, supervisor, moduleApprovals: approvals, stop: async () => { await spaces.stop(); await supervisor.stopAll(); if (ownSealer && sealer) await sealer.close(); } });
+  return Object.freeze({ ...k, spaces, id: Object.freeze({ space: id.space, get owner() { return id.owner; } }), kernelFor: k.kernelFor, firstPartyCheck, reservedName, resetModulesList, cliSigninPayload, cliSigninCheck, get modulesListReset() { return modulesListReset; }, moduleHost: host, supervisor, moduleApprovals: approvals, stop: async () => { await spaces.stop(); await supervisor.stopAll(); if (ownSealer && sealer) await sealer.close(); } });
 }
