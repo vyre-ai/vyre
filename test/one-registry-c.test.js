@@ -254,7 +254,8 @@ test("a recovered phone (a new device entry on the owner's identity list) reache
   assert.equal(added.error, undefined, JSON.stringify(added.error));
   const enrolled = async (/** @type {string} */ device) => (await srv.registry.call("spaces.devices.enrolled", { device, space: sp.space }, "module:vyred", { door: true })).data.enrolled;
   // the server knows alex's name once its owner is verified (pairing) or a person joins; record it as they do
-  srv.registry.deps.db.prepare("INSERT OR REPLACE INTO spaces_kv (key, value) VALUES (?, ?)").run(`person-name/${alex.id}`, JSON.stringify("alexr"));
+  assert.equal((await srv.registry.call("spaces.person.learn", { id: alex.id, name: "somebodyelse" }, "module:vyred")).data.known, false, "a name that is not theirs is not learned");
+  assert.equal((await srv.registry.call("spaces.person.learn", { id: alex.id, name: "alexr" }, "module:vyred")).data.known, true);
   assert.equal(await enrolled("devnotalexsxxxxx1"), false, "a device on nobody's list");
   assert.equal(await enrolled(phone.eid), true, "the recovered phone is on alex's own list and alex owns the space: no approval from another device");
   // the same rule for a space on the server alex does NOT belong to: not enrolled

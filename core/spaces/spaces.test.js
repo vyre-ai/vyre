@@ -888,6 +888,7 @@ test("a second person joins a space that lives on a server: the record carries t
   // kit's device does not host the space: without a stream it is told why
   const noStream = await kitDev.call("spaces.invites.preview", { link: made.link }, "cli", { token: kitToken });
   assert.equal(noStream.error && noStream.error.code, "unreachable");
+  assert.match(noStream.error.message, /^This space lives on alex's computer and cannot be reached from here\./, "the record names the owner");
   assert.match(noStream.error.message, /cannot be reached from here\. Ask them to move it to their server\.$/);
   // the home's end: the kernel's remote server, with the peer the door admitted from the hello
   // this test's module-made space id is not the kernel's (a stand-in kernelFor); a real home answers under one id

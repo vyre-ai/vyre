@@ -388,7 +388,7 @@ export default {
               await kv.put(`chain/${a.record.spaceId}`, c);
             }
             const state = await C.verifyChain(c.ops, { now: now() + C.SKEW_MS, ownerOps: ownerResolver(c.ops) });
-            await dir.claim(a.name, state, c.ops, await ownerSigner(), { v: 1, id: a.record.spaceId, name: a.name, label, rootPublic: a.rootPublic });
+            await dir.claim(a.name, state, c.ops, await ownerSigner(), { v: 1, id: a.record.spaceId, name: a.name, label, rootPublic: a.rootPublic, ...(who.name ? { ownerName: who.name } : {}) });
             await kv.put(`chain/${a.record.spaceId}`, { ops: c.ops, pin: C.pinOf(state) });
             return { ok: true };
           } catch (e) { return { ok: false, code: /** @type {any} */ (e).code, message: plainDirectory(e) }; }
@@ -400,7 +400,8 @@ export default {
           const home = { kind: a.home && a.home.kind, ...(a.home && a.home.address ? { address: a.home.address } : {}) };
           const { state } = await stateOfSpace(a.spaceId);
           const route = await routeOf(a.spaceId);
-          await dir.update(a.name, state, await ownerSigner(), { v: 1, id: a.spaceId, name: a.name, label: (row && (row.displayName || row.label)) || a.name, home, rootPublic: k ? k.publicKey : undefined, ...(route ? { route } : {}) });
+          let ownerLabel = null; try { const st = identity.status(); ownerLabel = st && st.exists && st.name ? String(st.name) : null; } catch { ownerLabel = null; }
+          await dir.update(a.name, state, await ownerSigner(), { v: 1, id: a.spaceId, name: a.name, label: (row && (row.displayName || row.label)) || a.name, home, rootPublic: k ? k.publicKey : undefined, ...(route ? { route } : {}), ...(ownerLabel ? { ownerName: ownerLabel } : {}) });
           return { ok: true };
         },
       },
@@ -975,6 +976,13 @@ export default {
     });
     // The Vyre name for an identity id, for the pairing question at a server ("Alex (alex.vyre.run)"). The directory has no reverse lookup, so: this device's own identity (its claimed name), else a name the asker CLAIMS
     // (owner.vyre) that the directory resolves to exactly this id, else a name this home verified when that person joined. Otherwise null: the short id is shown, never an unchecked name.
+    tool("spaces.person.learn", "For the peer door: remember a person's Vyre name once the directory says it is theirs, so this home can find their identity list (member-device enrolment). Answers { known }.", obj({ id: str, name: str }, ["id", "name"]), async (i, meta) => {
+      onlyModules(meta, ["vyred", "wink", "tailnet", "relay"]);
+      const label = String(i.name || "").trim().toLowerCase().replace(/\.vyre\.run$/, "");
+      if (!/^per_[a-z2-7]{26}$/.test(String(i.id)) || !/^[a-z0-9][a-z0-9-]{1,30}$/.test(label)) return { known: false };
+      try { const v = await dir.resolve(label); if (v.ok && v.kind === "person" && v.id === String(i.id)) { await kv.put(`person-name/${i.id}`, label); return { known: true }; } } catch { /* not theirs, or unreachable */ }
+      return { known: false };
+    }, { internal: true });
     tool("spaces.identity.name-of", "The claimed Vyre name for a person's id, verified: { name: 'alex.vyre.run' | null }. For modules.", obj({ id: str, claimed: str }, ["id"]), async (i, meta) => {
       onlyModules(meta, ["wink"]);
       const id = String(i.id);
@@ -1400,7 +1408,7 @@ export default {
       const who = me();
       const ts = now(), nonce = crypto.randomBytes(12).toString("base64url");
       const sig = b64u(await identity.sign(`vyre-invitee-hello-v1\n${channel.box}\n${space}\n${invite}\n${who.id}\n${who.eid}\n${ts}\n${nonce}`));
-      return { space, invite, identity: who.id, entry: who.eid, ts, nonce, sig };
+      return { space, invite, identity: who.id, ...(who.name ? { name: who.name } : {}), entry: who.eid, ts, nonce, sig };
     };
     /** The card for a kernel invite, from the Space's own kernel, after the link's pin and fingerprint are checked against the identity list. @param {any} i @param {any} p @param {any} meta */
     const kernelCard = async (i, p, meta) => {
