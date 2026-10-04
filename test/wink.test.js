@@ -625,7 +625,10 @@ test("X-1, real daemon and relay: a phone that redeems the QR is a waiting pairi
     assert.ok(rr.status === 404 || rr.status === 403 || rr.status === 0 || rr.status === 405, `${method} ${path} is closed to a waiting pairing (got ${rr.status})`);
   }
   // what wink.phone.wait does is its own: it cannot answer its own question, add itself, or be called with another's name
-  assert.equal((await over(c, "wink.phone.wait", { state: "yes", yes: true, device: "someone" })).body.data.state, "waiting");
+  // fields the tool does not declare are refused by the registry, so it cannot be told it was answered; the call it does take answers waiting
+  const extra = await over(c, "wink.phone.wait", { state: "yes", yes: true, device: "someone" });
+  assert.ok(extra.status >= 400 && !(extra.body && extra.body.data), "undeclared fields are refused");
+  assert.equal((await over(c, "wink.phone.wait", {})).body.data.state, "waiting");
   assert.equal(await relayHas(w, r.paired.device), false);
   assert.equal((await w.call("wink.access")).data.devices.length, 0);
   // it cannot sign in either: no presence key was enrolled and no session can start
