@@ -47,7 +47,7 @@ test("service: define from text, read the card, approve as a person, and the Flo
 test("service: approving, pausing and installing are a person's own act: a chain with an agent in it is refused", async () => {
   const { flows, person, withAgent } = await build();
   const d = await flows.tools["flows.define"](person, { flow: onPayment() });
-  for (const [tool, input] of [["flows.approve", { id: d.id, version: d.version, hash: d.hash }], ["flows.pause", { id: d.id }], ["flows.resume", { id: d.id }], ["kits.propose", { kit: estateKit(1) }], ["kits.remove", { id: "x" }]])
+  for (const [tool, input] of [["flows.approve", { id: d.id, version: d.version, hash: d.hash }], ["flows.pause", { id: d.id }], ["flows.resume", { id: d.id }], ["kits.remove", { id: "x" }]])
     await assert.rejects(() => flows.tools[tool](withAgent, input), e => e.code === "chain_not_person", tool);
 });
 

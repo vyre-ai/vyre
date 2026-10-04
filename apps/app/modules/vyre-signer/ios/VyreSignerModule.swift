@@ -9,6 +9,7 @@
 // converts it to P1363. The simulator has no Secure Enclave: there, and only there, the key is a
 // software keychain key, and info() says secureHardware false.
 
+import DeviceCheck
 import ExpoModulesCore
 import LocalAuthentication
 import Security
@@ -33,6 +34,12 @@ private func b64url(_ data: Data) -> String {
     .replacingOccurrences(of: "+", with: "-")
     .replacingOccurrences(of: "/", with: "_")
     .replacingOccurrences(of: "=", with: "")
+}
+
+private func fromB64url(_ s: String) -> Data? {
+  var t = s.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+  while t.count % 4 != 0 { t += "=" }
+  return Data(base64Encoded: t)
 }
 
 private func fail(_ code: String, _ message: String) -> SignerException {
@@ -147,6 +154,35 @@ public class VyreSignerModule: Module {
         kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
       ]
       return SecItemDelete(query as CFDictionary) == errSecSuccess
+    }
+
+    // Apple App Attest (vault's verifier checks these in the sealing process). The key lives in the Secure Enclave and is made by the OS; JS keeps only its id.
+    // Not available in the simulator or on a device without the capability: appAttestSupported() says so and the others reject with ERR_APPATTEST.
+    AsyncFunction("appAttestSupported") { () -> Bool in
+      DCAppAttestService.shared.isSupported
+    }
+
+    AsyncFunction("appAttestGenerateKey") { (promise: Promise) in
+      guard DCAppAttestService.shared.isSupported else { return promise.reject(fail("ERR_APPATTEST", "App Attest is not supported here")) }
+      DCAppAttestService.shared.generateKey { keyId, error in
+        if let keyId { promise.resolve(keyId) } else { promise.reject(fail("ERR_APPATTEST", error?.localizedDescription ?? "generateKey failed")) }
+      }
+    }
+
+    // clientDataHash is the 32 byte SHA-256, base64url. Returns the CBOR attestation object, base64url.
+    AsyncFunction("appAttestAttest") { (keyId: String, clientDataHash: String, promise: Promise) in
+      guard let hash = fromB64url(clientDataHash) else { return promise.reject(fail("ERR_INPUT", "clientDataHash is not base64url")) }
+      DCAppAttestService.shared.attestKey(keyId, clientDataHash: hash) { object, error in
+        if let object { promise.resolve(b64url(object)) } else { promise.reject(fail("ERR_APPATTEST", error?.localizedDescription ?? "attestKey failed")) }
+      }
+    }
+
+    // An assertion over clientDataHash (SHA-256 of the proof bytes, base64url). The counter inside it rises with every call. Returns the CBOR assertion, base64url.
+    AsyncFunction("appAttestAssert") { (keyId: String, clientDataHash: String, promise: Promise) in
+      guard let hash = fromB64url(clientDataHash) else { return promise.reject(fail("ERR_INPUT", "clientDataHash is not base64url")) }
+      DCAppAttestService.shared.generateAssertion(keyId, clientDataHash: hash) { object, error in
+        if let object { promise.resolve(b64url(object)) } else { promise.reject(fail("ERR_APPATTEST", error?.localizedDescription ?? "generateAssertion failed")) }
+      }
     }
 
     Function("info") { () -> [String: Any] in

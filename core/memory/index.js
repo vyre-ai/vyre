@@ -41,6 +41,8 @@ const PERSONAL_BATCH = 2000;
 const cwds = { type: "array", items: { type: "string" } };
 /** The person's surfaces (deck also admits their own devices) and modules: who the writes that have no model use are open to. */
 const PEOPLE_MOD = ["cli", "local", "deck", "capsule", "module"];
+/** Steering reaches a model's own session too (a project agent pins and mutes in ITS project): the body's guard decides what that session may steer, never the registry's list. */
+const STEERERS = [...PEOPLE_MOD, "mcp", "harness"];
 /** The person's surfaces only (their own devices ride "deck"): the corrections, whose bodies refuse everyone else too. */
 const PEOPLE = ["cli", "local", "deck", "capsule"];
 
@@ -501,7 +503,7 @@ export default {
     });
     const steer = mode => ({
       effect: "write",
-      callers: PEOPLE_MOD,
+      callers: STEERERS,
       description: mode === "pin"
         ? "Pin a node so it ranks first wherever it is relevant, everywhere (scope '*') or in one project folder. off: true unpins."
         : "Mute a node so memory never offers it, everywhere (scope '*') or in one project folder. off: true unmutes.",
@@ -584,6 +586,7 @@ export default {
     };
     const ownerWrite = run => ownerOnly(async (input, extra = {}) => {
       if (!personWrites(extra.caller, extra)) {
+        // SHIM(legacy labels): the label branch runs only with the kernel off
         const device = whoNow() ? Boolean(whoNow()?.device) && !namesAgent(extra.caller) : /^(?:tailnet:|device:)/.test(String(extra.caller || "")) && !/agent:/.test(String(extra.caller));
         throw Object.assign(new Error(device ? "corrections are the person's own: sign in on this device with your passkey first"
           : `corrections are made from the user's own surfaces, not ${plain(extra.caller || "an unnamed caller", 60)}`), { code: device ? "person_session_required" : "denied" });
@@ -1288,7 +1291,7 @@ export default {
     });
     ctx.tool("memory.curate", {
       effect: "write",
-      callers: PEOPLE_MOD,
+      callers: STEERERS,
       description: "Read any new turns and rebuild the graph now. full: true re-reads every turn. Returns counts.",
       input: { type: "object", properties: { full: { type: "boolean" }, ...agentField } },
       run: async ({ full = false, agent }, { caller } = {}) => {

@@ -86,6 +86,8 @@ export function createTasks(cfg) {
   const roleHolders = cfg.roleHolders || (() => []);
   /** @type {Map<string, any>} */ const tasks = new Map();
   /** @type {Map<string, any>} */ const bodies = new Map();
+  /** The task store for free text: durable when the kernel gives one (`cfg.texts`), else memory (a test rig). */
+  const texts = cfg.texts || (() => { /** @type {Map<string, any>} */ const m = new Map(); return { get: (/** @type {string} */ id) => m.get(id), set: (/** @type {string} */ id, /** @type {any} */ v) => { if (v === undefined) m.delete(id); else m.set(id, v); }, drop: (/** @type {string} */ id) => { m.delete(id); }, all: () => [...m.entries()] }; })();
   /** A standing always-ask rule names who must approve: that person, or someone who holds that role now. No rule: any approval stands. @param {{ approver?: { person?: string, role?: string } } | undefined} rule @param {{ approver_chain: any } | undefined} by */
   const approverOk = (rule, by) => {
     if (!rule || !rule.approver) return true;
@@ -106,6 +108,7 @@ export function createTasks(cfg) {
   // A task changes in memory and then its event is written; if the write fails the task goes back to what it was, so memory never shows a change the log does not hold (an approval
   // that was refused by the log must not stay live). `pending` keeps the state before the first change since the last event; `note` clears it on success and restores it on failure.
   /** @type {Map<string, any>} */ const pending = new Map();
+  /** @type {Set<string>} task|payload pairs already released (sent) whose approval event may not have been written yet */ const sent = new Set();
   const stage = (/** @type {string} */ id, /** @type {any} */ next) => { if (!pending.has(id)) pending.set(id, tasks.get(id)); tasks.set(id, next); return next; };
   const put = (/** @type {any} */ t, /** @type {any} */ patch) => stage(t.id, freeze({ ...t, ...patch, updated_at: clock() }));
   const unstage = (/** @type {string} */ id) => {
@@ -150,9 +153,26 @@ export function createTasks(cfg) {
   const guardedSkip = (/** @type {any} */ t) => needsCheck(t) || Boolean(t.required);
   const guarded = guardedSkip;
   const appendOrUndo = (/** @type {string} */ id, /** @type {any} */ chain, /** @type {any} */ ev, /** @type {any} */ opt) => { try { const e = cfg.log.append(chain, ev, opt); pending.delete(id); return e; } catch (e) { unstage(id); throw e; } };
+  // FREE TEXT NEVER GOES INTO THE LOG IN THE CLEAR (lead's ruling on reviewer-2's TR-1): a title, a note, an answer, a form, a reason or a draft is what a person or an assistant typed, and the append-only,
+  // hash-chained log cannot forget it. The log carries the task without that text plus the hash of it (`text_hash`) and, in an event's own data, `<key>_hash` for a reason, answer or evidence; the text
+  // itself lives in the task store (`cfg.texts`, durable), which a scrub can empty when a record is forgotten or a field is sealed late. A restart reads the text back from the store and keeps it only
+  // if it hashes to what the log recorded.
+  const TEXT_KEYS = ["reason", "answer", "evidence", "note", "title"];
+  const textOf = (/** @type {any} */ t) => ({ title: t.title, ...(t.note !== undefined ? { note: t.note } : {}), ...(t.answer !== undefined ? { answer: t.answer } : {}), ...(t.form !== undefined ? { form: t.form } : {}), ...(t.stuck ? { stuck: { reason: t.stuck.reason, suggested_fix: t.stuck.suggested_fix } } : {}) });
+  const withoutText = (/** @type {any} */ t) => { const { note: _n, answer: _a, form: _f, ...rest } = t; const out = { ...rest, title: "" }; if (t.stuck) { const { reason: _r, suggested_fix: _s, ...st } = t.stuck; out.stuck = st; } return out; };
+  const withText = (/** @type {any} */ t, /** @type {any} */ x) => { const o = { ...t, title: x.title }; for (const k of ["note", "answer", "form"]) if (x[k] !== undefined) o[k] = x[k]; if (t.stuck && x.stuck) o.stuck = { ...t.stuck, ...x.stuck }; return o; };
+  const textHash = (/** @type {any} */ t) => sha256(canonical(textOf(t)));
   const note = (/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ t, /** @type {any} */ data, /** @type {any} */ decision) => {
-    // The event carries the task as it stands after the change (never the canonical body: that holds the draft, which the log must not), so the log alone rebuilds every task at the next start (`rebuild` below): tasks used to live in memory only.
-    try { const now = tasks.get(t.id) || t; const e = cfg.log.append(chain, { type, sv: 1, subject: urnOf(cfg.space, t.id), data: { ...data, state: t.state, task: now } }, decision ? { decision } : {}); pending.delete(t.id); return e; } catch (e) { unstage(t.id); throw e; }
+    const now = tasks.get(t.id) || t;
+    const prior = texts.get(t.id);
+    try {
+      const logged = { ...data };
+      for (const k of TEXT_KEYS) if (logged[k] !== undefined) { logged[`${k}_hash`] = sha256(canonical(logged[k])); delete logged[k]; }
+      // the store first (a stale value after a failed append is put back below); then the event, which names the text only by its hash
+      texts.set(t.id, { ...textOf(now), ...(bodies.has(t.id) ? { body: bodies.get(t.id) } : {}) });
+      const e = cfg.log.append(chain, { type, sv: 1, subject: urnOf(cfg.space, t.id), data: { ...logged, state: t.state, task: { ...withoutText(now), text_hash: textHash(now) } } }, decision ? { decision } : {});
+      pending.delete(t.id); return e;
+    } catch (e) { try { texts.set(t.id, prior); } catch { /* the store is whatever it was */ } unstage(t.id); throw e; }
   };
 
   /** The transition table is the one source: ask it which rule applies, and check the caller's role is the rule's. */
@@ -304,12 +324,13 @@ export function createTasks(cfg) {
         decision = o.decision;
         // The facts the card shows are the kernel's: recipients checked against the record's own contact points, slot classes read from the vault. Whatever cannot be resolved shows as unverified.
         const facts = await resolveFacts(ev);
-        body = deepFreeze({ action: ev.action, resource: ev.resource, payload: ev.payload, facts });
-      } else body = deepFreeze({ task: id, kind: t.output.kind, evidence: deepFreeze(structuredClone(evidence)) });
-      const payload = freeze({ payload_hash: sha256(canonical(body)), decision, draft_hash: sha256(canonical(evidence)) });
+        // PR-2: the form a Flow sent with the task (a proposal's diff, a Kit card) is part of what the checker approves: its hash is in the body the proof covers.
+        body = deepFreeze({ action: ev.action, resource: ev.resource, payload: ev.payload, facts, ...(t.form !== undefined ? { form_hash: sha256(canonical(t.form)) } : {}) });
+      } else body = deepFreeze({ task: id, kind: t.output.kind, evidence: deepFreeze(structuredClone(evidence)), ...(t.form !== undefined ? { form_hash: sha256(canonical(t.form)) } : {}) });
+      const payload = freeze({ payload_hash: sha256(canonical(body)), decision, draft_hash: sha256(canonical(evidence)), ...(t.form !== undefined ? { form_hash: sha256(canonical(t.form)) } : {}) });
       bodies.set(id, body);
       const n = put(t, { state: "needs_check", payload });
-      note(chain, "task.needs-check", n, { payload_hash: payload.payload_hash, decision, ...(["decision", "fields", "note"].includes(t.output.kind) ? { evidence: body.evidence } : {}) });
+      note(chain, "task.needs-check", n, { payload_hash: payload.payload_hash, decision });
       return n;
     },
 
@@ -367,11 +388,15 @@ export function createTasks(cfg) {
       if (!p || await cfg.presence.check({ chain, op: "task.decide", fields: { task: id, payload_hash: t.payload.payload_hash, decision: t.payload.decision }, proof: p })) throw new KernelError("needs_presence", "approving needs your confirmation on this device, over exactly this");
       rule(t, "done", "checker_approval");
       if (outward(t) && cfg.release) {
-        try { await cfg.release(t, body, { person: person.id, key_id: p.key_id }); } catch (e) { throw new KernelError("unavailable", "it could not be sent, so it was not approved as sent", String(e && /** @type {any} */ (e).message)); }
+        // WF-2: the send happens before the event is written. If the event is refused the task goes back to waiting, and a second approval must not send again: the send is made once per
+        // task and payload (`sent`), and the release is told the same key so an egress can refuse a repeat too.
+        const idem = `${id}|${t.payload.payload_hash}`;
+        try { if (!sent.has(idem)) { await cfg.release(t, body, { person: person.id, key_id: p.key_id, idem }); sent.add(idem); } } catch (e) { throw new KernelError("unavailable", "it could not be sent, so it was not approved as sent", String(e && /** @type {any} */ (e).message)); }
       }
       const answer = !outward(t) && body && body.evidence !== undefined ? answerOf(t, body.evidence) : undefined;
       const n = put(t, { state: "done", outcome: "approved", ...(answer !== undefined ? { answer } : {}) });
       note(chain, "task.approved", n, { payload_hash: t.payload.payload_hash, key_id: p.key_id, ...(n.answer !== undefined ? { answer: n.answer } : {}) }, d.decision);
+      sent.delete(`${id}|${t.payload.payload_hash}`);
       approvedBy.set(id, { approver_chain: chain, use_proof: a.proofs && a.proofs.use ? a.proofs.use : null });
       const proposed = proposals.get(id);
       if (proposed) { const pt = tasks.get(proposed); if (pt && (pt.state === "ready" || pt.state === "stuck")) { rule(pt, "skipped", "proposal_for_person_with_presence"); note(chain, "task.skipped", put(pt, { state: "skipped" }), { by: "approved proposal" }); } }
@@ -500,6 +525,17 @@ export function createTasks(cfg) {
     },
 
     /**
+     * What a Kit install needs to know about an approved task (kernel/tasks/kit-apply.js): its form, the payload the checker's proof covered, the approver's own chain and when it was approved.
+     * Null unless a person approved it (done, approved, the body it was approved with still the one hashed).
+     * @param {string} id
+     */
+    kitApproval(id) {
+      const t = tasks.get(id), a = api.approvalFor(id);
+      if (!t || !a || t.form === undefined) return null;
+      return { form: t.form, payload: t.payload, approver: a.approver_chain, at: t.updated_at };
+    },
+
+    /**
      * Does this approved held-act task cover exactly this act by this chain? Pure (it consumes nothing: the gateway counts the use once). The chain's acting actor must
      * be the task's doer, and the approved body's action and resource must be the ones asked.
      * @param {{ id: string, chain: any, action: string, resource: string }} q
@@ -515,6 +551,33 @@ export function createTasks(cfg) {
       return true;
     },
 
+    /**
+     * Take free text out of the task store (the lead's TR-1 ruling: the log holds only hashes, the store can forget). Called by the paths that forget a record or seal a field late, never by a surface.
+     * `values`: plain values (strings) that moved into a sealed field: every task whose stored text contains one, as a substring, loses its whole text. `record`: every task about that record loses its text.
+     * The task keeps its structure with a plain title, a task waiting for its check goes back to ready, and the log's `text_hash` no longer resolves to anything. @param {{ values?: string[], record?: string }} o @returns {{ cleared: number }}
+     */
+    scrubTexts(o = {}) {
+      const values = (Array.isArray(o.values) ? o.values : []).filter((/** @type {any} */ v) => typeof v === "string" && v.length >= 3);
+      let cleared = 0;
+      /** @type {Set<string>} */ const hit = new Set();
+      if (typeof o.record === "string" && o.record) for (const t of tasks.values()) if (t.record === o.record) hit.add(t.id);
+      if (values.length) {
+        const rows = typeof texts.all === "function" ? texts.all() : [...tasks.keys()].map(id => [id, texts.get(id)]);
+        for (const [id, x] of rows) { let j = ""; try { j = JSON.stringify(x) || ""; } catch { j = ""; } if (values.some(v => j.includes(v) || j.includes(JSON.stringify(v).slice(1, -1)))) hit.add(String(id)); }
+      }
+      for (const id of hit) {
+        const t = tasks.get(id);
+        try { texts.drop(id); } catch { texts.set(id, undefined); }
+        bodies.delete(id);
+        if (t) {
+          const { payload, ...rest } = /** @type {any} */ (t);
+          const plain = withoutText(rest);
+          tasks.set(id, deepFreeze({ ...plain, title: "(the text of this task was removed)", ...(t.state === "needs_check" ? { state: "ready" } : {}) }));
+        }
+        cleared++;
+      }
+      return { cleared };
+    },
     /** Did a checker approve exactly this payload? Also true for a sealed use the approved payload listed by its hash. */
     approved(/** @type {string} */ id, /** @type {string} */ payload_hash) {
       const t = tasks.get(id);
@@ -525,21 +588,24 @@ export function createTasks(cfg) {
     },
   };
   // The tasks the log holds, at start: the newest event of each task carries the task as it was after that change (never its canonical body, which holds the draft). A task that was waiting for a check had its draft only in memory: it goes back to `ready` so its doer makes the draft again, rather than waiting for a card nobody can open. An event from before this was written (no `task`) adds nothing.
-  /** @type {Map<string, any>} */ const evidence = new Map();
   try {
     const f = { type: "task.*" };
     const evs = cfg.log && typeof cfg.log.read === "function" ? (cfg.log.iterate ? [...cfg.log.iterate(f)] : cfg.log.read(f)) : [];
     for (const e of evs) {
       const d = e && e.data;
       if (!d || !d.task || typeof d.task.id !== "string" || d.task.space !== cfg.space) continue;
-      tasks.set(d.task.id, deepFreeze(structuredClone(d.task)));
+      tasks.set(d.task.id, deepFreeze(structuredClone(d.task))); // text restored below
       if (e.type === "task.created" && typeof d.proposal_for === "string") proposals.set(d.task.id, d.proposal_for);
-      if (e.type === "task.needs-check" && d.evidence !== undefined) evidence.set(d.task.id, d.evidence);
     }
-    // A decision, fields or note waiting for its check has its answer in its needs-check event (as a completed one always did): its canonical body is rebuilt from it, and used only if it hashes to what was shown.
-    for (const [id, t] of tasks) if (t.state === "needs_check" && !bodies.has(id) && t.payload && evidence.has(id) && ["decision", "fields", "note"].includes(t.output.kind)) {
-      const body = deepFreeze({ task: id, kind: t.output.kind, evidence: deepFreeze(structuredClone(evidence.get(id))) });
-      if (sha256(canonical(body)) === t.payload.payload_hash) bodies.set(id, body);
+    // The text comes back from the task store, and only if it hashes to what the log recorded; a task whose text is gone keeps its structure with a plain title.
+    for (const [id, t] of [...tasks]) {
+      const logged = /** @type {any} */ (t).text_hash, { text_hash: _h, ...rest } = /** @type {any} */ (t);
+      const x = texts.get(id);
+      const restored = x && typeof x === "object" ? withText(rest, x) : null;
+      if (restored && sha256(canonical(textOf(restored))) === logged) {
+        tasks.set(id, deepFreeze(restored));
+        if (t.state === "needs_check" && x.body && t.payload && sha256(canonical(x.body)) === t.payload.payload_hash) bodies.set(id, deepFreeze(structuredClone(x.body)));
+      } else tasks.set(id, deepFreeze({ ...rest, title: "(the text of this task is no longer available)" }));
     }
     for (const [id, t] of tasks) if (t.state === "needs_check" && !bodies.has(id)) { const { payload, ...rest } = t; tasks.set(id, deepFreeze({ ...rest, state: "ready" })); }
   } catch { /* a log that cannot be read leaves no tasks, never a half set */ tasks.clear(); bodies.clear(); proposals.clear(); }

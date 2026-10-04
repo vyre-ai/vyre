@@ -134,6 +134,24 @@ export function createRecords(cfg) {
     if (pg.limit > 500) return { ...spec, page: { ...pg, limit: 500 } };
     return spec;
   };
+  /**
+   * A restricted caller whose access is a set of attribute equalities (project, owner ...) on the type: the predicate the store can count and list by from its own attribute table (kernel/core/authorize.js
+   * `rowPredicate`), or null. Only where the attributes are the ones this gateway wrote with the records: no module supplies an owner or project for the type and the home has no attribute function (`cfg.attrPush`),
+   * the store declares `attr_filter`, and no record of the type is privileged.
+   * @param {any} chain @param {string} type
+   */
+  const attrFilterFor = async (chain, type) => {
+    if (typeof cfg.attrPush !== "function" || !cfg.attrPush(type) || typeof store.features !== "function" || store.features().attr_filter !== true || typeof authorizer.rowPredicate !== "function" || hasPrivileged(type)) return null;
+    const pr = await authorizer.rowPredicate({ chain, action: "records.read", type });
+    return pr ? { urn_prefix: urn(type, ""), any: pr.any } : null;
+  };
+  const PROTECTED_BUILTIN = new Set(["kit-proposal", "kit-install"]);
+  /** @type {Set<string> | null} */ let protectedTypes = null;
+  const isProtectedType = async (/** @type {string} */ type) => {
+    if (PROTECTED_BUILTIN.has(type)) return true;
+    if (!protectedTypes) { try { protectedTypes = new Set((await store.types()).filter((/** @type {any} */ t) => t.protected === true).map((/** @type {any} */ t) => t.name)); } catch { return false; } }
+    return protectedTypes.has(type);
+  };
   const AGG_MAX_GROUPS = 10_000, AGG_MAX_PAGES = 40, AGG_MAX_MS = 8_000;
   const countRead = async (/** @type {any} */ chain, /** @type {string} */ type) => { const d = await check(chain, "records.read", urn(type, "*"), { probe: true }); if (d && cfg.enforce) cfg.enforce(chain, d); return d; };
   const members = cfg.members;
@@ -385,6 +403,14 @@ export function createRecords(cfg) {
     checkType(type); checkId(id);
     const u = urn(type, id);
     const d = await gate(chain, `records.${op}`, u);
+    // A protected type (the Kits' own bookkeeping, or a type that says `protected: true`): a row is changed or removed only by whoever made it, or by an owner or admin acting as themselves. Anyone else who
+    // may write the type can still read and create, never rewrite another's row (a member cannot change a stored Kit proposal).
+    if (op !== "create" && await isProtectedType(type)) {
+      const last = chain.hops[chain.hops.length - 1].actor, made = (kattrs.get(u) || {}).created_by;
+      const person = chain.hops.length === 1 && last.kind === "person" ? last : null;
+      const role = person && members && typeof members.membership === "function" ? (members.membership(person) || {}).role : undefined;
+      if (made !== `${last.kind}:${last.id}` && role !== "owner" && role !== "admin") throw new KernelError("not_allowed", `only whoever made this ${type} or an admin changes it`);
+    }
     const lim = await limitsOf(chain, type, d);
     if (op === "create" || op === "update") {
       refuseOutside(lim.allow, input);
@@ -407,17 +433,27 @@ export function createRecords(cfg) {
     const expect = merged === null || merged === undefined ? null : sha256(canonical({ deleted: op === "remove", data: merged }));
     const intent = { id: mintUuid(clock()), decision: d.decision, chain: chain.hops, record: u, base_version: base, operation: op, input_hash: sha256(canonical(input)), expect, redact, before_data: before ? before.data : null, state: "open", started_at: clock(), stored: await chains.serialize(chain), ...(attrs ? { attrs } : {}) };
     intents.set(intent.id, intent);
+    // One database transaction for the record and its event (built-in store only): they commit together, one fsync, or not at all. It spans only steps that wait on the microtask queue.
+    const tx = cfg.unit && typeof store.undo === "function" ? await cfg.unit.begin() : null;
+    /** Commit the unit; a commit that fails takes the record back out of memory and says so. */
+    const finishTx = async () => {
+      if (!tx) return;
+      try { tx.commit(); } catch (e) { try { await store.undo(type, id, before); } catch { /* the store is reloaded from disk at the next start */ } throw new KernelError("unavailable", "the record and its event could not be committed", String(e && /** @type {any} */ (e).message)); }
+    };
     let rec;
+    try {
     try { rec = await run(); }
     catch (e) {
       const err = mapError(e);
       // A definite refusal means nothing happened. A lost answer (unavailable) may mean it did: the intent stays open for recovery.
       if (REFUSED.has(err.code)) { intent.state = "compensated"; retire(intent); }
+      await finishTx();
       throw err;
     }
     if (rec.id !== id || rec.type !== type) {
       intent.state = "compensated"; retire(intent);
       try { if (op === "create") await store.remove(type, id, rec.version); } catch { /* best effort */ }
+      await finishTx();
       throw new KernelError("id_mismatch", "the store did not keep the id it was given");
     }
     // The store is not trusted to say what it wrote: compare what it returned with what this call asked for (K2-5).
@@ -427,11 +463,20 @@ export function createRecords(cfg) {
       intent.state = "unresolved";
       try { if (op === "create") await store.remove(type, id, rec.version); } catch { /* best effort */ }
       try { log.append(chain, { type: "store.disagreed", sv: 1, subject: u, data: { operation: op, expected: expect, got, version: rec.version } }, { decision: d.decision }); } catch { /* the refusal stands */ }
+      await finishTx();
       throw new KernelError("store_disagreed", "the store's answer does not match what was asked, so nothing was recorded as done");
     }
-    emit(chain, intent, rec, before, d.decision, false);
+    try { emit(chain, intent, rec, before, d.decision, false); }
+    catch (e) {
+      // The event was refused: with a unit, the record goes with it (disk rolled back, memory taken back); without one the intent stays open for recovery as before.
+      if (tx) { tx.rollback(); try { await store.undo(type, id, before); } catch { /* reloaded from disk at the next start */ } intent.state = "compensated"; retire(intent); }
+      throw e;
+    }
+    if (attrs) kattrs.set(u, attrs);
     // The stage was entered: one event says so (Flow triggers `enters-stage` read it), then the tasks side is told (below).
     if (/** @type {any} */ (stage).entered) { try { log.append(chain, { type: "record.stage-entered", sv: 1, subject: u, data: { type, id, stage: /** @type {any} */ (stage).entered.stage }, vis: "subject", red: "internal" }, { decision: d.decision }); } catch { /* the write stands; the entry is also reported to onStageEnter */ } }
+    await finishTx();
+    } finally { if (tx) tx.abandon(); }
     // The stage was entered: tell the tasks side to create the stage's task templates for this record (best effort; the write stands).
     if (/** @type {any} */ (stage).entered && cfg.onStageEnter) { try { await cfg.onStageEnter({ record: u, ...(/** @type {any} */ (stage).entered), chain }); } catch { /* the stage rule retries on the next move */ } }
     return shape(chain, rec, lim);
@@ -463,13 +508,17 @@ export function createRecords(cfg) {
     const attrs = { space, created_by: `${last.kind}:${last.id}`, ...a };
     const rec = await write(chain, "create", type, id, data, null, () => store.create(type, id, data), null, attrs);
     if (a.sensitivity === "privileged") noPrivileged.delete(type);
-    kattrs.set(urn(type, id), attrs);
     return rec;
   }
 
   const api = {
-    async define(chain, diff) {
-      const d = await gate(chain, "records.define", `vyre://${space}/definition/types`);
+    /**
+     * @param {any} chain @param {any} diff
+     * @param {{ waiver?: object }} [o] the waiver of an approved Kit install (kernel/tasks/kit-apply.js): it stands for the presence this admin act asks for, and only for a diff of exactly the types that Kit lists
+     */
+    async define(chain, diff, o = {}) {
+      if (o.waiver !== undefined && !(cfg.kitApply && cfg.kitApply.coversDefine(o.waiver, chain, diff))) throw new KernelError("not_allowed", "the approved Kit does not cover this definition");
+      const d = await gate(chain, "records.define", `vyre://${space}/definition/types`, o.waiver !== undefined ? { waiver: o.waiver } : {});
       for (const t of [...(diff.add_types || []), ...(diff.change_types || [])]) if (!TYPE_NAME.test(t.name)) throw new KernelError("bad_input", `bad type name ${t.name}`);
       checkKinds(diff); await checkRoles(diff);
       // A removed field is never required (new records could not be written without it); its data stays.
@@ -477,6 +526,7 @@ export function createRecords(cfg) {
       const unrequire = (/** @type {any} */ t) => (t.fields || []).some((/** @type {any} */ f) => (f.hidden === true || f.computed) && (f.required || f.unique)) ? { ...t, fields: t.fields.map((/** @type {any} */ f) => ((f.hidden === true || f.computed) && (f.required || f.unique) ? { ...f, required: false, unique: false } : f)) } : t;
       diff = { ...diff, ...(diff.add_types ? { add_types: diff.add_types.map(unrequire) } : {}), ...(diff.change_types ? { change_types: diff.change_types.map(unrequire) } : {}) };
       // The definition changes in the store and then its event is written; an event the log refuses puts the definitions back, so a defined type never stands without its line in the log.
+      protectedTypes = null;
       let was = null;
       try { was = typeof store.types === "function" ? await store.types() : null; } catch { was = null; }
       let res;
@@ -493,6 +543,7 @@ export function createRecords(cfg) {
           throw e;
         }
       }
+      if (o.waiver !== undefined && cfg.kitApply) cfg.kitApply.spend(o.waiver, diff);
       return res;
     },
 
@@ -519,6 +570,34 @@ export function createRecords(cfg) {
       await guardSealed(chain, type, spec, vs);
       await refuseComputed(type, spec);
       const readDec = await countRead(chain, type);
+      // When every row of the type gets this chain's answer (rowUniform: the grants cover the whole type, no rule or room or privileged record can tell two rows apart) every row the store
+      // returns is allowed, so the store's own page and cursor are the answer: no row is asked about, and no second page is read to look ahead.
+      if (readDec && !vs && typeof authorizer.rowUniform === "function" && !hasPrivileged(type) && await authorizer.rowUniform({ chain, action: "records.read", type })) {
+        let p;
+        try { p = await store.query(type, { ...spec, build_index: true, page: { limit: spec.page.limit, ...(spec.page.cursor ? { cursor: spec.page.cursor } : {}) } }); } catch (e) { throw mapError(e); }
+        const lim = { allow: allowList(readDec), hidden: (await hiddenFields(chain, type)) || new Set() };
+        return { rows: await withComputed(chain, type, p.rows.filter((/** @type {any} */ r) => r.type === type).map((/** @type {any} */ r) => ({ rec: shape(chain, r, lim), lim }))), ...(p.next_cursor ? { next_cursor: p.next_cursor } : {}) };
+      }
+      // A restricted caller whose access is attribute equalities: the store lists under the same predicate, so its page and cursor are the answer; every row is still asked about (cheap: one page).
+      if (readDec && !vs) {
+        const af = await attrFilterFor(chain, type);
+        if (af) {
+          let p;
+          try { p = await store.query(type, { ...spec, attr_filter: af, build_index: true, page: { limit: spec.page.limit, ...(spec.page.cursor ? { cursor: spec.page.cursor } : {}) } }); } catch (e) { if (!(e && /** @type {any} */ (e).code === "unsupported")) throw mapError(e); p = null; }
+          if (p) {
+            const hiddenSet = await hiddenFields(chain, type);
+            /** @type {any[]} */ const items = [];
+            for (const r of p.rows) {
+              if (r.type !== type) continue;
+              const dec = await check(chain, "records.read", urn(r.type, r.id));
+              if (!dec) continue;
+              const lim = { allow: allowList(dec), hidden: hiddenSet || new Set() };
+              items.push({ rec: shape(chain, r, lim), lim });
+            }
+            return { rows: await withComputed(chain, type, items), ...(p.next_cursor ? { next_cursor: p.next_cursor } : {}) };
+          }
+        }
+      }
       let cursor = spec.page.cursor, out = [], next;
       /** @type {{ allow: Set<string> | null, hidden: Set<string> }[]} */ const lims = [];
       for (let pages = 0; pages < 10; pages++) {
@@ -566,6 +645,17 @@ export function createRecords(cfg) {
           try { return await store.aggregate(type, { ...spec, build_index: true }); } catch (e) { throw mapError(e); }
         }
       }
+      // A restricted caller whose access is attribute equalities: the store counts natively under the same predicate (a store that cannot, says `unsupported` and the rows are totalled below).
+      if (typeDec && !vs && typeof store.aggregate === "function") {
+        const af = await attrFilterFor(chain, type);
+        if (af) {
+          const lim = await limitsOf(chain, type, typeDec);
+          const used = [...(spec.group_by || []), ...(spec.measures || []).map((/** @type {any} */ m) => m && m.field).filter(Boolean)];
+          if (used.every((/** @type {string} */ k) => !lim.hidden.has(k) && (!lim.allow || lim.allow.has(k)))) {
+            try { return await store.aggregate(type, { ...spec, attr_filter: af, build_index: true }); } catch (e) { if (!(e && /** @type {any} */ (e).code === "unsupported")) throw mapError(e); }
+          }
+        }
+      }
       // A store cannot hide rows from a total, so the gateway aggregates only the rows it has itself allowed. Rows are cut to the fields the total uses and the loop yields at every row.
       const need = new Set([...(spec.group_by || []), ...(spec.measures || []).map((/** @type {any} */ m) => m && m.field).filter(Boolean)]);
       // Folded a row at a time: memory is the number of groups (capped), never the number of rows; the scan is capped at 40 pages (20,000 rows) and in time, and says so (`unsupported`) rather than totalling a part.
@@ -598,6 +688,28 @@ export function createRecords(cfg) {
       for (const t of spec.types || []) checkType(t);
       spec = checkPage(spec);
       const vs = await viewersOf(chain);
+      // Row-uniform on every type searched (see query): the store's page and cursor are the answer, no row is asked about and no page is read ahead.
+      if (!vs && Array.isArray(spec.types) && spec.types.length && spec.types.length <= 8 && typeof authorizer.rowUniform === "function") {
+        /** @type {Map<string, any>} */ const decs = new Map();
+        for (const t of spec.types) {
+          const d = await countRead(chain, t);
+          if (!d || hasPrivileged(t) || !(await authorizer.rowUniform({ chain, action: "records.read", type: t }))) { decs.clear(); break; }
+          decs.set(t, d);
+        }
+        if (decs.size === spec.types.length) {
+          let u;
+          try { u = await store.search(spec); } catch (e) { throw mapError(e); }
+          const out = [];
+          for (const h of u.rows) {
+            const d = decs.get(h.type);
+            if (!d) continue;
+            const limited = allowList(d) !== null || ((await hiddenFields(chain, h.type)) || new Set([1])).size > 0;
+            const { snippet: _s, ...bare } = h;
+            out.push(limited ? bare : h);
+          }
+          return { rows: out, ...(u.next_cursor ? { next_cursor: u.next_cursor } : {}) };
+        }
+      }
       let p;
       try { p = await store.search(spec); } catch (e) { throw mapError(e); }
       const words = String(spec.text ?? "").toLowerCase().split(/\s+/).filter(Boolean);

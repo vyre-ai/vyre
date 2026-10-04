@@ -13,12 +13,12 @@ import { Events } from "../events/index.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 
 const AGENTS = `export default { async start(ctx) {
-  ctx.tool("agents.list", { run: async () => globalThis.__agents || [{ name: "juno", kind: "assistant", doing: "idle" }] });
+  ctx.tool("agents.list", { effect: "read", run: async () => globalThis.__agents || [{ name: "juno", kind: "assistant", doing: "idle" }] });
   return {};
 } };`;
 
 const WAITING = `export default { async start(ctx) {
-  ctx.tool("waiting.count", { run: async () => globalThis.__waiting || { count: 0, by_kind: { ask: 0, draft: 0, reminder: 0, pairing: 0 } } });
+  ctx.tool("waiting.count", { effect: "read", run: async () => globalThis.__waiting || { count: 0, by_kind: { ask: 0, draft: 0, reminder: 0, pairing: 0 } } });
   return {};
 } };`;
 

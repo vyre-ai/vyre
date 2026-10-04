@@ -2,6 +2,8 @@
 // "Approve on your phone" for a kernel act a person signs (platform's core/approvals): the web session cannot prove it, so it asks the box for the act's exact proof request
 // (approvals.request, so nothing here hashes anything), opens an ask (approvals.ask), waits for the paired phone to sign it (approvals.status), then sends the act again with the proof.
 
+import { hashMatches } from "./payload-hash.js";
+
 /** How each tool the app calls maps to the act the kernel verifies: the call's name and its arguments after the space. Only acts the kernel's proof table covers. @type {Record<string, (i: any) => { call: string, args: any[] } | null>} */
 export const ACTS = {
   "rules.define": (i) => ({ call: "ruleSet", args: [i.rule] }),
@@ -10,10 +12,16 @@ export const ACTS = {
   "rules.remove": (i) => ({ call: "ruleRemove", args: [i.id] }),
   "rules.accept": (i) => ({ call: "ruleAccept", args: [i.id] }),
   "rules.dismiss": (i) => ({ call: "ruleDismiss", args: [i.id] }),
+  // Members and invites (platform, 5 Oct): the spaces module maps these onto the kernel's calls with the same fields. A temp member or invite carries its scope and end date.
+  "spaces.members.set-role": (i) => ({ call: "setRole", args: [{ person: i.person, role: i.role, ...(i.scope ? { scope: i.scope } : {}), ...(i.expires ? { expires: i.expires } : {}) }] }),
+  "spaces.members.remove": (i) => ({ call: "removeMember", args: [{ person: i.person }] }),
+  "spaces.invites.confirm": (i) => ({ call: "inviteConfirm", args: [i.id, { words: i.words }] }),
+  // A named invite (`to`) is resolved to a person by the spaces module before the kernel sees it, which the app cannot reproduce: it has no phone route and says to do it on the phone.
+  "spaces.invites.create": (i) => (i.to ? null : { call: "inviteCreate", args: [{ role: i.role, ...(i.scope ? { scope: i.scope } : {}), ...(i.expires ? { expires: i.expires } : {}), ...(i.ttlDays ? { valid_ms: Number(i.ttlDays) * 86_400_000 } : {}) }] }),
 };
 
-/** Is this a refusal that the kernel wants the person's own proof, for an act the phone route covers? @param {string} tool @param {{ code?: string } | null | undefined} error */
-export const phoneRoute = (tool, error) => Boolean(error) && ["needs_presence", "presence_required"].includes(String(error?.code)) && Object.hasOwn(ACTS, tool);
+/** Is this a refusal that the kernel wants the person's own proof, for an act the phone route covers? @param {string} tool @param {{ code?: string } | null | undefined} error @param {any} [input] */
+export const phoneRoute = (tool, error, input = {}) => Boolean(error) && ["needs_presence", "presence_required"].includes(String(error?.code)) && Object.hasOwn(ACTS, tool) && ACTS[tool](input) !== null;
 
 /** base64url of the proof object, as x-vyre-kernel-proof takes it (at most 4 KB). @param {unknown} proof */
 export function proofHeader(proof) {
@@ -59,7 +67,9 @@ export async function askPhone(call, o) {
   const sleep = o.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
   const now = o.now ?? Date.now;
   const req = await call("approvals.request", { space: o.space, call: act.call, args: act.args });
+  if (!hashMatches(req)) throw Object.assign(new Error("the box's proof request does not match its own fields"), { code: "hash_mismatch" });
   const ask = await call("approvals.ask", { op: req.op, space: req.space, fields: req.fields });
+  if (ask.payload_hash !== req.payload_hash) throw Object.assign(new Error("the ask is for a different act"), { code: "hash_mismatch" });
   o.onWaiting?.();
   const start = now();
   for (;;) {

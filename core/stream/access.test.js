@@ -40,7 +40,7 @@ async function world(t) {
   await new Promise(r => s.listen(0, "127.0.0.1", () => r(undefined)));
   const port = /** @type {any} */ (s.address()).port;
   t.after(async () => { s.closeAllConnections(); s.close(); await reg.stop(); db.close(); });
-  const as = (login, caller = `tailnet:${login}`) => (tool, input) => reg.call(tool, input, caller, { peer: { login, stableId: `n_${login}` } });
+  const as = (login, caller = `tailnet:${login}`) => (tool, input) => reg.call(tool, input, caller, { peer: { login, stableId: `n_${login}` }, person: { id: `ps-${login}`, kind: "cookie" } }); // a person-reach tool over the tailnet needs the person's session (ADR 0032): the router sets it from the sign-in, so a test sets it
   const status = path => new Promise(resolve => {
     const r = http.request({ port, host: "127.0.0.1", path, headers: { connection: "Upgrade", upgrade: "websocket", "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==", "sec-websocket-version": "13" } });
     r.on("response", res => resolve(res.statusCode));

@@ -17,6 +17,8 @@ const MIGRATION = `
   CREATE TABLE IF NOT EXISTS kernel_records (type TEXT NOT NULL, id TEXT NOT NULL, version INTEGER NOT NULL, data TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, deleted_at INTEGER, PRIMARY KEY (type, id));
   CREATE TABLE IF NOT EXISTS kernel_changes (seq INTEGER PRIMARY KEY, entry TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS kernel_attrs (urn TEXT PRIMARY KEY, attrs TEXT NOT NULL);
+  CREATE INDEX IF NOT EXISTS kernel_attrs_project ON kernel_attrs (json_extract(attrs, '$.project'), urn);
+  CREATE INDEX IF NOT EXISTS kernel_attrs_owner ON kernel_attrs (json_extract(attrs, '$.owner'), urn);
   CREATE TABLE IF NOT EXISTS kernel_flags (name TEXT PRIMARY KEY, value TEXT NOT NULL);
 `;
 // The full-text index: one row per non-sealed text field of each live record (rowid = record rowid * 1024 + the field's position), holding the field's text lowered by the same JS call
@@ -219,6 +221,7 @@ export function createSqliteStore(cfg) {
       get(id) { const c = cache.get(id); if (c) return keep(id, c); const r = getRow.get(type, id); return r ? keep(id, parse(r)) : undefined; },
       has(id) { return cache.has(id) || Boolean(hasRow.get(type, id)); },
       set(id, r) { keep(id, r); },
+      drop(id) { cache.delete(id); },
       values() { return rows(allRows.iterate(type)); },
       /**
        * One page of a query as ONE indexed statement, when the planner can prove it answers exactly what the reference code would (kernel/store/sqlite-query.js); null otherwise, and
@@ -227,6 +230,7 @@ export function createSqliteStore(cfg) {
       pageQuery(spec) {
         const def = defs.get(type);
         const plan = planPage({ type, def, spec, ascii: field => isAscii(type, field) });
+        if (!plan && spec.attr_filter !== undefined) throw Object.assign(new Error("this query cannot be answered under an attribute filter here"), { code: "unsupported" });
         if (!plan) { counts.fell++; return null; }
         if ("error" in plan) return plan;
         counts.pushed++;
@@ -238,11 +242,12 @@ export function createSqliteStore(cfg) {
       /** An aggregate as one GROUP BY statement (rows come back grouped; the groups are ordered here as the reference orders them), or null to stream the rows instead. */
       aggregateQuery(spec) {
         const plan = planAggregate({ type, def: defs.get(type), spec, ascii: field => isAscii(type, field) });
+        if (!plan && spec.attr_filter !== undefined) throw Object.assign(new Error("this total cannot be answered under an attribute filter here"), { code: "unsupported" });
         if (!plan) { counts.fell++; return null; }
         counts.pushed++; counts.agg++;
         if (plan.index) slot(type, plan.index.name, plan.index.sql, spec.build_index !== false);
         // Without table statistics SQLite prefers the primary key to the covering index; the index was made for exactly this grouping, so it is named.
-        const sql = plan.index && indexed.has(plan.index.name) ? plan.sql.replace("FROM kernel_records WHERE", `FROM kernel_records INDEXED BY ${plan.index.name} WHERE`) : plan.sql;
+        const sql = plan.index && spec.attr_filter === undefined && indexed.has(plan.index.name) ? plan.sql.replace("FROM kernel_records WHERE", `FROM kernel_records INDEXED BY ${plan.index.name} WHERE`) : plan.sql;
         const got = /** @type {any[]} */ (db.prepare(sql).all(...plan.args));
         return got.map(row => ({
           group: Object.fromEntries(plan.groups.map((g, k) => [g.field, row[`g${k}`] === null || row[`g${k}`] === undefined ? null : g.bool ? row[`g${k}`] === 1 : row[`g${k}`]])),
@@ -339,29 +344,69 @@ export function createSqliteStore(cfg) {
   const changes = {
     get length() { return changeCount; },
     push() { changeCount++; },
+    pop() { changeCount--; },
     slice(/** @type {number} */ from, /** @type {number} */ to) { return /** @type {any[]} */ (changeRange.all(from, to)).map(r => JSON.parse(r.entry)); },
   };
 
   let pending = null;
+  /** @type {any} */ let persistRef = null;
   const store = createMemoryStore({
     clock: cfg.clock, hook: cfg.hook, initial: { types, records: [], changes: [] }, backing: { table, changes },
-    persist: {
+    persist: (persistRef = {
       type: (name, def) => { if (def) { const had = defs.get(name); putType.run(name, JSON.stringify(def)); defs.set(name, def); if (had && canonical(had) !== canonical(def)) ftsRestart(); } else { delType.run(name); defs.delete(name); } for (const k of [...asciiOf.keys()]) if (k.startsWith(`${name}.`)) asciiOf.delete(k); },
+      /**
+       * A field was sealed in place: the values it held must not survive in the change log (before and after of every entry of the type), nor in the file's free pages or the write-ahead log
+       * (`secure_delete` zeroes what an UPDATE frees, a VACUUM rewrites the file, and the log is truncated), nor in the full-text index (rebuilt without the field).
+       * @param {string} type @param {readonly string[]} fields
+       */
+      scrub: (type, fields) => {
+        if (!fields.length) return;
+        const was = /** @type {any} */ (db.prepare("PRAGMA secure_delete").get());
+        db.exec("PRAGMA secure_delete = ON");
+        try {
+          const upd = db.prepare("UPDATE kernel_changes SET entry = ? WHERE seq = ?");
+          let from = 0;
+          for (;;) {
+            const rows = /** @type {any[]} */ (db.prepare("SELECT seq, entry FROM kernel_changes WHERE seq > ? ORDER BY seq LIMIT 500").all(from));
+            if (!rows.length) break;
+            db.exec("BEGIN");
+            try {
+              for (const r of rows) {
+                from = r.seq;
+                const e = JSON.parse(r.entry);
+                if (e.type !== type) continue;
+                let hit = false;
+                for (const f of fields) for (const side of ["before", "after"]) if (e[side] && typeof e[side] === "object" && Object.hasOwn(e[side], f)) { delete e[side][f]; hit = true; }
+                if (hit) upd.run(JSON.stringify(e), r.seq);
+              }
+              db.exec("COMMIT");
+            } catch (err) { db.exec("ROLLBACK"); throw err; }
+          }
+          ftsRestart();
+          // The plain values were also in the record rows the sealing rewrote and in pages freed before this call (secure_delete only zeroes what is freed from now on): a VACUUM writes the
+          // database out afresh, so nothing of what was deleted survives in the file. A sealing in place is rare, and this is the price of "forgotten".
+          try { db.exec("VACUUM"); } catch { /* inside a transaction of the caller's: the freed pages stay until the next vacuum */ }
+        } finally {
+          db.exec(`PRAGMA secure_delete = ${was && was.secure_delete ? was.secure_delete : 0}`);
+          try { db.exec("PRAGMA wal_checkpoint(TRUNCATE)"); } catch { /* not in WAL mode, or the checkpoint is blocked by a reader: the next one does it */ }
+        }
+      },
       // The record and its change entry are one transaction: the memory store calls them back to back.
       record: r => { pending = r; },
       change: e => {
-        db.exec("BEGIN");
+        // A savepoint, not BEGIN: standing alone it is a transaction of its own (one commit), and inside the gateway's unit of work (the record and its event, kernel/boot.js `createUnit`) it joins that one.
+        db.exec("SAVEPOINT kchange");
         try {
           const r = /** @type {any} */ (pending);
           noteWrite(r);
           putRec.run(r.type, r.id, r.version, JSON.stringify(r.data), r.created_at, r.updated_at, r.deleted_at ?? null);
           ftsSync(r);
           putChange.run(Number(e.cursor.slice(1)), JSON.stringify(e));
-          db.exec("COMMIT");
-        } catch (err) { db.exec("ROLLBACK"); throw err; }
+          db.exec("RELEASE kchange");
+        } catch (err) { db.exec("ROLLBACK TO kchange"); db.exec("RELEASE kchange"); throw err; }
         pending = null;
       },
-    },
+    }),
   });
   /** @type {Map<string, any>} the kernel attributes of recently written records, in front of the table that keeps them all */ const attrCache = new Map();
   /** The gateway's kernel attributes per record (owner, created_by, project, sensitivity): on disk, a small LRU in front. */
@@ -378,5 +423,7 @@ export function createSqliteStore(cfg) {
     },
     set(/** @type {string} */ u, /** @type {any} */ v) { putAttrs.run(u, JSON.stringify(v)); attrCache.set(u, v); if (attrCache.size > HOT_ATTRS) attrCache.delete(/** @type {string} */ (attrCache.keys().next().value)); },
   };
-  return { ...store, meta, /** What is held in memory: for the bound's tests and the load measurements. */ get ftsReady() { return ftsReady; }, stats: () => ({ fts_built: ftsBuilt, aggregate_pushed: counts.agg, query_pushed: counts.pushed, query_streamed: counts.fell, search_fast: counts.fast, hot_rows: caches.reduce((n, c) => n + c.size, 0), hot_attrs: attrCache.size, changes_in_memory: 0 }), async version() { return { store: "sqlite", version: "1", conformance: (await store.version()).conformance }; } };
+  // The memory store of this tree may not carry `scrub` (it arrives with records' merge); the store the gateway calls always does, and it forgets in memory and on disk.
+  const scrub = /** @type {any} */ (store).scrub || (async (/** @type {string} */ type, /** @type {readonly string[]} */ fields) => { /** @type {any} */ (persistRef).scrub(type, fields); });
+  return { ...store, scrub, meta, features: () => ({ ...store.features(), attr_filter: true }), /** What is held in memory: for the bound's tests and the load measurements. */ get ftsReady() { return ftsReady; }, stats: () => ({ fts_built: ftsBuilt, aggregate_pushed: counts.agg, query_pushed: counts.pushed, query_streamed: counts.fell, search_fast: counts.fast, hot_rows: caches.reduce((n, c) => n + c.size, 0), hot_attrs: attrCache.size, changes_in_memory: 0 }), async version() { return { store: "sqlite", version: "1", conformance: (await store.version()).conformance }; } };
 }

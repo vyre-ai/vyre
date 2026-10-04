@@ -102,8 +102,15 @@ rm -f "$here/site/setup/signin-hosts.json"
 # The two fonts, self-hosted so the page loads nothing from another origin.
 rm -rf "$here/site/setup/fonts"
 mkdir -p "$here/site/setup/fonts"
-cp "$src/apps/app/assets/fonts/instrument-sans/InstrumentSans-Regular.woff2" "$src/apps/app/assets/fonts/instrument-sans/InstrumentSans-SemiBold.woff2" \
-  "$src/apps/app/assets/fonts/jetbrains-mono/JetBrainsMono-Regular.woff2" "$here/site/setup/fonts/"
+# The app no longer bundles text fonts (the platform font everywhere), so the setup page's files come from the Deck's own copies when the app's are gone.
+font() { # font TARGET-NAME APP-PATH DECK-FILE
+  if [ -f "$src/apps/app/assets/fonts/$2" ]; then cp "$src/apps/app/assets/fonts/$2" "$here/site/setup/fonts/$1"
+  elif [ -f "$src/deck/fonts/$3" ]; then cp "$src/deck/fonts/$3" "$here/site/setup/fonts/$1"
+  else echo "build-site: no font for $1 (neither apps/app/assets/fonts/$2 nor deck/fonts/$3)" >&2; exit 1; fi
+}
+font InstrumentSans-Regular.woff2 instrument-sans/InstrumentSans-Regular.woff2 instrument-sans-latin.woff2
+font InstrumentSans-SemiBold.woff2 instrument-sans/InstrumentSans-SemiBold.woff2 instrument-sans-latin.woff2
+font JetBrainsMono-Regular.woff2 jetbrains-mono/JetBrainsMono-Regular.woff2 jetbrains-mono-latin.woff2
 
 # A checksum an older build-site packed for the retired Capsule zip.
 rm -f "$src/box/Vyre-mac.sha256"

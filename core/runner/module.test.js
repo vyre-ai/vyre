@@ -26,7 +26,7 @@ async function boot(t, ports) {
 test("runner module: loads with its tools and says plainly that it is not connected yet", async t => {
   const s = await boot(t);
   const tools = s.d.registry.modules.get("runner").manifest.does.tools.map(x => x.name);
-  assert.deepEqual(tools.sort(), ["runner.lock", "runner.move", "runner.place", "runner.start", "runner.status", "runner.stop"]);
+  assert.deepEqual(tools.sort(), ["runner.lock", "runner.move", "runner.place", "runner.recover", "runner.start", "runner.status", "runner.stop"]);
   const visible = s.d.registry.listTools().map(x => x.name).filter(n => n.startsWith("runner."));
   assert.deepEqual(visible.sort(), ["runner.lock", "runner.move", "runner.place", "runner.start", "runner.status", "runner.stop"], "start and stop are the person's; revoke is no tool at all");
   const st = await s.call("runner.status");

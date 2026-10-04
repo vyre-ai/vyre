@@ -8,6 +8,7 @@
 
 import crypto from "node:crypto";
 import fs from "node:fs";
+import { execFile } from "node:child_process";
 import os from "node:os";
 import http from "node:http";
 import path from "node:path";
@@ -34,6 +35,8 @@ import { registryRules } from "../harness/rules.js";
 // redeem, tailnet via relay/client - into the kernel just for one constant.
 import { DEFAULT_RELAY } from "../../lib/relay-default.js";
 import { within } from "../../lib/within.js";
+import { createRemoteKernel } from "../../kernel/remote/client.js";
+import { winkTransport } from "../../kernel/remote/wink.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // The SSE heartbeat. Clients call a stream dead after three missed beats (ADR 0029, R1); the
@@ -113,8 +116,8 @@ export function moduleRoots(root) {
 
 /**
  * Start vyred. Returns a handle with the running registry and a stop() for tests.
- * @param {{ root?: string, log?: (m: string, x?: any) => void, rules?: any, presence?: any, kernelPresence?: any,
- *   kernel?: boolean, coreKeys?: any, person?: (socket: import("node:net").Socket) => Promise<string|{ key: string, tty: string|null }|null> }} [opts] person: a test's stand-in for atTerminal
+ * @param {{ root?: string, log?: (m: string, x?: any) => void, rules?: any, presence?: any, sessionFor?: (device: string) => Promise<{ call(tool: string, input: any): Promise<any> }>, kernelPresence?: any,
+ *   kernel?: boolean, coreKeys?: any, deviceIdentity?: () => Promise<{ deviceId: string, deviceKey: string }>, person?: (socket: import("node:net").Socket) => Promise<string|{ key: string, tty: string|null }|null> }} [opts] person: a test's stand-in for atTerminal
  */
 export async function start(opts = {}) {
   const root = opts.root || config.home();
@@ -254,7 +257,7 @@ async function startLocked(opts, root, p, release) {
       // Is this node already held by a session that is not a stand-in's? (signin.dev never makes one beside a real session.)
       nodeInUse: (/** @type {string} */ node) => people.list().some((/** @type {any} */ r) => r.node === node && r.label !== "stand-in"),
       // DEVELOPMENT ONLY (the module asks devStandIn first): an ordinary cookie person session for the walk's browser, on the node the harness names, marked as the stand-in's.
-      startStandIn: (/** @type {string} */ node) => people.start({ node, kind: "cookie", label: "stand-in" }) });
+      startStandIn: (/** @type {string} */ node) => { const s = people.start({ node, kind: "cookie", label: "stand-in" }); try { events.emit("presence", "presence.signed-in", { id: s.id, node, method: "stand-in" }); } catch { /* the session stands; the event is a notice */ } return s; } });
     closeFlowsHost = () => flowsHost.stop();
     // Devices enrol per Space (the user's ruling): the spaces module keeps the list and answers `spaces.devices.enrolled`; a build without that module has no list, so every device is enrolled.
     const deviceEnrolled = async (/** @type {string} */ space, /** @type {string} */ device) => {
@@ -262,7 +265,33 @@ async function startLocked(opts, root, p, release) {
       if (r && r.error) { if (r.error.code === "no_such_tool" || r.error.code === "not_available") return true; return false; }
       return !r || !r.data || r.data.enrolled !== false;
     };
-    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
+    // What the runner module needs from this computer: the person it belongs to and this computer's device identity ({ deviceId, deviceKey }: the id the Offers name it by and its public key).
+    // The identity comes from whoever owns it (`opts.deviceIdentity`: the Wink identity list's entry for this computer, tailnet and windows); until it is given the runner says it is not connected.
+    // A session on this person's own server is sealed at every turn into the home's checkpoint store (core/daemon/ownserver-host.js), so the runner module can seal it and recover it.
+    // OWN-SERVER SEAL (sessions): a session on this person's own server is sealed at every turn into the home's checkpoint store (core/daemon/ownserver-host.js); the runner module reads `ownServer` off this host.
+    // Keep these lines (the import, ownServerHost and the getter) when merging the runner's { member, identity() } passthrough; test/ownserver-daemon.test.js fails if they go.
+    const { createOwnServerHost } = await import("./ownserver-host.js");
+    /** @type {any} */ let ownServerHost = null;
+    const runnerHost = () => ({
+      get ownServer() { return kernel ? (ownServerHost || (ownServerHost = createOwnServerHost({ kernel, registry, root, log }))) : null; },
+      get member() { return kernel && kernel.owner; },
+      identity: async () => {
+        const id = opts.deviceIdentity ? await opts.deviceIdentity() : null;
+        if (!id || typeof id.deviceId !== "string" || !id.deviceId || typeof id.deviceKey !== "string" || !id.deviceKey) throw Object.assign(new Error("this computer has no device identity yet"), { code: "unavailable" });
+        return id;
+      },
+    });
+    // A space this device made with a PAIRED SERVER as its home is hosted there: K.for(id) is a RemoteKernel over the Wink peer wire to that server (the one remote path, kernel/remote). The server's device
+    // id is the spaces module's row (server-hosted/<id>); the open peer session comes from the Wink module (`wink.sessionFor`), or a test's `opts.sessionFor`. No row or no session function: not a remote space.
+    const remoteFor = (/** @type {string} */ id) => {
+      const sf = opts.sessionFor || /** @type {any} */ (registry.deps).winkSessionFor;
+      if (typeof sf !== "function") return null;
+      let device = null;
+      try { const r = /** @type {any} */ (db.prepare("SELECT value FROM spaces_kv WHERE key = ?").get(`server-hosted/${id}`)); if (r) device = JSON.parse(r.value).device; } catch { /* no spaces table yet */ }
+      if (typeof device !== "string" || !device) return null;
+      return createRemoteKernel({ space: id, transport: winkTransport({ sessionFor: async () => sf(device) }) });
+    };
+    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, runnerHost, remote: remoteFor, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
       // A credentialed request run at the home: the vault's own forward (an internal tool only the lease module may call), under the Space's credential; the kernel has already authorized it.
       forwardCredential: async (/** @type {any} */ q) => {
         const r = q.request;
@@ -353,6 +382,8 @@ async function startLocked(opts, root, p, release) {
     }
     registry.deps.moduleHost = kernel.moduleHost;
     registry.deps.kernelFor = kernel.kernelFor;
+    // The relay's peer stream for a paired device (the one remote path to this home's kernel): the relay module reads it from its ctx, per channel, so a door set after it started is used from the next channel on.
+    { const { createPeerDoor } = await import("./peer-door.js"); const door = createPeerDoor({ kernel, registry, people, callerFacts, log }); registry.deps.peerDoor = () => door; }
     // The gate's presence check asks the kernel whether a call is the person's own (exactly one person hop in the chain the daemon's proven facts build), never the caller's label.
     if (presence && typeof kernel.kernelFor === "function") {
       const gateKernel = kernel.kernelFor({ name: "presence-gate" });
@@ -754,6 +785,12 @@ const SYSTEM_DIRS = ["/usr/", "/bin/", "/sbin/", "/Applications/", "/System/", "
 /** @param {any} server */
 export function isLoginServer(server) {
   const exe = server && typeof server.exe === "string" ? server.exe : "";
+  if (exe === "uid0") {
+    // vyred runs as the login user and the kernel hides /proc/<pid>/exe of a root process from it, so the walk records "uid0" with the process's comm and command line. A root-owned sshd or login
+    // is named by both, and the uid is the kernel's word that it is root's: a user process called sshd has its own uid, and tmux, screen and a daemonized shell are never uid 0.
+    const cmd = typeof server.cmd === "string" ? server.cmd : "";
+    return server.uid === 0 && LOGIN_SERVERS.has(String(server.comm || "")) && /^(?:\S*\/)?(?:sshd|login)(?::|\s|$)/.test(cmd);
+  }
   return Boolean(exe) && server.uid === 0 && LOGIN_SERVERS.has(path.basename(exe)) && SYSTEM_DIRS.some(d => exe.startsWith(d));
 }
 
@@ -770,25 +807,54 @@ export function isLoginServer(server) {
  * @param {import("node:net").Socket} socket @param {any} registry @param {any} presence
  * @returns {Promise<{ key: string, tty: string|null }|null>} tty: the caller's own terminal, where a notice goes
  */
-async function atTerminal(socket, registry, presence, standIn = false) {
+export async function atTerminal(socket, registry, presence, standIn = false, deps = {}) {
+  const d = { above, peerPid, loginOf, tmuxClients, insideClaude, loginFrom, ...deps };
+  /** Why no terminal, said once in the daemon log (never a secret: a pid, a tty name and the logins `who` lists). @param {string} why */
+  const no = why => { try { registry.deps && typeof registry.deps.log === "function" && registry.deps.log(`terminal: refused, ${why}`); } catch { /* logging never decides */ } return null; };
   // The development stand-in (a hand-made file in a development build) is the one thing that replaces this guard; a real build never passes it.
-  if (!standIn && await fromClaude(socket, registry)) return null;
-  const pid = await peerPid(socket);
-  if (!pid || !presence || typeof presence.who !== "function") return null;
+  /** @type {any} */ let who = null;
+  if (!standIn) {
+    who = await d.above(socket, registry);
+    if (who.nopid || who.inside || (who.unknown && !who.server)) return no("ancestry " + (who.nopid ? "has no peer pid" : who.inside ? "is inside a model" : "is unknown with no named server"));
+  }
+  const pid = await d.peerPid(socket);
+  if (!pid || !presence || typeof presence.who !== "function") return no(!pid ? "no peer pid" : "no presence.who");
   const logins = await presence.who();
-  const login = loginOf(pid);
-  if (login && logins.includes(login.tty)) return { key: login.key, tty: login.tty };
-  const clients = tmuxClients(pid);
-  if (!clients || !clients.length) return null;
+  // SG-1 (reviewer-2): the login the person types in is a root-owned login server (sshd, login) at the top, or a tmux the person attached to from one. A user-owned named server (a model that
+  // double-forked and kept the person's tty) is not a login, whatever `who` lists: only the walk's own `outside` (no server at all) or a login server passes for the caller itself.
+  const callerOk = standIn || !who.unknown || isLoginServer(who.server);
+  const login = d.loginOf(pid);
+  if (callerOk && login && logins.includes(login.tty)) return { key: login.key, tty: login.tty, from: await d.loginFrom(login.tty) };
+  const clients = d.tmuxClients(pid);
+  if (!clients || !clients.length) return no(`no login: ${callerOk ? "" : "a user-owned server is not a login; "}the caller's terminal is ${login ? login.tty : "none"} and who lists ${logins.join(",") || "nothing"}`);
   const r = await registry.call("threads.pids", {}, "module:vyred");
   const threads = (r.data && r.data.pids) || [];
   const keys = [];
+  let from = null;
   for (const c of clients) {
-    const l = insideClaude(c, { threads }).inside ? null : loginOf(c);
-    if (!l || !logins.includes(l.tty)) return null;
+    const ins = d.insideClaude(c, { threads });
+    // A client must read as the person's own: not inside a model, and not an unknown chain unless it tops out at a root login server.
+    if (ins.inside || (ins.unknown && !standIn && !isLoginServer(ins.server))) return no("a tmux client is not a person's login (inside a model or a user-owned server)");
+    const l = d.loginOf(c);
+    if (!l || !logins.includes(l.tty)) return no(`a tmux client is not a listed login (${l ? l.tty : "none"})`);
     keys.push(l.key);
+    from = from || await d.loginFrom(l.tty);
   }
-  return { key: "tmux:" + [...new Set(keys)].sort().join("+"), tty: controllingTty(pid) };
+  return { key: "tmux:" + [...new Set(keys)].sort().join("+"), tty: controllingTty(pid), from };
+}
+
+/** Where the login on this terminal came from, as `who` records it ("203.0.113.9", "127.0.0.1"), or null when it lists none. @param {string} tty @returns {Promise<string|null>} */
+function loginFrom(tty) {
+  return new Promise(resolve => {
+    execFile("/usr/bin/who", [], { timeout: 3000 }, (err, stdout) => {
+      if (err) return resolve(null);
+      for (const line of String(stdout).split("\n")) {
+        const cols = line.trim().split(/\s+/);
+        if (cols[1] === tty) { const m = /\(([^)]*)\)\s*$/.exec(line); return resolve(m && m[1] ? m[1].slice(0, 80) : null); }
+      }
+      resolve(null);
+    });
+  });
 }
 
 async function route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, people = null, socket = false, terminalOf = null, kernelOf = null }, /** @type {Policy} */ policy = {}) {

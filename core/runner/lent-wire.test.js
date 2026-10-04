@@ -169,3 +169,33 @@ test("the real runner on a lent computer, ports from the lender host over the re
 
   } finally { await runner.stopAll().catch(() => {}); await runner.lock().catch(() => {}); }
 });
+
+import mod from "./index.js";
+test("the runner module on a computer whose host gives only its identity: ready, and a Space whose home is another computer is reached through ctx.kernel.for(space).call (the one remote path)", async t => {
+  const r = await rig(t);
+  const remote = createRemoteKernel({ space: SPACE, transport: createMemoryTransport({ servers: { [SPACE]: r.server }, peer: { device_key_id: "dev_laptop", person: BOB, path: "wink" } }) });
+  /** @type {Map<string, any>} */ const tools = new Map(); const events = [];
+  const root = path.join(r.dir, "mod"); fs.mkdirSync(root, { recursive: true });
+  const ctx = { paths: { root }, events: { emit: (n, p) => events.push(n), on: () => () => {} }, tool: (n, d) => tools.set(n, d),
+    kernel: { owner: BOB, runnerHost: () => ({ identity: async () => ({ deviceId: "dev_laptop", deviceKey: "KEY_LAPTOP" }) }), for: id => (id === SPACE ? remote : { hosted: true }),
+      chain: async () => ({ hops: [{ actor: { kind: "person", id: BOB } }] }) } };
+  const h = await mod.start(ctx); t.after(() => h.stop());
+  const st = await tools.get("runner.status").run({}, {});
+  assert.equal(st.ready, true, st.why);
+  const d = await tools.get("runner.place").run({ space: SPACE }, {});
+  assert.ok(["here", "wait"].includes(d.where), JSON.stringify(d));
+  assert.doesNotMatch(String(d.reason || ""), /has not allowed members|not set to run/, "both Offers were read from the home over the wire");
+  await assert.rejects(tools.get("runner.place").run({ space: "spc_hostedhere01" }, {}), e => e.code === "unavailable", "a Space this computer hosts itself is not lent over a wire");
+});
+
+test("a host with no device identity yet: the module loads and says so, and a call is refused as not connected", async t => {
+  const r = await rig(t);
+  /** @type {Map<string, any>} */ const tools = new Map();
+  const ctx = { paths: { root: path.join(r.dir, "mod2") }, events: { emit() {}, on: () => () => {} }, tool: (n, d) => tools.set(n, d),
+    kernel: { owner: BOB, runnerHost: () => ({ identity: async () => { throw Object.assign(new Error("this computer has no device identity yet"), { code: "unavailable" }); } }), for: () => ({ call: async () => ({}) }) } };
+  fs.mkdirSync(ctx.paths.root, { recursive: true });
+  const h = await mod.start(ctx); t.after(() => h.stop());
+  const st = await tools.get("runner.status").run({}, {});
+  assert.equal(st.ready, false); assert.match(st.why, /no device identity/);
+  await assert.rejects(tools.get("runner.place").run({ space: SPACE }, {}), e => e.code === "unavailable" || /identity/.test(e.message));
+});

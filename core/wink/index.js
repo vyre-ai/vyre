@@ -60,6 +60,7 @@ function owner(meta, what) {
  *   typedCode   true switches the short typed code on (development; also VYRE_WINK_TYPED_CODE=1 or config wink.typedCode); off in a release build
  *   confirmAdopt false skips the person-at-the-server confirmation of a first adoption (a test seam; always on in a real box)
  *   releaseMaxMs how long a release the server never confirmed is retried before it is given up and the person is told (default 30 days)
+ *   looseOwnerIds true (tests only) accepts owner ids of any length
  *   vyreName (identity) => the Vyre name the directory has claimed for that identity (e.g. "alex.vyre.run") or null: shown beside the asker's display name at the server
  *   identityEntry (identity, eid) => the entry on that identity's list ({ eid, kind, pub, identity? }) or null: proves the app for a server installed with --pair-to (Q-3)
  *   signIdentity (message) => { eid, sig }: this app's signature with a key on its own identity list, sent when it adopts a server (Q-3)
@@ -68,6 +69,7 @@ function owner(meta, what) {
 export function createWink(inject = {}) {
   /** @type {any} */
   let live = null;
+  /** @type {(() => any) | null} */ let liveLinks = null;
   const mod = {
   async start(ctx) {
     if (ctx.config.role !== "box") return { async stop() {} };
@@ -288,7 +290,7 @@ export function createWink(inject = {}) {
       releaseMaxMs: inject.releaseMaxMs,
       // Q-3: the identity port (the entry on an identity's list, read live) that checks the proof of a server installed to pair to one identity, and the app's own signer for that proof. A box given
       // neither refuses every unattended pairing ("cannot check who is asking"): naming an identity is never enough.
-      identityEntry, signIdentity,
+      identityEntry, signIdentity, identityVyre: inject.identityVyre || (async () => { const r = /** @type {any} */ (await ctx.call("spaces.identity.self", {}).catch(() => null)); return r && r.data && r.data.name ? String(r.data.name) : null; }),
       // The Vyre name for an identity id comes from the directory through the spaces module, which checks a name the app CLAIMS (owner.vyre) against the directory; a bare claim is never shown as a name.
       vyreName: inject.vyreName || (async (/** @type {string} */ id, /** @type {string | undefined} */ claimed) => { try { const r = await ctx.call("spaces.identity.name-of", { id, ...(claimed ? { claimed } : {}) }); return (r && r.data && typeof r.data.name === "string" && r.data.name) || null; } catch { return null; } }),
       // Who may pair to a space: the kernel's grants store when ctx.kernel offers it (work/kernel), else a fake that makes the box owner the owner of its own space.
@@ -303,6 +305,9 @@ export function createWink(inject = {}) {
     pairing.tools();
     registerReset({ ctx, pairing, now, identity: owner1, dropMs: inject.dropMs, dataStores: inject.dataStores || ctx.dataStores });
     live = pairing.peers;
+    liveLinks = pairing.serverLinks;
+    // handed up by name (core/modules provideOnce): the spaces and runner modules reach a paired server's peer session and kernel through ctx.sessionFor and ctx.remoteKernel
+    try { ctx.provide("winkSessionFor", (/** @type {string} */ id) => pairing.serverLinks().sessionFor(id)); ctx.provide("remoteKernel", (/** @type {string} */ id, /** @type {string} */ sp) => pairing.serverLinks().remoteKernel(id, sp)); } catch { /* provided already (a restart in one process), or no daemon (a test ctx) */ }
     /** A space's own name for a card, never its id. */
     const spaceName = async (/** @type {string} */ id) => {
       try { const m = (await directory.memberships(await owner1())).find(x => x.space === id); if (m && m.name) return String(m.name); } catch {}
@@ -314,6 +319,8 @@ export function createWink(inject = {}) {
     // A device that paired (a typed code, or a confirmed pairing) is registered under the identity with its kind. No grant is written in any space.
     // The relay marks how a device came (`via` in device.paired, `gate` too for a gated ticket) and a gated ticket makes no device until the person has picked the right words
     // (X-1): its redeemer is a waiting pairing (`pairing.pending`), held for the question below; this module confirms it to the relay only after that answer.
+    // a waiting pairing's app went away and did not come back (the browser closed before the yes): drop its ask now, so the next scanner is not told "busy until restart"
+    const offAbandoned = ctx.events.on("pairing.abandoned", (/** @type {any} */ e) => { try { pairing.abandoned(String((e.payload || e).device || "")); } catch { /* nothing waiting */ } });
     const offPending = ctx.events.on("pairing.pending", async (/** @type {any} */ e) => {
       const p = e.payload || e;
       try {
@@ -573,7 +580,9 @@ export function createWink(inject = {}) {
           pairing.devices.remove(d.id);
           // Its relay connections close at once through relay.devices.drop (a module's door to the relay's own removal); `closed` says what happened.
           let closed = false;
-          if (d.kind !== "server" && d.kind !== "storage") { const rr = /** @type {any} */ (await ctx.call("relay.devices.drop", { id: d.id })); closed = !rr.error && Boolean(rr.data && rr.data.closed); }
+          // a server that let go (release "released") has ended its side of the channel itself, so the connection is closed then too
+          if (d.kind === "server" || d.kind === "storage") closed = release === "released";
+          else { const rr = /** @type {any} */ (await ctx.call("relay.devices.drop", { id: d.id })); closed = !rr.error && Boolean(rr.data && rr.data.closed); }
           ctx.events.emit("wink.removed", { device: d.id });
           return { removed: d.id, closed, ...(release ? { release } : {}), prompt: removal({ what: "device", name: d.name }).prompt, done: removed({ what: "device", name: d.name, release }) };
         }
@@ -683,11 +692,12 @@ export function createWink(inject = {}) {
       ownHandover: () => pairing.ownHandover(),
       async stop() {
         live = null;
+        liveLinks = null;
         clearInterval(timer);
         try { stopStorage(); } catch {}
         if (poolTimer) clearInterval(poolTimer);
         for (const off of offStorage) { try { off(); } catch {} }
-        for (const off of [offCode, offPaired, offRemoved, offInvite, offPending]) { try { off(); } catch {} }
+        for (const off of [offCode, offPaired, offRemoved, offInvite, offPending, offAbandoned]) { try { off(); } catch {} }
         try { code?.cancel(); } catch {}
         try { pairing.stop(); } catch {}
       },
@@ -700,6 +710,11 @@ export function createWink(inject = {}) {
   Object.defineProperty(mod, "holds", { enumerable: false, get() { if (!live) throw fail("unavailable", "the wink module has not started"); return live.holds; } });
   Object.defineProperty(mod, "bridgeServe", { enumerable: false, get() { if (!live) throw fail("unavailable", "the wink module has not started"); return live.bridgeServe; } });
   // What this server was handed when it was adopted, WITH the secrets (auth key, peer secret), for core/wink/compose.js only: it is not a tool, so no other module can ask.
+  // This device's open peer session to a server it paired (the one remote path): `wink.sessionFor(serverId)` -> { call(tool, input), close() }, `wink.remoteKernel(serverId, space)` the kernel's own
+  // remote client over it, and `wink.startPaired(serverId)` this device's sign-in to that server (needs the app's key signer). Not tools: no other module can ask a tool for a session.
+  Object.defineProperty(mod, "sessionFor", { enumerable: false, value: (/** @type {string} */ sid) => { if (!liveLinks) throw fail("unavailable", "the wink module has not started"); return liveLinks().sessionFor(sid); } });
+  Object.defineProperty(mod, "remoteKernel", { enumerable: false, value: (/** @type {string} */ sid, /** @type {string} */ space) => { if (!liveLinks) throw fail("unavailable", "the wink module has not started"); return liveLinks().remoteKernel(sid, space); } });
+  Object.defineProperty(mod, "startPaired", { enumerable: false, value: (/** @type {string} */ sid) => { if (!liveLinks) throw fail("unavailable", "the wink module has not started"); return liveLinks().startPaired(sid); } });
   Object.defineProperty(mod, "ownHandover", { enumerable: false, value: () => { if (!live) throw fail("unavailable", "the wink module has not started"); return live.ownHandover(); } });
   Object.defineProperty(mod, "homeServe", { enumerable: false, value: (/** @type {any} */ inner) => { if (!live) throw fail("unavailable", "the wink module has not started"); return homeServe(live, inner); } });
   return mod;

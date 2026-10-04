@@ -5,6 +5,8 @@ export function pairServer(o: {
   owner: { id: string; name?: string; kind?: "identity" | "space" };
   name?: string;
   proof?: { eid: string; sig: string };
+  deviceKind?: "phone" | "computer" | "web"; keyStorage?: "hardware" | "software";
+  signIdentity?: (message: Uint8Array) => Promise<{ eid: string; sig: string }> | { eid: string; sig: string };
   crypto?: unknown; keyStore?: unknown; WebSocket?: unknown; relay?: string;
   about?: { kind?: "app" | "web"; release?: string; manifest?: string };
   presenceKey?: unknown; passkey?: unknown;

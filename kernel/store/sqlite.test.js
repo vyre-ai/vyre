@@ -62,3 +62,31 @@ test("sqlite log: events, their salts and cursors survive a restart; erase survi
   const reread = createSqliteEventLog({ db: new DatabaseSync(f), space: SPACE });
   assert.equal(verifyEvents(SPACE, reread.read({})).ok, false);
 });
+
+test("sqlite store scrub: a field sealed in place leaves no plain value in the change log, the file's free pages, the write-ahead log or the search index; other fields and other types are untouched", async () => {
+  const f = file();
+  const PLAIN = "PLAINSECRET-4471-ssn";
+  let db = new DatabaseSync(f);
+  db.exec("PRAGMA journal_mode = WAL");
+  const s = createSqliteStore({ db });
+  await s.define({ add_types: [{ name: "person", label: "Person", fields: [{ name: "name", kind: "text", label: "Name" }, { name: "ssn", kind: "text", label: "SSN" }] }, CONTACT] });
+  const ids = Array.from({ length: 40 }, (_, i) => `0190c3f2-1111-4abc-8def-${String(i + 1).padStart(12, "0")}`);
+  for (const [i, id] of ids.entries()) { await s.create("person", id, { name: `Pat ${i}`, ssn: `${PLAIN}-${i}` }); await s.update("person", id, { ssn: `${PLAIN}-${i}-v2` }, 1); }
+  await s.create("contact", "0190c3f2-2222-4abc-8def-000000000001", { name: `keep ${PLAIN} elsewhere` });
+  // sealing in place: the values move into a sealed field elsewhere and the plain field is emptied on every record
+  for (const id of ids) { const r = await s.get("person", id); await s.update("person", id, { ssn: null }, r.version); }
+  await s.scrub("person", ["ssn"]);
+  const entries = db.prepare("SELECT entry FROM kernel_changes").all().map(r => JSON.parse(r.entry));
+  const mine = entries.filter(e => e.type === "person");
+  assert.ok(mine.length >= 80, "the person entries are still there");
+  for (const e of mine) for (const side of ["before", "after"]) if (e[side]) { assert.equal(Object.hasOwn(e[side], "ssn"), false, "no ssn key left"); assert.ok(Object.hasOwn(e[side], "name") || side === "before", "other fields are kept"); }
+  const other = entries.filter(e => e.type === "contact");
+  assert.ok(JSON.stringify(other).includes(PLAIN), "another type's log is untouched");
+  assert.equal((await s.get("person", ids[0])).data.name, "Pat 0");
+  db.close();
+  // the bytes on disk: the person's plain values are gone from the main file and the write-ahead log (the other type's copy is the only one left)
+  const bytes = fs.readFileSync(f, "latin1") + (fs.existsSync(f + "-wal") ? fs.readFileSync(f + "-wal", "latin1") : "");
+  const left = bytes.split(`${PLAIN}-`).length - 1;
+  assert.equal(left, 0, `no copy of the sealed field's values remains on disk (found ${left})`);
+  assert.ok(bytes.includes(`keep ${PLAIN} elsewhere`), "the other type's own value is still stored");
+});

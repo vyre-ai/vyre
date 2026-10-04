@@ -6,6 +6,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { start } from "../core/daemon/index.js";
 import { tempHome } from "./helpers.js";
+const until = async (/** @type {() => Promise<any>} */ f, /** @type {string} */ what, ms = 20_000) => { const t0 = Date.now(); for (;;) { const v = await f(); if (v) return v; if (Date.now() - t0 > ms) assert.fail(`timed out: ${what}`); await new Promise(r => setTimeout(r, 100)); } };
 
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
@@ -78,4 +79,42 @@ test("ENG-2: a user agent already named engineer becomes the built-in at start: 
   assert.deepEqual(scope.projects, []);
   const eng = (await d.registry.call("agents.list", {}, "cli")).data.find((/** @type {any} */ a) => a.name === "engineer");
   assert.equal(eng.builtin, true); assert.equal(eng.computer, false);
+});
+
+test("RC1 walk: the Engineer proposes a Kit from records.kits.library, a task waits for the owner, and the approved Kit installs on a real kernel", { timeout: 120_000 }, async t => {
+  const root = tempHome(t);
+  // the kernel's own presence verifier, replaced by one that accepts a proof naming exactly the op and fields asked (the way kernel/tasks/kit-apply.test.js does)
+  const { canonical } = await import("../kernel/core/canonical.js");
+  const used = new Set();
+  const kernelPresence = { check: async (/** @type {any} */ q) => { return (q.chain && q.proof && q.proof.op === q.op && canonical(q.proof.fields) === canonical(q.fields) && !used.has(q.proof.n) && (used.add(q.proof.n), true) ? null : "wrong_proof"); } };
+  const logs = /** @type {string[]} */ ([]);
+  const d = await start({ root, log: m => logs.push(String(m)), kernel: true, kernelPresence });
+  t.after(() => d.stop());
+  const owner = d.kernel.id.owner, space = d.kernel.id.space;
+  const personChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s" });
+  const ownerMeta = async () => ({ token: (await d.kernel.surfaces.open(personChain, {})).token });
+  const asst = async () => ({ token: (await d.kernel.surfaces.open(personChain, { agent: "assistant", thread: "t-kit" })).token, agentOnly: (await d.registry.call("agents.scope", { name: "engineer" }, "module:vyred")).data.only });
+  const lib = await d.registry.call("records.kits.library", {}, "cli", await ownerMeta());
+  const kits = lib.data && (lib.data.kits || lib.data);
+  assert.ok(Array.isArray(kits) && kits.length, JSON.stringify(lib));
+  const id = kits[0].id;
+  const got = await d.registry.call("records.kits.get", { id }, "cli", await ownerMeta());
+  assert.ok(got.data, JSON.stringify(got));
+  const kit = got.data.kit || got.data;
+  const card = await d.registry.call("flows.kit.card", { kit }, "cli", await asst());
+  assert.ok(card.data && card.data.ok !== false, JSON.stringify(card));
+  const typesBefore = (await d.kernel.store.types()).map((/** @type {any} */ x) => x.name);
+  const p = await d.registry.call("flows.kit.propose", { kit }, "cli", await asst());
+  assert.ok(p.data && p.data.ok, JSON.stringify(p));
+  const task = await d.kernel.gateway.ask.get(personChain, p.data.task);
+  assert.equal(task.form.kind, "kit_install"); assert.equal(task.checker.id, owner);
+  assert.deepEqual((await d.kernel.store.types()).map((/** @type {any} */ x) => x.name), typesBefore, "nothing installed before the yes");
+  // the owner's yes: the checker's decision with a proof over the task, its payload and its form; the kernel's event then runs the install
+  const row = await d.kernel.gateway.ask.get(personChain, p.data.task);
+  await d.kernel.gateway.ask.decide(personChain, p.data.task, { outcome: "approved", proof: { op: "task.decide", fields: { task: p.data.task, payload_hash: row.payload.payload_hash, decision: row.payload.decision }, n: Math.random() } });
+  await until(async () => (await d.kernel.store.types()).length > typesBefore.length, "the Kit's types to be defined");
+  const after = (await d.kernel.store.types()).map((/** @type {any} */ x) => x.name);
+  const kitRow = async () => ((await d.registry.call("flows.kit.list", {}, "cli", await ownerMeta())).data || []).find((/** @type {any} */ k) => k.kit_id === id || k.id === id);
+  const done = await until(async () => { const k = await kitRow(); return k && k.status !== "installing" ? k : null; }, `the install to finish (${logs.filter(m => /flows|kit|install/i.test(m)).slice(0, 3).join(" | ")})`);
+  assert.equal(done.status, "installed", JSON.stringify(done));
 });

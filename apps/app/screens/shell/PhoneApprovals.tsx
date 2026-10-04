@@ -30,7 +30,12 @@ export function PhoneApprovals() {
   if (Platform.OS === "web" || !cards.length) return null;
   const approve = async (c: Pending) => {
     setBusy(c.id);
-    try { await approveCard(c, await phoneSigner(), ask, proofHeader); showToast("Approved."); }
+    try {
+      const me = await ask("records.me", {}).catch(() => null);
+      const person = typeof me?.person === "string" ? me.person : me?.person?.id ?? "";
+      await approveCard(c, await phoneSigner(), ask, proofHeader, person);
+      showToast("Approved.");
+    }
     catch (e) { showToast(answerRefusal((e as { code?: string }).code)); }
     finally { setBusy(""); load(); }
   };

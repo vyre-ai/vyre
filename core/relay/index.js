@@ -443,10 +443,11 @@ export default {
       return h;
     };
     /** Ends a waiting pairing: its channels close and a reconnect finds nothing. @returns {boolean} whether one was waiting */
+    const ABANDON_MS = seam.abandonMs ?? 15_000;
     const pendingDrop = (id, why) => {
       const p = pendingPairs.get(id);
       if (!p) return false;
-      pendingPairs.delete(id); clearTimeout(p.timer);
+      pendingPairs.delete(id); clearTimeout(p.timer); clearTimeout(p.gone);
       for (const ch of p.channels) { try { ch.close(4401, why); } catch { /* closed */ } }
       return true;
     };
@@ -580,8 +581,18 @@ export default {
         // an unconfirmed redeemer is `web:<id>`: it reaches only the tools that name that class (its own pairing's), and becomes `device:<id>` only at the confirm (BR-2)
         bridge(channel, { handler: pendingHandler(p.gate), caller: `web:${pid}`, peer, log: m => ctx.log(m) });
         p.channels.add(channel);
+        clearTimeout(p.gone);
         const closed0 = channel.onclose;
-        channel.onclose = reason => { closed0(reason); p.channels.delete(channel); };
+        // Every channel of a waiting pairing closed and none came back within the grace: the app is gone (the browser was closed before the yes). The pairing is dropped and the wink module
+        // told, so a server does not keep answering "busy" to the next scanner until it restarts.
+        channel.onclose = reason => {
+          closed0(reason); p.channels.delete(channel);
+          if (p.channels.size === 0 && pendingPairs.get(pid) === p) {
+            clearTimeout(p.gone);
+            p.gone = setTimeout(() => { if (p.channels.size === 0 && pendingPairs.get(pid) === p) { pendingDrop(pid, "abandoned"); try { ctx.events.emit("pairing.abandoned", { device: pid }); } catch { /* no listener */ } } }, ABANDON_MS);
+            if (p.gone.unref) p.gone.unref();
+          }
+        };
         return;
       }
       const id = String(reply.device);
@@ -600,7 +611,7 @@ export default {
       // reachable only from inside this device's own Noise channel and never as a tool.
       const handler = (req, res, caller, p) => (req.method === "POST" && req.url === JOIN_PATH ? tailnetKey(id, res) : routed(req, res, caller, p));
       const peers = peersFor(ctx);
-      bridge(channel, { handler, caller: label, peer, upgrade: () => (upgrade = upgrade || ctx.upgrader({})), log: m => ctx.log(m), ...(peers ? { peers } : {}) });
+      bridge(channel, { handler, caller: label, peer, upgrade: () => (upgrade = upgrade || ctx.upgrader({})), log: m => ctx.log(m), ...(peers && !limited ? { peers } : {}) });
       const set = live.get(id) || new Set();
       set.add(channel);
       live.set(id, set);

@@ -46,3 +46,17 @@ test("approve on your phone: a no needs the person's session, a timeout and bad 
   for (let i = 0; i < 5; i++) await ask({ ...FIELDS, input_hash: `x${i}` });
   await assert.rejects(() => ask({ ...FIELDS, input_hash: "x9" }), { code: "rate_limited" });
 });
+
+import { proofRequest } from "../../kernel/remote/proof.js";
+test("approvals.request returns exactly the kernel's proof request for an act, and refuses a name it does not know", async () => {
+  const w = await world();
+  const args = [{ person: "per_alexalexalexalexalexalex", role: "admin" }];
+  const r = await w.run("approvals.request", { space: SPACE, call: "setRole", args }, { caller: "deck" });
+  const want = proofRequest(SPACE, "setRole", ...args);
+  assert.deepEqual(r, { op: want.op, space: want.space, fields: want.fields, payload_hash: want.payload_hash });
+  // what the phone signs is what approvals.ask would hold for the same op and fields
+  const asked = await w.run("approvals.ask", { op: r.op, space: r.space, fields: r.fields }, { caller: "device:web" });
+  assert.equal(asked.payload_hash, r.payload_hash);
+  await assert.rejects(() => w.run("approvals.request", { space: SPACE, call: "nope", args: [] }, { caller: "deck" }), { code: "bad_input" });
+  await assert.rejects(() => w.run("approvals.request", { space: "x", call: "setRole", args }, { caller: "deck" }), { code: "bad_input" });
+});

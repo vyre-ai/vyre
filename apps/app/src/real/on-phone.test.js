@@ -31,6 +31,7 @@ test("a browser names what the person does on the phone", () => {
   assert.equal(onPhoneFor("seal.reveal"), "Reveal it in Vyre on your phone.");
   assert.equal(onPhoneFor("tasks.decide"), "Approve it in Vyre on your phone.");
   assert.equal(onPhoneFor("something.else"), ON_PHONE);
+  assert.equal(onPhoneFor("onboard.claude"), "Connect it in Vyre on your phone.");
   assert.equal(actWords("rules.remove"), "Remove a rule");
   assert.equal(actWords("nope"), "");
 });

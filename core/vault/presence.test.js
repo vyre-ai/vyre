@@ -33,7 +33,7 @@ const NO_PRESENCE = ["vault.provider.status", "vault.list", "vault.revoke", "vau
   "vault.people", "vault.fingerprint", "vault.vaults.create", "vault.vaults.list", "vault.vaults.sync",
   "vault.device.join", "vault.device.list", "vault.device.sync",
   "vault.item", "vault.ssh.keys", "vault.ssh.generate", "vault.ssh.approvals", "vault.ssh.forget",
-  "vault.session.close", "vault.session.status", "vault.caps", "vault.health", "vault.clipboard.clear", "vault.search",
+  "vault.session.close", "vault.session.status", "vault.state", "vault.caps", "vault.health", "vault.clipboard.clear", "vault.search",
   "vault.agent.grants", "vault.agent.revoke", "vault.uses", "vault.remind.run", "vault.rotation",
   "vault.emergency.deny", "vault.emergency.remove", "vault.emergency.list", "vault.need",
   "vault.connections.list", "vault.connections.get", "vault.connections.revoke", "vault.connections.sync",

@@ -572,7 +572,7 @@ test("approval under an always-ask rule that names a ROLE: it stands only when t
   assert.equal(r.tasks.useApproval({ id: t.id, ...act, rule: { id: "r1", approver: { role: "owner" } } }), false, "once");
 });
 
-test("a task's answer reaches whoever asked: stored on done and carried on task.completed for decision, fields and note outputs (a Flow's ask and agent steps read it back); capped, and none for other kinds", async () => {
+test("a task's answer reaches whoever asked: stored on done and carried on task.completed (by hash, never in the clear) for decision, fields and note outputs (a Flow's ask and agent steps read it back); capped, and none for other kinds", async () => {
   const r = rig();
   const t = await r.tasks.request(owner(), { title: "Send the engagement letter?", doer: actor("agent", "research"), output: { kind: "decision" } });
   await r.tasks.start(agentChain("research"), t.id);
@@ -581,7 +581,8 @@ test("a task's answer reaches whoever asked: stored on done and carried on task.
   assert.deepEqual(done.answer, { answer: "yes", reason: "the fee was agreed" });
   assert.deepEqual((await r.tasks.get(owner(), t.id)).answer, { answer: "yes", reason: "the fee was agreed" });
   const ev = r.log.read({ type: "task.completed" }).find(e => e.subject.endsWith(`/${t.id}`));
-  assert.deepEqual(ev.data.answer, { answer: "yes", reason: "the fee was agreed" });
+  assert.equal(ev.data.answer, undefined, "free text is never in the log in the clear");
+  assert.match(ev.data.answer_hash, /^[A-Za-z0-9_-]{43}$/, "the log carries its hash instead");
   assert.ok(Object.isFrozen(done.answer));
   const f = await r.tasks.request(owner(), { title: "Research", doer: actor("agent", "research"), output: { kind: "note" } });
   await r.tasks.start(agentChain("research"), f.id);
@@ -625,9 +626,31 @@ test("WF-1 on tasks: a change whose event cannot be written does not stay in mem
   const A = alice();
   await down(() => r.tasks.decide(A, w.id, { outcome: "approved", proof: r.proof(A, ALICE, w) }));
   assert.equal((await r.tasks.get(owner(), w.id)).state, "needs_check", "still waiting for its check");
-  assert.equal(r.released.length <= 1, true);
-  const releasedBefore = r.released.length;
+  assert.equal(r.released.length, 1, "the send ran once before the event was refused");
   const done = await r.tasks.decide(A, w.id, { outcome: "approved", proof: r.proof(A, ALICE, w) });
   assert.equal(done.state, "done");
-  assert.equal(r.released.length, releasedBefore + 1);
+  assert.equal(r.released.length, 1, "WF-2: the second approval did not send again");
+});
+
+test("PR-2: the form a Flow sent with a task is bound into what the checker's proof covers: same evidence under another form is another payload hash, and a proof for the other form does not approve", async () => {
+  const r = rig();
+  const A = alice();
+  const evidence = { answer: "yes", reason: "the diff is fine" };
+  const mk = async form => {
+    const t = await r.tasks.request(owner(), draftTask({ checker: actor("person", ALICE), output: { kind: "decision" }, doer: actor("agent", "research"), flow: "fl_proposal", form }));
+    await r.tasks.start(agentChain("research"), t.id);
+    return r.tasks.complete(agentChain("research"), t.id, evidence);
+  };
+  const one = await mk({ kind: "proposal", diff: "add a stage" });
+  const two = await mk({ kind: "proposal", diff: "add a stage and delete a type" });
+  assert.equal(one.state, "needs_check");
+  assert.notEqual(one.payload.payload_hash, two.payload.payload_hash, "another form, another hash");
+  assert.equal(one.payload.form_hash, sha256(canonical({ kind: "proposal", diff: "add a stage" })), "the task row names the form hash the proof covers");
+  assert.notEqual(one.payload.form_hash, two.payload.form_hash);
+  // a proof over the other form's hash, for this task and decision, is not a proof for this task
+  const forTwo = r.sign(A, ALICE, "task.decide", { task: two.id, payload_hash: one.payload.payload_hash, decision: two.payload.decision });
+  await assert.rejects(() => r.tasks.decide(A, two.id, { outcome: "approved", proof: forTwo }), { code: "needs_presence" });
+  assert.equal((await r.tasks.get(owner(), two.id)).state, "needs_check", "nothing was approved");
+  const good = r.proof(A, ALICE, two);
+  assert.equal((await r.tasks.decide(A, two.id, { outcome: "approved", proof: good })).state, "done");
 });

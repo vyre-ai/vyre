@@ -37,7 +37,7 @@ async function world(t) {
   globalThis.__w = { now: { day: "2026-10-01", tz: "UTC", localTime: "08:10" }, waiting: { rows: [], count: 0 }, threads: [],
     agents: [{ name: "juno", kind: "assistant", doing: "idle", thread: "t1" }], rolled: [], digest: { text: "Alex asked for the Northwind invoice." },
     prompts: [], undo: [], undoQ: [], mcp: [], phones: [] };
-  for (const [m, tools] of Object.entries(FAKES)) writeModule(root, m, { roles: ["box", "local"], does: { tools: tools.map(x => x[0]) } }, code(tools));
+  for (const [m, tools] of Object.entries(FAKES)) writeModule(root, m, { roles: ["box", "local"], does: { reads: tools.map(x => x[0]), tools: tools.map(x => x[0]) } }, code(tools));
   const db = open(path.join(home, "vyre.db"));
   const events = new Events(db);
   const reg = new Registry({ db, events, config: { role: "local" }, paths: { root: home }, log: () => {} });

@@ -324,6 +324,14 @@ export const tokens = {
           32,
           38
         ],
+        "control": [
+          14,
+          20
+        ],
+        "micro": [
+          11,
+          14
+        ],
         "label": 11
       },
       "phone": {
@@ -358,6 +366,14 @@ export const tokens = {
         "display": [
           34,
           41
+        ],
+        "control": [
+          15,
+          20
+        ],
+        "micro": [
+          11,
+          14
         ],
         "label": 11
       },
@@ -396,6 +412,14 @@ export const tokens = {
             12,
             16
           ],
+          "control": [
+            15,
+            20
+          ],
+          "micro": [
+            11,
+            14
+          ],
           "label": 11
         },
         "android": {
@@ -431,6 +455,14 @@ export const tokens = {
             12,
             16
           ],
+          "control": [
+            15,
+            20
+          ],
+          "micro": [
+            11,
+            14
+          ],
           "label": 11
         },
         "web": {
@@ -465,6 +497,14 @@ export const tokens = {
           "caption": [
             12,
             16
+          ],
+          "control": [
+            14,
+            20
+          ],
+          "micro": [
+            11,
+            14
           ],
           "label": 11
         }
