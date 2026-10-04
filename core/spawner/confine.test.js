@@ -47,8 +47,9 @@ test("confinement: a probe that never answers is killed at the limit and fails t
 });
 
 test("confine-probe.sh, run for real as this user: reports its uid, the project, and what it can and cannot reach", { skip: process.platform === "win32" }, async t => {
-  const work = tmp(), open = tmp(); t.after(() => { for (const d of [work, open]) fs.rmSync(d, { recursive: true, force: true }); });
-  const closed = path.join(open, "closed"); fs.mkdirSync(closed, { mode: 0o000 }); t.after(() => fs.chmodSync(closed, 0o700));
+  const work = tmp(), open = tmp();
+  const closed = path.join(open, "closed"); fs.mkdirSync(closed, { mode: 0o000 });
+  t.after(() => { try { fs.chmodSync(closed, 0o700); } catch {} for (const d of [work, open]) fs.rmSync(d, { recursive: true, force: true }); });
   const text = await new Promise(res => { let o = ""; const c = nodeSpawn(PROBE, ["allow", work, "deny", open, path.join(closed, "inner"), "/no/such/place"]); c.stdout.on("data", d => o += d); c.on("close", () => res(o)); });
   const lines = String(text).trim().split("\n");
   assert.equal(lines[0], `uid ${os.userInfo().uid}`);

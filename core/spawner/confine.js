@@ -32,7 +32,7 @@ export async function confineSelfTest(o) {
   try { child.stdin.end(); } catch { /* the probe reads nothing */ }
   const killer = () => { try { child.kill("SIGKILL"); } catch {} };
   if (o.signal) { if (o.signal.aborted) killer(); else o.signal.addEventListener("abort", killer, { once: true }); }
-  const timer = setTimeout(killer, o.timeoutMs || 20_000); timer.unref?.();
+  const timer = setTimeout(killer, o.timeoutMs || 20_000);   // not unref'd: the check waits on it, and it is cleared the moment the probe ends
   await new Promise(res => { child.once("close", res); child.once("exit", res); child.once("error", res); });
   clearTimeout(timer);
   for (const line of text.split("\n")) {

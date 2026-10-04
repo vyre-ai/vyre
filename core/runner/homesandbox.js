@@ -41,6 +41,7 @@ const SECRET_DIRS = [".ssh", ".aws", ".gnupg", ".kube", ".docker", ".netrc", ".g
  * @property {{ command: string, args?: string[], private?: { from: string, env: string, credentialFiles: string[] }, hosts?: string[], versionArgs?: string[] }} [agent]  the provider's agent. `private` is REQUIRED: each session gets its OWN config folder holding only the credential files, seeded from the person's real folder `from` (which is never bound), through the env var the provider reads (CLAUDE_CONFIG_DIR). A provider without it does not start sandboxed. `hosts` are what it needs to reach, `versionArgs` make it print its version
  * @property {string} [temp]  the session's own temp folder (read-write)
  * @property {number[]} [daemonPorts]  the daemon's own TCP ports: refused on every address (macOS)
+ * @property {(plan: any) => any} [launch]  starts a planned process (tests: a launcher whose program is missing)
  * @property {string[]} [pathDirs]  folders put first on the session's PATH on Linux (a script agent's interpreter is found by `env`); they must also be bound read-only
  * @property {string[]} [passEnv]  names of environment variables the caller deliberately passes through (a credential the agent needs); everything else not on the allow-list is dropped
  * @property {{ socket?: string, port?: number, token?: string }} [proxy] macOS: a loopback port, the only network the profile allows; Linux: the egress proxy the provider is reached through (a CONNECT tunnel to the agent's hosts only; the token is its password)
@@ -310,23 +311,23 @@ export async function selfTest(o) {
     try {
       if (!path.isAbsolute(o.agent.command)) return { code: -1, e2: "the agent's program is not an absolute path" };
       const a = planHome({ ...o, command: o.agent.command, args: o.agent.versionArgs || ["--version"], readOnly: [...new Set([...(o.readOnly || []), ...programDirs(o.agent.command)])], pathDirs: programDirs(o.agent.command) });
-      const c = launch(a); agentChild = c; let e2 = ""; c.stderr.on("data", d => e2 += d); c.stdout.resume();
+      const c = (o.launch || launch)(a); c.__t0 = Date.now(); agentChild = c; let e2 = ""; c.stderr.on("data", d => e2 += d); c.stdout.resume();
       try { if (c.stdin) { c.stdin.on("error", () => {}); c.stdin.end(); } } catch { /* the check reads no input: a program that waits on stdin must see the end of it, not hang the start */ }
       c.on("error", e => { e2 += String(e && e.message); });
-      const code = await new Promise(r => { const t = setTimeout(() => { c.kill("SIGKILL"); r(-1); }, 20000); c.on("close", x => { clearTimeout(t); r(x); }); c.on("error", () => { clearTimeout(t); r(-1); }); });
+      const code = await new Promise(r => { const t = setTimeout(() => { c.kill("SIGKILL"); r(-1); }, 20000); c.on("close", x => { clearTimeout(t); r(x); }); c.on("exit", x => { setTimeout(() => { clearTimeout(t); r(x === null ? -1 : x); }, 300).unref?.(); }); c.on("error", () => { clearTimeout(t); r(-1); }); });
       return { code, e2 };
     } catch (e) { return { code: -1, e2: String(e && e.message || e) }; }
   })();
-  const child = launch(p);
+  const child = (o.launch || launch)(p); child.__t0 = Date.now();
   // sessions' limit on the whole self-test (lib/agent-sandbox.js): on abort both children are killed, so nothing it started outlives the failed start.
-  const stop = () => { for (const c of [child, agentChild]) { try { if (c && c.exitCode === null) c.kill("SIGKILL"); } catch {} } };
+  const stop = () => { for (const c of [child, agentChild]) { if (!c) continue; const age = Date.now() - (c.__t0 || 0); setTimeout(() => { try { if (c.exitCode === null) c.kill("SIGKILL"); } catch {} }, Math.max(0, 400 - age)).unref?.(); } };
   if (o.signal) { if (o.signal.aborted) stop(); else o.signal.addEventListener("abort", stop, { once: true }); }
   let out = "", err = "";
   child.stdout.on("data", d => out += d); child.stderr.on("data", d => err += d);
   // A program that cannot be started (no bwrap in the image) is an "error" event: unhandled, it ends the daemon for every session. It is this start's failure, with its reason.
   child.on("error", e => { err += String(e && e.message || e); });
   // Bounded: a probe that never ends must fail the start with a reason, not leave the session "starting" for ever.
-  await new Promise(r => { const t = setTimeout(() => { try { child.kill("SIGKILL"); } catch {} r(undefined); }, 45_000); child.on("close", () => { clearTimeout(t); r(undefined); }); });
+  await new Promise(r => { const t = setTimeout(() => { try { child.kill("SIGKILL"); } catch {} r(undefined); }, 45_000); child.on("close", () => { clearTimeout(t); r(undefined); }); child.on("exit", () => { setTimeout(() => { clearTimeout(t); r(undefined); }, 300).unref?.(); }); });
   const agent = await agentCheck;
   try { if (agentChild && agentChild.exitCode === null) agentChild.kill("SIGKILL"); } catch {}   // nothing of a failed check is left running
   const probeMs = Date.now() - t0;
