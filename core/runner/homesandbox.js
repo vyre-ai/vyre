@@ -20,6 +20,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { launch, sshCommand, fakePasswd } from "./sandbox.js";
 import { filter as seccompFilter } from "./seccomp.js";
 import { SHIM, PROXYCMD } from "./sandbox.js";
+export { startHomeProxy } from "./homeproxy.js";
 
 const real = p => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
 const q = s => JSON.stringify(String(s));
@@ -139,8 +140,7 @@ export function homeSeatbelt(o) {
     ...[...new Set(ok.flatMap(ancestors))].map(d => `(allow file-read-metadata (literal ${q(d)}))`),
     // The protected places are denied AGAIN after the allows, so no allowed folder can re-open them.
     ...[v, ...SECRET_DIRS.map(d => path.join(h, d))].map(d => `(deny file* (subpath ${q(d)}))`),
-    // (Name lookup stays allowed here, unlike the lent profile: a home session reaches its provider by name, and without the DNS services the real claude
-    // cannot resolve api.anthropic.com. Hosted Mac run 37165284079, ENOTFOUND.)
+    // (Name lookup is closed with the rest of the network: the proxy resolves names itself, so a session needs no DNS of its own.)
     // The way into other processes of the same user: their arguments and environment, signals, and the services that hold the
     // pasteboard, the keychain, Apple events and the window server (the same list the lent-computer profile denies).
     "(deny signal)", "(allow signal (target self) (target children))", "(deny process-info* (target others))", '(deny sysctl-read (sysctl-name "kern.procargs2"))',
