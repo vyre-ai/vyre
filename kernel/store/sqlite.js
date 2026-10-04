@@ -343,10 +343,48 @@ export function createSqliteStore(cfg) {
   };
 
   let pending = null;
+  /** @type {any} */ let persistRef = null;
   const store = createMemoryStore({
     clock: cfg.clock, hook: cfg.hook, initial: { types, records: [], changes: [] }, backing: { table, changes },
-    persist: {
+    persist: (persistRef = {
       type: (name, def) => { if (def) { const had = defs.get(name); putType.run(name, JSON.stringify(def)); defs.set(name, def); if (had && canonical(had) !== canonical(def)) ftsRestart(); } else { delType.run(name); defs.delete(name); } for (const k of [...asciiOf.keys()]) if (k.startsWith(`${name}.`)) asciiOf.delete(k); },
+      /**
+       * A field was sealed in place: the values it held must not survive in the change log (before and after of every entry of the type), nor in the file's free pages or the write-ahead log
+       * (`secure_delete` zeroes what an UPDATE frees, a VACUUM rewrites the file, and the log is truncated), nor in the full-text index (rebuilt without the field).
+       * @param {string} type @param {readonly string[]} fields
+       */
+      scrub: (type, fields) => {
+        if (!fields.length) return;
+        const was = /** @type {any} */ (db.prepare("PRAGMA secure_delete").get());
+        db.exec("PRAGMA secure_delete = ON");
+        try {
+          const upd = db.prepare("UPDATE kernel_changes SET entry = ? WHERE seq = ?");
+          let from = 0;
+          for (;;) {
+            const rows = /** @type {any[]} */ (db.prepare("SELECT seq, entry FROM kernel_changes WHERE seq > ? ORDER BY seq LIMIT 500").all(from));
+            if (!rows.length) break;
+            db.exec("BEGIN");
+            try {
+              for (const r of rows) {
+                from = r.seq;
+                const e = JSON.parse(r.entry);
+                if (e.type !== type) continue;
+                let hit = false;
+                for (const f of fields) for (const side of ["before", "after"]) if (e[side] && typeof e[side] === "object" && Object.hasOwn(e[side], f)) { delete e[side][f]; hit = true; }
+                if (hit) upd.run(JSON.stringify(e), r.seq);
+              }
+              db.exec("COMMIT");
+            } catch (err) { db.exec("ROLLBACK"); throw err; }
+          }
+          ftsRestart();
+          // The plain values were also in the record rows the sealing rewrote and in pages freed before this call (secure_delete only zeroes what is freed from now on): a VACUUM writes the
+          // database out afresh, so nothing of what was deleted survives in the file. A sealing in place is rare, and this is the price of "forgotten".
+          try { db.exec("VACUUM"); } catch { /* inside a transaction of the caller's: the freed pages stay until the next vacuum */ }
+        } finally {
+          db.exec(`PRAGMA secure_delete = ${was && was.secure_delete ? was.secure_delete : 0}`);
+          try { db.exec("PRAGMA wal_checkpoint(TRUNCATE)"); } catch { /* not in WAL mode, or the checkpoint is blocked by a reader: the next one does it */ }
+        }
+      },
       // The record and its change entry are one transaction: the memory store calls them back to back.
       record: r => { pending = r; },
       change: e => {
@@ -361,7 +399,7 @@ export function createSqliteStore(cfg) {
         } catch (err) { db.exec("ROLLBACK"); throw err; }
         pending = null;
       },
-    },
+    }),
   });
   /** @type {Map<string, any>} the kernel attributes of recently written records, in front of the table that keeps them all */ const attrCache = new Map();
   /** The gateway's kernel attributes per record (owner, created_by, project, sensitivity): on disk, a small LRU in front. */
@@ -378,5 +416,7 @@ export function createSqliteStore(cfg) {
     },
     set(/** @type {string} */ u, /** @type {any} */ v) { putAttrs.run(u, JSON.stringify(v)); attrCache.set(u, v); if (attrCache.size > HOT_ATTRS) attrCache.delete(/** @type {string} */ (attrCache.keys().next().value)); },
   };
-  return { ...store, meta, /** What is held in memory: for the bound's tests and the load measurements. */ get ftsReady() { return ftsReady; }, stats: () => ({ fts_built: ftsBuilt, aggregate_pushed: counts.agg, query_pushed: counts.pushed, query_streamed: counts.fell, search_fast: counts.fast, hot_rows: caches.reduce((n, c) => n + c.size, 0), hot_attrs: attrCache.size, changes_in_memory: 0 }), async version() { return { store: "sqlite", version: "1", conformance: (await store.version()).conformance }; } };
+  // The memory store of this tree may not carry `scrub` (it arrives with records' merge); the store the gateway calls always does, and it forgets in memory and on disk.
+  const scrub = /** @type {any} */ (store).scrub || (async (/** @type {string} */ type, /** @type {readonly string[]} */ fields) => { /** @type {any} */ (persistRef).scrub(type, fields); });
+  return { ...store, scrub, meta, /** What is held in memory: for the bound's tests and the load measurements. */ get ftsReady() { return ftsReady; }, stats: () => ({ fts_built: ftsBuilt, aggregate_pushed: counts.agg, query_pushed: counts.pushed, query_streamed: counts.fell, search_fast: counts.fast, hot_rows: caches.reduce((n, c) => n + c.size, 0), hot_attrs: attrCache.size, changes_in_memory: 0 }), async version() { return { store: "sqlite", version: "1", conformance: (await store.version()).conformance }; } };
 }
