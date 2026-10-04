@@ -7,13 +7,13 @@
 /**
  * The state to show for Claude, from onboard.status's `claude` and what this screen is doing.
  * @param {{ state?: string, why?: string | null, signedIn?: boolean, via?: string | null, installed?: boolean } | null | undefined} claude
- * @param {{ waiting?: boolean, failed?: string, pairFirst?: boolean, onPhone?: boolean, ownerFirst?: string | null }} [local]
+ * @param {{ waiting?: boolean, failed?: string, pairFirst?: boolean, onPhone?: boolean, ownerFirst?: string | null, surface?: "browser" | "mac" | "phone" }} [local]
  * @returns {{ state: AiState, line: string }}
  */
 export function claudeState(claude, local = {}) {
   const connected = Boolean(claude?.signedIn || claude?.state === "done");
   // Not connected yet: a server with no owner says to pair first (no sign-in button, no error after a tap); a browser cannot give the owner's presence, so it says to do it on the phone.
-  if (!connected && local.pairFirst) return { state: "pair_first", line: local.ownerFirst === "name" ? "Make your Vyre name on this computer first. Then connect an AI account." : "Pair this server to your Vyre app first. Then connect an AI account." };
+  if (!connected && local.pairFirst) return { state: "pair_first", line: local.ownerFirst === "name" ? nameFirstLine(local.surface) : "Pair this server to your Vyre app first. Then connect an AI account." };
   if (!connected && local.onPhone) return { state: "on_phone", line: "Connect it in Vyre on your phone." };
   if (local.failed) return { state: "failed", line: local.failed };
   if (claude?.signedIn || claude?.state === "done") return { state: "connected", line: claude?.via === "api-key" ? "Connected with your API key. Your assistants use it, up to the budget you set." : "Connected with your Claude subscription. Your assistants use it, up to the budget you set." };
@@ -39,10 +39,13 @@ export const DISCONNECT_NOTE = "Assistants on Claude stop and ask you. Your Clau
 /** Is this a sign-in link the person may open? Only https, never anything else. @param {unknown} url */
 export const safeLink = (url) => { try { const u = new URL(String(url)); return u.protocol === "https:" ? u.toString() : null; } catch { return null; } };
 
-/** @param {string | undefined} code @param {string} message */
-export function aiRefusal(code, message) {
+/** The first step on a computer with no owner, by where the person is: a browser cannot make a name in this release, a Mac window of Vyre can. @param {"browser" | "mac" | "phone"} [surface] */
+export const nameFirstLine = (surface = "mac") => (surface === "browser" ? "Choose your Vyre name on your phone first. Then connect an AI account." : surface === "phone" ? "Choose your Vyre name on this phone first. Then connect an AI account." : "Make your Vyre name on this computer first. Then connect an AI account.");
+
+/** @param {string | undefined} code @param {string} message @param {"browser" | "mac" | "phone"} [surface] */
+export function aiRefusal(code, message, surface) {
   if (code === "not_allowed" || code === "denied") return "Only the owner of this space connects an AI account. Ask them to do it.";
-  if (code === "not_a_server") return "Make your Vyre name on this computer first. Then connect an AI account.";
+  if (code === "not_a_server") return nameFirstLine(surface);
   if (code === "pair_first") return "Pair this server to your Vyre app first. Then connect an AI account.";
   if (code === "presence_required" || code === "needs_presence") return "That needs you. Approve on this device, then try again.";
   if (code === "expired" || code === "timeout") return "The sign-in ran out of time. Nothing was connected. Start over.";

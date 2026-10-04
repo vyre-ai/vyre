@@ -58,4 +58,7 @@ test("the first step on an unowned home depends on what it is: pair a server, or
 
 test("a computer with no owner says to make the name first", () => {
   assert.match(aiRefusal("not_a_server", "x"), /Make your Vyre name on this computer first/);
+  assert.equal(aiRefusal("not_a_server", "x", "browser"), "Choose your Vyre name on your phone first. Then connect an AI account.");
+  assert.match(aiRefusal("not_a_server", "x", "mac"), /Make your Vyre name on this computer first/);
+  assert.match(claudeState({ state: "todo" }, { pairFirst: true, ownerFirst: "name", surface: "browser" }).line, /Choose your Vyre name on your phone first/);
 });
