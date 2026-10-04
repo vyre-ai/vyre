@@ -45,3 +45,24 @@ test("the assistant's session starts and submits a task: ready, working, needs_c
   assert.ok(!second.error, JSON.stringify(second));
   await until(async () => (await row()).state === "needs_check", "the assistant submits it");
 });
+
+test("a plain session (started for no agent) is nobody's assistant: it cannot move, submit or decide a task the assistant is the doer of", { timeout: 120_000 }, async t => {
+  const root = tempHome(t);
+  const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, FAKE_CLAUDE_TRANSCRIPTS: process.env.FAKE_CLAUDE_TRANSCRIPTS };
+  const transcripts = path.join(root, "transcripts");
+  Object.assign(process.env, { VYRE_CLAUDE_BIN: FAKE, VYRE_SESSIONS_DRIVER: "cli", FAKE_CLAUDE_TRANSCRIPTS: transcripts });
+  t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+  fs.mkdirSync(transcripts);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
+  const d = await start({ root, presence: present, log: () => {}, kernel: true });
+  t.after(() => d.stop());
+  const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
+  t.after(() => fs.rmSync(work, { recursive: true, force: true }));
+  const owner = d.kernel.id.owner, space = d.kernel.id.space;
+  const person = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s" });
+  const task = await d.kernel.gateway.ask.request(person, { title: "Draft the engagement letter", output: { kind: "decision" }, source: "manual", doer: { kind: "agent", id: "assistant", space }, checker: { kind: "person", id: owner, space } });
+  const th = await d.registry.call("threads.start", { cwd: work, prompt: `vyre tasks.move ${JSON.stringify({ id: task.id, to: "working" })}`, surface: "deck" }, "cli");
+  assert.ok(th.data && th.data.id, JSON.stringify(th));
+  await until(async () => (await d.registry.call("threads.get", { thread: th.data.id, limit: 100 }, "cli")).data.events.some((/** @type {any} */ e) => e.type === "thread.finished"), "the plain session's turn");
+  assert.equal((await d.kernel.gateway.ask.get(person, task.id)).state, "ready", "a plain session moved the assistant's task");
+});
