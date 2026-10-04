@@ -1131,7 +1131,11 @@ uninstall() {
     say "your data is kept: a fresh install picks up where this left off"
   fi
   updater remove || say "The update units are still on this server (see above); the wrapper stays so you can remove them with: sudo $WRAPPER updater remove"
-  if [ -e "$WRAPPER" ] && [ ! -f "$SYSTEMD_DIR/$UPDATER_NAME.path" ] && grep -q "$MARK" "$WRAPPER" 2>/dev/null; then rm -f "$WRAPPER" 2>/dev/null || sudo rm -f "$WRAPPER"; fi
+  # The Space helper's units run this wrapper: left behind they would keep starting a command that is gone. In a subshell, because removing them as non-root re-runs the wrapper under sudo.
+  if [ -f "$SYSTEMD_DIR/$SPACES_UNIT.path" ] || [ -f "$SYSTEMD_DIR/$SPACES_UNIT-watch.service" ]; then
+    ( space_helper remove ) || say "The Space helper units are still on this server; the wrapper stays so you can remove them with: sudo $WRAPPER space-helper remove"
+  fi
+  if [ -e "$WRAPPER" ] && [ ! -f "$SYSTEMD_DIR/$UPDATER_NAME.path" ] && [ ! -f "$SYSTEMD_DIR/$SPACES_UNIT.path" ] && grep -q "$MARK" "$WRAPPER" 2>/dev/null; then rm -f "$WRAPPER" 2>/dev/null || sudo rm -f "$WRAPPER"; fi
   say "Vyre is off this server. $DIR stays with its .env; remove it with: sudo rm -rf $DIR"
 }
 

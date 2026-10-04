@@ -777,3 +777,12 @@ test("space helper publish-fill: a copy that fails, or a volume that does not pa
   assert.equal(r.status(id).state, "failed"); assert.match(r.status(id).message, /did not pass its check, so it was removed/);
   assert.ok(fs.existsSync(path.join(r.F, "lend", "publish", SPC, "sites", SITE, "index.html")), "the daemon's folder is back");
 });
+
+test("space helper: `vyre uninstall` removes the helper's units too, so nothing keeps running a wrapper that is gone", opts, async t => {
+  const r = rig(t);
+  await r.prime();
+  assert.ok(fs.existsSync(path.join(r.UNITS, "vyre-spaces.path")), "installed");
+  const u = /** @type {any} */ (await r.run(["uninstall", "--delete-data", "--yes"], { VYRE_SYSTEMD_SEAM: "1" }));
+  assert.ok(!fs.existsSync(path.join(r.UNITS, "vyre-spaces.path")), u.out);
+  assert.ok(!fs.existsSync(path.join(r.UNITS, "vyre-spaces-watch.service")), u.out);
+});
