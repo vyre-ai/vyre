@@ -1,14 +1,15 @@
 // Invite someone to a space on the real box: pick the role, make the link (spaces.invites.create), send it; the invites still open are listed with Revoke.
 // An invite for an admin or owner waits for you to confirm the words the invitee reads to you (spaces.invites.confirm).
 import { useCallback, useEffect, useState } from "react";
-import { View } from "react-native";
+import { Linking, Platform, Share, View } from "react-native";
+import { QrCode, qrFor } from "../../src/ui/QrCode";
 import { useRouter } from "expo-router";
 import * as Clipboard from "expo-clipboard";
 import { Banner, Button, Card, Divider, EmptyState, Field, Row, Segmented, Text, showToast } from "@vyre/ui";
 import { Page } from "../places/Frame";
 import { useMembers } from "../spaces/state";
 import { tool, said } from "../../src/real/box";
-import { TEMP_DAYS, createInput, inviteRefusal, liveServers, inviteRow, invitable, joinedLine, madeNote } from "./invite.js";
+import { TEMP_DAYS, createInput, inviteRefusal, liveServers, inviteRow, invitable, joinedLine, madeNote, emailIt } from "./invite.js";
 
 const why = (e: unknown) => inviteRefusal((e as { code?: string }).code, said(e));
 
@@ -69,7 +70,15 @@ export function RealInvite() {
         <Card className="max-w-read gap-s3">
           <Text strong>The invitation is ready</Text>
           <Card className="flex-row items-center gap-s3"><Text mono size="caption" className="flex-1">{made.link}</Text><Button size="sm" label="Copy" onPress={() => { Clipboard.setStringAsync(made.link).catch(() => {}); showToast("Copied"); }} /></Card>
+          {qrFor(made.link) ? <QrCode text={made.link} label="QR code for the invitation link" /> : null}
           <Text tone="muted">{made.line}</Text>
+          <View className="flex-row flex-wrap gap-s2">
+            <Button size="sm" label="Email it" onPress={() => {
+              // The person's own mail app (or the share sheet on a phone): Vyre sends nothing.
+              const e = emailIt(card.name, made.link);
+              if (Platform.OS === "web") void Linking.openURL(e.mailto).catch(() => {}); else void Share.share({ title: e.subject, message: e.body }).catch(() => {});
+            }} />
+          </View>
           {made.needsConfirm ? (
             <View className="gap-s2">
               <Banner><Text>This role needs your yes. When they open the link they read you a few words. Type them here to let them in.</Text></Banner>
