@@ -115,7 +115,7 @@ test("B2: a proof needs an assertion with a counter strictly above the last; a m
   await enrol(r.s, w, alex);
   const prove = (/** @type {any} */ p) => r.s.presenceProve({ chain: p.ch, op: p.op, fields: p.fields, proof: p.proof });
   const p1 = proofWith(alex, w, 1);
-  assert.deepEqual(await prove(p1), { ok: true, method: "attested" });
+  assert.deepEqual(await prove(p1), { ok: true, method: "attested", strength: "hardware" });
   const noAssert = proofWith(alex, w, null);
   assert.equal((await prove(noAssert)).code, "assertion_required");
   assert.equal((await prove(proofWith(alex, w, 1))).code, "bad_assertion", "an equal counter");
