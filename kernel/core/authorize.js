@@ -274,7 +274,9 @@ export function createAuthorizer(cfg) {
       if (OUTWARD.has(risk)) { presence = maxPresence(presence, "fresh"); ask = { kind: risk, approver: approver || "owner" }; }
       else if (approver) ask = { kind: risk, approver };
       if (risk === "grant") presence = maxPresence(presence, "fresh");
-      if (risk === "admin") presence = maxPresence(presence, "session");
+      // ONE permission rule (lead ruling c328cd1): a person caller (a paired device, the terminal, the Capsule, the app: a chain of exactly one person) does admin acts with no presence; the yes is asked at
+      // pairing a device, a vault secret and an outward act (below and in the vault), not here. An agent or a chain with an assistant in it still needs the person's session.
+      if (risk === "admin" && !isExactlyPerson(chain)) presence = maxPresence(presence, "session");
       if (attrs.sensitivity === "privileged") presence = presence === "none" ? "session" : maxPresence(presence, "fresh");
       // Tainted context (invariant 9): foreign content may not quietly drive grants, admin or more than a read across Spaces.
       let tainted = false;

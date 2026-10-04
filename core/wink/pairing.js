@@ -188,7 +188,6 @@ export function createPairing(o) {
      */
     setConfirmed(id, c) { db.prepare("UPDATE wink_devices SET confirmed_by = ?, confirm_key = ?, device_key = ?, hardware = 0, software = 0 WHERE id = ? AND removed_at IS NULL").run(c.by, c.keyId, c.key ? JSON.stringify(c.key) : null, String(id)); },
     /** The app's own report of where its key lives. @param {string} id @param {unknown} storage */
-    setProofStrength(id, strength) { db.prepare("UPDATE wink_devices SET proof_strength = ? WHERE id = ? AND removed_at IS NULL").run(strength ? String(strength).slice(0, 40) : null, String(id)); },
     setEnclaveKey(id, key, eid = null, name = null) { db.prepare("UPDATE wink_devices SET enclave_key = ?, enclave_eid = ?, vyre_name = ?, needs_repair = 0 WHERE id = ? AND removed_at IS NULL").run(key ? String(key).slice(0, 200) : null, eid ? String(eid).slice(0, 64) : null, name ? String(name).slice(0, 253) : null, String(id)); },
     setNeedsRepair(id) { db.prepare("UPDATE wink_devices SET needs_repair = 1 WHERE id = ? AND removed_at IS NULL").run(String(id)); },
     setKeyStorage(id, storage) { db.prepare("UPDATE wink_devices SET key_storage = ? WHERE id = ? AND removed_at IS NULL").run(storage === "hardware" || storage === "software" ? storage : "unknown", String(id)); },
@@ -196,7 +195,7 @@ export function createPairing(o) {
     record(id) {
       const r = /** @type {any} */ (db.prepare("SELECT * FROM wink_devices WHERE id = ? AND removed_at IS NULL").get(String(id)));
       if (!r || !r.confirmed_by) return null;
-      return { id: r.id, kind: r.kind, owner: r.identity, confirmed: true, confirmedBy: r.confirmed_by, confirmKeyId: r.confirm_key || null, key: r.device_key ? JSON.parse(r.device_key) : null, hardware: r.hardware === 1, keyStorage: r.key_storage || "unknown", proofStrength: r.proof_strength || null, enclaveKey: r.enclave_key || null, enclaveEid: r.enclave_eid || null, vyreName: r.vyre_name || null, identity: r.identity };
+      return { id: r.id, kind: r.kind, owner: r.identity, confirmed: true, confirmedBy: r.confirmed_by, confirmKeyId: r.confirm_key || null, key: r.device_key ? JSON.parse(r.device_key) : null, hardware: r.hardware === 1, keyStorage: r.key_storage || "unknown", name: r.name || "a device", proofStrength: r.proof_strength || null, enclaveKey: r.enclave_key || null, enclaveEid: r.enclave_eid || null, vyreName: r.vyre_name || null, identity: r.identity };
     },
     /** The owner's signing key for one of their devices (SPKI, base64url), used by wink.relay.apply. @param {string} id @param {string} key */
     setSignKey(id, key) { db.prepare("UPDATE wink_devices SET sign_key = ? WHERE id = ? AND removed_at IS NULL").run(key, String(id)); },
@@ -698,6 +697,8 @@ export function createPairing(o) {
       run: async (input, meta = {}) => {
         owner(meta, "adding this server");
         const i = input || {};
+        // an unowned server holds no device that matters: rows left by a pairing that never completed ownership must not refuse the new owner's pairing (first owner wins once it is owned)
+        if (!hasOwner() && typeof ctx.call === "function") { try { await ctx.call("relay.devices.clear-leftover", {}); } catch { /* no relay module here */ } }
         if (i.typed === true && !typedOn()) throw fail("typed_code_off", words("typedCodeOff"));
         if (i.pairTo !== undefined) {
           if (!["cli", "local"].includes(String((meta && meta.caller) || ""))) throw fail("denied", "Who a server pairs to is set at install time, on the server itself.");
@@ -712,6 +713,7 @@ export function createPairing(o) {
       },
     });
     const meta0Set = (/** @type {string} */ to) => { meta.set("pair_to", to); };
+    const hasOwner = () => Boolean(meta.get("owner"));
     ctx.tool("wink.server.confirm", {
       description: "On the new server: type back the code the app is showing. One try per code. Answers { ok, message }. A right code means the codes matched, nothing more: the app finishes the pairing (wink.server.adopt) and wink.pair.status on the app is the one place that says it is done or that it failed and why.",
       input: obj({ offer: str, typed: str }, ["offer", "typed"]),
@@ -914,8 +916,6 @@ export function createPairing(o) {
       } else ctx.log(`wink: ${device} paired without a verified identity proof: the home's owner is unchanged`);
       try {
         if (input.keyStorage) devices.setKeyStorage(device, input.keyStorage);
-        // the strength of this device's sessions is what the server verified (the owner proof's key), never the storage the app says it uses
-        devices.setProofStrength(device, proofKind === "enclave, unattested" ? proofKind : "software");
         if (enclaveKey) devices.setEnclaveKey(device, enclaveKey.key, enclaveKey.eid, enclaveKey.name);
         // The first pairing of a server with no owner: nobody can give presence yet, so the grant needs none. What stands for the confirmation is the three-word pick at this server's own terminal
         // (this code runs only after it) and the verified identity proof. The key the paired session is bound to is the device's own presence key when it offered one, else this pairing itself.

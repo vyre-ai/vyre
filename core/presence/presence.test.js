@@ -953,14 +953,15 @@ test("person sessions report their key's strength: what the row recorded, else s
   const { PersonSessions } = await import("./person.js");
   const people = new PersonSessions({ db });
   const hw = people.start({ node: "n1", software: false }), sw = people.start({ node: "n2", software: true });
-  assert.equal(people.strength(hw.id), "enclave");
+  assert.equal(people.strength(hw.id), "real");
   assert.equal(people.strength(sw.id), "software");
   assert.equal(people.strength("nope"), null);
-  // A row that recorded its opening proof's strength answers with it: an unattested enclave key is not software.
-  const enc = people.start({ node: "n3", paired: true, software: false, strength: "enclave, unattested" });
-  assert.equal(people.strength(enc.id), "enclave, unattested");
+  // A row that recorded its opening proof's strength answers with it; the words older rows hold (enclave, enclave unattested, passkey) read as real.
+  const enc = people.start({ node: "n3", paired: true, software: false, strength: "real" });
+  assert.equal(people.strength(enc.id), "real");
   const pk = people.start({ node: "n4", paired: true, strength: "passkey" });
-  assert.equal(people.strength(pk.id), "passkey");
+  assert.equal(people.strength(pk.id), "real", "a row written with the old word reads as real");
+  assert.equal(people.strength(people.start({ node: "n6", paired: true, strength: "enclave, unattested" }).id), "real");
   // A paired row that recorded none (made before strength existed) fails closed.
   const old = people.start({ node: "n5", paired: true, software: false });
   assert.equal(people.strength(old.id), "software");
@@ -981,17 +982,18 @@ test("the strength migration marks every paired session made before it as softwa
   const { PersonSessions } = await import("./person.js");
   const people = new PersonSessions({ db });
   assert.equal(people.strength("old-paired"), "software", "a paired device made before strength existed is software until it proves its key again");
-  assert.equal(people.strength("old-cookie"), "enclave", "a non-paired row keeps its flag");
+  assert.equal(people.strength("old-cookie"), "real", "a non-paired row keeps its flag");
 });
 
-test("the strength vocabulary is one list, and everything but software passes", async () => {
-  const { STRENGTHS, isNotSoftware } = await import("./strengths.js");
-  assert.deepEqual([...STRENGTHS], ["software", "enclave", "enclave, unattested", "passkey"]);
-  assert.deepEqual(STRENGTHS.filter(isNotSoftware), ["enclave", "enclave, unattested", "passkey"]);
-  for (const bad of ["hardware", "keystore", "", "Software", undefined]) assert.equal(isNotSoftware(bad), false, String(bad));
+test("the strength vocabulary is two words, real and software; the words older rows hold read as real", async () => {
+  const { STRENGTHS, isNotSoftware, normalizeStrength } = await import("./strengths.js");
+  assert.deepEqual([...STRENGTHS], ["software", "real"]);
+  assert.deepEqual(STRENGTHS.filter(isNotSoftware), ["real"]);
+  for (const old of ["enclave", "enclave, unattested", "passkey"]) { assert.equal(isNotSoftware(old), true, old); assert.equal(normalizeStrength(old), "real", old); }
+  for (const bad of ["hardware", "keystore", "", "Software", undefined]) { assert.equal(isNotSoftware(bad), false, String(bad)); assert.equal(normalizeStrength(bad), "software", String(bad)); }
 });
 
-test("paired sign-in: a signature by the identity entry's enclave key over the challenge makes the session `enclave, unattested`; the device key alone, or another key's signature, leaves it software", async t => {
+test("paired sign-in: a signature by the identity entry's enclave key over the challenge makes the session `real`; the device key alone, or another key's signature, leaves it software", async t => {
   const r = await pairedRig(t);
   const dk = r.kp(), enc = r.kp(), other = r.kp();
   const point = Buffer.concat([Buffer.from([4]), Buffer.from(enc.jwk.x, "base64url"), Buffer.from(enc.jwk.y, "base64url")]).toString("base64url");
@@ -999,6 +1001,6 @@ test("paired sign-in: a signature by the identity entry's enclave key over the c
   const run = (device, esigKey, enclaveKey = point) => { grant(device); const m = r.pairedStart(r.start(device)); const s = /** @type {any} */ (r.people.startPaired({ device, sig: r.sign(dk, m), ...(esigKey ? { esig: r.sign(esigKey, m), enclaveKey } : {}) })); return r.people.strength(s.id); };
   assert.equal(run("d1", null), "software", "the device key alone");
   assert.equal(run("d2", other), "software", "a signature by a key that is not the entry's enclave key");
-  assert.equal(run("d3", enc), "enclave, unattested", "the entry's enclave key signed this sign-in");
+  assert.equal(run("d3", enc), "real", "the entry's enclave key signed this sign-in");
   assert.equal(run("d4", enc, null), "software", "no enclave key on record: nothing to verify against");
 });

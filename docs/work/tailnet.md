@@ -1492,3 +1492,8 @@ test/wink.test.js "join end to end" (scratch branch work/join-e2e, never sent to
 - Vault's invitee key enrolment on accept is in work/vault-labels 824979454 (accept args `[id, { seen, proof, bind }]`, peer.entry and peer.name passed by the door). Nothing to add in INVITEE_CALLS; check that acceptInvitee passes entry/name to server.serve (vault changed peer-door.js there) and that the joining client's spaces.invites.accept builds `bind` (spaces module does).
 - test/wink.test.js "an invitee's session opens the stream ..." (line ~1553) fails on work/join-e2e 5a3d851b3 because it expects no `invitee: true` in the head; trunk's copy of that test already expects it. Send reviewer-3 the join e2e sha (5a3d851b3 or vault's 824979454) to gate.
 - Open: IV-9 (relay-level per-IP or per-invite cap, RC2), client message "try again in a minute" on close 4429.
+
+### reviewer-3 on 6fbf0aef7 (PASS, two lows left for the next session)
+
+- CL-1: `relay.devices.clear-leftover` must itself refuse while the server is owned (today the only guard is the call site in wink.server.code). Have the relay read the owner marker (ctx.config.network.owner or ask wink for owned) and answer `owned`; test as module:wink on an owned server.
+- CL-2: collapse the `relay: refused a hello (...)` log lines: one per reason per minute with a count, so an outsider opening channels cannot flood the log.
