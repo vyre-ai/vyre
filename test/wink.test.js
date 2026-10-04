@@ -1269,7 +1269,10 @@ test("a box-less device pairs a fresh server, is recorded as the owner's device 
   // a session is a session and nothing more: a human-only act still wants its own fresh proof, whatever kind of device holds the session
   const label = `device:${done.device}`;
   const human = await w.d.registry.call("vault.reveal", { name: "northwind-mail" }, label, { person: { id: started.body.data.id } });
-  assert.ok(human.error && ["presence_required", "denied", "person_session_required"].includes(human.error.code), `vault.reveal with a paired session and no fresh proof: ${JSON.stringify(human.error || human.data).slice(0, 120)}`);
+  assert.equal(human.error && human.error.code, "presence_required", `vault.reveal with a paired session and no fresh proof is stopped by the presence floor: ${JSON.stringify(human.error || human.data).slice(0, 120)}`);
+  // the same device with a fresh presence proof passes the floor (the gate, not a missing tool: what it answers is the vault's own, no such item)
+  const proved = await w.d.registry.call("vault.reveal", { name: "northwind-mail" }, label, { person: { id: started.body.data.id }, ...PROOF });
+  assert.ok(!proved.error || !["presence_required", "denied", "person_session_required", "no_such_tool"].includes(proved.error.code), `with a fresh proof it gets past the floor: ${JSON.stringify(proved.error || proved.data).slice(0, 120)}`);
 });
 
 test("device-first, real daemon: the owner's device calls spaces.host-here on the server over the peer session; the server's kernel builds the chain from the peer and decides", async t => {
@@ -1305,32 +1308,31 @@ test("pairServer maps a refused owner to bad_owner, not a network error, and not
 });
 
 test("a pairing whose app closed before the yes does not leave the server busy: the ask is dropped and the next scanner is asked", async t => {
-  const w = await world(t, { abandonMs: 200 });
+  const w = await world(t, { abandonMs: 150 });
   const saved = process.env.VYRE_WINK_TYPED_CODE;
   delete process.env.VYRE_WINK_TYPED_CODE;
   t.after(() => { if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
   const first = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
   const owner = { kind: "identity", id: "per_" + "q".repeat(26), name: "Alex" };
-  // the first app redeems, commits, hears the server's nonce and then goes away (a closed tab)
+  // the first app redeems, commits, hears the server's nonce, and is still connected
   const scan = parseServerQr(first.qr);
   const r = await redeem(t, w, scan.seed, "Alex's browser");
   const c = r.open();
   const na = newNonce(), commit = await nonceCommit(na), tag = await ticketTag(Buffer.from(scan.seed).toString("base64url"));
   assert.equal((await over(c, "wink.server.adopt", { owner, identity: owner.id, pairing: { commit, tag } })).status, 200);
-  c.close();
-  // a second scanner is told busy while the first is still there (inside the grace), and asked once the first is gone
+  // while it is still there a second scanner is told busy (no clock involved: the first channel is open)
   const early = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
   await assert.rejects(pairServer({ payload: early.qr, owner, name: "Eve", crypto: nodeCrypto(), keyStore: keystore(t) }), e => e.code === "busy");
-  await new Promise(r => setTimeout(r, 700)); // the grace (200 ms in this test) passes
+  // the app goes away; wait for the relay's own event that it did not come back, not for a sleep
+  c.close();
+  await until(async () => w.events.some(([type]) => type === "pairing.abandoned"), 20_000);
   const second = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
-  let done = null;
-  const pairing = pairServer({ payload: second.qr, owner, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: keystore(t), pollMs: 100, onWords: x => { done = x; } });
+  const pairing = pairServer({ payload: second.qr, owner, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: keystore(t), pollMs: 100, onWords: () => {} });
   pairing.catch(() => {});
-  const q = await until(async () => { const x = (await w.call("wink.server.pairing", {}, "cli", PROOF)).data; return x && x.asking ? x : null; }, 10_000);
+  const q = await until(async () => { const x = (await w.call("wink.server.pairing", {}, "cli", PROOF)).data; return x && x.asking ? x : null; }, 20_000);
   assert.ok(q.asking, "the second scanner is asked once the abandoned one is gone");
   await w.call("wink.server.pair.answer", { yes: false }, "cli", PROOF);
   await pairing.catch(() => null);
-  void done;
 });
 
 // ---- the identity proof in the FIRST adopt call, checked against the names directory (lead ruling, 4 Oct) ----
