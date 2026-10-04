@@ -133,7 +133,7 @@ test("in a real vyred: who sees the people tools, and the kit is a person's tool
   assert.ok(card.startsWith("vyre-card:v2:"));
   const pend = (await mcp("vault.person.add", { card, name: "self" })).data;
   assert.equal(pend.pending.status, "pending");
-  assert.deepEqual((await mcp("vault.people")).data.people, []);
+  assert.deepEqual((await cli("vault.people")).data.people, []);
 });
 
 test("in a real vyred: account.create, then kit; the page holds the Secret Key, events, logs and audit do not", async t => {

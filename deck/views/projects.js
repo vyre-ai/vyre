@@ -185,7 +185,7 @@ async function board(ctx) {
   const tab = TABS.some(t => t[0] === ctx.query.get("tab")) ? ctx.query.get("tab") : "threads";
   const [pl, pt, sw, cx] = await Promise.all([
     // The Switchboard's threads on this machine only: a Mac's threads name the Mac's own projects.
-    attempt("projects.list"), attempt("projects.threads", { project: slug }), attempt("threads.list", { project: slug, machines: "local" }), attempt("projects.context", { project: slug })]);
+    attempt("projects.list"), attempt("projects.threads", { project: slug }), attempt("threads.list", { machines: "local" }), attempt("projects.context", { project: slug })]);
   if (!ctx.alive()) return;
   const p = (pl.data?.projects || []).find(x => x.slug === slug && !isMac(x));
   if (!p) {

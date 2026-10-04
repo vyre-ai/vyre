@@ -358,7 +358,7 @@ export default {
         return scanEnvFiles(dirs);
       });
 
-    tool("vault.audit", null, "Who used which item, when, and whether it was allowed. Never a value.",
+    tool("vault.audit", ["cli", "local", "deck", "capsule", "tailnet", "device", "module"], "Who used which item, when, and whether it was allowed. Never a value.",
       obj({ name: str, limit: { type: "integer" } }), input => vault.auditTrail(input));
 
     tool("vault.match", SURFACES, "Logins for a page, for autofill: names only.",
@@ -390,7 +390,7 @@ export default {
         return vault.grantsStatus();
       });
 
-    tool("vault.pass.list", null, "Passes this Vyre gave, and passes it holds.", obj({}), () => vault.passes());
+    tool("vault.pass.list", ["cli", "local", "deck", "capsule", "tailnet", "device", "module"], "Passes this Vyre gave, and passes it holds.", obj({}), () => vault.passes());
 
     tool("vault.pass.revoke", null, "End a pass. A relayed pass stops at once; a sealed one lists what to rotate.",
       obj({ id: str }, ["id"]), (input, { caller }) => vault.revokePass(input, caller));
@@ -402,7 +402,7 @@ export default {
         return `Accept a ${t.mode} pass from ${t.owner} holding ${list(t.items)}`;
       }, { skip: ({ caller }) => callerKind(caller) === "mcp" }));
 
-    tool("vault.relay", ["cli", "local", "mcp", "module"], "Use an item someone relayed to you: put {{vault}} (or {{vault.<field>}}) in a header or the body, and their Vyre adds the value.",
+    tool("vault.relay", ["cli", "local", "module"], "Use an item someone relayed to you: put {{vault}} (or {{vault.<field>}}) in a header or the body, and their Vyre adds the value.",
       obj({ item: str, owner: str, request: obj({ method: str, url: str, headers: { type: "object" }, body: str }, ["url"]) }, ["item", "request"]),
       (input, { caller }) => vault.relayOut(input, caller));
 
@@ -420,7 +420,7 @@ export default {
       obj({ person: str }, ["person"]), (input, { caller }) => vault.emergency.deny(input, caller));
     tool("vault.emergency.remove", null, "End a contact's emergency access and delete its escrow.",
       obj({ person: str }, ["person"]), (input, { caller }) => vault.emergency.remove(input, caller));
-    tool("vault.emergency.list", null, "Emergency contacts: the wait, where a request stands and when it opens. Names only.",
+    tool("vault.emergency.list", ["cli", "local", "deck", "capsule", "tailnet", "device", "module"], "Emergency contacts: the wait, where a request stands and when it opens. Names only.",
       obj({}), () => vault.emergency.list());
     tool("vault.emergency.request", SURFACES, "Ask an owner who named you as an emergency contact for access. It opens after their wait unless they deny it.",
       obj({ owner: str }, ["owner"]), (input, { caller }) => vault.emergency.request(input, caller),

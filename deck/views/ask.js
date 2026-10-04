@@ -164,7 +164,7 @@ export default async function ask(ctx) {
     x.modelAsked = true;
     drawLatest(x);
     put(x.el.status, `Asking ${x.agent} with a model.`);
-    const r = await attempt("agents.ask", { agent: x.agent, text: x.text, model: true });
+    const r = await attempt("agents.ask", { agent: x.agent, text: x.text });
     if (!ctx.alive() || current !== x) return;
     if (r.error) { x.modelAsked = false; drawLatest(x); put(x.el.status, why(r.error)); return; }
     if (r.data?.thread) { x.thread = r.data.thread; x.project = r.data.project || x.project; }

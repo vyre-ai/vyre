@@ -72,7 +72,7 @@ const clip = makeClip(board, { set: (f, ms) => setTimeout(f, ms), clear: (id) =>
  */
 export function copy(name: string, field: string): Promise<Outcome> {
   const out: { refusal?: Outcome } = {};
-  const pending = call<{ value: string }>("vault.reveal", { name, field, purpose: "copy" }).then((r) => {
+  const pending = call<{ value: string }>("vault.reveal", { name, field }).then((r) => {
     if (r.error) {
       out.refusal = refused(r.error);
       return null;
