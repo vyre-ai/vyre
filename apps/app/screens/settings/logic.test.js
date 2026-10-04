@@ -42,3 +42,14 @@ test("settings has five groups and the space group carries the space name", () =
   assert.equal(g[2].title, "Harlow Legal");
   assert.ok(g.flatMap((x) => x.rows).every((r) => r[2].startsWith("/u/")));
 });
+
+test("settings hides what a role cannot use", () => {
+  const hrefs = (role) => settingsGroups("Harlow Legal", role).flatMap((g) => g.rows).map((r) => r[2]);
+  assert.ok(hrefs(undefined).includes("/u/settings/rules"));
+  assert.ok(hrefs("admin").includes("/u/settings/customize"));
+  assert.ok(!hrefs("member").includes("/u/settings/customize"));
+  assert.ok(!hrefs("manager").includes("/u/settings/privacy"));
+  assert.ok(hrefs("member").includes("/u/spaces"));
+  assert.ok(!hrefs("temp").includes("/u/memory"));
+  assert.ok(hrefs("member").includes("/u/memory"));
+});
