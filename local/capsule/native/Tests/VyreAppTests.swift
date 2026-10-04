@@ -26,10 +26,12 @@ let vyreAppSuite = Suite("vyre app window") { t in
     }
 
     t.test("a command and a reply are sent to the page as valid JSON") {
-        t.eq(VyreAppWindow.js("/u/now"), "\"\\/u\\/now\"")
-        t.eq(VyreAppWindow.js("a\"b"), "\"a\\\"b\"")
-        t.eq(VyreAppWindow.json(["error": "No."]), "{\"error\":\"No.\"}")
-        t.eq(VyreAppWindow.json(NSObject()), "null")
+        MainActor.assumeIsolated {
+            t.eq(VyreAppWindow.js("/u/now"), "\"\\/u\\/now\"")
+            t.eq(VyreAppWindow.js("a\"b"), "\"a\\\"b\"")
+            t.eq(VyreAppWindow.json(["error": "No."]), "{\"error\":\"No.\"}")
+            t.eq(VyreAppWindow.json(NSObject()), "null")
+        }
     }
 
     t.test("a request path is cleaned once: traversal, encoded dots and slashes, and empty segments are refused") {
