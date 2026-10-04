@@ -702,7 +702,7 @@ export function createPairing(o) {
         const cur = meta.get("owner"), by = String(meta.get("adopter") || "");
         if (!cur) return { owned: false };
         const dev = deviceIdOf(by) !== null ? devices.get(/** @type {string} */ (deviceIdOf(by))) : null;
-        return { owned: true, space: await ownerWords({ ...cur, identity: cur.identity }), device: (dev && dev.name) || (cur.name ? String(cur.name) : "device"), ...(meta.get("owner_proof") ? { owner_proof: String(meta.get("owner_proof")) } : {}) };
+        return { owned: true, space: await ownerWords({ ...cur, identity: cur.identity }), device: (dev && dev.name) || (cur.name ? String(cur.name) : "device"), ...(meta.get("owner_proof") ? { owner_proof: String(meta.get("owner_proof")), owner_pin: String(meta.get("owner_pin") || "none") } : {}) };
       },
     });
     ctx.tool("wink.server.pairing", {
@@ -799,6 +799,8 @@ export function createPairing(o) {
      */
     /** How each pairing's owner proof was held, by caller, until adoption records it. @type {Map<string, "hardware" | "software">} */
     const proofKinds = new Map();
+    /** @type {Map<string, "given" | "none">} */
+    const pinKinds = new Map();
     const proveIdentity = async (to, input, caller, open = false) => {
       const pr = input && input.proof && typeof input.proof === "object" ? input.proof : null;
       // a server installed with no pair-to is not waiting for anyone: its refusals say what was missing, not whom it waits for
@@ -817,6 +819,8 @@ export function createPairing(o) {
       const tag = input.pairing && typeof input.pairing.tag === "string" ? input.pairing.tag : "";
       const release = o.releaseProof ?? isPackaged();
       if (open && release && !tag) { ctx.log("wink: the identity proof carried no pairing tag"); throw notThem(); }
+      // PI-2: on a release build the app always says which head and length of its own chain it last saw (the prover is a phone, which holds its chain); a development build may pair with no pin and says so
+      if (open && release && !pin) throw fail("no_pin", words("pairNeedsPin"));
       const message = pairToMessage(await boxKey(), caller.slice(7), tag);
       // a --pair-to server also takes the older message with no tag (an installer made before the tag); the open flow never does
       if (!verifyDevice(e.pub, message, pr.sig) && !(!open && tag && verifyDevice(e.pub, pairToMessage(await boxKey(), caller.slice(7)), pr.sig))) { ctx.log("wink: the identity proof's signature did not match this pairing"); throw notThem(); }
@@ -826,7 +830,7 @@ export function createPairing(o) {
         const hardware = Boolean(e.enclave) && e.held !== "web" && e.alg === undefined;
         if (hardware && !(typeof pr.esig === "string" && verifyEnclave(e.enclave, message, pr.esig))) { ctx.log("wink: the identity proof lacks its Face ID signature"); throw notThem(); }
         if (!hardware && release) { ctx.log("wink: the identity proof came from a key that is not hardware-held"); throw fail("not_hardware", words("pairNotHardware")); }
-        proofKinds.set(caller, hardware ? "hardware" : "software");
+        proofKinds.set(caller, hardware ? "hardware" : "software"); pinKinds.set(caller, pin ? "given" : "none");
       }
       return String(e.identity || to);
     };
@@ -965,7 +969,7 @@ export function createPairing(o) {
       const ownerName = cleanName(input.owner.name, 64);
       const first = !meta.get("owner") || !meta.get("adopter");
       meta.set("owner", { ...t, identity: ident, ...(ownerName ? { name: ownerName } : {}) });
-      { const k = proofKinds.get(caller); if (k) { meta.set("owner_proof", k); proofKinds.delete(caller); } else if (first) meta.del("owner_proof"); }
+      { const k = proofKinds.get(caller); if (k) { meta.set("owner_proof", k); meta.set("owner_pin", pinKinds.get(caller) || "none"); proofKinds.delete(caller); pinKinds.delete(caller); } else if (first) { meta.del("owner_proof"); meta.del("owner_pin"); } }
       if (first) meta.set("adopter", caller);
       if (input.peerSecret && /^[A-Za-z0-9_-]{20,80}$/.test(String(input.peerSecret))) meta.set("peer_secret", String(input.peerSecret));
       const h = cleanHandover(input.handover);

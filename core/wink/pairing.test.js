@@ -1473,7 +1473,7 @@ test("PI-1: on a release build the owner's proof must come from a phone's hardwa
   const msg = pairToMessage(BOX, "app1", TAG);
   const proof = (eid, esig) => ({ eid, sig: crypto.sign(null, msg, soft.privateKey).toString("base64url"), ...(esig ? { esig } : {}) });
   const esigOf = () => crypto.sign("sha256", msg, { key: enc.privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url");
-  const base = { owner: { kind: "identity", id: ME, name: "Alex", vyre: "alex" }, identity: ME, pairing: { commit: "0".repeat(64), tag: TAG } };
+  const base = { owner: { kind: "identity", id: ME, name: "Alex", vyre: "alex", pin: { id: ME, seq: 1, head: "h" } }, identity: ME, pairing: { commit: "0".repeat(64), tag: TAG } };
   const attempt = async (releaseProof, p) => { const w = world({ confirm: true, requireProof: true, releaseProof, identityEntry }); try { return { ok: await w.tools.get("wink.server.adopt").run({ ...base, proof: p }, { caller: "device:app1" }), w }; } catch (e) { return { err: e, w }; } };
   // a release build
   assert.equal((await attempt(true, proof("e_soft"))).err.code, "not_hardware");
@@ -1482,6 +1482,12 @@ test("PI-1: on a release build the owner's proof must come from a phone's hardwa
   assert.equal((await attempt(true, proof("e_phone"))).err.code, "denied_wrong_proof", "an enclave entry's proof without its Face ID signature");
   assert.equal((await attempt(true, proof("e_phone", "A".repeat(86)))).err.code, "denied_wrong_proof", "a wrong esig");
   assert.equal((await attempt(true, proof("e_phone", esigOf()))).ok.pending, true, "with its Face ID signature it is asked");
+  // PI-2: a release build refuses a pairing with no pin; a development build takes it and says so
+  const nopin = { ...base, owner: { kind: "identity", id: ME, name: "Alex", vyre: "alex" } };
+  const wNo = world({ confirm: true, requireProof: true, releaseProof: true, identityEntry });
+  await assert.rejects(() => wNo.tools.get("wink.server.adopt").run({ ...nopin, proof: proof("e_phone", esigOf()) }, { caller: "device:app1" }), e => e.code === "no_pin");
+  const wDev = world({ confirm: true, requireProof: true, releaseProof: false, identityEntry });
+  assert.equal((await wDev.tools.get("wink.server.adopt").run({ ...nopin, proof: proof("e_soft") }, { caller: "device:app1" })).pending, true);
   // a proof with no pairing tag is no proof on a release build
   const w0 = world({ confirm: true, requireProof: true, releaseProof: true, identityEntry });
   await assert.rejects(() => w0.tools.get("wink.server.adopt").run({ ...base, pairing: { commit: "0".repeat(64) }, proof: proof("e_phone", esigOf()) }, { caller: "device:app1" }), e => e.code === "denied_wrong_proof");
