@@ -1,0 +1,29 @@
+// @ts-check
+// A Space made by spaces.create has its own kernel: the development presence stand-in (a hand-made file in a development build) must reach it as it reaches the home's, or the walk's
+// admin acts there answer needs_presence. Without the file the hosted kernel still asks for presence. A test box, never a Mac.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { tempHome } from "./helpers.js";
+import { start } from "../core/daemon/index.js";
+
+process.env.VYRE_SEAL_DEV = "1";
+process.env.VYRE_KERNEL_PATH_RULE = "1";
+const TYPE = { name: "note", label: "Note", fields: [{ name: "title", kind: "text", label: "Title" }] };
+
+/** @param {boolean} standIn */
+async function defineInCreated(t, standIn) {
+  const root = tempHome(t);
+  if (standIn) fs.writeFileSync(path.join(root, "dev-presence-stand-in"), "walk\n");
+  const d = await start({ root, log: () => {}, kernel: true });
+  t.after(() => d.stop());
+  const h = await d.kernel.spaces.host({ owner: d.kernel.id.owner, name: "created" });
+  const chain = h.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-walk", person: d.kernel.id.owner, path: "direct" });
+  return h.gateway.records.define(chain, { add_types: [TYPE] }).then(() => "applied", (/** @type {any} */ e) => e.code);
+}
+
+test("a created Space accepts its owner's admin act under the development stand-in, and asks for presence without it", { timeout: 120_000 }, async t => {
+  assert.equal(await defineInCreated(t, false), "needs_presence", "no stand-in file: presence is asked for");
+  assert.equal(await defineInCreated(t, true), "applied", "the stand-in file reaches the created Space's own kernel");
+});
