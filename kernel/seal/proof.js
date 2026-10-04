@@ -201,6 +201,11 @@ export class Presence {
     if (!e || this.barred.has(e.eid)) return { refused: "not_listed" };
     if (youngAt(e, this.now())) return { refused: "young_device" };
     if (!await verifyWith(e.pub, joinBytes(invite, ctx.space, person, key_id, spki), bind.sig)) return { refused: "bad_binding" };
+    // Every await is behind us: the state checks that decided "a stranger" are made again here, in the same synchronous block as the write, so two joins at once cannot both pass them.
+    if (this.recovery) return { refused: "needs_recovery" };
+    if (this.keys.has(key_id)) return { refused: "exists" };
+    if (this.have(person) || this.ever.has(person) || this.pins.has(person)) return { refused: "known_person" };
+    if (this.barred.has(e.eid)) return { refused: "not_listed" };
     let attested = false, aa;
     if (attestation && attestation.format === "apple-appattest") {
       const a = this.attestApple(attestation, spki, signer, "join:" + invite, key_id);

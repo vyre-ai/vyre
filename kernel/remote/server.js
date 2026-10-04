@@ -10,6 +10,7 @@ import { CALLS, INVITEE_CALLS, WIRE_VERSION, MAX_REQUEST_BYTES, MAX_RESPONSE_BYT
 import { proofRequest, PROOF_CALLS } from "./proof.js";
 import { canonical, sha256 } from "../core/canonical.js";
 import { remoteBinding } from "../core/presence.js";
+import { youngAt } from "../identity/chain.js";
 
 const fail = (/** @type {any} */ id, /** @type {string} */ code, /** @type {string} */ message, /** @type {any} */ challenge = undefined) => ({ v: WIRE_VERSION, id, ok: false, error: { code, message, ...(challenge ? { challenge } : {}) } });
 const MAX_STORED_BYTES = 8 * 1024 * 1024;
@@ -17,7 +18,7 @@ const INVITEE_RESPONSE_BYTES = 16 * 1024;
 const RATE = Object.freeze({ member: 300, invitee: 30, window_ms: 60_000, peers: 10_000 });
 
 /**
- * @param {{ space: string, home?: string, kernel: any, clock?: () => number, rate?: { member?: number, invitee?: number }, services?: Record<string, any>, attest?: (nonce: string) => Promise<{ pub: string, sig: string } | null>, identityEvidence?: (who: { person: string, name?: string }) => Promise<{ ops: any[], entries: { eid: string, kind: string, pub: string, young?: boolean }[] } | null> }} cfg `kernel` is the home's kernel for this Space (createKernel / bootKernel's result)
+ * @param {{ space: string, home?: string, kernel: any, clock?: () => number, rate?: { member?: number, invitee?: number }, services?: Record<string, any>, attest?: (nonce: string) => Promise<{ pub: string, sig: string } | null>, identityEvidence?: (who: { person: string, name?: string }) => Promise<{ ops: any[], entries: { eid: string, kind: string, pub: string, founder: boolean, since: number }[] } | null> }} cfg `kernel` is the home's kernel for this Space (createKernel / bootKernel's result)
  */
 export function createRemoteServer(cfg) {
   const clock = cfg.clock || Date.now;
@@ -69,7 +70,9 @@ export function createRemoteServer(cfg) {
     if (!ev || !Array.isArray(ev.ops) || !Array.isArray(ev.entries)) return no("unavailable", "this server could not read your identity list");
     const entry = ev.entries.find((/** @type {any} */ e) => e && e.eid === peer.entry && e.kind === "device");
     if (!entry) return no("not_listed", "this device is not on your identity list");
-    if (entry.young === true) return no("young_device", "this sign-in is under 24 hours old; join from an older device");
+    // the door decides what is young itself (same rule and same clock as the sealing process); a missing time or founder flag refuses, never passes
+    if (typeof entry.founder !== "boolean" || !Number.isFinite(entry.since)) return no("unavailable", "this server could not read your identity list");
+    if (youngAt(entry, clock())) return no("young_device", "this sign-in is under 24 hours old; join from an older device");
     try {
       await k.joinKey({ chain, person: peer.person, ops: ev.ops, bind: { eid: peer.entry, sig: bind.sig }, invite, key_id: bind.key_id, spki: bind.spki, signer: bind.signer, ...(bind.attestation ? { attestation: bind.attestation } : {}) });
     } catch (e) {

@@ -94,3 +94,14 @@ test("unjoin: takes back exactly the key a join just enrolled, for that invite a
   const other = signer(I.id), ch2 = person(I.id);
   assert.equal(await code(s.unjoin({ chain: ch2, person: I.id, invite: INVITE, key_id: other.key_id })), "not_found");
 });
+
+test("join: two at once cannot both pass (the checks are made again after the last await)", async t => {
+  const s = await start(t), I = await identity(), a = signer(I.id), b = signer(I.id);
+  // one person, two different keys, at the same moment: exactly one is the first key; the other is a known person
+  const r = await Promise.all([s.join(args(I.id, a, I.ops, bindFor(I.d1, I.id, a))).then(() => "ok", e => e.code), s.join(args(I.id, b, I.ops, bindFor(I.d1, I.id, b))).then(() => "ok", e => e.code)]);
+  assert.deepEqual([...r].sort(), ["known_person", "ok"]);
+  // two persons choosing one key id: the second is refused and the first keeps its key
+  const J = await identity(), K = await identity(), shared = signer(J.id), twin = { ...signer(K.id), key_id: shared.key_id };
+  const q = await Promise.all([s.join(args(J.id, shared, J.ops, bindFor(J.d1, J.id, shared))).then(() => "ok", e => e.code), s.join(args(K.id, twin, K.ops, bindFor(K.d1, K.id, twin))).then(() => "ok", e => e.code)]);
+  assert.deepEqual([...q].sort(), ["exists", "ok"]);
+});

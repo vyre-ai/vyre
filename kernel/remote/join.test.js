@@ -21,7 +21,7 @@ function rig(o = {}) {
     surfaces: {},
     ...(o.joinKey === false ? {} : { unjoinKey: async (/** @type {any} */ i) => { seen.unjoined.push(i); return { undone: true }; }, joinKey: async (/** @type {any} */ i) => { seen.joined.push(i); if (o.join) return o.join(i); return { joined: true }; } }),
   };
-  const evidence = o.evidence === undefined ? { ops: [{ id: KIT }], entries: [{ eid: ENTRY, kind: "device", pub: "cHVi", young: false }] } : o.evidence;
+  const evidence = o.evidence === undefined ? { ops: [{ id: KIT }], entries: [{ eid: ENTRY, kind: "device", pub: "cHVi", founder: true, since: 1 }] } : o.evidence;
   const server = createRemoteServer({ space: SPACE, kernel: k, ...(o.noEvidence ? {} : { identityEvidence: async (/** @type {any} */ w) => { seen.evidence.push(w); return evidence; } }) });
   const ask = (/** @type {any} */ b, peer = {}) => server.serve({ v: 1, space: SPACE, id: "rq_" + Math.random().toString(36).slice(2), ts: Date.now(), call: "grants.invites.accept", args: [INVITE, { seen: { role: "member" }, proof: { key_id: "dk_1" }, ...(b === undefined ? {} : { bind: b }) }] }, { device_key_id: "inv_chan", person: KIT, path: "relay", entry: ENTRY, name: "kit.vyre.run", ...peer });
   return { ask, seen, chain };
@@ -48,7 +48,9 @@ test("the device is the one the transport verified, never one the caller names: 
 test("each refusal answers one code, enrols nothing and accepts nothing", async () => {
   const cases = /** @type {[string, any, string, any?][]} */ ([
     ["the entry is not on the list", { evidence: { ops: [], entries: [{ eid: "z".repeat(26), kind: "device", pub: "cHVi" }] } }, "not_listed"],
-    ["the entry is a newcomer", { evidence: { ops: [], entries: [{ eid: ENTRY, kind: "device", pub: "cHVi", young: true }] } }, "young_device"],
+    ["the entry is a newcomer", { evidence: { ops: [], entries: [{ eid: ENTRY, kind: "device", pub: "cHVi", founder: false, since: Date.now() - 3600_000 }] } }, "young_device"],
+    ["the tool says nothing about its age (a flag is never trusted)", { evidence: { ops: [], entries: [{ eid: ENTRY, kind: "device", pub: "cHVi", young: false }] } }, "unavailable"],
+    ["the tool's own young:false is ignored for a newcomer", { evidence: { ops: [], entries: [{ eid: ENTRY, kind: "device", pub: "cHVi", founder: false, since: Date.now() - 60_000, young: false }] } }, "young_device"],
     ["the directory cannot be read", { evidence: null }, "unavailable"],
     ["the invite is spent", { invite: { status: "used" } }, "bad_invite"],
     ["this build has no sealing process", { joinKey: false }, "unavailable"],

@@ -1612,9 +1612,8 @@ export default {
       if (!r.ok || r.kind !== "person" || r.id !== String(i.id)) { if (process.env.WLOG) ctx.log.warn(`lookup ${label}: ok=${r.ok} kind=${r.kind} id=${r.id} want=${i.id} why=${r.why || r.code || ""}`); return { entries: [] }; }
       return { entries: r.state.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, pub: e.pub, ...(e.held ? { held: e.held } : {}), ...(e.alg ? { alg: e.alg } : {}), ...(e.enclave ? { enclave: e.enclave } : {}) })) };
     }, { internal: true });
-    // The invitee's first presence key (RC1): the identity's chain and its entries as the directory shows them, for the home's own remote door. The ops go to the sealing process, which verifies them itself; `young` says whether
-    // the entry was added to the list under 24 hours ago (the signed time of the op, against this server's clock, the same rule as the sealing process), so a device the list just gained cannot vouch for a key. By the claimed name from the invitee's signed hello, else the name this device knows.
-    tool("spaces.identity.evidence", "A person's identity chain and entries from the directory, verified, only if it is the given id's: { ops, entries }. Each entry says whether it is a newcomer. For the home's invitee door.", obj({ person: str, name: str }, ["person"]), async i => {
+    // The invitee's first presence key (RC1): the identity's chain and its entries as the directory shows them, for the home's own remote door. The ops go to the sealing process, which verifies them itself; each entry carries `founder` and `since` (the signed time of the add op); the door and the sealing process each apply the same rule (youngAt) against this server's clock, never a flag this tool computed. By the claimed name from the invitee's signed hello, else the name this device knows.
+    tool("spaces.identity.evidence", "A person's identity chain and entries from the directory, verified, only if it is the given id's: { ops, entries }. Each entry says whether it is the founder and when it was added (signed time); the door decides what is young. For the home's invitee door.", obj({ person: str, name: str }, ["person"]), async i => {
       const id = String(i.person);
       const mineId = identity.status();
       const name = i.name ? String(i.name) : mineId.exists && mineId.id === id ? mineId.name : /** @type {string|null} */ (await kv.get(`person-name/${id}`));
@@ -1626,7 +1625,7 @@ export default {
       await kv.put(`person-pin/${label}`, r.pin);
       // ONE clock for "young" (the sealing process uses the same): the signed time the entry was added to the list (the op's own), against this server's clock. Not when this server first saw it.
       const at = Date.now(), st = await C.verifyChain(r.ops, { now: at });
-      return { ops: r.ops, entries: st.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, pub: e.pub, young: C.youngAt(e, at) })) };
+      return { ops: r.ops, entries: st.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, pub: e.pub, founder: e.founder === true, since: e.since })) };
     }, { internal: true });
     tool("spaces.identity.state", "A person's identity list as verified now: their entry ids and kinds. Read live each call. For the transport's personOf.", obj({ person: str }, ["person"]), async i => stateOfPerson(String(i.person)), { internal: true });
     /** Is this person a member of this space, by the place that decides it (the kernel's membership read when it offers one, else the local table)? @param {string} space @param {string} person */
