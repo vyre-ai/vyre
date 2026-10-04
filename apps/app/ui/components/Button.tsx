@@ -87,6 +87,8 @@ export function Button({ label, kind = "secondary", size = "md", icon, onPress, 
       accessibilityHint={hold ? "Hold to confirm" : undefined}
       accessibilityState={{ disabled: !!(disabled || loading), busy: !!loading }}
       disabled={disabled || loading}
+      // A small button is 36 tall on a phone; the target stays 44.
+      hitSlop={size === "sm" && phone ? 4 : undefined}
       onPress={hold ? undefined : onPress}
       onPressIn={hold ? start : undefined}
       onPressOut={hold ? stop : undefined}
@@ -115,6 +117,7 @@ export function IconButton({ icon, label, onPress, kind = "ghost", touch }: { ic
     <PressableScale
       accessibilityRole="button"
       accessibilityLabel={label}
+      hitSlop={side < 44 ? (44 - side) / 2 : undefined}
       onPress={onPress}
       // @ts-expect-error web-only prop: the tooltip
       title={label}

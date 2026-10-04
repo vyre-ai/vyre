@@ -40,3 +40,21 @@ test("an empty box lists nothing", { skip: !strip }, async () => {
   const { kitsSource } = await import("./kits-source.ts");
   assert.deepEqual(await kitsSource(box({ "flows.kit.list": { data: [] } }).call).list(), []);
 });
+
+test("the library lists what the box offers and nothing when the box has no such tool; the card then the proposal are two calls", { skip: !strip }, async () => {
+  const { kitsSource } = await import("./kits-source.ts");
+  const m = await import("./kits-model.ts");
+  const none = box({ "flows.kit.library": { error: { code: "no_such_tool", message: "x" } } });
+  assert.equal(await kitsSource(none.call).library(), null);
+  const lib = [{ id: "estate-planning", name: "Estate planning", adds: { types: [1, 2], flows: [1] } }, { id: "pi-intake", adds: {} }];
+  const b = box({ "flows.kit.library": { data: lib }, "flows.kit.library.get": { data: { id: "estate-planning", version: 1 } }, "flows.kit.card": { data: { kit: { name: "Estate planning", version: 1 }, ok: true, adds: { types: [{ label: "Matter", fields: 4, sealed: ["ssn"] }], flows: [{ label: "Intake", outward: [1] }] }, notes: ["Sealed fields are in play."] } }, "flows.kit.propose": { data: { ok: true } } });
+  const s = kitsSource(b.call);
+  assert.deepEqual(m.available(await s.library(), [{ id: "pi-intake", version: 1, status: "installed" }]).map((k) => k.id), ["estate-planning"]);
+  assert.equal(m.addsLine(lib[0]), "2 types, 1 Flow");
+  const { kit, card } = await s.card("estate-planning");
+  assert.deepEqual(b.seen.slice(-2), [{ tool: "flows.kit.library.get", input: { id: "estate-planning" } }, { tool: "flows.kit.card", input: { kit: { id: "estate-planning", version: 1 } } }]);
+  assert.deepEqual(m.cardLines(/** @type {any} */ (card)).lines, ["Record type Matter, 4 fields, 1 sealed", "Flow Intake, sends or publishes"]);
+  await s.propose(kit);
+  assert.deepEqual(b.seen.at(-1), { tool: "flows.kit.propose", input: { kit: { id: "estate-planning", version: 1 } } });
+  assert.deepEqual(m.proposeNote({ ok: false, errors: [{ path: "version", message: "version 2 is already installed" }] }), { ok: false, text: "version: version 2 is already installed" });
+});

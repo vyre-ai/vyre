@@ -6,12 +6,13 @@ import { Banner, Button, Card, Chip, Divider, EmptyState, IconTile, Row, Sheet, 
 import { Frame } from "../places/Frame";
 import { driveRefusal, entryLine, crumbs, isText, join, bytesOf, sizeWord, textOf, type Chunk, type Entry, type Listing, type Status } from "./real-model";
 import { listReal, readReal, statusReal } from "./real";
+import { SpaceDrive } from "./SpaceDrive";
 
-type Tab = "files" | "sharing";
+type Tab = "space" | "files" | "sharing";
 const say = (e: unknown) => driveRefusal((e as { code?: string }).code, e instanceof Error ? e.message : "");
 
 export default function RealDrive() {
-  const [tab, setTab] = useState<Tab>("files");
+  const [tab, setTab] = useState<Tab>("space");
   const [status, setStatus] = useState<Status | null>(null);
   const [share, setShare] = useState<string | null>(null);
   const [path, setPath] = useState("");
@@ -39,7 +40,8 @@ export default function RealDrive() {
 
   const files = (
     <>
-      {status && !status.shares.length ? <Card><EmptyState title="No folders offered" body="This box has not offered a folder to the app yet." /></Card> : null}
+      {!status && !err ? <Card flush><EmptyState title="Loading" body="Asking your Vyre." /></Card> : null}
+      {status && !status.shares.length ? <Card><EmptyState title="No folders offered" body="Your home has not offered a folder to the app yet." /></Card> : null}
       {status && status.shares.length > 1 ? (
         <View className="flex-row flex-wrap gap-s2">
           {status.shares.map((s) => <Chip key={s.name} selected={share === s.name} onPress={() => { setShare(s.name); setPath(""); }}>{s.name}</Chip>)}
@@ -49,7 +51,7 @@ export default function RealDrive() {
         <View className="flex-row flex-wrap items-center gap-s1">
           {crumbs(share, path).map((c, i, all) => (
             <View key={c.path} className="flex-row items-center">
-              <Button kind="ghost" size="sm" label={c.name} onPress={i === all.length - 1 ? () => {} : () => setPath(c.path)} />
+              <Button kind="ghost" size="sm" label={c.name} disabled={i === all.length - 1} onPress={() => setPath(c.path)} />
               {i < all.length - 1 ? <Text tone="faint">/</Text> : null}
             </View>
           ))}
@@ -82,9 +84,9 @@ export default function RealDrive() {
   ) : <Card><EmptyState title="Loading" body="Asking your Vyre." /></Card>;
 
   return (
-    <Frame title="Drive" sub="The box's folders, as the box allows them.">
-      <Tabs<Tab> value={tab} onChange={setTab} items={[["files", "Files"], ["sharing", "On your computer"]]} />
-      {tab === "files" ? files : sharing}
+    <Frame title="Drive" sub="The space's files with their versions, and the box's own folders.">
+      <Tabs<Tab> value={tab} onChange={setTab} items={[["space", "Space"], ["files", "Box folders"], ["sharing", "On your computer"]]} />
+      {tab === "space" ? <SpaceDrive /> : tab === "files" ? files : sharing}
       <Sheet open={!!open} onClose={() => setOpen(null)} title={open?.e.name}>
         {open ? (
           <View className="gap-s2">

@@ -66,7 +66,7 @@ export function textOf(bytes: number[]): string {
 
 /** The words for a refusal from the box. Every refusal is the same "not available" on purpose (a hidden file reads like a missing one). */
 export function driveRefusal(code: string | undefined, message: string): string {
-  if (code === "not_available") return "That folder is not available on this box.";
+  if (code === "not_available") return "That folder is not available on your home.";
   if (code === "denied") return "You may not open that.";
   return message || "Drive did not answer.";
 }

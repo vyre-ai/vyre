@@ -1,5 +1,6 @@
 // One Flow from the real vyred: its canvas, the version waiting for approval (with the kernel's card and a real Face ID or fingerprint), and its runs painted over the canvas.
 import { useEffect, useState } from "react";
+import { presenceText } from "../shell/FaceIdSheet";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { AskCard, Banner, Button, Card, Chip, Divider, EmptyState, FlowCanvas, Row, Text, haptic, showToast } from "@vyre/ui";
@@ -81,17 +82,17 @@ export function RealFlow({ id }: { id: string }) {
       {waiting && card ? (
         <Sec title="Waiting for your approval">
           <AskCard title={`Approve version ${card.version}`} why={card.changes.length ? card.changes.join(" ") : "Nothing runs until you approve this exact version."}
-            actions={[{ label: busy ? "Approving" : "Approve with Face ID", kind: "primary", icon: "faceid", onPress: busy ? () => {} : approve }]} />
+            actions={[{ label: busy ? "Approving" : presenceText("Approve with Face ID"), kind: "primary", icon: "faceid", onPress: busy ? () => {} : approve }]} />
           <Block label="See as code">{card.text}</Block>
         </Sec>
       ) : null}
-      {!waiting ? <View className="self-start"><Button kind="primary" size="sm" icon="play" label={busy ? "Starting" : "Run now"} onPress={busy ? () => {} : runNow} /></View> : null}
+      {!waiting ? <View className="self-start"><Button kind="primary" size="sm" icon="play" label={busy ? "Starting" : "Run now"} disabled={busy} onPress={runNow} /></View> : null}
       {painted && picked_run ? (
         <Sec title={`What run ${picked_run.id.slice(0, 8)} did`}>
           <Card flush>
             {recordLines(painted).map((l, i) => <View key={l.id}>{i ? <Divider /> : null}<Row dense title={l.title} sub={l.sub} /></View>)}
           </Card>
-          {canRetry(picked_run.state) ? <View className="self-start pt-s2"><Button size="sm" label={busy ? "Retrying" : "Retry this run"} onPress={busy ? () => {} : () => retry(picked_run.id)} /></View> : null}
+          {canRetry(picked_run.state) ? <View className="self-start pt-s2"><Button size="sm" label={busy ? "Retrying" : "Retry this run"} disabled={busy} onPress={() => retry(picked_run.id)} /></View> : null}
         </Sec>
       ) : null}
       <FlowCode id={id} version={meta.version} onSaved={() => setN((x) => x + 1)} />

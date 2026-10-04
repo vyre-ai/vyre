@@ -133,5 +133,7 @@ export function createGatewayStore({ rpc }) {
 /** A tool's {error} answer as the Error the screens expect: a StoreError code where the vyred gave one, else "invalid" with its own words. @param {any} e */
 export function storeError(e) {
   const code = CODES.has(e?.code) ? e.code : "invalid";
+  // A hosted space whose home has not yet been given the person's session answers needs_presence to a plain read (UX-34): that is not something the person can act on here.
+  if (e?.code === "needs_presence") return Object.assign(new Error("This space is still being set up. It opens when its home answers."), { code });
   return Object.assign(new Error(String(e?.message || "That did not work.")), { code });
 }

@@ -35,8 +35,8 @@ export function FlowCode({ id, version, onSaved }: { id: string; version: number
             {text !== null ? <Field label="The Flow, as text" multiline lines={12} value={text} onChangeText={(t) => { setText(t); setRes(null); }} /> : null}
             {text !== null ? (
               <View className="flex-row flex-wrap gap-s2">
-                <Button label={busy ? "Working" : "Check"} onPress={busy || !changed ? () => {} : check} />
-                <Button kind="primary" label="Save as a new version" onPress={busy || !changed ? () => {} : save} />
+                <Button label={busy ? "Working" : "Check"} disabled={busy || !changed} onPress={check} />
+                <Button kind="primary" label="Save as a new version" disabled={busy || !changed} onPress={save} />
               </View>
             ) : null}
             {err ? <Banner tone="warn"><Text>{err}</Text></Banner> : null}

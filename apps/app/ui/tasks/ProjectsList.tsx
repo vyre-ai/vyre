@@ -87,8 +87,8 @@ export function ProjectsList({ world, items, onOpen, onNew }: { world: World; it
         ) },
         ...(type === "all" ? [{ key: "type", label: "Type", sortValue: (i: Item) => i.def.label, render: (i: Item) => i.def.label }] : []),
         { key: "stage", label: "Stage", sortValue: (i) => String(i.row.data?.stage ?? ""), render: (i) => { const s = stageOf(i); return <StageMini stages={s.stages} current={s.at} />; } },
-        { key: "owner", label: "Owner", sortValue: (i) => who(world, ownerOf(i))?.name || "", render: (i) => { const a = who(world, ownerOf(i)); return a ? <View className="flex-row items-center gap-s2"><ActorMark who={a} size="sm" /><Text size="secondary" tone="muted" numberOfLines={1}>{a.name}</Text></View> : <Text tone="faint">{"–"}</Text>; } },
-        { key: "tasks", label: "Tasks", sortValue: (i) => tasksOf(i).total, render: (i) => { const t = tasksOf(i); return <TaskBar done={t.done} total={t.total} />; } },
+        ...(shown.some((i) => who(world, ownerOf(i))) ? [{ key: "owner", label: "Owner", sortValue: (i: Item) => who(world, ownerOf(i))?.name || "", render: (i: Item) => { const a = who(world, ownerOf(i)); return a ? <View className="flex-row items-center gap-s2"><ActorMark who={a} size="sm" /><Text size="secondary" tone="muted" numberOfLines={1}>{a.name}</Text></View> : <Text tone="faint">{"–"}</Text>; } } as any] : []),
+        ...(shown.some((i) => tasksOf(i).total > 0) ? [{ key: "tasks", label: "Tasks", sortValue: (i: Item) => tasksOf(i).total, render: (i: Item) => { const t = tasksOf(i); return <TaskBar done={t.done} total={t.total} />; } } as any] : []),
       ]}
     />
   );
