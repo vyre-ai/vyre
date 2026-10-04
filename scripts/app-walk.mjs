@@ -173,10 +173,12 @@ await step("vault: list and tabs", {}, async () => { await go("u/vault"); await 
 await step("vault: reveal a field", { needs: "presence" }, async () => {});
 await step("drive: browse a folder and open a text file", { skip: has("drive") && world.drive.data?.shares?.length ? undefined : "no share offered by the box", expect: [/Harlow intake/] }, async () => {
   await go("u/drive");
+  await click("Box folders");
   await click("Harlow intake", { exact: false });
   await click("checklist.txt", { exact: false });
   await settle(1000);
 });
+await step("drive: the space's own Drive opens (Space tab)", { expect: [/Drive is empty|Nothing here|did not open|no Drive yet/i] }, async () => { await go("u/drive"); await settle(1200); });
 await step("calendar: week, month, day", {}, async () => { await go("u/calendar"); await click("Month"); await click("Day"); await click("Week"); });
 await step("sites: list", { honest: !has("publish") }, async () => { await go("u/sites"); });
 await step("sites: publish a draft", { skip: has("publish") ? undefined : "the dev box has no publish module (windows is bringing Publish up on testbox3)" }, async () => {});
