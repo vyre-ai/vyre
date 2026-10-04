@@ -606,16 +606,19 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     const surface = row.surface ? String(row.surface) : "deck";
     // On the seam the Switchboard opens this turn's kernel session for the asker in this chat, from these two inputs (it honours them from module:stream alone); the kernel checks the asker is in the chat.
     const turn = viaKs() ? { chat: String(row.grp), asker: askerId(asker) } : {};
+    // A delivery after a restart runs in no call (a timer, the start): a module hop with no origin is refused for a tool a person's surface reaches, so the row's own surface (the class of the
+    // call that wrote it) is the origin. The kernel still checks the asker is in the chat; this only says the words came from a person's surface.
+    const call = (/** @type {string} */ tool, /** @type {any} */ input) => (ctx.events && typeof ctx.events.withOrigin === "function" && !ctx.events.origin() ? ctx.events.withOrigin(surface, () => ctx.call(tool, input)) : ctx.call(tool, input));
     if (!m.thread) {
       if (!m.cwd) throw fail("bad_input", `${m.who} has no folder to work in: name its cwd when it joins`);
-      const r = await ctx.call("threads.start", { cwd: m.cwd, prompt: String(row.text), surface, ...turn });
+      const r = await call("threads.start", { cwd: m.cwd, prompt: String(row.text), surface, ...turn });
       if (r.error) throw fail(r.error.code || "failed", r.error.message);
       m.thread = String(r.data.id);
       save(m);
       await catchUp(m);
     } else {
       byThread.set(m.thread, m);
-      const r = await ctx.call("threads.send", { thread: m.thread, text: String(row.text), surface, uuid: String(row.uuid), ...turn });
+      const r = await call("threads.send", { thread: m.thread, text: String(row.text), surface, uuid: String(row.uuid), ...turn });
       if (r.error) throw fail(r.error.code || "failed", r.error.message);
       return r.data;
     }

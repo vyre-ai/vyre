@@ -27,7 +27,7 @@ function world(o = {}) {
   const minted = /** @type {any[]} */ ([]);
   const directory = o.directory || { memberships: async id => id === ME ? [{ space: HARLOW, name: "Harlow Legal", role: "admin" }, { space: NORTHWIND, name: "Northwind Bakery", role: "member" }] : [] };
   const ports = {
-    mint: async seed => { minted.push(seed); return o.mintFails ? { error: "no relay" } : { data: { expiresAt: 1 } }; },
+    mint: async seed => { minted.push(seed); if (o.mintHangs) return new Promise(() => {}); return o.mintFails ? { error: "no relay" } : { data: { expiresAt: 1 } }; },
     callServer: o.callServer || (async (paired, tool, input) => ({ owner: input.owner })),
     typist: async a => { typed.push(a); return o.typistFails ? { ok: false, reason: o.typistFails } : { ok: true, ack: "WINK-AB12-CD34", seed: new Uint8Array(16), route: "rt" }; },
     finish: async a => { finishes.push(a); if (o.finishResult) return o.finishResult; return { ok: true, paired: o.paired || { route: "route-juno", name: "juno" } }; },
@@ -37,7 +37,7 @@ function world(o = {}) {
     openCode: async flow => ({ offer: `wo_${flow}`, code: "WINK-ZZZZ-ZZZZ", expires: 1 }), ack: async () => ({ ok: true }),
     owner: (m, what) => { if (m && (m.agent || String(m.caller).startsWith("agent:"))) throw Object.assign(new Error(what), { code: "denied" }); }, dropMs: 0, relayUrl: async () => "ws://relay.test", keyFile: o.keyFile,
     // existing tests adopt in one step and type codes; the Q-1 tests below turn the confirmation on and the typed code off, as a release build has them
-    confirmAdopt: o.confirm === true, typedCode: o.typedCode ?? true, askHoldMs: o.askHoldMs ?? 0, askMs: o.askMs, askPollMs: 1, releaseMaxMs: o.releaseMaxMs, identityEntry: o.identityEntry, signIdentity: o.signIdentity, vyreName: o.vyreName, pairWordsFor: o.pairWordsFor === null ? undefined : (o.pairWordsFor || (async d => `amber coral ${d}`)), spaceNow: () => HARLOW,
+    confirmAdopt: o.confirm === true, typedCode: o.typedCode ?? true, askHoldMs: o.askHoldMs ?? 0, askMs: o.askMs, askPollMs: 1, releaseMaxMs: o.releaseMaxMs, identityEntry: o.identityEntry, signIdentity: o.signIdentity, vyreName: o.vyreName, mintMs: o.mintMs, pairWordsFor: o.pairWordsFor === null ? undefined : (o.pairWordsFor || (async d => `amber coral ${d}`)), spaceNow: () => HARLOW,
   });
   p.tools();
   const call = (name, input = {}, meta = {}) => tools.get(name).run(input, { caller: "device:x", ...meta });
@@ -474,6 +474,13 @@ test("a server's QR is a fresh 128-bit ticket seed: minted at the relay, drawn a
   const r = await down.call("wink.server.code", { qr: true });
   assert.equal(r.qr, null);
   assert.equal(r.code, "WINK-ZZZZ-ZZZZ");
+});
+
+test("wink.server.code with no typed code says the relay is unreachable at once (a refused mint, and one that never answers)", async () => {
+  const down = world({ mintFails: true, typedCode: false });
+  await assert.rejects(() => down.call("wink.server.code", { qr: true }), e => e.code === "unavailable" && /cannot reach its relay/.test(e.message));
+  const slow = world({ typedCode: false, mintHangs: true, mintMs: 50 });
+  await assert.rejects(() => slow.call("wink.server.code", { qr: true }), e => e.code === "unavailable" && /no answer/.test(e.message));
 });
 
 test("scanning a server's QR pairs it with no typist and no code to type back", async () => {
@@ -1360,4 +1367,30 @@ test("wink.server.paired: a module asks whether a device is a server paired to t
   assert.deepEqual(await ask("nope"), { paired: false });
   await assert.rejects(ask("srv1", ME, "cli"), e => e.code === "denied");
   await assert.rejects(ask("srv1", ME, "device:aaaaaaaaaaaaaaaa"), e => e.code === "denied");
+});
+
+test("SP-1 and SP-2: an owner id must have an id's shape; a proof offered with no --pair-to is checked; the stored and shown name carries no control or bidi byte", async () => {
+  const r = proofRig();
+  const w = world({ confirm: true, identityEntry: r.identityEntry });
+  await assert.rejects(() => adoptAs(w, "device:app1", { owner: { kind: "identity", id: "NOT-A-PERSON-ID; rm -rf", name: "Alex" }, identity: "x" }), e => e.code === "bad_input");
+  await assert.rejects(() => adoptAs(w, "device:app1", { owner: { kind: "space", id: "per_aaaa", name: "Alex" } }), e => e.code === "bad_input", "a space owner needs a space id");
+  assert.equal(w.p.meta.get("owner"), null, "nothing stored for a malformed id");
+  // a proof by a key that is not on that identity's list is refused at once, with no --pair-to
+  const w2 = world({ confirm: true, identityEntry: r.identityEntry });
+  await assert.rejects(() => adoptAs(w2, "device:app1", { ...ASKED, proof: r.proof("app1", r.other.privateKey) }), e => e.code === "denied");
+  assert.equal(w2.p.meta.get("owner"), null);
+  // the right proof: the question is still asked (the person's yes stays the check), then the name is stored clean
+  const w3 = world({ confirm: true, identityEntry: r.identityEntry });
+  const dirty = "Alex\u001b[2J\u001b]0;pwned\u0007\u202egnp.exe";
+  const input = { owner: { kind: "identity", id: ME, name: dirty }, identity: ME, proof: r.proof("app1") };
+  assert.equal((await adoptAs(w3, "device:app1", input)).pending, true);
+  assert.equal(await (async () => (await atServer(w3, "wink.server.pairing")).name)(), "Alex2J0pwnedgnp.exe (id aaaaaa)");
+  const q = await atServer(w3, "wink.server.pairing");
+  await atServer(w3, "wink.server.pair.answer", pickOf(q, "amber coral app1"));
+  const ok = await adoptAs(w3, "device:app1", input);
+  assert.equal(ok.owner.id, ME);
+  const stored = w3.p.meta.get("owner").name;
+  assert.equal(stored, "Alex2J0pwnedgnp.exe");
+  assert.doesNotMatch(stored, /[\u0000-\u001f\u007f-\u009f\u202a-\u202e]/);
+  assert.equal((await atServer(w3, "wink.server.status")).space, "Alex2J0pwnedgnp.exe");
 });
