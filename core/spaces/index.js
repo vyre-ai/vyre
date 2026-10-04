@@ -301,6 +301,12 @@ export default {
       emit("space.warning", { spaceId, code: w.code, message: w.message });
     };
     const vpsDeps = () => ({ emit, ...(hooks.vpsDeps || { fetch: hooks.fetch || globalThis.fetch }) });
+    /** Is this server already paired to this person (the pairing proved it)? Asked of the relay's device row and of Wink's whois; neither answering means no (the typed code step then runs). @param {string} id */
+    const pairedServer = async id => {
+      try { const r = await ctx.call("relay.device.info", { id }); if (r && r.data && !r.error && r.data.removed !== true && r.data.removed_at == null) return true; } catch { /* not a relay device */ }
+      try { const r = await ctx.call("wink.network.whois", { eid: id }); if (r && r.data && !r.error && r.data.kind === "server") return true; } catch { /* not asked */ }
+      return false;
+    };
     const deps = {
       store: kv,
       emit,
@@ -381,7 +387,7 @@ export default {
           return { ok: true };
         },
       },
-      pairing,
+      pairing: { ...pairing, alreadyPaired: pairedServer },
       homeHost: files.homeHost,
       pairingOptions: { ...PAIRING_DEFAULTS },
       get vpsDeps() { return vpsDeps(); },
