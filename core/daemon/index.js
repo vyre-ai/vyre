@@ -115,7 +115,7 @@ export function moduleRoots(root) {
 
 /**
  * Start vyred. Returns a handle with the running registry and a stop() for tests.
- * @param {{ root?: string, log?: (m: string, x?: any) => void, rules?: any, presence?: any, sessionFor?: (device: string) => Promise<{ call(tool: string, input: any): Promise<any> }>, kernelPresence?: any,
+ * @param {{ root?: string, log?: (m: string, x?: any) => void, rules?: any, presence?: any, deviceIdentity?: () => Promise<{ deviceId: string, deviceKey: string }>, sessionFor?: (device: string) => Promise<{ call(tool: string, input: any): Promise<any> }>, kernelPresence?: any,
  *   kernel?: boolean, coreKeys?: any, person?: (socket: import("node:net").Socket) => Promise<string|{ key: string, tty: string|null }|null> }} [opts] person: a test's stand-in for atTerminal
  */
 export async function start(opts = {}) {
@@ -264,6 +264,20 @@ async function startLocked(opts, root, p, release) {
       if (r && r.error) { if (r.error.code === "no_such_tool" || r.error.code === "not_available") return true; return false; }
       return !r || !r.data || r.data.enrolled !== false;
     };
+    // What the runner module needs from this computer: the person it belongs to and this computer's device identity ({ deviceId, deviceKey }: the id the Offers name it by and its public key).
+    // The identity comes from whoever owns it (`opts.deviceIdentity`: the Wink identity list's entry for this computer, tailnet and windows); until it is given the runner says it is not connected.
+    // A session on this person's own server is sealed at every turn into the home's checkpoint store (core/daemon/ownserver-host.js), so the runner module can seal it and recover it.
+    const { createOwnServerHost } = await import("./ownserver-host.js");
+    /** @type {any} */ let ownServerHost = null;
+    const runnerHost = () => ({
+      get ownServer() { return kernel ? (ownServerHost || (ownServerHost = createOwnServerHost({ kernel, registry, root, log }))) : null; },
+      get member() { return kernel && kernel.owner; },
+      identity: async () => {
+        const id = opts.deviceIdentity ? await opts.deviceIdentity() : null;
+        if (!id || typeof id.deviceId !== "string" || !id.deviceId || typeof id.deviceKey !== "string" || !id.deviceKey) throw Object.assign(new Error("this computer has no device identity yet"), { code: "unavailable" });
+        return id;
+      },
+    });
     // A space this device made with a PAIRED SERVER as its home is hosted there: K.for(id) is a RemoteKernel over the Wink peer wire to that server (the one remote path, kernel/remote). The server's device
     // id is the spaces module's row (server-hosted/<id>); the open peer session comes from the Wink module (`wink.sessionFor`), or a test's `opts.sessionFor`. No row or no session function: not a remote space.
     const remoteFor = (/** @type {string} */ id) => {
@@ -274,7 +288,7 @@ async function startLocked(opts, root, p, release) {
       if (typeof device !== "string" || !device) return null;
       return createRemoteKernel({ space: id, transport: winkTransport({ sessionFor: async () => sf(device) }) });
     };
-    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, remote: remoteFor, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
+    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, runnerHost, remote: remoteFor, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
       // A credentialed request run at the home: the vault's own forward (an internal tool only the lease module may call), under the Space's credential; the kernel has already authorized it.
       forwardCredential: async (/** @type {any} */ q) => {
         const r = q.request;

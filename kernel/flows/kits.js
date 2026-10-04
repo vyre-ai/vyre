@@ -13,6 +13,7 @@ import { canonical, flowHash } from "./schema.js";
 import { compileFlow } from "./compile.js";
 import { ROLE_BUNDLES } from "../contracts/index.js";
 import { newId } from "./store.js";
+import { taskIdOf } from "./stages.js";
 
 export const KIT_FORMAT = 1;
 const NAME_RE = /^[a-z][a-z0-9_-]{0,63}$/;
@@ -251,8 +252,9 @@ export class KitManager {
    */
   async propose(kit, approver, callerChain) {
     const cat = await this.catalogFn();
-    const d = await this.k.authorize({ chain: callerChain, action: "kits.install", resource: `vyre://${cat.space}/kit/${kit.id}` });
-    if (d.effect === "deny") throw Object.assign(new Error("you may not install Kits here"), { code: d.reason === "no_grant" ? "not_found" : d.reason });
+    // Asking is `kits.propose` (a write: an assistant narrowed from the person may ask); the install itself is `kits.install` (admin), checked below when the approved task is applied.
+    const d = await this.k.authorize({ chain: callerChain, action: "kits.propose", resource: `vyre://${cat.space}/kit/${kit.id}` });
+    if (d.effect === "deny") throw Object.assign(new Error("you may not ask for Kits here"), { code: d.reason === "no_grant" ? "not_found" : d.reason });
     const installed = await this.store.get(kit.id);
     const card = installCard(kit, cat);
     if (!card.ok) return { ok: false, errors: card.errors, card };
@@ -282,7 +284,7 @@ export class KitManager {
   async onEvent(env) {
     if (!/^task\./.test(env.type)) return null;
     // The kernel's own task events carry only the subject: the task id is its last segment, and the outcome is read from the task, not from the event.
-    const id = (env.data && (env.data.task || env.data.id)) || (typeof env.subject === "string" && /\/task\/[^/]+$/.test(env.subject) ? env.subject.slice(env.subject.lastIndexOf("/") + 1) : null);
+    const id = taskIdOf(env);
     if (!id) return null;
     const p = await this.store.proposalByTask(id);
     if (!p) return null;
@@ -301,6 +303,10 @@ export class KitManager {
     const kit = p.kit;
     if (kitHash(kit) !== p.hash) throw Object.assign(new Error("the Kit changed after it was approved"), { code: "hash_mismatch" });
     const chain = this.#chain(cat, kit.id, p.approver);
+    // The install is the approver's act: the kernel decides `kits.install` for their chain before anything changes (a person who is no longer an admin installs nothing). The ledger row below, a
+    // record write the kernel logs, comes before any definition, so an install that stops half way is on the record and resumes from it.
+    const may = await this.k.authorize({ chain, action: "kits.install", resource: `vyre://${cat.space}/kit/${kit.id}` });
+    if (may.effect === "deny") throw Object.assign(new Error("the approver may not install Kits here"), { code: may.reason === "no_grant" ? "not_found" : may.reason });
     const prior = await this.store.get(kit.id);
     const parts = kitParts(kit);
     const row = prior && prior.status === "installing" ? prior : { kit_id: kit.id, version: kit.version, hash: p.hash, status: "installing", by: p.approver, at: this.now(), kit, from: prior ? prior.kit : null, added: /** @type {any[]} */ ([]), flows: /** @type {Record<string, string>} */ ({}), refs: /** @type {Record<string, any>} */ ({}) };

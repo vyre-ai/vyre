@@ -22,6 +22,7 @@ const sameActor = (a, b) => Boolean(a && b) && a.kind === b.kind && a.id === b.i
 /** Actions the harness registers on top of the gateway's and the tasks': what Flows call, with the risks the registry would give them. */
 const FLOW_ACTIONS = [
   { action: "flows.run", resource_type: "flow", risk: "write", label: "run a Flow", gloss: "Run a Flow." },
+  { action: "kits.propose", resource_type: "kit", risk: "write", label: "ask to install a Kit", gloss: "Ask to install a Kit." },
   { action: "kits.install", resource_type: "kit", risk: "admin", label: "install a Kit", gloss: "Install a Kit." },
   { action: "kits.remove", resource_type: "kit", risk: "admin", label: "remove a Kit", gloss: "Remove a Kit." },
   { action: "ask.request", resource_type: "task", risk: "write", label: "ask someone", gloss: "Give a person or an assistant a task." },
@@ -70,7 +71,7 @@ export class RealKernel {
 
     this.chains = createChainBuilder({ space: this.space, owner: this.owner, owner_uid: 501, key: KEY, clock: this.clock, is_person: p => self.members.has(`person:${p}`) });
     this.actions = [...TASK_ACTIONS, ...FLOW_ACTIONS, ...Object.entries({ "email.send": { risk: "outward.send", label: "Send an email" }, ...(o.actions || {}) }).map(([action, d]) => ({ action, resource_type: "external", risk: d.risk, label: d.label || action, gloss: d.label || action }))];
-    this.grantActions = ["records.*", "records.define", "events.read", "tasks.request", "tasks.read", "tasks.work", "tasks.decide", "flows.run", "kits.install", "kits.remove", "model.call", "ask.request", "service.read", "service.call", "fn.run", ...this.actions.filter(a => /^outward\./.test(a.risk)).map(a => a.action)];
+    this.grantActions = ["records.*", "records.define", "events.read", "tasks.request", "tasks.read", "tasks.work", "tasks.decide", "flows.run", "kits.propose", "kits.install", "kits.remove", "model.call", "ask.request", "service.read", "service.call", "fn.run", ...this.actions.filter(a => /^outward\./.test(a.risk)).map(a => a.action)];
 
     this.store = createMemoryStore({ clock: this.clock });
     this.gw = createGateway({
