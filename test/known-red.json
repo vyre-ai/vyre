@@ -191,10 +191,6 @@
   "owner": "platform",
   "seen": "integrator run 37181895537 (FAIL)"
  },
- "test/person-label-hygiene.test.js": {
-  "owner": "platform-2",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
  "test/person.test.js": {
   "owner": "windows",
   "seen": "integrator run 37181895537 (FAIL)"
