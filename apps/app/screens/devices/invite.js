@@ -36,10 +36,13 @@ export function inviteRow(i) {
 }
 
 /** The words for a refused invite call. @param {string | undefined} code @param {string} message */
-export function inviteRefusal(code, message) {
+export function inviteRefusal(code, message, owner = "") {
   if (code === "not_allowed" || code === "denied") return "Only an owner or admin can invite people to this space.";
   if (code === "presence_required") return "That needs you. Approve on this device, then try again.";
   if (code === "not_found") return "That invite is already gone.";
+  // A space that lives on one person's computer (windows, work/spaces): the inviter cannot make a link; an invitee cannot reach it.
+  if (code === "this_computer") return "This space lives on this computer, so other people cannot join it. To invite people, make a space on your server.";
+  if (code === "unreachable") return `This space lives on ${owner ? `${owner}'s` : "its owner's"} computer and cannot be reached from here. Ask them to invite you to a space on their server.`;
   return message || "The invite did not go through.";
 }
 

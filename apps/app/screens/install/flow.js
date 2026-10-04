@@ -131,6 +131,7 @@ export const SERVER_FAILED = {
   noProof: "This phone did not prove which Vyre name it is, so the server refused. Nothing was paired. Try again.",
   wrongProof: "The server could not match this phone's key to your Vyre name, so it refused. Nothing was paired.",
   cannotCheck: "The server could not check which Vyre name this is right now. Nothing was paired. Try again in a moment.",
+  notHardware: "This server takes its owner only from a phone's own key. Pair this server from Vyre on your phone. Nothing was paired.",
   noSession: "Paired, but this phone has no sign-in with the server yet. Try again.",
   abandoned: "The last pairing was not finished, so nothing was paired. Scan or paste the server's code again.",
   /** The server's own terminal says this on its side when the pairing fails. */
@@ -156,6 +157,7 @@ export function serverSay(e) {
   if (c === "cancelled") return SERVER_FAILED.cancelled;
   if (c === "cannot_check") return SERVER_FAILED.cannotCheck;
   if (c === "no_session") return SERVER_FAILED.noSession;
+  if (c === "not_hardware") return SERVER_FAILED.notHardware;
   // A server the person does not own yet is untrusted: its words are never shown. A code this app does not know is a refusal, in our own sentence.
   if (c) return SERVER_FAILED.denied;
   if (KNOWN.has(m0)) return m0;

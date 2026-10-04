@@ -917,3 +917,12 @@ test("relay: /v1/pair is rate-limited per IP", async t => {
   for (let i = 0; i < 31; i++) last = await fetch(`${base}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc: "x".repeat(24) }) });
   assert.equal(last.status, 429);
 });
+
+test("relay.status and the device list are the owner's: a bare model session, the harness, a Vyre session and a thread claim are refused; the person's surfaces are not", async t => {
+  const { d } = await world(t);
+  for (const caller of ["mcp", "harness", "session:s1", "mcp:thread:t1", "cli:thread:t1", "mcp:agent:kit", "anonymous", "hook", "tailnet-guest:sam@harlow.example"]) {
+    const r = await d.registry.call("relay.status", {}, caller);
+    assert.ok(r.error, `${caller} is refused relay.status`);
+  }
+  for (const caller of ["cli", "deck", "local"]) assert.ok(!(await d.registry.call("relay.status", {}, caller)).error, `${caller} may read relay.status`);
+});
