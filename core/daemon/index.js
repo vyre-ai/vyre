@@ -73,8 +73,8 @@ export function callerFacts(caller, policy, via, k, capsuleVerified = false, dev
   if (!policy.caller && ["cli", "local", "deck", "mobile"].includes(caller)) {
     // Inside a model: facts that make an agent chain. Anything but a DEFINITE outside (an unreadable table, a named server above such as tmux or ssh, a `docker exec`, no peer read) gives none: that call is a person only with a person session (LB-2).
     if (!ancestry || typeof ancestry.inside !== "boolean") return null;
-    if (!ancestry.inside && ancestry.outside !== true) return null;
-    return { kind: "socket", surface: caller, uid: typeof process.getuid === "function" ? process.getuid() : 0, pid: 0, inside_model_process: ancestry.inside, capsule_verified: false };
+    if (!ancestry.inside && ancestry.outside !== true && !(via && via.person)) return null;
+    return { kind: "socket", surface: caller, uid: typeof process.getuid === "function" ? process.getuid() : 0, pid: 0, inside_model_process: ancestry.inside, capsule_verified: false, ...(!ancestry.inside && via && via.person ? { session: String(via.person.id) } : {}) };
   }
   // PH-1: a `device:<id>` is the owner's only if THIS home holds a row for it: paired (a gated pairing makes no row before its confirm), not removed, and an app device. A web browser (trusted or
   // not), a setup page, an id the home never paired and a removed device get no person facts; the relay's say-so is never enough. (tailnet nodes are the tailnet listener's own identity, X-1.)
@@ -242,6 +242,7 @@ async function startLocked(opts, root, p, release) {
     /** @type {any} */ let vaultHolds;
     try { vaultHolds = (await import(/* @vite-ignore */ "../../lib/vault-wipe.js")).vaultHolds; } catch { vaultHolds = undefined; }
     registry.deps.devStandIn = devStandIn;
+    registry.deps.personSessions = people;
     registry.deps.dataStores = createDataStores({ home: root, db, kernelEvents: () => kernel.log.read(), ...(vaultHolds ? { vaultHolds } : {}) });
     registry.deps.modulesListReset = (/** @type {any} */ chain, /** @type {any} */ proof, /** @type {string} */ ask) => kernel.resetModulesList(chain, proof, ask);
     registry.deps.modulesListResetPayload = (/** @type {string} */ ask) => kernel.modulesListReset(ask);
@@ -395,7 +396,7 @@ async function startLocked(opts, root, p, release) {
   }
 
   const terminalOf = opts.person || (sock => atTerminal(sock, registry, presence, devStandIn()));
-  const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, socket: true, terminalOf, kernelOf: () => kernel }).catch(e => fail(res, e)));
+  const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, socket: true, terminalOf, kernelOf: () => kernel, people }).catch(e => fail(res, e)));
   server.on("upgrade", async (req, socket, head) => {
     try { upgrade(req, socket, head, (await asTaken(socketCaller(req), /** @type {any} */ (socket), registry)).caller); }
     catch { socket.destroy(); }
@@ -785,11 +786,17 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   // (pinned to its tailnet node or relay device id). A signed session covers its body, so the
   // body is read here once and kept for body().
   const device = Boolean(policy.caller && ownerDevice(policy.caller));
-  const nodeId = device && policy.peer ? (policy.peer.stableId || policy.peer.node || null) : null;
+  let nodeId = device && policy.peer ? (policy.peer.stableId || policy.peer.node || null) : null;
+  // A person's command line signed in with `vyre signin` (approved on the phone) carries its session cookie over the socket: it counts only for the terminal login it was made for (`cli:<login key>`),
+  // so a model's shell, which has no login key (atTerminal is null under a claude), cannot use a token it read from the CLI's file.
+  let cliSession = false;
+  if (socket && !policy.caller && people && terminalOf && carried(req.headers)) {
+    try { const t = await terminalOf(req.socket); const key = t && typeof t === "object" ? t.key : typeof t === "string" ? t : null; if (key) { nodeId = `cli:${key}`; cliSession = true; } } catch { /* no terminal, no session */ }
+  }
   const crossOrigin = Boolean(policy.peer && /** @type {any} */ (policy.peer).origin);
   /** @type {{ id: string, kind: string } | null} */
   let person = null;
-  if (device && people && carried(req.headers)) {
+  if ((device || cliSession) && people && carried(req.headers)) {
     let raw = "";
     if (req.method !== "GET" && req.method !== "HEAD") {
       try { raw = await rawBody(req); } catch (e) { return send(res, 400, { error: { code: "bad_input", message: /** @type {Error} */ (e).message } }); }

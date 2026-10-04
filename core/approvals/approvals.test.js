@@ -6,7 +6,7 @@ import { payloadHash } from "../../kernel/seal/wire.js";
 const SPACE = "spc_aaaaaaaaaaaa";
 async function world() {
   const tools = new Map(), clock = { t: 1_000_000 };
-  await mod.start({ tool: (n, d) => tools.set(n, d), now: () => clock.t, kernel: { proofFrom: m => m.proof } });
+  await mod.start({ tool: (n, d) => tools.set(n, d), now: () => clock.t, kernel: { proofFrom: m => (m.proof ? { presence: m.proof } : undefined) } });
   return { tools, clock, run: (n, i, m = {}) => tools.get(n).run(i, m) };
 }
 const FIELDS = { resource: `vyre://${SPACE}/invite/new`, input_hash: "h1" };
