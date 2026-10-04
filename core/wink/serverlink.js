@@ -58,7 +58,16 @@ export function createServerLinks(o) {
       /** @param {string} tool @param {any} [input] @param {any} [opt] */
       async call(tool, input = {}, opt = {}) {
         let session = await openPeer(sid);
-        try { return await session.call(tool, input, opt); }
+        // A call that needs the person and finds no live paired session (never started, or lapsed) signs this device in once and goes again: nobody signs in by hand. A refused grant answers the server's own reason.
+        const needsPerson = (/** @type {any} */ e) => e && (e.code === "person_session_required" || /sign in|person's own action|signed-in person/i.test(String(e.message || "")));
+        try {
+          try { return await session.call(tool, input, opt); }
+          catch (e) {
+            if (!needsPerson(e) || typeof o.sign !== "function") throw e;
+            try { await startPaired(sid); } catch (se) { throw Object.assign(new Error(`this device could not sign in to the server: ${/** @type {Error} */ (se).message}`), { code: /** @type {any} */ (se).code || "denied" }); }
+            return await session.call(tool, input, opt);
+          }
+        }
         catch (e) {
           // a stream that dropped between calls is made again once; a refusal from the server is the answer
           if (/** @type {any} */ (e).code === "unreachable" && (!session || session.closed)) { session = await openPeer(sid); return session.call(tool, input, opt); }

@@ -1221,6 +1221,11 @@ test("device-first: a web device is recorded as web with software storage", asyn
   const rec = (await f.w.d.registry.call("wink.device.record", { id: f.done.device }, "module:presence")).data;
   assert.equal(rec ? rec.kind : null, "web");
   assert.equal((await deviceRow(f.w, f.done.device)).storage, "software");
+  // a browser that offered its key is granted its session like any owner device, and signs in with no manual step
+  assert.equal(f.done.session, true, "the adopt answer says the browser has its session");
+  const links = linksFor(t, f);
+  assert.ok((await links.startPaired("srv")).id, "start-paired works for a browser that offered a device key");
+  assert.ok(JSON.stringify(await links.sessionFor("srv").call("records.me", {})).includes(f.owner.id));
 });
 
 test("wink.server.adopt takes `proof` through the registry: a waiting redeemer's call with a proof is judged by the tool (denied, no identity port here), never refused as an unknown field", async t => {
@@ -1396,4 +1401,14 @@ test("an owned server: a second device with no owner presence is granted nothing
   const second = await f.w.d.registry.call("wink.server.adopt", { owner: { kind: "identity", id: f.owner.id }, identity: f.owner.id, deviceKind: "phone" }, "device:zzzzzzzzzzzzzzzz", {});
   assert.ok(second.error, "an owned server takes no second adoption without the owner's presence");
   assert.equal((await f.w.d.registry.call("wink.device.record", { id: "zzzzzzzzzzzzzzzz" }, "module:presence")).data, null);
+});
+
+test("sessionFor signs the device in by itself when a call needs the person: no manual start-paired, and a lapsed session is made again", async t => {
+  const f = await pairFreshServer(t);
+  const links = linksFor(t, f);
+  const session = links.sessionFor("srv");
+  assert.ok(JSON.stringify(await session.call("records.me", {})).includes(f.owner.id), "the first call needed the person: the device signed in and the call went through");
+  // the server ends the device's session (sign out everywhere): the next call signs in again
+  assert.ok((await f.w.d.registry.call("presence.person.end-paired", { device: f.done.device }, "module:wink")).data.ended >= 0);
+  assert.ok(JSON.stringify(await session.call("records.me", {})).includes(f.owner.id));
 });
