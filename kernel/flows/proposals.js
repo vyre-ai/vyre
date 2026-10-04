@@ -55,9 +55,8 @@ export class Proposals {
       title = `Approve the Flow "${form.name}"?`; idem = `proposal:flow:${v.id}:${v.version}:${v.hash}`;
     } else if (spec.what === "types") {
       const d = spec.diff;
-      if (!d || typeof d !== "object" || Array.isArray(d)) throw bad("a definition change is a diff: { add_types?, change_types? }");
-      const names = [...(d.add_types || []), ...(d.change_types || [])].map((/** @type {any} */ t) => t && t.name);
-      if (!names.length || names.some((/** @type {any} */ n) => typeof n !== "string" || !TYPE_NAME.test(n))) throw bad("a definition change names the types it adds or changes");
+      const names = namesOf(d);
+      if (!names) throw bad("a definition change is { add_types?, change_types? } naming the types it adds or changes; removing a type is not proposed here");
       const json = JSON.stringify(d);
       if (json.length > MAX_FORM) throw bad("that change is too large for one card; split it into smaller proposals");
       form = { kind: "proposal", what: "types", diff: d, names, ...(by ? { by } : {}) };
@@ -135,6 +134,8 @@ export class Proposals {
 /** The type names a definition diff adds or changes, or null when it is not one. @param {any} d */
 function namesOf(d) {
   if (!d || typeof d !== "object" || Array.isArray(d)) return null;
+  // The card names what is added or changed, so nothing else rides along: a removal (or any other key) is its own explicit decision, never part of this one.
+  if (Object.keys(d).some(k => k !== "add_types" && k !== "change_types")) return null;
   const names = [...(d.add_types || []), ...(d.change_types || [])].map((/** @type {any} */ t) => t && t.name);
   return names.length && names.every((/** @type {any} */ n) => typeof n === "string" && TYPE_NAME.test(n)) ? names : null;
 }

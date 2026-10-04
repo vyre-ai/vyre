@@ -65,7 +65,7 @@ test("proposals: a rejected proposal changes nothing; a non-admin or a Flow's ow
 test("proposals: a definition change is held in the task and defined as the approver, only after the yes", async () => {
   const { w, proposals, assistant, applied } = await pworld();
   const diff = { add_types: [{ name: "intake-note", label: "Intake note", fields: [{ name: "body", kind: "text", label: "Body" }] }] };
-  await assert.rejects(proposals.propose(assistant, { what: "types", diff: { add_types: [{ name: "Bad Name" }] } }), /names the types/);
+  await assert.rejects(proposals.propose(assistant, { what: "types", diff: { add_types: [{ name: "Bad Name" }] } }), /naming the types/);
   const p = await proposals.propose(assistant, { what: "types", diff });
   await settle(w);
   assert.deepEqual(applied, []);
