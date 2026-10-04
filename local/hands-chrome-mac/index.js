@@ -29,7 +29,7 @@ import { trustKeyIn } from "./extension/shared/trust.js";
 import { ACTING } from "./extension/shared/proto.js";
 import * as nativeHost from "./native-host/install.js";
 import { extensionIdFromKey, extensionIdFromPath } from "./native-host/install.js";
-import { callerKind, agentClaim } from "./caller.js";
+import { callerKind, agentClaim, modelKey } from "./caller.js";
 
 /** True when a folder is under the OS temp directory (resolved): a test profile, never a person's real one. @param {string|undefined} dir */
 const inTempDir = dir => { if (!dir) return false; try { const real = (/** @type {string} */ p) => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } }; const d = real(dir), t = real(os.tmpdir()); return d === t || d.startsWith(t + path.sep); } catch { return false; } };
@@ -39,12 +39,10 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 /** An mcp caller inside a named agent's own thread: the same rule as hands. */
 /** Who must hold the grant: null for the person (their own surfaces or unnamed MCP session); a named claim from any route by that name; every other caller by a key that can never be granted, so it is refused (reviewer-2 H1, same rule as hands). */
 const agentOf = (/** @type {any} */ caller, /** @type {any} */ meta) => {
-  const claim = agentClaim(caller);
-  if (claim) return claim;
-  // MH-1 (reviewer-2): an unnamed `mcp` is every model's shell (asTaken relabels each one), so inside vyred it is never the person; only the standalone runtime, which has no daemon and no other
-  // model, says (meta.standalone, never a client's) that its MCP session is the person's own. Everyone else holds a grant by name.
-  if (callerKind(caller) === "mcp") return meta && meta.standalone === true ? null : "caller:mcp";
-  return PEOPLE.includes(callerKind(caller)) ? null : `caller:${callerKind(caller)}`;
+  // lib/caller.js decides: the person's surfaces are null, a named agent is its name, every other caller (an unnamed mcp is every model's shell) is a key that holds no grant (MH-1). The one exception is the
+  // standalone runtime, which has no daemon and no other model and says so with meta.standalone (set only in standalone/runtime.js, stripped by the registry).
+  if (meta && meta.standalone === true && callerKind(caller) === "mcp" && !agentClaim(caller)) return null;
+  return modelKey(caller);
 };
 const PEOPLE = ["cli", "local", "deck", "capsule"];
 
@@ -197,7 +195,7 @@ export default {
       if (!agent) return;
       const r = await ctx.call("hands.grant.list", {});
       const ok = r && !r.error && Array.isArray(r.data) && r.data.some((/** @type {any} */ g) => g.agent === agent);
-      if (!ok) throw denied("denied", `${agent} is not granted to drive this Mac. Grant it once with hands.grant.add or ask the person to.`);
+      if (!ok) throw denied("denied", String(agent).startsWith("caller:") ? "This assistant has no permission to use this computer yet. Add it in Access. (not granted)" : `${agent} is not granted to drive this Mac. Grant it once with hands.grant.add or ask the person to.`);
     };
 
     /** Refuse when a page is one Vyre may not touch for this op. @param {string|null|undefined} url @param {string|undefined} op */

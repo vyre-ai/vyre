@@ -20,6 +20,7 @@ import { makeRunner, HandsError } from "./runner.js";
 import { makeOverlay, NO_OVERLAY } from "./overlay.js";
 import { MIGRATIONS, grants } from "./grant.js";
 import { callerKind, agentClaim } from "../../core/modules/index.js";
+import { modelKey } from "../../lib/caller.js";
 
 const PEOPLE = ["cli", "local", "deck", "capsule"];
 /**
@@ -32,14 +33,10 @@ const PEOPLE = ["cli", "local", "deck", "capsule"];
 /** Modules that ship with Vyre and act for the person (the apps adapters press Send through hands.commit; sight reads). A module someone adds is not on it. */
 const FIRST_PARTY = /^module:(apps|sight|gate|chrome)$/;
 const grantKey = (caller, meta) => {
-  const claim = agentClaim(caller);
-  if (claim) return claim;
-  // The name alone is not enough: a module someone adds under a free name (apps, chrome) must not
-  // pass. The loader sets firstParty only for modules the repo ships (reviewer-2).
+  // The name alone is not enough: a module someone adds under a free name (apps, chrome) must not pass. The loader sets firstParty only for modules the repo ships (reviewer-2).
   if (FIRST_PARTY.test(String(caller)) && meta && meta.firstParty === true) return null;
-  // MH-1 (reviewer-2): an unnamed `mcp` is every model's shell, never the person inside vyred; the person's own Claude Code session holds a grant by name like any agent.
-  if (callerKind(caller) === "mcp") return `caller:mcp`;
-  return PEOPLE.includes(callerKind(caller)) ? null : `caller:${callerKind(caller)}`;
+  // lib/caller.js decides the rest: the person's surfaces are null, a named agent is its name, every other caller (an unnamed mcp is every model's shell) holds no grant (MH-1).
+  return modelKey(caller);
 };
 /** The person's own direct turn, which is what asks for an outward act (asking is approving). */
 const asked = caller => PEOPLE.includes(callerKind(caller)) && !agentClaim(caller);
@@ -164,7 +161,7 @@ export default {
     const gated = fn => wrap((input, meta) => {
       const agent = grantKey(meta.caller, meta);
       if (agent && !g.has(agent)) {
-        throw Object.assign(new Error(`${agent} is not granted to drive this Mac. Grant it once with hands.grant.add (needs the person), or ask them to.`), { code: "denied" });
+        throw Object.assign(new Error(String(agent).startsWith("caller:") ? "This assistant has no permission to use this computer yet. Add it in Access. (not granted)" : `${agent} is not granted to drive this Mac. Grant it once with hands.grant.add (needs the person), or ask them to.`), { code: "denied" });
       }
       return fn(input, meta);
     });
