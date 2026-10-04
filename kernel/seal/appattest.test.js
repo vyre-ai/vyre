@@ -52,7 +52,7 @@ function world({ aaguid = Buffer.concat([Buffer.from("appattest"), Buffer.alloc(
   return {
     root, rootPem: pem(rootDer), keyId, leafKey: leaf.privateKey,
     attest(/** @type {Buffer} */ clientDataHash, o = {}) {
-      const ad = authData(0), nonce = sha(Buffer.concat([ad, clientDataHash]));
+      const ad = /** @type {any} */ (o).mutate ? /** @type {any} */ (o).mutate(authData(0)) : authData(0), nonce = sha(Buffer.concat([ad, clientDataHash]));
       const leafDer = cert({ subject: "Test Leaf", issuer: "Test Intermediate", pub: spkiOf(leaf.publicKey), signKey: inter.privateKey, nonce: /** @type {any} */ (o).badNonce ? crypto.randomBytes(32) : nonce });
       return Buffer.concat([enc.map([["fmt", enc.text("apple-appattest")], ["attStmt", enc.map([["x5c", enc.arr([enc.bytes(leafDer), enc.bytes(interDer)])], ["receipt", enc.bytes(Buffer.from("receipt"))]])], ["authData", enc.bytes(ad)]])]);
     },
@@ -160,4 +160,21 @@ test("AA-1 and AA-2: a release-stamped child ignores the test root, the developm
   assert.equal(await code(enrol(s, w, signer("per_alex"))), "bad_attestation", "release-kind: the synthetic root and app id are ignored");
   const v = appAttestVerifier({ dev: false });
   assert.equal(v.open, false, "and release accepts nothing while APPATTEST_VERIFIED is false");
+});
+
+test("AA-9 and AA-10: the authData flags and layout are checked (with a valid nonce, so the flag is the reason), and the leaf key must be EC P-256", () => {
+  const w = world(), v = appAttestVerifier({ dev: true, testRootPem: w.rootPem, extraAppIds: [APP] }), cdh = enrolClientData("tok", "spki");
+  const run = (/** @type {any} */ o) => v.enrol({ format: "apple-appattest", key_id: w.keyId.toString("base64"), attestation: w.attest(cdh, o).toString("base64") }, "spki", "tok");
+  assert.ok(run({}), "untouched");
+  const flag = (/** @type {number} */ f) => (/** @type {Buffer} */ ad) => { const b = Buffer.from(ad); b[32] = f; return b; };
+  assert.equal(run({ mutate: flag(0x00) }), null, "a cleared attested-credential flag is refused");
+  assert.equal(run({ mutate: flag(0xc0) }), null, "an extension-data flag is refused");
+  assert.equal(run({ mutate: (/** @type {Buffer} */ ad) => Buffer.concat([ad, Buffer.from([0xff])]) }), null, "trailing bytes after the COSE key are refused");
+  assert.equal(run({ mutate: (/** @type {Buffer} */ ad) => ad.subarray(0, ad.length - 1) }), null, "a short layout is refused");
+});
+
+test("AA-11: fixed proofBytes vectors (the app's build must reproduce them byte for byte); `assertion` and `signature` are not part of the bytes", async () => {
+  const { vectors } = JSON.parse(fs.readFileSync(new URL("./proofbytes-vectors.json", import.meta.url), "utf8"));
+  for (const v of vectors) assert.equal(proofBytes(v.proof).toString("utf8"), v.bytes);
+  assert.ok(vectors.some((/** @type {any} */ v) => v.proof.assertion && v.proof.signature), "a vector carries both fields");
 });

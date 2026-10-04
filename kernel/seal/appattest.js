@@ -121,14 +121,17 @@ export function verifyAttestation({ attestation, keyId, clientDataHash, now, app
   if (!inter.ca || leaf.ca || !leaf.checkIssued(inter) || !leaf.verify(inter.publicKey)) no("bad_chain");
   // nonce = SHA256(authData || clientDataHash) must be the one in the leaf
   if (!crypto.timingSafeEqual(nonceOf(Buffer.from(leaf.raw)), sha256(Buffer.concat([authData, clientDataHash])))) no("bad_nonce");
+  if (leaf.publicKey.asymmetricKeyType !== "ec" || leaf.publicKey.asymmetricKeyDetails?.namedCurve !== "prime256v1") no("bad_key_type");
   const spki = leaf.publicKey.export({ type: "spki", format: "der" }), point = spki.subarray(spki.length - 65);
   if (point.length !== 65 || point[0] !== 4 || !crypto.timingSafeEqual(sha256(point), keyId)) no("bad_key_id");
   if (authData.length < 55) no("short_authdata");
   const rp = authData.subarray(0, 32), count = authData.readUInt32BE(33), aaguid = authData.subarray(37, 53), credLen = authData.readUInt16BE(53);
   if (!appIds.some(id => crypto.timingSafeEqual(rp, sha256(id)))) no("bad_app");
+  if ((authData[32] & 0x40) === 0 || (authData[32] & 0x80) !== 0) no("bad_flags");
   if (count !== 0) no("bad_counter");
   if (!aaguid.equals(AAGUID_PROD) && !(allowDevelop && aaguid.equals(AAGUID_DEV))) no("bad_environment");
   if (credLen !== keyId.length || authData.length < 55 + credLen || !authData.subarray(55, 55 + credLen).equals(keyId)) no("bad_credential");
+  if (!(cbor(authData.subarray(55 + credLen)) instanceof Map)) no("bad_layout"); // the COSE key follows the credential id and fills the rest exactly
   return { spki: Buffer.from(spki).toString("base64"), receipt: Buffer.isBuffer(receipt) ? receipt : null };
 }
 
@@ -142,6 +145,7 @@ export function verifyAssertion({ assertion, clientDataHash, spki, counter, appI
   const sig = top.get("signature"), auth = top.get("authenticatorData");
   if (!Buffer.isBuffer(sig) || !Buffer.isBuffer(auth) || auth.length !== 37) no("bad_shape");
   if (!appIds.some(id => crypto.timingSafeEqual(auth.subarray(0, 32), sha256(id)))) no("bad_app");
+  if ((auth[32] & 0x80) !== 0) no("bad_flags");
   const n = auth.readUInt32BE(33);
   if (!(n > counter)) no("counter");
   const key = crypto.createPublicKey({ key: Buffer.from(spki, "base64"), format: "der", type: "spki" });
