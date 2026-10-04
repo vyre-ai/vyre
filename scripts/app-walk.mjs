@@ -312,7 +312,11 @@ await step("setup: create a space on this computer, close partway, resume", { sk
   await click("Continue");
   await page.screenshot({ path: path.join(OUT, "setup-5-members.png") });
   const members = (await text()).replace(/\s+/g, " ").slice(0, 200);
-  for (const later of ["Later", "Later", "Start empty"]) { await click(later, { settle: 1500 }).catch(() => {}); }
+  // Members has only Continue when nobody is waiting, else Later; Connectors has Later; Kit has Start empty (or Finish setup).
+  const clickAny = async (labels) => { for (const l of labels) { const b = page.getByText(l, { exact: true }).first(); if (await b.count()) { await b.click(); await settle(1500); return l; } } return null; };
+  await clickAny(["Later", "Continue"]);
+  await clickAny(["Later", "Continue"]);
+  await clickAny(["Start empty", "Finish setup"]);
   await page.screenshot({ path: path.join(OUT, "setup-6-done.png") });
   const t6 = await text();
   if (!/is ready/.test(t6)) throw new Error(`setup did not reach its done page (members step said: ${members}): ${t6.replace(/\s+/g, " ").slice(0, 300)}`);
