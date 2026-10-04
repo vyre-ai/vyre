@@ -106,6 +106,10 @@ export const EXPRESSION = `(() => {
     if (identifier) c.identifier = identifier;
     const container = containerOf(el);
     if (container) c.container = container;
+    // Native facts the consequence guard believes over the page's words and role (HD-6b): a control that submits a form, and where a link goes.
+    const tag = el.tagName, ty = (el.getAttribute("type") || "").toLowerCase();
+    if ((tag === "BUTTON" && (ty === "submit" || (ty === "" && el.form))) || (tag === "INPUT" && (ty === "submit" || ty === "image"))) c.submit = true;
+    if (tag === "A" && el.href) c.href = String(el.href).slice(0, 300);
     if (document.activeElement === el) c.focused = true;
     if ("value" in el && el.value !== undefined && el.value !== null && el.value !== "" && el.type !== "password") c.value = String(el.value);
     if (el.type === "password" && el.value) c.length = el.value.length;
@@ -116,7 +120,7 @@ export const EXPRESSION = `(() => {
 
 /**
  * @typedef {{ path: string, role: string, name?: string, nameless?: boolean, enabled: boolean,
- *   focused?: boolean, value?: string, length?: number, container?: string, identifier?: string,
+ *   submit?: boolean, href?: string, focused?: boolean, value?: string, length?: number, container?: string, identifier?: string,
  *   frame?: { x: number, y: number, w: number, h: number } }} Control
  * @typedef {{ title: string, url: string, text: string, controls: Control[], named: number, nameless: number }} Snapshot
  */

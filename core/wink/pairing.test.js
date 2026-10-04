@@ -7,6 +7,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { createPairing, pairToMessage, MIGRATIONS, PEER_MIGRATIONS, POLL_MS, KIND_OFFERS, parseQr, qrPayload, parseServerQr, serverQrPayload, parsePhoneQr, phoneQrPayload } from "./pairing.js";
 import { FORBIDDEN, words, removed } from "./cards.js";
 import { pairWords, nonceCommit, ticketTag, newNonce } from "../../relay/client/pairwords.js";
@@ -38,7 +41,7 @@ function world(o = {}) {
     openCode: async flow => ({ offer: `wo_${flow}`, code: "WINK-ZZZZ-ZZZZ", expires: 1 }), ack: async () => ({ ok: true }),
     owner: (m, what) => { if (m && (m.agent || String(m.caller).startsWith("agent:"))) throw Object.assign(new Error(what), { code: "denied" }); }, dropMs: 0, relayUrl: async () => "ws://relay.test", keyFile: o.keyFile,
     // existing tests adopt in one step and type codes; the Q-1 tests below turn the confirmation on and the typed code off, as a release build has them
-    confirmAdopt: o.confirm === true, requireProof: o.requireProof ?? false, releaseProof: o.releaseProof ?? false, typedCode: o.typedCode ?? true, askHoldMs: o.askHoldMs ?? 0, askMs: o.askMs, askPollMs: 1, releaseMaxMs: o.releaseMaxMs, identityEntry: o.identityEntry, signIdentity: o.signIdentity, vyreName: o.vyreName, mintMs: o.mintMs, looseOwnerIds: o.exactIds ? false : true, pairWordsFor: o.pairWordsFor === null ? undefined : (o.pairWordsFor || (async d => `amber coral ${d}`)), spaceNow: () => HARLOW,
+    confirmAdopt: o.confirm === true, requireProof: o.requireProof ?? false, buildRoot: o.buildRoot, releaseProof: "releaseProof" in o ? o.releaseProof : false, typedCode: o.typedCode ?? true, askHoldMs: o.askHoldMs ?? 0, askMs: o.askMs, askPollMs: 1, releaseMaxMs: o.releaseMaxMs, identityEntry: o.identityEntry, signIdentity: o.signIdentity, vyreName: o.vyreName, mintMs: o.mintMs, looseOwnerIds: o.exactIds ? false : true, pairWordsFor: o.pairWordsFor === null ? undefined : (o.pairWordsFor || (async d => `amber coral ${d}`)), spaceNow: () => HARLOW,
   });
   p.tools();
   const call = (name, input = {}, meta = {}) => tools.get(name).run(input, { caller: "device:x", ...meta });
@@ -1534,4 +1537,34 @@ test("the owner record is written BEFORE spaces.owner.adopt asks for it (windows
   const done = await run().catch(e => e);
   if (process.env.NEVER) console.log("DBG", JSON.stringify(done), JSON.stringify(w.p.meta.get("owner")), JSON.stringify(w.p.devices.get("app1")), JSON.stringify(w.events.map(e => e[0])), "PROOF", w.p.meta.get("owner_proof"), JSON.stringify(w.drops.map(d => d[0])));
   assert.ok(ownerAtAdopt && ownerAtAdopt.identity === ME, `the owner record named the identity when adopt asked: ${JSON.stringify(ownerAtAdopt)}`);
+});
+
+
+const fixtureBuild = (kind) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `bk-${kind}-`));
+  fs.mkdirSync(path.join(dir, "lib"));
+  fs.writeFileSync(path.join(dir, "lib", "build-kind.js"), kind === "development" ? 'export const BUILD_KIND = "development";\n' : 'export const BUILD_KIND = "release";\n');
+  if (kind === "dev-image") fs.writeFileSync(path.join(dir, "vyre.tgz"), "x");   // a dev-kind image is packed, but its KIND is still development
+  return dir;
+};
+
+test("the build KIND decides release behaviour, on three builds: a checkout and a packaged dev-kind image take a software prover and the software signer switch; a release-stamped copy refuses the prover and ignores the switch", async () => {
+  const saved = process.env.VYRE_SEAL_SOFTWARE;
+  try {
+    process.env.VYRE_SEAL_SOFTWARE = "1";
+    const soft = crypto.generateKeyPairSync("ed25519");
+    const entry = { eid: "e_soft", kind: "device", pub: soft.publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("base64url"), identity: ME };
+    const BOX = "Qm94S2V5", TAG = "t".repeat(43);
+    const proof = { eid: "e_soft", sig: crypto.sign(null, pairToMessage(BOX, "app1", TAG), soft.privateKey).toString("base64url") };
+    const input = { owner: { kind: "identity", id: ME, name: "Alex", vyre: "alex", pin: { id: ME, seq: 1, head: "h" } }, identity: ME, proof, pairing: { commit: "0".repeat(64), tag: TAG } };
+    for (const [name, root] of [["a checkout", undefined], ["a packaged dev-kind image", fixtureBuild("dev-image")]]) {
+      const w = world({ confirm: true, requireProof: true, identityEntry: async () => entry, buildRoot: root, releaseProof: undefined });
+      assert.equal(w.p.autoPresence, true, `${name}: the software signer switch is honoured`);
+      assert.equal((await w.tools.get("wink.server.adopt").run(input, { caller: "device:app1" })).pending, true, `${name}: a software prover is asked`);
+    }
+    const rel = fixtureBuild("release");
+    const w = world({ confirm: true, requireProof: true, identityEntry: async () => entry, buildRoot: rel, releaseProof: undefined });
+    assert.equal(w.p.autoPresence, false, "a release-stamped copy ignores the switch");
+    await assert.rejects(() => w.tools.get("wink.server.adopt").run(input, { caller: "device:app1" }), e => e.code === "not_hardware");
+  } finally { if (saved === undefined) delete process.env.VYRE_SEAL_SOFTWARE; else process.env.VYRE_SEAL_SOFTWARE = saved; }
 });

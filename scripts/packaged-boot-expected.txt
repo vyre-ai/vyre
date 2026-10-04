@@ -3,7 +3,6 @@
 apps
 capsule
 hands
-runner
 screen
 sideview
 voice
