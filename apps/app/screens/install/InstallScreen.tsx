@@ -6,8 +6,7 @@ import { Avatar, Banner, Button, Card, Chip, Divider, Field, Row, Ring, Segmente
 import { FaceIdSheet, type FaceAsk } from "../shell/FaceIdSheet";
 import { loadInstall } from "./data";
 import { AFTER_HOME, CONTINUE_HERE, SERVER_FAILED, serverSay, RECOVERY_CODE, SERVER_LONG_CODE, WHERE_STEP, backOf, connectedLine, isResumable, nextSetup, packProgress, unpackProgress, homeLine, nameNote, nameStatus, pairToOptions, serverLines, slug, startStep } from "./flow.js";
-import { PairEntry, PairWatch, PairWords, openPairing, type LongCode } from "../devices/PairParts";
-import { serverSession } from "../../src/real/pairing";
+import { PairEntry, PairServer, PairWords, openPairing, type LongCode } from "../devices/PairParts";
 import { COPY } from "../devices/wink.js";
 import { parseWinkCode } from "../../src/api/wink-code";
 import { readProgress, writeProgress } from "../../src/state/setup-progress";
@@ -130,14 +129,6 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
       setSpaceId(r.id);
       make(w);
     } catch (e) { setWrong(said(e)); } finally { setBusy(false); }
-  };
-  // Real box: the phone asks the server to pair (wink.pair.server), shows the three words it made, and the person says yes AT THE SERVER. Nothing is picked or typed here.
-  const startServer = (c: LongCode) => {
-    setWrong("");
-    if (MOCK) { setSession(openPairing(c)); setStep("srv2"); return; }
-    setBusy(true);
-    const s = serverSession(c);
-    s.ready!().then(() => { setSession(s); setStep("srv2"); }).catch((e: Error) => setWrong(serverSay(e))).finally(() => setBusy(false));
   };
   const doMake = (w: "server" | "vps" | "here") => (MOCK ? make(w) : void makeReal(w));
   // The invite token lives only as long as the join steps: leaving them (cancel, done, any other step) forgets it.
@@ -337,14 +328,12 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
         </View> : <Text tone="muted">{two ? "Your server prints three words. Confirm only if they match the ones below." : "Your server printed a QR code and a long code. Scan it or paste it here."}</Text>}
         <View className="gap-s2">
           <Text size="caption" strong tone="label">Your phone</Text>
-          {two && session.kind === "watch" ? (
-            <PairWatch session={session} who="Your server" onConfirmed={() => { setSession(null); doMake(where); }} onRejected={(say) => { setSession(null); setWrong(serverSay(say)); setStep("srv1"); }} />
-          ) : two ? (
-            <PairWords session={session} who="Your server" onConfirmed={() => { setSession(null); doMake(where); }} onRejected={() => { setSession(null); setWrong(SERVER_FAILED.rejected); setStep("srv1"); }} />
+          {two ? (
+            <PairServer session={session} who="Your server" onConfirmed={() => { setSession(null); doMake(where); }} onRejected={(say) => { setSession(null); setWrong(say ? serverSay(say) : SERVER_FAILED.rejected); setStep("srv1"); }} />
           ) : (
             <Card className="gap-s3">
               {MOCK ? <View className="gap-s1"><Text size="caption" strong tone="label">Pair to:</Text><Segmented label="Pair to" value={pairTo} onChange={setPairTo} options={pairToOptions(name, `${spaceSt.slug}.vyre.run`)} /></View> : <Text strong>{`Pair this server to ${name ? `${name}.vyre.run` : "your name"}?`}</Text>}
-              <PairEntry onCode={startServer} sample={MOCK ? SERVER_LONG_CODE : undefined} />
+              <PairEntry onCode={(c: LongCode) => { setWrong(""); setSession(openPairing(c)); setStep("srv2"); }} sample={MOCK ? SERVER_LONG_CODE : undefined} />
             </Card>
           )}
         </View>
