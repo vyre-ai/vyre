@@ -113,5 +113,14 @@ test("confine-probe.sh reports a real TCP listener, UDP socket and abstract unix
 test("confine-probe.sh does not report Docker's embedded resolver (127.0.0.11), which every container has", { skip: process.platform !== "linux" }, async () => {
   const src = fs.readFileSync(PROBE, "utf8");
   assert.match(src, /0B00007F/, "the resolver's address is skipped by address");
-  assert.equal((src.match(/!= 0B00007F/g) || []).length, 2, "for TCP and for UDP");
+  assert.equal((src.match(/= 0B00007F \] && \[ "\$luid" = 0/g) || []).length, 2, "for TCP and for UDP, and only when root owns it");
+});
+
+test("confine-probe.sh: a non-root listener on 127.0.0.11 is still reported (only root's is Docker's resolver)", { skip: process.platform !== "linux" || process.getuid?.() === 0 }, async t => {
+  const work = tmp(); t.after(() => fs.rmSync(work, { recursive: true, force: true }));
+  const srv = net.createServer(); try { await new Promise((res, rej) => { srv.once("error", rej); srv.listen(0, "127.0.0.11", () => res(undefined)); }); } catch { t.skip("this system does not bind 127.0.0.11"); return; }
+  t.after(() => srv.close());
+  const port = /** @type {any} */ (srv.address()).port;
+  const text = String(await new Promise(res => { let o = ""; const c = nodeSpawn(PROBE, ["allow", work]); c.stdout.on("data", d => o += d); c.on("close", () => res(o)); }));
+  assert.match(text, new RegExp(`^listen ${port}$`, "m"));
 });
