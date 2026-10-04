@@ -7,12 +7,12 @@
   "needs": { "kernel": { "actions": [] } },
   "does": {
     "tools": [
-      { "name": "tasks.list", "reach": "person" },
-      { "name": "tasks.get", "reach": "person" },
-      { "name": "tasks.request", "reach": "person" },
-      { "name": "tasks.decide", "reach": "person" },
-      { "name": "tasks.move", "reach": "person" },
-      { "name": "tasks.submit", "reach": "person" }
+      { "name": "tasks.list", "reach": "person", "effect": "read" },
+      { "name": "tasks.get", "reach": "person", "effect": "read" },
+      { "name": "tasks.request", "reach": "person", "effect": "write" },
+      { "name": "tasks.decide", "reach": "person", "effect": "write" },
+      { "name": "tasks.move", "reach": "person", "effect": "write" },
+      { "name": "tasks.submit", "reach": "person", "effect": "write" }
     ]
   },
   "watches": { "emits": [] },

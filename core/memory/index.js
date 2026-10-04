@@ -39,6 +39,10 @@ const SETTLE_MS = 250;
 const PERSONAL_BATCH = 2000;
 
 const cwds = { type: "array", items: { type: "string" } };
+/** The person's surfaces (deck also admits their own devices) and modules: who the writes that have no model use are open to. */
+const PEOPLE_MOD = ["cli", "local", "deck", "capsule", "module"];
+/** The person's surfaces only (their own devices ride "deck"): the corrections, whose bodies refuse everyone else too. */
+const PEOPLE = ["cli", "local", "deck", "capsule"];
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
@@ -425,6 +429,7 @@ export default {
     const roomOf = input => input.room || input.project || undefined;
 
     ctx.tool("memory.graph", {
+      effect: "read",
       description: "The graph as a floor plan for the Deck: one room per project, a shared room, nodes and edges, capped. project_cwds gives one project's graph; without it, the main graph (the assistant only). around/depth draw one node's neighbourhood. since returns { unchanged: true } when nothing moved.",
       input: { type: "object", properties: { project_cwds: cwds, ...roomField, around: { type: "string" }, depth: { type: "integer" }, limit: { type: "integer" }, since: { type: "integer" }, ...agentField } },
       run: async (input, { caller } = {}) => {
@@ -443,6 +448,7 @@ export default {
       },
     });
     ctx.tool("memory.facts", {
+      effect: "read",
       description: "What memory holds: facts about one thing (about), about what a project's sessions name (project_cwds), or the most-seen outside parties. Each fact has its source turn, age and confidence. thread (a session id) gives the facts that thread's turns support instead, each with refs: [{seq}], the turns where it came up; with room, that project's facts, else the main graph's.",
       input: { type: "object", properties: { about: { type: "string" }, thread: { type: "string" }, project_cwds: cwds, ...roomField, limit: { type: "integer" }, ...agentField } },
       run: async ({ about, thread, project_cwds = [], limit, agent, ...rest }, { caller } = {}) => {
@@ -484,6 +490,7 @@ export default {
     };
     ctx.tool("memory.relevant", relevantDef);
     ctx.tool("memory.why", {
+      effect: "read",
       description: "The turns that support a fact (its id, src|rel|dst) or where a thing came up (a name). Turns that no longer exist are counted as gone.",
       input: { type: "object", required: ["fact"], properties: { fact: { type: "string" }, limit: { type: "integer" }, project_cwds: cwds, ...roomField, ...agentField } },
       run: async ({ fact, limit = 10, project_cwds = [], agent, ...rest }, { caller } = {}) => {
@@ -493,6 +500,8 @@ export default {
       },
     });
     const steer = mode => ({
+      effect: "write",
+      callers: PEOPLE_MOD,
       description: mode === "pin"
         ? "Pin a node so it ranks first wherever it is relevant, everywhere (scope '*') or in one project folder. off: true unpins."
         : "Mute a node so memory never offers it, everywhere (scope '*') or in one project folder. off: true unmutes.",
@@ -510,6 +519,8 @@ export default {
     // What ctx.memory.teach(kind, fact) calls. Internal: only modules reach it, and the loader
     // has already checked that the kind is one the module declares under teaches.memory.
     ctx.tool("memory.teach", {
+      effect: "write",
+      callers: ["module"],
       internal: true,
       description: "A fact taught by another module, folded into the graph with that module as its source.",
       input: { type: "object", required: ["kind", "fact", "from"], properties: { kind: { type: "string" }, fact: { type: "object" }, from: { type: "string" } } },
@@ -718,7 +729,9 @@ export default {
     };
 
     ctx.tool("memory.correct", {
-      // No callers list: the person's device reaches it too, and ownerWrite decides.
+      effect: "write",
+      // A model may call it: with no words of the person's behind it the call only suggests (iq/heard.js); ownerOnly and ownerWrite decide the rest.
+      callers: [...PEOPLE, "mcp", "harness"],
       description: "Correct a fact: wrong (never true), ended (stopped being true at `at`), replace (ended, and `object` is true instead), confirm (sure, no decay), add (a new fact). fact is src|rel|dst from memory.facts, or give subject, rel and object. room or project scopes it to one project; otherwise everywhere. Answers at once with the correction and pending: true, and memory.curated follows when the graph has it; wait: true answers after, with the fact as it now reads. Or correct a Vyre Memory answer where it is shown: answer is memory.ask's answer_id, and action is wrong (never give that answer to that question again), replace (object is the right answer: the same question gets it at once) or forget (the facts and turns behind it never ground an answer again); returns { fix }, and memory.uncorrect { fix } undoes it. An agent (Claude in a chat) may correct only when the person said so in its own thread: from_turn: { seq } names that turn of the person's, and the new value must be in their words. It is applied as theirs ({ applied: true, heard }); otherwise it waits as a suggestion for the person ({ applied: false, suggestion }). suggestion: <id> accepts one (the person only).",
       input: { type: "object", required: ["action"], properties: { fact: { type: "string" }, subject: { type: "string" }, rel: { type: "string" }, object: { type: "string" },
         answer: { type: "string", description: "memory.ask's answer_id" },
@@ -754,6 +767,7 @@ export default {
     // also filed at once as the agent's own attributed correction, quoted, never an instruction.
     // memory.correct stays the person's; an agent reaches corrections only through this tool.
     ctx.tool("memory.heard", {
+      effect: "write",
       callers: ["mcp", "harness"],
       description: "Pass on a correction the person just made in this chat: { action: wrong|ended|replace|add|forget, fact (src|rel|dst) or subject, rel, object, or answer (memory.ask's answer_id), from_turn: { seq } the person's own turn in this thread that says it, project? }. When from_turn is the person's own fresh typed words naming what is wrong (and the new value), it is applied as theirs: { applied: true, heard, ... } and undone with memory.uncorrect. Otherwise nothing is applied: it waits as a suggestion for the person ({ applied: false, suggestion }) and, with project (a slug you are granted), is also filed at once as your own attributed correction ({ filed: { id, project } }), which the person's own word outranks.",
       input: { type: "object", required: ["action"], properties: { fact: { type: "string" }, subject: { type: "string" }, rel: { type: "string" }, object: { type: "string" },
@@ -780,6 +794,8 @@ export default {
     // No callers list: the registry compares the whole "tailnet:<login>" string, so readerOnly
     // checks the owner surfaces and tailnet callers itself.
     ctx.tool("memory.corrections", {
+      effect: "read",
+      callers: PEOPLE_MOD,
       description: "What the user has corrected, merged or split, newest first. room or project: that project's and the ones for everywhere. all: include undone ones. answers: true lists the Vyre Memory answers they corrected instead, as { fixes, week: { corrected, by_kind } }; suggested: true lists agents' corrections waiting for them and the ones agents applied from their words this week, as { suggestions, heard: [{ thread, seq, at, by, summary, undo }] }.",
       input: { type: "object", properties: { all: { type: "boolean" }, answers: { type: "boolean" }, suggested: { type: "boolean" }, ...roomField } },
       run: readerOnly(async input => input.suggested === true ? { suggestions: suggestions({ all: Boolean(input.all) }), heard: heardList() }
@@ -789,6 +805,8 @@ export default {
     // Personal facts are the user's, not a project's: owner surfaces and the user's tailnet
     // devices read them; agents never do.
     ctx.tool("memory.me", {
+      effect: "read",
+      callers: PEOPLE_MOD,
       description: "What memory knows about the user and the people and things in their life: facts like \"your wife is Jordan\", each with confidence, how many conversations said it and whether it still holds. about names one of them (\"my wife\", \"Jordan\", \"car\"); without it, the strongest facts.",
       input: { type: "object", properties: { about: { type: "string" }, limit: { type: "integer" } } },
       run: readerOnly(async ({ about, limit }) => {
@@ -998,6 +1016,7 @@ export default {
     const answer = answerer({ personal, graph, db: ctx.store.db, me: ctx.config.me || null, call: (tool, input) => ctx.call(tool, input),
       scratch: askDir, quick: quickDir });
     ctx.tool("memory.answer", {
+      effect: "read",
       description: "Answer a question about the user's own life in one line (\"Your wife is Jordan.\", \"You drive a blue Volvo XC40.\") from personal facts, the graph, then the user's own words. Returns { answer, confidence, kind: fact|said|null, from (conversations), facts, sources, via: fact|meaning|keyword|null, ms }; answer is null when memory does not know. sources: true lists more of the turns it came from.",
       input: { type: "object", properties: { q: { type: "string" }, question: { type: "string", description: "the same as q" }, project_cwds: cwds, ...roomField, sources: { type: "boolean" }, ...agentField } },
       run: async (input, { caller } = {}) => {
@@ -1016,6 +1035,7 @@ export default {
       next: async (session, seq) => { const r = await ctx.call("recall.thread", { session, from: seq + 1, limit: 1 }); return r?.error ? null : (r?.data?.turns || [])[0] || null; },
       search: async q => { const r = await ctx.call("recall.search", q); if (r?.error) throw new Error(r.error.message || "recall.search failed"); return Array.isArray(r?.data) ? r.data : r?.data?.hits || []; } });
     ctx.tool("memory.retrieve", {
+      effect: "read",
       description: "The turns Vyre Memory would read to answer a question: { passages: [{ id, session, seq, role, ts, text, name, cwd, score, via }], expanded, window }. No model. expand, when, recency and hybrid switch steps off, for the evaluation.",
       input: { type: "object", required: ["question"], properties: { question: { type: "string" }, project_cwds: cwds, k: { type: "integer", minimum: 1, maximum: 30 },
         expand: { type: "boolean" }, when: { type: "boolean" }, recency: { type: "boolean" }, hybrid: { type: "boolean" }, replies: { type: "boolean" },
@@ -1028,7 +1048,7 @@ export default {
         const effectiveCwds = await scopedCwds(sees, input.agent, caller, project_cwds);
         const scope = await writeScope(input.agent, caller, extra, { cwds: project_cwds });
         return withWrites(await retrieve({ question: String(input.question || ""), project_cwds: effectiveCwds, k: input.k ?? 8, personal: sees,
-          expand: input.expand !== false, when: input.when !== false, recency: input.recency !== false, hybrid: input.hybrid !== false, replies: input.replies !== false, knobs: input.knobs || {} }),
+          expand: input.expand !== false, when: input.when !== false, recency: input.recency !== false, hybrid: input.hybrid !== false, replies: input.replies !== false, knobs: owner(caller) ? Object.fromEntries(Object.entries(input.knobs && typeof input.knobs === "object" ? input.knobs : {}).filter(([k]) => ["hybrid", "role", "per_session", "prefix"].includes(k))) : {} }),
           String(input.question || ""), scope);
       },
     });
@@ -1075,6 +1095,7 @@ export default {
         },
       } });
     ctx.tool("memory.ask", {
+      effect: "read",
       description: "Vyre Memory: answer a question about the user's own past work or life (a decision, a file, a bug, a date, who someone is, what was deployed) from every past session and personal fact, with its sources, or abstain. Ask it before saying you do not know or cannot remember something from earlier sessions, and name the session it cites. Returns { answer, answer_id, confidence, abstained, known, sources: [{ session, seq, name, quote, ts }], via: fact|retrieval|corrected|null, latency_ms, cost_usd }; the person corrects an answer where it is shown with memory.correct { answer: answer_id }. answer is null and abstained true when memory does not know yet; known lists what it does know that bears on it. At the day's cap (config.memory.model.askDailyUsd, $0.50) limited is true and message says so: show it, never nothing. stream: true emits memory.thinking { id, stage: understanding|searching|reading|checking } as each step starts, then memory.answered { id, abstained, limited }; id is the caller's (so it can match the events before the reply comes back), else a new one, and is in the reply.",
       input: { type: "object", required: ["question"], properties: { question: { type: "string" }, project_cwds: cwds,
         context: { type: "object", properties: { project: { type: "string" }, thread: { type: "string" } } }, stream: { type: "boolean" }, id: { type: "string", maxLength: 64 },
@@ -1125,6 +1146,7 @@ export default {
     // Suggestions while typing (cohesion's suggest.query): people, pets, places and things memory
     // knows whose names start with the prefix. Personal names only for the user's own surfaces.
     ctx.tool("memory.suggest", {
+      effect: "read",
       description: "Names memory knows that start with a prefix, for completion: { suggestions: [{ text, kind, id, via: personal|graph }], items } (items: the same in suggest.offer's shape; memory offers this tool to suggest). Personal names (\"my wife\", \"juno\") only for the user's own surfaces; a project's caller gets that project's graph names.",
       input: { type: "object", required: ["prefix"], properties: { prefix: { type: "string" }, project_cwds: cwds, limit: { type: "integer", minimum: 1, maximum: 20 },
         context: { type: "object", properties: { project: { type: "string" }, thread: { type: "string" } } }, ...agentField } },
@@ -1165,6 +1187,7 @@ export default {
       },
     });
     ctx.tool("memory.profile", {
+      effect: "read",
       description: "The user's durable facts as short lines for a system prompt (\"Your wife is Jordan.\", \"You drive a blue Volvo XC40.\"): only what still holds at confidence 0.5 or more, and nothing sensitive (no dates, account-like numbers, addresses or health). Returns { facts: [{ text, kind: person|place|vehicle|work|client|preference|other, weight, id, rel, from }] }, strongest first.",
       input: { type: "object", properties: { limit: { type: "integer", minimum: 1, maximum: 50 }, ...agentField } },
       run: async (input, { caller } = {}) => {
@@ -1175,6 +1198,9 @@ export default {
     });
     // Told outright, by the person or their assistant: kept at once, no prompt (the no-nag rule).
     ctx.tool("memory.remember", {
+      effect: "write",
+      // The person's own Claude session remembers a fact through this (/vyre remember); the body refuses an agent's session. Group D HD-8 (a session-sourced fact should wait for the person) is still open.
+      callers: [...PEOPLE_MOD, "mcp", "harness"],
       description: "Keep a fact the user or their assistant states outright (\"my wife is Jordan\", \"I moved to Lisbon\"). No confirmation. It is read like a conversation at confidence 0.95 and kept as a note either way, so memory.answer finds a line no rule reads by its words. room is kept as where it was said; personal facts are not a project's. Returns { id, text, facts: [{ id, subject, rel, object, confidence }] }.",
       input: { type: "object", properties: { text: { type: "string" }, room: { type: "string" }, ...agentField } },
       run: async (input, extra = {}) => {
@@ -1197,6 +1223,8 @@ export default {
       },
     });
     ctx.tool("memory.uncorrect", {
+      effect: "write",
+      callers: PEOPLE,
       // No callers list: the person's device reaches it too, and ownerWrite decides.
       description: "Undo a correction, merge or split by its id. It stays listed as undone.",
       input: { type: "object", properties: { id: { type: "integer" }, fix: { type: "integer", description: "a Vyre Memory answer correction's id" }, suggestion: { type: "integer", description: "dismiss an agent's suggestion" } } },
@@ -1218,6 +1246,8 @@ export default {
       }),
     });
     ctx.tool("memory.merge", {
+      effect: "write",
+      callers: PEOPLE,
       // No callers list: the person's device reaches it too, and ownerWrite decides.
       description: "Two nodes are one: everything said about the first is said about the second (into).",
       input: { type: "object", required: ["node", "into"], properties: { node: { type: "string" }, into: { type: "string" } } },
@@ -1233,6 +1263,8 @@ export default {
       }),
     });
     ctx.tool("memory.split", {
+      effect: "write",
+      callers: PEOPLE,
       // No callers list: the person's device reaches it too, and ownerWrite decides.
       description: "One node is two: with room or project, the one that project's sessions name is someone else (two different people with one name); with other, two nodes that were merged are kept apart.",
       input: { type: "object", required: ["node"], properties: { node: { type: "string" }, other: { type: "string" }, ...roomField } },
@@ -1256,6 +1288,8 @@ export default {
       }),
     });
     ctx.tool("memory.curate", {
+      effect: "write",
+      callers: PEOPLE_MOD,
       description: "Read any new turns and rebuild the graph now. full: true re-reads every turn. Returns counts.",
       input: { type: "object", properties: { full: { type: "boolean" }, ...agentField } },
       run: async ({ full = false, agent }, { caller } = {}) => {
@@ -1268,6 +1302,7 @@ export default {
     // about the words in it, and, when the prompt is a question about the user's own life that
     // memory can answer surely, that answer first.
     ctx.tool("memory.context", {
+      effect: "read",
       description: "Context for one prompt: lines worth adding before it. The graph's facts about what it names (as memory.relevant), and when the prompt asks about the user's own life and memory is sure (confidence 0.5 or more), that answer first. Returns { lines: string[], answer: { text, confidence, from } | null }.",
       input: { type: "object", required: ["text"], properties: { text: { type: "string" }, project_cwds: cwds, ...roomField, limit: { type: "integer", minimum: 1, maximum: 20 }, ...agentField } },
       run: async ({ text, project_cwds = [], limit = 5, agent, ...rest }, { caller } = {}) => {
@@ -1290,6 +1325,7 @@ export default {
     });
     // The reader's usage line, and "read now" for the person (spends from the same caps).
     ctx.tool("memory.read", {
+      effect: "write",
       callers: OWNERS,
       description: "The fast model's reading of your turns for personal facts: spend today and on the one-time backfill, turns waiting, cost per 1,000 turns. now: true reads what is waiting at once, within the caps.",
       input: { type: "object", properties: { now: { type: "boolean" }, max_runs: { type: "integer", minimum: 1, maximum: 1000 } } },
@@ -1422,6 +1458,7 @@ export default {
     // The graph's facts about it, the projects it comes up in, when it last did, and a few
     // sessions to open; for the person's own surfaces, what it is to them too (their wife, their dog).
     ctx.tool("memory.card", {
+      effect: "read",
       description: "One card about a person, org or project: { card: { label, kind, role, to_you?, facts: [{ text, source, age }], projects: [name], sessions, last, sources: [{ session, name, ts }] } | null }. to_you is who it is to the person (\"your wife\"), for their own surfaces only. project_cwds or room scope it as memory.facts does.",
       input: { type: "object", required: ["about"], properties: { about: { type: "string" }, project_cwds: cwds, ...roomField, ...agentField } },
       run: async ({ about, project_cwds = [], agent, ...rest }, { caller } = {}) => {
@@ -1455,6 +1492,8 @@ export default {
     // fast reads batches of 50 a minute instead of 20, within the plan's normal limits; gentle keeps
     // the default. Never extra paid usage: no money step (the user, 28 Sep).
     ctx.tool("memory.pace", {
+      effect: "write",
+      callers: ["module"],
       internal: true,
       description: "Set the first read's pace for an import: fast (bigger batches, within the plan's normal limits) or gentle (the default).",
       input: { type: "object", required: ["pace"], properties: { pace: { type: "string", enum: ["fast", "gentle"] } } },
@@ -1467,6 +1506,8 @@ export default {
     });
     // Two values for one thing about the person's life, put to them to settle (graph win 3).
     ctx.tool("memory.contradictions", {
+      effect: "read",
+      callers: PEOPLE_MOD,
       description: "Things memory holds two values for about the person's life (where they live, their wife's name), for them to settle: { contradictions: [{ id, question, values: [{ value, confidence, sessions, last_seen }] }] }. The person's own surfaces only.",
       input: { type: "object", properties: {} },
       run: readerOnly(async () => {
@@ -1475,6 +1516,8 @@ export default {
       }, "memory.contradictions"),
     });
     ctx.tool("memory.settle", {
+      effect: "write",
+      callers: PEOPLE,
       description: "The person settles a contradiction: pick is the value that holds. It is told to memory in their words (\"I live in Porto\"), which outweighs every older value. Returns { id, text, facts } as memory.remember does; memory.uncorrect is not needed: telling memory again changes it.",
       input: { type: "object", required: ["id", "pick"], properties: { id: { type: "string" }, pick: { type: "string" } } },
       run: ownerWrite(async ({ id, pick }, { caller } = {}) => {
@@ -1489,6 +1532,8 @@ export default {
     });
     // The preview for "Delete everything that came from <device>": what would go, in counts.
     ctx.tool("memory.device", {
+      effect: "read",
+      callers: PEOPLE_MOD,
       description: "What came from one paired device's synced sessions, in counts, for the preview before the person deletes it: { machine, sessions, turns, facts, people, orgs }. Unpairing never deletes; deleting is the person's own action through federation, and memory forgets on sync.deleted.",
       input: { type: "object", required: ["machine"], properties: { machine: { type: "string" } } },
       run: readerOnly(async ({ machine }) => {
@@ -1508,6 +1553,7 @@ export default {
       }, "memory.device"),
     });
     ctx.tool("memory.sealscan", {
+      effect: "read",
       description: "One look at what memory already holds that has the shape of a sealed value (an SSN, a card or bank number, an IBAN and the rest): which table and column, how many rows and which classes, never a value. It changes nothing; the person decides what to do. From now on such values are scrubbed on the way in.",
       input: { type: "object", properties: { ledger: { type: "boolean" }, max: { type: "integer", minimum: 1, maximum: 100 } } },
       run: async ({ ledger, max } = {}, extra = {}) => {
@@ -1523,6 +1569,7 @@ export default {
       },
     });
     ctx.tool("memory.stats", {
+      effect: "read",
       description: "How much memory holds: nodes, edges, facts, evidence, by kind and role, and the last curator run.",
       input: { type: "object", properties: { ...agentField } },
       // Counts over everything are the main graph's.

@@ -58,7 +58,7 @@ test("store: every call is authorized as the session's chain: another space, a d
     const seen = [];
     const S = mk(root, { authorize: async i => { seen.push([i.action, i.resource]); return { effect: i.action === ACTIONS.write ? "allow" : "deny" }; } });
     await S.appendTranscript(A, "s1", [{ seq: 1, line: "x" }]);
-    assert.deepEqual(seen[0], [ACTIONS.write, `vyre://${SPACE}/session/s1`]);
+    assert.deepEqual(seen[0], [ACTIONS.write, `vyre://${SPACE}/checkpoint/s1`]);
     await assert.rejects(() => S.getCheckpoint(A, "s1"), { code: "not_found" });          // read denied
     await assert.rejects(() => S.getTranscript(A, "s1", 1), { code: "not_found" });
     const S2 = mk(root);

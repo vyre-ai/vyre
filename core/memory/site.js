@@ -130,7 +130,12 @@ export function register(ctx, { denied }) {
     return 1;
   };
 
+  /** Chrome's bridge is a first-party module; a person's surface (deck also admits their own devices) is the rest. */
+  const SITE_CALLERS = ["cli", "local", "deck", "capsule", "module"];
+  const SITE_PERSON = ["cli", "local", "deck", "capsule"];
   ctx.tool("memory.site.get", {
+    effect: "read",
+    callers: SITE_CALLERS,
     description: "What Vyre for Chrome knows about a site: { origin, family?, rev, family_rev } cards (the small record Chrome reads on every page), or { not_modified: true } when since_rev and family_rev are current. parts: [controls|api|flows|notes|frames] returns the full record's named parts instead of the card. Structure only, never a value. For the person's surfaces and Vyre's own modules.",
     input: { type: "object", required: ["origin"], properties: { origin: { type: "string" }, since_rev: { type: "integer" }, family_rev: { type: "integer" },
       parts: { type: "array", items: { type: "string", enum: PARTS } } } },
@@ -151,6 +156,8 @@ export function register(ctx, { denied }) {
   });
 
   ctx.tool("memory.site.put", {
+    effect: "write",
+    callers: SITE_CALLERS,
     description: "Fold what Chrome observed into a site's record: { origin, target: 'origin'|'family', patch, base_rev? } -> { accepted, rev, dropped } or { accepted: false, refused: [{ path, why }] } when anything looks like a secret, a pairing seed or an email (nothing is kept, and the text is never echoed). Merges by item id, never replaces; a removal needs the current base_rev. A family is written only for an origin that belongs to it.",
     input: { type: "object", required: ["origin", "patch"], properties: { origin: { type: "string" }, target: { type: "string", enum: ["origin", "family"] }, family: { type: "string" },
       patch: { type: "object" }, base_rev: { type: "integer" } } },
@@ -187,6 +194,8 @@ export function register(ctx, { denied }) {
   });
 
   ctx.tool("memory.site.report", {
+    effect: "write",
+    callers: SITE_CALLERS,
     description: "One outcome for one item Chrome already holds: { origin, target?, part, id, outcome: 'ok'|'miss', why? } -> { conf, quarantined }. A success raises its trust, a miss cuts it, and three misses over two days quarantine it (kept as 'used to work', dropped after 30 days). Or which rung of the page ladder worked on a page: { origin, target?, template, rung: 1..5, lowerFailed? } -> { rung: { r, n, startRung? } }; the count is the store's own (one per template per 30-minute visit, at most 255; a change of rung once a minute) and only a hint for where to start, never trust; the page's card carries startRungs once a rung has worked twice.",
     input: { type: "object", required: ["origin"], properties: { origin: { type: "string" }, target: { type: "string", enum: ["origin", "family"] },
       part: { type: "string", enum: PARTS }, id: { type: "string" }, outcome: { type: "string", enum: ["ok", "miss"] }, why: { type: "string" },
@@ -228,6 +237,8 @@ export function register(ctx, { denied }) {
   const siteName = key => { const r = load(key); return (r && r.names && r.names[0]) || key.replace(/^https?:\/\//, ""); };
 
   ctx.tool("memory.site.list", {
+    effect: "read",
+    callers: SITE_PERSON,
     description: "Every site Vyre knows: { sites: [{ key, kind, names, family, rev, updated, verified, counts, used_to_work }], forgotten: [{ kind: 'site'|'row', key, name, part?, id?, label?, at, until }] (until and expires_at are the same epoch ms) }, for the Sites list in Memory. forgotten is what was forgotten in the last 24 hours and can still be brought back with memory.site.restore (a whole site by { key }, a row by { key, part, id }), newest first. The person's own surfaces only.",
     input: { type: "object", properties: {} },
     run: async (_i, { caller } = {}) => {
@@ -250,6 +261,8 @@ export function register(ctx, { denied }) {
   });
 
   ctx.tool("memory.site.forget", {
+    effect: "write",
+    callers: SITE_PERSON,
     description: "Forget one item of a site ({ key, part, id }) or a whole record ({ key }, an origin or family:<id>); all: true forgets every site. Either can be brought back for 24 hours with memory.site.restore ({ key } or { key, part, id }). The person's own surfaces only.",
     input: { type: "object", properties: { key: { type: "string" }, part: { type: "string", enum: PARTS }, id: { type: "string" }, all: { type: "boolean" } } },
     run: async (i, { caller } = {}) => {
@@ -296,6 +309,8 @@ export function register(ctx, { denied }) {
   };
 
   ctx.tool("memory.site.restore", {
+    effect: "write",
+    callers: SITE_PERSON,
     description: "Bring back what was forgotten in the last 24 hours: a whole site ({ key }) or one row of it ({ key, part, id }) -> { restored }. The person's own surfaces only.",
     input: { type: "object", required: ["key"], properties: { key: { type: "string" }, part: { type: "string", enum: PARTS }, id: { type: "string" } } },
     run: async (i, { caller } = {}) => {
@@ -337,6 +352,8 @@ export function register(ctx, { denied }) {
   };
 
   ctx.tool("memory.site.detail", {
+    effect: "read",
+    callers: SITE_PERSON,
     description: "One site in full, for the Sites list: { key, kind, names, family, related, rev, updated, verified, used_to_work, events, parts: { frames, controls, api, flows, notes, ready, wall, signedIn } } where each item is { id, label, conf, verified, quarantined, src } and never a selector, a value or page text beyond what the record holds (structure only). Each item's id is what memory.site.forget { key, part, id } removes. The person's own surfaces only.",
     input: { type: "object", required: ["key"], properties: { key: { type: "string" } } },
     run: async (i, { caller } = {}) => {
@@ -356,6 +373,8 @@ export function register(ctx, { denied }) {
   });
 
   ctx.tool("memory.site.sync", {
+    effect: "write",
+    callers: SITE_CALLERS,
     description: "Two-way sync with a replica (standalone Vyre for Chrome on a computer, once it reaches this box): { have: { key: rev }, push: [records] } -> { accepted, skipped, refused, pull: [records newer than have], forgotten: [{ key, at }] }. Each pushed record goes through the same allowlist and is folded in by per-item newest-verified, never overwriting; items the store did not hold start at 0.5 at most; items older than a forget the person made are dropped, and the replica is told what was forgotten. Off when memory.site.sync is off. The person's own surfaces and Chrome's bridge.",
     input: { type: "object", properties: { have: { type: "object" }, push: { type: "array", maxItems: 100, items: { type: "object" } } } },
     run: async (i, { caller, ...meta } = {}) => {

@@ -28,11 +28,11 @@ async function until(fn, what, ms = 8_000) {
 /** A module with a write that counts itself in the event log, so the count survives restarts. */
 function chaosModule(root) {
   writeModule(path.join(root, "modules"), "chaos", { does: { tools: ["chaos.add", "chaos.slow", "chaos.key", "chaos.read"] }, watches: { emits: ["chaos.added", "chaos.started"] } }, `export default { async start(ctx) {
-    ctx.tool("chaos.add", { input: { type: "object", properties: { n: { type: "number" } } }, run: async i => ctx.events.emit("chaos.added", { n: i.n }) && { n: i.n } });
-    ctx.tool("chaos.slow", { input: { type: "object", properties: { ms: { type: "number" }, n: { type: "number" } } },
+    ctx.tool("chaos.add", { effect: "read", input: { type: "object", properties: { n: { type: "number" } } }, run: async i => ctx.events.emit("chaos.added", { n: i.n }) && { n: i.n } });
+    ctx.tool("chaos.slow", { effect: "read", input: { type: "object", properties: { ms: { type: "number" }, n: { type: "number" } } },
       run: async i => { ctx.events.emit("chaos.started", { n: i.n }); await new Promise(r => setTimeout(r, i.ms)); ctx.events.emit("chaos.added", { n: i.n }); return { n: i.n }; } });
-    ctx.tool("chaos.read", { input: { type: "object", properties: {} }, run: async () => ({ last_event: ctx.events.latestId() }) });
-    ctx.tool("chaos.key", { input: { type: "object", properties: {} }, run: async (i, meta) => ({ key: meta.idempotencyKey ?? null }) });
+    ctx.tool("chaos.read", { effect: "read", input: { type: "object", properties: {} }, run: async () => ({ last_event: ctx.events.latestId() }) });
+    ctx.tool("chaos.key", { effect: "read", input: { type: "object", properties: {} }, run: async (i, meta) => ({ key: meta.idempotencyKey ?? null }) });
     return {};
   } };`);
 }

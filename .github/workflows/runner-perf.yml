@@ -48,12 +48,6 @@ jobs:
           const c = launch(p, {}); c.stdout.on('data', d => process.stdout.write(d)); c.stderr.on('data', d => process.stdout.write('ERR ' + d)); c.on('close', code => console.log('exit', code));
           EOF2
           node p.mjs || true
-      - name: measure (last, because it is the slow one; it stopped a whole run at the 40 minute limit on 3 Oct)
-        if: always()
-        timeout-minutes: 25
-        env:
-          VYRE_NO_WATCHDOG: "1"
-        run: node scripts/runner-perf.mjs --reps 3 --out perf-mac.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -65,4 +59,24 @@ jobs:
             net-lent.txt
             sandbox-tests.txt
             claude-run.txt
-
+  # The slow measurement is its own job: a measurement that runs long can no longer turn the sandbox gate red (it stopped the whole run at its limit on 3 and 4 Oct).
+  measure:
+    runs-on: macos-14
+    timeout-minutes: 40
+    env:
+      VYRE_TEST_HOSTED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: measure (what lending costs, plain folder against sandbox and encrypted workspace)
+        timeout-minutes: 30
+        env:
+          VYRE_NO_WATCHDOG: "1"
+        run: node scripts/runner-perf.mjs --reps 3 --out perf-mac.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: runner-perf-measure
+          path: perf-mac.json

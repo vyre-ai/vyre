@@ -61,6 +61,8 @@ export async function withLive(ctx, cat) {
 const OWNER = ["cli", "local", "capsule", "deck"];
 /** The person's own surfaces and modules acting for them: never a model (an agent or a session is mcp). */
 const PERSON_ONLY = [...OWNER, "module"];
+/** projects.catalog lists every session on the device with its first message: the person's surfaces (the Deck and Capsule over a device or the tailnet too) and modules, never a model. */
+const CATALOG_READERS = [...OWNER, "mobile", "tailnet", "device", "module"];
 // Reviewer's MEDIUM 2 on f8330ccc: callers: ["module"] alone lets ANY module reach these three,
 // third-party ones installed into the modules folder included — modules skip presence entirely,
 // so an installed module could grant an agent any project, or clear a person's explicit revokes
@@ -235,6 +237,7 @@ export default {
       },
     });
     ctx.tool("projects.catalog", {
+      callers: CATALOG_READERS,
       description: "Every session on this device for picking into projects, with its /rename name, first message, folder, last activity, projects, and live (a terminal has it open now). q searches names, first messages, folders and, through Recall, what was said.",
       input: { type: "object", properties: { q: str, limit: { type: "integer" }, human: { type: "boolean" }, machines } },
       run: async (input, meta = {}) => { const caller = meta.caller;
