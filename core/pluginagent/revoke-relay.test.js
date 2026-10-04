@@ -18,6 +18,11 @@ const PROJECTS = `export default { async start(ctx) {
   ctx.tool("projects.access.clear", { run: async () => ({ ok: true }) });
   return {};
 } };`;
+// Stand-in for the presence module's strength answer: a session id says whether its key was attested.
+const PRESENCE = `export default { async start(ctx) {
+  ctx.tool("presence.person.strength", { internal: true, run: async i => ({ strength: i.id === "s-hw" ? "hardware" : i.id === "s-sw" ? "software" : null }) });
+  return {};
+} };`;
 const THREADS = `export default { async start(ctx) { ctx.tool("threads.list", { effect: "read", run: async () => [] }); return {}; } };`;
 
 async function world(t) {
@@ -25,6 +30,7 @@ async function world(t) {
   const root = path.join(home, "mods");
   writeModule(root, "projects", { roles: ["box", "local"], does: { tools: ["projects.list", "projects.access.check", "projects.access.grant", "projects.access.revoke", "projects.access.clear"] } }, PROJECTS);
   writeModule(root, "threads", { roles: ["box", "local"], does: { tools: ["threads.list"] } }, THREADS);
+  writeModule(root, "presence", { roles: ["box", "local"], does: { tools: ["presence.person.strength"] } }, PRESENCE);
   const db = open(path.join(home, "vyre.db"));
   const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, paths: { root: home }, log: () => {} });
   const here = path.join(path.dirname(new URL(import.meta.url).pathname), "..");
@@ -35,19 +41,23 @@ async function world(t) {
 }
 const names = async (/** @type {any} */ call) => ((await call("agents.list")).data || []).map((/** @type {any} */ a) => a.name);
 
-test("a revoke from a paired device (with the person's session) removes the agent, as it does from the terminal", async t => {
+test("a paired phone revokes only when its session's key was attested; a software device is refused up front with the key still on", async t => {
   const call = await world(t);
   const phone = "device:abcdefghijklmnop";
   const ask = (await call("pluginagent.ask", {}, "mcp")).data;
   assert.ok(!(await call("pluginagent.grant", { id: ask.id }, "local")).error);
   const agent = (await call("pluginagent.status", {}, "mcp")).data.agent;
-  assert.ok((await names(call)).includes(agent));
-  // The phone's own call to agents.delete needs the person's session; without it nothing is deleted.
+  // (agents.delete's own callers list is the person's surfaces; "deck" admits an owner's device, which with no session is refused person_session_required.)
   assert.equal((await call("agents.delete", { agent }, phone)).error.code, "person_session_required");
-  // And with the session, its OWN delete is still refused: a device removes an agent only through the plugin's revoke.
-  assert.equal((await call("agents.delete", { agent }, phone, { person: { session: "s1" } })).error.code, "denied");
-  // Revoke from the phone with the person's session: the relayed delete carries it, so the revoke does not stop halfway.
-  const r = await call("pluginagent.revoke", {}, phone, { person: { session: "s1" } });
+  // Software strength or an unknown session: refused by revoke itself, no session at all: refused by the registry; either way before anything changes.
+  for (const person of [{ id: "s-sw" }, undefined, { id: "nope" }]) {
+    const r = await call("pluginagent.revoke", {}, phone, person ? { person } : {});
+    assert.equal(r.error && r.error.code, person ? "software_key" : "person_session_required", JSON.stringify(r));
+    assert.equal((await call("pluginagent.status", {}, "mcp")).data.granted, true, "the key is still on");
+    assert.ok((await names(call)).includes(agent), "and the agent still stands");
+  }
+  // An enclave-strength phone revokes: the key is off and the agent is gone.
+  const r = await call("pluginagent.revoke", {}, phone, { person: { id: "s-hw" } });
   assert.ok(!r.error && r.data.revoked === true, JSON.stringify(r));
   assert.ok(!(await names(call)).includes(agent), "the agent is gone, not just its key");
   assert.equal((await call("agents.delete", { agent: "x" }, "mcp")).error.code, "denied", "a model still deletes nothing");

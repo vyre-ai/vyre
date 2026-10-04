@@ -235,6 +235,12 @@ export class PersonSessions {
     return { ok: true, id: row.id, kind: row.kind };
   }
 
+  /** The strength of a live session: `software` for a key the server did not see attested, `hardware` otherwise; null when there is no such session. @param {string} id @returns {"software"|"hardware"|null} */
+  strength(id) {
+    const row = /** @type {any} */ (this.db.prepare("SELECT software FROM presence_people WHERE id = ?").get(String(id)));
+    return row ? (row.software ? "software" : "hardware") : null;
+  }
+
   /**
    * The pairing's one-use grant for a device. Written only by the pairing's owner-confirmed path
    * (the tool checks the caller and reads the pair record); a device with a live grant or a live

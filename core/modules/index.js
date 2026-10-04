@@ -999,8 +999,7 @@ export class Registry {
         // settings relays a person only to the tools first-party modules declared as their own
         // settings' getters and setters, never to any other tool (e2e review, HIGH 2).
         if (m.name === "settings" && !this.settingTools().has(tool)) throw new Error(`settings may not call ${tool} as ${as}: no first-party setting names it`);
-        // pluginagent's revoke is the person's own act: when it came on a paired device with the person's session (meta.person, set by vyred's router alone), the delete it relays carries that same session, or a device would be refused person_session_required halfway through a revoke.
-        return this.call(tool, input, String(as), m.name === "capsule" && opts.asked && typeof opts.asked === "object" ? { asked: opts.asked } : m.name === "pluginagent" ? { relayedBy: "pluginagent", ...(opts.person ? { person: opts.person } : {}) } : {});
+        return this.call(tool, input, String(as), m.name === "capsule" && opts.asked && typeof opts.asked === "object" ? { asked: opts.asked } : {});
       },
       // A long-lived connection (a WebSocket) at /v1/streams/<module>/<name>, for what a tool call
       // cannot carry: Glass streams a screen this way. The name must be declared under

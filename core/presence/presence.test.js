@@ -944,3 +944,16 @@ test("PS-4: removing a presence key also deletes the pending pair grants it conf
   assert.equal(p.remove("pkA"), true);
   assert.deepEqual(grants(), ["devB"], "the removed key's grant is gone at once, the other's stays");
 });
+
+test("person sessions report their key's strength: an attested key is hardware, any other is software, a stranger is null", async t => {
+  const home = tempHome(t);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  new Presence({ db, platform: "linux", touchid: null, webauthn: null, who: async () => [] });
+  const { PersonSessions } = await import("./person.js");
+  const people = new PersonSessions({ db });
+  const hw = people.start({ node: "n1", software: false }), sw = people.start({ node: "n2", software: true });
+  assert.equal(people.strength(hw.id), "hardware");
+  assert.equal(people.strength(sw.id), "software");
+  assert.equal(people.strength("nope"), null);
+});

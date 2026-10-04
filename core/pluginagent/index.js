@@ -10,6 +10,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { deviceLabel } from "../modules/index.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE pluginagent_asks (id TEXT PRIMARY KEY, computer TEXT NOT NULL, asked_at INTEGER NOT NULL, state TEXT NOT NULL);
@@ -135,13 +136,23 @@ export default {
       run: async (/** @type {any} */ _input, /** @type {any} */ meta) => {
         const a = current();
         if (!a) return { revoked: false };
+        // A paired phone revokes too, but its own agents.delete is the terminal's and the app's, never a device's: the delete is relayed as the person's own surface ("local"), and only for a session
+        // whose key was attested (hardware strength, the door's rule). A software-strength device is refused HERE, before anything is turned off, so a refusal never leaves the key off and the agent standing.
+        const caller = String(meta.caller || "");
+        let as = caller;
+        if (deviceLabel(caller)) {
+          const sid = meta.person && meta.person.id ? String(meta.person.id) : "";
+          const st = sid ? await ctx.call("presence.person.strength", { id: sid }).catch(() => null) : null;
+          if (!(st && st.data && st.data.strength === "hardware")) throw refuse("This device keeps its key in software, so it cannot take Claude Code's access away. Do it from the terminal, or from a phone with Face ID.", "software_key");
+          as = "local";
+        }
         db.prepare("DELETE FROM pluginagent_agents WHERE agent = ?").run(String(a.agent));
         setState("off", "1");
         try { fs.rmSync(keyPath(), { force: true }); } catch { /* the hash is gone: the key is already dead */ }
         const k = ctx.kernel && ctx.kernel.grants && typeof ctx.kernel.grants.removeActor === "function" ? ctx.kernel : null;
         if (k) { try { await k.grants.removeActor(await k.chain(meta), { kind: "agent", id: String(a.agent), space: k.space }, k.proofFrom(meta) || {}); } catch { /* not an actor (any more): nothing to remove */ } }
-        // The person's own act (revoke needs presence): the delete runs as the caller who revoked, not as this module, so agents.delete's person-only rule is what decides.
-        const gone = await ctx.call("agents.delete", { agent: String(a.agent), ...(a.agent_id ? { id: String(a.agent_id) } : {}) }, { as: meta.caller, ...(meta.person ? { person: meta.person } : {}) });
+        // The person's own act (revoke needs presence): the delete runs as the person's surface that revoked (a device as "local", above), not as this module, so agents.delete's person-only rule is what decides.
+        const gone = await ctx.call("agents.delete", { agent: String(a.agent), ...(a.agent_id ? { id: String(a.agent_id) } : {}) }, { as });
         // not_found: that agent (or one with that id) is already gone, or the name is someone else's agent now: not ours to delete.
         if (gone && gone.error && gone.error.code !== "not_found") throw refuse(`Claude Code's reach is off, but its agent could not be removed: ${gone.error.message}`, String(gone.error.code || "failed"));
         try { ctx.events.emit("pluginagent.revoked", { agent: String(a.agent) }); } catch { /* an event never decides */ }

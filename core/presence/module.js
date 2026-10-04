@@ -298,6 +298,16 @@ export default {
     });
 
     // Removal of a device, its key leaving the identity list, a recovery reset or sign-out-everywhere: wink says so, here it ends.
+    ctx.tool("presence.person.strength", {
+      internal: true,
+      description: "The strength of a live person session, for a module that relays a paired device's act to a person-only tool: { strength: 'hardware' | 'software' | null }. Only pluginagent asks.",
+      input: obj({ id: str }, ["id"]),
+      run: async (input, meta = {}) => {
+        if (String((meta && meta.caller) || "") !== "module:pluginagent") throw Object.assign(new Error("only pluginagent asks a session's strength"), { code: "denied" });
+        return { strength: people.strength(String(input.id)) };
+      },
+    });
+
     ctx.tool("presence.person.end-paired", {
       internal: true,
       description: "End every paired session and grant of one device, or of all devices when none is named. Only the wink module asks.",
