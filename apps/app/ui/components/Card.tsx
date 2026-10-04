@@ -13,7 +13,7 @@ import { CardFill } from "../lib/cardFill";
 export function Card({ title, actions, flush, hero, className, children, ...rest }: ViewProps & { title?: string; actions?: React.ReactNode; flush?: boolean; hero?: boolean; className?: string }) {
   const { resolved } = useUiTheme();
   return (
-    <View {...rest} className={cn("min-w-0 border border-edge", hero ? "rounded-cardHero bg-surface-3" : "rounded-card bg-surface-2", flush ? "overflow-hidden" : hero ? "p-s5" : "p-s4", className)} style={[elevation(resolved.scheme, 1), rest.style]}>
+    <View {...rest} className={cn("min-w-0 border border-edge", hero ? "rounded-cardHero bg-surface-3" : "rounded-card bg-surface-2", flush ? "overflow-hidden" : hero ? "p-s5" : "p-s4", className)} style={[elevation(resolved.scheme, hero ? 2 : 1), rest.style]}>
       <CardFill.Provider value={hero ? "surface-3" : "surface-2"}>
       {title || actions ? (
         <View className={cn("flex-row items-center gap-s3", flush ? "px-s4 pt-s3 pb-s1" : "mb-s3")}>

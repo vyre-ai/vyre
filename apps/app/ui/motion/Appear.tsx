@@ -5,6 +5,8 @@ import { SPRING, motion } from "./tokens";
 import { entrance, staggerDelay } from "./logic.js";
 import { useReducedMotion } from "./useReducedMotion";
 
+const SHADOW_ROOM = 16;
+
 /**
  * An item that appears: it fades in (an effects spring on opacity) and rises into place with a spatial spring, `index` steps after the first
  * (tokens.v2.motion.stagger: 24 ms a step, none past the 8th). Reduced motion: it only fades, at once. `show` false takes it out with a short fade;
@@ -33,7 +35,9 @@ export function Appear({ children, index = 0, show = true, style }: { children: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [show, reduced, index]);
   const anim = useAnimatedStyle(() => ({ opacity: o.value, transform: [{ translateY: y.value }, { scale: s.value }] }));
-  return <Animated.View style={[style, anim]} pointerEvents={show ? "auto" : "none"}>{children}</Animated.View>;
+  // The card inside casts a shadow past its own box; an animated view is its own layer, clipped to its bounds, so the shadow showed as a square band at the
+  // rounded corners (captures 37164502912, 37169304766). The padding gives the shadow room and the equal negative margin keeps the layout where it was.
+  return <Animated.View style={[{ padding: SHADOW_ROOM, margin: -SHADOW_ROOM }, style, anim]} pointerEvents={show ? "box-none" : "none"}>{children}</Animated.View>;
 }
 
 /** Wrap a list's items: each child is an Appear at its own index. */
