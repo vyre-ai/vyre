@@ -130,8 +130,10 @@ export default {
     // A session on this person's own server is sealed at every turn into the same checkpoint store (ownserver.js). The sessions side says which
     // transcript a finished turn belongs to: ports.ownServer.resolve(event) -> { space, session, file, root, state } | null, and .port(space) is the store's port.
     const seals = new Map();
-    const offTurns = ports()?.ownServer ? ctx.events.on("thread.finished", async e => {
-      const o = ports()?.ownServer; let r = null;
+    // The own-server seal's two ports come from the test seam / kernel ports, or from the host (the daemon's own-server half).
+    const ownServerOf = () => ports()?.ownServer || hostOf()?.ownServer || null;
+    const offTurns = ownServerOf() ? ctx.events.on("thread.finished", async e => {
+      const o = ownServerOf(); let r = null;
       try { r = o && await o.resolve(e); } catch { r = null; }
       if (!r) return;
       const key = `${r.space}/${r.session}`;
