@@ -18,7 +18,7 @@ test("the create input carries the name only when given, and a temp invite an en
 });
 
 test("a made invite says the link and whether you must confirm words; a row names the role and hides nothing it was not given", () => {
-  assert.deepEqual(madeNote({ id: "inv_1", link: "https://h.vyre.run/join/x", needs_confirm: true }), { link: "https://h.vyre.run/join/x", id: "inv_1", needsConfirm: true, line: "The link works once for one person." });
+  assert.deepEqual(madeNote({ id: "inv_1", link: "https://h.vyre.run/join/x", needs_confirm: true }), { code: null, link: "https://h.vyre.run/join/x", id: "inv_1", needsConfirm: true, line: "The link works once for one person." });
   const r = inviteRow({ id: "inv_2", role: "temp", status: "open", valid_until: 1_790_000_000_000 });
   assert.equal(r.title, "Temp invite"); assert.equal(r.open, true);
   assert.equal(inviteRow({ id: "i3", role: "member", status: "used" }).open, false);
