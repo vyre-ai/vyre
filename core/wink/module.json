@@ -117,7 +117,7 @@
         "effect": "read"
       },
       {
-        "name": "wink.server.status",
+        "name": "wink.server.status", "effect": "read",
         "reach": "person"
       },
       {
