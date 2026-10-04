@@ -81,7 +81,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`sync`](#sync) | `core/sync` | `box`, `local` | 10 | 5 | capsule, cli, deck |
 | [`system`](#system) | `core/system` | `box`, `local` | 4 | 2 | cli |
 | [`tasks`](#tasks) | `core/tasks-tools` | `box`, `local` | 6 | 0 | cli |
-| [`team`](#team) | `core/team` | `box`, `local` | 31 | 10 | cli |
+| [`team`](#team) | `core/team` | `box`, `local` | 32 | 10 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 3 | none |
 | [`threads`](#threads) | `core/switchboard` | `box`, `local` | 57 | 36 | cli |
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
@@ -92,7 +92,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 20 | 7 | capsule, cli, deck |
-| [`wink`](#wink) | `core/wink` | `box` | 53 | 33 | capsule, cli, deck |
+| [`wink`](#wink) | `core/wink` | `box` | 51 | 33 | capsule, cli, deck |
 | [`work`](#work) | `core/work` | `box`, `local` | 15 | 0 | cli |
 
 ## about
@@ -831,7 +831,7 @@ Project teammates (ADR 0031): a named, persistent agent per role per project, a 
 - Folder: `core/team`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `threads`, `projects`, `sessions`
-- Tools: [31](tools.md#team), 2 of them only for other modules
+- Tools: [32](tools.md#team), 2 of them only for other modules
 - Emits: [10 events](events.md#team)
 - Shows on: cli
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -960,7 +960,7 @@ Pairing as grants: every way in is a Wink (scan a code, or type two-sided codes)
 - Folder: `core/wink`, version 0.1.0
 - Runs on: `box`
 - Requires: `relay`
-- Tools: [53](tools.md#wink), 5 of them only for other modules
+- Tools: [51](tools.md#wink), 3 of them only for other modules
 - Emits: [33 events](events.md#wink)
 - Listens for: `relay.code-asked`, `relay.invite-redeemed`, `device.paired`, `device.removed`
 - Shows on: capsule, cli, deck
