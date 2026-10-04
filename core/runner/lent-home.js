@@ -23,7 +23,7 @@ const SESSION = /^[A-Za-z0-9_-]{1,100}$/;
 const MAX_UPLOADS = 8;
 
 /**
- * @param {{ space: string, root: string, offers: { active(q: { member: string, device: string }): { spaceAllows: boolean, memberAccepts: boolean } },
+ * @param {{ space: string, root: string, offers: { active(q: { member: string, device: string }): { spaceAllows: boolean, memberAccepts: boolean }, capOf?(q: { member: string, device: string }): "provider" | "internet" | undefined },
  *   specFor: (i: { space: string, session: string, person: string, device: string }) => Promise<any> | any,
  *   lenderCap?: (i: { person: string, device: string }) => "provider" | "internet" | undefined,
  *   leases?: { renew(chain: any, i: { id: string }): Promise<any>, bind(session: string, id: string, def: any): void, unbind(session: string): void },
@@ -59,7 +59,7 @@ export function createLentHome(o) {
     /** Whether this person's computer may run the Space's work now (both Offers), and the lender's own cap: the lender's runner polls it (never faster than once a minute). @param {any} chain @param {{ device_key?: string }} [i] */
     async status(chain, i = {}) {
       const w = who(chain); const a = o.offers.active({ member: w.person, device: w.device, ...(i && i.device_key ? { device_key: String(i.device_key) } : {}) });
-      return { spaceAllows: Boolean(a && a.spaceAllows), memberAccepts: Boolean(a && a.memberAccepts), lenderCap: (o.lenderCap && o.lenderCap(w)) || null };
+      return { spaceAllows: Boolean(a && a.spaceAllows), memberAccepts: Boolean(a && a.memberAccepts), lenderCap: (o.lenderCap && o.lenderCap(w)) || (o.offers.capOf ? o.offers.capOf({ member: w.person, device: w.device }) : undefined) || null };
     },
     /** @param {any} chain @param {{ session: string, lease?: string, device_key?: string }} i */
     async start(chain, i) {
@@ -69,7 +69,7 @@ export function createLentHome(o) {
       { const had0 = lent.get(String(i.session)); if (had0 && had0.person !== w.person) throw err("not_found", "not found"); }
       const spec = await o.specFor({ space: o.space, session: i.session, person: w.person, device: w.device });
       if (!spec || typeof spec.command !== "string" || !Array.isArray(spec.routes)) throw err("not_found", "the Space has no definition for that session");
-      const cap = o.lenderCap ? o.lenderCap(w) : undefined;
+      const cap = (o.lenderCap && o.lenderCap(w)) || (o.offers.capOf ? o.offers.capOf({ member: w.person, device: w.device }) : undefined);
       // The Space's choice, limited by what this lender accepted: the Space can never hand a session more than the lender allowed (the runner applies the same rule again on the lender).
       const network = effectiveNetwork(spec.network, cap);
       if (o.leases && i.lease) { await o.leases.renew(chain, { id: String(i.lease) }); o.leases.bind(String(i.session), String(i.lease), { routes: spec.credentialRoutes || [] }); }

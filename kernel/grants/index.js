@@ -479,11 +479,12 @@ export function createGrantsStore(cfg) {
     async offer(chain, o, opt = {}) {
       const issuer = person(chain);
       if (!o || !["space_allows", "member_accepts"].includes(o.side) || typeof o.member !== "string" || (o.side === "member_accepts" && (typeof o.device !== "string" || !o.device || typeof o.device_key !== "string" || !o.device_key || o.device_key.length > 200)) || (o.device != null && typeof o.device !== "string") || (o.device_key !== undefined && (typeof o.device_key !== "string" || o.device_key.length > 200))) throw new KernelError("bad_input", "an offer needs a side, a member and (to accept) one of the member's computers with its key");
+      if (o.network_cap !== undefined && (o.side !== "member_accepts" || !["provider", "internet"].includes(o.network_cap))) throw new KernelError("bad_input", "the lender's network cap is provider or internet, on the member's own acceptance");
       const d = await gate(chain, "grants.offer", urn("offer"), o, opt.presence);
       const m = { kind: "person", id: o.member, space: cfg.space };
       if (!memberOk(m)) throw new KernelError("not_found", "no such member");
       if (o.side === "space_allows" ? !isAdmin(issuer) : issuer.id !== o.member) throw new KernelError("not_allowed", o.side === "space_allows" ? "only an owner or an admin lets the Space's work run on a member's computer" : "only the member accepts work on their own computer");
-      const rec = freeze({ id: `of_${mintUuid(clock())}`, space: cfg.space, side: o.side, offer: "compute", member: o.member, device: o.device ?? null, device_key: o.device_key ?? null, status: "active", made_by: issuer.id, at: clock() });
+      const rec = freeze({ id: `of_${mintUuid(clock())}`, space: cfg.space, side: o.side, offer: "compute", member: o.member, device: o.device ?? null, device_key: o.device_key ?? null, ...(o.side === "member_accepts" && o.network_cap ? { network_cap: o.network_cap } : {}), status: "active", made_by: issuer.id, at: clock() });
       offers.set(rec.id, rec);
       await note(chain, "offer.created", urn("offer", rec.id), { offer: rec }, d.decision);
       return rec;
@@ -526,7 +527,7 @@ export function createGrantsStore(cfg) {
       for (const side of both ? ["space_allows", "member_accepts"] : ["member_accepts"]) {
         const have = [...offers.values()].find(x => x.status === "active" && x.side === side && x.member === o.member && x.device === o.device);
         if (have) { made.push(have); continue; }
-        const rec = freeze({ id: `of_${mintUuid(clock())}`, space: cfg.space, side, offer: "compute", member: o.member, device: o.device, device_key: side === "member_accepts" ? o.device_key : null, status: "active", made_by: issuer.id, at: clock() });
+        const rec = freeze({ id: `of_${mintUuid(clock())}`, space: cfg.space, side, offer: "compute", member: o.member, device: o.device, device_key: side === "member_accepts" ? o.device_key : null, ...(side === "member_accepts" && ["provider", "internet"].includes(o.network_cap) ? { network_cap: o.network_cap } : {}), status: "active", made_by: issuer.id, at: clock() });
         offers.set(rec.id, rec);
         await note(chain, "offer.created", urn("offer", rec.id), { offer: rec }, d.decision);
         made.push(rec);
@@ -562,6 +563,11 @@ export function createGrantsStore(cfg) {
       const spaceAllows = memberOk({ kind: "person", id: q.member, space: cfg.space }) && [...offers.values()].some(o => live(o) && o.side === "space_allows" && (o.device === null || (o.device === q.device && keyOk(o))));
       const memberAccepts = [...offers.values()].some(o => live(o) && o.side === "member_accepts" && o.device === q.device && keyOk(o));
       return { spaceAllows, memberAccepts };
+    },
+    /** What the lender allows this member's computer to reach (`provider` or `internet`), from the member's own active acceptance; undefined when the acceptance names none (the Space's choice stands). */
+    capOf(/** @type {{ member: string, device: string }} */ q) {
+      for (const o of offers.values()) if (o.status === "active" && o.side === "member_accepts" && o.member === q.member && o.device === q.device) return o.network_cap;
+      return undefined;
     },
     /** The active offer record for a side, member and computer (`device` null = the Space's any-computer offer), or null. Sync; it reads the store. */
     find(/** @type {{ side: "space_allows" | "member_accepts", member: string, device?: string | null }} */ q) {
