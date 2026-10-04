@@ -83,10 +83,10 @@ export function createdFrom(r) {
 
 /**
  * What spaces.setup.save keeps, from the screen's state. No secret, code or key: only these fields.
- * @param {{ step: string, name: string, addr: string | null, look: string, where: string, connectors: string[], kit: string | null }} s
+ * @param {{ step: string, name: string, addr: string | null, look: string, where: string, connectors: string[], kit: string | null, who?: string }} s
  */
 export function setupFrom(s) {
-  return { step: s.step, name: s.name, address: s.addr, look: s.look, where: s.where, picks: { connectors: s.connectors, kit: s.kit } };
+  return { step: s.step, name: s.name, address: s.addr, look: s.look, where: s.where, picks: { connectors: s.connectors, kit: s.kit, ...(s.who ? { who: s.who } : {}) } };
 }
 
 /** Steps whose arrival is written to the box. */
@@ -116,6 +116,7 @@ export function applyClaim(a) {
     where: s.where === "vps" || s.where === "here" ? s.where : "server",
     connectors: Array.isArray(s.picks?.connectors) ? s.picks.connectors.map(String) : [],
     kit: s.picks?.kit ? String(s.picks.kit) : null,
+    who: ["team", "client", "personal"].includes(s.picks?.who) ? String(s.picks.who) : "team",
   };
 }
 

@@ -1,4 +1,5 @@
 // @ts-check
+import { PHONE_SAY } from "./first-run.js";
 // The install flow's rules, pure so Node tests them: names, the step graph, the server's scan-or-paste code and the three-word confirm.
 // Steps (prototype p3Inst): name > recovery > spaces; or name > scan > scanwords > spaces. spaces > create > where > (cmd | vps | here) > ... > done.
 // spaces > join > invite > joined.
@@ -38,12 +39,21 @@ export function nameNote(/** @type {ReturnType<typeof nameStatus>} */ st, /** @t
 
 /** @type {Record<string, string|null>} */
 export const BACK = {
+  welcome: null, browser: null, nosetup: "browser", macwhere: null, addphone: null,
   name: null, have: "name", recover: "have", scan: "name", scanwords: "scan", recovery: null, spaces: null, create: "spaces", where: "create", cmd: "where", vps: "where", vpsbusy: null,
   srv1: "cmd", srv2: "cmd", here: "where", look: null, members: "look", connectors: "members", kit: "connectors", done: null, join: "spaces", invite: "join", joined: null,
 };
 
 /** Where Back goes from a step. The code step goes back to the server's own first screen (the line or the new server); the words go back to the code. */
-export function backOf(/** @type {string} */ step, /** @type {{ vps?: boolean, have?: boolean }} */ ctx = {}) {
+export function backOf(/** @type {string} */ step, /** @type {{ vps?: boolean, have?: boolean, welcome?: boolean, browser?: boolean, macFlow?: boolean }} */ ctx = {}) {
+  // First run: the welcome offers a new name or an existing one, so both go back to it. A browser's pairing goes back to its own screen.
+  if (ctx.welcome && (step === "name" || step === "have")) return "welcome";
+  if (ctx.browser && (step === "scanwords" || step === "scan")) return "browser";
+  // A Mac's first run chooses where Vyre runs before the space is named, and goes on to the line or "here" without asking again.
+  if (ctx.macFlow) {
+    if (step === "create") return "macwhere";
+    if (step === "cmd" || step === "here") return "create";
+  }
   // The scan step reached through "I already have a name" goes back to that choice, not to the name field.
   if (step === "scan" && ctx.have) return "have";
   if (step === "srv2") return "srv1";
@@ -57,7 +67,11 @@ export const SETUP_STEPS = ["look", "members", "ai", "connectors", "kit"];
 /** The step the flow moves to the moment the space has its home. */
 export const AFTER_HOME = "look";
 /** The step after this one, inside setup. */
-export const nextSetup = (/** @type {string} */ step) => SETUP_STEPS[SETUP_STEPS.indexOf(step) + 1] ?? "done";
+/** A space made for one person has nobody to invite, so its setup leaves out the members step. */
+export const nextSetup = (/** @type {string} */ step, /** @type {string} */ who = "team") => {
+  const l = who === "personal" ? SETUP_STEPS.filter((s) => s !== "members") : SETUP_STEPS;
+  return l[l.indexOf(step) + 1] ?? "done";
+};
 
 /** Steps worth coming back to: a closed app reopens on one of these. Everything before "where" is quick and starts again. */
 const RESUMABLE = ["where", "cmd", "srv1", "here", ...SETUP_STEPS];
@@ -66,8 +80,8 @@ export const isResumable = (/** @type {string} */ step) => RESUMABLE.includes(st
 export const resumeStep = (/** @type {string} */ step) => (step === "srv2" ? "srv1" : step);
 
 /** What is kept so a closed app resumes: the step and what the person entered. No secret, no code, no key. */
-export function packProgress(/** @type {{ step: string, name: string, spaceName: string, addr: string | null, look: string, where: string, pairTo: string, device: string, picks?: { members?: string[], connectors?: string[], kit?: string | null } }} */ s) {
-  return JSON.stringify({ v: 1, step: resumeStep(s.step), name: s.name, spaceName: s.spaceName, addr: s.addr, look: s.look, where: s.where, pairTo: s.pairTo, device: s.device, picks: s.picks ?? {} });
+export function packProgress(/** @type {{ step: string, name: string, spaceName: string, addr: string | null, look: string, where: string, pairTo: string, device: string, who?: string, picks?: { members?: string[], connectors?: string[], kit?: string | null } }} */ s) {
+  return JSON.stringify({ v: 1, step: resumeStep(s.step), name: s.name, spaceName: s.spaceName, addr: s.addr, look: s.look, where: s.where, pairTo: s.pairTo, device: s.device, who: s.who ?? "team", picks: s.picks ?? {} });
 }
 /** Reads it back; anything unreadable or from another version is nothing. */
 export function unpackProgress(/** @type {string | null | undefined} */ raw) {
@@ -86,7 +100,8 @@ export const connectedLine = (/** @type {string} */ space, /** @type {string} */
 
 /** The first step for a route: /u/install, /u/install/create, /u/install/join. */
 export function startStep(/** @type {string|undefined} */ start) {
-  return start === "create" ? "create" : start === "join" ? "join" : "name";
+  // "phone" is the Mac's Add your phone, and "connect" is a phone or browser scanning a code from its Vyre: the actions of the empty states (first-run.js GAP).
+  return start === "create" ? "create" : start === "join" ? "join" : start === "phone" ? "addphone" : start === "connect" ? "scan" : "name";
 }
 
 /** Where "Where will it live?" sends each choice. */
@@ -140,7 +155,8 @@ export const SERVER_FAILED = {
   serverLine: "Pairing failed. Nothing was set up. Run the install line again.",
 };
 
-const KNOWN = new Set(Object.values(SERVER_FAILED));
+// A sentence a phone already says (first-run.js PHONE_SAY) passes through again unchanged.
+const KNOWN = new Set([...Object.values(SERVER_FAILED), ...Object.values(PHONE_SAY)]);
 /** An error from the pairing, in words for the person: a used code, a pairing that ran out of time, a server out of reach, or what the box said. @param {any} e */
 export function serverSay(e) {
   // wink-2's codes (relay/client/serverpair.js) decide. The words of a server the person does not own yet are never shown: only our own sentences.
