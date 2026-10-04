@@ -316,7 +316,7 @@ test("peer: a person's label from under a claude is the session's own, for every
   // A probe that says who vyred took the caller to be, and one open only to the person's surfaces
   // (a callers list, as core/team, settings and mail check a person's label).
   writeModule(path.join(root, "modules"), "probe", { does: { tools: ["probe.who", "probe.mine"] } }, `export default { async start(ctx) {
-    ctx.tool("probe.who", { input: { type: "object" }, run: async (i, meta) => ({ caller: meta.caller, thread: meta.thread || null }) });
+    ctx.tool("probe.who", { effect: "read", input: { type: "object" }, run: async (i, meta) => ({ caller: meta.caller, thread: meta.thread || null }) });
     ctx.tool("probe.mine", { input: { type: "object" }, callers: ["cli", "local", "deck", "capsule"], run: async () => ({ ok: true }) });
     return {};
   } };`);
