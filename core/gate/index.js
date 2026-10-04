@@ -137,6 +137,8 @@ export default {
         asked: { type: "object", description: "A person's own confirmation of exactly this send, from their surface: { surface, hash, at }. hash is inputHash({kind, via, to[], content}); valid 60 s; a mismatch always holds." },
         tool_use_id: { type: "string", description: "The tool call this request comes from, when the caller knows it, so the user's surface can show it in the session." } },
         ["kind", "via", "to", "content"]),
+      // A model asks (the request is held for the person); the person's surfaces and modules (the MCP hub, mail, google) file requests too.
+      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent", "module", "mcp", "harness"],
       // `agent` in the input is heard only from a module, which files a request for the agent it
       // verified (the MCP hub, whose ctx.call runs as module:mcp). A model's claim is ignored.
       run: async (input, { caller, thread, agent }) => {
@@ -173,6 +175,8 @@ export default {
     ctx.tool("gate.held", {
       description: "What is held at the Gate waiting for the user, oldest first.",
       input: obj({ thread: str, project: str }),
+      // Held drafts are the person's own words and recipients: the person's surfaces and modules, as gate.get.
+      callers: ["cli", "local", "module", "deck", "capsule", "tailnet", "device", "space", "agent"],
       run: (input, { peer }) => withPresence(gate.held(input), peer),
     });
 

@@ -158,7 +158,8 @@ export function register({ ctx, vault }) {
   ctx.tool("vault.session.close", {
     description: "Lock a surface's session now.",
     input: obj({ session: str }, ["session"]),
-    callers: null,
+    // Taking access away: a model session may close a session whose token it holds (surfaces.test.js pins it); the token is the guard.
+    callers: [...PEOPLE, "tailnet", "device", "module", "mcp"],
     run: async ({ session }, { caller }) => {
       const surface = sessions.surfaceOf(session);
       const out = sessions.close(session);
@@ -202,7 +203,7 @@ export function register({ ctx, vault }) {
 
   ctx.tool("vault.copy", {
     description: "Copy one field of an item to this Mac's clipboard, cleared after 90 seconds. Never returns the value.",
-    input: obj({ name: str, id: str, field: str, session: str, version: { type: "integer" } }),
+    input: obj({ name: str, id: str, field: str, session: str, version: { type: "integer" }, front: { type: "object" } }),
     callers: [...PEOPLE, "tailnet", "device"],
     presence: { summary: async i => { const { name, field, version } = asItem(i); return `Copy the ${fieldFor(name, field)} of ${kindOf(name)} "${name}"${version ? ` from version ${Number(version)}` : ""} to the clipboard`; }, skip: ({ input }) => skip({ input: asItem(input || {}) }), session: sessionable },
     run: async (input, { caller }) => {
@@ -253,7 +254,8 @@ export function register({ ctx, vault }) {
   ctx.tool("vault.clipboard.clear", {
     description: "Clear the clipboard now, if it still holds what the vault copied.",
     input: obj({}),
-    callers: null,
+    // Harmless for any caller: it clears only what the vault copied (hash compared first), and reads and writes no secret.
+    callers: [...PEOPLE, "tailnet", "device", "module", "mcp"],
     run: async (_input, { caller }) => {
       await clipboard.clear("asked");
       vault.audit("clipboard-clear", null, caller, true, null);

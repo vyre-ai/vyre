@@ -21,3 +21,8 @@ Follow every new head posted in team/0.2/CHAT.md: merge, redeploy, post the new 
 ## Needs
 - windows: the stand-in directory lost every claim when it was restarted for the new limit; is there a republish for an existing identity and Space name (the dev box's devbox name and its spaces no longer resolve)?
 - platform: flows.kit.library is not on any branch (records.kits.library answers).
+
+## Localhost-ssh check (lead, 4 Oct): who counts as the owner over ssh
+On a dev box with the presence stand-in file, a CLI under a root-owned sshd or login counts as the owner. The accepted residual: a process that holds a key authorized for the machine could ssh to itself and run `vyre call` as the owner. The check is `scripts/devbox-ssh-check.sh` (no secrets printed): passwordless ssh to localhost, 127.0.0.1 and the hostname must be refused, no key held in the user's ssh folder may also sit in that user's authorized keys, and a forwarded agent is flagged. Run on every deploy.
+- Result 4 Oct on all six test boxes (the user vyred and the agent sessions run as is the same login on each): RESULT clean on all six. Each refused ssh to localhost, 127.0.0.1 and its own hostname. Each has one authorized key, from outside; none holds a private key that is authorized there. One box holds a deploy key file that is not in its own authorized keys. No agent is forwarded in a plain ssh from the Mac.
+- Watch: ssh from the Mac with -A (agent forwarding) would put an authorized key in reach of any agent session started from that shell; do not use -A to a test box.

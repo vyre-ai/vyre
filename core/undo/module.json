@@ -8,8 +8,8 @@
     "reads": ["undo.list"],
     "tools": [
       { "name": "undo.record", "summary": "record an action with the inverse its module declared", "reach": "modules" },
-      { "name": "undo.list", "summary": "list what was done on the person's behalf, newest first", "reach": "anyone" },
-      { "name": "undo.run", "summary": "undo one recorded action by running its stored inverse", "reach": "anyone" }
+      { "name": "undo.list", "summary": "list what was done on the person's behalf, newest first", "reach": "anyone", "effect": "read" },
+      { "name": "undo.run", "summary": "undo one recorded action by running its stored inverse", "reach": "anyone", "effect": "write" }
     ]
   },
   "watches": { "emits": ["undo.recorded", "undo.done", "undo.failed"] },

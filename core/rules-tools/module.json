@@ -7,16 +7,16 @@
   "needs": { "kernel": { "actions": [] } },
   "does": {
     "tools": [
-      { "name": "rules.list", "reach": "person" },
-      { "name": "rules.get", "reach": "person" },
-      { "name": "rules.define", "reach": "person" },
-      { "name": "rules.test", "reach": "person" },
-      { "name": "rules.enable", "reach": "person" },
-      { "name": "rules.disable", "reach": "person" },
-      { "name": "rules.remove", "reach": "person" },
-      { "name": "rules.propose", "reach": "person" },
-      { "name": "rules.accept", "reach": "person" },
-      { "name": "rules.dismiss", "reach": "person" }
+      { "name": "rules.list", "reach": "person", "effect": "read" },
+      { "name": "rules.get", "reach": "person", "effect": "read" },
+      { "name": "rules.define", "reach": "person", "effect": "write" },
+      { "name": "rules.test", "reach": "person", "effect": "read" },
+      { "name": "rules.enable", "reach": "person", "effect": "write" },
+      { "name": "rules.disable", "reach": "person", "effect": "write" },
+      { "name": "rules.remove", "reach": "person", "effect": "write" },
+      { "name": "rules.propose", "reach": "person", "effect": "write" },
+      { "name": "rules.accept", "reach": "person", "effect": "write" },
+      { "name": "rules.dismiss", "reach": "person", "effect": "write" }
     ]
   },
   "watches": { "emits": [] },

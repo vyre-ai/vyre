@@ -282,7 +282,9 @@ export default {
     /** When each surface last emitted push.seen. */
     const seenEvents = new Map();
 
-    const tool = (name, description, input, run) => ctx.tool(name, { description, input, run, callers: PEOPLE });
+    /** What each tool does to state: key and devices only read; settings changes quiet hours and kinds for some inputs, so it writes. */
+    const EFFECT = { "push.key": "read", "push.devices": "read" };
+    const tool = (name, description, input, run) => ctx.tool(name, { description, input, run, callers: PEOPLE, effect: EFFECT[name] || "write" });
     const str = { type: "string" };
 
     tool("push.key", "The public key a browser subscribes with (applicationServerKey, base64url).",

@@ -115,6 +115,12 @@ const OWNER = ["cli", "local", "deck", "capsule"];
  * reaches them.
  */
 const HUMAN = ["cli", "deck", "capsule"];
+/** Declared lists (the registry would otherwise default these writes to the person and modules). The hooks reach learn.signal, observe and check through harness (module). */
+const HOOKS_ONLY = ["module"];
+/** learn.add makes a lesson active at once: the person's surfaces and modules only. DESIGN CHOICE (see the report): the /vyre lesson command reaches it as a model. */
+const ADDERS = [...OWNER, "module"];
+/** learn.edit only tightens (learn.relax is the person's), so a model may do it. */
+const TIGHTENERS = [...OWNER, "module", "mcp", "harness"];
 /**
  * A refusal only a person can get past: the error carries code "presence_required" (the
  * registry passes a short code through), so a surface can run its presence flow and call the
@@ -500,6 +506,7 @@ export default {
     };
 
     ctx.tool("learn.lessons", {
+      effect: "read",
       description: "The lessons Vyre learned from the user, with how often each applied, was caught and was broken. status: active (default with proposed), proposed, retired or all.",
       input: { type: "object", properties: { status: { type: "string", enum: ["active", "proposed", "retired", "all"] } } },
       run: async ({ status }) => {
@@ -509,7 +516,9 @@ export default {
     });
 
     ctx.tool("learn.add", {
+      effect: "write",
       description: "Add a lesson the user wrote or asked for (/vyre remember). From text alone, a known shape (a banned character, a file to update with code, tests before commit) becomes a check; anything else is a reminder.",
+      callers: ADDERS,
       input: { type: "object", properties: { text: { type: "string" }, rule: { type: "string" }, when: { type: "string" }, level: { type: "string", enum: LEVELS }, scope: scopeSchema, check: checkSchema, session: { type: "string" } } },
       run: async ({ text, rule, when, level, scope, check, session }) => {
         const d = text && !rule ? distill(text) : null;
@@ -577,6 +586,7 @@ export default {
       check: { anyOf: [checkSchema, { type: "null" }] }, max_level: { anyOf: [levelSchema, { type: "null" }] }, pinned: { type: "boolean" } };
 
     ctx.tool("learn.accept", {
+      effect: "write",
       description: "Accept a proposed lesson. Only the user can: from the CLI, the Capsule or the Deck; an agent is refused. In a thread the user accepts by replying yes; nothing needs calling.",
       callers: HUMAN,
       input: { type: "object", required: ["id"], properties: { id: { type: "integer" } } },
@@ -589,7 +599,9 @@ export default {
     });
 
     ctx.tool("learn.edit", {
+      effect: "write",
       description: "Tighten a lesson: raise its level, widen its scope or `when` to always, add a check where it had none, raise or lift its cap, unpin it. Anything that loosens a lesson is refused here; that is learn.relax, the user's alone.",
+      callers: TIGHTENERS,
       input: { type: "object", required: ["id"], properties: { id: { type: "integer" }, ...changeSchema } },
       run: async ({ id, ...change }) => {
         const l = must(id);
@@ -604,6 +616,7 @@ export default {
     });
 
     ctx.tool("learn.relax", {
+      effect: "write",
       description: "Loosen a lesson: lower its level, narrow or move its scope, narrow `when`, change or remove its check, lower its cap, pin it, or rewrite its rule. Only the user can, from their own surfaces; an agent is refused.",
       callers: HUMAN,
       input: { type: "object", required: ["id"], properties: { id: { type: "integer" }, ...changeSchema } },
@@ -616,6 +629,7 @@ export default {
     });
 
     ctx.tool("learn.retire", {
+      effect: "write",
       description: "Retire a lesson, or decline a proposed one. Only the user can, from their own surfaces; an agent is refused.",
       callers: HUMAN,
       input: { type: "object", required: ["id"], properties: { id: { type: "integer" } } },
@@ -692,8 +706,10 @@ export default {
 
     // PostToolUse and PostToolUseFailure, from harness.learn: what became of a call.
     ctx.tool("learn.observe", {
+      effect: "write",
       internal: true,
       description: "PostToolUse or PostToolUseFailure: a call ran (ok) or failed. Hashes a file Claude wrote, and counts failed and fixed commands. error_head is read, never kept.",
+      callers: HOOKS_ONLY,
       input: { type: "object", required: ["session", "tool_name"], properties: { session: { type: "string" }, tool_use_id: { type: "string" }, tool_name: { type: "string" },
         ok: { type: "boolean" }, error_head: { type: "string" }, interrupted: { type: "boolean" }, path: { type: "string" }, cwd: { type: "string" } } },
       run: async ({ session, tool_use_id, tool_name, ok = true, interrupted = false, path: file }) => {
@@ -716,6 +732,7 @@ export default {
     });
 
     ctx.tool("learn.signals", {
+      effect: "read",
       description: "What Learning heard, as summaries: signals by kind (never their text), repeats by key, Memory corrections per extraction rule, and the jobs waiting for a model (or for the user to write by hand).",
       callers: OWNER,
       input: { type: "object", properties: { kind: { type: "string" }, since: { type: "integer" }, limit: { type: "integer" } } },
@@ -740,6 +757,7 @@ export default {
     });
 
     ctx.tool("learn.stats", {
+      effect: "read",
       description: "Does a lesson work? before: the user's repeats per 100 turns before it was accepted; after: escapes (broken and repeats) per 100 turns since; verdict working, not working or measuring. With no id, every active lesson.",
       input: { type: "object", properties: { id: { type: "integer" } } },
       run: async ({ id }) => {
@@ -749,12 +767,14 @@ export default {
     });
 
     ctx.tool("learn.skills", {
+      effect: "read",
       description: "Skills Vyre drafted from procedures the user repeats (proposed, installed, retired, dismissed), each with its whole SKILL.md, and installed ones whose file changed or is gone (drift).",
       input: { type: "object", properties: { status: { type: "string", enum: ["proposed", "installed", "retired", "dismissed"] } } },
       run: async ({ status }) => ({ skills: skills.list(status ? { status } : {}), drift: skills.drift() }),
     });
     const skillOf = id => { const s = skills.list().find(x => x.id === id); if (!s) throw new Error(`no skill ${id}`); return s; };
     ctx.tool("learn.skill-install", {
+      effect: "write",
       description: "Install a proposed skill: instructions every future session follows. Only the user can, with presence. scope: account, project (default for a project's procedure; private keeps it out of the project's folder) or agent.",
       callers: HUMAN,
       presence: { summary: ({ id, scope, agent }) => { const s = skills.list().find(x => x.id === id); return `Install Vyre skill ${id}${s ? ` (${s.name})` : ""} for ${scope === "agent" ? `agent ${agent}` : scope || "its scope"}: every future session there follows it`; } },
@@ -770,6 +790,7 @@ export default {
       },
     });
     ctx.tool("learn.skill-retire", {
+      effect: "write",
       description: "Retire an installed skill: its file is removed. Only the user can, with presence.",
       callers: HUMAN,
       presence: { summary: ({ id }) => { const s = skills.list().find(x => x.id === id); return `Retire Vyre skill ${id}${s ? ` (${s.name})` : ""}`; } },
@@ -777,6 +798,7 @@ export default {
       run: async ({ id }) => skills.retire(id),
     });
     ctx.tool("learn.skill-dismiss", {
+      effect: "write",
       description: "Say no to a proposed skill; its procedure is not proposed again.",
       callers: HUMAN,
       input: { type: "object", required: ["id"], properties: { id: { type: "integer" } } },
@@ -789,8 +811,10 @@ export default {
     const ASK_ELSEWHERE = id => `Tell the user this in one line: it is not in force until ${elsewhere(id)}. A reply here does not accept it. Do not call any Vyre tool for this; accepting a lesson is the user's alone.`;
 
     ctx.tool("learn.signal", {
+      effect: "write",
       internal: true,
       description: "Enrich: a prompt starts a turn. Opens with lessons broken last turn; takes a plain yes or no as the answer to proposals told last prompt, only from a person in an interactive session (interactive true); proposes a lesson when the prompt is a correction; and returns reminders whose `when` matches.",
+      callers: HOOKS_ONLY,
       input: { type: "object", required: ["session"], properties: { session: { type: "string" }, prompt_id: { type: "string" }, prompt: { type: "string" }, cwd: { type: "string" }, agent: { type: "string" },
         interactive: { type: "boolean" } } },
       run: async ({ session, prompt_id, prompt = "", cwd, agent, interactive = false }) => {
@@ -956,7 +980,9 @@ export default {
     };
 
     ctx.tool("learn.check", {
+      effect: "write",
       description: "What the hooks ask. stage tool: may this call run, given the lessons? stage stop: may this turn end, given its final reply and the files it changed? stage brief: every active lesson, for the start of a thread.",
+      callers: HOOKS_ONLY,
       input: { type: "object", required: ["stage"], properties: { stage: { type: "string", enum: ["tool", "stop", "brief"] }, session: { type: "string" }, prompt_id: { type: "string" },
         cwd: { type: "string" }, agent: { type: "string" }, tool_name: { type: "string" }, tool_input: { type: "object" }, tool_use_id: { type: "string" }, plugin_root: { type: "string" },
         text: { type: "string" }, stop_hook_active: { type: "boolean" }, headless: { type: "boolean" } } },

@@ -67,6 +67,8 @@ const NAME = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 
 /** Callers of vyred's own socket that are the owner: the terminal and the Capsule. */
 const OWNER_SOCKET = new Set(["cli", "local", "capsule"]);
+/** The person's own surfaces and Vyre's modules: for a tool that reports on the tailnet or the box without the asker's identity surviving the hop, so no model is meant to call it. */
+const PERSON_AND_MODULE = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module"];
 
 /** Does this caller name an agent ("mcp:agent:kit", "harness:agent:kit")? The same test as glass's. */
 const isAgent = caller => /(?:^|[\s:])agent:/.test(String(caller || ""));
@@ -551,6 +553,8 @@ export function drive(ctx, { role, guard: g, roots }) {
     });
 
     ctx.tool("files.drive.audit", {
+      // The box sees who asks: a named agent is refused in the body (reach), a bare session is the person's own Claude and is not.
+      callers: [...PERSON_AND_MODULE, "mcp", "harness"],
       description: "Check the tailnet policy from the box's side: every online node the policy lets into this box's VyreDrive shares that is not a paired Mac is a finding. A tailnet-wide security report, not a per-folder read: never an agent (Vyre Drive step 5), same as share/unshare/access above.",
       input: { type: "object", properties: {} },
       run: async (input, meta = {}) => {
@@ -695,6 +699,7 @@ export function drive(ctx, { role, guard: g, roots }) {
     // The box's side, asked from the Mac. Share and unshare stay the owner's here too: the box
     // trusts this paired Mac, so the Mac must not pass on an agent's request.
     ctx.tool("files.drive.status", {
+      callers: PERSON_AND_MODULE,
       description: "VyreDrive (built on Tailscale's Taildrive) from the Mac: the box's shares (asked over the link), and what this Mac has mounted.",
       input: { type: "object", properties: {} },
       run: async () => {
@@ -717,6 +722,7 @@ export function drive(ctx, { role, guard: g, roots }) {
       run: ({ name, mode }) => forward("files.drive.access", { name, mode }),
     });
     ctx.tool("files.drive.audit", {
+      callers: PERSON_AND_MODULE,
       description: "Ask the box which nodes the tailnet policy lets into its VyreDrive shares, besides this Mac.",
       input: { type: "object", properties: {} },
       run: () => forward("files.drive.audit", {}),

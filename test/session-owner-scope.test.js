@@ -50,3 +50,25 @@ test("installModule takes actions per prefix: a service is narrowed to its own t
   assert.equal(await may("flows", "records.create", `vyre://${SPACE}/flow/f1`), false, "narrowed: create is gone");
   assert.equal(await may("flows", "records.read", `vyre://${SPACE}/run/r1`), false, "and run with it");
 });
+
+test("AT-1: a provider supplies only owner and project, only for a type it may; the kernel's own keys win", async () => {
+  const rig = await createRig({ space: SPACE });
+  const h = rig.k.kernelFor({ name: "work", needs: { kernel: { actions: [], attrs: true, attrTypes: ["note"] } } });
+  assert.throws(() => h.registerAttrs("contact", () => ({})), /declared/, "a type the module did not declare");
+  h.registerAttrs("note", () => ({ owner: "per_x", sensitivity: "normal", space: "spc_other" }));
+  // the provider's sensitivity and space are ignored: only owner survives
+  const seen = await rig.k.gateway.authorize({ chain: rig.ownerChain, action: "records.read", resource: `vyre://${SPACE}/note/n1` });
+  assert.notEqual(seen.reason, "wrong_space", "a provider cannot move a resource to another space");
+});
+
+test("per-prefix grants: a reinstall that WIDENS a prefix replaces the old grants (never adds beside them), so nothing stays wider than the latest declaration", async () => {
+  const rig = await createRig({ space: SPACE });
+  const may = async (/** @type {string} */ action, /** @type {string} */ res) => (await rig.k.gateway.authorize({ chain: rig.k.gateway.serviceChain("flows"), action, resource: res })).effect !== "deny";
+  await rig.k.grants.installModule("flows", { actions: [], grants: [{ prefix: "flow/*", actions: ["records.read"] }] });
+  assert.equal(await may("records.create", `vyre://${SPACE}/flow/f1`), false);
+  await rig.k.grants.installModule("flows", { actions: [], grants: [{ prefix: "flow/*", actions: ["records.read", "records.create"] }, { prefix: "*/*", actions: ["records.read"] }] });
+  assert.equal(await may("records.create", `vyre://${SPACE}/flow/f1`), true, "the widened declaration is what is in force");
+  await rig.k.grants.installModule("flows", { actions: [], grants: [{ prefix: "flow/*", actions: ["records.read"] }] });
+  assert.equal(await may("records.create", `vyre://${SPACE}/flow/f1`), false, "narrowed again: the wider one is gone");
+  assert.equal(await may("records.read", `vyre://${SPACE}/contact/c1`), false);
+});
