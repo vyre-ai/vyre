@@ -13,7 +13,8 @@ process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
 const A = "per_aaaaaaaaaaaaaaaaaaaaaaaaaa", B = "per_bbbbbbbbbbbbbbbbbbbbbbbbbb";
 const spacesNeed = { name: "spaces", needs: { kernel: { actions: [], spaces: true } } };
-const boot = (/** @type {string} */ root) => start({ root, log: () => {}, kernel: true });
+const logs = /** @type {string[]} */ ([]);
+const boot = (/** @type {string} */ root) => start({ root, log: (/** @type {string} */ m) => { logs.push(m); }, kernel: true });
 const person = (/** @type {any} */ d, /** @type {string} */ id) => d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-adopt", person: id, path: "direct", session: "s" });
 const events = (/** @type {any} */ d, /** @type {string} */ type) => d.kernel.log.read({ type });
 
@@ -162,7 +163,7 @@ test("hosted Spaces: adoption reaches the kernel of a Space made before the clai
   const roleIn = (/** @type {any} */ dd, /** @type {string} */ space, /** @type {string} */ p) => dd.kernel.spaces.hosted(space).kernel.grants.roleOf({ kind: "person", id: p, space });
   assert.equal(roleIn(d, mine.space, old), "owner");
   await d.kernel.kernelFor(spacesNeed).adoptOwner(A);
-  assert.equal(roleIn(d, mine.space, A), "owner", "the created Space took the identity at the claim");
+  assert.equal(roleIn(d, mine.space, A), "owner", "the created Space took the identity at the claim: " + logs.filter(l => /owner|adopt|hosted/i.test(l)).join(" | "));
   assert.equal(roleIn(d, mine.space, old), null);
   assert.equal(roleIn(d, theirs.space, OTHER_OWNER), "owner", "someone else's Space is left alone");
   assert.equal(roleIn(d, theirs.space, A), null);
