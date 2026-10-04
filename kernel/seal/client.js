@@ -86,6 +86,8 @@ export function startSealer({ dir, sinks = {}, timeoutMs = 20_000, execPath = pr
     anchor: {
       advance: i => call("anchor.advance", { ctx: { space: i.space }, seq: i.seq, head: i.head }).then(r => r.anchor),
       read: i => call("anchor.read", { ctx: { space: i.space } }).then(r => r.anchor),
+      /** The person's own reset (needs their presence proof for "anchor.reset" with no fields): the anchor reads null again. */
+      reset: i => withCtx("anchor.reset", i, { proof: i.proof }).then(() => null),
     },
     kernel: {
       mac: i => call("kernel.mac", { purpose: i.purpose, data: i.data }).then(r => r.mac),

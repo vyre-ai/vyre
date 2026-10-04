@@ -252,6 +252,15 @@ export class Sealer {
         this.store.write("values", meta, JSON.stringify({ seq: req.seq, head: req.head }));
         return { anchor: { seq: req.seq, head: req.head }, event: null };
       }
+      // The person's own reset of a Space's anchor (BL-2a): after a restore from backup or a bad advance the log would otherwise never boot. Needs the person's presence on this exact act.
+      case "anchor.reset": {
+        const c = this.ctxOf(req.ctx); need(!c.model_originated, "human_only");
+        const why = this.presence.refuse(req.proof, { op: "anchor.reset", space: c.space, fields: {}, ctx: c });
+        if (why) throw err(why === "no_proof" ? "needs_presence" : why);
+        const ref = `seal_la${crypto.createHash("sha256").update(c.space).digest("hex").slice(0, 30)}`;
+        this.store.write("values", { ref, space: c.space, record: "_", field: "logAnchor", class: "logAnchor" }, "null");
+        return { anchor: null };
+      }
       case "kernel.mac": { need(!req.ctx?.model_originated && /^[a-z0-9_.-]{1,40}$/.test(req.purpose) && typeof req.data === "string" && req.data.length <= 2_000_000, "bad_input"); return { mac: this.store.kernelMac(req.purpose, req.data) }; }
       case "kernel.verify": { need(!req.ctx?.model_originated && /^[a-z0-9_.-]{1,40}$/.test(req.purpose) && typeof req.data === "string" && req.data.length <= 2_000_000 && typeof req.mac === "string", "bad_input"); const a = Buffer.from(this.store.kernelMac(req.purpose, req.data)), b = Buffer.from(req.mac); return { ok: a.length === b.length && crypto.timingSafeEqual(a, b) }; }
       case "pool.key": { need(!req.ctx?.model_originated && /^(per|spc)_[a-z0-9]{8,40}$/.test(req.owner), "bad_input"); return { key: this.store.poolKey(req.owner).toString("base64") }; }
