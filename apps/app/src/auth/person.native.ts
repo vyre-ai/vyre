@@ -96,6 +96,11 @@ function secureSlot(name: string): Slot<string> {
 /** Secure-store keys take letters, digits, ".", "-" and "_". */
 const slotName = (what: string, origin: string) => `vyre.person.${what}.` + origin.replace(/^https?:\/\//, "").replace(/[^A-Za-z0-9._-]/g, "_");
 
+/** Keep the session token a paired server made (presence.person.start-paired) where nativePerson reads it for a relay-only box: keyed by the pairing's route (api/box.native.ts boxName). */
+export async function keepPairedToken(route: string, token: string): Promise<void> {
+  await secureSlot(slotName("token", route)).save(token);
+}
+
 let pending: { box: string; verifier: string; at: number; code: string | null } | null = null;
 
 /** The code in a return URL, or null. */

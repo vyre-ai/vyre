@@ -66,9 +66,9 @@ export function renewSession(): Promise<boolean> {
       const pairing = await loadPairing();
       if (!pairing) throw Object.assign(new Error("not paired"), { code: "unreachable" });
       const { startPaired, channelCall } = await import("../auth/paired");
-      const { personKey } = await import("../auth/person.web");
+      const { pairedKey } = await import("../auth/paired-key");
       const ch = await channelCall({ relay: pairing.relay, route: pairing.route, box: pairing.box, name: deviceName() }, { crypto: relayCrypto(), keyStore: relayKeyStore(), about });
-      try { await startPaired({ device: String(pairing.device), call: ch.call, privateKey: (await personKey()).privateKey, label: deviceName() }); } finally { ch.close(); }
+      try { await startPaired({ device: String(pairing.device), call: ch.call, sign: (await pairedKey()).sign, label: deviceName() }); } finally { ch.close(); }
       closePeer();
       return true;
     } catch (e) { notice.noteRenewFailed((e as { code?: string })?.code); return false; }
@@ -85,7 +85,7 @@ export async function renewSessionOnPhone(): Promise<boolean> {
   const pairing = await loadPairing();
   if (!pairing) throw Object.assign(new Error("This device is not paired to a server."), { code: "unreachable" });
   const { startPaired, channelCall } = await import("../auth/paired");
-  const { personKey } = await import("../auth/person.web");
+  const { pairedKey } = await import("../auth/paired-key");
   const { askPhoneForSession, sessionEndLine } = await import("./phone-session.js");
   const { useApproval } = await import("./approval-state");
   const ch = await channelCall({ relay: pairing.relay, route: pairing.route, box: pairing.box, name: deviceName() }, { crypto: relayCrypto(), keyStore: relayKeyStore(), about });
@@ -94,7 +94,7 @@ export async function renewSessionOnPhone(): Promise<boolean> {
     st.show("Sign this browser in");
     const out = await askPhoneForSession(ch.call, { signal: st.signal });
     if ("ended" in out) throw Object.assign(new Error(sessionEndLine(out.ended)), { code: "not_approved" });
-    await startPaired({ device: String(pairing.device), call: ch.call, privateKey: (await personKey()).privateKey, label: deviceName() });
+    await startPaired({ device: String(pairing.device), call: ch.call, sign: (await pairedKey()).sign, label: deviceName() });
     closePeer();
     return true;
   } finally { useApproval.getState().hide(); ch.close(); }

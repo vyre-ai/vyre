@@ -14,11 +14,15 @@ export type ChannelCall = (tool: string, input: Record<string, unknown>) => Prom
 export const pairedStartMessage = (device: string, challenge: string) => `paired-start\n${device}\n${challenge}`;
 
 /** Ask for the challenge, sign it with the device key, trade it for the token. Resolves { token, id, expires }; rejects with the server's words. */
-export async function startPaired(o: { device: string; call: ChannelCall; privateKey: CryptoKey; label?: string }): Promise<{ token: string; id: string; expires: number }> {
+export async function startPaired(o: { device: string; call: ChannelCall; privateKey?: CryptoKey; sign?: (message: Uint8Array) => Promise<Uint8Array>; label?: string }): Promise<{ token: string; id: string; expires: number }> {
   const ch = await o.call("presence.person.pair-challenge", {});
   const challenge = ch.data && typeof ch.data.challenge === "string" ? ch.data.challenge : "";
   if (!challenge) throw new Error(ch.error?.message || "The server did not give this device a challenge.");
-  const sig = new Uint8Array(await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, o.privateKey, new TextEncoder().encode(pairedStartMessage(o.device, challenge))));
+  // The key is the one reported at pairing (the server checks the signature against it): a browser's WebCrypto key (`privateKey`), or a phone's hardware key (`sign`, the Secure Enclave
+  // or the Android Keystore key, raw 64 bytes r||s; see paired-key.native.ts).
+  const msg = new TextEncoder().encode(pairedStartMessage(o.device, challenge));
+  if (!o.sign && !o.privateKey) throw new Error("startPaired needs the device key");
+  const sig = o.sign ? await o.sign(msg) : new Uint8Array(await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, o.privateKey as CryptoKey, msg));
   const r = await o.call("presence.person.start-paired", { sig: b64url(sig), ...(o.label ? { label: o.label.slice(0, 64) } : {}) });
   const d = r.data;
   if (!d || typeof d.token !== "string") throw new Error(r.error?.message || "The server would not sign this device in.");

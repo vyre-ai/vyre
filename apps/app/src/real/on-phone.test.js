@@ -54,7 +54,7 @@ test("a phone's server pairing sends owner.pin and signs sig and esig together (
   assert.match(p, /signListChange\(m, /);
   assert.match(p, /esig: toB64u\(esig\)/);
   assert.match(p, /deviceKind: phoneKeys \? "phone" : "web", keyStorage: phoneKeys \? "hardware" : "software"/);
-  assert.match(p, /\(await keyStorage\(\)\)\.presence === "secure-enclave"/);
+  assert.match(p, /kind === "secure-enclave" \|\| kind === "keystore"/);
 });
 
 test("a proof made with a software key says to approve on the phone, in our words, and tool() maps the code before the generic throw", () => {
