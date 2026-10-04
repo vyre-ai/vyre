@@ -197,6 +197,9 @@ echo "ok: a session on the server is sealed at every turn (turn 1 and turn 2 are
 tfile=$(docker exec -u $AU vyre-vyre-1 sh -c "ls $AH/.claude/projects/*/$tid.jsonl" 2>/dev/null | head -n 1)
 [ -n "$tfile" ] || { echo "the session's transcript was not found on the box"; exit 1; }
 docker exec -u $AU vyre-vyre-1 sh -c "cp $tfile /tmp/sealed-copy.jsonl"
+# The transcript is group-readable for vyred only: another account's uid, and the box agent, cannot read it.
+for other in 2001 1001; do docker exec -u $other vyre-vyre-1 cat "$tfile" >/dev/null 2>&1 && { echo "uid $other can read another account's transcript"; exit 1; }; done
+echo "ok: the account's transcript is readable by vyred's group only (uid 2001 and the box agent are refused)"
 docker kill vyre-vyre-1 >/dev/null
 docker exec -u 0 vyre-vyre-1 true 2>/dev/null && { echo "the container is still running after docker kill"; exit 1; }
 docker start vyre-vyre-1 >/dev/null
