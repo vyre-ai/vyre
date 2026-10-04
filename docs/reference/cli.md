@@ -792,7 +792,7 @@ vyre signout [--json]
 Which space this terminal acts in.
 
 ```
-vyre space [use <name> | use --clear] [--json]
+vyre space [use <name> | use --clear | add-agent <space> <agent>] [--json]
 ```
 
 `vyre space use harlow` remembers harlow for this terminal's calls. `vyre call records.list` then acts in it; `--space <name>` on one call overrides it. With none, calls act in the home's own space.

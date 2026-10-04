@@ -40,6 +40,7 @@ import { within } from "../../lib/within.js";
 import { modelLabel } from "../../lib/caller.js";
 import { createRemoteKernel } from "../../kernel/remote/client.js";
 import { winkTransport } from "../../kernel/remote/wink.js";
+import { proofSigner } from "../../lib/remote-proof.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // The SSE heartbeat. Clients call a stream dead after three missed beats (ADR 0029, R1); the
@@ -309,7 +310,7 @@ async function startLocked(opts, root, p, release) {
       let device = null;
       try { const r = /** @type {any} */ (db.prepare("SELECT value FROM spaces_kv WHERE key = ?").get(`server-hosted/${id}`)); if (r) device = JSON.parse(r.value).device; } catch { /* no spaces table yet */ }
       if (typeof device !== "string" || !device) return null;
-      return createRemoteKernel({ space: id, transport: winkTransport({ sessionFor: async () => sf(device) }) });
+      return createRemoteKernel({ space: id, transport: winkTransport({ sessionFor: async () => sf(device) }), signer: proofSigner });
     };
     kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, onOwnerAdopted: (/** @type {string} */ owner, /** @type {string} */ previous) => events.emit("kernel", "owner.adopted", { owner, previous }), runnerHost, remote: remoteFor, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
       // A credentialed request run at the home: the vault's own forward (an internal tool only the lease module may call), under the Space's credential; the kernel has already authorized it.
@@ -372,7 +373,8 @@ async function startLocked(opts, root, p, release) {
       // gave it: a named assistant (juno) is not a member of the Space of its own, so its session token carried an agent hop the kernel could not find and every call of its own answered not_found.
       let isAssistant = Boolean(q.rec && q.rec.agent_kind === "assistant");
       if (q.agent && !isAssistant) { try { const sc = await registry.call("agents.scope", { name: q.agent }, "module:vyred"); isAssistant = Boolean(sc && sc.data && sc.data.kind === "assistant"); } catch { /* agents is not running: the name stands */ } }
-      const kernelAgent = q.agent && !isAssistant ? q.agent : undefined;
+      // lib/kernel-session names a session for the agent it was started as and a plain session "session" (nobody's assistant), so the home's assistant must be named here as the Space's one assistant actor, not left to a default.
+      const kernelAgent = isAssistant ? "assistant" : (q.agent || undefined);
       const s = await kernelSessions.open({ chain: person, ...(chat ? { chat } : {}), ...(kernelAgent ? { agent: kernelAgent } : {}), thread: q.thread });
       return { token: kernelSessions.tokenFor(s.id), end: () => kernelSessions.end(s.id) };
     };
@@ -383,9 +385,28 @@ async function startLocked(opts, root, p, release) {
     // On macOS and Linux a Vyre-started session is always confined: a sandbox that cannot be built is a refusal to start the session (with the reason), never a silent unconfined start
     // (reviewer-3 E-2). Only a development build can opt out (VYRE_SESSION_SANDBOX_OFF=1). Windows starts unsandboxed in 0.3, with the notice the user approved.
     if ((process.platform === "darwin" || process.platform === "linux") && devSwitch(process.env.VYRE_SESSION_SANDBOX_OFF)) registry.deps.sandbox = { off: true };
+    // The packaged box (ruling 4 Oct, "b"): no bubblewrap there. A session is confined by the container, a uid of its own (never vyred's, never root) and the wall, and that proves itself
+    // before every start, as that uid (core/spawner/confine.js). Only under the box's own supervisor with a spawner to ask; anywhere else a missing bwrap still refuses the start.
+    else if (process.platform === "linux" && process.env.VYRE_SUPERVISOR === "docker" && (await import("../spawner/client.js")).available()) {
+      const { confineSelfTest } = await import("../spawner/confine.js");
+      const userHome = process.env.VYRE_USER_HOME || os.homedir();
+      const accounts = process.env.VYRE_ACCOUNTS_HOME || "/home/acct", agentHome = process.env.VYRE_AGENT_HOME || "/home/vyre-agent";
+      const spawnerSocket = process.env.VYRE_SPAWNER_SOCKET || "/run/vyre/spawner.sock";
+      registry.deps.sandbox = { platform: process.platform, home: os.homedir(), vyreHome: root, temp: os.tmpdir(), uid: { confinedBy: "uid",
+        selfTest: (/** @type {{ account?: number | null, shared?: boolean, cwd: string, signal?: AbortSignal }} */ o) => {
+          // Another agent's home: the box's one agent for an account's session, and the first other account's for the agent itself.
+          let other = agentHome;
+          if (o.account == null) { try { other = fs.readdirSync(accounts).map(n => path.join(accounts, n)).find(f => fs.statSync(f).isDirectory()) || ""; } catch { other = ""; } }
+          else { const mine = path.join(accounts, String(o.account)); try { const o2 = fs.readdirSync(accounts).map(n => path.join(accounts, n)).find(f => f !== mine && fs.statSync(f).isDirectory()); if (o2) other = o2; } catch { /* the box's one agent's home stands */ } }
+          return confineSelfTest({ ...o, vyreUid: process.getuid ? process.getuid() : -1, out: [
+            { name: "Vyre's own home", path: userHome }, { name: "the vault and keys", path: path.join(root, "kernel") }, { name: "the daemon's socket", path: p.socket },
+            { name: "the spawner's socket", path: spawnerSocket }, ...(other ? [{ name: "another agent's home", path: other }] : []) ] });
+        } } };
+    }
     else if (process.platform === "darwin" || process.platform === "linux") {
       try {
-        const [{ planHome, selfTest, startHomeProxy }, { launch }] = await Promise.all([import("../runner/homesandbox.js"), import("../runner/sandbox.js")]);
+        const [{ planHome, selfTest, startHomeProxy }, { launch, unavailable: sandboxUnavailable }] = await Promise.all([import("../runner/homesandbox.js"), import("../runner/sandbox.js")]);
+        const sandboxWhy = sandboxUnavailable(process.platform); // no bubblewrap, or none allowed: every start is refused with this reason, nothing is spawned
         registry.deps.sandbox = { sandbox: { planHome, selfTest, launch, homeProxy: o => startHomeProxy({ platform: o && o.platform, dir: path.join(root, "run") }) }, platform: process.platform, home: os.homedir(), vyreHome: root,
           // Real targets, made for each self-test and torn down after it: a unix socket standing in for another session's, and a loopback listener standing in for a daemon port. The
           // sandboxed probe must fail to connect to every one of them, and a probe target that does not exist is refused by the runner's own check.
@@ -400,7 +421,7 @@ async function startLocked(opts, root, p, release) {
             return { personSocket: p.socket, otherSocket: other, daemonPorts: [port], keyFile: path.join(root, "kernel", "space.json"),
               release: async () => { for (const s of servers) await new Promise(r => s.close(() => r(undefined))); fs.rmSync(dir, { recursive: true, force: true }); } };
           },
-          temp: os.tmpdir() };
+          temp: os.tmpdir(), ...(sandboxWhy ? { unavailable: `Vyre did not start this session because its sandbox cannot run here: ${sandboxWhy}.` } : {}) };
       } catch (e) {
         registry.deps.sandbox = { unavailable: `Vyre could not set up the sandbox for sessions on this computer (${/** @type {Error} */ (e).message}), so it does not start them.` };
       }
@@ -408,7 +429,21 @@ async function startLocked(opts, root, p, release) {
     registry.deps.moduleHost = kernel.moduleHost;
     registry.deps.kernelFor = kernel.kernelFor;
     // The relay's peer stream for a paired device (the one remote path to this home's kernel): the relay module reads it from its ctx, per channel, so a door set after it started is used from the next channel on.
-    { const { createPeerDoor } = await import("./peer-door.js"); const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log }); registry.deps.peerDoor = () => door; }
+    {
+      const { createPeerDoor } = await import("./peer-door.js");
+      // the invitee door reads the identity's signed list from the spaces module (the names directory, as at pairing: spaces.identity.state, else a lookup by the claimed Vyre name) and this box's own id from the relay
+      const ask = async (/** @type {string} */ t, /** @type {any} */ i) => { try { const r = /** @type {any} */ (await registry.call(t, i, "module:vyred", { door: true })); return r && !r.error ? (r.data !== undefined ? r.data : r) : null; } catch { return null; } };
+      const identityEntry = async (/** @type {string} */ identity, /** @type {string} */ eid, /** @type {string} */ name) => {
+        let st = await ask("spaces.identity.state", { person: identity });
+        let entries = st && Array.isArray(st.entries) ? st.entries : [];
+        if (!entries.length && name) { st = await ask("spaces.identity.lookup", { name, id: identity }); entries = st && Array.isArray(st.entries) ? st.entries : []; }
+        const e = entries.find((/** @type {any} */ x) => x && x.eid === eid && x.kind === "device");
+        return e && typeof e.pub === "string" ? { pub: e.pub, ...(e.alg ? { alg: e.alg } : {}), ...(e.held ? { held: e.held } : {}) } : null;
+      };
+      const boxId = async () => { const r = /** @type {any} */ (await registry.call("relay.route.id", {}, "module:vyred", { door: true })); return r && r.data && r.data.box ? String(r.data.box) : null; };
+      const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log, identityEntry, boxId });
+      registry.deps.peerDoor = () => door;
+    }
     // The gate's presence check asks the kernel whether a call is the person's own (exactly one person hop in the chain the daemon's proven facts build), never the caller's label.
     if (presence && typeof kernel.kernelFor === "function") {
       const gateKernel = kernel.kernelFor({ name: "presence-gate" });
@@ -572,7 +607,7 @@ export const callId = v => (typeof v === "string" && /^[A-Za-z0-9_-]{1,128}$/.te
 // core/modules): threads.answer takes it only with the box's signed assertion checked.
 // "web:", "setup:" and "space:" are labels the relay and the spaces listener make (a waiting or browser pairing, the setup page, a visiting person); a socket client never gets them, nor the bare
 // class words that only a tool's callers list uses (reviewer-3 LB-1b).
-const FORBIDDEN_LABEL = /^(module:|tailnet:|tailnet-guest:|device:|link:|web:|setup:|space:|onboard$|hook$|web$|setup$|space$|device$|tailnet$|agent$)/;
+const FORBIDDEN_LABEL = /^(module:|tailnet:|tailnet-guest:|device:|link:|web:|setup:|space:|invitee:|onboard$|hook$|web$|setup$|space$|device$|tailnet$|agent$)/;
 
 /**
  * Who a socket request says it is. No label is "anonymous", which no tool's callers list names,
@@ -1049,10 +1084,23 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       cli: [process.execPath, path.join(REPO, "bin", "vyre")],
       // Where the memory is, in MB: a stress run tells a heap that grows from a native cache filling.
       memory: Object.fromEntries(Object.entries(process.memoryUsage()).map(([k, v]) => [k, Math.round(v / 1048576 * 10) / 10])),
-      modules: { running: mods.filter(m => m.state === "running").length, failed: mods.filter(m => ["failed", "invalid"].includes(m.state)).length } } });
+      modules: { running: mods.filter(m => m.state === "running").length, failed: mods.filter(m => ["failed", "invalid"].includes(m.state)).length },
+      // Which record store this server uses, where that came from and how many records it sees (null when the kernel is off); never a quiet fallback.
+      records_store: kernelOf && kernelOf() ? await (await import("../../stores/store-status.js")).storeStatus({ root, store: /** @type {any} */ (kernelOf()).store }).catch((/** @type {Error} */ e) => ({ store: "unknown", note: e.message })) : null } });
   }
+  // The plugin agent reaches the tool door and nothing else (no events, hooks, challenges or module listing): its grant names tools, and the tool door is where the grant is checked.
+  if (pluginAgent && !((req.method === "GET" && url.pathname === "/v1/tools") || (req.method === "POST" && url.pathname.startsWith("/v1/tools/")))) return send(res, 403, { error: { code: "not_in_grant", message: "Claude Code on this computer reaches only the tools its grant names" } });
   if (req.method === "GET" && url.pathname === "/v1/modules") return send(res, 200, { data: registry.status() });
-  if (req.method === "GET" && url.pathname === "/v1/tools") return send(res, 200, { data: registry.listTools(caller, via).filter(t => !policy.tool || policy.tool(t.name)) });
+  if (req.method === "GET" && url.pathname === "/v1/tools") {
+    let data = registry.listTools(caller, via).filter(t => !policy.tool || policy.tool(t.name));
+    // The plugin agent is offered only what its grant names.
+    if (pluginAgent) {
+      const ask = await registry.call("pluginagent.allows", { tools: data.map(t => t.name) }, "module:vyred").catch(() => null);
+      const ok = new Set(ask && ask.data && Array.isArray(ask.data.allowed) ? ask.data.allowed : []);
+      data = data.filter(t => ok.has(t.name));
+    }
+    return send(res, 200, { data });
+  }
   if (device && req.method === "POST" && url.pathname === "/v1/person/token") {
     // The hosted app trades the sign-in page's one-time code, its PKCE verifier and the public
     // half of its key for a bearer session. The one call from another origin that needs none.
@@ -1110,6 +1158,13 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const name = decodeURIComponent(url.pathname.slice("/v1/tools/".length));
     if (drain.on) { res.setHeader("retry-after", "2"); return send(res, 503, { error: { code: "restarting", message: "vyred is restarting; try again in a moment" } }); }
     const input = await body(req);
+    // The plugin agent holds only what its grant names (pluginagent.ALLOWED, decided in core/pluginagent): any other tool, link.call's carried one included, is refused here, before anything runs.
+    if (pluginAgent) {
+      const carried = name === "link.call" && input && typeof input.tool === "string" ? input.tool : null;
+      const ask = await registry.call("pluginagent.allows", { tools: carried ? [name, carried] : [name] }, "module:vyred").catch(() => null);
+      const ok = ask && ask.data && Array.isArray(ask.data.allowed) && ask.data.allowed.includes(name) && (!carried || ask.data.allowed.includes(carried));
+      if (!ok) return send(res, 403, { error: { code: "not_in_grant", message: `Claude Code on this computer was not given ${carried || name}: it reads memory, recall and the sessions of your projects, and suggests to memory` } });
+    }
     // A person's action on the socket: a person-only tool, one that needs presence for this input,
     // or any call carrying a presence proof or session.
     const def = registry.tools.get(name);

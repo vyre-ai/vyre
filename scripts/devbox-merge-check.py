@@ -56,6 +56,8 @@ MUST = [
   ["core/modules/index.js", r"\.\.\.\(terminal \? \{ terminal \} : \{\}\)", "meta.terminal reaches the tool (vyre signin)"],
   ["core/wink/module.json", r"wink\.server\.owner", "wink.server.owner"],
   ["core/wink/module.json", r"wink\.server\.probe", "wink.server.probe"],
+  ["core/daemon/index.js", r"createPeerDoor\(\{[^}]*\bevents\b[^}]*\bidentityEntry\b|createPeerDoor\(\{[^}]*\bidentityEntry\b[^}]*\bevents\b", "the peer door mount passes events AND identityEntry/boxId (streams and the invitee door)"],
+  ["core/relay/index.js", r"only\(meta, \[\"names\", \"wink\", \"vyred\"\], \"the route id\"\)", "relay.route.id answers module:vyred (the invitee door reads the box id)"],
   ["kernel/seal/wire.js", r"canonical\(\{ op, space, fields \}\)", "the nested approval payload hash"],
 ]
 for f, rx, what in MUST:

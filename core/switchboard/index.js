@@ -28,7 +28,7 @@ import { findSubreaper, groupAlive, usesSpawner } from "../sessions/spawn.js";
 import { openThreadSocket, DIR as THREAD_SOCKETS } from "../daemon/threadsock.js";
 import { prepareSandbox } from "../../lib/agent-sandbox.js";
 import { keyUuid } from "../modules/idempotency.js";
-import { sessionTempDir } from "../../lib/session-temp.js";
+import { sessionTempDir, sessionsRoot } from "../../lib/session-temp.js";
 import { ownerDevice, ownerOverTailnet } from "../modules/index.js";
 import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
@@ -437,6 +437,8 @@ export class Switchboard {
     this.closing = false;
     /** @type {Map<string, { path: string, close: () => Promise<void> }>} each live thread's own socket to vyred (deps.threadSocket) */
     this.socks = new Map();
+    /** how each live session is confined (`uid`, `bwrap`, `seatbelt`), shown on its record @type {Map<string, string>} */
+    this.confinedBy = new Map();
     /** @type {Map<string, () => Promise<void>>} the session's egress proxy stopper, run when its socket closes */
     this.releases = new Map();
     /** @type {Map<string, string>} the last status said per thread, for thread.state */
@@ -472,6 +474,9 @@ export class Switchboard {
 
   /** After a restart nothing is running: say so, and close the questions nobody can answer now. */
   recover() {
+    // The temp folders of sessions a killed daemon left behind (`<home>.sessions/tmp/<session>`): nothing runs yet, so every one is dead. Only the folder's children go, never the folder itself
+    // (it may be a mounted volume).
+    try { const tmp = path.join(sessionsRoot(String(this.deps.root || "")), "tmp"); for (const n of fs.readdirSync(tmp)) fs.rmSync(path.join(tmp, n), { recursive: true, force: true }); } catch { /* none yet */ }
     const stale = /** @type {any[]} */ (this.db.prepare(`SELECT id, project FROM threads_runs WHERE status IN (${LIVE.map(() => "?").join(",")})`).all(...LIVE));
     for (const r of stale) {
       // "restart" (ADR 0029 R7): a surface says the box restarted, and the next message resumes it.
@@ -545,7 +550,7 @@ export class Switchboard {
       canonical_status: threadStatus(r.status, r.stopped_reason), model: r.model, driver: r.driver || null,
       provider: r.provider || "claude", account: r.account || null, purpose: r.purpose || null, branch: optsOf(r).branch || null, mode: r.mode || "default", effort: optsOf(r).effort || null, origin: optsOf(r).origin || null, caps: optsOf(r).caps || null, parent: optsOf(r).parent || null, continued_from: optsOf(r).continued_from || null, starter: optsOf(r).starter || null, taint: { outside: Boolean(optsOf(r).taint && optsOf(r).taint.outside), private: Boolean(optsOf(r).taint && optsOf(r).taint.private) }, archived: r.archived_at || null,
       auth: r.auth, started: r.started_at, last: r.last_at, cost_usd: r.cost_usd, turns: r.turns,
-      holder: holder ? holder.surface : null, asks: this.asks.open(id).length, ...(r.stopped_reason ? { stopped_reason: r.stopped_reason } : {}) };
+      holder: holder ? holder.surface : null, asks: this.asks.open(id).length, confined_by: this.confinedBy.get(id) || null, ...(r.stopped_reason ? { stopped_reason: r.stopped_reason } : {}) };
   }
 
   /** A thread's ancestors, nearest first, up to the thread nobody started it from (the person's own). @param {string} id */
@@ -718,12 +723,15 @@ export class Switchboard {
     try { return await Promise.race([this.launchInner(o, person, box), stuck]); }
     catch (e) {
       box.cancelled = true; // the steps still running stop at their next step instead of spawning an agent for a thread that has already failed
-      if (e && /** @type {any} */ (e).code === "start_timeout" && box.id) {
-        const id = box.id;
-        this.deps.log(`threads: ${id.slice(0, 8)} start failed at step "${box.step}" after ${Math.round(limit / 1000)} s`);
-        try { const st = this.live.get(id); if (st) { st.haltReason = `exited without starting: stuck at "${box.step}"`; st.stopping = true; await st.proc.stop().catch(() => {}); } } catch { /* nothing live */ }
+      // Any throw after the thread's row exists ends it, not only the start limit: a thread never stays "starting" for a start that has already answered its caller with an error. A row the start
+      // itself removed (no_account) or a thread that was already stopped (a refused resume) is left as it is.
+      if (box.id && this.record(box.id) && (this.live.has(box.id) || /** @type {any} */ (this.record(box.id)).status === "starting")) {
+        const id = box.id, timedOut = Boolean(e && /** @type {any} */ (e).code === "start_timeout");
+        const why = timedOut ? `stuck at "${box.step}"` : `${cut(String(e && /** @type {any} */ (e).message || e), 200)} (at "${box.step}")`;
+        this.deps.log(timedOut ? `threads: ${id.slice(0, 8)} start failed at step "${box.step}" after ${Math.round(limit / 1000)} s` : `threads: ${id.slice(0, 8)} start failed at step "${box.step}": ${cut(String(e && /** @type {any} */ (e).message || e), 300)}`);
+        try { const st = this.live.get(id); if (st) { st.haltReason = `exited without starting: ${why}`; st.stopping = true; await st.proc.stop().catch(() => {}); } } catch { /* nothing live */ }
         this.closeSocket(id);
-        if (!this.live.has(id)) { this.set(id, { status: "stopped", pid: null, stopped_reason: `exited without starting: stuck at "${box.step}"` }); this.states.set(id, "stopped"); this.emit("thread.stopped", { code: null, reason: `exited without starting: stuck at "${box.step}"` }, id, null); }
+        if (!this.live.has(id)) { this.set(id, { status: "stopped", pid: null, stopped_reason: `exited without starting: ${why}` }); this.states.set(id, "stopped"); this.emit("thread.stopped", { code: null, reason: `exited without starting: ${why}` }, id, null); }
       }
       throw e;
     } finally { clearTimeout(timer); }
@@ -1025,8 +1033,11 @@ export class Switchboard {
     if (!sock) throw Object.assign(new Error("Vyre did not start this session because it has no socket of its own to reach Vyre through."), { code: "sandbox_failed" });
     const provider = rec.provider || o.provider || "claude";
     const pickEnv = (/** @type {string[]} */ names) => Object.fromEntries(names.filter(n => o.env && o.env[n]).map(n => [n, o.env[n]]));
-    const r = await prepareSandbox({ ...cfg, temp: this.sessionTemp(id), credentials: cfg.credentials ? async (/** @type {string} */ p) => { const v = await cfg.credentials(p); return typeof v === "string" ? v : v || pickEnv(["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"]); } : (() => pickEnv(["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"])) }, { provider, command: absoluteBin(cfg.binFor ? cfg.binFor(provider) : this.bin), sessionSocket: sock.path, workdirs: [rec.cwd], ...(o.gitEnv ? { trustedEnv: o.gitEnv } : {}) });
+    const r = await prepareSandbox({ ...cfg, temp: this.sessionTemp(id), credentials: cfg.credentials ? async (/** @type {string} */ p) => { const v = await cfg.credentials(p); return typeof v === "string" ? v : v || pickEnv(["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"]); } : (() => pickEnv(["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"])) }, { provider, command: absoluteBin(cfg.binFor ? cfg.binFor(provider) : this.bin), sessionSocket: sock.path, workdirs: [rec.cwd], ...(o.accountRun && o.accountRun.uid != null ? { account: { uid: o.accountRun.uid, shared: rec.cwd === (process.env.VYRE_WORK || "/work") || String(rec.cwd).startsWith((process.env.VYRE_WORK || "/work") + "/") } } : {}), ...(o.gitEnv ? { trustedEnv: o.gitEnv } : {}) });
     if (r.sandboxed) {
+      // How this session is confined, said on its record and its log: `uid` in the packaged box (its own uid, the container and the wall, proved before the start), `bwrap` or the seatbelt elsewhere.
+      this.confinedBy.set(id, r.confinedBy || (process.platform === "darwin" ? "seatbelt" : "bwrap"));
+      this.emit("thread.sandbox", { sandboxed: true, confined_by: this.confinedBy.get(id) }, id, rec.project);
       if (r.release) { const old = this.releases.get(id); this.releases.set(id, r.release); if (old) old().catch(() => {}); }
       // Partly sandboxed (a provider that cannot move its settings folder keeps its own): said on this session's log, and once per machine and provider in words.
       if (r.partial) {
@@ -3439,7 +3450,7 @@ export default {
         // (another agent's credentials and project grants), env, scope, account and the rest are the person's surfaces' and first-party modules'.
         const modelCall = Boolean(thread || agent || agentOf(caller) || /^(?:mcp|harness)(?::|$)/.test(String(caller || "")));
         // A model session with no named agent behind it has no grants of its own to act under (a model caller is never the person): it starts nothing. The assistant and the agents the person made are named
-        // (meta.agent, from the daemon's own record of the session), and a first-party module acts for its own purpose.
+        // (the agent the daemon bound, from its own record of the session), and a first-party module acts for its own purpose.
         if (modelCall && !firstParty && !agent) throw Object.assign(new Error("an unnamed model session starts no sessions: it has no agent grants of its own to act under"), { code: "denied" });
         // SW-1: "every project" is every MAPPED project, not the disk. A named agent's (the assistant's included) session starts in a folder that, after symlinks and `..`, lies inside a project it is
         // granted (its home or a workspace folder); anything else, `/` and `/etc` included, is refused. A person's own threads.start keeps today's rule.

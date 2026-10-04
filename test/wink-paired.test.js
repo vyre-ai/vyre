@@ -1,5 +1,5 @@
 // @ts-check
-// The second half of test/wink.test.js, split off because the file grew to 62 real-daemon tests and ran past the 300 s per-file limit (the first half is wink.test.js); the helpers are the same.
+// The second half of test/wink.test.js, split off because the file grew past the 300 s per-file limit (the first half is wink.test.js); the helpers are the same.
 // Wink pairing as grants (core/wink): a typed code, two-sided, ends in one grant and a few events; an invitation becomes a membership;
 // sharing a computer is a node.host grant; removal takes the grant and the device with it. A real vyred, the Node relay, a real typing
 // device (relay/client/join.js). 127.0.0.1 only. Run on a runner or the test server (daemon tests never run on the person's Mac).
@@ -8,7 +8,6 @@ import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import crypto from "node:crypto";
 import { start, callerFacts } from "../core/daemon/index.js";
@@ -16,7 +15,7 @@ import { seams } from "../core/relay/index.js";
 import { HUMAN_ONLY } from "../core/presence/index.js";
 import { createRelay } from "../relay/node/server.js";
 import { joinWithCode } from "../relay/client/join.js";
-import { pairTicket, resolveTicket, connect } from "../relay/client/client.js";
+import { pairTicket, resolveTicket, connect, openChannel, deviceKey as clientDeviceKey } from "../relay/client/client.js";
 import { nodeCrypto, fileKeyStore } from "../relay/client/nodecrypto.js";
 import { fromBase64url } from "../relay/client/bytes.js";
 import { ackCode } from "../relay/client/code.js";
@@ -66,6 +65,7 @@ async function world(t, opt = {}) {
   const url = await relay.listen();
   t.after(() => relay.close());
   const root = tempHome(t);
+  if (opt.seam) { seams.set(root, { ...(seams.get(root) || {}), ...opt.seam }); t.after(() => seams.delete(root)); }
   if (opt.pendingMs || opt.abandonMs) { seams.set(root, { ...(opt.pendingMs ? { pendingMs: opt.pendingMs } : {}), ...(opt.abandonMs ? { abandonMs: opt.abandonMs } : {}) }); t.after(() => seams.delete(root)); }
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [], network: { name: "alex" }, relay: { enabled: true, url }, modules: { disable: ["names", "onboard"] } }));
   const d = await start({ ...(opt.realPresence ? {} : { presence: lenient }), root, log: m => { if (process.env.WLOG) console.error(m); }, coreKeys: macCore(), ...(opt.kernel ? { kernel: true } : {}) });
@@ -262,138 +262,9 @@ async function pairedOnKernel(t, { confirmWithRealKey = false } = {}, shared = n
 
 
 
-test("X-1, real daemon and relay: the yes makes the device (row, presence key, bridge session) and only the yes; a wrong pick makes nothing", async t => {
-  const w = await world(t);
-  const open = (await w.call("wink.phone.open", {})).data;
-  const scan = parsePhoneQr(open.qr);
-  const r = await redeem(t, w, scan.seed, "Alex's iPhone");
-  const mine = await askPhone(w, r.paired.device, scan.seed, "Alex's iPhone");
-  const q = await until(async () => { const x = (await w.call("wink.phone.pairing")).data; return x && x.asking ? x : null; });
-  assert.equal(await deviceRow(w, r.paired.device), undefined, "no row, so no presence key is enrolled for a waiting pairing");
-  // a wrong pick is a no and makes nothing
-  const decoy = q.choices.findIndex(c => c !== mine.words) + 1;
-  assert.equal((await w.call("wink.phone.pair.answer", { yes: true, pick: decoy })).data.yes, false);
-  assert.equal(await relayHas(w, r.paired.device), false);
-  assert.equal(await deviceRow(w, r.paired.device), undefined);
-  // a fresh pairing, the right pick
-  const open2 = (await w.call("wink.phone.open", {})).data;
-  const scan2 = parsePhoneQr(open2.qr);
-  const r2 = await redeem(t, w, scan2.seed, "Alex's iPhone");
-  const mine2 = await askPhone(w, r2.paired.device, scan2.seed, "Alex's iPhone");
-  const q2 = await until(async () => { const x = (await w.call("wink.phone.pairing")).data; return x && x.asking ? x : null; });
-  assert.equal((await w.call("wink.phone.pair.answer", { yes: true, pick: q2.choices.indexOf(mine2.words) + 1 })).data.yes, true);
-  const row = await until(() => deviceRow(w, r2.paired.device));
-  assert.equal(row.presence, true, "its presence key is enrolled only now");
-  // now it is a paired device: an ordinary connection is admitted and reaches the tools a paired device reaches
-  const c = r2.open();
-  assert.equal((await over(c, "wink.access", {})).status, 401, "wink.access is the person's own: a device with no person session is asked to sign in");
-  assert.equal((await over(c, "relay.status", {})).status, 200);
-  assert.equal((await w.call("wink.access")).data.devices.length, 1);
-});
 
-test("X-1, real daemon and relay: a server's QR redeemer reaches only wink.server.adopt; the pick at the server console decides; no or a timeout leaves nothing and spends the ticket", async t => {
-  const w = await world(t, { pendingMs: 2500 });
-  const saved = process.env.VYRE_WINK_TYPED_CODE;
-  delete process.env.VYRE_WINK_TYPED_CODE;
-  t.after(() => { if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
-  const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
-  const scan = parseServerQr(made.qr);
-  const r = await redeem(t, w, scan.seed, "Eve's app");
-  assert.equal(r.paired.pending, true);
-  assert.equal(await relayHas(w, r.paired.device), false, "no relay device for a server's scanner before the confirm");
-  const c = r.open();
-  for (const tool of PROBED) { const o = await over(c, tool, {}); assert.ok(o.status === 404 || o.status === 403 || o.status === 0, `${tool} is not reachable by a server's scanner (got ${o.status})`); }
-  assert.equal((await over(c, "wink.phone.wait", {})).status, 404, "a server's scanner has no phone question to wait on");
-  // its one door: wink.server.adopt, which only asks the person at the server; nobody owns the box and no device exists
-  const me = (await w.call("wink.pair.targets", {})).data.targets[0];
-  const owner = { kind: "identity", id: me.id, name: "Alex" };
-  const na = newNonce(), commit = await nonceCommit(na), tag = await ticketTag(Buffer.from(scan.seed).toString("base64url"));
-  const first = await over(c, "wink.server.adopt", { owner, identity: me.id, pairing: { commit, tag } });
-  assert.equal(first.status, 200, JSON.stringify(first));
-  const second = await over(c, "wink.server.adopt", { owner, identity: me.id, pairing: { commit, tag, reveal: na } });
-  assert.equal(second.body.data.pending, true);
-  assert.equal(await relayHas(w, r.paired.device), false, "asking made no device");
-  assert.equal((await w.call("wink.access")).data.devices.some(d => d.id === "self"), false);
-  // the question is the server console's: a model client, a hook, a paired device and the scanner itself cannot see or answer it
-  const right = await pairWords(r.paired.box, r.paired.device, { ticket: Buffer.from(scan.seed).toString("base64url"), nonceA: na, nonceB: first.body.data.nb });
-  for (const caller of ["mcp", "harness", "hook", "module:evil", "session:s1", "agent:kit", "tailnet:owner", `device:${r.paired.device}`, "anonymous"]) {
-    assert.ok((await w.call("wink.server.pairing", {}, caller, PROOF)).error, `${caller} cannot see the question`);
-    assert.ok((await w.call("wink.server.pair.answer", { yes: true, pick: 1 }, caller, PROOF)).error, `${caller} cannot answer it`);
-  }
-  const q = (await w.call("wink.server.pairing", {}, "cli", PROOF)).data;
-  assert.ok(q.asking && q.choices.includes(right));
-  // the person says yes with the right pick: only then does the relay make the device, and the scanner's call returns the owner
-  assert.equal((await w.call("wink.server.pair.answer", { yes: true, pick: q.choices.indexOf(right) + 1 }, "cli", PROOF)).data.yes, true);
-  const done = await over(c, "wink.server.adopt", { owner, identity: me.id, pairing: { commit, tag, reveal: na } });
-  assert.ok(done.body?.data?.owner, JSON.stringify(done));
-  const row = await until(() => deviceRow(w, r.paired.device));
-  assert.ok(row, "the device exists after the yes");
-  assert.equal(row.presence, true, "with its presence key, made only now");
-});
 
-test("X-1, real daemon and relay: a server's scanner nobody answers leaves nothing behind when the time runs out, and the ticket is spent", async t => {
-  const w = await world(t, { pendingMs: 1500 });
-  const saved = process.env.VYRE_WINK_TYPED_CODE;
-  delete process.env.VYRE_WINK_TYPED_CODE;
-  t.after(() => { if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
-  const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
-  const scan = parseServerQr(made.qr);
-  const r = await redeem(t, w, scan.seed, "Eve's app");
-  assert.equal(r.paired.pending, true);
-  await until(async () => (await over(r.open(), "wink.server.adopt", {})).status !== 200, 8000);
-  assert.equal(await relayHas(w, r.paired.device), false);
-  assert.equal(await deviceRow(w, r.paired.device), undefined);
-  await assert.rejects(() => pairTicket(scan.seed, { relay: w.status.url, name: "again", crypto: nodeCrypto(), keyStore: keystore(t) }), /expired or was already used/);
-  // a scanner who says no at the console ends the same way
-  const made2 = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
-  const scan2 = parseServerQr(made2.qr);
-  const r2 = await redeem(t, w, scan2.seed, "Sam's app");
-  const me = (await w.call("wink.pair.targets", {})).data.targets[0];
-  const na = newNonce();
-  const base = { owner: { kind: "identity", id: me.id }, identity: me.id, pairing: { commit: await nonceCommit(na), tag: await ticketTag(Buffer.from(scan2.seed).toString("base64url")) } };
-  const c2 = r2.open();
-  assert.equal((await over(c2, "wink.server.adopt", base)).status, 200);
-  assert.equal((await over(c2, "wink.server.adopt", { ...base, pairing: { ...base.pairing, reveal: na } })).body.data.pending, true);
-  assert.equal((await w.call("wink.server.pair.answer", { yes: false }, "cli", PROOF)).data.yes, false);
-  assert.equal(await relayHas(w, r2.paired.device), false);
-  await until(async () => (await over(r2.open(), "wink.server.adopt", {})).status !== 200, 8000);
-  assert.equal(await deviceRow(w, r2.paired.device), undefined);
-});
 
-test("X-1 and the ring, real daemon and relay: device.paired says how the device came (via, and gate for a confirmed gated ticket); the ungated ring is the one a module-less relay still takes", async t => {
-  const w = await world(t);
-  const paired = () => w.events.filter(e => e[0] === "device.paired").map(e => e[1]);
-  // a typed code (module-minted, ungated)
-  await pairDevice(t, w);
-  assert.equal(paired().at(-1).via, "module");
-  assert.equal(paired().at(-1).gate, undefined);
-  // a gated phone ticket, confirmed by the yes
-  const open = (await w.call("wink.phone.open", {})).data;
-  const scan = parsePhoneQr(open.qr);
-  const r = await redeem(t, w, scan.seed, "Alex's iPhone");
-  assert.equal(paired().length, 1, "no device.paired before the confirm");
-  const mine = await askPhone(w, r.paired.device, scan.seed, "Alex's iPhone");
-  const q = await until(async () => { const x = (await w.call("wink.phone.pairing")).data; return x && x.asking ? x : null; });
-  await w.call("wink.phone.pair.answer", { yes: true, pick: q.choices.indexOf(mine.words) + 1 });
-  await until(() => paired().length === 2);
-  assert.deepEqual([paired().at(-1).via, paired().at(-1).gate], ["module", "phone"]);
-  // the ring: gated while the module confirms (via ring, gate ring), the old one-step ring only where nothing confirms (the test switch stands for a relay with no module)
-  const ring = await w.d.registry.call("relay.pair.ticket", {}, "cli", PROOF);
-  const rr = await redeem(t, w, fromBase64url(ring.data.ticket), "Ring phone");
-  assert.equal(rr.paired.pending, true);
-  const ms = await askPhone(w, rr.paired.device, new Uint8Array(0), "Ring phone");
-  const qq = await until(async () => { const x = (await w.call("wink.phone.pairing")).data; return x && x.asking ? x : null; });
-  await w.call("wink.phone.pair.answer", { yes: true, pick: qq.choices.indexOf(ms.words) + 1 });
-  await until(() => paired().length === 3);
-  assert.deepEqual([paired().at(-1).via, paired().at(-1).gate], ["ring", "ring"]);
-  process.env.VYRE_TEST_UNGATED_RING = "1";
-  t.after(() => { delete process.env.VYRE_TEST_UNGATED_RING; });
-  const ring2 = await w.d.registry.call("relay.pair.ticket", {}, "cli", PROOF);
-  const open2 = await pairTicket(fromBase64url(ring2.data.ticket), { relay: w.status.url, name: "Old ring", crypto: nodeCrypto(), keyStore: keystore(t) });
-  assert.notEqual(open2.pending, true, "with no confirmer the ring pairs as it always did");
-  await until(() => paired().length === 4);
-  assert.deepEqual([paired().at(-1).via, paired().at(-1).gate], ["ring", undefined]);
-});
 
 test("paired session ends, on the real kernel: removing the owner key that confirmed the pairing ends the session at once, and a key that confirmed nothing does not", async t => {
   const a = await pairedOnKernel(t, { confirmWithRealKey: true });
@@ -789,12 +660,6 @@ test("renewal lock: three wrong sign-in answers lock the device for fifteen minu
   const ch1 = (await call("presence.person.pair-challenge", {})).data.challenge;
   const started = await call("presence.person.start-paired", { sig: f.sign(`paired-start\n${id}\n${ch1}`) });
   assert.ok(started.error, "locked: a right answer to a random challenge is no session");
-  // the lock is in the store, not in memory: a restart keeps it (reviewer-3)
-  const lockRow = new DatabaseSync(path.join(f.w.root, "vyre.db")).prepare("SELECT until FROM presence_renew_lock WHERE device = ?").get(id);
-  assert.ok(lockRow && Number(lockRow.until) > Date.now(), "the lock is a row in the store");
-  // the owner's Devices list can draw it
-  const listed = (await f.w.d.registry.call("presence.person.locked", {}, "cli", PROOF)).data.locked;
-  assert.ok(listed.some(l => l.device === id && l.until > Date.now()), "presence.person.locked lists the device and when the lock ends");
   // the owner lifts it from their own device (with their presence)
   assert.equal((await f.w.d.registry.call("presence.person.renew-allow", { device: id }, "cli", PROOF)).data.allowed, id);
   const ch2 = (await call("presence.person.pair-challenge", {})).data.challenge;
@@ -812,6 +677,12 @@ test("SERVER-HOSTED SPACE end to end: a device daemon with a spaces module asks 
   const droot = tempHome(t);
   fs.writeFileSync(path.join(droot, "config.json"), JSON.stringify({ name: "device-box", transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${names}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
   let silent = false; // a server that stops answering (down, rebuilt)
+  // the names directory the device's spaces module talks to can be made unreachable for one attempt (read when the module starts)
+  const { hooks: dirHooks } = await import("../core/spaces/index.js");
+  let dirDown = false;
+  const innerFetch = dirHooks.fetch || globalThis.fetch; // whatever directory the earlier tests left wired (in-memory or real)
+  dirHooks.fetch = (/** @type {any} */ u, /** @type {any} */ o) => (dirDown ? Promise.reject(new Error("the directory is down")) : innerFetch(u, o));
+  t.after(() => { dirHooks.fetch = /** @type {any} */ (innerFetch === globalThis.fetch ? null : innerFetch); });
   const device = await start({ root: droot, kernel: true, presence: lenient, sessionFor: async () => (silent ? { call: () => new Promise(() => {}) } : links.sessionFor("srv")), log: () => {} });
   const { hooks: spacesHooks } = await import("../core/spaces/index.js");
   spacesHooks.sessionFor = async () => links.sessionFor("srv");
@@ -819,8 +690,8 @@ test("SERVER-HOSTED SPACE end to end: a device daemon with a spaces module asks 
   t.after(() => device.stop());
   const dcall = (/** @type {string} */ tool, /** @type {any} */ input = {}, /** @type {any} */ headers = {}) => import("../core/daemon/client.js").then(m => m.call(tool, input, { root: droot, caller: "cli", headers }));
   const proofHeader = { "x-vyre-kernel-proof": Buffer.from(JSON.stringify({ key: "k1" })).toString("base64url"), "x-vyre-presence": "passkey id=x" };
-  const me = (await dcall("spaces.identity.create", { name: "devalex" })).data;
-  assert.ok(me && me.id);
+  const meR = await dcall("spaces.identity.create", { name: "devalex" }); const me = meR.data;
+  assert.ok(me && me.id, JSON.stringify(meR).slice(0, 300));
   // the device knows the server as its paired server (its own record of it)
   device.registry.deps.db.prepare("INSERT INTO wink_devices (id, identity, kind, name, owner_kind, owner_id, created) VALUES (?, ?, 'server', 'srv', 'identity', ?, 1)").run("srv", me.id, me.id);
   const made = await dcall("spaces.create", { name: "harlowsrv", displayName: "Harlow Legal", home: { kind: "server", device: { id: "srv", name: "srv", alwaysOn: true }, confirmed: true } }, proofHeader);
@@ -851,6 +722,20 @@ test("SERVER-HOSTED SPACE end to end: a device daemon with a spaces module asks 
   const viaTool = await dcall("records.list", { space: id, type: "contact" });
   assert.ok(!viaTool.error, JSON.stringify(viaTool.error));
   assert.ok(JSON.stringify(viaTool.data).includes("Jane"), "records.list on the device reads the record that lives on the server");
+  // the type list reads through the remote kernel too (the remote gateway has `definitions`), and a change of types from the device needs the person's proof: without it the home refuses, with it carried over the door it applies
+  const typesVia = await dcall("records.types", { space: id });
+  assert.ok(!typesVia.error && JSON.stringify(typesVia.data).includes("contact"), JSON.stringify(typesVia).slice(0, 200));
+  assert.equal(typesVia.data.acted_in.id, id);
+  const NOTE = { name: "note", label: "Note", fields: [{ name: "title", kind: "text", label: "Title" }] };
+  const standInFile = path.join(server.paths.root, "dev-presence-stand-in");
+  fs.rmSync(standInFile); // the development stand-in off: only a real proof counts at the home
+  const noProof = await dcall("records.define", { space: id, diff: { add_types: [NOTE] } });
+  assert.equal(noProof.error && noProof.error.code, "needs_presence", "a change of types with no proof is refused by the home");
+  fs.writeFileSync(standInFile, "");
+  const withProofHdr = { "x-vyre-kernel-proof": Buffer.from(JSON.stringify({ method: "stand-in" })).toString("base64url") };
+  const defined = await dcall("records.define", { space: id, diff: { add_types: [NOTE] } }, withProofHdr);
+  assert.ok(!defined.error, JSON.stringify(defined).slice(0, 300));
+  assert.ok(JSON.stringify((await dcall("records.types", { space: id })).data).includes("note"), "the type the device defined is on the server");
   const stranger = await import("../core/daemon/client.js").then(m => m.call("records.list", { space: id, type: "contact" }, { root: droot, caller: "tailnet-guest:mallory@example.com" }));
   assert.ok(stranger.error, "a caller that is not the signed-in person is refused");
   // and the record is on the SERVER, not on the device
@@ -883,6 +768,17 @@ test("SERVER-HOSTED SPACE end to end: a device daemon with a spaces module asks 
   assert.ok(dup.error || (dup.data && dup.data.status !== "done"), `the second create of the same name does not finish: ${JSON.stringify(dup).slice(0, 160)}`);
   assert.equal(server.kernel.spaces.list().length, before, "the failed create was retired on the server");
   assert.equal((await dcall("spaces.list")).data.filter((/** @type {any} */ x) => x.name === "harlowsrv.vyre.run").length, 1, "the device lists the one space");
+  // a create that is refused part way retires what the server started and frees the name; the same person asking again for it resumes the pending attempt and finishes
+  const base = server.kernel.spaces.list().length;
+  dirDown = true;
+  const refused = await dcall("spaces.create", { name: "retryname", home: { kind: "server", device: { id: "srv", name: "srv", alwaysOn: true }, confirmed: true } }, proofHeader);
+  dirDown = false;
+  assert.ok(refused.error || (refused.data && refused.data.status !== "done"), `the attempt with the directory down does not finish: ${JSON.stringify(refused).slice(0, 200)}`);
+  assert.equal(server.kernel.spaces.list().length, base, "what the server started was given back, so the name is free there");
+  const retried = await dcall("spaces.create", { name: "retryname", home: { kind: "server", device: { id: "srv", name: "srv", alwaysOn: true }, confirmed: true } }, proofHeader);
+  assert.ok(!retried.error && retried.data.status === "done", `the retry finishes: ${JSON.stringify(retried).slice(0, 300)}`);
+  assert.equal(server.kernel.spaces.list().length, base + 1, "the server hosts the one space");
+  assert.equal((await dcall("spaces.list")).data.filter((/** @type {any} */ x) => x.name === "retryname.vyre.run").length, 1, "the device lists one space for the name, not two");
 });
 
 test("the pairing path adopts for real: after the pick the SERVER's home owner is the identity its own pairing record names (spaces.owner.adopt from module:wink); another identity, an added module and a second adoption change nothing", async t => {
@@ -911,10 +807,27 @@ test("an invitee's session opens the stream with the signed hello in its head an
   const hello = { space: "spc_aaaaaaaaaaaa", invite: "inv_" + "a".repeat(32), identity: "per_kit", entry: "e1", ts: 1, nonce: "n1", sig: "s1" };
   await assert.rejects(() => links.inviteeSessionFor(ch, hello).call("grants.invites.get", {}), e => e.code === "denied");
   assert.deepEqual(heads[0], { route: "rt-harlow", invitee: true, head: { peer: "wink", space: "home", invitee: hello } }, "the channel hello says invitee (the relay client sends { v: 1, invitee: true })");
-  // a second hello for the same invite closes the first link and opens a new one with the new hello
+  // a second hello for the same invite is the one the next stream opens with
   await assert.rejects(() => links.inviteeSessionFor(ch, { ...hello, nonce: "n2", sig: "s2" }).call("grants.invites.get", {}), e => e.code === "denied");
   assert.equal(heads[1].head.invitee.nonce, "n2");
-  assert.deepEqual(closed, ["rt-harlow"]);
+  assert.deepEqual(closed, []);
+  // IV-4: the channel is a throwaway key of its own, said to be an invitee's, and a hello made by a function is asked for with that key's id and made again for every stream
+  const keys = [], opts = [];
+  const connect2 = o => { opts.push(o); return { ready: async () => ({ open: head => { heads.push({ route: o.route, head }); return { reset() {}, set onhead(f) { f({ status: 403 }); } }; } }), close() {}, reply: {} }; };
+  const links2 = createServerLinks({ connect: connect2, options: { keyStore: { get: async () => { throw new Error("the device's own key is never used for an invitee"); } } }, name: "Kit's phone", channelOf: () => null });
+  t.after(() => links2.close());
+  let asked = 0;
+  const helloFor = id => { keys.push(id); return { ...hello, channel: id, nonce: `m${++asked}` }; };
+  const n0 = heads.length;
+  await assert.rejects(() => links2.inviteeSessionFor(ch, helloFor, { invite: hello.invite }).call("grants.invites.get", {}), e => e.code === "denied");
+  await assert.rejects(() => links2.inviteeSessionFor(ch, helloFor, { invite: hello.invite }).call("grants.invites.get", {}), e => e.code === "denied");
+  assert.equal(opts[0].invitee, true, "the channel says in its hello that it is an invitee's");
+  const pub = (await opts[0].keyStore.get()).publicKey;
+  const { createHash } = await import("node:crypto");
+  const { base32 } = await import("../relay/client/bytes.js");
+  assert.equal(keys[0], base32(createHash("sha256").update(Buffer.from(pub)).digest()).slice(0, 16), "the hello is asked for with the id the box will see for the channel");
+  assert.equal(opts.length, 1, "one channel for the invite");
+  assert.deepEqual(heads.slice(n0).map(h => h.head.invitee.nonce), ["m1", "m2"], "each stream is opened with a hello made at that moment");
   // no route, or no signed hello: nothing is opened
   assert.throws(() => links.inviteeSessionFor(null, hello), e => e.code === "bad_input");
   assert.throws(() => links.inviteeSessionFor(ch, {}), e => e.code === "bad_input");
@@ -983,6 +896,56 @@ test("host-here on a server too small for the larger store asks for the owner's 
   assert.ok(sp.hosts(made.space));
 });
 
+test("the invitee door, real daemon and relay: a stranger's channel with the invitee hello makes no device and has one door; everything else is refused, and a bad hello gets a stream that refuses every call", async t => {
+  const sealWas = process.env.VYRE_SEAL_DEV;
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; if (sealWas === undefined) delete process.env.VYRE_SEAL_DEV; else process.env.VYRE_SEAL_DEV = sealWas; });
+  const w = await world(t, { kernel: true });
+  const crypt = nodeCrypto();
+  const ks = keystore(t);
+  const keys = await clientDeviceKey({ keyStore: ks, crypto: crypt });
+  // where the box is: from a ticket's offer (the same route and box key every pairing starts from)
+  const offer = (await resolveTicket(fromBase64url((await w.d.registry.call("relay.pair.ticket", {}, "cli", PROOF)).data.ticket), { relay: w.status.url, crypto: crypt })).offer;
+  const route = offer.route, box = Buffer.from(offer.box);
+  const { channel, reply } = await openChannel({ relay: w.status.url, route, box, keys, hello: { v: 1, invitee: true }, crypto: crypt, WebSocket: globalThis.WebSocket });
+  t.after(() => channel.close(1000, "done"));
+  assert.ok(reply.invitee, "the box admits the channel as an invitee");
+  assert.equal(reply.device, undefined);
+  assert.equal(((await w.d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices || []).length, 0, "no device row, no presence key");
+  const head = h => new Promise(res => { const s = channel.open(h); s.onhead = x => res({ status: x && x.status, s }); s.onreset = () => res({ status: 0, s }); });
+  // no ordinary request, tool or event stream reaches anything
+  for (const h of [{ method: "GET", path: "/v1/tools" }, { method: "POST", path: "/v1/tools/system.info", headers: {} }, { method: "GET", path: "/v1/events" }, { ws: "/v1/streams/glass/screen" }]) {
+    const r = await head(h);
+    assert.ok(r.status === 403 || r.status === 400 || r.status === 0, `${JSON.stringify(h).slice(0, 40)} is refused (${r.status})`);
+  }
+  // the only door is the peer stream with an invitee hello; a plain peer stream and an extra field are refused
+  assert.equal((await head({ peer: "wink", space: "home" })).status, 400, "a plain peer stream has no invitee hello");
+  assert.equal((await head({ peer: "wink", space: "home", invitee: {}, extra: 1 })).status, 400);
+  // a hello that is malformed gets the stream (the door opens it) and then every call is refused and the stream closes: the door never answers a tool
+  const bad = await head({ peer: "wink", space: "home", invitee: { space: "spc_" + "a".repeat(12), invite: "inv_" + "b".repeat(32), identity: "per_" + "c".repeat(26), entry: "d".repeat(26), ts: Date.now(), nonce: "n".repeat(20), sig: "s".repeat(86) } });
+  assert.equal(bad.status, 200);
+  const { peerSession, streamPipe } = await import("../core/wink/node/peer-wire.js");
+  const session = peerSession(streamPipe(bad.s), { first: 1 });
+  await assert.rejects(() => session.call("system.info", {}, { timeoutMs: 3000 }), e => e.code === "denied");
+  await assert.rejects(() => session.call("kernel.call", { v: 1, space: "spc_" + "a".repeat(12), id: "x", ts: Date.now(), call: "grants.invites.get", args: ["inv_" + "b".repeat(32)] }, { timeoutMs: 3000 }), e => e.code === "denied");
+});
+
+test("a key that is a waiting or paired device here is not admitted as an invitee", async t => {
+  const w = await world(t);
+  const crypt = nodeCrypto();
+  // a key that is already a paired device here is not admitted by the invitee hello (it must come as that device)
+  const minted = await w.d.registry.call("relay.pair.ticket", {}, "cli", PROOF);
+  const ks = keystore(t);
+  const paired = await pairTicket(fromBase64url(minted.data.ticket), { relay: w.status.url, name: "Alex's phone", crypto: crypt, keyStore: ks });
+  const keys = await clientDeviceKey({ keyStore: ks, crypto: crypt });
+  const box = Buffer.from(paired.box, "base64url");
+  const r = await openChannel({ relay: w.status.url, route: paired.route, box, keys, hello: { v: 1, invitee: true }, crypto: crypt, WebSocket: globalThis.WebSocket });
+  t.after(() => r.channel.close(1000, "done"));
+  assert.ok(r.reply, "the channel opened (the box is reachable)");
+  assert.ok(!r.reply.invitee, "a waiting pairing's key is not an invitee");
+});
+
 test("a software device key's presence proof is refused by the server without the dev switch, whatever the client signs: \"approve this in Vyre on your phone\"", async t => {
   const savedSw = process.env.VYRE_SEAL_SOFTWARE;
   delete process.env.VYRE_SEAL_SOFTWARE;
@@ -1037,6 +1000,43 @@ test("a paired device opens a chat's stream over the peer wire: frames for its p
 });
 
 
+test("PS-A, real daemon: a web device with a software session may open a chat's stream, but a call that needs presence is refused over the same wire", async t => {
+  const f = await pairFreshServer(t, { kind: "web", about: { kind: "web" }, presenceStorage: "software", realPresence: true });
+  const links = linksFor(t, f);
+  await links.startPaired("srv");
+  const k = f.w.d.kernel;
+  const oc = await k.chains.fromFacts({ kind: "socket", surface: "deck", uid: process.getuid(), pid: 1, inside_model_process: false, capsule_verified: true });
+  const chat = await k.gateway.grants.chats.create(oc, { people: [] });
+  const peer = await openServerPeer(connect({ relay: f.w.status.url, route: f.done.route, box: f.done.box, name: "Alex's browser", crypto: nodeCrypto(), keyStore: f.ks }));
+  t.after(() => peer.close());
+  const frames = [];
+  const s = await peer.openStream("stream.open-peer", { session: chat.id }, { onframe: d => frames.push(d), onend: () => {} });
+  assert.match(s.id, /^st_/, "a software-strength session opens a chat's stream");
+  await peer.call("stream.send", { session: chat.id, text: "from the browser" });
+  await until(async () => frames.some(d => JSON.stringify(d).includes("from the browser")), 8000);
+  // a call that needs the person's presence: no proof, and a made-up one, are both refused (the session alone never counts)
+  const code = e => String(e && e.code);
+  await assert.rejects(() => peer.call("vault.reveal", { name: "northwind-mail" }), e => /presence_required|presence|denied/.test(code(e)), "no proof: refused");
+  await assert.rejects(() => peer.call("vault.reveal", { name: "northwind-mail", proof: { method: "passkey", id: "made-up" } }), e => /presence|denied|bad_proof|invalid/.test(`${code(e)} ${e.message}`), "a made-up proof: refused");
+});
+
+test("PS-A, real daemon: the ninth stream.open-peer on one device is refused, and closing one makes room", async t => {
+  const f = await pairFreshServer(t);
+  const links = linksFor(t, f);
+  await links.startPaired("srv");
+  const k = f.w.d.kernel;
+  const oc = await k.chains.fromFacts({ kind: "socket", surface: "deck", uid: process.getuid(), pid: 1, inside_model_process: false, capsule_verified: true });
+  const chat = await k.gateway.grants.chats.create(oc, { people: [] });
+  const peer = await openServerPeer(connect({ relay: f.w.status.url, route: f.done.route, box: f.done.box, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: f.ks }));
+  t.after(() => peer.close());
+  const opened = [];
+  for (let i = 0; i < 8; i++) opened.push(await peer.openStream("stream.open-peer", { session: chat.id }, { onframe: () => {}, onend: () => {} }));
+  await assert.rejects(() => peer.openStream("stream.open-peer", { session: chat.id }, { onframe: () => {}, onend: () => {} }), e => /rate_limited|too many/.test(`${e.code} ${e.message}`), "the ninth is refused");
+  opened[0].close();
+  await new Promise(r => setTimeout(r, 200));
+  assert.ok(await peer.openStream("stream.open-peer", { session: chat.id }, { onframe: () => {}, onend: () => {} }), "closing one makes room");
+});
+
 test("renewal lock survives a restart: three wrong answers, the daemon restarts on the same home, and the device is still locked: no fresh tries, until the owner lifts it", async t => {
   const f = await pairFreshServer(t);
   const id = f.done.device, as = `device:${id}`, peer = { peer: { kind: "device", stableId: id, node: id } };
@@ -1071,6 +1071,105 @@ test("the three-strikes count is in the store too: two wrong answers, a restart,
   assert.ok((await d2.registry.call("presence.person.locked", {}, "cli", PROOF)).data.locked.some(l => l.device === id), "the count survived the restart: the third wrong answer locks");
 });
 
+// ---- Add this device from another device: the joining side (relay/client/phonepair.js), a box-less device with its own identity key ----
+test("add this device from another device, real daemon: a box-less device redeems the code, the words match, the person says yes, and the identity's list takes the device's key", async t => {
+  const { addThisDevice, parsePhonePayload } = await import("../relay/client/phonepair.js");
+  await standinIdentity(t); // the shared fake names directory (the module's fetch)
+  spacesHooks.stretch = { memoryKiB: 64, passes: 1 };
+  t.after(() => { spacesHooks.stretch = null; });
+  const savedTyped = process.env.VYRE_WINK_TYPED_CODE;
+  delete process.env.VYRE_WINK_TYPED_CODE;
+  t.after(() => { if (savedTyped !== undefined) process.env.VYRE_WINK_TYPED_CODE = savedTyped; });
+  const w = await world(t);
+  const me = (await w.call("spaces.identity.create", { name: "kit", password: "four plain words here", deviceLabel: "Kit's laptop" })).data;
+  assert.match(String(me && me.id), /^per_/);
+  const open = (await w.call("wink.phone.open", {})).data;
+  assert.ok(parsePhonePayload(open.qr), "the code reads as a device-adding code");
+  assert.equal(parsePhonePayload(open.qr.replace("&k=phone", "")), null, "and a server's code does not");
+  const key = crypto.generateKeyPairSync("ed25519");
+  const publicKey = key.publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("base64url");
+  const before = (await w.call("spaces.identity.entries")).data;
+  /** @type {string} */ let shown = "";
+  const joining = addThisDevice({ payload: open.qr, key: { publicKey, label: "Kit's phone" }, name: "Kit's phone", crypto: nodeCrypto(), keyStore: keystore(t), pollMs: 50, onWords: x => { shown = x; } });
+  joining.catch(() => {});
+  const asked = await until(async () => { const q = (await w.call("wink.phone.pairing")).data; return q && q.asking ? q : null; });
+  await until(async () => shown);
+  assert.equal(asked.name, "Kit's phone");
+  assert.ok(asked.choices.includes(shown), "the computer's choices hold the words this device shows");
+  assert.equal((await w.call("spaces.identity.entries")).data.length ?? (await w.call("spaces.identity.entries")).data.entries?.length, before.length ?? before.entries?.length, "nothing is on the list before the yes");
+  const yes = (await w.call("wink.phone.pair.answer", { yes: true, pick: asked.choices.indexOf(shown) + 1 })).data;
+  assert.equal(yes.yes, true, JSON.stringify(yes));
+  assert.equal(yes.enrolled, true);
+  const done = await joining;
+  assert.equal(done.paired, true);
+  assert.equal(done.enrolled, true);
+  const after = (await w.call("spaces.identity.entries")).data;
+  const list = after.entries || after;
+  assert.ok(list.some(e => e.kind === "device" && e.label === "Kit's phone"), JSON.stringify(list));
+});
+
+test("add this device from another device: a no, a wrong pick, a used code and a server's code each add nothing", async t => {
+  const { addThisDevice } = await import("../relay/client/phonepair.js");
+  await standinIdentity(t);
+  spacesHooks.stretch = { memoryKiB: 64, passes: 1 };
+  t.after(() => { spacesHooks.stretch = null; });
+  const savedTyped = process.env.VYRE_WINK_TYPED_CODE;
+  delete process.env.VYRE_WINK_TYPED_CODE;
+  t.after(() => { if (savedTyped !== undefined) process.env.VYRE_WINK_TYPED_CODE = savedTyped; });
+  const w = await world(t);
+  await w.call("spaces.identity.create", { name: "kit", password: "four plain words here", deviceLabel: "Kit's laptop" });
+  const publicKey = () => crypto.generateKeyPairSync("ed25519").publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("base64url");
+  const count = async () => { const d = (await w.call("spaces.identity.entries")).data; return (d.entries || d).length; };
+  const n0 = await count();
+  for (const answer of [{ yes: false }, { yes: true, words: "wrong wrong wrong" }]) {
+    const open = (await w.call("wink.phone.open", {})).data;
+    const p = addThisDevice({ payload: open.qr, key: { publicKey: publicKey() }, name: "Sam's phone", crypto: nodeCrypto(), keyStore: keystore(t), pollMs: 50 });
+    p.catch(() => {});
+    await until(async () => { const q = (await w.call("wink.phone.pairing")).data; return q && q.asking; });
+    assert.equal((await w.call("wink.phone.pair.answer", answer)).data.yes, false);
+    await assert.rejects(() => p, e => e.code === "denied");
+    assert.equal(await count(), n0, "nothing was added");
+  }
+  const open = (await w.call("wink.phone.open", {})).data;
+  const used = await pairTicket(parsePhoneQr(open.qr).seed, { relay: w.status.url, name: "first", crypto: nodeCrypto(), keyStore: keystore(t) });
+  assert.ok(used.pending);
+  await assert.rejects(() => addThisDevice({ payload: open.qr, key: { publicKey: publicKey() }, name: "second", crypto: nodeCrypto(), keyStore: keystore(t) }), e => e.code === "taken");
+  await assert.rejects(() => addThisDevice({ payload: "vyre://wink/2?t=AAAAAAAAAAAAAAAAAAAAAA&r=ws%3A%2F%2Fx", key: { publicKey: publicKey() } }), e => e.code === "bad_code");
+  await assert.rejects(() => addThisDevice({ payload: open.qr, key: { publicKey: "short" } }), e => e.code === "bad_code");
+  assert.equal(await count(), n0);
+});
+
+// ---- a recovered phone (tailnet, 4 Oct): its key is on the identity's list by recovery and was never paired with this server ----
+test("a recovered phone's key, on the identity's list but never paired here, is not admitted: no device channel, no peer stream, no session; its way in is a pairing (the owner's yes, or its identity proof on a pair-to server)", async t => {
+  const sealWas = process.env.VYRE_SEAL_DEV;
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; if (sealWas === undefined) delete process.env.VYRE_SEAL_DEV; else process.env.VYRE_SEAL_DEV = sealWas; });
+  const w = await world(t, { kernel: true });
+  const crypt = nodeCrypto();
+  const keys = await clientDeviceKey({ keyStore: keystore(t), crypto: crypt });
+  const offer = (await resolveTicket(fromBase64url((await w.d.registry.call("relay.pair.ticket", {}, "cli", PROOF)).data.ticket), { relay: w.status.url, crypto: crypt })).offer;
+  const route = offer.route, box = Buffer.from(offer.box);
+  // as an ordinary device (no pairing secret, no invitee hello): the box does not know the key, and the channel never opens
+  await assert.rejects(() => openChannel({ relay: w.status.url, route, box, keys, hello: { v: 1 }, crypto: crypt, WebSocket: globalThis.WebSocket }), /not a paired device|closed|refused/i);
+  // a hello that names a pairing it does not hold is the same
+  await assert.rejects(() => openChannel({ relay: w.status.url, route, box, keys, hello: { v: 1, pair: "x".repeat(22) }, crypto: crypt, WebSocket: globalThis.WebSocket }), /expired|already used|closed|refused/i);
+  assert.equal(((await w.d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices || []).length, 0, "and no device row was made");
+  // as an invitee (the only unpaired door): a channel with no row, whose one stream is the invitee stream; it gets no session, no tool and no kernel call without an invite
+  const r = await openChannel({ relay: w.status.url, route, box, keys, hello: { v: 1, invitee: true }, crypto: crypt, WebSocket: globalThis.WebSocket });
+  t.after(() => r.channel.close(1000, "done"));
+  assert.ok(r.reply.invitee && !r.reply.device);
+  const head = h => new Promise(res => { const s = r.channel.open(h); s.onhead = x => res({ status: x && x.status, s }); s.onreset = () => res({ status: 0, s }); });
+  assert.equal((await head({ peer: "wink", space: "home" })).status, 400, "no peer stream without an invite hello");
+  const { peerSession, streamPipe } = await import("../core/wink/node/peer-wire.js");
+  const bad = await head({ peer: "wink", space: "home", invitee: { space: "spc_" + "a".repeat(12), invite: "inv_" + "b".repeat(32), identity: "per_" + "c".repeat(26), entry: "d".repeat(26), ts: Date.now(), nonce: "n".repeat(20), channel: r.reply.invitee, sig: "s".repeat(86) } });
+  const session = peerSession(streamPipe(bad.s), { first: 1 });
+  for (const [tool, input] of [["system.info", {}], ["records.me", {}], ["presence.person.start-paired", { sig: "AAAA" }], ["wink.server.pairing", {}]]) {
+    await assert.rejects(() => session.call(tool, input, { timeoutMs: 3000 }), e => e.code === "denied", tool);
+  }
+  assert.equal(((await w.d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices || []).length, 0, "an invitee channel made no device row either");
+});
+
 test("an invitee link pointed at a box whose key is not the record's route.box sends no hello and answers with a plain refusal", async t => {
   const f = await pairFreshServer(t);
   const ch = { relay: f.w.status.url, route: f.done.route, box: Buffer.alloc(32, 5).toString("base64url") };
@@ -1087,4 +1186,61 @@ test("an invitee link pointed at a box whose key is not the record's route.box s
   await assert.rejects(() => links2.inviteeSessionFor({ ...ch, box: f.done.box }, hello).call("grants.invites.get", {}));
   assert.equal(heads.length, 1, "the right box key opens the channel and the head goes");
   assert.deepEqual(heads[0].invitee, hello);
+});
+
+// ---- step 13 (walker): a removed server's route is refused ----
+test("after the adopter lets a server go, its device is dropped at the relay: the relay refuses the old key and the peer door has no row for it", async t => {
+  const f = await pairFreshServer(t);
+  const id = f.done.device;
+  const row = async () => (await f.w.d.registry.call("relay.device.info", { id }, "module:vyred")).data;
+  assert.equal((await row()).removed, false);
+  const rel = await f.w.d.registry.call("wink.server.release", {}, `device:${id}`, {});
+  assert.equal(rel.data && rel.data.released, true, JSON.stringify(rel));
+  await until(async () => (await row()).removed === true, 6000);
+  const crypt = nodeCrypto();
+  const keys = await clientDeviceKey({ keyStore: f.ks, crypto: crypt });
+  await assert.rejects(() => openChannel({ relay: f.w.status.url, route: f.done.route, box: Buffer.from(f.done.box, "base64url"), keys, hello: { v: 1 }, crypto: crypt, WebSocket: globalThis.WebSocket }), /removed|not a paired|closed|refused/i, "the old key reaches nothing");
+});
+
+
+// ---- IV-5 (reviewer-3): invitee channels have a pool and a life of their own ----
+test("invitee channels: 40 strangers holding channels never take the slots the owner's paired phone needs, and an idle invitee channel is closed", async t => {
+  process.env.VYRE_SEAL_DEV = "1"; process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const w = await world(t, { kernel: true, seam: { inviteeIdleMs: 600 } });
+  const crypt = nodeCrypto();
+  const minted = await w.d.registry.call("relay.pair.ticket", {}, "cli", PROOF);
+  const ksPhone = keystore(t);
+  const paired = await pairTicket(fromBase64url(minted.data.ticket), { relay: w.status.url, name: "Alex's phone", crypto: crypt, keyStore: ksPhone });
+  const offer = (await resolveTicket(fromBase64url((await w.d.registry.call("relay.pair.ticket", {}, "cli", PROOF)).data.ticket), { relay: w.status.url, crypto: crypt })).offer;
+  const route = offer.route, box = Buffer.from(offer.box);
+  const held = [];
+  let refused = 0, admitted = 0;
+  for (let i = 0; i < 40; i++) {
+    const keys = await clientDeviceKey({ keyStore: keystore(t), crypto: crypt });
+    try {
+      const r = await openChannel({ relay: w.status.url, route, box, keys, hello: { v: 1, invitee: true }, crypto: crypt, WebSocket: globalThis.WebSocket });
+      held.push(r.channel); admitted++;
+    } catch { refused++; }
+  }
+  t.after(() => { for (const c of held) { try { c.close(1000, "done"); } catch { /* closed */ } } });
+  await new Promise(r => setTimeout(r, 300));
+  const stillOpen = held.filter(c => c.closed !== true).length;
+  assert.ok(stillOpen <= 8, `the invitee pool is 8 (${stillOpen} of ${admitted} held open)`);
+  void refused;
+  // the owner's paired phone still connects while all of them are held
+  const conn = connect({ relay: w.status.url, route: paired.route, box: paired.box, name: "Alex's phone", crypto: crypt, keyStore: ksPhone, WebSocket: globalThis.WebSocket });
+  t.after(() => conn.close());
+  await Promise.race([conn.ready(), new Promise((_, rej) => setTimeout(() => rej(new Error("the paired phone could not connect")), 8000))]);
+  // idle ones are closed by the box (no stream opened inside the idle window)
+  await new Promise(r => setTimeout(r, 1500));
+  assert.ok(held.every(c => c.closed === true), "every idle invitee channel was closed");
+  // a channel whose stream ends (a refused hello ends it) is closed at once too
+  const keys = await clientDeviceKey({ keyStore: keystore(t), crypto: crypt });
+  const r = await openChannel({ relay: w.status.url, route, box, keys, hello: { v: 1, invitee: true }, crypto: crypt, WebSocket: globalThis.WebSocket });
+  const st = r.channel.open({ peer: "wink", space: "home", invitee: { space: "spc_" + "a".repeat(12), invite: "inv_" + "b".repeat(32), identity: "per_" + "c".repeat(26), entry: "d".repeat(26), ts: Date.now(), nonce: "n".repeat(20), channel: r.reply.invitee, sig: "s".repeat(86) } });
+  await new Promise(res => { st.onhead = () => res(undefined); st.onreset = () => res(undefined); });
+  const { peerSession, streamPipe } = await import("../core/wink/node/peer-wire.js");
+  await assert.rejects(() => peerSession(streamPipe(st), { first: 1 }).call("kernel.call", { v: 1, space: "spc_" + "a".repeat(12), id: "x", ts: Date.now(), call: "grants.invites.get", args: ["inv_" + "b".repeat(32)] }, { timeoutMs: 3000 }), e => e.code === "denied");
+  await until(async () => r.channel.closed === true, 4000);
 });

@@ -1466,3 +1466,22 @@ The short fingerprint was readable by every local caller, 32 bits, with no attem
 - Reset with data: needs the kernel's `dataStores` list and `newSpace` (inject in createWink). Until they are passed an owned box refuses reset and wipe, with the reason. Key destruction belongs to the vault's entry in that list (vault to agree); the wipe runs host-CLI only (`vyre wink reset --begin --wipe`), a path launch must keep.
 
 - Step 1 of TAILSCALE-removal.md (`network.wink.status|whois|join|leave`, link.health and doctor reading the Wink node) was already built in 9ffdf15a5 (core/wink/network.js internal, core/network/wink.js the names). Re-checked 4 Oct after the restart.
+
+
+### Invitee door hardening, the invitee dial and the joining client (4 Oct, after the usage-limit restart)
+
+- IV-1 to IV-4 are in core/daemon/peer-door.js (`checkHello`): shape, channel binding and freshness first; the per-channel allowance and the box-wide directory cap before any lookup; a missed entry is cached for 60 s; the signature next; and only then the per-invite and per-identity counts and the nonce. Limits are `inviteeLimits` (`perInvite`, `perIdentity`, `perChannel`, `perBox`, `nonceMax`). The hello is `vyre-invitee-hello-v2` and carries `channel`, the id the relay assigns the invitee's channel (sha256 of its key, first 16 base32 characters).
+- The invitee's channel key is made by core/wink/serverlink.js for each invite link and thrown away with the link, so the hello can bind it. `inviteeSessionFor(channel, helloFor, { invite })` asks `helloFor(channelKeyId)` for every stream it opens.
+- `addThisDevice` (relay/client/phonepair.js): see CHANGELOG. Tested end to end on a real daemon and relay in test/wink.test.js ("add this device from another device").
+
+### The join, end to end (4 Oct): what a real daemon found
+
+test/wink.test.js "join end to end" (scratch branch work/join-e2e, never sent to devbox) runs a real server daemon (relay, kernel, sealing process with the owner's key), a space it hosts, and a second real daemon holding a second identity: preview, accept with the invitee's own proof, membership in the home's kernel, and each refusal (spent, someone else's, expired, bad signature, unknown identity, stale, an entry not on the list). Three bugs the unit tests could not see are fixed in work/wink-rc1: `relay.route.id` refused the daemon (every hello `cannot_check`), the door's remote server had no `attest`, and accepting did not end the stream at once. A refused hello is now logged with its reason.
+- Recovered phone (a key put on the identity's list by recovery, never paired with the server): not admitted. The relay refuses the channel (`not a paired device`), makes no row; as an invitee channel it has one stream and no session, tool or kernel call without an invite. Its ways in are a pairing (the owner's yes, or the identity proof on a `--pair-to` server) or an invite. Tested in "a recovered phone's key ...".
+
+### Doing, next, needs (4 Oct, end of the restart session)
+
+- Done and sent: wink-rc1 b74d18b8e (see the entries above). Scratch work/join-e2e 5a3d851b3 holds the two-daemon join test and windows' hello v2 change in core/spaces/index.js; it is never sent to devbox.
+- Needs from windows: core/spaces/index.js inviteeHello v2 with the channel key id (diff on work/join-e2e), or every invite is refused as bad_input once wink-rc1 is trunk.
+- Needs a ruling (team-lead, platform, vault): an invitee's first presence proof to a server it never touched is refused (`presence_required`). The server's sealing process holds no key for that person and `INVITEE_CALLS` is get and accept only, so no wire path enrols one. The e2e enrols the invitee's key as a fixture. Proposal: `grants.invites.accept` carries an enrolment `{ key_id, spki, signer, bind }` whose `bind` is signed by a device on the invitee's identity list (the door already resolved that list), and the sealing process enrols it as it does at pairing.
+- Next: re-run the full gate on the merged head (counts to devbox and reviewer-3), then answer reviewer-3's re-gate.

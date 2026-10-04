@@ -211,3 +211,21 @@ test("seal a field in place over Twenty: no plaintext in Twenty's rows, the stor
   assert.equal(JSON.stringify((await store.changes(null, 1000)).entries).includes("123-45-67"), false);
   assert.equal(JSON.stringify(host.log.read()).includes("123-45-67"), false);
 });
+
+test("forget a record over Twenty: the row is destroyed in Twenty, the snapshot and change log lose it, Twenty's timeline is purged", async () => {
+  const { host, store } = await boot();
+  const c = host.ownerChain(), R = host.kernel.records;
+  await host.defineTypes([{ name: "person", label: "Person", fields: [{ name: "name", kind: "text", label: "Name", required: true }] }]);
+  const p = await R.create(c, "person", { name: "Jane Needle" });
+  const keep = await R.create(c, "person", { name: "Bob Keep" });
+  const before = fake.timelinePurges ?? 0;
+  const out = await host.kernel.migrate.forget(c, { type: "person", id: p.id });
+  assert.ok(out.forgotten.endsWith(p.id));
+  assert.equal(await R.get(c, "person", p.id), null);
+  assert.equal(await store.get("person", p.id, { include_deleted: true }), null);
+  assert.equal(JSON.stringify([...fake.rows.values()].flatMap((m) => [...m.values()])).includes("Jane Needle"), false, "not in Twenty's rows");
+  assert.equal(JSON.stringify((await store.changes(null, 1000)).entries).includes("Jane Needle"), false);
+  assert.equal(JSON.stringify(host.log.read()).includes("Jane Needle"), false);
+  assert.equal(fake.timelinePurges, before + 1);
+  assert.equal((await R.get(c, "person", keep.id)).data.name, "Bob Keep");
+});

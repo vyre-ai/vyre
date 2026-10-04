@@ -71,6 +71,21 @@ test("a Space made through spaces.create is the kernel's Space (one id, a store 
   assert.ok(!added.error, JSON.stringify(added).slice(0, 300));
   assert.deepEqual(added.data.agent, { kind: "agent", id: "kit" });
   assert.equal((await d.registry.call("spaces.members.add-agent", { space, agent: "Bad Name!" }, "cli", SI)).error.code, "bad_input");
+  // the CLI against this live daemon: `vyre space use <name>` remembers the space, `vyre call` passes it to a tool that takes one, `vyre status` shows it, and --space overrides it
+  const { execFile } = await import("node:child_process");
+  const BIN = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "bin", "vyre");
+  const cli = (/** @type {string[]} */ args) => new Promise(resolve => execFile(process.execPath, [BIN, ...args], { env: { ...process.env, VYRE_HOME: root, NO_COLOR: "1", VYRE_NO_DIALOGS: "1" }, timeout: 30_000 }, (err, stdout, stderr) => resolve({ code: err ? Number(/** @type {any} */ (err).code ?? 1) : 0, stdout, stderr })));
+  const used = /** @type {any} */ (await cli(["space", "use", "estatedev"]));
+  console.log("CLI space use:", used.code, JSON.stringify(used.stdout.trim()), used.stderr.trim());
+  assert.equal(used.code, 0, used.stdout + used.stderr);
+  const viaCli = /** @type {any} */ (await cli(["call", "records.me"]));
+  console.log("CLI call records.me:", viaCli.code, viaCli.stdout.replace(/\s+/g, " ").slice(0, 300));
+  assert.equal(JSON.parse(viaCli.stdout).acted_in.id, space, "the remembered space was passed to records.me");
+  const overridden = /** @type {any} */ (await cli(["call", "--space", space, "records.me"]));
+  assert.equal(JSON.parse(overridden.stdout).acted_in.id, space);
+  assert.equal(JSON.parse(/** @type {any} */ ((await cli(["space", "--json"]))).stdout).space, space);
+  assert.equal((await cli(["space", "use", "--clear"])).code, 0);
+  assert.equal(JSON.parse((/** @type {any} */ (await cli(["call", "records.me"]))).stdout).acted_in.label, "home", "cleared: the home's own space again");
   // one id for the space everywhere
   const listed = (await ok("spaces.list")).spaces || (await ok("spaces.list"));
   const row = (Array.isArray(listed) ? listed : listed.spaces).find(x => x.name === "estatedev.vyre.run");
