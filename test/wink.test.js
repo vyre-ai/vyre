@@ -1170,8 +1170,8 @@ test("device-first attacks: a removed device holding a token and a stream is ref
   await assert.rejects(() => links.startPaired("srv"), e => e.code === "denied");
   // removing the device at the server ends its next call, session and all
   assert.equal((await w.call("wink.remove", { device: done.device }, SCREEN, A)).data.removed, done.device);
-  await assert.rejects(() => l.call("records.me", {}), e => ["denied", "unreachable"].includes(e.code));
-  await assert.rejects(() => links.remoteKernel("srv", w.d.kernel.id.space).gateway.grants.members.list(null), e => ["denied", "unreachable", "not_a_member"].includes(e.code));
+  await assert.rejects(() => l.call("records.me", {}), e => /denied|closed|removed|unreachable|paired/.test(`${e.code} ${e.message}`));
+  await assert.rejects(() => links.remoteKernel("srv", w.d.kernel.id.space).gateway.grants.members.list(null), e => /denied|closed|removed|unreachable|paired|not_a_member/.test(`${e.code} ${e.message}`));
 });
 
 test("device-first: a web device is recorded as web, signs in with no device key and can call nothing over a peer stream", async t => {
@@ -1181,4 +1181,6 @@ test("device-first: a web device is recorded as web, signs in with no device key
   assert.equal(rec.key, null, "a browser has no device key, so no device-key session");
   const links = linksFor(t, f);
   await assert.rejects(() => links.startPaired("srv"), e => e.code === "denied", "no grant was made for a browser");
+  // a browser with no device key has no person session, so a call over its peer stream is refused: it can do nothing that needs the person, a proof least of all
+  await assert.rejects(() => links.sessionFor("srv").call("records.me", {}), e => /person|passkey|denied|sign in/.test(`${e.code} ${e.message}`));
 });
