@@ -41,6 +41,9 @@ export default {
     const audienceOf = async (/** @type {any} */ extra) => {
       const k = kernelOf();
       const unknown = (/** @type {string} */ why) => Object.assign(new Error(why), { code: "unavailable" });
+      // A call whose own chain names no chat (the person at a surface, a session opened with no chat) is not in a room: one to one. A chain that names a chat must give its audience below.
+      const own = await chainOf(extra);
+      if (own && !own.room) return null;
       if (typeof k.audienceFor !== "function") throw unknown("the room this runs in is not known, so nothing is built for it");
       const room = await k.audienceFor(extra || {});
       if (!room || typeof room.group !== "boolean") throw unknown("the room this runs in is not known, so nothing is built for it");

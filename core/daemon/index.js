@@ -250,7 +250,7 @@ async function startLocked(opts, root, p, release) {
       if (r && r.error) { if (r.error.code === "no_such_tool" || r.error.code === "not_available") return true; return false; }
       return !r || !r.data || r.data.enrolled !== false;
     };
-    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
+    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
       // A credentialed request run at the home: the vault's own forward (an internal tool only the lease module may call), under the Space's credential; the kernel has already authorized it.
       forwardCredential: async (/** @type {any} */ q) => {
         const r = q.request;

@@ -34,6 +34,7 @@ import { evaluate } from "./eval.js";
 import { spawnEmbedder, cached, installed, DOWNLOAD_MB } from "./embed.js";
 import { pacer, gate } from "./pace.js";
 import { Dense } from "./dense.js";
+import { scanIndex, scrubIndex, scrubLog } from "./sealed.js";
 import { Watches } from "./watch.js";
 import { blocks, find, peek } from "../transcripts/index.js";
 import { transcriptFolders } from "../config/index.js";
@@ -514,6 +515,25 @@ export default {
         // The Space's memory forgets what it kept of them too (a refusal or no work module is fine: there is nothing to forget).
         for (const id of ids.map(String)) { try { await ctx.call("work.know.forget", { session: id }); } catch { /* nothing kept */ } }
         return { forgot: n };
+      },
+    });
+    ctx.tool("recall.sealscan", {
+      description: "One look at what Recall's index already holds that has the shape of a sealed value (an SSN, a card or bank number, an IBAN and the rest): which table and column, how many rows and which classes, and how many search vectors were made from them, never a value. It changes nothing. New turns are scrubbed on the way in.",
+      callers: ["cli", "local", "deck", "capsule"],
+      input: { type: "object", properties: {} },
+      run: async () => ({ ...scanIndex(db), log: scrubLog(db), note: "Counts only. Nothing was changed. A value that is sealed in a record today can only be matched by the sealing process's ledger, which Recall does not hold." }),
+    });
+    ctx.tool("recall.sealscrub", {
+      description: "Rewrite what Recall's index already holds that has the shape of a sealed value: each matched span becomes a placeholder, nothing else in a turn, title or name changes, and the search vectors made from a changed turn are dropped and made again. Only the person, with presence. One log row (counts and classes) is kept.",
+      callers: ["cli", "local", "deck", "capsule"],
+      presence: { summary: () => "Replace values shaped like an SSN, card or bank number in your searchable history with placeholders" },
+      input: { type: "object", properties: {} },
+      run: async () => {
+        const r = scrubIndex(db);
+        if (r.turns) dense.invalidate();
+        ctx.log(`recall: sealed-class scrub rewrote ${r.turns} turns, ${r.titles} titles, ${r.names} names; dropped ${r.vectors} vectors`);
+        ctx.events.emit("recall.scrubbed", { turns: r.turns, titles: r.titles, names: r.names, vectors: r.vectors, classes: r.classes });
+        return r;
       },
     });
     ctx.tool("recall.index", {
