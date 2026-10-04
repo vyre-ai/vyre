@@ -97,6 +97,8 @@ echo "$st"
 check_modules
 # A migration that fails on a module takes its tools away while the daemon stays up: the log says so.
 ! docker logs vyre-vyre-1 2>&1 | grep -Ei 'migration .* failed' || { docker logs vyre-vyre-1 2>&1 | grep -Ei 'migration .* failed' | head -5; echo "a migration failed at boot"; soft; }
+# A fresh install never needs the duplicate-column repair either.
+! docker logs vyre-vyre-1 2>&1 | grep -qE 'migration .* v[0-9]+: column already present, treated as applied' || { docker logs vyre-vyre-1 2>&1 | grep -E 'column already present' | head -3; echo "a fresh install needed the duplicate-column migration repair"; soft; }
 # A root-run update passes the daemon only the settings it checks (box/vyre prepare_run). Run one as root (`sudo vyre up` recreates the container from root's own env file), then the
 # kernel must still be on and the same modules must run: a box must not fall back to kernel off after its first update.
 sudo -n vyre up >"$WORK/rootrun.log" 2>&1 || { tail -20 "$WORK/rootrun.log"; echo "the root-run up failed"; exit 1; }
@@ -123,7 +125,9 @@ docker exec -u 0 vyre-vyre-1 node --input-type=module -e 'const d = await import
 # (the real command needs a terminal: the checks give it one with script(1); the test override for "no terminal" is refused in a root run, as it should be)
 out=$(printf 'not-the-word\n' | timeout 120 script -qec "sudo -n vyre admin wipe" /dev/null 2>&1 || true)
 printf '%s' "$out" | grep -q "that was not the word; nothing was done" || { echo "admin wipe with a wrong word did not refuse plainly: $out"; soft; }
-out=$(printf 'anchor-reset\n{}\n' | timeout 300 script -qec "sudo -n vyre admin anchor-reset" /dev/null 2>&1 || true)
+out=$( { printf 'anchor-reset\n'; sleep 30; printf '{}\n'; sleep 10; } | timeout 100 script -qec "sudo -n vyre admin anchor-reset" /dev/null 2>&1 || true)
+# Whatever happened above (a timeout kill included), the daemon is started again so the blocks after this one run.
+docker start vyre-vyre-1 >/dev/null 2>&1 || true
 printf '%s' "$out" | grep -Eq 'refused: (unknown_key|no_proof|bad_proof|needs_presence)' || { echo "admin anchor-reset with a bad proof did not refuse for the right reason: $out"; soft; }
 printf '%s' "$out" | grep -Eq 'no Vyre home|no_home|has no anchor-reset step|has no admin' && { echo "admin anchor-reset could not even start its step: $out"; soft; }
 ready || { docker logs vyre-vyre-1 2>&1 | tail -20; echo "vyred did not come back after the anchor-reset refusal"; exit 1; }

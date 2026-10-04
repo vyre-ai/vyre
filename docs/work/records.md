@@ -37,6 +37,11 @@ Scope: `records/` (the language, the Kits, the Stripe connector, the stand-in ga
 
 - Twenty load, first run (testbox3, 4 cores, box load 10 to 12 from other teams and my own test runs, so latencies are inflated: indicative only), 20 simulated people through the gateway, `small` profile, `stores/twenty/live/load-live.mjs twenty 5000,20000 60 20`. Memory is firm: server 1.02 GB (limit 1.5), worker 0.85 GB (limit 1.0) while seeding then 0.69, db 0.11 to 0.15 GB (limit 0.256), redis 0.02 GB: about 2.0 GB of the 2.9 GB of limits, so the `small` profile and `REQUIRE.memoryMb` (3,212) hold, and the worker is the one near its limit. Seeding ran at 21 to 25 writes per second. 5,019 records: get p50 0.7 s, find by email 1.0 s, list by stage sorted 2.4 s, edit 4.2 s, add 2.9 s. 20,009 records: get 0.6 s, find by email 0.8 s, list 1.9 s, edit 2.8 s, add 0.8 s. Two things did not scale: SEARCH took 38 s at 5k and 210 s at 20k (it scanned every row of a type for the common word "Client"), and COUNT BY STAGE 12 s at 5k and 55 s at 20k (the gateway pages every row of the type through its permission check; no native group-by yet). Search is fixed in `69a7d1d4f` (rows holding every word first, one filtered scan); totals wait for kernel-2's uniform-decision path to call `store.aggregate` and a native Twenty group-by, being built now.
 
+## Done 4 Oct afternoon (resume 13:50Z)
+
+- Forget path: sqlite `persist.destroy` decrements kept stage counts, deletes the attribute row and cache entry in one savepoint (tests in kernel/store/sqlite.test.js). `records.forget` needs presence (stand-in header in tests), PERSON_ONLY for assistants, `records.forget.propose` makes a task; the answer carries sessions_mentioning, sealed_dropped, sealed_left, files_kept and the plain sentence. The store status line (`records_store` on /v1/health and `vyre status`) was already in 750f36420.
+- NEXT (paused 4 Oct by lead, wake on message): (4) records on a server-hosted space from a device (gateway-door routing, both stores); the 20k mixed-load table on a quiet box.
+
 ## Done 5 Oct (resume after the team restart)
 
 - Merged origin/work/kernel into work/records (cd447be20); gateway/records.js conflicts resolved keeping room limits plus computed and hidden fields. Targeted gateway, records and stores suites pass on testbox3.

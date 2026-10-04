@@ -11,4 +11,4 @@ export function pairServer(o: {
   about?: { kind?: "app" | "web"; release?: string; manifest?: string };
   presenceKey?: unknown; passkey?: unknown;
   onWords?: (words: string) => void; signal?: AbortSignal; pollMs?: number; timeoutMs?: number;
-}): Promise<{ paired: true; relay: string; route: string; box: string; device: string; name: string; owner: unknown }>;
+}): Promise<{ paired: true; relay: string; route: string; box: string; device: string; name: string; owner: unknown; session?: boolean }>;

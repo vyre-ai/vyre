@@ -1,0 +1,31 @@
+{
+ "files": {
+  "core/approvals/index.js": 1,
+  "core/artifacts/index.js": 1,
+  "core/computers/index.js": 1,
+  "core/files/dirs.js": 1,
+  "core/files/drive.js": 2,
+  "core/files/mentions.js": 1,
+  "core/files/space-drive.js": 1,
+  "core/link/box.js": 1,
+  "core/link/mac.js": 2,
+  "core/modulelist/index.js": 1,
+  "core/names/index.js": 2,
+  "core/network/tailscale.js": 1,
+  "core/network/wink.js": 1,
+  "core/onboard/index.js": 2,
+  "core/presence/module.js": 1,
+  "core/publish/index.js": 1,
+  "core/records-tools/index.js": 1,
+  "core/relay/index.js": 2,
+  "core/rules-tools/index.js": 1,
+  "core/signin/index.js": 1,
+  "core/switchboard/index.js": 2,
+  "core/tasks-tools/index.js": 1,
+  "core/vault/tools/deck.js": 1,
+  "core/vitals/index.js": 1,
+  "core/watchers/index.js": 1,
+  "kernel/core/chain.js": 1,
+  "kernel/retrofit/gates.js": 1
+ }
+}

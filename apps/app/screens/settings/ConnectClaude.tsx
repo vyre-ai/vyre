@@ -4,11 +4,14 @@ import { useCallback, useEffect, useState } from "react";
 import { Linking, View } from "react-native";
 import { Button, Card, Chip, Field, LoadingState, Text, showToast } from "@vyre/ui";
 import { tool } from "../../src/real/box";
+import { Platform } from "react-native";
 import { claimBlocked } from "../shell/rc";
 import { DISCONNECT_NOTE, aiRefusal, claudeOf, claudeState, codeInput, disconnectInput, keyInput, safeLink, startInput } from "../../src/real/ai-connect.js";
 
 // tool() answers a presence ask the way this build does (the phone's biometric; a browser says to do it on the phone), so onboard.claude, which needs the person's presence, works from here.
 const ask = (name: string, input: Record<string, unknown> = {}) => tool<any>(name, input);
+
+const surfaceNow = (): "browser" | "mac" | "phone" => (Platform.OS !== "web" ? "phone" : typeof window !== "undefined" && (window as any).__vyreShell ? "mac" : "browser");
 
 export function ConnectClaude({ onConnected }: { onConnected?: () => void }) {
   const [claude, setClaude] = useState<any>(null);
@@ -19,16 +22,17 @@ export function ConnectClaude({ onConnected }: { onConnected?: () => void }) {
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState("");
   const [pairFirst, setPairFirst] = useState(false);
+  const [ownerFirst, setOwnerFirst] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
-  const load = useCallback(() => { ask("onboard.status").then((s) => { setClaude(claudeOf(s)); if (s?.owned === false) setPairFirst(true); setLoaded(true); }).catch((e) => { (e as { code?: string }).code === "pair_first" ? setPairFirst(true) : setFailed(aiRefusal((e as { code?: string }).code, (e as Error).message)); setLoaded(true); }); }, []);
+  const load = useCallback(() => { ask("onboard.status").then((s) => { setClaude(claudeOf(s)); if (s?.owned === false) setPairFirst(true); setOwnerFirst(typeof s?.ownerFirst === "string" ? s.ownerFirst : null); setLoaded(true); }).catch((e) => { (e as { code?: string }).code === "pair_first" ? setPairFirst(true) : setFailed(aiRefusal((e as { code?: string }).code, (e as Error).message, surfaceNow())); setLoaded(true); }); }, []);
   useEffect(load, [load]);
-  const st = claudeState(claude, { waiting: !!link, failed, pairFirst, onPhone: claimBlocked() });
+  const st = claudeState(claude, { waiting: !!link, failed, pairFirst, ownerFirst, surface: surfaceNow(), onPhone: claimBlocked() });
   useEffect(() => { if (st.state === "connected") onConnected?.(); }, [st.state]);
 
   const run = async (input: Record<string, unknown>, then?: (d: any) => void) => {
     setBusy(true); setFailed("");
     try { const d = await ask("onboard.claude", input); then?.(d); load(); }
-    catch (e) { (e as { code?: string }).code === "pair_first" ? setPairFirst(true) : setFailed(aiRefusal((e as { code?: string }).code, (e as Error).message)); }
+    catch (e) { (e as { code?: string }).code === "pair_first" ? setPairFirst(true) : setFailed(aiRefusal((e as { code?: string }).code, (e as Error).message, surfaceNow())); }
     finally { setBusy(false); }
   };
   const start = () => run(startInput(), (d) => { const l = safeLink(d?.url); if (l) setLink(l); else setFailed("The home did not give a sign-in link."); });

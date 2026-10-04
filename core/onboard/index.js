@@ -524,8 +524,10 @@ export default {
       input: obj({ mode: { type: "string", enum: ["detect", "setup-token", "api-key", "disconnect"] }, key: { type: "string" }, code: { type: "string" },
         kind: { type: "string", enum: ["subscription", "api-key"] }, token: { type: "string" } }),
       run: async ({ mode, key, code, kind, token }, { caller, ...meta }) => {
-        boxOnly();
-        ownerWrite(caller, meta, "signing in to Claude", await isOwned());
+        // A computer that is itself its owner's Vyre (no pairing) may sign in to Claude once the person has claimed their identity there; a computer with no owner still refuses like any non-server.
+        const owned = await isOwned();
+        if (!config.isServer(ctx.config.machine) && !owned) boxOnly();
+        ownerWrite(caller, meta, "signing in to Claude", owned);
         // Only a read (no mode, or detect, and nothing to store) is open to a non-person; storing a key or starting the sign-in is the person's (HD-1).
         if (mode !== "detect" && (mode || key || code || kind || token)) personOnly(caller);
         if (mode === "disconnect") {

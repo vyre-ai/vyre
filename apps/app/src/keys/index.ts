@@ -13,6 +13,7 @@ export async function signIdentityOp(message: Uint8Array): Promise<Uint8Array> {
   if (!k) throw Object.assign(new Error("no identity key on this device"), { code: "ERR_NO_KEY" });
   return k.sign(message);
 }
+export const recoveryKeyOptions = async (): Promise<{ enclave?: string; requireEnclave?: boolean }> => ({});
 export async function hasKeys(): Promise<{ identity: boolean; presence: boolean }> { return { identity: await hasIdentity(), presence: false }; }
 export async function wipeKeys(): Promise<void> { await forgetIdentity(); }
 export async function keyStorage(): Promise<KeyStorage> {

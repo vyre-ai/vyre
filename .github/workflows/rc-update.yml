@@ -4,6 +4,8 @@ name: rc-update
 on:
   workflow_call:
   workflow_dispatch:
+  push:
+    branches: [work/launch-03] # the dispatch needs the file on the default branch; this branch's own proof runs on its pushes
 permissions:
   contents: read
 concurrency:

@@ -118,7 +118,7 @@ async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticke
   // The relay client does the pairing (relay/client/serverpair.js): redeem the code, show the words, the person at the server picks the same words, the server records this identity as its owner.
   const run = pairServer({
     // The pin (head and length of this identity's chain) is what a release server checks the proof against; without it a release server refuses (no_pin).
-    payload: textOf(code), owner: { id: mine.id, name: plainName(mine.name), pin: mine.pin },
+    payload: textOf(code), owner: { id: mine.id, name: plainName(mine.name), vyre: mine.name, pin: mine.pin },
     // the identity's proof is sent in the first adopt call, made from this pairing's own box and device (reviewer-3 PD-B). A phone with its Secure Enclave key adds `esig` over the same
     // message (the ticket tag is in it) behind Face ID: sig and esig come from one signListChange, so Face ID is asked once, and a release server accepts only that pair (PI-1).
     signIdentity: async (m: Uint8Array) => {
@@ -140,8 +140,11 @@ async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticke
     answer: async () => false,
     async confirm() {
       const r = await run;
+      // paired but the server made no session for this device (pairServer says session:false): say so in a code the install page words (no_session), pairing stays saved
+      const noSession = (r as { session?: boolean }).session === false;
       await savePairing({ relay: r.relay, route: r.route, box: r.box, name: r.name, device: r.device, presence: null } as never);
       // The server made this device's one-use grant at the yes: sign in over the channel and keep the token, so the owner's next calls (spaces.create, Now) carry a person session.
+      if (noSession) { const { usePeer } = await import("./peer"); usePeer(false); throw Object.assign(new Error("Paired, but this device has no sign-in with the server yet."), { code: "no_session" }); }
       // From now on this device reaches the server over the peer wire (src/real/peer.ts); the paired session is opened first, as the server asks.
       (await import("./peer")).usePeer(true);
       await openPairedSession(r).catch((e: Error) => { throw new Error(`Paired, but this browser could not sign in to the server: ${e.message}`); });

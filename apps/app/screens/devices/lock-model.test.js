@@ -27,7 +27,7 @@ test("the row says when the lock lifts by itself, with the control's own name", 
 test("a refused unlock says why in plain words: not the owner, no presence, no such tool", () => {
   assert.match(unlockRefusal("not_allowed"), /Only the owner/);
   assert.match(unlockRefusal("denied"), /Only the owner/);
-  assert.match(unlockRefusal("presence_required"), /Approve on this device/);
+  assert.match(unlockRefusal("presence_required"), /Approve this in Vyre on your phone/);
   assert.match(unlockRefusal("no_such_tool", "14:20"), /^Your home cannot lift a lock yet\. It unlocks by itself at 14:20\.$/);
   assert.match(unlockRefusal("no_such_tool"), /It unlocks by itself\./);
   assert.equal(unlockRefusal("on_phone"), "Let it sign in again in Vyre on your phone.");
