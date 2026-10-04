@@ -5,6 +5,8 @@
 # served from two local web servers. Then: (1) the old release is installed with the real installer and given data; (2) `vyre update` takes it to the candidate: the candidate's version runs, the kernel
 # is on (VYRE_KERNEL=1) and the store setting kept (VYRE_STORE), the signed modules run, the data written before is still there; (3) `vyre update --rollback` puts the old release back and the data is
 # still there (the old line has no module list, so no phone approval is asked). The real key never appears.
+# DEV_KIND=1: the same run with the candidate built development-kind and the owner a stand-in at the terminal (dev-presence-stand-in in the home, as the walks use), so the reads and writes go through the product
+# as the owner (a release-kind box in CI has no owner: personal memory is then proven at the home's database files).
 set -eu
 [ -n "${CI:-}" ] || { echo "rc-update-proof: runs on a CI runner only (CI is unset)" >&2; exit 2; }
 HERE=$(cd "$(dirname "$0")/.." && pwd)
@@ -30,7 +32,7 @@ CANDKEY=$(sed -n 's/^export const RELEASE_KEY = "\(.*\)";/\1/p' "$HERE/lib/relea
 [ -n "$CANDKEY" ] || fail "could not read the candidate's pinned key"
 for f in core/vyre-core/release.js box/vyre lib/release-sig.js scripts/install-mac-server.sh deck/sw.js; do [ -f "$WORK/new/$f" ] && sed -i "s#$CANDKEY#$NEWPUB#g" "$WORK/new/$f"; done
 ( cd "$WORK/new" && npm ci --no-audit --no-fund >/dev/null && (cd apps/app && npm ci --no-audit --no-fund >/dev/null) \
-  && VYRE_SIGNING_KEY="$(cat "$WORK/proof.pem")" VYRE_CHANNEL=beta VYRE_TEST_UNSTRIPPED_WRAPPER=1 sh scripts/build-site.sh >"$WORK/new-build.log" 2>&1 ) || { tail -30 "$WORK/new-build.log"; fail "the candidate did not build"; }
+  && VYRE_SIGNING_KEY="$(cat "$WORK/proof.pem")" VYRE_CHANNEL=beta VYRE_TEST_UNSTRIPPED_WRAPPER=1 VYRE_TEST_DEV_KIND="${DEV_KIND:-0}" sh scripts/build-site.sh >"$WORK/new-build.log" 2>&1 ) || { tail -30 "$WORK/new-build.log"; fail "the candidate did not build"; }
 NEWV=$(tr -d ' \r\n' <"$WORK/new/site/box/VERSION")
 
 # The old line: the tag, its pinned key swapped to the same throwaway key, built the way it was released.
@@ -55,10 +57,20 @@ VYRE_BOX_URL=http://127.0.0.1:18181/ VYRE_BUILD=tgz VYRE_DEV_SIGN=0 VYRE_MODULES
 ready || fail "the old release did not come up"
 [ "$(docker exec vyre-vyre-1 node -p 'require("/opt/vyre/package.json").version')" = "$OLDV" ] || fail "the old install is not $OLDV"
 docker exec -u 1000 vyre-vyre-1 sh -c 'echo rc-marker-1 > /home/vyre/.vyre/rc-marker' || fail "could not write data into the old home"
+# Reads. With the kernel on, personal memory is read only by a person (a device or a signed-in terminal): a CI server has no owner, so the host's `vyre call` is a plain cli and is refused ("no kernel chain"), which is the design.
+# A fact is then proven present by what the home's own database files hold (the same text, found in the files), which is where a lost record would show.
+home_has() { docker exec -u 1000 vyre-vyre-1 sh -c 'find /home/vyre/.vyre -type f \( -name "*.db" -o -name "*.db-wal" -o -name "*.sqlite*" \) -exec grep -la -- "$0" {} + 2>/dev/null | head -n 1' "$1" | grep -q .; }
+read_back() { # TEXT TOOL
+  rb=$(vyre call "$2" '{}' 2>&1 || true)
+  printf '%s' "$rb" | grep -q "$1" && return 0
+  [ "${DEV_KIND:-0}" != 1 ] || return 1 # an owned box reads through the product, no fallback
+  printf '%s' "$rb" | grep -Eq 'no kernel chain|presence|sign ?in|not a signed-in person|denied' && home_has "$1"
+}
 # An untouched 0.2 server: no VYRE_STORE (a 0.2 install never wrote one; the default is the built-in store). Real records are written through the 0.2 tools the data is read back with.
 vyre call memory.remember '{"text":"My wife is Robin"}' >/dev/null 2>&1 || fail "could not write a memory fact into the old release"
 vyre call planner.add '{"kind":"note","text":"Marlow and Finch retainer draft"}' >/dev/null 2>&1 || fail "could not write a planner note into the old release"
 vyre call memory.me '{}' 2>&1 | grep -q Robin && vyre call planner.list '{}' 2>&1 | grep -q 'retainer draft' || fail "the seed is not readable on the old release"
+home_has Robin && home_has 'retainer draft' || fail "the seed is not in the old home's database files (the file check cannot see it)"
 # What the person's own config already enabled (a module off by default that the old home turned on stays on after an update: that is their choice, not a difference from a fresh install).
 docker exec -u 1000 vyre-vyre-1 cat /home/vyre/.vyre/config.json >"$WORK/old-config.json" 2>/dev/null || echo '{}' >"$WORK/old-config.json"
 docker exec vyre-vyre-1 env | grep -q '^VYRE_STORE=' && fail "the old install already has VYRE_STORE (this proof starts from an untouched 0.2 box)"
@@ -107,6 +119,10 @@ do_update() { # LABEL STORE: STORE is none (an untouched box: no VYRE_STORE appe
           [ -z "$(sudo ls /var/lib/vyre-spaces/private/spaces 2>/dev/null)" ] || fail "$1: a Space store was set up on a box that never chose one" ;;
   esac
   every_module "$1"
+  if [ "${DEV_KIND:-0}" = 1 ]; then
+    docker exec -u 1000 vyre-vyre-1 sh -c 'grep -q "development" /opt/vyre/lib/build-kind.js' || fail "$1: DEV_KIND=1 but the candidate is not development-kind"
+    docker exec -u 1000 vyre-vyre-1 touch /home/vyre/.vyre/dev-presence-stand-in || fail "$1: could not place the owner stand-in"
+  fi
   # records' store line (/v1/health records_store, when this candidate carries it): an untouched box is on the built-in store by default and it answers.
   if [ "$2" = none ]; then
     rs=$(vyre status --json 2>/dev/null | tr -d '\n ' || true)
@@ -115,15 +131,15 @@ do_update() { # LABEL STORE: STORE is none (an untouched box: no VYRE_STORE appe
     esac
   fi
   # The records written before the update are read back, and the box is still on the store they live in (the built-in one: there is no status line for the store, so: no Twenty stack, and the data reads).
-  vyre call memory.me '{}' 2>&1 | grep -q Robin || fail "$1: the memory fact written before the update is not read back"
-  vyre call planner.list '{}' 2>&1 | grep -q 'retainer draft' || fail "$1: the planner note written before the update is not read back"
+  read_back Robin memory.me || { echo "--- memory.me:"; vyre call memory.me '{}' 2>&1 | head -5; fail "$1: the memory fact written before the update is not read back"; }
+  read_back 'retainer draft' planner.list || fail "$1: the planner note written before the update is not read back"
   [ "$(docker exec vyre-vyre-1 cat /home/vyre/.vyre/rc-marker 2>/dev/null)" = rc-marker-1 ] || fail "$1: the data written before the update is gone"
 }
 do_update "2 update" none
 # A record written after the update is read back after a restart.
 vyre call memory.remember '{"text":"My daughter is Lina"}' >/dev/null 2>&1 || fail "2: could not write a record after the update"
 docker restart vyre-vyre-1 >/dev/null; ready || fail "2: the box did not come back after a restart"; sleep 15
-vyre call memory.me '{}' 2>&1 | grep -q Lina || fail "2: the record written after the update is gone after a restart"
+read_back Lina memory.me || fail "2: the record written after the update is gone after a restart"
 say "2 ok: updated to $NEWV with no VYRE_STORE added, kernel on, every module runs, records before and after the update read back"
 
 # 3. the rollback to the old release: the old line has no module list, so there is nothing to approve.
