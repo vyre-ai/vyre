@@ -568,7 +568,7 @@ test("WF-1: a seal.mac that rejects once leaves the store exactly as it was, and
   // adoptOwner (a change of several events: the marker first, then the moves; the log decides)
   const NEW = "per_cccccccccccccccccccccccccc";
   fails = 1;
-  await assert.rejects(() => gs.adoptOwner(NEW), /sealing process/);
+  await assert.rejects(() => gs.adoptOwner(NEW, OWNER), /sealing process/);
   assert.equal(gs.adopted(), null, "a failed adoption left no marker in memory");
   await againstRebuild("failed adoption");
   // and each of them, once the sealing process is back, works
@@ -586,23 +586,23 @@ test("AO-3: a crash right after the owner.adopted marker (the owner moved only i
   const NEW = "per_cccccccccccccccccccccccccc", OTHER = "per_dddddddddddddddddddddddddd";
   const role = p => gs.roleOf({ kind: "person", id: p, space: SPACE });
   allow = 1; // the marker is sealed and written, then the process dies
-  await assert.rejects(() => gs.adoptOwner(NEW), /process died/);
+  await assert.rejects(() => gs.adoptOwner(NEW, OWNER), /process died/);
   allow = Infinity;
   assert.deepEqual(gs.adopted(), { from: OWNER, to: NEW }, "the marker is in the log and in memory");
   assert.equal(role(OWNER), "owner", "the move did not happen");
   assert.equal(role(NEW), null);
-  await assert.rejects(() => gs.adoptOwner(OTHER), { code: "already_adopted" }, "a different id is refused while the first is unfinished");
+  await assert.rejects(() => gs.adoptOwner(OTHER, OWNER), { code: "already_adopted" }, "a different id is refused while the first is unfinished");
   // a restart: the rebuild reads the marker, and the boot repair (kernel/index.js) calls adoptOwner with it
   await gs.rebuild();
   assert.deepEqual(gs.adopted(), { from: OWNER, to: NEW });
-  const done = await gs.adoptOwner(NEW);
+  const done = await gs.adoptOwner(NEW, OWNER);
   assert.deepEqual(done, { owner: NEW, previous: OWNER, changed: true });
   assert.equal(role(NEW), "owner"); assert.equal(role(OWNER), null);
   assert.equal(log.read({ type: "owner.adopted" }).length, 1, "the marker is not written twice");
   const live = JSON.stringify([role(NEW), role(OWNER)]);
   await gs.rebuild();
   assert.equal(JSON.stringify([role(NEW), role(OWNER)]), live, "a rebuild agrees");
-  assert.deepEqual(await gs.adoptOwner(NEW), { owner: NEW, previous: OWNER, changed: false });
+  assert.deepEqual(await gs.adoptOwner(NEW, OWNER), { owner: NEW, previous: OWNER, changed: false });
 });
 
 test("lend (ruling 5 Oct): the first lend takes ONE proof bound to the compound act and makes both sides; the proof covers nothing else; taking it away needs only a live session", async () => {
