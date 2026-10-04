@@ -120,6 +120,9 @@ export const SERVER_FAILED = {
   used: "That code was already used. Run the install line on your server again to get a new one.",
   expired: "The pairing ran out of time, so nothing was paired. Run the install line on your server again to get a new code.",
   unreachable: "Your phone cannot reach the server right now. Check that it is on and online, then try again. Nothing was paired.",
+  unchecked: "Vyre could not check who this is right now. Nothing was paired. Try again in a minute.",
+  notThem: "That device is not the one you expected, so nothing was paired. If you did not start this, nobody was given access.",
+  directory: "Vyre cannot reach the names directory right now, so it cannot check this device. Nothing was paired. Try again in a minute.",
   abandoned: "The last pairing was not finished, so nothing was paired. Scan or paste the server's code again.",
   /** The server's own terminal says this on its side when the pairing fails. */
   serverLine: "Pairing failed. Nothing was set up. Run the install line again.",
@@ -128,6 +131,9 @@ export const SERVER_FAILED = {
 /** An error from the pairing, in words for the person: a used code, a pairing that ran out of time, a server out of reach, or what the box said. @param {any} e */
 export function serverSay(e) {
   const t = `${e?.code ?? ""} ${e?.message ?? e ?? ""}`.toLowerCase();
+  if (/not them|not the same person|not who|identity.*(mismatch|differ)/.test(t)) return SERVER_FAILED.notThem;
+  if (/directory/.test(t)) return SERVER_FAILED.directory;
+  if (/could not be checked|cannot be checked|could not check|identity.*(check|verif)/.test(t)) return SERVER_FAILED.unchecked;
   if (/used|consumed|spent|already/.test(t)) return SERVER_FAILED.used;
   if (/expired|ran out|timeout|timed out/.test(t)) return SERVER_FAILED.expired;
   if (/offline|unreach|network|econn|no path|failed to fetch/.test(t)) return SERVER_FAILED.unreachable;
