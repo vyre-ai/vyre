@@ -11,7 +11,7 @@ import { proofBytes } from "./wire.js";
 test("a proof naming this home and this challenge verifies once; another home, another challenge, a tampered field and a replay are refused", async t => {
   const dir = tmp("rp"), s = startSealer({ dir, timeoutMs: 8000, dev: true, unattested: true });
   t.after(async () => { await s.close(); fs.rmSync(dir, { recursive: true, force: true }); });
-  const phone = signer("per_alex", "dk_phone", "software");
+  const phone = signer("per_alex", "dk_phone");
   await enrolDevice(s, phone);
   const ch = person("per_alex"), op = "grant.invite", fields = { resource: "vyre://spc_testspace0001/invite/new", input_hash: "h" };
   const HOME = "spc_testspace0001", CHAL = "chal_abc123";
