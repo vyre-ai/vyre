@@ -8,7 +8,7 @@ import { payloadHash } from "../../kernel/seal/wire.js";
 import { proofRequest, PROOF_CALLS } from "../../kernel/remote/proof.js";
 
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
-const SURFACES = ["cli", "local", "deck", "capsule", "mobile", "device"];
+const SURFACES = ["cli", "local", "deck", "capsule", "device"];
 const ASK_MS = 5 * 60_000, MAX_OPEN = 5, MAX_PROOF = 4096;
 /** Plain words for what each op does; an op not here is shown by its name. */
 const WORDS = { "grant.invite": "Invite someone to this space", "grant.role": "Change who is in this space and what they may do", "grant.create": "Give access", "grant.revoke": "Take access away", "grant.narrow": "Narrow an access", "grant.offer": "Offer something to the space", "task.decide": "Approve or reject a task" };

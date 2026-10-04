@@ -392,7 +392,7 @@ export default {
         mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: { type: "string" }, id: { type: "string" }, name: { type: "string" } } }, description: "The # tags the composer picked, from a person's own surface only (as threads.send): each is resolved for the agent's thread." },
         pasted: { type: "array", maxItems: 20, items: { type: "string" }, description: "The spans of the text the person pasted: a #Name inside one tags nothing." } } },
       // Callable by a model session too (the assistant asks its agents; a plain session may ask within its own project): who actually may is decided in the body (modelMay, HD-9).
-      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"],
+      callers: ["cli", "local", "deck", "capsule", "tailnet", "device", "module", "mcp", "harness"],
       run: async (i, meta0) => {
         const { caller } = meta0;
         guard(caller, "talk to other agents");

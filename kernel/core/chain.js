@@ -12,7 +12,7 @@ const BUILT = new WeakSet();
 /** True only for an object this module built. */
 export const isChain = (/** @type {unknown} */ c) => typeof c === "object" && c !== null && BUILT.has(c);
 
-const PERSON_SURFACES = new Set(["cli", "local", "deck", "capsule", "mobile"]);
+const PERSON_SURFACES = new Set(["cli", "local", "deck", "capsule"]); // a bare mobile label is nobody: the phone is its paired device (lib/person-surfaces.js)
 const MODEL_SURFACES = new Set(["mcp", "harness"]);
 
 const deepFreeze = (/** @type {any} */ o) => {

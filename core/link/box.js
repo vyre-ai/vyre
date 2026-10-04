@@ -65,7 +65,7 @@ export const showCode = c => `${c.slice(0, 3)}-${c.slice(3)}`;
 /** Callers of the box's own socket: its terminal. Claude's processes are here too, which is why the code matters. */
 const SOCKET = new Set(["cli", "local", "deck", "capsule"]);
 /** Who may read the box's pairing lists and approve there: its terminal, the Deck and Capsule, and the owner's own devices. A model session is not one. */
-const BOX_PEOPLE = Object.freeze(["cli", "local", "deck", "capsule", "mobile", "tailnet", "device"]);
+const BOX_PEOPLE = Object.freeze(["cli", "local", "deck", "capsule", "tailnet", "device"]);
 // Only the owner's devices: "tailnet:<login>". A guest ("tailnet-guest:<login>") never matches, and
 // an agent's own node ("tailnet:agent:<name>") is not a person's device, so it is refused too.
 const tailnetLogin = caller => {

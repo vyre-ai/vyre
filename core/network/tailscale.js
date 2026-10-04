@@ -135,7 +135,7 @@ export function startTailscale(ctx, { run = ts.run, up = ts.up, setTimer = setIn
   });
 
   ctx.tool("network.tailscale.login", {
-      effect: "write", callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module"],
+      effect: "write", callers: ["cli", "local", "deck", "capsule", "tailnet", "device", "module"],
     description: "Start Tailscale's sign-in for this server and answer the link to open, or none when it is already signed in. The link lets whoever opens it put this server on their network, so it is given only to the caller and fetched again on each click.",
     input: { type: "object", properties: {} },
     run: async (_, meta = {}) => {

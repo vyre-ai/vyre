@@ -34,7 +34,7 @@ const SELECTOR = obj({
 }, []);
 
 /** The person's own surfaces and modules, plus an agent's own hands (a model session): each tool below resolves which computer it means and refuses a model that names none of its own. */
-const CALLERS = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"];
+const CALLERS = ["cli", "local", "deck", "capsule", "tailnet", "device", "module", "mcp", "harness"];
 
 /**
  * Which agent's computer a call means, the same rule as core/computers/index.js. `agentClaim`

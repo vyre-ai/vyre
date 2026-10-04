@@ -41,7 +41,7 @@ export function register({ ctx, vault, fetch = globalThis.fetch }) {
 
   ctx.tool("vault.health", {
     // It decrypts every item to judge it and says so in vault_audit, so it is a write; no model has a reason to trigger it.
-    callers: ["cli", "local", "deck", "capsule", "mobile", "device", "tailnet", "module"],
+    callers: ["cli", "local", "deck", "capsule", "device", "tailnet", "module"],
     description: "Watchtower: items that are weak, reused, old, marked to rotate, missing two-factor, missing a passkey the site offers, unprotected, expired or expiring. Names and reason codes only.",
     input: obj({}),
     run: async (_input, { caller }) => {

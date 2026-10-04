@@ -9,7 +9,7 @@ import { safePath } from "../../kernel/seal/uses.js";
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 const str = { type: "string" };
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
-const CALLERS = ["cli", "local", "deck", "capsule", "mobile", "device"];
+const CALLERS = ["cli", "local", "deck", "capsule", "device"];
 /** The most one upload call carries, decoded. A larger file goes through the Flow or the VyreDrive mount, not a tool call. */
 export const MAX_UPLOAD = 8 * 1024 * 1024;
 
