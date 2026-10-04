@@ -24,7 +24,7 @@ if (!(real(root) + path.sep).startsWith(real(os.tmpdir()) + path.sep) || real(ro
 process.env.VYRE_NO_DIALOGS = "1";
 
 const stateFile = path.join(root, "e2e-state.json");
-/** @type {{ chat?: string }} */ let state = {};
+/** @type {{ chat?: string, record?: string, recordError?: string }} */ let state = {};
 try { state = JSON.parse(fs.readFileSync(stateFile, "utf8")); } catch { /* first boot */ }
 const ALEX_ID = homeIdentity(root).owner;
 // carol is a REAL claimed identity (the real path for a second person's device, windows' member-device enrolment in core/spaces, the shape of test/one-registry.test.js): her name is claimed at a
@@ -75,6 +75,15 @@ if (!state.chat) {
   await sk.gateway.grants.setRole(oc, r, { presence: sg.proof(oc, "grant.role", { resource: `vyre://${sk.id.space}/member/${CAROL}`, input_hash }) });
   const chat = await sk.gateway.grants.chats.create(oc, { people: [], assistants: ["assistant"] });
   state.chat = chat.id;
+  // step 8: a record with a sealed ssn, made by the owner through the kernel's gateway: the plain value goes to the sealing process and the record keeps only the reference
+  const SSN_TYPE = { name: "contact", label: "Contact", fields: [{ name: "name", kind: "text", label: "Name", required: true }, { name: "ssn", kind: "sealed", label: "SSN", seal: { level: "ai", class: "us-ssn" } }] };
+  try {
+    await sk.gateway.records.define(oc, { add_types: [SSN_TYPE] }, { presence: sg.proof(oc, "records.define", { resource: `vyre://${sk.id.space}/definition/types` }) });
+    const rec = await sk.gateway.records.create(oc, "contact", { name: "Jane Doe" });
+    const put = await sk.gateway.seal.put(oc, { record: rec.urn, field: "ssn", class: "us-ssn", value: "123-45-6789" });
+    await sk.gateway.records.update(oc, "contact", rec.id, { ssn: put && put.ref ? put.ref : put }, rec.version);
+    state.record = rec.urn;
+  } catch (e) { state.recordError = String(/** @type {Error} */ (e).message); }
   fs.writeFileSync(stateFile, JSON.stringify(state));
   await sk.stop();
   await sealer.close();
@@ -99,7 +108,7 @@ const body = (/** @type {any} */ req) => new Promise(res => { /** @type {Buffer[
 const send = (/** @type {any} */ res, /** @type {any} */ o) => { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify(o)); };
 const server = http.createServer(async (req, res) => {
   try {
-    if (req.method === "GET" && req.url === "/info") return send(res, { chat: state.chat, alex: ALEX, carol: CAROL, pid: process.pid });
+    if (req.method === "GET" && req.url === "/info") return send(res, { chat: state.chat, alex: ALEX, carol: CAROL, pid: process.pid, record: state.record || null, recordError: state.recordError || null });
     if (req.method === "POST" && req.url === "/add-carol") { await G.chats.change(ownerChain, state.chat, { add_people: [CAROL] }); return send(res, { ok: true }); }
     if (req.method === "POST" && req.url === "/call") {
       const j = /** @type {any} */ (await body(req));
