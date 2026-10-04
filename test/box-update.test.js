@@ -180,6 +180,9 @@ async function box(t, { site = "0.1.5", releases = [], build = true } = {}) {
   const WRAPPER = path.join(root, "bin", "vyre");
   fs.mkdirSync(path.dirname(WRAPPER));
   fs.writeFileSync(WRAPPER, WRAPPER_SRC, { mode: 0o755 });
+  // Modes set outright, not left to the host's umask (a 002 umask made these group-writable and the wrapper refuses a folder others can write).
+  for (const d of [root, DIR, path.join(DIR, "src"), path.dirname(WRAPPER)]) fs.chmodSync(d, 0o755);
+  fs.chmodSync(WRAPPER, 0o755);
 
   const hits = [];
   const server = http.createServer((req, res) => {

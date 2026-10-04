@@ -113,6 +113,9 @@ sock=$(docker exec -u 1000 vyre-vyre-1 sh -c 'ls /home/vyre/.vyre/*.sock 2>/dev/
 appcode() { docker exec -u 1000 vyre-vyre-1 node -e 'require("http").get({socketPath:process.argv[1],path:"/app/",headers:{"x-vyre-caller":"anonymous"}},r=>{console.log(r.statusCode);r.resume()}).on("error",()=>console.log("err"))' "$sock"; }
 appwhy() { docker exec -u 1000 vyre-vyre-1 node -e 'let b="";require("http").get({socketPath:process.argv[1],path:"/app/",headers:{"x-vyre-caller":"anonymous"}},r=>{r.on("data",d=>b+=d);r.on("end",()=>console.log(b.slice(0,300)))})' "$sock"; }
 [ "$(appcode)" = 200 ] || { echo "the signed web app is not served (/app/ answered $(appcode)): $(appwhy)"; docker exec vyre-vyre-1 ls -l /opt/vyre/appbuild.json /opt/vyre/SHA256SUMS 2>&1 | head -3; exit 1; }
+swcode() { docker exec -u 1000 vyre-vyre-1 node -e 'require("http").get({socketPath:process.argv[1],path:"/app/"+process.argv[2],headers:{"x-vyre-caller":"anonymous"}},r=>{console.log(r.statusCode);r.resume()}).on("error",()=>console.log("err"))' "$sock" "$1"; }
+[ "$(swcode sw.js)" = 200 ] || { echo "the signed sw.js is not served (answered $(swcode sw.js))"; exit 1; }
+[ "$(swcode manifest.webmanifest)" = 200 ] || { echo "the signed manifest is not served (answered $(swcode manifest.webmanifest))"; exit 1; }
 docker exec -u 0 vyre-vyre-1 sh -c 'echo "<!-- tampered -->" >> /opt/vyre/apps/app/dist/index.html'
 [ "$(appcode)" = 503 ] || { echo "a changed file of the web app was served (/app/ answered $(appcode))"; exit 1; }
 docker exec -u 0 vyre-vyre-1 sh -c 'sed -i "$ d" /opt/vyre/apps/app/dist/index.html'

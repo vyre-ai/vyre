@@ -1177,6 +1177,7 @@ SP_STATE=$SPACES_ROOT/status
 SP_PRIV=$SPACES_ROOT/private
 SP_NAME_RE='[a-z][a-z0-9-]{0,30}'
 SPACES_PUBLISH_MAX_KB=${VYRE_PUBLISH_MAX_KB:-524288}
+SPACES_PUBLISH_TIMEOUT=${VYRE_PUBLISH_TIMEOUT:-120}
 
 # sp_lend_base: where the runner keeps lent workspaces, as ROOT finds it: the host folder behind the vyre container's home mount, read from Docker, never from a file or
 # a request the daemon can write. A volume's folder or a bind: both are a Source path on the host. Printed only when it is an absolute path.
@@ -1493,7 +1494,7 @@ STAT
 # volume is done here, as root, so the daemon never names a path or a volume. The request is `publish-fill <space id> <site folder> <deployment>`: the volume name and the folder are rebuilt
 # here from those tokens. The folder is CLAIMED by rename into root's own folder (same disk only), then walked as root: only plain files and folders, no file with a second link, a size cap.
 # It is copied by a throwaway container (no network, the folder read-only, two capabilities), and a fixed check runs on the volume after; a volume that fails it is removed. The folder goes
-# back where it was, so the daemon's own sweep still finds it.
+# deleted after it, never moved back.
 sp_publish_fill_do() {
   id=$1; req=$(printf '%s' "$2" | tr '+' ' '); MSG=""
   printf '%s\n' "$req" | grep -Eqx 'spc_[a-z0-9]{12} site-[A-Za-z0-9]{6} [0-9a-f]{16}' || { sp_status "$id" failed "not a request the helper knows"; sp_log "refused publish-fill: not the shape"; return 0; }
@@ -1524,8 +1525,8 @@ sp_publish_fill() {
   [ "$(stat -c %d "$src")" = "$(stat -c %d "$pc")" ] || { MSG="the site folder is on another disk than the helper's folder"; return 1; }
   mv -T -- "$src" "$claim" 2>/dev/null || { MSG="the site folder could not be taken"; return 1; }
   rc=0; sp_publish_fill_body "$sid" "$slug" || rc=1
-  # The folder goes back where the daemon expects it, unless something took its name meanwhile.
-  if [ -e "$src" ] || [ -L "$src" ]; then rm -rf -- "$claim"; else mv -T -- "$claim" "$src" 2>/dev/null || rm -rf -- "$claim"; fi
+  # PF-2: nothing goes back through the daemon's path (it could have been swapped for a link meanwhile): the claim is deleted, the daemon writes a new folder at every preview.
+  rm -rf -- "$claim"
   return "$rc"
 }
 sp_publish_fill_body() {
@@ -1539,7 +1540,14 @@ sp_publish_fill_body() {
   [ "$kb" -le "$SPACES_PUBLISH_MAX_KB" ] || { MSG="the site is bigger than $((SPACES_PUBLISH_MAX_KB / 1024)) MB"; return 1; }
   img=$(hdock inspect -f '{{.Image}}' "$CTR_NAME" 2>/dev/null || true)
   case "$img" in sha256:[0-9a-f]*) ;; *) MSG="the vyre image could not be found"; return 1 ;; esac
-  pf_run() { hdock run --rm --network none --cap-drop ALL "$@"; }
+  # PF-1: each container step has a time limit and a fixed name, so a stuck copy (a FIFO the daemon adds to the claimed folder) is removed and the helper's queue moves on.
+  pf_run() {
+    hdock rm -f vyre-publish-fill >/dev/null 2>&1 || true
+    timeout "$SPACES_PUBLISH_TIMEOUT" env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker run --rm --name vyre-publish-fill --network none --cap-drop ALL "$@"
+    pf_rc=$?
+    [ "$pf_rc" != 124 ] || hdock rm -f vyre-publish-fill >/dev/null 2>&1 || true
+    return "$pf_rc"
+  }
   have=$(pf_run --security-opt no-new-privileges --read-only --user 0 --entrypoint sh -v "$vol:/srv:ro" "$img" -c 'find /srv -mindepth 1 | head -n 1') || { MSG="the site's volume could not be looked at"; return 1; }
   if [ -z "$have" ]; then
     pf_run --cap-add CHOWN --cap-add DAC_OVERRIDE --security-opt no-new-privileges --read-only --user 0 --entrypoint sh -v "$claim:/in:ro" -v "$vol:/srv" "$img" \
