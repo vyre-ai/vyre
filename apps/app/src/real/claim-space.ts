@@ -20,7 +20,7 @@ export async function pairedRoute(): Promise<{ relay: string; route: string; box
 
 /** The paired session plus the presence proof: spaces.host-here over the peer wire as this device's paired session (renewed once on a lapse), and the proof answered as for any person-only act. Answers { space }. */
 export const hostOnPairedServer = (name: string, o: { acceptBuiltinStore?: boolean } = {}) =>
-  tool<{ space: string }>("spaces.host-here", { name, ...(o.acceptBuiltinStore ? { acceptBuiltinStore: true } : {}) });
+  tool<{ space: string; rootPublic?: string }>("spaces.host-here", { name, ...(o.acceptBuiltinStore ? { acceptBuiltinStore: true } : {}) });
 
 /** Takes back a space the server started for a claim the directory refused. */
 export const retireOnPairedServer = (space: string) => tool("spaces.retire-here", { id: space });

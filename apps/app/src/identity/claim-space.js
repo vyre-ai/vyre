@@ -28,7 +28,7 @@ function plain(e) {
 /**
  * @param {{ identity: { id: string, name?: string | null, eid: string, ops: any[], key: import("./keys.js").DeviceKey },
  *   name: string, displayName?: string, base: string, fetch?: typeof fetch, now?: () => number, random?: (n: number) => Uint8Array,
- *   route?: { relay: string, route: string, box: string } | null, host: (a: { name: string }) => Promise<{ space: string }>, retire?: (space: string) => Promise<any>,
+ *   route?: { relay: string, route: string, box: string } | null, host: (a: { name: string }) => Promise<{ space: string, rootPublic?: string }>, retire?: (space: string) => Promise<any>,
  *   headers?: Record<string, string>}} o
  *   `identity.ops` is this person's own chain as the app holds it; `route` is where the paired server is reached (relay, route and box, from pairing).
  */

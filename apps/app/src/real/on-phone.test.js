@@ -66,3 +66,8 @@ test("each verifier reason has our own sentence, an unknown one has none", () =>
   assert.equal(reasonLine("software_key", "touchid"), "Approve this with Touch ID.");
   assert.equal(reasonLine("surprise", "phone"), null);
 });
+
+test("making a space on the server from a browser says to do it on the phone", () => {
+  assert.equal(onPhoneFor("spaces.host-here", "phone"), "Make this space in Vyre on your phone.");
+  assert.equal(onPhoneFor("spaces.host-here", "touchid"), "Make this space with Touch ID.");
+});
