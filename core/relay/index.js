@@ -15,6 +15,7 @@
 // this box knows and shown with every pairing notice.
 
 import crypto from "node:crypto";
+import { devSwitch } from "../../kernel/devbuild.js";
 import * as config from "../config/index.js";
 import { within } from "../../lib/within.js";
 import { friendlyDeviceName, cleanLabel } from "../../lib/devicename.js";
@@ -29,6 +30,7 @@ import { agentClaim, ownerDevice } from "../modules/index.js";
 import { loadKeys, keyHandle } from "./keys.js";
 import { fingerprint8, toBase64url } from "../../lib/identity.js";
 import { redeem } from "./redeem.js";
+import { deviceIdOf } from "../../lib/caller.js";
 import { tailscaleApi, desktopJoin, pairedBox, MINT_ITEM, DEVICE_TAG, JOIN_PATH } from "./tailnet.js";
 import { DEFAULT_RELAY } from "../../lib/relay-default.js";
 
@@ -66,6 +68,8 @@ export const MIGRATIONS = [
   `ALTER TABLE relay_devices ADD COLUMN orphan_node TEXT;`,
   // relay.devices.ask-trust: when an untrusted browser last asked to be trusted (once per limit).
   `ALTER TABLE relay_devices ADD COLUMN trust_asked INTEGER;`,
+  // Where the app SAYS it made its device key (hardware | software | unknown), from the pairing hello: self-reported, display only (the Devices line shows only "software").
+  `ALTER TABLE relay_devices ADD COLUMN key_storage TEXT NOT NULL DEFAULT 'unknown';`,
 ];
 /** A direct report counts as the device's path for this long; the app reports on every switch. */
 const DIRECT_FRESH = 10 * 60_000;
@@ -110,12 +114,12 @@ export function macCoreRefusal(platform, core = false) {
 /**
  * Test seams, keyed by the VYRE_HOME a vyred runs with (the same pattern as core/link): a test sets the clock the pairing
  * window runs on. Never set outside tests.
- * @type {Map<string, { now?: () => number }>}
+ * @type {Map<string, { now?: () => number, pendingMs?: number }>}
  */
 export const seams = new Map();
 
 /**
- * @type {{ start(ctx: any, seam?: { WebSocket?: any, now?: () => number, platform?: string, coreKeys?: any }): Promise<{ stop(): Promise<void> }> }}
+ * @type {{ start(ctx: any, seam?: { WebSocket?: any, now?: () => number, pendingMs?: number, platform?: string, coreKeys?: any }): Promise<{ stop(): Promise<void> }> }}
  */
 export default {
   async start(ctx, seam0 = {}) {
@@ -172,10 +176,10 @@ export default {
      * burn it either way? Null when nothing matches. */
     const takeLiveSecret = provided => {
       const h = sha(provided);
-      if (pairing && pairing.exp > now() && crypto.timingSafeEqual(h, pairing.hash)) { const m = { first: pairing.first, ticket: false }; pairing = null; return m; }
+      if (pairing && pairing.exp > now() && crypto.timingSafeEqual(h, pairing.hash)) { const m = { first: pairing.first, ticket: false, via: "start" }; pairing = null; return m; }
       const hex = h.toString("hex");
       const t = pendingTickets.get(hex);
-      if (t && t.exp > now()) { pendingTickets.delete(hex); return { first: false, ticket: true, ...(t.window ? { window: t.window } : {}), ...(t.offer ? { offer: t.offer } : {}) }; }
+      if (t && t.exp > now()) { pendingTickets.delete(hex); return { first: false, ticket: true, via: t.via || (t.window ? "window" : "ticket"), ...(t.gate ? { gate: t.gate } : {}), ...(t.window ? { window: t.window } : {}), ...(t.offer ? { offer: t.offer } : {}) }; }
       for (const [k, v] of pendingTickets) if (v.exp <= now()) pendingTickets.delete(k);
       return null;
     };
@@ -258,7 +262,7 @@ export default {
       }).catch(() => {});
     };
 
-    const active = () => /** @type {any[]} */ (db.prepare("SELECT id, name, pub, presence_key, paired_at, last_seen, kind, release, manifest, trusted, trust_asked, node_id, node_name, last_path, path_at, rtt FROM relay_devices WHERE removed_at IS NULL AND kind != 'setup' ORDER BY paired_at").all());
+    const active = () => /** @type {any[]} */ (db.prepare("SELECT id, name, pub, presence_key, paired_at, last_seen, kind, release, manifest, trusted, trust_asked, node_id, node_name, last_path, path_at, rtt, key_storage FROM relay_devices WHERE removed_at IS NULL AND kind != 'setup' ORDER BY paired_at").all());
     const expired = d => d.kind === "web" && now() - (d.last_seen || d.paired_at) > Number(settings().web_expiry_days) * DAY;
     const personExists = () => active().length > 0 || Boolean(ctx.config.network && ctx.config.network.owner);
 
@@ -291,6 +295,8 @@ export default {
       link = relayLink({
         url: settings().url, route: route(), routeKey: k().route, boxKey: k().box, admit, onchannel,
         WebSocket: seam.WebSocket, log: m => ctx.log(m),
+        // A Publish tunnel stream the relay hands the box (relay/node/tunnel.js): the box end of the tunnel (`ctx.tunnelEnd`, the daemon's, from lib/publish/tunnel.js) takes it, or it is closed.
+        ontunnel: (stream, visitor) => { const end = /** @type {any} */ (ctx).tunnelEnd; if (end && typeof end.accept === "function") end.accept(stream, visitor); else stream.destroy(); },
         // A typed Wink code's PAKE message from a typing device (spec 6.5): handed to the wink module as an internal event, never to a surface.
         oncode: m => { try { ctx.events.emit("relay.code-asked", m); } catch {} },
         onstate: (s, why) => {
@@ -318,48 +324,20 @@ export default {
           ctx.events.emit("relay.invite-redeemed", { name, fingerprint: keyFingerprint(pub), pub: pub.toString("base64url"), offer: match.offer });
           return { v: 1, box: { name: boxName() }, paired: true, invite: true };
         }
+        // A gated ticket (X-1, 4 Oct 2026) makes NOTHING until the module that gates it says yes: no device row, no presence key and no bridge session, only a waiting
+        // pairing that may reach the one tool its own pairing needs. The ticket is spent either way.
+        if (match.gate) return holdPending(pub, id, name, hello, match);
         // A ticket from a pairing window enrols nothing until the screen that opened it confirms this exact phone.
         if (match.window) await holdForConfirm(match.window, pub, name);
-        const kind = hello.kind === "web" ? "web" : "app";
-        // A desktop asks to join the tailnet in its pairing hello (ADR 0046 section 3). The grant
-        // is what makes a later key possible at all, so it only ever comes from a pairing, which a
-        // present person started; a web device never gets one.
-        const grant = kind === "app" && hello.tailnet === "join" ? 1 : 0;
-        const release = typeof hello.release === "string" && BUILD.test(hello.release) ? hello.release : null;
-        const manifest = typeof hello.manifest === "string" && /^[a-f0-9]{64}$/.test(hello.manifest) ? hello.manifest : null;
-        let presenceKey = null, presence = { enrolled: false, reason: "no presence key offered" };
-        const pk = hello.presenceKey;
-        if (pk && typeof pk.public_key === "string") {
-          const r = await ctx.call("presence.enroll", { kind: "device", name, public_key: pk.public_key, alg: pk.alg ?? -7 });
-          if (r && r.data && (r.data.keyId || r.data.id)) { presenceKey = String(r.data.keyId || r.data.id); presence = { enrolled: true, reason: "" }; }
-          else presence = { enrolled: false, reason: (r && r.error && r.error.message) || "presence would not enroll this key" };
-        }
-        db.prepare(`INSERT INTO relay_devices (id, name, pub, presence_key, paired_at, last_seen, removed_at, kind, release, manifest, trusted, join_grant, join_mints, join_last) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, 0, ?, 0, NULL)
-          ON CONFLICT(id) DO UPDATE SET name = excluded.name, pub = excluded.pub, presence_key = excluded.presence_key, paired_at = excluded.paired_at, last_seen = excluded.last_seen, removed_at = NULL,
-            kind = excluded.kind, release = excluded.release, manifest = excluded.manifest, trusted = 0, join_grant = excluded.join_grant, join_mints = 0, join_last = NULL,
-            node_id = NULL, node_name = NULL, node_tagged = 0`)
-          .run(id, name, pub.toString("base64url"), presenceKey, now(), now(), kind, release, manifest, grant);
-        // The pairing notice: every surface shows it with a one-tap removal (ADR 0026 section 6).
-        // Carries the new device's own key fingerprint (reviewer, 28 Sep LOW) so the notice reads
-        // the same short form ("a1b2 c3d4") as every other Touch ID / confirm screen that shows one.
-        ctx.events.emit("device.paired", { id, name, kind, fingerprint: keyFingerprint(pub), ...(kind === "web" ? { release, build: knownBuild(release, manifest) ? "known" : "unknown" } : {}) });
-        // The scan-to-pair screen's own event (ADR 0045, the lead 28 Sep): only for a ticket
-        // pairing, so a Deck showing "Add your phone" reacts to its own flow and not to someone
-        // pairing a different device with the classic QR at the same time.
-        if (match.ticket) ctx.events.emit("relay.paired", { device: id, name, fingerprint: keyFingerprint(pub) });
-        // A device that asks (hello.enroll) is handed the one-time grant to enroll its passkey at the
-        // box's own address: the same grant, and the same {grant, expires, rpId}, as relay.setup.claim
-        // gives the setup QR's phone. Not bound to a peer: at the address the phone is a tailnet node
-        // this pairing cannot know; the owner-login rule, the rp_id, five minutes and one use bind it.
-        // It rides only inside this device's own Noise channel.
-        let enroll = null;
-        const host = hello.enroll === true ? addressHost() : null;
-        if (host) {
-          const m = /** @type {any} */ (await ctx.call("presence.grant.mint", { peer: null, host }));
-          if (m && m.data && m.data.grant) enroll = { grant: m.data.grant, expires: m.data.expires, rpId: host };
-        }
+        const reply = await enrol(pub, id, name, hello, match);
         if (match.window) await closeWindow("completed");
-        return { v: 1, box: { name: boxName() }, device: id, paired: true, presence, ...(enroll ? { enroll } : {}) };
+        return reply;
+      }
+      const waiting = pendingPairs.get(id);
+      if (waiting) {
+        // The same device again while its pairing waits (the app connects afresh for each call): still only the waiting pairing, still nothing enrolled.
+        if (!crypto.timingSafeEqual(waiting.pub, pub)) throw new Error("not a paired device");
+        return { v: 1, box: { name: boxName() }, pending: id };
       }
       const row = /** @type {any} */ (db.prepare("SELECT id, pub, kind, paired_at, last_seen FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
       if (!row || !crypto.timingSafeEqual(Buffer.from(row.pub, "base64url"), pub)) {
@@ -376,6 +354,128 @@ export default {
       else db.prepare("UPDATE relay_devices SET last_seen = ? WHERE id = ?").run(now(), id);
       return { v: 1, box: { name: boxName() }, device: id };
     }
+
+
+    /**
+     * Enrols a device that redeemed a ticket: its row, its presence key, the notice and the tailnet grant. Everything a pairing makes happens here and only here, so a gated or
+     * windowed ticket makes nothing before it is confirmed. `match` names how the ticket was made (via: start, ring, module, window, gated).
+     * @param {Buffer} pub @param {string} id @param {string} name @param {any} hello @param {any} match
+     */
+    async function enrol(pub, id, name, hello, match) {
+      // One pairing path (lead ruling, 4 Oct 2026): a browser that completed it, three words confirmed, is one of the person's devices like any other: a row of kind app, whose key is
+      // software (WebCrypto). Only the older one-step pairings (the classic QR, no gate) still make a limited `web` row.
+      const kind = hello.kind === "web" && !(match && match.gate) ? "web" : "app";
+      // A desktop asks to join the tailnet in its pairing hello (ADR 0046 section 3). The grant
+      // is what makes a later key possible at all, so it only ever comes from a pairing, which a
+      // present person started; a web device never gets one.
+      const grant = kind === "app" && hello.tailnet === "join" ? 1 : 0;
+      const release = typeof hello.release === "string" && BUILD.test(hello.release) ? hello.release : null;
+      const manifest = typeof hello.manifest === "string" && /^[a-f0-9]{64}$/.test(hello.manifest) ? hello.manifest : null;
+      let presenceKey = null, presence = { enrolled: false, reason: "no presence key offered" };
+      const pk = hello.presenceKey;
+      if (pk && typeof pk.public_key === "string") {
+        const r = await ctx.call("presence.enroll", { kind: "device", name, public_key: pk.public_key, alg: pk.alg ?? -7 });
+        if (r && r.data && (r.data.keyId || r.data.id)) { presenceKey = String(r.data.keyId || r.data.id); presence = { enrolled: true, reason: "" }; }
+        else presence = { enrolled: false, reason: (r && r.error && r.error.message) || "presence would not enroll this key" };
+      }
+      const storage = hello.kind === "web" ? "software" : pk && ["hardware", "software"].includes(pk.storage) ? pk.storage : "unknown";
+      db.prepare(`INSERT INTO relay_devices (id, name, pub, presence_key, paired_at, last_seen, removed_at, kind, release, manifest, trusted, join_grant, join_mints, join_last, key_storage) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, 0, ?, 0, NULL, ?)
+        ON CONFLICT(id) DO UPDATE SET name = excluded.name, pub = excluded.pub, presence_key = excluded.presence_key, paired_at = excluded.paired_at, last_seen = excluded.last_seen, removed_at = NULL,
+          kind = excluded.kind, release = excluded.release, manifest = excluded.manifest, trusted = 0, join_grant = excluded.join_grant, join_mints = 0, join_last = NULL,
+          node_id = NULL, node_name = NULL, node_tagged = 0, key_storage = excluded.key_storage`)
+        .run(id, name, pub.toString("base64url"), presenceKey, now(), now(), kind, release, manifest, grant, storage);
+      // A browser's passkey (ADR 0032 2b), after the three words and in the same step as its row: enrolled bound to THIS device id and to the app's own origin, so it proves for nothing else.
+      // A phone keeps its device key above. Offered in the hello as passkey { credential_id, public_key, alg, rp_id }; a refusal leaves the device paired without it and says so in the log.
+      const pkey = hello.passkey;
+      if (pkey && typeof pkey === "object" && hello.kind === "web" && kind === "app") {
+        try {
+          const r = /** @type {any} */ (await ctx.call("presence.enroll", { kind: "passkey", name, public_key: String(pkey.public_key || ""), alg: pkey.alg ?? -7, rp_id: String(pkey.rp_id || ""), credential_id: String(pkey.credential_id || ""), device: id }));
+          if (r && r.error) ctx.log(`relay: this device's passkey was not enrolled: ${r.error.message || r.error.code}`);
+          // a browser has no device key, so its passkey is the row's presence key: removing the device removes it (the existing path), and the list shows presence
+          else if (r && r.data && r.data.id && !presenceKey) { presenceKey = String(r.data.id); presence = { enrolled: true, reason: "" }; db.prepare("UPDATE relay_devices SET presence_key = ? WHERE id = ?").run(presenceKey, id); }
+        } catch (e) { ctx.log(`relay: this device's passkey was not enrolled: ${/** @type {Error} */ (e).message}`); }
+      }
+      // The pairing notice: every surface shows it with a one-tap removal (ADR 0026 section 6).
+      // Carries the new device's own key fingerprint (reviewer, 28 Sep LOW) so the notice reads
+      // the same short form ("a1b2 c3d4") as every other Touch ID / confirm screen that shows one.
+      ctx.events.emit("device.paired", { id, name, kind, fingerprint: keyFingerprint(pub), via: String((match && match.via) || "ticket"), ...(match && match.gate ? { gate: match.gate } : {}), ...(kind === "web" ? { release, build: knownBuild(release, manifest) ? "known" : "unknown" } : {}) });
+      // The scan-to-pair screen's own event (ADR 0045, the lead 28 Sep): only for a ticket
+      // pairing, so a Deck showing "Add your phone" reacts to its own flow and not to someone
+      // pairing a different device with the classic QR at the same time.
+      if (match.ticket) ctx.events.emit("relay.paired", { device: id, name, fingerprint: keyFingerprint(pub) });
+      // A device that asks (hello.enroll) is handed the one-time grant to enroll its passkey at the
+      // box's own address: the same grant, and the same {grant, expires, rpId}, as relay.setup.claim
+      // gives the setup QR's phone. Not bound to a peer: at the address the phone is a tailnet node
+      // this pairing cannot know; the owner-login rule, the rp_id, five minutes and one use bind it.
+      // It rides only inside this device's own Noise channel.
+      let enroll = null;
+      const host = hello.enroll === true ? addressHost() : null;
+      if (host) {
+        const m = /** @type {any} */ (await ctx.call("presence.grant.mint", { peer: null, host }));
+        if (m && m.data && m.data.grant) enroll = { grant: m.data.grant, expires: m.data.expires, rpId: host };
+      }
+      return { v: 1, box: { name: boxName() }, device: id, paired: true, presence, ...(enroll ? { enroll } : {}) };
+    }
+
+    // ---- gated pairing (X-1, ruling of 4 Oct 2026): nothing exists for a redeemer until the confirm ----
+    //
+    // A ticket minted with a `gate` (a phone's QR, a server's QR or paste, and a ring ticket once the Wink module has said it confirms with words) is redeemed in two parts. The
+    // redemption itself makes NOTHING durable: no device row, no presence key, no bridge session as a device. It leaves a waiting pairing in memory (this map) and the redeemer's
+    // channel, whose only door is the one tool its own pairing needs (PENDING_TOOLS) and whose caller is the device id it will have. The module then says yes (relay.pair.pending.confirm,
+    // after the person has picked the right words), and only then does `enrol` run: the row, the presence key, the notice. A no, a timeout, or relay.devices.drop makes the waiting pairing
+    // vanish: its channels are closed, a reconnect is refused ("not a paired device"), and the ticket, taken at redemption, stays spent.
+    const PENDING_MS = seam.pendingMs || 5 * 60_000, PENDING_MAX = 8, PENDING_GRACE_MS = 10_000;
+    /** The one tool a waiting pairing may call, by what its ticket was for. A phone and a ring phone ask about the computer's question; a server's scanner completes its own adoption. */
+    const PENDING_TOOLS = Object.freeze({ phone: ["wink.phone.wait"], ring: ["wink.phone.wait"], server: ["wink.server.adopt"] });
+    /** @type {Map<string, { pub: Buffer, name: string, hello: any, gate: string, match: any, channels: Set<any>, timer: any }>} */
+    const pendingPairs = new Map();
+    /** A ring ticket (relay.pair.ticket) is always a gated ticket (R-2, 4 Oct 2026): its redeemer is a waiting pairing, and no row, key or session exists for it until the Wink module has had the three words confirmed. It does not depend on that module having registered: with the module down nothing confirms, so nothing pairs. `VYRE_TEST_UNGATED_RING=1` is a test-only switch for relay tests that pair with no module; a packaged daemon ignores it. */
+    const ringGated = () => !devSwitch(process.env.VYRE_TEST_UNGATED_RING);
+    /** @type {Map<string, any>} */
+    const pendingHandlers = new Map();
+    const pendingHandler = gate => {
+      let h = pendingHandlers.get(gate);
+      if (!h) {
+        const ok = new Set(PENDING_TOOLS[gate] || []);
+        h = ctx.handler({ tool: n => ok.has(n), path: (m, u) => m === "POST" && u.startsWith("/v1/tools/") && ok.has(decodeURIComponent(u.slice("/v1/tools/".length))) });
+        pendingHandlers.set(gate, h);
+      }
+      return h;
+    };
+    /** Ends a waiting pairing: its channels close and a reconnect finds nothing. @returns {boolean} whether one was waiting */
+    const pendingDrop = (id, why) => {
+      const p = pendingPairs.get(id);
+      if (!p) return false;
+      pendingPairs.delete(id); clearTimeout(p.timer);
+      for (const ch of p.channels) { try { ch.close(4401, why); } catch { /* closed */ } }
+      return true;
+    };
+    function holdPending(pub, id, name, hello, match) {
+      if (pendingPairs.size >= PENDING_MAX && !pendingPairs.has(id)) throw new Error("too many pairings are waiting; make a new code in a minute");
+      pendingDrop(id, "replaced");
+      const keep = { v: 1, ...(hello.kind === "web" ? { kind: "web" } : {}), ...(hello.tailnet ? { tailnet: hello.tailnet } : {}), ...(hello.enroll ? { enroll: hello.enroll } : {}), ...(hello.release ? { release: hello.release } : {}), ...(hello.manifest ? { manifest: hello.manifest } : {}), ...(hello.presenceKey ? { presenceKey: hello.presenceKey } : {}), ...(hello.passkey ? { passkey: hello.passkey } : {}) };
+      const p = { pub: Buffer.from(pub), name, hello: keep, gate: String(match.gate), match, channels: new Set(), timer: setTimeout(() => pendingDrop(id, "nobody confirmed this pairing in time"), PENDING_MS) };
+      if (p.timer.unref) p.timer.unref();
+      pendingPairs.set(id, p);
+      ctx.events.emit("pairing.pending", { device: id, name, fingerprint: keyFingerprint(pub), gate: p.gate, via: String(match.via || "ticket") });
+      return { v: 1, box: { name: boxName() }, pending: id };
+    }
+    /** The yes: enrol the device now (row, presence key, notice). The waiting channels stay a moment so an answer still in flight reaches the app, then close. */
+    const pendingConfirm = async (id, { trusted = false } = {}) => {
+      const p = pendingPairs.get(id);
+      if (!p) throw fail("not_found", "no pairing is waiting for that device");
+      pendingPairs.delete(id); clearTimeout(p.timer);
+      try { await enrol(p.pub, id, p.name, p.hello, p.match); }
+      catch (e) { for (const ch of p.channels) { try { ch.close(4401, "could not pair"); } catch { /* closed */ } } throw e; }
+      // An owner-confirmed phone or computer is trusted from the same moment its row exists (the paired session, ADR 0032 2d): one write, no second step.
+      if (trusted) db.prepare("UPDATE relay_devices SET trusted = 1 WHERE id = ? AND removed_at IS NULL").run(id);
+      const t = setTimeout(() => { for (const ch of p.channels) { try { ch.close(1000, "paired"); } catch { /* closed */ } } }, PENDING_GRACE_MS);
+      if (t.unref) t.unref();
+      // The device's own request-signing key, as it offered it in its hello (a public key, SPKI base64url, P-256 alg -7), so the pairing can bind its paired session to it.
+      const pk = p.hello && p.hello.presenceKey;
+      // `storage` is the app's own report of where it made the key (the platform's key API); it is for display only and no security decision reads it.
+      return pk && typeof pk.public_key === "string" ? { key: pk.public_key, alg: pk.alg ?? -7, storage: ["hardware", "software"].includes(pk.storage) ? pk.storage : "unknown" } : {};
+    };
 
     // ---- the setup session (tailnet plan 3.5, 3.6, 3.6b) ----
 
@@ -468,11 +568,29 @@ export default {
       mintTicket: async () => { const refusal = macCoreRefusal(platform, keys.core); if (refusal) throw refusal; return mintTicket(); },
       recoverCode: async input => { const r = /** @type {any} */ (await ctx.call("names.recover.code", input)); return r && r.data !== undefined ? r.data : r; } });
 
+    /** The caller label the relay listener hands a paired device, by its kind; null for a kind that may not connect. @param {string} kind @param {string} id */
+    const callerLabel = (kind, id) => kind === "app" ? `device:${id}` : kind === "web" ? `web:${id}` : kind === "setup" ? `setup:${id}` : null;
     let handle = null, webHandle = null, upgrade = null;
     function onchannel(channel, { reply }) {
+      if (reply && reply.pending) {
+        // A waiting pairing (X-1): a channel with one door, the tool its own pairing needs. No device row, no presence key, no upgrade, no peer stream.
+        const pid = String(reply.pending), p = pendingPairs.get(pid);
+        if (!p) { channel.close(4401, "this pairing is over"); return; }
+        const peer = { node: p.name, stableId: pid, login: null, tags: [], caps: {}, kind: "device" };
+        // an unconfirmed redeemer is `web:<id>`: it reaches only the tools that name that class (its own pairing's), and becomes `device:<id>` only at the confirm (BR-2)
+        bridge(channel, { handler: pendingHandler(p.gate), caller: `web:${pid}`, peer, log: m => ctx.log(m) });
+        p.channels.add(channel);
+        const closed0 = channel.onclose;
+        channel.onclose = reason => { closed0(reason); p.channels.delete(channel); };
+        return;
+      }
       const id = String(reply.device);
       const row = /** @type {any} */ (db.prepare("SELECT name, kind, trusted FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
       if (!row) { channel.close(4401, "device removed"); return; }
+      // The label is the trust claim (BR-2, lead ruling 4 Oct 2026): `device:<id>` only for a live, confirmed device of kind app. A browser is `web:<id>` and a setup page `setup:<id>`,
+      // labels the registry never admits as an owner's device, so they reach just the tools that name their class. Any other kind gets no label and no channel.
+      const label = callerLabel(row.kind, id);
+      if (!label) { channel.close(4401, "this device cannot connect"); return; }
       if (!handle) handle = ctx.handler({});
       if (!webHandle) webHandle = ctx.handler({ tool: name => !WEB_DENY.test(name) });
       const limited = row.kind === "web" && !row.trusted;
@@ -482,7 +600,7 @@ export default {
       // reachable only from inside this device's own Noise channel and never as a tool.
       const handler = (req, res, caller, p) => (req.method === "POST" && req.url === JOIN_PATH ? tailnetKey(id, res) : routed(req, res, caller, p));
       const peers = peersFor(ctx);
-      bridge(channel, { handler, caller: `device:${id}`, peer, upgrade: () => (upgrade = upgrade || ctx.upgrader({})), log: m => ctx.log(m), ...(peers ? { peers } : {}) });
+      bridge(channel, { handler, caller: label, peer, upgrade: () => (upgrade = upgrade || ctx.upgrader({})), log: m => ctx.log(m), ...(peers ? { peers } : {}) });
       const set = live.get(id) || new Set();
       set.add(channel);
       live.set(id, set);
@@ -511,7 +629,7 @@ export default {
     /** Where a device is now: connected through the relay, or reporting from its tailnet node lately. */
     const pathOf = d => ((live.get(d.id)?.size || 0) > 0 ? "relay" : d.last_path === "direct" && now() - (d.path_at || 0) < DIRECT_FRESH ? "direct" : null);
     const view = (d, rtt = null, withAsk = false) => ({ id: d.id, name: d.name, kind: d.kind, pairedAt: d.paired_at, lastSeen: d.last_seen, presence: Boolean(d.presence_key),
-      online: pathOf(d) !== null, path: pathOf(d), rtt: pathOf(d) === "relay" ? rtt : pathOf(d) === "direct" ? d.rtt : null,
+      online: pathOf(d) !== null, path: pathOf(d), storage: d.key_storage || "unknown", rtt: pathOf(d) === "relay" ? rtt : pathOf(d) === "direct" ? d.rtt : null,
       ...(d.node_id ? { node: d.node_name || d.node_id } : {}),
       ...(d.kind === "web" ? { trusted: Boolean(d.trusted), release: d.release, build: knownBuild(d.release, d.manifest) ? "known" : "unknown",
         expiresAt: (d.last_seen || d.paired_at) + Number(settings().web_expiry_days) * DAY,
@@ -644,12 +762,12 @@ export default {
     /** @param {Buffer} [seed] a ticket the asking app chose itself (relay.pair.ticket { seed }): 8 to 32 bytes it keeps to itself until then */
     /** The last ticket minted: its locator (to withdraw it at the relay) and the key of its pending entry. @type {{ loc: string, key: string } | null} */
     let lastMinted = null;
-    /** @param {Buffer | undefined} [seed] @param {{ window?: string }} [opt] a ticket minted inside a pairing window carries the window, so its redemption waits for the screen's confirm */
+    /** @param {Buffer | undefined} [seed] @param {{ window?: string, gate?: string, via?: string, offer?: any }} [opt] a ticket minted inside a pairing window carries the window, so its redemption waits for the screen's confirm; a `gate` makes its redemption a waiting pairing (X-1); `via` says which door made it (ring, module, window) for the device.paired event */
     const mintTicket = async (seed, opt = {}) => {
       const rawTicket = seed || crypto.randomBytes(TICKET_BYTES);
       const exp = now() + TICKET_TTL;
       const secret = ticketDerive("sec", rawTicket).toString("base64url");
-      pendingTickets.set(sha(secret).toString("hex"), { exp, ...(opt.window ? { window: opt.window } : {}), ...(opt.offer ? { offer: opt.offer } : {}) });
+      pendingTickets.set(sha(secret).toString("hex"), { exp, ...(opt.window ? { window: opt.window } : {}), ...(opt.gate ? { gate: opt.gate } : {}), ...(opt.via ? { via: opt.via } : {}), ...(opt.offer ? { offer: opt.offer } : {}) });
       lastMinted = { loc: ticketDerive("loc", rawTicket).toString("base64url"), key: sha(secret).toString("hex") };
       await keys.ready();
       if (!settings().enabled) save({ enabled: true });
@@ -678,8 +796,8 @@ export default {
     // ---- for the wink module (internal: modules only) ----
     ctx.tool("relay.ticket.mint", {
       internal: true,
-      description: "A Wink ticket with an offer sealed into its record (an invitation: kind, role, projects), or a ticket from a seed both ends derived (a typed code's key). Modules only; answers like relay.pair.ticket.",
-      input: obj({ seed: str, offer: { type: "object" } }),
+      description: "A Wink ticket with an offer sealed into its record (an invitation: kind, role, projects), or a ticket from a seed both ends derived (a typed code's key). With `gate` (phone or server) the redemption makes nothing but a waiting pairing until relay.pair.pending.confirm says yes (X-1). Modules only; answers like relay.pair.ticket.",
+      input: obj({ seed: str, offer: { type: "object" }, gate: { type: "string", enum: ["phone", "server"] } }),
       run: async input => {
         let seed;
         if (input.seed !== undefined) {
@@ -692,7 +810,7 @@ export default {
           offer = JSON.parse(JSON.stringify(input.offer));
           if (JSON.stringify(offer).length > 2048) throw fail("bad_input", "the offer is at most 2 KB");
         }
-        const minted = await mintTicket(seed, offer ? { offer } : {});
+        const minted = await mintTicket(seed, { via: "module", ...(offer ? { offer } : {}), ...(input.gate ? { gate: String(input.gate) } : {}) });
         return seed ? { expiresAt: minted.expiresAt, connected: minted.connected, confirmed: minted.confirmed } : minted;
       },
     });
@@ -731,7 +849,18 @@ export default {
           seed = Buffer.from(input.seed, "base64url");
           if (seed.length < TICKET_BYTES || seed.length > 32) throw fail("bad_input", `the seed is ${TICKET_BYTES} to 32 bytes`);
         }
-        return mintTicket(seed);
+        // The ring: a ticket that pairs whoever redeems it is a pairing nobody confirmed. Once the Wink module confirms with words, a ring ticket is gated like the others.
+        return mintTicket(seed, { via: "ring", ...(ringGated() ? { gate: "ring" } : {}) });
+      },
+    });
+    ctx.tool("relay.pair.pending.confirm", {
+      internal: true,
+      description: "The yes for a waiting pairing (a gated ticket, X-1): enrols the device that redeemed it, now. Only the Wink module, which has had the person pick the right three words. With `trusted` the device is marked trusted at the same moment (an owner-confirmed phone or computer). Answers { paired, id, key?, alg? }: the public key the device offered in its hello, so the pairing can bind its session to it.",
+      input: obj({ id: str, trusted: { type: "boolean" } }, ["id"]),
+      run: async (input, meta = {}) => {
+        if (meta.caller !== "module:wink") throw fail("denied", "only the Wink module confirms a waiting pairing");
+        const k = await pendingConfirm(String(input.id), { trusted: input.trusted === true });
+        return { paired: true, id: String(input.id), ...(k || {}) };
       },
     });
 
@@ -918,6 +1047,7 @@ export default {
     });
 
     ctx.tool("relay.devices.list", {
+      callers: ["web"],
       description: "Devices paired through the relay: id, name, when paired and last seen, whether presence is enrolled, and whether it is connected now.",
       input: obj(),
       run: async (_, meta = {}) => {
@@ -933,9 +1063,11 @@ export default {
         }));
         // A limited browser (a web device not yet trusted) sees the list but not who else is waiting to be trusted.
         const c = String((meta && meta.caller) || "");
-        const me = c.startsWith("device:") ? /** @type {any} */ (db.prepare("SELECT kind, trusted FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(c.slice(7))) : null;
+        const me = /^(device|web|setup):/.test(c) ? /** @type {any} */ (db.prepare("SELECT kind, trusted FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(c.slice(c.indexOf(":") + 1))) : null;
         const withAsk = !(me && me.kind === "web" && !me.trusted);
-        return { devices: rows.map((d, i) => view(d, rtts[i], withAsk)) };
+        // A legacy browser (kind web) reads its own row only: names, last seen and presence of the other devices are not its to see (reviewer-3 PA-4).
+        const mine = c.startsWith("web:") ? c.slice(4) : null;
+        return { devices: rows.map((d, i) => view(d, rtts[i], withAsk)).filter(d => mine === null || d.id === mine) };
       },
     });
 
@@ -972,7 +1104,9 @@ export default {
       run: async (input, meta = {}) => {
         if (meta.caller !== "module:wink") throw Object.assign(new Error("only the Wink module closes a paired device's connections"), { code: "denied" });
         const id = String(input.id);
-        return { closed: forget(id, "removed"), id };
+        // a pairing still waiting for its confirm is let go the same way: its channels close and nothing was ever made
+        const waited = pendingDrop(id, "removed");
+        return { closed: forget(id, "removed") || waited, id };
       },
     });
 
@@ -980,6 +1114,7 @@ export default {
     // the owner's pin, or the newest release this box ships knowing. Open to any paired device,
     // web ones included, since the loader must ask before it can load anything else.
     ctx.tool("relay.web.release", {
+      callers: ["web"],
       description: "Which build of the hosted web app this box trusts: its release, the content-addressed folder sha and the manifest hash the loader must check. The owner's pin, or the newest release this box knows.",
       input: obj(),
       run: async (_, meta = {}) => {
@@ -1024,14 +1159,15 @@ export default {
         owner(meta.caller, meta, "a device's path");
         const c = String(meta.caller || "");
         const rtt = Number.isFinite(input.rtt) && input.rtt >= 0 && input.rtt < 60_000 ? Math.round(input.rtt) : null;
-        if (c.startsWith("device:") && meta.peer && meta.peer.via === "tailnet") {
+        const callerDevice = deviceIdOf(c);
+        if (callerDevice !== null && meta.peer && meta.peer.via === "tailnet") {
           // A desktop bound through ADR 0046's tagged join, calling over its own tailnet node.
-          const id = c.slice("device:".length);
+          const id = callerDevice;
           moved(id, input.path === "direct" ? "direct" : "relay", rtt);
           return { path: input.path, device: id };
         }
-        if (c.startsWith("device:")) {
-          const id = c.slice("device:".length);
+        if (callerDevice !== null) {
+          const id = callerDevice;
           if (input.path !== "relay") throw fail("bad_input", "through the relay, a device reports the relay path");
           moved(id, "relay", rtt);
           const code = crypto.randomBytes(16).toString("base64url");
@@ -1141,12 +1277,13 @@ export default {
     });
 
     ctx.tool("relay.devices.ask-trust", {
+      callers: ["web"],
       description: "A browser paired from the hosted web app asks the owner to trust it fully. Only that browser, about itself; it tells every surface once (device.trust-asked) and the owner's own relay.devices.trust, with presence, is the approval.",
       input: obj(),
       run: async (_, meta = {}) => {
         const c = String((meta && meta.caller) || "");
-        if (!c.startsWith("device:") || agentClaim(c) || (meta && meta.agent)) throw fail("denied", "only a paired browser can ask to be trusted, about itself");
-        const id = c.slice("device:".length);
+        if (!c.startsWith("web:") || agentClaim(c) || (meta && meta.agent)) throw fail("denied", "only a paired browser can ask to be trusted, about itself");
+        const id = c.slice("web:".length);
         const row = /** @type {any} */ (db.prepare("SELECT id, name, kind, pub, trusted, trust_asked FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
         if (!row) throw fail("not_found", "this browser is not paired");
         if (row.kind !== "web") throw fail("bad_input", "only a browser from the web app has limits to lift");
@@ -1212,7 +1349,7 @@ export default {
       description: "Setup page only: a one-time challenge (two minutes) for a claim at the given address. The page signs it with its own key and puts the result in the link's fragment.",
       input: obj({ host: str }, ["host"]),
       run: async (input, meta = {}) => {
-        if (!setup || !setup.live || !setup.device || String(meta.caller || "") !== `device:${setup.device}`) throw fail("denied", "only this box's setup page can make a claim token");
+        if (!setup || !setup.live || !setup.device || String(meta.caller || "") !== `setup:${setup.device}`) throw fail("denied", "only this box's setup page can make a claim token");
         return { ...setup.mintClaim(String(input.host || "")), route: route() };
       },
     });
@@ -1283,6 +1420,6 @@ export default {
       if (row) forget(row.id, "presence key removed");
     });
 
-    return { async stop() { try { offPresence(); } catch {} try { offSignedOut(); } catch {} clearInterval(windowTimer); if (pairWindow) await closeWindow("stopped"); stopLink(); if (setup) clearTimeout(setup.timer); for (const set of live.values()) for (const ch of set) ch.close(1001, "box stopping"); live.clear(); } };
+    return { async stop() { try { offPresence(); } catch {} try { offSignedOut(); } catch {} for (const id of [...pendingPairs.keys()]) pendingDrop(id, "box stopping"); clearInterval(windowTimer); if (pairWindow) await closeWindow("stopped"); stopLink(); if (setup) clearTimeout(setup.timer); for (const set of live.values()) for (const ch of set) ch.close(1001, "box stopping"); live.clear(); } };
   },
 };

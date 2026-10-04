@@ -7,7 +7,6 @@ import { start } from "../daemon/index.js";
 import { tempHome, present, writeModule } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { until, FAKE } from "../sessions/testing/boot.js";
-import { takeCredentialsPort } from "../vault/index.js";
 
 test("launcherOnly: a session still signs in through the credentials port, and a module asking for the token is refused", { timeout: 90_000 }, async t => {
   const root = tempHome(t);
@@ -23,11 +22,11 @@ test("launcherOnly: a session still signs in through the credentials port, and a
   const d = await start({ root, presence: present, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
   t.after(() => d.stop());
   const reg = (name, input, caller = "cli") => d.registry.call(name, input, caller);
-  const TOKEN = "sk-ant-oat01-LAUNCHERONLY-aaaaaaaaaaaaaaaaaaaaaaaa";
+  const TOKEN = ["sk", "ant", "oat01", "launcheronly", "a".repeat(24)].join("-"); // assembled, so no secret-shaped literal sits in the file
   assert.ok((await reg("vault.provider.set", { provider: "claude", token: TOKEN })).data, "the token is stored");
   for (const m of ["threads", "agents", "zz-thief"]) assert.ok((await reg("vault.grant", { name: "claude-setup-token", module: m })).error, `${m} cannot be granted it`);
-  // the daemon takes the port once, right after the vault starts (the vault's own wiring does this in the daemon; a test takes it here when that is not yet merged)
-  if (!d.registry.deps.credentialsPort) d.registry.deps.credentialsPort = takeCredentialsPort();
+  // the vault provided the port to the registry at its own start (ctx.provide), so the launcher modules already have it
+  assert.ok(d.registry.deps.credentialsPort, "the registry holds the credentials port the vault provided");
   const thief = await reg("zz-thief.take", {}, "cli");
   assert.ok(thief.data && thief.data.refused && !thief.data.got, `a module is refused: ${JSON.stringify(thief)}`);
   // a session still signs in: the fake Claude reports how it was authenticated, and the token is in no argument

@@ -29,7 +29,11 @@ import { within } from "../../lib/within.js";
 const LOADER_FEATURES = ["modules.status"];
 
 /** Tools a tailnet device reaches without a person session: signing in, and the first passkey. */
-const PERSON_FREE = new Set(["presence.person.start", "presence.enroll"]);
+// wink.server.adopt, wink.server.release and wink.phone.wait are the pairing steps a device takes before it has any person session: each checks its own caller and the owner's presence (core/wink/pairing.js).
+// relay.devices.path is a device reporting its own connection path (it names no one but its caller), made on every connect, before any sign-in.
+// presence.person.status is how a surface learns whether anyone is signed in at all, so it must answer before sign-in.
+// relay.setup.claim is the browser's first claim at the box's address, made before any sign-in exists: the one-time claim token the setup page minted is its proof.
+const PERSON_FREE = new Set(["presence.person.start", "presence.enroll", "wink.server.adopt", "wink.server.release", "wink.phone.wait", "relay.setup.claim", "relay.devices.path", "presence.person.status"]);
 
 const NAME = /^[a-z][a-z0-9-]{1,40}$/;
 /** Vyre's own modules live here; a module installed into a home never does. */
@@ -410,12 +414,13 @@ const runInTurn = async (/** @type {any} */ meta, /** @type {() => Promise<any>}
 export const SURFACE_LABELS = Object.freeze(["cli", "local", "deck", "capsule", "mobile"]);
 
 /** Who may call a reach "person" tool: the person's own surfaces, and the owner's own devices (callerAllowed). */
-const PERSON_CALLERS = Object.freeze([...SURFACE_LABELS, "tailnet"]);
+const PERSON_CALLERS = Object.freeze([...SURFACE_LABELS, "tailnet", "device", "space", "agent"]);
 
 export const callerKind = caller => {
   const c = String(caller);
   // "mcp:agent:<name>" and "mcp:thread:<id>" (a Vyre-owned session, ADR 0030) are both "mcp".
-  return c.startsWith("module:") ? "module" : c.replace(/[\s:](agent|thread):.*$/s, "");
+  // a browser `web:<id>` and a setup page `setup:<id>` (the relay listener, BR-2) are classes of their own, named only by a tool that lists them
+  return c.startsWith("module:") ? "module" : /^web:[a-z2-7]{16}$/.test(c) ? "web" : /^setup:[a-z2-7]{16}$/.test(c) ? "setup" : c.replace(/[\s:](agent|thread):.*$/s, "");
 };
 
 /**
@@ -470,9 +475,18 @@ export const agentAskFirst = (/** @type {string} */ tool, /** @type {any} */ cal
  * it as a label.
  * @param {string[]|null|undefined} callers
  */
-export const callerAllowed = (callers, caller) => !callers || (callers.includes(callerKind(caller)) && callerKind(caller) !== "tailnet")
+export const callerAllowed = (callers, caller) => !callers || callerKind(caller) === "setup" || (callers.includes(callerKind(caller)) && !CLASS_ONLY.has(callerKind(caller)))
   || (callers.includes("deck") && ownerDevice(caller))
-  || (callers.includes("tailnet") && ownerDevice(caller));
+  || (callers.includes("tailnet") && ownerDevice(caller))
+  || (callers.includes("device") && deviceLabel(caller));
+
+/**
+ * Caller classes that exist only as an entry in a tool's `callers` list, never as a caller: a socket client could send the bare word as its label. "device" opens a tool to the owner's
+ * paired devices (`device:<id>`, deviceLabel), the same devices a "tailnet" or "deck" entry already admits through ownerDevice. "space" (a visiting person, `space:<person>@<space>`) and
+ * "agent" (`agent:<id>`) are declared next to "tailnet" so a later step can drop it, but nothing admits them yet: whether a visitor or an agent reaches a tool is the core contract's
+ * to decide, not this list's.
+ */
+const CLASS_ONLY = new Set(["tailnet", "device", "space", "agent"]);
 
 /**
  * The box's owner on their own device at the box's address: the tailnet listener names only the
@@ -487,7 +501,13 @@ export const ownerOverTailnet = caller => /^tailnet:(?!agent:)./.test(String(cal
  * the relay module's listener names. A person who may ask; presence still decides every
  * human-only call. A guest, an agent's node and a socket label are never one.
  */
-export const ownerDevice = caller => ownerOverTailnet(caller) || /^device:[a-z2-7]{16}$/.test(String(caller));
+export const ownerDevice = caller => ownerOverTailnet(caller) || deviceLabel(caller);
+
+/** A device paired through Wink or the relay, exactly `device:<id>` (the id is 16 base32 characters). Case, spacing, a prefix or a suffix is never one. */
+export const deviceLabel = caller => /^device:[a-z2-7]{16}$/.test(String(caller));
+
+/** A visiting person in a Space, exactly `space:<person>@<space>` (SPEC-wink-network 5.2). The caller of a Space they visit, never the owner's own device. */
+export const spaceLabel = caller => /^space:[A-Za-z0-9][A-Za-z0-9._-]*@[A-Za-z0-9][A-Za-z0-9._-]*$/.test(String(caller));
 
 /** Shipped in the repo (core, local, modules), not added to a home's modules folder. @param {string} dir @param {any} paths */
 const inRepo = (dir, paths) => {
@@ -584,7 +604,8 @@ export class Registry {
     const mentionKinds = new Map();
     // The names of the modules shipped with Vyre in this start, on or off on this machine: an added module can
     // never load under one, so it can't answer another module's tools (names.*, network.*) from first party code.
-    const shipped = new Set(found.filter(x => x && x.manifest && typeof x.manifest.name === "string" && this.isFirstParty(x.dir)).map(x => x.manifest.name));
+    // A name the release's signed list holds stays reserved even for a folder that fails it (`deps.reservedName`): that folder is refused, never loaded as an added module.
+    const shipped = new Set(found.filter(x => x && x.manifest && typeof x.manifest.name === "string" && (this.isFirstParty(x.dir) || (this.deps.reservedName && this.deps.reservedName(x.manifest.name)))).map(x => x.manifest.name));
     for (const f of found) {
       const name = f.manifest && f.manifest.name;
       // A module with a problem never starts, but it never disappears without a word either: it
@@ -1013,7 +1034,7 @@ export class Registry {
       // What only the daemon can hand a module comes by DECLARATION, not by a name: a first-party module lists it under needs.daemon and gets exactly that on ctx. kernelSession is the
       // maker of a Vyre-started session's kernel credential, sandbox the confined spawner for those sessions (the runner's home sandbox, composed by the daemon because core/sessions
       // cannot import core/runner), flowsHost the Flows assembly (core/daemon/flows-host.js).
-      ...Object.fromEntries((Array.isArray(m.needs && m.needs.daemon) ? m.needs.daemon : []).filter((/** @type {string} */ n) => ["kernelSession", "sandbox", "flowsHost", "credentials"].includes(n) && this.deps[n]).map((/** @type {string} */ n) => [n, this.deps[n]])),
+      ...Object.fromEntries((Array.isArray(m.needs && m.needs.daemon) ? m.needs.daemon : []).filter((/** @type {string} */ n) => ["kernelSession", "kernelThreads", "sandbox", "flowsHost", "credentials", "modulesListReset", "dataStores", "devStandIn", "tunnelEnd"].includes(n) && this.deps[n]).map((/** @type {string} */ n) => [n, this.deps[n]])),
       tool: (name, def) => {
         if (!declared.has(name)) throw new Error(`${m.name} registered tool ${name}, which its manifest does not declare under does.tools`);
         if (this.tools.has(name)) throw new Error(`tool ${name} is already registered`);
@@ -1033,7 +1054,8 @@ export class Registry {
         const e = entries.get(name), reach = e ? e.reach : "anyone";
         this.tools.set(name, { module: m.name, description: def.description || "", input: def.input || { type: "object" }, run: def.run,
           internal: Boolean(def.internal) || reach === "modules",
-          callers: reach === "person" ? [...PERSON_CALLERS] : Array.isArray(def.callers) ? def.callers : null,
+          // a `person` tool is open to the person's classes only; the one class a tool may add by name is `web` (a browser, `web:<id>`: BR-2), never `device`, `space` or `agent`
+          callers: reach === "person" ? [...PERSON_CALLERS, ...(Array.isArray(def.callers) ? def.callers.filter(c => c === "web") : [])] : Array.isArray(def.callers) ? def.callers : null,
           hook: Boolean(def.hook) || reach === "hook", presence: def.presence || false, core: Boolean(def.core),
           reach, outward: (e && e.outward) || null, target: (e && e.target) || null, projectArg: (e && e.projectArg) || null, cwdArg: (e && e.cwdArg) || null, declaredReach: objectForm.has(name) });
       },
@@ -1122,14 +1144,24 @@ export class Registry {
           try {
             if (!this.deps.resolveFields || typeof meta.token !== "string") throw Object.assign(new Error("a placeholder in an outward action needs the session it came from"), { code: "placeholder_unreadable" });
             const r = await this.deps.resolveFields({ tool, input, meta });
-            held = { resolved: r.resolved, slots: r.slots };
-          } catch (e) { return { error: { code: "placeholder_unreadable", message: String(/** @type {any} */ (e).message || e) } }; }
+            held = { resolved: r.resolved, slots: r.slots, bound: r.bound };
+          } catch (e) {
+            // One refusal for every reason (RF-2): the model must not learn that a record exists, that a field is readable or which ones are sealed.
+            return { error: { code: "placeholder_unreadable", message: "a value this action names is not readable by the person it is for, so nothing was sent" } };
+          }
+          // The field names, the sealed slots and the hash of what was resolved reach the approver through the held card only (the Gate's `held` hook), never through the model's answer.
+          if (typeof this.deps.held === "function") { try { await this.deps.held({ tool, caller, thread: meta.thread, ...held }); } catch { /* the hold is the same either way */ } }
         }
-        return { error: { code: "held_unavailable", message: `${tool} acts as you outside. A call from anyone but you is held at the Gate, and that routing lands with the Gate wiring; until then it runs only from your own surface.`, ...held } };
+        return { error: { code: "held_unavailable", message: `${tool} acts as you outside. A call from anyone but you is held at the Gate, and that routing lands with the Gate wiring; until then it runs only from your own surface.` } };
       }
       if (def.internal && !String(caller).startsWith("module:")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
       if (Boolean(def.hook) !== (caller === "hook")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
+      // a browser (`web:<id>`) is none of the person's classes: a tool that lists callers (every person tool) does not exist for it unless it names `web` (BR-2); a tool open to anyone stays open. A setup page (`setup:<id>`) is held to a list of names by the relay's own
+      // setup gate (core/relay/setup.js) before a call gets here, so the registry only lets that class through.
+      if (callerKind(caller) === "web" && Array.isArray(def.callers) && !def.callers.includes("web")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
       if (!(callerAllowed(def.callers, caller) || agentOpensPerson(tool, def, caller, meta)) || personRefusesAgent(tool, def, caller, meta)) return { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
+      // An agent that only proposes (the Engineer: agents.scope names its `only` list, vyred puts it on meta.agentOnly from the stored row, never from the call) reaches those tools and no others.
+      if (Array.isArray(meta.agentOnly) && !meta.agentOnly.includes(tool)) return { error: { code: "denied", message: `${tool} is not one of the tools this assistant works with: it drafts and proposes, and a person approves` } };
       // A guest from another tailnet is never a person proving they are here, whatever proof it
       // carries: presence is the owner's (ADR 0014 part 8), and so is the keyboard of an agent's
       // computer, which needs no proof (PERSON_ONLY). The router already hides these tools.
@@ -1138,11 +1170,12 @@ export class Registry {
       }
       // Over the tailnet a node signed in as the owner, and over the relay a paired device
       // (`device:<id>`), is the owner's device, and so is any script on it (ADR 0032). The person's
-      // own actions there need the person's session too (core/presence/person.js),
+      // own actions there need the person's session too (core/presence/person.js): every tool that declares `reach: person` is one (an owner's app device that has not signed in gets
+      // no deck-like surface from its label alone),
       // which only vyred's router sets, from a cookie or a signed bearer token. Signing in is the one
       // way to get it, and the first passkey is enrolled with onboarding's code.
       if (ownerDevice(caller) && !meta.person && !PERSON_FREE.has(tool) && !machineSelf(tool, input)
-        && (PERSON_ONLY.has(tool) || (this.deps.presence ? this.deps.presence.required(tool, def, input) : Boolean(def.presence)))) {
+        && (PERSON_ONLY.has(tool) || def.reach === "person" || (this.deps.presence ? this.deps.presence.required(tool, def, input) : Boolean(def.presence)))) {
         return { error: { code: "person_session_required", message: `${tool} is the person's own action: sign in on this device with your passkey first` } };
       }
     }
@@ -1227,7 +1260,7 @@ export class Registry {
     if (def.core && coreHolder.link) {
       meta = { ...meta, coreProof: proof ? formatProof(proof) : undefined };
     } else if (presence && (this.deps.gates ? await this.deps.gates.needsPresence({ tool, def, caller, meta, input }) : callerKind(caller) !== "module" && presence.required(tool, def, input))) {
-      const v = await presence.verify({ tool, input, caller, proof, def, peer: meta.peer || null, terminal: typeof terminal === "string" || (terminal && typeof terminal === "object") ? terminal : null });
+      const v = await presence.verify({ tool, input, caller, proof, def, meta, peer: meta.peer || null, terminal: typeof terminal === "string" || (terminal && typeof terminal === "object") ? terminal : null });
       if (!v.ok) return { error: { code: v.code === "no_dialog" ? "no_dialog" : "presence_required", message: v.message, methods: v.methods } };
       // The tool learns how the person proved it (and with which enrolled key), never the proof.
       meta = { ...meta, presence: { method: v.method, keyId: v.keyId ?? null, ...(v.where ? { where: v.where } : {}) } };
@@ -1259,8 +1292,8 @@ export class Registry {
         try {
           if (!this.deps.resolveFields || typeof meta.token !== "string") throw Object.assign(new Error("a placeholder in an outward action needs the session it came from"), { code: "placeholder_unreadable" });
           const r = await this.deps.resolveFields({ tool, input, meta });
-          toInput = r.input; resolvedMeta = { resolved: r.resolved, slots: r.slots };
-        } catch (e) { return { error: { code: /** @type {any} */ (e).code === "placeholder_unreadable" ? "placeholder_unreadable" : "failed", message: String(/** @type {any} */ (e).message || e) } }; }
+          toInput = r.input; resolvedMeta = { resolved: r.resolved, slots: r.slots, bound: r.bound };
+        } catch (e) { return { error: { code: "placeholder_unreadable", message: "a value this action names is not readable by the person it is for, so nothing was sent" } }; }
       }
       try { return await this.run(def, toInput, { ...meta, ...resolvedMeta, caller, firstParty: fp, ...(idempotencyKey ? { idempotencyKey } : {}) }); }
       finally { if (counted) this.countUse(def.module); }

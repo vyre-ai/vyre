@@ -295,11 +295,17 @@ export function drive(ctx, { role, guard: g, roots }) {
     };
 
     /** Share and unshare are the owner's: the box's terminal, the Capsule, or a paired Mac. Never an agent. */
-    const owner = meta => {
+    /** Is the kernel's chain for this call exactly one person (never a label)? A build with no kernel (development) takes the daemon's verified person-session fact: SHIM(legacy labels). */
+    const personCall = async meta => {
+      if (!ctx.kernel || typeof ctx.kernel.chain !== "function") return Boolean(meta && meta.person);
+      try { const c = await ctx.kernel.chain(meta); return Boolean(c && Array.isArray(c.hops) && c.hops.length === 1 && c.hops[0].actor && c.hops[0].actor.kind === "person"); } catch { return false; }
+    };
+    const owner = async meta => {
       const caller = String(meta && meta.caller);
       if ((meta && meta.agent) || isAgent(caller)) throw refuse("an agent cannot share or unshare the box's folders; that is for the owner");
       if (OWNER_SOCKET.has(caller)) return;
-      if (caller.startsWith("tailnet:") && meta.peer && meta.peer.stableId && paired().has(String(meta.peer.stableId))) return;
+      // A paired Mac: its own paired peer id AND the kernel's chain saying the call is the person's. What the caller's label looks like decides nothing.
+      if (meta && meta.peer && meta.peer.stableId && paired().has(String(meta.peer.stableId)) && await personCall(meta)) return;
       throw refuse("only the owner shares the box's folders: from the box's terminal, the Capsule or a paired Mac");
     };
 
@@ -447,7 +453,7 @@ export function drive(ctx, { role, guard: g, roots }) {
       input: { type: "object", properties: {} },
       run: async (input, meta = {}) => {
         const st = await driveStatus();
-        const scope = await reach(ctx, meta && meta.caller);
+        const scope = await reach(ctx, meta && meta.caller, meta);
         if (scope.all) return st;
         const mine = p => within(p, scope.folders);
         return { ...st, shares: st.shares.filter(s => mine(s.path)), list: st.list.filter(s => mine(s.path)) };
@@ -470,7 +476,7 @@ export function drive(ctx, { role, guard: g, roots }) {
       description: "Where one of this box's VyreDrive shares is reached on the tailnet, for a device that has no Vyre of its own to ask (a Windows PC's Vyre app): the WebDAV address, the Windows network path for it, the share's access, and whether the box is sharing it now. The owner and the owner's own devices only.",
       input: { type: "object", required: ["share"], properties: { share: { type: "string" } } },
       run: async ({ share }, meta = {}) => {
-        if (!(await reach(ctx, meta && meta.caller)).all) throw refuse("only the owner's own devices ask where a share is", "denied");
+        if (!(await reach(ctx, meta && meta.caller, meta)).all) throw refuse("only the owner's own devices ask where a share is", "denied");
         known(String(share));
         const st = await status();
         const node = st && st.Self && String(st.Self.DNSName || "").replace(/\.$/, "");
@@ -486,7 +492,7 @@ export function drive(ctx, { role, guard: g, roots }) {
       description: "Share one of the box's offered folders with the paired Mac over VyreDrive. Owner only. Audits who else the tailnet policy lets in, right after.",
       input: nameInput,
       run: async ({ name }, meta) => {
-        owner(meta);
+        await owner(meta);
         return shareOne(name);
       },
     });
@@ -502,7 +508,7 @@ export function drive(ctx, { role, guard: g, roots }) {
       description: "Make one of the box's shares read-only (ro) or read-write (rw) for the paired Mac. Owner only, with no proof asked; never an agent, a model or a guest. Says when the tailscale container's /work mount must change to match.",
       input: { type: "object", required: ["name", "mode"], properties: { name: { type: "string" }, mode: { type: "string", enum: ["ro", "rw"] } } },
       run: async ({ name, mode }, meta) => {
-        owner(meta);
+        await owner(meta);
         known(name);
         if (mode !== "ro" && mode !== "rw") throw refuse('mode is "ro" or "rw"', "bad_input");
         const drv = (ctx.config.files && ctx.config.files.drive) || {};
@@ -519,7 +525,7 @@ export function drive(ctx, { role, guard: g, roots }) {
       description: "Stop sharing one of the box's folders over VyreDrive. Owner only.",
       input: nameInput,
       run: async ({ name }, meta) => {
-        owner(meta);
+        await owner(meta);
         known(name);
         const r = await tailscale(["drive", "unshare", name]);
         if (r.code !== 0) throw refuse((r.err || r.out).trim().split("\n")[0] || "tailscale drive unshare failed", "failed");
@@ -531,7 +537,7 @@ export function drive(ctx, { role, guard: g, roots }) {
       description: "Check the tailnet policy from the box's side: every online node the policy lets into this box's VyreDrive shares that is not a paired Mac is a finding. A tailnet-wide security report, not a per-folder read: never an agent (Vyre Drive step 5), same as share/unshare/access above.",
       input: { type: "object", properties: {} },
       run: async (input, meta = {}) => {
-        if (!(await reach(ctx, meta && meta.caller)).all) throw refuse("an agent cannot audit VyreDrive's tailnet policy; that is for the owner");
+        if (!(await reach(ctx, meta && meta.caller, meta)).all) throw refuse("an agent cannot audit VyreDrive's tailnet policy; that is for the owner");
         return audit();
       },
     });
@@ -562,7 +568,7 @@ export function drive(ctx, { role, guard: g, roots }) {
         if (!q) throw refuse("q is required", "bad_input");
         limit = Math.min(500, Math.max(1, Number(limit) || 50));
         kinds = kinds && kinds.length ? kinds : undefined;
-        const scope = await reach(ctx, meta && meta.caller);
+        const scope = await reach(ctx, meta && meta.caller, meta);
         const map = shares();
         let names = Object.keys(map);
         if (share) {
@@ -706,7 +712,7 @@ export function drive(ctx, { role, guard: g, roots }) {
         description: what,
         input: tool === "files.drive.measure" ? { type: "object", required: ["path"], properties: { path: { type: "string" } } } : { type: "object", properties: {} },
         run: async (input, meta = {}) => {
-          if (!(await reach(ctx, meta && meta.caller)).all) throw refuse("an agent looks at the box's folders with files.dirs, not through the Mac", "denied");
+          if (!(await reach(ctx, meta && meta.caller, meta)).all) throw refuse("an agent looks at the box's folders with files.dirs, not through the Mac", "denied");
           return forward(tool, input);
         },
       });
@@ -722,7 +728,7 @@ export function drive(ctx, { role, guard: g, roots }) {
     ctx.tool("files.mentions.search", {
       description: "Files on the box's VyreDrive shares whose name matches what you typed after #, for tagging one in a chat. Runs as the person asking.",
       input: { type: "object", properties: { q: { type: "string" }, limit: { type: "integer" } } },
-      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet"],
+      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent"],
       run: input => forward("files.mentions.search", input),
     });
     ctx.tool("files.mentions.resolve", {
@@ -806,7 +812,7 @@ export function drive(ctx, { role, guard: g, roots }) {
       run: async ({ path: p }, meta = {}) => {
         const want = String(p);
         if (!path.posix.isAbsolute(want) || want.includes("\0") || want.split("/").includes("..")) return { local: null };
-        const scope = await reach(ctx, meta && meta.caller);
+        const scope = await reach(ctx, meta && meta.caller, meta);
         // Reviewer H1: checking the SHARE against the grant (an overlap either direction) was
         // not enough when the share is broader than the grant (a share of /work, a grant of only
         // /work/harlow-site) — every path under that share, including a sibling project's,
@@ -831,7 +837,7 @@ export function drive(ctx, { role, guard: g, roots }) {
         q: { type: "string" }, limit: { type: "integer" }, share: { type: "string" },
         kinds: { type: "array", items: { type: "string" } } } },
       run: async (input, meta = {}) => {
-        const scope = await reach(ctx, meta && meta.caller);
+        const scope = await reach(ctx, meta && meta.caller, meta);
         if (!scope.all) throw refuse("an agent searches this Mac's own files only, not the box directly; use files.search", "denied");
         return forward("files.drive.search", input);
       },

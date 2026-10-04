@@ -29,20 +29,55 @@ export function createDriveGateway(cfg) {
   };
 
   return Object.freeze({
-    async get(chain, /** @type {string} */ p, /** @type {{ version?: number | null }} */ o = {}) {
-      if (o.version != null && (!Number.isInteger(o.version) || o.version < 1)) throw new KernelError("bad_input", "name a version number");
-      return read(chain, "drive.read", file(p), () => cfg.drive.get(p, { version: o.version ?? null }), "file.accessed", { path: p, version: o.version ?? null }); },
-    async history(chain, /** @type {string} */ p) { return read(chain, "drive.read", file(p), async () => cfg.drive.history(p), "file.accessed", { path: p, what: "history" }); },
-    /** The listing shows only what the chain may read: each entry is asked about, and a hidden one is not there. */
-    async list(chain, /** @type {string} */ prefix = "") {
+    /**
+     * The Drive as the vault's file seam for ONE chain (a lent member's request, `leases.forward`): the same `read(path, version)` and `write(path, source, { maxBytes })` the vault's
+     * `deps.files` has, but every call goes through the gate for this chain (`drive.read`, `drive.write`), so a route's Drive lists only ever narrow what the member may already do (FW-2).
+     * The bytes move a chunk at a time and one event says what happened, never the bytes.
+     */
+    files(chain) {
       mustChain(chain);
-      // The folder as a resource: its own path and one more level, so a grant on `proj/*` covers listing `proj/`.
+      return Object.freeze({
+        async read(/** @type {string} */ p, /** @type {number | null} */ version = null) {
+          const d = await gate(chain, "drive.read", file(p));
+          const st = await run(async () => cfg.drive.stat(p, { version }));
+          note(chain, "file.accessed", file(p), { path: p, version: st.version, what: "forward" }, d.decision);
+          return { ...st, stream: () => cfg.drive.stream(p, { version: st.version }) };
+        },
+        async write(/** @type {string} */ p, /** @type {AsyncIterable<Buffer>} */ source, /** @type {{ maxBytes: number, by?: string }} */ o) {
+          const d = await gate(chain, "drive.write", file(p));
+          const r = await run(() => cfg.drive.putStream(p, source, { by: actor(chain), maxBytes: o.maxBytes }));
+          note(chain, "file.written", file(p), { path: p, version: r.version, bytes: r.size, what: "forward" }, d.decision);
+          return { path: p, version: r.version, size: r.size, sha256: r.sha256 };
+        },
+      });
+    },
+    /** `maxBytes` refuses a file larger than that from the Drive's own metadata, before any chunk is read (`too_large`). */
+    async get(chain, /** @type {string} */ p, /** @type {{ version?: number | null, maxBytes?: number }} */ o = {}) {
+      if (o.version != null && (!Number.isInteger(o.version) || o.version < 1)) throw new KernelError("bad_input", "name a version number");
+      return read(chain, "drive.read", file(p), async () => {
+        if (o.maxBytes != null && typeof cfg.drive.stat === "function") { const st = cfg.drive.stat(p, { version: o.version ?? null }); if (st.size > o.maxBytes) throw new KernelError("too_large", "that file is larger than this call returns"); }
+        return cfg.drive.get(p, { version: o.version ?? null });
+      }, "file.accessed", { path: p, version: o.version ?? null }); },
+    async history(chain, /** @type {string} */ p) { return read(chain, "drive.read", file(p), async () => cfg.drive.history(p), "file.accessed", { path: p, what: "history" }); },
+    /** The listing shows only what the chain may read: the folder is authorized once, then each entry is asked about until a page is full. A page is at most 1,000 entries and a call looks at most 5,000, so the cost of one call is bounded whatever the folder holds. `after` is the last path the previous page covered. */
+    async listPage(chain, /** @type {string} */ prefix = "", /** @type {{ limit?: number, after?: string | null }} */ o = {}) {
+      mustChain(chain);
+      const limit = Math.min(Math.max(Number.isInteger(o.limit) ? /** @type {number} */ (o.limit) : 500, 1), 1000);
       const folder = String(prefix).replace(/\/+$/, "");
       await gate(chain, "drive.read", folder ? `${file(folder)}/*` : `vyre://${cfg.space}/file/*`);
-      const all = await run(async () => cfg.drive.list(prefix));
-      const out = [];
-      for (const e of all) if (await check(chain, "drive.read", file(e.path ?? e.name ?? String(e)))) out.push(e);
-      return out;
+      const all = (await run(async () => cfg.drive.list(prefix))).map((/** @type {any} */ e) => [String(e.path ?? e.name ?? e), e]).sort((/** @type {any} */ a, /** @type {any} */ b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+      const out = []; let scanned = 0, last = null, more = false;
+      for (const [path, e] of all) {
+        if (o.after != null && path <= o.after) continue;
+        if (out.length >= limit || scanned >= 5000) { more = true; break; }
+        scanned++; last = path;
+        if (await check(chain, "drive.read", file(path))) out.push(e);
+      }
+      return { entries: out, next: more ? last : null };
+    },
+    async list(chain, /** @type {string} */ prefix = "") {
+      const out = []; let after = null;
+      for (;;) { const r = await this.listPage(chain, prefix, { limit: 1000, after }); out.push(...r.entries); if (!r.next) return out; after = r.next; }
     },
     /** A version written by this chain: `by` is the chain's actor. Two writers on one file give two versions and `conflict: true` (no merge). */
     async put(chain, /** @type {string} */ p, /** @type {Uint8Array} */ bytes, /** @type {{ base?: number | null }} */ o = {}) {

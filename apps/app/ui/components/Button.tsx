@@ -1,34 +1,46 @@
 import { useRef, useState } from "react";
-import { Animated, Easing, View } from "react-native";
-import { cva } from "class-variance-authority";
-import { cn } from "../lib/cn";
+import { Animated, Easing, Platform, View } from "react-native";
 import { Text } from "./Text";
 import { Icon, type IconName } from "./Icon";
-import { useUiTheme } from "../theme";
+import { useUiTheme, type UiCtx } from "../theme";
 import { PressableScale } from "../motion/PressableScale";
 import { Pulse } from "../motion/Pulse";
 import { haptic } from "../motion/haptics";
 import { tokens } from "../../src/theme/tokens";
 
-const button = cva("flex-row items-center justify-center gap-s2 rounded-button border overflow-hidden", {
-  variants: {
-    kind: {
-      primary: "bg-primary border-transparent",
-      // Secondary is ghost on desktop (an outline, no fill) and a surface-3 fill on a phone (ui-review Global 6); `phone` picks.
-      secondary: "bg-transparent border-edge-strong",
-      ghost: "bg-transparent border-transparent",
-      danger: "bg-err-wash border-transparent",
-      hold: "bg-err-wash border-transparent",
-      // A destructive text button: no fill, the err ink, and a held press (600 ms) fills it with the wash as it counts down.
-      holdText: "bg-transparent border-transparent",
-    },
-    size: { lg: "h-s12 px-s5", md: "h-control px-s4", sm: "h-control-sm px-s3" },
-    disabled: { true: "opacity-45", false: "" },
-    phone: { true: "", false: "" },
-  },
-  compoundVariants: [{ kind: "secondary", phone: true, class: "bg-surface-3 border-transparent" }],
-  defaultVariants: { kind: "secondary", size: "md", disabled: false, phone: false },
-});
+/** The button box as plain style objects from the theme's colours and numbers: NativeWind class names on the animated Pressable are dropped on a phone
+ *  (Mark done and Fix had no fill, their inverse ink vanished on the card), so nothing that must be right on native is a class. */
+const px = (ctx: UiCtx, name: string) => Number.parseFloat(String(ctx.map[name]));
+/** The room a control needs around it to reach a 44 point touch target (48 dp on Android): hitSlop is the difference, split over both sides. */
+const slop = (height: number) => { const want = Platform.OS === "android" ? 48 : 44; return height < want ? Math.ceil((want - height) / 2) : undefined; };
+function boxFor(ctx: UiCtx, kind: string, size: string, phone: boolean) {
+  const c = ctx.color;
+  const fill = kind === "primary" ? c.primary : kind === "danger" || kind === "hold" ? c["err-wash"] : kind === "secondary" && phone ? c["surface-3"] : "transparent";
+  const edge = kind === "secondary" && !phone ? c["edge-strong"] : "transparent";
+  const height = size === "lg" ? px(ctx, "--s-12") : size === "md" ? px(ctx, "--control") : px(ctx, "--control-sm");
+  const pad = size === "lg" ? px(ctx, "--s-5") : size === "md" ? px(ctx, "--s-4") : px(ctx, "--s-3");
+  return { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: px(ctx, "--s-2"), borderRadius: px(ctx, "--r-button"), borderWidth: 1, borderColor: edge, backgroundColor: fill, height, paddingHorizontal: pad, overflow: "hidden" } as const;
+}
+const boxes = new WeakMap<UiCtx, Map<string, object>>();
+function box(ctx: UiCtx, kind: string, size: string, phone: boolean) {
+  let m = boxes.get(ctx);
+  if (!m) boxes.set(ctx, (m = new Map()));
+  const k = `${kind}|${size}|${phone}`;
+  let v = m.get(k);
+  if (!v) m.set(k, (v = boxFor(ctx, kind, size, phone)));
+  return v;
+}
+/** The few layout classes callers pass to a Button, read as style. */
+function layoutOf(className?: string) {
+  const out: Record<string, any> = {};
+  for (const c of (className ?? "").split(/\s+/)) {
+    if (c === "self-stretch") out.alignSelf = "stretch";
+    else if (c === "self-start") out.alignSelf = "flex-start";
+    else if (c === "flex-1") out.flex = 1;
+    else if (c === "w-full") out.width = "100%";
+  }
+  return out;
+}
 
 /** The button label: 15 medium (ui-review Global 6), on every platform. */
 const LABEL = { fontSize: 15, lineHeight: 20 } as const;
@@ -51,7 +63,8 @@ export type ButtonProps = {
 
 /** Button: one primary per surface. "hold" carries the count of what goes and fires after a held press (tokens.v2.motion.hold). */
 export function Button({ label, kind = "secondary", size = "md", icon, onPress, disabled, loading, accessibilityLabel, className }: ButtonProps) {
-  const { color, phone } = useUiTheme();
+  const ctx = useUiTheme();
+  const { color, phone } = ctx;
   const hold = kind === "hold" || kind === "holdText";
   const fill = useRef(new Animated.Value(0)).current;
   const [holding, setHolding] = useState(false);
@@ -60,7 +73,7 @@ export function Button({ label, kind = "secondary", size = "md", icon, onPress, 
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
     setHolding(false);
-    Animated.timing(fill, { toValue: 0, duration: 120, useNativeDriver: false }).start();
+    Animated.timing(fill, { toValue: 0, duration: 160, useNativeDriver: false }).start();
   };
   const start = () => {
     if (disabled || loading || timer.current) return;
@@ -76,10 +89,12 @@ export function Button({ label, kind = "secondary", size = "md", icon, onPress, 
       accessibilityHint={hold ? "Hold to confirm" : undefined}
       accessibilityState={{ disabled: !!(disabled || loading), busy: !!loading }}
       disabled={disabled || loading}
+      // A small button is 36 tall on a phone; the target stays 44.
+      hitSlop={phone ? slop(px(ctx, size === "lg" ? "--s-12" : size === "md" ? "--control" : "--control-sm")) : undefined}
       onPress={hold ? undefined : onPress}
       onPressIn={hold ? start : undefined}
       onPressOut={hold ? stop : undefined}
-      className={cn(button({ kind, size, disabled: !!disabled, phone }), className)}
+      style={[box(ctx, kind, size, phone), disabled ? { opacity: 0.45 } : null, layoutOf(className)] as any}
       pressedStyle={hold ? undefined : { opacity: 0.85 }}
       hoverStyle={{ opacity: 0.92 }}
     >
@@ -96,14 +111,19 @@ export function Button({ label, kind = "secondary", size = "md", icon, onPress, 
 
 /** A square button for an icon. Always named. 36 (control) or 44 (touch). */
 export function IconButton({ icon, label, onPress, kind = "ghost", touch }: { icon: IconName; label: string; onPress?: () => void; kind?: "ghost" | "secondary" | "primary"; touch?: boolean }) {
+  const ctx = useUiTheme();
+  const side = px(ctx, touch ? "--touch" : "--control");
+  const c = ctx.color;
+  const look = { alignItems: "center", justifyContent: "center", borderRadius: px(ctx, "--r-button"), borderWidth: 1, width: side, height: side, borderColor: kind === "secondary" ? c["edge-strong"] : "transparent", backgroundColor: kind === "primary" ? c.primary : kind === "secondary" ? c["surface-3"] : "transparent" } as const;
   return (
     <PressableScale
       accessibilityRole="button"
       accessibilityLabel={label}
+      hitSlop={slop(side)}
       onPress={onPress}
       // @ts-expect-error web-only prop: the tooltip
       title={label}
-      className={cn("items-center justify-center rounded-button border", touch ? "h-touch w-touch" : "h-control w-control", kind === "primary" ? "bg-primary border-transparent" : kind === "secondary" ? "bg-surface-3 border-edge-strong" : "bg-transparent border-transparent")}
+      style={look}
       pressedStyle={{ opacity: 0.8 }}
       hoverStyle={{ opacity: 0.9 }}
     >

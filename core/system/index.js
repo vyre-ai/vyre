@@ -2,11 +2,14 @@
 // system — the smallest real module. It proves the contract end to end (a manifest, a tool, an
 // event) and answers "what is this machine running".
 
+import fs from "node:fs";
 import os from "node:os";
+import path from "node:path";
 import { build } from "../daemon/build.js";
 import { hostedOrigins, save as saveConfig } from "../config/index.js";
 import { friendlyDeviceName, cleanLabel } from "../../lib/devicename.js";
 import { fingerprint8, toBase64url } from "../../lib/identity.js";
+import { PKG_ROOT } from "../../kernel/devbuild.js";
 
 // Both fingerprints, or null for either if owner.id is missing or malformed (lib/identity
 // itself owns the shape check, so this doesn't keep its own copy of that regex). Any process
@@ -37,6 +40,16 @@ export default {
           assistant: { name: (ctx.config.onboard && (ctx.config.onboard.assistant || (ctx.config.onboard.greeted && ctx.config.onboard.greeted.agent))) || null,
             fingerprint8: fp.assistant },
           network: { origins: hostedOrigins(ctx.config.network) } };
+      },
+    });
+    ctx.tool("system.build", {
+      description: "The release's signed record of the web app this daemon serves at /app/: appbuild.json (the sha256 of every file of the build), the signed SHA256SUMS that lists it, and SHA256SUMS.sig. A client (the Mac window) verifies the signature with the release key and the list's own hash, then checks every file it is served. A development build has none.",
+      input: { type: "object", properties: {} },
+      run: async () => {
+        /** @param {string} f */
+        const read = f => { const p = path.join(PKG_ROOT, f); const st = fs.lstatSync(p); if (!st.isFile() || st.size > 8_000_000) throw new Error("not a plain file"); return fs.readFileSync(p, "utf8"); };
+        try { return { appbuild: read("appbuild.json"), sums: read("SHA256SUMS"), sig: read("SHA256SUMS.sig").trim() }; }
+        catch { throw Object.assign(new Error("this build carries no signed record of the app (a development build)"), { code: "no_build" }); }
       },
     });
     ctx.tool("system.rename", {

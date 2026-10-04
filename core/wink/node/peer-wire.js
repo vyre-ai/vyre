@@ -258,16 +258,19 @@ export function verifyDevice(pub, msg, sig) {
 }
 
 /**
- * D-1 (ruling, 4 Oct 2026): a storage device's session may call only `wink.storage.*` on the home, and never speaks for an identity. The kind is read from the
+ * D-1 and D-1b (rulings, 4 Oct 2026): a storage device's session may call only the exact tools its bridge needs on the home, and never speaks for an identity. The names are a
+ * list, not the `wink.storage.*` namespace: remove, pick, pair, card, offers, status, discover and bridge.drive are a person's. Every chunk operation (read, write,
+ * delete, list, status and ping) is a frame inside `wink.storage.bridge`; `wink.storage.bridge.accept` is the hand-over of the bridge secret. The kind is read from the
  * entry the port answers (`kind: "storage"`, or `deviceKind: "storage"` beside the chain's `kind: "device"`) on every call, so it cannot be changed from the session.
- * @param {{ kind?: string, deviceKind?: string } | null | undefined} e @param {string} tool
  */
+export const STORAGE_DEVICE_TOOLS = Object.freeze(["wink.storage.bridge", "wink.storage.bridge.accept"]);
+/** @param {{ kind?: string, deviceKind?: string } | null | undefined} e @param {string} tool */
 export function toolAllowed(e, tool) {
   if (!e) return false;
   const storage = e.kind === "storage" || e.deviceKind === "storage";
-  return !storage || /^wink\.storage\.[A-Za-z0-9_.-]+$/.test(String(tool));
+  return !storage || STORAGE_DEVICE_TOOLS.includes(String(tool));
 }
-/** An entry a peer may be: a device of the identity list, or a storage device (only wink.storage.* is then allowed, toolAllowed). @param {{ kind?: string } | null | undefined} e */
+/** An entry a peer may be: a device of the identity list, or a storage device (only the exact bridge tools are then allowed, toolAllowed). @param {{ kind?: string } | null | undefined} e */
 export const peerKindOk = e => Boolean(e) && (e?.kind === "device" || e?.kind === "storage");
 
 /**
@@ -299,7 +302,7 @@ export function admitPeer(pipe, o) {
         if (!caller) throw err("denied", "not proven");
         const e = await o.entry(eid);
         if (!e || e.eid !== eid || !peerKindOk(e) || e.pub !== pubSeen) { session.close("device removed"); throw err("denied", "this device is no longer on the identity list"); }
-        if (!toolAllowed(e, tool)) throw err("denied", "a storage device may only call storage functions");
+        if (!toolAllowed(e, tool)) throw err("denied", "a storage device may only call its bridge functions");
         return o.serve(caller, tool, input, { nodeKey: o.id.nodeKey });
       },
       onframe: f => {

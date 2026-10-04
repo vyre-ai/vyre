@@ -25,6 +25,16 @@ open now "vyre://u/now" 30
 open record "vyre://u/record/01a05a43-fc00-4f98-ad05-d023d68e45fe" 10
 open chat "vyre://chat-demo?at=4200&hold=1" 10
 open now-again "vyre://u/now" 8
+# The second card in full view ("Fix"), by the deep link's scroll offset (dp; honoured only in a mock build).
+open now-card2 "vyre://u/now?scroll=430" 10
+
+# The other theme: the app follows the system night mode.
+adb shell cmd uimode night yes; sleep 3
+open now-dark "vyre://u/now" 10
+open now-card2-dark "vyre://u/now?scroll=430" 10
+open chat-dark "vyre://chat-demo?at=4200&hold=1" 10
+adb shell cmd uimode night no; sleep 3
+open now "vyre://u/now" 8
 
 # A short recording of Now, scrolled a little.
 adb shell "screenrecord --time-limit 12 /sdcard/now.mp4" &

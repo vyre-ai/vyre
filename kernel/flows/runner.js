@@ -239,7 +239,9 @@ export class FlowRunner {
     if (!f) throw Object.assign(new Error("that Flow is not running (it is paused, disabled or has no approved version)"), { code: "not_active" });
     const d = await this.k.authorize({ chain: callerChain, action: "flows.run", resource: `vyre://${f.space}/flow/${id}` });
     if (d.effect !== "allow") throw Object.assign(new Error("you may not run that Flow"), { code: d.reason === "no_grant" ? "not_found" : d.reason });
-    return this.#start(f, { kind: "manual", key: key || newId("man_"), input: input ?? {} }, { trust: "member", data: input ?? {} });
+    // A model-started run (the chain has an assistant in it) carries model-supplied input: it runs tainted (external), so it can never drive a grant or an admin act, and its record says so.
+    const byModel = (callerChain.hops || []).some((/** @type {any} */ h) => h.actor.kind === "agent");
+    return this.#start(f, { kind: "manual", key: key || newId("man_"), input: input ?? {} }, { trust: byModel ? "external" : "member", data: input ?? {} });
   }
 
   /** Wait for every started run to reach a resting state. For tests and for shutdown. */

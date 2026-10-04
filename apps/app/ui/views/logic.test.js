@@ -1,5 +1,6 @@
 // The pure half of the generated views, over the mock store's sample world: columns and grouping come from the definitions, the month grid is right,
 // Seal-for-all names how many records have a value, and links resolve both ways.
+import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createMockStore } from "../../../../deck/ui/mock-store.js";

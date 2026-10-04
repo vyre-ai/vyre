@@ -32,8 +32,8 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`connectors`](#connectors) | `core/connectors` | `box`, `local` | 11 | 4 | capsule, cli, deck |
 | [`context`](#context) | `core/context` | `box`, `local` | 2 | 1 | cli |
 | [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
-| [`files`](#files) | `core/files` | `box`, `local` | 28 | 3 | capsule, cli, deck |
-| [`flows`](#flows) | `core/flows` | `box`, `local` | 19 | 0 | none |
+| [`files`](#files) | `core/files` | `box`, `local` | 33 | 3 | capsule, cli, deck |
+| [`flows`](#flows) | `core/flows` | `box`, `local` | 20 | 0 | none |
 | [`gate`](#gate) | `core/gate` | `box`, `local` | 13 | 6 | capsule, cli, deck |
 | [`github`](#github) | `core/github` | `box`, `local` | 33 | 8 | cli, deck |
 | [`glass`](#glass) | `core/glass` | `box` | 13 | 8 | capsule, cli, deck |
@@ -50,43 +50,47 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 10 | 9 | cli, deck |
 | [`memory`](#memory) | `core/memory` | `box`, `local` | 46 | 15 | capsule, cli, deck |
 | [`mentions`](#mentions) | `core/mentions` | `box`, `local` | 3 | 0 | none |
+| [`modules`](#modules) | `core/modulelist` | `box`, `local` | 5 | 0 | cli |
 | [`names`](#names) | `core/names` | `box` | 12 | 12 | cli |
-| [`network`](#network) | `core/network` | `box` | 9 | 4 | capsule, cli, deck |
+| [`network`](#network) | `core/network` | `box` | 13 | 4 | capsule, cli, deck |
 | [`onboard`](#onboard) | `core/onboard` | `box`, `local` | 14 | 2 | none |
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 15 | 7 | capsule, cli, deck |
-| [`presence`](#presence) | `core/presence` | `box`, `local` | 13 | 6 | capsule, cli, deck |
+| [`presence`](#presence) | `core/presence` | `box`, `local` | 18 | 6 | capsule, cli, deck |
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 22 | 5 | cli |
 | [`providers`](#providers) | `core/providers` | `box`, `local` | 1 | 0 | cli |
 | [`publish`](#publish) | `core/publish` | `box` | 17 | 6 | capsule, cli, deck |
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 4 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 12 | 4 | cli |
-| [`relay`](#relay) | `core/relay` | `box`, `local` | 40 | 21 | capsule, cli, deck |
+| [`records`](#records) | `core/records-tools` | `box`, `local` | 18 | 0 | cli |
+| [`relay`](#relay) | `core/relay` | `box`, `local` | 41 | 22 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
+| [`rules`](#rules) | `core/rules-tools` | `box`, `local` | 10 | 0 | cli |
 | [`runner`](#runner) | `core/runner` | `local` | 6 | 7 | capsule, cli, deck |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
 | [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 38 | 8 | cli |
 | [`settings`](#settings) | `core/settings` | `box`, `local` | 10 | 2 | cli, deck |
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
-| [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 54 | 29 | capsule, cli, deck |
+| [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 71 | 34 | capsule, cli, deck |
 | [`spend`](#spend) | `core/spend` | `box`, `local` | 4 | 2 | cli |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
 | [`stream`](#stream) | `core/stream` | `box`, `local` | 6 | 0 | none |
 | [`suggest`](#suggest) | `core/suggest` | `box`, `local` | 3 | 1 | cli |
 | [`sync`](#sync) | `core/sync` | `box`, `local` | 10 | 5 | capsule, cli, deck |
-| [`system`](#system) | `core/system` | `box`, `local` | 3 | 2 | cli |
+| [`system`](#system) | `core/system` | `box`, `local` | 4 | 2 | cli |
+| [`tasks`](#tasks) | `core/tasks-tools` | `box`, `local` | 6 | 0 | cli |
 | [`team`](#team) | `core/team` | `box`, `local` | 31 | 10 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 3 | none |
 | [`threads`](#threads) | `core/switchboard` | `box`, `local` | 56 | 36 | cli |
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 3 | 2 | cli |
-| [`vault`](#vault) | `core/vault` | `box`, `local` | 129 | 43 | capsule, cli, deck |
+| [`vault`](#vault) | `core/vault` | `box`, `local` | 132 | 44 | capsule, cli, deck |
 | [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 20 | 7 | capsule, cli, deck |
-| [`wink`](#wink) | `core/wink` | `box` | 44 | 31 | capsule, cli, deck |
+| [`wink`](#wink) | `core/wink` | `box` | 50 | 33 | capsule, cli, deck |
 | [`work`](#work) | `core/work` | `box`, `local` | 15 | 0 | cli |
 
 ## about
@@ -265,7 +269,7 @@ Find, look at and bring over files on this machine and the box, inside the folde
 - Folder: `core/files`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [28](tools.md#files)
+- Tools: [33](tools.md#files)
 - Emits: [3 events](events.md#files)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -277,10 +281,11 @@ Flows and Kits: write, approve and run a Flow, with its triggers, waits and task
 - Folder: `core/flows`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [19](tools.md#flows)
+- Tools: [20](tools.md#flows)
 - Emits: no events
 - Shows on: no surface
 - Needs daemon: `flowsHost`
+- Needs kernel: `{"actions":["records.read","records.create","records.update","records.remove","tasks.request","tasks.read","tasks.work"],"prefixes":["*"]}`
 
 ## gate
 
@@ -460,6 +465,19 @@ The # tag: one picker over everything the person may mention, from the modules t
 - Emits: no events
 - Shows on: no surface
 
+## modules
+
+The owner's reset of the accepted first-party module list, for a deliberate downgrade (rollback to an older release): one presence-gated tool over the kernel's own reset.
+
+- Folder: `core/modulelist`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [5](tools.md#modules)
+- Emits: no events
+- Shows on: cli
+- Needs daemon: `modulesListReset`, `modulesListResetPayload`
+- Needs kernel: `{"actions":[]}`
+
 ## names
 
 - Folder: `core/names`, version 0.1.0
@@ -478,7 +496,7 @@ Who besides the owner the box's tailnet listener serves: guests from other tailn
 - Folder: `core/network`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [9](tools.md#network)
+- Tools: [13](tools.md#network)
 - Emits: [4 events](events.md#network)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -509,7 +527,7 @@ Alarms, timers, reminders, todos, notes and a calendar, kept on the box so somet
 - Folder: `core/presence`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [13](tools.md#presence), 2 of them only for other modules
+- Tools: [18](tools.md#presence), 4 of them only for other modules
 - Emits: [6 events](events.md#presence)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -567,6 +585,19 @@ Put a site or app on the internet from your space: build a private preview, appr
 - Shows on: cli
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
+## records
+
+The app's way into a Space's records: one tool per Store call over the kernel's gateway, each under the caller's own chain in the Space it names. Nothing here decides; the kernel does.
+
+- Folder: `core/records-tools`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [18](tools.md#records)
+- Emits: no events
+- Shows on: cli
+- Needs daemon: `devStandIn`
+- Needs kernel: `{"actions":[]}`
+
 ## relay
 
 A second way to reach the box besides Tailscale: the box dials out to a relay, and devices paired by QR code reach it over an end-to-end encrypted channel.
@@ -574,9 +605,10 @@ A second way to reach the box besides Tailscale: the box dials out to a relay, a
 - Folder: `core/relay`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [40](tools.md#relay), 13 of them only for other modules
-- Emits: [21 events](events.md#relay)
+- Tools: [41](tools.md#relay), 14 of them only for other modules
+- Emits: [22 events](events.md#relay)
 - Shows on: capsule, cli, deck
+- Needs daemon: `tunnelEnd`
 - Needs vault: `tailscale-mint-oauth`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
@@ -591,6 +623,18 @@ The Android app from the box: CI's unsigned APK, signed with the owner's own key
 - Emits: no events
 - Shows on: cli
 - Needs vault: `android-release-key`
+
+## rules
+
+The app's way into a Space's standing rules: one tool per call on the kernel's rule store, each under the caller's own chain in the Space it names. Nothing here decides; the kernel does.
+
+- Folder: `core/rules-tools`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [10](tools.md#rules)
+- Emits: no events
+- Shows on: cli
+- Needs kernel: `{"actions":[]}`
 
 ## runner
 
@@ -637,6 +681,7 @@ One way to read and change every setting, at account, project, device or session
 - Tools: [10](tools.md#settings), 2 of them only for other modules
 - Emits: [2 events](events.md#settings)
 - Shows on: cli, deck
+- Needs kernel: `{"actions":[]}`
 
 ## sideview
 
@@ -668,10 +713,10 @@ Identity, spaces, members and invites: your Vyre name, a space with a home you c
 - Folder: `core/spaces`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [54](tools.md#spaces), 12 of them only for other modules
-- Emits: [29 events](events.md#spaces)
+- Tools: [71](tools.md#spaces), 16 of them only for other modules
+- Emits: [34 events](events.md#spaces)
 - Shows on: capsule, cli, deck
-- Needs kernel: `{"membership":true}`
+- Needs kernel: `{"membership":true,"spaces":true}`
 
 ## spend
 
@@ -700,11 +745,12 @@ One short line for Claude Code's status line: what needs the user, the box, the 
 
 - Folder: `core/stream`, version 0.1.0
 - Runs on: `box`, `local`
-- Requires: none
+- Requires: `threads`
 - Tools: [6](tools.md#stream)
 - Emits: no events
 - Shows on: no surface
 - Streams: `session`
+- Needs daemon: `kernelThreads`
 
 ## suggest
 
@@ -735,9 +781,21 @@ A paired device (a Mac or a Windows PC) sends its own Claude Code session files 
 - Folder: `core/system`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [3](tools.md#system)
+- Tools: [4](tools.md#system)
 - Emits: [2 events](events.md#system)
 - Shows on: cli
+
+## tasks
+
+The app's way into a Space's tasks: one tool per Store call over the kernel's task store, each under the caller's own chain in the Space it names. Nothing here decides; the kernel does.
+
+- Folder: `core/tasks-tools`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [6](tools.md#tasks)
+- Emits: no events
+- Shows on: cli
+- Needs kernel: `{"actions":[]}`
 
 ## team
 
@@ -813,8 +871,8 @@ Is a newer Vyre out: one daily look at the releases, one answer every surface dr
 - Folder: `core/vault`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [129](tools.md#vault), 13 of them only for other modules
-- Emits: [43 events](events.md#vault)
+- Tools: [132](tools.md#vault), 15 of them only for other modules
+- Emits: [44 events](events.md#vault)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
@@ -875,10 +933,11 @@ Pairing as grants: every way in is a Wink (scan a code, or type two-sided codes)
 - Folder: `core/wink`, version 0.1.0
 - Runs on: `box`
 - Requires: `relay`
-- Tools: [44](tools.md#wink), 1 of them only for other modules
-- Emits: [31 events](events.md#wink)
+- Tools: [50](tools.md#wink), 2 of them only for other modules
+- Emits: [33 events](events.md#wink)
 - Listens for: `relay.code-asked`, `relay.invite-redeemed`, `device.paired`, `device.removed`
 - Shows on: capsule, cli, deck
+- Needs daemon: `dataStores`
 - Needs vault: `per-storage`
 
 ## work

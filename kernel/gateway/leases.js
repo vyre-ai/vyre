@@ -10,10 +10,11 @@
 // Every call takes a kernel-built chain that is exactly one person (the process also refuses a model's chain).
 import { isChain, isExactlyPerson } from "../core/chain.js";
 import { KernelError } from "../core/errors.js";
-import { leasedUse, credentialAction, safePath } from "../seal/uses.js";
+import { leasedUse, credentialAction, safePath, canonicalPath, requestBind, normalizeRoute, routeAllows } from "../seal/uses.js";
 
 /**
  * @param {{ space: string, sealer: any, grantsStore: any, authorize: (i: any) => Promise<any>, log: any, chains: any,
+ *   enforce?: (chain: any, d: any) => void, drive?: any,
  *   resolve?: (i: { space: string, ref: string, route: string }) => Promise<any>, forward?: (q: any) => Promise<any>, routeAction?: (route: string) => string, session_ttl_ms?: number }} cfg
  *   resolve: the core vault's release for a credential on a route and host (the caller's; this never holds a value)
  */
@@ -21,7 +22,7 @@ export function createLeases(cfg) {
   const { sealer, grantsStore } = cfg;
   /** @type {Map<string, { member: string, device: string, device_key?: string }>} */ const info = new Map();
   /** @type {Map<string, string>} session -> lease id (the platform's mapping, bound by `bind`) */ const sessions = new Map();
-  /** @type {Map<string, { route: string, ref: string, methods: string[], paths: string[] }[]>} session -> the credentials its definition may use, held here at the home and never sent by the runner */ const defs = new Map();
+  /** @type {Map<string, any[]>} session -> the credentials its definition may use, held here at the home and never sent by the runner */ const defs = new Map();
   const person = (/** @type {any} */ chain) => { if (!isChain(chain) || !isExactlyPerson(chain)) throw new KernelError("chain_not_person", "a lease is a person's, on their own"); return chain.hops[0].actor; };
   const allowedFor = (/** @type {string} */ member, /** @type {string} */ device, /** @type {string | undefined} */ device_key) => { const a = typeof grantsStore.active === "function" ? grantsStore.active({ member, device, device_key }) : { spaceAllows: false, memberAccepts: false }; return a.spaceAllows === true && a.memberAccepts === true; };
   const kernelChain = () => cfg.chains.fromFacts({ kind: "module", module: "leases", first_party: true });
@@ -71,13 +72,11 @@ export function createLeases(cfg) {
      * end in `/*`, and have no default (a route with no paths matches nothing).
      */
     bind(/** @type {string} */ session, /** @type {string} */ id, /** @type {{ routes?: any[] }} */ def = {}) {
+      // LF-3: the route record the Space holds, whole: allow and deny lists (deny wins), the size cap, the content types, the Drive lists and the header names the program may send.
+      // `methods` and `paths` stay as the older shorthand (every listed method on every listed path; GET and HEAD by default). A route with no path matches nothing.
       const routes = [];
       for (const r of Array.isArray(def.routes) ? def.routes : []) {
-        if (!r || typeof r.route !== "string" || !r.route || typeof r.ref !== "string" || !r.ref) throw new KernelError("bad_input", "a credential route names a host and a credential");
-        const methods = (Array.isArray(r.methods) && r.methods.length ? r.methods : ["GET", "HEAD"]).map((/** @type {any} */ m) => String(m).toUpperCase());
-        const paths = (Array.isArray(r.paths) ? r.paths : []).map(String);
-        if (paths.some(x => !x.startsWith("/") || x.slice(0, -2).includes("*") || (x.includes("*") && !x.endsWith("/*")))) throw new KernelError("bad_input", "a path is exact or ends in /*");
-        routes.push(Object.freeze({ route: r.route.toLowerCase(), ref: r.ref, ...(typeof r.connector === "string" ? { connector: r.connector } : {}), methods, paths }));
+        try { routes.push(Object.freeze({ ...normalizeRoute(r), ...(typeof r.connector === "string" ? { connector: r.connector } : {}) })); } catch { throw new KernelError("bad_input", "a credential route names a host and a credential, and its lists are exact paths or end in /*"); }
       }
       sessions.set(String(session), String(id));
       defs.set(String(session), routes);
@@ -94,13 +93,14 @@ export function createLeases(cfg) {
       if (!i || typeof i.route !== "string" || typeof i.session !== "string" || typeof i.method !== "string" || typeof i.path !== "string") throw new KernelError("bad_input", "a use names a session, a host, a method and a path");
       if (!cfg.resolve) throw new KernelError("unavailable", "no vault is wired to resolve credentials");
       const method = i.method.toUpperCase(), route = i.route.toLowerCase();
-      const path = i.path.split(/[?#]/)[0];
-      try { if (!path.startsWith("/")) throw new Error("path"); if (path !== "/") safePath(path.slice(1)); } catch { throw new KernelError("not_found", "that credential is not open to this session"); }
-      const hit = (defs.get(i.session) || []).find(r => r.route === route && r.methods.includes(method) && r.paths.some(x => (x.endsWith("/*") ? path === x.slice(0, -2) || path.startsWith(x.slice(0, -1)) : path === x)));
+      let path;
+      try { path = canonicalPath(i.path.split(/[?#]/)[0]); } catch { throw new KernelError("not_found", "that credential is not open to this session"); }
+      const hit = (defs.get(i.session) || []).find(r => r.route === route && routeAllows(r, method, path));
       if (!hit) throw new KernelError("not_found", "that credential is not open to this session");
       const action = credentialAction("api", method);
       const d = await cfg.authorize({ chain, action, resource: `vyre://${cfg.space}/credential/${encodeURIComponent(hit.ref)}` });
       if (d.effect !== "allow") throw new KernelError(d.effect === "ask" ? d.reason : "not_found", "that credential is not open to this chain");
+      if (cfg.enforce) cfg.enforce(chain, d);
       const go = leasedUse({
         leaseOf: s => sessions.get(s) ?? null,
         check: ({ chain: c, id }) => sealer.lease.check({ chain: c, id }),
@@ -124,27 +124,39 @@ export function createLeases(cfg) {
       if (!i || typeof i.method !== "string" || typeof i.path !== "string" || !i.path.startsWith("/")) throw new KernelError("bad_input", "a forward names a method and a path");
       const method = i.method.toUpperCase();
       let path;
-      try { const bare = i.path.split(/[?#]/)[0]; if (bare !== "/") safePath(bare.slice(1)); path = bare; } catch { throw new KernelError("not_found", "that request is not open to this caller"); }
+      try { path = canonicalPath(i.path.split(/[?#]/)[0]); } catch { throw new KernelError("not_found", "that request is not open to this caller"); }
       /** @type {string} */ let connector, ref = null, route = null;
+      /** @type {any} */ let def = null;
       if (typeof i.session === "string") {
         // the lent computer's form: the session's own definition (held at the home) says which credential, never the caller
         if (typeof i.route !== "string") throw new KernelError("bad_input", "name the host");
-        const hit = (defs.get(i.session) || []).find(r => r.route === i.route.toLowerCase() && r.methods.includes(method) && r.paths.some(x => (x.endsWith("/*") ? path === x.slice(0, -2) || path.startsWith(x.slice(0, -1)) : path === x)));
+        const hit = (defs.get(i.session) || []).find(r => r.route === i.route.toLowerCase() && routeAllows(r, method, path));
         if (!hit) throw new KernelError("not_found", "that request is not open to this session");
-        connector = hit.connector || hit.ref; ref = hit.ref; route = hit.route;
+        connector = hit.connector || hit.ref; ref = hit.ref; route = hit.route; def = hit;
       } else if (typeof i.connector === "string" && /^[A-Za-z0-9_.-]{1,64}$/.test(i.connector)) connector = i.connector;
       else throw new KernelError("bad_input", "name a session or a connector");
       const action = ["GET", "HEAD"].includes(method) ? "service.read" : "service.call";
+      // LF-1: everything is decided first (the service, then each Drive file), and only when ALL allow is each decision counted through `enforce`, which is what applies a grant's
+      // rate, budget (meter) and once. A request refused anywhere counts nothing; a request that goes ahead is counted exactly once per decision, like any gated act.
       const d = await cfg.authorize({ chain, action, resource: `vyre://${cfg.space}/service/${encodeURIComponent(connector)}`, ...(i.approval ? { approval: String(i.approval) } : {}) });
-      if (d.effect === "ask") return { held: true, kind: action, summary: `${method} ${connector}${path}`, decision: d.decision };
+      if (d.effect === "ask") return { held: true, kind: action, summary: `${method} ${connector}${path}`, decision: d.decision, ...(typeof i.session !== "string" ? { bind: requestBind({ connector, method, path, query: i.query, body: i.body, headers: i.headers, upload: i.upload, saveTo: i.saveTo }) } : {}) };
       if (d.effect !== "allow") throw new KernelError("not_found", "that request is not open to this caller");
+      const decisions = [d];
+      const file = i.upload !== undefined || i.saveTo !== undefined || i.stream === true;
       const files = [[i.upload && i.upload.drive && i.upload.drive.path, "drive.read"], [i.saveTo, "drive.write"]];
+      if (Array.isArray(i.upload && i.upload.multipart)) for (const p of i.upload.multipart) if (p && p.drive) files.push([p.drive.path, "drive.read"]);
       for (const [fp, act] of files) {
         if (typeof fp !== "string") continue;
         let u; try { u = `vyre://${cfg.space}/file/${safePath(fp)}`; } catch { throw new KernelError("not_found", "that file is not open to this caller"); }
-        if ((await cfg.authorize({ chain, action: act, resource: u })).effect !== "allow") throw new KernelError("not_found", "that file is not open to this caller");
+        const fd = await cfg.authorize({ chain, action: act, resource: u });
+        if (fd.effect !== "allow") throw new KernelError("not_found", "that file is not open to this caller");
+        decisions.push(fd);
       }
-      const r = await run(() => cfg.forward({ space: cfg.space, connector, ...(ref ? { ref, route } : {}), request: { method, path, ...(i.query ? { query: i.query } : {}), ...(i.headers ? { headers: i.headers } : {}), ...(i.body !== undefined ? { body: i.body } : {}), ...(i.upload ? { upload: i.upload } : {}), ...(i.saveTo ? { saveTo: i.saveTo } : {}) }, ...(typeof i.session === "string" ? { session: i.session } : {}), ...(i.idem ? { idem: String(i.idem) } : {}), ...(i.approval ? { approval: String(i.approval) } : {}) }));
+      if (cfg.enforce) for (const x of decisions) cfg.enforce(chain, x);
+      // LF-3: the route record's limits travel with the request (size cap, content types, Drive lists, header names), and the Drive is this chain's own door (FW-2), never the home's.
+      const limits = def ? { allow_headers: def.headers, limits: { maxBytes: def.maxBytes, contentTypes: def.contentTypes }, drive: def.drive } : {};
+      if (file && !cfg.drive) throw new KernelError("unavailable", "no Drive is wired to forward a file");
+      const r = await run(() => cfg.forward({ space: cfg.space, connector, ...limits, ...(file ? { file: true, files: cfg.drive.files(chain) } : {}), ...(ref ? { ref, route } : {}), request: { method, path, ...(i.query ? { query: i.query } : {}), ...(i.headers ? { headers: i.headers } : {}), ...(i.body !== undefined ? { body: i.body } : {}), ...(i.upload ? { upload: i.upload } : {}), ...(i.saveTo ? { saveTo: i.saveTo } : {}) }, ...(typeof i.session === "string" ? { session: i.session } : {}), ...(i.idem ? { idem: String(i.idem) } : {}), ...(i.approval ? { approval: String(i.approval) } : {}), ...(i.bind ? { bind: String(i.bind) } : {}) }));
       try { cfg.log.append(kernelChain(), { type: "vault.forwarded", sv: 1, subject: `vyre://${cfg.space}/service/${encodeURIComponent(connector)}`, data: { method, path, status: r && r.status !== undefined ? r.status : null, ...(typeof i.session === "string" ? { session: i.session } : {}) }, vis: "owner", red: "internal" }); } catch { /* the call was made; the log is best effort here */ }
       return r;
     },

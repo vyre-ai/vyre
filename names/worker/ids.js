@@ -18,7 +18,7 @@
 // stale or forked answer. There is no recovery wait here: recovery is a chain op (the code, or two contacts), and the 24 hour newcomer
 // rule inside the chain is what stops a takeover. Nothing here publishes a DNS record.
 
-import { verdict, base32 } from "./index.js";
+import { verdict, base32, dnsFor } from "./index.js";
 import * as C from "./chain.js";
 
 export const RECORD_TAG = "vyre-id-record-v1";
@@ -47,7 +47,7 @@ const err = (status, code, message) => ({ status, code, message });
 const unb64 = C.unb64;
 
 export { recordMessage, aliasMessage, actMessage } from "./id-messages.js";
-import { recordMessage, aliasMessage } from "./id-messages.js";
+import { recordMessage, aliasMessage, actMessage } from "./id-messages.js";
 
 /** A hostname the directory will accept as an alias: letters, digits, dashes, at least two labels, no IP, nothing under vyre.run. @param {unknown} raw */
 export function aliasDomain(raw) {
@@ -134,7 +134,7 @@ export const idOps = {
     const sig = await this.idCheckRecord(rec0, state, b.rec, b.sealed);
     // One namespace: a name used by a box, or by any identity, is taken.
     if (await this.load(v.name) || await this.idLoad(v.name)) throw err(409, "taken", "someone else has that name");
-    await this.count("ip", ip, 5, "too many names claimed from this address today");
+    await this.count("ip", ip, Number(this.env.CLAIMS_PER_IP_PER_DAY) || 5, "too many names claimed from this address today");
     const max = Number(this.env.GLOBAL_CLAIMS_PER_DAY) || 500;
     await this.count("all", "all", max, "the directory is busy today; try again tomorrow");
     const rec = { v: 2, name: v.name, kind: state.kind, id: state.id, ops, eids: this.eidsOf(state), sealed: b.sealed, rec: sig, state: "live", claimedAt: this.now(), aliases: [], notices: [], log: [] };
@@ -244,6 +244,53 @@ export const idOps = {
     return { name: rec.name, aliases: rec.aliases };
   },
 
+
+  // ---- certificates for a Space's names, by DNS-01 only (PT-1) ----
+  // The relay in front of a Space's edge passes TLS through and must never be able to get a certificate, so the proof of control is a DNS record, which the relay cannot write. The Space
+  // signs the request with an entry of its own list (an act, like releasing a name); only then does the directory put the TXT at _acme-challenge.<space>.<zone> (the one label covers the name and its
+  // wildcard) and, once, a CAA record that names the one ACME account the Space's Caddy uses, so no other account can be issued a certificate for the name. HTTP-01 and TLS-ALPN-01 are never offered.
+
+  /** The Space whose name this is, with the signed act checked. @this {any} @param {any} b @param {string} action @param {string} subject */
+  async idAcmeSpace(b, action, subject) {
+    const v = verdict(b.name);
+    const rec = v.status === "invalid" ? null : await this.idLiveRecord(v.name);
+    if (!rec) throw err(404, "not_found", "no such name");
+    if (rec.kind !== "space") throw err(403, "not_a_space", "certificates are issued for a Space's names");
+    await this.idCheckAct(rec, b.act, action, subject, { fresh: true });
+    return rec;
+  },
+
+  /** Put one ACME DNS-01 challenge value for the Space's name. @this {any} */
+  async op_idAcme(b) {
+    const token = String(b.token || "");
+    if (!/^[A-Za-z0-9_-]{20,128}$/.test(token)) throw err(400, "bad_token", "not an ACME challenge value");
+    const rec = await this.idAcmeSpace(b, "acme", token);
+    await this.count("acme", rec.name, 10, "too many challenges today");
+    const fqdn = `_acme-challenge.${rec.name}.${dnsFor(this.env).zone}`;
+    await dnsFor(this.env).addTxt(fqdn, token, 4);
+    return { fqdn };
+  },
+
+  /** Take the challenge values away again. @this {any} */
+  async op_idAcmeClear(b) {
+    const rec = await this.idAcmeSpace(b, "acme-clear", "-");
+    const fqdn = `_acme-challenge.${rec.name}.${dnsFor(this.env).zone}`;
+    await dnsFor(this.env).clear(fqdn, "TXT");
+    return { fqdn };
+  },
+
+  /** Pin issuance for the Space's name to one ACME account (its accounturi). Replaces the pin. @this {any} */
+  async op_idCaa(b) {
+    const uri = String(b.accounturi || "");
+    if (!/^https:\/\/[a-z0-9.-]{1,100}\/[A-Za-z0-9._\/-]{1,120}$/.test(uri)) throw err(400, "bad_account", "not an ACME account URI");
+    const rec = await this.idAcmeSpace(b, "caa", uri);
+    await this.count("caa", rec.name, 5, "too many changes today");
+    const dns = dnsFor(this.env);
+    const fqdn = `${rec.name}.${dns.zone}`;
+    await dns.setCaa(fqdn, `letsencrypt.org; accounturi=${uri}`);
+    return { fqdn, pinned: uri };
+  },
+
   /** Give the name up. Only an entry that is not a newcomer can; used for any time, the name is a tombstone for good. @this {any} */
   async op_idRelease(b) {
     const v = verdict(b.name);
@@ -266,6 +313,7 @@ export const idOps = {
 export const ID_ROUTES = Object.freeze({
   "POST /v1/ids/claim": "idClaim", "GET /v1/ids/resolve": "idResolve", "POST /v1/ids/append": "idAppend", "POST /v1/ids/update": "idUpdate",
   "POST /v1/ids/alias": "idAlias", "DELETE /v1/ids/alias": "idAliasClear", "POST /v1/ids/release": "idRelease",
+  "POST /v1/ids/acme": "idAcme", "DELETE /v1/ids/acme": "idAcmeClear", "POST /v1/ids/caa": "idCaa",
 });
 /** The routes that carry their own proof and so take no request signature. */
-export const SELF_PROVEN = Object.freeze(new Set(["idClaim", "idResolve", "idAppend", "idUpdate", "idAlias", "idAliasClear", "idRelease"]));
+export const SELF_PROVEN = Object.freeze(new Set(["idClaim", "idResolve", "idAppend", "idUpdate", "idAlias", "idAliasClear", "idRelease", "idAcme", "idAcmeClear", "idCaa"]));

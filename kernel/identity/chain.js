@@ -18,6 +18,11 @@
 // space) change owners. Any older entry can remove a newcomer at once. Time here is the op's own `ts`, which may not run backwards
 // along the chain nor ahead of the verifier's clock by more than the skew.
 //
+// The web-key rule (lead ruling on reviewer-3's KP-1): an entry with `held: "web"` is a key a script on a web origin can reach (a WebCrypto key in a browser). It may sign its own genesis
+// and nothing else about the list: no add, remove, replace-code or space-owner change, whatever its age. Who speaks for an identity changes only by a passkey entry (alg
+// "webauthn-es256": a P-256 key and the rp it was made for) whose assertion carries user presence AND verification for each op, by a device key held by a phone or computer, or by the
+// recovery code, which can add a device. The directory Worker and every home run this same file, so all of them refuse.
+//
 // This file uses only WebCrypto, so the same code runs in the Worker, in Node and in a browser.
 
 export const CHAIN_TAG = "vyre-chain-v1";
@@ -78,7 +83,58 @@ async function verifySig(pubText, message, sigText) {
 }
 
 /**
- * @typedef {{ eid: string, kind: "device"|"code"|"contact"|"owner", pub?: string, subject?: string, label?: string, since: number, addedBy: string|null, founder?: boolean }} Entry
+ * A WebAuthn assertion as a chain signature (a passkey with user verification signs each op). `sig` is base64url of the JSON { ad, cd, s }: the authenticator data, the client data
+ * JSON, and the ES256 signature (DER, as the authenticator gives it), each base64url. The challenge the authenticator was given is SHA-256 of the op's message, so the assertion names
+ * this one op; the rp id the entry names must hash to the authenticator data's rpIdHash, the origin must be that rp's own https origin, and the user must have been present AND verified.
+ * @param {string} pubText a raw uncompressed P-256 point (65 bytes), base64url @param {string} rp @param {Uint8Array} message @param {string} sigText
+ */
+async function verifyWebAuthn(pubText, rp, message, sigText) {
+  try {
+    const pub = unb64(pubText), env = unb64(sigText);
+    if (!pub || pub.length !== 65 || pub[0] !== 4 || !env || typeof rp !== "string" || !rp) return false;
+    const j = JSON.parse(new TextDecoder().decode(env));
+    const ad = unb64(j.ad), cd = unb64(j.cd), der = unb64(j.s);
+    if (!ad || !cd || !der || ad.length < 37) return false;
+    const rpHash = new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode(rp)));
+    for (let i = 0; i < 32; i++) if (ad[i] !== rpHash[i]) return false;
+    if ((ad[32] & 0x05) !== 0x05) return false; // user present (0x01) and user verified (0x04), every op
+    const client = JSON.parse(new TextDecoder().decode(cd));
+    if (client.type !== "webauthn.get" || client.origin !== `https://${rp}` || client.crossOrigin === true) return false;
+    const want = b64u(new Uint8Array(await crypto.subtle.digest("SHA-256", /** @type {BufferSource} */ (message))));
+    if (client.challenge !== want) return false;
+    const raw = derToRaw(der);
+    if (!raw) return false;
+    const signed = new Uint8Array(ad.length + 32);
+    signed.set(ad, 0); signed.set(new Uint8Array(await crypto.subtle.digest("SHA-256", /** @type {BufferSource} */ (cd))), ad.length);
+    const key = await crypto.subtle.importKey("raw", /** @type {BufferSource} */ (pub), { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]);
+    return await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, key, /** @type {BufferSource} */ (raw), /** @type {BufferSource} */ (signed));
+  } catch { return false; }
+}
+/** An ECDSA signature in DER as the 64 bytes WebCrypto takes, or null. @param {Uint8Array} d */
+function derToRaw(d) {
+  if (d.length < 8 || d[0] !== 0x30 || d[1] !== d.length - 2 || d[2] !== 0x02) return null;
+  let p = 3;
+  const part = () => {
+    const len = d[p++];
+    let v = d.subarray(p, p + len);
+    p += len;
+    while (v.length > 32 && v[0] === 0) v = v.subarray(1);
+    if (v.length > 32) return null;
+    const out = new Uint8Array(32); out.set(v, 32 - v.length);
+    return out;
+  };
+  const r = part();
+  if (d[p++] !== 0x02) return null;
+  const q = part();
+  if (!r || !q || p !== d.length) return null;
+  const raw = new Uint8Array(64); raw.set(r, 0); raw.set(q, 32);
+  return raw;
+}
+/** Does `sig` over `message` check out for this entry's key, whatever kind of key it is? @param {Entry} e @param {Uint8Array} message @param {string} sig */
+const verifyEntry = (e, message, sig) => (e.alg === "webauthn-es256" ? verifyWebAuthn(/** @type {string} */ (e.pub), String(e.rp || ""), message, sig) : verifySig(/** @type {string} */ (e.pub), message, sig));
+
+/**
+ * @typedef {{ eid: string, kind: "device"|"code"|"contact"|"owner", pub?: string, subject?: string, label?: string, since: number, addedBy: string|null, founder?: boolean, alg?: "webauthn-es256", rp?: string, held?: "web" }} Entry
  * @typedef {{ id: string, kind: "person"|"space", seq: number, head: string, ts: number, entries: Entry[] }} State
  * @typedef {{ ownerOps?: (id: string) => Promise<any[]|null>, live?: boolean, liveFrom?: number, seenAt?: (seq: number) => number|undefined, now?: number, skewMs?: number }} Ctx
  * `ownerOps(id)` gives a person's whole chain (the verifier checks it itself). `live` says every op here is being ACCEPTED now, so its device must be on the owner's
@@ -96,9 +152,14 @@ async function shapeOfEntry(e, kind) {
   }
   if (!PERSON_KINDS.includes(e.kind)) throw chainError("bad_entry", "an entry is a device, a recovery code or a recovery contact");
   const pub = unb64(e.pub);
-  if (!pub || pub.length !== 32) throw chainError("bad_entry", "an entry's key is not an Ed25519 key");
-  if (e.eid !== await idOfBytes(pub)) throw chainError("bad_entry", "an entry's id is not its key's hash");
-  return { eid: e.eid, kind: e.kind, pub: e.pub, label: cleanLabel(e.label) };
+  // A passkey (alg webauthn-es256) is a P-256 point and the rp it was made for; every other entry is an Ed25519 key. `held: "web"` says a script on a web origin can reach the key (a WebCrypto
+  // key kept by the browser): such a key has no say over who speaks for the identity (KP-1). Both are part of the signed entry, so neither can change after the fact.
+  const passkey = e.alg === "webauthn-es256";
+  if (e.alg !== undefined && !passkey) throw chainError("bad_entry", "an entry's key type is not known");
+  if (e.held !== undefined && e.held !== "web") throw chainError("bad_entry", "an entry is held on the web or says nothing");
+  if (passkey ? (!pub || pub.length !== 65 || pub[0] !== 4 || typeof e.rp !== "string" || !/^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$/.test(e.rp) || e.held !== undefined || e.kind !== "device") : (!pub || pub.length !== 32 || e.rp !== undefined)) throw chainError("bad_entry", passkey ? "a passkey entry is a device with a P-256 key and the rp it was made for" : "an entry's key is not an Ed25519 key");
+  if (e.eid !== await idOfBytes(/** @type {Uint8Array} */ (pub))) throw chainError("bad_entry", "an entry's id is not its key's hash");
+  return { eid: e.eid, kind: e.kind, pub: e.pub, label: cleanLabel(e.label), ...(passkey ? { alg: "webauthn-es256", rp: e.rp } : {}), ...(e.held === "web" ? { held: "web" } : {}) };
 }
 const cleanLabel = (/** @type {unknown} */ l) => (typeof l === "string" ? l.replace(/[\u0000-\u001f]/g, " ").slice(0, 60) : undefined) || undefined;
 
@@ -132,7 +193,7 @@ export async function applyOp(state, op, ctx = {}) {
     const entry = await shapeOfEntry(op.entry, op.kind);
     if (op.id !== await idOfGenesis(op)) throw chainError("bad_id", "the id is not the hash of the genesis");
     if (op.kind === "person") {
-      if (entry.kind !== "device" || op.by !== entry.eid || !await verifySig(entry.pub, msg, op.sig)) throw chainError("bad_signature", "the first device signs its own genesis");
+      if (entry.kind !== "device" || op.by !== entry.eid || !await verifyEntry(/** @type {Entry} */ (entry), msg, op.sig)) throw chainError("bad_signature", "the first device signs its own genesis");
     } else await verifyOwnerSig(op, entry.eid, /** @type {Entry} */ ({ ...entry, since: eff, addedBy: null }), msg, eff, ctx);
     /** @type {Entry[]} */
     const entries = [{ ...entry, since: eff, addedBy: null, founder: true }];
@@ -165,7 +226,10 @@ export async function applyOp(state, op, ctx = {}) {
       young = await verifyOwnerSig(op, signer.eid, signer, msg, eff, ctx);
     } else {
       if (signer.kind === "contact") throw chainError("not_allowed", "a recovery contact only approves a recovery");
-      if (!await verifySig(signer.pub, msg, op.sig)) throw chainError("bad_signature", "the signature does not check out");
+      if (!await verifyEntry(signer, msg, op.sig)) throw chainError("bad_signature", "the signature does not check out");
+      // A key a web origin can reach has no authority over who speaks for the identity: not to add, remove or replace anything. A passkey signs each op with user verification, the recovery
+      // code can add a device, and a phone or computer key joins the list that way (KP-1).
+      if (signer.held === "web") throw chainError("web_key", "a key kept by a web page cannot change who speaks for this identity; use your passkey or your recovery code");
       young = youngAt(signer, eff);
       // The recovery code is a way BACK IN, not a way to take over: it can only add a device. That device is a newcomer, and the owner's own devices stay and can remove it.
       if (signer.kind === "code" && !(op.type === "add" && op.entry && op.entry.kind === "device")) throw chainError("code_limited", "the recovery code can only add a device; sign in with a device to change the list");
@@ -212,7 +276,7 @@ export async function applyOp(state, op, ctx = {}) {
       for (const a of Array.isArray(op.approvals) ? op.approvals : []) {
         const c = a && find(state, String(a.eid));
         if (!c || c.kind !== "contact" || seen.has(c.eid) || youngAt(c, eff)) continue;
-        if (await verifySig(c.pub, msg, a.sig)) seen.add(c.eid);
+        if (await verifyEntry(c, msg, a.sig)) seen.add(c.eid);
       }
       if (seen.size < CONTACT_QUORUM) throw chainError("no_quorum", `a recovery needs ${CONTACT_QUORUM} recovery contacts to approve`);
       entries.push({ ...e, since: eff, addedBy: null });
@@ -257,7 +321,8 @@ async function verifyOwnerSig(op, subject, owner, msg, ts, ctx) {
   const { at, ops } = await ownerAt(ctx, subject, op.via_seq, op.via_head);
   const dev = find(at, op.via);
   if (!dev || dev.kind !== "device") throw chainError("not_on_list", "that device is not on the owner's list");
-  if (!await verifySig(dev.pub, msg, op.sig)) throw chainError("bad_signature", "the signature does not check out");
+  if (dev.held === "web") throw chainError("web_key", "a key kept by a web page cannot change who owns a space; use your passkey");
+  if (!await verifyEntry(dev, msg, op.sig)) throw chainError("bad_signature", "the signature does not check out");
   if (ctx.live || (ctx.liveFrom !== undefined && op.seq >= ctx.liveFrom)) await stillOnList(ctx, ops, dev);
   return youngAt(dev, ts);
 }

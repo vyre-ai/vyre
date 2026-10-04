@@ -90,7 +90,7 @@ test("person: a script on the owner's Mac is the owner's device, never the perso
   // A proof alone is not enough over the tailnet: human-only still wants the person's session.
   const proved = await call(MAC_IP, "vault.reveal", { name: "northwind-mail" }, { "x-vyre-presence": "passkey id=x" });
   assert.equal(proved.error.code, "person_session_required");
-  // Reads stay the device's: the Deck loads before anyone signs in.
+  // Reads stay the device's: the Deck loads before anyone signs in (a tool that declares reach person is the exception, and presence.person.status is exempt: it is how a surface learns that nobody is).
   assert.equal((await call(MAC_IP, "agents.list")).status, 200);
   assert.deepEqual((await call(MAC_IP, "presence.person.status")).data, { signed: false });
 });
@@ -306,4 +306,100 @@ test("person: a cookie sent by a request another site or an opaque frame started
   assert.equal((await status({ "sec-fetch-site": "same-site", "sec-fetch-dest": "empty" })).data.signed, false, "a same-site fetch");
   assert.equal((await status({ "sec-fetch-site": "same-site", "sec-fetch-dest": "embed" })).data.signed, false);
   assert.equal((await status({ "sec-fetch-site": "cross-site", "sec-fetch-dest": "object" })).data.signed, false);
+});
+
+test("person: a device its owner paired opens its person session at pairing with no prompt, and every end path closes it", async t => {
+  const { d, relayed, root } = await box(t);
+  const ID = "abcdefghijklmnop", OTHER = "qrstuvwxyz234567";
+  const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const rogue = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const jwk = dk.publicKey.export({ format: "jwk" });
+  // wink's pair record, as wink.device.record answers it: confirmed by the owner, with the key the device registered.
+  /** @type {any} */ let rec = { id: ID, kind: "phone", confirmed: true, owner: "id1", confirmedBy: "id1", hardware: true, key: jwk, confirmKeyId: "owner-key" };
+  d.registry.tools.set("wink.device.record", { module: "wink", description: "", input: { type: "object" }, internal: true, callers: null, hook: false, presence: false, run: async () => rec });
+  const sign = (k, text) => crypto.sign("sha256", Buffer.from(text), { key: k.privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url");
+  const signedCall = (tok, k, tool, input, extra = {}) => {
+    const t = Date.now(), n = crypto.randomBytes(12).toString("base64url");
+    return { authorization: `Vyre ${tok}`, "x-vyre-proof": `t=${t} n=${n} sig=${sign(k, signed({ method: "POST", path: `/v1/tools/${tool}`, raw: JSON.stringify(input), t, n }))}`, ...extra };
+  };
+
+  // Nothing is signed in before pairing: the person's own act is refused.
+  assert.equal((await relayed(ID, "POST", "/v1/tools/agents.create", { name: "kit" })).error.code, "person_session_required");
+  // An unconfirmed record, a web device and another caller get no grant.
+  rec = { ...rec, confirmed: false };
+  assert.ok((await d.registry.call("presence.person.pair-grant", { device: ID }, "module:wink")).error, "unconfirmed");
+  rec = { ...rec, confirmed: true, kind: "web" };
+  assert.ok((await d.registry.call("presence.person.pair-grant", { device: ID }, "module:wink")).error, "web");
+  rec = { ...rec, kind: "phone" };
+  assert.ok((await d.registry.call("presence.person.pair-grant", { device: ID }, "module:relay")).error, "not wink");
+  assert.equal((await relayed(ID, "POST", "/v1/tools/presence.person.pair-challenge", {})).data.challenge.length, 32, "a device with no grant gets a challenge of the same shape");
+  assert.ok((await relayed(ID, "POST", "/v1/tools/presence.person.start-paired", { sig: sign(dk, "x") })).error, "no grant, no session");
+
+  // The owner confirmed: wink asks for the grant once.
+  const g = await d.registry.call("presence.person.pair-grant", { device: ID }, "module:wink");
+  assert.equal(g.data.granted, true, JSON.stringify(g));
+  const ch = (await relayed(ID, "POST", "/v1/tools/presence.person.pair-challenge", {})).data.challenge;
+  assert.equal(ch, g.data.challenge);
+  // Another device's channel, and a key that is not the confirmed one, get the same refusal.
+  const bad = [await relayed(OTHER, "POST", "/v1/tools/presence.person.start-paired", { sig: sign(dk, `paired-start\n${OTHER}\n${ch}`) }),
+    await relayed(ID, "POST", "/v1/tools/presence.person.start-paired", { sig: sign(rogue, `paired-start\n${ID}\n${ch}`) })];
+  assert.equal(new Set(bad.map(b => JSON.stringify(b.error))).size, 1, "one refusal for every failure");
+  // The device signs with the confirmed key: a session, with no prompt and no passkey.
+  const s = await relayed(ID, "POST", "/v1/tools/presence.person.start-paired", { sig: sign(dk, `paired-start\n${ID}\n${ch}`) });
+  assert.equal(s.status, 200, JSON.stringify(s));
+  const made = await relayed(ID, "POST", "/v1/tools/agents.create", { name: "kit" }, signedCall(s.data.token, dk, "agents.create", { name: "kit" }));
+  assert.equal(made.status, 200, JSON.stringify(made));
+  // The same signed start again, and another device using the token, get nothing.
+  assert.ok((await relayed(ID, "POST", "/v1/tools/presence.person.start-paired", { sig: sign(dk, `paired-start\n${ID}\n${ch}`) })).error);
+  assert.equal((await relayed(OTHER, "POST", "/v1/tools/agents.list", {}, signedCall(s.data.token, dk, "agents.list", {}))).status, 401);
+
+  // The row's own clock stands for time passing.
+  const db = open(path.join(root, "vyre.db"));
+  t.after(() => db.close());
+  const day = 86_400_000;
+  const row = () => db.prepare("SELECT * FROM presence_people WHERE node = ? AND paired = 1").get(ID);
+  let k = 0;
+  const act = tok => { const input = { name: `kit${++k}` }; return relayed(ID, "POST", "/v1/tools/agents.create", input, signedCall(tok, dk, "agents.create", input)); };
+  const use = () => act(s.data.token);
+  // No 90-day cap: a session made 200 days ago, used 5 days ago, still works.
+  db.prepare("UPDATE presence_people SET created = ?, last_used = ?, rotated = ? WHERE id = ?").run(Date.now() - 200 * day, Date.now() - 5 * day, Date.now() - 5 * day, s.data.id);
+  assert.equal((await use()).status, 200, "day 200, used 5 days ago");
+  // 31 days idle: refused, with the sign-in hint.
+  db.prepare("UPDATE presence_people SET last_used = ?, rotated = ? WHERE id = ?").run(Date.now() - 31 * day, Date.now() - 31 * day, s.data.id);
+  const late = await use();
+  assert.equal(late.status, 401);
+  assert.match(late.error.message, /sign in again/);
+  // A rotation 34 days overdue: only the rotation answers.
+  const g2 = await d.registry.call("presence.person.pair-grant", { device: ID }, "module:wink");
+  const ch2 = g2.data.challenge;
+  const s2 = await relayed(ID, "POST", "/v1/tools/presence.person.start-paired", { sig: sign(dk, `paired-start\n${ID}\n${ch2}`) });
+  assert.equal(s2.status, 200, JSON.stringify(s2));
+  const use2 = () => act(s2.data.token);
+  assert.equal((await use2()).status, 200);
+  db.prepare("UPDATE presence_people SET rotated = ? WHERE id = ?").run(Date.now() - 34 * day, s2.data.id);
+  const stale = await use2();
+  assert.equal(stale.status, 401, "past the grace the secret does nothing else");
+  const rotated = await relayed(ID, "POST", "/v1/tools/presence.person.rotate", { t: String(Date.now()), n: "rotatenonce001", sig: "x" }, signedCall(s2.data.token, dk, "presence.person.rotate", { t: String(Date.now()), n: "rotatenonce001", sig: "x" }));
+  assert.equal(rotated.status === 401 || Boolean(rotated.error), true, "a rotation with a bad signature is refused");
+  // Revoke: refused at once.
+  const s3x = row();
+  assert.ok(s3x);
+  db.prepare("UPDATE presence_people SET rotated = ? WHERE id = ?").run(Date.now(), s2.data.id);
+  assert.equal((await use2()).status, 200, "renewed clock works again");
+  assert.equal((await d.registry.call("presence.person.revoke", { id: s2.data.id }, "cli", { person: { id: "x", kind: "cookie" } })).data.revoked, s2.data.id);
+  assert.equal((await use2()).status, 401, "revoked: refused at once");
+  // Device removal, recovery reset and sign-out-everywhere end it through endPaired.
+  const g3 = await d.registry.call("presence.person.pair-grant", { device: ID }, "module:wink");
+  const s4 = await relayed(ID, "POST", "/v1/tools/presence.person.start-paired", { sig: sign(dk, `paired-start\n${ID}\n${g3.data.challenge}`) });
+  const use4 = () => act(s4.data.token);
+  assert.equal((await use4()).status, 200);
+  assert.ok((await d.registry.call("presence.person.end-paired", { device: ID }, "module:relay")).error, "only wink ends it");
+  assert.equal((await d.registry.call("presence.person.end-paired", { device: ID }, "module:wink")).data.ended, 1);
+  const gone = await use4();
+  assert.equal(gone.status, 401);
+  assert.equal(gone.error.code, "device_removed");
+  const g5 = await d.registry.call("presence.person.pair-grant", { device: ID }, "module:wink");
+  const s5 = await relayed(ID, "POST", "/v1/tools/presence.person.start-paired", { sig: sign(dk, `paired-start\n${ID}\n${g5.data.challenge}`) });
+  assert.equal((await d.registry.call("presence.person.end-paired", {}, "module:wink")).data.ended, 1, "reset or sign-out-everywhere ends every paired session");
+  assert.equal((await act(s5.data.token)).status, 401);
 });

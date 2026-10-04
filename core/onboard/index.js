@@ -31,9 +31,8 @@ const PREFIX = { subscription: "sk-ant-oat", "api-key": "sk-ant-api" };
 const VAULT_ITEM = { subscription: "claude-setup-token", "api-key": "anthropic-api-key" };
 const VAULT_KIND = { subscription: "secret", "api-key": "api-key" };
 const VAULT_ABOUT = { subscription: "Claude subscription token from `claude setup-token`, for headless sessions", "api-key": "Anthropic API key, for headless sessions" };
-// The switchboard's agents module starts the headless sessions and hands them this credential.
-// agents for their own threads; threads for every other session Vyre starts (ADR 0030).
-const CREDENTIAL_READERS = ["agents", "threads"];
+// The token is handed to the session launcher through the vault's credentials port (vault.launcherOnly), never through a module grant.
+
 // Who may be handed a passkey code: the loopback onboarding session and the box's own terminal.
 // Never a tailnet caller, which a model on the owner's Mac is too.
 const HANDS_CODE = new Set(["onboard", "cli", "local"]);
@@ -69,6 +68,16 @@ const joinOwnerOnly = (caller, meta, what) => {
   if (c.startsWith("tailnet-guest:")) throw joinFail("denied", `${what} is the owner's; a guest never sees it`);
   if ((meta && meta.agent) || AGENT_CLAIM.test(c)) throw joinFail("denied", `"${c}" is an agent; ${what} is the owner's`);
   if (["anonymous", "hook"].includes(c)) throw joinFail("denied", `${what} is the owner's`);
+};
+// HD-1: the tools that write the assistant's sign-in, claim a name, set up Tailscale, index sessions or finish onboarding are the person's own. The callers they have today are the
+// person's surfaces, the onboarding page on the loopback address ("onboard"), a paired device or tailnet peer, and this module and launch; a model client (mcp, a thread, an agent) and any
+// other module are refused. Once the box has an owner, a write also needs the person's fresh presence (meta.presence), so a hijacked page cannot swap credentials or claim a name.
+const SURFACES = ["cli", "local", "deck", "capsule", "mobile", "onboard", "web", "setup"];
+export const ownerWrite = (/** @type {unknown} */ caller, /** @type {any} */ meta, /** @type {string} */ what, /** @type {boolean} */ hasOwner, writes = true) => {
+  const c = String(caller || "");
+  const ok = SURFACES.includes(c) || /^(device|setup|tailnet):[\w.-]+$/.test(c) || c === "module:onboard" || c === "module:launch";
+  if (!ok || (meta && meta.agent) || AGENT_CLAIM.test(c)) throw joinFail("denied", `${what} is the person's own; "${c || "anonymous"}" may not do it`);
+  if (writes && hasOwner && !(meta && meta.presence)) throw joinFail("presence_required", `${what} changes this server's sign-ins or name, so it needs you to confirm on your device`);
 };
 /**
  * The commands the Tailnet Lock card shows. The person runs them on their Mac; Vyre never runs
@@ -451,7 +460,8 @@ export default {
     ctx.tool("onboard.name", {
       description: "Checks <name>.vyre.run and saves it; reserve serves this machine at its address (DNS and certificate, as progress rows): the vyre.run name with a zone token or own domain, else the ts.net name. `via` says which; again retries.",
       input: obj({ name: { type: "string" }, action: { type: "string", enum: ["check", "reserve", "claim", "status", "ts.net"] }, confirm: { type: "boolean" } }),
-      run: async ({ name, action = "check", confirm }, { caller }) => {
+      run: async ({ name, action = "check", confirm }, { caller, ...meta }) => {
+        ownerWrite(caller, meta, "claiming a name", !!(ob().finished || net().ownerSeen), !["check", "status"].includes(action));
         boxOnly();
         if (action === "check") {
           if (!name) throw new Error("name is required to check");
@@ -488,7 +498,8 @@ export default {
       description: "Store Claude Code's sign-in in the Vault: a subscription setup token or an API key. The value is never returned. setup-token alone starts `claude setup-token` and returns its sign-in url; setup-token with the code the page showed finishes it.",
       input: obj({ mode: { type: "string", enum: ["detect", "setup-token", "api-key"] }, key: { type: "string" }, code: { type: "string" },
         kind: { type: "string", enum: ["subscription", "api-key"] }, token: { type: "string" } }),
-      run: async ({ mode, key, code, kind, token }, { caller }) => {
+      run: async ({ mode, key, code, kind, token }, { caller, ...meta }) => {
+        ownerWrite(caller, meta, "signing in to Claude", !!(ob().finished || net().ownerSeen));
         boxOnly();
         if (mode === "setup-token" && !key && !token) {
           if (!code) return { ...(await stepOf("claude", caller)), url: await signin.start(), needsCode: true };
@@ -501,7 +512,7 @@ export default {
           if (!t.startsWith(PREFIX[kind]) || t.length < 40 || /\s/.test(t)) {
             throw new Error(kind === "subscription" ? "that does not look like a token from `claude setup-token`" : "that does not look like an Anthropic API key");
           }
-          await call("vault.put", { name: VAULT_ITEM[kind], kind: VAULT_KIND[kind], description: VAULT_ABOUT[kind], value: t, grants: CREDENTIAL_READERS });
+          await call("vault.put", { name: VAULT_ITEM[kind], kind: VAULT_KIND[kind], description: VAULT_ABOUT[kind], value: t });
           save({ onboard: { claude: kind } });
           await ensureAssistant();
         }
@@ -512,7 +523,8 @@ export default {
     ctx.tool("onboard.tailscale", {
       description: "Tailscale on this machine; connect starts `tailscale up` and returns its sign-in link. lock reads Tailnet Lock (read-only): whether it is on, this box's lock key, how many keys are trusted, whether this box is signed, and the commands the person runs on their Mac to turn it on. policy merges the tailnet policy JSON for whatever is turned on today (Taildrive, Taildrop, SSH, and egress if it is on) into one snippet to paste, instead of one per feature.",
       input: obj({ action: { type: "string", enum: ["status", "detect", "poll", "connect", "lock", "policy"] } }),
-      run: async ({ action = "status" }, { caller }) => {
+      run: async ({ action = "status" }, { caller, ...meta }) => {
+        ownerWrite(caller, meta, "the Tailscale step", !!(ob().finished || net().ownerSeen), action !== "status");
         boxOnly();
         if (action === "lock") {
           const l = await lockStatus();
@@ -581,7 +593,8 @@ export default {
     ctx.tool("onboard.history", {
       description: "Find and index this machine's Claude Code sessions, in the background.",
       input: obj({ action: { type: "string", enum: ["status", "start"] } }),
-      run: async ({ action = "status" }, { caller }) => {
+      run: async ({ action = "status" }, { caller, ...meta }) => {
+        ownerWrite(caller, meta, "importing your Claude sessions", !!(ob().finished || net().ownerSeen), action === "start");
         boxOnly();
         if (action === "start" && !indexing) {
           save({ onboard: { history: true } });
@@ -695,7 +708,8 @@ export default {
     ctx.tool("onboard.finish", {
       description: "Finish the onboarding.",
       input: obj(),
-      run: async (_, { caller }) => {
+      run: async (_, { caller, ...meta }) => {
+        ownerWrite(caller, meta, "finishing setup", !!(ob().finished || net().ownerSeen));
         boxOnly();
         const assistant = await meet();
         save({ onboard: { finished: new Date().toISOString() } });

@@ -10,5 +10,5 @@ import { Button } from "./Button";
 export function SignInBar() {
   const needed = useSignInNeeded();
   if (!needed) return null;
-  return <Banner live fact="Sign in to your box to send what waits" action={<Button kind="outline" label="Sign in" onPress={() => void signIn()} />} />;
+  return <Banner live fact="Sign in to your home to send what waits" action={<Button kind="outline" label="Sign in" onPress={() => void signIn()} />} />;
 }

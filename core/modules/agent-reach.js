@@ -9,13 +9,17 @@
 
 /** @type {ReadonlyMap<string, string>} */
 export const PERSON_ONLY = new Map([
+  ["memory.sealscan", "the person's own audit of where sensitive-looking values sit in memory: counts only, but it is the person's to ask"],
   ["vault.provider.set", "needs the person's Face ID or presence: changes which provider holds the Space's secrets"],
   ["vault.provider.remove", "needs the person's Face ID or presence: changes which provider holds the Space's secrets"],
   ["wink.server.pairing", "needs the person's Face ID or presence: pairing and devices"],
   ["wink.server.pair.answer", "needs the person's Face ID or presence: pairing and devices"],
   ["wink.server.release", "needs the person's Face ID or presence: pairing and devices"],
-  ["wink.server.fingerprint", "needs the person's Face ID or presence: pairing and devices"],
-  ["wink.server.reset", "needs the person's Face ID or presence: pairing and devices"],
+  ["wink.server.reset.begin", "only the person at the server's own console: resetting a server"],
+  ["wink.server.reset.confirm", "only the person at the server's own console: resetting a server"],
+  ["network.wink.join", "changes this computer's own network: bringing a link up"],
+  ["network.wink.leave", "changes this computer's own network: taking a link down"],
+  ["wink.server.status", "the server's own console: who owns it and which device paired it; a model session has no part in pairing"],
   ["wink.phone.pairing", "needs the person's Face ID or presence: pairing and devices"],
   ["wink.phone.pair.answer", "needs the person's Face ID or presence: pairing and devices"],
   ["wink.phone.wait", "needs the person's Face ID or presence: pairing and devices"],
@@ -182,6 +186,8 @@ export const PERSON_ONLY = new Map([
 /** @type {ReadonlySet<string>} */
 export const OPEN = new Set([
   "vault.provider.status",
+  "network.wink.status",
+  "network.wink.whois",
   "artifacts.activity.log",
   "artifacts.mention.search",
   "bridges.get",

@@ -21,6 +21,7 @@
 // it is up, and the relay stream is closed when it is no longer the way in. A dead direct path is
 // retried at most once a minute while the relay carries the work.
 
+import { deviceIdOf } from "../../../lib/caller.js";
 import net from "node:net";
 import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs";
@@ -88,6 +89,15 @@ export function createHost(deps) {
   const spaces = new Map();
   /** @type {Set<SpaceLink>} */
   const links = new Set();
+  /** The peers this host admitted, for whois: key space + eid. Each is the session (live while not closed), the leg it came in on and, for a direct one, the address the node saw. @type {Map<string, { space: string, eid: string, via: "direct" | "relay", addr: string | null, since: number, session: any }>} */
+  const peersSeen = new Map();
+  /** @type {Map<string, Set<SpaceLink>>} */
+  const linksOf = new Map();
+  const noteSession = (/** @type {string} */ space, /** @type {string} */ caller, /** @type {"direct" | "relay"} */ via, /** @type {string | null} */ addr, /** @type {any} */ session) => {
+    const eid = deviceIdOf(caller) || String(caller);
+    for (const [k, v] of peersSeen) if (v.session.closed) peersSeen.delete(k);
+    peersSeen.set(`${space}\n${eid}`, { space, eid, via, addr, since: Date.now(), session });
+  };
 
   const dirOf = (/** @type {string} */ id) => path.join(deps.root, id);
   const dialSock = (/** @type {string} */ id) => path.join(dirOf(id), "run", "dial.sock");
@@ -176,7 +186,7 @@ export function createHost(deps) {
         const serve = wrapped ? (/** @type {string} */ c, /** @type {string} */ t, /** @type {any} */ i) => legOf.run("wink", () => wrapped(c, t, i, { nodeKey: who.nodeKey, stableId: who.stableId })) : (/** @type {string} */ c, /** @type {string} */ t, /** @type {any} */ i) => legOf.run("wink", () => o.serve(c, t, i));
         if (!o.identity || typeof o.identity.entry !== "function") { conn.destroy(); return; }
         admitPeer(socketPipe(conn), { id: { nodeKey: who.nodeKey }, box: sp.spec.box, entry: o.identity.entry, serve })
-          .then(({ session, caller }) => { if (o.onSession) o.onSession(caller, session); })
+          .then(({ session, caller }) => { noteSession(id, caller, "direct", String(who.remoteAddr || "").replace(/:\d+$/, "").replace(/^\[|\]$/g, "") || null, session); if (o.onSession) o.onSession(caller, session); })
           .catch(e => log(`wink ${id}: peer not admitted: ${e.message}`));
         conn.resume();
       } });
@@ -192,9 +202,10 @@ export function createHost(deps) {
         // the entry is read again on every call: a device removed after the stream opened is refused at once, whatever the sync allow cache says
         const e = sp.identity ? await sp.identity.entry(who.deviceId) : null;
         if (!e || e.eid !== who.deviceId || !peerKindOk(e)) { session.close("device removed"); throw err("denied", "this device is no longer on the identity list"); }
-        if (!toolAllowed(e, tool)) throw err("denied", "a storage device may only call storage functions");
+        if (!toolAllowed(e, tool)) throw err("denied", "a storage device may only call its bridge functions");
         return legOf.run("relay", () => sp.serve.relay(caller, tool, input));
       } });
+      noteSession(id, caller, "relay", null, session);
       if (sp.onSession) try { sp.onSession(caller, session); } catch { /* the listener must not break the stream */ }
     };
   }
@@ -353,10 +364,12 @@ export function createHost(deps) {
         if (retryTimer) clearTimeout(retryTimer);
         for (const k of /** @type {const} */ (["direct", "relay"])) { try { sess[k]?.close("closed"); } catch { /* gone */ } sess[k] = null; }
         for (const w of waiters.splice(0)) w.resolve(null);
-        links.delete(link); changed();
+        links.delete(link); linksOf.get(id)?.delete(link); changed();
       },
     };
     links.add(link);
+    if (!linksOf.has(id)) linksOf.set(id, new Set());
+    linksOf.get(id)?.add(link);
     return link;
   }
 
@@ -370,7 +383,31 @@ export function createHost(deps) {
     sp.up = null; sp.proc = null;
   }
   async function stopAll() { for (const l of [...links]) l.close(); for (const id of spaces.keys()) await stop(id); }
+  /**
+   * Read-only state of every space this host holds, for network.wink.status: whether the node is up, whether the home's peer door is listening, the live links to a home
+   * (their path and state) and the peers admitted here that are still connected. Nothing is dialled and nothing is written.
+   * @returns {Array<{ id: string, node: "up" | "down", ips: string[], door: "listening" | "none", links: any[], peers: Array<{ eid: string, via: string, since: number }> }>}
+   */
+  function status() {
+    return [...spaces.entries()].map(([id, sp]) => ({
+      id, node: sp.up ? "up" : "down", ips: sp.up ? sp.up.ips.slice() : [], door: sp.door ? "listening" : "none",
+      links: [...(linksOf.get(id) || [])].map(l => l.status()),
+      peers: [...peersSeen.values()].filter(p => p.space === id && !p.session.closed).map(p => ({ eid: p.eid, via: p.via, since: p.since })),
+    }));
+  }
+  /**
+   * Who is the peer at this address or with this device id, among the peers this host admitted (never from tags or host info). Direct peers have an address; a relay peer has none.
+   * @param {{ addr?: string, eid?: string }} q @returns {{ eid: string, space: string, via: "direct" | "relay", addr: string | null, since: number } | null}
+   */
+  function whois(q) {
+    const addr = q.addr ? String(q.addr).replace(/:\d+$/, "").replace(/^\[|\]$/g, "") : "";
+    for (const p of peersSeen.values()) {
+      if (p.session.closed) continue;
+      if ((q.eid && p.eid === q.eid) || (addr && p.addr === addr)) return { eid: p.eid, space: p.space, via: p.via, addr: p.addr, since: p.since };
+    }
+    return null;
+  }
   const info = (/** @type {string} */ id) => { const sp = spaces.get(id); return sp ? { id, up: sp.up, spec: sp.spec } : null; };
 
-  return { addSpace, start, serveHome, acceptRelay, pathOf, connect, stop, stopAll, info, dialSock, peerSock };
+  return { addSpace, start, serveHome, acceptRelay, pathOf, connect, stop, stopAll, info, status, whois, dialSock, peerSock };
 }

@@ -1,6 +1,7 @@
 // @ts-check
 // The pure halves of src/native: what a scanned code is, how a failed prompt reads, how a notice
 // is trimmed, and which path the app takes. No native module, no DOM.
+import "../../scripts/test-guard.mjs";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -75,4 +76,14 @@ test("pickPath: the link when up, else the relay when paired, else direct", { sk
   assert.equal(pickPath({ link: OFF, relayPaired: true }), "relay");
   assert.equal(pickPath({ link: OFF, relayPaired: false }), "direct");
   assert.equal(pickPath({ link: { state: "starting", say: "" }, relayPaired: true }), "relay");
+});
+
+test("keyStorage: what the pairing hello reports about the key", { skip: !strip }, async () => {
+  const { keyStorage } = await import("./presence-model.ts");
+  assert.equal(keyStorage("secure-enclave"), "hardware");
+  assert.equal(keyStorage("strongbox"), "hardware");
+  assert.equal(keyStorage("tee"), "hardware");
+  assert.equal(keyStorage("software"), "software");
+  assert.equal(keyStorage("none"), undefined);
+  assert.equal(keyStorage(undefined), undefined);
 });

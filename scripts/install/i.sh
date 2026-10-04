@@ -76,13 +76,19 @@ last_error() { esc=$(printf '\033'); sed "s/$esc\\[[0-9;]*m//g" "$TMP/err" 2>/de
 
 # json_field NAME: a string field out of the JSON on stdin (the answers here are flat).
 json_field() { tr -d '\n' | sed -n "s/.*\"$1\" *: *\"\\([^\"]*\\)\".*/\\1/p"; }
+# json_choice N: the Nth of the three sets of words in choices
+json_choice() { tr -d '\n' | sed -n "s/.*\"choices\" *: *\\[ *\"\\([^\"]*\\)\" *, *\"\\([^\"]*\\)\" *, *\"\\([^\"]*\\)\".*/\\$1/p"; }
 
 install_box() {
   if command -v "$WRAPPER" >/dev/null 2>&1 && "$WRAPPER" call system.info '{}' >/dev/null 2>&1; then
     say "Vyre is already installed here. Leaving it as it is."
     return 0
   fi
+  # An install from a checkout (--from DIR) uses that checkout's own installer, never the live one from the site.
+  from_dir=""; prev=""
+  for a in "$@"; do [ "$prev" = --from ] && from_dir=$a; case "$a" in --from=*) from_dir=${a#--from=} ;; esac; prev=$a; done
   if [ -n "${VYRE_INSTALLER:-}" ]; then cp "$VYRE_INSTALLER" "$TMP/install-box.sh"
+  elif [ -n "$from_dir" ] && [ -f "$from_dir/scripts/install-box.sh" ]; then cp "$from_dir/scripts/install-box.sh" "$TMP/install-box.sh"
   else
     say "Downloading the Vyre installer from $SITE"
     fetch "$SITE/box/install-box.sh" "$TMP/install-box.sh"
@@ -138,7 +144,8 @@ show_code() {
   say "         $qr"
   say ""
   say "    Then choose where the server goes under \"Pair to:\". Good for 5 minutes."
-  say "    Keep the code to yourself: anyone who has it can start pairing this server. Nobody can finish without your yes here."
+  say "    Keep the code to yourself: anyone who has it can start pairing this server, and a code printed in a terminal can end up in a screen share, a support chat or an install log."
+  say "    Nobody can finish without your yes here."
   if [ -n "$PAIR_TO" ]; then
     say ""
     say "  This server will only pair to $PAIR_TO. Nobody has to answer here: when that identity scans or pastes the code, the pairing finishes by itself."
@@ -146,10 +153,11 @@ show_code() {
   fi
   if [ "${VYRE_NO_PROMPT:-0}" = 1 ] || ! [ -r /dev/tty ]; then
     say ""
-    say "  When the app asks, this server shows who is asking and three words. See them with:"
+    say "  When the app asks, this server shows who is asking and three sets of three words. See them with:"
     say "    $WRAPPER call wink.server.pairing '{}'"
-    say "  and answer, only if the words match the ones in the app, with:"
-    say "    $WRAPPER call wink.server.pair.answer '{\"yes\":true}'"
+    say "  and answer by picking the set that matches the three words the app shows (1, 2 or 3):"
+    say "    $WRAPPER call wink.server.pair.answer '{\"yes\":true,\"pick\":1}'"
+    say "  A bare yes is refused. To say no: $WRAPPER call wink.server.pair.answer '{\"yes\":false}'"
     return 0
   fi
   say ""
@@ -159,15 +167,17 @@ show_code() {
     res=$(vyre_call wink.server.pairing '{}' || true)
     case "$res" in
       *'"asking":true'*|*'"asking": true'*)
-        who=$(printf '%s' "$res" | json_field name); said=$(printf '%s' "$res" | json_field words)
-        printf '\n  Pair this server to %s? Words: %s. The app shows the same words. [y/N] ' "$who" "$said" >/dev/tty
+        who=$(printf '%s' "$res" | json_field name)
+        c1=$(printf '%s' "$res" | json_choice 1); c2=$(printf '%s' "$res" | json_choice 2); c3=$(printf '%s' "$res" | json_choice 3)
+        printf '\n  Pair this server to %s?\n  Which three words does the app show?\n    1) %s\n    2) %s\n    3) %s\n  Type 1, 2 or 3 (anything else is no): ' "$who" "$c1" "$c2" "$c3" >/dev/tty
         ans=""
         read -r ans </dev/tty || ans=""
         case "$ans" in
-          y|Y|yes|YES|Yes)
-            if vyre_call wink.server.pair.answer '{"yes":true}' >/dev/null; then
-              say "  Yes. The app finishes the pairing and tells you when this server is added; if it says it could not, follow what it says."
-            else say "  The question had already run out. Nothing was paired. Run this line again."; return 1; fi ;;
+          1|2|3)
+            if vyre_call wink.server.pair.answer "{\"yes\":true,\"pick\":$ans}" | grep -q '"yes": *true'; then
+              say "  Yes. The app is finishing the pairing."
+              wait_connected
+            else say "  Those are not the words the app shows, or the question had run out. Nothing was paired. Run this line again."; return 1; fi ;;
           *) vyre_call wink.server.pair.answer '{"yes":false}' >/dev/null || true; say "  No. Nothing was paired." ;;
         esac
         return 0 ;;
@@ -176,6 +186,24 @@ show_code() {
   done
   say "  Nobody asked within the time. Nothing was paired. Run this line again for a new code."
   return 1
+}
+
+# wait_connected: after the yes, the app finishes the pairing (wink.server.adopt); say where this server ended up, in the words the person will see on their device.
+wait_connected() {
+  t=0
+  while [ "$t" -lt "${VYRE_DONE_TRIES:-20}" ]; do
+    st=$(vyre_call wink.server.status '{}' || true)
+    case "$st" in
+      *'"owned":true'*|*'"owned": true'*)
+        sp=$(printf '%s' "$st" | json_field space); dv=$(printf '%s' "$st" | json_field device)
+        say ""
+        say "  Connected to ${sp:-your space}. Finish setting up on your ${dv:-device}."
+        return 0 ;;
+    esac
+    t=$((t + 1)); [ "$t" -lt "${VYRE_DONE_TRIES:-20}" ] && sleep 3
+  done
+  say "  The app has not finished yet. Open it and follow what it says; this server will show as added there."
+  return 0
 }
 
 # --pair-to NAME (or --pair-to=NAME): who an unattended install pairs to. It is taken out of the arguments before the rest go to the release installer.

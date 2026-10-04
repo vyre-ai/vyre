@@ -25,8 +25,8 @@ export const useAppearance = create<{ space: SpaceTheme; person: PersonTheme; se
   setPerson: (p) => set((s) => ({ person: { ...s.person, ...p } })),
 }));
 
-type Ctx = { resolved: Resolved; phone: boolean; color: Record<string, string>; map: Record<string, string | number> };
-const ThemeCtx = createContext<Ctx | null>(null);
+export type UiCtx = { resolved: Resolved; phone: boolean; color: Record<string, string>; map: Record<string, string | number> };
+const ThemeCtx = createContext<UiCtx | null>(null);
 
 /** Below this width the phone type scale and the stacked layouts apply. */
 export const PHONE_MAX = 768;
@@ -37,10 +37,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const system = useColorScheme() === "light" ? "paper" : "dark";
   const { width } = useWindowDimensions();
   const phone = width < PHONE_MAX;
-  const ctx = useMemo<Ctx>(() => {
+  const ctx = useMemo<UiCtx>(() => {
     const resolved: Resolved = resolveTheme({ space, person, system });
-    // The font is the platform's own (SF, Roboto, Inter on the web) until a space or a person picks one.
-    if (!space.font && !person.font) resolved.font = "system";
+    // The font is the platform's own (SF, Roboto, the system font on the web) until a space or a person picks Serif; the older "sans" reads as the system font.
+    if (resolved.font === "sans") resolved.font = "system";
     const map: Record<string, string | number> = themeVars(resolved, { phone, os: Platform.OS });
     const color: Record<string, string> = {};
     for (const [k, v] of Object.entries(map)) if (typeof v === "string") color[k.slice(2)] = v;
@@ -66,7 +66,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   );
 }
 
-export function useUiTheme(): Ctx {
+export function useUiTheme(): UiCtx {
   const c = useContext(ThemeCtx);
   if (!c) throw new Error("useUiTheme outside ThemeProvider");
   return c;

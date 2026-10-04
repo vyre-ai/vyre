@@ -1,12 +1,13 @@
 // What a scanned code is, in plain terms (pure; scan.ts and scan.web.ts feed it). A Wink code today
-// is a pairing offer: `https://vyre.run/pair#...`, alone or wrapped in a vyre:// or app link
+// is the long pairing code (`vyre://wink/2?t=...`) or a pairing offer: `https://vyre.run/pair#...`, alone or wrapped in a vyre:// or app link
 // (src/api/pairing.ts offerFrom reads all of them). Anything else the camera reads is handed back
 // as text, never acted on.
 
-import { offerFrom } from "../api/pairing.ts";
+import { parseWinkCode } from "../api/wink-code.ts";
 
 export type ScannedCode =
   | { kind: "pair"; offer: string }
+  | { kind: "wink"; ticket: string; relay: string; for: "server" | "phone" }
   | { kind: "other"; text: string };
 
 /** The longest text kept from a code we do not know; a QR can hold far more than a person needs to see. */
@@ -15,8 +16,9 @@ export const MAX_OTHER = 512;
 export function readCode(text: string | null | undefined): ScannedCode | null {
   const raw = String(text ?? "").trim();
   if (!raw) return null;
-  const offer = offerFrom(raw);
-  if (offer) return { kind: "pair", offer };
+  const w = parseWinkCode(raw);
+  if (w.ok && w.kind === "offer") return { kind: "pair", offer: w.offer };
+  if (w.ok) return { kind: "wink", ticket: w.ticket, relay: w.relay, for: w.for };
   return { kind: "other", text: raw.slice(0, MAX_OTHER) };
 }
 
@@ -45,7 +47,7 @@ export function onceEach(handle: (c: ScannedCode) => void, hold = 1500, now: () 
   return (text: string | null | undefined) => {
     const c = readCode(text);
     if (!c) return;
-    const key = c.kind === "pair" ? c.offer : c.text;
+    const key = c.kind === "pair" ? c.offer : c.kind === "wink" ? c.ticket : c.text;
     const t = now();
     if (key === last && t - at < hold) return;
     last = key;

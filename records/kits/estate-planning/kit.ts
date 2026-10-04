@@ -9,12 +9,9 @@ export const Contact = defineType({
   name: "contact",
   label: "Contact",
   icon: "IconUser",
+  // The core Contact (name, email, phone, address, organization, notes) is in every Space; these are the estate practice's own fields on it.
   fields: {
-    full_name: defineField.text({ label: "Full name", required: true }),
-    email: defineField.text({ label: "Email" }),
-    phone: defineField.text({ label: "Phone" }),
     date_of_birth: defineField.date({ label: "Date of birth" }),
-    address: defineField.address({ label: "Address" }),
     ssn: defineField.sealed({ class: "us-ssn", label: "Social Security number", description: "Never shown to a model. A model sees only that a valid one is on file." }),
     stripe_customer: defineField.text({ label: "Stripe customer" }),
   },
@@ -88,7 +85,7 @@ export const Welcome = defineTemplate({
   name: "welcome",
   kind: "email",
   subject: "Welcome to Harlow Legal",
-  body: "Dear {{client.full_name}},\n\nThank you for choosing Harlow Legal for your estate plan. Your matter reference is {{matter.id}}.\n\nWe will start with a short call to learn about your household. Please have your Social Security number ready; we will ask for it on a secure form and never by email. Your number will be filled in here by our system: {{sealed:client.ssn}}.\n\nWarm regards,\nThe Harlow Legal team",
+  body: "Dear {{client.name}},\n\nThank you for choosing Harlow Legal for your estate plan. Your matter reference is {{matter.id}}.\n\nWe will start with a short call to learn about your household. Please have your Social Security number ready; we will ask for it on a secure form and never by email. Your number will be filled in here by our system: {{sealed:client.ssn}}.\n\nWarm regards,\nThe Harlow Legal team",
 });
 
 export const Research = defineRole({
@@ -97,7 +94,7 @@ export const Research = defineRole({
   label: "Research teammate",
   description: "Looks up public information about a new client and fills the matter's research fields.",
   instructions: "For a new matter, find public background on the client and their household. Fill practice_area, household_size and decision_maker only from sources you can name, and leave a note that cites each one. Never ask for or guess a Social Security number.",
-  grants: [{ read: "matter" }, { read: "contact.full_name" }, { read: "contact.email" }, { write: "matter.practice_area" }, { write: "matter.household_size" }, { write: "matter.decision_maker" }, { create: "note" }],
+  grants: [{ read: "matter" }, { read: "contact.name" }, { read: "contact.email" }, { write: "matter.practice_area" }, { write: "matter.household_size" }, { write: "matter.decision_maker" }, { create: "note" }],
 });
 
 export const Intake = defineRole({
@@ -125,7 +122,7 @@ export const OnPayment = defineFlow({
   description: "A Stripe payment starts a matter: find or create the contact, find or create the matter, then it begins at Intake.",
   trigger: { on: "event", event: "payment.received" },
   steps: [
-    step.upsert("client", { type: "contact", match: { stripe_customer: expr("trigger.customer") }, set: { full_name: expr("trigger.display"), email: expr("trigger.email") } }),
+    step.upsert("client", { type: "contact", match: { stripe_customer: expr("trigger.customer") }, set: { name: expr("trigger.display"), email: expr("trigger.email") } }),
     step.upsert("matter", { type: "matter", match: { stripe_payment: expr("trigger.payment") }, set: { title: expr("\"Estate plan for \" + trigger.display"), client: { urn: expr("steps.client.record.urn") }, fee: expr("trigger.amount"), stage: "Intake" } }),
   ],
 });

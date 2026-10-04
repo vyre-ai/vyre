@@ -13,7 +13,7 @@
 import { closeToAddedModules } from "../../lib/first-party-door.js";
 import { core as coreHolder } from "../presence/index.js";
 import { startForwarder } from "./forward.js";
-import { Vault, MIGRATIONS, KINDS, parseExpiry, ensureMacColumns, LAUNCHER_ITEMS } from "./vault.js";
+import { Vault, MIGRATIONS, KINDS, parseExpiry, ensureMacColumns, LAUNCHER_ITEMS, launcherItem, validModuleName } from "./vault.js";
 import { DETAILS, defaultField } from "../../lib/vault-kinds/kinds.js";
 import { codes, importCodes } from "./codes.js";
 import { sweep } from "./sweep.js";
@@ -34,6 +34,7 @@ import * as historyTools from "./tools/history.js";
 import * as agentTools from "./tools/agents.js";
 import * as needsTools from "./tools/needs.js";
 import * as connectionTools from "./tools/connections.js";
+import { isDeviceGroupId } from "./devices.js";
 import * as saidTools from "./said.js";
 import { grantPrompt, putPrompt } from "./prompt.js";
 import { scanEnvFiles } from "./envscan.js";
@@ -52,6 +53,8 @@ const PEOPLE = ["cli", "local"];
 // The Deck and the Capsule are surfaces a person uses. They call as themselves, and the presence
 // floor (ADR 0004) is what proves a person is there, whichever surface asks.
 const SURFACES = [...PEOPLE, "deck", "capsule"];
+// The phone app adds and unlocks from the app itself (UX-33): the paired phone calls as `mobile` (or its device label), and the presence floor, a Face ID on the phone, is what proves the person is there.
+const PHONE = ["mobile", "device"];
 const str = { type: "string" };
 const strs = { type: "array", items: { type: "string" } };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -104,7 +107,7 @@ export default {
           if (!byWhois) return vault.onRelay(env, meta);
           return vault.onRelay(env, whoisMeta(meta, await byWhois(meta.remoteAddress)));
         },
-        onSync: env => (String(env && env.vault).startsWith("device:") ? vault.devices.onSync(env) : vault.shared.onSync(env)),
+        onSync: env => (isDeviceGroupId(env && env.vault) ? vault.devices.onSync(env) : vault.shared.onSync(env)),
         onEmergency: env => vault.emergency.onRequest(env) });
       vault.relayUrl = opts.relay.url ? String(opts.relay.url) : listener.url;
       ctx.log(`vault relay listening on ${listener.url}`);
@@ -162,7 +165,7 @@ export default {
     // Modules may put too (onboarding stores the Claude credential this way), but only new items
     // or items they made themselves, and they may grant only what they put: neither reveals a
     // value the module did not already have. `value` is shorthand for fields.value.
-    tool("vault.put", [...SURFACES, "module"], "Add or replace an item. Values come from `vyre vault put`'s hidden prompt or a module, never from Claude.",
+    tool("vault.put", [...SURFACES, ...PHONE, "module"], "Add or replace an item. Values come from `vyre vault put`'s hidden prompt or a module, never from Claude.",
       obj({ name: str, kind: { type: "string", enum: KINDS }, description: str, value: str, fields: { type: "object" }, url: str, hosts: strs, apps: strs, reprompt: { type: "boolean" }, grants: strs, relay: obj({ body: { type: "boolean" } }), details: DETAILS }, ["name"]),
       async ({ value, grants, relay: relayRules, ...input }, { caller }) => {
         // `value` is the kind's own field: a PAT's token, a secret's value.
@@ -170,10 +173,17 @@ export default {
         if (!input.fields) throw new Error("give the item a value or fields");
         const mod = caller.startsWith("module:") ? caller.slice(7) : null;
         if (!mod && grants) throw new Error("grants on put are for modules; people use vault.grant");
+        // Every grant is checked BEFORE the item is written: a refused grant must not leave a changed value behind (reviewer-2 VP-5).
+        if (grants !== undefined && (!Array.isArray(grants) || grants.length > 32)) throw new Error("grants is a short list of module names");
+        const refuse = msg => { vault.refuse("put", input.name, caller, msg); throw new Error(msg); };
+        for (const g of grants || []) if (!validModuleName(g)) refuse(`"${String(g).slice(0, 60)}" is not a module name`);
+        // A provider sign-in token takes no module grant once the launcher reads it through the credentials port: refuse before anything is written, never after.
+        if (grants && launcherItem(String(input.name)) && vault.launcherOnly) refuse(`${input.name} is a provider sign-in token; no module is granted it, the session launcher is handed it by vyred itself`);
         // `<vault>/<item>` goes into a shared vault (shared.js); modules put only their own items.
         const slash = String(input.name).indexOf("/");
         if (slash > 0) {
           if (mod) throw new Error("modules cannot write to shared vaults");
+          if (launcherItem(String(input.name).slice(slash + 1))) { const why = `${String(input.name).slice(slash + 1)} is a provider sign-in token; it is never put in a shared vault`; vault.refuse("put", input.name, caller, why); throw new Error(why); }
           if (input.kind === "api-credential") throw new Error("an api-credential is never put in a shared vault; it is used only by this Vyre's vault.request");
           return vault.shared.put({ ...input, vault: String(input.name).slice(0, slash), name: String(input.name).slice(slash + 1) }, caller);
         }
@@ -282,7 +292,7 @@ export default {
         `Put ${(Array.isArray(items) ? items : []).map(i => i && i.env ? `${quoted(i.name)} as ${i.env}` : quoted(i && i.name)).join(", ")} into a program's environment`));
 
     // A surface with a live session skips the proof for a non-reprompt item (ADR 0006, decision 3).
-    tool("vault.totp", [...SURFACES, "module", "tailnet"], "The current one-time code for a login with a TOTP seed.",
+    tool("vault.totp", [...SURFACES, "module", "tailnet", "device"], "The current one-time code for a login with a TOTP seed.",
       // `id` is the Capsule's name for the item (its actions get `{ id, front }`).
       obj({ name: str, id: str, session: str }),
       async ({ name, id }, { caller }) => {
@@ -352,7 +362,10 @@ export default {
     tool("vault.match", SURFACES, "Logins for a page, for autofill: names only.",
       obj({ url: str }, ["url"]), input => vault.match(input));
 
-    tool("vault.unlock", PEOPLE, "Unlock a passphrase vault (the first unlock sets the passphrase).",
+    tool("vault.state", [...SURFACES, ...PHONE], "Whether the vault is open, for the app's empty and locked states: { locked, keystore, unlock: \"passphrase\" | \"none\", items }. Never a value.",
+      obj({}), async () => { const locked = await vault.locked(); return { locked, keystore: vault.kind, unlock: vault.kind === "passphrase" ? "passphrase" : "none", items: locked ? null : (l => (Array.isArray(l) ? l : l.items || []).length)(vault.list({})) }; });
+
+    tool("vault.unlock", [...PEOPLE, ...PHONE], "Unlock a passphrase vault (the first unlock sets the passphrase).",
       obj({ passphrase: str }, ["passphrase"]), input => vault.unlock(input.passphrase),
       presence("Unlock the vault", () => "Unlock the vault"));
 
@@ -464,6 +477,7 @@ export default {
       vault,
       connections: conns.connections,
       async stop() {
+        if (typeof ctx.provide === "function") ctx.provide("credentialsPort", null); // a stopped vault has no port: the launcher sees none and says so, never a stale answer
         requests.stop();
         reminders.stop();
         await conns.stop();

@@ -34,6 +34,12 @@ export function within(p, folders) {
  * user's own surfaces, a module, or a bare session. */
 export const agentOf = caller => AGENT_RE.exec(String(caller || ""))?.[1] || null;
 
+/** Is the kernel's chain for this call exactly one person? undefined when this daemon has no kernel (or the call gave no meta): the labels still decide, as before. @param {any} ctx @param {any} meta */
+export async function personOf(ctx, meta) {
+  if (!meta || !ctx.kernel || typeof ctx.kernel.chain !== "function") return undefined;
+  try { const c = await ctx.kernel.chain(meta); return Boolean(c && Array.isArray(c.hops) && c.hops.length === 1 && c.hops[0].actor && c.hops[0].actor.kind === "person"); } catch { return false; }
+}
+
 /**
  * Which folders `caller` may read. `{ all: true }` only for the true owner (its own surfaces, a
  * module, its own session, or an owner device): no restriction, exactly as this behaved before
@@ -47,12 +53,16 @@ export const agentOf = caller => AGENT_RE.exec(String(caller || ""))?.[1] || nul
  * are raw, so the assistant is never all:true here either, matching this file's own rule above);
  * `caller` is forwarded verbatim (projects.reach needs the ORIGINAL caller, since ctx.call always
  * relabels the caller it sees "module:files").
- * @param {any} ctx @param {string} [caller]
+ *
+ * WHO is the owner is the kernel's chain for the call (`ctx.kernel.chain(meta)`: exactly one hop, a person), never what the caller's label looks like: `projects.reach` is
+ * told `person` true or false and decides on that alone. With no kernel on the daemon (development) `person` is left out and projects.reach falls back to the old labels.
+ * @param {any} ctx @param {string} [caller] @param {any} [meta]
  * @returns {Promise<{ all: boolean, agent: string|null, folders: string[] }>}
  */
-export async function reach(ctx, caller) {
+export async function reach(ctx, caller, meta) {
   const who = agentOf(caller);
-  const r = await ctx.call("projects.reach", { ...(who ? { agent: who } : {}), caller, kind: "content" });
+  const person = await personOf(ctx, meta);
+  const r = await ctx.call("projects.reach", { ...(who ? { agent: who } : {}), caller, kind: "content", ...(person === undefined ? {} : { person }) });
   if (r.error) {
     // An unnamed non-owner caller (a tailnet guest, a hook, an unrecognised kind) reads with no
     // projects at all, the same as an agent granted nothing, rather than as a throw: only a named

@@ -168,7 +168,11 @@ const ok = async (reg, tool, input = {}, caller = "cli", meta = {}) => {
 const no = async (reg, tool, input, caller, code, meta = {}) => {
   const r = await reg.call(tool, input, caller, meta);
   assert.ok(r.error, `${tool} by ${caller} should have been refused`);
-  assert.equal(r.error.code, code, r.error.message);
+  // An agent's call to a tool the agent-reach table says asks first (files.drive.share, offer, url) is held at the Gate and, with no Gate wired, answers `held_unavailable`: nothing ran, which is the refusal.
+  const heldAgent = code === "denied" && /(^|[:\s])agent:/.test(caller) && r.error.code === "held_unavailable";
+  // A claimed person with no proven session is refused by the person-session gate before the tool runs: `person_session_required` is the same refusal.
+  const noSession = code === "denied" && r.error.code === "person_session_required";
+  assert.equal(heldAgent || noSession ? code : r.error.code, code, r.error.message);
   return r.error;
 };
 

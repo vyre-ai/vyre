@@ -30,6 +30,7 @@
 // The upload protocol itself is core/sync's, which asks link.peer-of (internal) to turn a
 // connection's tailnet node into the peer it is, since sync owns no pairing of its own.
 
+import { deviceIdOf } from "../../lib/caller.js";
 import crypto from "node:crypto";
 import { friendlyDeviceName, cleanLabel } from "../../lib/devicename.js";
 import { createHealth, unknown, shaped, sinceTracker } from "./health.js";
@@ -60,7 +61,7 @@ const cleanCode = c => String(c || "").replace(/\D/g, "");
 export const showCode = c => `${c.slice(0, 3)}-${c.slice(3)}`;
 
 /** Callers of the box's own socket: its terminal. Claude's processes are here too, which is why the code matters. */
-const SOCKET = new Set(["cli", "local"]);
+const SOCKET = new Set(["cli", "local", "deck", "capsule"]);
 // Only the owner's devices: "tailnet:<login>". A guest ("tailnet-guest:<login>") never matches, and
 // an agent's own node ("tailnet:agent:<name>") is not a person's device, so it is refused too.
 const tailnetLogin = caller => {
@@ -74,7 +75,7 @@ const tailnetLogin = caller => {
  *   the clock, how long link.serve holds a request, the tools the box may ask a Mac for, and the
  *   health check. Production passes nothing.
  */
-export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, health = createHealth() } = {}) {
+export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, health = createHealth({ ctx }) } = {}) {
   const db = ctx.store.db;
   ctx.store.migrate([
     `CREATE TABLE link_peers (id TEXT PRIMARY KEY, name TEXT NOT NULL, login TEXT, node TEXT, stable_id TEXT,
@@ -236,7 +237,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
 
   /** Who may ask link.health: a module, the person at the box, or the owner over the tailnet. */
   const healthCaller = caller => {
-    if (caller.startsWith("module:") || SOCKET.has(caller) || caller === "deck" || caller === "capsule") return true;
+    if (caller.startsWith("module:") || SOCKET.has(caller)) return true;
     const login = tailnetLogin(caller);
     if (!login || login.startsWith("agent:") || /\s/.test(login)) return false;
     const owner = ctx.config.network && ctx.config.network.owner;
@@ -255,7 +256,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
       const caller = String(meta.caller);
       // A paired device over the relay channel is on the relay by definition. The start of that
       // path is the channel's own when the bridge says (meta.since), else the first time it asked.
-      if (caller.startsWith("device:") && !/\s/.test(caller)) {
+      if (deviceIdOf(caller) !== null) {
         const at = Number.isFinite(meta.since) ? meta.since : reachSince.at(caller, "relay");
         return { path: "unknown", relay: null, latencyMs: null, lastHandshake: null, online: true, checkedAt: now(), cached: false,
           reach: "relay", why: "Connected through Vyre's relay.", since: at };
@@ -275,7 +276,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
       // whatever Tailscale said.
       if (tailnetLogin(caller) && own && own.stableId === asked && h.reach === "none") {
         const { fix, ...rest } = h;
-        return { ...rest, reach: "direct", why: "Connected over your Tailscale network.", since: reachSince.at(asked, "direct") };
+        return { ...rest, reach: "direct", why: "Connected to your server.", since: reachSince.at(asked, "direct") };
       }
       return h;
     },

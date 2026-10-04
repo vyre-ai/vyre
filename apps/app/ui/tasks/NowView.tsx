@@ -4,7 +4,6 @@ import { Avatar, AvatarStack, type AvatarRef } from "../components/Avatar";
 import { Banner } from "../components/Banner";
 import { Button } from "../components/Button";
 import { Card, Divider } from "../components/Card";
-import { EmptyState } from "../components/States";
 import { Icon } from "../components/Icon";
 import { Row } from "../components/Row";
 import { Segmented } from "../components/Segmented";
@@ -34,7 +33,7 @@ export const emblemOf = (world: World, rec: any): AvatarRef => ({ kind: "project
 /** An accent text row that opens more: "4 more waiting", "Show fewer". */
 function MoreRow({ label, onPress, up }: { label: string; onPress: () => void; up?: boolean }) {
   return (
-    <PressableScale depth={0.985} accessibilityRole="button" accessibilityLabel={label} onPress={onPress} className="min-h-touch flex-row items-center gap-s1 self-start px-s1">
+    <PressableScale depth={0.985} accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={{ minHeight: 44, flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", paddingHorizontal: 4 }}>
       <Text medium tone="accent" style={{ fontSize: 15, lineHeight: 20 }}>{label}</Text>
       <Icon name={up ? "chevron-up" : "chevron-down"} size={16} tone="accent" />
     </PressableScale>
@@ -49,7 +48,7 @@ export function DoingRow({ world, t, onOpen, swipe }: { world: World; t: any; on
       lead={<ActorMark who={who(world, aid(t.doer))} />}
       title={recordTitle(world, rec)}
       sub={workingLine(world, t)}
-      end={<><Pulse active><View className="rounded-full bg-accent" style={{ width: 6, height: 6 }} /></Pulse>{rec ? <Avatar of={emblemOf(world, rec)} size={20} /> : null}</>}
+      end={<><Pulse active><View className="rounded-full bg-ok" style={{ width: 6, height: 6 }} /></Pulse>{rec ? <Avatar of={emblemOf(world, rec)} size={20} /> : null}</>}
       onPress={onOpen}
       swipe={swipe}
     />
@@ -110,7 +109,7 @@ export function NowView({ world, onAction, onOpen, onEdit, onMore, notice }: Pro
             ? <MoreRow label={`${hidden} more waiting`} onPress={() => onMore?.("needs")} />
             : <MoreRow label={moreNeeds ? "Show fewer" : `${hidden} more waiting`} up={moreNeeds} onPress={() => setMoreNeeds(!moreNeeds)} />) : null}
         </View>
-      ) : <Card><EmptyState title="Nothing needs you" body="Tasks that wait on you show up here." /></Card>}
+      ) : <Card><Row dense lead={<Icon name="check" size={20} tone="ok" />} title="Nothing needs you" sub="Tasks that wait on you show up here." /></Card>}
     </Section>
   );
 
@@ -134,7 +133,7 @@ export function NowView({ world, onAction, onOpen, onEdit, onMore, notice }: Pro
 
   const done = m.doneToday.length ? (
     <View className="min-w-0 gap-s2 pt-s6">
-      <PressableScale depth={0.985} accessibilityRole="button" accessibilityState={{ expanded: doneOpen }} onPress={() => setDoneOpen(!doneOpen)} className="min-h-touch flex-row items-center gap-s2 self-start px-s1">
+      <PressableScale depth={0.985} accessibilityRole="button" accessibilityState={{ expanded: doneOpen }} onPress={() => setDoneOpen(!doneOpen)} style={{ minHeight: 44, flexDirection: "row", alignItems: "center", gap: 8, alignSelf: "flex-start", paddingHorizontal: 4 }}>
         <Text tone="muted" medium style={{ fontSize: 15, lineHeight: 20 }}>{`${m.doneToday.length} done today`}</Text>
         <Icon name={doneOpen ? "chevron-up" : "chevron-down"} size={16} tone="label" />
       </PressableScale>

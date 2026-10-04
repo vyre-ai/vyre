@@ -48,6 +48,19 @@ export function startSealer({ dir, sinks = {}, timeoutMs = 20_000, execPath = pr
     save: i => withCtx("save", i, { session: i.session, class: i.class, n: i.n, record: i.record, field: i.field, hint_allowed: i.hint_allowed }),
     endSession: (chain, session) => withCtx("session.end", { chain }, { session }),
     lookup: i => withCtx("lookup", i, { class: i.class, field: i.field, value: i.value }),
+    /**
+     * `seal.detect`: yes or no, is this candidate the current value of a sealed field the call's person may read. `caller` is the kernel's word for which first-party module asked, taken from
+     * the module registry and NEVER from the module's input (`first_party` and `module` are the registry's); `canRead(record)` is the kernel's grants check for the chain's person on one record
+     * URN, and is required. The sealing process finds the records that hold the value; only those the person may read count, so a value sealed only where they cannot read answers no. Only
+     * `{ match, event }` leaves this function: the records never do.
+     */
+    detectValue: async i => {
+      if (typeof i.canRead !== "function") throw new SealError("bad_input");
+      const r = await withCtx("match", i, { caller: i.caller, value: i.value });
+      let match = false;
+      for (const rec of r.records || []) { if (await i.canRead(rec)) { match = true; break; } }
+      return { match, event: r.event };
+    },
     drop: i => withCtx("drop", i, { ref: i.ref }),
     /** The enrolment ceremony: `begin` gives a one-time token, `enrol` needs it, the person's chain, a platform attestation (or an unattested-allowed process) and, for a second device, a proof from the first. */
     begin: i => withCtx("presence.begin", i, { person: i.person, key_id: i.key_id, spki: i.spki }),
@@ -69,6 +82,13 @@ export function startSealer({ dir, sinks = {}, timeoutMs = 20_000, execPath = pr
       check: i => withCtx("lease.check", i, { lease: i.id }),
     },
     /** The kernel's own MAC key lives in the sealing process (K-3): `mac` and `verify` take a purpose (separates uses: "grant-event", "chain") and the data as a string (canonical JSON). The key is never returned. */
+    /** The log anchor (BL-2): the latest (seq, head) of a Space's log, moving only forward ('anchor_behind', 'anchor_split'). Kernel channel only. */
+    anchor: {
+      advance: i => call("anchor.advance", { ctx: { space: i.space }, seq: i.seq, head: i.head }).then(r => r.anchor),
+      read: i => call("anchor.read", { ctx: { space: i.space } }).then(r => r.anchor),
+      /** The person's own reset (needs their presence proof for "anchor.reset" with no fields): the anchor reads null again. */
+      reset: i => withCtx("anchor.reset", i, { proof: i.proof }).then(() => null),
+    },
     kernel: {
       mac: i => call("kernel.mac", { purpose: i.purpose, data: i.data }).then(r => r.mac),
       verify: i => call("kernel.verify", { purpose: i.purpose, data: i.data, mac: i.mac }).then(r => r.ok),

@@ -757,7 +757,8 @@ test("modules v1: a bakery-shaped v1 module loads, its tools register, and reach
   assert.equal((await reg.call("bakery.hook", {}, "hook")).data.ran, "bakery.hook");
   // person: the person's own surfaces and the owner's devices, never an agent or a module.
   assert.equal((await reg.call("bakery.own", {}, "cli")).data.ran, "bakery.own");
-  assert.equal((await reg.call("bakery.own", {}, "tailnet:alex")).data.ran, "bakery.own");
+  assert.equal((await reg.call("bakery.own", {}, "tailnet:alex")).error.code, "person_session_required", "the owner's device with no person session gets no surface from its label");
+  assert.equal((await reg.call("bakery.own", {}, "tailnet:alex", { person: "per_alex" })).data.ran, "bakery.own", "the same device signed in");
   assert.equal((await reg.call("bakery.own", {}, "mcp:agent:kit")).error.code, "denied");
   assert.equal((await reg.call("bakery.own", {}, "module:notes")).error.code, "denied");
   // The listing carries what an object entry declared; a string entry adds nothing.
@@ -1105,4 +1106,26 @@ test("modules: the agents relay check lets threads.send through and throws for e
   for (const tool of ["vault.reveal", "vault.put", "threads.delete", "gate.request", "settings.set"]) {
     assert.throws(() => checkAgentsRelay(tool, "deck"), new RegExp(`agents may not call ${tool.replace(".", "\\.")} as deck: it relays a person to threads\\.send and threads\\.release only`), tool);
   }
+});
+
+test("modules: the device, space and agent classes are list entries only; a bare word or a look-alike is never a caller", () => {
+  const dev = "device:abcdefghijklmnop";
+  assert.equal(callerAllowed(["cli", "device"], dev), true, "a device entry admits a paired device");
+  assert.equal(callerAllowed(["cli", "tailnet"], dev), true, "as a tailnet entry already did");
+  assert.equal(callerAllowed(["cli", "device"], "tailnet:alex@example.com"), false, "a device entry is the paired device label only");
+  assert.equal(callerAllowed(["cli"], dev), false);
+  for (const bare of ["device", "space", "agent", "tailnet"]) assert.equal(callerAllowed(["cli", "tailnet", "device", "space", "agent"], bare), false, bare);
+  for (const c of ["Device:abcdefghijklmnop", "device :abcdefghijklmnop", "device:", "device:abc", "device:abcdefghij​klmnop", "dev​ice:abcdefghijklmnop", "space:alex@harlow", "space:", "agent:kit", "agent:", "mcp:agent:kit"]) {
+    assert.equal(callerAllowed(["cli", "tailnet", "device", "space", "agent"], c), false, JSON.stringify(c));
+  }
+});
+
+test("an owner's paired device with no person session is refused on a tool that declares reach person; the same device signed in passes; a plain surface is unchanged", async t => {
+  const reg = await registry(t, [["zzwho", { name: "zzwho", version: "0.1.0", does: { tools: [{ name: "zzwho.me", reach: "person" }, { name: "zzwho.open", reach: "anyone" }] }, watches: { emits: [] } }, `export default { async start(ctx) { ctx.tool("zzwho.me", { run: async () => ({ ok: true }) }); ctx.tool("zzwho.open", { run: async () => ({ ok: true }) }); return {}; } };`]], { builtIn: true });
+  const device = "device:abcdefghijklmnop";
+  const unsigned = await reg.call("zzwho.me", {}, device, {});
+  assert.equal(unsigned.error && unsigned.error.code, "person_session_required", JSON.stringify(unsigned));
+  assert.ok(!(await reg.call("zzwho.me", {}, device, { person: "per_alex" })).error, "the same device, signed in");
+  assert.ok(!(await reg.call("zzwho.me", {}, "cli", {})).error, "a local surface needs no session");
+  assert.ok(!(await reg.call("zzwho.open", {}, device, {})).error, "an open tool is unchanged");
 });

@@ -1,0 +1,50 @@
+# ui-ux screenshot pass (team/0.3/UX-AUDIT.md): the SAMPLE web export, every route at phone, tablet and desktop in dark and paper, a keyboard Tab
+# pass that shoots each focus ring, and the type-check on the same tree. Shots go up as an artifact for review. Sample world only: no real data.
+name: app-shots
+on:
+  push:
+    branches: ["work/ux-polish-wip"]
+    paths: ["apps/app/**", ".github/workflows/app-shots.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: app-shots-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  shots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: apps/app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/app/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: Type-check (kept as a log, the shots run either way)
+        continue-on-error: true
+        run: npm run typecheck 2>&1 | tee "$RUNNER_TEMP/typecheck.log"
+      - name: Export the sample web app
+        run: npm run export:web:mock
+      - name: Playwright (outside the repo)
+        run: |
+          echo "PW_FROM=$RUNNER_TEMP/pw/" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/pw" && cd "$RUNNER_TEMP/pw"
+          echo '{"private":true}' > package.json
+          npm i --no-audit --no-fund --no-package-lock playwright@1
+          npx playwright install --with-deps chromium
+      - name: Shots
+        run: node scripts/ux-shots.mjs --dist dist --out "$RUNNER_TEMP/ux-shots" | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ux-shots
+          path: |
+            ${{ runner.temp }}/ux-shots
+            ${{ runner.temp }}/typecheck.log
+          retention-days: 14

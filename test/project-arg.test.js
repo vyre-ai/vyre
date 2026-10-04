@@ -16,8 +16,13 @@ const EXEMPT = {
   "vault.revoke": "presence-gated and person-only at the vault; reviewer-2 has the vault grant and revoke review",
   "github.project.detect": "github checks the grant itself (inGrant, core/github)",
   "github.project.of": "github checks the grant itself (inGrant, core/github)",
+  "wink.invite": "the owner's own act: the tool refuses any agent caller (owner(meta)) and its `projects` are slugs written into an offer",
+  "work.situation": "`project` is a record reference (a kernel URN), not a project slug: the tool reads it under the caller's own kernel chain, which decides what is visible",
+  "work.team.context": "`project` is a record reference (a kernel URN): read under the caller's own kernel chain",
+  "work.team.add": "`project` is a record reference (a kernel URN); a person's act (ask-first for an agent), grants no wider than the adder's",
+  "work.team.doing": "`project` is a record reference (a kernel URN): read under the caller's own kernel chain",
 };
-const PERSON = new Set(["cli", "local", "deck", "capsule", "module", "tailnet", "link", "mobile"]);
+const PERSON = new Set(["cli", "local", "deck", "capsule", "module", "tailnet", "device", "space", "agent", "link", "mobile"]);
 
 test("project grants: every agent-reachable tool with a project, projects or cwd input declares projectArg or cwdArg", () => {
   const h = harvest({});

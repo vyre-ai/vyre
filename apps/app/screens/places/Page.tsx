@@ -1,6 +1,7 @@
 import { ScrollView, View, useWindowDimensions } from "react-native";
+import { presenceText } from "../shell/FaceIdSheet";
 import { useRouter } from "expo-router";
-import { Banner, Button, Card, Chip, Icon, Segmented, Sheet, Text, PHONE_MAX, type IconName } from "@vyre/ui";
+import { Banner, Button, Card, Chip, Icon, Segmented, Sheet, Text, PHONE_MAX, haptic, type IconName } from "@vyre/ui";
 import { SPACES, useScope, type Scope, type SpaceId } from "./scope";
 
 /** True below the phone width. The same test the theme uses. */
@@ -88,11 +89,11 @@ export function DiffBlock({ lines }: { lines: { t: "a" | "d" | "c"; s: string }[
 /** Face ID, as a Sheet with one button. The platform prompt replaces the button on a real device; the screen only learns "approved". */
 export function FaceIdSheet({ open, onClose, title, body, confirm, onConfirm, children }: { open: boolean; onClose: () => void; title: string; body: string; confirm: string; onConfirm: () => void; children?: React.ReactNode }) {
   return (
-    <Sheet open={open} onClose={onClose} title={title}>
-      <Text tone="muted">{body}</Text>
+    <Sheet open={open} onClose={onClose} title={presenceText(title)}>
+      <Text tone="muted">{presenceText(body)}</Text>
       {children}
-      <Button kind="primary" icon="faceid" label={confirm} onPress={() => { onClose(); onConfirm(); }} />
-      <Button kind="ghost" label="Not now" onPress={onClose} />
+      <Button kind="primary" icon="faceid" label={presenceText(confirm)} onPress={() => { onClose(); haptic.approve(); onConfirm(); }} />
+      <Button kind="ghost" label="Cancel" onPress={onClose} />
     </Sheet>
   );
 }

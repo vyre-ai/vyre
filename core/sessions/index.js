@@ -69,6 +69,9 @@ export function askedOnly(meta, what, { assistant = false } = {}) {
   const m = meta || {};
   if (isPerson(m)) return;
   if (m.asked) return;
+  // The box's own setup page (`setup:<id>`, made only by the relay's setup channel, which reaches only the tools a module declares under setupTools): the person is at it, setting up their box.
+  // Not a person anywhere else (reviewer-3 LB-2): the label is refused on the socket and every other tool's reach list.
+  if (callerKind(m.caller) === "setup" && m.peer) return;
   // The verified assistant (vyred's meta.agent, never the label) may start an account for the person; the account stays pending until the
   // person finishes it on their own device (accounts.js pending), so this lets it start, never finish.
   if (assistant && m.agent && m.agentKind === "assistant") return;
