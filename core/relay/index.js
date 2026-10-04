@@ -495,7 +495,7 @@ export default {
       // The device's own request-signing key, as it offered it in its hello (a public key, SPKI base64url, P-256 alg -7), so the pairing can bind its paired session to it.
       const pk = p.hello && p.hello.presenceKey;
       // `storage` is the app's own report of where it made the key (the platform's key API); it is for display only and no security decision reads it.
-      return pk && typeof pk.public_key === "string" ? { key: pk.public_key, alg: pk.alg ?? -7, storage: ["hardware", "software"].includes(pk.storage) ? pk.storage : "unknown" } : {};
+      return pk && typeof pk.public_key === "string" ? { key: pk.public_key, alg: pk.alg ?? -7, storage: ["hardware", "software"].includes(pk.storage) ? pk.storage : "unknown", ...(typeof pk.signer === "string" ? { signer: pk.signer.slice(0, 40) } : {}) } : {};
     };
 
     // ---- the setup session (tailnet plan 3.5, 3.6, 3.6b) ----
