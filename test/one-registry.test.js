@@ -83,7 +83,8 @@ test("the claimed identity is the home kernel's owner at once (no spaces call af
     assert.equal(me.data.person, st.data.id, `${label}: records.me is the identity :: ${lines.filter(l => /owner|identity|adopt/i.test(l)).join(" ; ").slice(0, 600)}`);
     assert.equal(d.kernel.id.owner, st.data.id, `${label}: the kernel's owner is the identity`);
     const tg = await deck("wink.pair.targets");
-    if (!tg.error) assert.ok(tg.data.targets.some((/** @type {any} */ x) => x.kind === "identity" && x.id === st.data.id), `${label}: pair targets name the identity`);
+    assert.ok(!tg.error, `${label}: wink.pair.targets ${JSON.stringify(tg.error)}`);
+    assert.ok(tg.data.targets.some((/** @type {any} */ x) => x.kind === "identity" && x.id === st.data.id), `${label}: pair targets name the identity :: ${JSON.stringify(tg.data.targets)}`);
   };
   // fresh home: claim, then read at once
   const a = tempHome(t); cfg(a, "fresh-box");
