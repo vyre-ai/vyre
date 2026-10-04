@@ -715,11 +715,12 @@ One short line for Claude Code's status line: what needs the user, the box, the 
 
 - Folder: `core/stream`, version 0.1.0
 - Runs on: `box`, `local`
-- Requires: none
+- Requires: `threads`
 - Tools: [6](tools.md#stream)
 - Emits: no events
 - Shows on: no surface
 - Streams: `session`
+- Needs daemon: `kernelThreads`
 
 ## suggest
 

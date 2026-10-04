@@ -9,7 +9,8 @@ import { ComponentGallery } from "./Gallery";
 
 const NAMES: Record<string, string> = { mine: "Mine", harlow: "Harlow Legal" };
 const FONT_NAMES: Record<string, string> = Object.fromEntries(Object.entries((V3 as any).font.stacks).map(([k, v]: [string, any]) => [k, v.label]));
-const fonts = Object.keys(FONT_NAMES).map((k) => [k, FONT_NAMES[k]] as [string, string]);
+// The font setting is System and Serif; Instrument Sans is the brand's, not the app's (font ruling, 4 Oct 2026).
+const fonts = Object.keys(FONT_NAMES).filter((k) => k !== "sans").map((k) => [k, FONT_NAMES[k]] as [string, string]);
 const ACCENTS = ["violet", "amber", "sky", "sage", "rose"].map((k) => [k, k[0].toUpperCase() + k.slice(1)] as [string, string]);
 
 /** Settings, Appearance: the scope control (Me, Mine, Harlow Legal), the controls for that scope, what is showing now, and every base component drawn live. */
@@ -26,7 +27,7 @@ export function AppearanceScreen() {
   return (
     <Page title="Appearance" sub="Who sets what. A firm looks like itself; you control what reaches your eyes." back="/u/settings">
       <Segmented label="Whose settings" value={scope} onChange={setScope} options={[["me", "Me"], ["mine", "Mine"], ["harlow", "Harlow Legal"]]} />
-      <Banner><Text strong>Showing now: </Text><Text>{showingLine(NAMES[showing], resolved, FONT_NAMES, own)}</Text></Banner>
+      <Banner><Text strong>Showing now: </Text><Text>{showingLine(NAMES[showing], resolved, { ...FONT_NAMES, sans: FONT_NAMES.system }, own)}</Text></Banner>
       {scope === "me" ? (
         <Group title="Belongs to you, on every space">
           <Card className="gap-s3">

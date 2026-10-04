@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, TextInput, View, type NativeSyntheticEvent, type TextInputSelectionChangeEventData } from "react-native";
 import { Chip, Icon, Text, useUiTheme } from "@vyre/ui";
-import { ChatAvatar } from "./ChatAvatar";
+import { Face } from "./Face";
 import { COMMANDS } from "../../../../deck/chat/core/commands.js";
 import { pick, rankByName, rankCommands, runsOnLabel, sealedChip, sendIntent, sendTargets, triggerAt } from "./composer-model.js";
 
@@ -43,7 +43,7 @@ const T = 44;
 function Tool({ icon, label, onPress, big }: { icon: any; label: string; onPress?: () => void; big: boolean }) {
   const s = big ? T : 36;
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={({ pressed }) => ({ width: s, height: s, alignItems: "center", justifyContent: "center", borderRadius: s / 2, opacity: pressed ? 0.7 : 1 })}>
+    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={{ width: s, height: s, alignItems: "center", justifyContent: "center", borderRadius: s / 2 }}>
       <Icon name={icon} size={20} />
     </Pressable>
   );
@@ -97,6 +97,23 @@ export function ChatComposer(p: ComposerProps) {
   const onSel = (e: NativeSyntheticEvent<TextInputSelectionChangeEventData>) => setCaret(e.nativeEvent.selection.end);
   const insert = (ch: string) => { const t = text.slice(0, caret) + ch + text.slice(caret); setText(t); setCaret(caret + 1); input.current?.focus(); };
   const current = (p.models ?? []).find((m) => m.id === p.model);
+  const field = (
+      <TextInput
+        ref={input}
+        value={text}
+        onChangeText={(t) => { p.onKey?.(performance.now()); setText(t); }}
+        onSelectionChange={onSel}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        autoFocus={p.autoFocus}
+        multiline
+        placeholder={askAll ? "Ask every assistant here at once" : intent.queue || p.state === "working" ? "Say more. It queues until the next step." : "Message, or / for commands"}
+        placeholderTextColor={color.label}
+        accessibilityLabel="Message"
+        onKeyPress={(e: any) => { if (!p.phone && e.nativeEvent.key === "Enter" && !e.nativeEvent.shiftKey && !trig) { e.preventDefault?.(); send(); } }}
+        style={{ color: color.text, fontSize: 16, lineHeight: 24, minHeight: expanded && p.phone ? 72 : 24, maxHeight: 160, paddingLeft: expanded ? 6 : 0, paddingRight: expanded ? 6 : 0, paddingVertical: 4, flex: expanded ? undefined : 1, minWidth: 0, outlineStyle: "none" } as any}
+      />
+  );
   const chips = (
     <>
       {p.models?.length ? (
@@ -132,8 +149,8 @@ export function ChatComposer(p: ComposerProps) {
       {options.length ? (
         <View accessibilityLabel="Suggestions" style={{ backgroundColor: color["surface-3"], borderWidth: 1, borderColor: color["edge-strong"], borderRadius: 14, padding: 4, marginBottom: 6 }}>
           {options.map((o: any) => (
-            <Pressable key={o.key} accessibilityRole="button" onPress={() => choose(o)} style={({ pressed, hovered }: any) => ({ minHeight: big ? T : 36, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 10, borderRadius: 8, backgroundColor: pressed ? color.press : hovered ? color.hover : "transparent" })}>
-              {o.avatar ? <ChatAvatar name={o.avatar.name} family={o.avatar.family} size="sm" /> : null}
+            <Pressable key={o.key} accessibilityRole="button" onPress={() => choose(o)} style={{ minHeight: big ? T : 36, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 10, borderRadius: 8 }}>
+              {o.avatar ? <Face name={o.avatar.name} family={o.avatar.family} size={24} /> : null}
               <Text strong>{o.label}</Text>
               <Text size="caption" tone="label" numberOfLines={1} style={{ flex: 1 }}>{o.sub}</Text>
               {o.chip ? <Chip tone="sealed" icon="shield">{o.chip}</Chip> : null}
@@ -152,37 +169,21 @@ export function ChatComposer(p: ComposerProps) {
           ))}
         </View>
       ) : null}
-      <View style={{ backgroundColor: color["surface-2"], borderWidth: 1, borderColor: color["edge-strong"], borderRadius: expanded && p.phone ? 22 : 18, padding: 10, gap: 6, position: "relative" }}>
-        <TextInput
-          ref={input}
-          value={text}
-          onChangeText={(t) => { p.onKey?.(performance.now()); setText(t); }}
-          onSelectionChange={onSel}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          autoFocus={p.autoFocus}
-          multiline
-          placeholder={askAll ? "Ask every assistant here at once" : intent.queue || p.state === "working" ? "Say more. It queues until the next step." : "Message, @ people, # records, / commands"}
-          placeholderTextColor={color.label}
-          accessibilityLabel="Message"
-          onKeyPress={(e: any) => { if (!p.phone && e.nativeEvent.key === "Enter" && !e.nativeEvent.shiftKey && !trig) { e.preventDefault?.(); send(); } }}
-          style={{ color: color.text, fontSize: 16, lineHeight: 24, minHeight: expanded && p.phone ? 72 : 24, maxHeight: 160, paddingLeft: expanded ? 6 : 44, paddingRight: expanded ? 6 : 52, paddingVertical: 4, outlineStyle: "none" } as any}
-        />
+      <View style={{ backgroundColor: color["surface-2"], borderWidth: 1, borderColor: color["edge-strong"], borderRadius: expanded && p.phone ? 22 : 18, padding: 10, gap: 6 }}>
         {!expanded ? (
-          <>
-            <View style={{ position: "absolute", left: 6, bottom: 6 }}><Tool big={big} icon="plus" label="Attach" onPress={p.onAttachFile} /></View>
-            <View style={{ position: "absolute", right: 6, bottom: 6 }}>
-          <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={intent.queue ? "Queue message" : "Send"}
-                onPress={send}
-                style={({ pressed }) => ({ width: T, height: T, borderRadius: T / 2, backgroundColor: intent.send ? color.primary : color.hover, alignItems: "center", justifyContent: "center", opacity: pressed ? 0.85 : 1 })}
-              >
-                <Icon name="send" size={20} tone={intent.send ? "primary-ink" : "label"} />
-              </Pressable>
-            </View>
-          </>
-        ) : null}
+          <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 6 }}>
+            <Tool big={big} icon="plus" label="Attach" onPress={p.onAttachFile} />
+            {field}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={intent.queue ? "Queue message" : "Send"}
+              onPress={send}
+              style={{ width: T, height: T, borderRadius: T / 2, backgroundColor: intent.send ? color.primary : color.hover, alignItems: "center", justifyContent: "center" }}
+            >
+              <Icon name="send" size={20} tone={intent.send ? "primary-ink" : "label"} />
+            </Pressable>
+          </View>
+        ) : field}
         {expanded && p.phone ? chipsRow : null}
         {expanded ? (
         <View style={{ flexDirection: "row", alignItems: "center", gap: 2, flexWrap: "wrap" }}>
@@ -201,7 +202,7 @@ export function ChatComposer(p: ComposerProps) {
             accessibilityRole="button"
             accessibilityLabel={intent.queue ? "Queue message" : "Send"}
             onPress={send}
-            style={({ pressed }) => ({ width: T, height: T, borderRadius: T / 2, backgroundColor: intent.send ? color.primary : color.hover, alignItems: "center", justifyContent: "center", opacity: pressed ? 0.85 : 1 })}
+            style={{ width: T, height: T, borderRadius: T / 2, backgroundColor: intent.send ? color.primary : color.hover, alignItems: "center", justifyContent: "center" }}
           >
             <Icon name="send" size={20} tone={intent.send ? "primary-ink" : "label"} />
           </Pressable>

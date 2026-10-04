@@ -15,10 +15,11 @@ export function PageHeader({ title, context, faces = [], onBack, onPress }: { ti
   const { map, phone } = useUiTheme();
   const height = px(map, "--s-12") + px(map, "--s-2");
   const emblem = faces.length === 1 && (faces[0].kind === "project" || faces[0].kind === "space");
-  const size = emblem ? (phone ? 32 : 40) : 28;
+  // On a desktop a record or project page uses the page role: a 40 mark and a 24/30 title (ui-review-2, Record 1). The compact 28/32 form is the phone's and the chat's.
+  const size = !phone && faces.length === 1 ? 40 : emblem ? 32 : 28;
   const text = (
     <View className="min-w-0 flex-1">
-      <Text strong size="headline" numberOfLines={1} accessibilityRole="header">{title}</Text>
+      <Text strong size={phone ? "headline" : "page"} numberOfLines={1} accessibilityRole="header">{title}</Text>
       {context ? <Text size="caption" tone="label" numberOfLines={1}>{context}</Text> : null}
     </View>
   );

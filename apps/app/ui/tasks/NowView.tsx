@@ -49,7 +49,7 @@ export function DoingRow({ world, t, onOpen, swipe }: { world: World; t: any; on
       lead={<ActorMark who={who(world, aid(t.doer))} />}
       title={recordTitle(world, rec)}
       sub={workingLine(world, t)}
-      end={<><Pulse active><View className="rounded-full bg-accent" style={{ width: 6, height: 6 }} /></Pulse>{rec ? <Avatar of={emblemOf(world, rec)} size={20} /> : null}</>}
+      end={<><Pulse active><View className="rounded-full bg-ok" style={{ width: 6, height: 6 }} /></Pulse>{rec ? <Avatar of={emblemOf(world, rec)} size={20} /> : null}</>}
       onPress={onOpen}
       swipe={swipe}
     />

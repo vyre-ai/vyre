@@ -62,19 +62,19 @@ export function settingsGroups(/** @type {string} */ space) {
     ] },
     { title: space, rows: [
       ["Customize", "Types, fields, stages", "/u/settings/customize", "file"],
-      ["Spaces and members", "Who is in them", "/u/spaces", "agents"],
+      ["Spaces and members", "Who is in them", "/u/spaces", "space"],
       ["Privacy and sealing", "Admins only", "/u/settings/privacy", "vault"],
       ["Kits", "Installed and available", "/u/kits", "box"],
     ] },
     { title: "More places", rows: [
       ["Memory", "What Vyre knows", "/u/memory", "memory"],
       ["Vault", "Logins, keys, cards", "/u/vault", "vault"],
-      ["Flows", "What runs by itself", "/u/flows", "planner"],
-      ["Assistants", "juno, kit and @Engineer", "/u/settings/assistants", "terminal"],
+      ["Flows", "What runs by itself", "/u/flows", "flows"],
+      ["Assistants", "juno, kit and @Engineer", "/u/settings/assistants", "assistants"],
     ] },
     { title: "Vyre", rows: [
       ["Updates", "Check for a new version", "/u/settings/updates", "download"],
-      ["About", "Version and open-source credits", "/u/about", "globe"],
+      ["About", "Version and open-source credits", "/u/about", "info"],
     ] },
   ];
 }

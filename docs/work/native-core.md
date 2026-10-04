@@ -1,5 +1,28 @@
 # native-core
 
+## Chrome control status (4 Oct, for the user)
+Read from the code, CI runs and the extension logs (read only); I drove no browser.
+1. Works today: on the person's own Chrome, Vyre for Chrome (local/hands-chrome-mac, standalone package) reads and acts through its extension: tabs, snapshot, click, fill, eval, network, API-first reads, parallel tabs, held sends that wait for the person's approval. The real-Chrome job (real extension, real package over MCP) was green on runners at run 36971024945 (2 Oct, work/022-parallel-tabs). On the server, an agent's Chrome inside its computer (core/computers, hands-chrome over a pipe, Glass to watch and take over) ran end to end on a throwaway stack on 27 Sep.
+2. Flaky or unproven: GoHighLevel flows. In the only real session (30 Sep, macOS, a GoHighLevel account) 42 evals and reads worked, but chrome.ghl create-workflow failed at "click Create Workflow", and two held sends timed out unanswered at 300 s; the early calls hit no_extension (extension not yet connected) and one blind refusal on a browser page. Labels and flows are unverified on a live account (docs/work/capsule-sight.md item 6).
+3. Last tested: by the person on 30 Sep (Chrome on macOS, session log 14:03 to 17:57 UTC). Since then only runner CI (2 Oct, Linux headless) ran it; the five later sessions in the logs started and stopped with no calls. Nothing since 1 Oct touched the Mac.
+4. Not built or not seen: Chrome through Lumen on the person's computer has not been run by anyone in these logs; no live GHL acceptance run; the guided load-unpacked install screen; a server Chrome logged in to a real account (logins from the vault); Windows registry install on a real Windows machine.
+5. Verdict: ready to try on read and fill work in the person's own Chrome, not ready to trust for unattended GHL automation. The next step is one supervised GHL run by the person, with chrome_snapshot before each step, so the failing step "click Create Workflow" is fixed against the live page.
+
+## 2026-10-04 (later): THE TOP PRIORITY, the app on a real vyred
+Lead's order: Store gateway adapter, then Now and a record, then approve with a real Face ID proof. chat has the dev vyred (kernel-on, on testbox, stand-in relay and directory on testbox3) and posts its connection details in CHAT.md; use that one. Split: me = adapter, Now, record, approve; chat = pairing, install, Spaces, Devices and spaces.setup.*; vault = Vault and Drive.
+Done: deck/ui/gateway-adapter.js (+ test, fake daemon), deck/ui/store.js (no mock in a packaged app), apps/app/src/api/store-link.ts, android-app.yml and export:web:mock set EXPO_PUBLIC_VYRE_MOCK. Transport proposal posted to CHAT.md and sent to platform, with questions a, b, c.
+Done while waiting (lead's order): Memory against memory.* (screens/memory/real.ts), Flows against flows.* (screens/flows/real.ts, RealFlows.tsx, RealFlow.tsx); a mock build keeps the sample screens. Approve with Face ID is the box's own presence challenge answered by the app session (src/auth), so there is no sheet-side proof; it runs for real the first time a human-only tool is called (flows.approve now, tasks.decide when platform registers it). Unverified on a device and against data: the dev vyred has no facts or Flows.
+Waiting: platform's answer on tool names and shapes (is the records surface registered on the daemon, does tasks.move exist); chat's dev vyred details. ios-app-capture.yml still needs EXPO_PUBLIC_VYRE_MOCK=1 on its build step (not edited: a push touching it cancels the running iOS capture 37161789131).
+Next: when the dev vyred is up, point the app at it, open Now, fix the shapes that differ, then a record, then decide with a real proof. Report one line per screen that works.
+
+## 2026-10-04 resume (after the usage limit): where I am
+Done (work/ui): WIP pushed 71e2d522d; pairing screens (typed codes gone, confirm = pick 1 of 3 sets or type all three, 55ddb3eb7); font ruling (cedf003fa, c3922a959); six icons, switcher on tab places only, Spaces plus menu and Extend, record page (7282d96de); software-key line on a device row (8ed50792c). App tests 381/381, lint:ui clean, tsc clean except src/chat/ChatAvatar.tsx(25,56) (chat's file, AvatarSize has no lg/md/sm; not mine). Run on testbox3 in ~/vyre-ci/ui-native.
+Captures for item 4 (primary text on Now cards): ios-app-capture 37161789131 and android-app-capture 37161791049 on c3922a959, queued behind the runner backlog when written. Read them before calling it fixed; invisible primary text stays a ship blocker until seen.
+Install order built (user ruling 4 Oct, DESIGN-spaces-first.md): flow.js SETUP_STEPS, resume store, Other-device banner on Spaces (sample data). Not wired: the real setup-progress sync across devices (needs the kernel); the mock banner always shows.
+Doing: wait for the two capture runs; then the short recordings app-design asked for (row to record, a sheet, approve with Face ID, iOS and Android): the capture scripts keep one recording of Now only, so these three need a script change (apps/app/scripts/capture-android.sh and the iOS workflow) and a real emulator run.
+Next: Android tab-bar indicator pill (64 x 32 accent-wash), Android first row 8 pt under the status bar, Doing now dot `--ok` with pulse, record desktop right column (Team, Chats), rail 40 px pitch, row-end and secondary action colours, chat items from review 2 (chat's files, ask chat).
+Note: I ran the three small pure test files once on the Mac by mistake; everything since runs on testbox3.
+
 ## Scope
 Own the NATIVE CORE milestone end to end: chat on the Claude Agent SDK that feels as native and
 smooth as the Claude Code terminal (and Paseo), plus complete Settings at account and project level.
