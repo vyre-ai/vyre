@@ -684,6 +684,12 @@ export default {
         const label = String(i.name || "").trim().toLowerCase().replace(/\.vyre\.run$/, "");
         if (!label) throw refuse("Give the space a name.", "bad_name");
         let spaceId = `spc_${crypto.randomBytes(8).toString("hex")}`;
+        // The same person asking again for a name whose earlier attempt did not finish picks that attempt up (its id, its stored steps) instead of colliding with what it left behind: a refused or
+        // failed create retires what the server started, and the retry resumes the pending row (walker, 4 Oct: a retry under the same name answered "That name is taken").
+        let resumed = false;
+        { const prior = spaces.all().find(r => r.label === label && r.createdBy === s.id && r.status !== "done");
+          const prec = prior ? /** @type {any} */ (await kv.get(`space-create/${prior.id}`)) : null;
+          if (prior && prec && prec.status !== "cancelled" && prec.status !== "done") { spaceId = prior.id; resumed = true; } }
         // A Space the kernel hosts here is made by the kernel (its own id, store and key). The kernel says first what store it would use: on a server too small for the larger one
         // it needs the person's confirmation, in the kernel's own words, and only on "create" is the Space made, with the flag that says they accepted the built-in store.
         // A space whose home is a PAIRED SERVER is hosted by that server (DESIGN-spaces-first, "Where a space is hosted"): the server's kernel makes it (key, store, log, files there) and answers THE id;
@@ -698,7 +704,7 @@ export default {
         const KS = !remoteServer && K && K.spaces && typeof K.spaces.host === "function" ? K.spaces : null;
         if (remoteServer) {
           let made;
-          try { made = await remoteCall(remoteServer, "spaces.host-here", { name: label, ...(i.storeChoice === "create" ? { acceptBuiltinStore: true } : {}) }, meta); }
+          try { made = await remoteCall(remoteServer, "spaces.host-here", { name: label, ...(resumed ? { id: spaceId } : {}), ...(i.storeChoice === "create" ? { acceptBuiltinStore: true } : {}) }, meta); }
           catch (e) {
             if (/** @type {any} */ (e).code === "needs_store_confirmation") {
               if (i.storeChoice === "cancel") return { status: "cancelled", reason: "You chose not to create it on this server." };
@@ -710,7 +716,7 @@ export default {
           spaceId = made.space;
           await kv.put(`server-hosted/${spaceId}`, { device: remoteServer, at: now(), ...(typeof made.rootPublic === "string" && made.rootPublic ? { rootPublic: made.rootPublic } : {}) });
         }
-        if (KS) {
+        if (KS && !(resumed && typeof K.spaces.hosts === "function" && K.spaces.hosts(spaceId) === true)) {
           const plan = typeof KS.storePlan === "function" ? await KS.storePlan() : null;
           const confirm = plan && plan.confirm ? plan.confirm : null;
           if (confirm) {
@@ -720,9 +726,11 @@ export default {
           const hosted = await KS.host({ owner: s.id, name: label, ...(confirm ? { accept_builtin_store: true } : {}) });
           spaceId = hosted.space || hosted.id;
         }
+        if (resumed && !spaces.get(spaceId)) resumed = false;
         const home = { ...i.home };
         if (home.kind === "this-computer" && !home.device) home.device = { id: s.keyId, name: "this computer", alwaysOn: false };
-        spaces.insert({ id: spaceId, name: `${label}.vyre.run`, label, displayName: i.displayName ? String(i.displayName).slice(0, 80) : null, createdBy: /** @type {string} */ (s.id), status: "running", now: now() });
+        if (!resumed) spaces.insert({ id: spaceId, name: `${label}.vyre.run`, label, displayName: i.displayName ? String(i.displayName).slice(0, 80) : null, createdBy: /** @type {string} */ (s.id), status: "running", now: now() });
+        else spaces.patch(spaceId, { status: "running" }, now());
         spaces.patch(spaceId, { home: { kind: home.kind, ...(home.device ? { device: home.device } : {}) } }, now());
         /** @type {any} */ let view;
         try { view = await flow.createSpace({ spaceId, name: label, displayName: i.displayName, personId: s.id, home, headscale: i.headscale === true }, { vpsToken: home.token }); } catch (e) { if (KS || remoteServer) await retireHosted(spaceId, meta); throw e; }
@@ -1489,11 +1497,11 @@ export default {
     const isKernelToken = (/** @type {string} */ t) => /^inv_[0-9a-f]{32}\.[A-Za-z0-9_-]+$/.test(String(t));
     /** @type {Map<string, any>} */ const remoteHandles = new Map();
     /** The invitee's signed hello for the home's door: their identity key over the box, the space and the invite (core/wink/serverlink.js carries it in the stream head). @param {{ box: string }} channel @param {string} space @param {string} invite */
-    const inviteeHello = async (channel, space, invite) => {
+    const inviteeHello = async (channel, space, invite, channelKey) => {
       const who = me();
       const ts = now(), nonce = crypto.randomBytes(12).toString("base64url");
-      const sig = b64u(await identity.sign(`vyre-invitee-hello-v1\n${channel.box}\n${space}\n${invite}\n${who.id}\n${who.eid}\n${ts}\n${nonce}`));
-      return { space, invite, identity: who.id, ...(who.name ? { name: `${String(who.name).replace(/\.vyre\.run$/, "")}.vyre.run` } : {}), entry: who.eid, ts, nonce, sig };
+      const sig = b64u(await identity.sign(`vyre-invitee-hello-v2\n${channel.box}\n${space}\n${invite}\n${who.id}\n${who.eid}\n${ts}\n${nonce}\n${channelKey}`));
+      return { space, invite, channel: channelKey, identity: who.id, ...(who.name ? { name: `${String(who.name).replace(/\.vyre\.run$/, "")}.vyre.run` } : {}), entry: who.eid, ts, nonce, sig };
     };
     /** The card for a kernel invite, from the Space's own kernel, after the link's pin and fingerprint are checked against the identity list. @param {any} i @param {any} p @param {any} meta */
     const kernelCard = async (i, p, meta) => {
@@ -1516,8 +1524,9 @@ export default {
         const sf = typeof hooks.inviteeSessionFor === "function" ? hooks.inviteeSessionFor : typeof ctx.inviteeSessionFor === "function" ? ctx.inviteeSessionFor : null;
         if (have && now() - have.at < 60_000) h = have.h; // the open stream is reused inside the hello's two-minute life
         else if (sf) {
-          const hello = await inviteeHello(channel, r.payload.id, invId);
-          h = createRemoteKernel({ space: r.payload.id, transport: winkTransport({ sessionFor: async () => sf(channel, hello) }) });
+          // the hello is signed over the channel's own key id, which only the link knows once it has made the channel's key, so the link asks for it (and signs a new one for every stream it opens)
+          const helloFor = (/** @type {string} */ channelKey) => inviteeHello(channel, r.payload.id, invId, channelKey);
+          h = createRemoteKernel({ space: r.payload.id, transport: winkTransport({ sessionFor: async () => sf(channel, helloFor, { invite: invId }) }) });
         }
         if (h) {
           await kv.put(`invitee-route/${r.payload.id}`, { channel, invite: invId, name: `${label}.vyre.run`, at: now() });

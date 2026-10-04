@@ -1482,6 +1482,12 @@ test("SERVER-HOSTED SPACE end to end: a device daemon with a spaces module asks 
   const droot = tempHome(t);
   fs.writeFileSync(path.join(droot, "config.json"), JSON.stringify({ name: "device-box", transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${names}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
   let silent = false; // a server that stops answering (down, rebuilt)
+  // the names directory the device's spaces module talks to can be made unreachable for one attempt (read when the module starts)
+  const { hooks: dirHooks } = await import("../core/spaces/index.js");
+  let dirDown = false;
+  const innerFetch = dirHooks.fetch || globalThis.fetch; // whatever directory the earlier tests left wired (in-memory or real)
+  dirHooks.fetch = (/** @type {any} */ u, /** @type {any} */ o) => (dirDown ? Promise.reject(new Error("the directory is down")) : innerFetch(u, o));
+  t.after(() => { dirHooks.fetch = /** @type {any} */ (innerFetch === globalThis.fetch ? null : innerFetch); });
   const device = await start({ root: droot, kernel: true, presence: lenient, sessionFor: async () => (silent ? { call: () => new Promise(() => {}) } : links.sessionFor("srv")), log: () => {} });
   const { hooks: spacesHooks } = await import("../core/spaces/index.js");
   spacesHooks.sessionFor = async () => links.sessionFor("srv");
@@ -1489,8 +1495,8 @@ test("SERVER-HOSTED SPACE end to end: a device daemon with a spaces module asks 
   t.after(() => device.stop());
   const dcall = (/** @type {string} */ tool, /** @type {any} */ input = {}, /** @type {any} */ headers = {}) => import("../core/daemon/client.js").then(m => m.call(tool, input, { root: droot, caller: "cli", headers }));
   const proofHeader = { "x-vyre-kernel-proof": Buffer.from(JSON.stringify({ key: "k1" })).toString("base64url"), "x-vyre-presence": "passkey id=x" };
-  const me = (await dcall("spaces.identity.create", { name: "devalex" })).data;
-  assert.ok(me && me.id);
+  const meR = await dcall("spaces.identity.create", { name: "devalex" }); const me = meR.data;
+  assert.ok(me && me.id, JSON.stringify(meR).slice(0, 300));
   // the device knows the server as its paired server (its own record of it)
   device.registry.deps.db.prepare("INSERT INTO wink_devices (id, identity, kind, name, owner_kind, owner_id, created) VALUES (?, ?, 'server', 'srv', 'identity', ?, 1)").run("srv", me.id, me.id);
   const made = await dcall("spaces.create", { name: "harlowsrv", displayName: "Harlow Legal", home: { kind: "server", device: { id: "srv", name: "srv", alwaysOn: true }, confirmed: true } }, proofHeader);
@@ -1521,6 +1527,20 @@ test("SERVER-HOSTED SPACE end to end: a device daemon with a spaces module asks 
   const viaTool = await dcall("records.list", { space: id, type: "contact" });
   assert.ok(!viaTool.error, JSON.stringify(viaTool.error));
   assert.ok(JSON.stringify(viaTool.data).includes("Jane"), "records.list on the device reads the record that lives on the server");
+  // the type list reads through the remote kernel too (the remote gateway has `definitions`), and a change of types from the device needs the person's proof: without it the home refuses, with it carried over the door it applies
+  const typesVia = await dcall("records.types", { space: id });
+  assert.ok(!typesVia.error && JSON.stringify(typesVia.data).includes("contact"), JSON.stringify(typesVia).slice(0, 200));
+  assert.equal(typesVia.data.acted_in.id, id);
+  const NOTE = { name: "note", label: "Note", fields: [{ name: "title", kind: "text", label: "Title" }] };
+  const standInFile = path.join(server.paths.root, "dev-presence-stand-in");
+  fs.rmSync(standInFile); // the development stand-in off: only a real proof counts at the home
+  const noProof = await dcall("records.define", { space: id, diff: { add_types: [NOTE] } });
+  assert.equal(noProof.error && noProof.error.code, "needs_presence", "a change of types with no proof is refused by the home");
+  fs.writeFileSync(standInFile, "");
+  const withProofHdr = { "x-vyre-kernel-proof": Buffer.from(JSON.stringify({ method: "stand-in" })).toString("base64url") };
+  const defined = await dcall("records.define", { space: id, diff: { add_types: [NOTE] } }, withProofHdr);
+  assert.ok(!defined.error, JSON.stringify(defined).slice(0, 300));
+  assert.ok(JSON.stringify((await dcall("records.types", { space: id })).data).includes("note"), "the type the device defined is on the server");
   const stranger = await import("../core/daemon/client.js").then(m => m.call("records.list", { space: id, type: "contact" }, { root: droot, caller: "tailnet-guest:mallory@example.com" }));
   assert.ok(stranger.error, "a caller that is not the signed-in person is refused");
   // and the record is on the SERVER, not on the device
@@ -1553,6 +1573,17 @@ test("SERVER-HOSTED SPACE end to end: a device daemon with a spaces module asks 
   assert.ok(dup.error || (dup.data && dup.data.status !== "done"), `the second create of the same name does not finish: ${JSON.stringify(dup).slice(0, 160)}`);
   assert.equal(server.kernel.spaces.list().length, before, "the failed create was retired on the server");
   assert.equal((await dcall("spaces.list")).data.filter((/** @type {any} */ x) => x.name === "harlowsrv.vyre.run").length, 1, "the device lists the one space");
+  // a create that is refused part way retires what the server started and frees the name; the same person asking again for it resumes the pending attempt and finishes
+  const base = server.kernel.spaces.list().length;
+  dirDown = true;
+  const refused = await dcall("spaces.create", { name: "retryname", home: { kind: "server", device: { id: "srv", name: "srv", alwaysOn: true }, confirmed: true } }, proofHeader);
+  dirDown = false;
+  assert.ok(refused.error || (refused.data && refused.data.status !== "done"), `the attempt with the directory down does not finish: ${JSON.stringify(refused).slice(0, 200)}`);
+  assert.equal(server.kernel.spaces.list().length, base, "what the server started was given back, so the name is free there");
+  const retried = await dcall("spaces.create", { name: "retryname", home: { kind: "server", device: { id: "srv", name: "srv", alwaysOn: true }, confirmed: true } }, proofHeader);
+  assert.ok(!retried.error && retried.data.status === "done", `the retry finishes: ${JSON.stringify(retried).slice(0, 300)}`);
+  assert.equal(server.kernel.spaces.list().length, base + 1, "the server hosts the one space");
+  assert.equal((await dcall("spaces.list")).data.filter((/** @type {any} */ x) => x.name === "retryname.vyre.run").length, 1, "the device lists one space for the name, not two");
 });
 
 test("the pairing path adopts for real: after the pick the SERVER's home owner is the identity its own pairing record names (spaces.owner.adopt from module:wink); another identity, an added module and a second adoption change nothing", async t => {
