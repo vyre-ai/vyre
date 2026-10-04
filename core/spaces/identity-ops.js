@@ -84,6 +84,14 @@ export function createIdentityOps({ store, dir, seen, now, emit = () => {}, stre
       const status = store.setName(name);
       return { status, recoveryCode: code, passwordSet: Boolean(password) };
     },
+    /** Put this identity's chain in the directory again (a fresh directory lost its claims): the same claim as at creation. The name must still be free or already this identity's. */
+    async republish() {
+      const st = store.status();
+      if (!st.exists || !st.name) throw refuse("Choose your Vyre name first.", "no_identity");
+      const state = await stateNow();
+      const r = await dir.claim(st.name, state, store.ops(), signer(), { v: 1 });
+      return { name: st.name, claimed: true, mine: r && r.mine === true };
+    },
     entries: async () => view(await stateNow()),
     /** Add a device (its public key came from pairing) or a recovery contact (its approval key came from the contact). */
     async addEntry({ kind = "device", publicKey, label }) {

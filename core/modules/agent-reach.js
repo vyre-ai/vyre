@@ -9,6 +9,47 @@
 
 /** @type {ReadonlyMap<string, string>} */
 export const PERSON_ONLY = new Map([
+  ["signin.ask", "needs the person's Face ID or presence: it asks the phone to sign the command line in, from a terminal login only"],
+  ["signin.pending", "needs the person's Face ID or presence: the card the phone signs"],
+  ["signin.answer", "needs the person's Face ID or presence: the person's approval of a sign-in"],
+  ["signin.status", "needs the person's Face ID or presence: it hands the credential only to the terminal that asked"],
+  ["signin.dev", "development builds only: a person session for the walk, from a caller already counted as the owner"],
+  ["signin.end", "the person's own sign-out of their terminal"],
+  ["recall.sealscan", "the person's own audit of where sensitive-looking values sit in memory: counts only, but it is the person's to ask"],
+  ["recall.sealscrub", "scrubs sensitive-looking values out of memory: the person's own act"],
+  ["files.drive.restore", "restores a Drive version: admin and owner, with the person's own act"],
+  ["records.define", "changes the Space's types: the person's own act (an assistant proposes through a Kit or a task)"],
+  ["records.reveal", "reveals a sealed value: needs the person's Face ID"],
+  ["records.dev-seed", "a development-build seed for the walk, never an assistant's"],
+  ["rules.define", "writes a standing rule: the person's own act"],
+  ["rules.enable", "turns a standing rule on: the person's own act"],
+  ["rules.disable", "turns a standing rule off: the person's own act"],
+  ["rules.remove", "removes a standing rule: the person's own act"],
+  ["rules.accept", "accepts a proposed rule: the person's own act"],
+  ["rules.dismiss", "dismisses a proposed rule: the person's own act"],
+  ["spaces.presence.begin", "the person's own presence enrolment"],
+  ["spaces.presence.recover", "the person's own presence recovery"],
+  ["spaces.presence.sync", "the person's own presence list"],
+  ["spaces.devices.spaces", "the person's own devices"],
+  ["spaces.devices.list", "the person's own devices"],
+  ["spaces.devices.lend", "the person's own devices"],
+  ["spaces.devices.lend.status", "the person's own devices"],
+  ["spaces.devices.remove", "the person's own devices"],
+  ["spaces.devices.restore", "the person's own devices"],
+  ["spaces.devices.enrol", "the person's own devices"],
+  ["spaces.devices.set", "the person's own devices"],
+  ["spaces.setup.save", "the person's own setup"],
+  ["spaces.setup.claim", "the person's own setup"],
+  ["tasks.decide", "approves or rejects a task with the person's proof"],
+  ["approvals.ask", "asks the person's phone to approve an act the asking session cannot prove: the person's own surfaces only"],
+  ["approvals.pending", "what is waiting for the person's approval, shown on their phone"],
+  ["approvals.answer", "the person's own answer, with their proof"],
+  ["approvals.status", "hands the approving proof back to the session that asked, once"],
+  ["modules.list.reset", "drops the accepted first-party module list for a rollback: the owner with their presence"],
+  ["modules.list.reset.ask", "asks the owner's phone to approve a rollback"],
+  ["modules.list.reset.pending", "the rollback approval waiting for the owner"],
+  ["modules.list.reset.answer", "the owner's answer to a rollback, with their proof"],
+  ["modules.list.reset.status", "hands the rollback outcome to the updater that asked"],
   ["memory.sealscan", "the person's own audit of where sensitive-looking values sit in memory: counts only, but it is the person's to ask"],
   ["vault.provider.set", "needs the person's Face ID or presence: changes which provider holds the Space's secrets"],
   ["vault.provider.remove", "needs the person's Face ID or presence: changes which provider holds the Space's secrets"],
@@ -19,6 +60,7 @@ export const PERSON_ONLY = new Map([
   ["wink.server.reset.confirm", "only the person at the server's own console: resetting a server"],
   ["network.wink.join", "changes this computer's own network: bringing a link up"],
   ["network.wink.leave", "changes this computer's own network: taking a link down"],
+  ["wink.server.status", "the server's own console: who owns it and which device paired it; a model session has no part in pairing"],
   ["wink.phone.pairing", "needs the person's Face ID or presence: pairing and devices"],
   ["wink.phone.pair.answer", "needs the person's Face ID or presence: pairing and devices"],
   ["wink.phone.wait", "needs the person's Face ID or presence: pairing and devices"],
@@ -184,6 +226,27 @@ export const PERSON_ONLY = new Map([
 
 /** @type {ReadonlySet<string>} */
 export const OPEN = new Set([
+  "files.drive.upload",
+  "files.drive.versions",
+  "records.me",
+  "records.actors",
+  "records.types",
+  "records.list",
+  "records.get",
+  "records.create",
+  "records.update",
+  "records.seal-put",
+  "records.sees-as",
+  "records.events",
+  "rules.list",
+  "rules.get",
+  "rules.test",
+  "rules.propose",
+  "tasks.list",
+  "tasks.get",
+  "tasks.request",
+  "tasks.move",
+  "tasks.submit",
   "vault.provider.status",
   "artifacts.activity.log",
   "artifacts.mention.search",
@@ -303,4 +366,41 @@ export const ASK_FIRST = new Map([
   ["bridges.kit.install", "changes the Space's shape"],
   ["hooks.close", "changes what reaches the Space from outside"],
   ["hooks.open", "opens the Space to the outside"],
+]);
+
+// The two caller classes the relay listener labels that are not the person's (BR-2). Each has a short, explicit list, one reason per tool; a tool on no list does not exist for the class,
+// whatever its `callers` says, and whatever its reach is. Both lists are checked against their sources by test/reach-classes.test.js.
+
+/**
+ * `web:<id>`: a browser on the relay that has not been confirmed (a pairing that is waiting, or a legacy one-step browser row). It reaches only what it needs to finish confirming.
+ * @type {ReadonlyMap<string, string>}
+ */
+export const WEB_REACH = new Map([
+  ["wink.phone.wait", "the waiting pairing polls for the owner's confirmation"],
+  ["wink.server.adopt", "the pairing's last step, taking the box as its server once confirmed"],
+  ["relay.devices.ask-trust", "a legacy browser asks to be trusted, about itself only"],
+  ["relay.devices.list", "a legacy browser reads its own row"],
+  ["relay.web.release", "a legacy browser lets its own row go"],
+]);
+
+/**
+ * `setup:<id>`: the setup page before the box is claimed. Exactly what the relay's setup gate (core/relay/setup.js SETUP_TOOLS and SETUP_TOOL_FAMILIES) lets through, plus the tools a
+ * shipped module declares under `setupTools` (sessions: sign in to the AI). The relay's gate still holds the channel to its own list first; this is the registry's second check.
+ * @type {ReadonlyMap<string, string>}
+ */
+export const SETUP_REACH = new Map([
+  ["relay.setup.status", "the page reads its own setup session"],
+  ["relay.setup.claim-token", "the page claims the box with its code"],
+  ["names.check", "checks that a name is free"],
+  ["names.claim", "claims the box's name"],
+  ["names.status", "reads the name's state"],
+  ["names.domain.check", "checks the person's own domain"],
+  ["link.health", "reads whether the box is reachable"],
+  ["system.info", "reads what machine this is"],
+  ["onboard.machine", "reads the machine's setup state"],
+  ["network.tailscale.login", "starts the tailnet sign-in"],
+  ["network.tailscale.status", "reads the tailnet state"],
+  ["network.tailscale.peers", "reads the tailnet's machines"],
+  ["sessions.accounts.signin", "signs in to the person's AI (a module's setupTools)"],
+  ["sessions.accounts.key", "saves the person's AI key (a module's setupTools)"],
 ]);

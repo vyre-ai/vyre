@@ -3,7 +3,7 @@
 // other local user can reach it. Request { id, op, ctx, ... } gets { id, ok, result } or { id, ok: false, error: { code } }. An error carries a
 // stable code and nothing from the input, so no value reaches a log or a stack trace. The language is Node for now: the protocol in this file
 // (ops, fields, codes) is the interface a Rust process can implement later.
-//   ops: init, put, use, deliver, reveal, derived.read, detect, save, session.end, lookup, drop, presence.enrol, presence.revoke, presence.check, spacekey.pub, spacekey.sign, health
+//   ops: init, put, use, deliver, reveal, derived.read, detect, save, session.end, lookup, match, drop, presence.enrol, presence.revoke, presence.check, spacekey.pub, spacekey.sign, health
 // ctx is the kernel's summary of the chain (wire.chainCtx). This process trusts the kernel for who is in the chain and checks the rest itself.
 // `approver` (use and deliver) is the chain of the person who approved: the act may run under an assistant's or a Flow's chain, but the proof
 // must come from exactly one person, and the process verifies it against that chain.
@@ -12,6 +12,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import readline from "node:readline";
 import { CLASSES, hintOf, redact } from "./classes.js";
 import { compact, ledgerEntries } from "./normalise.js";
@@ -19,7 +20,7 @@ import { Presence } from "./proof.js";
 import { SealStore } from "./store.js";
 
 export const HUMAN_SURFACES = new Set(["deck", "capsule", "mobile"]);
-const REVEAL_MS = 30_000, LOOKUP_PER_MIN = 10, MAX_VALUE = 8192, MAX_BODY = 1 << 20;
+const REVEAL_MS = 30_000, LOOKUP_PER_MIN = 10, MATCH_PER_MIN = 5, MATCH_PER_DAY = 100, MATCH_SPACE_PER_DAY = 200, MATCH_MIN = 4, MAX_VALUE = 8192, MAX_BODY = 1 << 20;
 /** Every address an envelope names: to, cc and bcc, a string or a list, case and spacing folded. */
 export const recipientsOf = env => ["to", "cc", "bcc"].flatMap(k => (Array.isArray(env[k]) ? env[k] : env[k] == null ? [] : [env[k]])).map(x => String(x).trim().toLowerCase());
 /** True only when the whole recipient set is the one verified contact the value was merged for. A document destination has no recipient, so any recipient is unverified. */
@@ -35,8 +36,8 @@ const need = (c, m) => { if (!c) throw err(m); };
 
 export class Sealer {
   /** @param {{ dir: string, master: Buffer, sinks?: Record<string,string>, now?: () => number }} o */
-  constructor({ dir, master, sinks = {}, now = Date.now, verifiers = {}, allowUnattested = false }) {
-    this.store = new SealStore(dir, master); this.sinks = sinks; this.now = now; this.presence = new Presence(now, { verifiers, allowUnattested, file: path.join(dir, "presence.json"), custody: this.store }); this.allowUnattested = allowUnattested;
+  constructor({ dir, master, sinks = {}, now = Date.now, verifiers = {}, allowUnattested = false, allowSoftware = false }) {
+    this.store = new SealStore(dir, master); this.sinks = sinks; this.now = now; this.presence = new Presence(now, { verifiers, allowUnattested, allowSoftware, file: path.join(dir, "presence.json"), custody: this.store }); this.allowUnattested = allowUnattested;
     this.sessions = new Map(); this.lookups = new Map(); this.leases = new Leases(this.store, now);
     // Filled text does not last: swept at start and every hour (a day at most, ten minutes after a delivery), so a restart loses no deadline.
     const sweep = () => { this.store.sweep("derived", 86_400_000); this.store.sweepDelivered(600_000); };
@@ -157,6 +158,34 @@ export class Sealer {
     const bi = this.store.blind(ctx.space, r.field, r.class, compact(r.value));
     return { refs: this.store.metas("values", ctx.space).filter(m => m.field === r.field && m.class === r.class && m.blind === bi).map(m => m.ref), event: { type: "seal.lookup", field: r.field, class: r.class } };
   }
+  /**
+   * `seal.detect` (assistant's ask): does this one candidate equal a sealed field's current value in this Space? A yes or no, nothing else: no field, record,
+   * class or ref comes back. Equality is the same keyed blind index the write-time `unique` check and `lookup` use, so no new store. For the first-party
+   * modules the kernel names (`caller.first_party`), never a chain with a model in it, one candidate per call, at least MATCH_MIN characters, MATCH_PER_MIN a
+   * minute and MATCH_PER_DAY a day per (Space, module) and MATCH_SPACE_PER_DAY a day for the Space. The counters live in this process (a restart resets them,
+   * and a restart is the operator's act). The event names the module and today's count, never the candidate or the answer.
+   */
+  match(r) {
+    const ctx = this.ctxOf(r.ctx), c = r.caller;
+    need(c && c.first_party === true && typeof c.module === "string" && /^[a-z0-9][a-z0-9._-]{0,63}$/.test(c.module), "first_party_only");
+    need(!ctx.model_originated, "human_only");
+    need(typeof r.value === "string" && r.value.length <= MAX_VALUE && compact(r.value).length >= MATCH_MIN, "bad_input");
+    const t = this.now(), day = Math.floor(t / 86_400_000), mk = `${ctx.space}\0${c.module}`, sk = `${ctx.space}\0*`;
+    // The per-day counts are sealed on disk, so a restart does not reset a limit; the per-minute window is memory only (a restart gives at most one minute's worth back).
+    const saved = this.store.matchRead();
+    const days = saved && saved.day === day ? saved.counts : {};
+    const m = this.matches || (this.matches = new Map());
+    const hits = (m.get(mk) || []).filter(x => x > t - 60_000);
+    need(hits.length < MATCH_PER_MIN && (days[mk] || 0) < MATCH_PER_DAY && (days[sk] || 0) < MATCH_SPACE_PER_DAY, "rate_limited");
+    hits.push(t); m.set(mk, hits); days[mk] = (days[mk] || 0) + 1; days[sk] = (days[sk] || 0) + 1;
+    this.store.matchWrite({ day, counts: days });
+    const cv = compact(r.value), all = this.store.metas("values", ctx.space), pairs = new Set(all.map(x => `${x.field}\0${x.class}`));
+    // The records whose sealed fields hold this value. The kernel's side filters them by what the person may read and returns only the yes or no; they never leave the kernel.
+    const records = new Set();
+    for (const pr of pairs) { const [field, cls] = pr.split("\0"); const b = this.store.blind(ctx.space, field, cls, cv); for (const x of all) if (x.field === field && x.class === cls && x.blind === b) records.add(x.record); }
+    const yes = records.size > 0;
+    return { match: yes, records: [...records], event: { type: "seal.detect", module: c.module, count: days[mk] } };
+  }
   drop(r) { const ctx = this.ctxOf(r.ctx); this.open(ctx, r.ref); return { dropped: this.store.drop("values", r.ref) }; }
 
   /**
@@ -182,17 +211,17 @@ export class Sealer {
       case "put": return this.put(req); case "use": return this.use(req); case "deliver": return this.deliver(req);
       case "reveal": return this.reveal(req); case "derived.read": return this.reveal(req, true);
       case "detect": return this.detect(req); case "save": return this.save(req); case "session.end": return this.sessionEnd(req);
-      case "lookup": return this.lookup(req); case "drop": return this.drop(req);
+      case "lookup": return this.lookup(req); case "match": return this.match(req); case "drop": return this.drop(req);
       case "presence.begin": { const ctx = this.ctxOf(req.ctx); need(ctx.one_person && !ctx.model_originated && ctx.person === req.person, "chain_not_person"); return this.presence.begin(req); }
       case "presence.enrol": {
         const ctx = this.ctxOf(req.ctx);
         // A pinned person's enrolment first takes the current chain (V-1): a device removed since the last sync is gone, with its keys, before its bind is looked at.
         if (this.presence.pins.has(req.person)) { need(Array.isArray(req.ops), "needs_chain"); const s = await this.presence.sync({ person: req.person, ops: req.ops, ctx }); if (s.refused) throw err(s.refused); }
-        const r = this.presence.enrol({ ...req, ctx }); if (r.refused) throw err(r.refused); return { enrolled: true, attested: r.attested, event: { type: "presence.enrolled", person: req.person, key_id: req.key_id, signer: req.signer, attested: r.attested } }; }
+        const r = this.presence.enrol({ ...req, ctx }); if (r.refused) throw err(r.refused); return { enrolled: true, attested: r.attested, event: { type: "presence.enrolled", method: req.signer === "software" ? "software" : r.attested ? "attested" : "unattested", person: req.person, key_id: req.key_id, signer: req.signer, attested: r.attested } }; }
       case "presence.revoke": { const why = this.presence.revoke(req.key_id, this.ctxOf(req.ctx), req.proof); if (why) throw err(why); return { revoked: true, event: { type: "presence.revoked", key_id: req.key_id } }; }
       // The one verifier for the kernel: a task approval (or any kernel act the person signs) is checked here, against the keys enrolled here,
       // and the proof is used up. The kernel supplies who is in the chain; only task and grant ops are accepted, so this is not a path to a seal op.
-      case "presence.check": { const ctx = this.ctxOf(req.ctx); need(typeof req.act === "string" && /^(task|grant)\.[a-z_]+$/.test(req.act) && req.fields && typeof req.fields === "object", "bad_input"); const why = this.presence.refuse(req.proof, { op: req.act, space: ctx.space, fields: req.fields, ctx }); if (why) throw err(why === "no_proof" ? "needs_presence" : why); return { ok: true }; }
+      case "presence.check": { const ctx = this.ctxOf(req.ctx); need(typeof req.act === "string" && /^(task|grant)\.[a-z_]+$/.test(req.act) && req.fields && typeof req.fields === "object", "bad_input"); const why = this.presence.refuse(req.proof, { op: req.act, space: ctx.space, fields: req.fields, ctx }); if (why) throw err(why === "no_proof" ? "needs_presence" : why); return { ok: true, method: this.presence.lastMethod }; }
       // The Space's checkpoint key: its public half on request, and signatures over checkpoints of this Space only.
       case "spacekey.pub": { const ctx = this.ctxOf(req.ctx); const k = this.spaceKey(ctx); return { key_id: k.key_id, pub: k.pub }; }
       case "spacekey.sign": {
@@ -212,6 +241,27 @@ export class Sealer {
       case "lease.reinstate": { const c = this.ctxOf(req.ctx); const why = this.presence.refuse(req.proof, { op: "lease.reinstate", space: c.space, fields: { member: req.member, device: req.device }, ctx: c }); if (why) throw err(why === "no_proof" ? "needs_presence" : why); return this.leases.reinstate({ space: c.space, member: req.member, device: req.device }); }
       case "lease.check": { const c = this.ctxOf(req.ctx); return this.leases.check({ id: req.lease, member: c.person }); }
       // The kernel's own channel only: this process's pipes belong to the kernel, and a call that says a model started it is refused. The key never leaves.
+      // The log anchor (kernel-2, BL-2): the latest (seq, head) of a Space's event log the kernel showed this process, kept in its own sealed store, moving only forward. The kernel calls advance
+      // when it signs a checkpoint and reads it at boot, so a log with its newest events deleted no longer verifies. Kernel channel only, never a model's chain.
+      case "anchor.advance": case "anchor.read": {
+        const ctx = this.ctxOf(req.ctx); need(!ctx.model_originated, "human_only");
+        const meta = { ref: `seal_la${crypto.createHash("sha256").update(ctx.space).digest("hex").slice(0, 30)}`, space: ctx.space, record: "_", field: "logAnchor", class: "logAnchor" };
+        const held = (() => { const r = this.store.read("values", meta.ref, ctx.space); return r ? JSON.parse(r.plaintext) : null; })();
+        if (req.op === "anchor.read") return { anchor: held };
+        need(Number.isSafeInteger(req.seq) && req.seq >= 0 && typeof req.head === "string" && /^[A-Za-z0-9_=+\/-]{16,128}$/.test(req.head), "bad_input");
+        if (held) { need(req.seq >= held.seq, "anchor_behind"); if (req.seq === held.seq) { need(req.head === held.head, "anchor_split"); return { anchor: held, event: null }; } }
+        this.store.write("values", meta, JSON.stringify({ seq: req.seq, head: req.head }));
+        return { anchor: { seq: req.seq, head: req.head }, event: null };
+      }
+      // The person's own reset of a Space's anchor (BL-2a): after a restore from backup or a bad advance the log would otherwise never boot. Needs the person's presence on this exact act.
+      case "anchor.reset": {
+        const c = this.ctxOf(req.ctx); need(!c.model_originated, "human_only");
+        const why = this.presence.refuse(req.proof, { op: "anchor.reset", space: c.space, fields: {}, ctx: c });
+        if (why) throw err(why === "no_proof" ? "needs_presence" : why);
+        const ref = `seal_la${crypto.createHash("sha256").update(c.space).digest("hex").slice(0, 30)}`;
+        this.store.write("values", { ref, space: c.space, record: "_", field: "logAnchor", class: "logAnchor" }, "null");
+        return { anchor: null };
+      }
       case "kernel.mac": { need(!req.ctx?.model_originated && /^[a-z0-9_.-]{1,40}$/.test(req.purpose) && typeof req.data === "string" && req.data.length <= 2_000_000, "bad_input"); return { mac: this.store.kernelMac(req.purpose, req.data) }; }
       case "kernel.verify": { need(!req.ctx?.model_originated && /^[a-z0-9_.-]{1,40}$/.test(req.purpose) && typeof req.data === "string" && req.data.length <= 2_000_000 && typeof req.mac === "string", "bad_input"); const a = Buffer.from(this.store.kernelMac(req.purpose, req.data)), b = Buffer.from(req.mac); return { ok: a.length === b.length && crypto.timingSafeEqual(a, b) }; }
       case "pool.key": { need(!req.ctx?.model_originated && /^(per|spc)_[a-z0-9]{8,40}$/.test(req.owner), "bad_input"); return { key: this.store.poolKey(req.owner).toString("base64") }; }
@@ -251,15 +301,31 @@ export function custodyNote(profile = process.env.VYRE_SEAL_PROFILE || "desktop"
   if (platform === "win32") return "Sealed data on this PC is only as protected as this PC's own Windows account: any program running as you can read the key file.";
   return "The sealing key is a file inside your Vyre folder, private to you. Vyre's own sessions are sandboxed away from it and your disk's encryption protects it at rest; root, or a program running as you outside Vyre's sandbox, can read it.";
 }
-export function hostCheck({ profile = process.env.VYRE_SEAL_PROFILE || "desktop", dev = process.env.VYRE_SEAL_DEV === "1", uid = process.getuid?.() ?? -1, agentUids = process.env.VYRE_AGENT_UIDS } = {}) {
+/**
+ * Is an environment developer switch honoured here? Exactly "1" AND not a packaged build. Self-contained (this process imports no kernel code beyond kernel/seal): it reads the build stamp
+ * lib/build-kind.js as TEXT, the same rule as kernel/devbuild.js isPackaged (a missing or unreadable stamp, anything but "development", or a carried SHA256SUMS.sig means packaged);
+ * kernel/seal/buildkind.test.js pins that this equals devbuild's answer for every stamp. `root` is for that test.
+ * @param {string | undefined} value @param {string} [root]
+ */
+export function devSwitch(value, root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..")) {
+  if (value !== "1") return false;
+  let text = ""; try { text = fs.readFileSync(path.join(root, "lib", "build-kind.js"), "utf8"); } catch { return false; }
+  return /export const BUILD_KIND = "development";/.test(text) && !fs.existsSync(path.join(root, "SHA256SUMS.sig"));
+}
+
+export function hostCheck({ profile = process.env.VYRE_SEAL_PROFILE || "desktop", dev = devSwitch(process.env.VYRE_SEAL_DEV), uid = process.getuid?.() ?? -1, agentUids = process.env.VYRE_AGENT_UIDS } = {}) {
   if (dev || profile === "desktop") return;
   const agents = agentUids ? agentUids.split(",").map(Number) : Array.from({ length: 64 }, (_, i) => 2000 + i);
   if (profile !== "server" || agents.includes(uid)) throw Object.assign(new Error("the sealing process must run as its own user, not an agent's"), { safe: true });
 }
 
+/** Is a SOFTWARE signer (no platform attestation) accepted for presence? Only in a development build and only with VYRE_SEAL_UNATTESTED=1 (kernel/devbuild.test.js holds this). @param {Record<string, string | undefined>} env @param {string} [root] */
+export const unattestedAllowed = (env, root) => devSwitch(env.VYRE_SEAL_UNATTESTED, root);
+
 /** Serve requests on stdin and stdout. Anything unexpected is a generic code: the message of an exception may hold input, so it is never sent. */
-export function serve({ dir, master = (hostCheck(), fileMaster(dir)), sinks = {}, input = process.stdin, output = process.stdout, verifiers = {}, allowUnattested = false } = {}) {
-  const sealer = new Sealer({ dir, master, sinks, verifiers, allowUnattested });
+export function serve({ dir, master = (hostCheck(), fileMaster(dir)), sinks = {}, input = process.stdin, output = process.stdout, verifiers = {}, allowUnattested = false, allowSoftware = false } = {}) {
+  const sealer = new Sealer({ dir, master, sinks, verifiers, allowUnattested, allowSoftware });
+  if (allowSoftware) process.stderr.write("seal: software presence keys are accepted (development build); every use is method software\n");
   const rl = readline.createInterface({ input });
   rl.on("line", async line => {
     let req; try { req = JSON.parse(line); } catch { return; }
@@ -277,6 +343,6 @@ if (process.argv[1] && process.argv[1].endsWith("kernel/seal/process.js") && pro
   process.stdin.on("end", () => process.exit(0)); process.stdin.on("close", () => process.exit(0));
   let verifiers = {};
   if (process.env.VYRE_SEAL_VERIFIERS) verifiers = (await import(process.env.VYRE_SEAL_VERIFIERS)).default;
-  try { serve({ dir: process.env.VYRE_SEAL_DIR, sinks: JSON.parse(process.env.VYRE_SEAL_SINKS || "{}"), verifiers, allowUnattested: process.env.VYRE_SEAL_UNATTESTED === "1" }); }
+  try { serve({ dir: process.env.VYRE_SEAL_DIR, sinks: JSON.parse(process.env.VYRE_SEAL_SINKS || "{}"), verifiers, allowUnattested: devSwitch(process.env.VYRE_SEAL_UNATTESTED), allowSoftware: devSwitch(process.env.VYRE_SEAL_SOFTWARE) }); }
   catch (e) { process.stderr.write(`seal: ${e?.safe ? e.message : "internal error"}\n`); process.exit(70); }
 }

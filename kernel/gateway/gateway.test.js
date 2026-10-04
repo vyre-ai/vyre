@@ -4,8 +4,9 @@ import { createGateway } from "./index.js";
 import { createMemoryStore } from "../store/memory.js";
 import { createEventLog } from "../core/events.js";
 import { createChainBuilder } from "../core/chain.js";
-import { isUuid, timeOf } from "../core/ids.js";
+import { isUuid, timeOf, mintUuid } from "../core/ids.js";
 import { CONTACT } from "../conformance/suite.js";
+import { CONTACT as CONTACT_CORE, ORGANIZATION as ORG_CORE, PARTICIPANT as PARTICIPANT_CORE } from "../../records/core-types.js";
 
 const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner";
 let T = 1_800_000_000_000;
@@ -97,6 +98,21 @@ test("gateway: the gateway filters rows itself; a store that ignores the grant c
   assert.deepEqual(tot[0].values, { count: 3, "sum:age": 6 }, "the total counts only what the caller may see");
   const hits = await r.search(owner(), { text: "harlow", page: { limit: 50 } });
   assert.equal(hits.rows.length, 3);
+});
+
+test("gateway: a total just under the row-by-row bound is exact, and a row the caller may not read is not counted at any size", async () => {
+  const hidden = new Set();
+  const attrs = urn => ({ project: hidden.has(urn) ? "p9" : "p1" });
+  const g = G({ resource: { prefix: `vyre://${SPACE}/contact/*`, where: [{ attr: "project", op: "eq", value: "p1" }] } });
+  const ownerAll = G({ actions: ["records.create", "records.define"] });
+  const { r, store } = await withType(rig({ grants: [ownerAll, g], attrs }));
+  const N = 19_700; // kernel-2 bounds the row-by-row total at 20,000 rows (it says unsupported past that); an unrestricted caller goes to the store
+  for (let i = 0; i < N; i++) { const id = mintUuid(); await store.create("contact", id, { name: `n${i}`, age: 1, status: i % 2 ? "open" : "closed" }); if (i % 7 === 0) hidden.add(`vyre://${SPACE}/contact/${id}`); }
+  const seen = N - hidden.size;
+  const tot = await r.aggregate(owner(), "contact", { measures: [{ fn: "count" }, { fn: "sum", field: "age" }] });
+  assert.deepEqual(tot[0].values, { count: seen, "sum:age": seen });
+  const by = await r.aggregate(owner(), "contact", { group_by: ["status"], measures: [{ fn: "count" }] });
+  assert.equal(by.reduce((a, x) => a + x.values.count, 0), seen);
 });
 
 test("gateway: a store that returns rows of another type or a different id is not believed", async () => {
@@ -311,6 +327,30 @@ test("K2-7: row policy reads kernel attributes the gateway wrote; a record it di
   await assert.rejects(() => r.create(owner(), "contact", { name: "x" }, { attrs: { created_by: "forged" } }), { code: "bad_input" });
 });
 
+test("BL-3: on the built-in store a record's attributes are the create event's, so editing kernel_attrs on disk changes nothing", async () => {
+  const { DatabaseSync } = await import("node:sqlite");
+  const { createSqliteStore } = await import("../store/sqlite.js");
+  const { createSqliteEventLog } = await import("../store/sqlite-log.js");
+  const where = [{ attr: "sensitivity", op: "ne", value: "privileged" }];
+  const grants = [G(), G({ subject: { kind: "actor", actor: actor("agent", "kit") }, actions: ["records.read"], resource: { prefix: `vyre://${SPACE}/contact/*`, where } })];
+  const db = new DatabaseSync(":memory:");
+  const store = createSqliteStore({ db, clock });
+  const log = createSqliteEventLog({ db, space: SPACE, clock });
+  const gw = createGateway({ space: SPACE, store, log, chains, clock, grants: { forSubject: a => grants.filter(g => g.subject.actor.kind === a.kind && g.subject.actor.id === a.id), get: id => grants.find(g => g.id === id) }, members: { has: a => `${a.kind}:${a.id}` === `person:${OWNER}` || `${a.kind}:${a.id}` === "agent:kit" }, hasPresenceSession: () => true });
+  const r = gw.records;
+  await r.define(owner(), { add_types: [CONTACT] });
+  const secret = await r.create(owner(), "contact", { name: "Secret" }, { attrs: { sensitivity: "privileged" } });
+  assert.equal(await r.get(agent(), "contact", secret.id), null);
+  // the write to the database: the record is now "internal" on disk
+  db.prepare("UPDATE kernel_attrs SET attrs = json_set(attrs, '$.sensitivity', 'internal') WHERE urn = ?").run(secret.urn);
+  assert.equal(JSON.parse(db.prepare("SELECT attrs FROM kernel_attrs WHERE urn = ?").get(secret.urn).attrs).sensitivity, "internal");
+  // a fresh gateway over the same database (a restart, so no cache): the log wins and the disk copy is repaired
+  const gw2 = createGateway({ space: SPACE, store: createSqliteStore({ db, clock }), log: createSqliteEventLog({ db, space: SPACE, clock }), chains, clock, grants: { forSubject: a => grants.filter(g => g.subject.actor.kind === a.kind && g.subject.actor.id === a.id), get: id => grants.find(g => g.id === id) }, members: { has: a => `${a.kind}:${a.id}` === `person:${OWNER}` || `${a.kind}:${a.id}` === "agent:kit" }, hasPresenceSession: () => true });
+  assert.equal(await gw2.records.get(agent(), "contact", secret.id), null, "still hidden");
+  assert.equal(gw2.records.attrsOf(secret.urn).sensitivity, "privileged");
+  assert.equal(JSON.parse(db.prepare("SELECT attrs FROM kernel_attrs WHERE urn = ?").get(secret.urn).attrs).sensitivity, "privileged", "the disk copy was repaired from the log");
+});
+
 test("K2-10: no cursor when only rows the chain cannot read remain", async () => {
   const where = [{ attr: "sensitivity", op: "eq", value: "internal" }];
   const grants = [G(), G({ subject: { kind: "actor", actor: actor("agent", "kit") }, actions: ["records.read"], resource: { prefix: `vyre://${SPACE}/contact/*`, where } })];
@@ -424,6 +464,184 @@ test("fields: a grant with row predicates and a field allow-list still refuses f
   await assert.rejects(() => r.query(agent(), "contact", { sort: [{ field: "age", dir: "asc" }], page: { limit: 5 } }), { code: "bad_input" });
   await assert.rejects(() => r.aggregate(agent(), "contact", { group_by: ["age"], measures: [{ fn: "count" }] }), { code: "bad_input" });
   assert.equal((await r.query(agent(), "contact", { filter: { field: "name", op: "eq", value: "Jane" }, page: { limit: 5 } })).rows.length, 1, "an allowed field still filters");
+});
+
+test("search: a caller with a field limit cannot find a record by text in a field outside the limit", async () => {
+  const grants = [G(), G({ subject: { kind: "actor", actor: actor("agent", "kit") }, actions: ["records.read"], resource: { prefix: `vyre://${SPACE}/contact/*`, fields: ["name"] } })];
+  const { r } = await withType(rig({ grants, members: ["agent:kit"] }));
+  await r.create(owner(), "contact", { name: "Jane Harlow", status: "closed" });
+  assert.equal((await r.search(agent(), { text: "harlow", page: { limit: 5 } })).rows.length, 1, "an allowed field finds it");
+  assert.equal((await r.search(agent(), { text: "closed", page: { limit: 5 } })).rows.length, 0, "a field outside the limit does not");
+  assert.equal((await r.search(owner(), { text: "closed", page: { limit: 5 } })).rows.length, 1, "the unlimited owner still does");
+});
+
+test("kind: a type may say it holds work (project), nothing else, and the definition returns it", async () => {
+  const { r, gw } = await withType(rig());
+  const t = { name: "campaign", label: "Campaign", kind: "project", fields: [{ name: "title", kind: "text", label: "Title" }] };
+  await assert.rejects(() => r.define(owner(), { add_types: [{ ...t, name: "other", kind: "board" }] }), { code: "bad_input" });
+  await r.define(owner(), { add_types: [t] });
+  assert.equal((await gw.definitions(owner())).find(x => x.name === "campaign").kind, "project");
+});
+
+test("linked: the reverse of a link, across types, only what the caller may read, capped by limit", async () => {
+  const hidden = new Set();
+  const attrs = urn => ({ project: hidden.has(urn) ? "p9" : "p1" });
+  const g = G({ resource: { prefix: `vyre://${SPACE}/*`, where: [{ attr: "project", op: "eq", value: "p1" }] } });
+  const { r } = await withType(rig({ grants: [G({ actions: ["records.create", "records.define"] }), g], attrs }));
+  await r.define(owner(), { add_types: [roleType("client"), { name: "matter", label: "Matter", fields: [{ name: "title", kind: "text", label: "Title" }, { name: "client", kind: "link", to: "contact", label: "Client" }] }] });
+  const jane = await r.create(owner(), "contact", { name: "Jane" }), bob = await r.create(owner(), "contact", { name: "Bob" });
+  const m1 = await r.create(owner(), "matter", { title: "A", client: { urn: jane.urn } }), m2 = await r.create(owner(), "matter", { title: "B", client: { urn: jane.urn } });
+  await r.create(owner(), "matter", { title: "C", client: { urn: bob.urn } });
+  const c1 = await r.create(owner(), "client", { contact: { urn: jane.urn }, stage: "Active" });
+  const all = await r.linked(owner(), jane.urn);
+  assert.deepEqual(all.rows.map(x => `${x.type}.${x.field}`).sort(), ["client.contact", "matter.client", "matter.client"]);
+  assert.equal(all.truncated, false);
+  assert.deepEqual((await r.linked(owner(), jane.urn, { type: "matter" })).rows.map(x => x.record.id).sort(), [m1.id, m2.id].sort());
+  const cut = await r.linked(owner(), jane.urn, { limit: 2 });
+  assert.equal(cut.rows.length, 2); assert.equal(cut.truncated, true);
+  hidden.add(m2.urn);
+  assert.deepEqual((await r.linked(owner(), jane.urn, { type: "matter" })).rows.map(x => x.record.id), [m1.id], "a record the caller may not read is not listed");
+  await assert.rejects(() => r.linked(owner(), "not-a-urn"), { code: "bad_input" });
+});
+
+// ---- roles: what a contact is to the Space ----
+const roleType = (name, extra = {}) => ({ name, label: name, role: { link: "contact", ended: ["Ended"] }, fields: [
+  { name: "contact", kind: "link", to: "contact", label: "Contact", required: true },
+  { name: "stage", kind: "stage", label: "Stage", options: ["New", "Active", "Ended"] },
+  { name: "note", kind: "text", label: "Note" },
+], stages: [{ name: "New" }, { name: "Active" }, { name: "Ended" }], ...extra });
+
+test("roles: a role type needs its link, required, to a contact or organization, and ended stages that exist", async () => {
+  const { r } = await withType(rig());
+  const bad = async (t, why) => assert.rejects(() => r.define(owner(), { add_types: [t] }), { code: "bad_input" }, why);
+  await bad({ ...roleType("prospect"), role: {} }, "no link named");
+  await bad({ ...roleType("prospect"), fields: roleType("x").fields.filter(f => f.name !== "contact") }, "link field missing");
+  await bad({ ...roleType("prospect"), fields: roleType("x").fields.map(f => (f.name === "contact" ? { ...f, required: false } : f)) }, "link not required");
+  await bad({ ...roleType("prospect"), fields: roleType("x").fields.map(f => (f.name === "contact" ? { ...f, to: "matter" } : f)) }, "links to something else");
+  await bad({ ...roleType("prospect"), role: { link: "contact", ended: ["Gone"] } }, "ended stage that does not exist");
+  await r.define(owner(), { add_types: [roleType("prospect")] });
+});
+
+test("roles: roles of a contact and holders of a role at a stage, current first, only what the caller may read", async () => {
+  const hidden = new Set();
+  const attrs = urn => ({ project: hidden.has(urn) ? "p9" : "p1" });
+  const g = G({ resource: { prefix: `vyre://${SPACE}/*`, where: [{ attr: "project", op: "eq", value: "p1" }] } });
+  const ownerAll = G({ actions: ["records.create", "records.define"] });
+  const { r } = await withType(rig({ grants: [ownerAll, g], attrs }));
+  await r.define(owner(), { add_types: [roleType("prospect"), roleType("client"), roleType("ambassador")] });
+  const jane = await r.create(owner(), "contact", { name: "Jane" }), bob = await r.create(owner(), "contact", { name: "Bob" });
+  const mk = (type, c, stage) => r.create(owner(), type, { contact: { urn: c.urn }, stage });
+  const p1 = await mk("prospect", jane, "Ended"), c1 = await mk("client", jane, "Active"), a1 = await mk("ambassador", jane, "New");
+  const pb = await mk("prospect", bob, "New"), cb = await mk("client", bob, "Active");
+  const mine = await r.roles(owner(), jane.urn);
+  assert.deepEqual(mine.map(x => [x.role, x.current]).sort(), [["ambassador", true], ["client", true], ["prospect", false]]);
+  assert.equal(mine.at(-1).current, false, "ended roles come last");
+  assert.ok(mine.every(x => x.holder === jane.urn));
+  assert.deepEqual((await r.roles(owner(), jane.urn, { include_ended: false })).map(x => x.role).sort(), ["ambassador", "client"]);
+  const act = await r.holders(owner(), { role: "client", stage: "Active", page: { limit: 10 } });
+  assert.deepEqual(act.rows.map(x => x.holder).sort(), [jane.urn, bob.urn].sort());
+  assert.deepEqual((await r.holders(owner(), { role: "prospect", page: { limit: 10 } })).rows.map(x => x.holder), [bob.urn], "ended prospects are left out");
+  assert.equal((await r.holders(owner(), { role: "prospect", include_ended: true, page: { limit: 10 } })).rows.length, 2);
+  await assert.rejects(() => r.holders(owner(), { role: "contact", page: { limit: 1 } }), { code: "bad_input" }, "a plain type is not a role");
+  // a role record the caller may not read is not listed, and a holder the caller may not read has no roles to show
+  hidden.add(c1.urn);
+  assert.deepEqual((await r.roles(owner(), jane.urn)).map(x => x.role).sort(), ["ambassador", "prospect"]);
+  assert.equal((await r.holders(owner(), { role: "client", stage: "Active", page: { limit: 10 } })).rows.length, 1);
+  hidden.add(bob.urn);
+  assert.deepEqual(await r.roles(owner(), bob.urn), []);
+  void p1; void a1; void pb; void cb;
+});
+
+test("merge: two contacts that are one person become one, everything moves, the log says so, and unmerge puts it all back", async () => {
+  const { r, log } = await rig();
+  await r.define(owner(), { add_types: [CONTACT_CORE, ORG_CORE, PARTICIPANT_CORE, roleType("client")] });
+  const org = await r.create(owner(), "organization", { name: "Harlow Legal", domain: "harlow.test" });
+  const a = await r.create(owner(), "contact", { name: "Jane Doe", email: "jane@harlow.test", other_emails: ["j@old.test"] });
+  const b = await r.create(owner(), "contact", { name: "J. Doe", email: "jane@gmail.test", phone: "+15550100", organization: { urn: org.urn }, other_emails: ["j@old.test", "jd@x.test"], notes: "second" });
+  const role = await r.create(owner(), "client", { contact: { urn: b.urn }, stage: "Active" });
+  const part = await r.create(owner(), "participant", { communication: { urn: `vyre://${SPACE}/communication/${mintUuid()}` }, contact: { urn: b.urn }, how: "to" });
+  await assert.rejects(() => r.merge(owner(), "contact", a.id, a.id), { code: "bad_input" });
+  const res = await r.merge(owner(), "contact", a.id, b.id);
+  assert.equal(res.relinked, 2);
+  assert.deepEqual(res.conflicts, { name: "J. Doe" }, "a different name is reported and the kept one stands; the other email had a place to go");
+  const m = (await r.get(owner(), "contact", a.id)).data;
+  assert.equal(m.name, "Jane Doe", "the kept record's own value stands");
+  assert.deepEqual([m.phone, m.organization.urn, m.notes], ["+15550100", org.urn, "second"], "empty fields take the other's value");
+  assert.deepEqual(m.other_emails.sort(), ["j@old.test", "jane@gmail.test", "jd@x.test"], "lists join and the other main email is kept");
+  assert.equal(await r.get(owner(), "contact", b.id), null, "the dropped record is in the bin");
+  assert.equal((await r.get(owner(), "client", role.id)).data.contact.urn, a.urn);
+  assert.equal((await r.get(owner(), "participant", part.id)).data.contact.urn, a.urn);
+  assert.deepEqual((await r.roles(owner(), a.urn)).map(x => x.role), ["client"]);
+  assert.equal(log.read({ type: "records.merged" }).length, 1);
+  assert.equal(log.read({ type: "records.merged" })[0].data.drop, b.id);
+  // undo
+  const back = await r.unmerge(owner(), res.merge_id);
+  assert.equal(back.relinked, 2);
+  const a2 = (await r.get(owner(), "contact", a.id)).data;
+  assert.deepEqual([a2.phone ?? null, a2.organization ?? null, a2.notes ?? null, a2.other_emails], [null, null, null, ["j@old.test"]]);
+  assert.equal((await r.get(owner(), "contact", b.id)).data.email, "jane@gmail.test");
+  assert.equal((await r.get(owner(), "client", role.id)).data.contact.urn, b.urn);
+  await assert.rejects(() => r.unmerge(owner(), res.merge_id), { code: "invalid" }, "once");
+});
+
+test("merge: a record that links to the dropped one and may not be changed stops the merge before anything moves", async () => {
+  const grants = [
+    G({ actions: ["records.define"] }),
+    G({ actions: ["records.read", "records.create", "records.update", "records.remove"], resource: { prefix: `vyre://${SPACE}/contact/*` } }),
+    G({ actions: ["records.read", "records.create"], resource: { prefix: `vyre://${SPACE}/client/*` } }),
+  ];
+  const { r } = await rig({ grants });
+  await r.define(owner(), { add_types: [CONTACT_CORE, ORG_CORE, roleType("client")] });
+  const a = await r.create(owner(), "contact", { name: "A", email: "a@x.test" }), b = await r.create(owner(), "contact", { name: "B", phone: "+1555" });
+  await r.create(owner(), "client", { contact: { urn: b.urn } });
+  await assert.rejects(() => r.merge(owner(), "contact", a.id, b.id), { code: "not_allowed" });
+  assert.equal((await r.get(owner(), "contact", b.id)).data.name, "B", "the dropped record is still there");
+  assert.equal((await r.get(owner(), "contact", a.id)).version, 1, "the kept record is untouched");
+});
+
+test("remove a field softly: nothing shows, writes, filters or finds it, the data is kept, and bringing it back shows the data again", async () => {
+  const { r } = await rig();
+  const def = hidden => ({ name: "memo", label: "Memo", fields: [{ name: "title", kind: "text", label: "Title", required: true }, { name: "secret", kind: "text", label: "Secret", required: true, ...(hidden ? { hidden: true } : {}) }] });
+  await r.define(owner(), { add_types: [def(false)] });
+  const m = await r.create(owner(), "memo", { title: "Plan", secret: "needle" });
+  assert.equal((await r.search(owner(), { text: "needle", page: { limit: 5 } })).rows.length, 1);
+  await r.define(owner(), { change_types: [def(true)] });
+  assert.equal("secret" in (await r.get(owner(), "memo", m.id)).data, false, "not shown");
+  assert.equal("secret" in (await r.query(owner(), "memo", { page: { limit: 5 } })).rows[0].data, false, "not listed");
+  await assert.rejects(() => r.update(owner(), "memo", m.id, { secret: "x" }, 1), { code: "bad_input" });
+  await assert.rejects(() => r.query(owner(), "memo", { filter: { field: "secret", op: "eq", value: "needle" }, page: { limit: 5 } }), { code: "bad_input" });
+  assert.equal((await r.search(owner(), { text: "needle", page: { limit: 5 } })).rows.length, 0, "not found by its text");
+  const n = await r.create(owner(), "memo", { title: "No secret needed" });
+  assert.equal(n.version, 1, "a removed field is never required");
+  await r.define(owner(), { change_types: [{ ...def(false), fields: def(false).fields.map(f => ({ ...f, required: false })) }] });
+  assert.equal((await r.get(owner(), "memo", m.id)).data.secret, "needle", "the data was kept");
+});
+
+test("seal a field in place: values move into a sealed field, no plaintext is left in the store, its change log or the event log, and the audit chain still verifies", async () => {
+  let refs = 0;
+  const sealer = { api: { put: async i => ({ ref: { sealed: i.class, ref: `sv_${++refs}`, present: true, valid_format: true, set_at: 1 } }) } };
+  const { r, gw, log, store } = rig({ grants: [G({ actions: ["records.*", "records.define", "seal.put", "events.read"] })], sealer });
+  await r.define(owner(), { add_types: [{ name: "person", label: "Person", fields: [{ name: "name", kind: "text", label: "Name", required: true }, { name: "ssn", kind: "text", label: "SSN", required: true }] }] });
+  const a = await r.create(owner(), "person", { name: "Jane", ssn: "123-45-6789" });
+  const b = await r.create(owner(), "person", { name: "Bob", ssn: "987-65-4321" });
+  await r.update(owner(), "person", b.id, { ssn: "987-65-4322" }, 1);
+  const gone = await r.create(owner(), "person", { name: "Binned", ssn: "555-55-5555" });
+  await r.remove(owner(), "person", gone.id, 1);
+  const out = await gw.migrate.sealField(owner(), { type: "person", field: "ssn", class: "us-ssn" });
+  assert.equal(out.moved, 3, "the binned record too");
+  assert.equal(out.sealed_field, "ssn_sealed");
+  const all = JSON.stringify(await store.query("person", { include_deleted: true, page: { limit: 50 } }));
+  for (const plain of ["123-45-6789", "987-65-4321", "987-65-4322", "555-55-5555"]) assert.equal(all.includes(plain), false, `${plain} is not in the store`);
+  assert.equal(JSON.stringify((await store.changes(null, 1000)).entries).includes("123-45-6789"), false, "not in the store's change log");
+  const events = JSON.stringify(log.read());
+  for (const plain of ["123-45-6789", "987-65-4321", "987-65-4322", "555-55-5555"]) assert.equal(events.includes(plain), false, `${plain} is not in the event log`);
+  const got = (await r.get(owner(), "person", a.id)).data;
+  assert.equal(got.ssn_sealed.sealed, "us-ssn");
+  assert.equal("ssn" in got, false, "the plain field is removed from view");
+  assert.equal(await r.get(owner(), "person", gone.id), null, "the binned record is back in the bin");
+  assert.equal((await gw.audit.verify()).ok, true, "an erased event keeps the chain verifiable");
+  assert.equal(log.read({ type: "records.field-sealed" }).length, 1);
+  await assert.rejects(() => gw.migrate.sealField(owner(), { type: "person", field: "ssn", class: "us-ssn" }), { code: "bad_input" }, "a field that is already removed from view is refused");
 });
 
 // ---- stage gates ----

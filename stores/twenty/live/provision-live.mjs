@@ -25,7 +25,7 @@ const kit = compile(fs.readFileSync(new URL("../../../records/kits/estate-planni
 const store = createTwentyStore({ space, client: new TwentyClient({ url: p.url, key: () => fs.readFileSync(p.keyFile, "utf8").trim() }), space, dir: path.join(spaceDir(home, space), "state"), webhookSecret: fs.readFileSync(p.webhookSecretFile, "utf8").trim() });
 const d = await store.define({ add_types: kit.types });
 lap(`kit types defined: ${d.changes.join(", ")}`);
-const c = await store.create("contact", mintUuid(), { full_name: "Sam Rivera", email: "sam@example.test", ssn: { sealed: "ssn", ref: "sv_1", present: true, valid_format: true, set_at: Date.now() } });
+const c = await store.create("contact", mintUuid(), { name: "Sam Rivera", email: "sam@example.test", ssn: { sealed: "ssn", ref: "sv_1", present: true, valid_format: true, set_at: Date.now() } });
 const m = await store.create("matter", mintUuid(), { title: "Estate plan for Sam Rivera", client: { urn: `vyre://${space}/contact/${c.id}` }, plan: "Trust", fee: { amount: 3500, currency: "USD" }, stage: "Intake" });
 lap(`contact ${c.id} and matter ${m.id} created`);
 const back = await store.get("matter", m.id);

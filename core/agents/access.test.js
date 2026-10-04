@@ -94,3 +94,18 @@ test("a failed grant write fails the create: no half-made agent", async t => {
   assert.ok(r.error);
   assert.equal((await c("agents.list")).data.find(a => a.name === "kit"), undefined, "the agent was never created");
 });
+
+test("HD-9: a session or an agent cannot use agents.ask to reach an agent that sees more than it does (the assistant sees every project)", async t => {
+  const { d, c, home } = await world(t);
+  ok(await c("projects.create", { name: "Harlow Legal", home: home("harlow") }));
+  ok(await c("projects.create", { name: "Northwind", home: home("northwind") }));
+  ok(await c("agents.create", { name: "juno", kind: "assistant" }));
+  ok(await c("agents.create", { name: "kit", projects: ["harlow-legal"] }));
+  ok(await c("agents.create", { name: "wide", projects: ["harlow-legal", "northwind"] }));
+  const ask = (agent, meta) => d.registry.call("agents.ask", { agent, text: "what do you know about the other firm", wait: false }, "mcp", meta);
+  for (const [agent, meta] of [["juno", { thread: "t-plain" }], ["juno", { thread: "t-kit", agent: "kit", agentKind: "agent", granted: ["harlow-legal"] }], ["wide", { thread: "t-kit", agent: "kit", agentKind: "agent", granted: ["harlow-legal"] }]]) {
+    const r = await ask(agent, meta);
+    assert.equal(r.error && r.error.code, "denied", `${agent} from ${JSON.stringify(meta)}: ${JSON.stringify(r)}`);
+    assert.match(String(r.error.message), /sees more|unidentified/);
+  }
+});

@@ -1,0 +1,26 @@
+# The release-candidate dry run (RC1): everything a candidate has to pass before the user signs anything, on a throwaway key made in CI (the real key never appears here).
+# Run by hand (Actions, rc-dry-run, on the branch that will be cut):
+#   1. release-dist: the release folder a build makes is checked file by file (signed list, app build, installer, compose pins).
+#   2. packaged-boot: the package built with a throwaway key, installed with the real installer, every listed module runs, a root-run update keeps VYRE_KERNEL and VYRE_STORE,
+#      the signed web app is served and a changed file is refused, the release stamp says release, a tampered module is refused.
+#   3. update-refusals: an update from an older release to the candidate (signed, kept data), and every refusal (unsigned, wrong signer, tampered, downgrade).
+#   4. cosign-refusals: the image signature checks.
+# Rollback after a healthy update is tested in test/box-update.test.js (the owner's phone approval, ask and status) and, with a real sealer, in kernel/modules/rollback-presence.test.js.
+# Real signing is a separate, approved release run; nothing here signs with the real key.
+name: rc-dry-run
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: rc-dry-run-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  release-dist:
+    uses: ./.github/workflows/release-dist.yml
+  packaged-boot:
+    uses: ./.github/workflows/packaged-boot.yml
+  update-refusals:
+    uses: ./.github/workflows/update-refusals.yml
+  cosign-refusals:
+    uses: ./.github/workflows/cosign-refusals.yml

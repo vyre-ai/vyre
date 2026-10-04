@@ -61,6 +61,8 @@ export async function withLive(ctx, cat) {
 const OWNER = ["cli", "local", "capsule", "deck"];
 /** The person's own surfaces and modules acting for them: never a model (an agent or a session is mcp). */
 const PERSON_ONLY = [...OWNER, "module"];
+/** projects.catalog lists every session on the device with its first message: the person's surfaces (the Deck and Capsule over a device or the tailnet too) and modules, never a model. */
+const CATALOG_READERS = [...OWNER, "mobile", "tailnet", "device", "module"];
 // Reviewer's MEDIUM 2 on f8330ccc: callers: ["module"] alone lets ANY module reach these three,
 // third-party ones installed into the modules folder included — modules skip presence entirely,
 // so an installed module could grant an agent any project, or clear a person's explicit revokes
@@ -235,6 +237,7 @@ export default {
       },
     });
     ctx.tool("projects.catalog", {
+      callers: CATALOG_READERS,
       description: "Every session on this device for picking into projects, with its /rename name, first message, folder, last activity, projects, and live (a terminal has it open now). q searches names, first messages, folders and, through Recall, what was said.",
       input: { type: "object", properties: { q: str, limit: { type: "integer" }, human: { type: "boolean" }, machines } },
       run: async (input, { caller } = {}) => {
@@ -416,13 +419,15 @@ export default {
     const reachAgentOf = c => /(?:^|[\s:])agent:([A-Za-z0-9_-]+)/.exec(String(c || ""))?.[1] || null;
     ctx.tool("projects.reach", {
       description: "Which projects (and their folders) a caller may reach: the one door core/memory, core/recall and core/files all ask instead of keeping their own copy of this check. caller is the ORIGINAL caller the asking module itself received (ctx.call always relabels the actual meta.caller \"module:<name>\", so the owner-vs-refused decision below has to be told this explicitly rather than reading it off the call the registry sees); trusted because only a first-party module can reach this tool at all, and that module is the one responsible for forwarding it faithfully. { all: true } for the true owner (its own surfaces, a module, its own session, or an owner device): no restriction. Otherwise { all: false, agent, projects: [{slug, name, folders, threads}] }, deny by default. kind \"facts\" additionally gives the assistant { all: true } too (personal facts, distilled, not raw content); kind \"content\" (the default) never does, even for the assistant, which instead gets every project that exists, unconditional and never checked against projects.access (a different privilege tier from a projects: \"*\" agent, which is checked). A model never asks this on its own behalf: it cannot, callers being module-only.",
-      input: { type: "object", properties: { agent: str, caller: str, kind: { type: "string", enum: ["facts", "content"] } } },
+      input: { type: "object", properties: { agent: str, caller: str, kind: { type: "string", enum: ["facts", "content"] }, person: { type: "boolean" } } },
       callers: ["module"],
-      run: async ({ agent, caller, kind = "content" }) => {
+      run: async ({ agent, caller, kind = "content", person }) => {
         const said = reachAgentOf(caller);
         if (said && agent && said !== agent) throw refuse(`the call came from agent ${said} but names agent ${agent}`, "denied");
         const who = said || agent || null;
         if (!who) {
+          // The asking module passes `person` from the kernel's chain for the call (exactly one person hop): then that fact, never the label, decides the owner. Without it (no kernel) the labels do, as before.
+          if (typeof person === "boolean") { if (person || String(caller || "").startsWith("module:")) return { all: true, agent: null }; throw refuse(`refused for ${String(caller || "an unnamed caller").slice(0, 60)}`, "denied"); }
           if (reachOwner(caller) || reachOwnSession(caller) || ownerDevice(caller)) return { all: true, agent: null };
           throw refuse(`refused for ${String(caller || "an unnamed caller").slice(0, 60)}`, "denied");
         }

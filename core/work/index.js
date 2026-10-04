@@ -20,6 +20,8 @@ import { createEngineer } from "./engineer/index.js";
 const obj = (properties = {}, required = []) => ({ type: "object", properties, required });
 const unavailable = () => Object.assign(new Error("the kernel is not wired on this box yet"), { code: "unavailable" });
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
+/** Who may call the tools the assistant itself uses: the person's surfaces, modules and a model session. Every one runs under the caller's own kernel chain, which decides what it reaches; a model with no valid session token has no chain and is refused. */
+const WORK_CALLERS = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent", "module", "mcp", "harness"];
 const urnOk = (/** @type {any} */ s) => typeof s === "string" && /^vyre:\/\/[^/]+\/[^/]+\/[^/]+$/.test(s);
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
@@ -42,12 +44,31 @@ export default {
       const k = kernelOf();
       const unknown = (/** @type {string} */ why) => Object.assign(new Error(why), { code: "unavailable" });
       if (typeof k.audienceFor !== "function") throw unknown("the room this runs in is not known, so nothing is built for it");
-      const room = await k.audienceFor(extra || {});
+      // The kernel says `no_audience` for a call with no session of its own (the person at a surface, a session opened with no chat). That is one to one only when the call's own chain names no
+      // chat either; a chain that names a chat and has no audience stays refused.
+      const room = await k.audienceFor(extra || {}).catch(async (/** @type {any} */ e) => {
+        if (e && e.code === "no_audience") { const own = await chainOf(extra).catch(() => null); if (own && !own.room) return { group: false }; }
+        throw e;
+      });
       if (!room || typeof room.group !== "boolean") throw unknown("the room this runs in is not known, so nothing is built for it");
       if (!room.group) return null;
       if (typeof room.read !== "function" || typeof room.canRead !== "function") throw unknown("this is a group chat and its audience is not known, so nothing is built for it");
       return room;
     };
+    // KW-1 (kernel side): a `session` resource is read only by the person its `owner` attribute names, and no attribute means nobody. This module holds a session's lines, so it says whose they
+    // are: the Space's owner (Recall indexes the owner's own sessions), and the project when the lines sit under one. Only for its own type, only `owner` and `project` (AT-1).
+    if (ctx.kernel && typeof ctx.kernel.registerAttrs === "function") {
+      ctx.kernel.registerAttrs("session", (/** @type {string} */ urn) => {
+        const m = /^vyre:\/\/[^/]+\/session\/([A-Za-z0-9_.:-]{1,128})$/.exec(String(urn));
+        if (!m) return {};
+        try {
+          const meta = engineOf().lines.meta(m[1]);
+          if (!meta) return {};
+          const p = /^vyre:\/\/[^/]+\/project\/([a-z0-9][a-z0-9_-]{0,79})$/i.exec(meta.record);
+          return { owner: String(ctx.kernel.owner), ...(p ? { project: p[1] } : {}) };
+        } catch { return {}; }
+      });
+    }
     const surfaceOf = () => surface || (surface = createToolSurface({ kernel: kernelOf(), space: kernelOf().space, types: async c => (kernelOf().definitions ? kernelOf().definitions(c) : []), actions: () => (kernelOf().actions ? kernelOf().actions() : []) }));
     const engineOf = () => {
       if (engine) return engine;
@@ -70,6 +91,7 @@ export default {
     ctx.tool("work.call", {
       description: "Run one of the listed tools. Returns { result, component }: the component is what to show, a record card, a task card, a draft or a held-for-approval card. An outward act (send, pay, publish, share) is never run: it returns held with a task, and a person approves it.",
       input: obj({ tool: { type: "string" }, input: { type: "object" } }, ["tool"]),
+      callers: WORK_CALLERS,
       run: async (input, extra) => {
         const chain = await chainOf(extra);
         const result = await surfaceOf().call(chain, String(input.tool), input.input || {});
@@ -113,7 +135,7 @@ export default {
         const ok = checkAdd({ spec, adder, count: Number(input.count) || 0, humanApproved: adder.kind === "person" });
         if (!ok.ok) throw fail(ok.reason === "cap" ? "cap" : "needs_human", String(ok.detail));
         const teammate = { kind: /** @type {const} */ ("agent"), id: `${spec.name}.${input.project.split("/").pop()}`, space: k.space };
-        const made = await delegateGrants(k, chain, { adder, teammate, wanted: spec.wanted });
+        const made = await delegateGrants(k, chain, { adder, teammate, wanted: spec.wanted, presence: typeof k.proofFrom === "function" ? (/** @type {any} */ _i) => k.proofFrom(extra).presence : null });
         return { teammate, grants: made.grants.map((/** @type {any} */ g) => g.id), obligations: made.obligations };
       },
     });
@@ -143,6 +165,7 @@ export default {
     ctx.tool("work.know.answer", {
       description: "Answer a question from the Space's own records and history. Every claim cites a source the caller may read; with none to cite it says so.",
       input: obj({ question: { type: "string" } }, ["question"]),
+      callers: WORK_CALLERS,
       run: async (input, extra) => {
         const chain = await chainOf(extra);
         const result = await engineOf().answer(chain, String(input.question), { room: await audienceOf(extra) });
@@ -164,12 +187,18 @@ export default {
     // module calls it; a person or an agent cannot (it would let them write lines under another session's address). The lines are scrubbed on the way in by the engine.
     ctx.tool("work.know.capture", {
       description: "Keep a session's lines so the Space's memory can answer from what was said. Called by the session capture, once per indexed batch: { session, lines: [{ seq, role, text, at }] }. Lines are scrubbed on the way in and readable only by a chain that may read the session. Returns how many were kept and indexed.",
-      input: obj({ session: { type: "string", maxLength: 128 }, lines: { type: "array", items: { type: "object" } }, record: { type: "string" } }, ["session", "lines"]),
-      run: async input => {
+      input: obj({ session: { type: "string", maxLength: 128 }, lines: { type: "array", items: { type: "object" } }, record: { type: "string" }, project: { type: "string", maxLength: 80 } }, ["session", "lines"]),
+      run: async (input, extra) => {
+        // KW-4: only first-party code writes lines under a session's address (the registry's flag, never the input's).
         const e = engineOf();
+        if (!extra || extra.firstParty !== true) throw fail("denied", "only first-party modules hand over a session's lines");
         if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(String(input.session))) throw fail("bad_input", "a session id is letters, digits and . _ : -");
         const lines = (Array.isArray(input.lines) ? input.lines : []).slice(0, 2000).filter((/** @type {any} */ l) => l && Number.isInteger(l.seq) && typeof l.text === "string" && ["user", "assistant", "tool"].includes(String(l.role))).map((/** @type {any} */ l) => ({ seq: l.seq, role: String(l.role), text: l.text.slice(0, 20_000), at: Number(l.at) || 0 }));
-        const kept = e.lines.ingest(String(input.session), lines, input.record && urnOk(input.record) ? { record: input.record } : {});
+        // The record a reader must be allowed to read: the one named, else the project's own record when the caller names a project (a project-wide teammate grant then covers its sessions),
+        // else the session's own address.
+        const projectRecord = typeof input.project === "string" && /^[a-z0-9][a-z0-9_-]{0,79}$/i.test(input.project) ? `vyre://${kernelOf().space}/project/${input.project}` : null;
+        const record = input.record && urnOk(input.record) ? input.record : projectRecord;
+        const kept = e.lines.ingest(String(input.session), lines, record ? { record } : {});
         const indexed = await e.index({ kind: "lines", session: String(input.session) });
         return { kept, indexed };
       },
@@ -177,7 +206,11 @@ export default {
     ctx.tool("work.know.forget", {
       description: "Erase a session's lines and every index row made from them (the session was deleted or the person asked). Called by the session capture.",
       input: obj({ session: { type: "string", maxLength: 128 } }, ["session"]),
-      run: async input => ({ erased: engineOf().forgetSession(String(input.session)) }),
+      run: async (input, extra) => {
+        const e = engineOf();
+        if (!extra || extra.firstParty !== true) throw fail("denied", "only first-party modules erase a session's lines");
+        return { erased: e.forgetSession(String(input.session)) };
+      },
     });
 
     ctx.tool("work.engineer.talk", {

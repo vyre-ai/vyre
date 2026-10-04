@@ -133,7 +133,8 @@ export function createChainBuilder(cfg) {
     if (inbound !== undefined && !isChain(inbound)) return refuse("inbound is not a kernel chain");
     const h = hop("service", module, "registry");
     const labels = inbound ? inbound.labels : base();
-    return make([...(inbound ? inbound.hops : []), h], firstParty ? labels : mergeLabels(labels, { trust: "external", red: "public", source_spaces: [space] }));
+    // A viewer chain stays a viewer chain with a service beside it: the flag is what makes authorize refuse every act above read, so dropping it would hand a room's reader write power.
+    return make([...(inbound ? inbound.hops : []), h], firstParty ? labels : mergeLabels(labels, { trust: "external", red: "public", source_spaces: [space] }), inbound && inbound.viewer === true ? { viewer: true } : undefined);
   }
 
   /**

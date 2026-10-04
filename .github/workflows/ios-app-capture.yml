@@ -4,6 +4,7 @@
 name: ios-app-capture
 on:
   push:
+    branches: ["main", "work/ui"]
     # On a team branch a push that touches this file is how it runs (a manual workflow is listed only from the default branch).
     paths:
       - ".github/workflows/ios-app-capture.yml"

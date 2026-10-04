@@ -29,11 +29,11 @@ const P = {
   actor: a => ({ presence: proof("grants.role", { actor: a }, `vyre://${SPACE}/member/${a.id}`) }),
 };
 
-async function rig(wrap) {
+async function rig(wrap, { session = true } = {}) {
   const log = wrap ? wrap(createEventLog({ space: SPACE, clock })) : createEventLog({ space: SPACE, clock });
   const gs = createGrantsStore({ space: SPACE, log, chains, clock, key: Buffer.alloc(32, 5), presence });
   const store = createMemoryStore({ clock });
-  const gw = createGateway({ space: SPACE, store, log, chains, clock, grantsStore: gs, presence, owner: OWNER, hasPresenceSession: () => true });
+  const gw = createGateway({ space: SPACE, store, log, chains, clock, grantsStore: gs, presence, owner: OWNER, hasPresenceSession: () => session });
   await gs.bootstrap({ owner: OWNER });
   return { gw, gs, log, store, g: gw.grants };
 }
@@ -195,7 +195,7 @@ test("offers: the compute pair needs both sides, only for that member's own comp
   assert.deepEqual(g.offers.active({ member: BOB, device: "dev_other" }), { spaceAllows: true, memberAccepts: false }, "acceptance is per computer");
   assert.deepEqual(g.offers.active({ member: ALICE, device: "dev_laptop", device_key: "KEY_LAPTOP" }), { spaceAllows: false, memberAccepts: false }, "another member's computer is not covered");
   // the member withdraws: told at once; an admin cannot withdraw the member's acceptance
-  const un = id => ({ presence: proof("grants.offer", { revoke: id }, `vyre://${SPACE}/offer/${id}`) });
+  const un = id => ({ presence: proof("grants.unoffer", { revoke: id }, `vyre://${SPACE}/offer/${id}`) });
   await assert.rejects(() => g.offers.unoffer(personChain(ALICE), accept.id, un(accept.id)), { code: "not_allowed" });
   await g.offers.unoffer(personChain(BOB), accept.id, un(accept.id));
   assert.deepEqual(events.map(e => [e.side, e.reason]), [["member_accepts", "withdrawn"]]);
@@ -488,7 +488,7 @@ test("R4: every state-changing call that fails while writing its sealed event le
   assert.deepEqual(g.offers.active(q), { spaceAllows: false, memberAccepts: false }, "offer: nothing offered");
   const off = await g.offers.offer(owner(), o1, { presence: proof("grants.offer", o1, `vyre://${SPACE}/offer/new`) });
   assert.equal(g.offers.active(q).spaceAllows, true);
-  await down(() => g.offers.unoffer(owner(), off.id, { presence: proof("grants.offer", { revoke: off.id }, `vyre://${SPACE}/offer/${off.id}`) }));
+  await down(() => g.offers.unoffer(owner(), off.id, { presence: proof("grants.unoffer", { revoke: off.id }, `vyre://${SPACE}/offer/${off.id}`) }));
   assert.equal(g.offers.active(q).spaceAllows, true, "unoffer: the offer is still active");
   // invites: create, confirm, accept
   const ip = (action, inp, res) => ({ presence: proof(action, inp, res) });
@@ -515,4 +515,173 @@ test("R4: every state-changing call that fails while writing its sealed event le
   assert.deepEqual(await members(), before, "sweep: the expired member is still listed until the sweep is written");
   assert.equal((await g.sweep()).removed >= 1, true);
   void log;
+});
+
+// WF-1 (reviewer-2): a change is written to the log FIRST and applied in memory second, so a sealing process that fails under the event leaves memory as it was, and a rebuild from the log agrees.
+import { createKernelSeal } from "../core/seal.js";
+test("WF-1: a seal.mac that rejects once leaves the store exactly as it was, and a rebuild from the log agrees, after each of revoke, removeMember, setRole, adoptOwner, bootstrap and chatChange", async () => {
+  const real = createKernelSeal({ key: Buffer.alloc(32, 5) });
+  let fails = 0;
+  const seal = { sync: false, verify: real.verify, verifyMany: real.verifyMany, mac: async (p, d) => { if (fails > 0) { fails--; throw new Error("the sealing process is restarting"); } return real.mac(p, d); } };
+  const log = createEventLog({ space: SPACE, clock });
+  const gs = createGrantsStore({ space: SPACE, log, chains, clock, seal, presence });
+  const gw = createGateway({ space: SPACE, store: createMemoryStore({ clock }), log, chains, clock, grantsStore: gs, presence, owner: OWNER, hasPresenceSession: () => true });
+  /** The state a reader sees: every grant's status, the members and their roles, the chats. */
+  const view = () => JSON.stringify({ grants: [...gs.list(owner ? undefined : undefined) || []] });
+  void view;
+  const shape = async () => JSON.stringify({ members: gs.members.list ? await gs.members.list(owner()) : null, owner: gs.adopted() });
+  void shape;
+  const snap = () => capture(gs);
+  async function capture(g) { return JSON.stringify({ roles: ["per_owner", ALICE, BOB].map(p => g.roleOf({ kind: "person", id: p, space: SPACE })), active: (await g.list(owner())).filter(x => x.status === "active").map(x => x.id).sort(), adopted: g.adopted() }); }
+  const againstRebuild = async (what) => { const live = await snap(); await gs.rebuild(); assert.equal(await snap(), live, `${what}: a rebuild from the log agrees with the live store`); return live; };
+  // bootstrap fails once: nothing is made, then it works
+  fails = 1;
+  await assert.rejects(() => gs.bootstrap({ owner: OWNER }), /sealing process/);
+  assert.equal(gs.roleOf({ kind: "person", id: OWNER, space: SPACE }), null, "a failed bootstrap leaves no owner in memory");
+  await gs.bootstrap({ owner: OWNER });
+  await gw.grants.setRole(owner(), { person: ALICE, role: "admin" }, P.role({ person: ALICE, role: "admin" }));
+  await gw.grants.setRole(owner(), { person: BOB, role: "member" }, P.role({ person: BOB, role: "member" }));
+  const made = await gw.grants.create(owner(), input(), P.create(input()));
+  let at = await againstRebuild("after setup");
+  // revoke
+  fails = 1;
+  await assert.rejects(() => gw.grants.revoke(owner(), made.id, "leaked", P.revoke(made.id, "leaked")), /sealing process/);
+  assert.equal(await snap(), at, "a failed revoke changed nothing in memory");
+  await againstRebuild("failed revoke");
+  // setRole
+  fails = 1;
+  await assert.rejects(() => gw.grants.setRole(owner(), { person: BOB, role: "admin" }, P.role({ person: BOB, role: "admin" })), /sealing process/);
+  assert.equal(await snap(), at, "a failed setRole changed nothing");
+  await againstRebuild("failed setRole");
+  // removeMember
+  fails = 1;
+  await assert.rejects(() => gw.grants.removeMember(owner(), { person: BOB }, P.role({ remove: BOB })), /sealing process/);
+  assert.equal(await snap(), at, "a failed removeMember changed nothing: BOB is still a member");
+  await againstRebuild("failed removeMember");
+  // a chat change
+  const chat = await gw.grants.chats.create(owner(), { people: [ALICE] });
+  fails = 1;
+  await assert.rejects(() => gw.grants.chats.change(owner(), chat.id, { add_people: [BOB] }), /sealing process/);
+  assert.deepEqual(gs.chatPeopleAt(chat.id, chat.ver), [OWNER, ALICE].sort().length ? gs.chatPeopleAt(chat.id, chat.ver) : null);
+  assert.equal(gs.chatVersion(chat.id).ver, chat.ver, "a failed chat change did not move the room's version");
+  await againstRebuild("failed chat change");
+  // adoptOwner (a change of several events: the marker first, then the moves; the log decides)
+  const NEW = "per_cccccccccccccccccccccccccc";
+  fails = 1;
+  await assert.rejects(() => gs.adoptOwner(NEW), /sealing process/);
+  assert.equal(gs.adopted(), null, "a failed adoption left no marker in memory");
+  await againstRebuild("failed adoption");
+  // and each of them, once the sealing process is back, works
+  await gw.grants.revoke(owner(), made.id, "leaked", P.revoke(made.id, "leaked"));
+  await againstRebuild("revoke after the failure");
+});
+
+test("AO-3: a crash right after the owner.adopted marker (the owner moved only in part) is finished by the next adoptOwner with the same id, and a rebuild agrees; another id is still refused", async () => {
+  const real = createKernelSeal({ key: Buffer.alloc(32, 5) });
+  let allow = Infinity;
+  const seal = { sync: false, verify: real.verify, verifyMany: real.verifyMany, mac: async (p, d) => { if (allow <= 0) throw new Error("the process died"); allow--; return real.mac(p, d); } };
+  const log = createEventLog({ space: SPACE, clock });
+  const gs = createGrantsStore({ space: SPACE, log, chains, clock, seal, presence });
+  await gs.bootstrap({ owner: OWNER });
+  const NEW = "per_cccccccccccccccccccccccccc", OTHER = "per_dddddddddddddddddddddddddd";
+  const role = p => gs.roleOf({ kind: "person", id: p, space: SPACE });
+  allow = 1; // the marker is sealed and written, then the process dies
+  await assert.rejects(() => gs.adoptOwner(NEW), /process died/);
+  allow = Infinity;
+  assert.deepEqual(gs.adopted(), { from: OWNER, to: NEW }, "the marker is in the log and in memory");
+  assert.equal(role(OWNER), "owner", "the move did not happen");
+  assert.equal(role(NEW), null);
+  await assert.rejects(() => gs.adoptOwner(OTHER), { code: "already_adopted" }, "a different id is refused while the first is unfinished");
+  // a restart: the rebuild reads the marker, and the boot repair (kernel/index.js) calls adoptOwner with it
+  await gs.rebuild();
+  assert.deepEqual(gs.adopted(), { from: OWNER, to: NEW });
+  const done = await gs.adoptOwner(NEW);
+  assert.deepEqual(done, { owner: NEW, previous: OWNER, changed: true });
+  assert.equal(role(NEW), "owner"); assert.equal(role(OWNER), null);
+  assert.equal(log.read({ type: "owner.adopted" }).length, 1, "the marker is not written twice");
+  const live = JSON.stringify([role(NEW), role(OWNER)]);
+  await gs.rebuild();
+  assert.equal(JSON.stringify([role(NEW), role(OWNER)]), live, "a rebuild agrees");
+  assert.deepEqual(await gs.adoptOwner(NEW), { owner: NEW, previous: OWNER, changed: false });
+});
+
+test("lend (ruling 5 Oct): the first lend takes ONE proof bound to the compound act and makes both sides; the proof covers nothing else; taking it away needs only a live session", async () => {
+  const { g } = await rig();
+  const set = m => g.setRole(owner(), m, P.role(m));
+  await set({ person: ALICE, role: "admin" });
+  await set({ person: BOB, role: "member" });
+  const lendProof = o => ({ presence: proof("grants.offer", { lend: { member: o.member, device: o.device, device_key: o.device_key } }, `vyre://${SPACE}/offer/lend`) });
+  const q = (member, device, device_key) => ({ member, device, device_key });
+  // a member lends their own computer: their side only, with one proof
+  const b = { member: BOB, device: "dev_laptop", device_key: "KEY_B" };
+  assert.equal((await g.offers.lend(personChain(BOB), b, lendProof(b))).offers.length, 1);
+  assert.deepEqual(g.offers.active(q(BOB, "dev_laptop", "KEY_B")), { spaceAllows: false, memberAccepts: true });
+  // an owner or admin lending their own computer: the Space's side and their own, ONE proof
+  const a = { member: ALICE, device: "dev_alice", device_key: "KEY_A" };
+  const made = await g.offers.lend(personChain(ALICE), a, lendProof(a));
+  assert.deepEqual(made.offers.map(o => o.side).sort(), ["member_accepts", "space_allows"]);
+  assert.deepEqual(g.offers.active(q(ALICE, "dev_alice", "KEY_A")), { spaceAllows: true, memberAccepts: true });
+  // the proof is for this act only: another device, another member, a replay, no proof, and someone else's computer are all refused
+  const c = { member: ALICE, device: "dev_other", device_key: "KEY_C" };
+  const forA = lendProof(a);
+  await assert.rejects(() => g.offers.lend(personChain(ALICE), c, forA));
+  await assert.rejects(() => g.offers.lend(personChain(ALICE), c, {}));
+  const once = lendProof(c);
+  await g.offers.lend(personChain(ALICE), c, once);
+  await assert.rejects(() => g.offers.lend(personChain(ALICE), { ...c, device: "dev_third" }, once), "a spent proof is not reusable");
+  await assert.rejects(() => g.offers.lend(personChain(ALICE), { member: BOB, device: "dev_x", device_key: "K" }, lendProof({ member: BOB, device: "dev_x", device_key: "K" })), { code: "not_allowed" });
+  // taking it away: no fresh proof, a live session is enough, and it withdraws both sides
+  const told = [];
+  const off = g.offers.onRevoke(e => told.push(e.side));
+  assert.deepEqual(await g.offers.unlend(personChain(ALICE), { member: ALICE, device: "dev_alice" }), { withdrawn: 2 });
+  assert.deepEqual(g.offers.active(q(ALICE, "dev_alice", "KEY_A")), { spaceAllows: false, memberAccepts: false });
+  assert.deepEqual(told.sort(), ["member_accepts", "space_allows"], "the runner is told at once");
+  assert.deepEqual(await g.offers.unlend(personChain(BOB), { member: BOB, device: "dev_laptop" }), { withdrawn: 1 });
+  // a member cannot withdraw the Space's side of someone else's computer
+  assert.deepEqual(await g.offers.unlend(personChain(BOB), { member: ALICE, device: "dev_other" }), { withdrawn: 0 });
+  off();
+});
+
+test("lend (ruling 5 Oct): without a live person session even withdrawing is refused, and a model's chain cannot lend or withdraw", async () => {
+  const { g } = await rig(undefined, { session: false });
+  const set = m => g.setRole(owner(), m, P.role(m));
+  await set({ person: BOB, role: "member" });
+  const b = { member: BOB, device: "dev_laptop", device_key: "KEY_B" };
+  const pr = { presence: proof("grants.offer", { lend: { member: BOB, device: "dev_laptop", device_key: "KEY_B" } }, `vyre://${SPACE}/offer/lend`) };
+  await g.offers.lend(personChain(BOB), b, pr);
+  await assert.rejects(() => g.offers.unlend(personChain(BOB), { member: BOB, device: "dev_laptop" }), "no session and no proof: refused");
+  assert.equal(g.offers.active({ member: BOB, device: "dev_laptop", device_key: "KEY_B" }).memberAccepts, true, "still lent");
+  await assert.rejects(() => g.offers.unlend(agentChain("juno"), { member: BOB, device: "dev_laptop" }));
+  await assert.rejects(() => g.offers.lend(agentChain("juno"), b, pr));
+});
+
+test("lend (ruling 5 Oct): after the member's own off, on again needs only the live session; after anyone else's off, a removal or a role change it is a first grant and takes the proof again; a rebuild keeps the difference", async () => {
+  const { g, gs } = await rig();
+  const set = m => g.setRole(owner(), m, P.role(m));
+  await set({ person: ALICE, role: "admin" });
+  await set({ person: BOB, role: "member" });
+  const l = { member: BOB, device: "dev_laptop", device_key: "KEY_B" };
+  const withProof = { presence: proof("grants.offer", { lend: l }, `vyre://${SPACE}/offer/lend`) };
+  await g.offers.lend(personChain(BOB), l, withProof);
+  await g.offers.unlend(personChain(BOB), { member: BOB, device: "dev_laptop" });
+  // the person's own off: on again with no proof at all
+  await g.offers.lend(personChain(BOB), l, {});
+  assert.equal(g.offers.active({ member: BOB, device: "dev_laptop", device_key: "KEY_B" }).memberAccepts, true);
+  await gs.rebuild();
+  await g.offers.unlend(personChain(BOB), { member: BOB, device: "dev_laptop" });
+  await gs.rebuild();
+  await g.offers.lend(personChain(BOB), l, {});
+  // an admin's off of the member's side: the next lend is a first grant again
+  await g.offers.unlend(personChain(ALICE), { member: BOB, device: "dev_laptop" });
+  await assert.rejects(() => g.offers.lend(personChain(BOB), l, {}), "needs the proof again");
+  await gs.rebuild();
+  await assert.rejects(() => g.offers.lend(personChain(BOB), l, {}), "and still after a rebuild");
+  await g.offers.lend(personChain(BOB), l, { presence: proof("grants.offer", { lend: l }, `vyre://${SPACE}/offer/lend`) });
+  // removing the member ends the offer without their own act: back in, it is a first grant again
+  await g.removeMember(owner(), { person: BOB }, P.role({ remove: BOB }));
+  await set({ person: BOB, role: "member" });
+  assert.equal(g.offers.active({ member: BOB, device: "dev_laptop", device_key: "KEY_B" }).memberAccepts, false);
+  await assert.rejects(() => g.offers.lend(personChain(BOB), l, {}));
+  // a different computer key is a different grant
+  await assert.rejects(() => g.offers.lend(personChain(BOB), { ...l, device_key: "OTHER" }, {}));
 });

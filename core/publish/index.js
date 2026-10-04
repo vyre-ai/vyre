@@ -15,6 +15,7 @@ import dns from "node:dns/promises";
 import { createPublisher, PublishError } from "../../lib/publish/index.js";
 import { composeText, assertIsolated, caddyDockerfile, IMAGES } from "../../lib/publish/edge.js";
 import { joinPageHtml } from "../../lib/publish/join.js";
+import { writeSiteFiles, volumeFill, siteFolder, sweepSites } from "../../lib/publish/site-write.js";
 import { checkBuildForSealed } from "../../lib/publish/secrets.js";
 import { createRoleAuthorize } from "../../lib/spaces/authz.js";
 import { NO_BUILDER } from "./builder-plan.js";
@@ -33,12 +34,19 @@ export const MIGRATIONS = [
   `,
 ];
 
+/** The site folders the live deployments (Preview, Approved, Production) name; the rest are swept. @param {any[]} records */
+const liveSiteNames = records => new Set(records.filter(d => ["Preview", "Approved", "Production"].includes(d.stage) && d.site && typeof d.site.name === "string").map(d => d.site.name));
+
 const TABLES = /** @type {Record<string, string>} */ ({ deployments: "publish_deployments", domains: "publish_domains", holds: "publish_holds", tasks: "publish_tasks" });
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
 const NO_TOOL = new Set(["no_such_tool", "not_available"]);
 const str = { type: "string" };
 const obj = (/** @type {any} */ properties, /** @type {string[]} */ required = []) => ({ type: "object", properties: { space: str, ...properties }, required });
 const MAX_CANDIDATES = 400_000;
+/** The person's own surfaces and Vyre's modules. A tool that builds, names a domain, hands out a secret or writes the edge is theirs: a model asks through the held acts below, or the person does it. */
+const PEOPLE = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module"];
+/** The draft and the three held acts (approve, publish, rollback): a model may start a draft and ask, and the publisher holds every act for a person's decision (publish.decide), so a model alone puts nothing live. */
+const WITH_MODELS = [...PEOPLE, "mcp", "harness"];
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
@@ -222,6 +230,14 @@ export default {
         },
         names: { owns: async (host, spaceId) => { const r = await call("names.owns", { host, space: spaceId }); return !r.missing && !!(r.data && (r.data === true || r.data.owns === true)); } },
         builder,
+        // The checked files of a static build go into a fresh folder under the space's publish folder (private, 0700); `publish.edge` hands the box the copy into the site volume.
+        site: { write: async (/** @type {string} */ _id, /** @type {any[]} */ files) => {
+          const sites = path.join(publishDir(space.id), "sites");
+          fs.mkdirSync(sites, { recursive: true, mode: 0o700 });
+          // Folders no live deployment names (retired, rolled back, superseded, left by a refused build) go before a new one is made, and the total is capped.
+          sweepSites(sites, liveSiteNames(await storeFor(space.id).list("deployments")));
+          return { dir: writeSiteFiles(sites, files) };
+        } },
       });
       p = { pub, ledger: led, lock: Promise.resolve() };
       publishers.set(space.id, p);
@@ -259,6 +275,7 @@ export default {
 
     // ---- tools ----
     ctx.tool("publish.create", {
+      callers: WITH_MODELS,
       description: "Start a new site or app as a draft: a name, where its source is, and how it builds. Env entries are secret references, never values.",
       input: obj({ name: str, source: { type: "object" }, build: { type: "object" }, env: { type: "object" }, project: str, approver: str }, ["name", "source"]),
       run: async (i, meta) => {
@@ -269,6 +286,7 @@ export default {
     });
 
     ctx.tool("publish.preview", {
+      callers: WITH_MODELS,
       description: "Build a draft and put it at a private preview address. Refused if a sealed value or one of its own secrets is in the build output.",
       input: obj({ deployment: str }, ["deployment"]),
       run: async (i, meta) => {
@@ -292,16 +310,19 @@ export default {
       return { deployment: shown(r.deployment), ...(r.retired !== undefined ? { retired: shown(r.retired) } : {}) };
     };
     ctx.tool("publish.approve", {
+      callers: WITH_MODELS,
       description: "Approve a preview. The first call asks and holds; a person's decision (publish.decide) completes it, or call again with the task once it is decided.",
       input: obj({ deployment: str, task: str }, ["deployment"]),
       run: heldTool("approve"),
     });
     ctx.tool("publish.publish", {
+      callers: WITH_MODELS,
       description: "Put an approved version on the internet. Held for a person every time: the first call asks, a person decides with publish.decide.",
       input: obj({ deployment: str, task: str }, ["deployment"]),
       run: heldTool("publish"),
     });
     ctx.tool("publish.rollback", {
+      callers: WITH_MODELS,
       description: "Put the previous version back. Give the live deployment. Held for a person every time.",
       input: obj({ deployment: str, task: str }, ["deployment"]),
       run: heldTool("rollback"),
@@ -382,6 +403,7 @@ export default {
     });
 
     ctx.tool("publish.domain.add", {
+      callers: PEOPLE,
       description: "Start connecting a domain to a site. Returns the DNS record to add; nothing serves until it is verified and the site is published.",
       input: obj({ host: str, deployment: str, canonical: { type: "string", enum: ["apex", "www"] }, www: { type: "boolean" } }, ["host", "deployment"]),
       run: async (i, meta) => {
@@ -391,6 +413,7 @@ export default {
       },
     });
     ctx.tool("publish.domain.verify", {
+      callers: PEOPLE,
       description: "Check the DNS record (or the name you own) for a connected domain.",
       input: obj({ host: str }, ["host"]),
       run: async (i, meta) => {
@@ -406,6 +429,7 @@ export default {
     });
 
     ctx.tool("publish.secret.grant", {
+      callers: WITH_MODELS,
       description: "Let one deployment use one vault secret, as an environment name. A real secret is held for a person; nothing is shared with other deployments.",
       input: obj({ deployment: str, ref: str, name: str, use: { type: "array", items: { type: "string", enum: ["build", "runtime"] } }, task: str }, ["deployment", "ref", "name"]),
       run: async (i, meta) => {
@@ -417,6 +441,7 @@ export default {
       },
     });
     ctx.tool("publish.secret.revoke", {
+      callers: PEOPLE,
       description: "Take a secret away from a deployment and delete its file.",
       input: obj({ deployment: str, name: str }, ["deployment", "name"]),
       run: async (i, meta) => {
@@ -429,6 +454,7 @@ export default {
     });
 
     ctx.tool("publish.edge", {
+      callers: PEOPLE,
       description: "Write the edge for what is live now: a compose project, a Caddyfile and the Dockerfile of its Caddy image in <home>/publish/<space>/, and the runtime secret files its sites were granted. It does not start anything.",
       input: obj({}),
       run: async (i, meta) => {
@@ -453,7 +479,21 @@ export default {
           for (const s of d.secrets || []) if (s.use.includes("runtime")) await put(path.join("secrets", d.id, s.name), await files.read(s.ref), 0o600);
         }
         // What starts the project (it is not this module) builds the edge image first: `docker build -t <image> -f caddy.Dockerfile .` in `dir`.
-        return { dir, files: written, compose, caddyfile, build: { image: IMAGES.caddy, dockerfile: "caddy.Dockerfile" } };
+        // Where each live static site's files wait, and the docker call that copies them into the site's volume (the box runs it; this module starts nothing).
+        const fills = [];
+        const sitesRoot = path.join(publishDir(b.space.id), "sites");
+        const records = await storeFor(b.space.id).list("deployments");
+        for (const d of records) {
+          const slug = d.id.replace(/^dep_/, "");
+          if (!compose.services["w-" + slug] || !(d.runtime && d.runtime.kind === "static") || !d.site) continue;
+          // The record names a folder; the path is rebuilt here and the folder checked, so an edited record cannot point the copy anywhere else (reviewer-3, FF-1).
+          const folder = siteFolder(sitesRoot, d.site.name);
+          if (!folder) continue;
+          const volume = `${compose.name}_site-${slug}`;
+          fills.push({ deployment: d.id, volume, docker: volumeFill(folder, volume, sitesRoot) });
+        }
+        sweepSites(sitesRoot, liveSiteNames(records));
+        return { dir, files: written, compose, caddyfile, fills, build: { image: IMAGES.caddy, dockerfile: "caddy.Dockerfile" } };
       },
     });
 

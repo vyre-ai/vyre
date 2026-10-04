@@ -36,8 +36,8 @@ function box(t, opts = {}) {
   for (const [name, body] of Object.entries(stubs)) fs.writeFileSync(path.join(bin, name), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
   const env = {
     PATH: `${bin}:/usr/bin:/bin`, HOME: base, VYRE_DIR: path.join(base, "srv", "vyre"),
-    VYRE_WRAPPER: path.join(base, "bin-out", "vyre"), VYRE_TUN: "/dev/null", VYRE_DOCKER_SOCK: path.join(base, "none"),
-    VYRE_NO_UP: "1",
+    VYRE_WRAPPER: path.join(base, "bin-out", "vyre"), VYRE_DOCKER_SOCK: path.join(base, "none"),
+    VYRE_NO_UP: "1", VYRE_MODULES_TRIES: "0", VYRE_DEV_SIGN: "0",
     // Never the real relay: a closed local port, so a code's progress lines go nowhere in tests.
     VYRE_RELAY: "http://127.0.0.1:9",
   };
@@ -61,7 +61,7 @@ function site(base, { images = true, pin = true } = {}) {
   fs.mkdirSync(dir, { recursive: true });
   const compose = pin ? `services:\n  vyre:\n    image: ${DIGEST}\n    environment:\n      - VYRE_COMPUTERS_IMAGE=\${VYRE_COMPUTERS_IMAGE:-${COMPUTER}}\n` : "image: ghcr.io/vyre-ai/vyre:latest\n";
   const files = {
-    "compose.yml": compose, "compose.build.yml": "# build\n", "vyre.env.example": "# env\n", vyre: "#!/bin/sh\n# vyre on a Docker box\n",
+    "compose.yml": compose, "compose.build.yml": "# build\n", "vyre.env.example": "# env\n", vyre: "#!/bin/sh\n# vyre on a Docker box\n[ \"$1\" = status ] && echo \"  3 modules running\"\nexit 0\n",
     "release.json": JSON.stringify({ version: "0.2.0", channel: "stable", ...(images ? { images: { box: { ref: DIGEST, platforms: ["linux/amd64"] }, computer: { ref: COMPUTER, platforms: ["linux/amd64"] } } } : {}) }, null, 2),
   };
   for (const [n, c] of Object.entries(files)) fs.writeFileSync(path.join(dir, n), c);
@@ -107,10 +107,65 @@ test("install-box.sh v2: the code lands in vyre.env at 0600, keeps the person's 
 });
 
 test("install-box.sh v2: with a code the terminal ends on the plain line", t => {
-  const b = box(t);
+  const b = box(t, { docker: 'case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; esac; exit 0' });
   const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0" }, ["--yes", "--from", REPO]);
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /Done\. Back to your browser\./);
+});
+
+test("install-box.sh v2: when the box is not running after the start, the installer fails and says so (it never exits 0 without a running box)", t => {
+  const b = box(t); // the stub docker lists no running container
+  const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0", VYRE_VERIFY_TRIES: "1" }, ["--yes", "--from", REPO]);
+  assert.notEqual(r.status, 0, r.stdout);
+  assert.match(r.stderr, /Vyre is not running/);
+  assert.doesNotMatch(r.stdout, /Your server is ready|Back to your browser/);
+});
+
+test("install-box.sh v2: when the box is running after the start, the installer is done", t => {
+  const b = box(t, { docker: 'case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; esac; exit 0' });
+  const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0", VYRE_VERIFY_TRIES: "1" }, ["--yes", "--from", REPO]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.ok(b.calls().includes("--filter name=vyre-vyre-1 --filter status=running"), b.calls());
+});
+
+test("install-box.sh v2: --from as an account outside the docker group stops early with the command to run, and lays nothing out", t => {
+  // docker only answers `info` under sudo (the account is not in the docker group)
+  const b = box(t, { docker: 'case "$1 $2" in "compose version") echo 2.29.1 ;; esac; if [ "$1" = info ] && [ -z "${STUB_SUDO:-}" ]; then exit 1; fi; exit 0' });
+  fs.writeFileSync(path.join(b.base, "bin", "sudo"), `#!/bin/sh\necho "sudo $*" >>"${b.log}"\nSTUB_SUDO=1 exec "$@"\n`, { mode: 0o755 });
+  const r = run({ ...b.env, VYRE_NO_UP: "0" }, ["--yes", "--from", REPO]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /sudo usermod -aG docker alex/);
+  assert.ok(!fs.existsSync(path.join(b.dir, "compose.yml")), "nothing was laid out");
+});
+
+test("install-box.sh v2: the preflight says how many spaces fit, its memory number is the larger store's, and the kernel settings land once in vyre.env", async t => {
+  const { REQUIRE } = await import("../stores/twenty/space-store.js");
+  assert.equal(Number(/^SPACE_MEM_MB=\$\{VYRE_SPACE_MEM_MB:-(\d+)\}/m.exec(fs.readFileSync(SCRIPT, "utf8"))?.[1]), REQUIRE.memoryMb, "the installer's per-space memory is stores/twenty REQUIRE.memoryMb: change both together");
+  const b = box(t);
+  fs.mkdirSync(b.dir, { recursive: true });
+  fs.writeFileSync(path.join(b.dir, "vyre.env"), "CLOUDFLARE_VYRE_TOKEN=keep\nVYRE_STORE=sqlite\n", { mode: 0o600 });
+  const r = run(b.env, ["--yes", "--from", REPO]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout + r.stderr, /GB of memory free/);
+  const text = fs.readFileSync(path.join(b.dir, "vyre.env"), "utf8");
+  assert.match(text, /^CLOUDFLARE_VYRE_TOKEN=keep$/m);
+  assert.match(text, /^VYRE_KERNEL=1$/m);
+  assert.equal(text.match(/^VYRE_STORE=/gm)?.length, 1, "a person's own VYRE_STORE stays, and none is added");
+  assert.match(text, /^VYRE_STORE=sqlite$/m);
+});
+
+test("install-box.sh v2: the custody notice is the one the kernel says, and it is printed when the server is ready", async t => {
+  const text = fs.readFileSync(SCRIPT, "utf8");
+  const said = /^CUSTODY_NOTE="(.*)"$/m.exec(text)?.[1];
+  assert.ok(said);
+  const mod = await import("../kernel/seal/process.js").catch(() => null);
+  if (mod && mod.custodyNote) assert.equal(said, mod.custodyNote("server", "linux"));
+  const win = fs.readFileSync(path.join(REPO, "scripts", "install-windows.ps1"), "utf8");
+  assert.match(win, /About your keys: Sealed data on this PC is only as protected as this PC's own Windows account: any program running as you can read the key file\./);
+  const b = box(t, { docker: 'case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc ;; esac; exit 0' });
+  const r = run({ ...b.env, VYRE_NO_UP: "0", VYRE_VERIFY_TRIES: "1" }, ["--yes", "--from", REPO]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(r.stdout.includes("About your keys: " + said), r.stdout);
 });
 
 test("install-box.sh v2: a release with digests is cosign-checked against the workflow identity, then pulled by digest", t => {
@@ -209,7 +264,8 @@ test("install-box.sh v2: the install line as shown (curl | VYRE_CODE=... sh) han
   fs.mkdirSync(b2.dir, { recursive: true });
   const wrong = spawnSync("sh", ["-c", `VYRE_CODE='${CODE}' cat '${SCRIPT}' | sh -s -- --yes --from '${REPO}'`], { encoding: "utf8", env: b2.env });
   assert.equal(wrong.status, 0);
-  assert.ok(!fs.existsSync(path.join(b2.dir, "vyre.env")), "the variable on curl's side is not the script's");
+  const wrongEnv = path.join(b2.dir, "vyre.env");
+  assert.ok(!fs.existsSync(wrongEnv) || !fs.readFileSync(wrongEnv, "utf8").includes("VYRE_SETUP_CODE="), "the variable on curl's side is not the script's");
 });
 
 test("install-box.sh v2: a running install is updated, never replaced", t => {
@@ -238,7 +294,7 @@ test("install-box.sh v2: Podman and rootless Docker stop with a plain line", t =
 // --- vyre uninstall (box/vyre): one flow, every volume named, asking is approving ---
 
 const BOXVYRE = path.join(REPO, "box", "vyre");
-const VOLS = ["vyre_vyre-home", "vyre_vyre-work", "vyre_vyre-accounts", "vyre_vyre-agent-home", "vyre_tailscale-state", "vyre_mystery"];
+const VOLS = ["vyre_vyre-home", "vyre_vyre-work", "vyre_vyre-accounts", "vyre_vyre-agent-home", "vyre_mystery"];
 
 /** A box with a stack folder, our wrapper installed, and a docker that knows the volumes. */
 function installed(t) {
@@ -267,7 +323,7 @@ test("vyre uninstall: with no answer the data is kept, every volume is listed in
   assert.ok(calls.includes("compose --profile computers down --remove-orphans"), calls);
   assert.ok(calls.includes("image rm -f img1 img2"), "Vyre's own images go, once each: " + calls);
   assert.ok(!fs.existsSync(b.env.VYRE_WRAPPER), "the vyre command is removed");
-  assert.match(r.stdout, /Tailscale machines list/);
+  assert.doesNotMatch(r.stdout, /Tailscale/i, "no Tailscale step: there is none");
   assert.match(r.stdout, /vyre backup/, "the export is offered beside it");
 });
 
@@ -366,7 +422,7 @@ test("install-box.sh v2: a code another server already used stops with the plain
 });
 
 test("install-box.sh v2: the check words come from the box, show on the terminal, and never go through the mailbox", t => {
-  const b = box(t, { docker: `case "$1 $2" in "compose version") echo 2.29.1 ;; "compose exec") case "$*" in *relay.setup.status*) echo '{"data":{"state":"waiting","words":"lantern quiet river oak"}}' ;; esac ;; esac; exit 0` });
+  const b = box(t, { docker: `case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; "compose exec") case "$*" in *relay.setup.status*) echo '{"data":{"state":"waiting","words":"lantern quiet river oak"}}' ;; esac ;; esac; exit 0` });
   const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0" }, ["--yes", "--from", REPO]);
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.match(r.stdout, /Check words: lantern quiet river oak/);
@@ -422,3 +478,4 @@ test("install-box.sh v2: on a Mac it fetches install-mac-server.sh, checks it ag
   assert.match(x.stderr, /SHA256SUMS has no line for install-mac-server\.sh/);
   assert.ok(!fs.existsSync(out));
 });
+

@@ -9,10 +9,13 @@ import { DatabaseSync } from "node:sqlite";
 import { bootKernel } from "./boot.js";
 import { startSealer } from "./seal/client.js";
 import { fileKernelKey } from "./keys.js";
+import { Pool } from "./storage/pool.js";
+import { Drive } from "./storage/drive.js";
+import { dirBackend } from "./storage/backends.js";
 import { createSpaceKernels } from "./spaces/index.js";
 import { KernelError } from "./core/errors.js";
 import { isExactlyPerson } from "./core/chain.js";
-import { sealerPresence } from "./core/presence.js";
+import { sealerPresence, payloadHash } from "./core/presence.js";
 import { createSupervisor } from "./modules/supervisor.js";
 import { createModuleHost } from "./modules/host.js";
 import { createEgress } from "./modules/egress.js";
@@ -51,7 +54,7 @@ export async function bootHomeKernel(cfg) {
   const devFileKey = cfg.fileKey === true || devSwitch(process.env.VYRE_KERNEL_FILE_KEY);
   if (process.env.VYRE_KERNEL_FILE_KEY === "1" && !devFileKey) log("kernel: VYRE_KERNEL_FILE_KEY ignored (this is a packaged daemon)");
   if (!sealer && !devFileKey) {
-    try { sealer = startSealer({ dir: path.join(id.dir, "seal"), dev: process.env.VYRE_SEAL_DEV === "1", ...(process.env.VYRE_SEAL_PROFILE ? { profile: process.env.VYRE_SEAL_PROFILE } : {}) }); ownSealer = true; await sealer.health(); }
+    try { sealer = startSealer({ dir: path.join(id.dir, "seal"), dev: process.env.VYRE_SEAL_DEV === "1", ...(!isPackaged() && (process.env.VYRE_SEAL_UNATTESTED === "1" || (typeof cfg.standIn === "function" && cfg.standIn() === true)) ? { unattested: true } : {}), ...(process.env.VYRE_SEAL_PROFILE ? { profile: process.env.VYRE_SEAL_PROFILE } : {}) }); ownSealer = true; await sealer.health(); }
     catch (e) { if (sealer) await sealer.close().catch(() => {}); throw new KernelError("key_custody", "the kernel will not start here: its key must live in the sealing process, and the sealing process cannot run safely on this machine (a server with its own OS user, or the OS keystore)", String(e && /** @type {any} */ (e).code || e)); }
   }
   if (sealer) {
@@ -59,8 +62,26 @@ export async function bootHomeKernel(cfg) {
     // moved only verifies what it already sealed; once that is read a snapshot is written under the new seal and the file is deleted.
     if (fs.existsSync(id.keyFile)) { try { legacyKeys = [Buffer.from(fs.readFileSync(id.keyFile, "utf8").trim(), "hex")]; } catch { /* unreadable: nothing to verify against */ } }
   } else { log("kernel: DEVELOPER file key in use (VYRE_KERNEL_FILE_KEY=1); never the default, never for a real home"); key = fileKernelKey(id.dir); }
+  /** The person claimed their identity: its id is the owner's id from now on, written beside the Space's own id so the next start reads it, and said once in the log. */
+  /** @type {((to: string, from: string) => Promise<any>) | null} */ let hostedAdopt = null;
+  const adoptedOwner = async (/** @type {string} */ to, /** @type {string} */ from) => {
+    id.owner = to;
+    try { fs.writeFileSync(path.join(id.dir, "space.json"), JSON.stringify({ space: id.space, owner: to, made_at: id.made_at, previous_owner: from }), { mode: 0o600 }); } catch (e) { (cfg.log || (() => {}))(`kernel: the owner's id could not be written beside the Space (${/** @type {Error} */ (e).message}); it will be adopted again at the next start`); }
+    (cfg.log || (() => {}))(`kernel: the owner is now the claimed identity ${to} (was ${from}), once`);
+    // every Space this home hosts, whose owner is that same person, takes the identity too
+    if (hostedAdopt) { try { await hostedAdopt(to, from); } catch (e) { (cfg.log || (() => {}))(`kernel: a hosted Space could not take the claimed identity as its owner (${/** @type {Error} */ (e).message})`); } }
+  };
   const personalStore = cfg.storeFor ? await cfg.storeFor(id.space, { owner: id.owner, personal: true }) : undefined;
-  const k = await bootKernel({ db: cfg.db, space: id.space, ...(cfg.presence ? { presence: cfg.presence } : {}), owner: id.owner, owner_uid: process.getuid ? process.getuid() : 0, ...(key ? { key } : {}), legacyKeys, sealer, door: cfg.door, ...(cfg.forwardCredential ? { forwardCredential: cfg.forwardCredential } : {}), ...(personalStore ? { store: personalStore } : {}), ...(cfg.onStageEnter ? { onStageEnter: cfg.onStageEnter } : {}), ...(cfg.stageTasks ? { stageTasks: cfg.stageTasks } : {}) });
+  // The home Space's own Drive (versions, conflicts, backups): chunks encrypted under a pool key from the sealing process, one directory node on this home; other nodes attach later.
+  /** @type {any} */ let drive;
+  if (sealer) {
+    try {
+      const pool = new Pool({ dir: path.join(id.dir, "drive"), key: await sealer.poolKey({ owner: id.space }) });
+      pool.addNode({ id: "home", backend: dirBackend(path.join(id.dir, "drive", "node")), home: true });
+      drive = new Drive(pool);
+    } catch (e) { log(`kernel: no Drive on this home (${/** @type {Error} */ (e).message})`); }
+  }
+  const k = await bootKernel({ db: cfg.db, space: id.space, ...(drive ? { drive } : {}), ...(cfg.presence ? { presence: cfg.presence } : {}), owner: id.owner, owner_uid: process.getuid ? process.getuid() : 0, ...(key ? { key } : {}), legacyKeys, sealer, door: cfg.door, ...(cfg.forwardCredential ? { forwardCredential: cfg.forwardCredential } : {}), ...(personalStore ? { store: personalStore } : {}), ...(cfg.deviceEnrolled ? { deviceEnrolled: cfg.deviceEnrolled } : {}), ...(cfg.standIn ? { standIn: cfg.standIn } : {}), onOwnerAdopted: (/** @type {string} */ to, /** @type {string} */ from) => { adoptedOwner(to, from); }, ...(cfg.onStageEnter ? { onStageEnter: cfg.onStageEnter } : {}), ...(cfg.stageTasks ? { stageTasks: cfg.stageTasks } : {}) });
   // The migration pass ran inside the rebuild if there was anything to migrate; once the log holds a snapshot under the new seal the old key file has no use.
   if (sealer && legacyKeys.length && k.migrated) { try { fs.rmSync(id.keyFile, { force: true }); } catch { /* the file is harmless now */ } }
   // First party is a signature by the COMPILED release key (lib/release-sig.js), and a counter-signed list of minimum versions the release ships beside it
@@ -71,7 +92,9 @@ export async function bootHomeKernel(cfg) {
   // party is refused, never loaded as an added module).
   const ALWAYS_RESERVED = new Set(["vault", "leases"]);
   /** @type {(name: string) => boolean} */ let reservedName = n => ALWAYS_RESERVED.has(n);
-  /** @type {(chain: any, proof: any) => Promise<{ ok: boolean, why?: string }>} */ let resetModulesList = async () => ({ ok: false, why: "no_signed_list" });
+  /** @type {(chain: any, proof: any) => Promise<{ ok: boolean, why?: string }>} */ let resetModulesList = async (/** @type {any} */ _c, /** @type {any} */ _p, /** @type {string} */ _a) => ({ ok: false, why: "no_signed_list" });
+  /** What the owner's phone shows and signs to drop the accepted counter (a rollback): the op, the Space and the counter it forgets, with the hash the signer signs. Null when this build has no signed list. @type {() => { op: string, space: string, fields: { counter: number }, payload_hash: string } | null} */
+  let modulesListReset = () => null;
   if (!firstPartyCheck) {
     if (process.env.VYRE_KERNEL_PATH_RULE === "1" && !devSwitch("1")) log("kernel: VYRE_KERNEL_PATH_RULE ignored (this is a packaged daemon)");
     if (cfg.pathRule === true || devSwitch(process.env.VYRE_KERNEL_PATH_RULE)) (cfg.log || (() => {}))("kernel: DEVELOPER path rule for first-party modules (VYRE_KERNEL_PATH_RULE=1); never the default, never for a real home");
@@ -142,15 +165,27 @@ export async function bootHomeKernel(cfg) {
       reservedName = reserved;
       firstPartyCheck = listCheck ? (/** @type {string} */ dir) => (reserved(nameOf(dir)) ? listCheck(dir) : perModule(dir)) : perModule;
       /** The owner's reset of the counter, for a build older than the one accepted (a deliberate downgrade): presence-gated, one event, and the next boot reads the build's own list. */
-      resetModulesList = async (/** @type {any} */ chain, /** @type {any} */ proof) => {
+      /** The payload to sign: the counter forgotten, and, for the phone route, the id of the ask it answers (so a proof made for one ask never satisfies another, whatever the sealing process remembers). */
+      const resetFields = (/** @type {string} */ ask) => ({ counter: accepted ? accepted.counter : 0, ...(ask ? { ask: String(ask) } : {}) });
+      modulesListReset = (/** @type {string} */ ask) => { const fields = resetFields(ask); return { op: "grant.modules_list_reset", space: id.space, fields, payload_hash: payloadHash("grant.modules_list_reset", id.space, fields) }; };
+      resetModulesList = async (/** @type {any} */ chain, /** @type {any} */ proof, /** @type {string} */ ask) => {
         if (!isExactlyPerson(chain) || chain.hops[0].actor.id !== id.owner) return { ok: false, why: "owner_only" };
-        const why = !sealer ? "no_presence_verifier" : await sealerPresence(sealer).check({ chain, op: "grant.modules_list_reset", fields: { counter: accepted ? accepted.counter : 0 }, proof });
+        const why = !sealer ? "no_presence_verifier" : await sealerPresence(sealer).check({ chain, op: "grant.modules_list_reset", fields: resetFields(ask), proof });
         if (why) return { ok: false, why };
         await k.log.append(k.chains.fromFacts({ kind: "module", module: "home", first_party: true }), { type: "kernel.modules-list-reset", sv: 1, subject: `vyre://${id.space}/kernel/modules-list`, data: { from: accepted ? accepted.counter : 0 }, vis: "owner", red: "internal" });
         return { ok: true };
       };
     }
   }
+  // The command line's sign-in (`vyre signin`): the owner's phone signs this and the daemon then gives that one terminal a person session. The terminal is named by a hash of the login key the daemon
+  // measured (never a label or anything the caller sends), so a proof made for one terminal's ask never satisfies another's. The sealing process checks and uses the proof like any other grant act.
+  const cliSigninFields = (/** @type {string} */ ask, /** @type {string} */ terminal) => ({ ask: String(ask), terminal: crypto.createHash("sha256").update(String(terminal)).digest("hex").slice(0, 32) });
+  const cliSigninPayload = (/** @type {string} */ ask, /** @type {string} */ terminal) => { const fields = cliSigninFields(ask, terminal); return { op: "grant.cli_signin", space: id.space, fields, payload_hash: payloadHash("grant.cli_signin", id.space, fields) }; };
+  const cliSigninCheck = async (/** @type {any} */ chain, /** @type {any} */ proof, /** @type {string} */ ask, /** @type {string} */ terminal) => {
+    if (!isExactlyPerson(chain) || chain.hops[0].actor.id !== id.owner) return { ok: false, why: "owner_only" };
+    const why = !sealer ? "no_presence_verifier" : await sealerPresence(sealer).check({ chain, op: "grant.cli_signin", fields: cliSigninFields(ask, terminal), proof });
+    return why ? { ok: false, why } : { ok: true };
+  };
   /** @type {any} */ let host;
   const egress = createEgress({ space: id.space, log: k.log, chains: k.chains, hostsOf: (/** @type {string} */ n) => host && host.hostsOf(n) });
   const supervisor = createSupervisor({ egress });
@@ -163,7 +198,10 @@ export async function bootHomeKernel(cfg) {
   // The Spaces this home hosts (kernel/spaces): the personal one is this kernel; every other has its own store, log and sealing namespace, opened once here. Each takes the
   // home's sealing client namespaced per Space (kernel.mac and verify cover "<space>\n<data>"), so no key file exists for any of them; without a sealing process the registry
   // refuses a hosted Space unless this boot is the developer file-key one.
-  const spaces = createSpaceKernels({ root: cfg.root, personal: { space: id.space, kernel: k }, openDb: (/** @type {string} */ f) => new DatabaseSync(f), ...(cfg.stageFactory ? { stageFactory: cfg.stageFactory } : {}), ...(sealer ? { sealer } : { fileKey: true }), ...(cfg.door ? { doorFor: () => cfg.door } : {}), ...(cfg.storeFor ? { storeFor: cfg.storeFor } : {}) });
+  const spaces = createSpaceKernels({ root: cfg.root, personal: { space: id.space, kernel: k }, openDb: (/** @type {string} */ f) => new DatabaseSync(f), ...(cfg.stageFactory ? { stageFactory: cfg.stageFactory } : {}), ...(sealer ? { sealer } : { fileKey: true }), ...(cfg.door ? { doorFor: () => cfg.door } : {}), ...(cfg.storeFor ? { storeFor: cfg.storeFor } : {}), ...(cfg.standIn ? { bootOptions: { standIn: cfg.standIn } } : {}) });
   await spaces.start();
-  return Object.freeze({ ...k, spaces, id: { space: id.space, owner: id.owner }, kernelFor: k.kernelFor, firstPartyCheck, reservedName, resetModulesList, moduleHost: host, supervisor, moduleApprovals: approvals, stop: async () => { await spaces.stop(); await supervisor.stopAll(); if (ownSealer && sealer) await sealer.close(); } });
+  hostedAdopt = (to, from) => spaces.adoptOwner(to, from);
+  // at every start: the home's adoption (the log) reaches the Spaces it hosts, including ones made before the claim or cut short by a restart
+  { const ad = typeof k.grants.adopted === "function" ? k.grants.adopted() : null; if (ad) { try { await spaces.adoptOwner(ad.to, ad.from); } catch (e) { (cfg.log || (() => {}))(`kernel: a hosted Space could not take the claimed identity as its owner (${/** @type {Error} */ (e).message})`); } } }
+  return Object.freeze({ ...k, spaces, id: Object.freeze({ space: id.space, get owner() { return id.owner; } }), kernelFor: k.kernelFor, firstPartyCheck, reservedName, resetModulesList, cliSigninPayload, cliSigninCheck, get modulesListReset() { return modulesListReset; }, moduleHost: host, supervisor, moduleApprovals: approvals, stop: async () => { await spaces.stop(); await supervisor.stopAll(); if (ownSealer && sealer) await sealer.close(); } });
 }

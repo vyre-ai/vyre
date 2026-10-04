@@ -110,3 +110,37 @@ test("plan: names, reserved words, filters, order and values", () => {
   assert.equal(checkData(p, { name: "x", born: "1980-02-03T10:00:00Z" })?.code, "invalid");
   assert.match(selection(p), /fee \{ amountMicros currencyCode \}/);
 });
+
+test("a total is computed inside Twenty in one request, and the answer is the same as folding the rows", async () => {
+  const b = await boot(); await b.store.define({ add_types: [CONTACT] });
+  const rows = [["open", 10, 100], ["open", 20, 50], ["closed", 30, 70], ["closed", null, 0], [undefined, 5, 5]];
+  for (const [status, age, amt] of rows) await b.store.create("contact", mintUuid(), { name: "n", ...(status ? { status } : {}), ...(age === null ? {} : { age }), fee: { amount: amt, currency: "USD" } });
+  const spec = { group_by: ["status"], measures: [{ fn: "count" }, { fn: "count", field: "age" }, { fn: "sum", field: "age" }, { fn: "avg", field: "age" }, { fn: "min", field: "age" }, { fn: "max", field: "age" }, { fn: "sum", field: "fee.amount" }, { fn: "max", field: "fee.amount" }] };
+  const before = fake.requests.length;
+  const native = await b.store.aggregate("contact", spec);
+  const ops = fake.requests.slice(before).map((r) => r.op);
+  assert.deepEqual(ops, ["Agg_contacts"], "one group-by request, no row scan");
+  const all = (await b.store.query("contact", { page: { limit: 100 } })).rows;
+  assert.deepEqual(native, (await import("../../kernel/store/query.js")).aggregate(all, spec));
+  const total = await b.store.aggregate("contact", { filter: { field: "age", op: "gt", value: 6 }, measures: [{ fn: "count" }, { fn: "sum", field: "age" }] });
+  assert.deepEqual(total, [{ group: {}, values: { count: 3, "sum:age": 60 } }]);
+  // what Twenty cannot group (a list, a dotted path other than money's amount) is folded from the rows, with the same answer
+  const n = fake.requests.length;
+  const tags = await b.store.aggregate("contact", { group_by: ["tags"], measures: [{ fn: "count" }] }).catch((e) => e.code);
+  assert.ok(fake.requests.slice(n).every((r) => !r.op.startsWith("Agg_")), `a list field is not grouped natively (${JSON.stringify(tags).slice(0, 60)})`);
+});
+
+test("a search asked again for the same words, a page later, does not scan again; a write drops what was kept", async () => {
+  const b = await boot(); await b.store.define({ add_types: [CONTACT] });
+  for (const n of ["Harlow Jane", "Harlow Bob", "Northwind Cy"]) await b.store.create("contact", mintUuid(), { name: n });
+  const first = await b.store.search({ text: "harlow", page: { limit: 1 } });
+  assert.equal(first.rows.length, 1);
+  const n = fake.requests.length;
+  const second = await b.store.search({ text: "harlow", page: { limit: 1, cursor: first.next_cursor } });
+  assert.equal(second.rows.length, 1);
+  assert.equal(fake.requests.slice(n).filter((r) => r.op.startsWith("Q_")).length, 0, "the next page came from what was kept");
+  await b.store.create("contact", mintUuid(), { name: "Harlow Al" });
+  const m = fake.requests.length;
+  assert.equal((await b.store.search({ text: "harlow", page: { limit: 10 } })).rows.length, 3);
+  assert.ok(fake.requests.slice(m).some((r) => r.op.startsWith("Q_")), "a write dropped it");
+});

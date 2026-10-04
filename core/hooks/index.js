@@ -253,6 +253,7 @@ export default {
     ctx.tool("hooks.delivery", {
       description: "One stored delivery by id (from a hook.received event or hooks.list): route, at, the allowlisted headers, bytes, and the body as text. For watchers and the owner; never an agent, a guest or the internet.",
       input: obj({ id: str }, ["id"]),
+      callers: ["cli", "local", "deck", "capsule", "module"],
       run: async ({ id }, { caller }) => {
         if (isAgent(caller) || /^(?:mcp|harness)(?::|$)/.test(String(caller || ""))) throw refuse(`"${caller}" is a model's call; a webhook's body is read by the owner's watchers`);
         reader(caller);

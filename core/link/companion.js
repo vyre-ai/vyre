@@ -10,6 +10,7 @@
 // and untouched by removal, checked on every use, so the order of two removals never matters. A companion has link scope only.
 // Not usable until a transport authenticates the core's key (v0.2.3: over the tailnet, as the Mac's link does).
 
+import { deviceIdOf } from "../../lib/caller.js";
 import crypto from "node:crypto";
 
 export const WINDOW_MS = 15 * 60_000;
@@ -74,8 +75,9 @@ export function companionSide(ctx, { db, now, deviceInfo, box = () => null, maxN
 
   const deviceOf = (caller, meta) => {
     const c = String(caller || "");
-    if (!/^device:[a-z2-7]{16}$/.test(c) || (meta && meta.agent)) throw fail("denied", "a companion is requested by a paired desktop app over its own relay channel");
-    return c.slice("device:".length);
+    const id = deviceIdOf(c);
+    if (id === null || !/^[a-z2-7]{16}$/.test(id) || (meta && meta.agent)) throw fail("denied", "a companion is requested by a paired desktop app over its own relay channel");
+    return id;
   };
   /** The box's own key as the core pins it at pairing, so a later call is never trusted by name or address alone. */
   const boxAnswer = () => { const b = box(); return b && b.pub ? { box: { pub: b.pub, id: boxId(b.pub) } } : {}; };
@@ -110,6 +112,7 @@ export function companionSide(ctx, { db, now, deviceInfo, box = () => null, maxN
   }
 
   ctx.tool("link.companion.pair", {
+    effect: "write",
     callers: ["deck", "tailnet", "device", "space", "agent"],
     description: "A paired desktop app asks the box to accept its local core as a companion: { core (its P-256 public key, base64url), name, nonce, ts }. Called over the app's own relay channel with a presence proof from the app device's key, which is the countersign. Answers { id, approved: window } inside 15 minutes of the app's pairing with no companion yet, else { pending, approved: false } for the person's one tap.",
     input: { type: "object", properties: { core: { type: "string" }, name: { type: "string" }, nonce: { type: "string" }, ts: { type: "number" } }, required: ["core", "nonce", "ts"] },
@@ -140,6 +143,7 @@ export function companionSide(ctx, { db, now, deviceInfo, box = () => null, maxN
   });
 
   ctx.tool("link.companion.approve", {
+    effect: "write",
     description: "The person approves the waiting companion request with one tap on its card (the app device's name and the core's fingerprint), no Touch ID. Answers { id }.",
     input: { type: "object", properties: { request: { type: "string" } }, required: ["request"] },
     run: async ({ request }) => {
@@ -154,6 +158,7 @@ export function companionSide(ctx, { db, now, deviceInfo, box = () => null, maxN
   });
 
   ctx.tool("link.companion.remove", {
+    effect: "write",
     description: "Revoke a companion by id. The app device it belongs to stays.",
     input: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
     run: async ({ id }) => {
@@ -166,6 +171,7 @@ export function companionSide(ctx, { db, now, deviceInfo, box = () => null, maxN
   });
 
   ctx.tool("link.companion.list", {
+    effect: "read",
     description: "The companions and the waiting request: id, name, the app device it belongs to, whether it is valid now (its parent device is live), and its core's fingerprint.",
     input: { type: "object", properties: {} },
     run: async () => {
@@ -216,6 +222,7 @@ export function companionSide(ctx, { db, now, deviceInfo, box = () => null, maxN
   }
 
   ctx.tool("link.companion.hello", {
+    effect: "write",
     callers: ["tailnet", "device", "space", "agent"],
     description: "A paired companion core checks in, proving its own key: { token } signed for this tool with an empty input. Answers { paired: true, companion, device, box: { name, pub, id } }, or refuses. The box answers nothing the core could not already pin at pairing.",
     input: { type: "object", properties: { token: { type: "string" } }, required: ["token"] },

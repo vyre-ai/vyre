@@ -136,7 +136,7 @@ const about = a => ({
  * result, after a "pair with this box?" screen, can run the handshake as its own, separate step
  * (reviewer, 28 Sep MEDIUM: pairTicket alone could only show who it paired with after the fact).
  * @param {{ relay: string, route: string, box: Uint8Array, secret: string, name?: string }} offer
- * @param {{ name?: string, tailnet?: boolean, enroll?: boolean, presenceKey?: { public_key: string, alg?: number, storage?: "hardware"|"software" }, about?: { kind?: "app"|"web", release?: string, manifest?: string }, keyStore?: import("./webcrypto.js").KeyStore,
+ * @param {{ name?: string, tailnet?: boolean, enroll?: boolean, presenceKey?: { public_key: string, alg?: number, storage?: "hardware"|"software" }, passkey?: { credential_id: string, public_key: string, alg?: number, rp_id: string }, about?: { kind?: "app"|"web", release?: string, manifest?: string }, keyStore?: import("./webcrypto.js").KeyStore,
  *   crypto?: import("./noise.js").CryptoProvider, WebSocket?: any, timeout?: number, onFingerprint?: (fingerprint: string) => void }} [o]
  */
 export async function pairOffer(offer, o = {}) {
@@ -147,7 +147,7 @@ export async function pairOffer(offer, o = {}) {
   if (typeof o.onFingerprint === "function") { try { o.onFingerprint(await keyFingerprint(keys.publicKey, d.crypto)); } catch {} }
   // `tailnet: "join"` is a desktop asking its box for a tagged Tailscale key later (ADR 0046); a
   // phone leaves it out and stays on the relay.
-  const hello = { v: 1, ...about(o.about), pair: offer.secret, name: o.name || "a device", ...(o.presenceKey ? { presenceKey: o.presenceKey } : {}), ...(o.tailnet ? { tailnet: "join" } : {}), ...(o.enroll ? { enroll: true } : {}) };
+  const hello = { v: 1, ...about(o.about), pair: offer.secret, name: o.name || "a device", ...(o.presenceKey ? { presenceKey: o.presenceKey } : {}), ...(o.passkey ? { passkey: o.passkey } : {}), ...(o.tailnet ? { tailnet: "join" } : {}), ...(o.enroll ? { enroll: true } : {}) };
   let channel, reply;
   try { ({ channel, reply } = await openChannel({ ...d, relay: offer.relay, route: offer.route, box: offer.box, keys, hello, timeout: o.timeout })); }
   catch (e) { throw /** @type {any} */ (e).code ? e : fail("pair_failed", /** @type {Error} */ (e).message); }

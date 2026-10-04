@@ -8,9 +8,29 @@ import { LanguageError } from "./errors.js";
 import { parseExpr, exprNames } from "./expr.js";
 import { print } from "./print.js";
 import { compileFlow } from "../../kernel/flows/compile.js";
+import { CORE_TYPES as CORE_DEFS } from "../core-types.js";
+import { FIELD_ORDER } from "./sdk.js";
+const CORE_BY_NAME = new Map(CORE_DEFS.map((t) => [t.name, t]));
 
 /** Types a Kit may link to without defining them: the core record types every Space has. */
-export const CORE_TYPES = Object.freeze(["person", "note", "file", "template", "playbook", "team-member"]);
+export const CORE_TYPES = Object.freeze(["person", "note", "file", "template", "playbook", "team-member", "contact", "contact_point", "organization", "communication", "participant", "event"]);
+
+/**
+ * A Kit may add fields to a core type (a Kit's `contact` carries the fields its practice needs). The stored type is the whole thing: the core fields first, then
+ * the Kit's own, so an installer defines one complete type and nothing core is ever removed. A Kit field that repeats a core field's name must be the same kind
+ * (then it is the core field); a different kind is an error.
+ * @param {any} t
+ */
+/** A core field written in the order the language writes a stored field, so a stored kit prints and reads back the same. @param {any} f */
+const inOrder = (f) => ({ name: f.name, ...Object.fromEntries(FIELD_ORDER.filter((k) => f[k] !== undefined).map((k) => [k, f[k]])) });
+function mergeCoreType(t) {
+  const core = CORE_BY_NAME.get(t.name);
+  if (!core) return t;
+  for (const f of t.fields) { const c = core.fields.find((/** @type {any} */ x) => x.name === f.name); if (c && c.kind !== f.kind) throw new LanguageError("invalid_definition", `${t.name}.${f.name} is already a core ${c.kind} field; a Kit adds new fields to a core type, it does not change core ones`, { path: `type ${t.name}.${f.name}` }); }
+  const have = new Set(core.fields.map((/** @type {any} */ f) => f.name));
+  const merged = { ...t, label: core.label, ...(core.icon ? { icon: core.icon } : {}), fields: [...core.fields.map(inOrder), ...t.fields.filter((/** @type {any} */ f) => !have.has(f.name))] };
+  return Object.fromEntries(["name", "label", "icon", "kind", "fields", "stages", "rules", "role"].filter((k) => /** @type {any} */ (merged)[k] !== undefined).map((k) => [k, /** @type {any} */ (merged)[k]]));
+}
 /** Roles every Space has. */
 export const CORE_ROLES = Object.freeze(["owner", "admin", "member"]);
 
@@ -59,6 +79,7 @@ export function evaluate(program) {
     const { $, ...rest } = d;
     /** @type {any} */ (out)[/** @type {any} */ (bucket)[d.$]].push(rest);
   }
+  out.types = out.types.map(mergeCoreType);
   return checkKit(out);
 }
 
