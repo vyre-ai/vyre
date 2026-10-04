@@ -707,6 +707,11 @@ export default {
         const s = me();
         const label = String(i.name || "").trim().toLowerCase().replace(/\.vyre\.run$/, "");
         if (!label) throw refuse("Give the space a name.", "bad_name");
+        // A space that lives on this computer is reachable only while the computer is on: that is asked first, and nothing is made until the person says yes (`home.confirmed: true`), so a "no" or a walk-away leaves nothing behind.
+        if (i.home && i.home.kind === "this-computer" && i.home.confirmed !== true) {
+          const a = assessThisComputer(i.home.device && typeof i.home.device === "object" ? i.home.device : { name: "this computer", alwaysOn: false });
+          return { status: "needs_confirmation", confirm: { text: `${a.warning} ${a.advice} ${a.moveToServerLater}`, choices: ["create", "cancel"], again: "Call spaces.create again with home.confirmed set to true to create it. Nothing has been made yet." } };
+        }
         let spaceId = `spc_${crypto.randomBytes(8).toString("hex")}`;
         // The same person asking again for a name whose earlier attempt did not finish picks that attempt up (its id, its stored steps) instead of colliding with what it left behind: a refused or
         // failed create retires what the server started, and the retry resumes the pending row (walker, 4 Oct: a retry under the same name answered "That name is taken").

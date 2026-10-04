@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(spaces,daemon,kernel): a person who joined a space on a server lists it and reaches it through a member stream to its home (the peer door admits a member only when the space's kernel says so); a sealed value from a device on a server-hosted space goes to the home's sealing process (`seal.put` over the wire). fix(spaces): creating a space on this computer asks for the person's yes first and makes nothing until it has it.
+
 - fix(relay): a refused pairing says its reason in the log every time (the first five repeats in a minute as "refused again"), so a retry is no longer silent.
 
 - feat(spaces): on a development build an invitee's accept is signed by the computer's own software key and enrols it on the server in the same call. fix(wink): a server removed and paired again no longer reuses the old relay connection (`forget`).
