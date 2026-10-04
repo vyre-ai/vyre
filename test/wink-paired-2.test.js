@@ -668,6 +668,7 @@ test("add this device by a typed code, real daemon: a box-less device types the 
   const done = await joining;
   assert.equal(done.paired, true);
   assert.equal(done.enrolled, true, JSON.stringify(done));
+  assert.match(String(done.identity?.id), /^per_/, "the answer names the identity the device joined, for reading its list");
   const after = (await w.call("spaces.identity.entries")).data;
   assert.ok((after.entries || after).some(e => e.kind === "device" && e.label === "Kit's phone"), JSON.stringify(after));
   // a wrong code does not pair anything

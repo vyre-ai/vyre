@@ -1360,3 +1360,21 @@ test("typed code, release: a device with no box redeems an invitation's code wit
   assert.deepEqual(await redeeming, { ok: true, link, space: "northwind.vyre.run" });
   assert.equal((await redeemInviteCode({ relay: w.status.url, input: "WINK-ZZZZ-ZZZZ", waitMs: 500, pollMs: 50 })).ok, false);
 });
+
+test("typed code, release: a browser with no box pairs to the server by the code its phone shows (joinWithCode, about web): the ack typed back on the phone is the yes, and the device is a web device", async t => {
+  releaseTyped(t);
+  const w = await world(t);
+  const open = await w.call("wink.code.open", { flow: "W2" });
+  assert.match(open.data?.code, /^WINK-/, JSON.stringify(open.error));
+  const states = [];
+  const done = joinWithCode({ relay: w.status.url, input: open.data.code, name: "Sam's browser", onState: s => states.push(s), pollMs: 100, waitMs: 20_000, pairOptions: { crypto: nodeCrypto(), keyStore: keystore(t), about: { kind: "web" } } });
+  const ack = await until(() => states.find(s => s.state === "ack"));
+  await until(() => w.events.find(e => e[0] === "wink.found"));
+  assert.equal((await w.call("wink.code.ack", { offer: open.data.offer, typed: ack.code })).data.ok, true);
+  const r = await done;
+  assert.equal(r.ok, true, JSON.stringify(r));
+  const dev = (await w.call("wink.access")).data.devices.find(d => d.id === r.paired.device);
+  assert.ok(dev, "the browser is a device of the identity");
+  // a wrong code pairs nothing
+  assert.equal((await joinWithCode({ relay: w.status.url, input: "WINK-ZZZZ-ZZZZ", name: "x", waitMs: 500, pollMs: 50, pairOptions: { crypto: nodeCrypto(), keyStore: keystore(t) } })).ok, false);
+});
