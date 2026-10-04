@@ -9,6 +9,9 @@
 
 /** @type {ReadonlyMap<string, string>} */
 export const PERSON_ONLY = new Map([
+  ["recall.sealscan", "the person's own audit of where sensitive-looking values sit in memory: counts only, but it is the person's to ask"],
+  ["recall.sealscrub", "scrubs sensitive-looking values out of memory: the person's own act"],
+  ["files.drive.restore", "restores a Drive version: admin and owner, with the person's own act"],
   ["records.define", "changes the Space's types: the person's own act (an assistant proposes through a Kit or a task)"],
   ["records.reveal", "reveals a sealed value: needs the person's Face ID"],
   ["records.dev-seed", "a development-build seed for the walk, never an assistant's"],
@@ -217,6 +220,8 @@ export const PERSON_ONLY = new Map([
 
 /** @type {ReadonlySet<string>} */
 export const OPEN = new Set([
+  "files.drive.upload",
+  "files.drive.versions",
   "records.me",
   "records.actors",
   "records.types",
