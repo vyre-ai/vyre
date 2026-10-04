@@ -1,14 +1,14 @@
 // Vault from the real vyred. A list of the box's own items (names, kinds, who has them, how they were used), and Reveal per field, which is a
 // person's own call: the box asks for presence, the app's person session answers it, and the value lives in this screen's state for 30 seconds.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 import { Banner, Button, Card, Chip, Divider, EmptyState, Field, IconTile, Row, SealedMask, Segmented, Sheet, Tabs, Text, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { usePhone } from "../places/Page";
 import { Footnote, Frame, Sec } from "../places/Frame";
 import { REVEAL_MS } from "./logic.js";
 import { listReal, putReal, revealReal, revokeReal, stateReal, unlockReal, usesReal } from "./real";
 import { claimBlocked } from "../shell/rc";
-import { ON_PHONE } from "../../src/real/on-phone.js";
+import { ON_PHONE, howApprove } from "../../src/real/on-phone.js";
 import { NEW_KINDS, itemsOf, kindWord, putInput, putRefusal, revealRefusal, useCount, usesLine, type ListRow, type NewItem, type RealItem, type Tab, type UseRow } from "./real-model";
 
 const say = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
@@ -55,7 +55,7 @@ export default function RealVault() {
         timer.current = setTimeout(hide, REVEAL_MS);
         setUses((m) => { const { [item.id]: _gone, ...rest } = m; return rest; });
       })
-      .catch((e) => showToast(revealRefusal((e as { code?: string }).code, say(e, ""))));
+      .catch((e) => showToast(revealRefusal((e as { code?: string }).code, say(e, ""), Platform.OS === "web" ? (howApprove() === "touchid" ? "touchid" : "browser") : "phone")));
   };
   const remove = (item: RealItem, who: string) =>
     revokeReal(item.id, who).then(() => { showToast(`${who} no longer has ${item.name}.`); load(); }).catch((e) => showToast(say(e, "That did not work.")));
