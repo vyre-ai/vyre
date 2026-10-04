@@ -862,8 +862,10 @@ test("paired: a grant is made only through the tool, for the wink module, from a
   rec = null; await assert.rejects(grant("dev1", "module:wink"), /not confirmed/);
   rec = { ...good, confirmedBy: "someone-else" }; await assert.rejects(grant("dev1", "module:wink"), /not confirmed by its owner/);
   rec = { ...good, confirmed: false }; await assert.rejects(grant("dev1", "module:wink"), /not confirmed/);
-  rec = { ...good, kind: "web" }; await assert.rejects(grant("dev1", "module:wink"), /phone or a computer/);
-  rec = { ...good, kind: "setup" }; await assert.rejects(grant("dev1", "module:wink"), /phone or a computer/);
+  rec = { ...good, kind: "server" }; await assert.rejects(grant("dev1", "module:wink"), /phone, a computer or a browser/);
+  // a browser paired to its owner gets the session and nothing more (lead ruling, 4 Oct)
+  rec = { ...good, kind: "web" }; assert.equal((await grant("dev1", "module:wink")).granted, true);
+  rec = { ...good, kind: "setup" }; await assert.rejects(grant("dev1", "module:wink"), /phone, a computer or a browser/);
   rec = good;
   await assert.rejects(grant("dev1", "module:relay"), /only the pairing/);
   await assert.rejects(grant("dev1", "cli"), /only the pairing/);

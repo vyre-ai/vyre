@@ -1119,3 +1119,36 @@ test("wink.server.adopt takes `proof` through the registry: a waiting redeemer's
   const text = JSON.stringify(res.body);
   assert.doesNotMatch(text, /does not take|not take|unknown (field|input)|not declared/i, text);
 });
+
+test("a box-less device pairs a fresh server, is recorded as the owner's device with its kind, and then start-paired succeeds with no second step", async t => {
+  const w = await world(t);
+  const saved = process.env.VYRE_WINK_TYPED_CODE;
+  delete process.env.VYRE_WINK_TYPED_CODE;
+  t.after(() => { if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
+  const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
+  const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const presenceKey = { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: "software" };
+  const ks = keystore(t);
+  const owner = { id: "per_" + "q".repeat(26), name: "Alex" };
+  let shown = "";
+  const pairing = pairServer({ payload: made.qr, owner, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: ks, presenceKey, deviceKind: "phone", keyStorage: "software", pollMs: 100, onWords: x => { shown = x; } });
+  pairing.catch(() => {});
+  const q = await until(async () => { const x = (await w.call("wink.server.pairing", {}, "cli", PROOF)).data; return x && x.asking ? x : null; });
+  await until(async () => shown);
+  assert.equal((await w.call("wink.server.pair.answer", { yes: true, pick: q.choices.indexOf(shown) + 1 }, "cli", PROOF)).data.yes, true);
+  const done = await pairing;
+  // the server lists the device as the owner's phone, its key storage as reported
+  const row = await until(() => deviceRow(w, done.device));
+  assert.equal(row.presence, true);
+  const listed = (await w.call("wink.access")).data.devices.find(d => d.id === done.device);
+  assert.ok(listed, "recorded as a device of the owner");
+  assert.equal((await w.call("wink.device.paired", { device: done.device, identity: owner.id }, "module:spaces")).data.paired, true);
+  // and it opens its person session at once: challenge, sign, start-paired
+  const c = connect({ relay: done.relay, route: done.route, box: done.box, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: ks });
+  t.after(() => c.close());
+  const ch = await over(c, "presence.person.pair-challenge", {});
+  assert.equal(ch.status, 200, JSON.stringify(ch));
+  const sig = crypto.sign("sha256", Buffer.from(`paired-start\n${done.device}\n${ch.body.data.challenge}`), { key: dk.privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url");
+  const started = await over(c, "presence.person.start-paired", { sig });
+  assert.equal(started.status, 200, JSON.stringify(started));
+});
