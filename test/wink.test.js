@@ -1438,3 +1438,20 @@ test("SERVER-HOSTED SPACE end to end: a device daemon with a spaces module asks 
   const onServer = server.kernel.spaces.hosted(id);
   assert.ok(JSON.stringify(await onServer.gateway.records.query(onServer.kernel.chains.fromFacts({ kind: "device", device_key_id: "x1", person: server.kernel.id.owner, path: "direct", session: "s" }), "contact", { page: { limit: 50 } })).includes("Jane"), "the record lives in the server's store");
 });
+
+test("the pairing path adopts for real: after the pick the SERVER's home owner is the identity its own pairing record names (spaces.owner.adopt from module:wink); another identity, an added module and a second adoption change nothing", async t => {
+  const f = await pairFreshServer(t);
+  const { w, owner } = f;
+  const reg = w.d.registry;
+  assert.equal(w.d.kernel.id.owner, owner.id, "the pairing made the claimed identity the home's owner");
+  // the record the adoption was checked against is the pairing's own
+  const rec = (await reg.call("wink.server.owner", {}, "module:spaces")).data;
+  assert.equal(rec && rec.identity, owner.id, "wink.server.owner names the identity of the pairing");
+  const stranger = "per_" + "z".repeat(26);
+  assert.equal((await reg.call("spaces.owner.adopt", { person: stranger }, "module:wink")).error?.code, "forbidden", "an identity the pairing does not name is refused even from the Wink module");
+  assert.ok((await reg.call("spaces.owner.adopt", { person: stranger }, "module:evil")).error, "an added module is refused");
+  assert.ok((await reg.call("wink.server.owner", {}, "module:evil")).error, "and cannot read the pairing's record either");
+  const again = await reg.call("spaces.owner.adopt", { person: owner.id }, "module:wink");
+  assert.ok(!again.error && again.data.changed === false, `adopting the same identity again changes nothing: ${JSON.stringify(again)}`);
+  assert.equal(w.d.kernel.id.owner, owner.id, "still the identity");
+});
