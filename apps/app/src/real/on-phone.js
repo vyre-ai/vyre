@@ -29,6 +29,7 @@ function lineFor(tool) {
   if (/^(grants|spaces\.roles|spaces\.members)\./.test(t)) return "Change who can use this in Vyre on your phone.";
   if (/^wink\./.test(t)) return "Pair it in Vyre on your phone.";
   if (/^onboard\./.test(t)) return "Connect it in Vyre on your phone.";
+  if (/^vault\.account\.unlock/.test(t)) return "Unlock it in Vyre on your phone.";
   // No restore control exists in the app yet (the space Drive has no screen): this file names an action only when a control for it exists.
   return ON_PHONE;
 }

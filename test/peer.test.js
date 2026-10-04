@@ -4,6 +4,7 @@
 
 import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
+process.env.VYRE_SEAL_SOFTWARE = "1"; // device-key proofs on a development-kind daemon (the release rule is in test/presence-strength.test.js)
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
