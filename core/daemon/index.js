@@ -20,9 +20,11 @@ import { assertDaemonHost } from "./host-guard.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { Registry, discover, ownerDevice, currentCall } from "../modules/index.js";
-import { devSwitch, isPackaged } from "../../kernel/devbuild.js";
+import { devSwitch, isPackaged, PKG_ROOT } from "../../kernel/devbuild.js";
 import { build, swWithBuild, htmlWithBuild } from "./build.js";
 import { serveApp, associationFile } from "./app.js";
+import { watchForList } from "./release-watch.js";
+import { readReleaseList } from "../../kernel/modules/release-list.js";
 import { acquire } from "./lock.js";
 import { Presence, PERSON_ONLY, HUMAN_ONLY, SESSIONABLE, personOnly, fingerprint, parse as parsePresence, core as coreHolder } from "../presence/index.js";
 import { readCoreConfig, coreLink } from "../../lib/vyre-core-client.js";
@@ -348,7 +350,12 @@ async function startLocked(opts, root, p, release) {
       const chat = q.chat || (q.rec && typeof q.rec.chat === "string" ? q.rec.chat : undefined);
       // A probe asks only: is this person in this chat? (the kernel's own check: not_found when they are not). The Switchboard asks before it queues or runs a chat turn.
       if (q.probe) { kernel.gateway.grants.chats.read(person, chat); return null; }
-      const s = await kernelSessions.open({ chain: person, ...(chat ? { chat } : {}), ...(q.agent ? { agent: q.agent } : {}), thread: q.thread });
+      // The home's assistant acts in the kernel as the one actor it has, the default "assistant" (core/tasks-tools seeds a task's doer as that id, and the Space adds that actor once at setup), whatever name the person
+      // gave it: a named assistant (juno) is not a member of the Space of its own, so its session token carried an agent hop the kernel could not find and every call of its own answered not_found.
+      let isAssistant = Boolean(q.rec && q.rec.agent_kind === "assistant");
+      if (q.agent && !isAssistant) { try { const sc = await registry.call("agents.scope", { name: q.agent }, "module:vyred"); isAssistant = Boolean(sc && sc.data && sc.data.kind === "assistant"); } catch { /* agents is not running: the name stands */ } }
+      const kernelAgent = q.agent && !isAssistant ? q.agent : undefined;
+      const s = await kernelSessions.open({ chain: person, ...(chat ? { chat } : {}), ...(kernelAgent ? { agent: kernelAgent } : {}), thread: q.thread });
       return { token: kernelSessions.tokenFor(s.id), end: () => kernelSessions.end(s.id) };
     };
     // The sandbox every Vyre-started session's agent runs in on this computer (the runner's home sandbox: planHome, selfTest, launch; core/sessions/ cannot import core/runner, so the
@@ -436,7 +443,8 @@ async function startLocked(opts, root, p, release) {
   }
 
   const terminalOf = opts.person || (sock => atTerminal(sock, registry, presence, devStandIn(), { log }));
-  const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, people, socket: true, terminalOf, kernelOf: () => kernel }).catch(e => fail(res, e)));
+  /** @type {ReturnType<typeof watchForList> | null} */ let releaseWatch = null;
+  const server = http.createServer((req, res) => route(req, res, { finishing: () => (releaseWatch ? releaseWatch.state() : null), registry, events, cfg, started, streams, root, inflight, drain, people, socket: true, terminalOf, kernelOf: () => kernel }).catch(e => fail(res, e)));
   server.on("upgrade", async (req, socket, head) => {
     try { upgrade(req, socket, head, (await asTaken(socketCaller(req), /** @type {any} */ (socket), registry)).caller); }
     catch { socket.destroy(); }
@@ -446,11 +454,18 @@ async function startLocked(opts, root, p, release) {
   // which Node already restricts to this user by default; there is no file for chmod to touch.
   if (process.platform !== "win32") fs.chmodSync(p.socket, 0o600);
   fs.writeFileSync(p.pid, String(process.pid));
+  // A kernel-on packaged daemon with no signed module list yet (a server an old updater just updated: the list arrives in shell.json after this first start) waits for it and restarts once.
+  releaseWatch = kernel && isPackaged() ? watchForList({
+    read: () => readReleaseList(opts.packageRoot || PKG_ROOT, undefined),
+    onFound: () => { try { process.kill(process.pid, "SIGTERM"); } catch { /* the loop restarts a vyred that exits */ } },
+    log, pollMs: Number(process.env.VYRE_FINISH_POLL_MS) || 2000, waitMs: Number(process.env.VYRE_FINISH_MS) || 120_000,
+  }) : null;
   log(`vyred ${VERSION} up · role ${cfg.role} · ${registry.status().filter(m => m.state === "running").length} modules`);
 
   const stop = async () => {
     if (stopped) return; stopped = true;
     if (labelTimer) clearTimeout(labelTimer);
+    if (releaseWatch) releaseWatch.stop();
     if (closeKernelSessions) await closeKernelSessions().catch(() => {});
     if (closeFlowsHost) closeFlowsHost();
     // Stop taking calls, and give the ones running up to DRAIN_MS to finish: a write cut off
@@ -857,7 +872,7 @@ function loginFrom(tty) {
   });
 }
 
-async function route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, people = null, socket = false, terminalOf = null, kernelOf = null }, /** @type {Policy} */ policy = {}) {
+async function route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, people = null, socket = false, terminalOf = null, kernelOf = null, finishing = () => null }, /** @type {Policy} */ policy = {}) {
   const url = new URL(req.url || "/", "http://vyred");
   // On the socket the header is only a label, and anything on the box can send it (Claude's own
   // processes included). "module:*" is what the registry uses between modules, "hook" is what the
@@ -996,7 +1011,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     // log, and a guessed cursor past the end drops every live event.
     const last = /** @type {any} */ (events.db.prepare("SELECT MAX(id) AS id FROM events").get());
     const b = build();
-    return send(res, 200, { data: { version: VERSION, commit: b.commit, dirty: b.dirty, pid: process.pid, role: cfg.role, machine: cfg.machine, uptime: Date.now() - started, supervisor: process.env.VYRE_SUPERVISOR || null, last_event: Number(last && last.id) || 0,
+    return send(res, 200, { data: { version: VERSION, commit: b.commit, dirty: b.dirty, pid: process.pid, role: cfg.role, machine: cfg.machine, uptime: Date.now() - started, supervisor: process.env.VYRE_SUPERVISOR || null, finishing: finishing(), last_event: Number(last && last.id) || 0,
       // How to run this vyred's own CLI (node and bin/vyre): the Capsule runs `vyre ...` typed in
       // its box by argv, never through a shell, and must run the same version.
       cli: [process.execPath, path.join(REPO, "bin", "vyre")],

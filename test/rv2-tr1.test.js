@@ -1,4 +1,5 @@
 // reviewer-2 repro TR-1 against work/kernel-reg c2477b47a (drop into test/): the needs-check event now logs the doer's `evidence` for fields, decision and note tasks; nothing screens it, and the log cannot be edited.
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRig } from "./kernel-rig.js";

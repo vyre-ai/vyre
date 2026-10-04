@@ -23,5 +23,21 @@ for f in files:
             bad += 1
             print(f"{f}: {len(miss)} line(s) added by {who} are missing from the result")
             for l in miss[:12]: print("    " + l[:170])
+# Lines that must survive every merge (each one was silently dropped by a merge once, 4 Oct): [file, regex, what]
+import re
+MUST = [
+  ["core/daemon/index.js", r"registry\.deps\.peerDoor\s*=", "the peer door mount (MG-1)"],
+  ["core/daemon/index.js", r"createOwnServerHost", "the own-server wiring on runnerHost"],
+  ["core/switchboard/index.js", r"async \(i, meta = \{\}\) => \{ const \{ caller, idempotencyKey, firstParty, peer \} = meta", "threads.send takes meta (the `meta is not defined` break)"],
+  ["kernel/home.js", r"onOwnerAdopted", "kernel/home.js onOwnerAdopted (the claim waits for hosted-space adoption)"],
+  ["core/modules/index.js", r"\.\.\.\(terminal \? \{ terminal \} : \{\}\)", "meta.terminal reaches the tool (vyre signin)"],
+  ["core/wink/module.json", r"wink\.server\.owner", "wink.server.owner"],
+  ["core/wink/module.json", r"wink\.server\.probe", "wink.server.probe"],
+  ["kernel/seal/wire.js", r"canonical\(\{ op, space, fields \}\)", "the nested approval payload hash"],
+]
+for f, rx, what in MUST:
+    txt = g("show", f"{m}:{f}")
+    if txt and not re.search(rx, txt):
+        bad += 1; print(f"MUST-SURVIVE MISSING in {f}: {what}")
 print("merge-check:", "LINES DROPPED" if bad else "clean")
 sys.exit(1 if bad else 0)

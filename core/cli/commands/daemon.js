@@ -53,6 +53,8 @@ export default [
           ...(mem ? [{ label: "Memory", value: mem.replace(/^memory\s+/, "") }] : []), ...(recall ? [{ label: "Search", value: recall }] : [])] });
       }
       out(`  vyred ${signal("running")} ${dim(`· ${label(d)} · ${d.role} · pid ${d.pid} · up ${Math.round(d.uptime / 1000)}s`)}`);
+      if (d.finishing === "waiting") out(`  ${beacon("Finishing the update")} ${dim("· the signed module list is on its way; the modules start by themselves")}`);
+      else if (d.finishing === "gave_up") out(`  ${beacon("The update did not finish")} ${dim("· the signed module list never arrived, so no module is running. Run: vyre update")}`);
       out(`  ${d.modules.running} modules running${d.modules.failed ? beacon(` · ${d.modules.failed} failed (vyre modules)`) : ""}`);
       if (mem) out(`  ${mem}`);
       if (recall) out(dim(`  ${recall}`));
