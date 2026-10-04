@@ -85,7 +85,7 @@ export function kernelMembers({ handle, now = Date.now }) {
       /** The join card: what the invite offers, from the kernel. */
       get: (/** @type {any} */ k, /** @type {string} */ id) => run(async () => grants().invites.get(need(k).chain, id)),
       /** The invitee accepts under their own chain and their own proof, over exactly what they were shown. */
-      accept: (/** @type {any} */ k, /** @type {string} */ id, /** @type {{ role: string, scope?: string[]|null, expires?: number|null, invitee?: string|null }} */ seen) => run(async () => grants().invites.accept(need(k).chain, id, { seen, proof: k.proof && k.proof.presence })),
+      accept: (/** @type {any} */ k, /** @type {string} */ id, /** @type {{ role: string, scope?: string[]|null, expires?: number|null, invitee?: string|null }} */ seen, /** @type {any} */ bind) => run(async () => grants().invites.accept(need(k).chain, id, { seen, proof: k.proof && k.proof.presence, ...(bind ? { bind } : {}) })),
     },
     now,
   };

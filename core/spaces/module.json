@@ -314,6 +314,10 @@
     "reach": "modules"
    },
    {
+    "name": "spaces.identity.evidence",
+    "reach": "modules"
+   },
+   {
     "name": "spaces.identity.self",
     "reach": "modules"
    },
