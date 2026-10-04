@@ -145,23 +145,6 @@ export function createRecords(cfg) {
     const pr = await authorizer.rowPredicate({ chain, action: "records.read", type });
     return pr ? { urn_prefix: urn(type, ""), any: pr.any } : null;
   };
-  /** An owner or admin as themselves, or on their behalf through a service: the only callers that create or read a protected type. @param {any} chain */
-  const adminish = (chain) => {
-    const first = isChain(chain) ? chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person") : null;
-    if (!first || !members || typeof members.membership !== "function") return false;
-    const role = (members.membership(first.actor) || {}).role;
-    if (role !== "owner" && role !== "admin") return false;
-    return chain.hops.length === 1 || chain.hops[chain.hops.length - 1].actor.kind === "service";
-  };
-  /** Was this row of a protected type made by a service or by a person who is an owner or admin? A row anyone else made (before a rule, or by a path that skipped it) is not shown. @param {string} u */
-  const madeByTrusted = (u) => {
-    const made = String((kattrs.get(u) || {}).created_by || "");
-    const [kind, ...rest] = made.split(":");
-    if (kind === "service") return true;
-    if (kind !== "person" || !members || typeof members.membership !== "function") return false;
-    const role = (members.membership({ kind: "person", id: rest.join(":"), space }) || {}).role;
-    return role === "owner" || role === "admin";
-  };
   const PROTECTED_BUILTIN = new Set(["kit-proposal", "kit-install"]);
   /** @type {Set<string> | null} */ let protectedTypes = null;
   const isProtectedType = async (/** @type {string} */ type) => {
@@ -422,7 +405,6 @@ export function createRecords(cfg) {
     const d = await gate(chain, `records.${op}`, u);
     // A protected type (the Kits' own bookkeeping, or a type that says `protected: true`): a row is changed or removed only by whoever made it, or by an owner or admin acting as themselves. Anyone else who
     // may write the type can still read and create, never rewrite another's row (a member cannot change a stored Kit proposal).
-    if (op === "create" && await isProtectedType(type) && !adminish(chain)) throw new KernelError("not_allowed", `only an owner or admin, or a service acting for them, creates a ${type}`);
     if (op !== "create" && await isProtectedType(type)) {
       const last = chain.hops[chain.hops.length - 1].actor, made = (kattrs.get(u) || {}).created_by;
       const person = chain.hops.length === 1 && last.kind === "person" ? last : null;
@@ -1017,27 +999,5 @@ export function createRecords(cfg) {
       return { rows, truncated };
     },
   };
-  // A protected type is read and created only by an owner or admin (as themselves or through a service) and only the rows they or a service made are shown: a member who can write the type
-  // cannot plant a row that a lookup finds first, and cannot read what the Kits keep.
-  return Object.freeze({
-    ...api,
-    async get(/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id) {
-      if (typeof type === "string" && await isProtectedType(type)) { if (!adminish(chain)) return null; const r = await api.get(chain, type, id); return r && madeByTrusted(urn(type, id)) ? r : null; }
-      return api.get(chain, type, id);
-    },
-    async query(/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ spec) {
-      if (typeof type === "string" && await isProtectedType(type)) { if (!adminish(chain)) return { rows: [] }; const r = await api.query(chain, type, spec); return { ...r, rows: r.rows.filter((/** @type {any} */ x) => madeByTrusted(urn(type, x.id))) }; }
-      return api.query(chain, type, spec);
-    },
-    async aggregate(/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ spec) {
-      if (typeof type === "string" && await isProtectedType(type) && !adminish(chain)) return [];
-      return api.aggregate(chain, type, spec);
-    },
-    async search(/** @type {any} */ chain, /** @type {any} */ spec) {
-      const r = await api.search(chain, spec);
-      const keep = [];
-      for (const h of r.rows) keep.push(!(await isProtectedType(h.type)) || (adminish(chain) && madeByTrusted(urn(h.type, h.id))));
-      return { ...r, rows: r.rows.filter((/** @type {any} */ _h, /** @type {number} */ i) => keep[i]) };
-    },
-  });
+  return api;
 }

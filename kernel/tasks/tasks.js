@@ -560,21 +560,10 @@ export function createTasks(cfg) {
       const values = (Array.isArray(o.values) ? o.values : []).filter((/** @type {any} */ v) => typeof v === "string" && v.length >= 3);
       let cleared = 0;
       /** @type {Set<string>} */ const hit = new Set();
-      // Every task about one of these records loses its text, whatever it says: a person's name or number can be written in more ways than any comparison can know ("Ana M. Lopez", "LOPEZ, Ana").
-      const recs = new Set([...(typeof o.record === "string" && o.record ? [o.record] : []), ...(Array.isArray(o.records) ? o.records.filter((/** @type {any} */ r) => typeof r === "string") : [])]);
-      if (recs.size) for (const t of tasks.values()) if (t.record && recs.has(t.record)) hit.add(t.id);
+      if (typeof o.record === "string" && o.record) for (const t of tasks.values()) if (t.record === o.record) hit.add(t.id);
       if (values.length) {
-        // A value is looked for in the normalised text: compatibility-folded (NFKC), case-folded, without spaces (of any kind), punctuation or zero-width marks, so "123-45-6789", "123 45 6789",
-        // "ANA  MARIA" and a value split across two form fields (the leaves are joined) all match. Plain and JSON-escaped spellings are checked too.
-        const norm = (/** @type {string} */ x) => x.normalize("NFKC").toLowerCase().replace(/[\s\p{Z}\p{P}\p{Cf}]+/gu, "");
-        const wants = values.map((/** @type {string} */ v) => norm(v)).filter((/** @type {string} */ n) => n.length >= 3);
-        const leaves = (/** @type {any} */ x, /** @type {string[]} */ out) => { if (typeof x === "string") out.push(x); else if (Array.isArray(x)) for (const y of x) leaves(y, out); else if (x && typeof x === "object") for (const y of Object.values(x)) leaves(y, out); return out; };
         const rows = typeof texts.all === "function" ? texts.all() : [...tasks.keys()].map(id => [id, texts.get(id)]);
-        for (const [id, x] of rows) {
-          let j = ""; try { j = JSON.stringify(x) || ""; } catch { j = ""; }
-          const flat = norm(leaves(x, []).join(""));
-          if (values.some((/** @type {string} */ v) => j.includes(v) || j.includes(JSON.stringify(v).slice(1, -1))) || wants.some((/** @type {string} */ n) => flat.includes(n))) hit.add(String(id));
-        }
+        for (const [id, x] of rows) { let j = ""; try { j = JSON.stringify(x) || ""; } catch { j = ""; } if (values.some(v => j.includes(v) || j.includes(JSON.stringify(v).slice(1, -1)))) hit.add(String(id)); }
       }
       for (const id of hit) {
         const t = tasks.get(id);
