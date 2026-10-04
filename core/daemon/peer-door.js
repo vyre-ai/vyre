@@ -34,7 +34,15 @@ export function createPeerDoor(o) {
     return s.server;
   };
   /** The device's own row at the relay, now: an app device that is not removed, or null. @param {string} id */
-  const rowOf = async id => { try { const r = await o.registry.call("relay.device.info", { id }, "module:vyred"); const d = r && r.data; return d && d.kind === "app" && d.removed === false ? d : null; } catch { return null; } };
+  const rowOf = async id => {
+    try {
+      const r = await o.registry.call("relay.device.info", { id }, "module:vyred"); const d = r && r.data;
+      if (!(d && d.kind === "app" && d.removed === false)) return null;
+      // the person the device's own record names (Wink: who confirmed it); callerFacts gives the device the owner's person only when this is the home's owner
+      let person = null; try { const w = await o.registry.call("wink.device.record", { id }, "module:vyred"); person = w && w.data && typeof w.data.owner === "string" ? w.data.owner : null; } catch { person = null; }
+      return { ...d, person };
+    } catch { return null; }
+  };
   /** The person a device is: the facts the daemon proves for it (PH-1) name the home's owner, and only for a live app device. @param {string} id */
   /** The device's own live paired session (it signed in with start-paired), or null: a call is the person's with a session and a device's own, with no person, without one. @param {string} id */
   const sessionOf = id => { const now = (o.now || Date.now)(); try { const s = o.people ? o.people.list().find(x => x.node === id && x.paired && x.expires > now) : null; return s ? { id: String(s.id), kind: String(s.kind) } : null; } catch { return null; } };

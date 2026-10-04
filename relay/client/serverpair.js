@@ -10,7 +10,7 @@
 //           needs `proof` (an identity-list key's signature, see core/wink/pairing.js proveIdentity); pass it as `proof: { eid, sig }`.
 // onWords   called once with the three words this device derived. Show them: the person at the server picks the same words from three sets, and only then is anything paired.
 // Resolves { paired: true, relay, route, box, device, name, owner }: persist relay, route, box and the key store; `connect()` from client.js then reaches the server as a paired device. Rejects with
-// an Error whose `code` is one of: no_pin (a release server needs owner.pin: the head and length of the app's own identity chain), not_hardware (a release server takes its owner's proof only from a phone's hardware-held key: "Pair this server from Vyre on your phone"), denied_no_proof (the app sent no identity proof), denied_wrong_proof (its key did not prove the claimed identity), cannot_check (the server could not reach the names directory to check who this is: try again), bad_code, bad_owner (the server refused the identity or its id), taken (the code was already used or expired), busy, denied (the person said no or picked other words), expired (nobody answered in time),
+// an Error whose `code` is one of: no_pin (a release server needs owner.pin: the head and length of the app's own identity chain), owned_by_other (the server already belongs to another Vyre identity), not_hardware (a release server takes its owner's proof only from a phone's hardware-held key: "Pair this server from Vyre on your phone"), denied_no_proof (the app sent no identity proof), denied_wrong_proof (its key did not prove the claimed identity), cannot_check (the server could not reach the names directory to check who this is: try again), bad_code, bad_owner (the server refused the identity or its id), taken (the code was already used or expired), busy, denied (the person said no or picked other words), expired (nobody answered in time),
 // unreachable (the relay or the server did not answer), cancelled.
 import { pairTicket, connect } from "./client.js";
 import { nonceCommit, ticketTag, newNonce, pairWords } from "./pairwords.js";
@@ -67,7 +67,7 @@ export async function pairServer(o) {
   const refuse = (/** @type {any} */ r) => {
     const e = r.body && r.body.error;
     const code = e && e.code;
-    throw fail(code === "busy" ? "busy" : code === "expired" ? "expired" : code === "denied" ? "denied" : code === "denied_no_proof" || code === "denied_wrong_proof" || code === "no_pin" ? code : code === "bad_input" ? "bad_owner" : code === "not_hardware" ? "not_hardware" : code === "unavailable" ? "cannot_check" : "unreachable", (e && e.message) || "The server refused.");
+    throw fail(code === "busy" ? "busy" : code === "expired" ? "expired" : code === "denied" ? "denied" : code === "denied_no_proof" || code === "denied_wrong_proof" || code === "no_pin" ? code : code === "bad_input" ? "bad_owner" : code === "not_hardware" ? "not_hardware" : code === "owned_by_other" ? "owned_by_other" : code === "unavailable" ? "cannot_check" : "unreachable", (e && e.message) || "The server refused.");
   };
   try {
     const na = newNonce(), commit = await nonceCommit(na), tag = await ticketTag(ticket);

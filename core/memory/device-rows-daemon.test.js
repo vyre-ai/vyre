@@ -22,7 +22,7 @@ test("device rows on a real daemon: callerFacts from the home's relay row decide
   const read = async (id, signedIn, tool = "memory.graph") => {
     const label = `device:${id}`, via = signedIn ? { person: { id: "ps1" } } : {};
     const info = await d.registry.call("relay.device.info", { id }, "module:vyred");
-    const facts = callerFacts(label, { caller: label }, via, d.kernel, false, info.data || null);
+    const facts = callerFacts(label, { caller: label }, via, d.kernel, false, info.data ? { ...info.data, person: d.kernel.id.owner } : null);
     return d.registry.call(tool, {}, label, { ...via, ...(facts ? { kernelFacts: facts } : {}) });
   };
   const ok = r => !r.error;
