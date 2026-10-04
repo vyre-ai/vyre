@@ -342,9 +342,10 @@ test("HS-10: a session's temp lives outside the Vyre home, beside it, and the se
 
 test("home sandbox: a computer with no bubblewrap fails the self-test with a reason and does not end the process (spawn ENOENT is handled)", { skip: process.platform !== "linux" || unavailable() !== "", timeout: 60_000 }, async t => {
   const r = await rig(t);
-  const saved = process.env.PATH; process.env.PATH = path.join(r.home, "no-such-bin"); t.after(() => { process.env.PATH = saved; });
   let uncaught = null; const on = e => { uncaught = e; }; process.on("uncaughtException", on); t.after(() => process.off("uncaughtException", on));
-  const res = await selfTest({ platform: "linux", command: process.execPath, home: r.home, vyreHome: path.join(r.home, ".vyre"), sessionSocket: r.own, workdirs: [r.proj], temp: r.temp, agent: r.agent, probes: r.probes });
+  // the launcher starts a program that is not there, as a missing bwrap would be
+  const missing = () => spawn("/no/such/bwrap-for-test", [], { stdio: ["pipe", "pipe", "pipe"] });
+  const res = await selfTest({ platform: "linux", command: process.execPath, home: r.home, vyreHome: path.join(r.home, ".vyre"), sessionSocket: r.own, workdirs: [r.proj], temp: r.temp, agent: r.agent, probes: r.probes, launch: missing });
   await new Promise(r2 => setTimeout(r2, 200));
   assert.equal(uncaught, null, uncaught && String(uncaught.stack));
   assert.equal(res.ok, false);
