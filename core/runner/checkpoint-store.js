@@ -16,7 +16,7 @@
 //   - Capped. At most `sessionBytes` per session in all (files, versions, transcript, records) and `fileBytes` per file: over the cap the
 //     write is refused with code "quota" before anything is written. A full disk is "storage_full", also before anything is left behind.
 //   - Authorized per call, as the session's chain: the chain must be this Space's and `authorize` must allow
-//     sessions.checkpoint.write (put) or sessions.checkpoint.read (get) on vyre://<space>/session/<id>. Anything else is "not_found".
+//     checkpoint.write (put) or checkpoint.read (get) on vyre://<space>/session/<id>. Anything else is "not_found".
 //   - A history cannot fork: lines already inside a committed checkpoint are never replaced; a second machine that resumed from checkpoint
 //     N replaces the uncommitted lines after N, and a machine that still believes in an older turn is refused ("stale").
 
@@ -24,13 +24,14 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 
-export const ACTIONS = { write: "sessions.checkpoint.write", read: "sessions.checkpoint.read" };
+export const ACTIONS = { write: "checkpoint.write", read: "checkpoint.read" };
 export const CAPS = { sessionBytes: 2 * 1024 ** 3, fileBytes: 100 * 1024 ** 2, recordBytes: 64 * 1024 ** 2, rels: 100_000 };
 
 const err = (code, message) => Object.assign(new Error(message), { code });
 const sha = b => crypto.createHash("sha256").update(b).digest("hex");
 const full = e => e && (e.code === "ENOSPC" || e.code === "EDQUOT");
 const SESSION = /^[A-Za-z0-9_-]{1,100}$/;
+const STRIDE = 256, CHUNK = 1 << 20;
 
 /**
  * @param {{ space: string, root: string, authorize: (i: { chain: any, action: string, resource: string }) => Promise<{ effect: string }>, caps?: Partial<typeof CAPS>, fs?: any }} o
@@ -68,18 +69,52 @@ export function createCheckpointStore(o) {
     if (!r || r.effect !== "allow") throw err("not_found", "not found");
   };
 
-  /** Open a session's state from disk (once per process): the complete transcript lines, usage, the committed turn. Sweeps stray temp files. */
+  /** Streams a transcript file's complete lines from a byte offset, 1 MB at a time: cb(entry, startOffset, endOffset); a false answer, a torn line or a bad line ends the scan. Returns where the last good line ended and the file's size. */
+  function scanFile(file, from, cb) {
+    let fd; try { fd = fsx.openSync(file, "r"); } catch { return { end: from, size: 0 }; }
+    try {
+      const size = fsx.fstatSync(fd).size, buf = Buffer.allocUnsafe(CHUNK);
+      let pos = from, carry = Buffer.alloc(0), carryStart = from, good = from;
+      while (pos < size) {
+        const n = fsx.readSync(fd, buf, 0, Math.min(CHUNK, size - pos), pos); if (!n) break;
+        pos += n;
+        const data = carry.length ? Buffer.concat([carry, buf.subarray(0, n)]) : Buffer.from(buf.subarray(0, n));
+        let off = 0, i;
+        while ((i = data.indexOf(10, off)) >= 0) {
+          if (i > off) { let e; try { e = JSON.parse(data.subarray(off, i).toString("utf8")); } catch { return { end: good, size }; } if (cb(e, carryStart + off, carryStart + i + 1) === false) return { end: good, size }; }
+          good = carryStart + i + 1; off = i + 1;
+        }
+        carry = Buffer.from(data.subarray(off)); carryStart += off;
+      }
+      return { end: good, size };
+    } finally { fsx.closeSync(fd); }
+  }
+  /** The lines numbered from..to (inclusive), read from disk from the nearest indexed offset. */
+  function readLines(st, s, from, to = Infinity) {
+    if (from > st.count) return [];
+    const out = [];
+    scanFile(path.join(dirOf(s), "transcript.log"), st.idx[Math.floor((from - 1) / STRIDE)] || 0, e => { if (e.seq > to) return false; if (e.seq >= from) out.push(e); });
+    return out;
+  }
+  /** The byte offset where line `seq` starts. */
+  function offsetOf(st, s, seq) {
+    let at = null;
+    scanFile(path.join(dirOf(s), "transcript.log"), st.idx[Math.floor((seq - 1) / STRIDE)] || 0, (e, start) => { if (e.seq === seq) { at = start; return false; } });
+    return at;
+  }
+
+  /** Open a session's state from disk (once per process): the transcript's line count, a sparse offset index (one entry per STRIDE lines) and its last line, usage, the committed turn. Sweeps stray temp files. */
   function load(s) {
     let st = sess.get(s); if (st) return st;
-    const d = dirOf(s); st = { lines: [], bytes: 0, hashes: new Map(), turn: 0, seq: 0, prev: null };
+    const d = dirOf(s); st = { count: 0, idx: [], last: null, tsize: 0, bytes: 0, hashes: new Map(), turn: 0, seq: 0, prev: null };
     const walk = dir => { let n = 0; for (const e of fsx.readdirSync(dir, { withFileTypes: true })) { const p = path.join(dir, e.name); if (e.isDirectory()) n += walk(p); else if (/\.tmp-\d+-[0-9a-f]+$/.test(e.name)) fsx.rmSync(p, { force: true }); else n += fsx.statSync(p).size; } return n; };
     if (fsx.existsSync(d)) {
       st.bytes = walk(d);
       const t = path.join(d, "transcript.log");
       if (fsx.existsSync(t)) {
-        const text = fsx.readFileSync(t, "utf8"); let good = 0, pos = 0;
-        for (const l of text.split("\n")) { const end = pos + l.length + 1; pos = end; if (!l) continue; if (end > text.length) break; try { const e = JSON.parse(l); if (e.seq !== st.lines.length + 1) break; st.lines.push(e); good = end; } catch { break; } }
-        if (good < text.length) { fsx.truncateSync(t, Buffer.byteLength(text.slice(0, good))); st.bytes -= text.length - good; }   // a torn tail from a crash
+        const r = scanFile(t, 0, (e, start) => { if (e.seq !== st.count + 1) return false; if (st.count % STRIDE === 0) st.idx.push(start); st.count++; st.last = e; });
+        if (r.end < r.size) { fsx.truncateSync(t, r.end); st.bytes -= r.size - r.end; }   // a torn tail from a crash
+        st.tsize = r.end;
       }
       try { st.turn = JSON.parse(fsx.readFileSync(path.join(d, "CURRENT"), "utf8")).turn; const cp = JSON.parse(fsx.readFileSync(path.join(d, "cp", `${st.turn}.json`), "utf8")); st.seq = cp.seq; st.prev = cp.manifest; } catch { st.turn = 0; }
     }
@@ -103,38 +138,41 @@ export function createCheckpointStore(o) {
         const add = [];
         for (const e of [...entries].sort((a, b) => a.seq - b.seq)) {
           if (!Number.isInteger(e?.seq) || e.seq < 1 || typeof e.line !== "string") throw err("bad_input", "a transcript line needs a number and text");
-          const n = st.lines.length + add.length;
+          const n = st.count + add.length;
           if (e.seq <= n) {
-            const mine = e.seq <= st.lines.length ? st.lines[e.seq - 1] : add[e.seq - st.lines.length - 1];
-            if (mine.line === e.line) continue;                       // the same line again: acknowledged, not stored twice
+            const mine = e.seq <= st.count ? (e.seq === st.count ? st.last : readLines(st, s, e.seq, e.seq)[0]) : add[e.seq - st.count - 1];
+            if (mine && mine.line === e.line) continue;                       // the same line again: acknowledged, not stored twice
             if (e.seq <= st.seq) throw err("conflict", "that line is already part of a saved checkpoint");
             // A machine that resumed from the last checkpoint writes over what the dead one added after it.
             if (add.length) throw err("conflict", "lines out of order");
-            const keep = st.lines.slice(0, e.seq - 1);
-            const body = keep.map(x => JSON.stringify(x)).join("\n") + (keep.length ? "\n" : "");
-            const was = fsx.statSync(t).size; put(t, body); st.bytes += Buffer.byteLength(body) - was; st.lines = keep;
+            const cut = offsetOf(st, s, e.seq);
+            if (cut === null) throw err("conflict", "that line cannot be replaced");
+            const fd = fsx.openSync(t, "r+"); try { fsx.ftruncateSync(fd, cut); fsx.fsyncSync(fd); } finally { fsx.closeSync(fd); }
+            st.bytes -= st.tsize - cut; st.tsize = cut; st.count = e.seq - 1; st.idx.length = Math.ceil(st.count / STRIDE);
+            st.last = st.count ? readLines(st, s, st.count, st.count)[0] : null;
             add.push({ seq: e.seq, line: e.line }); continue;
           }
           if (e.seq !== n + 1) throw err("gap", "a transcript line is missing before this one");
           add.push({ seq: e.seq, line: e.line });
         }
-        const fresh = add.filter(e => e.seq > st.lines.length);
+        const fresh = add.filter(e => e.seq > st.count);
         if (fresh.length) {
           const text = fresh.map(e => JSON.stringify(e) + "\n").join(""), len = Buffer.byteLength(text);
           room(st, len);
-          let size = 0; try { size = fsx.statSync(t).size; } catch {}
           let fd = -1;
           try { fd = fsx.openSync(t, "a", 0o600); fsx.writeSync(fd, text); fsx.fsyncSync(fd); fsx.closeSync(fd); fd = -1; }
-          catch (e) { if (fd >= 0) try { fsx.closeSync(fd); } catch {} try { fsx.truncateSync(t, size); } catch {} throw e; }
+          catch (e) { if (fd >= 0) try { fsx.closeSync(fd); } catch {} try { fsx.truncateSync(t, st.tsize); } catch {} throw e; }
           syncDir(dirOf(s));
-          st.lines.push(...fresh); st.bytes += len;
+          let at = st.tsize;
+          for (const e of fresh) { if (st.count % STRIDE === 0) st.idx.push(at); at += Buffer.byteLength(JSON.stringify(e)) + 1; st.count++; }
+          st.last = fresh[fresh.length - 1]; st.tsize = at; st.bytes += len;
         }
-        return { acked: st.lines.length };
+        return { acked: st.count };
       }));
     },
-    async getTranscript(chain, s, from = 1) {
+    async getTranscript(chain, s, from = 1, limit = Infinity) {
       await ok(chain, ACTIONS.read, s);
-      return serial(s, () => load(s).lines.filter(e => e.seq >= from));
+      return serial(s, () => readLines(load(s), s, from, Number.isInteger(limit) && limit > 0 ? from + limit - 1 : Infinity));
     },
     async putFile(chain, s, rel, bytes) {
       await ok(chain, ACTIONS.write, s);
@@ -162,7 +200,8 @@ export function createCheckpointStore(o) {
       return serial(s, () => guard(() => {
         const st = load(s);
         if (cp.turn <= st.turn) throw err("stale", "this session already has a newer checkpoint");
-        if (cp.seq < st.seq || cp.seq > st.lines.length) throw err("incomplete", "the transcript does not reach this checkpoint");
+        if (cp.turn > st.turn + 1) throw err("bad_input", "a checkpoint follows the last one: its turn can be at most one more");
+        if (cp.seq < st.seq || cp.seq > st.count) throw err("incomplete", "the transcript does not reach this checkpoint");
         // Complete before visible: every file version the manifest names is on disk with the hash it names. Entries unchanged since the
         // last checkpoint were checked then.
         for (const [rel, m] of Object.entries(cp.manifest)) {
@@ -193,7 +232,7 @@ export function createCheckpointStore(o) {
     port(chainFn) {
       const c = () => chainFn();
       return {
-        appendTranscript: (s, e) => api.appendTranscript(c(), s, e), getTranscript: (s, f) => api.getTranscript(c(), s, f),
+        appendTranscript: (s, e) => api.appendTranscript(c(), s, e), getTranscript: (s, f, l) => api.getTranscript(c(), s, f, l),
         putFile: (s, rel, b) => api.putFile(c(), s, rel, b), getFile: (s, rel, v) => api.getFile(c(), s, rel, v),
         putCheckpoint: (s, cp) => api.putCheckpoint(c(), s, cp), getCheckpoint: s => api.getCheckpoint(c(), s),
       };

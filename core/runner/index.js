@@ -26,7 +26,11 @@ const person = async (ctx, meta, what) => {
     try { chain = await ctx.kernel.chain(meta || {}); } catch { chain = null; }
     const hops = chain && Array.isArray(chain.hops) ? chain.hops : [];
     if (!hops.length || chain.viewer === true || hops.some(h => !h || !h.actor || h.actor.kind !== "person")) throw denied(c, what);
-    return String(hops[0].actor.id);
+    // The computer belongs to the home's owner: another member's person chain reaching this runner is not them (reviewer-2 RN-2). No known owner is a refusal.
+    let owner = null; try { owner = typeof ctx.kernel.owner === "function" ? await ctx.kernel.owner() : ctx.kernel.owner; } catch { owner = null; }
+    const id = String(hops[0].actor.id);
+    if (!owner || String(owner) !== id) throw denied(c, what);
+    return id;
   }
   if ((meta && (meta.agent || meta.assistant)) || AGENT.test(c) || /^(module|hook|anonymous|onboard|mcp|harness)\b/.test(c) || c.startsWith("tailnet:guest")) throw denied(c, what);
   return null;
@@ -97,7 +101,7 @@ export default {
     });
 
     // A session on this person's own server is sealed at every turn into the same checkpoint store (ownserver.js). The sessions side says which
-    // transcript a finished turn belongs to: ports.ownServer.resolve(event) -> { space, session, file, turn, state } | null, and .port(space) is the store's port.
+    // transcript a finished turn belongs to: ports.ownServer.resolve(event) -> { space, session, file, root, state } | null, and .port(space) is the store's port.
     const seals = new Map();
     const offTurns = ports()?.ownServer ? ctx.events.on("thread.finished", async e => {
       const o = ports()?.ownServer; let r = null;
@@ -105,8 +109,8 @@ export default {
       if (!r) return;
       const key = `${r.space}/${r.session}`;
       let seal = seals.get(key);
-      if (!seal) { seal = createTurnSeal({ port: o.port(r.space), session: r.session, file: r.file }); seals.set(key, seal); }
-      try { const done = await seal.seal({ turn: r.turn, state: r.state }); emit(r.space, { type: "sealed", session: r.session, ...done }); }
+      if (!seal) { seal = createTurnSeal({ port: o.port(r.space), session: r.session, file: r.file, root: r.root }); seals.set(key, seal); }
+      try { const done = await seal.seal({ state: r.state }); emit(r.space, { type: "sealed", session: r.session, ...done }); }
       catch (err) { seals.delete(key); emit(r.space, { type: "seal-failed", session: r.session, code: err.code || "error", message: String(err.message || err).slice(0, 200) }); }
     }) : null;
 
