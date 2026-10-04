@@ -129,3 +129,18 @@ test("a total is computed inside Twenty in one request, and the answer is the sa
   const tags = await b.store.aggregate("contact", { group_by: ["tags"], measures: [{ fn: "count" }] }).catch((e) => e.code);
   assert.ok(fake.requests.slice(n).every((r) => !r.op.startsWith("Agg_")), `a list field is not grouped natively (${JSON.stringify(tags).slice(0, 60)})`);
 });
+
+test("a search asked again for the same words, a page later, does not scan again; a write drops what was kept", async () => {
+  const b = await boot(); await b.store.define({ add_types: [CONTACT] });
+  for (const n of ["Harlow Jane", "Harlow Bob", "Northwind Cy"]) await b.store.create("contact", mintUuid(), { name: n });
+  const first = await b.store.search({ text: "harlow", page: { limit: 1 } });
+  assert.equal(first.rows.length, 1);
+  const n = fake.requests.length;
+  const second = await b.store.search({ text: "harlow", page: { limit: 1, cursor: first.next_cursor } });
+  assert.equal(second.rows.length, 1);
+  assert.equal(fake.requests.slice(n).filter((r) => r.op.startsWith("Q_")).length, 0, "the next page came from what was kept");
+  await b.store.create("contact", mintUuid(), { name: "Harlow Al" });
+  const m = fake.requests.length;
+  assert.equal((await b.store.search({ text: "harlow", page: { limit: 10 } })).rows.length, 3);
+  assert.ok(fake.requests.slice(m).some((r) => r.op.startsWith("Q_")), "a write dropped it");
+});
