@@ -37,11 +37,11 @@ test("the assistant's session starts and submits a task: ready, working, needs_c
   assert.ok(!made.error, JSON.stringify(made));
   const name = "assistant";
   const ask = async (/** @type {string} */ text) => d.registry.call("agents.ask", { agent: name, text, wait: false, surface: "deck" }, "cli");
-  const first = await ask(`vyre tasks.move ${JSON.stringify({ id: task.id, to: "working" })}`);
+  const first = await ask(`vyre-sock tasks.move ${JSON.stringify({ id: task.id, to: "working" })}`);
   assert.ok(!first.error, JSON.stringify(first));
   const row = async () => d.kernel.gateway.ask.get(person, task.id);
   await until(async () => (await row()).state === "working", `the assistant starts the task (${await (async () => { const l = (await d.registry.call("agents.list", {}, "cli")).data.find((/** @type {any} */ x) => x.name === name); const ev = l && l.thread ? (await d.registry.call("threads.get", { thread: l.thread, limit: 100 }, "cli")).data.events : []; return JSON.stringify(ev.filter((/** @type {any} */ e) => e.type === "thread.text" && e.payload.text).map((/** @type {any} */ e) => e.payload.text)); })()})`);
-  const second = await ask(`vyre tasks.submit ${JSON.stringify({ id: task.id, evidence: { answer: "yes", reason: "drafted" } })}`);
+  const second = await ask(`vyre-sock tasks.submit ${JSON.stringify({ id: task.id, evidence: { answer: "yes", reason: "drafted" } })}`);
   assert.ok(!second.error, JSON.stringify(second));
   await until(async () => (await row()).state === "needs_check", "the assistant submits it");
 });
