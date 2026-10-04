@@ -16,6 +16,7 @@
 // Glass's action log has something to show. No event, tool result or log line ever carries the
 // CDP endpoint's helper token or a page's full text: `summary` is a short, human sentence.
 
+import { agentClaim } from "../../core/modules/index.js";
 import { CdpPool } from "./cdp.js";
 import { EXPRESSION, toSnapshot } from "./snapshot.js";
 import * as act from "./act.js";
@@ -30,12 +31,20 @@ const SELECTOR = obj({
   role: str, identifier: str, name: str, container: str,
 }, []);
 
-/** Which agent's computer a call means, the same rule as core/computers/index.js. */
+/** The person's own surfaces and modules, plus an agent's own hands (a model session): each tool below resolves which computer it means and refuses a model that names none of its own. */
+const CALLERS = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"];
+
+/**
+ * Which agent's computer a call means, the same rule as core/computers/index.js. `agentClaim`
+ * finds the agent behind any transport shape ("mcp:agent:kit", "harness:agent:kit", "cli:agent:kit"),
+ * so none of them reads as unnamed and may name another agent's browser (group D audit, HD-5).
+ * A model session that names no agent (a bare "mcp", "mcp:thread:<id>", the harness) has no
+ * computer of its own, so it may not name one either.
+ */
 async function resolveAgent(input, caller, call) {
-  const m = /^mcp:agent:(.+)$/.exec(String(caller || ""));
+  const self = agentClaim(String(caller || ""));
   let agent;
-  if (m) {
-    const self = m[1];
+  if (self) {
     if (!input.agent || input.agent === self) agent = self;
     else {
       const r = await call("agents.list", {});
@@ -44,6 +53,7 @@ async function resolveAgent(input, caller, call) {
       else throw new Error(`${self} can only use its own computer, not ${input.agent}'s`);
     }
   } else {
+    if (/^(mcp|harness)\b/.test(String(caller || ""))) throw Object.assign(new Error("a model session may only act on its own agent's computer; it names no agent"), { code: "denied" });
     if (!input.agent) throw new Error("say which agent's computer: agent is required");
     agent = input.agent;
   }
@@ -136,7 +146,8 @@ export default {
       if (!r.data.ok) throw new Error(r.data.why);
     };
 
-    const tool = (name, description, input, run) => ctx.tool(name, { description, input, run });
+    /** screenshot and snapshot only look; the rest drive the page. */
+    const tool = (name, description, input, run) => ctx.tool(name, { description, input, run, callers: CALLERS, effect: /^chrome\.(snapshot|screenshot)$/.test(name) ? "read" : "write" });
 
     tool("chrome.snapshot", "Every actionable control on the agent's current page: role, name, whether it is enabled, and where it sits. No page text beyond a length.",
       obj({ agent: str }), async (i, meta) => {
