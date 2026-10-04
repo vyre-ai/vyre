@@ -27,6 +27,7 @@ const WORDS = Object.freeze({
 
 /** @param {any} e */
 export function plainKernelError(e) {
+  if (process.env.DBG_PKE) console.error("PKE", e && e.code, e && e.message);
   if (e && e.own === true) return e;
   const known = e && /** @type {Record<string, string[]>} */ (WORDS)[e.code];
   const out = /** @type {Error & { code?: string }} */ (new Error(known ? (e.code === "not_allowed" && e.message ? e.message : known[1]) : "The space's kernel could not do that."));
