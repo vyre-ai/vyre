@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Linking, View } from "react-native";
 import { Button, Card, Chip, Field, Text, showToast } from "@vyre/ui";
 import { tool } from "../../src/real/box";
-import { aiRefusal, claudeState, codeInput, keyInput, safeLink, startInput } from "../../src/real/ai-connect.js";
+import { aiRefusal, claudeOf, claudeState, codeInput, keyInput, safeLink, startInput } from "../../src/real/ai-connect.js";
 
 // tool() answers a presence ask the way this build does (the phone's biometric; a browser says to do it on the phone), so onboard.claude, which needs the person's presence, works from here.
 const ask = (name: string, input: Record<string, unknown> = {}) => tool<any>(name, input);
@@ -18,7 +18,7 @@ export function ConnectClaude({ onConnected }: { onConnected?: () => void }) {
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState("");
   const [loaded, setLoaded] = useState(false);
-  const load = useCallback(() => { ask("onboard.status").then((s) => { setClaude(s?.claude ?? null); setLoaded(true); }).catch((e) => { setFailed(aiRefusal((e as { code?: string }).code, (e as Error).message)); setLoaded(true); }); }, []);
+  const load = useCallback(() => { ask("onboard.status").then((s) => { setClaude(claudeOf(s)); setLoaded(true); }).catch((e) => { setFailed(aiRefusal((e as { code?: string }).code, (e as Error).message)); setLoaded(true); }); }, []);
   useEffect(load, [load]);
   const st = claudeState(claude, { waiting: !!link, failed });
   useEffect(() => { if (st.state === "connected") onConnected?.(); }, [st.state]);

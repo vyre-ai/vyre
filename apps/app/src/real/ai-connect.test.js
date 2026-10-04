@@ -2,7 +2,7 @@
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { NO_ACCOUNT_SAY, aiRefusal, claudeState, codeInput, keyInput, safeLink, startInput } from "./ai-connect.js";
+import { NO_ACCOUNT_SAY, aiRefusal, claudeOf, claudeState, codeInput, keyInput, safeLink, startInput } from "./ai-connect.js";
 
 test("each honest state: not connected, blocked with the reason, waiting, connected, failed with the reason", () => {
   assert.deepEqual(claudeState({ state: "todo", signedIn: false }), { state: "not_connected", line: "Not connected. Your assistant has no AI account yet." });
@@ -26,4 +26,12 @@ test("only an https sign-in link is offered, refusals are plain, and the assista
   assert.match(aiRefusal("not_allowed", ""), /Only the owner/);
   assert.equal(aiRefusal("x", "the box said"), "the box said");
   assert.match(NO_ACCOUNT_SAY, /no AI account yet.*Settings/);
+});
+
+test("Claude's state is read from data.detail.claude, with the earlier shape as a fallback, and pair_first says to pair first", () => {
+  const detail = { state: "done", signedIn: true, via: "api-key" };
+  assert.deepEqual(claudeOf({ steps: { claude: "done" }, detail: { claude: detail }, accountName: "x" }), detail);
+  assert.deepEqual(claudeOf({ claude: detail }), detail);
+  assert.equal(claudeOf(null), null);
+  assert.match(aiRefusal("pair_first", "x"), /Pair this server/);
 });
