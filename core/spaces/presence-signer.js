@@ -41,3 +41,15 @@ export function softwareProof(file, person, ch, now = Date.now) {
   const body = { signer: key.signer, key_id: key.key_id, payload_hash: ch.payload_hash, decision: ch.op, chain_hash: proofChainHash(ch.space, person), issued_at: issued, expires_at: issued + PROOF_LIFE_MS, nonce: crypto.randomBytes(8).toString("base64url"), home: ch.home, challenge: ch.nonce };
   return { ...body, signature: key.sign(proofBytes(body)) };
 }
+
+/**
+ * A PresenceProof for the person's own act on a space (accepting an invite): over the request the kernel built (`op`, `payload_hash`, the space), with no home or challenge, because no home asked for it.
+ * @param {string} file @param {string} person @param {{ op?: string, payload_hash?: string, space?: string }} req
+ */
+export function softwareActProof(file, person, req) {
+  if (!req || typeof req.op !== "string" || typeof req.payload_hash !== "string" || typeof req.space !== "string") return null;
+  const key = softwareKey(file);
+  const issued = Date.now();
+  const body = { signer: key.signer, key_id: key.key_id, payload_hash: req.payload_hash, decision: req.op, chain_hash: proofChainHash(req.space, person), issued_at: issued, expires_at: issued + PROOF_LIFE_MS, nonce: crypto.randomBytes(8).toString("base64url") };
+  return { ...body, signature: key.sign(proofBytes(body)) };
+}

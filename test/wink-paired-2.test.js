@@ -643,6 +643,37 @@ test("add this device from another device, real daemon: a box-less device redeem
   const list = after.entries || after;
   assert.ok(list.some(e => e.kind === "device" && e.label === "Kit's phone"), JSON.stringify(list));
 });
+test("add this device by a typed code, real daemon: a box-less device types the WINK code, the person types its ack back on the computer, and the identity's list takes the device's key with no words to pick", async t => {
+  const { addThisDevice } = await import("../relay/client/phonepair.js");
+  await standinIdentity(t);
+  spacesHooks.stretch = { memoryKiB: 64, passes: 1 };
+  t.after(() => { spacesHooks.stretch = null; });
+  const savedTyped = process.env.VYRE_WINK_TYPED_CODE;
+  delete process.env.VYRE_WINK_TYPED_CODE; // the release default: the typed code is on
+  t.after(() => { if (savedTyped !== undefined) process.env.VYRE_WINK_TYPED_CODE = savedTyped; });
+  const w = await world(t);
+  assert.match(String((await w.call("spaces.identity.create", { name: "kit", password: "four plain words here", deviceLabel: "Kit's laptop" })).data?.id), /^per_/);
+  const open = (await w.call("wink.phone.open", {})).data;
+  assert.match(open.code, /^WINK-[0-9A-Z]{4}-[0-9A-Z]{4}$/);
+  const key = crypto.generateKeyPairSync("ed25519");
+  const publicKey = key.publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("base64url");
+  /** @type {string} */ let ack = "";
+  const joining = addThisDevice({ code: open.code.toLowerCase(), relay: w.status.url, key: { publicKey, label: "Kit's phone" }, name: "Kit's phone", crypto: nodeCrypto(), keyStore: keystore(t), pollMs: 50, onAck: a => { ack = a; } });
+  joining.catch(() => {});
+  await until(async () => ack);
+  assert.match(ack, /^WINK-[0-9A-Z]{4}-[0-9A-Z]{4}$/, "the phone shows a code to type back");
+  assert.equal((await w.call("wink.phone.pairing")).data.asking, false, "nothing is asked before the ack");
+  await until(() => w.events.find(e => e[0] === "wink.found"));
+  assert.equal((await w.call("wink.code.ack", { offer: open.code_offer, typed: ack })).data.ok, true);
+  const done = await joining;
+  assert.equal(done.paired, true);
+  assert.equal(done.enrolled, true, JSON.stringify(done));
+  assert.match(String(done.identity?.id), /^per_/, "the answer names the identity the device joined, for reading its list");
+  const after = (await w.call("spaces.identity.entries")).data;
+  assert.ok((after.entries || after).some(e => e.kind === "device" && e.label === "Kit's phone"), JSON.stringify(after));
+  // a wrong code does not pair anything
+  await assert.rejects(() => addThisDevice({ code: "WINK-ZZZZ-ZZZZ", relay: w.status.url, key: { publicKey }, name: "x", crypto: nodeCrypto(), keyStore: keystore(t), timeoutMs: 800, pollMs: 50 }), e => ["taken", "unreachable", "bad_code"].includes(e.code));
+});
 
 test("add this device from another device: a no, a wrong pick, a used code and a server's code each add nothing", async t => {
   const { addThisDevice } = await import("../relay/client/phonepair.js");
@@ -997,6 +1028,54 @@ test("join end to end: a second identity's device previews and accepts an invite
   const hosted2 = f.w.d.kernel.spaces.hosted(made.space);
   assert.equal((await hosted2.gateway.grants.invites.get(ownerChain, fresh.id)).status, "pending", "no refusal touched the invite");
   assert.ok(f.w.logs.filter(l => /invitee .* refused \((bad_proof|unknown_identity|stale)\)/.test(l)).length >= 3, "the server logged why each hello was refused");
+});
+
+test("an invitee on a development build joins in one accept: its own software key signs the accept and is enrolled on the server by the accept itself", { timeout: 180_000 }, async t => {
+  const { claimServerSpace } = await import("../apps/app/src/identity/claim-space.js");
+  const { startSealer } = await import("../kernel/seal/client.js");
+  const { signer: sealSigner, enrolDevice, tmp } = await import("../kernel/seal/testing.js");
+  const { proofRequest } = await import("../kernel/remote/proof.js");
+  const ident = await standinIdentity(t);
+  // the names directory and the module's clock run on real time here: the door checks a hello's time against the daemon's own clock
+  Object.defineProperty(ident.clock, "t", { get: () => Date.now(), set() {}, configurable: true });
+  // the server's kernel runs on a sealing process that takes one unattested software key (the owner's presence key for this test, enrolled the way the kernel suite does it)
+  const sealDir = tmp("join-e2e-seal");
+  const sealer = startSealer({ dir: sealDir, timeoutMs: 8000, dev: true, unattested: true, software: true });
+  t.after(async () => { await sealer.close().catch(() => {}); fs.rmSync(sealDir, { recursive: true, force: true }); });
+  const ownerSigner = sealSigner(ident.id);
+  await enrolDevice(sealer, ownerSigner);
+  const f = await pairFreshServer(t, { ident, kernelSealer: sealer });
+  const links = linksFor(t, f);
+  await links.startPaired("srv");
+  const session = links.sessionFor("srv");
+  const st = f.ident.store;
+  const identity = { id: f.ident.id, name: "alex", eid: st.status().eid, ops: st.ops(), key: { sign: async m => new Uint8Array(await st.sign(Buffer.from(m))) } };
+  const ROUTE = { relay: f.w.status.url, route: f.done.route, box: f.done.box };
+  const made = await claimServerSpace({ identity, name: "harlow", displayName: "Harlow Legal", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (spacesHooks.fetch), now: () => f.ident.clock.t, route: ROUTE,
+    host: a => session.call("spaces.host-here", { ...a, proof: { key: "k1" } }) });
+  assert.ok(f.w.d.kernel.spaces.hosts(made.space));
+  // kit: a second real daemon with its own identity, in the same names directory (the module's fetch is the shared fake)
+  spacesHooks.stretch = { memoryKiB: 64, passes: 1 };
+  t.after(() => { spacesHooks.stretch = null; });
+  const k = await world(t, { kernel: true });
+  const kit = (await k.call("spaces.identity.create", { name: "kit", password: "four plain words here", deviceLabel: "Kit's laptop" })).data;
+  assert.match(String(kit && kit.id), /^per_/);
+  // alex's side: the invite is the hosted kernel's, made as the owner (the owner's own device and presence are the walk's step; the door is what is under test here)
+  const hosted = f.w.d.kernel.spaces.hosted(made.space);
+  const ownerChain = hosted.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-walk", person: f.owner.id, path: "direct" });
+  const rkFp = crypto.createHash("sha256").update(`vyre-space-fingerprint-v1\n${made.pin.id}\n${made.rootPublic}`).digest("hex").slice(0, 32);
+  const linkFor = async (to, extra = {}) => {
+    const inv = await (async () => { const body = { role: "member", invitee: to, ...extra }; const req = proofRequest(made.space, "inviteCreate", body); return hosted.gateway.grants.invites.create(ownerChain, body, { presence: ownerSigner.proof(ownerChain, req.op, req.fields) }); })();
+    return { id: inv.id, link: `https://harlow.vyre.run/join/${inv.id}.${Buffer.from(JSON.stringify({ chain: made.pin, rk: rkFp })).toString("base64url")}` };
+  };
+  const mine = await linkFor(kit.id);
+  const softSaved = process.env.VYRE_SEAL_SOFTWARE;
+  process.env.VYRE_SEAL_SOFTWARE = "1";
+  t.after(() => { if (softSaved === undefined) delete process.env.VYRE_SEAL_SOFTWARE; else process.env.VYRE_SEAL_SOFTWARE = softSaved; });
+  const joined = await k.call("spaces.invites.accept", { link: mine.link });
+  assert.ok(!joined.error && joined.data.joined === true, JSON.stringify(joined.error || joined.data).slice(0, 400));
+  const member = await hosted.gateway.grants.members.get(ownerChain, kit.id);
+  assert.deepEqual([member.person, member.role], [kit.id, "member"]);
 });
 
 test("one permission rule: a paired device is you: an admin act passes with no session, before and after its sessions end; a vault reveal without a yes is refused", async t => {

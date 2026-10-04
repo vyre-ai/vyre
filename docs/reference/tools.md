@@ -11542,7 +11542,7 @@ The card for an offer or a grant: four lines and two buttons, in the words of te
 
 ### `wink.code.ack`
 
-Development only (the typed code is switched off in a release build; a phone, a computer and a server are added by scan or paste and three words, never this). Type back the code the new device is showing. One try per code: the right one adds the device and uses the code up, a wrong one closes the code and a new one is showing. Answers { ok }.
+Type back the code the new device is showing. One try per code: the right one adds the device and uses the code up, a wrong one closes the code and a new one is showing. Answers { ok }.
 
 - Input:
   - `offer` string, required

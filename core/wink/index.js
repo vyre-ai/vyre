@@ -198,7 +198,7 @@ export function createWink(inject = {}) {
       return { offer: codeOffer, code: made.code, expires: made.expires };
     };
     /** The person typed back the code the other device shows. @param {string} offerId @param {string} typed */
-    const ackOffer = async (offerId, typed) => {
+    const ackOffer = async (offerId, typed, presence = null) => {
       sweep();
       const o = readOffer(String(offerId));
       if (!o || o.via !== "code" || o.state !== "found" || !o.pick || !code) throw fail("not_found", "no device is waiting to be added with that offer");
@@ -207,11 +207,13 @@ export function createWink(inject = {}) {
       // Both ends hold the same key: the ticket's seed is derived from it, so the relay never sees it and nothing else is carried.
       const seed = Buffer.from(seedFromKey(r.key)).toString("base64url");
       const carry = carried.get(o.id);
-      const t = /** @type {any} */ (await ctx.call("relay.ticket.mint", { seed, ...(carry ? { offer: carry } : {}) }));
+      // A phone (W1) is gated like the QR's: the redemption is a waiting pairing, and the code's own confirmation is its yes (pairing.phone.codeSeed). Computers, servers and invitations are as before.
+      const phoneFlow = o.flow === "W1" && !carry;
+      const t = /** @type {any} */ (await ctx.call("relay.ticket.mint", { seed, ...(carry ? { offer: carry } : {}), ...(phoneFlow ? { gate: "phone" } : {}) }));
       if (!t || t.error) { writeOffer(o.id, "closed", { why: "relay" }); throw fail("unavailable", relayWords(t && t.error)); }
       carried.delete(o.id);
       writeOffer(o.id, "joining", { pick: null });
-      if (!carry && pairing.phone && pairing.phone.codeUsed) pairing.phone.codeUsed();
+      if (phoneFlow) pairing.phone.codeSeed(seed, presence);
       ctx.events.emit("wink.confirmed", { offer: o.id });
       return { ok: true };
     };
@@ -257,10 +259,10 @@ export function createWink(inject = {}) {
     });
 
     ctx.tool("wink.code.ack", {
-      description: "Development only (the typed code is switched off in a release build; a phone, a computer and a server are added by scan or paste and three words, never this). Type back the code the new device is showing. One try per code: the right one adds the device and uses the code up, a wrong one closes the code and a new one is showing. Answers { ok }.",
+      description: "Type back the code the new device is showing. One try per code: the right one adds the device and uses the code up, a wrong one closes the code and a new one is showing. Answers { ok }.",
       input: obj({ offer: str, typed: str }, ["offer", "typed"]),
       presence: { summary: async () => "Add this device to your server" },
-      run: async (input, meta = {}) => { owner(meta, "adding a device"); if (!typedCodeOn()) throw fail("typed_code_off", words("typedCodeOff")); return ackOffer(input.offer, input.typed); },
+      run: async (input, meta = {}) => { owner(meta, "adding a device"); if (!typedCodeOn()) throw fail("typed_code_off", words("typedCodeOff")); return ackOffer(input.offer, input.typed, meta.presence || null); },
     });
 
     ctx.tool("wink.cancel", {
