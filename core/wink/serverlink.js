@@ -15,7 +15,7 @@ const err = (/** @type {string} */ code, /** @type {string} */ message) => Objec
 
 /**
  * @param {{ channelOf: (sid: string) => { relay: string, route: string, box: string } | null, connect: (o: any) => any, options?: any, name?: string,
- *   sign?: (message: string) => Promise<string> | string, presenceSigner?: (challenge: any) => Promise<{ presence: any }> | { presence: any }, proveTool?: (tool: string, input: any) => any, log?: (m: string) => void, openMs?: number }} o
+ *   sign?: (message: string) => Promise<string> | string, presenceSigner?: (challenge: any) => Promise<{ presence: any }> | { presence: any }, proveTool?: (tool: string, input: any) => any, autoPresence?: boolean, log?: (m: string) => void, openMs?: number }} o
  *   channelOf: where the paired server is (relay, route and box, as pairing stored them); connect: the relay client's `connect`; options: its crypto and key store.
  */
 export function createServerLinks(o) {
@@ -51,6 +51,8 @@ export function createServerLinks(o) {
     try { return await l.opening; } finally { l.opening = null; }
   };
 
+  /** @type {Map<string, number[]>} */ const stamps = new Map();
+  const signIns = (/** @type {string} */ sid) => { const now = Date.now(); const a = (stamps.get(sid) || []).filter(t => now - t < 60_000); if (a.length >= 3) { stamps.set(sid, a); return false; } a.push(now); stamps.set(sid, a); return true; };
   /**
    * A call the server answers `presence_required` is signed by THIS device's own presence key over the tool and its input and sent once more with the proof in `input.proof`: the same proof shape a local
    * act carries, made here and checked by the home. The server never signs for the person, and a device with no key of its own just gets the refusal.
@@ -59,7 +61,8 @@ export function createServerLinks(o) {
   async function callWithPresence(session, tool, input, opt) {
     try { return await session.call(tool, input, opt); }
     catch (e) {
-      if (!(e && e.code === "presence_required") || typeof o.proveTool !== "function" || (input && input.proof !== undefined)) throw e;
+      // PW-1: a key that needs no person never signs a presence challenge on its own: the automatic signer exists only on a development build behind the dev switch (it is the software signer)
+      if (!(e && e.code === "presence_required") || o.autoPresence !== true || typeof o.proveTool !== "function" || (input && input.proof !== undefined)) throw e;
       const { proof: _p, ...bare } = input && typeof input === "object" ? input : {};
       return session.call(tool, { ...bare, proof: o.proveTool(tool, bare) }, opt);
     }
@@ -73,7 +76,8 @@ export function createServerLinks(o) {
       async call(tool, input = {}, opt = {}) {
         let session = await openPeer(sid);
         // A call that needs the person and finds no live paired session (never started, or lapsed) signs this device in once and goes again: nobody signs in by hand. A refused grant answers the server's own reason.
-        const needsPerson = (/** @type {any} */ e) => e && (e.code === "person_session_required" || /sign in|person's own action|signed-in person/i.test(String(e.message || "")));
+        // PW-5: a sign-in is triggered by the error CODE, never by matching a server's text, and at most 3 times a minute per server
+        const needsPerson = (/** @type {any} */ e) => e && e.code === "person_session_required" && signIns(sid);
         try {
           try { return await callWithPresence(session, tool, input, opt); }
           catch (e) {

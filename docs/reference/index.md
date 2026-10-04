@@ -2401,7 +2401,7 @@ generated: scripts/gen-docs-reference
 - `VYRE_SCREEN_BIN` environment variable, [explained](config.md#environment-variables). No mentions.
 - `VYRE_SEAL_DEV` environment variable, not explained on any page yet. No mentions.
 - `VYRE_SEAL_PROFILE` environment variable, not explained on any page yet. No mentions.
-- `VYRE_SEAL_SOFTWARE` environment variable, not explained on any page yet. No mentions.
+- `VYRE_SEAL_SOFTWARE` environment variable, [explained](config.md#environment-variables). No mentions.
 - `VYRE_SEAL_UNATTESTED` environment variable, not explained on any page yet. No mentions.
 - `VYRE_SERVER_DIR` environment variable, not explained on any page yet. No mentions.
 - `VYRE_SESSION_SANDBOX_OFF` environment variable, [explained](config.md#environment-variables). No mentions.
