@@ -391,6 +391,7 @@ test("spaces.devices.enrolled is fail-closed: an unknown space is enrolled only 
   assert.equal(await enrolled("devicexxxxxxxxxx2", tmpShared.space), false, "a space made after the device's first contact is not on its list");
   assert.equal(await enrolled("devicexxxxxxxxxx6", tmpShared.space), true, "a device meeting the box while the temp access stands");
   await new Promise(r => setTimeout(r, 3200));
+  assert.equal(tmpShared.kernel.grants.roleOf({ kind: "person", id: me2, space: tmpShared.space }), null, "the kernel itself says the temp access has ended");
   assert.equal(await enrolled("devicexxxxxxxxxx7", tmpShared.space), false, "the temp access has ended: a device meeting the box now is not enrolled in it");
   await shared.gateway.grants.removeMember(them, { person: me2 }, { presence: { method: "stand-in" } });
   assert.equal(await enrolled(dev2, shared.space), false, "removed: the kernel says so at call time");
