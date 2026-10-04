@@ -150,7 +150,11 @@ test("a turn asked by carol is stamped with carol's session, and chat and asker 
   const other = await w.C.create(w.chains.bob, { people: [], assistants: ["assistant"] });
   const carol = await b.watch("carol", chat.id);
   // carol also names another chat and another asker in her own call: the stream takes them from the group and the caller's chain, never from the input
-  const sent = await b.as("carol")("stream.send", { session: chat.id, text: "hello from carol", to: ["assistant:assistant"], cwd: w.work, chat: other.id, asker: BOB });
+  // (the input schema now refuses a key the tool does not take, so the spoof is refused outright and nothing is sent or asked)
+  const spoof = await b.as("carol")("stream.send", { session: chat.id, text: "hello from carol", to: ["assistant:assistant"], cwd: w.work, chat: other.id, asker: BOB });
+  assert.equal(spoof.error && spoof.error.code, "bad_input", "chat and asker are not inputs of stream.send");
+  assert.equal(w.asked.length, 0, "nothing was asked of the Switchboard for the spoof");
+  const sent = await b.as("carol")("stream.send", { session: chat.id, text: "hello from carol", to: ["assistant:assistant"], cwd: w.work });
   assert.ok(!sent.error, sent.error && `${sent.error.code} ${sent.error.message}`);
   await until(() => carol.frames.some(f => f.type === "session.text-done"), "the reply", 20_000);
   assert.match(textOf(carol.frames), /hello from carol/);
@@ -224,7 +228,7 @@ test("a restart where the person can no longer be reopened: the turn is given up
   assert.match(String(bob.frames.find(f => f.type === "session.status" && f.data.state === "failed").data.note), /couldn't resume, ask again/);
   assert.equal(w.kept.has(kit), false, "the given-up turn is forgotten");
   // the thread answers anyway (a message sent to the Switchboard past the rig's session-opening wrapper, as a send the stream no longer tracks): its reply has no session to open under
-  const late = await b2.realCall("threads.send", { thread: kit, text: "NEVERSHOWN", surface: "deck", uuid: "late-1" }, "module:stream");
+  const late = await b2.realCall("threads.send", { thread: kit, text: "NEVERSHOWN", surface: "deck", uuid: "late-1" }, "module:stream", { origin: "deck" }); // a module acts for a person: the hop carries the class the call came from
   assert.ok(!late.error, late.error && late.error.message);
   await until(async () => (await b2.reg.call("threads.get", { thread: kit, limit: 500 }, "cli")).data.events.some((/** @type {any} */ e) => e.type === "thread.text" && e.payload && e.payload.done && /NEVERSHOWN/.test(String(e.payload.text))), "the late reply from the Switchboard", 20_000);
   await sleep(200);
@@ -244,8 +248,8 @@ test("V1: an admin speaks mid-turn: the member's turn keeps the member's session
   const b = await world0(w, t);
   const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
   const watcher = await b.watch("bob", chat.id);
-  // carol asks (she also writes `as` and `asker` naming bob: the author is the chain the call was made under, never the input)
-  const first = await b.as("carol")("stream.send", { session: chat.id, text: LONG, to: ["assistant:assistant"], cwd: w.work, as: `person:${BOB}`, asker: BOB });
+  // carol asks (she also writes `as` naming bob (`asker` is not an input any more): the author is the chain the call was made under, never the input)
+  const first = await b.as("carol")("stream.send", { session: chat.id, text: LONG, to: ["assistant:assistant"], cwd: w.work, as: `person:${BOB}` });
   assert.ok(!first.error, first.error && first.error.message);
   await until(() => textOf(watcher.frames).includes("SECRET"), "carol's turn to be running");
   const [sid] = b.ks.list();
@@ -326,7 +330,7 @@ test("V3b: a bare name or an actor string as the asker is refused by the Switchb
   const b = await world0(w, t);
   const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
   for (const asker of ["bob", `person:${BOB}`, "", "Per_Bob"]) {
-    const r = await b.reg.call("threads.start", { cwd: w.work, prompt: "x", surface: "deck", chat: chat.id, asker }, "module:stream");
+    const r = await b.reg.call("threads.start", { cwd: w.work, prompt: "x", surface: "deck", chat: chat.id, asker }, "module:stream", { origin: "deck" });
     assert.equal(r.error && r.error.code, "bad_input", `asker ${JSON.stringify(asker)}: ${JSON.stringify(r)}`);
   }
   assert.equal(w.asked.length, 0, "no session was opened for any of them");
