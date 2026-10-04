@@ -10,6 +10,7 @@
 // Where IndexedDB is refused (a private window), both live in memory for the page: the person
 // signs in again on the next load, and nothing weaker is written anywhere.
 
+import { noteStorageRefused } from "./notice.js";
 import { memorySlot, newKey, personSession, pkce, type PersonSession, type Slot } from "./person.ts";
 
 const DB = "vyre-person";
@@ -48,14 +49,15 @@ function idbSlot<T>(key: string): Slot<T> {
   const mem = memorySlot<T>();
   const run = async <R>(mode: IDBTransactionMode, f: (s: IDBObjectStore) => IDBRequest): Promise<R | undefined> => {
     const d = await db();
-    if (!d) return undefined;
+    if (!d) { noteStorageRefused(); return undefined; }
     return new Promise((resolve) => {
       try {
         const tx = d.transaction(STORE, mode);
         const r = f(tx.objectStore(STORE));
         tx.oncomplete = () => resolve(r.result as R);
-        tx.onerror = tx.onabort = () => resolve(undefined);
+        tx.onerror = tx.onabort = () => { noteStorageRefused(); resolve(undefined); };
       } catch {
+        noteStorageRefused();
         resolve(undefined);
       }
     });

@@ -233,7 +233,7 @@ await step("settings: notifications, switch a kind and back", {}, async () => {
   if (await sw.count()) { await sw.click(); await settle(); await sw.click(); await settle(); }
 });
 await step("settings: assistants", {}, async () => { await go("u/settings/assistants"); });
-await step("settings: AI accounts", {}, async () => { await go("u/settings/ai"); });
+await step("settings: AI accounts, the Claude card shows an honest state", { expect: [/Claude/] }, async () => { await go("u/settings/ai"); });
 await step("settings: account and recovery", { expect: [/ways in/i] }, async () => { await go("u/settings/account"); });
 await step("settings: account, make a new recovery code", { skip: "not walkable on a headless box: the recovery code replace needs a real person presence (lead ruling 4 Oct)", expect: [/I wrote it down/] }, async () => {
   await go("u/settings/account");
@@ -332,8 +332,13 @@ await step("setup: create a space on this computer, close partway, resume", { sk
   const members = (await text()).replace(/\s+/g, " ").slice(0, 200);
   // Members has only Continue when nobody is waiting, else Later; Connectors has Later; Kit has Start empty (or Finish setup).
   const clickAny = async (labels) => { for (const l of labels) { const b = page.getByText(l, { exact: true }).first(); if (await b.count()) { await b.click(); await settle(1500); return l; } } return null; };
-  await clickAny(["Later", "Continue"]);
-  await clickAny(["Later", "Continue"]);
+  await clickAny(["Later", "Continue"]); // members
+  await page.screenshot({ path: path.join(OUT, "setup-5b-ai.png") });
+  const tAi = (await text()).replace(/\s+/g, " ");
+  if (!/Connect your AI accounts/.test(tAi)) throw new Error(`the AI accounts step did not follow members: ${tAi.slice(0, 200)}`);
+  if (!/Claude/.test(tAi) || !/Not connected|Connected|Cannot connect|Waiting|Did not connect/.test(tAi)) throw new Error(`the Claude card shows no honest state: ${tAi.slice(0, 240)}`);
+  await clickAny(["Later", "Continue"]); // ai
+  await clickAny(["Later", "Continue"]); // connectors
   await clickAny(["Start empty", "Finish setup"]);
   await page.screenshot({ path: path.join(OUT, "setup-6-done.png") });
   const t6 = await text();

@@ -8,7 +8,7 @@ import { tokens } from "../src/theme/tokens";
 const kebab = (/** @type {string} */ s) => s.replace(/[A-Z0-9]/g, (c) => "-" + c.toLowerCase());
 
 /** The type roles, in the order the components use them. */
-export const ROLES = ["caption", "secondary", "body", "headline", "read", "title", "page", "display"];
+export const ROLES = ["caption", "secondary", "body", "headline", "control", "read", "title", "page", "display", "micro"];
 
 /** [size, line height] per role: a phone follows its platform (iOS text styles, Android Material roles); wide screens and the web use the web table. Pure. @param {string} os @param {boolean} phone */
 export function typeScale(os, phone) {

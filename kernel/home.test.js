@@ -46,7 +46,9 @@ test("daemon: with the kernel on, the home has a Space, a first owner and a modu
   t.after(() => d.stop());
   assert.equal(d.kernel.fresh, false);
   assert.deepEqual(d.kernel.id, id);
-  assert.equal(d.kernel.log.latestSeq(), events, "the owner and the log came back from the home's database");
+  // the log came back from the home's database: everything written before the stop is still there, in order (a start may append its own events: a module installing as a service, a membership read)
+  assert.ok(d.kernel.log.latestSeq() >= events, "the owner and the log came back from the home's database");
+  assert.equal(d.kernel.log.read({ since: 0 }).slice(0, events).length, events);
 });
 
 test("daemon: an added module is refused while the supervisor cannot prove its sandbox, and sandboxed when it can", { timeout: 90_000, skip: !linux }, async t => {
@@ -57,7 +59,7 @@ test("daemon: an added module is refused while the supervisor cannot prove its s
   const row = d.registry.status().find(m => m.name === "zz-added");
   assert.ok(row, "the module was found");
   assert.equal(row.state, "running", JSON.stringify(row));
-  assert.deepEqual((await d.registry.call("zz-added.ping", {})).data, { pong: true });
+  assert.deepEqual((await d.registry.call("zz-added.ping", {}, "cli")).data, { pong: true });
 });
 
 test("ctx.kernel: a first-party module gets the kernel handle with exactly the actions its manifest declared; a module from outside gets none", { timeout: 60_000 }, async t => {
@@ -86,7 +88,7 @@ test("ctx.kernel: a module that is not first party has no kernel handle", { time
   const d = await start({ root, log: () => {}, kernel: true });
   t.after(() => d.stop());
   assert.equal(d.registry.status().find(m => m.name === "zz-out").state, "running");
-  assert.equal((await d.registry.call("zz-out.peek", {})).data.kernel, "undefined");
+  assert.equal((await d.registry.call("zz-out.peek", {}, "cli")).data.kernel, "undefined");
 });
 
 

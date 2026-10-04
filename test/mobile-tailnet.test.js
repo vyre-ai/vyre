@@ -99,7 +99,7 @@ test("mobile: a tailnet device is asked for presence on gate.approve, and a devi
 
   // Enroll the device key with a one-time code, as /onboard/device does when the box has no passkey.
   const k = deviceKey();
-  const code = (await w.d.registry.call("presence.code", {}, "module:test")).data.code;
+  const code = w.d.registry.deps.presence.mintCode().code;
   const enroll = { kind: "device", name: "alex-phone", public_key: k.pub, alg: -7 };
   const enrolled = await w.phone("presence.enroll", enroll, { "x-vyre-presence": `code code=${code}` });
   assert.equal(enrolled.status, 200, JSON.stringify(enrolled.body));

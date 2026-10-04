@@ -4,7 +4,7 @@ import { useRouter } from "expo-router";
 import { Avatar, Button, Card, Divider, Row, Switch, Text, showToast, markRef } from "@vyre/ui";
 import { Group, Page } from "../places/Frame";
 import { useDevices } from "./state";
-import { deviceLine, deviceSub } from "./wink.js";
+import { deviceSub, spacesLine } from "./wink.js";
 
 /** Devices under your identity: each joins each space on its own. */
 export function DevicesScreen() {
@@ -20,8 +20,8 @@ export function DevicesScreen() {
           {devices.map((d, i) => (
             <View key={d.id}>
               {i ? <Divider inset={68} /> : null}
-              <Row lead={<Avatar of={{ ...markRef("device", d.name, d.id), device: d.device }} size={40} />} title={deviceLine(d.name, (devSpaces[d.id] ?? []).map((s) => spaceNames[s] ?? s))}
-                sub={<View>{deviceSub(d.device === "phone" ? "Phone" : d.device === "server" ? "Server" : "Computer", d.last, d.software).map((l, n) => <Text key={n} size="secondary" tone="label">{l}</Text>)}</View>} onPress={() => router.push(`/u/settings/device/${d.id}` as never)}
+              <Row lead={<Avatar of={{ ...markRef("device", d.name, d.id), device: d.device }} size={40} />} title={d.name}
+                sub={<View>{deviceSub(d.device === "phone" ? "Phone" : d.device === "server" ? "Server" : "Computer", d.last, d.software).concat(spacesLine((devSpaces[d.id] ?? []).map((s) => spaceNames[s] ?? s))).map((l, n) => <Text key={n} size="secondary" tone="label">{l}</Text>)}</View>} onPress={() => router.push(`/u/settings/device/${d.id}` as never)}
                 chevron />
             </View>
           ))}

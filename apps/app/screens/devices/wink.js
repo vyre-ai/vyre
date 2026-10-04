@@ -75,6 +75,12 @@ export function deviceLine(/** @type {string} */ name, /** @type {string[]} */ s
   return spaceNames.length ? `${name} is in ${list(spaceNames)}` : `${name} is not in any space`;
 }
 
+/** The line under a device that says which spaces it reaches. */
+export const spacesLine = (/** @type {string[]} */ names) => (names.length ? `In ${list(names)}` : "Not in any space");
+
+/** On a phone's page: what a reinstall does, and how to stop this phone. */
+export const REINSTALL_LINE = "Reinstalling Vyre on this phone resumes as you, because the phone keeps your key. To stop this phone reaching your spaces, remove it below, or remove it from another of your devices.";
+
 /** What removing something does, said before it happens. */
 export function removeText(/** @type {"Device"|"Person"|"Assistant"|"Kit"|"Flow"} */ kind, /** @type {string} */ name, space = "Harlow Legal") {
   const first = name.split(" ")[0];

@@ -367,3 +367,48 @@ test("KP-1: a passkey assertion must carry user verification, name this op, and 
   await refused(C.makeGenesis({ kind: "person", entry: { ...pk.entry(), rp: "" }, nonce: "n-badrp1234", ts: T0, sign: pk.sign }).then(g => C.verifyChain([g], { now: T0 })), "bad_entry");
   await refused(C.makeGenesis({ kind: "person", entry: { ...pk.entry(), held: "web" }, nonce: "n-badrp1235", ts: T0, sign: pk.sign }).then(g => C.verifyChain([g], { now: T0 })), "bad_entry");
 });
+
+// NK-2: a phone's Ed25519 seed is a software key; its Secure Enclave key (Face ID) must also sign every list change.
+async function enclaveKey() {
+  const { publicKey, privateKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const pub = Buffer.from(publicKey.export({ format: "der", type: "spki" }).subarray(-65)).toString("base64url");
+  return { pub, esign: m => crypto.sign("sha256", Buffer.from(m), { key: privateKey, dsaEncoding: "ieee-p1363" }), esignDer: m => crypto.sign("sha256", Buffer.from(m), privateKey) };
+}
+const phoneEntry = (k, enc) => ({ ...k.entry("device"), enclave: enc.pub });
+
+test("NK-2: the phone's seed alone cannot add, remove or replace-code; the seed plus its enclave signature can; another key's or another op's esig is refused; a non-list use needs only the seed", async () => {
+  const phone = await key("phone"), mac = await key("mac"), thief = await key("thief"), code = await key("paper"), enc = await enclaveKey(), other = await enclaveKey();
+  const g = await C.makeGenesis({ kind: "person", entry: phoneEntry(phone, enc), nonce: "n-nk2-0001", ts: T0, sign: phone.sign });
+  let w = { ops: [g], state: await C.verifyChain([g], { now: T0 }) };
+  const later = T0 + 48 * H;
+  const run = (body, signer, extra = {}, ts = later) => step(w, body, { ...signer, sign: signer.sign }, ts, extra);
+  const withEsig = async (body, esign, ts = later) => { const op = await C.makeOp(w.state, body, { by: phone.eid, ts, sign: phone.sign, esign }); return C.applyOp(w.state, op, { now: ts }); };
+  // the reviewer's probe: the seed alone
+  await refused(run({ type: "add", entry: thief.entry("device") }, phone), "needs_enclave");
+  await refused(run({ type: "add", entry: code.entry("code") }, phone), "needs_enclave");
+  await refused(run({ type: "remove", target: phone.eid }, phone), "needs_enclave");
+  // the seed plus the right enclave signature, raw or DER
+  const added = await withEsig({ type: "add", entry: code.entry("code") }, enc.esign);
+  assert.ok(added.entries.some(e => e.eid === code.eid));
+  assert.ok((await withEsig({ type: "add", entry: mac.entry("device") }, enc.esignDer)).entries.some(e => e.eid === mac.eid), "a DER esig is read too");
+  // another key's esig, and an esig made for another op
+  await assert.rejects(withEsig({ type: "add", entry: thief.entry("device") }, other.esign), e => e.code === "needs_enclave");
+  const forOther = await C.makeOp(w.state, { type: "add", entry: mac.entry("device") }, { by: phone.eid, ts: later, sign: phone.sign, esign: enc.esign });
+  const swapped = await C.makeOp(w.state, { type: "add", entry: thief.entry("device") }, { by: phone.eid, ts: later, sign: phone.sign });
+  await refused(C.applyOp(w.state, { ...swapped, esig: forOther.esig }, { now: later }), "needs_enclave");
+  // a Mac key with no enclave and no held keeps signing alone (the lead's ruling decides if that stays)
+  w = { ...w, state: added };
+  w.ops = [...w.ops];
+  const addMac = await step({ ops: w.ops, state: added }, { type: "add", entry: mac.entry("device") }, { ...phone, sign: phone.sign }, later + H, {}).catch(e => e);
+  assert.equal(addMac.code, "needs_enclave", "the phone entry still needs its esig on a later op");
+  // the enclave key is part of the signed entry: a malformed one is refused at the shape
+  const bad = { ...phone.entry("device"), enclave: Buffer.alloc(33, 1).toString("base64url") };
+  await refused(C.makeGenesis({ kind: "person", entry: bad, nonce: "n-nk2-0002", ts: T0, sign: phone.sign }).then(x => C.verifyChain([x], { now: T0 })), "bad_entry");
+});
+
+test("NK-2: a device with no enclave key and no web hold (a Mac or a server) still changes the list alone (the lead rules whether that stays)", async () => {
+  const mac = await key("mac"), friend = await key("friend");
+  let w = await person(mac);
+  w = await step(w, { type: "add", entry: friend.entry("device") }, mac, T0 + 30 * H);
+  assert.ok(w.state.entries.some(e => e.eid === friend.eid));
+});
