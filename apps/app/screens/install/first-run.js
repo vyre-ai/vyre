@@ -61,6 +61,7 @@ export const BROWSER = {
 export const NO_VYRE = {
   title: "Vyre runs on a computer or a server",
   line: "Your phone connects to it. Send yourself the setup link and open it on a computer.",
+  have: "I don't have Vyre running yet",
   send: "Send me the setup link",
   notNow: "Not now",
   share: "Set up Vyre on a computer or a server: https://vyre.run",

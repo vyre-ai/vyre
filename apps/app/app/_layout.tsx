@@ -10,6 +10,7 @@ import { connect } from "../src/api/box";
 import { PerfBadge } from "../src/perf/PerfBadge";
 import { usePerfOverlay } from "../src/perf/usePerfOverlay";
 import { startPwa } from "../src/pwa/pwa";
+import { SetupGate } from "../src/shell/SetupGate";
 import { listenCommands } from "../src/shell/shell";
 import { startGlass } from "../src/state/glass";
 import { startLive } from "../src/state/live";
@@ -34,7 +35,9 @@ function Shell() {
   return (
     <View style={[styles.fill, { backgroundColor: color.bg }]}>
       <StatusBar style={scheme === "dark" ? "light" : "dark"} />
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: color.bg } }} />
+      <SetupGate>
+        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: color.bg } }} />
+      </SetupGate>
       <UndoToast />
       <PerfBadge />
     </View>
