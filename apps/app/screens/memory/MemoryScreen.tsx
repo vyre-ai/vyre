@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Avatar, Banner, Button, Card, Chip, Composer, Divider, EmptyState, Field, Icon, IconButton, Menu, Row, Segmented, Sheet, SpaceMark, Text, allowsMock, showToast, markRef, spaceRef, type IconName } from "@vyre/ui";
+import { Avatar, Banner, Button, Card, Chip, Composer, Divider, EmptyState, Field, Icon, IconButton, Menu, Row, Segmented, Sheet, SpaceMark, Text, allowsMock, showToast, markRef, spaceRef, type IconName, ErrorState, LoadingState } from "@vyre/ui";
 import { Footnote, Frame } from "../places/Frame";
 import { SPACES, useScope } from "../places/scope";
 import { memoryRepo, SUBJECTS, type Fact } from "./data";
@@ -66,16 +66,16 @@ export default function MemoryScreen() {
     }
     return (
       <Row key={f.id}
-        title={<Text style={{ fontSize: 16, lineHeight: 23 }}>{f.text}</Text>}
+        title={<Text size="body">{f.text}</Text>}
         sub={
           <View className="gap-s1 pt-s1">
             <View className="flex-row items-center gap-s1">
               <Icon name={SRC_ICON[f.src.kind]} size={14} tone="label" />
-              <Text tone="label" numberOfLines={1} className="min-w-0 flex-shrink" style={{ fontSize: 13, lineHeight: 18 }} onPress={() => open(f.src)}>{`${f.src.label}, ${memoryRepo.assistantName(f.by)}, ${f.when}`}</Text>
+              <Text size="secondary" tone="label" numberOfLines={1} className="min-w-0 flex-shrink" onPress={() => open(f.src)}>{`${f.src.label}, ${memoryRepo.assistantName(f.by)}, ${f.when}`}</Text>
             </View>
             <View className="flex-row items-center gap-s1">
-              <Text tone="label" numberOfLines={1} style={{ fontSize: 13, lineHeight: 18 }}>{`Used ${f.used} ${f.used === 1 ? "time" : "times"}${scope === "all" ? "," : ""}`}</Text>
-              {scope === "all" ? <><SpaceMark space={spaceRef(SPACES[f.sp].name)} size={16} /><Text tone="label" numberOfLines={1} style={{ fontSize: 13, lineHeight: 18 }}>{SPACES[f.sp].name}</Text></> : null}
+              <Text size="secondary" tone="label" numberOfLines={1}>{`Used ${f.used} ${f.used === 1 ? "time" : "times"}${scope === "all" ? "," : ""}`}</Text>
+              {scope === "all" ? <><SpaceMark space={spaceRef(SPACES[f.sp].name)} size={16} /><Text size="secondary" tone="label" numberOfLines={1}>{SPACES[f.sp].name}</Text></> : null}
             </View>
           </View>
         }
@@ -97,7 +97,7 @@ export default function MemoryScreen() {
             <Text size="read">
               <Text strong size="read">{ans.name}</Text>{": "}
               {ans.items.map((it) => (
-                <Text key={it.n} size="read">{`${it.fact.text} `}<Text mono accessibilityRole="link" accessibilityLabel={`Source ${it.n}`} tone="accent" style={{ fontSize: 12 }} onPress={() => setCite(it.fact)}>{sup(it.n)}</Text>{" "}</Text>
+                <Text key={it.n} size="read">{`${it.fact.text} `}<Text mono size="caption" accessibilityRole="link" accessibilityLabel={`Source ${it.n}`} tone="accent" onPress={() => setCite(it.fact)}>{sup(it.n)}</Text>{" "}</Text>
               ))}
             </Text>
             {notIncluded ? <Footnote icon="sealed">{`Not included: ${notIncluded.labels.join(", ")}`}</Footnote> : null}
@@ -126,7 +126,9 @@ export default function MemoryScreen() {
             name={mode === "space" ? SPACES[s.sp as "mine"].name : subjects[s.subj] ?? s.subj} count={s.facts.length} />
           <Card flush>{s.facts.map((f, i) => <View key={f.id}>{i ? <Divider /> : null}{row(f)}</View>)}</Card>
         </View>
-      )) : <Card><EmptyState title={load.state === "loading" ? "Loading Memory" : load.state === "error" ? "Memory did not answer" : "Nothing here yet"} body={load.state === "error" ? (load.say ?? "Try again in a moment.") : load.state === "loading" ? "Asking your Vyre." : real ? "Nothing is remembered yet. Facts appear as your assistants learn them." : `No ${mode} facts in this space.`} /></Card>}
+      )) : load.state === "loading" ? <LoadingState rows={3} />
+        : load.state === "error" ? <ErrorState title="Memory did not load" reason={load.say ?? "Try again in a moment."} />
+        : <Card><EmptyState title="Nothing here yet" body={real ? "Nothing is remembered yet. Facts appear as your assistants learn them." : `No ${mode} facts in this space.`} /></Card>}
 
       {real ? <RealExtras /> : null}
 

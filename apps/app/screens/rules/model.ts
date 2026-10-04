@@ -18,6 +18,9 @@ export function groups(rules: Rule[]): { kind: RuleKind; title: string; help: st
   return KINDS.map((k) => ({ ...k, rules: rules.filter((r) => r.kind === k.kind && (r.status ?? "active") === "active").sort((a, b) => (a.at ?? 0) - (b.at ?? 0)) })).filter((g) => g.rules.length);
 }
 
+/** Rules an owner turned off: still listed, binding nothing, until turned on again. */
+export const disabled = (rules: Rule[]): Rule[] => rules.filter((r) => r.status === "disabled").sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
+
 /** Who suggested a proposal, in words. A Kit or an assistant is named; a person is "a member". */
 export function proposer(p: Rule): string {
   const b = p.by;
@@ -56,7 +59,7 @@ export function refusedBy(x: unknown): string | null {
 /** The words for a refused rules call, from the kernel's code. */
 export function ruleRefusal(code: string | undefined, message: string): string {
   if (code === "not_allowed") return "Only an owner can do that.";
-  if (code === "presence_required") return "That needs you. Approve with Face ID or your fingerprint, then try again.";
+  if (code === "presence_required") return "That needs you. Approve on this device, then try again.";
   if (code === "not_found") return "That rule is already gone.";
   return message || "The rules did not answer.";
 }

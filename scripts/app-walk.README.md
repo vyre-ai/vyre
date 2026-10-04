@@ -11,7 +11,7 @@ On a test box (never on a person's Mac):
 2. Have Playwright where `PW_FROM` points (default `~/shots/`, as `apps/app/scripts/shots.mjs` does).
 3. `node scripts/app-walk.mjs --dist apps/app/dist --socket <home>/.vyre/vyred.sock --out walk-out`
    - `--socket` is the box's own socket (the dev box: `~/devbox/home/.vyre/vyred.sock`), or `--box-url http://host:port` for a box that listens.
-   - `--only memory,drive` runs the steps whose names contain those words. `--presence` runs the steps that need a person's proof (see below).
+   - `--only memory,drive` runs the steps whose names contain those words. `--caller deck` (the default) is the x-vyre-caller label the walk sends, which on a dev box with the stand-in is the owner (a socket with no label is anonymous). `--presence` runs the steps that need a person's proof (see below).
 
 The script serves `dist/` at `/app` and forwards `/v1/*` to the box, so the browser is at "the box's own address" and needs no sign-in beyond what the socket gives (the owner's
 own read access). It does not pair a device, it does not touch the live relay or the live names directory.

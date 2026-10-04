@@ -40,6 +40,7 @@ async function runHome() {
   const ownSock = path.join(run, "s.sock"); const sv = net.createServer(c => c.end()); await new Promise(r => sv.listen(ownSock, r));
   let proxy;
   if (process.platform === "linux") { const sock = path.join(home, "egress.sock"); const eg = createEgress({ routes: [], vault: {}, session: "s", token: "tok", internet: true }); await eg.listen({ socket: sock }); proxy = { socket: sock, token: "tok" }; }
+  else if (process.platform === "darwin") { const eg = createEgress({ routes: [], vault: {}, session: "s", token: "tok", internet: true }); const r = await eg.listen({}); proxy = { port: r.port, token: "tok" }; }
   const ro = [path.dirname(process.execPath)].filter(d => !["/usr/bin", "/bin"].includes(d));
   const p = planHome({ platform: process.platform, command: "/bin/sh", args: ["-c", script], home, vyreHome: path.join(home, ".vyre"), sessionSocket: ownSock, workdirs: [path.join(home, "proj")], temp: path.join(home, "t"), readOnly: ro, ...(proxy ? { proxy } : {}), passEnv: [],
     agent: { command: "/bin/sh", hosts: [], private: { from: path.join(home, ".realcfg"), env: "AGENT_CONFIG_DIR", credentialFiles: [] } } });
@@ -48,10 +49,10 @@ async function runHome() {
 }
 async function runLent() {
   const sp = fakeSpace(); const events = [];
-  const r = createRunner({ base: path.join(root, "rn"), space: "harlow", device: "kit", vault: sp.vault, sync: sp.sync, grants: () => ({ spaceAllows: true, memberAccepts: true }), watchdog: false, onEvent: e => { if (e.type === "egress" && e.route === "tunnel") events.push(`${e.host}:${e.port} in ${e.bytesIn} out ${e.bytesOut}`); } });
+  const r = createRunner({ base: path.join(root, "rn"), space: "harlow", device: "kit", vault: sp.vault, sync: sp.sync, grants: () => ({ spaceAllows: true, memberAccepts: true }), watchdog: false, ...(process.env.LENDER_CAP ? { lenderCap: process.env.LENDER_CAP } : {}), onEvent: e => { if (e.type === "egress" && e.route === "tunnel") events.push(`${e.host}:${e.port} in ${e.bytesIn} out ${e.bytesOut}`); } });
   await r.open();
   fs.cpSync(proj, path.join(r.mnt, "work", "files", "seed"), { recursive: true });
-  const h = await r.start({ session: "s1", command: "/bin/sh", args: ["-c", script], readOnly: [path.dirname(process.execPath)].filter(d => !["/usr/bin", "/bin"].includes(d)), routes: [] });
+  const h = await r.start({ session: "s1", command: "/bin/sh", args: ["-c", script], readOnly: [path.dirname(process.execPath)].filter(d => !["/usr/bin", "/bin"].includes(d)), routes: [], ...(process.env.NETWORK ? { network: process.env.NETWORK } : {}) });
   h.child.stdout.on("data", d => process.stdout.write(d)); h.child.stderr.on("data", d => process.stdout.write("ERR " + d));
   await h.done; console.log("== tunnels logged (destination and byte counts only)\n" + events.slice(0, 8).join("\n"));
   await r.revoke().catch(() => {});

@@ -50,7 +50,6 @@ test("recall indexer: an account-folder transcript is human only when the Switch
   assert.equal(humanOf(e.db, FORGED), 0, "no matching thread: not human, whatever the transcript claims");
   assert.equal(humanOf(e.db, REAL), 1);
   assert.equal(humanOf(e.db, OWN), 1, "the person's own folder keeps the transcript's own reading");
-  assert.ok(!asked.includes(OWN), "the origin is asked only for account folders");
   // An agent's or job's thread is known but not a person's.
   const e2 = setup(t);
   const ix2 = new Indexer(e2.db, { accountsHome: e2.accounts, origin: async () => ({ known: true, human: false }) });
@@ -99,4 +98,20 @@ test("a forged account-folder transcript creates no decision and no personal cla
   await call("memory.curate", {});
   assert.equal((await call("memory.decisions", {})).decisions.filter(d => d.value === "Netlify").length, 1);
   assert.ok(/** @type {any} */ (e.db.prepare("SELECT COUNT(*) n FROM memory_me_claims").get()).n > 0);
+});
+
+test("recall indexer: a turn a person typed in the app is human whatever driver carried it (an Agent SDK transcript says it is programmatic)", async t => {
+  const e = setup(t);
+  const SDK = "aaaaaaaa-1111-4000-8000-000000000009", PROG = "aaaaaaaa-1111-4000-8000-00000000000a";
+  const write = id => {
+    const file = path.join(e.own, "projects", "-work-harlow-site", `${id}.jsonl`);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, SAYS.map((text, i) => JSON.stringify({ type: "user", entrypoint: "sdk-ts", timestamp: new Date(Date.parse("2026-08-02T09:00:00Z") + i * 60_000).toISOString(),
+      cwd: `${W}/harlow-site`, sessionId: id, message: { role: "user", content: text } })).join("\n") + "\n");
+  };
+  write(SDK); write(PROG);
+  const ix = new Indexer(e.db, { accountsHome: e.accounts, origin: async id => (id === SDK ? { known: true, human: true } : { known: id === PROG, human: false }) });
+  await ix.run(folders(e));
+  assert.equal(humanOf(e.db, SDK), 1, "the Switchboard says a person started it in the app");
+  assert.equal(humanOf(e.db, PROG), 0, "a known thread that is not a person's stays programmatic");
 });

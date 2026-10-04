@@ -197,3 +197,33 @@ test("wire: a runner on another computer checkpoints and resumes over the token-
     await assert.rejects(() => remoteSync({ url, token: () => "tok-alex" }).getFile("s1", "files/blob.bin", 99), { code: "not_found" });
   } finally { server.close(); rm(root); rm(a); rm(b); }
 });
+
+test("RN-1: the store keeps no transcript in memory: lines come from disk by offset, a replaced tail cuts the file, and a restarted store reads the same", async () => {
+  const dir = tmp(), S1 = mk(dir);
+  try {
+    const entries = Array.from({ length: 1000 }, (_, i) => ({ seq: i + 1, line: `line-${i + 1}` }));
+    await S1.appendTranscript(A, "big", entries.slice(0, 600)); await S1.appendTranscript(A, "big", entries.slice(600));
+    assert.deepEqual((await S1.getTranscript(A, "big", 998)).map(e => e.seq), [998, 999, 1000]);
+    assert.deepEqual((await S1.getTranscript(A, "big", 300, 3)).map(e => e.line), ["line-300", "line-301", "line-302"], "a page");
+    await S1.putCheckpoint(A, "big", { turn: 1, seq: 500, manifest: {}, state: {} });
+    // a machine that resumed from checkpoint 1 replaces what came after it
+    await S1.appendTranscript(A, "big", [{ seq: 501, line: "new-501" }, { seq: 502, line: "new-502" }]);
+    assert.equal((await S1.getTranscript(A, "big", 1)).length, 502);
+    assert.equal((await S1.getTranscript(A, "big", 501))[0].line, "new-501");
+    await assert.rejects(S1.appendTranscript(A, "big", [{ seq: 400, line: "other" }]), { code: "conflict" });
+    const S2 = mk(dir);
+    assert.deepEqual((await S2.getTranscript(A, "big", 500, 3)).map(e => e.line), ["line-500", "new-501", "new-502"]);
+    assert.deepEqual(await S2.appendTranscript(A, "big", [{ seq: 503, line: "z" }]), { acked: 503 });
+  } finally { rm(dir); }
+});
+
+test("RN-4: a checkpoint can follow the last by one turn only", async () => {
+  const dir = tmp(), S = mk(dir);
+  try {
+    await S.appendTranscript(A, "t", [{ seq: 1, line: "a" }]);
+    await assert.rejects(S.putCheckpoint(A, "t", { turn: 5, seq: 1, manifest: {}, state: {} }), { code: "bad_input" });
+    await S.putCheckpoint(A, "t", { turn: 1, seq: 1, manifest: {}, state: {} });
+    await assert.rejects(S.putCheckpoint(A, "t", { turn: 1000, seq: 1, manifest: {}, state: {} }), { code: "bad_input" });
+    await S.putCheckpoint(A, "t", { turn: 2, seq: 1, manifest: {}, state: {} });
+  } finally { rm(dir); }
+});

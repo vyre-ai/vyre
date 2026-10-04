@@ -3,6 +3,7 @@ import { createAuthorizer } from "../core/authorize.js";
 import { createRecords, RECORD_ACTIONS } from "./records.js";
 import { createSealing } from "./sealing.js";
 import { ACTIONS as SEAL_ACTIONS } from "../seal/uses.js";
+import { CHECKPOINT_ACTIONS } from "./checkpoints.js";
 import { TASK_ACTIONS } from "../tasks/tasks.js";
 import { createApprovals } from "../tasks/approvals.js";
 import { createGate } from "../core/gate.js";
@@ -30,7 +31,7 @@ export function createGateway(cfg) {
   // `authorize` reads grants and members from the kernel's grants store when one is given; otherwise from the caller (the retrofit path).
   const gs = cfg.grantsStore;
   const wiring = gs ? { grants: gs.provider, members: gs.members, rules: { match: ({ chain, action, resource }) => gs.rulesFor(chain, action, resource), touches: (chain, action) => gs.rulesTouch(chain, action) }, ...(cfg.presence ? { verifyPresence: grantProofVerifier(cfg.presence) } : {}) } : {};
-  const rawAuthorizer = createAuthorizer({ ...cfg, ...wiring, attrs, actions: [...RECORD_ACTIONS, ...SEAL_ACTIONS, ...TASK_ACTIONS, ...GRANT_ACTIONS, ...(cfg.actions || [])] });
+  const rawAuthorizer = createAuthorizer({ ...cfg, ...wiring, attrs, actions: [...RECORD_ACTIONS, ...SEAL_ACTIONS, ...TASK_ACTIONS, ...GRANT_ACTIONS, ...CHECKPOINT_ACTIONS, ...(cfg.actions || [])] });
   // A group session's reads are the room's: every gated read below goes through this (kernel/core/room.js roomedAuthorizer).
   const authorizer = cfg.room && cfg.chains ? roomedAuthorizer(rawAuthorizer, cfg.room, cfg.chains) : rawAuthorizer;
   if (gs) gs.bind({ enforce, authorizer, registry: () => authorizer.actions });
@@ -100,6 +101,62 @@ export function createGateway(cfg) {
   const drive = cfg.drive ? createDriveGateway({ space: cfg.space, drive: cfg.drive, authorizer, log: cfg.log, enforce }) : undefined;
   const leases = cfg.sealer && gs && cfg.sealer.lease ? createLeases({ space: cfg.space, sealer: cfg.sealer, grantsStore: gs, authorize: authorizer.authorize, enforce, ...(drive ? { drive } : {}), log: cfg.log, chains: cfg.chains, resolve: cfg.resolveCredential, forward: cfg.forwardCredential, routeAction: cfg.routeAction }) : undefined;
 
+
+  /**
+   * Seal a field that already holds plain values. A kind cannot change under data, so the values move into a new sealed field (`<field>_sealed`): each goes
+   * through `seal.put` and its reference is written (the change events keep no plaintext), the plain field is emptied and then removed softly, and the old values
+   * are scrubbed from where this side keeps them: the change log, snapshots and the event log (an event that held one keeps its envelope and loses its data,
+   * so the chain still verifies). The caller's chain needs `records.define`, `records.update` on every record and `seal.put`; it stops at the first refusal.
+   * Records in the bin are brought back for the write and put back. Twenty's own history is purged by the store (`scrub`); a database that has already written
+   * the old values to disk keeps dead pages until it is vacuumed, which is the Space operator's job.
+   */
+  async function sealField(/** @type {any} */ chain, /** @type {{ type: string, field: string, class: string, level?: "ai" | "human", name?: string, scrub_history?: boolean }} */ i) {
+    if (!seal) throw new KernelError("unavailable", "sealing is not wired");
+    if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
+    const dec = await gate(chain, "records.define", `vyre://${cfg.space}/definition/types`);
+    let defs; try { defs = await cfg.store.types(); } catch (e) { throw new KernelError("unavailable", "the store could not list its types"); }
+    const def = defs.find((/** @type {any} */ t) => t.name === i.type);
+    const f = def && def.fields.find((/** @type {any} */ x) => x.name === i.field);
+    if (!def || !f) throw new KernelError("not_found", "no such field");
+    if (!["text", "rich_text", "url"].includes(f.kind) || f.unique || f.computed || f.hidden) throw new KernelError("bad_input", `${i.field} cannot be sealed in place: it must be a plain text field that is not unique, computed or removed`);
+    const name = i.name || `${i.field}_sealed`;
+    if (def.fields.some((/** @type {any} */ x) => x.name === name)) throw new KernelError("bad_input", `${i.type} already has a field ${name}`);
+    if (!(await allowed(chain, "seal.put", `vyre://${cfg.space}/${i.type}/*`))) throw new KernelError("not_allowed", "this chain cannot seal values");
+    const withField = { ...def, fields: [...def.fields.map((/** @type {any} */ x) => (x.name === i.field && x.required ? { ...x, required: false } : x)), { name, kind: "sealed", label: f.label, seal: { level: i.level || "ai", class: i.class } }] };
+    await records.define(chain, { change_types: [withField] });
+    // every row of the type, the bin included, read from the store itself: the caller's reads may not reach all of them and none may keep a plain value
+    const all = async () => { const out = []; let cursor; do { const p = await cfg.store.query(i.type, { include_deleted: true, page: { limit: 200, ...(cursor ? { cursor } : {}) } }); out.push(...p.rows); cursor = p.next_cursor; } while (cursor); return out; };
+    const has = (/** @type {any} */ v) => typeof v === "string" && v.length > 0;
+    let moved = 0;
+    for (const row of await all()) {
+      if (!has(row.data[i.field])) continue;
+      const u = `vyre://${cfg.space}/${i.type}/${row.id}`;
+      const binned = Boolean(row.deleted_at);
+      let version = row.version;
+      if (binned) version = (await records.restore(chain, i.type, row.id)).version;
+      const put = await seal.put(chain, { record: u, field: name, class: i.class, value: row.data[i.field] });
+      await records.update(chain, i.type, row.id, { [name]: put.ref, [i.field]: null }, version, { redact: [i.field] });
+      if (binned) { const cur = await cfg.store.get(i.type, row.id); await records.remove(chain, i.type, row.id, cur.version); }
+      moved++;
+    }
+    const left = (await all()).filter((/** @type {any} */ r) => has(r.data[i.field])).length;
+    if (left) throw new KernelError("unavailable", `${left} records still hold the plain value; nothing was hidden`);
+    await records.define(chain, { change_types: [{ ...withField, fields: withField.fields.map((/** @type {any} */ x) => (x.name === i.field ? { ...x, hidden: true, required: false } : x)) }] });
+    let erased = 0;
+    if (i.scrub_history !== false) {
+      if (typeof cfg.store.scrub === "function") await cfg.store.scrub(i.type, [i.field]);
+      const prefix = `vyre://${cfg.space}/${i.type}/`;
+      for (const e of cfg.log.read()) {
+        const d = e.data;
+        if (!e.subject || !e.subject.startsWith(prefix) || !d || typeof d !== "object" || d.erased === true) continue;
+        const held = (/** @type {any} */ o) => o && typeof o === "object" && has(o[i.field]);
+        if (held(d.before) || held(d.after)) { cfg.log.erase(e.seq); erased++; }
+      }
+    }
+    cfg.log.append(chain, { type: "records.field-sealed", sv: 1, subject: `vyre://${cfg.space}/definition/types`, data: { type: i.type, field: i.field, sealed_field: name, moved, erased_events: erased } }, { decision: dec.decision });
+    return { sealed_field: name, moved, erased_events: erased };
+  }
+
   return Object.freeze({
     authorize: authorizer.authorize,
     ...(drive ? { drive } : {}),
@@ -108,7 +165,7 @@ export function createGateway(cfg) {
     registry: authorizer.actions,
     limits,
     ...(seal ? { seal } : {}),
-    ...(gs ? { grants: Object.freeze({ create: gs.create, revoke: gs.revoke, narrow: gs.narrow, list: gs.list, setRole: gs.setRole, removeMember: gs.removeMember, transferOwner: gs.transferOwner, rules: Object.freeze({ list: gs.rulesList, get: gs.ruleGet, test: gs.ruleTest, enable: gs.ruleEnable, disable: gs.ruleDisable, set: gs.ruleSet, remove: gs.ruleRemove, propose: gs.rulePropose, accept: gs.ruleAccept, dismiss: gs.ruleDismiss }), addActor: gs.addActor, removeActor: gs.removeActor, sweep: gs.sweep, members: Object.freeze({ list: gs.membersList, get: gs.membersGet }), invites: Object.freeze({ create: gs.inviteCreate, confirm: gs.inviteConfirm, accept: gs.inviteAccept, get: gs.invitesGet, revoke: (/** @type {any} */ chain, /** @type {string} */ id, /** @type {any} */ proof) => gs.inviteRevoke(chain, id, { presence: proof }), list: gs.inviteList }), rebuild: gs.rebuild, defaultAssistant: Object.freeze({ present: gs.hasDefaultAssistant, add: (chain, o) => gs.addActor(chain, { kind: "agent", id: "assistant", space: cfg.space }, o), remove: (chain, o) => gs.removeActor(chain, { kind: "agent", id: "assistant", space: cfg.space }, o) }), chats: Object.freeze({ create: gs.chatCreate, change: gs.chatChange, read: gs.chatRead }), offers: Object.freeze({ offer: gs.offer, unoffer: gs.unoffer, active: gs.active, find: gs.find, onRevoke: gs.onRevoke }) }) } : {}),
+    ...(gs ? { grants: Object.freeze({ create: gs.create, revoke: gs.revoke, narrow: gs.narrow, list: gs.list, setRole: gs.setRole, removeMember: gs.removeMember, transferOwner: gs.transferOwner, rules: Object.freeze({ list: gs.rulesList, get: gs.ruleGet, test: gs.ruleTest, enable: gs.ruleEnable, disable: gs.ruleDisable, set: gs.ruleSet, remove: gs.ruleRemove, propose: gs.rulePropose, accept: gs.ruleAccept, dismiss: gs.ruleDismiss }), addActor: gs.addActor, removeActor: gs.removeActor, sweep: gs.sweep, members: Object.freeze({ list: gs.membersList, get: gs.membersGet }), invites: Object.freeze({ create: gs.inviteCreate, confirm: gs.inviteConfirm, accept: gs.inviteAccept, get: gs.invitesGet, revoke: (/** @type {any} */ chain, /** @type {string} */ id, /** @type {any} */ proof) => gs.inviteRevoke(chain, id, { presence: proof }), list: gs.inviteList }), rebuild: gs.rebuild, defaultAssistant: Object.freeze({ present: gs.hasDefaultAssistant, add: (chain, o) => gs.addActor(chain, { kind: "agent", id: "assistant", space: cfg.space }, o), remove: (chain, o) => gs.removeActor(chain, { kind: "agent", id: "assistant", space: cfg.space }, o) }), chats: Object.freeze({ create: gs.chatCreate, change: gs.chatChange, read: gs.chatRead }), offers: Object.freeze({ offer: gs.offer, unoffer: gs.unoffer, lend: gs.lend, unlend: gs.unlend, active: gs.active, find: gs.find, onRevoke: gs.onRevoke }) }) } : {}),
     /** The Space's type definitions, read through authorize like any record read (the tool surface and Customize list from here). */
     async definitions(chain) {
       await gate(chain, "records.read", `vyre://${cfg.space}/definition/types`);
@@ -126,6 +183,7 @@ export function createGateway(cfg) {
     ...(cfg.tasks ? { tasks: Object.freeze({ list: (/** @type {any} */ chain) => cfg.tasks.needsYou(chain) }), ask: groupTasks(cfg.tasks) } : {}),
     ...(cfg.door ? { model: Object.freeze({ call: (/** @type {any} */ i) => cfg.door.call(i) }) } : {}),
     records,
+    migrate: Object.freeze({ sealField }),
     events: Object.freeze({ read, latestSeq: cfg.log.latestSeq, subscribe }),
     audit: Object.freeze({
       verify: async () => {

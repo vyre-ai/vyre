@@ -1,0 +1,13 @@
+{
+  "name": "signin",
+  "version": "0.1.0",
+  "description": "The command line's sign-in: `vyre signin` asks the owner's phone to approve, and on a yes that one terminal login holds a person session until it signs out or goes unused for 30 days.",
+  "roles": ["box", "local"],
+  "requires": [],
+  "needs": { "kernel": { "actions": [] }, "daemon": ["cliSigninPayload", "cliSigninCheck", "cliSessions", "devStandIn"] },
+  "does": { "tools": [{ "name": "signin.ask", "reach": "person" }, { "name": "signin.pending", "reach": "person" }, { "name": "signin.answer", "reach": "person" }, { "name": "signin.status", "reach": "person" }, { "name": "signin.end", "reach": "person" }, { "name": "signin.dev", "reach": "person" }] },
+  "watches": { "emits": [] },
+  "shows": { "cli": [] },
+  "teaches": { "tips": [] },
+  "settings": []
+}

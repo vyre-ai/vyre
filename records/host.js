@@ -21,7 +21,7 @@ const RECORD_GRANT_ACTIONS = ["records.*", "records.define", "events.read"];
 
 /**
  * @param {{ space: string, owner: string, ownerUid?: number, store: any, key?: Buffer, clock?: () => number, tickMs?: number,
- *   extraActions?: Record<string, any>, ports?: any }} o
+ *   extraActions?: Record<string, any>, ports?: any, sealer?: any }} o
  */
 export function createRecordsHost(o) {
   const clock = o.clock ?? Date.now;
@@ -36,13 +36,14 @@ export function createRecordsHost(o) {
     resource: { prefix: `vyre://${space}/*/*` }, conditions: {}, issuer: person, source: "records-host", status: "active", created_at: 0,
   });
   // The owner holds the record actions; so does the Flows service, which only ever acts with the approver beside it (a chain narrows).
-  const grants = [grantFor("gr_owner0000001", person, RECORD_GRANT_ACTIONS), grantFor("gr_flows0000001", { kind: "service", id: "flows", space }, RECORD_GRANT_ACTIONS), grantFor("gr_hook00000001", { kind: "service", id: "connector", space }, RECORD_GRANT_ACTIONS)];
+  const grants = [grantFor("gr_owner0000001", person, o.sealer ? [...RECORD_GRANT_ACTIONS, "seal.put"] : RECORD_GRANT_ACTIONS), grantFor("gr_flows0000001", { kind: "service", id: "flows", space }, RECORD_GRANT_ACTIONS), grantFor("gr_hook00000001", { kind: "service", id: "connector", space }, RECORD_GRANT_ACTIONS)];
   const byId = new Map(grants.map((g) => [g.id, g]));
   const kernel = createGateway({
     owner: o.owner, space, store: o.store, log, chains, clock,
     grants: { forSubject: (/** @type {any} */ a) => grants.filter((g) => g.subject.actor.kind === a.kind && g.subject.actor.id === a.id), get: (/** @type {string} */ id) => byId.get(id) },
     members: { has: (/** @type {any} */ a) => (a.kind === "person" && a.id === o.owner) || (a.kind === "service" && (a.id === "flows" || a.id.startsWith("connector"))) },
     hasPresenceSession: () => true,
+    ...(o.sealer ? { sealer: o.sealer } : {}),
     // the type rules (defineRule) are written in the records language's Expression language
     expr: { parseExpr, evalExpr },
   });

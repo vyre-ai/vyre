@@ -61,7 +61,7 @@ test("a reveal the box refuses for presence keeps its code and gets plain words,
   const b = box({ reveal: { error: { code: "presence_required", message: "vault.reveal needs presence" } } });
   await assert.rejects(vaultSource(b.call).revealReal("Gmail", "password"), (/** @type {any} */ e) => {
     assert.equal(e.code, "presence_required");
-    assert.match(revealRefusal(e.code, e.message), /Face ID or your fingerprint/);
+    assert.match(revealRefusal(e.code, e.message), /Approve on this device/);
     return true;
   });
 });
@@ -72,4 +72,24 @@ test("Remove revokes one module, and a watcher grant revokes that watcher", { sk
   await vaultSource(b.call).revokeReal("Gmail", "watch/intake");
   await vaultSource(b.call).revokeReal("Gmail", "mail");
   assert.deepEqual(b.seen.map((s) => s.input), [{ name: "Gmail", module: "watch", watcher: "intake" }, { name: "Gmail", module: "mail" }]);
+});
+
+test("an added item is checked before the box is asked, and sent as vault.put with the host split out; state and unlock are their own calls", { skip: !strip }, async () => {
+  const { vaultSource } = await import("./source.ts");
+  const m = await import("./real-model.ts");
+  assert.equal(m.hostOf("https://Drive.Harlow.example/login?x=1"), "drive.harlow.example");
+  assert.equal(m.hostOf("not a link"), "");
+  const ok = m.putInput({ kind: "login", name: " Harlow Drive ", username: "alex", secret: "pw-1", url: "https://drive.harlow.example" });
+  assert.deepEqual(ok, { input: { name: "Harlow Drive", kind: "login", fields: { username: "alex", password: "pw-1" }, url: "https://drive.harlow.example", hosts: ["drive.harlow.example"] } });
+  assert.deepEqual(m.putInput({ kind: "api-key", name: "k", username: "", secret: "v", url: "" }), { input: { name: "k", kind: "api-key", fields: { value: "v" } } });
+  for (const bad of [{ kind: "login", name: "", username: "", secret: "x", url: "" }, { kind: "secret", name: "n", username: "", secret: "", url: "" }, { kind: "login", name: "n", username: "", secret: "x", url: "zzz" }]) assert.ok("error" in m.putInput(/** @type {any} */ (bad)), JSON.stringify(bad));
+  const b = box();
+  const s = vaultSource(b.call);
+  await s.putReal(/** @type {any} */ (ok).input); await s.unlockReal("pass phrase");
+  assert.deepEqual(b.seen.map((x) => x.tool), ["vault.put", "vault.unlock"]);
+  assert.deepEqual(b.seen[1].input, { passphrase: "pass phrase" });
+  assert.equal(await vaultSource(async () => ({ error: { code: "no_such_tool", message: "x" } })).stateReal(), null);
+  assert.deepEqual(await vaultSource(async () => ({ data: { locked: true, unlock: "passphrase" } })).stateReal(), { locked: true, unlock: "passphrase" });
+  assert.match(m.putRefusal("presence_required", ""), /Approve on this device/);
+  assert.match(m.putRefusal("wrong_passphrase", ""), /not right/);
 });

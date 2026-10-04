@@ -26,7 +26,7 @@ function SampleFlowsScreen() {
             <View key={f.id}>{i ? <Divider inset={68} /> : null}
               <Row dense onPress={() => router.push(`/u/flows/${f.id}` as never)} lead={<IconTile size={40} name={triggerIcon(f)} />} title={f.name}
                 sub={waiting
-                  ? <View className="flex-row items-center gap-s2"><View className="rounded-full bg-accent" style={{ height: 6, width: 6 }} /><Text tone="accent" numberOfLines={1} style={{ fontSize: 14, lineHeight: 18 }}>Waiting on you</Text></View>
+                  ? <View className="flex-row items-center gap-s2"><View className="rounded-full bg-accent" style={{ height: 6, width: 6 }} /><Text size="secondary" tone="accent" numberOfLines={1}>Waiting on you</Text></View>
                   : triggerLine(f)}
                 chevron={waiting}
                 end={waiting ? undefined : <Switch label={`${f.name} is ${off[f.id] ? "off" : "on"}`} on={!off[f.id]} onChange={(on) => setOn(f.id, on)} />} />

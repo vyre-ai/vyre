@@ -436,6 +436,8 @@ export class Switchboard {
     this.closing = false;
     /** @type {Map<string, { path: string, close: () => Promise<void> }>} each live thread's own socket to vyred (deps.threadSocket) */
     this.socks = new Map();
+    /** @type {Map<string, () => Promise<void>>} the session's egress proxy stopper, run when its socket closes */
+    this.releases = new Map();
     /** @type {Map<string, string>} the last status said per thread, for thread.state */
     this.states = new Map();
     /** @type {Map<string, string[]>} `!` shell output waiting to go with a thread's next message */
@@ -971,6 +973,7 @@ export class Switchboard {
     const pickEnv = (/** @type {string[]} */ names) => Object.fromEntries(names.filter(n => o.env && o.env[n]).map(n => [n, o.env[n]]));
     const r = await prepareSandbox({ ...cfg, temp: this.sessionTemp(id), credentials: cfg.credentials ? async (/** @type {string} */ p) => { const v = await cfg.credentials(p); return typeof v === "string" ? v : v || pickEnv(["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"]); } : (() => pickEnv(["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"])) }, { provider, command: cfg.binFor ? cfg.binFor(provider) : this.bin, sessionSocket: sock.path, workdirs: [rec.cwd], ...(o.gitEnv ? { trustedEnv: o.gitEnv } : {}) });
     if (r.sandboxed) {
+      if (r.release) { const old = this.releases.get(id); this.releases.set(id, r.release); if (old) old().catch(() => {}); }
       // Partly sandboxed (a provider that cannot move its settings folder keeps its own): said on this session's log, and once per machine and provider in words.
       if (r.partial) {
         this.emit("thread.sandbox", { sandboxed: "partial", reason: r.partial.reason, provider, folder: r.partial.folder.map(f => path.basename(f)) }, id, rec.project);
@@ -1010,6 +1013,7 @@ export class Switchboard {
   }
 
   closeSocket(id) {
+    const rel = this.releases.get(id); if (rel) { this.releases.delete(id); rel().catch(() => {}); }   // the session's egress proxy goes with its socket
     const sock = this.socks.get(id);
     if (!sock) { void this.endKernelSession(id); return; }
     this.socks.delete(id);
@@ -1625,6 +1629,8 @@ export class Switchboard {
     const all = /** @type {any[]} */ (this.db.prepare("SELECT id, text, surface, uuid, kind, images, request, note, at, kturn FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL ORDER BY id").all(id));
     if (!all.length) return;
     // One turn belongs to one asker: the queued messages that run together are the leading ones with the SAME asker and chat (a person's surface has none). The rest wait for the next turn's end.
+    // A queued turn written before adoption names the replaced owner id: read it as the identity so it groups with, and runs as, the same person.
+    for (const r of all) r.kturn = this.canonTurn(r.kturn);
     const lead = all[0].kturn || null;
     const rows = all.filter((r, i) => (r.kturn || null) === lead && all.slice(0, i).every(p => (p.kturn || null) === lead));
     const now = Date.now();
@@ -1797,7 +1803,7 @@ export class Switchboard {
       // admin's turn is open): it is refused as busy and the stream delivers it again when the turn has ended. The same asker steering their own turn keeps the session they have.
       await this.assertAsker(id, this.record(id), kernelTurn);
       const st = this.live.get(id), askedBy = this.turnAsker.get(id);
-      if (st && st.turn && askedBy !== kernelTurn.asker) {
+      if (st && st.turn && this.canon(askedBy) !== this.canon(kernelTurn.asker)) {
         // Another person's message mid-turn waits as the NEXT turn, under its own asker: it never steers the running one, and the running turn's kernel session is never replaced. A chat turn that
         // arrives while a turn with no chat is running (someone typing on their own surface) waits the same way.
         return this.queue(id, text, surface, undefined, { ...(uuid ? { uuid } : {}), kind, note, author, kernelTurn });
@@ -2087,6 +2093,15 @@ export class Switchboard {
    * the surface holding the keyboard when that is why (a send with `wait`).
    * @param {string} id @param {string} text @param {string} surface @param {string} [holder]
    */
+  /** @param {string} person */
+  canon(person) { const f = this.deps.canonicalPerson; return typeof f === "function" ? f(person) : person; }
+
+  /** A stored queued-turn key `{chat, asker}` with its asker read through canonicalPerson. @param {string | null} k */
+  canonTurn(k) {
+    if (!k) return k || null;
+    try { const o = JSON.parse(k); return o && typeof o.asker === "string" ? JSON.stringify({ chat: o.chat, asker: this.canon(o.asker) }) : k; } catch { return k; }
+  }
+
   queue(id, text, surface, holder, { owned = false, uuid = crypto.randomUUID(), kind = undefined, request = undefined, images = /** @type {any} */ (null), note = "", author = undefined, kernelTurn = null } = {}) {
     const rec = this.must(id);
     // A session open elsewhere takes queued words through its hooks, which carry text only.
@@ -2903,9 +2918,8 @@ export class Switchboard {
     return { watch: id, fired: false };
   }
 
-  /** @param {string} id @param {string|null} [by] a model caller removes only the watches it made itself */
-  unwatch(id, by = null) {
-    return { removed: Number((by ? this.db.prepare("DELETE FROM threads_watches WHERE id = ? AND by = ?").run(String(id), by) : this.db.prepare("DELETE FROM threads_watches WHERE id = ?").run(String(id))).changes) > 0 };
+  unwatch(id) {
+    return { removed: Number(this.db.prepare("DELETE FROM threads_watches WHERE id = ?").run(String(id)).changes) > 0 };
   }
 
   /** An event a watch may be waiting for: emit thread.watched for each such watch, once. */
@@ -3055,10 +3069,6 @@ export function surfaceFor(input, caller, owner, kc, kernelOwner) {
   return fromLink(caller) && !s.startsWith("box:") ? `box:${s}` : s;
 }
 
-/** The person's own surfaces (deck admits the owner's devices); a model reaches only the tools below that list "mcp" and "harness", every one scoped by sessionMay or its own check. */
-const SB_PEOPLE = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device"];
-const SB_MODEL = [...SB_PEOPLE, "module", "mcp", "harness"];
-
 export const fromLink = caller => /^link:/.test(String(caller || ""));
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
@@ -3166,6 +3176,8 @@ export default {
       // Each session's own socket (option A): always with "on", with the spawner under "auto".
       // Through the spawner it goes in the box's shared folder; else a private one of this user's.
       kernelSession: ctx.kernelSession || null,
+      // The kernel's own map from a replaced owner id to the identity (adoption); every person id this module stores is compared through it, so sessions and queued words survive adoption.
+      canonicalPerson: ctx.kernel && typeof ctx.kernel.canonicalPerson === "function" ? ctx.kernel.canonicalPerson : null,
       sandbox: ctx.sandbox || null,
       threadSocket: cfg.thread_socket === "off" ? null
         : async (/** @type {any} */ o) => cfg.thread_socket === "on" || usesSpawner()
@@ -3177,7 +3189,8 @@ export default {
     });
     sb.recover();
     // chat messages queued behind a turn the restart cut off run now, each under its own asker (the queue is durable)
-    setTimeout(() => { void sb.resumeQueuedChats().catch(() => {}); }, 1500).unref?.();
+    const resumeTimer = setTimeout(() => { void sb.resumeQueuedChats().catch(() => {}); }, 1500);
+    resumeTimer.unref?.();
     // ADR 0041 section 5, end side (start side is where()'s github.session.worktree call above):
     // a github project's worktree is cleaned up once its session reaches "finished" - a one-shot's
     // own natural completion (threads.launch's own purpose: "job", once: true; never resumed by
@@ -3290,15 +3303,12 @@ export default {
     /** An admin: the owner's own surface (no verified peer) or the peer signed in as the box's owner. */
     const isAdminCall = (/** @type {any} */ peer) => !peer || !(peer.login || peer.stableId || peer.node) || String(peer.login || "") === String(((ctx.config && ctx.config.network) || {}).owner || "\u0000");
 
-    // The person's own surface may also pick an agent or an account for the new thread (an agent's credentials, a scope-checked account); a model never does, whatever its schema lists.
-    const PERSON_START_KEYS = ["agent", "agent_kind", "account"];
-    const START_KEYS = ["project", "cwd", "prompt", "name", "model", "surface", "append", "purpose", "provider", "effort", "lean"];
+    const START_FIELDS = new Set(["project", "cwd", "prompt", "name", "model", "surface", "append", "purpose", "provider", "effort", "lean", "chat", "asker", "parent"]);
     tool("threads.start", "Start a headless Claude Code session in a folder or a project's home, owned by vyred so it outlives every surface. The calling surface gets the keyboard. Returns the thread; its id is the Claude Code session id.",
       { type: "object", properties: { project: str, cwd: str, prompt: str, name: str, model: str, surface: str, append: str,
         purpose: { type: "string", enum: ["chat", "agent", "project", "teammate", "capsule", "job", "memory", "planner", "learn", "helper"], description: "What kind of session: picks its model (sessions.models.get). Default: chat, or project in a project." },
         provider: { type: "string", description: "The session provider: claude (the default), or one a module added." },
         effort: { type: "string", enum: EFFORTS, description: "Reasoning effort, as /effort: low, medium, high, xhigh or max. Default: the model's own." },
-        agent: str, agent_kind: str, account: str,
         lean: { type: "boolean", description: "A one-question thread: no Vyre plugin, no tools, no MCP servers, none of the user's settings. Cheap to start." },
         chat: { type: "string", description: "First-party stream only: the chat this session's reply belongs to. Anyone else's is ignored." }, asker: { type: "string", description: "First-party stream only: the person id (per_...) of who asked (the kernel session is opened for them, in `chat`). Any other form is refused as bad_input. Anyone else's is ignored." },
         mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: str, id: str, name: str } }, description: "The # tags the composer picked ({kind, id}) for the first prompt, from a person's own surface only; as threads.send." },
@@ -3312,15 +3322,17 @@ export default {
         const parent = thread ? String(thread) : (firstParty && typeof i.parent === "string" ? i.parent : undefined);
         // The first prompt is a person's own turn only when a person's surface started the thread; tags and pasted
         // spans ride with it from there and from nowhere else.
-        const { mentions, pasted, starter: _claimed, ...rest0 } = i;
-        // Only these keys reach launch from a client (reviewer-2 HD-2): resume, fork, agent, agent_kind, env, scope, account, kernelTurn and the like are a module's own to pass. A module's own call is not narrowed.
-        const rest = String(caller || "").startsWith("module:") ? rest0 : Object.fromEntries(Object.entries(rest0).filter(([k]) => START_KEYS.includes(k) || (PERSON_START_KEYS.includes(k) && isPerson(caller))));
+        const { mentions, pasted, starter: _claimed, ...restAll } = i;
+        // HD-2: a model's call (a session, an agent, an mcp or harness caller) starts a NEW thread with the declared fields only. resume (writes into any live thread), fork, agent and agent_kind
+        // (another agent's credentials and project grants), env, scope, account and the rest are the person's surfaces' and first-party modules'.
+        const modelCall = Boolean(thread || agent || agentOf(caller) || /^(?:mcp|harness)(?::|$)/.test(String(caller || "")));
+        const rest = modelCall && !firstParty ? Object.fromEntries(Object.entries(restAll).filter(([k]) => START_FIELDS.has(k))) : restAll;
         const plain = /^(?:mcp|harness)(?::|$)/.test(String(caller || "")) && !thread && !agent;
         const person = personTurn(caller) && i.prompt ? { chips: Array.isArray(mentions) ? mentions : [], pasted: Array.isArray(pasted) ? pasted.filter(x => typeof x === "string").slice(0, 20) : [] } : null;
         const kturn = kernelTurnOf(i, caller, firstParty);
         if (kturn) await sb.assertAsker(i.parent || "", null, kturn); // a person who is not in the chat starts nothing for it
         return sb.launch({ ...rest, parent, ...(kturn ? { kernelTurn: kturn } : {}), ...(plain && typeof peerSession === "string" && peerSession ? { starter: `mcp:${peerSession}` } : {}), surface: surfaceOf(i, caller) }, person);
-      }, SB_MODEL);
+      });
 
     /**
      * On the box, the person's words for a thread the box does not have go to the paired Mac that
@@ -3333,7 +3345,7 @@ export default {
       // ONE form at this boundary: the kernel's own person id (per_...). An actor string (person:per_x), a bare name or anything else is refused, never quietly rewritten: a mismatch between the stream
       // and the Switchboard must show, because this id decides whose authority a turn runs under.
       if (typeof i.asker !== "string" || !/^per_[a-z0-9]{3,64}$/.test(i.asker)) throw Object.assign(new Error("asker must be a person id (per_...), as the kernel names one"), { code: "bad_input" });
-      return { chat: i.chat, asker: i.asker };
+      return { chat: i.chat, asker: sb.canon(i.asker) };
     };
     const sendToMac = async (i, caller) => {
       const r = await ctx.call("link.macs.call", { tool: "threads.send", as: "person", ...(i.machine ? { mac: i.machine } : {}),
@@ -3473,7 +3485,7 @@ export default {
         const opts = { ...(kernelTurnOf(i, caller, firstParty) ? { kernelTurn: kernelTurnOf(i, caller, firstParty) } : {}), queue: queuesFor(caller), wait: fromLink(caller), mode: i.mode === "queue" ? "queue" : "steer", images: imagesOf(i.images), uuid, ...(note ? { note } : {}), ...(personTurn(caller) ? { author: authorOf(peer) } : {}) };
         const once = over && !sb.sentBefore(uuid) ? await sb.sendOnce(i.thread, i.text, surfaceOf(i, caller), over, opts) : null;
         return once || sb.send(i.thread, i.text, surfaceOf(i, caller), opts);
-      }, [...SB_MODEL, "link:box"]);
+      });
 
     tool("threads.continue-here", "Carry a paired Mac's session on in a new thread on this box: its conversation comes over the link (or from the last synced copy when the Mac is asleep), a box session on the same provider starts with that history as context, and the new thread's id comes back. The Mac's own session is untouched and none of its files come over. A person's own surface only; logged as thread.continued.",
       { type: "object", required: ["thread"], properties: { thread: { type: "string", description: "The Mac session's id." }, machine: { type: "string", description: "The paired Mac's name or id, when more than one could hold it." }, surface: str } },
@@ -3516,12 +3528,11 @@ export default {
 
     tool("threads.lease", "Take the keyboard of a thread for a surface. Always succeeds, and says who had it; the other surfaces go read-only.",
       { type: "object", required: ["thread"], properties: { thread: str, surface: str } },
-      async (i, { caller }) => { guard(caller, "take a session's keyboard"); return sb.lease(i.thread, surfaceOf(i, caller)); },
-      [...SB_PEOPLE, "module"]); // a module may take it for a person's screen (computers.takeover), which an assistant may ask for; a model never takes it directly
+      async (i, { caller }) => { guard(caller, "take a session's keyboard"); return sb.lease(i.thread, surfaceOf(i, caller)); });
 
     tool("threads.release", "Give the keyboard back. Releasing a lease you do not hold changes nothing.",
       { type: "object", required: ["thread"], properties: { thread: str, surface: str } },
-      async (i, { caller }) => { guard(caller, "release a session"); return sb.release(i.thread, surfaceOf(i, caller)); }, SB_MODEL);
+      async (i, { caller }) => { guard(caller, "release a session"); return sb.release(i.thread, surfaceOf(i, caller)); });
 
     tool("threads.asks", "Questions and permission asks waiting on the user, oldest first (kind: only questions or only permissions). Each has its kind, what a card shows (questions, or detail), who asks (agent, thread_name), where it sits in the session (anchor: tool_use_id and its ask.raised event id), what always allow is on offer (always, always_project), and what answering takes (presence: required, covered). A surface that reconnects reads these; events alone cannot say what is open now. On a box, for the person, the paired Macs' open asks too, labelled source and machine (machines: \"local\" for the box's own only).",
       { type: "object", properties: { thread: str, kind: { type: "string", enum: ["question", "permission"] }, machines: { type: "string", enum: ["all", "local"] } } },
@@ -3576,19 +3587,19 @@ export default {
 
     tool("threads.watch", "Tell me once when a thread finishes a turn, asks a question, or stops: emits thread.watched {watch, thread, reason, notify, note, summary} and clears itself. until: finished, asks or either (default).",
       { type: "object", required: ["thread"], properties: { thread: str, until: { type: "string", enum: ["finished", "asks", "either"] }, notify: str, note: str } },
-      async (i, { caller }) => { guard(caller, "watch sessions"); return sb.watch(i, String(caller || "")); }, SB_MODEL);
+      async (i, { caller }) => { guard(caller, "watch sessions"); return sb.watch(i, String(caller || "")); });
 
     tool("threads.unwatch", "Stop waiting on a watch.",
       { type: "object", required: ["watch"], properties: { watch: str } },
-      async (i, { caller }) => { guard(caller, "watch sessions"); return sb.unwatch(i.watch, /^(?:mcp|harness)(?::|$)/.test(String(caller || "")) ? String(caller) : null); }, SB_MODEL);
+      async (i, { caller }) => { guard(caller, "watch sessions"); return sb.unwatch(i.watch); });
 
     tool("threads.interrupt", "Stop the turn a thread is running, as Escape does in Claude Code. The thread stays and takes the next message; open questions of that turn are cancelled.",
       { type: "object", required: ["thread"], properties: { thread: str } },
-      async (i, { caller }) => { guard(caller, "interrupt sessions"); return sb.interrupt(i.thread); }, SB_MODEL);
+      async (i, { caller }) => { guard(caller, "interrupt sessions"); return sb.interrupt(i.thread); });
 
     tool("threads.switch", "Continue a thread on another provider (and account), between turns: the same thread, folder and files, the new provider given a brief of what was said. A person or an agent that may act on the thread can do it. provider: claude, codex or grok; account: one granted to this project or agent (never a guess between two); text: the next message to send there.",
       { type: "object", required: ["thread", "provider"], properties: { thread: str, provider: str, account: str, model: str, text: str } },
-      async (i, { caller }) => { guard(caller, "switch a session's provider"); return sb.switchProvider(i.thread, { provider: i.provider, account: i.account || null, model: i.model || null, reason: "asked", text: i.text || null }); }, SB_MODEL);
+      async (i, { caller }) => { guard(caller, "switch a session's provider"); return sb.switchProvider(i.thread, { provider: i.provider, account: i.account || null, model: i.model || null, reason: "asked", text: i.text || null }); });
 
     tool("threads.unqueue", "Take back queued words before they are handed over: one (queued: the queued_id threads.send gave, or thread.queued's queued) or all of the thread's. Only a person's surface can.",
       { type: "object", required: ["thread"], properties: { thread: str, queued: { type: "integer" }, surface: str } },
@@ -3733,7 +3744,7 @@ export default {
         guard(caller, "fork sessions");
         if (i.at) return sb.forkAt(i.thread, i.at, { prompt: i.prompt, name: i.name, surface: surfaceOf(i, caller) });
         return sb.launch({ fork: i.thread, prompt: i.prompt, name: i.name, surface: surfaceOf(i, caller) });
-      }, SB_MODEL);
+      });
 
     tool("threads.mode", "Put a running thread in a permission mode, as Shift+Tab does in Claude Code: default (ask), acceptEdits (edits without asking), plan (read and plan only) or bypassPermissions (\"Doesn't ask\": no questions; Vyre's security floor and the Gate still hold, and only in a session with Vyre's plugin). Only a person's surface can; no answer ever sets it.",
       { type: "object", required: ["thread", "mode"], properties: { thread: str, mode: { type: "string", enum: PERSON_MODES } } },
@@ -3756,7 +3767,7 @@ export default {
           if (!own && !granted) throw Object.assign(new Error("an agent deletes its own threads, or threads of a project it is granted"), { code: "denied" });
         }
         return sb.delete(i.thread);
-      }, SB_MODEL);
+      });
 
     // The same reach as delete: a person, the assistant, or an agent for its own and its granted projects' threads.
     const mayReach = (meta, rec) => {
@@ -3768,14 +3779,14 @@ export default {
     };
     tool("threads.archive", "Put a thread away: it stops, its session worktree is cleaned up by github (the branch and commits stay), and it leaves the default list. thread.archived is said. threads.unarchive brings it back. A person, the assistant, or an agent for its own threads and its own projects' threads.",
       { type: "object", required: ["thread"], properties: { thread: str } },
-      async (i, meta) => { guard(meta.caller, "archive sessions"); mayReach(meta, sb.must(i.thread)); return sb.archive(i.thread); }, SB_MODEL);
+      async (i, meta) => { guard(meta.caller, "archive sessions"); mayReach(meta, sb.must(i.thread)); return sb.archive(i.thread); });
     tool("threads.unarchive", "Bring an archived thread back into the list; its worktree is made again on the same branch. thread.unarchived is said.",
       { type: "object", required: ["thread"], properties: { thread: str } },
-      async (i, meta) => { guard(meta.caller, "unarchive sessions"); mayReach(meta, sb.must(i.thread)); return sb.unarchive(i.thread); }, SB_MODEL);
+      async (i, meta) => { guard(meta.caller, "unarchive sessions"); mayReach(meta, sb.must(i.thread)); return sb.unarchive(i.thread); });
 
     tool("threads.stop", "Stop a headless thread. Its transcript stays; threads.send resumes it.",
       { type: "object", required: ["thread"], properties: { thread: str } },
-      async (i, { caller }) => { guard(caller, "stop sessions"); return sb.stop(i.thread); }, SB_MODEL);
+      async (i, { caller }) => { guard(caller, "stop sessions"); return sb.stop(i.thread); });
 
     // For other modules (teammates, ADR 0031): put words in a thread that never steer: a new turn
     // when the thread is idle, else handed over when its running turn ends.
@@ -3916,6 +3927,6 @@ export default {
     registerClaim(ctx, sb);                                              // threads.claimed, threads.contend
 
     // An SDK install still running ends with vyred, and cleans up after itself (sdk.js).
-    return { async stop() { offGithubCleanup(); for (const off of offs) off(); await abortInstalls(); await sb.stopAll(); } };
+    return { async stop() { clearTimeout(resumeTimer); offGithubCleanup(); for (const off of offs) off(); await abortInstalls(); await sb.stopAll(); } };
   },
 };

@@ -61,6 +61,8 @@ function vyre(cmd) {
   }
   // The module list (L-1): what \`vyre modules\` says, from a file a test writes (default: both signed modules run); and the owner's reset of the list (L-2), allowed only when a test says so.
   if (c === "modules") { process.stdout.write(fs.existsSync(F + "/modules-out") ? fs.readFileSync(F + "/modules-out", "utf8") : "  about                0.1.0    running\\n  work                 0.1.0    running\\n"); process.exit(0); }
+  if (c === "call" && a === "modules.list.reset.ask") { if (fs.existsSync(F + "/reset-ok")) { console.log('{"id":"rst1","expires_in_s":6}'); process.exit(0); } console.log("  no_such_tool: no tool modules.list.reset.ask"); process.exit(1); }
+  if (c === "call" && a === "modules.list.reset.status") { if (fs.existsSync(F + "/reset-refused")) { console.log('{"state":"refused"}'); process.exit(0); } if (fs.existsSync(F + "/reset-ok")) { fs.writeFileSync(F + "/reset-done", "1"); console.log('{"state":"approved"}'); process.exit(0); } console.log('{"state":"none"}'); process.exit(0); }
   if (c === "call" && a === "modules.list.reset") { if (fs.existsSync(F + "/reset-ok")) { fs.writeFileSync(F + "/reset-done", "1"); console.log("{}"); process.exit(0); } console.log("  no_such_tool: no tool modules.list.reset"); process.exit(1); }
   if (c === "up") { console.log("  your address: https://alex.vyre.run"); process.exit(0); }
   process.exit(0);
@@ -180,6 +182,9 @@ async function box(t, { site = "0.1.5", releases = [], build = true } = {}) {
   const WRAPPER = path.join(root, "bin", "vyre");
   fs.mkdirSync(path.dirname(WRAPPER));
   fs.writeFileSync(WRAPPER, WRAPPER_SRC, { mode: 0o755 });
+  // Modes set outright, not left to the host's umask (a 002 umask made these group-writable and the wrapper refuses a folder others can write).
+  for (const d of [root, DIR, path.join(DIR, "src"), path.dirname(WRAPPER)]) fs.chmodSync(d, 0o755);
+  fs.chmodSync(WRAPPER, 0o755);
 
   const hits = [];
   const server = http.createServer((req, res) => {
@@ -1065,12 +1070,18 @@ test("L-2: update --rollback to a release with an older list asks the owner for 
   let r = /** @type {any} */ (await b.run(["update", "--rollback"], {}));
   assert.notEqual(r.code, 0, r.out);
   assert.match(r.out, /the owner has to approve going back/);
-  assert.match(r.out, /not rolled back: the module list was not reset/);
+  assert.match(r.out, /not rolled back: the owner could not be asked/);
   assert.equal(counter(), 3004200, "the list is untouched");
+  // The owner refuses on the phone: nothing is swapped. Nobody answers (status none): nothing is swapped.
+  fs.writeFileSync(path.join(b.FAKE, "reset-ok"), "1"); fs.writeFileSync(path.join(b.FAKE, "reset-refused"), "1");
+  r = /** @type {any} */ (await b.run(["update", "--rollback"], { VYRE_ROLLBACK_POLL: "0" }));
+  assert.notEqual(r.code, 0, r.out); assert.match(r.out, /you refused on your phone/);
+  assert.equal(counter(), 3004200, "a refusal changes nothing");
+  fs.rmSync(path.join(b.FAKE, "reset-refused")); fs.rmSync(path.join(b.FAKE, "reset-ok"));
   assert.equal(b.read(path.join(b.FAKE, "running")), "built-1", "the new image still runs");
   // With the owner's reset: the image and the list go back together.
   fs.writeFileSync(path.join(b.FAKE, "reset-ok"), "1");
-  r = /** @type {any} */ (await b.run(["update", "--rollback"], {}));
+  r = /** @type {any} */ (await b.run(["update", "--rollback"], { VYRE_ROLLBACK_POLL: "0" }));
   assert.equal(r.code, 0, r.out);
   assert.ok(fs.existsSync(path.join(b.FAKE, "reset-done")), "the reset was asked of the running daemon first");
   assert.equal(counter(), 3004100);

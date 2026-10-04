@@ -11,7 +11,7 @@
 // broken watcher runtime should not cost someone their search.
 
 import { AsyncLocalStorage } from "node:async_hooks";
-import { OPEN as AGENT_OPEN, ASK_FIRST as AGENT_ASK_FIRST } from "./agent-reach.js";
+import { OPEN as AGENT_OPEN, ASK_FIRST as AGENT_ASK_FIRST, WEB_REACH, SETUP_REACH } from "./agent-reach.js";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -29,7 +29,11 @@ import { within } from "../../lib/within.js";
 const LOADER_FEATURES = ["modules.status"];
 
 /** Tools a tailnet device reaches without a person session: signing in, and the first passkey. */
-const PERSON_FREE = new Set(["presence.person.start", "presence.enroll"]);
+// wink.server.adopt, wink.server.release and wink.phone.wait are the pairing steps a device takes before it has any person session: each checks its own caller and the owner's presence (core/wink/pairing.js).
+// relay.devices.path is a device reporting its own connection path (it names no one but its caller), made on every connect, before any sign-in.
+// presence.person.status is how a surface learns whether anyone is signed in at all, so it must answer before sign-in.
+// relay.setup.claim is the browser's first claim at the box's address, made before any sign-in exists: the one-time claim token the setup page minted is its proof.
+const PERSON_FREE = new Set(["presence.person.start", "presence.enroll", "wink.server.adopt", "wink.server.release", "wink.phone.wait", "relay.setup.claim", "relay.devices.path", "presence.person.status"]);
 
 const NAME = /^[a-z][a-z0-9-]{1,40}$/;
 /** Vyre's own modules live here; a module installed into a home never does. */
@@ -413,6 +417,9 @@ const runInTurn = async (/** @type {any} */ meta, /** @type {() => Promise<any>}
 
 export const SURFACE_LABELS = Object.freeze(["cli", "local", "deck", "capsule", "mobile"]);
 
+/** The first word of every caller label the registry recognises: the person's surfaces, plus the other classes a listener, the loader or the daemon builds. A first word that is none of these is refused on every tool, one open to any caller included. test/reach-classes.test.js checks it against the labels the code builds. */
+export const KNOWN_LABELS = new Set([...SURFACE_LABELS, "mcp", "harness", "hook", "onboard", "anonymous", "module", "tailnet", "tailnet-guest", "device", "space", "agent", "web", "setup", "assistant", "runner", "link", "relay", "unknown", "core", "vault"]);
+
 /** Who may call a reach "person" tool: the person's own surfaces, and the owner's own devices (callerAllowed). */
 const PERSON_CALLERS = Object.freeze([...SURFACE_LABELS, "tailnet", "device", "space", "agent"]);
 
@@ -481,6 +488,20 @@ export const agentOpensPerson = (/** @type {string} */ tool, /** @type {any} */ 
 export const agentAskFirst = (/** @type {string} */ tool, /** @type {any} */ caller) => AGENT_ASK_FIRST.has(tool) && claimsAgent(caller);
 
 /**
+ * The reach of the classes that are not the person's, and of a label nobody recognises: `false` for an unknown label (every tool, `callers: null` included), the class's own list for `web:<id>` and
+ * `setup:<id>` (WEB_REACH, SETUP_REACH in agent-reach.js; a call that names no tool reaches nothing), and `null` for everyone else, who go on to the tool's `callers` list.
+ * @param {string} caller @param {string} [tool] @param {() => string[]} [setupExtra] the tools shipped modules declare under setupTools (the registry's own list, read only for a setup caller)
+ */
+export const classReach = (caller, tool, setupExtra) => {
+  const c = String(caller);
+  if (!KNOWN_LABELS.has(c.split(/[\s:]/)[0])) return false;
+  const k = callerKind(c);
+  if (k === "web") return tool !== undefined && WEB_REACH.has(tool);
+  if (k === "setup") return tool !== undefined && (SETUP_REACH.has(tool) || (setupExtra !== undefined && setupExtra().includes(tool)));
+  return null;
+};
+
+/**
  * May this caller use a tool with this callers list? On a box the Deck is served at the tailnet
  * address, where the names listener admits only the owner and labels the call "tailnet:<login>"
  * (ADR 0002). That is the owner's own Deck, so a tool open to "deck" is open to it; an agent's own
@@ -489,10 +510,10 @@ export const agentAskFirst = (/** @type {string} */ tool, /** @type {any} */ cal
  * it as a label.
  * @param {string[]|null|undefined} callers
  */
-export const callerAllowed = (callers, caller) => !callers || callerKind(caller) === "setup" || (callers.includes(callerKind(caller)) && !CLASS_ONLY.has(callerKind(caller)))
+export const callerAllowed = (callers, caller, tool, setupExtra) => classReach(caller, tool, setupExtra) ?? (!callers || (callers.includes(callerKind(caller)) && !CLASS_ONLY.has(callerKind(caller)))
   || (callers.includes("deck") && ownerDevice(caller))
   || (callers.includes("tailnet") && ownerDevice(caller))
-  || (callers.includes("device") && deviceLabel(caller));
+  || (callers.includes("device") && deviceLabel(caller)));
 
 /**
  * Caller classes that exist only as an entry in a tool's `callers` list, never as a caller: a socket client could send the bare word as its label. "device" opens a tool to the owner's
@@ -858,9 +879,7 @@ export class Registry {
       // The tools shipped modules put on the pre-claim setup channel (module.json "setupTools"),
       // for the relay to build its allowlist from. Only a shipped module's field counts, only for a
       // tool it declares and owns, and never a relay, presence or vault tool: an added module's field is ignored.
-      declaredSetupTools: () => [...this.modules.entries()]
-        .filter(([, r]) => r.state === "running" && r.manifest && Array.isArray(r.manifest.setupTools) && this.isFirstParty(r.dir))
-        .flatMap(([name, r]) => r.manifest.setupTools.filter((/** @type {any} */ t) => typeof t === "string" && t.startsWith(name + ".") && toolEntries(r.manifest).some(e => e.name === t) && !/^(relay|presence|vault)\./.test(t))),
+      declaredSetupTools: () => this.declaredSetupTools(),
       // Every running module's teaches.tips, for the tips module to choose from (core/tips). Tips
       // are plain text a module chose to show; the tips module checks them, never this loader.
       // firstParty: shipped in the repo, so its tips follow Vyre's version, not the module's own.
@@ -1056,7 +1075,7 @@ export class Registry {
       // What only the daemon can hand a module comes by DECLARATION, not by a name: a first-party module lists it under needs.daemon and gets exactly that on ctx. kernelSession is the
       // maker of a Vyre-started session's kernel credential, sandbox the confined spawner for those sessions (the runner's home sandbox, composed by the daemon because core/sessions
       // cannot import core/runner), flowsHost the Flows assembly (core/daemon/flows-host.js).
-      ...Object.fromEntries((Array.isArray(m.needs && m.needs.daemon) ? m.needs.daemon : []).filter((/** @type {string} */ n) => ["kernelSession", "kernelThreads", "sandbox", "flowsHost", "credentials", "modulesListReset", "modulesListResetPayload", "dataStores", "devStandIn"].includes(n) && this.deps[n]).map((/** @type {string} */ n) => [n, this.deps[n]])),
+      ...Object.fromEntries((Array.isArray(m.needs && m.needs.daemon) ? m.needs.daemon : []).filter((/** @type {string} */ n) => ["kernelSession", "kernelThreads", "sandbox", "flowsHost", "credentials", "modulesListReset", "modulesListResetPayload", "dataStores", "devStandIn", "tunnelEnd", "cliSigninPayload", "cliSigninCheck", "cliSessions"].includes(n) && this.deps[n]).map((/** @type {string} */ n) => [n, this.deps[n]])),
       tool: (name, def) => {
         if (!declared.has(name)) throw new Error(`${m.name} registered tool ${name}, which its manifest does not declare under does.tools`);
         if (this.tools.has(name)) throw new Error(`tool ${name} is already registered`);
@@ -1140,11 +1159,21 @@ export class Registry {
    *   slugs, read by vyred from the agents module; a tool that scopes by project trusts it, never an
    *   input filter. Any other key a caller of this method adds reaches the tool the same way.
    */
+  /** The tools shipped modules put on the pre-claim setup channel: only a shipped module's field, only for a tool it declares and owns, never a relay, presence or vault tool. */
+  declaredSetupTools() {
+    return [...this.modules.entries()]
+        .filter(([, r]) => r.state === "running" && r.manifest && Array.isArray(r.manifest.setupTools) && this.isFirstParty(r.dir))
+        .flatMap(([name, r]) => r.manifest.setupTools.filter((/** @type {any} */ t) => typeof t === "string" && t.startsWith(name + ".") && toolEntries(r.manifest).some(e => e.name === t) && !/^(relay|presence|vault)\./.test(t)));
+  }
+
   async call(tool, input = {}, caller = "unknown", { proof = null, keep = false, terminal = null, idempotencyKey = undefined, door = false, ...meta } = {}) {
     const def = this.tools.get(tool);
     if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     // `origin` is set only by a module's own ctx.call (the caller class the running call came from); nothing a client sends is ever one.
     if (!String(caller).startsWith("module:")) delete meta.origin;
+    // `terminalKey`: the login terminal the daemon measured for this call (core/daemon atTerminal), null for a model's shell; only the daemon's own `terminal` argument sets it, never anything in meta.
+    delete meta.terminalKey;
+    { const tk = typeof terminal === "string" ? terminal : terminal && typeof terminal === "object" && typeof terminal.key === "string" ? terminal.key : null; if (tk) meta.terminalKey = tk; }
     // A tool the registry defaulted to person-only is reached by a module only when the module is acting FOR a person (the call it relays came from one): a module with no origin (a timer, a start,
     // a direct call) is not that person, and must have its tool declare `callers: ["module"]` to be allowed (RG-2). The daemon's own calls (module:vyred) are the daemon.
     const hop = def.defaulted && String(caller).startsWith("module:") && caller !== "module:vyred";
@@ -1190,10 +1219,10 @@ export class Registry {
       }
       if (def.internal && !String(caller).startsWith("module:")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
       if (Boolean(def.hook) !== (caller === "hook")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
-      // a browser (`web:<id>`) is none of the person's classes: a tool that lists callers (every person tool) does not exist for it unless it names `web` (BR-2); a tool open to anyone stays open. A setup page (`setup:<id>`) is held to a list of names by the relay's own
-      // setup gate (core/relay/setup.js) before a call gets here, so the registry only lets that class through.
-      if (callerKind(caller) === "web" && Array.isArray(def.callers) && !def.callers.includes("web")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
-      if (!(callerAllowed(def.callers, gateCaller) || agentOpensPerson(tool, def, gateCaller, meta)) || personRefusesAgent(tool, def, gateCaller, meta)) return { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
+      // a browser (`web:<id>`) and a setup page (`setup:<id>`) are none of the person's classes (BR-2): each reaches only its own short list (WEB_REACH, SETUP_REACH), whatever a tool's `callers` says, and a label nobody
+      // recognises reaches nothing. The relay's setup gate (core/relay/setup.js) still holds the setup channel to its own list first.
+      if (classReach(gateCaller, tool, () => this.declaredSetupTools()) === false) return ["web", "setup"].includes(callerKind(gateCaller)) ? { error: { code: "no_such_tool", message: `no tool ${tool}` } } : { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
+      if (!(callerAllowed(def.callers, gateCaller, tool, () => this.declaredSetupTools()) || agentOpensPerson(tool, def, gateCaller, meta)) || personRefusesAgent(tool, def, gateCaller, meta)) return { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
       // An agent that only proposes (the Engineer: agents.scope names its `only` list, vyred puts it on meta.agentOnly from the stored row, never from the call) reaches those tools and no others.
       if (Array.isArray(meta.agentOnly) && !meta.agentOnly.includes(tool)) return { error: { code: "denied", message: `${tool} is not one of the tools this assistant works with: it drafts and proposes, and a person approves` } };
       // A guest from another tailnet is never a person proving they are here, whatever proof it
@@ -1456,7 +1485,7 @@ export class Registry {
   /** Tools the given caller may use. Without a caller, every tool that is neither internal nor a hook. */
   listTools(caller, meta) {
     const needs = (name, d) => (this.deps.presence ? this.deps.presence.required(name, d) : Boolean(d.presence));
-    return [...this.tools.entries()].filter(([name, d]) => !d.internal && !d.hook && (!caller || ((callerAllowed(d.callers, caller) || agentOpensPerson(name, d, caller, meta)) && !personRefusesAgent(name, d, caller, meta))))
+    return [...this.tools.entries()].filter(([name, d]) => !d.internal && !d.hook && (!caller || ((callerAllowed(d.callers, caller, name, () => this.declaredSetupTools()) || agentOpensPerson(name, d, caller, meta)) && !personRefusesAgent(name, d, caller, meta))))
       .map(([name, d]) => ({ name, module: d.module, description: d.description, input: d.input, ...(needs(name, d) ? { presence: true } : {}),
         // Module API 1: what an object entry declared, for the capability manifest.
         ...(d.declaredReach ? { reach: d.reach } : {}), ...(d.outward ? { outward: d.outward } : {}) }));

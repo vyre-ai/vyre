@@ -77,7 +77,7 @@ export function unpackProgress(/** @type {string | null | undefined} */ raw) {
 }
 
 /** What another of the person's devices says while setup is unfinished elsewhere. */
-export const setupElsewhere = (/** @type {string} */ device) => `Setup in progress on your ${device}`;
+export const setupElsewhere = (/** @type {string} */ device) => (/^this (computer|device)$/i.test(device.trim()) ? `Setup in progress on ${device.trim().toLowerCase()}` : `Setup in progress on your ${device}`);
 export const CONTINUE_HERE = "Continue here";
 /** The line a server prints once it is paired: it asks nothing more. */
 export const connectedLine = (/** @type {string} */ space, /** @type {string} */ device) => `Connected to ${space}. Finish setting up on your ${device}.`;
@@ -112,3 +112,11 @@ export function serverLines(vps, spaceName, stage, o = {}) {
   if (stage === "code") return code;
   return [...code, "", `${o.who ?? "A phone"} is asking to pair this server to ${o.to ?? "you"}.`, `The words are: ${o.words ?? ""}`, "Waiting for yes."];
 }
+
+/** What the person reads when the server step does not finish. Both sides say the same thing; nothing is created and nothing is listed. */
+export const SERVER_FAILED = {
+  rejected: "Nothing was paired. The three words were not the same. Run the install line on your server again to get a new code.",
+  ended: "The pairing ended before it was confirmed, so nothing was paired. Run the install line on your server again to get a new code.",
+  /** The server's own terminal says this on its side when the pairing fails. */
+  serverLine: "Pairing failed. Nothing was set up. Run the install line again.",
+};

@@ -161,7 +161,7 @@ export async function createClient(d: ClientDeps): Promise<Client> {
     const r = await once(tool, input, key, p ? { "x-vyre-presence": p } : {});
     if (r.error?.code === PERSON) {
       sessionRequired();
-      return { error: { code: "offline", message: "waiting for you to sign in to the box" } };
+      return { error: { code: "offline", message: "waiting for you to sign in to your home" } };
     }
     return r;
   };

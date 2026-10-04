@@ -14,5 +14,5 @@ export function themeNote(source: string | undefined): string {
 }
 
 export function appearanceRefusal(code: string | undefined, message: string): string {
-  return code === "bad_input" ? "That is not a theme this box knows." : message || "The setting did not save.";
+  return code === "bad_input" ? "Vyre does not know that theme." : message || "The setting did not save.";
 }

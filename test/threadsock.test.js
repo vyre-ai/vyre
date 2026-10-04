@@ -252,9 +252,14 @@ test("a person's own surface call carries a kernel chain in a module: the owner'
   const d = await start({ root, log: () => {}, kernel: true, firstPartyRoots: [fp] });
   t.after(() => d.stop());
   const owner = d.kernel.id.owner;
-  for (const label of ["cli", "local", "deck", "mobile"]) {
+  for (const label of ["cli", "local"]) {
     const r = /** @type {any} */ (await call("zz-who.me", {}, { root, caller: label }));
     assert.deepEqual(r.data && r.data.hops, [["person", owner, label]], `${label}: ${JSON.stringify(r)}`);
+  }
+  // deck and mobile reach a daemon through their own listeners: as a socket label they are a claim, never the person
+  for (const label of ["deck", "mobile"]) {
+    const r = /** @type {any} */ (await call("zz-who.me", {}, { root, caller: label }));
+    assert.ok(r.data ? r.data.hops.every(h => h[0] !== "person") : r.error, `${label}: ${JSON.stringify(r)}`);
   }
   // the Capsule label with no pinned binary behind it gets no person chain (a label is not a proof)
   const cap = /** @type {any} */ (await call("zz-who.me", {}, { root, caller: "capsule" }));
@@ -435,4 +440,10 @@ test("the presence stand-in: a development daemon takes it only while the owner'
   const d2 = await start({ root: root2, log: () => {}, packageRoot: pkg });
   t.after(() => d2.stop());
   assert.equal((await d2.registry.deps.presence.verify({ tool: "vault.reveal", input: { id: 1 }, caller: "cli", proof: { method: "stand-in" } })).ok, false, "a packaged daemon ignores the file");
+  // A walk that offers no proof: a development daemon with the file counts vault.put and vault.reveal as the stand-in (and says so), nothing else; a packaged one takes none.
+  const bare = (/** @type {any} */ dd, /** @type {string} */ tool) => dd.registry.deps.presence.verify({ tool, input: { name: "x" }, caller: "cli", proof: null });
+  for (const tool of ["vault.put", "vault.reveal"]) { const b = await bare(d, tool); assert.deepEqual([b.ok, b.method], [true, "stand-in"], tool); assert.equal((await bare(d2, tool)).ok, false, `${tool}: a packaged daemon takes no stand-in`); }
+  for (const tool of ["spaces.identity.code.replace", "vault.backup", "vault.delete", "grants.create"]) assert.equal((await bare(d, tool)).ok, false, `${tool} stays real presence`);
+  fs2.rmSync(path.join(root, "dev-presence-stand-in"));
+  assert.equal((await bare(d, "vault.put")).ok, false, "no file: no stand-in");
 });

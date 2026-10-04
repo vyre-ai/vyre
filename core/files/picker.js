@@ -46,7 +46,7 @@ export function picker(ctx, { g, roots, folder, scan, specs, shares, owner, shar
 
   /** A scoped caller may look only inside its own granted folders; the owner sees all. */
   async function scopeOf(meta) {
-    const s = await reach(ctx, meta && meta.caller);
+    const s = await reach(ctx, meta && meta.caller, meta);
     return { ...s, may: p => s.all || (within(p, s.folders) && withinReal(p, s.folders)) };
   }
 

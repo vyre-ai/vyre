@@ -531,14 +531,41 @@ test("BL-2 anchor: the log's latest (seq, head) moves only forward, a split is r
   assert.equal(diskHolds(dir, h("d")), null, "the head is not on disk in the clear");
 });
 
-test("a software signer enrols and proves only in a process started to allow unattested keys (a development build); a process that does not refuses it", async t => {
-  const dev = tmp("sw1"), prod = tmp("sw2");
-  const s = startSealer({ dir: dev, timeoutMs: 8000, dev: true, unattested: true }), p = startSealer({ dir: prod, timeoutMs: 8000, dev: true });
-  t.after(async () => { await s.close(); await p.close(); fs.rmSync(dev, { recursive: true, force: true }); fs.rmSync(prod, { recursive: true, force: true }); });
-  const sw = signer("per_alex", "dk_sw1", "software");
-  assert.equal((await enrolDevice(s, sw)).enrolled, true, "a development process takes a software signer");
-  const ch = person("per_alex"), fields = { task: "t1", payload_hash: "ph", decision: "dec_1" };
-  assert.equal(await s.presenceCheck({ chain: ch, op: "task.decide", fields, proof: sw.proof(ch, "task.decide", fields) }), null, "and its proof, recorded under its own signer name");
-  const refused = await enrolDevice(p, signer("per_alex", "dk_sw2", "software")).then(r => r, e => e);
-  assert.ok(!(refused && refused.enrolled === true), "a process that does not allow unattested keys refuses a software signer: " + JSON.stringify(refused && (refused.refused || refused.code || refused.message)));
+test("software signer (ruling 4): a development-kind process takes a software key and names every use method \"software\"; a process started without it refuses the key; a release-kind build never starts it on", async t => {
+  const fsx = await import("node:fs"), osx = await import("node:os"), { devSwitch } = await import("../devbuild.js");
+  // started with software allowed (a development checkout, VYRE_SEAL_SOFTWARE=1)
+  const dir = tmp("soft"), s = startSealer({ dir, timeoutMs: 8000, dev: true, software: true });
+  t.after(async () => { await s.close(); fsx.rmSync(dir, { recursive: true, force: true }); });
+  const alex = signer("per_alex", undefined, "software"), ch = person("per_alex");
+  assert.equal((await enrolDevice(s, alex)).attested, false, "a software key is not attested");
+  const fields = { k: "v" };
+  const r = await s.presenceProve({ chain: ch, op: "task.decide", fields, proof: alex.proof(ch, "task.decide", fields) });
+  assert.deepEqual(r, { ok: true, method: "software" });
+  // a process started without it refuses the same key, and a key enrolled earlier stops proving
+  const dir2 = tmp("soft2"), s2 = startSealer({ dir: dir2, timeoutMs: 8000, dev: true, unattested: true });
+  t.after(async () => { await s2.close(); fsx.rmSync(dir2, { recursive: true, force: true }); });
+  await assert.rejects(() => enrolDevice(s2, signer("per_alex", undefined, "software")), { code: "software_refused" });
+  // a release-kind (packaged) build never turns it on: the one switch the process reads says no for a packaged root, with the variable set
+  const pkg = fsx.mkdtempSync(path.join(osx.tmpdir(), "pkg-"));
+  t.after(() => fsx.rmSync(pkg, { recursive: true, force: true }));
+  fsx.mkdirSync(path.join(pkg, "lib"), { recursive: true });
+  fsx.writeFileSync(path.join(pkg, "lib", "build-kind.js"), 'export const BUILD_KIND = "release";\n');
+  assert.equal(devSwitch("1", pkg), false, "release-kind: refused");
+  assert.equal(devSwitch("1"), true, "this development checkout: allowed");
+});
+
+test("SW-2: a real sealing child from a release-stamped copy ignores VYRE_SEAL_DEV, VYRE_SEAL_UNATTESTED and VYRE_SEAL_SOFTWARE: unattested and software keys are refused", async t => {
+  const fsx = await import("node:fs"), osx = await import("node:os"), { pathToFileURL } = await import("node:url");
+  const here = path.dirname(new URL(import.meta.url).pathname), root = path.resolve(here, "..", "..");
+  const copy = fsx.mkdtempSync(path.join(osx.tmpdir(), "rel-"));
+  t.after(() => fsx.rmSync(copy, { recursive: true, force: true }));
+  for (const d of ["kernel", "lib"]) fsx.cpSync(path.join(root, d), path.join(copy, d), { recursive: true, filter: f => !/\.test\.js$/.test(f) });
+  fsx.writeFileSync(path.join(copy, "package.json"), '{"type":"module"}');
+  fsx.writeFileSync(path.join(copy, "lib", "build-kind.js"), 'export const BUILD_KIND = "release";\n');
+  const { startSealer: startCopy } = await import(pathToFileURL(path.join(copy, "kernel", "seal", "client.js")).href);
+  const dir = tmp("rel"), s = startCopy({ dir, timeoutMs: 8000, dev: true, unattested: true, software: true });
+  t.after(async () => { await s.close(); fsx.rmSync(dir, { recursive: true, force: true }); });
+  assert.equal((await s.health()).unattested_allowed, false, "the release build ignores VYRE_SEAL_UNATTESTED");
+  await assert.rejects(() => enrolDevice(s, signer("per_alex", undefined, "software")), { code: "software_refused" });
+  await assert.rejects(() => enrolDevice(s, signer("per_alex")), { code: "unattested" }, "an unattested hardware-class key is refused too");
 });

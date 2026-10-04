@@ -34,7 +34,7 @@ export function createFlowsHost(o) {
     // The host acts for the Space's owner only for housekeeping (defining its own record types); everything a person's Flow does runs under that person's chain.
     const owner = () => k.chains.fromFacts({ kind: "device", device_key_id: "flows-host", person: ownerOf(), path: "direct", session: "flows-host" });
     const personChain = (/** @type {string} */ id) => k.chains.fromFacts({ kind: "device", device_key_id: "flows-host", person: id, path: "direct" });
-    const sh = k.kernelFor({ name: "flows", needs: { kernel: { actions: ["records.read", "records.create", "records.update", "records.remove", "events.read", "tasks.request", "tasks.read", "tasks.work"], prefixes: ["*"] } } });
+    const sh = k.kernelFor({ name: "flows", needs: { kernel: { actions: ["records.read", "records.create", "records.update", "records.remove", "tasks.request", "tasks.read", "tasks.work"], prefixes: ["*"] } } });
     const flowsChain = () => k.chains.appendService(owner(), "flows", true);
     // The module's service grant is written asynchronously; any call through the handle's records waits for it, so wait here before anything runs under the service chain.
     await sh.records.query(sh.serviceChain(), "def_flow", { page: { limit: 1 } }).catch(() => {});

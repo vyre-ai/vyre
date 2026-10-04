@@ -1,12 +1,18 @@
 import { useState } from "react";
 import { View } from "react-native";
 import { Avatar, Button, Card, Chip, Field, Ring, Text, showToast, spaceRef } from "@vyre/ui";
+import { MOCK } from "../../src/real/box";
 import { Page } from "../places/Frame";
+import { RealInvite } from "./RealInvite";
 
 const CAN = [["Intake", true], ["Billing", true], ["Admin", false]] as const;
 
 /** Invite someone to a space: make the invitation, send the link, and see the card they will read. */
 export function WinkInvite() {
+  return MOCK ? <SampleInvite /> : <RealInvite />;
+}
+
+function SampleInvite() {
   const [step, setStep] = useState(0);
   const [name, setName] = useState("Sam Rivera");
   const first = name.trim().split(" ")[0] || "them";

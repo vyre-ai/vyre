@@ -226,12 +226,13 @@ export default {
         kinds: { type: "array", items: { type: "string", enum: KINDS } },
         where: { type: "string", enum: ["all", "here", "box"] } } },
       callers: FILES_CALLERS,
-      run: async ({ q, limit = 50, kinds, where = "all" }, { caller } = {}) => {
+      run: async ({ q, limit = 50, kinds, where = "all" }, meta = {}) => {
+        const caller = meta.caller;
         q = q.trim();
         if (!q) throw new Error("q is required");
         limit = clamp(limit, 1, 500);
         kinds = kinds && kinds.length ? kinds : undefined;
-        const scope = await reach(ctx, caller);
+        const scope = await reach(ctx, caller, meta);
         // A restricted agent's caller identity does not survive the hop to the box (ctx.remote
         // relabels it "module:files"), so there is no way to scope that leg correctly there.
         // Failing closed: a named agent searches this machine only, never the box through the
@@ -253,8 +254,9 @@ export default {
       description: "Size, dates and kind of one file or folder, on this machine or the box.",
       input: { type: "object", required: ["path"], properties: { path: { type: "string" }, source: { type: "string", enum: ["mac", "box"] } } },
       callers: FILES_CALLERS,
-      run: async ({ path: p, source }, { caller } = {}) => {
-        const scope = await reach(ctx, caller);
+      run: async ({ path: p, source }, meta = {}) => {
+        const caller = meta.caller;
+        const scope = await reach(ctx, caller, meta);
         // See files.search: a named agent's identity does not survive the hop to the box, so
         // the cross-machine leg is refused outright rather than served unscoped there.
         if (target(source) === "box") {
@@ -286,8 +288,9 @@ export default {
       description: "A look inside one file: the start of a text file, or a small image. Other kinds say what they are and show nothing.",
       input: { type: "object", required: ["path"], properties: { path: { type: "string" }, source: { type: "string", enum: ["mac", "box"] }, max: { type: "integer" } } },
       callers: FILES_CALLERS,
-      run: async ({ path: p, source, max }, { caller } = {}) => {
-        const scope = await reach(ctx, caller);
+      run: async ({ path: p, source, max }, meta = {}) => {
+        const caller = meta.caller;
+        const scope = await reach(ctx, caller, meta);
         if (target(source) === "box") {
           if (!scope.all) throw Object.assign(new Error("an agent reads this machine only, not the box"), { code: "denied" });
           return forward("files.preview", { path: p, ...(max !== undefined ? { max } : {}) });
@@ -386,9 +389,10 @@ export default {
       input: { type: "object", required: ["path"], properties: { path: { type: "string" }, source: { type: "string", enum: ["mac", "box"] },
         offset: { type: "integer" }, length: { type: "integer" } } },
       callers: FILES_CALLERS,
-      run: async ({ path: p, source, offset, length }, { caller } = {}) => {
+      run: async ({ path: p, source, offset, length }, meta = {}) => {
+        const caller = meta.caller;
         if (role === "local" && source === "mac") throw new Error("already on this Mac");
-        const scope = await reach(ctx, caller);
+        const scope = await reach(ctx, caller, meta);
         if (target(source) === "box") {
           // See files.search: an agent's identity does not survive the hop, so pulling from the
           // box is refused outright for a restricted one rather than served unscoped there.
