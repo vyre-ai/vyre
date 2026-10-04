@@ -25,7 +25,19 @@ export default {
     const door = createDoor(ctx);
     /** @typedef {{ space: string, gateway: any, surfaces: any, chain: any, proof: any }} Opened */
     /** @param {string} name @param {string} description @param {any} input @param {(i: any, d: Opened) => Promise<any>} fn @param {(i: any) => any} [where] the Space a call acts in: the `space` it names, or the one its record reference names */
-    const tool = (name, description, input, fn, where = i => i) => ctx.tool(name, { description, input, callers: CALLERS, run: async (/** @type {any} */ i, /** @type {any} */ meta) => fn(i || {}, await door.open(where(i || {}), meta)) });
+    /** The space a call acted in, named: its id and a plain label ("home" for the home's own space). A caller that wants a particular space passes `space`; with none the call acts in the home's own space, and says so here. @param {string} id */
+    const actedIn = async id => {
+      if (ctx.kernel && id === ctx.kernel.space) return { id, label: "home" };
+      let r; try { r = /** @type {any} */ (await ctx.call("spaces.self", { person: ctx.kernel.owner, space: id })); } catch { r = null; }
+      const name = r && r.data && r.data.space && r.data.space.name;
+      return { id, label: typeof name === "string" ? name.replace(/\.vyre\.run$/, "") : null };
+    };
+    const tool = (name, description, input, fn, where = i => i) => ctx.tool(name, { description, input, callers: CALLERS, run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+      const d = await door.open(where(i || {}), meta);
+      const out = await fn(i || {}, d);
+      // every answer names the space it acted in
+      return out && typeof out === "object" && !Array.isArray(out) ? { ...out, acted_in: await actedIn(d.space) } : out;
+    } });
     const byUrn = (/** @type {any} */ i) => ({ space: parseUrn(i.urn).space });
 
     // Called by the spaces module when a Space is made: every Space already has its built-in store (the kernel opens one per hosted Space), so this answers at once and writes nothing. Twenty is

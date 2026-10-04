@@ -736,6 +736,9 @@ async function serverTrusted(server, proofHeader, caller, registry) {
   // the testbox. vyred's own Presence has no such method, and main.js never passes a verifier.
   if (presence && typeof presence.trustsServer === "function" && presence.trustsServer(server) === true) { serverTrust.set(key, true); return true; }
   const proof = parsePresence(/** @type {string} */ (proofHeader));
+  // DEVELOPMENT ONLY: on a development build whose owner made the hand-made stand-in file (false on a packaged build, see devStandIn), the stand-in answers this ask too, so a walk over ssh (the root sshd leader
+  // vyred cannot read) can reach the acts that need a person, the way it already does for every other proof ask. The proof is logged as method "stand-in" by the verifier; nothing else changes.
+  if (presence && String(proofHeader || "").trim() === "stand-in" && typeof presence.standIn === "function" && presence.standIn() === true) { serverTrust.set(key, true); return true; }
   if (!presence || !proof || !SERVER_TRUST_METHODS.has(proof.method)) return false;
   // Plain wording, naming exactly what is asking -- the lead's decision, 28 Sep: a model can name
   // its own process anything, so the reason must be specific enough that a real person can tell
