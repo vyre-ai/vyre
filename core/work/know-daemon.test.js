@@ -40,8 +40,8 @@ test("seed a session, a teammate in a later session recalls its decision from th
 
   const d = await start({ root, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
   t.after(() => d.stop());
-  const owner = d.kernel.chains.fromFacts(callerFacts("cli", {}, {}, d.kernel, false, null, { inside: false }));
-  const ownerMeta = { kernelFacts: callerFacts("cli", {}, {}, d.kernel, false, null, { inside: false }) };
+  const owner = d.kernel.chains.fromFacts(callerFacts("cli", {}, {}, d.kernel, false, null, { inside: false, outside: true }));
+  const ownerMeta = { kernelFacts: callerFacts("cli", {}, {}, d.kernel, false, null, { inside: false, outside: true }) };
   const ask = (/** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ meta = ownerMeta, caller = "cli") => d.registry.call(tool, input, caller, meta);
 
   assert.ok(!(await ask("projects.create", { name: "Harlow Legal", home: cwd })).error);

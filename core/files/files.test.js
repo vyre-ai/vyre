@@ -102,7 +102,7 @@ async function registry(t, { role, files, home, seam = undefined, link = undefin
     t.after(() => globalThis.__filesLinks.delete(root));
     writeModule(mods, "link", { roles: ["local"], does: { tools: ["link.remote"] } },
       `export default { async start(ctx) {
-        ctx.tool("link.remote", { run: async ({ tool, input }) => ({ result: await globalThis.__filesLinks.get(ctx.paths.root)(tool, input) }) });
+        ctx.tool("link.remote", { effect: "read", run: async ({ tool, input }) => ({ result: await globalThis.__filesLinks.get(ctx.paths.root)(tool, input) }) });
         return { async stop() {} };
       } };`);
     fp.push(mods);

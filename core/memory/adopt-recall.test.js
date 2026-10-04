@@ -22,7 +22,7 @@ test("seed, adopt, still recalled: told facts, Recall's index and a pre-adoption
   const d = await start({ root, log: () => {}, kernel: true });
   t.after(() => d.stop());
   const old = d.kernel.id.owner;
-  const cli = () => ({ kernelFacts: callerFacts("cli", {}, {}, d.kernel, false, null, { inside: false }) });
+  const cli = () => ({ kernelFacts: callerFacts("cli", {}, {}, d.kernel, false, null, { inside: false, outside: true }) });
   const call = (/** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ meta) => d.registry.call(tool, input, "cli", meta);
 
   await call("recall.index", {}, cli());
@@ -35,7 +35,7 @@ test("seed, adopt, still recalled: told facts, Recall's index and a pre-adoption
   // A session token of the person, opened under the OLD owner id.
   const oldChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-old", person: old, path: "direct", session: "s" });
   const token = (await d.kernel.surfaces.open(oldChain, {})).token;
-  const pre = await d.registry.call("memory.relevant", { text: "Harlow Legal", room: "unfiled" }, "mcp:thread:t1", { token }); assert.ok(!pre.error, JSON.stringify(pre.error));
+  const pre = await d.registry.call("memory.relevant", { text: "Harlow Legal", room: "unfiled" }, "deck", { token }); assert.ok(!pre.error, JSON.stringify(pre.error));
 
   const h = d.kernel.kernelFor({ name: "spaces", needs: { kernel: { actions: [], spaces: true } } });
   assert.equal((await h.adoptOwner(NEW)).changed, true);
@@ -47,6 +47,6 @@ test("seed, adopt, still recalled: told facts, Recall's index and a pre-adoption
   assert.equal((await call("recall.status", {}, cli())).data.sessions, sessionsBefore, "Recall's index is untouched");
   assert.ok(JSON.stringify((await call("memory.profile", {}, cli())).data).includes("Jordan"), "the told fact is still the person's");
   // The pre-adoption token: the kernel says its person is the owner now.
-  const stale = await d.registry.call("memory.relevant", { text: "Harlow Legal", room: "unfiled" }, "mcp:thread:t1", { token });
+  const stale = await d.registry.call("memory.relevant", { text: "Harlow Legal", room: "unfiled" }, "deck", { token });
   assert.ok(!stale.error, JSON.stringify(stale.error));
 });

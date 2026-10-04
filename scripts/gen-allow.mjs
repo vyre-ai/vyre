@@ -18,6 +18,12 @@ const SAFE = "open to the person's assistant, safe only for a daemon-stamped ses
 
 /** What each OPEN tool does, in its own words. A tool in OPEN with no line here fails the generator, so a new open tool must say what it is. */
 export const OPEN_NOTES = Object.freeze({
+  "files.drive.space.list": "lists a Space drive folder the caller may read; the kernel decides",
+  "files.drive.space.read": "reads a Space drive file the caller may read; the kernel decides",
+  "records.linked": "lists the records linked to one, under the caller's own chain; the kernel decides each",
+  "records.kits.library": "lists the Kits the library offers: public text, no data",
+  "records.kits.get": "reads one Kit's description from the library: public text, no data",
+  "system.build": "reads the build this box runs: version and commit, no data",
   "files.drive.upload": "puts a file in the Space drive under the caller's own chain; the kernel decides who may, and a version, never an overwrite",
   "files.drive.versions": "lists a drive file's versions the caller may read; the kernel decides",
   "records.me": "says who the caller is in the Space; no data",

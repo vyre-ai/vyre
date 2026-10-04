@@ -69,6 +69,8 @@ export function checkEntries(o) {
     for (const e of list) {
       const p = real(e);
       if (p === path.parse(p).root || above(p, h)) throw new Error(`the ${kind} ${p} is the home folder or above it: a session is never given the whole home`);
+      // The shared temp places hold other programs' scratch files: a session's own folder is a fresh subfolder, never the place itself or a folder above it (reviewer-2).
+      if (kind !== "read-only folder") for (const tmp of [...new Set([real(os.tmpdir()), "/private/tmp", "/private/var/folders", "/tmp", "/var/tmp"].map(real))]) if (above(p, tmp)) throw new Error(`the ${kind} ${p} is, or contains, the shared temp folder ${tmp}: a session gets its own subfolder`);
       for (const prot of [v, ...secrets]) {
         if (above(prot, p)) throw new Error(`the ${kind} ${p} is inside ${prot}, which a session never sees`);
         if (above(p, prot)) throw new Error(`the ${kind} ${p} contains ${prot}, which a session never sees`);

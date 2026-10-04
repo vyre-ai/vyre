@@ -94,14 +94,17 @@ async function harness(t, extra = []) {
   const core = discover([path.join(path.dirname(new URL(import.meta.url).pathname), "..")]).filter(f => f.manifest?.name === "harness");
   await reg.start([...core, ...discover([root], { firstPartyRoots: [root] })], { role: "local" });
   t.after(() => db.close());
+  // The hooks call as the hook's own label; a call with no caller is no caller the tools admit.
+  const call = reg.call.bind(reg);
+  reg.call = (tool, input, caller = "harness", meta) => call(tool, input, caller, meta);
   return { reg, events, home };
 }
 
 test("harness: with no other modules, every hook answers with nothing rather than failing", async t => {
   const { reg } = await harness(t);
   assert.equal((await reg.call("harness.brief", { cwd: "/home/alex/Work/harlow-site", session: "s1" }, "cli")).data.text, "");
-  assert.deepEqual(await reg.call("harness.enrich", { prompt: "what did Dana want?", cwd: "/x" }, "cli"), { data: { text: "" } });
-  assert.deepEqual(await reg.call("harness.rules", { tool_name: "Read", tool_input: { file_path: "/tmp/a" } }, "cli"), { data: { decision: null } });
+  assert.deepEqual(await reg.call("harness.enrich", { prompt: "what did Dana want?", cwd: "/x" }, "harness"), { data: { text: "" } });
+  assert.deepEqual(await reg.call("harness.rules", { tool_name: "Read", tool_input: { file_path: "/tmp/a" } }, "harness"), { data: { decision: null } });
 });
 
 test("harness: brief and enrich use projects and memory when they are running", async t => {
@@ -126,18 +129,18 @@ test("harness: brief and enrich use projects and memory when they are running", 
     return {};
   } };`;
   const { reg, events } = await harness(t, [
-    ["projects", { version: "0.1.0", does: { tools: ["projects.of", "projects.context"] } }, projects],
-    ["memory", { version: "0.1.0", does: { tools: ["memory.relevant"] } }, memory],
-    ["team", { version: "0.1.0", does: { tools: ["team.project-append"] } }, team],
-    ["style", { version: "0.1.0", does: { tools: ["style.append"] } }, style],
+    ["projects", { version: "0.1.0", does: { reads: ["projects.of", "projects.context"], tools: ["projects.of", "projects.context"] } }, projects],
+    ["memory", { version: "0.1.0", does: { reads: ["memory.relevant"], tools: ["memory.relevant"] } }, memory],
+    ["team", { version: "0.1.0", does: { reads: ["team.project-append"], tools: ["team.project-append"] } }, team],
+    ["style", { version: "0.1.0", does: { reads: ["style.append"], tools: ["style.append"] } }, style],
   ]);
   const b = await reg.call("harness.brief", { cwd: "/w/harlow-site", session: "s1", source: "startup" }, "cli");
   // The house voice comes first, then the team nudge, then the project's own brief. In scope:
   // style gets the project, so its (project rules) text is the one that shows.
   assert.equal(b.data.text, "Write plainly, no em dashes (project rules).\n\nThis project has teammates: design.\n\nProject harlow-legal. People: Dana Reyes.");
   assert.equal(events.since(0).find(e => e.type === "thread.started").payload.session, "s1");
-  assert.match((await reg.call("harness.enrich", { prompt: "What did Dana ask for?", cwd: "/w/harlow-site" }, "cli")).data.text, /Dana Reyes is at Harlow Legal/);
-  assert.equal((await reg.call("harness.enrich", { prompt: "/compact", cwd: "/w/harlow-site" }, "cli")).data.text, "", "slash commands get nothing");
+  assert.match((await reg.call("harness.enrich", { prompt: "What did Dana ask for?", cwd: "/w/harlow-site" }, "harness")).data.text, /Dana Reyes is at Harlow Legal/);
+  assert.equal((await reg.call("harness.enrich", { prompt: "/compact", cwd: "/w/harlow-site" }, "harness")).data.text, "", "slash commands get nothing");
   // Outside a project there is no project brief, but the house voice still applies (ADR 0037:
   // "for every session") - the account-level text, since there is no project to scope it to.
   assert.equal((await reg.call("harness.brief", { cwd: "/w/northwind" }, "cli")).data.text, "Write plainly, no em dashes.", "no brief, but still the house voice");
@@ -147,8 +150,8 @@ test("harness: brief and enrich use projects and memory when they are running", 
   // own scope is "northwind" only - out of scope, so style.append must get no project at all
   // (the account-level text), never harlow-legal's own style.rules.
   assert.equal((await reg.call("harness.brief", { cwd: "/w/harlow-site", projects: "northwind" }, "cli")).data.text, "Write plainly, no em dashes.", "out of scope: the account voice, never this project's own rules");
-  assert.equal((await reg.call("harness.enrich", { prompt: "What did Dana ask for?", cwd: "/w/harlow-site", projects: "northwind" }, "cli")).data.text, "", "nor their memory");
-  assert.match((await reg.call("harness.enrich", { prompt: "What did Dana ask for?", cwd: "/w/harlow-site", projects: "*" }, "cli")).data.text, /Dana Reyes/, "the assistant sees every project");
+  assert.equal((await reg.call("harness.enrich", { prompt: "What did Dana ask for?", cwd: "/w/harlow-site", projects: "northwind" }, "harness")).data.text, "", "nor their memory");
+  assert.match((await reg.call("harness.enrich", { prompt: "What did Dana ask for?", cwd: "/w/harlow-site", projects: "*" }, "harness")).data.text, /Dana Reyes/, "the assistant sees every project");
 });
 
 test("harness: the style-plus-team nudge is capped at APPEND_TOTAL_MAX, ellipsis not an em dash, even though each already caps its own text", async t => {
@@ -165,9 +168,9 @@ test("harness: the style-plus-team nudge is capped at APPEND_TOTAL_MAX, ellipsis
     return {};
   } };`;
   const { reg } = await harness(t, [
-    ["projects", { version: "0.1.0", does: { tools: ["projects.context"] } }, projects],
-    ["style", { version: "0.1.0", does: { tools: ["style.append"] } }, longStyle],
-    ["team", { version: "0.1.0", does: { tools: ["team.project-append"] } }, longTeam],
+    ["projects", { version: "0.1.0", does: { reads: ["projects.context"], tools: ["projects.context"] } }, projects],
+    ["style", { version: "0.1.0", does: { reads: ["style.append"], tools: ["style.append"] } }, longStyle],
+    ["team", { version: "0.1.0", does: { reads: ["team.project-append"], tools: ["team.project-append"] } }, longTeam],
   ]);
   const text = (await reg.call("harness.brief", { cwd: "/w/harlow-site" }, "cli")).data.text;
   const nudge = text.slice(0, text.indexOf("\n\nProject harlow-legal."));
@@ -190,8 +193,8 @@ test("harness: brief's team nudge is null-safe - team.default off, or core/team 
     return {};
   } };`;
   const { reg: withTeamOff } = await harness(t, [
-    ["projects", { version: "0.1.0", does: { tools: ["projects.context"] } }, projects],
-    ["team", { version: "0.1.0", does: { tools: ["team.project-append"] } }, teamOff],
+    ["projects", { version: "0.1.0", does: { reads: ["projects.context"], tools: ["projects.context"] } }, projects],
+    ["team", { version: "0.1.0", does: { reads: ["team.project-append"], tools: ["team.project-append"] } }, teamOff],
   ]);
   assert.equal((await withTeamOff.call("harness.brief", { cwd: "/w/harlow-site" }, "cli")).data.text, "Project harlow-legal.");
   // core/style running, but the person turned it off (its own tool says so).
@@ -200,19 +203,19 @@ test("harness: brief's team nudge is null-safe - team.default off, or core/team 
     return {};
   } };`;
   const { reg: withStyleOff } = await harness(t, [
-    ["projects", { version: "0.1.0", does: { tools: ["projects.context"] } }, projects],
-    ["style", { version: "0.1.0", does: { tools: ["style.append"] } }, styleOff],
+    ["projects", { version: "0.1.0", does: { reads: ["projects.context"], tools: ["projects.context"] } }, projects],
+    ["style", { version: "0.1.0", does: { reads: ["style.append"], tools: ["style.append"] } }, styleOff],
   ]);
   assert.equal((await withStyleOff.call("harness.brief", { cwd: "/w/harlow-site" }, "cli")).data.text, "Project harlow-legal.");
 });
 
 test("harness: learn records changed files; touched lists them; the vault rule emits tool.held", async t => {
   const { reg, events, home } = await harness(t);
-  await reg.call("harness.learn", { tool_name: "Edit", tool_input: { file_path: "src/intake.tsx" }, cwd: "/w/harlow-site", session: "s1" }, "cli");
-  await reg.call("harness.learn", { tool_name: "Read", tool_input: { file_path: "README.md" }, cwd: "/w/harlow-site", session: "s1" }, "cli");
-  const touched = (await reg.call("harness.touched", { session: "s1" }, "cli")).data;
+  await reg.call("harness.learn", { tool_name: "Edit", tool_input: { file_path: "src/intake.tsx" }, cwd: "/w/harlow-site", session: "s1" }, "harness");
+  await reg.call("harness.learn", { tool_name: "Read", tool_input: { file_path: "README.md" }, cwd: "/w/harlow-site", session: "s1" }, "harness");
+  const touched = (await reg.call("harness.touched", { session: "s1" }, "harness")).data;
   assert.deepEqual(touched.map(f => f.path), ["/w/harlow-site/src/intake.tsx"]);
-  const held = await reg.call("harness.rules", { tool_name: "Read", tool_input: { file_path: path.join(home, "vault", "x") }, session: "s1" }, "cli");
+  const held = await reg.call("harness.rules", { tool_name: "Read", tool_input: { file_path: path.join(home, "vault", "x") }, session: "s1" }, "harness");
   assert.equal(held.data.decision, "deny");
   assert.equal(events.since(0).find(e => e.type === "tool.held").payload.rule, 8);
 });
@@ -243,14 +246,14 @@ test("harness: a send inside an agent's thread is routed to the Gate; the user's
   } };`;
   const { reg } = await harness(t, [["gate", { version: "0.1.0", does: { tools: ["gate.route"] } }, gate]]);
   const call = { tool_name: "mcp__mail__send_message", tool_input: { to: "dana@harlowlegal.com", body: "hi" }, session: "s1" };
-  const agent = (await reg.call("harness.rules", { ...call, agent: "juno" }, "cli")).data;
+  const agent = (await reg.call("harness.rules", { ...call, agent: "juno" }, "harness")).data;
   assert.deepEqual([agent.decision, agent.reason, agent.rule], ["deny", "Use gate_request.", 1]);
-  assert.equal((await reg.call("harness.rules", call, "cli")).data.decision, "ask", "without an agent the floor's ask stands");
+  assert.equal((await reg.call("harness.rules", call, "harness")).data.decision, "ask", "without an agent the floor's ask stands");
 });
 
 test("harness: without the Gate running, an agent's send falls back to asking", async t => {
   const { reg } = await harness(t);
-  const r = (await reg.call("harness.rules", { tool_name: "mcp__mail__send_message", tool_input: { to: "dana@harlowlegal.com" }, agent: "juno" }, "cli")).data;
+  const r = (await reg.call("harness.rules", { tool_name: "mcp__mail__send_message", tool_input: { to: "dana@harlowlegal.com" }, agent: "juno" }, "harness")).data;
   assert.equal(r.decision, "ask");
 });
 
@@ -266,14 +269,14 @@ test("harness: an assistant outside any project reads the whole account for its 
     return {};
   } };`;
   const { reg } = await harness(t, [
-    ["projects", { version: "0.1.0", does: { tools: ["projects.of", "projects.context"] } }, projects],
-    ["memory", { version: "0.1.0", does: { tools: ["memory.relevant"] } }, memory],
+    ["projects", { version: "0.1.0", does: { reads: ["projects.of", "projects.context"], tools: ["projects.of", "projects.context"] } }, projects],
+    ["memory", { version: "0.1.0", does: { reads: ["memory.relevant"], tools: ["memory.relevant"] } }, memory],
   ]);
   const asked = () => /** @type {any[]} */ (/** @type {any} */ (globalThis).__asked);
-  const a = (await reg.call("harness.enrich", { prompt: "how should you reply to me?", cwd: "/home/alex", projects: "*" }, "cli")).data.text;
+  const a = (await reg.call("harness.enrich", { prompt: "how should you reply to me?", cwd: "/home/alex", projects: "*" }, "harness")).data.text;
   assert.match(a, /The owner prefers short replies/);
   assert.match(a, /an earlier session/, "the fact comes with its source");
   assert.equal(asked().at(-1).room, undefined, "the assistant's read is not narrowed to the unfiled room");
-  await reg.call("harness.enrich", { prompt: "how should you reply to me?", cwd: "/home/alex" }, "cli");
+  await reg.call("harness.enrich", { prompt: "how should you reply to me?", cwd: "/home/alex" }, "harness");
   assert.equal(asked().at(-1).room, "unfiled", "a person's own session outside a project still reads the unfiled room");
 });

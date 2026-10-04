@@ -38,21 +38,6 @@
  "core/sessions/sessions.test.js": {
   "owner": "sessions"
  },
- "core/stream/access.test.js": {
-  "owner": "chat"
- },
- "core/stream/group-ks-daemon.test.js": {
-  "owner": "chat"
- },
- "core/stream/group-ks-live.test.js": {
-  "owner": "chat"
- },
- "core/stream/group-live.test.js": {
-  "owner": "chat"
- },
- "core/stream/live.test.js": {
-  "owner": "chat"
- },
  "core/switchboard/chat-steer.test.js": {
   "owner": "sessions"
  },

@@ -27,7 +27,7 @@ async function world(t) {
   // agents.list / agents.scope: kit is granted northwind only.
   const mods = path.join(root, "mods");
   writeModule(mods, "agents", { version: "0.1.0", roles: ["local"], does: { tools: ["agents.list", "agents.scope"] } }, `export default { async start(ctx) {
-    ctx.tool("agents.list", { input: { type: "object" }, run: async () => [{ name: "kit", kind: "agent", projects: ["northwind"] }] });
+    ctx.tool("agents.list", { effect: "read", input: { type: "object" }, run: async () => [{ name: "kit", kind: "agent", projects: ["northwind"] }] });
     ctx.tool("agents.scope", { internal: true, input: { type: "object" }, run: async () => ({ kind: "agent", projects: ["northwind"] }) });
     return {};
   } };`);
