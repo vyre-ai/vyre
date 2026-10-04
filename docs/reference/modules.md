@@ -57,7 +57,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`onboard`](#onboard) | `core/onboard` | `box`, `local` | 14 | 3 | none |
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 15 | 7 | capsule, cli, deck |
 | [`pluginagent`](#pluginagent) | `core/pluginagent` | `box`, `local` | 9 | 4 | cli |
-| [`presence`](#presence) | `core/presence` | `box`, `local` | 20 | 6 | capsule, cli, deck |
+| [`presence`](#presence) | `core/presence` | `box`, `local` | 23 | 8 | capsule, cli, deck |
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 22 | 5 | cli |
 | [`providers`](#providers) | `core/providers` | `box`, `local` | 1 | 0 | cli |
 | [`publish`](#publish) | `core/publish` | `box` | 17 | 6 | capsule, cli, deck |
@@ -554,8 +554,8 @@ Claude Code on this computer, as a named agent the person grants once: the plugi
 - Folder: `core/presence`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [20](tools.md#presence), 4 of them only for other modules
-- Emits: [6 events](events.md#presence)
+- Tools: [23](tools.md#presence), 4 of them only for other modules
+- Emits: [8 events](events.md#presence)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
