@@ -365,6 +365,24 @@ async function startLocked(opts, root, p, release) {
     // On macOS and Linux a Vyre-started session is always confined: a sandbox that cannot be built is a refusal to start the session (with the reason), never a silent unconfined start
     // (reviewer-3 E-2). Only a development build can opt out (VYRE_SESSION_SANDBOX_OFF=1). Windows starts unsandboxed in 0.3, with the notice the user approved.
     if ((process.platform === "darwin" || process.platform === "linux") && devSwitch(process.env.VYRE_SESSION_SANDBOX_OFF)) registry.deps.sandbox = { off: true };
+    // The packaged box (ruling 4 Oct, "b"): no bubblewrap there. A session is confined by the container, a uid of its own (never vyred's, never root) and the wall, and that proves itself
+    // before every start, as that uid (core/spawner/confine.js). Only under the box's own supervisor with a spawner to ask; anywhere else a missing bwrap still refuses the start.
+    else if (process.platform === "linux" && process.env.VYRE_SUPERVISOR === "docker" && (await import("../spawner/client.js")).available()) {
+      const { confineSelfTest } = await import("../spawner/confine.js");
+      const userHome = process.env.VYRE_USER_HOME || os.homedir();
+      const accounts = process.env.VYRE_ACCOUNTS_HOME || "/home/acct", agentHome = process.env.VYRE_AGENT_HOME || "/home/vyre-agent";
+      const spawnerSocket = process.env.VYRE_SPAWNER_SOCKET || "/run/vyre/spawner.sock";
+      registry.deps.sandbox = { platform: process.platform, home: os.homedir(), vyreHome: root, temp: os.tmpdir(), uid: { confinedBy: "uid",
+        selfTest: (/** @type {{ account?: number | null, shared?: boolean, cwd: string, signal?: AbortSignal }} */ o) => {
+          // Another agent's home: the box's one agent for an account's session, and the first other account's for the agent itself.
+          let other = agentHome;
+          if (o.account == null) { try { other = fs.readdirSync(accounts).map(n => path.join(accounts, n)).find(f => fs.statSync(f).isDirectory()) || ""; } catch { other = ""; } }
+          else { const mine = path.join(accounts, String(o.account)); try { const o2 = fs.readdirSync(accounts).map(n => path.join(accounts, n)).find(f => f !== mine && fs.statSync(f).isDirectory()); if (o2) other = o2; } catch { /* the box's one agent's home stands */ } }
+          return confineSelfTest({ ...o, vyreUid: process.getuid ? process.getuid() : -1, out: [
+            { name: "Vyre's own home", path: userHome }, { name: "the vault and keys", path: path.join(root, "kernel") }, { name: "the daemon's socket", path: p.socket },
+            { name: "the spawner's socket", path: spawnerSocket }, ...(other ? [{ name: "another agent's home", path: other }] : []) ] });
+        } } };
+    }
     else if (process.platform === "darwin" || process.platform === "linux") {
       try {
         const [{ planHome, selfTest, startHomeProxy }, { launch, unavailable: sandboxUnavailable }] = await Promise.all([import("../runner/homesandbox.js"), import("../runner/sandbox.js")]);
