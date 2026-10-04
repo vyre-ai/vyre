@@ -89,11 +89,13 @@ export const MIGRATIONS = [
   // of the person's agents (agents_agents). The role's notes, charter and history stay with the binding.
   `ALTER TABLE team_teammates ADD COLUMN filler TEXT`,
   // Standing duties (plan section 9.2): identity only; watchers runs them.
-  // A charter a session drafted waits here, one per teammate, until the person accepts it (team.charter.accept): a charter is a teammate's system prompt.
-  `CREATE TABLE team_charter_drafts (teammate TEXT PRIMARY KEY, text TEXT NOT NULL, by TEXT NOT NULL, note TEXT, at INTEGER NOT NULL)`,
   DUTIES_MIGRATION,
   DUTIES_SEEN_MIGRATION,
   DUTIES_TITLE_MIGRATION,
+  // NEVER insert or reorder above this line: a migration's number is its place in this list, and an existing box has already applied the earlier ones. (Inserting this one before the
+  // duties steps once made an upgraded box re-run "ADD COLUMN title" and lose the whole team module.) A charter a session drafted waits here, one per teammate, until the person accepts it
+  // (team.charter.accept): a charter is a teammate's system prompt.
+  `CREATE TABLE team_charter_drafts (teammate TEXT PRIMARY KEY, text TEXT NOT NULL, by TEXT NOT NULL, note TEXT, at INTEGER NOT NULL)`,
 ];
 
 /** How long stop() waits for in-flight dispatch and merge work before it stops anyway (milliseconds). */

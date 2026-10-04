@@ -32,6 +32,8 @@ test("HD-2: a session's threads.start cannot resume another live thread, fork it
   const a = await d.registry.call("threads.start", { cwd: work, prompt: "hello", surface: "deck" }, "cli");
   // the attack: a model session (thread A) names B to resume, and names the assistant as its agent
   const evil = await d.registry.call("threads.start", { cwd: work, prompt: "INJECTED INTO B", resume: b.data.id, fork: b.data.id, agent: "assistant", agent_kind: "assistant", env: { X: "1" }, account: "other" }, "mcp", { thread: a.data.id });
+  // the registry may refuse a model caller threads.start outright (then nothing happened, which is the point); if it answers, the extra keys must have been ignored
+  if (evil.error) { assert.equal(evil.error.code, "denied", JSON.stringify(evil)); assert.ok(!JSON.stringify(await events(b.data.id)).includes("INJECTED INTO B"), "nothing was written into B"); return; }
   assert.ok(evil.data && evil.data.id, JSON.stringify(evil));
   assert.notEqual(evil.data.id, b.data.id, "a new thread, never B");
   assert.ok(!JSON.stringify(await events(b.data.id)).includes("INJECTED INTO B"), "nothing was written into B");

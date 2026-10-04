@@ -212,6 +212,7 @@ export function registerViews(ctx) {
     };
 
     ctx.tool("capsule.commands", {
+      effect: "read",
       callers: PERSON,
       description: "Every command the running modules declare for the Capsule, titles and keywords only: [{ module, id, title, keywords, alias, icon, root, arg, taggable, firstParty, hash }]. Sorted by title. An added module's commands carry firstParty false, and the Capsule marks its rows \"from <module>\"; its root is off until the person turns it on.",
       input: { type: "object", properties: {} },
@@ -225,6 +226,7 @@ export function registerViews(ctx) {
     });
 
     ctx.tool("capsule.view", {
+      effect: "read",
       callers: PERSON,
       description: "One frame for a command: { v: 1, kind: \"list\" | \"detail\" | \"form\" | \"error\" | \"needs\" | \"held\", ... }. `view` is list (default), detail (with id) or form (with form). Rows carry action ids, never tool names; text is data.",
       input: { type: "object", required: ["module", "command"], properties: { module: { type: "string" }, command: { type: "string" }, view: { type: "string", enum: ["list", "detail", "form"] }, q: { type: "string", maxLength: 500 }, id: { type: "string", maxLength: 200 }, form: { type: "string" }, cursor: { type: "string" } } },
@@ -264,6 +266,7 @@ export function registerViews(ctx) {
     });
 
     ctx.tool("capsule.act", {
+      effect: "write",
       callers: PERSON,
       description: "What an action does: { v: 1, kind: \"done\" | \"held\" | \"needs\" | \"error\" | \"view\" | \"preview\" | \"push\", ... }. A `do` effect (open, copy, say, ask) is returned for the Capsule to carry out; a tool action calls the module's own tool. An outward action first answers a preview with the exact words and a hash; the same call with `asked: { hash }` sends. Nothing is sent until the person's second Enter.",
       input: { type: "object", required: ["module", "command", "action"], properties: { module: { type: "string" }, command: { type: "string" }, action: { type: "string" }, id: { type: "string", maxLength: 200 }, q: { type: "string", maxLength: 500 }, form: { type: "string" }, fields: { type: "object" }, front: { type: "object" }, asked: { type: "object" } } },
