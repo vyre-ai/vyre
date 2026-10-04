@@ -643,6 +643,8 @@ test("PR-2: the form a Flow sent with a task is bound into what the checker's pr
   const two = await mk({ kind: "proposal", diff: "add a stage and delete a type" });
   assert.equal(one.state, "needs_check");
   assert.notEqual(one.payload.payload_hash, two.payload.payload_hash, "another form, another hash");
+  assert.equal(one.payload.form_hash, sha256(canonical({ kind: "proposal", diff: "add a stage" })), "the task row names the form hash the proof covers");
+  assert.notEqual(one.payload.form_hash, two.payload.form_hash);
   // a proof over the other form's hash, for this task and decision, is not a proof for this task
   const forTwo = r.sign(A, ALICE, "task.decide", { task: two.id, payload_hash: one.payload.payload_hash, decision: two.payload.decision });
   await assert.rejects(() => r.tasks.decide(A, two.id, { outcome: "approved", proof: forTwo }), { code: "needs_presence" });
