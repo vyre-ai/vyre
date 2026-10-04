@@ -11,6 +11,8 @@ import { Presence } from "./index.js";
 import { PersonSessions } from "./person.js";
 import { isServer } from "../config/index.js";
 
+// A paired phone reaches presence.person.start-paired, pair-challenge and rotate over its relay or tailnet channel: only those labels, never a model, a guest or MCP.
+const RELAY_DEVICE_CALLERS = Object.freeze(["tailnet", "relay", "device"]);
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
 
@@ -210,6 +212,7 @@ export default {
 
     ctx.tool("presence.person.start-paired", {
       description: "A device its owner paired opens its person session: it signs `paired-start`, its id and the challenge of its grant with the key the owner confirmed. No prompt. Answers the token, or one refusal whatever the reason.",
+      callers: RELAY_DEVICE_CALLERS,
       input: obj({ sig: str, label: str }, ["sig"]),
       run: async (input, meta = {}) => {
         const peer = meta.peer;
@@ -228,6 +231,7 @@ export default {
 
     ctx.tool("presence.person.pair-challenge", {
       description: "A device its owner paired asks for the challenge of its grant, to sign for presence.person.start-paired. A device with no grant gets a random one, so nothing says whether a grant exists.",
+      callers: RELAY_DEVICE_CALLERS,
       input: obj({}),
       run: async (_, meta = {}) => {
         const peer = meta.peer;
@@ -238,6 +242,7 @@ export default {
 
     ctx.tool("presence.person.rotate", {
       description: "A paired device's session gets a new secret, signed by the device's key. The old one stops working.",
+      callers: RELAY_DEVICE_CALLERS,
       input: obj({ t: str, n: str, sig: str }, ["t", "n", "sig"]),
       run: async (input, meta = {}) => {
         if (!meta.person) throw Object.assign(new Error("no person session"), { code: "denied" });

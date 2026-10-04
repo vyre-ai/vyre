@@ -5251,7 +5251,7 @@ End every paired session and grant of one device, or of all devices when none is
 A device its owner paired asks for the challenge of its grant, to sign for presence.person.start-paired. A device with no grant gets a random one, so nothing says whether a grant exists.
 
 - Input: none
-- Callers: any caller
+- Callers: `device`, `relay`, `tailnet`
 
 ### `presence.person.pair-grant`
 
@@ -5277,7 +5277,7 @@ A paired device's session gets a new secret, signed by the device's key. The old
   - `n` string, required
   - `sig` string, required
   - `t` string, required
-- Callers: any caller
+- Callers: `device`, `relay`, `tailnet`
 
 ### `presence.person.sessions`
 
@@ -5305,7 +5305,7 @@ A device its owner paired opens its person session: it signs `paired-start`, its
 - Input:
   - `sig` string, required
   - `label` string
-- Callers: any caller
+- Callers: `device`, `relay`, `tailnet`
 
 ### `presence.person.status`
 
