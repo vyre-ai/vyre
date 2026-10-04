@@ -675,14 +675,18 @@ export function createGrantsStore(cfg) {
     async installModule(name, needs) {
       const k = kernelChain(), actor = { kind: "service", id: name, space: cfg.space };
       if (!actors.has(actorKey(actor))) { actors.add(actorKey(actor)); await note(k, "actor.added", urn("member", name), { actor }); }
-      const have = [...grants.values()].find(g => g.status === "active" && g.source === `install:${name}`);
-      const prefixes = (needs.prefixes && needs.prefixes.length ? needs.prefixes : ["*/*"]).map(p => `vyre://${cfg.space}/${p}`);
-      const want = canonical({ a: [...needs.actions].sort(), p: prefixes });
-      if (have && canonical({ a: [...have.actions].sort(), p: [have.resource.prefix] }) === want) return have;
-      for (const g of [...grants.values()]) if (g.status === "active" && g.source === `install:${name}`) { const n = freeze({ ...g, status: "revoked", revoked_at: clock(), reason: "reinstalled" }); grants.set(n.id, n); await note(k, "grant.revoked", urn("grant", n.id), { id: n.id, reason: "reinstalled" }); }
+      // What the module is given: `needs.grants` is a list of { prefix, actions } (each prefix its own actions, so a service can be narrowed to its own types); the older `actions` with `prefixes` gives every
+      // prefix the same actions. A change to either replaces the module's grants.
+      const entries = (Array.isArray(needs.grants) && needs.grants.length
+        ? needs.grants.map((/** @type {any} */ e) => ({ prefix: `vyre://${cfg.space}/${e.prefix}`, actions: [...e.actions].sort() }))
+        : (needs.prefixes && needs.prefixes.length ? needs.prefixes : ["*/*"]).map((/** @type {string} */ p) => ({ prefix: `vyre://${cfg.space}/${p}`, actions: [...needs.actions].sort() }))).sort((x, y) => (x.prefix < y.prefix ? -1 : 1));
+      const mine = [...grants.values()].filter(g => g.status === "active" && g.source === `install:${name}`);
+      const want = canonical(entries);
+      if (mine.length && canonical(mine.map(g => ({ prefix: g.resource.prefix, actions: [...g.actions].sort() })).sort((x, y) => (x.prefix < y.prefix ? -1 : 1))) === want) return mine[mine.length - 1];
+      for (const g of mine) { const n = freeze({ ...g, status: "revoked", revoked_at: clock(), reason: "reinstalled" }); grants.set(n.id, n); await note(k, "grant.revoked", urn("grant", n.id), { id: n.id, reason: "reinstalled" }); }
       let last;
-      for (const prefix of prefixes) {
-        last = freeze({ id: `gr_${mintUuid(clock())}`, space: cfg.space, subject: { kind: "actor", actor }, actions: [...needs.actions], action_set_version: version, resource: { prefix }, conditions: {}, issuer: { kind: "service", id: "grants", space: cfg.space }, source: `install:${name}`, status: "active", created_at: clock() });
+      for (const e of entries) {
+        last = freeze({ id: `gr_${mintUuid(clock())}`, space: cfg.space, subject: { kind: "actor", actor }, actions: [...e.actions], action_set_version: version, resource: { prefix: e.prefix }, conditions: {}, issuer: { kind: "service", id: "grants", space: cfg.space }, source: `install:${name}`, status: "active", created_at: clock() });
         grants.set(last.id, last);
         await note(k, "grant.created", urn("grant", last.id), { grant: last });
       }

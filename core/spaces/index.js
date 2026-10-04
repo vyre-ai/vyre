@@ -301,11 +301,11 @@ export default {
       emit("space.warning", { spaceId, code: w.code, message: w.message });
     };
     const vpsDeps = () => ({ emit, ...(hooks.vpsDeps || { fetch: hooks.fetch || globalThis.fetch }) });
-    /** Is this server already paired to this person (the pairing proved it)? Asked of the relay's device row and of Wink's whois; neither answering means no (the typed code step then runs). @param {string} id */
+    /** Is this server already paired to this person (the pairing proved it)? Wink answers from the identity's own list (wink.server.paired); no answer means no, and the typed code step runs. @param {string} id */
     const pairedServer = async id => {
-      try { const r = await ctx.call("relay.device.info", { id }); if (r && r.data && !r.error && r.data.removed !== true && r.data.removed_at == null) return true; } catch { /* not a relay device */ }
-      try { const r = await ctx.call("wink.network.whois", { eid: id }); if (r && r.data && !r.error && r.data.kind === "server") return true; } catch { /* not asked */ }
-      return false;
+      let who = null; try { who = identity.status(); } catch { who = null; }
+      if (!who || !who.exists || !who.id) return false;
+      try { const r = await ctx.call("wink.server.paired", { device: id, identity: who.id }); return Boolean(r && r.data && !r.error && r.data.paired === true); } catch { return false; }
     };
     const deps = {
       store: kv,
@@ -881,6 +881,40 @@ export default {
       if (!/^per_[a-z2-7]{26}$/.test(id)) throw refuse("That is not a person id.", "bad_input");
       if (!K || typeof K.adoptOwner !== "function") throw refuse("This home has no kernel to change.", "unavailable");
       try { const r = await K.adoptOwner(id); return { owner: r.owner, previous: r.previous, changed: r.changed }; } catch (e) { throw plainKernelError(e); }
+    }, { internal: true });
+    // The spaces a person owns or administers, for the pairing module's "Pair to:" choices (one id: the kernel's space id, the name the person gave it, the person's role there).
+    tool("spaces.admin-list", "The finished spaces a person owns or administers here: { spaces: [{ space, name, role }] }, and the identity's own name when it is this device's. For modules (pairing targets).", obj({ person: str }, ["person"]), async (i, meta) => {
+      const person = String(i.person);
+      const out2 = [];
+      for (const row of spaces.all()) {
+        if (row.status !== "done") continue;
+        const m = await membershipOf(row.id, person, meta).catch(() => null);
+        const role = m ? m.role : row.createdBy === person ? "owner" : null;
+        if (role === "owner" || role === "admin") out2.push({ space: row.id, name: row.displayName || row.label, role });
+      }
+      let st = null; try { st = identity.status(); } catch { st = null; }
+      return { spaces: out2, identity: st && st.exists && st.id === person ? { id: st.id, name: st.name || null } : null };
+    }, { internal: true });
+    tool("spaces.identity.republish", "Put your identity's chain and each finished space's name in the directory again, for a directory that lost its claims (a test server that restarted). Says what it put back and what it could not.", obj(), async () => {
+      const done = { identity: false, spaces: /** @type {string[]} */ ([]), failed: /** @type {Array<{ name: string, why: string }>} */ ([]) };
+      try { await idops.republish(); done.identity = true; } catch (e) { done.failed.push({ name: "identity", why: String(/** @type {any} */ (e).message || e).slice(0, 120) }); return done; }
+      for (const row of spaces.all()) {
+        if (row.status !== "done" || !row.rootPublic) continue;
+        const r = await deps.names.claimSpace({ name: row.label, rootPublic: row.rootPublic, record: { spaceId: row.id, displayName: row.displayName } });
+        if (r && r.ok) done.spaces.push(row.name); else done.failed.push({ name: row.name, why: String((r && r.message) || "refused").slice(0, 120) });
+      }
+      return done;
+    });
+    // The Vyre name for an identity id, for the pairing question at a server ("Alex (alex.vyre.run)"). The directory has no reverse lookup, so: this device's own identity (its claimed name), else a name the asker CLAIMS
+    // (owner.vyre) that the directory resolves to exactly this id, else a name this home verified when that person joined. Otherwise null: the short id is shown, never an unchecked name.
+    tool("spaces.identity.name-of", "The claimed Vyre name for a person's id, verified: { name: 'alex.vyre.run' | null }. For modules.", obj({ id: str, claimed: str }, ["id"]), async i => {
+      const id = String(i.id);
+      let st = null; try { st = identity.status(); } catch { st = null; }
+      if (st && st.exists && st.id === id && st.name) return { name: `${st.name}.vyre.run` };
+      const label = typeof i.claimed === "string" ? i.claimed.trim().toLowerCase().replace(/\.vyre\.run$/, "") : "";
+      if (label && /^[a-z0-9][a-z0-9-]{1,30}$/.test(label)) { try { const r = await dir.resolve(label); if (r.ok && r.kind === "person" && r.id === id) return { name: `${label}.vyre.run` }; } catch { /* unreachable: no name */ } }
+      const known = await kv.get(`person-name/${id}`);
+      return { name: typeof known === "string" && known ? `${known}.vyre.run` : null };
     }, { internal: true });
     tool("spaces.devices.enrolled", "Whether a device is enrolled in a space (true when the device has no list yet). For the kernel and other modules, which refuse a device that is not.", obj({ device: str, space: str }, ["device", "space"]),
       async i => {

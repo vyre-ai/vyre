@@ -20,6 +20,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`about`](#about) | `core/about` | `box`, `local` | 1 | 0 | cli |
 | [`agents`](#agents) | `core/agents` | `box`, `local` | 13 | 0 | cli |
 | [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
+| [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 4 | 0 | cli |
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
 | [`artifacts`](#artifacts) | `core/artifacts` | `box` | 28 | 10 | capsule, cli, deck |
 | [`assistant`](#assistant) | `core/assistant` | `box`, `local` | 8 | 4 | cli |
@@ -60,7 +61,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`providers`](#providers) | `core/providers` | `box`, `local` | 1 | 0 | cli |
 | [`publish`](#publish) | `core/publish` | `box` | 17 | 6 | capsule, cli, deck |
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 4 | capsule, cli, deck |
-| [`recall`](#recall) | `core/recall` | `box`, `local` | 12 | 4 | cli |
+| [`recall`](#recall) | `core/recall` | `box`, `local` | 14 | 5 | cli |
 | [`records`](#records) | `core/records-tools` | `box`, `local` | 18 | 0 | cli |
 | [`relay`](#relay) | `core/relay` | `box`, `local` | 41 | 22 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
@@ -71,7 +72,8 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`settings`](#settings) | `core/settings` | `box`, `local` | 10 | 2 | cli, deck |
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
-| [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 71 | 34 | capsule, cli, deck |
+| [`signin`](#signin) | `core/signin` | `box`, `local` | 5 | 0 | cli |
+| [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 74 | 34 | capsule, cli, deck |
 | [`spend`](#spend) | `core/spend` | `box`, `local` | 4 | 2 | cli |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
 | [`stream`](#stream) | `core/stream` | `box`, `local` | 6 | 0 | none |
@@ -90,7 +92,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 20 | 7 | capsule, cli, deck |
-| [`wink`](#wink) | `core/wink` | `box` | 50 | 33 | capsule, cli, deck |
+| [`wink`](#wink) | `core/wink` | `box` | 51 | 33 | capsule, cli, deck |
 | [`work`](#work) | `core/work` | `box`, `local` | 15 | 0 | cli |
 
 ## about
@@ -126,6 +128,18 @@ The theme preset, the scheme and the design tokens as hub settings (ADR 0035), c
 - Tools: [3](tools.md#appearance)
 - Emits: [1 events](events.md#appearance)
 - Shows on: cli
+
+## approvals
+
+Approve on your phone: a session that cannot give a presence proof (the web app's software key) asks, the paired phone shows what will happen and signs it with Face ID, and the asker takes the proof back to attach to its act.
+
+- Folder: `core/approvals`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [4](tools.md#approvals)
+- Emits: no events
+- Shows on: cli
+- Needs kernel: `{"actions":[]}`
 
 ## apps
 
@@ -451,7 +465,7 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 - Tools: [46](tools.md#memory), 2 of them only for other modules
 - Emits: [15 events](events.md#memory)
 - Shows on: capsule, cli, deck
-- Needs kernel: `{"membership":true}`
+- Needs kernel: `{"membership":true,"sealDetect":true}`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## mentions
@@ -580,8 +594,8 @@ Put a site or app on the internet from your space: build a private preview, appr
 - Folder: `core/recall`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [12](tools.md#recall), 1 of them only for other modules
-- Emits: [4 events](events.md#recall)
+- Tools: [14](tools.md#recall), 1 of them only for other modules
+- Emits: [5 events](events.md#recall)
 - Shows on: cli
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
@@ -706,6 +720,19 @@ One screen service for the user's Mac and every agent's computer: what is on it,
 - Emits: [1 events](events.md#sight)
 - Shows on: no surface
 
+## signin
+
+`vyre signin`, the daemon half: the command line asks, the paired phone approves with Face ID, and the terminal gets a person session made for exactly that terminal.
+
+- Folder: `core/signin`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [5](tools.md#signin)
+- Emits: no events
+- Shows on: cli
+- Needs daemon: `personSessions`
+- Needs kernel: `{"actions":[],"presence":true}`
+
 ## spaces
 
 Identity, spaces, members and invites: your Vyre name, a space with a home you choose, the five roles with temp access, and join links.
@@ -713,7 +740,7 @@ Identity, spaces, members and invites: your Vyre name, a space with a home you c
 - Folder: `core/spaces`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [71](tools.md#spaces), 16 of them only for other modules
+- Tools: [74](tools.md#spaces), 18 of them only for other modules
 - Emits: [34 events](events.md#spaces)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"membership":true,"spaces":true}`
@@ -933,7 +960,7 @@ Pairing as grants: every way in is a Wink (scan a code, or type two-sided codes)
 - Folder: `core/wink`, version 0.1.0
 - Runs on: `box`
 - Requires: `relay`
-- Tools: [50](tools.md#wink), 2 of them only for other modules
+- Tools: [51](tools.md#wink), 3 of them only for other modules
 - Emits: [33 events](events.md#wink)
 - Listens for: `relay.code-asked`, `relay.invite-redeemed`, `device.paired`, `device.removed`
 - Shows on: capsule, cli, deck
@@ -950,3 +977,4 @@ The work layer on the kernel: the native assistant's tool surface and situation,
 - Tools: [15](tools.md#work)
 - Emits: no events
 - Shows on: cli
+- Needs kernel: `{"work":true,"attrs":true,"actions":["records.read","records.create","records.update","events.read"]}`

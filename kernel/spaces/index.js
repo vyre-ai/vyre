@@ -47,6 +47,8 @@ export function createSpaceKernels(cfg) {
     /** @type {{ stages: any }} */ const late = { stages: null };
     const hooks = cfg.stageFactory ? { onStageEnter: (/** @type {any} */ e) => (late.stages ? late.stages.onStageEnter(e) : Promise.resolve()), stageTasks: (/** @type {string} */ u, /** @type {string} */ st) => (late.stages ? late.stages.stageTasks(u, st) : []) } : {};
     const booted = tell(await boot({ db: cfg.openDb(path.join(d, "kernel.db")), space: id, ...hooks, owner: meta.owner, ...(store ? { store } : {}), owner_uid: process.getuid ? process.getuid() : 0, ...custody, clock: cfg.clock,
+      // A hosted Space that takes the claimed identity as its owner keeps that beside its own id, like the home's (the log is the truth at boot; the file follows it).
+      onOwnerAdopted: (/** @type {string} */ to, /** @type {string} */ from) => { try { fs.writeFileSync(f, JSON.stringify({ ...meta, owner: to, previous_owner: from }), { mode: 0o600 }); } catch { /* the next boot rewrites it from the log */ } },
       ...(cfg.doorFor ? { door: cfg.doorFor(id) } : {}), ...(cfg.bootOptions || {}) }));
     if (cfg.stageFactory) late.stages = await cfg.stageFactory(id, booted, meta);
     return booted;
@@ -110,6 +112,24 @@ export function createSpaceKernels(cfg) {
     async open(/** @type {string} */ id) {
       if (!live.has(id)) { if (!SPACE_ID.test(id)) return null; const k = await open(id); if (!k) return null; live.set(id, k); }
       return hostedHandle(id, live.get(id));
+    },
+    /**
+     * The home's owner took the claimed identity (`from` -> `to`): every hosted Space whose single owner is that same person takes it too, once each (a Space someone else owns is left alone).
+     * Called at the claim and at every boot, so a Space made before the claim, or one a restart cut short, ends with the identity as its owner. @param {string} to @param {string} from
+     * @returns {Promise<string[]>} the Spaces that were moved
+     */
+    async adoptOwner(to, from) {
+      /** @type {string[]} */ const moved = [];
+      for (const [id, k] of live) {
+        if (id === cfg.personal.space || !k || !k.grants || typeof k.adoptOwner !== "function") continue;
+        const ad = typeof k.grants.adopted === "function" ? k.grants.adopted() : null;
+        if (ad && ad.to === to) { const r = await k.adoptOwner(to); if (r && r.changed) moved.push(id); continue; }
+        if (ad) continue;
+        if (k.grants.roleOf({ kind: "person", id: from, space: id }) !== "owner") continue;
+        const r = await k.adoptOwner(to);
+        if (r && r.changed) moved.push(id);
+      }
+      return moved;
     },
     /** The kernel this home hosts for a Space and has open, or null. */
     hosted: (/** @type {string} */ id) => (live.has(id) ? hostedHandle(id, live.get(id)) : null),

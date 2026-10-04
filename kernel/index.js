@@ -52,6 +52,15 @@ export async function createKernel(cfg) {
   const hasPresenceSession = (/** @type {any} */ chain) => baseHas(chain) || (standIn() === true && isExactlyPerson(chain) && (standInUse("session"), true));
   const presence0 = cfg.presence || (cfg.sealer ? sealerPresence(cfg.sealer) : undefined);
   const presence = typeof cfg.standIn === "function" ? Object.freeze({ check: async (/** @type {any} */ i) => { if (i && i.proof && i.proof.method === "stand-in" && standIn() === true && isChain(i.chain) && isExactlyPerson(i.chain)) { standInUse(String(i.op)); return null; } return presence0 ? presence0.check(i) : "no_presence"; } }) : presence0;
+  /** Attributes of a resource by its type, offered by a first-party module that declared `needs.kernel.attrs` (a session's owner): merged over the home's own `cfg.attrs`. */
+  /** @type {Map<string, (urn: string) => any>} */ const attrProviders = new Map();
+  const attrsOf = (/** @type {string} */ urn) => {
+    const base = (cfg.attrs && cfg.attrs(urn)) || {};
+    const m = /^vyre:\/\/[^/]+\/([^/]+)\//.exec(String(urn));
+    const fn = m && attrProviders.get(m[1]);
+    let extra = {}; if (fn) { try { extra = fn(urn) || {}; } catch { extra = {}; } }
+    return { ...base, ...extra };
+  };
   const grantsStore = own ? undefined : cfg.grantsStore || createGrantsStore({ snapshot_every: cfg.snapshot_every, legacyKeys: cfg.legacyKeys, space: cfg.space, log, chains, seal, clock, presence, label: () => (label ? label() : {}) });
   const limits = createLimits({ space: cfg.space, log, clock });
   let fresh = false, migrated = false;
@@ -77,7 +86,7 @@ export async function createKernel(cfg) {
     space: cfg.space, store, log, chains, clock, limits, tasks, approvedAct: (/** @type {any} */ q) => tasks.useApproval(q), get owner() { return ownerRef.id; }, presence, hasPresenceSession, expr: cfg.expr === undefined ? defaultExpr : cfg.expr,
     ...(grantsStore ? { grantsStore } : { grants: cfg.grants, members: cfg.members }),
     sealer: cfg.sealer, door: cfg.door, onStageEnter: cfg.onStageEnter, stageTasks: cfg.stageTasks, checkpointKey: cfg.checkpointKey, templates: cfg.templates, destinations: cfg.destinations,
-    actions: cfg.actions, attrs: cfg.attrs, sinks: cfg.sinks, drive: cfg.drive, resolveCredential: cfg.resolveCredential, forwardCredential: cfg.forwardCredential, routeAction: cfg.routeAction,
+    actions: cfg.actions, attrs: attrsOf, canonicalPerson: (/** @type {string} */ id) => (grantsStore ? grantsStore.canonicalPerson(id) : id), sinks: cfg.sinks, drive: cfg.drive, resolveCredential: cfg.resolveCredential, forwardCredential: cfg.forwardCredential, routeAction: cfg.routeAction,
   });
   const surfaces = createSurfaces({ space: cfg.space, chains, door: cfg.door, clock, isAdmin: (/** @type {string} */ id) => Boolean(grantsStore && grantsStore.isAdmin({ kind: "person", id, space: cfg.space })), chatMember: (/** @type {string} */ person, /** @type {string} */ chat) => Boolean(grantsStore && grantsStore.chatHas(person, chat)) });
   const room = grantsStore ? createRoom({ space: cfg.space, grantsStore, port: roomPort, surfaces, chains, gateway, log, clock, currentCall: cfg.currentCall }) : null;
@@ -94,11 +103,17 @@ export async function createKernel(cfg) {
     if (!cfg.deviceEnrolled || !facts || facts.kind !== "device" || typeof facts.device_key_id !== "string") return true;
     try { return (await cfg.deviceEnrolled(space, facts.device_key_id)) !== false; } catch { return false; }
   };
+  /** The one adoption path (the handle's call and the boot repair share it). The grants store serialises it and reads the owner it replaces itself, so two callers at once make one adoption. */
+  const adoptNow = async (/** @type {string} */ to) => {
+    const r = await grantsStore.adoptOwner(to);
+    if (r.owner !== ownerRef.id) { const from = ownerRef.id; ownerRef.id = r.owner; if (typeof cfg.onOwnerAdopted === "function") await cfg.onOwnerAdopted(r.owner, from); }
+    return r;
+  };
   const kernelFor = (/** @type {any} */ m) => {
     if (!grantsStore) throw new Error("ctx.kernel needs the kernel's own grants store");
     const needs = (m.needs && m.needs.kernel) || { actions: [] };
     // Only a module that declared `needs.kernel` is made a service of the Space (one sealed event each); the rest get a handle that can do nothing.
-    const installed = m.needs && m.needs.kernel ? grantsStore.installModule(m.name, { actions: Array.isArray(needs.actions) ? needs.actions : [], prefixes: Array.isArray(needs.prefixes) ? needs.prefixes : undefined }) : Promise.resolve();
+    const installed = m.needs && m.needs.kernel ? grantsStore.installModule(m.name, { actions: Array.isArray(needs.actions) ? needs.actions : [], prefixes: Array.isArray(needs.prefixes) ? needs.prefixes : undefined, ...(Array.isArray(needs.grants) ? { grants: needs.grants.filter((/** @type {any} */ e) => e && typeof e.prefix === "string" && Array.isArray(e.actions)) } : {}) }) : Promise.resolve();
     const ready = Promise.all([installed, Array.isArray(needs.types) && needs.types.length ? store.define({ add_types: needs.types }) : Promise.resolve()]);
     // A failure here (the sealing process went away) surfaces on the module's first call, not as an unhandled rejection nobody can catch.
     ready.catch(() => {});
@@ -137,6 +152,65 @@ export async function createKernel(cfg) {
         try { slog.append(sgw.serviceChain(m.name), { type: "membership.read", sv: 1, subject: `vyre://${space}/member/${person}`, data: { module: m.name, person, member: role !== null }, vis: "owner", red: "internal" }); } catch { /* the answer is a read; a log that cannot be written says so on the next write */ }
         return Object.freeze({ member: role !== null, role });
       } } : {}),
+      /**
+       * Only for a first-party module that declares `needs.kernel.sealDetect: true` (memory, recall): is this ONE candidate the current value of a sealed field the chain's person may read.
+       * Yes or no and nothing else; the sealing process counts and limits the calls per module and Space. The module name comes from the registry (`m.name`), never from the call, and
+       * a record the chain may not read counts for nothing. Each answer is one owner-visible event naming the module and the count, never the candidate.
+       * @param {any} chain the caller's chain (`chain(meta)`) @param {string} value
+       */
+      ...(needs.sealDetect === true && cfg.sealer && typeof cfg.sealer.detectValue === "function" ? { sealDetect: async (/** @type {any} */ chain, /** @type {string} */ value) => {
+        await ready;
+        const r = await cfg.sealer.detectValue({ chain, caller: { module: m.name, first_party: true }, value,
+          canRead: async (/** @type {string} */ resource) => { try { return (await gateway.authorize({ chain, action: "records.read", resource })).effect === "allow"; } catch { return false; } } });
+        try { log.append(gateway.serviceChain(m.name), { type: "seal.detect", sv: 1, subject: `vyre://${cfg.space}/module/${m.name}`, data: { module: m.name, count: r.event ? r.event.count : null }, vis: "owner", red: "internal" }); } catch { /* the answer stands; a log that cannot be written says so on the next write */ }
+        return Object.freeze({ match: r.match === true });
+      } } : {}),
+      /**
+       * Only for a first-party module that declares `needs.kernel.work: true` (core/work: Space memory, teammates, the tool surface). It is the Kernel port core/work is written against,
+       * made from the kernel's own pieces. What it does NOT give: another person's chain, anything the caller's own chain could not do, or the Engineer's compile and simulate ports
+       * (records and sessions own those; the Engineer answers `unavailable` until they are wired).
+       *  - chainFor(extra): the chain of THIS call, which must hold a person (a session token's, or the person's own surface). The module's own service chain is refused: a work tool
+       *    acts for someone.
+       *  - chainForPerson(person): `[person, service:<this module>]` for a CURRENT member of this Space, to READ as that person with the service's reach (what a fact is proposed from).
+       *    It is a viewer chain plus the module's service hop: authorize refuses every act above read for it and it never stands for presence, so a proposed fact is kept as a
+       *    suggestion for the person to accept under their own chain, never written on their behalf.
+       *  - serviceChain(name): the module's own service chain (the name is the module's, never another's).
+       *  - tasks.list(chain): the queue of the person the chain acts for; tasks.forRecord(chain, urn): the open tasks on a record, read through the caller's own chain.
+       */
+      ...(needs.work === true ? (() => {
+        const personOnly = async (/** @type {any} */ meta) => {
+          const c = await handle.chain(meta || {});
+          if (!c || !Array.isArray(c.hops) || !c.hops.length || c.hops.every((/** @type {any} */ h) => h.actor.kind === "service")) throw new KernelError("not_allowed", "this call carries no person, so there is nothing to act for");
+          return c;
+        };
+        const viewer = (/** @type {string} */ person) => chains.fromFacts({ kind: "viewer", person, vouched: true });
+        return {
+          chainFor: personOnly,
+          chainForPerson: (/** @type {string} */ person) => {
+            if (typeof person !== "string" || !/^per_[A-Za-z0-9_-]{1,64}$/.test(person)) throw new KernelError("bad_input", "name one person");
+            if (!grantsStore.roleOf({ kind: "person", id: person, space: cfg.space })) throw new KernelError("not_found", "not a member of this Space");
+            return chains.appendService(viewer(person), m.name, true);
+          },
+          serviceChain: (/** @type {string} */ _name) => gateway.serviceChain(m.name),
+          ask: gateway.ask,
+          definitions: gateway.definitions,
+          actions: gateway.actions,
+          registry: () => gateway.actions(),
+          members: gateway.members,
+          tasks: Object.freeze({
+            list: (/** @type {any} */ chain) => gateway.tasks.list(viewer(String(chain.hops[0].actor.id))),
+            forRecord: async (/** @type {any} */ chain, /** @type {string} */ recordUrn) => {
+              const out = [];
+              for (const e of await gateway.events.read(chain, { type: "task.created" })) {
+                const id = String(e.subject).split("/").pop();
+                const t = await gateway.ask.get(chain, /** @type {string} */ (id)).catch(() => null);
+                if (t && t.record === recordUrn) out.push(t);
+              }
+              return out;
+            },
+          }),
+        };
+      })() : {}),
       /**
        * Only for a first-party module that declares `needs.kernel.spaces: true` (the module that creates Spaces): what a Space made here would be stored in (`storePlan`, with the confirmation to
        * show BEFORE it is made) and starting to host one (`host({ owner, name, accept_builtin_store })` -> `{ space }`, the kernel's own `spc_` plus 12 base32 id). The Space's first owner is the
@@ -187,12 +261,14 @@ export async function createKernel(cfg) {
     };
     // Only the spaces module (`needs.kernel.spaces: true`) may make or list Spaces: `spaces.create` makes the Space HERE, in the kernel's registry, and the kernel's id (`spc_` and 12 base32
     // characters) is the Space's id everywhere. One registry, one id; the store is attached at that moment (the kernel opens the built-in store for every hosted Space).
-    /** The one adoption path (the handle's call and the boot repair share it). The grants store serialises it and reads the owner it replaces itself, so two callers at once make one adoption. */
-    const adoptNow = async (/** @type {string} */ to) => {
-      const r = await grantsStore.adoptOwner(to);
-      if (r.owner !== ownerRef.id) { const from = ownerRef.id; ownerRef.id = r.owner; if (typeof cfg.onOwnerAdopted === "function") await cfg.onOwnerAdopted(r.owner, from); }
-      return r;
-    };
+    if (needs.presence === true) {
+      /** Check a presence proof for an act the module asks about (`needs.kernel.presence`): the kernel's one verifier, once (the proof is used up). Resolves null when it stands, else a short reason. */
+      handle.verifyProof = async (/** @type {{ chain: any, op: string, fields: Record<string, unknown>, proof: any }} */ i) => { if (!presence) return "no_presence_verifier"; try { return await presence.check(i); } catch { return "unavailable"; } };
+    }
+    if (needs.attrs === true) {
+      /** Say whose a resource of this type is (`{ owner, project }` by its URN): the kernel then lets only the owner read a type it scopes by owner (`session`). Fail-safe: a throw is no attributes. */
+      handle.registerAttrs = (/** @type {string} */ type, /** @type {(urn: string) => any} */ fn) => { if (typeof type !== "string" || !/^[a-z][a-z0-9_-]{0,40}$/.test(type) || typeof fn !== "function") throw new KernelError("bad_input", "name a type and give a function"); attrProviders.set(type, fn); };
+    }
     if (needs.spaces === true) {
       /** The claimed identity's id becomes the owner's id here (once, logged): the one person of this Space. */
       handle.adoptOwner = (/** @type {string} */ to) => {
@@ -254,5 +330,5 @@ export async function createKernel(cfg) {
   // The check a restart makes (incremental): the last signed checkpoint against the event at its position, then the chain from there to the head, not from event zero. Reported
   // for the daemon to act on (`boot.tamper`); it never throws here.
   const boot = cfg.checkpointKey && cfg.bootCheck !== false ? verifyTail({ space: cfg.space, log, publicKey: cfg.checkpointKey }) : null;
-  return Object.freeze({ boot, setLabel: (/** @type {() => { name?: string, words?: string }} */ f) => { label = f; }, bindCalls: (/** @type {() => any} */ fn) => { if (room) room.bindCalls(fn); }, recordStorageIndex, storageIndexHead, gateway, log, store, chains, grants: grantsStore, limits, tasks, surfaces, kernelFor, bindSpaces, fresh, migrated });
+  return Object.freeze({ boot, adoptOwner: adoptNow, setLabel: (/** @type {() => { name?: string, words?: string }} */ f) => { label = f; }, bindCalls: (/** @type {() => any} */ fn) => { if (room) room.bindCalls(fn); }, recordStorageIndex, storageIndexHead, gateway, log, store, chains, grants: grantsStore, limits, tasks, surfaces, kernelFor, bindSpaces, fresh, migrated });
 }

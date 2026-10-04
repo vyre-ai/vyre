@@ -248,3 +248,32 @@ test("lend: a module record that says the first grant was given is not consent t
   const nb = await deck("spaces.devices.lend", { space: b.space, device: made.eid, on: true });
   assert.equal(nb.error && nb.error.code, "device_removed", JSON.stringify(nb));
 });
+
+test("a directory that lost its claims gets the identity and the spaces' names back with spaces.identity.republish", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const port = await freePort();
+  /** @type {import("node:child_process").ChildProcess | null} */ let child = null;
+  const up = async () => { child = spawn(process.execPath, [SCRIPT, "--port", String(port)], { stdio: ["ignore", "pipe", "inherit"] }); const c = child; await new Promise((res, rej) => { c.stdout?.on("data", d => { if (String(d).includes("stand-in names directory")) res(null); }); c.on("exit", code => rej(new Error(`the stand-in exited early (${code})`))); }); };
+  const down = async () => { const c = child; if (!c) return; await new Promise(res => { c.once("exit", res); c.kill("SIGTERM"); }); child = null; };
+  await up();
+  t.after(() => { if (child) child.kill("SIGTERM"); });
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "rep-box", transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${port}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  const d = await start({ root, kernel: true, log: () => {} });
+  t.after(() => d.stop());
+  const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "deck" });
+  assert.ok(!(await deck("spaces.identity.create", { name: "alex" })).error);
+  const sp = await deck("spaces.create", { name: "harlowrep", home: { kind: "this-computer", confirmed: true } });
+  assert.equal(sp.data.status, "done", JSON.stringify(sp));
+  const resolves = async (/** @type {string} */ name) => (await fetch(`http://127.0.0.1:${port}/v1/ids/resolve?name=${name}`)).status;
+  assert.equal(await resolves("alex"), 200);
+  await down(); await up(); // the directory restarts and forgets everything
+  assert.equal(await resolves("alex"), 404);
+  const r = await deck("spaces.identity.republish");
+  assert.ok(!r.error, JSON.stringify(r.error));
+  assert.deepEqual([r.data.identity, r.data.spaces, r.data.failed], [true, ["harlowrep.vyre.run"], []], JSON.stringify(r.data));
+  assert.equal(await resolves("alex"), 200);
+  assert.equal(await resolves("harlowrep"), 200);
+});
