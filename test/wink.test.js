@@ -1581,6 +1581,13 @@ test("a box-less client makes its first space on a paired server: the server hos
   assert.ok(r.ok, JSON.stringify(r));
   assert.deepEqual([r.kind, r.payload.id, r.payload.ownerName, r.payload.home.kind], ["space", made.space, "alex", "server"]);
   assert.deepEqual(r.payload.route, ROUTE);
+  assert.equal(r.payload.rootPublic, made.rootPublic, "the record carries the server's key");
+  assert.ok(fs.existsSync(path.join(f.w.d.paths.root, "spaces", made.space, "root.key")), "the server holds the key, not the device");
+  // the server proves it: it signs a nonce with that key (spaces.attest, answered inside the invite preview)
+  const att = (await f.w.d.registry.call("spaces.attest", { space: made.space, nonce: "n".repeat(22) }, "module:vyred")).data;
+  assert.equal(att.pub, made.rootPublic);
+  assert.equal(crypto.verify(null, Buffer.from(`vyre-space-attest-v1\n${made.space}\n${"n".repeat(22)}`), crypto.createPublicKey({ key: Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), Buffer.from(att.pub, "base64url")]), format: "der", type: "spki" }), Buffer.from(att.sig, "base64url")), true);
+  assert.equal((await f.w.d.registry.call("spaces.attest", { space: made.space, nonce: "n".repeat(22) }, "cli")).error?.code !== undefined, true, "a person or a model cannot ask a server to sign for a space");
   // a refused host call claims nothing in the directory
   await assert.rejects(() => claimServerSpace({ identity, name: "nopeproof", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (spacesHooks.fetch), now: () => f.ident.clock.t, host: a => session.call("spaces.host-here", a) }), e => e.code === "presence_required");
   assert.equal((await dir.check("nopeproof")).status, "ok");

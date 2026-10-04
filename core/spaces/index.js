@@ -132,6 +132,7 @@ export default {
       return { c, state: await C.verifyChain(c.ops, { now: now() + C.SKEW_MS, ownerOps: ownerResolver(c.ops) }) };
     };
     /** The fingerprint of a space as its inviter saw it: its permanent id and its root key. 32 hex characters; four words show the first 44 bits on the card. */
+    const attestMessage = (/** @type {string} */ space, /** @type {string} */ nonce) => `vyre-space-attest-v1\n${space}\n${nonce}`;
     const spaceFingerprint = (/** @type {string} */ chainId, /** @type {string} */ rootPublic) => crypto.createHash("sha256").update(`vyre-space-fingerprint-v1\n${chainId}\n${rootPublic}`).digest("hex").slice(0, 32);
     const wordList = Array.isArray(WORDS) ? WORDS : String(WORDS).split(/\s+/).filter(Boolean);
     const fingerprintWords = (/** @type {string|null|undefined} */ hex) => {
@@ -211,6 +212,8 @@ export default {
       let st = null; try { st = identity.status(); } catch { st = null; }
       return !!(st && st.exists) && !(await serverOf(spaceId));
     };
+    /** The hosting server's key for a space it hosts for this person (from its host-here answer): what the directory record's rootPublic and the invite fingerprint are made from. @param {string} spaceId */
+    const attestedKeyOf = async spaceId => { const v = await kv.get(`server-hosted/${spaceId}`); return v && typeof v.rootPublic === "string" && v.rootPublic ? v.rootPublic : null; };
     const serverOf = async (/** @type {string} */ spaceId) => { const v = await kv.get(`server-hosted/${spaceId}`); return v && typeof v.device === "string" ? v.device : null; };
     const retireHosted = async (/** @type {string} */ id, /** @type {any} */ meta) => {
       const srv = await serverOf(id);
@@ -373,8 +376,10 @@ export default {
           return { ok: false, reason: r.status, message: r.status === "reserved" ? "That name is reserved. Pick another." : `That name can't be used: ${r.why}.` };
         },
         async claimSpace(/** @type {{ name: string, rootPublic: string, record: any }} */ a) {
+          const attested = await attestedKeyOf(a.record.spaceId);
           const k = files.keys.load(a.record.spaceId);
-          if (!k || k.publicKey !== a.rootPublic) return { ok: false, message: "The space's key is not on this device." };
+          if (!attested && (!k || k.publicKey !== a.rootPublic)) return { ok: false, message: "The space's key is not on this device." };
+          const rootPublic = attested || a.rootPublic;
           const label = String(a.record.displayName || a.name).slice(0, 80);
           try {
             // A space is an identity whose list holds its owners. This person is the first owner, acting through this device's entry.
@@ -389,7 +394,7 @@ export default {
               await kv.put(`chain/${a.record.spaceId}`, c);
             }
             const state = await C.verifyChain(c.ops, { now: now() + C.SKEW_MS, ownerOps: ownerResolver(c.ops) });
-            await dir.claim(a.name, state, c.ops, await ownerSigner(), { v: 1, id: a.record.spaceId, name: a.name, label, rootPublic: a.rootPublic, ...(who.name ? { ownerName: who.name } : {}) });
+            await dir.claim(a.name, state, c.ops, await ownerSigner(), { v: 1, id: a.record.spaceId, name: a.name, label, rootPublic, ...(who.name ? { ownerName: who.name } : {}) });
             await kv.put(`chain/${a.record.spaceId}`, { ops: c.ops, pin: C.pinOf(state) });
             return { ok: true };
           } catch (e) { return { ok: false, code: /** @type {any} */ (e).code, message: plainDirectory(e) }; }
@@ -398,11 +403,12 @@ export default {
         async pointHome(/** @type {{ name: string, spaceId: string, home: any }} */ a) {
           const row = spaces.get(a.spaceId);
           const k = files.keys.load(a.spaceId);
+          const attested = await attestedKeyOf(a.spaceId);
           const home = { kind: a.home && a.home.kind, ...(a.home && a.home.address ? { address: a.home.address } : {}) };
           const { state } = await stateOfSpace(a.spaceId);
           const route = await routeOf(a.spaceId);
           let ownerLabel = null; try { const st = identity.status(); ownerLabel = st && st.exists && st.name ? String(st.name) : null; } catch { ownerLabel = null; }
-          await dir.update(a.name, state, await ownerSigner(), { v: 1, id: a.spaceId, name: a.name, label: (row && (row.displayName || row.label)) || a.name, home, rootPublic: k ? k.publicKey : undefined, ...(route ? { route } : {}), ...(ownerLabel ? { ownerName: ownerLabel } : {}) });
+          await dir.update(a.name, state, await ownerSigner(), { v: 1, id: a.spaceId, name: a.name, label: (row && (row.displayName || row.label)) || a.name, home, rootPublic: attested || (k ? k.publicKey : undefined), ...(route ? { route } : {}), ...(ownerLabel ? { ownerName: ownerLabel } : {}) });
           return { ok: true };
         },
       },
@@ -677,7 +683,7 @@ export default {
           }
           if (!made || typeof made.space !== "string" || !/^spc_[a-z2-7]{12}$/.test(made.space)) throw refuse("The server did not give the space an id. Nothing was made.", "server_refused");
           spaceId = made.space;
-          await kv.put(`server-hosted/${spaceId}`, { device: remoteServer, at: now() });
+          await kv.put(`server-hosted/${spaceId}`, { device: remoteServer, at: now(), ...(typeof made.rootPublic === "string" && made.rootPublic ? { rootPublic: made.rootPublic } : {}) });
         }
         if (KS) {
           const plan = typeof KS.storePlan === "function" ? await KS.storePlan() : null;
@@ -1054,7 +1060,10 @@ export default {
     tool("spaces.retire-here", "On a server: take back a space that was only started here (a failed or cancelled create). Refuses a space with content (fail closed).", obj({ id: str }, ["id"]), async (i, meta) => {
       await ownerOnly(meta);
       if (!K || !K.spaces || typeof K.spaces.retire !== "function") throw refuse("This home has no kernel to change.", "unavailable");
-      try { return await K.spaces.retire(String(i.id)); } catch (e) { throw plainKernelError(e); }
+      let r;
+      try { r = await K.spaces.retire(String(i.id)); } catch (e) { throw plainKernelError(e); }
+      if (/^spc_[a-z2-7]{12}$/.test(String(i.id))) await files.keys.discard(String(i.id)).catch(() => {});
+      return r;
     }, { presence: { summary: (/** @type {any} */ i) => `Take back the space ${i && i.id} on this server` } });
     tool("spaces.host-here", "On a server: host a new space in THIS home's kernel for its owner (called by the owner's device over the paired session when a space is made with this server as its home). Answers { space }. Idempotent when given the id.", obj({ name: str, id: str, acceptBuiltinStore: { type: "boolean" } }, ["name"]), async (i, meta) => {
       if (!K || !K.spaces || typeof K.spaces.host !== "function" || typeof K.owner !== "string") throw refuse("This home has no kernel to host a space.", "unavailable");
@@ -1065,14 +1074,32 @@ export default {
       if (!/^[a-z0-9][a-z0-9-]{1,30}$/.test(label)) throw refuse("That is not a space name.", "bad_name");
       if (typeof i.id === "string" && i.id) {
         if (!/^spc_[a-z2-7]{12}$/.test(i.id)) throw refuse("That is not a space id.", "bad_input");
-        if (K.spaces.hosts(i.id) === true) return { space: i.id, existed: true };
+        if (K.spaces.hosts(i.id) === true) { const have = files.keys.load(i.id); return { space: i.id, existed: true, ...(have ? { rootPublic: have.publicKey } : {}) }; }
       }
       // A server too small for the larger store needs the owner's word first, in the kernel's own words (the same confirmation a local creation shows). The refusal carries that text; asking again with acceptBuiltinStore hosts it.
       const plan = typeof hooks.storePlan === "function" ? await hooks.storePlan() : typeof K.spaces.storePlan === "function" ? await K.spaces.storePlan().catch(() => null) : null;
       const confirm = plan && plan.confirm ? plan.confirm : null;
       if (confirm && i.acceptBuiltinStore !== true) throw refuse(String(confirm.text || "This server needs your OK to use the built-in store."), "needs_store_confirmation");
-      try { const h = await K.spaces.host({ owner: K.owner, name: label, ...(confirm ? { accept_builtin_store: true } : {}), ...(typeof i.id === "string" && i.id ? { id: i.id } : {}) }); return { space: h.space || h.id, existed: false }; } catch (e) { throw plainKernelError(e); }
+      let h;
+      try { h = await K.spaces.host({ owner: K.owner, name: label, ...(confirm ? { accept_builtin_store: true } : {}), ...(typeof i.id === "string" && i.id ? { id: i.id } : {}) }); } catch (e) { throw plainKernelError(e); }
+      const id = h.space || h.id;
+      // The space's key as a joiner can check it: made and held HERE (spaces/<id>/root.key, 0600), never returned. Its public half goes into the owner-signed directory record as `rootPublic`,
+      // and a joiner's device asks this server to sign a fresh nonce with it (spaces.attest, answered inside grants.invites.get) before it shows the join card.
+      const kp = await files.keys.generate();
+      await files.keys.hold(id, kp.privateKey);
+      return { space: id, existed: false, rootPublic: kp.publicKey };
     }, { presence: { summary: (/** @type {any} */ i) => `Make the space ${i && i.name} on this server` } });
+    // A server proves it holds a space: it signs a joiner's nonce with the space's key (the one whose public half is the record's `rootPublic`). Asked by the peer door's remote server, inside the
+    // answer to grants.invites.get; modules only. The message is fixed and starts with its own tag, so the signature is good for nothing else.
+    tool("spaces.attest", "Sign a joiner's nonce with this home's key for a space it hosts: { pub, sig }. For the peer door (modules only).", obj({ space: str, nonce: str }, ["space", "nonce"]), async (i, meta) => {
+      onlyModules(meta, ["vyred"]);
+      const id = String(i.space), nonce = String(i.nonce);
+      if (!/^spc_[a-z2-7]{12}$/.test(id) || !/^[A-Za-z0-9_-]{16,64}$/.test(nonce)) throw refuse("That is not a request this home answers.", "bad_input");
+      if (!K || !K.spaces || K.spaces.hosts(id) !== true) throw refuse("This home does not host that space.", "not_found");
+      const k = files.keys.load(id);
+      if (!k) throw refuse("This home holds no key for that space.", "unavailable");
+      return { pub: k.publicKey, sig: b64u(await k.sign(Buffer.from(attestMessage(id, nonce)))) };
+    }, { internal: true });
     // Which paired server hosts a space this device made with a server as its home (null for a space hosted here): for the module that opens the remote path to that Space.
     tool("spaces.server-of", "The paired server's device id that hosts a space this device made, or null. For modules.", obj({ space: str }, ["space"]), async (i, meta) => { onlyModules(meta, ["wink", "runner", "vyred"]); return { device: await serverOf(String(i.space)) }; }, { internal: true });
     tool("spaces.devices.enrolled", "Whether a device is enrolled in a space (true when the device has no list yet). For the kernel and other modules, which refuse a device that is not.", obj({ device: str, space: str }, ["device", "space"]),
@@ -1325,7 +1352,8 @@ export default {
     const invitePin = async (/** @type {any} */ row) => {
       const c = await chainOf(row.id);
       const k = files.keys.load(row.id);
-      return c && c.pin && k ? { chain: c.pin, rk: spaceFingerprint(c.pin.id, k.publicKey) } : {};
+      const rootPublic = (await attestedKeyOf(row.id)) || (k ? k.publicKey : null);
+      return c && c.pin && rootPublic ? { chain: c.pin, rk: spaceFingerprint(c.pin.id, rootPublic) } : {};
     };
     tool("spaces.invites.create", "Make a join link (https://<space>.vyre.run/join/...) for a role. A temp or member invite can name projects. Owners and admins only, unless the space lets managers invite.",
       obj({ space: str, role: { type: "string", enum: ROLE_IDS }, scope: { type: "array", items: str }, expires: { type: "number" }, uses: { type: "number" }, ttlDays: { type: "number" }, alias: str, to: str }, ["space", "role"]),
@@ -1458,6 +1486,20 @@ export default {
       if (!h) throw gone();
       const k = h.hosted === false ? { chain: null, proof: K.proofFrom(meta) } : await kctxOf(meta, r.payload.id);
       let card;
+      // A server reached through the record's route must prove it holds the space: the invite preview carries its signature over a fresh nonce, made with the key whose public half the owner-signed record
+      // names as `rootPublic`. A server that cannot is refused before the card is shown or anything is accepted; the fingerprint words come from the same key, so they say which server holds the space.
+      if (h.hosted === false) {
+        const nonce = b64u(crypto.randomBytes(16));
+        let got;
+        try { got = await h.gateway.grants.invites.get(null, invId, { attest: nonce }); }
+        catch (e) { remoteHandles.delete(`${r.payload.id}/${invId}`); const c = String(/** @type {any} */ (e).code || ""); if (/^(unavailable|unreachable|failed)$/.test(c) || !c) throw gone(); throw plainKernelError(e); }
+        const { attest, ...bare } = got && typeof got === "object" ? got : /** @type {any} */ ({});
+        let proven = false;
+        try { proven = Boolean(r.payload.rootPublic) && Boolean(attest) && attest.pub === r.payload.rootPublic && typeof attest.sig === "string" && await C.verifyWith(String(attest.pub), Buffer.from(attestMessage(r.payload.id, nonce)), attest.sig); } catch { proven = false; }
+        if (!proven) { remoteHandles.delete(`${r.payload.id}/${invId}`); throw refuse("This server could not prove that it holds this space, so Vyre will not join it. Ask the person who invited you.", "server_not_proven"); }
+        if (!remoteHandles.has(`${r.payload.id}/${invId}`)) remoteHandles.set(`${r.payload.id}/${invId}`, { h, at: now() });
+        card = bare;
+      } else
       try { card = await kernelMembers({ handle: h, now }).invites.get(k, invId); if (h.hosted === false && !remoteHandles.has(`${r.payload.id}/${invId}`)) remoteHandles.set(`${r.payload.id}/${invId}`, { h, at: now() }); } catch (e) { remoteHandles.delete(`${r.payload.id}/${invId}`); if (h.hosted === false && /^(unavailable|unreachable|failed)$/.test(String(/** @type {any} */ (e).code || ""))) throw gone(); throw e; }
       return { card, invId, spaceId: r.payload.id, handle: h, k, fingerprint: carried.rk || null };
     };

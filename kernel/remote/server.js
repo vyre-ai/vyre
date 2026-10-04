@@ -16,7 +16,7 @@ const INVITEE_RESPONSE_BYTES = 16 * 1024;
 const RATE = Object.freeze({ member: 300, invitee: 30, window_ms: 60_000, peers: 10_000 });
 
 /**
- * @param {{ space: string, home?: string, kernel: any, clock?: () => number, rate?: { member?: number, invitee?: number }, services?: Record<string, any> }} cfg `kernel` is the home's kernel for this Space (createKernel / bootKernel's result)
+ * @param {{ space: string, home?: string, kernel: any, clock?: () => number, rate?: { member?: number, invitee?: number }, services?: Record<string, any>, attest?: (nonce: string) => Promise<{ pub: string, sig: string } | null> }} cfg `kernel` is the home's kernel for this Space (createKernel / bootKernel's result)
  */
 export function createRemoteServer(cfg) {
   const clock = cfg.clock || Date.now;
@@ -133,7 +133,19 @@ export function createRemoteServer(cfg) {
               // the proof is the trailing `{ presence }` option on its own, never merged into one of the caller's own arguments (PW-4)
               callArgs = [...callArgs, { presence: request.proof }];
             }
-            const result = await target.fn(who.chain, ...callArgs);
+            // A joiner asks the home to prove it holds the Space: the preview's trailing `{ attest: <nonce> }` is taken off before the kernel sees it and the home's own signature over that nonce rides
+            // back beside the card (never in the kernel's answer). Only on grants.invites.get, which is all an invitee may call.
+            let attestNonce = null;
+            if (request.call === "grants.invites.get" && callArgs.length === 2 && callArgs[1] && typeof callArgs[1] === "object" && !Array.isArray(callArgs[1]) && Object.keys(callArgs[1]).join() === "attest") {
+              if (typeof callArgs[1].attest !== "string" || !/^[A-Za-z0-9_-]{16,64}$/.test(callArgs[1].attest)) return fail(id, "bad_input", "that is not a nonce");
+              attestNonce = callArgs[1].attest;
+              callArgs = [callArgs[0]];
+            }
+            let result = await target.fn(who.chain, ...callArgs);
+            if (attestNonce && typeof cfg.attest === "function" && result && typeof result === "object") {
+              let a = null; try { a = await cfg.attest(attestNonce); } catch { a = null; }
+              if (a) result = { ...result, attest: a };
+            }
             const out = JSON.stringify(result === undefined ? null : result);
             return out.length > cap ? fail(id, "too_large", "that answer is too large") : { v: WIRE_VERSION, id, ok: true, result: JSON.parse(out) };
           } catch (e) {
