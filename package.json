@@ -75,6 +75,7 @@
     "!local/hands-chrome-mac/spike/**",
     "!local/hands-chrome-mac/standalone/harness/**",
     "!deck/test/**",
+    "!deck/ui/lab/shots.mjs",
     "!**/node_modules/**",
     "!local/capsule/native/.build/**",
     "!local/capsule/bin/**",
