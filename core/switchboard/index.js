@@ -803,6 +803,12 @@ export class Switchboard {
     if (!o.agent && !acct && (rec.provider || o.provider || "claude") === "claude" && !(o.env && (o.env.CLAUDE_CODE_OAUTH_TOKEN || o.env.ANTHROPIC_API_KEY)) && this.deps.auth) {
       const a = await this.deps.auth({ agent: null }).catch(e => { this.deps.log(`threads: ${e.message}; using this machine's own Claude login`); return null; });
       if (a && a.env) { o = { ...o, env: { ...(o.env || {}), ...a.env }, ...(a.fallback && !o.fallback ? { fallback: a.fallback } : {}) }; this.db.prepare("UPDATE threads_runs SET auth = ? WHERE id = ?").run(a.auth, id); }
+      // On a server whose sessions run in the sandbox, `ambient` (this machine's own Claude login) is no login at all: the sandbox gives the session a clean HOME and only the provider on the network, so
+      // with no connected AI account the session could never speak and would sit in "starting". Refuse at once with a plain reason the app can show (the AI accounts card says the same).
+      else if (this.deps.requireAccount) {
+        if (!o.resume) this.db.prepare("DELETE FROM threads_runs WHERE id = ?").run(id);
+        throw Object.assign(new Error("Connect an AI account to start a session."), { code: "no_account" });
+      }
     }
     o = { ...o, system: await this.systemPrompt(rec, o) };
     // A quick answer thinks not at all, so the same words get the same answer (no temperature knob).
@@ -1203,7 +1209,7 @@ export class Switchboard {
     const foreignOpts = foreign ? { floor, memory, ...(sock ? { mcpServers: [{ name: "vyre", command: process.execPath, args: [MCP_SERVER], env: Object.entries(mcpEnv).map(([name, value]) => ({ name, value: String(value) })) }] } : {}) } : {};
     const how = { ...foreignOpts, ...(o.sandboxSpawn ? { sandboxSpawn: o.sandboxSpawn } : {}), subreaper: this.deps.subreaper || null, ...(this.deps.uid != null ? { uid: this.deps.uid, gid: this.deps.gid } : {}), ...(account ? { account } : {}),
       onSpawn: g => { state.group = g; this.groups.set(g.pgid, g.sid); } };
-    const on = { ...how, onMessage: m => { this.touch(id, state); if (!state.pidSet && state.proc && state.proc.pid) { state.pidSet = true; this.set(id, { pid: state.proc.pid }); } this.onMessage(id, state, m); }, onExit: (code, signal, stderr) => this.onExit(id, state, code, signal, stderr) };
+    const on = { ...how, onMessage: m => { state.heard = true; if (state.startWatch) { clearTimeout(state.startWatch); state.startWatch = null; } this.touch(id, state); if (!state.pidSet && state.proc && state.proc.pid) { state.pidSet = true; this.set(id, { pid: state.proc.pid }); } this.onMessage(id, state, m); }, onExit: (code, signal, stderr) => this.onExit(id, state, code, signal, stderr) };
     // The Agent SDK when it is loaded (ADR 0030), else the CLI runner: the same protocol, so the
     // same stream reaches onMessage either way.
     const other = o.provider && o.provider !== "claude" && this.deps.providers ? this.deps.providers.get(o.provider) : null;
@@ -1212,6 +1218,15 @@ export class Switchboard {
     state.proc = provider.run({ ...lo, cwd: rec.cwd, env, ...on });
     this.set(id, { status: "starting", pid: state.proc.pid || null, stopped_reason: null, driver });
     this.touch(id, state);
+    // A session never sits in "starting" for ever: if the agent says nothing within the limit (not signed in, not installed, no route to its provider) the thread FAILS with what was seen, its processes
+    // are stopped, and a surface that waited on it is told.
+    const limit = Number(this.deps.startTimeoutMs) || 90_000;
+    state.startWatch = setTimeout(() => {
+      state.startWatch = null;
+      if (this.live.get(id) !== state || state.heard) return;
+      void this.close(id, state, `exited without starting: the agent said nothing in ${Math.round(limit / 1000)} s (not signed in, not installed, or no route to its provider)`).catch(() => {});
+    }, limit);
+    state.startWatch.unref?.();
   }
 
   onMessage(id, st, m) {
@@ -1563,6 +1578,7 @@ export class Switchboard {
     if (st.switching || this.live.get(id) !== st) return;               // replaced (fallback): not an end
     this.live.delete(id);
     this.closeSocket(id);
+    if (st.startWatch) { clearTimeout(st.startWatch); st.startWatch = null; }
     const reason = st.haltReason || (st.done ? "done" : st.stopping ? "stopped" : code === 0 ? "exited" : `exited ${code ?? signal}${stderr ? ": " + cut(stderr, 160) : ""}`);
     this.set(id, { status: "stopped", pid: null, stopped_reason: reason });
     for (const a of this.asks.open(id)) this.closeAsk(a, "cancelled", "thread stopped");
@@ -3209,6 +3225,8 @@ export default {
       transcripts: transcriptFolders((ctx.config && ctx.config.transcripts) || [], root),
       emit: (type, payload, where) => ctx.events.emit(type, payload, where), log: ctx.log,
       prune: (thread, before) => ctx.events.prune("thread.text", { thread, before, has: "delta" }),
+      startTimeoutMs: cfg.start_timeout_s ? cfg.start_timeout_s * 1000 : undefined,
+      requireAccount: Boolean(ctx.config && ctx.config.role === "box" && ctx.sandbox && !ctx.sandbox.off && !ctx.sandbox.unavailable && !process.env.VYRE_CLAUDE_BIN),
       idleMs: cfg.idle_minutes * 60_000, maxLive: cfg.max_live, auth, providers: ctx.providers, accountEnv, accountHome,
       // Each session's own socket (option A): always with "on", with the spawner under "auto".
       // Through the spawner it goes in the box's shared folder; else a private one of this user's.

@@ -9,6 +9,7 @@ import crypto from "node:crypto";
 import { CALLS, INVITEE_CALLS, WIRE_VERSION, MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, REPLAY_WINDOW_MS, MAX_PROOF_BYTES, CHALLENGE_TTL_MS, PRESENCE_CODES, pathOf } from "./wire.js";
 import { proofRequest, PROOF_CALLS } from "./proof.js";
 import { canonical, sha256 } from "../core/canonical.js";
+import { remoteBinding } from "../core/presence.js";
 
 const fail = (/** @type {any} */ id, /** @type {string} */ code, /** @type {string} */ message, /** @type {any} */ challenge = undefined) => ({ v: WIRE_VERSION, id, ok: false, error: { code, message, ...(challenge ? { challenge } : {}) } });
 const MAX_STORED_BYTES = 8 * 1024 * 1024;
@@ -129,6 +130,10 @@ export function createRemoteServer(cfg) {
             if (hasProof) {
               let size = 0; try { size = Buffer.byteLength(JSON.stringify(request.proof)); } catch { size = Infinity; }
               if (typeof request.proof !== "object" || Array.isArray(request.proof) || size > MAX_PROOF_BYTES) return fail(id, "bad_input", "that proof is not usable");
+              // RP-1: the proof must name THIS home and THIS challenge in its signed fields (`home`, `challenge`): a proof for another home, another challenge, or a local proof with neither is refused
+              // before the kernel sees it, whatever its signature (the kernel's verifier checks the signature, the key, the op and its own single-use nonce).
+              const bind = remoteBinding(request.proof, { home: cfg.home || cfg.space, challenge: String(request.challenge || "") });
+              if (bind) { if (typeof request.challenge === "string") challenges.delete(request.challenge); return fail(id, "bad_binding", "that proof does not name this home and this challenge"); }
               if (!spend(request.challenge, peer.device_key_id, request.call, request.args, now)) return fail(id, "bad_challenge", "that proof was not made for a challenge this home issued for this call; ask again");
               // the proof is the trailing `{ presence }` option on its own, never merged into one of the caller's own arguments (PW-4)
               callArgs = [...callArgs, { presence: request.proof }];
