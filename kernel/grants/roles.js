@@ -9,9 +9,7 @@ const MEMBER = ["records.read", "records.create", "records.update", "records.rem
 const MANAGER = [...MEMBER, "grants.list", "rules.list", "rules.get", "rules.test", "rules.propose"];
 const ADMIN = [...MANAGER, "records.define", "grants.create", "grants.revoke", "grants.narrow", "grants.role", "grants.invite", "drive.read", "drive.write", "drive.restore", "kits.propose", "kits.install", "kits.remove", "rules.set", "rules.enable", "rules.disable", "rules.remove", "rules.accept", "rules.dismiss"];
 export const ROLE_ACTIONS = Object.freeze({
-  // The owner alone holds the two checkpoint actions so that the owner's chain can mint a per-session grant of them (a grant must lie inside its giver's own authority);
-  // no role uses them directly on another person's session, and no other role has them.
-  owner: Object.freeze([...ADMIN, "checkpoint.write", "checkpoint.read"]),
+  owner: Object.freeze([...ADMIN]),
   admin: Object.freeze([...ADMIN]),
   manager: Object.freeze([...MANAGER]),
   member: Object.freeze([...MEMBER]),

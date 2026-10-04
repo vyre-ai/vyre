@@ -18,7 +18,7 @@ const u = (/** @type {string} */ type, id = "probe") => `vyre://${SPACE}/${type}
 const RESOURCE = { "records.read": u("contact", "c1"), "records.create": u("contact", "c1"), "records.update": u("contact", "c1"), "records.remove": u("contact", "c1"), "records.restore": u("contact", "c1"),
   "records.define": u("definition", "types"), "seal.put": u("contact", "c1"), "tasks.request": u("task"), "tasks.read": u("contact", "c1"), "tasks.work": u("contact", "c1"),
   "grants.role": u("member", "per_x"), "grants.invite": u("invite"), "grants.create": u("grant", "new"), "grants.revoke": u("grant"), "grants.narrow": u("grant"),
-  "grants.offer": u("grant"), "events.read": u("event"), "tasks.decide": u("task"), "drive.restore": u("drive", "x"), "rules.remove": u("rule"), "rules.accept": u("rule"), "rules.dismiss": u("rule"),
+  "grants.offer": u("grant"), "events.read": u("event"), "tasks.decide": u("task"), "drive.restore": u("drive", "x"), "drive.read": u("drive", "x"), "drive.write": u("drive", "x"), "grants.unoffer": u("grant"), "rules.remove": u("rule"), "rules.accept": u("rule"), "rules.dismiss": u("rule"),
   "kits.propose": u("kit", "estate"), "kits.install": u("kit", "estate"), "kits.remove": u("kit", "estate"), "rules.set": u("rule"), "rules.get": u("rule"), "rules.test": u("rule"), "rules.enable": u("rule"), "rules.disable": u("rule"), "rules.propose": u("rule"), "rules.list": u("rule"), "grants.list": u("member", "per_x") };
 
 async function world() {
