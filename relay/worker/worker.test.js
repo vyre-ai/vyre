@@ -730,12 +730,12 @@ test("worker: the Worker's typed-code constants match core/relay/wire.js", () =>
 
 for (const hibernateEveryEvent of [false, true]) {
   const mode = hibernateEveryEvent ? " (hibernating after every event)" : "";
-  test(`worker: a box gets a free rendezvous for 5 minutes, one live code per box${mode}`, async t => {
+  test(`worker: a box gets a free rendezvous for 10 minutes, one live code per box${mode}`, async t => {
     const rt = world(t, { hibernateEveryEvent, env: codeEnv });
     const a = await codeBox(rt, undefined);
     assert.equal(a.a.t, "code.allocated");
     assert.match(a.a.rv, /^[0-9A-HJKMNP-TV-Z]{2}$/);
-    assert.ok(Math.abs(a.a.exp - (Date.now() + 5 * 60_000)) < 5000);
+    assert.ok(Math.abs(a.a.exp - (Date.now() + 10 * 60_000)) < 5000);
     const first = a.a.rv;
     a.s.ws.send(JSON.stringify({ t: "code.alloc" }));
     const again = await a.s.json();

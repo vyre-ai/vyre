@@ -514,6 +514,7 @@ test("invites: each role, a stranger sees only the card, the join is signed by t
   for (const [role, extra] of [["admin", {}], ["manager", {}], ["member", { scope }], ["temp", { scope, expires: w.clock.t + 2 * DAY }]]) {
     const r = await d.ok("spaces.invites.create", { space, role, ...extra });
     assert.match(r.link, /^https:\/\/harlow\.vyre\.run\/join\/[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
+    assert.equal(r.code, null, "with no Wink module here the invite is the link alone (a typed code is best effort)");
     made[role] = r;
   }
   assert.equal((await d.call("spaces.invites.create", { space, role: "temp" })).error?.code, "bad_scope");

@@ -1465,6 +1465,14 @@ export default {
       const rootPublic = (await attestedKeyOf(row.id)) || (k ? k.publicKey : null);
       return c && c.pin && rootPublic ? { chain: c.pin, rk: spaceFingerprint(c.pin.id, rootPublic) } : {};
     };
+    /** The short typed code for an invite's own link (RC1): wink makes it, so it carries this same link and nothing else. Best effort: with no relay or no typed codes the invite is just the link (`code` null). @param {string} link @param {string} space */
+    const typedCodeFor = async (link, space) => {
+      try {
+        const r = /** @type {any} */ (await ctx.call("wink.code.carry", { link, space }));
+        const d = r && !r.error && r.data ? r.data : null;
+        return d && d.code ? { code: d.code, code_expires: d.expires, code_offer: d.offer } : { code: null };
+      } catch { return { code: null }; }
+    };
     tool("spaces.invites.create", "Make a join link (https://<space>.vyre.run/join/...) for a role. A temp or member invite can name projects. Owners and admins only, unless the space lets managers invite.",
       obj({ space: str, role: { type: "string", enum: ROLE_IDS }, scope: { type: "array", items: str }, expires: { type: "number" }, uses: { type: "number" }, ttlDays: { type: "number" }, alias: str, to: str }, ["space", "role"]),
       async (i, meta) => {
@@ -1488,10 +1496,11 @@ export default {
           }
           const pin = await invitePin(row);
           const token = `${rec.id}.${b64u(Buffer.from(JSON.stringify(pin)))}`;
-          return { id: rec.id, link: `https://${row.name}/join/${token}`, token, needs_confirm: rec.needs_confirm === true, valid_until: rec.valid_until };
+          const link = `https://${row.name}/join/${token}`;
+          return { id: rec.id, link, token, needs_confirm: rec.needs_confirm === true, valid_until: rec.valid_until, ...(await typedCodeFor(link, row.name)) };
         }
         const r = await invitesFor(row).createInvite({ creator: s.id, role: i.role, scope: i.scope, expires: i.expires, uses: i.uses, ttl: i.ttlDays === undefined ? undefined : Number(i.ttlDays) * DAY, alias: i.alias, to: i.to ? await personRef(i.to) : undefined, ...(await invitePin(row)) });
-        return { id: r.id, link: r.link, token: r.token };
+        return { id: r.id, link: r.link, token: r.token, ...(await typedCodeFor(r.link, row.name)) };
       });
     tool("spaces.invites.confirm", "As the inviter of an admin or owner: confirm the fingerprint words the invitee reads to you. Their invite waits for this.", obj({ space: str, id: str, words: str }, ["space", "id", "words"]), async (i, meta) => {
       const row = spaceOf(i.space);

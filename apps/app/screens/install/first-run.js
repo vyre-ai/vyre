@@ -67,6 +67,12 @@ export const NO_VYRE = {
   share: "Set up Vyre on a computer or a server: https://vyre.run",
 };
 
+/** RC1: the drawn Wink avatar cannot be read by the camera yet (RC2), so a pairing screen offers no camera view; a code is typed or pasted. */
+export const CAMERA_SCAN = false;
+
+/** "I don't have Vyre running yet" is offered on a phone's connect screen only (never in a mock walk, a Mac or a browser). @param {DeviceKind} kind @param {boolean} mock */
+export const offersNoVyre = (kind, mock) => isPhone(kind) && !mock;
+
 /** Who a space is for (step 5). The ids are what the box is told. */
 export const WHO = {
   label: "Who it is for",

@@ -34,7 +34,7 @@ const MOCK_WORDS: [string, string, string][] = [
 
 /** The session the mock store uses: the words depend only on the code, nothing leaves the app. */
 export function mockPairingSession(code: Extract<WinkCode, { ok: true }>): PairingSession {
-  const seed = code.kind === "ticket" ? code.ticket : code.offer;
+  const seed = code.kind === "ticket" ? code.ticket : code.kind === "typed" ? code.code : code.offer;
   let n = 0;
   for (let i = 0; i < seed.length; i++) n = (n * 31 + seed.charCodeAt(i)) >>> 0;
   const words = MOCK_WORDS[n % MOCK_WORDS.length];

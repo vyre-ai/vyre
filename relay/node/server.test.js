@@ -367,7 +367,7 @@ async function codeBox(base, key) {
   return { ...b, a };
 }
 
-test("code: a box is given a free rendezvous for 5 minutes, one live code per box, and a new ask replaces the old", async t => {
+test("code: a box is given a free rendezvous for 10 minutes, one live code per box, and a new ask replaces the old", async t => {
   const relay = createRelay();
   const base = await relay.listen();
   t.after(() => relay.close());
@@ -375,7 +375,7 @@ test("code: a box is given a free rendezvous for 5 minutes, one live code per bo
   const a = await codeBox(base);
   assert.equal(a.a.t, "code.allocated");
   assert.match(a.a.rv, /^[0-9A-HJKMNP-TV-Z]{2}$/);
-  assert.ok(Math.abs(a.a.exp - (Date.now() + 5 * 60_000)) < 5000);
+  assert.ok(Math.abs(a.a.exp - (Date.now() + 10 * 60_000)) < 5000);
   assert.equal(relay.stats().codes, 1);
   a.s.ws.send(JSON.stringify({ t: "code.alloc" }));
   const again = await a.s.json();
