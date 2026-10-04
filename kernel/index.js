@@ -18,7 +18,8 @@ import { OWNER_SCOPED_TYPES } from "./core/authorize.js";
 import { expr as defaultExpr } from "./expr/index.js";
 import { KernelError } from "./core/errors.js";
 import { createSurfaces } from "./core/surfaces.js";
-import { verifyTail } from "./audit/index.js";
+import { verifyTail, anchorCheck, createCheckpointer } from "./audit/index.js";
+import { sealerKey } from "./audit/key.js";
 import { createRoom, createRoomPort } from "./core/room.js";
 import { proofFrom, proofRequest, acceptProofRequest, proofChainHash } from "./remote/proof.js";
 import { createOffersPort } from "./remote/offers-port.js";
@@ -28,7 +29,7 @@ import { runnerPorts } from "./gateway/runner-ports.js";
 /**
  * @param {{ space: string, owner: string, owner_uid: number, key?: Uint8Array | string, seal?: any, label?: () => { name?: string, words?: string }, clock?: () => number,
  *   legacyKeys?: (Uint8Array | string)[], snapshot_every?: number, bootCheck?: boolean, currentCall?: () => any, store?: any, log?: any, chains?: any, grantsStore?: any, grants?: any, members?: any, bootstrap?: boolean, presence?: any, sealer?: any, door?: any,
- *   expr?: any, hasPresenceSession?: (chain: any) => boolean, onStageEnter?: any, stageTasks?: any, checkpointKey?: any, unit?: { begin(): Promise<{ commit(): void, rollback(): void, abandon(): void }> },
+ *   expr?: any, hasPresenceSession?: (chain: any) => boolean, onStageEnter?: any, stageTasks?: any, checkpointKey?: any, unit?: { begin(): Promise<{ commit(): void, rollback(): void, abandon(): void }> }, checkpointSigner?: { key_id: string, pub: string, sign: (bytes: Buffer) => Promise<string> | string }, checkpoints?: boolean, anchor?: { read(): Promise<any>, advance(i: { seq: number, head: string }): Promise<any> },
  *   deviceEnrolled?: (space: string, device: string) => Promise<boolean>, onOwnerAdopted?: (owner: string, previous: string) => Promise<void> | void,
  *   drive?: any, resolveCredential?: any, forwardCredential?: any, routeAction?: any, templates?: any, destinations?: any, resolve?: any, actions?: any[], attrs?: any, sinks?: Set<string> }} cfg
  *   grants and members together replace the grants store (the retrofit path and test rigs); otherwise a grants store is made and, on an empty log, its first owner
@@ -332,6 +333,15 @@ export async function createKernel(cfg) {
   }
   // The check a restart makes (incremental): the last signed checkpoint against the event at its position, then the chain from there to the head, not from event zero. Reported
   // for the daemon to act on (`boot.tamper`); it never throws here.
-  const boot = cfg.checkpointKey && cfg.bootCheck !== false ? verifyTail({ space: cfg.space, log, publicKey: cfg.checkpointKey }) : null;
-  return Object.freeze({ boot, adoptOwner: adoptNow, setLabel: (/** @type {() => { name?: string, words?: string }} */ f) => { label = f; }, bindCalls: (/** @type {() => any} */ fn) => { if (room) room.bindCalls(fn); }, recordStorageIndex, storageIndexHead, gateway, log, store, chains, grants: grantsStore, limits, tasks, surfaces, kernelFor, bindSpaces, fresh, migrated });
+  // The log anchor (BL-2): the sealing process keeps the newest (seq, head) it was shown outside the database; the restart compares the log with it, which the log's own checkpoints cannot do.
+  const anchor = cfg.anchor || (cfg.sealer && cfg.sealer.anchor ? { read: () => cfg.sealer.anchor.read({ space: cfg.space }), advance: (/** @type {any} */ i) => cfg.sealer.anchor.advance({ space: cfg.space, seq: i.seq, head: i.head }) } : null);
+  // `checkpoints: true` takes the Space's checkpoint key from the sealing process (which holds it and never returns it); a caller may bring a signer of its own.
+  const signer = cfg.checkpointSigner || (cfg.checkpoints && cfg.sealer && cfg.sealer.spaceKey ? await sealerKey(cfg.sealer, chains.fromFacts({ kind: "module", module: "audit", first_party: true })) : null);
+  const checkpointKey = cfg.checkpointKey || (signer && signer.pub) || null;
+  const tail = checkpointKey && cfg.bootCheck !== false ? verifyTail({ space: cfg.space, log, publicKey: checkpointKey }) : null;
+  const anchored = anchor && cfg.bootCheck !== false ? await anchorCheck({ log, anchor }) : null;
+  /** @type {any} */ const boot = tail || anchored ? { ...(tail || { ok: true, from: 0, checked: 0 }), ok: (!tail || tail.ok) && (!anchored || anchored.ok), ...(tail && !tail.ok ? {} : anchored && !anchored.ok ? { why: anchored.why } : {}), ...(anchored ? { anchor: anchored } : {}) } : null;
+  // Signed checkpoints, when the Space's key is given (the sealing process holds it): each one verifies the log, moves the anchor, and is written into the log.
+  const checkpoints = signer ? createCheckpointer({ space: cfg.space, log, chains, publicKey: signer.pub, sign: signer.sign, key_id: signer.key_id, clock, ...(anchor ? { anchor } : {}) }) : null;
+  return Object.freeze({ boot, checkpoints, adoptOwner: adoptNow, setLabel: (/** @type {() => { name?: string, words?: string }} */ f) => { label = f; }, bindCalls: (/** @type {() => any} */ fn) => { if (room) room.bindCalls(fn); }, recordStorageIndex, storageIndexHead, gateway, log, store, chains, grants: grantsStore, limits, tasks, surfaces, kernelFor, bindSpaces, fresh, migrated });
 }
