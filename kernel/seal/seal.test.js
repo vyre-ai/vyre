@@ -261,9 +261,10 @@ test("K3 item 5: a device key is enrolled only through the ceremony, and a secon
   assert.equal(await code(s.enrol({ ...base, token: "nope" })), "no_ceremony");
   assert.equal(await code(s.begin({ ...base, chain: withAgent() })), "chain_not_person");
   assert.equal(await code(s.begin({ ...base, chain: person("per_bob") })), "chain_not_person");
-  const { token } = await s.begin(base);
-  assert.equal(await code(s.enrol({ ...base, token })), "unattested", "a key nobody attested is refused unless the process allows it");
-  assert.equal(await code(s.enrol({ ...base, token })), "no_ceremony", "the token is spent by any attempt");
+  // UY-2 (6410c6a): a phone's secure-chip key (secure_enclave, strongbox) enrols unattested on release, marked so (kernel/seal/unattested.test.js); any other unattested signer is refused unless the process allows it
+  const tpm = { ...base, signer: "tpm" }, { token } = await s.begin(tpm);
+  assert.equal(await code(s.enrol({ ...tpm, token })), "unattested", "a key nobody attested is refused unless the process allows it");
+  assert.equal(await code(s.enrol({ ...tpm, token })), "no_ceremony", "the token is spent by any attempt");
   assert.equal((await s.health()).unattested_allowed, false);
   // A software key cannot claim to be a hardware key: the verifier decides the signer class.
   const verifiers = path.join(dir, "verifiers.mjs");
@@ -568,5 +569,9 @@ test("SW-2: a real sealing child from a release-stamped copy ignores VYRE_SEAL_D
   t.after(async () => { await s.close(); fsx.rmSync(dir, { recursive: true, force: true }); });
   assert.equal((await s.health()).unattested_allowed, false, "the release build ignores VYRE_SEAL_UNATTESTED");
   await assert.rejects(() => enrolDevice(s, signer("per_alex", undefined, "software")), { code: "software_refused" });
-  await assert.rejects(() => enrolDevice(s, signer("per_alex")), { code: "unattested" }, "an unattested hardware-class key is refused too");
+  await assert.rejects(() => enrolDevice(s, signer("per_alex", undefined, "tpm")), { code: "unattested" }, "any other unattested signer is refused too (a phone's secure_enclave or strongbox key enrols unattested, UY-2)");
+  // UY-2, on the release-stamped tree: a phone's unattested secure-chip key enrols and says yes, marked unattested (and never attested)
+  const phone = signer("per_bob"), got = await enrolDevice(s, phone), pch = person("per_bob");
+  assert.deepEqual([got.attested, got.strength], [false, "unattested"]);
+  assert.deepEqual(await s.presenceProve({ chain: pch, op: "task.decide", fields: { k: "v" }, proof: phone.proof(pch, "task.decide", { k: "v" }) }), { ok: true, method: "unattested", strength: "unattested" });
 });
