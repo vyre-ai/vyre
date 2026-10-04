@@ -328,7 +328,7 @@ export function InstallScreen({ start, link: linkIn }: { start?: "create" | "joi
   } else if (step === "look") {
     body = (
       <Page title={`Give ${sn} a look`} sub="This is how its mark shows on every screen. You can change it later.">
-        {where === "here" ? null : <Terminal lines={[connectedLine(sn, device)]} />}
+        {where === "here" ? null : MOCK ? <Terminal lines={[connectedLine(sn, device)]} /> : <Chip tone="ok" icon="check">{`${sn} is paired. Setup carries on here.`}</Chip>}
         <View className="items-center gap-s3"><Avatar of={spaceRef(sn)} size={56} /></View>
         <Segmented label="Look" value={look} onChange={setLook} options={DATA.looks.map((l) => [l.id, l.label] as [string, string])} />
         <Button kind="primary" label="Continue" onPress={() => advance("look")} />
