@@ -8,6 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { registerSpaceDrive, MAX_UPLOAD } from "./space-drive.js";
 import { SCRATCH } from "../../test/scratch.mjs";
+import { proofFrom } from "../../kernel/remote/proof.js";
 
 const SPACE = "spc_abcdefghijkl";
 const person = { hops: [{ actor: { kind: "person", id: "per_alex", space: SPACE } }] };
@@ -23,7 +24,7 @@ function rig({ drive = true, chain = person } = {}) {
   /** @type {Map<string, any>} */ const tools = new Map();
   const ctx = {
     tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d), call: async () => ({}),
-    kernel: { space: SPACE, owner: "per_alex", for: async () => ({ gateway: drive ? { drive: gd } : {}, surfaces: {} }), chainIn: async () => { if (!chain) throw Object.assign(new Error("x"), { code: "denied" }); return chain; }, proofFrom: (/** @type {any} */ m) => m && m.kernel_proof },
+    kernel: { space: SPACE, owner: "per_alex", for: async () => ({ gateway: drive ? { drive: gd } : {}, surfaces: {} }), chainIn: async () => { if (!chain) throw Object.assign(new Error("x"), { code: "denied" }); return chain; }, proofFrom },
   };
   registerSpaceDrive(ctx);
   const run = (/** @type {string} */ n, /** @type {any} */ i, /** @type {any} */ meta = {}) => tools.get(n).run(i, meta);

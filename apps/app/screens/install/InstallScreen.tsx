@@ -120,7 +120,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
   const sn = spaceName.trim() || DATA.defaultSpaceName;
   const vps = where === "vps";
   // Opened from Spaces on Create or Join, the first step has nothing behind it: Close goes back to Spaces.
-  const back = !first && step === startStep(start) ? null : backOf(step, { vps });
+  const back = !first && step === startStep(start) ? null : backOf(step, { vps, have: !MOCK && !claimBlocked() });
   const finish = () => router.replace((first ? "/u/now" : "/u/spaces") as never);
   // The space has its home (the server is paired, or it lives here): setup carries on by itself on this device, with no refresh and no second sign-in.
   const make = (w: "server" | "vps" | "here") => {

@@ -9,11 +9,12 @@ import path from "node:path";
 import { start } from "../daemon/index.js";
 import { tempHome, present, absent } from "../../test/helpers.js";
 
-async function daemon(/** @type {any} */ t, /** @type {any} */ vault = { keystore: "file" }, /** @type {any} */ presence = present) {
-  const root = tempHome(t);
+async function daemon(/** @type {any} */ t, /** @type {any} */ vault = { keystore: "file" }, /** @type {any} */ presence = present, /** @type {string | null} */ at = null) {
+  const root = at || tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault }));
   const d = await start({ root, presence, log: () => {} });
   t.after(() => d.stop());
+  if (at) /** @type {any} */ (globalThis).__lastDaemon = d;
   return (/** @type {string} */ tool, input = {}, caller = "cli", meta = {}) => d.registry.call(tool, input, caller, meta);
 }
 
@@ -78,4 +79,26 @@ test("the personal vault from the phone: five wrong passwords lock further tries
   assert.equal(locked.error.code, "throttled");
   assert.ok(locked.error.detail && locked.error.detail.retry_after_s > 0 && locked.error.detail.retry_after_s <= 30, JSON.stringify(locked.error));
   assert.equal((await reg("vault.list", {}, "cli")).data.personal, "locked");
+});
+
+test("the lock-out survives a daemon restart and a crash: five wrong tries, restart, still locked; a try that never finished counts; a right password after the wait resets it", async t => {
+  const root = tempHome(t), pw = "a long sample password for the phone test";
+  let reg = await daemon(t, { keystore: "file" }, present, root);
+  await reg("vault.account.create", { password: pw }, "cli"); await reg("vault.account.lock", {}, "cli");
+  for (let n = 1; n <= 5; n++) assert.equal((await reg("vault.account.unlock-phone", { password: `wrong ${n}` }, "mobile")).error.code, "wrong_password");
+  assert.equal((await reg("vault.account.unlock-phone", { password: pw }, "mobile")).error.code, "throttled");
+  // restart: the same folder, a fresh process: still locked out, with the count and the end time on disk
+  await /** @type {any} */ (globalThis).__lastDaemon.stop();
+  const saved = JSON.parse(fs.readFileSync(path.join(root, "vault", "unlock-throttle.json"), "utf8"));
+  assert.ok(saved.n >= 5 && saved.until > Date.now(), JSON.stringify(saved));
+  reg = await daemon(t, { keystore: "file" }, present, root);
+  const after = await reg("vault.account.unlock-phone", { password: pw }, "mobile");
+  assert.equal(after.error.code, "throttled", "a restart does not hand out fresh tries");
+  assert.ok(after.error.detail.retry_after_s > 0);
+  // the wait passes (the file says so): the right password opens it and clears the count
+  fs.writeFileSync(path.join(root, "vault", "unlock-throttle.json"), JSON.stringify({ n: saved.n, until: Date.now() - 1 }));
+  await /** @type {any} */ (globalThis).__lastDaemon.stop();
+  reg = await daemon(t, { keystore: "file" }, present, root);
+  assert.ok((await reg("vault.account.unlock-phone", { password: pw }, "mobile")).data, "after the wait the right password opens it");
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root, "vault", "unlock-throttle.json"), "utf8")), { n: 0, until: 0 });
 });

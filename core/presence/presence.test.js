@@ -30,6 +30,7 @@ function setup(t, opts = {}) {
     statTty: () => charDev(),
     writeTty: (file, text) => { written.push({ file, text }); },
     now: () => clock,
+    softwareOk: () => true, // these tests exercise the proofs themselves on a development-kind server; the release rule (PW-1) is tested in test/presence-strength.test.js
     ...opts,
   });
   return { p, db, events, written, tick: ms => { clock += ms; }, now: () => clock };
@@ -202,7 +203,7 @@ test("presence: capsule and device rows always store alg -7; old rows are refuse
   ins.run("old-capsule", "capsule", "Capsule", spkiOf(ed.publicKey), -8, Date.now());
   ins.run("old-phone", "device", "alex-phone", spkiOf(phone.publicKey), null, Date.now());
   ins.run("ed-phone", "device", "kit-phone", spkiOf(ed.publicKey), null, Date.now());
-  const p = new Presence({ db, platform: "linux", touchid: null, webauthn: null, who: async () => [] });
+  const p = new Presence({ db, platform: "linux", touchid: null, webauthn: null, who: async () => [], softwareOk: () => true });
   const alg = id => db.prepare("SELECT alg FROM presence_keys WHERE id = ?").get(id).alg;
   assert.equal(alg("old-phone"), -7, "a device row with no alg is filled in");
   assert.equal(alg("old-capsule"), -8, "an old Capsule row is kept as it was, to be refused");

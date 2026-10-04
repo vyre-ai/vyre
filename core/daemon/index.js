@@ -17,12 +17,14 @@ import * as config from "../config/index.js";
 import { themeCss } from "../config/theme.js";
 import { isRealHome } from "../config/dialogs.js";
 import { assertDaemonHost } from "./host-guard.js";
-import { open } from "../store/index.js";
+import { open, setRepairLog } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { Registry, discover, ownerDevice, currentCall } from "../modules/index.js";
-import { devSwitch, isPackaged } from "../../kernel/devbuild.js";
+import { devSwitch, isPackaged, PKG_ROOT } from "../../kernel/devbuild.js";
 import { build, swWithBuild, htmlWithBuild } from "./build.js";
 import { serveApp, associationFile } from "./app.js";
+import { watchForList } from "./release-watch.js";
+import { readReleaseList } from "../../kernel/modules/release-list.js";
 import { acquire } from "./lock.js";
 import { Presence, PERSON_ONLY, HUMAN_ONLY, SESSIONABLE, personOnly, fingerprint, parse as parsePresence, core as coreHolder } from "../presence/index.js";
 import { readCoreConfig, coreLink } from "../../lib/vyre-core-client.js";
@@ -151,6 +153,8 @@ async function startLocked(opts, root, p, release) {
   for (const problem of cfg.problems) log("config: " + problem);
 
   const db = open(p.db);
+  // A migration step that found its column already there is a repair for a mis-ordered list: say so in the log (launch's update proof fails on this line for a released upgrade).
+  setRepairLog(line => log(line));
   const events = new Events(db);
   events.log = log;
   // vyred always checks presence. A test may pass a verifier, or a function that builds one on
@@ -164,7 +168,7 @@ async function startLocked(opts, root, p, release) {
   }
   // DEVELOPMENT ONLY: the automated walk's presence stand-in is on only for a development build whose home holds a file the owner made by hand (never config, never a tool).
   const devStandIn = () => !isPackaged(opts.packageRoot) && fs.existsSync(path.join(root, "dev-presence-stand-in"));
-  const presence = typeof opts.presence === "function" ? opts.presence({ db, events, log }) : opts.presence || new Presence({ db, events, log, role: cfg.machine, standIn: devStandIn, network: () => cfg.network || {} });
+  const presence = typeof opts.presence === "function" ? opts.presence({ db, events, log }) : opts.presence || new Presence({ db, events, log, role: cfg.machine, standIn: devStandIn, softwareOk: () => devSwitch(process.env.VYRE_SEAL_SOFTWARE, opts.packageRoot), network: () => cfg.network || {} });
   // Who is the person over the network, not only their device (core/presence/person.js).
   const people = new PersonSessions({ db });
   const started = Date.now();
@@ -388,7 +392,7 @@ async function startLocked(opts, root, p, release) {
     registry.deps.moduleHost = kernel.moduleHost;
     registry.deps.kernelFor = kernel.kernelFor;
     // The relay's peer stream for a paired device (the one remote path to this home's kernel): the relay module reads it from its ctx, per channel, so a door set after it started is used from the next channel on.
-    { const { createPeerDoor } = await import("./peer-door.js"); const door = createPeerDoor({ kernel, registry, people, callerFacts, log }); registry.deps.peerDoor = () => door; }
+    { const { createPeerDoor } = await import("./peer-door.js"); const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log }); registry.deps.peerDoor = () => door; }
     // The gate's presence check asks the kernel whether a call is the person's own (exactly one person hop in the chain the daemon's proven facts build), never the caller's label.
     if (presence && typeof kernel.kernelFor === "function") {
       const gateKernel = kernel.kernelFor({ name: "presence-gate" });
@@ -441,7 +445,8 @@ async function startLocked(opts, root, p, release) {
   }
 
   const terminalOf = opts.person || (sock => atTerminal(sock, registry, presence, devStandIn(), { log }));
-  const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, people, socket: true, terminalOf, kernelOf: () => kernel }).catch(e => fail(res, e)));
+  /** @type {ReturnType<typeof watchForList> | null} */ let releaseWatch = null;
+  const server = http.createServer((req, res) => route(req, res, { finishing: () => (releaseWatch ? releaseWatch.state() : null), registry, events, cfg, started, streams, root, inflight, drain, people, socket: true, terminalOf, kernelOf: () => kernel }).catch(e => fail(res, e)));
   server.on("upgrade", async (req, socket, head) => {
     try { upgrade(req, socket, head, (await asTaken(socketCaller(req), /** @type {any} */ (socket), registry)).caller); }
     catch { socket.destroy(); }
@@ -451,11 +456,18 @@ async function startLocked(opts, root, p, release) {
   // which Node already restricts to this user by default; there is no file for chmod to touch.
   if (process.platform !== "win32") fs.chmodSync(p.socket, 0o600);
   fs.writeFileSync(p.pid, String(process.pid));
+  // A kernel-on packaged daemon with no signed module list yet (a server an old updater just updated: the list arrives in shell.json after this first start) waits for it and restarts once.
+  releaseWatch = kernel && isPackaged() ? watchForList({
+    read: () => readReleaseList(opts.packageRoot || PKG_ROOT, undefined),
+    onFound: () => { try { process.kill(process.pid, "SIGTERM"); } catch { /* the loop restarts a vyred that exits */ } },
+    log, pollMs: Number(process.env.VYRE_FINISH_POLL_MS) || 2000, waitMs: Number(process.env.VYRE_FINISH_MS) || 120_000,
+  }) : null;
   log(`vyred ${VERSION} up · role ${cfg.role} · ${registry.status().filter(m => m.state === "running").length} modules`);
 
   const stop = async () => {
     if (stopped) return; stopped = true;
     if (labelTimer) clearTimeout(labelTimer);
+    if (releaseWatch) releaseWatch.stop();
     if (closeKernelSessions) await closeKernelSessions().catch(() => {});
     if (closeFlowsHost) closeFlowsHost();
     // Stop taking calls, and give the ones running up to DRAIN_MS to finish: a write cut off
@@ -862,7 +874,7 @@ function loginFrom(tty) {
   });
 }
 
-async function route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, people = null, socket = false, terminalOf = null, kernelOf = null }, /** @type {Policy} */ policy = {}) {
+async function route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, people = null, socket = false, terminalOf = null, kernelOf = null, finishing = () => null }, /** @type {Policy} */ policy = {}) {
   const url = new URL(req.url || "/", "http://vyred");
   // On the socket the header is only a label, and anything on the box can send it (Claude's own
   // processes included). "module:*" is what the registry uses between modules, "hook" is what the
@@ -1001,7 +1013,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     // log, and a guessed cursor past the end drops every live event.
     const last = /** @type {any} */ (events.db.prepare("SELECT MAX(id) AS id FROM events").get());
     const b = build();
-    return send(res, 200, { data: { version: VERSION, commit: b.commit, dirty: b.dirty, pid: process.pid, role: cfg.role, machine: cfg.machine, uptime: Date.now() - started, supervisor: process.env.VYRE_SUPERVISOR || null, last_event: Number(last && last.id) || 0,
+    return send(res, 200, { data: { version: VERSION, commit: b.commit, dirty: b.dirty, pid: process.pid, role: cfg.role, machine: cfg.machine, uptime: Date.now() - started, supervisor: process.env.VYRE_SUPERVISOR || null, finishing: finishing(), last_event: Number(last && last.id) || 0,
       // How to run this vyred's own CLI (node and bin/vyre): the Capsule runs `vyre ...` typed in
       // its box by argv, never through a shell, and must run the same version.
       cli: [process.execPath, path.join(REPO, "bin", "vyre")],

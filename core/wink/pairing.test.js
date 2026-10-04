@@ -1543,7 +1543,7 @@ test("the owner record is written BEFORE spaces.owner.adopt asks for it (windows
 const fixtureBuild = (kind) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), `bk-${kind}-`));
   fs.mkdirSync(path.join(dir, "lib"));
-  fs.writeFileSync(path.join(dir, "lib", "build-kind.js"), kind === "development" ? 'export const BUILD_KIND = "development";\n' : 'export const BUILD_KIND = "release";\n');
+  fs.writeFileSync(path.join(dir, "lib", "build-kind.js"), kind !== "release" ? 'export const BUILD_KIND = "development";\n' : 'export const BUILD_KIND = "release";\n');
   if (kind === "dev-image") fs.writeFileSync(path.join(dir, "vyre.tgz"), "x");   // a dev-kind image is packed, but its KIND is still development
   return dir;
 };

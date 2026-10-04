@@ -7,7 +7,7 @@ import type { WinkCode } from "../api/wink-code";
 
 export type RestoreErrorCode = "not_found" | "not_a_person" | "wrong_code" | "unreachable" | "rate_limited" | "newcomer";
 
-const todo = (message: string): never => { throw Object.assign(new Error(message), { code: "unreachable" }); };
+const todo = (message: string): never => { throw Object.assign(new Error(message), { code: "not_built" }); };
 
 export async function recoverIdentity(_o: { name: string; code: string; password?: string; deviceLabel: string; base?: string }): Promise<{ name: string; id: string }> {
   return todo("recovering a name on this device is not built yet");
