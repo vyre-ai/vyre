@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":337,"tool":1076,"event":441,"config":252,"env":211,"screen":20,"concept":43},
+  "counts": {"command":337,"tool":1076,"event":443,"config":252,"env":211,"screen":20,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -1100,6 +1100,8 @@
     {"kind":"event","name":"runner.locked","definedIn":"core/runner/module.json","page":"reference/events.md#runner","module":"runner","mentions":[]},
     {"kind":"tool","name":"runner.move","definedIn":"core/runner/index.js","page":"reference/tools.md#runnermove","module":"runner","mentions":[]},
     {"kind":"tool","name":"runner.place","definedIn":"core/runner/index.js","page":"reference/tools.md#runnerplace","module":"runner","mentions":[]},
+    {"kind":"event","name":"runner.seal-failed","definedIn":"core/runner/module.json","page":"reference/events.md#runner","module":"runner","mentions":[]},
+    {"kind":"event","name":"runner.sealed","definedIn":"core/runner/module.json","page":"reference/events.md#runner","module":"runner","mentions":[]},
     {"kind":"tool","name":"runner.start","definedIn":"core/runner/index.js","page":"reference/tools.md#runnerstart","module":"runner","mentions":[]},
     {"kind":"event","name":"runner.started","definedIn":"core/runner/module.json","page":"reference/events.md#runner","module":"runner","mentions":[]},
     {"kind":"tool","name":"runner.status","definedIn":"core/runner/index.js","page":"reference/tools.md#runnerstatus","module":"runner","mentions":[]},

@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(runner): own-server sessions are sealed at every turn like lent ones. core/runner/ownserver.js: at a turn's end only the complete lines of the provider's transcript are taken (a torn tail waits), the file is fsynced, the lines go to the checkpoint store and the checkpoint is written last; `recover` puts the file back to exactly the last whole turn (temp, fsync, rename) so `claude --resume` starts from a complete history. A provider that rewrote its file is refused as a continuation (`rewritten`). The module seals on `thread.finished` when the sessions side supplies `ports.ownServer.resolve`; new events `runner.sealed` and `runner.seal-failed`.
+- fix(runner): who is "the person" for start, stop, lock and move comes only from `ctx.kernel.chain(meta)` with the kernel on (a chain of person hops only, no viewer, agent or service hop); a web, setup or unknown device or tailnet label gets no chain and is refused. The old label refusal stays only as a legacy-label shim for a kernel-off daemon.
 - test(runner): a hosted-Mac test loads the real home and lent seatbelt profiles with sandbox-exec and fails the job when seatbelt rejects either, or a command does not run in it, so a profile that cannot load can never pass silently again.
 
 - test(runner): the macOS Mach probes (clipboard, keychain, Apple events) first run a command that must work in the same sandbox (so a profile error cannot pass them) and compare with the same command outside (a marker on the clipboard, the keychains listed), then require the sandboxed one not to see it (reviewer-3, HS-4).

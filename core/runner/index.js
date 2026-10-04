@@ -6,6 +6,7 @@
 import { createRunner, reconcile } from "./runner.js";
 import { unavailable } from "./sandbox.js";
 import { workspaceUnavailable } from "./workspace.js";
+import { createTurnSeal } from "./ownserver.js";
 
 /** Test and wiring seam, keyed by the module's root folder: { ports: { vault, sync, grants, server, requestServer }, platform }. */
 export const seams = new Map();
@@ -95,6 +96,20 @@ export default {
       for (const [space, r] of runners) { const g = ports().grants(space); if (!g.spaceAllows || !g.memberAccepts) { try { await r.revoke(); } catch {} } }
     });
 
-    return { async stop() { try { off?.(); } catch {} for (const r of runners.values()) { try { await r.stopAll(); await r.lock(); } catch {} } runners.clear(); } };
+    // A session on this person's own server is sealed at every turn into the same checkpoint store (ownserver.js). The sessions side says which
+    // transcript a finished turn belongs to: ports.ownServer.resolve(event) -> { space, session, file, turn, state } | null, and .port(space) is the store's port.
+    const seals = new Map();
+    const offTurns = ports()?.ownServer ? ctx.events.on("thread.finished", async e => {
+      const o = ports()?.ownServer; let r = null;
+      try { r = o && await o.resolve(e); } catch { r = null; }
+      if (!r) return;
+      const key = `${r.space}/${r.session}`;
+      let seal = seals.get(key);
+      if (!seal) { seal = createTurnSeal({ port: o.port(r.space), session: r.session, file: r.file }); seals.set(key, seal); }
+      try { const done = await seal.seal({ turn: r.turn, state: r.state }); emit(r.space, { type: "sealed", session: r.session, ...done }); }
+      catch (err) { seals.delete(key); emit(r.space, { type: "seal-failed", session: r.session, code: err.code || "error", message: String(err.message || err).slice(0, 200) }); }
+    }) : null;
+
+    return { async stop() { try { off?.(); } catch {} try { offTurns?.(); } catch {} for (const r of runners.values()) { try { await r.stopAll(); await r.lock(); } catch {} } runners.clear(); } };
   },
 };
