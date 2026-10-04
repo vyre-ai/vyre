@@ -79,7 +79,7 @@ export function peerClient(stream, o = {}) {
       if (!c) continue;
       calls.delete(id); clearTimeout(c.timer);
       let j = null; try { j = JSON.parse(dec.decode(all)); } catch { /* bad */ }
-      if (j && j.ok) c.resolve(j.data); else c.reject(err(String(j && j.error && j.error.code || "internal"), String(j && j.error && j.error.message || "the call failed")));
+      if (j && j.ok) c.resolve(j.data); else c.reject(Object.assign(err(String(j && j.error && j.error.code || "internal"), String(j && j.error && j.error.message || "the call failed")), j && j.error && j.error.detail && typeof j.error.detail === "object" ? { detail: j.error.detail } : {}));
     }
   };
   stream.onend = () => finish("ended");

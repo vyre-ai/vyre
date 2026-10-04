@@ -989,7 +989,7 @@ test("the strength vocabulary is two words, real and software; the words older r
   const { STRENGTHS, isNotSoftware, normalizeStrength } = await import("./strengths.js");
   assert.deepEqual([...STRENGTHS], ["software", "real"]);
   assert.deepEqual(STRENGTHS.filter(isNotSoftware), ["real"]);
-  for (const old of ["enclave", "enclave, unattested", "passkey"]) { assert.equal(isNotSoftware(old), true, old); assert.equal(normalizeStrength(old), "real", old); }
+  for (const old of ["enclave", "enclave, unattested", "passkey", "unattested"]) { assert.equal(isNotSoftware(old), true, old); assert.equal(normalizeStrength(old), "real", old); }
   for (const bad of ["hardware", "keystore", "", "Software", undefined]) { assert.equal(isNotSoftware(bad), false, String(bad)); assert.equal(normalizeStrength(bad), "software", String(bad)); }
 });
 
