@@ -118,15 +118,17 @@ const ATTR_NAME = /^(owner|project|sensitivity|created_by)$/;
 function attrSql(af, args) {
   if (!af || typeof af !== "object" || typeof af.urn_prefix !== "string" || !/^vyre:\/\/[^/]+\/[a-z][a-z0-9_]*\/$/.test(af.urn_prefix) || !Array.isArray(af.any)) no();
   if (!af.any.length) return "0";
-  /** @type {any[]} */ const altArgs = [];
-  const alts = af.any.map((/** @type {any} */ alt) => {
+  const lo = af.urn_prefix, hi = af.urn_prefix.slice(0, -1) + "0";   // every urn under the prefix: "/" is followed by "0" in the byte order
+  const cut = af.urn_prefix.length + 1;                                // the record id is what follows the prefix
+  /** @type {any[]} */ const sargs = [];
+  const parts = af.any.map((/** @type {any} */ alt) => {
     const keys = alt && typeof alt === "object" ? Object.keys(alt) : [];
     if (!keys.length || keys.some(k => !ATTR_NAME.test(k) || typeof alt[k] !== "string")) no();
-    altArgs.push(...keys.map(k => alt[k]));
-    return `(${keys.map(k => `json_extract(a.attrs, '$.${k}') = ?`).join(" AND ")})`;
+    sargs.push(lo, hi, ...keys.map(k => alt[k]));
+    return `SELECT substr(a.urn, ${cut}) FROM kernel_attrs a WHERE a.urn >= ? AND a.urn < ? AND ${keys.map(k => `json_extract(a.attrs, '$.${k}') = ?`).join(" AND ")}`;
   });
-  args.push(af.urn_prefix, ...altArgs);
-  return `EXISTS (SELECT 1 FROM kernel_attrs a WHERE a.urn = ? || kernel_records.id AND (${alts.join(" OR ")}))`;
+  args.push(...sargs);
+  return `kernel_records.id IN (${parts.join(" UNION ")})`;
 }
 
 /**

@@ -17,6 +17,8 @@ const MIGRATION = `
   CREATE TABLE IF NOT EXISTS kernel_records (type TEXT NOT NULL, id TEXT NOT NULL, version INTEGER NOT NULL, data TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, deleted_at INTEGER, PRIMARY KEY (type, id));
   CREATE TABLE IF NOT EXISTS kernel_changes (seq INTEGER PRIMARY KEY, entry TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS kernel_attrs (urn TEXT PRIMARY KEY, attrs TEXT NOT NULL);
+  CREATE INDEX IF NOT EXISTS kernel_attrs_project ON kernel_attrs (json_extract(attrs, '$.project'), urn);
+  CREATE INDEX IF NOT EXISTS kernel_attrs_owner ON kernel_attrs (json_extract(attrs, '$.owner'), urn);
   CREATE TABLE IF NOT EXISTS kernel_flags (name TEXT PRIMARY KEY, value TEXT NOT NULL);
 `;
 // The full-text index: one row per non-sealed text field of each live record (rowid = record rowid * 1024 + the field's position), holding the field's text lowered by the same JS call
