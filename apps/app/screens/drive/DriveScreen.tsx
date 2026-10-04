@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { AskCard, Avatar, Button, Card, Chip, Divider, EmptyState, IconTile, Row, Tabs, Text, showToast, markRef } from "@vyre/ui";
+import { AskCard, Avatar, Button, Card, Chip, Divider, EmptyState, IconTile, Row, Tabs, Text, allowsMock, showToast, markRef } from "@vyre/ui";
+import RealDrive from "./RealDrive";
 import { Block, FaceIdSheet } from "../places/Page";
 import { Frame } from "../places/Frame";
 import { SpaceBadge } from "../places/badge";
@@ -11,7 +12,7 @@ import { addLink, filesIn, LINK_DAYS, projectsIn, restore, revoke, versionsOf } 
 
 type Tab = "files" | "links" | "computer";
 
-export default function DriveScreen() {
+function SampleDriveScreen() {
   const scope = useScope((s) => s.scope);
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("files");
@@ -111,4 +112,9 @@ export default function DriveScreen() {
         }} />
     </Frame>
   );
+}
+
+/** The sample files in a mock build; the vyred's own folders everywhere else. */
+export default function DriveScreen() {
+  return allowsMock() ? <SampleDriveScreen /> : <RealDrive />;
 }

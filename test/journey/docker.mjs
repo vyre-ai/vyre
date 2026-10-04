@@ -41,6 +41,8 @@ async function stopVyred() {
 async function main() {
   const [cmd, sub, ...rest] = args;
   if (cmd === "info") return 0;
+  // install-box.sh's end check: `docker ps -q --filter name=vyre-vyre-1 --filter status=running` lists the container once vyred is up.
+  if (cmd === "ps") { if (running()) process.stdout.write("vyre-container\n"); return 0; }
   if (cmd !== "compose") return 0; // run, volume, manifest inspect, ...: recorded only
   if (sub === "version") { process.stdout.write(rest.includes("--short") ? "2.29.0\n" : "Docker Compose version v2.29.0\n"); return 0; }
   if (sub === "up") {

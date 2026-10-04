@@ -30,7 +30,7 @@ test("step 7 on a real vyred: a chat streams frame by frame, carol joins mid-rep
   const home = tempHome(t);
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-step7-")));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
-  const env = { ...process.env, VYRE_HOME: home, VYRE_KERNEL: "1", VYRE_SEAL_DEV: "1", VYRE_KERNEL_PATH_RULE: "1", VYRE_SESSION_SANDBOX_OFF: "1", VYRE_TEST_HOST: "testbox",
+  const env = { ...process.env, VYRE_HOME: home, VYRE_KERNEL: "1", VYRE_SEAL_DEV: "1", VYRE_SEAL_UNATTESTED: "1", VYRE_KERNEL_PATH_RULE: "1", VYRE_SESSION_SANDBOX_OFF: "1", VYRE_TEST_HOST: "testbox",
     VYRE_CLAUDE_BIN: FAKE, VYRE_SESSIONS_DRIVER: "cli", VYRE_SESSIONS_SPAWNER: "off", VYRE_SESSIONS_THREAD_SOCKET: "on", VYRE_NO_DIALOGS: "1" };
   delete env.NODE_TEST_CONTEXT;
   /** @type {import("node:child_process").ChildProcess[]} */ const procs = [];

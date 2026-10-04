@@ -303,7 +303,7 @@ test("relay: an untrusted browser asks to be trusted once, about itself only, an
   assert.deepEqual([second.data.asked, second.data.already], [true, true]);
   assert.equal(asked.length, 1, "once");
   // An app device has no limits to lift; a person's own surface is not a browser asking about itself.
-  assert.equal((await p.call("relay.devices.ask-trust")).error.code, "bad_input");
+  assert.equal((await p.call("relay.devices.ask-trust")).error.code, "denied", "an app device is device:<id>, not a browser (BR-2): the tool is for web:<id> only");
   const cli = await d.registry.call("relay.devices.ask-trust", {}, "cli");
   assert.equal(cli.error.code, "denied");
   // Approval is the owner's, with presence; then the browser is trusted and asking again only says so.
@@ -350,7 +350,8 @@ test("relay: a browser from the web app is a web device, limited until trusted f
   assert.equal(trust.status, 200, JSON.stringify(trust));
   const again = await phone(url, { keys: web.keys, pair: false, hello: { kind: "web" } });
   const lifted = await again.call("relay.pair.start", {}, P);
-  assert.equal(lifted.error && lifted.error.code, "person_session_required", JSON.stringify(lifted));
+  // BR-2 (4 Oct 2026): a browser is web:<id>, never an owner's device, so even trusted it reaches no person tool; its relay limits are lifted and nothing more.
+  assert.equal(lifted.error && lifted.error.code, "no_such_tool", JSON.stringify(lifted));
 });
 
 test("relay: a web device unused past relay.web_expiry_days is removed at its next knock", async t => {

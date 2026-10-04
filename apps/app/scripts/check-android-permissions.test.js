@@ -1,4 +1,5 @@
 // @ts-check
+import "./test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parse, unexpected } from "./check-android-permissions.mjs";

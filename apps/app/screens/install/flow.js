@@ -1,14 +1,13 @@
 // @ts-check
-// The install flow's rules, pure so Node tests them: names, the step graph, the two-sided server code.
-// Steps (prototype p3Inst): name > recovery > spaces; or name > scan > spaces. spaces > create > where > (cmd | vps | here) > ... > done.
+// The install flow's rules, pure so Node tests them: names, the step graph, the server's scan-or-paste code and the three-word confirm.
+// Steps (prototype p3Inst): name > recovery > spaces; or name > scan > scanwords > spaces. spaces > create > where > (cmd | vps | here) > ... > done.
 // spaces > join > invite > joined.
 
 export const NAMES_TAKEN = ["alex", "chris", "harlow", "vyre", "admin"];
 export const MIN_NAME = 3;
 export const RECOVERY_CODE = "R7K4-Q2MX-9HDP-W3NB";
-export const SERVER_CODE = "WINK-7K4Q-M2XD";
-export const SERVER_NUMBER = "47";
-export const NUMBER_CHOICES = ["12", "47", "85"];
+/** What the server prints: a long code (also drawn as a QR). The app reads it by scan or paste; there is no short code to type. */
+export const SERVER_LONG_CODE = "vyre://wink/2?t=SGVsbG9TYW1wbGVTZWNyZQ&r=wss%3A%2F%2Frelay.example";
 
 /** "Harlow Legal" > "harlow-legal". The slug is what goes before .vyre.run. */
 export function slug(/** @type {string} */ s) {
@@ -39,15 +38,49 @@ export function nameNote(/** @type {ReturnType<typeof nameStatus>} */ st, /** @t
 
 /** @type {Record<string, string|null>} */
 export const BACK = {
-  name: null, scan: "name", recovery: null, spaces: null, create: "spaces", where: "create", cmd: "where", vps: "where", vpsbusy: null,
-  srv1: "cmd", srv2: "cmd", here: "where", done: null, join: "spaces", invite: "join", joined: null,
+  name: null, scan: "name", scanwords: "scan", recovery: null, spaces: null, create: "spaces", where: "create", cmd: "where", vps: "where", vpsbusy: null,
+  srv1: "cmd", srv2: "cmd", here: "where", look: null, members: "look", connectors: "members", kit: "connectors", done: null, join: "spaces", invite: "join", joined: null,
 };
 
-/** Where Back goes from a step. The server steps go back to the server's own first screen (the line or the new server). */
+/** Where Back goes from a step. The code step goes back to the server's own first screen (the line or the new server); the words go back to the code. */
 export function backOf(/** @type {string} */ step, /** @type {{ vps?: boolean }} */ ctx = {}) {
-  if (step === "srv1" || step === "srv2") return ctx.vps ? "vps" : "cmd";
+  if (step === "srv2") return "srv1";
+  if (step === "srv1") return ctx.vps ? "vps" : "cmd";
   return BACK[step] ?? null;
 }
+
+// After the space has its home (the server is paired, or "On this computer" was chosen) setup carries on by itself on the device it started on:
+// look, members, connectors, the first Kit, then done (DESIGN-spaces-first.md, "The order, and where setup happens"). Nothing here asks the server anything.
+export const SETUP_STEPS = ["look", "members", "connectors", "kit"];
+/** The step the flow moves to the moment the space has its home. */
+export const AFTER_HOME = "look";
+/** The step after this one, inside setup. */
+export const nextSetup = (/** @type {string} */ step) => SETUP_STEPS[SETUP_STEPS.indexOf(step) + 1] ?? "done";
+
+/** Steps worth coming back to: a closed app reopens on one of these. Everything before "where" is quick and starts again. */
+const RESUMABLE = ["where", "cmd", "srv1", "here", ...SETUP_STEPS];
+export const isResumable = (/** @type {string} */ step) => RESUMABLE.includes(step);
+/** srv2 shows the words of a pairing that does not survive a restart, so it resumes at the code. */
+export const resumeStep = (/** @type {string} */ step) => (step === "srv2" ? "srv1" : step);
+
+/** What is kept so a closed app resumes: the step and what the person entered. No secret, no code, no key. */
+export function packProgress(/** @type {{ step: string, name: string, spaceName: string, addr: string | null, look: string, where: string, pairTo: string, device: string, picks?: { members?: string[], connectors?: string[], kit?: string | null } }} */ s) {
+  return JSON.stringify({ v: 1, step: resumeStep(s.step), name: s.name, spaceName: s.spaceName, addr: s.addr, look: s.look, where: s.where, pairTo: s.pairTo, device: s.device, picks: s.picks ?? {} });
+}
+/** Reads it back; anything unreadable or from another version is nothing. */
+export function unpackProgress(/** @type {string | null | undefined} */ raw) {
+  try {
+    const j = JSON.parse(String(raw ?? ""));
+    if (j && j.v === 1 && isResumable(j.step) && typeof j.spaceName === "string") return j;
+  } catch {}
+  return null;
+}
+
+/** What another of the person's devices says while setup is unfinished elsewhere. */
+export const setupElsewhere = (/** @type {string} */ device) => `Setup in progress on your ${device}`;
+export const CONTINUE_HERE = "Continue here";
+/** The line a server prints once it is paired: it asks nothing more. */
+export const connectedLine = (/** @type {string} */ space, /** @type {string} */ device) => `Connected to ${space}. Finish setting up on your ${device}.`;
 
 /** The first step for a route: /u/install, /u/install/create, /u/install/join. */
 export function startStep(/** @type {string|undefined} */ start) {
@@ -57,9 +90,9 @@ export function startStep(/** @type {string|undefined} */ start) {
 /** Where "Where will it live?" sends each choice. */
 export const WHERE_STEP = { server: "cmd", vps: "vps", here: "here" };
 
-/** One try per code: the right number completes pairing, a wrong one closes the code and a new one shows (back to the first server step). */
-export function pickNumber(/** @type {string} */ n) {
-  return n === SERVER_NUMBER ? { ok: true, step: "done" } : { ok: false, step: "srv1" };
+/** The "Pair to:" choices: the person's own name, or the space being made (DESIGN-wink.md section 4). */
+export function pairToOptions(/** @type {string} */ person, /** @type {string} */ spaceAddress) {
+  return /** @type {[string, string][]} */ ([["me", `${person || "alex"}.vyre.run`], ["space", spaceAddress]]);
 }
 
 /** The line shown under a made space. */
@@ -69,9 +102,13 @@ export function homeLine(/** @type {"server"|"vps"|"here"} */ where) {
   return "Lives on your server.";
 }
 
-/** The lines a server prints, as the prototype shows them. `two` adds the code prompt and the number to match. */
-export function serverLines(/** @type {boolean} */ vps, /** @type {string} */ spaceName, /** @type {boolean} */ two) {
+/**
+ * The lines a server prints. The code screen adds the QR note and the long code; the words screen adds who is asking, the three words and the wait for yes.
+ * @param {boolean} vps @param {string} spaceName @param {"code"|"words"} stage @param {{ code?: string, to?: string, who?: string, words?: string }} [o]
+ */
+export function serverLines(vps, spaceName, stage, o = {}) {
   const base = [vps ? "Created northwind on DigitalOcean" : "$ curl -fsSL vyre.run/i | sh", "Installing Vyre ... done", `Setting up ${spaceName} ... done`];
-  if (!two) return base;
-  return [...base, `Enter the code from your phone or computer: ${SERVER_CODE}`, "Code accepted. Match this number on your phone or computer:", "", `      ${SERVER_NUMBER}`];
+  const code = [...base, "", "Scan the QR above with your phone, or paste this long code into Vyre:", o.code ?? SERVER_LONG_CODE];
+  if (stage === "code") return code;
+  return [...code, "", `${o.who ?? "A phone"} is asking to pair this server to ${o.to ?? "you"}.`, `The words are: ${o.words ?? ""}`, "Waiting for yes."];
 }

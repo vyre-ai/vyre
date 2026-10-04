@@ -34,7 +34,27 @@ export const MIGRATIONS = [
    CREATE INDEX agents_spend_agent ON agents_spend (agent);`,
   // How hard the agent thinks (the Deck's Effort). Empty is the model's own default.
   `ALTER TABLE agents_agents ADD COLUMN effort TEXT`,
+  // Built in by Vyre (the Engineer): listed like any agent, but it cannot be deleted, renamed, given projects, credentials or a computer.
+  `ALTER TABLE agents_agents ADD COLUMN builtin INTEGER NOT NULL DEFAULT 0`,
 ];
+
+/**
+ * The Engineer: a built-in assistant that helps an admin change the shape of their Space. It only PROPOSES. Its model session reaches these tools and no others (the registry holds it to
+ * the list, from the stored row: agents.scope's `only`); a Flow it writes is a draft until a person approves it, and a Kit or a definition change becomes one task in Now that an owner or
+ * an admin approves (kernel/flows/proposals.js). It has no project, no credential of its own, no computer, and nothing it holds can apply a change.
+ */
+export const ENGINEER = Object.freeze({
+  name: "engineer",
+  instructions: [
+    "You are the Engineer. You help an owner or an admin change how their Space works: record types and fields, stages, Flows, Kits.",
+    "You only propose. Write a Flow with flows.define (it is stored unapproved), check it with flows.compile-text, flows.simulate and flows.card, then ask for it with flows.propose.",
+    "A Kit goes through flows.kit.propose. A change to record types goes through flows.propose with what: types and a diff.",
+    "Each proposal becomes one task in Now. An owner or an admin approves it; you cannot. Say what you proposed and what it will do, in plain words, and wait.",
+  ].join("\n"),
+  /** The tools its session may call. Reads of the Space's own definitions and the drafting and proposing tools; nothing that applies, approves, sends or reads outside them. */
+  tools: Object.freeze(["flows.define", "flows.compile-text", "flows.code", "flows.card", "flows.get", "flows.list", "flows.graph", "flows.simulate", "flows.runs", "flows.run",
+    "flows.propose", "flows.kit.card", "flows.kit.propose", "flows.kit.list", "records.types"]),
+});
 
 /** The agent's thinking effort, as sessions.effort names it. */
 export const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
@@ -80,7 +100,13 @@ export default {
 
     const shape = r => r && ({ name: String(r.name), kind: String(r.kind), projects: JSON.parse(String(r.projects)), auth: JSON.parse(String(r.auth)),
       instructions: r.instructions == null ? null : String(r.instructions), skills: JSON.parse(String(r.skills)), computer: Boolean(r.computer),
-      model: r.model == null ? null : String(r.model), effort: r.effort == null ? null : String(r.effort), thread: r.thread == null ? null : String(r.thread) });
+      model: r.model == null ? null : String(r.model), effort: r.effort == null ? null : String(r.effort), thread: r.thread == null ? null : String(r.thread), builtin: Boolean(r.builtin) });
+    // The Engineer is made once and kept: a home that has none gets it, a home that has it keeps what an admin wrote in its instructions.
+    if (!db.prepare("SELECT 1 FROM agents_agents WHERE name = ?").get(ENGINEER.name)) {
+      const now = Date.now();
+      db.prepare(`INSERT INTO agents_agents (name, kind, projects, auth, instructions, skills, computer, model, effort, builtin, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .run(ENGINEER.name, "agent", "[]", "{}", ENGINEER.instructions, "[]", 0, null, null, 1, now, now);
+    }
     const get = name => shape(db.prepare("SELECT * FROM agents_agents WHERE name = ?").get(name));
     const must = name => { const a = get(name); if (!a) throw Object.assign(new Error(`no agent ${name}`), { code: "not_found" }); return a; };
     const spent = name => Number(/** @type {any} */ (db.prepare("SELECT COALESCE(SUM(usd), 0) AS s FROM agents_spend WHERE agent = ?").get(name)).s);
@@ -278,7 +304,7 @@ export default {
     ctx.tool("agents.scope", {
       description: "The kind and stored project grant (\"*\" or a list of slugs) of one agent, for vyred to put on the meta of that agent's calls.", internal: true, callers: ["module"],
       input: { type: "object", required: ["name"], properties: { name: { type: "string" } } },
-      run: async i => { const a = get(String(i.name)); return a ? { kind: a.kind, projects: a.kind === "assistant" ? "*" : a.projects } : null; },
+      run: async i => { const a = get(String(i.name)); return a ? { kind: a.kind, projects: a.kind === "assistant" ? "*" : a.projects, ...(a.builtin && a.name === ENGINEER.name ? { only: ENGINEER.tools } : {}) } : null; },
     });
 
     ctx.tool("agents.list", {
@@ -288,6 +314,8 @@ export default {
         guard(caller, "list agents");
         const rows = db.prepare("SELECT * FROM agents_agents ORDER BY kind = 'assistant' DESC, name").all().map(shape);
         return Promise.all(rows.map(async a => ({ name: a.name, kind: a.kind, projects: a.projects, model: a.model, effort: a.effort, computer: a.computer,
+          // A built-in agent (the Engineer) says so, and says it only proposes: the app opens its chat and shows what it proposed as tasks in Now.
+          ...(a.builtin ? { builtin: true, role: a.name, proposes_only: true, tools: a.name === ENGINEER.name ? [...ENGINEER.tools] : [] } : {}),
           // The Deck's agent page shows and edits the job from this list.
           instructions: a.instructions,
           auth: a.auth.vault ? "subscription" : a.auth.fallback ? "api-key" : "ambient", ...(await status(a)) })));
@@ -337,6 +365,8 @@ export default {
         const who = i.name ?? i.agent;
         if (who === undefined) throw new Error("say which agent: name is required");
         const a = must(who);
+        // A built-in agent keeps its shape: only its words, model and effort change.
+        if (a.builtin) { const extra = Object.keys(i).filter(k => i[k] !== undefined && !["name", "agent", "instructions", "model", "effort"].includes(k)); if (extra.length) throw Object.assign(new Error(`${a.name} is built in: only its instructions, model and effort change`), { code: "denied" }); }
         checkProjects(i.projects);
         if (i.kind && i.kind !== a.kind) throw new Error("an agent's kind is fixed when it is made");
         if (a.kind === "assistant" && i.projects !== undefined && i.projects !== "*") throw new Error("the assistant sees every project");
@@ -361,6 +391,13 @@ export default {
         const { caller } = meta0;
         guard(caller, "talk to other agents");
         if (!modelMay(meta0, { sessionOk: true })) throw Object.assign(new Error("an unidentified caller cannot talk to agents"), { code: "denied" });
+        // HD-9: a model's words go out as this module, which skips the thread scope checks, so a session may not use them to reach a wider agent than itself: the assistant (every project)
+        // is the person's and the verified assistant's to ask, and an agent only reaches agents whose projects are within its own grant.
+        if (!isPerson(caller) && !meta0.firstParty && meta0.agentKind !== "assistant") {
+          const target = get(String(i.agent));
+          const within = target && Array.isArray(target.projects) && (!Array.isArray(meta0.granted) || target.projects.every(p => meta0.granted.includes(p)));
+          if (target && !within) throw Object.assign(new Error(`${target.name} sees more than this session does: ask the person, who can ask it directly`), { code: "denied" });
+        }
         // A person's own tags ride with the words, as that person (threads.send hears their turn); from any other caller they are dropped.
         const tagged = isPerson(caller) && ((Array.isArray(i.mentions) && i.mentions.length) || (Array.isArray(i.pasted) && i.pasted.length));
         // The person typing an ask is the person choosing to spend, so the daily spend cap (core/spend) does not hold it;
@@ -501,6 +538,7 @@ export default {
       callers: ["cli", "local", "deck", "capsule"],
       run: async ({ agent }) => {
         const a = must(agent);
+        if (a.builtin) throw Object.assign(new Error(`${a.name} is built in and stays`), { code: "denied" });
         if (a.kind === "assistant") throw new Error(`${a.name} is the assistant; there must be one, so change it with agents.update instead`);
         const running = (await use("threads.list", { agent })).filter(t => t.status !== "stopped");
         if (running.length) throw new Error(`${a.name} has ${running.length} running thread${running.length === 1 ? "" : "s"}; stop ${running.length === 1 ? "it" : "them"} first: vyre agents stop ${a.name}`);

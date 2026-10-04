@@ -1,4 +1,7 @@
 name: runner-perf
+concurrency:
+  group: runner-perf
+  cancel-in-progress: false
 # What lending costs on a hosted macOS machine: the same work in a plain folder and inside the runner's sandbox on the encrypted,
 # leased workspace (scripts/runner-perf.mjs). Runs only on the work/runner-perf branch, never on a person's own Mac.
 on:
@@ -17,23 +20,25 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: measure
-        env:
-          VYRE_NO_WATCHDOG: "1"
-        run: node scripts/runner-perf.mjs --reps 5 --out perf-mac.json
       - name: image formats (which encrypted image is fastest for small files)
         if: always()
         run: node scripts/runner-fs-bench-mac.mjs | tee fs-formats.json
       - name: sandbox tests (the home sandbox and the lent sandbox, on a macOS runner)
         if: always()
+        timeout-minutes: 15
         env:
           VYRE_NO_WATCHDOG: ""
-        run: node --test --test-force-exit --test-reporter=spec core/runner/homesandbox.test.js core/runner/mac-hosted.test.js core/runner/runner.test.js core/runner/hardening.test.js
+        run: node --test --test-force-exit --test-reporter=spec core/runner/homesandbox.test.js core/runner/mac-hosted.test.js core/runner/runner.test.js core/runner/hardening.test.js core/runner/checkpoint-io.test.js core/runner/checkpoint-store.test.js 2>&1 | tee sandbox-tests.txt
+      - name: real commands through the sandbox network (git clone, npm ci, pip install, git over ssh, refusals)
+        if: always()
+        run: |
+          node scripts/runner-net-real.mjs home 2>&1 | tee net-home.txt
+          node scripts/runner-net-real.mjs lent 2>&1 | tee net-lent.txt
       - name: the real claude inside the home sandbox (does it start with every write denied?)
         if: always()
         run: |
           npm install -g @anthropic-ai/claude-code >/dev/null 2>&1 || true
-          node scripts/runner-mac-claude.mjs || true
+          node scripts/runner-mac-claude.mjs 2>&1 | tee claude-run.txt || true
       - name: git inside the lent sandbox (why does a clone fail?)
         if: always()
         run: |
@@ -43,6 +48,12 @@ jobs:
           const c = launch(p, {}); c.stdout.on('data', d => process.stdout.write(d)); c.stderr.on('data', d => process.stdout.write('ERR ' + d)); c.on('close', code => console.log('exit', code));
           EOF2
           node p.mjs || true
+      - name: measure (last, because it is the slow one; it stopped a whole run at the 40 minute limit on 3 Oct)
+        if: always()
+        timeout-minutes: 12
+        env:
+          VYRE_NO_WATCHDOG: "1"
+        run: node scripts/runner-perf.mjs --reps 5 --out perf-mac.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -50,4 +61,8 @@ jobs:
           path: |
             perf-mac.json
             fs-formats.json
+            net-home.txt
+            net-lent.txt
+            sandbox-tests.txt
+            claude-run.txt
 

@@ -2,13 +2,13 @@ import { useCallback } from "react";
 import { ScrollView, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Appear, EmptyState, ErrorState, PageHeader, RecordPage, SkeletonRows, titleOf, urnParam, useFieldEnv, useRecordEvents, useRecordsWorld, viewDefOf } from "@vyre/ui";
-import { loadShell } from "../shell/data";
+import { useShell } from "../shell/shared";
 
-const SPACES = loadShell().spaces;
 
 /** /u/record/<id>: one record's page. The id is the record's urn (vyre://space/type/id, encoded) or its bare id (the uuid); both find the same record. */
 export function RecordScreen({ id }: { id: string }) {
   const router = useRouter();
+  const SPACES = useShell((s) => s.data.spaces);
   const { data: world, loading, error, reload } = useRecordsWorld();
   const open = useCallback((urn: string) => router.push(`/u/record/${urn.split("/").pop()}` as never), [router]);
   const env = useFieldEnv(world, open);

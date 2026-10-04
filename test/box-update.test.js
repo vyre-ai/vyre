@@ -59,6 +59,9 @@ function vyre(cmd) {
     if (fs.existsSync(F + "/sign-error")) { console.log("  release_mismatch: the unsigned file does not match android.json"); process.exit(1); }
     console.log("{}"); process.exit(0);
   }
+  // The module list (L-1): what \`vyre modules\` says, from a file a test writes (default: both signed modules run); and the owner's reset of the list (L-2), allowed only when a test says so.
+  if (c === "modules") { process.stdout.write(fs.existsSync(F + "/modules-out") ? fs.readFileSync(F + "/modules-out", "utf8") : "  about                0.1.0    running\\n  work                 0.1.0    running\\n"); process.exit(0); }
+  if (c === "call" && a === "modules.list.reset") { if (fs.existsSync(F + "/reset-ok")) { fs.writeFileSync(F + "/reset-done", "1"); console.log("{}"); process.exit(0); } console.log("  no_such_tool: no tool modules.list.reset"); process.exit(1); }
   if (c === "up") { console.log("  your address: https://alex.vyre.run"); process.exit(0); }
   process.exit(0);
 }
@@ -108,7 +111,7 @@ process.exit(0);
 `;
 
 /** Release assets as files in a folder, with SHA256SUMS over them. */
-function release(dir, version, { android = false, corrupt = "", images = false, tagCompose = false, noReleaseJson = false, sign = /** @type {any} */ (RELEASE.privateKey) } = {}) {
+function release(dir, version, { android = false, corrupt = "", images = false, tagCompose = false, noReleaseJson = false, list = 0, sign = /** @type {any} */ (RELEASE.privateKey) } = {}) {
   fs.mkdirSync(dir, { recursive: true });
   const pkg = path.join(dir, ".pkg", "package");
   fs.mkdirSync(path.join(pkg, "box"), { recursive: true });
@@ -128,6 +131,8 @@ function release(dir, version, { android = false, corrupt = "", images = false, 
   fs.writeFileSync(path.join(dir, "VERSION"), version + "\n");
   fs.writeFileSync(path.join(dir, "release.json"), JSON.stringify({ version, channel: "stable", commit: "abc1234", date: "2026-09-27T00:00:00Z", min_from: "0.1.0", notes: "Northwind Bakery's \"fix\"", ...(images ? { images: { box: { ref: IMAGE_REF }, computer: { ref: COMPUTER_REF } } } : {}) }, null, 2));
   if (noReleaseJson) fs.rmSync(path.join(dir, "release.json"));
+  // A release with a signed module list at this counter, in the exact shape scripts/modules-manifest.mjs writes (one-space indent), listed in SHA256SUMS below.
+  if (list) fs.writeFileSync(path.join(dir, "modules.json"), JSON.stringify({ v: 1, counter: list, release: version, modules: { about: { version: "0.1.0", tree: "a".repeat(64) }, work: { version: "0.1.0", tree: "b".repeat(64) } } }, null, 1) + "\n");
   if (android) {
     const apk = Buffer.concat([Buffer.from("PK"), crypto.randomBytes(2048)]);
     fs.writeFileSync(path.join(dir, APK), apk);
@@ -928,10 +933,183 @@ test("publish-release: root copies without following links and publishes only wh
   assert.deepEqual(published(), ["SHA256SUMS", "SHA256SUMS.sig", "shell.json"]);
   // A link in the caller's folder is copied as a link and refused: a file only root can read is never published through it.
   fs.rmSync(path.join(b.U, "status", "release"), { recursive: true });
+  fs.rmSync(path.join(b.U, "private", "release.prev"), { recursive: true, force: true });
   const secret = path.join(b.DIR, "root-only.txt");
   fs.writeFileSync(secret, "secret\n");
   write(RELEASE.privateKey);
   fs.rmSync(path.join(src, "SHA256SUMS")); fs.symlinkSync(secret, path.join(src, "SHA256SUMS"));
   await b.run(["publish-release", src], {});
   assert.deepEqual(published(), [], "nothing was published through a link");
+});
+
+test("publish-release: modules.json is published when the signed list has it, the folder is replaced whole by rename, and the counter never goes down", async t => {
+  const b = await box(t, { releases: [] });
+  units_dirs(b);
+  const src = path.join(b.DIR, "src-rel");
+  const rel = path.join(b.U, "status", "release");
+  const release = (/** @type {number} */ counter, /** @type {string} */ extra = "") => {
+    const modules = JSON.stringify({ v: 1, counter, release: "0.3.0", modules: { work: { version: "0.1.0", tree: "a".repeat(64) } } }, null, 1) + "\n";
+    const sums = Buffer.from(`${sha(modules)}  modules.json\n${sha("shell")}  shell.json\n${sha("tgz")}  vyre.tgz\n`);
+    fs.rmSync(src, { recursive: true, force: true }); fs.mkdirSync(src);
+    fs.writeFileSync(path.join(src, "SHA256SUMS"), sums);
+    fs.writeFileSync(path.join(src, "SHA256SUMS.sig"), signSums(sums, RELEASE.privateKey));
+    fs.writeFileSync(path.join(src, "shell.json"), "shell");
+    fs.writeFileSync(path.join(src, "modules.json"), modules + extra);
+    return modules;
+  };
+  const counterOf = () => JSON.parse(fs.readFileSync(path.join(rel, "modules.json"), "utf8")).counter;
+  release(3004100);
+  await b.run(["publish-release", src], {});
+  assert.deepEqual(fs.readdirSync(rel).sort(), ["SHA256SUMS", "SHA256SUMS.sig", "modules.json", "shell.json"]);
+  assert.equal(counterOf(), 3004100);
+  // A modules.json that is not the file the signed list has publishes nothing: the folder keeps the release it had, with its list.
+  release(3004200, " ");
+  const bad = /** @type {any} */ (await b.run(["publish-release", src], {}));
+  assert.match(bad.out, /modules\.json is not the file the signed SHA256SUMS lists; nothing was published/);
+  assert.equal(counterOf(), 3004100, "the folder still holds the release before, whole");
+  // A newer release replaces the folder as a whole and the old one is set aside, whole.
+  release(3004200);
+  await b.run(["publish-release", src], {});
+  assert.equal(counterOf(), 3004200);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(b.U, "private", "release.prev", "modules.json"), "utf8")).counter, 3004100, "the release before is kept whole beside it");
+  assert.deepEqual(fs.readdirSync(path.join(b.U, "status")).filter(n => /^release\.new/.test(n)), [], "no temp folder left");
+  // The counter only goes up: a signed older list is refused, nothing changes.
+  release(3004100);
+  const old = /** @type {any} */ (await b.run(["publish-release", src], {}));
+  assert.match(old.out, /older \(counter 3004100\) than the one already published \(counter 3004200\)/);
+  assert.equal(counterOf(), 3004200);
+  // The same counter again is not a rollback (a re-run of the same release).
+  release(3004200);
+  await b.run(["publish-release", src], {});
+  assert.equal(counterOf(), 3004200);
+});
+
+
+/** A box that already holds an installed signed list (counter `have`), plus the signed releases to update to. */
+async function listBox(t, tags) {
+  const b = await box(t, { releases: [] });
+  units_dirs(b);
+  const rel = path.join(b.U, "status", "release");
+  fs.mkdirSync(rel, { recursive: true });
+  fs.writeFileSync(path.join(rel, "modules.json"), JSON.stringify({ v: 1, counter: 3004100, release: "0.2.0", modules: { about: { version: "0.1.0", tree: "a".repeat(64) }, work: { version: "0.1.0", tree: "b".repeat(64) } } }, null, 1) + "\n");
+  fs.writeFileSync(path.join(rel, "SHA256SUMS"), "old\n");
+  for (const [tag, list] of tags) release(path.join(b.DL, "dl", tag), tag.slice(1), { list });
+  const api = tags.map(([tag]) => apiEntry(`http://127.0.0.1:0`, tag, false, []));
+  void api;
+  return { b, rel, counter: () => JSON.parse(fs.readFileSync(path.join(rel, "modules.json"), "utf8")).counter };
+}
+
+test("L-1: an update whose module list is refused (an older counter) stops there: the old image and the old list stay, the person is told why", async t => {
+  const b = await box(t, { releases: [{ tag: "v0.2.1", list: 3004100 }] });
+  units_dirs(b);
+  const rel = path.join(b.U, "status", "release");
+  fs.mkdirSync(rel, { recursive: true });
+  fs.writeFileSync(path.join(rel, "modules.json"), JSON.stringify({ v: 1, counter: 3004200, release: "0.2.0", modules: {} }, null, 1) + "\n");
+  const r = /** @type {any} */ (await b.run(["update"]));
+  assert.notEqual(r.code, 0, r.out);
+  assert.match(r.out, /older \(counter 3004100\) than the one already published \(counter 3004200\)/);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(rel, "modules.json"), "utf8")).counter, 3004200, "the old list stays");
+  assert.equal(b.read(path.join(b.FAKE, "running")), "orig", "the old image is the one running");
+});
+
+test("L-1: an update that ends with a signed module not running rolls back by itself; a healthy one keeps release.prev", async t => {
+  const b = await box(t, { releases: [{ tag: "v0.2.1", list: 3004200 }] });
+  units_dirs(b);
+  const rel = path.join(b.U, "status", "release");
+  fs.mkdirSync(rel, { recursive: true });
+  fs.writeFileSync(path.join(rel, "modules.json"), JSON.stringify({ v: 1, counter: 3004100, release: "0.2.0", modules: {} }, null, 1) + "\n");
+  // The new container comes up, but a module the list names failed: the update rolls back, the list folder goes back too.
+  fs.writeFileSync(path.join(b.FAKE, "modules-out"), "  about                0.1.0    running\n  work                 0.1.0    failed   modules from outside Vyre run only under the module supervisor\n");
+  let r = /** @type {any} */ (await b.run(["update"], { MODULES_WAIT: "2" }));
+  assert.notEqual(r.code, 0, r.out);
+  assert.match(r.out, /these signed modules did not start: work/);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(rel, "modules.json"), "utf8")).counter, 3004100, "the list before is back");
+  assert.equal(b.read(path.join(b.FAKE, "running")), "orig");
+  // A listed module the daemon does not report at all is a box with fewer modules than the list: the same rollback.
+  fs.writeFileSync(path.join(b.FAKE, "modules-out"), "  about                0.1.0    running\n");
+  r = /** @type {any} */ (await b.run(["update"], { MODULES_WAIT: "2" }));
+  assert.notEqual(r.code, 0, r.out);
+  assert.match(r.out, /these signed modules did not start: work/);
+  assert.equal(b.read(path.join(b.FAKE, "running")), "orig");
+  // Healthy: both run, the update stands, the old list is kept whole beside it for a rollback.
+  fs.rmSync(path.join(b.FAKE, "modules-out"));
+  r = /** @type {any} */ (await b.run(["update"], { MODULES_WAIT: "2" }));
+  assert.equal(r.code, 0, r.out);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(rel, "modules.json"), "utf8")).counter, 3004200);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(b.U, "private", "release.prev", "modules.json"), "utf8")).counter, 3004100);
+});
+
+test("L-1a: a release that carries no module list cannot be published best-effort over a box that already has one", async t => {
+  const b = await box(t, { releases: [{ tag: "v0.2.1" }] });
+  units_dirs(b);
+  const rel = path.join(b.U, "status", "release");
+  fs.mkdirSync(rel, { recursive: true });
+  fs.writeFileSync(path.join(rel, "modules.json"), JSON.stringify({ v: 1, counter: 3004100, release: "0.2.0", modules: {} }, null, 1) + "\n");
+  const r = /** @type {any} */ (await b.run(["update"], { MODULES_WAIT: "2" }));
+  assert.notEqual(r.code, 0, r.out);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(rel, "modules.json"), "utf8")).counter, 3004100, "the published list stays");
+  assert.equal(b.read(path.join(b.FAKE, "running")), "orig", "the old image is the one running");
+});
+
+test("L-2: update --rollback to a release with an older list asks the owner for the reset first, and refuses without it; with it, the box goes back whole", async t => {
+  const b = await box(t, { releases: [{ tag: "v0.2.1", list: 3004200 }] });
+  units_dirs(b);
+  const rel = path.join(b.U, "status", "release");
+  fs.mkdirSync(rel, { recursive: true });
+  fs.writeFileSync(path.join(rel, "modules.json"), JSON.stringify({ v: 1, counter: 3004100, release: "0.2.0", modules: {} }, null, 1) + "\n");
+  const up = /** @type {any} */ (await b.run(["update"], { MODULES_WAIT: "2" }));
+  assert.equal(up.code, 0, up.out);
+  const counter = () => JSON.parse(fs.readFileSync(path.join(rel, "modules.json"), "utf8")).counter;
+  assert.equal(counter(), 3004200);
+  // No reset tool, or the owner did not approve: nothing is swapped.
+  let r = /** @type {any} */ (await b.run(["update", "--rollback"], {}));
+  assert.notEqual(r.code, 0, r.out);
+  assert.match(r.out, /the owner has to approve going back/);
+  assert.match(r.out, /not rolled back: the module list was not reset/);
+  assert.equal(counter(), 3004200, "the list is untouched");
+  assert.equal(b.read(path.join(b.FAKE, "running")), "built-1", "the new image still runs");
+  // With the owner's reset: the image and the list go back together.
+  fs.writeFileSync(path.join(b.FAKE, "reset-ok"), "1");
+  r = /** @type {any} */ (await b.run(["update", "--rollback"], {}));
+  assert.equal(r.code, 0, r.out);
+  assert.ok(fs.existsSync(path.join(b.FAKE, "reset-done")), "the reset was asked of the running daemon first");
+  assert.equal(counter(), 3004100);
+});
+
+test("L-4 and L-7: an interrupted swap (no release folder, the old one set aside) is put right before the next publish, and a list whose counter cannot be read is refused", async t => {
+  const b = await box(t, { releases: [] });
+  units_dirs(b);
+  const src = path.join(b.DIR, "src-rel");
+  const priv = path.join(b.U, "private");
+  const rel = path.join(b.U, "status", "release");
+  const sums = (/** @type {string} */ m) => Buffer.from(`${sha(m)}  modules.json\n${sha("tgz")}  vyre.tgz\n`);
+  const write = (/** @type {string} */ m) => { fs.rmSync(src, { recursive: true, force: true }); fs.mkdirSync(src); fs.writeFileSync(path.join(src, "modules.json"), m); fs.writeFileSync(path.join(src, "SHA256SUMS"), sums(m)); fs.writeFileSync(path.join(src, "SHA256SUMS.sig"), signSums(sums(m), RELEASE.privateKey)); };
+  const good = (/** @type {number} */ c) => JSON.stringify({ v: 1, counter: c, release: "x", modules: {} }, null, 1) + "\n";
+  // A crash left only release.prev and a temp folder.
+  fs.mkdirSync(path.join(priv, "release.prev"), { recursive: true });
+  fs.writeFileSync(path.join(priv, "release.prev", "modules.json"), good(3004100));
+  fs.mkdirSync(path.join(b.U, "status", "release.new.AbC123"), { recursive: true });
+  write(good(3004200));
+  const r = /** @type {any} */ (await b.run(["publish-release", src], {}));
+  assert.equal(r.code, 0, r.out);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(rel, "modules.json"), "utf8")).counter, 3004200);
+  assert.ok(!fs.readdirSync(path.join(b.U, "status")).some(n => /^release\.new/.test(n)), "the temp folder is gone");
+  // A counter that is not the one top-level line (a second one nested in a module entry) is not read: refused, non-zero.
+  write(JSON.stringify({ v: 1, release: "x", modules: { a: { version: "1", tree: "a".repeat(64), counter: 9 } } }, null, 1) + "\n");
+  const bad = /** @type {any} */ (await b.run(["publish-release", src], {}));
+  assert.notEqual(bad.code, 0);
+  assert.match(bad.out, /no readable counter/);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(rel, "modules.json"), "utf8")).counter, 3004200);
+});
+
+test("a root-run update passes on every VYRE_ setting the installer writes into vyre.env, and the compose turns the kernel on whatever the file says", () => {
+  const installer = fs.readFileSync(path.join(REPO, "scripts/install-box.sh"), "utf8");
+  // The settings write_kernel_env puts there: `printf 'VYRE_NAME=value\n'`.
+  const written = [...installer.matchAll(/printf '(VYRE_[A-Z0-9_]+)=([^'\\]*)\\n'/g)].map(m => [m[1], m[2]]).filter(([n]) => !/^VYRE_SETUP_CODE/.test(n));
+  assert.ok(written.some(([n]) => n === "VYRE_KERNEL") && written.some(([n]) => n === "VYRE_STORE"), "the installer writes the kernel and store settings: " + JSON.stringify(written));
+  const m = /grep -E '(\^\([^']*\)=\[\^\$`\]\*\$)' "\$DIR\/vyre\.env" >"\$RUN\/vyre\.env\.new"/.exec(WRAPPER_SRC);
+  assert.ok(m, "the root run's allow-list is where the test expects it");
+  const keep = new RegExp(m[1]);
+  for (const [n, v] of written) assert.ok(keep.test(`${n}=${v}`), `a root-run update drops ${n}=${v}, which the installer wrote: the daemon would fall back silently`);
+  assert.match(COMPOSE, /^\s+- VYRE_KERNEL=1$/m, "the packaged compose sets the kernel on itself");
 });
