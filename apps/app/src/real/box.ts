@@ -7,11 +7,13 @@ import { call } from "../api/box";
 import { peerCall, peerWanted } from "./peer";
 import { wantsPasskey } from "./presence-model.js";
 import { claimBlocked } from "../../screens/shell/rc";
-import { needsPerson, onPhoneFor } from "./on-phone.js";
+import { needsPerson, onPhoneFor, reasonLine, softwareKeyLine } from "./on-phone.js";
 import { APPROVE_ON_PHONE, actWords, askPhone, endLine, phoneRoute, proofHeader } from "./approvals.js";
 import { useApproval } from "./approval-state";
 import { Platform } from "react-native";
 import { passkeyProof, PresenceError } from "./presence";
+import { withSpace } from "./with-space.js";
+import { useSpaces } from "../../screens/shell/state";
 
 /** True only in a development build started with EXPO_PUBLIC_VYRE_MOCK=1. */
 export const MOCK: boolean = typeof process !== "undefined" && process.env.EXPO_PUBLIC_VYRE_MOCK === "1";
@@ -27,7 +29,9 @@ export class BoxError extends Error {
 /** One tool call; resolves the data, throws BoxError with the box's own code and words. */
 /** The words a screen shows while the phone is asked. */
 export const WAITING_TITLE = APPROVE_ON_PHONE;
-export async function tool<T = unknown>(name: string, input: Record<string, unknown> = {}): Promise<T> {
+export async function tool<T = unknown>(name: string, given: Record<string, unknown> = {}): Promise<T> {
+  // Every call that acts in a space names it: the one the screen gave, else the one showing (nothing under All spaces).
+  const input = withSpace(name, given, useSpaces.getState().space);
   // A device paired to its server over the relay (device-first install) calls it over the peer wire: the server runs the call as this device with its paired session.
   if (peerWanted()) {
     try { return await peerCall<T>(name, input); }
@@ -57,6 +61,13 @@ export async function tool<T = unknown>(name: string, input: Record<string, unkn
       if (e instanceof PresenceError) throw new BoxError(e.code, e.message);
       throw e;
     }
+  }
+  // A presence proof made with a software key (a computer's key file) is refused on a release server: the person approves it on their phone, in our words.
+  if (r.error?.code === "software_key") throw new BoxError("software_key", softwareKeyLine());
+  // A refused proof on an approval says why in error.detail.reason (expired, replayed, wrong request...): each has its own sentence.
+  if (r.error?.code === "needs_presence") {
+    const line = reasonLine((r.error as { detail?: { reason?: string } }).detail?.reason);
+    if (line) throw new BoxError("needs_presence", line);
   }
   if (r.error) throw new BoxError(r.error.code ?? "error", r.error.message ?? "");
   return r.data as T;

@@ -67,6 +67,8 @@ export interface Kernel {
   /** Operations that change what a field is under existing data. */
   readonly migrate: {
     /** Seal a plain text field that holds values: they move into a new sealed field `<field>_sealed` through seal.put, the plain field is removed from view, and the old values are scrubbed from the store's change log and snapshots, Twenty's timeline and the event log (an erased event keeps its envelope). Needs records.define, records.update and seal.put. */
+    /** Forget one record for good: tasks' text about it emptied, the store destroys it and what it keeps of it, its events keep their envelope and lose their data, one `records.forgotten` event (counts, no values). Needs records.define and records.remove. */
+    forget(chain: Chain, input: { readonly type: string; readonly id: RecordId }): Promise<{ readonly forgotten: Urn; readonly erased_events: number; readonly tasks_cleared: number }>;
     sealField(chain: Chain, input: { readonly type: string; readonly field: string; readonly class: string; readonly level?: 'ai' | 'human'; readonly name?: string; readonly scrub_history?: boolean }): Promise<{ readonly sealed_field: string; readonly moved: number; readonly erased_events: number }>;
   };
   readonly grants: GrantsApi;

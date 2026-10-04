@@ -37,11 +37,11 @@ function world(o = {}) {
     finish: async a => { finishes.push(a); if (o.finishResult) return o.finishResult; return { ok: true, paired: o.paired || { route: "route-juno", name: "juno" } }; },
   };
   const p = createPairing({
-    ctx, now: o.now || (() => 1_000_000), offers: o.offers, identity: async () => ME, space: async () => HARLOW, directory, ports,
+    ctx, now: o.now || (() => 1_000_000), offers: o.offers, identity: o.identity || (async () => ME), stepMs: o.stepMs, space: async () => HARLOW, directory, ports,
     openCode: async flow => ({ offer: `wo_${flow}`, code: "WINK-ZZZZ-ZZZZ", expires: 1 }), ack: async () => ({ ok: true }),
     owner: (m, what) => { if (m && (m.agent || String(m.caller).startsWith("agent:"))) throw Object.assign(new Error(what), { code: "denied" }); }, dropMs: 0, relayUrl: async () => "ws://relay.test", keyFile: o.keyFile,
     // existing tests adopt in one step and type codes; the Q-1 tests below turn the confirmation on and the typed code off, as a release build has them
-    confirmAdopt: o.confirm === true, requireProof: o.requireProof ?? false, buildRoot: o.buildRoot, releaseProof: "releaseProof" in o ? o.releaseProof : false, typedCode: o.typedCode ?? true, askHoldMs: o.askHoldMs ?? 0, askMs: o.askMs, askPollMs: 1, releaseMaxMs: o.releaseMaxMs, identityEntry: o.identityEntry, signIdentity: o.signIdentity, vyreName: o.vyreName, mintMs: o.mintMs, looseOwnerIds: o.exactIds ? false : true, pairWordsFor: o.pairWordsFor === null ? undefined : (o.pairWordsFor || (async d => `amber coral ${d}`)), spaceNow: () => HARLOW,
+    confirmAdopt: o.confirm === true, requireProof: o.requireProof ?? false, buildRoot: o.buildRoot, releaseProof: "releaseProof" in o ? o.releaseProof : false, typedCode: o.typedCode ?? true, askHoldMs: o.askHoldMs ?? 0, askMs: o.askMs, askPollMs: 1, releaseMaxMs: o.releaseMaxMs, identityEntry: o.identityEntry, signIdentity: o.signIdentity, identityPin: o.identityPin, vyreName: o.vyreName, mintMs: o.mintMs, looseOwnerIds: o.exactIds ? false : true, pairWordsFor: o.pairWordsFor === null ? undefined : (o.pairWordsFor || (async d => `amber coral ${d}`)), spaceNow: () => HARLOW,
   });
   p.tools();
   const call = (name, input = {}, meta = {}) => tools.get(name).run(input, { caller: "device:x", ...meta });
@@ -260,13 +260,13 @@ test("the server's adopt: the first caller adopts, any later change needs the ow
   assert.deepEqual(w.p.meta.get("owner"), { kind: "space", id: HARLOW, identity: ME });
   assert.equal(w.p.devices.get("self").identity, ME);
   // another paired device, with or without presence, cannot take over
-  await assert.rejects(() => adopt({ owner: { kind: "identity", id: "per_evil" } }, "device:other"), e => e.code === "presence_required");
-  await assert.rejects(() => adopt({ owner: { kind: "identity", id: "per_evil" } }, "device:other", true), e => e.code === "denied");
+  await assert.rejects(() => adopt({ owner: { kind: "identity", id: "per_evil" } }, "device:other"), e => e.code === "owned_by_other");
+  await assert.rejects(() => adopt({ owner: { kind: "identity", id: "per_evil" } }, "device:other", true), e => e.code === "owned_by_other");
   // the adopter itself cannot re-target to a space without presence
-  await assert.rejects(() => adopt({ owner: { kind: "space", id: NORTHWIND }, identity: ME }, "device:home1"), e => e.code === "presence_required");
+  await assert.rejects(() => adopt({ owner: { kind: "space", id: NORTHWIND }, identity: ME }, "device:home1"), e => e.code === "owned_by_other");
   assert.deepEqual(w.p.meta.get("owner"), { kind: "space", id: HARLOW, identity: ME }, "nothing moved");
-  // with the owner's presence the adopter may change it, and so may a screen on this box
-  await adopt({ owner: { kind: "identity", id: ME } }, "device:home1", true);
+  // adopt never changes who owns a server, with the owner's presence or without (retargeting is wink.server.retarget); the same owner again is accepted
+  await assert.rejects(() => adopt({ owner: { kind: "identity", id: ME } }, "device:home1", true), e => e.code === "owned_by_other");
   await adopt({ owner: { kind: "space", id: HARLOW }, identity: ME }, "cli", true);
   assert.equal(w.p.meta.get("adopter"), "device:home1", "the adopter stays the first caller");
 });
@@ -276,8 +276,8 @@ test("W-4: a local (cli) adoption is recorded, and a paired device cannot adopt 
   const adopt = (input, caller, presence) => w.tools.get("wink.server.adopt").run(input, { caller, ...(presence ? { presence: { method: "passkey" } } : {}) });
   await adopt({ owner: { kind: "identity", id: ME } }, "cli");
   assert.equal(w.p.meta.get("adopter"), "cli");
-  await assert.rejects(() => adopt({ owner: { kind: "identity", id: "per_evil" } }, "device:other"), e => e.code === "presence_required");
-  await assert.rejects(() => adopt({ owner: { kind: "identity", id: "per_evil" } }, "device:other", true), e => e.code === "denied");
+  await assert.rejects(() => adopt({ owner: { kind: "identity", id: "per_evil" } }, "device:other"), e => e.code === "owned_by_other");
+  await assert.rejects(() => adopt({ owner: { kind: "identity", id: "per_evil" } }, "device:other", true), e => e.code === "owned_by_other");
   assert.deepEqual(w.p.meta.get("owner"), { kind: "identity", id: ME, identity: ME });
 });
 
@@ -412,7 +412,7 @@ test("adopt for a first owner needs no directory knowledge of the space; a later
   assert.deepEqual(r.owner, { kind: "space", id: HARLOW });
   assert.equal(w.p.meta.get("owner").name, "Harlow Legal");
   // a later change by the channel is refused, in words that say who owns it and which tool
-  await assert.rejects(() => adopt({ owner: { kind: "identity", id: ME }, identity: ME }), e => e.code === "presence_required" && /belongs to Harlow Legal/.test(e.message) && /wink\.remove/.test(e.message) && /wink\.server\.retarget/.test(e.message));
+  await assert.rejects(() => adopt({ owner: { kind: "identity", id: ME }, identity: ME }), e => e.code === "owned_by_other" && /belongs to Harlow Legal/.test(e.message) && /wink\.remove/.test(e.message) && /wink\.server\.retarget/.test(e.message));
   // with presence on the box, the owner's own screen retargets
   const t = await w.tools.get("wink.server.retarget").run({ owner: { kind: "identity", id: ME }, identity: ME }, { caller: "cli", presence: { ok: true } });
   assert.deepEqual(t.owner, { kind: "identity", id: ME });
@@ -573,7 +573,7 @@ test("without the release, a second adopt over the paired channel still refuses,
   // the real card when the box's own refusal names the owner
   b.reach.up = true;
   const direct = await b.tools.get("wink.server.adopt").run({ owner: { kind: "identity", id: ME }, identity: ME }, { caller: "device:app1", presence: { method: "passkey" } }).catch(e => e);
-  assert.equal(direct instanceof Error, false, "the adopter with the owner's presence still may change it (retarget path)");
+  assert.ok(direct instanceof Error && direct.code === "owned_by_other", "adopt never changes the owner, not even for the adopter with presence (retargeting is its own act)");
 });
 
 test("an unreachable server keeps a pending release, applied when it next answers", async () => {
@@ -636,15 +636,15 @@ test("a release takes the adopter's relay device off the box; a stranger's refus
   const stranger = await b.tools.get("wink.server.adopt").run({ owner: { kind: "identity", id: ME }, identity: ME }, { caller: "device:stranger1" }).catch(e => e);
   assert.equal(stranger.code, "presence_required");
   assert.match(stranger.message, /already belongs to alex\./);
-  assert.deepEqual(b.drops, [["relay.devices.drop", { id: "stranger1" }]]);
+  assert.deepEqual(b.drops.filter(d => d[0] === "relay.devices.drop"), [["relay.devices.drop", { id: "stranger1" }]]);
   assert.ok(b.p.meta.get("owner"), "the owner did not move");
   // the adopter itself is not dropped by a refused change without presence
   await b.tools.get("wink.server.adopt").run({ owner: { kind: "identity", id: ME }, identity: ME }, { caller: "device:app1" }).catch(() => null);
-  assert.equal(b.drops.length, 1);
+  assert.equal(b.drops.filter(d => d[0] === "relay.devices.drop").length, 1);
   // the release drops the adopter
   const [d] = app.p.devices.list(ME);
   assert.equal(await app.p.releaseServer(d.id), "released");
-  assert.deepEqual(b.drops.at(-1), ["relay.devices.drop", { id: "app1" }]);
+  assert.deepEqual(b.drops.filter(d => d[0] === "relay.devices.drop").at(-1), ["relay.devices.drop", { id: "app1" }]);
   assert.equal(b.p.meta.get("owner"), null);
 });
 
@@ -663,8 +663,8 @@ test("W-4 N-1: a second device naming the owner's identity as a space admin, wit
   const adopt = (input, caller, extra = {}) => w.tools.get("wink.server.adopt").run(input, { caller, ...extra });
   await adopt({ owner: { kind: "identity", id: ME }, identity: ME, peerSecret: "A".repeat(43) }, "device:home1");
   // ME administers HARLOW in the directory, and the input says so: that proves nothing about the caller
-  await assert.rejects(() => adopt({ owner: { kind: "space", id: HARLOW }, identity: ME }, "device:other"), e => ["denied", "presence_required"].includes(e.code));
-  await assert.rejects(() => adopt({ owner: { kind: "space", id: HARLOW }, identity: ME }, "device:home1"), e => e.code === "presence_required", "not even the adopter, without presence");
+  await assert.rejects(() => adopt({ owner: { kind: "space", id: HARLOW }, identity: ME }, "device:other"), e => ["denied", "presence_required", "owned_by_other"].includes(e.code));
+  await assert.rejects(() => adopt({ owner: { kind: "space", id: HARLOW }, identity: ME }, "device:home1"), e => e.code === "owned_by_other", "not even the adopter, without presence");
   assert.deepEqual(w.p.meta.get("owner"), { kind: "identity", id: ME, identity: ME });
   assert.equal(w.p.meta.get("adopter"), "device:home1");
 });
@@ -1428,6 +1428,20 @@ test("wink.server.probe: a paired server answers; a server that let the device g
   assert.equal((await w.call("wink.server.probe", { device: "nope" })).code, "unknown");
 });
 
+test("wink.server.probe: once the person removed a server (released or not), the probe answers removed and never the old route", async () => {
+  const w = world({ callServer: async (_p, tool) => ({ tool, released: true }) });
+  const ch = { relay: "ws://relay.test", route: "route1", box: "box1" };
+  w.p.meta.set("channel:srv1", ch); w.p.meta.set("probe:srv1", ch);
+  assert.equal((await w.call("wink.server.probe", { device: "srv1" })).reachable, true);
+  assert.equal(await w.p.releaseServer("srv1"), "released");
+  const gone = await w.call("wink.server.probe", { device: "srv1" });
+  assert.deepEqual([gone.reachable, gone.code], [false, "removed"]);
+  const w2 = world({ callServer: async () => { throw Object.assign(new Error("down"), { remote: "" }); }, releaseRetryMs: 0 });
+  w2.p.meta.set("channel:srv2", ch); w2.p.meta.set("probe:srv2", ch);
+  assert.equal(await w2.p.releaseServer("srv2"), "pending");
+  assert.equal((await w2.call("wink.server.probe", { device: "srv2" })).code, "removed", "a release that could not be delivered still stops the probe from using the old route");
+});
+
 // ---- G-2 (lead, 4 Oct): becoming an owner always needs the identity proof, checked against the identity's chain ----
 
 test("owner needs a verified proof: none, another identity's, and an unreachable directory each refuse in their own words and nothing is owned; the right proof owns", async () => {
@@ -1485,6 +1499,8 @@ test("PI-1: on a release build the owner's proof must come from a phone's hardwa
   assert.equal((await attempt(true, proof("e_phone"))).err.code, "denied_wrong_proof", "an enclave entry's proof without its Face ID signature");
   assert.equal((await attempt(true, proof("e_phone", "A".repeat(86)))).err.code, "denied_wrong_proof", "a wrong esig");
   assert.equal((await attempt(true, proof("e_phone", esigOf()))).ok.pending, true, "with its Face ID signature it is asked");
+  // finished: the server owns, and says the enclave key is unattested (never "hardware" without a verified attestation)
+  { const r = await attempt(true, proof("e_phone", esigOf())); await atServer(r.w, "wink.server.pair.answer", await rightYes(r.w)); await r.w.tools.get("wink.server.adopt").run({ ...base, proof: proof("e_phone", esigOf()) }, { caller: "device:app1" }); assert.equal(r.w.p.meta.get("owner_proof"), "enclave, unattested"); }
   // PI-2: a release build refuses a pairing with no pin; a development build takes it and says so
   const nopin = { ...base, owner: { kind: "identity", id: ME, name: "Alex", vyre: "alex" } };
   const wNo = world({ confirm: true, requireProof: true, releaseProof: true, identityEntry });
@@ -1543,7 +1559,7 @@ test("the owner record is written BEFORE spaces.owner.adopt asks for it (windows
 const fixtureBuild = (kind) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), `bk-${kind}-`));
   fs.mkdirSync(path.join(dir, "lib"));
-  fs.writeFileSync(path.join(dir, "lib", "build-kind.js"), kind === "development" ? 'export const BUILD_KIND = "development";\n' : 'export const BUILD_KIND = "release";\n');
+  fs.writeFileSync(path.join(dir, "lib", "build-kind.js"), kind !== "release" ? 'export const BUILD_KIND = "development";\n' : 'export const BUILD_KIND = "release";\n');
   if (kind === "dev-image") fs.writeFileSync(path.join(dir, "vyre.tgz"), "x");   // a dev-kind image is packed, but its KIND is still development
   return dir;
 };
@@ -1567,4 +1583,61 @@ test("the build KIND decides release behaviour, on three builds: a checkout and 
     assert.equal(w.p.autoPresence, false, "a release-stamped copy ignores the switch");
     await assert.rejects(() => w.tools.get("wink.server.adopt").run(input, { caller: "device:app1" }), e => e.code === "not_hardware");
   } finally { if (saved === undefined) delete process.env.VYRE_SEAL_SOFTWARE; else process.env.VYRE_SEAL_SOFTWARE = saved; }
+});
+
+
+test("wink.pair.server never hangs silently: a step that does not answer ends the call with plain words naming it, and one log line", async () => {
+  for (const [name, w] of [["looking up your identity", world({ stepMs: 40, identity: () => new Promise(() => {}) })], ["checking where this server should go", world({ stepMs: 40, directory: { memberships: () => new Promise(() => {}) } })]]) {
+    const t0 = Date.now();
+    await assert.rejects(() => w.call("wink.pair.server", { payload: serverQrPayload(new Uint8Array(16).fill(1), "ws://relay.test"), target: { kind: "identity", id: ME } }), e => e.code === "unavailable" && new RegExp(`did not finish ${name}`).test(e.message) && /Try again/.test(e.message));
+    assert.ok(Date.now() - t0 < 2000, `${name}: bounded`);
+  }
+});
+
+test("PI-2, computer side: a computer that pairs a server sends the head and length of the identity chain it last verified as owner.pin; with none held it sends none", async () => {
+  const BOX = "Qm94S2V5", DEV = "app1dev";
+  const pin = { id: "per_" + "q".repeat(26), seq: 3, head: "h".repeat(43) };
+  for (const [held, want] of [[pin, pin], [null, undefined]]) {
+    const seen = [];
+    const w = world({ typedCode: false, paired: { route: "route-juno", name: "juno", box: BOX, device: DEV }, identityPin: async () => held, callServer: async (_p, _t, input) => { seen.push(input); return { owner: input.owner }; } });
+    const q = await w.call("wink.pair.server", { payload: serverQrPayload(new Uint8Array(16).fill(5), "ws://relay.test"), target: { kind: "identity", id: ME } });
+    await new Promise(x => setTimeout(x, 80));
+    assert.equal((await w.call("wink.pair.status", { pairing: q.pairing })).state, "done");
+    assert.deepEqual(seen[0].owner.pin, want);
+  }
+});
+
+test("the enclave key must still stand on the identity's directory list: checked at sign-in, cached for 10 minutes, and a revoked entry makes the device software and marks it for re-pairing", async () => {
+  let clock = 1_000_000;
+  const KEY = "BAAA";
+  let entries = [{ eid: "e_phone", kind: "device", enclave: KEY }];
+  let reachable = true;
+  const lookups = [];
+  const w = world({ now: () => clock, call: async (tool, input) => { if (tool === "spaces.identity.lookup") { lookups.push(input); if (!reachable) throw Object.assign(new Error("down"), { code: "unreachable" }); return { data: { entries } }; } return undefined; } });
+  w.p.devices.add({ id: "dev1", identity: ME, kind: "phone", name: "Alex's phone", target: { kind: "identity", id: ME } });
+  w.p.devices.setConfirmed("dev1", { by: ME, keyId: "k1", key: null });
+  w.p.devices.setEnclaveKey("dev1", KEY, "e_phone", "alex");
+  const live = () => w.tools.get("wink.device.enclave-live").run({ device: "dev1" }, { caller: "module:presence" });
+  await assert.rejects(() => w.tools.get("wink.device.enclave-live").run({ device: "dev1" }, { caller: "module:evil" }), e => e.code === "denied");
+  assert.deepEqual(await live(), { ok: true });
+  assert.equal(lookups.length, 1);
+  assert.deepEqual(lookups[0], { name: "alex", id: ME }, "the directory list of the identity, by its Vyre name");
+  entries = [];
+  clock += 9 * 60_000;
+  assert.deepEqual(await live(), { ok: true }, "inside the 10-minute window the answer is the cached one");
+  assert.equal(lookups.length, 1);
+  clock += 2 * 60_000;
+  assert.deepEqual(await live(), { ok: false }, "after the window the revoked entry is seen");
+  assert.ok(w.events.some(e => e[0] === "wink.device-needs-repair" && e[1].device === "dev1"), "and the device is marked for re-pairing");
+  assert.equal(w.db.prepare("SELECT needs_repair FROM wink_devices WHERE id = 'dev1'").get().needs_repair, 1);
+  // a directory that cannot be reached: software for this sign-in, nothing remembered
+  w.p.devices.setEnclaveKey("dev1", KEY, "e_phone", "alex");
+  entries = [{ eid: "e_phone", kind: "device", enclave: KEY }];
+  clock += 11 * 60_000; reachable = false;
+  assert.deepEqual(await live(), { ok: false });
+  reachable = true;
+  assert.deepEqual(await live(), { ok: true }, "the next sign-in asks again");
+  // another key under the same entry id is not this device's key
+  clock += 11 * 60_000; entries = [{ eid: "e_phone", kind: "device", enclave: "BBBB" }];
+  assert.deepEqual(await live(), { ok: false });
 });

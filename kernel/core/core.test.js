@@ -226,8 +226,10 @@ test("authorize: policy by risk: outward asks, grant needs fresh presence, admin
   const gr = await ask(az, person(), "grants.create", `vyre://${SPACE}/grant/g1`);
   assert.deepEqual([gr.effect, gr.reason], ["ask", "needs_presence"]);
   assert.equal(gr.obligations.find(o => o.type === "presence").method, "fresh");
+  // ONE permission rule (ruling c328cd1): a person caller does admin acts with no presence
   const ad = await ask(az, person(), "space.set", `vyre://${SPACE}/space/s`);
-  assert.equal(ad.obligations.find(o => o.type === "presence").method, "session");
+  assert.equal(ad.effect, "allow");
+  assert.ok(!ad.obligations.some(o => o.type === "presence"), "an admin act by a person needs no presence");
   assert.equal((await ask(az, person(), "crm.read", R(1))).effect, "allow");
   assert.equal((await ask(az, person(), "crm.read", R(7))).reason, "needs_presence");
 });
@@ -571,4 +573,19 @@ test("chains: forFlow and forModule carry the approver, the run id as the job, a
   assert.throws(() => b.fromFacts({ kind: "session_person", person: OWNER, session: "s" }), { code: "not_a_member" });
   const two = b.fromFacts({ kind: "agent_session", agent: "kit", session: "s", thread: "t", vouched: true, person: "per_two" });
   assert.equal(two.hops[0].actor.id, "per_two");
+});
+
+test("one permission rule: an agent's admin act still needs the person's session and its outward act is held for the person's yes; the person's own admin act passes and their outward act still asks", async () => {
+  const kit = actorOf("agent", "kit");
+  const both = (action, resource) => world({ grants: [grant({ actions: [action], resource }), grant({ subject: { kind: "actor", actor: kit }, actions: [action], resource })], members: ["agent:kit"] });
+  const agentChain = () => builder().fromFacts({ kind: "agent_session", agent: "kit", session: "s", thread: "t", vouched: true });
+  const space = { prefix: `vyre://${SPACE}/space/*` }, msg = { prefix: `vyre://${SPACE}/message/*` };
+  const admin = await ask(both("space.set", space), agentChain(), "space.set", `vyre://${SPACE}/space/s`);
+  assert.deepEqual([admin.effect, admin.reason], ["ask", "needs_presence"], "an agent never passes an admin act as you");
+  const out = await ask(both("email.send", msg), agentChain(), "email.send", `vyre://${SPACE}/message/m1`);
+  assert.deepEqual([out.effect, out.reason], ["ask", "needs_approval"], "a model's outward send is held for the person");
+  const mine = await ask(both("space.set", space), person(), "space.set", `vyre://${SPACE}/space/s`);
+  assert.equal(mine.effect, "allow", "the person's own admin act needs nothing");
+  const mineOut = await ask(both("email.send", msg), person(), "email.send", `vyre://${SPACE}/message/m1`);
+  assert.equal(mineOut.reason, "needs_approval", "the person's own outward act still asks");
 });

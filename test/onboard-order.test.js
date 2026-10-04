@@ -119,8 +119,21 @@ test("`owned` follows whichever way the machine's owner exists: a paired server,
   const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "deck" });
   const before = (await deck("onboard.status")).data;
   assert.deepEqual([before.owned, before.ownerFirst], [false, "name"], "a fresh this-computer home: not owned, the first step is the name");
+  assert.equal(((await deck("onboard.claude", { mode: "api-key", key: "sk-ant-api03-" + "c".repeat(60) })).error || {}).code, "not_a_server", "with no owner a computer still refuses like any non-server");
   const made = await deck("spaces.identity.create", { name: "alex" });
   assert.ok(!made.error, JSON.stringify(made.error));
   const after = (await deck("onboard.status")).data;
   assert.deepEqual([after.owned, after.ownerFirst], [true, null], "after the claim the owner exists");
+  // The owner of a this-computer home connects Claude from their own session, with their presence; a model still cannot.
+  const KEY2 = "sk-ant-api03-" + "b".repeat(60);
+  const put = await deck("onboard.claude", { mode: "api-key", key: KEY2 });
+  assert.ok(put.data, JSON.stringify(put.error));
+  assert.equal(put.data.signedIn, true);
+  const st = (await deck("onboard.status")).data;
+  assert.equal(st.detail.claude.signedIn, true);
+  const model = await call("onboard.claude", { mode: "api-key", key: KEY2 }, { root, caller: "mcp" });
+  assert.ok(model.error, "a model is refused on a this-computer home too");
+  const off = await deck("onboard.claude", { mode: "disconnect" });
+  assert.ok(off.data, JSON.stringify(off.error));
+  assert.notEqual((await deck("onboard.status")).data.steps.claude, "done");
 });

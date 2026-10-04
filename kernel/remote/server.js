@@ -9,6 +9,8 @@ import crypto from "node:crypto";
 import { CALLS, INVITEE_CALLS, WIRE_VERSION, MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, REPLAY_WINDOW_MS, MAX_PROOF_BYTES, CHALLENGE_TTL_MS, PRESENCE_CODES, pathOf } from "./wire.js";
 import { proofRequest, PROOF_CALLS } from "./proof.js";
 import { canonical, sha256 } from "../core/canonical.js";
+import { remoteBinding } from "../core/presence.js";
+import { youngAt } from "../identity/chain.js";
 
 const fail = (/** @type {any} */ id, /** @type {string} */ code, /** @type {string} */ message, /** @type {any} */ challenge = undefined) => ({ v: WIRE_VERSION, id, ok: false, error: { code, message, ...(challenge ? { challenge } : {}) } });
 const MAX_STORED_BYTES = 8 * 1024 * 1024;
@@ -16,7 +18,7 @@ const INVITEE_RESPONSE_BYTES = 16 * 1024;
 const RATE = Object.freeze({ member: 300, invitee: 30, window_ms: 60_000, peers: 10_000 });
 
 /**
- * @param {{ space: string, home?: string, kernel: any, clock?: () => number, rate?: { member?: number, invitee?: number }, services?: Record<string, any>, attest?: (nonce: string) => Promise<{ pub: string, sig: string } | null> }} cfg `kernel` is the home's kernel for this Space (createKernel / bootKernel's result)
+ * @param {{ space: string, home?: string, kernel: any, clock?: () => number, rate?: { member?: number, invitee?: number }, services?: Record<string, any>, attest?: (nonce: string) => Promise<{ pub: string, sig: string } | null>, identityEvidence?: (who: { person: string, name?: string }) => Promise<{ ops: any[], entries: { eid: string, kind: string, pub: string, founder: boolean, since: number }[] } | null> }} cfg `kernel` is the home's kernel for this Space (createKernel / bootKernel's result)
  */
 export function createRemoteServer(cfg) {
   const clock = cfg.clock || Date.now;
@@ -48,6 +50,37 @@ export function createRemoteServer(cfg) {
     challenges.delete(String(nonce));
     return c.exp > now && c.device === device && c.call === call && c.args === argsHash(args);
   }
+  /**
+   * RC1, the invitee's first presence key: `grants.invites.accept` may carry `bind` in its second argument beside `seen` and `proof` ({ key_id, spki, signer, sig, attestation? }): the presence key to enrol and a signature
+   * over this invite, this Space, this identity and that key by the device the invitee's hello named. The identity's signed device list comes from the names directory (`cfg.identityEvidence`), never from the caller; the
+   * device the transport verified (`peer.entry`) must be on it and not young, and the signature must hold, before the sealing process enrols the key for that person, inside this same accept. Answers null when the key is
+   * enrolled, else one reason code: not_listed, bad_binding, young_device, known_person, bad_invite, unavailable (or the sealing process's own refusal). Nothing is enrolled on a refusal.
+   * @param {any} chain @param {any} peer @param {string} invite @param {any} bind @returns {Promise<{ code: string, message: string } | null>} null when the key is enrolled (the caller then undoes it if the accept does not finish: all or nothing)
+   */
+  async function joinKey(chain, peer, invite, bind) {
+    const no = (/** @type {string} */ code, /** @type {string} */ message) => ({ code, message });
+    if (!bind || typeof bind !== "object" || Array.isArray(bind)) return no("bad_binding", "that key binding is not usable");
+    const text = (/** @type {any} */ v, /** @type {number} */ max) => typeof v === "string" && v.length > 0 && v.length <= max;
+    if (!text(bind.key_id, 64) || !text(bind.spki, 400) || !text(bind.signer, 40) || !text(bind.sig, 200) || (bind.attestation !== undefined && (typeof bind.attestation !== "object" || bind.attestation === null || JSON.stringify(bind.attestation).length > MAX_PROOF_BYTES))) return no("bad_binding", "that key binding is not usable");
+    if (typeof k.joinKey !== "function" || typeof cfg.identityEvidence !== "function" || typeof peer.entry !== "string" || !peer.entry) return no("unavailable", "this server cannot add your device's key yet");
+    // the invite must be live, unused and meant for this person before anything is enrolled
+    try { const inv = await k.gateway.grants.invites.get(chain, invite); if (!inv || inv.status !== "pending") return no("bad_invite", "that invite cannot be used"); } catch { return no("bad_invite", "that invite cannot be used"); }
+    /** @type {any} */ let ev = null;
+    try { ev = await cfg.identityEvidence({ person: peer.person, ...(typeof peer.name === "string" && peer.name ? { name: peer.name } : {}) }); } catch { ev = null; }
+    if (!ev || !Array.isArray(ev.ops) || !Array.isArray(ev.entries)) return no("unavailable", "this server could not read your identity list");
+    const entry = ev.entries.find((/** @type {any} */ e) => e && e.eid === peer.entry && e.kind === "device");
+    if (!entry) return no("not_listed", "this device is not on your identity list");
+    // the door decides what is young itself (same rule and same clock as the sealing process); a missing time or founder flag refuses, never passes
+    if (typeof entry.founder !== "boolean" || !Number.isFinite(entry.since)) return no("unavailable", "this server could not read your identity list");
+    if (youngAt(entry, clock())) return no("young_device", "this sign-in is under 24 hours old; join from an older device");
+    try {
+      await k.joinKey({ chain, person: peer.person, ops: ev.ops, bind: { eid: peer.entry, sig: bind.sig }, invite, key_id: bind.key_id, spki: bind.spki, signer: bind.signer, ...(bind.attestation ? { attestation: bind.attestation } : {}) });
+    } catch (e) {
+      const code = e && typeof /** @type {any} */ (e).code === "string" && /^[a-z][a-z0-9_]{1,40}$/.test(/** @type {any} */ (e).code) ? /** @type {any} */ (e).code : "unavailable";
+      return no(code, code === "bad_binding" ? "that key binding does not check out" : code === "known_person" ? "this server already knows you: add this device with your other device" : "this server could not add your device's key");
+    }
+    return null;
+  }
   /** @type {Map<string, number[]>} device -> the times of its recent requests */ const rate = new Map();
   // A group is the gateway's, the Surfaces door's, or a SERVICE the home registered (`cfg.services`, e.g. the lent computer's): a service group that is not registered answers no_such_call.
   const tree = (/** @type {string} */ group) => (cfg.services && Object.hasOwn(cfg.services, group) ? cfg.services[group] : group === "lent" ? undefined : group === "tasks" ? k.gateway.ask : group === "surfaces" ? k.surfaces : k.gateway[group]);
@@ -76,7 +109,7 @@ export function createRemoteServer(cfg) {
     if (!peer || typeof peer.person !== "string" || !peer.person || typeof peer.device_key_id !== "string" || !peer.device_key_id) throw new KernelError("not_a_member", "no chain for this connection");
     const path = peer.path === "wink" ? "wink" : "relay"; // anything but a Wink node is the relay: the weaker surface
     if (k.gateway.members.roleOf({ kind: "person", id: peer.person, space: cfg.space }) !== null) {
-      return { member: true, chain: await k.chains.fromFacts({ kind: "device", device_key_id: peer.device_key_id, person: peer.person, path, ...(typeof peer.session === "string" && peer.session && peer.session.length <= 64 ? { session: peer.session } : {}) }) };
+      return { member: true, chain: await k.chains.fromFacts({ kind: "device", device_key_id: peer.device_key_id, person: peer.person, path, ...(typeof peer.session === "string" && peer.session && peer.session.length <= 64 ? { session: peer.session, ...(peer.software === true ? { software: true } : {}) } : {}) }) };
     }
     if (!INVITEE_CALLS.has(call)) throw new KernelError("not_a_member", "no chain for this connection");
     return { member: false, chain: await k.chains.fromFacts({ kind: "invitee", person: peer.person, vouched: true }) };
@@ -102,7 +135,7 @@ export function createRemoteServer(cfg) {
   }
 
   return Object.freeze({
-    /** @param {any} request @param {{ device_key_id: string, person: string, path?: string, session?: string }} peer what the transport verified */
+    /** @param {any} request @param {{ device_key_id: string, person: string, path?: string, session?: string, entry?: string, name?: string }} peer what the transport verified (`entry` and `name`: the identity entry and claimed name an invitee's signed hello named) */
     async serve(request, peer) {
       const id = request && typeof request.id === "string" ? request.id.slice(0, 64) : null;
       try {
@@ -126,10 +159,15 @@ export function createRemoteServer(cfg) {
           try {
             // presence over the wire: a proof beside the args goes to the kernel as its `{ presence }` option (merged into a trailing options object, else appended) once its nonce is ours and live
             let callArgs = request.args;
+            /** @type {{ person: string, invite: string, key_id: string } | null} */ let joined = null;
             const hasProof = request.proof !== undefined && request.proof !== null;
             if (hasProof) {
               let size = 0; try { size = Buffer.byteLength(JSON.stringify(request.proof)); } catch { size = Infinity; }
               if (typeof request.proof !== "object" || Array.isArray(request.proof) || size > MAX_PROOF_BYTES) return fail(id, "bad_input", "that proof is not usable");
+              // RP-1: the proof must name THIS home and THIS challenge in its signed fields (`home`, `challenge`): a proof for another home, another challenge, or a local proof with neither is refused
+              // before the kernel sees it, whatever its signature (the kernel's verifier checks the signature, the key, the op and its own single-use nonce).
+              const bind = remoteBinding(request.proof, { home: cfg.home || cfg.space, challenge: String(request.challenge || "") });
+              if (bind) { if (typeof request.challenge === "string") challenges.delete(request.challenge); return fail(id, "bad_binding", "that proof does not name this home and this challenge"); }
               if (!spend(request.challenge, peer.device_key_id, request.call, request.args, now)) return fail(id, "bad_challenge", "that proof was not made for a challenge this home issued for this call; ask again");
               // the proof is the trailing `{ presence }` option on its own, never merged into one of the caller's own arguments (PW-4)
               callArgs = [...callArgs, { presence: request.proof }];
@@ -142,7 +180,20 @@ export function createRemoteServer(cfg) {
               attestNonce = callArgs[1].attest;
               callArgs = [callArgs[0]];
             }
-            let result = await target.fn(who.chain, ...callArgs);
+            if (request.call === "grants.invites.accept" && !who.member && callArgs.length >= 2 && callArgs[1] && typeof callArgs[1] === "object" && !Array.isArray(callArgs[1]) && Object.hasOwn(callArgs[1], "bind")) {
+              const { bind, ...rest } = callArgs[1];
+              const refused = await joinKey(who.chain, peer, String(callArgs[0]), bind);
+              if (refused) return fail(id, refused.code, refused.message);
+              callArgs = [callArgs[0], rest, ...callArgs.slice(2)];
+              joined = { person: peer.person, invite: String(callArgs[0]), key_id: bind.key_id };
+            }
+            let result;
+            try { result = await target.fn(who.chain, ...callArgs); }
+            catch (e) {
+              // all or nothing: an accept that does not finish leaves no key behind (the person asks again with a fresh accept)
+              if (joined && typeof k.unjoinKey === "function") { try { await k.unjoinKey({ chain: who.chain, ...joined }); } catch { /* the key stays only if the sealing process cannot be reached; it is a newcomer key for a valid invite */ } }
+              throw e;
+            }
             if (attestNonce && typeof cfg.attest === "function" && result && typeof result === "object") {
               let a = null; try { a = await cfg.attest(attestNonce); } catch { a = null; }
               if (a) result = { ...result, attest: a };

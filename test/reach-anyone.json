@@ -957,6 +957,14 @@
    "module": "planner",
    "reason": "guard: owns() in core/planner refuses an agent any item it did not add (an agent may change, finish, snooze, dismiss or delete only its own items; a calendar copy is nobody's to add)"
   },
+  "pluginagent.ask": {
+   "module": "pluginagent",
+   "reason": "callers list in code (the person's surfaces, mcp and harness); it only files one pending request for the person to approve with presence (pluginagent.grant), one at a time, and changes nothing else"
+  },
+  "pluginagent.status": {
+   "module": "pluginagent",
+   "reason": "read-only: whether Claude Code on this computer has been granted, and one plain sentence"
+  },
   "presence.capsule.pin": {
    "module": "presence",
    "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
@@ -980,6 +988,14 @@
   "presence.person.rotate": {
    "module": "presence",
    "reason": "callers are the relay, tailnet and device labels; the new secret is signed by the paired device's key and the old one stops working"
+  },
+  "presence.person.session-ask": {
+   "module": "presence",
+   "reason": "callers is the relay device labels only and the call needs a paired device peer (meta.peer.kind device) whose wink record the owner confirmed; one open card per device, a refused device is held 10 minutes, and the card is built from a validated request for one of three moments"
+  },
+  "presence.person.session-status": {
+   "module": "presence",
+   "reason": "read-only: callers is the relay device labels only and it answers only for the asking device's own card (its id), never another device's"
   },
   "presence.person.sessions": {
    "module": "presence",
@@ -1524,6 +1540,10 @@
   "vault.account.unlock": {
    "module": "vault",
    "reason": "callers list in code (capsule, cli, deck, local): no model caller; presence proof required"
+  },
+  "vault.account.unlock-phone": {
+   "module": "vault",
+   "reason": "callers list in code (mobile and device only: no model, module or browser caller); the password and a presence proof are both required"
   },
   "vault.agent.grant": {
    "module": "vault",

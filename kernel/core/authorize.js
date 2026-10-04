@@ -164,7 +164,7 @@ export function clampTo(parent, child, since = () => 0, riskOf = () => undefined
  * @property {(i: { id: string, chain: any, action: string, resource: string }) => boolean | Promise<boolean>} [approvedAct] does this approval (an approved held-act task) cover exactly this act by this chain? It is USED here: the hook marks it spent atomically as it answers yes, so an approval is one decision, whoever calls `authorize` (the gate or a Flow runner), and cannot be replayed for a second act.
  * @property {{ match(i: { chain: any, action: string, resource: string }): any[] | Promise<any[]> }} [rules] the Space's standing rules (kernel/grants): asked BEFORE grants; a rule only tightens (never, always ask, draft only) and never allows
  * @property {(waiver: any, q: { chain: any, action: string, resource: string }) => boolean} [waives] does a live Kit-install waiver stand for presence on this act
- * @property {(proof: any, ctx: any) => boolean | Promise<boolean>} [verifyPresence] the hardware-signer check (core/presence.js); default none
+ * @property {(proof: any, ctx: any) => boolean | { ok: boolean, reason?: string } | Promise<boolean | { ok: boolean, reason?: string }>} [verifyPresence] the hardware-signer check (core/presence.js); default none
  * @property {(chain: any) => boolean} [hasPresenceSession]
  * @property {number} [policy_version]
  * @property {() => number} [clock]
@@ -274,7 +274,9 @@ export function createAuthorizer(cfg) {
       if (OUTWARD.has(risk)) { presence = maxPresence(presence, "fresh"); ask = { kind: risk, approver: approver || "owner" }; }
       else if (approver) ask = { kind: risk, approver };
       if (risk === "grant") presence = maxPresence(presence, "fresh");
-      if (risk === "admin") presence = maxPresence(presence, "session");
+      // ONE permission rule (lead ruling c328cd1): a person caller (a paired device, the terminal, the Capsule, the app: a chain of exactly one person) does admin acts with no presence; the yes is asked at
+      // pairing a device, a vault secret and an outward act (below and in the vault), not here. An agent or a chain with an assistant in it still needs the person's session.
+      if (risk === "admin" && !isExactlyPerson(chain)) presence = maxPresence(presence, "session");
       if (attrs.sensitivity === "privileged") presence = presence === "none" ? "session" : maxPresence(presence, "fresh");
       // Tainted context (invariant 9): foreign content may not quietly drive grants, admin or more than a read across Spaces.
       let tainted = false;
@@ -304,8 +306,9 @@ export function createAuthorizer(cfg) {
       const ctxEvidence = { decision, chain, action, resource, input_hash: input.input_hash };
       // A session stands for presence on admin and grant only when the chain is exactly one person: an assistant in the chain never inherits it.
       const sessionOk = !(risk === "admin" || risk === "grant") || isExactlyPerson(chain);
+      /** @type {string | null} the verifier's stable reason when it refused a proof (a verifier that answers { ok, reason }), for the caller to read beside needs_presence */ let presenceWhy = null;
       const presenceMet = presence === "none" || (presence === "session" && sessionOk && (cfg.hasPresenceSession ? cfg.hasPresenceSession(chain) : false))
-        || (input.presence && cfg.verifyPresence ? await cfg.verifyPresence(input.presence, ctxEvidence) === true : false)
+        || (input.presence && cfg.verifyPresence ? await (async () => { const r = await cfg.verifyPresence(input.presence, ctxEvidence); if (r && typeof r === "object") { presenceWhy = r.ok === true ? null : String(r.reason || "refused"); return r.ok === true; } return r === true; })() : false)
         // The owner's approval of a Kit's install card, held by the kernel as a waiver only it can make (kernel/tasks/kit-apply.js): presence for that install and no other act.
         || (input.waiver !== undefined && typeof cfg.waives === "function" ? cfg.waives(input.waiver, { chain, action, resource }) === true : false);
       // The same obligation reached by two grants of a delegation chain (a child and the parent it came from) is one obligation.
@@ -314,7 +317,7 @@ export function createAuthorizer(cfg) {
       if (ask) out.push({ type: "ask", kind: ask.kind, approver: ask.approver, checker_must_be_person: true, ...(askRule ? { rule: askRule.id, waivable: false } : {}) });
       // 7. Return. Approvals are K4's: an ask stays an ask until the kernel's task machinery records the approval.
       if (ask) return done("ask", tainted && !OUTWARD.has(risk) ? "tainted" : "needs_approval", used, out);
-      if (!presenceMet) return done("ask", "needs_presence", used, out);
+      if (!presenceMet) return Object.freeze({ ...done("ask", "needs_presence", used, out), ...(presenceWhy ? { presence_reason: presenceWhy } : {}) });
       return done("allow", "ok", used, out);
     } catch (e) {
       // Fail closed on anything unexpected: a deny that says only why in the log (invariant 1).

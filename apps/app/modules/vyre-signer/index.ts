@@ -6,7 +6,7 @@ import { requireNativeModule } from "expo";
 import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
 import { sha256 } from "@noble/hashes/sha256";
-import { b64, b64url, fromB64url, keyIdOf, p1363FromDer, proofBody, proofBytes, spkiFromXY, enrolClientData } from "./presence-proof.js";
+import { b64, b64url, fromB64url, keyIdOf, lowS, p1363FromDer, proofBody, proofBytes, spkiFromXY, enrolClientData } from "./presence-proof.js";
 
 /** Signs every request's x-vyre-proof; no user auth. */
 export const PERSON = "vyre.person";
@@ -85,10 +85,10 @@ export function randomBytes(n: number): string {
 
 // ---- The kernel presence proof (iPhone, RC1) ---------------------------------------------------------------------------------------------------------------------
 // One function for app-wire and chat: signPresence(card) -> the PresenceProof the kernel's sealing process checks. The key is "vyre.human" (Secure Enclave P-256,
-// biometryCurrentSet: Face ID on every signature). Bytes are platform's (kernel/seal/wire.js): see presence-proof.js. Android is not in RC1: it rejects ERR_NOT_IN_RC1.
+// biometryCurrentSet: Face ID on every signature). Bytes are platform's (kernel/seal/wire.js): see presence-proof.js. On Android the same proof is signed by the Keystore key (vyre.human, TEE or StrongBox, BiometricPrompt per use) with signer class "strongbox" (the kernel contract's Android class; unattested in RC1).
 
 export type PresenceCard = { op: string; space: string; fields: Record<string, unknown>; payload_hash: string; prompt: string; person?: string };
-export type PresenceProof = { signer: "secure_enclave"; key_id: string; payload_hash: string; decision: string; chain_hash: string; issued_at: number; expires_at: number; nonce: string; signature: string; assertion?: string };
+export type PresenceProof = { signer: "secure_enclave" | "strongbox"; key_id: string; payload_hash: string; decision: string; chain_hash: string; issued_at: number; expires_at: number; nonce: string; signature: string; assertion?: string };
 
 const APPATTEST_KEY = "vyre.appattest.keyid";
 const ONLY_HERE = { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY };
@@ -97,20 +97,27 @@ const ONLY_HERE = { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ON
 let personProvider: (() => Promise<string | null>) | null = null;
 export function setPersonProvider(f: () => Promise<string | null>): void { personProvider = f; }
 
+/** The signer class the kernel contract names for this platform's key. */
+const signerClass = (): "secure_enclave" | "strongbox" => (Platform.OS === "android" ? "strongbox" : "secure_enclave");
+
+/** The iPhone and Android phones have a hardware presence key; the web build does not (a browser answers with a passkey). */
 function iosOnly(): void {
-  if (Platform.OS !== "ios") throw Object.assign(new Error("a presence key for this platform is not in RC1"), { code: "ERR_NOT_IN_RC1" });
+  if (Platform.OS !== "ios" && Platform.OS !== "android") throw Object.assign(new Error("a presence key for this platform is not in RC1"), { code: "ERR_NOT_IN_RC1" });
 }
 
 /** The presence key's public half in the form the sealing process enrols: its SPKI (standard base64), the key id and the signer class. Makes the key if missing (no prompt: only signing asks for Face ID). */
-export async function presenceKey(): Promise<{ key_id: string; spki: string; signer: "secure_enclave"; storage: "secure-enclave" | "software" }> {
+export async function presenceKey(): Promise<{ key_id: string; spki: string; signer: "secure_enclave" | "strongbox"; storage: "secure-enclave" | "keystore" | "software" }> {
   iosOnly();
   const { x, y } = await ensureKey(HUMAN, { biometric: true });
   const spki = spkiFromXY(fromB64url(x), fromB64url(y));
-  return { key_id: keyIdOf(spki), spki: b64(spki), signer: "secure_enclave", storage: info().secureHardware ? "secure-enclave" : "software" };
+  return { key_id: keyIdOf(spki), spki: b64(spki), signer: signerClass(), storage: info().secureHardware ? (Platform.OS === "android" ? "keystore" : "secure-enclave") : "software" };
 }
 
 /** Does this device have a presence key already? True when the Secure Enclave key exists (info().level is not "none"). */
-export function hasPresenceKey(): boolean { return Platform.OS === "ios" && info().level !== "none"; }
+export function hasPresenceKey(): boolean {
+  if (Platform.OS === "android") return info().secureHardware; // the presence key (vyre.human) is made on first use; the phone can hold one when its keystore is in hardware
+  return Platform.OS === "ios" && info().level !== "none";
+}
 
 /** Does this build and device do App Attest? False in the simulator and on a device without it. */
 export async function appAttestSupported(): Promise<boolean> {
@@ -126,7 +133,14 @@ export async function appAttestSupported(): Promise<boolean> {
 export async function enrolAttestation(token: string): Promise<{ format: "apple-appattest"; key_id: string; attestation: string } | null> {
   if (!(await appAttestSupported())) return null;
   const k = await presenceKey();
-  const keyId = await native.appAttestGenerateKey!();
+  // A build signed without the App Attest entitlement (a sideloaded build on a personal team) reports the service as supported and then refuses the key: the presence key stays
+  // a Secure Enclave key, unattested, and no assertion is added to proofs. Only the missing entitlement and an unsupported device are treated so; any other failure still throws.
+  let keyId: string;
+  try { keyId = await native.appAttestGenerateKey!(); } catch (e) {
+    const m = String((e as { code?: string; message?: string })?.code ?? "") + " " + String((e as Error)?.message ?? "");
+    if (/ERR_APPATTEST|entitlement|not supported|DCError|serverUnavailable|featureUnsupported/i.test(m)) return null;
+    throw e;
+  }
   await SecureStore.setItemAsync(APPATTEST_KEY, keyId, ONLY_HERE);
   const attestation = b64(fromB64url(await native.appAttestAttest!(keyId, b64url(enrolClientData(token, k.spki)))));
   return { format: "apple-appattest", key_id: keyId, attestation };
@@ -140,7 +154,7 @@ export async function signPresence(card: PresenceCard): Promise<PresenceProof> {
   iosOnly();
   const person = card.person ?? (personProvider ? await personProvider() : null) ?? "";
   const k = await presenceKey();
-  const body = proofBody({ op: card.op, space: card.space, fields: card.fields as Record<string, unknown>, payload_hash: card.payload_hash, person }, { keyId: k.key_id, now: Date.now(), nonce: randomBytes(16) });
+  const body = proofBody({ op: card.op, space: card.space, fields: card.fields as Record<string, unknown>, payload_hash: card.payload_hash, person }, { keyId: k.key_id, now: Date.now(), nonce: randomBytes(16), signer: signerClass() });
   const bytes = proofBytes(body);
   const der = await native.sign(HUMAN, new TextDecoder().decode(bytes), card.prompt ? { prompt: card.prompt } : {});
   const proof: PresenceProof = { ...(body as Omit<PresenceProof, "signature" | "assertion">), signature: b64url(p1363FromDer(fromB64url(der))) };
@@ -152,9 +166,11 @@ export async function signPresence(card: PresenceCard): Promise<PresenceProof> {
 }
 
 /** Where each key lives, said honestly: the identity key is a software Ed25519 seed in the Keychain (this device only); the presence key is in the Secure Enclave on a device and a software key in the simulator. */
-export function keyStorage(): { identity: "keychain" | "none"; presence: "secure-enclave" | "software" | "none" | "not-in-rc1" } {
+export function keyStorage(): { identity: "keychain" | "none"; presence: "secure-enclave" | "keystore" | "software" | "none" } {
+  const identity = Platform.OS === "web" ? "none" : "keychain";
+  if (Platform.OS === "android") return { identity, presence: info().secureHardware ? "keystore" : "software" };
   const level = Platform.OS === "ios" ? info().level : "none";
-  return { identity: Platform.OS === "web" ? "none" : "keychain", presence: Platform.OS !== "ios" ? "not-in-rc1" : level === "secure-enclave" ? "secure-enclave" : level === "software" ? "software" : "none" };
+  return { identity, presence: level === "secure-enclave" ? "secure-enclave" : level === "software" ? "software" : "none" };
 }
 
 /** The Secure Enclave key's public point, raw uncompressed (65 bytes, leading 0x04), base64url: the `enclave` field of this phone's device entry on the identity chain (NK-2). */
@@ -166,11 +182,11 @@ export async function enclavePublic(): Promise<string> {
   return b64url(pt);
 }
 
-/** The Enclave key's ECDSA P-256 SHA-256 signature over `message`, behind Face ID, as r||s base64url: the `esig` of a list change. */
-export async function enclaveSign(message: Uint8Array, prompt: string): Promise<string> {
+/** The Enclave key's ECDSA P-256 SHA-256 signature over `message`, behind Face ID: the raw 64 bytes r||s with s in the low half, the one form the chain accepts as `esig` (NE-1). */
+export async function enclaveSign(message: Uint8Array, prompt: string): Promise<Uint8Array> {
   iosOnly();
   await ensureKey(HUMAN, { biometric: true });
-  return b64url(p1363FromDer(fromB64url(await native.sign(HUMAN, new TextDecoder().decode(message), { prompt }))));
+  return lowS(p1363FromDer(fromB64url(await native.sign(HUMAN, new TextDecoder().decode(message), { prompt }))));
 }
 
 /** Forget every key of this phone's signer: the presence key, the person (request) key and the App Attest key id. */

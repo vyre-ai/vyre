@@ -53,7 +53,13 @@ export function createKernelGate(ctx, { denied }) {
     const canon = typeof k.canonicalPerson === "function" ? (/** @type {string} */ id) => k.canonicalPerson(id) : (/** @type {string} */ id) => id;
     try { m = typeof k.membership === "function" ? await k.membership(canon(first.id)) : null; } catch { m = null; }
     if (!m || m.member !== true || m.role !== "owner") throw denied(`${tool}: personal memory is read only by its person and that person's own assistant`);
-    const who = whoOfChain(chain, await surfaceOf(extra));
+    let who = whoOfChain(chain, await surfaceOf(extra));
+    // An agent the person granted their personal memory to READ ("Claude Code on <this computer>", agents `personal`): it reads as the person's own session does and writes stay pending
+    // (a remember is an untrusted note, no correction, no pin): it is never the person. Only the kernel's own chain names the agent.
+    if (who.agent && who.agent !== "assistant" && !who.conflict) {
+      const sc = await ctx.call("agents.scope", { name: who.agent }).catch(() => null);
+      if (sc && sc.data && sc.data.personal === true && sc.data.projects === "*") who = { ...who, agent: null, ownSession: true, plugin: who.agent };
+    }
     if (who.conflict) throw denied(`${tool}: this chain names more than one agent, so it is not known which is asking`);
     return { who };
   };

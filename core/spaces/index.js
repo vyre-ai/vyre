@@ -37,6 +37,7 @@ import { kernelMembers, plainKernelError } from "./kernel-members.js";
 import { createRemoteKernel } from "../../kernel/remote/client.js";
 import { winkTransport } from "../../kernel/remote/wink.js";
 import { acceptProofRequest } from "../../kernel/remote/proof.js";
+import { joinBytes } from "../../kernel/seal/wire.js";
 import {
   MIGRATIONS, kvStore, seenStore, membershipStore, roleNames, inviteStore, pairingService, spaceTable,
 } from "./store.js";
@@ -997,6 +998,8 @@ export default {
       if (!rec || rec.identity !== id) throw refuse("That is not the identity this server was paired to.", "forbidden");
       if (!/^per_[a-z2-7]{26}$/.test(id)) throw refuse("That is not a person id.", "bad_input");
       if (!K || typeof K.adoptOwner !== "function") throw refuse("This home has no kernel to change.", "unavailable");
+      // First owner wins: a home whose owner is already a claimed identity is never taken by another one
+      { const had = typeof K.ownerClaimed === "function" ? K.ownerClaimed() : null; if (had && had !== id) throw refuse("This server already belongs to another Vyre identity.", "owned_by_other"); }
       let r;
       try { r = await K.adoptOwner(id, { from: K.owner }); } catch (e) { throw plainKernelError(e); }
       // The owner's Vyre name, checked against the directory (the name is the pairing's word, the directory's answer is the proof), so this home can read the owner's own identity list later:
@@ -1004,6 +1007,12 @@ export default {
       const label = typeof i.name === "string" ? i.name.trim().toLowerCase().replace(/\.vyre\.run$/, "") : "";
       if (label) { try { const v = await dir.resolve(label); if (v.ok && v.kind === "person" && v.id === id) await kv.put(`person-name/${id}`, label); } catch { /* the name is learned later, when the owner is next verified */ } }
       return { owner: r.owner, previous: r.previous, changed: r.changed };
+    }, { internal: true });
+    // For the pairing module: the identity that already took this home's owner place, or null. Wink refuses to pair a different identity to a home that has one (first owner wins).
+    tool("spaces.owner.claimed", "For the pairing module: the identity id that took this home's owner place ({ claimed }), or { claimed: null } while the owner is still the first-start id. Read only.", obj(), async (_i, meta) => {
+      onlyModules(meta, ["wink"]);
+      if (!K || typeof K.ownerClaimed !== "function") return { claimed: null };
+      return { claimed: K.ownerClaimed() };
     }, { internal: true });
     // The spaces a person owns or administers, for the pairing module's "Pair to:" choices (one id: the kernel's space id, the name the person gave it, the person's role there).
     tool("spaces.admin-list", "The finished spaces a person owns or administers here: { spaces: [{ space, name, role }] }, and the identity's own name when it is this device's. For modules (pairing targets).", obj({ person: str }, ["person"]), async (i, meta) => {
@@ -1581,7 +1590,7 @@ export default {
         return { ...res.card, fingerprint_words: fingerprintWords(res.card.fingerprint) };
       });
     tool("spaces.invites.accept", "Join a space from its link, signing with this device's person key. When this device is the space's home the membership is made at once; otherwise the signed acceptance is returned for the home to redeem.",
-      obj({ link: str, pin: str }, ["link"]), async (i, meta) => {
+      obj({ link: str, pin: str, presence_key: { type: "object" } }, ["link"]), async (i, meta) => {
         const s = me();
         if (K) {
           const p0 = await parseLink(i.link);
@@ -1590,7 +1599,13 @@ export default {
             // What the invitee signs on their own device: the kernel's accept request over exactly this card. The surface sends the signed proof beside the next call.
             const req = acceptProofRequest((c.card.space && c.card.space.id) || c.handle.space, c.card, /** @type {string} */ (s.id));
             if (!meta || !meta.kernel_proof) return { joined: false, needs_proof: true, request: req, card: c.card, fingerprint_words: fingerprintWords(c.fingerprint) };
-            const got = await kernelMembers({ handle: c.handle, now }).invites.accept(c.k, c.invId, req.seen);
+            // RC1: a person who has never touched this server has no presence key there. The app names the key it signed with, and this device's own identity key vouches for it, over this invite, this Space, this identity and that key;
+            // the server reads the identity's list from the directory, checks the device and the signature, and enrols the key inside this same accept (kernel/remote/server.js joinKey).
+            const pk = i.presence_key;
+            const bind = c.handle.hosted === false && pk && typeof pk === "object" && typeof pk.key_id === "string" && typeof pk.spki === "string" && typeof pk.signer === "string"
+              ? { key_id: pk.key_id, spki: pk.spki, signer: pk.signer, sig: b64u(await identity.sign(joinBytes(c.invId, c.spaceId, /** @type {string} */ (s.id), pk.key_id, pk.spki))), ...(pk.attestation && typeof pk.attestation === "object" ? { attestation: pk.attestation } : {}) }
+              : undefined;
+            const got = await kernelMembers({ handle: c.handle, now }).invites.accept(c.k, c.invId, req.seen, bind);
             // the invitee stream has done its one job; a member session starts next, by the member-device path
             if (c.handle.hosted === false) { remoteHandles.delete(`${c.spaceId}/${c.invId}`); await kv.delete(`invitee-route/${c.spaceId}`); }
             return { joined: true, space: c.spaceId, membership: out(got.membership) };
@@ -1668,6 +1683,21 @@ export default {
       try { r = await dir.resolve(label, pin ? { pin } : undefined); } catch (e) { throw refuse("The names directory could not be reached.", "unreachable"); }
       if (!r.ok || r.kind !== "person" || r.id !== String(i.id)) { if (process.env.WLOG) ctx.log.warn(`lookup ${label}: ok=${r.ok} kind=${r.kind} id=${r.id} want=${i.id} why=${r.why || r.code || ""}`); return { entries: [] }; }
       return { entries: r.state.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, pub: e.pub, ...(e.held ? { held: e.held } : {}), ...(e.alg ? { alg: e.alg } : {}), ...(e.enclave ? { enclave: e.enclave } : {}) })) };
+    }, { internal: true });
+    // The invitee's first presence key (RC1): the identity's chain and its entries as the directory shows them, for the home's own remote door. The ops go to the sealing process, which verifies them itself; each entry carries `founder` and `since` (the signed time of the add op); the door and the sealing process each apply the same rule (youngAt) against this server's clock, never a flag this tool computed. By the claimed name from the invitee's signed hello, else the name this device knows.
+    tool("spaces.identity.evidence", "A person's identity chain and entries from the directory, verified, only if it is the given id's: { ops, entries }. Each entry says whether it is the founder and when it was added (signed time); the door decides what is young. For the home's invitee door.", obj({ person: str, name: str }, ["person"]), async i => {
+      const id = String(i.person);
+      const mineId = identity.status();
+      const name = i.name ? String(i.name) : mineId.exists && mineId.id === id ? mineId.name : /** @type {string|null} */ (await kv.get(`person-name/${id}`));
+      const label = String(name || "").trim().toLowerCase().replace(/\.vyre\.run$/, "");
+      if (!/^[a-z0-9][a-z0-9-]{1,30}$/.test(label)) return null;
+      let r;
+      try { r = await dir.resolve(label, { pin: /** @type {any} */ (await kv.get(`person-pin/${label}`)) || undefined }); } catch { return null; }
+      if (!r.ok || r.kind !== "person" || r.id !== id || !Array.isArray(r.ops)) return null;
+      await kv.put(`person-pin/${label}`, r.pin);
+      // ONE clock for "young" (the sealing process uses the same): the signed time the entry was added to the list (the op's own), against this server's clock. Not when this server first saw it.
+      const at = Date.now(), st = await C.verifyChain(r.ops, { now: at });
+      return { ops: r.ops, entries: st.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, pub: e.pub, founder: e.founder === true, since: e.since })) };
     }, { internal: true });
     tool("spaces.identity.state", "A person's identity list as verified now: their entry ids and kinds. Read live each call. For the transport's personOf.", obj({ person: str }, ["person"]), async i => stateOfPerson(String(i.person)), { internal: true });
     /** Is this person a member of this space, by the place that decides it (the kernel's membership read when it offers one, else the local table)? @param {string} space @param {string} person */

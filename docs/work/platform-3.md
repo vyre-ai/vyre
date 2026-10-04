@@ -21,3 +21,10 @@ Owners: DESIGN CHOICE items in CHAT.md. platform: the testbox socket-label stall
 
 ## Changed contracts
 None. Effect is read from the manifest entry or the ctx.tool def (already supported by the registry); callers stay in code. Tools that need a module hop to work for an assistant list `module` explicitly (threads.lease).
+
+## 4 Oct (resume)
+- RC-1 done (9c1725111): daemon builds a model's label from verified parts (`modelLabel`, lib/caller.js). The unverified mobile WIP was reverted (9ac286958); redo as item (c).
+- Plugin grant (ruling a5ad6b9): core/pluginagent (ask, status, pending, grant, revoke, vouch), daemon route (key check, plugin kernel token stamped by vyred, label stays bare `mcp`), harness/mcp/server.js (reads plugin-agent.json, asks once). Test: core/pluginagent/pluginagent.test.js (real daemon, the real server over stdio).
+- Next: (c) person-surfaces list; (d) write-tool sweep. Needs: ui-ux (approval card and Access copy for `pluginagent.pending`/`pluginagent.asked`), assistant (plain "not granted" sentence in the plugin; their recall refusal of bare mcp), a CLI sugar `vyre plugin grant` if wanted.
+- Changed contracts: daemon route accepts a plugin agent's key where it accepted only a thread's; agents `personal` flag cherry-picked from work/memory-access.
+- Sweep (d): test/plain-session-writes.test.js + .json. 132 write tools reachable by a plain session; classes: refused 60, own 48, held 14, hook 5, review 5 (owners: vault generate/request/ssh.generate, files fetch, github project.local-init). The 'held' mail/google ones rest on their own tests (held at the Gate); a fake-account hold test is still open.

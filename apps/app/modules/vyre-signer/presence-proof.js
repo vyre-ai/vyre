@@ -90,17 +90,34 @@ export function p1363FromDer(der) {
   return sig;
 }
 
+const P256_N = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n;
+/**
+ * The one canonical form of an ECDSA P-256 signature on the identity chain (NK-2, NE-1): 64 bytes r||s with s in the low half. The Secure Enclave returns either s, so a high s is
+ * replaced by n - s (the same signature, verifies the same), and a verifier that refuses the high twin never sees one from this phone.
+ * @param {Uint8Array} raw
+ */
+export function lowS(raw) {
+  if (raw.length !== 64) throw new Error("not a 64 byte r||s signature");
+  let s = 0n;
+  for (let i = 32; i < 64; i++) s = (s << 8n) | BigInt(raw[i]);
+  if (s <= P256_N >> 1n) return raw;
+  s = P256_N - s;
+  const out = new Uint8Array(raw);
+  for (let i = 63; i >= 32; i--) { out[i] = Number(s & 0xffn); s >>= 8n; }
+  return out;
+}
+
 /**
  * Check what the card showed against its hash and build the proof body (everything but the signature). Refuses, with a code, when the fields do not hash to the card's
  * payload_hash: that is what makes what you see what you sign.
  * @param {{ op: string, space: string, fields: Record<string, any>, payload_hash: string, person: string }} req
- * @param {{ keyId: string, now: number, nonce: string, lifeMs?: number }} o
+ * @param {{ keyId: string, now: number, nonce: string, lifeMs?: number, signer?: "secure_enclave" | "strongbox" }} o
  */
 export function proofBody(req, o) {
   if (!req.person) throw Object.assign(new Error("no person id for this proof"), { code: "ERR_NO_PERSON" });
   if (payloadHash(req.op, req.space, req.fields ?? {}) !== req.payload_hash) throw Object.assign(new Error("the card's fields do not match its hash"), { code: "ERR_PAYLOAD_MISMATCH" });
   const life = Math.min(o.lifeMs ?? 90_000, 120_000);
-  return { signer: "secure_enclave", key_id: o.keyId, payload_hash: req.payload_hash, decision: req.op, chain_hash: chainHash(req.person, req.space), issued_at: o.now, expires_at: o.now + life, nonce: o.nonce };
+  return { signer: o.signer ?? "secure_enclave", key_id: o.keyId, payload_hash: req.payload_hash, decision: req.op, chain_hash: chainHash(req.person, req.space), issued_at: o.now, expires_at: o.now + life, nonce: o.nonce };
 }
 
 /** The bytes the App Attest key vouches for at enrolment: "vyre-enrol\n" + token + "\n" + the SPKI as base64 text. @param {string} token @param {string} spkiB64 */

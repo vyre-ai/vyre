@@ -290,7 +290,7 @@ export function createWink(inject = {}) {
       releaseMaxMs: inject.releaseMaxMs,
       // Q-3: the identity port (the entry on an identity's list, read live) that checks the proof of a server installed to pair to one identity, and the app's own signer for that proof. A box given
       // neither refuses every unattended pairing ("cannot check who is asking"): naming an identity is never enough.
-      identityEntry, signIdentity, identityVyre: inject.identityVyre || (async () => { const r = /** @type {any} */ (await ctx.call("spaces.identity.self", {}).catch(() => null)); return r && r.data && r.data.name ? String(r.data.name) : null; }),
+      identityEntry, signIdentity, identityPin: inject.identityPin || (async () => { const r = /** @type {any} */ (await ctx.call("spaces.identity.self", {}).catch(() => null)); return r && r.data && r.data.pin ? r.data.pin : null; }), identityVyre: inject.identityVyre || (async () => { const r = /** @type {any} */ (await ctx.call("spaces.identity.self", {}).catch(() => null)); return r && r.data && r.data.name ? String(r.data.name) : null; }),
       // The Vyre name for an identity id comes from the directory through the spaces module, which checks a name the app CLAIMS (owner.vyre) against the directory; a bare claim is never shown as a name.
       vyreName: inject.vyreName || (async (/** @type {string} */ id, /** @type {string | undefined} */ claimed) => { try { const r = await ctx.call("spaces.identity.name-of", { id, ...(claimed ? { claimed } : {}) }); return (r && r.data && typeof r.data.name === "string" && r.data.name) || null; } catch { return null; } }),
       // Who may pair to a space: the kernel's grants store when ctx.kernel offers it (work/kernel), else a fake that makes the box owner the owner of its own space.
@@ -307,7 +307,7 @@ export function createWink(inject = {}) {
     live = pairing.peers;
     liveLinks = pairing.serverLinks;
     // handed up by name (core/modules provideOnce): the spaces and runner modules reach a paired server's peer session and kernel through ctx.sessionFor and ctx.remoteKernel
-    try { ctx.provide("winkSessionFor", (/** @type {string} */ id) => pairing.serverLinks().sessionFor(id)); ctx.provide("winkInviteeSessionFor", (/** @type {any} */ channel, /** @type {any} */ hello) => pairing.serverLinks().inviteeSessionFor(channel, hello)); ctx.provide("remoteKernel", (/** @type {string} */ id, /** @type {string} */ sp) => pairing.serverLinks().remoteKernel(id, sp)); } catch { /* provided already (a restart in one process), or no daemon (a test ctx) */ }
+    try { ctx.provide("winkSessionFor", (/** @type {string} */ id) => pairing.serverLinks().sessionFor(id)); ctx.provide("winkInviteeSessionFor", (/** @type {any} */ channel, /** @type {any} */ hello, /** @type {any} */ about) => pairing.serverLinks().inviteeSessionFor(channel, hello, about)); ctx.provide("remoteKernel", (/** @type {string} */ id, /** @type {string} */ sp) => pairing.serverLinks().remoteKernel(id, sp)); } catch { /* provided already (a restart in one process), or no daemon (a test ctx) */ }
     /** A space's own name for a card, never its id. */
     const spaceName = async (/** @type {string} */ id) => {
       try { const m = (await directory.memberships(await owner1())).find(x => x.space === id); if (m && m.name) return String(m.name); } catch {}

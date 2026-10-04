@@ -1,7 +1,9 @@
 // The install flow's calls to the box (screens/install/real.js maps the answers). Each is one tool through src/real/box.ts.
 
 import { said, tool } from "./box";
+import { Platform } from "react-native";
 import { claimBlocked } from "../../screens/shell/rc";
+import { enclavePublic } from "../keys";
 import { claimIdentity } from "../identity/claim.js";
 import { forgetIdentity, loadIdentity, saveIdentity } from "../identity/store";
 import { createdFrom, directoryAnswer, identityFrom, nameAnswer } from "../../screens/install/real.js";
@@ -44,9 +46,15 @@ export async function createIdentity(name: string, deviceLabel: string, password
   if (claimBlocked()) throw new Error("Create your name on your iPhone, then pair this browser to it.");
   // Save first, then claim: the key is kept and read back BEFORE the name is claimed, so a failed save claims nothing and never loses the recovery code.
   let kept = false;
+  // On an iPhone the device entry also names the Secure Enclave key (NK-2): every later change to who speaks for this name needs that key's Face ID signature too. No Face ID, no name.
+  let enclave: string | undefined;
+  // On Android the same field names the Keystore key (StrongBox or the TEE, fingerprint or face per use), unattested in RC1.
+  if (Platform.OS === "ios" || Platform.OS === "android") {
+    try { enclave = await enclavePublic(); } catch { throw Object.assign(new Error(Platform.OS === "ios" ? "Set up Face ID or Touch ID on this iPhone, then create your name." : "Set up a screen lock and a fingerprint or face on this phone, then create your name."), { code: "no_biometrics" }); }
+  }
   try {
     const made = await claimIdentity({
-      name, password, deviceLabel, base: DIRECTORY,
+      name, password, deviceLabel, base: DIRECTORY, ...(enclave ? { enclave } : {}),
       beforeClaim: async (m) => {
         await saveIdentity({ name: m.name, id: m.id, eid: m.eid, ops: m.ops, pin: m.pin, key: m.key });
         const back = await loadIdentity();
@@ -94,3 +102,19 @@ export async function proposeKitFor(space: string, id: string): Promise<{ ok: bo
     return r?.ok === false ? { ok: false, text: r.errors?.[0]?.message ?? "The Kit cannot be installed." } : { ok: true, text: "waiting" };
   } catch (e) { return { ok: false, text: said(e) }; }
 }
+
+/**
+ * Make the space on the server this device is paired to (claimServerSpace through chat's hooks), keep its root public key beside it, and answer the id.
+ * Refusals keep their codes: needs_store_confirmation (the server asks before using its built-in store), server_too_old, on_phone (a browser), the directory's own.
+ */
+export async function makeServerSpace(slug: string, displayName: string, acceptBuiltinStore = false): Promise<string> {
+  const { makeSpaceOnPairedServer } = await import("./claim-space");
+  const { keepRootPublic } = await import("../state/space-roots");
+  const made = await makeSpaceOnPairedServer({ name: slug, displayName, acceptBuiltinStore });
+  await keepRootPublic(made.space, made.rootPublic);
+  return made.space;
+}
+
+/** Our words for a store question from the server. The server's text is never shown. */
+export const STORE_ASK = "This server will keep your space in Vyre's built-in store. Create it there?";
+export const storeAsked = (e: unknown) => (e as { code?: string })?.code === "needs_store_confirmation";

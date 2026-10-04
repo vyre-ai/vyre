@@ -23,7 +23,7 @@ import { routeId, base32, TICKET_BYTES, TICKET_TTL, ticketDerive, ticketMac, tic
 import { SetupSession, setupGate } from "./setup.js";
 import { relayLink } from "./link.js";
 import { bridge } from "./bridge.js";
-import { peersFor } from "./peers.js";
+import { peersFor, inviteesFor } from "./peers.js";
 import { pairUrl, parsePairUrl } from "./pairing.js";
 import { knownBuild, findRelease, newestRelease } from "./releases.js";
 import { agentClaim, ownerDevice } from "../modules/index.js";
@@ -124,6 +124,7 @@ export const seams = new Map();
 export default {
   async start(ctx, seam0 = {}) {
     const seam = { ...seam0, ...(seams.get(ctx.paths.root) || {}) };
+    /** @type {Set<any>} the invitee channels open now (IV-5) */ const inviteePool = new Set();
     ctx.store.migrate(MIGRATIONS);
     const db = ctx.store.db;
     const now = seam.now || Date.now;
@@ -309,12 +310,28 @@ export default {
     const stopLink = () => { link?.stop(); link = null; };
 
     /** Who may come in: a paired device, or a device holding the live pairing secret. */
+    /** @type {Map<string, { at: number, n: number }>} one line per reason per minute, with a count of the repeats (an outsider opening channels cannot flood the log) */
+    const refusals = new Map();
+    function refusedLog(/** @type {string} */ why) {
+      const t = now(), r = refusals.get(why);
+      if (r && t - r.at < 60_000) { r.n++; return; }
+      ctx.log(`relay: refused a hello (${why})${r && r.n ? `; ${r.n} more like it in the last minute` : ""}`);
+      refusals.set(why, { at: t, n: 0 });
+      if (refusals.size > 50) refusals.delete(refusals.keys().next().value);
+    }
     async function admit(pub, hello) {
+      try { return await admit0(pub, hello); }
+      catch (e) { refusedLog(String(/** @type {Error} */ (e).message || e).slice(0, 160)); throw e; }
+    }
+    async function admit0(pub, hello) {
       const id = deviceId(pub);
       // The setup page (tailnet plan 3.6b) is its own path: a hello that says "setup", or a device
       // the setup session already admitted, is checked against the setup code's key and nothing else.
       const existing = /** @type {any} */ (db.prepare("SELECT kind FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
       if ((hello && hello.setup && typeof hello.setup === "object") || (existing && existing.kind === "setup")) return admitSetup(pub, hello, id, existing);
+      // An invitee (DESIGN-spaces-first.md): a person who is not a member of any space here reaches the home for one purpose. The channel makes no device row, no presence key and no session; it may
+      // open only the invitee peer stream, whose door (core/daemon/peer-door.js) checks the identity proof and the invite. A key that is a paired device here is not an invitee on this hello.
+      if (hello && hello.invitee === true && !existing && !pendingPairs.has(id)) return { v: 1, box: { name: boxName() }, invitee: id };
       if (hello && typeof hello.pair === "string") {
         const match = takeLiveSecret(hello.pair);
         if (!match) throw new Error("this pairing code has expired or was already used; make a new one on the box");
@@ -576,6 +593,29 @@ export default {
     const callerLabel = (kind, id) => kind === "app" ? `device:${id}` : kind === "web" ? `web:${id}` : kind === "setup" ? `setup:${id}` : null;
     let handle = null, webHandle = null, upgrade = null;
     function onchannel(channel, { reply }) {
+      if (reply && reply.invitee) {
+        const door = inviteesFor(ctx);
+        if (!door) { channel.close(4401, "this box does not take invitees"); return; }
+        const iid = String(reply.invitee);
+        // IV-5: invitee channels have a small pool of their own and a life of their own, so a stranger who knows the route can never hold the slots the paired devices need: 8 at a time (the rest are refused at once),
+        // closed when no stream opens within 30 s, when the stream they opened has ended (accept or refusal), and after 5 minutes whatever they do.
+        if (inviteePool.size >= (seam.inviteePool ?? 8)) { channel.close(4429, "too many invitations are open here; try again in a minute"); return; }
+        inviteePool.add(channel);
+        let streams = 0, opened = false;
+        const timers = /** @type {any[]} */ ([]);
+        const stop = () => { for (const t of timers) clearTimeout(t); timers.length = 0; inviteePool.delete(channel); };
+        const end = (/** @type {string} */ why) => { stop(); try { channel.close(1000, why); } catch { /* closed */ } };
+        const idle = setTimeout(() => { if (!opened) end("no invite stream opened"); }, seam.inviteeIdleMs ?? 30_000);
+        const total = setTimeout(() => end("invite channel time is up"), seam.inviteeTotalMs ?? 5 * 60_000);
+        for (const t of [idle, total]) { if (t.unref) t.unref(); timers.push(t); }
+        const prevClose = channel.onclose;
+        channel.onclose = (/** @type {any[]} */ ...a) => { stop(); return typeof prevClose === "function" ? prevClose.apply(channel, a) : undefined; };
+        // no HTTP-like request reaches anything for an invitee: every one is refused; the one door is the peer stream
+        const refuse = (/** @type {any} */ _req, /** @type {any} */ res) => { try { res.writeHead(403, { "content-type": "application/json" }); res.end(JSON.stringify({ error: { code: "denied", message: "an invite opens one door" } })); } catch { /* gone */ } };
+        bridge(channel, { handler: refuse, caller: `invitee:${iid}`, peer: { node: "invitee", stableId: iid, login: null, tags: [], caps: {}, kind: "device" }, log: m => ctx.log(m), invitees: door,
+          oninvitee: { opened: () => { streams++; opened = true; }, closed: () => { streams = Math.max(0, streams - 1); if (opened && streams === 0) setTimeout(() => end("invite stream ended"), 100).unref?.(); } } });
+        return;
+      }
       if (reply && reply.pending) {
         // A waiting pairing (X-1): a channel with one door, the tool its own pairing needs. No device row, no presence key, no upgrade, no peer stream.
         const pid = String(reply.pending), p = pendingPairs.get(pid);
@@ -1124,6 +1164,21 @@ export default {
       },
     });
 
+    ctx.tool("relay.devices.clear-leftover", {
+      description: "On a server nobody owns: let go of every paired device row left by a pairing that never completed ownership, so a new owner's pairing is not refused by them. Only the Wink module asks, and only while the server is unowned. Answers { cleared }.",
+      input: obj(),
+      run: async (_i, meta = {}) => {
+        if (meta.caller !== "module:wink") throw Object.assign(new Error("only the Wink module clears leftover devices"), { code: "denied" });
+        // the relay asks for itself: a server that is owned never lets go of anything here
+        const st = /** @type {any} */ (await ctx.call("wink.server.owned", {}).catch(() => null));
+        if (!st || st.error || !st.data || st.data.owned !== false) throw Object.assign(new Error("this server is owned (or its owner cannot be read): leftover devices stay"), { code: "owned" });
+        let n = 0;
+        for (const d of active()) if (d.kind === "app" || d.kind === "web") { if (forget(String(d.id), "removed")) n++; }
+        if (n) ctx.log(`relay: let go of ${n} leftover device(s) of a pairing that never completed ownership`);
+        return { cleared: n };
+      },
+    });
+
     // The hosted app's loader asks which build to load (ADR 0026 section 10, ADR 0027 section 4):
     // the owner's pin, or the newest release this box ships knowing. Open to any paired device,
     // web ones included, since the loader must ask before it can load anything else.
@@ -1392,7 +1447,7 @@ export default {
       internal: true,
       description: "This box's route id and route public key (base64url), for signing into the name directory, and the box's own public key (`box`), which the Wink module hashes into the words a pairing shows. Modules only.",
       input: obj(),
-      run: async (_, meta) => { only(meta, ["names", "wink"], "the route id"); await keys.ready(); return { route: route(), pub: Buffer.from(k().route.pub).toString("base64url"), box: Buffer.from(k().box.pub).toString("base64url") }; },
+      run: async (_, meta) => { only(meta, ["names", "wink", "vyred"], "the route id"); await keys.ready(); return { route: route(), pub: Buffer.from(k().route.pub).toString("base64url"), box: Buffer.from(k().box.pub).toString("base64url") }; },
     });
 
     ctx.tool("relay.route.sign", {

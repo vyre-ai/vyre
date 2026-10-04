@@ -56,7 +56,11 @@ export async function presenceKey(): Promise<{ public_key: string; alg: number; 
     const { x, y } = await Keys.ensureKey(Keys.HUMAN, { biometric: true });
     // Where the key was made, from the platform's own key API (Secure Enclave on iOS, StrongBox or the TEE on Android); left out when it cannot say.
     let storage: "hardware" | "software" | undefined;
-    try { storage = keyStorage(Keys.info().level); } catch { /* unknown */ }
+    try {
+      const i = Keys.info();
+      // info().level describes vyre.person, which may not exist yet; then the phone's own answer about its keystore decides.
+      storage = i.level === "none" ? (i.secureHardware ? "hardware" : "software") : keyStorage(i.level);
+    } catch { /* unknown */ }
     return { public_key: spkiFromXY(x, y), alg: -7, ...(storage ? { storage } : null) };
   } catch {
     return undefined;

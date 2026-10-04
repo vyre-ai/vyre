@@ -8,7 +8,7 @@ import { KernelError } from "./errors.js";
 export { payloadHash, proofBytes } from "../seal/wire.js";
 
 /**
- * @typedef {{ check(i: { chain: any, op: string, fields: Record<string, unknown>, proof: any }): Promise<string | null> }} PresenceVerifier
+ * @typedef {{ check(i: { chain: any, op: string, fields: Record<string, unknown>, proof: any, dry?: boolean }): Promise<string | null> }} PresenceVerifier
  * `check` resolves null when the proof stands (and uses it up), otherwise a short reason. It never throws for a bad proof.
  */
 
@@ -26,15 +26,16 @@ export function sealerPresence(sealer) {
 /**
  * The verifier `authorize` calls for a risk-`grant` action: the person signs `grant.<verb>` over the resource and the canonical input hash,
  * and the sealing process checks it (one verifier). Any other action has no kernel-signed form here and so is never met by a proof.
- * @param {PresenceVerifier} presence @returns {(proof: any, ctx: any) => Promise<boolean>}
+ * @param {PresenceVerifier} presence @returns {(proof: any, ctx: any) => Promise<{ ok: boolean, reason?: string }>} ok, or why the proof was refused (the verifier's stable code)
  */
 export function grantProofVerifier(presence) {
   return async (proof, ctx) => {
     const m = /^(grants|rules)\.([a-z_]+)$/.exec(String(ctx && ctx.action));
-    if (!m || !ctx.input_hash) return false;
+    if (!m || !ctx.input_hash) return { ok: false, reason: "no_proof" };
     // A standing-rule act is signed as a grant act named `grant.rule_<verb>`: the sealing process accepts only task and grant acts, and a rule is one (it changes what is allowed).
     const op = m[1] === "grants" ? `grant.${m[2]}` : `grant.rule_${m[2]}`;
-    return (await presence.check({ chain: ctx.chain, op, fields: { resource: ctx.resource, input_hash: ctx.input_hash }, proof })) === null;
+    const why = await presence.check({ chain: ctx.chain, op, fields: { resource: ctx.resource, input_hash: ctx.input_hash }, proof });
+    return why === null ? { ok: true } : { ok: false, reason: why };
   };
 }
 

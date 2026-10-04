@@ -26,7 +26,7 @@ export function winkTransport(o) {
  * The home's end: wrap the peer door's dispatcher so `kernel.call` goes to the Space's remote server with the proven device as peer, and every other tool is the registry's, as before.
  * @param {(caller: string, tool: string, input: any) => Promise<any>} next
  * @param {{ serverFor: (space: string) => { serve(request: any, peer: any): Promise<any> } | null | undefined,
- *   personOf: (device: string, space: string) => Promise<string | null | undefined> | string | null | undefined, pathOf: (caller: string) => "wink" | "relay" }} o
+ *   personOf: (device: string, space: string) => Promise<string | null | undefined> | string | null | undefined,  pathOf: (caller: string) => "wink" | "relay" }} o
  *   `pathOf` is REQUIRED: the chain records how the call arrived (a Wink node, or the relay surface), and a grant pinned to a node must not be satisfiable by a relay call.
  *   An answer other than "wink" is taken as the relay. `personOf` is read on every call and must read the identity chain's live device list, so a removed device maps to
  *   nobody at its very next call; nothing here caches it.

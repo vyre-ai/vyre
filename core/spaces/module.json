@@ -156,6 +156,11 @@
     "effect": "read"
    },
    {
+    "name": "spaces.owner.claimed",
+    "reach": "modules",
+    "effect": "read"
+   },
+   {
     "name": "spaces.owner.adopt",
     "reach": "modules",
     "effect": "write"
@@ -306,6 +311,10 @@
    },
    {
     "name": "spaces.identity.state",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.identity.evidence",
     "reach": "modules"
    },
    {
