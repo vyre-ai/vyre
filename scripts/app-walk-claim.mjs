@@ -121,12 +121,15 @@ const SCREENS = flag("--screens", "");
 // --after-cmd runs once after the pairing and before the screens (a seed through the owner on the test server; a stand-in for the owner's session)
 const AFTER_CMD = flag("--after-cmd", "");
 if (CODE_CMD && ANSWER_CMD && SCREENS) {
-  if (AFTER_CMD) { try { console.log("  after-cmd: " + execSync(AFTER_CMD, { encoding: "utf8" }).replace(/\s+/g, " ").slice(0, 300)); } catch (e) { console.log("  after-cmd FAILED: " + String(e.stdout || e.message).slice(0, 300)); } }
-  for (const route of SCREENS.split(",")) {
+  let afterOut = "";
+  if (AFTER_CMD) { try { afterOut = execSync(AFTER_CMD, { encoding: "utf8" }); console.log("  after-cmd: " + afterOut.replace(/\s+/g, " ").slice(0, 300)); } catch (e) { console.log("  after-cmd FAILED: " + String(e.stdout || e.message).slice(0, 300)); } }
+  const thread = /"id":\s*"([^"]+)"/.exec(afterOut)?.[1] ?? "";
+  for (const route0 of SCREENS.split(",")) {
+    const route = route0.replace("{thread}", thread);
     await check(`screen ${route}`, async () => {
       await page.goto(`${BASE}/app/${route}`, { waitUntil: "networkidle" }).catch(() => {});
       await page.waitForTimeout(6000);
-      const t = (await body()).replace(/\n+/g, " | ").slice(0, 260);
+      const t = (await body()).replace(/\n+/g, " | ").slice(0, Number(flag("--body-chars", "260")));
       console.log(`  ${route}: ${t}`);
       if (/could not|cannot reach|did not answer|not available|denied|person_session_required|no_identity|Choose your Vyre name/i.test(t)) throw new Error("refused or empty: " + t.slice(0, 160));
       return t.slice(0, 80);
