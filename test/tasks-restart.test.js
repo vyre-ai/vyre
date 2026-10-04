@@ -21,9 +21,25 @@ test("two seeded tasks (one waiting for the person's check, one an assistant wor
   d = await start({ root, log: () => {}, kernel: true });
   t.after(() => d.stop());
   const after = (await d.kernel.gateway.ask.list(me(d), {})).map((/** @type {any} */ x) => [x.id, x.state]).sort();
-  assert.deepEqual(after, before, "the same two tasks in the same states");
-  assert.deepEqual((await d.kernel.gateway.ask.needsYou(me(d))).map((/** @type {any} */ x) => x.id), [seeded.tasks.approval], "the approval still waits for the person");
-  // and it can still be worked: the doer starts the other one
-  const card = await d.kernel.gateway.ask.card(me(d), seeded.tasks.approval);
-  assert.ok(card, "the approval card is rebuilt from the stored body");
+  const expected = before.map(([id, st]) => [id, st === "needs_check" ? "ready" : st]);
+  assert.deepEqual(after, expected, "the same two tasks; the one waiting for its check goes back to ready (its answer text is never in the log, so its card cannot be rebuilt)");
+  assert.deepEqual((await d.kernel.gateway.ask.needsYou(me(d))).map((/** @type {any} */ x) => x.id), [], "nothing waits for the person's check until the doer hands it in again");
+});
+
+test("TR-1: free text a doer hands in with a decision (a social security number in the reason) is never written to the log", { timeout: 120_000 }, async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {}, kernel: true });
+  t.after(() => d.stop());
+  const me = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-r", person: d.kernel.id.owner, path: "direct", session: "s" });
+  const seeded = await seed({ gateway: d.kernel.gateway, surfaces: d.kernel.surfaces, chain: me, space: d.kernel.id.space });
+  const gw = d.kernel.gateway;
+  // the seeded approval already holds a decision waiting for its check; hand a second one in with sensitive text
+  const t2 = await gw.ask.request(me, { title: "Check the file", doer: { kind: "agent", id: "assistant", space: d.kernel.id.space }, checker: { kind: "person", id: d.kernel.id.owner, space: d.kernel.id.space }, output: { kind: "decision" } });
+  const s1 = await d.kernel.surfaces.open(me, { agent: "assistant", ttl_ms: 60_000 });
+  const ac = await d.kernel.surfaces.chainFor(s1.token);
+  await gw.ask.start(ac, t2.id);
+  await gw.ask.complete(ac, t2.id, { answer: "yes", reason: "the client's ssn 123-45-6789 matches" });
+  const logged = JSON.stringify(d.kernel.log.read({ type: "task.*" }));
+  assert.ok(!logged.includes("123-45-6789"), "the number is in the log: " + logged.slice(0, 300));
+  void seeded;
 });

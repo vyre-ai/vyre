@@ -117,6 +117,21 @@ export function serverLines(vps, spaceName, stage, o = {}) {
 export const SERVER_FAILED = {
   rejected: "Nothing was paired. The three words were not the same. Run the install line on your server again to get a new code.",
   ended: "The pairing ended before it was confirmed, so nothing was paired. Run the install line on your server again to get a new code.",
+  used: "That code was already used. Run the install line on your server again to get a new one.",
+  expired: "The pairing ran out of time, so nothing was paired. Run the install line on your server again to get a new code.",
+  unreachable: "Your phone cannot reach the server right now. Check that it is on and online, then try again. Nothing was paired.",
+  abandoned: "The last pairing was not finished, so nothing was paired. Scan or paste the server's code again.",
   /** The server's own terminal says this on its side when the pairing fails. */
   serverLine: "Pairing failed. Nothing was set up. Run the install line again.",
 };
+
+/** An error from the pairing, in words for the person: a used code, a pairing that ran out of time, a server out of reach, or what the box said. @param {any} e */
+export function serverSay(e) {
+  const t = `${e?.code ?? ""} ${e?.message ?? e ?? ""}`.toLowerCase();
+  if (/used|consumed|spent|already/.test(t)) return SERVER_FAILED.used;
+  if (/expired|ran out|timeout|timed out/.test(t)) return SERVER_FAILED.expired;
+  if (/offline|unreach|network|econn|no path|failed to fetch/.test(t)) return SERVER_FAILED.unreachable;
+  if (/rejected/.test(t)) return SERVER_FAILED.rejected;
+  const m = String(e?.message ?? e ?? "").trim();
+  return m && /\s/.test(m) && m.length > 12 ? m : SERVER_FAILED.ended;
+}

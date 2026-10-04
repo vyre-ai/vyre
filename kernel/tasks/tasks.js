@@ -309,7 +309,7 @@ export function createTasks(cfg) {
       const payload = freeze({ payload_hash: sha256(canonical(body)), decision, draft_hash: sha256(canonical(evidence)) });
       bodies.set(id, body);
       const n = put(t, { state: "needs_check", payload });
-      note(chain, "task.needs-check", n, { payload_hash: payload.payload_hash, decision, ...(["decision", "fields", "note"].includes(t.output.kind) ? { evidence: body.evidence } : {}) });
+      note(chain, "task.needs-check", n, { payload_hash: payload.payload_hash, decision });
       return n;
     },
 
@@ -525,7 +525,6 @@ export function createTasks(cfg) {
     },
   };
   // The tasks the log holds, at start: the newest event of each task carries the task as it was after that change (never its canonical body, which holds the draft). A task that was waiting for a check had its draft only in memory: it goes back to `ready` so its doer makes the draft again, rather than waiting for a card nobody can open. An event from before this was written (no `task`) adds nothing.
-  /** @type {Map<string, any>} */ const evidence = new Map();
   try {
     const f = { type: "task.*" };
     const evs = cfg.log && typeof cfg.log.read === "function" ? (cfg.log.iterate ? [...cfg.log.iterate(f)] : cfg.log.read(f)) : [];
@@ -534,12 +533,6 @@ export function createTasks(cfg) {
       if (!d || !d.task || typeof d.task.id !== "string" || d.task.space !== cfg.space) continue;
       tasks.set(d.task.id, deepFreeze(structuredClone(d.task)));
       if (e.type === "task.created" && typeof d.proposal_for === "string") proposals.set(d.task.id, d.proposal_for);
-      if (e.type === "task.needs-check" && d.evidence !== undefined) evidence.set(d.task.id, d.evidence);
-    }
-    // A decision, fields or note waiting for its check has its answer in its needs-check event (as a completed one always did): its canonical body is rebuilt from it, and used only if it hashes to what was shown.
-    for (const [id, t] of tasks) if (t.state === "needs_check" && !bodies.has(id) && t.payload && evidence.has(id) && ["decision", "fields", "note"].includes(t.output.kind)) {
-      const body = deepFreeze({ task: id, kind: t.output.kind, evidence: deepFreeze(structuredClone(evidence.get(id))) });
-      if (sha256(canonical(body)) === t.payload.payload_hash) bodies.set(id, body);
     }
     for (const [id, t] of tasks) if (t.state === "needs_check" && !bodies.has(id)) { const { payload, ...rest } = t; tasks.set(id, deepFreeze({ ...rest, state: "ready" })); }
   } catch { /* a log that cannot be read leaves no tasks, never a half set */ tasks.clear(); bodies.clear(); proposals.clear(); }

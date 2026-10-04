@@ -136,6 +136,8 @@ export async function createKernel(cfg) {
       ...(m.name === "wink-storage" ? { storageIndex: Object.freeze({ record: recordStorageIndex, head: storageIndexHead }) } : {}),
       /** The runner's ports from the kernel's own pieces (see kernel/gateway/runner-ports.js): allowed, revocation and the device key are the kernel's. */
       runnerPorts: (/** @type {any} */ o) => runnerPorts({ leases: gateway.leases, offers: gateway.grants && gateway.grants.offers }, o),
+      /** What the runner needs from this computer, supplied by the daemon (`cfg.runnerHost`): this computer's device identity and key, the person, and either the pieces `runnerPorts` builds from or ready `ports` (a lent computer whose Space lives on another home). Without it the runner says it is not connected. */
+      runnerHost: () => { if (typeof cfg.runnerHost !== "function") throw new KernelError("unavailable", "this computer has no runner host"); return cfg.runnerHost({ space: cfg.space }); },
       /** The room the RUNNING turn answers in (see kernel/core/room.js): `{ group: false }` or an opaque handle `{ group, read, canRead }`. The turn's own token is used, never an argument; throws `no_audience`. */
       audienceFor: async (/** @type {any} */ _extra) => { if (!room) throw new KernelError("unavailable", "this kernel keeps no chats"); return room.audienceFor(); },
       /**
@@ -264,10 +266,6 @@ export async function createKernel(cfg) {
     };
     // Only the spaces module (`needs.kernel.spaces: true`) may make or list Spaces: `spaces.create` makes the Space HERE, in the kernel's registry, and the kernel's id (`spc_` and 12 base32
     // characters) is the Space's id everywhere. One registry, one id; the store is attached at that moment (the kernel opens the built-in store for every hosted Space).
-    if (needs.presence === true) {
-      /** Check a presence proof for an act the module asks about (`needs.kernel.presence`): the kernel's one verifier, once (the proof is used up). Resolves null when it stands, else a short reason. */
-      handle.verifyProof = async (/** @type {{ chain: any, op: string, fields: Record<string, unknown>, proof: any }} */ i) => { if (!presence) return "no_presence_verifier"; try { return await presence.check(i); } catch { return "unavailable"; } };
-    }
     if (needs.attrs === true) {
       /** Say whose a resource of this type is (`{ owner, project }` by its URN): the kernel then lets only the owner read a type it scopes by owner (`session`). Fail-safe: a throw is no attributes. */
       const mayType = new Set([...OWNER_SCOPED_TYPES, ...(Array.isArray(needs.attrTypes) ? needs.attrTypes.map(String) : [])]);
@@ -284,6 +282,7 @@ export async function createKernel(cfg) {
       handle.spaces = Object.freeze({
         host: (/** @type {any} */ o) => reg().host(o),
         retire: (/** @type {string} */ id) => reg().retire(id),
+        describe: (/** @type {string} */ id) => reg().describe(id),
         storePlan: () => reg().storePlan(),
         list: () => reg().list(),
         hosts: (/** @type {string} */ id) => reg().hosts(id),

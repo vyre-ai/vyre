@@ -14,13 +14,7 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates git tar openssl curl procps dtach tini iptables \
  && rm -rf /var/lib/apt/lists/*
 
-# The Wink core: the pinned userspace network daemon and its CLI that vyred runs and drives itself (core/wink/node/core.js, spec 4.7). They are
-# only started by vyred, as its own child, in userspace mode: no TUN device, no sidecar and no capability. core.js looks for them at these two
-# environment variables and nowhere else (no PATH lookup). Pinned by digest like every base image; bump the pin on purpose.
-COPY --from=tailscale/tailscale:stable@sha256:c507f3a2a6ab1cabd8d809b98edeb41edbd5c3fb6ad9632ffd098b4c7d0b4065 /usr/local/bin/tailscaled /opt/vyre-wink/bin/tailscaled
-COPY --from=tailscale/tailscale:stable@sha256:c507f3a2a6ab1cabd8d809b98edeb41edbd5c3fb6ad9632ffd098b4c7d0b4065 /usr/local/bin/tailscale /opt/vyre-wink/bin/tailscale
-ENV VYRE_WINK_CORE_BIN=/opt/vyre-wink/bin/tailscaled \
-    VYRE_WINK_CLI_BIN=/opt/vyre-wink/bin/tailscale
+# No Tailscale in the image (user, 4 Oct): nothing in 0.3 depends on it. The Wink core reports "no-binary" until a built-in network replaces it.
 
 # The GitHub CLI, for "Sign in with GitHub": vyred runs the real `gh auth login --web` (core/github), so gh is in the image at
 # /usr/local/bin/gh, where vyred finds it as plain `gh`. Pinned, and the release archive is checked against the sum in the release's

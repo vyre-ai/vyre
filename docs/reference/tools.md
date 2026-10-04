@@ -7900,7 +7900,7 @@ What a join card shows for a space the kernel hosts: its name and the four finge
 
 ### `spaces.list`
 
-Spaces on this device that you created or belong to, with your role in each. For a space with a kernel the role is the kernel's answer.
+Spaces on this device that you created or belong to, with your role in each. For a space with a kernel the role is the kernel's answer. On a server that has no identity of its own (paired to yours), the spaces its kernel hosts for its owner.
 
 - Input: none
 - Callers: any caller
@@ -10223,9 +10223,7 @@ Every item's name, kind, description, field names, hosts and grants. Never a val
 
 Forget the key until the next unlock.
 
-- Input:
-  - `front` object
-  - `id` string
+- Input: none
 - Callers: any caller
 
 ### `vault.match`
@@ -10569,14 +10567,14 @@ Put an older version of an item back, as a new version.
 
 ### `vault.revoke`
 
-Take an item away from a module, or from one of its watchers, in one project or (with no project) every one. From Claude or another module it withdraws only a request it made itself.
+Take an item away from a module, or from one of its watchers, in one project or (with no project) every one.
 
 - Input:
   - `module` string, required
   - `name` string, required
   - `project` string
   - `watcher` string
-- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mcp`, `module`, `tailnet`
+- Callers: any caller
 
 ### `vault.rotate`
 
@@ -10800,7 +10798,6 @@ The current one-time code for a login with a TOTP seed.
 
 - Input:
   - `confirm` boolean
-  - `front` object
   - `id` string
   - `name` string
   - `session` string

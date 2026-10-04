@@ -2,7 +2,7 @@
 // software seed). IndexedDB on the web, where a CryptoKey can be stored without ever being readable. The phone keeps it in the secure store next
 // (a follow-up: until then a phone keeps it for the session only). The recovery code is never here: it is shown once and dropped.
 
-import { restoreDeviceKey, type DeviceKey } from "./keys.js";
+import { restoreDeviceKey, wrapKept, type DeviceKey } from "./keys.js";
 
 export type KeptIdentity = { name: string; id: string; eid: string; ops: unknown[]; pin: { id: string; seq: number; head: string }; kept: unknown; software: boolean; createdAt: number };
 
@@ -21,7 +21,9 @@ function open(): Promise<IDBDatabase | null> {
 }
 
 export async function saveIdentity(i: { name: string; id: string; eid: string; ops: unknown[]; pin: KeptIdentity["pin"]; key: DeviceKey }): Promise<void> {
-  const rec: KeptIdentity = { name: i.name, id: i.id, eid: i.eid, ops: i.ops, pin: i.pin, kept: i.key.keep(), software: i.key.software, createdAt: Date.now() };
+  const rec: KeptIdentity = { name: i.name, id: i.id, eid: i.eid, ops: i.ops, pin: i.pin, kept: await wrapKept(i.key.keep()), software: i.key.software, createdAt: Date.now() };
+  // Safari drops script-written storage after about a week unseen unless the browser is asked to keep it; a refusal changes nothing here.
+  try { if (typeof navigator !== "undefined" && navigator.storage?.persist) await navigator.storage.persist(); } catch { /* best effort */ }
   const db = await open();
   if (!db) { memory = rec; return; }
   await new Promise<void>((resolve, reject) => {
@@ -39,4 +41,12 @@ export async function loadIdentity(): Promise<(KeptIdentity & { key: DeviceKey }
     : memory;
   if (!rec) return null;
   return { ...rec, key: await restoreDeviceKey(rec.kept) };
+}
+
+/** Forget what was kept (a claim that did not go through must not leave a key behind that names nothing). */
+export async function forgetIdentity(): Promise<void> {
+  memory = null;
+  const db = await open();
+  if (!db) return;
+  await new Promise<void>((resolve) => { const tx = db.transaction("identity", "readwrite"); tx.objectStore("identity").delete(KEY); tx.oncomplete = () => resolve(); tx.onerror = () => resolve(); });
 }

@@ -145,19 +145,23 @@
    },
    {
     "name": "spaces.identity.republish",
-    "reach": "person"
+    "reach": "person",
+    "effect": "write"
    },
    {
     "name": "spaces.identity.name-of",
-    "reach": "modules"
+    "reach": "modules",
+    "effect": "read"
    },
    {
     "name": "spaces.admin-list",
-    "reach": "modules"
+    "reach": "modules",
+    "effect": "read"
    },
    {
     "name": "spaces.owner.adopt",
-    "reach": "modules"
+    "reach": "modules",
+    "effect": "write"
    },
    {
     "name": "spaces.devices.remove",
