@@ -27,8 +27,8 @@ import { planType, pascal, selection, checkData, toInput, fromRow, toFilter, toO
 export const CONFORMANCE_REVISION = 5;
 const MAX_PAGE = 200;
 const MAX_SCAN = 50_000;
-/** A search ranks the first this many matching rows of each type per tier: a scan of every match cost minutes at 20,000 records (testbox4, 5 Oct). */
-const SEARCH_SCAN = 1_000;
+/** A search ranks the first this many matching rows of each type per tier (one request): scanning every match cost minutes at 20,000 records, and 1,000 still held Twenty for about half a second a search (testbox4, 5 Oct). */
+const SEARCH_SCAN = 200;
 const SEARCH_KEEP_MS = 10_000;
 const EITHER = { or: [{ deletedAt: { is: "NULL" } }, { deletedAt: { is: "NOT_NULL" } }] };
 
