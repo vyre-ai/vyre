@@ -21,9 +21,9 @@ jobs:
         with: { node-version: 24, cache: npm }
       - run: npm ci --no-audit --no-fund
       - name: boot, kernel off
-        run: VYRE_KERNEL=0 node scripts/boot-check.mjs
+        run: VYRE_KERNEL=0 VYRE_KERNEL_PATH_RULE=1 node scripts/boot-check.mjs
       - name: boot, kernel on (dev file key)
-        run: VYRE_KERNEL=1 VYRE_KERNEL_FILE_KEY=1 node scripts/boot-check.mjs
+        run: VYRE_KERNEL=1 VYRE_KERNEL_FILE_KEY=1 VYRE_KERNEL_PATH_RULE=1 node scripts/boot-check.mjs
   unit:
     runs-on: ubuntu-latest
     timeout-minutes: 55
