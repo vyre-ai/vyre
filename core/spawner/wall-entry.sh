@@ -13,6 +13,9 @@ if [ "$(id -u)" = 0 ]; then
   # The release's signed files, where the kernel reads them (core/spawner/place-release.sh).
   /bin/sh "$here/place-release.sh" || echo "wall: could not place the release's signed files; first-party modules will not start" >&2
   "$node_bin" "$here/wall.js" install || true
+  # The Space wall: the rules that keep every uid but the daemon's away from each Space's store, put back before anything can run (core/spawner/space-wall.sh). A rule that
+  # cannot be put in stops the container: it is restarted by Docker's policy and tried again, and the daemon never runs with a store open.
+  /bin/sh "$here/space-wall.sh" || exit 1
   # Dropping needs CAP_SETPCAP (held by the entry script, kept by the spawner): tried on a no-op first, so a container without it still starts the spawner.
   if /usr/bin/setpriv --bounding-set=-net_admin /bin/true 2>/dev/null; then
     exec /usr/bin/setpriv --bounding-set=-net_admin "$node_bin" "$here/main.js"

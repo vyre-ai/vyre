@@ -31,12 +31,15 @@ if (a[0] === "inspect") {
   if (name === CTR) {
     if (fmt === "{{.State.Pid}}") out(rd("ctr-pid", "4242"));
     if (fmt === "{{.Image}}") out("sha256:" + "a".repeat(64));
+    if (fmt.includes(".Mounts")) out(has("no-mounts") ? "" : "/work|/var/lib/docker/volumes/w/_data\\n/home/vyre/.vyre|" + F + "/lend");
     out(rd("joined").split("\\n").join(" ") + " ");
   }
-  if (name === "srv1") out(fmt.includes("Global") ? "" : (fmt.includes("IPAddress") ? "172.30.4.2" : ""));
+  if (name === "srv1") out(fmt.includes("Global") ? "invalid IP" : (fmt.includes("IPAddress") ? "172.30.4.2" : ""));
   process.exit(1);
 }
 if (a[0] === "events") { if (has("events")) { fs.rmSync(F + "/events"); out("abc"); } process.exit(0); }
+if (a[0] === "pull") process.exit(has("pull-fails") ? 1 : 0);
+if (a[0] === "image" && a[1] === "inspect") { const nm = a[a.length - 1].split(":")[0]; out(nm + "@sha256:" + require("crypto").createHash("sha256").update(rd("digest-salt", "x") + nm).digest("hex")); }
 if (a[0] === "ps") { const n = nameOf(a.join(" ")); out(n && has("running-" + n) ? "srv1" : ""); }
 if (a[0] === "network") {
   if (a[1] === "inspect") {
@@ -78,14 +81,14 @@ const cmd = a.slice(3);
 const rulesFile = F + "/fw-" + pid;
 const rules = () => fs.existsSync(rulesFile) ? fs.readFileSync(rulesFile, "utf8").split("\\n").filter(Boolean) : [];
 const save = r => fs.writeFileSync(rulesFile, r.join("\\n") + (r.length ? "\\n" : ""));
-const norm = args => args.join(" ").replace(/ --reject-with \\S+$/, "");
+const norm = args => args.join(" ").replace(/ --reject-with \\S+$/, "").replace(/"/g, "");
 if (cmd[0] === "iptables" || cmd[0] === "ip6tables") {
   const rest = cmd.slice(2);   // after -w
   const r = rules();
   if (rest[0] === "-C") process.exit(r.includes(norm(rest.slice(2))) ? 0 : 1);
   if (rest[0] === "-I") { if (has("fw-add-fails")) process.exit(1); r.unshift(norm(rest.slice(3))); save(r); process.exit(0); }
-  if (rest[0] === "-D") { const x = norm(rest.slice(2)); const i = r.indexOf(x); if (i < 0) process.exit(1); r.splice(i, 1); save(r); process.exit(0); }
-  if (rest[0] === "-S") { for (const l of r) console.log("-A OUTPUT " + l + " --reject-with icmp-port-unreachable"); process.exit(0); }
+  if (rest[0] === "-D") { if (has("fw-del-fails")) process.exit(1); const x = norm(rest.slice(2)); const i = r.indexOf(x); if (i < 0) process.exit(1); r.splice(i, 1); save(r); process.exit(0); }
+  if (rest[0] === "-S") { for (const l of r) console.log("-A OUTPUT " + l.replace(/--comment (\S+)/, '--comment "$1"') + " --reject-with icmp-port-unreachable"); process.exit(0); }
   process.exit(1);
 }
 if (cmd[0] === "setpriv") {
@@ -175,6 +178,7 @@ test("space helper: up makes root-only secrets, a linted compose, the join and t
   const compose = fs.readFileSync(path.join(d, "compose.yml"), "utf8");
   assert.ok(!/env_file|privileged|ports:|network_mode|unless-stopped/.test(compose));
   assert.match(compose, /^    restart: "no"$/m, "RH-7: a store never starts by itself");
+  assert.ok(compose.match(/^    image: .*$/gm).every(l => /@sha256:[0-9a-f]{64}$/.test(l)), "every image in root's copy is by digest: " + compose.match(/^    image: .*$/gm));
   assert.deepEqual(r.rules(), [`-d 172.30.4.0/24 -m owner ! --uid-owner ${UID} -m comment --comment vyre:harlow -j REJECT`]);
   const calls = r.calls();
   // The order: create, join, then the store starts; the proof comes after.
@@ -410,7 +414,9 @@ test("space helper: install writes a path unit on the spool with the start limit
   assert.match(p, /DirectoryNotEmpty=.*\/spool/); assert.match(p, /TriggerLimitIntervalSec=0/); assert.match(p, /StartLimitIntervalSec=0/);
   assert.match(s, /StartLimitIntervalSec=0/); assert.match(s, /ExecStart=.*space-helper-run/);
   assert.equal(fs.readFileSync(path.join(r.SP, "private", "image"), "utf8").trim(), "sha256:" + "a".repeat(64));
-  assert.match(fs.readFileSync(path.join(r.SP, "private", "images"), "utf8"), /^postgres:16\nredis:7\ntwentycrm\/twenty:\$\{TWENTY_TAG:-v[0-9.]+\}\n$/);
+  const images = fs.readFileSync(path.join(r.SP, "private", "images"), "utf8").trim().split("\n").map(l => l.split(" "));
+  assert.deepEqual(images.map(i => i[0]).sort(), ["postgres:16", "redis:7", "twentycrm/twenty:${TWENTY_TAG:-" + images.find(i => i[0].startsWith("twentycrm"))[0].match(/-(v[0-9.]+)\}/)[1] + "}"].sort());
+  for (const [, dg] of images) assert.match(dg, /^[a-z0-9\/]+@sha256:[0-9a-f]{64}$/, "every image is recorded by digest");
   assert.equal(fs.statSync(path.join(r.SP, "private")).mode & 0o777, 0o700);
   assert.match(r.calls(), /systemctl enable --now vyre-spaces\.path/);
   const compose = fs.readFileSync(path.join(REPO, "box/compose.yml"), "utf8");
@@ -439,7 +445,11 @@ test("space helper RH-2: purge and fscrypt-enable are only `vyre admin`, which n
   a = /** @type {any} */ (await r.run(["admin", "purge-space", "ghost"], { VYRE_ADMIN_NO_TTY: "1" }, "purge-space ghost\n"));
   assert.match(a.out, /no Space named ghost/);
   // fscrypt: only on ext4 with a block device, skipped when the feature is already there, exactly tune2fs -O encrypt.
-  fs.writeFileSync(path.join(r.SP, "private", "lending-base"), path.join(r.root, "lend") + "\n");
+  // Root finds the lent-workspace folder itself, from Docker's mounts of the vyre container; nothing the daemon writes is read.
+  r.flag("no-mounts");
+  a = /** @type {any} */ (await r.run(["admin", "fscrypt-enable"], { VYRE_ADMIN_NO_TTY: "1" }, "fscrypt\n"));
+  assert.notEqual(a.code, 0); assert.match(a.out, /could not find the folder/);
+  fs.rmSync(path.join(r.F, "no-mounts"));
   a = /** @type {any} */ (await r.run(["admin", "fscrypt-enable"], { VYRE_ADMIN_NO_TTY: "1" }, "fscrypt\n"));
   assert.equal(a.code, 0, a.out); assert.match(a.out, /cannot be undone, and it changes nothing else/);
   assert.match(r.calls(), /^tune2fs -O encrypt \/dev\/vda1$/m);
@@ -489,4 +499,72 @@ test("space helper: `admin wipe` needs a terminal and the typed word, and says w
   a = /** @type {any} */ (await r.run(["admin", "wipe"], { VYRE_ADMIN_NO_TTY: "1" }, "yes\n"));
   assert.notEqual(a.code, 0); assert.match(a.out, /destroys everything on this server/); assert.match(a.out, /not the word/);
   assert.ok(!/compose/.test(r.calls()), "no word, no docker call");
+});
+
+test("space helper SH-2 and SH-3: a family the network lacks (`invalid IP`) is ignored; firewall-del matches the quoted comment real iptables prints, and never reports success while a rule remains", opts, async t => {
+  const r = rig(t);
+  await r.prime();
+  r.ask("up harlow\n"); await r.helper();
+  const stopped = r.ask("stop harlow\n"); await r.helper();
+  assert.equal(r.status(stopped).state, "ok");
+  // The listing shows the quoted form: the delete still finds it and removes it.
+  const del = r.ask("firewall-del harlow\n"); await r.helper();
+  assert.equal(r.status(del).state, "ok", JSON.stringify(r.status(del)));
+  assert.deepEqual(r.rules(), []);
+  assert.ok(!/harlow/.test(fs.readFileSync(path.join(r.SP, "status", "subnets"), "utf8")), "the container's wall list forgets it");
+  // A rule the helper cannot delete (the fake refuses -D) is a failure, not a success.
+  r.ask("up harlow\n"); await r.helper();
+  r.ask("stop harlow\n"); await r.helper();
+  r.flag("fw-del-fails");
+  const stuck = r.ask("firewall-del harlow\n"); await r.helper();
+  assert.equal(r.status(stuck).state, "failed"); assert.match(r.status(stuck).message, /still there/);
+  assert.equal(r.rules().length, 1);
+});
+
+test("space helper SH-1: status/subnets lists what the helper firewalled, and core/spawner/space-wall.sh puts those rules in at every container start, failing the start when one cannot be added", opts, async t => {
+  const r = rig(t);
+  await r.prime();
+  r.ask("up harlow\n"); r.ask("up northwind\n"); await r.helper();
+  const list = path.join(r.SP, "status", "subnets");
+  assert.equal(fs.readFileSync(list, "utf8").trim().split("\n").sort().join("\n"), "harlow 172.30.4.0/24\nnorthwind 172.30.4.0/24");
+  // The wall script, run as the container's entry does (as root with NET_ADMIN there; here a fake iptables with its own rule file).
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "wall-")); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const bin = path.join(dir, "bin"); fs.mkdirSync(bin);
+  fs.writeFileSync(path.join(bin, "iptables"), `#!/bin/sh\nF="${dir}/rules"; touch "$F"; shift\nop=$1; shift; [ "$op" = -I ] && shift\nshift\nrule="$*"\ncase "$op" in -C) grep -qxF -- "$rule" "$F" ;; -I) [ -f "${dir}/refuse" ] && exit 1; echo "$rule" >>"$F" ;; esac\n`, { mode: 0o755 });
+  const run = () => spawnSync("sh", [path.join(REPO, "core/spawner/space-wall.sh")], { env: { PATH: `${bin}:${process.env.PATH}`, VYRE_SPACES_STATE: path.join(r.SP, "status"), VYRE_DAEMON_UID: "1000" }, encoding: "utf8" });
+  let w = run();
+  assert.equal(w.status, 0, w.stderr);
+  const got = fs.readFileSync(path.join(dir, "rules"), "utf8").trim().split("\n");
+  assert.equal(got.length, 2);
+  assert.match(got[0], /^-d 172\.30\.4\.0\/24 -m owner ! --uid-owner 1000 -m comment --comment vyre:/);
+  // Run again (a restart): nothing doubles.
+  assert.equal(run().status, 0); assert.equal(fs.readFileSync(path.join(dir, "rules"), "utf8").trim().split("\n").length, 2);
+  // A rule that cannot be added stops the container's start.
+  fs.rmSync(path.join(dir, "rules")); fs.writeFileSync(path.join(dir, "refuse"), "1");
+  w = run();
+  assert.equal(w.status, 1); assert.match(w.stderr, /not starting the daemon/);
+  // No list, nothing to do; a line that is not the helper's shape is skipped and said, never run.
+  fs.rmSync(list);
+  assert.equal(run().status, 0);
+  fs.writeFileSync(list, "harlow 172.30.4.0/24 ; reboot\n$(id) 10.0.0.0/8\n");
+  fs.rmSync(path.join(dir, "refuse"));
+  w = run();
+  assert.equal(w.status, 0); assert.match(w.stderr, /not one the helper writes/);
+  assert.ok(!fs.existsSync(path.join(dir, "rules")) || fs.readFileSync(path.join(dir, "rules"), "utf8") === "");
+});
+
+test("space helper: the images are pulled and recorded by digest at install; a failed pull stops the install; a refreshed record (an update) changes what `up` runs", opts, async t => {
+  const r = rig(t);
+  r.flag("pull-fails");
+  const bad = /** @type {any} */ (await r.run(["space-helper", "install"]));
+  assert.notEqual(bad.code, 0); assert.match(bad.out, /could not pull/);
+  fs.rmSync(path.join(r.F, "pull-fails"));
+  await r.prime();
+  r.ask("up harlow\n"); await r.helper();
+  const d1 = fs.readFileSync(path.join(r.SP, "private", "spaces", "harlow", "compose.yml"), "utf8").match(/redis@sha256:[0-9a-f]{64}/)[0];
+  r.flag("digest-salt", "moved");
+  const rec = /** @type {any} */ (await r.run(["space-helper", "install"])); assert.equal(rec.code, 0, rec.out);
+  r.ask("up harlow\n"); await r.helper();
+  const d2 = fs.readFileSync(path.join(r.SP, "private", "spaces", "harlow", "compose.yml"), "utf8").match(/redis@sha256:[0-9a-f]{64}/)[0];
+  assert.notEqual(d1, d2);
 });
