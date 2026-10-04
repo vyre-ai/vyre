@@ -236,9 +236,7 @@ export class PersonSessions {
   }
 
   /**
-   * The strength of a live session, for a module that relays a paired device's act: "software" (a key the server holds no better than a file), "hardware" (a key the server saw attested),
-   * "enclave, unattested" (an app Secure Enclave or Android keystore key whose attestation the server did not verify: a hardware key on release, ruling 6410c6a), "passkey" (a web passkey with user
-   * verification), or null when there is no such session. A row records its opening proof's strength (the `strength` column, startPaired's) and answers with that; an older paired row records none and reads as software (fail closed, so that device proves its key again), any other
+   * The strength of a live session, for a module that relays a paired device's act: one of STRENGTHS (core/presence/strengths.js: software, enclave, "enclave, unattested", passkey), or null when there is no such session. A row records its opening proof's strength (the `strength` column, startPaired's) and answers with that; an older paired row records none and reads as software (fail closed, so that device proves its key again), any other
    * older row keeps its `software` flag. @param {string} id @returns {string|null}
    */
   strength(id) {
@@ -246,7 +244,7 @@ export class PersonSessions {
     if (!row) return null;
     if (typeof row.strength === "string" && row.strength) return row.strength;
     // No recorded strength: a paired device's session proved nothing about its key (fail closed); any other row keeps its flag.
-    return row.paired || row.software ? "software" : "hardware";
+    return row.paired || row.software ? "software" : "enclave";
   }
 
   /**
@@ -317,7 +315,7 @@ export class PersonSessions {
     try {
       const gone = this.db.prepare("DELETE FROM presence_pair_grants WHERE device = ? AND tries = ?").run(row.device, row.tries);
       if (!Number(gone.changes)) { this.db.exec("ROLLBACK"); return { refused: true }; }
-      s = this.start({ node: row.device, kind: "bearer", label, key: JSON.parse(row.device_key), keyId: row.key_id, paired: true, software: Boolean(row.software), strength: row.software ? "software" : "hardware" });
+      s = this.start({ node: row.device, kind: "bearer", label, key: JSON.parse(row.device_key), keyId: row.key_id, paired: true, software: Boolean(row.software), strength: row.software ? "software" : "enclave" });
       this.db.exec("COMMIT");
     } catch (e) { try { this.db.exec("ROLLBACK"); } catch {} throw e; }
     return { id: s.id, token: s.token, expires: s.expires };

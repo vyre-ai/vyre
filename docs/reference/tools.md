@@ -5579,7 +5579,7 @@ Whether this request is signed in as the person (a person session), and until wh
 
 ### `presence.person.strength`
 
-The strength of a live person session, for a module that relays a paired device's act to a person-only tool: { strength: 'hardware' | 'enclave, unattested' | 'passkey' | 'software' | null }. Only pluginagent asks.
+The strength of a live person session, for a module that relays a paired device's act to a person-only tool: { strength: one of STRENGTHS | null }. Only pluginagent asks.
 
 - Input:
   - `id` string, required

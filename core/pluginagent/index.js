@@ -11,6 +11,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { deviceLabel } from "../modules/index.js";
+import { isNotSoftware } from "../presence/strengths.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE pluginagent_asks (id TEXT PRIMARY KEY, computer TEXT NOT NULL, asked_at INTEGER NOT NULL, state TEXT NOT NULL);
@@ -18,8 +19,6 @@ export const MIGRATIONS = [
   `CREATE TABLE pluginagent_state (k TEXT PRIMARY KEY, v TEXT NOT NULL);`,
   `ALTER TABLE pluginagent_agents ADD COLUMN agent_id TEXT`,
 ];
-/** The session strengths a phone's revoke may go through on: a key the server saw attested, an app Secure Enclave or Android keystore key it did not (hardware on release, ruling 6410c6a), a web passkey with user verification. "software" and an unknown session never. */
-export const PHONE_STRENGTHS = Object.freeze(new Set(["hardware", "enclave", "enclave, unattested", "keystore", "passkey"]));
 /** What the plugin agent is given, exactly (the card says the same words): reads of memory and recall, the sessions of the person's projects, and one write that lands as a pending suggestion. */
 export const ALLOWED = Object.freeze(new Set([
   "memory.ask", "memory.answer", "memory.brief", "memory.card", "memory.context", "memory.contradictions", "memory.decisions", "memory.facts", "memory.graph", "memory.me", "memory.profile",
@@ -139,13 +138,13 @@ export default {
         const a = current();
         if (!a) return { revoked: false };
         // A paired phone revokes too, but its own agents.delete is the terminal's and the app's, never a device's: the delete is relayed as the person's own surface ("local"), and only for a session
-        // whose key is not software (PHONE_STRENGTHS: attested or enclave/keystore unattested, the door's rule). A software-strength device is refused HERE, before anything is turned off, so a refusal never leaves the key off and the agent standing.
+        // whose key is not software (core/presence/strengths.js: enclave, enclave unattested or passkey; the door's rule). A software-strength device is refused HERE, before anything is turned off, so a refusal never leaves the key off and the agent standing.
         const caller = String(meta.caller || "");
         let as = caller;
         if (deviceLabel(caller)) {
           const sid = meta.person && meta.person.id ? String(meta.person.id) : "";
           const st = sid ? await ctx.call("presence.person.strength", { id: sid }).catch(() => null) : null;
-          if (!(st && st.data && PHONE_STRENGTHS.has(String(st.data.strength)))) throw refuse("This device keeps its key in software, so it cannot take Claude Code's access away. Do it from the terminal, or from a phone with Face ID.", "software_key");
+          if (!(st && st.data && isNotSoftware(st.data.strength))) throw refuse("This device keeps its key in software, so it cannot take Claude Code's access away. Do it from the terminal, or from a phone with Face ID.", "software_key");
           as = "local";
         }
         db.prepare("DELETE FROM pluginagent_agents WHERE agent = ?").run(String(a.agent));

@@ -317,7 +317,7 @@ export default {
     // Removal of a device, its key leaving the identity list, a recovery reset or sign-out-everywhere: wink says so, here it ends.
     ctx.tool("presence.person.strength", {
       internal: true,
-      description: "The strength of a live person session, for a module that relays a paired device's act to a person-only tool: { strength: 'hardware' | 'enclave, unattested' | 'passkey' | 'software' | null }. Only pluginagent asks.",
+      description: "The strength of a live person session, for a module that relays a paired device's act to a person-only tool: { strength: one of STRENGTHS | null }. Only pluginagent asks.",
       input: obj({ id: str }, ["id"]),
       run: async (input, meta = {}) => {
         if (String((meta && meta.caller) || "") !== "module:pluginagent") throw Object.assign(new Error("only pluginagent asks a session's strength"), { code: "denied" });

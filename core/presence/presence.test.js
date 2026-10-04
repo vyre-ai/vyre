@@ -953,7 +953,7 @@ test("person sessions report their key's strength: what the row recorded, else s
   const { PersonSessions } = await import("./person.js");
   const people = new PersonSessions({ db });
   const hw = people.start({ node: "n1", software: false }), sw = people.start({ node: "n2", software: true });
-  assert.equal(people.strength(hw.id), "hardware");
+  assert.equal(people.strength(hw.id), "enclave");
   assert.equal(people.strength(sw.id), "software");
   assert.equal(people.strength("nope"), null);
   // A row that recorded its opening proof's strength answers with it: an unattested enclave key is not software.
@@ -981,5 +981,12 @@ test("the strength migration marks every paired session made before it as softwa
   const { PersonSessions } = await import("./person.js");
   const people = new PersonSessions({ db });
   assert.equal(people.strength("old-paired"), "software", "a paired device made before strength existed is software until it proves its key again");
-  assert.equal(people.strength("old-cookie"), "hardware", "a non-paired row keeps its flag");
+  assert.equal(people.strength("old-cookie"), "enclave", "a non-paired row keeps its flag");
+});
+
+test("the strength vocabulary is one list, and everything but software passes", async () => {
+  const { STRENGTHS, isNotSoftware } = await import("./strengths.js");
+  assert.deepEqual([...STRENGTHS], ["software", "enclave", "enclave, unattested", "passkey"]);
+  assert.deepEqual(STRENGTHS.filter(isNotSoftware), ["enclave", "enclave, unattested", "passkey"]);
+  for (const bad of ["hardware", "keystore", "", "Software", undefined]) assert.equal(isNotSoftware(bad), false, String(bad));
 });

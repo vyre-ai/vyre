@@ -20,7 +20,7 @@ const PROJECTS = `export default { async start(ctx) {
 } };`;
 // Stand-in for the presence module's strength answer: a session id says whether its key was attested.
 const PRESENCE = `export default { async start(ctx) {
-  ctx.tool("presence.person.strength", { internal: true, run: async i => ({ strength: ({ "s-hw": "hardware", "s-enc": "enclave, unattested", "s-key": "keystore", "s-pk": "passkey", "s-sw": "software" })[i.id] || null }) });
+  ctx.tool("presence.person.strength", { internal: true, run: async i => ({ strength: ({ "s-hw": "enclave", "s-enc": "enclave, unattested", "s-pk": "passkey", "s-sw": "software" })[i.id] || null }) });
   return {};
 } };`;
 const THREADS = `export default { async start(ctx) { ctx.tool("threads.list", { effect: "read", run: async () => [] }); return {}; } };`;
@@ -56,15 +56,15 @@ test("a paired phone revokes only when its session's key was attested; a softwar
     assert.equal((await call("pluginagent.status", {}, "mcp")).data.granted, true, "the key is still on");
     assert.ok((await names(call)).includes(agent), "and the agent still stands");
   }
-  // A sideloaded iPhone's enclave key or an Android keystore key (unattested, hardware on release) revokes, like an attested one: the key is off and the agent is gone.
+  // A sideloaded iPhone's or an Android phone's unattested enclave key (hardware on release) revokes, like an attested one: the key is off and the agent is gone.
   const r = await call("pluginagent.revoke", {}, phone, { person: { id: "s-enc" } });
   assert.ok(!r.error && r.data.revoked === true, JSON.stringify(r));
   assert.ok(!(await names(call)).includes(agent), "the agent is gone, not just its key");
   assert.equal((await call("agents.delete", { agent: "x" }, "mcp")).error.code, "denied", "a model still deletes nothing");
 });
 
-test("every non-software phone strength passes (attested, enclave unattested, keystore, passkey)", async t => {
-  for (const sid of ["s-hw", "s-enc", "s-key", "s-pk"]) {
+test("every non-software strength passes (enclave, enclave unattested, passkey)", async t => {
+  for (const sid of ["s-hw", "s-enc", "s-pk"]) {
     const call = await world(t);
     const ask = (await call("pluginagent.ask", {}, "mcp")).data;
     assert.ok(!(await call("pluginagent.grant", { id: ask.id }, "local")).error);
