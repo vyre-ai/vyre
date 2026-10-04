@@ -78,3 +78,35 @@ test("ENG-2: a user agent already named engineer becomes the built-in at start: 
   const eng = (await d.registry.call("agents.list", {}, "cli")).data.find((/** @type {any} */ a) => a.name === "engineer");
   assert.equal(eng.builtin, true); assert.equal(eng.computer, false);
 });
+
+test("RC1 walk: the Engineer proposes a Kit from records.kits.library, a task waits for the owner, and the approved Kit installs on a real kernel", { timeout: 120_000, todo: "install: records.define needs presence under the Kit's chain; kernel-2 to accept the approved task as the approver's presence (asked in CHAT)" }, async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {}, kernel: true });
+  t.after(() => d.stop());
+  const owner = d.kernel.id.owner, space = d.kernel.id.space;
+  const personChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s" });
+  const ownerMeta = async () => ({ token: (await d.kernel.surfaces.open(personChain, {})).token });
+  const asst = async () => ({ token: (await d.kernel.surfaces.open(personChain, { agent: "assistant", thread: "t-kit" })).token, agentOnly: (await d.registry.call("agents.scope", { name: "engineer" }, "module:vyred")).data.only });
+  const lib = await d.registry.call("records.kits.library", {}, "cli", await ownerMeta());
+  const kits = lib.data && (lib.data.kits || lib.data);
+  assert.ok(Array.isArray(kits) && kits.length, JSON.stringify(lib));
+  const id = kits[0].id;
+  const got = await d.registry.call("records.kits.get", { id }, "cli", await ownerMeta());
+  assert.ok(got.data, JSON.stringify(got));
+  const kit = got.data.kit || got.data;
+  const card = await d.registry.call("flows.kit.card", { kit }, "cli", await asst());
+  assert.ok(card.data && card.data.ok !== false, JSON.stringify(card));
+  const typesBefore = (await d.kernel.store.types()).map((/** @type {any} */ x) => x.name);
+  const p = await d.registry.call("flows.kit.propose", { kit }, "cli", await asst());
+  assert.ok(p.data && p.data.ok, JSON.stringify(p));
+  const task = await d.kernel.gateway.ask.get(personChain, p.data.task);
+  assert.equal(task.form.kind, "kit_install"); assert.equal(task.checker.id, owner);
+  assert.deepEqual((await d.kernel.store.types()).map((/** @type {any} */ x) => x.name), typesBefore, "nothing installed before the yes");
+  // the owner's yes arrives as the kernel's approved task event; here the install runs the way that event runs it
+  const host = d.registry.deps.flowsHost.get(space);
+  const done = await host.flows.kits.apply(p.data.proposal);
+  const after = (await d.kernel.store.types()).map((/** @type {any} */ x) => x.name);
+  assert.ok(after.length > typesBefore.length, `the Kit's types are defined: ${JSON.stringify(done)}`);
+  const installed = (await d.registry.call("flows.kit.list", {}, "cli", await ownerMeta())).data;
+  assert.equal(installed.find((/** @type {any} */ k) => k.kit_id === id || k.id === id)?.status, "installed", JSON.stringify(installed));
+});

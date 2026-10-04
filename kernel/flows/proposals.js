@@ -13,6 +13,7 @@ const MAX_FORM = 6000;
 
 const bad = (/** @type {string} */ message, code = "bad_input") => Object.assign(new Error(message), { code });
 
+import { taskIdOf } from "./stages.js";
 /**
  * The person an assistant's chain acts for, when the chain is a person with only assistants behind them (a person's own session narrowed to a model). A service, an automation or a
  * second person in the chain is nobody. @param {any} chain @returns {{ kind: string, id: string, space: string } | null}
@@ -102,19 +103,22 @@ export class Proposals {
    */
   async onEvent(env) {
     if (!/^task\./.test(env.type)) return null;
-    const id = (env.data && (env.data.task || env.data.id)) || (typeof env.subject === "string" && /\/task\/[^/]+$/.test(env.subject) ? env.subject.slice(env.subject.lastIndexOf("/") + 1) : null);
+    const id = taskIdOf(env);
     if (!id || this.settled.has(id)) return null;
     // One task's events are handled one after another, so two events for one approved task apply one change.
-    const run = (this.queue.get(id) || Promise.resolve()).then(() => this.#handle(id));
+    const decisive = /^task\.(approved|completed|done|rejected|decided)/.test(env.type);
+    const run = (this.queue.get(id) || Promise.resolve()).then(() => this.#handle(id, decisive));
     this.queue.set(id, run.catch(() => {}));
     try { return await run; } finally { if (this.settled.has(id)) this.queue.delete(id); }
   }
 
   /** @param {string} id */
-  async #handle(id) {
+  async #handle(id, decisive = false) {
     if (this.settled.has(id)) return null;
     {
-      const row = await this.k.ask.get(this.chain(), id).catch(() => null);
+      let row = await this.k.ask.get(this.chain(), id).catch(() => null);
+      // The kernel says a task was decided just before the row shows it done: look again a few times (briefly) rather than miss the one event that matters.
+      for (let n = 0; decisive && row && row.form && row.state !== "done" && n < 20; n++) { await new Promise(r => setTimeout(r, 25)); row = await this.k.ask.get(this.chain(), id).catch(() => null); }
       const form = row && row.form;
       if (!form || form.kind !== "proposal" || row.state !== "done") return null;
       if (this.settled.has(id)) return null;
