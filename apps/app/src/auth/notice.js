@@ -32,3 +32,14 @@ export function sessionNotice(s, now) {
   if (s.storageRefused) return { tone: "plain", text: "This browser will not keep your sign-in, so it ends when you close this tab. Allow site storage to stay signed in." };
   return null;
 }
+
+/**
+ * Why a renewal of a lapsed paired session did not go through, in words (wink-2, work/wink-session): the device renews itself with presence.person.pair-challenge and
+ * start-paired signed by the same key it paired with. Three wrong answers lock it for 15 minutes, and a removed device has nothing to renew.
+ * @param {string | undefined} code @param {string} [message]
+ */
+export function renewRefusal(code, message) {
+  if (code === "locked" || code === "rate_limited" || code === "device_locked") return "Sign in again from your phone. This device is locked for 15 minutes after wrong answers; your phone can lift it.";
+  if (code === "device_removed" || code === "not_found") return "This device was removed. Pair it again from your phone.";
+  return message || "Signing in again did not work. Sign in again from your phone.";
+}

@@ -2,7 +2,7 @@
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { clearNotice, noteEnded, noteExpires, noteStorageRefused, sessionNotice, snapshot, subscribe } from "./notice.js";
+import { renewRefusal, clearNotice, noteEnded, noteExpires, noteStorageRefused, sessionNotice, snapshot, subscribe } from "./notice.js";
 
 const NOW = 1_800_000_000_000, DAY = 86_400_000;
 const S = (/** @type {any} */ p) => ({ storageRefused: false, expires: null, ended: false, ...p });
@@ -35,4 +35,11 @@ test("the store tells subscribers, a new expiry lifts an ended state, and clear 
   clearNotice(); assert.equal(snapshot().expires, null);
   off();
   assert.equal(n, 4);
+});
+
+test("a renewal that does not go through says to sign in again from the phone, a removed device says to pair again", () => {
+  assert.match(renewRefusal("locked"), /Sign in again from your phone.*15 minutes/);
+  assert.match(renewRefusal("device_removed"), /Pair it again/);
+  assert.equal(renewRefusal("x", "the box said"), "the box said");
+  assert.match(renewRefusal(undefined), /Sign in again from your phone/);
 });
