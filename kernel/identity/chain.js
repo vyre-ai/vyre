@@ -22,8 +22,8 @@
 // and nothing else about the list: no add, remove, replace-code or space-owner change, whatever its age. Who speaks for an identity changes only by a passkey entry (alg
 // "webauthn-es256": a P-256 key and the rp it was made for) whose assertion carries user presence AND verification for each op, by a device key held by a phone or computer, or by the
 // recovery code, which can add a device. A device entry may also carry `enclave`, the P-256 key a phone keeps in its Secure Enclave behind Face ID (NK-2): every list change it signs must carry `esig`, that
-// key's ECDSA signature over the same op message, or it is refused (`needs_enclave`). Face ID itself is the OS's key policy and is not visible here; enrolment should carry an App Attest assertion (`attest`)
-// that its own verifier checks. The directory Worker and every home run this same file, so all of them refuse.
+// key's ECDSA signature (exactly 64 bytes r||s, low s) over the same op message, or it is refused (`needs_enclave`). Face ID itself is the OS's key policy and is not visible here; enrolment should carry an App Attest assertion (`attest`)
+// that its own verifier checks. `attest` is stored and never read in this file: nothing here may count on it. The directory Worker and every home run this same file, so all of them refuse.
 //
 // This file uses only WebCrypto, so the same code runs in the Worker, in Node and in a browser.
 
@@ -75,8 +75,11 @@ export function messageOf(op) {
   const { sig: _s, esig: _e, approvals: _a, ...body } = op;
   return enc.encode(`${CHAIN_TAG}\n${canonical(body)}`);
 }
-/** The hash a next op names as `prev`. @param {any} op */
-export const hashOf = op => sha256hex(canonical(op));
+/**
+ * The hash a next op names as `prev`. A WebAuthn assertion (a `sig` longer than an Ed25519 signature's 86 characters) is left out of it: an authenticator's ECDSA signature has a high-s twin that
+ * anyone can make without the key, and an op hash that covered it would fork the head between whoever holds one form and whoever holds the other. The op body it signs is still covered (NE-1).
+ */
+export const hashOf = op => { if (op && typeof op.sig === "string" && op.sig.length > 100) { const { sig: _s, ...rest } = op; return sha256hex(canonical({ ...rest, sig: null })); } return sha256hex(canonical(op)); };
 
 async function verifySig(pubText, message, sigText) {
   const pub = unb64(pubText), sig = unb64(sigText);
@@ -112,6 +115,9 @@ async function verifyWebAuthn(pubText, rp, message, sigText) {
     return await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, key, /** @type {BufferSource} */ (raw), /** @type {BufferSource} */ (signed));
   } catch { return false; }
 }
+const P256_N_HALF = 0x7fffffff800000007fffffffffffffffde737d56d38bcf4279dce5617e3192a8n;
+/** Is the s half (bytes 32 to 64) of a raw P-256 signature at most n/2? Rejects the high-s twin. @param {Uint8Array} raw */
+function lowS(raw) { let v = 0n; for (let i = 32; i < 64; i++) v = (v << 8n) | BigInt(raw[i]); return v > 0n && v <= P256_N_HALF; }
 /** An ECDSA signature in DER as the 64 bytes WebCrypto takes, or null. @param {Uint8Array} d */
 function derToRaw(d) {
   if (d.length < 8 || d[0] !== 0x30 || d[1] !== d.length - 2 || d[2] !== 0x02) return null;
@@ -139,8 +145,10 @@ async function verifyEsig(e, message, esig) {
   try {
     const pt = unb64(e.enclave), sg = unb64(esig);
     if (!pt || !sg) return false;
-    const raw = sg.length === 64 ? sg : derToRaw(sg);
-    if (!raw) return false;
+    // One signature, one encoding: exactly 64 bytes r||s with s in the low half. A DER form or a high-s twin of the same signature would be a second valid op with another hash, forking the chain
+    // head between whoever holds one and whoever holds the other (reviewer-3 NE-1), so neither is accepted.
+    if (sg.length !== 64 || !lowS(sg)) return false;
+    const raw = sg;
     const key = await crypto.subtle.importKey("raw", /** @type {BufferSource} */ (pt), { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]);
     return await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, key, /** @type {BufferSource} */ (raw), /** @type {BufferSource} */ (message));
   } catch { return false; }

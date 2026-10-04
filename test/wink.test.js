@@ -1270,6 +1270,10 @@ test("a box-less device pairs a fresh server, is recorded as the owner's device 
   const sig = crypto.sign("sha256", Buffer.from(`paired-start\n${done.device}\n${ch.body.data.challenge}`), { key: dk.privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url");
   const started = await over(c, "presence.person.start-paired", { sig });
   assert.equal(started.status, 200, JSON.stringify(started));
+  // a session is a session and nothing more: a human-only act still wants its own fresh proof, whatever kind of device holds the session
+  const label = `device:${done.device}`;
+  const human = await w.d.registry.call("vault.reveal", { name: "northwind-mail" }, label, { person: { id: started.body.data.id } });
+  assert.ok(human.error && ["presence_required", "denied", "person_session_required"].includes(human.error.code), `vault.reveal with a paired session and no fresh proof: ${JSON.stringify(human.error || human.data).slice(0, 120)}`);
 });
 
 test("device-first, real daemon: the owner's device calls spaces.host-here on the server over the peer session; the server's kernel builds the chain from the peer and decides", async t => {

@@ -1375,9 +1375,12 @@ test("SP-1 and SP-2: an owner id must have an id's shape; a proof offered with n
   await assert.rejects(() => adoptAs(w, "device:app1", { owner: { kind: "identity", id: "NOT-A-PERSON-ID; rm -rf", name: "Alex" }, identity: "x" }), e => e.code === "bad_input");
   await assert.rejects(() => adoptAs(w, "device:app1", { owner: { kind: "space", id: "per_aaaa", name: "Alex" } }), e => e.code === "bad_input", "a space owner needs a space id");
   assert.equal(w.p.meta.get("owner"), null, "nothing stored for a malformed id");
-  // a proof by a key that is not on that identity's list is refused at once, with no --pair-to
+  // a proof by a key that is not on that identity's list is refused at once, with no --pair-to (the entry is known, the signature is not its)
   const w2 = world({ confirm: true, identityEntry: r.identityEntry });
   await assert.rejects(() => adoptAs(w2, "device:app1", { ...ASKED, proof: r.proof("app1", r.other.privateKey) }), e => e.code === "denied");
+  // an identity the directory does not know is refused too: no fallback to the three words (lead, G-2)
+  const w2b = world({ confirm: true, identityEntry: async () => null });
+  await assert.rejects(() => adoptAs(w2b, "device:app1", { ...ASKED, proof: { eid: "eid-unknown", sig: "x".repeat(86) } }), e => e.code === "denied");
   assert.equal(w2.p.meta.get("owner"), null);
   // the right proof: the question is still asked (the person's yes stays the check), then the name is stored clean
   const w3 = world({ confirm: true, identityEntry: r.identityEntry });
@@ -1406,6 +1409,17 @@ test("SP-1 exact ids: in production an owner id is per_ plus 26 base32 or spc_ p
   assert.equal((await adoptAs(w2, "device:app1", { owner: { kind: "space", id: "spc_" + "a".repeat(12), name: "H" } })).owner.kind, "space");
 });
 
+test("wink.server.probe: a paired server answers; a server that let the device go answers refused; an unknown device says so", async () => {
+  let refuse = false;
+  const w = world({ callServer: async (_p, tool) => { if (refuse) throw Object.assign(new Error("the server answered 401"), { remote: "device_removed" }); return { tool }; } });
+  w.p.meta.set("probe:srv1", { relay: "ws://relay.test", route: "route1", box: "box1" });
+  assert.deepEqual(await w.call("wink.server.probe", { device: "srv1" }), { reachable: true, answered: true });
+  refuse = true;
+  const gone = await w.call("wink.server.probe", { device: "srv1" });
+  assert.equal(gone.reachable, false);
+  assert.equal(gone.code, "device_removed");
+  assert.equal((await w.call("wink.server.probe", { device: "nope" })).code, "unknown");
+});
 
 // ---- G-2 (lead, 4 Oct): becoming an owner always needs the identity proof, checked against the identity's chain ----
 
