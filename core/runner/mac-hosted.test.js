@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { planHome } from "./homesandbox.js";
 import { launch } from "./sandbox.js";
@@ -24,18 +25,41 @@ async function inside(t, cmd, args, ms = 8000) {
   return { code, out, err };
 }
 
+/** A sandbox that never started proves nothing (a profile error also exits non-zero with nothing on stdout, found 4 Oct on a hosted Mac). Every probe first runs a command that must work here. */
+async function control(t) {
+  const r = await inside(t, "/bin/echo", ["ok"]);
+  assert.equal(r.code, 0, `the sandbox did not start: ${JSON.stringify(r)}`);
+  assert.equal(r.out.trim(), "ok");
+  assert.ok(!/sandbox-exec:/.test(r.err), `the sandbox profile was refused: ${r.err}`);
+}
+const started = r => assert.ok(!/sandbox-exec:/.test(r.err), `the sandbox profile was refused, so nothing was probed: ${r.err}`);
+const outside = (cmd, args, input) => spawnSync(cmd, args, { encoding: "utf8", input, timeout: 8000 });
+
 test("macOS Mach denies: the clipboard is not readable from the sandbox", { skip: !HOSTED, timeout: 30_000 }, async t => {
+  await control(t);
+  const marker = "vyre-clip-" + Date.now();
+  const put = outside("/usr/bin/pbcopy", [], marker);
+  assert.equal(put.status, 0, "could not put a marker on the clipboard outside the sandbox");
+  assert.equal(outside("/usr/bin/pbpaste", []).stdout, marker, "the marker is readable outside, so the probe can see the clipboard");
   const r = await inside(t, "/usr/bin/pbpaste", []);
-  assert.ok(r.code !== 0 || r.out === "", `pbpaste returned something: ${JSON.stringify(r)}`);
+  started(r);
+  assert.ok(!r.out.includes(marker), `the sandbox read the clipboard: ${JSON.stringify(r)}`);
 });
 
 test("macOS Mach denies: no keychain is listed from the sandbox", { skip: !HOSTED, timeout: 30_000 }, async t => {
+  await control(t);
+  const out = outside("/usr/bin/security", ["list-keychains"]);
+  assert.match(out.stdout, /\.keychain/, "the keychains are listed outside, so the probe can see them");
   const r = await inside(t, "/usr/bin/security", ["list-keychains"]);
+  started(r);
   assert.ok(!/\.keychain/.test(r.out), `a keychain was listed: ${JSON.stringify(r)}`);
 });
 
 test("macOS Mach denies: Apple events to Finder are refused and do not hang", { skip: !HOSTED, timeout: 30_000 }, async t => {
+  await control(t);
   const r = await inside(t, "/usr/bin/osascript", ["-e", 'with timeout of 4 seconds\ntell application "Finder" to get name of startup disk\nend timeout'], 12000);
+  started(r);
   assert.notEqual(r.code, "timeout", "osascript hung");
   assert.notEqual(r.code, 0, `the Finder answered: ${JSON.stringify(r)}`);
+  assert.ok(r.err.length > 0, "a refusal says something on stderr (a silent failure is not a denial)");
 });
