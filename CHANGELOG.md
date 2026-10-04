@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- test(walk): the walk's paired-device helper builds its device row the way the daemon does (the relay's row plus the person Wink's record names), so a signed-in paired app device reaches bridges.merge.links as the person. Not a bridges bug: the check reads the call's kernel chain, and a paired device's chain is one person (core/daemon callerFacts); the test's row had no person, so no chain was built. publish.whoIs uses the same chain check and needs no change.
+
 - test(one-yes): an `outward: true` tool on reach hook or modules is held for a hook caller, a module with no person behind it and a module acting for an agent, and never runs; a module acting for you runs it (reviewer-3 OW-5).
 - feat(app): New chat. Chats has a New chat button (header, and the empty state's action) that opens /new-chat: pick an agent (your assistant is the default), optionally a first message, Start chat. It calls threads.start as you, naming the agent, its kind and your default AI account (src/state/new-chat-model.js), and opens the new session. Codes: under the drawn Wink code the app shows the typed code large with "Type this code on your other device" when the box answers one (`code` on wink.phone.open and spaces.invites.create; neither returns it yet), and otherwise says to copy the link or paste the long code. It never says the drawing can be scanned.
 
