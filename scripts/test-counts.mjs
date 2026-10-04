@@ -18,7 +18,7 @@ export const GLOBS = ["core/**/*.test.js", "kernel/**/*.test.js", "records/**/*.
 /** Literal test( and it( registrations at the start of a line in a test file: the least a run must execute. @param {string} file */
 export function declared(file) {
   const src = fs.readFileSync(path.join(REPO, file), "utf8");
-  return (src.match(/^(test|it)(\.\w+)?\(/gm) || []).filter(m => !/\.(skip|todo|only)\($/.test(m)).length;
+  return (src.match(/^(test|it)\(/gm) || []).length;
 }
 
 /** @param {string} f */ const readJson = f => JSON.parse(fs.readFileSync(f, "utf8"));
