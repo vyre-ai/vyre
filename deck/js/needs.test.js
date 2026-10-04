@@ -3,6 +3,7 @@
 // in one shape, oldest first, with the anchors Open session needs, and each answer sent with the
 // input the switchboard and the Gate take (and the presence the no-nag rule allows).
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { install } from "../test/fake-dom.js";

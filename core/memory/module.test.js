@@ -2,6 +2,7 @@
 // The memory module inside a real vyred: tools over the socket, the session.indexed event, and
 // a daemon with no Recall index at all.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

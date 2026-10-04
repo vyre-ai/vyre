@@ -1,6 +1,7 @@
 // The three Workers' wrangler.toml files: workers.dev off and exactly one custom-domain route each, as TOP-LEVEL keys.
 // Keys written after a [table] header belong to that table, which silently unbinds the route and leaves workers.dev on.
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

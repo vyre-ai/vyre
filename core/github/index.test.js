@@ -9,6 +9,7 @@
 // either its primary one, set once by github.project, or added workspaces via add-repo; detect
 // only ever reads what's already on disk).
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";

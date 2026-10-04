@@ -2,6 +2,7 @@
 // The head-to-head's parts, with no model and no key: the long session plants what it says, BM25 finds
 // each planted turn, the scoring reads abstentions, the estimate stays under the round's cap, and a
 // cached reply costs nothing.
+import "../mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

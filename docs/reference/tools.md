@@ -3354,10 +3354,12 @@ PostToolUse and PostToolUseFailure: record which files a tool changed, so every 
 
 - Input:
   - `tool_name` string, required
+  - `agent` string
   - `cwd` string
   - `error_head` string
   - `interrupted` boolean
   - `ok` boolean
+  - `prompt_id` string
   - `session` string
   - `tool_input` object
   - `tool_use_id` string

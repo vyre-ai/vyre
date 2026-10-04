@@ -3,6 +3,7 @@
 // terminal, never for a script, CI, --json, a failure, or vyre up, down and tips. A fake tool
 // stands in for vyred, so nothing here needs one running.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { tipsWanted, tip } from "./index.js";

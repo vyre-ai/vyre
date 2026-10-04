@@ -2,6 +2,7 @@
 // Codex and Gemini CLI readers: synthetic sessions in a made-up sample world, converted to Claude
 // Code's shape and read back by the existing transcript reader. Credential files are planted and
 // must never be opened; symlinks are never followed.
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

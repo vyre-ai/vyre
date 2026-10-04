@@ -1,6 +1,7 @@
 // @ts-check
 // The standalone package end to end with no Chrome and no Vyre: the real chrome module behind the
 // real MCP server and the real trace, a fake extension on the socket, everything in temp folders.
+import "../../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

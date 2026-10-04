@@ -6,6 +6,7 @@
 // still see everything; only a named agent is scoped, by agents.projects intersected with
 // projects.access (deny by default).
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

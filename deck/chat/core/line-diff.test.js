@@ -2,6 +2,7 @@
 // Edit diffs as plain lines: from two strings (LCS, word segments on a changed pair) and from a
 // unified diff's text.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildLineDiff, parseUnifiedDiff, countLines, formatCounts, capLines, showAllLabel, MINUS } from "./line-diff.js";

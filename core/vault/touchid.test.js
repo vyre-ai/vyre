@@ -3,6 +3,7 @@
 // no test here ever shows a biometric dialog. The fake's "enclave key" is an ordinary P-256 key,
 // so these tests check the Node side (the wrap, the files, the refusals), not the enclave.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

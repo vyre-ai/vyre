@@ -8,6 +8,7 @@
 // refresh token is saved back through the module; a pasted token connects a second app; nothing
 // secret reaches a result, an event, a log line or a table.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 
 // Presets for fakes on this machine are honoured only under this switch (production reads the shipped catalog).

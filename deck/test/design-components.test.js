@@ -3,6 +3,7 @@
 // in css/buttons.css (the old class names kept as its aliases), the status marks (js/status-mark.js,
 // css/marks.css) and the one toast (js/toast.js).
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

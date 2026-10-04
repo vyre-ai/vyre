@@ -4,6 +4,7 @@
 // migration of a v1 home. The v1 home is built at test time with a copy of the seal code from
 // commit ebd38ec, so no file in the repo holds a key. Every login and value here is fictional.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

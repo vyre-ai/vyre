@@ -1,5 +1,6 @@
 // The fixture server for the Chrome proof and bench: pages served, auth enforced (bearer header AND
 // session cookie), workflows created. Binds an ephemeral 127.0.0.1 port only. No Chrome.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { startFixtureServer, TOKEN, SESSION } from "./bench/fixtures/server.mjs";

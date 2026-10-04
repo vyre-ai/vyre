@@ -1,5 +1,6 @@
 // @ts-check
 // ssh.js against a fake `ssh` that logs its arguments and runs the remote command locally.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

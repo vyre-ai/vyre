@@ -3,6 +3,7 @@
 // that open a link or call a named tool, copy as text, and the error and empty states. Sample
 // world only.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { install, text, $, $$ } from "../../test/fake-dom.js";

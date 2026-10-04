@@ -1,6 +1,7 @@
 // @ts-check
 // The installer's look: numbered steps, a check per step, a finish. Plain ASCII off a terminal,
 // colour on one. The behaviour is covered in core/names/system.test.js; this is only the talk.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

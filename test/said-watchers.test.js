@@ -4,6 +4,7 @@
 // refused. The real registry runs the real reach: "asked" gate against a fake watchers module (its
 // own target tool, like github's) and a fake vault.said.match built on lib/said/match.js.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

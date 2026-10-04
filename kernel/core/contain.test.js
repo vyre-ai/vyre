@@ -1,5 +1,6 @@
 // Containment on EVERY dimension (reviewer-2's DL-1): a delegate can never hold more than the grant it was cut from. For each dimension a child that is equal passes, a tighter one
 // passes, a looser one is refused, and a dimension the function does not know is a refusal, never a pass.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { contains, containsDims, clampTo } from "./authorize.js";

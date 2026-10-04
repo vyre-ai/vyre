@@ -5,6 +5,7 @@
 // directory removed), and the run is failed - so a leak from a killed test process is swept up
 // automatically rather than sitting in $TMPDIR until someone notices by hand.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";

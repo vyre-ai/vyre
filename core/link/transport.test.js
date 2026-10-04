@@ -2,6 +2,7 @@
 // The link's Tailscale calls under tests: never the user's real Tailscale, always the fake a
 // test names in VYRE_TAILSCALE_BIN.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

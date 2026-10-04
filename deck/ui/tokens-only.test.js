@@ -4,6 +4,7 @@
 // fine), or the size in a font shorthand; every value comes from a token (var(--...)). The scripts under deck/ui, except tokens-v3.js, theme.js and tests, may not
 // contain a hex colour. A colour that must come from data comes through tokens-v3.js or theme.js, never from a literal.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

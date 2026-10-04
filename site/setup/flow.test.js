@@ -1,6 +1,7 @@
 // @ts-check
 // The setup page's flow and screen against the real relay client and the real Node relay server. The box's
 // offer is the one thing faked (it needs a whole daemon; core/relay/setup.test.js covers that half).
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

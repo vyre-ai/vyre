@@ -3,6 +3,7 @@
 // else's wife becoming the user's, a hypothetical or a question read as a fact, Claude's words
 // or a pasted letter read as the user's, and a rule set too slow to run on every turn.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { extractPersonal } from "./extract.js";

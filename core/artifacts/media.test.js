@@ -1,6 +1,7 @@
 // Generated media: an image, a video or a sound a provider made is kept as an artifact with its provider,
 // model, prompt and session, reached through the same project permission as any artifact, served with its
 // own type and Range, handed to another model by copy, and never mistaken for a page.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

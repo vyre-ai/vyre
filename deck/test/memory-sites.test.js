@@ -1,5 +1,6 @@
 // @ts-check
 // Memory, Sites: the list, a site's rows, Forget with Undo. Sample world only.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { install, text, $, $$ } from "./fake-dom.js";

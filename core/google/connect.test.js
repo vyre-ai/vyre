@@ -8,6 +8,7 @@
 // fail in plain words; the listener exists only while a sign-in is open; and no value reaches a
 // result, an error, an event or a log line.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import net from "node:net";

@@ -147,7 +147,7 @@ export function createGateway(cfg) {
     let erased = 0;
     if (i.scrub_history !== false) {
       // Free text a task kept (a form, a draft, an answer) may quote a value: it is cleared BEFORE the store's scrub, whose last step rewrites the file, so nothing survives in free pages.
-      if (plain.size && cfg.tasks && typeof cfg.tasks.scrubTexts === "function") await cfg.tasks.scrubTexts({ values: [...plain] });
+      if (plain.size && cfg.tasks) await cfg.tasks.scrubTexts({ values: [...plain] });
       if (typeof cfg.store.scrub === "function") await cfg.store.scrub(i.type, [i.field]);
       const prefix = `vyre://${cfg.space}/${i.type}/`;
       for (const e of cfg.log.read()) {

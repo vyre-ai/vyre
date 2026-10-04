@@ -2,6 +2,7 @@
 // scripts/eval-cli-spot.mjs with fake `claude` and `codex` binaries and a local stand-in for the key-usage
 // endpoint: the commands are built as the script says, answers are read, the canary is read, the job's spend
 // stop holds, and nothing is sent anywhere else. The real binaries run only on the runner.
+import "./mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

@@ -1,5 +1,6 @@
 // @ts-check
 // HD-2: threads.start from a model's call takes the declared fields only. resume (a write into any live thread), fork, agent and agent_kind (another agent's credentials) are ignored, never obeyed.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

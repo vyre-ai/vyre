@@ -1,5 +1,6 @@
 // @ts-check
 // write(): one intent, one key, retried through a vyred restart (ADR 0029, R2).
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

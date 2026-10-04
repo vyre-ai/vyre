@@ -6,6 +6,7 @@
 // standing in for the real binary, so threads.lease has an actual row to hold a lease on. The
 // clock is the pool's own now(), moved by the test; the real sweep timer is off (sweepMs 0).
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

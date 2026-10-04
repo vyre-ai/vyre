@@ -1,5 +1,6 @@
 // @ts-check
 // The goals module with the kernel on: new goals are kernel records, goals made before stay where they are, behaviour is the same.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

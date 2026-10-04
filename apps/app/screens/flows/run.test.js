@@ -1,5 +1,6 @@
 // @ts-check
 // A Flow's start, retry and run record against a fake box.
+import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
