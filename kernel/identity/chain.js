@@ -366,7 +366,7 @@ async function verifyOwnerSig(op, subject, owner, msg, ts, ctx) {
  * sealed record, an alias proof, a release. For a space, `pos` is the position of the owner's list the signer named; with `ctx.live` the
  * device must also be on that list now. A recovery code is never young-exempt: it counts as a newcomer here.
  * @param {State} state @param {string} by @param {string|undefined} via @param {number} ts @param {Ctx} ctx @param {{ seq?: number, head?: string }} [pos]
- * @returns {Promise<{ pub: string, young: boolean, entry: Entry }>}
+ * @returns {Promise<{ pub: string, young: boolean, entry: Entry, since: number }>}
  */
 export async function signerKey(state, by, via, ts, ctx = {}, pos = {}) {
   const e = find(state, String(by));
@@ -378,10 +378,10 @@ export async function signerKey(state, by, via, ts, ctx = {}, pos = {}) {
     const dev = typeof via === "string" ? find(at, via) : undefined;
     if (!dev || dev.kind !== "device") throw chainError("not_on_list", "that device is not on the owner's list");
     if (ctx.live) await stillOnList(ctx, ops, dev);
-    return { pub: /** @type {string} */ (dev.pub), young: youngAt(dev, ts), entry: e };
+    return { pub: /** @type {string} */ (dev.pub), young: youngAt(dev, ts), entry: e, since: dev.since };
   }
   if (e.kind === "contact") throw chainError("not_allowed", "a recovery contact only approves a recovery");
-  return { pub: /** @type {string} */ (e.pub), young: e.kind === "code" || youngAt(e, ts), entry: e };
+  return { pub: /** @type {string} */ (e.pub), young: e.kind === "code" || youngAt(e, ts), entry: e, since: e.since };
 }
 
 /** The position of a person's chain a space op relies on: its head. @param {any[]} ownerOps */
