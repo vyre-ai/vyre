@@ -20,9 +20,10 @@ export function RealEngineer() {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [roleErr, setRoleErr] = useState("");
   const load = useCallback(() => {
     setErr("");
-    myRole().then(setRole).catch(() => setRole("member"));
+    myRole().then((r) => { setRole(r); setRoleErr(""); }).catch((e) => { setRole(null); setRoleErr(said(e)); });
     listAgents().then((a) => setAgent(findEngineer(a))).catch((e) => { setErr(said(e)); setAgent(null); });
     Promise.all([listFlowRows().catch(() => []), listKitRows().catch(() => []), listTaskRows().catch(() => [])]).then(([f, k, t]) => setWaiting(proposals(f, k, t)));
   }, []);
@@ -35,6 +36,9 @@ export function RealEngineer() {
   const head = (
     <View className="flex-row flex-wrap items-center gap-s2"><Chip tone="accent" icon="play">Admins only</Chip><Chip>Proposes, never acts</Chip><Chip>Cannot send, pay or read the vault</Chip></View>
   );
+  if (roleErr && role === null) {
+    return <Frame back="/u/flows" title="@Engineer" sub="Describe a process in plain words."><Card><EmptyState title="Could not check your role" body={roleErr} action={{ label: "Try again", onPress: load }} /></Card></Frame>;
+  }
   if (role !== null && !mayTalk(role)) {
     return <Frame back="/u/flows" title="@Engineer" sub="Describe a process in plain words.">{head}<Card><EmptyState title="Only space admins can talk to @Engineer" body="Ask an admin of this space, or open Flows to read what it built." /></Card></Frame>;
   }
@@ -65,7 +69,7 @@ export function RealEngineer() {
           <View className="gap-s3">
             <Text strong>Tell @Engineer what you need</Text>
             <Field label="Your message" multiline lines={4} value={text} onChangeText={setText} placeholder="Make me an intake Flow for estate leads." />
-            <View className="self-start"><Button kind="primary" label={busy ? "Sending" : "Send"} onPress={busy || !text.trim() ? () => {} : send} /></View>
+            <View className="self-start"><Button kind="primary" label={busy ? "Sending" : "Send"} disabled={busy || !text.trim()} onPress={send} /></View>
           </View>
         </Card>
       ) : null}

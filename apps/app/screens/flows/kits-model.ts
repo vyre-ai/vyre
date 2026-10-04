@@ -23,7 +23,7 @@ export const listed = (rows: KitRow[]): KitRow[] => rows.filter((k) => k.status 
 
 export function kitRefusal(code: string | undefined, message: string): string {
   if (code === "chain_not_person") return "Only a person removes a Kit, not an assistant.";
-  if (code === "presence_required") return "That needs you. Approve with Face ID or your fingerprint, then try again.";
+  if (code === "presence_required") return "That needs you. Approve on this device, then try again.";
   if (code === "not_found") return "That Kit is already gone.";
   return message || "Kits did not answer.";
 }

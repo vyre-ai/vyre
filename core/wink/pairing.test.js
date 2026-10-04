@@ -44,7 +44,7 @@ function world(o = {}) {
   const fails = async (name, input, code) => { await assert.rejects(() => call(name, input), e => (code ? e.code === code : true) && (e.message || "")); };
   return { p, call, drops, events, typed, finishes, minted, db, tools, fails };
 }
-const settle = () => new Promise(r => setTimeout(r, 40));
+const settle = () => new Promise(r => setTimeout(r, 200)); // 40 ms flaked on a loaded box (4 Oct)
 
 test("targets: you, then only the spaces you administer", async () => {
   const w = world();

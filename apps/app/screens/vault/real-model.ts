@@ -56,7 +56,7 @@ export function useCount(rows: UseRow[], now: number): number { return rows.filt
 
 /** The words a refused reveal gets, from the box's error code, never from a value. */
 export function revealRefusal(code: string | undefined, message: string): string {
-  if (code === "presence_required") return "That needs you. Approve with Face ID or your fingerprint, then try again.";
+  if (code === "presence_required") return "That needs you. Approve on this device, then try again.";
   if (code === "locked") return "The vault is locked. Unlock it, then try again.";
   return message || "The vault did not answer.";
 }

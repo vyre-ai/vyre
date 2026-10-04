@@ -23,6 +23,17 @@ export function nameAnswer(answer) {
 }
 
 /**
+ * The directory's answer to GET /v1/ids/resolve?name=, as nameAnswer's input: a chain back is a name taken, `not_found` a free one,
+ * anything else (a limit, an outage, a body that is not JSON) is unknown. Only the status and code are read; the chain is not trusted here.
+ * @param {number} status @param {any} body @returns {{ ok: true } | { ok: false, code: string }}
+ */
+export function directoryAnswer(status, body) {
+  if (status === 200 && body && body.data && typeof body.data === "object") return { ok: /** @type {true} */ (true) };
+  const code = body && body.error && typeof body.error.code === "string" ? body.error.code : "unknown";
+  return { ok: /** @type {false} */ (false), code: status === 404 && code === "not_found" ? "not_found" : code };
+}
+
+/**
  * The state under a name field when the directory decides. `remote` is null while the check has not come back.
  * @param {string} raw @param {"free"|"taken"|"unknown"|null} remote @param {string[]} [also] names this person already holds
  * @returns {{ slug: string, state: "empty"|"short"|"checking"|"taken"|"unknown"|"ok", address: string }}
@@ -108,15 +119,22 @@ export function applyClaim(a) {
   };
 }
 
-/** spaces.invites.preview, as the invite card shows it. @param {any} p @param {string} link */
+/**
+ * spaces.invites.preview, as the invite card shows it. Real answer: { space: "harlow.vyre.run", label: "Harlow Legal", role, role_label,
+ * sees: { scope: [], expires }, valid_until, fingerprint, fingerprint_words, button }. The older object form of `space` is read too.
+ * @param {any} p @param {string} link
+ */
 export function inviteFrom(p, link) {
-  const sp = p?.space ?? {};
-  const label = String(sp.label ?? sp.name ?? sp.id ?? "");
-  const name = String(sp.displayName ?? label);
+  const sp = p?.space;
+  const addr = typeof sp === "string" ? sp : String(sp?.label ?? sp?.name ?? sp?.id ?? "");
+  const display = String(p?.label ?? sp?.displayName ?? (typeof sp === "string" ? sp.replace(/\.vyre\.run$/, "") : addr));
   const role = String(p?.role ?? "member");
-  const Role = role.charAt(0).toUpperCase() + role.slice(1);
+  const Role = String(p?.role_label ?? role.charAt(0).toUpperCase() + role.slice(1));
+  const scope = Array.isArray(p?.sees?.scope) ? p.sees.scope.map(String) : [];
+  const until = Number(p?.sees?.expires) || 0;
+  const sees = typeof p?.sees === "string" ? p.sees : scope.length ? `${scope.join(", ")}${until ? `, until ${new Date(until).toISOString().slice(0, 10)}` : ""}` : `What the ${Role} role sees in ${display}.`;
   return {
-    space: name, address: label ? (label.includes(".") ? label : `${label}.vyre.run`) : "", from: String(p?.from?.name ?? p?.issuer?.name ?? ""), role: Role, link,
-    roleLine: String(p?.role_line ?? ""), sees: String(p?.sees ?? ""), status: String(p?.status ?? "pending"),
+    space: display, address: addr ? (addr.includes(".") ? addr : `${addr}.vyre.run`) : "", from: String(p?.from?.name ?? p?.issuer?.name ?? ""), role: Role, link,
+    roleLine: String(p?.role_line ?? ""), sees, status: String(p?.status ?? "pending"), words: String(p?.fingerprint_words ?? ""),
   };
 }

@@ -36,4 +36,4 @@ export async function tool<T = unknown>(name: string, input: Record<string, unkn
 }
 
 /** The words to show for a failed call. */
-export const said = (e: unknown): string => (e instanceof BoxError ? (e.code === "offline" || /no JSON/i.test(e.message) ? "Cannot reach your server right now." : e.message) : "Something went wrong.");
+export const said = (e: unknown): string => (e instanceof Error && !(e instanceof BoxError) && typeof (e as { code?: unknown }).code === "string" ? e.message : e instanceof BoxError ? (e.code === "offline" || /no JSON/i.test(e.message) ? "Cannot reach your server right now." : /anonymous callers/i.test(e.message) ? "This browser is not signed in to your server yet. Pair it first." : e.message) : "Something went wrong.");

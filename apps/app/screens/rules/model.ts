@@ -59,7 +59,7 @@ export function refusedBy(x: unknown): string | null {
 /** The words for a refused rules call, from the kernel's code. */
 export function ruleRefusal(code: string | undefined, message: string): string {
   if (code === "not_allowed") return "Only an owner can do that.";
-  if (code === "presence_required") return "That needs you. Approve with Face ID or your fingerprint, then try again.";
+  if (code === "presence_required") return "That needs you. Approve on this device, then try again.";
   if (code === "not_found") return "That rule is already gone.";
   return message || "The rules did not answer.";
 }

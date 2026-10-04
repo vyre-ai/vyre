@@ -59,7 +59,7 @@ export default function RulesScreen() {
             {data.proposals.map((p, i) => (
               <View key={p.id}>{i ? <Divider /> : null}
                 <Row title={p.view} sub={`${proposer(p)} proposed this. It does nothing until an owner accepts it.`}
-                  end={owner ? <View className="flex-row gap-s2"><Button size="sm" kind="primary" label="Accept" onPress={busy ? () => {} : () => act(() => acceptReal(p.id), "Accepted. The rule is in force.")} /><Button size="sm" kind="ghost" label="Turn down" onPress={busy ? () => {} : () => act(() => dismissReal(p.id), "Turned down.")} /></View> : <Chip>Needs an owner</Chip>} />
+                  end={owner ? <View className="flex-row gap-s2"><Button size="sm" kind="primary" label="Accept" disabled={busy} onPress={() => act(() => acceptReal(p.id), "Accepted. The rule is in force.")} /><Button size="sm" kind="ghost" label="Turn down" disabled={busy} onPress={() => act(() => dismissReal(p.id), "Turned down.")} /></View> : <Chip>Needs an owner</Chip>} />
               </View>
             ))}
           </Card>
@@ -116,7 +116,7 @@ export default function RulesScreen() {
             ) : null}
             <Field label="Name" placeholder="Josh approves every calendar date" value={draft.label} onChangeText={(label) => set({ label })} />
             {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
-            <Button kind="primary" label={busy ? "Saving" : owner ? "Add the rule" : "Propose it"} onPress={busy ? () => {} : save} />
+            <Button kind="primary" label={busy ? "Saving" : owner ? "Add the rule" : "Propose it"} disabled={busy} onPress={save} />
           </View>
         ) : null}
       </Sheet>

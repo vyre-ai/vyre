@@ -40,7 +40,8 @@ export default function RealDrive() {
 
   const files = (
     <>
-      {status && !status.shares.length ? <Card><EmptyState title="No folders offered" body="This box has not offered a folder to the app yet." /></Card> : null}
+      {!status && !err ? <Card flush><EmptyState title="Loading" body="Asking your Vyre." /></Card> : null}
+      {status && !status.shares.length ? <Card><EmptyState title="No folders offered" body="Your home has not offered a folder to the app yet." /></Card> : null}
       {status && status.shares.length > 1 ? (
         <View className="flex-row flex-wrap gap-s2">
           {status.shares.map((s) => <Chip key={s.name} selected={share === s.name} onPress={() => { setShare(s.name); setPath(""); }}>{s.name}</Chip>)}
@@ -50,7 +51,7 @@ export default function RealDrive() {
         <View className="flex-row flex-wrap items-center gap-s1">
           {crumbs(share, path).map((c, i, all) => (
             <View key={c.path} className="flex-row items-center">
-              <Button kind="ghost" size="sm" label={c.name} onPress={i === all.length - 1 ? () => {} : () => setPath(c.path)} />
+              <Button kind="ghost" size="sm" label={c.name} disabled={i === all.length - 1} onPress={() => setPath(c.path)} />
               {i < all.length - 1 ? <Text tone="faint">/</Text> : null}
             </View>
           ))}

@@ -13,6 +13,7 @@ import * as config from "../config/index.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 import { assertIsolated, composeText } from "../../lib/publish/edge.js";
 import publishModule, { seams, buildctlArgs } from "./index.js";
+import { fakeKernelFor } from "../../test/fake-chain-kernel.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SPACE = { id: "spc_a1b2c3d4e5f6", name: "harlow.vyre.run" };
@@ -26,7 +27,7 @@ const fakeSource = `export default { async start(ctx) {
   const t = (name, run) => ctx.tool(name, { internal: true, input: { type: "object" }, run });
   const tools = ctx.name;
   if (tools === "spaces") {
-    t("spaces.self", async i => ({ space: pf().space, person: pf().actAs[i.caller] || pf().actAs["*"] }));
+    t("spaces.self", async i => i.person === "per_kernelowner" ? ({ space: pf().space, person: pf().actAs["*"] }) : ({ space: null, person: null }));
     t("spaces.membership", async i => pf().members[i.person] || null);
   } else if (tools === "vault") {
     t("vault.release", async i => { const v = pf().vault[i.name]; if (v === undefined) throw new Error("no such item"); return { value: v }; });
@@ -41,6 +42,8 @@ const fakeSource = `export default { async start(ctx) {
     t("builder.build", async i => pf().build(i));
   } else if (tools === "names") {
     t("names.owns", async i => ({ owns: pf().owns(i.host, i.space) }));
+  } else if (tools === "projects") {
+    t("projects.reach", async () => ({ all: true }));
   } else if (tools === "tasks") {
     t("tasks.create", async i => { pf().tasks.push(i); return { id: "tsk_" + pf().tasks.length }; });
   }
@@ -48,14 +51,14 @@ const fakeSource = `export default { async start(ctx) {
 } };`;
 
 const manifestOf = (/** @type {string} */ name, /** @type {string[]} */ tools) => ({ roles: ["box"], description: name, does: { tools: tools.map(n => ({ name: n, reach: "modules" })) } });
-const FAKE_TOOLS = { spaces: ["spaces.self", "spaces.membership"], vault: ["vault.release"], seal: ["seal.ledger.has"], builder: ["builder.build"], names: ["names.owns"], tasks: ["tasks.create"] };
+const FAKE_TOOLS = { projects: ["projects.reach"], spaces: ["spaces.self", "spaces.membership"], vault: ["vault.release"], seal: ["seal.ledger.has"], builder: ["builder.build"], names: ["names.owns"], tasks: ["tasks.create"] };
 
 /**
  * A real registry with publish and the chosen fakes. @param {any} t
  * @param {{ fakes?: string[] }} [o]
  */
 async function boxRegistry(t, o = {}) {
-  const fakes = o.fakes || ["spaces", "vault", "seal", "builder", "names"];
+  const fakes = o.fakes || ["spaces", "vault", "seal", "builder", "names", "projects"];
   const home = tempHome(t);
   const p = config.ensure(home);
   const extra = path.join(home, "fake-modules");
@@ -83,7 +86,7 @@ async function boxRegistry(t, o = {}) {
   const found = [...discover([path.dirname(HERE)]).filter(f => f.manifest && f.manifest.name === "publish"), ...discover([extra]).filter(f => f.manifest && fakes.includes(f.manifest.name))];
   const db = open(p.db);
   const events = new Events(db);
-  const reg = new Registry({ db, events, config: { role: "box", name: "testbox" }, paths: p, log: () => {} });
+  const reg = new Registry({ db, events, config: { role: "box", name: "testbox" }, paths: p, log: () => {}, kernelFor: fakeKernelFor });
   await reg.start(found, { role: "box" });
   t.after(async () => { await reg.stop(); db.close(); });
   for (const name of ["publish", ...fakes]) assert.equal(reg.modules.get(name)?.state, "running", `${name}: ${reg.modules.get(name)?.error}`);
@@ -206,9 +209,8 @@ test("publish: a model chain can create, preview and request, never decide, appr
   assert.equal(p.held, true, "a model's publish is a request");
   assert.equal((await b.call("publish.publish", { deployment: id, task: p.task }, juno)).error?.code, "needs_approval");
   assert.equal((await b.ok("publish.status", { deployment: id }, juno)).stage, "Approved");
-  // an automation in the chain is held the same way
-  const auto = await b.ok("publish.publish", { deployment: id }, "module:flow");
-  assert.equal(auto.held, true);
+  // a module's own service chain is no person's: it is refused, not held (BR-2: the person comes from the call's chain only)
+  assert.equal((await b.call("publish.publish", { deployment: id }, "module:flow")).error?.code, "forbidden");
   // a decision by a person publishes it
   assert.equal((await b.ok("publish.decide", { task: p.task, approve: true })).deployment.stage, "Production");
 });
@@ -363,7 +365,7 @@ test("publish: edge writes the compose project and Caddyfile with their modes, i
 
   const e = await b.ok("publish.edge", {});
   assert.equal(e.dir, b.publishRoot);
-  assert.deepEqual(e.files.map((/** @type {any} */ f) => [f.path, f.mode]), [["compose.yaml", "0644"], ["Caddyfile", "0644"], [`secrets/${id}/STRIPE_KEY`, "0600"]]);
+  assert.deepEqual(e.files.map((/** @type {any} */ f) => [f.path, f.mode]), [["compose.yaml", "0644"], ["Caddyfile", "0644"], ["caddy.Dockerfile", "0644"], ["join.html", "0644"], [`secrets/${id}/STRIPE_KEY`, "0600"]]);
   const mode = (/** @type {string} */ rel) => (fs.statSync(path.join(b.publishRoot, rel)).mode & 0o777).toString(8);
   assert.equal(mode("compose.yaml"), "644");
   assert.equal(mode("Caddyfile"), "644");
@@ -383,7 +385,8 @@ test("publish: edge writes the compose project and Caddyfile with their modes, i
 test("publish: nothing sensitive leaves in events or returned objects", async t => {
   const b = await boxRegistry(t);
   const id = (await b.ok("publish.create", DRAFT)).deployment.id;
-  const g = await b.ok("publish.secret.grant", { deployment: id, ref: "vault://harlow/stripe", name: "STRIPE_KEY", use: ["build", "runtime"] });
+  assert.equal((await b.call("publish.secret.grant", { deployment: id, ref: "vault://harlow/stripe", name: "STRIPE_KEY", use: ["build", "runtime"] })).error?.code, "isolation", "a static site takes no runtime secret");
+  const g = await b.ok("publish.secret.grant", { deployment: id, ref: "vault://harlow/stripe", name: "STRIPE_KEY", use: ["build"] });
   await b.ok("publish.decide", { task: g.task, approve: true });
   b.pf.build = async () => ({ digest: "sha256:" + "f".repeat(64), files: [{ path: "index.html", content: "<p>x</p>" }], logs: `building with ${STRIPE}` });
   const pv = await b.ok("publish.preview", { deployment: id });
@@ -442,4 +445,14 @@ test("publish: the module's tables and tools are its own", () => {
   const m = JSON.parse(fs.readFileSync(path.join(HERE, "module.json"), "utf8"));
   assert.ok(m.does.tools.every((/** @type {any} */ x) => x.name.startsWith("publish.")));
   assert.deepEqual(m.does.tools.filter((/** @type {any} */ x) => x.reach === "person").map((/** @type {any} */ x) => x.name).sort(), ["publish.decide", "publish.domain.remove", "publish.retire"]);
+});
+
+test("publish: a build that hands over a link, or a path that climbs out, is refused before anything is previewed (a symlink in a site would serve /etc/passwd or a dotfile)", async t => {
+  const b = await boxRegistry(t);
+  const id = (await b.ok("publish.create", DRAFT)).deployment.id;
+  for (const evil of [{ path: "p", type: "symlink", target: "/etc/passwd", content: "" }, { path: "e", symlink: ".env", content: "" }, { path: "../x", content: "x" }]) {
+    b.pf.build = async () => ({ digest: "sha256:" + "f".repeat(64), files: [{ path: "index.html", content: "<p>x</p>" }, evil], logs: "" });
+    assert.equal((await b.call("publish.preview", { deployment: id })).error?.code, "bad_output", JSON.stringify(evil));
+  }
+  assert.equal((await b.ok("publish.status", { deployment: id })).stage, "Draft");
 });
