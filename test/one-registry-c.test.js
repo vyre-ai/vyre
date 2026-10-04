@@ -216,3 +216,15 @@ test("spaces.owner.adopt (SO-1/SO-2): an added module, the terminal and an agent
   }
   assert.ok((await as("module:wink", "spaces.admin-list", { person: evil })).data, "the Wink module may read the list");
 });
+
+test("hosting and retiring a Space are events in the home's log: the first before anything is made, the last after the folder is gone", { timeout: 120_000 }, async t => {
+  process.env.VYRE_SEAL_DEV = "1"; process.env.VYRE_KERNEL_PATH_RULE = "1";
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {}, kernel: true });
+  t.after(() => d.stop());
+  const h = await d.kernel.spaces.host({ owner: d.kernel.id.owner, name: "evented" });
+  const types = () => d.kernel.log.read({ type: "space.*" }).map(e => `${e.type}:${e.data.space}`);
+  assert.deepEqual(types(), [`space.hosting:${h.space}`, `space.hosted:${h.space}`]);
+  assert.deepEqual(await d.kernel.spaces.retire(h.space), { retired: true });
+  assert.deepEqual(types(), [`space.hosting:${h.space}`, `space.hosted:${h.space}`, `space.retired:${h.space}`]);
+});

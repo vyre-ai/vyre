@@ -51,7 +51,7 @@ export function backOf(/** @type {string} */ step, /** @type {{ vps?: boolean }}
 
 // After the space has its home (the server is paired, or "On this computer" was chosen) setup carries on by itself on the device it started on:
 // look, members, connectors, the first Kit, then done (DESIGN-spaces-first.md, "The order, and where setup happens"). Nothing here asks the server anything.
-export const SETUP_STEPS = ["look", "members", "connectors", "kit"];
+export const SETUP_STEPS = ["look", "members", "ai", "connectors", "kit"];
 /** The step the flow moves to the moment the space has its home. */
 export const AFTER_HOME = "look";
 /** The step after this one, inside setup. */

@@ -12,6 +12,7 @@ import { parseWinkCode } from "../../src/api/wink-code";
 import { readProgress, writeProgress } from "../../src/state/setup-progress";
 import { wordsLine, type PairingSession } from "../../src/api/pairing-session";
 import { MOCK, said } from "../../src/real/box";
+import { ConnectClaude } from "../settings/ConnectClaude";
 import { clearJoin } from "../../src/shell/join-hold.js";
 import { acceptInvite, checkName, claimSetup, createIdentity, createSpace, kitChoices, listSpaces, previewInvite, proposeKitFor, readIdentity, resumeSpace, saveSetup } from "../../src/real/install";
 import { applyClaim, createInput, inviteFrom, nameNoteReal, pendingLines, nameStatusReal, savesAt, setupElsewhere, setupFrom } from "./real.js";
@@ -367,6 +368,16 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
             <Button kind="primary" label={inviteLine.trim() ? "Send the invite and continue" : "Continue"} onPress={() => { if (inviteLine.trim()) showToast(`Invite sent to ${inviteLine.trim()}.`); setInviteLine(""); advance("members"); }} />
             <Button kind="ghost" label="Later" onPress={() => advance("members")} />
           </> : <Button kind="primary" label="Continue" onPress={() => advance("members")} />}
+        </View>
+      </Page>
+    );
+  } else if (step === "ai") {
+    body = (
+      <Page title="Connect your AI accounts" sub="Your assistant works on your own AI account. Connect Claude now, or later from Settings.">
+        {MOCK ? <Card><Row dense title="Claude" sub="Connected with your Claude subscription" /></Card> : <ConnectClaude />}
+        <View className="flex-row gap-s2">
+          <Button kind="primary" label="Continue" onPress={() => advance("ai")} />
+          <Button kind="ghost" label="Later" onPress={() => advance("ai")} />
         </View>
       </Page>
     );
