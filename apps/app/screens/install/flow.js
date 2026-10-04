@@ -154,6 +154,7 @@ export function serverSay(e) {
   if (c === "unreachable") return SERVER_FAILED.unreachable;
   if (c === "cancelled") return SERVER_FAILED.cancelled;
   if (c === "cannot_check") return SERVER_FAILED.cannotCheck;
+  if (c === "no_session") return SERVER_FAILED.noSession;
   // A server the person does not own yet is untrusted: its words are never shown. A code this app does not know is a refusal, in our own sentence.
   if (c) return SERVER_FAILED.denied;
   if (KNOWN.has(m0)) return m0;

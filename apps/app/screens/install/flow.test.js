@@ -114,7 +114,7 @@ test("the identity refusals of a pairing say what happened and that nothing was 
 
 test("a pairing refusal is decided by its code, and a denied one shows the server's own words", async () => {
   const { serverSay, SERVER_FAILED } = await import("./flow.js");
-  for (const [code, key] of [["bad_code", "badCode"], ["bad_owner", "badOwner"], ["taken", "used"], ["busy", "busy"], ["expired", "expired"], ["unreachable", "unreachable"], ["cancelled", "cancelled"], ["cannot_check", "cannotCheck"]]) {
+  for (const [code, key] of [["bad_code", "badCode"], ["bad_owner", "badOwner"], ["taken", "used"], ["busy", "busy"], ["expired", "expired"], ["unreachable", "unreachable"], ["cancelled", "cancelled"], ["cannot_check", "cannotCheck"], ["no_session", "noSession"]]) {
     assert.equal(serverSay(Object.assign(new Error("x"), { code })), SERVER_FAILED[key], code);
   }
   assert.equal(serverSay(Object.assign(new Error("The app did not prove which Vyre identity it is"), { code: "denied" })), SERVER_FAILED.denied);
