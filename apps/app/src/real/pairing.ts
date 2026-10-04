@@ -133,6 +133,8 @@ async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticke
       const r = await run;
       await savePairing({ relay: r.relay, route: r.route, box: r.box, name: r.name, device: r.device, presence: null } as never);
       // The server made this device's one-use grant at the yes: sign in over the channel and keep the token, so the owner's next calls (spaces.create, Now) carry a person session.
+      // From now on this device reaches the server over the peer wire (src/real/peer.ts); the paired session is opened first, as the server asks.
+      (await import("./peer")).usePeer(true);
       await openPairedSession(r).catch((e: Error) => { throw new Error(`Paired, but this browser could not sign in to the server: ${e.message}`); });
       // The connection made while there was no pairing (the box check) is stale: drop it so the next call goes over the relay to this server.
       await disconnect();
