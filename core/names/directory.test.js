@@ -3,6 +3,7 @@
 // pointing, recovering and checking a domain through it. The directory is the real Worker
 // (names/worker) on the fake Workers runtime, over a fake Cloudflare DNS API. No network.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

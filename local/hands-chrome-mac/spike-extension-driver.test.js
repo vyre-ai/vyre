@@ -1,6 +1,7 @@
 // @ts-check
 // The bench adapter that drives the real extension: CSS selectors become identifiers, tab ids come
 // back in the bench's shape, and network capture starts when a tab is first used.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { ExtensionDriver, toSelector, toProtoSteps } from "./bench/extension-driver.mjs";

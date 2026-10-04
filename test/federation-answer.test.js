@@ -5,6 +5,7 @@
 // it against the key it pinned at pairing before it runs threads.answer as "link:box". Agents,
 // MCP, guests and modules never reach the Mac. The checks one by one: core/link/assert.test.js.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

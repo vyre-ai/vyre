@@ -1,6 +1,7 @@
 // @ts-check
 // The first-owner passkey at the person's own address (setup claim, tailnet's B4): the grant a claim link earns is sent as
 // the presence proof of presence.enroll, in the header the box's "grant" method reads, and nothing else rides along.
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 

@@ -4,6 +4,7 @@
 // shown, a name race, and that the private config folder is always removed, gh never sees the
 // person's own environment, and no token ever reaches a result, an event or a log line.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

@@ -3,6 +3,7 @@
 // child process against a real vyred in a temp home, a fake authorization server and a fake MCP
 // server. Never a real vendor, browser or terminal prompt.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 
 // Presets for fakes on this machine are honoured only under this switch (production reads the shipped catalog).

@@ -1,4 +1,5 @@
 // A software signer is a development-build thing: a release-kind build takes attested signers only (the same packaged-refusal rule as the development stand-in).
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

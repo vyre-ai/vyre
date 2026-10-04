@@ -2,6 +2,7 @@
 // net.*: the buffer, filters, bounded bodies, watch rate limit, Fetch rules (block, mock, headers),
 // rule ttl and cleanup, replay from inside the page, and redaction on every return path.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
 import net, { egressGuard, clearDenied, siteOf } from "./extension/caps/net.js";

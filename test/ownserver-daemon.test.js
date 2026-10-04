@@ -1,6 +1,7 @@
 // @ts-check
 // A session on the person's own server is sealed at every turn on a real daemon: the Switchboard says which transcript a finished turn belongs to, the runner seals it into the home's
 // checkpoint store as the owner's chain, and after a kill (a torn last line, an unfinished turn) `recover` puts the file back to exactly the last whole turn.
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -35,7 +36,8 @@ for (const ROLE of ["local", "box"]) test(`own-server session on a ${ROLE}: ever
   const r = await d.registry.call("threads.start", { cwd: work, prompt: "first", surface: "deck" }, "cli");
   assert.ok(r.data && r.data.id, JSON.stringify(r));
   await finished(r.data.id, 1);
-  await d.registry.call("threads.send", { thread: r.data.id, text: "second", surface: "deck" }, "cli");
+  const sent = await d.registry.call("threads.send", { thread: r.data.id, text: "second", surface: "deck" }, "cli");
+  assert.ok(sent && !sent.error, "threads.send: " + JSON.stringify(sent));
   await finished(r.data.id, 2);
   const host = (await import("../core/daemon/ownserver-host.js")).createOwnServerHost({ kernel: d.kernel, registry: d.registry, root, log: () => {} });
   const cp = await until(async () => { const c = await host.port(d.kernel.id.space).getCheckpoint(r.data.id).catch(() => null); return c && c.turn >= 2 ? c : null; }, `two sealed turns (${logs.filter(m => /runner|seal/i.test(m)).join(" | ")})`);

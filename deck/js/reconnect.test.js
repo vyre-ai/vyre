@@ -3,6 +3,7 @@
 // nothing on a blip, "Reconnecting" from attempt 4 (after the quick retries), "since" once at 60 s, gone
 // when the stream is open again, and the offline words while the device has no network.
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { reconnectPill, SINCE_AFTER } from "./reconnect.js";

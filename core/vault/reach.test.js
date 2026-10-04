@@ -7,6 +7,7 @@
 // so a refusal is the reach and not a missing tool. Only the door is tested here; each tool's own behaviour
 // has its own tests.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

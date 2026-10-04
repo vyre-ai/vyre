@@ -1,4 +1,5 @@
 // The golden allow file is generated, never hand-written: scripts/gen-allow.mjs builds it from core/modules/agent-reach.js (OPEN and ASK_FIRST) and the flows manifest.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

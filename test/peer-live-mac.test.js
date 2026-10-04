@@ -28,6 +28,7 @@
 // section 4: "vyre-core generates and holds its own code-signing key"). Flagged for the lead
 // rather than decided here.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

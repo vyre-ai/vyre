@@ -1,5 +1,6 @@
 // HD-6 (reviewer-2, group D): the click guard is an allow-list. A control is observable only when it is passive or named for moving, showing or selecting; everything else, an unreadable name
 // included, is consequential, so an agent cannot approve an OAuth screen by clicking "Authorize".
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as hc from "./consequence.js";

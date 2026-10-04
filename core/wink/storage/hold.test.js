@@ -1,5 +1,6 @@
 // @ts-check
 // The held connection on the real peer wire (peer-wire.js sessions over an in-memory pipe pair): the device opens, the home calls back down it.
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { peerSession } from "../node/peer-wire.js";

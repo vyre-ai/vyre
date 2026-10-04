@@ -2,6 +2,7 @@
 // vyre-core phase 5: the relay's keys live in core. The private halves never leave; the client gets
 // the public halves, the Noise DH and a route signature, and a model gets none of it.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

@@ -1,6 +1,7 @@
 // @ts-check
 // removeHome retries, and when a folder still will not go it names what is left (names only).
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

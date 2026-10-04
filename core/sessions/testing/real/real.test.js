@@ -4,6 +4,7 @@
 // {t, dir ("out" to the agent, "in" from it), msg}. Rendering and the driver are built and tested against these, not against a new real turn.
 // What is here is what exists: the handshake, a plain reply, a command outside the workspace, a Vyre MCP tool, a plan-and-edit turn.
 
+import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

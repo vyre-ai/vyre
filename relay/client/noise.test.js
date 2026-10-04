@@ -1,6 +1,7 @@
 // @ts-check
 // The client's Noise against the cacophony vector (the one core/relay/noise.test.js checks), through
 // WebCrypto and through the @noble-shaped factory fed by node:crypto, and its rekey against the box's.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import nodeCrypto from "node:crypto";

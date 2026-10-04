@@ -2,6 +2,7 @@
 // `vyre setup --name <n> --yes` against a REAL vyred and the REAL name directory code (names/worker, over the Workers test runtime and a
 // fake Cloudflare DNS, behind a plain HTTP server): the claim the setup page makes, with no browser. Boots daemons, so it runs on
 // runners and the test box only, never on a person's Mac: node --test test/setup-cli-names.test.js
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

@@ -4,6 +4,7 @@
 // module callers that register a Google service account, two Gmail-like MCP servers and an IMAP
 // account. Every value is made at run time; none may appear in any reply, event or log line.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

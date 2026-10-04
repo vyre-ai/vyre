@@ -1,0 +1,40 @@
+# Runs every test file alone with a time limit and lists the files that hang or fail, so a file that kept the
+# suite open without --test-force-exit is named. Manual (workflow_dispatch) and on the sweep branch only.
+name: test-sweep
+on:
+  push:
+    branches: ["work/test-integrity-sweep"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      VYRE_NO_DIALOGS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: each file alone, 120 s limit
+        run: |
+          node -e 'import("./scripts/test-counts.mjs").then(m=>console.log(m.GLOBS.join("\n")))' > globs.txt
+          : > files.txt
+          while read g; do node -e 'for (const f of require("node:fs").globSync(process.argv[1])) console.log(f)' "$g" >> files.txt; done < globs.txt
+          sort -u files.txt -o files.txt
+          wc -l files.txt
+          mkdir -p out
+          run_one() { f="$1"; o="out/$(echo "$f" | tr / _).txt"; s=$(date +%s); timeout 120 node --test --test-reporter=spec "$f" > "$o" 2>&1; rc=$?; echo "$rc $(( $(date +%s) - s ))s $f" >> results.txt; }
+          export -f run_one
+          : > results.txt
+          xargs -P 4 -I{} bash -c 'run_one {}' < files.txt || true
+          echo "--- hung (exit 124)"; grep '^124 ' results.txt || true
+          echo "--- failed"; grep -v '^0 \|^124 ' results.txt || true
+          echo "--- slowest"; sort -k2 -n -r results.txt | head -15
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: sweep, path: "results.txt\nout" }

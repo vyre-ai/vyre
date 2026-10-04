@@ -1,6 +1,7 @@
 // @ts-check
 // deck/chat/lib/opened-here.js: a route acts on load only when this page opened it, once.
 
+import "../../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { markOpened, openedHere } from "./opened-here.js";

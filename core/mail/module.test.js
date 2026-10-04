@@ -8,6 +8,7 @@
 // reaches SMTP or the web app before the Gate releases it; a missing credential says so; the
 // Capsule gets one row per account; no value ever comes back.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";

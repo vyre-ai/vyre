@@ -1,6 +1,7 @@
 // @ts-check
 // The inference door in front of sessions: the API-key chat driver calls door.call, a process driver has its prompt and its reports
 // sanitised, no door means no model call unless legacyDirect is on, and a refusal reads in plain words with no value in it.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { openrouterProvider, openrouterDoorDriver } from "./drivers/openrouter.js";

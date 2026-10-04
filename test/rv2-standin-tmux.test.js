@@ -1,5 +1,6 @@
 // reviewer-2 repro SI-1b against work/signin 4c8fc7093 (drop into test/): the stand-in allow-list is by program name and folder. A model under a claude can start its own tmux server
 // (`tmux new-session -d 'vyre call ...'`): the server is user-owned, daemonized (parent init, own group), runs from /usr/bin, and has no claude above it, so insideClaude names it a server.
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { insideClaude } from "../core/daemon/peer.js";

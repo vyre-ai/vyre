@@ -1,4 +1,5 @@
 // @ts-check
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { pickItems, pickPasses, pickPending, lastUsed, inPlace, mainField, whoWord, expiryWord } from "./model.js";

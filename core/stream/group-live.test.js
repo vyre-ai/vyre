@@ -3,6 +3,7 @@
 // assistants; a mention routes to one assistant, two people talking route to none, a fan-out to two
 // assistants gives two answer blocks, keep marks one, a stop and start in the middle of a fan-out
 // loses nothing and repeats nothing, a person's read marker reaches that person's other connection only.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";

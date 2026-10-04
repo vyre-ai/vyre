@@ -4,6 +4,7 @@
 // files and a manifest transform. This test builds the way a release does and proves it: every packaged file is byte-identical to its
 // source, no file the testing folder owns is in the package, and no test-only name or override appears in any packaged file.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

@@ -6,6 +6,7 @@
 // point a refusal or an unknown credential stops it; the call itself is request.test.js's.
 // Every value is a sample.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

@@ -1,4 +1,5 @@
 // @ts-check
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -371,7 +372,10 @@ test("KP-1: a passkey assertion must carry user verification, name this op, and 
 async function enclaveKey() {
   const { publicKey, privateKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   const pub = Buffer.from(publicKey.export({ format: "der", type: "spki" }).subarray(-65)).toString("base64url");
-  return { pub, esign: m => crypto.sign("sha256", Buffer.from(m), { key: privateKey, dsaEncoding: "ieee-p1363" }), esignDer: m => crypto.sign("sha256", Buffer.from(m), privateKey) };
+  const low = raw => { const n = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n; let s = 0n; for (let i = 32; i < 64; i++) s = (s << 8n) | BigInt(raw[i]); if (s > n / 2n) { s = n - s; for (let i = 63; i >= 32; i--) { raw[i] = Number(s & 255n); s >>= 8n; } } return raw; };
+  const high = raw => { const n = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n; let s = 0n; for (let i = 32; i < 64; i++) s = (s << 8n) | BigInt(raw[i]); if (s <= n / 2n) { s = n - s; for (let i = 63; i >= 32; i--) { raw[i] = Number(s & 255n); s >>= 8n; } } return raw; };
+  const rawSig = m => crypto.sign("sha256", Buffer.from(m), { key: privateKey, dsaEncoding: "ieee-p1363" });
+  return { pub, esign: m => low(Buffer.from(rawSig(m))), esignHigh: m => high(Buffer.from(rawSig(m))), esignDer: m => crypto.sign("sha256", Buffer.from(m), privateKey) };
 }
 const phoneEntry = (k, enc) => ({ ...k.entry("device"), enclave: enc.pub });
 
@@ -389,7 +393,9 @@ test("NK-2: the phone's seed alone cannot add, remove or replace-code; the seed 
   // the seed plus the right enclave signature, raw or DER
   const added = await withEsig({ type: "add", entry: code.entry("code") }, enc.esign);
   assert.ok(added.entries.some(e => e.eid === code.eid));
-  assert.ok((await withEsig({ type: "add", entry: mac.entry("device") }, enc.esignDer)).entries.some(e => e.eid === mac.eid), "a DER esig is read too");
+  // one op, one hash: the DER form and the high-s twin of the same signature are refused, not accepted as second valid ops
+  await assert.rejects(withEsig({ type: "add", entry: mac.entry("device") }, enc.esignDer), e => e.code === "needs_enclave");
+  await assert.rejects(withEsig({ type: "add", entry: mac.entry("device") }, enc.esignHigh), e => e.code === "needs_enclave");
   // another key's esig, and an esig made for another op
   await assert.rejects(withEsig({ type: "add", entry: thief.entry("device") }, other.esign), e => e.code === "needs_enclave");
   const forOther = await C.makeOp(w.state, { type: "add", entry: mac.entry("device") }, { by: phone.eid, ts: later, sign: phone.sign, esign: enc.esign });
@@ -410,4 +416,25 @@ test("NK-2: a device with no enclave key and no web hold (a Mac or a server) sti
   let w = await person(mac);
   w = await step(w, { type: "add", entry: friend.entry("device") }, mac, T0 + 30 * H);
   assert.ok(w.state.entries.some(e => e.eid === friend.eid));
+});
+
+test("NE-1: a passkey op's head does not depend on the assertion's signature bytes; an esig has one canonical form, so one op has one hash", async () => {
+  const pk = await passkey("alex's passkey"), friend = await key("friend");
+  const w = await person(pk);
+  const op = await C.makeOp(w.state, { type: "add", entry: friend.entry("device") }, { by: pk.eid, ts: T0 + 25 * H, sign: pk.sign });
+  // the high-s twin of the authenticator's signature: anyone can make it, and it verifies, so the head must not change with it
+  const env = JSON.parse(Buffer.from(op.sig, "base64url").toString());
+  const der = Buffer.from(env.s, "base64url");
+  const rLen = der[3], sOff = 4 + rLen + 2, sLen = der[4 + rLen + 1];
+  const n = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n;
+  let s = 0n; for (const b of der.subarray(sOff, sOff + sLen)) s = (s << 8n) | BigInt(b);
+  const twin = n - s;
+  const hex = twin.toString(16).padStart(64, "0");
+  let sb = Buffer.from(hex, "hex"); if (sb[0] & 0x80) sb = Buffer.concat([Buffer.from([0]), sb]);
+  const r = der.subarray(4, 4 + rLen);
+  const body = Buffer.concat([Buffer.from([2, r.length]), r, Buffer.from([2, sb.length]), sb]);
+  const twinDer = Buffer.concat([Buffer.from([0x30, body.length]), body]);
+  const twinOp = { ...op, sig: C.b64u(Buffer.from(JSON.stringify({ ...env, s: twinDer.toString("base64url") }))) };
+  const a = await C.applyOp(w.state, op, { now: T0 + 25 * H }), b = await C.applyOp(w.state, twinOp, { now: T0 + 25 * H });
+  assert.equal(a.head, b.head, "both forms are valid and give the same head");
 });

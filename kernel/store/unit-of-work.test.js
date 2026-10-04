@@ -1,5 +1,6 @@
 // A record write and its event commit together or not at all (one transaction, one fsync): a kill between what used to be two commits leaves neither, an event the database refuses takes the
 // record with it and memory agrees with the disk, and a write that was acknowledged survives a kill.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

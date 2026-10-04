@@ -3,6 +3,7 @@
 // VYRE_SETUP_CODE into vyre.env, compose hands that file to the container as its environment, and
 // the relay module reads the same name at boot (reviewer-2, 30 Sep: the two once disagreed, so
 // setup never started). The script arrives with launch's branch; until then this skips.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

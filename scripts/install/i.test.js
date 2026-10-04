@@ -1,6 +1,7 @@
 // @ts-check
 // scripts/install/i.sh with a fake `vyre` command and a fake release installer: no network, no Docker, a temp folder.
 
+import "../mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

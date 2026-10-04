@@ -1,4 +1,5 @@
 // A session on the person's own server: sealed at every turn into the checkpoint store, and put back to the last whole turn after a crash.
+import "../../scripts/mac-test-guard.mjs";
 import "./testing/hosted-guard.js";
 import test from "node:test";
 import assert from "node:assert/strict";

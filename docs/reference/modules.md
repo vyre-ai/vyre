@@ -56,7 +56,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`network`](#network) | `core/network` | `box` | 13 | 4 | capsule, cli, deck |
 | [`onboard`](#onboard) | `core/onboard` | `box`, `local` | 14 | 2 | none |
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 15 | 7 | capsule, cli, deck |
-| [`presence`](#presence) | `core/presence` | `box`, `local` | 18 | 6 | capsule, cli, deck |
+| [`presence`](#presence) | `core/presence` | `box`, `local` | 19 | 6 | capsule, cli, deck |
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 22 | 5 | cli |
 | [`providers`](#providers) | `core/providers` | `box`, `local` | 1 | 0 | cli |
 | [`publish`](#publish) | `core/publish` | `box` | 17 | 6 | capsule, cli, deck |
@@ -92,7 +92,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 20 | 7 | capsule, cli, deck |
-| [`wink`](#wink) | `core/wink` | `box` | 53 | 33 | capsule, cli, deck |
+| [`wink`](#wink) | `core/wink` | `box` | 55 | 33 | capsule, cli, deck |
 | [`work`](#work) | `core/work` | `box`, `local` | 15 | 0 | cli |
 
 ## about
@@ -541,7 +541,7 @@ Alarms, timers, reminders, todos, notes and a calendar, kept on the box so somet
 - Folder: `core/presence`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [18](tools.md#presence), 4 of them only for other modules
+- Tools: [19](tools.md#presence), 4 of them only for other modules
 - Emits: [6 events](events.md#presence)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -960,7 +960,7 @@ Pairing as grants: every way in is a Wink (scan a code, or type two-sided codes)
 - Folder: `core/wink`, version 0.1.0
 - Runs on: `box`
 - Requires: `relay`
-- Tools: [53](tools.md#wink), 5 of them only for other modules
+- Tools: [55](tools.md#wink), 6 of them only for other modules
 - Emits: [33 events](events.md#wink)
 - Listens for: `relay.code-asked`, `relay.invite-redeemed`, `device.paired`, `device.removed`
 - Shows on: capsule, cli, deck

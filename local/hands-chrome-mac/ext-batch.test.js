@@ -1,6 +1,7 @@
 // @ts-check
 // batch.run: ordered steps inside the worker, no host round trip, halting on stop, floor, failure
 // and hold, with "$0.path" references.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createCtx } from "./extension/lib/ctx.js";

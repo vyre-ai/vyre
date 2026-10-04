@@ -1,5 +1,6 @@
 // @ts-check
 // vyre wink reset: needs a terminal, shows the one-time code on that terminal only, sends the daemon a hash and never the code on begin.
+import "../../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { run } from "./wink.js";

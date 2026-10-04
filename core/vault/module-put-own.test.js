@@ -3,6 +3,7 @@
 // module:sessions and its ai-key-* items (0.2.2 #20), in a real vyred: the refusal says "was not made by sessions", and the person's item,
 // its grants and its value are unchanged afterwards. Origin is stamped by vyred from the caller, never taken from the input.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
