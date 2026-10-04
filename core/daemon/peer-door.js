@@ -4,6 +4,8 @@
 //   kernel.call   a kernel call for a Space this home hosts (kernel/remote/wink.js withKernelCall: the transport proved the device, this door says which person), run by the Space's own remote server
 //   any tool      a registry tool, run as the device the relay proved, with the facts the daemon's own `callerFacts` builds (the same as that device's HTTP call); the owner's presence proof, if the
 //                 call has one, rides in `input.proof` and goes to the kernel as `meta.kernel_proof`, never into the tool's input
+// The Noise channel proves the device, which is why a live paired session of that device stands in for the bearer token and signed request a person session otherwise needs (`sessionOf`); a device with
+// no live session, or an expired or signed-out one, is its own caller with no person. `allow` is only the id's shape: the real gate is `rowOf`, asked in `accept`'s serve on every call.
 // The device's row is asked of the relay on EVERY call, so a device removed after the stream opened is refused at its next call and its stream closes. Nothing here caches who a device is.
 import { peerSession, streamPipe } from "../wink/node/peer-wire.js";
 import { createRemoteServer } from "../../kernel/remote/server.js";
@@ -60,7 +62,7 @@ export function createPeerDoor(o) {
       const caller = `device:${id}`;
       /** @type {any} */ let session = null;
       session = peerSession(streamPipe(stream), { first: 2, serve: async (/** @type {string} */ tool, /** @type {any} */ input) => {
-        if (!DEVICE.test(id) || !(await rowOf(id))) { try { session.close("device removed"); } catch { /* closed */ } throw err("denied", "this device is not paired here any more"); }
+        if (!DEVICE.test(id) || !(await rowOf(id))) { { const t = setTimeout(() => { try { session.close("device removed"); } catch { /* closed */ } }, 200); if (t.unref) t.unref(); } throw err("denied", "this device is not paired here any more"); }
         return dispatch(caller, tool, input);
       } });
       log(`peer door: ${caller} opened a peer stream`);
