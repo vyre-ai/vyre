@@ -247,7 +247,8 @@ async function pairedOnKernel(t, { confirmWithRealKey = false } = {}, shared = n
   const sessionId = started.body.data.id, label = `device:${paired.device}`;
   const read = async (via = { person: { id: sessionId } }) => {
     const info = await w.d.registry.call("relay.device.info", { id: paired.device }, "module:vyred");
-    const facts = callerFacts(label, { caller: label }, via, w.d.kernel, false, info.data || null);
+    const rec = await w.d.registry.call("wink.device.record", { id: paired.device }, "module:vyred");
+    const facts = callerFacts(label, { caller: label }, via, w.d.kernel, false, info.data ? { ...info.data, person: rec.data ? rec.data.owner : null } : null);
     return w.d.registry.call("memory.graph", {}, label, { ...via, ...(facts ? { kernelFacts: facts } : {}) });
   };
   assert.ok(!(await read()).error, "the paired session reads memory with no prompt");
