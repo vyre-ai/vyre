@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":342,"tool":1189,"event":454,"config":254,"env":244,"screen":20,"concept":43},
+  "counts": {"command":342,"tool":1191,"event":454,"config":254,"env":244,"screen":20,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -1364,6 +1364,7 @@
     {"kind":"tool","name":"spaces.move.plan","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesmoveplan","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.owner.adopt","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesowneradopt","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.people","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacespeople","module":"spaces","mentions":[]},
+    {"kind":"tool","name":"spaces.person.learn","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacespersonlearn","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.presence.begin","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacespresencebegin","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.presence.recover","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacespresencerecover","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.presence.sync","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacespresencesync","module":"spaces","mentions":[]},
@@ -2507,6 +2508,7 @@
     {"kind":"event","name":"wink.server-released","definedIn":"core/wink/pairing.js","page":"reference/events.md#wink","module":"wink","mentions":[]},
     {"kind":"event","name":"wink.server-reset","definedIn":"core/wink/reset.js","page":"reference/events.md#wink","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.server.adopt","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkserveradopt","module":"wink","mentions":[]},
+    {"kind":"tool","name":"wink.server.channel","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkserverchannel","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.server.code","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkservercode","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.server.confirm","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkserverconfirm","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.server.handover","definedIn":"core/wink/compose.js","page":"reference/tools.md#winkserverhandover","module":"wink","mentions":[]},
