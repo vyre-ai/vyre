@@ -30,7 +30,7 @@ import { register as registerSite } from "./site.js";
 import { createKernelGate } from "./kernel-gate.js";
 import { whoStore, current as whoNow } from "./who.js";
 import { mergeSpace, spaceHits, spaceOnlyAnswer } from "./iq/space.js";
-import { scanRows } from "./sealed.js";
+import { scanRows, ledgerScan } from "./sealed.js";
 import { writeStore, register as registerWrites, passages as writePassages, relevantLines, quoted as quotedWrite } from "./write.js";
 
 /** How long to wait after a session.indexed event before curating, so a burst of turns is one pass. */
@@ -1497,8 +1497,18 @@ export default {
     });
     ctx.tool("memory.sealscan", {
       description: "One look at what memory already holds that has the shape of a sealed value (an SSN, a card or bank number, an IBAN and the rest): which table and column, how many rows and which classes, never a value. It changes nothing; the person decides what to do. From now on such values are scrubbed on the way in.",
-      input: { type: "object", properties: {} },
-      run: async () => ({ found: scanRows(ctx.store.db), note: "Counts only. Nothing was changed. Matching a value that is sealed in a record today needs the sealing process's ledger, which memory does not hold." }),
+      input: { type: "object", properties: { ledger: { type: "boolean" }, max: { type: "integer", minimum: 1, maximum: 100 } } },
+      run: async ({ ledger, max } = {}, extra = {}) => {
+        const found = scanRows(ctx.store.db);
+        if (ledger !== true) return { found, note: "Counts only. Nothing was changed. Pass ledger: true to also ask the sealing process about candidate values, a few at a time." };
+        const k = ctx.kernel;
+        if (!k || typeof k.sealDetect !== "function") return { found, ledger: { available: false }, note: "Counts only. The sealing process is not reachable from here, so only the shape scan ran." };
+        // The chain is the asking person's own; a call with no person chain gets the shape scan only.
+        const chain = await k.chain(extra || {}).catch(() => null);
+        if (!chain || !chain.hops || chain.hops.some((/** @type {any} */ h) => h.actor.kind === "service" || h.actor.kind === "agent")) return { found, ledger: { available: false }, note: "Counts only. The ledger match runs for the person themselves." };
+        const l = await ledgerScan(ctx.store.db, async v => (await k.sealDetect(chain, v)).match, { max });
+        return { found, ledger: { available: true, ...l }, note: "Counts only. Nothing was changed. A candidate is asked once a minute at most five times; run it again to go on." };
+      },
     });
     ctx.tool("memory.stats", {
       description: "How much memory holds: nodes, edges, facts, evidence, by kind and role, and the last curator run.",

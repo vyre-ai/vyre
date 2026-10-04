@@ -128,6 +128,19 @@ export async function createKernel(cfg) {
         return Object.freeze({ member: role !== null, role });
       } } : {}),
       /**
+       * Only for a first-party module that declares `needs.kernel.sealDetect: true` (memory, recall): is this ONE candidate the current value of a sealed field the chain's person may read.
+       * Yes or no and nothing else; the sealing process counts and limits the calls per module and Space. The module name comes from the registry (`m.name`), never from the call, and
+       * a record the chain may not read counts for nothing. Each answer is one owner-visible event naming the module and the count, never the candidate.
+       * @param {any} chain the caller's chain (`chain(meta)`) @param {string} value
+       */
+      ...(needs.sealDetect === true && cfg.sealer && typeof cfg.sealer.detectValue === "function" ? { sealDetect: async (/** @type {any} */ chain, /** @type {string} */ value) => {
+        await ready;
+        const r = await cfg.sealer.detectValue({ chain, caller: { module: m.name, first_party: true }, value,
+          canRead: async (/** @type {string} */ resource) => { try { return (await gateway.authorize({ chain, action: "records.read", resource })).effect === "allow"; } catch { return false; } } });
+        try { log.append(gateway.serviceChain(m.name), { type: "seal.detect", sv: 1, subject: `vyre://${cfg.space}/module/${m.name}`, data: { module: m.name, count: r.event ? r.event.count : null }, vis: "owner", red: "internal" }); } catch { /* the answer stands; a log that cannot be written says so on the next write */ }
+        return Object.freeze({ match: r.match === true });
+      } } : {}),
+      /**
        * Only for a first-party module that declares `needs.kernel.spaces: true` (the module that creates Spaces): what a Space made here would be stored in (`storePlan`, with the confirmation to
        * show BEFORE it is made) and starting to host one (`host({ owner, name, accept_builtin_store })` -> `{ space }`, the kernel's own `spc_` plus 12 base32 id). The Space's first owner is the
        * person id named; nothing here lists or reaches another Space (`for` and `chainIn` do that, under a chain).
