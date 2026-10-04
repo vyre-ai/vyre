@@ -154,6 +154,26 @@ export default {
       },
     });
 
+    /**
+     * Did the person type this prompt? The session's own transcript, read fresh through Recall (a module may ask for it), has as its LAST user line exactly this text. Not found,
+     * unreadable or different: no.
+     * @param {string} session @param {string} prompt
+     */
+    const typedByPerson = async (session, prompt) => {
+      try {
+        const t = await ask("recall.transcript", { session, limit: 8 });
+        const blocks = t && Array.isArray(t.blocks) ? t.blocks : [];
+        for (let i = blocks.length - 1; i >= 0; i--) {
+          const b = blocks[i];
+          const kind = String(b.kind || b.type || b.role || "");
+          if (kind !== "user") continue;
+          const text = typeof b.text === "string" ? b.text : typeof b.content === "string" ? b.content : null;
+          return text !== null && text.trim() === prompt.trim() && prompt.trim() !== "";
+        }
+      } catch { /* unreadable: no */ }
+      return false;
+    };
+
     ctx.tool("harness.enrich", {
       description: "UserPromptSubmit: memory relevant to this prompt, marked as memory with its source. Empty when nothing is relevant.",
       input: { type: "object", required: ["prompt"], properties: { prompt: { type: "string" }, cwd: { type: "string" }, session: { type: "string" }, prompt_id: { type: "string" }, agent: { type: "string" }, projects: { type: "string" },
@@ -164,12 +184,21 @@ export default {
         // Every prompt starts a turn for Learning, slash commands included; it may also be a correction.
         // interactive: the hook saw a person's Claude Code (a terminal, no -p); only then may a
         // plain yes or no answer a lesson. An agent's thread never is.
-        // HD-4: `interactive` is a claim in the input, so it counts for nothing by itself. It is believed only from the hook's own label (`harness`, never `mcp`), with no Vyre
-        // thread behind the call (a thread is a program's session), and for a session Vyre does not hold as a headless thread.
+        // HD-4: `interactive` is a claim in the input, so it counts for nothing by itself. A bare yes or no answers a lesson only when (1) the PERSON is behind the call and (2) the session's
+        // own transcript, the line Claude Code wrote, says they typed exactly this prompt. (1) With the kernel on is the call's chain: exactly one person, no agent, no viewer or
+        // delegated hop, no Vyre thread. A caller label is no evidence either way. SHIM(legacy labels): with the kernel off, (1) is the hook's own label `harness` with no Vyre thread
+        // behind it, which is all a 0.2 daemon knows. (2) is what a model sharing a person's terminal cannot forge. Otherwise the answer needs learn.accept (the person's own).
         let terminal = false;
-        if (interactive === true && !agent && session && String(caller || "") === "harness" && !(typeof meta.thread === "string" && meta.thread)) {
-          const claimed = await ask("threads.claimed", { session: String(session) });
-          terminal = !(claimed && claimed.headless);
+        if (interactive === true && !agent && session && !(typeof meta.thread === "string" && meta.thread)) {
+          let person = false;
+          if (ctx.kernel && typeof ctx.kernel.chain === "function") {
+            const c = await ctx.kernel.chain({ ...meta, caller }).catch(() => null);
+            person = Boolean(c && Array.isArray(c.hops) && c.hops.length === 1 && c.hops[0].actor && c.hops[0].actor.kind === "person" && c.viewer !== true && c.delegated !== true && !c.room);
+          } else person = String(caller || "") === "harness"; // SHIM(legacy labels): the kernel-off build
+          if (person) {
+            const claimed = await ask("threads.claimed", { session: String(session) });
+            if (!(claimed && claimed.headless)) terminal = await typedByPerson(String(session), prompt);
+          }
         }
         const learned = session ? await ask("learn.signal", { session, prompt_id, prompt, cwd, agent, interactive: terminal }) : null;
         const lessons = learned && typeof learned.text === "string" ? learned.text : "";
