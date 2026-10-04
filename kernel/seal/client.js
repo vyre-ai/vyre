@@ -14,8 +14,8 @@ const PROCESS = path.join(path.dirname(fileURLToPath(import.meta.url)), "process
 export class SealError extends Error { constructor(code) { super(code); this.code = code; } }
 
 /** @param {{ dir: string, sinks?: Record<string,string>, timeoutMs?: number, execPath?: string }} o */
-export function startSealer({ dir, sinks = {}, timeoutMs = 20_000, execPath = process.execPath, profile, dev = false, unattested = false, verifiers = null }) {
-  const env = { VYRE_SEAL_DIR: dir, VYRE_SEAL_SINKS: JSON.stringify(sinks), PATH: process.env.PATH || "", ...(profile ? { VYRE_SEAL_PROFILE: profile } : {}), ...(dev ? { VYRE_SEAL_DEV: "1" } : {}), ...(unattested ? { VYRE_SEAL_UNATTESTED: "1" } : {}), ...(verifiers ? { VYRE_SEAL_VERIFIERS: verifiers } : {}), ...(process.env.VYRE_AGENT_UIDS ? { VYRE_AGENT_UIDS: process.env.VYRE_AGENT_UIDS } : {}) };
+export function startSealer({ dir, sinks = {}, timeoutMs = 20_000, execPath = process.execPath, profile, dev = false, unattested = false, software = false, verifiers = null }) {
+  const env = { VYRE_SEAL_DIR: dir, VYRE_SEAL_SINKS: JSON.stringify(sinks), PATH: process.env.PATH || "", ...(profile ? { VYRE_SEAL_PROFILE: profile } : {}), ...(dev ? { VYRE_SEAL_DEV: "1" } : {}), ...(unattested ? { VYRE_SEAL_UNATTESTED: "1" } : {}), ...(software ? { VYRE_SEAL_SOFTWARE: "1" } : {}), ...(verifiers ? { VYRE_SEAL_VERIFIERS: verifiers } : {}), ...(process.env.VYRE_AGENT_UIDS ? { VYRE_AGENT_UIDS: process.env.VYRE_AGENT_UIDS } : {}) };
   const child = spawn(execPath, [PROCESS], { stdio: ["pipe", "pipe", "inherit"], env });
   const pending = new Map(); let n = 0, closed = false;
   readline.createInterface({ input: child.stdout }).on("line", line => {
@@ -70,6 +70,8 @@ export function startSealer({ dir, sinks = {}, timeoutMs = 20_000, execPath = pr
     recover: i => withCtx("presence.recover", i, { person: i.person, ops: i.ops, bind: i.bind, key_id: i.key_id, spki: i.spki, signer: i.signer, token: i.token, attestation: i.attestation }),
     revoke: i => withCtx("presence.revoke", i, { key_id: i.key_id, proof: i.proof }),
     /** Does this proof stand for this kernel act (a task op) by the one person in the chain? Uses the proof up. Resolves null when it stands, else the reason. */
+    /** Like presenceCheck, and says how the proof was made: { ok: true, method: "attested" | "unattested" | "software" } or { ok: false, code }. */
+    presenceProve: i => withCtx("presence.check", i, { act: i.op, fields: i.fields, proof: i.proof }).then(r => ({ ok: true, method: r.method }), e => ({ ok: false, code: e instanceof SealError ? e.code : "failed" })),
     presenceCheck: i => withCtx("presence.check", i, { act: i.op, fields: i.fields, proof: i.proof }).then(() => null, e => (e instanceof SealError ? e.code : "failed")),
     /** The Space's checkpoint key, held in the sealing process: its public half, and a signature over a checkpoint of this Space (nothing else is signed). */
     spaceKey: { pub: i => withCtx("spacekey.pub", i), sign: i => withCtx("spacekey.sign", i, { bytes: Buffer.from(i.bytes).toString("base64") }) },
