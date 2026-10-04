@@ -1550,13 +1550,13 @@ test("the pairing path adopts for real: after the pick the SERVER's home owner i
 
 test("an invitee's session opens the stream with the signed hello in its head and only for that route; a new hello replaces the old link", async t => {
   const heads = [], closed = [];
-  const connect = o => ({ ready: async () => ({ open: head => { heads.push({ route: o.route, head }); return { reset() {}, set onhead(f) { f({ status: 403 }); } }; } }), close: () => closed.push(o.route), reply: {} });
+  const connect = o => ({ ready: async () => ({ open: head => { heads.push({ route: o.route, invitee: o.invitee === true, head }); return { reset() {}, set onhead(f) { f({ status: 403 }); } }; } }), close: () => closed.push(o.route), reply: {} });
   const links = createServerLinks({ connect, options: {}, name: "Kit's phone", channelOf: () => null });
   t.after(() => links.close());
   const ch = { relay: "https://relay.example", route: "rt-harlow", box: "bx-harlow" };
   const hello = { space: "spc_aaaaaaaaaaaa", invite: "inv_" + "a".repeat(32), identity: "per_kit", entry: "e1", ts: 1, nonce: "n1", sig: "s1" };
   await assert.rejects(() => links.inviteeSessionFor(ch, hello).call("grants.invites.get", {}), e => e.code === "denied");
-  assert.deepEqual(heads[0], { route: "rt-harlow", head: { peer: "wink", space: "home", invitee: hello } });
+  assert.deepEqual(heads[0], { route: "rt-harlow", invitee: true, head: { peer: "wink", space: "home", invitee: hello } }, "the channel hello says invitee (the relay client sends { v: 1, invitee: true })");
   // a second hello for the same invite closes the first link and opens a new one with the new hello
   await assert.rejects(() => links.inviteeSessionFor(ch, { ...hello, nonce: "n2", sig: "s2" }).call("grants.invites.get", {}), e => e.code === "denied");
   assert.equal(heads[1].head.invitee.nonce, "n2");
@@ -1586,6 +1586,22 @@ test("a box-less client makes its first space on a paired server: the server hos
   assert.ok(r.ok, JSON.stringify(r));
   assert.deepEqual([r.kind, r.payload.id, r.payload.ownerName, r.payload.home.kind], ["space", made.space, "alex", "server"]);
   assert.deepEqual(r.payload.route, ROUTE);
+  assert.equal(r.payload.rootPublic, made.rootPublic, "the record carries the server's key");
+  assert.ok(fs.existsSync(path.join(f.w.d.paths.root, "spaces", made.space, "root.key")), "the server holds the key, not the device");
+  // the server proves it: it signs a nonce with that key (spaces.attest, answered inside the invite preview)
+  const att = (await f.w.d.registry.call("spaces.attest", { space: made.space, nonce: "n".repeat(22) }, "module:vyred")).data;
+  assert.equal(att.pub, made.rootPublic);
+  assert.equal(crypto.verify(null, Buffer.from(`vyre-space-attest-v1\n${made.space}\n${"n".repeat(22)}`), crypto.createPublicKey({ key: Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), Buffer.from(att.pub, "base64url")]), format: "der", type: "spki" }), Buffer.from(att.sig, "base64url")), true);
+  assert.equal((await f.w.d.registry.call("spaces.attest", { space: made.space, nonce: "n".repeat(22) }, "cli")).error?.code !== undefined, true, "a person or a model cannot ask a server to sign for a space");
+  // NO authority derives from this key: a token the key signed for an invite the kernel never issued is refused by the server's redeem, and the kernel itself has no such invite
+  const { privateKeyOf } = await import("../core/spaces/identity.js");
+  const serverKey = privateKeyOf(fs.readFileSync(path.join(f.w.d.paths.root, "spaces", made.space, "root.key"), "utf8").trim());
+  const payload = Buffer.from(JSON.stringify({ id: "inv_" + "0".repeat(32), space: "harlow.vyre.run", sid: made.space, role: "owner" })).toString("base64url");
+  const forged = `${payload}.${crypto.sign(null, Buffer.from(payload), serverKey).toString("base64url")}`;
+  const redeemed = await f.w.d.registry.call("spaces.invites.redeem", { token: forged, person: { id: "per_" + "z".repeat(26) }, proof: "x" }, "tailnet");
+  assert.ok(redeemed.error, "a token signed by the space's server key is not an invite");
+  const hosted = f.w.d.kernel.spaces.hosted(made.space);
+  await assert.rejects(() => hosted.gateway.grants.invites.get(hosted.kernel.chains.fromFacts({ kind: "invitee", person: "per_" + "z".repeat(26), vouched: true }), "inv_" + "0".repeat(32)), e => e.code === "not_found");
   // a refused host call claims nothing in the directory
   await assert.rejects(() => claimServerSpace({ identity, name: "nopeproof", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (spacesHooks.fetch), now: () => f.ident.clock.t, host: a => session.call("spaces.host-here", a) }), e => e.code === "presence_required");
   assert.equal((await dir.check("nopeproof")).status, "ok");
@@ -1743,4 +1759,22 @@ test("the three-strikes count is in the store too: two wrong answers, a restart,
   await call(d2, "presence.person.pair-challenge", {});
   await call(d2, "presence.person.start-paired", { sig: "AAAA" });
   assert.ok((await d2.registry.call("presence.person.locked", {}, "cli", PROOF)).data.locked.some(l => l.device === id), "the count survived the restart: the third wrong answer locks");
+});
+
+test("an invitee link pointed at a box whose key is not the record's route.box sends no hello and answers with a plain refusal", async t => {
+  const f = await pairFreshServer(t);
+  const ch = { relay: f.w.status.url, route: f.done.route, box: Buffer.alloc(32, 5).toString("base64url") };
+  const hello = { space: "spc_" + "a".repeat(12), invite: "inv_" + "b".repeat(32), identity: "per_" + "c".repeat(26), entry: "d".repeat(26), ts: Date.now(), nonce: "n".repeat(22), sig: "s".repeat(86) };
+  const heads = [];
+  const spy = o => { const c = connect(o); const ready = c.ready.bind(c); c.ready = async () => { const chan = await ready(); const open = chan.open.bind(chan); chan.open = h => { heads.push(h); return open(h); }; return chan; }; return c; };
+  const links = createServerLinks({ connect: spy, options: { crypto: nodeCrypto(), keyStore: f.ks }, name: "Kit's phone", openMs: 4000, channelOf: () => null });
+  t.after(() => links.close());
+  await assert.rejects(() => links.inviteeSessionFor(ch, hello).call("grants.invites.get", {}), e => e.code === "unreachable");
+  assert.deepEqual(heads, [], "no stream head, so no hello, reached a box with the wrong key");
+  // control: the same link to the box key the record names does open a channel and sends the head (this build's door then refuses it, which is not the point here)
+  const links2 = createServerLinks({ connect: spy, options: { crypto: nodeCrypto(), keyStore: f.ks }, name: "Kit's phone", openMs: 4000, channelOf: () => null });
+  t.after(() => links2.close());
+  await assert.rejects(() => links2.inviteeSessionFor({ ...ch, box: f.done.box }, hello).call("grants.invites.get", {}));
+  assert.equal(heads.length, 1, "the right box key opens the channel and the head goes");
+  assert.deepEqual(heads[0].invitee, hello);
 });
