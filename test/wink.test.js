@@ -1888,3 +1888,31 @@ test("SW-1: a software-marked paired session is presence over the door only wher
   process.env.VYRE_SEAL_SOFTWARE = "1";
   assert.equal(await define(), "ok", "switch on (a development build): it passes");
 });
+
+test("SW-1 on a release-kind build (software switch off): a software paired session is refused an admin act, an enclave-key session passes, and a session the owner's phone approved passes for a software-key browser", async t => {
+  const saved = process.env.VYRE_SEAL_SOFTWARE;
+  t.after(() => { if (saved === undefined) delete process.env.VYRE_SEAL_SOFTWARE; else process.env.VYRE_SEAL_SOFTWARE = saved; });
+  delete process.env.VYRE_SEAL_SOFTWARE;
+  const { CONTACT } = await import("../kernel/conformance/suite.js");
+  const defineOn = (f, links) => links.remoteKernel("srv", f.w.d.kernel.id.space).gateway.records.define(null, { add_types: [CONTACT] }).then(() => "ok", e => String(e.code || e.message));
+  // an enclave key (the app reported hardware storage; unattested is accepted, ruling 6410c6a): not software, passes
+  { const f = await pairFreshServer(t, { presenceStorage: "hardware" }); const links = linksFor(t, f); await links.startPaired("srv");
+    const mine = (await f.w.d.registry.call("presence.person.sessions", {}, "cli", PROOF)).data; assert.ok(!(mine.sessions || mine).some(s => s.software === true), "an enclave-key session is not software-marked");
+    assert.equal(await defineOn(f, links), "ok", "an enclave-key session passes"); }
+  // a software-key browser: refused, until the owner's phone approves its sign-in
+  { const f = await pairFreshServer(t, { kind: "web", about: { kind: "web" }, presenceStorage: "software" }); const links = linksFor(t, f); await links.startPaired("srv");
+    assert.match(await defineOn(f, links), /needs_presence|presence/, "a software session is refused");
+    const ask = await links.askSignIn("srv", "Alex's browser");
+    assert.equal((await links.signInStatus("srv", ask.id)).state, "waiting");
+    assert.match(await defineOn(f, links), /needs_presence|presence/, "asking is not approval");
+    assert.equal((await f.w.d.registry.call("presence.person.session-answer", { id: ask.id, yes: true }, "cli", PROOF)).data.state, "approved");
+    assert.equal((await links.signInStatus("srv", ask.id)).state, "approved");
+    await links.startPaired("srv");
+    assert.equal(await defineOn(f, links), "ok", "the phone-approved session passes"); }
+  // a refused ask grants nothing
+  { const f = await pairFreshServer(t, { kind: "web", about: { kind: "web" }, presenceStorage: "software" }); const links = linksFor(t, f); await links.startPaired("srv");
+    const ask = await links.askSignIn("srv");
+    assert.equal((await f.w.d.registry.call("presence.person.session-answer", { id: ask.id, yes: false }, "cli", PROOF)).data.state, "refused");
+    assert.equal((await links.signInStatus("srv", ask.id)).state, "refused");
+    assert.match(await defineOn(f, links), /needs_presence|presence/, "a refused ask leaves the session software"); }
+});

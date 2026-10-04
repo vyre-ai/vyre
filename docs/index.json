@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":342,"tool":1194,"event":454,"config":255,"env":244,"screen":20,"concept":43},
+  "counts": {"command":342,"tool":1197,"event":456,"config":255,"env":244,"screen":20,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -950,6 +950,9 @@
     {"kind":"tool","name":"presence.person.renew-allow","definedIn":"core/presence/module.js","page":"reference/tools.md#presencepersonrenew-allow","module":"presence","mentions":[]},
     {"kind":"tool","name":"presence.person.revoke","definedIn":"core/presence/index.js","page":"reference/tools.md#presencepersonrevoke","module":"presence","mentions":[{"page":"adr/0032-person-and-device.md","line":123,"anchor":"2d-a-device-its-owner-paired-opens-its-person-session-at-pairing"}]},
     {"kind":"tool","name":"presence.person.rotate","definedIn":"core/presence/module.js","page":"reference/tools.md#presencepersonrotate","module":"presence","mentions":[{"page":"adr/0032-person-and-device.md","line":128,"anchor":"2d-a-device-its-owner-paired-opens-its-person-session-at-pairing"}]},
+    {"kind":"tool","name":"presence.person.session-answer","definedIn":"core/presence/module.js","page":"reference/tools.md#presencepersonsession-answer","module":"presence","mentions":[]},
+    {"kind":"tool","name":"presence.person.session-ask","definedIn":"core/presence/module.js","page":"reference/tools.md#presencepersonsession-ask","module":"presence","mentions":[]},
+    {"kind":"tool","name":"presence.person.session-status","definedIn":"core/presence/module.js","page":"reference/tools.md#presencepersonsession-status","module":"presence","mentions":[]},
     {"kind":"tool","name":"presence.person.sessions","definedIn":"core/presence/module.js","page":"reference/tools.md#presencepersonsessions","module":"presence","mentions":[]},
     {"kind":"tool","name":"presence.person.start","definedIn":"core/presence/index.js","page":"reference/tools.md#presencepersonstart","module":"presence","mentions":[{"page":"concepts/presence.md","line":33,"anchor":"which-tools-need-it"}]},
     {"kind":"tool","name":"presence.person.start-paired","definedIn":"core/presence/module.js","page":"reference/tools.md#presencepersonstart-paired","module":"presence","mentions":[{"page":"adr/0032-person-and-device.md","line":118,"anchor":"2d-a-device-its-owner-paired-opens-its-person-session-at-pairing"}]},
@@ -958,6 +961,8 @@
     {"kind":"event","name":"presence.refused","definedIn":"core/presence/index.js","page":"reference/events.md#presence","module":"presence","mentions":[{"page":"concepts/presence.md","line":91,"anchor":"what-a-tool-sees"},{"page":"adr/0004-presence.md","line":208,"anchor":"consequences"}]},
     {"kind":"tool","name":"presence.remove","definedIn":"core/presence/index.js","page":"reference/tools.md#presenceremove","module":"presence","mentions":[{"page":"concepts/presence.md","line":33,"anchor":"which-tools-need-it"},{"page":"adr/0004-presence.md","line":72,"anchor":"layer-1--presence-proof-checked-by-vyred"},{"page":"adr/0004-presence.md","line":127,"anchor":"layer-1--presence-proof-checked-by-vyred"},{"page":"adr/0018-mobile.md","line":103,"anchor":"3--presence-on-the-phone-a-device-key-enrolled-with-the-decks-passkey"},{"page":"adr/0018-mobile.md","line":158,"anchor":"6--what-stays-on-the-phone"}]},
     {"kind":"event","name":"presence.removed","definedIn":"core/presence/module.js","page":"reference/events.md#presence","module":"presence","mentions":[]},
+    {"kind":"event","name":"presence.session-approved","definedIn":"core/presence/module.js","page":"reference/events.md#presence","module":"presence","mentions":[]},
+    {"kind":"event","name":"presence.session-asked","definedIn":"core/presence/module.js","page":"reference/events.md#presence","module":"presence","mentions":[]},
     {"kind":"tool","name":"presence.session.close","definedIn":"core/presence/module.js","page":"reference/tools.md#presencesessionclose","module":"presence","mentions":[]},
     {"kind":"tool","name":"presence.session.open","definedIn":"core/presence/index.js","page":"reference/tools.md#presencesessionopen","module":"presence","mentions":[{"page":"concepts/presence.md","line":33,"anchor":"which-tools-need-it"},{"page":"concepts/presence.md","line":80,"anchor":"sessions-in-the-deck"},{"page":"adr/0004-presence.md","line":266,"anchor":"addendum-26-sep-2026-after-review-with-the-other-workstreams"},{"page":"adr/0004-presence.md","line":299,"anchor":"addendum-27-sep-2026-device-keys-for-the-phone-apps"},{"page":"adr/0018-mobile.md","line":101,"anchor":"3--presence-on-the-phone-a-device-key-enrolled-with-the-decks-passkey"}]},
     {"kind":"event","name":"presence.signed-in","definedIn":"core/presence/module.js","page":"reference/events.md#presence","module":"presence","mentions":[]},

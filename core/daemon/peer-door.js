@@ -70,7 +70,8 @@ export function createPeerDoor(o) {
     // a software-marked paired session (a device key nobody had to touch) is presence for an admin act only where the presence module itself takes software proofs: a development build behind its switch, never a release build
     const s = sessionOf(d);
     if (!s) return null;
-    if (s.software && !softwareOk()) return null;
+    if (s.software && !softwareOk()) { log(`peer door: ${d} holds a software-strength session: not presence for an admin act here`); return null; }
+    log(`peer door: ${d} session counts as presence, strength ${s.software ? "software (development switch)" : "enclave or phone-approved"}`);
     return s.software ? { id: s.id, software: true } : s.id;
   }, pathOf: () => "relay" });
   /** @type {Map<string, number>} device -> its open streams, across its peer streams */
