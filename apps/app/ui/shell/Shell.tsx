@@ -80,7 +80,7 @@ function Rail(p: ShellProps) {
         {p.bottom.map((it) => <RailItem key={it.id} it={it} on={cur === it.id} onPress={go(it)} />)}
         <View className="mt-s2 flex-row items-center gap-s3 border-t border-edge px-s2 pt-s3">
           <Avatar of={markRef("person", p.user.name)} size={32} />
-          <View className="min-w-0 flex-1"><Text strong style={{ fontSize: 14, lineHeight: 18 }} numberOfLines={1}>{p.user.name}</Text>{p.user.sub ? <Text mono size="caption" tone="faint" style={{ fontSize: 12, lineHeight: 16 }} numberOfLines={1}>{p.user.sub}</Text> : null}</View>
+          <View className="min-w-0 flex-1"><Text strong style={{ fontSize: 14, lineHeight: 18 }} numberOfLines={1}>{p.user.name}</Text>{p.user.sub ? <Text mono size="caption" tone="label" style={{ fontSize: 12, lineHeight: 16 }} numberOfLines={1}>{p.user.sub}</Text> : null}</View>
         </View>
       </View>
     </View>

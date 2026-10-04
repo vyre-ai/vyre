@@ -208,7 +208,8 @@ export async function bootHomeKernel(cfg) {
   // The Spaces this home hosts (kernel/spaces): the personal one is this kernel; every other has its own store, log and sealing namespace, opened once here. Each takes the
   // home's sealing client namespaced per Space (kernel.mac and verify cover "<space>\n<data>"), so no key file exists for any of them; without a sealing process the registry
   // refuses a hosted Space unless this boot is the developer file-key one.
-  const spaces = createSpaceKernels({ root: cfg.root, personal: { space: id.space, kernel: k }, openDb: (/** @type {string} */ f) => new DatabaseSync(f), ...(cfg.stageFactory ? { stageFactory: cfg.stageFactory } : {}), ...(sealer ? { sealer } : { fileKey: true }), ...(cfg.door ? { doorFor: () => cfg.door } : {}), ...(cfg.storeFor ? { storeFor: cfg.storeFor } : {}), ...(cfg.standIn ? { bootOptions: { standIn: cfg.standIn } } : {}), ...(cfg.remote ? { remote: cfg.remote } : {}) });
+  const audit = (/** @type {string} */ type, /** @type {any} */ data) => k.log.append(k.chains.fromFacts({ kind: "module", module: "home", first_party: true }), { type, sv: 1, subject: `vyre://${id.space}/space/${data.space}`, data, vis: "owner", red: "internal" });
+  const spaces = createSpaceKernels({ root: cfg.root, audit, personal: { space: id.space, kernel: k }, openDb: (/** @type {string} */ f) => new DatabaseSync(f), ...(cfg.stageFactory ? { stageFactory: cfg.stageFactory } : {}), ...(sealer ? { sealer } : { fileKey: true }), ...(cfg.door ? { doorFor: () => cfg.door } : {}), ...(cfg.storeFor ? { storeFor: cfg.storeFor } : {}), ...(cfg.standIn ? { bootOptions: { standIn: cfg.standIn } } : {}), ...(cfg.remote ? { remote: cfg.remote } : {}) });
   await spaces.start();
   hostedAdopt = (to, from) => spaces.adoptOwner(to, from);
   // at every start: the home's adoption (the log) reaches the Spaces it hosts, including ones made before the claim or cut short by a restart
