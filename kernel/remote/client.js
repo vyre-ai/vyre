@@ -94,6 +94,8 @@ export function createRemoteKernel(cfg) {
       for (const p of parts.slice(0, -1)) node = node[p] ||= {};
       node[parts[parts.length - 1]] = (/** @type {any} */ _chain, /** @type {any[]} */ ...args) => invokeWith(`${group}.${name}`, args);
     }
+    // a reveal's proof is made for the home's challenge and travels as the trailing option, never inside the request (PW-4)
+    if (group === "seal") root.reveal = (/** @type {any} */ _chain, /** @type {any} */ i, /** @type {any} */ ...rest) => { const { proof: _p, ...bare } = i && typeof i === "object" ? i : /** @type {any} */ ({}); return invokeWith("seal.reveal", [bare, ...rest]); };
     const freeze = (/** @type {any} */ o) => { for (const v of Object.values(o)) if (typeof v === "object") freeze(v); return Object.freeze(o); };
     return freeze(root);
   };

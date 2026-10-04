@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(kernel/remote,records): `seal.reveal` crosses to the home with the person's proof for the home's challenge, so a device on a server-hosted space can reveal with a yes (needs a wired inference door and a reveal grant). fix(wink): a pairing that does not finish says why in the server's log; the home logs the reason of every non-presence refusal.
+
 - feat(spaces): a call with no space named acts in the one space the person made; with two or more it answers `needs_space` and lists them. A member's stream reconnects with no error after the invitee channel's life (tested).
 
 - feat(spaces,daemon,kernel): a person who joined a space on a server lists it and reaches it through a member stream to its home (the peer door admits a member only when the space's kernel says so); a sealed value from a device on a server-hosted space goes to the home's sealing process (`seal.put` over the wire). fix(spaces): creating a space on this computer asks for the person's yes first and makes nothing until it has it.

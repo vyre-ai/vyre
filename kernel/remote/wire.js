@@ -17,8 +17,8 @@ export const CALLS = Object.freeze({
   records: ["definitions", "define", "get", "query", "aggregate", "search", "create", "update", "remove", "restore"],
   tasks: ["request", "get", "start", "complete", "revise", "decide", "stuck", "skip", "unblock", "card", "needsYou"],
   events: ["read"],
-  // A sealed value goes to the HOME's sealing process, never into the record: the person's own act on a space on a server (reveal needs the person's proof for its own challenge and is not carried yet)
-  seal: ["put"],
+  // A sealed value goes to the HOME's sealing process, never into the record: the person's own act on a space on a server (reveal carries the person's proof for the home's own challenge: the home checks it at its sealing process)
+  seal: ["put", "reveal"],
   surfaces: ["open", "revoke"],
   // A member's computer running one of this Space's sessions (docs/work/runner.md, "The lent-computer wire"). `leases` is the gateway's (the lease is bound to the member, the device and its
   // key and issued only while both Offers stand); `lent` is a SERVICE the home registers (core/runner/lent-home.js): the session's definition, its transcript, files (in chunks) and checkpoints.
