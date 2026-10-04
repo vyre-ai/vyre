@@ -177,7 +177,12 @@ export default {
     const spaceOf = ref => {
       const text = String(ref || "").trim().toLowerCase();
       const row = SPACE_ID_RE.test(text) ? spaces.get(text) : spaces.byName(text.endsWith(".vyre.run") ? text : `${text}.vyre.run`);
-      if (!row) throw refuse("No such space on this device.", "not_found");
+      if (!row) {
+        // A home with no claimed identity has nobody to own or invite into a space yet: say that, not "no such space".
+        let who = null; try { who = identity.status(); } catch { who = null; }
+        if (!who || !who.exists || who.pending) throw refuse("Choose your Vyre name first.", "no_identity");
+        throw refuse("No such space on this device.", "not_found");
+      }
       return row;
     };
     /** The creator, or an owner of a space that exists. */
