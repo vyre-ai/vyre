@@ -5,6 +5,7 @@
   "requires": ["threads"],
   "does": { "tools": [
     { "name": "stream.open", "reach": "person", "effect": "write" },
+    { "name": "stream.follow", "reach": "person", "effect": "write" },
     { "name": "stream.send", "reach": "person", "effect": "write" },
     { "name": "stream.react", "reach": "person", "effect": "write" },
     { "name": "stream.pin", "reach": "person", "effect": "write" },

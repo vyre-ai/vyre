@@ -10,6 +10,7 @@
 // made only after access.js says the caller may read the session, and it is bound to that caller: the
 // upgrade must come from the same caller (and device, where the router names one) or it is refused.
 
+import { serve } from "./server.js";
 import crypto from "node:crypto";
 import { Logs } from "./log.js";
 import { createAdapter, pipe } from "./adapter.js";
@@ -126,21 +127,27 @@ export default {
       feed(e);
     });
 
+    /** Who may read a session, the viewer drawn for them, and the log ready (seeded): the common start of a ticket (stream.open) and a peer stream (stream.follow). @param {any} i @param {any} meta */
+    const prepare = async (i, meta) => {
+      const session = String(i.session || "");
+      if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(session)) { const e = /** @type {any} */ (new Error("session must be a thread id")); e.code = "bad_input"; throw e; }
+      // Who may read it comes first: nothing below runs, and no log or set entry is made, for a session the caller may not read.
+      const { viewer: who0, chain, chat: kchat } = await access.read(session, meta, i);
+      // A person who opens a chat after a restart gives the assistants answering them a session again; the group's list follows the kernel's.
+      if (kchat && groups) await groups.mirror(session, { people: [...kchat.people], assistants: [...(kchat.assistants || [])] }, meta, who0.id, chain);
+      // A chat of the kernel's: the viewer receives a reply only if they were in the chat at its membership version (asked of the reply port, never decided here), and sees the chat from their own join.
+      const who = { ...who0, resolve: resolverFor(who0, chain), ...(kchat && groups && groups.known(session) ? groups.viewerFor(session, who0.id, chain) : {}) };
+      if (!seen.has(session)) { seen.add(session); if (logs.get(session).head === 0) await seed(session); }
+      else if (seeding.has(session)) await seeding.get(session);
+      return { session, who, log: logs.get(session) };
+    };
+
     ctx.tool("stream.open", {
       description: "A one-use ticket (15 s) for the session stream at path, resuming after cursor from (0 for everything the log holds). Also the log's head and floor: a from below floor will be sent a reset.",
       input: obj({ session: str, from: int, as: str }, ["session"]),
       callers: PEOPLE,
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
-        const session = String(i.session || "");
-        if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(session)) { const e = /** @type {any} */ (new Error("session must be a thread id")); e.code = "bad_input"; throw e; }
-        // Who may read it comes first: nothing below runs, and no log or set entry is made, for a session the caller may not read.
-        const { viewer: who0, chain, chat: kchat } = await access.read(session, meta, i);
-        // A person who opens a chat after a restart gives the assistants answering them a session again; the group's list follows the kernel's.
-        if (kchat && groups) await groups.mirror(session, { people: [...kchat.people], assistants: [...(kchat.assistants || [])] }, meta, who0.id, chain);
-        // A chat of the kernel's: the viewer receives a reply only if they were in the chat at its membership version (asked of the reply port, never decided here), and sees the chat from their own join.
-        const who = { ...who0, resolve: resolverFor(who0, chain), ...(kchat && groups && groups.known(session) ? groups.viewerFor(session, who0.id, chain) : {}) };
-        if (!seen.has(session)) { seen.add(session); if (logs.get(session).head === 0) await seed(session); }
-        else if (seeding.has(session)) await seeding.get(session);
+        const { session, who } = await prepare(i, meta);
         for (const [k, v] of tickets) if (v.expires <= now()) tickets.delete(k);
         const ticket = crypto.randomBytes(24).toString("base64url");
         const from = Number.isInteger(i.from) && i.from >= 0 ? i.from : null;
@@ -150,6 +157,28 @@ export default {
         tickets.set(ticket, { session, expires: now() + ticketMs, from, person: viewer, caller: String((meta && meta.caller) || ""), device, viewer: who });
         const log = logs.get(session);
         return { session, ticket, viewer, path: `/v1/streams/stream/session?ticket=${encodeURIComponent(ticket)}${from === null ? "" : `&from=${from}`}`, head: log.head, floor: log.floor };
+      },
+    });
+
+    // The same stream for a device that reaches this server over the peer wire (no WebSocket to the server): frames are the SAME per-viewer frames serve() draws, sent as server-to-device frames on
+    // the encrypted peer stream (core/daemon/peer-door.js meta.peerStream). Resume = call again with `from` (the last cursor seen). The door ends the stream when the device's session ends.
+    ctx.tool("stream.follow", {
+      description: "Follow a session's stream over the peer wire: answers { stream, session, viewer, head, floor } and then frames, one per message, drawn for the caller exactly as the WebSocket stream draws them. from is the cursor to resume after (0 for everything the log holds).",
+      input: obj({ session: str, from: int, as: str }, ["session"]),
+      callers: PEOPLE,
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        const door = meta && meta.peerStream;
+        if (!door || typeof door.open !== "function") { const e = /** @type {any} */ (new Error("stream.follow is for a device on the peer wire; use stream.open")); e.code = "bad_input"; throw e; }
+        const { session, who, log } = await prepare(i, meta);
+        const from = Number.isInteger(i.from) && i.from >= 0 ? i.from : 0;
+        const id = crypto.randomBytes(18).toString("base64url");
+        door.open(id, (/** @type {{ emit: (d: any) => boolean, end: (why?: string) => void, alive: () => boolean }} */ p) => {
+          /** @type {Array<() => void>} */ const closers = [];
+          const conn = { send: (/** @type {any} */ f) => { if (!p.emit(f)) p.end("closed"); }, onClose: (/** @type {() => void} */ cb) => { closers.push(cb); }, close: () => p.end("closed") };
+          const h = serve(log, conn, { from, viewer: who, ...(groups ? { also: (/** @type {any} */ send) => groups.hear(who.id, (/** @type {any} */ f) => { if (f.session === session) send(f); }) } : {}) });
+          return () => { for (const cb of closers) { try { cb(); } catch { /* closed */ } } h.close(); };
+        });
+        return { stream: id, session, viewer: who.id, head: log.head, floor: log.floor };
       },
     });
 
