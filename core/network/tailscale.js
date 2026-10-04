@@ -123,6 +123,7 @@ export function startTailscale(ctx, { run = ts.run, up = ts.up, setTimer = setIn
   };
 
   ctx.tool("network.tailscale.status", {
+      effect: "read",
     description: "This server's Tailscale: off, needs-login, needs-approval (held until someone approves it) or connected, with the login, the tailnet and whether it is personal or an organization's, and the tailnet address.",
     input: { type: "object", properties: {} },
     run: async (_, meta = {}) => {
@@ -134,6 +135,7 @@ export function startTailscale(ctx, { run = ts.run, up = ts.up, setTimer = setIn
   });
 
   ctx.tool("network.tailscale.login", {
+      effect: "write", callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module"],
     description: "Start Tailscale's sign-in for this server and answer the link to open, or none when it is already signed in. The link lets whoever opens it put this server on their network, so it is given only to the caller and fetched again on each click.",
     input: { type: "object", properties: {} },
     run: async (_, meta = {}) => {
@@ -155,6 +157,7 @@ export function startTailscale(ctx, { run = ts.run, up = ts.up, setTimer = setIn
   });
 
   ctx.tool("network.tailscale.peers", {
+      effect: "read",
     description: "Other devices on this server's network: their node name, addresses, whether they are online and whose login they belong to. The setup page ticks a new computer or phone when one of the owner's appears.",
     input: { type: "object", properties: {} },
     run: async (_, meta = {}) => {
