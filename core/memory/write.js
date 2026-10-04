@@ -14,6 +14,7 @@ import crypto from "node:crypto";
 import { current as whoNow } from "./who.js";
 import { contentWords } from "./iq/retrieve.js";
 import { scrubbed } from "./sealed.js";
+import { modelKey } from "../../lib/caller.js";
 
 /** The person's own room. */
 export const YOU = "you";
@@ -288,7 +289,8 @@ export function register(ctx, { store, reach, personWrites, ownSession, reader, 
   const readScope = async (caller, meta) => {
     const c = String(caller || "");
     const r = await reach(undefined, c);
-    const person = !claims(c) && (reader(c) && !c.startsWith("module:") || ownSession(c) || (c.startsWith("module:") && meta.firstParty === true));
+    const isModule = modelKey(c) === "caller:module";
+    const person = !claims(c) && (reader(c) && !isModule || ownSession(c) || (isModule && meta.firstParty === true));
     return { r, slugs: r.all ? null : new Set(r.slugs || []), you: r.all ? person : Boolean(r.assistant) };
   };
   const tag = w => `${w.from_kind}:${w.from_name}`;
@@ -358,11 +360,11 @@ export function register(ctx, { store, reach, personWrites, ownSession, reader, 
     const w = store.get(String(input.id || ""));
     if (!w) throw Object.assign(new Error(`no memory write ${plain(input.id, 40)}`), { code: "not_found" });
     const project = typeof input.project === "string" && input.project ? input.project : null;
-    const person = !claims(caller) && personWrites(caller, extra);
-    if (!project && !person) throw denied(state === "forgotten" ? "Forget everywhere is the person's own, from their surfaces" : "restoring everywhere is the person's own, from their surfaces");
+    const byUser = !claims(caller) && personWrites(caller, extra);
+    if (!project && !byUser) throw denied(state === "forgotten" ? "Forget everywhere is the person's own, from their surfaces" : "restoring everywhere is the person's own, from their surfaces");
     const s = await readScope(caller, extra);
     let author = false;
-    if (!person && !ownSession(caller) && !s.r.assistant) {
+    if (!byUser && !ownSession(caller) && !s.r.assistant) {
       const me = claims(caller) ? { kind: null, name: String(s.r.agent) } : caller.startsWith("module:") ? { kind: "module", name: caller.slice(7) } : null;
       author = Boolean(me && String(w.from_name) === me.name && ["agent", "teammate", "assistant", "module"].includes(String(w.from_kind)) && (me.kind ? w.from_kind === me.kind : w.from_kind !== "module"));
       // The watchers runtime forgets for its own watchers and duties.

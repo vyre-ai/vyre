@@ -52,8 +52,7 @@ test("a teammate's new session is given what the person decided in an earlier on
   const a = { id: sid };
   const idx = await w.tool("recall.index", {});
   assert.equal(idx.error, undefined, JSON.stringify(idx.error));
-  const cur = await w.tool("memory.curate", {});
-  assert.equal(cur.error, undefined, JSON.stringify(cur.error));
+  // (no whole-graph curate here: it is the person's own surface only (MS-1), and the decision is read out of the indexed session when asked)
   assert.equal((await w.tool("memory.decisions", { project: "harlow-legal" })).data.decisions[0].value, "Vercel", "memory read the decision out of session A");
 
   // Session B: a new session of the Harlow teammate, with nothing in it about hosting.

@@ -31,6 +31,7 @@ import { createKernelGate } from "./kernel-gate.js";
 import { whoStore, current as whoNow } from "./who.js";
 import { mergeSpace, spaceHits, spaceOnlyAnswer } from "./iq/space.js";
 import { scanRows, ledgerScan, scrubbed } from "./sealed.js";
+import { modelKey } from "../../lib/caller.js";
 import { writeStore, register as registerWrites, passages as writePassages, relevantLines, quoted as quotedWrite } from "./write.js";
 
 /** How long to wait after a session.indexed event before curating, so a burst of turns is one pass. */
@@ -352,8 +353,8 @@ export default {
      */
     // An agent's own node ("tailnet:agent:<name>") is an agent, not the user on another device.
     const viaTailnet = () => { const w = whoNow(); return Boolean(w && w.device && w.signedIn); };
-    /** The person at one of their own surfaces, as the kernel's Who: never a module and never a model label. */
-    const personSurface = () => { const w = whoNow(); return Boolean(w && w.ownerSurface); };
+    /** The person at one of their own surfaces, or on their own device signed in, as the kernel's Who: never a module and never a model label. */
+    const mayRebuild = () => { const w = whoNow(); return Boolean(w && (w.ownerSurface || (w.device && w.signedIn))); };
     const reader = caller => owner(caller) || viaTailnet(caller);
     /**
      * The one plain hint, for a READ refused on the OWNER's own paired device that is not signed in: sign in once on this device (ruling 6 Oct, option B). Only for that device: the kernel
@@ -388,7 +389,7 @@ export default {
       if (r.all) {
         // MS-1: `reach` reads an unnamed model session (`mcp`, `mcp:thread:<id>`, `harness`) as every project, which is right for reading a project room it names but never lets it STEER or rebuild
         // (whole: pin, mute, curate): that widens the graph the person sees, so it needs the person's own surface, a module, or a named agent held to its own project below.
-        if (whole && !r.agent && !personSurface(caller)) throw denied("this changes the whole graph, which only the person's own surfaces and the assistant may do");
+        if (whole && !r.agent && !mayRebuild(caller)) throw denied("this changes the whole graph, which only the person's own surfaces and the assistant may do");
         if (!scoped && !whole && !r.agent && !(tailnet ? reader(caller) : owner(caller))) throw signInHint() || denied("the main graph is drawn for the Deck and the assistant; pass room (a project's slug, or unfiled) or project_cwds");
         return { ...r, cwds: project_cwds };
       }
@@ -863,7 +864,8 @@ export default {
       let r;
       try { r = await reach(agent, caller); } catch { return null; }
       const c = String(caller || "");
-      const person = !r.agent && ((reader(c) && !c.startsWith("module:")) || ownSession(c) || (c.startsWith("module:") && extra?.firstParty === true));
+      const isModule = modelKey(c) === "caller:module";
+      const person = !r.agent && ((reader(c) && !isModule) || ownSession(c) || (isModule && extra?.firstParty === true));
       const you = r.all ? person : Boolean(r.assistant);
       const visible = r.all ? null : r.slugs;
       if (room === "unfiled") return { slugs: new Set(), you: false };
@@ -1112,10 +1114,10 @@ export default {
         const thread = typeof input.context?.thread === "string" ? input.context.thread : null;
         // The screen is the person's own: only their surfaces send it, never an agent.
         const screen = sees && input.screen && typeof input.screen === "object" ? input.screen : null;
-        if (input.stream !== true) return ask({ question: String(input.question || ""), project_cwds: effectiveCwds, personal: sees, siteOk: siteStore.isPerson(caller), thread, screen, writes: writesIn });
+        if (input.stream !== true) return ask({ question: String(input.question || ""), project_cwds: effectiveCwds, personal: sees, siteOk: siteStore.personOrDevice(caller), thread, screen, writes: writesIn });
         // Streamed: the events carry the id and the step, never the question or the answer.
         const id = typeof input.id === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(input.id) ? input.id : `iq_${crypto.randomBytes(6).toString("hex")}`;
-        const r = await ask({ question: String(input.question || ""), project_cwds: effectiveCwds, personal: sees, siteOk: siteStore.isPerson(caller), thread, screen, writes: writesIn, stage: s => ctx.events.emit("memory.thinking", { id, stage: s }),
+        const r = await ask({ question: String(input.question || ""), project_cwds: effectiveCwds, personal: sees, siteOk: siteStore.personOrDevice(caller), thread, screen, writes: writesIn, stage: s => ctx.events.emit("memory.thinking", { id, stage: s }),
           // The draft goes to the calling connection only (extra.draft, when the caller asked for it): never the events bus.
           ...(typeof extra.draft === "function" ? { draft: t => extra.draft({ id, text: t }) } : {}) });
         ctx.events.emit("memory.answered", { id, abstained: Boolean(r.abstained), limited: Boolean(r.limited) });

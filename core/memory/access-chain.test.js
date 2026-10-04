@@ -45,7 +45,7 @@ async function boot(t, { kernel = null } = {}) {
 const YES = { graph: "yes", corrections: "yes", me: "yes", correct: "yes", pin: "yes", write: "yes", site: "yes" };
 // RULING 6 Oct (second deliberate change): an owner device reads as the owner only when signed in, over Wink or the relay alike. Unsigned: nothing personal, and no correct or write.
 const NO_READS = { graph: "person_session_required", corrections: "person_session_required", me: "person_session_required" }; // the plain sign-in hint, only for the owner's own unsigned device
-const UNSIGNED = { ...YES, ...NO_READS, correct: "person_session_required", write: "person_session_required" };
+const UNSIGNED = { ...YES, ...NO_READS, correct: "person_session_required", write: "person_session_required", pin: "denied" }; // MS-1: an unsigned device may not steer the whole graph either
 
 test("each caller class does what the table says, by its chain", async t => {
   const rig = await createRig({ agents: ["kit", "assistant"] });

@@ -19,6 +19,7 @@ import {
 } from "../../lib/site-knowledge.js";
 
 import { current as whoNow } from "./who.js";
+import { modelKey } from "../../lib/caller.js";
 
 const GONE_MS = 365 * 24 * 3_600_000;
 const UNDO_MS = 24 * 3_600_000;
@@ -67,9 +68,9 @@ export function register(ctx, { denied }) {
   };
 
   /** Who may use the store: the person's surfaces, their other devices, and Vyre's own modules. Never an agent. @param {any} caller @param {any} meta */
-  const isPerson = () => { const w = whoNow(); return Boolean(w && (w.ownerSurface || w.device)); };
-  const chrome = (caller, meta) => isPerson(caller) || (String(caller || "").startsWith("module:") && meta && meta.firstParty === true);
-  const personOnly = (caller, what) => { if (!isPerson(caller)) throw denied(`${what} is for the person's own surfaces`); };
+  const personOrDevice = () => { const w = whoNow(); return Boolean(w && (w.ownerSurface || w.device)); };
+  const chrome = (caller, meta) => personOrDevice(caller) || (modelKey(caller) === "caller:module" && meta && meta.firstParty === true);
+  const personOnly = (caller, what) => { if (!personOrDevice(caller)) throw denied(`${what} is for the person's own surfaces`); };
 
   /**
    * A setting, on by default. With no settings hub at all it is the default; if the hub fails, the last value it gave (a
@@ -177,7 +178,7 @@ export function register(ctx, { denied }) {
       // check does, rather than store a selector that is only the marker. A page whose own text contains the literal "[redacted:" is refused whole too, which is acceptable (reviewer-2).
       if (/\[redacted:/.test(JSON.stringify(i.patch || {}))) { event(key, "refused", "redacted", null); return { accepted: false, refused: [{ path: "", why: "secret shape" }] }; }
       // Notes are the person's own words: only a person's surface may write one, never Chrome's bridge.
-      const clean = sanitize({ ...(i.patch && typeof i.patch === "object" ? i.patch : {}), key }, { now: now(), notes: isPerson(caller), known: knownIds(load(key)) });
+      const clean = sanitize({ ...(i.patch && typeof i.patch === "object" ? i.patch : {}), key }, { now: now(), notes: personOrDevice(caller), known: knownIds(load(key)) });
       if (!clean.ok) { event(key, "refused", clean.refused.map(r => r.path).slice(0, 5).join(",").slice(0, 120), null); return { accepted: false, refused: clean.refused }; }
       const base = load(key) || emptyRecord(key);
       if (Array.isArray(clean.record.remove) && clean.record.remove.length && i.base_rev !== base.rev) throw bad(`a removal needs base_rev ${base.rev}`, "conflict");
@@ -405,7 +406,7 @@ export function register(ctx, { denied }) {
     },
   });
   return {
-    isPerson,
+    personOrDevice,
     /** memory.ask's step: what Vyre for Chrome knows about a site the question names, or null. */
     answer: (/** @type {string} */ question) => {
       // Match the question against an index of names, families and hosts first; only the matched sites' records are parsed.

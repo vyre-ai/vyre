@@ -47,13 +47,13 @@ export function whoOfChain(chain, surface = null) {
   const onSurface = Boolean(sf) && sf.entered_by === "surface";
   // The person's own session: a session token with nobody beside them, or exactly the assistant (the person's own Claude, which the kernel's token chain shows as
   // [person, agent:assistant]; no chain fact tells a thread from a named agent, so `assistant` is the one name that stands for it). Never read off a label.
-  const ownSession = first.entered_by === "session" && (hops.length === 1 || (hops.length === 2 && agent === "assistant"));
+  const tokenSession = first.entered_by === "session" && (hops.length === 1 || (hops.length === 2 && agent === "assistant"));
   return {
     ownerSurface: onSurface && !sv.device && OWNER_SURFACES.has(String(sv.surface)),
     device: onSurface && Boolean(sv.device),
     nodeDevice: onSurface && Boolean(sv.device) && Boolean(sv.node),
     signedIn: onSurface && Boolean(sv.device) && Boolean(sv.session),
-    ownSession,
+    ownSession: tokenSession,
     agent,
     acting,
     conflict,
